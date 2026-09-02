@@ -1,7 +1,10 @@
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import Layout from "./components/Layout";
 import { rutaInicial, type Seccion } from "./lib/permisos";
+import Creditos from "./pages/Creditos";
 import Login from "./pages/Login";
+import Reportes from "./pages/Reportes";
+import Usuarios from "./pages/Usuarios";
 import Almacenes from "./pages/inventario/Almacenes";
 import Dashboard from "./pages/inventario/Dashboard";
 import Insumos from "./pages/inventario/Insumos";
@@ -93,6 +96,31 @@ function Rutas() {
           element={
             <Protegida seccion="movimientos">
               <Movimientos />
+            </Protegida>
+          }
+        />
+
+        <Route
+          path="/creditos"
+          element={
+            <Protegida seccion="creditos">
+              <Creditos />
+            </Protegida>
+          }
+        />
+        <Route
+          path="/reportes"
+          element={
+            <Protegida seccion="reportes">
+              <Reportes />
+            </Protegida>
+          }
+        />
+        <Route
+          path="/usuarios"
+          element={
+            <Protegida seccion="usuarios">
+              <Usuarios />
             </Protegida>
           }
         />

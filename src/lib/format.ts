@@ -29,9 +29,23 @@ export function fmtPct(n: number | null | undefined): string {
   return `${Math.round(Number(n ?? 0) * 100)}%`;
 }
 
+/** Una fecha suelta yyyy-MM-dd, sin hora: los rangos de reportes vienen así. */
+const SOLO_DIA = /^\d{4}-\d{2}-\d{2}$/;
+
 function aFecha(iso: string | Date | null | undefined): Date | null {
   if (!iso) return null;
-  const d = iso instanceof Date ? iso : new Date(iso);
+  if (iso instanceof Date) return Number.isNaN(iso.getTime()) ? null : iso;
+
+  // "2026-09-01" lo parsea el navegador como medianoche UTC, que en Bolivia
+  // (UTC-4) es el 31/08 a las 20:00 y se mostraría un día antes. Construyendo
+  // la fecha por partes queda en hora local y el día es el que dice el texto.
+  // Los timestamps completos sí llevan zona y se parsean normal.
+  if (SOLO_DIA.test(iso)) {
+    const [a, m, d] = iso.split("-").map(Number);
+    return new Date(a, m - 1, d);
+  }
+
+  const d = new Date(iso);
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
