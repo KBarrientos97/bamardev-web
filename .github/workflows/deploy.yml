@@ -1,10 +1,10 @@
-# CI/CD del frontend web: push a dev → QA (web-qa.bamardev.com),
-# push a main → PROD (web.bamardev.com). Mismo flujo que el panel.
+# CI/CD de la app web: push a dev → QA (app-qa.bamardev.com),
+# push a main → PROD (app.bamardev.com). Mismo flujo que el panel.
 #
 # Requiere el secret CLOUDFLARE_API_TOKEN (token con permiso
 # "Cloudflare Pages: Edit" sobre la cuenta de Kevin). El account id no es
 # secreto y wrangler lo lee del .env del repo.
-name: Deploy web
+name: Deploy app
 
 on:
   push:
