@@ -1,0 +1,6 @@
+// Config de Cloudflare Pages: `npx wrangler pages deploy` la lee solo.
+{
+  "name": "bamardev-web",
+  "pages_build_output_dir": "./dist",
+  "compatibility_date": "2026-09-02"
+}

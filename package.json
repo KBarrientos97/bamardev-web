@@ -1,0 +1,38 @@
+{
+  "name": "bamardev-web",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "build:qa": "tsc -b && vite build --mode qa",
+    "deploy": "npm run build && wrangler pages deploy dist --branch=main",
+    "deploy:qa": "npm run build:qa && wrangler pages deploy dist --branch=qa",
+    "lint": "oxlint",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@tailwindcss/vite": "^4.3.3",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "react-router-dom": "^7.18.2",
+    "tailwindcss": "^4.3.3"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.0",
+    "@types/node": "^24.13.3",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^4.7.0",
+    "jsdom": "^28.0.0",
+    "oxlint": "^1.75.0",
+    "typescript": "~5.9.0",
+    "vite": "^7.2.4",
+    "vitest": "^3.2.4",
+    "wrangler": "^4.125.0"
+  }
+}
