@@ -4,7 +4,9 @@ import { Chips, EncabezadoPagina } from "../components/filtros";
 import { Boton, Campo, Cargando, ErrorMsg, Input, Kpi, Modal, Vacio } from "../components/ui";
 import { api } from "../lib/api";
 import { fmtFecha, fmtFechaHora, fmtMoney, fmtNum, isoDia } from "../lib/format";
+import type { Capacidad } from "../lib/permisos";
 import { useApi } from "../lib/useApi";
+import { useAuth } from "../store/AuthContext";
 import type { RangoReporte } from "../types";
 
 // ── Período ─────────────────────────────────────────────────────────────────
@@ -57,6 +59,13 @@ interface FichaReporte {
   titulo: string;
   texto: string;
   icono: NombreIcono;
+  /**
+   * Qué nivel de reportes hace falta. Los de BÁSICO (sin capacidad) son los
+   * que responden "qué vendí"; `reportes_operacion` agrega cómo opera el
+   * negocio (cuándo, cómo cobra, cómo entrega) y `reportes_rentabilidad`
+   * mira la plata: margen, costos y deuda.
+   */
+  capacidad?: Capacidad;
 }
 
 const REPORTES: FichaReporte[] = [
@@ -71,30 +80,35 @@ const REPORTES: FichaReporte[] = [
     titulo: "Productos lentos",
     texto: "Lo que no rota y tiene plata parada en el almacén.",
     icono: "trendingDown",
+    capacidad: "reportes_operacion",
   },
   {
     nombre: "categorias",
     titulo: "Por categoría",
     texto: "Cuánto aporta cada rubro del catálogo.",
     icono: "grid",
+    capacidad: "reportes_rentabilidad",
   },
   {
     nombre: "horas",
     titulo: "Horarios",
     texto: "Hora pico y mejor día de la semana.",
     icono: "clock",
+    capacidad: "reportes_operacion",
   },
   {
     nombre: "metodos-pago",
     titulo: "Formas de pago",
     texto: "Cuánto entra por efectivo, QR y tarjeta.",
     icono: "qr",
+    capacidad: "reportes_operacion",
   },
   {
     nombre: "descuentos",
     titulo: "Descuentos y anulaciones",
     texto: "Lo que se perdió y quién lo autorizó.",
     icono: "alert",
+    capacidad: "reportes_operacion",
   },
   {
     nombre: "cierres",
@@ -107,6 +121,7 @@ const REPORTES: FichaReporte[] = [
     titulo: "Delivery",
     texto: "Entregas, tarifas y lo que hay por rendir.",
     icono: "truck",
+    capacidad: "reportes_operacion",
   },
   {
     nombre: "stock-critico",
@@ -119,18 +134,21 @@ const REPORTES: FichaReporte[] = [
     titulo: "Insumos",
     texto: "Compras de materia prima y su costo.",
     icono: "sack",
+    capacidad: "reportes_rentabilidad",
   },
   {
     nombre: "financiero",
     titulo: "Financiero",
     texto: "Ventas contra compras y margen del período.",
     icono: "dollar",
+    capacidad: "reportes_rentabilidad",
   },
   {
     nombre: "creditos",
     titulo: "Créditos",
     texto: "Deuda por cobrar, antigüedad y cobros.",
     icono: "fileText",
+    capacidad: "reportes_rentabilidad",
   },
 ];
 
@@ -278,10 +296,18 @@ function esObjetoPlano(v: unknown): v is Record<string, unknown> {
 // ── Página ──────────────────────────────────────────────────────────────────
 
 export default function Reportes() {
+  const { incluye } = useAuth();
   const [preset, setPreset] = useState<Preset>("mes");
   const [desdeManual, setDesdeManual] = useState(() => rangoDePreset("mes").desde ?? "");
   const [hastaManual, setHastaManual] = useState(() => isoDia(new Date()));
   const [abierto, setAbierto] = useState<FichaReporte | null>(null);
+
+  // Los reportes que el plan no incluye no se ofrecen: pedirlos igual
+  // devolvería datos, pero se venden por separado.
+  const disponibles = useMemo(
+    () => REPORTES.filter((r) => !r.capacidad || incluye(r.capacidad)),
+    [incluye],
+  );
 
   const rango: RangoReporte = useMemo(
     () =>
@@ -338,7 +364,7 @@ export default function Reportes() {
       <section className="space-y-3">
         <h2 className="text-[15px] font-bold text-texto">Reportes de detalle</h2>
         <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {REPORTES.map((r) => (
+          {disponibles.map((r) => (
             <li key={r.nombre}>
               <button
                 onClick={() => setAbierto(r)}
@@ -532,6 +558,8 @@ function Renderizador({ nombre, datos }: { nombre: string; datos: unknown }) {
 }
 
 function Tabla({ nombre, filas }: { nombre: string; filas: unknown[] }) {
+  const { incluye } = useAuth();
+
   if (filas.length === 0) {
     return <p className="text-[13px] text-texto-3">Sin datos en este período.</p>;
   }
@@ -552,14 +580,16 @@ function Tabla({ nombre, filas }: { nombre: string; filas: unknown[] }) {
         <span className="text-xs text-texto-4">
           {fmtNum(objetos.length)} {objetos.length === 1 ? "fila" : "filas"}
         </span>
-        <Boton
-          variante="ghost"
-          icono="download"
-          className="px-3 py-1.5 text-xs"
-          onClick={() => bajarCsv(nombre, objetos, columnas)}
-        >
-          Exportar CSV
-        </Boton>
+        {incluye("exportacion") && (
+          <Boton
+            variante="ghost"
+            icono="download"
+            className="px-3 py-1.5 text-xs"
+            onClick={() => bajarCsv(nombre, objetos, columnas)}
+          >
+            Exportar CSV
+          </Boton>
+        )}
       </div>
 
       <div className="overflow-x-auto rounded-xl border border-borde">

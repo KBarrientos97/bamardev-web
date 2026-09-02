@@ -16,6 +16,7 @@ import {
 import { api } from "../../lib/api";
 import { fmtFecha, fmtFechaHora, fmtMoney, fmtNum, isoDia } from "../../lib/format";
 import { useApi } from "../../lib/useApi";
+import { useAuth } from "../../store/AuthContext";
 import type {
   Almacen,
   ArticuloMovimiento,
@@ -68,6 +69,7 @@ function esEntrada(tipo: TipoMovimiento): boolean {
 }
 
 export default function Movimientos() {
+  const { incluye } = useAuth();
   const movimientos = useApi(() => api.getMovimientos(), []);
   const almacenes = useApi(() => api.getAlmacenes(), []);
 
@@ -99,6 +101,17 @@ export default function Movimientos() {
 
   const pendientes = lista.filter((m) => m.estado === "PENDIENTE").length;
 
+  // Sin el circuito de aprobación los movimientos se aprueban al crearse, así
+  // que filtrar por "pendientes" no devolvería nada. Se deja el chip si hay
+  // pendientes viejos, para poder encontrarlos.
+  const opcionesEstado = useMemo(
+    () =>
+      incluye("aprobacion_inventario") || pendientes > 0
+        ? OPC_ESTADO
+        : OPC_ESTADO.filter(([k]) => k !== "PENDIENTE"),
+    [incluye, pendientes],
+  );
+
   return (
     <div className="mx-auto max-w-6xl space-y-4 p-5">
       <EncabezadoPagina
@@ -124,7 +137,7 @@ export default function Movimientos() {
           />
         </div>
         <Chips valor={filtroTipo} opciones={OPC_TIPO} onChange={setFiltroTipo} />
-        <Chips valor={filtroEstado} opciones={OPC_ESTADO} onChange={setFiltroEstado} />
+        <Chips valor={filtroEstado} opciones={opcionesEstado} onChange={setFiltroEstado} />
         <Chips valor={filtroOrigen} opciones={OPC_ORIGEN} onChange={setFiltroOrigen} />
       </div>
 
@@ -518,6 +531,8 @@ function FormMovimientoCuerpo({
   onClose: () => void;
   onGuardado: () => void;
 }) {
+  const { incluye } = useAuth();
+  const conAprobacion = incluye("aprobacion_inventario");
   const [tipo, setTipo] = useState<TipoMovimiento>("ENTRADA");
   const [almacenId, setAlmacenId] = useState(String(almacenes[0]?.id ?? ""));
   const [fecha, setFecha] = useState(isoDia(new Date()));
@@ -592,7 +607,12 @@ function FormMovimientoCuerpo({
 
     setGuardando(true);
     try {
-      await api.crearMovimiento(input);
+      const creado = await api.crearMovimiento(input);
+      // El backend SIEMPRE crea el movimiento pendiente y sólo aprobarlo
+      // mueve el stock. Sin la capacidad de aprobación no habría botón para
+      // hacerlo y la mercadería nunca entraría, así que se aprueba de una:
+      // el negocio que no compró el circuito de dos pasos igual carga stock.
+      if (!conAprobacion) await api.aprobarMovimiento(creado.id);
       onGuardado();
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo guardar");

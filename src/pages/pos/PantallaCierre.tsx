@@ -12,7 +12,6 @@ import {
 } from "../../components/ui";
 import { api } from "../../lib/api";
 import { fmtHora, fmtMoney } from "../../lib/format";
-import { puedeSupervisar } from "../../lib/permisos";
 import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
 import type { Caja } from "../../types";
@@ -26,7 +25,7 @@ export default function PantallaCierre({
   onAtras: () => void;
   onCerrada: () => void;
 }) {
-  const { usuario } = useAuth();
+  const { incluye } = useAuth();
   const resumen = useApi(() => api.resumenCaja(caja.id), [caja.id]);
   const [contado, setContado] = useState("");
   const [nota, setNota] = useState("");
@@ -130,10 +129,10 @@ export default function PantallaCierre({
               </div>
             </section>
 
-            {/* Registrar entradas y salidas de efectivo es cosa de encargados:
-                el backend lo exige con RolesGuard, así que no se ofrece al
-                cajero un botón que le va a dar 403. */}
-            {puedeSupervisar(usuario?.rol ?? "CAJERO") && (
+            {/* La capacidad ya exige ADMIN o SUPERVISOR: el backend lo pide
+                con RolesGuard y no tiene sentido ofrecerle al cajero un botón
+                que le va a dar 403. */}
+            {incluye("movimientos_caja") && (
               <Boton
                 variante="ghost"
                 icono="swap"

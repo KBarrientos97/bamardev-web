@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Icon } from "../../components/Icon";
 import { Badge, Boton, Input, Modal, Vacio } from "../../components/ui";
 import { fmtMoney, fmtNum } from "../../lib/format";
+import { useAuth } from "../../store/AuthContext";
 import type { Categoria, Consumo, Producto } from "../../types";
 import type { Carrito, LineaCarrito } from "./useCarrito";
 
@@ -208,6 +209,10 @@ function PanelCarrito({
   onCobrar: () => void;
   onCerrar: () => void;
 }) {
+  const { incluye } = useAuth();
+  // Sin la capacidad la comanda no distingue destino: todo sale para llevar,
+  // que es el valor por defecto con el que nacen las líneas.
+  const conMesaLlevar = incluye("mesa_llevar");
   const vacio = carrito.lineas.length === 0;
 
   return (
@@ -256,14 +261,21 @@ function PanelCarrito({
         <>
           {/* Atajo para marcar toda la comanda de una: lo más común es que
               todo el pedido sea para el mismo destino. */}
-          <div className="flex gap-2 border-b border-borde-soft px-4 py-2.5">
-            <BotonConsumoTodo carrito={carrito} consumo="MESA" />
-            <BotonConsumoTodo carrito={carrito} consumo="LLEVAR" />
-          </div>
+          {conMesaLlevar && (
+            <div className="flex gap-2 border-b border-borde-soft px-4 py-2.5">
+              <BotonConsumoTodo carrito={carrito} consumo="MESA" />
+              <BotonConsumoTodo carrito={carrito} consumo="LLEVAR" />
+            </div>
+          )}
 
           <ul className="min-h-0 flex-1 divide-y divide-borde-soft overflow-y-auto">
             {carrito.lineas.map((l) => (
-              <FilaCarrito key={l.producto.id} linea={l} carrito={carrito} />
+              <FilaCarrito
+                key={l.producto.id}
+                linea={l}
+                carrito={carrito}
+                conMesaLlevar={conMesaLlevar}
+              />
             ))}
           </ul>
 
@@ -311,7 +323,15 @@ function BotonConsumoTodo({ carrito, consumo }: { carrito: Carrito; consumo: Con
   );
 }
 
-function FilaCarrito({ linea: l, carrito }: { linea: LineaCarrito; carrito: Carrito }) {
+function FilaCarrito({
+  linea: l,
+  carrito,
+  conMesaLlevar,
+}: {
+  linea: LineaCarrito;
+  carrito: Carrito;
+  conMesaLlevar: boolean;
+}) {
   const [editandoNota, setEditandoNota] = useState(false);
   const [nota, setNota] = useState(l.nota);
   const [splitAbierto, setSplitAbierto] = useState(false);
@@ -352,29 +372,34 @@ function FilaCarrito({ linea: l, carrito }: { linea: LineaCarrito; carrito: Carr
 
       <div className="mt-2 flex flex-wrap items-center gap-1.5">
         {/* Con una sola unidad no hay nada que partir: alcanza el toggle. */}
-        {l.cantidad === 1 ? (
-          <button
-            onClick={() => carrito.setConsumo(l.producto.id, todaMesa ? "LLEVAR" : "MESA")}
-            className={`rounded-lg px-2 py-1 text-[11px] font-bold uppercase tracking-wide ${
-              todaMesa ? "bg-info-bg text-info-text" : "bg-slate-100 text-texto-3"
-            }`}
-          >
-            {todaMesa ? "Mesa" : "Llevar"}
-          </button>
-        ) : (
-          <button
-            onClick={() => setSplitAbierto(true)}
-            className={`rounded-lg px-2 py-1 text-[11px] font-bold uppercase tracking-wide ${
-              partida
-                ? "bg-warning-bg text-warning-text"
+        {conMesaLlevar &&
+          (l.cantidad === 1 ? (
+            <button
+              onClick={() => carrito.setConsumo(l.producto.id, todaMesa ? "LLEVAR" : "MESA")}
+              className={`rounded-lg px-2 py-1 text-[11px] font-bold uppercase tracking-wide ${
+                todaMesa ? "bg-info-bg text-info-text" : "bg-slate-100 text-texto-3"
+              }`}
+            >
+              {todaMesa ? "Mesa" : "Llevar"}
+            </button>
+          ) : (
+            <button
+              onClick={() => setSplitAbierto(true)}
+              className={`rounded-lg px-2 py-1 text-[11px] font-bold uppercase tracking-wide ${
+                partida
+                  ? "bg-warning-bg text-warning-text"
+                  : todaMesa
+                    ? "bg-info-bg text-info-text"
+                    : "bg-slate-100 text-texto-3"
+              }`}
+            >
+              {partida
+                ? `${l.enMesa} mesa · ${l.cantidad - l.enMesa} llevar`
                 : todaMesa
-                  ? "bg-info-bg text-info-text"
-                  : "bg-slate-100 text-texto-3"
-            }`}
-          >
-            {partida ? `${l.enMesa} mesa · ${l.cantidad - l.enMesa} llevar` : todaMesa ? "Mesa" : "Llevar"}
-          </button>
-        )}
+                  ? "Mesa"
+                  : "Llevar"}
+            </button>
+          ))}
 
         {!editandoNota &&
           (l.nota ? (
@@ -423,7 +448,7 @@ function FilaCarrito({ linea: l, carrito }: { linea: LineaCarrito; carrito: Carr
       )}
 
       <ModalSplit
-        abierto={splitAbierto}
+        abierto={splitAbierto && conMesaLlevar}
         linea={l}
         onClose={() => setSplitAbierto(false)}
         onAplicar={(enMesa) => {

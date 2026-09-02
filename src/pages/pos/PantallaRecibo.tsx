@@ -17,7 +17,7 @@ export default function PantallaRecibo({
   onNuevaVenta: () => void;
   onHistorial: () => void;
 }) {
-  const { negocio } = useAuth();
+  const { negocio, incluye } = useAuth();
   const detalles = venta.detalles ?? [];
   const pagos = venta.pagos ?? [];
   const enMesa = detalles.filter((d) => d.consumo === "MESA");
@@ -97,9 +97,11 @@ export default function PantallaRecibo({
       </div>
 
       <div className="flex gap-2 border-t border-borde bg-white p-4 print:hidden">
-        <Boton variante="ghost" icono="printer" onClick={() => window.print()}>
-          Imprimir
-        </Boton>
+        {incluye("recibo_pdf") && (
+          <Boton variante="ghost" icono="printer" onClick={() => window.print()}>
+            Imprimir
+          </Boton>
+        )}
         <Boton variante="ghost" onClick={onHistorial}>
           Historial
         </Boton>

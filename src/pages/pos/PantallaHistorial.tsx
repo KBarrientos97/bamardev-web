@@ -182,12 +182,14 @@ function DetalleVenta({
   onClose: () => void;
   onAnulada: () => void;
 }) {
-  const { usuario } = useAuth();
+  const { usuario, incluye } = useAuth();
   const completa = useApi(() => api.getVenta(venta.id), [venta.id]);
   const [anulando, setAnulando] = useState(false);
 
   const v = completa.datos ?? venta;
-  const puedeAnular = v.estado === "APROBADO";
+  // Anular pasa siempre por el PIN de un encargado: sin esa capacidad el
+  // negocio no compró forma de autorizarlo, así que no se ofrece.
+  const puedeAnular = v.estado === "APROBADO" && incluye("autorizacion_pin");
 
   return (
     <>

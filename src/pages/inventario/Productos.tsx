@@ -16,6 +16,7 @@ import {
 import { api } from "../../lib/api";
 import { fmtMoney, fmtNum } from "../../lib/format";
 import { useApi } from "../../lib/useApi";
+import { useAuth } from "../../store/AuthContext";
 import type { Categoria, Producto, ProductoInput, TipoProducto, UnidadMedida } from "../../types";
 
 /**
@@ -48,6 +49,7 @@ const OPC_TIPO = [
 ] as const satisfies readonly (readonly [FiltroTipo, string])[];
 
 export default function Productos() {
+  const { incluye } = useAuth();
   const productos = useApi(() => api.getProductos(), []);
   const categorias = useApi(() => api.getCategorias(false), []);
   const unidades = useApi(() => api.getUnidades(), []);
@@ -62,6 +64,16 @@ export default function Productos() {
   const [errorAccion, setErrorAccion] = useState("");
 
   const lista = productos.datos ?? [];
+
+  // El chip de Combo se ofrece si el plan los incluye o si ya hay alguno
+  // cargado de antes: filtrar por un tipo que no existe no le sirve a nadie.
+  const opcionesTipo = useMemo(
+    () =>
+      incluye("combos") || lista.some((p) => p.tipoProducto === "COMPUESTO")
+        ? OPC_TIPO
+        : OPC_TIPO.filter(([k]) => k !== "COMPUESTO"),
+    [incluye, lista],
+  );
 
   const filtrados = useMemo(() => {
     const texto = q.trim().toLowerCase();
@@ -124,7 +136,7 @@ export default function Productos() {
           />
         </div>
         <Chips valor={filtroStock} opciones={OPC_STOCK} onChange={setFiltroStock} />
-        <Chips valor={filtroTipo} opciones={OPC_TIPO} onChange={setFiltroTipo} />
+        <Chips valor={filtroTipo} opciones={opcionesTipo} onChange={setFiltroTipo} />
       </div>
 
       <ErrorMsg>{errorAccion || productos.error}</ErrorMsg>
@@ -440,6 +452,15 @@ function FormProductoCuerpo({
   const [error, setError] = useState("");
   const [guardando, setGuardando] = useState(false);
 
+  const { incluye } = useAuth();
+  // Sin la capacidad el negocio no arma combos: el tipo ni se ofrece. Un
+  // producto que YA es combo se sigue pudiendo editar (el dato existe y
+  // esconderlo lo convertiría en otra cosa al guardar).
+  const conCombos = incluye("combos");
+  const tiposDisponibles = (Object.keys(TIPOS) as TipoProducto[]).filter(
+    (t) => t !== "COMPUESTO" || conCombos || producto?.tipoProducto === "COMPUESTO",
+  );
+
   const esCombo = tipo === "COMPUESTO";
   const conStock = TIPOS[tipo].conStock;
 
@@ -548,7 +569,7 @@ function FormProductoCuerpo({
           }
         >
           <Select value={tipo} onChange={(e) => setTipo(e.target.value as TipoProducto)}>
-            {(Object.keys(TIPOS) as TipoProducto[]).map((t) => (
+            {tiposDisponibles.map((t) => (
               <option key={t} value={t}>
                 {TIPOS[t].label}
               </option>

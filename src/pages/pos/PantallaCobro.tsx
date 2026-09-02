@@ -2,7 +2,6 @@ import { useMemo, useState } from "react";
 import { Icon } from "../../components/Icon";
 import { Boton, Campo, ErrorMsg, Input } from "../../components/ui";
 import { fmtMoney } from "../../lib/format";
-import { tieneFeature } from "../../lib/permisos";
 import { useAuth } from "../../store/AuthContext";
 import type { FormaPago, PagoInput } from "../../types";
 
@@ -51,9 +50,9 @@ export default function PantallaCobro({
   enviando: boolean;
   error: string;
 }) {
-  const { negocio } = useAuth();
+  const { incluye } = useAuth();
   // El plan puede no incluir QR ni pago mixto: en ese caso sólo hay efectivo.
-  const permiteQr = tieneFeature(negocio?.features, "pago_qr_mixto");
+  const permiteQr = incluye("pago_qr_mixto");
 
   const formaEfectivo = buscarForma(formasPago, "Efectivo");
   const formaQr = buscarForma(formasPago, "QR");
@@ -130,33 +129,29 @@ export default function PantallaCobro({
           )}
         </div>
 
-        <div className="grid grid-cols-3 gap-2">
-          <BotonMetodo
-            activo={metodo === "EFECTIVO"}
-            icono="dollar"
-            label="Efectivo"
-            onClick={() => setMetodo("EFECTIVO")}
-          />
-          <BotonMetodo
-            activo={metodo === "QR"}
-            icono="qr"
-            label="QR"
-            deshabilitado={!permiteQr}
-            onClick={() => setMetodo("QR")}
-          />
-          <BotonMetodo
-            activo={metodo === "MIXTO"}
-            icono="swap"
-            label="Mixto"
-            deshabilitado={!permiteQr}
-            onClick={() => setMetodo("MIXTO")}
-          />
-        </div>
-
-        {!permiteQr && (
-          <p className="rounded-xl bg-info-bg px-3.5 py-2.5 text-[13px] text-info-text">
-            Tu plan sólo incluye cobro en efectivo.
-          </p>
+        {/* Sin la capacidad no se dibujan botones apagados: el cobro es en
+            efectivo y punto, como en un negocio que no cobra por QR. */}
+        {permiteQr && (
+          <div className="grid grid-cols-3 gap-2">
+            <BotonMetodo
+              activo={metodo === "EFECTIVO"}
+              icono="dollar"
+              label="Efectivo"
+              onClick={() => setMetodo("EFECTIVO")}
+            />
+            <BotonMetodo
+              activo={metodo === "QR"}
+              icono="qr"
+              label="QR"
+              onClick={() => setMetodo("QR")}
+            />
+            <BotonMetodo
+              activo={metodo === "MIXTO"}
+              icono="swap"
+              label="Mixto"
+              onClick={() => setMetodo("MIXTO")}
+            />
+          </div>
         )}
 
         {metodo === "MIXTO" && (

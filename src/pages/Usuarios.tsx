@@ -18,6 +18,7 @@ import { api } from "../lib/api";
 import { fmtFechaHora, iniciales, tiempoRelativo } from "../lib/format";
 import { etiquetaRol } from "../lib/permisos";
 import { useApi } from "../lib/useApi";
+import { useAuth } from "../store/AuthContext";
 import type { ActualizarUsuarioInput, CrearUsuarioInput, Rol, Usuario } from "../types";
 
 /** Roles que se pueden crear desde la app. PLATAFORMA queda afuera a propósito:
@@ -64,6 +65,9 @@ function tonoRol(rol: Rol): "morado" | "azul" | "verde" | "amarillo" | "gris" {
 }
 
 export default function Usuarios() {
+  const { incluye } = useAuth();
+  // El PIN sólo existe para autorizar anulaciones de venta.
+  const conPin = incluye("autorizacion_pin");
   const usuarios = useApi(() => api.getUsuarios(), []);
 
   const [q, setQ] = useState("");
@@ -210,6 +214,7 @@ export default function Usuarios() {
         onPassword={(u) => setCambiandoPassword(u)}
         onPin={(u) => setCambiandoPin(u)}
         onEstado={(u) => setCambiandoEstado(u)}
+        conPin={conPin}
       />
 
       <FormUsuario
@@ -263,6 +268,9 @@ export default function Usuarios() {
 }
 
 function TarjetaUsuario({ usuario: u, onClick }: { usuario: Usuario; onClick: () => void }) {
+  const { incluye } = useAuth();
+  const conPin = incluye("autorizacion_pin");
+
   return (
     <li>
       <button
@@ -279,7 +287,7 @@ function TarjetaUsuario({ usuario: u, onClick }: { usuario: Usuario; onClick: ()
           </span>
           <div className="flex items-center gap-2">
             {!u.activo && <Badge tono="gris">Inactivo</Badge>}
-            {u.tienePin && <Badge tono="azul">PIN</Badge>}
+            {conPin && u.tienePin && <Badge tono="azul">PIN</Badge>}
             <Icon name="chevronRight" size={17} color="#94A3B8" />
           </div>
         </div>
@@ -300,6 +308,7 @@ function TarjetaUsuario({ usuario: u, onClick }: { usuario: Usuario; onClick: ()
 }
 
 function DetalleUsuario({
+  conPin,
   usuario: u,
   onClose,
   onEditar,
@@ -313,6 +322,7 @@ function DetalleUsuario({
   onPassword: (u: Usuario) => void;
   onPin: (u: Usuario) => void;
   onEstado: (u: Usuario) => void;
+  conPin: boolean;
 }) {
   if (!u) return null;
   const permisos = PERMISOS_ROL[u.rol as RolApp] ?? [];
@@ -354,7 +364,7 @@ function DetalleUsuario({
             <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
               <Badge tono={tonoRol(u.rol)}>{etiquetaRol(u.rol)}</Badge>
               {!u.activo && <Badge tono="gris">Inactivo</Badge>}
-              {u.tienePin && <Badge tono="azul">PIN</Badge>}
+              {conPin && u.tienePin && <Badge tono="azul">PIN</Badge>}
             </div>
           </div>
         </div>
@@ -407,9 +417,13 @@ function DetalleUsuario({
           <Boton variante="ghost" icono="lock" onClick={() => onPassword(u)}>
             Cambiar contraseña
           </Boton>
-          <Boton variante="ghost" icono="pin" onClick={() => onPin(u)}>
-            {u.tienePin ? "Cambiar PIN" : "Asignar PIN"}
-          </Boton>
+          {/* El PIN sólo sirve para autorizar anulaciones: sin esa capacidad
+              no habría nada que autorizar con él. */}
+          {conPin && (
+            <Boton variante="ghost" icono="pin" onClick={() => onPin(u)}>
+              {u.tienePin ? "Cambiar PIN" : "Asignar PIN"}
+            </Boton>
+          )}
         </div>
       </div>
     </Modal>
