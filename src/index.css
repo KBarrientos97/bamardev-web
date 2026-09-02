@@ -83,3 +83,19 @@ input[type="number"] {
 @utility bg-marca {
   background: linear-gradient(135deg, #10b981 0%, #059669 100%);
 }
+
+/*
+ * Impresión: sólo sale el ticket. Las pantallas ya marcan con `print:hidden`
+ * lo suyo, pero el armazón de la app (barra lateral, cabecera móvil, fondo
+ * verde) no lo sabía y salía impreso alrededor del comprobante.
+ */
+@media print {
+  body {
+    background: #fff;
+  }
+  /* El layout es h-[100dvh] + overflow-hidden: sin esto el ticket se recorta
+     a la altura de la pantalla en vez de fluir a la página. */
+  .card {
+    box-shadow: none;
+  }
+}
