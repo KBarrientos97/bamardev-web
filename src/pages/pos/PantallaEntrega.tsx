@@ -28,6 +28,7 @@ export default function PantallaEntrega({
   total,
   unidades,
   repartidores,
+  enviando,
   onAtras,
   onContinuar,
 }: {
@@ -35,6 +36,12 @@ export default function PantallaEntrega({
   total: number;
   unidades: number;
   repartidores: Repartidor[];
+  /**
+   * El pedido pendiente se crea con un POST que tarda: sin bloquear los
+   * botones, un segundo toque creaba una venta duplicada con el stock
+   * descontado dos veces (no hay clienteRequestId que lo ataje).
+   */
+  enviando: boolean;
   onAtras: () => void;
   /** `prepagado` decide si sigue al cobro o si el pedido queda pendiente. */
   onContinuar: (datos: DatosEntrega) => void;
@@ -213,11 +220,27 @@ export default function PantallaEntrega({
         <p className="text-center text-xs font-semibold uppercase tracking-wide text-texto-4">
           ¿Cómo se cobra?
         </p>
-        <Boton onClick={() => continuar(true)} className="w-full py-3">
-          Cobrar ahora en caja · {fmtMoney(totalConEnvio)}
+        {/* El envío NO va en este monto: el backend lo guarda aparte y la
+            pantalla de cobro pide sólo los productos. Prometer acá el total
+            con envío hacía que el cajero le pidiera de más al cliente. */}
+        <Boton
+          onClick={() => continuar(true)}
+          disabled={enviando}
+          className="w-full py-3"
+        >
+          {enviando ? "Un momento…" : `Cobrar ahora en caja · ${fmtMoney(total)}`}
         </Boton>
-        <Boton variante="ghost" onClick={() => continuar(false)} className="w-full">
-          {esDelivery ? "Cobra el repartidor al entregar" : "Paga al retirar"}
+        <Boton
+          variante="ghost"
+          onClick={() => continuar(false)}
+          disabled={enviando}
+          className="w-full"
+        >
+          {enviando
+            ? "Creando el pedido…"
+            : esDelivery
+              ? "Cobra el repartidor al entregar"
+              : "Paga al retirar"}
         </Boton>
       </div>
     </div>

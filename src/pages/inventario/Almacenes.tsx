@@ -25,6 +25,7 @@ export default function Almacenes() {
   const [editando, setEditando] = useState<Almacen | null>(null);
   const [creando, setCreando] = useState(false);
   const [aBorrar, setABorrar] = useState<Almacen | null>(null);
+  const [borrando, setBorrando] = useState(false);
   const [errorAccion, setErrorAccion] = useState("");
 
   const lista = almacenes.datos ?? [];
@@ -42,8 +43,9 @@ export default function Almacenes() {
   const valorTotal = lista.reduce((acc, a) => acc + (a.valorTotal ?? 0), 0);
 
   async function borrar() {
-    if (!aBorrar) return;
+    if (!aBorrar || borrando) return;
     setErrorAccion("");
+    setBorrando(true);
     try {
       await api.eliminarAlmacen(aBorrar.id);
       setABorrar(null);
@@ -51,6 +53,8 @@ export default function Almacenes() {
       almacenes.recargar();
     } catch (err) {
       setErrorAccion(err instanceof Error ? err.message : "No se pudo eliminar");
+    } finally {
+      setBorrando(false);
     }
   }
 
@@ -131,6 +135,7 @@ export default function Almacenes() {
         texto={`¿Eliminar "${aBorrar?.nombre}"? Si todavía guarda stock o tiene movimientos, el backend no va a dejar.`}
         etiquetaOk="Eliminar"
         peligroso
+        procesando={borrando}
         onCancel={() => setABorrar(null)}
         onOk={borrar}
       />
@@ -225,7 +230,7 @@ function DetalleAlmacen({
           </div>
         </div>
 
-        <dl className="grid grid-cols-3 gap-3">
+        <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3">
           <Dato label="Artículos" valor={fmtNum(a.totalArticulos ?? 0)} />
           <Dato label="Unidades" valor={fmtNum(a.totalUnidades ?? 0)} />
           <Dato label="Valor" valor={fmtMoney(a.valorTotal ?? 0)} />

@@ -1,3 +1,4 @@
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode } from "react";
 import { Icon, type NombreIcono } from "./Icon";
 
@@ -186,7 +187,7 @@ export function Modal({
         role="dialog"
         aria-modal="true"
         aria-label={titulo}
-        className={`flex max-h-[92vh] w-full ${ancho} flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl sm:rounded-2xl`}
+        className={`flex max-h-[92dvh] w-full ${ancho} flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl sm:rounded-2xl`}
       >
         <div className="flex items-start justify-between gap-4 border-b border-borde-soft px-5 py-4">
           <div>
@@ -196,14 +197,14 @@ export function Modal({
           <button
             onClick={onClose}
             aria-label="Cerrar"
-            className="rounded-lg p-1.5 text-texto-3 transition-colors hover:bg-muted"
+            className="rounded-lg p-2.5 text-texto-3 transition-colors hover:bg-muted"
           >
             <Icon name="close" size={19} />
           </button>
         </div>
         <div className="flex-1 overflow-y-auto px-5 py-4">{children}</div>
         {acciones && (
-          <div className="flex justify-end gap-2 border-t border-borde-soft bg-muted px-5 py-3.5">
+          <div className="flex flex-wrap justify-end gap-2 border-t border-borde-soft bg-muted px-5 py-3.5 pb-[max(0.875rem,env(safe-area-inset-bottom))]">
             {acciones}
           </div>
         )}
@@ -219,6 +220,7 @@ export function Confirmar({
   texto,
   etiquetaOk = "Confirmar",
   peligroso,
+  procesando,
   onCancel,
   onOk,
 }: {
@@ -227,6 +229,12 @@ export function Confirmar({
   texto: string;
   etiquetaOk?: string;
   peligroso?: boolean;
+  /**
+   * Mientras la operación está en vuelo el diálogo sigue abierto: sin esto el
+   * botón admite un segundo toque y la acción se ejecuta dos veces. En
+   * aprobar un movimiento eso significa mover el stock por duplicado.
+   */
+  procesando?: boolean;
   onCancel: () => void;
   onOk: () => void;
 }) {
@@ -238,11 +246,15 @@ export function Confirmar({
       ancho="max-w-sm"
       acciones={
         <>
-          <Boton variante="ghost" onClick={onCancel}>
+          <Boton variante="ghost" onClick={onCancel} disabled={procesando}>
             Cancelar
           </Boton>
-          <Boton variante={peligroso ? "danger" : "primary"} onClick={onOk}>
-            {etiquetaOk}
+          <Boton
+            variante={peligroso ? "danger" : "primary"}
+            onClick={onOk}
+            disabled={procesando}
+          >
+            {procesando ? "Un momento…" : etiquetaOk}
           </Boton>
         </>
       }
@@ -280,8 +292,32 @@ export function Kpi({
           </span>
         )}
       </div>
-      <p className="mt-2 text-2xl font-bold tracking-tight text-texto">{valor}</p>
+      <p className="mt-2 truncate text-xl font-bold tracking-tight text-texto sm:text-2xl">{valor}</p>
       {pie && <p className="mt-0.5 text-xs text-texto-3">{pie}</p>}
     </div>
   );
+}
+
+/**
+ * Aviso de éxito que se borra solo. Sin esto el cartel quedaba en pantalla
+ * indefinidamente: media hora después seguía diciendo "Abono de Bs 200
+ * registrado", lo que invitaba a creer que el intento nuevo era el que había
+ * funcionado.
+ */
+export function useAviso(ms = 6000) {
+  const [aviso, setAvisoState] = useState("");
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const setAviso = useCallback(
+    (texto: string) => {
+      if (timer.current) clearTimeout(timer.current);
+      setAvisoState(texto);
+      if (texto) timer.current = setTimeout(() => setAvisoState(""), ms);
+    },
+    [ms],
+  );
+
+  useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
+
+  return [aviso, setAviso] as const;
 }

@@ -54,7 +54,7 @@ export function Buscador({
         <button
           onClick={() => onChange("")}
           aria-label="Limpiar búsqueda"
-          className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-md p-1 text-texto-4 hover:bg-muted"
+          className="absolute right-1 top-1/2 -translate-y-1/2 rounded-md p-2.5 text-texto-4 hover:bg-muted"
         >
           <Icon name="close" size={15} />
         </button>
@@ -74,12 +74,12 @@ export function EncabezadoPagina({
   accion?: ReactNode;
 }) {
   return (
-    <header className="flex items-start justify-between gap-4">
-      <div>
-        <h1 className="text-xl font-bold text-texto">{titulo}</h1>
+    <header className="flex flex-wrap items-start justify-between gap-3">
+      <div className="min-w-0 flex-1">
+        <h1 className="truncate text-xl font-bold text-texto">{titulo}</h1>
         {subtitulo && <p className="mt-0.5 text-[13px] text-texto-3">{subtitulo}</p>}
       </div>
-      {accion}
+      {accion && <div className="shrink-0">{accion}</div>}
     </header>
   );
 }

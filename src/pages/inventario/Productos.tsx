@@ -61,6 +61,7 @@ export default function Productos() {
   const [editando, setEditando] = useState<Producto | null>(null);
   const [creando, setCreando] = useState(false);
   const [aBorrar, setABorrar] = useState<Producto | null>(null);
+  const [borrando, setBorrando] = useState(false);
   const [errorAccion, setErrorAccion] = useState("");
 
   const lista = productos.datos ?? [];
@@ -98,8 +99,9 @@ export default function Productos() {
   }, [lista, q, filtroStock, filtroTipo]);
 
   async function borrar() {
-    if (!aBorrar) return;
+    if (!aBorrar || borrando) return;
     setErrorAccion("");
+    setBorrando(true);
     try {
       const res = await api.eliminarProducto(aBorrar.id);
       setABorrar(null);
@@ -112,6 +114,8 @@ export default function Productos() {
       }
     } catch (err) {
       setErrorAccion(err instanceof Error ? err.message : "No se pudo eliminar");
+    } finally {
+      setBorrando(false);
     }
   }
 
@@ -203,6 +207,7 @@ export default function Productos() {
         texto={`¿Eliminar "${aBorrar?.nombre}"? Si ya tiene ventas o movimientos se archivará en vez de borrarse.`}
         etiquetaOk="Eliminar"
         peligroso
+        procesando={borrando}
         onCancel={() => setABorrar(null)}
         onOk={borrar}
       />
@@ -577,7 +582,7 @@ function FormProductoCuerpo({
           </Select>
         </Campo>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid gap-3 sm:grid-cols-2">
           <Campo label="Precio de venta">
             <Input
               type="number"
@@ -600,7 +605,7 @@ function FormProductoCuerpo({
           </Campo>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid gap-3 sm:grid-cols-2">
           <Campo label="Categoría">
             <Select value={categoriaId} onChange={(e) => setCategoriaId(e.target.value)}>
               <option value="">Sin categoría</option>
@@ -624,7 +629,7 @@ function FormProductoCuerpo({
         </div>
 
         {conStock && (
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid gap-3 sm:grid-cols-2">
             <Campo label="Stock mínimo" hint="Avisa cuando baje de acá">
               <Input
                 type="number"

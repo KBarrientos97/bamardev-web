@@ -458,6 +458,7 @@ function DetalleMovimiento({
         titulo="Aprobar movimiento"
         texto="Aprobar es lo que realmente mueve el stock del almacén. Después sólo se puede revertir anulándolo."
         etiquetaOk="Aprobar"
+        procesando={procesando}
         onCancel={() => setConfirmando(null)}
         onOk={ejecutar}
       />
@@ -468,6 +469,7 @@ function DetalleMovimiento({
         texto="Anular revierte el stock que este movimiento había aplicado. La operación queda registrada como anulada."
         etiquetaOk="Anular"
         peligroso
+        procesando={procesando}
         onCancel={() => setConfirmando(null)}
         onOk={ejecutar}
       />
@@ -478,6 +480,7 @@ function DetalleMovimiento({
         texto="Se borra el movimiento pendiente con todas sus líneas. Como nunca se aprobó, el stock no cambia."
         etiquetaOk="Eliminar"
         peligroso
+        procesando={procesando}
         onCancel={() => setConfirmando(null)}
         onOk={ejecutar}
       />

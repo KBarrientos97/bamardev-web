@@ -14,6 +14,7 @@ import {
   Vacio,
 } from "../../components/ui";
 import { api, type PagoEntrega } from "../../lib/api";
+import { restoEnEfectivo, vuelto } from "../../lib/dinero";
 import { fmtHora, fmtMoney, fmtNum } from "../../lib/format";
 import { tieneFeature } from "../../lib/permisos";
 import { useApi } from "../../lib/useApi";
@@ -227,7 +228,13 @@ function DetalleEntrega({
 
   const p = completo.datos ?? pedido;
   const pendiente = p.estadoEntrega === "PENDIENTE";
+  // Dos montos distintos y no da igual cuál se usa dónde: `totalACobrar` es
+  // lo que el repartidor pide en mano (productos + envío) y `total` es lo
+  // único que el backend acepta como suma de los pagos, porque la tarifa la
+  // guarda aparte. Mandarle totalACobrar rechazaba la entrega con un 400 y
+  // el pedido quedaba pendiente para siempre.
   const aCobrar = p.totalACobrar ?? 0;
+  const aRegistrar = p.total ?? 0;
   // Un pedido prepagado sólo se confirma: la plata ya entró a la caja.
   const soloConfirmar = pendiente && (p.prepagado || aCobrar <= 0);
 
@@ -247,13 +254,17 @@ function DetalleEntrega({
   }
 
   async function cancelar() {
+    if (enviando) return;
     setError("");
+    setEnviando(true);
     try {
       await api.cancelarPedido(p.id);
       onCambio();
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo cancelar");
       setCancelando(false);
+    } finally {
+      setEnviando(false);
     }
   }
 
@@ -296,7 +307,7 @@ function DetalleEntrega({
                 <div className="mt-2.5 flex gap-2">
                   <a
                     href={`tel:${telefono}`}
-                    className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-borde bg-white px-3 py-2 text-[13px] font-semibold text-texto-2 hover:bg-muted"
+                    className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-borde bg-white px-3 py-3 text-[13px] font-semibold text-texto-2 hover:bg-muted"
                   >
                     <Icon name="phone" size={15} /> Llamar
                   </a>
@@ -304,7 +315,7 @@ function DetalleEntrega({
                     href={`https://wa.me/${telefono.length <= 8 ? `591${telefono}` : telefono}`}
                     target="_blank"
                     rel="noreferrer"
-                    className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-borde bg-white px-3 py-2 text-[13px] font-semibold text-texto-2 hover:bg-muted"
+                    className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-borde bg-white px-3 py-3 text-[13px] font-semibold text-texto-2 hover:bg-muted"
                   >
                     <Icon name="phone" size={15} /> WhatsApp
                   </a>
@@ -355,7 +366,8 @@ function DetalleEntrega({
 
       {cobrando && (
         <DialogoCobroEntrega
-          total={aCobrar}
+          total={aRegistrar}
+          aPedirEnMano={aCobrar}
           formasPago={formasPago}
           enviando={enviando}
           onClose={() => setCobrando(false)}
@@ -369,6 +381,7 @@ function DetalleEntrega({
         texto="El pedido queda cancelado y el stock vuelve al inventario."
         etiquetaOk="Cancelar pedido"
         peligroso
+        procesando={enviando}
         onCancel={() => setCancelando(false)}
         onOk={cancelar}
       />
@@ -378,12 +391,16 @@ function DetalleEntrega({
 
 function DialogoCobroEntrega({
   total,
+  aPedirEnMano,
   formasPago,
   enviando,
   onClose,
   onConfirmar,
 }: {
+  /** Lo que se registra como pago: sólo productos, sin el envío. */
   total: number;
+  /** Lo que el repartidor cobra en mano, con la tarifa de envío incluida. */
+  aPedirEnMano: number;
   formasPago: FormaPago[];
   enviando: boolean;
   onClose: () => void;
@@ -402,14 +419,18 @@ function DialogoCobroEntrega({
 
   const recibidoNum = Number(recibido) || 0;
   const qrNum = Number(montoQr) || 0;
-  const enEfectivo = metodo === "MIXTO" ? Math.max(0, total - qrNum) : total;
-  const cambio = metodo === "QR" ? 0 : Math.max(0, recibidoNum - enEfectivo);
+  const enEfectivo = metodo === "MIXTO" ? restoEnEfectivo(total, qrNum) : total;
+  // El vuelto se calcula sobre lo que el cliente entrega en mano, que incluye
+  // el envío: si no, el repartidor le devolvería de más.
+  const efectivoEnMano =
+    metodo === "MIXTO" ? restoEnEfectivo(aPedirEnMano, qrNum) : aPedirEnMano;
+  const cambio = metodo === "QR" ? 0 : vuelto(recibidoNum, efectivoEnMano);
 
   function confirmar() {
     setError("");
     if (metodo === "EFECTIVO") {
       if (!efectivo) return setError("Falta la forma de pago Efectivo.");
-      if (recibidoNum < total) return setError("Lo recibido no cubre el total.");
+      if (recibidoNum < aPedirEnMano) return setError("Lo recibido no cubre el total.");
       return onConfirmar([{ formaPagoId: efectivo.id, monto: total, recibido: recibidoNum }]);
     }
     if (metodo === "QR") {
@@ -418,8 +439,8 @@ function DialogoCobroEntrega({
     }
     if (!efectivo || !qr) return setError("Faltan formas de pago para cobrar mixto.");
     if (qrNum <= 0) return setError("Poné cuánto se paga por QR.");
-    if (qrNum >= total) return setError("Si el QR cubre todo, cobrá con el método QR.");
-    if (recibidoNum < enEfectivo) return setError("El efectivo no cubre lo que falta.");
+    if (qrNum >= aPedirEnMano) return setError("Si el QR cubre todo, cobrá con el método QR.");
+    if (recibidoNum < efectivoEnMano) return setError("El efectivo no cubre lo que falta.");
     onConfirmar([
       { formaPagoId: qr.id, monto: qrNum },
       { formaPagoId: efectivo.id, monto: enEfectivo, recibido: recibidoNum },
@@ -430,7 +451,7 @@ function DialogoCobroEntrega({
     <Modal
       abierto
       titulo="Cobrar la entrega"
-      subtitulo={fmtMoney(total)}
+      subtitulo={fmtMoney(aPedirEnMano)}
       onClose={onClose}
       ancho="max-w-sm"
       acciones={
@@ -445,6 +466,26 @@ function DialogoCobroEntrega({
       }
     >
       <div className="space-y-3">
+        {/* Con envío son dos números distintos y el repartidor tiene que
+            pedir el de arriba: mostrar sólo uno se prestaba a cobrar de
+            menos y poner la tarifa de su bolsillo. */}
+        {aPedirEnMano !== total && (
+          <dl className="rounded-xl bg-muted px-3.5 py-2.5 text-[13px]">
+            <div className="flex justify-between text-texto-2">
+              <dt>Productos</dt>
+              <dd>{fmtMoney(total)}</dd>
+            </div>
+            <div className="flex justify-between text-texto-2">
+              <dt>Envío</dt>
+              <dd>{fmtMoney(Math.round((aPedirEnMano - total) * 100) / 100)}</dd>
+            </div>
+            <div className="mt-1 flex justify-between border-t border-borde pt-1 font-bold text-texto">
+              <dt>Cobrale al cliente</dt>
+              <dd>{fmtMoney(aPedirEnMano)}</dd>
+            </div>
+          </dl>
+        )}
+
         <div className="grid grid-cols-3 gap-2">
           {(["EFECTIVO", "QR", "MIXTO"] as const).map((m) => (
             <button

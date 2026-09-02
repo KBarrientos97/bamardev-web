@@ -114,10 +114,14 @@ export default function Layout() {
     </div>
   );
 
+  // 100dvh y no 100vh: en el celular `vh` mide el viewport con la barra del
+  // navegador retraída, así que con la barra visible el layout quedaba más alto
+  // que la pantalla y, por el overflow-hidden, ese sobrante no se podía
+  // scrollear. Ahí abajo viven "Confirmar cobro" y "Cerrar caja".
   return (
-    <div className="flex h-screen overflow-hidden bg-fondo">
+    <div className="flex h-[100dvh] overflow-hidden bg-fondo print:h-auto print:overflow-visible print:bg-white">
       {/* Barra lateral fija en escritorio */}
-      <aside className="hidden w-64 shrink-0 flex-col border-r border-borde bg-white lg:flex">
+      <aside className="hidden w-64 shrink-0 flex-col border-r border-borde bg-white lg:flex print:hidden">
         {encabezado}
         {nav}
       </aside>
@@ -151,7 +155,7 @@ export default function Layout() {
           </span>
         </header>
 
-        <main className="min-h-0 flex-1 overflow-y-auto">
+        <main className="min-h-0 flex-1 overflow-y-auto print:overflow-visible">
           <Outlet />
         </main>
       </div>

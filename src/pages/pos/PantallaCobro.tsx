@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Icon } from "../../components/Icon";
 import { Boton, Campo, ErrorMsg, Input } from "../../components/ui";
+import { restoEnEfectivo, vuelto } from "../../lib/dinero";
 import { fmtMoney } from "../../lib/format";
 import { useAuth } from "../../store/AuthContext";
 import type { FormaPago, PagoInput } from "../../types";
@@ -66,9 +67,8 @@ export default function PantallaCobro({
   const qrNum = Number(montoQr) || 0;
 
   // En mixto, el QR cubre una parte y el efectivo el resto.
-  const aCubrirEnEfectivo = metodo === "MIXTO" ? Math.max(0, total - qrNum) : total;
-  const cambio =
-    metodo === "QR" ? 0 : Math.max(0, Math.round((recibidoNum - aCubrirEnEfectivo) * 100) / 100);
+  const aCubrirEnEfectivo = metodo === "MIXTO" ? restoEnEfectivo(total, qrNum) : total;
+  const cambio = metodo === "QR" ? 0 : vuelto(recibidoNum, aCubrirEnEfectivo);
   const falta =
     metodo === "QR" ? 0 : Math.max(0, Math.round((aCubrirEnEfectivo - recibidoNum) * 100) / 100);
 

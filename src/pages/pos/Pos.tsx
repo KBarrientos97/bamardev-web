@@ -218,7 +218,9 @@ export default function Pos() {
         total={carrito.total}
         unidades={carrito.unidades}
         repartidores={repartidores.datos ?? []}
+        enviando={enviando}
         onAtras={() => {
+          setError("");
           setTipoPedido("LOCAL");
           setPantalla("venta");
         }}
@@ -244,7 +246,12 @@ export default function Pos() {
             : undefined
         }
         formasPago={formasPago.datos ?? []}
-        onAtras={() => setPantalla(datosEntrega ? "entrega" : "venta")}
+        onAtras={() => {
+          // Sin esto, el error del cobro fallido seguía visible al volver y
+          // reaparecía sobre el intento nuevo, que todavía no falló.
+          setError("");
+          setPantalla(datosEntrega ? "entrega" : "venta");
+        }}
         onConfirmar={cobrar}
         // Fiar sólo tiene sentido en una venta de mostrador: un pedido de
         // delivery ya define quién y cuándo paga.
@@ -263,7 +270,10 @@ export default function Pos() {
       <PantallaCredito
         total={carrito.total}
         formasPago={formasPago.datos ?? []}
-        onAtras={() => setPantalla("cobro")}
+        onAtras={() => {
+          setError("");
+          setPantalla("cobro");
+        }}
         onConfirmar={venderACredito}
         enviando={enviando}
         error={error}

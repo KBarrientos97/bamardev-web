@@ -46,6 +46,7 @@ export default function Insumos() {
   const [editando, setEditando] = useState<Insumo | null>(null);
   const [creando, setCreando] = useState(false);
   const [aBorrar, setABorrar] = useState<Insumo | null>(null);
+  const [borrando, setBorrando] = useState(false);
   const [errorAccion, setErrorAccion] = useState("");
 
   const lista = insumos.datos ?? [];
@@ -69,8 +70,9 @@ export default function Insumos() {
   }, [lista, q, filtroStock]);
 
   async function borrar() {
-    if (!aBorrar) return;
+    if (!aBorrar || borrando) return;
     setErrorAccion("");
+    setBorrando(true);
     try {
       await api.eliminarInsumo(aBorrar.id);
       setABorrar(null);
@@ -78,6 +80,8 @@ export default function Insumos() {
       insumos.recargar();
     } catch (err) {
       setErrorAccion(err instanceof Error ? err.message : "No se pudo eliminar");
+    } finally {
+      setBorrando(false);
     }
   }
 
@@ -168,6 +172,7 @@ export default function Insumos() {
         texto={`¿Eliminar "${aBorrar?.nombre}"? Se pierde su ficha, no los movimientos ya registrados.`}
         etiquetaOk="Eliminar"
         peligroso
+        procesando={borrando}
         onCancel={() => setABorrar(null)}
         onOk={borrar}
       />
@@ -429,7 +434,7 @@ function FormInsumoCuerpo({
           <Input value={nombre} onChange={(e) => setNombre(e.target.value)} autoFocus />
         </Campo>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid gap-3 sm:grid-cols-2">
           <Campo label="Unidad de medida">
             <Select value={unidadId} onChange={(e) => setUnidadId(e.target.value)}>
               <option value="">Elegí una</option>
@@ -452,7 +457,7 @@ function FormInsumoCuerpo({
           </Campo>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid gap-3 sm:grid-cols-2">
           <Campo label="Categoría">
             <Select value={categoriaId} onChange={(e) => setCategoriaId(e.target.value)}>
               <option value="">Sin categoría</option>
@@ -479,7 +484,7 @@ function FormInsumoCuerpo({
           <Input value={proveedor} onChange={(e) => setProveedor(e.target.value)} />
         </Campo>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid gap-3 sm:grid-cols-2">
           <Campo label="Vencimiento" hint="Opcional">
             <Input
               type="date"

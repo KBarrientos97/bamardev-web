@@ -38,6 +38,7 @@ export default function Categorias() {
   const [editando, setEditando] = useState<Categoria | null>(null);
   const [creando, setCreando] = useState(false);
   const [aBorrar, setABorrar] = useState<Categoria | null>(null);
+  const [borrando, setBorrando] = useState(false);
   const [error, setError] = useState("");
 
   const lista = categorias.datos ?? [];
@@ -48,8 +49,9 @@ export default function Categorias() {
   }, [lista, q]);
 
   async function borrar() {
-    if (!aBorrar) return;
+    if (!aBorrar || borrando) return;
     setError("");
+    setBorrando(true);
     try {
       await api.eliminarCategoria(aBorrar.id);
       setABorrar(null);
@@ -57,6 +59,8 @@ export default function Categorias() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo eliminar");
       setABorrar(null);
+    } finally {
+      setBorrando(false);
     }
   }
 
@@ -116,14 +120,14 @@ export default function Categorias() {
               <button
                 onClick={() => setEditando(c)}
                 aria-label={`Editar ${c.nombre}`}
-                className="rounded-lg p-1.5 text-texto-3 hover:bg-muted hover:text-texto"
+                className="rounded-lg p-2.5 text-texto-3 hover:bg-muted hover:text-texto"
               >
                 <Icon name="edit" size={16} />
               </button>
               <button
                 onClick={() => setABorrar(c)}
                 aria-label={`Eliminar ${c.nombre}`}
-                className="rounded-lg p-1.5 text-texto-3 hover:bg-danger-bg hover:text-danger-text"
+                className="rounded-lg p-2.5 text-texto-3 hover:bg-danger-bg hover:text-danger-text"
               >
                 <Icon name="trash" size={16} />
               </button>
@@ -155,6 +159,7 @@ export default function Categorias() {
         texto={`¿Eliminar "${aBorrar?.nombre}"? Los artículos que la usan quedan sin categoría.`}
         etiquetaOk="Eliminar"
         peligroso
+        procesando={borrando}
         onCancel={() => setABorrar(null)}
         onOk={borrar}
       />
