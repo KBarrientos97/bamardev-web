@@ -8,7 +8,13 @@ import {
 } from "react";
 import { NEGOCIO_KEY, USER_KEY, api, limpiarSesion, tokenStore } from "../lib/api";
 import { fijarMoneda } from "../lib/format";
-import { puedeVer, type ContextoPermisos, type Seccion } from "../lib/permisos";
+import {
+  puede as puedeCapacidad,
+  puedeVer,
+  type Capacidad,
+  type ContextoPermisos,
+  type Seccion,
+} from "../lib/permisos";
 import type { EstadoLicencia, SesionNegocio, SesionUsuario } from "../types";
 
 /** Alias del negocio: se recuerda para no re-tipearlo en cada login. */
@@ -25,6 +31,8 @@ interface AuthValue {
   logout: () => void;
   /** ¿Se muestra esta sección? Rol ∩ plan, con fail-open. */
   puede: (seccion: Seccion) => boolean;
+  /** ¿El plan incluye esta capacidad? Para botones dentro de una pantalla. */
+  incluye: (capacidad: Capacidad) => boolean;
 }
 
 const AuthContext = createContext<AuthValue | null>(null);
@@ -75,22 +83,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setLicencia(null);
   }, []);
 
-  const puede = useCallback(
-    (seccion: Seccion) => {
-      if (!usuario) return false;
-      const ctx: ContextoPermisos = {
-        rol: usuario.rol,
-        modulos: usuario.modulos,
-        features: negocio?.features,
-      };
-      return puedeVer(ctx, seccion);
-    },
+  const contexto = useMemo<ContextoPermisos | null>(
+    () =>
+      usuario
+        ? { rol: usuario.rol, modulos: usuario.modulos, features: negocio?.features }
+        : null,
     [usuario, negocio],
   );
 
+  const puede = useCallback(
+    (seccion: Seccion) => (contexto ? puedeVer(contexto, seccion) : false),
+    [contexto],
+  );
+
+  const incluye = useCallback(
+    (capacidad: Capacidad) => (contexto ? puedeCapacidad(contexto, capacidad) : false),
+    [contexto],
+  );
+
   const value = useMemo(
-    () => ({ token, usuario, negocio, licencia, aliasRecordado, login, logout, puede }),
-    [token, usuario, negocio, licencia, aliasRecordado, login, logout, puede],
+    () => ({ token, usuario, negocio, licencia, aliasRecordado, login, logout, puede, incluye }),
+    [token, usuario, negocio, licencia, aliasRecordado, login, logout, puede, incluye],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

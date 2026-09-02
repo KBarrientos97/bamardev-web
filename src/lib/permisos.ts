@@ -98,6 +98,52 @@ export function puedeVer(ctx: ContextoPermisos, seccion: Seccion): boolean {
   return true;
 }
 
+/**
+ * Capacidades: cosas que se venden por separado pero que NO son una sección
+ * del menú, sino un botón o un campo dentro de una pantalla que igual se ve.
+ * Van acá y no en REQUISITOS porque no tienen ruta ni entrada de navegación.
+ *
+ * Cuando el plan no las incluye el control simplemente no se dibuja, igual
+ * que en el menú: si el negocio no lo compró, no existe. Mostrarlo apagado
+ * sólo haría que el cajero pregunte por algo que no puede usar.
+ */
+export type Capacidad =
+  /** Armar productos COMPUESTOS con su receta. */
+  | "combos"
+  /** Partir una línea del carrito entre mesa y para llevar. */
+  | "mesa_llevar"
+  /** Cobrar por QR o repartido entre QR y efectivo. */
+  | "pago_qr_mixto"
+  /** Ingresos y egresos de efectivo dentro del turno. */
+  | "movimientos_caja"
+  /** Anular una venta autorizando con PIN. */
+  | "autorizacion_pin"
+  /** Imprimir o guardar el comprobante. */
+  | "recibo_pdf"
+  /** Movimientos que nacen pendientes y hay que aprobar. */
+  | "aprobacion_inventario"
+  /** Bajar los reportes a CSV. */
+  | "exportacion"
+  /** Reportes de cómo opera el negocio (horas, métodos, delivery…). */
+  | "reportes_operacion"
+  /** Reportes de plata (margen, rentabilidad, deuda…). */
+  | "reportes_rentabilidad";
+
+/**
+ * Una capacidad puede exigir además un rol: anular con PIN se lo ofrecemos a
+ * cualquiera (el cajero pide autorización a un encargado), pero mover
+ * efectivo de la caja lo bloquea el backend con RolesGuard.
+ */
+const ROLES_CAPACIDAD: Partial<Record<Capacidad, Rol[]>> = {
+  movimientos_caja: ["ADMIN", "SUPERVISOR"],
+};
+
+export function puede(ctx: ContextoPermisos, capacidad: Capacidad): boolean {
+  const roles = ROLES_CAPACIDAD[capacidad];
+  if (roles && !roles.includes(ctx.rol)) return false;
+  return tieneFeature(ctx.features, capacidad);
+}
+
 /** Anular una venta o registrar movimientos de caja sin PIN de por medio. */
 export function puedeSupervisar(rol: Rol): boolean {
   return rol === "ADMIN" || rol === "SUPERVISOR";

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Feature, Modulo, Rol } from "../types";
-import { puedeVer, rutaInicial, tieneFeature, tieneModulo } from "./permisos";
+import { puede, puedeVer, rutaInicial, tieneFeature, tieneModulo } from "./permisos";
 
 /** Lo que trae el login de un ADMIN con plan completo. */
 const TODOS_MODULOS: Modulo[] = [
@@ -122,5 +122,52 @@ describe("rutaInicial", () => {
       // rebotaría al inicio y entraría en bucle.
       expect(destino).not.toBe("/sin-acceso");
     }
+  });
+});
+
+describe("capacidades", () => {
+  it("las apaga cuando el plan no las incluye", () => {
+    // Plan BÁSICO: sólo lo del núcleo, sin ninguna capacidad vendida aparte.
+    const basico = ctx("ADMIN", TODOS_MODULOS, ["pos", "caja", "catalogo", "usuarios"]);
+    expect(puede(basico, "combos")).toBe(false);
+    expect(puede(basico, "mesa_llevar")).toBe(false);
+    expect(puede(basico, "pago_qr_mixto")).toBe(false);
+    expect(puede(basico, "recibo_pdf")).toBe(false);
+    expect(puede(basico, "exportacion")).toBe(false);
+    expect(puede(basico, "reportes_operacion")).toBe(false);
+    expect(puede(basico, "reportes_rentabilidad")).toBe(false);
+  });
+
+  it("las enciende cuando el plan sí las incluye", () => {
+    const pro = ctx("ADMIN", TODOS_MODULOS, [
+      "pos",
+      "combos",
+      "mesa_llevar",
+      "pago_qr_mixto",
+      "recibo_pdf",
+      "reportes_operacion",
+    ]);
+    expect(puede(pro, "combos")).toBe(true);
+    expect(puede(pro, "mesa_llevar")).toBe(true);
+    expect(puede(pro, "reportes_operacion")).toBe(true);
+    // Lo que no compró sigue apagado aunque el plan traiga otras cosas.
+    expect(puede(pro, "reportes_rentabilidad")).toBe(false);
+  });
+
+  it("mover efectivo de la caja exige además ser encargado", () => {
+    // El backend lo bloquea con RolesGuard: ofrecerle el botón al cajero
+    // sería ofrecerle un 403.
+    const features: Feature[] = ["pos", "caja", "movimientos_caja"];
+    expect(puede(ctx("ADMIN", TODOS_MODULOS, features), "movimientos_caja")).toBe(true);
+    expect(puede(ctx("SUPERVISOR", TODOS_MODULOS, features), "movimientos_caja")).toBe(true);
+    expect(puede(ctx("CAJERO", ["POS", "CAJA"], features), "movimientos_caja")).toBe(false);
+  });
+
+  it("falla abierta con la lista de features vacía", () => {
+    // Igual que las secciones: un negocio sin features migradas no se queda
+    // sin poder trabajar; el backend igual responde 403 si no corresponde.
+    const sinFeatures = ctx("ADMIN", TODOS_MODULOS, []);
+    expect(puede(sinFeatures, "combos")).toBe(true);
+    expect(puede(sinFeatures, "exportacion")).toBe(true);
   });
 });
