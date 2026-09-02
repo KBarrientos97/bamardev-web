@@ -129,7 +129,7 @@ export default function PantallaVenta({
             className="absolute inset-0 bg-slate-900/40"
             onClick={() => setCarritoAbierto(false)}
           />
-          <div className="relative flex max-h-[85vh] w-full flex-col rounded-t-2xl bg-white shadow-2xl">
+          <div className="relative flex max-h-[85dvh] w-full flex-col rounded-t-2xl bg-white shadow-2xl">
             {panelCarrito}
           </div>
         </div>
@@ -351,21 +351,21 @@ function FilaCarrito({
           <button
             onClick={() => carrito.setCantidad(l.producto.id, l.cantidad - 1)}
             aria-label="Quitar una unidad"
-            className="p-1.5 text-texto-2 hover:bg-muted"
+            className="p-2.5 text-texto-2 hover:bg-muted"
           >
-            <Icon name={l.cantidad === 1 ? "trash" : "minus"} size={13} />
+            <Icon name={l.cantidad === 1 ? "trash" : "minus"} size={16} />
           </button>
           <span className="min-w-6 text-center text-[13px] font-bold">{l.cantidad}</span>
           <button
             onClick={() => carrito.setCantidad(l.producto.id, l.cantidad + 1)}
             aria-label="Agregar una unidad"
-            className="p-1.5 text-texto-2 hover:bg-muted"
+            className="p-2.5 text-texto-2 hover:bg-muted"
           >
-            <Icon name="plus" size={13} />
+            <Icon name="plus" size={16} />
           </button>
         </div>
 
-        <span className="w-20 shrink-0 text-right text-[13px] font-bold text-texto">
+        <span className="min-w-20 shrink-0 text-right text-[13px] font-bold text-texto">
           {fmtMoney(l.producto.precio * l.cantidad)}
         </span>
       </div>
@@ -447,8 +447,12 @@ function FilaCarrito({
         </div>
       )}
 
+      {/* Montado sólo mientras está abierto: su useState toma `l.enMesa` en
+          el primer render, así que dejarlo montado le congelaba el valor y
+          al reabrirlo mostraba una repartición vieja que al aplicar pisaba
+          la marca recién puesta. */}
+      {splitAbierto && conMesaLlevar && (
       <ModalSplit
-        abierto={splitAbierto && conMesaLlevar}
         linea={l}
         onClose={() => setSplitAbierto(false)}
         onAplicar={(enMesa) => {
@@ -456,23 +460,21 @@ function FilaCarrito({
           setSplitAbierto(false);
         }}
       />
+      )}
     </li>
   );
 }
 
 function ModalSplit({
-  abierto,
   linea: l,
   onClose,
   onAplicar,
 }: {
-  abierto: boolean;
   linea: LineaCarrito;
   onClose: () => void;
   onAplicar: (enMesa: number) => void;
 }) {
   const [enMesa, setEnMesa] = useState(l.enMesa);
-  if (!abierto) return null;
 
   return (
     <Modal

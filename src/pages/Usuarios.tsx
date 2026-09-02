@@ -12,6 +12,7 @@ import {
   Kpi,
   Modal,
   Select,
+  useAviso,
   Vacio,
 } from "../components/ui";
 import { api } from "../lib/api";
@@ -78,8 +79,9 @@ export default function Usuarios() {
   const [cambiandoPassword, setCambiandoPassword] = useState<Usuario | null>(null);
   const [cambiandoPin, setCambiandoPin] = useState<Usuario | null>(null);
   const [cambiandoEstado, setCambiandoEstado] = useState<Usuario | null>(null);
+  const [cambiandoEstadoEnCurso, setCambiandoEstadoEnCurso] = useState(false);
   const [errorAccion, setErrorAccion] = useState("");
-  const [aviso, setAviso] = useState("");
+  const [aviso, setAviso] = useAviso();
 
   const lista = usuarios.datos ?? [];
 
@@ -123,8 +125,9 @@ export default function Usuarios() {
   }
 
   async function alternarEstado() {
-    if (!cambiandoEstado) return;
+    if (!cambiandoEstado || cambiandoEstadoEnCurso) return;
     setErrorAccion("");
+    setCambiandoEstadoEnCurso(true);
     try {
       const res = await api.cambiarEstadoUsuario(cambiandoEstado.id, !cambiandoEstado.activo);
       setCambiandoEstado(null);
@@ -132,6 +135,8 @@ export default function Usuarios() {
     } catch (err) {
       setCambiandoEstado(null);
       setErrorAccion(err instanceof Error ? err.message : "No se pudo cambiar el estado");
+    } finally {
+      setCambiandoEstadoEnCurso(false);
     }
   }
 
@@ -147,7 +152,7 @@ export default function Usuarios() {
         }
       />
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         <Kpi etiqueta="Administradores" valor={String(conteos.ADMIN)} icono="lock" tono="morado" />
         <Kpi etiqueta="Supervisores" valor={String(conteos.SUPERVISOR)} icono="users" tono="azul" />
         <Kpi etiqueta="Cajeros" valor={String(conteos.CAJERO)} icono="cart" tono="verde" />
@@ -260,6 +265,7 @@ export default function Usuarios() {
         }
         etiquetaOk={cambiandoEstado?.activo ? "Desactivar" : "Activar"}
         peligroso={cambiandoEstado?.activo}
+        procesando={cambiandoEstadoEnCurso}
         onCancel={() => setCambiandoEstado(null)}
         onOk={alternarEstado}
       />

@@ -11,6 +11,7 @@ import {
   Kpi,
   Modal,
   Select,
+  useAviso,
   Vacio,
 } from "../components/ui";
 import { api } from "../lib/api";
@@ -88,7 +89,7 @@ export default function Creditos() {
 
   const [detalleId, setDetalleId] = useState<number | null>(null);
   const [abonando, setAbonando] = useState<CreditoApi | null>(null);
-  const [aviso, setAviso] = useState("");
+  const [aviso, setAviso] = useAviso();
 
   const lista = creditos.datos ?? [];
   const listaClientes = clientes.datos ?? [];
