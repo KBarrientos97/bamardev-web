@@ -6,10 +6,11 @@ import { fmtHora, fmtMoney } from "../../lib/format";
 import { tieneFeature } from "../../lib/permisos";
 import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
-import type { Caja, PagoInput, TipoPedido, Venta } from "../../types";
+import type { Caja, CreditoInput, PagoInput, TipoPedido, Venta } from "../../types";
 import AperturaCaja from "./AperturaCaja";
 import PantallaCierre, { CierreOk } from "./PantallaCierre";
 import PantallaCobro from "./PantallaCobro";
+import PantallaCredito from "./PantallaCredito";
 import PantallaEntrega, { type DatosEntrega } from "./PantallaEntrega";
 import PantallaHistorial from "./PantallaHistorial";
 import PantallaRecibo from "./PantallaRecibo";
@@ -20,6 +21,7 @@ type Pantalla =
   | "venta"
   | "entrega"
   | "cobro"
+  | "credito"
   | "recibo"
   | "pedidoOk"
   | "historial"
@@ -132,6 +134,35 @@ export default function Pos() {
     [carrito, tipoPedido, limpiar, productos],
   );
 
+  /**
+   * Venta fiada: se manda con el bloque `credito` y el adelanto como pago.
+   * El backend crea la venta y el crédito juntos, y el saldo aparece después
+   * en Cuentas por cobrar.
+   */
+  const venderACredito = useCallback(
+    async (credito: CreditoInput, pagos: PagoInput[]) => {
+      setError("");
+      setEnviando(true);
+      try {
+        const creada = await api.crearVenta({
+          detalles: carrito.aDetalles(),
+          tipoPedido: "LOCAL",
+          credito,
+          ...(pagos.length ? { pagos } : {}),
+        });
+        setVenta(creada);
+        limpiar();
+        setPantalla("recibo");
+        productos.recargar();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "No se pudo registrar el fiado");
+      } finally {
+        setEnviando(false);
+      }
+    },
+    [carrito, limpiar, productos],
+  );
+
   if (caja.cargando) return <Cargando texto="Buscando tu caja…" />;
   if (caja.error)
     return (
@@ -215,6 +246,25 @@ export default function Pos() {
         formasPago={formasPago.datos ?? []}
         onAtras={() => setPantalla(datosEntrega ? "entrega" : "venta")}
         onConfirmar={cobrar}
+        // Fiar sólo tiene sentido en una venta de mostrador: un pedido de
+        // delivery ya define quién y cuándo paga.
+        onCredito={
+          tieneFeature(negocio?.features, "fiado") && !datosEntrega
+            ? () => setPantalla("credito")
+            : undefined
+        }
+        enviando={enviando}
+        error={error}
+      />
+    );
+
+  if (pantalla === "credito")
+    return (
+      <PantallaCredito
+        total={carrito.total}
+        formasPago={formasPago.datos ?? []}
+        onAtras={() => setPantalla("cobro")}
+        onConfirmar={venderACredito}
         enviando={enviando}
         error={error}
       />
