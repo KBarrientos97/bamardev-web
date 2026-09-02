@@ -1,0 +1,4 @@
+# La web es una SPA: cualquier ruta la resuelve el router del cliente, así
+# que Pages tiene que servir index.html en vez de un 404 (si no, recargar
+# estando en /pos o compartir un link rompe).
+/*    /index.html   200

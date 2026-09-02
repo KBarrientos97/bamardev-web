@@ -1,0 +1,47 @@
+# CI/CD del frontend web: push a dev → QA (web-qa.bamardev.com),
+# push a main → PROD (web.bamardev.com). Mismo flujo que el panel.
+#
+# Requiere el secret CLOUDFLARE_API_TOKEN (token con permiso
+# "Cloudflare Pages: Edit" sobre la cuenta de Kevin). El account id no es
+# secreto y wrangler lo lee del .env del repo.
+name: Deploy web
+
+on:
+  push:
+    branches: [main, dev]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # Los tests corren acá y no contra el VPS: son unitarios y no tocan red.
+      # Si fallan, no se despliega.
+      - run: npm run lint
+      - run: npm test
+
+      - name: Build (main → prod, dev → qa)
+        run: |
+          if [ "${{ github.ref_name }}" = "main" ]; then
+            npm run build
+          else
+            npm run build:qa
+          fi
+
+      - name: Deploy a Cloudflare Pages
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          if [ "${{ github.ref_name }}" = "main" ]; then
+            npx wrangler pages deploy dist --branch=main
+          else
+            npx wrangler pages deploy dist --branch=qa
+          fi

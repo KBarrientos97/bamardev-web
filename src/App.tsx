@@ -8,6 +8,7 @@ import Insumos from "./pages/inventario/Insumos";
 import Movimientos from "./pages/inventario/Movimientos";
 import Productos from "./pages/inventario/Productos";
 import Pos from "./pages/pos/Pos";
+import Repartidor from "./pages/repartidor/Repartidor";
 import { AuthProvider, useAuth } from "./store/AuthContext";
 
 /** Manda a cada rol a su pantalla: cajero al POS, repartidor a entregas. */
@@ -42,6 +43,15 @@ function Rutas() {
           element={
             <Protegida seccion="pos">
               <Pos />
+            </Protegida>
+          }
+        />
+
+        <Route
+          path="/reparto"
+          element={
+            <Protegida seccion="reparto">
+              <Repartidor />
             </Protegida>
           }
         />
