@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Icon } from "../../components/Icon";
-import { Badge, Boton, Campo, Input, Modal, Vacio } from "../../components/ui";
+import { Badge, Boton, Input, Modal, Vacio } from "../../components/ui";
 import { fmtMoney, fmtNum } from "../../lib/format";
 import type { Categoria, Consumo, Producto } from "../../types";
 import type { Carrito, LineaCarrito } from "./useCarrito";
@@ -208,7 +208,6 @@ function PanelCarrito({
   onCobrar: () => void;
   onCerrar: () => void;
 }) {
-  const [descuentoAbierto, setDescuentoAbierto] = useState(false);
   const vacio = carrito.lineas.length === 0;
 
   return (
@@ -271,47 +270,23 @@ function PanelCarrito({
           <div className="border-t border-borde-soft px-4 py-3">
             <dl className="space-y-1 text-sm">
               <div className="flex justify-between text-texto-2">
-                <dt>Subtotal</dt>
+                <dt>
+                  {carrito.unidades} {carrito.unidades === 1 ? "unidad" : "unidades"}
+                </dt>
                 <dd>{fmtMoney(carrito.subtotal)}</dd>
               </div>
-              {carrito.descuentoPct > 0 && (
-                <div className="flex justify-between text-danger-text">
-                  <dt>Descuento ({carrito.descuentoPct}%)</dt>
-                  <dd>−{fmtMoney(carrito.descuento)}</dd>
-                </div>
-              )}
               <div className="flex justify-between border-t border-borde-soft pt-1.5 text-base font-extrabold text-texto">
                 <dt>Total</dt>
                 <dd>{fmtMoney(carrito.total)}</dd>
               </div>
             </dl>
 
-            <div className="mt-3 flex gap-2">
-              <Boton
-                variante="ghost"
-                icono="dollar"
-                onClick={() => setDescuentoAbierto(true)}
-                className="shrink-0"
-              >
-                {carrito.descuentoPct > 0 ? `${carrito.descuentoPct}%` : "Desc."}
-              </Boton>
-              <Boton onClick={onCobrar} className="flex-1">
-                Cobrar {fmtMoney(carrito.total)}
-              </Boton>
-            </div>
+            <Boton onClick={onCobrar} className="mt-3 w-full">
+              Cobrar {fmtMoney(carrito.total)}
+            </Boton>
           </div>
         </>
       )}
-
-      <ModalDescuento
-        abierto={descuentoAbierto}
-        actual={carrito.descuentoPct}
-        onClose={() => setDescuentoAbierto(false)}
-        onAplicar={(pct) => {
-          carrito.setDescuentoPct(pct);
-          setDescuentoAbierto(false);
-        }}
-      />
     </>
   );
 }
@@ -520,63 +495,6 @@ function ModalSplit({
       <p className="mt-4 rounded-xl bg-muted px-3.5 py-2.5 text-center text-[13px] text-texto-2">
         <strong>{enMesa}</strong> en mesa · <strong>{l.cantidad - enMesa}</strong> para llevar
       </p>
-    </Modal>
-  );
-}
-
-function ModalDescuento({
-  abierto,
-  actual,
-  onClose,
-  onAplicar,
-}: {
-  abierto: boolean;
-  actual: number;
-  onClose: () => void;
-  onAplicar: (pct: number) => void;
-}) {
-  const [pct, setPct] = useState(String(actual));
-  if (!abierto) return null;
-
-  return (
-    <Modal
-      abierto
-      titulo="Descuento"
-      subtitulo="Se aplica sobre el subtotal de la venta"
-      onClose={onClose}
-      ancho="max-w-sm"
-      acciones={
-        <>
-          <Boton variante="ghost" onClick={() => onAplicar(0)}>
-            Quitar
-          </Boton>
-          <Boton onClick={() => onAplicar(Number(pct) || 0)}>Aplicar</Boton>
-        </>
-      }
-    >
-      <Campo label="Porcentaje">
-        <Input
-          type="number"
-          inputMode="decimal"
-          min="0"
-          max="100"
-          value={pct}
-          onChange={(e) => setPct(e.target.value)}
-          autoFocus
-          className="text-lg font-bold"
-        />
-      </Campo>
-      <div className="mt-3 flex flex-wrap gap-2">
-        {[5, 10, 15, 20].map((v) => (
-          <button
-            key={v}
-            onClick={() => setPct(String(v))}
-            className="rounded-xl border border-borde px-3.5 py-2 text-[13px] font-semibold text-texto-2 hover:border-primary hover:bg-primary-50 hover:text-primary-700"
-          >
-            {v}%
-          </button>
-        ))}
-      </div>
     </Modal>
   );
 }

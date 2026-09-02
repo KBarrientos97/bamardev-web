@@ -66,23 +66,25 @@ describe("useCarrito", () => {
     expect(result.current.lineas).toHaveLength(0);
   });
 
-  it("aplica el descuento sobre el subtotal", () => {
+  it("el total es igual al subtotal", () => {
+    // El backend arma el total desde las líneas y exige que los pagos sumen
+    // exactamente eso: si el total del carrito se desviara del subtotal, la
+    // venta se rechazaría con un 400 al cobrar.
     const { result } = renderHook(() => useCarrito());
     act(() => result.current.agregar(producto({ precio: 100 })));
-    act(() => result.current.setDescuentoPct(10));
+    act(() => result.current.setCantidad(1, 3));
 
-    expect(result.current.subtotal).toBe(100);
-    expect(result.current.descuento).toBe(10);
-    expect(result.current.total).toBe(90);
+    expect(result.current.subtotal).toBe(300);
+    expect(result.current.total).toBe(300);
   });
 
-  it("acota el descuento entre 0 y 100", () => {
+  it("el total redondea a dos decimales", () => {
     const { result } = renderHook(() => useCarrito());
-    act(() => result.current.setDescuentoPct(150));
-    expect(result.current.descuentoPct).toBe(100);
+    act(() => result.current.agregar(producto({ precio: 0.1 })));
+    act(() => result.current.setCantidad(1, 3));
 
-    act(() => result.current.setDescuentoPct(-5));
-    expect(result.current.descuentoPct).toBe(0);
+    // 0.1 * 3 da 0.30000000000000004 en punto flotante.
+    expect(result.current.total).toBe(0.3);
   });
 
   it("parte la línea en dos detalles cuando hay split mesa/llevar", () => {
@@ -147,14 +149,13 @@ describe("useCarrito", () => {
     expect(detalles.every((d) => d.nota === "sin cebolla")).toBe(true);
   });
 
-  it("vaciar limpia también el descuento", () => {
+  it("vaciar deja el carrito en cero", () => {
     const { result } = renderHook(() => useCarrito());
     act(() => result.current.agregar(producto()));
-    act(() => result.current.setDescuentoPct(20));
     act(() => result.current.vaciar());
 
     expect(result.current.lineas).toHaveLength(0);
-    expect(result.current.descuentoPct).toBe(0);
+    expect(result.current.unidades).toBe(0);
     expect(result.current.total).toBe(0);
   });
 });

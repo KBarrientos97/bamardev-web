@@ -32,6 +32,7 @@ function sugerenciasEfectivo(total: number): number[] {
 
 export default function PantallaCobro({
   total,
+  avisoEnvio,
   formasPago,
   onAtras,
   onConfirmar,
@@ -40,6 +41,8 @@ export default function PantallaCobro({
   error,
 }: {
   total: number;
+  /** Nota al pie cuando hay una tarifa de envío que no entra en este cobro. */
+  avisoEnvio?: string;
   formasPago: FormaPago[];
   onAtras: () => void;
   onConfirmar: (pagos: PagoInput[]) => void;
@@ -122,6 +125,9 @@ export default function PantallaCobro({
             Total a cobrar
           </p>
           <p className="mt-1 text-4xl font-extrabold tracking-tight">{fmtMoney(total)}</p>
+          {avisoEnvio && (
+            <p className="mt-1.5 text-[13px] opacity-90">{avisoEnvio}</p>
+          )}
         </div>
 
         <div className="grid grid-cols-3 gap-2">

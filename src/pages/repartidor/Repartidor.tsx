@@ -77,7 +77,7 @@ export default function Repartidor() {
         </Boton>
       </header>
 
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         <Kpi etiqueta="Por entregar" valor={String(pendientes.length)} icono="truck" tono="amarillo" />
         <Kpi etiqueta="Entregadas" valor={String(entregadas.length)} icono="check" />
         <Kpi etiqueta="A rendir" valor={fmtMoney(aRendir)} icono="dollar" tono="azul" />

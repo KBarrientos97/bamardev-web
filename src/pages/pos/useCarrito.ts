@@ -19,8 +19,11 @@ export interface Carrito {
   lineas: LineaCarrito[];
   unidades: number;
   subtotal: number;
-  descuentoPct: number;
-  descuento: number;
+  /**
+   * Igual al subtotal. El backend calcula el total desde las líneas y exige
+   * que los pagos sumen exactamente eso, así que no hay dónde meter un
+   * descuento: se deja el campo para no salpicar las pantallas de cálculos.
+   */
   total: number;
   agregar: (p: Producto) => void;
   setCantidad: (id: number, cantidad: number) => void;
@@ -30,7 +33,6 @@ export interface Carrito {
   setConsumo: (id: number, consumo: Consumo) => void;
   /** Marca TODO el carrito como mesa o llevar. */
   setConsumoTodo: (consumo: Consumo) => void;
-  setDescuentoPct: (pct: number) => void;
   quitar: (id: number) => void;
   vaciar: () => void;
   /** Lo que espera POST /ventas: una línea por cada consumo distinto. */
@@ -46,7 +48,6 @@ function topeStock(p: Producto): number {
 
 export function useCarrito(): Carrito {
   const [lineas, setLineas] = useState<LineaCarrito[]>([]);
-  const [descuentoPct, setDescuentoPctRaw] = useState(0);
 
   const agregar = useCallback((p: Producto) => {
     setLineas((prev) => {
@@ -113,13 +114,8 @@ export function useCarrito(): Carrito {
     );
   }, []);
 
-  const setDescuentoPct = useCallback((pct: number) => {
-    setDescuentoPctRaw(Math.max(0, Math.min(100, pct)));
-  }, []);
-
   const vaciar = useCallback(() => {
     setLineas([]);
-    setDescuentoPctRaw(0);
   }, []);
 
   const { unidades, subtotal } = useMemo(() => {
@@ -132,14 +128,7 @@ export function useCarrito(): Carrito {
     return { unidades: u, subtotal: s };
   }, [lineas]);
 
-  const descuento = useMemo(
-    () => Math.round(subtotal * (descuentoPct / 100) * 100) / 100,
-    [subtotal, descuentoPct],
-  );
-  const total = useMemo(
-    () => Math.round((subtotal - descuento) * 100) / 100,
-    [subtotal, descuento],
-  );
+  const total = useMemo(() => Math.round(subtotal * 100) / 100, [subtotal]);
 
   const aDetalles = useCallback((): DetalleVentaInput[] => {
     const out: DetalleVentaInput[] = [];
@@ -174,8 +163,6 @@ export function useCarrito(): Carrito {
     lineas,
     unidades,
     subtotal,
-    descuentoPct,
-    descuento,
     total,
     agregar,
     setCantidad,
@@ -183,7 +170,6 @@ export function useCarrito(): Carrito {
     setEnMesa,
     setConsumo,
     setConsumoTodo,
-    setDescuentoPct,
     quitar,
     vaciar,
     aDetalles,

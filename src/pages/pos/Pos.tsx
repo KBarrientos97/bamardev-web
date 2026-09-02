@@ -202,8 +202,16 @@ export default function Pos() {
   if (pantalla === "cobro")
     return (
       <PantallaCobro
-        // Al delivery se le suma la tarifa: es parte de lo que paga el cliente.
-        total={carrito.total + (datosEntrega?.tarifaEnvio ?? 0)}
+        // Sólo los productos: el backend arma el total de la venta desde las
+        // líneas y exige que los pagos sumen exactamente eso. La tarifa de
+        // envío viaja aparte y se la cobra el repartidor, así que sumarla acá
+        // hacía que el backend rechazara la venta entera con un 400.
+        total={carrito.total}
+        avisoEnvio={
+          datosEntrega?.tarifaEnvio
+            ? `El envío (${fmtMoney(datosEntrega.tarifaEnvio)}) lo cobra el repartidor aparte.`
+            : undefined
+        }
         formasPago={formasPago.datos ?? []}
         onAtras={() => setPantalla(datosEntrega ? "entrega" : "venta")}
         onConfirmar={cobrar}

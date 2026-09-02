@@ -17,8 +17,40 @@ import { AuthProvider, useAuth } from "./store/AuthContext";
 
 /** Manda a cada rol a su pantalla: cajero al POS, repartidor a entregas. */
 function Inicio() {
-  const { usuario } = useAuth();
-  return <Navigate to={usuario ? rutaInicial(usuario.rol) : "/"} replace />;
+  const { usuario, negocio } = useAuth();
+  if (!usuario) return <Navigate to="/" replace />;
+  const destino = rutaInicial({
+    rol: usuario.rol,
+    modulos: usuario.modulos,
+    features: negocio?.features,
+  });
+  return <Navigate to={destino} replace />;
+}
+
+/**
+ * Ni el rol ni el plan habilitan una sola sección. Pasa con una cuenta mal
+ * configurada; sin esta pantalla el usuario vería un blanco y no sabría a
+ * quién reclamarle.
+ */
+function SinAcceso() {
+  const { usuario, logout } = useAuth();
+  return (
+    <div className="flex min-h-full items-center justify-center p-6">
+      <div className="max-w-sm text-center">
+        <h1 className="text-lg font-bold text-texto">Tu cuenta no tiene secciones</h1>
+        <p className="mt-2 text-[13px] text-texto-3">
+          El rol {usuario?.rol} de este negocio no tiene ningún módulo habilitado.
+          Pedile al administrador que revise los permisos o el plan contratado.
+        </p>
+        <button
+          onClick={logout}
+          className="mt-5 rounded-xl border border-borde bg-white px-4 py-2.5 text-sm font-semibold text-texto-2 hover:bg-muted"
+        >
+          Cerrar sesión
+        </button>
+      </div>
+    </div>
+  );
 }
 
 /**
@@ -41,6 +73,7 @@ function Rutas() {
     <Routes>
       <Route element={<Layout />}>
         <Route path="/" element={<Inicio />} />
+        <Route path="/sin-acceso" element={<SinAcceso />} />
 
         <Route
           path="/pos"

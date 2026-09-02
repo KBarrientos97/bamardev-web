@@ -66,6 +66,12 @@ const REQUISITOS: Record<Seccion, { modulo: Modulo; feature: Feature | null }> =
  * RolesGuard en reportes y usuarios; acá evitamos ofrecer lo que va a fallar.
  */
 const ROLES_PERMITIDOS: Partial<Record<Seccion, Rol[]>> = {
+  // El repartidor tiene el módulo POS (es lo que le habilita sus entregas),
+  // así que sin esta lista le aparecería el punto de venta entero y podría
+  // abrir caja y vender.
+  pos: ["ADMIN", "SUPERVISOR", "CAJERO"],
+  caja: ["ADMIN", "SUPERVISOR", "CAJERO"],
+  creditos: ["ADMIN", "SUPERVISOR", "CAJERO"],
   reportes: ["ADMIN", "SUPERVISOR"],
   usuarios: ["ADMIN", "SUPERVISOR"],
   inventario: ["ADMIN", "SUPERVISOR"],
@@ -97,11 +103,34 @@ export function puedeSupervisar(rol: Rol): boolean {
   return rol === "ADMIN" || rol === "SUPERVISOR";
 }
 
-/** Dónde aterriza cada rol al entrar. */
-export function rutaInicial(rol: Rol): string {
-  if (rol === "REPARTIDOR") return "/reparto";
-  if (rol === "CAJERO") return "/pos";
-  return "/inventario";
+/**
+ * Dónde aterriza cada quien al entrar. Se prueba en orden de preferencia
+ * según el rol y se devuelve la PRIMERA sección que de verdad puede ver: si
+ * devolviéramos una fija, un ADMIN cuyo plan no incluye inventario entraría a
+ * una ruta que el guard rechaza, y como el rechazo vuelve al inicio quedaría
+ * rebotando en un bucle con la pantalla en blanco.
+ */
+export function rutaInicial(ctx: ContextoPermisos): string {
+  const orden: [Seccion, string][] =
+    ctx.rol === "REPARTIDOR"
+      ? [["reparto", "/reparto"], ["pos", "/pos"]]
+      : ctx.rol === "CAJERO"
+        ? [["pos", "/pos"], ["caja", "/pos"], ["creditos", "/creditos"]]
+        : [
+            ["inventario", "/inventario"],
+            ["productos", "/inventario/productos"],
+            ["pos", "/pos"],
+            ["reportes", "/reportes"],
+            ["usuarios", "/usuarios"],
+            ["creditos", "/creditos"],
+          ];
+
+  for (const [seccion, ruta] of orden) {
+    if (puedeVer(ctx, seccion)) return ruta;
+  }
+  // Sin ninguna sección habilitada no hay a dónde ir: la pantalla de sin
+  // acceso explica qué pasó en vez de dejar un blanco.
+  return "/sin-acceso";
 }
 
 export function etiquetaRol(rol: Rol): string {

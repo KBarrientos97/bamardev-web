@@ -466,6 +466,9 @@ function FormProductoCuerpo({
     // descontar al venderlo.
     if (esCombo && componentes.length === 0)
       return setError("Un combo necesita al menos un ingrediente en su receta.");
+    const sinCantidad = componentes.find((c) => !(c.cantidad > 0));
+    if (sinCantidad)
+      return setError(`Poné cuánto lleva "${sinCantidad.nombre}" en la receta.`);
 
     const input: ProductoInput = {
       nombre: nombre.trim(),
@@ -475,7 +478,10 @@ function FormProductoCuerpo({
       costo: costo === "" ? 0 : Number(costo),
       stockMinimo: stockMinimo === "" ? 0 : Number(stockMinimo),
       descripcion: descripcion.trim(),
-      codBarra: codBarra.trim(),
+      // Un código vacío se omite en vez de mandarse como "": el índice único
+      // del backend considera "" un valor, así que el segundo producto sin
+      // código chocaba con un 409 que no decía qué campo lo causaba.
+      ...(codBarra.trim() ? { codBarra: codBarra.trim() } : {}),
       habilitado,
       ...(categoriaId ? { categoriaId: Number(categoriaId) } : {}),
       ...(esCombo
