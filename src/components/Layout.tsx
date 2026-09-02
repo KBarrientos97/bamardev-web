@@ -19,6 +19,7 @@ const ITEMS: ItemNav[] = [
   { a: "/reparto", label: "Mis entregas", icono: "truck", seccion: "reparto" },
   { a: "/inventario", label: "Inventario", icono: "archive", seccion: "inventario" },
   { a: "/inventario/productos", label: "Artículos", icono: "box", seccion: "productos", sub: true },
+  { a: "/inventario/categorias", label: "Categorías", icono: "grid", seccion: "productos", sub: true },
   { a: "/inventario/insumos", label: "Insumos", icono: "sack", seccion: "insumos", sub: true },
   { a: "/inventario/almacenes", label: "Almacenes", icono: "warehouse", seccion: "almacenes", sub: true },
   { a: "/inventario/movimientos", label: "Movimientos", icono: "swap", seccion: "movimientos", sub: true },
@@ -26,6 +27,21 @@ const ITEMS: ItemNav[] = [
   { a: "/reportes", label: "Reportes", icono: "chart", seccion: "reportes" },
   { a: "/usuarios", label: "Usuarios", icono: "users", seccion: "usuarios" },
 ];
+
+/**
+ * Título de la barra móvil. Se queda con la ruta MÁS LARGA que coincide:
+ * "/inventario/productos" empieza con "/inventario", y quedarse con la
+ * primera mostraría "Inventario" estando en Artículos.
+ */
+function tituloDe(items: ItemNav[], pathname: string): string {
+  let mejor: ItemNav | null = null;
+  for (const i of items) {
+    if (pathname === i.a || pathname.startsWith(`${i.a}/`)) {
+      if (!mejor || i.a.length > mejor.a.length) mejor = i;
+    }
+  }
+  return mejor?.label ?? "BamarDev";
+}
 
 export default function Layout() {
   const { usuario, negocio, logout, puede } = useAuth();
@@ -131,7 +147,7 @@ export default function Layout() {
             <Icon name="menu" size={22} />
           </button>
           <span className="text-[15px] font-bold text-texto">
-            {visibles.find((i) => location.pathname.startsWith(i.a))?.label ?? "BamarDev"}
+            {tituloDe(visibles, location.pathname)}
           </span>
         </header>
 

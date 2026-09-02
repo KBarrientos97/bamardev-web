@@ -6,6 +6,7 @@ import Login from "./pages/Login";
 import Reportes from "./pages/Reportes";
 import Usuarios from "./pages/Usuarios";
 import Almacenes from "./pages/inventario/Almacenes";
+import Categorias from "./pages/inventario/Categorias";
 import Dashboard from "./pages/inventario/Dashboard";
 import Insumos from "./pages/inventario/Insumos";
 import Movimientos from "./pages/inventario/Movimientos";
@@ -72,6 +73,14 @@ function Rutas() {
           element={
             <Protegida seccion="productos">
               <Productos />
+            </Protegida>
+          }
+        />
+        <Route
+          path="/inventario/categorias"
+          element={
+            <Protegida seccion="productos">
+              <Categorias />
             </Protegida>
           }
         />
