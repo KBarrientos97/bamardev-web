@@ -35,15 +35,22 @@ export default function PantallaCierre({
 
   const r = resumen.datos;
   const esperado = r?.saldoEsperado ?? 0;
-  const contadoNum = Number(contado) || 0;
+  const contadoNum = Number(contado);
   // La diferencia sólo tiene sentido una vez que se contó: mostrarla en 0
-  // antes de teclear haría parecer que la caja ya cuadra.
-  const conteoHecho = contado !== "";
+  // antes de teclear haría parecer que la caja ya cuadra. Se valida igual
+  // que la apertura: el `min="0"` del input es sólo una pista del navegador
+  // y un monto negativo dejaba el arqueo del turno con un faltante falso.
+  const conteoHecho = contado !== "" && Number.isFinite(contadoNum) && contadoNum >= 0;
   const diferencia = Math.round((contadoNum - esperado) * 100) / 100;
 
   async function cerrar() {
     setError("");
-    if (!conteoHecho) return setError("Contá el efectivo que hay en la caja.");
+    if (!conteoHecho)
+      return setError(
+        contado !== ""
+          ? "El efectivo contado no puede ser negativo."
+          : "Contá el efectivo que hay en la caja.",
+      );
     setEnviando(true);
     try {
       await api.cerrarCaja(caja.id, {

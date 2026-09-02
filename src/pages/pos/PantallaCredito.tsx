@@ -60,7 +60,10 @@ export default function PantallaCredito({
     if (!elegido && nombre.trim().length < 2)
       return setErrorLocal("Poné el nombre del cliente.");
     if (adelantoNum < 0) return setErrorLocal("El adelanto no puede ser negativo.");
-    if (adelantoNum >= total)
+    // Contra el saldo redondeado, que es el que se muestra y el que queda en
+    // la cuenta: con un adelanto de 99.999 sobre 100 esta guarda pasaba y se
+    // creaba un crédito de Bs 0,001 imposible de saldar.
+    if (saldo <= 0)
       return setErrorLocal("Si paga todo no es un fiado: cobralo como venta normal.");
     if (adelantoNum > 0 && !formaEfectivo)
       return setErrorLocal("El negocio no tiene cargada la forma de pago Efectivo.");
