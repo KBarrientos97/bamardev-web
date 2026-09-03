@@ -1,12 +1,16 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Icon } from "../../components/Icon";
 import { Badge, Boton, Input, Modal, Vacio } from "../../components/ui";
 import { fmtMoney, fmtNum } from "../../lib/format";
 import { useAuth } from "../../store/AuthContext";
 import type { Categoria, Consumo, Producto } from "../../types";
+import { aplicarOrden, guardarOrden, leerOrden, reordenarVisibles } from "./ordenPos";
 import type { Carrito, LineaCarrito } from "./useCarrito";
+import { useArrastreGrilla } from "./useArrastreGrilla";
 
 const TODAS = "__todas__";
+
+const idDe = (p: Producto) => p.id;
 
 export default function PantallaVenta({
   productos,
@@ -21,15 +25,34 @@ export default function PantallaVenta({
   onCobrar: () => void;
   cabecera?: React.ReactNode;
 }) {
+  const { negocio, usuario } = useAuth();
   const [q, setQ] = useState("");
   const [cat, setCat] = useState<string>(TODAS);
   // En móvil el carrito es una hoja que se abre; en escritorio es una columna
   // siempre visible, así que este estado sólo pesa abajo de lg.
   const [carritoAbierto, setCarritoAbierto] = useState(false);
 
+  // Orden en que ESTE cajero acomodó la grilla. Se lee una vez al abrir el POS
+  // y se reescribe cada vez que suelta una card (igual que en Android).
+  const alias = negocio?.alias;
+  const username = usuario?.username;
+  const [orden, setOrden] = useState<number[]>(() => leerOrden(alias, username));
+
+  // Si cambia el usuario (otro cajero entra en la misma máquina) hay que releer:
+  // el orden es de cada uno.
+  useEffect(() => {
+    setOrden(leerOrden(alias, username));
+  }, [alias, username]);
+
+  /** El catálogo del backend, ya en el orden del cajero. */
+  const ordenados = useMemo(
+    () => aplicarOrden(productos, orden, idDe),
+    [productos, orden],
+  );
+
   const filtrados = useMemo(() => {
     const texto = q.trim().toLowerCase();
-    return productos.filter((p) => {
+    return ordenados.filter((p) => {
       if (!p.habilitado) return false;
       if (cat !== TODAS && String(p.categoria?.id ?? "") !== cat) return false;
       if (!texto) return true;
@@ -39,7 +62,42 @@ export default function PantallaVenta({
         (p.categoria?.nombre ?? "").toLowerCase().includes(texto)
       );
     });
-  }, [productos, q, cat, ]);
+  }, [ordenados, q, cat]);
+
+  /**
+   * Guarda el orden que quedó en pantalla tras soltar una card.
+   *
+   * La grilla puede estar filtrada, así que sólo se reasignan las posiciones
+   * que ya ocupaban los visibles: mover algo dentro de "Pollos" no reacomoda el
+   * resto del catálogo. Si el catálogo se recargó mientras se arrastraba,
+   * `reordenarVisibles` devuelve null y no se guarda nada — el próximo
+   * movimiento lo deja bien.
+   */
+  const alReordenar = useCallback(
+    (idsVisibles: number[]) => {
+      const reordenado = reordenarVisibles(ordenados, idsVisibles, idDe);
+      if (!reordenado) return;
+      const nuevo = reordenado.map(idDe);
+      setOrden(nuevo);
+      guardarOrden(alias, username, nuevo);
+    },
+    [ordenados, alias, username],
+  );
+
+  const idsFiltrados = useMemo(() => filtrados.map(idDe), [filtrados]);
+  const arrastre = useArrastreGrilla({
+    ids: idsFiltrados,
+    onReordenar: alReordenar,
+    // Con el carrito abierto en móvil la grilla está tapada: no hay nada que
+    // arrastrar y el gesto sólo estorbaría al scroll de la hoja.
+    activo: !carritoAbierto,
+  });
+
+  /** Lo que se pinta: durante el arrastre manda el orden en vuelo. */
+  const visibles = useMemo(() => {
+    const porId = new Map(filtrados.map((p) => [p.id, p]));
+    return arrastre.orden.map((id) => porId.get(id)).filter((p): p is Producto => !!p);
+  }, [filtrados, arrastre.orden]);
 
   const panelCarrito = (
     <PanelCarrito
@@ -96,8 +154,16 @@ export default function PantallaVenta({
             />
           ) : (
             <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
-              {filtrados.map((p) => (
-                <TarjetaVenta key={p.id} producto={p} onAgregar={() => carrito.agregar(p)} />
+              {visibles.map((p) => (
+                <TarjetaVenta
+                  key={p.id}
+                  producto={p}
+                  onAgregar={() => carrito.agregar(p)}
+                  arrastre={arrastre.props(p.id)}
+                  // Un tap que terminó siendo arrastre no debe agregar al
+                  // carrito: cobrar de más es peor que tener que tocar de nuevo.
+                  bloqueado={arrastre.arrastrando !== null}
+                />
               ))}
             </ul>
           )}
@@ -164,9 +230,17 @@ function ChipCat({
 function TarjetaVenta({
   producto: p,
   onAgregar,
+  arrastre,
+  bloqueado,
 }: {
   producto: Producto;
   onAgregar: () => void;
+  /** Handlers y estilo del reordenamiento (ver useArrastreGrilla). */
+  arrastre: ReturnType<
+    ReturnType<typeof useArrastreGrilla>["props"]
+  >;
+  /** Hay un arrastre en curso: el tap no cuenta como "agregar". */
+  bloqueado: boolean;
 }) {
   // Sólo los almacenables se quedan sin stock; un elaborado se prepara al
   // momento y un combo descuenta sus ingredientes.
@@ -174,9 +248,16 @@ function TarjetaVenta({
   const agotado = controlaStock && p.stockTotal <= 0;
 
   return (
-    <li>
+    <li
+      onPointerDown={arrastre.onPointerDown}
+      onPointerEnter={arrastre.onPointerEnter}
+      style={arrastre.style}
+      className={arrastre["data-arrastrando"] ? "shadow-xl" : undefined}
+    >
       <button
-        onClick={onAgregar}
+        onClick={() => {
+          if (!bloqueado) onAgregar();
+        }}
         disabled={agotado}
         className="card flex h-full w-full flex-col p-3 text-left transition-shadow enabled:hover:shadow-md disabled:opacity-50"
       >
