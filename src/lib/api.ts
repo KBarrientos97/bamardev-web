@@ -34,6 +34,8 @@ import type {
   VentaInput,
 } from "../types";
 
+import { reportarError } from "./telemetria";
+
 // URL del backend. En los builds la fija VITE_API_URL (QA o PROD); en `npm run
 // dev` queda vacía a propósito y pegamos a /api, que el proxy de Vite reenvía
 // a QA: el navegador ve un mismo origen y no hay preflight que CORS_ORIGINS
@@ -43,6 +45,14 @@ const BASE = import.meta.env.VITE_API_URL || "/api";
 const TOKEN_KEY = "bamardev_web_token";
 export const USER_KEY = "bamardev_web_usuario";
 export const NEGOCIO_KEY = "bamardev_web_negocio";
+/** Último estado de licencia conocido: sobrevive al F5 (ver AuthContext). */
+export const LICENCIA_KEY = "bamardev_web_licencia";
+/**
+ * Motivo del bloqueo por licencia, escrito justo antes de recargar hacia el
+ * login. Es lo único que sobrevive a `window.location.assign`, y sin esto el
+ * cajero volvería a una pantalla de login limpia sin saber por qué lo echó.
+ */
+export const BLOQUEO_KEY = "bamardev_web_bloqueo";
 
 export const tokenStore = {
   get: () => localStorage.getItem(TOKEN_KEY),
@@ -73,6 +83,7 @@ function limpiarSesion() {
   tokenStore.clear();
   localStorage.removeItem(USER_KEY);
   localStorage.removeItem(NEGOCIO_KEY);
+  localStorage.removeItem(LICENCIA_KEY);
 }
 
 /**
@@ -86,6 +97,34 @@ function cerrarSesionVencida() {
   window.location.assign("/");
 }
 
+/** Códigos con los que el backend marca un 403 de licencia (ver vigencia.ts). */
+const CODIGOS_LICENCIA = ["LICENCIA_VENCIDA", "LICENCIA_SUSPENDIDA"];
+
+/**
+ * Licencia vencida (pasada la gracia) o suspendida. El backend lo responde en
+ * CADA request (`jwt.strategy`), no sólo al login, así que un token de 7 días
+ * no sirve de escape — y por eso hay que cortar acá, en el interceptor, y no
+ * en cada pantalla.
+ *
+ * Se guarda el motivo antes de recargar porque `assign` borra todo el estado
+ * de React: es lo que la pantalla de login lee para explicar el bloqueo en vez
+ * de dejar al cajero frente a un formulario que no sabe por qué lo expulsó.
+ */
+function bloquearPorLicencia(cuerpo: Record<string, unknown>) {
+  const motivo = {
+    codigo: String(cuerpo.codigo ?? ""),
+    mensaje: String(cuerpo.message ?? "La licencia del negocio no está vigente"),
+    urlPago: (cuerpo.urlPago as string | undefined) ?? null,
+  };
+  limpiarSesion();
+  try {
+    localStorage.setItem(BLOQUEO_KEY, JSON.stringify(motivo));
+  } catch {
+    /* modo privado sin storage: se pierde el detalle, el bloqueo igual corta */
+  }
+  window.location.assign("/");
+}
+
 /** Serializa un query string omitiendo lo que no se mandó. */
 function qs(params: Record<string, unknown> = {}): string {
   const p = new URLSearchParams();
@@ -96,17 +135,37 @@ function qs(params: Record<string, unknown> = {}): string {
   return s ? `?${s}` : "";
 }
 
-/** Llama al backend agregando el token y traduciendo errores a ApiError. */
+/**
+ * Llama al backend agregando el token y traduciendo errores a ApiError.
+ *
+ * Es el único punto por el que pasa todo el tráfico, así que acá viven las tres
+ * reglas transversales: cerrar sesión si el token murió, cortar si la licencia
+ * dejó de estar vigente, y reportar a PostHog lo que falló. Ponerlas en cada
+ * pantalla sería garantizar que alguna quede afuera.
+ */
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = tokenStore.get();
-  const res = await fetch(`${BASE}${path}`, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...options.headers,
-    },
-  });
+  const metodo = options.method ?? "GET";
+  // La ruta sin ids: "/productos/42" y "/productos/7" son el mismo endpoint, y
+  // agrupados en PostHog cuentan como un problema y no como veinte.
+  const donde = `${metodo} ${path.split("?")[0].replace(/\/\d+/g, "/:id")}`;
+
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}${path}`, {
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...options.headers,
+      },
+    });
+  } catch (e) {
+    // Se cayó la red o el backend no responde. Es el error que más sufre el
+    // local (wifi del negocio) y el que nunca deja rastro si no se reporta.
+    reportarError(donde, e, { tipo: "red" });
+    throw new ApiError("No se pudo conectar con el servidor", 0);
+  }
 
   if (res.status === 401 && !RUTAS_LOGIN.includes(path)) {
     cerrarSesionVencida();
@@ -123,6 +182,25 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     } catch {
       /* respuesta sin cuerpo JSON */
     }
+
+    // Licencia vencida o suspendida: no es un error a mostrar en un cartelito,
+    // es el fin de la sesión. Se corta acá para que ninguna pantalla siga
+    // trabajando contra un backend que ya no la deja operar.
+    if (res.status === 403 && CODIGOS_LICENCIA.includes(String(cuerpo.codigo))) {
+      bloquearPorLicencia(cuerpo);
+      throw new ApiError(mensaje, 403, cuerpo);
+    }
+
+    // Un 5xx es un bug nuestro; un 4xx suele ser una validación esperable
+    // ("stock insuficiente") y llenaría PostHog de ruido. Sólo van los 5xx.
+    if (res.status >= 500) {
+      reportarError(donde, new Error(mensaje), {
+        tipo: "http",
+        status: res.status,
+        codigo: cuerpo.codigo ?? null,
+      });
+    }
+
     throw new ApiError(mensaje, res.status, cuerpo);
   }
 

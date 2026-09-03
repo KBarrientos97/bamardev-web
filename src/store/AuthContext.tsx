@@ -2,11 +2,20 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
   type ReactNode,
 } from "react";
-import { NEGOCIO_KEY, USER_KEY, api, limpiarSesion, tokenStore } from "../lib/api";
+import {
+  LICENCIA_KEY,
+  NEGOCIO_KEY,
+  USER_KEY,
+  api,
+  limpiarSesion,
+  tokenStore,
+} from "../lib/api";
+import { identificar, olvidarUsuario } from "../lib/telemetria";
 import { fijarMoneda } from "../lib/format";
 import {
   puede as puedeCapacidad,
@@ -55,7 +64,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [negocio, setNegocio] = useState<SesionNegocio | null>(() =>
     leer<SesionNegocio>(NEGOCIO_KEY),
   );
-  const [licencia, setLicencia] = useState<EstadoLicencia | null>(null);
+  // Se rehidrata igual que el usuario: sin esto, un F5 borraba la licencia y
+  // la barra de aviso desaparecía hasta el siguiente login — justo el día que
+  // más hay que verla, el del vencimiento.
+  const [licencia, setLicencia] = useState<EstadoLicencia | null>(() =>
+    leer<EstadoLicencia>(LICENCIA_KEY),
+  );
   const [aliasRecordado, setAlias] = useState(() => localStorage.getItem(ALIAS_KEY) ?? "");
 
   // La moneda del negocio vale para todo el formateo; se fija al rehidratar.
@@ -67,20 +81,77 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(USER_KEY, JSON.stringify(res.usuario));
     localStorage.setItem(NEGOCIO_KEY, JSON.stringify(res.negocio));
     localStorage.setItem(ALIAS_KEY, alias);
+    if (res.licencia) localStorage.setItem(LICENCIA_KEY, JSON.stringify(res.licencia));
     fijarMoneda(res.negocio?.moneda);
     setToken(res.accessToken);
     setUsuario(res.usuario);
     setNegocio(res.negocio);
     setLicencia(res.licencia ?? null);
     setAlias(alias);
+    identificar(alias, res.usuario.username, res.usuario.rol);
   }, []);
 
   const logout = useCallback(() => {
     limpiarSesion();
+    olvidarUsuario();
     setToken(null);
     setUsuario(null);
     setNegocio(null);
     setLicencia(null);
+  }, []);
+
+  /**
+   * Revalida la licencia contra el backend: al abrir la pestaña y cada 15 min.
+   * Es el equivalente al `LicenciaGuard.chequear()` del onResume de Android.
+   *
+   * El corte duro por licencia vencida ya lo hace el interceptor en cualquier
+   * request (`jwt.strategy` responde 403 en todos), así que esto NO es lo que
+   * bloquea: es lo que mantiene fresca la barra de aviso en una pestaña que
+   * quedó abierta desde ayer, y lo que echa a quien no toca nada en horas.
+   */
+  useEffect(() => {
+    if (!token) return;
+    let vivo = true;
+
+    const revisar = () => {
+      api
+        .licencia()
+        .then((estado) => {
+          if (!vivo) return;
+          localStorage.setItem(LICENCIA_KEY, JSON.stringify(estado));
+          setLicencia(estado);
+        })
+        // Falla abierto, igual que Android: un error de red no puede dejar al
+        // cajero trabado. Si la licencia de verdad venció, el próximo request
+        // que haga responde 403 y ahí sí se corta.
+        .catch(() => undefined);
+    };
+
+    revisar();
+    const id = setInterval(revisar, 15 * 60 * 1000);
+    // Volver a la pestaña después de un rato es cuando más probable es que la
+    // licencia haya cambiado (la reactivaron, o venció mientras no miraba).
+    const alVolver = () => {
+      if (document.visibilityState === "visible") revisar();
+    };
+    document.addEventListener("visibilitychange", alVolver);
+
+    return () => {
+      vivo = false;
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", alVolver);
+    };
+  }, [token]);
+
+  // Reidentifica en PostHog tras un F5: el usuario se rehidrata de
+  // localStorage sin pasar por `login`, y sin esto los errores de esa sesión
+  // quedarían anónimos.
+  useEffect(() => {
+    if (usuario && aliasRecordado) {
+      identificar(aliasRecordado, usuario.username, usuario.rol);
+    }
+    // Sólo al montar: `login` ya identifica por su cuenta.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const contexto = useMemo<ContextoPermisos | null>(

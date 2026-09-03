@@ -1,7 +1,30 @@
 import { useState, type FormEvent } from "react";
 import { Icon } from "../components/Icon";
 import { Boton, Campo, ErrorMsg, Input } from "../components/ui";
+import { BLOQUEO_KEY } from "../lib/api";
 import { useAuth } from "../store/AuthContext";
+
+interface Bloqueo {
+  codigo: string;
+  mensaje: string;
+  urlPago: string | null;
+}
+
+/**
+ * Motivo por el que la sesión se cortó, si fue la licencia. Lo dejó el
+ * interceptor justo antes de recargar hacia acá; se lee UNA vez y se borra,
+ * para que no reaparezca cuando el problema ya se resolvió.
+ */
+function leerBloqueo(): Bloqueo | null {
+  try {
+    const raw = localStorage.getItem(BLOQUEO_KEY);
+    if (!raw) return null;
+    localStorage.removeItem(BLOQUEO_KEY);
+    return JSON.parse(raw) as Bloqueo;
+  } catch {
+    return null;
+  }
+}
 
 export default function Login() {
   const { login, aliasRecordado } = useAuth();
@@ -12,6 +35,7 @@ export default function Login() {
   const [clave, setClave] = useState("");
   const [error, setError] = useState("");
   const [enviando, setEnviando] = useState(false);
+  const [bloqueo, setBloqueo] = useState<Bloqueo | null>(leerBloqueo);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -20,7 +44,19 @@ export default function Login() {
     try {
       await login(usuario.trim(), clave, negocio.trim().toLowerCase());
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo iniciar sesión");
+      // El backend rechaza el login con 403 cuando la licencia no está
+      // vigente. Va al cartel de licencia y no al de credenciales: no es que
+      // la clave esté mal, y decirle eso al dueño lo manda a buscar donde no es.
+      const api = err as { status?: number; codigo?: string; urlPago?: string };
+      if (api?.status === 403 && api.codigo?.startsWith("LICENCIA_")) {
+        setBloqueo({
+          codigo: api.codigo,
+          mensaje: (err as Error).message,
+          urlPago: api.urlPago ?? null,
+        });
+      } else {
+        setError(err instanceof Error ? err.message : "No se pudo iniciar sesión");
+      }
     } finally {
       setEnviando(false);
     }
@@ -46,6 +82,35 @@ export default function Login() {
               Ingresá tus credenciales para continuar
             </p>
           </div>
+
+          {/* Licencia vencida o suspendida. Va acá y no en el <ErrorMsg> de
+              abajo porque no es un dato mal tipeado: reintentar no arregla
+              nada, y el dueño necesita el link de pago, no otra chance. */}
+          {bloqueo && (
+            <div className="rounded-xl border border-danger-text/20 bg-danger-bg p-3.5 text-danger-text">
+              <div className="flex items-start gap-2.5">
+                <Icon name="alert" size={18} />
+                <div className="min-w-0">
+                  <p className="text-[13px] font-bold">
+                    {bloqueo.codigo === "LICENCIA_SUSPENDIDA"
+                      ? "Licencia suspendida"
+                      : "Licencia vencida"}
+                  </p>
+                  <p className="mt-1 text-[13px] leading-snug">{bloqueo.mensaje}</p>
+                  {bloqueo.urlPago && (
+                    <a
+                      href={bloqueo.urlPago}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="mt-2.5 inline-block rounded-lg bg-danger-text px-3 py-1.5 text-xs font-bold text-white"
+                    >
+                      Regularizar el pago
+                    </a>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
 
           <Campo label="Negocio" hint="El alias que te dieron al contratar">
             <Input
