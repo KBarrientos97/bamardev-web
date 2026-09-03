@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { iniciales } from "../lib/format";
 import { etiquetaRol, type Seccion } from "../lib/permisos";
 import { useAuth } from "../store/AuthContext";
+import AvisoLicencia from "./AvisoLicencia";
 import { Icon, type NombreIcono } from "./Icon";
 
 interface ItemNav {
@@ -29,6 +30,13 @@ const ITEMS: ItemNav[] = [
 ];
 
 /**
+ * Preferencia de barra colapsada. Es del dispositivo y no del usuario: en la
+ * tablet del mostrador conviene tenerla colapsada aunque el mismo dueño la use
+ * ancha en su laptop, así que no viaja al backend.
+ */
+const COLAPSADA_KEY = "bamardev.sidebar.colapsada";
+
+/**
  * Título de la barra móvil. Se queda con la ruta MÁS LARGA que coincide:
  * "/inventario/productos" empieza con "/inventario", y quedarse con la
  * primera mostraría "Inventario" estando en Artículos.
@@ -46,30 +54,45 @@ function tituloDe(items: ItemNav[], pathname: string): string {
 export default function Layout() {
   const { usuario, negocio, logout, puede } = useAuth();
   const [abierto, setAbierto] = useState(false);
+  const [colapsada, setColapsada] = useState(
+    () => localStorage.getItem(COLAPSADA_KEY) === "1",
+  );
   const location = useLocation();
+
+  useEffect(() => {
+    localStorage.setItem(COLAPSADA_KEY, colapsada ? "1" : "0");
+  }, [colapsada]);
 
   const visibles = ITEMS.filter((i) => puede(i.seccion));
 
-  const nav = (
-    <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto p-3">
+  /**
+   * `compacta` aplica sólo a la barra de escritorio: el drawer del móvil se
+   * abre completo siempre, porque ahí el ancho no estorba (se cierra al elegir).
+   */
+  const nav = (compacta: boolean) => (
+    <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto overflow-x-hidden p-3">
       {visibles.map((item) => (
         <NavLink
           key={item.a}
           to={item.a}
           end={item.a === "/inventario"}
           onClick={() => setAbierto(false)}
+          title={compacta ? item.label : undefined}
           className={({ isActive }) =>
             [
-              "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition-colors",
-              item.sub ? "ml-3 text-[13px]" : "",
+              "flex items-center gap-3 rounded-xl py-2.5 text-sm font-semibold transition-colors",
+              compacta ? "justify-center px-0" : "px-3",
+              // Sin etiqueta al lado, la sangría de los sub-items sólo
+              // descentraría el ícono respecto de los demás.
+              item.sub && !compacta ? "ml-3 text-[13px]" : "",
               isActive
                 ? "bg-primary-50 text-primary-700"
                 : "text-texto-2 hover:bg-muted",
             ].join(" ")
           }
         >
-          <Icon name={item.icono} size={item.sub ? 17 : 19} />
-          <span>{item.label}</span>
+          <Icon name={item.icono} size={item.sub && !compacta ? 17 : 19} />
+          {!compacta && <span>{item.label}</span>}
         </NavLink>
       ))}
 
@@ -77,39 +100,58 @@ export default function Layout() {
 
       <button
         onClick={logout}
-        className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-texto-2 transition-colors hover:bg-danger-bg hover:text-danger-text"
+        title={compacta ? "Cerrar sesión" : undefined}
+        className={[
+          "flex items-center gap-3 rounded-xl py-2.5 text-sm font-semibold text-texto-2 transition-colors hover:bg-danger-bg hover:text-danger-text",
+          compacta ? "justify-center px-0" : "px-3",
+        ].join(" ")}
       >
         <Icon name="logout" size={19} />
-        <span>Cerrar sesión</span>
+        {!compacta && <span>Cerrar sesión</span>}
       </button>
     </nav>
   );
 
-  const encabezado = (
-    <div className="border-b border-borde-soft px-4 pb-4 pt-5">
-      <div className="flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-marca text-white">
+  const encabezado = (compacta: boolean) => (
+    <div
+      className={[
+        "border-b border-borde-soft pb-4 pt-5",
+        compacta ? "px-2" : "px-4",
+      ].join(" ")}
+    >
+      <div className={compacta ? "flex justify-center" : "flex items-center gap-3"}>
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-marca text-white">
           <Icon name="archive" size={21} strokeWidth={2.2} />
         </div>
-        <div className="min-w-0">
-          <h2 className="truncate text-[15px] font-bold text-texto">
-            {negocio?.nombre ?? "BamarDev"}
-          </h2>
-          <span className="text-xs text-texto-3">
-            {usuario ? etiquetaRol(usuario.rol) : ""}
-          </span>
-        </div>
+        {!compacta && (
+          <div className="min-w-0">
+            <h2 className="truncate text-[15px] font-bold text-texto">
+              {negocio?.nombre ?? "BamarDev"}
+            </h2>
+            <span className="text-xs text-texto-3">
+              {usuario ? etiquetaRol(usuario.rol) : ""}
+            </span>
+          </div>
+        )}
       </div>
-      <div className="mt-4 flex items-center gap-3 rounded-xl bg-muted px-3 py-2.5">
+      <div
+        className={[
+          "mt-4 flex items-center rounded-xl bg-muted py-2.5",
+          compacta ? "justify-center px-0" : "gap-3 px-3",
+        ].join(" ")}
+        title={compacta ? (usuario?.nombre ?? usuario?.username) : undefined}
+      >
         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-bold text-white">
           {iniciales(usuario?.nombre ?? usuario?.username)}
         </span>
-        <div className="min-w-0">
-          <p className="truncate text-[13px] font-bold text-texto">
-            {usuario?.nombre ?? usuario?.username}
-          </p>
-          <p className="truncate text-xs text-texto-3">{usuario?.username}</p>
-        </div>
+        {!compacta && (
+          <div className="min-w-0">
+            <p className="truncate text-[13px] font-bold text-texto">
+              {usuario?.nombre ?? usuario?.username}
+            </p>
+            <p className="truncate text-xs text-texto-3">{usuario?.username}</p>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -120,10 +162,29 @@ export default function Layout() {
   // scrollear. Ahí abajo viven "Confirmar cobro" y "Cerrar caja".
   return (
     <div className="flex h-[100dvh] overflow-hidden bg-fondo print:h-auto print:overflow-visible print:bg-white">
-      {/* Barra lateral fija en escritorio */}
-      <aside className="hidden w-64 shrink-0 flex-col border-r border-borde bg-white lg:flex print:hidden">
-        {encabezado}
-        {nav}
+      {/* Barra lateral fija en escritorio. Colapsada deja sólo los íconos:
+          en la tablet del mostrador esos 256 px son casi un cuarto del ancho,
+          y la grilla de productos del POS los aprovecha. */}
+      <aside
+        className={[
+          "relative hidden shrink-0 flex-col border-r border-borde bg-white transition-[width] duration-200 lg:flex print:hidden",
+          colapsada ? "w-[68px]" : "w-64",
+        ].join(" ")}
+      >
+        {encabezado(colapsada)}
+        {nav(colapsada)}
+
+        {/* Montado sobre el borde derecho para no restarle alto a la
+            navegación, que con Inventario abierto ya llega larga. */}
+        <button
+          onClick={() => setColapsada((v) => !v)}
+          aria-label={colapsada ? "Expandir menú" : "Colapsar menú"}
+          aria-expanded={!colapsada}
+          title={colapsada ? "Expandir menú" : "Colapsar menú"}
+          className="absolute -right-3 top-7 z-10 flex h-6 w-6 items-center justify-center rounded-full border border-borde bg-white text-texto-2 shadow-sm transition-colors hover:bg-muted hover:text-texto"
+        >
+          <Icon name={colapsada ? "chevronRight" : "chevronLeft"} size={15} />
+        </button>
       </aside>
 
       {/* Drawer en móvil */}
@@ -134,8 +195,8 @@ export default function Layout() {
             onClick={() => setAbierto(false)}
           />
           <aside className="absolute inset-y-0 left-0 flex w-72 flex-col bg-white shadow-2xl">
-            {encabezado}
-            {nav}
+            {encabezado(false)}
+            {nav(false)}
           </aside>
         </div>
       )}
@@ -154,6 +215,10 @@ export default function Layout() {
             {tituloDe(visibles, location.pathname)}
           </span>
         </header>
+
+        {/* Fuera del <main> con scroll: el aviso de vencimiento tiene que
+            quedar a la vista aunque la pantalla esté scrolleada. */}
+        <AvisoLicencia />
 
         <main className="min-h-0 flex-1 overflow-y-auto print:overflow-visible">
           <Outlet />
