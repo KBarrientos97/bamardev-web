@@ -51,7 +51,7 @@ export default function Login() {
             <Input
               value={negocio}
               onChange={(e) => setNegocio(e.target.value)}
-              placeholder="pollosdonomar"
+              placeholder="cafeteriakevin"
               autoComplete="organization"
               required
             />
