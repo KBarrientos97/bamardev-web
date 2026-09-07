@@ -81,7 +81,11 @@ export default function ComprobanteCredito({
     >
       {/* El ticket es lo único que va al papel: el resto de la pantalla se
           esconde al imprimir (ver las clases print: del layout). */}
-      <article ref={ticket} className="mx-auto max-w-sm space-y-3 bg-white p-4 text-[13px] text-texto print:max-w-none print:p-0">
+      <article
+        id="area-impresion"
+        ref={ticket}
+        className="mx-auto max-w-[320px] space-y-3 bg-white p-4 text-[13px] text-texto print:max-w-none print:p-0"
+      >
         <header className="border-b border-dashed border-borde pb-3 text-center">
           <h3 className="text-base font-extrabold">{negocio?.nombre ?? "BamarDev"}</h3>
           <p className="mt-0.5 text-xs uppercase tracking-wide text-texto-3">{titulo}</p>

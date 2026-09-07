@@ -5,6 +5,25 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#10B981" />
     <title>BamarDev — Inventario y Punto de Venta</title>
+    <!--
+      Papel del ticket: rollo de 80 mm, como la impresora del mostrador.
+
+      Va acá y no en index.css porque `@import "tailwindcss"` envuelve ese
+      archivo en un `@layer`, y una `@page` anidada en una capa es inválida:
+      el navegador la descarta en silencio.
+
+      Ojo: `size` es una sugerencia. Chrome deja elegir el papel en su diálogo
+      y ahí gana lo que el cajero tenga seleccionado, así que el ticket está
+      hecho para verse bien en cualquiera de los dos (ver index.css): a 80 mm
+      llena el rollo, y en Carta/A4 sale como un ticket angosto arriba a la
+      izquierda, listo para cortar. Verificado con Page.printToPDF.
+    -->
+    <style>
+      @page {
+        size: 80mm auto;
+        margin: 4mm;
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>
