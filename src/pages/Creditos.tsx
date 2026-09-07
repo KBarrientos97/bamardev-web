@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import ComprobanteCredito, { type TipoComprobante } from "../components/ComprobanteCredito";
 import { parsearMonto } from "../lib/dinero";
 import { puedeSupervisar } from "../lib/permisos";
 import { useAuth } from "../store/AuthContext";
@@ -93,6 +94,7 @@ export default function Creditos() {
   const [detalleId, setDetalleId] = useState<number | null>(null);
   const [abonando, setAbonando] = useState<CreditoApi | null>(null);
   const [editandoLimite, setEditandoLimite] = useState<ClienteCredito | null>(null);
+  const [reciboDe, setReciboDe] = useState<{ credito: CreditoApi; monto: number } | null>(null);
   const [aviso, setAviso] = useAviso();
 
   const lista = creditos.datos ?? [];
@@ -245,11 +247,27 @@ export default function Creditos() {
           formasPago={formasPago.datos ?? []}
           onClose={() => setAbonando(null)}
           onGuardado={(monto) => {
+            // El recibo se ofrece acá y no después: el cliente está enfrente
+            // esperando su papel, y buscarlo más tarde en el detalle es un
+            // paso que nadie da.
+            setReciboDe({ credito: abonando, monto });
             setAbonando(null);
             setAviso(`Abono de ${fmtMoney(monto)} registrado.`);
             creditos.recargar();
             clientes.recargar();
           }}
+        />
+      )}
+      {reciboDe && (
+        <ComprobanteCredito
+          // El saldo que muestra el recibo ya tiene el abono descontado.
+          credito={{
+            ...reciboDe.credito,
+            saldo: Math.max(0, Math.round((reciboDe.credito.saldo - reciboDe.monto) * 100) / 100),
+          }}
+          tipo="RECIBO"
+          abono={{ monto: reciboDe.monto, fecha: new Date().toISOString() }}
+          onClose={() => setReciboDe(null)}
         />
       )}
     </div>
@@ -436,6 +454,7 @@ function DetalleCredito({
 }) {
   const credito = useApi<CreditoDetalle>(() => api.getCredito(id) as Promise<CreditoDetalle>, [id]);
   const c = credito.datos;
+  const [imprimiendo, setImprimiendo] = useState<TipoComprobante | null>(null);
 
   return (
     <Modal
@@ -444,13 +463,34 @@ function DetalleCredito({
       subtitulo={c ? `${c.codigo ?? `#${c.id}`} · ${c.clienteNombre}` : "Cargando…"}
       onClose={onClose}
       acciones={
-        c && c.saldo > 0 && c.estado !== "ANULADO" ? (
-          <Boton icono="dollar" onClick={() => onAbonar(c)}>
-            Registrar abono
-          </Boton>
+        c && c.estado !== "ANULADO" ? (
+          <>
+            {/* El papel que se lleva el cliente: el compromiso mientras debe,
+                la constancia cuando la cuenta queda en cero. */}
+            <Boton
+              variante="ghost"
+              icono="printer"
+              onClick={() => setImprimiendo(c.saldo > 0 ? "COMPROMISO" : "CONSTANCIA")}
+            >
+              {c.saldo > 0 ? "Comprobante" : "Constancia"}
+            </Boton>
+            {c.saldo > 0 && (
+              <Boton icono="dollar" onClick={() => onAbonar(c)}>
+                Registrar abono
+              </Boton>
+            )}
+          </>
         ) : undefined
       }
     >
+      {imprimiendo && c && (
+        <ComprobanteCredito
+          credito={c}
+          tipo={imprimiendo}
+          onClose={() => setImprimiendo(null)}
+        />
+      )}
+
       {credito.cargando ? (
         <Cargando />
       ) : !c ? (
