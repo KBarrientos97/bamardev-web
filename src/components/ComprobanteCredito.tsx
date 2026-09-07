@@ -1,3 +1,5 @@
+import { useRef, useState } from "react";
+import { compartirComoImagen } from "../lib/compartirTicket";
 import { fmtFecha, fmtFechaHora, fmtMoney } from "../lib/format";
 import { useAuth } from "../store/AuthContext";
 import { Boton, Modal } from "./ui";
@@ -28,6 +30,9 @@ export default function ComprobanteCredito({
   onClose: () => void;
 }) {
   const { negocio } = useAuth();
+  const ticket = useRef<HTMLElement>(null);
+  const [compartiendo, setCompartiendo] = useState(false);
+  const [aviso, setAviso] = useState("");
 
   const titulo =
     tipo === "COMPROMISO"
@@ -36,6 +41,22 @@ export default function ComprobanteCredito({
         ? "Recibo de pago"
         : "Constancia de cuenta saldada";
 
+  async function compartir() {
+    if (!ticket.current || compartiendo) return;
+    setAviso("");
+    setCompartiendo(true);
+    const res = await compartirComoImagen(
+      ticket.current,
+      `${titulo.toLowerCase().replace(/ /g, "-")}-${credito.codigo ?? credito.id}`,
+    );
+    setCompartiendo(false);
+    if (!res.ok && res.motivo === "no_soportado") {
+      setAviso("Se descargó la imagen para que la adjuntes.");
+    } else if (!res.ok && res.motivo === "error") {
+      setAviso("No se pudo generar la imagen.");
+    }
+  }
+
   return (
     <Modal
       abierto
@@ -43,14 +64,24 @@ export default function ComprobanteCredito({
       subtitulo={credito.clienteNombre}
       onClose={onClose}
       acciones={
-        <Boton variante="ghost" icono="printer" onClick={() => window.print()}>
-          Imprimir
-        </Boton>
+        <>
+          <Boton variante="ghost" icono="printer" onClick={() => window.print()}>
+            Imprimir
+          </Boton>
+          <Boton
+            variante="ghost"
+            icono="arrowUpRight"
+            onClick={compartir}
+            disabled={compartiendo}
+          >
+            {compartiendo ? "Generando…" : "Compartir"}
+          </Boton>
+        </>
       }
     >
       {/* El ticket es lo único que va al papel: el resto de la pantalla se
           esconde al imprimir (ver las clases print: del layout). */}
-      <article className="mx-auto max-w-sm space-y-3 bg-white p-4 text-[13px] text-texto print:max-w-none print:p-0">
+      <article ref={ticket} className="mx-auto max-w-sm space-y-3 bg-white p-4 text-[13px] text-texto print:max-w-none print:p-0">
         <header className="border-b border-dashed border-borde pb-3 text-center">
           <h3 className="text-base font-extrabold">{negocio?.nombre ?? "BamarDev"}</h3>
           <p className="mt-0.5 text-xs uppercase tracking-wide text-texto-3">{titulo}</p>
@@ -115,6 +146,10 @@ export default function ComprobanteCredito({
           </div>
         )}
       </article>
+
+      {aviso && (
+        <p className="mt-2 text-center text-[13px] text-texto-2 print:hidden">{aviso}</p>
+      )}
     </Modal>
   );
 }
