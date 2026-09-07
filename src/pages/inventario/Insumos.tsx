@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { contiene } from "../../lib/texto";
 import HistorialCostos from "../../components/HistorialCostos";
+import { parsearMonto } from "../../lib/dinero";
 import { Icon } from "../../components/Icon";
 import { Buscador, Chips, EncabezadoPagina } from "../../components/filtros";
 import {
@@ -438,15 +439,18 @@ function FormInsumoCuerpo({
 
     if (!nombre.trim()) return setError("Poné un nombre.");
     if (!unidadId) return setError("Elegí una unidad de medida.");
-    const costoNum = Number(costoCompra);
-    if (!Number.isFinite(costoNum) || costoNum < 0)
+    // Obligatoria, igual que en la app: un insumo sin categoría desaparece de
+    // los reportes de compras agrupados y nadie entiende dónde se fue la plata.
+    if (!categoriaId) return setError("Elegí una categoría para el insumo.");
+    const costoNum = costoCompra === "" ? 0 : parsearMonto(costoCompra);
+    if (costoNum === null || costoNum < 0)
       return setError("El costo de compra tiene que ser un número válido.");
 
     const input: InsumoInput = {
       nombre: nombre.trim(),
       unidadMedidaId: Number(unidadId),
       costoCompra: costoNum,
-      puntoReorden: puntoReorden === "" ? 0 : Number(puntoReorden),
+      puntoReorden: puntoReorden === "" ? 0 : (parsearMonto(puntoReorden) ?? 0),
       proveedor: proveedor.trim(),
       ...(categoriaId ? { categoriaId: Number(categoriaId) } : {}),
       ...(vencimiento ? { vencimiento } : {}),
@@ -513,7 +517,7 @@ function FormInsumoCuerpo({
         <div className="grid gap-3 sm:grid-cols-2">
           <Campo label="Categoría">
             <Select value={categoriaId} onChange={(e) => setCategoriaId(e.target.value)}>
-              <option value="">Sin categoría</option>
+              <option value="">Elegí una categoría</option>
               {categorias.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.nombre}

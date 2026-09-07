@@ -331,25 +331,32 @@ function DetalleUsuario({
   onEstado: (u: Usuario) => void;
   conPin: boolean;
 }) {
+  const { usuario: actual } = useAuth();
   if (!u) return null;
   const permisos = PERMISOS_ROL[u.rol as RolApp] ?? [];
   const esRepartidor = u.rol === "REPARTIDOR";
+  const esYo = actual?.id === u.id;
 
   return (
     <Modal
       abierto
       titulo="Detalle del usuario"
-      subtitulo={u.nombre}
+      subtitulo={esYo ? `${u.nombre} · tu cuenta` : u.nombre}
       onClose={onClose}
       acciones={
         <>
-          <Boton
-            variante={u.activo ? "danger" : "ghost"}
-            icono={u.activo ? "x" : "check"}
-            onClick={() => onEstado(u)}
-          >
-            {u.activo ? "Desactivar" : "Activar"}
-          </Boton>
+          {/* Nadie se desactiva a sí mismo: se quedaría sin poder entrar a
+              revertirlo, y si es el único ADMIN el negocio queda sin acceso. El
+              backend lo impide igual; acá ni se ofrece. */}
+          {!esYo && (
+            <Boton
+              variante={u.activo ? "danger" : "ghost"}
+              icono={u.activo ? "x" : "check"}
+              onClick={() => onEstado(u)}
+            >
+              {u.activo ? "Desactivar" : "Activar"}
+            </Boton>
+          )}
           <Boton icono="edit" onClick={() => onEditar(u)}>
             Editar
           </Boton>
@@ -484,6 +491,21 @@ function FormUsuarioCuerpo({
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [rol, setRol] = useState<RolApp>((usuario?.rol as RolApp) ?? "CAJERO");
+  const { usuario: actual } = useAuth();
+  /**
+   * Un SUPERVISOR administra personal de piso, no a sus pares ni a un ADMIN:
+   * ofrecerle roles que el backend le va a rechazar es hacerle llenar el
+   * formulario para nada. Un ADMIN los asigna todos.
+   */
+  const rolesAsignables = ROLES_APP.filter(
+    (r) =>
+      actual?.rol === "ADMIN" ||
+      r === "CAJERO" ||
+      r === "REPARTIDOR" ||
+      // El rol que YA tiene el usuario se sigue mostrando: si no, editarle el
+      // teléfono a un admin le cambiaría el rol sin querer al guardar.
+      r === usuario?.rol,
+  );
   const [email, setEmail] = useState(usuario?.email ?? "");
   const [telefono, setTelefono] = useState(usuario?.telefono ?? "");
   const [notas, setNotas] = useState(usuario?.notas ?? "");
@@ -583,7 +605,7 @@ function FormUsuarioCuerpo({
 
         <Campo label="Rol" hint={PERMISOS_ROL[rol].join(" · ")}>
           <Select value={rol} onChange={(e) => setRol(e.target.value as RolApp)}>
-            {ROLES_APP.map((r) => (
+            {rolesAsignables.map((r) => (
               <option key={r} value={r}>
                 {etiquetaRol(r)}
               </option>
