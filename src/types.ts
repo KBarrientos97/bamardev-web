@@ -400,6 +400,11 @@ export interface CreditoInput {
   /** ISO 8601 con offset (el backend lo exige así). */
   fechaCompromiso: string;
   nota?: string;
+  /** Techo con el que nace la ficha de un cliente nuevo. */
+  limiteCredito?: number;
+  /** Firma del encargado cuando la venta pasa el techo del cliente. */
+  autorizadorUsername?: string;
+  autorizadorPin?: string;
 }
 
 export interface VentaInput {
@@ -469,6 +474,10 @@ export interface ClienteCredito {
   montoVencido: number;
   creditosAbiertos: number;
   vecesFiado: number;
+  /** Techo de deuda que le fijó el dueño. null = sin límite. */
+  limiteCredito: number | null;
+  /** Cuánto más se le puede fiar hoy. null cuando no tiene límite. */
+  disponible: number | null;
 }
 
 /** Un abono simple lleva monto+forma; uno mixto reparte en varias formas. */

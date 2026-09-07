@@ -1,4 +1,7 @@
 import { useMemo, useState } from "react";
+import { parsearMonto } from "../lib/dinero";
+import { puedeSupervisar } from "../lib/permisos";
+import { useAuth } from "../store/AuthContext";
 import { Icon } from "../components/Icon";
 import { Buscador, Chips, EncabezadoPagina } from "../components/filtros";
 import {
@@ -89,6 +92,7 @@ export default function Creditos() {
 
   const [detalleId, setDetalleId] = useState<number | null>(null);
   const [abonando, setAbonando] = useState<CreditoApi | null>(null);
+  const [editandoLimite, setEditandoLimite] = useState<ClienteCredito | null>(null);
   const [aviso, setAviso] = useAviso();
 
   const lista = creditos.datos ?? [];
@@ -206,7 +210,7 @@ export default function Creditos() {
           </h2>
           <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {conDeuda.map((c) => (
-              <TarjetaCliente key={c.id} cliente={c} />
+              <TarjetaCliente key={c.id} cliente={c} onLimite={setEditandoLimite} />
             ))}
           </ul>
         </section>
@@ -219,6 +223,17 @@ export default function Creditos() {
           onAbonar={(c) => {
             setDetalleId(null);
             setAbonando(c);
+          }}
+        />
+      )}
+
+      {editandoLimite && (
+        <FormLimiteCredito
+          cliente={editandoLimite}
+          onClose={() => setEditandoLimite(null)}
+          onGuardado={() => {
+            setEditandoLimite(null);
+            clientes.recargar();
           }}
         />
       )}
@@ -326,14 +341,32 @@ function TarjetaCredito({
   );
 }
 
-function TarjetaCliente({ cliente: c }: { cliente: ClienteCredito }) {
+function TarjetaCliente({
+  cliente: c,
+  onLimite,
+}: {
+  cliente: ClienteCredito;
+  onLimite: (c: ClienteCredito) => void;
+}) {
+  const { usuario } = useAuth();
+  // A un CAJERO se le esconde el lápiz: un ícono de editar que no responde se
+  // lee como app rota, no como falta de permiso. El backend además lo impide.
+  const puedeEditarLimite = puedeSupervisar(usuario?.rol);
+
   return (
     <li className="card p-4">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <h3 className="truncate text-[15px] font-bold text-texto">{c.nombre}</h3>
           <p className="mt-0.5 truncate text-[13px] text-texto-3">
-            {c.telefono || "Sin teléfono"}
+            {c.telefono ? (
+              // Tocable: desde el celular se llama al deudor sin re-teclear.
+              <a href={`tel:${c.telefono}`} className="hover:underline">
+                {c.telefono}
+              </a>
+            ) : (
+              "Sin teléfono"
+            )}
           </p>
         </div>
         {c.montoVencido > 0 && <Badge tono="rojo">Con atraso</Badge>}
@@ -352,6 +385,28 @@ function TarjetaCliente({ cliente: c }: { cliente: ClienteCredito }) {
             {fmtMoney(c.montoVencido)}
           </p>
         </div>
+      </div>
+
+      <div className="mt-2 flex items-center justify-between gap-2">
+        <p className="text-xs text-texto-3">
+          {c.limiteCredito === null ? (
+            "Sin límite de crédito"
+          ) : (
+            <>
+              Límite {fmtMoney(c.limiteCredito)} · le quedan{" "}
+              <span className="font-bold text-texto-2">{fmtMoney(c.disponible ?? 0)}</span>
+            </>
+          )}
+        </p>
+        {puedeEditarLimite && (
+          <button
+            onClick={() => onLimite(c)}
+            aria-label={`Cambiar el límite de ${c.nombre}`}
+            className="rounded-lg p-1.5 text-texto-3 hover:bg-muted hover:text-texto"
+          >
+            <Icon name="edit" size={15} />
+          </button>
+        )}
       </div>
 
       <p className="mt-2 text-xs text-texto-4">
@@ -589,6 +644,116 @@ function FormAbono({
               </option>
             ))}
           </Select>
+        </Campo>
+
+        <ErrorMsg>{error}</ErrorMsg>
+      </div>
+    </Modal>
+  );
+}
+
+
+/**
+ * Techo de deuda de un cliente.
+ *
+ * "Sin límite" es el campo vacío y no un estado aparte: el backend distingue
+ * `null` (sacarle el techo) de no mandar nada, así que acá siempre se manda uno
+ * de los dos. Chips con los montos que se usan en el mostrador, más campo libre.
+ */
+function FormLimiteCredito({
+  cliente,
+  onClose,
+  onGuardado,
+}: {
+  cliente: ClienteCredito;
+  onClose: () => void;
+  onGuardado: () => void;
+}) {
+  const [valor, setValor] = useState(
+    cliente.limiteCredito === null ? "" : String(cliente.limiteCredito),
+  );
+  const [error, setError] = useState("");
+  const [guardando, setGuardando] = useState(false);
+
+  async function guardar() {
+    if (guardando) return;
+    setError("");
+
+    const limite = valor.trim() === "" ? null : parsearMonto(valor);
+    if (valor.trim() !== "" && (limite === null || limite < 0))
+      return setError("El límite tiene que ser un monto válido.");
+
+    setGuardando(true);
+    try {
+      await api.actualizarLimiteCredito(cliente.id, limite);
+      onGuardado();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo guardar el límite");
+    } finally {
+      setGuardando(false);
+    }
+  }
+
+  return (
+    <Modal
+      abierto
+      titulo="Límite de crédito"
+      subtitulo={cliente.nombre}
+      onClose={onClose}
+      ancho="max-w-sm"
+      acciones={
+        <>
+          <Boton variante="ghost" onClick={onClose}>
+            Cancelar
+          </Boton>
+          <Boton onClick={guardar} disabled={guardando}>
+            {guardando ? "Guardando…" : "Guardar"}
+          </Boton>
+        </>
+      }
+    >
+      <div className="space-y-3">
+        <p className="text-[13px] text-texto-3">
+          Debe {fmtMoney(cliente.saldoTotal)} hoy. Por encima del límite, fiarle va a
+          necesitar la firma de un encargado.
+        </p>
+
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={() => setValor("")}
+            className={`rounded-xl px-3.5 py-2 text-[13px] font-semibold transition-colors ${
+              valor === ""
+                ? "bg-primary text-white"
+                : "border border-borde bg-white text-texto-2 hover:bg-muted"
+            }`}
+          >
+            Sin límite
+          </button>
+          {[100, 200, 500].map((v) => (
+            <button
+              key={v}
+              onClick={() => setValor(String(v))}
+              className={`rounded-xl px-3.5 py-2 text-[13px] font-semibold transition-colors ${
+                valor === String(v)
+                  ? "bg-primary text-white"
+                  : "border border-borde bg-white text-texto-2 hover:bg-muted"
+              }`}
+            >
+              {fmtMoney(v)}
+            </button>
+          ))}
+        </div>
+
+        <Campo label="Otro monto">
+          <Input
+            type="number"
+            inputMode="decimal"
+            min="0"
+            value={valor}
+            onChange={(e) => setValor(e.target.value)}
+            placeholder="Vacío = sin límite"
+            className="font-bold"
+          />
         </Campo>
 
         <ErrorMsg>{error}</ErrorMsg>

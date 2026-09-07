@@ -348,6 +348,15 @@ export const api = {
     request<Credito[]>(`/creditos${qs(params)}`),
   getCredito: (id: number) => request<Credito>(`/creditos/${id}`),
   getClientesCredito: () => request<ClienteCredito[]>("/creditos/clientes"),
+  /**
+   * Techo de deuda del cliente. `null` explícito = sacarle el límite, y por eso
+   * el body lo manda siempre (omitirlo y mandar null son cosas distintas).
+   */
+  actualizarLimiteCredito: (clienteId: number, limiteCredito: number | null) =>
+    request<ClienteCredito>(`/creditos/clientes/${clienteId}/limite`, {
+      method: "PATCH",
+      body: JSON.stringify({ limiteCredito }),
+    }),
   getResumenCreditos: () => request<Record<string, unknown>>("/creditos/resumen"),
   /** La caja donde entra el abono la resuelve el backend (la del cobrador). */
   registrarAbono: (id: number, input: AbonoInput) =>
