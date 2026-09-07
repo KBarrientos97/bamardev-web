@@ -27,6 +27,15 @@ import type {
   Producto,
   ProductoInput,
   RangoReporte,
+  ReporteCierreProductos,
+  ReporteCompraDocumento,
+  ReporteComprasDetalle,
+  ReporteComprasGeneral,
+  ReporteComprasMensual,
+  ReporteMovimientosCaja,
+  ReporteVentasDetalle,
+  ReporteVentasGeneral,
+  ReporteVentasMensual,
   Repartidor,
   ResumenCaja,
   UnidadMedida,
@@ -127,7 +136,13 @@ function bloquearPorLicencia(cuerpo: Record<string, unknown>) {
 }
 
 /** Serializa un query string omitiendo lo que no se mandó. */
-function qs(params: Record<string, unknown> = {}): string {
+/**
+ * El parámetro va como objeto plano y no como `Record<string, unknown>`: una
+ * interfaz declarada (RangoReporte y sus variantes) no es asignable a Record
+ * porque no lleva index signature, y tiparlo así obligaba a castear en cada
+ * llamada.
+ */
+function qs(params: object = {}): string {
   const p = new URLSearchParams();
   for (const [k, v] of Object.entries(params)) {
     if (v !== undefined && v !== null && v !== "") p.set(k, String(v));
@@ -219,6 +234,32 @@ export const api = {
     }),
   me: () => request<Me>("/auth/me"),
   licencia: () => request<EstadoLicencia>("/licencia/estado"),
+
+  // ── Finanzas ──────────────────────────────────────────────────────────────
+  // Los reportes paginados aceptan `page` y `limite`; los mensuales no llevan
+  // rango, sólo el año.
+  reporteVentas: (p: RangoReporte & { usuarioId?: number; page?: number; limite?: number }) =>
+    request<ReporteVentasGeneral>(`/reportes/ventas${qs(p)}`),
+  reporteVentasDetalle: (
+    p: RangoReporte & { usuarioId?: number; page?: number; limite?: number },
+  ) => request<ReporteVentasDetalle>(`/reportes/ventas-detalle${qs(p)}`),
+  reporteVentasMensual: (anio?: number) =>
+    request<ReporteVentasMensual>(`/reportes/ventas-mensual${qs({ anio })}`),
+  reporteCompras: (
+    p: RangoReporte & { tipo?: string; page?: number; limite?: number },
+  ) => request<ReporteComprasGeneral>(`/reportes/compras${qs(p)}`),
+  reporteComprasDetalle: (
+    p: RangoReporte & { tipo?: string; page?: number; limite?: number },
+  ) => request<ReporteComprasDetalle>(`/reportes/compras-detalle${qs(p)}`),
+  reporteComprasMensual: (anio?: number) =>
+    request<ReporteComprasMensual>(`/reportes/compras-mensual${qs({ anio })}`),
+  reporteCompra: (id: number) =>
+    request<ReporteCompraDocumento>(`/reportes/compras/${id}`),
+  reporteCaja: (p: RangoReporte & { tipo?: string; page?: number; limite?: number }) =>
+    request<ReporteMovimientosCaja>(`/reportes/caja${qs(p)}`),
+  /** Lo que salió del mostrador en un turno. Baja del arqueo, no del período. */
+  reporteCierreProductos: (cierreId: number) =>
+    request<ReporteCierreProductos>(`/reportes/cierres/${cierreId}/productos`),
 
   // ── Catálogo ──────────────────────────────────────────────────────────────
   getProductos: (eliminados?: boolean) =>

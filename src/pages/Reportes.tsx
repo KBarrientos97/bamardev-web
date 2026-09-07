@@ -8,6 +8,7 @@ import type { Capacidad } from "../lib/permisos";
 import { useApi } from "../lib/useApi";
 import { useAuth } from "../store/AuthContext";
 import type { RangoReporte } from "../types";
+import Finanzas from "./Finanzas";
 
 // ── Período ─────────────────────────────────────────────────────────────────
 
@@ -329,6 +330,12 @@ export default function Reportes() {
   const [desdeManual, setDesdeManual] = useState(() => rangoDePreset("mes").desde ?? "");
   const [hastaManual, setHastaManual] = useState(() => isoDia(new Date()));
   const [abierto, setAbierto] = useState<FichaReporte | null>(null);
+  /**
+   * Finanzas es el historial de documentos (ventas y compras, uno por fila);
+   * los reportes son el resumen del período. Comparten el rango de fechas pero
+   * se leen distinto, así que van en pestañas y no mezclados en la misma grilla.
+   */
+  const [vista, setVista] = useState<"reportes" | "finanzas">("reportes");
 
   // Los reportes que el plan no incluye no se ofrecen: pedirlos igual
   // devolvería datos, pero se venden por separado.
@@ -353,9 +360,25 @@ export default function Reportes() {
   return (
     <div className="mx-auto max-w-6xl space-y-4 p-5">
       <EncabezadoPagina
-        titulo="Reportes"
+        titulo={vista === "reportes" ? "Reportes" : "Finanzas"}
         subtitulo={`Del ${fmtFecha(rango.desde)} al ${fmtFecha(rango.hasta)}`}
       />
+
+      <div className="flex gap-2">
+        {(["reportes", "finanzas"] as const).map((v) => (
+          <button
+            key={v}
+            onClick={() => setVista(v)}
+            className={`rounded-xl px-3.5 py-2 text-[13px] font-semibold transition-colors ${
+              vista === v
+                ? "bg-primary text-white"
+                : "border border-borde bg-white text-texto-2 hover:bg-muted"
+            }`}
+          >
+            {v === "reportes" ? "Reportes" : "Finanzas"}
+          </button>
+        ))}
+      </div>
 
       <div className="space-y-3">
         <Chips valor={preset} opciones={OPC_PRESET} onChange={setPreset} />
@@ -381,6 +404,10 @@ export default function Reportes() {
         )}
       </div>
 
+      {vista === "finanzas" ? (
+        <Finanzas rango={rango} />
+      ) : (
+        <>
       <ErrorMsg>{resumen.error}</ErrorMsg>
 
       {resumen.cargando ? (
@@ -411,6 +438,8 @@ export default function Reportes() {
           ))}
         </ul>
       </section>
+        </>
+      )}
 
       {abierto && (
         <VistaReporte

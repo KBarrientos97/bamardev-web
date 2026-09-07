@@ -642,3 +642,226 @@ export interface HistorialCostos {
   montoTotal: number;
   compras: CompraCosto[];
 }
+
+// ── Finanzas: historial de ventas y compras ─────────────────────────────────
+// Los ocho reportes de la sección Finanzas de la app. Los contratos salen de
+// `reportes.service.ts`; los montos ya vienen redondeados y las fechas como
+// ISO 8601 UTC.
+
+/** Paginación común a los cinco reportes paginados. Siempre bajo `pagina`. */
+export interface PaginaMeta {
+  page: number;
+  limite: number;
+  /** Filas del rango COMPLETO, no de la página. */
+  total: number;
+  totalPaginas: number;
+}
+
+export interface ReporteVentasGeneral {
+  totales: {
+    ventas: number;
+    ingresos: number;
+    ticketPromedio: number;
+    anuladas: number;
+    pendientes: number;
+  };
+  vendedores: { id: number; nombre: string }[];
+  items: {
+    id: number;
+    comprobante: string;
+    fecha: string;
+    cliente: string;
+    vendedor: string;
+    estado: EstadoDocumento;
+    /** Nombre de la forma de pago, o "Mixto" / "Sin cobrar". */
+    metodoPago: string;
+    articulos: number;
+    total: number;
+  }[];
+  pagina: PaginaMeta;
+}
+
+export interface ReporteVentasDetalle {
+  totales: {
+    /** Unidades: puede ser fraccionario (venta por peso). */
+    productos: number;
+    recaudado: number;
+    precioPromedio: number;
+    lineas: number;
+  };
+  items: {
+    ventaId: number;
+    comprobante: string;
+    fecha: string;
+    vendedor: string;
+    producto: string;
+    codigo: string | null;
+    cantidad: number;
+    precio: number;
+    subtotal: number;
+  }[];
+  pagina: PaginaMeta;
+}
+
+/** FUTURO se pinta distinto de un 0 real: todavía no pasó. */
+export type EstadoMesVentas = "FUTURO" | "CON_VENTAS" | "SIN_VENTAS";
+
+export interface ReporteVentasMensual {
+  anio: number;
+  /** Años del selector, ascendente. */
+  anios: number[];
+  /** Siempre 12, enero a diciembre. */
+  meses: {
+    mes: number;
+    nombre: string;
+    ventas: number;
+    total: number;
+    estado: EstadoMesVentas;
+  }[];
+  totales: {
+    ventas: number;
+    total: number;
+    mesesConVentas: number;
+    /** Sobre los meses CON ventas, no dividido por 12. */
+    promedioMensual: number;
+    mejorMes: { nombre: string; total: number } | null;
+  };
+}
+
+/** De qué son las líneas de la compra. VACIO = el movimiento no tiene líneas. */
+export type OrigenCompra = "INSUMO" | "PRODUCTO" | "MIXTO" | "VACIO";
+
+export interface ReporteComprasGeneral {
+  totales: {
+    compras: number;
+    invertido: number;
+    promedioCompra: number;
+    anuladas: number;
+    pendientes: number;
+  };
+  items: {
+    id: number;
+    comprobante: string;
+    fecha: string;
+    almacen: string;
+    descripcion: string | null;
+    estado: EstadoDocumento;
+    origen: OrigenCompra;
+    articulos: number;
+    total: number;
+  }[];
+  pagina: PaginaMeta;
+}
+
+export interface ReporteComprasDetalle {
+  totales: {
+    articulos: number;
+    costoTotal: number;
+    costoPromedio: number;
+    lineas: number;
+  };
+  items: {
+    compraId: number;
+    comprobante: string;
+    fecha: string;
+    almacen: string;
+    producto: string;
+    codigo: string | null;
+    esInsumo: boolean;
+    unidad: string | null;
+    cantidad: number;
+    costo: number;
+    subtotal: number;
+  }[];
+  pagina: PaginaMeta;
+}
+
+export type EstadoMesCompras = "FUTURO" | "CON_COMPRAS" | "SIN_COMPRAS";
+
+export interface ReporteComprasMensual {
+  anio: number;
+  anios: number[];
+  meses: {
+    mes: number;
+    nombre: string;
+    compras: number;
+    total: number;
+    estado: EstadoMesCompras;
+  }[];
+  totales: {
+    compras: number;
+    total: number;
+    mesesConCompras: number;
+    promedioMensual: number;
+    mayorMes: { nombre: string; total: number } | null;
+  };
+}
+
+/** El documento de una compra: para nosotros, un movimiento de ENTRADA. */
+export interface ReporteCompraDocumento {
+  id: number;
+  comprobante: string;
+  fecha: string;
+  fechaAprobacion: string | null;
+  almacen: string;
+  descripcion: string | null;
+  estado: EstadoDocumento;
+  origen: OrigenCompra;
+  articulos: number;
+  total: number;
+  items: {
+    producto: string;
+    codigo: string | null;
+    esInsumo: boolean;
+    unidad: string | null;
+    cantidad: number;
+    costo: number;
+    subtotal: number;
+    descripcion: string | null;
+  }[];
+}
+
+/** COBRO_CREDITO no es un movimiento de caja: es un abono de fiado en efectivo. */
+export type ClaseMovimientoCaja = "INGRESO" | "EGRESO" | "COBRO_CREDITO";
+
+export interface ReporteMovimientosCaja {
+  /**
+   * Siempre de los dos sentidos y del período completo, aunque haya filtro
+   * puesto: si no, el neto mentiría.
+   */
+  totales: {
+    entradas: number;
+    salidas: number;
+    neto: number;
+    movimientos: number;
+    cobrosCredito: number;
+  };
+  items: {
+    /** OJO: colisiona entre clases (dos tablas distintas). Ver la key de la lista. */
+    id: number;
+    clase: ClaseMovimientoCaja;
+    fecha: string;
+    concepto: string;
+    detalle: string | null;
+    usuario: string | null;
+    /** El turno (caja) al que pertenece. */
+    turnoId: number;
+    /** Siempre positivo: el signo lo da `clase`. */
+    monto: number;
+  }[];
+  pagina: PaginaMeta;
+}
+
+/** Lo que salió del mostrador en un turno, agrupado por categoría. */
+export interface ReporteCierreProductos {
+  categorias: {
+    nombre: string;
+    unidades: number;
+    total: number;
+    items: { nombre: string; cantidad: number; precio: number; total: number }[];
+  }[];
+  unidades: number;
+  total: number;
+  /** Productos DISTINTOS, no suma de unidades. */
+  lineas: number;
+}

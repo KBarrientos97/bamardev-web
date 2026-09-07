@@ -13,7 +13,7 @@ import {
   Select,
 } from "../../components/ui";
 import { api } from "../../lib/api";
-import { fmtHora, fmtMoney } from "../../lib/format";
+import { fmtHora, fmtMoney, fmtNum } from "../../lib/format";
 import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
 import type { Caja } from "../../types";
@@ -48,6 +48,7 @@ export default function PantallaCierre({
   const [error, setError] = useState("");
   const [enviando, setEnviando] = useState(false);
   const [movimientoAbierto, setMovimientoAbierto] = useState(false);
+  const [viendoProductos, setViendoProductos] = useState(false);
 
   const r = resumen.datos;
   /**
@@ -202,6 +203,16 @@ export default function PantallaCierre({
                 label="Efectivo contado"
                 hint="Contá los billetes y monedas que hay en la caja"
               >
+                <button
+                  type="button"
+                  onClick={() => setViendoProductos(true)}
+                  className="mb-2 flex w-full items-center gap-2 rounded-xl border border-borde px-3.5 py-2.5 text-left text-[13px] font-semibold text-texto-2 hover:bg-muted"
+                >
+                  <Icon name="box" size={17} />
+                  <span className="flex-1">Ver qué salió del mostrador</span>
+                  <Icon name="chevronRight" size={16} />
+                </button>
+
                 <div className="mb-2">
                   <CorteDeCaja
                     titulo="Contar billete por billete"
@@ -268,6 +279,10 @@ export default function PantallaCierre({
           {enviando ? "Cerrando…" : "Cerrar caja"}
         </Boton>
       </div>
+
+      {viendoProductos && (
+        <ProductosDelTurno cajaId={caja.id} onClose={() => setViendoProductos(false)} />
+      )}
 
       {movimientoAbierto && (
         <DialogoMovimiento
@@ -500,5 +515,127 @@ export function CierreOk({ caja, onSalir }: { caja: Caja; onSalir: () => void })
         </Boton>
       </div>
     </div>
+  );
+}
+
+/**
+ * Lo que salió del mostrador en el turno, agrupado por categoría.
+ *
+ * El arqueo dice cuánta plata entró; esto dice qué se vendió para que entrara.
+ * Va acá y no en Reportes a propósito: el cajero que cierra su turno tiene que
+ * poder verlo sin el módulo de reportes, que se vende aparte.
+ *
+ * Ya viene agrupado y ordenado del backend: no se reordena acá.
+ */
+function ProductosDelTurno({
+  cajaId,
+  onClose,
+}: {
+  cajaId: number;
+  onClose: () => void;
+}) {
+  const datos = useApi(() => api.reporteCierreProductos(cajaId), [cajaId]);
+  const d = datos.datos;
+
+  /** Una fila por producto, con su categoría, para que la planilla se pueda ordenar. */
+  function exportar() {
+    if (!d) return;
+    const filas = d.categorias.flatMap((c) =>
+      c.items.map((i) => ({
+        Categoria: c.nombre,
+        Producto: i.nombre,
+        Cantidad: i.cantidad,
+        Precio: i.precio,
+        Total: i.total,
+      })),
+    );
+    if (filas.length === 0) return;
+
+    const cols = ["Categoria", "Producto", "Cantidad", "Precio", "Total"];
+    const esc = (v: unknown) => {
+      const t = v === null || v === undefined ? "" : String(v);
+      // Coma decimal para que Excel es-BO sume la columna, y apóstrofe si la
+      // celda arranca como fórmula (ver bajarCsv en Reportes).
+      const num = typeof v === "number" ? String(v).replace(".", ",") : t;
+      const seguro =
+        num.length > 0 && "=+@-".includes(num[0]) && !/^-?[\d.,]+$/.test(num)
+          ? `'${num}`
+          : num;
+      return `"${seguro.replace(/"/g, '""')}"`;
+    };
+    const csv = [
+      cols.map(esc).join(";"),
+      ...filas.map((f) => cols.map((c) => esc(f[c as keyof typeof f])).join(";")),
+    ].join("\r\n");
+
+    const url = URL.createObjectURL(
+      new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" }),
+    );
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `productos-turno-${cajaId}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  return (
+    <Modal
+      abierto
+      titulo="Productos vendidos"
+      subtitulo={`Turno #${cajaId}`}
+      onClose={onClose}
+      acciones={
+        d && d.lineas > 0 ? (
+          <Boton variante="ghost" icono="download" onClick={exportar}>
+            Exportar
+          </Boton>
+        ) : undefined
+      }
+    >
+      <div className="space-y-3">
+        <ErrorMsg>{datos.error}</ErrorMsg>
+        {datos.cargando ? (
+          <Cargando />
+        ) : !d || d.lineas === 0 ? (
+          <p className="py-6 text-center text-[13px] text-texto-3">
+            En este turno todavía no se vendió nada.
+          </p>
+        ) : (
+          <>
+            <div className="flex justify-between rounded-xl bg-muted px-3.5 py-2.5 text-[13px]">
+              <span className="text-texto-2">
+                {fmtNum(d.unidades, 2)} unidades · {fmtNum(d.lineas)}{" "}
+                {d.lineas === 1 ? "producto" : "productos"}
+              </span>
+              <span className="font-bold text-texto">{fmtMoney(d.total)}</span>
+            </div>
+
+            {d.categorias.map((c) => (
+              <div key={c.nombre}>
+                <div className="flex items-baseline justify-between">
+                  <h4 className="text-[13px] font-bold text-texto">{c.nombre}</h4>
+                  <span className="text-xs text-texto-3">
+                    {fmtNum(c.unidades, 2)} u · {fmtMoney(c.total)}
+                  </span>
+                </div>
+                <ul className="mt-1 divide-y divide-borde-soft">
+                  {c.items.map((i) => (
+                    <li key={i.nombre} className="flex items-center gap-2 py-1.5 text-[13px]">
+                      <span className="min-w-0 flex-1 truncate text-texto-2">{i.nombre}</span>
+                      <span className="shrink-0 text-texto-3">
+                        {fmtNum(i.cantidad, 2)} × {fmtMoney(i.precio)}
+                      </span>
+                      <span className="w-20 shrink-0 text-right font-bold text-texto">
+                        {fmtMoney(i.total)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </>
+        )}
+      </div>
+    </Modal>
   );
 }
