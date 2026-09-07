@@ -84,7 +84,7 @@ export default function ComprobanteCredito({
       <article
         id="area-impresion"
         ref={ticket}
-        className="mx-auto max-w-[320px] space-y-3 bg-white p-4 text-[13px] text-texto print:max-w-none print:p-0"
+        className="mx-auto max-w-[320px] space-y-3 bg-white p-4 text-[13px] text-texto"
       >
         <header className="border-b border-dashed border-borde pb-3 text-center">
           <h3 className="text-base font-extrabold">{negocio?.nombre ?? "BamarDev"}</h3>
