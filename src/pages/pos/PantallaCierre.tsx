@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import CorteDeCaja from "../../components/CorteDeCaja";
 import { parsearMontoO } from "../../lib/dinero";
 import { Icon } from "../../components/Icon";
 import {
@@ -16,6 +17,20 @@ import { fmtHora, fmtMoney } from "../../lib/format";
 import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
 import type { Caja } from "../../types";
+
+/** Motivo libre: es el único que pide escribir la descripción y el sentido. */
+const OTRO = "__otro__";
+
+/**
+ * Los movimientos de efectivo que de verdad pasan en un turno. El motivo decide
+ * el sentido: nadie ingresa un "pago a proveedor".
+ */
+const MOTIVOS: { etiqueta: string; tipo: "INGRESO" | "EGRESO" }[] = [
+  { etiqueta: "Sencillo", tipo: "INGRESO" },
+  { etiqueta: "Devolución", tipo: "EGRESO" },
+  { etiqueta: "Pago a proveedor", tipo: "EGRESO" },
+  { etiqueta: "Retiro", tipo: "EGRESO" },
+];
 
 export default function PantallaCierre({
   caja,
@@ -35,11 +50,24 @@ export default function PantallaCierre({
   const [movimientoAbierto, setMovimientoAbierto] = useState(false);
 
   const r = resumen.datos;
+  /**
+   * El conteo arranca con el saldo esperado ya puesto: acelera el arqueo de la
+   * mayoría de los turnos, donde la caja cuadra. Si el cajero ya tecleó algo no
+   * se pisa — corregirle el número mientras cuenta sería peor que no ayudarlo.
+   */
+  const [precargado, setPrecargado] = useState(false);
   const esperado = r?.saldoEsperado ?? 0;
+  useEffect(() => {
+    // Sólo una vez, y sólo si el cajero todavía no escribió nada.
+    if (precargado || !r || contado !== "") return;
+    setContado(String(esperado));
+    setPrecargado(true);
+  }, [r, esperado, contado, precargado]);
   // Con parseo de coma: en Bolivia se teclea "150,50" y Number() da NaN, que
   // caía a 0 sin avisar — el conteo del cierre quedaba en cero y la diferencia
   // mostraba un faltante enorme que nadie había cometido.
   const contadoNum = parsearMontoO(contado, NaN);
+
   // La diferencia sólo tiene sentido una vez que se contó: mostrarla en 0
   // antes de teclear haría parecer que la caja ya cuadra. Se valida igual
   // que la apertura: el `min="0"` del input es sólo una pista del navegador
@@ -174,6 +202,12 @@ export default function PantallaCierre({
                 label="Efectivo contado"
                 hint="Contá los billetes y monedas que hay en la caja"
               >
+                <div className="mb-2">
+                  <CorteDeCaja
+                    titulo="Contar billete por billete"
+                    onTotal={(t) => setContado(t > 0 ? String(t) : "")}
+                  />
+                </div>
                 <Input
                   type="number"
                   inputMode="decimal"
@@ -283,6 +317,7 @@ function DialogoMovimiento({
   onGuardado: () => void;
 }) {
   const [tipo, setTipo] = useState<"INGRESO" | "EGRESO">("EGRESO");
+  const [motivo, setMotivo] = useState<string>(OTRO);
   const [monto, setMonto] = useState("");
   const [descripcion, setDescripcion] = useState("");
   const [error, setError] = useState("");
@@ -328,15 +363,66 @@ function DialogoMovimiento({
       }
     >
       <div className="space-y-3">
-        <Campo label="Tipo">
-          <Select
-            value={tipo}
-            onChange={(e) => setTipo(e.target.value as "INGRESO" | "EGRESO")}
+        {/* Los motivos de siempre, que además deciden el sentido: elegir
+            "Sencillo" y tener que marcar aparte que es un ingreso es pedirle al
+            cajero que traduzca algo que el motivo ya dice. */}
+        <Campo label="Motivo">
+          <div className="flex flex-wrap gap-2">
+            {MOTIVOS.map((m) => (
+              <button
+                key={m.etiqueta}
+                type="button"
+                onClick={() => {
+                  setMotivo(m.etiqueta);
+                  setTipo(m.tipo);
+                  // Con un motivo de la lista la descripción es la etiqueta:
+                  // no hay nada más que escribir.
+                  setDescripcion(m.etiqueta);
+                }}
+                className={`rounded-xl px-3 py-2 text-[13px] font-semibold transition-colors ${
+                  motivo === m.etiqueta
+                    ? "bg-primary text-white"
+                    : "border border-borde bg-white text-texto-2 hover:bg-muted"
+                }`}
+              >
+                {m.etiqueta}
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={() => {
+                setMotivo(OTRO);
+                setDescripcion("");
+              }}
+              className={`rounded-xl px-3 py-2 text-[13px] font-semibold transition-colors ${
+                motivo === OTRO
+                  ? "bg-primary text-white"
+                  : "border border-borde bg-white text-texto-2 hover:bg-muted"
+              }`}
+            >
+              Otro
+            </button>
+          </div>
+          <p
+            className={`mt-1.5 text-xs font-semibold ${
+              tipo === "INGRESO" ? "text-primary-700" : "text-danger-text"
+            }`}
           >
-            <option value="EGRESO">Egreso — sale plata de la caja</option>
-            <option value="INGRESO">Ingreso — entra plata a la caja</option>
-          </Select>
+            {tipo === "INGRESO" ? "Entra plata a la caja" : "Sale plata de la caja"}
+          </p>
         </Campo>
+
+        {motivo === OTRO && (
+          <Campo label="Tipo">
+            <Select
+              value={tipo}
+              onChange={(e) => setTipo(e.target.value as "INGRESO" | "EGRESO")}
+            >
+              <option value="EGRESO">Egreso — sale plata de la caja</option>
+              <option value="INGRESO">Ingreso — entra plata a la caja</option>
+            </Select>
+          </Campo>
+        )}
 
         <Campo label="Monto">
           <Input
@@ -351,13 +437,17 @@ function DialogoMovimiento({
           />
         </Campo>
 
-        <Campo label="Descripción">
-          <Input
-            value={descripcion}
-            onChange={(e) => setDescripcion(e.target.value)}
-            placeholder={tipo === "EGRESO" ? "Ej. compra de hielo" : "Ej. vuelto del dueño"}
-          />
-        </Campo>
+        {/* Con un motivo de la lista la descripción ya está resuelta; sólo
+            "Otro" obliga a escribirla. */}
+        {motivo === OTRO && (
+          <Campo label="Descripción">
+            <Input
+              value={descripcion}
+              onChange={(e) => setDescripcion(e.target.value)}
+              placeholder={tipo === "EGRESO" ? "Ej. compra de hielo" : "Ej. vuelto del dueño"}
+            />
+          </Campo>
+        )}
 
         <ErrorMsg>{error}</ErrorMsg>
       </div>
