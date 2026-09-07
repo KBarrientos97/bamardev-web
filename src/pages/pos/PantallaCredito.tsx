@@ -500,7 +500,12 @@ function PedirPinCredito({
     if (!/^\d{4,6}$/.test(pin)) return setError("El PIN son 4 a 6 dígitos.");
     if (pideUsuario && autorizador.trim().length < 3)
       return setError("Poné el usuario del encargado que autoriza.");
-    onFirmar(autorizador.trim(), pin);
+    // Cuando el que está en la caja YA puede supervisar, el campo de usuario ni
+    // se muestra: firma con el suyo. Sin esto viajaba vacío y el backend
+    // respondía con su mensaje de validación crudo ("autorizadorUsername must
+    // be longer than..."), así que un admin no podía autorizar su propio fiado.
+    const usuario = pideUsuario ? autorizador.trim() : (actual?.username ?? "");
+    onFirmar(usuario, pin);
   }
 
   return (
