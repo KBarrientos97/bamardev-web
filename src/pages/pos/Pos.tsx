@@ -206,11 +206,12 @@ export default function Pos() {
       <PantallaCierre
         caja={abierta}
         onAtras={() => setPantalla("venta")}
-        onCerrada={async () => {
-          // Se relee la caja para mostrar el arqueo con la diferencia que
-          // calculó el backend, no la que estimamos en pantalla.
-          const actual = await api.cajaActual().catch(() => null);
-          setCajaCerrada(actual?.caja ?? { ...abierta, estado: "CERRADA" });
+        onCerrada={(cerrada) => {
+          // La caja llega del propio cierre, con la diferencia y el monto que
+          // calculó el backend. Antes se releía con /caja/actual, que responde
+          // null justo despues de cerrar: caía al fallback y el resumen mostraba
+          // "Efectivo contado Bs 0,00" y la hora de cierre vacía.
+          setCajaCerrada(cerrada);
           setPantalla("cierreOk");
         }}
       />

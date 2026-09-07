@@ -39,7 +39,7 @@ export default function PantallaCierre({
 }: {
   caja: Caja;
   onAtras: () => void;
-  onCerrada: () => void;
+  onCerrada: (cerrada: Caja) => void;
 }) {
   const { incluye } = useAuth();
   const resumen = useApi(() => api.resumenCaja(caja.id), [caja.id]);
@@ -86,11 +86,14 @@ export default function PantallaCierre({
       );
     setEnviando(true);
     try {
-      await api.cerrarCaja(caja.id, {
+      // Se pasa la caja que devuelve el cierre: es la unica fuente con los
+      // montos ya calculados por el backend. Releerla despues no sirve —
+      // /caja/actual responde null en cuanto la caja queda cerrada.
+      const cerrada = await api.cerrarCaja(caja.id, {
         montoCierre: contadoNum,
         ...(nota.trim() ? { notaCierre: nota.trim() } : {}),
       });
-      onCerrada();
+      onCerrada(cerrada);
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo cerrar la caja");
     } finally {
