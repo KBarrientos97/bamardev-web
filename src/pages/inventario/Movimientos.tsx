@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { parsearMonto } from "../../lib/dinero";
 import { contiene } from "../../lib/texto";
 import { Icon } from "../../components/Icon";
 import { Buscador, Chips, EncabezadoPagina } from "../../components/filtros";
@@ -21,6 +22,8 @@ import { useAuth } from "../../store/AuthContext";
 import type {
   Almacen,
   ArticuloMovimiento,
+  // El componente local se llama igual que el tipo: alias para no chocar.
+  DetalleMovimiento as LineaMovimiento,
   DetalleMovimientoInput,
   EstadoDocumento,
   Movimiento,
@@ -78,6 +81,12 @@ export default function Movimientos() {
   const [filtroTipo, setFiltroTipo] = useState<FiltroTipo>("todos");
   const [filtroEstado, setFiltroEstado] = useState<FiltroEstado>("todos");
   const [filtroOrigen, setFiltroOrigen] = useState<FiltroOrigen>("todos");
+  /**
+   * Arranca en HOY, como la app: en un local con movimientos diarios, abrir la
+   * pantalla y ver el histórico entero no sirve — lo que se busca es lo de esta
+   * jornada. Vacío = ver todo.
+   */
+  const [fecha, setFecha] = useState(isoDia(new Date()));
   const [detalleId, setDetalleId] = useState<number | null>(null);
   const [creando, setCreando] = useState(false);
   const [errorAccion, setErrorAccion] = useState("");
@@ -93,12 +102,13 @@ export default function Movimientos() {
         !contiene(m.descripcion, texto)
       )
         return false;
+      if (fecha && isoDia(new Date(m.fecha)) !== fecha) return false;
       if (filtroTipo !== "todos" && m.tipo !== filtroTipo) return false;
       if (filtroEstado !== "todos" && m.estado !== filtroEstado) return false;
       if (filtroOrigen !== "todos" && m.origen !== filtroOrigen) return false;
       return true;
     });
-  }, [lista, q, filtroTipo, filtroEstado, filtroOrigen]);
+  }, [lista, q, fecha, filtroTipo, filtroEstado, filtroOrigen]);
 
   const pendientes = lista.filter((m) => m.estado === "PENDIENTE").length;
 
@@ -136,6 +146,25 @@ export default function Movimientos() {
             onChange={setQ}
             placeholder="Buscar por comprobante o descripción"
           />
+        </div>
+
+        <div className="flex items-center gap-2">
+          <input
+            type="date"
+            value={fecha}
+            onChange={(e) => setFecha(e.target.value)}
+            className="rounded-xl border border-borde bg-white px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary-100"
+          />
+          <button
+            onClick={() => setFecha(fecha ? "" : isoDia(new Date()))}
+            className="rounded-xl border border-borde bg-white px-3 py-2 text-[13px] font-semibold text-texto-2 hover:bg-muted"
+          >
+            {fecha ? "Ver todo" : "Sólo hoy"}
+          </button>
+          <span className="text-xs text-texto-3">
+            {filtrados.length} {filtrados.length === 1 ? "movimiento" : "movimientos"}
+            {fecha ? "" : " en total"}
+          </span>
         </div>
         <Chips valor={filtroTipo} opciones={OPC_TIPO} onChange={setFiltroTipo} />
         <Chips valor={filtroEstado} opciones={opcionesEstado} onChange={setFiltroEstado} />
@@ -271,9 +300,40 @@ function DetalleMovimiento({
   );
   const [procesando, setProcesando] = useState(false);
   const [error, setError] = useState("");
+  /** Línea que se está editando, o "nueva" para agregar una. */
+  const [editandoLinea, setEditandoLinea] = useState<LineaMovimiento | "nueva" | null>(
+    null,
+  );
+  const [aBorrarLinea, setABorrarLinea] = useState<LineaMovimiento | null>(null);
 
   const m = mov.datos;
   const detalles = m?.detalles ?? [];
+  /**
+   * Sólo se editan las líneas de un movimiento PENDIENTE: uno aprobado ya movió
+   * el stock, y cambiarle una cantidad dejaría el inventario diciendo una cosa
+   * y el documento otra.
+   */
+  const editable = m?.estado === "PENDIENTE";
+
+  /** Artículos del almacén con su stock, para el tope de las salidas. */
+  const articulosAlmacen = useApi(
+    () => (m ? api.getArticulosMovimiento(m.almacen?.id) : Promise.resolve([])),
+    [m?.almacen?.id],
+  );
+
+  async function borrarLinea() {
+    if (!aBorrarLinea) return;
+    setError("");
+    try {
+      await api.eliminarDetalleMovimiento(aBorrarLinea.id);
+      setABorrarLinea(null);
+      mov.recargar();
+      onCambio();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo eliminar la línea");
+      setABorrarLinea(null);
+    }
+  }
   const total = detalles.reduce(
     (acc, d) => acc + (d.subtotal ?? d.cantidad * d.costo),
     0,
@@ -415,6 +475,28 @@ function DetalleMovimiento({
                           <td className="px-3.5 py-2.5 text-right font-bold text-texto">
                             {fmtMoney(d.subtotal ?? d.cantidad * d.costo)}
                           </td>
+                          {/* Editar y borrar sólo mientras está pendiente:
+                              después el stock ya se movió. */}
+                          {editable && (
+                            <td className="px-2 py-2.5">
+                              <div className="flex justify-end gap-1">
+                                <button
+                                  onClick={() => setEditandoLinea(d)}
+                                  aria-label={`Editar ${d.producto}`}
+                                  className="rounded-lg p-1.5 text-texto-3 hover:bg-muted hover:text-texto"
+                                >
+                                  <Icon name="edit" size={15} />
+                                </button>
+                                <button
+                                  onClick={() => setABorrarLinea(d)}
+                                  aria-label={`Quitar ${d.producto}`}
+                                  className="rounded-lg p-1.5 text-texto-3 hover:bg-danger-bg hover:text-danger-text"
+                                >
+                                  <Icon name="trash" size={15} />
+                                </button>
+                              </div>
+                            </td>
+                          )}
                         </tr>
                       ))}
                     </tbody>
@@ -426,10 +508,21 @@ function DetalleMovimiento({
                         <td className="px-3.5 py-2.5 text-right text-sm font-bold text-texto">
                           {fmtMoney(total)}
                         </td>
+                        {editable && <td />}
                       </tr>
                     </tfoot>
                   </table>
                 </div>
+              )}
+
+              {editable && (
+                <button
+                  onClick={() => setEditandoLinea("nueva")}
+                  className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-borde py-2.5 text-[13px] font-semibold text-texto-2 hover:bg-muted"
+                >
+                  <Icon name="plus" size={16} />
+                  Agregar artículo
+                </button>
               )}
             </div>
 
@@ -485,7 +578,202 @@ function DetalleMovimiento({
         onCancel={() => setConfirmando(null)}
         onOk={ejecutar}
       />
+
+      {editandoLinea && m && (
+        <FormLineaMovimiento
+          movimiento={m}
+          linea={editandoLinea === "nueva" ? null : editandoLinea}
+          articulos={articulosAlmacen.datos ?? []}
+          otrasLineas={detalles.filter(
+            (d) => editandoLinea === "nueva" || d.id !== editandoLinea.id,
+          )}
+          onClose={() => setEditandoLinea(null)}
+          onGuardado={() => {
+            setEditandoLinea(null);
+            mov.recargar();
+            onCambio();
+          }}
+        />
+      )}
+
+      <Confirmar
+        abierto={!!aBorrarLinea}
+        titulo="Quitar artículo"
+        texto={`¿Sacar "${aBorrarLinea?.producto}" de este movimiento?`}
+        etiquetaOk="Quitar"
+        peligroso
+        onCancel={() => setABorrarLinea(null)}
+        onOk={borrarLinea}
+      />
     </>
+  );
+}
+
+/**
+ * Alta y edición de una línea de un movimiento ya guardado.
+ *
+ * En una SALIDA el tope es el stock del artículo en ese almacén menos lo que ya
+ * comprometen las otras líneas del mismo movimiento. Se valida acá y con el
+ * disponible a la vista: sin esto el error llegaba recién al aprobar, cuando el
+ * dueño ya había cargado diez líneas y no sabía cuál era la que sobraba.
+ * Es lo que hacen `AgregarArticuloMovimientoFragment` y su par de edición.
+ */
+function FormLineaMovimiento({
+  movimiento: m,
+  linea,
+  articulos,
+  otrasLineas,
+  onClose,
+  onGuardado,
+}: {
+  movimiento: Movimiento;
+  /** null = alta. */
+  linea: LineaMovimiento | null;
+  articulos: ArticuloMovimiento[];
+  /** Las demás líneas del movimiento: lo que ya tienen comprometido. */
+  otrasLineas: LineaMovimiento[];
+  onClose: () => void;
+  onGuardado: () => void;
+}) {
+  const esEdicion = !!linea;
+  const [productoId, setProductoId] = useState(String(linea?.productoId ?? ""));
+  const [cantidad, setCantidad] = useState(linea ? String(linea.cantidad) : "");
+  const [costo, setCosto] = useState(linea ? String(linea.costo) : "");
+  const [descripcion, setDescripcion] = useState(linea?.descripcion ?? "");
+  const [error, setError] = useState("");
+  const [guardando, setGuardando] = useState(false);
+
+  const elegido = articulos.find((a) => String(a.id) === productoId);
+  const esSalida = m.tipo === "SALIDA";
+
+  /**
+   * Cuánto se puede sacar de este artículo. Descuenta lo que ya comprometen
+   * las otras líneas: cargar dos veces el mismo producto sumaba más de lo que
+   * hay y el rechazo aparecía recién al aprobar.
+   */
+  const comprometido = otrasLineas
+    .filter((d) => String(d.productoId) === productoId)
+    .reduce((acc, d) => acc + d.cantidad, 0);
+  const disponible = elegido ? Math.max(0, elegido.stock - comprometido) : null;
+
+  async function guardar() {
+    if (guardando) return;
+    setError("");
+
+    if (!productoId) return setError("Elegí un artículo.");
+    const cant = parsearMonto(cantidad);
+    if (cant === null || cant <= 0) return setError("La cantidad tiene que ser mayor a 0.");
+    const cst = costo === "" ? 0 : parsearMonto(costo);
+    if (cst === null || cst < 0) return setError("El costo no puede ser negativo.");
+
+    // El artículo puede haber quedado fuera de la lista (deshabilitado o dado
+    // de baja): ahí no se bloquea, decide el backend.
+    if (esSalida && disponible !== null && cant > disponible) {
+      return setError(
+        comprometido > 0
+          ? `Sólo quedan ${fmtNum(disponible, 2)} disponibles (ya hay ${fmtNum(comprometido, 2)} en otra línea de este movimiento).`
+          : `No hay stock suficiente: quedan ${fmtNum(disponible, 2)}.`,
+      );
+    }
+
+    setGuardando(true);
+    try {
+      const input = {
+        productoId: Number(productoId),
+        cantidad: cant,
+        costo: cst,
+        descripcion: descripcion.trim(),
+      };
+      if (linea) await api.actualizarDetalleMovimiento(linea.id, input);
+      else await api.agregarDetalleMovimiento(m.id, input);
+      onGuardado();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo guardar la línea");
+    } finally {
+      setGuardando(false);
+    }
+  }
+
+  return (
+    <Modal
+      abierto
+      titulo={esEdicion ? "Editar artículo" : "Agregar artículo"}
+      onClose={onClose}
+      acciones={
+        <>
+          <Boton variante="ghost" onClick={onClose}>
+            Cancelar
+          </Boton>
+          <Boton onClick={guardar} disabled={guardando}>
+            {guardando ? "Guardando…" : "Guardar"}
+          </Boton>
+        </>
+      }
+    >
+      <div className="space-y-3">
+        <Campo label="Artículo">
+          <Select
+            value={productoId}
+            onChange={(e) => {
+              const id = e.target.value;
+              setProductoId(id);
+              // El costo del artículo se autocompleta SIEMPRE, también en 0:
+              // saltearlo dejaba pegado el costo del artículo anterior.
+              const a = articulos.find((x) => String(x.id) === id);
+              if (a && !esEdicion) setCosto(String(a.costo ?? 0));
+            }}
+            // Cambiar de artículo en una línea ya guardada obligaría a
+            // revalidar el stock de dos productos a la vez; se edita la
+            // cantidad o se quita la línea y se agrega otra.
+            disabled={esEdicion}
+          >
+            <option value="">Elegí un artículo</option>
+            {articulos.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.nombre} · {fmtNum(a.stock, 2)} en stock
+              </option>
+            ))}
+          </Select>
+        </Campo>
+
+        <div className="grid grid-cols-2 gap-3">
+          <Campo
+            label="Cantidad"
+            hint={
+              esSalida && disponible !== null
+                ? `Disponible: ${fmtNum(disponible, 2)}`
+                : undefined
+            }
+          >
+            <Input
+              type="number"
+              inputMode="decimal"
+              step="0.001"
+              min="0"
+              value={cantidad}
+              onChange={(e) => setCantidad(e.target.value)}
+              autoFocus
+            />
+          </Campo>
+          <Campo label="Costo unitario">
+            <Input
+              type="number"
+              inputMode="decimal"
+              step="0.01"
+              min="0"
+              value={costo}
+              onChange={(e) => setCosto(e.target.value)}
+            />
+          </Campo>
+        </div>
+
+        <Campo label="Detalle" hint="Opcional">
+          <Input value={descripcion} onChange={(e) => setDescripcion(e.target.value)} />
+        </Campo>
+
+        <ErrorMsg>{error}</ErrorMsg>
+      </div>
+    </Modal>
   );
 }
 
@@ -591,12 +879,27 @@ function FormMovimientoCuerpo({
 
     const detalles: DetalleMovimientoInput[] = [];
     for (const l of lineas) {
-      const cantidad = Number(l.cantidad);
-      if (!Number.isFinite(cantidad) || cantidad <= 0)
+      const cantidad = parsearMonto(String(l.cantidad));
+      if (cantidad === null || cantidad <= 0)
         return setError(`La cantidad de "${l.nombre}" tiene que ser mayor a cero.`);
-      const costo = Number(l.costo);
-      if (!Number.isFinite(costo) || costo < 0)
+      const costo = l.costo === "" ? 0 : parsearMonto(String(l.costo));
+      if (costo === null || costo < 0)
         return setError(`El costo de "${l.nombre}" tiene que ser un número válido.`);
+
+      // En una SALIDA no se puede sacar más de lo que hay. Se avisa acá y no
+      // al aprobar: con diez líneas cargadas, un rechazo del backend no dice
+      // cuál de todas es la que sobra.
+      if (tipo === "SALIDA") {
+        const art = (articulos.datos ?? []).find((a) => a.id === l.articuloId);
+        // Si el artículo ya no está en la lista (deshabilitado o dado de baja)
+        // no se bloquea: decide el backend.
+        if (art && cantidad > art.stock) {
+          return setError(
+            `No hay stock suficiente de "${l.nombre}": quedan ${fmtNum(art.stock, 2)}.`,
+          );
+        }
+      }
+
       detalles.push({ productoId: l.articuloId, cantidad, costo });
     }
 
