@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { CargarQrCobro } from "../../components/QrCobro";
 import { Icon } from "../../components/Icon";
 import { Boton, Campo, ErrorMsg, Input } from "../../components/ui";
 import { api } from "../../lib/api";
@@ -85,6 +86,8 @@ export default function AperturaCaja({ onAbierta }: { onAbierta: () => void }) {
               placeholder="Ej. turno mañana"
             />
           </Campo>
+
+          <CargarQrCobro />
 
           <ErrorMsg>{error}</ErrorMsg>
 

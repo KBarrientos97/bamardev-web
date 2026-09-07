@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { Icon } from "../../components/Icon";
+import { QrParaCobrar } from "../../components/QrCobro";
 import { Chips } from "../../components/filtros";
 import {
   Badge,
@@ -407,15 +408,26 @@ function DialogoCobroEntrega({
   onConfirmar: (pagos: PagoEntrega[]) => void;
 }) {
   const { negocio } = useAuth();
-  const permiteQr = tieneFeature(negocio?.features, "pago_qr_mixto");
-
   const efectivo = formasPago.find((f) => f.nombre.toLowerCase() === "efectivo");
   const qr = formasPago.find((f) => f.nombre.toLowerCase() === "qr");
+  // El plan tiene que incluirlo Y la forma de pago tiene que existir: ofrecer
+  // el método sin ella termina en un cobro que el backend rechaza, con el
+  // cliente esperando en la puerta.
+  const permiteQr = tieneFeature(negocio?.features, "pago_qr_mixto") && !!qr;
 
   const [metodo, setMetodo] = useState<"EFECTIVO" | "QR" | "MIXTO">("EFECTIVO");
   const [recibido, setRecibido] = useState("");
   const [montoQr, setMontoQr] = useState("");
   const [error, setError] = useState("");
+  // El repartidor cobra fuera del local: es donde MÁS hace falta confirmar que
+  // la transferencia llegó, porque nadie más lo va a mirar por él.
+  const [qrConfirmado, setQrConfirmado] = useState(false);
+
+  function elegirMetodo(m: "EFECTIVO" | "QR" | "MIXTO") {
+    setMetodo(m);
+    setQrConfirmado(false);
+    setError("");
+  }
 
   const recibidoNum = Number(recibido) || 0;
   const qrNum = Number(montoQr) || 0;
@@ -435,11 +447,13 @@ function DialogoCobroEntrega({
     }
     if (metodo === "QR") {
       if (!qr) return setError("Falta la forma de pago QR.");
+      if (!qrConfirmado) return setError("Confirmá que el pago por QR llegó.");
       return onConfirmar([{ formaPagoId: qr.id, monto: total }]);
     }
     if (!efectivo || !qr) return setError("Faltan formas de pago para cobrar mixto.");
     if (qrNum <= 0) return setError("Poné cuánto se paga por QR.");
     if (qrNum >= aPedirEnMano) return setError("Si el QR cubre todo, cobrá con el método QR.");
+    if (!qrConfirmado) return setError("Confirmá que el pago por QR llegó.");
     if (recibidoNum < efectivoEnMano) return setError("El efectivo no cubre lo que falta.");
     onConfirmar([
       { formaPagoId: qr.id, monto: qrNum },
@@ -490,7 +504,7 @@ function DialogoCobroEntrega({
           {(["EFECTIVO", "QR", "MIXTO"] as const).map((m) => (
             <button
               key={m}
-              onClick={() => setMetodo(m)}
+              onClick={() => elegirMetodo(m)}
               disabled={m !== "EFECTIVO" && !permiteQr}
               className={`rounded-xl border px-3 py-2.5 text-[13px] font-semibold transition-colors disabled:opacity-40 ${
                 metodo === m
@@ -511,9 +525,22 @@ function DialogoCobroEntrega({
               step="0.01"
               min="0"
               value={montoQr}
-              onChange={(e) => setMontoQr(e.target.value)}
+              onChange={(e) => {
+                setMontoQr(e.target.value);
+                setQrConfirmado(false);
+              }}
             />
           </Campo>
+        )}
+
+        {(metodo === "QR" || (metodo === "MIXTO" && qrNum > 0)) && (
+          <div className="rounded-xl border border-borde bg-white p-4">
+            <QrParaCobrar
+              confirmado={qrConfirmado}
+              onConfirmar={() => setQrConfirmado(true)}
+              monto={fmtMoney(metodo === "QR" ? aPedirEnMano : qrNum)}
+            />
+          </div>
         )}
 
         {metodo !== "QR" && (

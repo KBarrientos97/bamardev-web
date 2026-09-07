@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Icon } from "../../components/Icon";
+import IconoProducto from "../../components/IconoProducto";
 import { Badge, Boton, Input, Modal, Vacio } from "../../components/ui";
 import { fmtMoney, fmtNum } from "../../lib/format";
 import { useAuth } from "../../store/AuthContext";
@@ -262,9 +263,12 @@ function TarjetaVenta({
         className="card flex h-full w-full flex-col p-3 text-left transition-shadow enabled:hover:shadow-md disabled:opacity-50"
       >
         <div className="flex items-start justify-between gap-1.5">
-          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary-50 text-primary-700">
-            <Icon name={p.tipoProducto === "COMPUESTO" ? "package" : "archive"} size={19} />
-          </span>
+          <IconoProducto
+            nombre={p.nombre}
+            icono={p.icono}
+            categoria={p.categoria?.nombre}
+            size={40}
+          />
           {agotado && <Badge tono="rojo">Agotado</Badge>}
           {!agotado && controlaStock && p.stockTotal <= p.stockMinimo && (
             <Badge tono="amarillo">{fmtNum(p.stockTotal)}</Badge>

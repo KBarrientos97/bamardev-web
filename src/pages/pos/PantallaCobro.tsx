@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { Icon } from "../../components/Icon";
+import { QrParaCobrar } from "../../components/QrCobro";
 import { Boton, Campo, ErrorMsg, Input } from "../../components/ui";
 import { restoEnEfectivo, vuelto } from "../../lib/dinero";
 import { fmtMoney } from "../../lib/format";
@@ -52,19 +53,35 @@ export default function PantallaCobro({
   error: string;
 }) {
   const { incluye } = useAuth();
-  // El plan puede no incluir QR ni pago mixto: en ese caso sólo hay efectivo.
-  const permiteQr = incluye("pago_qr_mixto");
-
   const formaEfectivo = buscarForma(formasPago, "Efectivo");
   const formaQr = buscarForma(formasPago, "QR");
+
+  // Dos condiciones, como en la app: que el plan incluya QR/mixto y que el
+  // negocio TENGA la forma de pago dada de alta. Normalmente van juntas, pero
+  // si faltara la segunda, ofrecer el método termina en un cobro que el backend
+  // rechaza con el cliente enfrente.
+  const permiteQr = incluye("pago_qr_mixto") && !!formaQr;
 
   const [metodo, setMetodo] = useState<Metodo>("EFECTIVO");
   const [recibido, setRecibido] = useState("");
   const [montoQr, setMontoQr] = useState("");
   const [errorLocal, setErrorLocal] = useState("");
+  /**
+   * El cajero vio el pago acreditado en su banco. Nadie verifica la
+   * transferencia por nosotros: sin este paso la venta quedaba registrada como
+   * cobrada por el solo hecho de haber elegido QR. Igual que en la app.
+   */
+  const [qrConfirmado, setQrConfirmado] = useState(false);
 
   const recibidoNum = Number(recibido) || 0;
   const qrNum = Number(montoQr) || 0;
+
+  /** Cambiar de método o el monto del QR obliga a confirmar de nuevo. */
+  function elegirMetodo(m: Metodo) {
+    setMetodo(m);
+    setQrConfirmado(false);
+    setErrorLocal("");
+  }
 
   // En mixto, el QR cubre una parte y el efectivo el resto.
   const aCubrirEnEfectivo = metodo === "MIXTO" ? restoEnEfectivo(total, qrNum) : total;
@@ -88,6 +105,8 @@ export default function PantallaCobro({
 
     if (metodo === "QR") {
       if (!formaQr) return setErrorLocal("El negocio no tiene cargada la forma de pago QR.");
+      if (!qrConfirmado)
+        return setErrorLocal("Confirmá que el pago por QR llegó antes de cobrar.");
       return onConfirmar([{ formaPagoId: formaQr.id, monto: total }]);
     }
 
@@ -96,6 +115,8 @@ export default function PantallaCobro({
       return setErrorLocal("Faltan formas de pago cargadas para cobrar mixto.");
     if (qrNum <= 0) return setErrorLocal("Poné cuánto se paga por QR.");
     if (qrNum >= total) return setErrorLocal("Si el QR cubre todo, cobrá con el método QR.");
+    if (!qrConfirmado)
+      return setErrorLocal("Confirmá que el pago por QR llegó antes de cobrar.");
     if (recibidoNum < aCubrirEnEfectivo)
       return setErrorLocal("El efectivo recibido no cubre lo que falta.");
 
@@ -137,36 +158,53 @@ export default function PantallaCobro({
               activo={metodo === "EFECTIVO"}
               icono="dollar"
               label="Efectivo"
-              onClick={() => setMetodo("EFECTIVO")}
+              onClick={() => elegirMetodo("EFECTIVO")}
             />
             <BotonMetodo
               activo={metodo === "QR"}
               icono="qr"
               label="QR"
-              onClick={() => setMetodo("QR")}
+              onClick={() => elegirMetodo("QR")}
             />
             <BotonMetodo
               activo={metodo === "MIXTO"}
               icono="swap"
               label="Mixto"
-              onClick={() => setMetodo("MIXTO")}
+              onClick={() => elegirMetodo("MIXTO")}
             />
           </div>
         )}
 
         {metodo === "MIXTO" && (
-          <Campo label="Monto pagado por QR" hint="El resto se cobra en efectivo">
-            <Input
-              type="number"
-              inputMode="decimal"
-              step="0.01"
-              min="0"
-              value={montoQr}
-              onChange={(e) => setMontoQr(e.target.value)}
-              placeholder="0,00"
-              className="text-lg font-bold"
-            />
-          </Campo>
+          <>
+            <Campo label="Monto pagado por QR" hint="El resto se cobra en efectivo">
+              <Input
+                type="number"
+                inputMode="decimal"
+                step="0.01"
+                min="0"
+                value={montoQr}
+                onChange={(e) => {
+                  setMontoQr(e.target.value);
+                  // Cambiar el monto invalida lo confirmado: lo que entró al
+                  // banco ya no es lo que dice la pantalla.
+                  setQrConfirmado(false);
+                }}
+                placeholder="0,00"
+                className="text-lg font-bold"
+              />
+            </Campo>
+
+            {qrNum > 0 && (
+              <div className="rounded-2xl border border-borde bg-white p-5">
+                <QrParaCobrar
+                  confirmado={qrConfirmado}
+                  onConfirmar={() => setQrConfirmado(true)}
+                  monto={fmtMoney(qrNum)}
+                />
+              </div>
+            )}
+          </>
         )}
 
         {metodo !== "QR" && (
@@ -221,16 +259,15 @@ export default function PantallaCobro({
         )}
 
         {metodo === "QR" && (
-          <div className="flex flex-col items-center rounded-2xl border border-borde bg-white p-6 text-center">
-            <span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary-50 text-primary-700">
-              <Icon name="qr" size={32} />
-            </span>
-            <p className="mt-3 text-sm font-semibold text-texto">
+          <div className="rounded-2xl border border-borde bg-white p-5">
+            <p className="mb-3 text-center text-sm font-semibold text-texto">
               Cobrá {fmtMoney(total)} por QR
             </p>
-            <p className="mt-1 text-[13px] text-texto-3">
-              Confirmá cuando veas el pago acreditado.
-            </p>
+            <QrParaCobrar
+              confirmado={qrConfirmado}
+              onConfirmar={() => setQrConfirmado(true)}
+              monto={fmtMoney(total)}
+            />
           </div>
         )}
 
