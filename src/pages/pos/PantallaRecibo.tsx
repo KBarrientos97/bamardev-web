@@ -8,6 +8,9 @@ import type { Venta } from "../../types";
  * Comprobante de la venta recién cobrada. Se imprime con el diálogo del
  * navegador: `print:` deja sólo el ticket, sin la barra ni los botones.
  */
+/** Separador de las líneas del ticket compartido. */
+const SALTO = "\n";
+
 export default function PantallaRecibo({
   venta,
   onNuevaVenta,
@@ -18,6 +21,40 @@ export default function PantallaRecibo({
   onHistorial: () => void;
 }) {
   const { negocio, incluye } = useAuth();
+
+  /**
+   * Compartir el ticket. La app manda una IMAGEN por WhatsApp; en el navegador
+   * el equivalente es `navigator.share`, que existe en móviles y casi en ningún
+   * escritorio — por eso el botón se muestra sólo si el equipo lo soporta.
+   *
+   * Se comparte TEXTO y no una imagen: rasterizar el ticket necesitaría una
+   * librería de canvas, y el texto llega igual al cliente y se puede copiar.
+   */
+  const puedeCompartir = typeof navigator !== "undefined" && !!navigator.share;
+
+  async function compartir() {
+    const lineas = [
+      negocio?.nombre ?? "BamarDev",
+      venta.comprobante ? `Comprobante ${venta.comprobante}` : "",
+      fmtFechaHora(venta.fecha),
+      "",
+      ...(venta.detalles ?? []).map(
+        (d) => `${fmtNum(d.cantidad, 2)} x ${d.producto} — ${fmtMoney(d.subtotal)}`,
+      ),
+      "",
+      `TOTAL: ${fmtMoney(venta.total)}`,
+    ].filter(Boolean);
+
+    try {
+      await navigator.share({
+        title: venta.comprobante ?? "Recibo",
+        text: lineas.join(SALTO),
+      });
+    } catch {
+      // El usuario canceló el diálogo del sistema: no es un error que mostrar.
+    }
+  }
+
   const detalles = venta.detalles ?? [];
   const pagos = venta.pagos ?? [];
   const enMesa = detalles.filter((d) => d.consumo === "MESA");
@@ -98,9 +135,19 @@ export default function PantallaRecibo({
 
       <div className="flex gap-2 border-t border-borde bg-white p-4 print:hidden">
         {incluye("recibo_pdf") && (
-          <Boton variante="ghost" icono="printer" onClick={() => window.print()}>
-            Imprimir
-          </Boton>
+          <>
+            <Boton variante="ghost" icono="printer" onClick={() => window.print()}>
+              Imprimir
+            </Boton>
+            {/* Sólo si el equipo sabe compartir: en un escritorio sin soporte
+                el botón abriría una nada. En el celular del local es lo que
+                manda el ticket por WhatsApp, como la app. */}
+            {puedeCompartir && (
+              <Boton variante="ghost" icono="arrowUpRight" onClick={compartir}>
+                Compartir
+              </Boton>
+            )}
+          </>
         )}
         <Boton variante="ghost" onClick={onHistorial}>
           Historial

@@ -107,6 +107,27 @@ function cerrarSesionVencida() {
   window.location.assign("/");
 }
 
+/**
+ * Cuánto se espera una respuesta antes de darla por perdida. El backend
+ * responde en decenas de ms; 20 s ya es una red que no está.
+ */
+const TIMEOUT_MS = 20_000;
+
+/**
+ * Qué decirle al cajero según por qué falló. "No se pudo conectar" para todo
+ * lo manda a revisar donde no es: no es lo mismo estar sin internet que tener
+ * el servidor caído durante un despliegue. Port de `ErroresRed.kt`.
+ */
+function mensajeDeRed(e: unknown): string {
+  if (e instanceof DOMException && e.name === "AbortError") {
+    return "El servidor está tardando demasiado. Probá de nuevo en un momento.";
+  }
+  if (typeof navigator !== "undefined" && navigator.onLine === false) {
+    return "Sin internet. Revisá la conexión del local.";
+  }
+  return "No se pudo conectar con el servidor. Puede estar reiniciándose: probá en un momento.";
+}
+
 /** Códigos con los que el backend marca un 403 de licencia (ver vigencia.ts). */
 const CODIGOS_LICENCIA = ["LICENCIA_VENCIDA", "LICENCIA_SUSPENDIDA"];
 
@@ -166,10 +187,16 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   // agrupados en PostHog cuentan como un problema y no como veinte.
   const donde = `${metodo} ${path.split("?")[0].replace(/\/\d+/g, "/:id")}`;
 
+  // Sin timeout, un fetch colgado deja el botón en "Registrando…" para
+  // siempre: el cajero no sabe si la venta entró y toca de nuevo.
+  const corte = new AbortController();
+  const alarma = setTimeout(() => corte.abort(), TIMEOUT_MS);
+
   let res: Response;
   try {
     res = await fetch(`${BASE}${path}`, {
       ...options,
+      signal: corte.signal,
       headers: {
         "Content-Type": "application/json",
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -180,7 +207,9 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     // Se cayó la red o el backend no responde. Es el error que más sufre el
     // local (wifi del negocio) y el que nunca deja rastro si no se reporta.
     reportarError(donde, e, { tipo: "red" });
-    throw new ApiError("No se pudo conectar con el servidor", 0);
+    throw new ApiError(mensajeDeRed(e), 0);
+  } finally {
+    clearTimeout(alarma);
   }
 
   if (res.status === 401 && !RUTAS_LOGIN.includes(path)) {
@@ -205,6 +234,12 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     if (res.status === 403 && CODIGOS_LICENCIA.includes(String(cuerpo.codigo))) {
       bloquearPorLicencia(cuerpo);
       throw new ApiError(mensaje, 403, cuerpo);
+    }
+
+    // 502/503/504 es el servidor no disponible, típico durante un despliegue:
+    // el cuerpo viene en HTML y el mensaje genérico no ayudaba a esperar.
+    if (res.status === 502 || res.status === 503 || res.status === 504) {
+      mensaje = "El servidor no está disponible en este momento. Probá en unos segundos.";
     }
 
     // Un 5xx es un bug nuestro; un 4xx suele ser una validación esperable

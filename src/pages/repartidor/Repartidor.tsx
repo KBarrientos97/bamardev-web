@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Icon } from "../../components/Icon";
 import { QrParaCobrar } from "../../components/QrCobro";
 import { Chips } from "../../components/filtros";
@@ -43,6 +43,29 @@ const VISTAS = [
 export default function Repartidor() {
   const { usuario } = useAuth();
   const entregas = useApi(() => api.getMisEntregas(), []);
+
+  /**
+   * Refresco cada minuto: un pedido recién asignado no aparecía hasta salir y
+   * volver a entrar, y el repartidor se quedaba esperando sin saber que ya
+   * tenía trabajo. Sólo con la pestaña visible — refrescar en segundo plano
+   * gasta datos del celular sin que nadie lo esté mirando.
+   */
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (document.visibilityState === "visible") entregas.recargar();
+    }, 60_000);
+    const alVolver = () => {
+      if (document.visibilityState === "visible") entregas.recargar();
+    };
+    document.addEventListener("visibilitychange", alVolver);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", alVolver);
+    };
+    // Sólo al montar: `recargar` es estable y volver a suscribirse en cada
+    // render dejaría timers colgados.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const formasPago = useApi(() => api.getFormasPago(), []);
 
   const [vista, setVista] = useState<Vista>("pendientes");
@@ -51,17 +74,37 @@ export default function Repartidor() {
 
   const lista = entregas.datos ?? [];
 
-  const { pendientes, entregadas, aRendir, cobradoEnvios } = useMemo(() => {
-    const pend = lista.filter((p) => p.estadoEntrega === "PENDIENTE");
-    const ent = lista.filter((p) => p.estadoEntrega === "ENTREGADO");
-    return {
-      pendientes: pend,
-      entregadas: ent,
-      // Lo que el repartidor le debe al negocio al cerrar el turno.
-      aRendir: ent.reduce((s, p) => s + (p.montoRendicion ?? 0), 0),
-      cobradoEnvios: ent.reduce((s, p) => s + p.tarifaEnvio, 0),
-    };
-  }, [lista]);
+  const { pendientes, entregadas, aRendir, cobradoEnvios, enEfectivo, porQr } =
+    useMemo(() => {
+      const pend = lista.filter((p) => p.estadoEntrega === "PENDIENTE");
+      const ent = lista.filter((p) => p.estadoEntrega === "ENTREGADO");
+
+      /**
+       * De lo que hay que rendir, cuánto es plata en mano y cuánto ya entró al
+       * banco. Es la diferencia que importa al cerrar el turno: lo cobrado por
+       * QR el repartidor no lo lleva encima, y contarlo junto con el efectivo
+       * le hacía parecer que le faltaba plata.
+       */
+      let efectivo = 0;
+      let qr = 0;
+      for (const p of ent) {
+        const monto = p.montoRendicion ?? 0;
+        if (monto <= 0) continue;
+        const formas = p.formasPago ?? [];
+        if (formas.some((f) => f.toLowerCase().includes("qr"))) qr += monto;
+        else efectivo += monto;
+      }
+
+      return {
+        pendientes: pend,
+        entregadas: ent,
+        // Lo que el repartidor le debe al negocio al cerrar el turno.
+        aRendir: ent.reduce((s, p) => s + (p.montoRendicion ?? 0), 0),
+        cobradoEnvios: ent.reduce((s, p) => s + p.tarifaEnvio, 0),
+        enEfectivo: efectivo,
+        porQr: qr,
+      };
+    }, [lista]);
 
   const mostradas = vista === "pendientes" ? pendientes : entregadas;
 
@@ -175,6 +218,21 @@ export default function Repartidor() {
               </p>
               <p className="mt-1 text-3xl font-extrabold">{fmtMoney(aRendir)}</p>
             </div>
+
+            {/* Lo cobrado por QR ya está en la cuenta del negocio: el
+                repartidor sólo entrega el efectivo. */}
+            {porQr > 0 && (
+              <dl className="grid grid-cols-2 gap-2">
+                <div className="rounded-xl bg-muted px-3 py-2.5">
+                  <dt className="text-xs text-texto-3">Efectivo en mano</dt>
+                  <dd className="text-[13px] font-bold text-texto">{fmtMoney(enEfectivo)}</dd>
+                </div>
+                <div className="rounded-xl bg-muted px-3 py-2.5">
+                  <dt className="text-xs text-texto-3">Ya cobrado por QR</dt>
+                  <dd className="text-[13px] font-bold text-texto">{fmtMoney(porQr)}</dd>
+                </div>
+              </dl>
+            )}
 
             <p className="rounded-xl bg-info-bg px-3.5 py-2.5 text-[13px] text-info-text">
               Las tarifas de envío ({fmtMoney(cobradoEnvios)}) son tuyas: no entran en la
