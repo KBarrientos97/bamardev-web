@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { Icon } from "../../components/Icon";
+import HistorialCostos from "../../components/HistorialCostos";
 import IconoProducto from "../../components/IconoProducto";
 import { Buscador, Chips, EncabezadoPagina } from "../../components/filtros";
 import {
@@ -30,10 +31,14 @@ import type { Categoria, Producto, ProductoInput, TipoProducto, UnidadMedida } f
 const TIPOS: Record<TipoProducto, { label: string; tono: "gris" | "verde" | "morado"; conStock: boolean }> = {
   ALMACENABLE: { label: "Producto", tono: "gris", conStock: true },
   SERVICIO: { label: "Elaborado", tono: "verde", conStock: false },
-  COMPUESTO: { label: "Combo", tono: "morado", conStock: false },
+  // El combo SÍ lleva stock: es el que el local decide ofrecer hoy, y no se
+  // mueve por Movimientos como el resto. Editar el artículo es su única vía de
+  // carga, así que el campo también aparece al editar (a diferencia de un
+  // producto, donde el stock inicial sólo tiene sentido al crear).
+  COMPUESTO: { label: "Combo", tono: "morado", conStock: true },
 };
 
-type FiltroStock = "todos" | "activos" | "bajo" | "sin";
+type FiltroStock = "todos" | "activos" | "bajo" | "sin" | "papelera";
 type FiltroTipo = "todos" | TipoProducto;
 
 const OPC_STOCK = [
@@ -41,6 +46,7 @@ const OPC_STOCK = [
   ["activos", "Activos"],
   ["bajo", "Bajo stock"],
   ["sin", "Sin stock"],
+  ["papelera", "Dados de baja"],
 ] as const satisfies readonly (readonly [FiltroStock, string])[];
 
 const OPC_TIPO = [
@@ -52,12 +58,15 @@ const OPC_TIPO = [
 
 export default function Productos() {
   const { incluye } = useAuth();
-  const productos = useApi(() => api.getProductos(), []);
+  const [filtroStock, setFiltroStock] = useState<FiltroStock>("todos");
+  // La papelera es otra lista del backend, no un filtro sobre la que ya está:
+  // los dados de baja no vienen en el catálogo normal.
+  const enPapelera = filtroStock === "papelera";
+  const productos = useApi(() => api.getProductos(enPapelera), [enPapelera]);
   const categorias = useApi(() => api.getCategorias(false), []);
   const unidades = useApi(() => api.getUnidades(), []);
 
   const [q, setQ] = useState("");
-  const [filtroStock, setFiltroStock] = useState<FiltroStock>("todos");
   const [filtroTipo, setFiltroTipo] = useState<FiltroTipo>("todos");
   const [detalle, setDetalle] = useState<Producto | null>(null);
   const [editando, setEditando] = useState<Producto | null>(null);
@@ -96,9 +105,22 @@ export default function Productos() {
       if (filtroStock === "bajo")
         return conStock && p.stockTotal > 0 && p.stockTotal <= p.stockMinimo;
       if (filtroStock === "sin") return conStock && p.stockTotal <= 0;
+      // En papelera no hay sub-filtro: la lista ya viene filtrada del backend.
       return true;
     });
   }, [lista, q, filtroStock, filtroTipo]);
+
+  /** Devuelve al catálogo un artículo dado de baja. */
+  async function restaurar(p: Producto) {
+    setErrorAccion("");
+    try {
+      await api.restaurarProducto(p.id);
+      setDetalle(null);
+      productos.recargar();
+    } catch (err) {
+      setErrorAccion(err instanceof Error ? err.message : "No se pudo restaurar");
+    }
+  }
 
   async function borrar() {
     if (!aBorrar || borrando) return;
@@ -125,11 +147,19 @@ export default function Productos() {
     <div className="mx-auto max-w-6xl space-y-4 p-5">
       <EncabezadoPagina
         titulo="Artículos"
-        subtitulo={`${lista.length} en el catálogo`}
+        subtitulo={
+          enPapelera
+            ? `${lista.length} dados de baja`
+            : `${lista.length} en el catálogo`
+        }
+        // En la papelera no se ofrece "Nuevo": el alta cae en el catálogo y el
+        // producto recién creado desaparecería de la lista que estás mirando.
         accion={
-          <Boton icono="plus" onClick={() => setCreando(true)}>
-            Nuevo
-          </Boton>
+          !enPapelera && (
+            <Boton icono="plus" onClick={() => setCreando(true)}>
+              Nuevo
+            </Boton>
+          )
         }
       />
 
@@ -178,12 +208,14 @@ export default function Productos() {
 
       <DetalleProducto
         producto={detalle}
+        enPapelera={enPapelera}
         onClose={() => setDetalle(null)}
         onEditar={(p) => {
           setDetalle(null);
           setEditando(p);
         }}
         onEliminar={(p) => setABorrar(p)}
+        onRestaurar={restaurar}
       />
 
       <FormProducto
@@ -280,15 +312,21 @@ function TarjetaProducto({ producto: p, onClick }: { producto: Producto; onClick
 
 function DetalleProducto({
   producto: p,
+  enPapelera,
   onClose,
   onEditar,
   onEliminar,
+  onRestaurar,
 }: {
   producto: Producto | null;
+  /** En la papelera el artículo no se edita: se restaura o se deja. */
+  enPapelera: boolean;
   onClose: () => void;
   onEditar: (p: Producto) => void;
   onEliminar: (p: Producto) => void;
+  onRestaurar: (p: Producto) => void;
 }) {
+  const [viendoCostos, setViendoCostos] = useState(false);
   if (!p) return null;
   const tipo = TIPOS[p.tipoProducto];
   const margen = p.precio > 0 ? (p.precio - p.costo) / p.precio : 0;
@@ -300,17 +338,41 @@ function DetalleProducto({
       subtitulo={p.nombre}
       onClose={onClose}
       acciones={
-        <>
-          <Boton variante="danger" icono="trash" onClick={() => onEliminar(p)}>
-            Eliminar
+        enPapelera ? (
+          <Boton icono="check" onClick={() => onRestaurar(p)}>
+            Restaurar
           </Boton>
-          <Boton icono="edit" onClick={() => onEditar(p)}>
-            Editar
-          </Boton>
-        </>
+        ) : (
+          <>
+            <Boton variante="danger" icono="trash" onClick={() => onEliminar(p)}>
+              Eliminar
+            </Boton>
+            <Boton icono="edit" onClick={() => onEditar(p)}>
+              Editar
+            </Boton>
+          </>
+        )
       }
     >
       <div className="space-y-4">
+        <button
+          type="button"
+          onClick={() => setViendoCostos(true)}
+          className="flex w-full items-center gap-2 rounded-xl border border-borde px-3.5 py-2.5 text-left text-[13px] font-semibold text-texto-2 hover:bg-muted"
+        >
+          <Icon name="trendingDown" size={17} />
+          <span className="flex-1">Historial de costos</span>
+          <Icon name="chevronRight" size={16} />
+        </button>
+
+        {viendoCostos && (
+          <HistorialCostos
+            productoId={p.id}
+            nombre={p.nombre}
+            onClose={() => setViendoCostos(false)}
+          />
+        )}
+
         <div className="flex items-center gap-3 rounded-xl bg-primary-50 p-4">
           <IconoProducto
             nombre={p.nombre}
@@ -451,7 +513,13 @@ function FormProductoCuerpo({
   const [precio, setPrecio] = useState(String(producto?.precio ?? ""));
   const [costo, setCosto] = useState(String(producto?.costo ?? ""));
   const [stockMinimo, setStockMinimo] = useState(String(producto?.stockMinimo ?? ""));
-  const [stockInicial, setStockInicial] = useState("");
+  const [stockInicial, setStockInicial] = useState(
+    // Sólo el combo trae su stock cargado: es un dato que se corrige, no que se
+    // suma. Y sólo si es > 0, para que un 0 heredado no parezca ya completado.
+    producto?.tipoProducto === "COMPUESTO" && producto.stockTotal > 0
+      ? String(producto.stockTotal)
+      : "",
+  );
   const [categoriaId, setCategoriaId] = useState(String(producto?.categoria?.id ?? ""));
   const [unidadId, setUnidadId] = useState(String(producto?.unidadMedida?.id ?? ""));
   const [habilitado, setHabilitado] = useState(producto?.habilitado ?? true);
@@ -535,9 +603,11 @@ function FormProductoCuerpo({
             })),
           }
         : {}),
-      // El stock inicial sólo tiene sentido al crear: después se mueve con
-      // entradas y salidas, no editando el artículo.
-      ...(!esEdicion && conStock && stockInicial !== ""
+      // En un producto el stock inicial sólo tiene sentido al crear: después se
+      // mueve con entradas y salidas. En un COMBO es al revés — no pasa por
+      // Movimientos, así que editar el artículo es la única forma de decir
+      // cuántos hay hoy, y el campo tiene que viajar también al editar.
+      ...((esCombo || !esEdicion) && conStock && stockInicial !== ""
         ? { stockInicial: Number(stockInicial) }
         : {}),
     };
@@ -656,8 +726,15 @@ function FormProductoCuerpo({
                 onChange={(e) => setStockMinimo(e.target.value)}
               />
             </Campo>
-            {!esEdicion && (
-              <Campo label="Stock inicial" hint="Se carga como entrada">
+            {(esCombo || !esEdicion) && (
+              <Campo
+                label={esCombo ? "Stock del combo" : "Stock inicial"}
+                hint={
+                  esCombo
+                    ? "Cuántos hay para vender hoy"
+                    : "Se carga como entrada"
+                }
+              >
                 <Input
                   type="number"
                   inputMode="decimal"

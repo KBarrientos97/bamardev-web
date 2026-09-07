@@ -11,6 +11,7 @@ import type {
   Credito,
   CrearUsuarioInput,
   Dashboard,
+  HistorialCostos,
   DetalleMovimiento,
   DetalleMovimientoInput,
   EstadoLicencia,
@@ -254,7 +255,16 @@ export const api = {
   eliminarAlmacen: (id: number) =>
     request<{ mensaje: string }>(`/almacenes/${id}`, { method: "DELETE" }),
 
-  getInsumos: () => request<Insumo[]>("/insumos"),
+  /** El catálogo de insumos; con `eliminados`, la papelera. */
+  getInsumos: (eliminados?: boolean) =>
+    request<Insumo[]>(`/insumos${qs({ eliminados: eliminados ? 1 : undefined })}`),
+  /**
+   * A cuánto llegó este artículo en cada compra. Vale también para insumos: son
+   * Producto con esInsumo=true y comparten endpoint.
+   */
+  historialCostos: (id: number) => request<HistorialCostos>(`/productos/${id}/costos`),
+  restaurarInsumo: (id: number) =>
+    request<{ mensaje: string }>(`/insumos/${id}/restaurar`, { method: "POST" }),
   crearInsumo: (input: InsumoInput) =>
     request<Insumo>("/insumos", { method: "POST", body: JSON.stringify(input) }),
   actualizarInsumo: (id: number, input: Partial<InsumoInput>) =>

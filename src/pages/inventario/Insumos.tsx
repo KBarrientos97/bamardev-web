@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import HistorialCostos from "../../components/HistorialCostos";
 import { Icon } from "../../components/Icon";
 import { Buscador, Chips, EncabezadoPagina } from "../../components/filtros";
 import {
@@ -18,12 +19,13 @@ import { fmtFecha, fmtMoney, fmtNum } from "../../lib/format";
 import { useApi } from "../../lib/useApi";
 import type { Almacen, Categoria, Insumo, InsumoInput, UnidadMedida } from "../../types";
 
-type FiltroStock = "todos" | "bajo" | "sin";
+type FiltroStock = "todos" | "bajo" | "sin" | "papelera";
 
 const OPC_STOCK = [
   ["todos", "Todos"],
   ["bajo", "Bajo stock"],
   ["sin", "Sin stock"],
+  ["papelera", "Dados de baja"],
 ] as const satisfies readonly (readonly [FiltroStock, string])[];
 
 /** Bajo el punto de reorden hay que reponer; en cero ya no se puede producir. */
@@ -34,14 +36,16 @@ function estadoStock(i: Insumo): "sin" | "bajo" | "ok" {
 }
 
 export default function Insumos() {
-  const insumos = useApi(() => api.getInsumos(), []);
+  const [filtroStock, setFiltroStock] = useState<FiltroStock>("todos");
+  // La papelera es otra lista del backend, no un filtro sobre la que ya está.
+  const enPapelera = filtroStock === "papelera";
+  const insumos = useApi(() => api.getInsumos(enPapelera), [enPapelera]);
   // `true` trae sólo las categorías de insumo: las de venta no aplican acá.
   const categorias = useApi(() => api.getCategorias(true), []);
   const unidades = useApi(() => api.getUnidades(), []);
   const almacenes = useApi(() => api.getAlmacenes(), []);
 
   const [q, setQ] = useState("");
-  const [filtroStock, setFiltroStock] = useState<FiltroStock>("todos");
   const [detalle, setDetalle] = useState<Insumo | null>(null);
   const [editando, setEditando] = useState<Insumo | null>(null);
   const [creando, setCreando] = useState(false);
@@ -69,6 +73,18 @@ export default function Insumos() {
     });
   }, [lista, q, filtroStock]);
 
+  /** Devuelve al catálogo un insumo dado de baja. */
+  async function restaurar(i: Insumo) {
+    setErrorAccion("");
+    try {
+      await api.restaurarInsumo(i.id);
+      setDetalle(null);
+      insumos.recargar();
+    } catch (err) {
+      setErrorAccion(err instanceof Error ? err.message : "No se pudo restaurar");
+    }
+  }
+
   async function borrar() {
     if (!aBorrar || borrando) return;
     setErrorAccion("");
@@ -90,10 +106,14 @@ export default function Insumos() {
       <EncabezadoPagina
         titulo="Insumos"
         subtitulo={`${lista.length} materias primas`}
+        // En la papelera no se ofrece "Nuevo": el alta cae en el catálogo y el
+        // insumo recién creado desaparecería de la lista que estás mirando.
         accion={
-          <Boton icono="plus" onClick={() => setCreando(true)}>
-            Nuevo
-          </Boton>
+          !enPapelera && (
+            <Boton icono="plus" onClick={() => setCreando(true)}>
+              Nuevo
+            </Boton>
+          )
         }
       />
 
@@ -141,12 +161,14 @@ export default function Insumos() {
 
       <DetalleInsumo
         insumo={detalle}
+        enPapelera={enPapelera}
         onClose={() => setDetalle(null)}
         onEditar={(i) => {
           setDetalle(null);
           setEditando(i);
         }}
         onEliminar={(i) => setABorrar(i)}
+        onRestaurar={restaurar}
       />
 
       <FormInsumo
@@ -238,15 +260,21 @@ function TarjetaInsumo({ insumo: i, onClick }: { insumo: Insumo; onClick: () => 
 
 function DetalleInsumo({
   insumo: i,
+  enPapelera,
   onClose,
   onEditar,
   onEliminar,
+  onRestaurar,
 }: {
   insumo: Insumo | null;
+  /** En la papelera el insumo no se edita: se restaura o se deja. */
+  enPapelera: boolean;
   onClose: () => void;
   onEditar: (i: Insumo) => void;
   onEliminar: (i: Insumo) => void;
+  onRestaurar: (i: Insumo) => void;
 }) {
+  const [viendoCostos, setViendoCostos] = useState(false);
   if (!i) return null;
   const estado = estadoStock(i);
   const unidad = i.unidad?.abreviatura ?? i.unidad?.nombre ?? "";
@@ -258,17 +286,41 @@ function DetalleInsumo({
       subtitulo={i.nombre}
       onClose={onClose}
       acciones={
-        <>
-          <Boton variante="danger" icono="trash" onClick={() => onEliminar(i)}>
-            Eliminar
+        enPapelera ? (
+          <Boton icono="check" onClick={() => onRestaurar(i)}>
+            Restaurar
           </Boton>
-          <Boton icono="edit" onClick={() => onEditar(i)}>
-            Editar
-          </Boton>
-        </>
+        ) : (
+          <>
+            <Boton variante="danger" icono="trash" onClick={() => onEliminar(i)}>
+              Eliminar
+            </Boton>
+            <Boton icono="edit" onClick={() => onEditar(i)}>
+              Editar
+            </Boton>
+          </>
+        )
       }
     >
       <div className="space-y-4">
+        <button
+          type="button"
+          onClick={() => setViendoCostos(true)}
+          className="flex w-full items-center gap-2 rounded-xl border border-borde px-3.5 py-2.5 text-left text-[13px] font-semibold text-texto-2 hover:bg-muted"
+        >
+          <Icon name="trendingDown" size={17} />
+          <span className="flex-1">Historial de costos</span>
+          <Icon name="chevronRight" size={16} />
+        </button>
+
+        {viendoCostos && (
+          <HistorialCostos
+            productoId={i.id}
+            nombre={i.nombre}
+            onClose={() => setViendoCostos(false)}
+          />
+        )}
+
         <div className="flex items-center gap-3 rounded-xl bg-primary-50 p-4">
           <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-marca text-white">
             <Icon name="sack" size={26} />

@@ -109,8 +109,23 @@ export default function PantallaCierre({
                 {r.ingresos > 0 && <Fila etiqueta="Ingresos de efectivo" valor={r.ingresos} />}
                 {r.egresos > 0 && <Fila etiqueta="Egresos de efectivo" valor={-r.egresos} />}
                 {r.abonosEfectivo > 0 && (
-                  <Fila etiqueta="Abonos de créditos" valor={r.abonosEfectivo} />
+                  <Fila etiqueta="Abonos de créditos (efectivo)" valor={r.abonosEfectivo} />
                 )}
+                {/* Un abono cobrado por QR entró al negocio pero NO al cajón:
+                    sin esta fila el cajero veía el total de cobros del turno
+                    sin poder explicar por qué el efectivo no llegaba. */}
+                {r.abonosPorFormaPago
+                  ?.filter(
+                    (f) => f.monto > 0 && !f.nombre.toLowerCase().includes("efectivo"),
+                  )
+                  .map((f) => (
+                    <Fila
+                      key={f.nombre}
+                      etiqueta={`Abonos por ${f.nombre} (no es efectivo)`}
+                      valor={f.monto}
+                      apagado
+                    />
+                  ))}
                 {r.creditoOtorgado > 0 && (
                   <Fila
                     etiqueta="Fiado otorgado (no es efectivo)"

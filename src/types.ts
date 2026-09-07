@@ -594,3 +594,42 @@ export interface TopProducto {
   total: number;
   [k: string]: unknown;
 }
+
+// ── Historial de costos de un artículo ──────────────────────────────────────
+
+/** Una compra de este artículo: a cuánto llegó y contra qué se compara. */
+export interface CompraCosto {
+  movimientoId: number;
+  fecha: string;
+  comprobante: string | null;
+  descripcion: string | null;
+  almacen: string | null;
+  cantidad: number;
+  costoUnitario: number;
+  total: number;
+  /** A cuánto venía antes de esta compra; null en la más vieja de la lista. */
+  costoAnterior: number | null;
+  /** % contra la compra anterior: + llegó más caro, − más barato. */
+  variacion: number | null;
+  /** Es la compra que dejó el costo que hoy muestra la ficha. */
+  esCostoActual: boolean;
+}
+
+/** `GET /productos/:id/costos` — vale también para insumos. */
+export interface HistorialCostos {
+  productoId: number;
+  nombre: string;
+  esInsumo: boolean;
+  unidad: string | null;
+  /** El que está cargado hoy en la ficha del artículo. */
+  costoActual: number;
+  /** El de la compra más reciente; null si nunca se compró con costo. */
+  ultimoCosto: number | null;
+  costoMinimo: number | null;
+  costoMaximo: number | null;
+  /** Promedio ponderado por cantidad (no simple): plata / unidades. */
+  costoPromedio: number | null;
+  cantidadTotal: number;
+  montoTotal: number;
+  compras: CompraCosto[];
+}
