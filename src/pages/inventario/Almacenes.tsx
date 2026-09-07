@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { contiene } from "../../lib/texto";
 import { Icon } from "../../components/Icon";
 import { Buscador, EncabezadoPagina } from "../../components/filtros";
 import {
@@ -35,8 +36,7 @@ export default function Almacenes() {
     if (!texto) return lista;
     return lista.filter(
       (a) =>
-        a.nombre.toLowerCase().includes(texto) ||
-        (a.grupo ?? "").toLowerCase().includes(texto),
+        contiene(a.nombre, texto) || contiene(a.grupo, texto),
     );
   }, [lista, q]);
 

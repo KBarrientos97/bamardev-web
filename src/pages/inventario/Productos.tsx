@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { contiene } from "../../lib/texto";
 import { Icon } from "../../components/Icon";
 import HistorialCostos from "../../components/HistorialCostos";
 import IconoProducto from "../../components/IconoProducto";
@@ -92,9 +93,9 @@ export default function Productos() {
     return lista.filter((p) => {
       if (
         texto &&
-        !p.nombre.toLowerCase().includes(texto) &&
-        !(p.descripcion ?? "").toLowerCase().includes(texto) &&
-        !(p.codBarra ?? "").toLowerCase().includes(texto)
+        !contiene(p.nombre, texto) &&
+        !contiene(p.descripcion, texto) &&
+        !contiene(p.codBarra, texto)
       )
         return false;
       if (filtroTipo !== "todos" && p.tipoProducto !== filtroTipo) return false;

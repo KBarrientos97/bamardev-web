@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { parsearMontoO } from "../../lib/dinero";
 import { Icon } from "../../components/Icon";
 import {
   Badge,
@@ -35,7 +36,10 @@ export default function PantallaCierre({
 
   const r = resumen.datos;
   const esperado = r?.saldoEsperado ?? 0;
-  const contadoNum = Number(contado);
+  // Con parseo de coma: en Bolivia se teclea "150,50" y Number() da NaN, que
+  // caía a 0 sin avisar — el conteo del cierre quedaba en cero y la diferencia
+  // mostraba un faltante enorme que nadie había cometido.
+  const contadoNum = parsearMontoO(contado, NaN);
   // La diferencia sólo tiene sentido una vez que se contó: mostrarla en 0
   // antes de teclear haría parecer que la caja ya cuadra. Se valida igual
   // que la apertura: el `min="0"` del input es sólo una pista del navegador
@@ -286,7 +290,7 @@ function DialogoMovimiento({
 
   async function guardar() {
     setError("");
-    const m = Number(monto);
+    const m = parsearMontoO(monto, NaN);
     if (!Number.isFinite(m) || m <= 0) return setError("Poné un monto mayor a cero.");
     if (!descripcion.trim()) return setError("Contá para qué fue el movimiento.");
 

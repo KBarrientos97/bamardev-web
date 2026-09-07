@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { contiene } from "../../lib/texto";
 import { Icon } from "../../components/Icon";
 import IconoProducto from "../../components/IconoProducto";
 import { Badge, Boton, Input, Modal, Vacio } from "../../components/ui";
@@ -57,10 +58,11 @@ export default function PantallaVenta({
       if (!p.habilitado) return false;
       if (cat !== TODAS && String(p.categoria?.id ?? "") !== cat) return false;
       if (!texto) return true;
+      // Ignora tildes: el cajero teclea "cafe" y el catálogo dice "Café".
       return (
-        p.nombre.toLowerCase().includes(texto) ||
-        (p.codBarra ?? "").toLowerCase().includes(texto) ||
-        (p.categoria?.nombre ?? "").toLowerCase().includes(texto)
+        contiene(p.nombre, texto) ||
+        contiene(p.codBarra, texto) ||
+        contiene(p.categoria?.nombre, texto)
       );
     });
   }, [ordenados, q, cat]);

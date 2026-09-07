@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { contiene } from "../../lib/texto";
 import { Icon } from "../../components/Icon";
 import { Buscador, Chips, EncabezadoPagina } from "../../components/filtros";
 import {
@@ -88,8 +89,8 @@ export default function Movimientos() {
     return lista.filter((m) => {
       if (
         texto &&
-        !(m.comprobante ?? "").toLowerCase().includes(texto) &&
-        !(m.descripcion ?? "").toLowerCase().includes(texto)
+        !contiene(m.comprobante, texto) &&
+        !contiene(m.descripcion, texto)
       )
         return false;
       if (filtroTipo !== "todos" && m.tipo !== filtroTipo) return false;

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { parsearMontoO } from "../../lib/dinero";
 import { CargarQrCobro } from "../../components/QrCobro";
 import { Icon } from "../../components/Icon";
 import { Boton, Campo, ErrorMsg, Input } from "../../components/ui";
@@ -16,7 +17,7 @@ export default function AperturaCaja({ onAbierta }: { onAbierta: () => void }) {
   const [error, setError] = useState("");
   const [enviando, setEnviando] = useState(false);
 
-  const montoNum = Number(monto);
+  const montoNum = parsearMontoO(monto, NaN);
   const valido = monto !== "" && Number.isFinite(montoNum) && montoNum >= 0;
 
   async function abrir() {

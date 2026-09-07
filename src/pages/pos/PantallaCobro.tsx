@@ -2,7 +2,14 @@ import { useMemo, useState } from "react";
 import { Icon } from "../../components/Icon";
 import { QrParaCobrar } from "../../components/QrCobro";
 import { Boton, Campo, ErrorMsg, Input } from "../../components/ui";
-import { restoEnEfectivo, vuelto } from "../../lib/dinero";
+import {
+  cubre,
+  esPositivo,
+  excede,
+  parsearMontoO,
+  restoEnEfectivo,
+  vuelto,
+} from "../../lib/dinero";
 import { fmtMoney } from "../../lib/format";
 import { useAuth } from "../../store/AuthContext";
 import type { FormaPago, PagoInput } from "../../types";
@@ -73,8 +80,8 @@ export default function PantallaCobro({
    */
   const [qrConfirmado, setQrConfirmado] = useState(false);
 
-  const recibidoNum = Number(recibido) || 0;
-  const qrNum = Number(montoQr) || 0;
+  const recibidoNum = parsearMontoO(recibido);
+  const qrNum = parsearMontoO(montoQr);
 
   /** Cambiar de método o el monto del QR obliga a confirmar de nuevo. */
   function elegirMetodo(m: Metodo) {
@@ -96,7 +103,9 @@ export default function PantallaCobro({
 
     if (metodo === "EFECTIVO") {
       if (!formaEfectivo) return setErrorLocal("El negocio no tiene cargada la forma de pago Efectivo.");
-      if (recibidoNum < total)
+      // Con tolerancia: 3 x 8.90 da 26.700000000000003 y el cajero que teclea
+      // 26.70 quedaba "faltando Bs 0.00".
+      if (!cubre(recibidoNum, total))
         return setErrorLocal("Lo recibido no alcanza para cubrir el total.");
       return onConfirmar([
         { formaPagoId: formaEfectivo.id, monto: total, recibido: recibidoNum },
@@ -113,11 +122,12 @@ export default function PantallaCobro({
     // Mixto: se reparte entre QR y efectivo, y la suma tiene que dar el total.
     if (!formaEfectivo || !formaQr)
       return setErrorLocal("Faltan formas de pago cargadas para cobrar mixto.");
-    if (qrNum <= 0) return setErrorLocal("Poné cuánto se paga por QR.");
-    if (qrNum >= total) return setErrorLocal("Si el QR cubre todo, cobrá con el método QR.");
+    if (!esPositivo(qrNum)) return setErrorLocal("Poné cuánto se paga por QR.");
+    if (!excede(total, qrNum))
+      return setErrorLocal("Si el QR cubre todo, cobrá con el método QR.");
     if (!qrConfirmado)
       return setErrorLocal("Confirmá que el pago por QR llegó antes de cobrar.");
-    if (recibidoNum < aCubrirEnEfectivo)
+    if (!cubre(recibidoNum, aCubrirEnEfectivo))
       return setErrorLocal("El efectivo recibido no cubre lo que falta.");
 
     onConfirmar([

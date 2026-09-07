@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { contiene } from "../lib/texto";
 import { Icon } from "../components/Icon";
 import { Buscador, Chips, EncabezadoPagina } from "../components/filtros";
 import {
@@ -90,8 +91,8 @@ export default function Usuarios() {
     return lista.filter((u) => {
       if (
         texto &&
-        !u.nombre.toLowerCase().includes(texto) &&
-        !u.usuario.toLowerCase().includes(texto)
+        !contiene(u.nombre, texto) &&
+        !contiene(u.usuario, texto)
       )
         return false;
       if (filtroRol === "todos") return true;

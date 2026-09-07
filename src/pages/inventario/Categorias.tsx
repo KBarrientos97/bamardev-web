@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { contiene } from "../../lib/texto";
 import { Icon } from "../../components/Icon";
 import { Buscador, Chips, EncabezadoPagina } from "../../components/filtros";
 import {
@@ -45,7 +46,7 @@ export default function Categorias() {
   const filtradas = useMemo(() => {
     const texto = q.trim().toLowerCase();
     if (!texto) return lista;
-    return lista.filter((c) => c.nombre.toLowerCase().includes(texto));
+    return lista.filter((c) => contiene(c.nombre, texto));
   }, [lista, q]);
 
   async function borrar() {

@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { contiene } from "../../lib/texto";
 import HistorialCostos from "../../components/HistorialCostos";
 import { Icon } from "../../components/Icon";
 import { Buscador, Chips, EncabezadoPagina } from "../../components/filtros";
@@ -60,9 +61,9 @@ export default function Insumos() {
     return lista.filter((i) => {
       if (
         texto &&
-        !i.nombre.toLowerCase().includes(texto) &&
-        !(i.codigo ?? "").toLowerCase().includes(texto) &&
-        !(i.proveedor ?? "").toLowerCase().includes(texto)
+        !contiene(i.nombre, texto) &&
+        !contiene(i.codigo, texto) &&
+        !contiene(i.proveedor, texto)
       )
         return false;
 
