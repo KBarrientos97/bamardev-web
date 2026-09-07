@@ -106,7 +106,40 @@ describe("useCarrito", () => {
 
     const detalles = result.current.aDetalles();
     expect(detalles).toHaveLength(1);
-    expect(detalles[0]).toMatchObject({ cantidad: 2, consumo: "LLEVAR" });
+    // En el local lo nuevo arranca en MESA, como en la app.
+    expect(detalles[0]).toMatchObject({ cantidad: 2, consumo: "MESA" });
+  });
+
+  it("en el local lo nuevo arranca en mesa", () => {
+    const { result } = renderHook(() => useCarrito("LOCAL"));
+    act(() => result.current.agregar(producto()));
+    expect(result.current.lineas[0].enMesa).toBe(1);
+  });
+
+  it("en un delivery no hay mesa: lo nuevo arranca para llevar", () => {
+    const { result } = renderHook(() => useCarrito("DELIVERY"));
+    act(() => result.current.agregar(producto()));
+    expect(result.current.lineas[0].enMesa).toBe(0);
+  });
+
+  it("sumar una unidad a una línea entera en mesa la deja entera en mesa", () => {
+    // Sin esto, la segunda unidad de un pedido de mesa se iba sola a "llevar"
+    // y la comanda salía partida sin que nadie lo pidiera.
+    const { result } = renderHook(() => useCarrito("LOCAL"));
+    act(() => result.current.agregar(producto()));
+    act(() => result.current.agregar(producto()));
+
+    expect(result.current.lineas[0]).toMatchObject({ cantidad: 2, enMesa: 2 });
+  });
+
+  it("sumar una unidad a una línea partida no toca el reparto", () => {
+    const { result } = renderHook(() => useCarrito("LOCAL"));
+    act(() => result.current.agregar(producto()));
+    act(() => result.current.setCantidad(1, 3));
+    act(() => result.current.setEnMesa(1, 1));
+    act(() => result.current.agregar(producto()));
+
+    expect(result.current.lineas[0]).toMatchObject({ cantidad: 4, enMesa: 1 });
   });
 
   it("recorta el split al bajar la cantidad por debajo de lo que iba a mesa", () => {

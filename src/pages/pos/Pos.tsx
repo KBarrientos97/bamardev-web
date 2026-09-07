@@ -16,6 +16,7 @@ import PantallaHistorial from "./PantallaHistorial";
 import PantallaRecibo from "./PantallaRecibo";
 import PantallaVenta from "./PantallaVenta";
 import { useCarrito } from "./useCarrito";
+import { useIntentoDeCobro } from "./useIntentoDeCobro";
 
 type Pantalla =
   | "venta"
@@ -38,11 +39,16 @@ export default function Pos() {
   const formasPago = useApi(() => api.getFormasPago(), []);
   const repartidores = useApi(() => api.getRepartidores(), []);
 
-  const carrito = useCarrito();
+  // Identidad del cobro en curso: sobrevive a los reintentos para que un 504 o
+  // un corte de red no terminen en dos ventas. Ver useIntentoDeCobro.
+  const intento = useIntentoDeCobro();
   const [pantalla, setPantalla] = useState<Pantalla>("venta");
   const [venta, setVenta] = useState<Venta | null>(null);
   const [cajaCerrada, setCajaCerrada] = useState<Caja | null>(null);
   const [tipoPedido, setTipoPedido] = useState<TipoPedido>("LOCAL");
+  // El carrito necesita el tipo de pedido: en el local lo nuevo arranca en
+  // MESA, en un delivery o un "recoger" siempre es LLEVAR.
+  const carrito = useCarrito(tipoPedido);
   const [datosEntrega, setDatosEntrega] = useState<DatosEntrega | null>(null);
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState("");
@@ -84,7 +90,11 @@ export default function Pos() {
       setError("");
       setEnviando(true);
       try {
-        const creada = await api.crearVenta(cuerpoVenta(pagos));
+        const creada = await api.crearVenta({
+          ...cuerpoVenta(pagos),
+          clienteRequestId: intento.actual(),
+        });
+        intento.registrado();
         setVenta(creada);
         limpiar();
         setPantalla("recibo");
@@ -96,7 +106,7 @@ export default function Pos() {
         setEnviando(false);
       }
     },
-    [cuerpoVenta, limpiar, productos],
+    [cuerpoVenta, limpiar, productos, intento],
   );
 
   /**
@@ -120,7 +130,9 @@ export default function Pos() {
           minutosEstimados: datos.minutosEstimados,
           notaPedido: datos.notaPedido,
           prepagado: false,
+          clienteRequestId: intento.actual(),
         });
+        intento.registrado();
         setVenta(creada);
         limpiar();
         setPantalla("pedidoOk");
@@ -131,7 +143,7 @@ export default function Pos() {
         setEnviando(false);
       }
     },
-    [carrito, tipoPedido, limpiar, productos],
+    [carrito, tipoPedido, limpiar, productos, intento],
   );
 
   /**
@@ -149,7 +161,9 @@ export default function Pos() {
           tipoPedido: "LOCAL",
           credito,
           ...(pagos.length ? { pagos } : {}),
+          clienteRequestId: intento.actual(),
         });
+        intento.registrado();
         setVenta(creada);
         limpiar();
         setPantalla("recibo");
@@ -160,7 +174,7 @@ export default function Pos() {
         setEnviando(false);
       }
     },
-    [carrito, limpiar, productos],
+    [carrito, limpiar, productos, intento],
   );
 
   if (caja.cargando) return <Cargando texto="Buscando tu caja…" />;

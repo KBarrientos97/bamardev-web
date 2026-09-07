@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
-import type { Consumo, DetalleVentaInput, Producto } from "../../types";
+import type { Consumo, DetalleVentaInput, Producto, TipoPedido } from "../../types";
 
 /**
  * Una línea del carrito. El split Mesa/Llevar se guarda como cantidad en mesa:
@@ -46,25 +46,42 @@ function topeStock(p: Producto): number {
   return p.stockTotal;
 }
 
-export function useCarrito(): Carrito {
+export function useCarrito(tipoPedido: TipoPedido = "LOCAL"): Carrito {
   const [lineas, setLineas] = useState<LineaCarrito[]>([]);
 
-  const agregar = useCallback((p: Producto) => {
-    setLineas((prev) => {
-      const ex = prev.find((l) => l.producto.id === p.id);
-      const tope = topeStock(p);
-      if (!ex) {
-        if (tope < 1) return prev;
-        // Por defecto se lleva: es lo más común y evita que una comanda
-        // salga marcada como mesa por descuido.
-        return [...prev, { producto: p, cantidad: 1, enMesa: 0, nota: "" }];
-      }
-      if (ex.cantidad >= tope) return prev;
-      return prev.map((l) =>
-        l.producto.id === p.id ? { ...l, cantidad: l.cantidad + 1 } : l,
-      );
-    });
-  }, []);
+  /**
+   * Consumo con el que nace una línea nueva. En el local la mayoría se sienta
+   * a comer, así que MESA es el default y LLEVAR la excepción que se marca;
+   * un delivery o un "recoger" no tienen mesa y ahí no hay más opción que
+   * LLEVAR. Mismo criterio que `CarritoViewModel.consumoPorDefecto` (Android).
+   */
+  const enMesaPorDefecto = tipoPedido === "LOCAL";
+
+  const agregar = useCallback(
+    (p: Producto) => {
+      setLineas((prev) => {
+        const ex = prev.find((l) => l.producto.id === p.id);
+        const tope = topeStock(p);
+        if (!ex) {
+          if (tope < 1) return prev;
+          return [
+            ...prev,
+            { producto: p, cantidad: 1, enMesa: enMesaPorDefecto ? 1 : 0, nota: "" },
+          ];
+        }
+        if (ex.cantidad >= tope) return prev;
+        // Al subir la cantidad, una línea entera en mesa sigue entera en mesa:
+        // si no, sumar la segunda unidad la mandaba sola a "llevar".
+        const pura = ex.enMesa === ex.cantidad;
+        return prev.map((l) =>
+          l.producto.id === p.id
+            ? { ...l, cantidad: l.cantidad + 1, enMesa: pura ? l.enMesa + 1 : l.enMesa }
+            : l,
+        );
+      });
+    },
+    [enMesaPorDefecto],
+  );
 
   const quitar = useCallback((id: number) => {
     setLineas((prev) => prev.filter((l) => l.producto.id !== id));
@@ -78,8 +95,17 @@ export function useCarrito(): Carrito {
           if (l.producto.id !== id) return l;
           const tope = topeStock(l.producto);
           const nueva = Math.min(cantidad, tope);
-          // El split no puede quedar por encima de la nueva cantidad.
-          return { ...l, cantidad: nueva, enMesa: Math.min(l.enMesa, nueva) };
+          // Una línea entera en un consumo se queda entera en ese consumo al
+          // cambiar la cantidad: subir de 2 a 3 en una mesa no manda la tercera
+          // unidad a "llevar" sola. Si estaba partida, el reparto se conserva y
+          // sólo se recorta para no exceder la cantidad nueva. Es lo que hace
+          // `CarritoViewModel.ajustarTotal` en la app.
+          const pura = l.enMesa === l.cantidad;
+          return {
+            ...l,
+            cantidad: nueva,
+            enMesa: pura ? nueva : Math.min(l.enMesa, nueva),
+          };
         }),
       );
     },
