@@ -276,7 +276,7 @@ export default function Pos() {
     return (
       <PantallaEntrega
         tipo={tipoPedido === "DELIVERY" ? "DELIVERY" : "RECOGER"}
-        total={mesaCobrando ? consumoDeMesa(mesaCobrando) : carrito.total}
+        total={carrito.total}
         unidades={carrito.unidades}
         repartidores={repartidores.datos ?? []}
         enviando={enviando}
@@ -300,7 +300,10 @@ export default function Pos() {
         // líneas y exige que los pagos sumen exactamente eso. La tarifa de
         // envío viaja aparte y se la cobra el repartidor, así que sumarla acá
         // hacía que el backend rechazara la venta entera con un 400.
-        total={carrito.total}
+        //
+        // Cobrando una mesa el total es el consumo que cargó el mesero, no el
+        // carrito: la cajera no retipea nada de lo que el cliente comió.
+        total={mesaCobrando ? consumoDeMesa(mesaCobrando) : carrito.total}
         avisoEnvio={
           datosEntrega?.tarifaEnvio
             ? `El envío (${fmtMoney(datosEntrega.tarifaEnvio)}) lo cobra el repartidor aparte.`
@@ -320,9 +323,11 @@ export default function Pos() {
         }}
         onConfirmar={cobrar}
         // Fiar sólo tiene sentido en una venta de mostrador: un pedido de
-        // delivery ya define quién y cuándo paga.
+        // delivery ya define quién y cuándo paga, y una mesa se fía desde el
+        // salón — el flujo de crédito arma la venta desde el carrito, que
+        // cobrando una mesa está vacío.
         onCredito={
-          tieneFeature(negocio?.features, "fiado") && !datosEntrega
+          tieneFeature(negocio?.features, "fiado") && !datosEntrega && !mesaCobrando
             ? () => setPantalla("credito")
             : undefined
         }
