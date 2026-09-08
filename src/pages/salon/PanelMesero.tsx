@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Icon } from "../../components/Icon";
 import type { NombreIcono } from "../../components/Icon";
 import type { Mesa } from "../../types/salon";
+import { porServir } from "./logicaSalon";
 import AbrirMesa from "./AbrirMesa";
 import DetalleMesa from "./DetalleMesa";
 import MiTurno from "./MiTurno";
@@ -49,6 +50,8 @@ export default function PanelMesero() {
   const [version, setVersion] = useState(0);
   /** Las mesas que cargó el salón: el detalle las usa para pasar/juntar. */
   const [mesas, setMesas] = useState<Mesa[]>([]);
+  /** Lo que falta llevar: va como badge sobre la pestaña "Por servir". */
+  const pendientes = porServir(mesas).length;
 
   function volverAlSalon(mensaje = "") {
     setFlujo(null);
@@ -139,11 +142,20 @@ export default function PanelMesero() {
             <button
               key={p.id}
               onClick={() => setPestana(p.id)}
-              className={`flex flex-1 flex-col items-center gap-0.5 py-2.5 text-[11px] font-semibold transition-colors ${
+              className={`relative flex flex-1 flex-col items-center gap-0.5 py-2.5 text-[11px] font-semibold transition-colors ${
                 activa ? "text-primary" : "text-texto-3 hover:text-texto-2"
               }`}
             >
-              <Icon name={p.icono} size={20} strokeWidth={activa ? 2.4 : 2} />
+              <span className="relative">
+                <Icon name={p.icono} size={20} strokeWidth={activa ? 2.4 : 2} />
+                {/* Cuántos pedidos esperan: es lo único de la barra que exige
+                    moverse ahora mismo. */}
+                {p.id === "servir" && pendientes > 0 && (
+                  <span className="absolute -right-2 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#DC2626] px-1 text-[10px] font-bold text-white">
+                    {pendientes}
+                  </span>
+                )}
+              </span>
               {p.etiqueta}
             </button>
           );
