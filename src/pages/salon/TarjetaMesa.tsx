@@ -4,6 +4,7 @@ import type { Mesa } from "../../types/salon";
 import { ETIQUETA_ESTADO } from "../../types/salon";
 import {
   COLOR_MESA,
+  inicialesDe,
   comandasPendientes,
   consumoDeMesa,
   etiquetaMesa,
@@ -34,6 +35,7 @@ export default function TarjetaMesa({
 }) {
   const color = COLOR_MESA[mesa.estado];
   const libre = mesa.estado === "LIBRE";
+  const pagada = mesa.estado === "PAGADA";
   const consumo = consumoDeMesa(mesa);
   const pendientes = comandasPendientes(mesa).length;
   const esMia = mesa.meseroId != null && mesa.meseroId === miMeseroId;
@@ -75,20 +77,27 @@ export default function TarjetaMesa({
 
         {/* Lo que va consumido: es lo segundo que mira el mesero después del
             estado. En una mesa libre no existe, y ahí va el CTA en su lugar. */}
-        {!libre && consumo > 0 && (
+        {!libre && !pagada && consumo > 0 && (
           <p className="truncate text-[15px] font-extrabold text-texto">{fmtMoney(consumo)}</p>
         )}
 
         {mesa.reserva && (
           <p className="truncate text-xs font-semibold text-[#2563EB]">
             {mesa.reserva.hora} · {mesa.reserva.nombre}
+            {mesa.reserva.personas ? ` (${mesa.reserva.personas})` : ""}
           </p>
         )}
 
-        {!libre && (tiempo || esMia) && (
+        {!libre && (tiempo || mesa.meseroNombre) && (
           <div className="mt-0.5 flex items-center gap-2 text-[10px] text-texto-3">
             <span className="min-w-0 flex-1 truncate">{tiempo}</span>
-            {esMia && <span className="shrink-0">Mi mesa</span>}
+            {/* Si no es mía van las iniciales del que la atiende: así el mesero
+                sabe a quién preguntarle sin abrir la mesa. */}
+            {mesa.meseroNombre && (
+              <span className="shrink-0">
+                {esMia ? "Mi mesa" : inicialesDe(mesa.meseroNombre)}
+              </span>
+            )}
           </div>
         )}
 
@@ -96,6 +105,14 @@ export default function TarjetaMesa({
           <span className="mt-1 flex items-center gap-1 text-xs font-bold text-primary">
             <Icon name="plus" size={13} />
             Tomar pedido
+          </span>
+        )}
+
+        {/* Ya se cobró: lo que falta es levantarla, no el monto. */}
+        {pagada && (
+          <span className="mt-1 flex items-center gap-1 text-xs font-bold text-[#059669]">
+            <Icon name="check" size={13} />
+            Tocá para liberar
           </span>
         )}
       </button>

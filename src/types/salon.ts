@@ -146,14 +146,20 @@ export interface TurnoMesero {
   propinas: number;
   enMesasAbiertas: number;
   mesasPorLiberar: number;
-  /** Mesas todavía a su nombre: impiden cerrar el turno. */
-  mesasSinCerrar: { id: number; codigo: string; estado: string }[];
+  /**
+   * Los códigos de las mesas todavía a su nombre: impiden cerrar el turno.
+   * Llegan como strings sueltos ("M1"), no como objetos.
+   */
+  mesasSinCerrar: string[];
   historial: {
-    id: number;
-    codigo: string;
+    id?: number;
+    mesaCodigo?: string;
+    codigo?: string;
     comensales: number;
     total: number;
+    comprobante?: string;
     cerradaEn: string;
+    propina?: number;
   }[];
 }
 

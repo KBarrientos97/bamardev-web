@@ -120,16 +120,24 @@ export default function MiTurno() {
       ) : (
         t!.historial.map((h) => (
           <div
-            key={h.id}
+            key={h.comprobante ?? `${h.mesaCodigo}-${h.cerradaEn}`}
             className="mb-2 flex items-center gap-3 rounded-xl border border-borde bg-white p-3"
           >
             <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#ECFDF5] text-sm font-extrabold text-[#059669]">
-              {h.codigo}
+              {h.mesaCodigo ?? h.codigo}
             </span>
-            <p className="min-w-0 flex-1 truncate text-sm text-texto">
-              {h.comensales} {h.comensales === 1 ? "persona" : "personas"} · hace{" "}
-              {hace(h.cerradaEn)}
-            </p>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm text-texto">
+                {h.comensales} {h.comensales === 1 ? "persona" : "personas"}
+                {h.comprobante ? ` · ${h.comprobante}` : ""} · hace {hace(h.cerradaEn)}
+              </p>
+              {/* La propina va en su propia línea y en verde: es del mesero. */}
+              {(h.propina ?? 0) > 0 && (
+                <p className="text-xs font-semibold text-primary-700">
+                  +{fmtMoney(h.propina!)} propina
+                </p>
+              )}
+            </div>
             <span className="shrink-0 text-sm font-bold text-texto">
               {fmtMoney(h.total)}
             </span>
@@ -144,7 +152,7 @@ export default function MiTurno() {
       {!puedeCerrar && (
         <p className="mt-4 rounded-xl border border-[#FCD34D] bg-[#FFFBEB] px-3.5 py-2.5 text-[13px] text-[#D97706]">
           Para cerrar tu turno no podés tener mesas a tu nombre. Te quedan:{" "}
-          {sinCerrar.map((m) => m.codigo).join(", ")}. Cerralas (que la caja cobre y
+          {sinCerrar.join(", ")}. Cerralas (que la caja cobre y
           levantalas) o pasáselas a otro mesero.
         </p>
       )}
