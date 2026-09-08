@@ -5,7 +5,14 @@
 // ── Sesión y permisos ───────────────────────────────────────────────────────
 
 /** Roles de la app. El backend los devuelve en mayúsculas. */
-export type Rol = "ADMIN" | "SUPERVISOR" | "CAJERO" | "REPARTIDOR" | "PLATAFORMA";
+export type Rol =
+  | "ADMIN"
+  | "SUPERVISOR"
+  | "CAJERO"
+  | "REPARTIDOR"
+  /** Atiende el salón: abre mesas y manda comandas, pero NO cobra. */
+  | "MESERO"
+  | "PLATAFORMA";
 
 /**
  * Módulo del ROL (tabla Modulo): en MAYÚSCULAS. Es lo que la persona puede

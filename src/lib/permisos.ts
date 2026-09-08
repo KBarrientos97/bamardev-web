@@ -40,7 +40,11 @@ export type Seccion =
   | "creditos"
   | "reportes"
   | "usuarios"
-  | "reparto";
+  | "reparto"
+  /** El panel del mesero: el salón, lo que hay por servir y su turno. */
+  | "salon"
+  /** ABM de mesas y zonas: es del admin, no del mesero. */
+  | "mesas";
 
 /**
  * Qué módulo de rol y qué feature de plan exige cada sección. `feature: null`
@@ -59,6 +63,11 @@ const REQUISITOS: Record<Seccion, { modulo: Modulo; feature: Feature | null }> =
   usuarios: { modulo: "USUARIOS", feature: "usuarios" },
   // El reparto no es una sección vendible: es la app del repartidor.
   reparto: { modulo: "POS", feature: "delivery" },
+  // El salón tampoco: es el panel del mesero. El módulo es POS porque es lo
+  // que el backend le da al rol MESERO, y no hay feature de plan para "salon"
+  // en el catálogo — si aparece, va acá.
+  salon: { modulo: "POS", feature: null },
+  mesas: { modulo: "INVENTARIO", feature: null },
 };
 
 /**
@@ -80,6 +89,12 @@ const ROLES_PERMITIDOS: Partial<Record<Seccion, Rol[]>> = {
   almacenes: ["ADMIN", "SUPERVISOR"],
   movimientos: ["ADMIN", "SUPERVISOR"],
   reparto: ["REPARTIDOR"],
+  // El mesero SÓLO ve su panel: no cobra, así que no tiene POS ni caja. El
+  // admin y el supervisor también entran, para poder mirar el salón sin tener
+  // que pedirle el celular a alguien.
+  salon: ["MESERO", "ADMIN", "SUPERVISOR"],
+  // Crear mesas y zonas es del admin: el mesero las usa, no las administra.
+  mesas: ["ADMIN", "SUPERVISOR"],
 };
 
 export interface ContextoPermisos {
@@ -158,7 +173,12 @@ export function puedeSupervisar(rol: Rol): boolean {
  */
 export function rutaInicial(ctx: ContextoPermisos): string {
   const orden: [Seccion, string][] =
-    ctx.rol === "REPARTIDOR"
+    // El mesero entra directo al salón: es su única pantalla. Igual que
+    // AuthenticationActivity en Android, que lo manda a MeserosActivity sin
+    // pasar por el menú del admin.
+    ctx.rol === "MESERO"
+      ? [["salon", "/salon"]]
+      : ctx.rol === "REPARTIDOR"
       ? [["reparto", "/reparto"], ["pos", "/pos"]]
       : ctx.rol === "CAJERO"
         ? [["pos", "/pos"], ["caja", "/pos"], ["creditos", "/creditos"]]
@@ -185,6 +205,7 @@ export function etiquetaRol(rol: Rol): string {
     SUPERVISOR: "Supervisor",
     CAJERO: "Cajero",
     REPARTIDOR: "Repartidor",
+    MESERO: "Mesero",
     PLATAFORMA: "Plataforma",
   };
   return m[rol] ?? rol;

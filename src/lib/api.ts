@@ -44,6 +44,12 @@ import type {
   VentaInput,
 } from "../types";
 
+import type {
+  Mesa,
+  MesaPorCobrar,
+  Salon,
+  TurnoMesero,
+} from "../types/salon";
 import { reportarError } from "./telemetria";
 
 // URL del backend. En los builds la fija VITE_API_URL (QA o PROD); en `npm run
@@ -464,6 +470,99 @@ export const api = {
   // Todos aceptan ?desde&hasta en ISO; sin ellos el backend usa 7 días.
   reporte: <T = unknown>(nombre: string, rango: RangoReporte = {}, extra = {}) =>
     request<T>(`/reportes/${nombre}${qs({ ...rango, ...extra })}`),
+
+  // ── Salón ─────────────────────────────────────────────────────────────────
+  // El panel del mesero. `clienteRequestId` viaja en abrir y en comanda porque
+  // el backend las dedupe: si el POST llegó pero la respuesta se perdió, el
+  // reintento devuelve lo que ya existe en vez de duplicarlo — una comanda
+  // repetida es un pedido que la cocina hace dos veces.
+  salon: () => request<Salon>("/salon"),
+  mesa: (id: number) => request<Mesa>(`/salon/mesas/${id}`),
+  /** La carta del mesero: el catálogo con el stock ya comprometido por las mesas. */
+  cartaSalon: () => request<Producto[]>("/salon/carta"),
+  turnoMesero: () => request<TurnoMesero>("/salon/turno"),
+  cerrarTurnoMesero: () =>
+    request<TurnoMesero>("/salon/turno/cerrar", { method: "POST" }),
+
+  abrirMesa: (
+    id: number,
+    input: {
+      comensales: number;
+      referencia?: string;
+      clienteRequestId?: string;
+    },
+  ) =>
+    request<Mesa>(`/salon/mesas/${id}/abrir`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+
+  /** Manda la mesa a caja. No cobra: el mesero no cobra. */
+  pedirCuentaMesa: (id: number) =>
+    request<Mesa>(`/salon/mesas/${id}/cuenta`, { method: "POST" }),
+  liberarMesa: (id: number) =>
+    request<Mesa>(`/salon/mesas/${id}/liberar`, { method: "POST" }),
+
+  crearComanda: (
+    id: number,
+    input: {
+      items: { productoId: number; cantidad: number; nota?: string }[];
+      clienteRequestId?: string;
+    },
+  ) =>
+    request<Mesa>(`/salon/mesas/${id}/comandas`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  marcarComandaServida: (mesaId: number, comandaId: number) =>
+    request<Mesa>(`/salon/mesas/${mesaId}/comandas/${comandaId}/servida`, {
+      method: "POST",
+    }),
+  anularItemComanda: (
+    mesaId: number,
+    comandaId: number,
+    itemId: number,
+    input: { motivo?: string; autorizadorUsername?: string; autorizadorPin?: string },
+  ) =>
+    request<Mesa>(
+      `/salon/mesas/${mesaId}/comandas/${comandaId}/items/${itemId}/anular`,
+      { method: "POST", body: JSON.stringify(input) },
+    ),
+
+  /** Mueve el grupo entero a otra mesa. */
+  transferirMesa: (id: number, destinoId: number) =>
+    request<Mesa>(`/salon/mesas/${id}/transferir`, {
+      method: "POST",
+      body: JSON.stringify({ destinoId }),
+    }),
+  /** Junta el consumo de dos cuentas que YA comieron. */
+  juntarMesa: (id: number, otraId: number) =>
+    request<Mesa>(`/salon/mesas/${id}/juntar`, {
+      method: "POST",
+      body: JSON.stringify({ otraId }),
+    }),
+  /** Arrima mesas libres ANTES de sentar a nadie, para un grupo grande. */
+  unirMesa: (id: number, mesaIds: number[]) =>
+    request<Mesa>(`/salon/mesas/${id}/unir`, {
+      method: "POST",
+      body: JSON.stringify({ mesaIds }),
+    }),
+  separarMesa: (id: number) =>
+    request<Mesa>(`/salon/mesas/${id}/separar`, { method: "POST" }),
+
+  reservarMesa: (
+    id: number,
+    input: { hora: string; nombre: string; telefono?: string; personas?: number; nota?: string },
+  ) =>
+    request<Mesa>(`/salon/mesas/${id}/reserva`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  quitarReservaMesa: (id: number) =>
+    request<Mesa>(`/salon/mesas/${id}/reserva`, { method: "DELETE" }),
+
+  /** Las cuentas que esperan en caja. Sólo la ven los que cobran. */
+  mesasPorCobrar: () => request<MesaPorCobrar[]>("/salon/por-cobrar"),
 };
 
 /** Pago con el que el repartidor cobra un pedido contra entrega. */
