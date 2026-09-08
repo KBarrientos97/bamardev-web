@@ -4,6 +4,8 @@ import type { NombreIcono } from "../../components/Icon";
 import type { Mesa } from "../../types/salon";
 import AbrirMesa from "./AbrirMesa";
 import DetalleMesa from "./DetalleMesa";
+import MiTurno from "./MiTurno";
+import PorServir from "./PorServir";
 import Salon from "./Salon";
 import TomarPedido from "./TomarPedido";
 
@@ -90,8 +92,8 @@ export default function PanelMesero() {
             onIrAMiTurno={() => setPestana("turno")}
           />
         )}
-        {pestana === "servir" && <EnConstruccion nombre="Por servir" />}
-        {pestana === "turno" && <EnConstruccion nombre="Mi turno" />}
+        {pestana === "servir" && <PorServir key={version} />}
+        {pestana === "turno" && <MiTurno key={version} />}
       </main>
 
       {/* Va SOBRE el salón: es una hoja, no otra pantalla. */}
@@ -146,13 +148,4 @@ export default function PanelMesero() {
 /** Un flujo a pantalla completa: sin las pestañas de abajo. */
 function Pantalla({ children }: { children: React.ReactNode }) {
   return <div className="h-[100dvh] overflow-hidden bg-fondo">{children}</div>;
-}
-
-/** Placeholder de las pestañas que todavía no están. */
-function EnConstruccion({ nombre }: { nombre: string }) {
-  return (
-    <div className="flex h-full items-center justify-center p-8 text-center">
-      <p className="text-[13px] text-texto-3">{nombre} — en construcción.</p>
-    </div>
-  );
 }
