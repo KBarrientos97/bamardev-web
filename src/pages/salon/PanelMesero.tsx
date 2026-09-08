@@ -63,7 +63,11 @@ export default function PanelMesero() {
       <Pantalla>
         <AbrirMesa
           mesa={flujo.mesa}
+          mesasDelSalon={mesas}
           onAtras={() => setFlujo(null)}
+          // Unir o separar deja OTRA mesa: la pantalla se repinta con la que
+          // devolvió el backend, sin volver al salón en el medio.
+          onMesaCambiada={(m) => setFlujo({ tipo: "abrir", mesa: m })}
           // Abrir y tomar el pedido son el mismo movimiento: se encadena con
           // la carta sin volver al salón en el medio.
           onAbierta={(m) => setFlujo({ tipo: "pedido", mesa: m })}

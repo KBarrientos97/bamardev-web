@@ -132,12 +132,30 @@ del mesero y el cajero la cobra.
 
 ---
 
-## Estado
+## Estado — TERMINADO
 
 - [x] Tipos del salón (`src/types/salon.ts`)
 - [x] Endpoints en el interceptor (`api.ts`)
-- [x] Rol MESERO y secciones `salon` / `mesas` (`permisos.ts`) + 7 tests
-- [ ] A1–A6, B1–B2, C1
+- [x] Rol MESERO y secciones `salon` / `mesas` (`permisos.ts`)
+- [x] **A1** Salón · **A2** Abrir mesa · **A3** Tomar pedido · **A4** Detalle
+      (con las tres acciones del menú, el modo de quitar y las reservas) ·
+      **A5** Por servir · **A6** Mi turno
+- [x] **B1** Mesas del salón (admin) · **B2** Reporte de meseros
+- [x] **C1** Mesas por cobrar (caja)
+- [x] Los tres puntos de [DEUDA-PARIDAD-ANDROID.md](DEUDA-PARIDAD-ANDROID.md)
+
+Verificado en QA contra el backend real: abrir mesa → mandar comanda →
+marcarla servida → pedir la cuenta → la mesa llega a la cola del cajero.
+
+Cuatro diferencias con Android salieron de comparar pantalla a pantalla y ya
+están corregidas (ver el commit "Paridad con Android"). Los textos de las 10
+pantallas se compararon uno a uno contra `strings.xml`.
+
+### Lo que quedó fuera
+
+- **Offline**: el panel de Android funciona sin señal con una cola local que
+  sube cuando vuelve el wifi. La web no, igual que el resto de la app — es la
+  misma deuda que ya estaba anotada para el POS.
 
 ---
 

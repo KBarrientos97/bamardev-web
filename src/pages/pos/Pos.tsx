@@ -13,6 +13,8 @@ import PantallaCobro from "./PantallaCobro";
 import PantallaCredito from "./PantallaCredito";
 import PantallaEntrega, { type DatosEntrega } from "./PantallaEntrega";
 import MesasPorCobrar from "./MesasPorCobrar";
+import { consumoDeMesa } from "../salon/logicaSalon";
+import type { Mesa as MesaSalon } from "../../types/salon";
 import PantallaHistorial from "./PantallaHistorial";
 import PantallaRecibo from "./PantallaRecibo";
 import PantallaVenta from "./PantallaVenta";
@@ -54,6 +56,13 @@ export default function Pos() {
    * es un error que mostrarle a la cajera — simplemente no hay mesas.
    */
   const porCobrar = useApi(() => api.mesasPorCobrar().catch(() => []), []);
+
+  /**
+   * La mesa que se está cobrando. Mientras hay una, la pantalla de cobro
+   * trabaja con SU total y no con el del carrito: el consumo ya lo cargó el
+   * mesero y la cajera no retipea nada.
+   */
+  const [mesaCobrando, setMesaCobrando] = useState<MesaSalon | null>(null);
   const [venta, setVenta] = useState<Venta | null>(null);
   const [cajaCerrada, setCajaCerrada] = useState<Caja | null>(null);
   const [tipoPedido, setTipoPedido] = useState<TipoPedido>("LOCAL");
@@ -101,13 +110,26 @@ export default function Pos() {
       setError("");
       setEnviando(true);
       try {
-        const creada = await api.crearVenta({
-          ...cuerpoVenta(pagos),
-          clienteRequestId: intento.actual(),
-        });
+        // Cobrar una mesa es otro endpoint: la cuenta ya existe en el salón,
+        // acá sólo se dice con qué se pagó. La venta la arma el backend con lo
+        // que el mesero cargó.
+        const creada = mesaCobrando
+          ? await api.cobrarMesa(mesaCobrando.id, {
+              pagos,
+              clienteRequestId: intento.actual(),
+            })
+          : await api.crearVenta({
+              ...cuerpoVenta(pagos),
+              clienteRequestId: intento.actual(),
+            });
         intento.registrado();
         setVenta(creada);
-        limpiar();
+        if (mesaCobrando) {
+          setMesaCobrando(null);
+          porCobrar.recargar();
+        } else {
+          limpiar();
+        }
         setPantalla("recibo");
         // El stock cambió al vender: el catálogo tiene que reflejarlo.
         productos.recargar();
@@ -234,7 +256,10 @@ export default function Pos() {
         onAtras={() => setPantalla("venta")}
         // El cobro de una mesa reusa la pantalla de cobro del POS: es la misma
         // plata y la misma caja. Todavía falta cablearlo.
-        onCobrar={() => setPantalla("venta")}
+        onCobrar={(mesa) => {
+          setMesaCobrando(mesa);
+          setPantalla("cobro");
+        }}
       />
     );
 
@@ -251,7 +276,7 @@ export default function Pos() {
     return (
       <PantallaEntrega
         tipo={tipoPedido === "DELIVERY" ? "DELIVERY" : "RECOGER"}
-        total={carrito.total}
+        total={mesaCobrando ? consumoDeMesa(mesaCobrando) : carrito.total}
         unidades={carrito.unidades}
         repartidores={repartidores.datos ?? []}
         enviando={enviando}
@@ -286,6 +311,11 @@ export default function Pos() {
           // Sin esto, el error del cobro fallido seguía visible al volver y
           // reaparecía sobre el intento nuevo, que todavía no falló.
           setError("");
+          if (mesaCobrando) {
+            setMesaCobrando(null);
+            setPantalla("mesasPorCobrar");
+            return;
+          }
           setPantalla(datosEntrega ? "entrega" : "venta");
         }}
         onConfirmar={cobrar}

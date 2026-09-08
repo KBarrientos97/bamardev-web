@@ -3,8 +3,8 @@ import { Icon } from "../../components/Icon";
 import { Boton, ErrorMsg } from "../../components/ui";
 import { api } from "../../lib/api";
 import type { Mesa } from "../../types/salon";
-import { Reserva } from "./AccionesMesa";
-import { etiquetaMesa } from "./logicaSalon";
+import { ElegirMesa, Reserva } from "./AccionesMesa";
+import { estaUnida, etiquetaMesa } from "./logicaSalon";
 
 /** Dos personas es el grupo más común en un resto bar. */
 const INICIAL = 2;
@@ -25,11 +25,17 @@ const MAXIMO = 30;
  */
 export default function AbrirMesa({
   mesa,
+  mesasDelSalon,
   onAtras,
   onAbierta,
+  onMesaCambiada,
 }: {
   mesa: Mesa;
+  /** Todo el salón: hace falta para elegir qué mesa arrimar. */
+  mesasDelSalon: Mesa[];
   onAtras: () => void;
+  /** La mesa después de unir o separar: la pantalla se repinta con ella. */
+  onMesaCambiada: (mesa: Mesa) => void;
   /** La mesa ya abierta: se encadena con la carta sin volver al salón. */
   onAbierta: (mesa: Mesa) => void;
 }) {
@@ -38,6 +44,7 @@ export default function AbrirMesa({
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState("");
   const [reservando, setReservando] = useState(false);
+  const [uniendo, setUniendo] = useState(false);
 
   const lugares = mesa.capacidadTotal || mesa.capacidad;
   const excede = personas > lugares;
@@ -63,6 +70,31 @@ export default function AbrirMesa({
       onAbierta(abierta);
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudo abrir la mesa");
+      setEnviando(false);
+    }
+  }
+
+  async function unir(otra: Mesa) {
+    setUniendo(false);
+    setError("");
+    setEnviando(true);
+    try {
+      onMesaCambiada(await api.unirMesa(mesa.id, [otra.id]));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudo unir la mesa");
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  async function separar() {
+    setError("");
+    setEnviando(true);
+    try {
+      onMesaCambiada(await api.separarMesa(mesa.id));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudieron separar");
+    } finally {
       setEnviando(false);
     }
   }
@@ -186,6 +218,25 @@ export default function AbrirMesa({
         >
           {enviando ? "Abriendo…" : "Abrir y tomar pedido"}
         </Boton>
+        {/* Para el grupo que no entra en una sola mesa: llegan 14 y la más
+            grande es de 8, así que se arrima otra. Va acá, en la pantalla
+            donde el mesero está escribiendo "14", y no escondido en el plano:
+            es el único momento en que se acuerda de que hace falta.
+
+            El botón cambia de sentido según cómo esté la mesa: arrimar otra
+            cuando está sola, separarlas cuando ya son una grande. Es el mismo
+            lugar porque es la misma decisión. */}
+        <Boton
+          variante="ghost"
+          onClick={() => {
+            if (estaUnida(mesa)) separar();
+            else setUniendo(true);
+          }}
+          disabled={enviando}
+          className="mt-2 w-full"
+        >
+          {estaUnida(mesa) ? "Separar las mesas" : "Unir otra mesa"}
+        </Boton>
         {/* Para cuando llaman a reservar y la mesa todavía no se ocupa. */}
         <Boton
           variante="ghost"
@@ -196,6 +247,17 @@ export default function AbrirMesa({
           No están ahora · reservar
         </Boton>
       </div>
+
+      {uniendo && (
+        <ElegirMesa
+          modo="pasar"
+          mesa={mesa}
+          mesas={mesasDelSalon}
+          procesando={enviando}
+          onCerrar={() => setUniendo(false)}
+          onElegir={unir}
+        />
+      )}
 
       {reservando && (
         <Reserva
