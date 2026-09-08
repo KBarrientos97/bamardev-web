@@ -47,6 +47,8 @@ export default function PanelMesero() {
   const [aviso, setAviso] = useState("");
   /** Fuerza a recargar el salón después de tocar una mesa. */
   const [version, setVersion] = useState(0);
+  /** Las mesas que cargó el salón: el detalle las usa para pasar/juntar. */
+  const [mesas, setMesas] = useState<Mesa[]>([]);
 
   function volverAlSalon(mensaje = "") {
     setFlujo(null);
@@ -90,6 +92,7 @@ export default function PanelMesero() {
             onVerMesa={(mesa) => setFlujo({ tipo: "detalle", mesa })}
             onIrAPorServir={() => setPestana("servir")}
             onIrAMiTurno={() => setPestana("turno")}
+            onMesas={setMesas}
           />
         )}
         {pestana === "servir" && <PorServir key={version} />}
@@ -100,6 +103,7 @@ export default function PanelMesero() {
       {flujo?.tipo === "detalle" && (
         <DetalleMesa
           mesa={flujo.mesa}
+          mesasDelSalon={mesas}
           onCerrar={() => setFlujo(null)}
           onCambio={(m, mensaje) => {
             // Liberar o pasar la mesa deja esta hoja sin sujeto: se cierra sola.

@@ -3,7 +3,8 @@ import { Icon } from "../../components/Icon";
 import { Boton, ErrorMsg } from "../../components/ui";
 import { api } from "../../lib/api";
 import { fmtMoney, fmtNum } from "../../lib/format";
-import type { Comanda, Mesa } from "../../types/salon";
+import type { Comanda, ItemComanda, Mesa } from "../../types/salon";
+import { AnularItem, ElegirMesa } from "./AccionesMesa";
 import {
   cantidadItems,
   consumoDeMesa,
@@ -27,12 +28,15 @@ import { pieDeMesa, type AccionMesa } from "./pieDeMesa";
  */
 export default function DetalleMesa({
   mesa,
+  mesasDelSalon,
   onCerrar,
   onCambio,
   onAgregarPedido,
   onAbrirMesa,
 }: {
   mesa: Mesa;
+  /** Todo el salón: hace falta para elegir a qué mesa pasar o juntar. */
+  mesasDelSalon: Mesa[];
   onCerrar: () => void;
   /** La mesa que devolvió el backend, ya actualizada. */
   onCambio: (mesa: Mesa, mensaje: string) => void;
@@ -46,6 +50,13 @@ export default function DetalleMesa({
    */
   const [procesando, setProcesando] = useState(false);
   const [error, setError] = useState("");
+  const [menu, setMenu] = useState(false);
+  /** Modo "quitar producto": un tacho por línea. Ver el comentario del menú. */
+  const [quitando, setQuitando] = useState(false);
+  const [elegir, setElegir] = useState<"pasar" | "juntar" | null>(null);
+  const [anular, setAnular] = useState<{ comanda: Comanda; item: ItemComanda } | null>(
+    null,
+  );
 
   const consumo = consumoDeMesa(mesa);
   const items = cantidadItems(mesa);
@@ -70,6 +81,19 @@ export default function DetalleMesa({
         const m = await api.liberarMesa(mesa.id);
         onCambio(m, `${mesa.codigo} liberada`);
       }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudo completar la acción");
+    } finally {
+      setProcesando(false);
+    }
+  }
+
+  async function conMesa(fn: () => Promise<Mesa>, mensaje: string) {
+    if (procesando) return;
+    setError("");
+    setProcesando(true);
+    try {
+      onCambio(await fn(), mensaje);
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudo completar la acción");
     } finally {
@@ -103,6 +127,17 @@ export default function DetalleMesa({
                 : `${mesa.zonaNombre} · ${mesa.capacidadTotal || mesa.capacidad} lugares`}
             </p>
           </div>
+          {/* El menú va con fondo de botón y no tres puntos sueltos: perdido
+              entre el título nadie lo encontraba. */}
+          {ocupada && (
+            <button
+              onClick={() => setMenu((v) => !v)}
+              aria-label="Más acciones"
+              className="shrink-0 rounded-lg border border-borde p-2 text-texto-2 hover:bg-muted"
+            >
+              <Icon name="settings" size={16} />
+            </button>
+          )}
           <button
             onClick={onCerrar}
             aria-label="Cerrar"
@@ -111,6 +146,23 @@ export default function DetalleMesa({
             <Icon name="close" size={18} />
           </button>
         </div>
+
+        {/* Se despliega acá adentro y no en un popup del sistema: son acciones
+            que cambian plata de lugar y conviene que se vean sobre la mesa que
+            las va a sufrir, no flotando en una esquina. */}
+        {menu && (
+          <div className="border-b border-borde-soft bg-muted">
+            <OpcionMenu icono="swap" onClick={() => { setMenu(false); setElegir("pasar"); }}>
+              Pasar a otra mesa
+            </OpcionMenu>
+            <OpcionMenu icono="plus" onClick={() => { setMenu(false); setElegir("juntar"); }}>
+              Juntar con otra mesa
+            </OpcionMenu>
+            <OpcionMenu icono="trash" onClick={() => { setMenu(false); setQuitando(true); }}>
+              Quitar un producto
+            </OpcionMenu>
+          </div>
+        )}
 
         <div className="min-h-0 flex-1 overflow-y-auto bg-fondo px-4 py-3">
           {/* Hero del consumo: es lo primero que se pregunta el mesero. */}
@@ -134,6 +186,16 @@ export default function DetalleMesa({
             </div>
           )}
 
+          {quitando && (
+            <p className="mt-3 flex items-start gap-2 rounded-xl border border-[#FCD34D] bg-[#FFFBEB] px-3.5 py-2.5 text-[13px] text-[#D97706]">
+              <Icon name="alert" size={15} />
+              <span>
+                Tocá el ícono rojo del producto que querés quitar. Si ya está en cocina,
+                avisales.
+              </span>
+            </p>
+          )}
+
           {ocupada && (
             <>
               <p className="mb-2 mt-4 text-[11px] font-bold uppercase tracking-wide text-texto-3">
@@ -149,7 +211,9 @@ export default function DetalleMesa({
                     key={c.id}
                     comanda={c}
                     procesando={procesando}
+                    quitando={quitando}
                     onServida={() => marcarServida(c)}
+                    onQuitar={(item) => setAnular({ comanda: c, item })}
                   />
                 ))
               )}
@@ -191,6 +255,52 @@ export default function DetalleMesa({
           )}
         </div>
       </div>
+
+      {elegir && (
+        <ElegirMesa
+          modo={elegir}
+          mesa={mesa}
+          mesas={mesasDelSalon}
+          procesando={procesando}
+          onCerrar={() => setElegir(null)}
+          onElegir={(otra) => {
+            setElegir(null);
+            if (elegir === "pasar")
+              conMesa(
+                () => api.transferirMesa(mesa.id, otra.id),
+                `Consumo pasado a ${otra.codigo}`,
+              );
+            else
+              conMesa(
+                () => api.juntarMesa(mesa.id, otra.id),
+                `${otra.codigo} juntada con esta`,
+              );
+          }}
+        />
+      )}
+
+      {anular && (
+        <AnularItem
+          item={anular.item}
+          enCocina={anular.comanda.estado !== "SERVIDA"}
+          procesando={procesando}
+          onCerrar={() => setAnular(null)}
+          onConfirmar={(motivo) => {
+            const { comanda, item } = anular;
+            setAnular(null);
+            conMesa(
+              () =>
+                api.anularItemComanda(
+                  mesa.id,
+                  Number(comanda.id),
+                  Number(item.id),
+                  { motivo },
+                ),
+              `${item.nombre} quitado de la cuenta`,
+            );
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -205,11 +315,16 @@ export default function DetalleMesa({
 function TarjetaComanda({
   comanda,
   procesando,
+  quitando,
   onServida,
+  onQuitar,
 }: {
   comanda: Comanda;
   procesando: boolean;
+  /** Modo "quitar producto": aparece un tacho por línea. */
+  quitando: boolean;
   onServida: () => void;
+  onQuitar: (item: ItemComanda) => void;
 }) {
   const vivos = itemsVivos(comanda);
   const anulados = comanda.anulados ?? [];
@@ -242,6 +357,19 @@ function TarjetaComanda({
               {i.nota && <p className="text-[11px] text-[#D97706]">{i.nota}</p>}
             </div>
             <span className="shrink-0 font-bold text-texto">{fmtMoney(subtotalItem(i))}</span>
+            {/* Es un modo y no un botón por producto porque quitar es raro:
+                un tacho al lado de cada línea todo el tiempo invita a tocarlo
+                sin querer justo en la lista que más se toca del turno. */}
+            {quitando && (
+              <button
+                onClick={() => onQuitar(i)}
+                disabled={procesando}
+                aria-label={`Quitar ${i.nombre}`}
+                className="shrink-0 rounded-lg border border-[#FCA5A5] p-1.5 text-[#DC2626] hover:bg-[#FEF2F2] disabled:opacity-40"
+              >
+                <Icon name="trash" size={13} />
+              </button>
+            )}
           </div>
         ))}
 
@@ -252,7 +380,13 @@ function TarjetaComanda({
             <span className="flex h-6 min-w-6 shrink-0 items-center justify-center rounded-md bg-muted text-xs line-through">
               {fmtNum(i.cantidad)}
             </span>
-            <p className="min-w-0 flex-1 truncate line-through">{i.nombre}</p>
+            <div className="min-w-0 flex-1">
+              <p className="truncate line-through">{i.nombre}</p>
+              {/* El motivo ocupa el lugar de la nota: es lo que el dueño va a
+                  querer leer después, y lo que el mesero le explica al
+                  cliente. */}
+              {i.motivo && <p className="text-[11px]">Anulado · {i.motivo}</p>}
+            </div>
             <span className="shrink-0 line-through">{fmtMoney(subtotalItem(i))}</span>
           </div>
         ))}
@@ -286,5 +420,26 @@ function Badge({ estado }: { estado: "PENDIENTE" | "SERVIDA" | "ANULADA" }) {
     <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${estilo.clase}`}>
       {estilo.texto}
     </span>
+  );
+}
+
+/** Una fila del menú de acciones de la mesa. */
+function OpcionMenu({
+  icono,
+  onClick,
+  children,
+}: {
+  icono: "swap" | "plus" | "trash";
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="flex w-full items-center gap-3 px-4 py-3 text-left text-[15px] text-texto hover:bg-white"
+    >
+      <Icon name={icono} size={17} />
+      {children}
+    </button>
   );
 }

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Cargando, ErrorMsg } from "../../components/ui";
 import { api } from "../../lib/api";
 import { useApi } from "../../lib/useApi";
@@ -35,11 +35,14 @@ export default function Salon({
   onVerMesa,
   onIrAPorServir,
   onIrAMiTurno,
+  onMesas,
 }: {
   onAbrirMesa: (mesa: Mesa) => void;
   onVerMesa: (mesa: Mesa) => void;
   onIrAPorServir: () => void;
   onIrAMiTurno: () => void;
+  /** Avisa qué mesas hay cargadas: el detalle las necesita para pasar/juntar. */
+  onMesas?: (mesas: Mesa[]) => void;
 }) {
   const { usuario } = useAuth();
   const salon = useApi(() => api.salon(), []);
@@ -49,6 +52,9 @@ export default function Salon({
   const [soloMias, setSoloMias] = useState(false);
 
   const mesas = useMemo(() => salon.datos?.mesas ?? [], [salon.datos]);
+  useEffect(() => {
+    if (mesas.length > 0) onMesas?.(mesas);
+  }, [mesas, onMesas]);
   const zonas = salon.datos?.zonas ?? [];
   const resumen = useMemo(() => resumirSalon(mesas), [mesas]);
   const pendientes = useMemo(() => porServir(mesas), [mesas]);
