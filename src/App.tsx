@@ -13,6 +13,7 @@ import Movimientos from "./pages/inventario/Movimientos";
 import Productos from "./pages/inventario/Productos";
 import Pos from "./pages/pos/Pos";
 import Repartidor from "./pages/repartidor/Repartidor";
+import PanelMesero from "./pages/salon/PanelMesero";
 import { AuthProvider, useAuth } from "./store/AuthContext";
 
 /** Manda a cada rol a su pantalla: cajero al POS, repartidor a entregas. */
@@ -71,6 +72,18 @@ function Rutas() {
 
   return (
     <Routes>
+      {/* Fuera del Layout a propósito: el panel del mesero no tiene barra
+          lateral ni cabecera de la app, tiene sus tres pestañas y nada más.
+          Igual que MeserosActivity en Android, que es una activity aparte. */}
+      <Route
+        path="/salon"
+        element={
+          <Protegida seccion="salon">
+            <PanelMesero />
+          </Protegida>
+        }
+      />
+
       <Route element={<Layout />}>
         <Route path="/" element={<Inicio />} />
         <Route path="/sin-acceso" element={<SinAcceso />} />
