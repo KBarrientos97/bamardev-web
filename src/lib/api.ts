@@ -564,6 +564,22 @@ export const api = {
 
   /** Las cuentas que esperan en caja. Sólo la ven los que cobran. */
   mesasPorCobrar: () => request<MesaPorCobrar[]>("/salon/por-cobrar"),
+  /**
+   * Convierte la cuenta de la mesa en venta. Lo hace la caja: el mesero no
+   * cobra nunca. La propina va al turno del mesero y NO entra al total de la
+   * venta ni a la matemática de la caja.
+   */
+  cobrarMesa: (
+    id: number,
+    input: {
+      pagos: { formaPagoId: number; monto: number; recibido?: number }[];
+      propina?: number;
+      clienteRequestId?: string;
+    },
+  ) => request<Venta>(`/salon/mesas/${id}/cobrar`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  }),
 
   // ── Mesas (administración) ────────────────────────────────────────────────
   // El mesero no crea mesas: sólo abre las que el dueño registre. El backend

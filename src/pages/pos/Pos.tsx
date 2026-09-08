@@ -12,6 +12,7 @@ import PantallaCierre, { CierreOk } from "./PantallaCierre";
 import PantallaCobro from "./PantallaCobro";
 import PantallaCredito from "./PantallaCredito";
 import PantallaEntrega, { type DatosEntrega } from "./PantallaEntrega";
+import MesasPorCobrar from "./MesasPorCobrar";
 import PantallaHistorial from "./PantallaHistorial";
 import PantallaRecibo from "./PantallaRecibo";
 import PantallaVenta from "./PantallaVenta";
@@ -27,7 +28,9 @@ type Pantalla =
   | "pedidoOk"
   | "historial"
   | "cierre"
-  | "cierreOk";
+  | "cierreOk"
+  /** Las cuentas que el salón mandó a caja. */
+  | "mesasPorCobrar";
 
 export default function Pos() {
   const { negocio } = useAuth();
@@ -43,6 +46,14 @@ export default function Pos() {
   // un corte de red no terminen en dos ventas. Ver useIntentoDeCobro.
   const intento = useIntentoDeCobro();
   const [pantalla, setPantalla] = useState<Pantalla>("venta");
+
+  /**
+   * Las mesas que el salón mandó a caja.
+   *
+   * Falla en silencio a propósito: un negocio sin salón responde 403 y eso no
+   * es un error que mostrarle a la cajera — simplemente no hay mesas.
+   */
+  const porCobrar = useApi(() => api.mesasPorCobrar().catch(() => []), []);
   const [venta, setVenta] = useState<Venta | null>(null);
   const [cajaCerrada, setCajaCerrada] = useState<Caja | null>(null);
   const [tipoPedido, setTipoPedido] = useState<TipoPedido>("LOCAL");
@@ -217,6 +228,16 @@ export default function Pos() {
       />
     );
 
+  if (pantalla === "mesasPorCobrar")
+    return (
+      <MesasPorCobrar
+        onAtras={() => setPantalla("venta")}
+        // El cobro de una mesa reusa la pantalla de cobro del POS: es la misma
+        // plata y la misma caja. Todavía falta cablearlo.
+        onCobrar={() => setPantalla("venta")}
+      />
+    );
+
   if (pantalla === "historial")
     return (
       <PantallaHistorial
@@ -366,6 +387,15 @@ export default function Pos() {
                 }}
               />
             )}
+            {/* Sólo aparece cuando hay cuentas esperando: si el negocio no
+                usa el salón, no existe. */}
+            {(porCobrar.datos?.length ?? 0) > 0 && (
+              <BotonTipo
+                icono="grid"
+                titulo={`Mesas por cobrar (${porCobrar.datos!.length})`}
+                onClick={() => setPantalla("mesasPorCobrar")}
+              />
+            )}
             <BotonTipo
               icono="fileText"
               titulo="Ventas del turno"
@@ -389,7 +419,7 @@ function BotonTipo({
   onClick,
   deshabilitado,
 }: {
-  icono: "truck" | "clock" | "fileText" | "lock";
+  icono: "truck" | "clock" | "fileText" | "lock" | "grid";
   titulo: string;
   onClick: () => void;
   deshabilitado?: boolean;
