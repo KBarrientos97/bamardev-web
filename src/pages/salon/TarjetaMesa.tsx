@@ -105,7 +105,7 @@ export default function TarjetaMesa({
           mismo, y adentro del cuerpo se perdía entre los otros números. */}
       {pendientes > 0 && (
         <span className="pointer-events-none absolute -top-1.5 right-2 flex min-w-[22px] items-center gap-1 rounded-full bg-[#D97706] px-2 py-0.5 text-[10px] font-bold text-white shadow">
-          <Icon name="alert" size={11} />
+          <Icon name="bell" size={11} />
           {pendientes}
         </span>
       )}

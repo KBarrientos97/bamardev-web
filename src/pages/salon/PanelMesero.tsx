@@ -2,7 +2,9 @@ import { useState } from "react";
 import { Icon } from "../../components/Icon";
 import type { NombreIcono } from "../../components/Icon";
 import type { Mesa } from "../../types/salon";
+import AbrirMesa from "./AbrirMesa";
 import Salon from "./Salon";
+import TomarPedido from "./TomarPedido";
 
 /**
  * El panel del mesero: la pantalla principal del rol MESERO.
@@ -18,29 +20,67 @@ import Salon from "./Salon";
  */
 type Pestana = "salon" | "servir" | "turno";
 
+/**
+ * Los flujos que van POR ENCIMA de las pestañas.
+ *
+ * Mientras se abre una mesa o se toma un pedido la barra de abajo no está: es
+ * un flujo con principio y fin, no un lugar al que volver.
+ */
+type Flujo = { tipo: "abrir"; mesa: Mesa } | { tipo: "pedido"; mesa: Mesa } | null;
+
 const PESTANAS: { id: Pestana; etiqueta: string; icono: NombreIcono }[] = [
   { id: "salon", etiqueta: "Salón", icono: "grid" },
-  { id: "servir", etiqueta: "Por servir", icono: "alert" },
+  { id: "servir", etiqueta: "Por servir", icono: "bell" },
   { id: "turno", etiqueta: "Mi turno", icono: "trendingUp" },
 ];
 
 export default function PanelMesero() {
   const [pestana, setPestana] = useState<Pestana>("salon");
+  const [flujo, setFlujo] = useState<Flujo>(null);
+  const [aviso, setAviso] = useState("");
+  /** Fuerza a recargar el salón después de tocar una mesa. */
+  const [version, setVersion] = useState(0);
 
-  /**
-   * La mesa sobre la que está trabajando el flujo de abrir/tomar pedido. Va
-   * por encima de las pestañas: mientras se toma un pedido, la barra de abajo
-   * no está — es un flujo, no un lugar al que volver.
-   */
-  const [, setMesaEnCurso] = useState<Mesa | null>(null);
+  function volverAlSalon(mensaje = "") {
+    setFlujo(null);
+    setAviso(mensaje);
+    setVersion((v) => v + 1);
+    setPestana("salon");
+    if (mensaje) setTimeout(() => setAviso(""), 3000);
+  }
+
+  if (flujo?.tipo === "abrir")
+    return (
+      <Pantalla>
+        <AbrirMesa
+          mesa={flujo.mesa}
+          onAtras={() => setFlujo(null)}
+          // Abrir y tomar el pedido son el mismo movimiento: se encadena con
+          // la carta sin volver al salón en el medio.
+          onAbierta={(m) => setFlujo({ tipo: "pedido", mesa: m })}
+        />
+      </Pantalla>
+    );
+
+  if (flujo?.tipo === "pedido")
+    return (
+      <Pantalla>
+        <TomarPedido
+          mesa={flujo.mesa}
+          onAtras={() => setFlujo(null)}
+          onEnviado={volverAlSalon}
+        />
+      </Pantalla>
+    );
 
   return (
-    <div className="flex h-[100dvh] flex-col overflow-hidden bg-fondo">
+    <div className="relative flex h-[100dvh] flex-col overflow-hidden bg-fondo">
       <main className="min-h-0 flex-1 overflow-hidden">
         {pestana === "salon" && (
           <Salon
-            onAbrirMesa={setMesaEnCurso}
-            onVerMesa={setMesaEnCurso}
+            key={version}
+            onAbrirMesa={(mesa) => setFlujo({ tipo: "abrir", mesa })}
+            onVerMesa={(mesa) => setFlujo({ tipo: "pedido", mesa })}
             onIrAPorServir={() => setPestana("servir")}
             onIrAMiTurno={() => setPestana("turno")}
           />
@@ -48,6 +88,12 @@ export default function PanelMesero() {
         {pestana === "servir" && <EnConstruccion nombre="Por servir" />}
         {pestana === "turno" && <EnConstruccion nombre="Mi turno" />}
       </main>
+
+      {aviso && (
+        <p className="absolute bottom-20 left-1/2 -translate-x-1/2 rounded-full bg-primary px-4 py-2 text-[13px] font-semibold text-white shadow-lg">
+          {aviso}
+        </p>
+      )}
 
       {/* Barra de pestañas. Va abajo y con el ícono arriba del texto: se toca
           con el pulgar, que es donde llega sin cambiar la mano de posición. */}
@@ -70,6 +116,11 @@ export default function PanelMesero() {
       </nav>
     </div>
   );
+}
+
+/** Un flujo a pantalla completa: sin las pestañas de abajo. */
+function Pantalla({ children }: { children: React.ReactNode }) {
+  return <div className="h-[100dvh] overflow-hidden bg-fondo">{children}</div>;
 }
 
 /** Placeholder de las pestañas que todavía no están. */
