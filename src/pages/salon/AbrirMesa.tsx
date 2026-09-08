@@ -3,6 +3,7 @@ import { Icon } from "../../components/Icon";
 import { Boton, ErrorMsg } from "../../components/ui";
 import { api } from "../../lib/api";
 import type { Mesa } from "../../types/salon";
+import { Reserva } from "./AccionesMesa";
 import { etiquetaMesa } from "./logicaSalon";
 
 /** Dos personas es el grupo más común en un resto bar. */
@@ -36,6 +37,7 @@ export default function AbrirMesa({
   const [referencia, setReferencia] = useState("");
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState("");
+  const [reservando, setReservando] = useState(false);
 
   const lugares = mesa.capacidadTotal || mesa.capacidad;
   const excede = personas > lugares;
@@ -184,7 +186,35 @@ export default function AbrirMesa({
         >
           {enviando ? "Abriendo…" : "Abrir y tomar pedido"}
         </Boton>
+        {/* Para cuando llaman a reservar y la mesa todavía no se ocupa. */}
+        <Boton
+          variante="ghost"
+          onClick={() => setReservando(true)}
+          disabled={enviando}
+          className="mt-2 w-full"
+        >
+          No están ahora · reservar
+        </Boton>
       </div>
+
+      {reservando && (
+        <Reserva
+          mesa={mesa}
+          procesando={enviando}
+          onCerrar={() => setReservando(false)}
+          onGuardar={async (r) => {
+            setReservando(false);
+            setEnviando(true);
+            try {
+              await api.reservarMesa(mesa.id, r);
+              onAtras();
+            } catch (e) {
+              setError(e instanceof Error ? e.message : "No se pudo reservar");
+              setEnviando(false);
+            }
+          }}
+        />
+      )}
     </div>
   );
 }

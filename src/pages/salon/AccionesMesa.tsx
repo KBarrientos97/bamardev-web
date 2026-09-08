@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Boton, ErrorMsg, Input, Modal } from "../../components/ui";
+import { Boton, Campo, ErrorMsg, Input, Modal } from "../../components/ui";
 import { fmtMoney } from "../../lib/format";
 import type { ItemComanda, Mesa } from "../../types/salon";
 import { consumoDeMesa, estaOcupada, subtotalItem } from "./logicaSalon";
@@ -180,6 +180,105 @@ export function AnularItem({
           }}
           placeholder="Otro motivo…"
         />
+        <ErrorMsg>{error}</ErrorMsg>
+      </div>
+    </Modal>
+  );
+}
+
+/**
+ * Reservar la mesa para más tarde.
+ *
+ * Para cuando llaman a reservar y la mesa todavía no se ocupa: el mesero la
+ * marca y nadie sienta a otro grupo encima.
+ */
+export function Reserva({
+  mesa,
+  procesando,
+  onGuardar,
+  onCerrar,
+}: {
+  mesa: Mesa;
+  procesando: boolean;
+  onGuardar: (r: {
+    hora: string;
+    nombre: string;
+    telefono?: string;
+    personas?: number;
+    nota?: string;
+  }) => void;
+  onCerrar: () => void;
+}) {
+  const previa = mesa.reserva;
+  const [hora, setHora] = useState(previa?.hora ?? "");
+  const [nombre, setNombre] = useState(previa?.nombre ?? "");
+  const [telefono, setTelefono] = useState(previa?.telefono ?? "");
+  const [personas, setPersonas] = useState(String(previa?.personas ?? 2));
+  const [nota, setNota] = useState(previa?.nota ?? "");
+  const [error, setError] = useState("");
+
+  function guardar() {
+    if (!hora.trim()) return setError("Elegí la hora de la reserva");
+    if (!nombre.trim())
+      return setError("Escribí a nombre de quién queda la reserva");
+    onGuardar({
+      hora: hora.trim(),
+      nombre: nombre.trim(),
+      ...(telefono.trim() ? { telefono: telefono.trim() } : {}),
+      ...(Number(personas) > 0 ? { personas: Number(personas) } : {}),
+      ...(nota.trim() ? { nota: nota.trim() } : {}),
+    });
+  }
+
+  return (
+    <Modal
+      abierto
+      titulo={previa ? "Cambiar la reserva" : `Reservar ${mesa.codigo}`}
+      onClose={onCerrar}
+      ancho="max-w-sm"
+      acciones={
+        <>
+          <Boton variante="ghost" onClick={onCerrar}>
+            Cancelar
+          </Boton>
+          <Boton icono="save" onClick={guardar} disabled={procesando}>
+            Guardar reserva
+          </Boton>
+        </>
+      }
+    >
+      <div className="space-y-3">
+        <Campo label="¿A qué hora?">
+          <Input type="time" value={hora} onChange={(e) => setHora(e.target.value)} />
+        </Campo>
+        <Campo label="¿A nombre de quién?">
+          <Input
+            value={nombre}
+            onChange={(e) => setNombre(e.target.value.slice(0, 60))}
+            placeholder="Ej: Sra. Peredo"
+          />
+        </Campo>
+        <Campo label="Teléfono (opcional)">
+          <Input
+            value={telefono}
+            onChange={(e) => setTelefono(e.target.value.slice(0, 20))}
+            inputMode="tel"
+          />
+        </Campo>
+        <Campo label="¿Cuántas personas?">
+          <Input
+            type="number"
+            value={personas}
+            onChange={(e) => setPersonas(e.target.value)}
+          />
+        </Campo>
+        <Campo label="Nota (opcional)">
+          <Input
+            value={nota}
+            onChange={(e) => setNota(e.target.value.slice(0, 120))}
+            placeholder="Ej: aniversario, cerca de la ventana"
+          />
+        </Campo>
         <ErrorMsg>{error}</ErrorMsg>
       </div>
     </Modal>

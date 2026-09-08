@@ -4,7 +4,7 @@ import { Boton, ErrorMsg } from "../../components/ui";
 import { api } from "../../lib/api";
 import { fmtMoney, fmtNum } from "../../lib/format";
 import type { Comanda, ItemComanda, Mesa } from "../../types/salon";
-import { AnularItem, ElegirMesa } from "./AccionesMesa";
+import { AnularItem, ElegirMesa, Reserva } from "./AccionesMesa";
 import {
   cantidadItems,
   consumoDeMesa,
@@ -54,6 +54,7 @@ export default function DetalleMesa({
   /** Modo "quitar producto": un tacho por línea. Ver el comentario del menú. */
   const [quitando, setQuitando] = useState(false);
   const [elegir, setElegir] = useState<"pasar" | "juntar" | null>(null);
+  const [reservando, setReservando] = useState(false);
   const [anular, setAnular] = useState<{ comanda: Comanda; item: ItemComanda } | null>(
     null,
   );
@@ -68,8 +69,9 @@ export default function DetalleMesa({
 
     if (accion === "agregar") return onAgregarPedido(mesa);
     if (accion === "abrir") return onAbrirMesa(mesa);
-    // Las reservas se manejan en su propia hoja; todavía no está.
-    if (accion === "reserva_cambiar" || accion === "reserva_anular") return;
+    if (accion === "reserva_cambiar") return setReservando(true);
+    if (accion === "reserva_anular")
+      return conMesa(() => api.quitarReservaMesa(mesa.id), "Reserva anulada");
 
     setError("");
     setProcesando(true);
@@ -196,6 +198,39 @@ export default function DetalleMesa({
             </p>
           )}
 
+          {mesa.reserva && (
+            <div className="mt-3 rounded-xl border border-[#93C5FD] bg-[#EFF6FF] p-3.5">
+              <p className="flex items-center gap-1.5 text-sm font-bold text-[#2563EB]">
+                <Icon name="clock" size={14} />
+                {mesa.reserva.hora}
+              </p>
+              <p className="mt-0.5 text-[15px] font-bold text-texto">
+                {mesa.reserva.nombre}
+              </p>
+              <p className="text-xs text-texto-3">
+                {[
+                  mesa.reserva.personas
+                    ? `${mesa.reserva.personas} ${mesa.reserva.personas === 1 ? "persona" : "personas"}`
+                    : "",
+                  mesa.reserva.telefono ?? "",
+                  mesa.reserva.nota ?? "",
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </p>
+              {/* Reclamar una reserva casi siempre termina en una llamada. */}
+              {mesa.reserva.telefono && (
+                <a
+                  href={`tel:${mesa.reserva.telefono}`}
+                  className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-borde bg-white px-3 py-1.5 text-[13px] font-semibold text-texto-2"
+                >
+                  <Icon name="phone" size={13} />
+                  Llamar
+                </a>
+              )}
+            </div>
+          )}
+
           {ocupada && (
             <>
               <p className="mb-2 mt-4 text-[11px] font-bold uppercase tracking-wide text-texto-3">
@@ -253,6 +288,16 @@ export default function DetalleMesa({
               {pie.secundario.texto}
             </Boton>
           )}
+          {pie.terciario && (
+            <Boton
+              variante="ghost"
+              onClick={() => ejecutar(pie.terciario!.accion)}
+              disabled={procesando}
+              className="mt-1 w-full text-[#DC2626]"
+            >
+              {pie.terciario.texto}
+            </Boton>
+          )}
         </div>
       </div>
 
@@ -275,6 +320,18 @@ export default function DetalleMesa({
                 () => api.juntarMesa(mesa.id, otra.id),
                 `${otra.codigo} juntada con esta`,
               );
+          }}
+        />
+      )}
+
+      {reservando && (
+        <Reserva
+          mesa={mesa}
+          procesando={procesando}
+          onCerrar={() => setReservando(false)}
+          onGuardar={(r) => {
+            setReservando(false);
+            conMesa(() => api.reservarMesa(mesa.id, r), "Reserva guardada");
           }}
         />
       )}
