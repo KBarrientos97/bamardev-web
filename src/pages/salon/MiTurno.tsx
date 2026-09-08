@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Icon } from "../../components/Icon";
 import { Boton, Cargando, ErrorMsg, Modal } from "../../components/ui";
 import { api } from "../../lib/api";
 import { fmtFechaHora, fmtMoney } from "../../lib/format";
@@ -19,6 +20,7 @@ export default function MiTurno() {
   const turno = useApi(() => api.turnoMesero(), []);
   const [confirmando, setConfirmando] = useState(false);
   const [cerrando, setCerrando] = useState(false);
+  const [saliendo, setSaliendo] = useState(false);
   const [error, setError] = useState("");
 
   const t = turno.datos;
@@ -165,6 +167,51 @@ export default function MiTurno() {
       >
         Cerrar mi turno
       </Boton>
+
+      {/* Salir SIN cerrar el turno.
+          En Android no hace falta: el sistema tiene botón atrás y la app se
+          cierra sola. En el navegador no hay esa salida, así que un mesero con
+          una mesa a su nombre —que es cuando "Cerrar mi turno" está apagado—
+          quedaba encerrado en la sesión sin forma de salir.
+
+          Es lo que corresponde cuando presta el celular o termina el día sin
+          poder cerrar: el turno sigue abierto y sus mesas siguen siendo suyas.
+          Por eso va aparte y en gris: cerrar el turno es lo que hay que hacer,
+          esto es la salida de emergencia. */}
+      <button
+        onClick={() => setSaliendo(true)}
+        className="mt-3 flex w-full items-center justify-center gap-1.5 py-2 text-[13px] font-semibold text-texto-3 hover:text-texto-2"
+      >
+        <Icon name="logout" size={15} />
+        Cerrar sesión
+      </button>
+
+      {saliendo && (
+        <Modal
+          abierto
+          titulo="¿Cerrar sesión?"
+          onClose={() => setSaliendo(false)}
+          ancho="max-w-sm"
+          acciones={
+            <>
+              <Boton variante="ghost" onClick={() => setSaliendo(false)}>
+                Cancelar
+              </Boton>
+              <Boton onClick={logout}>Sí, salir</Boton>
+            </>
+          }
+        >
+          <p className="text-[15px] text-texto-2">
+            {puedeCerrar
+              ? "Tu turno queda abierto. Para cerrarlo y que tus números arranquen de cero, usá “Cerrar mi turno”."
+              : `Tu turno queda abierto y ${
+                  sinCerrar.length === 1 ? "la mesa" : "las mesas"
+                } ${sinCerrar.join(", ")} ${
+                  sinCerrar.length === 1 ? "sigue" : "siguen"
+                } a tu nombre.`}
+          </p>
+        </Modal>
+      )}
 
       {confirmando && (
         <Modal
