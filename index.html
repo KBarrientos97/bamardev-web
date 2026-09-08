@@ -12,15 +12,20 @@
       archivo en un `@layer`, y una `@page` anidada en una capa es inválida:
       el navegador la descarta en silencio.
 
-      Ojo: `size` es una sugerencia. Chrome deja elegir el papel en su diálogo
-      y ahí gana lo que el cajero tenga seleccionado, así que el ticket está
-      hecho para verse bien en cualquiera de los dos (ver index.css): a 80 mm
-      llena el rollo, y en Carta/A4 sale como un ticket angosto arriba a la
-      izquierda, listo para cortar. Verificado con Page.printToPDF.
+      `size` lleva DOS medidas, no `80mm auto`: mezclar una longitud con la
+      palabra `auto` no es sintaxis válida y Chrome tira la declaración entera
+      —se quedaba sólo con el margen y el papel volvía a Carta—. Verificado
+      parseando la regla en el navegador: `80mm auto` sale `@page{margin:4mm}`,
+      `80mm 297mm` se conserva. El alto es el tope del papel; en un rollo
+      continuo el corte lo da el contenido, y un ticket normal no llega ahí.
+
+      Aun así el cajero puede elegir otro papel en el diálogo de Chrome, así
+      que el ticket está hecho para verse bien en cualquiera (ver index.css):
+      a 80 mm llena el rollo, y en Carta sale angosto arriba a la izquierda.
     -->
     <style>
       @page {
-        size: 80mm auto;
+        size: 80mm 297mm;
         margin: 4mm;
       }
     </style>
