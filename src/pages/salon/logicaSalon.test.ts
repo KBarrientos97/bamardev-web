@@ -20,10 +20,10 @@ import {
 function comanda(p: Partial<Comanda> = {}): Comanda {
   return {
     id: 1,
-    estado: "PENDIENTE",
-    creadaEn: "2026-09-08T20:00:00.000Z",
+    estado: "ENVIADA",
+    enviadaEn: "2026-09-08T20:00:00.000Z",
     items: [
-      { id: 1, productoId: 1, producto: "Brasa cuarto", cantidad: 2, precio: 26, subtotal: 52 },
+      { id: 1, productoId: 1, nombre: "Brasa cuarto", cantidad: 2, precio: 26 },
     ],
     ...p,
   };
@@ -64,10 +64,8 @@ describe("lo que la mesa lleva consumido", () => {
 
   it("no cuenta lo anulado", () => {
     const c = comanda({
-      items: [
-        { id: 1, productoId: 1, producto: "Brasa", cantidad: 1, precio: 26, subtotal: 26 },
-        { id: 2, productoId: 2, producto: "Coca", cantidad: 1, precio: 10, subtotal: 10, anulado: true },
-      ],
+      items: [{ id: 1, productoId: 1, nombre: "Brasa", cantidad: 1, precio: 26 }],
+      anulados: [{ id: 2, productoId: 2, nombre: "Coca", cantidad: 1, precio: 10 }],
     });
     expect(consumoDeMesa(mesa({ comandas: [c] }))).toBe(26);
     expect(cantidadItems(mesa({ comandas: [c] }))).toBe(1);
@@ -92,8 +90,9 @@ describe("lo que falta llevar a la mesa", () => {
     // Quedaba pendiente y vacía: aparecía en "Por servir" como una fila con su
     // botón "Servido" y bloqueaba el paso a caja.
     const vacia = comanda({
-      items: [
-        { id: 1, productoId: 1, producto: "Brasa", cantidad: 1, precio: 26, subtotal: 26, anulado: true },
+      items: [],
+      anulados: [
+        { id: 1, productoId: 1, nombre: "Brasa", cantidad: 1, precio: 26, motivo: "Se pidió por error" },
       ],
     });
     expect(tieneQueLlevarse(vacia)).toBe(false);
@@ -155,8 +154,8 @@ describe("por servir", () => {
 
   it("primero lo más viejo", () => {
     const mesas = [
-      mesa({ id: 1, comandas: [comanda({ id: 10, creadaEn: "2026-09-08T21:00:00.000Z" })] }),
-      mesa({ id: 2, comandas: [comanda({ id: 20, creadaEn: "2026-09-08T20:00:00.000Z" })] }),
+      mesa({ id: 1, comandas: [comanda({ id: 10, enviadaEn: "2026-09-08T21:00:00.000Z" })] }),
+      mesa({ id: 2, comandas: [comanda({ id: 20, enviadaEn: "2026-09-08T20:00:00.000Z" })] }),
     ];
     expect(porServir(mesas).map((f) => f.comanda.id)).toEqual([20, 10]);
   });

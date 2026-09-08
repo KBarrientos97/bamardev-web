@@ -8,24 +8,33 @@
  * distinto de la misma mesa.
  */
 
-import type { Comanda, EstadoMesa, Mesa } from "../../types/salon";
+import type { Comanda, EstadoMesa, ItemComanda, Mesa } from "../../types/salon";
 
 /** Comandas que el mesero todavía no llevó a la mesa. */
 export function tieneQueLlevarse(c: Comanda): boolean {
   // No alcanza con que el estado sea pendiente: una comanda a la que le
-  // anularon todos sus productos queda pendiente y sin nada adentro. Aparecía
+  // anularon todos sus productos queda ENVIADA y sin nada adentro. Aparecía
   // en "Por servir" como una fila vacía con su botón "Servido", contaba en el
-  // badge del tab y —lo peor— bloqueaba el paso a caja.
-  return c.estado !== "SERVIDA" && c.items.filter((i) => !i.anulado).length > 0;
+  // badge de la pestaña y —lo peor— bloqueaba el paso a caja.
+  return c.estado !== "SERVIDA" && c.estado !== "ANULADA" && (c.items ?? []).length > 0;
 }
 
-/** Los ítems vivos de una comanda: los anulados se muestran, pero no suman. */
+/**
+ * Los ítems que suman.
+ *
+ * Lo anulado viaja en `anulados`, aparte: acá alcanza con lo que quedó vivo.
+ */
 export function itemsVivos(c: Comanda) {
-  return c.items.filter((i) => !i.anulado);
+  return c.items ?? [];
+}
+
+/** El subtotal de una línea. El backend no lo manda: se calcula. */
+export function subtotalItem(i: ItemComanda): number {
+  return i.precio * i.cantidad;
 }
 
 export function totalComanda(c: Comanda): number {
-  return itemsVivos(c).reduce((a, i) => a + i.subtotal, 0);
+  return itemsVivos(c).reduce((a, i) => a + subtotalItem(i), 0);
 }
 
 export function cantidadItemsComanda(c: Comanda): number {
@@ -138,10 +147,11 @@ export function porServir(mesas: Mesa[]): PendienteDeServir[] {
     for (const comanda of comandasPendientes(mesa)) filas.push({ mesa, comanda });
   }
   return filas.sort((a, b) => {
-    const listaA = a.comanda.estado === "SERVIDA" ? 0 : 1;
-    const listaB = b.comanda.estado === "SERVIDA" ? 0 : 1;
+    // Primero lo que la cocina ya dejó listo en el pase.
+    const listaA = a.comanda.estado === "LISTA" ? 1 : 0;
+    const listaB = b.comanda.estado === "LISTA" ? 1 : 0;
     if (listaA !== listaB) return listaB - listaA;
-    return (a.comanda.creadaEn ?? "").localeCompare(b.comanda.creadaEn ?? "");
+    return (a.comanda.enviadaEn ?? "").localeCompare(b.comanda.enviadaEn ?? "");
   });
 }
 

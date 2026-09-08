@@ -3,6 +3,7 @@ import { Icon } from "../../components/Icon";
 import type { NombreIcono } from "../../components/Icon";
 import type { Mesa } from "../../types/salon";
 import AbrirMesa from "./AbrirMesa";
+import DetalleMesa from "./DetalleMesa";
 import Salon from "./Salon";
 import TomarPedido from "./TomarPedido";
 
@@ -26,7 +27,11 @@ type Pestana = "salon" | "servir" | "turno";
  * Mientras se abre una mesa o se toma un pedido la barra de abajo no está: es
  * un flujo con principio y fin, no un lugar al que volver.
  */
-type Flujo = { tipo: "abrir"; mesa: Mesa } | { tipo: "pedido"; mesa: Mesa } | null;
+type Flujo =
+  | { tipo: "abrir"; mesa: Mesa }
+  | { tipo: "pedido"; mesa: Mesa }
+  | { tipo: "detalle"; mesa: Mesa }
+  | null;
 
 const PESTANAS: { id: Pestana; etiqueta: string; icono: NombreIcono }[] = [
   { id: "salon", etiqueta: "Salón", icono: "grid" },
@@ -80,7 +85,7 @@ export default function PanelMesero() {
           <Salon
             key={version}
             onAbrirMesa={(mesa) => setFlujo({ tipo: "abrir", mesa })}
-            onVerMesa={(mesa) => setFlujo({ tipo: "pedido", mesa })}
+            onVerMesa={(mesa) => setFlujo({ tipo: "detalle", mesa })}
             onIrAPorServir={() => setPestana("servir")}
             onIrAMiTurno={() => setPestana("turno")}
           />
@@ -88,6 +93,26 @@ export default function PanelMesero() {
         {pestana === "servir" && <EnConstruccion nombre="Por servir" />}
         {pestana === "turno" && <EnConstruccion nombre="Mi turno" />}
       </main>
+
+      {/* Va SOBRE el salón: es una hoja, no otra pantalla. */}
+      {flujo?.tipo === "detalle" && (
+        <DetalleMesa
+          mesa={flujo.mesa}
+          onCerrar={() => setFlujo(null)}
+          onCambio={(m, mensaje) => {
+            // Liberar o pasar la mesa deja esta hoja sin sujeto: se cierra sola.
+            if (m.estado === "LIBRE") volverAlSalon(mensaje);
+            else {
+              setFlujo({ tipo: "detalle", mesa: m });
+              setAviso(mensaje);
+              setVersion((v) => v + 1);
+              setTimeout(() => setAviso(""), 3000);
+            }
+          }}
+          onAgregarPedido={(m) => setFlujo({ tipo: "pedido", mesa: m })}
+          onAbrirMesa={(m) => setFlujo({ tipo: "abrir", mesa: m })}
+        />
+      )}
 
       {aviso && (
         <p className="absolute bottom-20 left-1/2 -translate-x-1/2 rounded-full bg-primary px-4 py-2 text-[13px] font-semibold text-white shadow-lg">

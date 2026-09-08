@@ -53,26 +53,43 @@ export interface ReservaMesa {
   nota?: string | null;
 }
 
-export type EstadoComanda = "PENDIENTE" | "SERVIDA" | "ANULADA";
+/** Los estados que manda el backend. Todo lo que no sea SERVIDA está pendiente. */
+export type EstadoComanda =
+  | "ENVIADA"
+  | "PREPARANDO"
+  | "LISTA"
+  | "SERVIDA"
+  | "ANULADA";
 
 export interface ItemComanda {
-  id: number;
+  /** El backend lo manda como string ("45"), no como número. */
+  id: string | number;
   productoId: number;
-  producto: string;
+  nombre: string;
   cantidad: number;
   precio: number;
-  subtotal: number;
   nota?: string | null;
-  anulado?: boolean;
+}
+
+/** Un producto que se sacó de la cuenta, con el motivo que dio el mesero. */
+export interface ItemAnulado extends ItemComanda {
+  motivo?: string | null;
 }
 
 export interface Comanda {
-  id: number;
-  numero?: number | null;
+  id: string | number;
+  /** El que se canta en el pase: "C-101". */
+  codigo?: string | null;
   estado: EstadoComanda;
-  creadaEn: string;
-  servidaEn?: string | null;
+  enviadaEn: string;
   items: ItemComanda[];
+  /**
+   * Lo anulado viaja en su propia lista, no marcado dentro de `items`. Se
+   * muestra tachado y no se borra: sin esto, sacar el único producto de una
+   * comanda dejaba una tarjeta vacía con su etiqueta de cocina y parecía un
+   * error de la app.
+   */
+  anulados?: ItemAnulado[];
 }
 
 /** Una mesa arrimada a otra para armar una grande. */
