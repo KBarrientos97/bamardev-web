@@ -112,6 +112,13 @@ const REPORTES: FichaReporte[] = [
     capacidad: "reportes_operacion",
   },
   {
+    nombre: "meseros",
+    titulo: "Ventas por mesero",
+    texto: "Quién atendió, cuánto vendió y qué anuló.",
+    icono: "users",
+    capacidad: "reportes_operacion",
+  },
+  {
     nombre: "cierres",
     titulo: "Cierres de caja",
     texto: "Historial de turnos y diferencias de arqueo.",
