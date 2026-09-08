@@ -1,6 +1,8 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Icon } from "../../components/Icon";
 import { QrParaCobrar } from "../../components/QrCobro";
+import CuentasPorCobrar from "./CuentasPorCobrar";
 import {
   Badge,
   Boton,
@@ -27,6 +29,7 @@ export default function PantallaHistorial({
   onAtras: () => void;
   onCierre: () => void;
 }) {
+  const { puede } = useAuth();
   const ventas = useApi(() => api.getVentas(caja.id), [caja.id]);
   const pendientes = useApi(() => api.getPedidosPendientes(), []);
   const [detalle, setDetalle] = useState<Venta | null>(null);
@@ -36,6 +39,13 @@ export default function PantallaHistorial({
   const aprobadas = lista.filter((v) => v.estado === "APROBADO");
   const totalVendido = aprobadas.reduce((s, v) => s + v.total, 0);
   const porEntregar = pendientes.datos ?? [];
+
+  const navigate = useNavigate();
+  /**
+   * Lo fiado que sigue abierto. Falla en silencio: si el plan no incluye
+   * "fiado" el backend responde 403 y el bloque simplemente no aparece.
+   */
+  const creditos = useApi(() => api.getCreditos().catch(() => []), []);
 
   return (
     <div className="mx-auto flex h-full min-h-0 w-full max-w-3xl flex-col">
@@ -62,6 +72,15 @@ export default function PantallaHistorial({
       </div>
 
       <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-4">
+        {/* Antes que las ventas: es la plata que NO está en el cajón, y es lo
+            que la cajera necesita ver antes de cerrar. */}
+        {puede("creditos") && (
+          <CuentasPorCobrar
+            creditos={creditos.datos ?? []}
+            onVerTodos={() => navigate("/creditos")}
+          />
+        )}
+
         {porEntregar.length > 0 && (
           <section>
             <h2 className="mb-2 text-[13px] font-bold uppercase tracking-wide text-texto-4">

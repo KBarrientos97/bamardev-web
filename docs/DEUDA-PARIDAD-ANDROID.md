@@ -3,7 +3,7 @@
 Diferencias detectadas mirando la app al lado de la web. Se anotan acá cuando
 aparecen para no perderlas, y se resuelven cuando el usuario las prioriza.
 
-Estado: **1 y 2 hechos** (en el POS y en la carta del mesero), **3 pendiente**.
+Estado: **los tres resueltos.**
 
 Referencia visual en [referencia-android/](referencia-android/).
 
@@ -52,7 +52,7 @@ la barra ocupaba una franja aunque no hubiera nada cargado, y su botón mandaba
 a cocina de una — un toque de más al lado del de revisar, con la comanda
 todavía sin mirar.
 
-## 3. El Historial del día no muestra las cuentas por cobrar
+## 3. ~~El Historial del día no muestra las cuentas por cobrar~~ ✅ HECHO
 
 **Dónde**: POS → Historial del día.
 Captura: `referencia-android/historial-cuentas-por-cobrar.png`

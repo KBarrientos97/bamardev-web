@@ -469,6 +469,10 @@ export interface Credito {
   abonos?: number;
   vencido: boolean;
   diasVencido?: number;
+  /** Días que lleva pasado el compromiso. Es el nombre que usa el backend. */
+  diasAtraso?: number;
+  /** Días que faltan para vencer. 0 = vence hoy. */
+  diasParaVencer?: number;
   nota?: string | null;
 }
 
