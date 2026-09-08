@@ -9,6 +9,7 @@ import Almacenes from "./pages/inventario/Almacenes";
 import Categorias from "./pages/inventario/Categorias";
 import Dashboard from "./pages/inventario/Dashboard";
 import Insumos from "./pages/inventario/Insumos";
+import Mesas from "./pages/inventario/Mesas";
 import Movimientos from "./pages/inventario/Movimientos";
 import Productos from "./pages/inventario/Productos";
 import Pos from "./pages/pos/Pos";
@@ -151,6 +152,15 @@ function Rutas() {
           element={
             <Protegida seccion="movimientos">
               <Movimientos />
+            </Protegida>
+          }
+        />
+
+        <Route
+          path="/mesas"
+          element={
+            <Protegida seccion="mesas">
+              <Mesas />
             </Protegida>
           }
         />

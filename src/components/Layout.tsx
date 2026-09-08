@@ -24,6 +24,9 @@ const ITEMS: ItemNav[] = [
   { a: "/inventario/insumos", label: "Insumos", icono: "sack", seccion: "insumos", sub: true },
   { a: "/inventario/almacenes", label: "Almacenes", icono: "warehouse", seccion: "almacenes", sub: true },
   { a: "/inventario/movimientos", label: "Movimientos", icono: "swap", seccion: "movimientos", sub: true },
+  // Va suelto y no como sub-ítem de Inventario: las mesas no son catálogo,
+  // son el salón. En la app está en el mismo lugar del drawer.
+  { a: "/mesas", label: "Mesas del salón", icono: "grid", seccion: "mesas" },
   { a: "/creditos", label: "Cuentas por cobrar", icono: "dollar", seccion: "creditos" },
   { a: "/reportes", label: "Reportes", icono: "chart", seccion: "reportes" },
   { a: "/usuarios", label: "Usuarios", icono: "users", seccion: "usuarios" },

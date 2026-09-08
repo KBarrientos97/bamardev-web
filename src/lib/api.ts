@@ -49,6 +49,7 @@ import type {
   MesaPorCobrar,
   Salon,
   TurnoMesero,
+  ZonaSalon,
 } from "../types/salon";
 import { reportarError } from "./telemetria";
 
@@ -563,6 +564,32 @@ export const api = {
 
   /** Las cuentas que esperan en caja. Sólo la ven los que cobran. */
   mesasPorCobrar: () => request<MesaPorCobrar[]>("/salon/por-cobrar"),
+
+  // ── Mesas (administración) ────────────────────────────────────────────────
+  // El mesero no crea mesas: sólo abre las que el dueño registre. El backend
+  // lo exige con RolesGuard (ADMIN, SUPERVISOR).
+  getMesas: () => request<Mesa[]>("/mesas"),
+  getZonas: () => request<ZonaSalon[]>("/mesas/zonas"),
+  crearMesa: (input: {
+    codigo: string;
+    nombre?: string;
+    zonaId: number;
+    capacidad: number;
+    notaMesa?: string;
+    activa?: boolean;
+  }) => request<Mesa>("/mesas", { method: "POST", body: JSON.stringify(input) }),
+  actualizarMesa: (
+    id: number,
+    input: Partial<{
+      codigo: string;
+      nombre: string;
+      zonaId: number;
+      capacidad: number;
+      notaMesa: string;
+      activa: boolean;
+    }>,
+  ) => request<Mesa>(`/mesas/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
+  eliminarMesa: (id: number) => request<void>(`/mesas/${id}`, { method: "DELETE" }),
 };
 
 /** Pago con el que el repartidor cobra un pedido contra entrega. */
