@@ -162,16 +162,3 @@ export interface TurnoMesero {
     propina?: number;
   }[];
 }
-
-/** Una mesa esperando en caja (lo que ve el cajero). */
-export interface MesaPorCobrar {
-  mesaId: number;
-  sesionId: number;
-  codigo: string;
-  zonaNombre: string;
-  meseroNombre?: string | null;
-  comensales: number;
-  consumo: number;
-  abiertaEn: string;
-  comandas: Comanda[];
-}

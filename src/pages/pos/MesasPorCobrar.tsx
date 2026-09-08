@@ -3,8 +3,8 @@ import { Cargando, ErrorMsg } from "../../components/ui";
 import { api } from "../../lib/api";
 import { fmtMoney, fmtNum } from "../../lib/format";
 import { useApi } from "../../lib/useApi";
-import type { MesaPorCobrar } from "../../types/salon";
-import { hace } from "../salon/logicaSalon";
+import type { Mesa } from "../../types/salon";
+import { consumoDeMesa, hace } from "../salon/logicaSalon";
 
 /**
  * Las mesas que el salón mandó a caja.
@@ -18,7 +18,7 @@ export default function MesasPorCobrar({
   onCobrar,
 }: {
   onAtras: () => void;
-  onCobrar: (mesa: MesaPorCobrar) => void;
+  onCobrar: (mesa: Mesa) => void;
 }) {
   const mesas = useApi(() => api.mesasPorCobrar(), []);
   const lista = mesas.datos ?? [];
@@ -54,7 +54,7 @@ export default function MesasPorCobrar({
         ) : (
           lista.map((m) => (
             <button
-              key={m.sesionId}
+              key={m.id}
               onClick={() => onCobrar(m)}
               className="card mb-2 flex w-full items-center gap-3 p-3.5 text-left transition-shadow hover:shadow-md"
             >
@@ -74,7 +74,7 @@ export default function MesasPorCobrar({
                 </p>
               </div>
               <span className="shrink-0 text-base font-extrabold text-texto">
-                {fmtMoney(m.consumo)}
+                {fmtMoney(consumoDeMesa(m))}
               </span>
               <Icon name="chevronRight" size={16} />
             </button>

@@ -46,7 +46,6 @@ import type {
 
 import type {
   Mesa,
-  MesaPorCobrar,
   Salon,
   TurnoMesero,
   ZonaSalon,
@@ -563,7 +562,7 @@ export const api = {
     request<Mesa>(`/salon/mesas/${id}/reserva`, { method: "DELETE" }),
 
   /** Las cuentas que esperan en caja. Sólo la ven los que cobran. */
-  mesasPorCobrar: () => request<MesaPorCobrar[]>("/salon/por-cobrar"),
+  mesasPorCobrar: () => request<Mesa[]>("/salon/por-cobrar"),
   /**
    * Convierte la cuenta de la mesa en venta. Lo hace la caja: el mesero no
    * cobra nunca. La propina va al turno del mesero y NO entra al total de la
