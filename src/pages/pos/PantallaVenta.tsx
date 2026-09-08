@@ -97,6 +97,12 @@ export default function PantallaVenta({
   });
 
   /** Lo que se pinta: durante el arrastre manda el orden en vuelo. */
+  /** Cuánto hay de cada producto en el carrito: lo lee la grilla. */
+  const enCarrito = useMemo(
+    () => new Map(carrito.lineas.map((l) => [l.producto.id, l.cantidad])),
+    [carrito.lineas],
+  );
+
   const visibles = useMemo(() => {
     const porId = new Map(filtrados.map((p) => [p.id, p]));
     return arrastre.orden.map((id) => porId.get(id)).filter((p): p is Producto => !!p);
@@ -161,7 +167,11 @@ export default function PantallaVenta({
                 <TarjetaVenta
                   key={p.id}
                   producto={p}
+                  cantidad={enCarrito.get(p.id) ?? 0}
                   onAgregar={() => carrito.agregar(p)}
+                  onQuitar={() =>
+                    carrito.setCantidad(p.id, (enCarrito.get(p.id) ?? 0) - 1)
+                  }
                   arrastre={arrastre.props(p.id)}
                   // Un tap que terminó siendo arrastre no debe agregar al
                   // carrito: cobrar de más es peor que tener que tocar de nuevo.
@@ -178,17 +188,20 @@ export default function PantallaVenta({
         {panelCarrito}
       </aside>
 
-      {/* Móvil y tablet vertical: botón flotante + hoja inferior */}
+      {/* Móvil y tablet vertical: píldora flotante + hoja inferior.
+          Es una píldora centrada y no una barra de lado a lado: la barra
+          ocupaba el ancho entero aunque hubiera un solo ítem, y tapaba la
+          última fila de productos. Sólo aparece cuando hay algo cargado. */}
       {carrito.lineas.length > 0 && (
         <button
           onClick={() => setCarritoAbierto(true)}
-          className="fixed inset-x-4 bottom-4 z-30 flex items-center justify-between gap-3 rounded-2xl bg-primary px-5 py-3.5 text-white shadow-xl shadow-primary/30 lg:hidden"
+          className="fixed bottom-4 left-1/2 z-30 flex h-14 -translate-x-1/2 items-center gap-3 rounded-full bg-primary px-6 text-white shadow-xl shadow-primary/30 lg:hidden"
         >
-          <span className="flex items-center gap-2 text-sm font-bold">
-            <Icon name="cart" size={19} />
-            {carrito.unidades} {carrito.unidades === 1 ? "ítem" : "ítems"}
+          <Icon name="cart" size={22} />
+          <span className="flex h-6 min-w-6 items-center justify-center rounded-full bg-white/25 px-1.5 text-xs font-bold">
+            {fmtNum(carrito.unidades)}
           </span>
-          <span className="text-base font-extrabold">{fmtMoney(carrito.total)}</span>
+          <span className="text-lg font-extrabold">{fmtMoney(carrito.total)}</span>
         </button>
       )}
 
@@ -232,12 +245,17 @@ function ChipCat({
 
 function TarjetaVenta({
   producto: p,
+  cantidad,
   onAgregar,
+  onQuitar,
   arrastre,
   bloqueado,
 }: {
   producto: Producto;
+  /** Cuánto hay de este producto en el carrito. 0 = no está. */
+  cantidad: number;
   onAgregar: () => void;
+  onQuitar: () => void;
   /** Handlers y estilo del reordenamiento (ver useArrastreGrilla). */
   arrastre: ReturnType<
     ReturnType<typeof useArrastreGrilla>["props"]
@@ -249,6 +267,7 @@ function TarjetaVenta({
   // momento y un combo descuenta sus ingredientes.
   const controlaStock = p.tipoProducto === "ALMACENABLE";
   const agotado = controlaStock && p.stockTotal <= 0;
+  const enCarrito = cantidad > 0;
 
   return (
     <li
@@ -257,32 +276,71 @@ function TarjetaVenta({
       style={arrastre.style}
       className={arrastre["data-arrastrando"] ? "shadow-xl" : undefined}
     >
-      <button
-        onClick={() => {
-          if (!bloqueado) onAgregar();
-        }}
-        disabled={agotado}
-        className="card flex h-full w-full flex-col p-3 text-left transition-shadow enabled:hover:shadow-md disabled:opacity-50"
+      {/* Tres estados, como en la app: normal, en el carrito (borde verde y
+          fondo verde claro, con el stepper debajo) y agotado. Ver el producto
+          elegido sin abrir el carrito es lo que evita cargarlo dos veces. */}
+      <div
+        className={[
+          "flex h-full flex-col rounded-2xl border p-3 transition-shadow",
+          enCarrito
+            ? "border-primary bg-primary-50 shadow-sm"
+            : "border-borde bg-white hover:shadow-md",
+          agotado ? "opacity-50" : "",
+        ].join(" ")}
       >
-        <div className="flex items-start justify-between gap-1.5">
-          <IconoProducto
-            nombre={p.nombre}
-            icono={p.icono}
-            categoria={p.categoria?.nombre}
-            size={40}
-          />
-          {agotado && <Badge tono="rojo">Agotado</Badge>}
-          {!agotado && controlaStock && p.stockTotal <= p.stockMinimo && (
-            <Badge tono="amarillo">{fmtNum(p.stockTotal)}</Badge>
-          )}
-        </div>
-        <h3 className="mt-2 line-clamp-2 text-[13px] font-bold leading-snug text-texto">
-          {p.nombre}
-        </h3>
-        <p className="mt-auto pt-2 text-[15px] font-extrabold text-primary-700">
-          {fmtMoney(p.precio)}
-        </p>
-      </button>
+        <button
+          onClick={() => {
+            if (!bloqueado) onAgregar();
+          }}
+          disabled={agotado}
+          className="flex flex-1 flex-col text-left"
+        >
+          <div className="flex items-start justify-between gap-1.5">
+            <IconoProducto
+              nombre={p.nombre}
+              icono={p.icono}
+              categoria={p.categoria?.nombre}
+              size={40}
+            />
+            {agotado && <Badge tono="rojo">Agotado</Badge>}
+            {!agotado && controlaStock && p.stockTotal <= p.stockMinimo && (
+              <Badge tono="amarillo">{fmtNum(p.stockTotal)}</Badge>
+            )}
+          </div>
+          <h3 className="mt-2 line-clamp-2 text-[13px] font-bold leading-snug text-texto">
+            {p.nombre}
+          </h3>
+          <p className="mt-auto pt-2 text-[15px] font-extrabold text-primary-700">
+            {fmtMoney(p.precio)}
+          </p>
+        </button>
+
+        {enCarrito && (
+          <div className="mt-2 flex h-9 items-center justify-between rounded-full border border-primary bg-white px-1">
+            <button
+              onClick={onQuitar}
+              aria-label={cantidad === 1 ? "Quitar del pedido" : "Uno menos"}
+              className={`flex h-7 w-7 items-center justify-center rounded-full ${
+                // En la última unidad el "−" se vuelve tacho: avisa que el
+                // próximo toque saca el producto, no que lo baja a cero.
+                cantidad === 1
+                  ? "text-[#DC2626] hover:bg-[#FEF2F2]"
+                  : "text-texto-2 hover:bg-muted"
+              }`}
+            >
+              <Icon name={cantidad === 1 ? "trash" : "minus"} size={15} />
+            </button>
+            <span className="text-sm font-bold text-texto">{fmtNum(cantidad)}</span>
+            <button
+              onClick={onAgregar}
+              aria-label="Uno más"
+              className="flex h-7 w-7 items-center justify-center rounded-full text-primary-700 hover:bg-primary-50"
+            >
+              <Icon name="plus" size={15} />
+            </button>
+          </div>
+        )}
+      </div>
     </li>
   );
 }

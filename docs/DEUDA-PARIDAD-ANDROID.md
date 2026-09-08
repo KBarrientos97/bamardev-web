@@ -1,14 +1,15 @@
 # Deuda de paridad con Android
 
-Diferencias detectadas mirando la app al lado de la web. **Nada de esto está
-hecho todavía**: se anota acá cuando aparece para no perderlo, y se resuelve
-cuando el usuario lo priorice.
+Diferencias detectadas mirando la app al lado de la web. Se anotan acá cuando
+aparecen para no perderlas, y se resuelven cuando el usuario las prioriza.
+
+Estado: **1 y 2 hechos** (en el POS y en la carta del mesero), **3 pendiente**.
 
 Referencia visual en [referencia-android/](referencia-android/).
 
 ---
 
-## 1. La selección de productos en el POS no se siente igual
+## 1. ~~La selección de productos en el POS no se siente igual~~ ✅ HECHO
 
 **Dónde**: Punto de venta, la grilla de productos.
 Captura: `referencia-android/pos-seleccion-productos.png`
@@ -31,7 +32,7 @@ toque saca el producto del pedido, no que lo baja a cero.
 En la captura se ve con "Brasa cuarto" en 3 (muestra `−`) y "Brasa económico"
 en 1 (muestra el tacho).
 
-## 2. El botón flotante del carrito no se ve así en la web
+## 2. ~~El botón flotante del carrito no se ve así en la web~~ ✅ HECHO
 
 **Dónde**: Punto de venta, abajo y centrado.
 Misma captura que el punto 1.
