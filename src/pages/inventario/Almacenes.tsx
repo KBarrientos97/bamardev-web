@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { contiene } from "../../lib/texto";
 import { Icon } from "../../components/Icon";
 import { Buscador, EncabezadoPagina } from "../../components/filtros";
 import {
@@ -29,14 +30,20 @@ export default function Almacenes() {
   const [errorAccion, setErrorAccion] = useState("");
 
   const lista = almacenes.datos ?? [];
+  /**
+   * Un segundo depósito obliga a elegir almacén en cada movimiento sin darle
+   * nada a cambio a un local solo, así que el backend permite UNO activo. Se
+   * cuentan los activos y no el largo de la lista: desactivar el propio dejaba
+   * al negocio sin botón y sin almacén.
+   */
+  const hayActivo = lista.some((a) => a.activo);
 
   const filtrados = useMemo(() => {
     const texto = q.trim().toLowerCase();
     if (!texto) return lista;
     return lista.filter(
       (a) =>
-        a.nombre.toLowerCase().includes(texto) ||
-        (a.grupo ?? "").toLowerCase().includes(texto),
+        contiene(a.nombre, texto) || contiene(a.grupo, texto),
     );
   }, [lista, q]);
 
@@ -64,9 +71,11 @@ export default function Almacenes() {
         titulo="Almacenes"
         subtitulo={`${lista.length} ${lista.length === 1 ? "ubicación" : "ubicaciones"} · ${fmtMoney(valorTotal)} en stock`}
         accion={
-          <Boton icono="plus" onClick={() => setCreando(true)}>
-            Nuevo
-          </Boton>
+          !hayActivo && (
+            <Boton icono="plus" onClick={() => setCreando(true)}>
+              Nuevo
+            </Boton>
+          )
         }
       />
 

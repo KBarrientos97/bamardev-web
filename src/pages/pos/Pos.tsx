@@ -12,10 +12,14 @@ import PantallaCierre, { CierreOk } from "./PantallaCierre";
 import PantallaCobro from "./PantallaCobro";
 import PantallaCredito from "./PantallaCredito";
 import PantallaEntrega, { type DatosEntrega } from "./PantallaEntrega";
+import MesasPorCobrar from "./MesasPorCobrar";
+import { consumoDeMesa } from "../salon/logicaSalon";
+import type { Mesa as MesaSalon } from "../../types/salon";
 import PantallaHistorial from "./PantallaHistorial";
 import PantallaRecibo from "./PantallaRecibo";
 import PantallaVenta from "./PantallaVenta";
 import { useCarrito } from "./useCarrito";
+import { useIntentoDeCobro } from "./useIntentoDeCobro";
 
 type Pantalla =
   | "venta"
@@ -26,7 +30,9 @@ type Pantalla =
   | "pedidoOk"
   | "historial"
   | "cierre"
-  | "cierreOk";
+  | "cierreOk"
+  /** Las cuentas que el salón mandó a caja. */
+  | "mesasPorCobrar";
 
 export default function Pos() {
   const { negocio } = useAuth();
@@ -38,11 +44,31 @@ export default function Pos() {
   const formasPago = useApi(() => api.getFormasPago(), []);
   const repartidores = useApi(() => api.getRepartidores(), []);
 
-  const carrito = useCarrito();
+  // Identidad del cobro en curso: sobrevive a los reintentos para que un 504 o
+  // un corte de red no terminen en dos ventas. Ver useIntentoDeCobro.
+  const intento = useIntentoDeCobro();
   const [pantalla, setPantalla] = useState<Pantalla>("venta");
+
+  /**
+   * Las mesas que el salón mandó a caja.
+   *
+   * Falla en silencio a propósito: un negocio sin salón responde 403 y eso no
+   * es un error que mostrarle a la cajera — simplemente no hay mesas.
+   */
+  const porCobrar = useApi(() => api.mesasPorCobrar().catch(() => []), []);
+
+  /**
+   * La mesa que se está cobrando. Mientras hay una, la pantalla de cobro
+   * trabaja con SU total y no con el del carrito: el consumo ya lo cargó el
+   * mesero y la cajera no retipea nada.
+   */
+  const [mesaCobrando, setMesaCobrando] = useState<MesaSalon | null>(null);
   const [venta, setVenta] = useState<Venta | null>(null);
   const [cajaCerrada, setCajaCerrada] = useState<Caja | null>(null);
   const [tipoPedido, setTipoPedido] = useState<TipoPedido>("LOCAL");
+  // El carrito necesita el tipo de pedido: en el local lo nuevo arranca en
+  // MESA, en un delivery o un "recoger" siempre es LLEVAR.
+  const carrito = useCarrito(tipoPedido);
   const [datosEntrega, setDatosEntrega] = useState<DatosEntrega | null>(null);
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState("");
@@ -84,9 +110,26 @@ export default function Pos() {
       setError("");
       setEnviando(true);
       try {
-        const creada = await api.crearVenta(cuerpoVenta(pagos));
+        // Cobrar una mesa es otro endpoint: la cuenta ya existe en el salón,
+        // acá sólo se dice con qué se pagó. La venta la arma el backend con lo
+        // que el mesero cargó.
+        const creada = mesaCobrando
+          ? await api.cobrarMesa(mesaCobrando.id, {
+              pagos,
+              clienteRequestId: intento.actual(),
+            })
+          : await api.crearVenta({
+              ...cuerpoVenta(pagos),
+              clienteRequestId: intento.actual(),
+            });
+        intento.registrado();
         setVenta(creada);
-        limpiar();
+        if (mesaCobrando) {
+          setMesaCobrando(null);
+          porCobrar.recargar();
+        } else {
+          limpiar();
+        }
         setPantalla("recibo");
         // El stock cambió al vender: el catálogo tiene que reflejarlo.
         productos.recargar();
@@ -96,7 +139,7 @@ export default function Pos() {
         setEnviando(false);
       }
     },
-    [cuerpoVenta, limpiar, productos],
+    [cuerpoVenta, limpiar, productos, intento],
   );
 
   /**
@@ -120,7 +163,9 @@ export default function Pos() {
           minutosEstimados: datos.minutosEstimados,
           notaPedido: datos.notaPedido,
           prepagado: false,
+          clienteRequestId: intento.actual(),
         });
+        intento.registrado();
         setVenta(creada);
         limpiar();
         setPantalla("pedidoOk");
@@ -131,7 +176,7 @@ export default function Pos() {
         setEnviando(false);
       }
     },
-    [carrito, tipoPedido, limpiar, productos],
+    [carrito, tipoPedido, limpiar, productos, intento],
   );
 
   /**
@@ -149,7 +194,9 @@ export default function Pos() {
           tipoPedido: "LOCAL",
           credito,
           ...(pagos.length ? { pagos } : {}),
+          clienteRequestId: intento.actual(),
         });
+        intento.registrado();
         setVenta(creada);
         limpiar();
         setPantalla("recibo");
@@ -160,7 +207,7 @@ export default function Pos() {
         setEnviando(false);
       }
     },
-    [carrito, limpiar, productos],
+    [carrito, limpiar, productos, intento],
   );
 
   if (caja.cargando) return <Cargando texto="Buscando tu caja…" />;
@@ -192,12 +239,26 @@ export default function Pos() {
       <PantallaCierre
         caja={abierta}
         onAtras={() => setPantalla("venta")}
-        onCerrada={async () => {
-          // Se relee la caja para mostrar el arqueo con la diferencia que
-          // calculó el backend, no la que estimamos en pantalla.
-          const actual = await api.cajaActual().catch(() => null);
-          setCajaCerrada(actual?.caja ?? { ...abierta, estado: "CERRADA" });
+        onCerrada={(cerrada) => {
+          // La caja llega del propio cierre, con la diferencia y el monto que
+          // calculó el backend. Antes se releía con /caja/actual, que responde
+          // null justo despues de cerrar: caía al fallback y el resumen mostraba
+          // "Efectivo contado Bs 0,00" y la hora de cierre vacía.
+          setCajaCerrada(cerrada);
           setPantalla("cierreOk");
+        }}
+      />
+    );
+
+  if (pantalla === "mesasPorCobrar")
+    return (
+      <MesasPorCobrar
+        onAtras={() => setPantalla("venta")}
+        // El cobro de una mesa reusa la pantalla de cobro del POS: es la misma
+        // plata y la misma caja. Todavía falta cablearlo.
+        onCobrar={(mesa) => {
+          setMesaCobrando(mesa);
+          setPantalla("cobro");
         }}
       />
     );
@@ -239,7 +300,10 @@ export default function Pos() {
         // líneas y exige que los pagos sumen exactamente eso. La tarifa de
         // envío viaja aparte y se la cobra el repartidor, así que sumarla acá
         // hacía que el backend rechazara la venta entera con un 400.
-        total={carrito.total}
+        //
+        // Cobrando una mesa el total es el consumo que cargó el mesero, no el
+        // carrito: la cajera no retipea nada de lo que el cliente comió.
+        total={mesaCobrando ? consumoDeMesa(mesaCobrando) : carrito.total}
         avisoEnvio={
           datosEntrega?.tarifaEnvio
             ? `El envío (${fmtMoney(datosEntrega.tarifaEnvio)}) lo cobra el repartidor aparte.`
@@ -250,13 +314,20 @@ export default function Pos() {
           // Sin esto, el error del cobro fallido seguía visible al volver y
           // reaparecía sobre el intento nuevo, que todavía no falló.
           setError("");
+          if (mesaCobrando) {
+            setMesaCobrando(null);
+            setPantalla("mesasPorCobrar");
+            return;
+          }
           setPantalla(datosEntrega ? "entrega" : "venta");
         }}
         onConfirmar={cobrar}
         // Fiar sólo tiene sentido en una venta de mostrador: un pedido de
-        // delivery ya define quién y cuándo paga.
+        // delivery ya define quién y cuándo paga, y una mesa se fía desde el
+        // salón — el flujo de crédito arma la venta desde el carrito, que
+        // cobrando una mesa está vacío.
         onCredito={
-          tieneFeature(negocio?.features, "fiado") && !datosEntrega
+          tieneFeature(negocio?.features, "fiado") && !datosEntrega && !mesaCobrando
             ? () => setPantalla("credito")
             : undefined
         }
@@ -351,6 +422,15 @@ export default function Pos() {
                 }}
               />
             )}
+            {/* Sólo aparece cuando hay cuentas esperando: si el negocio no
+                usa el salón, no existe. */}
+            {(porCobrar.datos?.length ?? 0) > 0 && (
+              <BotonTipo
+                icono="grid"
+                titulo={`Mesas por cobrar (${porCobrar.datos!.length})`}
+                onClick={() => setPantalla("mesasPorCobrar")}
+              />
+            )}
             <BotonTipo
               icono="fileText"
               titulo="Ventas del turno"
@@ -374,7 +454,7 @@ function BotonTipo({
   onClick,
   deshabilitado,
 }: {
-  icono: "truck" | "clock" | "fileText" | "lock";
+  icono: "truck" | "clock" | "fileText" | "lock" | "grid";
   titulo: string;
   onClick: () => void;
   deshabilitado?: boolean;

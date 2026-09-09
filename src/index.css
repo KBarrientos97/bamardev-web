@@ -85,17 +85,91 @@ input[type="number"] {
 }
 
 /*
- * Impresión: sólo sale el ticket. Las pantallas ya marcan con `print:hidden`
- * lo suyo, pero el armazón de la app (barra lateral, cabecera móvil, fondo
- * verde) no lo sabía y salía impreso alrededor del comprobante.
+ * Impresión del ticket — rollo de 80 mm, igual que la app.
+ *
+ * El enfoque es al revés del que había: en vez de ir marcando `print:hidden`
+ * pieza por pieza (barra lateral, cabeceras, botoneras), se esconde TODO y
+ * sólo se muestra el área del ticket. Con el otro, cada pantalla nueva que se
+ * olvidara la clase se colaba en el papel — y así estaban saliendo impresas la
+ * barra del POS y la botonera flotante del carrito.
+ *
+ * `size: 80mm auto` es el rollo del mostrador: el alto lo decide el contenido,
+ * así que no se corta a media hoja ni tira papel de más. Los 72 mm de ancho
+ * útil son los 80 menos los 4 de margen de cada lado.
  */
+/* El tamaño del papel (@page, 80 mm) se declara en index.html: dentro de este
+   archivo queda envuelto por el @layer de Tailwind y el navegador lo ignora.
+   Y aun declarado, `size` es sólo una sugerencia — Chrome deja elegir el papel
+   en su diálogo. Por eso el ticket se fija en 72 mm y se ancla arriba a la
+   izquierda: a 80 mm llena el rollo, y en Carta/A4 sale igual de angosto en la
+   esquina, listo para cortar, en vez de estirarse a lo ancho de la hoja. */
 @media print {
+  html,
   body {
+    /* El layout es h-[100dvh] + overflow-hidden: sin soltarlo, el ticket se
+       recorta a la altura de la pantalla en vez de fluir a la página. */
+    height: auto !important;
+    overflow: visible !important;
     background: #fff;
   }
-  /* El layout es h-[100dvh] + overflow-hidden: sin esto el ticket se recorta
-     a la altura de la pantalla en vez de fluir a la página. */
-  .card {
+
+  body * {
+    visibility: hidden;
+  }
+
+  #area-impresion,
+  #area-impresion * {
+    visibility: visible;
+  }
+
+  /* Sacado del flujo: el ticket arranca en el borde del papel, sin arrastrar
+     el hueco que dejaba el armazón invisible de la app. */
+  #area-impresion {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 72mm;
+    margin: 0;
+    /* Sin padding lateral: los 4 mm del @page ya son el margen del rollo, y
+       sumarle el p-5 de la tarjeta angostaba el texto a ~60 mm. Arriba sí
+       queda aire para que la primera línea no salga pegada al corte. */
+    padding: 2mm 0 0;
     box-shadow: none;
+    border: 0;
+    background: #fff;
+    /* Negro pleno: el gris de pantalla sale lavado en térmica y en láser. */
+    color: #000;
+  }
+
+  /* Lo marcado como print:hidden no vuelve por estar dentro del área. */
+  #area-impresion .print\:hidden {
+    display: none !important;
+  }
+
+  /* Los comprobantes de crédito viven dentro de un Modal, que es `fixed` con
+     `max-h-[92dvh]` y `overflow-hidden`: sin soltarlo, un comprobante largo se
+     corta a la altura de la pantalla en vez de seguir en el rollo. */
+  #area-impresion,
+  #area-impresion * {
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
+  /* Todo a negro pleno. En pantalla los grises jerarquizan, pero una térmica
+     no tiene medios tonos: los quema o los deja lavados, y el "1 × Bs 26.00"
+     de cada línea salía más flojo que el resto. El badge M/LL verde imprimía
+     igual de pálido y es justo lo que el mozo mira para armar la comanda. */
+  #area-impresion,
+  #area-impresion * {
+    color: #000 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* Los separadores punteados sí quedan grises: a negro pleno compiten con el
+     texto y el ticket se lee como una reja. */
+  #area-impresion .border-borde,
+  #area-impresion .border-dashed {
+    border-color: #9ca3af !important;
   }
 }

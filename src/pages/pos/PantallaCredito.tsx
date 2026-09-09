@@ -1,13 +1,29 @@
 import { useMemo, useState } from "react";
 import { Icon } from "../../components/Icon";
-import { Boton, Campo, ErrorMsg, Input, Select } from "../../components/ui";
+import { QrParaCobrar } from "../../components/QrCobro";
+import { Boton, Campo, ErrorMsg, Input, Modal, Select } from "../../components/ui";
 import { api } from "../../lib/api";
+import { aCentavos, esPositivo, excede, parsearMontoO } from "../../lib/dinero";
 import { fmtMoney, isoDia } from "../../lib/format";
+import { puedeSupervisar } from "../../lib/permisos";
 import { useApi } from "../../lib/useApi";
+import { useAuth } from "../../store/AuthContext";
 import type { ClienteCredito, CreditoInput, FormaPago, PagoInput } from "../../types";
 
 /** Plazos habituales del fiado de barrio. */
 const PLAZOS = [7, 15, 30];
+
+/** Días hasta el último día del mes en curso: el plazo que más se usa. */
+function diasAFinDeMes(): number {
+  const hoy = new Date();
+  const fin = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0);
+  const dias = Math.round((fin.getTime() - hoy.getTime()) / 86_400_000);
+  // Si hoy ES el último día, "fin de mes" sería hoy y no habría plazo: se pasa
+  // al cierre del mes siguiente.
+  return dias > 0 ? dias : Math.round(
+    (new Date(hoy.getFullYear(), hoy.getMonth() + 2, 0).getTime() - hoy.getTime()) / 86_400_000,
+  );
+}
 
 /**
  * Venta a crédito: se registra la venta y queda un saldo a cobrar. El
@@ -40,13 +56,39 @@ export default function PantallaCredito({
   const [adelanto, setAdelanto] = useState("");
   const [nota, setNota] = useState("");
   const [errorLocal, setErrorLocal] = useState("");
+  /** Con qué se paga el adelanto. En el mostrador se negocia de las tres formas. */
+  const [metodo, setMetodo] = useState<"EFECTIVO" | "QR" | "MIXTO">("EFECTIVO");
+  const [adelantoQr, setAdelantoQr] = useState("");
+  const [qrConfirmado, setQrConfirmado] = useState(false);
+  /** Techo con el que nace la ficha de un cliente nuevo. Vacío = sin límite. */
+  const [limiteNuevo, setLimiteNuevo] = useState("");
+  /** Firma del encargado cuando la venta pasa el techo del cliente. */
+  const [autorizacion, setAutorizacion] = useState<{ usuario: string; pin: string } | null>(
+    null,
+  );
+  const [pidiendoPin, setPidiendoPin] = useState(false);
 
+  const { incluye } = useAuth();
   const formaEfectivo = formasPago.find((f) => f.nombre.toLowerCase() === "efectivo");
+  const formaQr = formasPago.find((f) => f.nombre.toLowerCase() === "qr");
+  const permiteQr = incluye("pago_qr_mixto") && !!formaQr;
   const lista = clientes.datos ?? [];
   const elegido = lista.find((c) => String(c.id) === clienteId) ?? null;
 
-  const adelantoNum = Number(adelanto) || 0;
-  const saldo = Math.round((total - adelantoNum) * 100) / 100;
+  const adelantoNum = parsearMontoO(adelanto);
+  const adelantoQrNum = parsearMontoO(adelantoQr);
+  /** En mixto, el QR cubre una parte del adelanto y el efectivo el resto. */
+  const adelantoTotal =
+    metodo === "QR" ? adelantoNum : metodo === "MIXTO" ? aCentavos(adelantoNum + adelantoQrNum) : adelantoNum;
+  const saldo = Math.round((total - adelantoTotal) * 100) / 100;
+
+  /**
+   * Si fiarle este saldo lo pasa de su techo. Se avisa ARRIBA y no al
+   * confirmar: es lo que decide si la venta se puede hacer, y enterarse en el
+   * resumen final es enterarse tarde.
+   */
+  const superaLimite =
+    !!elegido && elegido.limiteCredito !== null && excede(elegido.saldoTotal + saldo, elegido.limiteCredito);
 
   const compromiso = useMemo(() => {
     const d = new Date();
@@ -54,19 +96,51 @@ export default function PantallaCredito({
     return d;
   }, [plazo]);
 
-  function confirmar() {
+  /**
+   * Arma y manda la venta. `firma` llega cuando el encargado ya puso su PIN
+   * para pasar el techo del cliente.
+   */
+  function confirmar(firma?: { usuario: string; pin: string }) {
     setErrorLocal("");
 
     if (!elegido && nombre.trim().length < 2)
       return setErrorLocal("Poné el nombre del cliente.");
-    if (adelantoNum < 0) return setErrorLocal("El adelanto no puede ser negativo.");
+    if (adelantoNum < 0 || adelantoQrNum < 0)
+      return setErrorLocal("El adelanto no puede ser negativo.");
     // Contra el saldo redondeado, que es el que se muestra y el que queda en
     // la cuenta: con un adelanto de 99.999 sobre 100 esta guarda pasaba y se
     // creaba un crédito de Bs 0,001 imposible de saldar.
     if (saldo <= 0)
       return setErrorLocal("Si paga todo no es un fiado: cobralo como venta normal.");
-    if (adelantoNum > 0 && !formaEfectivo)
-      return setErrorLocal("El negocio no tiene cargada la forma de pago Efectivo.");
+
+    const pagos: PagoInput[] = [];
+    if (metodo === "EFECTIVO" || metodo === "MIXTO") {
+      if (esPositivo(adelantoNum)) {
+        if (!formaEfectivo)
+          return setErrorLocal("El negocio no tiene cargada la forma de pago Efectivo.");
+        pagos.push({ formaPagoId: formaEfectivo.id, monto: adelantoNum, recibido: adelantoNum });
+      }
+    }
+    if (metodo === "QR" || metodo === "MIXTO") {
+      const montoQr = metodo === "QR" ? adelantoNum : adelantoQrNum;
+      if (esPositivo(montoQr)) {
+        if (!formaQr) return setErrorLocal("El negocio no tiene cargada la forma de pago QR.");
+        if (!qrConfirmado)
+          return setErrorLocal("Confirmá que el pago por QR llegó antes de registrar el fiado.");
+        // En QR puro el adelanto entero es el QR; en mixto sólo su parte.
+        pagos.length = metodo === "QR" ? 0 : pagos.length;
+        pagos.push({ formaPagoId: formaQr.id, monto: montoQr });
+      }
+    }
+
+    // Pasa el techo y todavía no hay firma: se pide acá, con el carrito
+    // intacto, en vez de mandar la venta para que el backend la rechace con el
+    // cliente enfrente.
+    const conFirma = firma ?? autorizacion;
+    if (superaLimite && !conFirma) {
+      setPidiendoPin(true);
+      return;
+    }
 
     const credito: CreditoInput = {
       // El backend exige ISO 8601 CON offset: una fecha suelta se
@@ -77,15 +151,17 @@ export default function PantallaCredito({
         : {
             clienteNombre: nombre.trim(),
             ...(telefono.trim() ? { clienteTelefono: telefono.trim() } : {}),
+            // El techo con el que nace su ficha. Vacío = sin límite, que no es
+            // un estado aparte sino la ausencia del dato.
+            ...(limiteNuevo.trim() !== ""
+              ? { limiteCredito: parsearMontoO(limiteNuevo) }
+              : {}),
           }),
       ...(nota.trim() ? { nota: nota.trim() } : {}),
+      ...(conFirma
+        ? { autorizadorUsername: conFirma.usuario, autorizadorPin: conFirma.pin }
+        : {}),
     };
-
-    // El adelanto viaja como pago normal: es plata que sí entró a la caja.
-    const pagos: PagoInput[] =
-      adelantoNum > 0 && formaEfectivo
-        ? [{ formaPagoId: formaEfectivo.id, monto: adelantoNum, recibido: adelantoNum }]
-        : [];
 
     onConfirmar(credito, pagos);
   }
@@ -131,7 +207,30 @@ export default function PantallaCredito({
         )}
 
         {elegido ? (
-          <AvisoCliente cliente={elegido} />
+          <>
+            <AvisoCliente cliente={elegido} />
+            {/* Arriba y no en el resumen final: es lo que decide si la venta se
+                puede hacer, y enterarse al confirmar es enterarse tarde. */}
+            {elegido.limiteCredito !== null && (
+              <div
+                className={`rounded-xl px-3.5 py-2.5 text-[13px] ${
+                  superaLimite
+                    ? "bg-danger-bg text-danger-text"
+                    : "bg-muted text-texto-2"
+                }`}
+              >
+                <p className="font-bold">
+                  Límite {fmtMoney(elegido.limiteCredito)} · le quedan{" "}
+                  {fmtMoney(elegido.disponible ?? 0)}
+                </p>
+                {superaLimite && (
+                  <p className="mt-0.5">
+                    Este fiado lo pasa de su techo: hace falta la firma de un encargado.
+                  </p>
+                )}
+              </div>
+            )}
+          </>
         ) : (
           <>
             <Campo label="Nombre del cliente">
@@ -150,14 +249,53 @@ export default function PantallaCredito({
                 inputMode="tel"
               />
             </Campo>
+            <Campo
+              label="Límite de crédito"
+              hint="Cuánto se le puede fiar en total. Vacío = sin límite"
+            >
+              <div className="flex flex-wrap gap-2">
+                {[100, 200, 500].map((v) => (
+                  <button
+                    key={v}
+                    onClick={() => setLimiteNuevo(String(v))}
+                    className={`rounded-xl px-3.5 py-2 text-[13px] font-semibold transition-colors ${
+                      limiteNuevo === String(v)
+                        ? "bg-primary text-white"
+                        : "border border-borde bg-white text-texto-2 hover:bg-muted"
+                    }`}
+                  >
+                    {fmtMoney(v)}
+                  </button>
+                ))}
+                <button
+                  onClick={() => setLimiteNuevo("")}
+                  className={`rounded-xl px-3.5 py-2 text-[13px] font-semibold transition-colors ${
+                    limiteNuevo === ""
+                      ? "bg-primary text-white"
+                      : "border border-borde bg-white text-texto-2 hover:bg-muted"
+                  }`}
+                >
+                  Sin límite
+                </button>
+              </div>
+              <Input
+                type="number"
+                inputMode="decimal"
+                min="0"
+                value={limiteNuevo}
+                onChange={(e) => setLimiteNuevo(e.target.value)}
+                placeholder="Otro monto"
+                className="mt-2"
+              />
+            </Campo>
           </>
         )}
 
         <Campo label="Plazo para pagar">
           <div className="flex flex-wrap gap-2">
-            {PLAZOS.map((d) => (
+            {[...PLAZOS, diasAFinDeMes()].map((d, i) => (
               <button
-                key={d}
+                key={`${d}-${i}`}
                 onClick={() => setPlazo(d)}
                 className={`rounded-xl px-3.5 py-2 text-[13px] font-semibold transition-colors ${
                   plazo === d
@@ -165,7 +303,7 @@ export default function PantallaCredito({
                     : "border border-borde bg-white text-texto-2 hover:bg-muted"
                 }`}
               >
-                {d} días
+                {i === PLAZOS.length ? "Fin de mes" : `${d} días`}
               </button>
             ))}
           </div>
@@ -174,18 +312,83 @@ export default function PantallaCredito({
           </p>
         </Campo>
 
-        <Campo label="Adelanto (opcional)" hint="Lo que paga ahora en efectivo">
+        {permiteQr && (
+          <div className="grid grid-cols-3 gap-2">
+            {(["EFECTIVO", "QR", "MIXTO"] as const).map((m) => (
+              <button
+                key={m}
+                onClick={() => {
+                  setMetodo(m);
+                  setQrConfirmado(false);
+                  setErrorLocal("");
+                }}
+                className={`rounded-xl border px-3 py-2.5 text-[13px] font-semibold transition-colors ${
+                  metodo === m
+                    ? "border-primary bg-primary-50 text-primary-700"
+                    : "border-borde bg-white text-texto-2"
+                }`}
+              >
+                {m === "EFECTIVO" ? "Efectivo" : m === "QR" ? "QR" : "Mixto"}
+              </button>
+            ))}
+          </div>
+        )}
+
+        <Campo
+          label="Adelanto (opcional)"
+          hint={
+            metodo === "QR"
+              ? "Lo que paga ahora por QR"
+              : metodo === "MIXTO"
+                ? "La parte en efectivo"
+                : "Lo que paga ahora en efectivo"
+          }
+        >
           <Input
             type="number"
             inputMode="decimal"
             step="0.01"
             min="0"
             value={adelanto}
-            onChange={(e) => setAdelanto(e.target.value)}
+            onChange={(e) => {
+              setAdelanto(e.target.value);
+              if (metodo === "QR") setQrConfirmado(false);
+            }}
             placeholder="0,00"
             className="font-bold"
           />
         </Campo>
+
+        {metodo === "MIXTO" && (
+          <Campo label="Parte pagada por QR">
+            <Input
+              type="number"
+              inputMode="decimal"
+              step="0.01"
+              min="0"
+              value={adelantoQr}
+              onChange={(e) => {
+                setAdelantoQr(e.target.value);
+                setQrConfirmado(false);
+              }}
+              placeholder="0,00"
+              className="font-bold"
+            />
+          </Campo>
+        )}
+
+        {/* El QR real del negocio y su confirmación manual: el adelanto es
+            plata que entra, y nadie verifica la transferencia por nosotros. */}
+        {((metodo === "QR" && esPositivo(adelantoNum)) ||
+          (metodo === "MIXTO" && esPositivo(adelantoQrNum))) && (
+          <div className="rounded-2xl border border-borde bg-white p-5">
+            <QrParaCobrar
+              confirmado={qrConfirmado}
+              onConfirmar={() => setQrConfirmado(true)}
+              monto={fmtMoney(metodo === "QR" ? adelantoNum : adelantoQrNum)}
+            />
+          </div>
+        )}
 
         <Campo label="Nota (opcional)">
           <Input
@@ -199,7 +402,20 @@ export default function PantallaCredito({
       </div>
 
       <div className="border-t border-borde bg-white p-4">
-        <Boton onClick={confirmar} disabled={enviando} className="w-full py-3 text-base">
+        {pidiendoPin && (
+          <PedirPinCredito
+            onCancelar={() => setPidiendoPin(false)}
+            onFirmar={(usuario, pin) => {
+              setPidiendoPin(false);
+              setAutorizacion({ usuario, pin });
+              // Se reintenta sola con la firma: perder el carrito porque el
+              // encargado tardó en llegar sería el peor final posible.
+              confirmar({ usuario, pin });
+            }}
+          />
+        )}
+
+        <Boton onClick={() => confirmar()} disabled={enviando} className="w-full py-3 text-base">
           {enviando ? "Registrando…" : `Registrar fiado · ${fmtMoney(saldo)}`}
         </Boton>
       </div>
@@ -254,5 +470,82 @@ function conOffset(d: Date): string {
     `${fin.getFullYear()}-${p(fin.getMonth() + 1)}-${p(fin.getDate())}` +
     `T${p(fin.getHours())}:${p(fin.getMinutes())}:${p(fin.getSeconds())}` +
     `${signo}${hh}:${mm}`
+  );
+}
+
+
+/**
+ * Firma del encargado para fiar por encima del techo del cliente.
+ *
+ * Se pide ANTES de mandar la venta, no después del rechazo: el carrito sigue
+ * armado y el cliente no ve un error. Mismo patrón que la anulación —el PIN se
+ * teclea en el mismo dispositivo sin cerrar la sesión del cajero.
+ */
+function PedirPinCredito({
+  onCancelar,
+  onFirmar,
+}: {
+  onCancelar: () => void;
+  onFirmar: (usuario: string, pin: string) => void;
+}) {
+  const { usuario: actual } = useAuth();
+  // Un encargado firma con su propio PIN; un cajero necesita además el usuario
+  // de quien autoriza.
+  const pideUsuario = !puedeSupervisar(actual?.rol);
+  const [autorizador, setAutorizador] = useState("");
+  const [pin, setPin] = useState("");
+  const [error, setError] = useState("");
+
+  function firmar() {
+    if (!/^\d{4,6}$/.test(pin)) return setError("El PIN son 4 a 6 dígitos.");
+    if (pideUsuario && autorizador.trim().length < 3)
+      return setError("Poné el usuario del encargado que autoriza.");
+    // Cuando el que está en la caja YA puede supervisar, el campo de usuario ni
+    // se muestra: firma con el suyo. Sin esto viajaba vacío y el backend
+    // respondía con su mensaje de validación crudo ("autorizadorUsername must
+    // be longer than..."), así que un admin no podía autorizar su propio fiado.
+    const usuario = pideUsuario ? autorizador.trim() : (actual?.username ?? "");
+    onFirmar(usuario, pin);
+  }
+
+  return (
+    <Modal
+      abierto
+      titulo="Autorización del encargado"
+      subtitulo="Este fiado pasa el límite del cliente"
+      onClose={onCancelar}
+      ancho="max-w-sm"
+      acciones={
+        <>
+          <Boton variante="ghost" onClick={onCancelar}>
+            Cancelar
+          </Boton>
+          <Boton onClick={firmar}>Autorizar</Boton>
+        </>
+      }
+    >
+      <div className="space-y-3">
+        {pideUsuario && (
+          <Campo label="Usuario del encargado">
+            <Input
+              value={autorizador}
+              onChange={(e) => setAutorizador(e.target.value)}
+              autoFocus
+            />
+          </Campo>
+        )}
+        <Campo label="PIN">
+          <Input
+            type="password"
+            inputMode="numeric"
+            value={pin}
+            onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 6))}
+            autoFocus={!pideUsuario}
+            className="text-lg font-bold tracking-widest"
+          />
+        </Campo>
+        <ErrorMsg>{error}</ErrorMsg>
+      </div>
+    </Modal>
   );
 }

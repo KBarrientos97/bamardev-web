@@ -1,5 +1,8 @@
 import { useMemo, useState } from "react";
+import { contiene } from "../../lib/texto";
 import { Icon } from "../../components/Icon";
+import HistorialCostos from "../../components/HistorialCostos";
+import IconoProducto from "../../components/IconoProducto";
 import { Buscador, Chips, EncabezadoPagina } from "../../components/filtros";
 import {
   Badge,
@@ -15,6 +18,7 @@ import {
 } from "../../components/ui";
 import { api } from "../../lib/api";
 import { fmtMoney, fmtNum } from "../../lib/format";
+import { ICONOS_ARTICULO, iconoPorLlave } from "../../lib/iconosArticulo";
 import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
 import type { Categoria, Producto, ProductoInput, TipoProducto, UnidadMedida } from "../../types";
@@ -28,10 +32,14 @@ import type { Categoria, Producto, ProductoInput, TipoProducto, UnidadMedida } f
 const TIPOS: Record<TipoProducto, { label: string; tono: "gris" | "verde" | "morado"; conStock: boolean }> = {
   ALMACENABLE: { label: "Producto", tono: "gris", conStock: true },
   SERVICIO: { label: "Elaborado", tono: "verde", conStock: false },
-  COMPUESTO: { label: "Combo", tono: "morado", conStock: false },
+  // El combo SÍ lleva stock: es el que el local decide ofrecer hoy, y no se
+  // mueve por Movimientos como el resto. Editar el artículo es su única vía de
+  // carga, así que el campo también aparece al editar (a diferencia de un
+  // producto, donde el stock inicial sólo tiene sentido al crear).
+  COMPUESTO: { label: "Combo", tono: "morado", conStock: true },
 };
 
-type FiltroStock = "todos" | "activos" | "bajo" | "sin";
+type FiltroStock = "todos" | "activos" | "bajo" | "sin" | "papelera";
 type FiltroTipo = "todos" | TipoProducto;
 
 const OPC_STOCK = [
@@ -39,6 +47,7 @@ const OPC_STOCK = [
   ["activos", "Activos"],
   ["bajo", "Bajo stock"],
   ["sin", "Sin stock"],
+  ["papelera", "Dados de baja"],
 ] as const satisfies readonly (readonly [FiltroStock, string])[];
 
 const OPC_TIPO = [
@@ -50,12 +59,15 @@ const OPC_TIPO = [
 
 export default function Productos() {
   const { incluye } = useAuth();
-  const productos = useApi(() => api.getProductos(), []);
+  const [filtroStock, setFiltroStock] = useState<FiltroStock>("todos");
+  // La papelera es otra lista del backend, no un filtro sobre la que ya está:
+  // los dados de baja no vienen en el catálogo normal.
+  const enPapelera = filtroStock === "papelera";
+  const productos = useApi(() => api.getProductos(enPapelera), [enPapelera]);
   const categorias = useApi(() => api.getCategorias(false), []);
   const unidades = useApi(() => api.getUnidades(), []);
 
   const [q, setQ] = useState("");
-  const [filtroStock, setFiltroStock] = useState<FiltroStock>("todos");
   const [filtroTipo, setFiltroTipo] = useState<FiltroTipo>("todos");
   const [detalle, setDetalle] = useState<Producto | null>(null);
   const [editando, setEditando] = useState<Producto | null>(null);
@@ -81,9 +93,9 @@ export default function Productos() {
     return lista.filter((p) => {
       if (
         texto &&
-        !p.nombre.toLowerCase().includes(texto) &&
-        !(p.descripcion ?? "").toLowerCase().includes(texto) &&
-        !(p.codBarra ?? "").toLowerCase().includes(texto)
+        !contiene(p.nombre, texto) &&
+        !contiene(p.descripcion, texto) &&
+        !contiene(p.codBarra, texto)
       )
         return false;
       if (filtroTipo !== "todos" && p.tipoProducto !== filtroTipo) return false;
@@ -94,9 +106,22 @@ export default function Productos() {
       if (filtroStock === "bajo")
         return conStock && p.stockTotal > 0 && p.stockTotal <= p.stockMinimo;
       if (filtroStock === "sin") return conStock && p.stockTotal <= 0;
+      // En papelera no hay sub-filtro: la lista ya viene filtrada del backend.
       return true;
     });
   }, [lista, q, filtroStock, filtroTipo]);
+
+  /** Devuelve al catálogo un artículo dado de baja. */
+  async function restaurar(p: Producto) {
+    setErrorAccion("");
+    try {
+      await api.restaurarProducto(p.id);
+      setDetalle(null);
+      productos.recargar();
+    } catch (err) {
+      setErrorAccion(err instanceof Error ? err.message : "No se pudo restaurar");
+    }
+  }
 
   async function borrar() {
     if (!aBorrar || borrando) return;
@@ -123,11 +148,19 @@ export default function Productos() {
     <div className="mx-auto max-w-6xl space-y-4 p-5">
       <EncabezadoPagina
         titulo="Artículos"
-        subtitulo={`${lista.length} en el catálogo`}
+        subtitulo={
+          enPapelera
+            ? `${lista.length} dados de baja`
+            : `${lista.length} en el catálogo`
+        }
+        // En la papelera no se ofrece "Nuevo": el alta cae en el catálogo y el
+        // producto recién creado desaparecería de la lista que estás mirando.
         accion={
-          <Boton icono="plus" onClick={() => setCreando(true)}>
-            Nuevo
-          </Boton>
+          !enPapelera && (
+            <Boton icono="plus" onClick={() => setCreando(true)}>
+              Nuevo
+            </Boton>
+          )
         }
       />
 
@@ -176,12 +209,14 @@ export default function Productos() {
 
       <DetalleProducto
         producto={detalle}
+        enPapelera={enPapelera}
         onClose={() => setDetalle(null)}
         onEditar={(p) => {
           setDetalle(null);
           setEditando(p);
         }}
         onEliminar={(p) => setABorrar(p)}
+        onRestaurar={restaurar}
       />
 
       <FormProducto
@@ -227,9 +262,12 @@ function TarjetaProducto({ producto: p, onClick }: { producto: Producto; onClick
         className="card w-full p-4 text-left transition-shadow hover:shadow-md"
       >
         <div className="flex items-start justify-between gap-2">
-          <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-marca text-white">
-            <Icon name={p.tipoProducto === "COMPUESTO" ? "package" : "archive"} size={21} />
-          </span>
+          <IconoProducto
+            nombre={p.nombre}
+            icono={p.icono}
+            categoria={p.categoria?.nombre}
+            size={44}
+          />
           <div className="flex items-center gap-2">
             {sinStock && <Badge tono="rojo">Sin stock</Badge>}
             {bajoStock && <Badge tono="amarillo">Bajo stock</Badge>}
@@ -275,15 +313,21 @@ function TarjetaProducto({ producto: p, onClick }: { producto: Producto; onClick
 
 function DetalleProducto({
   producto: p,
+  enPapelera,
   onClose,
   onEditar,
   onEliminar,
+  onRestaurar,
 }: {
   producto: Producto | null;
+  /** En la papelera el artículo no se edita: se restaura o se deja. */
+  enPapelera: boolean;
   onClose: () => void;
   onEditar: (p: Producto) => void;
   onEliminar: (p: Producto) => void;
+  onRestaurar: (p: Producto) => void;
 }) {
+  const [viendoCostos, setViendoCostos] = useState(false);
   if (!p) return null;
   const tipo = TIPOS[p.tipoProducto];
   const margen = p.precio > 0 ? (p.precio - p.costo) / p.precio : 0;
@@ -295,21 +339,49 @@ function DetalleProducto({
       subtitulo={p.nombre}
       onClose={onClose}
       acciones={
-        <>
-          <Boton variante="danger" icono="trash" onClick={() => onEliminar(p)}>
-            Eliminar
+        enPapelera ? (
+          <Boton icono="check" onClick={() => onRestaurar(p)}>
+            Restaurar
           </Boton>
-          <Boton icono="edit" onClick={() => onEditar(p)}>
-            Editar
-          </Boton>
-        </>
+        ) : (
+          <>
+            <Boton variante="danger" icono="trash" onClick={() => onEliminar(p)}>
+              Eliminar
+            </Boton>
+            <Boton icono="edit" onClick={() => onEditar(p)}>
+              Editar
+            </Boton>
+          </>
+        )
       }
     >
       <div className="space-y-4">
+        <button
+          type="button"
+          onClick={() => setViendoCostos(true)}
+          className="flex w-full items-center gap-2 rounded-xl border border-borde px-3.5 py-2.5 text-left text-[13px] font-semibold text-texto-2 hover:bg-muted"
+        >
+          <Icon name="trendingDown" size={17} />
+          <span className="flex-1">Historial de costos</span>
+          <Icon name="chevronRight" size={16} />
+        </button>
+
+        {viendoCostos && (
+          <HistorialCostos
+            productoId={p.id}
+            nombre={p.nombre}
+            onClose={() => setViendoCostos(false)}
+          />
+        )}
+
         <div className="flex items-center gap-3 rounded-xl bg-primary-50 p-4">
-          <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-marca text-white">
-            <Icon name={p.tipoProducto === "COMPUESTO" ? "package" : "archive"} size={26} />
-          </span>
+          <IconoProducto
+            nombre={p.nombre}
+            icono={p.icono}
+            categoria={p.categoria?.nombre}
+            size={56}
+            className="rounded-2xl"
+          />
           <div className="min-w-0">
             <h3 className="truncate text-base font-bold text-texto">{p.nombre}</h3>
             <p className="text-[13px] text-texto-3">{p.descripcion || "Sin descripción"}</p>
@@ -442,10 +514,20 @@ function FormProductoCuerpo({
   const [precio, setPrecio] = useState(String(producto?.precio ?? ""));
   const [costo, setCosto] = useState(String(producto?.costo ?? ""));
   const [stockMinimo, setStockMinimo] = useState(String(producto?.stockMinimo ?? ""));
-  const [stockInicial, setStockInicial] = useState("");
+  const [stockInicial, setStockInicial] = useState(
+    // Sólo el combo trae su stock cargado: es un dato que se corrige, no que se
+    // suma. Y sólo si es > 0, para que un 0 heredado no parezca ya completado.
+    producto?.tipoProducto === "COMPUESTO" && producto.stockTotal > 0
+      ? String(producto.stockTotal)
+      : "",
+  );
   const [categoriaId, setCategoriaId] = useState(String(producto?.categoria?.id ?? ""));
   const [unidadId, setUnidadId] = useState(String(producto?.unidadMedida?.id ?? ""));
   const [habilitado, setHabilitado] = useState(producto?.habilitado ?? true);
+  // Se arrastra siempre, aunque el form no lo toque: si no viajara en el PATCH,
+  // cambiar el precio desde la web le borraria el icono puesto en la app.
+  const [icono, setIcono] = useState<string | null>(producto?.icono ?? null);
+  const [eligiendoIcono, setEligiendoIcono] = useState(false);
   const [componentes, setComponentes] = useState<LineaCombo[]>(
     () =>
       producto?.componentes.map((c) => ({
@@ -509,6 +591,10 @@ function FormProductoCuerpo({
       // código chocaba con un 409 que no decía qué campo lo causaba.
       ...(codBarra.trim() ? { codBarra: codBarra.trim() } : {}),
       habilitado,
+      // Viaja siempre, también vacío: es lo que permite QUITAR el ícono. Y va
+      // aunque el usuario no lo haya tocado, con el valor que ya tenía, para
+      // que editar el precio desde la web no borre lo elegido en la app.
+      icono: icono ?? "",
       ...(categoriaId ? { categoriaId: Number(categoriaId) } : {}),
       ...(esCombo
         ? {
@@ -518,9 +604,11 @@ function FormProductoCuerpo({
             })),
           }
         : {}),
-      // El stock inicial sólo tiene sentido al crear: después se mueve con
-      // entradas y salidas, no editando el artículo.
-      ...(!esEdicion && conStock && stockInicial !== ""
+      // En un producto el stock inicial sólo tiene sentido al crear: después se
+      // mueve con entradas y salidas. En un COMBO es al revés — no pasa por
+      // Movimientos, así que editar el artículo es la única forma de decir
+      // cuántos hay hoy, y el campo tiene que viajar también al editar.
+      ...((esCombo || !esEdicion) && conStock && stockInicial !== ""
         ? { stockInicial: Number(stockInicial) }
         : {}),
     };
@@ -639,8 +727,15 @@ function FormProductoCuerpo({
                 onChange={(e) => setStockMinimo(e.target.value)}
               />
             </Campo>
-            {!esEdicion && (
-              <Campo label="Stock inicial" hint="Se carga como entrada">
+            {(esCombo || !esEdicion) && (
+              <Campo
+                label={esCombo ? "Stock del combo" : "Stock inicial"}
+                hint={
+                  esCombo
+                    ? "Cuántos hay para vender hoy"
+                    : "Se carga como entrada"
+                }
+              >
                 <Input
                   type="number"
                   inputMode="decimal"
@@ -656,6 +751,42 @@ function FormProductoCuerpo({
         <Campo label="Código de barras">
           <Input value={codBarra} onChange={(e) => setCodBarra(e.target.value)} />
         </Campo>
+
+        <Campo
+          label="Ícono"
+          hint="Es lo que ve el cajero en el punto de venta. Sin ícono se muestran las iniciales."
+        >
+          <button
+            type="button"
+            onClick={() => setEligiendoIcono(true)}
+            className="flex w-full items-center gap-3 rounded-xl border border-borde bg-white p-2.5 text-left hover:bg-muted"
+          >
+            <IconoProducto
+              nombre={nombre || "?"}
+              icono={icono}
+              categoria={categorias.find((c) => String(c.id) === categoriaId)?.nombre}
+              size={44}
+            />
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-[13px] font-semibold text-texto">
+                {iconoPorLlave(icono)?.etiqueta ?? "Sin ícono"}
+              </span>
+              <span className="block text-xs text-texto-3">Tocá para elegir</span>
+            </span>
+            <Icon name="chevronRight" size={18} />
+          </button>
+        </Campo>
+
+        {eligiendoIcono && (
+          <SelectorIcono
+            actual={icono}
+            onElegir={(llave) => {
+              setIcono(llave);
+              setEligiendoIcono(false);
+            }}
+            onCerrar={() => setEligiendoIcono(false)}
+          />
+        )}
 
         {esCombo && (
           <div className="rounded-xl border border-borde p-3.5">
@@ -732,6 +863,81 @@ function FormProductoCuerpo({
         </label>
 
         <ErrorMsg>{error}</ErrorMsg>
+      </div>
+    </Modal>
+  );
+}
+
+/**
+ * Grilla para elegir el ícono del artículo. Port de `SeleccionarIconoDialog`
+ * (Android): las mismas imágenes y las mismas llaves, para que el catálogo se
+ * vea igual en la tablet y en la web.
+ *
+ * "Sin ícono" es una opción explícita y no un botón de borrar escondido: es la
+ * forma de volver al monograma, y el cajero tiene que poder encontrarla.
+ */
+function SelectorIcono({
+  actual,
+  onElegir,
+  onCerrar,
+}: {
+  actual: string | null;
+  onElegir: (llave: string | null) => void;
+  onCerrar: () => void;
+}) {
+  return (
+    <Modal abierto titulo="Elegí un ícono" onClose={onCerrar} ancho="max-w-lg">
+      <div className="space-y-3 p-4">
+        <button
+          type="button"
+          onClick={() => onElegir(null)}
+          className={[
+            "flex w-full items-center gap-3 rounded-xl border p-2.5 text-left transition-colors",
+            actual === null
+              ? "border-primary bg-primary-50"
+              : "border-borde hover:bg-muted",
+          ].join(" ")}
+        >
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-muted text-texto-3">
+            <Icon name="close" size={18} />
+          </span>
+          <span className="text-[13px] font-semibold text-texto">
+            Sin ícono
+            <span className="block text-xs font-normal text-texto-3">
+              Se muestran las iniciales del nombre
+            </span>
+          </span>
+        </button>
+
+        <ul className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+          {ICONOS_ARTICULO.map((ic) => (
+            <li key={ic.llave}>
+              <button
+                type="button"
+                onClick={() => onElegir(ic.llave)}
+                title={ic.etiqueta}
+                className={[
+                  "flex w-full flex-col items-center gap-1.5 rounded-xl border p-2.5 transition-colors",
+                  actual === ic.llave
+                    ? "border-primary bg-primary-50"
+                    : "border-borde hover:bg-muted",
+                ].join(" ")}
+              >
+                <img
+                  src={ic.src}
+                  alt=""
+                  width={52}
+                  height={52}
+                  loading="lazy"
+                  className="h-[52px] w-[52px] object-contain"
+                />
+                <span className="line-clamp-2 text-center text-[11px] font-semibold leading-tight text-texto-2">
+                  {ic.etiqueta}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
       </div>
     </Modal>
   );

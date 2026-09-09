@@ -171,3 +171,53 @@ describe("capacidades", () => {
     expect(puede(sinFeatures, "exportacion")).toBe(true);
   });
 });
+
+describe("el mesero", () => {
+  // El login del rol MESERO en QA llega con `modulos: []`. No es un caso raro:
+  // es el caso normal, y por eso el enrutado no puede depender de los módulos.
+  const mesero = { rol: "MESERO" as Rol, modulos: [] as Modulo[], features: PLAN_FULL };
+
+  it("entra al salón, no al POS", () => {
+    // Igual que AuthenticationActivity en Android: el rol manda al panel del
+    // mesero sin pasar por el menú del admin.
+    expect(rutaInicial(mesero)).toBe("/salon");
+  });
+
+  it("no cobra: nada de POS, caja ni créditos", () => {
+    // "No tiene drawer ni caja: el mesero no cobra" (MeserosActivity.kt).
+    expect(puedeVer(mesero, "pos")).toBe(false);
+    expect(puedeVer(mesero, "caja")).toBe(false);
+    expect(puedeVer(mesero, "creditos")).toBe(false);
+  });
+
+  it("tampoco administra el catálogo ni ve reportes del negocio", () => {
+    expect(puedeVer(mesero, "inventario")).toBe(false);
+    expect(puedeVer(mesero, "productos")).toBe(false);
+    expect(puedeVer(mesero, "reportes")).toBe(false);
+    expect(puedeVer(mesero, "usuarios")).toBe(false);
+  });
+
+  it("no crea mesas: las usa", () => {
+    // El ABM de mesas y zonas es del admin.
+    expect(puedeVer(mesero, "mesas")).toBe(false);
+  });
+
+  it("el admin y el supervisor también miran el salón", () => {
+    // Para no tener que pedirle el celular a un mesero.
+    expect(puedeVer(ctx("ADMIN"), "salon")).toBe(true);
+    expect(puedeVer(ctx("SUPERVISOR"), "salon")).toBe(true);
+    expect(puedeVer(ctx("MESERO", [], PLAN_FULL), "salon")).toBe(true);
+  });
+
+  it("el cajero y el repartidor no entran al salón", () => {
+    // El cajero ve las mesas por cobrar desde su POS, que es otra pantalla.
+    expect(puedeVer(ctx("CAJERO", ["POS", "CAJA"]), "salon")).toBe(false);
+    expect(puedeVer(ctx("REPARTIDOR", ["POS"]), "salon")).toBe(false);
+  });
+
+  it("el admin sigue entrando a lo suyo, no al salón", () => {
+    // El salón no puede robarle la pantalla de inicio al admin.
+    expect(rutaInicial(ctx("ADMIN"))).toBe("/inventario");
+  });
+});
+

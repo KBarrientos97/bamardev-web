@@ -1,4 +1,7 @@
 import { useState } from "react";
+import { parsearMontoO } from "../../lib/dinero";
+import CorteDeCaja from "../../components/CorteDeCaja";
+import { CargarQrCobro } from "../../components/QrCobro";
 import { Icon } from "../../components/Icon";
 import { Boton, Campo, ErrorMsg, Input } from "../../components/ui";
 import { api } from "../../lib/api";
@@ -15,7 +18,7 @@ export default function AperturaCaja({ onAbierta }: { onAbierta: () => void }) {
   const [error, setError] = useState("");
   const [enviando, setEnviando] = useState(false);
 
-  const montoNum = Number(monto);
+  const montoNum = parsearMontoO(monto, NaN);
   const valido = monto !== "" && Number.isFinite(montoNum) && montoNum >= 0;
 
   async function abrir() {
@@ -85,6 +88,13 @@ export default function AperturaCaja({ onAbierta }: { onAbierta: () => void }) {
               placeholder="Ej. turno mañana"
             />
           </Campo>
+
+          {/* Contar por denominación y que el total se copie al monto: es lo
+              que hace el cajero al abrir, y tecleando el total de cabeza es
+              donde se cuelan los errores. */}
+          <CorteDeCaja onTotal={(t) => setMonto(t > 0 ? String(t) : "")} />
+
+          <CargarQrCobro />
 
           <ErrorMsg>{error}</ErrorMsg>
 

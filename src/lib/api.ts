@@ -11,6 +11,7 @@ import type {
   Credito,
   CrearUsuarioInput,
   Dashboard,
+  HistorialCostos,
   DetalleMovimiento,
   DetalleMovimientoInput,
   EstadoLicencia,
@@ -26,6 +27,15 @@ import type {
   Producto,
   ProductoInput,
   RangoReporte,
+  ReporteCierreProductos,
+  ReporteCompraDocumento,
+  ReporteComprasDetalle,
+  ReporteComprasGeneral,
+  ReporteComprasMensual,
+  ReporteMovimientosCaja,
+  ReporteVentasDetalle,
+  ReporteVentasGeneral,
+  ReporteVentasMensual,
   Repartidor,
   ResumenCaja,
   UnidadMedida,
@@ -33,6 +43,14 @@ import type {
   Venta,
   VentaInput,
 } from "../types";
+
+import type {
+  Mesa,
+  Salon,
+  TurnoMesero,
+  ZonaSalon,
+} from "../types/salon";
+import { reportarError } from "./telemetria";
 
 // URL del backend. En los builds la fija VITE_API_URL (QA o PROD); en `npm run
 // dev` queda vacía a propósito y pegamos a /api, que el proxy de Vite reenvía
@@ -43,6 +61,14 @@ const BASE = import.meta.env.VITE_API_URL || "/api";
 const TOKEN_KEY = "bamardev_web_token";
 export const USER_KEY = "bamardev_web_usuario";
 export const NEGOCIO_KEY = "bamardev_web_negocio";
+/** Último estado de licencia conocido: sobrevive al F5 (ver AuthContext). */
+export const LICENCIA_KEY = "bamardev_web_licencia";
+/**
+ * Motivo del bloqueo por licencia, escrito justo antes de recargar hacia el
+ * login. Es lo único que sobrevive a `window.location.assign`, y sin esto el
+ * cajero volvería a una pantalla de login limpia sin saber por qué lo echó.
+ */
+export const BLOQUEO_KEY = "bamardev_web_bloqueo";
 
 export const tokenStore = {
   get: () => localStorage.getItem(TOKEN_KEY),
@@ -73,6 +99,7 @@ function limpiarSesion() {
   tokenStore.clear();
   localStorage.removeItem(USER_KEY);
   localStorage.removeItem(NEGOCIO_KEY);
+  localStorage.removeItem(LICENCIA_KEY);
 }
 
 /**
@@ -86,8 +113,63 @@ function cerrarSesionVencida() {
   window.location.assign("/");
 }
 
+/**
+ * Cuánto se espera una respuesta antes de darla por perdida. El backend
+ * responde en decenas de ms; 20 s ya es una red que no está.
+ */
+const TIMEOUT_MS = 20_000;
+
+/**
+ * Qué decirle al cajero según por qué falló. "No se pudo conectar" para todo
+ * lo manda a revisar donde no es: no es lo mismo estar sin internet que tener
+ * el servidor caído durante un despliegue. Port de `ErroresRed.kt`.
+ */
+function mensajeDeRed(e: unknown): string {
+  if (e instanceof DOMException && e.name === "AbortError") {
+    return "El servidor está tardando demasiado. Probá de nuevo en un momento.";
+  }
+  if (typeof navigator !== "undefined" && navigator.onLine === false) {
+    return "Sin internet. Revisá la conexión del local.";
+  }
+  return "No se pudo conectar con el servidor. Puede estar reiniciándose: probá en un momento.";
+}
+
+/** Códigos con los que el backend marca un 403 de licencia (ver vigencia.ts). */
+const CODIGOS_LICENCIA = ["LICENCIA_VENCIDA", "LICENCIA_SUSPENDIDA"];
+
+/**
+ * Licencia vencida (pasada la gracia) o suspendida. El backend lo responde en
+ * CADA request (`jwt.strategy`), no sólo al login, así que un token de 7 días
+ * no sirve de escape — y por eso hay que cortar acá, en el interceptor, y no
+ * en cada pantalla.
+ *
+ * Se guarda el motivo antes de recargar porque `assign` borra todo el estado
+ * de React: es lo que la pantalla de login lee para explicar el bloqueo en vez
+ * de dejar al cajero frente a un formulario que no sabe por qué lo expulsó.
+ */
+function bloquearPorLicencia(cuerpo: Record<string, unknown>) {
+  const motivo = {
+    codigo: String(cuerpo.codigo ?? ""),
+    mensaje: String(cuerpo.message ?? "La licencia del negocio no está vigente"),
+    urlPago: (cuerpo.urlPago as string | undefined) ?? null,
+  };
+  limpiarSesion();
+  try {
+    localStorage.setItem(BLOQUEO_KEY, JSON.stringify(motivo));
+  } catch {
+    /* modo privado sin storage: se pierde el detalle, el bloqueo igual corta */
+  }
+  window.location.assign("/");
+}
+
 /** Serializa un query string omitiendo lo que no se mandó. */
-function qs(params: Record<string, unknown> = {}): string {
+/**
+ * El parámetro va como objeto plano y no como `Record<string, unknown>`: una
+ * interfaz declarada (RangoReporte y sus variantes) no es asignable a Record
+ * porque no lleva index signature, y tiparlo así obligaba a castear en cada
+ * llamada.
+ */
+function qs(params: object = {}): string {
   const p = new URLSearchParams();
   for (const [k, v] of Object.entries(params)) {
     if (v !== undefined && v !== null && v !== "") p.set(k, String(v));
@@ -96,17 +178,45 @@ function qs(params: Record<string, unknown> = {}): string {
   return s ? `?${s}` : "";
 }
 
-/** Llama al backend agregando el token y traduciendo errores a ApiError. */
+/**
+ * Llama al backend agregando el token y traduciendo errores a ApiError.
+ *
+ * Es el único punto por el que pasa todo el tráfico, así que acá viven las tres
+ * reglas transversales: cerrar sesión si el token murió, cortar si la licencia
+ * dejó de estar vigente, y reportar a PostHog lo que falló. Ponerlas en cada
+ * pantalla sería garantizar que alguna quede afuera.
+ */
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = tokenStore.get();
-  const res = await fetch(`${BASE}${path}`, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...options.headers,
-    },
-  });
+  const metodo = options.method ?? "GET";
+  // La ruta sin ids: "/productos/42" y "/productos/7" son el mismo endpoint, y
+  // agrupados en PostHog cuentan como un problema y no como veinte.
+  const donde = `${metodo} ${path.split("?")[0].replace(/\/\d+/g, "/:id")}`;
+
+  // Sin timeout, un fetch colgado deja el botón en "Registrando…" para
+  // siempre: el cajero no sabe si la venta entró y toca de nuevo.
+  const corte = new AbortController();
+  const alarma = setTimeout(() => corte.abort(), TIMEOUT_MS);
+
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}${path}`, {
+      ...options,
+      signal: corte.signal,
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...options.headers,
+      },
+    });
+  } catch (e) {
+    // Se cayó la red o el backend no responde. Es el error que más sufre el
+    // local (wifi del negocio) y el que nunca deja rastro si no se reporta.
+    reportarError(donde, e, { tipo: "red" });
+    throw new ApiError(mensajeDeRed(e), 0);
+  } finally {
+    clearTimeout(alarma);
+  }
 
   if (res.status === 401 && !RUTAS_LOGIN.includes(path)) {
     cerrarSesionVencida();
@@ -123,6 +233,31 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     } catch {
       /* respuesta sin cuerpo JSON */
     }
+
+    // Licencia vencida o suspendida: no es un error a mostrar en un cartelito,
+    // es el fin de la sesión. Se corta acá para que ninguna pantalla siga
+    // trabajando contra un backend que ya no la deja operar.
+    if (res.status === 403 && CODIGOS_LICENCIA.includes(String(cuerpo.codigo))) {
+      bloquearPorLicencia(cuerpo);
+      throw new ApiError(mensaje, 403, cuerpo);
+    }
+
+    // 502/503/504 es el servidor no disponible, típico durante un despliegue:
+    // el cuerpo viene en HTML y el mensaje genérico no ayudaba a esperar.
+    if (res.status === 502 || res.status === 503 || res.status === 504) {
+      mensaje = "El servidor no está disponible en este momento. Probá en unos segundos.";
+    }
+
+    // Un 5xx es un bug nuestro; un 4xx suele ser una validación esperable
+    // ("stock insuficiente") y llenaría PostHog de ruido. Sólo van los 5xx.
+    if (res.status >= 500) {
+      reportarError(donde, new Error(mensaje), {
+        tipo: "http",
+        status: res.status,
+        codigo: cuerpo.codigo ?? null,
+      });
+    }
+
     throw new ApiError(mensaje, res.status, cuerpo);
   }
 
@@ -140,6 +275,32 @@ export const api = {
     }),
   me: () => request<Me>("/auth/me"),
   licencia: () => request<EstadoLicencia>("/licencia/estado"),
+
+  // ── Finanzas ──────────────────────────────────────────────────────────────
+  // Los reportes paginados aceptan `page` y `limite`; los mensuales no llevan
+  // rango, sólo el año.
+  reporteVentas: (p: RangoReporte & { usuarioId?: number; page?: number; limite?: number }) =>
+    request<ReporteVentasGeneral>(`/reportes/ventas${qs(p)}`),
+  reporteVentasDetalle: (
+    p: RangoReporte & { usuarioId?: number; page?: number; limite?: number },
+  ) => request<ReporteVentasDetalle>(`/reportes/ventas-detalle${qs(p)}`),
+  reporteVentasMensual: (anio?: number) =>
+    request<ReporteVentasMensual>(`/reportes/ventas-mensual${qs({ anio })}`),
+  reporteCompras: (
+    p: RangoReporte & { tipo?: string; page?: number; limite?: number },
+  ) => request<ReporteComprasGeneral>(`/reportes/compras${qs(p)}`),
+  reporteComprasDetalle: (
+    p: RangoReporte & { tipo?: string; page?: number; limite?: number },
+  ) => request<ReporteComprasDetalle>(`/reportes/compras-detalle${qs(p)}`),
+  reporteComprasMensual: (anio?: number) =>
+    request<ReporteComprasMensual>(`/reportes/compras-mensual${qs({ anio })}`),
+  reporteCompra: (id: number) =>
+    request<ReporteCompraDocumento>(`/reportes/compras/${id}`),
+  reporteCaja: (p: RangoReporte & { tipo?: string; page?: number; limite?: number }) =>
+    request<ReporteMovimientosCaja>(`/reportes/caja${qs(p)}`),
+  /** Lo que salió del mostrador en un turno. Baja del arqueo, no del período. */
+  reporteCierreProductos: (cierreId: number) =>
+    request<ReporteCierreProductos>(`/reportes/cierres/${cierreId}/productos`),
 
   // ── Catálogo ──────────────────────────────────────────────────────────────
   getProductos: (eliminados?: boolean) =>
@@ -176,7 +337,16 @@ export const api = {
   eliminarAlmacen: (id: number) =>
     request<{ mensaje: string }>(`/almacenes/${id}`, { method: "DELETE" }),
 
-  getInsumos: () => request<Insumo[]>("/insumos"),
+  /** El catálogo de insumos; con `eliminados`, la papelera. */
+  getInsumos: (eliminados?: boolean) =>
+    request<Insumo[]>(`/insumos${qs({ eliminados: eliminados ? 1 : undefined })}`),
+  /**
+   * A cuánto llegó este artículo en cada compra. Vale también para insumos: son
+   * Producto con esInsumo=true y comparten endpoint.
+   */
+  historialCostos: (id: number) => request<HistorialCostos>(`/productos/${id}/costos`),
+  restaurarInsumo: (id: number) =>
+    request<{ mensaje: string }>(`/insumos/${id}/restaurar`, { method: "POST" }),
   crearInsumo: (input: InsumoInput) =>
     request<Insumo>("/insumos", { method: "POST", body: JSON.stringify(input) }),
   actualizarInsumo: (id: number, input: Partial<InsumoInput>) =>
@@ -260,6 +430,15 @@ export const api = {
     request<Credito[]>(`/creditos${qs(params)}`),
   getCredito: (id: number) => request<Credito>(`/creditos/${id}`),
   getClientesCredito: () => request<ClienteCredito[]>("/creditos/clientes"),
+  /**
+   * Techo de deuda del cliente. `null` explícito = sacarle el límite, y por eso
+   * el body lo manda siempre (omitirlo y mandar null son cosas distintas).
+   */
+  actualizarLimiteCredito: (clienteId: number, limiteCredito: number | null) =>
+    request<ClienteCredito>(`/creditos/clientes/${clienteId}/limite`, {
+      method: "PATCH",
+      body: JSON.stringify({ limiteCredito }),
+    }),
   getResumenCreditos: () => request<Record<string, unknown>>("/creditos/resumen"),
   /** La caja donde entra el abono la resuelve el backend (la del cobrador). */
   registrarAbono: (id: number, input: AbonoInput) =>
@@ -291,6 +470,141 @@ export const api = {
   // Todos aceptan ?desde&hasta en ISO; sin ellos el backend usa 7 días.
   reporte: <T = unknown>(nombre: string, rango: RangoReporte = {}, extra = {}) =>
     request<T>(`/reportes/${nombre}${qs({ ...rango, ...extra })}`),
+
+  // ── Salón ─────────────────────────────────────────────────────────────────
+  // El panel del mesero. `clienteRequestId` viaja en abrir y en comanda porque
+  // el backend las dedupe: si el POST llegó pero la respuesta se perdió, el
+  // reintento devuelve lo que ya existe en vez de duplicarlo — una comanda
+  // repetida es un pedido que la cocina hace dos veces.
+  salon: () => request<Salon>("/salon"),
+  mesa: (id: number) => request<Mesa>(`/salon/mesas/${id}`),
+  /** La carta del mesero: el catálogo con el stock ya comprometido por las mesas. */
+  cartaSalon: () => request<Producto[]>("/salon/carta"),
+  turnoMesero: () => request<TurnoMesero>("/salon/turno"),
+  cerrarTurnoMesero: () =>
+    request<TurnoMesero>("/salon/turno/cerrar", { method: "POST" }),
+
+  abrirMesa: (
+    id: number,
+    input: {
+      comensales: number;
+      referencia?: string;
+      clienteRequestId?: string;
+    },
+  ) =>
+    request<Mesa>(`/salon/mesas/${id}/abrir`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+
+  /** Manda la mesa a caja. No cobra: el mesero no cobra. */
+  pedirCuentaMesa: (id: number) =>
+    request<Mesa>(`/salon/mesas/${id}/cuenta`, { method: "POST" }),
+  liberarMesa: (id: number) =>
+    request<Mesa>(`/salon/mesas/${id}/liberar`, { method: "POST" }),
+
+  crearComanda: (
+    id: number,
+    input: {
+      items: { productoId: number; cantidad: number; nota?: string }[];
+      clienteRequestId?: string;
+    },
+  ) =>
+    request<Mesa>(`/salon/mesas/${id}/comandas`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  marcarComandaServida: (mesaId: number, comandaId: number) =>
+    request<Mesa>(`/salon/mesas/${mesaId}/comandas/${comandaId}/servida`, {
+      method: "POST",
+    }),
+  anularItemComanda: (
+    mesaId: number,
+    comandaId: number,
+    itemId: number,
+    input: { motivo?: string; autorizadorUsername?: string; autorizadorPin?: string },
+  ) =>
+    request<Mesa>(
+      `/salon/mesas/${mesaId}/comandas/${comandaId}/items/${itemId}/anular`,
+      { method: "POST", body: JSON.stringify(input) },
+    ),
+
+  /** Mueve el grupo entero a otra mesa. */
+  transferirMesa: (id: number, destinoId: number) =>
+    request<Mesa>(`/salon/mesas/${id}/transferir`, {
+      method: "POST",
+      body: JSON.stringify({ destinoId }),
+    }),
+  /** Junta el consumo de dos cuentas que YA comieron. */
+  juntarMesa: (id: number, otraId: number) =>
+    request<Mesa>(`/salon/mesas/${id}/juntar`, {
+      method: "POST",
+      body: JSON.stringify({ otraId }),
+    }),
+  /** Arrima mesas libres ANTES de sentar a nadie, para un grupo grande. */
+  unirMesa: (id: number, mesaIds: number[]) =>
+    request<Mesa>(`/salon/mesas/${id}/unir`, {
+      method: "POST",
+      body: JSON.stringify({ mesaIds }),
+    }),
+  separarMesa: (id: number) =>
+    request<Mesa>(`/salon/mesas/${id}/separar`, { method: "POST" }),
+
+  reservarMesa: (
+    id: number,
+    input: { hora: string; nombre: string; telefono?: string; personas?: number; nota?: string },
+  ) =>
+    request<Mesa>(`/salon/mesas/${id}/reserva`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  quitarReservaMesa: (id: number) =>
+    request<Mesa>(`/salon/mesas/${id}/reserva`, { method: "DELETE" }),
+
+  /** Las cuentas que esperan en caja. Sólo la ven los que cobran. */
+  mesasPorCobrar: () => request<Mesa[]>("/salon/por-cobrar"),
+  /**
+   * Convierte la cuenta de la mesa en venta. Lo hace la caja: el mesero no
+   * cobra nunca. La propina va al turno del mesero y NO entra al total de la
+   * venta ni a la matemática de la caja.
+   */
+  cobrarMesa: (
+    id: number,
+    input: {
+      pagos: { formaPagoId: number; monto: number; recibido?: number }[];
+      propina?: number;
+      clienteRequestId?: string;
+    },
+  ) => request<Venta>(`/salon/mesas/${id}/cobrar`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  }),
+
+  // ── Mesas (administración) ────────────────────────────────────────────────
+  // El mesero no crea mesas: sólo abre las que el dueño registre. El backend
+  // lo exige con RolesGuard (ADMIN, SUPERVISOR).
+  getMesas: () => request<Mesa[]>("/mesas"),
+  getZonas: () => request<ZonaSalon[]>("/mesas/zonas"),
+  crearMesa: (input: {
+    codigo: string;
+    nombre?: string;
+    zonaId: number;
+    capacidad: number;
+    notaMesa?: string;
+    activa?: boolean;
+  }) => request<Mesa>("/mesas", { method: "POST", body: JSON.stringify(input) }),
+  actualizarMesa: (
+    id: number,
+    input: Partial<{
+      codigo: string;
+      nombre: string;
+      zonaId: number;
+      capacidad: number;
+      notaMesa: string;
+      activa: boolean;
+    }>,
+  ) => request<Mesa>(`/mesas/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
+  eliminarMesa: (id: number) => request<void>(`/mesas/${id}`, { method: "DELETE" }),
 };
 
 /** Pago con el que el repartidor cobra un pedido contra entrega. */

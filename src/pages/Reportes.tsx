@@ -8,6 +8,7 @@ import type { Capacidad } from "../lib/permisos";
 import { useApi } from "../lib/useApi";
 import { useAuth } from "../store/AuthContext";
 import type { RangoReporte } from "../types";
+import Finanzas from "./Finanzas";
 
 // ── Período ─────────────────────────────────────────────────────────────────
 
@@ -108,6 +109,13 @@ const REPORTES: FichaReporte[] = [
     titulo: "Descuentos y anulaciones",
     texto: "Lo que se perdió y quién lo autorizó.",
     icono: "alert",
+    capacidad: "reportes_operacion",
+  },
+  {
+    nombre: "meseros",
+    titulo: "Ventas por mesero",
+    texto: "Quién atendió, cuánto vendió y qué anuló.",
+    icono: "users",
     capacidad: "reportes_operacion",
   },
   {
@@ -260,11 +268,38 @@ function fmtValor(clave: string, valor: unknown): string {
   return String(valor);
 }
 
-/** Texto plano del valor, para el CSV (sin símbolos que rompan la planilla). */
+/**
+ * Texto plano del valor, para el CSV (sin símbolos que rompan la planilla).
+ *
+ * Los decimales van con COMA: en un Excel es-BO un "1234.5" entra como texto y
+ * la columna deja de sumarse. Es el mismo criterio de `ExportadorCsv.kt`.
+ */
 function valorCsv(valor: unknown): string {
   if (valor === null || valor === undefined) return "";
   if (typeof valor === "object") return JSON.stringify(valor);
+  if (typeof valor === "number" && Number.isFinite(valor)) {
+    return String(valor).replace(".", ",");
+  }
   return String(valor);
+}
+
+/** Una celda que parece número: no hay que protegerla como fórmula. */
+const NUMERO_CSV = /^-?[\d.,]+$/;
+
+/**
+ * Prepara la celda para el archivo.
+ *
+ * Si empieza con `=`, `+`, `@` o `-` y no es un número, se le antepone un
+ * apóstrofe: sin esto Excel la ejecuta como fórmula (*CSV injection*), y basta
+ * con que un producto se llame `=algo` para que el archivo que abre el dueño
+ * ejecute lo que escribió cualquiera que pueda dar de alta un artículo.
+ * Portado de `ExportadorCsv.escapar` (Android).
+ */
+function escaparCsv(celda: string): string {
+  const esFormula =
+    celda.length > 0 && "=+@-".includes(celda[0]) && !NUMERO_CSV.test(celda);
+  const seguro = esFormula ? `'${celda}` : celda;
+  return `"${seguro.replace(/"/g, '""')}"`;
 }
 
 /**
@@ -272,10 +307,9 @@ function valorCsv(valor: unknown): string {
  * decimal y Excel partiría los números al medio.
  */
 function bajarCsv(nombre: string, filas: Record<string, unknown>[], columnas: string[]) {
-  const escapar = (v: string) => `"${v.replace(/"/g, '""')}"`;
   const lineas = [
-    columnas.map((c) => escapar(legible(c))).join(";"),
-    ...filas.map((f) => columnas.map((c) => escapar(valorCsv(f[c]))).join(";")),
+    columnas.map((c) => escaparCsv(legible(c))).join(";"),
+    ...filas.map((f) => columnas.map((c) => escaparCsv(valorCsv(f[c]))).join(";")),
   ];
   // BOM para que Excel abra los acentos bien en Windows.
   const blob = new Blob(["﻿" + lineas.join("\r\n")], {
@@ -284,7 +318,9 @@ function bajarCsv(nombre: string, filas: Record<string, unknown>[], columnas: st
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `${nombre}.csv`;
+  // Con la fecha en el nombre: en la carpeta de descargas, tres exportaciones
+  // del mismo reporte dejaban de distinguirse por "(1)" y "(2)".
+  a.download = `${nombre}-${isoDia(new Date())}.csv`;
   a.click();
   URL.revokeObjectURL(url);
 }
@@ -301,6 +337,12 @@ export default function Reportes() {
   const [desdeManual, setDesdeManual] = useState(() => rangoDePreset("mes").desde ?? "");
   const [hastaManual, setHastaManual] = useState(() => isoDia(new Date()));
   const [abierto, setAbierto] = useState<FichaReporte | null>(null);
+  /**
+   * Finanzas es el historial de documentos (ventas y compras, uno por fila);
+   * los reportes son el resumen del período. Comparten el rango de fechas pero
+   * se leen distinto, así que van en pestañas y no mezclados en la misma grilla.
+   */
+  const [vista, setVista] = useState<"reportes" | "finanzas">("reportes");
 
   // Los reportes que el plan no incluye no se ofrecen: pedirlos igual
   // devolvería datos, pero se venden por separado.
@@ -325,9 +367,25 @@ export default function Reportes() {
   return (
     <div className="mx-auto max-w-6xl space-y-4 p-5">
       <EncabezadoPagina
-        titulo="Reportes"
+        titulo={vista === "reportes" ? "Reportes" : "Finanzas"}
         subtitulo={`Del ${fmtFecha(rango.desde)} al ${fmtFecha(rango.hasta)}`}
       />
+
+      <div className="flex gap-2">
+        {(["reportes", "finanzas"] as const).map((v) => (
+          <button
+            key={v}
+            onClick={() => setVista(v)}
+            className={`rounded-xl px-3.5 py-2 text-[13px] font-semibold transition-colors ${
+              vista === v
+                ? "bg-primary text-white"
+                : "border border-borde bg-white text-texto-2 hover:bg-muted"
+            }`}
+          >
+            {v === "reportes" ? "Reportes" : "Finanzas"}
+          </button>
+        ))}
+      </div>
 
       <div className="space-y-3">
         <Chips valor={preset} opciones={OPC_PRESET} onChange={setPreset} />
@@ -353,6 +411,10 @@ export default function Reportes() {
         )}
       </div>
 
+      {vista === "finanzas" ? (
+        <Finanzas rango={rango} />
+      ) : (
+        <>
       <ErrorMsg>{resumen.error}</ErrorMsg>
 
       {resumen.cargando ? (
@@ -383,6 +445,8 @@ export default function Reportes() {
           ))}
         </ul>
       </section>
+        </>
+      )}
 
       {abierto && (
         <VistaReporte

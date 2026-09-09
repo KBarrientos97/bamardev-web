@@ -1,4 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import CorteDeCaja from "../../components/CorteDeCaja";
+import { parsearMontoO } from "../../lib/dinero";
 import { Icon } from "../../components/Icon";
 import {
   Badge,
@@ -11,10 +13,24 @@ import {
   Select,
 } from "../../components/ui";
 import { api } from "../../lib/api";
-import { fmtHora, fmtMoney } from "../../lib/format";
+import { fmtHora, fmtMoney, fmtNum } from "../../lib/format";
 import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
 import type { Caja } from "../../types";
+
+/** Motivo libre: es el único que pide escribir la descripción y el sentido. */
+const OTRO = "__otro__";
+
+/**
+ * Los movimientos de efectivo que de verdad pasan en un turno. El motivo decide
+ * el sentido: nadie ingresa un "pago a proveedor".
+ */
+const MOTIVOS: { etiqueta: string; tipo: "INGRESO" | "EGRESO" }[] = [
+  { etiqueta: "Sencillo", tipo: "INGRESO" },
+  { etiqueta: "Devolución", tipo: "EGRESO" },
+  { etiqueta: "Pago a proveedor", tipo: "EGRESO" },
+  { etiqueta: "Retiro", tipo: "EGRESO" },
+];
 
 export default function PantallaCierre({
   caja,
@@ -23,7 +39,7 @@ export default function PantallaCierre({
 }: {
   caja: Caja;
   onAtras: () => void;
-  onCerrada: () => void;
+  onCerrada: (cerrada: Caja) => void;
 }) {
   const { incluye } = useAuth();
   const resumen = useApi(() => api.resumenCaja(caja.id), [caja.id]);
@@ -32,10 +48,27 @@ export default function PantallaCierre({
   const [error, setError] = useState("");
   const [enviando, setEnviando] = useState(false);
   const [movimientoAbierto, setMovimientoAbierto] = useState(false);
+  const [viendoProductos, setViendoProductos] = useState(false);
 
   const r = resumen.datos;
+  /**
+   * El conteo arranca con el saldo esperado ya puesto: acelera el arqueo de la
+   * mayoría de los turnos, donde la caja cuadra. Si el cajero ya tecleó algo no
+   * se pisa — corregirle el número mientras cuenta sería peor que no ayudarlo.
+   */
+  const [precargado, setPrecargado] = useState(false);
   const esperado = r?.saldoEsperado ?? 0;
-  const contadoNum = Number(contado);
+  useEffect(() => {
+    // Sólo una vez, y sólo si el cajero todavía no escribió nada.
+    if (precargado || !r || contado !== "") return;
+    setContado(String(esperado));
+    setPrecargado(true);
+  }, [r, esperado, contado, precargado]);
+  // Con parseo de coma: en Bolivia se teclea "150,50" y Number() da NaN, que
+  // caía a 0 sin avisar — el conteo del cierre quedaba en cero y la diferencia
+  // mostraba un faltante enorme que nadie había cometido.
+  const contadoNum = parsearMontoO(contado, NaN);
+
   // La diferencia sólo tiene sentido una vez que se contó: mostrarla en 0
   // antes de teclear haría parecer que la caja ya cuadra. Se valida igual
   // que la apertura: el `min="0"` del input es sólo una pista del navegador
@@ -53,11 +86,14 @@ export default function PantallaCierre({
       );
     setEnviando(true);
     try {
-      await api.cerrarCaja(caja.id, {
+      // Se pasa la caja que devuelve el cierre: es la unica fuente con los
+      // montos ya calculados por el backend. Releerla despues no sirve —
+      // /caja/actual responde null en cuanto la caja queda cerrada.
+      const cerrada = await api.cerrarCaja(caja.id, {
         montoCierre: contadoNum,
         ...(nota.trim() ? { notaCierre: nota.trim() } : {}),
       });
-      onCerrada();
+      onCerrada(cerrada);
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo cerrar la caja");
     } finally {
@@ -109,8 +145,23 @@ export default function PantallaCierre({
                 {r.ingresos > 0 && <Fila etiqueta="Ingresos de efectivo" valor={r.ingresos} />}
                 {r.egresos > 0 && <Fila etiqueta="Egresos de efectivo" valor={-r.egresos} />}
                 {r.abonosEfectivo > 0 && (
-                  <Fila etiqueta="Abonos de créditos" valor={r.abonosEfectivo} />
+                  <Fila etiqueta="Abonos de créditos (efectivo)" valor={r.abonosEfectivo} />
                 )}
+                {/* Un abono cobrado por QR entró al negocio pero NO al cajón:
+                    sin esta fila el cajero veía el total de cobros del turno
+                    sin poder explicar por qué el efectivo no llegaba. */}
+                {r.abonosPorFormaPago
+                  ?.filter(
+                    (f) => f.monto > 0 && !f.nombre.toLowerCase().includes("efectivo"),
+                  )
+                  .map((f) => (
+                    <Fila
+                      key={f.nombre}
+                      etiqueta={`Abonos por ${f.nombre} (no es efectivo)`}
+                      valor={f.monto}
+                      apagado
+                    />
+                  ))}
                 {r.creditoOtorgado > 0 && (
                   <Fila
                     etiqueta="Fiado otorgado (no es efectivo)"
@@ -155,6 +206,22 @@ export default function PantallaCierre({
                 label="Efectivo contado"
                 hint="Contá los billetes y monedas que hay en la caja"
               >
+                <button
+                  type="button"
+                  onClick={() => setViendoProductos(true)}
+                  className="mb-2 flex w-full items-center gap-2 rounded-xl border border-borde px-3.5 py-2.5 text-left text-[13px] font-semibold text-texto-2 hover:bg-muted"
+                >
+                  <Icon name="box" size={17} />
+                  <span className="flex-1">Ver qué salió del mostrador</span>
+                  <Icon name="chevronRight" size={16} />
+                </button>
+
+                <div className="mb-2">
+                  <CorteDeCaja
+                    titulo="Contar billete por billete"
+                    onTotal={(t) => setContado(t > 0 ? String(t) : "")}
+                  />
+                </div>
                 <Input
                   type="number"
                   inputMode="decimal"
@@ -216,6 +283,10 @@ export default function PantallaCierre({
         </Boton>
       </div>
 
+      {viendoProductos && (
+        <ProductosDelTurno cajaId={caja.id} onClose={() => setViendoProductos(false)} />
+      )}
+
       {movimientoAbierto && (
         <DialogoMovimiento
           cajaId={caja.id}
@@ -264,6 +335,7 @@ function DialogoMovimiento({
   onGuardado: () => void;
 }) {
   const [tipo, setTipo] = useState<"INGRESO" | "EGRESO">("EGRESO");
+  const [motivo, setMotivo] = useState<string>(OTRO);
   const [monto, setMonto] = useState("");
   const [descripcion, setDescripcion] = useState("");
   const [error, setError] = useState("");
@@ -271,7 +343,7 @@ function DialogoMovimiento({
 
   async function guardar() {
     setError("");
-    const m = Number(monto);
+    const m = parsearMontoO(monto, NaN);
     if (!Number.isFinite(m) || m <= 0) return setError("Poné un monto mayor a cero.");
     if (!descripcion.trim()) return setError("Contá para qué fue el movimiento.");
 
@@ -309,15 +381,66 @@ function DialogoMovimiento({
       }
     >
       <div className="space-y-3">
-        <Campo label="Tipo">
-          <Select
-            value={tipo}
-            onChange={(e) => setTipo(e.target.value as "INGRESO" | "EGRESO")}
+        {/* Los motivos de siempre, que además deciden el sentido: elegir
+            "Sencillo" y tener que marcar aparte que es un ingreso es pedirle al
+            cajero que traduzca algo que el motivo ya dice. */}
+        <Campo label="Motivo">
+          <div className="flex flex-wrap gap-2">
+            {MOTIVOS.map((m) => (
+              <button
+                key={m.etiqueta}
+                type="button"
+                onClick={() => {
+                  setMotivo(m.etiqueta);
+                  setTipo(m.tipo);
+                  // Con un motivo de la lista la descripción es la etiqueta:
+                  // no hay nada más que escribir.
+                  setDescripcion(m.etiqueta);
+                }}
+                className={`rounded-xl px-3 py-2 text-[13px] font-semibold transition-colors ${
+                  motivo === m.etiqueta
+                    ? "bg-primary text-white"
+                    : "border border-borde bg-white text-texto-2 hover:bg-muted"
+                }`}
+              >
+                {m.etiqueta}
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={() => {
+                setMotivo(OTRO);
+                setDescripcion("");
+              }}
+              className={`rounded-xl px-3 py-2 text-[13px] font-semibold transition-colors ${
+                motivo === OTRO
+                  ? "bg-primary text-white"
+                  : "border border-borde bg-white text-texto-2 hover:bg-muted"
+              }`}
+            >
+              Otro
+            </button>
+          </div>
+          <p
+            className={`mt-1.5 text-xs font-semibold ${
+              tipo === "INGRESO" ? "text-primary-700" : "text-danger-text"
+            }`}
           >
-            <option value="EGRESO">Egreso — sale plata de la caja</option>
-            <option value="INGRESO">Ingreso — entra plata a la caja</option>
-          </Select>
+            {tipo === "INGRESO" ? "Entra plata a la caja" : "Sale plata de la caja"}
+          </p>
         </Campo>
+
+        {motivo === OTRO && (
+          <Campo label="Tipo">
+            <Select
+              value={tipo}
+              onChange={(e) => setTipo(e.target.value as "INGRESO" | "EGRESO")}
+            >
+              <option value="EGRESO">Egreso — sale plata de la caja</option>
+              <option value="INGRESO">Ingreso — entra plata a la caja</option>
+            </Select>
+          </Campo>
+        )}
 
         <Campo label="Monto">
           <Input
@@ -332,13 +455,17 @@ function DialogoMovimiento({
           />
         </Campo>
 
-        <Campo label="Descripción">
-          <Input
-            value={descripcion}
-            onChange={(e) => setDescripcion(e.target.value)}
-            placeholder={tipo === "EGRESO" ? "Ej. compra de hielo" : "Ej. vuelto del dueño"}
-          />
-        </Campo>
+        {/* Con un motivo de la lista la descripción ya está resuelta; sólo
+            "Otro" obliga a escribirla. */}
+        {motivo === OTRO && (
+          <Campo label="Descripción">
+            <Input
+              value={descripcion}
+              onChange={(e) => setDescripcion(e.target.value)}
+              placeholder={tipo === "EGRESO" ? "Ej. compra de hielo" : "Ej. vuelto del dueño"}
+            />
+          </Campo>
+        )}
 
         <ErrorMsg>{error}</ErrorMsg>
       </div>
@@ -391,5 +518,127 @@ export function CierreOk({ caja, onSalir }: { caja: Caja; onSalir: () => void })
         </Boton>
       </div>
     </div>
+  );
+}
+
+/**
+ * Lo que salió del mostrador en el turno, agrupado por categoría.
+ *
+ * El arqueo dice cuánta plata entró; esto dice qué se vendió para que entrara.
+ * Va acá y no en Reportes a propósito: el cajero que cierra su turno tiene que
+ * poder verlo sin el módulo de reportes, que se vende aparte.
+ *
+ * Ya viene agrupado y ordenado del backend: no se reordena acá.
+ */
+function ProductosDelTurno({
+  cajaId,
+  onClose,
+}: {
+  cajaId: number;
+  onClose: () => void;
+}) {
+  const datos = useApi(() => api.reporteCierreProductos(cajaId), [cajaId]);
+  const d = datos.datos;
+
+  /** Una fila por producto, con su categoría, para que la planilla se pueda ordenar. */
+  function exportar() {
+    if (!d) return;
+    const filas = d.categorias.flatMap((c) =>
+      c.items.map((i) => ({
+        Categoria: c.nombre,
+        Producto: i.nombre,
+        Cantidad: i.cantidad,
+        Precio: i.precio,
+        Total: i.total,
+      })),
+    );
+    if (filas.length === 0) return;
+
+    const cols = ["Categoria", "Producto", "Cantidad", "Precio", "Total"];
+    const esc = (v: unknown) => {
+      const t = v === null || v === undefined ? "" : String(v);
+      // Coma decimal para que Excel es-BO sume la columna, y apóstrofe si la
+      // celda arranca como fórmula (ver bajarCsv en Reportes).
+      const num = typeof v === "number" ? String(v).replace(".", ",") : t;
+      const seguro =
+        num.length > 0 && "=+@-".includes(num[0]) && !/^-?[\d.,]+$/.test(num)
+          ? `'${num}`
+          : num;
+      return `"${seguro.replace(/"/g, '""')}"`;
+    };
+    const csv = [
+      cols.map(esc).join(";"),
+      ...filas.map((f) => cols.map((c) => esc(f[c as keyof typeof f])).join(";")),
+    ].join("\r\n");
+
+    const url = URL.createObjectURL(
+      new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" }),
+    );
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `productos-turno-${cajaId}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  return (
+    <Modal
+      abierto
+      titulo="Productos vendidos"
+      subtitulo={`Turno #${cajaId}`}
+      onClose={onClose}
+      acciones={
+        d && d.lineas > 0 ? (
+          <Boton variante="ghost" icono="download" onClick={exportar}>
+            Exportar
+          </Boton>
+        ) : undefined
+      }
+    >
+      <div className="space-y-3">
+        <ErrorMsg>{datos.error}</ErrorMsg>
+        {datos.cargando ? (
+          <Cargando />
+        ) : !d || d.lineas === 0 ? (
+          <p className="py-6 text-center text-[13px] text-texto-3">
+            En este turno todavía no se vendió nada.
+          </p>
+        ) : (
+          <>
+            <div className="flex justify-between rounded-xl bg-muted px-3.5 py-2.5 text-[13px]">
+              <span className="text-texto-2">
+                {fmtNum(d.unidades, 2)} unidades · {fmtNum(d.lineas)}{" "}
+                {d.lineas === 1 ? "producto" : "productos"}
+              </span>
+              <span className="font-bold text-texto">{fmtMoney(d.total)}</span>
+            </div>
+
+            {d.categorias.map((c) => (
+              <div key={c.nombre}>
+                <div className="flex items-baseline justify-between">
+                  <h4 className="text-[13px] font-bold text-texto">{c.nombre}</h4>
+                  <span className="text-xs text-texto-3">
+                    {fmtNum(c.unidades, 2)} u · {fmtMoney(c.total)}
+                  </span>
+                </div>
+                <ul className="mt-1 divide-y divide-borde-soft">
+                  {c.items.map((i) => (
+                    <li key={i.nombre} className="flex items-center gap-2 py-1.5 text-[13px]">
+                      <span className="min-w-0 flex-1 truncate text-texto-2">{i.nombre}</span>
+                      <span className="shrink-0 text-texto-3">
+                        {fmtNum(i.cantidad, 2)} × {fmtMoney(i.precio)}
+                      </span>
+                      <span className="w-20 shrink-0 text-right font-bold text-texto">
+                        {fmtMoney(i.total)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </>
+        )}
+      </div>
+    </Modal>
   );
 }

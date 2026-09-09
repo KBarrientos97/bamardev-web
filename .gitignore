@@ -22,3 +22,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Capturas paso a paso de las pruebas funcionales: son 8 MB que caducan en la
+# proxima release. El informe y los GIF si se versionan.
+evidencia-qa/capturas/
