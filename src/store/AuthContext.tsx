@@ -17,6 +17,7 @@ import {
 } from "../lib/api";
 import { identificar, olvidarUsuario } from "../lib/telemetria";
 import { fijarMoneda } from "../lib/format";
+import { aplicarTema } from "../lib/temas";
 import {
   puede as puedeCapacidad,
   puedeVer,
@@ -74,6 +75,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // La moneda del negocio vale para todo el formateo; se fija al rehidratar.
   if (negocio?.moneda) fijarMoneda(negocio.moneda);
+  // Igual que la moneda: el tema del rubro se aplica también al rehidratar, o
+  // un F5 devolvería la app al verde por defecto hasta el siguiente login.
+  aplicarTema(negocio?.tipoNegocio);
 
   const login = useCallback(async (username: string, password: string, alias: string) => {
     const res = await api.login(username, password, alias);
@@ -83,6 +87,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(ALIAS_KEY, alias);
     if (res.licencia) localStorage.setItem(LICENCIA_KEY, JSON.stringify(res.licencia));
     fijarMoneda(res.negocio?.moneda);
+    aplicarTema(res.negocio?.tipoNegocio);
     setToken(res.accessToken);
     setUsuario(res.usuario);
     setNegocio(res.negocio);
@@ -94,6 +99,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = useCallback(() => {
     limpiarSesion();
     olvidarUsuario();
+    // Vuelve al verde: el login no es de ningún negocio todavía, y quedarse
+    // con el color del anterior confundiría a quien comparte la máquina.
+    aplicarTema(null);
     setToken(null);
     setUsuario(null);
     setNegocio(null);

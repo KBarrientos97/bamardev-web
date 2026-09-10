@@ -79,9 +79,19 @@ input[type="number"] {
   box-shadow: 0 1px 3px rgb(15 23 42 / 0.06), 0 1px 2px rgb(15 23 42 / 0.04);
 }
 
-/* Degradado del branding, usado en la barra superior y en el login. */
+/*
+ * Degradado del branding, usado en la barra superior y en el login.
+ *
+ * Va por variables porque el tema cambia según el rubro del negocio (ver
+ * lib/temas.ts); los valores de acá son el verde por defecto, el que se ve
+ * mientras no hay sesión.
+ */
 @utility bg-marca {
-  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  background: linear-gradient(
+    135deg,
+    var(--marca-de, #10b981) 0%,
+    var(--marca-a, #059669) 100%
+  );
 }
 
 /*
