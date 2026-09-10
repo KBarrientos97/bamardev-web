@@ -586,6 +586,37 @@ export interface EstadoLicencia {
   diasRestantes: number | null;
   diasParaBloqueo: number | null;
   mensaje: string;
+  /**
+   * Código de activación del negocio (BMD-XXXX). Es con lo que la pantalla de
+   * pago pide el QR: la licencia bloqueada rechaza todo request autenticado,
+   * así que no se puede pedir con el token.
+   */
+  codigoActivacion?: string | null;
+}
+
+// -- Pago de la licencia por QR (pantalla pública /pagar) --------------------
+
+/** El QR con el que un negocio paga su licencia. */
+export interface CobroQr {
+  alias: string;
+  monto: number;
+  moneda: string;
+  /** MENSUAL | ANUAL */
+  periodo: string;
+  /** PENDIENTE | PAGADO | ANULADO | VENCIDO */
+  estado: string;
+  venceEn: string;
+  /** Data URL de la imagen. Sólo viene al generarlo, no al consultar estado. */
+  imagenQr?: string;
+}
+
+/** Lo que devuelve el sondeo mientras se espera el pago. */
+export interface EstadoCobroQr {
+  alias: string;
+  estado: string;
+  monto: number;
+  venceEn: string;
+  pagadoEn: string | null;
 }
 
 // ── Reportes ────────────────────────────────────────────────────────────────

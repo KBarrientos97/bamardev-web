@@ -3,6 +3,7 @@ import Layout from "./components/Layout";
 import { rutaInicial, type Seccion } from "./lib/permisos";
 import Creditos from "./pages/Creditos";
 import Login from "./pages/Login";
+import PagarLicencia from "./pages/PagarLicencia";
 import Reportes from "./pages/Reportes";
 import Usuarios from "./pages/Usuarios";
 import Almacenes from "./pages/inventario/Almacenes";
@@ -66,6 +67,21 @@ function Protegida({ seccion, children }: { seccion: Seccion; children: React.Re
   return <>{children}</>;
 }
 
+/**
+ * Pago de la licencia estando la sesión abierta (durante la gracia, antes del
+ * bloqueo). Es la misma pantalla que se ve deslogueado; sólo cambia de dónde
+ * sale el código de activación y a dónde vuelve al salir.
+ */
+function PagarConSesion() {
+  const { licencia } = useAuth();
+  return (
+    <PagarLicencia
+      codigoInicial={licencia?.codigoActivacion ?? null}
+      onSalir={() => window.history.back()}
+    />
+  );
+}
+
 function Rutas() {
   const { token } = useAuth();
 
@@ -84,6 +100,11 @@ function Rutas() {
           </Protegida>
         }
       />
+
+      {/* Fuera del Layout: trae su propio fondo y no necesita la barra
+          lateral. Acá el negocio todavía puede operar (está en gracia), así
+          que el código de activación sale de la sesión y no del bloqueo. */}
+      <Route path="/pagar" element={<PagarConSesion />} />
 
       <Route element={<Layout />}>
         <Route path="/" element={<Inicio />} />

@@ -8,12 +8,14 @@ import type {
   Caja,
   Categoria,
   ClienteCredito,
+  CobroQr,
   Credito,
   CrearUsuarioInput,
   Dashboard,
   HistorialCostos,
   DetalleMovimiento,
   DetalleMovimientoInput,
+  EstadoCobroQr,
   EstadoLicencia,
   FiltroCredito,
   FormaPago,
@@ -265,6 +267,45 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+/**
+ * Llamada a un endpoint público, sin token y sin las reglas de sesión.
+ *
+ * Existe sólo para el pago de la licencia: esa pantalla se usa JUSTO cuando la
+ * licencia venció, o sea con la sesión ya cerrada. Si pasara por `request`, un
+ * 401 o un 403 dispararía "cerrar sesión" y recargaría la página encima del QR
+ * que el dueño está por escanear.
+ */
+async function publico<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const corte = new AbortController();
+  const alarma = setTimeout(() => corte.abort(), TIMEOUT_MS);
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}${path}`, {
+      ...options,
+      signal: corte.signal,
+      headers: { "Content-Type": "application/json", ...options.headers },
+    });
+  } catch (e) {
+    throw new ApiError(mensajeDeRed(e), 0);
+  } finally {
+    clearTimeout(alarma);
+  }
+
+  if (!res.ok) {
+    let mensaje = "Ocurrió un error";
+    let cuerpo: Record<string, unknown> = {};
+    try {
+      cuerpo = await res.json();
+      const m = cuerpo.message;
+      mensaje = Array.isArray(m) ? m.join(", ") : ((m as string) ?? mensaje);
+    } catch {
+      /* respuesta sin cuerpo JSON */
+    }
+    throw new ApiError(mensaje, res.status, cuerpo);
+  }
+  return res.json() as Promise<T>;
+}
+
 export const api = {
   // ── Sesión ────────────────────────────────────────────────────────────────
   /** El alias del negocio es obligatorio en la práctica: sin él responde 401. */
@@ -275,6 +316,17 @@ export const api = {
     }),
   me: () => request<Me>("/auth/me"),
   licencia: () => request<EstadoLicencia>("/licencia/estado"),
+
+  // ── Pago de la licencia por QR ────────────────────────────────────────────
+  // Sin token y por fuera de `request`: son los únicos endpoints que se usan
+  // con la sesión ya cerrada. Pasando por el interceptor, su manejo de 401/403
+  // volvería a "cerrar sesión" y recargaría la página encima del QR.
+  generarQrLicencia: (codigo: string) =>
+    publico<CobroQr>(`/activacion/${encodeURIComponent(codigo)}/qr`, {
+      method: "POST",
+    }),
+  estadoQrLicencia: (alias: string) =>
+    publico<EstadoCobroQr>(`/activacion/qr/${encodeURIComponent(alias)}`),
 
   // ── Finanzas ──────────────────────────────────────────────────────────────
   // Los reportes paginados aceptan `page` y `limite`; los mensuales no llevan
