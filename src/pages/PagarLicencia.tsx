@@ -28,8 +28,8 @@ function bs(monto: number): string {
 }
 
 interface Props {
-  /** Código de activación (BMD-XXXX) si vino del bloqueo; si no, se pide. */
-  codigoInicial?: string | null;
+  /** Alias del negocio, si se lo conoce (sesión o login); si no, se pide. */
+  aliasInicial?: string | null;
   /** Vuelve al login. */
   onSalir: () => void;
 }
@@ -45,8 +45,8 @@ interface Props {
  * El monto lo decide el backend (respeta el precio pactado con cada cliente):
  * si se calculara acá, cualquiera pagaría lo que quisiera.
  */
-export default function PagarLicencia({ codigoInicial, onSalir }: Props) {
-  const [codigo, setCodigo] = useState(codigoInicial ?? "");
+export default function PagarLicencia({ aliasInicial, onSalir }: Props) {
+  const [alias, setAlias] = useState(aliasInicial ?? "");
   const [cobro, setCobro] = useState<CobroQr | null>(null);
   const [pagado, setPagado] = useState(false);
   const [error, setError] = useState("");
@@ -60,7 +60,7 @@ export default function PagarLicencia({ codigoInicial, onSalir }: Props) {
     setError("");
     setGenerando(true);
     try {
-      const r = await api.generarQrLicencia(cod.trim().toUpperCase());
+      const r = await api.generarQrLicencia(cod.trim());
       setCobro(r);
       setPagado(r.estado === "PAGADO");
       sondeos.current = 0;
@@ -72,11 +72,11 @@ export default function PagarLicencia({ codigoInicial, onSalir }: Props) {
     }
   }, []);
 
-  // Con el código a mano (vino del bloqueo), el QR se pide solo: un paso menos
-  // para alguien que ya está trabado.
+  // Con el alias a mano (la sesión, o el que acaba de tipear en el login), el
+  // QR se pide solo: un paso menos para alguien que ya está trabado.
   useEffect(() => {
-    if (codigoInicial) void generar(codigoInicial);
-  }, [codigoInicial, generar]);
+    if (aliasInicial) void generar(aliasInicial);
+  }, [aliasInicial, generar]);
 
   const consultar = useCallback(
     async (alias: string) => {
@@ -132,9 +132,9 @@ export default function PagarLicencia({ codigoInicial, onSalir }: Props) {
     setPausado(false);
   };
 
-  const enviarCodigo = (e: FormEvent) => {
+  const enviarAlias = (e: FormEvent) => {
     e.preventDefault();
-    if (codigo.trim()) void generar(codigo);
+    if (alias.trim()) void generar(alias);
   };
 
   const vencido = cobro ? new Date(cobro.venceEn).getTime() <= Date.now() : false;
@@ -156,25 +156,29 @@ export default function PagarLicencia({ codigoInicial, onSalir }: Props) {
           {pagado ? (
             <Exito onSalir={onSalir} />
           ) : !cobro ? (
-            <form onSubmit={enviarCodigo} className="space-y-4">
+            <form onSubmit={enviarAlias} className="space-y-4">
               <div>
                 <h2 className="text-lg font-bold text-texto">Pagar con QR</h2>
                 <p className="mt-0.5 text-[13px] text-texto-3">
-                  Ingresá el código de licencia de tu negocio para generar el QR.
+                  Ingresá el alias de tu negocio y te generamos el QR para pagar.
                 </p>
               </div>
               {error && <ErrorMsg>{error}</ErrorMsg>}
-              <Campo label="Código de licencia" hint="Te lo dieron al contratar (BMD-XXXX)">
+              {/* Se pide el ALIAS y no el código de activación: el alias es
+                  lo que el dueño escribe en cada login, mientras que el
+                  BMD-XXXX lo vio una sola vez al contratar. El backend acepta
+                  los dos, así que quien tenga el código a mano también entra. */}
+              <Campo label="Negocio" hint="El mismo alias con el que entrás al sistema">
                 <Input
-                  value={codigo}
-                  onChange={(e) => setCodigo(e.target.value)}
-                  placeholder="BMD-7K4M"
-                  autoCapitalize="characters"
-                  autoComplete="off"
+                  value={alias}
+                  onChange={(e) => setAlias(e.target.value)}
+                  placeholder="pollosdonomar"
+                  autoCapitalize="none"
+                  autoComplete="organization"
                   spellCheck={false}
                 />
               </Campo>
-              <Boton type="submit" className="w-full" disabled={generando || !codigo.trim()}>
+              <Boton type="submit" className="w-full" disabled={generando || !alias.trim()}>
                 {generando ? "Generando…" : "Generar QR"}
               </Boton>
               <button
@@ -209,7 +213,7 @@ export default function PagarLicencia({ codigoInicial, onSalir }: Props) {
                   <Boton
                     className="w-full"
                     disabled={generando}
-                    onClick={() => void generar(codigo || codigoInicial || "")}
+                    onClick={() => void generar(alias || aliasInicial || "")}
                   >
                     {generando ? "Generando…" : "Generar otro QR"}
                   </Boton>

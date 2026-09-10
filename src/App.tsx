@@ -73,10 +73,10 @@ function Protegida({ seccion, children }: { seccion: Seccion; children: React.Re
  * sale el código de activación y a dónde vuelve al salir.
  */
 function PagarConSesion() {
-  const { licencia } = useAuth();
+  const { negocio } = useAuth();
   return (
     <PagarLicencia
-      codigoInicial={licencia?.codigoActivacion ?? null}
+      aliasInicial={negocio?.alias ?? null}
       onSalir={() => window.history.back()}
     />
   );

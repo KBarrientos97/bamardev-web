@@ -9,8 +9,6 @@ interface Bloqueo {
   codigo: string;
   mensaje: string;
   urlPago: string | null;
-  /** Con esto la pantalla de pago genera el QR sin pedir nada más. */
-  codigoActivacion?: string | null;
 }
 
 /**
@@ -52,18 +50,12 @@ export default function Login() {
       // El backend rechaza el login con 403 cuando la licencia no está
       // vigente. Va al cartel de licencia y no al de credenciales: no es que
       // la clave esté mal, y decirle eso al dueño lo manda a buscar donde no es.
-      const api = err as {
-        status?: number;
-        codigo?: string;
-        urlPago?: string;
-        codigoActivacion?: string | null;
-      };
+      const api = err as { status?: number; codigo?: string; urlPago?: string };
       if (api?.status === 403 && api.codigo?.startsWith("LICENCIA_")) {
         setBloqueo({
           codigo: api.codigo,
           mensaje: (err as Error).message,
           urlPago: api.urlPago ?? null,
-          codigoActivacion: api.codigoActivacion ?? null,
         });
       } else {
         setError(err instanceof Error ? err.message : "No se pudo iniciar sesión");
@@ -78,7 +70,7 @@ export default function Login() {
   if (pagando) {
     return (
       <PagarLicencia
-        codigoInicial={bloqueo?.codigoActivacion ?? null}
+        aliasInicial={negocio.trim() || aliasRecordado}
         onSalir={() => setPagando(false)}
       />
     );
