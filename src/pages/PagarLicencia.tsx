@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { Icon } from "../components/Icon";
 import { Boton, Campo, ErrorMsg, Input } from "../components/ui";
-import { api } from "../lib/api";
+import { ApiError, api } from "../lib/api";
 import type { CobroQr } from "../types";
 
 /** Cada cuánto se le pregunta al backend si el pago entró. */
@@ -10,11 +10,15 @@ const SONDEO_MS = 5000;
 /**
  * Cuántas veces se pregunta sola antes de esperar al botón "Ya pagué".
  *
- * El backend tolera 10 requests por minuto en /activacion y el POST que genera
- * el QR ya gastó uno, así que 7 sondeos (35 s) dejan margen de sobra: llegar
- * al tope haría que el propio banco no pudiera consultarse.
+ * Acá el sondeo SÍ vale la pena (a diferencia del panel, donde se sacó): quien
+ * mira la pantalla es el cliente que está escaneando el QR, y verlo pasar solo
+ * a "pagado" es la confirmación de que puede volver a trabajar.
+ *
+ * Consultar el estado tiene su propio tope (60/min), aparte del de generar, así
+ * que 5 minutos entran de sobra. El corte no es por el límite: es para no dejar
+ * un intervalo golpeando el servidor si alguien se olvida la pestaña abierta.
  */
-const SONDEOS_ANTES_DE_PAUSAR = 7;
+const SONDEOS_ANTES_DE_PAUSAR = 60;
 
 function bs(monto: number): string {
   return `Bs ${monto.toLocaleString("es-BO", {
@@ -80,8 +84,11 @@ export default function PagarLicencia({ codigoInicial, onSalir }: Props) {
         const r = await api.estadoQrLicencia(alias);
         if (r.estado === "PAGADO") setPagado(true);
         return r.estado;
-      } catch {
-        // Un fallo puntual del sondeo no se muestra: sería un cartel de error
+      } catch (e) {
+        // 429 = se agotó el cupo del endpoint. Seguir preguntando sólo lo
+        // empeora, así que el sondeo se detiene y queda el botón manual.
+        if ((e as ApiError)?.status === 429) setPausado(true);
+        // Cualquier otro fallo puntual no se muestra: sería un cartel de error
         // parpadeando cada cinco segundos mientras el dueño escanea el QR.
         return null;
       }
