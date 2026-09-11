@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from "react"
 import { Icon } from "../components/Icon";
 import { Boton, Campo, ErrorMsg, Input } from "../components/ui";
 import { ApiError, api } from "../lib/api";
+import { fmtFecha } from "../lib/format";
 import type { CobroQr, OpcionPago, PeriodoCobrable } from "../types";
 
 /** Cada cuánto se le pregunta al backend si el pago entró. */
@@ -54,6 +55,14 @@ export default function PagarLicencia({ aliasInicial, onSalir }: Props) {
    * que define el monto, asi que elegirlo es el paso previo al cobro.
    */
   const [opciones, setOpciones] = useState<OpcionPago[] | null>(null);
+  /** Hasta cuándo está cubierto HOY, para explicar desde dónde se extiende. */
+  const [vencimientoActual, setVencimientoActual] = useState<string | null>(null);
+  const [vencida, setVencida] = useState(false);
+  /**
+   * Hasta cuándo cubre el plazo elegido. Se guarda al generar el QR y no se
+   * deriva de `opciones`, que puede haberse recargado mientras tanto.
+   */
+  const [cubreHasta, setCubreHasta] = useState<string | null>(null);
   const [elegido, setElegido] = useState<PeriodoCobrable | null>(null);
   const [cobro, setCobro] = useState<CobroQr | null>(null);
   const [pagado, setPagado] = useState(false);
@@ -77,6 +86,9 @@ export default function PagarLicencia({ aliasInicial, onSalir }: Props) {
     try {
       const r = await api.opcionesPagoLicencia(ali.trim());
       setOpciones(r.opciones);
+      // Desde cuándo se cuenta la cobertura: lo dice el encabezado del paso.
+      setVencimientoActual(r.vencimientoActual ?? null);
+      setVencida(r.vencida === true);
       // Preseleccionado el mas largo: es el que conviene al cliente y al flujo
       // de caja. Igual puede cambiarlo antes de generar el QR.
       setElegido(r.opciones[r.opciones.length - 1]?.periodo ?? "MENSUAL");
@@ -95,6 +107,10 @@ export default function PagarLicencia({ aliasInicial, onSalir }: Props) {
       // banco vuelve a verificarlo antes de acreditar.
       const r = await api.generarQrLicencia(ali.trim(), periodo);
       setCobro(r);
+      // La fecha del plazo que se acaba de pedir, para mostrarla junto al QR.
+      setCubreHasta(
+        opciones?.find((o) => o.periodo === periodo)?.cubreHasta ?? null,
+      );
       setPagado(r.estado === "PAGADO");
       sondeos.current = 0;
       setPausado(false);
@@ -229,10 +245,20 @@ export default function PagarLicencia({ aliasInicial, onSalir }: Props) {
                calculados del backend; aca solo se eligen. */
             <div className="space-y-4">
               <div>
-                <h2 className="text-lg font-bold text-texto">Elegi tu plazo</h2>
+                <h2 className="text-lg font-bold text-texto">Elegí tu plazo</h2>
                 <p className="mt-0.5 text-[13px] text-texto-3">
-                  Pagando mas meses de una vez, cada mes te sale menos.
+                  Pagando más meses de una vez, cada mes te sale menos.
                 </p>
+                {/* De dónde arranca la cobertura. Si todavía no venció, los
+                    días que le quedan NO se pierden: se encadenan. Decirlo
+                    evita la duda de "¿si pago antes pierdo lo que me queda?" */}
+                {vencimientoActual && (
+                  <p className="mt-1.5 text-[12px] text-texto-3">
+                    {vencida
+                      ? `Tu licencia venció el ${fmtFecha(vencimientoActual)}.`
+                      : `Tu licencia vence el ${fmtFecha(vencimientoActual)}; lo que pagues se suma a partir de esa fecha.`}
+                  </p>
+                )}
               </div>
               {error && <ErrorMsg>{error}</ErrorMsg>}
               <div className="space-y-2.5">
@@ -272,6 +298,14 @@ export default function PagarLicencia({ aliasInicial, onSalir }: Props) {
                 <p className="mt-0.5 text-[13px] text-texto-3">
                   {`Licencia por ${cobro.meses} ${cobro.meses === 1 ? "mes" : "meses"}`}
                 </p>
+                {/* La fecha sigue a la vista con el QR abierto: es lo que el
+                    cliente está por comprar, y no debería tener que volver
+                    atrás para recordarla. */}
+                {cubreHasta && (
+                  <p className="mt-1 text-[13px] font-semibold text-texto-2">
+                    Cubre hasta el {fmtFecha(cubreHasta)}
+                  </p>
+                )}
               </div>
 
               {error && <ErrorMsg>{error}</ErrorMsg>}
@@ -406,6 +440,17 @@ function TarjetaPlazo({
           </span>
         )}
       </div>
+      {/* Hasta cuándo queda cubierto. Es el dato que decide: "Bs 1.943" solo
+          no dice nada, "hasta el 20/04/2027" sí. La fecha la calcula el
+          backend con la misma función que aplica el pago. */}
+      {opcion.cubreHasta && (
+        <div className="mt-1.5 border-t border-borde/60 pt-1.5 text-[12px] text-texto-3">
+          Cubre hasta el{" "}
+          <span className="font-semibold text-texto-2">
+            {fmtFecha(opcion.cubreHasta)}
+          </span>
+        </div>
+      )}
     </button>
   );
 }
