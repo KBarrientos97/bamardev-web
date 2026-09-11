@@ -9,6 +9,8 @@ import type {
   Categoria,
   ClienteCredito,
   CobroQr,
+  OpcionesPagoLicencia,
+  PeriodoCobrable,
   Credito,
   CrearUsuarioInput,
   Dashboard,
@@ -321,9 +323,18 @@ export const api = {
   // Sin token y por fuera de `request`: son los únicos endpoints que se usan
   // con la sesión ya cerrada. Pasando por el interceptor, su manejo de 401/403
   // volvería a "cerrar sesión" y recargaría la página encima del QR.
-  generarQrLicencia: (codigo: string) =>
-    publico<CobroQr>(`/activacion/${encodeURIComponent(codigo)}/qr`, {
+  /** Las opciones de 1, 6 y 12 meses con su total (las calcula el backend). */
+  opcionesPagoLicencia: (alias: string) =>
+    publico<OpcionesPagoLicencia>(
+      `/activacion/${encodeURIComponent(alias)}/opciones`,
+    ),
+
+  generarQrLicencia: (alias: string, periodo?: PeriodoCobrable) =>
+    publico<CobroQr>(`/activacion/${encodeURIComponent(alias)}/qr`, {
       method: "POST",
+      // Sólo el período: el monto lo pone el backend con el precio pactado de
+      // ese negocio.
+      body: JSON.stringify(periodo ? { periodo } : {}),
     }),
   estadoQrLicencia: (alias: string) =>
     publico<EstadoCobroQr>(`/activacion/qr/${encodeURIComponent(alias)}`),
