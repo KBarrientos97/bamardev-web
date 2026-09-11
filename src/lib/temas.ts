@@ -37,6 +37,18 @@ export interface Tema {
   boton: string;
   botonHover: string;
   botonActivo: string;
+  /**
+   * Fondo de la barra lateral, y el del ítem activo sobre ella.
+   *
+   * Más profundo que el color de marca porque el menú lleva dos niveles de
+   * texto: el blanco del ítem activo y el atenuado de los demás. Sobre el
+   * verde de marca ese segundo nivel daba 2.10:1; sobre estos tonos, 4.5+.
+   * `barraTexto2` es ese gris teñido, calculado como blanco al 75 % sobre la
+   * barra — va como color y no como opacidad para no depender del fondo.
+   */
+  barra: string;
+  barraActivo: string;
+  barraTexto2: string;
   /** Degradado de la barra superior y el login. */
   marca: [string, string];
 }
@@ -52,6 +64,9 @@ const VERDE: Tema = {
   boton: '#0C875E',
   botonHover: '#0A7350',
   botonActivo: '#096144',
+  barra: '#09694A',
+  barraActivo: '#277B60',
+  barraTexto2: '#C2DAD2',
   marca: ['#10b981', '#059669'],
 };
 
@@ -66,6 +81,9 @@ export const TEMAS: Record<string, Tema> = {
     boton: '#2879BE',
     botonHover: '#2267A2',
     botonActivo: '#1D5789',
+    barra: '#1F6096',
+    barraActivo: '#3A73A3',
+    barraTexto2: '#C7D7E5',
     marca: ['#3196EB', '#1F7AC8'],
   },
   FERRETERIA: {
@@ -78,6 +96,9 @@ export const TEMAS: Record<string, Tema> = {
     boton: '#CC4D0A',
     botonHover: '#AD4109',
     botonActivo: '#933707',
+    barra: '#9D3B08',
+    barraActivo: '#A95326',
+    barraTexto2: '#E7CEC1',
     marca: ['#EA580C', '#C2410C'],
   },
   REPUESTOS: {
@@ -91,6 +112,10 @@ export const TEMAS: Record<string, Tema> = {
     boton: '#00447D',
     botonHover: '#003A6A',
     botonActivo: '#00315A',
+    // El marino ya era el tono justo para la barra: va sin oscurecer.
+    barra: '#00447D',
+    barraActivo: '#1F5A8D',
+    barraTexto2: '#BFD0DF',
     marca: ['#00447D', '#003663'],
   },
   RESTAURANTE: VERDE,
@@ -115,6 +140,9 @@ export function aplicarTema(rubro: string | null | undefined): void {
   raiz.setProperty('--color-primary-boton', tema.boton);
   raiz.setProperty('--color-primary-boton-hover', tema.botonHover);
   raiz.setProperty('--color-primary-boton-activo', tema.botonActivo);
+  raiz.setProperty('--color-barra', tema.barra);
+  raiz.setProperty('--color-barra-activo', tema.barraActivo);
+  raiz.setProperty('--color-barra-texto-2', tema.barraTexto2);
   // El degradado no es un token de Tailwind sino una utilidad propia
   // (`bg-marca` en index.css), así que se pasa por sus dos extremos.
   raiz.setProperty('--marca-de', tema.marca[0]);

@@ -29,6 +29,23 @@
   --color-primary-boton-hover: #065f46;
   --color-primary-boton-activo: #064e3b;
 
+  /*
+   * Barra lateral sólida, teñida con el color del rubro.
+   *
+   * Es un tono más profundo que el de marca y no un capricho: el menú necesita
+   * texto blanco Y texto atenuado (los ítems inactivos). Sobre el verde de
+   * marca el inactivo daba 2.10:1 — ilegible. Sobre #09694A da 4.55, y el
+   * blanco pleno 6.71.
+   *
+   * `barra-activo` es el fondo del ítem en el que estás: blanco al 12 % sobre
+   * la barra. Se resuelve con un color y no con opacidad para que no dependa
+   * de lo que haya detrás.
+   */
+  --color-barra: #09694A;
+  --color-barra-activo: #277B60;
+  --color-barra-texto: #ffffff;
+  --color-barra-texto-2: #C2DAD2;
+
   --color-fondo: #f5fbf7;
   --color-card: #ffffff;
   --color-muted: #f9fafb;

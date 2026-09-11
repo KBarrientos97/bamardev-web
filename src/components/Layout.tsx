@@ -88,9 +88,12 @@ export default function Layout() {
               // Sin etiqueta al lado, la sangría de los sub-items sólo
               // descentraría el ícono respecto de los demás.
               item.sub && !compacta ? "ml-3 text-[13px]" : "",
+              // Sobre la barra de color: el activo se marca con un bloque
+              // más claro y blanco pleno; el resto va en el gris teñido, que
+              // mantiene 4.5:1 contra el fondo.
               isActive
-                ? "bg-primary-50 text-primary-700"
-                : "text-texto-2 hover:bg-muted",
+                ? "bg-barra-activo text-barra-texto"
+                : "text-barra-texto-2 hover:bg-barra-activo hover:text-barra-texto",
             ].join(" ")
           }
         >
@@ -99,13 +102,13 @@ export default function Layout() {
         </NavLink>
       ))}
 
-      <div className="my-2 border-t border-borde-soft" />
+      <div className="my-2 border-t border-white/15" />
 
       <button
         onClick={logout}
         title={compacta ? "Cerrar sesión" : undefined}
         className={[
-          "flex items-center gap-3 rounded-xl py-2.5 text-sm font-semibold text-texto-2 transition-colors hover:bg-danger-bg hover:text-danger-text",
+          "flex items-center gap-3 rounded-xl py-2.5 text-sm font-semibold text-barra-texto-2 transition-colors hover:bg-danger hover:text-white",
           compacta ? "justify-center px-0" : "px-3",
         ].join(" ")}
       >
@@ -118,20 +121,22 @@ export default function Layout() {
   const encabezado = (compacta: boolean) => (
     <div
       className={[
-        "border-b border-borde-soft pb-4 pt-5",
+        "border-b border-white/15 pb-4 pt-5",
         compacta ? "px-2" : "px-4",
       ].join(" ")}
     >
       <div className={compacta ? "flex justify-center" : "flex items-center gap-3"}>
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-marca text-white">
+        {/* Sobre la barra teñida, el degradado de marca se perdía: un
+            recuadro claro lo despega del fondo. */}
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/15 text-barra-texto">
           <Icon name="archive" size={21} strokeWidth={2.2} />
         </div>
         {!compacta && (
           <div className="min-w-0">
-            <h2 className="truncate text-[15px] font-bold text-texto">
+            <h2 className="truncate text-[15px] font-bold text-barra-texto">
               {negocio?.nombre ?? "BamarDev"}
             </h2>
-            <span className="text-xs text-texto-3">
+            <span className="text-xs text-barra-texto-2">
               {usuario ? etiquetaRol(usuario.rol) : ""}
             </span>
           </div>
@@ -139,20 +144,20 @@ export default function Layout() {
       </div>
       <div
         className={[
-          "mt-4 flex items-center rounded-xl bg-muted py-2.5",
+          "mt-4 flex items-center rounded-xl bg-white/10 py-2.5",
           compacta ? "justify-center px-0" : "gap-3 px-3",
         ].join(" ")}
         title={compacta ? (usuario?.nombre ?? usuario?.username) : undefined}
       >
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary-boton text-sm font-bold text-white">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/20 text-sm font-bold text-barra-texto">
           {iniciales(usuario?.nombre ?? usuario?.username)}
         </span>
         {!compacta && (
           <div className="min-w-0">
-            <p className="truncate text-[13px] font-bold text-texto">
+            <p className="truncate text-[13px] font-bold text-barra-texto">
               {usuario?.nombre ?? usuario?.username}
             </p>
-            <p className="truncate text-xs text-texto-3">{usuario?.username}</p>
+            <p className="truncate text-xs text-barra-texto-2">{usuario?.username}</p>
           </div>
         )}
       </div>
@@ -170,7 +175,7 @@ export default function Layout() {
           y la grilla de productos del POS los aprovecha. */}
       <aside
         className={[
-          "relative hidden shrink-0 flex-col border-r border-borde bg-white transition-[width] duration-200 lg:flex print:hidden",
+          "relative hidden shrink-0 flex-col bg-barra transition-[width] duration-200 lg:flex print:hidden",
           colapsada ? "w-[68px]" : "w-64",
         ].join(" ")}
       >
@@ -184,7 +189,7 @@ export default function Layout() {
           aria-label={colapsada ? "Expandir menú" : "Colapsar menú"}
           aria-expanded={!colapsada}
           title={colapsada ? "Expandir menú" : "Colapsar menú"}
-          className="absolute -right-3 top-7 z-10 flex h-6 w-6 items-center justify-center rounded-full border border-borde bg-white text-texto-2 shadow-sm transition-colors hover:bg-muted hover:text-texto"
+          className="absolute -right-3 top-7 z-10 flex h-6 w-6 items-center justify-center rounded-full border border-white/20 bg-barra-activo text-barra-texto shadow-sm transition-colors hover:bg-barra"
         >
           <Icon name={colapsada ? "chevronRight" : "chevronLeft"} size={15} />
         </button>
@@ -197,7 +202,7 @@ export default function Layout() {
             className="absolute inset-0 bg-slate-900/40"
             onClick={() => setAbierto(false)}
           />
-          <aside className="absolute inset-y-0 left-0 flex w-72 flex-col bg-white shadow-2xl">
+          <aside className="absolute inset-y-0 left-0 flex w-72 flex-col bg-barra shadow-2xl">
             {encabezado(false)}
             {nav(false)}
           </aside>

@@ -70,12 +70,47 @@ describe("contraste de los temas", () => {
   );
 });
 
+describe("barra lateral sólida", () => {
+  it.each(entradas)(
+    "%s: el ítem activo (blanco sobre la barra) se lee",
+    (_rubro, tema) => {
+      expect(contraste(tema.barra, "#ffffff")).toBeGreaterThanOrEqual(AA);
+    },
+  );
+
+  it.each(entradas)(
+    "%s: los ítems inactivos también se leen",
+    (_rubro, tema) => {
+      // Éste es el que obligó a usar un tono más profundo que el de marca:
+      // sobre el verde #10b981 este texto daba 2.10:1.
+      expect(contraste(tema.barra, tema.barraTexto2)).toBeGreaterThanOrEqual(AA);
+    },
+  );
+
+  it.each(entradas)(
+    "%s: el ítem activo se distingue del fondo de la barra",
+    (_rubro, tema) => {
+      // Si el bloque del activo fuera casi igual al fondo, no se sabría en qué
+      // pantalla estás. Poco contraste basta en un bloque grande, pero no cero.
+      expect(contraste(tema.barra, tema.barraActivo)).toBeGreaterThan(1.15);
+    },
+  );
+
+  it.each(entradas)(
+    "%s: el texto blanco sigue leyéndose sobre el ítem activo",
+    (_rubro, tema) => {
+      expect(contraste(tema.barraActivo, "#ffffff")).toBeGreaterThanOrEqual(AA);
+    },
+  );
+});
+
 describe("forma de los temas", () => {
   it("todos definen los mismos tonos", () => {
     const claves = [
       "primary", "primary600", "primary700",
       "primary50", "primary100", "primary200",
-      "boton", "botonHover", "botonActivo", "marca",
+      "boton", "botonHover", "botonActivo",
+      "barra", "barraActivo", "barraTexto2", "marca",
     ];
     for (const [rubro, tema] of entradas) {
       for (const clave of claves) {
@@ -92,6 +127,7 @@ describe("forma de los temas", () => {
         tema.primary, tema.primary600, tema.primary700,
         tema.primary50, tema.primary100, tema.primary200,
         tema.boton, tema.botonHover, tema.botonActivo,
+        tema.barra, tema.barraActivo, tema.barraTexto2,
         ...tema.marca,
       ];
       for (const c of colores) {
