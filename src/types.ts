@@ -586,6 +586,66 @@ export interface EstadoLicencia {
   diasRestantes: number | null;
   diasParaBloqueo: number | null;
   mensaje: string;
+  /**
+   * Código de activación del negocio (BMD-XXXX). Es con lo que la pantalla de
+   * pago pide el QR: la licencia bloqueada rechaza todo request autenticado,
+   * así que no se puede pedir con el token.
+   */
+  codigoActivacion?: string | null;
+}
+
+// -- Pago de la licencia por QR (pantalla pública /pagar) --------------------
+
+/** El QR con el que un negocio paga su licencia. */
+export interface CobroQr {
+  alias: string;
+  monto: number;
+  moneda: string;
+  /** MENSUAL | SEMESTRAL | ANUAL */
+  periodo: string;
+  /** Meses que cubre el cobro (1, 6 o 12). */
+  meses: number;
+  /** PENDIENTE | PAGADO | ANULADO | VENCIDO */
+  estado: string;
+  venceEn: string;
+  /** Data URL de la imagen. Sólo viene al generarlo, no al consultar estado. */
+  imagenQr?: string;
+}
+
+/** Períodos que el cliente puede elegir al pagar su licencia. */
+export type PeriodoCobrable = "MENSUAL" | "SEMESTRAL" | "ANUAL";
+
+/**
+ * Una opción de pago, tal como la calcula el BACKEND.
+ *
+ * Los montos no se calculan en el front a propósito: si la pantalla armara el
+ * total, cualquiera podría pagar lo que quisiera.
+ */
+export interface OpcionPago {
+  periodo: PeriodoCobrable;
+  meses: number;
+  total: number;
+  /** Lo que "sale por mes" con ese plazo, para comparar de un vistazo. */
+  mensualEquivalente: number;
+  /** Cuánto se ahorra contra pagar mes por mes. 0 en el mensual. */
+  ahorro: number;
+  /** Fracción: 0.075 = 7,5 %. */
+  descuento: number;
+}
+
+export interface OpcionesPagoLicencia {
+  plan: string;
+  moneda: string;
+  opciones: OpcionPago[];
+}
+
+/** Lo que devuelve el sondeo mientras se espera el pago. */
+export interface EstadoCobroQr {
+  alias: string;
+  estado: string;
+  monto: number;
+  venceEn: string;
+  pagadoEn: string | null;
 }
 
 // ── Reportes ────────────────────────────────────────────────────────────────

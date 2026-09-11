@@ -3,6 +3,7 @@ import { Icon } from "../components/Icon";
 import { Boton, Campo, ErrorMsg, Input } from "../components/ui";
 import { BLOQUEO_KEY } from "../lib/api";
 import { useAuth } from "../store/AuthContext";
+import PagarLicencia from "./PagarLicencia";
 
 interface Bloqueo {
   codigo: string;
@@ -36,6 +37,8 @@ export default function Login() {
   const [error, setError] = useState("");
   const [enviando, setEnviando] = useState(false);
   const [bloqueo, setBloqueo] = useState<Bloqueo | null>(leerBloqueo);
+  /** Cuando es true se muestra el pago por QR en lugar del formulario. */
+  const [pagando, setPagando] = useState(false);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -60,6 +63,17 @@ export default function Login() {
     } finally {
       setEnviando(false);
     }
+  }
+
+  // El pago vive acá dentro y no en una ruta: sin sesión, App no monta el
+  // router, así que /pagar no sería alcanzable por URL.
+  if (pagando) {
+    return (
+      <PagarLicencia
+        aliasInicial={negocio.trim() || aliasRecordado}
+        onSalir={() => setPagando(false)}
+      />
+    );
   }
 
   return (
@@ -97,16 +111,31 @@ export default function Login() {
                       : "Licencia vencida"}
                   </p>
                   <p className="mt-1 text-[13px] leading-snug">{bloqueo.mensaje}</p>
-                  {bloqueo.urlPago && (
-                    <a
-                      href={bloqueo.urlPago}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="mt-2.5 inline-block rounded-lg bg-danger-text px-3 py-1.5 text-xs font-bold text-white"
-                    >
-                      Regularizar el pago
-                    </a>
-                  )}
+                  <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                    {/* Pagar acá mismo con QR: es la salida real. El link
+                        externo queda como alternativa (transferencia, hablar
+                        con BamarDev) y para la licencia suspendida, que no se
+                        arregla pagando. */}
+                    {bloqueo.codigo !== "LICENCIA_SUSPENDIDA" && (
+                      <button
+                        type="button"
+                        onClick={() => setPagando(true)}
+                        className="rounded-lg bg-danger-text px-3 py-1.5 text-xs font-bold text-white"
+                      >
+                        Pagar con QR
+                      </button>
+                    )}
+                    {bloqueo.urlPago && (
+                      <a
+                        href={bloqueo.urlPago}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="rounded-lg border border-danger-text/30 px-3 py-1.5 text-xs font-bold text-danger-text"
+                      >
+                        Otras formas de pago
+                      </a>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
@@ -148,6 +177,17 @@ export default function Login() {
           <Boton type="submit" disabled={enviando} className="w-full">
             {enviando ? "Entrando…" : "Iniciar sesión"}
           </Boton>
+
+          {/* Siempre visible: al bloqueo se llega también sin intentar entrar
+              (otra pestaña, otro dispositivo), y ahí no hay cartel con el
+              botón de pagar. Sin esto, esa persona queda sin salida. */}
+          <button
+            type="button"
+            onClick={() => setPagando(true)}
+            className="w-full text-center text-[13px] font-semibold text-texto-3 hover:text-texto"
+          >
+            Pagar la licencia con QR
+          </button>
         </form>
       </div>
     </div>

@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { useAuth } from "../store/AuthContext";
 import { Icon } from "./Icon";
 
@@ -31,19 +32,17 @@ export default function AvisoLicencia() {
     >
       <Icon name="alert" size={17} />
       <span className="min-w-0 flex-1">{licencia.mensaje}</span>
-      {licencia.urlPago && (
-        <a
-          href={licencia.urlPago}
-          target="_blank"
-          rel="noreferrer"
-          className={[
-            "shrink-0 rounded-lg px-3 py-1.5 text-xs font-bold text-white",
-            urgente ? "bg-danger-text" : "bg-warning-text",
-          ].join(" ")}
-        >
-          Pagar
-        </a>
-      )}
+      {/* Lleva al QR dentro de la app en vez de a una página externa: cobrar
+          durante la gracia es mucho mejor que cobrar después del bloqueo. */}
+      <Link
+        to="/pagar"
+        className={[
+          "shrink-0 rounded-lg px-3 py-1.5 text-xs font-bold text-white",
+          urgente ? "bg-danger-text" : "bg-warning-text",
+        ].join(" ")}
+      >
+        Pagar
+      </Link>
     </div>
   );
 }
