@@ -234,7 +234,7 @@ function ChipCat({
       onClick={onClick}
       className={`shrink-0 rounded-full px-3.5 py-1.5 text-[13px] font-semibold transition-colors ${
         activo
-          ? "bg-primary text-white"
+          ? "bg-primary-boton text-white"
           : "border border-borde bg-white text-texto-2 hover:bg-muted"
       }`}
     >
@@ -459,7 +459,7 @@ function BotonConsumoTodo({ carrito, consumo }: { carrito: Carrito; consumo: Con
       onClick={() => carrito.setConsumoTodo(consumo)}
       className={`flex-1 rounded-xl px-3 py-1.5 text-[13px] font-semibold transition-colors ${
         activo
-          ? "bg-primary text-white"
+          ? "bg-primary-boton text-white"
           : "border border-borde bg-white text-texto-2 hover:bg-muted"
       }`}
     >

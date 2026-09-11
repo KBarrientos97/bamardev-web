@@ -378,7 +378,7 @@ export default function Reportes() {
             onClick={() => setVista(v)}
             className={`rounded-xl px-3.5 py-2 text-[13px] font-semibold transition-colors ${
               vista === v
-                ? "bg-primary text-white"
+                ? "bg-primary-boton text-white"
                 : "border border-borde bg-white text-texto-2 hover:bg-muted"
             }`}
           >

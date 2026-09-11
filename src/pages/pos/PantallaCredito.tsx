@@ -260,7 +260,7 @@ export default function PantallaCredito({
                     onClick={() => setLimiteNuevo(String(v))}
                     className={`rounded-xl px-3.5 py-2 text-[13px] font-semibold transition-colors ${
                       limiteNuevo === String(v)
-                        ? "bg-primary text-white"
+                        ? "bg-primary-boton text-white"
                         : "border border-borde bg-white text-texto-2 hover:bg-muted"
                     }`}
                   >
@@ -271,7 +271,7 @@ export default function PantallaCredito({
                   onClick={() => setLimiteNuevo("")}
                   className={`rounded-xl px-3.5 py-2 text-[13px] font-semibold transition-colors ${
                     limiteNuevo === ""
-                      ? "bg-primary text-white"
+                      ? "bg-primary-boton text-white"
                       : "border border-borde bg-white text-texto-2 hover:bg-muted"
                   }`}
                 >
@@ -299,7 +299,7 @@ export default function PantallaCredito({
                 onClick={() => setPlazo(d)}
                 className={`rounded-xl px-3.5 py-2 text-[13px] font-semibold transition-colors ${
                   plazo === d
-                    ? "bg-primary text-white"
+                    ? "bg-primary-boton text-white"
                     : "border border-borde bg-white text-texto-2 hover:bg-muted"
                 }`}
               >

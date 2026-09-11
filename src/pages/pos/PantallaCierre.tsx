@@ -399,7 +399,7 @@ function DialogoMovimiento({
                 }}
                 className={`rounded-xl px-3 py-2 text-[13px] font-semibold transition-colors ${
                   motivo === m.etiqueta
-                    ? "bg-primary text-white"
+                    ? "bg-primary-boton text-white"
                     : "border border-borde bg-white text-texto-2 hover:bg-muted"
                 }`}
               >
@@ -414,7 +414,7 @@ function DialogoMovimiento({
               }}
               className={`rounded-xl px-3 py-2 text-[13px] font-semibold transition-colors ${
                 motivo === OTRO
-                  ? "bg-primary text-white"
+                  ? "bg-primary-boton text-white"
                   : "border border-borde bg-white text-texto-2 hover:bg-muted"
               }`}
             >

@@ -763,7 +763,7 @@ function FormLimiteCredito({
             onClick={() => setValor("")}
             className={`rounded-xl px-3.5 py-2 text-[13px] font-semibold transition-colors ${
               valor === ""
-                ? "bg-primary text-white"
+                ? "bg-primary-boton text-white"
                 : "border border-borde bg-white text-texto-2 hover:bg-muted"
             }`}
           >
@@ -775,7 +775,7 @@ function FormLimiteCredito({
               onClick={() => setValor(String(v))}
               className={`rounded-xl px-3.5 py-2 text-[13px] font-semibold transition-colors ${
                 valor === String(v)
-                  ? "bg-primary text-white"
+                  ? "bg-primary-boton text-white"
                   : "border border-borde bg-white text-texto-2 hover:bg-muted"
               }`}
             >

@@ -13,6 +13,22 @@
   --color-primary-100: #d1fae5;
   --color-primary-200: #a7f3d0;
 
+  /*
+   * Fondo del botón principal, con texto blanco encima.
+   *
+   * Va aparte de `primary` porque el verde de marca no da contraste suficiente
+   * para texto: blanco sobre #10b981 son 2.54:1, cuando el mínimo legible es
+   * 4.5. Se veía lavado en pantallas baratas y a pleno sol, que es donde
+   * trabaja un cajero. Con #047857 son 5.48:1.
+   *
+   * No se usa `primary-700` directo para no quedarnos sin el tono de `active`:
+   * el botón necesita tres pasos (normal, hover, pulsado) y si el normal ya es
+   * el más oscuro, pulsar deja de notarse.
+   */
+  --color-primary-boton: #047857;
+  --color-primary-boton-hover: #065f46;
+  --color-primary-boton-activo: #064e3b;
+
   --color-fondo: #f5fbf7;
   --color-card: #ffffff;
   --color-muted: #f9fafb;

@@ -164,7 +164,7 @@ export function AnularItem({
               }}
               className={`rounded-full border px-3 py-1.5 text-[13px] font-semibold transition-colors ${
                 motivo === m
-                  ? "border-primary bg-primary text-white"
+                  ? "border-primary-boton bg-primary-boton text-white"
                   : "border-borde bg-white text-texto-2 hover:bg-muted"
               }`}
             >

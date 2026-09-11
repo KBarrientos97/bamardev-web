@@ -144,7 +144,7 @@ export default function Layout() {
         ].join(" ")}
         title={compacta ? (usuario?.nombre ?? usuario?.username) : undefined}
       >
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-bold text-white">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary-boton text-sm font-bold text-white">
           {iniciales(usuario?.nombre ?? usuario?.username)}
         </span>
         {!compacta && (
