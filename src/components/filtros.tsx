@@ -19,7 +19,7 @@ export function Chips<T extends string>({
           onClick={() => onChange(k)}
           className={`rounded-full px-3.5 py-1.5 text-[13px] font-semibold transition-colors ${
             valor === k
-              ? "bg-primary text-white"
+              ? "bg-primary-boton text-white"
               : "border border-borde bg-white text-texto-2 hover:bg-muted"
           }`}
         >

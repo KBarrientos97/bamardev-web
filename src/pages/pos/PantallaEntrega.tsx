@@ -194,7 +194,7 @@ export default function PantallaEntrega({
                   onClick={() => setMinutos(m)}
                   className={`rounded-xl px-3.5 py-2 text-[13px] font-semibold transition-colors ${
                     minutos === m
-                      ? "bg-primary text-white"
+                      ? "bg-primary-boton text-white"
                       : "border border-borde bg-white text-texto-2 hover:bg-muted"
                   }`}
                 >

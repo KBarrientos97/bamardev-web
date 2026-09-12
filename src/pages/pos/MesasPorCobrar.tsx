@@ -16,9 +16,18 @@ import { consumoDeMesa, hace } from "../salon/logicaSalon";
 export default function MesasPorCobrar({
   onAtras,
   onCobrar,
+  onIrAEntregas,
 }: {
   onAtras: () => void;
   onCobrar: (mesa: Mesa) => void;
+  /**
+   * El efectivo que los meseros ya cobraron y todavía no entró al cajón.
+   *
+   * Va acá porque es la misma pantalla mental —"qué me falta cerrar del
+   * salón"— y porque la cajera llega hasta acá sola. En Configuración estaría
+   * lejos de donde recibe la plata.
+   */
+  onIrAEntregas?: () => void;
 }) {
   const mesas = useApi(() => api.mesasPorCobrar(), []);
   const lista = mesas.datos ?? [];
@@ -41,6 +50,15 @@ export default function MesasPorCobrar({
               : `${lista.length} ${lista.length === 1 ? "cuenta esperando" : "cuentas esperando"}`}
           </p>
         </div>
+        {onIrAEntregas && (
+          <button
+            type="button"
+            onClick={onIrAEntregas}
+            className="shrink-0 rounded-lg px-2.5 py-1.5 text-[13px] font-semibold text-primary-700 hover:bg-muted"
+          >
+            Entregas
+          </button>
+        )}
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4">

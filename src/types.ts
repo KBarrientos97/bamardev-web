@@ -631,11 +631,23 @@ export interface OpcionPago {
   ahorro: number;
   /** Fracción: 0.075 = 7,5 %. */
   descuento: number;
+  /**
+   * Hasta cuándo queda cubierto el negocio si paga ESTE plazo ("yyyy-MM-dd").
+   *
+   * Lo calcula el backend con la misma función que aplica el pago
+   * (`baseDeExtension` + `avanzarVencimiento`): si el front lo estimara por su
+   * cuenta, podría prometer una fecha y aplicarse otra.
+   */
+  cubreHasta: string;
 }
 
 export interface OpcionesPagoLicencia {
   plan: string;
   moneda: string;
+  /** Hasta cuándo está cubierto hoy ("yyyy-MM-dd"), o null si nunca tuvo. */
+  vencimientoActual: string | null;
+  /** Si ya venció: cambia el texto ("vencida el…" en vez de "vence el…"). */
+  vencida: boolean;
   opciones: OpcionPago[];
 }
 

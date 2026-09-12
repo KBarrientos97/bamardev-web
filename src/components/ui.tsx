@@ -8,8 +8,11 @@ import { Icon, type NombreIcono } from "./Icon";
 type Variante = "primary" | "ghost" | "danger" | "soft";
 
 const VARIANTES: Record<Variante, string> = {
+  // `primary-boton` y no `primary`: el color de marca no da contraste para
+  // texto blanco (el verde son 2.54:1, con 4.5 de mínimo legible) y el botón
+  // se lavaba en pantallas baratas y a pleno sol. Ver index.css.
   primary:
-    "bg-primary text-white hover:bg-primary-600 active:bg-primary-700 disabled:bg-slate-300",
+    "bg-primary-boton text-white hover:bg-primary-boton-hover active:bg-primary-boton-activo disabled:bg-slate-300",
   soft: "bg-primary-50 text-primary-700 hover:bg-primary-100 disabled:opacity-50",
   ghost:
     "bg-white text-texto-2 border border-borde hover:bg-muted disabled:opacity-50",

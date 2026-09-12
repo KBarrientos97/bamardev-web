@@ -36,6 +36,7 @@ export default function Salon({
   onIrAPorServir,
   onIrAMiTurno,
   onMesas,
+  onMeserosCobran,
 }: {
   onAbrirMesa: (mesa: Mesa) => void;
   onVerMesa: (mesa: Mesa) => void;
@@ -43,6 +44,12 @@ export default function Salon({
   onIrAMiTurno: () => void;
   /** Avisa qué mesas hay cargadas: el detalle las necesita para pasar/juntar. */
   onMesas?: (mesas: Mesa[]) => void;
+  /**
+   * Avisa si el negocio dejó que el mesero cobre. Sale del salón —que esta
+   * pantalla ya recarga sola— para que prenderlo en el panel se vea sin que el
+   * mesero cierre sesión.
+   */
+  onMeserosCobran?: (valor: boolean) => void;
 }) {
   const { usuario } = useAuth();
   const salon = useApi(() => api.salon(), []);
@@ -55,6 +62,13 @@ export default function Salon({
   useEffect(() => {
     if (mesas.length > 0) onMesas?.(mesas);
   }, [mesas, onMesas]);
+
+  // El flag viaja con el salón, que esta pantalla ya recarga sola: prenderlo
+  // desde el panel se ve sin que el mesero cierre sesión.
+  const meserosCobran = salon.datos?.meserosCobran === true;
+  useEffect(() => {
+    if (salon.datos) onMeserosCobran?.(meserosCobran);
+  }, [salon.datos, meserosCobran, onMeserosCobran]);
   const zonas = salon.datos?.zonas ?? [];
   const resumen = useMemo(() => resumirSalon(mesas), [mesas]);
   const pendientes = useMemo(() => porServir(mesas), [mesas]);
@@ -215,7 +229,7 @@ function Chip({
       onClick={onClick}
       className={`shrink-0 whitespace-nowrap rounded-full border px-3.5 py-1.5 text-[13px] font-semibold transition-colors ${
         activo
-          ? "border-primary bg-primary text-white"
+          ? "border-primary-boton bg-primary-boton text-white"
           : "border-borde bg-white text-texto-2 hover:bg-muted"
       }`}
     >

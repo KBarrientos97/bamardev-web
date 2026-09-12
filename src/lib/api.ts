@@ -49,6 +49,7 @@ import type {
 } from "../types";
 
 import type {
+  EntregasMesero,
   Mesa,
   Salon,
   TurnoMesero,
@@ -627,9 +628,14 @@ export const api = {
   /** Las cuentas que esperan en caja. Sólo la ven los que cobran. */
   mesasPorCobrar: () => request<Mesa[]>("/salon/por-cobrar"),
   /**
-   * Convierte la cuenta de la mesa en venta. Lo hace la caja: el mesero no
-   * cobra nunca. La propina va al turno del mesero y NO entra al total de la
-   * venta ni a la matemática de la caja.
+   * Convierte la cuenta de la mesa en venta.
+   *
+   * Normalmente lo hace la caja. El MESERO entra acá sólo si el negocio tiene
+   * la capacidad `mesero_cobra` prendida y sólo sobre SUS mesas: las dos cosas
+   * las revisa el backend, porque el rol por sí solo no alcanza para decidirlo.
+   *
+   * La propina va al turno del mesero y NO entra al total de la venta ni a la
+   * matemática de la caja.
    */
   cobrarMesa: (
     id: number,
@@ -642,6 +648,29 @@ export const api = {
     method: "POST",
     body: JSON.stringify(input),
   }),
+
+  // ── Entregas de efectivo del mesero ───────────────────────────────────────
+
+  /**
+   * El efectivo que los meseros cobraron en el turno.
+   *
+   * La misma lista sirve para los dos lados: el cajero ve lo que le tienen que
+   * entregar y el mesero lo que le falta entregar. El backend filtra según
+   * quién pregunta, así que acá no hay dos métodos.
+   */
+  entregasMesero: () => request<EntregasMesero>("/salon/entregas"),
+
+  /**
+   * El cajero confirma que recibió la plata.
+   *
+   * Es el acto que mueve ese efectivo del delantal del mesero al cajón: hasta
+   * acá el arqueo lo restaba del esperado. Devuelve la lista al día.
+   */
+  aprobarEntregas: (ids: number[]) =>
+    request<EntregasMesero>("/salon/entregas/aprobar", {
+      method: "POST",
+      body: JSON.stringify({ ids }),
+    }),
 
   // ── Mesas (administración) ────────────────────────────────────────────────
   // El mesero no crea mesas: sólo abre las que el dueño registre. El backend
