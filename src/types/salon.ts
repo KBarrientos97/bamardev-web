@@ -132,6 +132,52 @@ export interface Mesa {
 export interface Salon {
   zonas: ZonaSalon[];
   mesas: Mesa[];
+  /**
+   * Si el negocio habilitó que el mesero cobre sus propias mesas.
+   *
+   * Sale de la capacidad `mesero_cobra` del catálogo y viaja con el salón —que
+   * la pantalla ya pide cada pocos segundos— porque decide si se dibuja un
+   * botón: prenderlo tiene que verse sin que el mesero cierre sesión.
+   *
+   * Opcional porque un backend anterior a sep-2026 no lo manda; ahí se asume
+   * `false`, que es el comportamiento de siempre (cobra la caja).
+   */
+  meserosCobran?: boolean;
+}
+
+/**
+ * Una entrega de efectivo del mesero al cajero.
+ *
+ * Nace cuando el mesero cobra una mesa: esa plata está en su delantal, no en
+ * el cajón. Hasta que el cajero la aprueba, el arqueo la **resta** del
+ * esperado — sin esa resta el cierre marcaría un faltante que no lo es, y el
+ * día que de verdad falte plata nadie podría distinguir una cosa de la otra.
+ */
+export interface EntregaMesero {
+  id: number;
+  mesaCodigo: string;
+  comprobante: string;
+  meseroId: number;
+  meseroNombre: string;
+  monto: number;
+  estado: "PENDIENTE" | "APROBADA";
+  creadaEn: string;
+  aprobadaEn: string | null;
+  aprobadaPorNombre: string | null;
+}
+
+/**
+ * GET /api/salon/entregas — la misma lista mirada desde los dos lados.
+ *
+ * El cajero ve lo que le tienen que entregar; el mesero, lo que le falta
+ * entregar y lo que ya le aprobaron. Quién ve qué lo decide el backend según
+ * quién pregunta.
+ */
+export interface EntregasMesero {
+  items: EntregaMesero[];
+  /** Lo que todavía no está en el cajón. Es el mismo número que resta el arqueo. */
+  pendiente: number;
+  aprobado: number;
 }
 
 /** GET /api/salon/turno — lo que el mesero lleva hecho en su turno. */

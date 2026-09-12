@@ -5,6 +5,8 @@ import type { Mesa } from "../../types/salon";
 import { porServir } from "./logicaSalon";
 import AbrirMesa from "./AbrirMesa";
 import DetalleMesa from "./DetalleMesa";
+import CobrarMesa from "./CobrarMesa";
+import Entregas from "./Entregas";
 import MiTurno from "./MiTurno";
 import PorServir from "./PorServir";
 import Salon from "./Salon";
@@ -34,6 +36,15 @@ type Flujo =
   | { tipo: "abrir"; mesa: Mesa }
   | { tipo: "pedido"; mesa: Mesa }
   | { tipo: "detalle"; mesa: Mesa }
+  // Las entregas de efectivo van como flujo y NO como cuarta pestaña: se entra
+  // desde "Mi turno", se mira cuánto se debe y se vuelve. Una pestaña fija
+  // sería un lugar más donde buscar con las manos ocupadas.
+  | { tipo: "entregas" }
+  // Cobrar la mesa: sólo existe si el negocio prendió `mesero_cobra`. Es la
+  // MISMA pantalla de cobro del POS, no una copia: el vuelto, el QR y el pago
+  // mixto ya están resueltos ahí, y un segundo cobro sería un segundo lugar
+  // donde arreglar la plata cada vez que algo cambia.
+  | { tipo: "cobrar"; mesa: Mesa }
   | null;
 
 const PESTANAS: { id: Pestana; etiqueta: string; icono: NombreIcono }[] = [
@@ -50,6 +61,14 @@ export default function PanelMesero() {
   const [version, setVersion] = useState(0);
   /** Las mesas que cargó el salón: el detalle las usa para pasar/juntar. */
   const [mesas, setMesas] = useState<Mesa[]>([]);
+  /**
+   * Si el negocio dejó que el mesero cobre sus mesas.
+   *
+   * Decide dos cosas: el botón de cobrar en el detalle de la mesa, y el acceso
+   * a las entregas desde "Mi turno". Sin esto el mesero nunca tiene efectivo
+   * encima y las dos cosas sobran.
+   */
+  const [meserosCobran, setMeserosCobran] = useState(false);
   /** Lo que falta llevar: va como badge sobre la pestaña "Por servir". */
   const pendientes = porServir(mesas).length;
 
@@ -89,6 +108,27 @@ export default function PanelMesero() {
       </Pantalla>
     );
 
+  if (flujo?.tipo === "entregas")
+    return (
+      <Pantalla>
+        <Entregas onVolver={() => setFlujo(null)} />
+      </Pantalla>
+    );
+
+  if (flujo?.tipo === "cobrar")
+    return (
+      <Pantalla>
+        <CobrarMesa
+          mesa={flujo.mesa}
+          onAtras={() => setFlujo(null)}
+          onCobrada={(mensaje) => {
+            setFlujo(null);
+            volverAlSalon(mensaje);
+          }}
+        />
+      </Pantalla>
+    );
+
   return (
     <div className="relative flex h-[100dvh] flex-col overflow-hidden bg-fondo">
       <main className="min-h-0 flex-1 overflow-hidden">
@@ -100,10 +140,18 @@ export default function PanelMesero() {
             onIrAPorServir={() => setPestana("servir")}
             onIrAMiTurno={() => setPestana("turno")}
             onMesas={setMesas}
+            onMeserosCobran={setMeserosCobran}
           />
         )}
         {pestana === "servir" && <PorServir key={version} />}
-        {pestana === "turno" && <MiTurno key={version} />}
+        {pestana === "turno" && (
+          <MiTurno
+            key={version}
+            onIrAEntregas={
+              meserosCobran ? () => setFlujo({ tipo: "entregas" }) : undefined
+            }
+          />
+        )}
       </main>
 
       {/* Va SOBRE el salón: es una hoja, no otra pantalla. */}
@@ -124,6 +172,9 @@ export default function PanelMesero() {
           }}
           onAgregarPedido={(m) => setFlujo({ tipo: "pedido", mesa: m })}
           onAbrirMesa={(m) => setFlujo({ tipo: "abrir", mesa: m })}
+          onCobrarMesa={
+            meserosCobran ? (m) => setFlujo({ tipo: "cobrar", mesa: m }) : undefined
+          }
         />
       )}
 

@@ -13,6 +13,7 @@ import PantallaCobro from "./PantallaCobro";
 import PantallaCredito from "./PantallaCredito";
 import PantallaEntrega, { type DatosEntrega } from "./PantallaEntrega";
 import MesasPorCobrar from "./MesasPorCobrar";
+import Entregas from "../salon/Entregas";
 import { consumoDeMesa } from "../salon/logicaSalon";
 import type { Mesa as MesaSalon } from "../../types/salon";
 import PantallaHistorial from "./PantallaHistorial";
@@ -32,7 +33,9 @@ type Pantalla =
   | "cierre"
   | "cierreOk"
   /** Las cuentas que el salón mandó a caja. */
-  | "mesasPorCobrar";
+  | "mesasPorCobrar"
+  /** El efectivo que los meseros cobraron y todavía no está en el cajón. */
+  | "entregas";
 
 export default function Pos() {
   const { negocio } = useAuth();
@@ -250,10 +253,14 @@ export default function Pos() {
       />
     );
 
+  if (pantalla === "entregas")
+    return <Entregas onVolver={() => setPantalla("mesasPorCobrar")} />;
+
   if (pantalla === "mesasPorCobrar")
     return (
       <MesasPorCobrar
         onAtras={() => setPantalla("venta")}
+        onIrAEntregas={() => setPantalla("entregas")}
         // El cobro de una mesa reusa la pantalla de cobro del POS: es la misma
         // plata y la misma caja. Todavía falta cablearlo.
         onCobrar={(mesa) => {

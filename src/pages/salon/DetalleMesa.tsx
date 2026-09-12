@@ -33,6 +33,7 @@ export default function DetalleMesa({
   onCambio,
   onAgregarPedido,
   onAbrirMesa,
+  onCobrarMesa,
 }: {
   mesa: Mesa;
   /** Todo el salón: hace falta para elegir a qué mesa pasar o juntar. */
@@ -42,6 +43,11 @@ export default function DetalleMesa({
   onCambio: (mesa: Mesa, mensaje: string) => void;
   onAgregarPedido: (mesa: Mesa) => void;
   onAbrirMesa: (mesa: Mesa) => void;
+  /**
+   * Cobrar la mesa acá mismo. Sólo llega si el negocio prendió la capacidad
+   * `mesero_cobra`; sin ella la cuenta pasa a caja y el mesero no toca plata.
+   */
+  onCobrarMesa?: (mesa: Mesa) => void;
 }) {
   /**
    * Guard del doble toque: mientras hay una acción en curso, las demás se
@@ -271,7 +277,21 @@ export default function DetalleMesa({
               <span>{pie.banner}</span>
             </p>
           )}
+          {/* Cobrar va ARRIBA del pie normal cuando está habilitado: si el
+              mesero cobra, "pasar a caja" deja de ser lo que corresponde hacer
+              y pasa a ser la alternativa (el cliente que quiere pagar con algo
+              que el mesero no maneja). Sólo con consumo: la caja no cobra Bs 0. */}
+          {onCobrarMesa && ocupada && consumo > 0 && (
+            <Boton
+              onClick={() => onCobrarMesa(mesa)}
+              disabled={procesando}
+              className="mb-2 w-full py-3 text-base"
+            >
+              Cobrar {fmtMoney(consumo)}
+            </Boton>
+          )}
           <Boton
+            variante={onCobrarMesa && ocupada && consumo > 0 ? "ghost" : undefined}
             onClick={() => ejecutar(pie.principal.accion)}
             disabled={procesando || pie.principal.deshabilitado}
             className="w-full py-3 text-base"

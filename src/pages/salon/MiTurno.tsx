@@ -15,7 +15,12 @@ import { hace } from "./logicaSalon";
  * es exactamente el error que hubo que corregir cuatro veces en el cierre de
  * caja.
  */
-export default function MiTurno() {
+/**
+ * @param onIrAEntregas abre la pantalla de entregas de efectivo. Opcional
+ *   porque sólo tiene sentido si el negocio dejó que el mesero cobre: sin eso
+ *   nunca tiene plata encima que entregar.
+ */
+export default function MiTurno({ onIrAEntregas }: { onIrAEntregas?: () => void }) {
   const { logout } = useAuth();
   const turno = useApi(() => api.turnoMesero(), []);
   const [confirmando, setConfirmando] = useState(false);
@@ -157,6 +162,17 @@ export default function MiTurno() {
           {sinCerrar.join(", ")}. Cerralas (que la caja cobre y
           levantalas) o pasáselas a otro mesero.
         </p>
+      )}
+
+      {/* El efectivo que cobró y todavía tiene encima. Va ARRIBA de "cerrar
+          turno" a propósito: entregar la plata es lo que corresponde hacer
+          antes de irse, y ponerlo después lo dejaría fuera del recorrido.
+          Sólo aparece si el negocio dejó que el mesero cobre; si no, nunca
+          tiene nada que entregar. */}
+      {onIrAEntregas && (
+        <Boton variante="ghost" onClick={onIrAEntregas} className="mt-4 w-full">
+          Efectivo que tengo que entregar
+        </Boton>
       )}
 
       <Boton
