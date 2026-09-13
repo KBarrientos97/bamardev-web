@@ -276,10 +276,18 @@ function DetalleAlmacen({
           </span>
           <div className="min-w-0">
             <h3 className="truncate text-base font-bold text-texto">{a.nombre}</h3>
-            <p className="text-[13px] text-texto-3">{a.grupo || "Sin grupo"}</p>
-            <Badge tono={a.activo ? "verde" : "gris"} className="mt-1.5">
-              {a.activo ? "Activo" : "Inactivo"}
-            </Badge>
+            <p className="text-[13px] text-texto-3">
+              {a.direccion || a.grupo || "Sin dirección"}
+            </p>
+            <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+              {/* El tipo primero: es lo que explica por qué un depósito no
+                  aparece en el punto de venta ni tiene caja. */}
+              <Badge tono={a.tipo === "DEPOSITO" ? "azul" : "verde"}>
+                {a.tipo === "DEPOSITO" ? "Depósito" : "Sucursal"}
+              </Badge>
+              {a.esPrincipal && <Badge tono="verde">Principal</Badge>}
+              {!a.activo && <Badge tono="gris">Inactivo</Badge>}
+            </div>
           </div>
         </div>
 
@@ -288,6 +296,8 @@ function DetalleAlmacen({
           <Dato label="Unidades" valor={fmtNum(a.totalUnidades ?? 0)} />
           <Dato label="Valor" valor={fmtMoney(a.valorTotal ?? 0)} />
         </dl>
+
+        <BitacoraDelAlmacen almacenId={a.id} />
 
         <div>
           <h4 className="mb-2 text-[13px] font-bold text-texto">
@@ -332,6 +342,91 @@ function DetalleAlmacen({
     </Modal>
   );
 }
+
+/**
+ * Los últimos movimientos de stock de este almacén.
+ *
+ * Va dentro del detalle y no en una pantalla aparte porque la pregunta que
+ * contesta —*"¿por qué este producto tiene 7 y no 10?"*— se hace justo cuando se
+ * está mirando el stock de un almacén, no navegando un menú.
+ *
+ * Se carga recién al abrir el detalle (el `useApi` depende del id): la bitácora
+ * es la tabla más grande del sistema y no tiene sentido traerla para la lista.
+ */
+function BitacoraDelAlmacen({ almacenId }: { almacenId: number }) {
+  const bitacora = useApi(
+    () => api.getBitacoraStock({ almacenId, limite: 15 }),
+    [almacenId],
+  );
+  const apuntes = bitacora.datos ?? [];
+
+  // Mientras carga no se muestra nada: un esqueleto acá competiría con el
+  // contenido principal del detalle, que ya está en pantalla.
+  if (bitacora.cargando && apuntes.length === 0) return null;
+  // La bitácora arranca vacía y sólo registra desde que se desplegó, así que un
+  // almacén sin movimientos nuevos es lo normal y no un error que avisar.
+  if (apuntes.length === 0) return null;
+
+  return (
+    <div>
+      <h4 className="mb-2 text-[13px] font-bold text-texto">
+        Últimos movimientos
+        <span className="ml-1.5 font-normal text-texto-3">
+          — qué entró y salió, y quién lo hizo
+        </span>
+      </h4>
+      <ul className="divide-y divide-borde rounded-xl border border-borde">
+        {apuntes.map((m) => (
+          <li key={m.id} className="flex items-center gap-3 px-3 py-2">
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-[13px] font-semibold text-texto">
+                {m.producto?.nombre ?? "—"}
+              </p>
+              <p className="truncate text-[12px] text-texto-3">
+                {MOTIVO_LEGIBLE[m.motivo] ?? m.motivo}
+                {/* Sin autor = lo movió un proceso automático (el armado de un
+                    combo, por ejemplo). Es un hecho, no un dato faltante. */}
+                {m.usuario ? ` · ${m.usuario.nombre || m.usuario.username}` : ""}
+              </p>
+            </div>
+            <div className="shrink-0 text-right">
+              <p
+                className={
+                  "text-[13px] font-bold " +
+                  (m.cantidad > 0 ? "text-primary-700" : "text-danger-text")
+                }
+              >
+                {m.cantidad > 0 ? "+" : ""}
+                {fmtNum(m.cantidad)}
+              </p>
+              <p className="text-[11px] text-texto-4">
+                queda {fmtNum(m.saldoDespues)}
+              </p>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/**
+ * Cómo se lee cada motivo.
+ *
+ * Las transferencias se nombran por su dirección: "TRANSFERENCIA_SALIDA" no le
+ * dice nada a nadie en una pantalla. Un motivo que no esté acá se muestra tal
+ * cual — feo, pero esconderlo sería ocultar un movimiento de stock.
+ */
+const MOTIVO_LEGIBLE: Record<string, string> = {
+  VENTA: "Venta",
+  ANULACION: "Anulación",
+  ENTRADA: "Entrada",
+  SALIDA: "Salida",
+  AJUSTE: "Ajuste",
+  TRANSFERENCIA_SALIDA: "Transferencia (salida)",
+  TRANSFERENCIA_ENTRADA: "Transferencia (entrada)",
+  COMBO: "Armado de combo",
+};
 
 function Dato({ label, valor }: { label: string; valor: string }) {
   return (
