@@ -1,5 +1,7 @@
 import type {
   ApunteStock,
+  PrecioSucursal,
+  PrecioSucursalInput,
   AbonoInput,
   Almacen,
   AlmacenInput,
@@ -402,6 +404,20 @@ export const api = {
     request<{ mensaje: string }>(`/almacenes/${id}/principal`, {
       method: "PATCH",
     }),
+  /** Lo que los productos tienen distinto en esta sucursal (sólo excepciones). */
+  getPreciosSucursal: (almacenId: number) =>
+    request<PrecioSucursal[]>(`/almacenes/${almacenId}/precios`),
+  fijarPrecioSucursal: (almacenId: number, input: PrecioSucursalInput) =>
+    request<{ mensaje: string }>(`/almacenes/${almacenId}/precios`, {
+      method: "PUT",
+      body: JSON.stringify(input),
+    }),
+  /** Saca la excepción: el producto vuelve al precio del catálogo. */
+  quitarPrecioSucursal: (almacenId: number, productoId: number) =>
+    request<{ mensaje: string }>(
+      `/almacenes/${almacenId}/precios/${productoId}`,
+      { method: "DELETE" },
+    ),
   /** Bitácora de stock: el historial de todo lo que se movió. */
   getBitacoraStock: (params: {
     productoId?: number;

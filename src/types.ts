@@ -291,6 +291,34 @@ export interface MovimientoInput {
   detalles?: DetalleMovimientoInput[];
 }
 
+/**
+ * Lo que un producto tiene DISTINTO en una sucursal.
+ *
+ * Sólo existen filas para las EXCEPCIONES: si no hay fila, manda el precio del
+ * catálogo. Por eso un negocio de un solo local nunca ve nada acá.
+ */
+export interface PrecioSucursal {
+  productoId: number;
+  producto: string | null;
+  /** El del catálogo, para poder mostrar "Bs 12 → 15" sin otra consulta. */
+  precioLista: number | null;
+  /** null = usa el del catálogo. */
+  precio: number | null;
+  costo: number | null;
+  stockMinimo: number | null;
+  disponible: boolean;
+  orden: number | null;
+}
+
+export interface PrecioSucursalInput {
+  productoId: number;
+  precio?: number | null;
+  costo?: number | null;
+  stockMinimo?: number | null;
+  disponible?: boolean;
+  orden?: number | null;
+}
+
 /** Por qué se movió el stock. Alimenta la bitácora. */
 export type MotivoStock =
   | "VENTA"

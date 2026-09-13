@@ -16,7 +16,7 @@ import {
 import { api } from "../../lib/api";
 import { fmtMoney, fmtNum } from "../../lib/format";
 import { useApi } from "../../lib/useApi";
-import type { Almacen, AlmacenInput, TipoAlmacen } from "../../types";
+import type { Almacen, AlmacenInput, Producto, TipoAlmacen } from "../../types";
 
 export default function Almacenes() {
   const almacenes = useApi(() => api.getAlmacenes(), []);
@@ -144,6 +144,7 @@ export default function Almacenes() {
         almacen={detalle}
         onClose={() => setDetalle(null)}
         onHacerPrincipal={hacerPrincipal}
+        onCambiado={() => almacenes.recargar()}
         onEditar={(a) => {
           setDetalle(null);
           setEditando(a);
@@ -231,12 +232,15 @@ function DetalleAlmacen({
   onEditar,
   onEliminar,
   onHacerPrincipal,
+  onCambiado,
 }: {
   almacen: Almacen | null;
   onClose: () => void;
   onEditar: (a: Almacen) => void;
   onEliminar: (a: Almacen) => void;
   onHacerPrincipal: (a: Almacen) => void;
+  /** Refresca la lista: los precios cambian el valor del inventario. */
+  onCambiado: () => void;
 }) {
   if (!a) return null;
   const articulos = a.articulos ?? [];
@@ -297,6 +301,8 @@ function DetalleAlmacen({
           <Dato label="Valor" valor={fmtMoney(a.valorTotal ?? 0)} />
         </dl>
 
+        <PreciosDeLaSucursal almacen={a} onCambio={onCambiado} />
+
         <BitacoraDelAlmacen almacenId={a.id} />
 
         <div>
@@ -338,6 +344,244 @@ function DetalleAlmacen({
             </ul>
           )}
         </div>
+      </div>
+    </Modal>
+  );
+}
+
+/**
+ * Los precios propios de esta sucursal.
+ *
+ * Muestra SÓLO las excepciones, que es como está modelado: si un producto no
+ * está en esta lista, vale lo que dice el catálogo. Un negocio de un solo local
+ * nunca ve nada acá, y eso es correcto — no es una pantalla vacía por error.
+ *
+ * Va dentro del detalle del almacén porque "cuánto vale esto en este local" es
+ * una pregunta sobre el local, no sobre el catálogo: en la ficha del producto
+ * habría que elegir sucursal primero.
+ */
+function PreciosDeLaSucursal({
+  almacen,
+  onCambio,
+}: {
+  almacen: Almacen;
+  onCambio: () => void;
+}) {
+  const precios = useApi(() => api.getPreciosSucursal(almacen.id), [almacen.id]);
+  const productos = useApi(() => api.getProductos(), []);
+  const [agregando, setAgregando] = useState(false);
+  const [error, setError] = useState("");
+
+  // Un depósito no vende, así que un precio ahí no significaría nada. El
+  // backend lo rechaza; acá directamente no se ofrece.
+  if (almacen.tipo === "DEPOSITO") return null;
+
+  const lista = precios.datos ?? [];
+
+  async function quitar(productoId: number) {
+    setError("");
+    try {
+      await api.quitarPrecioSucursal(almacen.id, productoId);
+      precios.recargar();
+      onCambio();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudo quitar");
+    }
+  }
+
+  return (
+    <div>
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <h4 className="text-[13px] font-bold text-texto">
+          Precios propios de esta sucursal
+          <span className="ml-1.5 font-normal text-texto-3">
+            — lo que no esté acá vale lo del catálogo
+          </span>
+        </h4>
+        <button
+          type="button"
+          onClick={() => setAgregando(true)}
+          className="shrink-0 text-[13px] font-semibold text-primary-700 hover:text-primary"
+        >
+          + Agregar
+        </button>
+      </div>
+
+      <ErrorMsg>{error || precios.error}</ErrorMsg>
+
+      {lista.length === 0 ? (
+        <p className="rounded-xl border border-borde px-3 py-2.5 text-[13px] text-texto-3">
+          Todos los productos valen lo del catálogo en esta sucursal.
+        </p>
+      ) : (
+        <ul className="divide-y divide-borde rounded-xl border border-borde">
+          {lista.map((p) => (
+            <li key={p.productoId} className="flex items-center gap-3 px-3 py-2">
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-[13px] font-semibold text-texto">
+                  {p.producto ?? `#${p.productoId}`}
+                </p>
+                {!p.disponible && (
+                  <p className="text-[12px] text-danger-text">
+                    No se vende en esta sucursal
+                  </p>
+                )}
+              </div>
+              {p.precio != null && (
+                <p className="shrink-0 text-[13px]">
+                  {/* El de lista tachado al lado: el cambio se lee de un vistazo
+                      sin tener que abrir el catálogo. */}
+                  {p.precioLista != null && (
+                    <span className="text-texto-4 line-through">
+                      {fmtMoney(p.precioLista)}
+                    </span>
+                  )}{" "}
+                  <span className="font-bold text-texto">{fmtMoney(p.precio)}</span>
+                </p>
+              )}
+              <button
+                type="button"
+                onClick={() => quitar(p.productoId)}
+                title="Volver al precio del catálogo"
+                className="shrink-0 rounded-lg p-1.5 text-texto-3 hover:bg-muted hover:text-danger-text"
+              >
+                <Icon name="trash" size={15} />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {agregando && (
+        <FormPrecioSucursal
+          almacen={almacen}
+          productos={productos.datos ?? []}
+          yaConPrecio={lista.map((p) => p.productoId)}
+          onClose={() => setAgregando(false)}
+          onGuardado={() => {
+            setAgregando(false);
+            precios.recargar();
+            onCambio();
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+/** Alta de una excepción de precio para un producto en esta sucursal. */
+function FormPrecioSucursal({
+  almacen,
+  productos,
+  yaConPrecio,
+  onClose,
+  onGuardado,
+}: {
+  almacen: Almacen;
+  productos: Producto[];
+  yaConPrecio: number[];
+  onClose: () => void;
+  onGuardado: () => void;
+}) {
+  const [productoId, setProductoId] = useState(0);
+  const [precio, setPrecio] = useState("");
+  const [disponible, setDisponible] = useState(true);
+  const [error, setError] = useState("");
+  const [guardando, setGuardando] = useState(false);
+
+  // Los que ya tienen precio propio no se ofrecen de nuevo: para cambiarlos se
+  // quita el que está y se vuelve a poner, que deja el historial más claro que
+  // una edición silenciosa.
+  const disponibles = productos.filter((p) => !yaConPrecio.includes(p.id));
+  const elegido = productos.find((p) => p.id === productoId);
+
+  async function guardar() {
+    setError("");
+    if (!productoId) return setError("Elegí un producto.");
+    const valor = precio.trim() === "" ? null : Number(precio);
+    if (valor != null && (Number.isNaN(valor) || valor < 0)) {
+      return setError("El precio tiene que ser un número válido.");
+    }
+    setGuardando(true);
+    try {
+      await api.fijarPrecioSucursal(almacen.id, {
+        productoId,
+        precio: valor,
+        disponible,
+      });
+      onGuardado();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudo guardar");
+    } finally {
+      setGuardando(false);
+    }
+  }
+
+  return (
+    <Modal
+      abierto
+      titulo="Precio para esta sucursal"
+      subtitulo={almacen.nombre}
+      onClose={onClose}
+      acciones={
+        <>
+          <Boton variante="ghost" onClick={onClose}>
+            Cancelar
+          </Boton>
+          <Boton icono="save" onClick={guardar} disabled={guardando}>
+            {guardando ? "Guardando…" : "Guardar"}
+          </Boton>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <ErrorMsg>{error}</ErrorMsg>
+
+        <Campo label="Producto">
+          <select
+            value={productoId}
+            onChange={(e) => setProductoId(Number(e.target.value))}
+            className="w-full rounded-xl border border-borde bg-white px-3 py-2 text-[14px]"
+          >
+            <option value={0}>Elegí un producto…</option>
+            {disponibles.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.nombre} — {fmtMoney(p.precio)}
+              </option>
+            ))}
+          </select>
+        </Campo>
+
+        <Campo
+          label="Precio en esta sucursal"
+          hint={
+            elegido
+              ? `En el catálogo vale ${fmtMoney(elegido.precio)}. Dejalo vacío para usar ese.`
+              : "Dejalo vacío para usar el del catálogo"
+          }
+        >
+          <Input
+            value={precio}
+            onChange={(e) => setPrecio(e.target.value)}
+            inputMode="decimal"
+            placeholder={elegido ? String(elegido.precio) : ""}
+          />
+        </Campo>
+
+        <label className="flex items-center gap-2.5">
+          <input
+            type="checkbox"
+            checked={disponible}
+            onChange={(e) => setDisponible(e.target.checked)}
+            className="h-4 w-4 rounded border-borde accent-primary"
+          />
+          <span className="text-[14px] text-texto-2">
+            Se vende en esta sucursal
+            <span className="ml-1 text-texto-3">
+              — destildalo para esconderlo del punto de venta de este local
+            </span>
+          </span>
+        </label>
       </div>
     </Modal>
   );
