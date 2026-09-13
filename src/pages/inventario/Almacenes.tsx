@@ -16,7 +16,7 @@ import {
 import { api } from "../../lib/api";
 import { fmtMoney, fmtNum } from "../../lib/format";
 import { useApi } from "../../lib/useApi";
-import type { Almacen, AlmacenInput } from "../../types";
+import type { Almacen, AlmacenInput, TipoAlmacen } from "../../types";
 
 export default function Almacenes() {
   const almacenes = useApi(() => api.getAlmacenes(), []);
@@ -31,12 +31,14 @@ export default function Almacenes() {
 
   const lista = almacenes.datos ?? [];
   /**
-   * Un segundo depósito obliga a elegir almacén en cada movimiento sin darle
-   * nada a cambio a un local solo, así que el backend permite UNO activo. Se
-   * cuentan los activos y no el largo de la lista: desactivar el propio dejaba
-   * al negocio sin botón y sin almacén.
+   * El botón se ofrece siempre: el tope ya no es "un almacén" sino el cupo de
+   * sucursales del PLAN, y eso lo sabe el backend (que responde 409 con el
+   * número contratado). Esconder el botón acá haría que un negocio con cupo de
+   * sobra no pudiera crear su segunda sucursal, y que el mensaje del plan nunca
+   * se leyera.
    */
-  const hayActivo = lista.some((a) => a.activo);
+  const sucursales = lista.filter((a) => a.tipo !== "DEPOSITO");
+  const depositos = lista.filter((a) => a.tipo === "DEPOSITO");
 
   const filtrados = useMemo(() => {
     const texto = q.trim().toLowerCase();
@@ -48,6 +50,23 @@ export default function Almacenes() {
   }, [lista, q]);
 
   const valorTotal = lista.reduce((acc, a) => acc + (a.valorTotal ?? 0), 0);
+
+  /**
+   * La sucursal principal es la que el backend usa cuando una operación no dice
+   * de cuál se trata (una venta de una app vieja que no manda el almacén).
+   */
+  async function hacerPrincipal(a: Almacen) {
+    setErrorAccion("");
+    try {
+      await api.marcarAlmacenPrincipal(a.id);
+      setDetalle(null);
+      almacenes.recargar();
+    } catch (err) {
+      setErrorAccion(
+        err instanceof Error ? err.message : "No se pudo cambiar la principal",
+      );
+    }
+  }
 
   async function borrar() {
     if (!aBorrar || borrando) return;
@@ -69,13 +88,20 @@ export default function Almacenes() {
     <div className="mx-auto max-w-6xl space-y-4 p-5">
       <EncabezadoPagina
         titulo="Almacenes"
-        subtitulo={`${lista.length} ${lista.length === 1 ? "ubicación" : "ubicaciones"} · ${fmtMoney(valorTotal)} en stock`}
+        subtitulo={
+          // Se nombran por separado: un depósito no vende y no cuenta para el
+          // cupo del plan, así que contarlo junto con las sucursales daría un
+          // número que no coincide con lo que el negocio paga.
+          `${sucursales.length} ${sucursales.length === 1 ? "sucursal" : "sucursales"}` +
+          (depositos.length
+            ? ` · ${depositos.length} ${depositos.length === 1 ? "depósito" : "depósitos"}`
+            : "") +
+          ` · ${fmtMoney(valorTotal)} en stock`
+        }
         accion={
-          !hayActivo && (
-            <Boton icono="plus" onClick={() => setCreando(true)}>
-              Nuevo
-            </Boton>
-          )
+          <Boton icono="plus" onClick={() => setCreando(true)}>
+            Nuevo
+          </Boton>
         }
       />
 
@@ -117,6 +143,7 @@ export default function Almacenes() {
       <DetalleAlmacen
         almacen={detalle}
         onClose={() => setDetalle(null)}
+        onHacerPrincipal={hacerPrincipal}
         onEditar={(a) => {
           setDetalle(null);
           setEditando(a);
@@ -164,6 +191,10 @@ function TarjetaAlmacen({ almacen: a, onClick }: { almacen: Almacen; onClick: ()
             <Icon name="warehouse" size={21} />
           </span>
           <div className="flex items-center gap-2">
+            {/* El depósito se marca siempre: es lo que explica por qué no
+                aparece en el POS ni tiene caja. */}
+            {a.tipo === "DEPOSITO" && <Badge tono="azul">Depósito</Badge>}
+            {a.esPrincipal && <Badge tono="verde">Principal</Badge>}
             {!a.activo && <Badge tono="gris">Inactivo</Badge>}
             <Icon name="chevronRight" size={17} color="#94A3B8" />
           </div>
@@ -171,7 +202,7 @@ function TarjetaAlmacen({ almacen: a, onClick }: { almacen: Almacen; onClick: ()
 
         <h3 className="mt-3 truncate text-[15px] font-bold text-texto">{a.nombre}</h3>
         <p className="mt-0.5 line-clamp-1 text-[13px] text-texto-3">
-          {a.grupo || "Sin grupo"}
+          {a.direccion || a.grupo || "Sin dirección"}
         </p>
 
         <div className="mt-3 grid grid-cols-2 gap-2 rounded-xl bg-muted p-2.5">
@@ -199,14 +230,22 @@ function DetalleAlmacen({
   onClose,
   onEditar,
   onEliminar,
+  onHacerPrincipal,
 }: {
   almacen: Almacen | null;
   onClose: () => void;
   onEditar: (a: Almacen) => void;
   onEliminar: (a: Almacen) => void;
+  onHacerPrincipal: (a: Almacen) => void;
 }) {
   if (!a) return null;
   const articulos = a.articulos ?? [];
+  /**
+   * Sólo se ofrece cuando cambia algo: un depósito no puede ser principal
+   * (no vende) y el que ya lo es no tiene a dónde ir.
+   */
+  const puedeSerPrincipal =
+    !a.esPrincipal && a.tipo !== "DEPOSITO" && a.activo;
 
   return (
     <Modal
@@ -219,6 +258,11 @@ function DetalleAlmacen({
           <Boton variante="danger" icono="trash" onClick={() => onEliminar(a)}>
             Eliminar
           </Boton>
+          {puedeSerPrincipal && (
+            <Boton variante="ghost" icono="pin" onClick={() => onHacerPrincipal(a)}>
+              Hacer principal
+            </Boton>
+          )}
           <Boton icono="edit" onClick={() => onEditar(a)}>
             Editar
           </Boton>
@@ -336,6 +380,9 @@ function FormAlmacenCuerpo({
   const esEdicion = !!almacen;
   const [nombre, setNombre] = useState(almacen?.nombre ?? "");
   const [grupo, setGrupo] = useState(almacen?.grupo ?? "");
+  const [tipo, setTipo] = useState<TipoAlmacen>(almacen?.tipo ?? "SUCURSAL");
+  const [direccion, setDireccion] = useState(almacen?.direccion ?? "");
+  const [telefono, setTelefono] = useState(almacen?.telefono ?? "");
   const [activo, setActivo] = useState(almacen?.activo ?? true);
   const [error, setError] = useState("");
   const [guardando, setGuardando] = useState(false);
@@ -347,6 +394,9 @@ function FormAlmacenCuerpo({
     const input: AlmacenInput = {
       nombre: nombre.trim(),
       grupo: grupo.trim(),
+      tipo,
+      direccion: direccion.trim(),
+      telefono: telefono.trim(),
       activo,
     };
 
@@ -382,6 +432,45 @@ function FormAlmacenCuerpo({
       <div className="space-y-4">
         <Campo label="Nombre">
           <Input value={nombre} onChange={(e) => setNombre(e.target.value)} autoFocus />
+        </Campo>
+
+        {/* El tipo va arriba porque cambia el significado de todo lo demás: un
+            depósito no vende, no tiene caja y no cuenta para el cupo del plan.
+            En edición se puede cambiar, pero el backend lo frena si ya hubo
+            ventas — esos documentos quedarían colgados de un almacén que "no
+            vende". */}
+        <Campo
+          label="Tipo"
+          hint={
+            tipo === "DEPOSITO"
+              ? "No vende ni tiene caja: recibe mercadería y la manda a las sucursales."
+              : "Vende: aparece en el punto de venta y tiene su propia caja."
+          }
+        >
+          <div className="flex gap-2">
+            {(["SUCURSAL", "DEPOSITO"] as const).map((t) => (
+              <button
+                key={t}
+                type="button"
+                onClick={() => setTipo(t)}
+                className={`flex-1 rounded-xl border px-3 py-2 text-[13px] font-semibold transition-colors ${
+                  tipo === t
+                    ? "border-primary-boton bg-primary-boton text-white"
+                    : "border-borde bg-white text-texto-2 hover:bg-muted"
+                }`}
+              >
+                {t === "SUCURSAL" ? "Sucursal" : "Depósito"}
+              </button>
+            ))}
+          </div>
+        </Campo>
+
+        <Campo label="Dirección" hint="Opcional: dónde queda">
+          <Input value={direccion} onChange={(e) => setDireccion(e.target.value)} />
+        </Campo>
+
+        <Campo label="Teléfono" hint="Opcional">
+          <Input value={telefono} onChange={(e) => setTelefono(e.target.value)} />
         </Campo>
 
         <Campo label="Grupo" hint="Opcional: para juntar sucursales o depósitos">

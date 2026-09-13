@@ -40,6 +40,7 @@ const OPC_TIPO = [
   ["ENTRADA", "Entradas"],
   ["SALIDA", "Salidas"],
   ["AJUSTE", "Ajustes"],
+  ["TRANSFERENCIA", "Transferencias"],
 ] as const satisfies readonly (readonly [FiltroTipo, string])[];
 
 const OPC_ESTADO = [
@@ -65,9 +66,16 @@ const ETIQUETA_TIPO: Record<TipoMovimiento, string> = {
   ENTRADA: "Entrada",
   SALIDA: "Salida",
   AJUSTE: "Ajuste",
+  TRANSFERENCIA: "Transferencia",
 };
 
-/** Sólo la entrada suma: salida y ajuste se leen como movimiento negativo. */
+/**
+ * Sólo la entrada suma: salida y ajuste se leen como movimiento negativo.
+ *
+ * Una TRANSFERENCIA no suma ni resta al negocio —la mercadería cambia de
+ * almacén, no de dueño— así que se trata como no-entrada: lo que se muestra es
+ * el movimiento, no una variación del inventario total.
+ */
 function esEntrada(tipo: TipoMovimiento): boolean {
   return tipo === "ENTRADA";
 }

@@ -170,11 +170,27 @@ export interface ArticuloDeAlmacen {
   costo: number;
 }
 
+/**
+ * SUCURSAL vende (tiene caja y usuarios) · DEPOSITO sólo guarda y despacha.
+ *
+ * Un depósito no aparece en el POS y no cuenta para el cupo de sucursales del
+ * plan: cobrarle al negocio por un lugar que no vende no se sostiene.
+ */
+export type TipoAlmacen = "SUCURSAL" | "DEPOSITO";
+
 export interface Almacen {
   id: number;
   nombre: string;
   grupo: string | null;
   activo: boolean;
+  tipo: TipoAlmacen;
+  /**
+   * La sucursal por defecto del negocio: la que se usa cuando una operación no
+   * dice de cuál se trata. Hay exactamente una por negocio.
+   */
+  esPrincipal: boolean;
+  direccion: string | null;
+  telefono: string | null;
   totalArticulos?: number;
   totalUnidades?: number;
   valorTotal?: number;
@@ -185,6 +201,9 @@ export interface AlmacenInput {
   nombre: string;
   grupo?: string;
   activo?: boolean;
+  tipo?: TipoAlmacen;
+  direccion?: string;
+  telefono?: string;
 }
 
 export interface Insumo {
@@ -216,7 +235,7 @@ export interface InsumoInput {
   almacenId?: number;
 }
 
-export type TipoMovimiento = "ENTRADA" | "SALIDA" | "AJUSTE";
+export type TipoMovimiento = "ENTRADA" | "SALIDA" | "AJUSTE" | "TRANSFERENCIA";
 export type EstadoDocumento = "PENDIENTE" | "APROBADO" | "ANULADO";
 
 export interface Movimiento {
@@ -229,7 +248,10 @@ export interface Movimiento {
   fechaAprobacion: string | null;
   /** De dónde salen los artículos del movimiento. */
   origen: "PRODUCTO" | "INSUMO" | null;
+  /** En una TRANSFERENCIA es el almacén de ORIGEN. */
   almacen: Pick<Almacen, "id" | "nombre"> | null;
+  /** Sólo en TRANSFERENCIA: a dónde va la mercadería. */
+  almacenDestino?: Pick<Almacen, "id" | "nombre"> | null;
   items: number;
   monto: number;
   detalles?: DetalleMovimiento[];
@@ -258,12 +280,46 @@ export interface ArticuloMovimiento {
 
 export interface MovimientoInput {
   tipo: TipoMovimiento;
+  /** En una TRANSFERENCIA es el almacén de ORIGEN. */
   almacenId: number;
+  /** Obligatorio en TRANSFERENCIA, rechazado en los demás tipos. */
+  almacenDestinoId?: number;
   /** yyyy-MM-dd; si falta, el backend usa hoy. */
   fecha?: string;
   comprobante?: string;
   descripcion?: string;
   detalles?: DetalleMovimientoInput[];
+}
+
+/** Por qué se movió el stock. Alimenta la bitácora. */
+export type MotivoStock =
+  | "VENTA"
+  | "ANULACION"
+  | "ENTRADA"
+  | "SALIDA"
+  | "AJUSTE"
+  | "TRANSFERENCIA_SALIDA"
+  | "TRANSFERENCIA_ENTRADA"
+  | "COMBO";
+
+/**
+ * Una línea de la bitácora de stock.
+ *
+ * `cantidad` va CON SIGNO (positivo entra, negativo sale) y `saldoDespues` es lo
+ * que quedó: juntos contestan "¿por qué este producto tiene 7 y no 10?".
+ */
+export interface ApunteStock {
+  id: number;
+  cantidad: number;
+  saldoDespues: number;
+  motivo: MotivoStock;
+  fecha: string;
+  producto: { id: number; nombre: string } | null;
+  almacen: { id: number; nombre: string } | null;
+  /** Null = proceso automático (el armado de un combo, por ejemplo). */
+  usuario: { id: number; username: string; nombre: string | null } | null;
+  referenciaTipo: string | null;
+  referenciaId: number | null;
 }
 
 export interface DetalleMovimientoInput {

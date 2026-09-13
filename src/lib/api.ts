@@ -1,4 +1,5 @@
 import type {
+  ApunteStock,
   AbonoInput,
   Almacen,
   AlmacenInput,
@@ -393,6 +394,22 @@ export const api = {
 
   // ── Inventario ────────────────────────────────────────────────────────────
   getAlmacenes: () => request<Almacen[]>("/almacenes"),
+  /**
+   * Hace de este almacén la sucursal principal: la que el backend usa cuando una
+   * operación no dice de cuál se trata.
+   */
+  marcarAlmacenPrincipal: (id: number) =>
+    request<{ mensaje: string }>(`/almacenes/${id}/principal`, {
+      method: "PATCH",
+    }),
+  /** Bitácora de stock: el historial de todo lo que se movió. */
+  getBitacoraStock: (params: {
+    productoId?: number;
+    almacenId?: number;
+    desde?: string;
+    hasta?: string;
+    limite?: number;
+  } = {}) => request<ApunteStock[]>(`/almacenes/bitacora${qs(params)}`),
   getAlmacen: (id: number) => request<Almacen>(`/almacenes/${id}`),
   crearAlmacen: (input: AlmacenInput) =>
     request<Almacen>("/almacenes", { method: "POST", body: JSON.stringify(input) }),
