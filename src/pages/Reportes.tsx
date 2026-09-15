@@ -434,25 +434,29 @@ export default function Reportes() {
         <Chips valor={preset} opciones={OPC_PRESET} onChange={setPreset} />
         {/* El local va junto al periodo: son los dos filtros de TODA la
             seccion, y los dos viajan al detalle. */}
+        {/* Ancho acotado: es un filtro de dos palabras, y estirado a los 1100px
+            de la pagina quedaba un campo enorme pegado al borde derecho. */}
         {elegirSucursal && (
-          <Campo
-            label="Sucursal"
-            hint="Todas = el consolidado del negocio, sumando los locales"
-          >
-            <Select
-              value={sucursalId ?? ""}
-              onChange={(e) =>
-                setSucursalId(e.target.value === "" ? null : Number(e.target.value))
-              }
+          <div className="max-w-sm">
+            <Campo
+              label="Sucursal"
+              hint="Todas = el consolidado del negocio, sumando los locales"
             >
-              <option value="">Todas las sucursales</option>
-              {sucursales.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.nombre}
-                </option>
-              ))}
-            </Select>
-          </Campo>
+              <Select
+                value={sucursalId ?? ""}
+                onChange={(e) =>
+                  setSucursalId(e.target.value === "" ? null : Number(e.target.value))
+                }
+              >
+                <option value="">Todas las sucursales</option>
+                {sucursales.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.nombre}
+                  </option>
+                ))}
+              </Select>
+            </Campo>
+          </div>
         )}
         {preset === "custom" && (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
