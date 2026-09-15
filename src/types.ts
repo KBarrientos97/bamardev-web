@@ -783,6 +783,15 @@ export interface EstadoCobroQr {
 export interface RangoReporte {
   desde?: string;
   hasta?: string;
+  /**
+   * Sucursal de la que se piden los numeros. **Ausente = todas**, el
+   * consolidado del negocio.
+   *
+   * Viaja con el rango y no aparte porque es el otro filtro que TODOS los
+   * reportes comparten: como cada llamada hace `qs({ ...rango })`, agregarlo
+   * aca lo mando a los 23 endpoints de una.
+   */
+  sucursalId?: number;
 }
 
 export interface ResumenReportes {
@@ -876,6 +885,11 @@ export interface ReporteVentasGeneral {
     /** Nombre de la forma de pago, o "Mixto" / "Sin cobrar". */
     metodoPago: string;
     articulos: number;
+    /**
+     * De que local salio. Null en las respuestas viejas y en negocios de una
+     * sola sucursal, donde la columna no se muestra.
+     */
+    sucursal?: string | null;
     total: number;
   }[];
   pagina: PaginaMeta;
@@ -899,6 +913,8 @@ export interface ReporteVentasDetalle {
     cantidad: number;
     precio: number;
     subtotal: number;
+    /** De que local salio (ver ReporteVentasGeneral). */
+    sucursal?: string | null;
   }[];
   pagina: PaginaMeta;
 }

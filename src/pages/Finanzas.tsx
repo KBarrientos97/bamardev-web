@@ -102,7 +102,7 @@ function VentasGeneral({ rango }: { rango: RangoReporte }) {
 
   // Volver a la página 1 al cambiar el rango o el vendedor: quedarse en la 7
   // de un resultado que ahora tiene 2 páginas muestra un vacío que confunde.
-  useEffect(() => setPage(1), [rango.desde, rango.hasta, usuarioId]);
+  useEffect(() => setPage(1), [rango.desde, rango.hasta, rango.sucursalId, usuarioId]);
 
   const datos = useApi<ReporteVentasGeneral>(
     () =>
@@ -112,9 +112,17 @@ function VentasGeneral({ rango }: { rango: RangoReporte }) {
         page,
         limite: LIMITE,
       }),
-    [rango.desde, rango.hasta, usuarioId, page],
+    [rango.desde, rango.hasta, rango.sucursalId, usuarioId, page],
   );
   const d = datos.datos;
+
+  /**
+   * La columna del local aparece solo cuando hay ventas de mas de uno a la
+   * vista. En un negocio de una sucursal, o mirando el reporte ya filtrado por
+   * una (ahi lo dice el subtitulo), repetir el nombre en cada fila es ruido.
+   */
+  const variasSucursales =
+    new Set((d?.items ?? []).map((v) => v.sucursal).filter(Boolean)).size > 1;
 
   return (
     <Panel estado={datos}>
@@ -141,7 +149,15 @@ function VentasGeneral({ rango }: { rango: RangoReporte }) {
           )}
 
           <Tabla
-            columnas={["Comprobante", "Fecha", "Cliente", "Vendedor", "Pago", "Total"]}
+            columnas={[
+              "Comprobante",
+              "Fecha",
+              "Cliente",
+              "Vendedor",
+              ...(variasSucursales ? ["Sucursal"] : []),
+              "Pago",
+              "Total",
+            ]}
             vacio="No hubo ventas en este período."
             filas={d.items.map((v) => ({
               key: v.id,
@@ -154,6 +170,7 @@ function VentasGeneral({ rango }: { rango: RangoReporte }) {
                 fmtFechaHora(v.fecha),
                 v.cliente,
                 v.vendedor,
+                ...(variasSucursales ? [v.sucursal ?? "—"] : []),
                 v.metodoPago,
                 <span key="total" className={v.estado === "ANULADO" ? "text-texto-4 line-through" : ""}>
                   {fmtMoney(v.total)}
@@ -170,11 +187,11 @@ function VentasGeneral({ rango }: { rango: RangoReporte }) {
 
 function VentasDetalle({ rango }: { rango: RangoReporte }) {
   const [page, setPage] = useState(1);
-  useEffect(() => setPage(1), [rango.desde, rango.hasta]);
+  useEffect(() => setPage(1), [rango.desde, rango.hasta, rango.sucursalId]);
 
   const datos = useApi<ReporteVentasDetalle>(
     () => api.reporteVentasDetalle({ ...rango, page, limite: LIMITE }),
-    [rango.desde, rango.hasta, page],
+    [rango.desde, rango.hasta, rango.sucursalId, page],
   );
   const d = datos.datos;
 
@@ -269,11 +286,11 @@ function ComprasGeneral({ rango }: { rango: RangoReporte }) {
   const [page, setPage] = useState(1);
   const [tipo, setTipo] = useState("");
   const [verCompra, setVerCompra] = useState<number | null>(null);
-  useEffect(() => setPage(1), [rango.desde, rango.hasta, tipo]);
+  useEffect(() => setPage(1), [rango.desde, rango.hasta, rango.sucursalId, tipo]);
 
   const datos = useApi<ReporteComprasGeneral>(
     () => api.reporteCompras({ ...rango, ...(tipo ? { tipo } : {}), page, limite: LIMITE }),
-    [rango.desde, rango.hasta, tipo, page],
+    [rango.desde, rango.hasta, rango.sucursalId, tipo, page],
   );
   const d = datos.datos;
 
@@ -324,7 +341,7 @@ function ComprasGeneral({ rango }: { rango: RangoReporte }) {
 function ComprasDetalle({ rango }: { rango: RangoReporte }) {
   const [page, setPage] = useState(1);
   const [tipo, setTipo] = useState("");
-  useEffect(() => setPage(1), [rango.desde, rango.hasta, tipo]);
+  useEffect(() => setPage(1), [rango.desde, rango.hasta, rango.sucursalId, tipo]);
 
   const datos = useApi<ReporteComprasDetalle>(
     () =>
@@ -334,7 +351,7 @@ function ComprasDetalle({ rango }: { rango: RangoReporte }) {
         page,
         limite: LIMITE,
       }),
-    [rango.desde, rango.hasta, tipo, page],
+    [rango.desde, rango.hasta, rango.sucursalId, tipo, page],
   );
   const d = datos.datos;
 
@@ -481,11 +498,11 @@ const TIPOS_CAJA = [
 function MovimientosCaja({ rango }: { rango: RangoReporte }) {
   const [page, setPage] = useState(1);
   const [tipo, setTipo] = useState("");
-  useEffect(() => setPage(1), [rango.desde, rango.hasta, tipo]);
+  useEffect(() => setPage(1), [rango.desde, rango.hasta, rango.sucursalId, tipo]);
 
   const datos = useApi<ReporteMovimientosCaja>(
     () => api.reporteCaja({ ...rango, ...(tipo ? { tipo } : {}), page, limite: LIMITE }),
-    [rango.desde, rango.hasta, tipo, page],
+    [rango.desde, rango.hasta, rango.sucursalId, tipo, page],
   );
   const d = datos.datos;
 

@@ -1,7 +1,17 @@
 import { useMemo, useState } from "react";
 import { Icon, type NombreIcono } from "../components/Icon";
 import { Chips, EncabezadoPagina } from "../components/filtros";
-import { Boton, Campo, Cargando, ErrorMsg, Input, Kpi, Modal, Vacio } from "../components/ui";
+import {
+  Boton,
+  Campo,
+  Cargando,
+  ErrorMsg,
+  Input,
+  Kpi,
+  Modal,
+  Select,
+  Vacio,
+} from "../components/ui";
 import { api } from "../lib/api";
 import { fmtFecha, fmtFechaHora, fmtMoney, fmtNum, isoDia } from "../lib/format";
 import type { Capacidad } from "../lib/permisos";
@@ -332,8 +342,9 @@ function esObjetoPlano(v: unknown): v is Record<string, unknown> {
 // ── Página ──────────────────────────────────────────────────────────────────
 
 export default function Reportes() {
-  const { incluye } = useAuth();
+  const { incluye, usuario } = useAuth();
   const [preset, setPreset] = useState<Preset>("mes");
+  const [sucursalId, setSucursalId] = useState<number | null>(null);
   const [desdeManual, setDesdeManual] = useState(() => rangoDePreset("mes").desde ?? "");
   const [hastaManual, setHastaManual] = useState(() => isoDia(new Date()));
   const [abierto, setAbierto] = useState<FichaReporte | null>(null);
@@ -351,24 +362,56 @@ export default function Reportes() {
     [incluye],
   );
 
-  const rango: RangoReporte = useMemo(
-    () =>
-      preset === "custom"
-        ? { desde: desdeManual, hasta: hastaManual }
-        : rangoDePreset(preset),
-    [preset, desdeManual, hastaManual],
+  /**
+   * De que local son los numeros.
+   *
+   * Solo lo elige un usuario de organizacion: al que esta atado a una sucursal
+   * el backend le fuerza la suya, asi que un selector seria mentirle. Y con un
+   * solo local no se pregunta nada, porque la respuesta es siempre la misma.
+   */
+  const esDeOrganizacion = usuario?.sucursalId == null;
+  const almacenes = useApi(
+    () => (esDeOrganizacion ? api.getAlmacenes() : Promise.resolve([])),
+    [esDeOrganizacion],
   );
+  const sucursales = (almacenes.datos ?? []).filter(
+    (a) => a.tipo !== "DEPOSITO" && a.activo,
+  );
+  const elegirSucursal = esDeOrganizacion && sucursales.length > 1;
+
+  /**
+   * El filtro entero: fechas + local.
+   *
+   * La sucursal va adentro del rango porque cada llamada hace
+   * `qs({ ...rango })`: asi los 15 reportes de detalle y las dos pestanas de
+   * Finanzas quedaron filtrados sin tocar ninguno por separado.
+   */
+  const rango: RangoReporte = useMemo(
+    () => ({
+      ...(preset === "custom"
+        ? { desde: desdeManual, hasta: hastaManual }
+        : rangoDePreset(preset)),
+      ...(elegirSucursal && sucursalId != null ? { sucursalId } : {}),
+    }),
+    [preset, desdeManual, hastaManual, elegirSucursal, sucursalId],
+  );
+
+  /** El nombre del local elegido, para el subtitulo. Vacio cuando son todos. */
+  const nombreSucursal =
+    sucursales.find((a) => a.id === sucursalId)?.nombre ?? "";
 
   const resumen = useApi<Record<string, unknown>>(
     () => api.reporte<Record<string, unknown>>("resumen", rango),
-    [rango.desde, rango.hasta],
+    [rango.desde, rango.hasta, rango.sucursalId],
   );
 
   return (
     <div className="mx-auto max-w-6xl space-y-4 p-5">
       <EncabezadoPagina
         titulo={vista === "reportes" ? "Reportes" : "Finanzas"}
-        subtitulo={`Del ${fmtFecha(rango.desde)} al ${fmtFecha(rango.hasta)}`}
+        subtitulo={`Del ${fmtFecha(rango.desde)} al ${fmtFecha(rango.hasta)}${
+          nombreSucursal ? ` · ${nombreSucursal}` : ""
+        }`}
       />
 
       <div className="flex gap-2">
@@ -389,6 +432,28 @@ export default function Reportes() {
 
       <div className="space-y-3">
         <Chips valor={preset} opciones={OPC_PRESET} onChange={setPreset} />
+        {/* El local va junto al periodo: son los dos filtros de TODA la
+            seccion, y los dos viajan al detalle. */}
+        {elegirSucursal && (
+          <Campo
+            label="Sucursal"
+            hint="Todas = el consolidado del negocio, sumando los locales"
+          >
+            <Select
+              value={sucursalId ?? ""}
+              onChange={(e) =>
+                setSucursalId(e.target.value === "" ? null : Number(e.target.value))
+              }
+            >
+              <option value="">Todas las sucursales</option>
+              {sucursales.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.nombre}
+                </option>
+              ))}
+            </Select>
+          </Campo>
+        )}
         {preset === "custom" && (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Campo label="Desde">
@@ -450,7 +515,7 @@ export default function Reportes() {
 
       {abierto && (
         <VistaReporte
-          key={`${abierto.nombre}-${rango.desde}-${rango.hasta}`}
+          key={`${abierto.nombre}-${rango.desde}-${rango.hasta}-${rango.sucursalId ?? ""}`}
           ficha={abierto}
           rango={rango}
           onClose={() => setAbierto(null)}
