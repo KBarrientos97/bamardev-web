@@ -63,6 +63,15 @@ export interface SesionUsuario {
   rol: Rol;
   /** Módulos del ROL, en MAYÚSCULAS. */
   modulos: Modulo[];
+  /**
+   * Sucursal del que entró. **`null` = toda la organización.**
+   *
+   * Opcional porque una sesión guardada ANTES de que el backend lo mandara se
+   * rehidrata desde localStorage sin el campo: ahí vale `undefined`, que no es
+   * lo mismo que `null`. Por eso se compara con `== null` donde importa.
+   */
+  sucursalId?: number | null;
+  sucursal?: string | null;
 }
 
 export interface SesionNegocio {
@@ -601,6 +610,15 @@ export interface Usuario {
   vehiculo: string | null;
   creado: string;
   ultimoLogin: string | null;
+  /**
+   * A qué sucursal pertenece. **`null` = toda la organización** (el dueño, que
+   * ve el consolidado), no "sin asignar" — mostrarlo como un dato faltante
+   * invitaría a "arreglarlo" atando al dueño a un solo local.
+   */
+  sucursalId: number | null;
+  /** Nombre de esa sucursal, para no tener que cruzarlo con la lista. */
+  sucursal: string | null;
+  sucursalDesde: string | null;
   /** El PIN nunca sale del backend; sólo se sabe si tiene uno cargado. */
   tienePin: boolean;
 }
@@ -615,6 +633,8 @@ export interface CrearUsuarioInput {
   notas?: string;
   zona?: string;
   vehiculo?: string;
+  /** null u omitido = toda la organización. Sólo lo fija un admin de negocio. */
+  sucursalId?: number | null;
 }
 
 /**
@@ -630,6 +650,12 @@ export interface ActualizarUsuarioInput {
   notas?: string;
   zona?: string;
   vehiculo?: string;
+  /**
+   * Acá `null` SÍ es un valor: "pasalo a toda la organización". Es la
+   * excepción a la regla de la cadena vacía de arriba, porque el campo es un
+   * id y no un texto — el backend distingue ausente (no tocar) de null.
+   */
+  sucursalId?: number | null;
 }
 
 // ── Dashboard y licencia ────────────────────────────────────────────────────

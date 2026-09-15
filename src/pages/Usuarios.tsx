@@ -388,6 +388,9 @@ function DetalleUsuario({
           <Dato label="Teléfono" valor={u.telefono || "—"} />
           <Dato label="Último acceso" valor={tiempoRelativo(u.ultimoLogin)} />
           <Dato label="Creado" valor={fmtFechaHora(u.creado)} />
+          {/* Sólo si está atado a un local. Al de organización no se le muestra
+              "—": ver todo no es un dato faltante. */}
+          {u.sucursal && <Dato label="Sucursal" valor={u.sucursal} />}
           {esRepartidor && (
             <>
               <Dato label="Zona" valor={u.zona || "—"} />
@@ -511,10 +514,31 @@ function FormUsuarioCuerpo({
   const [notas, setNotas] = useState(usuario?.notas ?? "");
   const [zona, setZona] = useState(usuario?.zona ?? "");
   const [vehiculo, setVehiculo] = useState(usuario?.vehiculo ?? "");
+  const [sucursalId, setSucursalId] = useState<number | null>(usuario?.sucursalId ?? null);
   const [error, setError] = useState("");
   const [guardando, setGuardando] = useState(false);
 
   const esRepartidor = rol === "REPARTIDOR";
+
+  const almacenes = useApi(() => api.getAlmacenes(), []);
+  // Sólo las sucursales: a un depósito no se le asigna personal de venta.
+  const sucursales = (almacenes.datos ?? []).filter(
+    (a) => a.tipo !== "DEPOSITO" && (a.activo || a.id === usuario?.sucursalId),
+  );
+  /**
+   * El campo aparece recién con dos o más locales. Con uno solo la respuesta
+   * es siempre la misma y preguntarla sería ruido — un negocio de un local no
+   * debería enterarse de que existen las sucursales.
+   */
+  const mostrarSucursal = sucursales.length > 1;
+  // Y sólo un usuario de organización puede fijarla: el backend rechaza al
+  // resto, así que ofrecer el selector sería invitarlo a un 403.
+  //
+  // `== null` cubre los dos casos a propósito: null (es de organización) y
+  // undefined (sesión guardada antes de que el login mandara el campo). Elegir
+  // mostrarlo de más es preferible a esconderle la función al dueño hasta que
+  // vuelva a entrar; si no le corresponde, el backend responde 403 igual.
+  const puedeAsignarSucursal = actual?.sucursalId == null;
 
   async function guardar() {
     setError("");
@@ -540,6 +564,9 @@ function FormUsuarioCuerpo({
           // serlo se limpian para no arrastrar datos de su rol anterior.
           zona: esRepartidor ? zona.trim() : "",
           vehiculo: esRepartidor ? vehiculo.trim() : "",
+          // Sólo si se podía editar: mandarlo cuando el selector no se mostró
+          // le borraría la sucursal a alguien por abrirle la ficha y guardar.
+          ...(mostrarSucursal && puedeAsignarSucursal ? { sucursalId } : {}),
         };
         onGuardado(await api.actualizarUsuario(usuario.id, input));
       } else {
@@ -552,6 +579,9 @@ function FormUsuarioCuerpo({
           telefono: telefono.trim(),
           notas: notas.trim(),
           ...(esRepartidor ? { zona: zona.trim(), vehiculo: vehiculo.trim() } : {}),
+          ...(mostrarSucursal && puedeAsignarSucursal && sucursalId != null
+            ? { sucursalId }
+            : {}),
         };
         onGuardado(await api.crearUsuario(input));
       }
@@ -612,6 +642,28 @@ function FormUsuarioCuerpo({
             ))}
           </Select>
         </Campo>
+
+        {mostrarSucursal && puedeAsignarSucursal && (
+          <Campo
+            label="Sucursal"
+            hint="Toda la organización = ve y opera en todos los locales"
+          >
+            <Select
+              value={sucursalId ?? ""}
+              onChange={(e) =>
+                setSucursalId(e.target.value === "" ? null : Number(e.target.value))
+              }
+            >
+              <option value="">Toda la organización</option>
+              {sucursales.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.nombre}
+                  {a.activo ? "" : " (desactivada)"}
+                </option>
+              ))}
+            </Select>
+          </Campo>
+        )}
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Campo label="Email">
