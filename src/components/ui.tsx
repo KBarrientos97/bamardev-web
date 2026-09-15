@@ -73,18 +73,38 @@ export function Input({ className = "", ...props }: InputHTMLAttributes<HTMLInpu
   );
 }
 
+/**
+ * Desplegable.
+ *
+ * La flecha nativa no se usa: cada navegador dibuja la suya —en Chrome de
+ * Windows, un triangulito gris pegado al borde— y al lado de un campo
+ * redondeado se leia como un detalle suelto, sobre todo en un select ancho,
+ * donde queda a media pantalla del texto. Con `appearance-none` se apaga y se
+ * dibuja el chevron del sistema de iconos, separado del borde y del mismo gris
+ * que el resto de los campos.
+ *
+ * El `pr-10` es parte del arreglo, no decoracion: sin ese lugar reservado, una
+ * opcion larga se mete abajo de la flecha.
+ */
 export function Select({
   className = "",
   children,
   ...props
 }: InputHTMLAttributes<HTMLSelectElement> & { children: ReactNode }) {
   return (
-    <select
-      {...props}
-      className={`w-full rounded-xl border border-borde bg-white px-3.5 py-2.5 text-sm text-texto outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary-100 ${className}`}
-    >
-      {children}
-    </select>
+    <div className="relative">
+      <select
+        {...props}
+        className={`w-full cursor-pointer appearance-none rounded-xl border border-borde bg-white py-2.5 pl-3.5 pr-10 text-sm text-texto outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary-100 ${className}`}
+      >
+        {children}
+      </select>
+      {/* pointer-events-none: el click tiene que abrir el desplegable, no morir
+          en el icono. */}
+      <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center">
+        <Icon name="chevronDown" size={16} color="#94A3B8" />
+      </span>
+    </div>
   );
 }
 
