@@ -195,6 +195,10 @@ function VentasDetalle({ rango }: { rango: RangoReporte }) {
   );
   const d = datos.datos;
 
+  /** Igual que en el tab General: solo con varios locales a la vista. */
+  const variasSucursales =
+    new Set((d?.items ?? []).map((l) => l.sucursal).filter(Boolean)).size > 1;
+
   return (
     <Panel estado={datos}>
       {d && (
@@ -208,7 +212,15 @@ function VentasDetalle({ rango }: { rango: RangoReporte }) {
             ]}
           />
           <Tabla
-            columnas={["Producto", "Comprobante", "Fecha", "Cantidad", "Precio", "Subtotal"]}
+            columnas={[
+              "Producto",
+              "Comprobante",
+              "Fecha",
+              ...(variasSucursales ? ["Sucursal"] : []),
+              "Cantidad",
+              "Precio",
+              "Subtotal",
+            ]}
             vacio="No se vendió nada en este período."
             filas={d.items.map((l, i) => ({
               key: `${l.ventaId}-${l.producto}-${i}`,
@@ -221,6 +233,7 @@ function VentasDetalle({ rango }: { rango: RangoReporte }) {
                 </span>,
                 l.comprobante,
                 fmtFechaHora(l.fecha),
+                ...(variasSucursales ? [l.sucursal ?? "—"] : []),
                 fmtNum(l.cantidad, 2),
                 fmtMoney(l.precio),
                 fmtMoney(l.subtotal),
