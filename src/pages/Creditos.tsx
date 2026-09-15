@@ -602,6 +602,17 @@ function FormAbono({
   onClose: () => void;
   onGuardado: (monto: number) => void;
 }) {
+  const { usuario } = useAuth();
+  /**
+   * Donde termina la plata, que no es lo mismo para todos.
+   *
+   * El duenio puede cobrar un fiado sin caja abierta (lo permite el backend):
+   * ahi el cobro queda registrado a su nombre y no entra a ningun arqueo. Al
+   * cajero se le sigue exigiendo su caja, asi que para el la frase de siempre
+   * es la correcta.
+   */
+  const esDuenio = usuario?.rol === "ADMIN";
+
   const [monto, setMonto] = useState("");
   // Las formas de pago se resuelven por NOMBRE porque los ids son por negocio:
   // el "1" de un negocio no es el efectivo de otro.
@@ -676,7 +687,14 @@ function FormAbono({
           Pagar todo ({fmtMoney(c.saldo)})
         </Boton>
 
-        <Campo label="Forma de pago" hint="El abono entra en tu caja abierta">
+        <Campo
+          label="Forma de pago"
+          hint={
+            esDuenio
+              ? "Con tu caja abierta entra ahi; si no, queda registrado a tu nombre"
+              : "El abono entra en tu caja abierta"
+          }
+        >
           <Select value={formaNombre} onChange={(e) => setFormaNombre(e.target.value)}>
             {formasPago.map((f) => (
               <option key={f.id} value={f.nombre}>
