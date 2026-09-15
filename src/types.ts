@@ -375,6 +375,13 @@ export interface Caja {
   montoApertura: number;
   descripcion: string | null;
   usuarioAperturaId: number | null;
+  /**
+   * En qué sucursal se abrió. La caja fija el local de TODO el turno: de ahí
+   * sale el stock que se descuenta y los precios que se cobran.
+   */
+  almacenId: number | null;
+  /** Nombre de esa sucursal, para mostrarlo en el POS sin pedir la lista. */
+  almacen: string | null;
   fechaCierre: string | null;
   montoCierre: number | null;
   montoDiferencia: number | null;

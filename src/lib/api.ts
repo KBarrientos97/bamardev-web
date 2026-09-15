@@ -486,7 +486,13 @@ export const api = {
   getFormasPago: () => request<FormaPago[]>("/formas-pago"),
   /** Devuelve `{ caja: null }` cuando el usuario no tiene turno abierto. */
   cajaActual: () => request<{ caja: Caja | null }>("/caja/actual"),
-  abrirCaja: (input: { montoApertura: number; descripcion?: string }) =>
+  /** `almacenId` sólo lo manda un usuario de organización: al resto el backend
+   *  se lo rechaza porque trabaja en su sucursal asignada. */
+  abrirCaja: (input: {
+    montoApertura: number;
+    descripcion?: string;
+    almacenId?: number;
+  }) =>
     request<Caja>("/caja/abrir", { method: "POST", body: JSON.stringify(input) }),
   resumenCaja: (id: number) => request<ResumenCaja>(`/caja/${id}/resumen`),
   cerrarCaja: (id: number, input: { montoCierre: number; notaCierre?: string }) =>

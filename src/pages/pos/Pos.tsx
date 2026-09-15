@@ -399,7 +399,19 @@ export default function Pos() {
       cabecera={
         <div className="flex items-center justify-between gap-3 border-b border-borde bg-white px-4 py-3">
           <div className="min-w-0">
-            <h1 className="text-[15px] font-bold text-texto">Punto de venta</h1>
+            <h1 className="flex items-center gap-2 text-[15px] font-bold text-texto">
+              Punto de venta
+              {/* La sucursal del turno, al lado del título y no escondida en un
+                  menú: acá se descuenta el stock y de acá salen los precios, así
+                  que quien cobra tiene que poder verlo sin buscarlo. Sólo
+                  aparece si el backend la manda — un negocio de un local no ve
+                  nada, que es lo correcto. */}
+              {abierta.almacen && (
+                <span className="truncate rounded-lg bg-primary-50 px-2 py-0.5 text-[12px] font-semibold text-primary-700">
+                  {abierta.almacen}
+                </span>
+              )}
+            </h1>
             <p className="flex items-center gap-1.5 truncate text-xs text-texto-3">
               <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
               Caja abierta {fmtHora(abierta.fechaApertura)} ·{" "}

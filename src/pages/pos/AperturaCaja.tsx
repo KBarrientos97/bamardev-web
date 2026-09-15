@@ -3,9 +3,10 @@ import { parsearMontoO } from "../../lib/dinero";
 import CorteDeCaja from "../../components/CorteDeCaja";
 import { CargarQrCobro } from "../../components/QrCobro";
 import { Icon } from "../../components/Icon";
-import { Boton, Campo, ErrorMsg, Input } from "../../components/ui";
+import { Boton, Campo, ErrorMsg, Input, Select } from "../../components/ui";
 import { api } from "../../lib/api";
 import { fmtMoney } from "../../lib/format";
+import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
 
 /** Montos típicos de fondo de caja: ahorran teclear lo de siempre. */
@@ -17,6 +18,32 @@ export default function AperturaCaja({ onAbierta }: { onAbierta: () => void }) {
   const [descripcion, setDescripcion] = useState("");
   const [error, setError] = useState("");
   const [enviando, setEnviando] = useState(false);
+  const [almacenId, setAlmacenId] = useState<number | null>(null);
+
+  /**
+   * En qué sucursal se abre la caja.
+   *
+   * La caja fija el local de TODO el turno: de ahí sale el stock que se
+   * descuenta y los precios que se cobran. Por eso se elige acá y no por venta
+   * — una caja con ventas de dos locales no cierra contra ninguno.
+   *
+   * Sólo lo elige un usuario de organización (el dueño, que atiende en
+   * cualquier local). El cajero trabaja donde le asignaron: el backend le
+   * rechaza el campo, así que ni se le muestra.
+   */
+  const esDeOrganizacion = usuario?.sucursalId == null;
+  const almacenes = useApi(
+    () => (esDeOrganizacion ? api.getAlmacenes() : Promise.resolve([])),
+    [esDeOrganizacion],
+  );
+  const sucursales = (almacenes.datos ?? []).filter(
+    (a) => a.tipo !== "DEPOSITO" && a.activo,
+  );
+  // Con un solo local no hay nada que preguntar: el negocio de una sucursal no
+  // debería enterarse de que esto existe.
+  const elegirSucursal = esDeOrganizacion && sucursales.length > 1;
+  const sugerida = sucursales.find((a) => a.esPrincipal) ?? sucursales[0];
+  const elegida = almacenId ?? sugerida?.id ?? null;
 
   const montoNum = parsearMontoO(monto, NaN);
   const valido = monto !== "" && Number.isFinite(montoNum) && montoNum >= 0;
@@ -29,6 +56,7 @@ export default function AperturaCaja({ onAbierta }: { onAbierta: () => void }) {
       await api.abrirCaja({
         montoApertura: montoNum,
         ...(descripcion.trim() ? { descripcion: descripcion.trim() } : {}),
+        ...(elegirSucursal && elegida != null ? { almacenId: elegida } : {}),
       });
       onAbierta();
     } catch (err) {
@@ -52,6 +80,27 @@ export default function AperturaCaja({ onAbierta }: { onAbierta: () => void }) {
         </div>
 
         <div className="card space-y-4 p-5">
+          {/* Primero la sucursal y después el monto: decide de qué stock se vende
+              todo el turno, así que se elige antes de contar la plata. */}
+          {elegirSucursal && (
+            <Campo
+              label="Sucursal"
+              hint="Acá vendés este turno: se descuenta de su stock y se cobran sus precios"
+            >
+              <Select
+                value={elegida ?? ""}
+                onChange={(e) => setAlmacenId(Number(e.target.value))}
+              >
+                {sucursales.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.nombre}
+                    {a.esPrincipal ? " (principal)" : ""}
+                  </option>
+                ))}
+              </Select>
+            </Campo>
+          )}
+
           <Campo
             label="Monto de apertura"
             hint="Es el fondo con el que empezás: se descuenta del arqueo al cerrar"
@@ -104,6 +153,10 @@ export default function AperturaCaja({ onAbierta }: { onAbierta: () => void }) {
 
           <p className="text-center text-xs text-texto-4">
             Abrís como {usuario?.nombre ?? usuario?.username}
+            {/* Al cajero no se le pregunta, pero SÍ se le dice: es cómo nota que
+                le asignaron el local equivocado. Si nunca lo ve, el error se
+                descubre en el inventario físico, semanas después. */}
+            {!elegirSucursal && usuario?.sucursal ? ` en ${usuario.sucursal}` : ""}
           </p>
         </div>
       </div>
