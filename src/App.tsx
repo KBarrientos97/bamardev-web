@@ -1,6 +1,7 @@
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import Layout from "./components/Layout";
 import { rutaInicial, type Seccion } from "./lib/permisos";
+import { esFarmacia } from "./lib/rubro";
 import Creditos from "./pages/Creditos";
 import Login from "./pages/Login";
 import PagarLicencia from "./pages/PagarLicencia";
@@ -16,6 +17,8 @@ import Productos from "./pages/inventario/Productos";
 import Pos from "./pages/pos/Pos";
 import BuscarMedicamento from "./pages/farmacia/BuscarMedicamento";
 import Encargos from "./pages/farmacia/Encargos";
+import FormMercaderia from "./pages/farmacia/FormMercaderia";
+import MovimientosFarmacia from "./pages/farmacia/MovimientosFarmacia";
 import Vencimientos from "./pages/farmacia/Vencimientos";
 import Repartidor from "./pages/repartidor/Repartidor";
 import PanelMesero from "./pages/salon/PanelMesero";
@@ -69,6 +72,23 @@ function Protegida({ seccion, children }: { seccion: Seccion; children: React.Re
   const { puede } = useAuth();
   if (!puede(seccion)) return <Inicio />;
   return <>{children}</>;
+}
+
+/**
+ * Movimientos tiene dos pantallas para el mismo motor.
+ *
+ * La de Inventario cubre los cuatro tipos (entrada, salida, ajuste y
+ * transferencia) y es la que usan todos los rubros desde siempre. La de
+ * farmacia cuenta lo mismo como lo cuenta un mostrador —lo que se recibe de la
+ * droguería y lo que se da de baja— y manda a los dos formularios guiados.
+ *
+ * Se elige acá y no adentro de la pantalla para que el archivo de siempre no se
+ * entere de que existe un rubro: así un cambio de farmacia no puede romperle
+ * los movimientos a un restaurante que ya está trabajando.
+ */
+function MovimientosSegunRubro() {
+  const { rubro } = useAuth();
+  return esFarmacia(rubro) ? <MovimientosFarmacia /> : <Movimientos />;
 }
 
 /**
@@ -204,7 +224,34 @@ function Rutas() {
           path="/inventario/movimientos"
           element={
             <Protegida seccion="movimientos">
-              <Movimientos />
+              <MovimientosSegunRubro />
+            </Protegida>
+          }
+        />
+        {/* Las dos pantallas guiadas del rubro. El guard es el que las apaga
+            fuera de farmacia: entrar por URL devuelve al inicio, igual que
+            cualquier otra sección que el negocio no tiene. */}
+        <Route
+          path="/inventario/movimientos/ingreso"
+          element={
+            <Protegida seccion="ingreso_mercaderia">
+              <FormMercaderia tipoInicial="ENTRADA" />
+            </Protegida>
+          }
+        />
+        <Route
+          path="/inventario/movimientos/salida"
+          element={
+            <Protegida seccion="salida_mercaderia">
+              <FormMercaderia tipoInicial="SALIDA" />
+            </Protegida>
+          }
+        />
+        <Route
+          path="/inventario/movimientos/:id/editar"
+          element={
+            <Protegida seccion="ingreso_mercaderia">
+              <FormMercaderia />
             </Protegida>
           }
         />

@@ -56,7 +56,17 @@ export type Seccion =
   /** Los lotes que vencen y la plata parada en ellos. Sólo farmacia. */
   | "vencimientos"
   /** Lo que pidieron y no había. Sólo farmacia. */
-  | "encargos";
+  | "encargos"
+  /**
+   * Recibir la mercadería del proveedor: factura, lote y vencimiento por
+   * línea. Es el movimiento de ENTRADA con pantalla propia. Sólo farmacia.
+   */
+  | "ingreso_mercaderia"
+  /**
+   * Dar de baja stock: vencido, dañado, robado o cargado de más. Es el
+   * movimiento de SALIDA con pantalla propia. Sólo farmacia.
+   */
+  | "salida_mercaderia";
 
 /**
  * Qué módulo de rol y qué feature de plan exige cada sección. `feature: null`
@@ -89,6 +99,11 @@ const REQUISITOS: Record<Seccion, { modulo: Modulo; feature: Feature | null }> =
   // Los encargos los anota quien ATIENDE, así que van con el módulo del POS:
   // el que escucha "¿no tenés…?" es el del mostrador, no el que administra.
   encargos: { modulo: "POS", feature: null },
+  // Recibir y dar de baja mercadería SON movimientos de inventario: la misma
+  // llave que `movimientos`, sólo que con pantalla propia. No se venden aparte
+  // ni se le pueden dar a alguien que no pueda ver el registro.
+  ingreso_mercaderia: { modulo: "INVENTARIO", feature: "inventario" },
+  salida_mercaderia: { modulo: "INVENTARIO", feature: "inventario" },
 };
 
 /**
@@ -120,6 +135,10 @@ const ROLES_PERMITIDOS: Partial<Record<Seccion, Rol[]>> = {
   busqueda: ["ADMIN", "SUPERVISOR", "CAJERO"],
   vencimientos: ["ADMIN", "SUPERVISOR"],
   encargos: ["ADMIN", "SUPERVISOR", "CAJERO"],
+  // Quien recibe del proveedor y quien da de baja un lote vencido es el mismo
+  // que puede ver Movimientos: mover stock no es atender el mostrador.
+  ingreso_mercaderia: ["ADMIN", "SUPERVISOR"],
+  salida_mercaderia: ["ADMIN", "SUPERVISOR"],
 };
 
 /**
@@ -143,6 +162,11 @@ const SOLO_EN_RUBRO: Partial<Record<Seccion, Rubro[]>> = {
   busqueda: ["FARMACIA"],
   vencimientos: ["FARMACIA"],
   encargos: ["FARMACIA"],
+  // Las dos pantallas guiadas son del rubro. Un restaurante sigue cargando
+  // entradas y salidas desde Movimientos con el formulario de siempre: acá no
+  // se le saca nada, se le agrega un atajo a la farmacia.
+  ingreso_mercaderia: ["FARMACIA"],
+  salida_mercaderia: ["FARMACIA"],
 };
 
 const FUERA_DE_RUBRO: Partial<Record<Seccion, Rubro[]>> = {

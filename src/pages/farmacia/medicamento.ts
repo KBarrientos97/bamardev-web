@@ -1,5 +1,6 @@
+import { fmtNum } from "../../lib/format";
 import { contiene } from "../../lib/texto";
-import type { CondicionVenta, Producto } from "../../types";
+import type { CondicionVenta, Producto, TramoVencimiento } from "../../types";
 
 /**
  * Lo que un medicamento significa para las pantallas del rubro: cómo se
@@ -67,4 +68,62 @@ export function detalleDe(p: Producto): string {
 export function concentracionAparte(p: Producto): string | null {
   if (!p.concentracion || contiene(p.nombre, p.concentracion)) return null;
   return p.concentracion;
+}
+
+/**
+ * El color de cada tramo del semáforo de vencimientos.
+ *
+ * Vive acá y no en la pantalla de Vencimientos porque lo usan las dos —la lista
+ * grande y la pestaña de lotes de la ficha— y un lote que es rojo en una y
+ * ámbar en la otra deja de significar algo. El color dice qué tan urgente es,
+ * no qué tan lindo queda.
+ */
+export const COLOR_TRAMO: Record<
+  TramoVencimiento,
+  { texto: string; fondo: string; barra: string }
+> = {
+  VENCIDO: { texto: "text-danger-text", fondo: "bg-danger-bg", barra: "bg-danger" },
+  HASTA_30: {
+    texto: "text-danger-text",
+    fondo: "bg-danger-bg/60",
+    barra: "bg-danger/70",
+  },
+  HASTA_60: { texto: "text-warning-text", fondo: "bg-warning-bg", barra: "bg-warning" },
+  HASTA_90: {
+    texto: "text-warning-text",
+    fondo: "bg-warning-bg/60",
+    barra: "bg-warning/70",
+  },
+  // Lo que falta mucho no necesita señal: marcarlo todo es no marcar nada.
+  LEJOS: { texto: "text-texto-3", fondo: "bg-muted", barra: "bg-primary" },
+};
+
+/** Cuánto le queda, dicho como lo diría alguien: "venció hace 3 d", "12 días". */
+export function textoVida(dias: number | null): string {
+  if (dias === null) return "Sin fecha";
+  if (dias < 0) return `Venció hace ${Math.abs(dias)} d`;
+  if (dias === 0) return "Vence hoy";
+  return `${dias} días`;
+}
+
+/**
+ * Un stock con su unidad: "240 u.", "12 frascos", "8 cajas".
+ *
+ * La unidad **es del artículo**, no un "u." fijo. En una farmacia eso importa
+ * más que en cualquier otro rubro: el jarabe se cuenta por frasco, la crema por
+ * tubo y el comprimido por unidad o por blíster. Un "12 u." al lado de
+ * "Amoxicilina jarabe" no dice si son doce frascos o doce cucharadas, y esa
+ * duda se paga al recibir la compra.
+ *
+ * "Unidad" se abrevia porque es la que más se repite y ocupa lugar en una
+ * tabla; las demás van enteras, que se leen mejor que una abreviatura inventada.
+ */
+export function conUnidad(cantidad: number, unidad?: string | null): string {
+  const n = fmtNum(cantidad);
+  const u = (unidad ?? "").trim().toLowerCase();
+  if (!u || u === "unidad" || u === "unidades") return `${n} u.`;
+  if (cantidad === 1) return `${n} ${u}`;
+  // Plural de andar por casa, que es todo lo que hace falta para frasco, caja,
+  // tubo, blíster y sobre.
+  return `${n} ${/[aeiouáéíóú]$/.test(u) ? `${u}s` : `${u}es`}`;
 }

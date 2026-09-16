@@ -331,3 +331,45 @@ describe("encargos", () => {
     expect(puedeVer(ctx("ADMIN"), "encargos")).toBe(false);
   });
 });
+
+describe("ingreso y salida de mercadería", () => {
+  it("son las dos pantallas guiadas de la farmacia", () => {
+    const farmacia = { ...ctx("ADMIN"), rubro: "FARMACIA" };
+    expect(puedeVer(farmacia, "ingreso_mercaderia")).toBe(true);
+    expect(puedeVer(farmacia, "salida_mercaderia")).toBe(true);
+  });
+
+  it("un restaurante no las ve, y su Movimientos queda igual", () => {
+    // Es la garantía de que este rubro no le toca el menú a nadie más: el
+    // negocio que ya trabaja sigue cargando entradas y salidas desde
+    // Movimientos, con el formulario de siempre.
+    const resto = { ...ctx("ADMIN"), rubro: "RESTAURANTE" };
+    expect(puedeVer(resto, "ingreso_mercaderia")).toBe(false);
+    expect(puedeVer(resto, "salida_mercaderia")).toBe(false);
+    expect(puedeVer(resto, "movimientos")).toBe(true);
+  });
+
+  it("sin rubro tampoco aparecen", () => {
+    expect(puedeVer(ctx("ADMIN"), "ingreso_mercaderia")).toBe(false);
+    expect(puedeVer(ctx("ADMIN"), "salida_mercaderia")).toBe(false);
+    expect(puedeVer(ctx("ADMIN"), "movimientos")).toBe(true);
+  });
+
+  it("mover stock no es atender el mostrador: el cajero no entra", () => {
+    const cajero = { ...ctx("CAJERO", ["POS", "CAJA"]), rubro: "FARMACIA" };
+    expect(puedeVer(cajero, "ingreso_mercaderia")).toBe(false);
+    expect(puedeVer(cajero, "salida_mercaderia")).toBe(false);
+    // Y lo que sí es del mostrador lo sigue teniendo.
+    expect(puedeVer(cajero, "busqueda")).toBe(true);
+  });
+
+  it("piden lo mismo que Movimientos: sin inventario en el plan, no están", () => {
+    const sinInventario = {
+      ...ctx("ADMIN", TODOS_MODULOS, ["pos", "caja", "catalogo"]),
+      rubro: "FARMACIA",
+    };
+    expect(puedeVer(sinInventario, "movimientos")).toBe(false);
+    expect(puedeVer(sinInventario, "ingreso_mercaderia")).toBe(false);
+    expect(puedeVer(sinInventario, "salida_mercaderia")).toBe(false);
+  });
+});

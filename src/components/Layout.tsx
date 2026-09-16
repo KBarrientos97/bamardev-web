@@ -12,8 +12,18 @@ interface ItemNav {
   label: string;
   icono: NombreIcono;
   seccion: Seccion;
-  /** Se dibuja indentado bajo Inventario. */
-  sub?: boolean;
+  /**
+   * Cuánto se indenta. 1 = dentro de Inventario; 2 = dentro de Movimientos,
+   * que en una farmacia deja de ser una pantalla sola y pasa a ser el grupo
+   * donde viven el ingreso y la salida de mercadería.
+   */
+  nivel?: 1 | 2;
+  /**
+   * Se marca activo sólo con la ruta EXACTA. Lo necesitan los ítems que tienen
+   * sub-rutas colgando: sin esto, "Movimientos" queda encendido al mismo tiempo
+   * que "Ingreso de mercadería" y la barra muestra dos lugares a la vez.
+   */
+  exacto?: boolean;
   /**
    * El ítem se llama distinto según el rubro: `label` es el nombre de siempre
    * y esto es la palabra que lo reemplaza donde corresponda (ver `rubro.ts`).
@@ -31,19 +41,45 @@ const ITEMS: ItemNav[] = [
   // Fuera de Inventario y no dentro: no es catálogo, es la plata que se está
   // por perder. Va donde se vea todos los días.
   { a: "/vencimientos", label: "Vencimientos", icono: "calendar", seccion: "vencimientos" },
-  { a: "/inventario", label: "Inventario", icono: "archive", seccion: "inventario" },
+  { a: "/inventario", label: "Inventario", icono: "archive", seccion: "inventario", exacto: true },
   {
     a: "/inventario/productos",
     label: "Artículos",
     icono: "box",
     seccion: "productos",
-    sub: true,
+    nivel: 1,
     termino: "articulos",
   },
-  { a: "/inventario/categorias", label: "Categorías", icono: "grid", seccion: "productos", sub: true },
-  { a: "/inventario/insumos", label: "Insumos", icono: "sack", seccion: "insumos", sub: true },
-  { a: "/inventario/almacenes", label: "Almacenes", icono: "warehouse", seccion: "almacenes", sub: true },
-  { a: "/inventario/movimientos", label: "Movimientos", icono: "swap", seccion: "movimientos", sub: true },
+  { a: "/inventario/categorias", label: "Categorías", icono: "grid", seccion: "productos", nivel: 1 },
+  { a: "/inventario/insumos", label: "Insumos", icono: "sack", seccion: "insumos", nivel: 1 },
+  { a: "/inventario/almacenes", label: "Almacenes", icono: "warehouse", seccion: "almacenes", nivel: 1 },
+  {
+    a: "/inventario/movimientos",
+    label: "Movimientos",
+    icono: "swap",
+    seccion: "movimientos",
+    nivel: 1,
+    exacto: true,
+  },
+  // Sólo farmacia (ver `SOLO_EN_RUBRO` en permisos.ts): el registro sigue
+  // siendo Movimientos, pero recibir del proveedor y dar de baja lo vencido son
+  // las dos cosas que se hacen todos los días, y merecen estar en el menú y no
+  // escondidas detrás de un botón "Nuevo". Un restaurante no las ve: su
+  // Movimientos queda exactamente como está.
+  {
+    a: "/inventario/movimientos/ingreso",
+    label: "Ingreso de mercadería",
+    icono: "trendingUp",
+    seccion: "ingreso_mercaderia",
+    nivel: 2,
+  },
+  {
+    a: "/inventario/movimientos/salida",
+    label: "Salida de mercadería",
+    icono: "trendingDown",
+    seccion: "salida_mercaderia",
+    nivel: 2,
+  },
   // Va suelto y no como sub-ítem de Inventario: las mesas no son catálogo,
   // son el salón. En la app está en el mismo lugar del drawer.
   { a: "/mesas", label: "Mesas del salón", icono: "grid", seccion: "mesas" },
@@ -106,7 +142,7 @@ export default function Layout() {
         <NavLink
           key={item.a}
           to={item.a}
-          end={item.a === "/inventario"}
+          end={item.exacto}
           onClick={() => setAbierto(false)}
           title={compacta ? item.label : undefined}
           className={({ isActive }) =>
@@ -115,7 +151,8 @@ export default function Layout() {
               compacta ? "justify-center px-0" : "px-3",
               // Sin etiqueta al lado, la sangría de los sub-items sólo
               // descentraría el ícono respecto de los demás.
-              item.sub && !compacta ? "ml-3 text-[13px]" : "",
+              !compacta && item.nivel === 1 ? "ml-3 text-[13px]" : "",
+              !compacta && item.nivel === 2 ? "ml-7 text-[13px]" : "",
               // Sobre la barra de color: el activo se marca con un bloque
               // más claro y blanco pleno; el resto va en el gris teñido, que
               // mantiene 4.5:1 contra el fondo.
@@ -125,7 +162,7 @@ export default function Layout() {
             ].join(" ")
           }
         >
-          <Icon name={item.icono} size={item.sub && !compacta ? 17 : 19} />
+          <Icon name={item.icono} size={item.nivel && !compacta ? 17 : 19} />
           {!compacta && <span>{item.label}</span>}
         </NavLink>
       ))}
