@@ -264,3 +264,24 @@ describe("el rubro decide qué secciones existen", () => {
     expect(puedeVer(cajero, "pos")).toBe(true);
   });
 });
+
+describe("secciones propias de un rubro", () => {
+  it("buscar medicamento existe sólo en una farmacia", () => {
+    expect(puedeVer({ ...ctx("ADMIN"), rubro: "FARMACIA" }, "busqueda")).toBe(true);
+    expect(puedeVer({ ...ctx("ADMIN"), rubro: "RESTAURANTE" }, "busqueda")).toBe(false);
+    expect(puedeVer({ ...ctx("ADMIN"), rubro: "MINIMARKET" }, "busqueda")).toBe(false);
+  });
+
+  it("sin rubro tampoco aparece", () => {
+    // Al revés que la lista negra: lo que nace de un rubro se oculta ante la
+    // duda. Una sesión vieja no puede aterrizar en "Buscar medicamento".
+    expect(puedeVer(ctx("ADMIN"), "busqueda")).toBe(false);
+  });
+
+  it("el cajero de la farmacia la usa; el repartidor no", () => {
+    const cajero = { ...ctx("CAJERO", ["POS", "CAJA"]), rubro: "FARMACIA" };
+    expect(puedeVer(cajero, "busqueda")).toBe(true);
+    const repartidor = { ...ctx("REPARTIDOR", ["POS"]), rubro: "FARMACIA" };
+    expect(puedeVer(repartidor, "busqueda")).toBe(false);
+  });
+});

@@ -23,6 +23,9 @@ interface ItemNav {
 
 const ITEMS: ItemNav[] = [
   { a: "/pos", label: "Punto de venta", icono: "cart", seccion: "pos" },
+  // Va segundo y no dentro de Inventario: en una farmacia no es una consulta
+  // de catálogo, es parte de atender. Se usa más que ninguna otra pantalla.
+  { a: "/buscar", label: "Buscar medicamento", icono: "search", seccion: "busqueda" },
   { a: "/reparto", label: "Mis entregas", icono: "truck", seccion: "reparto" },
   { a: "/inventario", label: "Inventario", icono: "archive", seccion: "inventario" },
   {

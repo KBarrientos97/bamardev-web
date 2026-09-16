@@ -14,6 +14,7 @@ import Mesas from "./pages/inventario/Mesas";
 import Movimientos from "./pages/inventario/Movimientos";
 import Productos from "./pages/inventario/Productos";
 import Pos from "./pages/pos/Pos";
+import BuscarMedicamento from "./pages/farmacia/BuscarMedicamento";
 import Repartidor from "./pages/repartidor/Repartidor";
 import PanelMesero from "./pages/salon/PanelMesero";
 import { AuthProvider, useAuth } from "./store/AuthContext";
@@ -26,6 +27,7 @@ function Inicio() {
     rol: usuario.rol,
     modulos: usuario.modulos,
     features: negocio?.features,
+    rubro: negocio?.tipoNegocio,
   });
   return <Navigate to={destino} replace />;
 }
@@ -124,6 +126,16 @@ function Rutas() {
           element={
             <Protegida seccion="reparto">
               <Repartidor />
+            </Protegida>
+          }
+        />
+
+        {/* Sólo farmacia: ver `SOLO_EN_RUBRO` en permisos.ts. */}
+        <Route
+          path="/buscar"
+          element={
+            <Protegida seccion="busqueda">
+              <BuscarMedicamento />
             </Protegida>
           }
         />

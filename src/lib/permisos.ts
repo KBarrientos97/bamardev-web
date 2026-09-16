@@ -50,7 +50,9 @@ export type Seccion =
   /** El panel del mesero: el salón, lo que hay por servir y su turno. */
   | "salon"
   /** ABM de mesas y zonas: es del admin, no del mesero. */
-  | "mesas";
+  | "mesas"
+  /** Buscar un medicamento en el mostrador. Sólo farmacia. */
+  | "busqueda";
 
 /**
  * Qué módulo de rol y qué feature de plan exige cada sección. `feature: null`
@@ -74,6 +76,9 @@ const REQUISITOS: Record<Seccion, { modulo: Modulo; feature: Feature | null }> =
   // en el catálogo — si aparece, va acá.
   salon: { modulo: "POS", feature: null },
   mesas: { modulo: "INVENTARIO", feature: null },
+  // Buscar un medicamento es parte de atender: la hace quien está en el
+  // mostrador, así que va con el módulo del POS. No se vende aparte.
+  busqueda: { modulo: "POS", feature: null },
 };
 
 /**
@@ -101,6 +106,8 @@ const ROLES_PERMITIDOS: Partial<Record<Seccion, Rol[]>> = {
   salon: ["MESERO", "ADMIN", "SUPERVISOR"],
   // Crear mesas y zonas es del admin: el mesero las usa, no las administra.
   mesas: ["ADMIN", "SUPERVISOR"],
+  // El cajero entra: es el que atiende el mostrador y el que más la usa.
+  busqueda: ["ADMIN", "SUPERVISOR", "CAJERO"],
 };
 
 /**
@@ -113,6 +120,17 @@ const ROLES_PERMITIDOS: Partial<Record<Seccion, Rol[]>> = {
  * salón" es raro, pero es lo que ve hoy: sacárselo es otra decisión, de otro
  * día, con su propio cliente mirando. Acá no se toca nada que ya funcione.
  */
+/**
+ * Secciones que **nacen** de un rubro y no existen fuera de él. Es la lista
+ * BLANCA, la otra mitad del par: la negra protege lo que ya existía (ante la
+ * duda, se ve), y ésta encierra lo que se construyó para un rubro puntual
+ * (ante la duda, no se ve). Una pollería no tiene por qué encontrarse una
+ * pantalla llamada "Buscar medicamento".
+ */
+const SOLO_EN_RUBRO: Partial<Record<Seccion, Rubro[]>> = {
+  busqueda: ["FARMACIA"],
+};
+
 const FUERA_DE_RUBRO: Partial<Record<Seccion, Rubro[]>> = {
   // El salón entero es de restaurante: una farmacia no atiende mesas.
   mesas: ["FARMACIA"],
@@ -133,6 +151,11 @@ export interface ContextoPermisos {
 export function puedeVer(ctx: ContextoPermisos, seccion: Seccion): boolean {
   const fuera = FUERA_DE_RUBRO[seccion];
   if (fuera && ctx.rubro && (fuera as string[]).includes(ctx.rubro)) return false;
+
+  const propia = SOLO_EN_RUBRO[seccion];
+  // Sin rubro tampoco se muestra: una sesión vieja que no sabe de qué negocio
+  // es no puede aterrizar en una pantalla que sólo tiene sentido en uno.
+  if (propia && !(ctx.rubro && (propia as string[]).includes(ctx.rubro))) return false;
 
   const roles = ROLES_PERMITIDOS[seccion];
   if (roles && !roles.includes(ctx.rol)) return false;

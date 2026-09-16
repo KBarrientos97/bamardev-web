@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { contiene, normalizar } from "./texto";
+import { contiene, normalizar, posicionDe } from "./texto";
 
 /**
  * Los catálogos están llenos de tildes ("Café", "Limón", "Piña") y el cajero
@@ -39,5 +39,31 @@ describe("texto", () => {
 
   it("una búsqueda vacía no filtra nada", () => {
     expect(contiene("Café", "")).toBe(true);
+  });
+});
+
+describe("posicionDe", () => {
+  it("ubica la coincidencia en el texto original", () => {
+    expect(posicionDe("Paracetamol 500 mg", "para")).toEqual([0, 4]);
+    expect(posicionDe("Paracetamol 500 mg", "500")).toEqual([12, 15]);
+  });
+
+  it("no se corre cuando el texto tiene tildes", () => {
+    // Éste es el motivo de la función: sobre el texto normalizado los índices
+    // dejan de corresponder con los del original.
+    expect(posicionDe("Solución fisiológica", "fisiolog")).toEqual([9, 17]);
+    expect(posicionDe("Inyección", "yeccion")).toEqual([2, 9]);
+  });
+
+  it("encuentra aunque el que busca no ponga la tilde", () => {
+    expect(posicionDe("Loratadina jarabe", "JARABE")).toEqual([11, 17]);
+    expect(posicionDe("Cápsula", "capsula")).toEqual([0, 7]);
+  });
+
+  it("devuelve null cuando no hay nada que resaltar", () => {
+    expect(posicionDe("Omeprazol", "xyz")).toBeNull();
+    expect(posicionDe("Omeprazol", "   ")).toBeNull();
+    expect(posicionDe(null, "ome")).toBeNull();
+    expect(posicionDe("", "ome")).toBeNull();
   });
 });
