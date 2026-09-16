@@ -27,6 +27,7 @@ const ITEMS: ItemNav[] = [
   // de catálogo, es parte de atender. Se usa más que ninguna otra pantalla.
   { a: "/buscar", label: "Buscar medicamento", icono: "search", seccion: "busqueda" },
   { a: "/reparto", label: "Mis entregas", icono: "truck", seccion: "reparto" },
+  { a: "/encargos", label: "Encargos", icono: "bell", seccion: "encargos" },
   // Fuera de Inventario y no dentro: no es catálogo, es la plata que se está
   // por perder. Va donde se vea todos los días.
   { a: "/vencimientos", label: "Vencimientos", icono: "calendar", seccion: "vencimientos" },

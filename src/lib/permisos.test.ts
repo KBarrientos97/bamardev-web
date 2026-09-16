@@ -316,3 +316,18 @@ describe("vencimientos", () => {
     expect(puedeVer({ ...ctx("ADMIN"), rubro: "RESTAURANTE" }, "vencimientos")).toBe(false);
   });
 });
+
+describe("encargos", () => {
+  it("los anota quien atiende, también el cajero", () => {
+    // El que escucha "¿no tenés…?" es el del mostrador, no el que administra.
+    expect(puedeVer({ ...ctx("CAJERO", ["POS", "CAJA"]), rubro: "FARMACIA" }, "encargos")).toBe(
+      true,
+    );
+    expect(puedeVer({ ...ctx("ADMIN"), rubro: "FARMACIA" }, "encargos")).toBe(true);
+  });
+
+  it("no existe fuera de farmacia", () => {
+    expect(puedeVer({ ...ctx("ADMIN"), rubro: "RESTAURANTE" }, "encargos")).toBe(false);
+    expect(puedeVer(ctx("ADMIN"), "encargos")).toBe(false);
+  });
+});

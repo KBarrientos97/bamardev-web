@@ -468,6 +468,65 @@ export interface LotePorVencer extends LoteConSaldo {
   producto: { id: number; nombre: string; laboratorio: string | null };
 }
 
+// ── Encargos (rubro farmacia) ───────────────────────────────────────────────
+
+/**
+ * Por dónde va un encargo. El flujo es lineal: alguien pide algo que no hay →
+ * se le pide al proveedor → llega → se entrega.
+ */
+export type EstadoEncargo =
+  | "ANOTADO"
+  | "PEDIDO"
+  | "LLEGO"
+  | "ENTREGADO"
+  | "CANCELADO";
+
+export interface Encargo {
+  id: number;
+  /** Lo que pidió, tal como se escribió. */
+  descripcion: string;
+  cantidad: number;
+  estado: EstadoEncargo;
+  clienteNombre: string | null;
+  clienteTelefono: string | null;
+  nota: string | null;
+  /** El artículo del catálogo, si está. Null = algo que todavía no se vende. */
+  producto: { id: number; nombre: string; laboratorio: string | null } | null;
+  almacen: { id: number; nombre: string } | null;
+  /** Quién lo anotó. */
+  usuario: string | null;
+  creadoEn: string;
+  llegoEn: string | null;
+  entregadoEn: string | null;
+  /** Cuántas personas están esperando este mismo producto. */
+  pedidoPor: number;
+  /** Varios lo esperan: vale la pena traer más de uno. */
+  muyPedido: boolean;
+  /** Ya hay stock de lo encargado: se le puede avisar. */
+  hayStock: boolean;
+  diasEsperando: number;
+}
+
+export interface ListaEncargos {
+  anotados: number;
+  pedidos: number;
+  llegaron: number;
+  entregados: number;
+  cancelados: number;
+  /** Lo que sigue esperando: el número que dice si hay trabajo. */
+  abiertos: number;
+  items: Encargo[];
+}
+
+export interface EncargoInput {
+  productoId?: number;
+  descripcion: string;
+  cantidad?: number;
+  clienteNombre?: string;
+  clienteTelefono?: string;
+  nota?: string;
+}
+
 export interface ContadorTramo {
   lotes: number;
   unidades: number;

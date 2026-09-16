@@ -54,7 +54,9 @@ export type Seccion =
   /** Buscar un medicamento en el mostrador. Sólo farmacia. */
   | "busqueda"
   /** Los lotes que vencen y la plata parada en ellos. Sólo farmacia. */
-  | "vencimientos";
+  | "vencimientos"
+  /** Lo que pidieron y no había. Sólo farmacia. */
+  | "encargos";
 
 /**
  * Qué módulo de rol y qué feature de plan exige cada sección. `feature: null`
@@ -84,6 +86,9 @@ const REQUISITOS: Record<Seccion, { modulo: Modulo; feature: Feature | null }> =
   // Vencimientos es de inventario: decide qué se devuelve al proveedor y qué
   // se da de baja, no atiende a nadie.
   vencimientos: { modulo: "INVENTARIO", feature: "inventario" },
+  // Los encargos los anota quien ATIENDE, así que van con el módulo del POS:
+  // el que escucha "¿no tenés…?" es el del mostrador, no el que administra.
+  encargos: { modulo: "POS", feature: null },
 };
 
 /**
@@ -114,6 +119,7 @@ const ROLES_PERMITIDOS: Partial<Record<Seccion, Rol[]>> = {
   // El cajero entra: es el que atiende el mostrador y el que más la usa.
   busqueda: ["ADMIN", "SUPERVISOR", "CAJERO"],
   vencimientos: ["ADMIN", "SUPERVISOR"],
+  encargos: ["ADMIN", "SUPERVISOR", "CAJERO"],
 };
 
 /**
@@ -136,6 +142,7 @@ const ROLES_PERMITIDOS: Partial<Record<Seccion, Rol[]>> = {
 const SOLO_EN_RUBRO: Partial<Record<Seccion, Rubro[]>> = {
   busqueda: ["FARMACIA"],
   vencimientos: ["FARMACIA"],
+  encargos: ["FARMACIA"],
 };
 
 const FUERA_DE_RUBRO: Partial<Record<Seccion, Rubro[]>> = {

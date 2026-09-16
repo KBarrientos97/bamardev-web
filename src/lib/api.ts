@@ -20,6 +20,8 @@ import type {
   HistorialCostos,
   DetalleMovimiento,
   DetalleMovimientoInput,
+  Encargo,
+  EncargoInput,
   EstadoCobroQr,
   EstadoLicencia,
   FiltroCredito,
@@ -31,6 +33,7 @@ import type {
   Movimiento,
   MovimientoCaja,
   MovimientoInput,
+  ListaEncargos,
   LoteConSaldo,
   PaginaProductos,
   Producto,
@@ -429,6 +432,27 @@ export const api = {
     request<{ mensaje: string }>(`/almacenes/${id}/principal`, {
       method: "PATCH",
     }),
+  // ── Encargos (rubro farmacia) ───────────────────────────────────────────
+  /** Sin filtro trae sólo lo que sigue abierto. */
+  getEncargos: (params: { estado?: string; incluirCerrados?: boolean } = {}) =>
+    request<ListaEncargos>(
+      `/encargos${qs({
+        estado: params.estado,
+        incluirCerrados: params.incluirCerrados ? "true" : undefined,
+      })}`,
+    ),
+  crearEncargo: (input: EncargoInput) =>
+    request<Encargo>("/encargos", { method: "POST", body: JSON.stringify(input) }),
+  /** Mueve el encargo al paso siguiente, o lo cancela. */
+  cambiarEstadoEncargo: (id: number, estado: string) =>
+    request<Encargo>(`/encargos/${id}/estado`, {
+      method: "POST",
+      body: JSON.stringify({ estado }),
+    }),
+  /** Sólo se puede con lo que nunca avanzó; lo demás se cancela. */
+  eliminarEncargo: (id: number) =>
+    request<{ mensaje: string }>(`/encargos/${id}`, { method: "DELETE" }),
+
   // ── Lotes y vencimientos (rubro farmacia) ───────────────────────────────
   /**
    * El semáforo: qué vence y cuánta plata hay parada ahí.
