@@ -133,7 +133,45 @@ export interface ComponenteProducto {
   cantidad: number;
 }
 
-export interface Producto {
+/**
+ * Qué hace falta para venderle un medicamento a alguien. Sale del Reglamento
+ * de Farmacias, no de una preferencia del negocio: es lo que dice el registro
+ * del producto.
+ *
+ * LIBRE es el valor de todo lo demás —un pañal, una leche, un termómetro— y de
+ * los de venta libre. En Bolivia los antibióticos entran ahí: **no** exigen
+ * receta, a diferencia de otros países.
+ */
+export type CondicionVenta =
+  | "LIBRE"
+  | "RECETA_MEDICA"
+  /** La farmacia se queda la receta (psicotrópicos). */
+  | "RECETA_ARCHIVADA"
+  /** Formulario oficial numerado (estupefacientes). */
+  | "RECETA_VALORADA";
+
+/**
+ * Ficha farmacéutica. Viaja en todos los productos: en un artículo de
+ * restaurante son cinco nulos, venta libre y dos `false`.
+ */
+export interface FichaFarmaceutica {
+  /** La droga: "Paracetamol". Es por lo que busca el farmacéutico. */
+  principioActivo: string | null;
+  /** "500 mg", "20 mg/ml". */
+  concentracion: string | null;
+  /** Comprimido, Cápsula, Jarabe… o "Paquete" para lo que no es remedio. */
+  formaFarmaceutica: string | null;
+  /** Laboratorio o marca: BAGÓ, IFA… y también Huggies. */
+  laboratorio: string | null;
+  registroSanitario: string | null;
+  condicionVenta: CondicionVenta;
+  /** Se compra y se vende por lote con vencimiento. */
+  manejaLote: boolean;
+  /** Psicotrópico o estupefaciente (Ley 1737). */
+  controlado: boolean;
+}
+
+export interface Producto extends FichaFarmaceutica {
   id: number;
   nombre: string;
   descripcion: string | null;
@@ -148,6 +186,15 @@ export interface Producto {
   unidadMedida: Pick<UnidadMedida, "id" | "nombre"> | null;
   stockTotal: number;
   componentes: ComponenteProducto[];
+}
+
+/** Lo que devuelve `GET /productos/buscar`: una página, no el catálogo. */
+export interface PaginaProductos {
+  items: Producto[];
+  /** Cuántos hay en total con ese filtro, para decir "30 de 412". */
+  total: number;
+  limite: number;
+  offset: number;
 }
 
 export interface ProductoInput {
@@ -167,6 +214,15 @@ export interface ProductoInput {
   categoriaId?: number;
   icono?: string;
   componentes?: { ingredienteId: number; cantidad: number }[];
+  // Ficha farmacéutica: la manda el formulario de farmacia y nadie más.
+  principioActivo?: string;
+  concentracion?: string;
+  formaFarmaceutica?: string;
+  laboratorio?: string;
+  registroSanitario?: string;
+  condicionVenta?: CondicionVenta;
+  manejaLote?: boolean;
+  controlado?: boolean;
 }
 
 // ── Inventario ──────────────────────────────────────────────────────────────

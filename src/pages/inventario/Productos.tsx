@@ -19,10 +19,17 @@ import {
 import { api } from "../../lib/api";
 import { fmtMoney, fmtNum } from "../../lib/format";
 import { ICONOS_ARTICULO, iconoPorLlave } from "../../lib/iconosArticulo";
-import { termino } from "../../lib/rubro";
+import { esFarmacia, termino } from "../../lib/rubro";
 import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
-import type { Categoria, Producto, ProductoInput, TipoProducto, UnidadMedida } from "../../types";
+import type {
+  Categoria,
+  CondicionVenta,
+  Producto,
+  ProductoInput,
+  TipoProducto,
+  UnidadMedida,
+} from "../../types";
 
 /**
  * Los tres tipos del backend, con la etiqueta que usa la app Android.
@@ -38,6 +45,31 @@ const TIPOS: Record<TipoProducto, { label: string; tono: "gris" | "verde" | "mor
   // carga, así que el campo también aparece al editar (a diferencia de un
   // producto, donde el stock inicial sólo tiene sentido al crear).
   COMPUESTO: { label: "Combo", tono: "morado", conStock: true },
+};
+
+/**
+ * Condición de venta, con la palabra que usa el mostrador y su color.
+ *
+ * El verde (`primary`) no se usa acá a propósito: es el color de la marca y en
+ * farmacia además significa "stock sano". Venta libre no necesita señal — lo
+ * que tiene que saltar a la vista es lo que exige receta.
+ */
+const CONDICIONES: Record<
+  CondicionVenta,
+  { label: string; corto: string; tono: "gris" | "azul" | "amarillo" | "rojo" }
+> = {
+  LIBRE: { label: "Venta libre", corto: "Libre", tono: "gris" },
+  RECETA_MEDICA: { label: "Receta médica", corto: "Receta", tono: "azul" },
+  RECETA_ARCHIVADA: {
+    label: "Receta archivada (psicotrópico)",
+    corto: "Receta archivada",
+    tono: "amarillo",
+  },
+  RECETA_VALORADA: {
+    label: "Receta valorada (estupefaciente)",
+    corto: "Receta valorada",
+    tono: "rojo",
+  },
 };
 
 type FiltroStock = "todos" | "activos" | "bajo" | "sin" | "papelera";
@@ -256,9 +288,17 @@ export default function Productos() {
 }
 
 function TarjetaProducto({ producto: p, onClick }: { producto: Producto; onClick: () => void }) {
+  const { rubro } = useAuth();
   const tipo = TIPOS[p.tipoProducto];
   const sinStock = tipo.conStock && p.stockTotal <= 0;
   const bajoStock = tipo.conStock && p.stockTotal > 0 && p.stockTotal <= p.stockMinimo;
+  // En una farmacia el laboratorio y la forma distinguen dos artículos que se
+  // llaman casi igual ("Paracetamol 500 BAGÓ" vs "… IFA"). Es más útil ahí que
+  // la descripción, que casi nadie carga.
+  const ficha = esFarmacia(rubro)
+    ? [p.laboratorio, p.formaFarmaceutica].filter(Boolean).join(" · ")
+    : "";
+  const condicion = esFarmacia(rubro) ? CONDICIONES[p.condicionVenta] : null;
 
   return (
     <li>
@@ -283,8 +323,16 @@ function TarjetaProducto({ producto: p, onClick }: { producto: Producto; onClick
 
         <h3 className="mt-3 truncate text-[15px] font-bold text-texto">{p.nombre}</h3>
         <p className="mt-0.5 line-clamp-1 text-[13px] text-texto-3">
-          {p.descripcion || "Sin descripción"}
+          {ficha || p.descripcion || "Sin descripción"}
         </p>
+        {condicion && (p.condicionVenta !== "LIBRE" || p.controlado) && (
+          <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+            {p.condicionVenta !== "LIBRE" && (
+              <Badge tono={condicion.tono}>{condicion.corto}</Badge>
+            )}
+            {p.controlado && <Badge tono="rojo">Controlado</Badge>}
+          </div>
+        )}
 
         <div
           className={`mt-3 grid gap-2 rounded-xl bg-muted p-2.5 ${
@@ -415,6 +463,33 @@ function DetalleProducto({
           <Dato label="Código de barras" valor={p.codBarra || "—"} />
         </dl>
 
+        {esFarmacia(rubro) && (
+          <div>
+            <h4 className="mb-2 text-[13px] font-bold text-texto">
+              Ficha farmacéutica
+              {p.manejaLote && (
+                <span className="ml-1.5 font-normal text-texto-3">
+                  — se controla por lote y vencimiento
+                </span>
+              )}
+            </h4>
+            <dl className="grid grid-cols-2 gap-3">
+              <Dato label="Principio activo" valor={p.principioActivo || "—"} />
+              <Dato label="Concentración" valor={p.concentracion || "—"} />
+              <Dato label="Forma" valor={p.formaFarmaceutica || "—"} />
+              <Dato label="Laboratorio" valor={p.laboratorio || "—"} />
+              <Dato label="Registro sanitario" valor={p.registroSanitario || "—"} />
+              <Dato label="Condición de venta" valor={CONDICIONES[p.condicionVenta].label} />
+            </dl>
+            {p.controlado && (
+              <p className="mt-2.5 rounded-xl bg-danger-bg px-3.5 py-2.5 text-[13px] text-danger-text">
+                <strong>Medicamento controlado.</strong> Su venta se asienta en el libro
+                que corresponde.
+              </p>
+            )}
+          </div>
+        )}
+
         {p.tipoProducto === "COMPUESTO" && (
           <div>
             <h4 className="mb-2 text-[13px] font-bold text-texto">
@@ -542,10 +617,42 @@ function FormProductoCuerpo({
         cantidad: c.cantidad,
       })) ?? [],
   );
+  // Ficha farmacéutica. Se carga siempre desde el producto (aunque el rubro no
+  // la muestre) para que editar un artículo desde otro rubro no la borre.
+  const [principioActivo, setPrincipioActivo] = useState(producto?.principioActivo ?? "");
+  const [concentracion, setConcentracion] = useState(producto?.concentracion ?? "");
+  const [formaFarmaceutica, setFormaFarmaceutica] = useState(
+    producto?.formaFarmaceutica ?? "",
+  );
+  const [laboratorio, setLaboratorio] = useState(producto?.laboratorio ?? "");
+  const [registroSanitario, setRegistroSanitario] = useState(
+    producto?.registroSanitario ?? "",
+  );
+  const [condicionVenta, setCondicionVenta] = useState<CondicionVenta>(
+    producto?.condicionVenta ?? "LIBRE",
+  );
+  const [manejaLote, setManejaLote] = useState(producto?.manejaLote ?? false);
+  const [controlado, setControlado] = useState(producto?.controlado ?? false);
+
   const [error, setError] = useState("");
   const [guardando, setGuardando] = useState(false);
 
   const { incluye, rubro } = useAuth();
+  const conFicha = esFarmacia(rubro);
+
+  /**
+   * Laboratorios y formas que ya se usaron, para sugerir mientras se escribe.
+   * Son texto libre a propósito (no hay tabla que administrar), y esto evita
+   * que el mismo laboratorio termine cargado de tres maneras distintas.
+   */
+  const sugerencias = useMemo(() => {
+    const unicos = (valores: (string | null)[]) =>
+      [...new Set(valores.filter((v): v is string => !!v?.trim()))].sort();
+    return {
+      laboratorios: unicos(productos.map((p) => p.laboratorio)),
+      formas: unicos(productos.map((p) => p.formaFarmaceutica)),
+    };
+  }, [productos]);
   // Sin la capacidad el negocio no arma combos: el tipo ni se ofrece. Un
   // producto que YA es combo se sigue pudiendo editar (el dato existe y
   // esconderlo lo convertiría en otra cosa al guardar).
@@ -616,6 +723,21 @@ function FormProductoCuerpo({
       // cuántos hay hoy, y el campo tiene que viajar también al editar.
       ...((esCombo || !esEdicion) && conStock && stockInicial !== ""
         ? { stockInicial: Number(stockInicial) }
+        : {}),
+      // La ficha viaja sólo donde el formulario la muestra. En otro rubro los
+      // campos ni se dibujan, y mandarlos vacíos borraría lo que alguien haya
+      // cargado desde una farmacia con el mismo catálogo.
+      ...(conFicha
+        ? {
+            principioActivo: principioActivo.trim(),
+            concentracion: concentracion.trim(),
+            formaFarmaceutica: formaFarmaceutica.trim(),
+            laboratorio: laboratorio.trim(),
+            registroSanitario: registroSanitario.trim(),
+            condicionVenta,
+            manejaLote,
+            controlado,
+          }
         : {}),
     };
 
@@ -754,9 +876,121 @@ function FormProductoCuerpo({
           </div>
         )}
 
-        <Campo label="Código de barras">
+        <Campo
+          label="Código de barras"
+          hint={conFicha ? "El lector del mostrador lo escribe solo" : undefined}
+        >
           <Input value={codBarra} onChange={(e) => setCodBarra(e.target.value)} />
         </Campo>
+
+        {conFicha && (
+          <div className="space-y-3 rounded-xl border border-borde p-3.5">
+            <div>
+              <h4 className="text-[13px] font-bold text-texto">Ficha farmacéutica</h4>
+              <p className="text-xs text-texto-3">
+                Todo opcional: un pañal o una mamadera no la necesitan.
+              </p>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Campo label="Principio activo" hint="La droga: por acá lo buscan">
+                <Input
+                  value={principioActivo}
+                  onChange={(e) => setPrincipioActivo(e.target.value)}
+                  placeholder="Paracetamol"
+                />
+              </Campo>
+              <Campo label="Concentración">
+                <Input
+                  value={concentracion}
+                  onChange={(e) => setConcentracion(e.target.value)}
+                  placeholder="500 mg"
+                />
+              </Campo>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Campo label="Forma farmacéutica">
+                <Input
+                  list="formas-farmaceuticas"
+                  value={formaFarmaceutica}
+                  onChange={(e) => setFormaFarmaceutica(e.target.value)}
+                  placeholder="Comprimido"
+                />
+                <datalist id="formas-farmaceuticas">
+                  {sugerencias.formas.map((f) => (
+                    <option key={f} value={f} />
+                  ))}
+                </datalist>
+              </Campo>
+              <Campo label="Laboratorio">
+                <Input
+                  list="laboratorios"
+                  value={laboratorio}
+                  onChange={(e) => setLaboratorio(e.target.value)}
+                  placeholder="BAGÓ"
+                />
+                <datalist id="laboratorios">
+                  {sugerencias.laboratorios.map((l) => (
+                    <option key={l} value={l} />
+                  ))}
+                </datalist>
+              </Campo>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Campo label="Registro sanitario" hint="Lo pide el inspector">
+                <Input
+                  value={registroSanitario}
+                  onChange={(e) => setRegistroSanitario(e.target.value)}
+                  placeholder="II-12345/2024"
+                />
+              </Campo>
+              <Campo label="Condición de venta">
+                <Select
+                  value={condicionVenta}
+                  onChange={(e) => setCondicionVenta(e.target.value as CondicionVenta)}
+                >
+                  {(Object.keys(CONDICIONES) as CondicionVenta[]).map((c) => (
+                    <option key={c} value={c}>
+                      {CONDICIONES[c].label}
+                    </option>
+                  ))}
+                </Select>
+              </Campo>
+            </div>
+
+            <label className="flex items-start gap-2.5">
+              <input
+                type="checkbox"
+                checked={manejaLote}
+                onChange={(e) => setManejaLote(e.target.checked)}
+                className="mt-0.5 h-4 w-4 rounded border-borde accent-primary"
+              />
+              <span className="text-sm text-texto-2">
+                Maneja lote y vencimiento
+                <span className="ml-1 text-texto-4">
+                  — al ingresar mercadería se piden los dos
+                </span>
+              </span>
+            </label>
+
+            <label className="flex items-start gap-2.5">
+              <input
+                type="checkbox"
+                checked={controlado}
+                onChange={(e) => setControlado(e.target.checked)}
+                className="mt-0.5 h-4 w-4 rounded border-borde accent-primary"
+              />
+              <span className="text-sm text-texto-2">
+                Medicamento controlado
+                <span className="ml-1 text-texto-4">
+                  — psicotrópico o estupefaciente, va al libro
+                </span>
+              </span>
+            </label>
+          </div>
+        )}
 
         <Campo
           label="Ícono"

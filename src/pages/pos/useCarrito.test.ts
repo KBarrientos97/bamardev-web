@@ -19,6 +19,16 @@ function producto(over: Partial<Producto> = {}): Producto {
     unidadMedida: null,
     stockTotal: 5,
     componentes: [],
+    // Ficha farmacéutica: en un artículo de restaurante es todo neutro, que es
+    // justo lo que el backend devuelve para él.
+    principioActivo: null,
+    concentracion: null,
+    formaFarmaceutica: null,
+    laboratorio: null,
+    registroSanitario: null,
+    condicionVenta: "LIBRE",
+    manejaLote: false,
+    controlado: false,
     ...over,
   };
 }

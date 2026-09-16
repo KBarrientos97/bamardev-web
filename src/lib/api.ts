@@ -31,6 +31,7 @@ import type {
   Movimiento,
   MovimientoCaja,
   MovimientoInput,
+  PaginaProductos,
   Producto,
   ProductoInput,
   RangoReporte,
@@ -373,6 +374,28 @@ export const api = {
   getProductos: (eliminados?: boolean) =>
     request<Producto[]>(`/productos${qs({ eliminados: eliminados ? 1 : undefined })}`),
   getProducto: (id: number) => request<Producto>(`/productos/${id}`),
+  /**
+   * La búsqueda del mostrador: filtra y pagina en el servidor.
+   *
+   * `getProductos` sigue existiendo y trae el catálogo entero — está bien para
+   * 40 artículos. Con un catálogo de farmacia (2.000) hay que usar esto, que
+   * busca por nombre, principio activo, laboratorio, descripción y código de
+   * barras exacto, y devuelve una página con el total.
+   */
+  buscarProductos: (params: {
+    q?: string;
+    limite?: number;
+    offset?: number;
+    soloHabilitados?: boolean;
+  }) =>
+    request<PaginaProductos>(
+      `/productos/buscar${qs({
+        q: params.q,
+        limite: params.limite,
+        offset: params.offset,
+        soloHabilitados: params.soloHabilitados ? "true" : undefined,
+      })}`,
+    ),
   crearProducto: (input: ProductoInput) =>
     request<Producto>("/productos", { method: "POST", body: JSON.stringify(input) }),
   actualizarProducto: (id: number, input: Partial<ProductoInput>) =>
