@@ -276,6 +276,12 @@ export default function Pos() {
         caja={abierta}
         onAtras={() => setPantalla("venta")}
         onCierre={() => setPantalla("cierre")}
+        // Reimprimir el comprobante de un pedido: es la misma pantalla del
+        // recibo de una venta recién cobrada, y su "volver" ya lleva al historial.
+        onVerComprobante={(v) => {
+          setVenta(v);
+          setPantalla("recibo");
+        }}
       />
     );
 

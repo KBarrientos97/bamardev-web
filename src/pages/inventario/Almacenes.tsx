@@ -12,6 +12,7 @@ import {
   Input,
   Modal,
   Vacio,
+  Select,
 } from "../../components/ui";
 import { api } from "../../lib/api";
 import { fmtMoney, fmtNum } from "../../lib/format";
@@ -538,10 +539,12 @@ function FormPrecioSucursal({
         <ErrorMsg>{error}</ErrorMsg>
 
         <Campo label="Producto">
-          <select
+          {/* El Select de la casa y no un <select> crudo: desde 8908ab1 la flecha
+              de TODOS los desplegables es la nuestra, y este era el único que
+              seguía con la del navegador. */}
+          <Select
             value={productoId}
             onChange={(e) => setProductoId(Number(e.target.value))}
-            className="w-full rounded-xl border border-borde bg-white px-3 py-2 text-[14px]"
           >
             <option value={0}>Elegí un producto…</option>
             {disponibles.map((p) => (
@@ -549,7 +552,7 @@ function FormPrecioSucursal({
                 {p.nombre} — {fmtMoney(p.precio)}
               </option>
             ))}
-          </select>
+          </Select>
         </Campo>
 
         <Campo

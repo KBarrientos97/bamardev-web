@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import ComprobanteCredito, { type TipoComprobante } from "../components/ComprobanteCredito";
 import { parsearMonto } from "../lib/dinero";
 import { puedeSupervisar } from "../lib/permisos";
@@ -97,6 +98,29 @@ export default function Creditos() {
   const [reciboDe, setReciboDe] = useState<{ credito: CreditoApi; monto: number } | null>(null);
   const [aviso, setAviso] = useAviso();
 
+  const navigate = useNavigate();
+  const { usuario } = useAuth();
+  /**
+   * Al cajero se le avisa ANTES de que llene el formulario, no con el 400 del
+   * backend después de teclear el monto. Es lo que hace la app
+   * (`CuentasPorCobrarFragment`), y esta página la abre cualquiera desde el
+   * menú, con o sin caja.
+   *
+   * La regla es la misma de `FormAbono` y del backend (`cobraSinCaja`): sólo el
+   * ADMIN cobra sin caja, así que a él ni se le pregunta. Un supervisor sí ve
+   * el aviso —si mañana también cobra sin caja, cambia acá, en FormAbono y en
+   * la app a la vez (ver HANDOFF-2026-09-15 §5.2).
+   */
+  const esDuenio = usuario?.rol === "ADMIN";
+  const caja = useApi(
+    () => (esDuenio ? Promise.resolve({ caja: null }) : api.cajaActual()),
+    [esDuenio],
+  );
+  // Si no se pudo preguntar (error) no se avisa nada: el cobro puede andar
+  // igual. Misma decisión que la app, que trata ese caso como "no sé".
+  const sinCaja =
+    !esDuenio && !caja.cargando && !caja.error && caja.datos?.caja == null;
+
   const lista = creditos.datos ?? [];
   const listaClientes = clientes.datos ?? [];
 
@@ -146,6 +170,20 @@ export default function Creditos() {
           tono="amarillo"
         />
       </div>
+
+      {sinCaja && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-warning-bg px-3.5 py-2.5 text-[13px] text-warning-text">
+          <span className="flex items-center gap-2">
+            <Icon name="alert" size={17} />
+            Para cobrar hace falta tu caja abierta: el abono entra a la caja de quien
+            cobra.
+          </span>
+          {/* La caja se abre en el POS: es la misma pantalla de apertura de siempre. */}
+          <Boton variante="ghost" icono="lock" onClick={() => navigate("/pos")}>
+            Abrir caja
+          </Boton>
+        </div>
+      )}
 
       <div className="space-y-3">
         <div className="flex gap-2">
