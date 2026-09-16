@@ -35,14 +35,24 @@ export function useBusquedaProductos({
   q,
   limite = 20,
   soloHabilitados = false,
+  activo = true,
 }: {
   q: string;
   limite?: number;
   /** El POS sólo ofrece lo que se puede vender; la consulta, todo. */
   soloHabilitados?: boolean;
+  /**
+   * `false` apaga la búsqueda sin desmontar el hook.
+   *
+   * Lo necesita el catálogo de Medicamentos, que tiene dos modos: buscar contra
+   * el servidor (lo de todos los días) o traerse todo para revisar el stock.
+   * Los hooks no se pueden llamar condicionalmente, así que en vez de eso el
+   * hook se queda quieto y no gasta una consulta que nadie va a mirar.
+   */
+  activo?: boolean;
 }): Busqueda {
   const [pagina, setPagina] = useState<PaginaProductos | null>(null);
-  const [cargando, setCargando] = useState(true);
+  const [cargando, setCargando] = useState(activo);
   const [trayendoMas, setTrayendoMas] = useState(false);
   const [error, setError] = useState("");
 
@@ -51,6 +61,7 @@ export function useBusquedaProductos({
 
   const buscar = useCallback(
     async (texto: string) => {
+      if (!activo) return;
       const mio = ++pedido.current;
       setCargando(true);
       setError("");
@@ -66,13 +77,18 @@ export function useBusquedaProductos({
         if (pedido.current === mio) setCargando(false);
       }
     },
-    [limite, soloHabilitados],
+    [limite, soloHabilitados, activo],
   );
 
   useEffect(() => {
+    if (!activo) {
+      // Apagado: no se queda "cargando" para siempre.
+      setCargando(false);
+      return;
+    }
     const id = setTimeout(() => void buscar(q), ESPERA_MS);
     return () => clearTimeout(id);
-  }, [q, buscar]);
+  }, [q, buscar, activo]);
 
   const traerMas = useCallback(async () => {
     if (!pagina || trayendoMas) return;

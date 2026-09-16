@@ -189,6 +189,7 @@ export function Modal({
   children,
   acciones,
   ancho = "max-w-lg",
+  encabezado,
 }: {
   abierto: boolean;
   titulo: string;
@@ -197,6 +198,15 @@ export function Modal({
   children: ReactNode;
   acciones?: ReactNode;
   ancho?: string;
+  /**
+   * Reemplaza la barra de título por una cabecera propia —la ficha del
+   * medicamento la usa para su franja de color, donde el nombre es lo primero
+   * que se ve. `titulo` se sigue pidiendo: es el `aria-label` del diálogo.
+   *
+   * La cruz de cerrar la pone igual el Modal, sobre la cabecera y en blanco:
+   * quien pasa una cabecera acá la está pintando de un color fuerte.
+   */
+  encabezado?: ReactNode;
 }) {
   if (!abierto) return null;
   return (
@@ -212,19 +222,32 @@ export function Modal({
         aria-label={titulo}
         className={`flex max-h-[92dvh] w-full ${ancho} flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl sm:rounded-2xl`}
       >
-        <div className="flex items-start justify-between gap-4 border-b border-borde-soft px-5 py-4">
-          <div>
-            <h2 className="text-base font-bold text-texto">{titulo}</h2>
-            {subtitulo && <p className="mt-0.5 text-[13px] text-texto-3">{subtitulo}</p>}
+        {encabezado ? (
+          <div className="relative shrink-0">
+            {encabezado}
+            <button
+              onClick={onClose}
+              aria-label="Cerrar"
+              className="absolute right-4 top-4 rounded-full bg-white/20 p-2 text-white transition-colors hover:bg-white/30"
+            >
+              <Icon name="close" size={19} />
+            </button>
           </div>
-          <button
-            onClick={onClose}
-            aria-label="Cerrar"
-            className="rounded-lg p-2.5 text-texto-3 transition-colors hover:bg-muted"
-          >
-            <Icon name="close" size={19} />
-          </button>
-        </div>
+        ) : (
+          <div className="flex items-start justify-between gap-4 border-b border-borde-soft px-5 py-4">
+            <div>
+              <h2 className="text-base font-bold text-texto">{titulo}</h2>
+              {subtitulo && <p className="mt-0.5 text-[13px] text-texto-3">{subtitulo}</p>}
+            </div>
+            <button
+              onClick={onClose}
+              aria-label="Cerrar"
+              className="rounded-lg p-2.5 text-texto-3 transition-colors hover:bg-muted"
+            >
+              <Icon name="close" size={19} />
+            </button>
+          </div>
+        )}
         <div className="flex-1 overflow-y-auto px-5 py-4">{children}</div>
         {acciones && (
           <div className="flex flex-wrap justify-end gap-2 border-t border-borde-soft bg-muted px-5 py-3.5 pb-[max(0.875rem,env(safe-area-inset-bottom))]">

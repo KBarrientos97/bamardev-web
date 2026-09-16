@@ -5,6 +5,7 @@ import { fmtFecha, fmtMoney, fmtNum } from "../../lib/format";
 import { api } from "../../lib/api";
 import { useApi } from "../../lib/useApi";
 import type { ContadorTramo, LotePorVencer, TramoVencimiento } from "../../types";
+import { COLOR_TRAMO, textoVida } from "./medicamento";
 
 /**
  * Vencimientos: la pantalla que evita que la plata se pudra en el estante.
@@ -34,36 +35,28 @@ const TRAMOS: {
     campo: "vencidos",
     titulo: "Vencidos",
     ayuda: "Sacar del estante",
-    texto: "text-danger-text",
-    fondo: "bg-danger-bg",
-    barra: "bg-danger",
+    ...COLOR_TRAMO.VENCIDO,
   },
   {
     clave: "HASTA_30",
     campo: "hasta30",
     titulo: "≤ 30 días",
     ayuda: "Rematar o devolver",
-    texto: "text-danger-text",
-    fondo: "bg-danger-bg/60",
-    barra: "bg-danger/70",
+    ...COLOR_TRAMO.HASTA_30,
   },
   {
     clave: "HASTA_60",
     campo: "hasta60",
     titulo: "31 – 60 días",
     ayuda: "Mover con promoción",
-    texto: "text-warning-text",
-    fondo: "bg-warning-bg",
-    barra: "bg-warning",
+    ...COLOR_TRAMO.HASTA_60,
   },
   {
     clave: "HASTA_90",
     campo: "hasta90",
     titulo: "61 – 90 días",
     ayuda: "Tener en el radar",
-    texto: "text-warning-text",
-    fondo: "bg-warning-bg/60",
-    barra: "bg-warning/70",
+    ...COLOR_TRAMO.HASTA_90,
   },
 ];
 
@@ -194,13 +187,7 @@ function Fila({ lote: l }: { lote: LotePorVencer }) {
       </div>
 
       <div className="shrink-0 text-right">
-        <p className={`text-[13px] font-bold ${t.texto}`}>
-          {l.diasRestantes < 0
-            ? `Venció hace ${Math.abs(l.diasRestantes)} d`
-            : l.diasRestantes === 0
-              ? "Vence hoy"
-              : `${l.diasRestantes} días`}
-        </p>
+        <p className={`text-[13px] font-bold ${t.texto}`}>{textoVida(l.diasRestantes)}</p>
         <p className="text-xs text-texto-3">{fmtFecha(l.vencimiento ?? "")}</p>
       </div>
 

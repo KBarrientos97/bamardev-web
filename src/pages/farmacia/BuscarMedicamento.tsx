@@ -1,9 +1,9 @@
 import { useRef, useState } from "react";
 import { Badge, Boton, Cargando, ErrorMsg, Modal, Vacio } from "../../components/ui";
-import { fmtMoney, fmtNum } from "../../lib/format";
+import { fmtMoney } from "../../lib/format";
 import type { Producto } from "../../types";
 import CampoBusqueda from "./CampoBusqueda";
-import { CONDICION, concentracionAparte, detalleDe } from "./medicamento";
+import { CONDICION, concentracionAparte, conUnidad, detalleDe } from "./medicamento";
 import { ChipsCondicion, Resaltado } from "./piezas";
 import { useBusquedaProductos } from "./useBusquedaProductos";
 
@@ -144,7 +144,7 @@ function Fila({
                 agotado ? "bg-danger" : bajo ? "bg-warning" : "bg-primary"
               }`}
             />
-            {agotado ? "Agotado" : `${fmtNum(p.stockTotal)} u.`}
+            {agotado ? "Agotado" : conUnidad(p.stockTotal, p.unidadMedida?.nombre)}
           </span>
         </span>
       </button>
@@ -190,7 +190,7 @@ function FichaMedicamento({
             label="Stock"
             valor={
               p.stockTotal > 0
-                ? `${fmtNum(p.stockTotal)} ${p.unidadMedida?.nombre ?? ""}`
+                ? conUnidad(p.stockTotal, p.unidadMedida?.nombre)
                 : "Agotado"
             }
           />

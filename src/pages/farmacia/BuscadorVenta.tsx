@@ -7,6 +7,7 @@ import CampoBusqueda from "./CampoBusqueda";
 import {
   CONDICION,
   concentracionAparte,
+  conUnidad,
   detalleDe,
   pideConfirmacion,
 } from "./medicamento";
@@ -197,7 +198,7 @@ function FilaVenta({
                 mejor que el sistema lo que tiene en el cajón, y en una farmacia
                 el ajuste viene después por Movimientos. */}
             <span className={agotado ? "shrink-0 font-semibold text-danger-text" : "shrink-0"}>
-              {agotado ? "· Agotado" : `· ${fmtNum(p.stockTotal)} u.`}
+              {agotado ? "· Agotado" : `· ${conUnidad(p.stockTotal, p.unidadMedida?.nombre)}`}
             </span>
           </span>
         </span>
