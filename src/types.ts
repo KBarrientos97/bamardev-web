@@ -330,6 +330,9 @@ export interface DetalleMovimiento {
   costo: number;
   subtotal?: number;
   descripcion: string | null;
+  /** Rubro farmacia: la partida que entró en esta línea. */
+  loteCodigo?: string | null;
+  loteVencimiento?: string | null;
 }
 
 /** Artículo elegible en un movimiento (productos + insumos en una sola lista). */
@@ -341,6 +344,11 @@ export interface ArticuloMovimiento {
   precio: number;
   stock: number;
   unidad: string;
+  /**
+   * Si se compra y se vende por lote con vencimiento (rubro farmacia). El
+   * formulario de ingreso pide lote y fecha sólo en estas líneas.
+   */
+  manejaLote?: boolean;
 }
 
 export interface MovimientoInput {
@@ -420,6 +428,60 @@ export interface DetalleMovimientoInput {
   cantidad: number;
   costo?: number;
   descripcion?: string;
+  /**
+   * Lote y vencimiento (rubro farmacia). Sólo se mandan en una ENTRADA: es lo
+   * que dice el papel de la compra. Una salida no elige lote — sale el más
+   * próximo a vencer, que es la regla del depósito.
+   */
+  loteCodigo?: string;
+  /** yyyy-MM-dd */
+  loteVencimiento?: string;
+}
+
+// ── Lotes y vencimientos (rubro farmacia) ───────────────────────────────────
+
+/** En qué tramo del semáforo cae un vencimiento. */
+export type TramoVencimiento =
+  | "VENCIDO"
+  | "HASTA_30"
+  | "HASTA_60"
+  | "HASTA_90"
+  | "LEJOS";
+
+export interface LoteConSaldo {
+  loteId: number;
+  codigo: string;
+  vencimiento: string | null;
+  /** Negativo = ya venció. Null si el lote no tiene fecha. */
+  diasRestantes: number | null;
+  tramo: TramoVencimiento | null;
+  cantidad: number;
+  costoUnitario: number | null;
+  almacen: { id: number; nombre: string };
+}
+
+export interface LotePorVencer extends LoteConSaldo {
+  diasRestantes: number;
+  tramo: TramoVencimiento;
+  /** Cantidad × costo: la plata parada en este lote. */
+  valor: number;
+  producto: { id: number; nombre: string; laboratorio: string | null };
+}
+
+export interface ContadorTramo {
+  lotes: number;
+  unidades: number;
+  valor: number;
+}
+
+export interface Vencimientos {
+  vencidos: ContadorTramo;
+  hasta30: ContadorTramo;
+  hasta60: ContadorTramo;
+  hasta90: ContadorTramo;
+  /** Lo que cuesta todo lo que está por vencer o ya venció. */
+  valorEnRiesgo: number;
+  detalle: LotePorVencer[];
 }
 
 // ── Caja ────────────────────────────────────────────────────────────────────

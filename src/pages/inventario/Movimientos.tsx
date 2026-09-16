@@ -796,6 +796,25 @@ function Dato({ label, valor }: { label: string; valor: string }) {
   );
 }
 
+/**
+ * Aviso cuando un lote entra con poca vida útil.
+ *
+ * Los 90 días son el corte del rubro: por debajo de eso ya no hay tiempo de
+ * venderlo con tranquilidad ni de devolverlo al proveedor. No bloquea el
+ * ingreso —a veces se compra barato justamente por eso— pero tiene que decirse
+ * ANTES de aprobar, no cuando aparezca en rojo en el semáforo.
+ */
+function avisoVidaUtil(l: LineaDetalle): string | null {
+  if (!l.loteVencimiento) return null;
+  const dia = 24 * 60 * 60 * 1000;
+  const dias = Math.round(
+    (new Date(`${l.loteVencimiento}T12:00:00`).getTime() - Date.now()) / dia,
+  );
+  if (dias < 0) return `Ojo: ese lote ya está vencido.`;
+  if (dias <= 90) return `Ojo: entra con ${dias} días de vida útil (menos de 90).`;
+  return null;
+}
+
 /** Línea en edición: el costo viaja como texto para no pelear con el input. */
 interface LineaDetalle {
   articuloId: number;
@@ -803,6 +822,11 @@ interface LineaDetalle {
   unidad: string;
   cantidad: string;
   costo: string;
+  /** Rubro farmacia: sólo en las líneas de un artículo que maneja lote. */
+  manejaLote?: boolean;
+  loteCodigo?: string;
+  /** yyyy-MM-dd */
+  loteVencimiento?: string;
 }
 
 function FormMovimiento({
@@ -871,6 +895,9 @@ function FormMovimientoCuerpo({
         // Se prellena con el costo del artículo: en la mayoría de las entradas
         // se compra al mismo precio de la última vez.
         costo: String(art.costo),
+        manejaLote: art.manejaLote,
+        loteCodigo: "",
+        loteVencimiento: "",
       },
     ]);
   }
@@ -908,7 +935,20 @@ function FormMovimientoCuerpo({
         }
       }
 
-      detalles.push({ productoId: l.articuloId, cantidad, costo });
+      detalles.push({
+        productoId: l.articuloId,
+        cantidad,
+        costo,
+        // Sólo en una ENTRADA: es lo que dice el papel de la compra. Una
+        // salida no elige lote — sale el más próximo a vencer, que es la regla
+        // del depósito y no una decisión de quien carga el formulario.
+        ...(tipo === "ENTRADA" && l.manejaLote && l.loteCodigo?.trim()
+          ? {
+              loteCodigo: l.loteCodigo.trim(),
+              ...(l.loteVencimiento ? { loteVencimiento: l.loteVencimiento } : {}),
+            }
+          : {}),
+      });
     }
 
     const input: MovimientoInput = {
@@ -1051,6 +1091,36 @@ function FormMovimientoCuerpo({
                       </p>
                     </div>
                   </div>
+
+                  {/* Lote y vencimiento: sólo al RECIBIR mercadería y sólo en
+                      los artículos que los llevan. Una salida no elige lote
+                      —sale el más próximo a vencer— y a un termómetro no se le
+                      pide una fecha que no tiene. */}
+                  {tipo === "ENTRADA" && l.manejaLote && (
+                    <div className="mt-2 grid grid-cols-2 gap-2">
+                      <Campo label="Lote">
+                        <Input
+                          value={l.loteCodigo ?? ""}
+                          onChange={(e) => editarLinea(i, { loteCodigo: e.target.value })}
+                          placeholder="AMX-2601"
+                        />
+                      </Campo>
+                      <Campo label="Vence">
+                        <Input
+                          type="date"
+                          value={l.loteVencimiento ?? ""}
+                          onChange={(e) =>
+                            editarLinea(i, { loteVencimiento: e.target.value })
+                          }
+                        />
+                      </Campo>
+                      {avisoVidaUtil(l) && (
+                        <p className="col-span-2 rounded-lg bg-warning-bg px-2.5 py-2 text-[12px] text-warning-text">
+                          {avisoVidaUtil(l)}
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </li>
               ))}
             </ul>

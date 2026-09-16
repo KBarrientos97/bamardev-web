@@ -303,3 +303,16 @@ describe("capacidades que no existen en un rubro", () => {
     expect(puede(ctx("ADMIN", TODOS_MODULOS, []), "mesa_llevar")).toBe(true);
   });
 });
+
+describe("vencimientos", () => {
+  it("es de farmacia y de quien administra", () => {
+    const farmacia = (rol: Rol) => ({ ...ctx(rol), rubro: "FARMACIA" });
+    expect(puedeVer(farmacia("ADMIN"), "vencimientos")).toBe(true);
+    expect(puedeVer(farmacia("SUPERVISOR"), "vencimientos")).toBe(true);
+    // El cajero atiende; qué se devuelve al proveedor no es su decisión.
+    expect(puedeVer({ ...ctx("CAJERO", ["POS", "CAJA"]), rubro: "FARMACIA" }, "vencimientos")).toBe(
+      false,
+    );
+    expect(puedeVer({ ...ctx("ADMIN"), rubro: "RESTAURANTE" }, "vencimientos")).toBe(false);
+  });
+});

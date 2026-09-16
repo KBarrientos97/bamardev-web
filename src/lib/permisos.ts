@@ -52,7 +52,9 @@ export type Seccion =
   /** ABM de mesas y zonas: es del admin, no del mesero. */
   | "mesas"
   /** Buscar un medicamento en el mostrador. Sólo farmacia. */
-  | "busqueda";
+  | "busqueda"
+  /** Los lotes que vencen y la plata parada en ellos. Sólo farmacia. */
+  | "vencimientos";
 
 /**
  * Qué módulo de rol y qué feature de plan exige cada sección. `feature: null`
@@ -79,6 +81,9 @@ const REQUISITOS: Record<Seccion, { modulo: Modulo; feature: Feature | null }> =
   // Buscar un medicamento es parte de atender: la hace quien está en el
   // mostrador, así que va con el módulo del POS. No se vende aparte.
   busqueda: { modulo: "POS", feature: null },
+  // Vencimientos es de inventario: decide qué se devuelve al proveedor y qué
+  // se da de baja, no atiende a nadie.
+  vencimientos: { modulo: "INVENTARIO", feature: "inventario" },
 };
 
 /**
@@ -108,6 +113,7 @@ const ROLES_PERMITIDOS: Partial<Record<Seccion, Rol[]>> = {
   mesas: ["ADMIN", "SUPERVISOR"],
   // El cajero entra: es el que atiende el mostrador y el que más la usa.
   busqueda: ["ADMIN", "SUPERVISOR", "CAJERO"],
+  vencimientos: ["ADMIN", "SUPERVISOR"],
 };
 
 /**
@@ -129,6 +135,7 @@ const ROLES_PERMITIDOS: Partial<Record<Seccion, Rol[]>> = {
  */
 const SOLO_EN_RUBRO: Partial<Record<Seccion, Rubro[]>> = {
   busqueda: ["FARMACIA"],
+  vencimientos: ["FARMACIA"],
 };
 
 const FUERA_DE_RUBRO: Partial<Record<Seccion, Rubro[]>> = {

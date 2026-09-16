@@ -31,6 +31,7 @@ import type {
   Movimiento,
   MovimientoCaja,
   MovimientoInput,
+  LoteConSaldo,
   PaginaProductos,
   Producto,
   ProductoInput,
@@ -48,6 +49,7 @@ import type {
   ResumenCaja,
   UnidadMedida,
   Usuario,
+  Vencimientos,
   Venta,
   VentaInput,
 } from "../types";
@@ -427,6 +429,22 @@ export const api = {
     request<{ mensaje: string }>(`/almacenes/${id}/principal`, {
       method: "PATCH",
     }),
+  // ── Lotes y vencimientos (rubro farmacia) ───────────────────────────────
+  /**
+   * El semáforo: qué vence y cuánta plata hay parada ahí.
+   *
+   * No hay alta de lotes a propósito — nacen al aprobar una entrada de
+   * mercadería. Un lote que existe sin que haya entrado nada al depósito es un
+   * número que después nadie puede explicar.
+   */
+  vencimientos: (params: { almacenId?: number; dias?: number } = {}) =>
+    request<Vencimientos>(
+      `/lotes/vencimientos${qs({ almacenId: params.almacenId, dias: params.dias })}`,
+    ),
+  /** Los lotes con saldo de un producto, en el orden en que se van a vender. */
+  lotesDeProducto: (productoId: number, almacenId?: number) =>
+    request<LoteConSaldo[]>(`/lotes/producto/${productoId}${qs({ almacenId })}`),
+
   /** Lo que los productos tienen distinto en esta sucursal (sólo excepciones). */
   getPreciosSucursal: (almacenId: number) =>
     request<PrecioSucursal[]>(`/almacenes/${almacenId}/precios`),

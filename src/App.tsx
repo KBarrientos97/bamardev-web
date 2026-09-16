@@ -15,6 +15,7 @@ import Movimientos from "./pages/inventario/Movimientos";
 import Productos from "./pages/inventario/Productos";
 import Pos from "./pages/pos/Pos";
 import BuscarMedicamento from "./pages/farmacia/BuscarMedicamento";
+import Vencimientos from "./pages/farmacia/Vencimientos";
 import Repartidor from "./pages/repartidor/Repartidor";
 import PanelMesero from "./pages/salon/PanelMesero";
 import { AuthProvider, useAuth } from "./store/AuthContext";
@@ -136,6 +137,15 @@ function Rutas() {
           element={
             <Protegida seccion="busqueda">
               <BuscarMedicamento />
+            </Protegida>
+          }
+        />
+
+        <Route
+          path="/vencimientos"
+          element={
+            <Protegida seccion="vencimientos">
+              <Vencimientos />
             </Protegida>
           }
         />
