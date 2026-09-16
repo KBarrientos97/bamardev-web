@@ -221,3 +221,46 @@ describe("el mesero", () => {
   });
 });
 
+
+describe("el rubro decide qué secciones existen", () => {
+  const farmacia = { ...ctx("ADMIN"), rubro: "FARMACIA" };
+
+  it("una farmacia no tiene salón, mesas ni insumos", () => {
+    // No es un tema de plan: por más que lo compre, una farmacia no atiende
+    // mesas ni transforma materia prima.
+    expect(puedeVer(farmacia, "mesas")).toBe(false);
+    expect(puedeVer(farmacia, "salon")).toBe(false);
+    expect(puedeVer(farmacia, "insumos")).toBe(false);
+  });
+
+  it("una farmacia sí vende, cobra fiado y maneja inventario", () => {
+    expect(puedeVer(farmacia, "pos")).toBe(true);
+    expect(puedeVer(farmacia, "productos")).toBe(true);
+    expect(puedeVer(farmacia, "movimientos")).toBe(true);
+    expect(puedeVer(farmacia, "almacenes")).toBe(true);
+    expect(puedeVer(farmacia, "creditos")).toBe(true);
+    expect(puedeVer(farmacia, "reportes")).toBe(true);
+  });
+
+  it("un restaurante no pierde nada", () => {
+    // La lista es NEGRA: lo que no está, se ve. Es la garantía de que esto no
+    // le toca el menú a ningún negocio que ya está trabajando.
+    const resto = { ...ctx("ADMIN"), rubro: "RESTAURANTE" };
+    expect(puedeVer(resto, "mesas")).toBe(true);
+    expect(puedeVer(resto, "insumos")).toBe(true);
+    expect(puedeVer(resto, "salon")).toBe(true);
+  });
+
+  it("sin rubro se ve todo, como antes", () => {
+    // Una sesión guardada antes de que el login mandara `tipoNegocio`.
+    expect(puedeVer(ctx("ADMIN"), "mesas")).toBe(true);
+    expect(puedeVer(ctx("ADMIN"), "insumos")).toBe(true);
+  });
+
+  it("el rubro no le abre la puerta a quien no corresponde", () => {
+    // Pasa el filtro de rubro pero lo frena el rol, como siempre.
+    const cajero = { ...ctx("CAJERO", ["POS", "CAJA"]), rubro: "FARMACIA" };
+    expect(puedeVer(cajero, "productos")).toBe(false);
+    expect(puedeVer(cajero, "pos")).toBe(true);
+  });
+});

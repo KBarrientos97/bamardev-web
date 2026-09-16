@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { iniciales } from "../lib/format";
 import { etiquetaRol, type Seccion } from "../lib/permisos";
+import { termino, type Termino } from "../lib/rubro";
 import { useAuth } from "../store/AuthContext";
 import AvisoLicencia from "./AvisoLicencia";
 import { Icon, type NombreIcono } from "./Icon";
@@ -13,13 +14,25 @@ interface ItemNav {
   seccion: Seccion;
   /** Se dibuja indentado bajo Inventario. */
   sub?: boolean;
+  /**
+   * El ítem se llama distinto según el rubro: `label` es el nombre de siempre
+   * y esto es la palabra que lo reemplaza donde corresponda (ver `rubro.ts`).
+   */
+  termino?: Termino;
 }
 
 const ITEMS: ItemNav[] = [
   { a: "/pos", label: "Punto de venta", icono: "cart", seccion: "pos" },
   { a: "/reparto", label: "Mis entregas", icono: "truck", seccion: "reparto" },
   { a: "/inventario", label: "Inventario", icono: "archive", seccion: "inventario" },
-  { a: "/inventario/productos", label: "Artículos", icono: "box", seccion: "productos", sub: true },
+  {
+    a: "/inventario/productos",
+    label: "Artículos",
+    icono: "box",
+    seccion: "productos",
+    sub: true,
+    termino: "articulos",
+  },
   { a: "/inventario/categorias", label: "Categorías", icono: "grid", seccion: "productos", sub: true },
   { a: "/inventario/insumos", label: "Insumos", icono: "sack", seccion: "insumos", sub: true },
   { a: "/inventario/almacenes", label: "Almacenes", icono: "warehouse", seccion: "almacenes", sub: true },
@@ -55,7 +68,7 @@ function tituloDe(items: ItemNav[], pathname: string): string {
 }
 
 export default function Layout() {
-  const { usuario, negocio, logout, puede } = useAuth();
+  const { usuario, negocio, logout, puede, rubro } = useAuth();
   const [abierto, setAbierto] = useState(false);
   const [colapsada, setColapsada] = useState(
     () => localStorage.getItem(COLAPSADA_KEY) === "1",
@@ -66,7 +79,15 @@ export default function Layout() {
     localStorage.setItem(COLAPSADA_KEY, colapsada ? "1" : "0");
   }, [colapsada]);
 
-  const visibles = ITEMS.filter((i) => puede(i.seccion));
+  // El rubro decide qué ítems existen (`puede`) y cómo se llaman: en una
+  // farmacia, "Artículos" es "Medicamentos".
+  const visibles = useMemo(
+    () =>
+      ITEMS.filter((i) => puede(i.seccion)).map((i) =>
+        i.termino ? { ...i, label: termino(rubro, i.termino) } : i,
+      ),
+    [puede, rubro],
+  );
 
   /**
    * `compacta` aplica sólo a la barra de escritorio: el drawer del móvil se

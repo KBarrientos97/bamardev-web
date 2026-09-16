@@ -1,4 +1,5 @@
 import type { Feature, Modulo, Rol } from "../types";
+import type { Rubro } from "./rubro";
 
 /**
  * Permisos de la app. Hay DOS vocabularios distintos y no se mezclan:
@@ -16,6 +17,11 @@ import type { Feature, Modulo, Rol } from "../types";
  * que la app Android: una sesión vieja o un negocio sin features migradas se
  * quedaría sin menú, y eso es peor que mostrar de más — el backend igual
  * responde 403 si de verdad no corresponde.
+ *
+ * Y hay un tercer filtro, de otra naturaleza: el RUBRO (ver `rubro.ts`). El rol
+ * y el plan dicen si te dejan entrar; el rubro dice si la sección **existe**
+ * para ese tipo de negocio. Una farmacia con el plan más caro sigue sin tener
+ * mesas de salón.
  */
 
 export function tieneModulo(modulos: Modulo[] | undefined, codigo: Modulo): boolean {
@@ -97,13 +103,37 @@ const ROLES_PERMITIDOS: Partial<Record<Seccion, Rol[]>> = {
   mesas: ["ADMIN", "SUPERVISOR"],
 };
 
+/**
+ * Secciones que NO existen en un rubro. Es una lista NEGRA y no una blanca a
+ * propósito: lo que no está acá se ve, que es como funcionaba antes de que el
+ * rubro existiera. Así, agregar un rubro nuevo no le apaga el menú a nadie por
+ * un olvido, y los negocios que ya trabajan no se enteran de este archivo.
+ *
+ * Por eso mismo hoy sólo está FARMACIA. Que un minimarket vea "Mesas del
+ * salón" es raro, pero es lo que ve hoy: sacárselo es otra decisión, de otro
+ * día, con su propio cliente mirando. Acá no se toca nada que ya funcione.
+ */
+const FUERA_DE_RUBRO: Partial<Record<Seccion, Rubro[]>> = {
+  // El salón entero es de restaurante: una farmacia no atiende mesas.
+  mesas: ["FARMACIA"],
+  salon: ["FARMACIA"],
+  // Los insumos son materia prima: harina, aceite, pollo crudo. Una farmacia
+  // no transforma nada, compra y vende lo mismo.
+  insumos: ["FARMACIA"],
+};
+
 export interface ContextoPermisos {
   rol: Rol;
   modulos?: Modulo[];
   features?: Feature[];
+  /** `negocio.tipoNegocio` del login. Sin rubro, se ve todo (como antes). */
+  rubro?: string;
 }
 
 export function puedeVer(ctx: ContextoPermisos, seccion: Seccion): boolean {
+  const fuera = FUERA_DE_RUBRO[seccion];
+  if (fuera && ctx.rubro && (fuera as string[]).includes(ctx.rubro)) return false;
+
   const roles = ROLES_PERMITIDOS[seccion];
   if (roles && !roles.includes(ctx.rol)) return false;
 

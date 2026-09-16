@@ -37,6 +37,11 @@ interface AuthValue {
   licencia: EstadoLicencia | null;
   /** Último alias usado, para prellenar el login. */
   aliasRecordado: string;
+  /**
+   * Rubro del negocio (`FARMACIA`, `RESTAURANTE`…). Decide qué secciones
+   * existen y cómo se llaman las cosas; ver `lib/rubro.ts`.
+   */
+  rubro: string | undefined;
   login: (username: string, password: string, negocio: string) => Promise<void>;
   logout: () => void;
   /** ¿Se muestra esta sección? Rol ∩ plan, con fail-open. */
@@ -165,7 +170,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const contexto = useMemo<ContextoPermisos | null>(
     () =>
       usuario
-        ? { rol: usuario.rol, modulos: usuario.modulos, features: negocio?.features }
+        ? {
+            rol: usuario.rol,
+            modulos: usuario.modulos,
+            features: negocio?.features,
+            rubro: negocio?.tipoNegocio,
+          }
         : null,
     [usuario, negocio],
   );
@@ -181,7 +191,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const value = useMemo(
-    () => ({ token, usuario, negocio, licencia, aliasRecordado, login, logout, puede, incluye }),
+    () => ({
+      token,
+      usuario,
+      negocio,
+      licencia,
+      aliasRecordado,
+      rubro: negocio?.tipoNegocio,
+      login,
+      logout,
+      puede,
+      incluye,
+    }),
     [token, usuario, negocio, licencia, aliasRecordado, login, logout, puede, incluye],
   );
 

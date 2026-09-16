@@ -19,6 +19,7 @@ import {
 import { api } from "../../lib/api";
 import { fmtMoney, fmtNum } from "../../lib/format";
 import { ICONOS_ARTICULO, iconoPorLlave } from "../../lib/iconosArticulo";
+import { termino } from "../../lib/rubro";
 import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
 import type { Categoria, Producto, ProductoInput, TipoProducto, UnidadMedida } from "../../types";
@@ -58,7 +59,7 @@ const OPC_TIPO = [
 ] as const satisfies readonly (readonly [FiltroTipo, string])[];
 
 export default function Productos() {
-  const { incluye } = useAuth();
+  const { incluye, rubro } = useAuth();
   const [filtroStock, setFiltroStock] = useState<FiltroStock>("todos");
   // La papelera es otra lista del backend, no un filtro sobre la que ya está:
   // los dados de baja no vienen en el catálogo normal.
@@ -134,7 +135,7 @@ export default function Productos() {
       productos.recargar();
       if (res.archivado) {
         setErrorAccion(
-          "El artículo ya tenía ventas o movimientos, así que se archivó en vez de borrarse.",
+          `El ${termino(rubro, "articulo")} ya tenía ventas o movimientos, así que se archivó en vez de borrarse.`,
         );
       }
     } catch (err) {
@@ -147,7 +148,7 @@ export default function Productos() {
   return (
     <div className="mx-auto max-w-6xl space-y-4 p-5">
       <EncabezadoPagina
-        titulo="Artículos"
+        titulo={termino(rubro, "articulos")}
         subtitulo={
           enPapelera
             ? `${lista.length} dados de baja`
@@ -184,7 +185,11 @@ export default function Productos() {
         <div className="card">
           <Vacio
             icono="archive"
-            titulo={lista.length ? "Sin resultados" : "Todavía no hay artículos"}
+            titulo={
+              lista.length
+                ? "Sin resultados"
+                : `Todavía no hay ${termino(rubro, "articulos").toLowerCase()}`
+            }
             texto={
               lista.length
                 ? "Probá con otro texto o quitá los filtros."
@@ -193,7 +198,7 @@ export default function Productos() {
             accion={
               !lista.length && (
                 <Boton icono="plus" onClick={() => setCreando(true)}>
-                  Nuevo artículo
+                  Nuevo {termino(rubro, "articulo")}
                 </Boton>
               )
             }
@@ -238,7 +243,7 @@ export default function Productos() {
 
       <Confirmar
         abierto={!!aBorrar}
-        titulo="Eliminar artículo"
+        titulo={`Eliminar ${termino(rubro, "articulo")}`}
         texto={`¿Eliminar "${aBorrar?.nombre}"? Si ya tiene ventas o movimientos se archivará en vez de borrarse.`}
         etiquetaOk="Eliminar"
         peligroso
@@ -327,6 +332,7 @@ function DetalleProducto({
   onEliminar: (p: Producto) => void;
   onRestaurar: (p: Producto) => void;
 }) {
+  const { rubro } = useAuth();
   const [viendoCostos, setViendoCostos] = useState(false);
   if (!p) return null;
   const tipo = TIPOS[p.tipoProducto];
@@ -335,7 +341,7 @@ function DetalleProducto({
   return (
     <Modal
       abierto
-      titulo="Detalle del artículo"
+      titulo={`Detalle del ${termino(rubro, "articulo")}`}
       subtitulo={p.nombre}
       onClose={onClose}
       acciones={
@@ -539,7 +545,7 @@ function FormProductoCuerpo({
   const [error, setError] = useState("");
   const [guardando, setGuardando] = useState(false);
 
-  const { incluye } = useAuth();
+  const { incluye, rubro } = useAuth();
   // Sin la capacidad el negocio no arma combos: el tipo ni se ofrece. Un
   // producto que YA es combo se sigue pudiendo editar (el dato existe y
   // esconderlo lo convertiría en otra cosa al guardar).
@@ -628,7 +634,7 @@ function FormProductoCuerpo({
   return (
     <Modal
       abierto
-      titulo={esEdicion ? "Editar artículo" : "Nuevo artículo"}
+      titulo={`${esEdicion ? "Editar" : "Nuevo"} ${termino(rubro, "articulo")}`}
       subtitulo={esEdicion ? producto.nombre : "Cargá los datos del producto"}
       onClose={onClose}
       acciones={
