@@ -4,6 +4,7 @@ import { Cargando, ErrorMsg } from "../../components/ui";
 import { api } from "../../lib/api";
 import { fmtHora, fmtMoney } from "../../lib/format";
 import { tieneFeature } from "../../lib/permisos";
+import { esFarmacia } from "../../lib/rubro";
 import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
 import type { Caja, CreditoInput, PagoInput, TipoPedido, Venta } from "../../types";
@@ -38,11 +39,21 @@ type Pantalla =
   | "entregas";
 
 export default function Pos() {
-  const { negocio } = useAuth();
+  const { negocio, rubro } = useAuth();
   // La caja manda: sin turno abierto el POS no deja vender, porque toda venta
   // tiene que caer dentro de un arqueo.
   const caja = useApi(() => api.cajaActual(), []);
-  const productos = useApi(() => api.getProductos(), []);
+  /**
+   * El catálogo de la grilla.
+   *
+   * En farmacia NO se pide: esa pantalla busca contra el servidor y traerse
+   * 2.000 artículos para no usarlos sería pagar la espera de abrir el POS por
+   * nada. La lista vacía es correcta ahí — la grilla no se dibuja.
+   */
+  const productos = useApi(
+    () => (esFarmacia(rubro) ? Promise.resolve([]) : api.getProductos()),
+    [rubro],
+  );
   const categorias = useApi(() => api.getCategorias(false), []);
   const formasPago = useApi(() => api.getFormasPago(), []);
   const repartidores = useApi(() => api.getRepartidores(), []);

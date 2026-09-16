@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { contiene } from "../../lib/texto";
+import { esFarmacia } from "../../lib/rubro";
+import BuscadorVenta from "../farmacia/BuscadorVenta";
+import { ChipsCondicion } from "../farmacia/piezas";
 import { Icon } from "../../components/Icon";
 import IconoProducto from "../../components/IconoProducto";
 import { Badge, Boton, Input, Modal, Vacio } from "../../components/ui";
@@ -27,7 +30,7 @@ export default function PantallaVenta({
   onCobrar: () => void;
   cabecera?: React.ReactNode;
 }) {
-  const { negocio, usuario } = useAuth();
+  const { negocio, usuario, rubro } = useAuth();
   const [q, setQ] = useState("");
   const [cat, setCat] = useState<string>(TODAS);
   // En móvil el carrito es una hoja que se abre; en escritorio es una columna
@@ -125,6 +128,13 @@ export default function PantallaVenta({
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         {cabecera}
 
+        {/* En una farmacia la entrada es la búsqueda y no la grilla: con 2.000
+            cajas que se llaman casi igual, ninguna cuadrícula de tarjetas sirve
+            para encontrar algo. El carrito y todo lo que sigue no cambian. */}
+        {esFarmacia(rubro) ? (
+          <BuscadorVenta onAgregar={carrito.agregar} enCarrito={enCarrito} />
+        ) : (
+          <>
         <div className="space-y-3 border-b border-borde bg-white px-4 py-3">
           <div className="relative">
             <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-texto-4">
@@ -181,6 +191,8 @@ export default function PantallaVenta({
             </ul>
           )}
         </div>
+          </>
+        )}
       </div>
 
       {/* Carrito: columna fija desde lg, igual que la app en tablet horizontal */}
@@ -490,6 +502,14 @@ function FilaCarrito({
         <div className="min-w-0 flex-1">
           <p className="truncate text-[13px] font-bold text-texto">{l.producto.nombre}</p>
           <p className="text-xs text-texto-3">{fmtMoney(l.producto.precio)} c/u</p>
+          {/* La receta se muestra también acá, no sólo al agregar: entre que se
+              carga el carrito y se cobra puede cambiar de manos, y quien
+              entrega tiene que ver qué papel hay que pedir. Sólo aparece en lo
+              que de verdad lo exige; un artículo de venta libre no dibuja nada
+              y en restaurante no se dibuja nunca. */}
+          <span className="mt-1 flex flex-wrap items-center gap-1.5 empty:mt-0">
+            <ChipsCondicion producto={l.producto} />
+          </span>
         </div>
 
         <div className="flex items-center gap-1 rounded-lg border border-borde">
