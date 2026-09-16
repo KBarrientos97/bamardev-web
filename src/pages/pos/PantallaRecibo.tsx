@@ -57,8 +57,10 @@ export default function PantallaRecibo({
   const pagos = venta.pagos ?? [];
 
   // El badge M/LL sólo aplica a ventas de local: en delivery/recoger todo va
-  // para llevar y ensuciaría el ticket (misma regla que TicketItems.kt).
-  const mostrarConsumo = venta.tipoPedido === "LOCAL";
+  // para llevar y ensuciaría el ticket (misma regla que TicketItems.kt). Y
+  // sólo donde partir una línea entre mesa y para llevar existe: en una
+  // farmacia no hay mesas, y la "M" en el ticket no querría decir nada.
+  const mostrarConsumo = venta.tipoPedido === "LOCAL" && incluye("mesa_llevar");
 
   // Subtotal = suma de las líneas. El envío va aparte, así que Subtotal y TOTAL
   // sólo difieren cuando el pedido tiene tarifa de entrega.

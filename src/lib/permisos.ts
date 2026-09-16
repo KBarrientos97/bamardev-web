@@ -206,7 +206,23 @@ const ROLES_CAPACIDAD: Partial<Record<Capacidad, Rol[]>> = {
   movimientos_caja: ["ADMIN", "SUPERVISOR"],
 };
 
+/**
+ * Capacidades que no existen en un rubro, pase lo que pase con el plan.
+ *
+ * Es el mismo criterio que `FUERA_DE_RUBRO` pero para lo que vive DENTRO de una
+ * pantalla. Y hace falta por algo puntual: las features fallan abiertas (lista
+ * vacía = se muestra), así que una farmacia recién dada de alta, sin features
+ * cargadas, veía "Todo en mesa / Todo para llevar" en su carrito. Eso no es un
+ * problema de plan: en una farmacia no hay mesas.
+ */
+const CAPACIDAD_FUERA_DE_RUBRO: Partial<Record<Capacidad, Rubro[]>> = {
+  mesa_llevar: ["FARMACIA"],
+};
+
 export function puede(ctx: ContextoPermisos, capacidad: Capacidad): boolean {
+  const fuera = CAPACIDAD_FUERA_DE_RUBRO[capacidad];
+  if (fuera && ctx.rubro && (fuera as string[]).includes(ctx.rubro)) return false;
+
   const roles = ROLES_CAPACIDAD[capacidad];
   if (roles && !roles.includes(ctx.rol)) return false;
   return tieneFeature(ctx.features, capacidad);

@@ -285,3 +285,21 @@ describe("secciones propias de un rubro", () => {
     expect(puedeVer(repartidor, "busqueda")).toBe(false);
   });
 });
+
+describe("capacidades que no existen en un rubro", () => {
+  it("una farmacia no parte una línea entre mesa y para llevar", () => {
+    // Y no alcanza con que el plan no traiga la feature: las features fallan
+    // ABIERTAS, así que una farmacia recién dada de alta las veía todas.
+    const farmacia = { ...ctx("ADMIN", TODOS_MODULOS, []), rubro: "FARMACIA" };
+    expect(puede(farmacia, "mesa_llevar")).toBe(false);
+    // El resto de las capacidades sigue igual: no se apagó media app.
+    expect(puede(farmacia, "pago_qr_mixto")).toBe(true);
+    expect(puede(farmacia, "recibo_pdf")).toBe(true);
+  });
+
+  it("un restaurante la conserva", () => {
+    const resto = { ...ctx("ADMIN", TODOS_MODULOS, []), rubro: "RESTAURANTE" };
+    expect(puede(resto, "mesa_llevar")).toBe(true);
+    expect(puede(ctx("ADMIN", TODOS_MODULOS, []), "mesa_llevar")).toBe(true);
+  });
+});
