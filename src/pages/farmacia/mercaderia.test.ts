@@ -7,6 +7,7 @@ import {
   juntarMotivo,
   mesAIso,
   partirMotivo,
+  resumenArticulos,
   tecleoMes,
 } from "./mercaderia";
 
@@ -173,5 +174,31 @@ describe("vida útil al recibir", () => {
     expect(diasHasta("2026-09-16", hoy)).toBe(1);
     expect(diasHasta("2026-09-14", hoy)).toBe(-1);
     expect(diasHasta(null, hoy)).toBeNull();
+  });
+});
+
+describe("qué se movió, en la tarjeta del registro", () => {
+  it("nombra el primero y cuenta el resto", () => {
+    expect(resumenArticulos(["Amoxicilina 500 mg", "Paracetamol 500 mg", "Ibuprofeno 400 mg"], 3)).toBe(
+      "Amoxicilina 500 mg y 2 más",
+    );
+    expect(resumenArticulos(["Amoxicilina 500 mg", "Paracetamol 500 mg"], 2)).toBe(
+      "Amoxicilina 500 mg y 1 más",
+    );
+  });
+
+  it("con uno solo, sólo el nombre", () => {
+    expect(resumenArticulos(["Amoxicilina 500 mg"], 1)).toBe("Amoxicilina 500 mg");
+  });
+
+  it("el mismo artículo en dos renglones sigue siendo uno", () => {
+    // El servidor ya los manda sin repetir; `items` cuenta renglones.
+    expect(resumenArticulos(["Amoxicilina 500 mg"], 2)).toBe("Amoxicilina 500 mg");
+  });
+
+  it("sin nombres del servidor vuelve al conteo de siempre", () => {
+    expect(resumenArticulos(undefined, 3)).toBe("3 artículos");
+    expect(resumenArticulos([], 1)).toBe("1 artículo");
+    expect(resumenArticulos(undefined, 0)).toBe("0 artículos");
   });
 });

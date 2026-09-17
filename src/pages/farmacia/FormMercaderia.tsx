@@ -313,17 +313,22 @@ export default function FormMercaderia({
    * sacar un renglón en el mismo guardado, la validación de stock del servidor
    * vea el almacén como va a quedar y no como estaba.
    *
-   * La fecha y el nº de factura no viajan: el servidor no los acepta en una
-   * modificación, y por eso el formulario los muestra bloqueados.
+   * La factura viaja igual que al crear: una salida no lleva factura, así que
+   * pasar de entrada a salida la borra. La fecha, sólo si se cambió: el
+   * servidor la guarda a mediodía, y reenviarla igual le cambiaría la hora a un
+   * movimiento cargado a las 21:30 sin que nadie la haya tocado.
    */
   async function guardarEdicion(
     id: number,
     descripcion: string,
     detalles: DetalleMovimientoInput[],
   ) {
+    const fechaOriginal = mov.datos ? isoDia(new Date(mov.datos.fecha)) : fecha;
     await api.actualizarMovimiento(id, {
       tipo,
       almacenId: Number(almacenId),
+      comprobante: entrada ? comprobante.trim() : "",
+      ...(fecha !== fechaOriginal ? { fecha } : {}),
       descripcion,
     });
 
@@ -459,29 +464,17 @@ export default function FormMercaderia({
           )}
 
           {entrada && (
-            <Campo
-              label="Nº factura"
-              hint={movId ? "No se cambia después de crear el movimiento" : undefined}
-            >
+            <Campo label="Nº factura">
               <Input
                 value={comprobante}
                 onChange={(e) => setComprobante(e.target.value)}
                 placeholder="F-0000"
-                disabled={!!movId}
               />
             </Campo>
           )}
 
-          <Campo
-            label="Fecha"
-            hint={movId ? "No se cambia después de crear el movimiento" : undefined}
-          >
-            <Input
-              type="date"
-              value={fecha}
-              onChange={(e) => setFecha(e.target.value)}
-              disabled={!!movId}
-            />
+          <Campo label="Fecha">
+            <Input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} />
           </Campo>
 
           {!entrada && (

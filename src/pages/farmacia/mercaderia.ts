@@ -181,6 +181,19 @@ export function etiquetaTipo(tipo: TipoMovimiento): string {
 }
 
 /**
+ * Qué se movió, en una línea: "Amoxicilina 500 mg y 2 más".
+ *
+ * Los nombres vienen del servidor en `productos`, ya sin repetir. Un servidor
+ * que todavía no los manda —o un movimiento sin renglones— cae en el conteo de
+ * siempre, "3 artículos": dice menos, pero no miente.
+ */
+export function resumenArticulos(productos: string[] | undefined, items: number): string {
+  const [primero, ...resto] = productos ?? [];
+  if (!primero) return `${items} ${items === 1 ? "artículo" : "artículos"}`;
+  return resto.length > 0 ? `${primero} y ${resto.length} más` : primero;
+}
+
+/**
  * Si el movimiento SUMA stock. Sólo la entrada: la transferencia cambia de
  * almacén pero no de dueño, y el ajuste puede ir para cualquier lado — los dos
  * se leen como "no es una entrada" y se pintan como una salida.

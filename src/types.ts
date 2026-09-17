@@ -318,6 +318,11 @@ export interface Movimiento {
   /** Sólo en TRANSFERENCIA: a dónde va la mercadería. */
   almacenDestino?: Pick<Almacen, "id" | "nombre"> | null;
   items: number;
+  /**
+   * Nombres de lo que se movió, sin repetir. Opcional: un backend anterior no
+   * lo manda y la pantalla vuelve a "3 artículos".
+   */
+  productos?: string[];
   monto: number;
   detalles?: DetalleMovimiento[];
 }

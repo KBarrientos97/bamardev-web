@@ -19,7 +19,14 @@ import { fmtFecha, fmtFechaHora, fmtMoney, fmtNum } from "../../lib/format";
 import { contiene } from "../../lib/texto";
 import { useApi } from "../../lib/useApi";
 import type { DetalleMovimiento, EstadoDocumento, Movimiento } from "../../types";
-import { esEntrada, etiquetaTipo, isoAMes, mesAIso, tecleoMes } from "./mercaderia";
+import {
+  esEntrada,
+  etiquetaTipo,
+  isoAMes,
+  mesAIso,
+  resumenArticulos,
+  tecleoMes,
+} from "./mercaderia";
 
 type FiltroTipo = "todos" | "ENTRADA" | "SALIDA";
 
@@ -72,7 +79,13 @@ export default function MovimientosFarmacia() {
     const texto = q.trim();
     return lista.filter((m) => {
       if (filtroTipo !== "todos" && m.tipo !== filtroTipo) return false;
-      if (texto && !contiene(m.comprobante, texto) && !contiene(m.descripcion, texto))
+      if (
+        texto &&
+        !contiene(m.comprobante, texto) &&
+        !contiene(m.descripcion, texto) &&
+        // "¿Cuándo entró la última amoxicilina?" se contesta buscándola acá.
+        !(m.productos ?? []).some((p) => contiene(p, texto))
+      )
         return false;
       return true;
     });
@@ -114,7 +127,7 @@ export default function MovimientosFarmacia() {
           <Buscador
             valor={q}
             onChange={setQ}
-            placeholder="Buscar por factura, proveedor o motivo"
+            placeholder="Buscar por medicamento, factura, proveedor o motivo"
           />
         </div>
         <Chips valor={filtroTipo} opciones={OPC_TIPO} onChange={setFiltroTipo} />
@@ -178,7 +191,7 @@ function Tarjeta({ mov: m, onClick }: { mov: Movimiento; onClick: () => void }) 
   const detalle = [
     fmtFecha(m.fecha),
     m.almacen?.nombre,
-    `${m.items} ${m.items === 1 ? "artículo" : "artículos"}`,
+    resumenArticulos(m.productos, m.items),
     m.descripcion || null,
   ]
     .filter(Boolean)
