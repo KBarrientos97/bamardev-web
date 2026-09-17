@@ -3,6 +3,7 @@ import { Icon } from "../../components/Icon";
 import { Boton } from "../../components/ui";
 import { compartirComoImagen } from "../../lib/compartirTicket";
 import { fmtFecha, fmtFechaHora, fmtMoney, fmtNum } from "../../lib/format";
+import { esFarmacia } from "../../lib/rubro";
 import { useAuth } from "../../store/AuthContext";
 import type { Venta } from "../../types";
 
@@ -26,7 +27,7 @@ export default function PantallaRecibo({
   onNuevaVenta: () => void;
   onHistorial: () => void;
 }) {
-  const { negocio, incluye } = useAuth();
+  const { negocio, incluye, rubro } = useAuth();
 
   /**
    * El ticket que se rasteriza al compartir: se manda la MISMA vista que se
@@ -57,10 +58,13 @@ export default function PantallaRecibo({
   const pagos = venta.pagos ?? [];
 
   // El badge M/LL sólo aplica a ventas de local: en delivery/recoger todo va
-  // para llevar y ensuciaría el ticket (misma regla que TicketItems.kt). Y
-  // sólo donde partir una línea entre mesa y para llevar existe: en una
+  // para llevar y ensuciaría el ticket (misma regla que TicketItems.kt). En una
   // farmacia no hay mesas, y la "M" en el ticket no querría decir nada.
-  const mostrarConsumo = venta.tipoPedido === "LOCAL" && incluye("mesa_llevar");
+  //
+  // Se pregunta por el RUBRO y no por `incluye("mesa_llevar")`: eso también
+  // depende del plan, y a un restaurante al que el panel le saque la feature se
+  // le borraban las marcas de un ticket que siempre las tuvo.
+  const mostrarConsumo = venta.tipoPedido === "LOCAL" && !esFarmacia(rubro);
 
   // Subtotal = suma de las líneas. El envío va aparte, así que Subtotal y TOTAL
   // sólo difieren cuando el pedido tiene tarifa de entrega.

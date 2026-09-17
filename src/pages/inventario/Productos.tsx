@@ -393,21 +393,27 @@ export default function Productos() {
 
       <ErrorMsg>{errorAccion || errorCarga}</ErrorMsg>
 
-      {cargando && aMostrar.length === 0 ? (
+      {/* Sólo la búsqueda del servidor deja la tanda anterior a la vista
+          mientras llega la nueva, para que la lista no parpadee con cada letra.
+          Traer el catálogo es otra lista entera: pasar de "Todos" a "Dados de
+          baja" dejaba los activos bajo ese chip, con el botón de Restaurar. */}
+      {cargando && (!buscaEnServidor || aMostrar.length === 0) ? (
         <Cargando texto={buscaEnServidor && q ? "Buscando…" : "Cargando…"} />
       ) : aMostrar.length === 0 ? (
         <div className="card">
           <Vacio
             icono={buscaEnServidor && q ? "search" : "archive"}
+            // Nombrar lo que se buscó es de farmacia. Los demás rubros dicen lo
+            // de siempre (ver Productos.test.tsx): la pantalla es compartida.
             titulo={
-              q
+              esFarmacia(rubro) && q
                 ? `No hay nada con "${q}"`
                 : hayCatalogo
                   ? "Sin resultados"
                   : `Todavía no hay ${termino(rubro, "articulos").toLowerCase()}`
             }
             texto={
-              q
+              esFarmacia(rubro) && q
                 ? // En farmacia la búsqueda mira también la droga y el
                   // laboratorio, así que la pista sirve de verdad.
                   buscaEnServidor
