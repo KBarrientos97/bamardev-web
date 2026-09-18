@@ -63,11 +63,15 @@ const REQUISITOS: Record<Seccion, { modulo: Modulo; feature: Feature | null }> =
   usuarios: { modulo: "USUARIOS", feature: "usuarios" },
   // El reparto no es una sección vendible: es la app del repartidor.
   reparto: { modulo: "POS", feature: "delivery" },
-  // El salón tampoco: es el panel del mesero. El módulo es POS porque es lo
-  // que el backend le da al rol MESERO, y no hay feature de plan para "salon"
-  // en el catálogo — si aparece, va acá.
-  salon: { modulo: "POS", feature: null },
-  mesas: { modulo: "INVENTARIO", feature: null },
+  // El salón es el panel del mesero. El módulo es POS porque es lo que el
+  // backend le da al rol MESERO, y la feature `salon` SÍ está en el catálogo
+  // (se vende en Profesional desde el 09-sep): apagarla desde el panel tiene
+  // que sacar la sección. Estaba en `null` con un comentario que decía que no
+  // existía, y por eso seguía apareciendo con la feature apagada.
+  salon: { modulo: "POS", feature: "salon" },
+  // El ABM de mesas es parte de la misma sección vendida: si el negocio no
+  // contrató el salón, no hay mesas que administrar.
+  mesas: { modulo: "INVENTARIO", feature: "salon" },
 };
 
 /**

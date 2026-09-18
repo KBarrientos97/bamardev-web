@@ -43,6 +43,7 @@ export type FeatureConocida =
   | "recoger"
   | "fiado"
   | "cocina"
+  | "salon"
   | "pago_qr_mixto"
   | "combos"
   | "mesa_llevar"
