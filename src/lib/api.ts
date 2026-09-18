@@ -537,10 +537,20 @@ export const api = {
     request<Venta>(`/ventas/${id}/cancelar`, { method: "POST" }),
 
   // ── Créditos (fiado) ──────────────────────────────────────────────────────
-  getCreditos: (params: { filtro?: FiltroCredito; q?: string; clienteId?: number } = {}) =>
+  /** `sucursalId` acota a lo fiado por ese local. */
+  getCreditos: (
+    params: {
+      filtro?: FiltroCredito;
+      q?: string;
+      clienteId?: number;
+      sucursalId?: number | null;
+    } = {},
+  ) =>
     request<Credito[]>(`/creditos${qs(params)}`),
   getCredito: (id: number) => request<Credito>(`/creditos/${id}`),
-  getClientesCredito: () => request<ClienteCredito[]>("/creditos/clientes"),
+  /** Con `sucursalId`, el saldo del cliente es lo que le debe A ESE local. */
+  getClientesCredito: (sucursalId?: number | null) =>
+    request<ClienteCredito[]>(`/creditos/clientes${qs({ sucursalId: sucursalId ?? undefined })}`),
   /**
    * Techo de deuda del cliente. `null` explícito = sacarle el límite, y por eso
    * el body lo manda siempre (omitirlo y mandar null son cosas distintas).

@@ -22,6 +22,7 @@ import {
 import { api } from "../lib/api";
 import { fmtFecha, fmtFechaHora, fmtMoney, fmtNum } from "../lib/format";
 import { useApi } from "../lib/useApi";
+import { useSucursales } from "../lib/useSucursales";
 import type { ClienteCredito, Credito, EstadoCredito, FiltroCredito, FormaPago } from "../types";
 
 const OPC_FILTRO = [
@@ -85,11 +86,16 @@ export default function Creditos() {
   // viejos no están en la lista que ya se descargó.
   const [qBuscado, setQBuscado] = useState("");
 
+  // Sin depósitos: se fía en el mostrador, no en un depósito.
+  const suc = useSucursales();
   const creditos = useApi<CreditoApi[]>(
-    () => api.getCreditos({ filtro, q: qBuscado || undefined }),
-    [filtro, qBuscado],
+    () => api.getCreditos({ filtro, q: qBuscado || undefined, sucursalId: suc.sucursalId }),
+    [filtro, qBuscado, suc.sucursalId],
   );
-  const clientes = useApi(() => api.getClientesCredito(), []);
+  const clientes = useApi(
+    () => api.getClientesCredito(suc.sucursalId),
+    [suc.sucursalId],
+  );
   const formasPago = useApi(() => api.getFormasPago(), []);
 
   const [detalleId, setDetalleId] = useState<number | null>(null);
@@ -202,6 +208,9 @@ export default function Creditos() {
             Buscar
           </Boton>
         </div>
+        {suc.elegir && (
+          <Chips valor={suc.valorChip} opciones={suc.opciones} onChange={suc.alElegir} />
+        )}
         <Chips valor={filtro} opciones={OPC_FILTRO} onChange={setFiltro} />
       </div>
 
