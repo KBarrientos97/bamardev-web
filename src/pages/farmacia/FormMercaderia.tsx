@@ -215,12 +215,19 @@ export default function FormMercaderia({
     setBuscando(false);
   }
 
-  function cambiarAlmacen(nuevo: string) {
-    setAlmacenId(nuevo);
-    // Los costos prellenados y los topes de stock son de OTRO almacén: dejarlos
-    // sería cargar una salida contra un stock que no existe ahí.
-    if (lineas.length) setLineas([]);
-  }
+  /**
+   * Cambiar de almacén NO borra lo cargado. Vaciar la lista era tirar el
+   * trabajo de alguien de forma irreversible —y sin avisar— cuando lo único
+   * que hizo fue corregir a qué sucursal iba.
+   *
+   * Lo único que de verdad depende del almacén es el STOCK, y se reacomoda
+   * solo: la lista de artículos se vuelve a pedir, cada renglón muestra el
+   * stock del almacén nuevo y avisa en rojo si ahora no alcanza. El costo NO
+   * es por almacén —viene del producto— así que no había nada que recalcular.
+   *
+   * Mientras el movimiento esté PENDIENTE todavía no tocó el inventario, así
+   * que corregir el almacén es tan válido como corregir una cantidad.
+   */
 
   /** Arma las líneas para el servidor, o devuelve el primer error legible. */
   function revisarLineas(): { detalles: DetalleMovimientoInput[] } | { error: string } {
@@ -441,7 +448,7 @@ export default function FormMercaderia({
           <Campo label="Almacén *">
             <Select
               value={almacenId}
-              onChange={(e) => cambiarAlmacen(e.target.value)}
+              onChange={(e) => setAlmacenId(e.target.value)}
               className="border-warning bg-warning-bg/40"
             >
               <option value="">Elegí uno</option>
@@ -683,8 +690,12 @@ function Renglon({
   onEditar: (cambio: Partial<LineaForm>) => void;
   onQuitar: () => void;
 }) {
-  const subtotal = (parsearMonto(l.cantidad) ?? 0) * (parsearMonto(l.costo) ?? 0);
+  const pedido = parsearMonto(l.cantidad) ?? 0;
+  const subtotal = pedido * (parsearMonto(l.costo) ?? 0);
   const aviso = entrada && conLote ? avisoVidaUtil(mesAIso(l.loteMes)) : null;
+  // Se avisa acá y no recién al guardar: al cambiar de almacén los renglones
+  // se quedan, y el que ya no entra tiene que saltar a la vista en el momento.
+  const noAlcanza = !entrada && stock !== null && pedido > stock;
 
   return (
     <>
@@ -695,8 +706,13 @@ function Renglon({
             <span className="block text-xs text-texto-4">{l.detalle}</span>
           )}
           {!entrada && stock !== null && (
-            <span className="block text-xs text-texto-3">
+            <span
+              className={`block text-xs ${
+                noAlcanza ? "font-semibold text-danger-text" : "text-texto-3"
+              }`}
+            >
               Stock en {almacenNombre || "el almacén"}: {conUnidad(stock, unidad)}
+              {noAlcanza && " · no alcanza"}
             </span>
           )}
         </td>
