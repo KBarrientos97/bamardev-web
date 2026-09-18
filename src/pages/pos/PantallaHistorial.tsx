@@ -14,7 +14,8 @@ import {
   Vacio,
 } from "../../components/ui";
 import { api, type PagoEntrega } from "../../lib/api";
-import { fmtHora, fmtMoney, fmtNum } from "../../lib/format";
+import { fmtFechaHora, fmtHora, fmtMoney, fmtNum } from "../../lib/format";
+import { Telefono } from "../../lib/telefono";
 import { puedeSupervisar } from "../../lib/permisos";
 import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
@@ -24,10 +25,13 @@ export default function PantallaHistorial({
   caja,
   onAtras,
   onCierre,
+  onVerComprobante,
 }: {
   caja: Caja;
   onAtras: () => void;
   onCierre: () => void;
+  /** Abre el recibo de una venta ya hecha (el POS es quien tiene esa pantalla). */
+  onVerComprobante: (venta: Venta) => void;
 }) {
   const { puede } = useAuth();
   const ventas = useApi(() => api.getVentas(caja.id), [caja.id]);
@@ -88,7 +92,23 @@ export default function PantallaHistorial({
             </h2>
             <ul className="space-y-2">
               {porEntregar.map((p) => (
-                <li key={p.id} className="card flex items-center gap-3 p-3.5">
+                // Toda la fila abre el detalle, igual que en la app desde
+                // `eab8574`: antes acá no pasaba nada al tocarla, y el cajero no
+                // tenía forma de ver el teléfono o la nota del pedido sin ir a
+                // buscar la venta.
+                <li
+                  key={p.id}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setDetalle(p)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      setDetalle(p);
+                    }
+                  }}
+                  className="card flex cursor-pointer items-center gap-3 p-3.5 transition-shadow hover:shadow-md"
+                >
                   <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-warning-bg text-warning-text">
                     <Icon name={p.tipoPedido === "DELIVERY" ? "truck" : "clock"} size={19} />
                   </span>
@@ -112,7 +132,11 @@ export default function PantallaHistorial({
                         sin esto el pedido quedaba pendiente para siempre. */}
                     {p.tipoPedido === "RECOGER" && (
                       <button
-                        onClick={() => setEntregando(p)}
+                        onClick={(e) => {
+                          // Que el botón no abra además el detalle de la fila.
+                          e.stopPropagation();
+                          setEntregando(p);
+                        }}
                         className="mt-1.5 block w-full rounded-lg bg-primary px-2.5 py-1 text-xs font-bold text-white"
                       >
                         {p.prepagado ? "Entregar" : "Cobrar y entregar"}
@@ -211,6 +235,16 @@ export default function PantallaHistorial({
           onAnulada={() => {
             setDetalle(null);
             ventas.recargar();
+            // Un pedido anulado deja de estar pendiente.
+            pendientes.recargar();
+          }}
+          onEntregar={(v) => {
+            setDetalle(null);
+            setEntregando(v);
+          }}
+          onVerComprobante={(v) => {
+            setDetalle(null);
+            onVerComprobante(v);
           }}
         />
       )}
@@ -222,10 +256,16 @@ function DetalleVenta({
   venta,
   onClose,
   onAnulada,
+  onEntregar,
+  onVerComprobante,
 }: {
   venta: Venta;
   onClose: () => void;
   onAnulada: () => void;
+  /** Entregar (o cobrar y entregar) un pedido de recoger que sigue pendiente. */
+  onEntregar?: (venta: Venta) => void;
+  /** Reimprimir el comprobante de un pedido ya cobrado. */
+  onVerComprobante?: (venta: Venta) => void;
 }) {
   const { usuario, incluye } = useAuth();
   const completa = useApi(() => api.getVenta(venta.id), [venta.id]);
@@ -253,6 +293,22 @@ function DetalleVenta({
   const puedeAnular =
     v.estado === "APROBADO" && incluye("autorizacion_pin") && !cobradaConQr;
 
+  /**
+   * El bloque de pedido (recoger / domicilio), con las mismas reglas que la
+   * app (`HostEntregaDetalle.accionPara`):
+   *
+   * - un RECOGER pendiente lo entrega quien está en la caja: el cliente pasa
+   *   por el mostrador y no hay nadie más que lo haga;
+   * - un DELIVERY no tiene acción acá: lo cobra y entrega el repartidor;
+   * - el comprobante se ofrece sólo cuando ya no queda nada por cobrar
+   *   (prepagado o entregado): un comprobante de algo impago se lee como
+   *   recibo de pago.
+   */
+  const esPedido = v.tipoPedido !== "LOCAL";
+  const entregado = v.estadoEntrega === "ENTREGADO";
+  const pendiente = esPedido && v.estado === "APROBADO" && v.estadoEntrega === "PENDIENTE";
+  const conComprobante = esPedido && v.estado === "APROBADO" && (v.prepagado || entregado);
+
   return (
     <>
       <Modal
@@ -261,11 +317,23 @@ function DetalleVenta({
         subtitulo={fmtHora(v.fecha)}
         onClose={onClose}
         acciones={
-          puedeAnular && (
-            <Boton variante="danger" icono="x" onClick={() => setAnulando(true)}>
-              Anular venta
-            </Boton>
-          )
+          <>
+            {conComprobante && onVerComprobante && (
+              <Boton variante="ghost" icono="fileText" onClick={() => onVerComprobante(v)}>
+                Ver comprobante
+              </Boton>
+            )}
+            {pendiente && v.tipoPedido === "RECOGER" && onEntregar && (
+              <Boton icono="check" onClick={() => onEntregar(v)}>
+                {v.prepagado ? "Entregar" : "Cobrar y entregar"}
+              </Boton>
+            )}
+            {puedeAnular && (
+              <Boton variante="danger" icono="x" onClick={() => setAnulando(true)}>
+                Anular venta
+              </Boton>
+            )}
+          </>
         }
       >
         {completa.cargando ? (
@@ -293,6 +361,70 @@ function DetalleVenta({
               </div>
             )}
 
+            {esPedido && (
+              <div className="rounded-xl bg-muted p-3.5">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-[13px] font-bold text-texto">
+                      {v.clienteNombre ?? "Sin nombre"}
+                    </p>
+                    <p className="mt-0.5 text-xs text-texto-3">
+                      {v.tipoPedido === "DELIVERY"
+                        ? (v.clienteDireccion ?? "Sin dirección")
+                        : "Recoge en tienda"}
+                    </p>
+                    <p className={`mt-0.5 text-xs ${v.clienteTelefono ? "text-texto-2" : "text-texto-4"}`}>
+                      {v.clienteTelefono ? Telefono.paraMostrar(v.clienteTelefono) : "Sin teléfono"}
+                    </p>
+                  </div>
+                  <Badge tono={entregado || v.prepagado ? "verde" : "amarillo"}>
+                    {entregado ? "Entregado" : v.prepagado ? "Pagado en caja" : "Cobra a la entrega"}
+                  </Badge>
+                </div>
+
+                {v.clienteTelefono && (
+                  <div className="mt-2.5 grid grid-cols-2 gap-2">
+                    <a
+                      href={`tel:${Telefono.paraLlamada(v.clienteTelefono)}`}
+                      className="flex items-center justify-center gap-1.5 rounded-lg border border-borde bg-white px-3 py-2 text-xs font-semibold text-texto-2 hover:border-primary hover:text-primary-700"
+                    >
+                      <Icon name="phone" size={14} />
+                      Llamar al cliente
+                    </a>
+                    <a
+                      href={`https://wa.me/${Telefono.paraWhatsApp(v.clienteTelefono)}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex items-center justify-center gap-1.5 rounded-lg border border-borde bg-white px-3 py-2 text-xs font-semibold text-texto-2 hover:border-primary hover:text-primary-700"
+                    >
+                      <Icon name="phone" size={14} />
+                      WhatsApp al cliente
+                    </a>
+                  </div>
+                )}
+
+                {v.notaPedido && (
+                  <p className="mt-2.5 rounded-lg bg-white px-3 py-2 text-[13px] italic text-texto-2">
+                    <span className="font-semibold not-italic text-texto-3">Nota del pedido: </span>
+                    {v.notaPedido}
+                  </p>
+                )}
+
+                {/* Uno por renglón, con las mismas etiquetas que la app. "Atendido
+                    por" es el que tomó el pedido en caja, no el repartidor. */}
+                <dl className="mt-2.5 grid grid-cols-2 gap-x-3 gap-y-1.5">
+                  <DatoPedido etiqueta="Pedido realizado" valor={fmtFechaHora(v.fecha)} />
+                  {v.tipoPedido === "RECOGER" && v.minutosEstimados != null && (
+                    <DatoPedido etiqueta="Recoge estimado" valor={`~${v.minutosEstimados} min`} />
+                  )}
+                  {v.tipoPedido === "DELIVERY" && (
+                    <DatoPedido etiqueta="Repartidor" valor={v.repartidor?.nombre ?? "Sin asignar"} />
+                  )}
+                  <DatoPedido etiqueta="Atendido por" valor={v.cajero ?? "—"} />
+                </dl>
+              </div>
+            )}
+
             <ul className="divide-y divide-borde-soft">
               {(v.detalles ?? []).map((d, i) => (
                 <li key={i} className="flex items-start justify-between gap-3 py-2.5">
@@ -314,9 +446,22 @@ function DetalleVenta({
 
             <dl className="space-y-1 border-t border-borde pt-3 text-sm">
               <div className="flex justify-between text-base font-extrabold text-texto">
-                <dt>Total</dt>
+                <dt>{esPedido ? "Total del pedido" : "Total"}</dt>
                 <dd>{fmtMoney(v.total)}</dd>
               </div>
+              {esPedido && v.tarifaEnvio > 0 && (
+                <div className="flex justify-between text-texto-2">
+                  <dt>Tarifa de envío</dt>
+                  <dd>{fmtMoney(v.tarifaEnvio)}</dd>
+                </div>
+              )}
+              {/* Sólo mientras falte cobrar: ya cobrado, "a cobrar" sería 0 y confunde. */}
+              {esPedido && !v.prepagado && !entregado && (
+                <div className="flex justify-between font-bold text-texto">
+                  <dt>Total a cobrar</dt>
+                  <dd>{fmtMoney(v.totalACobrar ?? v.total + v.tarifaEnvio)}</dd>
+                </div>
+              )}
               {(v.pagos ?? []).map((p, i) => (
                 <div key={i} className="flex justify-between text-texto-2">
                   <dt>{p.formaPago ?? "Pago"}</dt>
@@ -590,5 +735,15 @@ function EntregarRecoger({
         <ErrorMsg>{error}</ErrorMsg>
       </div>
     </Modal>
+  );
+}
+
+/** Un dato del pedido: etiqueta chica arriba, valor abajo. */
+function DatoPedido({ etiqueta, valor }: { etiqueta: string; valor: string }) {
+  return (
+    <div className="min-w-0">
+      <dt className="text-[11px] uppercase tracking-wide text-texto-4">{etiqueta}</dt>
+      <dd className="truncate text-[13px] font-semibold text-texto">{valor}</dd>
+    </div>
   );
 }
