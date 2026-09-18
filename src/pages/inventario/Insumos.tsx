@@ -19,6 +19,7 @@ import {
 import { api } from "../../lib/api";
 import { fmtFecha, fmtMoney, fmtNum } from "../../lib/format";
 import { useApi } from "../../lib/useApi";
+import { useSucursales } from "../../lib/useSucursales";
 import type { Almacen, Categoria, Insumo, InsumoInput, UnidadMedida } from "../../types";
 
 type FiltroStock = "todos" | "bajo" | "sin" | "papelera";
@@ -41,7 +42,13 @@ export default function Insumos() {
   const [filtroStock, setFiltroStock] = useState<FiltroStock>("todos");
   // La papelera es otra lista del backend, no un filtro sobre la que ya está.
   const enPapelera = filtroStock === "papelera";
-  const insumos = useApi(() => api.getInsumos(enPapelera), [enPapelera]);
+  // Sin depósitos: acá la pregunta es "qué le falta a este local para trabajar
+  // hoy", y el stock del depósito no está en su gondola.
+  const suc = useSucursales();
+  const insumos = useApi(
+    () => api.getInsumos(enPapelera, suc.sucursalId),
+    [enPapelera, suc.sucursalId],
+  );
   // `true` trae sólo las categorías de insumo: las de venta no aplican acá.
   const categorias = useApi(() => api.getCategorias(true), []);
   const unidades = useApi(() => api.getUnidades(), []);
@@ -127,6 +134,9 @@ export default function Insumos() {
             placeholder="Buscar por nombre, código o proveedor"
           />
         </div>
+        {suc.elegir && (
+          <Chips valor={suc.valorChip} opciones={suc.opciones} onChange={suc.alElegir} />
+        )}
         <Chips valor={filtroStock} opciones={OPC_STOCK} onChange={setFiltroStock} />
       </div>
 

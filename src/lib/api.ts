@@ -435,8 +435,14 @@ export const api = {
     request<{ mensaje: string }>(`/almacenes/${id}`, { method: "DELETE" }),
 
   /** El catálogo de insumos; con `eliminados`, la papelera. */
-  getInsumos: (eliminados?: boolean) =>
-    request<Insumo[]>(`/insumos${qs({ eliminados: eliminados ? 1 : undefined })}`),
+  /** Con `sucursalId`, el `stock` es el de ESE almacén y no la suma del negocio. */
+  getInsumos: (eliminados?: boolean, sucursalId?: number | null) =>
+    request<Insumo[]>(
+      `/insumos${qs({
+        eliminados: eliminados ? 1 : undefined,
+        sucursalId: sucursalId ?? undefined,
+      })}`,
+    ),
   /**
    * A cuánto llegó este artículo en cada compra. Vale también para insumos: son
    * Producto con esInsumo=true y comparten endpoint.
@@ -451,7 +457,9 @@ export const api = {
   eliminarInsumo: (id: number) =>
     request<{ mensaje: string }>(`/insumos/${id}`, { method: "DELETE" }),
 
-  getMovimientos: () => request<Movimiento[]>("/movimientos"),
+  /** Con `sucursalId`, sólo los de ese local (por origen O destino). */
+  getMovimientos: (sucursalId?: number | null) =>
+    request<Movimiento[]>(`/movimientos${qs({ sucursalId: sucursalId ?? undefined })}`),
   getMovimiento: (id: number) => request<Movimiento>(`/movimientos/${id}`),
   /** Productos e insumos juntos, con su stock en el almacén indicado. */
   getArticulosMovimiento: (almacenId?: number) =>
