@@ -231,11 +231,17 @@ function Rutas() {
         {/* Las dos pantallas guiadas del rubro. El guard es el que las apaga
             fuera de farmacia: entrar por URL devuelve al inicio, igual que
             cualquier otra sección que el negocio no tiene. */}
+        {/* Las `key` no sobran: las dos rutas dibujan el MISMO componente, así
+            que al ir de una a la otra React lo reaprovecha y `tipoInicial`
+            —que sólo alimenta el estado inicial— no se vuelve a mirar. Sin
+            esto, entrar por "Salida de mercadería" desde "Ingreso" cambiaba la
+            URL y dejaba el formulario en Entrada: se guardaba una entrada
+            creyendo estar cargando una baja. */}
         <Route
           path="/inventario/movimientos/ingreso"
           element={
             <Protegida seccion="ingreso_mercaderia">
-              <FormMercaderia tipoInicial="ENTRADA" />
+              <FormMercaderia key="ingreso" tipoInicial="ENTRADA" />
             </Protegida>
           }
         />
@@ -243,7 +249,7 @@ function Rutas() {
           path="/inventario/movimientos/salida"
           element={
             <Protegida seccion="salida_mercaderia">
-              <FormMercaderia tipoInicial="SALIDA" />
+              <FormMercaderia key="salida" tipoInicial="SALIDA" />
             </Protegida>
           }
         />

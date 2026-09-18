@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { Link, MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Almacen, ArticuloMovimiento, Movimiento } from "../../types";
 
@@ -175,5 +175,66 @@ describe("Editar un movimiento pendiente", () => {
 
     expect(screen.getByText("Amoxicilina 500 mg")).toBeInTheDocument();
     expect(screen.getByText("1 línea")).toBeInTheDocument();
+  });
+});
+
+/**
+ * Ir de "Ingreso de mercadería" a "Salida de mercadería" por el menú.
+ *
+ * Las dos rutas dibujan el MISMO componente, así que React lo reaprovecha y
+ * `tipoInicial` —que sólo alimenta el estado inicial— no se vuelve a mirar.
+ * App.tsx le pone una `key` distinta a cada ruta justamente para esto; acá se
+ * monta igual que allá.
+ *
+ * Sin la key el formulario se quedaba en Entrada con la URL de salida: se
+ * guardaba una entrada creyendo estar cargando una baja.
+ */
+describe("Cambiar de pantalla desde el menú", () => {
+  function comoEnApp() {
+    return render(
+      <MemoryRouter initialEntries={["/inventario/movimientos/ingreso"]}>
+        <nav>
+          <Link to="/inventario/movimientos/salida">Salida de mercadería</Link>
+          <Link to="/inventario/movimientos/ingreso">Ingreso de mercadería</Link>
+        </nav>
+        <Routes>
+          <Route
+            path="/inventario/movimientos/ingreso"
+            element={<FormMercaderia key="ingreso" tipoInicial="ENTRADA" />}
+          />
+          <Route
+            path="/inventario/movimientos/salida"
+            element={<FormMercaderia key="salida" tipoInicial="SALIDA" />}
+          />
+        </Routes>
+      </MemoryRouter>,
+    );
+  }
+
+  it("de Ingreso a Salida el formulario pasa a salida", async () => {
+    comoEnApp();
+    expect(await screen.findByRole("button", { name: "Guardar entrada" })).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByText("Salida de mercadería"));
+    });
+
+    expect(screen.getByRole("button", { name: "Guardar salida" })).toBeInTheDocument();
+    // Y con la salida aparece lo suyo: por qué sale la mercadería.
+    expect(screen.getByText("Motivo")).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText("Droguería / laboratorio")).not.toBeInTheDocument();
+  });
+
+  it("y de Salida a Ingreso, de vuelta", async () => {
+    comoEnApp();
+    await act(async () => {
+      fireEvent.click(screen.getByText("Salida de mercadería"));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByText("Ingreso de mercadería"));
+    });
+
+    expect(screen.getByRole("button", { name: "Guardar entrada" })).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Droguería / laboratorio")).toBeInTheDocument();
   });
 });

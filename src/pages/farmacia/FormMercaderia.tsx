@@ -752,7 +752,11 @@ function Renglon({
         ) : (
           <td className="px-3 py-2.5" colSpan={2}>
             {conLote ? (
-              <LoteQueSale productoId={l.articuloId} almacenId={almacenId} />
+              <LoteQueSale
+                productoId={l.articuloId}
+                almacenId={almacenId}
+                almacenNombre={almacenNombre}
+              />
             ) : (
               <span className="text-texto-4">—</span>
             )}
@@ -820,7 +824,15 @@ function Renglon({
  * importa: quien da de baja "lo vencido" tiene que poder confirmar que el
  * sistema va a sacar el mismo lote que tiene en la mano.
  */
-function LoteQueSale({ productoId, almacenId }: { productoId: number; almacenId: number }) {
+function LoteQueSale({
+  productoId,
+  almacenId,
+  almacenNombre,
+}: {
+  productoId: number;
+  almacenId: number;
+  almacenNombre: string;
+}) {
   const lotes = useApi(
     () => api.lotesDeProducto(productoId, almacenId || undefined),
     [productoId, almacenId],
@@ -829,13 +841,25 @@ function LoteQueSale({ productoId, almacenId }: { productoId: number; almacenId:
   if (lotes.cargando) return <span className="text-xs text-texto-4">…</span>;
 
   const primero = (lotes.datos ?? [])[0];
-  if (!primero) return <span className="text-xs text-texto-4">Sin lotes con saldo</span>;
+  if (!primero)
+    return (
+      <span className="text-xs text-texto-4">
+        Sin lotes con saldo en {almacenNombre || "este almacén"}
+      </span>
+    );
+
+  // El almacén va en el texto porque cada uno tiene SUS partidas: el mismo
+  // medicamento sale con otro lote y otro vencimiento según de dónde se saque.
+  // Sin decirlo, cambiar de almacén parece que cambió el dato por su cuenta.
+  const donde = almacenNombre ? " de " + almacenNombre : "";
 
   return (
     <span className="block">
       <span className="block text-[13px] font-semibold text-texto">{primero.codigo}</span>
       <span className="block text-xs text-texto-4">
-        {primero.vencimiento ? `sale este · vence ${fmtFecha(primero.vencimiento)}` : "sale este"}
+        {primero.vencimiento
+          ? `sale este${donde} · vence ${fmtFecha(primero.vencimiento)}`
+          : `sale este${donde}`}
       </span>
     </span>
   );
