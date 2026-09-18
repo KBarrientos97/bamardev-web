@@ -238,3 +238,57 @@ describe("Cambiar de pantalla desde el menú", () => {
     expect(screen.getByPlaceholderText("Droguería / laboratorio")).toBeInTheDocument();
   });
 });
+
+/**
+ * La otra punta de "Dar de baja" en Vencimientos: el formulario abre con todo
+ * puesto pero sin guardar nada. La baja la firma una persona, que de paso
+ * puede corregir la cantidad si en el estante hay menos de lo que dice el
+ * sistema.
+ */
+describe("Salida precargada desde Vencimientos", () => {
+  it("abre con el almacén, el motivo y el renglón puestos", async () => {
+    render(
+      <MemoryRouter
+        initialEntries={[
+          {
+            pathname: "/inventario/movimientos/salida",
+            state: {
+              productoId: 7,
+              almacenId: MOSTRADOR,
+              cantidad: 20,
+              motivo: "Vencimiento",
+            },
+          },
+        ]}
+      >
+        <Routes>
+          <Route
+            path="/inventario/movimientos/salida"
+            element={<FormMercaderia key="salida" tipoInicial="SALIDA" />}
+          />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("Amoxicilina 500 mg")).toBeInTheDocument();
+    expect(screen.getByRole("combobox")).toHaveValue(String(MOSTRADOR));
+    expect(screen.getByDisplayValue("20")).toBeInTheDocument();
+    // El motivo queda elegido: es lo que después arma el número de mermas.
+    expect(screen.getByRole("button", { name: "Vencimiento" })).toHaveClass("bg-danger");
+  });
+
+  it("sin precarga el formulario arranca vacío, como siempre", async () => {
+    render(
+      <MemoryRouter initialEntries={["/inventario/movimientos/salida"]}>
+        <Routes>
+          <Route
+            path="/inventario/movimientos/salida"
+            element={<FormMercaderia key="salida" tipoInicial="SALIDA" />}
+          />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("0 líneas")).toBeInTheDocument();
+  });
+});

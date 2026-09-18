@@ -1067,8 +1067,19 @@ function FormProductoCuerpo({
     <Modal
       abierto
       titulo={`${esEdicion ? "Editar" : "Nuevo"} ${termino(rubro, "articulo")}`}
-      subtitulo={esEdicion ? producto.nombre : "Cargá los datos del producto"}
+      subtitulo={
+        esEdicion
+          ? producto.nombre
+          : conFicha
+            ? "Datos generales y ficha farmacéutica"
+            : "Cargá los datos del producto"
+      }
       onClose={onClose}
+      /* Más ancho SÓLO en farmacia: acá el formulario son dos bloques con
+         catorce campos, y a 512 px las columnas quedan tan angostas que
+         "Registro sanitario" no entra en su propia etiqueta. El de los demás
+         rubros tiene la mitad de campos y se queda como estaba. */
+      ancho={conFicha ? "max-w-2xl" : undefined}
       acciones={
         <>
           <Boton variante="ghost" onClick={onClose}>

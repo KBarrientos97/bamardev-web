@@ -1,11 +1,14 @@
 import { useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { EncabezadoPagina } from "../../components/filtros";
-import { Cargando, ErrorMsg, Vacio } from "../../components/ui";
+import { Icon } from "../../components/Icon";
+import { Boton, Cargando, ErrorMsg, Modal, Vacio } from "../../components/ui";
 import { fmtFecha, fmtMoney, fmtNum } from "../../lib/format";
 import { api } from "../../lib/api";
 import { useApi } from "../../lib/useApi";
 import type { ContadorTramo, LotePorVencer, TramoVencimiento } from "../../types";
 import { COLOR_TRAMO, textoVida } from "./medicamento";
+import type { PrecargaSalida } from "./mercaderia";
 
 /**
  * Vencimientos: la pantalla que evita que la plata se pudra en el estante.
@@ -61,8 +64,26 @@ const TRAMOS: {
 ];
 
 export default function Vencimientos() {
+  const navigate = useNavigate();
   const datos = useApi(() => api.vencimientos(), []);
   const [tramo, setTramo] = useState<TramoVencimiento | null>(null);
+  const [elegido, setElegido] = useState<LotePorVencer | null>(null);
+
+  /**
+   * Del lote a la baja, sin volver a escribir nada. Se abre el formulario de
+   * salida cargado —almacén, motivo, producto y las unidades que quedan— pero
+   * NO se guarda: la baja la firma una persona, y de paso puede corregir la
+   * cantidad si en el estante hay menos de lo que dice el sistema.
+   */
+  function darDeBaja(l: LotePorVencer, motivo: string) {
+    const precarga: PrecargaSalida = {
+      productoId: l.producto.id,
+      almacenId: l.almacen.id,
+      cantidad: l.cantidad,
+      motivo,
+    };
+    navigate("/inventario/movimientos/salida", { state: precarga });
+  }
 
   const detalle = datos.datos?.detalle ?? [];
   const filtrado = useMemo(
@@ -128,12 +149,24 @@ export default function Vencimientos() {
             <div className="card overflow-hidden">
               <ul className="divide-y divide-borde-soft">
                 {filtrado.map((l) => (
-                  <Fila key={`${l.loteId}-${l.almacen.id}`} lote={l} />
+                  <Fila
+                    key={`${l.loteId}-${l.almacen.id}`}
+                    lote={l}
+                    onClick={() => setElegido(l)}
+                  />
                 ))}
               </ul>
             </div>
           )}
         </>
+      )}
+
+      {elegido && (
+        <DetalleLote
+          lote={elegido}
+          onClose={() => setElegido(null)}
+          onDarDeBaja={(motivo) => darDeBaja(elegido, motivo)}
+        />
       )}
     </div>
   );
@@ -168,33 +201,135 @@ function Contador({
   );
 }
 
-function Fila({ lote: l }: { lote: LotePorVencer }) {
+function Fila({ lote: l, onClick }: { lote: LotePorVencer; onClick: () => void }) {
   const t = TRAMOS.find((x) => x.clave === l.tramo) ?? TRAMOS[3];
 
   return (
-    <li className="flex items-center gap-3 px-4 py-3">
-      {/* La barra de color a la izquierda: deja leer la urgencia de la lista
-          entera sin detenerse en cada fila. */}
-      <span aria-hidden className={`h-10 w-1 shrink-0 rounded-full ${t.barra}`} />
+    <li>
+      <button
+        onClick={onClick}
+        className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted"
+      >
+        {/* La barra de color a la izquierda: deja leer la urgencia de la lista
+            entera sin detenerse en cada fila. */}
+        <span aria-hidden className={`h-10 w-1 shrink-0 rounded-full ${t.barra}`} />
 
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-[15px] font-bold text-texto">{l.producto.nombre}</p>
-        <p className="truncate text-[13px] text-texto-3">
-          Lote {l.codigo}
-          {l.producto.laboratorio && ` · ${l.producto.laboratorio}`}
-          {l.almacen && ` · ${l.almacen.nombre}`}
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-[15px] font-bold text-texto">{l.producto.nombre}</p>
+          <p className="truncate text-[13px] text-texto-3">
+            Lote {l.codigo}
+            {l.producto.laboratorio && ` · ${l.producto.laboratorio}`}
+            {l.almacen && ` · ${l.almacen.nombre}`}
+          </p>
+        </div>
+
+        <div className="shrink-0 text-right">
+          <p className={`text-[13px] font-bold ${t.texto}`}>{textoVida(l.diasRestantes)}</p>
+          <p className="text-xs text-texto-3">{fmtFecha(l.vencimiento ?? "")}</p>
+        </div>
+
+        <div className="hidden shrink-0 text-right sm:block">
+          <p className="text-[13px] font-bold text-texto">{fmtMoney(l.valor)}</p>
+          <p className="text-xs text-texto-3">{fmtNum(l.cantidad)} u.</p>
+        </div>
+
+        <Icon name="chevronRight" size={16} className="shrink-0 text-texto-4" />
+      </button>
+    </li>
+  );
+}
+
+/**
+ * El lote, abierto.
+ *
+ * La lista contesta "qué se está por perder"; esto contesta "cuál es y qué hago
+ * con él". Por eso no es una ficha de sólo lectura: las dos salidas que tiene un
+ * lote que vence —darlo de baja o devolverlo al proveedor— son botones, y dejan
+ * el formulario de salida cargado con todo puesto.
+ *
+ * En una tabla de seis columnas esto serían seis columnas más, y en un teléfono
+ * no entra ninguna. Acá la lista se queda simple y el detalle aparece cuando se
+ * lo pide.
+ */
+function DetalleLote({
+  lote: l,
+  onClose,
+  onDarDeBaja,
+}: {
+  lote: LotePorVencer;
+  onClose: () => void;
+  onDarDeBaja: (motivo: string) => void;
+}) {
+  const t = TRAMOS.find((x) => x.clave === l.tramo) ?? TRAMOS[3];
+  const vencido = l.diasRestantes < 0;
+
+  return (
+    <Modal
+      abierto
+      titulo={l.producto.nombre}
+      onClose={onClose}
+      encabezado={
+        <div className={`px-5 pb-4 pt-5 ${t.barra} text-white`}>
+          <p className="pr-12 text-xl font-bold leading-tight">{l.producto.nombre}</p>
+          <p className="mt-0.5 text-[13px] text-white/85">
+            Lote {l.codigo}
+            {l.producto.laboratorio && ` · ${l.producto.laboratorio}`}
+          </p>
+          <span className="mt-2.5 inline-block rounded-full bg-white/20 px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide">
+            {textoVida(l.diasRestantes)} · {t.ayuda}
+          </span>
+        </div>
+      }
+      acciones={
+        <>
+          <Boton variante="ghost" icono="truck" onClick={() => onDarDeBaja("Devolución a proveedor")}>
+            Devolver al proveedor
+          </Boton>
+          <Boton variante="danger" icono="trendingDown" onClick={() => onDarDeBaja("Vencimiento")}>
+            Dar de baja
+          </Boton>
+        </>
+      }
+    >
+      <div className="space-y-4 p-4 sm:p-5">
+        <dl className="grid grid-cols-2 gap-x-4 gap-y-3.5">
+          <Dato titulo="Vence" valor={fmtFecha(l.vencimiento ?? "")} />
+          <Dato titulo="Dónde está" valor={l.almacen.nombre} />
+          <Dato titulo="Queda" valor={`${fmtNum(l.cantidad)} u.`} />
+          <Dato
+            titulo="Costo unitario"
+            valor={l.costoUnitario === null ? "—" : fmtMoney(l.costoUnitario)}
+          />
+        </dl>
+
+        {/* La plata, sola y abajo: es la que decide si conviene rematarlo o
+            devolverlo, y se compara con el total de arriba. */}
+        <div className={`rounded-xl px-4 py-3 ${t.fondo}`}>
+          <p className="text-[11px] font-bold uppercase tracking-wide text-texto-4">
+            Valor inmovilizado
+          </p>
+          <p className={`text-2xl font-extrabold ${t.texto}`}>{fmtMoney(l.valor)}</p>
+        </div>
+
+        <p className="text-[13px] leading-relaxed text-texto-3">
+          {vencido
+            ? "Este lote ya no se puede vender. Al darlo de baja queda el movimiento con el motivo, que es lo que después arma el número de mermas."
+            : "Todavía se puede vender. Muchas droguerías reciben devoluciones con dos o tres meses de anticipación: si va a volver, conviene mandarlo ahora."}{" "}
+          La baja se carga como un movimiento PENDIENTE: el stock recién se mueve
+          cuando alguien la aprueba.
         </p>
       </div>
+    </Modal>
+  );
+}
 
-      <div className="shrink-0 text-right">
-        <p className={`text-[13px] font-bold ${t.texto}`}>{textoVida(l.diasRestantes)}</p>
-        <p className="text-xs text-texto-3">{fmtFecha(l.vencimiento ?? "")}</p>
-      </div>
-
-      <div className="hidden shrink-0 text-right sm:block">
-        <p className="text-[13px] font-bold text-texto">{fmtMoney(l.valor)}</p>
-        <p className="text-xs text-texto-3">{fmtNum(l.cantidad)} u.</p>
-      </div>
-    </li>
+function Dato({ titulo, valor }: { titulo: string; valor: string }) {
+  return (
+    <div>
+      <dt className="text-[11px] font-bold uppercase tracking-wide text-texto-4">
+        {titulo}
+      </dt>
+      <dd className="text-[15px] font-semibold text-texto">{valor}</dd>
+    </div>
   );
 }

@@ -28,6 +28,34 @@ import type { TipoMovimiento } from "../../types";
  * "Devolución a proveedor" está en la lista aunque no sea una pérdida: sale del
  * almacén igual, y separarla es lo que evita que infle las mermas.
  */
+/**
+ * Lo que Vencimientos le pasa a la pantalla de Salida al mandar a dar de baja
+ * un lote: el formulario abre con el almacén puesto, el motivo elegido y el
+ * renglón cargado.
+ *
+ * Viaja por el `state` de la navegación y no por la URL a propósito: no es una
+ * dirección que alguien quiera compartir ni volver a abrir con un refresh —
+ * sería cargar dos veces la misma baja.
+ */
+export interface PrecargaSalida {
+  productoId: number;
+  almacenId: number;
+  cantidad: number;
+  motivo: string;
+}
+
+/** `location.state` es `any`: acá se confirma que es lo que decimos que es. */
+export function esPrecargaSalida(x: unknown): x is PrecargaSalida {
+  if (!x || typeof x !== "object") return false;
+  const p = x as Record<string, unknown>;
+  return (
+    typeof p.productoId === "number" &&
+    typeof p.almacenId === "number" &&
+    typeof p.cantidad === "number" &&
+    typeof p.motivo === "string"
+  );
+}
+
 export const MOTIVOS_SALIDA = [
   "Vencimiento",
   "Producto dañado",

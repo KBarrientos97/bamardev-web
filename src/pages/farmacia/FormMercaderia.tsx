@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { Icon } from "../../components/Icon";
 import {
   Boton,
@@ -25,6 +25,7 @@ import { conUnidad, detalleDe } from "./medicamento";
 import {
   MOTIVOS_SALIDA,
   avisoVidaUtil,
+  esPrecargaSalida,
   isoAMes,
   juntarMotivo,
   mesAIso,
@@ -86,15 +87,22 @@ export default function FormMercaderia({
   const navigate = useNavigate();
   const { id } = useParams();
   const movId = id ? Number(id) : null;
+
+  // Vencimientos manda acá al tocar "Dar de baja" en un lote. Llega con el
+  // almacén, el motivo y qué sacar; lo demás es un formulario normal.
+  const { state } = useLocation();
+  const precarga = esPrecargaSalida(state) ? state : null;
   const { incluye } = useAuth();
   const conAprobacion = incluye("aprobacion_inventario");
 
   const [tipo, setTipo] = useState<TipoMercaderia>(tipoInicial);
-  const [almacenId, setAlmacenId] = useState("");
+  const [almacenId, setAlmacenId] = useState(
+    precarga ? String(precarga.almacenId) : "",
+  );
   const [fecha, setFecha] = useState(isoDia(new Date()));
   const [comprobante, setComprobante] = useState("");
   const [proveedor, setProveedor] = useState("");
-  const [motivo, setMotivo] = useState<string>("");
+  const [motivo, setMotivo] = useState<string>(precarga?.motivo ?? "");
   const [nota, setNota] = useState("");
   const [lineas, setLineas] = useState<LineaForm[]>([]);
   const [buscando, setBuscando] = useState(false);
@@ -130,6 +138,28 @@ export default function FormMercaderia({
   /** Las líneas tal como están en el servidor, para saber qué se borró. */
   const originales = useRef<number[]>([]);
   const hidratado = useRef(false);
+  const precargado = useRef(false);
+
+  // El renglón que viene de Vencimientos. Espera a que llegue la lista del
+  // almacén porque de ahí sale el costo, y se hace una sola vez: después es un
+  // formulario común y quien lo esté editando manda.
+  useEffect(() => {
+    if (!precarga || precargado.current) return;
+    const art = (articulos.datos ?? []).find((a) => a.id === precarga.productoId);
+    if (!art) return;
+    precargado.current = true;
+    setLineas([
+      {
+        articuloId: art.id,
+        nombre: art.nombre,
+        detalle: "",
+        cantidad: String(precarga.cantidad),
+        costo: String(art.costo ?? 0),
+        loteCodigo: "",
+        loteMes: "",
+      },
+    ]);
+  }, [articulos.datos, precarga]);
 
   // Primer almacén por defecto, sólo al crear: en una farmacia de un local es
   // el único y no tiene sentido hacer elegir.
