@@ -732,8 +732,11 @@ export const api = {
   // ── Mesas (administración) ────────────────────────────────────────────────
   // El mesero no crea mesas: sólo abre las que el dueño registre. El backend
   // lo exige con RolesGuard (ADMIN, SUPERVISOR).
-  getMesas: () => request<Mesa[]>("/mesas"),
-  getZonas: () => request<ZonaSalon[]>("/mesas/zonas"),
+  /** Con `sucursalId`, sólo las mesas de ese local (por la zona donde están). */
+  getMesas: (sucursalId?: number | null) =>
+    request<Mesa[]>(`/mesas${qs({ sucursalId: sucursalId ?? undefined })}`),
+  getZonas: (sucursalId?: number | null) =>
+    request<ZonaSalon[]>(`/mesas/zonas${qs({ sucursalId: sucursalId ?? undefined })}`),
   crearMesa: (input: {
     codigo: string;
     nombre?: string;
