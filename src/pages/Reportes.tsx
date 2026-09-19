@@ -377,7 +377,7 @@ function esObjetoPlano(v: unknown): v is Record<string, unknown> {
 // ── Página ──────────────────────────────────────────────────────────────────
 
 export default function Reportes() {
-  const { incluye, usuario } = useAuth();
+  const { incluye } = useAuth();
   const [preset, setPreset] = useState<Preset>("mes");
 
   const [desdeManual, setDesdeManual] = useState(() => rangoDePreset("mes").desde ?? "");
