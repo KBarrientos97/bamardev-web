@@ -406,6 +406,15 @@ export const api = {
   getUnidades: () => request<UnidadMedida[]>("/unidades-medida"),
 
   // ── Inventario ────────────────────────────────────────────────────────────
+  /**
+   * Los locales SIN números: id, nombre, tipo y si es el principal.
+   *
+   * Para los selectores de sucursal, que sólo necesitan nombres. `getAlmacenes`
+   * devuelve además la valorización del inventario y el detalle de artículos —y
+   * exige ser ADMIN/SUPERVISOR—, así que traía de más y, desde que el listado
+   * completo pide rol, le respondía 403 a un cajero.
+   */
+  getSucursales: () => request<Almacen[]>("/almacenes/mias"),
   getAlmacenes: () => request<Almacen[]>("/almacenes"),
   /**
    * Hace de este almacén la sucursal principal: la que el backend usa cuando una

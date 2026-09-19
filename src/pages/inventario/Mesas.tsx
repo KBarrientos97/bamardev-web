@@ -198,13 +198,19 @@ function FormMesa({
   onGuardado,
 }: {
   mesa: Mesa | null;
-  zonas: { id: number; nombre: string }[];
+  zonas: { id: number; nombre: string; sucursalNombre?: string | null }[];
   onCerrar: () => void;
   onGuardado: () => void;
 }) {
   const [codigo, setCodigo] = useState(mesa?.codigo ?? "");
   const [nombre, setNombre] = useState(mesa?.nombre ?? "");
-  const [zonaId, setZonaId] = useState(mesa?.zonaId ?? zonas[0]?.id ?? 0);
+  // Sin preseleccionar cuando hay más de una zona y son de locales distintos:
+  // con "Todas las sucursales" puesto, `zonas[0]` podía ser de cualquier local
+  // y la mesa nacía ahí sin que nadie lo dijera. 0 = "elegí una", y guardar lo
+  // exige. Con una sola zona se preselecciona, que es el caso normal.
+  const [zonaId, setZonaId] = useState(
+    mesa?.zonaId ?? (zonas.length === 1 ? zonas[0].id : 0),
+  );
   const [capacidad, setCapacidad] = useState(String(mesa?.capacidad ?? 4));
   const [nota, setNota] = useState(mesa?.notaMesa ?? "");
   const [activa, setActiva] = useState(mesa?.activa ?? true);
@@ -215,6 +221,7 @@ function FormMesa({
     if (guardando) return;
     setError("");
     if (!codigo.trim()) return setError("Poné el código que está pegado en la mesa.");
+    if (!zonaId) return setError("Elegí en qué zona está la mesa.");
     const cap = Number(capacidad);
     if (!Number.isFinite(cap) || cap < 1) return setError("La capacidad es al menos 1.");
 
@@ -271,11 +278,20 @@ function FormMesa({
             placeholder="Mesa M1"
           />
         </Campo>
-        <Campo label="Zona">
+        <Campo
+          label="Zona"
+          hint="La mesa queda en el local de la zona que elijas"
+        >
           <Select value={zonaId} onChange={(e) => setZonaId(Number(e.target.value))}>
+            {/* Sólo cuando no hay nada elegido: obliga a decidir en vez de
+                aceptar la primera de la lista. */}
+            {!zonaId && <option value={0}>Elegí una zona…</option>}
             {zonas.map((z) => (
               <option key={z.id} value={z.id}>
-                {z.nombre}
+                {/* El local va en la etiqueta: con dos sucursales puede haber
+                    dos zonas con el mismo nombre ("Salón") y desde afuera no
+                    hay forma de distinguirlas. */}
+                {z.sucursalNombre ? `${z.nombre} — ${z.sucursalNombre}` : z.nombre}
               </option>
             ))}
           </Select>

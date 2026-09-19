@@ -29,7 +29,8 @@ export function useSucursales({ incluirDepositos = false } = {}) {
 
   const esDeOrganizacion = usuario?.sucursalId == null;
   const almacenes = useApi(
-    () => (esDeOrganizacion ? api.getAlmacenes() : Promise.resolve([] as Almacen[])),
+    // El listado BÁSICO: este hook sólo necesita nombres para el selector.
+    () => (esDeOrganizacion ? api.getSucursales() : Promise.resolve([] as Almacen[])),
     [esDeOrganizacion],
   );
 
@@ -58,5 +59,18 @@ export function useSucursales({ incluirDepositos = false } = {}) {
     alElegir: (v: string) => setSucursalId(v === "" ? null : Number(v)),
     /** Nombre del local elegido, para subtítulos. Vacío si son todas. */
     nombre: sucursales.find((a) => a.id === sucursalId)?.nombre ?? "",
+    /**
+     * Cuál proponer cuando hay que elegir una sí o sí (abrir caja): la
+     * principal, y si ninguna lo es, la primera. Es distinto de `sucursalId`,
+     * que arranca en null = "todas" y sirve para filtrar.
+     */
+    sugerida: sucursales.find((a) => a.esPrincipal) ?? sucursales[0],
+    /**
+     * Para `<Select>`: `""` = todas. Las pantallas que usan un desplegable en
+     * vez de chips necesitan el mismo valor pero con el tipo del control.
+     */
+    valorSelect: sucursalId ?? "",
+    /** Traduce lo que devuelve un `<Select>` al id (o null). */
+    alElegirSelect: (v: string) => setSucursalId(v === "" ? null : Number(v)),
   };
 }
