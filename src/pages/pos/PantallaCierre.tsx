@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import CorteDeCaja from "../../components/CorteDeCaja";
 import { parsearMontoO } from "../../lib/dinero";
 import { Icon } from "../../components/Icon";
@@ -52,18 +52,23 @@ export default function PantallaCierre({
 
   const r = resumen.datos;
   /**
-   * El conteo arranca con el saldo esperado ya puesto: acelera el arqueo de la
-   * mayoría de los turnos, donde la caja cuadra. Si el cajero ya tecleó algo no
-   * se pisa — corregirle el número mientras cuenta sería peor que no ayudarlo.
+   * El campo arranca VACÍO, a propósito.
+   *
+   * Antes se precargaba con el saldo esperado para "acelerar el arqueo de la
+   * mayoría de los turnos, donde la caja cuadra" — pero eso sólo se sabe
+   * DESPUÉS de contar. El cajero entraba, veía el número ya puesto y el cartel
+   * verde "La caja cuadra" sin haber tocado un billete, y el camino de menor
+   * esfuerzo con clientes esperando era confirmar. Todo faltante o sobrante
+   * real se volvía invisible, que es exactamente lo que el arqueo existe para
+   * detectar.
+   *
+   * Peor: la precarga desactivaba el propio guard de abajo (`conteoHecho`
+   * mira `contado !== ""`, y el precargado ya lo dejaba lleno).
+   *
+   * El esperado sigue estando a la vista en el resumen de arriba: sirve para
+   * que el cajero verifique después de contar, no antes.
    */
-  const [precargado, setPrecargado] = useState(false);
   const esperado = r?.saldoEsperado ?? 0;
-  useEffect(() => {
-    // Sólo una vez, y sólo si el cajero todavía no escribió nada.
-    if (precargado || !r || contado !== "") return;
-    setContado(String(esperado));
-    setPrecargado(true);
-  }, [r, esperado, contado, precargado]);
   // Con parseo de coma: en Bolivia se teclea "150,50" y Number() da NaN, que
   // caía a 0 sin avisar — el conteo del cierre quedaba en cero y la diferencia
   // mostraba un faltante enorme que nadie había cometido.
@@ -123,7 +128,7 @@ export default function PantallaCierre({
         {resumen.cargando ? (
           <Cargando texto="Calculando el arqueo…" />
         ) : !r ? (
-          <ErrorMsg>{resumen.error}</ErrorMsg>
+          <ErrorMsg onReintentar={resumen.recargar}>{resumen.error}</ErrorMsg>
         ) : (
           <>
             <section className="card p-4">

@@ -6,8 +6,8 @@ import { Icon } from "../../components/Icon";
 import { Boton, Campo, ErrorMsg, Input, Select } from "../../components/ui";
 import { api } from "../../lib/api";
 import { fmtMoney } from "../../lib/format";
-import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
+import { useSucursales } from "../../lib/useSucursales";
 
 /** Montos típicos de fondo de caja: ahorran teclear lo de siempre. */
 const SUGERENCIAS = [50, 100, 200, 500];
@@ -31,19 +31,16 @@ export default function AperturaCaja({ onAbierta }: { onAbierta: () => void }) {
    * cualquier local). El cajero trabaja donde le asignaron: el backend le
    * rechaza el campo, así que ni se le muestra.
    */
-  const esDeOrganizacion = usuario?.sucursalId == null;
-  const almacenes = useApi(
-    () => (esDeOrganizacion ? api.getAlmacenes() : Promise.resolve([])),
-    [esDeOrganizacion],
-  );
-  const sucursales = (almacenes.datos ?? []).filter(
-    (a) => a.tipo !== "DEPOSITO" && a.activo,
-  );
-  // Con un solo local no hay nada que preguntar: el negocio de una sucursal no
-  // debería enterarse de que esto existe.
-  const elegirSucursal = esDeOrganizacion && sucursales.length > 1;
-  const sugerida = sucursales.find((a) => a.esPrincipal) ?? sucursales[0];
-  const elegida = almacenId ?? sugerida?.id ?? null;
+  // Las tres reglas (2+ sucursales, solo usuario de organización, sin
+  // depósitos) viven en `useSucursales`; acá estaban copiadas a mano.
+  //
+  // El `almacenId` propio NO se reemplaza por el `sucursalId` del hook: son
+  // cosas distintas. El del hook arranca en null = "todas" y sirve para
+  // FILTRAR; acá hay que ELEGIR una sí o sí, porque la caja abre en un local
+  // concreto. Por eso se usa `sugerida` como valor inicial.
+  const suc = useSucursales();
+  const { sucursales, elegir: elegirSucursal } = suc;
+  const elegida = almacenId ?? suc.sugerida?.id ?? null;
 
   const montoNum = parsearMontoO(monto, NaN);
   const valido = monto !== "" && Number.isFinite(montoNum) && montoNum >= 0;

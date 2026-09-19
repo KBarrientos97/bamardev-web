@@ -16,6 +16,7 @@ import { api } from "../lib/api";
 import { fmtFecha, fmtFechaHora, fmtMoney, fmtNum, isoDia } from "../lib/format";
 import type { Capacidad } from "../lib/permisos";
 import { useApi } from "../lib/useApi";
+import { useSucursales } from "../lib/useSucursales";
 import { useAuth } from "../store/AuthContext";
 import type { RangoReporte } from "../types";
 import Finanzas from "./Finanzas";
@@ -247,8 +248,42 @@ function esDinero(clave: string): boolean {
 
 const ISO_FECHA = /^\d{4}-\d{2}-\d{2}(T|$)/;
 
-/** camelCase → "Texto legible": las claves salen del backend sin traducir. */
+/**
+ * Cómo se llama cada columna en la pantalla.
+ *
+ * La tabla genérica arma los encabezados con las claves del JSON, así que sin
+ * esto el dueño leía **"Venta id"**, **"Compra id"** o **"Margen pct"**: jerga
+ * de base de datos en la pantalla por la que paga. Sólo hace falta para las
+ * claves que no quedan bien con el camelCase → espacios de abajo.
+ */
+const NOMBRE_COLUMNA: Record<string, string> = {
+  ventaId: "N° de venta",
+  compraId: "N° de compra",
+  clienteId: "Cliente",
+  productoId: "Producto",
+  formaPagoId: "Forma de pago",
+  usuarioId: "Usuario",
+  almacenId: "Sucursal",
+  margenPct: "Margen",
+  invertidoDeltaPct: "Variación",
+  numCompras: "Compras",
+  esInsumo: "Insumo",
+  codBarra: "Código de barras",
+  stockMinimo: "Stock mínimo",
+  creadoEn: "Fecha",
+  createdAt: "Fecha",
+  updatedAt: "Última edición",
+};
+
+/**
+ * camelCase → "Texto legible".
+ *
+ * Primero mira el diccionario de arriba; lo que no esté ahí se separa por
+ * mayúsculas, que alcanza para la mayoría ("subtotal", "comprobante").
+ */
 function legible(clave: string): string {
+  const propio = NOMBRE_COLUMNA[clave];
+  if (propio) return propio;
   const conEspacios = clave
     .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
     .replace(/[_-]+/g, " ")
@@ -342,9 +377,9 @@ function esObjetoPlano(v: unknown): v is Record<string, unknown> {
 // ── Página ──────────────────────────────────────────────────────────────────
 
 export default function Reportes() {
-  const { incluye, usuario } = useAuth();
+  const { incluye } = useAuth();
   const [preset, setPreset] = useState<Preset>("mes");
-  const [sucursalId, setSucursalId] = useState<number | null>(null);
+
   const [desdeManual, setDesdeManual] = useState(() => rangoDePreset("mes").desde ?? "");
   const [hastaManual, setHastaManual] = useState(() => isoDia(new Date()));
   const [abierto, setAbierto] = useState<FichaReporte | null>(null);
@@ -365,19 +400,14 @@ export default function Reportes() {
   /**
    * De que local son los numeros.
    *
-   * Solo lo elige un usuario de organizacion: al que esta atado a una sucursal
-   * el backend le fuerza la suya, asi que un selector seria mentirle. Y con un
-   * solo local no se pregunta nada, porque la respuesta es siempre la misma.
+   * Las tres reglas (2+ sucursales, solo usuario de organizacion, null =
+   * todas) viven en `useSucursales`. Esta pantalla las tenia copiadas a mano
+   * —igual que apertura de caja, y que las dos equivalentes en Android—: eran
+   * cuatro copias que alguien tenia que acordarse de sincronizar, que es
+   * exactamente como se desincronizaron la vez anterior.
    */
-  const esDeOrganizacion = usuario?.sucursalId == null;
-  const almacenes = useApi(
-    () => (esDeOrganizacion ? api.getAlmacenes() : Promise.resolve([])),
-    [esDeOrganizacion],
-  );
-  const sucursales = (almacenes.datos ?? []).filter(
-    (a) => a.tipo !== "DEPOSITO" && a.activo,
-  );
-  const elegirSucursal = esDeOrganizacion && sucursales.length > 1;
+  const suc = useSucursales();
+  const { sucursalId, elegir: elegirSucursal } = suc;
 
   /**
    * El filtro entero: fechas + local.
@@ -397,8 +427,7 @@ export default function Reportes() {
   );
 
   /** El nombre del local elegido, para el subtitulo. Vacio cuando son todos. */
-  const nombreSucursal =
-    sucursales.find((a) => a.id === sucursalId)?.nombre ?? "";
+  const nombreSucursal = suc.nombre;
 
   const resumen = useApi<Record<string, unknown>>(
     () => api.reporte<Record<string, unknown>>("resumen", rango),
@@ -443,13 +472,11 @@ export default function Reportes() {
               hint="Todas = el consolidado del negocio, sumando los locales"
             >
               <Select
-                value={sucursalId ?? ""}
-                onChange={(e) =>
-                  setSucursalId(e.target.value === "" ? null : Number(e.target.value))
-                }
+                value={suc.valorSelect}
+                onChange={(e) => suc.alElegirSelect(e.target.value)}
               >
                 <option value="">Todas las sucursales</option>
-                {sucursales.map((a) => (
+                {suc.sucursales.map((a) => (
                   <option key={a.id} value={a.id}>
                     {a.nombre}
                   </option>

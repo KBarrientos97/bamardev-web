@@ -40,6 +40,7 @@ function sugerenciasEfectivo(total: number): number[] {
 
 export default function PantallaCobro({
   total,
+  subtitulo,
   avisoEnvio,
   formasPago,
   onAtras,
@@ -49,6 +50,8 @@ export default function PantallaCobro({
   error,
 }: {
   total: number;
+  /** Qué se está cobrando ("Mesa 4 · Juan"), para no cobrar la mesa equivocada. */
+  subtitulo?: string;
   /** Nota al pie cuando hay una tarifa de envío que no entra en este cobro. */
   avisoEnvio?: string;
   formasPago: FormaPago[];
@@ -146,7 +149,16 @@ export default function PantallaCobro({
         >
           <Icon name="arrowLeft" size={20} />
         </button>
-        <h1 className="text-[15px] font-bold text-texto">Cobrar</h1>
+        <div className="min-w-0">
+          <h1 className="text-[15px] font-bold text-texto">Cobrar</h1>
+          {/* Qué se está cobrando. Sin esto la cabecera decía sólo "Cobrar", y
+              la cajera que atiende mostrador y salón a la vez —con dos mesas
+              esperando— no tenía cómo verificar que estaba cobrando la
+              correcta: el único chequeo posible era que el monto le sonara. */}
+          {subtitulo && (
+            <p className="truncate text-xs text-texto-3">{subtitulo}</p>
+          )}
+        </div>
       </div>
 
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
@@ -281,10 +293,15 @@ export default function PantallaCobro({
           </div>
         )}
 
-        <ErrorMsg>{errorLocal || error}</ErrorMsg>
       </div>
 
       <div className="space-y-2 border-t border-borde bg-white p-4">
+        {/* El error va en el PIE, pegado al botón, y no al final del área que
+            scrollea: en un celular cobrando con método MIXTO la pantalla es
+            larga (total, métodos, QR, efectivo, sugerencias, vuelto) y el
+            mensaje se escribía arriba, fuera de la vista. El cajero tocaba
+            "Confirmar", no veía pasar nada y volvía a tocar. */}
+        <ErrorMsg>{errorLocal || error}</ErrorMsg>
         <Boton onClick={confirmar} disabled={enviando} className="w-full py-3 text-base">
           {enviando ? "Registrando…" : `Confirmar cobro · ${fmtMoney(total)}`}
         </Boton>

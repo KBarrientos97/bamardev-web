@@ -43,6 +43,14 @@ export interface ZonaSalon {
   id: number;
   codigo: string;
   nombre: string;
+  /**
+   * En qué local está la zona. La mesa hereda la sucursal de su zona, así que
+   * al dar de alta una hay que poder ver de cuál se trata.
+   *
+   * `null` = zona de antes de la migración (o de un negocio de un solo local).
+   */
+  sucursalId?: number | null;
+  sucursalNombre?: string | null;
 }
 
 export interface ReservaMesa {

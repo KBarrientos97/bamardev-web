@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from "react";
 import { Icon } from "../../components/Icon";
-import { Cargando, ErrorMsg } from "../../components/ui";
+import { Cargando, Confirmar, ErrorMsg } from "../../components/ui";
 import { api } from "../../lib/api";
 import { fmtMoney, fmtNum } from "../../lib/format";
 import { contiene } from "../../lib/texto";
@@ -44,6 +44,7 @@ export default function TomarPedido({
   const carta = useApi(() => api.cartaSalon(), []);
 
   const [lineas, setLineas] = useState<LineaPedido[]>([]);
+  const [confirmarSalida, setConfirmarSalida] = useState(false);
   const [busqueda, setBusqueda] = useState("");
   const [categoria, setCategoria] = useState<string | null>(null);
   const [abierto, setAbierto] = useState(false);
@@ -94,9 +95,26 @@ export default function TomarPedido({
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-fondo">
+      {/* La flecha de atrás está donde cae el pulgar, y el pedido vive sólo en
+          este componente: salir lo perdía entero, sin aviso ni forma de
+          recuperarlo. Con el pedido vacío no pregunta nada. */}
+      <Confirmar
+        abierto={confirmarSalida}
+        titulo="¿Descartar el pedido?"
+        texto={`Tenés ${lineas.length} ${
+          lineas.length === 1 ? "ítem" : "ítems"
+        } sin enviar a la cocina. Si salís ahora se pierden.`}
+        etiquetaOk="Descartar"
+        peligroso
+        onCancel={() => setConfirmarSalida(false)}
+        onOk={() => {
+          setConfirmarSalida(false);
+          onAtras();
+        }}
+      />
       <header className="flex items-center gap-3 border-b border-borde bg-white px-4 py-3">
         <button
-          onClick={onAtras}
+          onClick={() => (lineas.length > 0 ? setConfirmarSalida(true) : onAtras())}
           aria-label="Volver"
           className="rounded-lg p-1.5 text-texto-2 hover:bg-muted"
         >

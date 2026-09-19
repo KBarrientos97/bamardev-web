@@ -23,6 +23,8 @@ vi.mock("../../lib/api", () => ({
     getCategorias: vi.fn(async () => []),
     getUnidades: vi.fn(async () => []),
     getAlmacenes: vi.fn(async () => []),
+    // El selector de sucursal (useSucursales): con cero locales no se dibuja.
+    getSucursales: vi.fn(async () => []),
     buscarProductos: vi.fn(async () => ({ items: [], total: 0, limite: 30, offset: 0 })),
   },
 }));

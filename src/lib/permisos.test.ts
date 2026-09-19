@@ -23,6 +23,7 @@ const PLAN_FULL: Feature[] = [
   "recoger",
   "fiado",
   "reportes",
+  "salon",
 ];
 
 function ctx(rol: Rol, modulos = TODOS_MODULOS, features = PLAN_FULL) {
@@ -213,6 +214,29 @@ describe("el mesero", () => {
     // El cajero ve las mesas por cobrar desde su POS, que es otra pantalla.
     expect(puedeVer(ctx("CAJERO", ["POS", "CAJA"]), "salon")).toBe(false);
     expect(puedeVer(ctx("REPARTIDOR", ["POS"]), "salon")).toBe(false);
+  });
+
+  it("apagar `salon` en el panel saca el salón y las mesas", () => {
+    // El bug: `salon` estaba con `feature: null` y un comentario que decía que
+    // no existía en el catálogo. Sí existe (se vende en Profesional desde el
+    // 09-sep), así que el panel la apagaba y la sección seguía apareciendo.
+    const sinSalon = PLAN_FULL.filter((f) => f !== "salon");
+    expect(puedeVer(ctx("ADMIN", TODOS_MODULOS, sinSalon), "salon")).toBe(false);
+    expect(puedeVer(ctx("ADMIN", TODOS_MODULOS, sinSalon), "mesas")).toBe(false);
+    // Y el mesero de ese negocio no tiene a dónde entrar: es una cuenta que
+    // quedó sin sección, y la pantalla de sin-acceso lo explica.
+    expect(rutaInicial({ rol: "MESERO", modulos: [], features: sinSalon })).toBe(
+      "/sin-acceso",
+    );
+  });
+
+  it("apagar `salon` no toca el resto del menú", () => {
+    // El candado es de la sección, no del negocio: el POS y la caja siguen.
+    const sinSalon = PLAN_FULL.filter((f) => f !== "salon");
+    const admin = ctx("ADMIN", TODOS_MODULOS, sinSalon);
+    expect(puedeVer(admin, "pos")).toBe(true);
+    expect(puedeVer(admin, "caja")).toBe(true);
+    expect(puedeVer(admin, "inventario")).toBe(true);
   });
 
   it("el admin sigue entrando a lo suyo, no al salón", () => {

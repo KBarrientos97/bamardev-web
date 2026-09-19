@@ -18,6 +18,7 @@ import {
 import { api } from "../../lib/api";
 import { fmtFecha, fmtFechaHora, fmtMoney, fmtNum, isoDia } from "../../lib/format";
 import { useApi } from "../../lib/useApi";
+import { useSucursales } from "../../lib/useSucursales";
 import { useAuth } from "../../store/AuthContext";
 import type {
   Almacen,
@@ -82,7 +83,13 @@ function esEntrada(tipo: TipoMovimiento): boolean {
 
 export default function Movimientos() {
   const { incluye } = useAuth();
-  const movimientos = useApi(() => api.getMovimientos(), []);
+  // Inventario SÍ incluye depósitos: la mercadería entra ahí antes de
+  // repartirse a los locales, así que sus entradas son las que más importan.
+  const suc = useSucursales({ incluirDepositos: true });
+  const movimientos = useApi(
+    () => api.getMovimientos(suc.sucursalId),
+    [suc.sucursalId],
+  );
   const almacenes = useApi(() => api.getAlmacenes(), []);
 
   const [q, setQ] = useState("");
@@ -174,6 +181,9 @@ export default function Movimientos() {
             {fecha ? "" : " en total"}
           </span>
         </div>
+        {suc.elegir && (
+          <Chips valor={suc.valorChip} opciones={suc.opciones} onChange={suc.alElegir} />
+        )}
         <Chips valor={filtroTipo} opciones={OPC_TIPO} onChange={setFiltroTipo} />
         <Chips valor={filtroEstado} opciones={opcionesEstado} onChange={setFiltroEstado} />
         <Chips valor={filtroOrigen} opciones={OPC_ORIGEN} onChange={setFiltroOrigen} />
@@ -980,6 +990,7 @@ function FormMovimientoCuerpo({
     <Modal
       abierto
       titulo="Nuevo movimiento"
+      cerrarAlClicAfuera={false}
       subtitulo="Nace pendiente: recién al aprobarlo se mueve el stock"
       onClose={onClose}
       ancho="max-w-2xl"

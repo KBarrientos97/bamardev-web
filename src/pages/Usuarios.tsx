@@ -3,6 +3,7 @@ import { contiene } from "../lib/texto";
 import { Icon } from "../components/Icon";
 import { Buscador, Chips, EncabezadoPagina } from "../components/filtros";
 import {
+  AvisoOk,
   Badge,
   Boton,
   Campo,
@@ -174,12 +175,7 @@ export default function Usuarios() {
       </div>
 
       <ErrorMsg>{errorAccion || usuarios.error}</ErrorMsg>
-      {aviso && (
-        <div className="flex items-start gap-2 rounded-xl bg-primary-50 px-3.5 py-2.5 text-sm text-primary-700">
-          <Icon name="check" size={17} />
-          <span>{aviso}</span>
-        </div>
-      )}
+      <AvisoOk>{aviso}</AvisoOk>
 
       {usuarios.cargando ? (
         <Cargando />
@@ -502,9 +498,11 @@ function FormUsuarioCuerpo({
    */
   const rolesAsignables = ROLES_APP.filter(
     (r) =>
-      actual?.rol === "ADMIN" ||
-      r === "CAJERO" ||
-      r === "REPARTIDOR" ||
+      // ADMIN nunca se ofrece: el administrador nace con el negocio, en el
+      // panel. El backend lo rechaza, así que mostrarlo sería hacerle llenar
+      // el formulario para nada.
+      (r !== "ADMIN" &&
+        (actual?.rol === "ADMIN" || r === "CAJERO" || r === "REPARTIDOR")) ||
       // El rol que YA tiene el usuario se sigue mostrando: si no, editarle el
       // teléfono a un admin le cambiaría el rol sin querer al guardar.
       r === usuario?.rol,
@@ -529,8 +527,12 @@ function FormUsuarioCuerpo({
    * El campo aparece recién con dos o más locales. Con uno solo la respuesta
    * es siempre la misma y preguntarla sería ruido — un negocio de un local no
    * debería enterarse de que existen las sucursales.
+   *
+   * Al ADMIN tampoco se le pregunta: es el único que ve toda la organización,
+   * y por eso no pertenece a ninguna sucursal.
    */
-  const mostrarSucursal = sucursales.length > 1;
+  const esAdmin = rol === "ADMIN";
+  const mostrarSucursal = sucursales.length > 1 && !esAdmin;
   // Y sólo un usuario de organización puede fijarla: el backend rechaza al
   // resto, así que ofrecer el selector sería invitarlo a un 403.
   //
@@ -546,6 +548,14 @@ function FormUsuarioCuerpo({
     if (!esEdicion) {
       if (!username.trim()) return setError("Poné un nombre de usuario.");
       if (password.length < 6) return setError("La contraseña necesita al menos 6 caracteres.");
+    }
+
+    // "Toda la organización" es del administrador y de nadie más: un cajero sin
+    // sucursal vería el negocio entero y vendería del almacén principal estando
+    // parado en otro local. El backend lo rechaza igual; el aviso acá evita que
+    // se entere después de llenar todo.
+    if (mostrarSucursal && puedeAsignarSucursal && sucursalId == null) {
+      return setError("Elegí la sucursal en la que trabaja.");
     }
 
     setGuardando(true);
@@ -596,6 +606,7 @@ function FormUsuarioCuerpo({
     <Modal
       abierto
       titulo={esEdicion ? "Editar usuario" : "Nuevo usuario"}
+      cerrarAlClicAfuera={false}
       subtitulo={esEdicion ? usuario.nombre : "Cargá los datos de la cuenta"}
       onClose={onClose}
       acciones={
@@ -646,7 +657,7 @@ function FormUsuarioCuerpo({
         {mostrarSucursal && puedeAsignarSucursal && (
           <Campo
             label="Sucursal"
-            hint="Toda la organización = ve y opera en todos los locales"
+            hint="En qué local trabaja: ahí vende, y ve sólo lo de ahí"
           >
             <Select
               value={sucursalId ?? ""}
@@ -654,7 +665,10 @@ function FormUsuarioCuerpo({
                 setSucursalId(e.target.value === "" ? null : Number(e.target.value))
               }
             >
-              <option value="">Toda la organización</option>
+              {/* Sin opción "toda la organización": eso es del administrador, y
+                  al administrador no se le muestra este campo. Queda un
+                  placeholder para no elegir por el usuario en el alta. */}
+              <option value="">Elegí una sucursal…</option>
               {sucursales.map((a) => (
                 <option key={a.id} value={a.id}>
                   {a.nombre}

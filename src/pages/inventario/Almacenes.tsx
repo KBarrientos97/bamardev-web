@@ -758,6 +758,7 @@ function FormAlmacenCuerpo({
     <Modal
       abierto
       titulo={esEdicion ? "Editar almacén" : "Nuevo almacén"}
+      cerrarAlClicAfuera={false}
       subtitulo={esEdicion ? almacen.nombre : "Dónde se guarda el stock"}
       onClose={onClose}
       acciones={

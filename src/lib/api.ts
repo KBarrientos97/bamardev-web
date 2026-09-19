@@ -376,9 +376,20 @@ export const api = {
     request<ReporteCierreProductos>(`/reportes/cierres/${cierreId}/productos`),
 
   // ── Catálogo ──────────────────────────────────────────────────────────────
-  getProductos: (eliminados?: boolean) =>
-    request<Producto[]>(`/productos${qs({ eliminados: eliminados ? 1 : undefined })}`),
-  getProducto: (id: number) => request<Producto>(`/productos/${id}`),
+  /**
+    * El catálogo. `sucursalId` decide de qué local salen el PRECIO y el STOCK:
+    * sin él, el POS mostraba el precio de lista y la venta cobraba el de la
+    * sucursal, así que el cobro fallaba con "los pagos no suman el total".
+    */
+  getProductos: (eliminados?: boolean, sucursalId?: number | null) =>
+    request<Producto[]>(
+      `/productos${qs({
+        eliminados: eliminados ? 1 : undefined,
+        sucursalId: sucursalId ?? undefined,
+      })}`,
+    ),
+  getProducto: (id: number, sucursalId?: number | null) =>
+    request<Producto>(`/productos/${id}${qs({ sucursalId: sucursalId ?? undefined })}`),
   /**
    * La búsqueda del mostrador: filtra y pagina en el servidor.
    *
@@ -423,6 +434,15 @@ export const api = {
   getUnidades: () => request<UnidadMedida[]>("/unidades-medida"),
 
   // ── Inventario ────────────────────────────────────────────────────────────
+  /**
+   * Los locales SIN números: id, nombre, tipo y si es el principal.
+   *
+   * Para los selectores de sucursal, que sólo necesitan nombres. `getAlmacenes`
+   * devuelve además la valorización del inventario y el detalle de artículos —y
+   * exige ser ADMIN/SUPERVISOR—, así que traía de más y, desde que el listado
+   * completo pide rol, le respondía 403 a un cajero.
+   */
+  getSucursales: () => request<Almacen[]>("/almacenes/mias"),
   getAlmacenes: () => request<Almacen[]>("/almacenes"),
   /**
    * Hace de este almacén la sucursal principal: la que el backend usa cuando una
@@ -500,8 +520,14 @@ export const api = {
     request<{ mensaje: string }>(`/almacenes/${id}`, { method: "DELETE" }),
 
   /** El catálogo de insumos; con `eliminados`, la papelera. */
-  getInsumos: (eliminados?: boolean) =>
-    request<Insumo[]>(`/insumos${qs({ eliminados: eliminados ? 1 : undefined })}`),
+  /** Con `sucursalId`, el `stock` es el de ESE almacén y no la suma del negocio. */
+  getInsumos: (eliminados?: boolean, sucursalId?: number | null) =>
+    request<Insumo[]>(
+      `/insumos${qs({
+        eliminados: eliminados ? 1 : undefined,
+        sucursalId: sucursalId ?? undefined,
+      })}`,
+    ),
   /**
    * A cuánto llegó este artículo en cada compra. Vale también para insumos: son
    * Producto con esInsumo=true y comparten endpoint.
@@ -516,7 +542,9 @@ export const api = {
   eliminarInsumo: (id: number) =>
     request<{ mensaje: string }>(`/insumos/${id}`, { method: "DELETE" }),
 
-  getMovimientos: () => request<Movimiento[]>("/movimientos"),
+  /** Con `sucursalId`, sólo los de ese local (por origen O destino). */
+  getMovimientos: (sucursalId?: number | null) =>
+    request<Movimiento[]>(`/movimientos${qs({ sucursalId: sucursalId ?? undefined })}`),
   getMovimiento: (id: number) => request<Movimiento>(`/movimientos/${id}`),
   /** Productos e insumos juntos, con su stock en el almacén indicado. */
   getArticulosMovimiento: (almacenId?: number) =>
@@ -545,7 +573,8 @@ export const api = {
   eliminarMovimiento: (id: number) =>
     request<{ mensaje: string }>(`/movimientos/${id}`, { method: "DELETE" }),
 
-  getDashboard: () => request<Dashboard>("/dashboard"),
+  getDashboard: (sucursalId?: number | null) =>
+    request<Dashboard>(`/dashboard${qs({ sucursalId: sucursalId ?? undefined })}`),
 
   // ── Caja ──────────────────────────────────────────────────────────────────
   getFormasPago: () => request<FormaPago[]>("/formas-pago"),
@@ -594,10 +623,20 @@ export const api = {
     request<Venta>(`/ventas/${id}/cancelar`, { method: "POST" }),
 
   // ── Créditos (fiado) ──────────────────────────────────────────────────────
-  getCreditos: (params: { filtro?: FiltroCredito; q?: string; clienteId?: number } = {}) =>
+  /** `sucursalId` acota a lo fiado por ese local. */
+  getCreditos: (
+    params: {
+      filtro?: FiltroCredito;
+      q?: string;
+      clienteId?: number;
+      sucursalId?: number | null;
+    } = {},
+  ) =>
     request<Credito[]>(`/creditos${qs(params)}`),
   getCredito: (id: number) => request<Credito>(`/creditos/${id}`),
-  getClientesCredito: () => request<ClienteCredito[]>("/creditos/clientes"),
+  /** Con `sucursalId`, el saldo del cliente es lo que le debe A ESE local. */
+  getClientesCredito: (sucursalId?: number | null) =>
+    request<ClienteCredito[]>(`/creditos/clientes${qs({ sucursalId: sucursalId ?? undefined })}`),
   /**
    * Techo de deuda del cliente. `null` explícito = sacarle el límite, y por eso
    * el body lo manda siempre (omitirlo y mandar null son cosas distintas).
@@ -779,8 +818,11 @@ export const api = {
   // ── Mesas (administración) ────────────────────────────────────────────────
   // El mesero no crea mesas: sólo abre las que el dueño registre. El backend
   // lo exige con RolesGuard (ADMIN, SUPERVISOR).
-  getMesas: () => request<Mesa[]>("/mesas"),
-  getZonas: () => request<ZonaSalon[]>("/mesas/zonas"),
+  /** Con `sucursalId`, sólo las mesas de ese local (por la zona donde están). */
+  getMesas: (sucursalId?: number | null) =>
+    request<Mesa[]>(`/mesas${qs({ sucursalId: sucursalId ?? undefined })}`),
+  getZonas: (sucursalId?: number | null) =>
+    request<ZonaSalon[]>(`/mesas/zonas${qs({ sucursalId: sucursalId ?? undefined })}`),
   crearMesa: (input: {
     codigo: string;
     nombre?: string;

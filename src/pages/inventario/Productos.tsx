@@ -6,6 +6,7 @@ import HistorialCostos from "../../components/HistorialCostos";
 import IconoProducto from "../../components/IconoProducto";
 import { Buscador, Chips, EncabezadoPagina } from "../../components/filtros";
 import {
+  AvisoOk,
   Badge,
   Boton,
   Campo,
@@ -16,6 +17,7 @@ import {
   Modal,
   Select,
   Vacio,
+  useAviso,
 } from "../../components/ui";
 import { api } from "../../lib/api";
 import { fmtMoney, fmtNum } from "../../lib/format";
@@ -24,6 +26,7 @@ import { esFarmacia, termino } from "../../lib/rubro";
 import { FichaMedicamento, TarjetaMedicamento } from "../farmacia/FichaMedicamento";
 import { useBusquedaProductos } from "../farmacia/useBusquedaProductos";
 import { useApi } from "../../lib/useApi";
+import { useSucursales } from "../../lib/useSucursales";
 import { useAuth } from "../../store/AuthContext";
 import type {
   Categoria,
@@ -99,6 +102,8 @@ export default function Productos() {
   // La papelera es otra lista del backend, no un filtro sobre la que ya está:
   // los dados de baja no vienen en el catálogo normal.
   const enPapelera = filtroStock === "papelera";
+  // El precio y el stock son los del local elegido: es lo que el POS cobra.
+  const suc = useSucursales({ incluirDepositos: true });
   /**
    * Cómo consigue la pantalla lo que muestra. Sólo en farmacia hay dos formas,
    * y la elige el chip de stock:
@@ -116,24 +121,26 @@ export default function Productos() {
     esFarmacia(rubro) && (filtroStock === "todos" || filtroStock === "activos");
 
   const productos = useApi(
-    () => (buscaEnServidor ? Promise.resolve([]) : api.getProductos(enPapelera)),
-    [enPapelera, buscaEnServidor],
+    () =>
+      buscaEnServidor
+        ? Promise.resolve([])
+        : api.getProductos(enPapelera, suc.sucursalId),
+    [enPapelera, buscaEnServidor, suc.sucursalId],
   );
   const categorias = useApi(() => api.getCategorias(false), []);
   const unidades = useApi(() => api.getUnidades(), []);
   /**
-   * Sólo farmacia: el catálogo deja mirarse almacén por almacén.
+   * Sólo farmacia: el stock del almacén elegido cuando la lista viene de la
+   * búsqueda del servidor, que no sabe de sucursales y trae el total.
    *
    * `GET /almacenes` ya trae los artículos de cada uno con su cantidad, así que
-   * el filtro no cuesta una consulta por producto. En los demás rubros no se
-   * pide nada: la pantalla queda exactamente como está.
+   * no cuesta una consulta por producto. En los demás rubros no se pide nada:
+   * el catálogo entero ya llega con el stock del local (`suc.sucursalId`).
    */
   const almacenes = useApi(
     () => (esFarmacia(rubro) ? api.getAlmacenes() : Promise.resolve([])),
     [rubro],
   );
-  /** "" = todos los almacenes sumados, que es como se vio siempre. */
-  const [almacenId, setAlmacenId] = useState("");
 
   const [q, setQ] = useState("");
   const [filtroTipo, setFiltroTipo] = useState<FiltroTipo>("todos");
@@ -143,6 +150,8 @@ export default function Productos() {
   const [aBorrar, setABorrar] = useState<Producto | null>(null);
   const [borrando, setBorrando] = useState(false);
   const [errorAccion, setErrorAccion] = useState("");
+  // Se limpia solo a los 6s: es un aviso, no algo que haya que descartar.
+  const [aviso, setAviso] = useAviso();
 
   /**
    * La búsqueda contra el servidor. El hook espera a que dejes de teclear,
@@ -220,12 +229,15 @@ export default function Productos() {
   );
 
   const almacenesActivos = (almacenes.datos ?? []).filter((a) => a.activo);
-  const almacenElegido = almacenesActivos.find((a) => String(a.id) === almacenId);
+  // El almacén lo elige el mismo selector de sucursal que usan todos los
+  // rubros: farmacia tenía uno propio y, con los dos, eran dos filas de chips
+  // que decían lo mismo.
+  const almacenElegido = almacenesActivos.find((a) => a.id === suc.sucursalId);
 
   /**
    * Cuánto hay del artículo, según el filtro puesto. Sin almacén elegido es el
    * total de siempre — que es lo único que ve un rubro que no sea farmacia,
-   * porque ahí el selector no existe y `almacenId` nunca deja de estar vacío.
+   * porque ahí `almacenes` no se pide y `almacenElegido` queda vacío.
    */
   const stockDe = useMemo<(p: Producto) => number>(() => {
     if (!almacenElegido) return (p: Producto) => p.stockTotal;
@@ -307,7 +319,9 @@ export default function Productos() {
       setDetalle(null);
       recargar();
       if (res.archivado) {
-        setErrorAccion(
+        // Aviso, no error: la operación hizo lo correcto. En rojo parecía que
+        // había fallado algo.
+        setAviso(
           `El ${termino(rubro, "articulo")} ya tenía ventas o movimientos, así que se archivó en vez de borrarse.`,
         );
       }
@@ -369,17 +383,8 @@ export default function Productos() {
             }
           />
         </div>
-        {/* Con un solo almacén no hay nada que elegir: el total YA es el de
-            ese local y el selector sería un chip que no hace nada. */}
-        {esFarmacia(rubro) && almacenesActivos.length > 1 && (
-          <Chips
-            valor={almacenId}
-            opciones={[
-              ["", "Todos los almacenes"],
-              ...almacenesActivos.map((a) => [String(a.id), a.nombre] as const),
-            ]}
-            onChange={setAlmacenId}
-          />
+        {suc.elegir && (
+          <Chips valor={suc.valorChip} opciones={suc.opciones} onChange={suc.alElegir} />
         )}
         <Chips valor={filtroStock} opciones={OPC_STOCK} onChange={setFiltroStock} />
         {/* Producto / Elaborado / Combo no existe en una farmacia: no hay nada
@@ -392,6 +397,7 @@ export default function Productos() {
       </div>
 
       <ErrorMsg>{errorAccion || errorCarga}</ErrorMsg>
+      <AvisoOk>{aviso}</AvisoOk>
 
       {/* Sólo la búsqueda del servidor deja la tanda anterior a la vista
           mientras llega la nueva, para que la lista no parpadee con cada letra.
@@ -1067,6 +1073,7 @@ function FormProductoCuerpo({
     <Modal
       abierto
       titulo={`${esEdicion ? "Editar" : "Nuevo"} ${termino(rubro, "articulo")}`}
+      cerrarAlClicAfuera={false}
       subtitulo={
         esEdicion
           ? producto.nombre
