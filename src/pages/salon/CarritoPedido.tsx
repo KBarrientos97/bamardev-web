@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Icon } from "../../components/Icon";
-import { Boton } from "../../components/ui";
+import { Boton, Confirmar } from "../../components/ui";
 import { fmtMoney, fmtNum } from "../../lib/format";
 import {
   INDICACIONES,
@@ -34,6 +34,7 @@ export default function CarritoPedido({
 }) {
   const total = totalPedido(lineas);
   const items = cantidadPedido(lineas);
+  const [vaciando, setVaciando] = useState(false);
 
   // Vaciar deja la hoja sin nada que mostrar: se cierra sola.
   useEffect(() => {
@@ -42,6 +43,20 @@ export default function CarritoPedido({
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40">
+      <Confirmar
+        abierto={vaciando}
+        titulo="¿Vaciar el pedido?"
+        texto={`Se van a quitar ${items} ${
+          items === 1 ? "ítem" : "ítems"
+        } y hay que volver a cargarlos.`}
+        etiquetaOk="Vaciar"
+        peligroso
+        onCancel={() => setVaciando(false)}
+        onOk={() => {
+          setVaciando(false);
+          setLineas(() => []);
+        }}
+      />
       <div className="flex max-h-[92dvh] w-full max-w-lg flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl">
         <div className="flex items-start justify-between gap-3 border-b border-borde-soft px-4 py-3">
           <div className="min-w-0">
@@ -50,9 +65,13 @@ export default function CarritoPedido({
               {items} {items === 1 ? "ítem" : "ítems"} · {fmtMoney(total)}
             </p>
           </div>
+          {/* `mr-2` a propósito: "Vaciar" borra el pedido entero y estaba
+              pegado a "Cerrar", en una hoja que el mesero usa con una mano.
+              Un toque impreciso perdía los platos que el cliente acababa de
+              cantar. */}
           <button
-            onClick={() => setLineas(() => [])}
-            className="shrink-0 rounded-lg px-2 py-1 text-[13px] font-semibold text-[#DC2626] hover:bg-[#FEF2F2]"
+            onClick={() => setVaciando(true)}
+            className="mr-2 shrink-0 rounded-lg px-2 py-1 text-[13px] font-semibold text-[#DC2626] hover:bg-[#FEF2F2]"
           >
             Vaciar
           </button>

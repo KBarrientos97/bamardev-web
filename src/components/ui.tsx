@@ -170,12 +170,55 @@ export function Cargando({ texto = "Cargando…" }: { texto?: string }) {
   );
 }
 
-export function ErrorMsg({ children }: { children: ReactNode }) {
+/**
+ * Un aviso que NO es un error: algo salió bien, o salió distinto de lo pedido
+ * pero está resuelto.
+ *
+ * Existe porque el bloque estaba copiado inline en tres pantallas y las demás,
+ * al no tenerlo a mano, mandaban sus avisos por `ErrorMsg` — que es rojo y con
+ * ícono de alerta. Así, "el artículo ya tenía ventas, se archivó en vez de
+ * borrarse" (una operación exitosa) se leía como una falla.
+ */
+export function AvisoOk({ children }: { children: ReactNode }) {
+  if (!children) return null;
+  return (
+    <div className="flex items-start gap-2 rounded-xl bg-primary-50 px-3.5 py-2.5 text-sm text-primary-700">
+      <Icon name="check" size={17} />
+      <span>{children}</span>
+    </div>
+  );
+}
+
+/**
+ * Un error, con salida.
+ *
+ * `onReintentar` dibuja el botón: sin él, una pantalla que falla al cargar
+ * queda en un cartel rojo y NADA más. El caso que lo motiva es el POS cuando
+ * parpadea el wifi del local (el escenario que `api.ts` anticipa): el cajero
+ * se quedaba sin forma de seguir salvo F5 — y en una tablet en modo kiosco, ni
+ * eso. `useApi` ya devolvía `recargar()`; no lo cableaba nadie.
+ */
+export function ErrorMsg({
+  children,
+  onReintentar,
+}: {
+  children: ReactNode;
+  onReintentar?: () => void;
+}) {
   if (!children) return null;
   return (
     <div className="flex items-start gap-2 rounded-xl bg-danger-bg px-3.5 py-2.5 text-sm text-danger-text">
       <Icon name="alert" size={17} />
-      <span>{children}</span>
+      <span className="flex-1">{children}</span>
+      {onReintentar && (
+        <button
+          type="button"
+          onClick={onReintentar}
+          className="shrink-0 rounded-lg border border-danger-text/30 px-2.5 py-1 text-xs font-semibold text-danger-text transition-colors hover:bg-danger-text/10"
+        >
+          Reintentar
+        </button>
+      )}
     </div>
   );
 }

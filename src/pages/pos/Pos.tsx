@@ -217,7 +217,7 @@ export default function Pos() {
   if (caja.error)
     return (
       <div className="p-5">
-        <ErrorMsg>{caja.error}</ErrorMsg>
+        <ErrorMsg onReintentar={caja.recargar}>{caja.error}</ErrorMsg>
       </div>
     );
 

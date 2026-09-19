@@ -5,6 +5,7 @@ import HistorialCostos from "../../components/HistorialCostos";
 import IconoProducto from "../../components/IconoProducto";
 import { Buscador, Chips, EncabezadoPagina } from "../../components/filtros";
 import {
+  AvisoOk,
   Badge,
   Boton,
   Campo,
@@ -15,6 +16,7 @@ import {
   Modal,
   Select,
   Vacio,
+  useAviso,
 } from "../../components/ui";
 import { api } from "../../lib/api";
 import { fmtMoney, fmtNum } from "../../lib/format";
@@ -81,6 +83,8 @@ export default function Productos() {
   const [aBorrar, setABorrar] = useState<Producto | null>(null);
   const [borrando, setBorrando] = useState(false);
   const [errorAccion, setErrorAccion] = useState("");
+  // Se limpia solo a los 6s: es un aviso, no algo que haya que descartar.
+  const [aviso, setAviso] = useAviso();
 
   const lista = productos.datos ?? [];
 
@@ -139,7 +143,9 @@ export default function Productos() {
       setDetalle(null);
       productos.recargar();
       if (res.archivado) {
-        setErrorAccion(
+        // Aviso, no error: la operación hizo lo correcto. En rojo parecía que
+        // había fallado algo.
+        setAviso(
           "El artículo ya tenía ventas o movimientos, así que se archivó en vez de borrarse.",
         );
       }
@@ -186,6 +192,7 @@ export default function Productos() {
       </div>
 
       <ErrorMsg>{errorAccion || productos.error}</ErrorMsg>
+      <AvisoOk>{aviso}</AvisoOk>
 
       {productos.cargando ? (
         <Cargando />

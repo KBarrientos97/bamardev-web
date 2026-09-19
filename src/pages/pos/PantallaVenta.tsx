@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { contiene } from "../../lib/texto";
 import { Icon } from "../../components/Icon";
 import IconoProducto from "../../components/IconoProducto";
-import { Badge, Boton, Input, Modal, Vacio } from "../../components/ui";
+import { Badge, Boton, Confirmar, Input, Modal, Vacio } from "../../components/ui";
 import { fmtMoney, fmtNum } from "../../lib/format";
 import { useAuth } from "../../store/AuthContext";
 import type { Categoria, Consumo, Producto } from "../../types";
@@ -359,9 +359,26 @@ function PanelCarrito({
   // que es el valor por defecto con el que nacen las líneas.
   const conMesaLlevar = incluye("mesa_llevar");
   const vacio = carrito.lineas.length === 0;
+  // Vaciar es destructivo y el botón está al lado del de cerrar: un toque
+  // impreciso borraba una venta de quince ítems con el cliente enfrente.
+  const [vaciando, setVaciando] = useState(false);
 
   return (
     <>
+      <Confirmar
+        abierto={vaciando}
+        titulo="¿Vaciar la venta?"
+        texto={`Se van a quitar ${carrito.unidades} ${
+          carrito.unidades === 1 ? "ítem" : "ítems"
+        } y hay que cargarlos de nuevo.`}
+        etiquetaOk="Vaciar"
+        peligroso
+        onCancel={() => setVaciando(false)}
+        onOk={() => {
+          carrito.vaciar();
+          setVaciando(false);
+        }}
+      />
       <div className="flex items-center justify-between border-b border-borde-soft px-4 py-3">
         <div className="flex items-center gap-2">
           <Icon name="cart" size={19} />
@@ -377,8 +394,9 @@ function PanelCarrito({
         <div className="flex items-center gap-1">
           {!vacio && (
             <button
-              onClick={carrito.vaciar}
+              onClick={() => setVaciando(true)}
               title="Vaciar la venta"
+              aria-label="Vaciar la venta"
               className="rounded-lg p-1.5 text-texto-3 hover:bg-danger-bg hover:text-danger-text"
             >
               <Icon name="trash" size={17} />

@@ -46,8 +46,13 @@ export default function CorteDeCaja({
   }
 
   function limpiar() {
+    // Limpia el CONTEO, no el campo de arriba.
+    //
+    // Antes propagaba `onTotal(0)` y el consumidor hacía `setContado("")`: el
+    // cajero que había tecleado "1.240,50" a mano, abría el acordeón para
+    // chequear algo y tocaba "Limpiar", se quedaba sin el monto y sin aviso.
+    // El botón dice "limpiar el conteo", así que eso es lo único que limpia.
     setConteo({});
-    onTotal(0);
   }
 
   return (

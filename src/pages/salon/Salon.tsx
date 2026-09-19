@@ -119,7 +119,9 @@ export default function Salon({
           </button>
         )}
 
-        {salon.error && <ErrorMsg>{salon.error}</ErrorMsg>}
+        {salon.error && (
+          <ErrorMsg onReintentar={salon.recargar}>{salon.error}</ErrorMsg>
+        )}
         {salon.cargando && !salon.datos ? (
           <Cargando />
         ) : (

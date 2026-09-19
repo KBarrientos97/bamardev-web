@@ -7,6 +7,7 @@ import { useAuth } from "../store/AuthContext";
 import { Icon } from "../components/Icon";
 import { Buscador, Chips, EncabezadoPagina } from "../components/filtros";
 import {
+  AvisoOk,
   Badge,
   Boton,
   Campo,
@@ -215,12 +216,7 @@ export default function Creditos() {
       </div>
 
       <ErrorMsg>{creditos.error}</ErrorMsg>
-      {aviso && (
-        <div className="flex items-start gap-2 rounded-xl bg-primary-50 px-3.5 py-2.5 text-sm text-primary-700">
-          <Icon name="check" size={17} />
-          <span>{aviso}</span>
-        </div>
-      )}
+      <AvisoOk>{aviso}</AvisoOk>
 
       {creditos.cargando ? (
         <Cargando />
