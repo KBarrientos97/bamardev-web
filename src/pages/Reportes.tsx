@@ -248,8 +248,42 @@ function esDinero(clave: string): boolean {
 
 const ISO_FECHA = /^\d{4}-\d{2}-\d{2}(T|$)/;
 
-/** camelCase → "Texto legible": las claves salen del backend sin traducir. */
+/**
+ * Cómo se llama cada columna en la pantalla.
+ *
+ * La tabla genérica arma los encabezados con las claves del JSON, así que sin
+ * esto el dueño leía **"Venta id"**, **"Compra id"** o **"Margen pct"**: jerga
+ * de base de datos en la pantalla por la que paga. Sólo hace falta para las
+ * claves que no quedan bien con el camelCase → espacios de abajo.
+ */
+const NOMBRE_COLUMNA: Record<string, string> = {
+  ventaId: "N° de venta",
+  compraId: "N° de compra",
+  clienteId: "Cliente",
+  productoId: "Producto",
+  formaPagoId: "Forma de pago",
+  usuarioId: "Usuario",
+  almacenId: "Sucursal",
+  margenPct: "Margen",
+  invertidoDeltaPct: "Variación",
+  numCompras: "Compras",
+  esInsumo: "Insumo",
+  codBarra: "Código de barras",
+  stockMinimo: "Stock mínimo",
+  creadoEn: "Fecha",
+  createdAt: "Fecha",
+  updatedAt: "Última edición",
+};
+
+/**
+ * camelCase → "Texto legible".
+ *
+ * Primero mira el diccionario de arriba; lo que no esté ahí se separa por
+ * mayúsculas, que alcanza para la mayoría ("subtotal", "comprobante").
+ */
 function legible(clave: string): string {
+  const propio = NOMBRE_COLUMNA[clave];
+  if (propio) return propio;
   const conEspacios = clave
     .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
     .replace(/[_-]+/g, " ")

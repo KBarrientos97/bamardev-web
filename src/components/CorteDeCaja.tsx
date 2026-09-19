@@ -120,7 +120,7 @@ function Grupo({
                 onClick={() => onFijar(v, n - 1)}
                 disabled={n === 0}
                 aria-label={`Quitar un ${fmtMoney(v)}`}
-                className="flex h-7 w-7 items-center justify-center rounded-lg border border-borde text-texto-2 disabled:opacity-40"
+                className="flex h-9 w-9 items-center justify-center rounded-lg border border-borde text-texto-2 disabled:opacity-40"
               >
                 −
               </button>
@@ -139,7 +139,7 @@ function Grupo({
                 type="button"
                 onClick={() => onFijar(v, n + 1)}
                 aria-label={`Agregar un ${fmtMoney(v)}`}
-                className="flex h-7 w-7 items-center justify-center rounded-lg border border-borde text-texto-2"
+                className="flex h-9 w-9 items-center justify-center rounded-lg border border-borde text-texto-2"
               >
                 +
               </button>

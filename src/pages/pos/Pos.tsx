@@ -14,7 +14,7 @@ import PantallaCredito from "./PantallaCredito";
 import PantallaEntrega, { type DatosEntrega } from "./PantallaEntrega";
 import MesasPorCobrar from "./MesasPorCobrar";
 import Entregas from "../salon/Entregas";
-import { consumoDeMesa } from "../salon/logicaSalon";
+import { consumoDeMesa, etiquetaMesa } from "../salon/logicaSalon";
 import type { Mesa as MesaSalon } from "../../types/salon";
 import PantallaHistorial from "./PantallaHistorial";
 import PantallaRecibo from "./PantallaRecibo";
@@ -320,6 +320,7 @@ export default function Pos() {
         // Cobrando una mesa el total es el consumo que cargó el mesero, no el
         // carrito: la cajera no retipea nada de lo que el cliente comió.
         total={mesaCobrando ? consumoDeMesa(mesaCobrando) : carrito.total}
+        subtitulo={mesaCobrando ? etiquetaMesa(mesaCobrando) : undefined}
         avisoEnvio={
           datosEntrega?.tarifaEnvio
             ? `El envío (${fmtMoney(datosEntrega.tarifaEnvio)}) lo cobra el repartidor aparte.`

@@ -320,7 +320,7 @@ function TarjetaVenta({
             <button
               onClick={onQuitar}
               aria-label={cantidad === 1 ? "Quitar del pedido" : "Uno menos"}
-              className={`flex h-7 w-7 items-center justify-center rounded-full ${
+              className={`flex h-9 w-9 items-center justify-center rounded-full ${
                 // En la última unidad el "−" se vuelve tacho: avisa que el
                 // próximo toque saca el producto, no que lo baja a cero.
                 cantidad === 1
@@ -334,7 +334,7 @@ function TarjetaVenta({
             <button
               onClick={onAgregar}
               aria-label="Uno más"
-              className="flex h-7 w-7 items-center justify-center rounded-full text-primary-700 hover:bg-primary-50"
+              className="flex h-9 w-9 items-center justify-center rounded-full text-primary-700 hover:bg-primary-50"
             >
               <Icon name="plus" size={15} />
             </button>
