@@ -232,6 +232,7 @@ export function Modal({
   children,
   acciones,
   ancho = "max-w-lg",
+  cerrarAlClicAfuera = true,
 }: {
   abierto: boolean;
   titulo: string;
@@ -240,13 +241,31 @@ export function Modal({
   children: ReactNode;
   acciones?: ReactNode;
   ancho?: string;
+  /**
+   * `false` en los modales con formulario: un clic al costado borraba todo lo
+   * tecleado. El peor caso era el alta de producto —nombre, precio, costo,
+   * categoría, ícono y la receta entera de un combo— que al reabrir arrancaba
+   * limpio. Se cierra con la X o con Cancelar, que es deliberado.
+   */
+  cerrarAlClicAfuera?: boolean;
 }) {
+  // Escape cierra, como cualquier diálogo. No lo hacía: el `role="dialog"` es
+  // un div, no un `<dialog>` nativo, así que el navegador no lo maneja solo.
+  useEffect(() => {
+    if (!abierto) return;
+    const alTecla = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", alTecla);
+    return () => document.removeEventListener("keydown", alTecla);
+  }, [abierto, onClose]);
+
   if (!abierto) return null;
   return (
     <div
       className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-0 sm:items-center sm:p-4"
       onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onClose();
+        if (cerrarAlClicAfuera && e.target === e.currentTarget) onClose();
       }}
     >
       <div

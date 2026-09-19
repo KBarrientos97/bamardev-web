@@ -645,6 +645,7 @@ function FormProductoCuerpo({
     <Modal
       abierto
       titulo={esEdicion ? "Editar artículo" : "Nuevo artículo"}
+      cerrarAlClicAfuera={false}
       subtitulo={esEdicion ? producto.nombre : "Cargá los datos del producto"}
       onClose={onClose}
       acciones={

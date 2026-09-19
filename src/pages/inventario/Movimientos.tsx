@@ -950,6 +950,7 @@ function FormMovimientoCuerpo({
     <Modal
       abierto
       titulo="Nuevo movimiento"
+      cerrarAlClicAfuera={false}
       subtitulo="Nace pendiente: recién al aprobarlo se mueve el stock"
       onClose={onClose}
       ancho="max-w-2xl"

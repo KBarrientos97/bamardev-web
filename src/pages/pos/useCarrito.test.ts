@@ -1,5 +1,5 @@
 import { act, renderHook } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import type { Producto } from "../../types";
 import { useCarrito } from "./useCarrito";
 
@@ -22,6 +22,76 @@ function producto(over: Partial<Producto> = {}): Producto {
     ...over,
   };
 }
+
+describe("useCarrito · el carrito sobrevive a un F5", () => {
+  // El caso real: el cajero carga quince items, el navegador recarga la
+  // pestaña (o le da F5 sin querer) y la venta se perdía entera, con el
+  // cliente enfrente.
+  beforeEach(() => sessionStorage.clear());
+
+  it("rehidrata las líneas guardadas contra el catálogo", () => {
+    const p = producto();
+    const primero = renderHook(() => useCarrito("LOCAL", [p]));
+    act(() => primero.result.current.agregar(p));
+    act(() => primero.result.current.setCantidad(p.id, 3));
+    primero.unmount();
+
+    // Otro montaje = lo que pasa al recargar la página.
+    const segundo = renderHook(() => useCarrito("LOCAL", [p]));
+    expect(segundo.result.current.lineas).toHaveLength(1);
+    expect(segundo.result.current.unidades).toBe(3);
+  });
+
+  it("usa el precio de HOY, no el de cuando se cargó la línea", () => {
+    // Se guardan ids, no productos: si el dueño cambió el precio mientras el
+    // carrito estaba a medio armar, la venta tiene que cobrar el nuevo.
+    const antes = producto({ precio: 10 });
+    const primero = renderHook(() => useCarrito("LOCAL", [antes]));
+    act(() => primero.result.current.agregar(antes));
+    primero.unmount();
+
+    const despues = producto({ precio: 15 });
+    const segundo = renderHook(() => useCarrito("LOCAL", [despues]));
+    expect(segundo.result.current.lineas[0].producto.precio).toBe(15);
+    expect(segundo.result.current.total).toBe(15);
+  });
+
+  it("descarta lo que ya no está en el catálogo", () => {
+    // El artículo se dio de baja mientras el carrito esperaba: no puede volver
+    // —la venta lo rechazaría— y el resto del carrito sí.
+    const a = producto({ id: 1 });
+    const b = producto({ id: 2, nombre: "Gaseosa" });
+    const primero = renderHook(() => useCarrito("LOCAL", [a, b]));
+    act(() => primero.result.current.agregar(a));
+    act(() => primero.result.current.agregar(b));
+    primero.unmount();
+
+    const segundo = renderHook(() => useCarrito("LOCAL", [a]));
+    expect(segundo.result.current.lineas).toHaveLength(1);
+    expect(segundo.result.current.lineas[0].producto.id).toBe(1);
+  });
+
+  it("el carrito del mostrador y el del delivery no se pisan", () => {
+    const p = producto();
+    const local = renderHook(() => useCarrito("LOCAL", [p]));
+    act(() => local.result.current.agregar(p));
+    local.unmount();
+
+    const delivery = renderHook(() => useCarrito("DELIVERY", [p]));
+    expect(delivery.result.current.lineas).toHaveLength(0);
+  });
+
+  it("vaciar el carrito también lo borra de la sesión", () => {
+    const p = producto();
+    const primero = renderHook(() => useCarrito("LOCAL", [p]));
+    act(() => primero.result.current.agregar(p));
+    act(() => primero.result.current.vaciar());
+    primero.unmount();
+
+    const segundo = renderHook(() => useCarrito("LOCAL", [p]));
+    expect(segundo.result.current.lineas).toHaveLength(0);
+  });
+});
 
 describe("useCarrito", () => {
   it("suma unidades al agregar el mismo producto dos veces", () => {

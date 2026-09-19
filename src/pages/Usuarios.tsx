@@ -606,6 +606,7 @@ function FormUsuarioCuerpo({
     <Modal
       abierto
       titulo={esEdicion ? "Editar usuario" : "Nuevo usuario"}
+      cerrarAlClicAfuera={false}
       subtitulo={esEdicion ? usuario.nombre : "Cargá los datos de la cuenta"}
       onClose={onClose}
       acciones={

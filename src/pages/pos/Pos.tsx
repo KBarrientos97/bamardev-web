@@ -71,7 +71,10 @@ export default function Pos() {
   const [tipoPedido, setTipoPedido] = useState<TipoPedido>("LOCAL");
   // El carrito necesita el tipo de pedido: en el local lo nuevo arranca en
   // MESA, en un delivery o un "recoger" siempre es LLEVAR.
-  const carrito = useCarrito(tipoPedido);
+  // El catalogo va al hook para poder rehidratar el carrito despues de un F5:
+  // se guardan ids, no productos, asi que las lineas se rearman contra el
+  // catalogo fresco (y con el precio de hoy, no el de cuando se cargaron).
+  const carrito = useCarrito(tipoPedido, productos.datos ?? []);
   const [datosEntrega, setDatosEntrega] = useState<DatosEntrega | null>(null);
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState("");

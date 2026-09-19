@@ -248,6 +248,7 @@ function FormMesa({
     <Modal
       abierto
       titulo={mesa ? "Detalle de la Mesa" : "Nueva mesa"}
+      cerrarAlClicAfuera={false}
       subtitulo="Datos que usa el panel de meseros"
       onClose={onCerrar}
       ancho="max-w-md"
