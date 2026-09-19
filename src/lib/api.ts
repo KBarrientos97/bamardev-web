@@ -370,9 +370,20 @@ export const api = {
     request<ReporteCierreProductos>(`/reportes/cierres/${cierreId}/productos`),
 
   // ── Catálogo ──────────────────────────────────────────────────────────────
-  getProductos: (eliminados?: boolean) =>
-    request<Producto[]>(`/productos${qs({ eliminados: eliminados ? 1 : undefined })}`),
-  getProducto: (id: number) => request<Producto>(`/productos/${id}`),
+  /**
+    * El catálogo. `sucursalId` decide de qué local salen el PRECIO y el STOCK:
+    * sin él, el POS mostraba el precio de lista y la venta cobraba el de la
+    * sucursal, así que el cobro fallaba con "los pagos no suman el total".
+    */
+  getProductos: (eliminados?: boolean, sucursalId?: number | null) =>
+    request<Producto[]>(
+      `/productos${qs({
+        eliminados: eliminados ? 1 : undefined,
+        sucursalId: sucursalId ?? undefined,
+      })}`,
+    ),
+  getProducto: (id: number, sucursalId?: number | null) =>
+    request<Producto>(`/productos/${id}${qs({ sucursalId: sucursalId ?? undefined })}`),
   crearProducto: (input: ProductoInput) =>
     request<Producto>("/productos", { method: "POST", body: JSON.stringify(input) }),
   actualizarProducto: (id: number, input: Partial<ProductoInput>) =>
@@ -488,7 +499,8 @@ export const api = {
   eliminarMovimiento: (id: number) =>
     request<{ mensaje: string }>(`/movimientos/${id}`, { method: "DELETE" }),
 
-  getDashboard: () => request<Dashboard>("/dashboard"),
+  getDashboard: (sucursalId?: number | null) =>
+    request<Dashboard>(`/dashboard${qs({ sucursalId: sucursalId ?? undefined })}`),
 
   // ── Caja ──────────────────────────────────────────────────────────────────
   getFormasPago: () => request<FormaPago[]>("/formas-pago"),

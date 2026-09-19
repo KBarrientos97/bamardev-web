@@ -20,6 +20,7 @@ import { api } from "../../lib/api";
 import { fmtMoney, fmtNum } from "../../lib/format";
 import { ICONOS_ARTICULO, iconoPorLlave } from "../../lib/iconosArticulo";
 import { useApi } from "../../lib/useApi";
+import { useSucursales } from "../../lib/useSucursales";
 import { useAuth } from "../../store/AuthContext";
 import type { Categoria, Producto, ProductoInput, TipoProducto, UnidadMedida } from "../../types";
 
@@ -63,7 +64,12 @@ export default function Productos() {
   // La papelera es otra lista del backend, no un filtro sobre la que ya está:
   // los dados de baja no vienen en el catálogo normal.
   const enPapelera = filtroStock === "papelera";
-  const productos = useApi(() => api.getProductos(enPapelera), [enPapelera]);
+  // El precio y el stock son los del local elegido: es lo que el POS cobra.
+  const suc = useSucursales({ incluirDepositos: true });
+  const productos = useApi(
+    () => api.getProductos(enPapelera, suc.sucursalId),
+    [enPapelera, suc.sucursalId],
+  );
   const categorias = useApi(() => api.getCategorias(false), []);
   const unidades = useApi(() => api.getUnidades(), []);
 
@@ -172,6 +178,9 @@ export default function Productos() {
             placeholder="Buscar por nombre, descripción o código"
           />
         </div>
+        {suc.elegir && (
+          <Chips valor={suc.valorChip} opciones={suc.opciones} onChange={suc.alElegir} />
+        )}
         <Chips valor={filtroStock} opciones={OPC_STOCK} onChange={setFiltroStock} />
         <Chips valor={filtroTipo} opciones={opcionesTipo} onChange={setFiltroTipo} />
       </div>
