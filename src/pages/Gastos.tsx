@@ -65,6 +65,17 @@ const ETIQUETA_ESTADO: Record<EstadoGasto, string> = {
   PAGADO: "Pagado",
 };
 
+/**
+ * **Vencido gana sobre el estado**, igual que `GastoUi.labelEstado` en la app:
+ * a quien mira la lista le importa más que la luz se atrasó que si está
+ * pendiente o a medio pagar. Sin esto el mismo alquiler vencido salía
+ * "Pendiente" en amarillo en la web y "VENCIDO" en rojo en el celular.
+ */
+function badgeEstado(g: Gasto): { tono: "amarillo" | "azul" | "verde" | "rojo"; texto: string } {
+  if (g.vencido && !saldado(g)) return { tono: "rojo", texto: "Vencido" };
+  return { tono: TONO_ESTADO[g.estado], texto: ETIQUETA_ESTADO[g.estado] };
+}
+
 const METODOS = [
   ["EFECTIVO", "Efectivo"],
   ["TRANSFERENCIA", "Transferencia"],
@@ -191,10 +202,16 @@ export default function Gastos() {
   const gastos = lista.datos ?? [];
   const r = resumen.datos;
 
-  /** Cuánto de las ventas del período se fue en gastos. */
+  /**
+   * Cuánto de las ventas del período se fue en gastos.
+   *
+   * Con tope en 100 y un decimal fijo, igual que la app: un mes flojo con los
+   * gastos fijos ya cargados daba "400%" acá y "100.0%" en el celular, para el
+   * mismo negocio y el mismo mes.
+   */
   const sobreVentas = useMemo(() => {
     if (!r || r.ventasPeriodo <= 0) return null;
-    return Math.round((r.total / r.ventasPeriodo) * 1000) / 10;
+    return Math.min(100, (r.total / r.ventasPeriodo) * 100).toFixed(1);
   }, [r]);
 
   return (
@@ -233,8 +250,10 @@ export default function Gastos() {
             etiqueta="Pendiente"
             valor={fmtMoney(r?.pendiente ?? 0)}
             pie={
+              // Con el MONTO, no sólo el conteo: "3 vencidos" no dice si son
+              // Bs 300 o Bs 9.500, y el dato ya viene en la misma respuesta.
               r && r.cantidadVencidos > 0
-                ? `${r.cantidadVencidos} vencidos`
+                ? `${r.cantidadVencidos} vencidos · ${fmtMoney(r.vencido)}`
                 : undefined
             }
           />
@@ -321,7 +340,10 @@ export default function Gastos() {
                 </div>
                 <div className="text-right">
                   <div className="font-semibold">{fmtMoney(g.monto)}</div>
-                  <Badge tono={TONO_ESTADO[g.estado]}>{ETIQUETA_ESTADO[g.estado]}</Badge>
+                  {(() => {
+                    const b = badgeEstado(g);
+                    return <Badge tono={b.tono}>{b.texto}</Badge>;
+                  })()}
                 </div>
                 <div className="flex gap-2">
                   {!saldado(g) && (

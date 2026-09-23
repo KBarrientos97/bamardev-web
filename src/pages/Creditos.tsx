@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import ComprobanteCredito, { type TipoComprobante } from "../components/ComprobanteCredito";
 import { parsearMonto } from "../lib/dinero";
@@ -664,8 +664,20 @@ function FormAbono({
   );
   const [error, setError] = useState("");
   const [guardando, setGuardando] = useState(false);
+  /**
+   * El candado de verdad, y acá es plata que entra a la caja.
+   *
+   * `setGuardando(true)` no frena un segundo clic en el MISMO tick: React
+   * batchea el estado y las dos llamadas salen antes del re-render, así que el
+   * `disabled` del botón llega tarde. `registrarAbono` no manda clave de
+   * idempotencia y el backend no deduplica: un doble clic nervioso en el
+   * mostrador registraba DOS abonos. El cliente quedaba con un saldo menor al
+   * que pagó y el arqueo del turno cerraba con plata que nunca entró.
+   */
+  const enVuelo = useRef(false);
 
   async function guardar() {
+    if (enVuelo.current) return;
     setError("");
     const montoNum = Number(monto);
     if (!Number.isFinite(montoNum) || montoNum <= 0)
@@ -676,6 +688,7 @@ function FormAbono({
     const forma = formasPago.find((f) => f.nombre === formaNombre);
     if (!forma) return setError("Elegí una forma de pago.");
 
+    enVuelo.current = true;
     setGuardando(true);
     try {
       // Sin cajaId a propósito: el backend usa la caja abierta de quien cobra,
@@ -684,7 +697,8 @@ function FormAbono({
       onGuardado(montoNum);
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo registrar el abono");
-    } finally {
+      // Sólo al fallar: si salió bien el modal se cierra y no hay que liberarlo.
+      enVuelo.current = false;
       setGuardando(false);
     }
   }

@@ -201,6 +201,11 @@ export function rutaInicial(ctx: ContextoPermisos): string {
             ["reportes", "/reportes"],
             ["usuarios", "/usuarios"],
             ["creditos", "/creditos"],
+            // Ultima, en el mismo orden del menu. Sin esto, un negocio cuyo
+            // plan solo deja gastos aterrizaba en "/sin-acceso" --"tu cuenta no
+            // tiene secciones"-- con "Gastos operativos" dibujado en la barra
+            // de al lado: la pantalla se contradecia sola.
+            ["gastos", "/gastos"],
           ];
 
   for (const [seccion, ruta] of orden) {
