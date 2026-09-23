@@ -2,6 +2,7 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import Layout from "./components/Layout";
 import { rutaInicial, type Seccion } from "./lib/permisos";
 import Creditos from "./pages/Creditos";
+import Gastos from "./pages/Gastos";
 import Login from "./pages/Login";
 import PagarLicencia from "./pages/PagarLicencia";
 import Reportes from "./pages/Reportes";
@@ -191,6 +192,14 @@ function Rutas() {
           element={
             <Protegida seccion="creditos">
               <Creditos />
+            </Protegida>
+          }
+        />
+        <Route
+          path="/gastos"
+          element={
+            <Protegida seccion="gastos">
+              <Gastos />
             </Protegida>
           }
         />

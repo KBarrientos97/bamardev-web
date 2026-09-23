@@ -49,6 +49,15 @@ import type {
   Usuario,
   Venta,
   VentaInput,
+  CategoriaGasto,
+  FiltroGasto,
+  Gasto,
+  GastoInput,
+  PagoGastoInput,
+  PlantillaGasto,
+  PlantillaGastoInput,
+  ResumenGastos,
+  TipoCostoGasto,
 } from "../types";
 
 import type {
@@ -585,6 +594,113 @@ export const api = {
   /** La caja donde entra el abono la resuelve el backend (la del cobrador). */
   registrarAbono: (id: number, input: AbonoInput) =>
     request<Credito>(`/creditos/${id}/abonos`, { method: "POST", body: JSON.stringify(input) }),
+
+  // ── Gastos operativos ─────────────────────────────────────────────────────
+  //
+  // `sucursalId` acota al local; omitido, el consolidado del negocio. A quien
+  // esta atado a una sucursal el backend le fuerza la suya, mande lo que mande.
+
+  /** El hero: total, pagado y pendiente del periodo. Viaja aparte de la lista
+   *  porque es del periodo entero y no cambia con la pestana. */
+  getResumenGastos: (params: {
+    desde: string;
+    hasta: string;
+    sucursalId?: number | null;
+  }) => request<ResumenGastos>(`/gastos/resumen${qs(params)}`),
+
+  getGastos: (
+    params: {
+      desde: string;
+      hasta: string;
+      filtro?: FiltroGasto;
+      q?: string;
+      categoria?: string;
+      sucursalId?: number | null;
+    },
+  ) => request<Gasto[]>(`/gastos${qs(params)}`),
+
+  crearGasto: (input: GastoInput) =>
+    request<Gasto>("/gastos", { method: "POST", body: JSON.stringify(input) }),
+
+  /** El PATCH corrige lo que el gasto DICE (concepto, categoria, monto). Lo
+   *  que SALIO se corrige con un pago o deshaciendolo: `pagado` es la suma de
+   *  los pagos registrados y pisarlo lo separaria de su historial. */
+  actualizarGasto: (id: number, input: GastoInput) =>
+    request<Gasto>(`/gastos/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
+
+  /** `monto` omitido = saldar lo que falte. Se manda asi y no el numero del
+   *  saldo: entre que se abrio la pantalla y se confirma pudo entrar otro pago,
+   *  y el saldo viejo lo sobrepagaria. */
+  pagarGasto: (id: number, input: PagoGastoInput) =>
+    request<Gasto>(`/gastos/${id}/pagos`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+
+  /** Deshace el ULTIMO pago. Es lo que arregla haberlo cargado por error. */
+  deshacerUltimoPagoGasto: (id: number) =>
+    request<Gasto>(`/gastos/${id}/pagos/ultimo`, { method: "DELETE" }),
+
+  eliminarGasto: (id: number) =>
+    request<{ mensaje: string }>(`/gastos/${id}`, { method: "DELETE" }),
+
+  // Categorias: el pack base (24) vive en el backend y NO se siembra por
+  // negocio; esta lista mezcla el pack con lo que el negocio cambio o invento.
+  getCategoriasGasto: () => request<CategoriaGasto[]>("/gastos/categorias"),
+  crearCategoriaGasto: (input: {
+    nombre: string;
+    tipoCosto?: TipoCostoGasto;
+  }) =>
+    request<CategoriaGasto>("/gastos/categorias", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  /** Renombrar una, o corregirle el fijo/variable. Vale tambien para las del
+   *  pack: casi todo lo que carga un negocio nuevo es del pack, y el punto de
+   *  equilibrio divide justo por esa linea. */
+  actualizarCategoriaGasto: (
+    codigo: string,
+    input: { nombre?: string; tipoCosto?: TipoCostoGasto; activa?: boolean },
+  ) =>
+    request<CategoriaGasto>(`/gastos/categorias/${encodeURIComponent(codigo)}`, {
+      method: "PATCH",
+      body: JSON.stringify(input),
+    }),
+  eliminarCategoriaGasto: (codigo: string) =>
+    request<{ mensaje: string }>(
+      `/gastos/categorias/${encodeURIComponent(codigo)}`,
+      { method: "DELETE" },
+    ),
+
+  // Gastos automaticos (las plantillas): la regla que crea el gasto sola.
+  getPlantillasGasto: (sucursalId?: number | null) =>
+    request<PlantillaGasto[]>(
+      `/gastos/plantillas${qs({ sucursalId: sucursalId ?? undefined })}`,
+    ),
+  crearPlantillaGasto: (input: PlantillaGastoInput) =>
+    request<PlantillaGasto>("/gastos/plantillas", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  actualizarPlantillaGasto: (id: number, input: PlantillaGastoInput) =>
+    request<PlantillaGasto>(`/gastos/plantillas/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(input),
+    }),
+  /** Pausar no borra: la regla se conserva con su historial. `motivoPausa`
+   *  es lo que despues explica por que esa regla esta apagada. */
+  cambiarEstadoPlantillaGasto: (
+    id: number,
+    input: { activa: boolean; motivoPausa?: string | null },
+  ) =>
+    request<PlantillaGasto>(`/gastos/plantillas/${id}/estado`, {
+      method: "PATCH",
+      body: JSON.stringify(input),
+    }),
+  eliminarPlantillaGasto: (id: number) =>
+    request<{ mensaje: string }>(`/gastos/plantillas/${id}`, {
+      method: "DELETE",
+    }),
 
   // ── Usuarios ──────────────────────────────────────────────────────────────
   getUsuarios: () => request<Usuario[]>("/usuarios"),

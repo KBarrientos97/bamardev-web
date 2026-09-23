@@ -1082,3 +1082,157 @@ export interface ReporteCierreProductos {
   /** Productos DISTINTOS, no suma de unidades. */
   lineas: number;
 }
+
+
+// ── Gastos operativos ───────────────────────────────────────────────────────
+//
+// La regla que gobierna el modulo: **un gasto NO es un movimiento de caja**.
+// Son dos libros distintos. El del resultado dice que gasto el negocio este
+// mes (el alquiler de septiembre es de septiembre aunque se pague en octubre);
+// el del efectivo, que salio del cajon. Mezclarlos hace que ninguno cierre.
+//
+// Espejo de `GastoDto.kt` en Android: los dos leen el mismo backend y tienen
+// que entender lo mismo.
+
+/** Cuanto se pago del gasto. Lo decide el servidor, no la pantalla. */
+export type EstadoGasto = "PENDIENTE" | "PARCIAL" | "PAGADO";
+
+/** Las pestanas de la lista. VENCIDOS no es un estado: cruza PENDIENTE y
+ *  PARCIAL con la fecha, que es como el dueno mira la pantalla. */
+export type FiltroGasto = "TODOS" | "PENDIENTES" | "VENCIDOS" | "PAGADOS";
+
+/** Si el gasto sube cuando sube la venta o no se mueve. */
+export type TipoCostoGasto = "FIJO" | "VARIABLE";
+
+/** Con que se pago. No usa FormaPago (la de las ventas): el alquiler no se
+ *  paga "fiado". */
+export type MetodoPagoGasto = "EFECTIVO" | "TRANSFERENCIA" | "QR" | "TARJETA";
+
+export type FrecuenciaGasto =
+  | "MENSUAL"
+  | "BIMESTRAL"
+  | "TRIMESTRAL"
+  | "SEMESTRAL"
+  | "ANUAL";
+
+export interface CategoriaGasto {
+  /** MAYUSCULAS sin acentos ("MUSICA_EN_VIVO"). El nombre se corrige, el
+   *  codigo no cambia nunca: es lo que queda pegado a cada gasto. */
+  codigo: string;
+  nombre: string;
+  /** false = es del pack base y esta fila solo la retoca. No se puede borrar:
+   *  los gastos viejos la usan. */
+  propia: boolean;
+  tipoCosto: TipoCostoGasto;
+  activa?: boolean;
+}
+
+export interface Gasto {
+  id: number;
+  concepto: string;
+  /** El codigo; `categoriaNombre` es como se muestra. */
+  categoria: string;
+  categoriaNombre: string | null;
+  tipoCosto: TipoCostoGasto | null;
+  monto: number;
+  /** Lo que ya salio. Igual a `monto` cuando esta saldado. */
+  pagado: number;
+  saldo: number;
+  estado: EstadoGasto;
+  /** Cuando ocurrio el gasto (yyyy-MM-dd). Decide a que mes entra. */
+  fecha: string;
+  /** Hasta cuando hay tiempo de pagarlo. null = no vence. */
+  fechaVencimiento: string | null;
+  /** **Vencido no es un estado, es una condicion**: un gasto puede estar
+   *  PENDIENTE y vencido, o PARCIAL y vencido. Lo calcula el servidor. */
+  vencido: boolean;
+  diasAtraso: number;
+  diasParaVencer: number;
+  metodoPago: MetodoPagoGasto | null;
+  beneficiario: string | null;
+  nota: string | null;
+  sucursalId: number | null;
+  sucursal: string | null;
+  recurrente: boolean;
+  numeroFactura: string | null;
+  nit: string | null;
+}
+
+/** El hero de la pantalla: total, pagado y pendiente del periodo. */
+export interface ResumenGastos {
+  total: number;
+  pagado: number;
+  pendiente: number;
+  vencido: number;
+  cantidad: number;
+  cantidadPendientes: number;
+  cantidadVencidos: number;
+  cantidadPagados: number;
+  /** Para el "gastos sobre las ventas del periodo". */
+  ventasPeriodo: number;
+}
+
+/** Lo que el formulario manda para crear o corregir un gasto. */
+export interface GastoInput {
+  concepto: string;
+  categoria: string;
+  monto: number;
+  fecha: string;
+  fechaVencimiento?: string | null;
+  /** true = nace pagado. Un gasto que se carga despues de pagarlo es lo mas
+   *  comun. */
+  pagado?: boolean;
+  metodoPago?: MetodoPagoGasto | null;
+  beneficiario?: string | null;
+  nota?: string | null;
+  sucursalId?: number | null;
+  recurrente?: boolean;
+  numeroFactura?: string | null;
+  nit?: string | null;
+}
+
+/** Un pago contra un gasto. `monto` omitido = saldar lo que falte. */
+export interface PagoGastoInput {
+  monto?: number;
+  fechaPago: string;
+  metodoPago: MetodoPagoGasto;
+}
+
+/** La REGLA que crea un gasto sola: "el alquiler, 8.500, todos los 5". */
+export interface PlantillaGasto {
+  id: number;
+  concepto: string;
+  categoria: string;
+  categoriaNombre: string | null;
+  frecuencia: FrecuenciaGasto;
+  /** 1-31. Un 31 en un mes que no lo tiene cae al ultimo dia. */
+  diaDelMes: number;
+  /** null = **monto variable**: la luz y el agua cambian todos los meses, asi
+   *  que el gasto se crea sin monto y el dueno lo completa cuando llega la
+   *  factura. Es distinto de 0. */
+  monto: number | null;
+  activa: boolean;
+  motivoPausa: string | null;
+  beneficiario: string | null;
+  nota: string | null;
+  sucursalId: number | null;
+  sucursal: string | null;
+  /** Cuando dispara la proxima vez. La calcula el servidor: si la calculara la
+   *  pantalla, un navegador con la fecha mal puesta mostraria otro calendario
+   *  del que de verdad va a correr. */
+  proximaCarga: string | null;
+  ultimaCarga: string | null;
+}
+
+export interface PlantillaGastoInput {
+  concepto: string;
+  categoria: string;
+  frecuencia: FrecuenciaGasto;
+  diaDelMes: number;
+  monto?: number | null;
+  activa?: boolean;
+  motivoPausa?: string | null;
+  beneficiario?: string | null;
+  nota?: string | null;
+  sucursalId?: number | null;
+}

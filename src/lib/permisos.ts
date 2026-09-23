@@ -44,7 +44,9 @@ export type Seccion =
   /** El panel del mesero: el salón, lo que hay por servir y su turno. */
   | "salon"
   /** ABM de mesas y zonas: es del admin, no del mesero. */
-  | "mesas";
+  | "mesas"
+  /** Gastos operativos: el libro del resultado, aparte de la caja. */
+  | "gastos";
 
 /**
  * Qué módulo de rol y qué feature de plan exige cada sección. `feature: null`
@@ -72,6 +74,10 @@ const REQUISITOS: Record<Seccion, { modulo: Modulo; feature: Feature | null }> =
   // El ABM de mesas es parte de la misma sección vendida: si el negocio no
   // contrató el salón, no hay mesas que administrar.
   mesas: { modulo: "INVENTARIO", feature: "salon" },
+  // Igual que en Android (`Permisos.kt`): el modulo es REPORTES porque un
+  // gasto es del libro del resultado, no de la caja del turno, y la feature
+  // `gastos` esta en el catalogo desde sep-2026.
+  gastos: { modulo: "REPORTES", feature: "gastos" },
 };
 
 /**
@@ -99,6 +105,8 @@ const ROLES_PERMITIDOS: Partial<Record<Seccion, Rol[]>> = {
   salon: ["MESERO", "ADMIN", "SUPERVISOR"],
   // Crear mesas y zonas es del admin: el mesero las usa, no las administra.
   mesas: ["ADMIN", "SUPERVISOR"],
+  // El backend lo exige con RolesGuard: un cajero no carga gastos del negocio.
+  gastos: ["ADMIN", "SUPERVISOR"],
 };
 
 export interface ContextoPermisos {
