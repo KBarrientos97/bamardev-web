@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { Icon } from "../components/Icon";
 import { Buscador, Chips, EncabezadoPagina } from "../components/filtros";
 import {
@@ -294,6 +295,24 @@ export default function Gastos() {
       </div>
 
       <Chips valor={filtro} opciones={OPC_FILTRO} onChange={setFiltro} />
+
+      {/* La puerta a las reglas, en el mismo lugar que en la app: es la
+          pregunta que sigue cuando uno ve el alquiler repetido cada mes. */}
+      <Link
+        to="/gastos/automaticos"
+        className="flex items-center gap-3 rounded-xl border border-primary-200 bg-primary-50 p-4 transition hover:bg-primary-100"
+      >
+        <Icon name="swap" size={20} />
+        <span className="min-w-0 flex-1">
+          <span className="block font-semibold text-primary-700">
+            Gastos automáticos
+          </span>
+          <span className="block text-sm text-texto-3">
+            Los que se repiten todos los meses: la app los carga sola el día que
+            corresponde
+          </span>
+        </span>
+      </Link>
 
       {lista.cargando ? (
         <Cargando />

@@ -3,6 +3,7 @@ import Layout from "./components/Layout";
 import { rutaInicial, type Seccion } from "./lib/permisos";
 import Creditos from "./pages/Creditos";
 import Gastos from "./pages/Gastos";
+import GastosFijos from "./pages/GastosFijos";
 import Login from "./pages/Login";
 import PagarLicencia from "./pages/PagarLicencia";
 import Reportes from "./pages/Reportes";
@@ -200,6 +201,14 @@ function Rutas() {
           element={
             <Protegida seccion="gastos">
               <Gastos />
+            </Protegida>
+          }
+        />
+        <Route
+          path="/gastos/automaticos"
+          element={
+            <Protegida seccion="gastos">
+              <GastosFijos />
             </Protegida>
           }
         />
