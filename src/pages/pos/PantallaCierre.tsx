@@ -1,6 +1,6 @@
 import { useState } from "react";
 import CorteDeCaja from "../../components/CorteDeCaja";
-import { parsearMontoO } from "../../lib/dinero";
+import { esPositivo, parsearMontoO } from "../../lib/dinero";
 import { Icon } from "../../components/Icon";
 import {
   Badge,
@@ -36,10 +36,13 @@ export default function PantallaCierre({
   caja,
   onAtras,
   onCerrada,
+  onIrAEntregas,
 }: {
   caja: Caja;
   onAtras: () => void;
   onCerrada: (cerrada: Caja) => void;
+  /** Recibir la plata de los meseros sin salir del cierre a buscarla. */
+  onIrAEntregas?: () => void;
 }) {
   const { incluye } = useAuth();
   const resumen = useApi(() => api.resumenCaja(caja.id), [caja.id]);
@@ -151,6 +154,34 @@ export default function PantallaCierre({
                 {r.egresos > 0 && <Fila etiqueta="Egresos de efectivo" valor={-r.egresos} />}
                 {r.abonosEfectivo > 0 && (
                   <Fila etiqueta="Abonos de créditos (efectivo)" valor={r.abonosEfectivo} />
+                )}
+                {/* La fila que hace cerrar el arqueo cuando el mesero cobra.
+                    Esa plata ya está en las ventas en efectivo, pero en el
+                    delantal: el backend la resta del esperado. Sin mostrar la
+                    resta, el cajero suma a mano, le da otro número y sale a
+                    buscar un faltante que no existe. Y se nombra a quién:
+                    "faltan Bs 180" manda a recorrer el salón preguntando. */}
+                {esPositivo(r.enPoderDeMeseros ?? 0) && (
+                  <div>
+                    <Fila etiqueta="En poder de meseros" valor={-(r.enPoderDeMeseros ?? 0)} />
+                    <p className="pl-3 text-[12px] text-texto-4">
+                      {(r.meserosPendientes ?? [])
+                        .map((m) => `${m.nombre ?? "Mesero"} ${fmtMoney(m.monto)}`)
+                        .join(" · ")}
+                      {onIrAEntregas && (
+                        <>
+                          {" · "}
+                          <button
+                            type="button"
+                            onClick={onIrAEntregas}
+                            className="font-semibold text-primary-700 underline"
+                          >
+                            Recibir
+                          </button>
+                        </>
+                      )}
+                    </p>
+                  </div>
                 )}
                 {/* Un abono cobrado por QR entró al negocio pero NO al cajón:
                     sin esta fila el cajero veía el total de cobros del turno

@@ -302,9 +302,17 @@ function TarjetaVenta({
               categoria={p.categoria?.nombre}
               size={40}
             />
+            {/* Como en la app: el que vende ve cuánto queda antes de
+                ofrecerlo, no recién cuando se agota. Antes el número sólo
+                aparecía bajo el mínimo, y un "1" suelto no decía de qué era. */}
             {agotado && <Badge tono="rojo">Agotado</Badge>}
-            {!agotado && controlaStock && p.stockTotal <= p.stockMinimo && (
-              <Badge tono="amarillo">{fmtNum(p.stockTotal)}</Badge>
+            {!agotado && controlaStock && (
+              <Badge
+                tono={p.stockTotal <= p.stockMinimo ? "amarillo" : "verde"}
+                className="normal-case tracking-normal"
+              >
+                {fmtNum(p.stockTotal)} disp.
+              </Badge>
             )}
           </div>
           <h3 className="mt-2 line-clamp-2 text-[13px] font-bold leading-snug text-texto">

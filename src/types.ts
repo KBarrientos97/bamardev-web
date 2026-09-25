@@ -421,6 +421,15 @@ export interface ResumenCaja {
   abonosCredito: number;
   abonosEfectivo: number;
   abonosPorFormaPago: { nombre: string; monto: number }[];
+  /**
+   * Efectivo que los meseros cobraron y todavía no entregaron. Ya está dentro
+   * de las ventas en efectivo, pero en el delantal y no en el cajón: el
+   * backend lo resta de `saldoEsperado`. Opcional porque un backend anterior
+   * al cobro del mesero no lo manda.
+   */
+  enPoderDeMeseros?: number;
+  /** Lo mismo, por mesero: dice a quién pedirle la plata. */
+  meserosPendientes?: { meseroId: number | null; nombre: string | null; monto: number }[];
   saldoEsperado: number;
 }
 
