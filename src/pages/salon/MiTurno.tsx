@@ -2,9 +2,12 @@ import { useState } from "react";
 import { Icon } from "../../components/Icon";
 import { Boton, Cargando, ErrorMsg, Modal } from "../../components/ui";
 import { api } from "../../lib/api";
-import { fmtFechaHora, fmtMoney } from "../../lib/format";
+import { fmtFechaHora, fmtHora, fmtMoney } from "../../lib/format";
 import { useApi } from "../../lib/useApi";
+import { esPositivo } from "../../lib/dinero";
 import { useAuth } from "../../store/AuthContext";
+import type { Mesa } from "../../types/salon";
+import ComprobanteMesa from "./ComprobanteMesa";
 import { hace } from "./logicaSalon";
 
 /**
@@ -27,13 +30,41 @@ export default function MiTurno({ onIrAEntregas }: { onIrAEntregas?: () => void 
   const [cerrando, setCerrando] = useState(false);
   const [saliendo, setSaliendo] = useState(false);
   const [error, setError] = useState("");
+  /** La mesa cobrada cuyo recibo se está mostrando. */
+  const [recibo, setRecibo] = useState<Mesa | null>(null);
+  const [abriendoRecibo, setAbriendoRecibo] = useState(false);
 
   const t = turno.datos;
   const sinCerrar = t?.mesasSinCerrar ?? [];
-  const puedeCerrar = sinCerrar.length === 0;
+  const sinEntregar = t?.efectivoSinEntregar ?? 0;
+  const debePlata = esPositivo(sinEntregar);
+  // Dos cosas frenan el cierre y el backend las revisa las dos. Antes la web
+  // sólo miraba las mesas: con plata sin entregar dejaba tocar "Cerrar mi
+  // turno" y recién ahí el backend lo rechazaba.
+  const puedeCerrar = sinCerrar.length === 0 && !debePlata;
+  // La franja sólo se muestra si hubo más de una: con una sola, repetir el
+  // total del hero con otro título se lee como si fueran dos plata distintas.
+  const franjas = t?.franjas ?? [];
 
   const ticket =
     t && t.mesasCerradas > 0 ? t.vendidoCobrado / t.mesasCerradas : 0;
+
+  /**
+   * El recibo de una mesa ya cobrada, para el cliente que vuelve a pedirlo.
+   * Antes las filas del historial no hacían nada al tocarlas.
+   */
+  async function abrirRecibo(sesionId: number) {
+    if (abriendoRecibo) return;
+    setError("");
+    setAbriendoRecibo(true);
+    try {
+      setRecibo(await api.mesaCerrada(sesionId));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudo abrir el recibo");
+    } finally {
+      setAbriendoRecibo(false);
+    }
+  }
 
   async function cerrarTurno() {
     if (cerrando) return;
@@ -109,6 +140,24 @@ export default function MiTurno({ onIrAEntregas }: { onIrAEntregas?: () => void 
         </div>
       )}
 
+      {/* El efectivo que cobró él y todavía no le aprobaron en caja. Rojo, como
+          en la app: es plata del negocio que tiene encima. Sólo aparece si la
+          hay; en un negocio donde el mesero no cobra siempre es cero. */}
+      {debePlata && (
+        <div className="mt-2 rounded-xl border border-[#FCA5A5] bg-[#FEF2F2] p-3.5">
+          <p className="text-[13px] text-[#B91C1C]">Efectivo sin entregar</p>
+          <p className="text-2xl font-extrabold text-[#B91C1C]">{fmtMoney(sinEntregar)}</p>
+          <p className="mt-0.5 text-[13px] text-[#B91C1C]">
+            Es plata del negocio que tenés vos. Llevala a caja y que te la aprueben.
+          </p>
+          {onIrAEntregas && (
+            <Boton variante="ghost" onClick={onIrAEntregas} className="mt-2.5 w-full">
+              Ver mis entregas
+            </Boton>
+          )}
+        </div>
+      )}
+
       {(t?.mesasPorLiberar ?? 0) > 0 && (
         <p className="mt-2 rounded-xl border border-[#FCD34D] bg-[#FFFBEB] px-3.5 py-2.5 text-[13px] text-[#D97706]">
           {t!.mesasPorLiberar === 1
@@ -117,46 +166,102 @@ export default function MiTurno({ onIrAEntregas }: { onIrAEntregas?: () => void 
         </p>
       )}
 
+      {franjas.length > 1 && (
+        <>
+          <p className="mb-2 mt-4 text-[11px] font-bold uppercase tracking-wide text-texto-3">
+            Cómo fue cada turno
+          </p>
+          {franjas.map((f) => (
+            <div
+              key={f.franja}
+              className="mb-2 flex items-center gap-3 rounded-xl border border-borde bg-white p-3"
+            >
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-bold text-texto">{f.nombre}</p>
+                <p className="truncate text-xs text-texto-3">
+                  {fmtHora(f.desde)} → {fmtHora(f.hasta)} · {f.mesas}{" "}
+                  {f.mesas === 1 ? "mesa" : "mesas"} · {f.comensales}{" "}
+                  {f.comensales === 1 ? "persona" : "personas"}
+                </p>
+                {esPositivo(f.propinas) && (
+                  <p className="text-xs font-semibold text-primary-700">
+                    +{fmtMoney(f.propinas)} de propina
+                  </p>
+                )}
+              </div>
+              <span className="shrink-0 text-sm font-bold text-texto">{fmtMoney(f.vendido)}</span>
+            </div>
+          ))}
+        </>
+      )}
+
+      {/* "Mesas que cerré hoy" decía mal dos cosas: el turno es el de la caja,
+          no el día (un resto bar cierra a las 5), y la lista incluye las que
+          cobró la caja, no sólo las que cerró él. */}
       <p className="mb-2 mt-4 text-[11px] font-bold uppercase tracking-wide text-texto-3">
-        Mesas que cerré hoy
+        Mesas cobradas en mi turno
       </p>
       {(t?.historial ?? []).length === 0 ? (
         <div className="rounded-xl border border-borde bg-white py-8 text-center text-[13px] text-texto-3">
-          Todavía no cerraste ninguna mesa.
+          Todavía no se cobró ninguna de tus mesas.
         </div>
       ) : (
-        t!.historial.map((h) => (
-          <div
-            key={h.comprobante ?? `${h.mesaCodigo}-${h.cerradaEn}`}
-            className="mb-2 flex items-center gap-3 rounded-xl border border-borde bg-white p-3"
-          >
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#ECFDF5] text-sm font-extrabold text-[#059669]">
-              {h.mesaCodigo ?? h.codigo}
-            </span>
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm text-texto">
-                {h.comensales} {h.comensales === 1 ? "persona" : "personas"}
-                {h.comprobante ? ` · ${h.comprobante}` : ""} · hace {hace(h.cerradaEn)}
-              </p>
-              {/* La propina va en su propia línea y en verde: es del mesero. */}
-              {(h.propina ?? 0) > 0 && (
-                <p className="text-xs font-semibold text-primary-700">
-                  +{fmtMoney(h.propina!)} propina
+        t!.historial.map((h) => {
+          const sesionId = h.sesionId;
+          const contenido = (
+            <>
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#ECFDF5] text-sm font-extrabold text-[#059669]">
+                {h.mesaCodigo ?? h.codigo}
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="line-clamp-2 text-sm text-texto">
+                  {h.comensales} {h.comensales === 1 ? "persona" : "personas"}
+                  {h.comprobante ? ` · ${h.comprobante}` : ""} · hace {hace(h.cerradaEn)}
                 </p>
-              )}
+                {/* La propina va en su propia línea y en verde: es del mesero. */}
+                {(h.propina ?? 0) > 0 && (
+                  <p className="text-xs font-semibold text-primary-700">
+                    +{fmtMoney(h.propina!)} propina
+                  </p>
+                )}
+              </div>
+              <span className="shrink-0 text-sm font-bold text-texto">
+                {fmtMoney(h.total)}
+              </span>
+            </>
+          );
+          const clave = h.comprobante ?? `${h.mesaCodigo}-${h.cerradaEn}`;
+          // Sin sesionId (backend anterior) la fila queda quieta en vez de
+          // fallar al tocarla.
+          return sesionId != null ? (
+            <button
+              key={clave}
+              onClick={() => abrirRecibo(sesionId)}
+              disabled={abriendoRecibo}
+              title="Ver el recibo"
+              className="mb-2 flex w-full items-center gap-3 rounded-xl border border-borde bg-white p-3 text-left transition-colors hover:bg-muted disabled:opacity-60"
+            >
+              {contenido}
+              <Icon name="chevronRight" size={16} />
+            </button>
+          ) : (
+            <div
+              key={clave}
+              className="mb-2 flex items-center gap-3 rounded-xl border border-borde bg-white p-3"
+            >
+              {contenido}
             </div>
-            <span className="shrink-0 text-sm font-bold text-texto">
-              {fmtMoney(h.total)}
-            </span>
-          </div>
-        ))
+          );
+        })
       )}
+
+      {recibo && <ComprobanteMesa mesa={recibo} onCerrar={() => setRecibo(null)} />}
 
       {/* Va pegado al botón y no arriba con los otros avisos: es la explicación
           de por qué está apagado, y separarla lo vuelve un dato suelto más.
           Nombra las mesas porque sin los códigos el mesero tiene que recorrer
           el salón adivinando cuáles son suyas. */}
-      {!puedeCerrar && (
+      {sinCerrar.length > 0 && (
         <p className="mt-4 rounded-xl border border-[#FCD34D] bg-[#FFFBEB] px-3.5 py-2.5 text-[13px] text-[#D97706]">
           Para cerrar tu turno no podés tener mesas a tu nombre. Te quedan:{" "}
           {sinCerrar.join(", ")}. Cerralas (que la caja cobre y
@@ -169,6 +274,16 @@ export default function MiTurno({ onIrAEntregas }: { onIrAEntregas?: () => void 
           antes de irse, y ponerlo después lo dejaría fuera del recorrido.
           Sólo aparece si el negocio dejó que el mesero cobre; si no, nunca
           tiene nada que entregar. */}
+      {/* El segundo motivo del botón apagado. Se dicen los dos: resolver uno y
+          volver a encontrarse con el botón apagado, sin saber por qué, es la
+          peor forma de enterarse del otro. */}
+      {debePlata && (
+        <p className="mt-4 rounded-xl border border-[#FCD34D] bg-[#FFFBEB] px-3.5 py-2.5 text-[13px] text-[#D97706]">
+          Para cerrar tu turno tenés que entregar en caja los {fmtMoney(sinEntregar)} que
+          cobraste en efectivo.
+        </p>
+      )}
+
       {onIrAEntregas && (
         <Boton variante="ghost" onClick={onIrAEntregas} className="mt-4 w-full">
           Efectivo que tengo que entregar

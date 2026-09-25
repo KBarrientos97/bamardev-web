@@ -739,6 +739,11 @@ export const api = {
   /** La carta del mesero: el catálogo con el stock ya comprometido por las mesas. */
   cartaSalon: () => request<Producto[]>("/salon/carta"),
   turnoMesero: () => request<TurnoMesero>("/salon/turno"),
+  /**
+   * Una mesa ya cobrada del turno, para volver a darle el recibo al cliente.
+   * `mesa(id)` no sirve: la mesa ya se levantó y devuelve la gente de AHORA.
+   */
+  mesaCerrada: (sesionId: number) => request<Mesa>(`/salon/turno/mesas/${sesionId}`),
   cerrarTurnoMesero: () =>
     request<TurnoMesero>("/salon/turno/cerrar", { method: "POST" }),
 
