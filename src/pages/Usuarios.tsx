@@ -11,6 +11,7 @@ import {
   Confirmar,
   ErrorMsg,
   Input,
+  InputPassword,
   Kpi,
   Modal,
   Select,
@@ -635,10 +636,10 @@ function FormUsuarioCuerpo({
               />
             </Campo>
             <Campo label="Contraseña" hint="Mínimo 6 caracteres">
-              <Input
-                type="password"
+              <InputPassword
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
+                autoComplete="new-password"
               />
             </Campo>
           </div>
@@ -737,6 +738,8 @@ function FormPasswordCuerpo({
 }) {
   const [password, setPassword] = useState("");
   const [repetir, setRepetir] = useState("");
+  // Un solo ojo para los dos campos: se alternan juntos (ver InputPassword).
+  const [verPassword, setVerPassword] = useState(false);
   const [error, setError] = useState("");
   const [guardando, setGuardando] = useState(false);
 
@@ -776,15 +779,23 @@ function FormPasswordCuerpo({
     >
       <div className="space-y-4">
         <Campo label="Nueva contraseña" hint="Mínimo 6 caracteres">
-          <Input
-            type="password"
+          <InputPassword
             value={password}
             onChange={(e) => setPassword(e.target.value)}
+            visible={verPassword}
+            onCambiarVisible={setVerPassword}
+            autoComplete="new-password"
             autoFocus
           />
         </Campo>
         <Campo label="Repetir contraseña">
-          <Input type="password" value={repetir} onChange={(e) => setRepetir(e.target.value)} />
+          <InputPassword
+            value={repetir}
+            onChange={(e) => setRepetir(e.target.value)}
+            visible={verPassword}
+            sinOjo
+            autoComplete="new-password"
+          />
         </Campo>
         <ErrorMsg>{error}</ErrorMsg>
       </div>

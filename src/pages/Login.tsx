@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { Icon } from "../components/Icon";
-import { Boton, Campo, ErrorMsg, Input } from "../components/ui";
+import { Boton, Campo, ErrorMsg, Input, InputPassword } from "../components/ui";
 import { BLOQUEO_KEY } from "../lib/api";
 import { useAuth } from "../store/AuthContext";
 import PagarLicencia from "./PagarLicencia";
@@ -162,8 +162,7 @@ export default function Login() {
           </Campo>
 
           <Campo label="Contraseña">
-            <Input
-              type="password"
+            <InputPassword
               value={clave}
               onChange={(e) => setClave(e.target.value)}
               placeholder="Tu contraseña"

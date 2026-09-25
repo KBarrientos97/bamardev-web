@@ -74,6 +74,63 @@ export function Input({ className = "", ...props }: InputHTMLAttributes<HTMLInpu
 }
 
 /**
+ * Campo de contraseña con el ojito para ver lo tipeado, igual que en la app.
+ *
+ * Por defecto cada campo maneja su propio ojo. Con `visible` y
+ * `onCambiarVisible` lo maneja el padre, para "Cambiar contraseña": la nueva y
+ * la repetida se muestran juntas, porque ver una sola no sirve para
+ * compararlas. `sinOjo` deja el campo siguiendo al otro sin dibujar un segundo
+ * botón.
+ *
+ * El `pr-11` le reserva lugar al ojo: sin eso, una contraseña larga se mete
+ * abajo del ícono.
+ */
+export function InputPassword({
+  visible,
+  onCambiarVisible,
+  sinOjo = false,
+  className = "",
+  ...props
+}: Omit<InputHTMLAttributes<HTMLInputElement>, "type"> & {
+  visible?: boolean;
+  onCambiarVisible?: (visible: boolean) => void;
+  sinOjo?: boolean;
+}) {
+  const [visiblePropio, setVisiblePropio] = useState(false);
+  const mostrando = visible ?? visiblePropio;
+  const alternar = () => {
+    if (onCambiarVisible) onCambiarVisible(!mostrando);
+    else setVisiblePropio(!mostrando);
+  };
+
+  return (
+    <div className="relative">
+      <Input
+        {...props}
+        type={mostrando ? "text" : "password"}
+        className={`${sinOjo ? "" : "pr-11"} ${className}`}
+      />
+      {!sinOjo && (
+        <button
+          type="button"
+          onClick={alternar}
+          // Sin esto, el clic le saca el foco al campo y el que tipeaba tiene
+          // que volver a tocarlo para seguir escribiendo.
+          onMouseDown={(e) => e.preventDefault()}
+          aria-label={mostrando ? "Ocultar contraseña" : "Mostrar contraseña"}
+          aria-pressed={mostrando}
+          title={mostrando ? "Ocultar contraseña" : "Mostrar contraseña"}
+          className="absolute inset-y-0 right-0 flex w-11 items-center justify-center rounded-r-xl text-texto-4 transition-colors hover:text-texto-2 focus-visible:text-primary focus-visible:outline-none"
+        >
+          {/* El ícono muestra lo que va a pasar al tocarlo, como en Chrome. */}
+          <Icon name={mostrando ? "ojoTachado" : "ojo"} size={18} />
+        </button>
+      )}
+    </div>
+  );
+}
+
+/**
  * Desplegable.
  *
  * La flecha nativa no se usa: cada navegador dibuja la suya —en Chrome de
