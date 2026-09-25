@@ -724,6 +724,15 @@ export interface EstadoLicencia {
    * así que no se puede pedir con el token.
    */
   codigoActivacion?: string | null;
+  /**
+   * Las features del negocio, para repintar el menú sin volver a loguearse.
+   *
+   * Viaja acá y no en un endpoint propio porque este estado ya se consulta
+   * solo (cada 15 min y al volver a la pestaña): sumar el campo no cuesta
+   * ningún request. Opcional porque un backend anterior a sep-2026 no lo
+   * manda, y en ese caso el menú se queda con lo del login, como antes.
+   */
+  features?: string[];
 }
 
 // -- Pago de la licencia por QR (pantalla pública /pagar) --------------------

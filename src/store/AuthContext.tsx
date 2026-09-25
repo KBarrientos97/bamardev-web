@@ -109,6 +109,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   /**
+   * Repinta el menú cuando el panel prende o apaga una sección.
+   *
+   * Hasta acá las features se leían una sola vez, en el login, y el token dura
+   * 7 días: apagarle `gastos` a un cliente no le sacaba nada de la pantalla
+   * hasta que cerrara sesión. El backend sí obedecía al instante —entraba a la
+   * sección y comía un 403—, así que lo único desincronizado era lo que él
+   * veía.
+   *
+   * **Una lista vacía no se aplica.** `permisos.ts` falla abierto sin features
+   * (protege al negocio cuyos códigos todavía no se migraron): pisar la lista
+   * buena con una vacía no apagaría el menú, lo encendería entero. Un backend
+   * viejo que no manda el campo llega acá como `undefined` y tiene que dejar
+   * todo como está, no abrir las puertas.
+   */
+  const refrescarFeatures = useCallback((features: string[] | undefined) => {
+    if (!features || features.length === 0) return;
+    setNegocio((previo) => {
+      if (!previo) return previo;
+      const antes = previo.features ?? [];
+      // Comparación por contenido: sin esto, cada tick del poller crearía un
+      // objeto nuevo y `contexto` se recalcularía cada 15 min para nada.
+      const igual =
+        antes.length === features.length && antes.every((f) => features.includes(f));
+      if (igual) return previo;
+      const actualizado = { ...previo, features };
+      localStorage.setItem(NEGOCIO_KEY, JSON.stringify(actualizado));
+      return actualizado;
+    });
+  }, []);
+
+  /**
    * Revalida la licencia contra el backend: al abrir la pestaña y cada 15 min.
    * Es el equivalente al `LicenciaGuard.chequear()` del onResume de Android.
    *
@@ -128,6 +159,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           if (!vivo) return;
           localStorage.setItem(LICENCIA_KEY, JSON.stringify(estado));
           setLicencia(estado);
+          refrescarFeatures(estado.features);
         })
         // Falla abierto, igual que Android: un error de red no puede dejar al
         // cajero trabado. Si la licencia de verdad venció, el próximo request
@@ -149,7 +181,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       clearInterval(id);
       document.removeEventListener("visibilitychange", alVolver);
     };
-  }, [token]);
+  }, [token, refrescarFeatures]);
 
   // Reidentifica en PostHog tras un F5: el usuario se rehidrata de
   // localStorage sin pasar por `login`, y sin esto los errores de esa sesión
