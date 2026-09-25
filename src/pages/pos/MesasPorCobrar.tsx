@@ -44,11 +44,16 @@ export default function MesasPorCobrar({
         </button>
         <div className="min-w-0 flex-1">
           <h1 className="text-[15px] font-bold text-texto">Mesas por cobrar</h1>
-          <p className="text-xs text-texto-3">
-            {lista.length === 0
-              ? "Ninguna mesa pidió la cuenta."
-              : `${lista.length} ${lista.length === 1 ? "cuenta esperando" : "cuentas esperando"}`}
-          </p>
+          {/* Sólo con la respuesta en la mano. Antes decía "Ninguna mesa pidió
+              la cuenta" mientras cargaba (y si fallaba), con la cajera entrando
+              justo porque el banner le avisó que había una: visto en QA. */}
+          {mesas.datos && (
+            <p className="text-xs text-texto-3">
+              {lista.length === 0
+                ? "Ninguna mesa pidió la cuenta."
+                : `${lista.length} ${lista.length === 1 ? "cuenta esperando" : "cuentas esperando"}`}
+            </p>
+          )}
         </div>
         {onIrAEntregas && (
           <button
@@ -65,7 +70,7 @@ export default function MesasPorCobrar({
         {mesas.error && <ErrorMsg>{mesas.error}</ErrorMsg>}
         {mesas.cargando && !mesas.datos ? (
           <Cargando />
-        ) : lista.length === 0 ? (
+        ) : !mesas.datos ? null : lista.length === 0 ? (
           <p className="py-16 text-center text-[13px] text-texto-3">
             Ninguna mesa pidió la cuenta todavía.
           </p>
