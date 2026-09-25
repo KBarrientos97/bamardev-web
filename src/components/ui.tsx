@@ -64,10 +64,39 @@ export function Campo({
   );
 }
 
-export function Input({ className = "", ...props }: InputHTMLAttributes<HTMLInputElement>) {
+/**
+ * Campo de texto de la app.
+ *
+ * **`type="number"` no se le pasa al navegador.** Con un campo numérico el
+ * navegador decide qué hacer con la coma según SU idioma: en uno en inglés,
+ * "50,50" quedaba como `5050` antes de que la pantalla lo viera, y un abono de
+ * Bs 50,50 se registraba como Bs 5.050 (lo frenaba sólo si el saldo era menor).
+ * Pasaba en el cobro, el arqueo, la apertura, los abonos, los precios…
+ *
+ * Así que un campo numérico se dibuja como texto con teclado numérico
+ * (`inputMode`), y la coma se convierte en punto al teclear: el valor que le
+ * llega a la pantalla es siempre `50.50`, que entienden igual `parsearMonto` y
+ * `Number()`.
+ */
+export function Input({
+  className = "",
+  type,
+  inputMode,
+  onChange,
+  ...props
+}: InputHTMLAttributes<HTMLInputElement>) {
+  const numerico = type === "number";
   return (
     <input
       {...props}
+      type={numerico ? "text" : type}
+      inputMode={numerico ? (inputMode ?? "decimal") : inputMode}
+      onChange={(e) => {
+        if (numerico && e.target.value.includes(",")) {
+          e.target.value = e.target.value.replace(/,/g, ".");
+        }
+        onChange?.(e);
+      }}
       className={`w-full rounded-xl border border-borde bg-white px-3.5 py-2.5 text-sm text-texto outline-none transition-colors placeholder:text-texto-4 focus:border-primary focus:ring-2 focus:ring-primary-100 disabled:bg-muted ${className}`}
     />
   );
