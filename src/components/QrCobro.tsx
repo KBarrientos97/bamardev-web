@@ -1,23 +1,46 @@
-import { useRef, useState } from "react";
-import { borrarQr, guardarQr, leerQr } from "../lib/qrPago";
+import { useEffect, useRef, useState } from "react";
+import {
+  borrarQr,
+  guardarQr,
+  leerQr,
+  quitarQrDelNegocio,
+  sincronizarQr,
+  subirQr,
+} from "../lib/qrPago";
 import { useAuth } from "../store/AuthContext";
+import type { Rol } from "../types";
 import { Icon } from "./Icon";
 import { ErrorMsg, Modal } from "./ui";
+
+/** Quién maneja la caja y puede cambiar el QR. Tiene que coincidir con el backend. */
+function puedeCambiarQr(rol: Rol | undefined): boolean {
+  return rol === "ADMIN" || rol === "SUPERVISOR" || rol === "CAJERO";
+}
 
 /**
  * Carga del QR de cobro del negocio. Va en la apertura de caja, igual que en la
  * app: es el momento en que alguien está configurando el turno.
  *
- * El QR se guarda en ESTE equipo (ver `qrPago.ts`), así que el texto lo dice —
- * si no, el dueño lo sube en su laptop y no entiende por qué la tablet del
- * mostrador sigue sin mostrarlo.
+ * Se sube al backend y lo reciben todos los equipos del negocio (ver
+ * `qrPago.ts`). Antes quedaba sólo en este equipo y el mesero nunca lo tenía.
  */
 export function CargarQrCobro() {
-  const { negocio } = useAuth();
+  const { negocio, usuario } = useAuth();
   const alias = negocio?.alias;
   const [qr, setQr] = useState<string | null>(() => leerQr(alias));
   const [error, setError] = useState("");
   const input = useRef<HTMLInputElement>(null);
+
+  // Si otro equipo ya lo subió, se muestra ése: no hay que volver a elegirlo.
+  useEffect(() => {
+    let vivo = true;
+    void sincronizarQr(alias, puedeCambiarQr(usuario?.rol)).then((q) => {
+      if (vivo) setQr(q);
+    });
+    return () => {
+      vivo = false;
+    };
+  }, [alias, usuario?.rol]);
 
   async function elegir(archivo: File | undefined) {
     if (!archivo) return;
@@ -25,6 +48,14 @@ export function CargarQrCobro() {
     const res = await guardarQr(alias, archivo);
     if (res.ok) {
       setQr(leerQr(alias));
+      // Si no sube (sin señal), en este equipo igual queda y se cobra; se
+      // avisa para que se sepa que los meseros todavía no lo tienen.
+      const subida = await subirQr(alias);
+      if (!subida.ok) {
+        setError(
+          `El QR quedó en este equipo, pero no se pudo compartir con los meseros: ${subida.error}`,
+        );
+      }
     } else {
       setError(res.error);
     }
@@ -54,7 +85,9 @@ export function CargarQrCobro() {
               ? "Se le muestra al cliente cuando paga por QR."
               : "Subí la imagen de tu QR para mostrársela al cliente al cobrar."}
           </p>
-          <p className="mt-1 text-xs text-texto-4">Se guarda solo en este equipo.</p>
+          <p className="mt-1 text-xs text-texto-4">
+            Lo reciben también los meseros y el reparto.
+          </p>
 
           <div className="mt-2 flex flex-wrap gap-2">
             <button
@@ -67,9 +100,13 @@ export function CargarQrCobro() {
             {qr && (
               <button
                 type="button"
-                onClick={() => {
+                onClick={async () => {
                   borrarQr(alias);
                   setQr(null);
+                  // Quitarlo acá y dejarlo en los celulares de los meseros
+                  // sería seguir cobrando a una cuenta dada de baja.
+                  const res = await quitarQrDelNegocio();
+                  if (!res.ok) setError(res.error);
                 }}
                 className="rounded-lg px-3 py-1.5 text-xs font-semibold text-danger-text hover:bg-danger-bg"
               >
@@ -111,9 +148,22 @@ export function QrParaCobrar({
   onConfirmar: () => void;
   monto?: string;
 }) {
-  const { negocio } = useAuth();
-  const qr = leerQr(negocio?.alias);
+  const { negocio, usuario } = useAuth();
+  const alias = negocio?.alias;
+  const [qr, setQr] = useState<string | null>(() => leerQr(alias));
   const [ampliado, setAmpliado] = useState(false);
+
+  // Se muestra la copia del equipo al instante y se trae la del backend por
+  // si la caja la cambió (o, en el equipo del mesero, porque nunca la tuvo).
+  useEffect(() => {
+    let vivo = true;
+    void sincronizarQr(alias, puedeCambiarQr(usuario?.rol)).then((q) => {
+      if (vivo) setQr(q);
+    });
+    return () => {
+      vivo = false;
+    };
+  }, [alias, usuario?.rol]);
 
   return (
     <div className="space-y-3">
@@ -130,7 +180,7 @@ export function QrParaCobrar({
         <div className="mx-auto flex h-44 w-44 flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-borde bg-muted px-3 text-center">
           <Icon name="qr" size={30} />
           <span className="text-xs text-texto-3">
-            Todavía no subiste tu QR. Se carga al abrir la caja.
+            Todavía no hay QR del negocio. Lo sube el encargado al abrir la caja.
           </span>
         </div>
       )}

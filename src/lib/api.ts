@@ -854,6 +854,22 @@ export const api = {
    */
   entregasMesero: () => request<EntregasMesero>("/salon/entregas"),
 
+  // ── QR de cobro del negocio ───────────────────────────────────────────────
+  // Compartido por todos los equipos: lo sube quien abre la caja y lo bajan
+  // la caja, los meseros y el reparto. Ver lib/qrPago.ts.
+
+  /** El QR vigente; `imagen` null si todavía nadie lo subió. */
+  qrCobro: () =>
+    request<{ imagen: string | null; actualizadoEn: string | null }>("/qr-cobro"),
+  /** Lo sube quien abre la caja. El backend rechaza al mesero y al repartidor. */
+  subirQrCobro: (imagen: string) =>
+    request<{ imagen: string | null }>("/qr-cobro", {
+      method: "PUT",
+      body: JSON.stringify({ imagen }),
+    }),
+  borrarQrCobro: () =>
+    request<{ imagen: null }>("/qr-cobro", { method: "DELETE" }),
+
   /**
    * El cajero confirma que recibió la plata.
    *

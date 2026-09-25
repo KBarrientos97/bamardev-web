@@ -306,13 +306,18 @@ function TarjetaVenta({
                 ofrecerlo, no recién cuando se agota. Antes el número sólo
                 aparecía bajo el mínimo, y un "1" suelto no decía de qué era. */}
             {agotado && <Badge tono="rojo">Agotado</Badge>}
+            {/* Un span y no <Badge>: Badge fuerza mayúsculas, y "72 DISP."
+                se leía como una sigla. Mismo tamaño y colores que el badge. */}
             {!agotado && controlaStock && (
-              <Badge
-                tono={p.stockTotal <= p.stockMinimo ? "amarillo" : "verde"}
-                className="normal-case tracking-normal"
+              <span
+                className={`inline-flex items-center rounded-lg px-2 py-0.5 text-[11px] font-bold ${
+                  p.stockTotal <= p.stockMinimo
+                    ? "bg-warning-bg text-warning-text"
+                    : "bg-primary-50 text-primary-700"
+                }`}
               >
                 {fmtNum(p.stockTotal)} disp.
-              </Badge>
+              </span>
             )}
           </div>
           <h3 className="mt-2 line-clamp-2 text-[13px] font-bold leading-snug text-texto">
