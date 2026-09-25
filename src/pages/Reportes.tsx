@@ -21,6 +21,7 @@ import { useAuth } from "../store/AuthContext";
 import type { RangoReporte } from "../types";
 import Finanzas from "./Finanzas";
 import { EstadoResultadoVista, PuntoEquilibrioVista } from "./reportes/ResultadoPeriodo";
+import { CierresVista, type CierreFila } from "./reportes/CierresVista";
 
 // ── Período ─────────────────────────────────────────────────────────────────
 
@@ -676,7 +677,27 @@ function VistaReporte({
       ) : datos.cargando ? (
         <Cargando />
       ) : datos.error ? (
-        <ErrorMsg>{datos.error}</ErrorMsg>
+        <ErrorMsg onReintentar={datos.recargar}>{datos.error}</ErrorMsg>
+      ) : ficha.nombre === "cierres" && esObjetoPlano(datos.datos) ? (
+        // Los turnos van en su propia lista, que se abre en el arqueo de cada
+        // uno; el resto del reporte (el desempeño por cajero) sigue genérico.
+        <div className="space-y-5">
+          <CierresVista
+            historial={
+              Array.isArray(datos.datos.historial)
+                ? (datos.datos.historial as CierreFila[])
+                : []
+            }
+          />
+          {/* Sólo si trae algo: vacío, el genérico dice "Sin datos" justo
+              debajo de una lista de cierres, que se contradice. */}
+          {Array.isArray(datos.datos.performance) && datos.datos.performance.length > 0 && (
+            <Renderizador
+              nombre={ficha.nombre}
+              datos={{ performance: datos.datos.performance }}
+            />
+          )}
+        </div>
       ) : (
         <Renderizador nombre={ficha.nombre} datos={datos.datos} />
       )}

@@ -566,7 +566,7 @@ export function CierreOk({ caja, onSalir }: { caja: Caja; onSalir: () => void })
  *
  * Ya viene agrupado y ordenado del backend: no se reordena acá.
  */
-function ProductosDelTurno({
+export function ProductosDelTurno({
   cajaId,
   onClose,
 }: {
