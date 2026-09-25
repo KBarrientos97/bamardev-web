@@ -458,7 +458,10 @@ export default function Pos() {
       onCobrar={() => setPantalla("cobro")}
       cabecera={
         <>
-        <div className="flex items-center justify-between gap-3 border-b border-borde bg-white px-4 py-3">
+        {/* flex-wrap: con el texto en los botones, en una pantalla angosta
+            (o con el carrito abierto al lado) los botones bajan a una segunda
+            línea en vez de aplastar el título. */}
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-borde bg-white px-4 py-3">
           <div className="min-w-0">
             <h1 className="flex items-center gap-2 text-[15px] font-bold text-texto">
               Punto de venta
@@ -479,11 +482,16 @@ export default function Pos() {
               {fmtMoney(abierta.montoApertura)}
             </p>
           </div>
-          <div className="flex shrink-0 items-center gap-1.5">
+          <div className="flex flex-wrap items-center gap-1.5">
             {permiteDelivery && (
               <BotonTipo
                 icono="truck"
-                titulo="Pedido a domicilio"
+                etiqueta="Delivery"
+                titulo={
+                  carrito.lineas.length === 0
+                    ? "Agregá productos para armar el pedido a domicilio"
+                    : "Pedido a domicilio"
+                }
                 deshabilitado={carrito.lineas.length === 0}
                 onClick={() => {
                   setTipoPedido("DELIVERY");
@@ -494,7 +502,12 @@ export default function Pos() {
             {permiteRecoger && (
               <BotonTipo
                 icono="clock"
-                titulo="Pedido para recoger"
+                etiqueta="Para recoger"
+                titulo={
+                  carrito.lineas.length === 0
+                    ? "Agregá productos para armar el pedido para recoger"
+                    : "Pedido para recoger"
+                }
                 deshabilitado={carrito.lineas.length === 0}
                 onClick={() => {
                   setTipoPedido("RECOGER");
@@ -504,20 +517,23 @@ export default function Pos() {
             )}
             {/* Sólo aparece cuando hay cuentas esperando: si el negocio no
                 usa el salón, no existe. */}
-            {(porCobrar.datos?.length ?? 0) > 0 && (
+            {mesasEsperando.length > 0 && (
               <BotonTipo
                 icono="grid"
-                titulo={`Mesas por cobrar (${porCobrar.datos!.length})`}
+                etiqueta={`Mesas (${mesasEsperando.length})`}
+                titulo={`Mesas por cobrar (${mesasEsperando.length})`}
                 onClick={() => setPantalla("mesasPorCobrar")}
               />
             )}
             <BotonTipo
               icono="fileText"
+              etiqueta="Ventas"
               titulo="Ventas del turno"
               onClick={() => setPantalla("historial")}
             />
             <BotonTipo
               icono="lock"
+              etiqueta="Cerrar caja"
               titulo="Cerrar caja"
               onClick={() => setPantalla("cierre")}
             />
@@ -603,13 +619,23 @@ function AvisoSalon({
   );
 }
 
+/**
+ * Botón del encabezado del POS: ícono + texto.
+ *
+ * Eran sólo íconos con el nombre en el `title`, y un camión, un reloj y un
+ * papel no dicen "delivery", "para recoger" y "ventas del turno": la cajera
+ * tenía que pasar el mouse por cada uno (y en una tablet no hay mouse). El
+ * `titulo` sigue como ayuda larga, y cuando el botón está apagado dice por qué.
+ */
 function BotonTipo({
   icono,
+  etiqueta,
   titulo,
   onClick,
   deshabilitado,
 }: {
   icono: "truck" | "clock" | "fileText" | "lock" | "grid";
+  etiqueta: string;
   titulo: string;
   onClick: () => void;
   deshabilitado?: boolean;
@@ -619,10 +645,10 @@ function BotonTipo({
       onClick={onClick}
       disabled={deshabilitado}
       title={titulo}
-      aria-label={titulo}
-      className="rounded-lg border border-borde p-2 text-texto-2 transition-colors enabled:hover:border-primary enabled:hover:bg-primary-50 enabled:hover:text-primary-700 disabled:opacity-40"
+      className="inline-flex items-center gap-1.5 rounded-lg border border-borde px-2.5 py-1.5 text-xs font-semibold text-texto-2 transition-colors enabled:hover:border-primary enabled:hover:bg-primary-50 enabled:hover:text-primary-700 disabled:cursor-not-allowed disabled:opacity-40"
     >
-      <Icon name={icono} size={18} />
+      <Icon name={icono} size={16} />
+      <span className="whitespace-nowrap">{etiqueta}</span>
     </button>
   );
 }
