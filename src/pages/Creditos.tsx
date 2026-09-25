@@ -1,7 +1,15 @@
 import { useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import ComprobanteCredito, { type TipoComprobante } from "../components/ComprobanteCredito";
-import { parsearMonto } from "../lib/dinero";
+import { QrParaCobrar } from "../components/QrCobro";
+import {
+  aCentavos,
+  esCero,
+  esPositivo,
+  excede,
+  parsearMonto,
+  restoEnEfectivo,
+} from "../lib/dinero";
 import { puedeSupervisar } from "../lib/permisos";
 import { useAuth } from "../store/AuthContext";
 import { Icon } from "../components/Icon";
@@ -634,6 +642,9 @@ function Dato({ label, valor }: { label: string; valor: string }) {
   );
 }
 
+/** Valor del desplegable para el cobro repartido entre efectivo y QR. */
+const MIXTO = "__mixto__";
+
 function FormAbono({
   credito: c,
   formasPago,
@@ -655,6 +666,7 @@ function FormAbono({
    * es la correcta.
    */
   const esDuenio = usuario?.rol === "ADMIN";
+  const { incluye } = useAuth();
 
   const [monto, setMonto] = useState("");
   // Las formas de pago se resuelven por NOMBRE porque los ids son por negocio:
@@ -662,6 +674,31 @@ function FormAbono({
   const [formaNombre, setFormaNombre] = useState(
     () => formasPago.find((f) => f.nombre === "Efectivo")?.nombre ?? formasPago[0]?.nombre ?? "",
   );
+
+  /**
+   * QR y mixto, como en la app (`RegistrarAbonoDialog`).
+   *
+   * Antes elegir "QR" en el desplegable registraba el abono al instante: no se
+   * mostraba el QR ni se pedía confirmar que la plata llegó, y al cliente se
+   * le borraba una deuda que todavía podía deber. Ahora con QR de por medio el
+   * botón no se habilita hasta dar el pago por recibido, igual que en el POS.
+   */
+  const formaEfectivo = formasPago.find((f) => f.nombre.toLowerCase() === "efectivo");
+  const formaQr = formasPago.find((f) => f.nombre.toLowerCase() === "qr");
+  const permiteMixto = incluye("pago_qr_mixto") && !!formaEfectivo && !!formaQr;
+  const esMixto = formaNombre === MIXTO;
+  const [montoQr, setMontoQr] = useState("");
+  /** El monto por QR que se dio por recibido. Si el monto cambia, deja de valer. */
+  const [qrConfirmadoPor, setQrConfirmadoPor] = useState<number | null>(null);
+
+  const montoNum = parsearMonto(monto) ?? 0;
+  const qrMixtoNum = parsearMonto(montoQr) ?? 0;
+  const esQr = !esMixto && formaNombre.toLowerCase() === "qr";
+  /** Cuánto de este cobro entra por QR: todo, la parte del mixto, o nada. */
+  const qrDelCobro = esQr ? montoNum : esMixto ? qrMixtoNum : 0;
+  const efectivoDelMixto = restoEnEfectivo(montoNum, qrMixtoNum);
+  const qrConfirmado =
+    qrConfirmadoPor != null && esPositivo(qrDelCobro) && esCero(qrConfirmadoPor - qrDelCobro);
   const [error, setError] = useState("");
   const [guardando, setGuardando] = useState(false);
   /**
@@ -679,21 +716,40 @@ function FormAbono({
   async function guardar() {
     if (enVuelo.current) return;
     setError("");
-    const montoNum = Number(monto);
-    if (!Number.isFinite(montoNum) || montoNum <= 0)
-      return setError("Poné un monto mayor a cero.");
-    if (montoNum > c.saldo)
+    // parsearMonto y no Number(): "150,50" es como se teclea en Bolivia.
+    if (!esPositivo(montoNum)) return setError("Poné un monto mayor a cero.");
+    if (excede(montoNum, c.saldo))
       return setError(`El abono no puede pasar el saldo (${fmtMoney(c.saldo)}).`);
 
-    const forma = formasPago.find((f) => f.nombre === formaNombre);
-    if (!forma) return setError("Elegí una forma de pago.");
+    let pagos: { monto: number; formaPagoId: number }[];
+    if (esMixto) {
+      if (!formaEfectivo || !formaQr) return setError("Faltan las formas de pago Efectivo y QR.");
+      // El QR es exacto (no da vuelto), así que no puede superar el abono.
+      if (excede(qrMixtoNum, montoNum))
+        return setError(`Por QR no puede ir más que el abono (${fmtMoney(montoNum)}).`);
+      // Cada parte por separado: si fuera una sola línea de efectivo, el
+      // arqueo esperaría plata que se fue por transferencia. Las partes en 0
+      // no se mandan (el backend las rechaza).
+      pagos = [
+        ...(esPositivo(efectivoDelMixto)
+          ? [{ monto: efectivoDelMixto, formaPagoId: formaEfectivo.id }]
+          : []),
+        ...(esPositivo(qrMixtoNum) ? [{ monto: aCentavos(qrMixtoNum), formaPagoId: formaQr.id }] : []),
+      ];
+    } else {
+      const forma = formasPago.find((f) => f.nombre === formaNombre);
+      if (!forma) return setError("Elegí una forma de pago.");
+      pagos = [{ monto: aCentavos(montoNum), formaPagoId: forma.id }];
+    }
+    if (esPositivo(qrDelCobro) && !qrConfirmado)
+      return setError("Confirmá que el pago por QR llegó antes de registrar el abono.");
 
     enVuelo.current = true;
     setGuardando(true);
     try {
       // Sin cajaId a propósito: el backend usa la caja abierta de quien cobra,
       // que es la única donde el dinero puede entrar de verdad.
-      await api.registrarAbono(c.id, { monto: montoNum, formaPagoId: forma.id });
+      await api.registrarAbono(c.id, { pagos });
       onGuardado(montoNum);
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo registrar el abono");
@@ -715,7 +771,11 @@ function FormAbono({
           <Boton variante="ghost" onClick={onClose}>
             Cancelar
           </Boton>
-          <Boton icono="save" onClick={guardar} disabled={guardando}>
+          <Boton
+            icono="save"
+            onClick={guardar}
+            disabled={guardando || (esPositivo(qrDelCobro) && !qrConfirmado)}
+          >
             {guardando ? "Guardando…" : "Cobrar"}
           </Boton>
         </>
@@ -752,14 +812,45 @@ function FormAbono({
               : "El abono entra en tu caja abierta"
           }
         >
-          <Select value={formaNombre} onChange={(e) => setFormaNombre(e.target.value)}>
+          <Select
+            value={formaNombre}
+            onChange={(e) => {
+              setFormaNombre(e.target.value);
+              setQrConfirmadoPor(null);
+            }}
+          >
             {formasPago.map((f) => (
               <option key={f.id} value={f.nombre}>
                 {f.nombre}
               </option>
             ))}
+            {permiteMixto && <option value={MIXTO}>Efectivo + QR (mixto)</option>}
           </Select>
         </Campo>
+
+        {esMixto && (
+          <div className="space-y-2">
+            <Campo label="Cuánto paga por QR">
+              <Input
+                inputMode="decimal"
+                value={montoQr}
+                onChange={(e) => setMontoQr(e.target.value)}
+                placeholder="0,00"
+              />
+            </Campo>
+            <p className="text-[13px] text-texto-2">
+              En efectivo: <strong>{fmtMoney(efectivoDelMixto)}</strong>
+            </p>
+          </div>
+        )}
+
+        {esPositivo(qrDelCobro) && (
+          <QrParaCobrar
+            confirmado={qrConfirmado}
+            onConfirmar={() => setQrConfirmadoPor(qrDelCobro)}
+            monto={fmtMoney(qrDelCobro)}
+          />
+        )}
 
         <ErrorMsg>{error}</ErrorMsg>
       </div>
