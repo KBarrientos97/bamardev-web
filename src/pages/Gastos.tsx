@@ -17,7 +17,7 @@ import {
   Vacio,
 } from "../components/ui";
 import { api } from "../lib/api";
-import { cubre, esPositivo, excede, parsearMonto } from "../lib/dinero";
+import { cubre, esCero, esPositivo, excede, parsearMonto } from "../lib/dinero";
 import { fmtFecha, fmtMoney } from "../lib/format";
 import { useApi } from "../lib/useApi";
 import { useSucursales } from "../lib/useSucursales";
@@ -129,7 +129,9 @@ function finDeMes(iso: string): string {
  * nadie la haya pagado. Es el mismo bug que se corrigió en Android.
  */
 function saldado(g: Gasto): boolean {
-  return g.estado === "PAGADO" || (g.saldo === 0 && g.monto > 0);
+  // Con la tolerancia de Dinero y no `=== 0` / `> 0` pelados: un saldo de
+  // Bs 0.004 (residuo de redondeo) está saldado, igual que en la app.
+  return g.estado === "PAGADO" || (esCero(g.saldo) && esPositivo(g.monto));
 }
 
 /** Lo que la fila dice del vencimiento, o null si no hay nada urgente. */
