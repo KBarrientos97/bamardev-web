@@ -9,6 +9,7 @@ import {
   type FinancieroBase,
   type LineaGasto,
 } from "../../lib/resultado";
+import { rangoParaApi } from "../../lib/rangoApi";
 import { useApi } from "../../lib/useApi";
 import type { Gasto, RangoReporte } from "../../types";
 
@@ -28,19 +29,23 @@ import type { Gasto, RangoReporte } from "../../types";
  * resultado sin los gastos mostraría una utilidad inflada como si fuera real.
  */
 function useMitades(rango: RangoReporte) {
-  return useApi(
-    () =>
-      Promise.all([
-        api.reporte<FinancieroBase>("financiero", rango),
-        api.getGastos({
-          desde: rango.desde ?? "",
-          hasta: rango.hasta ?? "",
-          filtro: "TODOS",
-          sucursalId: rango.sucursalId ?? null,
-        }),
-      ]),
-    [rango.desde, rango.hasta, rango.sucursalId],
-  );
+  return useApi(() => {
+    // Los gastos con el MISMO corte que las ventas: medianoche local del
+    // primer día a medianoche local del día siguiente al último (el reporte
+    // financiero lo convierte solo; getGastos no, porque la pantalla de
+    // Gastos ya manda su `hasta` exclusivo).
+    const { desde, hasta } = rangoParaApi(rango);
+    return Promise.all([
+      api.reporte<FinancieroBase>("financiero", rango),
+      api.getGastos({
+        desde: desde ?? "",
+        hasta: hasta ?? "",
+        // Sin `filtro`: son TODOS. El backend no acepta "TODOS" como valor
+        // (sólo PENDIENTES, VENCIDOS o PAGADOS) y el reporte entero fallaba.
+        sucursalId: rango.sucursalId ?? null,
+      }),
+    ]);
+  }, [rango.desde, rango.hasta, rango.sucursalId]);
 }
 
 function Estado({

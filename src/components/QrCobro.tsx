@@ -152,6 +152,30 @@ export function QrParaCobrar({
   const alias = negocio?.alias;
   const [qr, setQr] = useState<string | null>(() => leerQr(alias));
   const [ampliado, setAmpliado] = useState(false);
+  const puedeCargar = puedeCambiarQr(usuario?.rol);
+  const input = useRef<HTMLInputElement>(null);
+  const [cargando, setCargando] = useState(false);
+  const [errorCarga, setErrorCarga] = useState("");
+
+  async function cargar(archivo: File | undefined) {
+    if (!archivo) return;
+    setErrorCarga("");
+    setCargando(true);
+    const res = await guardarQr(alias, archivo);
+    if (res.ok) {
+      setQr(leerQr(alias));
+      const subida = await subirQr(alias);
+      if (!subida.ok) {
+        setErrorCarga(
+          `El QR quedó en este equipo, pero no se pudo compartir con los meseros: ${subida.error}`,
+        );
+      }
+    } else {
+      setErrorCarga(res.error);
+    }
+    setCargando(false);
+    if (input.current) input.current.value = "";
+  }
 
   // Se muestra la copia del equipo al instante y se trae la del backend por
   // si la caja la cambió (o, en el equipo del mesero, porque nunca la tuvo).
@@ -180,10 +204,36 @@ export function QrParaCobrar({
         <div className="mx-auto flex h-44 w-44 flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-borde bg-muted px-3 text-center">
           <Icon name="qr" size={30} />
           <span className="text-xs text-texto-3">
-            Todavía no hay QR del negocio. Lo sube el encargado al abrir la caja.
+            {puedeCargar
+              ? "Todavía no hay QR del negocio."
+              : "Todavía no hay QR del negocio. Lo carga el encargado desde la caja."}
           </span>
+          {/* Cargarlo acá mismo. Antes el único lugar era la apertura de caja,
+              y con la caja ya abierta no había dónde: en QA llevaba una semana
+              abierta y el QR no se podía subir. El mesero no lo ve (no puede
+              cambiarlo: ver el modelo QrCobro en el backend). */}
+          {puedeCargar && (
+            <>
+              <button
+                type="button"
+                onClick={() => input.current?.click()}
+                disabled={cargando}
+                className="rounded-lg border border-borde bg-white px-3 py-1.5 text-xs font-semibold text-texto-2 hover:bg-white/70"
+              >
+                {cargando ? "Cargando…" : "Cargar el QR"}
+              </button>
+              <input
+                ref={input}
+                type="file"
+                accept="image/*"
+                hidden
+                onChange={(e) => cargar(e.target.files?.[0])}
+              />
+            </>
+          )}
         </div>
       )}
+      {errorCarga && <ErrorMsg>{errorCarga}</ErrorMsg>}
 
       <button
         type="button"

@@ -68,6 +68,7 @@ import type {
   ZonaSalon,
 } from "../types/salon";
 import { reportarError } from "./telemetria";
+import { rangoParaApi, tzOffsetMin } from "./rangoApi";
 
 // URL del backend. En los builds la fija VITE_API_URL (QA o PROD); en `npm run
 // dev` queda vacía a propósito y pegamos a /api, que el proxy de Vite reenvía
@@ -355,25 +356,34 @@ export const api = {
   // ── Finanzas ──────────────────────────────────────────────────────────────
   // Los reportes paginados aceptan `page` y `limite`; los mensuales no llevan
   // rango, sólo el año.
+  // Todos los rangos pasan por `rangoParaApi`: con el día pelado el backend
+  // dejaba afuera el último día y cortaba en UTC (ver lib/rangoApi.ts).
   reporteVentas: (p: RangoReporte & { usuarioId?: number; page?: number; limite?: number }) =>
-    request<ReporteVentasGeneral>(`/reportes/ventas${qs(p)}`),
+    request<ReporteVentasGeneral>(`/reportes/ventas${qs(rangoParaApi(p))}`),
   reporteVentasDetalle: (
     p: RangoReporte & { usuarioId?: number; page?: number; limite?: number },
-  ) => request<ReporteVentasDetalle>(`/reportes/ventas-detalle${qs(p)}`),
+  ) => request<ReporteVentasDetalle>(`/reportes/ventas-detalle${qs(rangoParaApi(p))}`),
+  // El mes se corta en el reloj del negocio: sin el offset el backend usaba
+  // la zona del servidor y una venta de la noche del 31 caía en el mes
+  // siguiente.
   reporteVentasMensual: (anio?: number) =>
-    request<ReporteVentasMensual>(`/reportes/ventas-mensual${qs({ anio })}`),
+    request<ReporteVentasMensual>(
+      `/reportes/ventas-mensual${qs({ anio, tzOffsetMin: tzOffsetMin() })}`,
+    ),
   reporteCompras: (
     p: RangoReporte & { tipo?: string; page?: number; limite?: number },
-  ) => request<ReporteComprasGeneral>(`/reportes/compras${qs(p)}`),
+  ) => request<ReporteComprasGeneral>(`/reportes/compras${qs(rangoParaApi(p))}`),
   reporteComprasDetalle: (
     p: RangoReporte & { tipo?: string; page?: number; limite?: number },
-  ) => request<ReporteComprasDetalle>(`/reportes/compras-detalle${qs(p)}`),
+  ) => request<ReporteComprasDetalle>(`/reportes/compras-detalle${qs(rangoParaApi(p))}`),
   reporteComprasMensual: (anio?: number) =>
-    request<ReporteComprasMensual>(`/reportes/compras-mensual${qs({ anio })}`),
+    request<ReporteComprasMensual>(
+      `/reportes/compras-mensual${qs({ anio, tzOffsetMin: tzOffsetMin() })}`,
+    ),
   reporteCompra: (id: number) =>
     request<ReporteCompraDocumento>(`/reportes/compras/${id}`),
   reporteCaja: (p: RangoReporte & { tipo?: string; page?: number; limite?: number }) =>
-    request<ReporteMovimientosCaja>(`/reportes/caja${qs(p)}`),
+    request<ReporteMovimientosCaja>(`/reportes/caja${qs(rangoParaApi(p))}`),
   /** Lo que salió del mostrador en un turno. Baja del arqueo, no del período. */
   reporteCierreProductos: (cierreId: number) =>
     request<ReporteCierreProductos>(`/reportes/cierres/${cierreId}/productos`),
@@ -727,7 +737,7 @@ export const api = {
   // ── Reportes ──────────────────────────────────────────────────────────────
   // Todos aceptan ?desde&hasta en ISO; sin ellos el backend usa 7 días.
   reporte: <T = unknown>(nombre: string, rango: RangoReporte = {}, extra = {}) =>
-    request<T>(`/reportes/${nombre}${qs({ ...rango, ...extra })}`),
+    request<T>(`/reportes/${nombre}${qs({ ...rangoParaApi(rango), ...extra })}`),
 
   // ── Salón ─────────────────────────────────────────────────────────────────
   // El panel del mesero. `clienteRequestId` viaja en abrir y en comanda porque

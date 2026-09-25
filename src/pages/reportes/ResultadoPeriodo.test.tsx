@@ -92,4 +92,20 @@ describe("resultado del período (web)", () => {
     expect(diasDelRango("2026-09-24", "2026-09-24")).toBe(1);
     expect(diasDelRango(undefined, "2026-09-24")).toBe(0);
   });
+
+  it("los gastos se piden sin filtro y con el mismo corte que las ventas", async () => {
+    // En QA el reporte entero fallaba: se mandaba filtro=TODOS y el backend
+    // sólo acepta PENDIENTES, VENCIDOS o PAGADOS. Los mocks de la API no lo
+    // podían ver; lo encontró la prueba contra QA.
+    reporte.mockResolvedValue({ ventas: 1_000, costoVentas: 400, utilidadBruta: 600 });
+    getGastos.mockResolvedValue([]);
+    render(<EstadoResultadoVista rango={RANGO} />);
+    await screen.findAllByText("Utilidad neta");
+
+    const pedido = getGastos.mock.calls[0][0];
+    expect(pedido.filtro).toBeUndefined();
+    // El último día entra: hasta es la medianoche local del día siguiente.
+    expect(new Date(pedido.hasta).getTime()).toBe(new Date(2026, 9, 1).getTime());
+    expect(new Date(pedido.desde).getTime()).toBe(new Date(2026, 8, 1).getTime());
+  });
 });
