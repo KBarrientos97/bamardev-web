@@ -492,6 +492,11 @@ export interface Venta {
   /** Lo que el repartidor entrega al negocio (sin su tarifa de envío). */
   montoRendicion?: number;
   credito?: Credito | null;
+  /** Mesa del salón de la que salió la venta; null en la de mostrador. */
+  mesa?: string | null;
+  mesaNombre?: string | null;
+  /** Quién atendió la mesa (no quién cobró: ése es `cajero`). */
+  mesero?: string | null;
 }
 
 export interface DetalleVentaInput {

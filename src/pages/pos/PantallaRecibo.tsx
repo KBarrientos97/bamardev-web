@@ -106,6 +106,13 @@ export default function PantallaRecibo({
           <dl className="border-t border-dashed border-borde pt-2 text-xs">
             <FilaDato etiqueta="Ticket:" valor={venta.comprobante ?? `#${venta.id}`} />
             <FilaDato etiqueta="Fecha:" valor={fmtFechaHora(venta.fecha)} />
+            {/* Cobrando una mesa, el ticket salía como uno de mostrador: sin
+                mesa ni mesero (visto en QA). El cliente reconoce su cuenta por
+                la mesa, y el mesero es a quien se le reclama. */}
+            {/* El código y no el nombre: el nombre suele ser "Mesa M1" y
+                quedaba "Mesa: Mesa M1". El código es lo que dice el salón. */}
+            {venta.mesa && <FilaDato etiqueta="Mesa:" valor={venta.mesa} />}
+            {venta.mesero && <FilaDato etiqueta="Atendió:" valor={venta.mesero} />}
             {venta.cajero && <FilaDato etiqueta="Cajero:" valor={venta.cajero} />}
             <FilaDato etiqueta="Pago:" valor={metodo} />
           </dl>
