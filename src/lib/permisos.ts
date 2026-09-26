@@ -98,11 +98,15 @@ const REQUISITOS: Record<Seccion, { modulo: Modulo; feature: Feature | null }> =
   // mostrador, así que va con el módulo del POS. No se vende aparte.
   busqueda: { modulo: "POS", feature: null },
   // Vencimientos es de inventario: decide qué se devuelve al proveedor y qué
-  // se da de baja, no atiende a nadie.
-  vencimientos: { modulo: "INVENTARIO", feature: "inventario" },
+  // se da de baja, no atiende a nadie. La feature es `lotes` y no `inventario`
+  // porque es la que exige el backend (`@RequiereFeature('lotes')`, sólo en
+  // PRO): con `inventario` una farmacia BASICO veía la sección y entraba a un
+  // 403.
+  vencimientos: { modulo: "INVENTARIO", feature: "lotes" },
   // Los encargos los anota quien ATIENDE, así que van con el módulo del POS:
   // el que escucha "¿no tenés…?" es el del mostrador, no el que administra.
-  encargos: { modulo: "POS", feature: null },
+  // La feature es la misma que pide el backend: apagarla en el panel la saca.
+  encargos: { modulo: "POS", feature: "encargos" },
   // Recibir y dar de baja mercadería SON movimientos de inventario: la misma
   // llave que `movimientos`, sólo que con pantalla propia. No se venden aparte
   // ni se le pueden dar a alguien que no pueda ver el registro.
@@ -237,7 +241,14 @@ export type Capacidad =
   /** Reportes de cómo opera el negocio (horas, métodos, delivery…). */
   | "reportes_operacion"
   /** Reportes de plata (margen, rentabilidad, deuda…). */
-  | "reportes_rentabilidad";
+  | "reportes_rentabilidad"
+  /**
+   * Consultar las partidas: el lote que sale por FEFO en una salida y los
+   * lotes de la ficha del medicamento. Es la misma feature que la sección
+   * Vencimientos, pero se usa DENTRO de pantallas que igual se ven. Cargar el
+   * lote al recibir no depende de esto: el backend lo guarda con cualquier plan.
+   */
+  | "lotes";
 
 /**
  * Una capacidad puede exigir además un rol: anular con PIN se lo ofrecemos a

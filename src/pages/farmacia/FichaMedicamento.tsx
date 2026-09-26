@@ -5,6 +5,7 @@ import { Badge, Boton, Cargando, Modal } from "../../components/ui";
 import { api } from "../../lib/api";
 import { fmtFecha, fmtMoney, fmtNum } from "../../lib/format";
 import { useApi } from "../../lib/useApi";
+import { useAuth } from "../../store/AuthContext";
 import type { Producto } from "../../types";
 import {
   COLOR_TRAMO,
@@ -285,10 +286,16 @@ function StockPorAlmacen({ producto: p }: { producto: Producto }) {
  * esta persona?" sin ir a Vencimientos.
  */
 function LotesFefo({ producto: p }: { producto: Producto }) {
+  // Sin la feature el servidor responde 403: la sección no se dibuja, como
+  // cualquier otra cosa que el plan no incluye.
+  const { incluye } = useAuth();
+  const conLotes = incluye("lotes");
   const lotes = useApi(
-    () => (p.manejaLote ? api.lotesDeProducto(p.id) : Promise.resolve([])),
-    [p.id, p.manejaLote],
+    () => (conLotes && p.manejaLote ? api.lotesDeProducto(p.id) : Promise.resolve([])),
+    [p.id, p.manejaLote, conLotes],
   );
+
+  if (!conLotes) return null;
 
   if (!p.manejaLote) {
     return (

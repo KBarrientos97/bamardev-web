@@ -863,11 +863,19 @@ function LoteQueSale({
   almacenId: number;
   almacenNombre: string;
 }) {
+  // Sin la feature el servidor responde 403, y el error se leía como "Sin lotes
+  // con saldo": una mentira, los lotes están. La salida igual sale por FEFO.
+  const { incluye } = useAuth();
+  const conLotes = incluye("lotes");
   const lotes = useApi(
-    () => api.lotesDeProducto(productoId, almacenId || undefined),
-    [productoId, almacenId],
+    () =>
+      conLotes
+        ? api.lotesDeProducto(productoId, almacenId || undefined)
+        : Promise.resolve([]),
+    [productoId, almacenId, conLotes],
   );
 
+  if (!conLotes) return <span className="text-texto-4">—</span>;
   if (lotes.cargando) return <span className="text-xs text-texto-4">…</span>;
 
   const primero = (lotes.datos ?? [])[0];

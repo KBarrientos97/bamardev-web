@@ -24,6 +24,8 @@ const PLAN_FULL: Feature[] = [
   "fiado",
   "reportes",
   "salon",
+  "lotes",
+  "encargos",
 ];
 
 function ctx(rol: Rol, modulos = TODOS_MODULOS, features = PLAN_FULL) {
@@ -339,6 +341,25 @@ describe("vencimientos", () => {
     );
     expect(puedeVer({ ...ctx("ADMIN"), rubro: "RESTAURANTE" }, "vencimientos")).toBe(false);
   });
+
+  it("pide la feature `lotes`, la misma que exige el backend", () => {
+    // `lotes` va sólo en PRO. Con `inventario` como llave, una farmacia BASICO
+    // veía Vencimientos en el menú y entraba a un 403.
+    const sinLotes = PLAN_FULL.filter((f) => f !== "lotes");
+    const basico = { ...ctx("ADMIN", TODOS_MODULOS, sinLotes), rubro: "FARMACIA" };
+    expect(puedeVer(basico, "vencimientos")).toBe(false);
+    expect(puede(basico, "lotes")).toBe(false);
+
+    const pro = { ...ctx("ADMIN"), rubro: "FARMACIA" };
+    expect(puedeVer(pro, "vencimientos")).toBe(true);
+    expect(puede(pro, "lotes")).toBe(true);
+  });
+
+  it("una farmacia sin features cargadas la sigue viendo (falla abierto)", () => {
+    const vacia = { ...ctx("ADMIN", TODOS_MODULOS, []), rubro: "FARMACIA" };
+    expect(puedeVer(vacia, "vencimientos")).toBe(true);
+    expect(puede(vacia, "lotes")).toBe(true);
+  });
 });
 
 describe("encargos", () => {
@@ -353,6 +374,14 @@ describe("encargos", () => {
   it("no existe fuera de farmacia", () => {
     expect(puedeVer({ ...ctx("ADMIN"), rubro: "RESTAURANTE" }, "encargos")).toBe(false);
     expect(puedeVer(ctx("ADMIN"), "encargos")).toBe(false);
+  });
+
+  it("apagar `encargos` en el panel la saca del menú", () => {
+    // Es la feature que pide el backend: sin ella, entrar daba 403.
+    const sinEncargos = PLAN_FULL.filter((f) => f !== "encargos");
+    expect(
+      puedeVer({ ...ctx("CAJERO", ["POS", "CAJA"], sinEncargos), rubro: "FARMACIA" }, "encargos"),
+    ).toBe(false);
   });
 });
 

@@ -12,8 +12,11 @@ import type { Almacen, ArticuloMovimiento, Movimiento } from "../../types";
  * recepción de droguería sin avisar y sin forma de deshacerlo.
  */
 
+/** Qué compró el negocio. `lotes` es PRO: una farmacia BASICO no lo tiene. */
+const plan = vi.hoisted(() => ({ lotes: true }));
+
 vi.mock("../../store/AuthContext", () => ({
-  useAuth: () => ({ incluye: () => true }),
+  useAuth: () => ({ incluye: (c: string) => (c === "lotes" ? plan.lotes : true) }),
 }));
 
 vi.mock("../../lib/api", () => ({
@@ -92,6 +95,7 @@ const salidaPendiente: Movimiento = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  plan.lotes = true;
   vi.mocked(api.getAlmacenes).mockResolvedValue([
     almacen(DEPOSITO, "Depósito"),
     almacen(MOSTRADOR, "Mostrador"),
@@ -128,6 +132,23 @@ async function clickEn(nombre: RegExp) {
     fireEvent.click(screen.getByRole("button", { name: nombre }));
   });
 }
+
+describe("El lote que sale, según el plan", () => {
+  it("con `lotes` la salida consulta qué lote se va por FEFO", async () => {
+    await abrirEdicion();
+    await waitFor(() => expect(api.lotesDeProducto).toHaveBeenCalledWith(7, DEPOSITO));
+  });
+
+  it("sin `lotes` no lo pide ni dice que no hay lotes", async () => {
+    // El backend responde 403 y el error se leía como "Sin lotes con saldo":
+    // una mentira, los lotes existen y la salida igual los descuenta por FEFO.
+    plan.lotes = false;
+    await abrirEdicion();
+
+    expect(api.lotesDeProducto).not.toHaveBeenCalled();
+    expect(screen.queryByText(/Sin lotes con saldo/)).not.toBeInTheDocument();
+  });
+});
 
 describe("Editar un movimiento pendiente", () => {
   it("cambiar de almacén deja los renglones donde están", async () => {

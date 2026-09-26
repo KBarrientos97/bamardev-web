@@ -54,7 +54,11 @@ export type FeatureConocida =
   | "exportacion"
   | "reportes"
   | "reportes_operacion"
-  | "reportes_rentabilidad";
+  | "reportes_rentabilidad"
+  /** Vencimientos y el lote que sale por FEFO. Farmacia, plan PRO. */
+  | "lotes"
+  /** Lo que pidieron y no había. Farmacia, BASICO y PRO. */
+  | "encargos";
 export type Feature = FeatureConocida | (string & {});
 
 export interface SesionUsuario {
