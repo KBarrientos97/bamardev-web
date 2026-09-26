@@ -19,6 +19,7 @@ import Productos from "./pages/inventario/Productos";
 import Pos from "./pages/pos/Pos";
 import BuscarMedicamento from "./pages/farmacia/BuscarMedicamento";
 import DashboardFarmacia from "./pages/farmacia/DashboardFarmacia";
+import GastosFarmacia from "./pages/farmacia/GastosFarmacia";
 import Encargos from "./pages/farmacia/Encargos";
 import FormMercaderia from "./pages/farmacia/FormMercaderia";
 import MovimientosFarmacia from "./pages/farmacia/MovimientosFarmacia";
@@ -102,6 +103,17 @@ function MovimientosSegunRubro() {
 function DashboardSegunRubro() {
   const { rubro } = useAuth();
   return esFarmacia(rubro) ? <DashboardFarmacia /> : <Dashboard />;
+}
+
+/**
+ * Gastos operativos. La farmacia tiene la suya, armada como la maqueta: cada
+ * gasto se toca y el detalle va en un popup, filtra por categoría y deja
+ * administrar las categorías. Usa el mismo formulario y el mismo panel de pago
+ * que la de siempre, que sigue igual para los demás rubros.
+ */
+function GastosSegunRubro() {
+  const { rubro } = useAuth();
+  return esFarmacia(rubro) ? <GastosFarmacia /> : <Gastos />;
 }
 
 /**
@@ -296,7 +308,7 @@ function Rutas() {
           path="/gastos"
           element={
             <Protegida seccion="gastos">
-              <Gastos />
+              <GastosSegunRubro />
             </Protegida>
           }
         />

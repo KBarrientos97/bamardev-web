@@ -15,6 +15,7 @@ import {
 import { api } from "../lib/api";
 import { fmtFecha, fmtFechaHora, fmtMoney, fmtNum, isoDia } from "../lib/format";
 import type { Capacidad, Seccion } from "../lib/permisos";
+import type { Rubro } from "../lib/rubro";
 import { useApi } from "../lib/useApi";
 import { useSucursales } from "../lib/useSucursales";
 import { useAuth } from "../store/AuthContext";
@@ -87,6 +88,12 @@ interface FichaReporte {
    * aparecía un reporte que siempre falla.
    */
   seccion?: Seccion;
+  /**
+   * Rubros donde el reporte no existe, pase lo que pase con el plan. Una
+   * farmacia no tiene meseros ni transforma materia prima: ofrecerle esos
+   * reportes es mostrarle una pantalla siempre vacía.
+   */
+  fueraDeRubro?: Rubro[];
 }
 
 const REPORTES: FichaReporte[] = [
@@ -137,6 +144,7 @@ const REPORTES: FichaReporte[] = [
     texto: "Quién atendió, cuánto vendió y qué anuló.",
     icono: "users",
     capacidad: "reportes_operacion",
+    fueraDeRubro: ["FARMACIA"],
   },
   {
     nombre: "cierres",
@@ -163,6 +171,7 @@ const REPORTES: FichaReporte[] = [
     texto: "Compras de materia prima y su costo.",
     icono: "sack",
     capacidad: "reportes_rentabilidad",
+    fueraDeRubro: ["FARMACIA"],
   },
   {
     nombre: "financiero",
@@ -402,7 +411,7 @@ function esObjetoPlano(v: unknown): v is Record<string, unknown> {
 // ── Página ──────────────────────────────────────────────────────────────────
 
 export default function Reportes() {
-  const { incluye, puede } = useAuth();
+  const { incluye, puede, rubro } = useAuth();
   const [preset, setPreset] = useState<Preset>("mes");
 
   const [desdeManual, setDesdeManual] = useState(() => rangoDePreset("mes").desde ?? "");
@@ -420,9 +429,12 @@ export default function Reportes() {
   const disponibles = useMemo(
     () =>
       REPORTES.filter(
-        (r) => (!r.capacidad || incluye(r.capacidad)) && (!r.seccion || puede(r.seccion)),
+        (r) =>
+          (!r.capacidad || incluye(r.capacidad)) &&
+          (!r.seccion || puede(r.seccion)) &&
+          !(rubro && r.fueraDeRubro?.includes(rubro as Rubro)),
       ),
-    [incluye, puede],
+    [incluye, puede, rubro],
   );
 
   /**

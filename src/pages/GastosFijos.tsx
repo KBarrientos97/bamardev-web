@@ -87,9 +87,10 @@ export default function GastosFijos() {
   };
 
   return (
-    <div className="space-y-5">
+    <div className="mx-auto max-w-6xl space-y-4 p-4 sm:space-y-5 sm:p-5">
       <EncabezadoPagina
         titulo="Gastos automáticos"
+        volver={{ a: "/gastos", etiqueta: "Volver a Gastos operativos" }}
         subtitulo="Los que se repiten todos los meses: se cargan solos el día que corresponde"
         accion={
           <Boton onClick={() => setEditando(null)}>
@@ -143,7 +144,7 @@ export default function GastosFijos() {
           {plantillas.map((p) => (
             <li
               key={p.id}
-              className="flex flex-wrap items-center gap-3 rounded-xl border border-borde bg-fondo-1 p-4"
+              className="card flex flex-wrap items-center gap-3 p-4"
             >
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">

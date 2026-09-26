@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { Link } from "react-router-dom";
 import { Icon } from "./Icon";
 
 /** Fila de chips de filtro, como los del diseño. */
@@ -68,16 +69,39 @@ export function EncabezadoPagina({
   titulo,
   subtitulo,
   accion,
+  volver,
 }: {
   titulo: string;
   subtitulo?: string;
   accion?: ReactNode;
+  /**
+   * Pantalla a la que se vuelve, para las que cuelgan de otra (Gastos
+   * automáticos cuelga de Gastos operativos). El menú no las lista, así que
+   * sin esto la única salida era el botón "atrás" del navegador.
+   */
+  volver?: { a: string; etiqueta: string };
 }) {
   return (
     <header className="flex flex-wrap items-start justify-between gap-3">
-      <div className="min-w-0 flex-1">
-        <h1 className="truncate text-xl font-bold text-texto">{titulo}</h1>
-        {subtitulo && <p className="mt-0.5 text-[13px] text-texto-3">{subtitulo}</p>}
+      {/* `basis-48` y no `basis-0`: el título se reserva un ancho mínimo, y
+          cuando la acción no entra al lado (un celular con "Nuevo gasto
+          automático") baja de renglón. Con `basis-0` era el título el que se
+          achicaba, y quedaba "Gastos aut…". */}
+      <div className="flex min-w-0 flex-1 basis-48 items-start gap-3">
+        {volver && (
+          <Link
+            to={volver.a}
+            aria-label={volver.etiqueta}
+            title={volver.etiqueta}
+            className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-borde bg-white text-texto-2 transition-colors hover:bg-muted"
+          >
+            <Icon name="arrowLeft" size={18} />
+          </Link>
+        )}
+        <div className="min-w-0 flex-1">
+          <h1 className="truncate text-xl font-bold text-texto">{titulo}</h1>
+          {subtitulo && <p className="mt-0.5 text-[13px] text-texto-3">{subtitulo}</p>}
+        </div>
       </div>
       {accion && <div className="shrink-0">{accion}</div>}
     </header>
