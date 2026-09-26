@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Icon } from "../components/Icon";
 import { Buscador, Chips, EncabezadoPagina } from "../components/filtros";
+import { ProximosAutomaticos } from "../components/ProximosAutomaticos";
 import {
   AvisoOk,
   Badge,
@@ -17,12 +18,21 @@ import {
   Vacio,
 } from "../components/ui";
 import { api } from "../lib/api";
-import { cubre, esCero, esPositivo, excede, parsearMonto } from "../lib/dinero";
+import { cubre, esPositivo, excede, parsearMonto } from "../lib/dinero";
+import {
+  badgeEstado,
+  finDeMes,
+  hoyIso,
+  inicioDeMes,
+  METODOS,
+  OPC_FILTRO,
+  saldado,
+  textoVencimiento,
+} from "../lib/gastos";
 import { fmtFecha, fmtMoney } from "../lib/format";
 import { useApi } from "../lib/useApi";
 import { useSucursales } from "../lib/useSucursales";
 import type {
-  EstadoGasto,
   FiltroGasto,
   Gasto,
   GastoInput,
@@ -47,103 +57,8 @@ import type {
  * backend y tienen que decir lo mismo.
  */
 
-const OPC_FILTRO = [
-  ["TODOS", "Todos"],
-  ["PENDIENTES", "Pendientes"],
-  ["VENCIDOS", "Vencidos"],
-  ["PAGADOS", "Pagados"],
-] as const satisfies readonly (readonly [FiltroGasto, string])[];
-
-const TONO_ESTADO: Record<EstadoGasto, "amarillo" | "azul" | "verde"> = {
-  PENDIENTE: "amarillo",
-  PARCIAL: "azul",
-  PAGADO: "verde",
-};
-
-const ETIQUETA_ESTADO: Record<EstadoGasto, string> = {
-  PENDIENTE: "Pendiente",
-  PARCIAL: "Parcial",
-  PAGADO: "Pagado",
-};
-
-/**
- * **Vencido gana sobre el estado**, igual que `GastoUi.labelEstado` en la app:
- * a quien mira la lista le importa más que la luz se atrasó que si está
- * pendiente o a medio pagar. Sin esto el mismo alquiler vencido salía
- * "Pendiente" en amarillo en la web y "VENCIDO" en rojo en el celular.
- */
-function badgeEstado(g: Gasto): { tono: "amarillo" | "azul" | "verde" | "rojo"; texto: string } {
-  if (g.vencido && !saldado(g)) return { tono: "rojo", texto: "Vencido" };
-  return { tono: TONO_ESTADO[g.estado], texto: ETIQUETA_ESTADO[g.estado] };
-}
-
-const METODOS = [
-  ["EFECTIVO", "Efectivo"],
-  ["TRANSFERENCIA", "Transferencia"],
-  ["QR", "QR"],
-  ["TARJETA", "Tarjeta"],
-] as const satisfies readonly (readonly [MetodoPagoGasto, string])[];
-
 /** El respiro antes de consultar lo tecleado, igual que en la app. */
 const DEBOUNCE_MS = 350;
-
-/** Hoy en la zona del navegador, en el `yyyy-MM-dd` que espera el backend. */
-function hoyIso(): string {
-  const d = new Date();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${d.getFullYear()}-${mm}-${dd}`;
-}
-
-/** El primer día del mes que se está mirando. */
-function inicioDeMes(iso: string): string {
-  return `${iso.slice(0, 7)}-01`;
-}
-
-/**
- * El corte del mes: el **día 1 del mes siguiente**.
- *
- * `hasta` es EXCLUSIVO en el backend (`fecha < hasta`, el mismo criterio que
- * los reportes), así que mandar el último día del mes dejaba afuera todo lo
- * cargado ese día: el alquiler del 30 no aparecía en septiembre y el mes
- * cerraba con un gasto menos. Es el mismo par que arma la app para
- * "mes pasado": del primero de un mes al primero del siguiente.
- */
-function finDeMes(iso: string): string {
-  const [a, m] = iso.split("-").map(Number);
-  // `m` ya viene 1-based, así que esto es el mes siguiente. Diciembre rueda
-  // solo a enero del año que viene.
-  const siguiente = new Date(a, m, 1);
-  const mm = String(siguiente.getMonth() + 1).padStart(2, "0");
-  return `${siguiente.getFullYear()}-${mm}-01`;
-}
-
-/**
- * Un gasto **saldado** no debe nada.
- *
- * **Monto cero NO es saldado**, y ésa es toda la razón de que esto no sea
- * `saldo === 0`. El gasto que crea una regla de monto variable —la luz, el
- * agua, el gas— nace con monto 0 y saldo 0 mientras no llega la factura, y el
- * servidor lo manda PENDIENTE a propósito. Tomarlo por saldado le saca el
- * botón de pagar y lo manda a la pestaña "Pagados": la luz figura paga sin que
- * nadie la haya pagado. Es el mismo bug que se corrigió en Android.
- */
-function saldado(g: Gasto): boolean {
-  // Con la tolerancia de Dinero y no `=== 0` / `> 0` pelados: un saldo de
-  // Bs 0.004 (residuo de redondeo) está saldado, igual que en la app.
-  return g.estado === "PAGADO" || (esCero(g.saldo) && esPositivo(g.monto));
-}
-
-/** Lo que la fila dice del vencimiento, o null si no hay nada urgente. */
-function textoVencimiento(g: Gasto): string | null {
-  if (saldado(g) || !g.fechaVencimiento) return null;
-  if (g.vencido) {
-    return g.diasAtraso <= 1 ? "Venció ayer" : `Venció hace ${g.diasAtraso} días`;
-  }
-  if (g.diasParaVencer === 0) return "Vence hoy";
-  if (g.diasParaVencer === 1) return "Vence mañana";
-  return `Vence en ${g.diasParaVencer} días`;
-}
 
 export default function Gastos() {
   const [mes, setMes] = useState(() => hoyIso().slice(0, 7));
@@ -218,7 +133,7 @@ export default function Gastos() {
   }, [r]);
 
   return (
-    <div className="space-y-5">
+    <div className="mx-auto max-w-6xl space-y-4 p-4 sm:space-y-5 sm:p-5">
       <EncabezadoPagina
         titulo="Gastos operativos"
         subtitulo="Lo que gasta el negocio, aparte de lo que sale de la caja"
@@ -316,6 +231,8 @@ export default function Gastos() {
         </span>
       </Link>
 
+      <ProximosAutomaticos mes={mes} sucursalId={sucursalId} />
+
       {lista.cargando ? (
         <Cargando />
       ) : lista.error ? (
@@ -333,7 +250,7 @@ export default function Gastos() {
             return (
               <li
                 key={g.id}
-                className="flex flex-wrap items-center gap-3 rounded-xl border border-borde bg-fondo-1 p-4"
+                className="card flex flex-wrap items-center gap-3 p-4"
               >
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
@@ -345,7 +262,7 @@ export default function Gastos() {
                     {fmtFecha(g.fecha)}
                     {g.beneficiario ? ` · ${g.beneficiario}` : ""}
                     {vence && (
-                      <span className={g.vencido ? "text-rojo" : undefined}>
+                      <span className={g.vencido ? "font-semibold text-danger-text" : undefined}>
                         {" · "}
                         {vence}
                       </span>
@@ -413,7 +330,7 @@ export default function Gastos() {
 
 // ── Formulario ──────────────────────────────────────────────────────────────
 
-function FormGasto({
+export function FormGasto({
   gasto,
   categorias,
   sucursalSugerida,
@@ -590,7 +507,7 @@ function FormGasto({
 
 // ── Registrar pago ──────────────────────────────────────────────────────────
 
-function PanelPago({
+export function PanelPago({
   gasto,
   onCerrar,
   onPagado,
