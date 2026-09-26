@@ -51,6 +51,13 @@ export type Seccion =
   | "salon"
   /** ABM de mesas y zonas: es del admin, no del mesero. */
   | "mesas"
+  /**
+   * El resumen de la farmacia como primer ítem DENTRO de Inventario. Es la
+   * misma ruta que Inventario (`/inventario`): el grupo lleva a su primera
+   * pantalla, y el sub-ítem dice cuál es. Sólo farmacia: en los demás rubros
+   * Inventario sigue siendo un ítem solo, como siempre.
+   */
+  | "dashboard"
   /** Buscar un medicamento en el mostrador. Sólo farmacia. */
   | "busqueda"
   /** Los lotes que vencen y la plata parada en ellos. Sólo farmacia. */
@@ -96,6 +103,9 @@ const REQUISITOS: Record<Seccion, { modulo: Modulo; feature: Feature | null }> =
   // El ABM de mesas es parte de la misma sección vendida: si el negocio no
   // contrató el salón, no hay mesas que administrar.
   mesas: { modulo: "INVENTARIO", feature: "salon" },
+  // Es la pantalla de `/inventario`: pide exactamente lo mismo, o el menú
+  // mostraría un sub-ítem que lleva a una ruta que el guard rechaza.
+  dashboard: { modulo: "INVENTARIO", feature: "inventario" },
   // Buscar un medicamento es parte de atender: la hace quien está en el
   // mostrador, así que va con el módulo del POS. No se vende aparte.
   busqueda: { modulo: "POS", feature: null },
@@ -145,6 +155,7 @@ const ROLES_PERMITIDOS: Partial<Record<Seccion, Rol[]>> = {
   salon: ["MESERO", "ADMIN", "SUPERVISOR"],
   // Crear mesas y zonas es del admin: el mesero las usa, no las administra.
   mesas: ["ADMIN", "SUPERVISOR"],
+  dashboard: ["ADMIN", "SUPERVISOR"],
   // El cajero entra: es el que atiende el mostrador y el que más la usa.
   busqueda: ["ADMIN", "SUPERVISOR", "CAJERO"],
   vencimientos: ["ADMIN", "SUPERVISOR"],
@@ -175,6 +186,7 @@ const ROLES_PERMITIDOS: Partial<Record<Seccion, Rol[]>> = {
  * pantalla llamada "Buscar medicamento".
  */
 const SOLO_EN_RUBRO: Partial<Record<Seccion, Rubro[]>> = {
+  dashboard: ["FARMACIA"],
   busqueda: ["FARMACIA"],
   vencimientos: ["FARMACIA"],
   encargos: ["FARMACIA"],

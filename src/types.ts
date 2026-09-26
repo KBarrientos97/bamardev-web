@@ -873,7 +873,14 @@ export interface Dashboard {
   almacenes: number;
   totalInventario: number;
   bajoStock: number;
-  stockCritico: { id: number; nombre: string; stock: number; stockMinimo: number }[];
+  stockCritico: {
+    id: number;
+    nombre: string;
+    stock: number;
+    stockMinimo: number;
+    /** A quién se le vuelve a pedir. Sólo lo carga la ficha de farmacia. */
+    laboratorio?: string | null;
+  }[];
   movimientos: {
     id: number;
     comprobante: string | null;

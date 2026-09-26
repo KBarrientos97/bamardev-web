@@ -98,6 +98,60 @@ export const COLOR_TRAMO: Record<
   LEJOS: { texto: "text-texto-3", fondo: "bg-muted", barra: "bg-primary" },
 };
 
+/**
+ * Los cuatro tramos del semáforo, en el orden en que hay que actuar. Los usan
+ * Vencimientos y el Dashboard: el mismo tramo se llama y se pinta igual en los
+ * dos.
+ */
+export const TRAMOS: {
+  clave: TramoVencimiento;
+  campo: "vencidos" | "hasta30" | "hasta60" | "hasta90";
+  titulo: string;
+  ayuda: string;
+  /** El color dice qué tan urgente es, no qué tan lindo queda. */
+  texto: string;
+  fondo: string;
+  barra: string;
+}[] = [
+  {
+    clave: "VENCIDO",
+    campo: "vencidos",
+    titulo: "Vencidos",
+    ayuda: "Sacar del estante",
+    ...COLOR_TRAMO.VENCIDO,
+  },
+  {
+    clave: "HASTA_30",
+    campo: "hasta30",
+    titulo: "≤ 30 días",
+    ayuda: "Rematar o devolver",
+    ...COLOR_TRAMO.HASTA_30,
+  },
+  {
+    clave: "HASTA_60",
+    campo: "hasta60",
+    titulo: "31 – 60 días",
+    ayuda: "Mover con promoción",
+    ...COLOR_TRAMO.HASTA_60,
+  },
+  {
+    clave: "HASTA_90",
+    campo: "hasta90",
+    titulo: "61 – 90 días",
+    ayuda: "Tener en el radar",
+    ...COLOR_TRAMO.HASTA_90,
+  },
+];
+
+/**
+ * El Dashboard manda a Vencimientos al tocar un tramo del semáforo, y la lista
+ * tiene que abrir ya filtrada en ese tramo. Viaja por el `state` de la navegación y se
+ * valida al llegar: cualquier otra cosa abre la lista completa.
+ */
+export interface FiltroVencimientos {
+  tramo: TramoVencimiento;
+}
+
 /** Cuánto le queda, dicho como lo diría alguien: "venció hace 3 d", "12 días". */
 export function textoVida(dias: number | null): string {
   if (dias === null) return "Sin fecha";

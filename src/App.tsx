@@ -18,6 +18,7 @@ import Movimientos from "./pages/inventario/Movimientos";
 import Productos from "./pages/inventario/Productos";
 import Pos from "./pages/pos/Pos";
 import BuscarMedicamento from "./pages/farmacia/BuscarMedicamento";
+import DashboardFarmacia from "./pages/farmacia/DashboardFarmacia";
 import Encargos from "./pages/farmacia/Encargos";
 import FormMercaderia from "./pages/farmacia/FormMercaderia";
 import MovimientosFarmacia from "./pages/farmacia/MovimientosFarmacia";
@@ -91,6 +92,16 @@ function Protegida({ seccion, children }: { seccion: Seccion; children: React.Re
 function MovimientosSegunRubro() {
   const { rubro } = useAuth();
   return esFarmacia(rubro) ? <MovimientosFarmacia /> : <Movimientos />;
+}
+
+/**
+ * La primera pantalla de Inventario. Mismo criterio que Movimientos: la
+ * farmacia tiene la suya —con el semáforo de vencimientos y lo más vendido del
+ * día— y el Dashboard de siempre no se entera de que existe un rubro.
+ */
+function DashboardSegunRubro() {
+  const { rubro } = useAuth();
+  return esFarmacia(rubro) ? <DashboardFarmacia /> : <Dashboard />;
 }
 
 /**
@@ -186,7 +197,7 @@ function Rutas() {
           path="/inventario"
           element={
             <Protegida seccion="inventario">
-              <Dashboard />
+              <DashboardSegunRubro />
             </Protegida>
           }
         />

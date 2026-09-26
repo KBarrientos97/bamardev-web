@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { EncabezadoPagina } from "../../components/filtros";
 import { Icon } from "../../components/Icon";
 import { Boton, Cargando, ErrorMsg, Modal, Vacio } from "../../components/ui";
@@ -7,7 +7,7 @@ import { fmtFecha, fmtMoney, fmtNum } from "../../lib/format";
 import { api } from "../../lib/api";
 import { useApi } from "../../lib/useApi";
 import type { ContadorTramo, LotePorVencer, TramoVencimiento } from "../../types";
-import { COLOR_TRAMO, textoVida } from "./medicamento";
+import { TRAMOS, textoVida, type FiltroVencimientos } from "./medicamento";
 import type { PrecargaSalida } from "./mercaderia";
 
 /**
@@ -23,50 +23,17 @@ import type { PrecargaSalida } from "./mercaderia";
  * al proveedor o rematar), y así.
  */
 
-const TRAMOS: {
-  clave: TramoVencimiento;
-  campo: "vencidos" | "hasta30" | "hasta60" | "hasta90";
-  titulo: string;
-  ayuda: string;
-  /** El color dice qué tan urgente es, no qué tan lindo queda. */
-  texto: string;
-  fondo: string;
-  barra: string;
-}[] = [
-  {
-    clave: "VENCIDO",
-    campo: "vencidos",
-    titulo: "Vencidos",
-    ayuda: "Sacar del estante",
-    ...COLOR_TRAMO.VENCIDO,
-  },
-  {
-    clave: "HASTA_30",
-    campo: "hasta30",
-    titulo: "≤ 30 días",
-    ayuda: "Rematar o devolver",
-    ...COLOR_TRAMO.HASTA_30,
-  },
-  {
-    clave: "HASTA_60",
-    campo: "hasta60",
-    titulo: "31 – 60 días",
-    ayuda: "Mover con promoción",
-    ...COLOR_TRAMO.HASTA_60,
-  },
-  {
-    clave: "HASTA_90",
-    campo: "hasta90",
-    titulo: "61 – 90 días",
-    ayuda: "Tener en el radar",
-    ...COLOR_TRAMO.HASTA_90,
-  },
-];
+/** El tramo con el que se llega desde el Dashboard; cualquier otra cosa, ninguno. */
+function tramoDe(state: unknown): TramoVencimiento | null {
+  const t = (state as Partial<FiltroVencimientos> | null)?.tramo;
+  return TRAMOS.some((x) => x.clave === t) ? (t as TramoVencimiento) : null;
+}
 
 export default function Vencimientos() {
   const navigate = useNavigate();
+  const { state } = useLocation();
   const datos = useApi(() => api.vencimientos(), []);
-  const [tramo, setTramo] = useState<TramoVencimiento | null>(null);
+  const [tramo, setTramo] = useState<TramoVencimiento | null>(() => tramoDe(state));
   const [elegido, setElegido] = useState<LotePorVencer | null>(null);
 
   /**

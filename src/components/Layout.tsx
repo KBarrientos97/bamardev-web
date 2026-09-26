@@ -42,6 +42,10 @@ const ITEMS: ItemNav[] = [
   // por perder. Va donde se vea todos los días.
   { a: "/vencimientos", label: "Vencimientos", icono: "calendar", seccion: "vencimientos" },
   { a: "/inventario", label: "Inventario", icono: "archive", seccion: "inventario", exacto: true },
+  // Sólo farmacia: la primera pantalla de Inventario con nombre propio, como
+  // Medicamentos o Categorías. Comparte la ruta con "Inventario", que pasa a
+  // ser el título del grupo (ver `esGrupo` más abajo).
+  { a: "/inventario", label: "Dashboard", icono: "tablero", seccion: "dashboard", nivel: 1, exacto: true },
   {
     a: "/inventario/productos",
     label: "Artículos",
@@ -107,7 +111,9 @@ function tituloDe(items: ItemNav[], pathname: string): string {
   let mejor: ItemNav | null = null;
   for (const i of items) {
     if (pathname === i.a || pathname.startsWith(`${i.a}/`)) {
-      if (!mejor || i.a.length > mejor.a.length) mejor = i;
+      // `>=`: con dos ítems en la misma ruta gana el de abajo, que es el
+      // sub-ítem ("Dashboard") y no el título del grupo ("Inventario").
+      if (!mejor || i.a.length >= mejor.a.length) mejor = i;
     }
   }
   return mejor?.label ?? "BamarDev";
@@ -141,34 +147,45 @@ export default function Layout() {
    */
   const nav = (compacta: boolean) => (
     <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto overflow-x-hidden p-3">
-      {visibles.map((item) => (
-        <NavLink
-          key={item.a}
-          to={item.a}
-          end={item.exacto}
-          onClick={() => setAbierto(false)}
-          title={compacta ? item.label : undefined}
-          className={({ isActive }) =>
-            [
-              "flex items-center gap-3 rounded-xl py-2.5 text-sm font-semibold transition-colors",
-              compacta ? "justify-center px-0" : "px-3",
-              // Sin etiqueta al lado, la sangría de los sub-items sólo
-              // descentraría el ícono respecto de los demás.
-              !compacta && item.nivel === 1 ? "ml-3 text-[13px]" : "",
-              !compacta && item.nivel === 2 ? "ml-7 text-[13px]" : "",
-              // Sobre la barra de color: el activo se marca con un bloque
-              // más claro y blanco pleno; el resto va en el gris teñido, que
-              // mantiene 4.5:1 contra el fondo.
-              isActive
-                ? "bg-barra-activo text-barra-texto"
-                : "text-barra-texto-2 hover:bg-barra-activo hover:text-barra-texto",
-            ].join(" ")
-          }
-        >
-          <Icon name={item.icono} size={item.nivel && !compacta ? 17 : 19} />
-          {!compacta && <span>{item.label}</span>}
-        </NavLink>
-      ))}
+      {visibles.map((item) => {
+        // Un ítem es título de grupo cuando uno de sus sub-ítems lleva a la
+        // misma ruta (Inventario → Dashboard, sólo en farmacia). El título no
+        // se pinta como "estás acá" —eso lo dice el sub-ítem— sino en blanco
+        // mientras se esté en cualquier pantalla del grupo. Sin esto la barra
+        // marcaba dos lugares a la vez. En los rubros sin ese sub-ítem nada
+        // cambia: ningún ítem comparte ruta.
+        const esGrupo = visibles.some((o) => o !== item && o.a === item.a && o.nivel);
+        return (
+          <NavLink
+            key={`${item.seccion}:${item.a}`}
+            to={item.a}
+            end={esGrupo ? false : item.exacto}
+            onClick={() => setAbierto(false)}
+            title={compacta ? item.label : undefined}
+            className={({ isActive }) =>
+              [
+                "flex items-center gap-3 rounded-xl py-2.5 text-sm font-semibold transition-colors",
+                compacta ? "justify-center px-0" : "px-3",
+                // Sin etiqueta al lado, la sangría de los sub-items sólo
+                // descentraría el ícono respecto de los demás.
+                !compacta && item.nivel === 1 ? "ml-3 text-[13px]" : "",
+                !compacta && item.nivel === 2 ? "ml-7 text-[13px]" : "",
+                // Sobre la barra de color: el activo se marca con un bloque
+                // más claro y blanco pleno; el resto va en el gris teñido, que
+                // mantiene 4.5:1 contra el fondo.
+                isActive && esGrupo
+                  ? "text-barra-texto hover:bg-barra-activo"
+                  : isActive
+                    ? "bg-barra-activo text-barra-texto"
+                    : "text-barra-texto-2 hover:bg-barra-activo hover:text-barra-texto",
+              ].join(" ")
+            }
+          >
+            <Icon name={item.icono} size={item.nivel && !compacta ? 17 : 19} />
+            {!compacta && <span>{item.label}</span>}
+          </NavLink>
+        );
+      })}
 
       <div className="my-2 border-t border-white/15" />
 

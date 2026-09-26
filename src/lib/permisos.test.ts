@@ -292,6 +292,28 @@ describe("el rubro decide qué secciones existen", () => {
   });
 });
 
+describe("dashboard como sub-ítem de Inventario", () => {
+  it("existe sólo en farmacia, y pide lo mismo que /inventario", () => {
+    const farmacia = { ...ctx("ADMIN"), rubro: "FARMACIA" };
+    expect(puedeVer(farmacia, "dashboard")).toBe(true);
+    expect(puedeVer(farmacia, "inventario")).toBe(true);
+    // Si el plan no trae inventario, tampoco el sub-ítem: llevaría a una ruta
+    // que el guard rechaza.
+    const sinInventario = { ...ctx("ADMIN", TODOS_MODULOS, ["pos", "caja"]), rubro: "FARMACIA" };
+    expect(puedeVer(sinInventario, "dashboard")).toBe(false);
+    // El cajero no entra a Inventario, así que tampoco a su Dashboard.
+    expect(puedeVer({ ...ctx("CAJERO", ["POS", "CAJA"]), rubro: "FARMACIA" }, "dashboard")).toBe(
+      false,
+    );
+  });
+
+  it("bamardev-restaurant no lo ve: su Inventario sigue siendo un ítem solo", () => {
+    expect(puedeVer({ ...ctx("ADMIN"), rubro: "RESTAURANTE" }, "dashboard")).toBe(false);
+    expect(puedeVer(ctx("ADMIN"), "dashboard")).toBe(false);
+    expect(puedeVer({ ...ctx("ADMIN"), rubro: "RESTAURANTE" }, "inventario")).toBe(true);
+  });
+});
+
 describe("secciones propias de un rubro", () => {
   it("buscar medicamento existe sólo en una farmacia", () => {
     expect(puedeVer({ ...ctx("ADMIN"), rubro: "FARMACIA" }, "busqueda")).toBe(true);
