@@ -84,6 +84,9 @@ const ITEMS: ItemNav[] = [
   // son el salón. En la app está en el mismo lugar del drawer.
   { a: "/mesas", label: "Mesas del salón", icono: "grid", seccion: "mesas" },
   { a: "/creditos", label: "Cuentas por cobrar", icono: "dollar", seccion: "creditos" },
+  // Entre las cuentas por cobrar y los reportes, igual que en el drawer de la
+  // app: es plata del negocio, pero del libro del resultado y no de la caja.
+  { a: "/gastos", label: "Gastos operativos", icono: "archive", seccion: "gastos" },
   { a: "/reportes", label: "Reportes", icono: "chart", seccion: "reportes" },
   { a: "/usuarios", label: "Usuarios", icono: "users", seccion: "usuarios" },
 ];

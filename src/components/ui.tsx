@@ -64,12 +64,98 @@ export function Campo({
   );
 }
 
-export function Input({ className = "", ...props }: InputHTMLAttributes<HTMLInputElement>) {
+/**
+ * Campo de texto de la app.
+ *
+ * **`type="number"` no se le pasa al navegador.** Con un campo numérico el
+ * navegador decide qué hacer con la coma según SU idioma: en uno en inglés,
+ * "50,50" quedaba como `5050` antes de que la pantalla lo viera, y un abono de
+ * Bs 50,50 se registraba como Bs 5.050 (lo frenaba sólo si el saldo era menor).
+ * Pasaba en el cobro, el arqueo, la apertura, los abonos, los precios…
+ *
+ * Así que un campo numérico se dibuja como texto con teclado numérico
+ * (`inputMode`), y la coma se convierte en punto al teclear: el valor que le
+ * llega a la pantalla es siempre `50.50`, que entienden igual `parsearMonto` y
+ * `Number()`.
+ */
+export function Input({
+  className = "",
+  type,
+  inputMode,
+  onChange,
+  ...props
+}: InputHTMLAttributes<HTMLInputElement>) {
+  const numerico = type === "number";
   return (
     <input
       {...props}
+      type={numerico ? "text" : type}
+      inputMode={numerico ? (inputMode ?? "decimal") : inputMode}
+      onChange={(e) => {
+        if (numerico && e.target.value.includes(",")) {
+          e.target.value = e.target.value.replace(/,/g, ".");
+        }
+        onChange?.(e);
+      }}
       className={`w-full rounded-xl border border-borde bg-white px-3.5 py-2.5 text-sm text-texto outline-none transition-colors placeholder:text-texto-4 focus:border-primary focus:ring-2 focus:ring-primary-100 disabled:bg-muted ${className}`}
     />
+  );
+}
+
+/**
+ * Campo de contraseña con el ojito para ver lo tipeado, igual que en la app.
+ *
+ * Por defecto cada campo maneja su propio ojo. Con `visible` y
+ * `onCambiarVisible` lo maneja el padre, para "Cambiar contraseña": la nueva y
+ * la repetida se muestran juntas, porque ver una sola no sirve para
+ * compararlas. `sinOjo` deja el campo siguiendo al otro sin dibujar un segundo
+ * botón.
+ *
+ * El `pr-11` le reserva lugar al ojo: sin eso, una contraseña larga se mete
+ * abajo del ícono.
+ */
+export function InputPassword({
+  visible,
+  onCambiarVisible,
+  sinOjo = false,
+  className = "",
+  ...props
+}: Omit<InputHTMLAttributes<HTMLInputElement>, "type"> & {
+  visible?: boolean;
+  onCambiarVisible?: (visible: boolean) => void;
+  sinOjo?: boolean;
+}) {
+  const [visiblePropio, setVisiblePropio] = useState(false);
+  const mostrando = visible ?? visiblePropio;
+  const alternar = () => {
+    if (onCambiarVisible) onCambiarVisible(!mostrando);
+    else setVisiblePropio(!mostrando);
+  };
+
+  return (
+    <div className="relative">
+      <Input
+        {...props}
+        type={mostrando ? "text" : "password"}
+        className={`${sinOjo ? "" : "pr-11"} ${className}`}
+      />
+      {!sinOjo && (
+        <button
+          type="button"
+          onClick={alternar}
+          // Sin esto, el clic le saca el foco al campo y el que tipeaba tiene
+          // que volver a tocarlo para seguir escribiendo.
+          onMouseDown={(e) => e.preventDefault()}
+          aria-label={mostrando ? "Ocultar contraseña" : "Mostrar contraseña"}
+          aria-pressed={mostrando}
+          title={mostrando ? "Ocultar contraseña" : "Mostrar contraseña"}
+          className="absolute inset-y-0 right-0 flex w-11 items-center justify-center rounded-r-xl text-texto-4 transition-colors hover:text-texto-2 focus-visible:text-primary focus-visible:outline-none"
+        >
+          {/* El ícono muestra lo que va a pasar al tocarlo, como en Chrome. */}
+          <Icon name={mostrando ? "ojoTachado" : "ojo"} size={18} />
+        </button>
+      )}
+    </div>
   );
 }
 

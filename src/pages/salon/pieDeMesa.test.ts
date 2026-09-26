@@ -95,6 +95,13 @@ describe("el pie de la hoja de mesa", () => {
     expect(pie.secundario).toBeUndefined();
   });
 
+  it("que el cliente ya pagó se avisa en verde, no como advertencia", () => {
+    // Iba en el mismo ámbar que "falta servir" y se leía como un problema
+    // justo cuando la mesa quedó bien.
+    expect(pieDeMesa(mesa({ estado: "PAGADA" }), money).tonoBanner).toBe("exito");
+    expect(pieDeMesa(mesa({ estado: "CUENTA" }), money).tonoBanner).not.toBe("exito");
+  });
+
   it("reservada: sentar a los que llegaron, o tocar la reserva", () => {
     const pie = pieDeMesa(mesa({ estado: "RESERVADA" }), money);
     expect(pie.principal.accion).toBe("abrir");

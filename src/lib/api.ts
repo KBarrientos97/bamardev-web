@@ -55,6 +55,15 @@ import type {
   Vencimientos,
   Venta,
   VentaInput,
+  CategoriaGasto,
+  FiltroGasto,
+  Gasto,
+  GastoInput,
+  PagoGastoInput,
+  PlantillaGasto,
+  PlantillaGastoInput,
+  ResumenGastos,
+  TipoCostoGasto,
 } from "../types";
 
 import type {
@@ -65,6 +74,7 @@ import type {
   ZonaSalon,
 } from "../types/salon";
 import { reportarError } from "./telemetria";
+import { rangoParaApi, tzOffsetMin } from "./rangoApi";
 
 // URL del backend. En los builds la fija VITE_API_URL (QA o PROD); en `npm run
 // dev` queda vacía a propósito y pegamos a /api, que el proxy de Vite reenvía
@@ -352,25 +362,34 @@ export const api = {
   // ── Finanzas ──────────────────────────────────────────────────────────────
   // Los reportes paginados aceptan `page` y `limite`; los mensuales no llevan
   // rango, sólo el año.
+  // Todos los rangos pasan por `rangoParaApi`: con el día pelado el backend
+  // dejaba afuera el último día y cortaba en UTC (ver lib/rangoApi.ts).
   reporteVentas: (p: RangoReporte & { usuarioId?: number; page?: number; limite?: number }) =>
-    request<ReporteVentasGeneral>(`/reportes/ventas${qs(p)}`),
+    request<ReporteVentasGeneral>(`/reportes/ventas${qs(rangoParaApi(p))}`),
   reporteVentasDetalle: (
     p: RangoReporte & { usuarioId?: number; page?: number; limite?: number },
-  ) => request<ReporteVentasDetalle>(`/reportes/ventas-detalle${qs(p)}`),
+  ) => request<ReporteVentasDetalle>(`/reportes/ventas-detalle${qs(rangoParaApi(p))}`),
+  // El mes se corta en el reloj del negocio: sin el offset el backend usaba
+  // la zona del servidor y una venta de la noche del 31 caía en el mes
+  // siguiente.
   reporteVentasMensual: (anio?: number) =>
-    request<ReporteVentasMensual>(`/reportes/ventas-mensual${qs({ anio })}`),
+    request<ReporteVentasMensual>(
+      `/reportes/ventas-mensual${qs({ anio, tzOffsetMin: tzOffsetMin() })}`,
+    ),
   reporteCompras: (
     p: RangoReporte & { tipo?: string; page?: number; limite?: number },
-  ) => request<ReporteComprasGeneral>(`/reportes/compras${qs(p)}`),
+  ) => request<ReporteComprasGeneral>(`/reportes/compras${qs(rangoParaApi(p))}`),
   reporteComprasDetalle: (
     p: RangoReporte & { tipo?: string; page?: number; limite?: number },
-  ) => request<ReporteComprasDetalle>(`/reportes/compras-detalle${qs(p)}`),
+  ) => request<ReporteComprasDetalle>(`/reportes/compras-detalle${qs(rangoParaApi(p))}`),
   reporteComprasMensual: (anio?: number) =>
-    request<ReporteComprasMensual>(`/reportes/compras-mensual${qs({ anio })}`),
+    request<ReporteComprasMensual>(
+      `/reportes/compras-mensual${qs({ anio, tzOffsetMin: tzOffsetMin() })}`,
+    ),
   reporteCompra: (id: number) =>
     request<ReporteCompraDocumento>(`/reportes/compras/${id}`),
   reporteCaja: (p: RangoReporte & { tipo?: string; page?: number; limite?: number }) =>
-    request<ReporteMovimientosCaja>(`/reportes/caja${qs(p)}`),
+    request<ReporteMovimientosCaja>(`/reportes/caja${qs(rangoParaApi(p))}`),
   /** Lo que salió del mostrador en un turno. Baja del arqueo, no del período. */
   reporteCierreProductos: (cierreId: number) =>
     request<ReporteCierreProductos>(`/reportes/cierres/${cierreId}/productos`),
@@ -651,6 +670,113 @@ export const api = {
   registrarAbono: (id: number, input: AbonoInput) =>
     request<Credito>(`/creditos/${id}/abonos`, { method: "POST", body: JSON.stringify(input) }),
 
+  // ── Gastos operativos ─────────────────────────────────────────────────────
+  //
+  // `sucursalId` acota al local; omitido, el consolidado del negocio. A quien
+  // esta atado a una sucursal el backend le fuerza la suya, mande lo que mande.
+
+  /** El hero: total, pagado y pendiente del periodo. Viaja aparte de la lista
+   *  porque es del periodo entero y no cambia con la pestana. */
+  getResumenGastos: (params: {
+    desde: string;
+    hasta: string;
+    sucursalId?: number | null;
+  }) => request<ResumenGastos>(`/gastos/resumen${qs(params)}`),
+
+  getGastos: (
+    params: {
+      desde: string;
+      hasta: string;
+      filtro?: FiltroGasto;
+      q?: string;
+      categoria?: string;
+      sucursalId?: number | null;
+    },
+  ) => request<Gasto[]>(`/gastos${qs(params)}`),
+
+  crearGasto: (input: GastoInput) =>
+    request<Gasto>("/gastos", { method: "POST", body: JSON.stringify(input) }),
+
+  /** El PATCH corrige lo que el gasto DICE (concepto, categoria, monto). Lo
+   *  que SALIO se corrige con un pago o deshaciendolo: `pagado` es la suma de
+   *  los pagos registrados y pisarlo lo separaria de su historial. */
+  actualizarGasto: (id: number, input: GastoInput) =>
+    request<Gasto>(`/gastos/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
+
+  /** `monto` omitido = saldar lo que falte. Se manda asi y no el numero del
+   *  saldo: entre que se abrio la pantalla y se confirma pudo entrar otro pago,
+   *  y el saldo viejo lo sobrepagaria. */
+  pagarGasto: (id: number, input: PagoGastoInput) =>
+    request<Gasto>(`/gastos/${id}/pagos`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+
+  /** Deshace el ULTIMO pago. Es lo que arregla haberlo cargado por error. */
+  deshacerUltimoPagoGasto: (id: number) =>
+    request<Gasto>(`/gastos/${id}/pagos/ultimo`, { method: "DELETE" }),
+
+  eliminarGasto: (id: number) =>
+    request<{ mensaje: string }>(`/gastos/${id}`, { method: "DELETE" }),
+
+  // Categorias: el pack base (24) vive en el backend y NO se siembra por
+  // negocio; esta lista mezcla el pack con lo que el negocio cambio o invento.
+  getCategoriasGasto: () => request<CategoriaGasto[]>("/gastos/categorias"),
+  crearCategoriaGasto: (input: {
+    nombre: string;
+    tipoCosto?: TipoCostoGasto;
+  }) =>
+    request<CategoriaGasto>("/gastos/categorias", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  /** Renombrar una, o corregirle el fijo/variable. Vale tambien para las del
+   *  pack: casi todo lo que carga un negocio nuevo es del pack, y el punto de
+   *  equilibrio divide justo por esa linea. */
+  actualizarCategoriaGasto: (
+    codigo: string,
+    input: { nombre?: string; tipoCosto?: TipoCostoGasto; activa?: boolean },
+  ) =>
+    request<CategoriaGasto>(`/gastos/categorias/${encodeURIComponent(codigo)}`, {
+      method: "PATCH",
+      body: JSON.stringify(input),
+    }),
+  eliminarCategoriaGasto: (codigo: string) =>
+    request<{ mensaje: string }>(
+      `/gastos/categorias/${encodeURIComponent(codigo)}`,
+      { method: "DELETE" },
+    ),
+
+  // Gastos automaticos (las plantillas): la regla que crea el gasto sola.
+  getPlantillasGasto: (sucursalId?: number | null) =>
+    request<PlantillaGasto[]>(
+      `/gastos/plantillas${qs({ sucursalId: sucursalId ?? undefined })}`,
+    ),
+  crearPlantillaGasto: (input: PlantillaGastoInput) =>
+    request<PlantillaGasto>("/gastos/plantillas", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  actualizarPlantillaGasto: (id: number, input: PlantillaGastoInput) =>
+    request<PlantillaGasto>(`/gastos/plantillas/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(input),
+    }),
+  /** Pausar no borra: la regla se conserva con su historial. `motivoPausa`
+   *  es lo que despues explica por que esa regla esta apagada. */
+  cambiarEstadoPlantillaGasto: (
+    id: number,
+    input: { activa: boolean; motivoPausa?: string | null },
+  ) =>
+    request<PlantillaGasto>(`/gastos/plantillas/${id}/estado`, {
+      method: "PATCH",
+      body: JSON.stringify(input),
+    }),
+  eliminarPlantillaGasto: (id: number) =>
+    request<{ mensaje: string }>(`/gastos/plantillas/${id}`, {
+      method: "DELETE",
+    }),
+
   // ── Usuarios ──────────────────────────────────────────────────────────────
   getUsuarios: () => request<Usuario[]>("/usuarios"),
   crearUsuario: (input: CrearUsuarioInput) =>
@@ -676,7 +802,7 @@ export const api = {
   // ── Reportes ──────────────────────────────────────────────────────────────
   // Todos aceptan ?desde&hasta en ISO; sin ellos el backend usa 7 días.
   reporte: <T = unknown>(nombre: string, rango: RangoReporte = {}, extra = {}) =>
-    request<T>(`/reportes/${nombre}${qs({ ...rango, ...extra })}`),
+    request<T>(`/reportes/${nombre}${qs({ ...rangoParaApi(rango), ...extra })}`),
 
   // ── Salón ─────────────────────────────────────────────────────────────────
   // El panel del mesero. `clienteRequestId` viaja en abrir y en comanda porque
@@ -688,6 +814,11 @@ export const api = {
   /** La carta del mesero: el catálogo con el stock ya comprometido por las mesas. */
   cartaSalon: () => request<Producto[]>("/salon/carta"),
   turnoMesero: () => request<TurnoMesero>("/salon/turno"),
+  /**
+   * Una mesa ya cobrada del turno, para volver a darle el recibo al cliente.
+   * `mesa(id)` no sirve: la mesa ya se levantó y devuelve la gente de AHORA.
+   */
+  mesaCerrada: (sesionId: number) => request<Mesa>(`/salon/turno/mesas/${sesionId}`),
   cerrarTurnoMesero: () =>
     request<TurnoMesero>("/salon/turno/cerrar", { method: "POST" }),
 
@@ -802,6 +933,22 @@ export const api = {
    * quién pregunta, así que acá no hay dos métodos.
    */
   entregasMesero: () => request<EntregasMesero>("/salon/entregas"),
+
+  // ── QR de cobro del negocio ───────────────────────────────────────────────
+  // Compartido por todos los equipos: lo sube quien abre la caja y lo bajan
+  // la caja, los meseros y el reparto. Ver lib/qrPago.ts.
+
+  /** El QR vigente; `imagen` null si todavía nadie lo subió. */
+  qrCobro: () =>
+    request<{ imagen: string | null; actualizadoEn: string | null }>("/qr-cobro"),
+  /** Lo sube quien abre la caja. El backend rechaza al mesero y al repartidor. */
+  subirQrCobro: (imagen: string) =>
+    request<{ imagen: string | null }>("/qr-cobro", {
+      method: "PUT",
+      body: JSON.stringify({ imagen }),
+    }),
+  borrarQrCobro: () =>
+    request<{ imagen: null }>("/qr-cobro", { method: "DELETE" }),
 
   /**
    * El cajero confirma que recibió la plata.

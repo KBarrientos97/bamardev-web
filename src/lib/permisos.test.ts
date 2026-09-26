@@ -26,6 +26,7 @@ const PLAN_FULL: Feature[] = [
   "salon",
   "lotes",
   "encargos",
+  "gastos",
 ];
 
 function ctx(rol: Rol, modulos = TODOS_MODULOS, features = PLAN_FULL) {
@@ -424,5 +425,31 @@ describe("ingreso y salida de mercadería", () => {
     expect(puedeVer(sinInventario, "movimientos")).toBe(false);
     expect(puedeVer(sinInventario, "ingreso_mercaderia")).toBe(false);
     expect(puedeVer(sinInventario, "salida_mercaderia")).toBe(false);
+  });
+});
+
+describe("gastos operativos", () => {
+  it("el admin y el supervisor lo ven; el cajero no", () => {
+    // El backend lo exige con RolesGuard: un cajero no carga gastos del
+    // negocio. Ofrecerselo seria mandarlo a un 403.
+    expect(puedeVer(ctx("ADMIN"), "gastos")).toBe(true);
+    expect(puedeVer(ctx("SUPERVISOR"), "gastos")).toBe(true);
+    expect(puedeVer(ctx("CAJERO", ["POS", "CAJA"]), "gastos")).toBe(false);
+  });
+
+  it("apagar `gastos` en el panel saca la seccion", () => {
+    const sinGastos = PLAN_FULL.filter((f) => f !== "gastos");
+    expect(puedeVer(ctx("ADMIN", TODOS_MODULOS, sinGastos), "gastos")).toBe(false);
+    // Y no se lleva puesto el resto del sistema.
+    expect(puedeVer(ctx("ADMIN", TODOS_MODULOS, sinGastos), "reportes")).toBe(true);
+  });
+
+  it("un usuario que SOLO tiene gastos aterriza en /gastos", () => {
+    // Devolvia "/sin-acceso" --"tu cuenta no tiene secciones"-- con "Gastos
+    // operativos" dibujado en la barra de al lado, porque el menu filtra por
+    // `puedeVer` y `rutaInicial` no lo tenia en su lista.
+    const soloGastos = ctx("ADMIN", ["REPORTES"], ["gastos"]);
+    expect(puedeVer(soloGastos, "gastos")).toBe(true);
+    expect(rutaInicial(soloGastos)).toBe("/gastos");
   });
 });

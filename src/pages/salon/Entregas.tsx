@@ -157,9 +157,14 @@ export default function Entregas({ onVolver }: { onVolver?: () => void }) {
             onClick={marcarTodas}
             className="self-start text-[13px] font-semibold text-primary-700 hover:text-primary"
           >
-            {marcadas.size === pendientes.length
-              ? "Desmarcar todas"
-              : `Marcar las ${pendientes.length} pendientes`}
+            {/* Con una sola decía "Marcar las 1 pendientes" (visto en QA). */}
+            {pendientes.length === 1
+              ? marcadas.size === 1
+                ? "Desmarcar"
+                : "Marcar la pendiente"
+              : marcadas.size === pendientes.length
+                ? "Desmarcar todas"
+                : `Marcar las ${pendientes.length} pendientes`}
           </button>
           <Boton
             onClick={aprobar}

@@ -66,7 +66,9 @@ export type Seccion =
    * Dar de baja stock: vencido, dañado, robado o cargado de más. Es el
    * movimiento de SALIDA con pantalla propia. Sólo farmacia.
    */
-  | "salida_mercaderia";
+  | "salida_mercaderia"
+  /** Gastos operativos: el libro del resultado, aparte de la caja. */
+  | "gastos";
 
 /**
  * Qué módulo de rol y qué feature de plan exige cada sección. `feature: null`
@@ -112,6 +114,10 @@ const REQUISITOS: Record<Seccion, { modulo: Modulo; feature: Feature | null }> =
   // ni se le pueden dar a alguien que no pueda ver el registro.
   ingreso_mercaderia: { modulo: "INVENTARIO", feature: "inventario" },
   salida_mercaderia: { modulo: "INVENTARIO", feature: "inventario" },
+  // Igual que en Android (`Permisos.kt`): el modulo es REPORTES porque un
+  // gasto es del libro del resultado, no de la caja del turno, y la feature
+  // `gastos` esta en el catalogo desde sep-2026.
+  gastos: { modulo: "REPORTES", feature: "gastos" },
 };
 
 /**
@@ -147,6 +153,8 @@ const ROLES_PERMITIDOS: Partial<Record<Seccion, Rol[]>> = {
   // que puede ver Movimientos: mover stock no es atender el mostrador.
   ingreso_mercaderia: ["ADMIN", "SUPERVISOR"],
   salida_mercaderia: ["ADMIN", "SUPERVISOR"],
+  // El backend lo exige con RolesGuard: un cajero no carga gastos del negocio.
+  gastos: ["ADMIN", "SUPERVISOR"],
 };
 
 /**
@@ -311,6 +319,11 @@ export function rutaInicial(ctx: ContextoPermisos): string {
             ["reportes", "/reportes"],
             ["usuarios", "/usuarios"],
             ["creditos", "/creditos"],
+            // Ultima, en el mismo orden del menu. Sin esto, un negocio cuyo
+            // plan solo deja gastos aterrizaba en "/sin-acceso" --"tu cuenta no
+            // tiene secciones"-- con "Gastos operativos" dibujado en la barra
+            // de al lado: la pantalla se contradecia sola.
+            ["gastos", "/gastos"],
           ];
 
   for (const [seccion, ruta] of orden) {

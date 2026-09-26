@@ -14,12 +14,14 @@ import {
 } from "../components/ui";
 import { api } from "../lib/api";
 import { fmtFecha, fmtFechaHora, fmtMoney, fmtNum, isoDia } from "../lib/format";
-import type { Capacidad } from "../lib/permisos";
+import type { Capacidad, Seccion } from "../lib/permisos";
 import { useApi } from "../lib/useApi";
 import { useSucursales } from "../lib/useSucursales";
 import { useAuth } from "../store/AuthContext";
 import type { RangoReporte } from "../types";
 import Finanzas from "./Finanzas";
+import { EstadoResultadoVista, PuntoEquilibrioVista } from "./reportes/ResultadoPeriodo";
+import { CierresVista, type CierreFila } from "./reportes/CierresVista";
 
 // ── Período ─────────────────────────────────────────────────────────────────
 
@@ -78,6 +80,13 @@ interface FichaReporte {
    * mira la plata: margen, costos y deuda.
    */
   capacidad?: Capacidad;
+  /**
+   * Sección que además hace falta poder ver. El resultado y el punto de
+   * equilibrio leen los gastos operativos, que el backend sólo sirve con la
+   * feature `gastos` y a ADMIN/SUPERVISOR: sin esto, a quien no la tiene le
+   * aparecía un reporte que siempre falla.
+   */
+  seccion?: Seccion;
 }
 
 const REPORTES: FichaReporte[] = [
@@ -161,6 +170,22 @@ const REPORTES: FichaReporte[] = [
     texto: "Ventas contra compras y margen del período.",
     icono: "dollar",
     capacidad: "reportes_rentabilidad",
+  },
+  {
+    nombre: "resultado",
+    titulo: "Estado de resultado",
+    texto: "Lo que quedó después del costo y de los gastos operativos.",
+    icono: "trendingUp",
+    capacidad: "reportes_rentabilidad",
+    seccion: "gastos",
+  },
+  {
+    nombre: "punto-equilibrio",
+    titulo: "Punto de equilibrio",
+    texto: "Cuánto hay que vender para no perder.",
+    icono: "chart",
+    capacidad: "reportes_rentabilidad",
+    seccion: "gastos",
   },
   {
     nombre: "creditos",
@@ -377,7 +402,7 @@ function esObjetoPlano(v: unknown): v is Record<string, unknown> {
 // ── Página ──────────────────────────────────────────────────────────────────
 
 export default function Reportes() {
-  const { incluye } = useAuth();
+  const { incluye, puede } = useAuth();
   const [preset, setPreset] = useState<Preset>("mes");
 
   const [desdeManual, setDesdeManual] = useState(() => rangoDePreset("mes").desde ?? "");
@@ -393,8 +418,11 @@ export default function Reportes() {
   // Los reportes que el plan no incluye no se ofrecen: pedirlos igual
   // devolvería datos, pero se venden por separado.
   const disponibles = useMemo(
-    () => REPORTES.filter((r) => !r.capacidad || incluye(r.capacidad)),
-    [incluye],
+    () =>
+      REPORTES.filter(
+        (r) => (!r.capacidad || incluye(r.capacidad)) && (!r.seccion || puede(r.seccion)),
+      ),
+    [incluye, puede],
   );
 
   /**
@@ -626,7 +654,13 @@ function VistaReporte({
   rango: RangoReporte;
   onClose: () => void;
 }) {
-  const datos = useApi<unknown>(() => api.reporte(ficha.nombre, rango), [ficha.nombre]);
+  // Los dos reportes que la web arma sola (cruzan el financiero con los
+  // gastos) no tienen endpoint propio: no se pide nada genérico por ellos.
+  const armado = ficha.nombre === "resultado" || ficha.nombre === "punto-equilibrio";
+  const datos = useApi<unknown>(
+    () => (armado ? Promise.resolve(null) : api.reporte(ficha.nombre, rango)),
+    [ficha.nombre],
+  );
 
   return (
     <Modal
@@ -634,12 +668,36 @@ function VistaReporte({
       titulo={ficha.titulo}
       subtitulo={`Del ${fmtFecha(rango.desde)} al ${fmtFecha(rango.hasta)}`}
       onClose={onClose}
-      ancho="max-w-4xl"
+      ancho={armado ? "max-w-2xl" : "max-w-4xl"}
     >
-      {datos.cargando ? (
+      {ficha.nombre === "resultado" ? (
+        <EstadoResultadoVista rango={rango} />
+      ) : ficha.nombre === "punto-equilibrio" ? (
+        <PuntoEquilibrioVista rango={rango} />
+      ) : datos.cargando ? (
         <Cargando />
       ) : datos.error ? (
-        <ErrorMsg>{datos.error}</ErrorMsg>
+        <ErrorMsg onReintentar={datos.recargar}>{datos.error}</ErrorMsg>
+      ) : ficha.nombre === "cierres" && esObjetoPlano(datos.datos) ? (
+        // Los turnos van en su propia lista, que se abre en el arqueo de cada
+        // uno; el resto del reporte (el desempeño por cajero) sigue genérico.
+        <div className="space-y-5">
+          <CierresVista
+            historial={
+              Array.isArray(datos.datos.historial)
+                ? (datos.datos.historial as CierreFila[])
+                : []
+            }
+          />
+          {/* Sólo si trae algo: vacío, el genérico dice "Sin datos" justo
+              debajo de una lista de cierres, que se contradice. */}
+          {Array.isArray(datos.datos.performance) && datos.datos.performance.length > 0 && (
+            <Renderizador
+              nombre={ficha.nombre}
+              datos={{ performance: datos.datos.performance }}
+            />
+          )}
+        </div>
       ) : (
         <Renderizador nombre={ficha.nombre} datos={datos.datos} />
       )}

@@ -116,3 +116,34 @@ describe("farmacia: sin mesas, sin marcas", () => {
     expect(screen.queryByText("LL")).not.toBeInTheDocument();
   });
 });
+
+describe("bamardev-restaurant: la mesa y quién la atendió", () => {
+  beforeEach(() => {
+    sesion.rubro = "RESTAURANTE";
+  });
+
+  it("cobrando una mesa dice la mesa y quién la atendió", () => {
+    // Visto en QA: la caja cobraba M3 y el ticket salía como uno de
+    // mostrador, sin mesa ni mesero.
+    dibujar(
+      venta({
+        cajero: "Administrador",
+        mesa: "M3",
+        mesaNombre: "Mesa M3",
+        mesero: "Mesero Auditoria",
+      }),
+    );
+    expect(screen.getByText("Mesa:")).toBeInTheDocument();
+    expect(screen.getByText("M3")).toBeInTheDocument();
+    expect(screen.getByText("Atendió:")).toBeInTheDocument();
+    expect(screen.getByText("Mesero Auditoria")).toBeInTheDocument();
+    // El que cobró sigue siendo otro dato.
+    expect(screen.getByText("Administrador")).toBeInTheDocument();
+  });
+
+  it("una venta de mostrador no inventa mesa ni mesero", () => {
+    dibujar(venta({ cajero: "Administrador" }));
+    expect(screen.queryByText("Mesa:")).not.toBeInTheDocument();
+    expect(screen.queryByText("Atendió:")).not.toBeInTheDocument();
+  });
+});

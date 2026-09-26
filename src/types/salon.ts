@@ -135,6 +135,18 @@ export interface Mesa {
   propina: number;
   reserva?: ReservaMesa | null;
   comandas: Comanda[];
+  /**
+   * Cómo se pagó. Sólo en una mesa ya cobrada: es lo mínimo del ticket para
+   * que el mesero le dé el recibo al cliente sin pasar por la caja (el mesero
+   * no entra a /ventas). Null mientras no se cobró.
+   */
+  cobro?: CobroMesa | null;
+}
+
+export interface CobroMesa {
+  fecha: string;
+  total: number;
+  pagos: { formaPago: string; monto: number; recibido: number; entregado: number }[];
 }
 
 export interface Salon {
@@ -205,8 +217,18 @@ export interface TurnoMesero {
    * Llegan como strings sueltos ("M1"), no como objetos.
    */
   mesasSinCerrar: string[];
+  /**
+   * Efectivo que cobró él mismo y todavía no le aprobaron en caja. Le impide
+   * cerrar el turno. Opcional: un backend anterior al cobro del mesero no lo
+   * manda, y ahí es 0.
+   */
+  efectivoSinEntregar?: number;
+  /** Cómo le fue en cada franja del día (mañana, tarde, noche). */
+  franjas?: FranjaTurno[];
   historial: {
     id?: number;
+    /** Para volver a abrir el recibo de esa mesa (GET salon/turno/mesas/:id). */
+    sesionId?: number;
     mesaCodigo?: string;
     codigo?: string;
     comensales: number;
@@ -215,4 +237,16 @@ export interface TurnoMesero {
     cerradaEn: string;
     propina?: number;
   }[];
+}
+
+export interface FranjaTurno {
+  franja: "MANANA" | "TARDE" | "NOCHE";
+  nombre: string;
+  /** Primer y último cobro de la franja: las horas trabajadas, no las del corte. */
+  desde: string;
+  hasta: string;
+  mesas: number;
+  comensales: number;
+  vendido: number;
+  propinas: number;
 }

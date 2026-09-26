@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Icon } from "../../components/Icon";
 import { Cargando, ErrorMsg } from "../../components/ui";
 import { api } from "../../lib/api";
@@ -70,6 +70,45 @@ export default function Pos() {
    * es un error que mostrarle a la cajera — simplemente no hay mesas.
    */
   const porCobrar = useApi(() => api.mesasPorCobrar().catch(() => []), []);
+
+  /**
+   * El efectivo que los meseros cobraron y todavía no está en el cajón.
+   *
+   * Antes la web no lo mostraba en el POS: la pantalla de entregas existía,
+   * pero sólo se llegaba desde "Mesas por cobrar", y ese botón aparece si hay
+   * una mesa esperando. Con el mesero cobrando él mismo no hay ninguna, así
+   * que el mesero decía "llevala a caja" y la cajera no tenía dónde recibirla.
+   * Falla en silencio por lo mismo que `porCobrar`: sin salón, 403.
+   */
+  const entregas = useApi(() => api.entregasMesero().catch(() => null), []);
+  const mesasEsperando: MesaSalon[] = porCobrar.datos ?? [];
+  const pendientesEntrega = (entregas.datos?.items ?? []).filter(
+    (e) => e.estado === "PENDIENTE",
+  );
+  /** De dónde se abrió Entregas: el aviso, las mesas o el cierre. */
+  const [volverDeEntregas, setVolverDeEntregas] = useState<Pantalla>("venta");
+  const irAEntregas = (desde: Pantalla) => {
+    setVolverDeEntregas(desde);
+    setPantalla("entregas");
+  };
+
+  /**
+   * Los dos avisos se refrescan solos mientras la cajera está vendiendo, cada
+   * 10 s como en la app. Cargados una sola vez, la mesa que el mesero manda a
+   * caja o la plata que trae no aparecían hasta recargar la página.
+   */
+  const { recargar: recargarPorCobrar } = porCobrar;
+  const { recargar: recargarEntregas } = entregas;
+  useEffect(() => {
+    if (pantalla !== "venta") return;
+    const id = window.setInterval(() => {
+      // Pestaña en segundo plano: nadie mira, no vale el pedido.
+      if (document.hidden) return;
+      recargarPorCobrar();
+      recargarEntregas();
+    }, SONDEO_SALON_MS);
+    return () => window.clearInterval(id);
+  }, [pantalla, recargarPorCobrar, recargarEntregas]);
 
   /**
    * La mesa que se está cobrando. Mientras hay una, la pantalla de cobro
@@ -256,6 +295,7 @@ export default function Pos() {
       <PantallaCierre
         caja={abierta}
         onAtras={() => setPantalla("venta")}
+        onIrAEntregas={() => irAEntregas("cierre")}
         onCerrada={(cerrada) => {
           // La caja llega del propio cierre, con la diferencia y el monto que
           // calculó el backend. Antes se releía con /caja/actual, que responde
@@ -268,13 +308,23 @@ export default function Pos() {
     );
 
   if (pantalla === "entregas")
-    return <Entregas onVolver={() => setPantalla("mesasPorCobrar")} />;
+    return (
+      <Entregas
+        onVolver={() => {
+          // Al volver el aviso tiene que decir lo que quedó, no lo de antes
+          // de aprobar: si no, la cajera ve la plata "pendiente" que recién
+          // recibió.
+          recargarEntregas();
+          setPantalla(volverDeEntregas);
+        }}
+      />
+    );
 
   if (pantalla === "mesasPorCobrar")
     return (
       <MesasPorCobrar
         onAtras={() => setPantalla("venta")}
-        onIrAEntregas={() => setPantalla("entregas")}
+        onIrAEntregas={() => irAEntregas("mesasPorCobrar")}
         // El cobro de una mesa reusa la pantalla de cobro del POS: es la misma
         // plata y la misma caja. Todavía falta cablearlo.
         onCobrar={(mesa) => {
@@ -418,7 +468,11 @@ export default function Pos() {
       carrito={carrito}
       onCobrar={() => setPantalla("cobro")}
       cabecera={
-        <div className="flex items-center justify-between gap-3 border-b border-borde bg-white px-4 py-3">
+        <>
+        {/* flex-wrap: con el texto en los botones, en una pantalla angosta
+            (o con el carrito abierto al lado) los botones bajan a una segunda
+            línea en vez de aplastar el título. */}
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-borde bg-white px-4 py-3">
           <div className="min-w-0">
             <h1 className="flex items-center gap-2 text-[15px] font-bold text-texto">
               Punto de venta
@@ -439,11 +493,16 @@ export default function Pos() {
               {fmtMoney(abierta.montoApertura)}
             </p>
           </div>
-          <div className="flex shrink-0 items-center gap-1.5">
+          <div className="flex flex-wrap items-center gap-1.5">
             {permiteDelivery && (
               <BotonTipo
                 icono="truck"
-                titulo="Pedido a domicilio"
+                etiqueta="Delivery"
+                titulo={
+                  carrito.lineas.length === 0
+                    ? "Agregá productos para armar el pedido a domicilio"
+                    : "Pedido a domicilio"
+                }
                 deshabilitado={carrito.lineas.length === 0}
                 onClick={() => {
                   setTipoPedido("DELIVERY");
@@ -454,7 +513,12 @@ export default function Pos() {
             {permiteRecoger && (
               <BotonTipo
                 icono="clock"
-                titulo="Pedido para recoger"
+                etiqueta="Para recoger"
+                titulo={
+                  carrito.lineas.length === 0
+                    ? "Agregá productos para armar el pedido para recoger"
+                    : "Pedido para recoger"
+                }
                 deshabilitado={carrito.lineas.length === 0}
                 onClick={() => {
                   setTipoPedido("RECOGER");
@@ -464,37 +528,125 @@ export default function Pos() {
             )}
             {/* Sólo aparece cuando hay cuentas esperando: si el negocio no
                 usa el salón, no existe. */}
-            {(porCobrar.datos?.length ?? 0) > 0 && (
+            {mesasEsperando.length > 0 && (
               <BotonTipo
                 icono="grid"
-                titulo={`Mesas por cobrar (${porCobrar.datos!.length})`}
+                etiqueta={`Mesas (${mesasEsperando.length})`}
+                titulo={`Mesas por cobrar (${mesasEsperando.length})`}
                 onClick={() => setPantalla("mesasPorCobrar")}
               />
             )}
             <BotonTipo
               icono="fileText"
+              etiqueta="Ventas"
               titulo="Ventas del turno"
               onClick={() => setPantalla("historial")}
             />
             <BotonTipo
               icono="lock"
+              etiqueta="Cerrar caja"
               titulo="Cerrar caja"
               onClick={() => setPantalla("cierre")}
             />
           </div>
         </div>
+
+        {/* Los mismos dos avisos que el POS de la app. Van arriba del catálogo
+            y no sólo como ícono: el mesero llega con la cuenta o con la plata
+            en medio del servicio, y un ícono chico en la esquina no se ve.
+            Un negocio sin salón no ve ninguno de los dos. */}
+        {(mesasEsperando.length > 0 || pendientesEntrega.length > 0) && (
+          <div className="space-y-2 border-b border-borde bg-white px-4 py-3">
+            {mesasEsperando.length > 0 && (
+              <AvisoSalon
+                tono="verde"
+                icono="grid"
+                titulo={
+                  mesasEsperando.length === 1
+                    ? "1 mesa esperando cobro"
+                    : `${mesasEsperando.length} mesas esperando cobro`
+                }
+                detalle={`${fmtMoney(
+                  mesasEsperando.reduce((a, m) => a + consumoDeMesa(m), 0),
+                )} · tocá para cobrarlas`}
+                onClick={() => setPantalla("mesasPorCobrar")}
+              />
+            )}
+            {/* Ámbar: es plata del negocio que todavía tiene otro. */}
+            {pendientesEntrega.length > 0 && (
+              <AvisoSalon
+                tono="ambar"
+                icono="users"
+                titulo={
+                  pendientesEntrega.length === 1
+                    ? "1 entrega de mesero"
+                    : `${pendientesEntrega.length} entregas de meseros`
+                }
+                detalle={`${fmtMoney(entregas.datos?.pendiente ?? 0)} por recibir · tocá para confirmarlas`}
+                onClick={() => irAEntregas("venta")}
+              />
+            )}
+          </div>
+        )}
+        </>
       }
     />
   );
 }
 
+/** Cada cuánto se refrescan los avisos del salón. El mismo que la app. */
+const SONDEO_SALON_MS = 10_000;
+
+function AvisoSalon({
+  tono,
+  icono,
+  titulo,
+  detalle,
+  onClick,
+}: {
+  tono: "verde" | "ambar";
+  icono: "grid" | "users";
+  titulo: string;
+  detalle: string;
+  onClick: () => void;
+}) {
+  const colores =
+    tono === "verde"
+      ? "border-primary/30 bg-primary-50 text-primary-700 hover:bg-primary-100"
+      : "border-warning-text/20 bg-warning-bg text-warning-text hover:brightness-95";
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex w-full items-center gap-3 rounded-xl border px-3.5 py-2.5 text-left transition-colors ${colores}`}
+    >
+      <Icon name={icono} size={20} />
+      <span className="min-w-0 flex-1">
+        <span className="block text-[13px] font-bold">{titulo}</span>
+        <span className="block truncate text-xs opacity-90">{detalle}</span>
+      </span>
+      <Icon name="chevronRight" size={18} />
+    </button>
+  );
+}
+
+/**
+ * Botón del encabezado del POS: ícono + texto.
+ *
+ * Eran sólo íconos con el nombre en el `title`, y un camión, un reloj y un
+ * papel no dicen "delivery", "para recoger" y "ventas del turno": la cajera
+ * tenía que pasar el mouse por cada uno (y en una tablet no hay mouse). El
+ * `titulo` sigue como ayuda larga, y cuando el botón está apagado dice por qué.
+ */
 function BotonTipo({
   icono,
+  etiqueta,
   titulo,
   onClick,
   deshabilitado,
 }: {
   icono: "truck" | "clock" | "fileText" | "lock" | "grid";
+  etiqueta: string;
   titulo: string;
   onClick: () => void;
   deshabilitado?: boolean;
@@ -504,10 +656,10 @@ function BotonTipo({
       onClick={onClick}
       disabled={deshabilitado}
       title={titulo}
-      aria-label={titulo}
-      className="rounded-lg border border-borde p-2 text-texto-2 transition-colors enabled:hover:border-primary enabled:hover:bg-primary-50 enabled:hover:text-primary-700 disabled:opacity-40"
+      className="inline-flex items-center gap-1.5 rounded-lg border border-borde px-2.5 py-1.5 text-xs font-semibold text-texto-2 transition-colors enabled:hover:border-primary enabled:hover:bg-primary-50 enabled:hover:text-primary-700 disabled:cursor-not-allowed disabled:opacity-40"
     >
-      <Icon name={icono} size={18} />
+      <Icon name={icono} size={16} />
+      <span className="whitespace-nowrap">{etiqueta}</span>
     </button>
   );
 }

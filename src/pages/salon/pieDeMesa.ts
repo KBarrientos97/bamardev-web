@@ -32,6 +32,11 @@ export interface Boton {
 export interface PieDeMesa {
   /** Aviso arriba de los botones. Explica por qué algo está apagado. */
   banner?: string;
+  /**
+   * "exito" pinta el aviso en verde. Todos iban en ámbar, y "El cliente ya
+   * pagó" se leía como una advertencia justo cuando la mesa quedó bien.
+   */
+  tonoBanner?: "aviso" | "exito";
   principal: Boton;
   secundario?: Boton;
   terciario?: Boton;
@@ -51,6 +56,7 @@ export function pieDeMesa(mesa: Mesa, fmtMoney: (n: number) => string): PieDeMes
     case "PAGADA":
       return {
         banner: `El cliente ya pagó ${fmtMoney(mesa.consumo ?? 0)}`,
+        tonoBanner: "exito",
         principal: { accion: "liberar", texto: "Levantar y liberar la mesa" },
       };
 
