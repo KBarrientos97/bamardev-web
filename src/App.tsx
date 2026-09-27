@@ -24,6 +24,7 @@ import Encargos from "./pages/farmacia/Encargos";
 import FormMercaderia from "./pages/farmacia/FormMercaderia";
 import MovimientosFarmacia from "./pages/farmacia/MovimientosFarmacia";
 import Vencimientos from "./pages/farmacia/Vencimientos";
+import VentaFarmaciaProvider from "./pages/farmacia/VentaFarmaciaProvider";
 import Repartidor from "./pages/repartidor/Repartidor";
 import PanelMesero from "./pages/salon/PanelMesero";
 import { AuthProvider, useAuth } from "./store/AuthContext";
@@ -117,6 +118,22 @@ function GastosSegunRubro() {
 }
 
 /**
+ * La app con su barra lateral. En una farmacia, además, con la venta en curso
+ * por encima de todas las pantallas (ver `VentaFarmaciaProvider.tsx`): el carrito
+ * sobrevive a ir a Buscar medicamento y volver, y el botón "Ver venta" sigue a
+ * quien atiende. Los demás rubros reciben el Layout de siempre, sin nada más.
+ */
+function LayoutSegunRubro() {
+  const { rubro } = useAuth();
+  if (!esFarmacia(rubro)) return <Layout />;
+  return (
+    <VentaFarmaciaProvider>
+      <Layout />
+    </VentaFarmaciaProvider>
+  );
+}
+
+/**
  * Pago de la licencia estando la sesión abierta (durante la gracia, antes del
  * bloqueo). Es la misma pantalla que se ve deslogueado; sólo cambia de dónde
  * sale el código de activación y a dónde vuelve al salir.
@@ -155,7 +172,7 @@ function Rutas() {
           que el código de activación sale de la sesión y no del bloqueo. */}
       <Route path="/pagar" element={<PagarConSesion />} />
 
-      <Route element={<Layout />}>
+      <Route element={<LayoutSegunRubro />}>
         <Route path="/" element={<Inicio />} />
         <Route path="/sin-acceso" element={<SinAcceso />} />
 

@@ -20,6 +20,7 @@ import type { Mesa as MesaSalon } from "../../types/salon";
 import PantallaHistorial from "./PantallaHistorial";
 import PantallaRecibo from "./PantallaRecibo";
 import PantallaVenta from "./PantallaVenta";
+import { useVentaFarmacia } from "../farmacia/ventaFarmacia";
 import { useCarrito } from "./useCarrito";
 import { useIntentoDeCobro } from "./useIntentoDeCobro";
 
@@ -124,7 +125,11 @@ export default function Pos() {
   // El catalogo va al hook para poder rehidratar el carrito despues de un F5:
   // se guardan ids, no productos, asi que las lineas se rearman contra el
   // catalogo fresco (y con el precio de hoy, no el de cuando se cargaron).
-  const carrito = useCarrito(tipoPedido, productos.datos ?? []);
+  const carritoPropio = useCarrito(tipoPedido, productos.datos ?? []);
+  // En una farmacia la venta vive por encima del POS (ver VentaFarmaciaProvider.tsx):
+  // ir a Buscar medicamento y volver no la borra. En los demás rubros no hay
+  // tal venta y el POS usa la suya, como siempre.
+  const carrito = useVentaFarmacia()?.carrito ?? carritoPropio;
   const [datosEntrega, setDatosEntrega] = useState<DatosEntrega | null>(null);
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState("");

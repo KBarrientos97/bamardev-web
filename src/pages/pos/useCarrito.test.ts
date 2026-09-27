@@ -1,7 +1,7 @@
 import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { Producto } from "../../types";
-import { useCarrito } from "./useCarrito";
+import { idsGuardados, useCarrito } from "./useCarrito";
 
 function producto(over: Partial<Producto> = {}): Producto {
   return {
@@ -270,5 +270,26 @@ describe("useCarrito", () => {
     expect(result.current.lineas).toHaveLength(0);
     expect(result.current.unidades).toBe(0);
     expect(result.current.total).toBe(0);
+  });
+});
+
+describe("useCarrito · la venta de la farmacia", () => {
+  // La farmacia no se trae el catálogo: busca los artículos guardados. Con un
+  // carrito vacío no hay nada que buscar, y antes eso dejaba al carrito sin
+  // rehidratar para siempre — y sin rehidratar tampoco guardaba.
+  beforeEach(() => sessionStorage.clear());
+
+  it("con el catálogo 'listo' aunque esté vacío, guarda lo que se agrega", () => {
+    const p = producto({ id: 7 });
+    const { result } = renderHook(() => useCarrito("LOCAL", [], true));
+    act(() => result.current.agregar(p));
+    expect(idsGuardados("LOCAL")).toEqual([7]);
+  });
+
+  it("sin decir nada, se comporta como siempre: espera al catálogo", () => {
+    const p = producto({ id: 7 });
+    const { result } = renderHook(() => useCarrito("LOCAL", []));
+    act(() => result.current.agregar(p));
+    expect(idsGuardados("LOCAL")).toEqual([]);
   });
 });

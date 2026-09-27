@@ -36,9 +36,12 @@ export function useBusquedaProductos({
   limite = 20,
   soloHabilitados = false,
   activo = true,
+  categoriaId = null,
 }: {
   q: string;
   limite?: number;
+  /** Sólo los de esa categoría: los chips del punto de venta. */
+  categoriaId?: number | null;
   /** El POS sólo ofrece lo que se puede vender; la consulta, todo. */
   soloHabilitados?: boolean;
   /**
@@ -66,7 +69,7 @@ export function useBusquedaProductos({
       setCargando(true);
       setError("");
       try {
-        const res = await api.buscarProductos({ q: texto, limite, soloHabilitados });
+        const res = await api.buscarProductos({ q: texto, limite, soloHabilitados, categoriaId });
         if (pedido.current !== mio) return;
         setPagina(res);
       } catch (err) {
@@ -77,7 +80,7 @@ export function useBusquedaProductos({
         if (pedido.current === mio) setCargando(false);
       }
     },
-    [limite, soloHabilitados, activo],
+    [limite, soloHabilitados, activo, categoriaId],
   );
 
   useEffect(() => {
@@ -99,6 +102,7 @@ export function useBusquedaProductos({
         limite,
         offset: pagina.items.length,
         soloHabilitados,
+        categoriaId,
       });
       // La tanda nueva se suma a lo que ya se está mirando; el total viene de
       // la última respuesta, que es la que sabe si entró algo mientras tanto.
@@ -108,7 +112,7 @@ export function useBusquedaProductos({
     } finally {
       setTrayendoMas(false);
     }
-  }, [pagina, trayendoMas, q, limite, soloHabilitados]);
+  }, [pagina, trayendoMas, q, limite, soloHabilitados, categoriaId]);
 
   const items = pagina?.items ?? [];
 

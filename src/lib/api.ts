@@ -422,6 +422,8 @@ export const api = {
     limite?: number;
     offset?: number;
     soloHabilitados?: boolean;
+    /** Los chips de categoría del punto de venta de farmacia. */
+    categoriaId?: number | null;
   }) =>
     request<PaginaProductos>(
       `/productos/buscar${qs({
@@ -429,6 +431,7 @@ export const api = {
         limite: params.limite,
         offset: params.offset,
         soloHabilitados: params.soloHabilitados ? "true" : undefined,
+        categoriaId: params.categoriaId ?? undefined,
       })}`,
     ),
   crearProducto: (input: ProductoInput) =>

@@ -191,6 +191,25 @@ export interface Producto extends FichaFarmaceutica {
   unidadMedida: Pick<UnidadMedida, "id" | "nombre"> | null;
   stockTotal: number;
   componentes: ComponenteProducto[];
+  /**
+   * Si la sucursal lo vende. Lo manda el backend cuando se pregunta por una
+   * sucursal; sin el dato se vende, que es como funcionó siempre.
+   */
+  disponible?: boolean;
+  /** Sólo lo trae `GET /productos/buscar`: el lote que se vende primero. */
+  proximoVencimiento?: ProximoVencimiento | null;
+}
+
+/**
+ * El vencimiento del lote que se va a vender primero (FEFO), entre los que
+ * tienen saldo en la sucursal. Es el punto de color del mostrador de farmacia.
+ * Null = no maneja lote, o ningún lote con saldo tiene fecha.
+ */
+export interface ProximoVencimiento {
+  fecha: string;
+  /** Negativo = ya venció. */
+  dias: number;
+  tramo: TramoVencimiento;
 }
 
 /** Lo que devuelve `GET /productos/buscar`: una página, no el catálogo. */

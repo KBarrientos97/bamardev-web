@@ -137,8 +137,6 @@ export function FichaMedicamento({
   onRestaurar: (p: Producto) => void;
 }) {
   const [viendoCostos, setViendoCostos] = useState(false);
-  const condicion = CONDICION[p.condicionVenta];
-  const concentracion = concentracionAparte(p);
   const margen = p.precio > 0 ? (p.precio - p.costo) / p.precio : 0;
 
   return (
@@ -148,36 +146,7 @@ export function FichaMedicamento({
         titulo={p.nombre}
         onClose={onClose}
         ancho="max-w-2xl"
-        encabezado={
-          // La franja de color: el nombre es lo primero que se lee y lo que
-          // hay que confirmar antes de mirar cualquier número.
-          <div className="bg-gradient-to-r from-primary-700 to-primary px-5 pb-5 pt-5 text-white">
-            <h2 className="pr-12 text-xl font-bold leading-tight">
-              {p.nombre}
-              {concentracion && (
-                <span className="ml-1.5 font-semibold text-white/85">{concentracion}</span>
-              )}
-            </h2>
-            <p className="mt-0.5 text-[13px] text-white/80">
-              {detalleDe(p) || "Sin ficha farmacéutica cargada"}
-            </p>
-            <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
-              <span className="rounded-full bg-white/20 px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide">
-                {condicion ? condicion.largo : "Libre"}
-              </span>
-              {p.controlado && (
-                <span className="rounded-full bg-white px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide text-danger-text">
-                  Controlado
-                </span>
-              )}
-              {!p.habilitado && (
-                <span className="rounded-full bg-white/20 px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide">
-                  Inactivo
-                </span>
-              )}
-            </div>
-          </div>
-        }
+        encabezado={<EncabezadoFicha producto={p} />}
         acciones={
           enPapelera ? (
             <Boton icono="check" onClick={() => onRestaurar(p)}>
@@ -235,6 +204,104 @@ export function FichaMedicamento({
 }
 
 /**
+ * La ficha que se abre desde Buscar medicamento: la misma que la del catálogo,
+ * con lo que hace falta para responderle a quien está esperando y sin nada del
+ * dueño. No hay costo, margen ni costo por lote, y no se edita ni se borra:
+ * quien atiende no debería poder cambiar un precio con el cliente enfrente.
+ *
+ * Lo único que se puede hacer es lo que la persona vino a hacer: sumarlo a la
+ * venta.
+ */
+export function FichaMostrador({
+  producto: p,
+  onClose,
+  onAgregar,
+}: {
+  producto: Producto;
+  onClose: () => void;
+  /** Sin esto no hay botón: agotado, o un rol que no vende. */
+  onAgregar?: () => void;
+}) {
+  return (
+    <Modal
+      abierto
+      titulo={p.nombre}
+      onClose={onClose}
+      ancho="max-w-2xl"
+      encabezado={<EncabezadoFicha producto={p} />}
+      acciones={
+        onAgregar && (
+          <Boton icono="plus" onClick={onAgregar}>
+            Agregar a la venta
+          </Boton>
+        )
+      }
+    >
+      <div className="space-y-5">
+        <Seccion titulo="Identificación">
+          <div className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-3">
+            <Dato label="Registro sanitario" valor={p.registroSanitario || "—"} />
+            <Dato label="Código de barras" valor={p.codBarra || "—"} />
+            <Dato label="Precio" valor={fmtMoney(p.precio)} />
+            <Dato label="Principio activo" valor={p.principioActivo || "—"} />
+            <Dato label="Concentración" valor={p.concentracion || "—"} />
+            <Dato label="Categoría" valor={p.categoria?.nombre ?? "—"} />
+          </div>
+        </Seccion>
+
+        <StockPorAlmacen producto={p} />
+
+        <LotesFefo producto={p} conCosto={false} />
+
+        {p.controlado && (
+          <p className="rounded-xl bg-danger-bg px-3.5 py-2.5 text-[13px] text-danger-text">
+            <strong>Medicamento controlado.</strong> Se dispensa con la receta que
+            corresponde y queda asentado en el libro.
+          </p>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+/**
+ * La franja de color de la ficha: el nombre es lo primero que se lee y lo que
+ * hay que confirmar antes de mirar cualquier número.
+ */
+function EncabezadoFicha({ producto: p }: { producto: Producto }) {
+  const condicion = CONDICION[p.condicionVenta];
+  const concentracion = concentracionAparte(p);
+  return (
+    <div className="bg-gradient-to-r from-primary-700 to-primary px-5 pb-5 pt-5 text-white">
+      <h2 className="pr-12 text-xl font-bold leading-tight">
+        {p.nombre}
+        {concentracion && (
+          <span className="ml-1.5 font-semibold text-white/85">{concentracion}</span>
+        )}
+      </h2>
+      <p className="mt-0.5 text-[13px] text-white/80">
+        {detalleDe(p) || "Sin ficha farmacéutica cargada"}
+      </p>
+      <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+        <span className="rounded-full bg-white/20 px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide">
+          {condicion ? condicion.largo : "Libre"}
+        </span>
+        {p.controlado && (
+          <span className="rounded-full bg-white px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide text-danger-text">
+            Controlado
+          </span>
+        )}
+        {!p.habilitado && (
+          <span className="rounded-full bg-white/20 px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide">
+            Inactivo
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
  * Dónde está la mercadería.
  *
  * Con un solo almacén no se pregunta nada: el total ES el del local, y pedir el
@@ -285,7 +352,14 @@ function StockPorAlmacen({ producto: p }: { producto: Producto }) {
  * vence antes). Es el corazón de la ficha: responde "¿qué le estoy por dar a
  * esta persona?" sin ir a Vencimientos.
  */
-function LotesFefo({ producto: p }: { producto: Producto }) {
+function LotesFefo({
+  producto: p,
+  conCosto = true,
+}: {
+  producto: Producto;
+  /** El costo de cada partida es del dueño: el mostrador no lo ve. */
+  conCosto?: boolean;
+}) {
   // Sin la feature el servidor responde 403: la sección no se dibuja, como
   // cualquier otra cosa que el plan no incluye.
   const { incluye } = useAuth();
@@ -295,7 +369,9 @@ function LotesFefo({ producto: p }: { producto: Producto }) {
     [p.id, p.manejaLote, conLotes],
   );
 
-  if (!conLotes) return null;
+  // Un rol sin permiso sobre los lotes (o un corte) recibe un error: la sección
+  // no se dibuja, en vez de decir "no queda saldo" cuando no se sabe.
+  if (!conLotes || lotes.error) return null;
 
   if (!p.manejaLote) {
     return (
@@ -344,7 +420,7 @@ function LotesFefo({ producto: p }: { producto: Producto }) {
                   <p className="text-[13px] font-bold text-texto">
                     {conUnidad(l.cantidad, p.unidadMedida?.nombre)}
                   </p>
-                  {l.costoUnitario !== null && (
+                  {conCosto && l.costoUnitario !== null && (
                     <p className="text-xs text-texto-3">{fmtMoney(l.costoUnitario)}</p>
                   )}
                 </div>

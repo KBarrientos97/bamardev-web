@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { contiene } from "../../lib/texto";
 import { esFarmacia } from "../../lib/rubro";
-import BuscadorVenta from "../farmacia/BuscadorVenta";
+import CatalogoVenta from "../farmacia/CatalogoVenta";
 import { ChipsCondicion } from "../farmacia/piezas";
 import { Icon } from "../../components/Icon";
 import IconoProducto from "../../components/IconoProducto";
@@ -128,11 +128,12 @@ export default function PantallaVenta({
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         {cabecera}
 
-        {/* En una farmacia la entrada es la búsqueda y no la grilla: con 2.000
-            cajas que se llaman casi igual, ninguna cuadrícula de tarjetas sirve
-            para encontrar algo. El carrito y todo lo que sigue no cambian. */}
+        {/* En una farmacia el catálogo se pide al servidor de a tandas y por
+            categoría (son 2.000 cajas, no 40 productos), y agregar pasa por la
+            venta de la farmacia, que pregunta por la receta. El carrito y todo
+            lo que sigue no cambian. */}
         {esFarmacia(rubro) ? (
-          <BuscadorVenta onAgregar={carrito.agregar} enCarrito={enCarrito} />
+          <CatalogoVenta categorias={categorias} enCarrito={enCarrito} />
         ) : (
           <>
         <div className="space-y-3 border-b border-borde bg-white px-4 py-3">
@@ -379,7 +380,7 @@ function PanelCarrito({
   onCobrar: () => void;
   onCerrar: () => void;
 }) {
-  const { incluye } = useAuth();
+  const { incluye, rubro } = useAuth();
   // Sin la capacidad la comanda no distingue destino: todo sale para llevar,
   // que es el valor por defecto con el que nacen las líneas.
   const conMesaLlevar = incluye("mesa_llevar");
@@ -442,7 +443,11 @@ function PanelCarrito({
           <Vacio
             icono="cart"
             titulo="Carrito vacío"
-            texto="Tocá un producto para agregarlo a la venta."
+            texto={
+              esFarmacia(rubro)
+                ? "Buscá o tocá un medicamento para agregarlo a la venta."
+                : "Tocá un producto para agregarlo a la venta."
+            }
           />
         </div>
       ) : (

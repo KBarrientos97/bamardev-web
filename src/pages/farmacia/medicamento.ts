@@ -181,3 +181,34 @@ export function conUnidad(cantidad: number, unidad?: string | null): string {
   // tubo, blíster y sobre.
   return `${n} ${/[aeiouáéíóú]$/.test(u) ? `${u}s` : `${u}es`}`;
 }
+
+/**
+ * El punto de color de cada medicamento en el mostrador: cuándo vence el lote
+ * que se va a vender primero (lo calcula el servidor, ver `proximoVencimiento`).
+ *
+ * Verde es "tranquilo", no el azul de la marca: en una grilla de veinte cajas
+ * lo que se busca de un vistazo es el rojo y el ámbar, y el verde es lo que
+ * dice que no hay nada que buscar. Gris es lo que no vence (un termómetro).
+ */
+export function puntoVencimiento(p: Producto): {
+  color: string;
+  texto: string;
+  /** Para un renglón de teléfono: "Vencido" en vez de "Venció hace 24 d". */
+  corto: string;
+  urgente: boolean;
+} {
+  if (!p.manejaLote) {
+    return { color: "bg-slate-300", texto: "No vence", corto: "No vence", urgente: false };
+  }
+  const v = p.proximoVencimiento;
+  if (!v) return { color: "bg-slate-300", texto: "Sin fecha", corto: "Sin fecha", urgente: false };
+  const texto = textoVida(v.dias);
+  const corto = v.dias < 0 ? "Vencido" : texto;
+  if (v.tramo === "VENCIDO" || v.tramo === "HASTA_30") {
+    return { color: "bg-danger", texto, corto, urgente: true };
+  }
+  if (v.tramo === "HASTA_60" || v.tramo === "HASTA_90") {
+    return { color: "bg-warning", texto, corto, urgente: false };
+  }
+  return { color: "bg-emerald-500", texto, corto, urgente: false };
+}
