@@ -386,6 +386,11 @@ export interface DetalleMovimiento {
 
 /** Artículo elegible en un movimiento (productos + insumos en una sola lista). */
 export interface ArticuloMovimiento {
+  /**
+   * Dónde está en la sucursal pedida, si alguien lo cargó. Sólo viene cuando
+   * se pide la lista de UNA sucursal.
+   */
+  ubicacion?: string | null;
   id: number;
   nombre: string;
   esInsumo: boolean;

@@ -29,6 +29,10 @@ vi.mock("../../lib/api", () => ({
     actualizarDetalleMovimiento: vi.fn(async () => ({})),
     agregarDetalleMovimiento: vi.fn(async () => ({})),
     eliminarDetalleMovimiento: vi.fn(async () => ({})),
+    ubicacionesUsadas: vi.fn(async () => ["Estante 3 · fila B", "Vitrina 1"]),
+    fijarUbicacionProducto: vi.fn(async () => ({ ubicacion: null })),
+    crearMovimiento: vi.fn(async () => ({ id: 999 })),
+    aprobarMovimiento: vi.fn(async () => ({})),
   },
 }));
 
@@ -54,8 +58,15 @@ function almacen(id: number, nombre: string): Almacen {
   };
 }
 
-function articulo(stock: number): ArticuloMovimiento {
+/** Dónde está la amoxicilina en cada almacén. En el de al lado, en ningún lado. */
+const UBICACION: Record<number, string | null> = {
+  [DEPOSITO]: "Estante 3 · fila B",
+  [MOSTRADOR]: null,
+};
+
+function articulo(stock: number, ubicacion: string | null = null): ArticuloMovimiento {
   return {
+    ubicacion,
     id: 7,
     nombre: "Amoxicilina 500 mg",
     esInsumo: false,
@@ -102,7 +113,9 @@ beforeEach(() => {
   ]);
   vi.mocked(api.getMovimiento).mockResolvedValue(salidaPendiente);
   vi.mocked(api.getArticulosMovimiento).mockImplementation(
-    async (almacenId?: number) => [articulo(STOCK[almacenId ?? DEPOSITO] ?? 0)],
+    async (almacenId?: number) => [
+      articulo(STOCK[almacenId ?? DEPOSITO] ?? 0, UBICACION[almacenId ?? DEPOSITO] ?? null),
+    ],
   );
 });
 
@@ -311,5 +324,76 @@ describe("Salida precargada desde Vencimientos", () => {
     );
 
     expect(await screen.findByText("0 líneas")).toBeInTheDocument();
+  });
+});
+
+/**
+ * Al recibir mercadería se sabe en qué estante queda: se puede anotar ahí
+ * mismo. Es opcional, y es del artículo en la sucursal, no del movimiento.
+ */
+describe("La ubicación al recibir", () => {
+  async function abrirComoEntrada() {
+    await abrirEdicion();
+    await clickEn(/Entrada/);
+  }
+
+  async function cambiarUbicacion(texto: string) {
+    await clickEn(/Estante 3 · fila B|Ubicación \(opcional\)/);
+    const campo = screen.getByLabelText("Ubicación en la sucursal");
+    await act(async () => {
+      fireEvent.change(campo, { target: { value: texto } });
+      fireEvent.blur(campo);
+    });
+  }
+
+  const guardarCambios = () => clickEn(/Guardar cambios/);
+
+  it("muestra la que ya tiene y, sin tocarla, no la vuelve a guardar", async () => {
+    await abrirComoEntrada();
+    expect(screen.getByText("Estante 3 · fila B")).toBeInTheDocument();
+
+    await guardarCambios();
+    expect(api.actualizarMovimiento).toHaveBeenCalled();
+    expect(api.fijarUbicacionProducto).not.toHaveBeenCalled();
+  });
+
+  it("cambiarla la guarda ANTES que el movimiento", async () => {
+    await abrirComoEntrada();
+    await cambiarUbicacion("  Vitrina 1 ");
+    expect(screen.getByText("· nueva")).toBeInTheDocument();
+
+    await guardarCambios();
+    expect(api.fijarUbicacionProducto).toHaveBeenCalledWith(7, DEPOSITO, "Vitrina 1");
+    // Si fallara, todavía no se habría tocado el movimiento: reintentar no
+    // duplica nada.
+    expect(vi.mocked(api.fijarUbicacionProducto).mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(api.actualizarMovimiento).mock.invocationCallOrder[0],
+    );
+  });
+
+  it("si no se pudo guardar, el movimiento tampoco se guarda y lo dice", async () => {
+    vi.mocked(api.fijarUbicacionProducto).mockRejectedValueOnce(new Error("sin conexión"));
+    await abrirComoEntrada();
+    await cambiarUbicacion("Vitrina 1");
+
+    await guardarCambios();
+    expect(api.actualizarMovimiento).not.toHaveBeenCalled();
+    expect(screen.getByText(/No se pudo guardar la ubicación de "Amoxicilina 500 mg"/)).toBeInTheDocument();
+  });
+
+  it("cambiar de sucursal no borra la que se escribió; la no tocada muestra la de la otra", async () => {
+    await abrirComoEntrada();
+    await elegirAlmacen(MOSTRADOR);
+    // En Mostrador no tiene: se ofrece cargarla.
+    await waitFor(() => expect(screen.getByText("Ubicación (opcional)")).toBeInTheDocument());
+
+    await cambiarUbicacion("Cajón 12");
+    await elegirAlmacen(DEPOSITO);
+    expect(screen.getByText("Cajón 12")).toBeInTheDocument();
+  });
+
+  it("una salida no pregunta dónde se guarda", async () => {
+    await abrirEdicion();
+    expect(screen.queryByText(/Ubicación \(opcional\)|Estante 3/)).not.toBeInTheDocument();
   });
 });

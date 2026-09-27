@@ -57,7 +57,18 @@ interface LineaForm {
   loteCodigo: string;
   /** MM/AAAA, como viene impreso en el envase. */
   loteMes: string;
+  /**
+   * Dónde se guarda en la sucursal, SI la persona la tocó. Sin tocar vale
+   * `undefined` y se muestra la que el artículo ya tiene ahí: así, al cambiar
+   * de sucursal, cada renglón enseña la de la nueva; y lo que alguien escribió
+   * no se pierde: cambiar la sucursal nunca borra lo cargado.
+   * Vacía a propósito = quitarla.
+   */
+  ubicacion?: string;
 }
+
+/** El datalist de las ubicaciones que ya se usan en la sucursal. */
+const LISTA_UBICACIONES = "ubicaciones-de-la-sucursal";
 
 /**
  * Recibir mercadería del proveedor o dar de baja stock.
@@ -125,6 +136,16 @@ export default function FormMercaderia({
   const porId = useMemo(
     () => new Map((articulos.datos ?? []).map((a) => [a.id, a])),
     [articulos.datos],
+  );
+
+  // Las ubicaciones que ya se usan en la sucursal, para escribir "Estante 3"
+  // igual que la vez anterior. Sólo al recibir: una salida no guarda nada.
+  const ubicacionesUsadas = useApi(
+    () =>
+      almacenId && tipo === "ENTRADA"
+        ? api.ubicacionesUsadas(Number(almacenId)).catch(() => [])
+        : Promise.resolve([] as string[]),
+    [almacenId, tipo],
   );
 
   /**
@@ -288,7 +309,7 @@ export default function FormMercaderia({
       const art = porId.get(l.articuloId);
       if (tipo === "SALIDA" && art && cantidad > art.stock)
         return {
-          error: `No hay stock suficiente de "${l.nombre}" en ${almacenNombre || "ese almacén"}: quedan ${conUnidad(art.stock, art.unidad)}.`,
+          error: `No hay stock suficiente de "${l.nombre}" en ${almacenNombre || "esa sucursal"}: quedan ${conUnidad(art.stock, art.unidad)}.`,
         };
 
       const detalle: DetalleMovimientoInput = { productoId: l.articuloId, cantidad, costo };
@@ -326,12 +347,38 @@ export default function FormMercaderia({
 
     setGuardando(true);
     try {
+      // La ubicación es del artículo en la sucursal, no del movimiento, y se
+      // guarda ANTES: si falla, todavía no se creó nada, y reintentar no deja
+      // un ingreso duplicado.
+      if (entrada) await guardarUbicaciones();
       if (movId) await guardarEdicion(movId, descripcion, revisado.detalles);
       else await guardarNuevo(descripcion, revisado.detalles);
       navigate("/inventario/movimientos");
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo guardar");
       setGuardando(false);
+    }
+  }
+
+  /**
+   * Las ubicaciones que cambiaron en este ingreso: las que la persona tocó y
+   * dicen algo distinto de lo que el artículo ya tenía en la sucursal. Una
+   * vacía la borra, que es cómo se deja de usar.
+   */
+  async function guardarUbicaciones() {
+    for (const l of lineas) {
+      if (l.ubicacion === undefined) continue;
+      const nueva = l.ubicacion.trim();
+      const actual = porId.get(l.articuloId)?.ubicacion ?? "";
+      if (nueva === actual) continue;
+      try {
+        await api.fijarUbicacionProducto(l.articuloId, Number(almacenId), nueva || null);
+      } catch (err) {
+        const motivoError = err instanceof Error ? err.message : "no se pudo";
+        throw new Error(
+          `No se pudo guardar la ubicación de "${l.nombre}" (${motivoError}). La mercadería todavía no se guardó: probá de nuevo.`,
+        );
+      }
     }
   }
 
@@ -539,7 +586,7 @@ export default function FormMercaderia({
 
         <p className="flex items-start gap-2 text-xs text-texto-3">
           <Icon name="info" size={15} />
-          <span>El almacén es obligatorio: define en qué sucursal se mueve el stock.</span>
+          <span>La sucursal es obligatoria: define dónde entra o sale el stock.</span>
         </p>
       </section>
 
@@ -551,6 +598,14 @@ export default function FormMercaderia({
             {lineas.length} {lineas.length === 1 ? "línea" : "líneas"}
           </span>
         </div>
+
+        {entrada && (
+          <datalist id={LISTA_UBICACIONES}>
+            {(ubicacionesUsadas.datos ?? []).map((u) => (
+              <option key={u} value={u} />
+            ))}
+          </datalist>
+        )}
 
         {lineas.length > 0 && (
           <div className="mb-3 overflow-x-auto rounded-xl border border-borde">
@@ -581,6 +636,7 @@ export default function FormMercaderia({
                     almacenNombre={almacenNombre}
                     stock={porId.get(l.articuloId)?.stock ?? null}
                     unidad={porId.get(l.articuloId)?.unidad}
+                    ubicacionActual={porId.get(l.articuloId)?.ubicacion ?? null}
                     onEditar={(cambio) => editarLinea(i, cambio)}
                     onQuitar={() => setLineas((ls) => ls.filter((_, j) => j !== i))}
                   />
@@ -601,7 +657,7 @@ export default function FormMercaderia({
         >
           <Icon name="search" size={16} />
           {!almacenId
-            ? "Elegí primero un almacén…"
+            ? "Elegí primero una sucursal…"
             : articulos.cargando
               ? "Cargando artículos…"
               : "Buscar y agregar producto…"}
@@ -670,7 +726,7 @@ function Encabezado({ titulo, onVolver }: { titulo: string; onVolver: () => void
       <div className="min-w-0">
         <h1 className="truncate text-xl font-bold text-texto">{titulo}</h1>
         <p className="mt-0.5 text-[13px] text-texto-3">
-          Cargá una entrada o una salida de stock en un almacén. Al guardar queda en el
+          Cargá una entrada o una salida de stock en una sucursal. Al guardar queda en el
           registro de Movimientos.
         </p>
       </div>
@@ -717,6 +773,7 @@ function Renglon({
   almacenNombre,
   stock,
   unidad,
+  ubicacionActual,
   onEditar,
   onQuitar,
 }: {
@@ -729,6 +786,8 @@ function Renglon({
   stock: number | null;
   /** La del artículo: frasco, caja, unidad… No es siempre "u.". */
   unidad: string | undefined;
+  /** Dónde está hoy en la sucursal elegida, si alguien la cargó. */
+  ubicacionActual: string | null;
   onEditar: (cambio: Partial<LineaForm>) => void;
   onQuitar: () => void;
 }) {
@@ -747,13 +806,22 @@ function Renglon({
           {l.detalle && (
             <span className="block text-xs text-texto-4">{l.detalle}</span>
           )}
+          {/* Al recibir se sabe en qué estante queda: se puede anotar, o no. */}
+          {entrada && (
+            <UbicacionEnIngreso
+              valor={l.ubicacion ?? ubicacionActual ?? ""}
+              actual={ubicacionActual ?? ""}
+              tocada={l.ubicacion !== undefined}
+              onCambiar={(ubicacion) => onEditar({ ubicacion })}
+            />
+          )}
           {!entrada && stock !== null && (
             <span
               className={`block text-xs ${
                 noAlcanza ? "font-semibold text-danger-text" : "text-texto-3"
               }`}
             >
-              Stock en {almacenNombre || "el almacén"}: {conUnidad(stock, unidad)}
+              Stock en {almacenNombre || "la sucursal"}: {conUnidad(stock, unidad)}
               {noAlcanza && " · no alcanza"}
             </span>
           )}
@@ -855,6 +923,93 @@ function Renglon({
         </tr>
       )}
     </>
+  );
+}
+
+/**
+ * Dónde se guarda esta mercadería en la sucursal.
+ *
+ * Opcional de punta a punta: arranca con la ubicación que el artículo ya tiene
+ * ahí, si tiene; cambiarla acá la actualiza al guardar el ingreso; y sin
+ * ubicación es un link chico que no se confunde con un campo obligatorio.
+ * El campo se abre sólo al tocarlo: diez renglones con un campo más cada uno
+ * harían de la recepción una planilla.
+ */
+function UbicacionEnIngreso({
+  valor,
+  actual,
+  tocada,
+  onCambiar,
+}: {
+  valor: string;
+  /** La que tiene hoy en la sucursal: para decir si esta es nueva o se quita. */
+  actual: string;
+  tocada: boolean;
+  onCambiar: (v: string) => void;
+}) {
+  const [editando, setEditando] = useState(false);
+  const limpia = valor.trim();
+
+  if (editando) {
+    return (
+      <span className="mt-1 flex items-center gap-1.5">
+        <span className="shrink-0 text-primary-700">
+          <Icon name="pin" size={13} />
+        </span>
+        <input
+          value={valor}
+          onChange={(e) => onCambiar(e.target.value)}
+          onBlur={() => setEditando(false)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              setEditando(false);
+            }
+          }}
+          list={LISTA_UBICACIONES}
+          autoFocus
+          maxLength={60}
+          placeholder="Ej: Estante 3 · fila B"
+          aria-label="Ubicación en la sucursal"
+          className="w-full min-w-0 rounded-lg border border-borde bg-white px-2 py-1 text-xs outline-none focus:border-primary focus:ring-2 focus:ring-primary-100"
+        />
+      </span>
+    );
+  }
+
+  if (!limpia) {
+    return (
+      <button
+        type="button"
+        onClick={() => setEditando(true)}
+        className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-primary-700 hover:underline"
+      >
+        <Icon name="pin" size={12} /> Ubicación (opcional)
+        {tocada && actual && (
+          <span className="font-normal text-texto-4">· se quita al guardar</span>
+        )}
+      </button>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => setEditando(true)}
+      title="Cambiar la ubicación"
+      className="mt-1 inline-flex max-w-full items-center gap-1 text-left text-xs font-semibold text-texto-2 hover:text-primary-700"
+    >
+      <span className="shrink-0 text-primary-700">
+        <Icon name="pin" size={12} />
+      </span>
+      <span className="truncate">{limpia}</span>
+      {tocada && limpia !== actual && (
+        <span className="shrink-0 font-normal text-texto-4">· nueva</span>
+      )}
+      <span className="shrink-0 text-texto-4">
+        <Icon name="edit" size={12} />
+      </span>
+    </button>
   );
 }
 
