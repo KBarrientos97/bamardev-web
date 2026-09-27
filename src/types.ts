@@ -198,6 +198,26 @@ export interface Producto extends FichaFarmaceutica {
   disponible?: boolean;
   /** Sólo lo trae `GET /productos/buscar`: el lote que se vende primero. */
   proximoVencimiento?: ProximoVencimiento | null;
+  /**
+   * Dónde está en la sucursal que se consultó ("Estante 3 · fila B"). Lo trae
+   * `GET /productos/buscar` y sólo si alguien lo cargó: es opcional.
+   */
+  ubicacion?: string | null;
+}
+
+/**
+ * Cuánto hay de un artículo en una sucursal (o depósito) y dónde está. Sin
+ * costos: lo lee quien atiende, para decir "en la sucursal X sí hay".
+ */
+export interface Existencia {
+  almacenId: number;
+  nombre: string;
+  tipo: TipoAlmacen;
+  esPrincipal: boolean;
+  direccion: string | null;
+  telefono: string | null;
+  cantidad: number;
+  ubicacion: string | null;
 }
 
 /**

@@ -37,11 +37,14 @@ export function useBusquedaProductos({
   soloHabilitados = false,
   activo = true,
   categoriaId = null,
+  sucursalId = null,
 }: {
   q: string;
   limite?: number;
   /** Sólo los de esa categoría: los chips del punto de venta. */
   categoriaId?: number | null;
+  /** De qué sucursal: el POS pide la de su caja. */
+  sucursalId?: number | null;
   /** El POS sólo ofrece lo que se puede vender; la consulta, todo. */
   soloHabilitados?: boolean;
   /**
@@ -69,7 +72,13 @@ export function useBusquedaProductos({
       setCargando(true);
       setError("");
       try {
-        const res = await api.buscarProductos({ q: texto, limite, soloHabilitados, categoriaId });
+        const res = await api.buscarProductos({
+          q: texto,
+          limite,
+          soloHabilitados,
+          categoriaId,
+          sucursalId,
+        });
         if (pedido.current !== mio) return;
         setPagina(res);
       } catch (err) {
@@ -80,7 +89,7 @@ export function useBusquedaProductos({
         if (pedido.current === mio) setCargando(false);
       }
     },
-    [limite, soloHabilitados, activo, categoriaId],
+    [limite, soloHabilitados, activo, categoriaId, sucursalId],
   );
 
   useEffect(() => {
@@ -103,6 +112,7 @@ export function useBusquedaProductos({
         offset: pagina.items.length,
         soloHabilitados,
         categoriaId,
+        sucursalId,
       });
       // La tanda nueva se suma a lo que ya se está mirando; el total viene de
       // la última respuesta, que es la que sabe si entró algo mientras tanto.
@@ -112,7 +122,7 @@ export function useBusquedaProductos({
     } finally {
       setTrayendoMas(false);
     }
-  }, [pagina, trayendoMas, q, limite, soloHabilitados, categoriaId]);
+  }, [pagina, trayendoMas, q, limite, soloHabilitados, categoriaId, sucursalId]);
 
   const items = pagina?.items ?? [];
 

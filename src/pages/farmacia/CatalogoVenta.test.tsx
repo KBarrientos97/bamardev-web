@@ -143,3 +143,27 @@ describe("el lector de código de barras", () => {
     expect(campo).toHaveValue("");
   });
 });
+
+describe("la sucursal de la caja", () => {
+  it("pide el stock de la sucursal de la caja, y muestra la ubicación si la hay", async () => {
+    vi.mocked(api.buscarProductos).mockResolvedValue({
+      items: [med({ ubicacion: "Estante 3 · fila B" }), ranitidina],
+      total: 2,
+      limite: 24,
+      offset: 0,
+    });
+    const venta = { carrito: {} as VentaFarmacia["carrito"], agregar } satisfies VentaFarmacia;
+    render(
+      <MemoryRouter>
+        <ContextoVentaFarmacia.Provider value={venta}>
+          <CatalogoVenta categorias={categorias} enCarrito={new Map()} sucursalId={917} />
+        </ContextoVentaFarmacia.Provider>
+      </MemoryRouter>,
+    );
+    expect(await screen.findByText("Estante 3 · fila B")).toBeInTheDocument();
+    expect(api.buscarProductos).toHaveBeenCalledWith(expect.objectContaining({ sucursalId: 917 }));
+    // La que no tiene ubicación no dibuja nada: es opcional.
+    const sinUbicacion = screen.getByRole("button", { name: /Ranitidina/ });
+    expect(sinUbicacion).not.toHaveTextContent("Estante");
+  });
+});

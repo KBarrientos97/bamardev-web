@@ -23,12 +23,15 @@ export default function PantallaVenta({
   carrito,
   onCobrar,
   cabecera,
+  sucursalId,
 }: {
   productos: Producto[];
   categorias: Categoria[];
   carrito: Carrito;
   onCobrar: () => void;
   cabecera?: React.ReactNode;
+  /** La sucursal de la caja: de ahí salen el stock y la ubicación (farmacia). */
+  sucursalId?: number | null;
 }) {
   const { negocio, usuario, rubro } = useAuth();
   const [q, setQ] = useState("");
@@ -133,7 +136,11 @@ export default function PantallaVenta({
             venta de la farmacia, que pregunta por la receta. El carrito y todo
             lo que sigue no cambian. */}
         {esFarmacia(rubro) ? (
-          <CatalogoVenta categorias={categorias} enCarrito={enCarrito} />
+          <CatalogoVenta
+            categorias={categorias}
+            enCarrito={enCarrito}
+            sucursalId={sucursalId}
+          />
         ) : (
           <>
         <div className="space-y-3 border-b border-borde bg-white px-4 py-3">

@@ -5,8 +5,9 @@ import { Badge, Boton, Cargando, Modal } from "../../components/ui";
 import { api } from "../../lib/api";
 import { fmtFecha, fmtMoney, fmtNum } from "../../lib/format";
 import { useApi } from "../../lib/useApi";
+import { contiene } from "../../lib/texto";
 import { useAuth } from "../../store/AuthContext";
-import type { Producto } from "../../types";
+import type { Existencia, Producto } from "../../types";
 import {
   COLOR_TRAMO,
   CONDICION,
@@ -179,7 +180,7 @@ export function FichaMedicamento({
             </div>
           </Seccion>
 
-          <StockPorAlmacen producto={p} />
+          <StockPorSucursal producto={p} />
 
           <LotesFefo producto={p} />
 
@@ -216,11 +217,17 @@ export function FichaMostrador({
   producto: p,
   onClose,
   onAgregar,
+  onCambio,
+  sucursalActual,
 }: {
   producto: Producto;
   onClose: () => void;
   /** Sin esto no hay botón: agotado, o un rol que no vende. */
   onAgregar?: () => void;
+  /** Se cambió la ubicación: la lista de atrás la vuelve a pedir. */
+  onCambio?: () => void;
+  /** Dónde se está vendiendo (la sucursal de la caja): es el "acá". */
+  sucursalActual?: number | null;
 }) {
   return (
     <Modal
@@ -249,7 +256,7 @@ export function FichaMostrador({
           </div>
         </Seccion>
 
-        <StockPorAlmacen producto={p} />
+        <StockPorSucursal producto={p} onCambio={onCambio} aca={sucursalActual} />
 
         <LotesFefo producto={p} conCosto={false} />
 
@@ -302,48 +309,278 @@ function EncabezadoFicha({ producto: p }: { producto: Producto }) {
 }
 
 /**
- * Dónde está la mercadería.
+ * Cuánto hay en cada sucursal, y dónde está.
  *
- * Con un solo almacén no se pregunta nada: el total ES el del local, y pedir el
- * detalle sería traerse el catálogo entero para no decir nada nuevo. Con dos o
- * más sí, porque es la duda de todos los días —"no hay" contra "no hay **acá**"—
- * y la que hace que el mostrador diga que no teniendo la caja en el depósito.
+ * Es la respuesta a "¿tenés?" cuando la respuesta es "acá no, pero en la
+ * sucursal X sí": por eso sale de `GET /productos/:id/existencias`, que lee
+ * cualquiera que atienda y trae sólo cantidades. Lo de antes (`GET /almacenes`)
+ * era del dueño, traía el inventario entero con costos, y al cajero le dejaba
+ * ver sólo su total.
+ *
+ * Con un solo local no hay nada que comparar: se ve el total y, si alguien la
+ * cargó, la ubicación. La ubicación es opcional de punta a punta: si nadie la
+ * cargó no aparece, y el botón para cargarla sólo lo ve quien ordena el local.
  */
-function StockPorAlmacen({ producto: p }: { producto: Producto }) {
-  // `GET /almacenes` ya viene con los artículos de cada uno y su cantidad (los
-  // necesita la pantalla de Almacenes para sus totales), así que el desglose
-  // sale de UNA consulta y no de una por almacén. Ojo: sólo lista lo que tiene
-  // saldo positivo, o sea que "no está" y "está en cero" se ven igual — que es
-  // lo correcto acá.
-  const almacenes = useApi(() => api.getAlmacenes(), []);
-  const lista = (almacenes.datos ?? []).filter((a) => a.activo);
+function StockPorSucursal({
+  producto: p,
+  onCambio,
+  aca,
+}: {
+  producto: Producto;
+  /** Se cambió una ubicación: quien tiene la lista la vuelve a pedir. */
+  onCambio?: () => void;
+  /**
+   * La sucursal desde la que se mira. Por defecto la del usuario; el dueño no
+   * pertenece a ninguna, y en el mostrador su "acá" es la de la caja.
+   */
+  aca?: number | null;
+}) {
+  const { usuario } = useAuth();
+  const existencias = useApi(() => api.existenciasProducto(p.id), [p.id]);
+  const lista = existencias.datos ?? [];
+  const unidad = p.unidadMedida?.nombre;
+  const varias = lista.length > 1;
+  // Con el desglose a mano, el total es el del negocio entero. Sin él (cargando
+  // o un corte), el que ya venía con el artículo.
+  const total = varias ? lista.reduce((a, e) => a + e.cantidad, 0) : p.stockTotal;
+
+  const miSucursal = usuario?.sucursalId ?? null;
+  const donde = aca ?? miSucursal;
+  const ordena = usuario?.rol === "ADMIN" || usuario?.rol === "SUPERVISOR";
+  // Un supervisor de sucursal ordena la suya; el dueño, cualquiera.
+  const puedeUbicar = (e: Existencia) =>
+    ordena && (miSucursal == null || miSucursal === e.almacenId);
+
+  const alGuardar = () => {
+    existencias.recargar();
+    onCambio?.();
+  };
 
   return (
-    <Seccion titulo="Stock por almacén">
+    <Seccion titulo={varias ? "Stock por sucursal" : "Stock"}>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        <Caja
-          etiqueta="Total"
-          valor={conUnidad(p.stockTotal, p.unidadMedida?.nombre)}
-          destacada
-        />
-        {/* Con un solo almacén el total YA es el del local: repetirlo al lado
-            sería decir dos veces lo mismo. */}
-        {lista.length > 1 &&
-          lista.map((a) => (
-            <Caja
-              key={a.id}
-              etiqueta={a.nombre}
-              valor={conUnidad(
-                a.articulos?.find((x) => x.id === p.id)?.stock ?? 0,
-                p.unidadMedida?.nombre,
-              )}
+        <Caja etiqueta="Total" valor={conUnidad(total, unidad)} destacada />
+        {varias &&
+          lista.map((e) => (
+            <CajaSucursal
+              key={e.almacenId}
+              existencia={e}
+              unidad={unidad}
+              productoId={p.id}
+              mia={donde === e.almacenId}
+              puedeUbicar={puedeUbicar(e)}
+              onGuardado={alGuardar}
             />
           ))}
       </div>
+      {/* Un solo local: la ubicación va abajo del total, si la hay. */}
+      {!varias && lista[0] && (
+        <div className="mt-2">
+          <Ubicacion
+            productoId={p.id}
+            existencia={lista[0]}
+            editable={puedeUbicar(lista[0])}
+            onGuardado={alGuardar}
+          />
+        </div>
+      )}
       <p className="mt-2 text-xs text-texto-4">
         Stock mínimo: {fmtNum(p.stockMinimo)} · avisa cuando baje de ahí
       </p>
     </Seccion>
+  );
+}
+
+function CajaSucursal({
+  existencia: e,
+  unidad,
+  productoId,
+  mia,
+  puedeUbicar,
+  onGuardado,
+}: {
+  existencia: Existencia;
+  unidad?: string | null;
+  productoId: number;
+  /** La sucursal de quien mira: se marca, y no se ofrece llamarse a sí misma. */
+  mia: boolean;
+  puedeUbicar: boolean;
+  onGuardado: () => void;
+}) {
+  const noHay = e.cantidad <= 0;
+  return (
+    <div
+      className={`min-w-0 rounded-xl p-3 ${
+        mia ? "bg-white ring-1 ring-primary-200" : "bg-muted"
+      }`}
+    >
+      <p className="flex min-w-0 items-center gap-1.5 text-xs text-texto-3">
+        <span className="truncate" title={e.nombre}>
+          {e.nombre}
+        </span>
+        {/* Un depósito no vende: se aclara, salvo que el nombre ya lo diga. */}
+        {e.tipo === "DEPOSITO" && !contiene(e.nombre, "deposito") && (
+          <span className="shrink-0 rounded bg-slate-200 px-1 text-[10px] font-bold uppercase text-texto-3">
+            depósito
+          </span>
+        )}
+        {mia && (
+          <span className="shrink-0 rounded bg-primary-50 px-1 text-[10px] font-bold uppercase text-primary-700">
+            acá
+          </span>
+        )}
+      </p>
+      <p
+        className={`mt-0.5 truncate text-lg font-bold ${
+          noHay ? "text-danger-text" : "text-texto"
+        }`}
+      >
+        {noHay ? "No hay" : conUnidad(e.cantidad, unidad)}
+      </p>
+      <Ubicacion
+        productoId={productoId}
+        existencia={e}
+        editable={puedeUbicar}
+        onGuardado={onGuardado}
+      />
+      {/* "Acá no hay, pero en Equipetrol sí": el teléfono a un toque para
+          confirmar que la caja está de verdad antes de mandar al cliente. */}
+      {!mia && !noHay && e.telefono && (
+        <a
+          href={`tel:${e.telefono}`}
+          className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-primary-700 hover:underline"
+        >
+          <Icon name="phone" size={13} /> Llamar · {e.telefono}
+        </a>
+      )}
+    </div>
+  );
+}
+
+/**
+ * La ubicación en una sucursal: se muestra si alguien la cargó, y quien ordena
+ * el local la puede cargar o cambiar ahí mismo. Vacía se borra.
+ */
+function Ubicacion({
+  productoId,
+  existencia: e,
+  editable,
+  onGuardado,
+}: {
+  productoId: number;
+  existencia: Existencia;
+  editable: boolean;
+  onGuardado: () => void;
+}) {
+  const [editando, setEditando] = useState(false);
+  const [texto, setTexto] = useState("");
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState("");
+  // Las que ya se usan en esa sucursal, para escribir "Estante 3" igual que
+  // la vez anterior y no inventar "Est. 3".
+  const sugeridas = useApi(
+    () => (editando ? api.ubicacionesUsadas(e.almacenId) : Promise.resolve([])),
+    [editando, e.almacenId],
+  );
+
+  const abrir = () => {
+    setTexto(e.ubicacion ?? "");
+    setError("");
+    setEditando(true);
+  };
+
+  const guardar = async () => {
+    if (guardando) return;
+    setGuardando(true);
+    setError("");
+    try {
+      await api.fijarUbicacionProducto(productoId, e.almacenId, texto.trim() || null);
+      setEditando(false);
+      onGuardado();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo guardar");
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  if (!editando) {
+    if (e.ubicacion) {
+      return (
+        <p className="mt-1 flex min-w-0 items-center gap-1 text-xs font-semibold text-texto-2">
+          <span className="shrink-0 text-primary-700">
+            <Icon name="pin" size={13} />
+          </span>
+          <span className="truncate" title={e.ubicacion}>
+            {e.ubicacion}
+          </span>
+          {editable && (
+            <button
+              onClick={abrir}
+              aria-label={`Cambiar la ubicación en ${e.nombre}`}
+              title="Cambiar la ubicación"
+              className="ml-auto shrink-0 rounded p-0.5 text-texto-4 hover:text-primary-700"
+            >
+              <Icon name="edit" size={13} />
+            </button>
+          )}
+        </p>
+      );
+    }
+    if (!editable) return null;
+    return (
+      <button
+        onClick={abrir}
+        className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-primary-700 hover:underline"
+      >
+        <Icon name="pin" size={12} /> Agregar ubicación
+      </button>
+    );
+  }
+
+  const idLista = `ubicaciones-${productoId}-${e.almacenId}`;
+  return (
+    <form
+      className="mt-1.5 space-y-1.5"
+      onSubmit={(ev) => {
+        ev.preventDefault();
+        void guardar();
+      }}
+    >
+      <input
+        value={texto}
+        onChange={(ev) => setTexto(ev.target.value)}
+        list={idLista}
+        autoFocus
+        maxLength={60}
+        placeholder="Ej: Estante 3 · fila B"
+        aria-label={`Ubicación en ${e.nombre}`}
+        className="w-full rounded-lg border border-borde bg-white px-2 py-1.5 text-xs outline-none focus:border-primary focus:ring-2 focus:ring-primary-100"
+      />
+      <datalist id={idLista}>
+        {(sugeridas.datos ?? []).map((s) => (
+          <option key={s} value={s} />
+        ))}
+      </datalist>
+      <div className="flex gap-1">
+        <button
+          type="submit"
+          disabled={guardando}
+          className="rounded-md bg-primary px-2.5 py-1 text-[11px] font-bold text-white hover:bg-primary-600 disabled:opacity-50"
+        >
+          {guardando ? "Guardando…" : "Guardar"}
+        </button>
+        <button
+          type="button"
+          onClick={() => setEditando(false)}
+          className="rounded-md px-2 py-1 text-[11px] font-semibold text-texto-3 hover:bg-muted"
+        >
+          Cancelar
+        </button>
+      </div>
+      <p className="text-[11px] text-texto-4">Vacía se borra: es opcional.</p>
+      {error && <p className="text-[11px] text-danger-text">{error}</p>}
+    </form>
   );
 }
 

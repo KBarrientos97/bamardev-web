@@ -1,7 +1,9 @@
 import { useRef, useState } from "react";
 import { Icon } from "../../components/Icon";
 import { Boton, Cargando, ErrorMsg, Vacio } from "../../components/ui";
+import { api } from "../../lib/api";
 import { fmtMoney } from "../../lib/format";
+import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
 import type { Producto } from "../../types";
 import CampoBusqueda from "./CampoBusqueda";
@@ -35,7 +37,20 @@ export default function BuscarMedicamento() {
   const [q, setQ] = useState("");
   const [ficha, setFicha] = useState<Producto | null>(null);
   const campo = useRef<HTMLInputElement>(null);
-  const busqueda = useBusquedaProductos({ q });
+  // La sucursal de la caja abierta: de ahí sale lo que se vende. Sin esto el
+  // dueño (que no pertenece a ninguna) veía el stock del negocio entero —la
+  // ranitidina de Equipetrol como si estuviera en su estante— y "Agregar" le
+  // ofrecía algo que el cobro iba a rechazar. A quien pertenece a una sucursal
+  // el backend ya le da la suya.
+  const caja = useApi(() => api.cajaActual().catch(() => null), []);
+  const cajaAbierta = caja.datos?.caja ?? null;
+  const busqueda = useBusquedaProductos({
+    q,
+    sucursalId: cajaAbierta?.almacenId ?? null,
+    // Se espera a saber de qué sucursal: si no, primero se veía el total del
+    // negocio y un instante después el del local.
+    activo: !caja.cargando,
+  });
   const venta = useVentaFarmacia();
   const { puede } = useAuth();
   // Quien no cobra (un supervisor de inventario) consulta, pero no vende.
@@ -83,6 +98,9 @@ export default function BuscarMedicamento() {
               : `${busqueda.items.length} ${
                   busqueda.items.length === 1 ? "resultado" : "resultados"
                 }`}
+            {/* Con varias sucursales, de cuál es el stock que se ve. Un
+                negocio de un local no recibe el nombre y no ve nada. */}
+            {cajaAbierta?.almacen && ` · stock de ${cajaAbierta.almacen}`}
           </p>
 
           <div className="overflow-hidden rounded-2xl border border-borde bg-white">
@@ -122,6 +140,9 @@ export default function BuscarMedicamento() {
         <FichaMostrador
           producto={ficha}
           onClose={() => setFicha(null)}
+          // Cambiar una ubicación desde la ficha se tiene que ver en la fila.
+          onCambio={busqueda.recargar}
+          sucursalActual={cajaAbierta?.almacenId ?? null}
           onAgregar={
             agregar && sePuedeVender(ficha)
               ? () => {
@@ -199,6 +220,15 @@ function Fila({
               .join("")}
           </span>
         </span>
+        {/* Dónde ir a buscarlo, si el dueño lo cargó. */}
+        {p.ubicacion && (
+          <span className="mt-0.5 flex min-w-0 items-center gap-1 text-xs font-semibold text-texto-2">
+            <span className="shrink-0 text-primary-700">
+              <Icon name="pin" size={12} />
+            </span>
+            <span className="truncate">{p.ubicacion}</span>
+          </span>
+        )}
       </button>
 
       <span className="hidden truncate text-[13px] text-texto-2 lg:block">

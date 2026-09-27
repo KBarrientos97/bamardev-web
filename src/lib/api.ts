@@ -1,4 +1,5 @@
 import type {
+  Existencia,
   ApunteStock,
   PrecioSucursal,
   PrecioSucursalInput,
@@ -424,6 +425,11 @@ export const api = {
     soloHabilitados?: boolean;
     /** Los chips de categoría del punto de venta de farmacia. */
     categoriaId?: number | null;
+    /**
+     * De qué sucursal salen el stock, el precio y la ubicación. El POS manda la
+     * de su caja; quien pertenece a una sucursal ve siempre la suya.
+     */
+    sucursalId?: number | null;
   }) =>
     request<PaginaProductos>(
       `/productos/buscar${qs({
@@ -432,8 +438,21 @@ export const api = {
         offset: params.offset,
         soloHabilitados: params.soloHabilitados ? "true" : undefined,
         categoriaId: params.categoriaId ?? undefined,
+        sucursalId: params.sucursalId ?? undefined,
       })}`,
     ),
+  /** Cuánto hay en cada sucursal y dónde está. Sin costos: lo lee el mostrador. */
+  existenciasProducto: (id: number) =>
+    request<Existencia[]>(`/productos/${id}/existencias`),
+  /** Dónde está en una sucursal. Vacío o null la borra: es opcional. */
+  fijarUbicacionProducto: (id: number, almacenId: number, ubicacion: string | null) =>
+    request<{ ubicacion: string | null }>(`/productos/${id}/ubicacion`, {
+      method: "PUT",
+      body: JSON.stringify({ almacenId, ubicacion }),
+    }),
+  /** Las ubicaciones que ya se usaron, para sugerirlas al escribir. */
+  ubicacionesUsadas: (almacenId?: number) =>
+    request<string[]>(`/productos/ubicaciones${qs({ almacenId })}`),
   crearProducto: (input: ProductoInput) =>
     request<Producto>("/productos", { method: "POST", body: JSON.stringify(input) }),
   actualizarProducto: (id: number, input: Partial<ProductoInput>) =>

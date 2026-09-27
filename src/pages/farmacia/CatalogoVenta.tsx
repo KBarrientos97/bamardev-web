@@ -31,10 +31,17 @@ const POR_TANDA = 24;
 export default function CatalogoVenta({
   categorias,
   enCarrito,
+  sucursalId = null,
 }: {
   categorias: Categoria[];
   /** Cuánto hay de cada producto en la venta, para marcar la tarjeta. */
   enCarrito: Map<number, number>;
+  /**
+   * La sucursal de la caja. Sin esto el dueño (que no pertenece a ninguna)
+   * veía el stock de todo el negocio, depósito incluido: "89 u." con 39 en el
+   * estante. Se vende lo que hay en ESTA sucursal.
+   */
+  sucursalId?: number | null;
 }) {
   const venta = useVentaFarmacia();
   const { puede } = useAuth();
@@ -45,6 +52,7 @@ export default function CatalogoVenta({
     q,
     categoriaId,
     limite: POR_TANDA,
+    sucursalId,
     // Sólo lo vendible: un artículo apagado se sigue editando desde el
     // catálogo, pero no tiene por qué aparecer con el cliente esperando.
     soloHabilitados: true,
@@ -220,6 +228,15 @@ function TarjetaVenta({
         <span className="truncate text-xs text-texto-3">
           {detalle || p.principioActivo || p.categoria?.nombre || "Sin ficha cargada"}
         </span>
+        {/* Sólo si el dueño la cargó: es opcional. */}
+        {p.ubicacion && (
+          <span className="flex min-w-0 items-center gap-1 text-xs font-semibold text-texto-2">
+            <span className="shrink-0 text-primary-700">
+              <Icon name="pin" size={12} />
+            </span>
+            <span className="truncate">{p.ubicacion}</span>
+          </span>
+        )}
         <span className="flex flex-wrap gap-1 empty:hidden">
           <ChipsCondicion producto={p} />
         </span>

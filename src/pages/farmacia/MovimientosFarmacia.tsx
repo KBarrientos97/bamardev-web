@@ -114,7 +114,7 @@ export default function MovimientosFarmacia() {
           <Icon name="info" size={17} />
         </span>
         <p>
-          Este es el <strong>registro de todo el stock por almacén</strong>. Con{" "}
+          Este es el <strong>registro de todo el stock por sucursal</strong>. Con{" "}
           <strong>Nuevo movimiento</strong> cargás una <strong>entrada</strong> (recepción
           de proveedor, con lote y vencimiento) o una <strong>salida</strong> (baja por
           vencimiento, daño, robo o carga de más). Si un movimiento pendiente tiene un
@@ -397,7 +397,7 @@ function DetalleMercaderia({
             </div>
 
             <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-              <Dato label="Almacén" valor={m.almacen?.nombre ?? "—"} />
+              <Dato label="Sucursal" valor={m.almacen?.nombre ?? "—"} />
               <Dato label="Fecha" valor={fmtFecha(m.fecha)} />
               <Dato label={entrada ? "Nº factura" : "Motivo"} valor={pieDeDato(m, entrada)} />
               {m.fechaAprobacion && (
@@ -531,7 +531,7 @@ function DetalleMercaderia({
       <Confirmar
         abierto={confirmando === "aprobar"}
         titulo="Aprobar movimiento"
-        texto="Aprobar es lo que realmente mueve el stock del almacén. Después sólo se puede revertir anulándolo."
+        texto="Aprobar es lo que realmente mueve el stock de la sucursal. Después sólo se puede revertir anulándolo."
         etiquetaOk="Aprobar"
         procesando={procesando}
         onCancel={() => setConfirmando(null)}

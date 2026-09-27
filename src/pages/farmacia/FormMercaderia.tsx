@@ -13,6 +13,7 @@ import { api } from "../../lib/api";
 import { parsearMonto } from "../../lib/dinero";
 import { fmtFecha, fmtMoney, isoDia } from "../../lib/format";
 import { useApi } from "../../lib/useApi";
+import { contiene } from "../../lib/texto";
 import { useAuth } from "../../store/AuthContext";
 import type {
   ArticuloMovimiento,
@@ -92,7 +93,7 @@ export default function FormMercaderia({
   // almacén, el motivo y qué sacar; lo demás es un formulario normal.
   const { state } = useLocation();
   const precarga = esPrecargaSalida(state) ? state : null;
-  const { incluye } = useAuth();
+  const { incluye, usuario } = useAuth();
   const conAprobacion = incluye("aprobacion_inventario");
 
   const [tipo, setTipo] = useState<TipoMercaderia>(tipoInicial);
@@ -161,13 +162,19 @@ export default function FormMercaderia({
     ]);
   }, [articulos.datos, precarga]);
 
-  // Primer almacén por defecto, sólo al crear: en una farmacia de un local es
-  // el único y no tiene sentido hacer elegir.
+  // Sucursal por defecto, sólo al crear: la de quien carga y, si es el dueño
+  // (no pertenece a ninguna), la principal. Antes era la primera de la lista,
+  // que viene por nombre: con "Depósito" y "Mostrador" arrancaba en Depósito y
+  // la mercadería se cargaba en el local equivocado sin que nadie lo notara.
   useEffect(() => {
     if (movId || almacenId) return;
-    const primero = almacenes.datos?.[0];
-    if (primero) setAlmacenId(String(primero.id));
-  }, [almacenes.datos, almacenId, movId]);
+    const lista = almacenes.datos ?? [];
+    const sugerida =
+      lista.find((a) => a.id === usuario?.sucursalId) ??
+      lista.find((a) => a.esPrincipal) ??
+      lista[0];
+    if (sugerida) setAlmacenId(String(sugerida.id));
+  }, [almacenes.datos, almacenId, movId, usuario?.sucursalId]);
 
   // Al editar, el formulario arranca con lo que ya está guardado. Una sola vez:
   // después manda lo que la persona esté escribiendo.
@@ -261,7 +268,7 @@ export default function FormMercaderia({
 
   /** Arma las líneas para el servidor, o devuelve el primer error legible. */
   function revisarLineas(): { detalles: DetalleMovimientoInput[] } | { error: string } {
-    if (!almacenId) return { error: "Elegí el almacén: define en qué sucursal se mueve el stock." };
+    if (!almacenId) return { error: "Elegí la sucursal: define dónde entra o sale el stock." };
     if (tipo === "SALIDA" && !motivo)
       return { error: "Elegí por qué sale la mercadería: es lo que después arma el número de mermas." };
     if (lineas.length === 0) return { error: "Agregá al menos un producto." };
@@ -475,16 +482,21 @@ export default function FormMercaderia({
         )}
 
         <div className={`grid gap-3 ${entrada ? "sm:grid-cols-2 lg:grid-cols-4" : "sm:grid-cols-3"}`}>
-          <Campo label="Almacén *">
+          {/* "Sucursal" y no "almacén": para el dueño es otro local del
+              negocio, no un rincón. Un depósito central (que no vende) se
+              ofrece igual, pero dice lo que es. */}
+          <Campo label="Sucursal *">
             <Select
               value={almacenId}
               onChange={(e) => setAlmacenId(e.target.value)}
               className="border-warning bg-warning-bg/40"
             >
-              <option value="">Elegí uno</option>
-              {(almacenes.datos ?? []).map((a) => (
+              <option value="">Elegí una</option>
+              {ordenarSucursales(almacenes.datos ?? []).map((a) => (
                 <option key={a.id} value={a.id}>
-                  {a.nombre}
+                  {a.tipo === "DEPOSITO" && !contiene(a.nombre, "deposito")
+                    ? `${a.nombre} · depósito`
+                    : a.nombre}
                 </option>
               ))}
             </Select>
@@ -901,4 +913,16 @@ function LoteQueSale({
       </span>
     </span>
   );
+}
+
+/**
+ * La principal primero, después las otras sucursales y al final los depósitos:
+ * se carga casi siempre en el local donde se vende, y el depósito central es la
+ * excepción. Por nombre venía "Depósito" arriba de todo.
+ */
+function ordenarSucursales<T extends { nombre: string; tipo?: string; esPrincipal?: boolean }>(
+  lista: T[],
+): T[] {
+  const peso = (a: T) => (a.esPrincipal ? 0 : a.tipo === "DEPOSITO" ? 2 : 1);
+  return [...lista].sort((a, b) => peso(a) - peso(b) || a.nombre.localeCompare(b.nombre, "es"));
 }

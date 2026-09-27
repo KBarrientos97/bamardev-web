@@ -472,6 +472,7 @@ export default function Pos() {
       categorias={categorias.datos ?? []}
       carrito={carrito}
       onCobrar={() => setPantalla("cobro")}
+      sucursalId={abierta.almacenId}
       cabecera={
         <>
         {/* flex-wrap: con el texto en los botones, en una pantalla angosta
