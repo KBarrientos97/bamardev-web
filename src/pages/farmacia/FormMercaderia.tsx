@@ -161,6 +161,8 @@ export default function FormMercaderia({
   const originales = useRef<number[]>([]);
   const hidratado = useRef(false);
   const precargado = useRef(false);
+  /** El guardado en curso. Ver `guardar()`: corta el doble clic. */
+  const enVuelo = useRef(false);
 
   // El renglón que viene de Vencimientos. Espera a que llegue la lista del
   // almacén porque de ahí sale el costo, y se hace una sola vez: después es un
@@ -337,11 +339,20 @@ export default function FormMercaderia({
   }
 
   async function guardar() {
-    if (guardando) return;
+    // El ref y no `guardando`: un setState no deshabilita el botón hasta el
+    // siguiente render, así que dos clics rápidos entran los dos en el mismo
+    // tick. Acá eso es un ingreso de mercadería duplicado — stock que nunca
+    // llegó, contado dos veces, y un movimiento de más que alguien tiene que
+    // anular a mano.
+    if (enVuelo.current) return;
+    enVuelo.current = true;
     setError("");
 
     const revisado = revisarLineas();
-    if ("error" in revisado) return setError(revisado.error);
+    if ("error" in revisado) {
+      enVuelo.current = false;
+      return setError(revisado.error);
+    }
 
     const descripcion = entrada ? proveedor.trim() : juntarMotivo(motivo, nota);
 
@@ -356,6 +367,8 @@ export default function FormMercaderia({
       navigate("/inventario/movimientos");
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo guardar");
+      // Se libera para poder reintentar: lo que falló no llegó a crearse.
+      enVuelo.current = false;
       setGuardando(false);
     }
   }
