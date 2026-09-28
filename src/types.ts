@@ -514,6 +514,25 @@ export interface LoteConSaldo {
   almacen: { id: number; nombre: string };
 }
 
+/**
+ * Un lote con saldo en la sucursal de la caja, como lo ve quien cobra: sin
+ * costo. Viene en el orden en que la venta lo va a descontar (FEFO).
+ */
+export interface LoteParaVender {
+  codigo: string;
+  vencimiento: string | null;
+  /** Negativo = ya venció. Null si el lote no tiene fecha. */
+  dias: number | null;
+  tramo: TramoVencimiento | null;
+  cantidad: number;
+}
+
+/** Los lotes de un artículo del carrito. Vacío = no tiene lote con saldo. */
+export interface LotesDelArticulo {
+  productoId: number;
+  lotes: LoteParaVender[];
+}
+
 export interface LotePorVencer extends LoteConSaldo {
   diasRestantes: number;
   tramo: TramoVencimiento;

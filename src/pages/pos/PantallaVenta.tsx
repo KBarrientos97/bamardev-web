@@ -2,13 +2,16 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { contiene } from "../../lib/texto";
 import { esFarmacia } from "../../lib/rubro";
 import CatalogoVenta from "../farmacia/CatalogoVenta";
+import { useLotesDelCarrito } from "../farmacia/lotesVenta";
 import { ChipsCondicion } from "../farmacia/piezas";
+import { CantidadVenta, LoteEnLaVenta } from "../farmacia/RenglonVenta";
+import { useVentaFarmacia, type VentaFarmacia } from "../farmacia/ventaFarmacia";
 import { Icon } from "../../components/Icon";
 import IconoProducto from "../../components/IconoProducto";
 import { Badge, Boton, Confirmar, Input, Modal, Vacio } from "../../components/ui";
 import { fmtMoney, fmtNum } from "../../lib/format";
 import { useAuth } from "../../store/AuthContext";
-import type { Categoria, Consumo, Producto } from "../../types";
+import type { Categoria, Consumo, LoteParaVender, Producto } from "../../types";
 import { aplicarOrden, guardarOrden, leerOrden, reordenarVisibles } from "./ordenPos";
 import type { Carrito, LineaCarrito } from "./useCarrito";
 import { useArrastreGrilla } from "./useArrastreGrilla";
@@ -117,6 +120,7 @@ export default function PantallaVenta({
   const panelCarrito = (
     <PanelCarrito
       carrito={carrito}
+      sucursalId={sucursalId}
       onCobrar={() => {
         setCarritoAbierto(false);
         onCobrar();
@@ -380,10 +384,12 @@ function TarjetaVenta({
 
 function PanelCarrito({
   carrito,
+  sucursalId,
   onCobrar,
   onCerrar,
 }: {
   carrito: Carrito;
+  sucursalId?: number | null;
   onCobrar: () => void;
   onCerrar: () => void;
 }) {
@@ -391,6 +397,13 @@ function PanelCarrito({
   // Sin la capacidad la comanda no distingue destino: todo sale para llevar,
   // que es el valor por defecto con el que nacen las líneas.
   const conMesaLlevar = incluye("mesa_llevar");
+  // Farmacia: la cantidad se escribe y cada renglón dice de qué lote sale.
+  // En un restaurante `venta` es null y el carrito queda como siempre, sin
+  // pedir lotes.
+  const venta = useVentaFarmacia();
+  const conLotes = esFarmacia(rubro) && incluye("lotes");
+  const ids = useMemo(() => carrito.lineas.map((l) => l.producto.id), [carrito.lineas]);
+  const lotes = useLotesDelCarrito(ids, sucursalId, conLotes);
   const vacio = carrito.lineas.length === 0;
   // Vaciar es destructivo y el botón está al lado del de cerrar: un toque
   // impreciso borraba una venta de quince ítems con el cliente enfrente.
@@ -475,6 +488,12 @@ function PanelCarrito({
                 linea={l}
                 carrito={carrito}
                 conMesaLlevar={conMesaLlevar}
+                venta={venta}
+                lotes={
+                  conLotes && l.producto.manejaLote
+                    ? lotes?.get(l.producto.id)
+                    : null
+                }
               />
             ))}
           </ul>
@@ -527,10 +546,16 @@ function FilaCarrito({
   linea: l,
   carrito,
   conMesaLlevar,
+  venta,
+  lotes,
 }: {
   linea: LineaCarrito;
   carrito: Carrito;
   conMesaLlevar: boolean;
+  /** La venta de la farmacia; null en un restaurante. */
+  venta: VentaFarmacia | null;
+  /** null = este renglón no lleva lote; undefined = todavía no se sabe. */
+  lotes: LoteParaVender[] | null | undefined;
 }) {
   const [editandoNota, setEditandoNota] = useState(false);
   const [nota, setNota] = useState(l.nota);
@@ -555,6 +580,13 @@ function FilaCarrito({
           </span>
         </div>
 
+        {venta ? (
+          <CantidadVenta
+            nombre={l.producto.nombre}
+            cantidad={l.cantidad}
+            fijar={(n) => venta.fijarCantidad(l.producto, n)}
+          />
+        ) : (
         <div className="flex items-center gap-1 rounded-lg border border-borde">
           <button
             onClick={() => carrito.setCantidad(l.producto.id, l.cantidad - 1)}
@@ -572,11 +604,16 @@ function FilaCarrito({
             <Icon name="plus" size={16} />
           </button>
         </div>
+        )}
 
         <span className="min-w-20 shrink-0 text-right text-[13px] font-bold text-texto">
           {fmtMoney(l.producto.precio * l.cantidad)}
         </span>
       </div>
+
+      {/* A todo el ancho: al lado del contador no entraba y cada lote ocupaba
+          dos renglones. */}
+      {lotes !== null && <LoteEnLaVenta lotes={lotes} cantidad={l.cantidad} />}
 
       <div className="mt-2 flex flex-wrap items-center gap-1.5">
         {/* Con una sola unidad no hay nada que partir: alcanza el toggle. */}

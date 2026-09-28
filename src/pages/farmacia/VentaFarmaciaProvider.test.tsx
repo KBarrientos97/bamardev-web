@@ -14,7 +14,7 @@ vi.mock("../../store/AuthContext", () => ({
 }));
 
 vi.mock("../../lib/api", () => ({
-  api: { getProducto: vi.fn() },
+  api: { getProducto: vi.fn(), cajaActual: vi.fn() },
 }));
 
 import { api } from "../../lib/api";
@@ -81,6 +81,7 @@ const verVenta = () => screen.queryByRole("button", { name: /Ver venta/ });
 beforeEach(() => {
   sessionStorage.clear();
   vi.clearAllMocks();
+  vi.mocked(api.cajaActual).mockResolvedValue({ caja: null });
 });
 
 describe("agregar desde otra pantalla", () => {
@@ -118,6 +119,55 @@ describe("agregar desde otra pantalla", () => {
   });
 });
 
+describe("escribir la cantidad", () => {
+  /** Hace de renglón del carrito: fija la cantidad que se le pide. */
+  function Renglon({ producto, cantidad }: { producto: Producto; cantidad: number }) {
+    const venta = useVentaFarmacia()!;
+    return (
+      <button onClick={() => venta.fijarCantidad(producto, cantidad)}>
+        Poner {cantidad}
+      </button>
+    );
+  }
+
+  async function montarRenglon(producto: Producto, cantidad: number) {
+    render(
+      <MemoryRouter initialEntries={["/buscar"]}>
+        <VentaFarmaciaProvider>
+          <Pantalla producto={producto} />
+          <Renglon producto={producto} cantidad={cantidad} />
+        </VentaFarmaciaProvider>
+      </MemoryRouter>,
+    );
+    await act(async () => {});
+    await tocar(screen.getByRole("button", { name: /Sumar/ }));
+  }
+
+  it("un blíster de 10 son 10 unidades", async () => {
+    await montarRenglon(med({}), 10);
+    await tocar(screen.getByRole("button", { name: "Poner 10" }));
+    expect(verVenta()).toHaveTextContent("Ver venta · 10 u. · Bs 5,00");
+  });
+
+  it("más de lo que hay queda en lo que hay, y lo dice", async () => {
+    await montarRenglon(med({ stockTotal: 24 }), 300);
+    await tocar(screen.getByRole("button", { name: "Poner 300" }));
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Paracetamol 500 mg: no hay tanto, quedan 24 u.",
+    );
+    expect(verVenta()).toHaveTextContent("24 u.");
+  });
+
+  it("no vuelve a preguntar por la receta: ya se preguntó al agregarlo", async () => {
+    const clona = med({ nombre: "Clonazepam 2 mg", controlado: true });
+    await montarRenglon(clona, 3);
+    await tocar(screen.getByRole("button", { name: "Tengo la receta" }));
+    await tocar(screen.getByRole("button", { name: "Poner 3" }));
+    expect(screen.queryByText(/Pedí la receta/)).not.toBeInTheDocument();
+    expect(verVenta()).toHaveTextContent("3 u.");
+  });
+});
+
 describe("después de un F5", () => {
   it("la venta vuelve, con el precio de hoy", async () => {
     // Se guardan ids y cantidades; el artículo se vuelve a pedir, así que si
@@ -129,7 +179,21 @@ describe("después de un F5", () => {
     vi.mocked(api.getProducto).mockResolvedValue(med({ id: 5, precio: 3 }));
 
     await montar(med({}));
-    expect(api.getProducto).toHaveBeenCalledWith(5);
+    expect(api.getProducto).toHaveBeenCalledWith(5, null);
     expect(verVenta()).toHaveTextContent("Ver venta · 2 u. · Bs 6,00");
+  });
+
+  it("vuelve con el precio y el stock de la sucursal de la caja", async () => {
+    // El dueño no tiene sucursal: sin esto le volvía el precio de lista y el
+    // stock de todo el negocio, y podía cargar más de lo que hay en el mostrador.
+    sessionStorage.setItem(
+      "bamar.carrito.LOCAL",
+      JSON.stringify([{ id: 5, cantidad: 1, enMesa: 1, nota: "" }]),
+    );
+    vi.mocked(api.cajaActual).mockResolvedValue({ caja: { almacenId: 917 } as never });
+    vi.mocked(api.getProducto).mockResolvedValue(med({ id: 5 }));
+
+    await montar(med({}));
+    expect(api.getProducto).toHaveBeenCalledWith(5, 917);
   });
 });

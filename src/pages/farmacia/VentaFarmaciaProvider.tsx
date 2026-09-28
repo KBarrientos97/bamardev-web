@@ -43,19 +43,27 @@ export default function VentaFarmaciaProvider({ children }: { children: ReactNod
       return;
     }
     let vivo = true;
-    void Promise.allSettled(ids.map((id) => api.getProducto(id))).then((r) => {
+    void (async () => {
+      // Con el precio y el stock de la sucursal de la CAJA, como los da la
+      // grilla. Al cajero el servidor ya le da la suya; al dueño, que no tiene
+      // sucursal, sin esto le volvían el precio de lista y el stock del
+      // negocio entero: podía escribir más de lo que hay en el mostrador, y un
+      // precio distinto en la sucursal hacía fallar el cobro.
+      const caja = await api.cajaActual().catch(() => null);
+      const sucursalId = caja?.caja?.almacenId ?? null;
+      const r = await Promise.allSettled(ids.map((id) => api.getProducto(id, sucursalId)));
       if (!vivo) return;
       // Lo que ya no existe (o no se pudo leer) simplemente no vuelve.
       setGuardados(r.flatMap((x) => (x.status === "fulfilled" ? [x.value] : [])));
       setListo(true);
-    });
+    })();
     return () => {
       vivo = false;
     };
   }, []);
 
   const carrito = useCarrito("LOCAL", guardados, listo);
-  const { agregar: sumarAlCarrito, lineas } = carrito;
+  const { agregar: sumarAlCarrito, setCantidad, lineas } = carrito;
 
   const [aviso, setAviso] = useState<string | null>(null);
   const reloj = useRef<number | undefined>(undefined);
@@ -105,7 +113,24 @@ export default function VentaFarmaciaProvider({ children }: { children: ReactNod
     [sumar, avisar],
   );
 
-  const valor = useMemo<VentaFarmacia>(() => ({ carrito, agregar }), [carrito, agregar]);
+  const fijarCantidad = useCallback(
+    (p: Producto, cantidad: number) => {
+      // Igual que al sumar: si se pide más de lo que hay, queda en lo que hay
+      // y se dice. Escribir 300 y ver 140 sin explicación parece un error.
+      if (p.tipoProducto === "ALMACENABLE" && cantidad > p.stockTotal) {
+        avisar(
+          `${p.nombre}: no hay tanto, quedan ${conUnidad(p.stockTotal, p.unidadMedida?.nombre)}`,
+        );
+      }
+      setCantidad(p.id, cantidad);
+    },
+    [setCantidad, avisar],
+  );
+
+  const valor = useMemo<VentaFarmacia>(
+    () => ({ carrito, agregar, fijarCantidad }),
+    [carrito, agregar, fijarCantidad],
+  );
 
   // En el POS el carrito ya está a la vista (o su píldora, en el teléfono).
   const verBoton = lineas.length > 0 && pathname !== "/pos" && puede("pos");

@@ -61,7 +61,7 @@ const categorias: Categoria[] = [
 const agregar = vi.fn();
 
 function montar(enCarrito = new Map<number, number>()) {
-  const venta = { carrito: {} as VentaFarmacia["carrito"], agregar } satisfies VentaFarmacia;
+  const venta = { carrito: {} as VentaFarmacia["carrito"], agregar, fijarCantidad: vi.fn() } satisfies VentaFarmacia;
   render(
     <MemoryRouter>
       <ContextoVentaFarmacia.Provider value={venta}>
@@ -84,7 +84,13 @@ beforeEach(() => {
 describe("la grilla", () => {
   it("tocar una tarjeta la suma; una agotada no se puede tocar", async () => {
     montar();
-    const tarjeta = await screen.findByRole("button", { name: /Ibuprofeno 400 mg/ });
+    // Más margen que el segundo por defecto: la búsqueda espera a que se deje
+    // de teclear, y con toda la suite corriendo a la vez eso se pasaba.
+    const tarjeta = await screen.findByRole(
+      "button",
+      { name: /Ibuprofeno 400 mg/ },
+      { timeout: 4000 },
+    );
     await act(async () => {
       fireEvent.click(tarjeta);
     });
@@ -152,7 +158,7 @@ describe("la sucursal de la caja", () => {
       limite: 24,
       offset: 0,
     });
-    const venta = { carrito: {} as VentaFarmacia["carrito"], agregar } satisfies VentaFarmacia;
+    const venta = { carrito: {} as VentaFarmacia["carrito"], agregar, fijarCantidad: vi.fn() } satisfies VentaFarmacia;
     render(
       <MemoryRouter>
         <ContextoVentaFarmacia.Provider value={venta}>

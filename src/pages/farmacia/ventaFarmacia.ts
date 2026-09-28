@@ -20,6 +20,12 @@ export interface VentaFarmacia {
    * dice por qué.
    */
   agregar: (p: Producto) => void;
+  /**
+   * Deja el renglón en esa cantidad (la farmacia vende por unidad: un blíster
+   * de 10 son 10). Menos de 1 lo saca. Más de lo que hay lo deja en lo que hay
+   * y lo avisa. No pregunta por la receta: ya se preguntó al agregarlo.
+   */
+  fijarCantidad: (p: Producto, cantidad: number) => void;
 }
 
 export const ContextoVentaFarmacia = createContext<VentaFarmacia | null>(null);

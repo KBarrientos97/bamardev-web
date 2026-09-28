@@ -36,6 +36,7 @@ import type {
   MovimientoInput,
   ListaEncargos,
   LoteConSaldo,
+  LotesDelArticulo,
   PaginaProductos,
   Producto,
   ProductoInput,
@@ -440,6 +441,15 @@ export const api = {
         categoriaId: params.categoriaId ?? undefined,
         sucursalId: params.sucursalId ?? undefined,
       })}`,
+    ),
+  /**
+   * De qué lotes sale cada artículo del carrito en esa sucursal, en el orden
+   * en que la venta los descuenta. Sin costos: lo lee quien cobra. Sólo
+   * vuelven los que manejan lote.
+   */
+  lotesParaVender: (ids: number[], sucursalId: number) =>
+    request<LotesDelArticulo[]>(
+      `/productos/lotes-venta${qs({ ids: ids.join(","), sucursalId })}`,
     ),
   /** Cuánto hay en cada sucursal y dónde está. Sin costos: lo lee el mostrador. */
   existenciasProducto: (id: number) =>
