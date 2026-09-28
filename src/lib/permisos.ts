@@ -65,6 +65,11 @@ export type Seccion =
   /** Lo que pidieron y no había. Sólo farmacia. */
   | "encargos"
   /**
+   * El libro de psicotrópicos y estupefacientes: lo vendido con receta
+   * archivada o valorada. Sólo farmacia.
+   */
+  | "controlados"
+  /**
    * Recibir la mercadería del proveedor: factura, lote y vencimiento por
    * línea. Es el movimiento de ENTRADA con pantalla propia. Sólo farmacia.
    */
@@ -119,6 +124,9 @@ const REQUISITOS: Record<Seccion, { modulo: Modulo; feature: Feature | null }> =
   // el que escucha "¿no tenés…?" es el del mostrador, no el que administra.
   // La feature es la misma que pide el backend: apagarla en el panel la saca.
   encargos: { modulo: "POS", feature: "encargos" },
+  // El libro de controlados es una obligación legal, no algo que se vende
+  // aparte: sin feature. El módulo es el que pide el backend (INVENTARIO).
+  controlados: { modulo: "INVENTARIO", feature: null },
   // Recibir y dar de baja mercadería SON movimientos de inventario: la misma
   // llave que `movimientos`, sólo que con pantalla propia. No se venden aparte
   // ni se le pueden dar a alguien que no pueda ver el registro.
@@ -160,6 +168,9 @@ const ROLES_PERMITIDOS: Partial<Record<Seccion, Rol[]>> = {
   busqueda: ["ADMIN", "SUPERVISOR", "CAJERO"],
   vencimientos: ["ADMIN", "SUPERVISOR"],
   encargos: ["ADMIN", "SUPERVISOR", "CAJERO"],
+  // Trae nombres de pacientes y de médicos: lo lee quien responde ante el
+  // SEDES, no el cajero. El backend lo exige igual.
+  controlados: ["ADMIN", "SUPERVISOR"],
   // Quien recibe del proveedor y quien da de baja un lote vencido es el mismo
   // que puede ver Movimientos: mover stock no es atender el mostrador.
   ingreso_mercaderia: ["ADMIN", "SUPERVISOR"],
@@ -190,6 +201,7 @@ const SOLO_EN_RUBRO: Partial<Record<Seccion, Rubro[]>> = {
   busqueda: ["FARMACIA"],
   vencimientos: ["FARMACIA"],
   encargos: ["FARMACIA"],
+  controlados: ["FARMACIA"],
   // Las dos pantallas guiadas son del rubro. Un restaurante sigue cargando
   // entradas y salidas desde Movimientos con el formulario de siempre: acá no
   // se le saca nada, se le agrega un atajo a la farmacia.

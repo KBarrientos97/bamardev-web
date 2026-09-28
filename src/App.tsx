@@ -24,6 +24,7 @@ import Encargos from "./pages/farmacia/Encargos";
 import FormMercaderia from "./pages/farmacia/FormMercaderia";
 import MovimientosFarmacia from "./pages/farmacia/MovimientosFarmacia";
 import Vencimientos from "./pages/farmacia/Vencimientos";
+import LibroControlados from "./pages/farmacia/LibroControlados";
 import VentaFarmaciaProvider from "./pages/farmacia/VentaFarmaciaProvider";
 import Repartidor from "./pages/repartidor/Repartidor";
 import PanelMesero from "./pages/salon/PanelMesero";
@@ -218,6 +219,15 @@ function Rutas() {
           element={
             <Protegida seccion="vencimientos">
               <Vencimientos />
+            </Protegida>
+          }
+        />
+
+        <Route
+          path="/controlados"
+          element={
+            <Protegida seccion="controlados">
+              <LibroControlados />
             </Protegida>
           }
         />

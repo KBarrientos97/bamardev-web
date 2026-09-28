@@ -1,17 +1,34 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Icon } from "../../components/Icon";
-import { Confirmar } from "../../components/ui";
 import { api } from "../../lib/api";
 import { fmtMoney, fmtNum } from "../../lib/format";
 import { useAuth } from "../../store/AuthContext";
-import type { Producto } from "../../types";
+import type { DetalleVentaInput, Producto, RecetaVenta } from "../../types";
 import { idsGuardados, useCarrito } from "../pos/useCarrito";
-import { CONDICION, conUnidad, pideConfirmacion } from "./medicamento";
+import DialogoReceta from "./DialogoReceta";
+import { conUnidad, pideConfirmacion } from "./medicamento";
 import { ContextoVentaFarmacia, type VentaFarmacia } from "./ventaFarmacia";
 
 /** Lo que dura el aviso de "agregado", como en la maqueta. */
 const AVISO_MS = 2200;
+
+/**
+ * Dónde viven las recetas de la venta en curso: junto al carrito, en la
+ * sesión del navegador, para que un F5 no obligue a pedirle el papel de nuevo
+ * al cliente.
+ */
+const CLAVE_RECETAS = "bamar.recetas.LOCAL";
+
+function leerRecetas(): Map<number, RecetaVenta> {
+  try {
+    const crudo = sessionStorage.getItem(CLAVE_RECETAS);
+    const datos: unknown = crudo ? JSON.parse(crudo) : [];
+    return Array.isArray(datos) ? new Map(datos as [number, RecetaVenta][]) : new Map();
+  } catch {
+    return new Map();
+  }
+}
 
 /**
  * La venta de la farmacia, por encima de todas las pantallas.
@@ -22,8 +39,9 @@ const AVISO_MS = 2200;
  *    para que un F5 tampoco. Se guarda en la sesión del navegador igual que el
  *    de siempre (ids y cantidades) y al volver se piden esos artículos al
  *    servidor, con el precio y el stock de hoy;
- *  · **la pregunta por la receta**: se agregue desde el POS, desde Buscar o
- *    desde la ficha, un controlado frena igual;
+ *  · **la receta de los controlados**: se agregue desde el POS, desde Buscar
+ *    o desde la ficha, un controlado frena igual y pide los datos que van al
+ *    libro. Viajan con la venta (`aDetalles`) y el servidor los asienta;
  *  · **el botón "Ver venta"**, que sigue a quien atiende por cualquier pantalla
  *    mientras haya algo cargado, y el aviso de "agregado a la venta".
  */
@@ -62,8 +80,51 @@ export default function VentaFarmaciaProvider({ children }: { children: ReactNod
     };
   }, []);
 
-  const carrito = useCarrito("LOCAL", guardados, listo);
-  const { agregar: sumarAlCarrito, setCantidad, lineas } = carrito;
+  const carritoBase = useCarrito("LOCAL", guardados, listo);
+  const { agregar: sumarAlCarrito, setCantidad, lineas } = carritoBase;
+
+  // La receta de cada renglón que la exige, por producto.
+  const [recetas, setRecetas] = useState<Map<number, RecetaVenta>>(leerRecetas);
+  useEffect(() => {
+    try {
+      if (recetas.size === 0) sessionStorage.removeItem(CLAVE_RECETAS);
+      else sessionStorage.setItem(CLAVE_RECETAS, JSON.stringify([...recetas]));
+    } catch {
+      /* sin storage se sigue: es una comodidad */
+    }
+  }, [recetas]);
+
+  // Un renglón que sale de la venta (o la venta que se cobró y se vació) se
+  // lleva su receta: si no, el próximo cliente que compre lo mismo heredaría
+  // el paciente del anterior. Se compara con los renglones de ANTES y no con
+  // un carrito vacío: mientras se rehidrata tras un F5 el carrito arranca
+  // vacío, y eso no es sacar nada.
+  const idsAntes = useRef<number[]>([]);
+  useEffect(() => {
+    const ahora = new Set(lineas.map((l) => l.producto.id));
+    const salieron = idsAntes.current.filter((id) => !ahora.has(id));
+    idsAntes.current = [...ahora];
+    if (salieron.length === 0) return;
+    setRecetas((prev) => {
+      const sigue = new Map(prev);
+      for (const id of salieron) sigue.delete(id);
+      return sigue;
+    });
+  }, [lineas]);
+
+  // El carrito que ven las pantallas: el mismo, pero cada renglón viaja con
+  // su receta. Así el POS cobra igual que siempre y la venta llega completa.
+  const carrito = useMemo(
+    () => ({
+      ...carritoBase,
+      aDetalles: (): DetalleVentaInput[] =>
+        carritoBase.aDetalles().map((d) => {
+          const receta = recetas.get(d.productoId);
+          return receta ? { ...d, receta } : d;
+        }),
+    }),
+    [carritoBase, recetas],
+  );
 
   const [aviso, setAviso] = useState<string | null>(null);
   const reloj = useRef<number | undefined>(undefined);
@@ -74,7 +135,13 @@ export default function VentaFarmaciaProvider({ children }: { children: ReactNod
   }, []);
   useEffect(() => () => window.clearTimeout(reloj.current), []);
 
-  const [pidiendoReceta, setPidiendoReceta] = useState<Producto | null>(null);
+  /** El controlado cuya receta se está pidiendo, y si es para agregarlo. */
+  const [pidiendoReceta, setPidiendoReceta] = useState<{
+    producto: Producto;
+    agregando: boolean;
+  } | null>(null);
+  /** La última receta cargada: suele ser el mismo papel para el siguiente. */
+  const ultimaReceta = useRef<RecetaVenta | null>(null);
 
   const sumar = useCallback(
     (p: Producto) => {
@@ -102,16 +169,21 @@ export default function VentaFarmaciaProvider({ children }: { children: ReactNod
         return;
       }
       // Un controlado o una receta valorada no se despachan y ya: la farmacia
-      // se queda con el papel. Que el sistema pare un segundo es lo que lo
-      // vuelve un acto deliberado en vez de un clic más.
-      if (pideConfirmacion(p)) {
-        setPidiendoReceta(p);
+      // se queda con el papel y lo asienta en el libro. Se pide al agregarlo,
+      // con el papel en la mano; una unidad más del mismo renglón ya lo tiene.
+      const conReceta = recetas.has(p.id) && lineas.some((l) => l.producto.id === p.id);
+      if (pideConfirmacion(p) && !conReceta) {
+        setPidiendoReceta({ producto: p, agregando: true });
         return;
       }
       sumar(p);
     },
-    [sumar, avisar],
+    [sumar, avisar, recetas, lineas],
   );
+
+  const pedirReceta = useCallback((p: Producto) => {
+    setPidiendoReceta({ producto: p, agregando: false });
+  }, []);
 
   const fijarCantidad = useCallback(
     (p: Producto, cantidad: number) => {
@@ -128,8 +200,8 @@ export default function VentaFarmaciaProvider({ children }: { children: ReactNod
   );
 
   const valor = useMemo<VentaFarmacia>(
-    () => ({ carrito, agregar, fijarCantidad }),
-    [carrito, agregar, fijarCantidad],
+    () => ({ carrito, agregar, fijarCantidad, recetas, pedirReceta }),
+    [carrito, agregar, fijarCantidad, recetas, pedirReceta],
   );
 
   // En el POS el carrito ya está a la vista (o su píldora, en el teléfono).
@@ -162,25 +234,28 @@ export default function VentaFarmaciaProvider({ children }: { children: ReactNod
         </div>
       )}
 
-      <Confirmar
-        abierto={!!pidiendoReceta}
-        titulo={pidiendoReceta?.controlado ? "Medicamento controlado" : "Este necesita receta"}
-        texto={
-          pidiendoReceta
-            ? `${pidiendoReceta.nombre}${
-                CONDICION[pidiendoReceta.condicionVenta]
-                  ? ` — ${CONDICION[pidiendoReceta.condicionVenta]!.largo}`
-                  : ""
-              }. Pedí la receta y quedátela: se asienta en el libro.`
-            : ""
-        }
-        etiquetaOk="Tengo la receta"
-        onCancel={() => setPidiendoReceta(null)}
-        onOk={() => {
-          if (pidiendoReceta) sumar(pidiendoReceta);
-          setPidiendoReceta(null);
-        }}
-      />
+      {pidiendoReceta && (
+        <DialogoReceta
+          producto={pidiendoReceta.producto}
+          agregando={pidiendoReceta.agregando}
+          inicial={
+            recetas.get(pidiendoReceta.producto.id) ??
+            // De la receta anterior se copia el papel, no el número: cada
+            // receta valorada es un formulario distinto.
+            (ultimaReceta.current
+              ? { ...ultimaReceta.current, recetaNumero: "" }
+              : null)
+          }
+          onCancelar={() => setPidiendoReceta(null)}
+          onGuardar={(r) => {
+            const { producto, agregando } = pidiendoReceta;
+            setRecetas((prev) => new Map(prev).set(producto.id, r));
+            ultimaReceta.current = r;
+            if (agregando) sumar(producto);
+            setPidiendoReceta(null);
+          }}
+        />
+      )}
     </ContextoVentaFarmacia.Provider>
   );
 }

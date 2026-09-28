@@ -41,6 +41,13 @@ const ITEMS: ItemNav[] = [
   // Fuera de Inventario y no dentro: no es catálogo, es la plata que se está
   // por perder. Va donde se vea todos los días.
   { a: "/vencimientos", label: "Vencimientos", icono: "calendar", seccion: "vencimientos" },
+  // Al lado de Vencimientos: las dos son lo que la farmacia le debe al SEDES.
+  {
+    a: "/controlados",
+    label: "Libro de controlados",
+    icono: "fileText",
+    seccion: "controlados",
+  },
   { a: "/inventario", label: "Inventario", icono: "archive", seccion: "inventario", exacto: true },
   // Sólo farmacia: la primera pantalla de Inventario con nombre propio, como
   // Medicamentos o Categorías. Comparte la ruta con "Inventario", que pasa a

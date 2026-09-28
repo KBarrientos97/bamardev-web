@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { Icon } from "../../components/Icon";
 import { fmtNum } from "../../lib/format";
-import type { LoteParaVender } from "../../types";
+import type { LoteParaVender, RecetaVenta } from "../../types";
 import { repartirLotes } from "./lotesVenta";
 import { COLOR_TRAMO } from "./medicamento";
 import { isoAMes } from "./mercaderia";
+import { resumenReceta } from "./receta";
 
 /**
  * De qué lote sale este renglón, como en la maqueta: "FEFO · AMX-2601 ·
@@ -61,6 +62,47 @@ export function LoteEnLaVenta({
         </p>
       )}
     </div>
+  );
+}
+
+/**
+ * La receta de un renglón controlado: de quién es, o que falta.
+ *
+ * Falta cuando la venta volvió de un F5 sin ella o se cerró el formulario sin
+ * guardar: el renglón lo dice en rojo y tocarlo la pide. Con receta, se lee de
+ * quién es y se puede corregir antes de cobrar.
+ */
+export function RecetaEnLaVenta({
+  receta,
+  onEditar,
+}: {
+  receta: RecetaVenta | undefined;
+  onEditar: () => void;
+}) {
+  if (!receta) {
+    return (
+      <button
+        onClick={onEditar}
+        className="mt-1.5 inline-flex items-center gap-1 rounded-lg bg-danger-bg px-2 py-1 text-[11px] font-bold text-danger-text hover:bg-danger-bg/70"
+      >
+        <Icon name="alert" size={11} /> Falta la receta: tocá para cargarla
+      </button>
+    );
+  }
+  return (
+    <button
+      onClick={onEditar}
+      title="Corregir la receta"
+      className="mt-1.5 inline-flex max-w-full items-center gap-1 text-left text-[11px] font-semibold text-texto-3 hover:text-primary-700"
+    >
+      <span className="shrink-0">
+        <Icon name="fileText" size={11} />
+      </span>
+      <span className="truncate">{resumenReceta(receta)}</span>
+      <span className="shrink-0 text-texto-4">
+        <Icon name="edit" size={11} />
+      </span>
+    </button>
   );
 }
 

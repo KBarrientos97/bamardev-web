@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Producto } from "../../types";
+import type { Producto, RecetaVenta } from "../../types";
 
 /**
  * El carrito del punto de venta es el mismo para los dos rubros. En la
@@ -81,19 +81,27 @@ function carritoCon(productos: Producto[]): Carrito {
 }
 
 const fijarCantidad = vi.fn();
+const pedirReceta = vi.fn();
+const onCobrar = vi.fn();
 
-async function montar(productos: Producto[]) {
+async function montar(productos: Producto[], recetas = new Map<number, RecetaVenta>()) {
   const carrito = carritoCon(productos);
   const pantalla = (
     <PantallaVenta
       productos={productos}
       categorias={[]}
       carrito={carrito}
-      onCobrar={() => {}}
+      onCobrar={onCobrar}
       sucursalId={917}
     />
   );
-  const venta: VentaFarmacia = { carrito, agregar: vi.fn(), fijarCantidad };
+  const venta: VentaFarmacia = {
+    carrito,
+    agregar: vi.fn(),
+    fijarCantidad,
+    recetas,
+    pedirReceta,
+  };
   render(
     <MemoryRouter>
       {sesion.rubro === "FARMACIA" ? (
@@ -150,6 +158,52 @@ describe("el carrito de la farmacia", () => {
     await montar([amoxicilina]);
     expect(api.lotesParaVender).not.toHaveBeenCalled();
     expect(screen.queryByText(/FEFO/)).not.toBeInTheDocument();
+  });
+});
+
+describe("la receta de un controlado", () => {
+  const clonazepam = med({
+    id: 14,
+    nombre: "Clonazepam 2 mg",
+    manejaLote: false,
+    condicionVenta: "RECETA_VALORADA",
+    controlado: true,
+  });
+
+  it("sin receta, el renglón lo dice y Cobrar la pide en vez de cobrar", async () => {
+    await montar([clonazepam]);
+    const falta = screen.getByRole("button", { name: /Falta la receta/ });
+    fireEvent.click(falta);
+    expect(pedirReceta).toHaveBeenCalledWith(clonazepam);
+
+    pedirReceta.mockClear();
+    fireEvent.click(screen.getByRole("button", { name: /Cobrar/ }));
+    expect(pedirReceta).toHaveBeenCalledWith(clonazepam);
+    expect(onCobrar).not.toHaveBeenCalled();
+  });
+
+  it("con receta, se ve de quién es, se puede corregir, y se cobra", async () => {
+    await montar(
+      [clonazepam],
+      new Map([
+        [
+          14,
+          {
+            pacienteNombre: "Juan Pérez",
+            medicoNombre: "Dra. Ana Rojas",
+            medicoMatricula: "R-1234",
+            recetaNumero: "V-981",
+            recetaFecha: "2026-09-28",
+          },
+        ],
+      ]),
+    );
+    const receta = screen.getByRole("button", { name: /Receta N° V-981 · Juan Pérez/ });
+    fireEvent.click(receta);
+    expect(pedirReceta).toHaveBeenCalledWith(clonazepam);
+
+    fireEvent.click(screen.getByRole("button", { name: /Cobrar/ }));
+    expect(onCobrar).toHaveBeenCalled();
   });
 });
 

@@ -408,6 +408,29 @@ describe("encargos", () => {
   });
 });
 
+describe("libro de controlados", () => {
+  it("lo lee quien responde ante el SEDES, no el cajero", () => {
+    // Trae nombres de pacientes y de médicos.
+    expect(puedeVer({ ...ctx("ADMIN"), rubro: "FARMACIA" }, "controlados")).toBe(true);
+    expect(puedeVer({ ...ctx("SUPERVISOR"), rubro: "FARMACIA" }, "controlados")).toBe(true);
+    expect(puedeVer({ ...ctx("CAJERO", ["POS", "CAJA"]), rubro: "FARMACIA" }, "controlados")).toBe(
+      false,
+    );
+  });
+
+  it("es una obligación legal: no depende de lo que se contrató", () => {
+    const planMinimo: Feature[] = ["pos", "caja", "inventario"];
+    expect(
+      puedeVer({ ...ctx("ADMIN", TODOS_MODULOS, planMinimo), rubro: "FARMACIA" }, "controlados"),
+    ).toBe(true);
+  });
+
+  it("no existe fuera de farmacia", () => {
+    expect(puedeVer({ ...ctx("ADMIN"), rubro: "RESTAURANTE" }, "controlados")).toBe(false);
+    expect(puedeVer(ctx("ADMIN"), "controlados")).toBe(false);
+  });
+});
+
 describe("ingreso y salida de mercadería", () => {
   it("son las dos pantallas guiadas de la farmacia", () => {
     const farmacia = { ...ctx("ADMIN"), rubro: "FARMACIA" };

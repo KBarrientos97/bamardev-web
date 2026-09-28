@@ -37,6 +37,8 @@ import type {
   ListaEncargos,
   LoteConSaldo,
   LotesDelArticulo,
+  AsientoControlado,
+  LibroControlados,
   PaginaProductos,
   Producto,
   ProductoInput,
@@ -535,6 +537,26 @@ export const api = {
   vencimientos: (params: { almacenId?: number; dias?: number } = {}) =>
     request<Vencimientos>(
       `/lotes/vencimientos${qs({ almacenId: params.almacenId, dias: params.dias })}`,
+    ),
+  /**
+   * El libro de controlados de un período, en orden cronológico. `desde` y
+   * `hasta` son días (AAAA-MM-DD) en la hora del negocio; `hasta` incluido.
+   */
+  libroControlados: (params: {
+    desde?: string;
+    hasta?: string;
+    libro?: LibroControlados | null;
+    almacenId?: number | null;
+  }) =>
+    request<AsientoControlado[]>(
+      `/controlados${qs(
+        rangoParaApi({
+          desde: params.desde,
+          hasta: params.hasta,
+          libro: params.libro ?? undefined,
+          almacenId: params.almacenId ?? undefined,
+        }),
+      )}`,
     ),
   /** Los lotes con saldo de un producto, en el orden en que se van a vender. */
   lotesDeProducto: (productoId: number, almacenId?: number) =>

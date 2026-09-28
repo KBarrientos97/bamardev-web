@@ -755,6 +755,58 @@ export interface DetalleVentaInput {
   precio?: number;
   nota?: string;
   consumo?: Consumo;
+  /**
+   * Farmacia: la receta de un psicotrópico o estupefaciente, que va al libro.
+   * Sin ella el backend rechaza la venta de uno de esos.
+   */
+  receta?: RecetaVenta;
+}
+
+/**
+ * Los datos de la receta de un controlado, como viajan con la venta y como se
+ * asientan en el libro que pide el SEDES.
+ */
+export interface RecetaVenta {
+  pacienteNombre: string;
+  /** CI u otro documento, si la receta lo trae. */
+  pacienteDocumento?: string;
+  medicoNombre: string;
+  medicoMatricula: string;
+  /** El número del formulario. Obligatorio en la receta valorada. */
+  recetaNumero?: string;
+  /** El día que la extendió el médico: AAAA-MM-DD. */
+  recetaFecha: string;
+}
+
+/** Los dos libros de la venta: psicotrópicos (archivada) y estupefacientes (valorada). */
+export type LibroControlados = "PSICOTROPICOS" | "ESTUPEFACIENTES";
+
+/** Un asiento del libro de controlados. */
+export interface AsientoControlado {
+  id: number;
+  fecha: string;
+  ventaId: number;
+  comprobante: string | null;
+  /** Copiado al vender: si después se renombra el artículo, esto no cambia. */
+  producto: {
+    id: number;
+    nombre: string;
+    principioActivo: string | null;
+    concentracion: string | null;
+  };
+  condicionVenta: CondicionVenta;
+  controlado: boolean;
+  cantidad: number;
+  pacienteNombre: string;
+  pacienteDocumento: string | null;
+  medicoNombre: string;
+  medicoMatricula: string;
+  recetaNumero: string | null;
+  recetaFecha: string;
+  almacen: { id: number; nombre: string };
+  despachadoPor: { id: number; nombre: string };
+  /** La venta se anuló: el asiento queda, marcado. */
+  anuladaEn: string | null;
 }
 
 export interface PagoInput {

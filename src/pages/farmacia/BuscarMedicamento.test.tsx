@@ -97,7 +97,7 @@ const ranitidina = med({ id: 2, nombre: "Ranitidina 150 mg", stockTotal: 0 });
 const agregar = vi.fn();
 
 async function montar() {
-  const venta = { carrito: {} as VentaFarmacia["carrito"], agregar, fijarCantidad: vi.fn() } satisfies VentaFarmacia;
+  const venta = { carrito: {} as VentaFarmacia["carrito"], agregar, fijarCantidad: vi.fn(), recetas: new Map(), pedirReceta: vi.fn() } satisfies VentaFarmacia;
   render(
     <MemoryRouter>
       <ContextoVentaFarmacia.Provider value={venta}>

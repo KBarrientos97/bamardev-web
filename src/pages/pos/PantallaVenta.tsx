@@ -4,7 +4,8 @@ import { esFarmacia } from "../../lib/rubro";
 import CatalogoVenta from "../farmacia/CatalogoVenta";
 import { useLotesDelCarrito } from "../farmacia/lotesVenta";
 import { ChipsCondicion } from "../farmacia/piezas";
-import { CantidadVenta, LoteEnLaVenta } from "../farmacia/RenglonVenta";
+import { pideConfirmacion } from "../farmacia/medicamento";
+import { CantidadVenta, LoteEnLaVenta, RecetaEnLaVenta } from "../farmacia/RenglonVenta";
 import { useVentaFarmacia, type VentaFarmacia } from "../farmacia/ventaFarmacia";
 import { Icon } from "../../components/Icon";
 import IconoProducto from "../../components/IconoProducto";
@@ -404,6 +405,13 @@ function PanelCarrito({
   const conLotes = esFarmacia(rubro) && incluye("lotes");
   const ids = useMemo(() => carrito.lineas.map((l) => l.producto.id), [carrito.lineas]);
   const lotes = useLotesDelCarrito(ids, sucursalId, conLotes);
+  // Un controlado sin receta no se cobra: el servidor la rechazaría. Cobrar
+  // abre sus datos en vez de avanzar, con el papel todavía en la mano.
+  const sinReceta = venta
+    ? carrito.lineas.find(
+        (l) => pideConfirmacion(l.producto) && !venta.recetas.has(l.producto.id),
+      )
+    : undefined;
   const vacio = carrito.lineas.length === 0;
   // Vaciar es destructivo y el botón está al lado del de cerrar: un toque
   // impreciso borraba una venta de quince ítems con el cliente enfrente.
@@ -512,7 +520,13 @@ function PanelCarrito({
               </div>
             </dl>
 
-            <Boton onClick={onCobrar} className="mt-3 w-full">
+            <Boton
+              onClick={() => {
+                if (venta && sinReceta) venta.pedirReceta(sinReceta.producto);
+                else onCobrar();
+              }}
+              className="mt-3 w-full"
+            >
               Cobrar {fmtMoney(carrito.total)}
             </Boton>
           </div>
@@ -614,6 +628,12 @@ function FilaCarrito({
       {/* A todo el ancho: al lado del contador no entraba y cada lote ocupaba
           dos renglones. */}
       {lotes !== null && <LoteEnLaVenta lotes={lotes} cantidad={l.cantidad} />}
+      {venta && pideConfirmacion(l.producto) && (
+        <RecetaEnLaVenta
+          receta={venta.recetas.get(l.producto.id)}
+          onEditar={() => venta.pedirReceta(l.producto)}
+        />
+      )}
 
       <div className="mt-2 flex flex-wrap items-center gap-1.5">
         {/* Con una sola unidad no hay nada que partir: alcanza el toggle. */}

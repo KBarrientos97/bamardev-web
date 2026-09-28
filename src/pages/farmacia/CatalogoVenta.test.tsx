@@ -61,7 +61,7 @@ const categorias: Categoria[] = [
 const agregar = vi.fn();
 
 function montar(enCarrito = new Map<number, number>()) {
-  const venta = { carrito: {} as VentaFarmacia["carrito"], agregar, fijarCantidad: vi.fn() } satisfies VentaFarmacia;
+  const venta = { carrito: {} as VentaFarmacia["carrito"], agregar, fijarCantidad: vi.fn(), recetas: new Map(), pedirReceta: vi.fn() } satisfies VentaFarmacia;
   render(
     <MemoryRouter>
       <ContextoVentaFarmacia.Provider value={venta}>
@@ -158,7 +158,7 @@ describe("la sucursal de la caja", () => {
       limite: 24,
       offset: 0,
     });
-    const venta = { carrito: {} as VentaFarmacia["carrito"], agregar, fijarCantidad: vi.fn() } satisfies VentaFarmacia;
+    const venta = { carrito: {} as VentaFarmacia["carrito"], agregar, fijarCantidad: vi.fn(), recetas: new Map(), pedirReceta: vi.fn() } satisfies VentaFarmacia;
     render(
       <MemoryRouter>
         <ContextoVentaFarmacia.Provider value={venta}>

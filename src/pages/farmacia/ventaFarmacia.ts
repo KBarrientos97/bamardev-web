@@ -1,5 +1,5 @@
 import { createContext, useContext } from "react";
-import type { Producto } from "../../types";
+import type { Producto, RecetaVenta } from "../../types";
 import type { Carrito } from "../pos/useCarrito";
 
 /**
@@ -26,6 +26,13 @@ export interface VentaFarmacia {
    * y lo avisa. No pregunta por la receta: ya se preguntó al agregarlo.
    */
   fijarCantidad: (p: Producto, cantidad: number) => void;
+  /**
+   * La receta de cada renglón controlado, por producto. Viaja con la venta y
+   * el servidor la asienta en el libro de psicotrópicos o estupefacientes.
+   */
+  recetas: ReadonlyMap<number, RecetaVenta>;
+  /** Abre los datos de la receta de un renglón, para cargarlos o corregirlos. */
+  pedirReceta: (p: Producto) => void;
 }
 
 export const ContextoVentaFarmacia = createContext<VentaFarmacia | null>(null);
