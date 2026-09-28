@@ -168,19 +168,15 @@ export default function Productos() {
   /**
    * La red de seguridad de las tildes.
    *
-   * El servidor busca con ILIKE, que ignora mayúsculas pero **no tildes**:
-   * "losartan" no encuentra "Losartán" y "acido" no encuentra "Ácido
-   * acetilsalicílico". Nadie teclea las tildes con un cliente esperando, así
-   * que decir "no hay nada" ahí sería mentir.
+   * Desde el 28-sep-2026 el servidor ya no distingue tildes (`translate` en
+   * `ProductoService.idsPorTexto`): "losartan" encuentra "Losartán". Esto
+   * quedó como red para un backend que todavía no tenga ese arreglo, y se
+   * puede sacar cuando todos lo tengan.
    *
    * Cuando el servidor vuelve con cero, y sólo entonces, se trae el catálogo y
-   * se busca en memoria con `contiene`, que sí las ignora. Se paga una consulta
-   * en el caso raro para no pagarla nunca en el común, y se cachea mientras la
-   * búsqueda siga sin dar resultados (tecleando más letras no se vuelve a
-   * pedir).
-   *
-   * Lo correcto de verdad es que el servidor no distinga tildes (`unaccent` de
-   * Postgres o una columna normalizada con índice). Mientras tanto, esto.
+   * se busca en memoria con `contiene`, que ignora las tildes. Se cachea
+   * mientras la búsqueda siga sin dar resultados (tecleando más letras no se
+   * vuelve a pedir).
    */
   const servidorSinNada =
     buscaEnServidor && !!q.trim() && !busqueda.cargando && busqueda.total === 0;
