@@ -3,37 +3,13 @@ import { useNavigate } from "react-router-dom";
 import { Chips, EncabezadoPagina } from "../../components/filtros";
 import { Badge, Boton, Cargando, ErrorMsg, Kpi, Vacio } from "../../components/ui";
 import { api } from "../../lib/api";
-import { fmtFecha, fmtMoney, fmtNum, isoDia } from "../../lib/format";
+import { fmtFecha, fmtMoney, fmtNum } from "../../lib/format";
 import { useApi } from "../../lib/useApi";
 import { useSucursales } from "../../lib/useSucursales";
 import { useAuth } from "../../store/AuthContext";
 import type { BajaMerma, ReporteMermas } from "../../types";
 import { TRAMOS, type FiltroVencimientos } from "./medicamento";
-
-type Periodo = "mes" | "mesPasado" | "trimestre" | "gestion";
-
-const PERIODOS: readonly (readonly [Periodo, string])[] = [
-  ["mes", "Este mes"],
-  ["mesPasado", "Mes pasado"],
-  ["trimestre", "Últimos 3 meses"],
-  ["gestion", "Esta gestión"],
-];
-
-/** Desde y hasta (incluido) de cada período, en días locales. */
-export function rangoDe(p: Periodo, hoy = new Date()): { desde: string; hasta: string } {
-  const y = hoy.getFullYear();
-  const m = hoy.getMonth();
-  switch (p) {
-    case "mesPasado":
-      return { desde: isoDia(new Date(y, m - 1, 1)), hasta: isoDia(new Date(y, m, 0)) };
-    case "trimestre":
-      return { desde: isoDia(new Date(y, m - 2, 1)), hasta: isoDia(hoy) };
-    case "gestion":
-      return { desde: isoDia(new Date(y, 0, 1)), hasta: isoDia(hoy) };
-    default:
-      return { desde: isoDia(new Date(y, m, 1)), hasta: isoDia(hoy) };
-  }
-}
+import { PERIODOS, rangoDe, type Periodo } from "./periodo";
 
 const MESES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
 
@@ -53,7 +29,7 @@ function nombreMes(mes: string): string {
  * compra.
  */
 export default function MermasPagina() {
-  const { negocio, puede } = useAuth();
+  const { puede } = useAuth();
   const navigate = useNavigate();
   const [periodo, setPeriodo] = useState<Periodo>("mes");
   const suc = useSucursales();
@@ -67,8 +43,8 @@ export default function MermasPagina() {
   const verVencimientos = puede("vencimientos");
 
   return (
-    <div className="mx-auto max-w-6xl space-y-4 p-4 sm:p-5 print:max-w-none print:p-0">
-      <div className="print:hidden">
+    <div className="mx-auto max-w-6xl space-y-4 p-4 sm:p-5">
+      <div>
         <EncabezadoPagina
           titulo="Vencimientos y mermas"
           subtitulo="Lo que se perdió por vencido, dañado o robado, y lo que está por perderse."
@@ -81,25 +57,15 @@ export default function MermasPagina() {
                 disabled={!r || r.detalle.length === 0}
                 onClick={() => r && bajarCsv(r.detalle, desde, hasta)}
               >
-                Planilla
-              </Boton>
-              <Boton variante="soft" icono="printer" disabled={!r} onClick={() => window.print()}>
-                Imprimir
+                Exportar a Excel
               </Boton>
             </div>
           }
         />
       </div>
 
-      <div className="hidden print:block">
-        <h1 className="text-lg font-bold">Vencimientos y mermas</h1>
-        <p className="text-sm">
-          {negocio?.nombre} · Del {fmtFecha(desde)} al {fmtFecha(hasta)}
-          {suc.nombre ? ` · ${suc.nombre}` : ""}
-        </p>
-      </div>
 
-      <div className="space-y-3 rounded-2xl border border-borde bg-white p-4 print:hidden">
+      <div className="space-y-3 rounded-2xl border border-borde bg-white p-4">
         <Chips valor={periodo} opciones={PERIODOS} onChange={setPeriodo} />
         {suc.elegir && (
           <Chips
@@ -178,7 +144,7 @@ export default function MermasPagina() {
 
 function Tarjeta({ titulo, children }: { titulo: string; children: React.ReactNode }) {
   return (
-    <section className="rounded-2xl border border-borde bg-white p-4 print:break-inside-avoid print:border-0 print:p-0">
+    <section className="rounded-2xl border border-borde bg-white p-4">
       <h2 className="mb-3 text-[15px] font-bold text-texto">{titulo}</h2>
       {children}
     </section>
@@ -246,7 +212,7 @@ function EnRiesgo({
 function Barra({ valor, maximo, gris }: { valor: number; maximo: number; gris?: boolean }) {
   const ancho = maximo > 0 ? Math.max(2, (valor / maximo) * 100) : 0;
   return (
-    <span className="block h-2 w-full rounded-full bg-muted print:hidden">
+    <span className="block h-2 w-full rounded-full bg-muted">
       <span
         className={`block h-2 rounded-full ${gris ? "bg-slate-300" : "bg-primary"}`}
         style={{ width: `${ancho}%` }}
@@ -340,7 +306,7 @@ function Detalle({ filas }: { filas: BajaMerma[] }) {
   const variasSucursales = useMemo(() => new Set(filas.map((f) => f.almacen)).size > 1, [filas]);
   return (
     <Tarjeta titulo="Cada baja">
-      <ul className="space-y-2 lg:hidden print:hidden">
+      <ul className="space-y-2 lg:hidden">
         {filas.map((f, i) => (
           <li key={`${f.movimientoId}-${f.productoId}-${i}`} className="rounded-xl border border-borde-soft p-3">
             <div className="flex items-start justify-between gap-2">
@@ -367,8 +333,8 @@ function Detalle({ filas }: { filas: BajaMerma[] }) {
         ))}
       </ul>
 
-      <div className="hidden overflow-x-auto lg:block print:block">
-        <table className="w-full text-left text-[13px] print:text-[11px]">
+      <div className="hidden overflow-x-auto lg:block">
+        <table className="w-full text-left text-[13px]">
           <thead className="border-b border-borde text-xs font-semibold text-texto-3">
             <tr>
               <th className="py-2 pr-3">Fecha</th>

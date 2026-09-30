@@ -145,6 +145,6 @@ describe("la sugerencia", () => {
     vi.mocked(api.sugerenciaCompra).mockResolvedValue(respuesta([]));
     await montar();
     expect(screen.getByText("No hace falta pedir nada")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Imprimir/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /Exportar a Excel/ })).toBeDisabled();
   });
 });

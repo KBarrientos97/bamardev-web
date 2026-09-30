@@ -5,7 +5,6 @@ import { api } from "../../lib/api";
 import { fmtFecha, fmtFechaHora, fmtNum, isoDia } from "../../lib/format";
 import { useApi } from "../../lib/useApi";
 import { useSucursales } from "../../lib/useSucursales";
-import { useAuth } from "../../store/AuthContext";
 import type { AsientoControlado, LibroControlados as Libro } from "../../types";
 import { NOMBRE_LIBRO } from "./receta";
 
@@ -34,11 +33,9 @@ function finDelMesPasado(d: Date): string {
  * sigue en el libro, marcada, porque el libro tiene que explicar también lo
  * que salió y volvió.
  *
- * Se imprime tal cual (el menú y los filtros no salen en el papel) o se baja
- * como planilla.
+ * Se exporta a Excel: ahí se archiva o, si hace falta papel, se imprime.
  */
 export default function LibroControladosPagina() {
-  const { negocio } = useAuth();
   const hoy = new Date();
   const [libro, setLibro] = useState<"" | Libro>("");
   const [desde, setDesde] = useState(() => inicioDeMes(hoy));
@@ -62,8 +59,8 @@ export default function LibroControladosPagina() {
   const titulo = libro ? `Libro de ${NOMBRE_LIBRO[libro]}` : "Libro de controlados";
 
   return (
-    <div className="mx-auto max-w-6xl space-y-4 p-4 sm:p-5 print:max-w-none print:p-0">
-      <div className="print:hidden">
+    <div className="mx-auto max-w-6xl space-y-4 p-4 sm:p-5">
+      <div>
         <EncabezadoPagina
           titulo="Libro de controlados"
           subtitulo="Lo vendido con receta archivada o valorada. Se llena solo al cobrar."
@@ -75,31 +72,14 @@ export default function LibroControladosPagina() {
                 disabled={filas.length === 0}
                 onClick={() => bajarCsv(titulo, desde, hasta, filas)}
               >
-                Planilla
-              </Boton>
-              <Boton
-                variante="soft"
-                icono="printer"
-                disabled={filas.length === 0}
-                onClick={() => window.print()}
-              >
-                Imprimir
+                Exportar a Excel
               </Boton>
             </div>
           }
         />
       </div>
 
-      {/* Lo que sale en el papel en lugar del encabezado de la pantalla. */}
-      <div className="hidden print:block">
-        <h1 className="text-lg font-bold">{titulo}</h1>
-        <p className="text-sm">
-          {negocio?.nombre} · Del {fmtFecha(desde)} al {fmtFecha(hasta)}
-          {suc.nombre ? ` · ${suc.nombre}` : ""}
-        </p>
-      </div>
-
-      <div className="space-y-3 rounded-2xl border border-borde bg-white p-4 print:hidden">
+      <div className="space-y-3 rounded-2xl border border-borde bg-white p-4">
         <Chips valor={libro} opciones={LIBROS} onChange={setLibro} />
         <div className="flex flex-wrap items-end gap-3">
           <label className="block">
@@ -171,13 +151,13 @@ export default function LibroControladosPagina() {
         />
       ) : (
         <>
-          <p className="text-[13px] text-texto-3 print:hidden">
+          <p className="text-[13px] text-texto-3">
             {fmtNum(filas.length)} {filas.length === 1 ? "asiento" : "asientos"}
             {anuladas > 0 && ` · ${fmtNum(anuladas)} de ventas anuladas`}
           </p>
 
           {/* Teléfono: una tarjeta por asiento. */}
-          <ul className="space-y-2 lg:hidden print:hidden">
+          <ul className="space-y-2 lg:hidden">
             {filas.map((a, i) => (
               <li
                 key={a.id}
@@ -212,10 +192,10 @@ export default function LibroControladosPagina() {
             ))}
           </ul>
 
-          {/* Escritorio y papel: la tabla del libro. */}
-          <div className="hidden overflow-x-auto rounded-2xl border border-borde bg-white lg:block print:block print:rounded-none print:border-0">
-            <table className="w-full text-left text-[13px] print:text-[11px]">
-              <thead className="border-b border-borde bg-muted text-xs font-semibold text-texto-3 print:bg-white">
+          {/* Escritorio: la tabla del libro. */}
+          <div className="hidden overflow-x-auto rounded-2xl border border-borde bg-white lg:block">
+            <table className="w-full text-left text-[13px]">
+              <thead className="border-b border-borde bg-muted text-xs font-semibold text-texto-3">
                 <tr>
                   <th className="px-3 py-2.5">N°</th>
                   <th className="px-3 py-2.5">Fecha</th>

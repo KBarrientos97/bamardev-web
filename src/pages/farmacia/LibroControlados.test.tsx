@@ -105,6 +105,6 @@ describe("el libro", () => {
     vi.mocked(api.libroControlados).mockResolvedValue([]);
     await montar();
     expect(screen.getByText("No hay ventas de controlados")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Imprimir/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /Exportar a Excel/ })).toBeDisabled();
   });
 });

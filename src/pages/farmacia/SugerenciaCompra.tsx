@@ -2,10 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import { Chips, EncabezadoPagina } from "../../components/filtros";
 import { Badge, Boton, Cargando, ErrorMsg, Kpi, Vacio } from "../../components/ui";
 import { api } from "../../lib/api";
-import { fmtFecha, fmtMoney, fmtNum, isoDia } from "../../lib/format";
+import { fmtMoney, fmtNum, isoDia } from "../../lib/format";
 import { useApi } from "../../lib/useApi";
 import { useSucursales } from "../../lib/useSucursales";
-import { useAuth } from "../../store/AuthContext";
 import type { ItemSugerencia } from "../../types";
 import { conUnidad } from "./medicamento";
 import {
@@ -40,11 +39,10 @@ const VISTAS = [
  * encargaron clientes. Lo vencido no cuenta como stock.
  *
  * La cuenta la hace el servidor; acá el dueño la lee, ajusta las cantidades
- * que quiera (cero = no se pide) y se lleva el pedido impreso o en planilla,
- * por laboratorio si le pide a una droguería por cada uno.
+ * que quiera (cero = no se pide) y se lleva el pedido en Excel, por
+ * laboratorio si le pide a una droguería por cada uno.
  */
 export default function SugerenciaCompraPagina() {
-  const { negocio } = useAuth();
   const [dias, setDias] = useState<(typeof HISTORIA)[number][0]>("30");
   const [cobertura, setCobertura] = useState<(typeof COBERTURA)[number][0]>("15");
   const [vista, setVista] = useState<(typeof VISTAS)[number][0]>("urgencia");
@@ -80,8 +78,8 @@ export default function SugerenciaCompraPagina() {
   }
 
   return (
-    <div className="mx-auto max-w-6xl space-y-4 p-4 sm:p-5 print:max-w-none print:p-0">
-      <div className="print:hidden">
+    <div className="mx-auto max-w-6xl space-y-4 p-4 sm:p-5">
+      <div>
         <EncabezadoPagina
           titulo="Sugerencia de compra"
           subtitulo={`Qué pedir para que alcance ${etiqueta(COBERTURA, cobertura)}, según lo vendido en los últimos ${dias} días.`}
@@ -94,30 +92,15 @@ export default function SugerenciaCompraPagina() {
                 disabled={totales.articulos === 0}
                 onClick={() => bajarCsv(items, ajustes, Number(dias))}
               >
-                Planilla
-              </Boton>
-              <Boton
-                variante="soft"
-                icono="printer"
-                disabled={totales.articulos === 0}
-                onClick={() => window.print()}
-              >
-                Imprimir
+                Exportar a Excel
               </Boton>
             </div>
           }
         />
       </div>
 
-      <div className="hidden print:block">
-        <h1 className="text-lg font-bold">Pedido sugerido</h1>
-        <p className="text-sm">
-          {negocio?.nombre} · {fmtFecha(isoDia(new Date()))}
-          {suc.nombre ? ` · ${suc.nombre}` : ""} · para {etiqueta(COBERTURA, cobertura)}
-        </p>
-      </div>
 
-      <div className="space-y-3 rounded-2xl border border-borde bg-white p-4 print:hidden">
+      <div className="space-y-3 rounded-2xl border border-borde bg-white p-4">
         <Fila titulo="Mirar las ventas de">
           <Chips valor={dias} opciones={HISTORIA} onChange={setDias} />
         </Fila>
@@ -135,7 +118,7 @@ export default function SugerenciaCompraPagina() {
         )}
         <p className="border-t border-borde-soft pt-3 text-xs text-texto-3">
           Pedido = lo que se vende en ese tiempo + el stock mínimo + lo que encargaron clientes −
-          lo que hay (lo vencido no cuenta). Podés cambiar cualquier cantidad antes de imprimir; 0
+          lo que hay (lo vencido no cuenta). Podés cambiar cualquier cantidad antes de exportar; 0
           es no pedirlo.
         </p>
       </div>
@@ -152,7 +135,7 @@ export default function SugerenciaCompraPagina() {
         />
       ) : (
         <>
-          <div className="grid gap-3 sm:grid-cols-3 print:hidden">
+          <div className="grid gap-3 sm:grid-cols-3">
             <Kpi
               etiqueta="Para pedir"
               valor={`${fmtNum(totales.articulos)} ${totales.articulos === 1 ? "artículo" : "artículos"}`}
@@ -175,7 +158,7 @@ export default function SugerenciaCompraPagina() {
             />
           </div>
 
-          <div className="flex flex-wrap items-center justify-between gap-2 print:hidden">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <Chips valor={vista} opciones={VISTAS} onChange={setVista} />
             {hayAjustes && (
               <button
@@ -188,7 +171,7 @@ export default function SugerenciaCompraPagina() {
           </div>
 
           {grupos.map((g) => (
-            <section key={g.laboratorio || "todos"} className="space-y-2 print:break-inside-avoid">
+            <section key={g.laboratorio || "todos"} className="space-y-2">
               {g.laboratorio && (
                 <h2 className="flex items-baseline justify-between gap-2 pt-1 text-[15px] font-bold text-texto">
                   <span>{g.laboratorio}</span>
@@ -199,7 +182,7 @@ export default function SugerenciaCompraPagina() {
               )}
 
               {/* Teléfono: una tarjeta por artículo. */}
-              <ul className="space-y-2 lg:hidden print:hidden">
+              <ul className="space-y-2 lg:hidden">
                 {g.items.map((i) => (
                   <TarjetaSugerencia
                     key={i.productoId}
@@ -212,13 +195,13 @@ export default function SugerenciaCompraPagina() {
                 ))}
               </ul>
 
-              {/* Escritorio y papel. */}
-              <div className="hidden overflow-x-auto rounded-2xl border border-borde bg-white lg:block print:block print:rounded-none print:border-0">
-                <table className="w-full text-left text-[13px] print:text-[11px]">
-                  <thead className="border-b border-borde bg-muted text-xs font-semibold text-texto-3 print:bg-white">
+              {/* Escritorio. */}
+              <div className="hidden overflow-x-auto rounded-2xl border border-borde bg-white lg:block">
+                <table className="w-full text-left text-[13px]">
+                  <thead className="border-b border-borde bg-muted text-xs font-semibold text-texto-3">
                     <tr>
                       <th className="px-3 py-2.5">Medicamento</th>
-                      <th className="px-3 py-2.5 print:hidden">Por qué</th>
+                      <th className="px-3 py-2.5">Por qué</th>
                       <th className="px-3 py-2.5 text-right">Hay</th>
                       <th className="px-3 py-2.5 text-right">Se vende</th>
                       <th className="px-3 py-2.5 text-right">Encargos</th>
@@ -242,10 +225,6 @@ export default function SugerenciaCompraPagina() {
               </div>
             </section>
           ))}
-
-          <p className="hidden text-right text-sm font-bold print:block">
-            Total estimado: {fmtMoney(totales.inversion)}
-          </p>
         </>
       )}
     </div>
@@ -310,7 +289,7 @@ function FilaSugerencia({ item: i, dias, pedir, conLaboratorio, onPedir }: Props
         <span className={`font-semibold ${pedir === 0 ? "" : "text-texto"}`}>{i.nombre}</span>
         {texto && <span className="block text-xs text-texto-4">{texto}</span>}
       </td>
-      <td className="px-3 py-2.5 align-top print:hidden">
+      <td className="px-3 py-2.5 align-top">
         <Badge tono={motivo.tono}>{motivo.texto}</Badge>
       </td>
       <td className="whitespace-nowrap px-3 py-2.5 text-right align-top">
@@ -398,11 +377,10 @@ function CampoPedir({
         onKeyDown={(e) => {
           if (e.key === "Enter") e.currentTarget.blur();
         }}
-        className="w-16 rounded-lg border border-borde bg-white px-2 py-1 text-right text-[13px] font-bold text-texto outline-none focus:border-primary focus:ring-2 focus:ring-primary-100 print:hidden"
+        className="w-16 rounded-lg border border-borde bg-white px-2 py-1 text-right text-[13px] font-bold text-texto outline-none focus:border-primary focus:ring-2 focus:ring-primary-100"
       />
-      <span className="hidden font-bold print:inline">{fmtNum(valor)}</span>
       {valor !== i.sugerido && (
-        <span className="mt-0.5 text-[11px] text-texto-4 print:hidden">
+        <span className="mt-0.5 text-[11px] text-texto-4">
           sugerido {fmtNum(i.sugerido)}
         </span>
       )}

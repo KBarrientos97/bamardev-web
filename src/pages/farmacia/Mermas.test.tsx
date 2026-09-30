@@ -23,7 +23,8 @@ vi.mock("../../lib/api", () => ({
 }));
 
 import { api } from "../../lib/api";
-import MermasPagina, { rangoDe } from "./Mermas";
+import MermasPagina from "./Mermas";
+import { rangoDe } from "./periodo";
 
 const nada = { unidades: 0, valor: 0, lotes: 0 };
 
