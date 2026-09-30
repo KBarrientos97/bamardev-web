@@ -434,7 +434,7 @@ function bajarCsv(items: ItemSugerencia[], ajustes: ReadonlyMap<number, number>,
           .join(";");
       }),
   );
-  const blob = new Blob(["﻿" + [columnas.map(celda).join(";"), ...filas].join("\r\n")], {
+  const blob = new Blob(["\uFEFF" + [columnas.map(celda).join(";"), ...filas].join("\r\n")], {
     type: "text/csv;charset=utf-8;",
   });
   const url = URL.createObjectURL(blob);

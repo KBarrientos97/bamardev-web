@@ -337,7 +337,7 @@ function bajarCsv(titulo: string, desde: string, hasta: string, filas: AsientoCo
         .join(";"),
     ),
   ];
-  const blob = new Blob(["﻿" + lineas.join("\r\n")], { type: "text/csv;charset=utf-8;" });
+  const blob = new Blob(["\uFEFF" + lineas.join("\r\n")], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
   const enlace = document.createElement("a");
   enlace.href = url;
