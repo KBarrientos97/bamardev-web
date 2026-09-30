@@ -41,6 +41,10 @@ import type {
   LibroControlados,
   SugerenciaCompra,
   ReporteMermas,
+  Proveedor,
+  ProveedorConCompras,
+  ProveedorDetalle,
+  ProveedorInput,
   PaginaProductos,
   Producto,
   ProductoInput,
@@ -653,6 +657,29 @@ export const api = {
   getMovimientos: (sucursalId?: number | null) =>
     request<Movimiento[]>(`/movimientos${qs({ sucursalId: sucursalId ?? undefined })}`),
   getMovimiento: (id: number) => request<Movimiento>(`/movimientos/${id}`),
+
+  // ── Proveedores (farmacia) ──
+  /** Los proveedores con lo que se les compró en el período (días AAAA-MM-DD). */
+  proveedores: (params: { desde?: string; hasta?: string; inactivos?: boolean } = {}) =>
+    request<ProveedorConCompras[]>(
+      `/proveedores${qs(
+        rangoParaApi({
+          desde: params.desde,
+          hasta: params.hasta,
+          inactivos: params.inactivos ? "true" : undefined,
+        }),
+      )}`,
+    ),
+  proveedor: (id: number, params: { desde?: string; hasta?: string } = {}) =>
+    request<ProveedorDetalle>(`/proveedores/${id}${qs(rangoParaApi(params))}`),
+  /** Si el nombre ya existe (sin importar mayúsculas ni tildes), el servidor lo rechaza. */
+  crearProveedor: (input: ProveedorInput) =>
+    request<Proveedor>("/proveedores", { method: "POST", body: JSON.stringify(input) }),
+  actualizarProveedor: (id: number, input: Partial<ProveedorInput> & { activo?: boolean }) =>
+    request<Proveedor>(`/proveedores/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
+  /** Baja lógica: sus ingresos viejos siguen diciendo a quién se le compró. */
+  darDeBajaProveedor: (id: number) =>
+    request<Proveedor>(`/proveedores/${id}`, { method: "DELETE" }),
   /** Productos e insumos juntos, con su stock en el almacén indicado. */
   getArticulosMovimiento: (almacenId?: number) =>
     request<ArticuloMovimiento[]>(`/movimientos/articulos${qs({ almacenId })}`),

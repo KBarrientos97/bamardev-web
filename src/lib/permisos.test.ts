@@ -431,6 +431,19 @@ describe("libro de controlados", () => {
   });
 });
 
+describe("proveedores", () => {
+  it("los ve quien recibe la mercadería, no el cajero", () => {
+    expect(puedeVer({ ...ctx("ADMIN"), rubro: "FARMACIA" }, "proveedores")).toBe(true);
+    expect(puedeVer({ ...ctx("CAJERO", ["POS", "CAJA"]), rubro: "FARMACIA" }, "proveedores")).toBe(
+      false,
+    );
+  });
+
+  it("no existe fuera de farmacia", () => {
+    expect(puedeVer({ ...ctx("ADMIN"), rubro: "RESTAURANTE" }, "proveedores")).toBe(false);
+  });
+});
+
 describe("ingreso y salida de mercadería", () => {
   it("son las dos pantallas guiadas de la farmacia", () => {
     const farmacia = { ...ctx("ADMIN"), rubro: "FARMACIA" };

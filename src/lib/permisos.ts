@@ -69,6 +69,8 @@ export type Seccion =
    * archivada o valorada. Sólo farmacia.
    */
   | "controlados"
+  /** A quién se le compra, y cuánto. Sólo farmacia. */
+  | "proveedores"
   /**
    * Recibir la mercadería del proveedor: factura, lote y vencimiento por
    * línea. Es el movimiento de ENTRADA con pantalla propia. Sólo farmacia.
@@ -127,6 +129,9 @@ const REQUISITOS: Record<Seccion, { modulo: Modulo; feature: Feature | null }> =
   // El libro de controlados es una obligación legal, no algo que se vende
   // aparte: sin feature. El módulo es el que pide el backend (INVENTARIO).
   controlados: { modulo: "INVENTARIO", feature: null },
+  // Los proveedores son de quien recibe la mercadería: la misma llave que
+  // Movimientos, que es donde se eligen.
+  proveedores: { modulo: "INVENTARIO", feature: "inventario" },
   // Recibir y dar de baja mercadería SON movimientos de inventario: la misma
   // llave que `movimientos`, sólo que con pantalla propia. No se venden aparte
   // ni se le pueden dar a alguien que no pueda ver el registro.
@@ -171,6 +176,8 @@ const ROLES_PERMITIDOS: Partial<Record<Seccion, Rol[]>> = {
   // Trae nombres de pacientes y de médicos: lo lee quien responde ante el
   // SEDES, no el cajero. El backend lo exige igual.
   controlados: ["ADMIN", "SUPERVISOR"],
+  // Lo que se le compró a cada uno es plata del negocio: no lo ve un cajero.
+  proveedores: ["ADMIN", "SUPERVISOR"],
   // Quien recibe del proveedor y quien da de baja un lote vencido es el mismo
   // que puede ver Movimientos: mover stock no es atender el mostrador.
   ingreso_mercaderia: ["ADMIN", "SUPERVISOR"],
@@ -202,6 +209,7 @@ const SOLO_EN_RUBRO: Partial<Record<Seccion, Rubro[]>> = {
   vencimientos: ["FARMACIA"],
   encargos: ["FARMACIA"],
   controlados: ["FARMACIA"],
+  proveedores: ["FARMACIA"],
   // Las dos pantallas guiadas son del rubro. Un restaurante sigue cargando
   // entradas y salidas desde Movimientos con el formulario de siempre: acá no
   // se le saca nada, se le agrega un atajo a la farmacia.

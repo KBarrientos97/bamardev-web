@@ -352,6 +352,12 @@ export interface Movimiento {
   tipo: TipoMovimiento;
   comprobante: string | null;
   descripcion: string | null;
+  /**
+   * A quién se le compró, si se eligió de la lista (farmacia). Null en lo
+   * viejo o en lo que cargan Android y el restaurante: ahí el proveedor, si
+   * lo hay, está como texto en `descripcion`.
+   */
+  proveedor?: { id: number; nombre: string } | null;
   estado: EstadoDocumento;
   fecha: string;
   fechaAprobacion: string | null;
@@ -415,8 +421,52 @@ export interface MovimientoInput {
   fecha?: string;
   comprobante?: string;
   descripcion?: string;
+  /** Sólo en una ENTRADA. Al editar, `null` lo quita. */
+  proveedorId?: number | null;
   detalles?: DetalleMovimientoInput[];
 }
+
+/** A quién se le compra la mercadería (farmacia). */
+export interface Proveedor {
+  id: number;
+  nombre: string;
+  nit: string | null;
+  telefono: string | null;
+  /** El vendedor o visitador con el que se habla. */
+  contacto: string | null;
+  nota: string | null;
+  /** Dado de baja: no se ofrece al cargar un ingreso, pero su historia queda. */
+  activo: boolean;
+}
+
+/** Lo que se le compró: entradas APROBADAS, cantidad × costo. */
+export interface ComprasProveedor {
+  total: number;
+  ingresos: number;
+}
+
+export interface ProveedorConCompras extends Proveedor {
+  compras: ComprasProveedor;
+  /** La última entrada aprobada, aunque sea de antes del período. */
+  ultimaCompra: string | null;
+}
+
+export interface ProveedorDetalle extends Proveedor {
+  compras: ComprasProveedor;
+  ultimosIngresos: {
+    id: number;
+    fecha: string;
+    comprobante: string | null;
+    estado: EstadoDocumento;
+    almacen: string;
+    items: number;
+    monto: number;
+  }[];
+}
+
+export type ProveedorInput = Partial<Pick<Proveedor, "nit" | "telefono" | "contacto" | "nota">> & {
+  nombre: string;
+};
 
 /**
  * Lo que un producto tiene DISTINTO en una sucursal.

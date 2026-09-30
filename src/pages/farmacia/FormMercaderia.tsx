@@ -23,6 +23,7 @@ import type {
 } from "../../types";
 import BuscadorArticulo from "./BuscadorArticulo";
 import { conUnidad, detalleDe } from "./medicamento";
+import SelectorProveedor, { type ProveedorElegido } from "./SelectorProveedor";
 import {
   MOTIVOS_SALIDA,
   avisoVidaUtil,
@@ -113,7 +114,10 @@ export default function FormMercaderia({
   );
   const [fecha, setFecha] = useState(isoDia(new Date()));
   const [comprobante, setComprobante] = useState("");
-  const [proveedor, setProveedor] = useState("");
+  // El proveedor elegido de la lista, y lo tecleado sin elegir (o el texto
+  // de un ingreso de antes de la lista, que hay que pasar a uno de verdad).
+  const [proveedor, setProveedor] = useState<ProveedorElegido | null>(null);
+  const [proveedorTexto, setProveedorTexto] = useState("");
   const [motivo, setMotivo] = useState<string>(precarga?.motivo ?? "");
   const [nota, setNota] = useState("");
   const [lineas, setLineas] = useState<LineaForm[]>([]);
@@ -214,8 +218,10 @@ export default function FormMercaderia({
       const partes = partirMotivo(m.descripcion);
       setMotivo(partes.motivo);
       setNota(partes.nota);
+    } else if (m.proveedor) {
+      setProveedor(m.proveedor);
     } else {
-      setProveedor(m.descripcion ?? "");
+      setProveedorTexto(m.descripcion ?? "");
     }
 
     const detalles = m.detalles ?? [];
@@ -354,7 +360,18 @@ export default function FormMercaderia({
       return setError(revisado.error);
     }
 
-    const descripcion = entrada ? proveedor.trim() : juntarMotivo(motivo, nota);
+    // Lo tecleado y no elegido no se guarda como texto suelto: es justo lo
+    // que partía las compras de un proveedor en tres nombres.
+    if (entrada && !proveedor && proveedorTexto.trim()) {
+      enVuelo.current = false;
+      return setError(
+        `Elegí el proveedor de la lista o crealo con «Crear»: "${proveedorTexto.trim()}" todavía no es uno.`,
+      );
+    }
+
+    // La descripción sigue diciendo el proveedor: es lo que leen Android, el
+    // restaurante y los movimientos de antes de la lista.
+    const descripcion = entrada ? (proveedor?.nombre ?? "") : juntarMotivo(motivo, nota);
 
     setGuardando(true);
     try {
@@ -402,6 +419,7 @@ export default function FormMercaderia({
       fecha,
       comprobante: entrada ? comprobante.trim() : "",
       descripcion,
+      ...(entrada && proveedor ? { proveedorId: proveedor.id } : {}),
       detalles,
     };
     const creado = await api.crearMovimiento(input);
@@ -434,6 +452,7 @@ export default function FormMercaderia({
       comprobante: entrada ? comprobante.trim() : "",
       ...(fecha !== fechaOriginal ? { fecha } : {}),
       descripcion,
+      proveedorId: entrada ? (proveedor?.id ?? null) : null,
     });
 
     const vivos = new Set(lineas.map((l) => l.detalleId).filter(Boolean));
@@ -564,10 +583,11 @@ export default function FormMercaderia({
 
           {entrada && (
             <Campo label="Proveedor">
-              <Input
-                value={proveedor}
-                onChange={(e) => setProveedor(e.target.value)}
-                placeholder="Droguería / laboratorio"
+              <SelectorProveedor
+                valor={proveedor}
+                texto={proveedorTexto}
+                onElegir={setProveedor}
+                onTexto={setProveedorTexto}
               />
             </Campo>
           )}

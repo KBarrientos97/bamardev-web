@@ -64,6 +64,8 @@ const ITEMS: ItemNav[] = [
   { a: "/inventario/categorias", label: "Categorías", icono: "grid", seccion: "productos", nivel: 1 },
   { a: "/inventario/insumos", label: "Insumos", icono: "sack", seccion: "insumos", nivel: 1 },
   { a: "/inventario/almacenes", label: "Almacenes", icono: "warehouse", seccion: "almacenes", nivel: 1 },
+  // Sólo farmacia: a quién se le compra. Al lado de Movimientos, donde se elige.
+  { a: "/inventario/proveedores", label: "Proveedores", icono: "truck", seccion: "proveedores", nivel: 1 },
   {
     a: "/inventario/movimientos",
     label: "Movimientos",

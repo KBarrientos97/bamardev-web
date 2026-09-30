@@ -32,6 +32,28 @@ vi.mock("../../lib/api", () => ({
     ubicacionesUsadas: vi.fn(async () => ["Estante 3 · fila B", "Vitrina 1"]),
     fijarUbicacionProducto: vi.fn(async () => ({ ubicacion: null })),
     crearMovimiento: vi.fn(async () => ({ id: 999 })),
+    proveedores: vi.fn(async () => [
+      {
+        id: 5,
+        nombre: "Droguería INTI",
+        nit: "1020304",
+        telefono: null,
+        contacto: null,
+        nota: null,
+        activo: true,
+        compras: { total: 0, ingresos: 0 },
+        ultimaCompra: null,
+      },
+    ]),
+    crearProveedor: vi.fn(async ({ nombre }: { nombre: string }) => ({
+      id: 6,
+      nombre,
+      nit: null,
+      telefono: null,
+      contacto: null,
+      nota: null,
+      activo: true,
+    })),
     aprobarMovimiento: vi.fn(async () => ({})),
   },
 }));
@@ -136,7 +158,10 @@ async function abrirEdicion() {
 /** Elegir otro almacén y esperar a que llegue su lista de artículos. */
 async function elegirAlmacen(id: number) {
   await act(async () => {
-    fireEvent.change(screen.getByRole("combobox"), { target: { value: String(id) } });
+    // Por su nombre: con una entrada, el proveedor también es un combobox.
+    fireEvent.change(screen.getByRole("combobox", { name: /^Sucursal/ }), {
+      target: { value: String(id) },
+    });
   });
 }
 
@@ -256,7 +281,7 @@ describe("Cambiar de pantalla desde el menú", () => {
     expect(screen.getByRole("button", { name: "Guardar salida" })).toBeInTheDocument();
     // Y con la salida aparece lo suyo: por qué sale la mercadería.
     expect(screen.getByText("Motivo")).toBeInTheDocument();
-    expect(screen.queryByPlaceholderText("Droguería / laboratorio")).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "Proveedor" })).not.toBeInTheDocument();
   });
 
   it("y de Salida a Ingreso, de vuelta", async () => {
@@ -269,7 +294,7 @@ describe("Cambiar de pantalla desde el menú", () => {
     });
 
     expect(screen.getByRole("button", { name: "Guardar entrada" })).toBeInTheDocument();
-    expect(screen.getByPlaceholderText("Droguería / laboratorio")).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Proveedor" })).toBeInTheDocument();
   });
 });
 
@@ -395,5 +420,99 @@ describe("La ubicación al recibir", () => {
   it("una salida no pregunta dónde se guarda", async () => {
     await abrirEdicion();
     expect(screen.queryByText(/Ubicación \(opcional\)|Estante 3/)).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * El proveedor se elige de la lista, o se crea ahí mismo. Lo tecleado y no
+ * elegido no se guarda como texto suelto: es lo que partía las compras de un
+ * proveedor en tres nombres.
+ */
+describe("El proveedor del ingreso", () => {
+  async function abrirComoEntrada() {
+    await abrirEdicion();
+    await clickEn(/Entrada/);
+  }
+
+  async function teclear(texto: string) {
+    const campo = screen.getByRole("combobox", { name: "Proveedor" });
+    await act(async () => {
+      fireEvent.focus(campo);
+      fireEvent.change(campo, { target: { value: texto } });
+    });
+  }
+
+  async function tocarOpcion(nombre: RegExp) {
+    await act(async () => {
+      fireEvent.mouseDown(screen.getByRole("button", { name: nombre }));
+    });
+  }
+
+  const guardarCambios = () => clickEn(/Guardar cambios/);
+
+  it("se elige de la lista, sin importar tildes, y viaja con el ingreso", async () => {
+    await abrirComoEntrada();
+    await teclear("drogueria");
+    await tocarOpcion(/Droguería INTI/);
+    expect(screen.getByRole("button", { name: "Cambiar el proveedor Droguería INTI" })).toBeInTheDocument();
+
+    await guardarCambios();
+    expect(api.actualizarMovimiento).toHaveBeenCalledWith(
+      950,
+      expect.objectContaining({ proveedorId: 5, descripcion: "Droguería INTI" }),
+    );
+  });
+
+  it("lo tecleado y no elegido no se guarda: pide elegirlo o crearlo", async () => {
+    await abrirComoEntrada();
+    await teclear("Droguería Nueva");
+    await guardarCambios();
+    expect(screen.getByText(/Elegí el proveedor de la lista o crealo/)).toBeInTheDocument();
+    expect(api.actualizarMovimiento).not.toHaveBeenCalled();
+  });
+
+  it("si no está, se crea ahí mismo y queda elegido", async () => {
+    await abrirComoEntrada();
+    await teclear("  Droguería Nueva ");
+    await tocarOpcion(/Crear «Droguería Nueva»/);
+    expect(api.crearProveedor).toHaveBeenCalledWith({ nombre: "Droguería Nueva" });
+    expect(screen.getByRole("button", { name: "Cambiar el proveedor Droguería Nueva" })).toBeInTheDocument();
+  });
+
+  it("si ya existe con otra tilde o mayúscula, no ofrece crearlo de nuevo", async () => {
+    await abrirComoEntrada();
+    await teclear("DROGUERIA INTI");
+    expect(screen.queryByRole("button", { name: /Crear/ })).not.toBeInTheDocument();
+  });
+
+  it("un ingreso de antes de la lista muestra su proveedor escrito, para elegirlo", async () => {
+    vi.mocked(api.getMovimiento).mockResolvedValue({
+      ...salidaPendiente,
+      tipo: "ENTRADA",
+      descripcion: "INTI",
+      proveedor: null,
+    });
+    render(
+      <MemoryRouter initialEntries={["/inventario/movimientos/950/editar"]}>
+        <Routes>
+          <Route
+            path="/inventario/movimientos/:id/editar"
+            element={<FormMercaderia tipoInicial="ENTRADA" />}
+          />
+        </Routes>
+      </MemoryRouter>,
+    );
+    // Primero llega el ingreso; recién ahí el campo tiene su proveedor.
+    expect(await screen.findByText("Amoxicilina 500 mg")).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Proveedor" })).toHaveValue("INTI");
+  });
+
+  it("una salida no lleva proveedor", async () => {
+    await abrirEdicion();
+    await guardarCambios();
+    expect(api.actualizarMovimiento).toHaveBeenCalledWith(
+      950,
+      expect.objectContaining({ proveedorId: null }),
+    );
   });
 });
