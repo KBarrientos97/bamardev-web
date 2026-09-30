@@ -778,6 +778,56 @@ export interface RecetaVenta {
   recetaFecha: string;
 }
 
+/** Lo que hay en riesgo en un tramo de vencimiento, hoy. */
+export interface RiesgoTramo {
+  unidades: number;
+  valor: number;
+  lotes: number;
+}
+
+/** Una baja (o devolución) del período, renglón por renglón. */
+export interface BajaMerma {
+  movimientoId: number;
+  fecha: string;
+  motivo: string;
+  nota: string;
+  /** Devolución al proveedor: no es pérdida, vuelve. */
+  devolucion: boolean;
+  productoId: number;
+  nombre: string;
+  laboratorio: string | null;
+  cantidad: number;
+  /** Al costo del lote del que salió. */
+  valor: number;
+  lotes: string[];
+  almacen: string;
+  usuario: string | null;
+}
+
+/** Vencimientos y mermas: lo perdido en el período y lo que está en riesgo hoy. */
+export interface ReporteMermas {
+  resumen: {
+    perdido: number;
+    unidadesPerdidas: number;
+    devuelto: number;
+    unidadesDevueltas: number;
+    enRiesgo: number;
+  };
+  riesgo: Record<"VENCIDO" | "HASTA_30" | "HASTA_60" | "HASTA_90", RiesgoTramo>;
+  porMotivo: { motivo: string; devolucion: boolean; unidades: number; valor: number }[];
+  porProducto: {
+    productoId: number;
+    nombre: string;
+    laboratorio: string | null;
+    motivos: string[];
+    unidades: number;
+    valor: number;
+  }[];
+  /** AAAA-MM, en la hora del negocio. */
+  porMes: { mes: string; perdido: number; devuelto: number }[];
+  detalle: BajaMerma[];
+}
+
 /** Por qué conviene pedir un artículo: el orden es la urgencia. */
 export type MotivoCompra = "AGOTADO" | "BAJO_MINIMO" | "SE_ACABA" | "ENCARGO";
 

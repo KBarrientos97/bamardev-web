@@ -40,6 +40,7 @@ import type {
   AsientoControlado,
   LibroControlados,
   SugerenciaCompra,
+  ReporteMermas,
   PaginaProductos,
   Producto,
   ProductoInput,
@@ -575,6 +576,21 @@ export const api = {
         cobertura: params.cobertura,
         sucursalId: params.sucursalId ?? undefined,
       })}`,
+    ),
+  /**
+   * Vencimientos y mermas: lo dado de baja y lo devuelto en el período
+   * (días AAAA-MM-DD en la hora del negocio, `hasta` incluido), valuado al
+   * costo del lote; y lo que está en riesgo hoy.
+   */
+  mermas: (params: { desde: string; hasta: string; sucursalId?: number | null }) =>
+    request<ReporteMermas>(
+      `/reportes/mermas${qs(
+        rangoParaApi({
+          desde: params.desde,
+          hasta: params.hasta,
+          sucursalId: params.sucursalId ?? undefined,
+        }),
+      )}`,
     ),
   /** Los lotes con saldo de un producto, en el orden en que se van a vender. */
   lotesDeProducto: (productoId: number, almacenId?: number) =>

@@ -36,6 +36,7 @@ async function montar() {
       <Routes>
         <Route path="/reportes" element={<Reportes />} />
         <Route path="/reportes/sugerencia-compra" element={<p>Pantalla de sugerencia</p>} />
+        <Route path="/reportes/mermas" element={<p>Pantalla de mermas</p>} />
       </Routes>
     </MemoryRouter>,
   );
@@ -46,20 +47,36 @@ beforeEach(() => {
   sesion.rubro = "FARMACIA";
 });
 
-describe("la sugerencia de compra en Reportes", () => {
+/**
+ * La tarjeta de un reporte, por su título. Por texto y no por rol: Reportes es
+ * una pantalla grande y `getByRole` la recorría entera en cada consulta; con
+ * la suite en paralelo pasaba el límite de 5 s por test.
+ */
+const tarjeta = (titulo: string) => screen.queryByText(titulo, { selector: "h3" })?.closest("button") ?? null;
+
+describe("los reportes propios de la farmacia", () => {
   it("en farmacia está, y abre su propia pantalla", async () => {
     await montar();
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: /Sugerencia de compra/ }));
+      fireEvent.click(tarjeta("Sugerencia de compra")!);
     });
     expect(screen.getByText("Pantalla de sugerencia")).toBeInTheDocument();
+  });
+
+  it("en farmacia están también las mermas, con su pantalla", async () => {
+    await montar();
+    await act(async () => {
+      fireEvent.click(tarjeta("Vencimientos y mermas")!);
+    });
+    expect(screen.getByText("Pantalla de mermas")).toBeInTheDocument();
   });
 
   it("en bamardev-restaurant no aparece, y sus reportes siguen", async () => {
     sesion.rubro = "RESTAURANTE";
     await montar();
-    expect(screen.queryByRole("button", { name: /Sugerencia de compra/ })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Ventas por mesero/ })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Insumos/ })).toBeInTheDocument();
+    expect(tarjeta("Sugerencia de compra")).toBeNull();
+    expect(tarjeta("Vencimientos y mermas")).toBeNull();
+    expect(tarjeta("Ventas por mesero")).not.toBeNull();
+    expect(tarjeta("Insumos")).not.toBeNull();
   });
 });

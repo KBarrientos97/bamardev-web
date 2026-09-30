@@ -187,6 +187,15 @@ const REPORTES: FichaReporte[] = [
     ruta: "/reportes/sugerencia-compra",
   },
   {
+    nombre: "mermas",
+    titulo: "Vencimientos y mermas",
+    texto: "Lo perdido por vencido o dañado, las devoluciones y lo que está en riesgo.",
+    icono: "trendingDown",
+    capacidad: "reportes_rentabilidad",
+    soloEnRubro: ["FARMACIA"],
+    ruta: "/reportes/mermas",
+  },
+  {
     nombre: "insumos",
     titulo: "Insumos",
     texto: "Compras de materia prima y su costo.",
