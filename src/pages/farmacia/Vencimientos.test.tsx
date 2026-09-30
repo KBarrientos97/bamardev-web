@@ -147,6 +147,29 @@ describe("Llegar desde el semáforo del Dashboard", () => {
     expect(screen.queryByText("Paracetamol 500 mg")).not.toBeInTheDocument();
   });
 
+  it("filtrado, lo dice y «Ver todos» vuelve a la lista completa", async () => {
+    abrirCon({ tramo: "HASTA_30" });
+    expect(await screen.findByText(/Mostrando sólo/)).toHaveTextContent(
+      "Mostrando sólo ≤ 30 días · 1 lote",
+    );
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /Ver todos/ }));
+    });
+    expect(screen.getByText("Paracetamol 500 mg")).toBeInTheDocument();
+    expect(screen.getByText("Azitromicina 500 mg")).toBeInTheDocument();
+    expect(screen.queryByText(/Mostrando sólo/)).not.toBeInTheDocument();
+  });
+
+  it("tocar el mismo contador otra vez también saca el filtro", async () => {
+    abrirCon({ tramo: "HASTA_30" });
+    const contador = await screen.findByRole("button", { pressed: true });
+    await act(async () => {
+      fireEvent.click(contador);
+    });
+    expect(screen.getByText("Paracetamol 500 mg")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { pressed: true })).not.toBeInTheDocument();
+  });
+
   it("un tramo que no existe abre la lista completa", async () => {
     abrirCon({ tramo: "CUALQUIERA" });
     expect(await screen.findByText("Azitromicina 500 mg")).toBeInTheDocument();

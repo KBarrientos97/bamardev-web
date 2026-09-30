@@ -100,6 +100,28 @@ export default function Vencimientos() {
             ))}
           </div>
 
+          {/* Con un tramo elegido, se dice y se ofrece salir. Tocar el
+              contador otra vez también lo saca, pero nadie lo adivinaba: había
+              que irse de la pantalla y volver para ver la lista completa. */}
+          {tramo && (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-primary-50 px-4 py-2.5">
+              <p className="text-[13px] text-texto-2">
+                Mostrando sólo{" "}
+                <strong className="text-texto">
+                  {TRAMOS.find((t) => t.clave === tramo)?.titulo}
+                </strong>{" "}
+                · {filtrado.length} {filtrado.length === 1 ? "lote" : "lotes"}
+              </p>
+              <button
+                onClick={() => setTramo(null)}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-white px-3 py-1.5 text-[13px] font-semibold text-primary-700 shadow-sm transition-colors hover:bg-primary-100"
+              >
+                <Icon name="close" size={14} />
+                Ver todos
+              </button>
+            </div>
+          )}
+
           {filtrado.length === 0 ? (
             <div className="card">
               <Vacio
@@ -107,7 +129,7 @@ export default function Vencimientos() {
                 titulo={tramo ? "Nada en este tramo" : "Nada por vencer"}
                 texto={
                   tramo
-                    ? "Tocá el contador de nuevo para ver todos."
+                    ? "Ningún lote cae en este tramo. Tocá «Ver todos» para ver la lista completa."
                     : "Ningún lote vence en los próximos 90 días. Los lotes se cargan al ingresar mercadería."
                 }
               />
@@ -153,6 +175,8 @@ function Contador({
   return (
     <button
       onClick={onClick}
+      aria-pressed={activo}
+      title={activo ? "Tocá de nuevo para ver todos" : `Ver sólo ${t.titulo.toLowerCase()}`}
       className={`card p-4 text-left transition-shadow hover:shadow-md ${
         activo ? "ring-2 ring-primary" : ""
       }`}
