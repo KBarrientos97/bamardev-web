@@ -25,6 +25,7 @@ import FormMercaderia from "./pages/farmacia/FormMercaderia";
 import MovimientosFarmacia from "./pages/farmacia/MovimientosFarmacia";
 import Vencimientos from "./pages/farmacia/Vencimientos";
 import LibroControlados from "./pages/farmacia/LibroControlados";
+import SugerenciaCompra from "./pages/farmacia/SugerenciaCompra";
 import VentaFarmaciaProvider from "./pages/farmacia/VentaFarmaciaProvider";
 import Repartidor from "./pages/repartidor/Repartidor";
 import PanelMesero from "./pages/salon/PanelMesero";
@@ -352,6 +353,16 @@ function Rutas() {
           element={
             <Protegida seccion="reportes">
               <Reportes />
+            </Protegida>
+          }
+        />
+        {/* Farmacia: un reporte con pantalla propia (se edita y se imprime el
+            pedido). Se entra desde su tarjeta en Reportes. */}
+        <Route
+          path="/reportes/sugerencia-compra"
+          element={
+            <Protegida seccion="reportes">
+              <SugerenciaCompra />
             </Protegida>
           }
         />

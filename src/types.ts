@@ -778,6 +778,46 @@ export interface RecetaVenta {
   recetaFecha: string;
 }
 
+/** Por qué conviene pedir un artículo: el orden es la urgencia. */
+export type MotivoCompra = "AGOTADO" | "BAJO_MINIMO" | "SE_ACABA" | "ENCARGO";
+
+/** Un artículo que hay que pedir, con la cuenta que lo explica. */
+export interface ItemSugerencia {
+  productoId: number;
+  nombre: string;
+  principioActivo: string | null;
+  concentracion: string | null;
+  laboratorio: string | null;
+  categoria: string | null;
+  unidad: string | null;
+  /** Lo que hay, incluido lo vencido. */
+  stock: number;
+  /** Unidades de lotes vencidos: no cuentan para vender. */
+  vencido: number;
+  stockMinimo: number;
+  /** Lo vendido en los días de historia. */
+  vendidas: number;
+  porDia: number;
+  /** Días que alcanza lo que hay. Null si no se vendió en el período. */
+  alcanzaDias: number | null;
+  /** Encargos de clientes que todavía no se pidieron. */
+  encargos: number;
+  sugerido: number;
+  motivo: MotivoCompra;
+  /** El de la última compra (o el propio de la sucursal). */
+  costo: number;
+  subtotal: number;
+}
+
+export interface SugerenciaCompra {
+  /** Días de ventas que se miraron. */
+  dias: number;
+  /** Para cuántos días tiene que alcanzar lo que se pida. */
+  cobertura: number;
+  items: ItemSugerencia[];
+  resumen: { articulos: number; unidades: number; inversion: number; agotados: number };
+}
+
 /** Los dos libros de la venta: psicotrópicos (archivada) y estupefacientes (valorada). */
 export type LibroControlados = "PSICOTROPICOS" | "ESTUPEFACIENTES";
 

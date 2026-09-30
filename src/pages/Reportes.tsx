@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Icon, type NombreIcono } from "../components/Icon";
 import { Chips, EncabezadoPagina } from "../components/filtros";
 import {
@@ -94,6 +95,17 @@ interface FichaReporte {
    * reportes es mostrarle una pantalla siempre vacía.
    */
   fueraDeRubro?: Rubro[];
+  /**
+   * Rubros donde SÓLO existe: la otra mitad del par. Un reporte construido
+   * para un rubro no se le ofrece a los demás (ante la duda, no se ve).
+   */
+  soloEnRubro?: Rubro[];
+  /**
+   * Pantalla propia en lugar de la tabla genérica: para el reporte que no se
+   * lee y listo, sino que se trabaja (la sugerencia de compra se ajusta y se
+   * imprime como pedido).
+   */
+  ruta?: string;
 }
 
 const REPORTES: FichaReporte[] = [
@@ -164,6 +176,15 @@ const REPORTES: FichaReporte[] = [
     titulo: "Stock crítico",
     texto: "Lo que está por agotarse en el almacén.",
     icono: "warehouse",
+  },
+  {
+    nombre: "sugerencia-compra",
+    titulo: "Sugerencia de compra",
+    texto: "Qué pedir según lo que se vende y el stock de seguridad.",
+    icono: "cart",
+    capacidad: "reportes_operacion",
+    soloEnRubro: ["FARMACIA"],
+    ruta: "/reportes/sugerencia-compra",
   },
   {
     nombre: "insumos",
@@ -412,6 +433,7 @@ function esObjetoPlano(v: unknown): v is Record<string, unknown> {
 
 export default function Reportes() {
   const { incluye, puede, rubro } = useAuth();
+  const navigate = useNavigate();
   const [preset, setPreset] = useState<Preset>("mes");
 
   const [desdeManual, setDesdeManual] = useState(() => rangoDePreset("mes").desde ?? "");
@@ -432,7 +454,8 @@ export default function Reportes() {
         (r) =>
           (!r.capacidad || incluye(r.capacidad)) &&
           (!r.seccion || puede(r.seccion)) &&
-          !(rubro && r.fueraDeRubro?.includes(rubro as Rubro)),
+          !(rubro && r.fueraDeRubro?.includes(rubro as Rubro)) &&
+          (!r.soloEnRubro || (!!rubro && r.soloEnRubro.includes(rubro as Rubro))),
       ),
     [incluye, puede, rubro],
   );
@@ -565,7 +588,7 @@ export default function Reportes() {
           {disponibles.map((r) => (
             <li key={r.nombre}>
               <button
-                onClick={() => setAbierto(r)}
+                onClick={() => (r.ruta ? navigate(r.ruta) : setAbierto(r))}
                 className="card flex w-full items-start gap-3 p-4 text-left transition-shadow hover:shadow-md"
               >
                 <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary-50 text-primary-700">

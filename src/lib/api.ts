@@ -39,6 +39,7 @@ import type {
   LotesDelArticulo,
   AsientoControlado,
   LibroControlados,
+  SugerenciaCompra,
   PaginaProductos,
   Producto,
   ProductoInput,
@@ -557,6 +558,23 @@ export const api = {
           almacenId: params.almacenId ?? undefined,
         }),
       )}`,
+    ),
+  /**
+   * Qué pedir para cubrir los próximos `cobertura` días según lo vendido en
+   * los últimos `dias`, con el stock mínimo como seguridad. Sin sucursal, el
+   * negocio entero.
+   */
+  sugerenciaCompra: (params: {
+    dias: number;
+    cobertura: number;
+    sucursalId?: number | null;
+  }) =>
+    request<SugerenciaCompra>(
+      `/reportes/sugerencia-compra${qs({
+        dias: params.dias,
+        cobertura: params.cobertura,
+        sucursalId: params.sucursalId ?? undefined,
+      })}`,
     ),
   /** Los lotes con saldo de un producto, en el orden en que se van a vender. */
   lotesDeProducto: (productoId: number, almacenId?: number) =>
