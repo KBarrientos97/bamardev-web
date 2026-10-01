@@ -54,6 +54,12 @@ export interface FinancieroBase {
   utilidadBrutaDeltaPct?: number | null;
   /** Lo vendido de artículos sin costo cargado: infla el margen. */
   ventasSinCosto?: number | null;
+  /**
+   * Mercadería perdida en el período (vencida, dañada o robada), al costo del
+   * lote: el "Perdido" del reporte de Mermas. Ausente con un backend anterior,
+   * y entonces no resta nada, como antes.
+   */
+  mermas?: number | null;
   compras?: { total?: number; insumos?: number; productos?: number } | null;
   numCompras?: number | null;
 }
@@ -103,6 +109,8 @@ export interface EstadoResultado {
   costoVentas: number;
   ventasSinCosto: number;
   utilidadBruta: number;
+  /** Mercadería perdida: resta debajo de la bruta. Cero si no hubo. */
+  mermas: number;
   gastosOperativos: number;
   lineas: LineaGasto[];
   utilidadOperativa: number;
@@ -118,6 +126,7 @@ export interface EstadoResultado {
   margenOperativoPct: number | null;
   margenNetoPct: number | null;
   gastosSobreVentasPct: number | null;
+  mermasSobreVentasPct: number | null;
   sinCostoSobreVentasPct: number | null;
   vacio: boolean;
   /** Una pérdida de centavos no es pérdida. */
@@ -130,13 +139,19 @@ export interface EstadoResultado {
  * La cascada del pizarrón:
  *
  *     Ventas − Costo de ventas          = Utilidad bruta
- *     − Gastos operativos               = Utilidad operativa
+ *     − Mermas − Gastos operativos      = Utilidad operativa
  *     − Gastos financieros              = Utilidad antes de impuestos
  *     − Impuestos                       = Utilidad neta
  *
  * Las compras del período NO tocan la utilidad bruta: lo que se compró y no se
  * vendió sigue en el almacén. Impuestos y financieros van debajo de la
  * operativa, no entre los gastos operativos (invariante 3).
+ *
+ * Las mermas (lo vencido, dañado o robado que se dio de baja) van debajo de la
+ * bruta y no dentro del costo de ventas: el margen bruto sigue diciendo cuánto
+ * deja cada venta, y lo perdido se ve con su nombre. Antes no restaban en
+ * ningún lado: una farmacia que tiraba Bs 2.000 de vencidos veía la misma
+ * utilidad que si esa mercadería siguiera en el estante.
  */
 export function estadoResultado(fin: FinancieroBase, gastos: Gasto[]): EstadoResultado {
   const bajo = gastos.filter((g) => BAJO_LA_LINEA.has(g.categoria));
@@ -148,7 +163,8 @@ export function estadoResultado(fin: FinancieroBase, gastos: Gasto[]): EstadoRes
 
   const ventas = fin.ventas ?? 0;
   const utilidadBruta = fin.utilidadBruta ?? 0;
-  const utilidadOperativa = aCentavos(utilidadBruta - gastosOperativos);
+  const mermas = aCentavos(fin.mermas ?? 0);
+  const utilidadOperativa = aCentavos(utilidadBruta - mermas - gastosOperativos);
   const antesDeImpuestos = aCentavos(utilidadOperativa - financieros);
   const utilidadNeta = aCentavos(antesDeImpuestos - impuestos);
   const ventasSinCosto = fin.ventasSinCosto ?? 0;
@@ -161,6 +177,7 @@ export function estadoResultado(fin: FinancieroBase, gastos: Gasto[]): EstadoRes
     costoVentas: fin.costoVentas ?? 0,
     ventasSinCosto,
     utilidadBruta,
+    mermas,
     gastosOperativos,
     lineas: lineasDe(operativos, ventas, gastosOperativos),
     utilidadOperativa,
@@ -175,10 +192,12 @@ export function estadoResultado(fin: FinancieroBase, gastos: Gasto[]): EstadoRes
     margenOperativoPct: margen(utilidadOperativa),
     margenNetoPct: margen(utilidadNeta),
     gastosSobreVentasPct: margen(gastosOperativos),
+    mermasSobreVentasPct: margen(mermas),
     sinCostoSobreVentasPct: margen(ventasSinCosto),
     vacio:
       esCero(ventas) &&
       esCero(fin.costoVentas ?? 0) &&
+      esCero(mermas) &&
       esCero(comprasTotal) &&
       esCero(gastosOperativos) &&
       esCero(financieros) &&

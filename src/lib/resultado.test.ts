@@ -160,6 +160,41 @@ describe("estado de resultado", () => {
     expect(er.sinCostoSobreVentasPct!).toBeCloseTo(0.25, 3);
   });
 
+  it("las mermas restan debajo de la utilidad bruta, no dentro del costo", () => {
+    // Antes no restaban en ningún lado: la farmacia que tiraba vencidos veía la
+    // misma utilidad que si esa mercadería siguiera en el estante.
+    const er = estadoResultado({ ...financiero(10_000, 4_000), mermas: 500 }, [
+      gasto(1_000, "ALQUILER"),
+    ]);
+    // El margen bruto sigue diciendo cuánto deja cada venta.
+    expect(er.utilidadBruta).toBeCloseTo(6_000, 2);
+    expect(er.margenBrutoPct!).toBeCloseTo(0.6, 3);
+    expect(er.mermas).toBeCloseTo(500, 2);
+    expect(er.mermasSobreVentasPct!).toBeCloseTo(0.05, 3);
+    expect(er.utilidadOperativa).toBeCloseTo(4_500, 2);
+    expect(er.utilidadNeta).toBeCloseTo(4_500, 2);
+  });
+
+  it("sin mermas, o con un backend que no las manda, la cuenta es la de siempre", () => {
+    // El restaurante: sus salidas de cocina no son merma y el backend manda 0.
+    const sinCampo = estadoResultado(financiero(10_000, 4_000), [gasto(1_000, "ALQUILER")]);
+    const enCero = estadoResultado({ ...financiero(10_000, 4_000), mermas: 0 }, [
+      gasto(1_000, "ALQUILER"),
+    ]);
+    expect(sinCampo.mermas).toBe(0);
+    expect(sinCampo.utilidadOperativa).toBeCloseTo(5_000, 2);
+    expect(enCero.utilidadOperativa).toBeCloseTo(5_000, 2);
+  });
+
+  it("un período con sólo mermas no está vacío: es una pérdida", () => {
+    const er = estadoResultado({ ...financiero(0, 0), mermas: 300 }, []);
+    expect(er.vacio).toBe(false);
+    expect(er.utilidadNeta).toBeCloseTo(-300, 2);
+    expect(er.enPerdida).toBe(true);
+    // Sin ventas no hay porcentaje que dibujar.
+    expect(er.mermasSobreVentasPct).toBeNull();
+  });
+
   it("sin impuestos ni financieros la neta da igual que la operativa", () => {
     const er = estadoResultado(financiero(10_000, 4_000), [gasto(1_000, "ALQUILER")]);
     expect(er.sinBajoLaLinea).toBe(true);

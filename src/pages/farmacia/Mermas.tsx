@@ -20,13 +20,36 @@ function nombreMes(mes: string): string {
 }
 
 /**
+ * Si un motivo suma como pérdida. Lo decide el backend (`perdida`, la misma
+ * regla con la que resta en el Estado de resultado); con uno anterior, que no
+ * lo manda, todo lo que no es devolución era pérdida.
+ */
+function esPerdida(m: { devolucion: boolean; perdida?: boolean }): boolean {
+  return m.perdida ?? !m.devolucion;
+}
+
+/**
+ * Lo que se aclara al lado de un motivo que no suma como pérdida. Sin la
+ * aclaración, "Cargado de más" con su monto al lado se lee como plata perdida,
+ * y el "Perdido" de arriba no daría la suma de la lista.
+ */
+function aclaracion(m: { motivo: string; devolucion: boolean; perdida?: boolean }): string | null {
+  if (m.devolucion) return "no es pérdida";
+  if (esPerdida(m)) return null;
+  return m.motivo === "Cargado de más" ? "corrige una carga, no es pérdida" : "no se cuenta como pérdida";
+}
+
+/**
  * Vencimientos y mermas: la plata que se fue y la que se puede ir.
  *
- * Arriba lo del período —lo perdido (vencido, dañado, robado, cargado de más)
- * y lo devuelto al proveedor, que no es pérdida—, y al lado la foto de hoy: lo
- * vencido que sigue en el estante y lo que vence en 90 días, que todavía se
- * puede rematar o devolver. Todo al costo del lote, no al de la última
- * compra.
+ * Arriba lo del período —lo perdido (vencido, dañado o robado) y lo devuelto
+ * al proveedor, que no es pérdida—, y al lado la foto de hoy: lo vencido que
+ * sigue en el estante y lo que vence en 90 días, que todavía se puede rematar o
+ * devolver. Todo al costo del lote, no al de la última compra.
+ *
+ * "Cargado de más" corrige una entrada tipeada de más: se lista, pero no suma
+ * como pérdida porque esas unidades no existieron. El "Perdido" es el mismo
+ * número que resta el Estado de resultado.
  */
 export default function MermasPagina() {
   const { puede } = useAuth();
@@ -231,8 +254,8 @@ function PorMotivo({ reporte: r }: { reporte: ReporteMermas }) {
             <div className="mb-1 flex items-baseline justify-between gap-2 text-[13px]">
               <span className="font-semibold text-texto">
                 {m.motivo}
-                {m.devolucion && (
-                  <span className="ml-1.5 font-normal text-texto-4">· no es pérdida</span>
+                {aclaracion(m) && (
+                  <span className="ml-1.5 font-normal text-texto-4">· {aclaracion(m)}</span>
                 )}
               </span>
               <span className="shrink-0 font-bold text-texto">
@@ -240,7 +263,7 @@ function PorMotivo({ reporte: r }: { reporte: ReporteMermas }) {
                 <span className="ml-1.5 font-normal text-texto-4">{fmtNum(m.unidades)} u.</span>
               </span>
             </div>
-            <Barra valor={m.valor} maximo={maximo} gris={m.devolucion} />
+            <Barra valor={m.valor} maximo={maximo} gris={!esPerdida(m)} />
           </li>
         ))}
       </ul>
@@ -252,7 +275,9 @@ function MasPerdido({ reporte: r }: { reporte: ReporteMermas }) {
   return (
     <Tarjeta titulo="Lo que más se pierde">
       {r.porProducto.length === 0 ? (
-        <p className="text-[13px] text-texto-3">Sólo hubo devoluciones al proveedor.</p>
+        <p className="text-[13px] text-texto-3">
+          No se perdió nada: lo que salió se devolvió al proveedor o corrigió una carga.
+        </p>
       ) : (
         <ol className="divide-y divide-borde-soft">
           {r.porProducto.slice(0, 8).map((p) => (
@@ -396,6 +421,7 @@ function bajarCsv(filas: BajaMerma[], desde: string, hasta: string) {
     "Cantidad",
     "Valor",
     "Es devolución",
+    "Cuenta como pérdida",
     "Sucursal",
     "Quién",
   ];
@@ -412,6 +438,7 @@ function bajarCsv(filas: BajaMerma[], desde: string, hasta: string) {
         f.cantidad,
         f.valor,
         f.devolucion ? "Sí" : "No",
+        esPerdida(f) ? "Sí" : "No",
         f.almacen,
         f.usuario ?? "",
       ]

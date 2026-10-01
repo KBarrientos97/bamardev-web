@@ -112,6 +112,12 @@ export function EstadoResultadoVista({ rango }: { rango: RangoReporte }) {
           pct={er.margenBrutoPct}
           fuerte
         />
+        {/* Sólo si hubo: en un negocio que no da de baja mercadería (el
+            restaurante saca insumos para la cocina, y eso no es merma) el
+            estado de resultado queda como siempre. */}
+        {esPositivo(er.mermas) && (
+          <Renglon etiqueta="Mermas" valor={-er.mermas} pct={er.mermasSobreVentasPct} />
+        )}
         <Renglon etiqueta="Gastos operativos" valor={-er.gastosOperativos} pct={er.gastosSobreVentasPct} />
         <Renglon
           etiqueta="Utilidad operativa"
@@ -138,6 +144,13 @@ export function EstadoResultadoVista({ rango }: { rango: RangoReporte }) {
 
       {er.lineas.length > 0 && (
         <Desglose titulo="En qué se fueron los gastos operativos" lineas={er.lineas} />
+      )}
+
+      {esPositivo(er.mermas) && (
+        <p className="text-xs text-texto-3">
+          Mermas: lo que se dio de baja por vencido, dañado o robado, al costo de compra. Lo
+          devuelto al proveedor no se resta: vuelve.
+        </p>
       )}
 
       {/* Las compras no restan: lo comprado y no vendido sigue en el almacén.

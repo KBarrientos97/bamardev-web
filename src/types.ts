@@ -864,6 +864,11 @@ export interface BajaMerma {
   nota: string;
   /** Devolución al proveedor: no es pérdida, vuelve. */
   devolucion: boolean;
+  /**
+   * Si suma como pérdida (vencido, dañado, robado). Lo cargado de más y lo que
+   * no tiene motivo se listan pero no suman. Ausente con un backend anterior.
+   */
+  perdida?: boolean;
   productoId: number;
   nombre: string;
   laboratorio: string | null;
@@ -885,7 +890,13 @@ export interface ReporteMermas {
     enRiesgo: number;
   };
   riesgo: Record<"VENCIDO" | "HASTA_30" | "HASTA_60" | "HASTA_90", RiesgoTramo>;
-  porMotivo: { motivo: string; devolucion: boolean; unidades: number; valor: number }[];
+  porMotivo: {
+    motivo: string;
+    devolucion: boolean;
+    perdida?: boolean;
+    unidades: number;
+    valor: number;
+  }[];
   porProducto: {
     productoId: number;
     nombre: string;

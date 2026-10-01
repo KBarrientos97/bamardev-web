@@ -1,5 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { fmtMoney } from "../../lib/format";
 import { diasDelRango } from "../../lib/resultado";
 import type { Gasto } from "../../types";
 import { EstadoResultadoVista, PuntoEquilibrioVista } from "./ResultadoPeriodo";
@@ -67,6 +68,39 @@ describe("resultado del período (web)", () => {
 
     expect((await screen.findAllByText("Pérdida del período")).length).toBeGreaterThan(0);
     expect(screen.queryByText("Utilidad neta")).not.toBeInTheDocument();
+  });
+
+  it("las mermas restan en su propio renglón, debajo de la utilidad bruta", async () => {
+    reporte.mockResolvedValue({
+      ventas: 10_000,
+      costoVentas: 4_000,
+      utilidadBruta: 6_000,
+      mermas: 500,
+    });
+    getGastos.mockResolvedValue([gasto(1_000, "ALQUILER")]);
+    render(<EstadoResultadoVista rango={RANGO} />);
+
+    const renglon = (await screen.findByText("Mermas")).closest("div")!;
+    expect(renglon).toHaveTextContent(fmtMoney(-500));
+    // Utilidad operativa y neta: 6.000 − 500 de mermas − 1.000 de alquiler.
+    expect(screen.getAllByText(fmtMoney(4_500)).length).toBeGreaterThan(0);
+    expect(screen.getByText(/Lo devuelto al proveedor no se resta/)).toBeInTheDocument();
+  });
+
+  it("sin mermas no aparece el renglón: el restaurante ve lo de siempre", async () => {
+    reporte.mockResolvedValue({
+      ventas: 10_000,
+      costoVentas: 4_000,
+      utilidadBruta: 6_000,
+      mermas: 0,
+    });
+    getGastos.mockResolvedValue([gasto(1_000, "ALQUILER")]);
+    render(<EstadoResultadoVista rango={RANGO} />);
+
+    await screen.findAllByText("Utilidad neta");
+    expect(screen.queryByText("Mermas")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Lo devuelto al proveedor/)).not.toBeInTheDocument();
+    expect(screen.getAllByText(fmtMoney(5_000)).length).toBeGreaterThan(0);
   });
 
   it("si cada venta pierde plata no inventa una meta", async () => {

@@ -109,6 +109,29 @@ describe("vencimientos y mermas", () => {
     );
   });
 
+  it("lo cargado de más y lo que no tiene motivo se listan, aclarando que no son pérdida", async () => {
+    // Sin la aclaración, "Cargado de más · Bs 3" se lee como plata perdida y el
+    // "Perdido" de arriba no daría la suma de la lista.
+    vi.mocked(api.mermas).mockResolvedValue(
+      reporte({
+        porMotivo: [
+          { motivo: "Vencimiento", devolucion: false, perdida: true, unidades: 4, valor: 20 },
+          { motivo: "Cargado de más", devolucion: false, perdida: false, unidades: 2, valor: 3 },
+          { motivo: "Sin motivo", devolucion: false, perdida: false, unidades: 1, valor: 1.5 },
+        ],
+      }),
+    );
+    await montar();
+    const motivos = screen.getByRole("heading", { name: "Por motivo" }).closest("section")!;
+    expect(within(motivos).getByText(/Cargado de más/)).toHaveTextContent(
+      "Cargado de más· corrige una carga, no es pérdida",
+    );
+    expect(within(motivos).getByText(/Sin motivo/)).toHaveTextContent(
+      "Sin motivo· no se cuenta como pérdida",
+    );
+    expect(within(motivos).getByText(/Vencimiento/)).toHaveTextContent(/^Vencimiento$/);
+  });
+
   it("cada baja con su lote, su motivo y quién", async () => {
     await montar();
     const fila = within(screen.getByRole("table")).getByText("Amoxicilina 500 mg").closest("tr")!;
