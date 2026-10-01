@@ -1,6 +1,48 @@
 import { describe, expect, it } from "vitest";
-import { proximosAutomaticos } from "./gastos";
+import {
+  contar,
+  fmtSobreVentas,
+  gastosSuperanVentas,
+  proximosAutomaticos,
+  sobreVentas,
+} from "./gastos";
 import type { PlantillaGasto } from "../types";
+
+describe("gastos sobre las ventas", () => {
+  it("un mes que gastó el triple de lo vendido dice 300%, no 100%", () => {
+    // El bug: con el tope en 100 este mes decía "100.0%", y el dueño leía que
+    // se había gastado lo vendido y nada más, justo el mes que perdía plata.
+    expect(sobreVentas(3000, 1000)).toBeCloseTo(300);
+    expect(gastosSuperanVentas(3000, 1000)).toBe(true);
+  });
+
+  it("un mes normal da la proporción de siempre y no es alarma", () => {
+    expect(sobreVentas(420, 8575)).toBeCloseTo(4.898, 2);
+    expect(gastosSuperanVentas(420, 8575)).toBe(false);
+  });
+
+  it("sin ventas no hay porcentaje, y un residuo de centavos no cuenta como venta", () => {
+    expect(sobreVentas(500, 0)).toBeNull();
+    expect(sobreVentas(500, 0.004)).toBeNull();
+    expect(gastosSuperanVentas(500, 0)).toBe(false);
+  });
+
+  it("empatar con lo vendido por medio centavo no es superarlo", () => {
+    expect(gastosSuperanVentas(1000.004, 1000)).toBe(false);
+    expect(gastosSuperanVentas(1000.01, 1000)).toBe(true);
+  });
+
+  it("los conteos de las tarjetas van en singular cuando es uno solo", () => {
+    expect(contar(1, "gasto", "gastos")).toBe("1 gasto");
+    expect(contar(0, "pagado", "pagados")).toBe("0 pagados");
+    expect(contar(3, "vencido", "vencidos")).toBe("3 vencidos");
+  });
+
+  it("se escribe con coma decimal y separador de miles", () => {
+    expect(fmtSobreVentas(312.5)).toBe("312,5%");
+    expect(fmtSobreVentas(1250)).toBe("1.250,0%");
+  });
+});
 
 function regla(datos: Partial<PlantillaGasto>): PlantillaGasto {
   return {

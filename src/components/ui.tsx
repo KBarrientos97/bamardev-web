@@ -465,15 +465,24 @@ export function Kpi({
   icono,
   tono = "verde",
   pie,
+  alerta = false,
 }: {
   etiqueta: string;
   valor: string;
   icono?: NombreIcono;
   tono?: Tono;
   pie?: string;
+  /**
+   * El número es una mala noticia (los gastos ya pasan lo vendido): valor y pie
+   * en rojo, el color de "egreso / vencido" en toda la app. Sin esto la tarjeta
+   * se dibuja exactamente como siempre.
+   */
+  alerta?: boolean;
 }) {
   return (
-    <div className="card p-4">
+    // Las clases sin alerta son, letra por letra, las de siempre: esta tarjeta
+    // está en todos los reportes y no tiene por qué cambiar en ninguno.
+    <div className={alerta ? "card border-danger/40 p-4" : "card p-4"}>
       <div className="flex items-center justify-between">
         <span className="text-[12px] font-semibold uppercase tracking-wide text-texto-4">
           {etiqueta}
@@ -486,8 +495,18 @@ export function Kpi({
           </span>
         )}
       </div>
-      <p className="mt-2 truncate text-xl font-bold tracking-tight text-texto sm:text-2xl">{valor}</p>
-      {pie && <p className="mt-0.5 text-xs text-texto-3">{pie}</p>}
+      <p
+        className={`mt-2 truncate text-xl font-bold tracking-tight ${
+          alerta ? "text-danger-text" : "text-texto"
+        } sm:text-2xl`}
+      >
+        {valor}
+      </p>
+      {pie && (
+        <p className={alerta ? "mt-0.5 text-xs font-semibold text-danger-text" : "mt-0.5 text-xs text-texto-3"}>
+          {pie}
+        </p>
+      )}
     </div>
   );
 }

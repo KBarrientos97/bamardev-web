@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Icon } from "../components/Icon";
 import { Buscador, Chips, EncabezadoPagina } from "../components/filtros";
+import { AvisoGastosAtrasados } from "../components/AvisoGastosAtrasados";
 import { ProximosAutomaticos } from "../components/ProximosAutomaticos";
 import {
   AvisoOk,
@@ -21,12 +22,16 @@ import { api } from "../lib/api";
 import { cubre, esPositivo, excede, parsearMonto } from "../lib/dinero";
 import {
   badgeEstado,
+  contar,
   finDeMes,
+  fmtSobreVentas,
+  gastosSuperanVentas,
   hoyIso,
   inicioDeMes,
   METODOS,
-  OPC_FILTRO,
+  opcionesFiltro,
   saldado,
+  sobreVentas as calcularSobreVentas,
   textoVencimiento,
 } from "../lib/gastos";
 import { fmtFecha, fmtMoney } from "../lib/format";
@@ -121,16 +126,13 @@ export default function Gastos() {
   const r = resumen.datos;
 
   /**
-   * Cuánto de las ventas del período se fue en gastos.
-   *
-   * Con tope en 100 y un decimal fijo, igual que la app: un mes flojo con los
-   * gastos fijos ya cargados daba "400%" acá y "100.0%" en el celular, para el
-   * mismo negocio y el mismo mes.
+   * Cuánto de las ventas del período se fue en gastos: el número real, sin el
+   * tope de 100 que se le había puesto para coincidir con la app (ver
+   * `sobreVentas` en lib/gastos). Pasado el 100 va en rojo: el mes ya perdió
+   * plata antes de contar la mercadería.
    */
-  const sobreVentas = useMemo(() => {
-    if (!r || r.ventasPeriodo <= 0) return null;
-    return Math.min(100, (r.total / r.ventasPeriodo) * 100).toFixed(1);
-  }, [r]);
+  const sobreVentas = r ? calcularSobreVentas(r.total, r.ventasPeriodo) : null;
+  const superaVentas = !!r && gastosSuperanVentas(r.total, r.ventasPeriodo);
 
   return (
     <div className="mx-auto max-w-6xl space-y-4 p-4 sm:space-y-5 sm:p-5">
@@ -161,7 +163,7 @@ export default function Gastos() {
           <Kpi
             etiqueta="Total del período"
             valor={fmtMoney(r?.total ?? 0)}
-            pie={`${r?.cantidad ?? 0} gastos`}
+            pie={contar(r?.cantidad ?? 0, "gasto", "gastos")}
           />
           <Kpi etiqueta="Pagado" valor={fmtMoney(r?.pagado ?? 0)} />
           <Kpi
@@ -171,18 +173,21 @@ export default function Gastos() {
               // Con el MONTO, no sólo el conteo: "3 vencidos" no dice si son
               // Bs 300 o Bs 9.500, y el dato ya viene en la misma respuesta.
               r && r.cantidadVencidos > 0
-                ? `${r.cantidadVencidos} vencidos · ${fmtMoney(r.vencido)}`
+                ? `${contar(r.cantidadVencidos, "vencido", "vencidos")} · ${fmtMoney(r.vencido)}`
                 : undefined
             }
           />
           <Kpi
             etiqueta="Sobre las ventas"
-            valor={sobreVentas == null ? "—" : `${sobreVentas}%`}
+            valor={sobreVentas == null ? "—" : fmtSobreVentas(sobreVentas)}
             pie={
-              r && r.ventasPeriodo > 0
-                ? `Ventas ${fmtMoney(r.ventasPeriodo)}`
+              r && sobreVentas != null
+                ? superaVentas
+                  ? `Más que lo vendido (${fmtMoney(r.ventasPeriodo)})`
+                  : `Ventas ${fmtMoney(r.ventasPeriodo)}`
                 : "Sin ventas en el período"
             }
+            alerta={superaVentas}
           />
         </div>
       )}
@@ -211,7 +216,17 @@ export default function Gastos() {
         </div>
       </div>
 
-      <Chips valor={filtro} opciones={OPC_FILTRO} onChange={setFiltro} />
+      <AvisoGastosAtrasados
+        atrasado={r?.atrasado}
+        viendo={filtro === "ATRASADOS"}
+        onVer={() => setFiltro("ATRASADOS")}
+      />
+
+      <Chips
+        valor={filtro}
+        opciones={opcionesFiltro((r?.atrasado?.cantidad ?? 0) > 0 || filtro === "ATRASADOS")}
+        onChange={setFiltro}
+      />
 
       {/* La puerta a las reglas, en el mismo lugar que en la app: es la
           pregunta que sigue cuando uno ve el alquiler repetido cada mes. */}

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { AvisoGastosAtrasados } from "../../components/AvisoGastosAtrasados";
 import { Link } from "react-router-dom";
 import { Buscador, Chips, EncabezadoPagina } from "../../components/filtros";
 import { Icon } from "../../components/Icon";
@@ -20,12 +21,16 @@ import { esPositivo } from "../../lib/dinero";
 import { fmtFecha, fmtMoney } from "../../lib/format";
 import {
   badgeEstado,
+  contar,
   finDeMes,
+  fmtSobreVentas,
+  gastosSuperanVentas,
   hoyIso,
   inicioDeMes,
   METODOS,
-  OPC_FILTRO,
+  opcionesFiltro,
   saldado,
+  sobreVentas as calcularSobreVentas,
   textoVencimiento,
 } from "../../lib/gastos";
 import { useApi } from "../../lib/useApi";
@@ -171,8 +176,10 @@ export default function GastosFarmacia() {
     : gastos;
 
   const r = resumen.datos;
-  const sobreVentas =
-    r && r.ventasPeriodo > 0 ? Math.min(100, (r.total / r.ventasPeriodo) * 100).toFixed(1) : null;
+  // El número real, sin tope (ver `sobreVentas` en lib/gastos): con el tope, un
+  // mes que gastó el triple de lo vendido decía "100.0%".
+  const sobreVentas = r ? calcularSobreVentas(r.total, r.ventasPeriodo) : null;
+  const superaVentas = !!r && gastosSuperanVentas(r.total, r.ventasPeriodo);
 
   // El detalle muestra la versión más nueva del gasto: después de un pago,
   // la lista se recarga y el popup tiene que decir el saldo nuevo.
@@ -198,11 +205,15 @@ export default function GastosFarmacia() {
         <Cargando texto="Cargando el resumen…" />
       ) : (
         <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-          <Numero etiqueta="Total del mes" valor={fmtMoney(r.total)} pie={`${r.cantidad} gastos`} />
+          <Numero
+            etiqueta="Total del mes"
+            valor={fmtMoney(r.total)}
+            pie={contar(r.cantidad, "gasto", "gastos")}
+          />
           <Numero
             etiqueta="Pagado"
             valor={fmtMoney(r.pagado)}
-            pie={`${r.cantidadPagados} pagados`}
+            pie={contar(r.cantidadPagados, "pagado", "pagados")}
             tono="text-primary-700"
           />
           <Numero
@@ -210,16 +221,24 @@ export default function GastosFarmacia() {
             valor={fmtMoney(r.pendiente)}
             pie={
               r.cantidadVencidos > 0
-                ? `${r.cantidadVencidos} vencidos · ${fmtMoney(r.vencido)}`
-                : `${r.cantidadPendientes} pendientes`
+                ? `${contar(r.cantidadVencidos, "vencido", "vencidos")} · ${fmtMoney(r.vencido)}`
+                : contar(r.cantidadPendientes, "pendiente", "pendientes")
             }
             tono={esPositivo(r.pendiente) ? "text-warning-text" : undefined}
             alerta={r.cantidadVencidos > 0}
           />
           <Numero
             etiqueta="Sobre las ventas"
-            valor={sobreVentas == null ? "—" : `${sobreVentas}%`}
-            pie={r.ventasPeriodo > 0 ? `Ventas ${fmtMoney(r.ventasPeriodo)}` : "Sin ventas en el mes"}
+            valor={sobreVentas == null ? "—" : fmtSobreVentas(sobreVentas)}
+            pie={
+              sobreVentas == null
+                ? "Sin ventas en el mes"
+                : superaVentas
+                  ? `Más que lo vendido (${fmtMoney(r.ventasPeriodo)})`
+                  : `Ventas ${fmtMoney(r.ventasPeriodo)}`
+            }
+            tono={superaVentas ? "text-danger-text" : undefined}
+            alerta={superaVentas}
           />
         </div>
       )}
@@ -266,7 +285,17 @@ export default function GastosFarmacia() {
         </div>
       </div>
 
-      <Chips valor={filtro} opciones={OPC_FILTRO} onChange={setFiltro} />
+      <AvisoGastosAtrasados
+        atrasado={r?.atrasado}
+        viendo={filtro === "ATRASADOS"}
+        onVer={() => setFiltro("ATRASADOS")}
+      />
+
+      <Chips
+        valor={filtro}
+        opciones={opcionesFiltro((r?.atrasado?.cantidad ?? 0) > 0 || filtro === "ATRASADOS")}
+        onChange={setFiltro}
+      />
       {chipsCategoria.length > 2 && (
         <Chips valor={categoriaVigente} opciones={chipsCategoria} onChange={setCategoria} />
       )}

@@ -1,4 +1,5 @@
-import { esCero, esPositivo } from "./dinero";
+import { esCero, esPositivo, excede } from "./dinero";
+import { fmtNum } from "./format";
 import type { EstadoGasto, FiltroGasto, Gasto, MetodoPagoGasto, PlantillaGasto } from "../types";
 
 /**
@@ -16,6 +17,15 @@ export const OPC_FILTRO = [
   ["VENCIDOS", "Vencidos"],
   ["PAGADOS", "Pagados"],
 ] as const satisfies readonly (readonly [FiltroGasto, string])[];
+
+/**
+ * Los chips del filtro. "De meses anteriores" sólo aparece cuando hay algo
+ * que mostrar (o cuando ya está elegido): un chip que siempre da vacío es
+ * ruido, y en un negocio al día la pantalla queda como siempre.
+ */
+export function opcionesFiltro(conAtrasados: boolean): readonly (readonly [FiltroGasto, string])[] {
+  return conAtrasados ? [...OPC_FILTRO, ["ATRASADOS", "De meses anteriores"]] : OPC_FILTRO;
+}
 
 export const TONO_ESTADO: Record<EstadoGasto, "amarillo" | "azul" | "verde"> = {
   PENDIENTE: "amarillo",
@@ -103,6 +113,45 @@ export function textoVencimiento(g: Gasto): string | null {
   if (g.diasParaVencer === 0) return "Vence hoy";
   if (g.diasParaVencer === 1) return "Vence mañana";
   return `Vence en ${g.diasParaVencer} días`;
+}
+
+/**
+ * Cuánto de lo vendido en el período se fue en gastos, en por ciento.
+ *
+ * **Sin tope.** Hasta el 1-oct-2026 se cortaba en 100, copiando a la app, y un
+ * mes con Bs 3.000 de gastos y Bs 1.000 de ventas decía "100.0%": el mes en que
+ * el negocio pierde plata se leía como "se gastó todo lo vendido, ni un peso
+ * más". El 300 % es justo el dato que el dueño tiene que ver.
+ *
+ * Null sin ventas: no hay con qué comparar, y un "0 %" se leería como que no se
+ * gastó nada. Mismo criterio que `proporcionSobreVentas` en la app.
+ */
+export function sobreVentas(total: number, ventas: number): number | null {
+  if (!esPositivo(ventas)) return null;
+  return (total / ventas) * 100;
+}
+
+/**
+ * "1 gasto", "3 gastos": el número con la palabra que le toca. Las tarjetas de
+ * arriba decían "1 gastos" y "1 vencidos" en cualquier mes con uno solo.
+ */
+export function contar(n: number, uno: string, varios: string): string {
+  return `${n} ${n === 1 ? uno : varios}`;
+}
+
+/** "35,2%": con un decimal y la coma de acá, como el resto de la web. */
+export function fmtSobreVentas(porcentaje: number): string {
+  return `${fmtNum(porcentaje, 1)}%`;
+}
+
+/**
+ * Los gastos ya pasan todo lo vendido: el período da pérdida antes de contar
+ * siquiera el costo de la mercadería. Comparando montos con la tolerancia de
+ * Dinero, no porcentajes: Bs 1.000,004 de gastos contra Bs 1.000 de ventas es
+ * un empate, no una alarma.
+ */
+export function gastosSuperanVentas(total: number, ventas: number): boolean {
+  return esPositivo(ventas) && excede(total, ventas);
 }
 
 /** `iso` corrido `dias` días, en hora local como todo lo de este archivo. */

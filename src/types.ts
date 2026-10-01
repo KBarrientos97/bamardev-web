@@ -1593,7 +1593,11 @@ export type EstadoGasto = "PENDIENTE" | "PARCIAL" | "PAGADO";
 
 /** Las pestanas de la lista. VENCIDOS no es un estado: cruza PENDIENTE y
  *  PARCIAL con la fecha, que es como el dueno mira la pantalla. */
-export type FiltroGasto = "TODOS" | "PENDIENTES" | "VENCIDOS" | "PAGADOS";
+/**
+ * `ATRASADOS` (desde el 1-oct-2026): lo que se debe de ANTES del mes que se
+ * mira. El resto de los filtros son del mes.
+ */
+export type FiltroGasto = "TODOS" | "PENDIENTES" | "VENCIDOS" | "PAGADOS" | "ATRASADOS";
 
 /** Si el gasto sube cuando sube la venta o no se mueve. */
 export type TipoCostoGasto = "FIJO" | "VARIABLE";
@@ -1664,6 +1668,20 @@ export interface ResumenGastos {
   cantidadPagados: number;
   /** Para el "gastos sobre las ventas del periodo". */
   ventasPeriodo: number;
+  /**
+   * Lo que se debe de meses ANTERIORES al período: va aparte para que total,
+   * pagado y pendiente sigan siendo del mes. Opcional: un backend anterior al
+   * 1-oct-2026 no lo manda.
+   */
+  atrasado?: GastosAtrasados;
+}
+
+/** Gastos de meses anteriores que todavía tienen saldo. */
+export interface GastosAtrasados {
+  cantidad: number;
+  saldo: number;
+  /** Cuántos de esos ya pasaron su fecha de vencimiento. */
+  vencidos: number;
 }
 
 /** Lo que el formulario manda para crear o corregir un gasto. */

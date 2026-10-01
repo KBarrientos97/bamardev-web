@@ -119,7 +119,40 @@ describe("la lista", () => {
   it("dice lo vencido con el saldo que falta, y los vencidos arriba en los números", async () => {
     await abrir();
     expect(screen.getByText(/Venció hace 8 días · saldo Bs 220,00/)).toBeInTheDocument();
-    expect(screen.getByText(/1 vencidos · Bs 220,00/)).toBeInTheDocument();
+    // En singular: con un solo vencido decía "1 vencidos".
+    expect(screen.getByText(/1 vencido · Bs 220,00/)).toBeInTheDocument();
+    expect(screen.getByText("2 gastos")).toBeInTheDocument();
+    expect(screen.getByText("1 pagado")).toBeInTheDocument();
+  });
+
+  it("un mes que gastó más de lo que vendió dice el porcentaje real, en rojo", async () => {
+    // El bug: se cortaba en 100 y Bs 3.920 de gastos contra Bs 1.000 de ventas
+    // decía "100.0%", justo el mes en que la farmacia pierde plata.
+    vi.mocked(api.getResumenGastos).mockResolvedValue({ ...resumen, ventasPeriodo: 1000 });
+    await abrir();
+    const valor = screen.getByText("392,0%");
+    expect(valor.className).toContain("text-danger-text");
+    expect(screen.getByText(/Más que lo vendido \(Bs 1.?000,00\)/)).toBeInTheDocument();
+  });
+
+  it("lo atrasado de meses anteriores se avisa también en farmacia", async () => {
+    vi.mocked(api.getResumenGastos).mockResolvedValue({
+      ...resumen,
+      atrasado: { cantidad: 1, saldo: 420, vencidos: 0 },
+    });
+    await abrir();
+    const aviso = screen.getByRole("region", { name: "Gastos de meses anteriores" });
+    expect(aviso).toHaveTextContent(/1 gasto de meses anteriores sin pagar · Bs 420,00/);
+    // Ninguno vencido: el ámbar de "por pagar", no el rojo.
+    expect(aviso.className).toContain("bg-warning-bg");
+  });
+
+  it("un mes que vendió más de lo que gastó no es alarma", async () => {
+    vi.mocked(api.getResumenGastos).mockResolvedValue({ ...resumen, ventasPeriodo: 39200 });
+    await abrir();
+    const valor = screen.getByText("10,0%");
+    expect(valor.className).not.toContain("text-danger-text");
+    expect(screen.getByText(/Ventas Bs 39.?200,00/)).toBeInTheDocument();
   });
 
   it("los chips de categoría son sólo las del mes, y filtran sin volver a pedir", async () => {

@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Gasto, PlantillaGasto, ResumenGastos } from "../types";
@@ -105,6 +105,35 @@ describe("Gastos operativos", () => {
     expect(vence.className).toContain("text-danger-text");
     expect(vence.closest("li")!.className).toMatch(/(^| )card( |$)/);
   });
+
+  it("sobre las ventas da la proporción con coma, sin alarma en un mes normal", async () => {
+    abrir(<Gastos />);
+    // 420 de 8.575: el mismo número que antes, ahora con la coma de acá.
+    const valor = await screen.findByText("4,9%");
+    expect(valor.className).toContain("text-texto");
+    expect(screen.getByText(/Ventas Bs 8.?575,00/)).toBeInTheDocument();
+    // Con uno solo, en singular: decía "1 gastos" y "1 vencidos".
+    expect(screen.getByText("1 gasto")).toBeInTheDocument();
+    expect(screen.getByText(/^1 vencido · Bs 420,00$/)).toBeInTheDocument();
+  });
+
+  it("un mes que gastó más de lo que vendió dice el porcentaje real, en rojo", async () => {
+    // El bug: se cortaba en 100 y este mes decía "100.0%", que se lee como
+    // "se gastó lo vendido y nada más" justo cuando el negocio pierde plata.
+    vi.mocked(api.getResumenGastos).mockResolvedValue({ ...resumen, total: 3000, ventasPeriodo: 1000 });
+    abrir(<Gastos />);
+    const valor = await screen.findByText("300,0%");
+    expect(valor.className).toContain("text-danger-text");
+    expect(screen.getByText(/Más que lo vendido \(Bs 1.?000,00\)/)).toBeInTheDocument();
+    expect(screen.queryByText(/100[.,]0%/)).not.toBeInTheDocument();
+  });
+
+  it("sin ventas en el período no inventa un porcentaje", async () => {
+    vi.mocked(api.getResumenGastos).mockResolvedValue({ ...resumen, ventasPeriodo: 0 });
+    abrir(<Gastos />);
+    expect(await screen.findByText("Sin ventas en el período")).toBeInTheDocument();
+    expect(screen.getByText("—")).toBeInTheDocument();
+  });
 });
 
 /** Una fecha a `dias` de hoy, en `yyyy-MM-dd`: el aviso mira desde hoy. */
@@ -113,6 +142,38 @@ function enDias(dias: number): string {
   d.setDate(d.getDate() + dias);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
+
+describe("lo que se debe de meses anteriores", () => {
+  it("se avisa arriba de la lista y Ver cuáles pide los atrasados", async () => {
+    // El bug: el resumen es por mes, y una luz del mes pasado sin pagar no
+    // aparecía en ningún lado mirando este mes.
+    vi.mocked(api.getResumenGastos).mockResolvedValue({
+      ...resumen,
+      atrasado: { cantidad: 2, saldo: 650, vencidos: 1 },
+    });
+    abrir(<Gastos />);
+    const aviso = await screen.findByRole("region", { name: "Gastos de meses anteriores" });
+    expect(aviso).toHaveTextContent(/2 gastos de meses anteriores sin pagar · Bs 650,00/);
+    expect(aviso).toHaveTextContent("1 ya venció");
+    expect(screen.getByRole("button", { name: "De meses anteriores" })).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Ver cuáles" }));
+    });
+    expect(vi.mocked(api.getGastos)).toHaveBeenLastCalledWith(
+      expect.objectContaining({ filtro: "ATRASADOS" }),
+    );
+    // Mientras se los mira, el aviso sobra.
+    expect(screen.queryByRole("region", { name: "Gastos de meses anteriores" })).not.toBeInTheDocument();
+  });
+
+  it("al día, la pantalla queda como siempre: sin aviso ni chip", async () => {
+    abrir(<Gastos />);
+    await screen.findByText(/Venció hace 8 días/);
+    expect(screen.queryByRole("region", { name: "Gastos de meses anteriores" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "De meses anteriores" })).not.toBeInTheDocument();
+  });
+});
 
 describe("el aviso de los gastos automáticos", () => {
   it("dice lo que se va a cargar solo, aunque todavía no sea un gasto", async () => {
