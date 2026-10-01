@@ -54,7 +54,11 @@ export type FeatureConocida =
   | "exportacion"
   | "reportes"
   | "reportes_operacion"
-  | "reportes_rentabilidad";
+  | "reportes_rentabilidad"
+  /** Vencimientos y el lote que sale por FEFO. Farmacia, plan PRO. */
+  | "lotes"
+  /** Lo que pidieron y no había. Farmacia, BASICO y PRO. */
+  | "encargos";
 export type Feature = FeatureConocida | (string & {});
 
 export interface SesionUsuario {
@@ -134,7 +138,45 @@ export interface ComponenteProducto {
   cantidad: number;
 }
 
-export interface Producto {
+/**
+ * Qué hace falta para venderle un medicamento a alguien. Sale del Reglamento
+ * de Farmacias, no de una preferencia del negocio: es lo que dice el registro
+ * del producto.
+ *
+ * LIBRE es el valor de todo lo demás —un pañal, una leche, un termómetro— y de
+ * los de venta libre. En Bolivia los antibióticos entran ahí: **no** exigen
+ * receta, a diferencia de otros países.
+ */
+export type CondicionVenta =
+  | "LIBRE"
+  | "RECETA_MEDICA"
+  /** La farmacia se queda la receta (psicotrópicos). */
+  | "RECETA_ARCHIVADA"
+  /** Formulario oficial numerado (estupefacientes). */
+  | "RECETA_VALORADA";
+
+/**
+ * Ficha farmacéutica. Viaja en todos los productos: en un artículo de
+ * restaurante son cinco nulos, venta libre y dos `false`.
+ */
+export interface FichaFarmaceutica {
+  /** La droga: "Paracetamol". Es por lo que busca el farmacéutico. */
+  principioActivo: string | null;
+  /** "500 mg", "20 mg/ml". */
+  concentracion: string | null;
+  /** Comprimido, Cápsula, Jarabe… o "Paquete" para lo que no es remedio. */
+  formaFarmaceutica: string | null;
+  /** Laboratorio o marca: BAGÓ, IFA… y también Huggies. */
+  laboratorio: string | null;
+  registroSanitario: string | null;
+  condicionVenta: CondicionVenta;
+  /** Se compra y se vende por lote con vencimiento. */
+  manejaLote: boolean;
+  /** Psicotrópico o estupefaciente (Ley 1737). */
+  controlado: boolean;
+}
+
+export interface Producto extends FichaFarmaceutica {
   id: number;
   nombre: string;
   descripcion: string | null;
@@ -149,6 +191,54 @@ export interface Producto {
   unidadMedida: Pick<UnidadMedida, "id" | "nombre"> | null;
   stockTotal: number;
   componentes: ComponenteProducto[];
+  /**
+   * Si la sucursal lo vende. Lo manda el backend cuando se pregunta por una
+   * sucursal; sin el dato se vende, que es como funcionó siempre.
+   */
+  disponible?: boolean;
+  /** Sólo lo trae `GET /productos/buscar`: el lote que se vende primero. */
+  proximoVencimiento?: ProximoVencimiento | null;
+  /**
+   * Dónde está en la sucursal que se consultó ("Estante 3 · fila B"). Lo trae
+   * `GET /productos/buscar` y sólo si alguien lo cargó: es opcional.
+   */
+  ubicacion?: string | null;
+}
+
+/**
+ * Cuánto hay de un artículo en una sucursal (o depósito) y dónde está. Sin
+ * costos: lo lee quien atiende, para decir "en la sucursal X sí hay".
+ */
+export interface Existencia {
+  almacenId: number;
+  nombre: string;
+  tipo: TipoAlmacen;
+  esPrincipal: boolean;
+  direccion: string | null;
+  telefono: string | null;
+  cantidad: number;
+  ubicacion: string | null;
+}
+
+/**
+ * El vencimiento del lote que se va a vender primero (FEFO), entre los que
+ * tienen saldo en la sucursal. Es el punto de color del mostrador de farmacia.
+ * Null = no maneja lote, o ningún lote con saldo tiene fecha.
+ */
+export interface ProximoVencimiento {
+  fecha: string;
+  /** Negativo = ya venció. */
+  dias: number;
+  tramo: TramoVencimiento;
+}
+
+/** Lo que devuelve `GET /productos/buscar`: una página, no el catálogo. */
+export interface PaginaProductos {
+  items: Producto[];
+  /** Cuántos hay en total con ese filtro, para decir "30 de 412". */
+  total: number;
+  limite: number;
+  offset: number;
 }
 
 export interface ProductoInput {
@@ -168,6 +258,15 @@ export interface ProductoInput {
   categoriaId?: number;
   icono?: string;
   componentes?: { ingredienteId: number; cantidad: number }[];
+  // Ficha farmacéutica: la manda el formulario de farmacia y nadie más.
+  principioActivo?: string;
+  concentracion?: string;
+  formaFarmaceutica?: string;
+  laboratorio?: string;
+  registroSanitario?: string;
+  condicionVenta?: CondicionVenta;
+  manejaLote?: boolean;
+  controlado?: boolean;
 }
 
 // ── Inventario ──────────────────────────────────────────────────────────────
@@ -253,6 +352,12 @@ export interface Movimiento {
   tipo: TipoMovimiento;
   comprobante: string | null;
   descripcion: string | null;
+  /**
+   * A quién se le compró, si se eligió de la lista (farmacia). Null en lo
+   * viejo o en lo que cargan Android y el restaurante: ahí el proveedor, si
+   * lo hay, está como texto en `descripcion`.
+   */
+  proveedor?: { id: number; nombre: string } | null;
   estado: EstadoDocumento;
   fecha: string;
   fechaAprobacion: string | null;
@@ -263,6 +368,11 @@ export interface Movimiento {
   /** Sólo en TRANSFERENCIA: a dónde va la mercadería. */
   almacenDestino?: Pick<Almacen, "id" | "nombre"> | null;
   items: number;
+  /**
+   * Nombres de lo que se movió, sin repetir. Opcional: un backend anterior no
+   * lo manda y la pantalla vuelve a "3 artículos".
+   */
+  productos?: string[];
   monto: number;
   detalles?: DetalleMovimiento[];
 }
@@ -275,10 +385,18 @@ export interface DetalleMovimiento {
   costo: number;
   subtotal?: number;
   descripcion: string | null;
+  /** Rubro farmacia: la partida que entró en esta línea. */
+  loteCodigo?: string | null;
+  loteVencimiento?: string | null;
 }
 
 /** Artículo elegible en un movimiento (productos + insumos en una sola lista). */
 export interface ArticuloMovimiento {
+  /**
+   * Dónde está en la sucursal pedida, si alguien lo cargó. Sólo viene cuando
+   * se pide la lista de UNA sucursal.
+   */
+  ubicacion?: string | null;
   id: number;
   nombre: string;
   esInsumo: boolean;
@@ -286,6 +404,13 @@ export interface ArticuloMovimiento {
   precio: number;
   stock: number;
   unidad: string;
+  /**
+   * Si se compra y se vende por lote con vencimiento (rubro farmacia). El
+   * formulario de ingreso pide lote y fecha sólo en estas líneas.
+   */
+  manejaLote?: boolean;
+  /** La del medicamento, para mostrarla si el nombre no la trae. */
+  concentracion?: string | null;
 }
 
 export interface MovimientoInput {
@@ -298,8 +423,52 @@ export interface MovimientoInput {
   fecha?: string;
   comprobante?: string;
   descripcion?: string;
+  /** Sólo en una ENTRADA. Al editar, `null` lo quita. */
+  proveedorId?: number | null;
   detalles?: DetalleMovimientoInput[];
 }
+
+/** A quién se le compra la mercadería (farmacia). */
+export interface Proveedor {
+  id: number;
+  nombre: string;
+  nit: string | null;
+  telefono: string | null;
+  /** El vendedor o visitador con el que se habla. */
+  contacto: string | null;
+  nota: string | null;
+  /** Dado de baja: no se ofrece al cargar un ingreso, pero su historia queda. */
+  activo: boolean;
+}
+
+/** Lo que se le compró: entradas APROBADAS, cantidad × costo. */
+export interface ComprasProveedor {
+  total: number;
+  ingresos: number;
+}
+
+export interface ProveedorConCompras extends Proveedor {
+  compras: ComprasProveedor;
+  /** La última entrada aprobada, aunque sea de antes del período. */
+  ultimaCompra: string | null;
+}
+
+export interface ProveedorDetalle extends Proveedor {
+  compras: ComprasProveedor;
+  ultimosIngresos: {
+    id: number;
+    fecha: string;
+    comprobante: string | null;
+    estado: EstadoDocumento;
+    almacen: string;
+    items: number;
+    monto: number;
+  }[];
+}
+
+export type ProveedorInput = Partial<Pick<Proveedor, "nit" | "telefono" | "contacto" | "nota">> & {
+  nombre: string;
+};
 
 /**
  * Lo que un producto tiene DISTINTO en una sucursal.
@@ -365,6 +534,138 @@ export interface DetalleMovimientoInput {
   cantidad: number;
   costo?: number;
   descripcion?: string;
+  /**
+   * Lote y vencimiento (rubro farmacia). Sólo se mandan en una ENTRADA: es lo
+   * que dice el papel de la compra. Una salida no elige lote — sale el más
+   * próximo a vencer, que es la regla del depósito.
+   */
+  loteCodigo?: string;
+  /** yyyy-MM-dd */
+  loteVencimiento?: string;
+}
+
+// ── Lotes y vencimientos (rubro farmacia) ───────────────────────────────────
+
+/** En qué tramo del semáforo cae un vencimiento. */
+export type TramoVencimiento =
+  | "VENCIDO"
+  | "HASTA_30"
+  | "HASTA_60"
+  | "HASTA_90"
+  | "LEJOS";
+
+export interface LoteConSaldo {
+  loteId: number;
+  codigo: string;
+  vencimiento: string | null;
+  /** Negativo = ya venció. Null si el lote no tiene fecha. */
+  diasRestantes: number | null;
+  tramo: TramoVencimiento | null;
+  cantidad: number;
+  costoUnitario: number | null;
+  almacen: { id: number; nombre: string };
+}
+
+/**
+ * Un lote con saldo en la sucursal de la caja, como lo ve quien cobra: sin
+ * costo. Viene en el orden en que la venta lo va a descontar (FEFO).
+ */
+export interface LoteParaVender {
+  codigo: string;
+  vencimiento: string | null;
+  /** Negativo = ya venció. Null si el lote no tiene fecha. */
+  dias: number | null;
+  tramo: TramoVencimiento | null;
+  cantidad: number;
+}
+
+/** Los lotes de un artículo del carrito. Vacío = no tiene lote con saldo. */
+export interface LotesDelArticulo {
+  productoId: number;
+  lotes: LoteParaVender[];
+}
+
+export interface LotePorVencer extends LoteConSaldo {
+  diasRestantes: number;
+  tramo: TramoVencimiento;
+  /** Cantidad × costo: la plata parada en este lote. */
+  valor: number;
+  producto: { id: number; nombre: string; laboratorio: string | null };
+}
+
+// ── Encargos (rubro farmacia) ───────────────────────────────────────────────
+
+/**
+ * Por dónde va un encargo. El flujo es lineal: alguien pide algo que no hay →
+ * se le pide al proveedor → llega → se entrega.
+ */
+export type EstadoEncargo =
+  | "ANOTADO"
+  | "PEDIDO"
+  | "LLEGO"
+  | "ENTREGADO"
+  | "CANCELADO";
+
+export interface Encargo {
+  id: number;
+  /** Lo que pidió, tal como se escribió. */
+  descripcion: string;
+  cantidad: number;
+  estado: EstadoEncargo;
+  clienteNombre: string | null;
+  clienteTelefono: string | null;
+  nota: string | null;
+  /** El artículo del catálogo, si está. Null = algo que todavía no se vende. */
+  producto: { id: number; nombre: string; laboratorio: string | null } | null;
+  almacen: { id: number; nombre: string } | null;
+  /** Quién lo anotó. */
+  usuario: string | null;
+  creadoEn: string;
+  llegoEn: string | null;
+  entregadoEn: string | null;
+  /** Cuántas personas están esperando este mismo producto. */
+  pedidoPor: number;
+  /** Varios lo esperan: vale la pena traer más de uno. */
+  muyPedido: boolean;
+  /** Ya hay stock de lo encargado: se le puede avisar. */
+  hayStock: boolean;
+  diasEsperando: number;
+}
+
+export interface ListaEncargos {
+  anotados: number;
+  pedidos: number;
+  llegaron: number;
+  entregados: number;
+  cancelados: number;
+  /** Lo que sigue esperando: el número que dice si hay trabajo. */
+  abiertos: number;
+  items: Encargo[];
+}
+
+export interface EncargoInput {
+  productoId?: number;
+  descripcion: string;
+  cantidad?: number;
+  clienteNombre?: string;
+  clienteTelefono?: string;
+  nota?: string;
+}
+
+export interface ContadorTramo {
+  lotes: number;
+  unidades: number;
+  valor: number;
+}
+
+export interface Vencimientos {
+  vencidos: ContadorTramo;
+  hasta30: ContadorTramo;
+  hasta60: ContadorTramo;
+  hasta90: ContadorTramo;
+  /** Lo que cuesta todo lo que está por vencer o ya venció. */
+  valorEnRiesgo: number;
+  detalle: LotePorVencer[];
 }
 
 // ── Caja ────────────────────────────────────────────────────────────────────
@@ -506,6 +807,148 @@ export interface DetalleVentaInput {
   precio?: number;
   nota?: string;
   consumo?: Consumo;
+  /**
+   * Farmacia: la receta de un psicotrópico o estupefaciente, que va al libro.
+   * Sin ella el backend rechaza la venta de uno de esos.
+   */
+  receta?: RecetaVenta;
+}
+
+/**
+ * Los datos de la receta de un controlado, como viajan con la venta y como se
+ * asientan en el libro que pide el SEDES.
+ */
+export interface RecetaVenta {
+  pacienteNombre: string;
+  /** CI u otro documento, si la receta lo trae. */
+  pacienteDocumento?: string;
+  medicoNombre: string;
+  medicoMatricula: string;
+  /** El número del formulario. Obligatorio en la receta valorada. */
+  recetaNumero?: string;
+  /** El día que la extendió el médico: AAAA-MM-DD. */
+  recetaFecha: string;
+}
+
+/** Lo que hay en riesgo en un tramo de vencimiento, hoy. */
+export interface RiesgoTramo {
+  unidades: number;
+  valor: number;
+  lotes: number;
+}
+
+/** Una baja (o devolución) del período, renglón por renglón. */
+export interface BajaMerma {
+  movimientoId: number;
+  fecha: string;
+  motivo: string;
+  nota: string;
+  /** Devolución al proveedor: no es pérdida, vuelve. */
+  devolucion: boolean;
+  productoId: number;
+  nombre: string;
+  laboratorio: string | null;
+  cantidad: number;
+  /** Al costo del lote del que salió. */
+  valor: number;
+  lotes: string[];
+  almacen: string;
+  usuario: string | null;
+}
+
+/** Vencimientos y mermas: lo perdido en el período y lo que está en riesgo hoy. */
+export interface ReporteMermas {
+  resumen: {
+    perdido: number;
+    unidadesPerdidas: number;
+    devuelto: number;
+    unidadesDevueltas: number;
+    enRiesgo: number;
+  };
+  riesgo: Record<"VENCIDO" | "HASTA_30" | "HASTA_60" | "HASTA_90", RiesgoTramo>;
+  porMotivo: { motivo: string; devolucion: boolean; unidades: number; valor: number }[];
+  porProducto: {
+    productoId: number;
+    nombre: string;
+    laboratorio: string | null;
+    motivos: string[];
+    unidades: number;
+    valor: number;
+  }[];
+  /** AAAA-MM, en la hora del negocio. */
+  porMes: { mes: string; perdido: number; devuelto: number }[];
+  detalle: BajaMerma[];
+}
+
+/** Por qué conviene pedir un artículo: el orden es la urgencia. */
+export type MotivoCompra = "AGOTADO" | "BAJO_MINIMO" | "SE_ACABA" | "ENCARGO";
+
+/** Un artículo que hay que pedir, con la cuenta que lo explica. */
+export interface ItemSugerencia {
+  productoId: number;
+  nombre: string;
+  principioActivo: string | null;
+  concentracion: string | null;
+  laboratorio: string | null;
+  categoria: string | null;
+  unidad: string | null;
+  /** Lo que hay, incluido lo vencido. */
+  stock: number;
+  /** Unidades de lotes vencidos: no cuentan para vender. */
+  vencido: number;
+  stockMinimo: number;
+  /** Lo vendido en los días de historia. */
+  vendidas: number;
+  porDia: number;
+  /** Días que alcanza lo que hay. Null si no se vendió en el período. */
+  alcanzaDias: number | null;
+  /** Encargos de clientes que todavía no se pidieron. */
+  encargos: number;
+  sugerido: number;
+  motivo: MotivoCompra;
+  /** El de la última compra (o el propio de la sucursal). */
+  costo: number;
+  subtotal: number;
+}
+
+export interface SugerenciaCompra {
+  /** Días de ventas que se miraron. */
+  dias: number;
+  /** Para cuántos días tiene que alcanzar lo que se pida. */
+  cobertura: number;
+  items: ItemSugerencia[];
+  resumen: { articulos: number; unidades: number; inversion: number; agotados: number };
+}
+
+/** Los dos libros de la venta: psicotrópicos (archivada) y estupefacientes (valorada). */
+export type LibroControlados = "PSICOTROPICOS" | "ESTUPEFACIENTES";
+
+/** Un asiento del libro de controlados. */
+export interface AsientoControlado {
+  id: number;
+  fecha: string;
+  ventaId: number;
+  comprobante: string | null;
+  /** Copiado al vender: si después se renombra el artículo, esto no cambia. */
+  producto: {
+    id: number;
+    nombre: string;
+    principioActivo: string | null;
+    concentracion: string | null;
+  };
+  condicionVenta: CondicionVenta;
+  controlado: boolean;
+  cantidad: number;
+  pacienteNombre: string;
+  pacienteDocumento: string | null;
+  medicoNombre: string;
+  medicoMatricula: string;
+  recetaNumero: string | null;
+  recetaFecha: string;
+  almacen: { id: number; nombre: string };
+  despachadoPor: { id: number; nombre: string };
+  /** La venta se anuló: el asiento queda, marcado. */
+  anuladaEn: string | null;
 }
 
 export interface PagoInput {
@@ -687,7 +1130,14 @@ export interface Dashboard {
   almacenes: number;
   totalInventario: number;
   bajoStock: number;
-  stockCritico: { id: number; nombre: string; stock: number; stockMinimo: number }[];
+  stockCritico: {
+    id: number;
+    nombre: string;
+    stock: number;
+    stockMinimo: number;
+    /** A quién se le vuelve a pedir. Sólo lo carga la ficha de farmacia. */
+    laboratorio?: string | null;
+  }[];
   movimientos: {
     id: number;
     comprobante: string | null;

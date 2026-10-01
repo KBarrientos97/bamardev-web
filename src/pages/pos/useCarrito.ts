@@ -76,6 +76,11 @@ interface LineaGuardada {
   nota: string;
 }
 
+/** Los ids que dejó guardados el carrito de ese tipo de pedido. */
+export function idsGuardados(tipoPedido: TipoPedido = "LOCAL"): number[] {
+  return leerGuardado(`${CLAVE_CARRITO}.${tipoPedido}`).map((l) => l.id);
+}
+
 function leerGuardado(clave: string): LineaGuardada[] {
   try {
     const crudo = sessionStorage.getItem(clave);
@@ -92,6 +97,13 @@ function leerGuardado(clave: string): LineaGuardada[] {
 export function useCarrito(
   tipoPedido: TipoPedido = "LOCAL",
   catalogo: Producto[] = [],
+  /**
+   * Cuándo ya se puede rehidratar. Por defecto, cuando llegó el catálogo. La
+   * farmacia no se trae el catálogo: busca sólo los artículos guardados, y
+   * con un carrito vacío no hay nada que buscar — sin esto nunca rehidrataba
+   * y, por lo tanto, tampoco guardaba.
+   */
+  catalogoListo: boolean = catalogo.length > 0,
 ): Carrito {
   const clave = `${CLAVE_CARRITO}.${tipoPedido}`;
   const [lineas, setLineas] = useState<LineaCarrito[]>([]);
@@ -100,7 +112,7 @@ export function useCarrito(
   // Rehidratar en cuanto llega el catálogo: antes no se puede, porque las
   // líneas necesitan el Producto y sólo tenemos su id.
   useEffect(() => {
-    if (rehidratado || catalogo.length === 0) return;
+    if (rehidratado || !catalogoListo) return;
     const guardadas = leerGuardado(clave);
     if (guardadas.length > 0) {
       const porId = new Map(catalogo.map((p) => [p.id, p]));
@@ -120,7 +132,7 @@ export function useCarrito(
       );
     }
     setRehidratado(true);
-  }, [catalogo, clave, rehidratado]);
+  }, [catalogo, catalogoListo, clave, rehidratado]);
 
   // Y se guarda con cada cambio. Recién después de rehidratar, para que el
   // estado vacío del primer render no borre lo que había guardado.

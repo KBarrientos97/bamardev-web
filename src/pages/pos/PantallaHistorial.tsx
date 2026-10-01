@@ -18,6 +18,7 @@ import { parsearMontoO } from "../../lib/dinero";
 import { fmtFechaHora, fmtHora, fmtMoney, fmtNum } from "../../lib/format";
 import { Telefono } from "../../lib/telefono";
 import { puedeSupervisar } from "../../lib/permisos";
+import { esFarmacia } from "../../lib/rubro";
 import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
 import type { Caja, Venta } from "../../types";
@@ -268,11 +269,17 @@ function DetalleVenta({
   /** Reimprimir el comprobante de un pedido ya cobrado. */
   onVerComprobante?: (venta: Venta) => void;
 }) {
-  const { usuario, incluye } = useAuth();
+  const { usuario, incluye, rubro } = useAuth();
   const completa = useApi(() => api.getVenta(venta.id), [venta.id]);
   const [anulando, setAnulando] = useState(false);
 
   const v = completa.datos ?? venta;
+
+  // En una farmacia no hay mesas: la venta se guarda como de local y cada
+  // renglón salía marcado "Mesa". Misma regla que el ticket (PantallaRecibo):
+  // se pregunta por el RUBRO, no por `incluye("mesa_llevar")`, que depende del
+  // plan y le borraría la marca a un restaurante que siempre la tuvo.
+  const mostrarConsumo = !esFarmacia(rubro);
 
   /**
    * Sólo se anula lo cobrado 100% en efectivo. Anular devuelve la plata del
@@ -433,12 +440,16 @@ function DetalleVenta({
                     <p className="text-[13px] text-texto">
                       <span className="font-bold">{fmtNum(d.cantidad)}×</span> {d.producto}
                     </p>
-                    <div className="mt-0.5 flex items-center gap-1.5">
-                      <Badge tono={d.consumo === "MESA" ? "azul" : "gris"}>
-                        {d.consumo === "MESA" ? "Mesa" : "Llevar"}
-                      </Badge>
-                      {d.nota && <span className="text-xs italic text-texto-3">{d.nota}</span>}
-                    </div>
+                    {(mostrarConsumo || d.nota) && (
+                      <div className="mt-0.5 flex items-center gap-1.5">
+                        {mostrarConsumo && (
+                          <Badge tono={d.consumo === "MESA" ? "azul" : "gris"}>
+                            {d.consumo === "MESA" ? "Mesa" : "Llevar"}
+                          </Badge>
+                        )}
+                        {d.nota && <span className="text-xs italic text-texto-3">{d.nota}</span>}
+                      </div>
+                    )}
                   </div>
                   <span className="shrink-0 text-[13px] font-bold">{fmtMoney(d.subtotal)}</span>
                 </li>

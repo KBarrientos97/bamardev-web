@@ -1,6 +1,7 @@
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import Layout from "./components/Layout";
 import { rutaInicial, type Seccion } from "./lib/permisos";
+import { esFarmacia } from "./lib/rubro";
 import Creditos from "./pages/Creditos";
 import Gastos from "./pages/Gastos";
 import GastosFijos from "./pages/GastosFijos";
@@ -16,6 +17,18 @@ import Mesas from "./pages/inventario/Mesas";
 import Movimientos from "./pages/inventario/Movimientos";
 import Productos from "./pages/inventario/Productos";
 import Pos from "./pages/pos/Pos";
+import BuscarMedicamento from "./pages/farmacia/BuscarMedicamento";
+import DashboardFarmacia from "./pages/farmacia/DashboardFarmacia";
+import GastosFarmacia from "./pages/farmacia/GastosFarmacia";
+import Encargos from "./pages/farmacia/Encargos";
+import FormMercaderia from "./pages/farmacia/FormMercaderia";
+import MovimientosFarmacia from "./pages/farmacia/MovimientosFarmacia";
+import Vencimientos from "./pages/farmacia/Vencimientos";
+import LibroControlados from "./pages/farmacia/LibroControlados";
+import SugerenciaCompra from "./pages/farmacia/SugerenciaCompra";
+import Mermas from "./pages/farmacia/Mermas";
+import Proveedores from "./pages/farmacia/Proveedores";
+import VentaFarmaciaProvider from "./pages/farmacia/VentaFarmaciaProvider";
 import Repartidor from "./pages/repartidor/Repartidor";
 import PanelMesero from "./pages/salon/PanelMesero";
 import { AuthProvider, useAuth } from "./store/AuthContext";
@@ -28,6 +41,7 @@ function Inicio() {
     rol: usuario.rol,
     modulos: usuario.modulos,
     features: negocio?.features,
+    rubro: negocio?.tipoNegocio,
   });
   return <Navigate to={destino} replace />;
 }
@@ -70,6 +84,60 @@ function Protegida({ seccion, children }: { seccion: Seccion; children: React.Re
 }
 
 /**
+ * Movimientos tiene dos pantallas para el mismo motor.
+ *
+ * La de Inventario cubre los cuatro tipos (entrada, salida, ajuste y
+ * transferencia) y es la que usan todos los rubros desde siempre. La de
+ * farmacia cuenta lo mismo como lo cuenta un mostrador —lo que se recibe de la
+ * droguería y lo que se da de baja— y manda a los dos formularios guiados.
+ *
+ * Se elige acá y no adentro de la pantalla para que el archivo de siempre no se
+ * entere de que existe un rubro: así un cambio de farmacia no puede romperle
+ * los movimientos a un restaurante que ya está trabajando.
+ */
+function MovimientosSegunRubro() {
+  const { rubro } = useAuth();
+  return esFarmacia(rubro) ? <MovimientosFarmacia /> : <Movimientos />;
+}
+
+/**
+ * La primera pantalla de Inventario. Mismo criterio que Movimientos: la
+ * farmacia tiene la suya —con el semáforo de vencimientos y lo más vendido del
+ * día— y el Dashboard de siempre no se entera de que existe un rubro.
+ */
+function DashboardSegunRubro() {
+  const { rubro } = useAuth();
+  return esFarmacia(rubro) ? <DashboardFarmacia /> : <Dashboard />;
+}
+
+/**
+ * Gastos operativos. La farmacia tiene la suya, armada como la maqueta: cada
+ * gasto se toca y el detalle va en un popup, filtra por categoría y deja
+ * administrar las categorías. Usa el mismo formulario y el mismo panel de pago
+ * que la de siempre, que sigue igual para los demás rubros.
+ */
+function GastosSegunRubro() {
+  const { rubro } = useAuth();
+  return esFarmacia(rubro) ? <GastosFarmacia /> : <Gastos />;
+}
+
+/**
+ * La app con su barra lateral. En una farmacia, además, con la venta en curso
+ * por encima de todas las pantallas (ver `VentaFarmaciaProvider.tsx`): el carrito
+ * sobrevive a ir a Buscar medicamento y volver, y el botón "Ver venta" sigue a
+ * quien atiende. Los demás rubros reciben el Layout de siempre, sin nada más.
+ */
+function LayoutSegunRubro() {
+  const { rubro } = useAuth();
+  if (!esFarmacia(rubro)) return <Layout />;
+  return (
+    <VentaFarmaciaProvider>
+      <Layout />
+    </VentaFarmaciaProvider>
+  );
+}
+
+/**
  * Pago de la licencia estando la sesión abierta (durante la gracia, antes del
  * bloqueo). Es la misma pantalla que se ve deslogueado; sólo cambia de dónde
  * sale el código de activación y a dónde vuelve al salir.
@@ -108,7 +176,7 @@ function Rutas() {
           que el código de activación sale de la sesión y no del bloqueo. */}
       <Route path="/pagar" element={<PagarConSesion />} />
 
-      <Route element={<Layout />}>
+      <Route element={<LayoutSegunRubro />}>
         <Route path="/" element={<Inicio />} />
         <Route path="/sin-acceso" element={<SinAcceso />} />
 
@@ -130,11 +198,48 @@ function Rutas() {
           }
         />
 
+        {/* Sólo farmacia: ver `SOLO_EN_RUBRO` en permisos.ts. */}
+        <Route
+          path="/buscar"
+          element={
+            <Protegida seccion="busqueda">
+              <BuscarMedicamento />
+            </Protegida>
+          }
+        />
+
+        <Route
+          path="/encargos"
+          element={
+            <Protegida seccion="encargos">
+              <Encargos />
+            </Protegida>
+          }
+        />
+
+        <Route
+          path="/vencimientos"
+          element={
+            <Protegida seccion="vencimientos">
+              <Vencimientos />
+            </Protegida>
+          }
+        />
+
+        <Route
+          path="/controlados"
+          element={
+            <Protegida seccion="controlados">
+              <LibroControlados />
+            </Protegida>
+          }
+        />
+
         <Route
           path="/inventario"
           element={
             <Protegida seccion="inventario">
-              <Dashboard />
+              <DashboardSegunRubro />
             </Protegida>
           }
         />
@@ -171,10 +276,51 @@ function Rutas() {
           }
         />
         <Route
+          path="/inventario/proveedores"
+          element={
+            <Protegida seccion="proveedores">
+              <Proveedores />
+            </Protegida>
+          }
+        />
+        <Route
           path="/inventario/movimientos"
           element={
             <Protegida seccion="movimientos">
-              <Movimientos />
+              <MovimientosSegunRubro />
+            </Protegida>
+          }
+        />
+        {/* Las dos pantallas guiadas del rubro. El guard es el que las apaga
+            fuera de farmacia: entrar por URL devuelve al inicio, igual que
+            cualquier otra sección que el negocio no tiene. */}
+        {/* Las `key` no sobran: las dos rutas dibujan el MISMO componente, así
+            que al ir de una a la otra React lo reaprovecha y `tipoInicial`
+            —que sólo alimenta el estado inicial— no se vuelve a mirar. Sin
+            esto, entrar por "Salida de mercadería" desde "Ingreso" cambiaba la
+            URL y dejaba el formulario en Entrada: se guardaba una entrada
+            creyendo estar cargando una baja. */}
+        <Route
+          path="/inventario/movimientos/ingreso"
+          element={
+            <Protegida seccion="ingreso_mercaderia">
+              <FormMercaderia key="ingreso" tipoInicial="ENTRADA" />
+            </Protegida>
+          }
+        />
+        <Route
+          path="/inventario/movimientos/salida"
+          element={
+            <Protegida seccion="salida_mercaderia">
+              <FormMercaderia key="salida" tipoInicial="SALIDA" />
+            </Protegida>
+          }
+        />
+        <Route
+          path="/inventario/movimientos/:id/editar"
+          element={
+            <Protegida seccion="ingreso_mercaderia">
+              <FormMercaderia />
             </Protegida>
           }
         />
@@ -200,7 +346,7 @@ function Rutas() {
           path="/gastos"
           element={
             <Protegida seccion="gastos">
-              <Gastos />
+              <GastosSegunRubro />
             </Protegida>
           }
         />
@@ -217,6 +363,24 @@ function Rutas() {
           element={
             <Protegida seccion="reportes">
               <Reportes />
+            </Protegida>
+          }
+        />
+        {/* Farmacia: un reporte con pantalla propia (se edita y se imprime el
+            pedido). Se entra desde su tarjeta en Reportes. */}
+        <Route
+          path="/reportes/sugerencia-compra"
+          element={
+            <Protegida seccion="reportes">
+              <SugerenciaCompra />
+            </Protegida>
+          }
+        />
+        <Route
+          path="/reportes/mermas"
+          element={
+            <Protegida seccion="reportes">
+              <Mermas />
             </Protegida>
           }
         />

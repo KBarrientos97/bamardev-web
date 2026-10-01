@@ -51,6 +51,15 @@ const paths: Record<string, ReactNode> = {
       <rect x="3" y="14" width="7" height="7" />
     </>
   ),
+  /** Un panel de resumen. Distinto de `grid`, que ya es Categorías. */
+  tablero: (
+    <>
+      <rect x="3" y="3" width="7" height="9" rx="1" />
+      <rect x="14" y="3" width="7" height="5" rx="1" />
+      <rect x="14" y="12" width="7" height="9" rx="1" />
+      <rect x="3" y="16" width="7" height="5" rx="1" />
+    </>
+  ),
   chart: (
     <>
       <line x1="18" y1="20" x2="18" y2="10" />

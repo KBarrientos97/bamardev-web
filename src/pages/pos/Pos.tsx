@@ -4,6 +4,7 @@ import { Cargando, ErrorMsg } from "../../components/ui";
 import { api } from "../../lib/api";
 import { fmtHora, fmtMoney } from "../../lib/format";
 import { tieneFeature } from "../../lib/permisos";
+import { esFarmacia } from "../../lib/rubro";
 import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
 import type { Caja, CreditoInput, PagoInput, TipoPedido, Venta } from "../../types";
@@ -19,6 +20,7 @@ import type { Mesa as MesaSalon } from "../../types/salon";
 import PantallaHistorial from "./PantallaHistorial";
 import PantallaRecibo from "./PantallaRecibo";
 import PantallaVenta from "./PantallaVenta";
+import { useVentaFarmacia } from "../farmacia/ventaFarmacia";
 import { useCarrito } from "./useCarrito";
 import { useIntentoDeCobro } from "./useIntentoDeCobro";
 
@@ -38,11 +40,21 @@ type Pantalla =
   | "entregas";
 
 export default function Pos() {
-  const { negocio } = useAuth();
+  const { negocio, rubro } = useAuth();
   // La caja manda: sin turno abierto el POS no deja vender, porque toda venta
   // tiene que caer dentro de un arqueo.
   const caja = useApi(() => api.cajaActual(), []);
-  const productos = useApi(() => api.getProductos(), []);
+  /**
+   * El catálogo de la grilla.
+   *
+   * En farmacia NO se pide: esa pantalla busca contra el servidor y traerse
+   * 2.000 artículos para no usarlos sería pagar la espera de abrir el POS por
+   * nada. La lista vacía es correcta ahí — la grilla no se dibuja.
+   */
+  const productos = useApi(
+    () => (esFarmacia(rubro) ? Promise.resolve([]) : api.getProductos()),
+    [rubro],
+  );
   const categorias = useApi(() => api.getCategorias(false), []);
   const formasPago = useApi(() => api.getFormasPago(), []);
   const repartidores = useApi(() => api.getRepartidores(), []);
@@ -113,7 +125,11 @@ export default function Pos() {
   // El catalogo va al hook para poder rehidratar el carrito despues de un F5:
   // se guardan ids, no productos, asi que las lineas se rearman contra el
   // catalogo fresco (y con el precio de hoy, no el de cuando se cargaron).
-  const carrito = useCarrito(tipoPedido, productos.datos ?? []);
+  const carritoPropio = useCarrito(tipoPedido, productos.datos ?? []);
+  // En una farmacia la venta vive por encima del POS (ver VentaFarmaciaProvider.tsx):
+  // ir a Buscar medicamento y volver no la borra. En los demás rubros no hay
+  // tal venta y el POS usa la suya, como siempre.
+  const carrito = useVentaFarmacia()?.carrito ?? carritoPropio;
   const [datosEntrega, setDatosEntrega] = useState<DatosEntrega | null>(null);
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState("");
@@ -456,6 +472,7 @@ export default function Pos() {
       categorias={categorias.datos ?? []}
       carrito={carrito}
       onCobrar={() => setPantalla("cobro")}
+      sucursalId={abierta.almacenId}
       cabecera={
         <>
         {/* flex-wrap: con el texto en los botones, en una pantalla angosta

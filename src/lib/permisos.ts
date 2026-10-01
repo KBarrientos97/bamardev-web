@@ -1,4 +1,5 @@
 import type { Feature, Modulo, Rol } from "../types";
+import type { Rubro } from "./rubro";
 
 /**
  * Permisos de la app. Hay DOS vocabularios distintos y no se mezclan:
@@ -16,6 +17,11 @@ import type { Feature, Modulo, Rol } from "../types";
  * que la app Android: una sesión vieja o un negocio sin features migradas se
  * quedaría sin menú, y eso es peor que mostrar de más — el backend igual
  * responde 403 si de verdad no corresponde.
+ *
+ * Y hay un tercer filtro, de otra naturaleza: el RUBRO (ver `rubro.ts`). El rol
+ * y el plan dicen si te dejan entrar; el rubro dice si la sección **existe**
+ * para ese tipo de negocio. Una farmacia con el plan más caro sigue sin tener
+ * mesas de salón.
  */
 
 export function tieneModulo(modulos: Modulo[] | undefined, codigo: Modulo): boolean {
@@ -45,6 +51,36 @@ export type Seccion =
   | "salon"
   /** ABM de mesas y zonas: es del admin, no del mesero. */
   | "mesas"
+  /**
+   * El resumen de la farmacia como primer ítem DENTRO de Inventario. Es la
+   * misma ruta que Inventario (`/inventario`): el grupo lleva a su primera
+   * pantalla, y el sub-ítem dice cuál es. Sólo farmacia: en los demás rubros
+   * Inventario sigue siendo un ítem solo, como siempre.
+   */
+  | "dashboard"
+  /** Buscar un medicamento en el mostrador. Sólo farmacia. */
+  | "busqueda"
+  /** Los lotes que vencen y la plata parada en ellos. Sólo farmacia. */
+  | "vencimientos"
+  /** Lo que pidieron y no había. Sólo farmacia. */
+  | "encargos"
+  /**
+   * El libro de psicotrópicos y estupefacientes: lo vendido con receta
+   * archivada o valorada. Sólo farmacia.
+   */
+  | "controlados"
+  /** A quién se le compra, y cuánto. Sólo farmacia. */
+  | "proveedores"
+  /**
+   * Recibir la mercadería del proveedor: factura, lote y vencimiento por
+   * línea. Es el movimiento de ENTRADA con pantalla propia. Sólo farmacia.
+   */
+  | "ingreso_mercaderia"
+  /**
+   * Dar de baja stock: vencido, dañado, robado o cargado de más. Es el
+   * movimiento de SALIDA con pantalla propia. Sólo farmacia.
+   */
+  | "salida_mercaderia"
   /** Gastos operativos: el libro del resultado, aparte de la caja. */
   | "gastos";
 
@@ -74,6 +110,33 @@ const REQUISITOS: Record<Seccion, { modulo: Modulo; feature: Feature | null }> =
   // El ABM de mesas es parte de la misma sección vendida: si el negocio no
   // contrató el salón, no hay mesas que administrar.
   mesas: { modulo: "INVENTARIO", feature: "salon" },
+  // Es la pantalla de `/inventario`: pide exactamente lo mismo, o el menú
+  // mostraría un sub-ítem que lleva a una ruta que el guard rechaza.
+  dashboard: { modulo: "INVENTARIO", feature: "inventario" },
+  // Buscar un medicamento es parte de atender: la hace quien está en el
+  // mostrador, así que va con el módulo del POS. No se vende aparte.
+  busqueda: { modulo: "POS", feature: null },
+  // Vencimientos es de inventario: decide qué se devuelve al proveedor y qué
+  // se da de baja, no atiende a nadie. La feature es `lotes` y no `inventario`
+  // porque es la que exige el backend (`@RequiereFeature('lotes')`, sólo en
+  // PRO): con `inventario` una farmacia BASICO veía la sección y entraba a un
+  // 403.
+  vencimientos: { modulo: "INVENTARIO", feature: "lotes" },
+  // Los encargos los anota quien ATIENDE, así que van con el módulo del POS:
+  // el que escucha "¿no tenés…?" es el del mostrador, no el que administra.
+  // La feature es la misma que pide el backend: apagarla en el panel la saca.
+  encargos: { modulo: "POS", feature: "encargos" },
+  // El libro de controlados es una obligación legal, no algo que se vende
+  // aparte: sin feature. El módulo es el que pide el backend (INVENTARIO).
+  controlados: { modulo: "INVENTARIO", feature: null },
+  // Los proveedores son de quien recibe la mercadería: la misma llave que
+  // Movimientos, que es donde se eligen.
+  proveedores: { modulo: "INVENTARIO", feature: "inventario" },
+  // Recibir y dar de baja mercadería SON movimientos de inventario: la misma
+  // llave que `movimientos`, sólo que con pantalla propia. No se venden aparte
+  // ni se le pueden dar a alguien que no pueda ver el registro.
+  ingreso_mercaderia: { modulo: "INVENTARIO", feature: "inventario" },
+  salida_mercaderia: { modulo: "INVENTARIO", feature: "inventario" },
   // Igual que en Android (`Permisos.kt`): el modulo es REPORTES porque un
   // gasto es del libro del resultado, no de la caja del turno, y la feature
   // `gastos` esta en el catalogo desde sep-2026.
@@ -105,17 +168,81 @@ const ROLES_PERMITIDOS: Partial<Record<Seccion, Rol[]>> = {
   salon: ["MESERO", "ADMIN", "SUPERVISOR"],
   // Crear mesas y zonas es del admin: el mesero las usa, no las administra.
   mesas: ["ADMIN", "SUPERVISOR"],
+  dashboard: ["ADMIN", "SUPERVISOR"],
+  // El cajero entra: es el que atiende el mostrador y el que más la usa.
+  busqueda: ["ADMIN", "SUPERVISOR", "CAJERO"],
+  vencimientos: ["ADMIN", "SUPERVISOR"],
+  encargos: ["ADMIN", "SUPERVISOR", "CAJERO"],
+  // Trae nombres de pacientes y de médicos: lo lee quien responde ante el
+  // SEDES, no el cajero. El backend lo exige igual.
+  controlados: ["ADMIN", "SUPERVISOR"],
+  // Lo que se le compró a cada uno es plata del negocio: no lo ve un cajero.
+  proveedores: ["ADMIN", "SUPERVISOR"],
+  // Quien recibe del proveedor y quien da de baja un lote vencido es el mismo
+  // que puede ver Movimientos: mover stock no es atender el mostrador.
+  ingreso_mercaderia: ["ADMIN", "SUPERVISOR"],
+  salida_mercaderia: ["ADMIN", "SUPERVISOR"],
   // El backend lo exige con RolesGuard: un cajero no carga gastos del negocio.
   gastos: ["ADMIN", "SUPERVISOR"],
+};
+
+/**
+ * Secciones que NO existen en un rubro. Es una lista NEGRA y no una blanca a
+ * propósito: lo que no está acá se ve, que es como funcionaba antes de que el
+ * rubro existiera. Así, agregar un rubro nuevo no le apaga el menú a nadie por
+ * un olvido, y los negocios que ya trabajan no se enteran de este archivo.
+ *
+ * Por eso mismo hoy sólo está FARMACIA. Que un minimarket vea "Mesas del
+ * salón" es raro, pero es lo que ve hoy: sacárselo es otra decisión, de otro
+ * día, con su propio cliente mirando. Acá no se toca nada que ya funcione.
+ */
+/**
+ * Secciones que **nacen** de un rubro y no existen fuera de él. Es la lista
+ * BLANCA, la otra mitad del par: la negra protege lo que ya existía (ante la
+ * duda, se ve), y ésta encierra lo que se construyó para un rubro puntual
+ * (ante la duda, no se ve). Una pollería no tiene por qué encontrarse una
+ * pantalla llamada "Buscar medicamento".
+ */
+const SOLO_EN_RUBRO: Partial<Record<Seccion, Rubro[]>> = {
+  dashboard: ["FARMACIA"],
+  busqueda: ["FARMACIA"],
+  vencimientos: ["FARMACIA"],
+  encargos: ["FARMACIA"],
+  controlados: ["FARMACIA"],
+  proveedores: ["FARMACIA"],
+  // Las dos pantallas guiadas son del rubro. Un restaurante sigue cargando
+  // entradas y salidas desde Movimientos con el formulario de siempre: acá no
+  // se le saca nada, se le agrega un atajo a la farmacia.
+  ingreso_mercaderia: ["FARMACIA"],
+  salida_mercaderia: ["FARMACIA"],
+};
+
+const FUERA_DE_RUBRO: Partial<Record<Seccion, Rubro[]>> = {
+  // El salón entero es de restaurante: una farmacia no atiende mesas.
+  mesas: ["FARMACIA"],
+  salon: ["FARMACIA"],
+  // Los insumos son materia prima: harina, aceite, pollo crudo. Una farmacia
+  // no transforma nada, compra y vende lo mismo.
+  insumos: ["FARMACIA"],
 };
 
 export interface ContextoPermisos {
   rol: Rol;
   modulos?: Modulo[];
   features?: Feature[];
+  /** `negocio.tipoNegocio` del login. Sin rubro, se ve todo (como antes). */
+  rubro?: string;
 }
 
 export function puedeVer(ctx: ContextoPermisos, seccion: Seccion): boolean {
+  const fuera = FUERA_DE_RUBRO[seccion];
+  if (fuera && ctx.rubro && (fuera as string[]).includes(ctx.rubro)) return false;
+
+  const propia = SOLO_EN_RUBRO[seccion];
+  // Sin rubro tampoco se muestra: una sesión vieja que no sabe de qué negocio
+  // es no puede aterrizar en una pantalla que sólo tiene sentido en uno.
+  if (propia && !(ctx.rubro && (propia as string[]).includes(ctx.rubro))) return false;
+
   const roles = ROLES_PERMITIDOS[seccion];
   if (roles && !roles.includes(ctx.rol)) return false;
 
@@ -154,7 +281,14 @@ export type Capacidad =
   /** Reportes de cómo opera el negocio (horas, métodos, delivery…). */
   | "reportes_operacion"
   /** Reportes de plata (margen, rentabilidad, deuda…). */
-  | "reportes_rentabilidad";
+  | "reportes_rentabilidad"
+  /**
+   * Consultar las partidas: el lote que sale por FEFO en una salida y los
+   * lotes de la ficha del medicamento. Es la misma feature que la sección
+   * Vencimientos, pero se usa DENTRO de pantallas que igual se ven. Cargar el
+   * lote al recibir no depende de esto: el backend lo guarda con cualquier plan.
+   */
+  | "lotes";
 
 /**
  * Una capacidad puede exigir además un rol: anular con PIN se lo ofrecemos a
@@ -165,7 +299,23 @@ const ROLES_CAPACIDAD: Partial<Record<Capacidad, Rol[]>> = {
   movimientos_caja: ["ADMIN", "SUPERVISOR"],
 };
 
+/**
+ * Capacidades que no existen en un rubro, pase lo que pase con el plan.
+ *
+ * Es el mismo criterio que `FUERA_DE_RUBRO` pero para lo que vive DENTRO de una
+ * pantalla. Y hace falta por algo puntual: las features fallan abiertas (lista
+ * vacía = se muestra), así que una farmacia recién dada de alta, sin features
+ * cargadas, veía "Todo en mesa / Todo para llevar" en su carrito. Eso no es un
+ * problema de plan: en una farmacia no hay mesas.
+ */
+const CAPACIDAD_FUERA_DE_RUBRO: Partial<Record<Capacidad, Rubro[]>> = {
+  mesa_llevar: ["FARMACIA"],
+};
+
 export function puede(ctx: ContextoPermisos, capacidad: Capacidad): boolean {
+  const fuera = CAPACIDAD_FUERA_DE_RUBRO[capacidad];
+  if (fuera && ctx.rubro && (fuera as string[]).includes(ctx.rubro)) return false;
+
   const roles = ROLES_CAPACIDAD[capacidad];
   if (roles && !roles.includes(ctx.rol)) return false;
   return tieneFeature(ctx.features, capacidad);

@@ -24,6 +24,8 @@ const PLAN_FULL: Feature[] = [
   "fiado",
   "reportes",
   "salon",
+  "lotes",
+  "encargos",
   "gastos",
 ];
 
@@ -246,6 +248,243 @@ describe("el mesero", () => {
   });
 });
 
+
+describe("el rubro decide qué secciones existen", () => {
+  const farmacia = { ...ctx("ADMIN"), rubro: "FARMACIA" };
+
+  it("una farmacia no tiene salón, mesas ni insumos", () => {
+    // No es un tema de plan: por más que lo compre, una farmacia no atiende
+    // mesas ni transforma materia prima.
+    expect(puedeVer(farmacia, "mesas")).toBe(false);
+    expect(puedeVer(farmacia, "salon")).toBe(false);
+    expect(puedeVer(farmacia, "insumos")).toBe(false);
+  });
+
+  it("una farmacia sí vende, cobra fiado y maneja inventario", () => {
+    expect(puedeVer(farmacia, "pos")).toBe(true);
+    expect(puedeVer(farmacia, "productos")).toBe(true);
+    expect(puedeVer(farmacia, "movimientos")).toBe(true);
+    expect(puedeVer(farmacia, "almacenes")).toBe(true);
+    expect(puedeVer(farmacia, "creditos")).toBe(true);
+    expect(puedeVer(farmacia, "reportes")).toBe(true);
+  });
+
+  it("un restaurante no pierde nada", () => {
+    // La lista es NEGRA: lo que no está, se ve. Es la garantía de que esto no
+    // le toca el menú a ningún negocio que ya está trabajando.
+    const resto = { ...ctx("ADMIN"), rubro: "RESTAURANTE" };
+    expect(puedeVer(resto, "mesas")).toBe(true);
+    expect(puedeVer(resto, "insumos")).toBe(true);
+    expect(puedeVer(resto, "salon")).toBe(true);
+  });
+
+  it("sin rubro se ve todo, como antes", () => {
+    // Una sesión guardada antes de que el login mandara `tipoNegocio`.
+    expect(puedeVer(ctx("ADMIN"), "mesas")).toBe(true);
+    expect(puedeVer(ctx("ADMIN"), "insumos")).toBe(true);
+  });
+
+  it("el rubro no le abre la puerta a quien no corresponde", () => {
+    // Pasa el filtro de rubro pero lo frena el rol, como siempre.
+    const cajero = { ...ctx("CAJERO", ["POS", "CAJA"]), rubro: "FARMACIA" };
+    expect(puedeVer(cajero, "productos")).toBe(false);
+    expect(puedeVer(cajero, "pos")).toBe(true);
+  });
+});
+
+describe("dashboard como sub-ítem de Inventario", () => {
+  it("existe sólo en farmacia, y pide lo mismo que /inventario", () => {
+    const farmacia = { ...ctx("ADMIN"), rubro: "FARMACIA" };
+    expect(puedeVer(farmacia, "dashboard")).toBe(true);
+    expect(puedeVer(farmacia, "inventario")).toBe(true);
+    // Si el plan no trae inventario, tampoco el sub-ítem: llevaría a una ruta
+    // que el guard rechaza.
+    const sinInventario = { ...ctx("ADMIN", TODOS_MODULOS, ["pos", "caja"]), rubro: "FARMACIA" };
+    expect(puedeVer(sinInventario, "dashboard")).toBe(false);
+    // El cajero no entra a Inventario, así que tampoco a su Dashboard.
+    expect(puedeVer({ ...ctx("CAJERO", ["POS", "CAJA"]), rubro: "FARMACIA" }, "dashboard")).toBe(
+      false,
+    );
+  });
+
+  it("bamardev-restaurant no lo ve: su Inventario sigue siendo un ítem solo", () => {
+    expect(puedeVer({ ...ctx("ADMIN"), rubro: "RESTAURANTE" }, "dashboard")).toBe(false);
+    expect(puedeVer(ctx("ADMIN"), "dashboard")).toBe(false);
+    expect(puedeVer({ ...ctx("ADMIN"), rubro: "RESTAURANTE" }, "inventario")).toBe(true);
+  });
+});
+
+describe("secciones propias de un rubro", () => {
+  it("buscar medicamento existe sólo en una farmacia", () => {
+    expect(puedeVer({ ...ctx("ADMIN"), rubro: "FARMACIA" }, "busqueda")).toBe(true);
+    expect(puedeVer({ ...ctx("ADMIN"), rubro: "RESTAURANTE" }, "busqueda")).toBe(false);
+    expect(puedeVer({ ...ctx("ADMIN"), rubro: "MINIMARKET" }, "busqueda")).toBe(false);
+  });
+
+  it("sin rubro tampoco aparece", () => {
+    // Al revés que la lista negra: lo que nace de un rubro se oculta ante la
+    // duda. Una sesión vieja no puede aterrizar en "Buscar medicamento".
+    expect(puedeVer(ctx("ADMIN"), "busqueda")).toBe(false);
+  });
+
+  it("el cajero de la farmacia la usa; el repartidor no", () => {
+    const cajero = { ...ctx("CAJERO", ["POS", "CAJA"]), rubro: "FARMACIA" };
+    expect(puedeVer(cajero, "busqueda")).toBe(true);
+    const repartidor = { ...ctx("REPARTIDOR", ["POS"]), rubro: "FARMACIA" };
+    expect(puedeVer(repartidor, "busqueda")).toBe(false);
+  });
+});
+
+describe("capacidades que no existen en un rubro", () => {
+  it("una farmacia no parte una línea entre mesa y para llevar", () => {
+    // Y no alcanza con que el plan no traiga la feature: las features fallan
+    // ABIERTAS, así que una farmacia recién dada de alta las veía todas.
+    const farmacia = { ...ctx("ADMIN", TODOS_MODULOS, []), rubro: "FARMACIA" };
+    expect(puede(farmacia, "mesa_llevar")).toBe(false);
+    // El resto de las capacidades sigue igual: no se apagó media app.
+    expect(puede(farmacia, "pago_qr_mixto")).toBe(true);
+    expect(puede(farmacia, "recibo_pdf")).toBe(true);
+  });
+
+  it("un restaurante la conserva", () => {
+    const resto = { ...ctx("ADMIN", TODOS_MODULOS, []), rubro: "RESTAURANTE" };
+    expect(puede(resto, "mesa_llevar")).toBe(true);
+    expect(puede(ctx("ADMIN", TODOS_MODULOS, []), "mesa_llevar")).toBe(true);
+  });
+});
+
+describe("vencimientos", () => {
+  it("es de farmacia y de quien administra", () => {
+    const farmacia = (rol: Rol) => ({ ...ctx(rol), rubro: "FARMACIA" });
+    expect(puedeVer(farmacia("ADMIN"), "vencimientos")).toBe(true);
+    expect(puedeVer(farmacia("SUPERVISOR"), "vencimientos")).toBe(true);
+    // El cajero atiende; qué se devuelve al proveedor no es su decisión.
+    expect(puedeVer({ ...ctx("CAJERO", ["POS", "CAJA"]), rubro: "FARMACIA" }, "vencimientos")).toBe(
+      false,
+    );
+    expect(puedeVer({ ...ctx("ADMIN"), rubro: "RESTAURANTE" }, "vencimientos")).toBe(false);
+  });
+
+  it("pide la feature `lotes`, la misma que exige el backend", () => {
+    // `lotes` va sólo en PRO. Con `inventario` como llave, una farmacia BASICO
+    // veía Vencimientos en el menú y entraba a un 403.
+    const sinLotes = PLAN_FULL.filter((f) => f !== "lotes");
+    const basico = { ...ctx("ADMIN", TODOS_MODULOS, sinLotes), rubro: "FARMACIA" };
+    expect(puedeVer(basico, "vencimientos")).toBe(false);
+    expect(puede(basico, "lotes")).toBe(false);
+
+    const pro = { ...ctx("ADMIN"), rubro: "FARMACIA" };
+    expect(puedeVer(pro, "vencimientos")).toBe(true);
+    expect(puede(pro, "lotes")).toBe(true);
+  });
+
+  it("una farmacia sin features cargadas la sigue viendo (falla abierto)", () => {
+    const vacia = { ...ctx("ADMIN", TODOS_MODULOS, []), rubro: "FARMACIA" };
+    expect(puedeVer(vacia, "vencimientos")).toBe(true);
+    expect(puede(vacia, "lotes")).toBe(true);
+  });
+});
+
+describe("encargos", () => {
+  it("los anota quien atiende, también el cajero", () => {
+    // El que escucha "¿no tenés…?" es el del mostrador, no el que administra.
+    expect(puedeVer({ ...ctx("CAJERO", ["POS", "CAJA"]), rubro: "FARMACIA" }, "encargos")).toBe(
+      true,
+    );
+    expect(puedeVer({ ...ctx("ADMIN"), rubro: "FARMACIA" }, "encargos")).toBe(true);
+  });
+
+  it("no existe fuera de farmacia", () => {
+    expect(puedeVer({ ...ctx("ADMIN"), rubro: "RESTAURANTE" }, "encargos")).toBe(false);
+    expect(puedeVer(ctx("ADMIN"), "encargos")).toBe(false);
+  });
+
+  it("apagar `encargos` en el panel la saca del menú", () => {
+    // Es la feature que pide el backend: sin ella, entrar daba 403.
+    const sinEncargos = PLAN_FULL.filter((f) => f !== "encargos");
+    expect(
+      puedeVer({ ...ctx("CAJERO", ["POS", "CAJA"], sinEncargos), rubro: "FARMACIA" }, "encargos"),
+    ).toBe(false);
+  });
+});
+
+describe("libro de controlados", () => {
+  it("lo lee quien responde ante el SEDES, no el cajero", () => {
+    // Trae nombres de pacientes y de médicos.
+    expect(puedeVer({ ...ctx("ADMIN"), rubro: "FARMACIA" }, "controlados")).toBe(true);
+    expect(puedeVer({ ...ctx("SUPERVISOR"), rubro: "FARMACIA" }, "controlados")).toBe(true);
+    expect(puedeVer({ ...ctx("CAJERO", ["POS", "CAJA"]), rubro: "FARMACIA" }, "controlados")).toBe(
+      false,
+    );
+  });
+
+  it("es una obligación legal: no depende de lo que se contrató", () => {
+    const planMinimo: Feature[] = ["pos", "caja", "inventario"];
+    expect(
+      puedeVer({ ...ctx("ADMIN", TODOS_MODULOS, planMinimo), rubro: "FARMACIA" }, "controlados"),
+    ).toBe(true);
+  });
+
+  it("no existe fuera de farmacia", () => {
+    expect(puedeVer({ ...ctx("ADMIN"), rubro: "RESTAURANTE" }, "controlados")).toBe(false);
+    expect(puedeVer(ctx("ADMIN"), "controlados")).toBe(false);
+  });
+});
+
+describe("proveedores", () => {
+  it("los ve quien recibe la mercadería, no el cajero", () => {
+    expect(puedeVer({ ...ctx("ADMIN"), rubro: "FARMACIA" }, "proveedores")).toBe(true);
+    expect(puedeVer({ ...ctx("CAJERO", ["POS", "CAJA"]), rubro: "FARMACIA" }, "proveedores")).toBe(
+      false,
+    );
+  });
+
+  it("no existe fuera de farmacia", () => {
+    expect(puedeVer({ ...ctx("ADMIN"), rubro: "RESTAURANTE" }, "proveedores")).toBe(false);
+  });
+});
+
+describe("ingreso y salida de mercadería", () => {
+  it("son las dos pantallas guiadas de la farmacia", () => {
+    const farmacia = { ...ctx("ADMIN"), rubro: "FARMACIA" };
+    expect(puedeVer(farmacia, "ingreso_mercaderia")).toBe(true);
+    expect(puedeVer(farmacia, "salida_mercaderia")).toBe(true);
+  });
+
+  it("un restaurante no las ve, y su Movimientos queda igual", () => {
+    // Es la garantía de que este rubro no le toca el menú a nadie más: el
+    // negocio que ya trabaja sigue cargando entradas y salidas desde
+    // Movimientos, con el formulario de siempre.
+    const resto = { ...ctx("ADMIN"), rubro: "RESTAURANTE" };
+    expect(puedeVer(resto, "ingreso_mercaderia")).toBe(false);
+    expect(puedeVer(resto, "salida_mercaderia")).toBe(false);
+    expect(puedeVer(resto, "movimientos")).toBe(true);
+  });
+
+  it("sin rubro tampoco aparecen", () => {
+    expect(puedeVer(ctx("ADMIN"), "ingreso_mercaderia")).toBe(false);
+    expect(puedeVer(ctx("ADMIN"), "salida_mercaderia")).toBe(false);
+    expect(puedeVer(ctx("ADMIN"), "movimientos")).toBe(true);
+  });
+
+  it("mover stock no es atender el mostrador: el cajero no entra", () => {
+    const cajero = { ...ctx("CAJERO", ["POS", "CAJA"]), rubro: "FARMACIA" };
+    expect(puedeVer(cajero, "ingreso_mercaderia")).toBe(false);
+    expect(puedeVer(cajero, "salida_mercaderia")).toBe(false);
+    // Y lo que sí es del mostrador lo sigue teniendo.
+    expect(puedeVer(cajero, "busqueda")).toBe(true);
+  });
+
+  it("piden lo mismo que Movimientos: sin inventario en el plan, no están", () => {
+    const sinInventario = {
+      ...ctx("ADMIN", TODOS_MODULOS, ["pos", "caja", "catalogo"]),
+      rubro: "FARMACIA",
+    };
+    expect(puedeVer(sinInventario, "movimientos")).toBe(false);
+    expect(puedeVer(sinInventario, "ingreso_mercaderia")).toBe(false);
+    expect(puedeVer(sinInventario, "salida_mercaderia")).toBe(false);
+  });
+});
 
 describe("gastos operativos", () => {
   it("el admin y el supervisor lo ven; el cajero no", () => {

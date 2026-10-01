@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { iniciales } from "../lib/format";
 import { etiquetaRol, type Seccion } from "../lib/permisos";
+import { termino, type Termino } from "../lib/rubro";
 import { useAuth } from "../store/AuthContext";
 import AvisoLicencia from "./AvisoLicencia";
 import { Icon, type NombreIcono } from "./Icon";
@@ -11,19 +12,87 @@ interface ItemNav {
   label: string;
   icono: NombreIcono;
   seccion: Seccion;
-  /** Se dibuja indentado bajo Inventario. */
-  sub?: boolean;
+  /**
+   * Cuánto se indenta. 1 = dentro de Inventario; 2 = dentro de Movimientos,
+   * que en una farmacia deja de ser una pantalla sola y pasa a ser el grupo
+   * donde viven el ingreso y la salida de mercadería.
+   */
+  nivel?: 1 | 2;
+  /**
+   * Se marca activo sólo con la ruta EXACTA. Lo necesitan los ítems que tienen
+   * sub-rutas colgando: sin esto, "Movimientos" queda encendido al mismo tiempo
+   * que "Ingreso de mercadería" y la barra muestra dos lugares a la vez.
+   */
+  exacto?: boolean;
+  /**
+   * El ítem se llama distinto según el rubro: `label` es el nombre de siempre
+   * y esto es la palabra que lo reemplaza donde corresponda (ver `rubro.ts`).
+   */
+  termino?: Termino;
 }
 
 const ITEMS: ItemNav[] = [
   { a: "/pos", label: "Punto de venta", icono: "cart", seccion: "pos" },
+  // Va segundo y no dentro de Inventario: en una farmacia no es una consulta
+  // de catálogo, es parte de atender. Se usa más que ninguna otra pantalla.
+  { a: "/buscar", label: "Buscar medicamento", icono: "search", seccion: "busqueda" },
   { a: "/reparto", label: "Mis entregas", icono: "truck", seccion: "reparto" },
-  { a: "/inventario", label: "Inventario", icono: "archive", seccion: "inventario" },
-  { a: "/inventario/productos", label: "Artículos", icono: "box", seccion: "productos", sub: true },
-  { a: "/inventario/categorias", label: "Categorías", icono: "grid", seccion: "productos", sub: true },
-  { a: "/inventario/insumos", label: "Insumos", icono: "sack", seccion: "insumos", sub: true },
-  { a: "/inventario/almacenes", label: "Almacenes", icono: "warehouse", seccion: "almacenes", sub: true },
-  { a: "/inventario/movimientos", label: "Movimientos", icono: "swap", seccion: "movimientos", sub: true },
+  { a: "/encargos", label: "Encargos", icono: "bell", seccion: "encargos" },
+  // Fuera de Inventario y no dentro: no es catálogo, es la plata que se está
+  // por perder. Va donde se vea todos los días.
+  { a: "/vencimientos", label: "Vencimientos", icono: "calendar", seccion: "vencimientos" },
+  // Al lado de Vencimientos: las dos son lo que la farmacia le debe al SEDES.
+  {
+    a: "/controlados",
+    label: "Libro de controlados",
+    icono: "fileText",
+    seccion: "controlados",
+  },
+  { a: "/inventario", label: "Inventario", icono: "archive", seccion: "inventario", exacto: true },
+  // Sólo farmacia: la primera pantalla de Inventario con nombre propio, como
+  // Medicamentos o Categorías. Comparte la ruta con "Inventario", que pasa a
+  // ser el título del grupo (ver `esGrupo` más abajo).
+  { a: "/inventario", label: "Dashboard", icono: "tablero", seccion: "dashboard", nivel: 1, exacto: true },
+  {
+    a: "/inventario/productos",
+    label: "Artículos",
+    icono: "box",
+    seccion: "productos",
+    nivel: 1,
+    termino: "articulos",
+  },
+  { a: "/inventario/categorias", label: "Categorías", icono: "grid", seccion: "productos", nivel: 1 },
+  { a: "/inventario/insumos", label: "Insumos", icono: "sack", seccion: "insumos", nivel: 1 },
+  { a: "/inventario/almacenes", label: "Almacenes", icono: "warehouse", seccion: "almacenes", nivel: 1 },
+  // Sólo farmacia: a quién se le compra. Al lado de Movimientos, donde se elige.
+  { a: "/inventario/proveedores", label: "Proveedores", icono: "truck", seccion: "proveedores", nivel: 1 },
+  {
+    a: "/inventario/movimientos",
+    label: "Movimientos",
+    icono: "swap",
+    seccion: "movimientos",
+    nivel: 1,
+    exacto: true,
+  },
+  // Sólo farmacia (ver `SOLO_EN_RUBRO` en permisos.ts): el registro sigue
+  // siendo Movimientos, pero recibir del proveedor y dar de baja lo vencido son
+  // las dos cosas que se hacen todos los días, y merecen estar en el menú y no
+  // escondidas detrás de un botón "Nuevo". Un restaurante no las ve: su
+  // Movimientos queda exactamente como está.
+  {
+    a: "/inventario/movimientos/ingreso",
+    label: "Ingreso de mercadería",
+    icono: "trendingUp",
+    seccion: "ingreso_mercaderia",
+    nivel: 2,
+  },
+  {
+    a: "/inventario/movimientos/salida",
+    label: "Salida de mercadería",
+    icono: "trendingDown",
+    seccion: "salida_mercaderia",
+    nivel: 2,
+  },
   // Va suelto y no como sub-ítem de Inventario: las mesas no son catálogo,
   // son el salón. En la app está en el mismo lugar del drawer.
   { a: "/mesas", label: "Mesas del salón", icono: "grid", seccion: "mesas" },
@@ -51,14 +120,16 @@ function tituloDe(items: ItemNav[], pathname: string): string {
   let mejor: ItemNav | null = null;
   for (const i of items) {
     if (pathname === i.a || pathname.startsWith(`${i.a}/`)) {
-      if (!mejor || i.a.length > mejor.a.length) mejor = i;
+      // `>=`: con dos ítems en la misma ruta gana el de abajo, que es el
+      // sub-ítem ("Dashboard") y no el título del grupo ("Inventario").
+      if (!mejor || i.a.length >= mejor.a.length) mejor = i;
     }
   }
   return mejor?.label ?? "BamarDev";
 }
 
 export default function Layout() {
-  const { usuario, negocio, logout, puede } = useAuth();
+  const { usuario, negocio, logout, puede, rubro } = useAuth();
   const [abierto, setAbierto] = useState(false);
   const [colapsada, setColapsada] = useState(
     () => localStorage.getItem(COLAPSADA_KEY) === "1",
@@ -69,7 +140,15 @@ export default function Layout() {
     localStorage.setItem(COLAPSADA_KEY, colapsada ? "1" : "0");
   }, [colapsada]);
 
-  const visibles = ITEMS.filter((i) => puede(i.seccion));
+  // El rubro decide qué ítems existen (`puede`) y cómo se llaman: en una
+  // farmacia, "Artículos" es "Medicamentos".
+  const visibles = useMemo(
+    () =>
+      ITEMS.filter((i) => puede(i.seccion)).map((i) =>
+        i.termino ? { ...i, label: termino(rubro, i.termino) } : i,
+      ),
+    [puede, rubro],
+  );
 
   /**
    * `compacta` aplica sólo a la barra de escritorio: el drawer del móvil se
@@ -77,33 +156,45 @@ export default function Layout() {
    */
   const nav = (compacta: boolean) => (
     <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto overflow-x-hidden p-3">
-      {visibles.map((item) => (
-        <NavLink
-          key={item.a}
-          to={item.a}
-          end={item.a === "/inventario"}
-          onClick={() => setAbierto(false)}
-          title={compacta ? item.label : undefined}
-          className={({ isActive }) =>
-            [
-              "flex items-center gap-3 rounded-xl py-2.5 text-sm font-semibold transition-colors",
-              compacta ? "justify-center px-0" : "px-3",
-              // Sin etiqueta al lado, la sangría de los sub-items sólo
-              // descentraría el ícono respecto de los demás.
-              item.sub && !compacta ? "ml-3 text-[13px]" : "",
-              // Sobre la barra de color: el activo se marca con un bloque
-              // más claro y blanco pleno; el resto va en el gris teñido, que
-              // mantiene 4.5:1 contra el fondo.
-              isActive
-                ? "bg-barra-activo text-barra-texto"
-                : "text-barra-texto-2 hover:bg-barra-activo hover:text-barra-texto",
-            ].join(" ")
-          }
-        >
-          <Icon name={item.icono} size={item.sub && !compacta ? 17 : 19} />
-          {!compacta && <span>{item.label}</span>}
-        </NavLink>
-      ))}
+      {visibles.map((item) => {
+        // Un ítem es título de grupo cuando uno de sus sub-ítems lleva a la
+        // misma ruta (Inventario → Dashboard, sólo en farmacia). El título no
+        // se pinta como "estás acá" —eso lo dice el sub-ítem— sino en blanco
+        // mientras se esté en cualquier pantalla del grupo. Sin esto la barra
+        // marcaba dos lugares a la vez. En los rubros sin ese sub-ítem nada
+        // cambia: ningún ítem comparte ruta.
+        const esGrupo = visibles.some((o) => o !== item && o.a === item.a && o.nivel);
+        return (
+          <NavLink
+            key={`${item.seccion}:${item.a}`}
+            to={item.a}
+            end={esGrupo ? false : item.exacto}
+            onClick={() => setAbierto(false)}
+            title={compacta ? item.label : undefined}
+            className={({ isActive }) =>
+              [
+                "flex items-center gap-3 rounded-xl py-2.5 text-sm font-semibold transition-colors",
+                compacta ? "justify-center px-0" : "px-3",
+                // Sin etiqueta al lado, la sangría de los sub-items sólo
+                // descentraría el ícono respecto de los demás.
+                !compacta && item.nivel === 1 ? "ml-3 text-[13px]" : "",
+                !compacta && item.nivel === 2 ? "ml-7 text-[13px]" : "",
+                // Sobre la barra de color: el activo se marca con un bloque
+                // más claro y blanco pleno; el resto va en el gris teñido, que
+                // mantiene 4.5:1 contra el fondo.
+                isActive && esGrupo
+                  ? "text-barra-texto hover:bg-barra-activo"
+                  : isActive
+                    ? "bg-barra-activo text-barra-texto"
+                    : "text-barra-texto-2 hover:bg-barra-activo hover:text-barra-texto",
+              ].join(" ")
+            }
+          >
+            <Icon name={item.icono} size={item.nivel && !compacta ? 17 : 19} />
+            {!compacta && <span>{item.label}</span>}
+          </NavLink>
+        );
+      })}
 
       <div className="my-2 border-t border-white/15" />
 

@@ -1,4 +1,5 @@
 import type {
+  Existencia,
   ApunteStock,
   PrecioSucursal,
   PrecioSucursalInput,
@@ -20,6 +21,8 @@ import type {
   HistorialCostos,
   DetalleMovimiento,
   DetalleMovimientoInput,
+  Encargo,
+  EncargoInput,
   EstadoCobroQr,
   EstadoLicencia,
   FiltroCredito,
@@ -31,6 +34,18 @@ import type {
   Movimiento,
   MovimientoCaja,
   MovimientoInput,
+  ListaEncargos,
+  LoteConSaldo,
+  LotesDelArticulo,
+  AsientoControlado,
+  LibroControlados,
+  SugerenciaCompra,
+  ReporteMermas,
+  Proveedor,
+  ProveedorConCompras,
+  ProveedorDetalle,
+  ProveedorInput,
+  PaginaProductos,
   Producto,
   ProductoInput,
   RangoReporte,
@@ -47,6 +62,7 @@ import type {
   ResumenCaja,
   UnidadMedida,
   Usuario,
+  Vencimientos,
   Venta,
   VentaInput,
   CategoriaGasto,
@@ -403,6 +419,58 @@ export const api = {
     ),
   getProducto: (id: number, sucursalId?: number | null) =>
     request<Producto>(`/productos/${id}${qs({ sucursalId: sucursalId ?? undefined })}`),
+  /**
+   * La búsqueda del mostrador: filtra y pagina en el servidor.
+   *
+   * `getProductos` sigue existiendo y trae el catálogo entero — está bien para
+   * 40 artículos. Con un catálogo de farmacia (2.000) hay que usar esto, que
+   * busca por nombre, principio activo, laboratorio, descripción y código de
+   * barras exacto, y devuelve una página con el total.
+   */
+  buscarProductos: (params: {
+    q?: string;
+    limite?: number;
+    offset?: number;
+    soloHabilitados?: boolean;
+    /** Los chips de categoría del punto de venta de farmacia. */
+    categoriaId?: number | null;
+    /**
+     * De qué sucursal salen el stock, el precio y la ubicación. El POS manda la
+     * de su caja; quien pertenece a una sucursal ve siempre la suya.
+     */
+    sucursalId?: number | null;
+  }) =>
+    request<PaginaProductos>(
+      `/productos/buscar${qs({
+        q: params.q,
+        limite: params.limite,
+        offset: params.offset,
+        soloHabilitados: params.soloHabilitados ? "true" : undefined,
+        categoriaId: params.categoriaId ?? undefined,
+        sucursalId: params.sucursalId ?? undefined,
+      })}`,
+    ),
+  /**
+   * De qué lotes sale cada artículo del carrito en esa sucursal, en el orden
+   * en que la venta los descuenta. Sin costos: lo lee quien cobra. Sólo
+   * vuelven los que manejan lote.
+   */
+  lotesParaVender: (ids: number[], sucursalId: number) =>
+    request<LotesDelArticulo[]>(
+      `/productos/lotes-venta${qs({ ids: ids.join(","), sucursalId })}`,
+    ),
+  /** Cuánto hay en cada sucursal y dónde está. Sin costos: lo lee el mostrador. */
+  existenciasProducto: (id: number) =>
+    request<Existencia[]>(`/productos/${id}/existencias`),
+  /** Dónde está en una sucursal. Vacío o null la borra: es opcional. */
+  fijarUbicacionProducto: (id: number, almacenId: number, ubicacion: string | null) =>
+    request<{ ubicacion: string | null }>(`/productos/${id}/ubicacion`, {
+      method: "PUT",
+      body: JSON.stringify({ almacenId, ubicacion }),
+    }),
+  /** Las ubicaciones que ya se usaron, para sugerirlas al escribir. */
+  ubicacionesUsadas: (almacenId?: number) =>
+    request<string[]>(`/productos/ubicaciones${qs({ almacenId })}`),
   crearProducto: (input: ProductoInput) =>
     request<Producto>("/productos", { method: "POST", body: JSON.stringify(input) }),
   actualizarProducto: (id: number, input: Partial<ProductoInput>) =>
@@ -443,6 +511,95 @@ export const api = {
     request<{ mensaje: string }>(`/almacenes/${id}/principal`, {
       method: "PATCH",
     }),
+  // ── Encargos (rubro farmacia) ───────────────────────────────────────────
+  /** Sin filtro trae sólo lo que sigue abierto. */
+  getEncargos: (params: { estado?: string; incluirCerrados?: boolean } = {}) =>
+    request<ListaEncargos>(
+      `/encargos${qs({
+        estado: params.estado,
+        incluirCerrados: params.incluirCerrados ? "true" : undefined,
+      })}`,
+    ),
+  crearEncargo: (input: EncargoInput) =>
+    request<Encargo>("/encargos", { method: "POST", body: JSON.stringify(input) }),
+  /** Mueve el encargo al paso siguiente, o lo cancela. */
+  cambiarEstadoEncargo: (id: number, estado: string) =>
+    request<Encargo>(`/encargos/${id}/estado`, {
+      method: "POST",
+      body: JSON.stringify({ estado }),
+    }),
+  /** Sólo se puede con lo que nunca avanzó; lo demás se cancela. */
+  eliminarEncargo: (id: number) =>
+    request<{ mensaje: string }>(`/encargos/${id}`, { method: "DELETE" }),
+
+  // ── Lotes y vencimientos (rubro farmacia) ───────────────────────────────
+  /**
+   * El semáforo: qué vence y cuánta plata hay parada ahí.
+   *
+   * No hay alta de lotes a propósito — nacen al aprobar una entrada de
+   * mercadería. Un lote que existe sin que haya entrado nada al depósito es un
+   * número que después nadie puede explicar.
+   */
+  vencimientos: (params: { almacenId?: number; dias?: number } = {}) =>
+    request<Vencimientos>(
+      `/lotes/vencimientos${qs({ almacenId: params.almacenId, dias: params.dias })}`,
+    ),
+  /**
+   * El libro de controlados de un período, en orden cronológico. `desde` y
+   * `hasta` son días (AAAA-MM-DD) en la hora del negocio; `hasta` incluido.
+   */
+  libroControlados: (params: {
+    desde?: string;
+    hasta?: string;
+    libro?: LibroControlados | null;
+    almacenId?: number | null;
+  }) =>
+    request<AsientoControlado[]>(
+      `/controlados${qs(
+        rangoParaApi({
+          desde: params.desde,
+          hasta: params.hasta,
+          libro: params.libro ?? undefined,
+          almacenId: params.almacenId ?? undefined,
+        }),
+      )}`,
+    ),
+  /**
+   * Qué pedir para cubrir los próximos `cobertura` días según lo vendido en
+   * los últimos `dias`, con el stock mínimo como seguridad. Sin sucursal, el
+   * negocio entero.
+   */
+  sugerenciaCompra: (params: {
+    dias: number;
+    cobertura: number;
+    sucursalId?: number | null;
+  }) =>
+    request<SugerenciaCompra>(
+      `/reportes/sugerencia-compra${qs({
+        dias: params.dias,
+        cobertura: params.cobertura,
+        sucursalId: params.sucursalId ?? undefined,
+      })}`,
+    ),
+  /**
+   * Vencimientos y mermas: lo dado de baja y lo devuelto en el período
+   * (días AAAA-MM-DD en la hora del negocio, `hasta` incluido), valuado al
+   * costo del lote; y lo que está en riesgo hoy.
+   */
+  mermas: (params: { desde: string; hasta: string; sucursalId?: number | null }) =>
+    request<ReporteMermas>(
+      `/reportes/mermas${qs(
+        rangoParaApi({
+          desde: params.desde,
+          hasta: params.hasta,
+          sucursalId: params.sucursalId ?? undefined,
+        }),
+      )}`,
+    ),
+  /** Los lotes con saldo de un producto, en el orden en que se van a vender. */
+  lotesDeProducto: (productoId: number, almacenId?: number) =>
+    request<LoteConSaldo[]>(`/lotes/producto/${productoId}${qs({ almacenId })}`),
+
   /** Lo que los productos tienen distinto en esta sucursal (sólo excepciones). */
   getPreciosSucursal: (almacenId: number) =>
     request<PrecioSucursal[]>(`/almacenes/${almacenId}/precios`),
@@ -500,6 +657,29 @@ export const api = {
   getMovimientos: (sucursalId?: number | null) =>
     request<Movimiento[]>(`/movimientos${qs({ sucursalId: sucursalId ?? undefined })}`),
   getMovimiento: (id: number) => request<Movimiento>(`/movimientos/${id}`),
+
+  // ── Proveedores (farmacia) ──
+  /** Los proveedores con lo que se les compró en el período (días AAAA-MM-DD). */
+  proveedores: (params: { desde?: string; hasta?: string; inactivos?: boolean } = {}) =>
+    request<ProveedorConCompras[]>(
+      `/proveedores${qs(
+        rangoParaApi({
+          desde: params.desde,
+          hasta: params.hasta,
+          inactivos: params.inactivos ? "true" : undefined,
+        }),
+      )}`,
+    ),
+  proveedor: (id: number, params: { desde?: string; hasta?: string } = {}) =>
+    request<ProveedorDetalle>(`/proveedores/${id}${qs(rangoParaApi(params))}`),
+  /** Si el nombre ya existe (sin importar mayúsculas ni tildes), el servidor lo rechaza. */
+  crearProveedor: (input: ProveedorInput) =>
+    request<Proveedor>("/proveedores", { method: "POST", body: JSON.stringify(input) }),
+  actualizarProveedor: (id: number, input: Partial<ProveedorInput> & { activo?: boolean }) =>
+    request<Proveedor>(`/proveedores/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
+  /** Baja lógica: sus ingresos viejos siguen diciendo a quién se le compró. */
+  darDeBajaProveedor: (id: number) =>
+    request<Proveedor>(`/proveedores/${id}`, { method: "DELETE" }),
   /** Productos e insumos juntos, con su stock en el almacén indicado. */
   getArticulosMovimiento: (almacenId?: number) =>
     request<ArticuloMovimiento[]>(`/movimientos/articulos${qs({ almacenId })}`),

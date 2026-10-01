@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Icon, type NombreIcono } from "../components/Icon";
 import { Chips, EncabezadoPagina } from "../components/filtros";
 import {
@@ -15,6 +16,7 @@ import {
 import { api } from "../lib/api";
 import { fmtFecha, fmtFechaHora, fmtMoney, fmtNum, isoDia } from "../lib/format";
 import type { Capacidad, Seccion } from "../lib/permisos";
+import type { Rubro } from "../lib/rubro";
 import { useApi } from "../lib/useApi";
 import { useSucursales } from "../lib/useSucursales";
 import { useAuth } from "../store/AuthContext";
@@ -87,6 +89,23 @@ interface FichaReporte {
    * aparecía un reporte que siempre falla.
    */
   seccion?: Seccion;
+  /**
+   * Rubros donde el reporte no existe, pase lo que pase con el plan. Una
+   * farmacia no tiene meseros ni transforma materia prima: ofrecerle esos
+   * reportes es mostrarle una pantalla siempre vacía.
+   */
+  fueraDeRubro?: Rubro[];
+  /**
+   * Rubros donde SÓLO existe: la otra mitad del par. Un reporte construido
+   * para un rubro no se le ofrece a los demás (ante la duda, no se ve).
+   */
+  soloEnRubro?: Rubro[];
+  /**
+   * Pantalla propia en lugar de la tabla genérica: para el reporte que no se
+   * lee y listo, sino que se trabaja (la sugerencia de compra se ajusta y se
+   * imprime como pedido).
+   */
+  ruta?: string;
 }
 
 const REPORTES: FichaReporte[] = [
@@ -137,6 +156,7 @@ const REPORTES: FichaReporte[] = [
     texto: "Quién atendió, cuánto vendió y qué anuló.",
     icono: "users",
     capacidad: "reportes_operacion",
+    fueraDeRubro: ["FARMACIA"],
   },
   {
     nombre: "cierres",
@@ -158,11 +178,30 @@ const REPORTES: FichaReporte[] = [
     icono: "warehouse",
   },
   {
+    nombre: "sugerencia-compra",
+    titulo: "Sugerencia de compra",
+    texto: "Qué pedir según lo que se vende y el stock de seguridad.",
+    icono: "cart",
+    capacidad: "reportes_operacion",
+    soloEnRubro: ["FARMACIA"],
+    ruta: "/reportes/sugerencia-compra",
+  },
+  {
+    nombre: "mermas",
+    titulo: "Vencimientos y mermas",
+    texto: "Lo perdido por vencido o dañado, las devoluciones y lo que está en riesgo.",
+    icono: "trendingDown",
+    capacidad: "reportes_rentabilidad",
+    soloEnRubro: ["FARMACIA"],
+    ruta: "/reportes/mermas",
+  },
+  {
     nombre: "insumos",
     titulo: "Insumos",
     texto: "Compras de materia prima y su costo.",
     icono: "sack",
     capacidad: "reportes_rentabilidad",
+    fueraDeRubro: ["FARMACIA"],
   },
   {
     nombre: "financiero",
@@ -402,7 +441,8 @@ function esObjetoPlano(v: unknown): v is Record<string, unknown> {
 // ── Página ──────────────────────────────────────────────────────────────────
 
 export default function Reportes() {
-  const { incluye, puede } = useAuth();
+  const { incluye, puede, rubro } = useAuth();
+  const navigate = useNavigate();
   const [preset, setPreset] = useState<Preset>("mes");
 
   const [desdeManual, setDesdeManual] = useState(() => rangoDePreset("mes").desde ?? "");
@@ -420,9 +460,13 @@ export default function Reportes() {
   const disponibles = useMemo(
     () =>
       REPORTES.filter(
-        (r) => (!r.capacidad || incluye(r.capacidad)) && (!r.seccion || puede(r.seccion)),
+        (r) =>
+          (!r.capacidad || incluye(r.capacidad)) &&
+          (!r.seccion || puede(r.seccion)) &&
+          !(rubro && r.fueraDeRubro?.includes(rubro as Rubro)) &&
+          (!r.soloEnRubro || (!!rubro && r.soloEnRubro.includes(rubro as Rubro))),
       ),
-    [incluye, puede],
+    [incluye, puede, rubro],
   );
 
   /**
@@ -553,7 +597,7 @@ export default function Reportes() {
           {disponibles.map((r) => (
             <li key={r.nombre}>
               <button
-                onClick={() => setAbierto(r)}
+                onClick={() => (r.ruta ? navigate(r.ruta) : setAbierto(r))}
                 className="card flex w-full items-start gap-3 p-4 text-left transition-shadow hover:shadow-md"
               >
                 <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary-50 text-primary-700">

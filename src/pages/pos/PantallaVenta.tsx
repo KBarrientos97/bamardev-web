@@ -1,11 +1,18 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { contiene } from "../../lib/texto";
+import { esFarmacia } from "../../lib/rubro";
+import CatalogoVenta from "../farmacia/CatalogoVenta";
+import { useLotesDelCarrito } from "../farmacia/lotesVenta";
+import { ChipsCondicion } from "../farmacia/piezas";
+import { concentracionAparte, pideConfirmacion } from "../farmacia/medicamento";
+import { CantidadVenta, LoteEnLaVenta, RecetaEnLaVenta } from "../farmacia/RenglonVenta";
+import { useVentaFarmacia, type VentaFarmacia } from "../farmacia/ventaFarmacia";
 import { Icon } from "../../components/Icon";
 import IconoProducto from "../../components/IconoProducto";
 import { Badge, Boton, Confirmar, Input, Modal, Vacio } from "../../components/ui";
 import { fmtMoney, fmtNum } from "../../lib/format";
 import { useAuth } from "../../store/AuthContext";
-import type { Categoria, Consumo, Producto } from "../../types";
+import type { Categoria, Consumo, LoteParaVender, Producto } from "../../types";
 import { aplicarOrden, guardarOrden, leerOrden, reordenarVisibles } from "./ordenPos";
 import type { Carrito, LineaCarrito } from "./useCarrito";
 import { useArrastreGrilla } from "./useArrastreGrilla";
@@ -20,14 +27,17 @@ export default function PantallaVenta({
   carrito,
   onCobrar,
   cabecera,
+  sucursalId,
 }: {
   productos: Producto[];
   categorias: Categoria[];
   carrito: Carrito;
   onCobrar: () => void;
   cabecera?: React.ReactNode;
+  /** La sucursal de la caja: de ahí salen el stock y la ubicación (farmacia). */
+  sucursalId?: number | null;
 }) {
-  const { negocio, usuario } = useAuth();
+  const { negocio, usuario, rubro } = useAuth();
   const [q, setQ] = useState("");
   const [cat, setCat] = useState<string>(TODAS);
   // En móvil el carrito es una hoja que se abre; en escritorio es una columna
@@ -111,6 +121,7 @@ export default function PantallaVenta({
   const panelCarrito = (
     <PanelCarrito
       carrito={carrito}
+      sucursalId={sucursalId}
       onCobrar={() => {
         setCarritoAbierto(false);
         onCobrar();
@@ -125,6 +136,18 @@ export default function PantallaVenta({
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         {cabecera}
 
+        {/* En una farmacia el catálogo se pide al servidor de a tandas y por
+            categoría (son 2.000 cajas, no 40 productos), y agregar pasa por la
+            venta de la farmacia, que pregunta por la receta. El carrito y todo
+            lo que sigue no cambian. */}
+        {esFarmacia(rubro) ? (
+          <CatalogoVenta
+            categorias={categorias}
+            enCarrito={enCarrito}
+            sucursalId={sucursalId}
+          />
+        ) : (
+          <>
         <div className="space-y-3 border-b border-borde bg-white px-4 py-3">
           <div className="relative">
             <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-texto-4">
@@ -181,6 +204,8 @@ export default function PantallaVenta({
             </ul>
           )}
         </div>
+          </>
+        )}
       </div>
 
       {/* Carrito: columna fija desde lg, igual que la app en tablet horizontal */}
@@ -360,17 +385,33 @@ function TarjetaVenta({
 
 function PanelCarrito({
   carrito,
+  sucursalId,
   onCobrar,
   onCerrar,
 }: {
   carrito: Carrito;
+  sucursalId?: number | null;
   onCobrar: () => void;
   onCerrar: () => void;
 }) {
-  const { incluye } = useAuth();
+  const { incluye, rubro } = useAuth();
   // Sin la capacidad la comanda no distingue destino: todo sale para llevar,
   // que es el valor por defecto con el que nacen las líneas.
   const conMesaLlevar = incluye("mesa_llevar");
+  // Farmacia: la cantidad se escribe y cada renglón dice de qué lote sale.
+  // En un restaurante `venta` es null y el carrito queda como siempre, sin
+  // pedir lotes.
+  const venta = useVentaFarmacia();
+  const conLotes = esFarmacia(rubro) && incluye("lotes");
+  const ids = useMemo(() => carrito.lineas.map((l) => l.producto.id), [carrito.lineas]);
+  const lotes = useLotesDelCarrito(ids, sucursalId, conLotes);
+  // Un controlado sin receta no se cobra: el servidor la rechazaría. Cobrar
+  // abre sus datos en vez de avanzar, con el papel todavía en la mano.
+  const sinReceta = venta
+    ? carrito.lineas.find(
+        (l) => pideConfirmacion(l.producto) && !venta.recetas.has(l.producto.id),
+      )
+    : undefined;
   const vacio = carrito.lineas.length === 0;
   // Vaciar es destructivo y el botón está al lado del de cerrar: un toque
   // impreciso borraba una venta de quince ítems con el cliente enfrente.
@@ -430,7 +471,11 @@ function PanelCarrito({
           <Vacio
             icono="cart"
             titulo="Carrito vacío"
-            texto="Tocá un producto para agregarlo a la venta."
+            texto={
+              esFarmacia(rubro)
+                ? "Buscá o tocá un medicamento para agregarlo a la venta."
+                : "Tocá un producto para agregarlo a la venta."
+            }
           />
         </div>
       ) : (
@@ -451,6 +496,12 @@ function PanelCarrito({
                 linea={l}
                 carrito={carrito}
                 conMesaLlevar={conMesaLlevar}
+                venta={venta}
+                lotes={
+                  conLotes && l.producto.manejaLote
+                    ? lotes?.get(l.producto.id)
+                    : null
+                }
               />
             ))}
           </ul>
@@ -469,7 +520,13 @@ function PanelCarrito({
               </div>
             </dl>
 
-            <Boton onClick={onCobrar} className="mt-3 w-full">
+            <Boton
+              onClick={() => {
+                if (venta && sinReceta) venta.pedirReceta(sinReceta.producto);
+                else onCobrar();
+              }}
+              className="mt-3 w-full"
+            >
               Cobrar {fmtMoney(carrito.total)}
             </Boton>
           </div>
@@ -503,10 +560,16 @@ function FilaCarrito({
   linea: l,
   carrito,
   conMesaLlevar,
+  venta,
+  lotes,
 }: {
   linea: LineaCarrito;
   carrito: Carrito;
   conMesaLlevar: boolean;
+  /** La venta de la farmacia; null en un restaurante. */
+  venta: VentaFarmacia | null;
+  /** null = este renglón no lleva lote; undefined = todavía no se sabe. */
+  lotes: LoteParaVender[] | null | undefined;
 }) {
   const [editandoNota, setEditandoNota] = useState(false);
   const [nota, setNota] = useState(l.nota);
@@ -514,15 +577,39 @@ function FilaCarrito({
 
   const partida = l.enMesa > 0 && l.enMesa < l.cantidad;
   const todaMesa = l.enMesa === l.cantidad;
+  const concentracion = venta ? concentracionAparte(l.producto) : null;
 
   return (
     <li className="px-4 py-3">
       <div className="flex items-center gap-2.5">
         <div className="min-w-0 flex-1">
-          <p className="truncate text-[13px] font-bold text-texto">{l.producto.nombre}</p>
+          <p className="truncate text-[13px] font-bold text-texto">
+            {l.producto.nombre}
+            {/* En una farmacia, la concentración si el nombre no la trae: quien
+                entrega tiene que saber si es el de 1 mg o el de 5 mg. En un
+                restaurante `venta` es null y no se dibuja nada. */}
+            {concentracion && (
+              <span className="ml-1 font-semibold text-texto-2">{concentracion}</span>
+            )}
+          </p>
           <p className="text-xs text-texto-3">{fmtMoney(l.producto.precio)} c/u</p>
+          {/* La receta se muestra también acá, no sólo al agregar: entre que se
+              carga el carrito y se cobra puede cambiar de manos, y quien
+              entrega tiene que ver qué papel hay que pedir. Sólo aparece en lo
+              que de verdad lo exige; un artículo de venta libre no dibuja nada
+              y en restaurante no se dibuja nunca. */}
+          <span className="mt-1 flex flex-wrap items-center gap-1.5 empty:mt-0">
+            <ChipsCondicion producto={l.producto} />
+          </span>
         </div>
 
+        {venta ? (
+          <CantidadVenta
+            nombre={l.producto.nombre}
+            cantidad={l.cantidad}
+            fijar={(n) => venta.fijarCantidad(l.producto, n)}
+          />
+        ) : (
         <div className="flex items-center gap-1 rounded-lg border border-borde">
           <button
             onClick={() => carrito.setCantidad(l.producto.id, l.cantidad - 1)}
@@ -540,11 +627,22 @@ function FilaCarrito({
             <Icon name="plus" size={16} />
           </button>
         </div>
+        )}
 
         <span className="min-w-20 shrink-0 text-right text-[13px] font-bold text-texto">
           {fmtMoney(l.producto.precio * l.cantidad)}
         </span>
       </div>
+
+      {/* A todo el ancho: al lado del contador no entraba y cada lote ocupaba
+          dos renglones. */}
+      {lotes !== null && <LoteEnLaVenta lotes={lotes} cantidad={l.cantidad} />}
+      {venta && pideConfirmacion(l.producto) && (
+        <RecetaEnLaVenta
+          receta={venta.recetas.get(l.producto.id)}
+          onEditar={() => venta.pedirReceta(l.producto)}
+        />
+      )}
 
       <div className="mt-2 flex flex-wrap items-center gap-1.5">
         {/* Con una sola unidad no hay nada que partir: alcanza el toggle. */}
