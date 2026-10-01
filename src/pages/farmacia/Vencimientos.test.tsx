@@ -29,6 +29,15 @@ vi.mock("../../lib/api", () => ({
   api: { vencimientos: vi.fn() },
 }));
 
+/** Si el negocio tiene el circuito de aprobación de movimientos. */
+const sesion = vi.hoisted(() => ({ conAprobacion: false }));
+
+vi.mock("../../store/AuthContext", () => ({
+  useAuth: () => ({
+    incluye: (c: string) => c === "aprobacion_inventario" && sesion.conAprobacion,
+  }),
+}));
+
 import { api } from "../../lib/api";
 import Vencimientos from "./Vencimientos";
 
@@ -73,6 +82,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   navegado.a = "";
   navegado.con = null;
+  sesion.conAprobacion = false;
   vi.mocked(api.vencimientos).mockResolvedValue(datos);
 });
 
@@ -129,6 +139,35 @@ describe("Vencimientos", () => {
       cantidad: 20,
       motivo: "Devolución a proveedor",
     });
+  });
+});
+
+/*
+ * El texto del detalle dice lo que pasa, no lo que debería pasar. Un vencido
+ * no está bloqueado: el FEFO lo toma primero y el punto de venta sólo avisa.
+ * Y la baja queda pendiente sólo si el negocio aprueba movimientos.
+ */
+describe("Lo que dice el detalle", () => {
+  it("un vencido: las ventas lo siguen tomando hasta darlo de baja", async () => {
+    await abrirLote("Paracetamol 500 mg");
+    const dialogo = screen.getByRole("dialog");
+    expect(dialogo).not.toHaveTextContent("ya no se puede vender");
+    expect(dialogo).toHaveTextContent("las ventas lo toman antes que a los lotes buenos");
+  });
+
+  it("sin aprobación de movimientos, la baja descuenta al guardarla", async () => {
+    await abrirLote("Paracetamol 500 mg");
+    const dialogo = screen.getByRole("dialog");
+    expect(dialogo).toHaveTextContent("el stock se descuenta en el momento");
+    expect(dialogo).not.toHaveTextContent("PENDIENTE");
+  });
+
+  it("con aprobación, queda pendiente hasta que alguien la apruebe", async () => {
+    sesion.conAprobacion = true;
+    await abrirLote("Azitromicina 500 mg");
+    expect(screen.getByRole("dialog")).toHaveTextContent(
+      "La baja se carga como un movimiento PENDIENTE",
+    );
   });
 });
 

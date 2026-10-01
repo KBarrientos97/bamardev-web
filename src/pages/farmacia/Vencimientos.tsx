@@ -6,6 +6,7 @@ import { Boton, Cargando, ErrorMsg, Modal, Vacio } from "../../components/ui";
 import { fmtFecha, fmtMoney, fmtNum } from "../../lib/format";
 import { api } from "../../lib/api";
 import { useApi } from "../../lib/useApi";
+import { useAuth } from "../../store/AuthContext";
 import type { ContadorTramo, LotePorVencer, TramoVencimiento } from "../../types";
 import { TRAMOS, textoVida, type FiltroVencimientos } from "./medicamento";
 import type { PrecargaSalida } from "./mercaderia";
@@ -52,11 +53,13 @@ export default function Vencimientos() {
     navigate("/inventario/movimientos/salida", { state: precarga });
   }
 
-  const detalle = datos.datos?.detalle ?? [];
-  const filtrado = useMemo(
-    () => (tramo ? detalle.filter((d) => d.tramo === tramo) : detalle),
-    [detalle, tramo],
-  );
+  // La lista que vino del servidor, sin el `?? []` afuera: un array nuevo en
+  // cada render hacía que el useMemo recalculara siempre.
+  const detalle = datos.datos?.detalle;
+  const filtrado = useMemo(() => {
+    const todos = detalle ?? [];
+    return tramo ? todos.filter((d) => d.tramo === tramo) : todos;
+  }, [detalle, tramo]);
 
   return (
     <div className="mx-auto max-w-5xl space-y-4 p-5">
@@ -253,6 +256,9 @@ function DetalleLote({
 }) {
   const t = TRAMOS.find((x) => x.clave === l.tramo) ?? TRAMOS[3];
   const vencido = l.diasRestantes < 0;
+  // Sin el circuito de aprobación, el formulario de salida aprueba solo al
+  // guardar (ver FormMercaderia): la baja no queda pendiente de nadie.
+  const conAprobacion = useAuth().incluye("aprobacion_inventario");
 
   return (
     <Modal
@@ -302,12 +308,18 @@ function DetalleLote({
           <p className={`text-2xl font-extrabold ${t.texto}`}>{fmtMoney(l.valor)}</p>
         </div>
 
+        {/* Lo que pasa de verdad, no lo que debería pasar. Un vencido NO está
+            bloqueado: el FEFO lo toma antes que a los lotes buenos y el punto
+            de venta sólo avisa que no se entregue. Decir "ya no se puede
+            vender" le sacaba el apuro a la baja, que es lo único que lo saca
+            del stock. */}
         <p className="text-[13px] leading-relaxed text-texto-3">
           {vencido
-            ? "Este lote ya no se puede vender. Al darlo de baja queda el movimiento con el motivo, que es lo que después arma el número de mermas."
+            ? "Ya venció: no se tiene que entregar. Mientras siga cargado, las ventas lo toman antes que a los lotes buenos y el punto de venta sólo avisa. Darlo de baja lo saca del stock y deja el motivo, que es lo que después arma el número de mermas."
             : "Todavía se puede vender. Muchas droguerías reciben devoluciones con dos o tres meses de anticipación: si va a volver, conviene mandarlo ahora."}{" "}
-          La baja se carga como un movimiento PENDIENTE: el stock recién se mueve
-          cuando alguien la aprueba.
+          {conAprobacion
+            ? "La baja se carga como un movimiento PENDIENTE: el stock recién se mueve cuando alguien la aprueba."
+            : "Se abre la salida cargada para revisarla: al guardarla, el stock se descuenta en el momento."}
         </p>
       </div>
     </Modal>
