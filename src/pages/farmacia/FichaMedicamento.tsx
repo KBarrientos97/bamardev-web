@@ -55,6 +55,9 @@ export function TarjetaMedicamento({
   const bajo = !agotado && stock <= p.stockMinimo;
   const detalle = detalleDe(p);
   const condicion = CONDICION[p.condicionVenta];
+  // "Ácido fólico" a secas no dice si es el de 1 mg o el de 5 mg. Cuando el
+  // nombre no la trae (el formulario la pide en su propio campo), va al lado.
+  const concentracion = concentracionAparte(p);
 
   return (
     <li>
@@ -69,6 +72,7 @@ export function TarjetaMedicamento({
             }`}
           >
             {p.nombre}
+            {concentracion && <span className="ml-1.5 font-semibold">{concentracion}</span>}
           </h3>
           <span className="mt-0.5 shrink-0 text-texto-4">
             <Icon name="chevronRight" size={17} />

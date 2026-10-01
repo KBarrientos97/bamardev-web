@@ -159,6 +159,14 @@ describe("el carrito de la farmacia", () => {
     expect(api.lotesParaVender).not.toHaveBeenCalled();
     expect(screen.queryByText(/FEFO/)).not.toBeInTheDocument();
   });
+
+  it("la concentración va al lado del nombre si el nombre no la trae", async () => {
+    const acido = med({ id: 3, nombre: "Ácido fólico", concentracion: "5 mg", manejaLote: false });
+    await montar([acido, med({ concentracion: "500 mg" })]);
+    expect(screen.getByText("5 mg")).toBeInTheDocument();
+    // "Amoxicilina 500 mg" ya la trae: no se repite.
+    expect(screen.queryByText("500 mg")).not.toBeInTheDocument();
+  });
 });
 
 describe("la receta de un controlado", () => {
@@ -220,5 +228,13 @@ describe("el carrito de bamardev-restaurant no cambia", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Agregar una unidad" }));
     expect(carrito.setCantidad).toHaveBeenCalledWith(7, 3);
+  });
+
+  it("el renglón dice sólo el nombre, como siempre", async () => {
+    sesion.rubro = "RESTAURANTE";
+    // Aunque un artículo tuviera concentración cargada, acá no se dibuja.
+    await montar([med({ id: 7, nombre: "1/4 Pollo", concentracion: "x", manejaLote: false })]);
+    // El renglón del carrito es el <p>; el <h3> es la tarjeta de la grilla.
+    expect(screen.getByText("1/4 Pollo", { selector: "p" }).textContent).toBe("1/4 Pollo");
   });
 });

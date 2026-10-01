@@ -4,7 +4,7 @@ import { esFarmacia } from "../../lib/rubro";
 import CatalogoVenta from "../farmacia/CatalogoVenta";
 import { useLotesDelCarrito } from "../farmacia/lotesVenta";
 import { ChipsCondicion } from "../farmacia/piezas";
-import { pideConfirmacion } from "../farmacia/medicamento";
+import { concentracionAparte, pideConfirmacion } from "../farmacia/medicamento";
 import { CantidadVenta, LoteEnLaVenta, RecetaEnLaVenta } from "../farmacia/RenglonVenta";
 import { useVentaFarmacia, type VentaFarmacia } from "../farmacia/ventaFarmacia";
 import { Icon } from "../../components/Icon";
@@ -577,12 +577,21 @@ function FilaCarrito({
 
   const partida = l.enMesa > 0 && l.enMesa < l.cantidad;
   const todaMesa = l.enMesa === l.cantidad;
+  const concentracion = venta ? concentracionAparte(l.producto) : null;
 
   return (
     <li className="px-4 py-3">
       <div className="flex items-center gap-2.5">
         <div className="min-w-0 flex-1">
-          <p className="truncate text-[13px] font-bold text-texto">{l.producto.nombre}</p>
+          <p className="truncate text-[13px] font-bold text-texto">
+            {l.producto.nombre}
+            {/* En una farmacia, la concentración si el nombre no la trae: quien
+                entrega tiene que saber si es el de 1 mg o el de 5 mg. En un
+                restaurante `venta` es null y no se dibuja nada. */}
+            {concentracion && (
+              <span className="ml-1 font-semibold text-texto-2">{concentracion}</span>
+            )}
+          </p>
           <p className="text-xs text-texto-3">{fmtMoney(l.producto.precio)} c/u</p>
           {/* La receta se muestra también acá, no sólo al agregar: entre que se
               carga el carrito y se cobra puede cambiar de manos, y quien

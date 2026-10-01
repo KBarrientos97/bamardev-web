@@ -65,7 +65,9 @@ export function detalleDe(p: Producto): string {
  * comerciales la incluyen ("Paracetamol 500 mg") y repetirla al lado quedaba
  * como un error de dedo.
  */
-export function concentracionAparte(p: Producto): string | null {
+export function concentracionAparte(
+  p: Pick<Producto, "nombre"> & { concentracion?: string | null },
+): string | null {
   if (!p.concentracion || contiene(p.nombre, p.concentracion)) return null;
   return p.concentracion;
 }

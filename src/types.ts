@@ -409,6 +409,8 @@ export interface ArticuloMovimiento {
    * formulario de ingreso pide lote y fecha sólo en estas líneas.
    */
   manejaLote?: boolean;
+  /** La del medicamento, para mostrarla si el nombre no la trae. */
+  concentracion?: string | null;
 }
 
 export interface MovimientoInput {

@@ -22,7 +22,7 @@ import type {
   Producto,
 } from "../../types";
 import BuscadorArticulo from "./BuscadorArticulo";
-import { conUnidad, detalleDe } from "./medicamento";
+import { concentracionAparte, conUnidad, detalleDe } from "./medicamento";
 import SelectorProveedor, { type ProveedorElegido } from "./SelectorProveedor";
 import {
   MOTIVOS_SALIDA,
@@ -650,8 +650,12 @@ export default function FormMercaderia({
                   }`}
                 >
                   <th className="px-3.5 py-2.5">Producto</th>
-                  <th className="px-3 py-2.5">Lote</th>
-                  <th className="px-3 py-2.5">Vencimiento</th>
+                  {/* Con ancho propio, como Cantidad y Costo: sin él, en un
+                      monitor chico el nombre del producto se comía la columna y
+                      el lote quedaba en 38 px, una letra a la vista. El mínimo
+                      firme está en los campos (ver Renglon). */}
+                  <th className="px-3 py-2.5 w-36">Lote</th>
+                  <th className="px-3 py-2.5 w-28">Vencimiento</th>
                   <th className="px-3 py-2.5 w-28">Cantidad</th>
                   <th className="px-3 py-2.5 w-28">Costo u.</th>
                   <th className="px-3.5 py-2.5 text-right">Subtotal</th>
@@ -669,6 +673,7 @@ export default function FormMercaderia({
                     almacenNombre={almacenNombre}
                     stock={porId.get(l.articuloId)?.stock ?? null}
                     unidad={porId.get(l.articuloId)?.unidad}
+                    concentracion={porId.get(l.articuloId)?.concentracion}
                     ubicacionActual={porId.get(l.articuloId)?.ubicacion ?? null}
                     onEditar={(cambio) => editarLinea(i, cambio)}
                     onQuitar={() => setLineas((ls) => ls.filter((_, j) => j !== i))}
@@ -806,6 +811,7 @@ function Renglon({
   almacenNombre,
   stock,
   unidad,
+  concentracion,
   ubicacionActual,
   onEditar,
   onQuitar,
@@ -819,11 +825,17 @@ function Renglon({
   stock: number | null;
   /** La del artículo: frasco, caja, unidad… No es siempre "u.". */
   unidad: string | undefined;
+  /** La del medicamento, si tiene: se muestra cuando el nombre no la trae. */
+  concentracion: string | null | undefined;
   /** Dónde está hoy en la sucursal elegida, si alguien la cargó. */
   ubicacionActual: string | null;
   onEditar: (cambio: Partial<LineaForm>) => void;
   onQuitar: () => void;
 }) {
+  // "Ácido fólico" a secas no dice si llegó el de 1 mg o el de 5 mg. Sale de la
+  // lista del almacén y no del renglón: así también la tiene el renglón que
+  // llega desde Vencimientos o de un movimiento que se está editando.
+  const conc = concentracionAparte({ nombre: l.nombre, concentracion });
   const pedido = parsearMonto(l.cantidad) ?? 0;
   const subtotal = pedido * (parsearMonto(l.costo) ?? 0);
   const aviso = entrada && conLote ? avisoVidaUtil(mesAIso(l.loteMes)) : null;
@@ -835,7 +847,10 @@ function Renglon({
     <>
       <tr>
         <td className="px-3.5 py-2.5 align-middle">
-          <span className="block text-sm font-bold text-texto">{l.nombre}</span>
+          <span className="block text-sm font-bold text-texto">
+            {l.nombre}
+            {conc && <span className="ml-1.5 font-semibold text-texto-2">{conc}</span>}
+          </span>
           {l.detalle && (
             <span className="block text-xs text-texto-4">{l.detalle}</span>
           )}
@@ -872,7 +887,12 @@ function Renglon({
                   value={l.loteCodigo}
                   onChange={(e) => onEditar({ loteCodigo: e.target.value })}
                   placeholder="Lote"
-                  className="py-2"
+                  // El mínimo va en el campo y no sólo en la columna: con la
+                  // tabla justa, el navegador achica las columnas por igual y
+                  // el ancho de la columna no alcanza. Así la tabla se estira
+                  // (y se desliza) antes que esconder el código que se copia
+                  // de la factura.
+                  className="min-w-[8rem] py-2"
                 />
               ) : (
                 <span className="text-texto-4">—</span>
@@ -885,7 +905,7 @@ function Renglon({
                   onChange={(e) => onEditar({ loteMes: tecleoMes(e.target.value) })}
                   placeholder="MM/AAAA"
                   inputMode="numeric"
-                  className="py-2"
+                  className="min-w-[6rem] py-2"
                 />
               ) : (
                 <span className="text-texto-4">—</span>
@@ -914,7 +934,7 @@ function Renglon({
             min="0.01"
             value={l.cantidad}
             onChange={(e) => onEditar({ cantidad: e.target.value })}
-            className="py-2"
+            className="min-w-[5rem] py-2"
           />
         </td>
         <td className="px-3 py-2.5">
@@ -925,7 +945,7 @@ function Renglon({
             min="0"
             value={l.costo}
             onChange={(e) => onEditar({ costo: e.target.value })}
-            className="py-2"
+            className="min-w-[5.5rem] py-2"
           />
         </td>
         <td
