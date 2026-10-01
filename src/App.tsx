@@ -1,4 +1,5 @@
-import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { useEffect, useRef } from "react";
+import { BrowserRouter, Navigate, Route, Routes, useNavigate } from "react-router-dom";
 import Layout from "./components/Layout";
 import { rutaInicial, type Seccion } from "./lib/permisos";
 import { esFarmacia } from "./lib/rubro";
@@ -154,6 +155,19 @@ function PagarConSesion() {
 
 function Rutas() {
   const { token } = useAuth();
+  const navigate = useNavigate();
+  const teniaSesion = useRef(token !== null);
+
+  // Al cerrar sesión la dirección vuelve a "/". Antes quedaba la del que
+  // salió: el mesero cerraba sesión en /salon, entraba el administrador y
+  // caía en el panel del mesero, sin la barra lateral para volver a lo suyo,
+  // y se leía como "me entró como mesero otra vez". Desde "/" cada uno va a su
+  // pantalla (ver Inicio), igual que cuando la sesión vence. Un link abierto
+  // sin sesión no pasa por acá: después del login sigue yendo a donde apuntaba.
+  useEffect(() => {
+    if (teniaSesion.current && !token) navigate("/", { replace: true });
+    teniaSesion.current = token !== null;
+  }, [token, navigate]);
 
   if (!token) return <Login />;
 
