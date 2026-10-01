@@ -6,6 +6,7 @@ import { fmtMoney } from "../../lib/format";
 import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
 import type { Producto } from "../../types";
+import { paraVender } from "../pos/useCarrito";
 import CampoBusqueda from "./CampoBusqueda";
 import { FichaMostrador } from "./FichaMedicamento";
 import { CONDICION, concentracionAparte, conUnidad, puntoVencimiento } from "./medicamento";
@@ -179,12 +180,17 @@ function Fila({
   onAgregar?: () => void;
 }) {
   const vendible = sePuedeVender(p);
-  const agotado = p.stockTotal <= 0;
-  const bajo = !agotado && p.stockTotal <= p.stockMinimo;
+  // Lo que se puede vender: sin las cajas vencidas, que siguen en el estante
+  // hasta la baja pero no se cobran.
+  const hay = paraVender(p);
+  const vencidas = p.stockVencido ?? 0;
+  const agotado = hay <= 0;
+  const bajo = !agotado && hay <= p.stockMinimo;
   const punto = puntoVencimiento(p);
   const concentracion = concentracionAparte(p);
   const condicion = CONDICION[p.condicionVenta];
-  const stock = conUnidad(p.stockTotal, p.unidadMedida?.nombre);
+  const stock = conUnidad(hay, p.unidadMedida?.nombre);
+  const sinStock = vencidas > 0 ? "Vencido" : "Agotado";
 
   const colorStock = agotado ? "text-danger-text" : bajo ? "text-warning-text" : "text-texto";
 
@@ -229,6 +235,18 @@ function Fila({
             <span className="truncate">{p.ubicacion}</span>
           </span>
         )}
+        {/* Las cajas vencidas siguen en el estante: que quien atiende no las
+            entregue y avise para darlas de baja. */}
+        {vencidas > 0 && (
+          <span className="mt-0.5 flex min-w-0 items-center gap-1 text-xs font-semibold text-danger-text">
+            <span className="shrink-0">
+              <Icon name="alert" size={12} />
+            </span>
+            <span className="truncate">
+              {conUnidad(vencidas, p.unidadMedida?.nombre)} vencidas: no se venden
+            </span>
+          </span>
+        )}
       </button>
 
       <span className="hidden truncate text-[13px] text-texto-2 lg:block">
@@ -238,7 +256,7 @@ function Fila({
         {p.formaFarmaceutica || "—"}
       </span>
       <span className={`hidden text-[13px] font-bold lg:block ${colorStock}`}>
-        {agotado ? "Agotado" : stock}
+        {agotado ? sinStock : stock}
       </span>
       <span className="hidden items-center gap-2 text-xs lg:flex">
         <span aria-hidden className={`h-2.5 w-2.5 shrink-0 rounded-full ${punto.color}`} />
@@ -256,7 +274,7 @@ function Fila({
             {punto.corto}
           </span>
           <span className={`shrink-0 font-semibold ${colorStock}`}>
-            · {agotado ? "Agotado" : stock}
+            · {agotado ? sinStock : stock}
           </span>
         </span>
         <span className={`shrink-0 text-[15px] font-extrabold ${vendible ? "text-primary-700" : "text-texto-3"}`}>
@@ -266,7 +284,7 @@ function Fila({
           <button
             onClick={onAgregar}
             disabled={!vendible}
-            title={vendible ? "Agregar a la venta" : agotado ? "Agotado" : "No se puede vender"}
+            title={vendible ? "Agregar a la venta" : agotado ? sinStock : "No se puede vender"}
             className="shrink-0 rounded-lg bg-primary px-3 py-1.5 text-xs font-bold text-white transition hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-40"
           >
             Agregar

@@ -1,7 +1,7 @@
 import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { Producto } from "../../types";
-import { idsGuardados, useCarrito } from "./useCarrito";
+import { idsGuardados, paraVender, useCarrito } from "./useCarrito";
 
 function producto(over: Partial<Producto> = {}): Producto {
   return {
@@ -126,6 +126,24 @@ describe("useCarrito", () => {
     act(() => result.current.agregar(p));
 
     expect(result.current.lineas[0].cantidad).toBe(2);
+  });
+
+  it("lo vencido no cuenta para el tope: sigue en el estante pero no se vende", () => {
+    // Farmacia: 5 en stock, 3 de ellas vencidas. El servidor rechaza la venta
+    // que las necesite, así que el carrito no las deja cargar.
+    const { result } = renderHook(() => useCarrito());
+    const p = producto({ stockTotal: 5, stockVencido: 3 });
+    expect(paraVender(p)).toBe(2);
+
+    act(() => result.current.agregar(p));
+    act(() => result.current.agregar(p));
+    act(() => result.current.agregar(p));
+
+    expect(result.current.lineas[0].cantidad).toBe(2);
+  });
+
+  it("sin stockVencido (el restaurante) el tope es el stock de siempre", () => {
+    expect(paraVender(producto({ stockTotal: 4 }))).toBe(4);
   });
 
   it("no limita los elaborados ni los combos, que no llevan stock", () => {

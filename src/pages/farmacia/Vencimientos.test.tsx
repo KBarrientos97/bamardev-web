@@ -148,11 +148,16 @@ describe("Vencimientos", () => {
  * Y la baja queda pendiente sólo si el negocio aprueba movimientos.
  */
 describe("Lo que dice el detalle", () => {
-  it("un vencido: las ventas lo siguen tomando hasta darlo de baja", async () => {
+  it("un vencido: no se vende, sigue en el stock, y devolverlo no es pérdida", async () => {
+    // Desde el 1-oct-2026 la venta lo saltea (antes FEFO lo tomaba primero y
+    // el texto lo decía). Lo que importa ahora es empujar a sacarlo, y decir
+    // que las dos salidas no valen lo mismo.
     await abrirLote("Paracetamol 500 mg");
     const dialogo = screen.getByRole("dialog");
-    expect(dialogo).not.toHaveTextContent("ya no se puede vender");
-    expect(dialogo).toHaveTextContent("las ventas lo toman antes que a los lotes buenos");
+    expect(dialogo).toHaveTextContent("el punto de venta no lo vende");
+    expect(dialogo).toHaveTextContent("sigue contando en el stock");
+    expect(dialogo).toHaveTextContent("devolvelo: no es pérdida");
+    expect(dialogo).not.toHaveTextContent("las ventas lo toman antes que a los lotes buenos");
   });
 
   it("sin aprobación de movimientos, la baja descuenta al guardarla", async () => {

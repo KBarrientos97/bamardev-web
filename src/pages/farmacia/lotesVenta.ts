@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../../lib/api";
-import type { LoteParaVender } from "../../types";
+import type { LoteParaVender, LotesDelArticulo } from "../../types";
 
 /**
  * Cómo se reparte una cantidad entre los lotes, igual que la venta.
@@ -40,16 +40,17 @@ export function repartirLotes(
  * otro artículo. Si falla, el carrito sigue sin la línea del lote: es un dato
  * para quien atiende, no una condición para cobrar.
  *
- * Devuelve null mientras no hay nada que mostrar.
+ * Devuelve null mientras no hay nada que mostrar. Cada artículo trae sus
+ * lotes vigentes y cuántas unidades vencidas quedan en la sucursal.
  */
 export function useLotesDelCarrito(
   ids: number[],
   sucursalId: number | null | undefined,
   activo: boolean,
-): Map<number, LoteParaVender[]> | null {
+): Map<number, LotesDelArticulo> | null {
   // El carrito cambia de arreglo en cada render: la clave es lo que importa.
   const clave = useMemo(() => [...new Set(ids)].sort((a, b) => a - b).join(","), [ids]);
-  const [lotes, setLotes] = useState<Map<number, LoteParaVender[]> | null>(null);
+  const [lotes, setLotes] = useState<Map<number, LotesDelArticulo> | null>(null);
 
   useEffect(() => {
     if (!activo || sucursalId == null || !clave) return;
@@ -57,7 +58,7 @@ export function useLotesDelCarrito(
     api
       .lotesParaVender(clave.split(",").map(Number), sucursalId)
       .then((lista) => {
-        if (vivo) setLotes(new Map(lista.map((x) => [x.productoId, x.lotes])));
+        if (vivo) setLotes(new Map(lista.map((x) => [x.productoId, x])));
       })
       .catch(() => {
         if (vivo) setLotes(null);

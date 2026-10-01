@@ -203,7 +203,14 @@ export function puntoVencimiento(p: Producto): {
     return { color: "bg-slate-300", texto: "No vence", corto: "No vence", urgente: false };
   }
   const v = p.proximoVencimiento;
-  if (!v) return { color: "bg-slate-300", texto: "Sin fecha", corto: "Sin fecha", urgente: false };
+  if (!v) {
+    // Sin lote vigente pero con cajas vencidas: no es "sin fecha", es que lo
+    // único que queda está vencido y no se vende (`stockVencido`).
+    if ((p.stockVencido ?? 0) > 0) {
+      return { color: "bg-danger", texto: "Sólo queda vencido", corto: "Vencido", urgente: true };
+    }
+    return { color: "bg-slate-300", texto: "Sin fecha", corto: "Sin fecha", urgente: false };
+  }
   const texto = textoVida(v.dias);
   const corto = v.dias < 0 ? "Vencido" : texto;
   if (v.tramo === "VENCIDO" || v.tramo === "HASTA_30") {

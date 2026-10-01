@@ -100,6 +100,29 @@ describe("la grilla", () => {
     expect(screen.getByText("Agotado")).toBeInTheDocument();
   });
 
+  it("lo que sólo tiene cajas vencidas dice Vencido y no se puede tocar", async () => {
+    // El bug: FEFO vendía primero la caja vencida. Ahora no se vende, y la
+    // tarjeta lo dice en vez de ofrecerla.
+    vi.mocked(api.buscarProductos).mockResolvedValue({
+      items: [
+        med({ id: 7, nombre: "Diclofenaco 50 mg", stockTotal: 6, stockVencido: 6, proximoVencimiento: null }),
+        med({ id: 8, nombre: "Loratadina 10 mg", stockTotal: 30, stockVencido: 4 }),
+      ],
+      total: 2,
+      limite: 24,
+      offset: 0,
+    });
+    montar();
+    const vencido = await screen.findByRole("button", { name: /Diclofenaco 50 mg/ }, { timeout: 4000 });
+    expect(vencido).toBeDisabled();
+    expect(vencido).toHaveTextContent("Vencido");
+    // Con cajas buenas: se vende lo vigente y avisa las vencidas.
+    const conVencidas = screen.getByRole("button", { name: /Loratadina 10 mg/ });
+    expect(conVencidas).toBeEnabled();
+    expect(conVencidas).toHaveTextContent("26 u.");
+    expect(conVencidas).toHaveTextContent("4 u. vencidas: no se venden");
+  });
+
   it("el punto dice cuándo vence el lote que se vende primero", async () => {
     montar();
     expect(await screen.findByLabelText("Vencimiento: 13 días")).toHaveClass("bg-danger");

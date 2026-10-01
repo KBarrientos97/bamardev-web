@@ -59,4 +59,12 @@ describe("el punto de vencimiento del mostrador", () => {
     });
     expect(puntoVencimiento(med({ proximoVencimiento: null })).texto).toBe("Sin fecha");
   });
+
+  it("si lo único que queda está vencido, rojo y dice Vencido, no Sin fecha", () => {
+    expect(puntoVencimiento(med({ proximoVencimiento: null, stockVencido: 6 }))).toMatchObject({
+      color: "bg-danger",
+      corto: "Vencido",
+      urgente: true,
+    });
+  });
 });

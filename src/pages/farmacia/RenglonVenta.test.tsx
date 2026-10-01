@@ -60,6 +60,22 @@ describe("de qué lote sale", () => {
     );
   });
 
+  it("avisa las cajas vencidas que siguen en el estante, aunque no salgan de ahí", () => {
+    // Desde el 1-oct-2026 los vencidos no vienen en la lista (la venta no los
+    // toca), pero siguen en el estante: quien atiende tiene que apartarlos.
+    render(<LoteEnLaVenta lotes={[lote({})]} vencidas={4} cantidad={1} />);
+    expect(screen.getByText(/FEFO/).closest("li")).toHaveTextContent("FEFO · AMX-2601");
+    expect(screen.getByText(/vencidas de este/)).toHaveTextContent(
+      "Hay 4 vencidas de este en el estante: no se venden",
+    );
+  });
+
+  it("si sólo hay vencidas, lo dice igual aunque no haya lote del que salga", () => {
+    render(<LoteEnLaVenta lotes={[]} vencidas={2} cantidad={1} />);
+    expect(screen.getByText("FEFO · sin lote asignado")).toBeInTheDocument();
+    expect(screen.getByText(/vencidas de este/)).toBeInTheDocument();
+  });
+
   it("mientras no se sabe, no dibuja nada", () => {
     const { container } = render(<LoteEnLaVenta lotes={undefined} cantidad={1} />);
     expect(container).toBeEmptyDOMElement();

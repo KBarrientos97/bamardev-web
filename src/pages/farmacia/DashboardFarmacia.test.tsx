@@ -143,6 +143,29 @@ describe("con el plan completo", () => {
   });
 });
 
+describe("lo vencido que sigue en el estante", () => {
+  it("se avisa arriba, con la plata, y lleva a Vencimientos filtrado en vencidos", async () => {
+    await abrir();
+    const aviso = await screen.findByRole("region", { name: "Lotes vencidos" });
+    expect(aviso).toHaveTextContent("Hay 4 lotes vencidos en el estante");
+    expect(aviso).toHaveTextContent(/Bs 522,50/);
+    // Las dos salidas no valen lo mismo, y lo dice.
+    expect(aviso).toHaveTextContent("devolvelos: no es pérdida");
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Ver vencidos" }));
+    });
+    expect(navegado.a).toBe("/vencimientos");
+    expect(navegado.con).toEqual({ tramo: "VENCIDO" });
+  });
+
+  it("sin vencidos no hay aviso", async () => {
+    vi.mocked(api.vencimientos).mockResolvedValue({ ...semaforo, vencidos: tramo(0, 0) });
+    await abrir();
+    await screen.findByText("Semáforo de vencimientos");
+    expect(screen.queryByRole("region", { name: "Lotes vencidos" })).not.toBeInTheDocument();
+  });
+});
+
 describe("una farmacia sin `lotes` (plan BASICO)", () => {
   it("no pide los vencimientos ni dibuja el semáforo; vuelve el bajo stock", async () => {
     plan.lotes = false;

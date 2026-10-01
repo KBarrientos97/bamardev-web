@@ -92,6 +92,17 @@ export default function DashboardFarmacia() {
         <ErrorMsg onReintentar={resumen.recargar}>{resumen.error}</ErrorMsg>
       ) : !datos ? null : (
         <>
+          {conLotes && venc.datos && venc.datos.vencidos.lotes > 0 && (
+            <AvisoVencidos
+              lotes={venc.datos.vencidos.lotes}
+              valor={venc.datos.vencidos.valor}
+              onVer={() => {
+                const filtro: FiltroVencimientos = { tramo: "VENCIDO" };
+                navigate("/vencimientos", { state: filtro });
+              }}
+            />
+          )}
+
           <Numeros
             datos={datos}
             ubicaciones={
@@ -260,6 +271,56 @@ function Numero({
     </Link>
   ) : (
     <div className={clase}>{cuerpo}</div>
+  );
+}
+
+// ── Lo vencido que sigue en el estante ──────────────────────────────────────
+
+/**
+ * Los lotes vencidos, arriba de todo y en rojo.
+ *
+ * Desde el 1-oct-2026 el punto de venta no los vende, así que nadie se va a
+ * enterar vendiéndolos: si nadie los saca, quedan para siempre contando en el
+ * stock y en la plata parada. Este aviso es el que empuja a resolverlos, y dice
+ * las dos salidas porque no valen lo mismo: devolverlo a la droguería no es
+ * pérdida, darlo de baja sí.
+ */
+function AvisoVencidos({
+  lotes,
+  valor,
+  onVer,
+}: {
+  lotes: number;
+  valor: number;
+  onVer: () => void;
+}) {
+  return (
+    <section
+      aria-label="Lotes vencidos"
+      className="flex flex-col gap-3 rounded-2xl border border-danger/40 bg-danger-bg p-4 sm:flex-row sm:items-center sm:justify-between"
+    >
+      <div className="flex items-start gap-3">
+        <span className="mt-0.5 shrink-0 text-danger-text">
+          <Icon name="alert" size={20} />
+        </span>
+        <div>
+          <p className="text-sm font-bold text-danger-text">
+            {lotes === 1 ? "Hay 1 lote vencido" : `Hay ${fmtNum(lotes)} lotes vencidos`} en el
+            estante · {fmtMoney(valor)}
+          </p>
+          <p className="mt-0.5 text-[13px] text-texto-2">
+            No se pueden vender. Si la droguería los recibe, devolvelos: no es pérdida. Si no,
+            dalos de baja.
+          </p>
+        </div>
+      </div>
+      <button
+        onClick={onVer}
+        className="shrink-0 rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-danger-text ring-1 ring-danger/40 transition-colors hover:bg-danger-bg"
+      >
+        Ver vencidos
+      </button>
+    </section>
   );
 }
 

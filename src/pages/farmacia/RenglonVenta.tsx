@@ -13,23 +13,44 @@ import { resumenReceta } from "./receta";
  *
  * Es lo que la venta va a descontar (el servidor reparte igual), así que quien
  * atiende saca del estante ESA caja. Si la cantidad pasa lo que queda en el
- * primer lote, dice cuánto sale de cada uno. Y si el primero está vencido lo
- * grita: FEFO lo elige primero porque sigue en el estante, y es justo la caja
- * que no hay que entregar.
+ * primer lote, dice cuánto sale de cada uno.
+ *
+ * Desde el 1-oct-2026 los lotes vencidos no llegan acá: la venta no los toca.
+ * Antes FEFO los elegía primero y esto avisaba "no lo entregues" mientras el
+ * sistema descontaba justo esa caja. Ahora se avisa aparte cuántas vencidas
+ * siguen en el estante, para apartarlas y darlas de baja.
  */
 export function LoteEnLaVenta({
   lotes,
   cantidad,
+  vencidas = 0,
 }: {
   /** undefined = todavía no se sabe: no se dibuja nada. */
   lotes: LoteParaVender[] | undefined;
   cantidad: number;
+  /** Unidades en lotes vencidos en la sucursal: no se venden. */
+  vencidas?: number;
 }) {
   if (!lotes) return null;
   const { reparto, sinLote } = repartirLotes(lotes, cantidad);
 
+  const avisoVencidas = vencidas > 0 && (
+    <p className="mt-1 flex items-start gap-1 rounded-md bg-danger-bg px-1.5 py-1 font-semibold text-danger-text">
+      <span className="mt-px shrink-0">
+        <Icon name="alert" size={11} />
+      </span>
+      Hay {fmtNum(vencidas)} vencidas de este en el estante: no se venden. Apartalas y
+      avisá para darlas de baja.
+    </p>
+  );
+
   if (reparto.length === 0) {
-    return <p className="mt-1.5 text-[11px] text-texto-4">FEFO · sin lote asignado</p>;
+    return (
+      <div className="mt-1.5 text-[11px] leading-snug">
+        <p className="text-texto-4">FEFO · sin lote asignado</p>
+        {avisoVencidas}
+      </div>
+    );
   }
 
   const varios = reparto.length > 1 || sinLote > 0;
@@ -52,6 +73,8 @@ export function LoteEnLaVenta({
           <li className="text-texto-4">+ {fmtNum(sinLote)} sin lote asignado</li>
         )}
       </ul>
+      {/* Con un backend anterior al 1-oct-2026 los vencidos todavía vienen en
+          la lista y FEFO los pone primero: el aviso de siempre. */}
       {vencido && (
         <p className="mt-1 flex items-start gap-1 rounded-md bg-danger-bg px-1.5 py-1 font-semibold text-danger-text">
           <span className="mt-px shrink-0">
@@ -61,6 +84,7 @@ export function LoteEnLaVenta({
           de baja.
         </p>
       )}
+      {avisoVencidas}
     </div>
   );
 }

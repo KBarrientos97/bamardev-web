@@ -5,7 +5,7 @@ import { api } from "../../lib/api";
 import { fmtMoney, fmtNum } from "../../lib/format";
 import { useAuth } from "../../store/AuthContext";
 import type { DetalleVentaInput, Producto, RecetaVenta } from "../../types";
-import { idsGuardados, useCarrito } from "../pos/useCarrito";
+import { idsGuardados, paraVender, useCarrito } from "../pos/useCarrito";
 import DialogoReceta from "./DialogoReceta";
 import { conUnidad, pideConfirmacion } from "./medicamento";
 import { ContextoVentaFarmacia, type VentaFarmacia } from "./ventaFarmacia";
@@ -148,11 +148,15 @@ export default function VentaFarmaciaProvider({ children }: { children: ReactNod
       // `useCarrito` no suma más de lo que hay y no dice nada; acá se dice,
       // porque un "agregado" que no se agregó es peor que ningún aviso.
       const ya = lineas.find((l) => l.producto.id === p.id)?.cantidad ?? 0;
-      if (p.tipoProducto === "ALMACENABLE" && ya + 1 > p.stockTotal) {
+      // Lo vencido no cuenta: sigue en el estante, pero no se vende.
+      const hay = paraVender(p);
+      if (p.tipoProducto === "ALMACENABLE" && ya + 1 > hay) {
         avisar(
-          p.stockTotal <= 0
-            ? `${p.nombre}: agotado`
-            : `${p.nombre}: no hay más, quedan ${conUnidad(p.stockTotal, p.unidadMedida?.nombre)}`,
+          hay <= 0
+            ? (p.stockVencido ?? 0) > 0
+              ? `${p.nombre}: lo que queda está vencido y no se vende`
+              : `${p.nombre}: agotado`
+            : `${p.nombre}: no hay más, quedan ${conUnidad(hay, p.unidadMedida?.nombre)}`,
         );
         return;
       }
@@ -189,9 +193,12 @@ export default function VentaFarmaciaProvider({ children }: { children: ReactNod
     (p: Producto, cantidad: number) => {
       // Igual que al sumar: si se pide más de lo que hay, queda en lo que hay
       // y se dice. Escribir 300 y ver 140 sin explicación parece un error.
-      if (p.tipoProducto === "ALMACENABLE" && cantidad > p.stockTotal) {
+      const hay = paraVender(p);
+      if (p.tipoProducto === "ALMACENABLE" && cantidad > hay) {
+        const vencidas = p.stockVencido ?? 0;
         avisar(
-          `${p.nombre}: no hay tanto, quedan ${conUnidad(p.stockTotal, p.unidadMedida?.nombre)}`,
+          `${p.nombre}: no hay tanto, quedan ${conUnidad(hay, p.unidadMedida?.nombre)}` +
+            (vencidas > 0 ? ` (sin contar ${conUnidad(vencidas, p.unidadMedida?.nombre)} vencidas)` : ""),
         );
       }
       setCantidad(p.id, cantidad);

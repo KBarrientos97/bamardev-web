@@ -196,8 +196,17 @@ export interface Producto extends FichaFarmaceutica {
    * sucursal; sin el dato se vende, que es como funcionó siempre.
    */
   disponible?: boolean;
-  /** Sólo lo trae `GET /productos/buscar`: el lote que se vende primero. */
+  /**
+   * Sólo lo trae `GET /productos/buscar`: el lote VIGENTE que se vende primero.
+   * Lo vencido ya no se vende, así que no cuenta acá (ver `stockVencido`).
+   */
   proximoVencimiento?: ProximoVencimiento | null;
+  /**
+   * Sólo lo trae `GET /productos/buscar`: cuánto de `stockTotal` está en lotes
+   * vencidos. Sigue en el estante, pero no se vende: hay que darlo de baja o
+   * devolverlo al proveedor. Ver `paraVender` en `pos/useCarrito.ts`.
+   */
+  stockVencido?: number;
   /**
    * Dónde está en la sucursal que se consultó ("Estante 3 · fila B"). Lo trae
    * `GET /productos/buscar` y sólo si alguien lo cargó: es opcional.
@@ -579,10 +588,18 @@ export interface LoteParaVender {
   cantidad: number;
 }
 
-/** Los lotes de un artículo del carrito. Vacío = no tiene lote con saldo. */
+/**
+ * Los lotes de un artículo del carrito. Vacío = no tiene lote vigente con
+ * saldo. Desde el 1-oct-2026 no trae los vencidos (la venta no los toca).
+ */
 export interface LotesDelArticulo {
   productoId: number;
   lotes: LoteParaVender[];
+  /**
+   * Unidades en lotes vencidos en la sucursal de la caja: siguen en el estante
+   * y no se entregan. Opcional: un backend anterior no lo manda.
+   */
+  vencidas?: number;
 }
 
 export interface LotePorVencer extends LoteConSaldo {

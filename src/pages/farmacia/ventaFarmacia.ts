@@ -1,6 +1,6 @@
 import { createContext, useContext } from "react";
 import type { Producto, RecetaVenta } from "../../types";
-import type { Carrito } from "../pos/useCarrito";
+import { paraVender, type Carrito } from "../pos/useCarrito";
 
 /**
  * La venta en curso de una farmacia, compartida por todas las pantallas.
@@ -43,13 +43,15 @@ export function useVentaFarmacia(): VentaFarmacia | null {
 }
 
 /**
- * Si se puede vender ahora: habilitado, que la sucursal lo venda y con stock.
+ * Si se puede vender ahora: habilitado, que la sucursal lo venda y con stock
+ * que NO esté vencido.
  *
  * Lo agotado se sigue MOSTRANDO en las dos pantallas —"hoy no tengo, te lo
- * consigo" es una venta— pero no se puede sumar a la venta.
+ * consigo" es una venta— pero no se puede sumar a la venta. Lo mismo lo que
+ * sólo tiene cajas vencidas: se ve, avisa, y no se vende.
  */
 export function sePuedeVender(p: Producto): boolean {
   if (!p.habilitado || p.disponible === false) return false;
   if (p.tipoProducto !== "ALMACENABLE") return true;
-  return p.stockTotal > 0;
+  return paraVender(p) > 0;
 }

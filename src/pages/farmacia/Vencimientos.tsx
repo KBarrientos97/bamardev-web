@@ -308,14 +308,14 @@ function DetalleLote({
           <p className={`text-2xl font-extrabold ${t.texto}`}>{fmtMoney(l.valor)}</p>
         </div>
 
-        {/* Lo que pasa de verdad, no lo que debería pasar. Un vencido NO está
-            bloqueado: el FEFO lo toma antes que a los lotes buenos y el punto
-            de venta sólo avisa que no se entregue. Decir "ya no se puede
-            vender" le sacaba el apuro a la baja, que es lo único que lo saca
-            del stock. */}
+        {/* Lo que pasa de verdad, no lo que debería pasar. Desde el 1-oct-2026
+            un vencido SÍ está bloqueado: la venta lo saltea y, si es lo único
+            que queda, la rechaza. Pero sigue contando en el stock hasta la
+            baja, y por eso el texto empuja a sacarlo: mientras siga cargado,
+            el inventario dice que hay algo que no se puede vender. */}
         <p className="text-[13px] leading-relaxed text-texto-3">
           {vencido
-            ? "Ya venció: no se tiene que entregar. Mientras siga cargado, las ventas lo toman antes que a los lotes buenos y el punto de venta sólo avisa. Darlo de baja lo saca del stock y deja el motivo, que es lo que después arma el número de mermas."
+            ? "Ya venció: el punto de venta no lo vende, pero sigue contando en el stock hasta que se saca. Si la droguería lo recibe, devolvelo: no es pérdida. Si no, darlo de baja lo saca del stock como pérdida y deja el motivo, que es lo que arma el número de mermas."
             : "Todavía se puede vender. Muchas droguerías reciben devoluciones con dos o tres meses de anticipación: si va a volver, conviene mandarlo ahora."}{" "}
           {conAprobacion
             ? "La baja se carga como un movimiento PENDIENTE: el stock recién se mueve cuando alguien la aprueba."

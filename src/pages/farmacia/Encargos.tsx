@@ -19,6 +19,7 @@ import type { Encargo, EstadoEncargo, Producto } from "../../types";
 import { concentracionAparte, conUnidad, detalleDe } from "./medicamento";
 import { Resaltado } from "./piezas";
 import { useBusquedaProductos } from "./useBusquedaProductos";
+import { paraVender } from "../pos/useCarrito";
 
 /**
  * Encargos: lo que alguien pidió y no había.
@@ -534,5 +535,7 @@ function ElegirArticulo({
 }
 
 function stockDe(p: Producto): string {
-  return p.stockTotal > 0 ? `Hay ${conUnidad(p.stockTotal, p.unidadMedida?.nombre)}` : "Agotado";
+  // Lo vencido no cuenta: no se le puede entregar al cliente que encargó.
+  const hay = paraVender(p);
+  return hay > 0 ? `Hay ${conUnidad(hay, p.unidadMedida?.nombre)}` : "Agotado";
 }

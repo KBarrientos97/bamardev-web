@@ -5,6 +5,7 @@ import { Boton, Cargando, ErrorMsg, Vacio } from "../../components/ui";
 import { fmtMoney, fmtNum } from "../../lib/format";
 import { useAuth } from "../../store/AuthContext";
 import type { Categoria, Producto } from "../../types";
+import { paraVender } from "../pos/useCarrito";
 import CampoBusqueda from "./CampoBusqueda";
 import { concentracionAparte, conUnidad, puntoVencimiento } from "./medicamento";
 import { ChipsCondicion } from "./piezas";
@@ -210,7 +211,11 @@ function TarjetaVenta({
   onAgregar: () => void;
 }) {
   const vendible = sePuedeVender(p);
-  const agotado = p.tipoProducto === "ALMACENABLE" && p.stockTotal <= 0;
+  // Lo que se puede vender: sin las cajas vencidas, que siguen en el estante
+  // hasta la baja pero no se cobran.
+  const hay = paraVender(p);
+  const vencidas = p.stockVencido ?? 0;
+  const agotado = p.tipoProducto === "ALMACENABLE" && hay <= 0;
   const punto = puntoVencimiento(p);
   const concentracion = concentracionAparte(p);
   const detalle = [p.laboratorio, p.formaFarmaceutica].filter(Boolean).join(" · ");
@@ -252,6 +257,14 @@ function TarjetaVenta({
         <span className="flex flex-wrap gap-1 empty:hidden">
           <ChipsCondicion producto={p} />
         </span>
+        {/* Las cajas vencidas siguen en el estante: quien atiende tiene que
+            saber que están ahí para no entregarlas y apartarlas. */}
+        {vencidas > 0 && (
+          <span className="flex items-center gap-1 text-[11px] font-semibold text-danger-text">
+            <Icon name="alert" size={11} />
+            {conUnidad(vencidas, p.unidadMedida?.nombre)} vencidas: no se venden
+          </span>
+        )}
         <span className="mt-auto flex items-end justify-between gap-2 pt-1">
           <span className="text-sm font-extrabold text-primary-700 sm:text-[15px]">
             {fmtMoney(p.precio)}
@@ -264,10 +277,12 @@ function TarjetaVenta({
             {cantidad > 0
               ? `${fmtNum(cantidad)} en la venta`
               : agotado
-                ? "Agotado"
+                ? vencidas > 0
+                  ? "Vencido"
+                  : "Agotado"
                 : p.disponible === false
                   ? "No se vende acá"
-                  : conUnidad(p.stockTotal, p.unidadMedida?.nombre)}
+                  : conUnidad(hay, p.unidadMedida?.nombre)}
           </span>
         </span>
       </button>

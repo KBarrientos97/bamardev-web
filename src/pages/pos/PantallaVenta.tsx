@@ -12,7 +12,7 @@ import IconoProducto from "../../components/IconoProducto";
 import { Badge, Boton, Confirmar, Input, Modal, Vacio } from "../../components/ui";
 import { fmtMoney, fmtNum } from "../../lib/format";
 import { useAuth } from "../../store/AuthContext";
-import type { Categoria, Consumo, LoteParaVender, Producto } from "../../types";
+import type { Categoria, Consumo, LotesDelArticulo, Producto } from "../../types";
 import { aplicarOrden, guardarOrden, leerOrden, reordenarVisibles } from "./ordenPos";
 import type { Carrito, LineaCarrito } from "./useCarrito";
 import { useArrastreGrilla } from "./useArrastreGrilla";
@@ -569,7 +569,7 @@ function FilaCarrito({
   /** La venta de la farmacia; null en un restaurante. */
   venta: VentaFarmacia | null;
   /** null = este renglón no lleva lote; undefined = todavía no se sabe. */
-  lotes: LoteParaVender[] | null | undefined;
+  lotes: LotesDelArticulo | null | undefined;
 }) {
   const [editandoNota, setEditandoNota] = useState(false);
   const [nota, setNota] = useState(l.nota);
@@ -636,7 +636,9 @@ function FilaCarrito({
 
       {/* A todo el ancho: al lado del contador no entraba y cada lote ocupaba
           dos renglones. */}
-      {lotes !== null && <LoteEnLaVenta lotes={lotes} cantidad={l.cantidad} />}
+      {lotes !== null && (
+        <LoteEnLaVenta lotes={lotes?.lotes} vencidas={lotes?.vencidas} cantidad={l.cantidad} />
+      )}
       {venta && pideConfirmacion(l.producto) && (
         <RecetaEnLaVenta
           receta={venta.recetas.get(l.producto.id)}

@@ -39,11 +39,25 @@ export interface Carrito {
   aDetalles: () => DetalleVentaInput[];
 }
 
+/**
+ * Cuánto se puede VENDER de un artículo: el stock menos lo que está en lotes
+ * vencidos (sólo farmacia, ver `stockVencido`).
+ *
+ * Lo vencido sigue en el estante hasta que se da de baja, así que `stockTotal`
+ * lo cuenta; pero no se vende, y el servidor rechaza la venta que lo necesite.
+ * Sin restarlo, el carrito dejaba cargar cajas que después no se cobraban. Un
+ * artículo sin lotes (todo el restaurante) no trae `stockVencido` y da lo de
+ * siempre.
+ */
+export function paraVender(p: Producto): number {
+  return Math.max(0, p.stockTotal - (p.stockVencido ?? 0));
+}
+
 /** Un artículo con stock agotado no se puede seguir sumando. */
 function topeStock(p: Producto): number {
   // Elaborados y combos no llevan stock propio: se preparan al vender.
   if (p.tipoProducto !== "ALMACENABLE") return Number.POSITIVE_INFINITY;
-  return p.stockTotal;
+  return paraVender(p);
 }
 
 /**
