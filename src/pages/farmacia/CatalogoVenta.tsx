@@ -73,10 +73,22 @@ export default function CatalogoVenta({
    * Enter carga el único resultado: es lo que hace que el lector funcione
    * solo. Con más de uno no hace nada — elegir por la persona cuál de tres
    * remedios parecidos va a la venta sería peligroso.
+   *
+   * El lector manda el Enter apenas termina de escribir el código, antes de
+   * que la búsqueda haya preguntado nada: lo que se ve en ese momento es del
+   * texto anterior, y decidir con eso dejaba el producto afuera. Entonces, si
+   * lo que se ve no es de este texto, se pregunta ya y se decide con esa
+   * respuesta. Si mientras tanto se siguió escribiendo, el Enter era para otro
+   * texto y no carga nada (`buscarAhora` devuelve null).
    */
-  function alEnter() {
-    if (busqueda.items.length === 1 && sePuedeVender(busqueda.items[0])) {
-      agregar(busqueda.items[0]);
+  async function alEnter() {
+    const texto = q;
+    const items =
+      busqueda.consulta === texto && !busqueda.cargando
+        ? busqueda.items
+        : await busqueda.buscarAhora(texto);
+    if (items?.length === 1 && sePuedeVender(items[0])) {
+      agregar(items[0]);
     }
   }
 
@@ -89,7 +101,7 @@ export default function CatalogoVenta({
           ref={campo}
           valor={q}
           onChange={setQ}
-          onEnter={alEnter}
+          onEnter={() => void alEnter()}
           placeholder="Buscá o escaneá: nombre, droga, laboratorio…"
         />
         {/* En el teléfono los chips se deslizan en una fila; desde tablet se

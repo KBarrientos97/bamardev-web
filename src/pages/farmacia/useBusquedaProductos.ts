@@ -14,13 +14,20 @@ import type { PaginaProductos, Producto } from "../../types";
  *  · **descarta las respuestas viejas**: "ome" tarda más que "omepra" y
  *    contestaría después, pisando el resultado bueno con uno anterior;
  *  · pagina de a tandas, porque el catálogo de una farmacia no entra en una
- *    pantalla ni tiene por qué viajar entero.
+ *    pantalla ni tiene por qué viajar entero;
+ *  · deja **preguntar ya**, sin la espera, para el Enter del lector de código
+ *    de barras (ver `buscarAhora`).
  */
 
 const ESPERA_MS = 250;
 
 export interface Busqueda {
   items: Producto[];
+  /**
+   * El texto del que salieron `items`. Mientras se espera a que se deje de
+   * teclear, lo que se ve es de un texto anterior: esto dice de cuál.
+   */
+  consulta: string | null;
   total: number;
   cargando: boolean;
   error: string;
@@ -29,6 +36,17 @@ export interface Busqueda {
   traerMas: () => void;
   /** Vuelve a pedir lo mismo: después de vender, para refrescar el stock. */
   recargar: () => void;
+  /**
+   * Pregunta por `texto` ya mismo, sin esperar, y devuelve lo que encontró.
+   * Devuelve `null` si la respuesta ya no sirve: llegó otra más nueva o el
+   * campo dice otra cosa.
+   *
+   * Es para el lector de código de barras: escribe el código y manda Enter en
+   * milisegundos, cuando la búsqueda todavía está esperando a que se deje de
+   * teclear. Decidir con lo que había en pantalla era decidir con los
+   * resultados del texto anterior.
+   */
+  buscarAhora: (texto: string) => Promise<Producto[] | null>;
 }
 
 export function useBusquedaProductos({
@@ -58,16 +76,22 @@ export function useBusquedaProductos({
   activo?: boolean;
 }): Busqueda {
   const [pagina, setPagina] = useState<PaginaProductos | null>(null);
+  const [consulta, setConsulta] = useState<string | null>(null);
   const [cargando, setCargando] = useState(activo);
   const [trayendoMas, setTrayendoMas] = useState(false);
   const [error, setError] = useState("");
 
   /** Número de la última búsqueda pedida, para descartar las que se cruzan. */
   const pedido = useRef(0);
+  /** La búsqueda que está esperando a que se deje de teclear, si hay una. */
+  const espera = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Lo que dice el campo ahora. */
+  const vigente = useRef(q);
 
+  /** Devuelve lo encontrado, o `null` si la respuesta llegó tarde o falló. */
   const buscar = useCallback(
-    async (texto: string) => {
-      if (!activo) return;
+    async (texto: string): Promise<Producto[] | null> => {
+      if (!activo) return null;
       const mio = ++pedido.current;
       setCargando(true);
       setError("");
@@ -79,12 +103,16 @@ export function useBusquedaProductos({
           categoriaId,
           sucursalId,
         });
-        if (pedido.current !== mio) return;
+        if (pedido.current !== mio) return null;
         setPagina(res);
+        setConsulta(texto);
+        return res.items;
       } catch (err) {
-        if (pedido.current !== mio) return;
+        if (pedido.current !== mio) return null;
         setError(err instanceof Error ? err.message : "No se pudo buscar");
         setPagina(null);
+        setConsulta(null);
+        return null;
       } finally {
         if (pedido.current === mio) setCargando(false);
       }
@@ -93,14 +121,32 @@ export function useBusquedaProductos({
   );
 
   useEffect(() => {
+    vigente.current = q;
     if (!activo) {
       // Apagado: no se queda "cargando" para siempre.
       setCargando(false);
       return;
     }
-    const id = setTimeout(() => void buscar(q), ESPERA_MS);
+    const id = setTimeout(() => {
+      espera.current = null;
+      void buscar(q);
+    }, ESPERA_MS);
+    espera.current = id;
     return () => clearTimeout(id);
   }, [q, buscar, activo]);
+
+  const buscarAhora = useCallback(
+    async (texto: string) => {
+      // La que estaba esperando preguntaría lo mismo un rato después.
+      if (espera.current) {
+        clearTimeout(espera.current);
+        espera.current = null;
+      }
+      const items = await buscar(texto);
+      return items && vigente.current === texto ? items : null;
+    },
+    [buscar],
+  );
 
   const traerMas = useCallback(async () => {
     if (!pagina || trayendoMas) return;
@@ -128,6 +174,7 @@ export function useBusquedaProductos({
 
   return {
     items,
+    consulta,
     total: pagina?.total ?? 0,
     cargando,
     error,
@@ -135,5 +182,6 @@ export function useBusquedaProductos({
     trayendoMas,
     traerMas: () => void traerMas(),
     recargar: () => void buscar(q),
+    buscarAhora,
   };
 }

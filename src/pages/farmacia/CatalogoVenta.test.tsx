@@ -148,6 +148,71 @@ describe("el lector de código de barras", () => {
     expect(agregar).toHaveBeenCalledWith(ibuprofeno);
     expect(campo).toHaveValue("");
   });
+
+  /*
+   * Así escribe un lector de verdad: el código y el Enter en milisegundos,
+   * antes de que la búsqueda pregunte nada. En pantalla todavía está la lista
+   * anterior (dos productos), y decidir con eso dejaba el producto afuera.
+   */
+  function responderSegunTexto(porTexto: Record<string, Producto[]>) {
+    vi.mocked(api.buscarProductos).mockImplementation(async ({ q }) => {
+      const items = porTexto[q ?? ""] ?? [ibuprofeno, ranitidina];
+      return { items, total: items.length, limite: 24, offset: 0 };
+    });
+  }
+
+  it("el Enter que llega antes que la respuesta igual suma el producto", async () => {
+    montar();
+    await screen.findByRole("button", { name: /Ranitidina/ });
+    responderSegunTexto({ "7790001": [ibuprofeno] });
+
+    const campo = screen.getByPlaceholderText(/Buscá o escaneá/);
+    fireEvent.change(campo, { target: { value: "7790001" } });
+    fireEvent.keyDown(campo, { key: "Enter" });
+
+    await waitFor(() => expect(agregar).toHaveBeenCalledWith(ibuprofeno));
+    expect(agregar).toHaveBeenCalledTimes(1);
+    expect(campo).toHaveValue("");
+  });
+
+  it("con dos resultados el Enter no elige por la persona, llegue cuando llegue", async () => {
+    montar();
+    await screen.findByRole("button", { name: /Ranitidina/ });
+    responderSegunTexto({ ibu: [ibuprofeno, med({ id: 3, nombre: "Ibuprofeno 600 mg" })] });
+
+    const campo = screen.getByPlaceholderText(/Buscá o escaneá/);
+    fireEvent.change(campo, { target: { value: "ibu" } });
+    fireEvent.keyDown(campo, { key: "Enter" });
+
+    // Se ve la respuesta de "ibu", y nadie la eligió.
+    expect(await screen.findByText("Ibuprofeno 600 mg")).toBeInTheDocument();
+    expect(agregar).not.toHaveBeenCalled();
+    expect(campo).toHaveValue("ibu");
+  });
+
+  it("si después del Enter se siguió escribiendo, ese Enter ya no carga nada", async () => {
+    montar();
+    await screen.findByRole("button", { name: /Ranitidina/ });
+    let responder!: (p: { items: Producto[]; total: number; limite: number; offset: number }) => void;
+    vi.mocked(api.buscarProductos).mockImplementation(({ q }) =>
+      q === "ibu"
+        ? new Promise((r) => {
+            responder = r;
+          })
+        : Promise.resolve({ items: [ibuprofeno], total: 1, limite: 24, offset: 0 }),
+    );
+
+    const campo = screen.getByPlaceholderText(/Buscá o escaneá/);
+    fireEvent.change(campo, { target: { value: "ibu" } });
+    fireEvent.keyDown(campo, { key: "Enter" });
+    fireEvent.change(campo, { target: { value: "ibupro" } });
+    await act(async () => {
+      responder({ items: [ibuprofeno], total: 1, limite: 24, offset: 0 });
+    });
+
+    expect(agregar).not.toHaveBeenCalled();
+    expect(campo).toHaveValue("ibupro");
+  });
 });
 
 describe("la sucursal de la caja", () => {
