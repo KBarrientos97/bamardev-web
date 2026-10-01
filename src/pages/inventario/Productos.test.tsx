@@ -160,3 +160,44 @@ describe("farmacia: lo propio del rubro sigue en pie", () => {
     expect(screen.queryByText("Amoxicilina")).not.toBeInTheDocument();
   });
 });
+
+/*
+ * El alta, en los dos rubros. Un producto nace sin stock: lo que entra va por
+ * Movimientos (así lo hacen el backend desde el 28-ago y la app). El "Stock
+ * inicial" que ofrecía la web se tiraba sin avisar y el artículo quedaba
+ * agotado. El combo sí fija su stock acá, y eso no cambia.
+ */
+describe("el alta: el stock de un producto entra por Movimientos", () => {
+  async function abrirAlta() {
+    getProductos.mockResolvedValue([]);
+    render(<Productos />);
+    const nuevo = await screen.findAllByRole("button", { name: /Nuevo/ });
+    await act(async () => {
+      fireEvent.click(nuevo[0]);
+    });
+  }
+
+  it("restaurante: no ofrece un stock inicial que no se guarda, y dice dónde se carga", async () => {
+    sesion.rubro = "RESTAURANTE";
+    await abrirAlta();
+    expect(screen.queryByText("Stock inicial")).not.toBeInTheDocument();
+    expect(
+      screen.getByText("El stock entra después, con una entrada en Movimientos."),
+    ).toBeInTheDocument();
+  });
+
+  it("restaurante: el combo sigue fijando su stock", async () => {
+    sesion.rubro = "RESTAURANTE";
+    await abrirAlta();
+    fireEvent.change(screen.getByDisplayValue("Producto"), { target: { value: "COMPUESTO" } });
+    expect(screen.getByText("Stock del combo")).toBeInTheDocument();
+    expect(screen.queryByText(/El stock entra después/)).not.toBeInTheDocument();
+  });
+
+  it("farmacia: el stock entra con el ingreso, que es donde van lote y vencimiento", async () => {
+    sesion.rubro = "FARMACIA";
+    await abrirAlta();
+    expect(screen.queryByText("Stock inicial")).not.toBeInTheDocument();
+    expect(screen.getByText(/con un Ingreso de mercadería: ahí van el lote/)).toBeInTheDocument();
+  });
+});

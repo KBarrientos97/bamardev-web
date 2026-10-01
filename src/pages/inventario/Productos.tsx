@@ -1029,11 +1029,11 @@ function FormProductoCuerpo({
             })),
           }
         : {}),
-      // En un producto el stock inicial sólo tiene sentido al crear: después se
-      // mueve con entradas y salidas. En un COMBO es al revés — no pasa por
-      // Movimientos, así que editar el artículo es la única forma de decir
-      // cuántos hay hoy, y el campo tiene que viajar también al editar.
-      ...((esCombo || !esEdicion) && conStock && stockInicial !== ""
+      // Sólo el COMBO manda su stock: no pasa por Movimientos, así que el
+      // artículo es la única forma de decir cuántos hay hoy, al crear y al
+      // editar. Un producto nace sin stock (lo que entra va por Movimientos) y
+      // el backend no le toma este número.
+      ...(esCombo && conStock && stockInicial !== ""
         ? { stockInicial: Number(stockInicial) }
         : {}),
       // La ficha viaja sólo donde el formulario la muestra. En otro rubro los
@@ -1253,17 +1253,13 @@ function FormProductoCuerpo({
                 />
               </Campo>
             )}
-            {(esCombo || !esEdicion) && (
-              <Campo
-                label={esCombo ? "Stock del combo" : "Stock inicial"}
-                hint={
-                  esCombo
-                    ? "Cuántos hay para vender hoy"
-                    : conFicha
-                      ? "Se carga como una entrada en Movimientos"
-                      : "Se carga como entrada"
-                }
-              >
+            {/* Sólo el combo fija su stock acá. Un producto nace sin stock y lo
+                que entra va por Movimientos: así lo hace el backend desde el
+                28-ago ("Crear un artículo ya no genera un movimiento") y así lo
+                hace la app. El "Stock inicial" que se ofrecía para un producto
+                se tiraba sin avisar: el artículo quedaba agotado. */}
+            {esCombo ? (
+              <Campo label="Stock del combo" hint="Cuántos hay para vender hoy">
                 <Input
                   type="number"
                   inputMode="decimal"
@@ -1272,6 +1268,14 @@ function FormProductoCuerpo({
                   onChange={(e) => setStockInicial(e.target.value)}
                 />
               </Campo>
+            ) : (
+              !esEdicion && (
+                <p className="self-end rounded-xl bg-muted px-3.5 py-2.5 text-xs text-texto-3">
+                  {conFicha
+                    ? "El stock entra después, con un Ingreso de mercadería: ahí van el lote y el vencimiento."
+                    : "El stock entra después, con una entrada en Movimientos."}
+                </p>
+              )
             )}
           </div>
         )}
