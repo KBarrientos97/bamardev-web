@@ -793,6 +793,8 @@ export interface Venta {
   formasPago?: string[];
   anuladaEn?: string | null;
   anulacionAutorizadaPor?: string | null;
+  /** Por qué se anuló (desde el 1-oct-2026; null en las anteriores). */
+  motivoAnulacion?: string | null;
   // Bloque de entrega (delivery / recoger)
   tipoPedido: TipoPedido;
   estadoEntrega: EstadoEntrega | null;
@@ -1018,6 +1020,8 @@ export interface Repartidor {
 export interface AnularVentaInput {
   autorizadorUsername?: string;
   autorizadorPin?: string;
+  /** Por qué se anula: queda guardado con la venta. */
+  motivo?: string;
 }
 
 // ── Créditos (fiado) ────────────────────────────────────────────────────────

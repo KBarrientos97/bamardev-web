@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { Chips } from "../../components/filtros";
 import { Icon } from "../../components/Icon";
 import { QrParaCobrar } from "../../components/QrCobro";
 import CuentasPorCobrar from "./CuentasPorCobrar";
@@ -282,24 +283,21 @@ function DetalleVenta({
   const mostrarConsumo = !esFarmacia(rubro);
 
   /**
-   * Sólo se anula lo cobrado 100% en efectivo. Anular devuelve la plata del
-   * arqueo, y ese movimiento no tiene contrapartida en el banco: con un cobro
-   * por QR el dinero ya entró a la cuenta y la anulación lo borraría del
-   * sistema sin sacarlo de ningún lado. La app aplica la misma regla
-   * (`DetalleVentaFragment.puedeAnular`).
+   * Se anula también lo cobrado por QR o mixto (desde el 1-oct-2026).
    *
-   * Se mira por NOMBRE y no por id: `FormaPago` es una tabla por negocio con id
-   * autoincremental global, así que el "QR" de un cliente no tiene el mismo id
-   * que el de otro.
+   * Antes sólo se anulaba lo cobrado 100% en efectivo: con QR la plata ya
+   * estaba en la cuenta y anular "la borraba del sistema". Pero anular no es
+   * devolver la plata, es el asiento: el stock vuelve, la venta sale del total
+   * y, en una farmacia, el libro de controlados la marca anulada. Bloquearlo no
+   * evitaba la devolución (el cliente igual se iba con su plata), dejaba el
+   * stock y el libro mintiendo. La plata vuelve por el mismo medio por el que
+   * entró, y el diálogo lo dice antes de confirmar (`DialogoAnular`).
+   *
+   * La app todavía tiene la regla vieja (`DetalleVentaFragment.puedeAnular`).
    */
-  const cobradaConQr = (v.pagos ?? []).some((p) =>
-    (p.formaPago ?? "").toLowerCase().includes("qr"),
-  );
-
   // Anular pasa siempre por el PIN de un encargado: sin esa capacidad el
   // negocio no compró forma de autorizarlo, así que no se ofrece.
-  const puedeAnular =
-    v.estado === "APROBADO" && incluye("autorizacion_pin") && !cobradaConQr;
+  const puedeAnular = v.estado === "APROBADO" && incluye("autorizacion_pin");
 
   /**
    * El bloque de pedido (recoger / domicilio), con las mismas reglas que la
@@ -348,21 +346,10 @@ function DetalleVenta({
           <Cargando />
         ) : (
           <div className="space-y-4">
-            {/* Sin esto el botón simplemente no está y el cajero cree que la
-                app falla: hay que decir por qué no se puede. */}
-            {v.estado === "APROBADO" && cobradaConQr && (
-              <div className="rounded-xl bg-muted px-3.5 py-2.5 text-[13px] text-texto-2">
-                <p className="font-bold text-texto">Esta venta no se puede anular</p>
-                <p className="mt-0.5">
-                  Se cobró por QR y esa plata ya entró a la cuenta del negocio. Devolvele
-                  al cliente por el mismo medio y registrá la salida en movimientos de caja.
-                </p>
-              </div>
-            )}
-
             {v.estado === "ANULADO" && (
               <div className="rounded-xl bg-danger-bg px-3.5 py-2.5 text-[13px] text-danger-text">
                 <p className="font-bold">Venta anulada</p>
+                {v.motivoAnulacion && <p className="mt-0.5">Motivo: {v.motivoAnulacion}</p>}
                 {v.anulacionAutorizadaPor && (
                   <p className="mt-0.5">Autorizó: {v.anulacionAutorizadaPor}</p>
                 )}
@@ -503,6 +490,24 @@ function DetalleVenta({
   );
 }
 
+/** Los motivos de una anulación, en el orden en que más pasan. */
+const MOTIVOS_ANULACION = [
+  ["Devolución del cliente", "Devolución del cliente"],
+  ["Error al cobrar", "Error al cobrar"],
+  ["Producto equivocado", "Producto equivocado"],
+  ["Otro", "Otro"],
+] as const;
+type MotivoAnulacion = (typeof MOTIVOS_ANULACION)[number][0];
+
+/**
+ * Si un pago entró por QR. Se mira por NOMBRE y no por id: `FormaPago` es una
+ * tabla por negocio con id autoincremental global, así que el "QR" de un
+ * cliente no tiene el mismo id que el de otro.
+ */
+function esPagoQr(p: { formaPago?: string }): boolean {
+  return (p.formaPago ?? "").toLowerCase().includes("qr");
+}
+
 function DialogoAnular({
   venta,
   pideUsuario,
@@ -516,20 +521,45 @@ function DialogoAnular({
 }) {
   const [autorizador, setAutorizador] = useState("");
   const [pin, setPin] = useState("");
+  const [motivo, setMotivo] = useState<MotivoAnulacion | "">("");
+  const [detalle, setDetalle] = useState("");
   const [error, setError] = useState("");
   const [enviando, setEnviando] = useState(false);
 
+  /**
+   * Por dónde vuelve la plata: por el mismo medio por el que entró. Lo de QR
+   * ya está en la cuenta del negocio y se devuelve con una transferencia: no
+   * sale de la caja. Lo de efectivo sí, y la anulación ya lo descuenta del
+   * arqueo del turno. Decirlo antes de confirmar es lo que evita que alguien
+   * devuelva en efectivo una venta de QR y la caja cierre con un faltante.
+   */
+  const pagos = venta.pagos ?? [];
+  const redondear = (n: number) => Math.round(n * 100) / 100;
+  const porQr = redondear(pagos.filter(esPagoQr).reduce((acc, p) => acc + p.monto, 0));
+  const enEfectivo = redondear(
+    pagos.filter((p) => !esPagoQr(p)).reduce((acc, p) => acc + p.monto, 0),
+  );
+
   async function anular() {
     setError("");
+    // Quedaba el quién y el cuándo, nunca el porqué: en una venta de QR el
+    // porqué es toda la historia. Un toque en un chip alcanza.
+    if (!motivo) return setError("Elegí el motivo: queda guardado con la anulación.");
+    if (motivo === "Otro" && detalle.trim().length < 3)
+      return setError("Contá en pocas palabras por qué se anula.");
     if (!/^\d{4,6}$/.test(pin)) return setError("El PIN son 4 a 6 dígitos.");
     if (pideUsuario && autorizador.trim().length < 3)
       return setError("Poné el usuario del encargado que autoriza.");
+
+    const textoMotivo =
+      motivo === "Otro" ? detalle.trim() : [motivo, detalle.trim()].filter(Boolean).join(" · ");
 
     setEnviando(true);
     try {
       await api.anularVenta(venta.id, {
         ...(pideUsuario ? { autorizadorUsername: autorizador.trim() } : {}),
         autorizadorPin: pin,
+        motivo: textoMotivo,
       });
       onAnulada();
     } catch (err) {
@@ -561,6 +591,44 @@ function DialogoAnular({
         <p className="text-[13px] text-texto-2">
           La venta queda anulada y el stock vuelve al inventario. No se puede deshacer.
         </p>
+
+        {(porQr > 0 || enEfectivo > 0) && (
+          <ul className="space-y-1.5 rounded-xl bg-muted px-3.5 py-2.5 text-[13px] text-texto-2">
+            {porQr > 0 && (
+              <li>
+                <span className="font-bold text-texto">{fmtMoney(porQr)} por QR:</span> devolvelos
+                por QR o transferencia desde la cuenta del negocio. No salen de la caja.
+              </li>
+            )}
+            {enEfectivo > 0 && (
+              <li>
+                <span className="font-bold text-texto">{fmtMoney(enEfectivo)} en efectivo:</span>{" "}
+                salen de la caja. La anulación ya los descuenta del turno.
+              </li>
+            )}
+          </ul>
+        )}
+
+        <div>
+          <p className="mb-1.5 text-[13px] font-semibold text-texto-2">Motivo</p>
+          {/* Vacío al abrir a propósito: un motivo marcado de antemano se
+              confirmaría sin leerlo, y el dato no diría nada. */}
+          <Chips
+            valor={motivo as MotivoAnulacion}
+            opciones={MOTIVOS_ANULACION}
+            onChange={setMotivo}
+          />
+          {motivo && (
+            <Input
+              className="mt-2"
+              value={detalle}
+              onChange={(e) => setDetalle(e.target.value.slice(0, 150))}
+              placeholder={motivo === "Otro" ? "¿Por qué se anula?" : "Detalle (opcional)"}
+              aria-label="Detalle del motivo"
+              autoComplete="off"
+            />
+          )}
+        </div>
 
         {pideUsuario && (
           <Campo label="Usuario que autoriza" hint="Un encargado con PIN">
