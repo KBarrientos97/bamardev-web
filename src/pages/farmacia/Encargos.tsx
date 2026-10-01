@@ -10,13 +10,15 @@ import {
   ErrorMsg,
   Input,
   Modal,
-  Select,
   Vacio,
 } from "../../components/ui";
 import { api } from "../../lib/api";
 import { fmtFecha, fmtNum } from "../../lib/format";
 import { useApi } from "../../lib/useApi";
 import type { Encargo, EstadoEncargo, Producto } from "../../types";
+import { concentracionAparte, conUnidad, detalleDe } from "./medicamento";
+import { Resaltado } from "./piezas";
+import { useBusquedaProductos } from "./useBusquedaProductos";
 
 /**
  * Encargos: lo que alguien pidió y no había.
@@ -313,8 +315,7 @@ function FormEncargo({
   onClose: () => void;
   onGuardado: () => void;
 }) {
-  const productos = useApi(() => api.buscarProductos({ limite: 100 }), []);
-  const [productoId, setProductoId] = useState("");
+  const [producto, setProducto] = useState<Producto | null>(null);
   const [descripcion, setDescripcion] = useState("");
   const [cantidad, setCantidad] = useState("1");
   const [clienteNombre, setClienteNombre] = useState("");
@@ -323,8 +324,6 @@ function FormEncargo({
   const [error, setError] = useState("");
   const [guardando, setGuardando] = useState(false);
 
-  const lista: Producto[] = productos.datos?.items ?? [];
-
   async function guardar() {
     setError("");
     if (!descripcion.trim()) return setError("Escribí qué te pidieron.");
@@ -332,7 +331,7 @@ function FormEncargo({
     setGuardando(true);
     try {
       await api.crearEncargo({
-        ...(productoId ? { productoId: Number(productoId) } : {}),
+        ...(producto ? { productoId: producto.id } : {}),
         descripcion: descripcion.trim(),
         cantidad: Number(cantidad) || 1,
         clienteNombre: clienteNombre.trim(),
@@ -374,21 +373,20 @@ function FormEncargo({
           />
         </Campo>
 
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Campo
-            label="Artículo del catálogo"
-            hint="Opcional: si todavía no lo vendés, dejalo vacío"
-          >
-            <Select value={productoId} onChange={(e) => setProductoId(e.target.value)}>
-              <option value="">Sin artículo</option>
-              {lista.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.nombre}
-                  {p.laboratorio ? ` — ${p.laboratorio}` : ""}
-                </option>
-              ))}
-            </Select>
-          </Campo>
+        {/* Un <div> y no `Campo`: `Campo` es un <label>, y dentro de un label
+            tocar el nombre del artículo elegido "apretaba" el botón de quitarlo
+            (el label activa al primer control que tiene adentro). */}
+        <div>
+          <span className="mb-1.5 block text-[13px] font-semibold text-texto-2">
+            Artículo del catálogo
+          </span>
+          <ElegirArticulo elegido={producto} onElegir={setProducto} />
+          <span className="mt-1 block text-xs text-texto-4">
+            Opcional: si todavía no lo vendés, dejalo vacío
+          </span>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-[7rem_1fr_1fr]">
           <Campo label="Cantidad">
             <Input
               type="number"
@@ -398,9 +396,6 @@ function FormEncargo({
               onChange={(e) => setCantidad(e.target.value)}
             />
           </Campo>
-        </div>
-
-        <div className="grid gap-3 sm:grid-cols-2">
           <Campo label="Quién lo pidió">
             <Input
               value={clienteNombre}
@@ -429,4 +424,115 @@ function FormEncargo({
       </div>
     </Modal>
   );
+}
+
+/**
+ * El artículo del catálogo, buscándolo.
+ *
+ * Antes era un desplegable con los primeros 100 productos: con el catálogo de
+ * una farmacia de verdad (2.000 medicamentos) lo que pedían casi nunca estaba
+ * en la lista, y lo que estaba era imposible de recorrer. Busca en el
+ * servidor, igual que el mostrador: nombre, droga, laboratorio o código.
+ *
+ * Elegido, dice cuánto hay: si hay stock, quizás no hace falta encargarlo.
+ */
+function ElegirArticulo({
+  elegido,
+  onElegir,
+}: {
+  elegido: Producto | null;
+  onElegir: (p: Producto | null) => void;
+}) {
+  const [q, setQ] = useState("");
+  const buscando = q.trim() !== "";
+  // Sin texto no se trae nada: el catálogo entero no sirve para elegir.
+  const busqueda = useBusquedaProductos({ q, limite: 8, activo: buscando });
+
+  if (elegido) {
+    const concentracion = concentracionAparte(elegido);
+    return (
+      <div className="flex items-center gap-3 rounded-xl border border-primary/40 bg-primary-50/50 px-3.5 py-2.5">
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm font-bold text-texto">
+            {elegido.nombre}
+            {concentracion && (
+              <span className="ml-1.5 font-semibold text-texto-2">{concentracion}</span>
+            )}
+          </span>
+          <span className="block truncate text-xs text-texto-3">
+            {[elegido.laboratorio, stockDe(elegido)].filter(Boolean).join(" · ")}
+          </span>
+        </span>
+        <button
+          type="button"
+          onClick={() => onElegir(null)}
+          aria-label="Quitar el artículo"
+          className="shrink-0 rounded-lg p-1.5 text-texto-3 hover:bg-white hover:text-texto"
+        >
+          <Icon name="close" size={16} />
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="relative">
+        <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-texto-4">
+          <Icon name="search" size={17} />
+        </span>
+        <Input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Buscá por nombre, droga o laboratorio"
+          aria-label="Artículo del catálogo"
+          className="pl-10"
+        />
+      </div>
+
+      {buscando &&
+        (busqueda.cargando && busqueda.items.length === 0 ? (
+          <p className="text-xs text-texto-3">Buscando…</p>
+        ) : busqueda.items.length === 0 ? (
+          <p className="text-xs text-texto-3">
+            {`No hay nada con "${q.trim()}" en el catálogo: dejalo vacío y anotá lo que pidieron.`}
+          </p>
+        ) : (
+          <ul className="max-h-56 divide-y divide-borde-soft overflow-y-auto rounded-xl border border-borde">
+            {busqueda.items.map((p) => {
+              const concentracion = concentracionAparte(p);
+              return (
+                <li key={p.id}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onElegir(p);
+                      setQ("");
+                    }}
+                    className="flex w-full items-center gap-3 px-3.5 py-2 text-left transition-colors hover:bg-muted"
+                  >
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-bold text-texto">
+                        <Resaltado texto={p.nombre} q={q} />
+                        {concentracion && (
+                          <span className="ml-1.5 font-semibold text-texto-2">{concentracion}</span>
+                        )}
+                      </span>
+                      <span className="block truncate text-xs text-texto-3">
+                        {detalleDe(p) || "Sin ficha cargada"}
+                      </span>
+                    </span>
+                    <span className="shrink-0 text-xs text-texto-3">{stockDe(p)}</span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        ))}
+    </div>
+  );
+}
+
+function stockDe(p: Producto): string {
+  return p.stockTotal > 0 ? `Hay ${conUnidad(p.stockTotal, p.unidadMedida?.nombre)}` : "Agotado";
 }
