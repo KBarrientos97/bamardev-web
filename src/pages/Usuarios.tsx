@@ -60,7 +60,12 @@ const PERMISOS_ROL: Record<RolApp, string[]> = {
   REPARTIDOR: ["Entregas", "Cobro contra entrega", "Rendición"],
 };
 
-/** Sólo ADMIN y SUPERVISOR autorizan anulaciones, así que sólo ellos llevan PIN. */
+/**
+ * Sólo ADMIN y SUPERVISOR autorizan (anular una venta, fiar por encima del
+ * límite), así que sólo ellos llevan PIN, y se lo asigna el ADMIN. Al resto ni
+ * se le ofrece: a un mesero se le mostraba "Asignar PIN" y el backend lo
+ * rechazaba.
+ */
 const ROLES_CON_PIN: Rol[] = ["ADMIN", "SUPERVISOR"];
 
 type FiltroRol = "todos" | RolApp | "inactivos";
@@ -97,6 +102,8 @@ export default function Usuarios() {
   const [creando, setCreando] = useState(false);
   const [cambiandoPassword, setCambiandoPassword] = useState<Usuario | null>(null);
   const [cambiandoPin, setCambiandoPin] = useState<Usuario | null>(null);
+  const [quitandoPin, setQuitandoPin] = useState<Usuario | null>(null);
+  const [quitandoPinEnCurso, setQuitandoPinEnCurso] = useState(false);
   const [cambiandoEstado, setCambiandoEstado] = useState<Usuario | null>(null);
   const [cambiandoEstadoEnCurso, setCambiandoEstadoEnCurso] = useState(false);
   const [errorAccion, setErrorAccion] = useState("");
@@ -142,6 +149,28 @@ export default function Usuarios() {
   function traerDeVuelta(actualizado: Usuario) {
     setDetalle(actualizado);
     usuarios.recargar();
+  }
+
+  /**
+   * Quitarle el PIN a un supervisor es sacarle la autorización: como el PIN lo
+   * asigna sólo el administrador, él no puede volver a ponérselo.
+   */
+  async function quitarPin() {
+    if (!quitandoPin || quitandoPinEnCurso) return;
+    const sinPin = quitandoPin;
+    setErrorAccion("");
+    setQuitandoPinEnCurso(true);
+    try {
+      await api.quitarPin(sinPin.id);
+      setDetalle((d) => (d && d.id === sinPin.id ? { ...d, tienePin: false } : d));
+      usuarios.recargar();
+      setAviso("PIN quitado: ya no autoriza anulaciones.");
+    } catch (err) {
+      setErrorAccion(err instanceof Error ? err.message : "No se pudo quitar el PIN");
+    } finally {
+      setQuitandoPin(null);
+      setQuitandoPinEnCurso(false);
+    }
   }
 
   async function alternarEstado() {
@@ -241,6 +270,7 @@ export default function Usuarios() {
         }}
         onPassword={(u) => setCambiandoPassword(u)}
         onPin={(u) => setCambiandoPin(u)}
+        onQuitarPin={(u) => setQuitandoPin(u)}
         onEstado={(u) => setCambiandoEstado(u)}
         conPin={conPin}
       />
@@ -272,6 +302,10 @@ export default function Usuarios() {
         usuario={cambiandoPin}
         onClose={() => setCambiandoPin(null)}
         onGuardado={() => {
+          // El detalle sigue abierto atrás: sin esto seguía diciendo "Asignar
+          // PIN" y sin la marca, como si no se hubiera guardado.
+          const conPinNuevo = cambiandoPin;
+          setDetalle((d) => (d && d.id === conPinNuevo?.id ? { ...d, tienePin: true } : d));
           setCambiandoPin(null);
           setAviso("PIN actualizado.");
           usuarios.recargar();
@@ -291,6 +325,17 @@ export default function Usuarios() {
         procesando={cambiandoEstadoEnCurso}
         onCancel={() => setCambiandoEstado(null)}
         onOk={alternarEstado}
+      />
+
+      <Confirmar
+        abierto={!!quitandoPin}
+        titulo="Quitar PIN"
+        texto={`¿Quitarle el PIN a "${quitandoPin?.nombre}"? No va a poder autorizar anulaciones ni fiar por encima del límite hasta que le asignes uno nuevo.`}
+        etiquetaOk="Quitar PIN"
+        peligroso
+        procesando={quitandoPinEnCurso}
+        onCancel={() => setQuitandoPin(null)}
+        onOk={quitarPin}
       />
     </div>
   );
@@ -316,7 +361,9 @@ function TarjetaUsuario({ usuario: u, onClick }: { usuario: Usuario; onClick: ()
           </span>
           <div className="flex items-center gap-2">
             {!u.activo && <Badge tono="gris">Inactivo</Badge>}
-            {conPin && u.tienePin && <Badge tono="azul">PIN</Badge>}
+            {conPin && u.tienePin && ROLES_CON_PIN.includes(u.rol) && (
+              <Badge tono="azul">PIN</Badge>
+            )}
             <Icon name="chevronRight" size={17} color="#94A3B8" />
           </div>
         </div>
@@ -343,6 +390,7 @@ function DetalleUsuario({
   onEditar,
   onPassword,
   onPin,
+  onQuitarPin,
   onEstado,
 }: {
   usuario: Usuario | null;
@@ -350,6 +398,7 @@ function DetalleUsuario({
   onEditar: (u: Usuario) => void;
   onPassword: (u: Usuario) => void;
   onPin: (u: Usuario) => void;
+  onQuitarPin: (u: Usuario) => void;
   onEstado: (u: Usuario) => void;
   conPin: boolean;
 }) {
@@ -358,6 +407,11 @@ function DetalleUsuario({
   const permisos = PERMISOS_ROL[u.rol as RolApp] ?? [];
   const esRepartidor = u.rol === "REPARTIDOR";
   const esYo = actual?.id === u.id;
+  // El PIN sólo sirve para autorizar: sin esa capacidad en el plan no hay nada
+  // que autorizar con él. Lo llevan administradores y supervisores, y lo
+  // asigna, cambia o quita sólo el administrador.
+  const llevaPin = conPin && ROLES_CON_PIN.includes(u.rol);
+  const administraPin = llevaPin && actual?.rol === "ADMIN";
 
   return (
     <Modal
@@ -400,7 +454,7 @@ function DetalleUsuario({
             <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
               <Badge tono={tonoRol(u.rol)}>{etiquetaRol(u.rol)}</Badge>
               {!u.activo && <Badge tono="gris">Inactivo</Badge>}
-              {conPin && u.tienePin && <Badge tono="azul">PIN</Badge>}
+              {llevaPin && u.tienePin && <Badge tono="azul">PIN</Badge>}
             </div>
           </div>
         </div>
@@ -456,14 +510,24 @@ function DetalleUsuario({
           <Boton variante="ghost" icono="lock" onClick={() => onPassword(u)}>
             Cambiar contraseña
           </Boton>
-          {/* El PIN sólo sirve para autorizar anulaciones: sin esa capacidad
-              no habría nada que autorizar con él. */}
-          {conPin && (
+          {administraPin && (
             <Boton variante="ghost" icono="pin" onClick={() => onPin(u)}>
               {u.tienePin ? "Cambiar PIN" : "Asignar PIN"}
             </Boton>
           )}
+          {administraPin && u.rol === "SUPERVISOR" && u.tienePin && (
+            <Boton variante="ghost" icono="x" onClick={() => onQuitarPin(u)}>
+              Quitar PIN
+            </Boton>
+          )}
         </div>
+        {/* El supervisor ya no se pone el PIN: se le dice a quién pedírselo en
+            vez de esconderle el botón sin explicación. */}
+        {llevaPin && !administraPin && esYo && (
+          <p className="text-[13px] text-texto-3">
+            Tu PIN de autorización te lo asigna el administrador.
+          </p>
+        )}
       </div>
     </Modal>
   );
@@ -897,8 +961,8 @@ function FormPinCuerpo({
     >
       <div className="space-y-4">
         <p className="rounded-xl bg-info-bg px-3.5 py-2.5 text-[13px] text-info-text">
-          El PIN autoriza anulaciones de venta y movimientos de caja. Sólo lo pueden tener
-          administradores y supervisores: al resto el backend le rechaza el cambio.
+          El PIN autoriza anular ventas y fiar por encima del límite del cliente. Sólo lo
+          tienen administradores y supervisores, y lo asigna el administrador.
         </p>
 
         <Campo label="PIN" hint="4 a 6 dígitos">

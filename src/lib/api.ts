@@ -903,6 +903,9 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify({ password }),
     }),
+  /** Le saca la autorización: sin PIN no anula ni fía de más. Sólo el ADMIN. */
+  quitarPin: (id: number) =>
+    request<{ mensaje: string }>(`/usuarios/${id}/pin`, { method: "DELETE" }),
   cambiarPin: (id: number, pin: string) =>
     request<{ mensaje: string }>(`/usuarios/${id}/pin`, {
       method: "PATCH",

@@ -9,11 +9,15 @@ import type { Usuario } from "../types";
  * Donde no hay salón (una farmacia) no aparece nada del mesero.
  */
 
-const sesion = vi.hoisted(() => ({ conSalon: true }));
+const sesion = vi.hoisted(() => ({
+  conSalon: true,
+  /** Quién está mirando la pantalla. */
+  actor: { id: 1, rol: "ADMIN" },
+}));
 
 vi.mock("../store/AuthContext", () => ({
   useAuth: () => ({
-    usuario: { id: 1, rol: "ADMIN", sucursalId: null },
+    usuario: { ...sesion.actor, sucursalId: null },
     incluye: () => true,
     puede: (s: string) => s === "salon" && sesion.conSalon,
   }),
@@ -25,6 +29,7 @@ vi.mock("../lib/api", () => ({
     getAlmacenes: vi.fn(async () => []),
     actualizarUsuario: vi.fn(),
     crearUsuario: vi.fn(),
+    quitarPin: vi.fn(async () => ({ mensaje: "PIN quitado" })),
   },
 }));
 
@@ -85,6 +90,7 @@ async function editarAlMesero() {
 beforeEach(() => {
   vi.clearAllMocks();
   sesion.conSalon = true;
+  sesion.actor = { id: 1, rol: "ADMIN" };
 });
 
 describe("el mesero en Usuarios", () => {
@@ -138,5 +144,72 @@ describe("el mesero en Usuarios", () => {
       fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
     });
     expect(api.actualizarUsuario).toHaveBeenCalledWith(7, expect.objectContaining({ rol: "MESERO" }));
+  });
+});
+
+/**
+ * El PIN de autorización: lo llevan sólo el administrador y los supervisores, y
+ * lo asigna, cambia o quita sólo el administrador. Quitárselo a un supervisor
+ * es sacarle la autorización para anular y fiar de más.
+ */
+describe("el PIN de autorización", () => {
+  const SUPERVISOR = cuenta({
+    id: 5,
+    nombre: "Encargada",
+    usuario: "encargada",
+    rol: "SUPERVISOR",
+    tienePin: true,
+  });
+
+  /** Los botones del PIN; la tarjeta de atrás también dice "PIN" por su marca. */
+  const ACCION_PIN = /^(Asignar|Cambiar|Quitar) PIN$/;
+
+  function abrir(usuario: string) {
+    fireEvent.click(screen.getByRole("button", { name: new RegExp(`@${usuario}(?![a-z0-9])`) }));
+  }
+
+  it("a un mesero no se le ofrece PIN", async () => {
+    // Pasó en QA: el detalle del mesero ofrecía "Asignar PIN".
+    await montar([ADMIN, MESERO]);
+    abrir("mesero");
+    expect(screen.queryByRole("button", { name: ACCION_PIN })).not.toBeInTheDocument();
+  });
+
+  it("un cajero con un PIN viejo no muestra la marca: no autoriza nada", async () => {
+    await montar([ADMIN, cuenta({ id: 9, nombre: "Cajera", usuario: "cajera", rol: "CAJERO", tienePin: true })]);
+    const tarjeta = screen.getByRole("button", { name: /@cajera\b/ });
+    expect(within(tarjeta).queryByText("PIN")).not.toBeInTheDocument();
+  });
+
+  it("el administrador se lo quita a un supervisor y queda sin autorización", async () => {
+    await montar([ADMIN, SUPERVISOR]);
+    abrir("encargada");
+    expect(screen.getByRole("button", { name: "Cambiar PIN" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Quitar PIN" }));
+    const botones = screen.getAllByRole("button", { name: "Quitar PIN" });
+    await act(async () => {
+      fireEvent.click(botones[botones.length - 1]);
+    });
+
+    expect(api.quitarPin).toHaveBeenCalledWith(5);
+    // El detalle ya lo dice, sin cerrarlo y volverlo a abrir.
+    expect(screen.getByRole("button", { name: "Asignar PIN" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Quitar PIN" })).not.toBeInTheDocument();
+  });
+
+  it("al administrador no se le ofrece quitarse el suyo", async () => {
+    await montar([cuenta({ tienePin: true }), SUPERVISOR]);
+    abrir("admin");
+    expect(screen.getByRole("button", { name: "Cambiar PIN" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Quitar PIN" })).not.toBeInTheDocument();
+  });
+
+  it("el supervisor no se pone el PIN: se le dice que se lo asigna el administrador", async () => {
+    sesion.actor = { id: 5, rol: "SUPERVISOR" };
+    await montar([SUPERVISOR]);
+    abrir("encargada");
+    expect(screen.queryByRole("button", { name: ACCION_PIN })).not.toBeInTheDocument();
+    expect(screen.getByText("Tu PIN de autorización te lo asigna el administrador.")).toBeInTheDocument();
   });
 });
