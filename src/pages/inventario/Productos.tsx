@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
+import { useNavigate } from "react-router-dom";
 import { contiene } from "../../lib/texto";
 import { Icon } from "../../components/Icon";
 import HistorialCostos from "../../components/HistorialCostos";
@@ -97,7 +98,7 @@ const OPC_TIPO = [
 ] as const satisfies readonly (readonly [FiltroTipo, string])[];
 
 export default function Productos() {
-  const { incluye, rubro } = useAuth();
+  const { incluye, puede, rubro } = useAuth();
   const [filtroStock, setFiltroStock] = useState<FiltroStock>("todos");
   // La papelera es otra lista del backend, no un filtro sobre la que ya está:
   // los dados de baja no vienen en el catálogo normal.
@@ -360,9 +361,14 @@ export default function Productos() {
         // producto recién creado desaparecería de la lista que estás mirando.
         accion={
           !enPapelera && (
-            <Boton icono="plus" onClick={() => setCreando(true)}>
-              Nuevo
-            </Boton>
+            <>
+              {/* Sólo farmacia, y sólo quien puede cargar mercadería: la carga
+                  mueve stock. Para el restaurante el encabezado queda igual. */}
+              {esFarmacia(rubro) && puede("ingreso_mercaderia") && <BotonCargarExcel />}
+              <Boton icono="plus" onClick={() => setCreando(true)}>
+                Nuevo
+              </Boton>
+            </>
           )
         }
       />
@@ -524,6 +530,24 @@ export default function Productos() {
         onOk={borrar}
       />
     </div>
+  );
+}
+
+/**
+ * Lleva a la carga desde Excel (farmacia). Va aparte para que el router sólo
+ * se pida cuando el botón se dibuja: el resto del catálogo no navega.
+ */
+function BotonCargarExcel() {
+  const navigate = useNavigate();
+  return (
+    <Boton
+      variante="soft"
+      icono="fileText"
+      className="mr-2"
+      onClick={() => navigate("/inventario/productos/importar")}
+    >
+      Cargar desde Excel
+    </Boton>
   );
 }
 

@@ -31,6 +31,7 @@ import DashboardFarmacia from "./pages/farmacia/DashboardFarmacia";
 import GastosFarmacia from "./pages/farmacia/GastosFarmacia";
 import Encargos from "./pages/farmacia/Encargos";
 import FormMercaderia from "./pages/farmacia/FormMercaderia";
+import ImportarMedicamentos from "./pages/farmacia/ImportarMedicamentos";
 import MovimientosFarmacia from "./pages/farmacia/MovimientosFarmacia";
 import Vencimientos from "./pages/farmacia/Vencimientos";
 import LibroControlados from "./pages/farmacia/LibroControlados";
@@ -270,6 +271,17 @@ function Rutas() {
           element={
             <Protegida seccion="productos">
               <Productos />
+            </Protegida>
+          }
+        />
+        {/* Carga desde Excel: crea catálogo Y mueve stock, así que pide lo
+            mismo que el ingreso de mercadería. Esa sección sólo existe en
+            farmacia: fuera del rubro, entrar por URL devuelve al inicio. */}
+        <Route
+          path="/inventario/productos/importar"
+          element={
+            <Protegida seccion="ingreso_mercaderia">
+              <ImportarMedicamentos />
             </Protegida>
           }
         />

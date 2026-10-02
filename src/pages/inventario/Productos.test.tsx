@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Producto } from "../../types";
 
@@ -11,10 +12,18 @@ import type { Producto } from "../../types";
  * trabaja en farmacia, lo que se rompió es el restaurante, no el test.
  */
 
-const sesion = vi.hoisted(() => ({ rubro: "RESTAURANTE" as string | undefined }));
+const sesion = vi.hoisted(() => ({
+  rubro: "RESTAURANTE" as string | undefined,
+  /** Las secciones que el usuario puede abrir, aparte del catálogo. */
+  secciones: [] as string[],
+}));
 
 vi.mock("../../store/AuthContext", () => ({
-  useAuth: () => ({ rubro: sesion.rubro, incluye: () => true }),
+  useAuth: () => ({
+    rubro: sesion.rubro,
+    incluye: () => true,
+    puede: (s: string) => sesion.secciones.includes(s),
+  }),
 }));
 
 vi.mock("../../lib/api", () => ({
@@ -77,6 +86,7 @@ function buscar(texto: string) {
 
 beforeEach(() => {
   getProductos.mockReset();
+  sesion.secciones = [];
 });
 
 describe("bamardev-restaurant: el catálogo se ve como siempre", () => {
@@ -126,11 +136,43 @@ describe("bamardev-restaurant: el catálogo se ve como siempre", () => {
     await act(async () => papelera.soltar([producto({ id: 2, nombre: "Gaseosa 2L" })]));
     expect(screen.getByText("Gaseosa 2L")).toBeInTheDocument();
   });
+
+  it("no ofrece cargar desde Excel, aunque el usuario pueda cargar mercadería", async () => {
+    // La carga desde Excel es de farmacia: el encabezado del restaurante queda
+    // con su "Nuevo" y nada más.
+    sesion.secciones = ["ingreso_mercaderia"];
+    getProductos.mockResolvedValue([producto()]);
+    render(<Productos />);
+    await screen.findByText("Pollo entero");
+    expect(screen.queryByRole("button", { name: /Cargar desde Excel/ })).not.toBeInTheDocument();
+  });
 });
 
 describe("farmacia: lo propio del rubro sigue en pie", () => {
   beforeEach(() => {
     sesion.rubro = "FARMACIA";
+  });
+
+  it("quien carga mercadería ve 'Cargar desde Excel' y lo lleva a la carga", async () => {
+    sesion.secciones = ["ingreso_mercaderia"];
+    getProductos.mockResolvedValue([]);
+    render(
+      <MemoryRouter initialEntries={["/inventario/productos"]}>
+        <Routes>
+          <Route path="/inventario/productos" element={<Productos />} />
+          <Route path="/inventario/productos/importar" element={<p>Pantalla de carga</p>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    fireEvent.click(await screen.findByRole("button", { name: /Cargar desde Excel/ }));
+    expect(screen.getByText("Pantalla de carga")).toBeInTheDocument();
+  });
+
+  it("sin permiso para cargar mercadería, el botón no aparece", async () => {
+    getProductos.mockResolvedValue([]);
+    render(<Productos />);
+    await screen.findByRole("button", { name: "Nuevo" });
+    expect(screen.queryByRole("button", { name: /Cargar desde Excel/ })).not.toBeInTheDocument();
   });
 
   it("buscar algo que no está nombra lo que se buscó", async () => {

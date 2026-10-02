@@ -229,3 +229,15 @@ export function resumenArticulos(productos: string[] | undefined, items: number)
 export function esEntrada(tipo: TipoMovimiento): boolean {
   return tipo === "ENTRADA";
 }
+
+/**
+ * La principal primero, después las otras sucursales y al final los depósitos:
+ * se carga casi siempre en el local donde se vende, y el depósito central es la
+ * excepción. Por nombre venía "Depósito" arriba de todo.
+ */
+export function ordenarSucursales<T extends { nombre: string; tipo?: string; esPrincipal?: boolean }>(
+  lista: T[],
+): T[] {
+  const peso = (a: T) => (a.esPrincipal ? 0 : a.tipo === "DEPOSITO" ? 2 : 1);
+  return [...lista].sort((a, b) => peso(a) - peso(b) || a.nombre.localeCompare(b.nombre, "es"));
+}

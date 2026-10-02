@@ -1759,3 +1759,59 @@ export interface PlantillaGastoInput {
   nota?: string | null;
   sucursalId?: number | null;
 }
+
+// ── Carga desde Excel (farmacia) ───────────────────────────────────────────
+
+/** Un lote de un medicamento del Excel: una fila. Sin código, es stock sin lote. */
+export interface LoteImportado {
+  fila: number;
+  codigo?: string;
+  /** AAAA-MM-DD. */
+  vencimiento?: string;
+  cantidad: number;
+  costo?: number;
+}
+
+/** Un medicamento del Excel con todos sus lotes, como viaja al backend. */
+export interface MedicamentoImportado {
+  /** La primera fila del Excel en la que aparece. */
+  fila: number;
+  codBarra?: string;
+  nombre: string;
+  principioActivo?: string;
+  concentracion?: string;
+  formaFarmaceutica?: string;
+  laboratorio?: string;
+  registroSanitario?: string;
+  categoria?: string;
+  condicionVenta?: CondicionVenta;
+  controlado?: boolean;
+  manejaLote: boolean;
+  precio: number;
+  costo?: number;
+  stockMinimo?: number;
+  lotes: LoteImportado[];
+}
+
+export interface ImportarMedicamentosInput {
+  /** La sucursal donde entra el stock. */
+  almacenId: number;
+  soloRevisar?: boolean;
+  medicamentos: MedicamentoImportado[];
+}
+
+/** LISTO = se va a crear (al revisar). EXISTE = ya estaba y no se tocó, ni su stock. */
+export type EstadoImportado = "LISTO" | "CREADO" | "EXISTE" | "ERROR";
+
+export interface ResultadoImportado {
+  fila: number;
+  estado: EstadoImportado;
+  mensaje?: string;
+  productoId?: number;
+}
+
+export interface RespuestaImportacion {
+  resultados: ResultadoImportado[];
+  /** El ingreso "Inventario inicial" de esta tanda; null si no entró stock. */
+  movimientoId: number | null;
+}

@@ -8,6 +8,8 @@ import type {
   AlmacenInput,
   AnularVentaInput,
   ArticuloMovimiento,
+  ImportarMedicamentosInput,
+  RespuestaImportacion,
   ActualizarUsuarioInput,
   Caja,
   Categoria,
@@ -685,6 +687,15 @@ export const api = {
     request<ArticuloMovimiento[]>(`/movimientos/articulos${qs({ almacenId })}`),
   crearMovimiento: (input: MovimientoInput) =>
     request<Movimiento>("/movimientos", { method: "POST", body: JSON.stringify(input) }),
+  /**
+   * Carga desde Excel (farmacia): una tanda de medicamentos con sus lotes. Con
+   * `soloRevisar` dice qué pasaría con cada uno sin escribir nada.
+   */
+  importarMedicamentos: (input: ImportarMedicamentosInput) =>
+    request<RespuestaImportacion>("/importacion/medicamentos", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
   actualizarMovimiento: (id: number, input: Partial<MovimientoInput>) =>
     request<Movimiento>(`/movimientos/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
   agregarDetalleMovimiento: (id: number, input: DetalleMovimientoInput) =>
