@@ -5,6 +5,7 @@ import {
   Boton,
   Campo,
   Cargando,
+  Confirmar,
   ErrorMsg,
   Input,
   Select,
@@ -107,7 +108,9 @@ export default function FormMercaderia({
   const { state } = useLocation();
   const precarga = esPrecargaSalida(state) ? state : null;
   const { incluye, usuario } = useAuth();
-  const conAprobacion = incluye("aprobacion_inventario");
+  // El extra "Aprobar movimientos" (doble control, se vende aparte): quien
+  // carga sólo guarda y lo aprueba otra persona desde Movimientos, como antes.
+  const dobleControl = incluye("aprobacion_inventario");
 
   const [tipo, setTipo] = useState<TipoMercaderia>(tipoInicial);
   const [almacenId, setAlmacenId] = useState(
@@ -123,8 +126,10 @@ export default function FormMercaderia({
   const [nota, setNota] = useState("");
   const [lineas, setLineas] = useState<LineaForm[]>([]);
   const [buscando, setBuscando] = useState(false);
-  const [error, setError] = useState("");
+  // Llega con aviso cuando se guardó pero no se pudo aprobar (ver `quedoPendiente`).
+  const [error, setError] = useState(() => avisoDe(state));
   const [guardando, setGuardando] = useState(false);
+  const [confirmandoAprobar, setConfirmandoAprobar] = useState(false);
 
   const almacenes = useApi(() => api.getAlmacenes(), []);
   const mov = useApi(
@@ -345,7 +350,44 @@ export default function FormMercaderia({
     return { detalles };
   }
 
-  async function guardar() {
+  /** Lo que se va a mandar, o por qué todavía no se puede guardar. */
+  function prepararGuardado():
+    | { descripcion: string; detalles: DetalleMovimientoInput[] }
+    | { error: string } {
+    const revisado = revisarLineas();
+    if ("error" in revisado) return revisado;
+
+    // Lo tecleado y no elegido no se guarda como texto suelto: es justo lo
+    // que partía las compras de un proveedor en tres nombres.
+    if (entrada && !proveedor && proveedorTexto.trim()) {
+      return {
+        error: `Elegí el proveedor de la lista o crealo con «Crear»: "${proveedorTexto.trim()}" todavía no es uno.`,
+      };
+    }
+
+    // La descripción sigue diciendo el proveedor: es lo que leen Android, el
+    // restaurante y los movimientos de antes de la lista.
+    const descripcion = entrada ? (proveedor?.nombre ?? "") : juntarMotivo(motivo, nota);
+    return { descripcion, detalles: revisado.detalles };
+  }
+
+  /**
+   * "Guardar y aprobar" revisa primero y recién con todo en orden pregunta:
+   * confirmar algo que después no se puede guardar es una pregunta de más.
+   */
+  function pedirAprobacion() {
+    const listo = prepararGuardado();
+    if ("error" in listo) return setError(listo.error);
+    setError("");
+    setConfirmandoAprobar(true);
+  }
+
+  /**
+   * Guardar deja el movimiento PENDIENTE: no toca el stock y se puede seguir
+   * completando (sumar productos, la factura que llega después). Con `aprobar`
+   * se guarda y se aprueba en el mismo momento, que es lo que mueve el stock.
+   */
+  async function guardar(aprobar = false) {
     // El ref y no `guardando`: un setState no deshabilita el botón hasta el
     // siguiente render, así que dos clics rápidos entran los dos en el mismo
     // tick. Acá eso es un ingreso de mercadería duplicado — stock que nunca
@@ -355,39 +397,63 @@ export default function FormMercaderia({
     enVuelo.current = true;
     setError("");
 
-    const revisado = revisarLineas();
-    if ("error" in revisado) {
+    const listo = prepararGuardado();
+    if ("error" in listo) {
       enVuelo.current = false;
-      return setError(revisado.error);
+      setConfirmandoAprobar(false);
+      return setError(listo.error);
     }
-
-    // Lo tecleado y no elegido no se guarda como texto suelto: es justo lo
-    // que partía las compras de un proveedor en tres nombres.
-    if (entrada && !proveedor && proveedorTexto.trim()) {
-      enVuelo.current = false;
-      return setError(
-        `Elegí el proveedor de la lista o crealo con «Crear»: "${proveedorTexto.trim()}" todavía no es uno.`,
-      );
-    }
-
-    // La descripción sigue diciendo el proveedor: es lo que leen Android, el
-    // restaurante y los movimientos de antes de la lista.
-    const descripcion = entrada ? (proveedor?.nombre ?? "") : juntarMotivo(motivo, nota);
 
     setGuardando(true);
+    let id: number;
     try {
       // La ubicación es del artículo en la sucursal, no del movimiento, y se
       // guarda ANTES: si falla, todavía no se creó nada, y reintentar no deja
       // un ingreso duplicado.
       if (entrada) await guardarUbicaciones();
-      if (movId) await guardarEdicion(movId, descripcion, revisado.detalles);
-      else await guardarNuevo(descripcion, revisado.detalles);
-      navigate("/inventario/movimientos");
+      if (movId) {
+        await guardarEdicion(movId, listo.descripcion, listo.detalles);
+        id = movId;
+      } else {
+        id = await guardarNuevo(listo.descripcion, listo.detalles);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo guardar");
       // Se libera para poder reintentar: lo que falló no llegó a crearse.
       enVuelo.current = false;
       setGuardando(false);
+      setConfirmandoAprobar(false);
+      return;
+    }
+
+    if (aprobar) {
+      try {
+        await api.aprobarMovimiento(id);
+      } catch (err) {
+        return quedoPendiente(id, err);
+      }
+    }
+    navigate("/inventario/movimientos");
+  }
+
+  /**
+   * Se guardó, pero el servidor no lo dejó aprobar. El movimiento ya existe
+   * PENDIENTE, así que se sigue desde lo guardado: reintentar con el
+   * formulario de antes lo crearía de nuevo, o le sumaría otra vez los
+   * renglones nuevos.
+   */
+  function quedoPendiente(id: number, err: unknown) {
+    const motivoError = err instanceof Error ? err.message : "no se pudo";
+    const aviso = `Se guardó como pendiente, pero no se pudo aprobar: ${motivoError}`;
+    enVuelo.current = false;
+    setGuardando(false);
+    setConfirmandoAprobar(false);
+    if (movId) {
+      hidratado.current = false;
+      mov.recargar();
+      setError(aviso);
+    } else {
+      navigate(`/inventario/movimientos/${id}/editar`, { replace: true, state: { aviso } });
     }
   }
 
@@ -413,7 +479,11 @@ export default function FormMercaderia({
     }
   }
 
-  async function guardarNuevo(descripcion: string, detalles: DetalleMovimientoInput[]) {
+  /** Crea el movimiento. El servidor SIEMPRE lo crea pendiente. */
+  async function guardarNuevo(
+    descripcion: string,
+    detalles: DetalleMovimientoInput[],
+  ): Promise<number> {
     const input: MovimientoInput = {
       tipo,
       almacenId: Number(almacenId),
@@ -424,10 +494,7 @@ export default function FormMercaderia({
       detalles,
     };
     const creado = await api.crearMovimiento(input);
-    // El servidor SIEMPRE lo crea pendiente y sólo aprobarlo mueve el stock.
-    // Sin el circuito de aprobación no habría botón para hacerlo y la
-    // mercadería nunca entraría, así que se aprueba de una.
-    if (!conAprobacion) await api.aprobarMovimiento(creado.id);
+    return creado.id;
   }
 
   /**
@@ -718,17 +785,30 @@ export default function FormMercaderia({
           >
             {fmtMoney(total)}
           </p>
+          <p className="mt-0.5 text-[12px] text-texto-3">
+            {dobleControl
+              ? "Queda pendiente: el stock se mueve cuando alguien lo aprueba en Movimientos."
+              : "Guardar lo deja pendiente: el stock se mueve recién al aprobarlo."}
+          </p>
         </div>
-        <div className="flex gap-2">
-          <Boton variante="ghost" onClick={volver} disabled={guardando}>
+        {/* En el celular los tres no entran en una fila sin partir el texto:
+            Cancelar y Guardar se reparten la primera y aprobar va abajo, entero. */}
+        <div className="ml-auto flex w-full flex-wrap justify-end gap-2 sm:w-auto">
+          <Boton
+            variante="ghost"
+            onClick={volver}
+            disabled={guardando}
+            className="flex-1 sm:flex-none"
+          >
             Cancelar
           </Boton>
           <Boton
-            variante={entrada ? "primary" : "danger"}
-            onClick={guardar}
+            variante={dobleControl ? (entrada ? "primary" : "danger") : "soft"}
+            onClick={() => guardar()}
             disabled={guardando}
+            className="flex-1 sm:flex-none"
           >
-            {guardando
+            {guardando && !confirmandoAprobar
               ? "Guardando…"
               : movId
                 ? "Guardar cambios"
@@ -736,8 +816,32 @@ export default function FormMercaderia({
                   ? "Guardar entrada"
                   : "Guardar salida"}
           </Boton>
+          {!dobleControl && (
+            <Boton
+              variante={entrada ? "primary" : "danger"}
+              icono="check"
+              onClick={pedirAprobacion}
+              disabled={guardando}
+              className="basis-full sm:basis-auto"
+            >
+              Guardar y aprobar
+            </Boton>
+          )}
         </div>
       </section>
+
+      <Confirmar
+        abierto={confirmandoAprobar}
+        titulo={entrada ? "Aprobar la entrada" : "Aprobar la salida"}
+        texto={`Se guarda y ${entrada ? "se suma al" : "se descuenta del"} stock de ${
+          almacenNombre || "la sucursal"
+        } en este momento. Después sólo se puede revertir anulándolo.`}
+        etiquetaOk="Aprobar"
+        peligroso={!entrada}
+        procesando={guardando}
+        onCancel={() => setConfirmandoAprobar(false)}
+        onOk={() => guardar(true)}
+      />
 
       {buscando && (
         <BuscadorArticulo
@@ -750,6 +854,12 @@ export default function FormMercaderia({
       )}
     </div>
   );
+}
+
+/** El aviso con que se llega después de guardar sin poder aprobar. */
+function avisoDe(state: unknown): string {
+  const aviso = (state as { aviso?: unknown } | null)?.aviso;
+  return typeof aviso === "string" ? aviso : "";
 }
 
 function Encabezado({ titulo, onVolver }: { titulo: string; onVolver: () => void }) {

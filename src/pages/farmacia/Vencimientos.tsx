@@ -256,8 +256,8 @@ function DetalleLote({
 }) {
   const t = TRAMOS.find((x) => x.clave === l.tramo) ?? TRAMOS[3];
   const vencido = l.diasRestantes < 0;
-  // Sin el circuito de aprobación, el formulario de salida aprueba solo al
-  // guardar (ver FormMercaderia): la baja no queda pendiente de nadie.
+  // Con el extra de doble control, la salida sólo se guarda y la aprueba otra
+  // persona; sin él, el formulario ofrece las dos cosas (ver FormMercaderia).
   const conAprobacion = useAuth().incluye("aprobacion_inventario");
 
   return (
@@ -319,7 +319,7 @@ function DetalleLote({
             : "Todavía se puede vender. Muchas droguerías reciben devoluciones con dos o tres meses de anticipación: si va a volver, conviene mandarlo ahora."}{" "}
           {conAprobacion
             ? "La baja se carga como un movimiento PENDIENTE: el stock recién se mueve cuando alguien la aprueba."
-            : "Se abre la salida cargada para revisarla: al guardarla, el stock se descuenta en el momento."}
+            : "Se abre la salida cargada para revisarla: con «Guardar y aprobar» el stock se descuenta en el momento; con «Guardar salida» queda pendiente hasta que alguien la apruebe."}
         </p>
       </div>
     </Modal>

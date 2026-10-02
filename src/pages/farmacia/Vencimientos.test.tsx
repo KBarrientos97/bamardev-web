@@ -160,10 +160,13 @@ describe("Lo que dice el detalle", () => {
     expect(dialogo).not.toHaveTextContent("las ventas lo toman antes que a los lotes buenos");
   });
 
-  it("sin aprobación de movimientos, la baja descuenta al guardarla", async () => {
+  it("sin el doble control, la baja se aprueba en el momento o se deja pendiente", async () => {
     await abrirLote("Paracetamol 500 mg");
     const dialogo = screen.getByRole("dialog");
-    expect(dialogo).toHaveTextContent("el stock se descuenta en el momento");
+    expect(dialogo).toHaveTextContent(
+      "con «Guardar y aprobar» el stock se descuenta en el momento",
+    );
+    expect(dialogo).toHaveTextContent("con «Guardar salida» queda pendiente");
     expect(dialogo).not.toHaveTextContent("PENDIENTE");
   });
 

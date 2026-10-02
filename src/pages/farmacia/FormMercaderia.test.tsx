@@ -12,11 +12,18 @@ import type { Almacen, ArticuloMovimiento, Movimiento } from "../../types";
  * recepción de droguería sin avisar y sin forma de deshacerlo.
  */
 
-/** Qué compró el negocio. `lotes` es PRO: una farmacia BASICO no lo tiene. */
-const plan = vi.hoisted(() => ({ lotes: true }));
+/**
+ * Qué compró el negocio. `lotes` es PRO: una farmacia BASICO no lo tiene.
+ * `dobleControl` es el extra `aprobacion_inventario`, que no trae ningún plan:
+ * la farmacia de QA no lo tiene, y sin él guardar aprobaba solo.
+ */
+const plan = vi.hoisted(() => ({ lotes: true, dobleControl: false }));
 
 vi.mock("../../store/AuthContext", () => ({
-  useAuth: () => ({ incluye: (c: string) => (c === "lotes" ? plan.lotes : true) }),
+  useAuth: () => ({
+    incluye: (c: string) =>
+      c === "lotes" ? plan.lotes : c === "aprobacion_inventario" ? plan.dobleControl : true,
+  }),
 }));
 
 vi.mock("../../lib/api", () => ({
@@ -129,6 +136,7 @@ const salidaPendiente: Movimiento = {
 beforeEach(() => {
   vi.clearAllMocks();
   plan.lotes = true;
+  plan.dobleControl = false;
   vi.mocked(api.getAlmacenes).mockResolvedValue([
     almacen(DEPOSITO, "Depósito"),
     almacen(MOSTRADOR, "Mostrador"),
@@ -514,5 +522,121 @@ describe("El proveedor del ingreso", () => {
       950,
       expect.objectContaining({ proveedorId: null }),
     );
+  });
+});
+
+/**
+ * Guardar y aprobar son dos cosas. Guardar deja el movimiento PENDIENTE —no
+ * toca el stock y se puede seguir completando, como en la app del
+ * restaurante—; "Guardar y aprobar" lo guarda y mueve el stock en el momento.
+ * Antes, sin el extra de aprobación en el plan, guardar aprobaba solo y no
+ * había forma de dejar una recepción a medias.
+ */
+describe("Guardar o aprobar", () => {
+  async function abrirSalidaNueva() {
+    render(
+      <MemoryRouter
+        initialEntries={[
+          {
+            pathname: "/inventario/movimientos/salida",
+            state: { productoId: 7, almacenId: DEPOSITO, cantidad: 2, motivo: "Vencimiento" },
+          },
+        ]}
+      >
+        <Routes>
+          <Route
+            path="/inventario/movimientos/salida"
+            element={<FormMercaderia key="salida" tipoInicial="SALIDA" />}
+          />
+          <Route path="/inventario/movimientos/:id/editar" element={<FormMercaderia />} />
+          <Route path="/inventario/movimientos" element={<p>Registro de movimientos</p>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    expect(await screen.findByText("Amoxicilina 500 mg")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByDisplayValue("2")).toBeInTheDocument());
+  }
+
+  const aprobarEnElDialogo = () => clickEn(/^Aprobar$/);
+
+  it("Guardar la deja pendiente: no la aprueba", async () => {
+    await abrirSalidaNueva();
+    await clickEn(/^Guardar salida$/);
+
+    expect(api.crearMovimiento).toHaveBeenCalledTimes(1);
+    expect(api.aprobarMovimiento).not.toHaveBeenCalled();
+    expect(await screen.findByText("Registro de movimientos")).toBeInTheDocument();
+  });
+
+  it("«Guardar y aprobar» pregunta antes y, al confirmar, guarda y aprueba", async () => {
+    await abrirSalidaNueva();
+    await clickEn(/Guardar y aprobar/);
+
+    expect(screen.getByRole("dialog", { name: "Aprobar la salida" })).toHaveTextContent(
+      "se descuenta del stock de Depósito",
+    );
+    expect(api.crearMovimiento).not.toHaveBeenCalled();
+
+    await aprobarEnElDialogo();
+    expect(api.crearMovimiento).toHaveBeenCalledTimes(1);
+    expect(api.aprobarMovimiento).toHaveBeenCalledWith(999);
+    expect(await screen.findByText("Registro de movimientos")).toBeInTheDocument();
+  });
+
+  it("si no se pudo aprobar, queda pendiente y reintentar no la duplica", async () => {
+    vi.mocked(api.aprobarMovimiento).mockRejectedValueOnce(new Error("No hay stock suficiente"));
+    await abrirSalidaNueva();
+    await clickEn(/Guardar y aprobar/);
+    await aprobarEnElDialogo();
+
+    // Se sigue desde lo guardado: el formulario pasa a editar ese movimiento.
+    expect(
+      await screen.findByText(
+        "Se guardó como pendiente, pero no se pudo aprobar: No hay stock suficiente",
+      ),
+    ).toBeInTheDocument();
+    expect(api.getMovimiento).toHaveBeenCalledWith(999);
+    expect(await screen.findByRole("button", { name: /Guardar cambios/ })).toBeInTheDocument();
+
+    await clickEn(/Guardar y aprobar/);
+    await aprobarEnElDialogo();
+    expect(api.crearMovimiento).toHaveBeenCalledTimes(1);
+    expect(api.aprobarMovimiento).toHaveBeenCalledTimes(2);
+  });
+
+  it("editando un pendiente, «Guardar y aprobar» guarda los cambios y lo aprueba", async () => {
+    await abrirEdicion();
+    await clickEn(/Guardar y aprobar/);
+    await aprobarEnElDialogo();
+
+    expect(api.actualizarMovimiento).toHaveBeenCalledWith(950, expect.anything());
+    expect(api.aprobarMovimiento).toHaveBeenCalledWith(950);
+    expect(api.crearMovimiento).not.toHaveBeenCalled();
+  });
+
+  it("con el extra de doble control sólo guarda: lo aprueba otra persona", async () => {
+    // Quien compró "Aprobar movimientos" sigue como antes: el que carga no aprueba.
+    plan.dobleControl = true;
+    await abrirSalidaNueva();
+    expect(screen.queryByRole("button", { name: /Guardar y aprobar/ })).not.toBeInTheDocument();
+
+    await clickEn(/^Guardar salida$/);
+    expect(api.crearMovimiento).toHaveBeenCalledTimes(1);
+    expect(api.aprobarMovimiento).not.toHaveBeenCalled();
+  });
+
+  it("si falta algo, avisa y no pregunta", async () => {
+    await abrirEdicion();
+    await clickEn(/Entrada/);
+    const campo = screen.getByRole("combobox", { name: "Proveedor" });
+    await act(async () => {
+      fireEvent.focus(campo);
+      fireEvent.change(campo, { target: { value: "Droguería Nueva" } });
+    });
+    await clickEn(/Guardar y aprobar/);
+
+    expect(screen.getByText(/Elegí el proveedor de la lista o crealo/)).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: /Aprobar/ })).not.toBeInTheDocument();
+    expect(api.actualizarMovimiento).not.toHaveBeenCalled();
   });
 });
