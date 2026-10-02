@@ -1,5 +1,13 @@
 import { useEffect, useRef } from "react";
-import { BrowserRouter, Navigate, Route, Routes, useNavigate } from "react-router-dom";
+import {
+  BrowserRouter,
+  Navigate,
+  Route,
+  Routes,
+  useLocation,
+  useNavigate,
+} from "react-router-dom";
+import AtajaErrores from "./components/AtajaErrores";
 import Layout from "./components/Layout";
 import { rutaInicial, type Seccion } from "./lib/permisos";
 import { esFarmacia } from "./lib/rubro";
@@ -414,11 +422,22 @@ function Rutas() {
   );
 }
 
+/**
+ * Ninguna pantalla deja la página en blanco: si una revienta, se ve un aviso
+ * con salida (ver `AtajaErrores`), que se rearma al cambiar de dirección.
+ */
+function SinPantallaEnBlanco({ children }: { children: React.ReactNode }) {
+  const { pathname } = useLocation();
+  return <AtajaErrores reiniciarCon={pathname}>{children}</AtajaErrores>;
+}
+
 export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <Rutas />
+        <SinPantallaEnBlanco>
+          <Rutas />
+        </SinPantallaEnBlanco>
       </AuthProvider>
     </BrowserRouter>
   );
