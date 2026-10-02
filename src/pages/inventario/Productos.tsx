@@ -943,7 +943,12 @@ function FormProductoCuerpo({
   const [condicionVenta, setCondicionVenta] = useState<CondicionVenta>(
     producto?.condicionVenta ?? "LIBRE",
   );
-  const [manejaLote, setManejaLote] = useState(producto?.manejaLote ?? false);
+  // Un medicamento nuevo arranca controlado por lote y vencimiento. Olvidarse de
+  // apagarlo sólo pide un dato de más al recibir; olvidarse de prenderlo lo deja
+  // sin control de vencimiento, y nada lo avisa: el ingreso muestra "—" donde
+  // irían lote y fecha. El valor viaja sólo con la ficha de farmacia (ver
+  // `guardar`), así que en otro rubro no sale de este formulario.
+  const [manejaLote, setManejaLote] = useState(producto?.manejaLote ?? true);
   const [controlado, setControlado] = useState(producto?.controlado ?? false);
 
   const [error, setError] = useState("");

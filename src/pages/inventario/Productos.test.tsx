@@ -200,4 +200,18 @@ describe("el alta: el stock de un producto entra por Movimientos", () => {
     expect(screen.queryByText("Stock inicial")).not.toBeInTheDocument();
     expect(screen.getByText(/con un Ingreso de mercadería: ahí van el lote/)).toBeInTheDocument();
   });
+
+  it("farmacia: un medicamento nuevo arranca controlado por lote y vencimiento", async () => {
+    // Apagado por defecto, olvidarse de prenderlo dejaba el medicamento sin
+    // control de vencimiento: el ingreso mostraba "—" donde van lote y fecha.
+    sesion.rubro = "FARMACIA";
+    await abrirAlta();
+    expect(screen.getByRole("checkbox", { name: /Maneja lote y vencimiento/ })).toBeChecked();
+  });
+
+  it("restaurante: el alta no tiene nada de lote", async () => {
+    sesion.rubro = "RESTAURANTE";
+    await abrirAlta();
+    expect(screen.queryByRole("checkbox", { name: /Maneja lote/ })).not.toBeInTheDocument();
+  });
 });
