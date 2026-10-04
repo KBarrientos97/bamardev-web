@@ -250,7 +250,11 @@ export default function Movimientos() {
         <DetalleMovimiento
           id={detalleId}
           onClose={() => setDetalleId(null)}
-          onCambio={() => {
+          // Un renglón agregado, corregido o quitado refresca la lista de atrás
+          // SIN cerrar el detalle: se seguía cargando y había que volver a
+          // abrirlo para agregar el siguiente.
+          onCambio={() => movimientos.recargar()}
+          onCerrarYRecargar={() => {
             setDetalleId(null);
             movimientos.recargar();
           }}
@@ -331,11 +335,15 @@ function DetalleMovimiento({
   id,
   onClose,
   onCambio,
+  onCerrarYRecargar,
   onError,
 }: {
   id: number;
   onClose: () => void;
+  /** Cambió un renglón: refresca la lista de atrás sin cerrar el detalle. */
   onCambio: () => void;
+  /** Se aprobó, anuló o eliminó: el detalle ya no tiene más que hacer. */
+  onCerrarYRecargar: () => void;
   onError: (mensaje: string) => void;
 }) {
   const mov = useApi(() => api.getMovimiento(id), [id]);
@@ -393,7 +401,7 @@ function DetalleMovimiento({
       else await api.eliminarMovimiento(m.id);
       setConfirmando(null);
       onError("");
-      onCambio();
+      onCerrarYRecargar();
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo completar la acción");
       setConfirmando(null);

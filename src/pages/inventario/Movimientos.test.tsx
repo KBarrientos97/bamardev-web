@@ -30,6 +30,7 @@ vi.mock("../../lib/api", () => ({
     crearMovimiento: vi.fn(async () => ({ id: 900 })),
     aprobarMovimiento: vi.fn(async () => ({})),
     agregarDetalleMovimiento: vi.fn(async () => ({})),
+    eliminarDetalleMovimiento: vi.fn(async () => ({})),
   },
 }));
 
@@ -305,5 +306,75 @@ describe("Agregar artículo a un movimiento pendiente", () => {
     fireEvent.click(within(dialogo).getByRole("button", { name: "Cambiar Simba 2L" }));
 
     expect(within(dialogo).getByRole("combobox", { name: "Buscar artículo" })).toBeInTheDocument();
+  });
+});
+
+describe("El detalle no se cierra mientras se cargan renglones", () => {
+  const pendiente = movimiento(7, {
+    estado: "PENDIENTE",
+    comprobante: "PEN-7",
+    detalles: [
+      { id: 70, productoId: 2, producto: "Coca Cola 2L", cantidad: 3, costo: 9, descripcion: null },
+    ],
+  });
+
+  async function abrirDetalle() {
+    vi.mocked(api.getMovimientos).mockResolvedValue([pendiente]);
+    vi.mocked(api.getMovimiento).mockResolvedValue(pendiente);
+    render(<Movimientos />);
+    fireEvent.click(await screen.findByText("PEN-7"));
+    return screen.findByRole("dialog", { name: "Detalle del movimiento" });
+  }
+
+  it("guardar un renglón deja el detalle abierto para agregar el siguiente", async () => {
+    // Antes se cerraba entero y había que volver a abrirlo por cada artículo.
+    await abrirDetalle();
+    fireEvent.click(await screen.findByRole("button", { name: "Agregar artículo" }));
+    const agregar = screen.getByRole("dialog", { name: "Agregar artículo" });
+    fireEvent.change(within(agregar).getByRole("combobox", { name: "Buscar artículo" }), {
+      target: { value: "simba" },
+    });
+    fireEvent.mouseDown(within(agregar).getByText("Simba 2L"));
+    fireEvent.change(within(agregar).getByLabelText("Cantidad"), { target: { value: "2" } });
+    fireEvent.click(within(agregar).getByRole("button", { name: "Guardar" }));
+
+    await waitFor(() => expect(api.agregarDetalleMovimiento).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "Agregar artículo" })).not.toBeInTheDocument(),
+    );
+    expect(screen.getByRole("dialog", { name: "Detalle del movimiento" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Agregar artículo" })).toBeInTheDocument();
+    // Y la lista de atrás se refrescó (el total del movimiento cambió).
+    expect(vi.mocked(api.getMovimientos).mock.calls.length).toBeGreaterThan(1);
+  });
+
+  it("quitar un renglón tampoco lo cierra", async () => {
+    await abrirDetalle();
+    fireEvent.click(await screen.findByRole("button", { name: "Quitar Coca Cola 2L" }));
+    fireEvent.click(
+      within(screen.getByRole("dialog", { name: "Quitar artículo" })).getByRole("button", {
+        name: "Quitar",
+      }),
+    );
+
+    await waitFor(() => expect(api.eliminarDetalleMovimiento).toHaveBeenCalledWith(70));
+    expect(screen.getByRole("dialog", { name: "Detalle del movimiento" })).toBeInTheDocument();
+  });
+
+  it("aprobar sí lo cierra: ya no queda nada por hacer ahí", async () => {
+    await abrirDetalle();
+    fireEvent.click(await screen.findByRole("button", { name: "Aprobar" }));
+    fireEvent.click(
+      within(screen.getByRole("dialog", { name: "Aprobar movimiento" })).getByRole("button", {
+        name: "Aprobar",
+      }),
+    );
+
+    await waitFor(() => expect(api.aprobarMovimiento).toHaveBeenCalledWith(7));
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("dialog", { name: "Detalle del movimiento" }),
+      ).not.toBeInTheDocument(),
+    );
   });
 });
