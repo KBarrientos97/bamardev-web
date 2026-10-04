@@ -48,15 +48,20 @@ export function esFarmacia(rubro: string | null | undefined): boolean {
  * diccionario que nadie mantiene y en pantallas que hablan mitad en un idioma
  * y mitad en otro; acá sólo entran las palabras que de verdad suenan mal en el
  * otro rubro. Un farmacéutico no busca "artículos", busca medicamentos — pero
- * "Categorías", "Almacenes" o "Movimientos" son las mismas dos palabras en los
- * dos mostradores.
+ * "Categorías" o "Movimientos" son las mismas dos palabras en los dos
+ * mostradores.
+ *
+ * "Almacenes" entró después: para el dueño de una farmacia un almacén es otro
+ * LOCAL, una sucursal (octubre de 2026), y el resto de sus pantallas ya decía
+ * "sucursal". El restaurante sigue diciendo "almacén", como su app.
  */
-export type Termino = "articulos" | "articulo" | "articuloCap";
+export type Termino = "articulos" | "articulo" | "articuloCap" | "almacenes";
 
 const BASE: Record<Termino, string> = {
   articulos: "Artículos",
   articulo: "artículo",
   articuloCap: "Artículo",
+  almacenes: "Almacenes",
 };
 
 /**
@@ -68,6 +73,7 @@ const POR_RUBRO: Partial<Record<Rubro, Partial<Record<Termino, string>>>> = {
     articulos: "Medicamentos",
     articulo: "medicamento",
     articuloCap: "Medicamento",
+    almacenes: "Sucursales",
   },
 };
 

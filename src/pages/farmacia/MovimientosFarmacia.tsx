@@ -118,7 +118,8 @@ export default function MovimientosFarmacia() {
           <strong>Nuevo movimiento</strong> cargás una <strong>entrada</strong> (recepción
           de proveedor, con lote y vencimiento) o una <strong>salida</strong> (baja por
           vencimiento, daño, robo o carga de más). Si un movimiento pendiente tiene un
-          error, usá <strong>Editar</strong>; si ya está aprobado, corregilo con una salida.
+          error, usá <strong>Editar</strong>; si ya está aprobado, <strong>Anular</strong>{" "}
+          devuelve el stock y lo cargás de nuevo bien.
         </p>
       </div>
 

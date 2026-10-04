@@ -105,6 +105,12 @@ describe("con el plan completo", () => {
     expect(await screen.findByText("86 u.")).toBeInTheDocument();
   });
 
+  it("los locales se cuentan como sucursales, no almacenes", async () => {
+    await abrir();
+    expect(screen.getByText("Sucursales")).toBeInTheDocument();
+    expect(screen.queryByText("Almacenes")).not.toBeInTheDocument();
+  });
+
   it("lo más vendido va por unidades, no por plata", async () => {
     // El reporte las manda ordenadas por ingresos; el Ibuprofeno llega primero.
     await abrir();

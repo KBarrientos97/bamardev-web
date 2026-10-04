@@ -16,10 +16,50 @@ import {
 } from "../../components/ui";
 import { api } from "../../lib/api";
 import { fmtMoney, fmtNum } from "../../lib/format";
+import { esFarmacia, termino } from "../../lib/rubro";
 import { useApi } from "../../lib/useApi";
+import { useAuth } from "../../store/AuthContext";
 import type { Almacen, AlmacenInput, Producto, TipoAlmacen } from "../../types";
 
+/**
+ * Cómo se nombra cada lugar en los textos de esta pantalla.
+ *
+ * En farmacia no se dice "almacén": para el dueño es otro local, una sucursal
+ * (octubre de 2026), y así lo dicen sus demás pantallas. El depósito sigue
+ * siendo depósito —guarda pero no vende—, así que en farmacia el nombre sale
+ * del TIPO de cada uno. El restaurante habla como siempre: lo usa en
+ * producción y su app dice "almacén".
+ */
+function nombreDel(farmacia: boolean, tipo: TipoAlmacen = "SUCURSAL") {
+  if (!farmacia) {
+    return {
+      cap: "Almacén",
+      del: "del almacén",
+      nuevo: "Nuevo almacén",
+      vacio: "Almacén vacío",
+      aEste: "a esta ubicación",
+    };
+  }
+  return tipo === "DEPOSITO"
+    ? {
+        cap: "Depósito",
+        del: "del depósito",
+        nuevo: "Nuevo depósito",
+        vacio: "Depósito vacío",
+        aEste: "a este depósito",
+      }
+    : {
+        cap: "Sucursal",
+        del: "de la sucursal",
+        nuevo: "Nueva sucursal",
+        vacio: "Sucursal vacía",
+        aEste: "a esta sucursal",
+      };
+}
+
 export default function Almacenes() {
+  const { rubro } = useAuth();
+  const farmacia = esFarmacia(rubro);
   const almacenes = useApi(() => api.getAlmacenes(), []);
 
   const [q, setQ] = useState("");
@@ -88,7 +128,7 @@ export default function Almacenes() {
   return (
     <div className="mx-auto max-w-6xl space-y-4 p-5">
       <EncabezadoPagina
-        titulo="Almacenes"
+        titulo={termino(rubro, "almacenes")}
         subtitulo={
           // Se nombran por separado: un depósito no vende y no cuenta para el
           // cupo del plan, así que contarlo junto con las sucursales daría un
@@ -118,16 +158,22 @@ export default function Almacenes() {
         <div className="card">
           <Vacio
             icono="warehouse"
-            titulo={lista.length ? "Sin resultados" : "Todavía no hay almacenes"}
+            titulo={
+              lista.length
+                ? "Sin resultados"
+                : `Todavía no hay ${termino(rubro, "almacenes").toLowerCase()}`
+            }
             texto={
               lista.length
                 ? "Probá con otro texto."
-                : "Creá la primera ubicación donde guardás el stock."
+                : farmacia
+                  ? "Creá la primera sucursal: donde vendés y guardás el stock."
+                  : "Creá la primera ubicación donde guardás el stock."
             }
             accion={
               !lista.length && (
                 <Boton icono="plus" onClick={() => setCreando(true)}>
-                  Nuevo almacén
+                  {nombreDel(farmacia).nuevo}
                 </Boton>
               )
             }
@@ -143,6 +189,7 @@ export default function Almacenes() {
 
       <DetalleAlmacen
         almacen={detalle}
+        farmacia={farmacia}
         onClose={() => setDetalle(null)}
         onHacerPrincipal={hacerPrincipal}
         onCambiado={() => almacenes.recargar()}
@@ -156,6 +203,7 @@ export default function Almacenes() {
       <FormAlmacen
         abierto={creando || !!editando}
         almacen={editando}
+        farmacia={farmacia}
         onClose={() => {
           setCreando(false);
           setEditando(null);
@@ -169,7 +217,7 @@ export default function Almacenes() {
 
       <Confirmar
         abierto={!!aBorrar}
-        titulo="Eliminar almacén"
+        titulo={`Eliminar ${nombreDel(farmacia, aBorrar?.tipo).cap.toLowerCase()}`}
         texto={`¿Eliminar "${aBorrar?.nombre}"? Si todavía guarda stock o tiene movimientos, el backend no va a dejar.`}
         etiquetaOk="Eliminar"
         peligroso
@@ -229,6 +277,7 @@ function TarjetaAlmacen({ almacen: a, onClick }: { almacen: Almacen; onClick: ()
 
 function DetalleAlmacen({
   almacen: a,
+  farmacia,
   onClose,
   onEditar,
   onEliminar,
@@ -236,6 +285,7 @@ function DetalleAlmacen({
   onCambiado,
 }: {
   almacen: Almacen | null;
+  farmacia: boolean;
   onClose: () => void;
   onEditar: (a: Almacen) => void;
   onEliminar: (a: Almacen) => void;
@@ -245,6 +295,7 @@ function DetalleAlmacen({
 }) {
   if (!a) return null;
   const articulos = a.articulos ?? [];
+  const lugar = nombreDel(farmacia, a.tipo);
   /**
    * Sólo se ofrece cuando cambia algo: un depósito no puede ser principal
    * (no vende) y el que ya lo es no tiene a dónde ir.
@@ -255,7 +306,7 @@ function DetalleAlmacen({
   return (
     <Modal
       abierto
-      titulo="Detalle del almacén"
+      titulo={`Detalle ${lugar.del}`}
       subtitulo={a.nombre}
       onClose={onClose}
       acciones={
@@ -317,8 +368,8 @@ function DetalleAlmacen({
           {articulos.length === 0 ? (
             <Vacio
               icono="archive"
-              titulo="Almacén vacío"
-              texto="Todavía no entró stock a esta ubicación."
+              titulo={lugar.vacio}
+              texto={`Todavía no entró stock ${lugar.aEste}.`}
             />
           ) : (
             <ul className="divide-y divide-borde-soft rounded-xl border border-borde">
@@ -689,11 +740,13 @@ function Dato({ label, valor }: { label: string; valor: string }) {
 function FormAlmacen({
   abierto,
   almacen,
+  farmacia,
   onClose,
   onGuardado,
 }: {
   abierto: boolean;
   almacen: Almacen | null;
+  farmacia: boolean;
   onClose: () => void;
   onGuardado: () => void;
 }) {
@@ -704,6 +757,7 @@ function FormAlmacen({
     <FormAlmacenCuerpo
       key={almacen?.id ?? "nuevo"}
       almacen={almacen}
+      farmacia={farmacia}
       onClose={onClose}
       onGuardado={onGuardado}
     />
@@ -712,10 +766,12 @@ function FormAlmacen({
 
 function FormAlmacenCuerpo({
   almacen,
+  farmacia,
   onClose,
   onGuardado,
 }: {
   almacen: Almacen | null;
+  farmacia: boolean;
   onClose: () => void;
   onGuardado: () => void;
 }) {
@@ -728,6 +784,7 @@ function FormAlmacenCuerpo({
   const [activo, setActivo] = useState(almacen?.activo ?? true);
   const [error, setError] = useState("");
   const [guardando, setGuardando] = useState(false);
+  const lugar = nombreDel(farmacia, tipo);
 
   async function guardar() {
     setError("");
@@ -757,7 +814,8 @@ function FormAlmacenCuerpo({
   return (
     <Modal
       abierto
-      titulo={esEdicion ? "Editar almacén" : "Nuevo almacén"}
+      // En farmacia sigue al tipo elegido: "Nueva sucursal" o "Nuevo depósito".
+      titulo={esEdicion ? `Editar ${lugar.cap.toLowerCase()}` : lugar.nuevo}
       cerrarAlClicAfuera={false}
       subtitulo={esEdicion ? almacen.nombre : "Dónde se guarda el stock"}
       onClose={onClose}

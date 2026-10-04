@@ -8,6 +8,12 @@ describe("termino", () => {
     expect(termino("FARMACIA", "articuloCap")).toBe("Medicamento");
   });
 
+  it("en una farmacia los almacenes son sucursales; el restaurante no cambia", () => {
+    expect(termino("FARMACIA", "almacenes")).toBe("Sucursales");
+    expect(termino("RESTAURANTE", "almacenes")).toBe("Almacenes");
+    expect(termino(undefined, "almacenes")).toBe("Almacenes");
+  });
+
   it("los demás rubros hablan como siempre", () => {
     // Lo que no está en la tabla usa la palabra de base: un rubro nuevo no
     // puede cambiarle los textos a un negocio que ya trabaja.

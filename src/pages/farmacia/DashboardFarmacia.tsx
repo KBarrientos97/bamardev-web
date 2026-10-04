@@ -106,7 +106,8 @@ export default function DashboardFarmacia() {
           <Numeros
             datos={datos}
             ubicaciones={
-              suc.nombre || nombresDe(suc.sucursales.map((s) => s.nombre)) || "Ubicaciones"
+              // "Ubicaciones" no: en farmacia la ubicación es el estante.
+              suc.nombre || nombresDe(suc.sucursales.map((s) => s.nombre)) || "En el negocio"
             }
             porVencer={
               conLotes && venc.datos
@@ -174,7 +175,7 @@ function Numeros({
         tono="azul"
       />
       <Numero
-        etiqueta="Almacenes"
+        etiqueta="Sucursales"
         valor={fmtNum(datos.almacenes)}
         pie={ubicaciones}
         icono="warehouse"

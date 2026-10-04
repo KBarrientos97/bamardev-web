@@ -354,7 +354,7 @@ export default function Productos() {
                   ? ""
                   : almacenElegido
                     ? ` · stock en ${almacenElegido.nombre}`
-                    : " · stock total, sumando todos los almacenes"
+                    : " · stock total, sumando todas las sucursales"
               }`
         }
         // En la papelera no se ofrece "Nuevo": el alta cae en el catálogo y el
@@ -1171,7 +1171,9 @@ function FormProductoCuerpo({
               esCombo
                 ? "El combo descuenta los ingredientes de su receta al venderse."
                 : conStock
-                  ? "Se le lleva stock en los almacenes."
+                  ? conFicha
+                    ? "Se le lleva stock en las sucursales."
+                    : "Se le lleva stock en los almacenes."
                   : "Se prepara al vender: no lleva stock propio."
             }
           >

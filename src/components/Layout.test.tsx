@@ -11,7 +11,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  * barra tiene que quedar exactamente como estaba.
  */
 
-const sesion = vi.hoisted(() => ({ rubro: "FARMACIA" as string }));
+const sesion = vi.hoisted(() => ({ rubro: "FARMACIA" as string, features: [] as string[] }));
 
 vi.mock("../store/AuthContext", async () => {
   const { puedeVer } = await import("../lib/permisos");
@@ -23,7 +23,7 @@ vi.mock("../store/AuthContext", async () => {
       logout: () => {},
       rubro: sesion.rubro,
       puede: (s: Parameters<typeof puedeVer>[1]) =>
-        puedeVer({ rol: "ADMIN", modulos: [], features: [], rubro: sesion.rubro }, s),
+        puedeVer({ rol: "ADMIN", modulos: [], features: sesion.features, rubro: sesion.rubro }, s),
     }),
   };
 });
@@ -46,6 +46,30 @@ function abrir(ruta: string) {
 
 beforeEach(() => {
   sesion.rubro = "FARMACIA";
+  sesion.features = [];
+});
+
+describe("Almacenes según el rubro", () => {
+  // La sección existe con varias sucursales: es la feature del plan.
+  beforeEach(() => {
+    sesion.features = ["multi_almacen"];
+  });
+
+  it("en farmacia el ítem se llama Sucursales", () => {
+    const nav = abrir("/inventario/almacenes");
+    expect(nav.getByRole("link", { name: "Sucursales" })).toHaveAttribute(
+      "href",
+      "/inventario/almacenes",
+    );
+    expect(nav.queryByRole("link", { name: "Almacenes" })).not.toBeInTheDocument();
+  });
+
+  it("en el restaurante sigue siendo Almacenes", () => {
+    sesion.rubro = "RESTAURANTE";
+    const nav = abrir("/inventario/almacenes");
+    expect(nav.getByRole("link", { name: "Almacenes" })).toBeInTheDocument();
+    expect(nav.queryByRole("link", { name: "Sucursales" })).not.toBeInTheDocument();
+  });
 });
 
 describe("farmacia: Dashboard es la primera pantalla de Inventario", () => {
