@@ -256,6 +256,31 @@ describe("Editar un movimiento pendiente", () => {
  * Sin la key el formulario se quedaba en Entrada con la URL de salida: se
  * guardaba una entrada creyendo estar cargando una baja.
  */
+describe("Una transferencia no se edita acá", () => {
+  it("abierta por esta dirección se va a su pantalla, sin guardar nada", async () => {
+    // Este formulario sólo conoce entrada y salida: la transferencia se habría
+    // guardado como una entrada y la mercadería dejaba de viajar.
+    vi.mocked(api.getMovimiento).mockResolvedValue({
+      ...salidaPendiente,
+      tipo: "TRANSFERENCIA",
+      almacenDestino: { id: MOSTRADOR, nombre: "Mostrador" },
+    });
+    render(
+      <MemoryRouter initialEntries={["/inventario/movimientos/950/editar"]}>
+        <Routes>
+          <Route path="/inventario/movimientos/:id/editar" element={<FormMercaderia />} />
+          <Route
+            path="/inventario/movimientos/transferencia/:id/editar"
+            element={<p>pantalla de transferencia</p>}
+          />
+        </Routes>
+      </MemoryRouter>,
+    );
+    expect(await screen.findByText("pantalla de transferencia")).toBeInTheDocument();
+    expect(api.actualizarMovimiento).not.toHaveBeenCalled();
+  });
+});
+
 describe("Cambiar de pantalla desde el menú", () => {
   function comoEnApp() {
     return render(

@@ -8,7 +8,9 @@ import {
   mesAIso,
   partirMotivo,
   resumenArticulos,
+  rutaDeEdicion,
   tecleoMes,
+  vencidasQueSalen,
 } from "./mercaderia";
 
 describe("vencimiento en MM/AAAA", () => {
@@ -200,5 +202,39 @@ describe("qué se movió, en la tarjeta del registro", () => {
     expect(resumenArticulos(undefined, 3)).toBe("3 artículos");
     expect(resumenArticulos([], 1)).toBe("1 artículo");
     expect(resumenArticulos(undefined, 0)).toBe("0 artículos");
+  });
+});
+
+describe("rutaDeEdicion", () => {
+  it("la transferencia se edita en su pantalla; lo demás, en la de ingreso y salida", () => {
+    expect(rutaDeEdicion({ id: 5, tipo: "TRANSFERENCIA" })).toBe(
+      "/inventario/movimientos/transferencia/5/editar",
+    );
+    expect(rutaDeEdicion({ id: 5, tipo: "ENTRADA" })).toBe("/inventario/movimientos/5/editar");
+    expect(rutaDeEdicion({ id: 5, tipo: "SALIDA" })).toBe("/inventario/movimientos/5/editar");
+  });
+});
+
+describe("vencidasQueSalen", () => {
+  // En el orden del servidor (FEFO): el vencido primero.
+  const lotes = [
+    { cantidad: 2, tramo: "VENCIDO" as const },
+    { cantidad: 3, tramo: "HASTA_30" as const },
+    { cantidad: 10, tramo: null },
+  ];
+
+  it("lo vencido sale primero, hasta donde alcance lo que se manda", () => {
+    expect(vencidasQueSalen(lotes, 1)).toBe(1);
+    expect(vencidasQueSalen(lotes, 2)).toBe(2);
+    expect(vencidasQueSalen(lotes, 10)).toBe(2);
+  });
+
+  it("por vencer no es vencido", () => {
+    expect(vencidasQueSalen(lotes.slice(1), 13)).toBe(0);
+  });
+
+  it("sin lotes, o sin cantidad, no hay nada vencido que avisar", () => {
+    expect(vencidasQueSalen([], 5)).toBe(0);
+    expect(vencidasQueSalen(lotes, 0)).toBe(0);
   });
 });

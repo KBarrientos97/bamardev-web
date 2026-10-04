@@ -100,6 +100,14 @@ const ITEMS: ItemNav[] = [
     seccion: "salida_mercaderia",
     nivel: 2,
   },
+  // Sólo con el plan de varias sucursales: con un solo local no hay a dónde.
+  {
+    a: "/inventario/movimientos/transferencia",
+    label: "Transferir mercadería",
+    icono: "swap",
+    seccion: "transferencia_mercaderia",
+    nivel: 2,
+  },
   // Va suelto y no como sub-ítem de Inventario: las mesas no son catálogo,
   // son el salón. En la app está en el mismo lugar del drawer.
   { a: "/mesas", label: "Mesas del salón", icono: "grid", seccion: "mesas" },

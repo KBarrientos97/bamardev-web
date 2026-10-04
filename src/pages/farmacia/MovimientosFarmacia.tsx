@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Icon } from "../../components/Icon";
+import { Icon, type NombreIcono } from "../../components/Icon";
 import { Buscador, Chips, EncabezadoPagina } from "../../components/filtros";
 import {
   Badge,
@@ -18,23 +18,70 @@ import { parsearMonto } from "../../lib/dinero";
 import { fmtFecha, fmtFechaHora, fmtMoney, fmtNum } from "../../lib/format";
 import { contiene } from "../../lib/texto";
 import { useApi } from "../../lib/useApi";
-import type { DetalleMovimiento, EstadoDocumento, Movimiento } from "../../types";
+import type {
+  DetalleMovimiento,
+  EstadoDocumento,
+  Movimiento,
+  TipoMovimiento,
+} from "../../types";
 import {
   esEntrada,
   etiquetaTipo,
   isoAMes,
   mesAIso,
   resumenArticulos,
+  rutaDeEdicion,
   tecleoMes,
 } from "./mercaderia";
 
-type FiltroTipo = "todos" | "ENTRADA" | "SALIDA";
+type FiltroTipo = "todos" | "ENTRADA" | "SALIDA" | "TRANSFERENCIA";
 
 const OPC_TIPO = [
   ["todos", "Todos los tipos"],
   ["ENTRADA", "Entradas"],
   ["SALIDA", "Salidas"],
+  ["TRANSFERENCIA", "Transferencias"],
 ] as const satisfies readonly (readonly [FiltroTipo, string])[];
+
+/**
+ * Cómo se pinta cada tipo: la entrada suma (verde), la salida resta (rojo) y la
+ * transferencia no suma ni resta, cambia de sucursal (azul). El ajuste, que ya
+ * no se carga, se sigue viendo como antes: como una salida.
+ */
+function aspectoDe(tipo: TipoMovimiento): {
+  icono: NombreIcono;
+  caja: string;
+  texto: string;
+  fondo: string;
+} {
+  if (tipo === "ENTRADA")
+    return {
+      icono: "trendingUp",
+      caja: "bg-primary-50 text-primary-700",
+      texto: "text-primary-700",
+      fondo: "bg-primary-50",
+    };
+  if (tipo === "TRANSFERENCIA")
+    return {
+      icono: "swap",
+      caja: "bg-info-bg text-info-text",
+      texto: "text-info-text",
+      fondo: "bg-info-bg/60",
+    };
+  return {
+    icono: "trendingDown",
+    caja: "bg-danger-bg text-danger-text",
+    texto: "text-danger-text",
+    fondo: "bg-danger-bg/60",
+  };
+}
+
+/** "Centro → Equipetrol" en una transferencia; la sucursal sola en lo demás. */
+function dondeDe(m: Movimiento): string | undefined {
+  if (m.tipo === "TRANSFERENCIA" && m.almacenDestino)
+    return `${m.almacen?.nombre ?? "—"} → ${m.almacenDestino.nombre}`;
+  return m.almacen?.nombre;
+}
 
 const TONO_ESTADO: Record<EstadoDocumento, "verde" | "amarillo" | "rojo"> = {
   APROBADO: "verde",
@@ -93,6 +140,19 @@ export default function MovimientosFarmacia() {
 
   const pendientes = lista.filter((m) => m.estado === "PENDIENTE").length;
 
+  // El chip de transferencias, sólo si hay alguna (o si está elegido, para
+  // poder soltarlo): una farmacia de un local nunca va a tener ninguna.
+  const opcionesTipo = useMemo(
+    () =>
+      OPC_TIPO.filter(
+        ([k]) =>
+          k !== "TRANSFERENCIA" ||
+          filtroTipo === k ||
+          (movimientos.datos ?? []).some((m) => m.tipo === k),
+      ),
+    [movimientos.datos, filtroTipo],
+  );
+
   return (
     <div className="mx-auto max-w-5xl space-y-4 p-5">
       <EncabezadoPagina
@@ -131,7 +191,7 @@ export default function MovimientosFarmacia() {
             placeholder="Buscar por medicamento, factura, proveedor o motivo"
           />
         </div>
-        <Chips valor={filtroTipo} opciones={OPC_TIPO} onChange={setFiltroTipo} />
+        <Chips valor={filtroTipo} opciones={opcionesTipo} onChange={setFiltroTipo} />
       </div>
 
       <ErrorMsg>{errorAccion || movimientos.error}</ErrorMsg>
@@ -185,13 +245,14 @@ export default function MovimientosFarmacia() {
 }
 
 function Tarjeta({ mov: m, onClick }: { mov: Movimiento; onClick: () => void }) {
-  const entrada = esEntrada(m.tipo);
+  const aspecto = aspectoDe(m.tipo);
 
   // Lo que hace reconocible al movimiento de un vistazo: en una entrada, de qué
-  // droguería vino; en una salida, por qué se dio de baja.
+  // droguería vino; en una salida, por qué se dio de baja; en una
+  // transferencia, de qué sucursal a cuál.
   const detalle = [
     fmtFecha(m.fecha),
-    m.almacen?.nombre,
+    dondeDe(m),
     resumenArticulos(m.productos, m.items),
     m.descripcion || null,
   ]
@@ -205,11 +266,9 @@ function Tarjeta({ mov: m, onClick }: { mov: Movimiento; onClick: () => void }) 
         className="card flex w-full items-center gap-3 p-4 text-left transition-shadow hover:shadow-md"
       >
         <span
-          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
-            entrada ? "bg-primary-50 text-primary-700" : "bg-danger-bg text-danger-text"
-          }`}
+          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${aspecto.caja}`}
         >
-          <Icon name={entrada ? "trendingUp" : "trendingDown"} size={19} />
+          <Icon name={aspecto.icono} size={19} />
         </span>
 
         <div className="min-w-0 flex-1">
@@ -227,13 +286,7 @@ function Tarjeta({ mov: m, onClick }: { mov: Movimiento; onClick: () => void }) 
 
         <div className="shrink-0 text-right">
           <p className="text-sm font-bold text-texto">{fmtMoney(m.monto)}</p>
-          <p
-            className={`text-xs font-semibold ${
-              entrada ? "text-primary-700" : "text-danger-text"
-            }`}
-          >
-            {etiquetaTipo(m.tipo)}
-          </p>
+          <p className={`text-xs font-semibold ${aspecto.texto}`}>{etiquetaTipo(m.tipo)}</p>
         </div>
       </button>
     </li>
@@ -281,6 +334,7 @@ function DetalleMercaderia({
   const detalles = m?.detalles ?? [];
   const pendiente = m?.estado === "PENDIENTE";
   const entrada = m ? esEntrada(m.tipo) : true;
+  const transferencia = m?.tipo === "TRANSFERENCIA";
   const total = detalles.reduce((acc, d) => acc + (d.subtotal ?? d.cantidad * d.costo), 0);
   const conLote = detalles.some((d) => d.loteCodigo);
 
@@ -332,7 +386,9 @@ function DetalleMercaderia({
                 variante="ghost"
                 icono="edit"
                 disabled={procesando}
-                onClick={() => navigate(`/inventario/movimientos/${id}/editar`)}
+                // La transferencia se edita en su pantalla: la de ingreso y
+                // salida la guardaría como una entrada.
+                onClick={() => m && navigate(rutaDeEdicion(m))}
               >
                 Editar
               </Boton>
@@ -370,26 +426,25 @@ function DetalleMercaderia({
           <ErrorMsg>{mov.error || "No se pudo cargar el movimiento"}</ErrorMsg>
         ) : (
           <div className="space-y-4">
-            <div
-              className={`flex items-center gap-3 rounded-xl p-4 ${
-                entrada ? "bg-primary-50" : "bg-danger-bg/60"
-              }`}
-            >
+            <div className={`flex items-center gap-3 rounded-xl p-4 ${aspectoDe(m.tipo).fondo}`}>
               <span
                 className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ${
-                  entrada
-                    ? "bg-primary-100 text-primary-700"
-                    : "bg-danger-bg text-danger-text"
+                  entrada ? "bg-primary-100 text-primary-700" : aspectoDe(m.tipo).caja
                 }`}
               >
-                <Icon name={entrada ? "trendingUp" : "trendingDown"} size={24} />
+                <Icon name={aspectoDe(m.tipo).icono} size={24} />
               </span>
               <div className="min-w-0">
                 <h3 className="truncate text-base font-bold text-texto">
                   {etiquetaTipo(m.tipo)} · #{m.id}
                 </h3>
                 <p className="text-[13px] text-texto-3">
-                  {m.descripcion || (entrada ? "Sin proveedor anotado" : "Sin motivo anotado")}
+                  {m.descripcion ||
+                    (entrada
+                      ? "Sin proveedor anotado"
+                      : transferencia
+                        ? "Sin nota"
+                        : "Sin motivo anotado")}
                 </p>
                 <Badge tono={TONO_ESTADO[m.estado]} className="mt-1.5">
                   {m.estado}
@@ -398,9 +453,19 @@ function DetalleMercaderia({
             </div>
 
             <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-              <Dato label="Sucursal" valor={m.almacen?.nombre ?? "—"} />
+              {transferencia ? (
+                <>
+                  <Dato label="Sale de" valor={m.almacen?.nombre ?? "—"} />
+                  <Dato label="Va a" valor={m.almacenDestino?.nombre ?? "—"} />
+                </>
+              ) : (
+                <Dato label="Sucursal" valor={m.almacen?.nombre ?? "—"} />
+              )}
               <Dato label="Fecha" valor={fmtFecha(m.fecha)} />
-              <Dato label={entrada ? "Nº factura" : "Motivo"} valor={pieDeDato(m, entrada)} />
+              {/* La transferencia no tiene factura ni motivo: su nota va arriba. */}
+              {!transferencia && (
+                <Dato label={entrada ? "Nº factura" : "Motivo"} valor={pieDeDato(m, entrada)} />
+              )}
               {m.fechaAprobacion && (
                 <Dato label="Aprobado" valor={fmtFechaHora(m.fechaAprobacion)} />
               )}

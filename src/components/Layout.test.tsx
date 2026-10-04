@@ -64,6 +64,26 @@ describe("Almacenes según el rubro", () => {
     expect(nav.queryByRole("link", { name: "Almacenes" })).not.toBeInTheDocument();
   });
 
+  it("farmacia con varias sucursales: Transferir mercadería, debajo de Movimientos", () => {
+    const nav = abrir("/inventario/movimientos");
+    expect(nav.getByRole("link", { name: "Transferir mercadería" })).toHaveAttribute(
+      "href",
+      "/inventario/movimientos/transferencia",
+    );
+  });
+
+  it("sin el plan de varias sucursales no aparece", () => {
+    sesion.features = ["inventario"];
+    const nav = abrir("/inventario/movimientos");
+    expect(nav.queryByRole("link", { name: "Transferir mercadería" })).not.toBeInTheDocument();
+  });
+
+  it("en el restaurante no existe", () => {
+    sesion.rubro = "RESTAURANTE";
+    const nav = abrir("/inventario/movimientos");
+    expect(nav.queryByRole("link", { name: "Transferir mercadería" })).not.toBeInTheDocument();
+  });
+
   it("en el restaurante sigue siendo Almacenes", () => {
     sesion.rubro = "RESTAURANTE";
     const nav = abrir("/inventario/almacenes");

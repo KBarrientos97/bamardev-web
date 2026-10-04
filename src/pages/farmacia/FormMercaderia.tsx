@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useLocation, useNavigate, useParams } from "react-router-dom";
+import { Navigate, useLocation, useNavigate, useParams } from "react-router-dom";
 import { Icon } from "../../components/Icon";
 import {
   Boton,
@@ -34,6 +34,7 @@ import {
   mesAIso,
   ordenarSucursales,
   partirMotivo,
+  rutaDeEdicion,
   tecleoMes,
 } from "./mercaderia";
 
@@ -86,9 +87,9 @@ const LISTA_UBICACIONES = "ubicaciones-de-la-sucursal";
  *     de quién viene y con qué factura; una salida quiere saber **por qué**, y
  *     esa es la pregunta que después arma el número de mermas.
  *  3. **No ofrece ajuste ni transferencia.** Siguen existiendo en el motor y se
- *     ven en el registro; simplemente no se cargan desde acá. Quien mueve
- *     mercadería entre el mostrador y el depósito no está haciendo lo mismo que
- *     quien recibe una compra.
+ *     ven en el registro; no se cargan desde acá. Quien manda mercadería a otra
+ *     sucursal no está haciendo lo mismo que quien recibe una compra: la
+ *     transferencia tiene su pantalla (`FormTransferencia`).
  *
  * Con `movId` (ruta `…/:id/editar`) edita un movimiento PENDIENTE en vez de
  * crear uno. Uno aprobado ya movió el stock y no se toca: se corrige con una
@@ -213,7 +214,8 @@ export default function FormMercaderia({
   // después manda lo que la persona esté escribiendo.
   useEffect(() => {
     const m = mov.datos;
-    if (!m || hidratado.current) return;
+    // La transferencia no se carga acá: se va a su pantalla (ver abajo).
+    if (!m || hidratado.current || m.tipo === "TRANSFERENCIA") return;
     hidratado.current = true;
 
     setTipo(m.tipo === "SALIDA" ? "SALIDA" : "ENTRADA");
@@ -554,6 +556,12 @@ export default function FormMercaderia({
         <Cargando />
       </div>
     );
+  }
+
+  // Una transferencia tiene su pantalla. Abierta acá —que sólo conoce entrada y
+  // salida— se guardaba como una entrada y la mercadería dejaba de viajar.
+  if (movId && mov.datos?.tipo === "TRANSFERENCIA") {
+    return <Navigate to={rutaDeEdicion(mov.datos)} replace />;
   }
 
   if (movId && mov.datos && mov.datos.estado !== "PENDIENTE") {

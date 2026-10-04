@@ -1,4 +1,4 @@
-import type { TipoMovimiento } from "../../types";
+import type { TipoMovimiento, TramoVencimiento } from "../../types";
 
 /**
  * Lo que una farmacia entiende por mover stock.
@@ -194,9 +194,9 @@ export function avisoVidaUtil(iso: string | null | undefined, hoy = Date.now()):
 // ── Vocabulario de la pantalla ──────────────────────────────────────────────
 
 /**
- * Cómo se llama cada tipo en el mostrador de una farmacia. Sólo entrada y
- * salida: el ajuste y la transferencia existen en el motor y se siguen viendo
- * en el registro, pero no se cargan desde acá (ver la pantalla de lista).
+ * Cómo se llama cada tipo en el mostrador de una farmacia. Se cargan entrada,
+ * salida y transferencia; el ajuste existe en el motor y se sigue viendo en el
+ * registro, pero no se carga desde acá.
  */
 export function etiquetaTipo(tipo: TipoMovimiento): string {
   const m: Record<TipoMovimiento, string> = {
@@ -228,6 +228,41 @@ export function resumenArticulos(productos: string[] | undefined, items: number)
  */
 export function esEntrada(tipo: TipoMovimiento): boolean {
   return tipo === "ENTRADA";
+}
+
+/**
+ * Dónde se edita un movimiento pendiente. La transferencia tiene su pantalla:
+ * abierta en la de ingreso y salida, se guardaba como una entrada.
+ */
+export function rutaDeEdicion(m: { id: number; tipo: TipoMovimiento }): string {
+  return m.tipo === "TRANSFERENCIA"
+    ? `/inventario/movimientos/transferencia/${m.id}/editar`
+    : `/inventario/movimientos/${m.id}/editar`;
+}
+
+/**
+ * Cuántas unidades VENCIDAS se van al mandar `cantidad` de un producto.
+ *
+ * El servidor saca los lotes por FEFO —primero el que vence antes— y eso
+ * incluye lo ya vencido: si en el origen quedó un lote vencido sin dar de baja,
+ * viaja primero. Decirlo antes de guardar evita mandarle a otra sucursal
+ * mercadería que ahí tampoco se puede vender.
+ *
+ * `lotes` viene como lo manda `/lotes/producto`: con saldo y ya en orden FEFO.
+ */
+export function vencidasQueSalen(
+  lotes: { cantidad: number; tramo: TramoVencimiento | null }[],
+  cantidad: number,
+): number {
+  let falta = cantidad;
+  let vencidas = 0;
+  for (const l of lotes) {
+    if (falta <= 0) break;
+    const toma = Math.min(l.cantidad, falta);
+    if (l.tramo === "VENCIDO") vencidas += toma;
+    falta -= toma;
+  }
+  return Math.round(vencidas * 1000) / 1000;
 }
 
 /**

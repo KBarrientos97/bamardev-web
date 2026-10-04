@@ -486,6 +486,33 @@ describe("ingreso y salida de mercadería", () => {
   });
 });
 
+describe("transferencia de mercadería", () => {
+  it("la farmacia con varias sucursales la tiene", () => {
+    expect(puedeVer({ ...ctx("ADMIN"), rubro: "FARMACIA" }, "transferencia_mercaderia")).toBe(
+      true,
+    );
+  });
+
+  it("sin el plan de varias sucursales no hay a dónde transferir", () => {
+    const unLocal = {
+      ...ctx("ADMIN", TODOS_MODULOS, PLAN_FULL.filter((f) => f !== "multi_almacen")),
+      rubro: "FARMACIA",
+    };
+    expect(puedeVer(unLocal, "transferencia_mercaderia")).toBe(false);
+    // Ingreso y salida no dependen de eso.
+    expect(puedeVer(unLocal, "ingreso_mercaderia")).toBe(true);
+  });
+
+  it("el cajero no mueve stock, y fuera de farmacia no existe", () => {
+    const cajero = { ...ctx("CAJERO", ["POS", "CAJA"]), rubro: "FARMACIA" };
+    expect(puedeVer(cajero, "transferencia_mercaderia")).toBe(false);
+    expect(puedeVer({ ...ctx("ADMIN"), rubro: "RESTAURANTE" }, "transferencia_mercaderia")).toBe(
+      false,
+    );
+    expect(puedeVer(ctx("ADMIN"), "transferencia_mercaderia")).toBe(false);
+  });
+});
+
 describe("gastos operativos", () => {
   it("el admin y el supervisor lo ven; el cajero no", () => {
     // El backend lo exige con RolesGuard: un cajero no carga gastos del

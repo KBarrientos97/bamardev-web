@@ -31,6 +31,7 @@ import DashboardFarmacia from "./pages/farmacia/DashboardFarmacia";
 import GastosFarmacia from "./pages/farmacia/GastosFarmacia";
 import Encargos from "./pages/farmacia/Encargos";
 import FormMercaderia from "./pages/farmacia/FormMercaderia";
+import FormTransferencia from "./pages/farmacia/FormTransferencia";
 import ImportarMedicamentos from "./pages/farmacia/ImportarMedicamentos";
 import MovimientosFarmacia from "./pages/farmacia/MovimientosFarmacia";
 import Vencimientos from "./pages/farmacia/Vencimientos";
@@ -355,6 +356,25 @@ function Rutas() {
           element={
             <Protegida seccion="ingreso_mercaderia">
               <FormMercaderia />
+            </Protegida>
+          }
+        />
+        {/* Mandar mercadería de una sucursal a otra. Las `key` por lo mismo que
+            arriba: si se guarda pero no se puede aprobar, el alta pasa a la
+            edición de lo guardado, y tiene que arrancar de nuevo. */}
+        <Route
+          path="/inventario/movimientos/transferencia"
+          element={
+            <Protegida seccion="transferencia_mercaderia">
+              <FormTransferencia key="nueva" />
+            </Protegida>
+          }
+        />
+        <Route
+          path="/inventario/movimientos/transferencia/:id/editar"
+          element={
+            <Protegida seccion="transferencia_mercaderia">
+              <FormTransferencia key="editar" />
             </Protegida>
           }
         />

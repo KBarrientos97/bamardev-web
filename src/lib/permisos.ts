@@ -81,6 +81,11 @@ export type Seccion =
    * movimiento de SALIDA con pantalla propia. Sólo farmacia.
    */
   | "salida_mercaderia"
+  /**
+   * Mandar mercadería de una sucursal a otra, con su lote. Es el movimiento de
+   * TRANSFERENCIA con pantalla propia. Sólo farmacia.
+   */
+  | "transferencia_mercaderia"
   /** Gastos operativos: el libro del resultado, aparte de la caja. */
   | "gastos";
 
@@ -137,6 +142,9 @@ const REQUISITOS: Record<Seccion, { modulo: Modulo; feature: Feature | null }> =
   // ni se le pueden dar a alguien que no pueda ver el registro.
   ingreso_mercaderia: { modulo: "INVENTARIO", feature: "inventario" },
   salida_mercaderia: { modulo: "INVENTARIO", feature: "inventario" },
+  // Transferir es mover stock entre sucursales: sin el plan de varias
+  // sucursales (la misma llave que la pantalla de Sucursales) no hay a dónde.
+  transferencia_mercaderia: { modulo: "INVENTARIO", feature: "multi_almacen" },
   // Igual que en Android (`Permisos.kt`): el modulo es REPORTES porque un
   // gasto es del libro del resultado, no de la caja del turno, y la feature
   // `gastos` esta en el catalogo desde sep-2026.
@@ -182,6 +190,7 @@ const ROLES_PERMITIDOS: Partial<Record<Seccion, Rol[]>> = {
   // que puede ver Movimientos: mover stock no es atender el mostrador.
   ingreso_mercaderia: ["ADMIN", "SUPERVISOR"],
   salida_mercaderia: ["ADMIN", "SUPERVISOR"],
+  transferencia_mercaderia: ["ADMIN", "SUPERVISOR"],
   // El backend lo exige con RolesGuard: un cajero no carga gastos del negocio.
   gastos: ["ADMIN", "SUPERVISOR"],
 };
@@ -215,6 +224,7 @@ const SOLO_EN_RUBRO: Partial<Record<Seccion, Rubro[]>> = {
   // se le saca nada, se le agrega un atajo a la farmacia.
   ingreso_mercaderia: ["FARMACIA"],
   salida_mercaderia: ["FARMACIA"],
+  transferencia_mercaderia: ["FARMACIA"],
 };
 
 const FUERA_DE_RUBRO: Partial<Record<Seccion, Rubro[]>> = {
