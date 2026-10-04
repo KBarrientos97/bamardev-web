@@ -20,6 +20,7 @@ import { fmtFecha, fmtFechaHora, fmtMoney, fmtNum, isoDia } from "../../lib/form
 import { useApi } from "../../lib/useApi";
 import { useSucursales } from "../../lib/useSucursales";
 import { useAuth } from "../../store/AuthContext";
+import ElegirArticulo from "./ElegirArticulo";
 import type {
   Almacen,
   ArticuloMovimiento,
@@ -69,6 +70,17 @@ const ETIQUETA_TIPO: Record<TipoMovimiento, string> = {
   AJUSTE: "Ajuste",
   TRANSFERENCIA: "Transferencia",
 };
+
+/**
+ * Lo que se puede cargar desde "Nuevo": entrada y salida, igual que la app.
+ *
+ * El AJUSTE no se ofrece: fija el stock en lo que se escribe (no suma ni
+ * resta), confundía con la salida y, una vez aprobado, no se puede anular. La
+ * TRANSFERENCIA tampoco: este formulario no tiene dónde elegir el destino, así
+ * que el servidor la rechazaba siempre. Un error se corrige anulando el
+ * movimiento y cargándolo bien. Los ajustes que ya existen se siguen viendo.
+ */
+const TIPOS_DEL_FORMULARIO: TipoMovimiento[] = ["ENTRADA", "SALIDA"];
 
 /**
  * Sólo la entrada suma: salida y ajuste se leen como movimiento negativo.
@@ -138,6 +150,20 @@ export default function Movimientos() {
     [incluye, pendientes],
   );
 
+  // Ajustes y transferencias ya no se cargan: su chip aparece sólo si hay
+  // alguno viejo para encontrar (o si está elegido, para poder soltarlo).
+  const opcionesTipo = useMemo(
+    () =>
+      OPC_TIPO.filter(
+        ([k]) =>
+          k === "todos" ||
+          TIPOS_DEL_FORMULARIO.includes(k) ||
+          k === filtroTipo ||
+          (movimientos.datos ?? []).some((m) => m.tipo === k),
+      ),
+    [movimientos.datos, filtroTipo],
+  );
+
   return (
     <div className="mx-auto max-w-6xl space-y-4 p-5">
       <EncabezadoPagina
@@ -184,7 +210,7 @@ export default function Movimientos() {
         {suc.elegir && (
           <Chips valor={suc.valorChip} opciones={suc.opciones} onChange={suc.alElegir} />
         )}
-        <Chips valor={filtroTipo} opciones={OPC_TIPO} onChange={setFiltroTipo} />
+        <Chips valor={filtroTipo} opciones={opcionesTipo} onChange={setFiltroTipo} />
         <Chips valor={filtroEstado} opciones={opcionesEstado} onChange={setFiltroEstado} />
         <Chips valor={filtroOrigen} opciones={OPC_ORIGEN} onChange={setFiltroOrigen} />
       </div>
@@ -729,30 +755,47 @@ function FormLineaMovimiento({
       }
     >
       <div className="space-y-3">
-        <Campo label="Artículo">
-          <Select
-            value={productoId}
-            onChange={(e) => {
-              const id = e.target.value;
-              setProductoId(id);
-              // El costo del artículo se autocompleta SIEMPRE, también en 0:
-              // saltearlo dejaba pegado el costo del artículo anterior.
-              const a = articulos.find((x) => String(x.id) === id);
-              if (a && !esEdicion) setCosto(String(a.costo ?? 0));
-            }}
-            // Cambiar de artículo en una línea ya guardada obligaría a
-            // revalidar el stock de dos productos a la vez; se edita la
-            // cantidad o se quita la línea y se agrega otra.
-            disabled={esEdicion}
-          >
-            <option value="">Elegí un artículo</option>
-            {articulos.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.nombre} · {fmtNum(a.stock, 2)} en stock
-              </option>
-            ))}
-          </Select>
-        </Campo>
+        {/* Un div y no `Campo`: Campo es un <label>, y adentro va la lista del
+            buscador con sus botones. */}
+        <div>
+          <span className="mb-1.5 block text-[13px] font-semibold text-texto-2">Artículo</span>
+          {esEdicion || elegido ? (
+            <div className="flex min-h-[42px] items-center gap-2 rounded-xl border border-borde bg-muted px-3.5 py-2 text-sm">
+              <span className="min-w-0 flex-1 truncate font-semibold text-texto">
+                {elegido?.nombre ?? linea?.producto}
+              </span>
+              {elegido && (
+                <span className="shrink-0 text-xs text-texto-3">
+                  {fmtNum(elegido.stock, 2)} {elegido.unidad} en stock
+                </span>
+              )}
+              {/* Cambiar de artículo en una línea ya guardada obligaría a
+                  revalidar el stock de dos productos a la vez; se edita la
+                  cantidad o se quita la línea y se agrega otra. */}
+              {!esEdicion && (
+                <button
+                  type="button"
+                  onClick={() => setProductoId("")}
+                  aria-label={`Cambiar ${elegido?.nombre ?? "el artículo"}`}
+                  className="shrink-0 rounded-lg p-1 text-texto-3 hover:bg-white hover:text-texto"
+                >
+                  <Icon name="close" size={16} />
+                </button>
+              )}
+            </div>
+          ) : (
+            <ElegirArticulo
+              articulos={articulos}
+              autoFocus
+              onElegir={(a) => {
+                setProductoId(String(a.id));
+                // El costo del artículo se autocompleta SIEMPRE, también en 0:
+                // saltearlo dejaba pegado el costo del artículo anterior.
+                setCosto(String(a.costo ?? 0));
+              }}
+            />
+          )}
+        </div>
 
         <div className="grid grid-cols-2 gap-3">
           <Campo
@@ -770,7 +813,8 @@ function FormLineaMovimiento({
               min="0"
               value={cantidad}
               onChange={(e) => setCantidad(e.target.value)}
-              autoFocus
+              // En el alta el foco va al buscador: primero se elige qué.
+              autoFocus={esEdicion}
             />
           </Campo>
           <Campo label="Costo unitario">
@@ -1009,7 +1053,7 @@ function FormMovimientoCuerpo({
         <div className="grid gap-3 sm:grid-cols-2">
           <Campo label="Tipo">
             <Select value={tipo} onChange={(e) => setTipo(e.target.value as TipoMovimiento)}>
-              {(Object.keys(ETIQUETA_TIPO) as TipoMovimiento[]).map((t) => (
+              {TIPOS_DEL_FORMULARIO.map((t) => (
                 <option key={t} value={t}>
                   {ETIQUETA_TIPO[t]}
                 </option>
@@ -1137,30 +1181,17 @@ function FormMovimientoCuerpo({
             </ul>
           )}
 
-          <Select
-            value=""
-            disabled={!almacenId || articulos.cargando}
-            onChange={(e) => {
-              const art = (articulos.datos ?? []).find(
-                (a) => a.id === Number(e.target.value),
-              );
-              if (art) agregarLinea(art);
-            }}
-          >
-            <option value="">
-              {!almacenId
+          <ElegirArticulo
+            articulos={disponibles}
+            onElegir={agregarLinea}
+            bloqueado={
+              !almacenId
                 ? "Elegí primero un almacén…"
                 : articulos.cargando
                   ? "Cargando artículos…"
-                  : "+ Agregar artículo…"}
-            </option>
-            {disponibles.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.nombre} — {fmtNum(a.stock, 2)} {a.unidad}
-                {a.esInsumo ? " (insumo)" : ""}
-              </option>
-            ))}
-          </Select>
+                  : undefined
+            }
+          />
 
           {lineas.length > 0 && (
             <div className="mt-3 flex items-center justify-between border-t border-borde-soft pt-3">
