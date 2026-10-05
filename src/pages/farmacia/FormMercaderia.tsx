@@ -62,13 +62,25 @@ interface LineaForm {
   /** MM/AAAA, como viene impreso en el envase. */
   loteMes: string;
   /**
-   * Dónde se guarda en la sucursal, SI la persona la tocó. Sin tocar vale
-   * `undefined` y se muestra la que el artículo ya tiene ahí: así, al cambiar
-   * de sucursal, cada renglón enseña la de la nueva; y lo que alguien escribió
-   * no se pierde: cambiar la sucursal nunca borra lo cargado.
-   * Vacía a propósito = quitarla.
+   * Dónde se guarda, SÓLO en las sucursales donde la persona la tocó, y
+   * atada a la sucursal para la que se escribió. Una sola ubicación suelta no
+   * alcanzaba: "Cajón C" escrito mirando Centro se guardaba en Equipetrol si
+   * después se cambiaba el selector, pisando la de Equipetrol y dejando
+   * Centro vacío. Sin entrada para la sucursal elegida se muestra la que el
+   * artículo ya tiene ahí. Vacía a propósito = quitarla.
    */
-  ubicacion?: string;
+  ubicaciones?: Record<number, UbicacionEscrita>;
+}
+
+/** Una ubicación tecleada en el ingreso, para una sucursal en particular. */
+interface UbicacionEscrita {
+  texto: string;
+  /**
+   * La que el artículo tenía en ESA sucursal cuando se empezó a escribir. Se
+   * guarda acá porque al momento de guardar la lista de artículos puede ser
+   * la de otra sucursal, y comparar contra esa diría "no cambió" sin mirar.
+   */
+  antes: string;
 }
 
 /** El datalist de las ubicaciones que ya se usan en la sucursal. */
@@ -167,6 +179,8 @@ export default function FormMercaderia({
    */
   const almacenNombre =
     (almacenes.datos ?? []).find((a) => String(a.id) === almacenId)?.nombre ?? "";
+  const nombreSucursal = (id: number) =>
+    (almacenes.datos ?? []).find((a) => a.id === id)?.nombre ?? "otra sucursal";
 
   /** Las líneas tal como están en el servidor, para saber qué se borró. */
   const originales = useRef<number[]>([]);
@@ -461,22 +475,34 @@ export default function FormMercaderia({
 
   /**
    * Las ubicaciones que cambiaron en este ingreso: las que la persona tocó y
-   * dicen algo distinto de lo que el artículo ya tenía en la sucursal. Una
-   * vacía la borra, que es cómo se deja de usar.
+   * dicen algo distinto de lo que el artículo tenía en ESA sucursal. Cada una
+   * va a la sucursal para la que se escribió, no a la que quedó elegida al
+   * final. Una vacía la borra, que es cómo se deja de usar.
    */
   async function guardarUbicaciones() {
+    let guardadas = 0;
     for (const l of lineas) {
-      if (l.ubicacion === undefined) continue;
-      const nueva = l.ubicacion.trim();
-      const actual = porId.get(l.articuloId)?.ubicacion ?? "";
-      if (nueva === actual) continue;
-      try {
-        await api.fijarUbicacionProducto(l.articuloId, Number(almacenId), nueva || null);
-      } catch (err) {
-        const motivoError = err instanceof Error ? err.message : "no se pudo";
-        throw new Error(
-          `No se pudo guardar la ubicación de "${l.nombre}" (${motivoError}). La mercadería todavía no se guardó: probá de nuevo.`,
-        );
+      for (const [id, u] of Object.entries(l.ubicaciones ?? {})) {
+        const nueva = u.texto.trim();
+        if (nueva === u.antes) continue;
+        try {
+          await api.fijarUbicacionProducto(l.articuloId, Number(id), nueva || null);
+          guardadas++;
+        } catch (err) {
+          const motivoError = err instanceof Error ? err.message : "no se pudo";
+          // Las anteriores ya se escribieron y no se deshacen: decir "no se
+          // guardó nada" era mentir. Reintentar las vuelve a mandar iguales,
+          // que no cambia nada.
+          const queQuedo =
+            guardadas === 0
+              ? "La mercadería todavía no se guardó"
+              : guardadas === 1
+                ? "La ubicación anterior ya quedó guardada, pero la mercadería todavía no"
+                : `Las ${guardadas} ubicaciones anteriores ya quedaron guardadas, pero la mercadería todavía no`;
+          throw new Error(
+            `No se pudo guardar la ubicación de "${l.nombre}" (${motivoError}). ${queQuedo}: probá de nuevo.`,
+          );
+        }
       }
     }
   }
@@ -751,6 +777,10 @@ export default function FormMercaderia({
                     unidad={porId.get(l.articuloId)?.unidad}
                     concentracion={porId.get(l.articuloId)?.concentracion}
                     ubicacionActual={porId.get(l.articuloId)?.ubicacion ?? null}
+                    // Mientras llega la lista de la sucursal nueva, `porId`
+                    // todavía es la de la anterior: su ubicación no es de acá.
+                    ubicacionLista={!articulos.cargando}
+                    nombreSucursal={nombreSucursal}
                     onEditar={(cambio) => editarLinea(i, cambio)}
                     onQuitar={() => setLineas((ls) => ls.filter((_, j) => j !== i))}
                   />
@@ -932,6 +962,8 @@ function Renglon({
   unidad,
   concentracion,
   ubicacionActual,
+  ubicacionLista,
+  nombreSucursal,
   onEditar,
   onQuitar,
 }: {
@@ -948,9 +980,35 @@ function Renglon({
   concentracion: string | null | undefined;
   /** Dónde está hoy en la sucursal elegida, si alguien la cargó. */
   ubicacionActual: string | null;
+  /** `false` mientras llega la lista de la sucursal elegida. */
+  ubicacionLista: boolean;
+  nombreSucursal: (id: number) => string;
   onEditar: (cambio: Partial<LineaForm>) => void;
   onQuitar: () => void;
 }) {
+  const escrita = l.ubicaciones?.[almacenId];
+  // Lo escrito para OTRAS sucursales también se guarda (cada una en la suya),
+  // así que se dice: si no, al volver a cambiar el selector quedaba invisible
+  // algo que igual se iba a escribir.
+  const enOtras = Object.entries(l.ubicaciones ?? {}).filter(
+    ([id, u]) => Number(id) !== almacenId && u.texto.trim() !== u.antes,
+  );
+
+  function escribirUbicacion(texto: string) {
+    onEditar({
+      ubicaciones: {
+        ...l.ubicaciones,
+        [almacenId]: { texto, antes: escrita?.antes ?? ubicacionActual ?? "" },
+      },
+    });
+  }
+
+  function descartarUbicacion(id: number) {
+    const resto = { ...l.ubicaciones };
+    delete resto[id];
+    onEditar({ ubicaciones: resto });
+  }
+
   // "Ácido fólico" a secas no dice si llegó el de 1 mg o el de 5 mg. Sale de la
   // lista del almacén y no del renglón: así también la tiene el renglón que
   // llega desde Vencimientos o de un movimiento que se está editando.
@@ -974,14 +1032,35 @@ function Renglon({
             <span className="block text-xs text-texto-4">{l.detalle}</span>
           )}
           {/* Al recibir se sabe en qué estante queda: se puede anotar, o no. */}
-          {entrada && (
+          {entrada && ubicacionLista && (
             <UbicacionEnIngreso
-              valor={l.ubicacion ?? ubicacionActual ?? ""}
-              actual={ubicacionActual ?? ""}
-              tocada={l.ubicacion !== undefined}
-              onCambiar={(ubicacion) => onEditar({ ubicacion })}
+              valor={escrita?.texto ?? ubicacionActual ?? ""}
+              actual={escrita?.antes ?? ubicacionActual ?? ""}
+              tocada={escrita !== undefined}
+              onCambiar={escribirUbicacion}
             />
           )}
+          {entrada &&
+            enOtras.map(([id, u]) => (
+              <span key={id} className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-xs text-texto-3">
+                <span>
+                  En {nombreSucursal(Number(id))}:{" "}
+                  {u.texto.trim() ? (
+                    <strong className="font-semibold text-texto-2">{u.texto.trim()}</strong>
+                  ) : (
+                    "se quita"
+                  )}{" "}
+                  · se guarda ahí
+                </span>
+                <button
+                  type="button"
+                  onClick={() => descartarUbicacion(Number(id))}
+                  className="font-semibold text-primary-700 hover:underline"
+                >
+                  No guardar
+                </button>
+              </span>
+            ))}
           {!entrada && stock !== null && (
             <span
               className={`block text-xs ${

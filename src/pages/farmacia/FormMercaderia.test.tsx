@@ -439,7 +439,11 @@ describe("La ubicación al recibir", () => {
     expect(screen.getByText(/No se pudo guardar la ubicación de "Amoxicilina 500 mg"/)).toBeInTheDocument();
   });
 
-  it("cambiar de sucursal no borra la que se escribió; la no tocada muestra la de la otra", async () => {
+  it("lo escrito para una sucursal se guarda en ESA aunque después se cambie el selector", async () => {
+    // El caso de QA: "Cajón C" escrito con Centro, cambio a Equipetrol,
+    // guardar → se escribía en Equipetrol, pisando la suya, y Centro quedaba
+    // vacío. El test viejo sólo miraba que el texto siguiera en pantalla y
+    // pasaba con el error adentro: acá se mira A QUÉ sucursal va.
     await abrirComoEntrada();
     await elegirAlmacen(MOSTRADOR);
     // En Mostrador no tiene: se ofrece cargarla.
@@ -447,7 +451,59 @@ describe("La ubicación al recibir", () => {
 
     await cambiarUbicacion("Cajón 12");
     await elegirAlmacen(DEPOSITO);
-    expect(screen.getByText("Cajón 12")).toBeInTheDocument();
+    // El renglón muestra la de Depósito, que nadie tocó, y avisa que lo de
+    // Mostrador se guarda allá.
+    await waitFor(() => expect(screen.getByText("Estante 3 · fila B")).toBeInTheDocument());
+    expect(screen.getByText("Cajón 12").closest("span")).toHaveTextContent(
+      "En Mostrador: Cajón 12 · se guarda ahí",
+    );
+
+    await guardarCambios();
+    expect(api.fijarUbicacionProducto).toHaveBeenCalledTimes(1);
+    expect(api.fijarUbicacionProducto).toHaveBeenCalledWith(7, MOSTRADOR, "Cajón 12");
+  });
+
+  it("al cambiar de sucursal, la otra muestra la suya y no hereda lo escrito", async () => {
+    await abrirComoEntrada();
+    await cambiarUbicacion("Vitrina 1");
+    await elegirAlmacen(MOSTRADOR);
+
+    await waitFor(() => expect(screen.getByText("Ubicación (opcional)")).toBeInTheDocument());
+    expect(screen.queryByText("· nueva")).not.toBeInTheDocument();
+
+    await guardarCambios();
+    expect(api.fijarUbicacionProducto).toHaveBeenCalledTimes(1);
+    expect(api.fijarUbicacionProducto).toHaveBeenCalledWith(7, DEPOSITO, "Vitrina 1");
+  });
+
+  it("«No guardar» descarta lo escrito para la otra sucursal", async () => {
+    await abrirComoEntrada();
+    await cambiarUbicacion("Vitrina 1");
+    await elegirAlmacen(MOSTRADOR);
+    await waitFor(() => expect(screen.getByText("Ubicación (opcional)")).toBeInTheDocument());
+
+    await clickEn(/^No guardar$/);
+    await guardarCambios();
+    expect(api.fijarUbicacionProducto).not.toHaveBeenCalled();
+  });
+
+  it("si falla la segunda, dice que la primera ya quedó y la mercadería no", async () => {
+    vi.mocked(api.fijarUbicacionProducto)
+      .mockResolvedValueOnce({ ubicacion: "Vitrina 1" })
+      .mockRejectedValueOnce(new Error("sin conexión"));
+    await abrirComoEntrada();
+    await cambiarUbicacion("Vitrina 1");
+    await elegirAlmacen(MOSTRADOR);
+    await waitFor(() => expect(screen.getByText("Ubicación (opcional)")).toBeInTheDocument());
+    await cambiarUbicacion("Cajón 12");
+
+    await guardarCambios();
+    expect(api.actualizarMovimiento).not.toHaveBeenCalled();
+    expect(
+      screen.getByText(
+        'No se pudo guardar la ubicación de "Amoxicilina 500 mg" (sin conexión). La ubicación anterior ya quedó guardada, pero la mercadería todavía no: probá de nuevo.',
+      ),
+    ).toBeInTheDocument();
   });
 
   it("una salida no pregunta dónde se guarda", async () => {
