@@ -766,9 +766,13 @@ export default function FormMercaderia({
         )}
 
         {lineas.length > 0 && (
-          <div className="mb-3 overflow-x-auto rounded-xl border border-borde">
-            <table className="w-full min-w-[720px] text-[13px]">
-              <thead>
+          // En el celular la tabla medía 737 px en 375: Cantidad y Costo —lo que
+          // se escribe en cada renglón— quedaban fuera de la pantalla sin pista
+          // de que había que deslizar. Ahí cada renglón es una tarjeta (ver
+          // Renglon); desde `md` vuelve a ser la tabla de siempre.
+          <div className="mb-3 rounded-xl border border-borde md:overflow-x-auto">
+            <table className="block w-full text-[13px] md:table md:min-w-[720px]">
+              <thead className="hidden md:table-header-group">
                 <tr
                   className={`border-b border-borde-soft text-left text-[11px] font-bold uppercase tracking-wide ${
                     entrada ? "bg-muted text-texto-3" : "bg-danger-bg/60 text-danger-text"
@@ -787,7 +791,7 @@ export default function FormMercaderia({
                   <th className="w-10" />
                 </tr>
               </thead>
-              <tbody className="divide-y divide-borde-soft">
+              <tbody className="block divide-y divide-borde-soft md:table-row-group">
                 {lineas.map((l, i) => (
                   <Renglon
                     key={l.detalleId ?? `nuevo-${l.articuloId}`}
@@ -1043,10 +1047,16 @@ function Renglon({
   // se quedan, y el que ya no entra tiene que saltar a la vista en el momento.
   const noAlcanza = !entrada && stock !== null && pedido > stock;
 
+  // Las celdas de lote que no aplican ("—") sólo tienen sentido como columna:
+  // en la tarjeta del celular ocupan lugar sin decir nada.
+  const sinLoteEnCelular = conLote ? "block" : "hidden";
+
   return (
     <>
-      <tr>
-        <td className="px-3.5 py-2.5 align-middle">
+      {/* En el celular: grilla de dos columnas, el producto arriba a lo ancho y
+          la X en la esquina. Desde `md`, una fila de tabla. */}
+      <tr className="relative grid grid-cols-2 gap-x-1 pb-2 md:table-row md:pb-0">
+        <td className="col-span-2 block px-3.5 pb-1 pr-12 pt-3 md:table-cell md:py-2.5 md:pr-3.5 md:align-middle">
           <span className="block text-sm font-bold text-texto">
             {l.nombre}
             {conc && <span className="ml-1.5 font-semibold text-texto-2">{conc}</span>}
@@ -1102,7 +1112,8 @@ function Renglon({
             es la baja de un lote elegido en Vencimientos, que trae el suyo. */}
         {entrada ? (
           <>
-            <td className="px-3 py-2.5">
+            <td className={`${sinLoteEnCelular} px-3.5 py-1.5 md:table-cell md:px-3 md:py-2.5`}>
+              <EtiquetaCelular>Lote</EtiquetaCelular>
               {conLote ? (
                 <Input
                   value={l.loteCodigo}
@@ -1119,7 +1130,8 @@ function Renglon({
                 <span className="text-texto-4">—</span>
               )}
             </td>
-            <td className="px-3 py-2.5">
+            <td className={`${sinLoteEnCelular} px-3.5 py-1.5 md:table-cell md:px-3 md:py-2.5`}>
+              <EtiquetaCelular>Vencimiento</EtiquetaCelular>
               {conLote ? (
                 <Input
                   value={l.loteMes}
@@ -1134,7 +1146,11 @@ function Renglon({
             </td>
           </>
         ) : (
-          <td className="px-3 py-2.5" colSpan={2}>
+          <td
+            className={`${sinLoteEnCelular} col-span-2 px-3.5 py-1.5 md:table-cell md:px-3 md:py-2.5`}
+            colSpan={2}
+          >
+            <EtiquetaCelular>Lote</EtiquetaCelular>
             {conLote ? (
               <LoteQueSale
                 productoId={l.articuloId}
@@ -1149,7 +1165,8 @@ function Renglon({
           </td>
         )}
 
-        <td className="px-3 py-2.5">
+        <td className="block px-3.5 py-1.5 md:table-cell md:px-3 md:py-2.5">
+          <EtiquetaCelular>Cantidad</EtiquetaCelular>
           <Input
             type="number"
             inputMode="decimal"
@@ -1160,7 +1177,8 @@ function Renglon({
             className="min-w-[5rem] py-2"
           />
         </td>
-        <td className="px-3 py-2.5">
+        <td className="block px-3.5 py-1.5 md:table-cell md:px-3 md:py-2.5">
+          <EtiquetaCelular>Costo u.</EtiquetaCelular>
           <Input
             type="number"
             inputMode="decimal"
@@ -1172,13 +1190,14 @@ function Renglon({
           />
         </td>
         <td
-          className={`px-3.5 py-2.5 text-right text-sm font-bold ${
+          className={`col-span-2 flex items-baseline justify-between px-3.5 pt-1.5 text-right text-sm font-bold md:table-cell md:py-2.5 ${
             entrada ? "text-texto" : "text-danger-text"
           }`}
         >
+          <EtiquetaCelular>Subtotal</EtiquetaCelular>
           {fmtMoney(subtotal)}
         </td>
-        <td className="pr-2">
+        <td className="absolute right-2 top-2 block md:static md:table-cell md:pr-2">
           <button
             onClick={onQuitar}
             aria-label={`Quitar ${l.nombre}`}
@@ -1190,8 +1209,8 @@ function Renglon({
       </tr>
 
       {aviso && (
-        <tr>
-          <td colSpan={7} className="px-3.5 pb-2.5">
+        <tr className="block md:table-row">
+          <td colSpan={7} className="block px-3.5 pb-2.5 md:table-cell">
             <p className="rounded-lg bg-warning-bg px-2.5 py-2 text-xs text-warning-text">
               {aviso}
             </p>
@@ -1199,6 +1218,15 @@ function Renglon({
         </tr>
       )}
     </>
+  );
+}
+
+/** El nombre de la columna, dentro de la celda: sólo en la tarjeta del celular. */
+function EtiquetaCelular({ children }: { children: string }) {
+  return (
+    <span className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-texto-4 md:hidden">
+      {children}
+    </span>
   );
 }
 
