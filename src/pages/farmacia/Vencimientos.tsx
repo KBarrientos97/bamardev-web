@@ -8,7 +8,7 @@ import { api } from "../../lib/api";
 import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
 import type { ContadorTramo, LotePorVencer, TramoVencimiento } from "../../types";
-import { TRAMOS, textoVida, type FiltroVencimientos } from "./medicamento";
+import { COLOR_TRAMO, TRAMOS, textoVida, type FiltroVencimientos } from "./medicamento";
 import type { PrecargaSalida } from "./mercaderia";
 
 /**
@@ -23,6 +23,19 @@ import type { PrecargaSalida } from "./mercaderia";
  * venció (sacarlo del estante hoy), después lo que vence en 30 días (devolver
  * al proveedor o rematar), y así.
  */
+
+/**
+ * Lo que falta más de 90 días. No tiene contador arriba —no hay nada que
+ * hacer todavía— y hoy el servidor no lo manda, salvo que se le pidan más
+ * días (`dias`). Si llega, antes se pintaba con el tramo de 61 a 90 y su
+ * "Tener en el radar": un rótulo que no era el suyo.
+ */
+const LEJOS = { titulo: "Más de 90 días", ayuda: "Sin apuro", ...COLOR_TRAMO.LEJOS };
+
+/** Cómo se llama y se pinta el tramo de un lote. */
+function aspectoDe(tramo: TramoVencimiento) {
+  return TRAMOS.find((x) => x.clave === tramo) ?? LEJOS;
+}
 
 /** El tramo con el que se llega desde el Dashboard; cualquier otra cosa, ninguno. */
 function tramoDe(state: unknown): TramoVencimiento | null {
@@ -199,7 +212,7 @@ function Contador({
 }
 
 function Fila({ lote: l, onClick }: { lote: LotePorVencer; onClick: () => void }) {
-  const t = TRAMOS.find((x) => x.clave === l.tramo) ?? TRAMOS[3];
+  const t = aspectoDe(l.tramo);
 
   return (
     <li>
@@ -257,7 +270,7 @@ function DetalleLote({
   onClose: () => void;
   onDarDeBaja: (motivo: string) => void;
 }) {
-  const t = TRAMOS.find((x) => x.clave === l.tramo) ?? TRAMOS[3];
+  const t = aspectoDe(l.tramo);
   const vencido = l.diasRestantes < 0;
   // Con el extra de doble control, la salida sólo se guarda y la aprueba otra
   // persona; sin él, el formulario ofrece las dos cosas (ver FormMercaderia).

@@ -128,6 +128,17 @@ describe("Vencimientos", () => {
     });
   });
 
+  it("un lote a más de 90 días no se rotula como «61 – 90 días»", async () => {
+    vi.mocked(api.vencimientos).mockResolvedValue({
+      ...datos,
+      detalle: [{ ...azitromicina, diasRestantes: 200, tramo: "LEJOS" }],
+    });
+    await abrirLote("Azitromicina 500 mg");
+    const dialogo = screen.getByRole("dialog");
+    expect(dialogo).toHaveTextContent("200 días · Sin apuro");
+    expect(dialogo).not.toHaveTextContent("Tener en el radar");
+  });
+
   it("devolver al proveedor manda el otro motivo, y el lote que se tocó", async () => {
     await abrirLote("Azitromicina 500 mg");
 
