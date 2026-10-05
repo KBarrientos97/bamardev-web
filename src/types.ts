@@ -544,9 +544,10 @@ export interface DetalleMovimientoInput {
   costo?: number;
   descripcion?: string;
   /**
-   * Lote y vencimiento (rubro farmacia). Sólo se mandan en una ENTRADA: es lo
-   * que dice el papel de la compra. Una salida no elige lote — sale el más
-   * próximo a vencer, que es la regla del depósito.
+   * Lote y vencimiento (rubro farmacia). En una ENTRADA es lo que dice el
+   * papel de la compra. En una SALIDA el vencimiento no viaja y el lote es
+   * opcional: sin él sale el más próximo a vencer (FEFO); con él —la baja de
+   * un lote elegido en Vencimientos— el servidor descuenta de ese lote.
    */
   loteCodigo?: string;
   /** yyyy-MM-dd */

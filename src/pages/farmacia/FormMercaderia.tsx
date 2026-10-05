@@ -204,7 +204,9 @@ export default function FormMercaderia({
         detalle: "",
         cantidad: String(precarga.cantidad),
         costo: String(art.costo ?? 0),
-        loteCodigo: "",
+        // El lote elegido en Vencimientos: la salida descuenta de ese y no
+        // del que el FEFO tomaría primero (ver `PrecargaSalida`).
+        loteCodigo: precarga.loteCodigo ?? "",
         loteMes: "",
       },
     ]);
@@ -359,6 +361,10 @@ export default function FormMercaderia({
           };
         detalle.loteCodigo = l.loteCodigo.trim();
         detalle.loteVencimiento = iso;
+      } else if (tipo === "SALIDA" && l.loteCodigo.trim()) {
+        // Una salida con lote es la baja de ESE lote (llega de Vencimientos o
+        // de una salida guardada así); sin lote el servidor sale por FEFO.
+        detalle.loteCodigo = l.loteCodigo.trim();
       }
 
       detalles.push(detalle);
@@ -1073,10 +1079,10 @@ function Renglon({
           )}
         </td>
 
-        {/* Lote y vencimiento se escriben sólo al RECIBIR. Una salida no elige
-            lote: sale el más próximo a vencer, que es la regla del depósito y
-            no una decisión de quien carga el formulario — así que lo muestra
-            en vez de preguntarlo. */}
+        {/* Lote y vencimiento se escriben sólo al RECIBIR. Una salida no
+            pregunta el lote: sale el más próximo a vencer, que es la regla del
+            depósito — así que lo muestra en vez de preguntarlo. La excepción
+            es la baja de un lote elegido en Vencimientos, que trae el suyo. */}
         {entrada ? (
           <>
             <td className="px-3 py-2.5">
@@ -1117,6 +1123,8 @@ function Renglon({
                 productoId={l.articuloId}
                 almacenId={almacenId}
                 almacenNombre={almacenNombre}
+                elegido={l.loteCodigo.trim()}
+                onSoltar={() => onEditar({ loteCodigo: "" })}
               />
             ) : (
               <span className="text-texto-4">—</span>
@@ -1267,19 +1275,27 @@ function UbicacionEnIngreso({
 /**
  * Qué lote se va a ir en esta salida.
  *
- * No es un campo: el servidor descuenta por FEFO —primero el que vence antes— y
- * dejar elegir acá sería prometer una decisión que no se respeta. Pero decirlo
- * importa: quien da de baja "lo vencido" tiene que poder confirmar que el
- * sistema va a sacar el mismo lote que tiene en la mano.
+ * No es un campo: sin lote el servidor descuenta por FEFO —primero el que
+ * vence antes—. Pero decirlo importa: quien da de baja "lo vencido" tiene que
+ * poder confirmar que el sistema va a sacar el mismo lote que tiene en la mano.
+ *
+ * Con `elegido` (la baja de un lote que llega de Vencimientos) sale ese y no
+ * el del FEFO, y se muestra ese. Si en la sucursal elegida no tiene saldo —se
+ * cambió el selector, o el lote era de una entrada que pasó a salida— se avisa
+ * y se ofrece volver al FEFO: el servidor la rechazaría al aprobar.
  */
 function LoteQueSale({
   productoId,
   almacenId,
   almacenNombre,
+  elegido,
+  onSoltar,
 }: {
   productoId: number;
   almacenId: number;
   almacenNombre: string;
+  elegido: string;
+  onSoltar: () => void;
 }) {
   // Sin la feature el servidor responde 403, y el error se leía como "Sin lotes
   // con saldo": una mentira, los lotes están. La salida igual sale por FEFO.
@@ -1293,8 +1309,33 @@ function LoteQueSale({
     [productoId, almacenId, conLotes],
   );
 
-  if (!conLotes) return <span className="text-texto-4">—</span>;
+  if (!conLotes && !elegido) return <span className="text-texto-4">—</span>;
   if (lotes.cargando) return <span className="text-xs text-texto-4">…</span>;
+
+  if (elegido) {
+    // Sin la feature no hay lista contra qué comparar: se muestra el código.
+    const lote = conLotes ? (lotes.datos ?? []).find((x) => x.codigo === elegido) : undefined;
+    const sinSaldo = conLotes && !lote;
+    return (
+      <span className="block">
+        <span className="block text-[13px] font-semibold text-texto">{elegido}</span>
+        <span className={`block text-xs ${sinSaldo ? "font-semibold text-danger-text" : "text-texto-4"}`}>
+          {sinSaldo
+            ? `Sin saldo en ${almacenNombre || "esta sucursal"}`
+            : lote?.vencimiento
+              ? `sale este lote · vence ${fmtFecha(lote.vencimiento)}`
+              : "sale este lote"}
+        </span>
+        <button
+          type="button"
+          onClick={onSoltar}
+          className="text-xs font-semibold text-primary-700 hover:underline"
+        >
+          Que salga el que vence primero
+        </button>
+      </span>
+    );
+  }
 
   const primero = (lotes.datos ?? [])[0];
   if (!primero)

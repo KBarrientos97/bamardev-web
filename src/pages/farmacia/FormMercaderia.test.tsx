@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { Link, MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Almacen, ArticuloMovimiento, Movimiento } from "../../types";
+import type { Almacen, ArticuloMovimiento, LoteConSaldo, Movimiento } from "../../types";
 
 /**
  * Editar un movimiento PENDIENTE no puede costarle a nadie lo que ya cargó.
@@ -107,6 +107,19 @@ function articulo(stock: number, ubicacion: string | null = null): ArticuloMovim
   };
 }
 
+function lote(codigo: string, vencimiento: string, cantidad: number): LoteConSaldo {
+  return {
+    loteId: codigo.length,
+    codigo,
+    vencimiento,
+    diasRestantes: null,
+    tramo: null,
+    cantidad,
+    costoUnitario: 5,
+    almacen: { id: DEPOSITO, nombre: "Depósito" },
+  };
+}
+
 const salidaPendiente: Movimiento = {
   id: 950,
   tipo: "SALIDA",
@@ -142,6 +155,9 @@ beforeEach(() => {
     almacen(MOSTRADOR, "Mostrador"),
   ]);
   vi.mocked(api.getMovimiento).mockResolvedValue(salidaPendiente);
+  // `clearAllMocks` no borra lo que un test le hizo devolver: sin esto los
+  // lotes de un test aparecían en los siguientes.
+  vi.mocked(api.lotesDeProducto).mockResolvedValue([]);
   vi.mocked(api.getArticulosMovimiento).mockImplementation(
     async (almacenId?: number) => [
       articulo(STOCK[almacenId ?? DEPOSITO] ?? 0, UBICACION[almacenId ?? DEPOSITO] ?? null),
@@ -367,6 +383,87 @@ describe("Salida precargada desde Vencimientos", () => {
     expect(screen.getByDisplayValue("20")).toBeInTheDocument();
     // El motivo queda elegido: es lo que después arma el número de mermas.
     expect(screen.getByRole("button", { name: "Vencimiento" })).toHaveClass("bg-danger");
+  });
+
+  it("la baja de un lote elegido manda ESE lote, no el que tomaría el FEFO", async () => {
+    // A2: "devolver las 10 del lote X" descontaba antes las 5 del lote Y, ya
+    // vencido, que seguían en el estante y salían del semáforo.
+    vi.mocked(api.lotesDeProducto).mockResolvedValue([
+      lote("AMX-VENCIDO", "2026-09-01", 5),
+      lote("AMX-2601", "2026-10-30", 10),
+    ]);
+    render(
+      <MemoryRouter
+        initialEntries={[
+          {
+            pathname: "/inventario/movimientos/salida",
+            state: {
+              productoId: 7,
+              almacenId: DEPOSITO,
+              cantidad: 10,
+              motivo: "Devolución a proveedor",
+              loteCodigo: "AMX-2601",
+            },
+          },
+        ]}
+      >
+        <Routes>
+          <Route
+            path="/inventario/movimientos/salida"
+            element={<FormMercaderia key="salida" tipoInicial="SALIDA" />}
+          />
+          <Route path="/inventario/movimientos" element={<p>Registro de movimientos</p>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    // Se muestra el elegido, no el primero de la lista.
+    expect(await screen.findByText("AMX-2601")).toBeInTheDocument();
+    expect(screen.queryByText("AMX-VENCIDO")).not.toBeInTheDocument();
+
+    await clickEn(/^Guardar salida$/);
+    expect(api.crearMovimiento).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tipo: "SALIDA",
+        detalles: [{ productoId: 7, cantidad: 10, costo: 5, loteCodigo: "AMX-2601" }],
+      }),
+    );
+  });
+
+  it("«que salga el que vence primero» suelta el lote y vuelve al FEFO", async () => {
+    vi.mocked(api.lotesDeProducto).mockResolvedValue([lote("AMX-2601", "2026-10-30", 10)]);
+    render(
+      <MemoryRouter
+        initialEntries={[
+          {
+            pathname: "/inventario/movimientos/salida",
+            state: {
+              productoId: 7,
+              almacenId: MOSTRADOR,
+              cantidad: 2,
+              motivo: "Vencimiento",
+              loteCodigo: "AMX-OTRO",
+            },
+          },
+        ]}
+      >
+        <Routes>
+          <Route
+            path="/inventario/movimientos/salida"
+            element={<FormMercaderia key="salida" tipoInicial="SALIDA" />}
+          />
+          <Route path="/inventario/movimientos" element={<p>Registro de movimientos</p>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    // El lote no tiene saldo en esta sucursal: se avisa antes de guardar.
+    expect(await screen.findByText("Sin saldo en Mostrador")).toBeInTheDocument();
+    await clickEn(/Que salga el que vence primero/);
+    await clickEn(/^Guardar salida$/);
+    expect(api.crearMovimiento).toHaveBeenCalledWith(
+      expect.objectContaining({ detalles: [{ productoId: 7, cantidad: 2, costo: 5 }] }),
+    );
   });
 
   it("sin precarga el formulario arranca vacío, como siempre", async () => {

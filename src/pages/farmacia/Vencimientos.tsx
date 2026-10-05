@@ -49,6 +49,9 @@ export default function Vencimientos() {
       almacenId: l.almacen.id,
       cantidad: l.cantidad,
       motivo,
+      // ESTE lote, no el que el FEFO tome primero: si hay otro ya vencido, la
+      // baja se lo llevaba a él y el que se tenía en la mano seguía cargado.
+      loteCodigo: l.codigo,
     };
     navigate("/inventario/movimientos/salida", { state: precarga });
   }

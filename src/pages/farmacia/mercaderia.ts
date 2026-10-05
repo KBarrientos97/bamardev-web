@@ -42,6 +42,13 @@ export interface PrecargaSalida {
   almacenId: number;
   cantidad: number;
   motivo: string;
+  /**
+   * El lote que se eligió en Vencimientos. Sin él el servidor descontaba por
+   * FEFO —vencidos primero—: "devolver las 10 del lote X" se llevaba antes
+   * las 5 del lote Y ya vencido, que seguían en el estante y desaparecían del
+   * semáforo. Opcional: una salida cargada a mano sigue saliendo por FEFO.
+   */
+  loteCodigo?: string;
 }
 
 /** `location.state` es `any`: acá se confirma que es lo que decimos que es. */
@@ -52,7 +59,8 @@ export function esPrecargaSalida(x: unknown): x is PrecargaSalida {
     typeof p.productoId === "number" &&
     typeof p.almacenId === "number" &&
     typeof p.cantidad === "number" &&
-    typeof p.motivo === "string"
+    typeof p.motivo === "string" &&
+    (p.loteCodigo === undefined || typeof p.loteCodigo === "string")
   );
 }
 

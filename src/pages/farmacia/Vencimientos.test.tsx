@@ -123,6 +123,8 @@ describe("Vencimientos", () => {
       almacenId: 2,
       cantidad: 30,
       motivo: "Vencimiento",
+      // El lote viaja: sin él la baja salía por FEFO y podía llevarse otro.
+      loteCodigo: "PAR-002A",
     });
   });
 
@@ -138,6 +140,7 @@ describe("Vencimientos", () => {
       almacenId: 1,
       cantidad: 20,
       motivo: "Devolución a proveedor",
+      loteCodigo: "AZI-010A",
     });
   });
 });
