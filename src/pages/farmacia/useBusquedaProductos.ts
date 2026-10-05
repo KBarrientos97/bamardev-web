@@ -87,6 +87,11 @@ export function useBusquedaProductos({
   const espera = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** Lo que dice el campo ahora. */
   const vigente = useRef(q);
+  /**
+   * "Ver más" en curso. Ref y no el estado: dos clics en el mismo tick verían
+   * los dos `trayendoMas` en false y sumarían la misma tanda dos veces.
+   */
+  const trayendo = useRef(false);
 
   /** Devuelve lo encontrado, o `null` si la respuesta llegó tarde o falló. */
   const buscar = useCallback(
@@ -149,26 +154,40 @@ export function useBusquedaProductos({
   );
 
   const traerMas = useCallback(async () => {
-    if (!pagina || trayendoMas) return;
+    if (!pagina || trayendo.current) return;
+    trayendo.current = true;
+    // La búsqueda y la lista de las que sale esta tanda. Un "Ver más" que
+    // vuelve tarde —ya se escribió "ome", o se cambió la categoría— es de una
+    // lista que no está más en pantalla: sumarlo pegaba 24 del catálogo sin
+    // filtrar debajo de "ome", o directamente reemplazaba lo nuevo.
+    const mio = pedido.current;
+    const base = pagina;
     setTrayendoMas(true);
     try {
       const res = await api.buscarProductos({
-        q,
+        // El texto del que salió la lista, no el que hay en el campo: mientras
+        // se espera a que se deje de teclear, pueden ser distintos.
+        q: consulta ?? q,
         limite,
-        offset: pagina.items.length,
+        offset: base.items.length,
         soloHabilitados,
         categoriaId,
         sucursalId,
       });
+      if (pedido.current !== mio) return;
       // La tanda nueva se suma a lo que ya se está mirando; el total viene de
       // la última respuesta, que es la que sabe si entró algo mientras tanto.
-      setPagina({ ...res, items: [...pagina.items, ...res.items] });
+      setPagina((actual) =>
+        actual === base ? { ...res, items: [...base.items, ...res.items] } : actual,
+      );
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo traer más");
+      if (pedido.current === mio)
+        setError(err instanceof Error ? err.message : "No se pudo traer más");
     } finally {
+      trayendo.current = false;
       setTrayendoMas(false);
     }
-  }, [pagina, trayendoMas, q, limite, soloHabilitados, categoriaId, sucursalId]);
+  }, [pagina, consulta, q, limite, soloHabilitados, categoriaId, sucursalId]);
 
   const items = pagina?.items ?? [];
 
