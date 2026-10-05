@@ -245,6 +245,29 @@ describe("la ficha del mostrador", () => {
     expect(within(ficha).queryByRole("button", { name: /ubicación/i })).toBeNull();
   });
 
+  it("lo de acá va primero y la suma dice que es de todas las sucursales", async () => {
+    // C: la tarjeta del punto de venta decía 25 y la ficha "Total 65", con el
+    // número del negocio entero destacado como si fuera el de este local.
+    vi.mocked(api.cajaActual).mockResolvedValue({
+      caja: { almacenId: 1141, almacen: "Sucursal Equipetrol" } as never,
+    });
+    vi.mocked(api.existenciasProducto).mockResolvedValue([
+      existencia({ cantidad: 40 }),
+      existencia({ almacenId: 1141, nombre: "Sucursal Equipetrol", esPrincipal: false, cantidad: 25 }),
+    ]);
+    await montar();
+    const ficha = await abrirFicha("Amoxicilina 500 mg");
+    const aca = (await within(ficha).findByText("Sucursal Equipetrol")).closest("div")!;
+    expect(aca).toHaveTextContent("acá");
+    expect(aca).toHaveTextContent("25 u.");
+
+    expect(within(ficha).queryByText("Total")).toBeNull();
+    const todas = within(ficha).getByText("Todas las sucursales").closest("div")!;
+    expect(todas).toHaveTextContent("65 u.");
+    // Primero el de acá, después la suma.
+    expect(aca.compareDocumentPosition(todas) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   it("el dueño carga la ubicación ahí mismo, y la fila se actualiza", async () => {
     await montar();
     const ficha = await abrirFicha("Ranitidina 150 mg");

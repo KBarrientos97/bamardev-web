@@ -350,6 +350,14 @@ function StockPorSucursal({
 
   const miSucursal = usuario?.sucursalId ?? null;
   const donde = aca ?? miSucursal;
+  /**
+   * La sucursal desde la que se mira, si es una de la lista. Va primera: la
+   * pregunta del mostrador es "¿hay ACÁ?". Antes el cuadro destacado decía
+   * "Total" con la suma del negocio —la ficha decía 100 donde la tarjeta del
+   * punto de venta decía 65— y el de acá se perdía entre los demás.
+   */
+  const deAca = varias ? lista.find((e) => e.almacenId === donde) : undefined;
+  const otras = deAca ? lista.filter((e) => e !== deAca) : lista;
   const ordena = usuario?.rol === "ADMIN" || usuario?.rol === "SUPERVISOR";
   // Un supervisor de sucursal ordena la suya; el dueño, cualquiera.
   const puedeUbicar = (e: Existencia) =>
@@ -363,15 +371,31 @@ function StockPorSucursal({
   return (
     <Seccion titulo={varias ? "Stock por sucursal" : "Stock"}>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        <Caja etiqueta="Total" valor={conUnidad(total, unidad)} destacada />
+        {deAca && (
+          <CajaSucursal
+            existencia={deAca}
+            unidad={unidad}
+            productoId={p.id}
+            mia
+            puedeUbicar={puedeUbicar(deAca)}
+            onGuardado={alGuardar}
+          />
+        )}
+        {/* La suma dice que es la suma: "Total" a secas, al lado del número
+            de acá, se leía como lo que hay en este local. */}
+        <Caja
+          etiqueta={varias ? "Todas las sucursales" : "Total"}
+          valor={conUnidad(total, unidad)}
+          destacada={!deAca}
+        />
         {varias &&
-          lista.map((e) => (
+          otras.map((e) => (
             <CajaSucursal
               key={e.almacenId}
               existencia={e}
               unidad={unidad}
               productoId={p.id}
-              mia={donde === e.almacenId}
+              mia={false}
               puedeUbicar={puedeUbicar(e)}
               onGuardado={alGuardar}
             />
