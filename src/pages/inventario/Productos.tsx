@@ -286,6 +286,8 @@ export default function Productos() {
     ? busqueda.cargando || (servidorSinNada && !catalogoTildes)
     : productos.cargando;
   const errorCarga = buscaEnServidor ? busqueda.error : productos.error;
+  /** Todavía no llegó nada que contar: "0 en el catálogo" sería mentira. */
+  const contando = cargando && aMostrar.length === 0;
   /** Si hay algo cargado, para distinguir "no hay nada" de "no coincide". */
   const hayCatalogo = buscaEnServidor ? busqueda.total > 0 || !!q : lista.length > 0;
 
@@ -335,20 +337,24 @@ export default function Productos() {
         titulo={termino(rubro, "articulos")}
         subtitulo={
           enPapelera
-            ? `${lista.length} dados de baja`
+            ? contando
+              ? "Cargando…"
+              : `${lista.length} dados de baja`
             : // El catálogo muestra el stock SUMADO de todos los almacenes y el
               // formulario de movimientos el de UNO solo, así que el mismo
               // producto dice 60 acá y 0 allá. Los dos números son ciertos; sin
               // esta aclaración parece un error del sistema y alguien sale a
               // buscar una caja que sí está, pero en el otro almacén.
               `${
-                buscaEnServidor && q
-                  ? // Con el respaldo por tildes el total del servidor es 0 y
-                    // el "de N" no diría nada: se muestra lo que se encontró.
-                    busqueda.total > 0
-                    ? `${aMostrar.length} de ${busqueda.total}`
-                    : `${aMostrar.length} ${aMostrar.length === 1 ? "resultado" : "resultados"}`
-                  : `${buscaEnServidor ? busqueda.total : lista.length} en el catálogo`
+                contando
+                  ? "Cargando…"
+                  : buscaEnServidor && q
+                    ? // Con el respaldo por tildes el total del servidor es 0 y
+                      // el "de N" no diría nada: se muestra lo que se encontró.
+                      busqueda.total > 0
+                      ? `${aMostrar.length} de ${busqueda.total}`
+                      : `${aMostrar.length} ${aMostrar.length === 1 ? "resultado" : "resultados"}`
+                    : `${buscaEnServidor ? busqueda.total : lista.length} en el catálogo`
               }${
                 !esFarmacia(rubro)
                   ? ""

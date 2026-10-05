@@ -195,7 +195,10 @@ export function useBusquedaProductos({
     items,
     consulta,
     total: pagina?.total ?? 0,
-    cargando,
+    // Antes de la primera respuesta también es "cargando": entre que se
+    // enciende y que sale la consulta (la espera del tecleo) el estado decía
+    // que no, y las pantallas mostraban "El catálogo está vacío" o "0".
+    cargando: cargando || (activo && pagina === null && !error),
     error,
     hayMas: pagina ? items.length < pagina.total : false,
     trayendoMas,

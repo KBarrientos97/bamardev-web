@@ -158,9 +158,13 @@ export default function MovimientosFarmacia() {
       <EncabezadoPagina
         titulo="Movimientos"
         subtitulo={
-          pendientes
-            ? `${lista.length} registrados · ${pendientes} sin aprobar`
-            : `${lista.length} registrados · entradas y salidas de stock`
+          // Antes de la primera respuesta no hay "0 registrados": no se sabe
+          // (el "cargando" ya lo dice la lista).
+          !movimientos.datos && movimientos.cargando
+            ? "Entradas y salidas de stock"
+            : pendientes
+              ? `${lista.length} registrados · ${pendientes} sin aprobar`
+              : `${lista.length} registrados · entradas y salidas de stock`
         }
         accion={
           <Boton icono="plus" onClick={() => navigate("/inventario/movimientos/ingreso")}>

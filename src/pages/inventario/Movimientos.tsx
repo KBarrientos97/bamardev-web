@@ -169,9 +169,12 @@ export default function Movimientos() {
       <EncabezadoPagina
         titulo="Movimientos"
         subtitulo={
-          pendientes
-            ? `${lista.length} registrados · ${pendientes} sin aprobar`
-            : `${lista.length} registrados`
+          // Antes de la primera respuesta no hay "0 registrados": no se sabe.
+          !movimientos.datos && movimientos.cargando
+            ? "Cargando…"
+            : pendientes
+              ? `${lista.length} registrados · ${pendientes} sin aprobar`
+              : `${lista.length} registrados`
         }
         accion={
           <Boton icono="plus" onClick={() => setCreando(true)}>

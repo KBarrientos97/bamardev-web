@@ -173,6 +173,27 @@ describe("la tabla", () => {
   });
 });
 
+describe("mientras carga", () => {
+  it("no dice que el catálogo está vacío antes de la primera respuesta", async () => {
+    // Mientras se averigua la caja la búsqueda está apagada: se leía "El
+    // catálogo está vacío" en una farmacia con 400 medicamentos.
+    let soltarCaja!: (v: { caja: null }) => void;
+    vi.mocked(api.cajaActual).mockReturnValue(new Promise((r) => (soltarCaja = r)));
+    render(
+      <MemoryRouter>
+        <BuscarMedicamento />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText("Buscando…")).toBeInTheDocument();
+    expect(screen.queryByText("El catálogo está vacío")).not.toBeInTheDocument();
+
+    await act(async () => soltarCaja({ caja: null }));
+    // Ya con la caja, durante la espera del tecleo tampoco.
+    expect(screen.queryByText("El catálogo está vacío")).not.toBeInTheDocument();
+    expect(await screen.findAllByText("Amoxicilina 500 mg")).not.toHaveLength(0);
+  });
+});
+
 describe("la sucursal de la caja", () => {
   it("con una caja abierta, el stock es el de su sucursal y lo dice", async () => {
     // El dueño no pertenece a ninguna sucursal: sin esto veía el stock del

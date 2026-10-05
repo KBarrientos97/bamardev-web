@@ -77,7 +77,9 @@ export default function BuscarMedicamento() {
 
       <ErrorMsg>{busqueda.error}</ErrorMsg>
 
-      {busqueda.cargando && busqueda.items.length === 0 ? (
+      {/* Mientras se averigua la caja la búsqueda está apagada y no carga
+          nada: sin mirar la caja, eso se leía "El catálogo está vacío". */}
+      {(caja.cargando || busqueda.cargando) && busqueda.items.length === 0 ? (
         <Cargando texto="Buscando…" />
       ) : busqueda.items.length === 0 ? (
         <div className="card">

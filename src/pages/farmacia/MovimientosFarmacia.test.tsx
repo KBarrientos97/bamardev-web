@@ -129,3 +129,12 @@ describe("Entradas y salidas, como siempre", () => {
     expect(await screen.findByText("editar ingreso o salida")).toBeInTheDocument();
   });
 });
+
+describe("Mientras carga", () => {
+  it("no dice «0 registrados» antes de que llegue la lista", async () => {
+    vi.mocked(api.getMovimientos).mockReturnValue(new Promise(() => {}));
+    abrir();
+    expect(screen.getByText("Entradas y salidas de stock")).toBeInTheDocument();
+    expect(screen.queryByText(/0 registrados/)).not.toBeInTheDocument();
+  });
+});

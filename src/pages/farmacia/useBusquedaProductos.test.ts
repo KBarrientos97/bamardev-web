@@ -96,3 +96,24 @@ describe("Ver más", () => {
     expect(result.current.items).toHaveLength(24);
   });
 });
+
+describe("Antes de la primera respuesta", () => {
+  it("al encenderse ya está cargando, no «vacío» hasta que salga la consulta", async () => {
+    // Buscar medicamento la tiene apagada mientras averigua la caja. Al
+    // encenderse pasaban 250 ms (la espera del tecleo) con `cargando` en
+    // false y sin resultados: la pantalla decía "El catálogo está vacío".
+    buscar.mockResolvedValue(pagina(productos("Ome", 1, 3), 3));
+    const { result, rerender } = renderHook(
+      ({ activo }) => useBusquedaProductos({ q: "", activo }),
+      { initialProps: { activo: false } },
+    );
+    expect(result.current.cargando).toBe(false);
+
+    rerender({ activo: true });
+    expect(result.current.cargando).toBe(true);
+    expect(buscar).not.toHaveBeenCalled();
+
+    await waitFor(() => expect(result.current.items).toHaveLength(3));
+    expect(result.current.cargando).toBe(false);
+  });
+});
