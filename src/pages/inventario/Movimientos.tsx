@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { parsearMonto } from "../../lib/dinero";
 import { contiene } from "../../lib/texto";
 import { Icon } from "../../components/Icon";
@@ -354,6 +354,12 @@ function DetalleMovimiento({
     null,
   );
   const [procesando, setProcesando] = useState(false);
+  /**
+   * Aprobar, anular o eliminar en curso. `procesando` apaga el botón recién
+   * en el render siguiente: un doble clic aprobaba dos veces y, mientras el
+   * servidor no lo frene, el stock se movía dos veces.
+   */
+  const enVuelo = useRef(false);
   const [error, setError] = useState("");
   /** Línea que se está editando, o "nueva" para agregar una. */
   const [editandoLinea, setEditandoLinea] = useState<LineaMovimiento | "nueva" | null>(
@@ -395,7 +401,8 @@ function DetalleMovimiento({
   );
 
   async function ejecutar() {
-    if (!m || !confirmando) return;
+    if (!m || !confirmando || enVuelo.current) return;
+    enVuelo.current = true;
     setError("");
     setProcesando(true);
     try {
@@ -409,6 +416,7 @@ function DetalleMovimiento({
       setError(err instanceof Error ? err.message : "No se pudo completar la acción");
       setConfirmando(null);
     } finally {
+      enVuelo.current = false;
       setProcesando(false);
     }
   }

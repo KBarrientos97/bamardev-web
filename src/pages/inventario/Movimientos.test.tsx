@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Almacen, ArticuloMovimiento, Movimiento } from "../../types";
 
@@ -376,5 +376,21 @@ describe("El detalle no se cierra mientras se cargan renglones", () => {
         screen.queryByRole("dialog", { name: "Detalle del movimiento" }),
       ).not.toBeInTheDocument(),
     );
+  });
+
+  it("dos clics en «Aprobar» en el mismo tick lo aprueban una sola vez", async () => {
+    // Mientras el servidor no frene la segunda aprobación, cada una mueve el
+    // stock: el único freno está acá.
+    await abrirDetalle();
+    fireEvent.click(await screen.findByRole("button", { name: "Aprobar" }));
+    const confirmar = within(screen.getByRole("dialog", { name: "Aprobar movimiento" })).getByRole(
+      "button",
+      { name: "Aprobar" },
+    );
+    await act(async () => {
+      fireEvent.click(confirmar);
+      fireEvent.click(confirmar);
+    });
+    expect(api.aprobarMovimiento).toHaveBeenCalledTimes(1);
   });
 });
