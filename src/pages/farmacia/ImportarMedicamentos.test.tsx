@@ -130,6 +130,21 @@ describe("cargar medicamentos desde Excel", () => {
     expect(screen.getByText("1 ya estaba en el catálogo y no se tocó.")).toBeInTheDocument();
   });
 
+  it("dos clics en el mismo tick cargan una sola vez", async () => {
+    // M4: el doble envío creó dos "Ibuprofeno" con 15 u. cada uno; el
+    // servidor no tiene unicidad que lo ataje.
+    await montar();
+    await subir();
+    await act(async () => {
+      const cargar = screen.getByRole("button", { name: /Cargar 2 medicamentos/ });
+      fireEvent.click(cargar);
+      fireEvent.click(cargar);
+    });
+    // Una revisión y UNA carga.
+    expect(importar).toHaveBeenCalledTimes(2);
+    expect(importar.mock.calls.filter(([i]) => !i.soloRevisar)).toHaveLength(1);
+  });
+
   it("si la carga se corta, dice cuánto entró y que alcanza con volver a subirlo", async () => {
     await montar();
     await subir();

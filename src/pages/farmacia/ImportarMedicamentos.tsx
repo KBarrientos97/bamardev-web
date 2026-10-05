@@ -64,6 +64,13 @@ export default function ImportarMedicamentos() {
   const [final, setFinal] = useState<Final | null>(null);
   const [error, setError] = useState("");
   const input = useRef<HTMLInputElement>(null);
+  /**
+   * La carga en curso (o ya hecha) de este archivo. Ref y no la fase: dos
+   * clics en el mismo tick ven los dos "revisado" y cargaban dos veces —dos
+   * "Ibuprofeno" con su stock cada uno—, y el servidor no tiene unicidad que
+   * lo ataje. Se libera sólo al elegir otro archivo.
+   */
+  const cargado = useRef(false);
 
   // Quien pertenece a una sucursal carga en la suya: el backend no le deja otra.
   const miSucursal = usuario?.sucursalId ?? null;
@@ -105,6 +112,7 @@ export default function ImportarMedicamentos() {
    * el navegador no avisa nada.
    */
   function reiniciar(vaciarCampo = true) {
+    cargado.current = false;
     setFase("elegir");
     setArchivo("");
     setLectura(null);
@@ -161,7 +169,8 @@ export default function ImportarMedicamentos() {
   }
 
   async function cargar() {
-    if (!revision) return;
+    if (!revision || cargado.current) return;
+    cargado.current = true;
     const total = revision.nuevos.length;
     const cantidades = new Map(
       revision.nuevos.map((m) => [m.fila, m.lotes.reduce((a, l) => a + l.cantidad, 0)]),
