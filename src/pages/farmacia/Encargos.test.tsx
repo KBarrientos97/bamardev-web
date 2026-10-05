@@ -116,4 +116,17 @@ describe("el artículo del encargo", () => {
       expect.not.objectContaining({ productoId: expect.anything() }),
     );
   });
+
+  it("dos clics en el mismo tick anotan uno solo", async () => {
+    await abrirFormulario();
+    fireEvent.change(screen.getByPlaceholderText(/La crema para la alergia/), {
+      target: { value: "La crema del pomo azul" },
+    });
+    await act(async () => {
+      const anotar = screen.getByRole("button", { name: "Anotar" });
+      fireEvent.click(anotar);
+      fireEvent.click(anotar);
+    });
+    expect(api.crearEncargo).toHaveBeenCalledTimes(1);
+  });
 });

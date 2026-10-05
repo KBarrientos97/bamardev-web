@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Icon, type NombreIcono } from "../../components/Icon";
 import { Buscador, Chips, EncabezadoPagina } from "../../components/filtros";
@@ -330,6 +330,12 @@ function DetalleMercaderia({
     null,
   );
   const [procesando, setProcesando] = useState(false);
+  /**
+   * Aprobar o anular en curso. `procesando` apaga el botón recién en el
+   * render siguiente: un doble clic aprobaba dos veces y, mientras el
+   * servidor no lo frene, el stock se movía dos veces.
+   */
+  const enVuelo = useRef(false);
   const [error, setError] = useState("");
   const [editandoLinea, setEditandoLinea] = useState<DetalleMovimiento | null>(null);
   const [aQuitar, setAQuitar] = useState<DetalleMovimiento | null>(null);
@@ -357,7 +363,8 @@ function DetalleMercaderia({
   }
 
   async function ejecutar() {
-    if (!m || !confirmando) return;
+    if (!m || !confirmando || enVuelo.current) return;
+    enVuelo.current = true;
     setError("");
     setProcesando(true);
     try {
@@ -371,6 +378,7 @@ function DetalleMercaderia({
       setError(err instanceof Error ? err.message : "No se pudo completar la acción");
       setConfirmando(null);
     } finally {
+      enVuelo.current = false;
       setProcesando(false);
     }
   }

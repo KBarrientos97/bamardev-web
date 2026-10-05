@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Chips, EncabezadoPagina } from "../../components/filtros";
 import { Icon } from "../../components/Icon";
 import {
@@ -184,6 +184,12 @@ function FichaProveedor({
     nota: p?.nota ?? "",
   });
   const [guardando, setGuardando] = useState(false);
+  /**
+   * El guardado en curso. `disabled={guardando}` no alcanza: el botón se
+   * apaga recién en el render siguiente, dos clics en el mismo tick entraban
+   * los dos y el servidor acepta el mismo nombre y NIT repetidos.
+   */
+  const enVuelo = useRef(false);
   const [error, setError] = useState("");
   const [bajando, setBajando] = useState(false);
   const detalle = useApi(
@@ -195,7 +201,9 @@ function FichaProveedor({
     setDatos((d) => ({ ...d, [campo]: e.target.value }));
 
   async function guardar() {
+    if (enVuelo.current) return;
     if (datos.nombre.trim().length < 2) return setError("Escribí el nombre del proveedor");
+    enVuelo.current = true;
     setGuardando(true);
     setError("");
     try {
@@ -205,6 +213,7 @@ function FichaProveedor({
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo guardar");
+      enVuelo.current = false;
       setGuardando(false);
     }
   }

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AvisoGastosAtrasados } from "../../components/AvisoGastosAtrasados";
 import { Link } from "react-router-dom";
 import { Buscador, Chips, EncabezadoPagina } from "../../components/filtros";
@@ -670,10 +670,13 @@ function Categorias({
   const [nombre, setNombre] = useState("");
   const [tipo, setTipo] = useState<TipoCostoGasto>("FIJO");
   const [ocupado, setOcupado] = useState<string | null>(null);
+  /** `ocupado` llega tarde para un doble Enter: la categoría se creaba dos veces. */
+  const enVuelo = useRef(false);
   const [error, setError] = useState("");
 
   const correr = async (clave: string, accion: () => Promise<string>) => {
-    if (ocupado) return;
+    if (enVuelo.current) return;
+    enVuelo.current = true;
     setOcupado(clave);
     setError("");
     try {
@@ -682,6 +685,7 @@ function Categorias({
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudo guardar");
     } finally {
+      enVuelo.current = false;
       setOcupado(null);
     }
   };

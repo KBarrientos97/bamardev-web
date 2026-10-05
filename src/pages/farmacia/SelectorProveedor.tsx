@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Icon } from "../../components/Icon";
 import { api } from "../../lib/api";
 import { contiene, normalizar } from "../../lib/texto";
@@ -41,6 +41,8 @@ export default function SelectorProveedor({
   const [abierto, setAbierto] = useState(false);
   const [marcado, setMarcado] = useState(0);
   const [creando, setCreando] = useState(false);
+  /** `creando` llega tarde para un doble clic en el mismo tick: crearía dos. */
+  const enVuelo = useRef(false);
   const [error, setError] = useState("");
 
   const q = texto.trim();
@@ -61,7 +63,8 @@ export default function SelectorProveedor({
   }
 
   async function crear() {
-    if (creando) return;
+    if (enVuelo.current) return;
+    enVuelo.current = true;
     setCreando(true);
     setError("");
     try {
@@ -71,6 +74,7 @@ export default function SelectorProveedor({
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo crear el proveedor");
     } finally {
+      enVuelo.current = false;
       setCreando(false);
     }
   }

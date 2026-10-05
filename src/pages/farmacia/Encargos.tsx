@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Chips, EncabezadoPagina } from "../../components/filtros";
 import { Icon } from "../../components/Icon";
 import {
@@ -324,11 +324,15 @@ function FormEncargo({
   const [nota, setNota] = useState("");
   const [error, setError] = useState("");
   const [guardando, setGuardando] = useState(false);
+  /** Corta el doble clic: dos en el mismo tick anotaban el encargo dos veces. */
+  const enVuelo = useRef(false);
 
   async function guardar() {
+    if (enVuelo.current) return;
     setError("");
     if (!descripcion.trim()) return setError("Escribí qué te pidieron.");
 
+    enVuelo.current = true;
     setGuardando(true);
     try {
       await api.crearEncargo({
@@ -342,6 +346,8 @@ function FormEncargo({
       onGuardado();
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo guardar");
+      // Sólo si falló: guardado, el formulario se cierra y no hay reintento.
+      enVuelo.current = false;
     } finally {
       setGuardando(false);
     }

@@ -143,4 +143,19 @@ describe("la ficha", () => {
       expect.objectContaining({ nombre: "Droguería Nueva" }),
     );
   });
+
+  it("dos clics en el mismo tick crean uno solo", async () => {
+    // El servidor acepta nombre y NIT repetidos: el único freno es acá.
+    await montar();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /Nuevo proveedor/ }));
+    });
+    fireEvent.change(screen.getByLabelText(/^Nombre/), { target: { value: "Droguería Nueva" } });
+    await act(async () => {
+      const crear = screen.getByRole("button", { name: /Crear proveedor/ });
+      fireEvent.click(crear);
+      fireEvent.click(crear);
+    });
+    expect(api.crearProveedor).toHaveBeenCalledTimes(1);
+  });
 });
