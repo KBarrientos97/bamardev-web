@@ -441,7 +441,9 @@ export default function FormMercaderia({
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo guardar");
-      // Se libera para poder reintentar: lo que falló no llegó a crearse.
+      // Se libera para poder reintentar. Al crear, lo que falló no llegó a
+      // existir; al editar, cada paso que sí se hizo ya quedó anotado (ver
+      // `guardarEdicion`), así que reintentar no lo repite.
       enVuelo.current = false;
       setGuardando(false);
       setConfirmandoAprobar(false);
@@ -557,9 +559,16 @@ export default function FormMercaderia({
       proveedorId: entrada ? (proveedor?.id ?? null) : null,
     });
 
+    // Lo que ya se hizo se anota apenas el servidor lo confirma: si una
+    // llamada del medio falla, el reintento parte de lo que de verdad quedó.
+    // Antes el renglón nuevo no guardaba su id —reintentar lo creaba otra vez y
+    // al aprobar entraba doble— y el borrado seguía en la lista —reintentar
+    // daba 404 y la pantalla quedaba trabada—.
     const vivos = new Set(lineas.map((l) => l.detalleId).filter(Boolean));
-    for (const detalleId of originales.current) {
-      if (!vivos.has(detalleId)) await api.eliminarDetalleMovimiento(detalleId);
+    for (const detalleId of [...originales.current]) {
+      if (vivos.has(detalleId)) continue;
+      await api.eliminarDetalleMovimiento(detalleId);
+      originales.current = originales.current.filter((x) => x !== detalleId);
     }
 
     for (let i = 0; i < lineas.length; i++) {
@@ -575,7 +584,15 @@ export default function FormMercaderia({
           loteVencimiento: cuerpo.loteVencimiento ?? "",
         });
       } else {
-        await api.agregarDetalleMovimiento(id, cuerpo);
+        const creado = await api.agregarDetalleMovimiento(id, cuerpo);
+        originales.current = [...originales.current, creado.id];
+        // Por artículo y no por posición: el buscador no deja repetir uno, y
+        // mientras se guardaba alguien pudo quitar un renglón de más arriba.
+        setLineas((ls) =>
+          ls.map((l) =>
+            !l.detalleId && l.articuloId === linea.articuloId ? { ...l, detalleId: creado.id } : l,
+          ),
+        );
       }
     }
   }

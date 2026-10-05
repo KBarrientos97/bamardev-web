@@ -1,7 +1,13 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { Link, MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Almacen, ArticuloMovimiento, LoteConSaldo, Movimiento } from "../../types";
+import type {
+  Almacen,
+  ArticuloMovimiento,
+  LoteConSaldo,
+  Movimiento,
+  Producto,
+} from "../../types";
 
 /**
  * Editar un movimiento PENDIENTE no puede costarle a nadie lo que ya cargó.
@@ -62,6 +68,25 @@ vi.mock("../../lib/api", () => ({
       activo: true,
     })),
     aprobarMovimiento: vi.fn(async () => ({})),
+  },
+}));
+
+// El buscador de verdad pega al servidor: acá alcanza con elegir el primero
+// que todavía no esté en la lista.
+vi.mock("./BuscadorArticulo", () => ({
+  default: ({
+    articulos,
+    yaElegidos,
+    onElegir,
+  }: {
+    articulos: ArticuloMovimiento[];
+    yaElegidos: number[];
+    onElegir: (a: ArticuloMovimiento, p: Producto) => void;
+  }) => {
+    const a = articulos.find((x) => !yaElegidos.includes(x.id)) ?? articulos[0];
+    return (
+      <button onClick={() => onElegir(a, { nombre: a.nombre } as Producto)}>elegir el siguiente</button>
+    );
   },
 }));
 
@@ -780,6 +805,57 @@ describe("Guardar o aprobar", () => {
     await aprobarEnElDialogo();
     expect(api.crearMovimiento).toHaveBeenCalledTimes(1);
     expect(api.aprobarMovimiento).toHaveBeenCalledTimes(2);
+  });
+
+  it("si un paso de la edición falla, reintentar no duplica renglones ni se traba", async () => {
+    // M5: el renglón nuevo no guardaba su id y el borrado seguía anotado: el
+    // reintento creaba otra vez el que ya había entrado (al aprobar salía
+    // doble) y volvía a borrar uno que ya no estaba (404, pantalla trabada).
+    vi.mocked(api.getMovimiento).mockResolvedValue({
+      ...salidaPendiente,
+      detalles: [
+        ...salidaPendiente.detalles!,
+        {
+          id: 302,
+          productoId: 9,
+          producto: "Loratadina 10 mg",
+          cantidad: 1,
+          costo: 2,
+          descripcion: null,
+        },
+      ],
+    });
+    vi.mocked(api.getArticulosMovimiento).mockResolvedValue([
+      articulo(100),
+      { ...articulo(50), id: 8, nombre: "Ibuprofeno 400 mg", manejaLote: false },
+      { ...articulo(50), id: 10, nombre: "Paracetamol 500 mg", manejaLote: false },
+    ]);
+    vi.mocked(api.agregarDetalleMovimiento)
+      .mockResolvedValueOnce({ id: 401 } as never)
+      .mockRejectedValueOnce(new Error("Se cortó la conexión"))
+      .mockResolvedValueOnce({ id: 402 } as never);
+    await abrirEdicion();
+
+    await clickEn(/Quitar Loratadina 10 mg/);
+    for (let i = 0; i < 2; i++) {
+      await clickEn(/Buscar y agregar producto/);
+      await clickEn(/elegir el siguiente/);
+    }
+
+    await clickEn(/Guardar cambios/);
+    expect(screen.getByText("Se cortó la conexión")).toBeInTheDocument();
+    await clickEn(/Guardar cambios/);
+
+    expect(api.eliminarDetalleMovimiento).toHaveBeenCalledTimes(1);
+    expect(api.eliminarDetalleMovimiento).toHaveBeenCalledWith(302);
+    expect(vi.mocked(api.agregarDetalleMovimiento).mock.calls.map((c) => c[1].productoId)).toEqual([
+      8, 10, 10,
+    ]);
+    expect(api.actualizarDetalleMovimiento).toHaveBeenCalledWith(
+      401,
+      expect.objectContaining({ cantidad: 1 }),
+    );
+    expect(screen.queryByText("Se cortó la conexión")).not.toBeInTheDocument();
   });
 
   it("editando un pendiente, «Guardar y aprobar» guarda los cambios y lo aprueba", async () => {

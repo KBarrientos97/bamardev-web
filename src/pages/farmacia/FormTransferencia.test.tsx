@@ -46,19 +46,25 @@ vi.mock("../../lib/api", () => ({
   },
 }));
 
-// El buscador de verdad pega al servidor: acá alcanza con elegir el primero.
+// El buscador de verdad pega al servidor: acá alcanza con elegir el primero
+// que todavía no esté en la lista.
 vi.mock("./BuscadorArticulo", () => ({
   default: ({
     articulos,
+    yaElegidos,
     onElegir,
   }: {
     articulos: ArticuloMovimiento[];
+    yaElegidos: number[];
     onElegir: (a: ArticuloMovimiento, p: Producto) => void;
-  }) => (
-    <button onClick={() => onElegir(articulos[0], { nombre: articulos[0].nombre } as Producto)}>
-      elegir amoxicilina
-    </button>
-  ),
+  }) => {
+    const a = articulos.find((x) => !yaElegidos.includes(x.id)) ?? articulos[0];
+    return (
+      <button onClick={() => onElegir(a, { nombre: a.nombre } as Producto)}>
+        elegir amoxicilina
+      </button>
+    );
+  },
 }));
 
 import { api } from "../../lib/api";
@@ -395,6 +401,52 @@ describe("Editar una transferencia pendiente", () => {
     });
     expect(api.actualizarDetalleMovimiento).toHaveBeenCalledWith(301, { cantidad: 12 });
     expect(api.crearMovimiento).not.toHaveBeenCalled();
+  });
+
+  it("si un paso falla a mitad, reintentar no duplica renglones ni se traba", async () => {
+    // M5: el renglón nuevo no guardaba su id y el borrado seguía anotado: el
+    // reintento creaba otra vez el que ya había entrado (al aprobar viajaba
+    // doble) y volvía a borrar uno que ya no estaba (404, pantalla trabada).
+    vi.mocked(api.getMovimiento).mockResolvedValue(
+      transferencia({
+        detalles: [
+          { id: 301, productoId: 7, producto: "Amoxicilina 500 mg", cantidad: 12, costo: 5, descripcion: null },
+          { id: 302, productoId: 9, producto: "Loratadina 10 mg", cantidad: 1, costo: 2, descripcion: null },
+        ],
+      }),
+    );
+    vi.mocked(api.getArticulosMovimiento).mockResolvedValue([
+      amoxicilina(100),
+      { ...amoxicilina(50), id: 8, nombre: "Ibuprofeno 400 mg" },
+      { ...amoxicilina(50), id: 10, nombre: "Paracetamol 500 mg" },
+    ]);
+    vi.mocked(api.agregarDetalleMovimiento)
+      .mockResolvedValueOnce({ id: 401 } as never)
+      .mockRejectedValueOnce(new Error("Se cortó la conexión"))
+      .mockResolvedValueOnce({ id: 402 } as never);
+    abrir("/inventario/movimientos/transferencia/950/editar");
+    expect(await screen.findByText("Loratadina 10 mg")).toBeInTheDocument();
+
+    await clickEn("Quitar Loratadina 10 mg");
+    fireEvent.click(await screen.findByRole("button", { name: /Buscar y agregar producto/ }));
+    fireEvent.click(screen.getByRole("button", { name: "elegir amoxicilina" }));
+    fireEvent.click(screen.getByRole("button", { name: /Buscar y agregar producto/ }));
+    fireEvent.click(screen.getByRole("button", { name: "elegir amoxicilina" }));
+
+    await clickEn("Guardar cambios");
+    expect(await screen.findByText("Se cortó la conexión")).toBeInTheDocument();
+
+    await clickEn("Guardar cambios");
+    await screen.findByText("registro de movimientos");
+
+    // El borrado, una sola vez; el ibuprofeno, una sola vez (el reintento lo
+    // corrige por su id); el paracetamol, que falló, otra vez.
+    expect(api.eliminarDetalleMovimiento).toHaveBeenCalledTimes(1);
+    expect(api.eliminarDetalleMovimiento).toHaveBeenCalledWith(302);
+    expect(vi.mocked(api.agregarDetalleMovimiento).mock.calls.map((c) => c[1].productoId)).toEqual([
+      8, 10, 10,
+    ]);
+    expect(api.actualizarDetalleMovimiento).toHaveBeenCalledWith(401, { cantidad: 1 });
   });
 
   it("una aprobada no se edita: se anula", async () => {

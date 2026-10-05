@@ -225,7 +225,8 @@ export default function FormTransferencia() {
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo guardar");
-      // Se libera para poder reintentar: lo que falló no llegó a crearse.
+      // Se libera para poder reintentar. Al editar, lo que sí se hizo ya quedó
+      // anotado (ver `guardarEdicion`): reintentar no lo repite.
       enVuelo.current = false;
       setGuardando(false);
       setConfirmandoAprobar(false);
@@ -294,9 +295,14 @@ export default function FormTransferencia() {
       ...(fecha !== fechaOriginal ? { fecha } : {}),
     });
 
+    // Cada paso se anota apenas el servidor lo confirma, como en el ingreso:
+    // si uno del medio falla, reintentar no vuelve a crear el renglón que ya
+    // entró (al aprobar viajaría doble) ni a borrar uno que ya no está (404).
     const vivos = new Set(lineas.map((l) => l.detalleId).filter(Boolean));
-    for (const detalleId of originales.current) {
-      if (!vivos.has(detalleId)) await api.eliminarDetalleMovimiento(detalleId);
+    for (const detalleId of [...originales.current]) {
+      if (vivos.has(detalleId)) continue;
+      await api.eliminarDetalleMovimiento(detalleId);
+      originales.current = originales.current.filter((x) => x !== detalleId);
     }
     for (let i = 0; i < lineas.length; i++) {
       const linea = lineas[i];
@@ -305,7 +311,15 @@ export default function FormTransferencia() {
           cantidad: detalles[i].cantidad,
         });
       } else {
-        await api.agregarDetalleMovimiento(idMov, detalles[i]);
+        const creado = await api.agregarDetalleMovimiento(idMov, detalles[i]);
+        originales.current = [...originales.current, creado.id];
+        // Por artículo: el buscador no deja repetir uno, y la posición pudo
+        // cambiar si mientras tanto se quitó un renglón.
+        setLineas((ls) =>
+          ls.map((l) =>
+            !l.detalleId && l.articuloId === linea.articuloId ? { ...l, detalleId: creado.id } : l,
+          ),
+        );
       }
     }
   }
