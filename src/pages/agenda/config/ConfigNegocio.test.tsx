@@ -1,4 +1,5 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Reglas } from "../../../lib/agenda/tiposConfigAgenda";
 
@@ -65,7 +66,11 @@ const REGLAS: Reglas = {
 };
 
 async function montar() {
-  render(<ConfigNegocio />);
+  render(
+    <MemoryRouter>
+      <ConfigNegocio />
+    </MemoryRouter>,
+  );
   await act(async () => {});
 }
 
@@ -126,7 +131,13 @@ describe("reglas", () => {
       "cada estilista",
     );
     const online = screen.getByRole("region", { name: "Reserva online" });
-    expect(online).toHaveTextContent("Llega con la reserva online");
+    // Desde la fase 2 la reserva online existe: ya no dice "llega pronto" y
+    // lleva a publicar y compartir el enlace.
+    expect(online).not.toHaveTextContent("Llega con la reserva online");
+    expect(within(online).getByRole("link", { name: /Publicar y compartir/ })).toHaveAttribute(
+      "href",
+      "/configuracion/agenda?pestana=reservas",
+    );
   });
 
   it("un número fuera de rango no deja guardar", async () => {

@@ -67,6 +67,14 @@ const ITEMS: (ItemNav & { bloque: Bloque })[] = [
   // enciende junto con el ítem de la agenda del día.
   { a: "/agenda", label: "Agenda", icono: "calendar", seccion: "agenda", bloque: "agenda" },
   { a: "/hoy", label: "Hoy", icono: "clock", seccion: "hoy", bloque: "agenda" },
+  // A9: con contador de pendientes (ver MenuLateral). Sólo con la reserva online.
+  {
+    a: "/solicitudes",
+    label: "Solicitudes online",
+    icono: "bell",
+    seccion: "solicitudes",
+    bloque: "agenda",
+  },
   {
     a: "/configuracion/agenda",
     label: "Configuración de agenda",

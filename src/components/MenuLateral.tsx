@@ -16,6 +16,7 @@ import {
   type Menu,
   type NodoMenu,
 } from "../lib/menu";
+import { useContadorSolicitudes } from "../lib/agenda/contadorSolicitudes";
 import { useAuth } from "../store/AuthContext";
 import { Icon } from "./Icon";
 
@@ -57,6 +58,9 @@ export default function MenuLateral({
   // Con un solo bloque (el repartidor, que ve "Mis entregas" y nada más) el
   // rótulo no separa nada de nada.
   const conTitulos = bloques.length > 1;
+  // Solicitudes online por atender (A9): el número va al lado del ítem.
+  const solicitudes = useContadorSolicitudes(menu.planos.some((n) => n.item.seccion === "solicitudes"));
+  const contadorDe = (n: NodoMenu) => (n.item.seccion === "solicitudes" ? solicitudes : 0);
 
   // Tooltip propio para la barra de íconos: el `title` del navegador tarda un
   // segundo en salir y no aparece con el teclado. Va con posición fija porque
@@ -171,7 +175,12 @@ export default function MenuLateral({
             activo ? "bg-barra-activo text-barra-texto" : `hover:bg-barra-activo ${tono(dentro)}`,
           ].join(" ")}
         >
-          {icono(n, !!padre)}
+          <span className="relative">
+            {icono(n, !!padre)}
+            {contadorDe(n) > 0 && (
+              <span aria-hidden className="absolute -right-1.5 -top-1 h-2.5 w-2.5 rounded-full bg-white ring-2 ring-barra" />
+            )}
+          </span>
         </Link>
       </li>
     );
@@ -210,6 +219,14 @@ export default function MenuLateral({
             {/* Sin `truncate`: un nombre que no entra baja de renglón. Cortado
                 en "Ingreso de merca…" ya no se sabe qué pantalla es. */}
             <span className="min-w-0 leading-snug">{n.item.label}</span>
+            {contadorDe(n) > 0 && (
+              <span
+                className="ml-auto rounded-full bg-barra-texto px-1.5 text-[11px] font-bold leading-[18px] text-barra tabular-nums"
+                aria-label={`${contadorDe(n)} por atender`}
+              >
+                {contadorDe(n)}
+              </span>
+            )}
           </Link>
         </li>
       );

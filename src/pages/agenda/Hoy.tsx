@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { Chips } from "../../components/filtros";
 import { AvisoOk, Boton, Cargando, ErrorMsg, Select, Vacio, useAviso } from "../../components/ui";
 import { apiAgenda } from "../../lib/agenda/apiAgenda";
@@ -51,7 +52,7 @@ function conCita(d: AgendaHoy | null, c: Cita): AgendaHoy | null {
  * `cola_walkin` suma la pestaña de la cola (A6).
  */
 export default function Hoy() {
-  const { negocio } = useAuth();
+  const { negocio, puede } = useAuth();
   const suc = useSucursalAgenda();
   const [pestana, setPestana] = useState<"citas" | "cola">("citas");
   const [filtro, setFiltro] = useState<Filtro>("todas");
@@ -129,6 +130,17 @@ export default function Hoy() {
           <Contador etiqueta="Por cobrar" valor={k.porCobrar} alerta={k.porCobrar > 0} />
           <Contador etiqueta="Por confirmar" valor={k.porConfirmar} />
         </dl>
+      )}
+
+      {/* A9: lo que entró por la página de reservas y espera respuesta. */}
+      {!!k?.solicitudes && puede("solicitudes") && (
+        <Link
+          to="/solicitudes"
+          className="flex items-center justify-between gap-2 rounded-xl bg-info-bg px-4 py-3 text-sm font-semibold text-info-text"
+        >
+          {k.solicitudes === 1 ? "1 solicitud online por aprobar" : `${k.solicitudes} solicitudes online por aprobar`}
+          <span aria-hidden>→</span>
+        </Link>
       )}
 
       {conCola && (

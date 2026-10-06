@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { EncabezadoPagina } from "../../../components/filtros";
 import { Icon } from "../../../components/Icon";
 import {
@@ -295,8 +296,16 @@ function FormReglas({
 
       <Bloque
         titulo={TITULO_GRUPO.online}
-        insignia={<Badge tono="azul">Llega con la reserva online</Badge>}
-        subtitulo="Se guardan desde ya; se usan cuando se active la página de reservas."
+        subtitulo="Cómo entran y qué reglas siguen las reservas que llegan por tu página."
+        accion={
+          <Link
+            to="/configuracion/agenda?pestana=reservas"
+            className="inline-flex items-center gap-1.5 rounded-xl border border-borde bg-white px-3 py-2 text-[13px] font-semibold text-texto-2 hover:bg-muted"
+          >
+            <Icon name="arrowUpRight" size={15} />
+            Publicar y compartir el enlace
+          </Link>
+        }
       >
         <fieldset className="space-y-2">
           <legend className="mb-1 text-[13px] font-semibold text-texto-2">

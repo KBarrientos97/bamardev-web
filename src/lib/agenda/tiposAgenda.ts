@@ -177,6 +177,8 @@ export interface ContadoresHoy {
   enAtencion: number;
   porCobrar: number;
   noShowSugeridos: number;
+  /** Solicitudes online por aprobar de la sucursal, de cualquier día (fase 2). */
+  solicitudes?: number;
 }
 
 export interface AgendaHoy {

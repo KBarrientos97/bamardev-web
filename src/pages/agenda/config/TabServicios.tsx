@@ -254,7 +254,7 @@ function FormServicio({
             <Input type="number" inputMode="numeric" value={buffer} onChange={(e) => setBuffer(e.target.value)} placeholder="0" />
           </Campo>
         </div>
-        <Casilla checked={online} onChange={setOnline} ayuda="Llega con la reserva online: se guarda desde ya.">
+        <Casilla checked={online} onChange={setOnline} ayuda="Aparece en tu página de reservas.">
           Se puede reservar online
         </Casilla>
         <div>
@@ -369,7 +369,7 @@ function NuevoServicio({
             <Input type="number" inputMode="numeric" value={buffer} onChange={(e) => setBuffer(e.target.value)} placeholder="0" />
           </Campo>
         </div>
-        <Casilla checked={online} onChange={setOnline} ayuda="Llega con la reserva online: se guarda desde ya.">
+        <Casilla checked={online} onChange={setOnline} ayuda="Aparece en tu página de reservas.">
           Se puede reservar online
         </Casilla>
         <ErrorMsg>{error}</ErrorMsg>
