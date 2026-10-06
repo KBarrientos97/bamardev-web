@@ -163,7 +163,12 @@ export interface Cotizacion {
 }
 
 export interface CotizarInput {
-  detalles: { productoId: number; cantidad: number }[];
+  /**
+   * `recursoId`: el profesional, para su precio propio (agenda, fase 2).
+   * `usarPaquete`: la línea se paga con una sesión (fase 3): va a 0 y no
+   * entra al motor.
+   */
+  detalles: { productoId: number; cantidad: number; recursoId?: number; usarPaquete?: boolean }[];
   almacenId?: number;
   cupones?: string[];
   clienteId?: number;

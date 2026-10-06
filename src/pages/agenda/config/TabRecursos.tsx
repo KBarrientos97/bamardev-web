@@ -17,6 +17,8 @@ import type { Recurso, RecursoInput, Servicio, TipoRecurso } from "../../../lib/
 import { useApi } from "../../../lib/useApi";
 import { Casilla, PuntoColor, SelectorVarios } from "./comun";
 import { mensajeDe, useNombreProfesional, type Sucursal } from "./utilConfig";
+import { apiSpa } from "../../../lib/agenda/apiSpa";
+import { useSpa } from "../../../lib/agenda/spa";
 
 /**
  * Colores sugeridos para las columnas de la agenda. Son datos del negocio (se
@@ -205,6 +207,15 @@ function FormRecurso({
   );
   const [error, setError] = useState("");
   const [guardando, setGuardando] = useState(false);
+  // Fase 3 (`espacios`): de qué tipo es el espacio (Cabina, Camilla…).
+  const spa = useSpa();
+  const tiposEspacio = useApi(
+    () => (spa.espacios ? apiSpa.tiposEspacio() : Promise.resolve([])),
+    [spa.espacios],
+  );
+  const [tipoEspacioId, setTipoEspacioId] = useState(
+    recurso?.tipoEspacioId != null ? String(recurso.tipoEspacioId) : "",
+  );
 
   const esProfesional = tipo === "PROFESIONAL";
 
@@ -261,6 +272,9 @@ function FormRecurso({
       orden: ord,
       sucursalIds,
       servicioIds,
+      ...(spa.espacios && !esProfesional
+        ? { tipoEspacioId: tipoEspacioId ? Number(tipoEspacioId) : null }
+        : {}),
     };
     setGuardando(true);
     setError("");
@@ -381,6 +395,27 @@ function FormRecurso({
         {!esProfesional && (
           <Campo label="Orden en la agenda" hint="Las columnas van de menor a mayor.">
             <Input type="number" inputMode="numeric" value={orden} onChange={(e) => setOrden(e.target.value)} />
+          </Campo>
+        )}
+        {!esProfesional && spa.espacios && (
+          <Campo
+            label="Tipo de espacio"
+            hint="Los servicios que piden este tipo lo toman solo cuando está libre."
+          >
+            <Select
+              value={tipoEspacioId}
+              onChange={(e) => setTipoEspacioId(e.target.value)}
+              aria-label="Tipo de espacio"
+            >
+              <option value="">Sin tipo (se agenda como columna propia)</option>
+              {(tiposEspacio.datos ?? [])
+                .filter((t) => t.activo || String(t.id) === tipoEspacioId)
+                .map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.nombre}
+                  </option>
+                ))}
+            </Select>
           </Campo>
         )}
 

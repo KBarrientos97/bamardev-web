@@ -40,7 +40,7 @@ const ESPERA_MS = 350;
 /** Una línea por artículo, como la manda la cotización. */
 function clave(detalles: DetalleVentaInput[], cupones: string[], clienteId: number | null) {
   return JSON.stringify([
-    detalles.map((d) => [d.productoId, d.cantidad]),
+    detalles.map((d) => [d.productoId, d.cantidad, d.recursoId ?? null]),
     cupones,
     clienteId,
   ]);
@@ -77,7 +77,13 @@ export function useDescuentos(opc: {
     const t = setTimeout(() => {
       apiPromociones
         .cotizar({
-          detalles: detalles.map((d) => ({ productoId: d.productoId, cantidad: d.cantidad })),
+          // El profesional va para que la cotización use su precio propio
+          // (agenda, fase 2), el mismo que va a cobrar la venta.
+          detalles: detalles.map((d) => ({
+            productoId: d.productoId,
+            cantidad: d.cantidad,
+            ...(d.recursoId != null ? { recursoId: d.recursoId } : {}),
+          })),
           ...(almacenId != null ? { almacenId } : {}),
           ...(cupones.length ? { cupones } : {}),
           ...(clienteId != null ? { clienteId } : {}),

@@ -16,6 +16,11 @@ import TabHorarios from "./TabHorarios";
 import TabRecursos from "./TabRecursos";
 import TabReservaOnline from "./TabReservaOnline";
 import TabServicios from "./TabServicios";
+// Fase 3 (spa): cada pestaña sólo aparece con su feature.
+import TabConsentimientos from "./TabConsentimientos";
+import TabEspacios from "./TabEspacios";
+import TabPaquetes from "./TabPaquetes";
+import { useSpa } from "../../../lib/agenda/spa";
 
 /**
  * A8 · Configuración de agenda (PLAN-AGENDA-BELLEZA §5.1): todo lo que hay
@@ -28,11 +33,18 @@ import TabServicios from "./TabServicios";
  * a Servicios en medio de cargar horarios.
  */
 
-const PESTANAS: Pestana[] = ["servicios", "recursos", "horarios", "excepciones", "bloqueos", "reservas"];
+const PESTANAS_BASE: Pestana[] = ["servicios", "recursos", "horarios", "excepciones", "bloqueos", "reservas"];
 
 export default function ConfigAgenda() {
   const { puede } = useAuth();
   const nombres = useNombreProfesional();
+  const spa = useSpa();
+  const PESTANAS: Pestana[] = [
+    ...PESTANAS_BASE,
+    ...(spa.espacios ? (["espacios"] as Pestana[]) : []),
+    ...(spa.paquetes ? (["paquetes"] as Pestana[]) : []),
+    ...(spa.consentimientos ? (["consentimientos"] as Pestana[]) : []),
+  ];
   const [params, setParams] = useSearchParams();
   const pedida = params.get("pestana") as Pestana | null;
   const pestana: Pestana = pedida && PESTANAS.includes(pedida) ? pedida : "servicios";
@@ -57,6 +69,9 @@ export default function ConfigAgenda() {
     excepciones: "Excepciones",
     bloqueos: "Bloqueos",
     reservas: "Reserva online",
+    espacios: "Tipos de espacio",
+    paquetes: "Paquetes",
+    consentimientos: "Consentimientos",
   };
 
   const elegir = (p: Pestana) => {
@@ -184,5 +199,11 @@ function Contenido({
       return <TabBloqueos recursos={recursos} sucursales={sucursales} />;
     case "reservas":
       return <TabReservaOnline servicios={servicios} recursos={recursos} onCambio={recargarTodo} />;
+    case "espacios":
+      return <TabEspacios recursos={recursos} irA={irA} />;
+    case "paquetes":
+      return <TabPaquetes servicios={servicios} />;
+    case "consentimientos":
+      return <TabConsentimientos />;
   }
 }

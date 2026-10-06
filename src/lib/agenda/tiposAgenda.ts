@@ -9,6 +9,8 @@
  * De §10.1 sólo está lo que estas pantallas leen (servicios, recursos, reglas).
  */
 
+import type { CoberturaPaquete } from "./tiposSpa";
+
 export type EstadoCita =
   | "SOLICITADA"
   | "RESERVADA"
@@ -48,6 +50,11 @@ export interface LineaCita {
   sobreTurno: boolean;
   /** 0 si quien mira es PROFESIONAL y el negocio no le deja ver precios. */
   precio: number;
+  /** Fase 3: la cabina que ocupa además del profesional, y la pose. */
+  espacioId?: number | null;
+  espacio?: string | null;
+  poseDesde?: string | null;
+  poseHasta?: string | null;
 }
 
 export interface EventoCita {
@@ -105,7 +112,16 @@ export interface Tramo {
 /** Una forma de hacer toda la secuencia de servicios a partir de `inicio`. */
 export interface Propuesta {
   inicio: string;
-  lineas: { servicioId: number; recursoId: number; inicio: string; fin: string }[];
+  lineas: {
+    servicioId: number;
+    recursoId: number;
+    inicio: string;
+    fin: string;
+    /** Fase 3: la cabina asignada y la pose, si las hay. */
+    espacioId?: number;
+    poseDesde?: string;
+    poseHasta?: string;
+  }[];
 }
 
 export interface ClienteFicha {
@@ -193,8 +209,12 @@ export interface CarritoCita {
     precio: number;
     recursoId: number | null;
     recurso: string | null;
+    /** Fase 3: la sesión de paquete que cubriría este servicio, si hay saldo. */
+    paquete?: CoberturaPaquete | null;
   }[];
   total: number;
+  /** Fase 3: lo que queda por cobrar si se usan las sesiones de paquete. */
+  totalConPaquetes?: number;
 }
 
 export type TipoAviso =

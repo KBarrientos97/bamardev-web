@@ -297,6 +297,8 @@ export interface Producto extends FichaFarmaceutica {
    * `GET /productos/buscar` y sólo si alguien lo cargó: es opcional.
    */
   ubicacion?: string | null;
+  /** Agenda fase 3: paquete de sesiones (se vende a un cliente con ficha). */
+  esPaquete?: boolean;
 }
 
 /**
@@ -946,6 +948,8 @@ export interface DetalleVentaInput {
   receta?: RecetaVenta;
   /** Agenda: el profesional que hizo este servicio (su comisión). */
   recursoId?: number;
+  /** Agenda fase 3: se paga con una sesión de paquete del cliente (precio 0). */
+  usarPaquete?: boolean;
 }
 
 /**
@@ -1140,6 +1144,8 @@ export interface VentaInput {
   // Cupones y promociones: el descuento lo calcula el backend. Mandar
   // `descuentosEsperados` (lo que devolvió /ventas/cotizar) es lo que prende el
   // motor en esta venta; sin él la venta es la de siempre.
+  // `clienteId` también es la ficha de quien compra un paquete o usa una
+  // sesión (agenda fase 3).
   clienteId?: number;
   cupones?: string[];
   descuentosEsperados?: { promocionId: number; monto: number }[];

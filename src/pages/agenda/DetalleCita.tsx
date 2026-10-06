@@ -30,6 +30,10 @@ import MoverCita from "./MoverCita";
 import PedirMotivo from "./PedirMotivo";
 import { useCobrarCita } from "./useCobrarCita";
 import { BadgeEstado, IconoCompartir, IconoCopiar, IconoWhatsApp, Rotulo } from "./piezas";
+// Fase 3 (spa): cabina, pose, paquetes y consentimientos.
+import SpaCita from "./SpaCita";
+import { textoPose } from "../../lib/agenda/spa";
+import { apiSpa, faltantesDelConflicto } from "../../lib/agenda/apiSpa";
 
 const ORIGEN: Record<Cita["origen"], string> = {
   INTERNA: "Agendada en el local",
@@ -70,6 +74,8 @@ export default function DetalleCita({
   const [aviso, setAviso] = useAviso(4000);
   const [pidiendo, setPidiendo] = useState<AccionCita | null>(null);
   const [moviendo, setMoviendo] = useState(false);
+  /** Fase 3: los servicios sin consentimiento firmado, al querer atender. */
+  const [sinFirma, setSinFirma] = useState<string[] | null>(null);
 
   // Escape cierra el panel, como cualquier cosa que se abre encima. Mientras
   // hay un diálogo arriba, lo cierra el diálogo.
@@ -95,7 +101,9 @@ export default function DetalleCita({
       aplicar(await apiAgenda.cambiarEstado(cita.id, accion, motivo));
       setPidiendo(null);
     } catch (e) {
-      setError(mensajeDe(e));
+      const faltan = faltantesDelConflicto(e);
+      if (faltan) setSinFirma(faltan.map((f) => f.servicio));
+      else setError(mensajeDe(e));
       setPidiendo(null);
     } finally {
       setOcupado(false);
@@ -201,8 +209,10 @@ export default function DetalleCita({
                     <p className="text-sm font-bold text-texto">{l.servicio}</p>
                     <p className="text-[12px] text-texto-3">
                       {horaNegocio(l.inicio)} – {horaNegocio(l.fin)} · con {l.recurso}
+                      {l.espacio ? ` · ${l.espacio}` : ""}
                       {l.sobreTurno && <span className="ml-1 font-semibold text-warning-text">· sobre-turno</span>}
                     </p>
+                    {textoPose(l) && <p className="text-[12px] text-texto-3">{textoPose(l)}</p>}
                   </div>
                   {conPrecios && <span className="text-sm font-semibold text-texto">{fmtMoney(l.precio)}</span>}
                 </li>
@@ -215,6 +225,8 @@ export default function DetalleCita({
               </p>
             )}
           </section>
+
+          <SpaCita cita={cita} />
 
           {cita.nota && (
             <section className="space-y-2">
@@ -358,6 +370,25 @@ export default function DetalleCita({
         procesando={ocupado}
         onCancel={() => setPidiendo(null)}
         onOk={() => ejecutar("NO_ASISTIO")}
+      />
+      <Confirmar
+        abierto={sinFirma !== null}
+        titulo="Falta el consentimiento"
+        texto={`No firmó el consentimiento de ${(sinFirma ?? []).join(", ")}. Lo podés hacer firmar desde el detalle. ¿Atender igual? Queda anotado en el historial.`}
+        etiquetaOk="Atender igual"
+        procesando={ocupado}
+        onCancel={() => setSinFirma(null)}
+        onOk={async () => {
+          setOcupado(true);
+          try {
+            aplicar(await apiSpa.atenderSinConsentimiento(cita.id));
+          } catch (e) {
+            setError(mensajeDe(e));
+          } finally {
+            setSinFirma(null);
+            setOcupado(false);
+          }
+        }}
       />
       {moviendo && (
         <MoverCita

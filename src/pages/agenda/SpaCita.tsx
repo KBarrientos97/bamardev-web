@@ -1,0 +1,118 @@
+import { useState } from "react";
+import { Icon } from "../../components/Icon";
+import { apiSpa } from "../../lib/agenda/apiSpa";
+import { useSpa } from "../../lib/agenda/spa";
+import type { Cita } from "../../lib/agenda/tiposAgenda";
+import type { ConsentimientoFaltante } from "../../lib/agenda/tiposSpa";
+import { fmtFecha } from "../../lib/format";
+import { tienePermiso } from "../../lib/permisos";
+import { useApi } from "../../lib/useApi";
+import { useAuth } from "../../store/AuthContext";
+import FirmarConsentimiento from "./FirmarConsentimiento";
+import { Rotulo } from "./piezas";
+
+/** Estados en los que todavía se atiende: ahí importa si falta una firma. */
+const POR_ATENDER = ["SOLICITADA", "RESERVADA", "CONFIRMADA", "EN_ESPERA", "EN_COLA", "EN_ATENCION"];
+
+/**
+ * Lo que la fase 3 le suma al detalle de la cita: el aviso de los
+ * consentimientos que faltan firmar (con el botón para firmar ahí mismo) y
+ * el saldo de paquetes del cliente para los servicios de esta cita.
+ *
+ * Sin las features no hace ni un pedido: un negocio que no las tiene ve el
+ * detalle de siempre.
+ */
+export default function SpaCita({ cita }: { cita: Cita }) {
+  const spa = useSpa();
+  const { usuario } = useAuth();
+  const [firmando, setFirmando] = useState<ConsentimientoFaltante | null>(null);
+  const clienteId = cita.cliente.id;
+  const porAtender = POR_ATENDER.includes(cita.estado);
+  const puedeFirmar = tienePermiso(usuario, "cliente.ver_salud", true);
+
+  const pendientes = useApi(
+    () =>
+      spa.consentimientos && porAtender
+        ? apiSpa.pendientesDeCita(cita.id).then((r) => r.faltan)
+        : Promise.resolve([] as ConsentimientoFaltante[]),
+    [cita.id, spa.consentimientos, porAtender],
+  );
+  const paquetes = useApi(
+    () =>
+      spa.paquetes && clienteId != null
+        ? apiSpa.paquetesDelCliente(clienteId).catch(() => [])
+        : Promise.resolve([]),
+    [clienteId, spa.paquetes],
+  );
+
+  const servicios = new Set(cita.lineas.map((l) => l.servicioId));
+  const saldos = (paquetes.datos ?? [])
+    .filter((p) => p.estado === "ACTIVO" && !p.vencido)
+    .flatMap((p) =>
+      p.items
+        .filter((i) => servicios.has(i.servicioId) && i.restantes > 0)
+        .map((i) => ({ paquete: p, item: i })),
+    );
+  const faltan = pendientes.datos ?? [];
+
+  if (!faltan.length && !saldos.length) return null;
+
+  return (
+    <section className="space-y-2.5">
+      {faltan.length > 0 && (
+        <div role="alert" className="space-y-2 rounded-xl bg-warning-bg p-3 text-warning-text">
+          <p className="flex items-center gap-2 text-sm font-bold">
+            <Icon name="alert" size={17} />
+            Falta el consentimiento firmado
+          </p>
+          <ul className="space-y-1.5">
+            {faltan.map((f) => (
+              <li key={f.servicioId} className="flex items-center gap-2 text-[13px]">
+                <span className="min-w-0 flex-1">{f.servicio}</span>
+                {puedeFirmar && clienteId != null && (
+                  <button
+                    type="button"
+                    onClick={() => setFirmando(f)}
+                    className="shrink-0 rounded-lg bg-white/70 px-2.5 py-1 font-bold hover:bg-white"
+                  >
+                    Firmar ahora
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+          {clienteId == null && (
+            <p className="text-[12px]">La cita no tiene ficha de cliente: creala con su teléfono para guardar la firma.</p>
+          )}
+        </div>
+      )}
+      {saldos.length > 0 && (
+        <div className="space-y-1.5">
+          <Rotulo>Paquetes del cliente</Rotulo>
+          <ul className="space-y-1 text-[13px] text-texto-2">
+            {saldos.map(({ paquete, item }) => (
+              <li key={`${paquete.id}-${item.servicioId}`} className="rounded-lg bg-primary-50 px-3 py-2 text-primary-700">
+                <span className="font-semibold">{paquete.nombre}</span>: quedan {item.restantes} de {item.servicio} · vence el{" "}
+                {fmtFecha(`${paquete.ultimoDia}T12:00:00`)}
+              </li>
+            ))}
+          </ul>
+          <p className="text-[12px] text-texto-3">Al cobrar la cita se descuenta una sesión en vez de cobrarla.</p>
+        </div>
+      )}
+      {firmando && clienteId != null && (
+        <FirmarConsentimiento
+          clienteId={clienteId}
+          citaId={cita.id}
+          faltante={firmando}
+          nombreCliente={cita.cliente.nombre}
+          onClose={() => setFirmando(null)}
+          onFirmado={() => {
+            setFirmando(null);
+            pendientes.recargar();
+          }}
+        />
+      )}
+    </section>
+  );
+}
