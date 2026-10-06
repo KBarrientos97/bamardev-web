@@ -17,6 +17,13 @@ import { api } from "../../lib/api";
 import { fmtFecha, fmtMoney } from "../../lib/format";
 import { apiPromociones } from "../../lib/promociones/apiPromociones";
 import {
+  CODIGO_MAX,
+  codigoBloqueaGuardar,
+  limpiarCodigo,
+  useDisponibilidadCodigo,
+  type EstadoCodigo,
+} from "../../lib/promociones/codigoCupon";
+import {
   DIAS_SEMANA,
   ESTADO_VISIBLE,
   PLANTILLAS,
@@ -145,9 +152,10 @@ export default function Promociones() {
           inicial={editando}
           conCupones={conCupones}
           onCerrar={() => setEditando(null)}
-          onGuardada={(p, nueva) => {
+          onGuardada={(p, nueva, codigo) => {
             setEditando(null);
-            setAviso(nueva ? `Se creó "${p.nombre}"` : `Se guardó "${p.nombre}"`);
+            const conCodigo = codigo ? ` con el código ${codigo}` : "";
+            setAviso(nueva ? `Se creó "${p.nombre}"${conCodigo}` : `Se guardó "${p.nombre}"${conCodigo}`);
             lista.recargar();
           }}
         />
@@ -270,7 +278,8 @@ export function EditorPromocion({
   inicial: Partial<Promocion>;
   conCupones: boolean;
   onCerrar: () => void;
-  onGuardada: (p: Promocion, nueva: boolean) => void;
+  /** `codigo`: el del cupón que se creó junto con la promoción, si hubo. */
+  onGuardada: (p: Promocion, nueva: boolean, codigo?: string) => void;
 }) {
   const productos = useApi(() => api.getProductos(), []);
   const categorias = useApi(() => api.getCategorias(false), []);
@@ -296,12 +305,18 @@ export function EditorPromocion({
     publica: inicial.publica ?? false,
     productoIds: inicial.productoIds ?? [],
     categoriaIds: inicial.categoriaIds ?? [],
+    codigo: "",
   });
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState("");
   const set = <K extends keyof typeof f>(k: K, v: (typeof f)[K]) => setF((x) => ({ ...x, [k]: v }));
   const nueva = inicial.id == null;
   const conAlcance = f.tipo === "PORCENTAJE" || f.tipo === "MONTO";
+  // El código va en la misma promoción (§12, decisión 8): al crearla "con
+  // código", o al pasarla a "con código". Una que ya era con código tiene
+  // los suyos en «Cupones», como siempre.
+  const pideCodigo = conCupones && f.disparo === "CODIGO" && (nueva || inicial.disparo !== "CODIGO");
+  const estadoCodigo = useDisponibilidadCodigo(f.codigo, pideCodigo);
 
   const guardar = async () => {
     setError("");
@@ -328,12 +343,13 @@ export function EditorPromocion({
       publica: f.publica,
       productoIds: f.productoIds,
       categoriaIds: f.categoriaIds,
+      ...(pideCodigo && f.codigo ? { codigo: f.codigo } : {}),
     };
     try {
       const p = nueva
         ? await apiPromociones.crear(input)
         : await apiPromociones.editar(inicial.id!, input);
-      onGuardada(p, nueva);
+      onGuardada(p, nueva, pideCodigo && f.codigo ? f.codigo : undefined);
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudo guardar");
     } finally {
@@ -356,7 +372,10 @@ export function EditorPromocion({
           <Boton variante="ghost" onClick={onCerrar}>
             Cancelar
           </Boton>
-          <Boton onClick={() => void guardar()} disabled={guardando || f.nombre.trim().length < 2}>
+          <Boton
+            onClick={() => void guardar()}
+            disabled={guardando || f.nombre.trim().length < 2 || (pideCodigo && codigoBloqueaGuardar(estadoCodigo))}
+          >
             {guardando ? "Guardando…" : "Guardar"}
           </Boton>
         </>
@@ -381,13 +400,26 @@ export function EditorPromocion({
               ))}
             </Select>
           </Campo>
-          <Campo label="Se aplica" hint={f.disparo === "CODIGO" ? "Sólo con un cupón: los cargás después" : "Sola, en el punto de venta"}>
+          <Campo
+            label="Se aplica"
+            hint={
+              f.disparo === "CODIGO"
+                ? pideCodigo
+                  ? "Sólo cuando el cliente dice el código"
+                  : "Sólo con un cupón: sus códigos están en «Cupones»"
+                : "Sola, en el punto de venta"
+            }
+          >
             <Select value={f.disparo} onChange={(e) => set("disparo", e.target.value as Promocion["disparo"])}>
               <option value="AUTOMATICA">Automáticamente</option>
               {(conCupones || f.disparo === "CODIGO") && <option value="CODIGO">Con código (cupón)</option>}
             </Select>
           </Campo>
         </div>
+
+        {pideCodigo && (
+          <CampoCodigo valor={f.codigo} onCambio={(v) => set("codigo", v)} estado={estadoCodigo} />
+        )}
 
         {f.tipo === "NXM" ? (
           <div className="grid grid-cols-2 gap-3">
@@ -546,6 +578,58 @@ export function EditorPromocion({
   );
 }
 
+/**
+ * El código del cupón en el formulario de la promoción: se limpia mientras se
+ * escribe (sólo A-Z y 0-9) y avisa al instante si ya existe en el negocio.
+ */
+function CampoCodigo({
+  valor,
+  onCambio,
+  estado,
+}: {
+  valor: string;
+  onCambio: (v: string) => void;
+  estado: EstadoCodigo;
+}) {
+  const aviso: { texto: string; clase: string } | null =
+    estado.estado === "corto"
+      ? { texto: "Mínimo 3 letras o números.", clase: "text-texto-3" }
+      : estado.estado === "consultando"
+        ? { texto: "Revisando si está libre…", clase: "text-texto-3" }
+        : estado.estado === "libre"
+          ? { texto: "Disponible.", clase: "text-primary-700" }
+          : estado.estado === "tomado" || estado.estado === "invalido"
+            ? { texto: estado.mensaje, clase: "text-danger-text" }
+            : estado.estado === "error"
+              ? { texto: "No se pudo revisar ahora: se revisa al guardar.", clase: "text-texto-3" }
+              : null;
+  return (
+    <div className="space-y-1">
+      <Campo
+        label="Código del cupón"
+        hint="Sólo letras y números, de 3 a 20 (ej. VERANO20). Dejalo vacío si sólo vas a repartir un lote de códigos de un uso desde «Cupones»."
+      >
+        <Input
+          value={valor}
+          onChange={(e) => onCambio(limpiarCodigo(e.target.value))}
+          placeholder="VERANO20"
+          maxLength={CODIGO_MAX}
+          autoCapitalize="characters"
+          autoComplete="off"
+          spellCheck={false}
+          aria-invalid={estado.estado === "tomado" || estado.estado === "invalido"}
+          aria-describedby="aviso-codigo"
+          className="font-mono"
+        />
+      </Campo>
+      <p id="aviso-codigo" role="status" aria-live="polite" className={`min-h-[1.25rem] text-[13px] font-semibold ${aviso?.clase ?? ""}`}>
+        {estado.estado === "libre" && <Icon name="check" size={13} className="mr-1 inline" />}
+        {aviso?.texto ?? ""}
+      </p>
+    </div>
+  );
+}
+
 // ── Cupones ────────────────────────────────────────────────────────────────
 
 function PanelCupones({ promo, onCerrar }: { promo: Promocion; onCerrar: () => void }) {
@@ -605,7 +689,13 @@ function PanelCupones({ promo, onCerrar }: { promo: Promocion; onCerrar: () => v
         <div className="grid gap-2 sm:grid-cols-3">
           {modo === "codigo" ? (
             <Campo label="Código">
-              <Input value={codigo} onChange={(e) => setCodigo(e.target.value.toUpperCase())} placeholder="VERANO20" />
+              <Input
+                value={codigo}
+                onChange={(e) => setCodigo(limpiarCodigo(e.target.value))}
+                placeholder="VERANO20"
+                maxLength={CODIGO_MAX}
+                className="font-mono"
+              />
             </Campo>
           ) : (
             <>
@@ -613,7 +703,7 @@ function PanelCupones({ promo, onCerrar }: { promo: Promocion; onCerrar: () => v
                 <Input type="number" value={cantidad} onChange={(e) => setCantidad(e.target.value)} />
               </Campo>
               <Campo label="Prefijo">
-                <Input value={prefijo} onChange={(e) => setPrefijo(e.target.value.toUpperCase())} maxLength={8} />
+                <Input value={prefijo} onChange={(e) => setPrefijo(limpiarCodigo(e.target.value).slice(0, 8))} maxLength={8} />
               </Campo>
             </>
           )}

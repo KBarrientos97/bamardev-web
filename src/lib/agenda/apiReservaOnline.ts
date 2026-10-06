@@ -38,7 +38,7 @@ export interface ConfigReservaOnline {
   negocio: string;
   /** El negocio tiene la feature `reserva_online` (se prende desde el panel). */
   habilitada: boolean;
-  modoConfirmacion: "MANUAL" | "AUTOMATICA" | "ANTICIPO_QR";
+  modoConfirmacion: "MANUAL" | "AUTOMATICA" | "AUTOMATICA_CONOCIDOS" | "ANTICIPO_QR";
   serviciosPublicados: number;
   profesionalesPublicados: number;
   sucursales: SucursalReservas[];

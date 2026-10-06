@@ -205,7 +205,8 @@ export interface ExcepcionCreada extends ExcepcionHorario {
 
 // ── Reglas del negocio (A11) ────────────────────────────────────────────────
 
-export type ModoConfirmacion = "MANUAL" | "AUTOMATICA" | "ANTICIPO_QR";
+/** `AUTOMATICA_CONOCIDOS` (B28): sola para clientes conocidos, solicitud para el resto. */
+export type ModoConfirmacion = "MANUAL" | "AUTOMATICA" | "AUTOMATICA_CONOCIDOS" | "ANTICIPO_QR";
 
 /** De dónde sale cada valor resuelto: sucursal → negocio → defecto del rubro. */
 export type OrigenRegla = "SUCURSAL" | "NEGOCIO" | "DEFECTO";
@@ -242,8 +243,15 @@ export type ReglasInput = { sucursalId: number | null } & Partial<ValoresReglas>
 /** Una fila de la bitácora de `GET /agenda/reglas/historial`. */
 export interface CambioRegla {
   campo: string;
+  /** Lo guardado: null = heredaba / vuelve a heredar. */
   antes: string | number | boolean | null;
   despues: string | number | boolean | null;
+  /**
+   * Lo que regía de verdad antes y después (B11), aunque se heredara. Opcional:
+   * un backend anterior no lo manda.
+   */
+  antesEfectivo?: string | number | boolean | null;
+  despuesEfectivo?: string | number | boolean | null;
   sucursalId: number | null;
   usuario: string | null;
   en: string;

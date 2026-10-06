@@ -17,6 +17,7 @@ import { fmtHora, fmtMoney, fmtNum } from "../../lib/format";
 import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
 import { esBelleza } from "../../lib/rubro";
+import { cuandoCita } from "../../lib/agenda/horaAgenda";
 import type { Caja, CitaParaRevisar, MotivoRevisarCita } from "../../types";
 
 /** Motivo libre: es el único que pide escribir la descripción y el sentido. */
@@ -560,6 +561,7 @@ function AvisoCitas({
             {lista.map((c) => (
               <li key={`${c.id}-${c.motivo}`}>
                 <span className="font-semibold">{c.cliente}</span> ({c.codigo}) ·{" "}
+                {c.inicio ? `${cuandoCita(c.inicio)} · ` : ""}
                 {MOTIVO_REVISAR[c.motivo as MotivoRevisarCita] ?? "para revisar"}
               </li>
             ))}
