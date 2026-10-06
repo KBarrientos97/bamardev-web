@@ -188,30 +188,74 @@ describe("QA VER-01 / DIA-11: las filas del cajón suman el esperado", () => {
     expect(filas).toContainEqual(["Otros ingresos de efectivo", 10]);
     expect(filas.reduce((s, [, m]) => s + m, 0)).toBe(463);
   });
+});
 
-  it("restaurante (Omar): las mismas cifras, con sus nombres de siempre", async () => {
+describe("fuera del salón (Omar) el cierre se dibuja como antes", () => {
+  /** Todas las filas del bloque "Movimiento del turno", como [etiqueta, texto del monto]. */
+  function filasDelTurno(): [string, string][] {
+    const dl = screen.getByText("Movimiento del turno").nextElementSibling as HTMLElement;
+    return Array.from(dl.querySelectorAll("dt")).map((dt) => [
+      dt.textContent ?? "",
+      (dt.nextElementSibling?.textContent ?? "").replace(/\s/g, " "),
+    ]);
+  }
+
+  it("restaurante: mismo orden, mismas filas y mismos rótulos de siempre", async () => {
     sesion.rubro = "RESTAURANTE";
     vi.mocked(api.resumenCaja).mockResolvedValue(
       resumen({
+        porFormaPago: [
+          { nombre: "Efectivo", monto: 330 },
+          { nombre: "QR", monto: 70 },
+        ],
+        totalVentas: 400,
         efectivo: 330,
         cambioEntregado: 20,
         ingresos: 50,
         egresos: 30,
         abonosEfectivo: 15,
-        saldoEsperado: 465,
+        abonosPorFormaPago: [{ nombre: "QR", monto: 10 }],
+        creditoOtorgado: 40,
+        anuladas: 1,
+        enPoderDeMeseros: 25,
+        meserosPendientes: [{ meseroId: 3, nombre: "Ana", monto: 25 }],
+        saldoEsperado: 440,
       }),
     );
     await montar();
-    const filas = filasDeCaja();
-    expect(filas).toEqual([
-      ["Fondo de apertura", 100],
-      ["Ventas en efectivo", 330],
-      ["Abonos de créditos (efectivo)", 15],
-      ["Ingresos de efectivo", 50],
-      ["Egresos de efectivo", -30],
+    expect(filasDelTurno().map(([e]) => e)).toEqual([
+      "Fondo de apertura",
+      "Ventas (3)",
+      "Efectivo",
+      "QR",
+      "Cambio entregado",
+      "Ingresos de efectivo",
+      "Egresos de efectivo",
+      "Abonos de créditos (efectivo)",
+      "En poder de meseros",
+      "Abonos por QR (no es efectivo)",
+      "Fiado otorgado (no es efectivo)",
+      "Ventas anuladas",
     ]);
-    expect(filas.reduce((s, [, m]) => s + m, 0)).toBe(465);
-    expect(screen.queryByText(/Propinas/)).not.toBeInTheDocument();
+    expect(filasDelTurno()[4][1]).toMatch(/-.*20,00/);
+    // Nada del diseño del salón.
+    expect(screen.queryByText("Efectivo en caja")).not.toBeInTheDocument();
+    expect(screen.queryByText("Ventas en efectivo")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Recibido/)).not.toBeInTheDocument();
+  });
+
+  it("aunque el backend mande campos de propinas, fuera del salón no se usan", async () => {
+    sesion.rubro = "FARMACIA";
+    vi.mocked(api.resumenCaja).mockResolvedValue(
+      resumen({ ingresos: 50, propinasEfectivo: 0, propinasSalidas: 0, propinasOtras: 0 }),
+    );
+    await montar();
+    expect(filasDelTurno().map(([e]) => e)).toEqual([
+      "Fondo de apertura",
+      "Ventas (3)",
+      "Efectivo",
+      "Ingresos de efectivo",
+    ]);
   });
 });
 
