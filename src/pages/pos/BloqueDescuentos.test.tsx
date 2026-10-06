@@ -1,5 +1,12 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+
+vi.mock("../../lib/agenda/apiAgenda", async (importOriginal) => {
+  const real = await importOriginal<typeof import("../../lib/agenda/apiAgenda")>();
+  return { ...real, apiAgenda: { buscarClientes: vi.fn(), crearCliente: vi.fn() } };
+});
+
+import { apiAgenda } from "../../lib/agenda/apiAgenda";
 import BloqueDescuentos from "./BloqueDescuentos";
 import type { Descuentos } from "./useDescuentos";
 
@@ -77,5 +84,54 @@ describe("BloqueDescuentos", () => {
   it("sin cupones en el plan, no hay campo", () => {
     render(<BloqueDescuentos descuentos={descuentos({ conCupones: false })} />);
     expect(screen.queryByLabelText("Código de cupón")).not.toBeInTheDocument();
+  });
+});
+
+describe("QA DIA-09: «Asociar cliente» con alta rápida", () => {
+  async function buscar(texto: string) {
+    vi.useFakeTimers();
+    fireEvent.click(screen.getByRole("button", { name: "Asociar cliente" }));
+    fireEvent.change(screen.getByLabelText("Buscar cliente"), { target: { value: texto } });
+    await act(async () => {
+      vi.advanceTimersByTime(300);
+    });
+    vi.useRealTimers();
+    await act(async () => {});
+  }
+
+  it("sin resultados ofrece crearlo, y el creado queda en la venta", async () => {
+    vi.mocked(apiAgenda.buscarClientes).mockResolvedValue([]);
+    vi.mocked(apiAgenda.crearCliente).mockResolvedValue({
+      id: 61,
+      nombre: "Rosa Nueva",
+      telefono: "71234567",
+      fechaNacimiento: null,
+      alergias: null,
+      notas: null,
+      noShows: 0,
+      bloqueadoOnline: false,
+      ultimaVisita: null,
+      creadoEn: "x",
+    });
+    const d = descuentos();
+    render(<BloqueDescuentos descuentos={d} conClientes puedeCrearClientes />);
+    await buscar("Rosa Nueva");
+    expect(screen.getByText("Sin resultados")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "+ Nuevo cliente" }));
+    expect(screen.getByLabelText("Nombre")).toHaveValue("Rosa Nueva");
+    fireEvent.change(screen.getByPlaceholderText("70012345"), { target: { value: "71234567" } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Crear cliente" }));
+    });
+    expect(apiAgenda.crearCliente).toHaveBeenCalledWith({ nombre: "Rosa Nueva", telefono: "71234567" });
+    expect(d.setClienteId).toHaveBeenCalledWith(61);
+  });
+
+  it("sin permiso para crear fichas, sólo dice «Sin resultados»", async () => {
+    vi.mocked(apiAgenda.buscarClientes).mockResolvedValue([]);
+    render(<BloqueDescuentos descuentos={descuentos()} conClientes />);
+    await buscar("Rosa");
+    expect(screen.getByText("Sin resultados")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "+ Nuevo cliente" })).not.toBeInTheDocument();
   });
 });

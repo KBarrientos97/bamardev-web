@@ -510,6 +510,16 @@ export function editaSalud(usuario: (ConPermisos & { rol?: Rol }) | null | undef
 }
 
 /**
+ * ¿Da de alta clientes (QA DIA-09)? Lo mismo que pide el backend
+ * (`cliente.editar`); sin permisos del backend, los que atienden el
+ * mostrador. La feature `clientes` la mira quien lo llama: Clientes ya vive
+ * detrás de ella y el POS la pregunta con `puede("clientes")`.
+ */
+export function creaClientes(usuario: (ConPermisos & { rol?: Rol }) | null | undefined): boolean {
+  return tienePermiso(usuario, "cliente.editar", usuario?.rol !== "PROFESIONAL");
+}
+
+/**
  * El profesional en la agenda: la ve sólo sobre lo suyo y no la gestiona.
  * Respaldo: el rol PROFESIONAL, como hasta ahora.
  */

@@ -6,6 +6,7 @@ import { lineasConPaquete } from "../../lib/agenda/spa";
 import type { CarritoCita, ClienteFicha } from "../../lib/agenda/tiposAgenda";
 import type { SesionOfrecida } from "../../lib/agenda/ventaDirecta";
 import { fmtFecha } from "../../lib/format";
+import NuevoCliente, { SinResultadosCliente } from "../agenda/NuevoCliente";
 
 /**
  * Las piezas del POS para los paquetes de sesiones (agenda fase 3):
@@ -122,19 +123,29 @@ export function SesionesEnVentaDirecta({
   );
 }
 
-/** A quién se le vende el paquete: busca la ficha por nombre o teléfono. */
+/**
+ * A quién se le vende el paquete: busca la ficha por nombre o teléfono. Si no
+ * está, lo dice y —para quien puede crear fichas— la da de alta ahí mismo
+ * (QA DIA-09): antes había que inventarle una cita para venderle un bono.
+ */
 export function ClientePaquete({
   cliente,
   onElegir,
+  puedeCrear = false,
 }: {
   cliente: { id: number; nombre: string } | null;
   onElegir: (c: { id: number; nombre: string } | null) => void;
+  /** Alta rápida desde el buscador (`cliente.editar`). */
+  puedeCrear?: boolean;
 }) {
   const [texto, setTexto] = useState("");
   const [opciones, setOpciones] = useState<ClienteFicha[]>([]);
+  /** Lo que ya respondió el backend: "Sin resultados" no se dice antes. */
+  const [buscado, setBuscado] = useState("");
+  const [creando, setCreando] = useState(false);
+  const q = texto.trim();
 
   useEffect(() => {
-    const q = texto.trim();
     if (cliente || q.length < 2) {
       setOpciones([]);
       return;
@@ -143,14 +154,19 @@ export function ClientePaquete({
     const t = window.setTimeout(() => {
       apiAgenda
         .buscarClientes(q)
-        .then((r) => vigente && setOpciones(r.slice(0, 6)))
+        .then((r) => {
+          if (!vigente) return;
+          setOpciones(r.slice(0, 6));
+          setBuscado(q);
+        })
+        // Si la búsqueda falla (403 sin fichas) no se afirma que no hay nadie.
         .catch(() => vigente && setOpciones([]));
     }, 300);
     return () => {
       vigente = false;
       window.clearTimeout(t);
     };
-  }, [texto, cliente]);
+  }, [q, cliente]);
 
   return (
     <div className="space-y-2 rounded-xl border border-borde bg-white px-3.5 py-2.5">
@@ -177,6 +193,9 @@ export function ClientePaquete({
             placeholder="Buscar cliente por nombre o teléfono"
             aria-label="Cliente del paquete"
           />
+          {opciones.length === 0 && q.length >= 2 && buscado === q && (
+            <SinResultadosCliente puedeCrear={puedeCrear} onCrear={() => setCreando(true)} />
+          )}
           {opciones.length > 0 && (
             <ul className="divide-y divide-borde-soft rounded-xl border border-borde">
               {opciones.map((c) => (
@@ -195,6 +214,18 @@ export function ClientePaquete({
           )}
           <p className="text-[12px] text-texto-3">Sin cliente no se puede vender: las sesiones quedan en su ficha.</p>
         </>
+      )}
+      {creando && (
+        <NuevoCliente
+          textoBuscado={texto}
+          etiquetaExistente={(nombre) => `Elegir a ${nombre}`}
+          onClose={() => setCreando(false)}
+          onListo={(c) => {
+            setCreando(false);
+            setTexto("");
+            onElegir({ id: c.id, nombre: c.nombre });
+          }}
+        />
       )}
     </div>
   );
