@@ -349,3 +349,92 @@ describe("los roles del backend (/roles/ofrecidos)", () => {
     expect(rolesOfrecidos()).toEqual(["Cajero", "Mesero"]);
   });
 });
+
+/**
+ * Ronda 1 de QA de la agenda (06-oct): el alta sin email, los roles que el
+ * rubro no ofrece, el "Dueño" de un salón y el permiso negativo con tilde.
+ */
+describe("QA ronda 1 en Usuarios", () => {
+  const PELUQUERIA: SesionNegocio = {
+    id: 3,
+    nombre: "Peluquería QA",
+    tipoNegocio: "PELUQUERIA",
+    perfil: {
+      rubro: "PELUQUERIA",
+      nombre: "Peluquería",
+      vertical: "BELLEZA",
+      estado: "EN_DESARROLLO",
+      icono: "tijera",
+      etiquetasRol: { CAJERO: "Recepción", PROFESIONAL: "Estilista" },
+      config: { rolesOfrecidos: ["ADMIN", "SUPERVISOR", "CAJERO", "PROFESIONAL"] },
+    },
+  };
+  const ESTILISTA = cuenta({ id: 4, nombre: "Carla Méndez", usuario: "estilista", rol: "PROFESIONAL" });
+
+  async function llenarAlta() {
+    fireEvent.click(screen.getByRole("button", { name: "Nuevo" }));
+    fireEvent.change(screen.getByLabelText(/^Nombre/), { target: { value: "Carla Méndez" } });
+    fireEvent.change(screen.getByLabelText(/^Usuario/), { target: { value: "carla" } });
+    fireEvent.change(screen.getByLabelText(/^Contraseña/), { target: { value: "secreta1" } });
+    vi.mocked(api.crearUsuario).mockResolvedValue(cuenta({ id: 20, usuario: "carla" }));
+  }
+
+  it("A-01: el alta sin email no manda el campo (el backend rechazaba \"\")", async () => {
+    await montar([ADMIN]);
+    await llenarAlta();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
+    });
+    expect(api.crearUsuario).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(api.crearUsuario).mock.calls[0][0]).not.toHaveProperty("email");
+  });
+
+  it("A-01: con email lo manda limpio", async () => {
+    await montar([ADMIN]);
+    await llenarAlta();
+    fireEvent.change(screen.getByLabelText(/^Email/), { target: { value: " carla@salon.bo " } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
+    });
+    expect(api.crearUsuario).toHaveBeenCalledWith(expect.objectContaining({ email: "carla@salon.bo" }));
+  });
+
+  it("B-20: en peluquería no hay tarjeta ni filtro de repartidores", async () => {
+    sesion.conSalon = false;
+    sesion.negocio = PELUQUERIA;
+    await montar([ADMIN, ESTILISTA]);
+    expect(screen.queryByText("Repartidores")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Repartidores" })).not.toBeInTheDocument();
+    expect(kpi("Estilistas")).toBe("1");
+    // Cinco tarjetas: entran en una fila.
+    expect(screen.getByText("Estilistas", { selector: "span.uppercase" }).closest(".grid")).toHaveClass(
+      "xl:grid-cols-5",
+    );
+  });
+
+  it("B-20: restaurante y farmacia siguen contando repartidores", async () => {
+    await montar([ADMIN]);
+    expect(kpi("Repartidores")).toBe("0");
+    expect(screen.getByRole("button", { name: "Repartidores" })).toBeInTheDocument();
+    expect(kpi("Administradores")).toBe("1");
+  });
+
+  it("B-19: en un salón el ADMIN se cuenta como Dueños", async () => {
+    sesion.conSalon = false;
+    sesion.negocio = PELUQUERIA;
+    await montar([ADMIN]);
+    expect(kpi("Dueños")).toBe("1");
+    expect(screen.queryByText("Administradores")).not.toBeInTheDocument();
+  });
+
+  it("B-28: 'No cobra' no lleva la tilde verde", async () => {
+    sesion.conSalon = false;
+    sesion.negocio = PELUQUERIA;
+    await montar([ADMIN, ESTILISTA]);
+    fireEvent.click(screen.getByRole("button", { name: /@estilista\b/ }));
+    const item = screen.getByText("No cobra").closest("li")!;
+    expect(item.querySelector("svg")).not.toHaveAttribute("stroke", "#059669");
+    const otro = screen.getByText("Ve su agenda y sus clientes").closest("li")!;
+    expect(otro.querySelector("svg")).toHaveAttribute("stroke", "#059669");
+  });
+});

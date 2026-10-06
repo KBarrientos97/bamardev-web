@@ -138,11 +138,15 @@ export function termino(
  * Lo normal es que llegue en `perfil.etiquetasRol`; esto cubre al backend que
  * todavía no lo manda, para que una barbería no vea "Cajero" mientras tanto.
  */
+// El ADMIN de un salón es el "Dueño" (PLAN-ROLES §5): el backend lo manda en
+// `rolEtiqueta` del login, pero el perfil del rubro no lo trae en
+// `etiquetasRol`, y sin esto las tarjetas de Usuarios decían "Administrador"
+// (QA B-19). Restaurante y farmacia no están en la tabla: siguen igual.
 const ROL_POR_RUBRO: Partial<Record<Rubro, Partial<Record<Rol, string>>>> = {
-  PELUQUERIA: { CAJERO: "Recepción", PROFESIONAL: "Estilista" },
-  BARBERIA: { CAJERO: "Recepción", PROFESIONAL: "Barbero" },
-  SPA: { CAJERO: "Recepción", PROFESIONAL: "Terapeuta" },
-  UNAS: { CAJERO: "Recepción", PROFESIONAL: "Manicurista" },
+  PELUQUERIA: { ADMIN: "Dueño", CAJERO: "Recepción", PROFESIONAL: "Estilista" },
+  BARBERIA: { ADMIN: "Dueño", CAJERO: "Recepción", PROFESIONAL: "Barbero" },
+  SPA: { ADMIN: "Dueño", CAJERO: "Recepción", PROFESIONAL: "Terapeuta" },
+  UNAS: { ADMIN: "Dueño", CAJERO: "Recepción", PROFESIONAL: "Manicurista" },
 };
 
 /**
