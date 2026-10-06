@@ -19,6 +19,7 @@ import Login from "./pages/Login";
 import PagarLicencia from "./pages/PagarLicencia";
 import Reportes from "./pages/Reportes";
 import Usuarios from "./pages/Usuarios";
+import Roles from "./pages/roles/Roles";
 import Personal from "./pages/Personal";
 import Agenda from "./pages/agenda/Agenda";
 import Hoy from "./pages/agenda/Hoy";
@@ -579,6 +580,15 @@ function Rutas() {
           element={
             <Protegida seccion="usuarios">
               <Usuarios />
+            </Protegida>
+          }
+        />
+        {/* Los roles del negocio (PLAN-ROLES-NEGOCIO): todas las verticales. */}
+        <Route
+          path="/roles"
+          element={
+            <Protegida seccion="roles">
+              <Roles />
             </Protegida>
           }
         />

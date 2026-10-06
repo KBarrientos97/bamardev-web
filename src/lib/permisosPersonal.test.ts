@@ -59,6 +59,12 @@ describe("menú: Personal en Equipo", () => {
     expect(equipo?.hijos[0]?.item).toMatchObject({ label: "Personal", a: "/personal" });
   });
 
+  it("Roles va dentro de Equipo, después de Usuarios", () => {
+    const m = menu(ctx({ permisos: ["personal.gestionar", "usuarios.administrar", "roles.gestionar"] }));
+    const equipo = m.flatMap((b) => b.nodos).find((n) => n.item.label === "Equipo");
+    expect(equipo?.hijos.map((h) => h.item.label)).toEqual(["Personal", "Usuarios", "Roles"]);
+  });
+
   it("no aparece en el menú de un restaurante", () => {
     const m = menu(ctx({ rubro: "RESTAURANTE", features: POLLERIA }));
     expect(aplanar(m.flatMap((b) => b.nodos)).map((n) => n.item.label)).not.toContain("Personal");
