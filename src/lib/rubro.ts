@@ -1,7 +1,7 @@
 /**
  * El RUBRO del negocio: la tercera dimensión, después del rol y del plan.
  *
- *   • Rol   → qué puede hacer la persona   (`usuario.modulos`)
+ *   • Rol   → qué puede hacer la persona   (`usuario.permisos`)
  *   • Plan  → qué compró el negocio        (`negocio.features`)
  *   • Rubro → **a qué se dedica**          (`negocio.tipoNegocio`)
  *
@@ -149,7 +149,7 @@ export function termino(
  * todavía no lo manda, para que una barbería no vea "Cajero" mientras tanto.
  */
 // El ADMIN de un salón es el "Dueño" (PLAN-ROLES §5): el backend lo manda en
-// `rolEtiqueta` del login, pero el perfil del rubro no lo trae en
+// `rolEtiqueta` del login (hoy `rolNombre`), pero el perfil del rubro no lo trae en
 // `etiquetasRol`, y sin esto las tarjetas de Usuarios decían "Administrador"
 // (QA B-19). Restaurante y farmacia no están en la tabla: siguen igual.
 const ROL_POR_RUBRO: Partial<Record<Rubro, Partial<Record<Rol, string>>>> = {

@@ -25,7 +25,7 @@ export default function AgendaPronto() {
         </div>
         <p className="mt-4 text-[13px] font-semibold text-texto-3">
           {negocio?.nombre ?? "BamarDev"}
-          {usuario ? ` · ${etiquetaRol(usuario.rol, negocio)}` : ""}
+          {usuario ? ` · ${usuario.rolNombre?.trim() || etiquetaRol(usuario.rol, negocio)}` : ""}
         </p>
 
         <div className="card mt-5 space-y-3 p-6 shadow-lg">

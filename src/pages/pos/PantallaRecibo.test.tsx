@@ -24,7 +24,7 @@ vi.mock("../../store/AuthContext", async () => {
       rubro: sesion.rubro,
       incluye: (c: Parameters<typeof puede>[1]) =>
         puede(
-          { rol: "ADMIN", modulos: [], features: sesion.features as Feature[], rubro: sesion.rubro },
+          { permisos: [], features: sesion.features as Feature[], rubro: sesion.rubro },
           c,
         ),
     }),

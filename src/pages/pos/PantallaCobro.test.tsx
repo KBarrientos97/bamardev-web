@@ -12,13 +12,17 @@ const sesion = vi.hoisted(() => ({
   features: ["pos", "pago_qr_mixto", "gift_cards", "propinas"] as string[],
 }));
 
-vi.mock("../../store/AuthContext", () => ({
-  useAuth: () => ({
-    negocio: { id: 1, tipoNegocio: sesion.rubro, features: sesion.features },
-    usuario: { id: 1, username: "recepcion", rol: "CAJERO" },
-    incluye: (f: string) => sesion.features.includes(f),
-  }),
-}));
+vi.mock("../../store/AuthContext", async () => {
+  // Los permisos de la plantilla de ese rol: la pantalla decide sólo con ellos.
+  const { permisosDe } = await import("../../test/sesiones");
+  return {
+    useAuth: () => ({
+      negocio: { id: 1, tipoNegocio: sesion.rubro, features: sesion.features },
+      usuario: { id: 1, username: "recepcion", rol: "CAJERO", ...permisosDe("CAJERO") },
+      incluye: (f: string) => sesion.features.includes(f),
+    }),
+  };
+});
 
 vi.mock("../../lib/belleza/apiExtras", () => ({
   apiExtras: { consultarVale: vi.fn(), formaPagoVale: vi.fn() },

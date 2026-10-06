@@ -16,13 +16,17 @@ import type { Dashboard, Vencimientos } from "../../types";
 const plan = vi.hoisted(() => ({ lotes: true, reportes: true }));
 const navegado = vi.hoisted(() => ({ a: "", con: null as unknown }));
 
-vi.mock("../../store/AuthContext", () => ({
-  useAuth: () => ({
-    usuario: { rol: "ADMIN", sucursalId: null },
-    puede: (s: string) => (s === "reportes" ? plan.reportes : true),
-    incluye: (c: string) => (c === "lotes" ? plan.lotes : true),
-  }),
-}));
+vi.mock("../../store/AuthContext", async () => {
+  // Los permisos de la plantilla de ese rol: la pantalla decide sólo con ellos.
+  const { permisosDe } = await import("../../test/sesiones");
+  return {
+    useAuth: () => ({
+      usuario: { rol: "ADMIN", ...permisosDe("ADMIN"), sucursalId: null },
+      puede: (s: string) => (s === "reportes" ? plan.reportes : true),
+      incluye: (c: string) => (c === "lotes" ? plan.lotes : true),
+    }),
+  };
+});
 
 vi.mock("react-router-dom", async () => {
   const real = await vi.importActual<typeof import("react-router-dom")>("react-router-dom");

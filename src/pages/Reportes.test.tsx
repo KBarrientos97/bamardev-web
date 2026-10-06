@@ -10,15 +10,19 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const sesion = vi.hoisted(() => ({ rubro: "FARMACIA" as string }));
 
-vi.mock("../store/AuthContext", () => ({
-  useAuth: () => ({
-    rubro: sesion.rubro,
-    incluye: () => true,
-    puede: () => true,
-    usuario: { rol: "ADMIN", sucursalId: 917 },
-    negocio: { id: 1, nombre: "Prueba" },
-  }),
-}));
+vi.mock("../store/AuthContext", async () => {
+  // Los permisos de la plantilla de ese rol: la pantalla decide sólo con ellos.
+  const { permisosDe } = await import("../test/sesiones");
+  return {
+    useAuth: () => ({
+      rubro: sesion.rubro,
+      incluye: () => true,
+      puede: () => true,
+      usuario: { rol: "ADMIN", ...permisosDe("ADMIN"), sucursalId: 917 },
+      negocio: { id: 1, nombre: "Prueba" },
+    }),
+  };
+});
 
 vi.mock("../lib/api", () => ({
   api: {

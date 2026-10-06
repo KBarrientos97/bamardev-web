@@ -8,9 +8,13 @@ import { cita } from "../../test/agendaFixtures";
  * y lleva a la cita.
  */
 
-vi.mock("../../store/AuthContext", () => ({
-  useAuth: () => ({ usuario: { id: 3, username: "recepcion", rol: "CAJERO" } }),
-}));
+vi.mock("../../store/AuthContext", async () => {
+  // Los permisos de la plantilla de ese rol: la pantalla decide sólo con ellos.
+  const { permisosDe } = await import("../../test/sesiones");
+  return {
+    useAuth: () => ({ usuario: { id: 3, username: "recepcion", rol: "CAJERO", ...permisosDe("CAJERO") } }),
+  };
+});
 
 vi.mock("../../lib/agenda/apiAgenda", async (importOriginal) => {
   const real = await importOriginal<typeof import("../../lib/agenda/apiAgenda")>();

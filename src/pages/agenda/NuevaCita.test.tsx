@@ -10,12 +10,22 @@ import { FECHA, cita, ficha, propuesta, recurso, servicio } from "../../test/age
 
 const sesion = vi.hoisted(() => ({ rol: "CAJERO" as string }));
 
-vi.mock("../../store/AuthContext", () => ({
-  useAuth: () => ({
-    usuario: { id: 3, username: "recepcion", rol: sesion.rol, sucursalId: 1, modulos: [] },
-    negocio: { id: 1, nombre: "Salón Bella Vista", tipoNegocio: "PELUQUERIA" },
-  }),
-}));
+vi.mock("../../store/AuthContext", async () => {
+  // Los permisos de la plantilla de ese rol: la pantalla decide sólo con ellos.
+  const { permisosDe } = await import("../../test/sesiones");
+  return {
+    useAuth: () => ({
+      usuario: {
+        id: 3,
+        username: "recepcion",
+        rol: sesion.rol,
+        sucursalId: 1,
+        ...permisosDe(sesion.rol as Parameters<typeof permisosDe>[0]),
+      },
+      negocio: { id: 1, nombre: "Salón Bella Vista", tipoNegocio: "PELUQUERIA" },
+    }),
+  };
+});
 
 vi.mock("../../lib/agenda/apiAgenda", async (importOriginal) => {
   const real = await importOriginal<typeof import("../../lib/agenda/apiAgenda")>();

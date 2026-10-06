@@ -19,9 +19,11 @@ const sesion = vi.hoisted(() => ({
 
 vi.mock("../store/AuthContext", async () => {
   const { puedeVer } = await import("../lib/permisos");
+  // Los permisos de la plantilla de ese rol: el menú se arma sólo con ellos.
+  const { permisosDe } = await import("../test/sesiones");
   return {
     useAuth: () => ({
-      usuario: { id: 7, nombre: "Regente", username: "admin", rol: sesion.rol },
+      usuario: { id: 7, nombre: "Regente", username: "admin", rol: sesion.rol, rolNombre: "Regente general" },
       negocio: { id: 3, nombre: "Negocio de prueba" },
       licencia: null,
       logout: () => {},
@@ -29,8 +31,7 @@ vi.mock("../store/AuthContext", async () => {
       puede: (s: Parameters<typeof puedeVer>[1]) =>
         puedeVer(
           {
-            rol: sesion.rol as Parameters<typeof puedeVer>[0]["rol"],
-            modulos: [],
+            ...permisosDe(sesion.rol as Parameters<typeof permisosDe>[0]),
             features: sesion.features,
             rubro: sesion.rubro,
           },

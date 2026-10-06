@@ -47,6 +47,7 @@ vi.mock("../../components/Layout", async () => {
 
 import App from "../../App";
 import { NEGOCIO_KEY, USER_KEY, tokenStore } from "../../lib/api";
+import { usuarioDe } from "../../test/sesiones";
 
 const SALON = (features: string[]): SesionNegocio => ({
   id: 2,
@@ -64,9 +65,12 @@ function entrar(usuario: SesionUsuario, negocio: SesionNegocio) {
   render(<App />);
 }
 
-const PROFESIONAL: SesionUsuario = { id: 8, username: "carla", nombre: "Carla", rol: "PROFESIONAL", modulos: [] };
-const RECEPCION: SesionUsuario = { id: 3, username: "lucia", rol: "CAJERO", modulos: ["POS", "CAJA"], sucursalId: 1 };
-const DUENO: SesionUsuario = { id: 1, username: "dueno", rol: "ADMIN", modulos: ["POS", "INVENTARIO"], sucursalId: 1 };
+// Con los permisos de sus plantillas, cruzados con el plan como lo hace el
+// backend en el login.
+const PROFESIONAL = (features: string[]): SesionUsuario =>
+  usuarioDe("PROFESIONAL", { id: 8, username: "carla", nombre: "Carla" }, { features });
+const RECEPCION: SesionUsuario = usuarioDe("CAJERO", { id: 3, username: "lucia", sucursalId: 1 });
+const DUENO: SesionUsuario = usuarioDe("ADMIN", { id: 1, username: "dueno", sucursalId: 1 });
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -75,7 +79,7 @@ beforeEach(() => {
 
 describe("rutas de la agenda", () => {
   it("el profesional entra a Mi agenda si el negocio tiene la feature", async () => {
-    entrar(PROFESIONAL, SALON(["pos", "agenda"]));
+    entrar(PROFESIONAL(["pos", "agenda"]), SALON(["pos", "agenda"]));
     await act(async () => {});
     expect(window.location.pathname).toBe("/mi-agenda");
     expect(screen.getByRole("heading", { name: "Mi agenda" })).toBeInTheDocument();
@@ -83,7 +87,17 @@ describe("rutas de la agenda", () => {
   });
 
   it("sin la feature sigue viendo el aviso de que llega pronto", async () => {
-    entrar(PROFESIONAL, SALON(["pos"]));
+    // El backend no le manda los permisos de la agenda: no ve ninguna
+    // sección, y en un salón sin agenda eso es "llega pronto", no una cuenta
+    // mal configurada.
+    entrar(PROFESIONAL(["pos"]), SALON(["pos"]));
+    await act(async () => {});
+    expect(screen.getByText("Tu agenda llega pronto")).toBeInTheDocument();
+    expect(screen.queryByText("Tu cuenta no tiene secciones")).not.toBeInTheDocument();
+  });
+
+  it("si el login sí le trae la agenda propia, entra a Mi agenda aunque falte la feature", async () => {
+    entrar(PROFESIONAL([]), SALON(["pos"]));
     await act(async () => {});
     expect(window.location.pathname).toBe("/mi-agenda");
     expect(screen.getByText("Tu agenda llega pronto")).toBeInTheDocument();

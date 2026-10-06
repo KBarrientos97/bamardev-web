@@ -7,7 +7,7 @@ import { puedeVer } from "./permisos";
  * (`propinas.pagar`, ajuste apagado del CAJERO) entra a "Propinas" aunque no
  * tenga "ver propinas": tiene que ver qué entrega.
  */
-const base = { rol: "CAJERO" as const, modulos: [], rubro: "BARBERIA", features: ["propinas"] as Feature[] };
+const base = { rubro: "BARBERIA", features: ["propinas"] as Feature[] };
 
 describe("sección Propinas", () => {
   it("la recepción sin ajuste no la ve; con el ajuste de entregar, sí", () => {
@@ -16,6 +16,6 @@ describe("sección Propinas", () => {
   });
 
   it("el encargado la ve con ver propinas, como siempre", () => {
-    expect(puedeVer({ ...base, rol: "SUPERVISOR", permisos: ["propinas.ver"] }, "propinas")).toBe(true);
+    expect(puedeVer({ ...base, permisos: ["propinas.ver"] }, "propinas")).toBe(true);
   });
 });

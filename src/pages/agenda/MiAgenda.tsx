@@ -77,7 +77,7 @@ export default function MiAgenda() {
   );
   const proxima = proximaCita(todas, hoy);
   const sinTelefono = delDia.some((c) => !c.cliente.telefono);
-  const etiqueta = usuario ? etiquetaRol(usuario.rol, negocio) : "Profesional";
+  const etiqueta = usuario ? usuario.rolNombre?.trim() || etiquetaRol(usuario.rol, negocio) : "Profesional";
   const nombre = usuario?.nombre?.trim() || usuario?.username || "";
   const sucursalId = usuario?.sucursalId ?? recursos[0]?.sucursalIds[0] ?? null;
   const puedeAgendar = !!reglas.datos?.profesionalPuedeAgendar && recursos.length > 0 && sucursalId != null;

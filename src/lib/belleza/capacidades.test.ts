@@ -12,6 +12,7 @@ import {
 import { fmtCantidad, lineaFormula } from "./formato";
 import { medidasFoto } from "./fotos";
 import { puedeVer, type ContextoPermisos } from "../permisos";
+import { permisosDe } from "../../test/sesiones";
 
 /**
  * Las piezas de la fase 4 que se enchufan en el cobro, la cita y la ficha:
@@ -24,7 +25,8 @@ const FASE4 = ["gift_cards", "propinas", "consumo_servicio", "ficha_tecnica"];
 const salon = (over: Partial<ContextoExtras> = {}): ContextoExtras => ({
   features: FASE4,
   rubro: "PELUQUERIA",
-  usuario: { rol: "CAJERO" },
+  // La recepción de la plantilla (CAJERO), con sus permisos reales.
+  usuario: permisosDe("CAJERO"),
   ...over,
 });
 
@@ -53,7 +55,6 @@ describe("capacidades de la fase 4", () => {
   it("con permisos del backend, mandan los permisos", () => {
     const prof = salon({
       usuario: {
-        rol: "PROFESIONAL",
         permisos: ["fichatecnica.ver", "consumo.ajustar"],
         permisosPropios: ["fichatecnica.ver", "consumo.ajustar"],
       },
@@ -64,19 +65,29 @@ describe("capacidades de la fase 4", () => {
     expect(pagaPropinas(prof)).toBe(false);
   });
 
-  it("sin permisos del backend (sesión vieja), el rol: sólo encargados anulan y pagan", () => {
+  it("anular vales y entregar propinas: el encargado sí, la recepción sólo si se lo dan", () => {
     expect(anulaVales(salon())).toBe(false);
     expect(pagaPropinas(salon())).toBe(false);
-    expect(anulaVales(salon({ usuario: { rol: "SUPERVISOR" } }))).toBe(true);
-    expect(pagaPropinas(salon({ usuario: { rol: "ADMIN" } }))).toBe(true);
+    expect(anulaVales(salon({ usuario: permisosDe("SUPERVISOR") }))).toBe(true);
+    expect(pagaPropinas(salon({ usuario: permisosDe("ADMIN") }))).toBe(true);
+    expect(pagaPropinas(salon({ usuario: permisosDe("CAJERO", { extra: ["propinas.pagar"] }) }))).toBe(true);
+  });
+
+  it("sin permisos en la sesión no hay nada que dependa de uno", () => {
+    const sin = salon({ usuario: {} });
+    expect(veInsumosCita(sin)).toBe(false);
+    expect(veFichaTecnica(sin)).toBe(false);
+    expect(anulaVales(sin)).toBe(false);
+    // Lo que sólo depende de la feature sigue: cobrar con vale es una forma de pago.
+    expect(cobraConVale(sin)).toBe(true);
   });
 });
 
 describe("secciones de la fase 4 en el menú", () => {
   const ctx = (over: Partial<ContextoPermisos> = {}): ContextoPermisos => ({
-    rol: "ADMIN",
     rubro: "BARBERIA",
     features: ["pos", "agenda", ...FASE4],
+    ...permisosDe("ADMIN"),
     ...over,
   });
 
@@ -94,8 +105,6 @@ describe("secciones de la fase 4 en el menú", () => {
 
   it("el profesional ve Propinas (las suyas) y nada más de esto", () => {
     const prof = ctx({
-      rol: "PROFESIONAL",
-      arquetipo: "PROFESIONAL",
       permisos: ["propinas.ver", "agenda.ver"],
       permisosPropios: ["propinas.ver", "agenda.ver"],
     });
@@ -105,7 +114,7 @@ describe("secciones de la fase 4 en el menú", () => {
   });
 
   it("con permisos, el cajero vende vales pero no edita recetas", () => {
-    const cajero = ctx({ rol: "CAJERO", permisos: ["vales.vender", "ventas.vender"], permisosPropios: [] });
+    const cajero = ctx({ permisos: ["vales.vender", "ventas.vender"], permisosPropios: [] });
     expect(puedeVer(cajero, "gift_cards")).toBe(true);
     expect(puedeVer(cajero, "recetas_servicio")).toBe(false);
     expect(puedeVer(cajero, "propinas")).toBe(false);

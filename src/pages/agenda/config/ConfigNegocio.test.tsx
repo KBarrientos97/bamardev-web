@@ -10,19 +10,23 @@ import type { Reglas } from "../../../lib/agenda/tiposConfigAgenda";
 
 const sesion = vi.hoisted(() => ({ features: ["agenda"] as string[] }));
 
-vi.mock("../../../store/AuthContext", () => ({
-  useAuth: () => ({
-    usuario: { id: 1, rol: "ADMIN", sucursalId: null },
-    negocio: {
-      id: 16,
-      nombre: "Salón de prueba",
-      tipoNegocio: "PELUQUERIA",
-      features: sesion.features,
-      perfil: { etiquetasRol: { PROFESIONAL: "Estilista" } },
-    },
-    puede: () => true,
-  }),
-}));
+vi.mock("../../../store/AuthContext", async () => {
+  // Los permisos de la plantilla de ese rol: la pantalla decide sólo con ellos.
+  const { permisosDe } = await import("../../../test/sesiones");
+  return {
+    useAuth: () => ({
+      usuario: { id: 1, rol: "ADMIN", ...permisosDe("ADMIN"), sucursalId: null },
+      negocio: {
+        id: 16,
+        nombre: "Salón de prueba",
+        tipoNegocio: "PELUQUERIA",
+        features: sesion.features,
+        perfil: { etiquetasRol: { PROFESIONAL: "Estilista" } },
+      },
+      puede: () => true,
+    }),
+  };
+});
 
 vi.mock("../../../lib/api", () => ({
   api: {

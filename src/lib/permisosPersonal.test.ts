@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { Feature, Modulo } from "../types";
+import type { Feature } from "../types";
 import { aplanar, construirMenu, esMenuDeAgenda } from "./menu";
 import { puedeVer } from "./permisos";
 
@@ -8,13 +8,10 @@ import { puedeVer } from "./permisos";
  * agenda (rubro de belleza + feature `agenda`), y la corta el permiso
  * `personal.gestionar` (dueño y encargado).
  */
-const MODULOS: Modulo[] = ["POS", "CAJA", "REPORTES", "USUARIOS"];
 const SALON: Feature[] = ["pos", "caja", "usuarios", "agenda", "comisiones", "propinas"];
 const POLLERIA: Feature[] = ["pos", "caja", "usuarios", "reportes", "delivery"];
 
 const ctx = (extra: Partial<Parameters<typeof puedeVer>[0]> = {}) => ({
-  rol: "ADMIN" as const,
-  modulos: MODULOS,
   rubro: "BARBERIA",
   features: SALON,
   ...extra,
@@ -23,14 +20,12 @@ const ctx = (extra: Partial<Parameters<typeof puedeVer>[0]> = {}) => ({
 describe("sección Personal", () => {
   it("el dueño y el encargado del salón la ven con personal.gestionar", () => {
     expect(puedeVer(ctx({ permisos: ["personal.gestionar"] }), "personal")).toBe(true);
-    expect(puedeVer(ctx({ rol: "SUPERVISOR", permisos: ["personal.gestionar"] }), "personal")).toBe(true);
+    expect(puedeVer(ctx({ permisos: ["personal.gestionar", "ventas.vender"] }), "personal")).toBe(true);
   });
 
   it("sin el permiso no la ve (recepción, el profesional)", () => {
-    expect(puedeVer(ctx({ rol: "CAJERO", permisos: ["ventas.vender", "agenda.ver"] }), "personal")).toBe(false);
-    expect(
-      puedeVer(ctx({ rol: "PROFESIONAL", arquetipo: "PROFESIONAL", permisos: ["agenda.ver"] }), "personal"),
-    ).toBe(false);
+    expect(puedeVer(ctx({ permisos: ["ventas.vender", "agenda.ver"] }), "personal")).toBe(false);
+    expect(puedeVer(ctx({ permisos: ["agenda.ver"], permisosPropios: ["agenda.ver"] }), "personal")).toBe(false);
   });
 
   it("sin la feature agenda no existe, aunque tenga el permiso", () => {
@@ -49,9 +44,8 @@ describe("sección Personal", () => {
     ).toBe(false);
   });
 
-  it("respaldo sin permisos del backend: dueño y encargado del salón", () => {
-    expect(puedeVer(ctx(), "personal")).toBe(true);
-    expect(puedeVer(ctx({ rol: "CAJERO" }), "personal")).toBe(false);
+  it("sin permisos no la ve nadie: no hay respaldo por nombre de rol", () => {
+    expect(puedeVer(ctx(), "personal")).toBe(false);
   });
 });
 

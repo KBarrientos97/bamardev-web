@@ -22,6 +22,7 @@ import type {
 } from "../../../lib/agenda/tiposConfigAgenda";
 import { useApi } from "../../../lib/useApi";
 import { tienePermiso } from "../../../lib/permisos";
+import { apiRoles, veSoloSuAgendaRol } from "../../../lib/roles";
 import { useAuth } from "../../../store/AuthContext";
 import { AvisoCitasAfectadas, Casilla, PuntoColor, SelectorVarios } from "./comun";
 import { mensajeDe, useNombreProfesional, type Sucursal } from "./utilConfig";
@@ -216,11 +217,12 @@ function FormRecurso({
 }) {
   const nombres = useNombreProfesional();
   const usuarios = useApi(() => api.getUsuarios(), []);
+  const roles = useApi(() => apiRoles.listar().catch(() => null), []);
   // El % de comisión es plata del profesional: lo cambia quien liquida (QA
   // N2-04, el backend lo exige). Quien no puede no ve el campo ni lo manda:
   // mandar el que no ve (null) se lo borraría.
   const { usuario } = useAuth();
-  const cambiaComision = tienePermiso(usuario, "comisiones.liquidar", usuario?.rol === "ADMIN");
+  const cambiaComision = tienePermiso(usuario, "comisiones.liquidar");
 
   const [tipo, setTipo] = useState<TipoRecurso>(recurso?.tipo ?? tipoInicial);
   const [nombre, setNombre] = useState(recurso?.nombre ?? "");
@@ -297,14 +299,21 @@ function FormRecurso({
     if (p.comisionPct != null) setComision(String(p.comisionPct));
   };
 
-  // Sólo cuentas con rol PROFESIONAL: es el rol que entra a "Mi agenda". Una
-  // cuenta ya vinculada a otro recurso no se ofrece: dos columnas con el mismo
-  // usuario le mostrarían a esa persona una agenda que no es sólo la suya.
+  // Sólo cuentas cuyo rol ve sólo su agenda: son las que entran a "Mi
+  // agenda". Sin la lista de roles (quien configura la agenda no siempre la
+  // puede pedir) se ofrecen todas menos las del Administrador. Una cuenta ya
+  // vinculada a otro recurso no se ofrece: dos columnas con el mismo usuario
+  // le mostrarían a esa persona una agenda que no es sólo la suya.
   const vinculados = new Map(
     recursos.filter((r) => r.usuarioId != null && r.id !== recurso?.id).map((r) => [r.usuarioId!, r.nombre]),
   );
   const cuentas = (usuarios.datos ?? []).filter(
-    (u) => u.rol === "PROFESIONAL" && (u.activo || String(u.id) === usuarioId),
+    (u) =>
+      String(u.id) === usuarioId ||
+      (u.activo &&
+        (roles.datos
+          ? veSoloSuAgendaRol(roles.datos.find((r) => r.id === u.rolId))
+          : !u.esAdministrador)),
   );
   // Al editar, el profesional ya es una persona de Personal: atarle un login
   // une la ficha propia de ese login a la suya, y la otra desaparece (QA

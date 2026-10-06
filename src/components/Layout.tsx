@@ -73,7 +73,7 @@ export default function Layout() {
             <span className="text-xs text-barra-texto-2">
               {/* La del login manda (el backend sabe cómo se llama el rol en
                   este rubro: "Dueño" en un salón); sin ella, la de siempre. */}
-              {usuario ? usuario.rolEtiqueta?.trim() || etiquetaRol(usuario.rol, negocio) : ""}
+              {usuario ? usuario.rolNombre?.trim() || etiquetaRol(usuario.rol, negocio) : ""}
             </span>
           </div>
         )}

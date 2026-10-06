@@ -1,4 +1,5 @@
 import { request } from "./api";
+import type { RolNegocio } from "../types";
 
 /**
  * Personal (PLAN-ROLES §9): la gente del negocio, entre o no al sistema.
@@ -10,7 +11,11 @@ import { request } from "./api";
 export interface AccesoPersonal {
   usuarioId: number;
   username: string;
+  /** Código legado (sólo para el APK viejo): no se decide nada con él. */
   rol: string | null;
+  /** El rol del negocio con el que entra (PLAN-ROLES-NEGOCIO §8). */
+  rolId?: number | null;
+  rolNombre?: string | null;
   /** false = se le quitó el acceso (no ocupa cupo). */
   activo: boolean;
   ultimoLogin: string | null;
@@ -19,6 +24,12 @@ export interface AccesoPersonal {
 export interface Persona {
   id: number;
   nombre: string;
+  /**
+   * El cargo es un rol del negocio (PLAN-ROLES-NEGOCIO, decisión 7): sin login
+   * es sólo descriptivo; al darle acceso, ese rol le da los permisos.
+   */
+  cargoRolId: number | null;
+  /** El nombre de ese rol. Sólo lectura. */
   cargo: string | null;
   activo: boolean;
   color: string | null;
@@ -45,7 +56,7 @@ export interface PersonaInput {
   nombre?: string;
   ci?: string | null;
   telefono?: string | null;
-  cargo?: string | null;
+  cargoRolId?: number | null;
   fechaIngreso?: string | null;
   color?: string | null;
   comisionPct?: number | null;
@@ -59,7 +70,8 @@ export interface PersonaInput {
 export interface DarAccesoInput {
   username?: string;
   password?: string;
-  rol?: string;
+  /** El rol del negocio con el que entra. */
+  rolId?: number;
   email?: string;
   sucursalId?: number;
 }
@@ -75,11 +87,19 @@ function qs(params: Record<string, string | number | boolean | null | undefined>
 
 const json = (cuerpo: unknown) => JSON.stringify(cuerpo);
 
+/**
+ * Un cargo de `GET /personal/cargos`: un rol del negocio. El contrato sólo
+ * promete que son "los roles del negocio"; lo seguro es el id y el nombre.
+ */
+export type CargoRol = Pick<RolNegocio, "id" | "nombre"> &
+  Partial<Pick<RolNegocio, "esAdministrador" | "permisos">>;
+
 export const apiPersonal = {
-  listar: (f: { incluirInactivos?: boolean; sucursalId?: number | null; cargo?: string; sinProfesional?: boolean } = {}) =>
+  listar: (f: { incluirInactivos?: boolean; sucursalId?: number | null; sinProfesional?: boolean } = {}) =>
     request<Persona[]>(`/personal${qs(f)}`),
   uno: (id: number) => request<Persona>(`/personal/${id}`),
-  cargos: () => request<{ sugeridos: string[] }>("/personal/cargos"),
+  /** Los cargos que se pueden elegir: los roles del negocio. */
+  cargos: () => request<CargoRol[]>("/personal/cargos"),
   crear: (input: PersonaInput) => request<Persona>("/personal", { method: "POST", body: json(input) }),
   editar: (id: number, input: PersonaInput) =>
     request<Persona>(`/personal/${id}`, { method: "PATCH", body: json(input) }),

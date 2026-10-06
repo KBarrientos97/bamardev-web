@@ -13,7 +13,7 @@ const logout = vi.fn();
 
 vi.mock("../../store/AuthContext", () => ({
   useAuth: () => ({
-    usuario: { id: 8, username: "carla", nombre: "Carla", rol: "PROFESIONAL", sucursalId: null, modulos: [] },
+    usuario: { id: 8, username: "carla", nombre: "Carla", rol: "PROFESIONAL", rolNombre: "Estilista", sucursalId: null, permisos: ["agenda.ver", "agenda.estado", "comisiones.ver"], permisosPropios: ["agenda.ver", "agenda.estado", "comisiones.ver"] },
     negocio: { id: 1, nombre: "Salón Bella Vista", tipoNegocio: "PELUQUERIA" },
     logout,
   }),

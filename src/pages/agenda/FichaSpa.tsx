@@ -22,7 +22,7 @@ import { Rotulo } from "./piezas";
 export default function FichaSpa({ clienteId }: { clienteId: number }) {
   const spa = useSpa();
   const { usuario } = useAuth();
-  const veSalud = spa.consentimientos && tienePermiso(usuario, "cliente.ver_salud", true);
+  const veSalud = spa.consentimientos && tienePermiso(usuario, "cliente.ver_salud");
   return (
     <>
       {spa.paquetes && <PaquetesCliente clienteId={clienteId} />}
@@ -40,7 +40,7 @@ export default function FichaSpa({ clienteId }: { clienteId: number }) {
 export function SaludDeLaCita({ clienteId }: { clienteId: number }) {
   const spa = useSpa();
   const { usuario } = useAuth();
-  if (!spa.consentimientos || !tienePermiso(usuario, "cliente.ver_salud", true)) return null;
+  if (!spa.consentimientos || !tienePermiso(usuario, "cliente.ver_salud")) return null;
   return <SaludCliente clienteId={clienteId} edita={editaSalud(usuario)} />;
 }
 

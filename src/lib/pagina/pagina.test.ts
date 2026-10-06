@@ -142,13 +142,13 @@ describe("rutas y permisos", () => {
     expect(esRutaDePaginaPublica("/p/bv/otra")).toBe(false);
   });
 
-  it("Mi página: sólo el ADMIN y sólo con la feature (sin fallar abierto)", () => {
-    const base = { rol: "ADMIN" as const, modulos: [], rubro: "RESTAURANTE" };
+  it("Mi página: con negocio.configurar y sólo con la feature (sin fallar abierto)", () => {
+    const base = { rubro: "RESTAURANTE", permisos: ["negocio.configurar"] };
     expect(puedeVer({ ...base, features: ["pos", "pagina_publica"] }, "mi_pagina")).toBe(true);
     expect(puedeVer({ ...base, features: ["pos"] }, "mi_pagina")).toBe(false);
     // Lista vacía: el resto de la app falla abierto, la página no.
     expect(puedeVer({ ...base, features: [] }, "mi_pagina")).toBe(false);
-    expect(puedeVer({ ...base, rol: "CAJERO", features: ["pagina_publica"] }, "mi_pagina")).toBe(false);
+    expect(puedeVer({ ...base, permisos: ["ventas.vender"], features: ["pagina_publica"] }, "mi_pagina")).toBe(false);
     expect(puedeVer({ ...base, features: ["pagina_publica"] }, "mis_enlaces")).toBe(false);
     expect(puedeVer({ ...base, features: ["enlaces_cortos"] }, "mis_enlaces")).toBe(true);
   });

@@ -8,12 +8,16 @@ import type { AsientoControlado } from "../../types";
  * sigue ahí, marcada.
  */
 
-vi.mock("../../store/AuthContext", () => ({
-  useAuth: () => ({
-    negocio: { id: 1, nombre: "Farmacia San Rafael" },
-    usuario: { rol: "ADMIN", sucursalId: 917 },
-  }),
-}));
+vi.mock("../../store/AuthContext", async () => {
+  // Los permisos de la plantilla de ese rol: la pantalla decide sólo con ellos.
+  const { permisosDe } = await import("../../test/sesiones");
+  return {
+    useAuth: () => ({
+      negocio: { id: 1, nombre: "Farmacia San Rafael" },
+      usuario: { rol: "ADMIN", ...permisosDe("ADMIN"), sucursalId: 917 },
+    }),
+  };
+});
 
 vi.mock("../../lib/api", () => ({
   api: { libroControlados: vi.fn(), getSucursales: vi.fn(async () => []) },

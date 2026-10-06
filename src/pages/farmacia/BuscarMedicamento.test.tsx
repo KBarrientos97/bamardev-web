@@ -15,13 +15,21 @@ const sesion = vi.hoisted(() => ({
   sucursalId: null as number | null,
 }));
 
-vi.mock("../../store/AuthContext", () => ({
-  useAuth: () => ({
-    puede: (s: string) => (s === "pos" ? sesion.pos : true),
-    incluye: () => true,
-    usuario: { rol: sesion.rol, sucursalId: sesion.sucursalId },
-  }),
-}));
+vi.mock("../../store/AuthContext", async () => {
+  // Los permisos de la plantilla de ese rol: la pantalla decide sólo con ellos.
+  const { permisosDe } = await import("../../test/sesiones");
+  return {
+    useAuth: () => ({
+      puede: (s: string) => (s === "pos" ? sesion.pos : true),
+      incluye: () => true,
+      usuario: {
+        rol: sesion.rol,
+        sucursalId: sesion.sucursalId,
+        ...permisosDe(sesion.rol as Parameters<typeof permisosDe>[0]),
+      },
+    }),
+  };
+});
 
 vi.mock("../../lib/api", () => ({
   api: {

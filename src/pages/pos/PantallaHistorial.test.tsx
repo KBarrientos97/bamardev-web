@@ -16,7 +16,8 @@ const sesion = vi.hoisted(() => ({ rubro: "RESTAURANTE" as string | undefined })
 vi.mock("../../store/AuthContext", () => ({
   useAuth: () => ({
     rubro: sesion.rubro,
-    usuario: { rol: "ADMIN" },
+    // Quien autoriza con PIN se autoriza a sí mismo (no le pide usuario).
+    usuario: { rol: "ADMIN", permisos: ["ventas.anular", "autorizar.pin"] },
     puede: () => false,
     incluye: () => true,
   }),

@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { contiene } from "../lib/texto";
 import { Icon } from "../components/Icon";
 import { Buscador, Chips, EncabezadoPagina } from "../components/filtros";
+import PermisosDelRol from "../components/roles/PermisosDelRol";
 import {
   AvisoOk,
   Badge,
@@ -20,138 +21,70 @@ import {
 } from "../components/ui";
 import { api } from "../lib/api";
 import { fmtFechaHora, iniciales, tiempoRelativo } from "../lib/format";
+import { tienePermiso } from "../lib/permisos";
 import {
-  etiquetaRol,
-  ofreceRol,
-  rolesAsignables as calcularRolesAsignables,
-  type RolApp,
-} from "../lib/permisos";
+  apiRoles,
+  nombresDelCatalogo,
+  rolTiene,
+  tonoDeRol,
+  type NombresPermisos,
+} from "../lib/roles";
 import { useApi } from "../lib/useApi";
 import { useAuth } from "../store/AuthContext";
-import type {
-  ActualizarUsuarioInput,
-  CrearUsuarioInput,
-  PermisoDeRol,
-  Rol,
-  RolOfrecido,
-  Usuario,
-} from "../types";
-
-// `ROLES_APP` y quién asigna qué viven en permisos.ts: se prueban sin montar
-// la pantalla, y el rol PROFESIONAL depende del perfil del rubro.
-
-const TONO_ROL: Record<RolApp, "morado" | "azul" | "verde" | "amarillo" | "gris"> = {
-  ADMIN: "morado",
-  SUPERVISOR: "azul",
-  CAJERO: "verde",
-  // Gris, como se veía hasta ahora: los demás tonos ya dicen otra cosa (el rojo
-  // es vencido y el ámbar es el repartidor).
-  MESERO: "gris",
-  REPARTIDOR: "amarillo",
-  // El color del negocio: en un salón el profesional es el centro del trabajo.
-  PROFESIONAL: "verde",
-};
+import type { ActualizarUsuarioInput, CrearUsuarioInput, RolNegocio, Usuario } from "../types";
 
 /**
- * Qué puede hacer cada rol, copiado de la app Android para que las dos
- * pantallas digan lo mismo. Es informativo: quien manda es el backend
- * (RolesGuard), acá sólo se explica al administrador qué está entregando.
+ * Usuarios: las cuentas de acceso del negocio (PLAN-ROLES-NEGOCIO). Todo sale
+ * de los roles del negocio y de los permisos: las tarjetas y los filtros son
+ * uno por rol, el detalle muestra los permisos reales del rol, el combo de rol
+ * ofrece lo que quien mira puede asignar (`GET /roles/asignables`) y el PIN
+ * aparece donde el rol autoriza con PIN. Ningún nombre de rol está escrito acá.
  */
-const PERMISOS_ROL: Record<RolApp, string[]> = {
-  ADMIN: ["Inventario", "Ventas", "Reportes", "Usuarios", "Anular ventas", "Cierre de caja"],
-  SUPERVISOR: ["Ventas", "Reportes", "Anular ventas", "Cierre de caja"],
-  CAJERO: ["Ventas", "Caja propia"],
-  // "No maneja dinero" va a propósito, como en Android: es la diferencia con el
-  // cajero y lo que el dueño tiene que saber antes de darle la cuenta a alguien.
-  MESERO: ["Salón y mesas", "Tomar pedidos", "Mandar la cuenta a caja", "No maneja dinero"],
-  REPARTIDOR: ["Entregas", "Cobro contra entrega", "Rendición"],
-  // Desde PLAN-ROLES R3 el backend se lo hace cumplir: sólo lo suyo, sin
-  // cobrar ni configurar. Lo fino (teléfono, agendar) son reglas del negocio.
-  PROFESIONAL: ["Ve su agenda y sus clientes", "No cobra"],
-};
 
-/**
- * Sólo ADMIN y SUPERVISOR autorizan (anular una venta, fiar por encima del
- * límite), así que sólo ellos llevan PIN, y se lo asigna el ADMIN. Al resto ni
- * se le ofrece: a un mesero se le mostraba "Asignar PIN" y el backend lo
- * rechazaba.
- */
-const ROLES_CON_PIN: Rol[] = ["ADMIN", "SUPERVISOR"];
-
-/**
- * Lo que el rol NO hace: va con una cruz neutra y no con la tilde verde, que
- * se leía "✓ No cobra" (QA B-28). El "No maneja dinero" del mesero queda con
- * su tilde de siempre a propósito: es pantalla de Omar y no se toca en un
- * arreglo de belleza.
- */
-const NEGACIONES = new Set(["No cobra"]);
-
-type FiltroRol = "todos" | RolApp | "inactivos";
-
-const OPC_ROL = [
-  ["todos", "Todos"],
-  ["ADMIN", "Administradores"],
-  ["SUPERVISOR", "Supervisores"],
-  ["CAJERO", "Cajeros"],
-  ["MESERO", "Meseros"],
-  ["REPARTIDOR", "Repartidores"],
-  ["PROFESIONAL", "Profesionales"],
-  ["inactivos", "Inactivos"],
-] as const satisfies readonly (readonly [FiltroRol, string])[];
-
-/**
- * Plural de una etiqueta del rubro ("Barbero" → "Barberos") para los filtros y
- * las tarjetas. Sólo para las que vienen del perfil: las de siempre ya tienen
- * su plural escrito en `OPC_ROL`. "Recepción" queda igual: es un puesto, no
- * una persona, y "Recepciones" se leería como otra cosa.
- */
-function pluralizar(etiqueta: string): string {
-  if (/ión$/i.test(etiqueta)) return etiqueta;
-  if (/[aeiouáéó]$/i.test(etiqueta)) return `${etiqueta}s`;
-  return `${etiqueta}es`;
+/** El rol de una cuenta, buscado por id en la lista de roles del negocio. */
+function rolDe(u: Pick<Usuario, "rolId">, roles: RolNegocio[]): RolNegocio | null {
+  return roles.find((r) => r.id === u.rolId) ?? null;
 }
 
-/** El rol del backend puede crecer; lo que no está en la matriz cae en gris. */
-function tonoRol(rol: Rol): "morado" | "azul" | "verde" | "amarillo" | "gris" {
-  return TONO_ROL[rol as RolApp] ?? "gris";
+/** El nombre del rol de una cuenta: el del negocio, y si no llegó, el código. */
+function nombreRol(u: Pick<Usuario, "rolId" | "rolNombre" | "rol">, roles: RolNegocio[]): string {
+  return u.rolNombre?.trim() || rolDe(u, roles)?.nombre || u.rol;
 }
+
+/**
+ * ¿El rol reparte? Zona y vehículo son datos de quien entrega pedidos. El
+ * Administrador tiene todos los permisos, pero no por eso es repartidor.
+ */
+function reparte(rol: RolNegocio | null): boolean {
+  return !!rol && !rol.esAdministrador && rol.permisos.some((p) => p.codigo === "entregas.realizar");
+}
+
+/**
+ * ¿Lleva PIN? El PIN sirve para autorizar lo que hace otro (anular, fiar por
+ * encima del límite): lo lleva el rol que tiene `autorizar.pin`, y sólo si el
+ * plan incluye la autorización con PIN.
+ */
+function llevaPin(rol: RolNegocio | null, conPin: boolean): boolean {
+  return conPin && rolTiene(rol, "autorizar.pin");
+}
+
+type FiltroRol = "todos" | "inactivos" | `rol:${number}`;
 
 export default function Usuarios() {
-  const { incluye, puede, negocio } = useAuth();
-  // El PIN sólo existe para autorizar anulaciones de venta.
+  const { incluye, usuario: actual } = useAuth();
+  // El PIN sólo existe si el plan incluye la autorización con PIN.
   const conPin = incluye("autorizacion_pin");
-  // Los meseros se cuentan y se filtran sólo donde hay salón: en una farmacia,
-  // o en un plan sin mesas, la tarjeta y el filtro dirían siempre cero.
-  const conSalon = puede("salon");
-  // Lo mismo con el profesional: sólo donde el perfil del rubro lo ofrece.
-  const conProfesional = ofreceRol(negocio?.perfil, "PROFESIONAL");
-  /**
-   * El plural que se muestra en filtros y tarjetas. Si el rubro le pone otro
-   * nombre al rol (en un salón el cajero es "Recepción"), se usa ése; si no,
-   * el de siempre.
-   */
-  const pluralRol = (rol: RolApp, deSiempre: string) => {
-    const etiqueta = etiquetaRol(rol, negocio);
-    return etiqueta === etiquetaRol(rol) ? deSiempre : pluralizar(etiqueta);
-  };
-  /**
-   * ¿Se cuenta y se filtra este rol? Los que el rubro no ofrece no aparecen: en
-   * una peluquería no hay repartidores (QA B-20), igual que el selector del
-   * alta. El ADMIN siempre, porque existe en todo negocio aunque no se asigne
-   * desde acá. Sin `rolesOfrecidos` en el perfil (restaurante, farmacia) son
-   * los de siempre.
-   */
-  const muestraRol = (rol: RolApp) =>
-    rol === "ADMIN" ||
-    (ofreceRol(negocio?.perfil, rol) && (rol !== "MESERO" || conSalon));
-  const opcionesRol = OPC_ROL.filter(
-    ([valor]) => valor === "todos" || valor === "inactivos" || muestraRol(valor),
-  ).map(([valor, texto]) =>
-    valor === "todos" || valor === "inactivos"
-      ? ([valor, texto] as const)
-      : ([valor, pluralRol(valor, texto)] as const),
-  );
   const usuarios = useApi(() => api.getUsuarios(), []);
+  const roles = useApi(() => apiRoles.listar(), []);
+  // Los nombres de los permisos salen del catálogo, que es de quien edita
+  // roles. A quien no, no se le pide (sería un 403): se usa lo que traiga el rol.
+  const editaRoles = tienePermiso(actual, "roles.gestionar");
+  const catalogo = useApi(
+    () => (editaRoles ? apiRoles.catalogo().catch(() => null) : Promise.resolve(null)),
+    [editaRoles],
+  );
+  const nombres = useMemo(() => nombresDelCatalogo(catalogo.datos), [catalogo.datos]);
+  const listaRoles = useMemo(() => roles.datos ?? [], [roles.datos]);
 
   const [q, setQ] = useState("");
   const [filtroRol, setFiltroRol] = useState<FiltroRol>("todos");
@@ -167,59 +100,52 @@ export default function Usuarios() {
   const [errorAccion, setErrorAccion] = useState("");
   const [aviso, setAviso] = useAviso();
 
-  const lista = usuarios.datos ?? [];
+  const lista = useMemo(() => usuarios.datos ?? [], [usuarios.datos]);
+
+  // Los KPIs cuentan sólo cuentas activas: una cuenta dada de baja no ocupa un
+  // puesto y sumarla haría creer que hay más gente operando de la que hay.
+  const activosPorRol = useMemo(() => {
+    const m = new Map<number, number>();
+    for (const u of lista) if (u.activo && u.rolId != null) m.set(u.rolId, (m.get(u.rolId) ?? 0) + 1);
+    return m;
+  }, [lista]);
+
+  // Un filtro y una tarjeta por cada rol del negocio, en el orden que los
+  // manda el backend (el Administrador primero).
+  const opcionesRol = useMemo(
+    () =>
+      [
+        ["todos", "Todos"],
+        ...listaRoles.map((r) => [`rol:${r.id}`, r.nombre] as const),
+        ["inactivos", "Inactivos"],
+      ] as readonly (readonly [FiltroRol, string])[],
+    [listaRoles],
+  );
 
   const filtrados = useMemo(() => {
     const texto = q.trim().toLowerCase();
     return lista.filter((u) => {
-      if (
-        texto &&
-        !contiene(u.nombre, texto) &&
-        !contiene(u.usuario, texto)
-      )
-        return false;
+      if (texto && !contiene(u.nombre, texto) && !contiene(u.usuario, texto)) return false;
       if (filtroRol === "todos") return true;
       if (filtroRol === "inactivos") return !u.activo;
-      return u.rol === filtroRol;
+      return `rol:${u.rolId}` === filtroRol;
     });
   }, [lista, q, filtroRol]);
 
-  // Los KPIs cuentan sólo cuentas activas: una cuenta dada de baja no ocupa un
-  // puesto y sumarla haría creer que hay más gente operando de la que hay.
-  const conteos = useMemo(() => {
-    const base: Record<RolApp, number> = {
-      ADMIN: 0,
-      SUPERVISOR: 0,
-      CAJERO: 0,
-      MESERO: 0,
-      REPARTIDOR: 0,
-      PROFESIONAL: 0,
-    };
-    for (const u of lista) {
-      if (!u.activo) continue;
-      if (u.rol in base) base[u.rol as RolApp]++;
-    }
-    return base;
-  }, [lista]);
-
   const inactivos = lista.filter((u) => !u.activo).length;
-  // Con cinco tarjetas van en una fila en pantallas anchas; con seis (salón, o
-  // profesionales y repartidores) van en dos filas de tres. Restaurante con
-  // salón y farmacia quedan como antes (seis y cinco).
-  const tarjetas =
-    2 +
-    (["SUPERVISOR", "CAJERO", "MESERO", "REPARTIDOR"] as RolApp[]).filter(muestraRol).length +
-    (conProfesional ? 1 : 0);
+  // Con cinco tarjetas van en una fila en pantallas anchas; si no, de a tres.
+  const tarjetas = listaRoles.length + 1;
 
   /** Refresca la lista y deja el detalle mostrando la versión recién guardada. */
   function traerDeVuelta(actualizado: Usuario) {
     setDetalle(actualizado);
     usuarios.recargar();
+    roles.recargar();
   }
 
   /**
-   * Quitarle el PIN a un supervisor es sacarle la autorización: como el PIN lo
-   * asigna sólo el administrador, él no puede volver a ponérselo.
+   * Quitarle el PIN a alguien es sacarle la autorización: lo vuelve a poner
+   * sólo quien asigna los PIN.
    */
   async function quitarPin() {
     if (!quitandoPin || quitandoPinEnCurso) return;
@@ -256,7 +182,7 @@ export default function Usuarios() {
   }
 
   return (
-    <div className="mx-auto max-w-6xl space-y-4 p-5">
+    <div className="mx-auto max-w-6xl space-y-4 p-4 sm:p-5">
       <EncabezadoPagina
         titulo="Usuarios"
         subtitulo={`${lista.length} ${lista.length === 1 ? "cuenta" : "cuentas"} en el negocio`}
@@ -267,49 +193,19 @@ export default function Usuarios() {
         }
       />
 
-      {/* Con meseros son seis tarjetas, y seis en una fila no entran: a 1280 px
-          "ADMINISTRADORES" se montaba sobre su ícono. Van en dos filas de tres;
-          con cinco (farmacia, o un salón sin repartidores) en una fila. */}
       <div
-        className={`grid gap-3 sm:grid-cols-2 lg:grid-cols-3 ${tarjetas === 5 ? "xl:grid-cols-5" : ""}`}
+        className={`grid grid-cols-2 gap-3 lg:grid-cols-3 ${tarjetas === 5 ? "xl:grid-cols-5" : ""}`}
+        aria-label="Cuentas por rol"
       >
-        {/* El ADMIN con la etiqueta del rubro: en belleza es el "Dueño" (B-19). */}
-        <Kpi
-          etiqueta={pluralRol("ADMIN", "Administradores")}
-          valor={String(conteos.ADMIN)}
-          icono="lock"
-          tono="morado"
-        />
-        {muestraRol("SUPERVISOR") && (
-          <Kpi etiqueta="Supervisores" valor={String(conteos.SUPERVISOR)} icono="users" tono="azul" />
-        )}
-        {muestraRol("CAJERO") && (
+        {listaRoles.map((r) => (
           <Kpi
-            etiqueta={pluralRol("CAJERO", "Cajeros")}
-            valor={String(conteos.CAJERO)}
-            icono="cart"
-            tono="verde"
+            key={r.id}
+            etiqueta={r.nombre}
+            valor={String(activosPorRol.get(r.id) ?? 0)}
+            icono={r.esAdministrador ? "lock" : "users"}
+            tono={tonoDeRol(r, listaRoles)}
           />
-        )}
-        {conProfesional && (
-          <Kpi
-            etiqueta={pluralRol("PROFESIONAL", "Profesionales")}
-            valor={String(conteos.PROFESIONAL)}
-            icono="calendar"
-            tono="verde"
-          />
-        )}
-        {muestraRol("MESERO") && (
-          <Kpi etiqueta="Meseros" valor={String(conteos.MESERO)} icono="grid" tono="gris" />
-        )}
-        {muestraRol("REPARTIDOR") && (
-          <Kpi
-            etiqueta="Repartidores"
-            valor={String(conteos.REPARTIDOR)}
-            icono="truck"
-            tono="amarillo"
-          />
-        )}
+        ))}
         <Kpi etiqueta="Inactivos" valor={String(inactivos)} icono="x" tono="gris" />
       </div>
 
@@ -320,7 +216,7 @@ export default function Usuarios() {
         <Chips valor={filtroRol} opciones={opcionesRol} onChange={setFiltroRol} />
       </div>
 
-      <ErrorMsg>{errorAccion || usuarios.error}</ErrorMsg>
+      <ErrorMsg>{errorAccion || usuarios.error || roles.error}</ErrorMsg>
       <AvisoOk>{aviso}</AvisoOk>
 
       {usuarios.cargando ? (
@@ -347,13 +243,21 @@ export default function Usuarios() {
       ) : (
         <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {filtrados.map((u) => (
-            <TarjetaUsuario key={u.id} usuario={u} onClick={() => setDetalle(u)} />
+            <TarjetaUsuario
+              key={u.id}
+              usuario={u}
+              roles={listaRoles}
+              conPin={conPin}
+              onClick={() => setDetalle(u)}
+            />
           ))}
         </ul>
       )}
 
       <DetalleUsuario
         usuario={detalle}
+        roles={listaRoles}
+        nombres={nombres}
         onClose={() => setDetalle(null)}
         onEditar={(u) => {
           setDetalle(null);
@@ -369,6 +273,8 @@ export default function Usuarios() {
       <FormUsuario
         abierto={creando || !!editando}
         usuario={editando}
+        roles={listaRoles}
+        nombres={nombres}
         onClose={() => {
           setCreando(false);
           setEditando(null);
@@ -391,6 +297,7 @@ export default function Usuarios() {
 
       <FormPin
         usuario={cambiandoPin}
+        llevaPin={!!cambiandoPin && llevaPin(rolDe(cambiandoPin, listaRoles), conPin)}
         onClose={() => setCambiandoPin(null)}
         onGuardado={() => {
           // El detalle sigue abierto atrás: sin esto seguía diciendo "Asignar
@@ -432,10 +339,18 @@ export default function Usuarios() {
   );
 }
 
-function TarjetaUsuario({ usuario: u, onClick }: { usuario: Usuario; onClick: () => void }) {
-  const { incluye, negocio } = useAuth();
-  const conPin = incluye("autorizacion_pin");
-
+function TarjetaUsuario({
+  usuario: u,
+  roles,
+  conPin,
+  onClick,
+}: {
+  usuario: Usuario;
+  roles: RolNegocio[];
+  conPin: boolean;
+  onClick: () => void;
+}) {
+  const rol = rolDe(u, roles);
   return (
     <li>
       <button
@@ -452,9 +367,7 @@ function TarjetaUsuario({ usuario: u, onClick }: { usuario: Usuario; onClick: ()
           </span>
           <div className="flex items-center gap-2">
             {!u.activo && <Badge tono="gris">Inactivo</Badge>}
-            {conPin && u.tienePin && ROLES_CON_PIN.includes(u.rol) && (
-              <Badge tono="azul">PIN</Badge>
-            )}
+            {u.tienePin && llevaPin(rol, conPin) && <Badge tono="azul">PIN</Badge>}
             <Icon name="chevronRight" size={17} color="#94A3B8" />
           </div>
         </div>
@@ -463,7 +376,7 @@ function TarjetaUsuario({ usuario: u, onClick }: { usuario: Usuario; onClick: ()
         <p className="mt-0.5 truncate text-[13px] text-texto-3">@{u.usuario}</p>
 
         <div className="mt-3 flex items-center justify-between gap-2">
-          <Badge tono={tonoRol(u.rol)}>{etiquetaRol(u.rol, negocio)}</Badge>
+          <Badge tono={tonoDeRol(rol, roles)}>{nombreRol(u, roles)}</Badge>
           <span className="flex items-center gap-1 truncate text-xs text-texto-4">
             <Icon name="clock" size={13} />
             {tiempoRelativo(u.ultimoLogin)}
@@ -477,6 +390,8 @@ function TarjetaUsuario({ usuario: u, onClick }: { usuario: Usuario; onClick: ()
 function DetalleUsuario({
   conPin,
   usuario: u,
+  roles,
+  nombres,
   onClose,
   onEditar,
   onPassword,
@@ -485,6 +400,8 @@ function DetalleUsuario({
   onEstado,
 }: {
   usuario: Usuario | null;
+  roles: RolNegocio[];
+  nombres: NombresPermisos;
   onClose: () => void;
   onEditar: (u: Usuario) => void;
   onPassword: (u: Usuario) => void;
@@ -493,16 +410,13 @@ function DetalleUsuario({
   onEstado: (u: Usuario) => void;
   conPin: boolean;
 }) {
-  const { usuario: actual, negocio } = useAuth();
+  const { usuario: actual } = useAuth();
   if (!u) return null;
-  const permisos = PERMISOS_ROL[u.rol as RolApp] ?? [];
-  const esRepartidor = u.rol === "REPARTIDOR";
+  const rol = rolDe(u, roles);
   const esYo = actual?.id === u.id;
-  // El PIN sólo sirve para autorizar: sin esa capacidad en el plan no hay nada
-  // que autorizar con él. Lo llevan administradores y supervisores, y lo
-  // asigna, cambia o quita sólo el administrador.
-  const llevaPin = conPin && ROLES_CON_PIN.includes(u.rol);
-  const administraPin = llevaPin && actual?.rol === "ADMIN";
+  const conPinElRol = llevaPin(rol, conPin);
+  // Lo asigna, cambia o quita quien tiene `usuarios.asignar_pin`.
+  const administraPin = conPinElRol && tienePermiso(actual, "usuarios.asignar_pin");
 
   return (
     <Modal
@@ -513,8 +427,8 @@ function DetalleUsuario({
       acciones={
         <>
           {/* Nadie se desactiva a sí mismo: se quedaría sin poder entrar a
-              revertirlo, y si es el único ADMIN el negocio queda sin acceso. El
-              backend lo impide igual; acá ni se ofrece. */}
+              revertirlo, y si es el único administrador el negocio queda sin
+              acceso. El backend lo impide igual; acá ni se ofrece. */}
           {!esYo && (
             <Boton
               variante={u.activo ? "danger" : "ghost"}
@@ -543,9 +457,9 @@ function DetalleUsuario({
             <h3 className="truncate text-base font-bold text-texto">{u.nombre}</h3>
             <p className="text-[13px] text-texto-3">@{u.usuario}</p>
             <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-              <Badge tono={tonoRol(u.rol)}>{etiquetaRol(u.rol, negocio)}</Badge>
+              <Badge tono={tonoDeRol(rol, roles)}>{nombreRol(u, roles)}</Badge>
               {!u.activo && <Badge tono="gris">Inactivo</Badge>}
-              {llevaPin && u.tienePin && <Badge tono="azul">PIN</Badge>}
+              {conPinElRol && u.tienePin && <Badge tono="azul">PIN</Badge>}
             </div>
           </div>
         </div>
@@ -558,7 +472,7 @@ function DetalleUsuario({
           {/* Sólo si está atado a un local. Al de organización no se le muestra
               "—": ver todo no es un dato faltante. */}
           {u.sucursal && <Dato label="Sucursal" valor={u.sucursal} />}
-          {esRepartidor && (
+          {(reparte(rol) || u.zona || u.vehiculo) && (
             <>
               <Dato label="Zona" valor={u.zona || "—"} />
               <Dato label="Vehículo" valor={u.vehiculo || "—"} />
@@ -576,28 +490,20 @@ function DetalleUsuario({
         )}
 
         <div>
-          <h4 className="mb-2 text-[13px] font-bold text-texto">
+          <h4 className="text-[13px] font-bold text-texto">
             Permisos del rol
             <span className="ml-1.5 font-normal text-texto-3">— los define el rol, no la cuenta</span>
           </h4>
-          {permisos.length === 0 ? (
-            <p className="text-[13px] text-texto-3">Este rol no se administra desde acá.</p>
+          {rol ? (
+            <PermisosDelRol
+              nombre={rol.nombre}
+              permisos={rol.permisos}
+              nombres={nombres}
+              esAdministrador={rol.esAdministrador}
+              plegado={false}
+            />
           ) : (
-            <ul className="flex flex-wrap gap-2">
-              {permisos.map((p) => (
-                <li
-                  key={p}
-                  className="flex items-center gap-1.5 rounded-lg bg-muted px-2.5 py-1.5 text-[13px] text-texto-2"
-                >
-                  {NEGACIONES.has(p) ? (
-                    <Icon name="x" size={14} className="text-texto-4" />
-                  ) : (
-                    <Icon name="check" size={14} color="#059669" />
-                  )}
-                  {p}
-                </li>
-              ))}
-            </ul>
+            <p className="mt-2 text-[13px] text-texto-3">No se pudieron cargar los permisos de este rol.</p>
           )}
         </div>
 
@@ -610,15 +516,17 @@ function DetalleUsuario({
               {u.tienePin ? "Cambiar PIN" : "Asignar PIN"}
             </Boton>
           )}
-          {administraPin && u.rol === "SUPERVISOR" && u.tienePin && (
+          {/* Al Administrador no se le quita: es el que autoriza cuando no
+              hay nadie más. */}
+          {administraPin && !rol?.esAdministrador && u.tienePin && (
             <Boton variante="ghost" icono="x" onClick={() => onQuitarPin(u)}>
               Quitar PIN
             </Boton>
           )}
         </div>
-        {/* El supervisor ya no se pone el PIN: se le dice a quién pedírselo en
-            vez de esconderle el botón sin explicación. */}
-        {llevaPin && !administraPin && esYo && (
+        {/* A quien lleva PIN y no lo puede asignar se le dice a quién
+            pedírselo en vez de esconderle el botón sin explicación. */}
+        {conPinElRol && !administraPin && esYo && (
           <p className="text-[13px] text-texto-3">
             Tu PIN de autorización te lo asigna el administrador.
           </p>
@@ -637,54 +545,18 @@ function Dato({ label, valor }: { label: string; valor: string }) {
   );
 }
 
-/**
- * La línea de ayuda debajo del rol. Para los roles de siempre, la de siempre
- * (la misma que la app Android); para uno que la web no tiene escrito (el
- * profesional, o uno nuevo), la descripción que manda el backend.
- */
-function resumenRol(rol: RolApp, ofrecido: RolOfrecido | null): string {
-  const deSiempre = rol === "PROFESIONAL" ? undefined : PERMISOS_ROL[rol];
-  if (deSiempre) return deSiempre.join(" · ");
-  return ofrecido?.descripcion ?? "";
-}
-
-/**
- * "Qué puede hacer este rol" (PLAN-ROLES §11): los permisos que el backend
- * resolvió para ESTE negocio (ya cruzados con el plan), agrupados por tema.
- * Plegado: está para el que quiere el detalle antes de entregar una cuenta.
- */
-function PermisosDelRol({ rol }: { rol: RolOfrecido }) {
-  const porDominio = new Map<string, PermisoDeRol[]>();
-  for (const p of rol.permisos) {
-    porDominio.set(p.dominio, [...(porDominio.get(p.dominio) ?? []), p]);
-  }
-  return (
-    <details className="mt-2 text-xs text-texto-3">
-      <summary className="cursor-pointer select-none">
-        Qué puede hacer {rol.etiqueta.toLowerCase()}
-      </summary>
-      <ul className="mt-2 space-y-1">
-        {[...porDominio.entries()].map(([dominio, permisos]) => (
-          <li key={dominio}>
-            <span className="font-medium">{dominio}:</span>{" "}
-            {permisos
-              .map((p) => (p.alcance === "PROPIO" ? `${p.nombre} (sólo lo suyo)` : p.nombre))
-              .join(" · ")}
-          </li>
-        ))}
-      </ul>
-    </details>
-  );
-}
-
 function FormUsuario({
   abierto,
   usuario,
+  roles,
+  nombres,
   onClose,
   onGuardado,
 }: {
   abierto: boolean;
   usuario: Usuario | null;
+  roles: RolNegocio[];
+  nombres: NombresPermisos;
   onClose: () => void;
   onGuardado: (u: Usuario) => void;
 }) {
@@ -695,6 +567,8 @@ function FormUsuario({
     <FormUsuarioCuerpo
       key={usuario?.id ?? "nuevo"}
       usuario={usuario}
+      roles={roles}
+      nombres={nombres}
       onClose={onClose}
       onGuardado={onGuardado}
     />
@@ -703,10 +577,14 @@ function FormUsuario({
 
 function FormUsuarioCuerpo({
   usuario,
+  roles,
+  nombres,
   onClose,
   onGuardado,
 }: {
   usuario: Usuario | null;
+  roles: RolNegocio[];
+  nombres: NombresPermisos;
   onClose: () => void;
   onGuardado: (u: Usuario) => void;
 }) {
@@ -714,37 +592,28 @@ function FormUsuarioCuerpo({
   const [nombre, setNombre] = useState(usuario?.nombre ?? "");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [rol, setRol] = useState<RolApp>((usuario?.rol as RolApp) ?? "CAJERO");
-  const { usuario: actual, puede, negocio } = useAuth();
-  // El mesero sólo se ofrece donde hay salón: en una farmacia, o con un plan
-  // sin mesas, no tendría ninguna pantalla a la que entrar. El profesional,
-  // sólo donde el perfil del rubro lo trae (ver `rolesAsignables`).
-  const conSalon = puede("salon");
+  const { usuario: actual } = useAuth();
   /**
-   * Los roles que el backend dice que este usuario puede asignar en este
-   * negocio, con la etiqueta del rubro y sus permisos (PLAN-ROLES §8.2). Si
-   * el backend todavía no tiene el endpoint (o falla), la lista de siempre.
+   * Los roles que quien mira puede asignar: el backend no ofrece uno con un
+   * permiso que él no tenga, ni el Administrador si él no lo es.
    */
-  const ofrecidos = useApi(() => api.getRolesOfrecidos().catch(() => null), []);
-  const delBackend = ofrecidos.datos ?? null;
-  const rolesAsignables: RolApp[] = delBackend
-    ? [
-        ...delBackend.map((r) => r.codigo as RolApp),
-        // El rol que YA tiene se sigue mostrando: si no, editarle el teléfono
-        // a un admin le cambiaría el rol sin querer al guardar.
-        ...(usuario && !delBackend.some((r) => r.codigo === usuario.rol)
-          ? [usuario.rol as RolApp]
-          : []),
-      ]
-    : calcularRolesAsignables({
-        rolActual: actual?.rol,
-        rolDelUsuario: usuario?.rol,
-        conSalon,
-        perfil: negocio?.perfil,
-      });
-  const ofrecido = delBackend?.find((r) => r.codigo === rol) ?? null;
-  const etiquetaDe = (r: RolApp) =>
-    delBackend?.find((o) => o.codigo === r)?.etiqueta ?? etiquetaRol(r, negocio);
+  const asignables = useApi(() => apiRoles.asignables(), []);
+  const actualDelUsuario = usuario ? rolDe(usuario, roles) : null;
+  const opciones: RolNegocio[] = [
+    ...(asignables.datos ?? []),
+    // El rol que YA tiene se sigue mostrando aunque no se pueda asignar: si
+    // no, editarle el teléfono a un administrador le cambiaría el rol sin
+    // querer al guardar.
+    ...(actualDelUsuario && !asignables.datos?.some((r) => r.id === actualDelUsuario.id)
+      ? [actualDelUsuario]
+      : []),
+  ];
+  const [rolIdElegido, setRolId] = useState<number | null>(usuario?.rolId ?? null);
+  // Al crear, el primero que se puede asignar (que nunca es el Administrador
+  // salvo que no haya otro).
+  const rolId =
+    rolIdElegido ?? (opciones.find((r) => !r.esAdministrador) ?? opciones[0])?.id ?? null;
+  const rol = opciones.find((r) => r.id === rolId) ?? null;
   const [email, setEmail] = useState(usuario?.email ?? "");
   const [telefono, setTelefono] = useState(usuario?.telefono ?? "");
   const [notas, setNotas] = useState(usuario?.notas ?? "");
@@ -754,7 +623,7 @@ function FormUsuarioCuerpo({
   const [error, setError] = useState("");
   const [guardando, setGuardando] = useState(false);
 
-  const esRepartidor = rol === "REPARTIDOR";
+  const esRepartidor = reparte(rol);
 
   const almacenes = useApi(() => api.getAlmacenes(), []);
   // Sólo las sucursales: a un depósito no se le asigna personal de venta.
@@ -766,11 +635,11 @@ function FormUsuarioCuerpo({
    * es siempre la misma y preguntarla sería ruido — un negocio de un local no
    * debería enterarse de que existen las sucursales.
    *
-   * Al ADMIN tampoco se le pregunta: es el único que ve toda la organización,
-   * y por eso no pertenece a ninguna sucursal.
+   * A un rol que ve todas las sucursales (`sucursales.todas`, el Administrador
+   * siempre) tampoco se le pregunta: no pertenece a ninguna.
    */
-  const esAdmin = rol === "ADMIN";
-  const mostrarSucursal = sucursales.length > 1 && !esAdmin;
+  const veTodas = rolTiene(rol, "sucursales.todas");
+  const mostrarSucursal = sucursales.length > 1 && !veTodas;
   // Y sólo un usuario de organización puede fijarla: el backend rechaza al
   // resto, así que ofrecer el selector sería invitarlo a un 403.
   //
@@ -787,11 +656,12 @@ function FormUsuarioCuerpo({
       if (!username.trim()) return setError("Poné un nombre de usuario.");
       if (password.length < 6) return setError("La contraseña necesita al menos 6 caracteres.");
     }
+    if (rolId == null) return setError("Elegí el rol.");
 
-    // "Toda la organización" es del administrador y de nadie más: un cajero sin
-    // sucursal vería el negocio entero y vendería del almacén principal estando
-    // parado en otro local. El backend lo rechaza igual; el aviso acá evita que
-    // se entere después de llenar todo.
+    // "Toda la organización" es de quien ve todas las sucursales: un cajero
+    // sin sucursal vería el negocio entero y vendería del almacén principal
+    // estando parado en otro local. El backend lo rechaza igual; el aviso acá
+    // evita que se entere después de llenar todo.
     if (mostrarSucursal && puedeAsignarSucursal && sucursalId == null) {
       return setError("Elegí la sucursal en la que trabaja.");
     }
@@ -804,12 +674,14 @@ function FormUsuarioCuerpo({
         // viejo quedaría pegado para siempre.
         const input: ActualizarUsuarioInput = {
           nombre: nombre.trim(),
-          rol,
+          // El rol sólo si cambió: mandarlo igual le pediría al backend
+          // asignar uno que quien edita quizás no puede dar.
+          ...(rolId !== usuario.rolId ? { rolId } : {}),
           email: email.trim(),
           telefono: telefono.trim(),
           notas: notas.trim(),
-          // Zona y vehículo sólo tienen sentido en un repartidor; si dejó de
-          // serlo se limpian para no arrastrar datos de su rol anterior.
+          // Zona y vehículo sólo tienen sentido en quien reparte; si dejó de
+          // hacerlo se limpian para no arrastrar datos de su rol anterior.
           zona: esRepartidor ? zona.trim() : "",
           vehiculo: esRepartidor ? vehiculo.trim() : "",
           // Sólo si se podía editar: mandarlo cuando el selector no se mostró
@@ -822,7 +694,7 @@ function FormUsuarioCuerpo({
           nombre: nombre.trim(),
           username: username.trim(),
           password,
-          rol,
+          rolId,
           // En el alta el email vacío se omite: el DTO de creación valida el
           // formato de cualquier string que llegue, y `""` daba 400 "El email no
           // tiene un formato válido" (QA A-01). Al editar sí viaja vacío, que
@@ -886,17 +758,31 @@ function FormUsuarioCuerpo({
           </div>
         )}
 
-        {/* `?? []`: un rol que la web todavía no conoce deja la ayuda vacía en
-            vez de tirar la pantalla, que es lo que pasaba con el mesero. */}
-        <Campo label="Rol" hint={resumenRol(rol, ofrecido)}>
-          <Select value={rol} onChange={(e) => setRol(e.target.value as RolApp)}>
-            {rolesAsignables.map((r) => (
-              <option key={r} value={r}>
-                {etiquetaDe(r)}
+        <Campo
+          label="Rol"
+          hint={rol?.descripcion ?? undefined}
+          error={asignables.error ? "No se pudieron cargar los roles." : undefined}
+        >
+          <Select
+            value={rolId ?? ""}
+            onChange={(e) => setRolId(Number(e.target.value))}
+            disabled={!opciones.length}
+          >
+            {!opciones.length && <option value="">{asignables.cargando ? "Cargando…" : "Sin roles"}</option>}
+            {opciones.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.nombre}
               </option>
             ))}
           </Select>
-          {ofrecido && ofrecido.permisos.length > 0 && <PermisosDelRol rol={ofrecido} />}
+          {rol && (
+            <PermisosDelRol
+              nombre={rol.nombre}
+              permisos={rol.permisos}
+              nombres={nombres}
+              esAdministrador={rol.esAdministrador}
+            />
+          )}
         </Campo>
 
         {mostrarSucursal && puedeAsignarSucursal && (
@@ -910,8 +796,8 @@ function FormUsuarioCuerpo({
                 setSucursalId(e.target.value === "" ? null : Number(e.target.value))
               }
             >
-              {/* Sin opción "toda la organización": eso es del administrador, y
-                  al administrador no se le muestra este campo. Queda un
+              {/* Sin opción "toda la organización": eso es de un rol que ve
+                  todas, y a ése no se le muestra este campo. Queda un
                   placeholder para no elegir por el usuario en el alta. */}
               <option value="">Elegí una sucursal…</option>
               {sucursales.map((a) => (
@@ -1049,23 +935,36 @@ function FormPasswordCuerpo({
 
 function FormPin({
   usuario,
+  llevaPin,
   onClose,
   onGuardado,
 }: {
   usuario: Usuario | null;
+  /** ¿Su rol autoriza con PIN? */
+  llevaPin: boolean;
   onClose: () => void;
   onGuardado: () => void;
 }) {
   if (!usuario) return null;
-  return <FormPinCuerpo key={usuario.id} usuario={usuario} onClose={onClose} onGuardado={onGuardado} />;
+  return (
+    <FormPinCuerpo
+      key={usuario.id}
+      usuario={usuario}
+      llevaPin={llevaPin}
+      onClose={onClose}
+      onGuardado={onGuardado}
+    />
+  );
 }
 
 function FormPinCuerpo({
   usuario,
+  llevaPin,
   onClose,
   onGuardado,
 }: {
   usuario: Usuario;
+  llevaPin: boolean;
   onClose: () => void;
   onGuardado: () => void;
 }) {
@@ -1073,7 +972,7 @@ function FormPinCuerpo({
   const [error, setError] = useState("");
   const [guardando, setGuardando] = useState(false);
 
-  const rolSinPin = !ROLES_CON_PIN.includes(usuario.rol);
+  const rolSinPin = !llevaPin;
 
   async function guardar() {
     setError("");
@@ -1110,8 +1009,8 @@ function FormPinCuerpo({
     >
       <div className="space-y-4">
         <p className="rounded-xl bg-info-bg px-3.5 py-2.5 text-[13px] text-info-text">
-          El PIN autoriza anular ventas y fiar por encima del límite del cliente. Sólo lo
-          tienen administradores y supervisores, y lo asigna el administrador.
+          El PIN autoriza anular ventas y fiar por encima del límite del cliente. Lo lleva
+          quien tiene un rol que autoriza con PIN.
         </p>
 
         <Campo label="PIN" hint="4 a 6 dígitos">
@@ -1130,7 +1029,7 @@ function FormPinCuerpo({
         <ErrorMsg>
           {error ||
             (rolSinPin
-              ? `Un ${etiquetaRol(usuario.rol).toLowerCase()} no lleva PIN: cambiale el rol primero.`
+              ? `Su rol (${usuario.rolNombre ?? usuario.rol}) no autoriza con PIN: cambiale el rol primero.`
               : "")}
         </ErrorMsg>
       </div>

@@ -1,33 +1,35 @@
-import type { Feature, Modulo, PerfilRubro, Rol, SesionUsuario } from "../types";
+import type { Feature, PerfilRubro, Rol, SesionUsuario } from "../types";
 import { RUBROS_BELLEZA, etiquetaRolDelRubro, type Rubro } from "./rubro";
 
 /**
- * Permisos de la app. Hay DOS vocabularios distintos y no se mezclan:
+ * Qué ve y qué puede tocar cada quien (PLAN-ROLES-NEGOCIO). Hay dos
+ * vocabularios y no se mezclan:
  *
- *   • Módulos del ROL   (MAYÚSCULAS: POS, CAJA, …) → qué puede hacer la persona.
- *     Vienen en `usuario.modulos` del login.
- *   • Features del PLAN (minúsculas: pos, fiado, …) → qué compró el negocio.
- *     Vienen en `negocio.features`.
+ *   • Permisos del ROL  (`ventas.vender`, `caja.operar`…) → qué puede hacer la
+ *     persona. Vienen en `usuario.permisos` (y `permisosPropios`, los que tiene
+ *     sólo sobre lo suyo), ya cruzados con el plan por el backend.
+ *   • Features del PLAN (`pos`, `fiado`…) → qué compró el negocio. Vienen en
+ *     `negocio.features`.
  *
- * El backend NO los intersecta (lo dice explícito en auth.service.ts), así que
- * la intersección la hacemos acá: una sección se muestra sólo si el rol la
- * permite Y el plan la incluye.
+ * **Nada se decide por el nombre del rol, su código legado ni los módulos**:
+ * cada negocio arma sus propios roles, y uno que se llama "Cajero" puede tener
+ * cualquier cosa. Una sección se ve si la persona tiene su permiso Y el plan
+ * incluye su feature Y existe en el rubro.
  *
- * Las dos comprobaciones fallan ABIERTAS cuando la lista viene vacía, igual
- * que la app Android: una sesión vieja o un negocio sin features migradas se
- * quedaría sin menú, y eso es peor que mostrar de más — el backend igual
- * responde 403 si de verdad no corresponde.
+ * Sin permisos en la sesión (una guardada antes de que el backend los
+ * mandara) no hay respaldo: `AuthContext` los pide a `/auth/me`, y si tampoco
+ * vienen no se ve nada. Mostrar de más por un nombre de rol sería justo lo que
+ * esto vino a sacar.
  *
- * Y hay un tercer filtro, de otra naturaleza: el RUBRO (ver `rubro.ts`). El rol
- * y el plan dicen si te dejan entrar; el rubro dice si la sección **existe**
- * para ese tipo de negocio. Una farmacia con el plan más caro sigue sin tener
- * mesas de salón.
+ * Las features siguen fallando ABIERTAS con la lista vacía, como siempre (un
+ * negocio con los códigos sin migrar no se queda sin menú): el corte de verdad
+ * ya lo hacen los permisos, que el backend cruza con el plan.
+ *
+ * Y hay un tercer filtro, de otra naturaleza: el RUBRO (ver `rubro.ts`). Los
+ * permisos y el plan dicen si te dejan entrar; el rubro dice si la sección
+ * **existe** para ese tipo de negocio. Una farmacia con el plan más caro sigue
+ * sin tener mesas de salón.
  */
-
-export function tieneModulo(modulos: Modulo[] | undefined, codigo: Modulo): boolean {
-  if (!modulos || modulos.length === 0) return true; // falla abierto
-  return modulos.includes(codigo);
-}
 
 export function tieneFeature(features: Feature[] | undefined, codigo: Feature): boolean {
   if (!features || features.length === 0) return true; // falla abierto
@@ -94,13 +96,13 @@ export type Seccion =
   /** Las reglas del negocio y cómo se confirma una reserva online (A11). */
   | "config_negocio"
   // ── Agenda de belleza (fase 1) ──
-  /** A1: la agenda del día, columnas por profesional. Recepción y dueño. */
+  /** A1: la agenda del día, columnas por profesional. */
   | "agenda"
   /** A3: la lista de hoy con los botones rápidos (y la cola, A6). */
   | "hoy"
-  /** A10: las citas del profesional que entró. Sólo el rol PROFESIONAL. */
+  /** A10: las citas de quien ve sólo su agenda (el profesional). */
   | "mi_agenda"
-  /** A7: fichas de cliente con su historial (ola B). Recepción y dueño. */
+  /** A7: fichas de cliente con su historial (ola B). */
   | "clientes"
   /** A9: las solicitudes que entraron por la reserva online (fase 2). */
   | "solicitudes"
@@ -136,112 +138,124 @@ export type Seccion =
    * La gente del negocio, con o sin login: alta, darle o quitarle el acceso.
    * Sólo en los negocios con agenda (decisión del 07-oct).
    */
-  | "personal";
+  | "personal"
+  // ── Roles del negocio (PLAN-ROLES-NEGOCIO) ──
+  /** Crear, renombrar, editar y borrar los roles del negocio, con su bitácora. */
+  | "roles";
 
 /**
- * Qué módulo de rol y qué feature de plan exige cada sección. `feature: null`
- * = no está en el catálogo de planes, alcanza con el módulo del rol. `modulo:
- * null` = no pide módulo (la agenda, D23): la decide la feature y el rol.
+ * Qué pide cada sección: un permiso (o varios, con `tambien`: alcanza con
+ * cualquiera, y el primero que tenga manda el alcance) y la feature del plan.
+ *
+ * `alcance` distingue la pantalla de todos (GENERAL) de la de "lo suyo"
+ * (PROPIO): la agenda de recepción y "Mi agenda" del profesional piden el
+ * mismo permiso con distinto alcance. `sinGeneral` es la otra cara de "sólo lo
+ * suyo" para los permisos que tienen su par general aparte: la pantalla de
+ * quien hace lo suyo no se le muestra a quien administra lo de todos (el que
+ * asigna los pedidos no tiene "Mis entregas").
+ *
+ * `feature: null` = la sección no se vende aparte; la decide el permiso. El
+ * backend ya cruza los permisos con el plan, pero la feature se sigue mirando
+ * porque la de la pantalla no siempre es la del permiso (Sucursales pide
+ * `multi_almacen`, y su permiso es de `inventario`).
  */
-const REQUISITOS: Record<Seccion, { modulo: Modulo | null; feature: Feature | null }> = {
-  pos: { modulo: "POS", feature: "pos" },
-  caja: { modulo: "CAJA", feature: "caja" },
-  inventario: { modulo: "INVENTARIO", feature: "inventario" },
-  productos: { modulo: "INVENTARIO", feature: "catalogo" },
-  insumos: { modulo: "INVENTARIO", feature: "insumos" },
-  almacenes: { modulo: "INVENTARIO", feature: "multi_almacen" },
-  movimientos: { modulo: "INVENTARIO", feature: "inventario" },
-  creditos: { modulo: "POS", feature: "fiado" },
-  reportes: { modulo: "REPORTES", feature: "reportes" },
-  usuarios: { modulo: "USUARIOS", feature: "usuarios" },
-  // El reparto no es una sección vendible: es la app del repartidor.
-  reparto: { modulo: "POS", feature: "delivery" },
-  // El salón es el panel del mesero. El módulo es POS porque es lo que el
-  // backend le da al rol MESERO, y la feature `salon` SÍ está en el catálogo
-  // (se vende en Profesional desde el 09-sep): apagarla desde el panel tiene
-  // que sacar la sección. Estaba en `null` con un comentario que decía que no
-  // existía, y por eso seguía apareciendo con la feature apagada.
-  salon: { modulo: "POS", feature: "salon" },
-  // El ABM de mesas es parte de la misma sección vendida: si el negocio no
-  // contrató el salón, no hay mesas que administrar.
-  mesas: { modulo: "INVENTARIO", feature: "salon" },
-  // Es la pantalla de `/inventario`: pide exactamente lo mismo, o el menú
+interface Requisito {
+  permiso: string;
+  tambien?: string[];
+  alcance?: "GENERAL" | "PROPIO";
+  sinGeneral?: string;
+  feature: Feature | null;
+}
+
+const REQUISITOS: Record<Seccion, Requisito> = {
+  pos: { permiso: "ventas.vender", feature: "pos" },
+  caja: { permiso: "caja.operar", feature: "caja" },
+  // La primera pantalla de Inventario es el tablero (en farmacia, el suyo):
+  // `dashboard` es la misma ruta y pide exactamente lo mismo, o el menú
   // mostraría un sub-ítem que lleva a una ruta que el guard rechaza.
-  dashboard: { modulo: "INVENTARIO", feature: "inventario" },
-  // Buscar un medicamento es parte de atender: la hace quien está en el
-  // mostrador, así que va con el módulo del POS. No se vende aparte.
-  busqueda: { modulo: "POS", feature: null },
-  // Vencimientos es de inventario: decide qué se devuelve al proveedor y qué
-  // se da de baja, no atiende a nadie. La feature es `lotes` y no `inventario`
-  // porque es la que exige el backend (`@RequiereFeature('lotes')`, sólo en
-  // PRO): con `inventario` una farmacia BASICO veía la sección y entraba a un
-  // 403.
-  vencimientos: { modulo: "INVENTARIO", feature: "lotes" },
-  // Los encargos los anota quien ATIENDE, así que van con el módulo del POS:
-  // el que escucha "¿no tenés…?" es el del mostrador, no el que administra.
-  // La feature es la misma que pide el backend: apagarla en el panel la saca.
-  encargos: { modulo: "POS", feature: "encargos" },
-  // El libro de controlados es una obligación legal, no algo que se vende
-  // aparte: sin feature. El módulo es el que pide el backend (INVENTARIO).
-  controlados: { modulo: "INVENTARIO", feature: null },
-  // Los proveedores son de quien recibe la mercadería: la misma llave que
-  // Movimientos, que es donde se eligen.
-  proveedores: { modulo: "INVENTARIO", feature: "inventario" },
-  // Recibir y dar de baja mercadería SON movimientos de inventario: la misma
-  // llave que `movimientos`, sólo que con pantalla propia. No se venden aparte
-  // ni se le pueden dar a alguien que no pueda ver el registro.
-  ingreso_mercaderia: { modulo: "INVENTARIO", feature: "inventario" },
-  salida_mercaderia: { modulo: "INVENTARIO", feature: "inventario" },
+  inventario: { permiso: "dashboard.ver", feature: "inventario" },
+  dashboard: { permiso: "dashboard.ver", feature: "inventario" },
+  // Artículos y Categorías son el ABM del catálogo: verlo (`catalogo.ver`) lo
+  // tiene hasta el mesero, y no por eso administra los productos.
+  productos: { permiso: "catalogo.editar", feature: "catalogo" },
+  insumos: { permiso: "insumos.gestionar", feature: "insumos" },
+  // Sin el plan de varias sucursales no hay qué administrar.
+  almacenes: { permiso: "almacenes.administrar", feature: "multi_almacen" },
+  movimientos: { permiso: "inventario.mover", feature: "inventario" },
+  // Recibir y dar de baja mercadería SON movimientos de inventario, con
+  // pantalla propia: la misma llave que `movimientos`.
+  ingreso_mercaderia: { permiso: "inventario.mover", feature: "inventario" },
+  salida_mercaderia: { permiso: "inventario.mover", feature: "inventario" },
   // Transferir es mover stock entre sucursales: sin el plan de varias
-  // sucursales (la misma llave que la pantalla de Sucursales) no hay a dónde.
-  transferencia_mercaderia: { modulo: "INVENTARIO", feature: "multi_almacen" },
-  // Igual que en Android (`Permisos.kt`): el modulo es REPORTES porque un
-  // gasto es del libro del resultado, no de la caja del turno, y la feature
-  // `gastos` esta en el catalogo desde sep-2026.
-  gastos: { modulo: "REPORTES", feature: "gastos" },
-  // La agenda no tiene módulo de rol (D23): el backend sólo exige la feature,
-  // así que acá tampoco se pide ninguno. Quién entra lo dice ROLES_PERMITIDOS.
-  agenda_config: { modulo: null, feature: "agenda" },
-  config_negocio: { modulo: null, feature: "agenda" },
-  agenda: { modulo: null, feature: "agenda" },
-  hoy: { modulo: null, feature: "agenda" },
-  mi_agenda: { modulo: null, feature: "agenda" },
-  // La ficha es su propia feature (`clientes`): sin ella el backend da 403.
-  clientes: { modulo: null, feature: "clientes" },
-  // La bandeja sólo existe con la reserva online: sin ella no entra nada.
-  solicitudes: { modulo: null, feature: "reserva_online" },
-  // Las comisiones son su propia feature (fase 2): el backend la exige en
-  // todas sus rutas. Los reportes de agenda van con la agenda.
-  comisiones: { modulo: null, feature: "comisiones" },
-  mi_produccion: { modulo: null, feature: "comisiones" },
-  reportes_agenda: { modulo: null, feature: "agenda" },
-  // La página no tiene módulo de rol: la decide la feature y el rol ADMIN
-  // (el backend exige las dos).
-  mi_pagina: { modulo: null, feature: "pagina_publica" },
-  mis_enlaces: { modulo: null, feature: "enlaces_cortos" },
-  // Nuevas del 06-oct, sin módulo de rol: las cortan la feature y el permiso.
-  promociones: { modulo: null, feature: "promociones" },
-  retencion: { modulo: null, feature: "clientes_retencion" },
-  // Belleza fase 4: el backend las corta por permisos (R3), sin módulo.
-  gift_cards: { modulo: null, feature: "gift_cards" },
-  propinas: { modulo: null, feature: "propinas" },
-  recetas_servicio: { modulo: null, feature: "consumo_servicio" },
-  // Personal: el backend la corta por permiso (`personal.gestionar`) y por la
-  // feature `agenda`, sin módulo de rol.
-  personal: { modulo: null, feature: "agenda" },
+  // sucursales (la llave de Sucursales) no hay a dónde.
+  transferencia_mercaderia: { permiso: "inventario.mover", feature: "multi_almacen" },
+  // Las cuentas por cobrar las abre quien fía o quien cobra los abonos.
+  creditos: { permiso: "credito.otorgar", tambien: ["credito.cobrar"], feature: "fiado" },
+  reportes: { permiso: "reportes.ver", feature: "reportes" },
+  usuarios: { permiso: "usuarios.administrar", feature: "usuarios" },
+  // "Mis entregas" es la pantalla de quien reparte lo que le asignan; quien
+  // gestiona todos los pedidos (`delivery.asignar`) lo hace desde el POS.
+  reparto: { permiso: "entregas.realizar", sinGeneral: "delivery.asignar", feature: "delivery" },
+  // El panel del salón: el mesero (sus mesas) y quien supervisa el salón.
+  salon: { permiso: "salon.atender", feature: "salon" },
+  // El ABM de mesas y zonas, parte de la misma sección vendida.
+  mesas: { permiso: "salon.administrar", feature: "salon" },
+  // Buscar un medicamento es consultar el catálogo y dónde hay: parte de
+  // atender el mostrador. No se vende aparte.
+  busqueda: { permiso: "catalogo.ver", feature: null },
+  // La feature es la que exige el backend (`lotes`, sólo en PRO): con
+  // `inventario` una farmacia BASICO veía la sección y entraba a un 403.
+  vencimientos: { permiso: "lotes.gestionar", feature: "lotes" },
+  encargos: { permiso: "encargos.gestionar", feature: "encargos" },
+  // Una obligación legal, no algo que se vende aparte.
+  controlados: { permiso: "controlados.libro", feature: null },
+  proveedores: { permiso: "proveedores.gestionar", feature: "inventario" },
+  gastos: { permiso: "gastos.gestionar", feature: "gastos" },
+  // ── Agenda de belleza ──
+  agenda: { permiso: "agenda.ver", alcance: "GENERAL", feature: "agenda" },
+  hoy: { permiso: "agenda.ver", alcance: "GENERAL", feature: "agenda" },
+  mi_agenda: { permiso: "agenda.ver", alcance: "PROPIO", feature: "agenda" },
+  agenda_config: { permiso: "agenda.configurar", feature: "agenda" },
+  // Las reglas del negocio (A11) son configuración de la agenda: el mismo
+  // permiso que el backend pide para guardarlas.
+  config_negocio: { permiso: "agenda.configurar", feature: "agenda" },
+  // La cartera de clientes (A7) es la general; el profesional ve la ficha
+  // mínima desde su cita, no la lista.
+  clientes: { permiso: "cliente.ver_ficha", alcance: "GENERAL", feature: "clientes" },
+  solicitudes: { permiso: "reservas.aprobar", feature: "reserva_online" },
+  // La pantalla de comisiones es la de todos; con alcance PROPIO se ve la
+  // suya en Mi agenda.
+  comisiones: { permiso: "comisiones.ver", alcance: "GENERAL", feature: "comisiones" },
+  mi_produccion: { permiso: "comisiones.ver", alcance: "PROPIO", feature: "comisiones" },
+  reportes_agenda: { permiso: "agenda.reportes", feature: "agenda" },
+  // ── Página del negocio, CRM y promociones ──
+  mi_pagina: { permiso: "negocio.configurar", feature: "pagina_publica" },
+  mis_enlaces: { permiso: "negocio.configurar", feature: "enlaces_cortos" },
+  promociones: { permiso: "promociones.gestionar", feature: "promociones" },
+  retencion: { permiso: "cliente.marketing", feature: "clientes_retencion" },
+  // ── Belleza fase 4 ──
+  gift_cards: { permiso: "vales.vender", feature: "gift_cards" },
+  // QA N2-01: quien sólo entrega propinas (`propinas.pagar`) entra igual:
+  // tiene que ver qué entrega. El backend pide lo mismo en GET /propinas.
+  propinas: { permiso: "propinas.ver", tambien: ["propinas.pagar"], feature: "propinas" },
+  recetas_servicio: { permiso: "consumo.recetas", feature: "consumo_servicio" },
+  // Personal va con la feature `agenda` (07-oct): sólo en los negocios con agenda.
+  personal: { permiso: "personal.gestionar", feature: "agenda" },
+  // Los roles del negocio existen en todos los rubros y no se venden aparte.
+  roles: { permiso: "roles.gestionar", feature: null },
 };
+
+/** El permiso que pide una sección (para tests y para explicar un rechazo). */
+export function permisoDeSeccion(seccion: Seccion): string {
+  return REQUISITOS[seccion].permiso;
+}
 
 /**
  * Features que NO fallan abiertas: sin la feature en la lista, la sección no
- * existe aunque la lista venga vacía. Cubre todas las secciones de agenda
- * (A1, Hoy, Mi agenda, A8, A11): al profesional sin la feature lo deja en "Tu
- * agenda llega pronto" en vez de en un 403. La agenda es lo único nuevo de
- * verdad —ningún negocio la tuvo antes— y se prende a mano por negocio (F1.8): un
- * salón que todavía no la tiene no puede encontrarse la configuración de algo
- * que no puede usar, y el fail-open de siempre se la mostraría.
- *
- * La página del negocio y los enlaces cortos, igual: son nuevos y se prenden
- * por negocio. A Omar no le aparece "Mi página" hasta que se la prendan.
+ * existe aunque la lista venga vacía. Son las nuevas de verdad —ningún negocio
+ * las tuvo antes— y se prenden a mano por negocio: el fail-open de siempre se
+ * las mostraría a quien no las tiene. A Omar no le aparece "Mi página" hasta
+ * que se la prendan.
  */
 const FEATURES_ESTRICTAS: Feature[] = [
   "agenda",
@@ -250,93 +264,13 @@ const FEATURES_ESTRICTAS: Feature[] = [
   "comisiones",
   "pagina_publica",
   "enlaces_cortos",
-  // Promociones y CRM: nuevas, se prenden por negocio. A Omar no le aparecen.
   "promociones",
   "clientes_retencion",
-  // Belleza fase 4: nuevas y prendidas a mano por negocio.
   "gift_cards",
   "propinas",
   "consumo_servicio",
   "ficha_tecnica",
 ];
-
-/**
- * Roles que además pueden entrar a cada sección. El backend lo exige con
- * RolesGuard en reportes y usuarios; acá evitamos ofrecer lo que va a fallar.
- */
-const ROLES_PERMITIDOS: Partial<Record<Seccion, Rol[]>> = {
-  // El repartidor tiene el módulo POS (es lo que le habilita sus entregas),
-  // así que sin esta lista le aparecería el punto de venta entero y podría
-  // abrir caja y vender.
-  pos: ["ADMIN", "SUPERVISOR", "CAJERO"],
-  caja: ["ADMIN", "SUPERVISOR", "CAJERO"],
-  creditos: ["ADMIN", "SUPERVISOR", "CAJERO"],
-  reportes: ["ADMIN", "SUPERVISOR"],
-  usuarios: ["ADMIN", "SUPERVISOR"],
-  inventario: ["ADMIN", "SUPERVISOR"],
-  productos: ["ADMIN", "SUPERVISOR"],
-  insumos: ["ADMIN", "SUPERVISOR"],
-  almacenes: ["ADMIN", "SUPERVISOR"],
-  movimientos: ["ADMIN", "SUPERVISOR"],
-  reparto: ["REPARTIDOR"],
-  // El mesero SÓLO ve su panel: no cobra, así que no tiene POS ni caja. El
-  // admin y el supervisor también entran, para poder mirar el salón sin tener
-  // que pedirle el celular a alguien.
-  salon: ["MESERO", "ADMIN", "SUPERVISOR"],
-  // Crear mesas y zonas es del admin: el mesero las usa, no las administra.
-  mesas: ["ADMIN", "SUPERVISOR"],
-  dashboard: ["ADMIN", "SUPERVISOR"],
-  // El cajero entra: es el que atiende el mostrador y el que más la usa.
-  busqueda: ["ADMIN", "SUPERVISOR", "CAJERO"],
-  vencimientos: ["ADMIN", "SUPERVISOR"],
-  encargos: ["ADMIN", "SUPERVISOR", "CAJERO"],
-  // Trae nombres de pacientes y de médicos: lo lee quien responde ante el
-  // SEDES, no el cajero. El backend lo exige igual.
-  controlados: ["ADMIN", "SUPERVISOR"],
-  // Lo que se le compró a cada uno es plata del negocio: no lo ve un cajero.
-  proveedores: ["ADMIN", "SUPERVISOR"],
-  // Quien recibe del proveedor y quien da de baja un lote vencido es el mismo
-  // que puede ver Movimientos: mover stock no es atender el mostrador.
-  ingreso_mercaderia: ["ADMIN", "SUPERVISOR"],
-  salida_mercaderia: ["ADMIN", "SUPERVISOR"],
-  transferencia_mercaderia: ["ADMIN", "SUPERVISOR"],
-  // El backend lo exige con RolesGuard: un cajero no carga gastos del negocio.
-  gastos: ["ADMIN", "SUPERVISOR"],
-  // §4 de PLAN-AGENDA-BELLEZA: horarios, servicios y recursos los tocan el
-  // dueño y el encargado; las reglas del negocio (A11), sólo el dueño. El
-  // backend no lo exige todavía (D23): es la pantalla la que no lo ofrece.
-  agenda_config: ["ADMIN", "SUPERVISOR"],
-  config_negocio: ["ADMIN"],
-  // La tabla de §4 del plan de agenda se aplica en las pantallas (el backend
-  // no tiene guard de rol, D23). Recepción es el CAJERO de siempre; el
-  // profesional ve sólo lo suyo, en su propia pantalla.
-  agenda: ["ADMIN", "SUPERVISOR", "CAJERO"],
-  hoy: ["ADMIN", "SUPERVISOR", "CAJERO"],
-  mi_agenda: ["PROFESIONAL"],
-  // A7 es de recepción y dueño (§5.1): el profesional ve la ficha mínima
-  // desde su cita, no la cartera entera.
-  clientes: ["ADMIN", "SUPERVISOR", "CAJERO"],
-  // Aprobar una reserva online es de recepción, como confirmar por teléfono.
-  solicitudes: ["ADMIN", "SUPERVISOR", "CAJERO"],
-  // §4: la producción y la comisión de todos las ven el dueño y el encargado;
-  // recepción no. El profesional ve la suya en Mi agenda.
-  comisiones: ["ADMIN", "SUPERVISOR"],
-  mi_produccion: ["PROFESIONAL"],
-  reportes_agenda: ["ADMIN", "SUPERVISOR"],
-  // La página es la vitrina del negocio: la edita el dueño (§3).
-  mi_pagina: ["ADMIN"],
-  mis_enlaces: ["ADMIN"],
-  // Respaldo sin permisos del backend (sesión vieja): lo de §9.2 del plan.
-  promociones: ["ADMIN"],
-  retencion: ["ADMIN", "SUPERVISOR", "CAJERO"],
-  // Belleza fase 4 (respaldo sin permisos del backend). El profesional entra
-  // a Propinas a ver las suyas.
-  gift_cards: ["ADMIN", "SUPERVISOR", "CAJERO"],
-  propinas: ["ADMIN", "SUPERVISOR", "PROFESIONAL"],
-  recetas_servicio: ["ADMIN", "SUPERVISOR"],
-  // Respaldo sin permisos del backend: el dueño y el encargado (§5.1).
-  personal: ["ADMIN", "SUPERVISOR"],
-};
 
 /**
  * Secciones que NO existen en un rubro. Es una lista NEGRA y no una blanca a
@@ -410,139 +344,74 @@ const FUERA_DE_RUBRO: Partial<Record<Seccion, Rubro[]>> = {
 };
 
 export interface ContextoPermisos {
-  rol: Rol;
-  modulos?: Modulo[];
   features?: Feature[];
-  /** `negocio.tipoNegocio` del login. Sin rubro, se ve todo (como antes). */
+  /** `negocio.tipoNegocio` del login. Sin rubro, se ve lo que no es de un rubro. */
   rubro?: string;
   /**
-   * Permisos efectivos del login (PLAN-ROLES §8.2), ya cruzados con el plan.
-   * `undefined` = backend o sesión anteriores: se decide como siempre.
+   * Permisos efectivos del login, ya cruzados con el plan. `undefined` (una
+   * sesión vieja que todavía no los trajo de `/auth/me`) = ninguno.
    */
   permisos?: string[];
   permisosPropios?: string[];
-  /** El rol "de fondo" de la plantilla; decide la ruta inicial si viene. */
-  arquetipo?: string | null;
 }
-
-/**
- * Qué permiso exige cada sección **cuando el backend manda permisos**
- * (PLAN-ROLES §8.2, fase R4). Por ahora sólo la agenda, que el backend ya
- * corta por permisos (R3): el resto sigue con `ROLES_PERMITIDOS` y los módulos
- * hasta que su controlador se corte, así Omar y la farmacia no ven ningún
- * cambio. `alcance` distingue la agenda de recepción (GENERAL) de "Mi agenda"
- * del profesional (PROPIO).
- */
-/** Con `tambien`, alcanza con cualquiera de esos permisos (el primero manda el alcance). */
-type ReqPermiso = { permiso: string; alcance?: "GENERAL" | "PROPIO"; tambien?: string[] };
-
-const PERMISO_SECCION: Partial<Record<Seccion, ReqPermiso>> = {
-  agenda: { permiso: "agenda.ver", alcance: "GENERAL" },
-  hoy: { permiso: "agenda.ver", alcance: "GENERAL" },
-  mi_agenda: { permiso: "agenda.ver", alcance: "PROPIO" },
-  agenda_config: { permiso: "agenda.configurar" },
-  // Las reglas del negocio (A11) son configuración de la agenda: el mismo
-  // permiso que el backend pide para guardarlas.
-  config_negocio: { permiso: "agenda.configurar" },
-  // Los módulos nuevos del 06-oct nacen cortados por permisos en el backend:
-  // la pantalla pide lo mismo. La cartera de clientes (A7) es la general; el
-  // profesional ve la ficha mínima desde su cita, no la lista.
-  clientes: { permiso: "cliente.ver_ficha", alcance: "GENERAL" },
-  solicitudes: { permiso: "reservas.aprobar" },
-  // Fase 2: la pantalla de comisiones es la de todos (GENERAL); el
-  // profesional, con alcance PROPIO, ve la suya en Mi agenda.
-  comisiones: { permiso: "comisiones.ver", alcance: "GENERAL" },
-  mi_produccion: { permiso: "comisiones.ver", alcance: "PROPIO" },
-  reportes_agenda: { permiso: "agenda.reportes" },
-  mi_pagina: { permiso: "negocio.configurar" },
-  mis_enlaces: { permiso: "negocio.configurar" },
-  promociones: { permiso: "promociones.gestionar" },
-  retencion: { permiso: "cliente.marketing" },
-  // Belleza fase 4: lo mismo que pide cada controlador.
-  gift_cards: { permiso: "vales.vender" },
-  // QA N2-01: la recepción que el dueño habilita a entregar propinas
-  // (`propinas.pagar`, ajuste apagado del CAJERO) entra a la pantalla aunque
-  // no tenga "ver propinas": tiene que ver qué entrega. El backend pide lo
-  // mismo en GET /propinas.
-  propinas: { permiso: "propinas.ver", tambien: ["propinas.pagar"] },
-  recetas_servicio: { permiso: "consumo.recetas" },
-  personal: { permiso: "personal.gestionar" },
-};
-
-/**
- * En belleza el backend ya corta ventas, caja y créditos por permiso (QA
- * SEG-04, `@CortadaEnVertical('BELLEZA')`): la pantalla pide lo mismo, así un
- * repartidor que quedó de antes (con el módulo POS) no ve un POS que le da 403
- * (QA VER-05). A diferencia de `PERMISO_SECCION`, el módulo del rol se sigue
- * exigiendo: el backend también lo pide. Fuera de belleza (Omar) no se usa.
- */
-const PERMISO_SECCION_BELLEZA: Partial<Record<Seccion, ReqPermiso>> = {
-  pos: { permiso: "ventas.vender" },
-  caja: { permiso: "caja.operar" },
-  creditos: { permiso: "credito.otorgar", tambien: ["credito.cobrar"] },
-};
 
 type ConPermisos = Pick<SesionUsuario, "permisos" | "permisosPropios"> | null | undefined;
 
-/**
- * ¿Tiene este permiso? Si el backend mandó permisos, manda eso; si no (backend
- * o sesión viejos), el `respaldo` de siempre (por rol).
- */
-export function tienePermiso(usuario: ConPermisos, codigo: string, respaldo: boolean): boolean {
-  return usuario?.permisos ? usuario.permisos.includes(codigo) : respaldo;
+/** ¿Tiene este permiso, con cualquier alcance? Sin permisos en la sesión, no. */
+export function tienePermiso(usuario: ConPermisos, codigo: string): boolean {
+  return !!usuario?.permisos?.includes(codigo);
 }
 
-/** ¿Lo tiene sólo sobre lo suyo (alcance PROPIO)? Con respaldo, igual que arriba. */
-export function soloLoSuyo(usuario: ConPermisos, codigo: string, respaldo: boolean): boolean {
-  if (!usuario?.permisos) return respaldo;
-  return usuario.permisos.includes(codigo) && (usuario.permisosPropios ?? []).includes(codigo);
+/** ¿Lo tiene sólo sobre lo suyo (alcance PROPIO)? */
+export function soloLoSuyo(usuario: ConPermisos, codigo: string): boolean {
+  return tienePermiso(usuario, codigo) && !!usuario?.permisosPropios?.includes(codigo);
+}
+
+/** ¿Lo tiene sobre lo de todos (alcance GENERAL)? */
+export function sobreTodo(usuario: ConPermisos, codigo: string): boolean {
+  return tienePermiso(usuario, codigo) && !usuario?.permisosPropios?.includes(codigo);
 }
 
 /**
  * ¿Edita la ficha de salud y toma la firma de un consentimiento? (decisión
  * del 07-oct, S2SEG-18). Ver salud no alcanza: la recepción la lee para
- * avisar, pero la escriben el dueño y el profesional de ese cliente (el
- * backend recorta "de ese cliente" con el alcance PROPIO). Respaldo sin
- * permisos del backend: esos dos roles.
+ * avisar, pero la escribe quien tiene `cliente.editar_salud` (el backend
+ * recorta "de ese cliente" con el alcance PROPIO).
  */
-export function editaSalud(usuario: (ConPermisos & { rol?: Rol }) | null | undefined): boolean {
-  return tienePermiso(usuario, "cliente.editar_salud", usuario?.rol === "ADMIN" || usuario?.rol === "PROFESIONAL");
+export function editaSalud(usuario: ConPermisos): boolean {
+  return tienePermiso(usuario, "cliente.editar_salud");
 }
 
 /**
  * ¿Da de alta clientes (QA DIA-09)? Lo mismo que pide el backend
- * (`cliente.editar`); sin permisos del backend, los que atienden el
- * mostrador. La feature `clientes` la mira quien lo llama: Clientes ya vive
- * detrás de ella y el POS la pregunta con `puede("clientes")`.
+ * (`cliente.editar`). La feature `clientes` la mira quien lo llama.
  */
-export function creaClientes(usuario: (ConPermisos & { rol?: Rol }) | null | undefined): boolean {
-  return tienePermiso(usuario, "cliente.editar", usuario?.rol !== "PROFESIONAL");
+export function creaClientes(usuario: ConPermisos): boolean {
+  return tienePermiso(usuario, "cliente.editar");
 }
 
 /**
  * ¿Opera la cola de espera (anotar, atender, "se fue")? El backend pide
- * `agenda.gestionar` o `cola.gestionar`; sin permisos del backend, quien no
- * es profesional. Al profesional la cola le llega vacía y anotar le da 403:
- * mostrarle la pestaña con "Agregar" era ofrecerle un error.
+ * `agenda.gestionar` o `cola.gestionar`. A quien no los tiene la cola le
+ * llega vacía y anotar le da 403: mostrarle la pestaña era ofrecerle un error.
  */
-export function gestionaCola(usuario: (ConPermisos & { rol?: Rol }) | null | undefined): boolean {
-  const respaldo = usuario?.rol !== "PROFESIONAL";
-  return tienePermiso(usuario, "cola.gestionar", respaldo) || tienePermiso(usuario, "agenda.gestionar", respaldo);
+export function gestionaCola(usuario: ConPermisos): boolean {
+  return tienePermiso(usuario, "cola.gestionar") || tienePermiso(usuario, "agenda.gestionar");
 }
 
 /**
- * El profesional en la agenda: la ve sólo sobre lo suyo y no la gestiona.
- * Respaldo: el rol PROFESIONAL, como hasta ahora.
+ * Ve la agenda sólo sobre lo suyo y no la gestiona: es el profesional, se
+ * llame como se llame su rol.
  */
-export function veSoloSuAgenda(usuario: (ConPermisos & { rol?: Rol }) | null | undefined): boolean {
-  if (!usuario?.permisos) return usuario?.rol === "PROFESIONAL";
-  return soloLoSuyo(usuario, "agenda.ver", false) && !usuario.permisos.includes("agenda.gestionar");
+export function veSoloSuAgenda(usuario: ConPermisos): boolean {
+  return soloLoSuyo(usuario, "agenda.ver") && !tienePermiso(usuario, "agenda.gestionar");
 }
 
-function cumplePermiso(ctx: ContextoPermisos, req: ReqPermiso) {
+function cumplePermiso(ctx: ContextoPermisos, req: Requisito): boolean {
   const permisos = ctx.permisos ?? [];
   const codigo = [req.permiso, ...(req.tambien ?? [])].find((c) => permisos.includes(c));
   if (!codigo) return false;
+  if (req.sinGeneral && permisos.includes(req.sinGeneral)) return false;
   const propio = (ctx.permisosPropios ?? []).includes(codigo);
   if (req.alcance === "GENERAL") return !propio;
   if (req.alcance === "PROPIO") return propio;
@@ -550,17 +419,6 @@ function cumplePermiso(ctx: ContextoPermisos, req: ReqPermiso) {
 }
 
 export function puedeVer(ctx: ContextoPermisos, seccion: Seccion): boolean {
-  // El profesional sólo ve lo que lo nombra en `ROLES_PERMITIDOS` (su agenda).
-  // Hace falta decirlo explícito: su rol no tiene módulos (D23), y con la
-  // lista vacía `tieneModulo` falla abierto — sin esta línea, la primera
-  // sección nueva sin `ROLES_PERMITIDOS` le quedaría abierta.
-  if (
-    (ctx.arquetipo ?? ctx.rol) === "PROFESIONAL" &&
-    !ROLES_PERMITIDOS[seccion]?.includes("PROFESIONAL")
-  ) {
-    return false;
-  }
-
   const fuera = FUERA_DE_RUBRO[seccion];
   if (fuera && ctx.rubro && (fuera as string[]).includes(ctx.rubro)) return false;
 
@@ -569,24 +427,8 @@ export function puedeVer(ctx: ContextoPermisos, seccion: Seccion): boolean {
   // es no puede aterrizar en una pantalla que sólo tiene sentido en uno.
   if (propia && !(ctx.rubro && (propia as string[]).includes(ctx.rubro))) return false;
 
-  // Con permisos del backend, la sección que ya se cortó por permisos (la
-  // agenda) se decide por permiso y no por nombre de rol ni módulo.
-  const porPermiso = ctx.permisos ? PERMISO_SECCION[seccion] : undefined;
-  const corteBelleza =
-    ctx.permisos && ctx.rubro && (RUBROS_BELLEZA as string[]).includes(ctx.rubro)
-      ? PERMISO_SECCION_BELLEZA[seccion]
-      : undefined;
-  if (porPermiso) {
-    if (!cumplePermiso(ctx, porPermiso)) return false;
-  } else if (corteBelleza) {
-    if (!cumplePermiso(ctx, corteBelleza)) return false;
-  } else {
-    const roles = ROLES_PERMITIDOS[seccion];
-    if (roles && !roles.includes(ctx.rol)) return false;
-  }
-
   const req = REQUISITOS[seccion];
-  if (!porPermiso && req.modulo && !tieneModulo(ctx.modulos, req.modulo)) return false;
+  if (!cumplePermiso(ctx, req)) return false;
   if (req.feature && !tieneFeature(ctx.features, req.feature)) return false;
   if (req.feature && FEATURES_ESTRICTAS.includes(req.feature) && !ctx.features?.includes(req.feature)) {
     return false;
@@ -633,12 +475,13 @@ export type Capacidad =
   | "lotes";
 
 /**
- * Una capacidad puede exigir además un rol: anular con PIN se lo ofrecemos a
- * cualquiera (el cajero pide autorización a un encargado), pero mover
- * efectivo de la caja lo bloquea el backend con RolesGuard.
+ * Las capacidades que además piden un permiso: mover efectivo de la caja lo
+ * corta el backend por `caja.movimientos`, y ofrecérselo a quien no lo tiene
+ * es mostrarle un botón que le da 403. Anular con PIN no está acá a propósito:
+ * se le ofrece a cualquiera (pide la autorización de quien tiene el PIN).
  */
-const ROLES_CAPACIDAD: Partial<Record<Capacidad, Rol[]>> = {
-  movimientos_caja: ["ADMIN", "SUPERVISOR"],
+const PERMISO_CAPACIDAD: Partial<Record<Capacidad, string>> = {
+  movimientos_caja: "caja.movimientos",
 };
 
 /**
@@ -659,62 +502,45 @@ export function puede(ctx: ContextoPermisos, capacidad: Capacidad): boolean {
   const fuera = CAPACIDAD_FUERA_DE_RUBRO[capacidad];
   if (fuera && ctx.rubro && (fuera as string[]).includes(ctx.rubro)) return false;
 
-  const roles = ROLES_CAPACIDAD[capacidad];
-  if (roles && !roles.includes(ctx.rol)) return false;
+  const permiso = PERMISO_CAPACIDAD[capacidad];
+  if (permiso && !ctx.permisos?.includes(permiso)) return false;
   return tieneFeature(ctx.features, capacidad);
 }
 
-/** Anular una venta o registrar movimientos de caja sin PIN de por medio. */
-export function puedeSupervisar(rol: Rol): boolean {
-  return rol === "ADMIN" || rol === "SUPERVISOR";
-}
-
 /**
- * Dónde aterriza cada quien al entrar. Se prueba en orden de preferencia
- * según el rol y se devuelve la PRIMERA sección que de verdad puede ver: si
- * devolviéramos una fija, un ADMIN cuyo plan no incluye inventario entraría a
- * una ruta que el guard rechaza, y como el rechazo vuelve al inicio quedaría
- * rebotando en un bucle con la pantalla en blanco.
+ * Dónde aterriza cada quien al entrar, **por permisos**. Se devuelve siempre
+ * una sección que de verdad puede ver: una fija haría que un dueño sin
+ * inventario en el plan entrara a una ruta que el guard rechaza, y como el
+ * rechazo vuelve al inicio quedaría rebotando con la pantalla en blanco.
+ *
+ * Primero los que tienen una sola pantalla, que entran directo a ella (como en
+ * Android): quien ve sólo su agenda, quien reparte sin vender y quien atiende
+ * mesas sin vender. Después, la primera sección visible en `ORDEN_INICIO`.
  */
 export function rutaInicial(ctx: ContextoPermisos): string {
-  // Por arquetipo si viene (PLAN-ROLES §8.2): un rol nuevo con arquetipo
-  // conocido aterriza donde corresponde sin tocar esta función.
-  const rol = (ctx.arquetipo ?? ctx.rol) as Rol;
-  // No pasa por la lista: con la agenda prendida su pantalla es "Mi agenda", y
-  // sin ella es el aviso de que llega pronto, en la MISMA ruta. Por la lista
+  // Ve sólo su agenda: "Mi agenda", y no pasa por la lista. Con la agenda
+  // apagada en el plan la misma ruta dice que llega pronto; por la lista
   // caería en "/sin-acceso", que le diría que su cuenta está mal configurada.
-  if (rol === "PROFESIONAL") return RUTA_AGENDA_PRONTO;
+  if (veSoloSuAgenda(ctx)) return RUTA_AGENDA_PRONTO;
 
-  const orden: [Seccion, string][] =
-    // El mesero entra directo al salón: es su única pantalla. Igual que
-    // AuthenticationActivity en Android, que lo manda a MeserosActivity sin
-    // pasar por el menú del admin.
-    rol === "MESERO"
-      ? [["salon", "/salon"]]
-      : rol === "REPARTIDOR"
-      ? [["reparto", "/reparto"], ["pos", "/pos"]]
-      : rol === "CAJERO"
-        ? // Recepción de un salón entra a "Hoy": es su mostrador. Fuera de
-          // belleza (o sin la feature) no existe, y sigue el POS de siempre.
-          [["hoy", "/hoy"], ["pos", "/pos"], ["caja", "/pos"], ["creditos", "/creditos"]]
-        : [
-            // Lo mismo para el dueño y el encargado de un salón: su día
-            // empieza en la agenda. Omar y la farmacia no la tienen.
-            ["agenda", "/agenda"],
-            ["inventario", "/inventario"],
-            ["productos", "/inventario/productos"],
-            ["pos", "/pos"],
-            ["reportes", "/reportes"],
-            ["usuarios", "/usuarios"],
-            ["creditos", "/creditos"],
-            // Ultima, en el mismo orden del menu. Sin esto, un negocio cuyo
-            // plan solo deja gastos aterrizaba en "/sin-acceso" --"tu cuenta no
-            // tiene secciones"-- con "Gastos operativos" dibujado en la barra
-            // de al lado: la pantalla se contradecia sola.
-            ["gastos", "/gastos"],
-          ];
+  const tiene = (p: string) => !!ctx.permisos?.includes(p);
+  if (tiene("entregas.realizar") && !tiene("ventas.vender") && puedeVer(ctx, "reparto")) {
+    return "/reparto";
+  }
+  if (tiene("salon.atender") && !tiene("ventas.vender") && puedeVer(ctx, "salon")) return "/salon";
 
-  for (const [seccion, ruta] of orden) {
+  // En un salón, quien configura la agenda empieza el día mirándola entera;
+  // quien atiende el mostrador, en "Hoy" (la lista con los botones rápidos).
+  const agenda: [Seccion, string][] = tiene("agenda.configurar")
+    ? [
+        ["agenda", "/agenda"],
+        ["hoy", "/hoy"],
+      ]
+    : [
+        ["hoy", "/hoy"],
+        ["agenda", "/agenda"],
+      ];
+  for (const [seccion, ruta] of [...agenda, ...ORDEN_INICIO]) {
     if (puedeVer(ctx, seccion)) return ruta;
   }
   // Sin ninguna sección habilitada no hay a dónde ir: la pantalla de sin
@@ -723,9 +549,53 @@ export function rutaInicial(ctx: ContextoPermisos): string {
 }
 
 /**
- * Inicio del profesional: "Mi agenda" si el negocio tiene la feature, y si no
- * el aviso de que llega pronto. Es una sola ruta, así prender la agenda cambia
- * la pantalla y no a dónde aterriza cada quien.
+ * El orden de preferencia para la primera pantalla, después de la agenda.
+ * Arriba, lo de siempre (el dueño de un restaurante o una farmacia entra a
+ * Inventario; el que atiende, al POS); después el resto, más o menos en el
+ * orden del menú, para que nadie con alguna sección visible caiga en
+ * "/sin-acceso" con esa misma sección dibujada en la barra de al lado.
+ */
+const ORDEN_INICIO: [Seccion, string][] = [
+  ["inventario", "/inventario"],
+  ["productos", "/inventario/productos"],
+  ["pos", "/pos"],
+  ["caja", "/pos"],
+  ["reportes", "/reportes"],
+  ["usuarios", "/usuarios"],
+  ["creditos", "/creditos"],
+  ["gastos", "/gastos"],
+  ["clientes", "/clientes"],
+  ["busqueda", "/buscar"],
+  ["gift_cards", "/gift-cards"],
+  ["propinas", "/propinas"],
+  ["encargos", "/encargos"],
+  ["vencimientos", "/vencimientos"],
+  ["controlados", "/controlados"],
+  ["movimientos", "/inventario/movimientos"],
+  ["almacenes", "/inventario/almacenes"],
+  ["insumos", "/inventario/insumos"],
+  ["proveedores", "/inventario/proveedores"],
+  ["solicitudes", "/solicitudes"],
+  ["reportes_agenda", "/reportes-agenda"],
+  ["agenda_config", "/configuracion/agenda"],
+  ["recetas_servicio", "/configuracion/insumos-servicio"],
+  ["mesas", "/mesas"],
+  ["comisiones", "/comisiones"],
+  ["personal", "/personal"],
+  ["roles", "/roles"],
+  ["config_negocio", "/configuracion/negocio"],
+  ["mi_pagina", "/mi-pagina"],
+  ["mis_enlaces", "/mis-enlaces"],
+  ["promociones", "/promociones"],
+  ["retencion", "/clientes-que-no-vuelven"],
+  ["salon", "/salon"],
+  ["reparto", "/reparto"],
+];
+
+/**
+ * "Mi agenda": la de quien ve sólo la suya si el negocio tiene la feature, y
+ * si no el aviso de que llega pronto. Es una sola ruta, así prender la agenda
+ * cambia la pantalla y no a dónde aterriza cada quien.
  */
 export const RUTA_AGENDA_PRONTO = "/mi-agenda";
 
@@ -739,15 +609,16 @@ export interface NegocioRol {
 }
 
 /**
- * Cómo se llama el rol en pantalla. Con el negocio, en su idioma: en una
- * barbería el CAJERO es "Recepción" y el PROFESIONAL, "Barbero" (del perfil,
- * o del respaldo por rubro). Sin negocio, o en los rubros de siempre, el
- * nombre de siempre.
+ * Cómo se dice en el rubro la palabra de un código legado: en una barbería el
+ * PROFESIONAL es "Barbero" (del perfil, o del respaldo por rubro). **Es
+ * vocabulario, no permisos**: la usa la agenda para nombrar la columna de los
+ * profesionales. El nombre del rol de una persona es su `rolNombre`, que lo
+ * elige el negocio.
  */
 export function etiquetaRol(rol: Rol, negocio?: NegocioRol | null): string {
   const propia = etiquetaRolDelRubro(rol, negocio?.tipoNegocio, negocio?.perfil?.etiquetasRol);
   if (propia) return propia;
-  const m: Record<Rol, string> = {
+  const m: Record<string, string> = {
     ADMIN: "Administrador",
     SUPERVISOR: "Supervisor",
     CAJERO: "Cajero",
@@ -757,80 +628,4 @@ export function etiquetaRol(rol: Rol, negocio?: NegocioRol | null): string {
     PLATAFORMA: "Plataforma",
   };
   return m[rol] ?? rol;
-}
-
-// ── Roles que se asignan desde Usuarios ─────────────────────────────────────
-
-/** Roles que se pueden crear desde la app. PLATAFORMA queda afuera a propósito:
- *  es la cuenta del panel de licencias y el backend rechaza asignarla acá.
- *
- *  MESERO llegó después que la pantalla de Usuarios y no estaba: editar a un
- *  mesero dejaba la página en blanco (el formulario buscaba los permisos de un
- *  rol que no conocía), las tarjetas no lo contaban y no se lo podía crear. El
- *  backend y la app Android ya lo manejaban. PROFESIONAL entró igual, pero
- *  junto con el backend. */
-export const ROLES_APP = [
-  "ADMIN",
-  "SUPERVISOR",
-  "CAJERO",
-  "MESERO",
-  "REPARTIDOR",
-  "PROFESIONAL",
-] as const;
-export type RolApp = (typeof ROLES_APP)[number];
-
-/**
- * ¿El perfil del rubro ofrece este rol?
- *
- * Si el perfil trae `config.rolesOfrecidos`, esa lista manda para TODOS los
- * roles: una barbería no tiene repartidores ni meseros, y ofrecérselos sería
- * invitar al dueño a crear cuentas que no van a ninguna pantalla. Si no la
- * trae (o no hay perfil, como con el backend de hoy), son los roles de
- * siempre y PROFESIONAL no: el backend rechaza asignarlo donde el perfil no
- * lo ofrece, y un backend sin perfiles ni siquiera tiene el rol.
- */
-export function ofreceRol(
-  perfil: Pick<PerfilRubro, "config"> | null | undefined,
-  rol: Rol,
-): boolean {
-  const ofrecidos = perfil?.config?.rolesOfrecidos;
-  if (Array.isArray(ofrecidos)) return ofrecidos.includes(rol);
-  return rol !== "PROFESIONAL";
-}
-
-/**
- * Los roles que se le ofrecen a quien está creando o editando un usuario.
- *
- * Un SUPERVISOR administra personal de piso (cajero, mesero, repartidor,
- * profesional), no a sus pares ni a un ADMIN: ofrecerle roles que el backend
- * le va a rechazar es hacerle llenar el formulario para nada. Un ADMIN los
- * asigna todos.
- */
-export function rolesAsignables(opc: {
-  /** El rol de quien está usando la pantalla. */
-  rolActual: Rol | undefined;
-  /** El rol que ya tiene el usuario que se edita (undefined al crear). */
-  rolDelUsuario?: Rol;
-  /** ¿El negocio tiene salón? El mesero sólo existe donde hay mesas. */
-  conSalon: boolean;
-  perfil?: Pick<PerfilRubro, "config"> | null;
-}): RolApp[] {
-  const { rolActual, rolDelUsuario, conSalon, perfil } = opc;
-  return ROLES_APP.filter(
-    (r) =>
-      // ADMIN nunca se ofrece: el administrador nace con el negocio, en el
-      // panel. El backend lo rechaza, así que mostrarlo sería hacerle llenar
-      // el formulario para nada.
-      (r !== "ADMIN" &&
-        (r !== "MESERO" || conSalon) &&
-        ofreceRol(perfil, r) &&
-        (rolActual === "ADMIN" ||
-          r === "CAJERO" ||
-          r === "MESERO" ||
-          r === "REPARTIDOR" ||
-          r === "PROFESIONAL")) ||
-      // El rol que YA tiene el usuario se sigue mostrando: si no, editarle el
-      // teléfono a un admin le cambiaría el rol sin querer al guardar.
-      r === rolDelUsuario,
-  );
 }

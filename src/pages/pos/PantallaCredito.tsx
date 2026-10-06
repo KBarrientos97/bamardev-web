@@ -5,7 +5,7 @@ import { Boton, Campo, ErrorMsg, Input, Modal, Select } from "../../components/u
 import { api } from "../../lib/api";
 import { aCentavos, esPositivo, excede, parsearMontoO } from "../../lib/dinero";
 import { fmtMoney, isoDia } from "../../lib/format";
-import { puedeSupervisar } from "../../lib/permisos";
+import { tienePermiso } from "../../lib/permisos";
 import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
 import type { ClienteCredito, CreditoInput, FormaPago, PagoInput } from "../../types";
@@ -498,9 +498,9 @@ export function PedirPinCredito({
   subtitulo?: string;
 }) {
   const { usuario: actual } = useAuth();
-  // Un encargado firma con su propio PIN; un cajero necesita además el usuario
-  // de quien autoriza.
-  const pideUsuario = !puedeSupervisar(actual?.rol);
+  // Quien autoriza con PIN firma con el suyo; el resto necesita además el
+  // usuario de quien autoriza.
+  const pideUsuario = !tienePermiso(actual, "autorizar.pin");
   const [autorizador, setAutorizador] = useState("");
   const [pin, setPin] = useState("");
   const [error, setError] = useState("");

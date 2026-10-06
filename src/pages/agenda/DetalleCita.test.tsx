@@ -12,8 +12,8 @@ import { cita } from "../../test/agendaFixtures";
 /** Si quien mira tiene el punto de venta: decide si "Cobrar" abre el POS. */
 const sesion = vi.hoisted(() => ({
   conPos: false,
-  /** Los permisos del login; undefined = backend que no los manda. */
-  permisos: undefined as string[] | undefined,
+  /** Los permisos del login (por defecto, los de recepción). */
+  permisos: [] as string[] | undefined,
 }));
 
 vi.mock("../../store/AuthContext", () => ({
@@ -23,7 +23,6 @@ vi.mock("../../store/AuthContext", () => ({
       username: "recepcion",
       rol: "CAJERO",
       sucursalId: 1,
-      modulos: [],
       permisos: sesion.permisos,
     },
     negocio: { id: 1, nombre: "Salón Bella Vista", tipoNegocio: "PELUQUERIA" },
@@ -73,7 +72,7 @@ const botones = () =>
 beforeEach(() => {
   vi.clearAllMocks();
   sesion.conPos = false;
-  sesion.permisos = undefined;
+  sesion.permisos = ["agenda.ver", "agenda.gestionar", "agenda.estado", "ventas.vender"];
   // El día de las citas de prueba, a las 11:00 de La Paz: después de su inicio
   // (10:00). Desde la ronda 1 de QA la hora decide qué se ofrece.
   vi.useFakeTimers({ toFake: ["Date"] });

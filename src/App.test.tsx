@@ -13,7 +13,7 @@ vi.mock("./lib/api", async (importOriginal) => {
   const real = await importOriginal<typeof import("./lib/api")>();
   // La licencia queda pendiente para siempre: acá no importa y así no pinta
   // nada después de que el test terminó.
-  return { ...real, api: { login: vi.fn(), licencia: vi.fn(() => new Promise(() => {})) } };
+  return { ...real, api: { login: vi.fn(), me: vi.fn(), licencia: vi.fn(() => new Promise(() => {})) } };
 });
 
 // Las pantallas no importan, sólo cuál se abre.
@@ -52,10 +52,12 @@ vi.mock("./publico/apiReserva", async (importOriginal) => {
 
 import App from "./App";
 import { NEGOCIO_KEY, USER_KEY, api, tokenStore } from "./lib/api";
+import { permisosDe, usuarioDe } from "./test/sesiones";
 
 const RESTAURANTE: SesionNegocio = { id: 1, nombre: "Restaurante", alias: "resto", tipoNegocio: "RESTAURANTE" };
-const MESERO: SesionUsuario = { id: 7, username: "mesero", nombre: "Mesero", rol: "MESERO", modulos: [] };
-const ADMIN: SesionUsuario = { id: 1, username: "admin", nombre: "Administrador", rol: "ADMIN", modulos: [] };
+// Con los permisos de sus plantillas: la web decide sólo por ellos.
+const MESERO: SesionUsuario = usuarioDe("MESERO", { id: 7, username: "mesero", nombre: "Mesero" });
+const ADMIN: SesionUsuario = usuarioDe("ADMIN", { id: 1, username: "admin", nombre: "Administrador" });
 
 function abrir(ruta: string) {
   window.history.replaceState(null, "", ruta);
@@ -133,13 +135,13 @@ describe("el profesional (belleza, sin agenda todavía)", () => {
       config: { rolesOfrecidos: ["ADMIN", "SUPERVISOR", "CAJERO", "PROFESIONAL"] },
     },
   };
-  const PROFESIONAL: SesionUsuario = {
+  const PROFESIONAL: SesionUsuario = usuarioDe("PROFESIONAL", {
     id: 8,
     username: "barbero",
     nombre: "Juan",
-    rol: "PROFESIONAL",
-    modulos: [],
-  };
+    // El nombre del rol lo eligió el negocio: es el que se muestra.
+    rolNombre: "Barbero",
+  });
 
   it("al entrar cae en el aviso de su agenda, con el color del negocio", async () => {
     abrir("/");
@@ -190,6 +192,20 @@ describe("el profesional (belleza, sin agenda todavía)", () => {
     expect(window.location.pathname).toBe("/");
   });
 
+  it("quien ve sólo su agenda entra ahí aunque su rol se llame de otra forma", () => {
+    // Un rol creado por el negocio ("Ayudante con agenda"), con código legado
+    // de cajero: manda el permiso, no el nombre ni el código.
+    tokenStore.set("token-x");
+    localStorage.setItem(
+      USER_KEY,
+      JSON.stringify({ ...PROFESIONAL, rol: "CAJERO", rolNombre: "Ayudante con agenda" }),
+    );
+    localStorage.setItem(NEGOCIO_KEY, JSON.stringify(BARBERIA));
+    abrir("/");
+    expect(screen.getByText("Tu agenda llega pronto")).toBeInTheDocument();
+    expect(window.location.pathname).toBe("/mi-agenda");
+  });
+
   it("otro rol que abre /mi-agenda va a su inicio", () => {
     tokenStore.set("token-admin");
     localStorage.setItem(USER_KEY, JSON.stringify(ADMIN));
@@ -197,6 +213,53 @@ describe("el profesional (belleza, sin agenda todavía)", () => {
     abrir("/mi-agenda");
     expect(screen.getByText("Inicio del administrador")).toBeInTheDocument();
     expect(window.location.pathname).toBe("/inventario");
+  });
+});
+
+describe("una sesión guardada sin permisos", () => {
+  // Se guardó antes de que el login los mandara: no hay con qué decidir, y no
+  // hay respaldo por nombre de rol. Se piden a /auth/me.
+  const VIEJA = { id: 1, username: "admin", nombre: "Administrador", rol: "ADMIN" } as SesionUsuario;
+
+  it("los pide a /auth/me y entra a su inicio con lo que vuelve (también el nombre del rol)", async () => {
+    vi.mocked(api.me).mockResolvedValue({
+      id: 1,
+      username: "admin",
+      rol: "ADMIN",
+      rolId: 1,
+      rolNombre: "Dueño",
+      esAdministrador: true,
+      negocioId: 1,
+      esPlataforma: false,
+      ...permisosDe("ADMIN"),
+      permisosVersion: "v1",
+    });
+    tokenStore.set("token-admin");
+    localStorage.setItem(USER_KEY, JSON.stringify(VIEJA));
+    localStorage.setItem(NEGOCIO_KEY, JSON.stringify(RESTAURANTE));
+    abrir("/");
+    expect(await screen.findByText("Inicio del administrador")).toBeInTheDocument();
+    expect(window.location.pathname).toBe("/inventario");
+    const guardado = JSON.parse(localStorage.getItem(USER_KEY) ?? "{}");
+    expect(guardado.rolNombre).toBe("Dueño");
+    expect(guardado.permisos).toContain("dashboard.ver");
+  });
+
+  it("si /auth/me tampoco los trae, queda sin acceso: nada por el nombre del rol", async () => {
+    vi.mocked(api.me).mockResolvedValue({
+      id: 1,
+      username: "admin",
+      rol: "ADMIN",
+      negocioId: 1,
+      esPlataforma: false,
+    });
+    tokenStore.set("token-admin");
+    localStorage.setItem(USER_KEY, JSON.stringify(VIEJA));
+    localStorage.setItem(NEGOCIO_KEY, JSON.stringify(RESTAURANTE));
+    abrir("/");
+    expect(await screen.findByText("Tu cuenta no tiene secciones")).toBeInTheDocument();
+    expect(window.location.pathname).toBe("/sin-acceso");
+    expect(screen.queryByText("Inicio del administrador")).toBeNull();
   });
 });
 

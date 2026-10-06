@@ -11,14 +11,24 @@ import type { EstadoLicencia, SesionNegocio, SesionUsuario } from "../types";
 
 vi.mock("../lib/api", async (importOriginal) => {
   const real = await importOriginal<typeof import("../lib/api")>();
-  return { ...real, api: { licencia: vi.fn() } };
+  return { ...real, api: { licencia: vi.fn(), me: vi.fn() } };
 });
 
 import { LICENCIA_KEY, NEGOCIO_KEY, USER_KEY, api, tokenStore } from "../lib/api";
 import { TEMAS } from "../lib/temas";
 import { AuthProvider, useAuth } from "./AuthContext";
 
-const ADMIN: SesionUsuario = { id: 1, username: "admin", rol: "ADMIN", modulos: [] };
+const ADMIN: SesionUsuario = {
+  id: 1,
+  username: "admin",
+  rol: "ADMIN",
+  rolId: 1,
+  rolNombre: "Dueño",
+  esAdministrador: true,
+  permisos: ["ventas.vender", "reportes.ver"],
+  permisosPropios: [],
+  permisosVersion: "v1",
+};
 const BARBERIA: SesionNegocio = { id: 2, nombre: "Barbería QA", tipoNegocio: "BARBERIA" };
 
 const ESTADO: EstadoLicencia = {
@@ -61,6 +71,53 @@ beforeEach(() => {
   tokenStore.set("token");
   localStorage.setItem(USER_KEY, JSON.stringify(ADMIN));
   localStorage.setItem(NEGOCIO_KEY, JSON.stringify(BARBERIA));
+});
+
+describe("refresco de los permisos y del rol", () => {
+  function SondaRol() {
+    const { usuario, puede } = useAuth();
+    return (
+      <p>
+        rol:{usuario?.rolNombre ?? "-"} id:{String(usuario?.rolId ?? "-")} reportes:{String(puede("reportes"))}
+      </p>
+    );
+  }
+
+  it("una huella nueva trae de /auth/me los permisos, y también el nombre y el id del rol", async () => {
+    // El dueño le cambió el rol a esta cuenta: la cabecera y el menú cambian
+    // juntos, sin cerrar sesión.
+    vi.mocked(api.licencia).mockResolvedValue({ ...ESTADO, permisosVersion: "v2" });
+    vi.mocked(api.me).mockResolvedValue({
+      id: 1,
+      username: "admin",
+      rol: "CAJERO",
+      rolId: 7,
+      rolNombre: "Cajera de la tarde",
+      esAdministrador: false,
+      negocioId: 2,
+      esPlataforma: false,
+      permisos: ["ventas.vender"],
+      permisosPropios: [],
+      permisosVersion: "v2",
+    });
+    await act(async () => {
+      render(
+        <AuthProvider>
+          <SondaRol />
+        </AuthProvider>,
+      );
+    });
+    await act(async () => {});
+    expect(screen.getByText("rol:Cajera de la tarde id:7 reportes:false")).toBeInTheDocument();
+    const guardado = JSON.parse(localStorage.getItem(USER_KEY) ?? "{}");
+    expect(guardado).toMatchObject({ rolId: 7, rolNombre: "Cajera de la tarde", esAdministrador: false, permisosVersion: "v2" });
+  });
+
+  it("con la misma huella no pide nada", async () => {
+    vi.mocked(api.licencia).mockResolvedValue({ ...ESTADO, permisosVersion: "v1" });
+    await montar();
+    expect(api.me).not.toHaveBeenCalled();
+  });
 });
 
 describe("refresco del perfil con el estado de la licencia", () => {

@@ -18,7 +18,7 @@ import { api, type PagoEntrega } from "../../lib/api";
 import { parsearMontoO } from "../../lib/dinero";
 import { fmtFechaHora, fmtHora, fmtMoney, fmtNum } from "../../lib/format";
 import { Telefono } from "../../lib/telefono";
-import { puedeSupervisar, tieneFeature } from "../../lib/permisos";
+import { tienePermiso, tieneFeature } from "../../lib/permisos";
 import { esBelleza, marcaConsumo } from "../../lib/rubro";
 import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
@@ -483,10 +483,10 @@ function DetalleVenta({
       {anulando && (
         <DialogoAnular
           venta={v}
-          // El backend pide el PIN SIEMPRE, también al dueño. Un supervisor
-          // se autoriza a sí mismo; un cajero necesita que un encargado
-          // teclee su usuario y PIN en el momento, sin cerrar sesión.
-          pideUsuario={!puedeSupervisar(usuario?.rol ?? "CAJERO")}
+          // El backend pide el PIN SIEMPRE, también al dueño. Quien autoriza
+          // con PIN se autoriza a sí mismo; el resto necesita que alguien que
+          // autoriza teclee su usuario y PIN en el momento, sin cerrar sesión.
+          pideUsuario={!tienePermiso(usuario, "autorizar.pin")}
           onClose={() => setAnulando(false)}
           onAnulada={() => {
             setAnulando(false);

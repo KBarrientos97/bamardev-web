@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { Feature, Modulo, Rol } from "../types";
+import type { Feature } from "../types";
+import { ctxDe, type Plantilla } from "../test/sesiones";
 import { aplanar, construirMenu, esMenuDeAgenda, tituloDe } from "./menu";
 import { puedeVer } from "./permisos";
 
@@ -8,7 +9,6 @@ import { puedeVer } from "./permisos";
  * (Equipo, Finanzas, Marketing). Los demás rubros quedan como estaban.
  */
 
-const MODULOS: Modulo[] = ["INVENTARIO", "POS", "CAJA", "REPORTES", "USUARIOS", "CONFIG"];
 const SALON: Feature[] = [
   "pos",
   "caja",
@@ -30,9 +30,9 @@ const SALON: Feature[] = [
   "clientes_retencion",
 ];
 
-const ctx = (rol: Rol, rubro: string, features: Feature[] = SALON) => ({ rol, rubro, features, modulos: MODULOS });
+const ctx = (plantilla: Plantilla, rubro: string, features: Feature[] = SALON) => ctxDe(plantilla, rubro, features);
 
-function menu(rol: Rol, rubro: string, features: Feature[] = SALON) {
+function menu(rol: Plantilla, rubro: string, features: Feature[] = SALON) {
   const c = ctx(rol, rubro, features);
   return construirMenu((s) => puedeVer(c, s), rubro, undefined, esMenuDeAgenda(rubro, features));
 }

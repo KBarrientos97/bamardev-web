@@ -35,11 +35,36 @@ vi.mock("../../../lib/api", () => ({
     ]),
     getCategorias: vi.fn(async () => [{ id: 4, nombre: "Cortes", activo: true }]),
     getUsuarios: vi.fn(async () => [
-      { id: 20, nombre: "Ana Pérez", usuario: "ana", rol: "PROFESIONAL", activo: true },
-      { id: 21, nombre: "Caja", usuario: "caja", rol: "CAJERO", activo: true },
+      { id: 20, nombre: "Ana Pérez", usuario: "ana", rol: "PROFESIONAL", rolId: 4, activo: true },
+      { id: 21, nombre: "Caja", usuario: "caja", rol: "CAJERO", rolId: 3, activo: true },
     ]),
   },
 }));
+
+// Los roles del negocio: a una columna se le ata la cuenta de un rol que ve
+// sólo su agenda (el "Barbero"), no la de recepción.
+vi.mock("../../../lib/roles", async (importOriginal) => {
+  const real = await importOriginal<typeof import("../../../lib/roles")>();
+  const rol = (id: number, nombre: string, permisos: { codigo: string; alcance: "GENERAL" | "PROPIO" }[]) => ({
+    id,
+    nombre,
+    descripcion: null,
+    esAdministrador: false,
+    plantilla: null,
+    usuarios: 1,
+    personal: 1,
+    permisos,
+  });
+  return {
+    ...real,
+    apiRoles: {
+      listar: vi.fn(async () => [
+        rol(3, "Recepción", [{ codigo: "agenda.ver", alcance: "GENERAL" }, { codigo: "agenda.gestionar", alcance: "GENERAL" }]),
+        rol(4, "Barbero", [{ codigo: "agenda.ver", alcance: "PROPIO" }]),
+      ]),
+    },
+  };
+});
 
 // Personal (PLAN-ROLES §9): de dónde sale un profesional nuevo.
 vi.mock("../../../lib/personal", () => ({
@@ -69,6 +94,10 @@ vi.mock("../../../lib/agenda/apiConfigAgenda", () => ({
 import { apiConfigAgenda } from "../../../lib/agenda/apiConfigAgenda";
 import { apiPersonal } from "../../../lib/personal";
 import ConfigAgenda from "./ConfigAgenda";
+import { permisosDe } from "../../../test/sesiones";
+
+/** El dueño, con los permisos de su plantilla. */
+const DUENIO = { id: 1, rol: "ADMIN", sucursalId: null, ...permisosDe("ADMIN") };
 
 const CORTE: Servicio = {
   id: 100,
@@ -119,6 +148,7 @@ async function montar(pestana?: string) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  sesion.usuario = DUENIO;
   vi.mocked(apiConfigAgenda.servicios).mockResolvedValue([CORTE, BARBA]);
   vi.mocked(apiConfigAgenda.recursos).mockResolvedValue([JUAN, SILLON]);
   vi.mocked(apiConfigAgenda.horarios).mockResolvedValue(HORARIO);
@@ -182,6 +212,7 @@ describe("pestañas", () => {
       {
         id: 7,
         nombre: "Ana Pérez",
+        cargoRolId: 4,
         cargo: "Barbera",
         activo: true,
         color: null,
@@ -262,7 +293,7 @@ describe("pestañas", () => {
       });
       expect(vi.mocked(apiConfigAgenda.actualizarRecurso).mock.calls[0][1]).not.toHaveProperty("comisionPct");
     } finally {
-      sesion.usuario = { id: 1, rol: "ADMIN", sucursalId: null };
+      sesion.usuario = DUENIO;
     }
   });
 
@@ -271,6 +302,7 @@ describe("pestañas", () => {
       {
         id: 7,
         nombre: "Lucho",
+        cargoRolId: 4,
         cargo: "Barbero",
         activo: true,
         color: "#0E9F6E",

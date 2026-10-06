@@ -4,12 +4,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cita } from "../../test/agendaFixtures";
 import type { CitaSolicitud } from "../../lib/agenda/apiReservaOnline";
 import { puedeVer } from "../../lib/permisos";
+import { permisosDe } from "../../test/sesiones";
 
 /** A9 · Solicitudes online: aprobar, rechazar con motivo, las "nuevas" y quién la ve. */
 
 vi.mock("../../store/AuthContext", () => ({
   useAuth: () => ({
-    usuario: { id: 3, username: "recepcion", rol: "CAJERO", sucursalId: 1, modulos: [] },
+    usuario: { id: 3, username: "recepcion", rol: "CAJERO", sucursalId: 1, permisos: ["agenda.ver", "reservas.aprobar"] },
     negocio: { id: 1, nombre: "Salón Bella Vista", tipoNegocio: "PELUQUERIA", features: ["agenda", "reserva_online"] },
   }),
 }));
@@ -113,19 +114,20 @@ describe("bandeja de solicitudes (A9)", () => {
 });
 
 describe("quién ve la bandeja", () => {
-  const base = { modulos: [], rubro: "PELUQUERIA" };
-  it("recepción y encargados de belleza, con la reserva online", () => {
+  const base = { rubro: "PELUQUERIA" };
+  it("recepción y encargados de belleza (reservas.aprobar), con la reserva online", () => {
     for (const rol of ["ADMIN", "SUPERVISOR", "CAJERO"] as const) {
-      expect(puedeVer({ ...base, rol, features: ["agenda", "reserva_online"] }, "solicitudes")).toBe(true);
+      expect(puedeVer({ ...base, ...permisosDe(rol), features: ["agenda", "reserva_online"] }, "solicitudes")).toBe(true);
     }
-    expect(puedeVer({ ...base, rol: "PROFESIONAL", features: ["agenda", "reserva_online"] }, "solicitudes")).toBe(false);
+    expect(
+      puedeVer({ ...base, ...permisosDe("PROFESIONAL"), features: ["agenda", "reserva_online"] }, "solicitudes"),
+    ).toBe(false);
   });
 
   it("sin la feature no existe, ni aunque la lista venga vacía", () => {
-    expect(puedeVer({ ...base, rol: "ADMIN", features: ["agenda"] }, "solicitudes")).toBe(false);
-    expect(puedeVer({ ...base, rol: "ADMIN", features: [] }, "solicitudes")).toBe(false);
-    expect(puedeVer({ rol: "ADMIN", modulos: [], rubro: "RESTAURANTE", features: ["reserva_online"] }, "solicitudes")).toBe(
-      false,
-    );
+    const admin = permisosDe("ADMIN");
+    expect(puedeVer({ ...base, ...admin, features: ["agenda"] }, "solicitudes")).toBe(false);
+    expect(puedeVer({ ...base, ...admin, features: [] }, "solicitudes")).toBe(false);
+    expect(puedeVer({ ...admin, rubro: "RESTAURANTE", features: ["reserva_online"] }, "solicitudes")).toBe(false);
   });
 });
