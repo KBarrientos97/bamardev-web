@@ -367,6 +367,13 @@ const PERMISO_SECCION: Partial<
   // Las reglas del negocio (A11) son configuración de la agenda: el mismo
   // permiso que el backend pide para guardarlas.
   config_negocio: { permiso: "agenda.configurar" },
+  // Los módulos nuevos del 06-oct nacen cortados por permisos en el backend:
+  // la pantalla pide lo mismo. La cartera de clientes (A7) es la general; el
+  // profesional ve la ficha mínima desde su cita, no la lista.
+  clientes: { permiso: "cliente.ver_ficha", alcance: "GENERAL" },
+  solicitudes: { permiso: "reservas.aprobar" },
+  mi_pagina: { permiso: "negocio.configurar" },
+  mis_enlaces: { permiso: "negocio.configurar" },
 };
 
 type ConPermisos = Pick<SesionUsuario, "permisos" | "permisosPropios"> | null | undefined;
