@@ -98,7 +98,7 @@ const OPC_TIPO = [
 ] as const satisfies readonly (readonly [FiltroTipo, string])[];
 
 export default function Productos() {
-  const { incluye, puede, rubro } = useAuth();
+  const { incluye, puede, rubro, vocabulario } = useAuth();
   const [filtroStock, setFiltroStock] = useState<FiltroStock>("todos");
   // La papelera es otra lista del backend, no un filtro sobre la que ya está:
   // los dados de baja no vienen en el catálogo normal.
@@ -321,7 +321,7 @@ export default function Productos() {
         // Aviso, no error: la operación hizo lo correcto. En rojo parecía que
         // había fallado algo.
         setAviso(
-          `El ${termino(rubro, "articulo")} ya tenía ventas o movimientos, así que se archivó en vez de borrarse.`,
+          `El ${termino(rubro, "articulo", vocabulario)} ya tenía ventas o movimientos, así que se archivó en vez de borrarse.`,
         );
       }
     } catch (err) {
@@ -334,7 +334,7 @@ export default function Productos() {
   return (
     <div className="mx-auto max-w-6xl space-y-4 p-5">
       <EncabezadoPagina
-        titulo={termino(rubro, "articulos")}
+        titulo={termino(rubro, "articulos", vocabulario)}
         subtitulo={
           enPapelera
             ? contando
@@ -424,7 +424,7 @@ export default function Productos() {
                 ? `No hay nada con "${q}"`
                 : hayCatalogo
                   ? "Sin resultados"
-                  : `Todavía no hay ${termino(rubro, "articulos").toLowerCase()}`
+                  : `Todavía no hay ${termino(rubro, "articulos", vocabulario).toLowerCase()}`
             }
             texto={
               esFarmacia(rubro) && q
@@ -440,7 +440,7 @@ export default function Productos() {
             accion={
               !hayCatalogo && (
                 <Boton icono="plus" onClick={() => setCreando(true)}>
-                  Nuevo {termino(rubro, "articulo")}
+                  Nuevo {termino(rubro, "articulo", vocabulario)}
                 </Boton>
               )
             }
@@ -527,7 +527,7 @@ export default function Productos() {
 
       <Confirmar
         abierto={!!aBorrar}
-        titulo={`Eliminar ${termino(rubro, "articulo")}`}
+        titulo={`Eliminar ${termino(rubro, "articulo", vocabulario)}`}
         texto={`¿Eliminar "${aBorrar?.nombre}"? Si ya tiene ventas o movimientos se archivará en vez de borrarse.`}
         etiquetaOk="Eliminar"
         peligroso
@@ -650,7 +650,7 @@ function DetalleProducto({
   onEliminar: (p: Producto) => void;
   onRestaurar: (p: Producto) => void;
 }) {
-  const { rubro } = useAuth();
+  const { rubro, vocabulario } = useAuth();
   const [viendoCostos, setViendoCostos] = useState(false);
   if (!p) return null;
   const tipo = TIPOS[p.tipoProducto];
@@ -659,7 +659,7 @@ function DetalleProducto({
   return (
     <Modal
       abierto
-      titulo={`Detalle del ${termino(rubro, "articulo")}`}
+      titulo={`Detalle del ${termino(rubro, "articulo", vocabulario)}`}
       subtitulo={p.nombre}
       onClose={onClose}
       acciones={
@@ -984,7 +984,7 @@ function FormProductoCuerpo({
   const [error, setError] = useState("");
   const [guardando, setGuardando] = useState(false);
 
-  const { incluye, rubro } = useAuth();
+  const { incluye, rubro, vocabulario } = useAuth();
   const conFicha = esFarmacia(rubro);
 
   /**
@@ -1103,7 +1103,7 @@ function FormProductoCuerpo({
   return (
     <Modal
       abierto
-      titulo={`${esEdicion ? "Editar" : "Nuevo"} ${termino(rubro, "articulo")}`}
+      titulo={`${esEdicion ? "Editar" : "Nuevo"} ${termino(rubro, "articulo", vocabulario)}`}
       cerrarAlClicAfuera={false}
       subtitulo={
         esEdicion
@@ -1127,7 +1127,7 @@ function FormProductoCuerpo({
             {guardando
               ? "Guardando…"
               : conFicha
-                ? `Guardar ${termino(rubro, "articulo")}`
+                ? `Guardar ${termino(rubro, "articulo", vocabulario)}`
                 : "Guardar"}
           </Boton>
         </>

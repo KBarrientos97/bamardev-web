@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Usuario } from "../types";
+import type { SesionNegocio, Usuario } from "../types";
 
 /**
  * Usuarios con el rol MESERO. La pantalla nació antes que el mesero y no lo
@@ -13,11 +13,14 @@ const sesion = vi.hoisted(() => ({
   conSalon: true,
   /** Quién está mirando la pantalla. */
   actor: { id: 1, rol: "ADMIN" },
+  /** El negocio de la sesión; null = un backend que no manda perfil. */
+  negocio: null as SesionNegocio | null,
 }));
 
 vi.mock("../store/AuthContext", () => ({
   useAuth: () => ({
     usuario: { ...sesion.actor, sucursalId: null },
+    negocio: sesion.negocio,
     incluye: () => true,
     puede: (s: string) => s === "salon" && sesion.conSalon,
   }),
@@ -91,6 +94,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   sesion.conSalon = true;
   sesion.actor = { id: 1, rol: "ADMIN" };
+  sesion.negocio = null;
 });
 
 describe("el mesero en Usuarios", () => {
@@ -211,5 +215,68 @@ describe("el PIN de autorización", () => {
     abrir("encargada");
     expect(screen.queryByRole("button", { name: ACCION_PIN })).not.toBeInTheDocument();
     expect(screen.getByText("Tu PIN de autorización te lo asigna el administrador.")).toBeInTheDocument();
+  });
+});
+
+/**
+ * Belleza (fase 0): el rol PROFESIONAL se ofrece sólo si el perfil del rubro lo
+ * trae, con el nombre del oficio, y el cajero se llama "Recepción".
+ */
+describe("el profesional en Usuarios", () => {
+  const BARBERIA: SesionNegocio = {
+    id: 2,
+    nombre: "Barbería QA",
+    tipoNegocio: "BARBERIA",
+    perfil: {
+      rubro: "BARBERIA",
+      nombre: "Barbería",
+      vertical: "BELLEZA",
+      estado: "EN_DESARROLLO",
+      icono: "navaja",
+      etiquetasRol: { CAJERO: "Recepción", PROFESIONAL: "Barbero" },
+      config: { rolesOfrecidos: ["ADMIN", "SUPERVISOR", "CAJERO", "PROFESIONAL"] },
+    },
+  };
+  const BARBERO = cuenta({ id: 9, nombre: "Juan Barbero", usuario: "juan", rol: "PROFESIONAL" });
+
+  it("en una barbería con perfil se ofrece con su nombre y se cuenta", async () => {
+    sesion.conSalon = false;
+    sesion.negocio = BARBERIA;
+    await montar([ADMIN, BARBERO]);
+
+    expect(kpi("Barberos")).toBe("1");
+    expect(kpi("Recepción")).toBe("0");
+    fireEvent.click(screen.getByRole("button", { name: "Barberos" }));
+    expect(screen.getByRole("button", { name: /@juan\b/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /@admin\b/ })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Nuevo" }));
+    expect(rolesOfrecidos()).toEqual(["Supervisor", "Recepción", "Repartidor", "Barbero"]);
+  });
+
+  it("el supervisor también lo puede asignar", async () => {
+    sesion.conSalon = false;
+    sesion.negocio = BARBERIA;
+    sesion.actor = { id: 3, rol: "SUPERVISOR" };
+    await montar([ADMIN]);
+    fireEvent.click(screen.getByRole("button", { name: "Nuevo" }));
+    expect(rolesOfrecidos()).toEqual(["Recepción", "Repartidor", "Barbero"]);
+  });
+
+  it("su ficha dice qué va a poder hacer", async () => {
+    sesion.conSalon = false;
+    sesion.negocio = BARBERIA;
+    await montar([ADMIN, BARBERO]);
+    fireEvent.click(screen.getByRole("button", { name: /@juan\b/ }));
+    expect(screen.getByText("Ve su agenda (llega con la agenda)")).toBeInTheDocument();
+  });
+
+  it("sin perfil (backend de hoy) no aparece en ningún lado", async () => {
+    sesion.conSalon = true;
+    await montar([ADMIN]);
+    expect(screen.queryByText("Profesionales")).not.toBeInTheDocument();
+    expect(kpi("Cajeros")).toBe("0");
+    fireEvent.click(screen.getByRole("button", { name: "Nuevo" }));
+    expect(rolesOfrecidos()).toEqual(["Supervisor", "Cajero", "Mesero", "Repartidor"]);
   });
 });

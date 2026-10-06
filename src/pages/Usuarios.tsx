@@ -20,20 +20,18 @@ import {
 } from "../components/ui";
 import { api } from "../lib/api";
 import { fmtFechaHora, iniciales, tiempoRelativo } from "../lib/format";
-import { etiquetaRol } from "../lib/permisos";
+import {
+  etiquetaRol,
+  ofreceRol,
+  rolesAsignables as calcularRolesAsignables,
+  type RolApp,
+} from "../lib/permisos";
 import { useApi } from "../lib/useApi";
 import { useAuth } from "../store/AuthContext";
 import type { ActualizarUsuarioInput, CrearUsuarioInput, Rol, Usuario } from "../types";
 
-/** Roles que se pueden crear desde la app. PLATAFORMA queda afuera a propósito:
- *  es la cuenta del panel de licencias y el backend rechaza asignarla acá.
- *
- *  MESERO llegó después que esta pantalla y no estaba: editar a un mesero
- *  dejaba la página en blanco (el formulario buscaba los permisos de un rol que
- *  no conocía), las tarjetas no lo contaban y no se lo podía crear. El backend y
- *  la app Android ya lo manejaban. */
-const ROLES_APP = ["ADMIN", "SUPERVISOR", "CAJERO", "MESERO", "REPARTIDOR"] as const;
-type RolApp = (typeof ROLES_APP)[number];
+// `ROLES_APP` y quién asigna qué viven en permisos.ts: se prueban sin montar
+// la pantalla, y el rol PROFESIONAL depende del perfil del rubro.
 
 const TONO_ROL: Record<RolApp, "morado" | "azul" | "verde" | "amarillo" | "gris"> = {
   ADMIN: "morado",
@@ -43,6 +41,8 @@ const TONO_ROL: Record<RolApp, "morado" | "azul" | "verde" | "amarillo" | "gris"
   // es vencido y el ámbar es el repartidor).
   MESERO: "gris",
   REPARTIDOR: "amarillo",
+  // El color del negocio: en un salón el profesional es el centro del trabajo.
+  PROFESIONAL: "verde",
 };
 
 /**
@@ -58,6 +58,9 @@ const PERMISOS_ROL: Record<RolApp, string[]> = {
   // cajero y lo que el dueño tiene que saber antes de darle la cuenta a alguien.
   MESERO: ["Salón y mesas", "Tomar pedidos", "Mandar la cuenta a caja", "No maneja dinero"],
   REPARTIDOR: ["Entregas", "Cobro contra entrega", "Rendición"],
+  // Honesto a propósito: hoy entra y no ve nada más que el aviso. El dueño
+  // tiene que saberlo antes de crearle la cuenta (D23, sin módulos).
+  PROFESIONAL: ["Ve su agenda (llega con la agenda)"],
 };
 
 /**
@@ -77,8 +80,21 @@ const OPC_ROL = [
   ["CAJERO", "Cajeros"],
   ["MESERO", "Meseros"],
   ["REPARTIDOR", "Repartidores"],
+  ["PROFESIONAL", "Profesionales"],
   ["inactivos", "Inactivos"],
 ] as const satisfies readonly (readonly [FiltroRol, string])[];
+
+/**
+ * Plural de una etiqueta del rubro ("Barbero" → "Barberos") para los filtros y
+ * las tarjetas. Sólo para las que vienen del perfil: las de siempre ya tienen
+ * su plural escrito en `OPC_ROL`. "Recepción" queda igual: es un puesto, no
+ * una persona, y "Recepciones" se leería como otra cosa.
+ */
+function pluralizar(etiqueta: string): string {
+  if (/ión$/i.test(etiqueta)) return etiqueta;
+  if (/[aeiouáéó]$/i.test(etiqueta)) return `${etiqueta}s`;
+  return `${etiqueta}es`;
+}
 
 /** El rol del backend puede crecer; lo que no está en la matriz cae en gris. */
 function tonoRol(rol: Rol): "morado" | "azul" | "verde" | "amarillo" | "gris" {
@@ -86,13 +102,31 @@ function tonoRol(rol: Rol): "morado" | "azul" | "verde" | "amarillo" | "gris" {
 }
 
 export default function Usuarios() {
-  const { incluye, puede } = useAuth();
+  const { incluye, puede, negocio } = useAuth();
   // El PIN sólo existe para autorizar anulaciones de venta.
   const conPin = incluye("autorizacion_pin");
   // Los meseros se cuentan y se filtran sólo donde hay salón: en una farmacia,
   // o en un plan sin mesas, la tarjeta y el filtro dirían siempre cero.
   const conSalon = puede("salon");
-  const opcionesRol = conSalon ? OPC_ROL : OPC_ROL.filter(([valor]) => valor !== "MESERO");
+  // Lo mismo con el profesional: sólo donde el perfil del rubro lo ofrece.
+  const conProfesional = ofreceRol(negocio?.perfil, "PROFESIONAL");
+  /**
+   * El plural que se muestra en filtros y tarjetas. Si el rubro le pone otro
+   * nombre al rol (en un salón el cajero es "Recepción"), se usa ése; si no,
+   * el de siempre.
+   */
+  const pluralRol = (rol: RolApp, deSiempre: string) => {
+    const etiqueta = etiquetaRol(rol, negocio);
+    return etiqueta === etiquetaRol(rol) ? deSiempre : pluralizar(etiqueta);
+  };
+  const opcionesRol = OPC_ROL.filter(
+    ([valor]) =>
+      (valor !== "MESERO" || conSalon) && (valor !== "PROFESIONAL" || conProfesional),
+  ).map(([valor, texto]) =>
+    valor === "todos" || valor === "inactivos"
+      ? ([valor, texto] as const)
+      : ([valor, pluralRol(valor, texto)] as const),
+  );
   const usuarios = useApi(() => api.getUsuarios(), []);
 
   const [q, setQ] = useState("");
@@ -135,6 +169,7 @@ export default function Usuarios() {
       CAJERO: 0,
       MESERO: 0,
       REPARTIDOR: 0,
+      PROFESIONAL: 0,
     };
     for (const u of lista) {
       if (!u.activo) continue;
@@ -203,13 +238,27 @@ export default function Usuarios() {
 
       {/* Con meseros son seis tarjetas, y seis en una fila no entran: a 1280 px
           "ADMINISTRADORES" se montaba sobre su ícono. Van en dos filas de tres;
-          sin salón quedan las cinco de siempre en una fila. */}
+          sin salón quedan las cinco de siempre en una fila. En belleza no hay
+          salón pero hay profesionales: también son seis. */}
       <div
-        className={`grid gap-3 sm:grid-cols-2 lg:grid-cols-3 ${conSalon ? "" : "xl:grid-cols-5"}`}
+        className={`grid gap-3 sm:grid-cols-2 lg:grid-cols-3 ${conSalon || conProfesional ? "" : "xl:grid-cols-5"}`}
       >
         <Kpi etiqueta="Administradores" valor={String(conteos.ADMIN)} icono="lock" tono="morado" />
         <Kpi etiqueta="Supervisores" valor={String(conteos.SUPERVISOR)} icono="users" tono="azul" />
-        <Kpi etiqueta="Cajeros" valor={String(conteos.CAJERO)} icono="cart" tono="verde" />
+        <Kpi
+          etiqueta={pluralRol("CAJERO", "Cajeros")}
+          valor={String(conteos.CAJERO)}
+          icono="cart"
+          tono="verde"
+        />
+        {conProfesional && (
+          <Kpi
+            etiqueta={pluralRol("PROFESIONAL", "Profesionales")}
+            valor={String(conteos.PROFESIONAL)}
+            icono="calendar"
+            tono="verde"
+          />
+        )}
         {conSalon && (
           <Kpi etiqueta="Meseros" valor={String(conteos.MESERO)} icono="grid" tono="gris" />
         )}
@@ -342,7 +391,7 @@ export default function Usuarios() {
 }
 
 function TarjetaUsuario({ usuario: u, onClick }: { usuario: Usuario; onClick: () => void }) {
-  const { incluye } = useAuth();
+  const { incluye, negocio } = useAuth();
   const conPin = incluye("autorizacion_pin");
 
   return (
@@ -372,7 +421,7 @@ function TarjetaUsuario({ usuario: u, onClick }: { usuario: Usuario; onClick: ()
         <p className="mt-0.5 truncate text-[13px] text-texto-3">@{u.usuario}</p>
 
         <div className="mt-3 flex items-center justify-between gap-2">
-          <Badge tono={tonoRol(u.rol)}>{etiquetaRol(u.rol)}</Badge>
+          <Badge tono={tonoRol(u.rol)}>{etiquetaRol(u.rol, negocio)}</Badge>
           <span className="flex items-center gap-1 truncate text-xs text-texto-4">
             <Icon name="clock" size={13} />
             {tiempoRelativo(u.ultimoLogin)}
@@ -402,7 +451,7 @@ function DetalleUsuario({
   onEstado: (u: Usuario) => void;
   conPin: boolean;
 }) {
-  const { usuario: actual } = useAuth();
+  const { usuario: actual, negocio } = useAuth();
   if (!u) return null;
   const permisos = PERMISOS_ROL[u.rol as RolApp] ?? [];
   const esRepartidor = u.rol === "REPARTIDOR";
@@ -452,7 +501,7 @@ function DetalleUsuario({
             <h3 className="truncate text-base font-bold text-texto">{u.nombre}</h3>
             <p className="text-[13px] text-texto-3">@{u.usuario}</p>
             <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-              <Badge tono={tonoRol(u.rol)}>{etiquetaRol(u.rol)}</Badge>
+              <Badge tono={tonoRol(u.rol)}>{etiquetaRol(u.rol, negocio)}</Badge>
               {!u.activo && <Badge tono="gris">Inactivo</Badge>}
               {llevaPin && u.tienePin && <Badge tono="azul">PIN</Badge>}
             </div>
@@ -580,27 +629,17 @@ function FormUsuarioCuerpo({
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [rol, setRol] = useState<RolApp>((usuario?.rol as RolApp) ?? "CAJERO");
-  const { usuario: actual, puede } = useAuth();
+  const { usuario: actual, puede, negocio } = useAuth();
   // El mesero sólo se ofrece donde hay salón: en una farmacia, o con un plan
-  // sin mesas, no tendría ninguna pantalla a la que entrar.
+  // sin mesas, no tendría ninguna pantalla a la que entrar. El profesional,
+  // sólo donde el perfil del rubro lo trae (ver `rolesAsignables`).
   const conSalon = puede("salon");
-  /**
-   * Un SUPERVISOR administra personal de piso (cajero, mesero, repartidor), no
-   * a sus pares ni a un ADMIN: ofrecerle roles que el backend le va a rechazar
-   * es hacerle llenar el formulario para nada. Un ADMIN los asigna todos.
-   */
-  const rolesAsignables = ROLES_APP.filter(
-    (r) =>
-      // ADMIN nunca se ofrece: el administrador nace con el negocio, en el
-      // panel. El backend lo rechaza, así que mostrarlo sería hacerle llenar
-      // el formulario para nada.
-      (r !== "ADMIN" &&
-        (r !== "MESERO" || conSalon) &&
-        (actual?.rol === "ADMIN" || r === "CAJERO" || r === "MESERO" || r === "REPARTIDOR")) ||
-      // El rol que YA tiene el usuario se sigue mostrando: si no, editarle el
-      // teléfono a un admin le cambiaría el rol sin querer al guardar.
-      r === usuario?.rol,
-  );
+  const rolesAsignables = calcularRolesAsignables({
+    rolActual: actual?.rol,
+    rolDelUsuario: usuario?.rol,
+    conSalon,
+    perfil: negocio?.perfil,
+  });
   const [email, setEmail] = useState(usuario?.email ?? "");
   const [telefono, setTelefono] = useState(usuario?.telefono ?? "");
   const [notas, setNotas] = useState(usuario?.notas ?? "");
@@ -744,7 +783,7 @@ function FormUsuarioCuerpo({
           <Select value={rol} onChange={(e) => setRol(e.target.value as RolApp)}>
             {rolesAsignables.map((r) => (
               <option key={r} value={r}>
-                {etiquetaRol(r)}
+                {etiquetaRol(r, negocio)}
               </option>
             ))}
           </Select>

@@ -9,8 +9,9 @@ import {
 } from "react-router-dom";
 import AtajaErrores from "./components/AtajaErrores";
 import Layout from "./components/Layout";
-import { rutaInicial, type Seccion } from "./lib/permisos";
+import { RUTA_AGENDA_PRONTO, rutaInicial, type Seccion } from "./lib/permisos";
 import { esFarmacia } from "./lib/rubro";
+import AgendaPronto from "./pages/AgendaPronto";
 import Creditos from "./pages/Creditos";
 import Gastos from "./pages/Gastos";
 import GastosFijos from "./pages/GastosFijos";
@@ -91,6 +92,17 @@ function SinAcceso() {
 function Protegida({ seccion, children }: { seccion: Seccion; children: React.ReactNode }) {
   const { puede } = useAuth();
   if (!puede(seccion)) return <Inicio />;
+  return <>{children}</>;
+}
+
+/**
+ * La pantalla del profesional. No es una `Seccion`: no pide módulo ni feature
+ * (su rol no tiene módulos, D23), es la de un rol y de nadie más. Cualquier
+ * otro rol que entre por URL vuelve a su inicio.
+ */
+function SoloProfesional({ children }: { children: React.ReactNode }) {
+  const { usuario } = useAuth();
+  if (usuario?.rol !== "PROFESIONAL") return <Inicio />;
   return <>{children}</>;
 }
 
@@ -199,6 +211,17 @@ function Rutas() {
           lateral. Acá el negocio todavía puede operar (está en gracia), así
           que el código de activación sale de la sesión y no del bloqueo. */}
       <Route path="/pagar" element={<PagarConSesion />} />
+
+      {/* Fuera del Layout, como el salón: el profesional todavía no tiene
+          ninguna sección y la barra lateral quedaría vacía. */}
+      <Route
+        path={RUTA_AGENDA_PRONTO}
+        element={
+          <SoloProfesional>
+            <AgendaPronto />
+          </SoloProfesional>
+        }
+      />
 
       <Route element={<LayoutSegunRubro />}>
         <Route path="/" element={<Inicio />} />

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { esFarmacia, esRubro, termino } from "./rubro";
+import { RUBROS, esBelleza, esFarmacia, esRubro, termino } from "./rubro";
 
 describe("termino", () => {
   it("en una farmacia los artículos son medicamentos", () => {
@@ -47,5 +47,42 @@ describe("esRubro / esFarmacia", () => {
     expect(esFarmacia("FARMACIA")).toBe(true);
     expect(esFarmacia("MINIMARKET")).toBe(false);
     expect(esFarmacia(undefined)).toBe(false);
+  });
+});
+
+describe("vocabulario del perfil", () => {
+  it("si el perfil trae la palabra, manda", () => {
+    expect(termino("BARBERIA", "articulos", { articulos: "Servicios" })).toBe("Servicios");
+    // También sobre el respaldo de farmacia: el perfil es la fuente.
+    expect(termino("FARMACIA", "articulos", { articulos: "Remedios" })).toBe("Remedios");
+  });
+
+  it("lo que el perfil no trae sale del respaldo de siempre", () => {
+    expect(termino("FARMACIA", "almacenes", { articulos: "X" })).toBe("Sucursales");
+    expect(termino("BARBERIA", "almacenes", { articulos: "X" })).toBe("Almacenes");
+    expect(termino("RESTAURANTE", "articulos", {})).toBe("Artículos");
+    expect(termino("RESTAURANTE", "articulos", null)).toBe("Artículos");
+  });
+
+  it("una palabra vacía no deja el menú sin nombre", () => {
+    expect(termino("RESTAURANTE", "articulos", { articulos: "" })).toBe("Artículos");
+    expect(termino("FARMACIA", "articulos", { articulos: "   " })).toBe("Medicamentos");
+  });
+});
+
+describe("rubros de belleza", () => {
+  it("son rubros conocidos", () => {
+    for (const r of ["PELUQUERIA", "BARBERIA", "SPA", "UNAS"]) {
+      expect(esRubro(r)).toBe(true);
+      expect(esBelleza(r)).toBe(true);
+      expect(RUBROS).toContain(r);
+    }
+  });
+
+  it("los de siempre no son de belleza", () => {
+    for (const r of ["RESTAURANTE", "MINIMARKET", "FARMACIA", "FERRETERIA", "REPUESTOS"]) {
+      expect(esBelleza(r)).toBe(false);
+    }
+    expect(esBelleza(undefined)).toBe(false);
   });
 });

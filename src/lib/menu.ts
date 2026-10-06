@@ -3,7 +3,7 @@ import { useLocation } from "react-router-dom";
 import type { NombreIcono } from "../components/Icon";
 import { useAuth } from "../store/AuthContext";
 import type { Seccion } from "./permisos";
-import { termino, type Termino } from "./rubro";
+import { termino, type Termino, type Vocabulario } from "./rubro";
 
 /**
  * El árbol del menú lateral, y el estado de qué grupos están abiertos.
@@ -210,15 +210,18 @@ function filtrar(
   items: ItemNav[],
   puede: (s: Seccion) => boolean,
   rubro: string | undefined,
+  vocabulario?: Vocabulario,
 ): NodoMenu[] {
   const salida: NodoMenu[] = [];
   for (const i of items) {
-    const hijos = filtrar(i.hijos ?? [], puede, rubro);
+    const hijos = filtrar(i.hijos ?? [], puede, rubro, vocabulario);
     if (!puede(i.seccion)) {
       salida.push(...hijos);
       continue;
     }
-    const item: ItemNav = i.termino ? { ...i, label: termino(rubro, i.termino) } : i;
+    const item: ItemNav = i.termino
+      ? { ...i, label: termino(rubro, i.termino, vocabulario) }
+      : i;
     const id = `${i.seccion}:${i.a}`;
 
     // Un grupo de un solo hijo es un clic de más para llegar a una sola
@@ -239,10 +242,11 @@ function filtrar(
 export function construirMenu(
   puede: (s: Seccion) => boolean,
   rubro: string | undefined,
+  vocabulario?: Vocabulario,
 ): BloqueMenu[] {
   const bloques: BloqueMenu[] = [];
   for (const i of ITEMS) {
-    const nodos = filtrar([i], puede, rubro);
+    const nodos = filtrar([i], puede, rubro, vocabulario);
     if (nodos.length === 0) continue;
     const ultimo = bloques[bloques.length - 1];
     if (ultimo?.bloque === i.bloque) ultimo.nodos.push(...nodos);
@@ -368,14 +372,17 @@ export interface Menu {
 }
 
 export function useMenu(): Menu {
-  const { puede, rubro, usuario, negocio } = useAuth();
+  const { puede, rubro, vocabulario, usuario, negocio } = useAuth();
   const { pathname } = useLocation();
 
   // Se recalcula cuando cambian `puede` o el rubro: así, si el panel le apaga
   // una feature al negocio (`refrescarFeatures`), la sección se va del menú en
   // caliente. Lo guardado de un grupo que ya no existe queda en el storage sin
   // molestar; si la feature vuelve, el grupo vuelve como estaba.
-  const bloques = useMemo(() => construirMenu(puede, rubro), [puede, rubro]);
+  const bloques = useMemo(
+    () => construirMenu(puede, rubro, vocabulario),
+    [puede, rubro, vocabulario],
+  );
   const raices = useMemo(() => bloques.flatMap((b) => b.nodos), [bloques]);
   const planos = useMemo(() => aplanar(raices), [raices]);
 

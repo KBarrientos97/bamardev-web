@@ -92,3 +92,94 @@ describe("cerrar sesión y que entre otro", () => {
     expect(window.location.pathname).toBe("/salon");
   });
 });
+
+describe("el profesional (belleza, sin agenda todavía)", () => {
+  const TOKENS_PROPIOS = {
+    primary: "#123456", primary600: "#123456", primary700: "#123456",
+    primary50: "#F4F4F4", primary100: "#E6E5E5", primary200: "#CCCBCB",
+    boton: "#123456", botonHover: "#0F2B45", botonActivo: "#0C2236",
+    barra: "#123456", barraActivo: "#2A4A69", barraTexto2: "#CFCECE",
+    marca: ["#123456", "#0F2B45"] as [string, string],
+  };
+  const BARBERIA: SesionNegocio = {
+    id: 2,
+    nombre: "Barbería QA",
+    alias: "barberiaqa",
+    tipoNegocio: "BARBERIA",
+    tema: { clave: "PROPIA", tokens: TOKENS_PROPIOS },
+    perfil: {
+      rubro: "BARBERIA",
+      nombre: "Barbería",
+      vertical: "BELLEZA",
+      estado: "EN_DESARROLLO",
+      icono: "navaja",
+      etiquetasRol: { CAJERO: "Recepción", PROFESIONAL: "Barbero" },
+      config: { rolesOfrecidos: ["ADMIN", "SUPERVISOR", "CAJERO", "PROFESIONAL"] },
+    },
+  };
+  const PROFESIONAL: SesionUsuario = {
+    id: 8,
+    username: "barbero",
+    nombre: "Juan",
+    rol: "PROFESIONAL",
+    modulos: [],
+  };
+
+  it("al entrar cae en el aviso de su agenda, con el color del negocio", async () => {
+    abrir("/");
+    vi.mocked(api.login).mockResolvedValue({
+      accessToken: "token-barbero",
+      usuario: PROFESIONAL,
+      negocio: BARBERIA,
+    });
+    fireEvent.change(screen.getByPlaceholderText("cafeteriakevin"), {
+      target: { value: "barberiaqa" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("Tu nombre de usuario"), {
+      target: { value: "barbero" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("Tu contraseña"), { target: { value: "x" } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Iniciar sesión" }));
+    });
+
+    expect(screen.getByText("Tu agenda llega pronto")).toBeInTheDocument();
+    expect(window.location.pathname).toBe("/mi-agenda");
+    expect(screen.getByText("Barbería QA · Barbero")).toBeInTheDocument();
+    expect(
+      document.documentElement.style.getPropertyValue("--color-primary").toLowerCase(),
+    ).toBe("#123456");
+    // La sesión guarda el tema y el perfil: un F5 no vuelve al color del rubro.
+    const guardado = JSON.parse(localStorage.getItem(NEGOCIO_KEY) ?? "{}");
+    expect(guardado.tema.clave).toBe("PROPIA");
+    expect(guardado.perfil.etiquetasRol.PROFESIONAL).toBe("Barbero");
+  });
+
+  it("una ruta de otra sección lo devuelve a su aviso", () => {
+    tokenStore.set("token-barbero");
+    localStorage.setItem(USER_KEY, JSON.stringify(PROFESIONAL));
+    localStorage.setItem(NEGOCIO_KEY, JSON.stringify(BARBERIA));
+    abrir("/pos");
+    expect(screen.getByText("Tu agenda llega pronto")).toBeInTheDocument();
+    expect(window.location.pathname).toBe("/mi-agenda");
+  });
+
+  it("cerrar sesión desde el aviso vuelve al login", () => {
+    tokenStore.set("token-barbero");
+    localStorage.setItem(USER_KEY, JSON.stringify(PROFESIONAL));
+    localStorage.setItem(NEGOCIO_KEY, JSON.stringify(BARBERIA));
+    abrir("/mi-agenda");
+    fireEvent.click(screen.getByRole("button", { name: "Cerrar sesión" }));
+    expect(screen.getByRole("button", { name: "Iniciar sesión" })).toBeInTheDocument();
+    expect(window.location.pathname).toBe("/");
+  });
+
+  it("otro rol que abre /mi-agenda va a su inicio", () => {
+    tokenStore.set("token-admin");
+    localStorage.setItem(USER_KEY, JSON.stringify(ADMIN));
+    localStorage.setItem(NEGOCIO_KEY, JSON.stringify(RESTAURANTE));
+    abrir("/mi-agenda");
+    expect(screen.getByText("Inicio del administrador")).toBeInTheDocument();
+    expect(window.location.pathname).toBe("/inventario");
+  });
+});

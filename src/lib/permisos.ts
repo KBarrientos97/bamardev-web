@@ -1,5 +1,5 @@
-import type { Feature, Modulo, Rol } from "../types";
-import type { Rubro } from "./rubro";
+import type { Feature, Modulo, PerfilRubro, Rol } from "../types";
+import { RUBROS_BELLEZA, etiquetaRolDelRubro, type Rubro } from "./rubro";
 
 /**
  * Permisos de la app. Hay DOS vocabularios distintos y no se mezclan:
@@ -201,9 +201,10 @@ const ROLES_PERMITIDOS: Partial<Record<Seccion, Rol[]>> = {
  * rubro existiera. Así, agregar un rubro nuevo no le apaga el menú a nadie por
  * un olvido, y los negocios que ya trabajan no se enteran de este archivo.
  *
- * Por eso mismo hoy sólo está FARMACIA. Que un minimarket vea "Mesas del
- * salón" es raro, pero es lo que ve hoy: sacárselo es otra decisión, de otro
- * día, con su propio cliente mirando. Acá no se toca nada que ya funcione.
+ * Por eso mismo sólo están FARMACIA y los rubros de belleza, que nacieron
+ * después de esta lista. Que un minimarket vea "Mesas del salón" es raro, pero
+ * es lo que ve hoy: sacárselo es otra decisión, de otro día, con su propio
+ * cliente mirando. Acá no se toca nada que ya funcione.
  */
 /**
  * Secciones que **nacen** de un rubro y no existen fuera de él. Es la lista
@@ -227,13 +228,21 @@ const SOLO_EN_RUBRO: Partial<Record<Seccion, Rubro[]>> = {
   transferencia_mercaderia: ["FARMACIA"],
 };
 
+/**
+ * Belleza va acá aunque el backend ya no le da `salon` ni `insumos` (la
+ * plantilla de su vertical las excluye): es el segundo candado. Las features
+ * fallan abiertas, así que un salón con la lista vacía —o con una feature
+ * prendida a mano en el panel— vería "Mesas" en el menú.
+ */
 const FUERA_DE_RUBRO: Partial<Record<Seccion, Rubro[]>> = {
-  // El salón entero es de restaurante: una farmacia no atiende mesas.
-  mesas: ["FARMACIA"],
-  salon: ["FARMACIA"],
+  // El salón entero es de restaurante: una farmacia no atiende mesas, y una
+  // peluquería tampoco (su "salón" es otra cosa).
+  mesas: ["FARMACIA", ...RUBROS_BELLEZA],
+  salon: ["FARMACIA", ...RUBROS_BELLEZA],
   // Los insumos son materia prima: harina, aceite, pollo crudo. Una farmacia
-  // no transforma nada, compra y vende lo mismo.
-  insumos: ["FARMACIA"],
+  // no transforma nada, compra y vende lo mismo. El tinte de un salón se
+  // gasta, pero no es una receta que se descuente al vender.
+  insumos: ["FARMACIA", ...RUBROS_BELLEZA],
 };
 
 export interface ContextoPermisos {
@@ -245,6 +254,12 @@ export interface ContextoPermisos {
 }
 
 export function puedeVer(ctx: ContextoPermisos, seccion: Seccion): boolean {
+  // El profesional no ve ninguna sección hasta que llegue la agenda (fase 1),
+  // que es lo único suyo. Hace falta decirlo explícito: su rol no tiene
+  // módulos (D23), y con la lista vacía `tieneModulo` falla abierto — sin esta
+  // línea, la primera sección nueva sin `ROLES_PERMITIDOS` le quedaría abierta.
+  if (ctx.rol === "PROFESIONAL") return false;
+
   const fuera = FUERA_DE_RUBRO[seccion];
   if (fuera && ctx.rubro && (fuera as string[]).includes(ctx.rubro)) return false;
 
@@ -319,7 +334,8 @@ const ROLES_CAPACIDAD: Partial<Record<Capacidad, Rol[]>> = {
  * problema de plan: en una farmacia no hay mesas.
  */
 const CAPACIDAD_FUERA_DE_RUBRO: Partial<Record<Capacidad, Rubro[]>> = {
-  mesa_llevar: ["FARMACIA"],
+  // Un corte de pelo no se sirve en mesa ni se lleva: en belleza tampoco.
+  mesa_llevar: ["FARMACIA", ...RUBROS_BELLEZA],
 };
 
 export function puede(ctx: ContextoPermisos, capacidad: Capacidad): boolean {
@@ -344,6 +360,11 @@ export function puedeSupervisar(rol: Rol): boolean {
  * rebotando en un bucle con la pantalla en blanco.
  */
 export function rutaInicial(ctx: ContextoPermisos): string {
+  // No pasa por la lista: el profesional no ve ninguna sección todavía, y sin
+  // esto caería en "/sin-acceso", que le dice que su cuenta está mal
+  // configurada. No lo está: su pantalla es la agenda, que llega en la fase 1.
+  if (ctx.rol === "PROFESIONAL") return RUTA_AGENDA_PRONTO;
+
   const orden: [Seccion, string][] =
     // El mesero entra directo al salón: es su única pantalla. Igual que
     // AuthenticationActivity en Android, que lo manda a MeserosActivity sin
@@ -376,14 +397,110 @@ export function rutaInicial(ctx: ContextoPermisos): string {
   return "/sin-acceso";
 }
 
-export function etiquetaRol(rol: Rol): string {
+/**
+ * Inicio del profesional mientras la agenda no existe: una pantalla que dice
+ * que su agenda llega pronto. Es la misma ruta que tendrá "Mi agenda", así la
+ * fase 1 cambia la pantalla y no a dónde aterriza cada quien.
+ */
+export const RUTA_AGENDA_PRONTO = "/mi-agenda";
+
+/**
+ * Lo que hace falta del negocio para nombrar un rol. Estructural para poder
+ * pasarle la `SesionNegocio` entera o un objeto armado en un test.
+ */
+export interface NegocioRol {
+  tipoNegocio?: string | null;
+  perfil?: Pick<PerfilRubro, "etiquetasRol"> | null;
+}
+
+/**
+ * Cómo se llama el rol en pantalla. Con el negocio, en su idioma: en una
+ * barbería el CAJERO es "Recepción" y el PROFESIONAL, "Barbero" (del perfil,
+ * o del respaldo por rubro). Sin negocio, o en los rubros de siempre, el
+ * nombre de siempre.
+ */
+export function etiquetaRol(rol: Rol, negocio?: NegocioRol | null): string {
+  const propia = etiquetaRolDelRubro(rol, negocio?.tipoNegocio, negocio?.perfil?.etiquetasRol);
+  if (propia) return propia;
   const m: Record<Rol, string> = {
     ADMIN: "Administrador",
     SUPERVISOR: "Supervisor",
     CAJERO: "Cajero",
     REPARTIDOR: "Repartidor",
     MESERO: "Mesero",
+    PROFESIONAL: "Profesional",
     PLATAFORMA: "Plataforma",
   };
   return m[rol] ?? rol;
+}
+
+// ── Roles que se asignan desde Usuarios ─────────────────────────────────────
+
+/** Roles que se pueden crear desde la app. PLATAFORMA queda afuera a propósito:
+ *  es la cuenta del panel de licencias y el backend rechaza asignarla acá.
+ *
+ *  MESERO llegó después que la pantalla de Usuarios y no estaba: editar a un
+ *  mesero dejaba la página en blanco (el formulario buscaba los permisos de un
+ *  rol que no conocía), las tarjetas no lo contaban y no se lo podía crear. El
+ *  backend y la app Android ya lo manejaban. PROFESIONAL entró igual, pero
+ *  junto con el backend. */
+export const ROLES_APP = [
+  "ADMIN",
+  "SUPERVISOR",
+  "CAJERO",
+  "MESERO",
+  "REPARTIDOR",
+  "PROFESIONAL",
+] as const;
+export type RolApp = (typeof ROLES_APP)[number];
+
+/**
+ * ¿El perfil del rubro ofrece este rol? Sólo se pregunta por PROFESIONAL: es
+ * el único que depende del rubro. Sin perfil NO se ofrece, porque el backend
+ * rechaza asignarlo donde el perfil no lo trae (y un backend sin perfiles ni
+ * siquiera tiene el rol).
+ */
+export function ofreceRol(
+  perfil: Pick<PerfilRubro, "config"> | null | undefined,
+  rol: Rol,
+): boolean {
+  const ofrecidos = perfil?.config?.rolesOfrecidos;
+  return Array.isArray(ofrecidos) && ofrecidos.includes(rol);
+}
+
+/**
+ * Los roles que se le ofrecen a quien está creando o editando un usuario.
+ *
+ * Un SUPERVISOR administra personal de piso (cajero, mesero, repartidor,
+ * profesional), no a sus pares ni a un ADMIN: ofrecerle roles que el backend
+ * le va a rechazar es hacerle llenar el formulario para nada. Un ADMIN los
+ * asigna todos.
+ */
+export function rolesAsignables(opc: {
+  /** El rol de quien está usando la pantalla. */
+  rolActual: Rol | undefined;
+  /** El rol que ya tiene el usuario que se edita (undefined al crear). */
+  rolDelUsuario?: Rol;
+  /** ¿El negocio tiene salón? El mesero sólo existe donde hay mesas. */
+  conSalon: boolean;
+  perfil?: Pick<PerfilRubro, "config"> | null;
+}): RolApp[] {
+  const { rolActual, rolDelUsuario, conSalon, perfil } = opc;
+  return ROLES_APP.filter(
+    (r) =>
+      // ADMIN nunca se ofrece: el administrador nace con el negocio, en el
+      // panel. El backend lo rechaza, así que mostrarlo sería hacerle llenar
+      // el formulario para nada.
+      (r !== "ADMIN" &&
+        (r !== "MESERO" || conSalon) &&
+        (r !== "PROFESIONAL" || ofreceRol(perfil, r)) &&
+        (rolActual === "ADMIN" ||
+          r === "CAJERO" ||
+          r === "MESERO" ||
+          r === "REPARTIDOR" ||
+          r === "PROFESIONAL")) ||
+      // El rol que YA tiene el usuario se sigue mostrando: si no, editarle el
+      // teléfono a un admin le cambiaría el rol sin querer al guardar.
+      r === rolDelUsuario,
+  );
 }

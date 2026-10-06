@@ -58,7 +58,7 @@ function nombreDel(farmacia: boolean, tipo: TipoAlmacen = "SUCURSAL") {
 }
 
 export default function Almacenes() {
-  const { rubro } = useAuth();
+  const { rubro, vocabulario } = useAuth();
   const farmacia = esFarmacia(rubro);
   const almacenes = useApi(() => api.getAlmacenes(), []);
 
@@ -128,7 +128,7 @@ export default function Almacenes() {
   return (
     <div className="mx-auto max-w-6xl space-y-4 p-5">
       <EncabezadoPagina
-        titulo={termino(rubro, "almacenes")}
+        titulo={termino(rubro, "almacenes", vocabulario)}
         subtitulo={
           // Se nombran por separado: un depósito no vende y no cuenta para el
           // cupo del plan, así que contarlo junto con las sucursales daría un
@@ -161,7 +161,7 @@ export default function Almacenes() {
             titulo={
               lista.length
                 ? "Sin resultados"
-                : `Todavía no hay ${termino(rubro, "almacenes").toLowerCase()}`
+                : `Todavía no hay ${termino(rubro, "almacenes", vocabulario).toLowerCase()}`
             }
             texto={
               lista.length

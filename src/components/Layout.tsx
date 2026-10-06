@@ -71,7 +71,7 @@ export default function Layout() {
               {negocio?.nombre ?? "BamarDev"}
             </h2>
             <span className="text-xs text-barra-texto-2">
-              {usuario ? etiquetaRol(usuario.rol) : ""}
+              {usuario ? etiquetaRol(usuario.rol, negocio) : ""}
             </span>
           </div>
         )}
