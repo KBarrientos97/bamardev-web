@@ -6,6 +6,7 @@ import { ApiError, api } from "../../lib/api";
 import { apiAgenda, mensajeDe } from "../../lib/agenda/apiAgenda";
 import {
   citaDeLaUrl,
+  carritoDeLaCita,
   catalogoConCita,
   citaQueCobra,
   coberturaConPaquetes,
@@ -52,6 +53,18 @@ import BloqueDescuentos from "./BloqueDescuentos";
 import { ClientePaquete, SesionesDePaquete } from "./PaquetesPos";
 import { detallesDePaquete, sinLineasConPaquete, sinUsarPaquetes } from "../../lib/agenda/spa";
 import { useIntentoDeCobro } from "./useIntentoDeCobro";
+// Venta directa con profesional (N2-13): quién hizo cada servicio sin cita.
+import { apiConfigAgenda } from "../../lib/agenda/apiConfigAgenda";
+import {
+  carritoConProfesional,
+  guardarAsignacion,
+  leerAsignacion,
+  profesionalesDeLaVenta,
+  profesionalesParaPos,
+  SIN_ASIGNAR,
+  type AsignacionProfesional,
+} from "../../lib/agenda/ventaDirecta";
+import { SelectorProfesional } from "./belleza/SelectorProfesional";
 
 type Pantalla =
   | "venta"
@@ -199,6 +212,42 @@ export default function Pos() {
   // ir a Buscar medicamento y volver no la borra. En los demás rubros no hay
   // tal venta y el POS usa la suya, como siempre.
   const carrito = useVentaFarmacia()?.carrito ?? carritoPropio;
+  // ── Agenda (belleza): venta directa con profesional (N2-13) ──────────────
+  //
+  // Un servicio que se cobra sin cita también lleva quién lo hizo: su precio,
+  // su comisión y su propina. Los profesionales se piden sólo con agenda; sin
+  // ella (Omar, la farmacia) no hay pedido, ni selector, y `carritoVenta` es
+  // el MISMO carrito de siempre.
+  const recursosAgenda = useApi(
+    () => (conAgenda ? apiConfigAgenda.recursos().catch(() => []) : Promise.resolve([])),
+    [conAgenda],
+  );
+  const profesionalesPos = useMemo(
+    () => profesionalesParaPos(recursosAgenda.datos ?? [], caja.datos?.caja?.almacenId ?? null),
+    [recursosAgenda.datos, caja.datos?.caja?.almacenId],
+  );
+  const [asignacion, setAsignacionEstado] = useState<AsignacionProfesional>(() =>
+    conAgenda ? leerAsignacion() : SIN_ASIGNAR,
+  );
+  const setAsignacion = useCallback((a: AsignacionProfesional) => {
+    setAsignacionEstado(a);
+    guardarAsignacion(a);
+  }, []);
+  /**
+   * El carrito como se cobra: en una venta directa, con el profesional
+   * elegido; cobrando una cita, al precio de la cita (el propio de cada
+   * profesional, que es el que cobra el backend; sus profesionales los pone
+   * `detallesConProfesional`). Sin agenda ni cita, el MISMO carrito.
+   */
+  const ventaDirecta = conAgenda && !citaCobrando;
+  const carritoVenta = useMemo(
+    () =>
+      ventaDirecta
+        ? carritoConProfesional(carrito, asignacion, profesionalesPos)
+        : carritoDeLaCita(carrito, citaCobrando),
+    [ventaDirecta, carrito, asignacion, profesionalesPos, citaCobrando],
+  );
+
   const [datosEntrega, setDatosEntrega] = useState<DatosEntrega | null>(null);
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState("");
@@ -229,11 +278,11 @@ export default function Pos() {
     // Con el profesional de cada servicio de la cita: su precio propio
     // (agenda, fase 2) es el que cobra la venta y el que tiene que ver la
     // cotización. Las sesiones de paquete no están en el carrito ni entran.
-    detalles: detallesConProfesional(carrito.aDetalles(), citaCobrando),
+    detalles: detallesConProfesional(carritoVenta.aDetalles(), citaCobrando),
     almacenId: caja.datos?.caja?.almacenId ?? null,
   });
   /** Lo que se cobra: el neto si hay promociones, el de siempre si no. */
-  const totalCarrito = descuentos.total(carrito.total);
+  const totalCarrito = descuentos.total(carritoVenta.total);
 
   const sucursalCaja = caja.datos?.caja?.almacenId ?? null;
   const citasPorCobrar = useConsultaPeriodica<Cita[]>(
@@ -311,7 +360,7 @@ export default function Pos() {
   /** Arma el cuerpo de la venta juntando carrito y datos de entrega. */
   const cuerpoVenta = useCallback(
     (pagos?: PagoInput[]) => ({
-      ...conCita(carrito.aDetalles(), citaCobrando),
+      ...conCita(carritoVenta.aDetalles(), citaCobrando),
       ...descuentos.extraVenta(),
       tipoPedido,
       ...(pagos ? { pagos } : {}),
@@ -329,7 +378,7 @@ export default function Pos() {
           }
         : {}),
     }),
-    [carrito, tipoPedido, datosEntrega, citaCobrando, descuentos, clientePaquete, vendePaquete],
+    [carritoVenta, tipoPedido, datosEntrega, citaCobrando, descuentos, clientePaquete, vendePaquete],
   );
 
   const limpiar = useCallback(() => {
@@ -341,7 +390,8 @@ export default function Pos() {
     setCitaCobrando(null);
     setErrorCita("");
     setClientePaquete(null);
-  }, [carrito, setCitaCobrando, descuentos]);
+    setAsignacion(SIN_ASIGNAR);
+  }, [carrito, setCitaCobrando, descuentos, setAsignacion]);
 
   const cobrar = useCallback(
     async (pagos: PagoInput[], extra?: { propinas?: PropinaInput[] }) => {
@@ -398,7 +448,7 @@ export default function Pos() {
       setEnviando(true);
       try {
         const creada = await api.crearVenta({
-          detalles: carrito.aDetalles(),
+          detalles: carritoVenta.aDetalles(),
           ...descuentos.extraVenta(),
           tipoPedido,
           clienteNombre: datos.clienteNombre,
@@ -422,7 +472,7 @@ export default function Pos() {
         setEnviando(false);
       }
     },
-    [carrito, tipoPedido, limpiar, productos, intento, descuentos],
+    [carritoVenta, tipoPedido, limpiar, productos, intento, descuentos],
   );
 
   /**
@@ -437,7 +487,7 @@ export default function Pos() {
       try {
         const creada = await api.crearVenta({
           // Una cita también se puede fiar (§10): la venta la completa igual.
-          ...conCita(carrito.aDetalles(), citaCobrando),
+          ...conCita(carritoVenta.aDetalles(), citaCobrando),
           ...descuentos.extraVenta(),
           tipoPedido: "LOCAL",
           credito,
@@ -455,7 +505,7 @@ export default function Pos() {
         setEnviando(false);
       }
     },
-    [carrito, limpiar, productos, intento, citaCobrando, descuentos],
+    [carritoVenta, limpiar, productos, intento, citaCobrando, descuentos],
   );
 
   /**
@@ -633,8 +683,15 @@ export default function Pos() {
             : undefined
         }
         formasPago={formasPago.datos ?? []}
-        // Belleza (propinas): los profesionales de la cita que se cobra.
-        profesionales={mesaCobrando ? undefined : profesionalesDeCita(citaCobrando)}
+        // Belleza (propinas): los profesionales de la cita que se cobra o,
+        // en una venta directa, los que se eligieron en el POS.
+        profesionales={
+          mesaCobrando
+            ? undefined
+            : citaCobrando
+              ? profesionalesDeCita(citaCobrando)
+              : profesionalesDeLaVenta(carrito, asignacion, profesionalesPos)
+        }
         onAtras={() => {
           // Sin esto, el error del cobro fallido seguía visible al volver y
           // reaparecía sobre el intento nuevo, que todavía no falló.
@@ -721,7 +778,8 @@ export default function Pos() {
     <PantallaVenta
       productos={productos.datos ?? []}
       categorias={categorias.datos ?? []}
-      carrito={carrito}
+      // Con profesional, el precio propio ya en cada línea; si no, el mismo.
+      carrito={carritoVenta}
       onCobrar={() => setPantalla("cobro")}
       sucursalId={abierta.almacenId}
       // QA S2-07: un paquete se vende a un cliente; sin elegirlo, el cobro
@@ -866,6 +924,16 @@ export default function Pos() {
         {vendePaquete && (
           <div className="border-b border-borde bg-white px-4 py-3">
             <ClientePaquete cliente={clientePaquete} onElegir={setClientePaquete} />
+          </div>
+        )}
+        {ventaDirecta && profesionalesPos.length > 0 && carrito.lineas.length > 0 && (
+          <div className="border-b border-borde bg-white px-4 py-3 empty:hidden">
+            <SelectorProfesional
+              lineas={carrito.lineas}
+              profesionales={profesionalesPos}
+              asignacion={asignacion}
+              onCambiar={setAsignacion}
+            />
           </div>
         )}
         {(mesasEsperando.length > 0 || pendientesEntrega.length > 0 || citasEsperando.length > 0) && (

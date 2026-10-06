@@ -156,3 +156,80 @@ describe("bamardev-restaurant: la mesa y quién la atendió", () => {
     expect(screen.queryByText("Atendió:")).not.toBeInTheDocument();
   });
 });
+
+describe("belleza: profesional y paquetes en el ticket (07-oct)", () => {
+  beforeEach(() => {
+    sesion.rubro = "PELUQUERIA";
+    sesion.features = [];
+  });
+
+  const linea = (extra: Partial<NonNullable<Venta["detalles"]>[number]>) => ({
+    productoId: 9,
+    producto: "Corte",
+    cantidad: 1,
+    precio: 0,
+    subtotal: 0,
+    nota: null,
+    consumo: "LLEVAR" as const,
+    ...extra,
+  });
+
+  it("la sesión de un paquete dice cuál fue y cuántas quedan, y quién la hizo", () => {
+    dibujar(
+      venta({
+        total: 0,
+        detalles: [
+          linea({
+            recursoId: 3,
+            recurso: "Carla",
+            paquete: {
+              tipo: "SESION",
+              paqueteClienteId: 1,
+              nombre: "10 masajes",
+              desde: 3,
+              hasta: 3,
+              sesiones: 10,
+              restantes: 7,
+              ultimoDia: "2027-01-05",
+              texto: "Sesión 3 de 10 · quedan 7",
+            },
+          }),
+        ],
+      }),
+    );
+    expect(screen.getByText("10 masajes: Sesión 3 de 10 · quedan 7")).toBeInTheDocument();
+    expect(screen.getByText("Atendió: Carla")).toBeInTheDocument();
+  });
+
+  it("la venta del paquete dice cuántas sesiones trae y hasta cuándo vale", () => {
+    dibujar(
+      venta({
+        total: 120,
+        detalles: [
+          linea({
+            producto: "3 cortes",
+            precio: 120,
+            subtotal: 120,
+            paquete: {
+              tipo: "COMPRA",
+              paqueteClienteId: 1,
+              nombre: "3 cortes",
+              sesiones: 3,
+              items: [{ servicio: "Corte", sesiones: 3 }],
+              ultimoDia: "2027-01-05",
+              estado: "ACTIVO",
+              texto: "3 sesiones · vale hasta el 05/01/2027",
+            },
+          }),
+        ],
+      }),
+    );
+    expect(screen.getByText("3 sesiones · vale hasta el 05/01/2027")).toBeInTheDocument();
+  });
+
+  it("sin profesional ni paquete, el renglón de siempre", () => {
+    dibujar(venta({ detalles: [linea({ precio: 50, subtotal: 50 })], total: 50 }));
+    expect(screen.queryByText(/Atendió: /)).not.toBeInTheDocument();
+    expect(screen.queryByText(/sesi/i)).not.toBeInTheDocument();
+  });
+});
