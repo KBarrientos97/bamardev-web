@@ -41,6 +41,11 @@ vi.mock("../../../lib/api", () => ({
   },
 }));
 
+// Personal (PLAN-ROLES §9): de dónde sale un profesional nuevo.
+vi.mock("../../../lib/personal", () => ({
+  apiPersonal: { listar: vi.fn() },
+}));
+
 vi.mock("../../../lib/agenda/apiConfigAgenda", () => ({
   apiConfigAgenda: {
     servicios: vi.fn(),
@@ -62,6 +67,7 @@ vi.mock("../../../lib/agenda/apiConfigAgenda", () => ({
 }));
 
 import { apiConfigAgenda } from "../../../lib/agenda/apiConfigAgenda";
+import { apiPersonal } from "../../../lib/personal";
 import ConfigAgenda from "./ConfigAgenda";
 
 const CORTE: Servicio = {
@@ -118,6 +124,7 @@ beforeEach(() => {
   vi.mocked(apiConfigAgenda.horarios).mockResolvedValue(HORARIO);
   vi.mocked(apiConfigAgenda.excepciones).mockResolvedValue([]);
   vi.mocked(apiConfigAgenda.bloqueos).mockResolvedValue([]);
+  vi.mocked(apiPersonal.listar).mockResolvedValue([]);
 });
 
 describe("pestañas", () => {
@@ -221,6 +228,52 @@ describe("pestañas", () => {
     } finally {
       sesion.usuario = { id: 1, rol: "ADMIN", sucursalId: null };
     }
+  });
+
+  it("Personal: el profesional nuevo se crea desde una persona sin login, con lo suyo", async () => {
+    vi.mocked(apiPersonal.listar).mockResolvedValue([
+      {
+        id: 7,
+        nombre: "Lucho",
+        cargo: "Barbero",
+        activo: true,
+        color: "#0E9F6E",
+        sucursalIds: [1],
+        usuarioId: null,
+        conAcceso: false,
+        recursoId: null,
+        profesional: null,
+        telefono: "71234567",
+        comisionPct: 40,
+        acceso: null,
+      },
+    ]);
+    vi.mocked(apiConfigAgenda.crearRecurso).mockResolvedValue({ ...JUAN, id: 12, nombre: "Lucho", personalId: 7 });
+    await montar("recursos");
+    fireEvent.click(screen.getByRole("button", { name: "Nuevo barbero" }));
+    await act(async () => {});
+    const dialogo = screen.getByRole("dialog", { name: "Nuevo barbero" });
+    expect(apiPersonal.listar).toHaveBeenCalledWith({ sinProfesional: true });
+    fireEvent.change(within(dialogo).getByLabelText("Persona de Personal"), { target: { value: "7" } });
+    expect(within(dialogo).getByLabelText("Nombre")).toHaveValue("Lucho");
+    // El login es el de la persona: no se elige otro.
+    expect(within(dialogo).queryByLabelText(/Usuario vinculado/)).toBeNull();
+    expect(within(dialogo).getByText("Sin usuario")).toBeInTheDocument();
+    const sucursales = within(dialogo).getByRole("group", { name: "Sucursales donde atiende" });
+    fireEvent.click(within(sucursales).getByRole("button", { name: "Centro" }));
+    await act(async () => {
+      fireEvent.click(within(dialogo).getByRole("button", { name: "Guardar" }));
+    });
+    const input = vi.mocked(apiConfigAgenda.crearRecurso).mock.calls[0][0];
+    expect(input).toMatchObject({
+      tipo: "PROFESIONAL",
+      personalId: 7,
+      nombre: "Lucho",
+      color: "#0E9F6E",
+      telefono: "71234567",
+      comisionPct: 40,
+    });
+    expect(input).not.toHaveProperty("usuarioId");
   });
 
   it("Profesionales: no deja guardar sin sucursal", async () => {

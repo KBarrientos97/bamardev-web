@@ -1,0 +1,662 @@
+import { useMemo, useState } from "react";
+import { Buscador, Chips, EncabezadoPagina } from "../components/filtros";
+import {
+  AvisoOk,
+  Badge,
+  Boton,
+  Campo,
+  Cargando,
+  Confirmar,
+  ErrorMsg,
+  Input,
+  InputPassword,
+  Modal,
+  Select,
+  useAviso,
+  Vacio,
+} from "../components/ui";
+import { api } from "../lib/api";
+import { apiPersonal, type Persona, type PersonaInput } from "../lib/personal";
+import { etiquetaRol, tienePermiso } from "../lib/permisos";
+import { contiene } from "../lib/texto";
+import { useApi } from "../lib/useApi";
+import { useAuth } from "../store/AuthContext";
+import type { Almacen, Rol } from "../types";
+
+/**
+ * Personal (PLAN-ROLES §9.4 y §11): la gente del negocio, entre o no al
+ * sistema. Es la puerta de entrada del equipo; Usuarios queda como los
+ * accesos.
+ *
+ * Un barbero sin login es una persona acá y una columna en la agenda: tiene
+ * citas, comisión y propinas igual que uno que entra. "Darle acceso" le crea
+ * el login (ocupa un lugar del cupo del plan); "Quitar acceso" lo desactiva y
+ * la persona sigue. Sólo existe en los negocios con agenda.
+ */
+
+type Filtro = "activos" | "con_acceso" | "sin_acceso" | "todos";
+const FILTROS = [
+  ["activos", "Activos"],
+  ["con_acceso", "Con acceso"],
+  ["sin_acceso", "Sin acceso"],
+  ["todos", "Todos"],
+] as const;
+
+const mensaje = (e: unknown, generico = "No se pudo guardar") =>
+  e instanceof Error && e.message ? e.message : generico;
+
+export default function Personal() {
+  const [filtro, setFiltro] = useState<Filtro>("activos");
+  const [buscar, setBuscar] = useState("");
+  const [cargo, setCargo] = useState("");
+  const [sucursal, setSucursal] = useState("");
+  const [editando, setEditando] = useState<Persona | "nueva" | null>(null);
+  const [aviso, setAviso] = useAviso();
+
+  const personas = useApi(() => apiPersonal.listar({ incluirInactivos: true }), []);
+  const almacenes = useApi(() => api.getSucursales().catch(() => [] as Almacen[]), []);
+  const sucursales = (almacenes.datos ?? []).filter((a) => a.activo && a.tipo !== "DEPOSITO");
+  const nombreSucursal = (id: number) => sucursales.find((s) => s.id === id)?.nombre ?? `#${id}`;
+
+  const todas = personas.datos ?? [];
+  const cargos = useMemo(
+    () => [...new Set(todas.map((p) => p.cargo).filter((c): c is string => !!c))].sort(),
+    [todas],
+  );
+  const visibles = todas.filter((p) => {
+    if (filtro === "activos" && !p.activo) return false;
+    if (filtro === "con_acceso" && !(p.activo && p.conAcceso)) return false;
+    if (filtro === "sin_acceso" && !(p.activo && !p.conAcceso)) return false;
+    if (cargo && p.cargo !== cargo) return false;
+    if (sucursal && !p.sucursalIds.includes(Number(sucursal))) return false;
+    return !buscar.trim() || contiene(p.nombre, buscar) || contiene(p.cargo ?? "", buscar);
+  });
+  const activos = todas.filter((p) => p.activo);
+  const conAcceso = activos.filter((p) => p.conAcceso).length;
+
+  const alGuardar = (p: Persona, texto: string) => {
+    setAviso(texto);
+    setEditando((e) => (e === "nueva" || e == null ? null : p));
+    personas.recargar();
+  };
+
+  return (
+    <div className="space-y-4">
+      <EncabezadoPagina
+        titulo="Personal"
+        subtitulo={`${activos.length} personas · ${conAcceso} con acceso al sistema`}
+        accion={
+          <Boton icono="plus" onClick={() => setEditando("nueva")}>
+            Nueva persona
+          </Boton>
+        }
+      />
+      <AvisoOk>{aviso}</AvisoOk>
+      <div className="flex flex-wrap items-center gap-3">
+        <Buscador valor={buscar} onChange={setBuscar} placeholder="Buscar por nombre o cargo…" />
+        {cargos.length > 0 && (
+          <Select value={cargo} onChange={(e) => setCargo(e.target.value)} aria-label="Cargo" className="w-auto">
+            <option value="">Todos los cargos</option>
+            {cargos.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </Select>
+        )}
+        {sucursales.length > 1 && (
+          <Select
+            value={sucursal}
+            onChange={(e) => setSucursal(e.target.value)}
+            aria-label="Sucursal"
+            className="w-auto"
+          >
+            <option value="">Todas las sucursales</option>
+            {sucursales.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.nombre}
+              </option>
+            ))}
+          </Select>
+        )}
+      </div>
+      <Chips valor={filtro} opciones={FILTROS} onChange={setFiltro} />
+
+      {personas.cargando && !personas.datos ? (
+        <Cargando />
+      ) : personas.error ? (
+        <ErrorMsg>{personas.error}</ErrorMsg>
+      ) : visibles.length === 0 ? (
+        <div className="card">
+          <Vacio
+            icono="users"
+            titulo="No hay nadie con ese filtro"
+            texto="Cargá a quien trabaja con vos, entre o no al sistema: un barbero sin usuario igual tiene su agenda, su comisión y sus propinas."
+          />
+        </div>
+      ) : (
+        <ul className="card divide-y divide-borde-soft" aria-label="Personal">
+          {visibles.map((p) => (
+            <li key={p.id}>
+              <button
+                type="button"
+                onClick={() => setEditando(p)}
+                className="flex w-full flex-wrap items-start gap-3 px-4 py-3 text-left hover:bg-fondo-2"
+                aria-label={`Ver ${p.nombre}`}
+              >
+                <span
+                  className="mt-1 h-3 w-3 shrink-0 rounded-full border border-black/10"
+                  style={{ backgroundColor: p.color ?? "#CBD5E1" }}
+                />
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-semibold text-texto">{p.nombre}</span>
+                    {p.cargo && <span className="text-[13px] text-texto-3">{p.cargo}</span>}
+                    {!p.activo && <Badge>De baja</Badge>}
+                    {p.profesional && <Badge tono="morado">En la agenda</Badge>}
+                    {p.conAcceso ? (
+                      <Badge tono="verde">Con acceso</Badge>
+                    ) : p.acceso ? (
+                      <Badge tono="amarillo">Acceso quitado</Badge>
+                    ) : (
+                      <Badge>Sin acceso</Badge>
+                    )}
+                  </div>
+                  <p className="mt-0.5 text-[13px] text-texto-3">
+                    {[
+                      p.acceso ? `@${p.acceso.username}` : null,
+                      p.telefono,
+                      p.sucursalIds.map(nombreSucursal).join(", ") || null,
+                      p.zona || p.vehiculo ? [p.zona, p.vehiculo].filter(Boolean).join(" · ") : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </p>
+                </div>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {editando && (
+        <FichaPersona
+          persona={editando === "nueva" ? null : editando}
+          sucursales={sucursales}
+          personas={todas}
+          onClose={() => setEditando(null)}
+          onGuardado={alGuardar}
+        />
+      )}
+    </div>
+  );
+}
+
+/** Alta y edición, con las acciones del acceso. */
+function FichaPersona({
+  persona,
+  sucursales,
+  personas,
+  onClose,
+  onGuardado,
+}: {
+  persona: Persona | null;
+  sucursales: Almacen[];
+  personas: Persona[];
+  onClose: () => void;
+  onGuardado: (p: Persona, aviso: string) => void;
+}) {
+  const { usuario } = useAuth();
+  // El % es plata del profesional: lo cambia quien liquida (el backend lo exige).
+  const cambiaComision = tienePermiso(usuario, "comisiones.liquidar", usuario?.rol === "ADMIN");
+  const sugeridos = useApi(() => apiPersonal.cargos().catch(() => ({ sugeridos: [] })), []);
+
+  const [nombre, setNombre] = useState(persona?.nombre ?? "");
+  const [cargo, setCargo] = useState(persona?.cargo ?? "");
+  const [ci, setCi] = useState(persona?.ci ?? "");
+  const [telefono, setTelefono] = useState(persona?.telefono ?? "");
+  const [fechaIngreso, setFechaIngreso] = useState(persona?.fechaIngreso ?? "");
+  const [color, setColor] = useState(persona?.color ?? "");
+  const [comision, setComision] = useState(persona?.comisionPct != null ? String(persona.comisionPct) : "");
+  const [notas, setNotas] = useState(persona?.notas ?? "");
+  const [zona, setZona] = useState(persona?.zona ?? "");
+  const [vehiculo, setVehiculo] = useState(persona?.vehiculo ?? "");
+  const [sucursalIds, setSucursalIds] = useState<number[]>(
+    persona?.sucursalIds ?? (sucursales.length === 1 ? [sucursales[0].id] : []),
+  );
+  const [error, setError] = useState("");
+  const [guardando, setGuardando] = useState(false);
+  const [modo, setModo] = useState<"acceso" | "vincular" | "quitar" | "baja" | null>(null);
+
+  const esRepartidor = persona?.acceso?.rol === "REPARTIDOR" || !!persona?.zona || !!persona?.vehiculo;
+
+  const guardar = async () => {
+    setError("");
+    if (!nombre.trim()) return setError("Poné el nombre.");
+    const com = comision.trim() === "" ? null : Number(comision);
+    if (com !== null && (!Number.isFinite(com) || com < 0 || com > 100)) {
+      return setError("La comisión va de 0 a 100 %.");
+    }
+    if (persona && sucursales.length > 1 && !sucursalIds.length) {
+      return setError("Elegí al menos una sucursal donde trabaja.");
+    }
+    const input: PersonaInput = {
+      nombre: nombre.trim(),
+      cargo: cargo.trim() || null,
+      ci: ci.trim() || null,
+      telefono: telefono.trim() || null,
+      fechaIngreso: fechaIngreso || null,
+      color: color || null,
+      notas: notas.trim() || null,
+      ...(esRepartidor ? { zona: zona.trim() || null, vehiculo: vehiculo.trim() || null } : {}),
+      ...(cambiaComision && com !== (persona?.comisionPct ?? null) ? { comisionPct: com } : {}),
+      ...(sucursalIds.length ? { sucursalIds } : {}),
+    };
+    setGuardando(true);
+    try {
+      const p = persona ? await apiPersonal.editar(persona.id, input) : await apiPersonal.crear(input);
+      onGuardado(p, `"${p.nombre}" quedó guardado.`);
+      if (!persona) onClose();
+    } catch (e) {
+      setError(mensaje(e));
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  const accion = async (fn: () => Promise<Persona>, texto: (p: Persona) => string) => {
+    setError("");
+    setGuardando(true);
+    try {
+      const p = await fn();
+      setModo(null);
+      onGuardado(p, texto(p));
+    } catch (e) {
+      setError(mensaje(e));
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  return (
+    <Modal
+      abierto
+      titulo={persona ? persona.nombre : "Nueva persona"}
+      subtitulo={persona ? (persona.cargo ?? undefined) : "Sin acceso al sistema: no ocupa lugar del cupo."}
+      onClose={onClose}
+      cerrarAlClicAfuera={false}
+      ancho="max-w-2xl"
+      acciones={
+        <>
+          <Boton variante="ghost" onClick={onClose} disabled={guardando}>
+            Cerrar
+          </Boton>
+          <Boton onClick={guardar} disabled={guardando}>
+            {guardando ? "Guardando…" : "Guardar"}
+          </Boton>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        {persona && (
+          <section aria-label="Acceso al sistema" className="rounded-xl border border-borde-soft p-3">
+            <p className="text-[13px] font-semibold text-texto-2">Acceso al sistema</p>
+            <p className="mt-0.5 text-[13px] text-texto-3">
+              {persona.conAcceso
+                ? `Entra como @${persona.acceso?.username} (${etiquetaRol((persona.acceso?.rol ?? "CAJERO") as Rol)}). Ocupa un lugar del cupo de usuarios.`
+                : persona.acceso
+                  ? `Se le quitó el acceso (@${persona.acceso.username}). No ocupa cupo.`
+                  : "No entra al sistema. Igual puede tener agenda, comisión y propinas."}
+              {persona.profesional ? ` En la agenda es "${persona.profesional.nombre}".` : ""}
+            </p>
+            {persona.activo && (
+              <div className="mt-2 flex flex-wrap gap-2">
+                {persona.conAcceso ? (
+                  <Boton variante="soft" onClick={() => setModo("quitar")}>
+                    Quitar acceso
+                  </Boton>
+                ) : (
+                  <Boton variante="soft" onClick={() => setModo("acceso")}>
+                    {persona.acceso ? "Devolverle el acceso" : "Darle acceso"}
+                  </Boton>
+                )}
+                {!persona.acceso && (
+                  <Boton variante="ghost" onClick={() => setModo("vincular")}>
+                    Vincular a un usuario existente
+                  </Boton>
+                )}
+              </div>
+            )}
+          </section>
+        )}
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Campo label="Nombre">
+            <Input value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Ana Pérez" />
+          </Campo>
+          <Campo label="Cargo" hint="Texto libre.">
+            <Input
+              value={cargo}
+              onChange={(e) => setCargo(e.target.value)}
+              list="cargos-sugeridos"
+              placeholder="Estilista"
+            />
+            <datalist id="cargos-sugeridos">
+              {(sugeridos.datos?.sugeridos ?? []).map((c) => (
+                <option key={c} value={c} />
+              ))}
+            </datalist>
+          </Campo>
+          <Campo label="Teléfono">
+            <Input type="tel" value={telefono} onChange={(e) => setTelefono(e.target.value)} />
+          </Campo>
+          <Campo label="CI" hint="Opcional.">
+            <Input value={ci} onChange={(e) => setCi(e.target.value)} />
+          </Campo>
+          <Campo label="Fecha de ingreso">
+            <Input type="date" value={fechaIngreso} onChange={(e) => setFechaIngreso(e.target.value)} />
+          </Campo>
+          <Campo label="Color en la agenda">
+            <Input type="color" value={color || "#7357B8"} onChange={(e) => setColor(e.target.value)} />
+          </Campo>
+          {cambiaComision && (
+            <Campo label="Comisión base (%)" hint="Si es profesional, la de sus servicios.">
+              <Input type="number" value={comision} onChange={(e) => setComision(e.target.value)} placeholder="Opcional" />
+            </Campo>
+          )}
+          {esRepartidor && (
+            <>
+              <Campo label="Zona">
+                <Input value={zona} onChange={(e) => setZona(e.target.value)} />
+              </Campo>
+              <Campo label="Vehículo">
+                <Input value={vehiculo} onChange={(e) => setVehiculo(e.target.value)} />
+              </Campo>
+            </>
+          )}
+        </div>
+        <Campo label="Notas" hint="Turno, horarios…">
+          <Input value={notas} onChange={(e) => setNotas(e.target.value)} />
+        </Campo>
+        {sucursales.length > 1 && (
+          <fieldset>
+            <legend className="mb-1.5 text-[13px] font-semibold text-texto-2">Sucursales donde trabaja</legend>
+            <div className="flex flex-wrap gap-3">
+              {sucursales.map((s) => (
+                <label key={s.id} className="inline-flex items-center gap-2 text-sm text-texto-2">
+                  <input
+                    type="checkbox"
+                    checked={sucursalIds.includes(s.id)}
+                    onChange={(e) =>
+                      setSucursalIds((ids) => (e.target.checked ? [...ids, s.id] : ids.filter((x) => x !== s.id)))
+                    }
+                  />
+                  {s.nombre}
+                </label>
+              ))}
+            </div>
+          </fieldset>
+        )}
+        {persona && (
+          <div>
+            {persona.activo ? (
+              <Boton variante="ghost" onClick={() => setModo("baja")}>
+                Dar de baja
+              </Boton>
+            ) : (
+              <Boton
+                variante="soft"
+                onClick={() =>
+                  accion(
+                    () => apiPersonal.editar(persona.id, { activo: true }),
+                    (p) => `"${p.nombre}" volvió al equipo.`,
+                  )
+                }
+              >
+                Reactivar
+              </Boton>
+            )}
+          </div>
+        )}
+        <ErrorMsg>{error}</ErrorMsg>
+      </div>
+
+      {persona && modo === "acceso" && (
+        <DarAcceso
+          persona={persona}
+          sucursales={sucursales}
+          onClose={() => setModo(null)}
+          onListo={(p) => {
+            setModo(null);
+            onGuardado(p, `"${p.nombre}" ya puede entrar como @${p.acceso?.username}.`);
+          }}
+        />
+      )}
+      {persona && modo === "vincular" && (
+        <Vincular
+          persona={persona}
+          personas={personas}
+          onClose={() => setModo(null)}
+          onListo={(p) => {
+            setModo(null);
+            onGuardado(p, `"${p.nombre}" quedó vinculado a @${p.acceso?.username}.`);
+          }}
+        />
+      )}
+      {persona && (
+        <Confirmar
+          abierto={modo === "quitar"}
+          titulo="Quitar acceso"
+          texto={`${persona.nombre} no va a poder entrar al sistema y libera un lugar del cupo. Sigue en Personal con su agenda, su comisión y sus propinas.`}
+          etiquetaOk="Quitar acceso"
+          peligroso
+          procesando={guardando}
+          onCancel={() => setModo(null)}
+          onOk={() =>
+            accion(() => apiPersonal.quitarAcceso(persona.id), (p) => `"${p.nombre}" ya no entra al sistema.`)
+          }
+        />
+      )}
+      {persona && (
+        <Confirmar
+          abierto={modo === "baja"}
+          titulo="Dar de baja"
+          texto={`${persona.nombre} deja de trabajar acá: sale de la agenda y pierde el acceso. Lo que ya hizo (citas, comisiones) queda.`}
+          etiquetaOk="Dar de baja"
+          peligroso
+          procesando={guardando}
+          onCancel={() => setModo(null)}
+          onOk={() =>
+            accion(() => apiPersonal.editar(persona.id, { activo: false }), (p) => `"${p.nombre}" quedó de baja.`)
+          }
+        />
+      )}
+    </Modal>
+  );
+}
+
+/** "Darle acceso": su login, con un rol de los que ofrece el rubro. */
+function DarAcceso({
+  persona,
+  sucursales,
+  onClose,
+  onListo,
+}: {
+  persona: Persona;
+  sucursales: Almacen[];
+  onClose: () => void;
+  onListo: (p: Persona) => void;
+}) {
+  const { usuario, negocio } = useAuth();
+  const reactivar = !!persona.acceso;
+  const ofrecidos = useApi(() => api.getRolesOfrecidos().catch(() => null), []);
+  const roles = (ofrecidos.datos ?? []).filter((r) => r.codigo !== "ADMIN");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [rol, setRol] = useState("");
+  const [sucursalId, setSucursalId] = useState(persona.sucursalIds[0] ? String(persona.sucursalIds[0]) : "");
+  const [error, setError] = useState("");
+  const [enviando, setEnviando] = useState(false);
+  const rolElegido = rol || (roles.find((r) => r.codigo === "PROFESIONAL")?.codigo ?? roles[0]?.codigo ?? "");
+  const eligeSucursal = sucursales.length > 1 && usuario?.sucursalId == null;
+
+  const enviar = async () => {
+    setError("");
+    if (!reactivar) {
+      if (!/^[a-z0-9._-]{3,30}$/.test(username.trim().toLowerCase())) {
+        return setError("El usuario lleva 3 a 30 letras, números, punto o guion.");
+      }
+      if (password.length < 6) return setError("La contraseña necesita al menos 6 caracteres.");
+      if (!rolElegido) return setError("Elegí el rol.");
+    } else if (password && password.length < 6) {
+      return setError("La contraseña necesita al menos 6 caracteres.");
+    }
+    setEnviando(true);
+    try {
+      onListo(
+        await apiPersonal.darAcceso(
+          persona.id,
+          reactivar
+            ? { ...(password ? { password } : {}) }
+            : {
+                username: username.trim().toLowerCase(),
+                password,
+                rol: rolElegido,
+                ...(eligeSucursal && sucursalId ? { sucursalId: Number(sucursalId) } : {}),
+              },
+        ),
+      );
+    } catch (e) {
+      setError(mensaje(e, "No se pudo dar el acceso"));
+    } finally {
+      setEnviando(false);
+    }
+  };
+
+  return (
+    <Modal
+      abierto
+      titulo={reactivar ? "Devolverle el acceso" : "Darle acceso"}
+      subtitulo={`${persona.nombre} va a ocupar un lugar del cupo de usuarios del plan.`}
+      onClose={onClose}
+      cerrarAlClicAfuera={false}
+      acciones={
+        <>
+          <Boton variante="ghost" onClick={onClose} disabled={enviando}>
+            Cancelar
+          </Boton>
+          <Boton onClick={enviar} disabled={enviando}>
+            {enviando ? "Un momento…" : reactivar ? "Devolver acceso" : "Darle acceso"}
+          </Boton>
+        </>
+      }
+    >
+      <div className="space-y-3">
+        {reactivar ? (
+          <p className="text-sm text-texto-2">
+            Vuelve a entrar como <strong>@{persona.acceso?.username}</strong>. Si no se acuerda la contraseña, poné
+            una nueva.
+          </p>
+        ) : (
+          <>
+            <Campo label="Usuario">
+              <Input value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="off" />
+            </Campo>
+            <Campo label="Rol">
+              <Select value={rolElegido} onChange={(e) => setRol(e.target.value)} aria-label="Rol">
+                {roles.map((r) => (
+                  <option key={r.codigo} value={r.codigo}>
+                    {r.etiqueta || etiquetaRol(r.codigo, negocio)}
+                  </option>
+                ))}
+              </Select>
+            </Campo>
+            {eligeSucursal && (
+              <Campo label="Sucursal" hint="La de sus datos al entrar.">
+                <Select value={sucursalId} onChange={(e) => setSucursalId(e.target.value)} aria-label="Sucursal">
+                  {sucursales.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.nombre}
+                    </option>
+                  ))}
+                </Select>
+              </Campo>
+            )}
+          </>
+        )}
+        <Campo label={reactivar ? "Contraseña nueva (opcional)" : "Contraseña"}>
+          <InputPassword value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" />
+        </Campo>
+        <ErrorMsg>{error}</ErrorMsg>
+      </div>
+    </Modal>
+  );
+}
+
+/** Vincular a la persona un usuario que ya existe (creado antes en Usuarios). */
+function Vincular({
+  persona,
+  personas,
+  onClose,
+  onListo,
+}: {
+  persona: Persona;
+  personas: Persona[];
+  onClose: () => void;
+  onListo: (p: Persona) => void;
+}) {
+  const usuarios = useApi(() => api.getUsuarios(), []);
+  // Un usuario que ya es otro profesional de la agenda no se ofrece: su
+  // comisión y sus propinas son de esa persona (el backend da 409).
+  const ocupados = new Set(personas.filter((p) => p.recursoId != null && p.usuarioId != null).map((p) => p.usuarioId));
+  const opciones = (usuarios.datos ?? []).filter((u) => u.activo && u.rol !== "ADMIN" && !ocupados.has(u.id));
+  const [usuarioId, setUsuarioId] = useState("");
+  const [error, setError] = useState("");
+  const [enviando, setEnviando] = useState(false);
+
+  const enviar = async () => {
+    if (!usuarioId) return setError("Elegí el usuario.");
+    setEnviando(true);
+    setError("");
+    try {
+      onListo(await apiPersonal.vincular(persona.id, Number(usuarioId)));
+    } catch (e) {
+      setError(mensaje(e, "No se pudo vincular"));
+    } finally {
+      setEnviando(false);
+    }
+  };
+
+  return (
+    <Modal
+      abierto
+      titulo="Vincular a un usuario"
+      subtitulo={`El usuario pasa a ser el acceso de ${persona.nombre}.`}
+      onClose={onClose}
+      acciones={
+        <>
+          <Boton variante="ghost" onClick={onClose} disabled={enviando}>
+            Cancelar
+          </Boton>
+          <Boton onClick={enviar} disabled={enviando}>
+            Vincular
+          </Boton>
+        </>
+      }
+    >
+      <div className="space-y-3">
+        <Campo label="Usuario" error={usuarios.error ? "No se pudieron cargar los usuarios." : undefined}>
+          <Select value={usuarioId} onChange={(e) => setUsuarioId(e.target.value)} aria-label="Usuario">
+            <option value="">Elegí…</option>
+            {opciones.map((u) => (
+              <option key={u.id} value={u.id}>
+                {u.nombre} (@{u.usuario})
+              </option>
+            ))}
+          </Select>
+        </Campo>
+        <ErrorMsg>{error}</ErrorMsg>
+      </div>
+    </Modal>
+  );
+}

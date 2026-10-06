@@ -130,7 +130,13 @@ export type Seccion =
   /** Propinas por profesional (el profesional, sólo las suyas). */
   | "propinas"
   /** Qué insumos gasta cada servicio, y el costo y margen por servicio. */
-  | "recetas_servicio";
+  | "recetas_servicio"
+  // ── Personal (PLAN-ROLES §9) ──
+  /**
+   * La gente del negocio, con o sin login: alta, darle o quitarle el acceso.
+   * Sólo en los negocios con agenda (decisión del 07-oct).
+   */
+  | "personal";
 
 /**
  * Qué módulo de rol y qué feature de plan exige cada sección. `feature: null`
@@ -220,6 +226,9 @@ const REQUISITOS: Record<Seccion, { modulo: Modulo | null; feature: Feature | nu
   gift_cards: { modulo: null, feature: "gift_cards" },
   propinas: { modulo: null, feature: "propinas" },
   recetas_servicio: { modulo: null, feature: "consumo_servicio" },
+  // Personal: el backend la corta por permiso (`personal.gestionar`) y por la
+  // feature `agenda`, sin módulo de rol.
+  personal: { modulo: null, feature: "agenda" },
 };
 
 /**
@@ -325,6 +334,8 @@ const ROLES_PERMITIDOS: Partial<Record<Seccion, Rol[]>> = {
   gift_cards: ["ADMIN", "SUPERVISOR", "CAJERO"],
   propinas: ["ADMIN", "SUPERVISOR", "PROFESIONAL"],
   recetas_servicio: ["ADMIN", "SUPERVISOR"],
+  // Respaldo sin permisos del backend: el dueño y el encargado (§5.1).
+  personal: ["ADMIN", "SUPERVISOR"],
 };
 
 /**
@@ -376,6 +387,9 @@ const SOLO_EN_RUBRO: Partial<Record<Seccion, Rubro[]>> = {
   gift_cards: RUBROS_BELLEZA,
   propinas: RUBROS_BELLEZA,
   recetas_servicio: RUBROS_BELLEZA,
+  // Personal existe sólo en los negocios con agenda (07-oct): Omar tiene su
+  // gente cargada por el backfill, pero no ve la pantalla.
+  personal: RUBROS_BELLEZA,
 };
 
 /**
@@ -452,6 +466,7 @@ const PERMISO_SECCION: Partial<Record<Seccion, ReqPermiso>> = {
   // mismo en GET /propinas.
   propinas: { permiso: "propinas.ver", tambien: ["propinas.pagar"] },
   recetas_servicio: { permiso: "consumo.recetas" },
+  personal: { permiso: "personal.gestionar" },
 };
 
 type ConPermisos = Pick<SesionUsuario, "permisos" | "permisosPropios"> | null | undefined;

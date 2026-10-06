@@ -27,6 +27,7 @@ import { AvisoCitasAfectadas, Casilla, PuntoColor, SelectorVarios } from "./comu
 import { mensajeDe, useNombreProfesional, type Sucursal } from "./utilConfig";
 import { apiSpa } from "../../../lib/agenda/apiSpa";
 import { useSpa } from "../../../lib/agenda/spa";
+import { apiPersonal, type Persona } from "../../../lib/personal";
 
 /**
  * Colores sugeridos para las columnas de la agenda. Son datos del negocio (se
@@ -243,6 +244,30 @@ function FormRecurso({
 
   const esProfesional = tipo === "PROFESIONAL";
 
+  // PLAN-ROLES §9: un profesional nuevo puede ser alguien que ya está en
+  // Personal (con o sin login). Su comisión y sus propinas son de esa
+  // persona, y el login, si tiene, es el suyo. Sólo en el alta.
+  // Sin la ruta (un backend viejo) o sin permiso, el alta es la de siempre.
+  const personas = useApi(async () => {
+    if (recurso) return [] as Persona[];
+    try {
+      return await apiPersonal.listar({ sinProfesional: true });
+    } catch {
+      return [] as Persona[];
+    }
+  }, [recurso?.id]);
+  const [personaId, setPersonaId] = useState("");
+  const persona = (personas.datos ?? []).find((p) => String(p.id) === personaId) ?? null;
+  const elegirPersona = (id: string) => {
+    setPersonaId(id);
+    const p = (personas.datos ?? []).find((x) => String(x.id) === id);
+    if (!p) return;
+    setNombre(p.nombre);
+    if (p.color) setColor(p.color);
+    if (p.telefono) setTelefono(p.telefono);
+    if (p.comisionPct != null) setComision(String(p.comisionPct));
+  };
+
   // Sólo cuentas con rol PROFESIONAL: es el rol que entra a "Mi agenda". Una
   // cuenta ya vinculada a otro recurso no se ofrece: dos columnas con el mismo
   // usuario le mostrarían a esa persona una agenda que no es sólo la suya.
@@ -290,7 +315,9 @@ function FormRecurso({
       color,
       telefono: telefono.trim() || null,
       ...(cambiaComision ? { comisionPct: esProfesional ? com : null } : {}),
-      usuarioId: esProfesional && usuarioId ? Number(usuarioId) : null,
+      ...(esProfesional && persona
+        ? { personalId: persona.id }
+        : { usuarioId: esProfesional && usuarioId ? Number(usuarioId) : null }),
       publicadoOnline: publicado,
       activo,
       orden: ord,
@@ -385,29 +412,56 @@ function FormRecurso({
           </div>
         </div>
 
+        {esProfesional && !recurso && (personas.datos ?? []).length > 0 && (
+          <Campo
+            label="¿Quién es?"
+            hint="Alguien que ya está en Personal (con o sin usuario), o una persona nueva sin usuario."
+          >
+            <Select value={personaId} onChange={(e) => elegirPersona(e.target.value)} aria-label="Persona de Personal">
+              <option value="">Una persona nueva</option>
+              {(personas.datos ?? [])
+                .filter((p) => p.activo)
+                .map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.nombre}
+                    {p.cargo ? ` · ${p.cargo}` : ""}
+                    {p.acceso ? ` (@${p.acceso.username})` : ""}
+                  </option>
+                ))}
+            </Select>
+          </Campo>
+        )}
         {esProfesional && (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <Campo
-              label="Usuario vinculado"
-              hint={`Con usuario, entra a "Mi agenda" y ve sólo lo suyo. Las cuentas se crean en Usuarios con el rol ${nombres.singular}.`}
-              error={usuarios.error ? "No se pudieron cargar los usuarios." : undefined}
-            >
-              <Select
-                value={usuarioId}
-                onChange={(e) => setUsuarioId(e.target.value)}
-                disabled={usuarios.cargando || !!usuarios.error}
+            {persona ? (
+              <Campo label="Usuario" hint="El de la persona. El acceso se da o se quita en Personal.">
+                <p className="py-2 text-sm text-texto-2">
+                  {persona.acceso ? `@${persona.acceso.username}` : "Sin usuario"}
+                </p>
+              </Campo>
+            ) : (
+              <Campo
+                label="Usuario vinculado"
+                hint={`Con usuario, entra a "Mi agenda" y ve sólo lo suyo. Las cuentas se crean en Usuarios con el rol ${nombres.singular}.`}
+                error={usuarios.error ? "No se pudieron cargar los usuarios." : undefined}
               >
-                <option value="">Sin usuario</option>
-                {cuentas.map((u) => {
-                  const otro = vinculados.get(u.id);
-                  return (
-                    <option key={u.id} value={u.id} disabled={!!otro}>
-                      {u.nombre} (@{u.usuario}){otro ? ` · ya es ${otro}` : ""}
-                    </option>
-                  );
-                })}
-              </Select>
-            </Campo>
+                <Select
+                  value={usuarioId}
+                  onChange={(e) => setUsuarioId(e.target.value)}
+                  disabled={usuarios.cargando || !!usuarios.error}
+                >
+                  <option value="">Sin usuario</option>
+                  {cuentas.map((u) => {
+                    const otro = vinculados.get(u.id);
+                    return (
+                      <option key={u.id} value={u.id} disabled={!!otro}>
+                        {u.nombre} (@{u.usuario}){otro ? ` · ya es ${otro}` : ""}
+                      </option>
+                    );
+                  })}
+                </Select>
+              </Campo>
+            )}
             <Campo label="Teléfono" hint="Opcional, para el equipo.">
               <Input type="tel" value={telefono} onChange={(e) => setTelefono(e.target.value)} />
             </Campo>

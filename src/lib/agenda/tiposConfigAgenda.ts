@@ -75,6 +75,12 @@ export interface Recurso {
   /** El usuario con rol PROFESIONAL que entra a "Mi agenda" con este recurso. */
   usuarioId: number | null;
   usuario: { id: number; nombre: string; username: string } | null;
+  /**
+   * La persona de Personal que es este profesional (PLAN-ROLES §9): de ella
+   * son su comisión y sus propinas. Null en un espacio. Opcional: un backend
+   * viejo no lo manda.
+   */
+  personalId?: number | null;
   publicadoOnline: boolean;
   activo: boolean;
   orden: number;
@@ -113,6 +119,12 @@ export interface RecursoInput {
   telefono?: string | null;
   comisionPct?: number | null;
   usuarioId?: number | null;
+  /**
+   * Sólo en el alta: el profesional se crea desde alguien que ya está en
+   * Personal (con o sin login). El login es el de esa persona, así que con
+   * este campo no se manda `usuarioId`.
+   */
+  personalId?: number;
   publicadoOnline?: boolean;
   activo?: boolean;
   orden?: number;

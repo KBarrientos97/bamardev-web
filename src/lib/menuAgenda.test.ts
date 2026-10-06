@@ -51,7 +51,7 @@ describe("menú del salón", () => {
     const nodos = admin(menu("ADMIN", "BARBERIA"));
     expect(nodos.map((n) => n.item.label)).toEqual(["Equipo", "Finanzas", "Marketing", "Configuración del negocio"]);
     const hijos = Object.fromEntries(nodos.map((n) => [n.item.label, n.hijos.map((h) => h.item.label)]));
-    expect(hijos.Equipo).toEqual(["Usuarios", "Comisiones", "Propinas"]);
+    expect(hijos.Equipo).toEqual(["Personal", "Usuarios", "Comisiones", "Propinas"]);
     expect(hijos.Finanzas).toEqual(["Cuentas por cobrar", "Gastos operativos", "Reportes"]);
     expect(hijos.Marketing).toEqual(["Mi página", "Mis enlaces", "Promociones", "Clientes que no vuelven"]);
   });
@@ -72,7 +72,7 @@ describe("menú del salón", () => {
 
   it("el grupo lleva a la pantalla de su primer hijo visible y es título", () => {
     const equipo = admin(menu("ADMIN", "BARBERIA")).find((n) => n.item.label === "Equipo");
-    expect(equipo?.item.a).toBe("/usuarios");
+    expect(equipo?.item.a).toBe("/personal");
     expect(equipo?.esTitulo).toBe(true);
     // Los ids no chocan con los de sus hijos (son la clave de "abierto").
     const ids = aplanar(menu("ADMIN", "BARBERIA").flatMap((b) => b.nodos)).map((n) => n.id);
