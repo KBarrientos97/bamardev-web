@@ -1,3 +1,4 @@
+import { fechaNegocio } from "./horaAgenda";
 import type { AccionCita, Cita, EstadoCita } from "./tiposAgenda";
 
 /**
@@ -82,17 +83,63 @@ const ACCIONES: Record<EstadoCita, AccionCita[]> = {
  */
 const DEL_PROFESIONAL: AccionCita[] = ["LLEGO", "ATENDER", "FINALIZAR", "NO_ASISTIO"];
 
+/**
+ * Lo que la hora no deja todavía (QA M-08; el backend responde 400
+ * ANTES_DE_TIEMPO): "No vino" antes de la hora de inicio, y "Llegó" o
+ * "Atender" en una cita de un día posterior a hoy (hora de La Paz). Sin la
+ * hora de inicio (un walk-in en la cola) no se recorta nada.
+ */
+export function porHora(acciones: AccionCita[], inicio: string | null | undefined, ahora: number): AccionCita[] {
+  if (!inicio) return acciones;
+  const empieza = Date.parse(inicio);
+  if (Number.isNaN(empieza)) return acciones;
+  const diaFuturo = fechaNegocio(inicio) > fechaNegocio(new Date(ahora));
+  return acciones.filter((a) => {
+    if (a === "NO_ASISTIO") return ahora >= empieza;
+    if (a === "LLEGO" || a === "ATENDER") return !diaFuturo;
+    return true;
+  });
+}
+
 export function accionesPara(
   estado: EstadoCita,
-  opc: { profesional?: boolean } = {},
+  opc: {
+    profesional?: boolean;
+    /**
+     * Con `ahora` (ms) se sacan las que la hora no permite todavía (ver
+     * `porHora`). Sin él, sólo por estado, como siempre.
+     */
+    ahora?: number;
+    inicio?: string | null;
+    /** ¿Puede cerrar sin cargo? Sin el dato, sí (lo decide el backend). */
+    sinCargo?: boolean;
+  } = {},
 ): AccionCita[] {
-  const todas = ACCIONES[estado] ?? [];
-  return opc.profesional ? todas.filter((a) => DEL_PROFESIONAL.includes(a)) : todas;
+  let todas = ACCIONES[estado] ?? [];
+  if (opc.profesional) todas = todas.filter((a) => DEL_PROFESIONAL.includes(a));
+  // "Sin cargo" es decidir no cobrar: exige agenda.gestionar o ventas.vender
+  // (QA SEG-02). El profesional no lo ve.
+  if (opc.sinCargo === false) todas = todas.filter((a) => a !== "SIN_CARGO");
+  return opc.ahora !== undefined ? porHora(todas, opc.inicio, opc.ahora) : todas;
 }
 
 /** Los motivos que se ofrecen al cancelar y al cerrar sin cargo (§5.2). */
 export const MOTIVOS_CANCELAR = ["Cliente avisó", "Decisión del negocio", "Otro"] as const;
 export const MOTIVOS_SIN_CARGO = ["Cortesía", "Retoque o garantía", "Otro"] as const;
+
+/**
+ * ¿Tiene sentido avisarle al cliente (recordatorio, WhatsApp)? Sólo si la cita
+ * todavía va a pasar: a una que no vino, se canceló o ya se atendió no se le
+ * manda "te recordamos tu cita" (QA B-23).
+ */
+export function seLeAvisa(estado: EstadoCita): boolean {
+  return (
+    estado === "SOLICITADA" ||
+    estado === "RESERVADA" ||
+    estado === "CONFIRMADA" ||
+    estado === "PENDIENTE_PAGO"
+  );
+}
 
 /** Acciones que piden un motivo antes de mandarse. */
 export function pideMotivo(accion: AccionCita): boolean {
@@ -116,8 +163,11 @@ export type Rapida = { accion: AccionCita | "COBRAR"; principal: boolean };
  * corresponde al momento va primero y lleno. Una cita con no-show sugerido
  * ofrece "No vino" primero: el sistema sugiere, no marca solo (§5.2).
  */
-export function accionesRapidas(cita: Cita, opc: { profesional?: boolean } = {}): Rapida[] {
-  const posibles = new Set(accionesPara(cita.estado, opc));
+export function accionesRapidas(
+  cita: Cita,
+  opc: { profesional?: boolean; ahora?: number } = {},
+): Rapida[] {
+  const posibles = new Set(accionesPara(cita.estado, { ...opc, inicio: cita.inicio }));
   const r = (accion: AccionCita, principal = false): Rapida[] =>
     posibles.has(accion) ? [{ accion, principal }] : [];
 

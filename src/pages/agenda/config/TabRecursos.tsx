@@ -337,7 +337,7 @@ function FormRecurso({
             <Campo label="Teléfono" hint="Opcional, para el equipo.">
               <Input type="tel" value={telefono} onChange={(e) => setTelefono(e.target.value)} />
             </Campo>
-            <Campo label="Comisión (%)" hint="Para el reporte de producción (fase 2).">
+            <Campo label="Comisión (%)" hint="Se usa para calcular su comisión.">
               <Input type="number" value={comision} onChange={(e) => setComision(e.target.value)} placeholder="Opcional" />
             </Campo>
             <Campo label="Orden en la agenda" hint="Las columnas van de menor a mayor.">

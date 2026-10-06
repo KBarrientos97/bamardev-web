@@ -10,6 +10,7 @@ import {
   MOTIVOS_CANCELAR,
   MOTIVOS_SIN_CARGO,
   pideMotivo,
+  seLeAvisa,
   sePuedeMover,
 } from "../../lib/agenda/estadosCita";
 import { capitalizar, fechaLarga, fechaNegocio, horaNegocio } from "../../lib/agenda/horaAgenda";
@@ -22,6 +23,7 @@ import {
 } from "../../lib/agenda/recordatorio";
 import type { AccionCita, Cita, EventoCita } from "../../lib/agenda/tiposAgenda";
 import { fmtMoney, iniciales } from "../../lib/format";
+import { tienePermiso } from "../../lib/permisos";
 import { Telefono } from "../../lib/telefono";
 import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
@@ -57,9 +59,16 @@ export default function DetalleCita({
   /** Después de una acción: la lista de atrás se pone al día con esto. */
   onCambio: (cita: Cita) => void;
 }) {
-  const { negocio } = useAuth();
+  const { negocio, usuario } = useAuth();
   const cobrar = useCobrarCita();
   const profesional = modo === "profesional";
+  // "Sin cargo" es decidir no cobrar (QA SEG-02): agenda.gestionar o
+  // ventas.vender. Sin permisos del backend, el de siempre: todos menos el
+  // profesional.
+  const respaldoSinCargo = usuario?.rol !== "PROFESIONAL";
+  const puedeSinCargo =
+    tienePermiso(usuario, "agenda.gestionar", respaldoSinCargo) ||
+    tienePermiso(usuario, "ventas.vender", respaldoSinCargo);
   const completa = useApi(() => apiAgenda.cita(inicial.id), [inicial.id]);
   const cita = completa.datos ?? inicial;
   const eventos = completa.datos?.eventos ?? inicial.eventos;
@@ -88,6 +97,11 @@ export default function DetalleCita({
   }
 
   async function ejecutar(accion: AccionCita, motivo?: string) {
+    // Cancelar y "sin cargo" no salen sin motivo (QA B-13): vuelven a pedirlo.
+    if (pideMotivo(accion) && !motivo?.trim()) {
+      setPidiendo(accion);
+      return;
+    }
     setError("");
     setOcupado(true);
     try {
@@ -106,8 +120,18 @@ export default function DetalleCita({
     else ejecutar(accion);
   }
 
-  const acciones = accionesPara(cita.estado, { profesional });
-  const rapidas = accionesRapidas(cita, { profesional });
+  // La hora también decide (QA M-08): "No vino" recién desde el inicio, y
+  // "Llegó"/"Atender" sólo el día de la cita.
+  const ahora = Date.now();
+  const acciones = accionesPara(cita.estado, {
+    profesional,
+    ahora,
+    inicio: cita.inicio,
+    sinCargo: puedeSinCargo,
+  });
+  const rapidas = accionesRapidas(cita, { profesional, ahora }).filter(
+    (r) => r.accion === "COBRAR" || acciones.includes(r.accion),
+  );
   const principal = rapidas.find((r) => r.principal);
   const secundarias = acciones.filter((a) => a !== principal?.accion && a !== "CANCELAR");
   const puedeMover = !profesional && sePuedeMover(cita.estado);
@@ -222,6 +246,7 @@ export default function DetalleCita({
             </section>
           )}
 
+          {seLeAvisa(cita.estado) && (
           <section className="space-y-2">
             <Rotulo>Avisar al cliente</Rotulo>
             <div className="flex flex-wrap gap-2">
@@ -255,6 +280,7 @@ export default function DetalleCita({
             </p>
             <AvisoOk>{aviso}</AvisoOk>
           </section>
+          )}
 
           <section className="space-y-2">
             <Rotulo>Historial</Rotulo>

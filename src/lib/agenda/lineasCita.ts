@@ -75,3 +75,20 @@ export function lineasManuales(
     return linea;
   });
 }
+
+/**
+ * El tramo de una cita que le toca a un profesional: sus líneas, con la hora
+ * en que empieza la primera y termina la última. En una secuencia "Corte con
+ * Carla 09:15-10:00 + Tinte con Sofía 10:00-11:30", Carla ve "09:15 · 45 min ·
+ * Corte" y no las dos horas y cuarto de la cita entera (QA M-12).
+ *
+ * Si ninguna línea es suya (un walk-in que lo prefirió, sin líneas todavía) o
+ * todas lo son, la cita queda como vino.
+ */
+export function tramoDe(cita: Cita, recursoIds: number[]): Cita {
+  const suyas = cita.lineas.filter((l) => recursoIds.includes(l.recursoId));
+  if (suyas.length === 0 || suyas.length === cita.lineas.length) return cita;
+  const inicio = suyas.reduce((min, l) => (l.inicio < min ? l.inicio : min), suyas[0].inicio);
+  const fin = suyas.reduce((max, l) => (l.fin > max ? l.fin : max), suyas[0].fin);
+  return { ...cita, lineas: suyas, inicio, fin };
+}

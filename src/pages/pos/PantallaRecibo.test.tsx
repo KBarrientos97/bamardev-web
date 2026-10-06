@@ -117,6 +117,15 @@ describe("farmacia: sin mesas, sin marcas", () => {
   });
 });
 
+describe("belleza: un corte no se sirve en mesa (QA M-09)", () => {
+  it.each(["PELUQUERIA", "BARBERIA", "SPA", "UNAS"])("%s: el ticket no marca M ni LL", (rubro) => {
+    sesion.rubro = rubro;
+    dibujar(venta());
+    expect(screen.queryByText("M")).not.toBeInTheDocument();
+    expect(screen.queryByText("LL")).not.toBeInTheDocument();
+  });
+});
+
 describe("bamardev-restaurant: la mesa y quién la atendió", () => {
   beforeEach(() => {
     sesion.rubro = "RESTAURANTE";

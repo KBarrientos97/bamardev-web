@@ -1,4 +1,7 @@
 import type { ReactNode } from "react";
+import { Icon } from "../../../components/Icon";
+import { fmtRangoNegocio } from "../../../lib/agenda/horarios";
+import type { CitaAfectada } from "../../../lib/agenda/tiposConfigAgenda";
 
 /**
  * Piezas chicas que comparten las pestañas de la configuración de agenda y la
@@ -130,3 +133,57 @@ export function Bloque({
   );
 }
 
+
+/**
+ * Las citas que un cambio de configuración dejó afuera —un bloqueo, un horario
+ * más corto, un día que no trabaja—, para reprogramarlas una por una. Nada se
+ * cancela solo (§7.3). `donde` completa "1 cita queda …": "dentro del
+ * bloqueo", "fuera del nuevo horario".
+ */
+export function AvisoCitasAfectadas({
+  citas,
+  donde,
+  onCerrar,
+}: {
+  citas: CitaAfectada[];
+  donde: string;
+  onCerrar: () => void;
+}) {
+  if (!citas.length) return null;
+  return (
+    <div role="alert" className="rounded-xl border border-warning/40 bg-warning-bg p-3.5 text-sm text-warning-text">
+      <div className="flex items-start gap-2">
+        <Icon name="alert" size={17} />
+        <div className="min-w-0 flex-1">
+          <p className="font-semibold">
+            {citas.length === 1 ? `1 cita queda ${donde}` : `${citas.length} citas quedan ${donde}`}
+          </p>
+          <p className="mt-0.5">
+            No se canceló ninguna: reprogramalas o cancelalas una por una desde la agenda, y
+            avisale a cada cliente.
+          </p>
+          <ul className="mt-2 space-y-1">
+            {citas.map((c) => (
+              <li key={c.id} className="rounded-lg bg-white/60 px-2.5 py-1.5">
+                <span className="font-semibold">{c.cliente?.nombre ?? "Cliente"}</span>
+                {c.inicio && c.fin ? ` · ${fmtRangoNegocio(c.inicio, c.fin)}` : ""}
+                {c.lineas?.length
+                  ? ` · ${c.lineas.map((l) => `${l.servicio} con ${l.recurso}`).join(", ")}`
+                  : ""}
+                <span className="text-xs"> ({c.codigo})</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+        <button
+          type="button"
+          onClick={onCerrar}
+          aria-label="Cerrar el aviso de citas afectadas"
+          className="rounded-lg p-1.5 hover:bg-white/50"
+        >
+          <Icon name="close" size={16} />
+        </button>
+      </div>
+    </div>
+  );
+}

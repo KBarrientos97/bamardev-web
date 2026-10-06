@@ -7,7 +7,7 @@ import {
   huecosDelConflicto,
   mensajeDe,
 } from "../../lib/agenda/apiAgenda";
-import { duracionTexto, fechaNegocio, horaNegocio } from "../../lib/agenda/horaAgenda";
+import { aMinutos, duracionTexto, fechaNegocio, horaNegocio } from "../../lib/agenda/horaAgenda";
 import { lineasDePropuesta, lineasManuales } from "../../lib/agenda/lineasCita";
 import type {
   Cita,
@@ -65,6 +65,7 @@ export default function NuevaCita({
   sucursalId,
   precarga,
   soloRecursoIds,
+  granularidad: granularidadDada,
   onClose,
   onCreada,
 }: {
@@ -72,6 +73,12 @@ export default function NuevaCita({
   precarga?: PrecargaCita;
   /** El profesional agenda sólo para sí mismo. */
   soloRecursoIds?: number[];
+  /**
+   * De a cuántos minutos arrancan las citas (regla del negocio). La agenda ya
+   * la tiene; si no viene, se piden las reglas, y si tampoco llegan no se
+   * valida acá (el backend responde FUERA_DE_GRILLA con su mensaje).
+   */
+  granularidad?: number;
   onClose: () => void;
   onCreada: (cita: Cita) => void;
 }) {
@@ -87,6 +94,16 @@ export default function NuevaCita({
   );
 
   const servicios = useApi(() => apiAgenda.servicios(), []);
+  const reglas = useApi(
+    () =>
+      granularidadDada
+        ? Promise.resolve(null)
+        : Promise.resolve()
+            .then(() => apiAgenda.reglas(sucursalId))
+            .catch(() => null),
+    [sucursalId, granularidadDada],
+  );
+  const granularidad = granularidadDada ?? reglas.datos?.granularidadMin ?? null;
   const recursos = useApi(() => apiAgenda.recursos(), []);
 
   const listaServicios = useMemo(
@@ -268,6 +285,12 @@ export default function NuevaCita({
     if (sobreTurno) {
       if (!lineas.every((l) => l.recursoId))
         return setError("En un sobre-turno elegí el profesional de cada servicio.");
+      // La hora libre del sobre-turno también cae en la grilla del negocio
+      // (QA M-07): una cita a las 12:07 se dibujaba desalineada.
+      if (granularidad && aMinutos(horaManual) % granularidad !== 0)
+        return setError(
+          `Elegí una hora en la grilla de ${granularidad} min (por ejemplo ${horaManual.slice(0, 2)}:00 o ${horaManual.slice(0, 2)}:${String(granularidad).padStart(2, "0")}).`,
+        );
       lineasCita = lineasManuales(
         fecha,
         horaManual,
@@ -466,7 +489,12 @@ export default function NuevaCita({
 
           {sobreTurno ? (
             <Campo label="Hora del sobre-turno" hint="Se superpone a propósito con lo que ya hay.">
-              <Input type="time" value={horaManual} onChange={(e) => setHoraManual(e.target.value)} />
+              <Input
+                type="time"
+                value={horaManual}
+                step={granularidad ? granularidad * 60 : undefined}
+                onChange={(e) => setHoraManual(e.target.value)}
+              />
             </Campo>
           ) : (
             <div>

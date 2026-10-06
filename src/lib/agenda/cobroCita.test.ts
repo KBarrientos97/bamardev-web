@@ -2,11 +2,14 @@ import { describe, expect, it } from "vitest";
 import type { Producto } from "../../types";
 import { haceCuanto, sinVer } from "./avisos";
 import {
+  catalogoConCita,
   citaDeLaUrl,
   citaQueCobra,
+  coberturaCita,
   detallesConProfesional,
   productosDeLaCita,
   rutaCobroCita,
+  textoCoberturaIncompleta,
 } from "./cobroCita";
 import type { AvisoAgenda, CarritoCita } from "./tiposAgenda";
 
@@ -46,17 +49,27 @@ describe("de la agenda al POS", () => {
     expect(citaDeLaUrl("?cita=-3")).toBeNull();
   });
 
-  it("carga un producto por línea y avisa lo que el catálogo ya no tiene", () => {
+  it("carga un producto por línea; lo que el catálogo ya no tiene, con lo del carrito (A-03)", () => {
     const c = carrito({
       lineas: [
         ...carrito().lineas,
         { productoId: 100, descripcion: "Corte dama", cantidad: 1, precio: 80, recursoId: 2, recurso: "Ana" },
-        { productoId: 999, descripcion: "Servicio borrado", cantidad: 1, precio: 5, recursoId: 1, recurso: "Carla" },
+        { productoId: 999, descripcion: "Servicio desactivado", cantidad: 1, precio: 5, recursoId: 1, recurso: "Carla" },
       ],
     });
-    const { productos, faltan } = productosDeLaCita(c, [producto(100, "Corte dama"), producto(101, "Brushing")]);
-    expect(productos.map((p) => p.id)).toEqual([100, 101, 100]);
-    expect(faltan).toEqual(["Servicio borrado"]);
+    const { productos, desactivados } = productosDeLaCita(c, [producto(100, "Corte dama"), producto(101, "Brushing")]);
+    expect(productos.map((p) => p.id)).toEqual([100, 101, 100, 999]);
+    expect(productos[3]).toMatchObject({ nombre: "Servicio desactivado", precio: 5, tipoProducto: "SERVICIO" });
+    expect(desactivados).toEqual(["Servicio desactivado"]);
+  });
+
+  it("el catálogo del POS suma los servicios de la cita que no tiene, sin repetir", () => {
+    const catalogo = [producto(100, "Corte dama")];
+    expect(catalogoConCita(catalogo, null)).toBe(catalogo);
+    expect(catalogoConCita([producto(100, "Corte dama"), producto(101, "Brushing")], carrito())).toHaveLength(2);
+    const conCita = catalogoConCita(catalogo, carrito());
+    expect(conCita.map((p) => p.id)).toEqual([100, 101]);
+    expect(conCita[1]).toMatchObject({ nombre: "Brushing", precio: 40 });
   });
 });
 
@@ -113,6 +126,59 @@ describe("del carrito a la venta", () => {
   it("si la cajera sacó todos los servicios de la cita, la venta ya no la cobra", () => {
     expect(citaQueCobra([{ productoId: 100, cantidad: 1 }], carrito())).toBe(9);
     expect(citaQueCobra([{ productoId: 500, cantidad: 1 }], carrito())).toBeNull();
+  });
+});
+
+describe("¿la venta cubre la cita? (A-02)", () => {
+  const bs = (n: number) => `Bs ${n}`;
+
+  it("con todos sus servicios y su total, la cubre", () => {
+    const d = [
+      { productoId: 100, cantidad: 1, precio: 80 },
+      { productoId: 101, cantidad: 1, precio: 40 },
+      // Lo que se suma de más no la descubre.
+      { productoId: 500, cantidad: 1, precio: 10 },
+    ];
+    expect(coberturaCita(d, carrito(), 130)?.cubre).toBe(true);
+  });
+
+  it("sin un servicio no la cubre y dice cuál falta", () => {
+    const c = coberturaCita([{ productoId: 100, cantidad: 1, precio: 80 }], carrito(), 80)!;
+    expect(c.cubre).toBe(false);
+    expect(c.faltan).toEqual(["Brushing"]);
+    expect(textoCoberturaIncompleta(c, bs)).toBe(
+      "Esta venta no cubre toda la cita (faltan: Brushing · cobrás Bs 80 de Bs 120). " +
+        "La cita se dará por cobrada pero quedará marcada para revisar en el cierre de caja.",
+    );
+  });
+
+  it("compara como multiconjunto: dos cortes agendados piden dos", () => {
+    const c = carrito({
+      lineas: [
+        { productoId: 100, descripcion: "Corte", cantidad: 1, precio: 80, recursoId: 1, recurso: "Carla" },
+        { productoId: 100, descripcion: "Corte", cantidad: 1, precio: 80, recursoId: 2, recurso: "Ana" },
+      ],
+      total: 160,
+    });
+    // Partida entre mesa y llevar sigue siendo la misma cantidad.
+    expect(coberturaCita([{ productoId: 100, cantidad: 2, precio: 80 }], c, 160)?.cubre).toBe(true);
+    expect(coberturaCita([{ productoId: 100, cantidad: 1, precio: 80 }], c, 80)?.faltan).toEqual(["Corte"]);
+  });
+
+  it("con los servicios pero por menos plata tampoco la cubre", () => {
+    const d = [
+      { productoId: 100, cantidad: 1, precio: 50 },
+      { productoId: 101, cantidad: 1, precio: 40 },
+    ];
+    const c = coberturaCita(d, carrito(), 90)!;
+    expect(c.cubre).toBe(false);
+    expect(c.faltan).toEqual([]);
+    expect(textoCoberturaIncompleta(c, bs)).toContain("(cobrás Bs 90 de Bs 120)");
+  });
+
+  it("sin cita, o si ya no la cobra, no hay nada que confirmar", () => {
+    expect(coberturaCita([{ productoId: 100, cantidad: 1 }], null, 80)).toBeNull();
+    expect(coberturaCita([{ productoId: 500, cantidad: 1 }], carrito(), 10)).toBeNull();
   });
 });
 

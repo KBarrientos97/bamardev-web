@@ -64,6 +64,16 @@ export function esBelleza(rubro: string | null | undefined): boolean {
   return !!rubro && (RUBROS_BELLEZA as string[]).includes(rubro);
 }
 
+/**
+ * ¿Las líneas de la venta dicen si son para la mesa o para llevar? Es cosa de
+ * la comanda de un restaurante: una farmacia no tiene mesas, y un corte de
+ * pelo no se sirve en mesa (QA M-09: el ticket de una peluquería decía "M" en
+ * cada línea). Sin rubro (sesión vieja) se muestra, como siempre.
+ */
+export function marcaConsumo(rubro: string | null | undefined): boolean {
+  return !esFarmacia(rubro) && !esBelleza(rubro);
+}
+
 // ── Vocabulario ─────────────────────────────────────────────────────────────
 
 /**
@@ -138,11 +148,15 @@ export function termino(
  * Lo normal es que llegue en `perfil.etiquetasRol`; esto cubre al backend que
  * todavía no lo manda, para que una barbería no vea "Cajero" mientras tanto.
  */
+// El ADMIN de un salón es el "Dueño" (PLAN-ROLES §5): el backend lo manda en
+// `rolEtiqueta` del login, pero el perfil del rubro no lo trae en
+// `etiquetasRol`, y sin esto las tarjetas de Usuarios decían "Administrador"
+// (QA B-19). Restaurante y farmacia no están en la tabla: siguen igual.
 const ROL_POR_RUBRO: Partial<Record<Rubro, Partial<Record<Rol, string>>>> = {
-  PELUQUERIA: { CAJERO: "Recepción", PROFESIONAL: "Estilista" },
-  BARBERIA: { CAJERO: "Recepción", PROFESIONAL: "Barbero" },
-  SPA: { CAJERO: "Recepción", PROFESIONAL: "Terapeuta" },
-  UNAS: { CAJERO: "Recepción", PROFESIONAL: "Manicurista" },
+  PELUQUERIA: { ADMIN: "Dueño", CAJERO: "Recepción", PROFESIONAL: "Estilista" },
+  BARBERIA: { ADMIN: "Dueño", CAJERO: "Recepción", PROFESIONAL: "Barbero" },
+  SPA: { ADMIN: "Dueño", CAJERO: "Recepción", PROFESIONAL: "Terapeuta" },
+  UNAS: { ADMIN: "Dueño", CAJERO: "Recepción", PROFESIONAL: "Manicurista" },
 };
 
 /**

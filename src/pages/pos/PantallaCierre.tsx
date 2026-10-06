@@ -16,7 +16,8 @@ import { api } from "../../lib/api";
 import { fmtHora, fmtMoney, fmtNum } from "../../lib/format";
 import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
-import type { Caja } from "../../types";
+import { esBelleza } from "../../lib/rubro";
+import type { Caja, CitaParaRevisar, MotivoRevisarCita } from "../../types";
 
 /** Motivo libre: es el único que pide escribir la descripción y el sentido. */
 const OTRO = "__otro__";
@@ -44,7 +45,7 @@ export default function PantallaCierre({
   /** Recibir la plata de los meseros sin salir del cierre a buscarla. */
   onIrAEntregas?: () => void;
 }) {
-  const { incluye } = useAuth();
+  const { incluye, rubro } = useAuth();
   const resumen = useApi(() => api.resumenCaja(caja.id), [caja.id]);
   const [contado, setContado] = useState("");
   const [nota, setNota] = useState("");
@@ -134,7 +135,11 @@ export default function PantallaCierre({
           <ErrorMsg onReintentar={resumen.recargar}>{resumen.error}</ErrorMsg>
         ) : (
           <>
-            <AvisoCitas porCobrar={r.citasPorCobrar ?? 0} revisar={r.citasCobroRevisar ?? 0} />
+            <AvisoCitas
+              porCobrar={r.citasPorCobrar ?? 0}
+              revisar={r.citasCobroRevisar ?? 0}
+              cuales={r.citasRevisar}
+            />
             <section className="card p-4">
               <h2 className="mb-3 text-[13px] font-bold uppercase tracking-wide text-texto-4">
                 Movimiento del turno
@@ -249,7 +254,11 @@ export default function PantallaCierre({
                   className="mb-2 flex w-full items-center gap-2 rounded-xl border border-borde px-3.5 py-2.5 text-left text-[13px] font-semibold text-texto-2 hover:bg-muted"
                 >
                   <Icon name="box" size={17} />
-                  <span className="flex-1">Ver qué salió del mostrador</span>
+                  {/* "Mostrador" es palabra de restaurante: en un salón se
+                      venden servicios (QA B-21). */}
+                  <span className="flex-1">
+                    {esBelleza(rubro) ? "Ver lo vendido" : "Ver qué salió del mostrador"}
+                  </span>
                   <Icon name="chevronRight" size={16} />
                 </button>
 
@@ -516,8 +525,25 @@ function DialogoMovimiento({
  * No frena el cierre —puede ser una cortesía que nadie cerró—, pero se ve
  * antes de contar la plata. Un negocio sin agenda recibe ceros y no ve nada.
  */
-function AvisoCitas({ porCobrar, revisar }: { porCobrar: number; revisar: number }) {
+/** El motivo de revisar un cobro de cita, en palabras de la cajera. */
+const MOTIVO_REVISAR: Record<MotivoRevisarCita, string> = {
+  YA_COBRADA: "cobrada dos veces",
+  CITA_CERRADA: "cobrada estando cerrada",
+  COBRO_INCOMPLETO: "cobrada por menos de lo agendado",
+};
+
+function AvisoCitas({
+  porCobrar,
+  revisar,
+  cuales,
+}: {
+  porCobrar: number;
+  revisar: number;
+  /** Cuáles y por qué (QA B-28); sin esto, sólo el conteo de siempre. */
+  cuales?: CitaParaRevisar[];
+}) {
   if (porCobrar <= 0 && revisar <= 0) return null;
+  const lista = cuales?.length ? cuales : null;
   return (
     <section role="alert" className="space-y-1 rounded-2xl border border-warning/40 bg-warning-bg p-4 text-warning-text">
       {porCobrar > 0 && (
@@ -525,16 +551,32 @@ function AvisoCitas({ porCobrar, revisar }: { porCobrar: number; revisar: number
           {porCobrar === 1 ? "Hay 1 cita finalizada sin cobrar" : `Hay ${porCobrar} citas finalizadas sin cobrar`}
         </p>
       )}
-      {revisar > 0 && (
-        <p className="text-sm font-bold">
-          {revisar === 1
-            ? "1 cita se cobró de más (ya estaba cobrada o cerrada): revisala"
-            : `${revisar} citas se cobraron de más (ya estaban cobradas o cerradas): revisalas`}
-        </p>
+      {lista ? (
+        <>
+          <p className="text-sm font-bold">
+            {lista.length === 1 ? "1 cobro de cita para revisar:" : `${lista.length} cobros de citas para revisar:`}
+          </p>
+          <ul className="space-y-0.5 text-[13px]">
+            {lista.map((c) => (
+              <li key={`${c.id}-${c.motivo}`}>
+                <span className="font-semibold">{c.cliente}</span> ({c.codigo}) ·{" "}
+                {MOTIVO_REVISAR[c.motivo as MotivoRevisarCita] ?? "para revisar"}
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : (
+        revisar > 0 && (
+          <p className="text-sm font-bold">
+            {revisar === 1
+              ? "1 cita se cobró de más (ya estaba cobrada o cerrada): revisala"
+              : `${revisar} citas se cobraron de más (ya estaban cobradas o cerradas): revisalas`}
+          </p>
+        )
       )}
       <p className="text-[13px]">
         Cobralas desde «Citas por cobrar» del punto de venta, o cerralas sin cargo en la agenda. Un cobro de más se
-        corrige anulando esa venta.
+        corrige anulando esa venta; uno de menos, revisando con quien la cobró.
       </p>
     </section>
   );

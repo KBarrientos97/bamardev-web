@@ -233,7 +233,7 @@ export default function Agenda() {
                   <TarjetaCita
                     key={c.id}
                     cita={c}
-                    rapidas={accionesRapidas(c)}
+                    rapidas={accionesRapidas(c, { ahora: Date.now() })}
                     onAbrir={() => setAbierta(c)}
                     onAccion={(a) => rapida.pedir(c, a)}
                     onCobrar={cobrar ? () => cobrar(c.id) : undefined}
@@ -326,6 +326,7 @@ export default function Agenda() {
         <NuevaCita
           sucursalId={(datos?.sucursalId ?? suc.sucursalId) as number}
           precarga={nueva}
+          granularidad={granularidad}
           onClose={() => setNueva(null)}
           onCreada={(c) => {
             setNueva(null);

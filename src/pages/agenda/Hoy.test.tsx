@@ -66,7 +66,7 @@ beforeEach(() => {
   vi.mocked(apiAgenda.hoy).mockResolvedValue({
     citas: [confirmada, porCobrar, reservada],
     cola: [enCola],
-    contadores: { porConfirmar: 1, enEspera: 0, enAtencion: 0, porCobrar: 1, noShowSugeridos: 0 },
+    contadores: { porConfirmar: 1, enEspera: 1, enAtencion: 0, porCobrar: 1, noShowSugeridos: 0 },
   });
 });
 
@@ -94,7 +94,8 @@ describe("A3 · Hoy", () => {
     expect(nombres).toEqual(["Ver la cita de Jorge Rojas", "Ver la cita de Rosa Mamani", "Ver la cita de Valeria Arce"]);
 
     expect(within(tarjeta("Rosa Mamani")).getByRole("button", { name: "Llegó" })).toBeEnabled();
-    expect(within(tarjeta("Rosa Mamani")).getByRole("button", { name: "No vino" })).toBeEnabled();
+    // Son las 09:00 y su cita es a las 10:00: "No vino" todavía no (QA M-08).
+    expect(within(tarjeta("Rosa Mamani")).queryByRole("button", { name: "No vino" })).not.toBeInTheDocument();
     expect(within(tarjeta("Valeria Arce")).getByRole("button", { name: "Confirmar" })).toBeEnabled();
     // Sin punto de venta en el rol, "Cobrar" se ve pero lo hace la caja.
     expect(within(tarjeta("Jorge Rojas")).getByRole("button", { name: "Cobrar en caja" })).toBeDisabled();
@@ -122,6 +123,27 @@ describe("A3 · Hoy", () => {
 
     fireEvent.click(within(tarjeta("Valeria Arce")).getByRole("button", { name: "Llegó" }));
     expect(apiAgenda.cambiarEstado).toHaveBeenCalledTimes(2);
+  });
+
+  it("pasada la hora de inicio ofrece «No vino»", async () => {
+    vi.setSystemTime(new Date("2026-10-21T14:20:00.000Z"));
+    await montar();
+    expect(within(tarjeta("Rosa Mamani")).getByRole("button", { name: "No vino" })).toBeEnabled();
+  });
+
+  it("M-10: después de una acción las tarjetas de arriba se ponen al día", async () => {
+    vi.mocked(apiAgenda.cambiarEstado).mockResolvedValue({ ...reservada, estado: "EN_ESPERA" });
+    await montar();
+    const valor = (etiqueta: string) => screen.getByText(etiqueta, { selector: "dt" }).nextElementSibling?.textContent;
+    // 1 en la cola cuenta como llegada.
+    expect(valor("Llegaron")).toBe("1");
+    expect(valor("Por confirmar")).toBe("1");
+    await act(async () => {
+      fireEvent.click(within(tarjeta("Valeria Arce")).getByRole("button", { name: "Llegó" }));
+    });
+    expect(valor("Llegaron")).toBe("2");
+    expect(valor("Por confirmar")).toBe("0");
+    expect(valor("Por cobrar")).toBe("1");
   });
 
   it("los filtros cuentan y filtran", async () => {

@@ -18,8 +18,8 @@ import { api, type PagoEntrega } from "../../lib/api";
 import { parsearMontoO } from "../../lib/dinero";
 import { fmtFechaHora, fmtHora, fmtMoney, fmtNum } from "../../lib/format";
 import { Telefono } from "../../lib/telefono";
-import { puedeSupervisar } from "../../lib/permisos";
-import { esFarmacia } from "../../lib/rubro";
+import { puedeSupervisar, tieneFeature } from "../../lib/permisos";
+import { esBelleza, marcaConsumo } from "../../lib/rubro";
 import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
 import type { Caja, Venta } from "../../types";
@@ -36,9 +36,15 @@ export default function PantallaHistorial({
   /** Abre el recibo de una venta ya hecha (el POS es quien tiene esa pantalla). */
   onVerComprobante: (venta: Venta) => void;
 }) {
-  const { puede } = useAuth();
+  const { puede, negocio } = useAuth();
   const ventas = useApi(() => api.getVentas(caja.id), [caja.id]);
-  const pendientes = useApi(() => api.getPedidosPendientes(), []);
+  // Los pedidos por entregar son del reparto: sin la feature `delivery` el
+  // backend responde 403 (QA M-11, un salón de belleza). Con ella, lo de siempre.
+  const conReparto = tieneFeature(negocio?.features, "delivery");
+  const pendientes = useApi(
+    () => (conReparto ? api.getPedidosPendientes() : Promise.resolve([] as Venta[])),
+    [conReparto],
+  );
   const [detalle, setDetalle] = useState<Venta | null>(null);
   const [entregando, setEntregando] = useState<Venta | null>(null);
 
@@ -280,7 +286,7 @@ function DetalleVenta({
   // renglón salía marcado "Mesa". Misma regla que el ticket (PantallaRecibo):
   // se pregunta por el RUBRO, no por `incluye("mesa_llevar")`, que depende del
   // plan y le borraría la marca a un restaurante que siempre la tuvo.
-  const mostrarConsumo = !esFarmacia(rubro);
+  const mostrarConsumo = marcaConsumo(rubro);
 
   /**
    * Se anula también lo cobrado por QR o mixto (desde el 1-oct-2026).
@@ -519,6 +525,7 @@ function DialogoAnular({
   onClose: () => void;
   onAnulada: () => void;
 }) {
+  const { rubro } = useAuth();
   const [autorizador, setAutorizador] = useState("");
   const [pin, setPin] = useState("");
   const [motivo, setMotivo] = useState<MotivoAnulacion | "">("");
@@ -589,7 +596,11 @@ function DialogoAnular({
     >
       <div className="space-y-3">
         <p className="text-[13px] text-texto-2">
-          La venta queda anulada y el stock vuelve al inventario. No se puede deshacer.
+          {/* En un salón lo que se vende es sobre todo servicios, que no tienen
+              stock (QA B-21): se dice sólo lo que pasa de verdad. */}
+          {esBelleza(rubro)
+            ? "La venta queda anulada y, si tenía productos, vuelven al inventario. No se puede deshacer."
+            : "La venta queda anulada y el stock vuelve al inventario. No se puede deshacer."}
         </p>
 
         {(porQr > 0 || enEfectivo > 0) && (

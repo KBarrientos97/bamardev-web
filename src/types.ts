@@ -842,6 +842,21 @@ export interface ResumenCaja {
    */
   citasPorCobrar?: number;
   citasCobroRevisar?: number;
+  /**
+   * Cuáles son las que quedaron para revisar y por qué (QA B-28). Opcional:
+   * un backend anterior sólo manda el conteo.
+   */
+  citasRevisar?: CitaParaRevisar[];
+}
+
+/** Por qué un cobro de cita quedó para revisar en el cierre. */
+export type MotivoRevisarCita = "YA_COBRADA" | "CITA_CERRADA" | "COBRO_INCOMPLETO";
+
+export interface CitaParaRevisar {
+  id: number;
+  codigo: string;
+  cliente: string;
+  motivo: MotivoRevisarCita | (string & {});
 }
 
 // ── Ventas ──────────────────────────────────────────────────────────────────
