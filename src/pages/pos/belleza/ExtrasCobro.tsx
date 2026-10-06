@@ -87,6 +87,10 @@ export function useExtrasCobro({
   const propinasEfectivo = redondear(
     listaPropinas.filter((p) => p.efectivo).reduce((s, p) => s + p.monto, 0),
   );
+  /** La que se deja por QR: viaja en la misma transferencia que la venta (QA DIA-02). */
+  const propinasQr = redondear(
+    listaPropinas.filter((p) => !p.efectivo).reduce((s, p) => s + p.monto, 0),
+  );
 
   const aplicar = async () => {
     setErrorVale("");
@@ -244,5 +248,6 @@ export function useExtrasCobro({
     pagosVale,
     propinas: listaPropinas.map(({ recursoId, monto, formaPagoId }) => ({ recursoId, monto, formaPagoId })),
     propinasEfectivo,
+    propinasQr,
   };
 }

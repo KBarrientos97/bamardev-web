@@ -185,6 +185,77 @@ describe("propinas al cobrar", () => {
   });
 });
 
+describe("QA DIA-02: lo que se manda cobrar incluye las propinas", () => {
+  const qrDe = (i: number) =>
+    fireEvent.click(screen.getAllByText("QR").filter((b) => b.getAttribute("aria-pressed") != null)[i]);
+  const metodo = (m: "QR" | "Mixto") =>
+    fireEvent.click(screen.getAllByText(m).find((b) => b.closest("button")?.getAttribute("aria-pressed") == null)!);
+
+  it("(a) por QR con propina por QR: se cobra la transferencia entera, la venta va sin ella", () => {
+    const onConfirmar = montar(vi.fn(), [{ id: 7, nombre: "Carla" }], { total: 51 });
+    escribir("Propina para Carla", "5");
+    qrDe(0);
+    metodo("QR");
+    expect(screen.getByText(/Cobrá Bs.56,00 por QR/)).toBeInTheDocument();
+    expect(screen.getByText(/incluye Bs.5,00 de propina/)).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Ya llegó el QR"));
+    fireEvent.click(screen.getByText(/Confirmar cobro/));
+    expect(onConfirmar).toHaveBeenCalledWith([{ formaPagoId: 11, monto: 51 }], {
+      propinas: [{ recursoId: 7, monto: 5, formaPagoId: 11 }],
+    });
+  });
+
+  it("(b) mixto: el efectivo que falta incluye la propina en efectivo y el QR la suya", () => {
+    const onConfirmar = montar(
+      vi.fn(),
+      [
+        { id: 7, nombre: "Carla" },
+        { id: 8, nombre: "Paola" },
+      ],
+      { total: 205 },
+    );
+    escribir("Propina para Carla", "5");
+    escribir("Propina para Paola", "7");
+    qrDe(1);
+    metodo("Mixto");
+    escribir(/Monto pagado por QR/, "100");
+    expect(screen.getByText(/Falta cubrir Bs.110,00 \(incluye la propina\)/)).toBeInTheDocument();
+    expect(screen.getByText(/Cobrá Bs.107,00 por QR/)).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Ya llegó el QR"));
+    escribir(/Efectivo recibido/, "120");
+    // Cambio: 120 − (105 + 5 de propina).
+    expect(screen.getByText(/Cambio/).nextElementSibling).toHaveTextContent(/10,00/);
+    fireEvent.click(screen.getByText(/Confirmar cobro/));
+    expect(onConfirmar).toHaveBeenCalledWith(
+      [
+        { formaPagoId: 11, monto: 100 },
+        { formaPagoId: 10, monto: 105, recibido: 115 },
+      ],
+      {
+        propinas: [
+          { recursoId: 7, monto: 5, formaPagoId: 10 },
+          { recursoId: 8, monto: 7, formaPagoId: 11 },
+        ],
+      },
+    );
+  });
+
+  it("(c) por QR con propina en efectivo: avisa que hay que recibirla aparte", () => {
+    montar(vi.fn(), [{ id: 7, nombre: "Lucía" }], { total: 120 });
+    escribir("Propina para Lucía", "8");
+    metodo("QR");
+    expect(screen.getByText(/Cobrá Bs.120,00 por QR/)).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent(/recibí Bs.8,00 de propina en efectivo/);
+  });
+
+  it("(d) sesión de paquete con propina: dice lo que se recibe y el botón lo suma", () => {
+    montar(vi.fn(), [{ id: 7, nombre: "Sofía" }], { total: 0 });
+    escribir("Propina para Sofía", "15");
+    expect(screen.getByText(/Recibí Bs.15,00 de propina en efectivo/)).toBeInTheDocument();
+    expect(screen.getByText(/Confirmar cobro/)).toHaveTextContent(/Bs.0,00 \+ Bs.15,00 de propina/);
+  });
+});
+
 describe("un negocio sin estas features (Omar)", () => {
   it("el cobro es el de siempre: sin vale, sin propina, la misma llamada", () => {
     sesion.rubro = "RESTAURANTE";

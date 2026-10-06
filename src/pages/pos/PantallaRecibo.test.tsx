@@ -270,6 +270,18 @@ describe("QA PER-01: el efectivo recibido incluye la propina en efectivo", () =>
     expect(screen.getByText("Cambio entregado").nextElementSibling).toHaveTextContent(/10,00/);
   });
 
+  it("QA DIA-02: el monto QR es la transferencia entera, con la propina por QR", () => {
+    dibujar(
+      venta({
+        total: 51,
+        pagos: [{ formaPagoId: 11, formaPago: "QR", monto: 51 }],
+        propinas: [{ recursoId: 3, recurso: "Carla", monto: 5, formaPago: "QR" }],
+      }),
+    );
+    expect(screen.getByText("Monto QR").nextElementSibling).toHaveTextContent(/56,00/);
+    expect(screen.getByText("(incluye la propina)")).toBeInTheDocument();
+  });
+
   it("sin propinas, lo de siempre", () => {
     sesion.rubro = "RESTAURANTE";
     dibujar(venta({ pagos: [{ formaPagoId: 10, formaPago: "Efectivo", monto: 80, recibido: 100, entregado: 20 }], cambio: 20 }));

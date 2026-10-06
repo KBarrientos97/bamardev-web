@@ -83,6 +83,13 @@ export default function PantallaRecibo({
     Math.round(
       propinas.filter((x) => /efectivo/i.test(x.formaPago)).reduce((s, x) => s + x.monto, 0) * 100,
     ) / 100;
+  // Lo mismo con el QR (QA DIA-02): la transferencia del cliente trae la
+  // propina por QR; el papel dice lo que transfirió, no sólo lo de la venta.
+  const propinaPorQr =
+    Math.round(
+      propinas.filter((x) => /qr|transfer/i.test(x.formaPago)).reduce((s, x) => s + x.monto, 0) * 100,
+    ) / 100;
+  const montoQr = Math.round(((qr?.monto ?? 0) + propinaPorQr) * 100) / 100;
   const efectivoRecibido = efectivo
     ? Math.round(((efectivo.recibido ?? efectivo.monto) + propinaEnEfectivo) * 100) / 100
     : 0;
@@ -191,10 +198,15 @@ export default function PantallaRecibo({
                 <dd className="font-bold text-texto">{fmtMoney(efectivoRecibido)}</dd>
               </div>
             )}
-            {qr && (
+            {(qr || propinaPorQr > 0) && (
               <div className="flex justify-between text-texto-2">
-                <dt>Monto QR</dt>
-                <dd className="font-bold text-texto">{fmtMoney(qr.monto)}</dd>
+                <dt>
+                  Monto QR
+                  {propinaPorQr > 0 && (
+                    <span className="block text-xs">{qr ? "(incluye la propina)" : "(la propina)"}</span>
+                  )}
+                </dt>
+                <dd className="font-bold text-texto">{fmtMoney(montoQr)}</dd>
               </div>
             )}
             {cambio > 0 && (
