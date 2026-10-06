@@ -858,6 +858,8 @@ export interface CitaParaRevisar {
   id: number;
   codigo: string;
   cliente: string;
+  /** La hora de la cita (ISO). Opcional: un backend anterior no la manda. */
+  inicio?: string | null;
   motivo: MotivoRevisarCita | (string & {});
 }
 

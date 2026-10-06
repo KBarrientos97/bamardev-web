@@ -140,3 +140,17 @@ export function minutosEntre(desde: string, hasta: string): number {
 export function correr(iso: string, min: number): string {
   return new Date(new Date(iso).getTime() + min * 60000).toISOString();
 }
+
+/**
+ * Cuándo era la cita, para encontrarla en la agenda: "cita de las 10:30" si
+ * es de hoy, "cita del 05/10 a las 10:30" si no (una caja puede quedar
+ * abierta de un día para otro). Vacío si el backend no manda la hora.
+ */
+export function cuandoCita(inicio: string | null | undefined, hoy = fechaNegocio()): string {
+  if (!inicio) return "";
+  const hora = horaNegocio(inicio);
+  const dia = fechaNegocio(inicio);
+  if (dia === hoy) return `cita de las ${hora}`;
+  const [, mes, d] = dia.split("-");
+  return `cita del ${d}/${mes} a las ${hora}`;
+}

@@ -24,6 +24,7 @@ vi.mock("../../lib/api", () => ({
 
 import { api } from "../../lib/api";
 import PantallaCierre from "./PantallaCierre";
+import { cuandoCita } from "../../lib/agenda/horaAgenda";
 
 function resumen(extra: Partial<ResumenCaja> = {}): ResumenCaja {
   return {
@@ -82,6 +83,27 @@ describe("B-28: las citas para revisar, con nombre y motivo", () => {
     expect(aviso).toHaveTextContent("Ana Pisa (K7M2QX) · cobrada por menos de lo agendado");
     expect(aviso).toHaveTextContent("Rosa Mamani (P3R8TZ) · cobrada dos veces");
     expect(aviso).toHaveTextContent("Luz Vaca (Q1W2E3) · cobrada estando cerrada");
+  });
+
+  it("dice cuál por la hora de la cita (B-28: «1 cita se cobró de más» sin decir cuál)", async () => {
+    vi.mocked(api.resumenCaja).mockResolvedValue(
+      resumen({
+        citasCobroRevisar: 1,
+        citasRevisar: [
+          // 10:30 en La Paz de un día que no es hoy.
+          { id: 16, codigo: "Z9Y8X7", cliente: "Eva Rojas", inicio: "2026-10-05T14:30:00.000Z", motivo: "YA_COBRADA" },
+        ],
+      }),
+    );
+    await montar();
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Eva Rojas (Z9Y8X7) · cita del 05/10 a las 10:30 · cobrada dos veces",
+    );
+  });
+
+  it("la hora de una cita de hoy va sin fecha", () => {
+    expect(cuandoCita("2026-10-07T13:00:00.000Z", "2026-10-07")).toBe("cita de las 09:00");
+    expect(cuandoCita(null)).toBe("");
   });
 
   it("un backend que sólo manda el conteo sigue diciendo lo de antes", async () => {
