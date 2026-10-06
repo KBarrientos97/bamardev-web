@@ -13,6 +13,7 @@ import {
   productosDeLaCita,
 } from "../../lib/agenda/cobroCita";
 import type { CarritoCita, Cita } from "../../lib/agenda/tiposAgenda";
+import type { PropinaInput } from "../../lib/belleza/apiExtras";
 import { useConsultaPeriodica } from "../../lib/agenda/useConsultaPeriodica";
 import CitasPorCobrar from "./CitasPorCobrar";
 import { fmtHora, fmtMoney } from "../../lib/format";
@@ -299,7 +300,7 @@ export default function Pos() {
   }, [carrito, setCitaCobrando, descuentos]);
 
   const cobrar = useCallback(
-    async (pagos: PagoInput[]) => {
+    async (pagos: PagoInput[], extra?: { propinas?: PropinaInput[] }) => {
       setError("");
       setEnviando(true);
       try {
@@ -313,6 +314,8 @@ export default function Pos() {
             })
           : await api.crearVenta({
               ...cuerpoVenta(pagos),
+              // Belleza: la propina viaja aparte (no suma a la venta).
+              ...(extra?.propinas?.length ? { propinas: extra.propinas } : {}),
               clienteRequestId: intento.actual(),
             });
         intento.registrado();
@@ -552,6 +555,8 @@ export default function Pos() {
             : undefined
         }
         formasPago={formasPago.datos ?? []}
+        // Belleza (propinas): los profesionales de la cita que se cobra.
+        profesionales={mesaCobrando ? undefined : profesionalesDeCita(citaCobrando)}
         onAtras={() => {
           // Sin esto, el error del cobro fallido seguía visible al volver y
           // reaparecía sobre el intento nuevo, que todavía no falló.
@@ -809,6 +814,15 @@ export default function Pos() {
 
 /** Cada cuánto se refrescan los avisos del salón. El mismo que la app. */
 const SONDEO_SALON_MS = 10_000;
+
+/** Los profesionales de la cita (sin repetir), para anotarles la propina. */
+function profesionalesDeCita(cita: CarritoCita | null): { id: number; nombre: string }[] {
+  const vistos = new Map<number, string>();
+  for (const l of cita?.lineas ?? []) {
+    if (l.recursoId != null && !vistos.has(l.recursoId)) vistos.set(l.recursoId, l.recurso ?? "Profesional");
+  }
+  return [...vistos.entries()].map(([id, nombre]) => ({ id, nombre }));
+}
 
 /** Los detalles con el profesional de cada servicio y, si sigue cobrándola, la cita. */
 function conCita(detalles: DetalleVentaInput[], cita: CarritoCita | null) {

@@ -123,7 +123,14 @@ export type Seccion =
   /** Promociones y cupones: el ABM, los cupones y el enlace de campaña. */
   | "promociones"
   /** Los clientes que no vuelven, los segmentos y el contacto por wa.me. */
-  | "retencion";
+  | "retencion"
+  // ── Belleza fase 4 ──
+  /** Vender gift cards, consultar su saldo y el listado. */
+  | "gift_cards"
+  /** Propinas por profesional (el profesional, sólo las suyas). */
+  | "propinas"
+  /** Qué insumos gasta cada servicio, y el costo y margen por servicio. */
+  | "recetas_servicio";
 
 /**
  * Qué módulo de rol y qué feature de plan exige cada sección. `feature: null`
@@ -209,6 +216,10 @@ const REQUISITOS: Record<Seccion, { modulo: Modulo | null; feature: Feature | nu
   // Nuevas del 06-oct, sin módulo de rol: las cortan la feature y el permiso.
   promociones: { modulo: null, feature: "promociones" },
   retencion: { modulo: null, feature: "clientes_retencion" },
+  // Belleza fase 4: el backend las corta por permisos (R3), sin módulo.
+  gift_cards: { modulo: null, feature: "gift_cards" },
+  propinas: { modulo: null, feature: "propinas" },
+  recetas_servicio: { modulo: null, feature: "consumo_servicio" },
 };
 
 /**
@@ -233,6 +244,11 @@ const FEATURES_ESTRICTAS: Feature[] = [
   // Promociones y CRM: nuevas, se prenden por negocio. A Omar no le aparecen.
   "promociones",
   "clientes_retencion",
+  // Belleza fase 4: nuevas y prendidas a mano por negocio.
+  "gift_cards",
+  "propinas",
+  "consumo_servicio",
+  "ficha_tecnica",
 ];
 
 /**
@@ -304,6 +320,11 @@ const ROLES_PERMITIDOS: Partial<Record<Seccion, Rol[]>> = {
   // Respaldo sin permisos del backend (sesión vieja): lo de §9.2 del plan.
   promociones: ["ADMIN"],
   retencion: ["ADMIN", "SUPERVISOR", "CAJERO"],
+  // Belleza fase 4 (respaldo sin permisos del backend). El profesional entra
+  // a Propinas a ver las suyas.
+  gift_cards: ["ADMIN", "SUPERVISOR", "CAJERO"],
+  propinas: ["ADMIN", "SUPERVISOR", "PROFESIONAL"],
+  recetas_servicio: ["ADMIN", "SUPERVISOR"],
 };
 
 /**
@@ -352,6 +373,9 @@ const SOLO_EN_RUBRO: Partial<Record<Seccion, Rubro[]>> = {
   comisiones: RUBROS_BELLEZA,
   mi_produccion: RUBROS_BELLEZA,
   reportes_agenda: RUBROS_BELLEZA,
+  gift_cards: RUBROS_BELLEZA,
+  propinas: RUBROS_BELLEZA,
+  recetas_servicio: RUBROS_BELLEZA,
 };
 
 /**
@@ -419,6 +443,10 @@ const PERMISO_SECCION: Partial<
   mis_enlaces: { permiso: "negocio.configurar" },
   promociones: { permiso: "promociones.gestionar" },
   retencion: { permiso: "cliente.marketing" },
+  // Belleza fase 4: lo mismo que pide cada controlador.
+  gift_cards: { permiso: "vales.vender" },
+  propinas: { permiso: "propinas.ver" },
+  recetas_servicio: { permiso: "consumo.recetas" },
 };
 
 type ConPermisos = Pick<SesionUsuario, "permisos" | "permisosPropios"> | null | undefined;

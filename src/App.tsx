@@ -67,6 +67,10 @@ const MiPagina = lazy(() => import("./pages/pagina/MiPagina"));
 const MisEnlaces = lazy(() => import("./pages/pagina/MisEnlaces"));
 const Promociones = lazy(() => import("./pages/promociones/Promociones"));
 const Retencion = lazy(() => import("./pages/clientes/Retencion"));
+// Belleza fase 4: sólo se bajan en un salón que las tiene prendidas.
+const GiftCards = lazy(() => import("./pages/belleza/GiftCards"));
+const Propinas = lazy(() => import("./pages/belleza/Propinas"));
+const RecetasServicio = lazy(() => import("./pages/belleza/RecetasServicio"));
 
 /** Manda a cada rol a su pantalla: cajero al POS, repartidor a entregas. */
 function Inicio() {
@@ -617,12 +621,43 @@ function Rutas() {
             </Protegida>
           }
         />
+        {/* Belleza fase 4: gift cards, propinas e insumos por servicio. */}
+        <Route
+          path="/gift-cards"
+          element={
+            <Protegida seccion="gift_cards">
+              <Suspense fallback={null}>
+                <GiftCards />
+              </Suspense>
+            </Protegida>
+          }
+        />
         <Route
           path="/clientes-que-no-vuelven"
           element={
             <Protegida seccion="retencion">
               <Suspense fallback={null}>
                 <Retencion />
+              </Suspense>
+            </Protegida>
+          }
+        />
+        <Route
+          path="/propinas"
+          element={
+            <Protegida seccion="propinas">
+              <Suspense fallback={null}>
+                <Propinas />
+              </Suspense>
+            </Protegida>
+          }
+        />
+        <Route
+          path="/configuracion/insumos-servicio"
+          element={
+            <Protegida seccion="recetas_servicio">
+              <Suspense fallback={null}>
+                <RecetasServicio />
               </Suspense>
             </Protegida>
           }

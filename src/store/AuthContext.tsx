@@ -316,6 +316,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 }
 
 // eslint-disable-next-line react-refresh/only-export-components
+/**
+ * La sesión si hay un `AuthProvider` arriba, o null. La usan las piezas de la
+ * fase 4 de belleza que se enchufan dentro de pantallas que también se montan
+ * sueltas (en sus tests, por ejemplo): sin sesión, simplemente no se dibujan.
+ */
+export function useAuthOpcional(): AuthValue | null {
+  return useContext(AuthContext);
+}
+
 export function useAuth() {
   const ctx = useContext(AuthContext);
   if (!ctx) throw new Error("useAuth debe usarse dentro de <AuthProvider>");

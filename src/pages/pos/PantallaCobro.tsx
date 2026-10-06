@@ -13,6 +13,8 @@ import {
 import { fmtMoney } from "../../lib/format";
 import { useAuth } from "../../store/AuthContext";
 import type { FormaPago, PagoInput } from "../../types";
+import type { PropinaInput } from "../../lib/belleza/apiExtras";
+import { useExtrasCobro, type ProfesionalCobro } from "./belleza/ExtrasCobro";
 
 type Metodo = "EFECTIVO" | "QR" | "MIXTO";
 
@@ -43,6 +45,7 @@ export default function PantallaCobro({
   subtitulo,
   avisoEnvio,
   formasPago,
+  profesionales,
   onAtras,
   onConfirmar,
   onCredito,
@@ -55,14 +58,17 @@ export default function PantallaCobro({
   /** Nota al pie cuando hay una tarifa de envío que no entra en este cobro. */
   avisoEnvio?: string;
   formasPago: FormaPago[];
+  /** Belleza (propinas): los profesionales de la venta. Sin esto, no hay propina. */
+  profesionales?: ProfesionalCobro[];
   onAtras: () => void;
-  onConfirmar: (pagos: PagoInput[]) => void;
+  /** `extra` sólo viaja con propinas (belleza); el cobro de siempre no lo trae. */
+  onConfirmar: (pagos: PagoInput[], extra?: { propinas?: PropinaInput[] }) => void;
   /** Sólo se ofrece si el plan incluye fiado. */
   onCredito?: () => void;
   enviando: boolean;
   error: string;
 }) {
-  const { incluye } = useAuth();
+  const { incluye, negocio, usuario } = useAuth();
   const formaEfectivo = buscarForma(formasPago, "Efectivo");
   const formaQr = buscarForma(formasPago, "QR");
 
@@ -71,6 +77,22 @@ export default function PantallaCobro({
   // si faltara la segunda, ofrecer el método termina en un cobro que el backend
   // rechaza con el cliente enfrente.
   const permiteQr = incluye("pago_qr_mixto") && !!formaQr;
+
+  // Belleza fase 4: vale como pago y propinas. Fuera de belleza (o sin las
+  // features) no dibuja nada y deja todo en cero: el cobro de siempre.
+  const extras = useExtrasCobro({
+    ctx: { features: negocio?.features, rubro: negocio?.tipoNegocio, usuario },
+    total,
+    profesionales: profesionales ?? [],
+    formasPago,
+    permiteQr,
+  });
+  /** Lo que queda por cobrar en efectivo o QR, después del vale. */
+  const aCubrir = Math.round((total - extras.montoVale) * 100) / 100;
+  const cubiertoPorVale = extras.montoVale > 0 && aCubrir <= 0.004;
+  /** La propina en efectivo se recibe en mano junto con el cobro. */
+  const extraEfectivo = extras.propinasEfectivo;
+  const extra = extras.propinas.length ? { propinas: extras.propinas } : undefined;
 
   const [metodo, setMetodo] = useState<Metodo>("EFECTIVO");
   const [recibido, setRecibido] = useState("");
@@ -94,49 +116,72 @@ export default function PantallaCobro({
   }
 
   // En mixto, el QR cubre una parte y el efectivo el resto.
-  const aCubrirEnEfectivo = metodo === "MIXTO" ? restoEnEfectivo(total, qrNum) : total;
-  const cambio = metodo === "QR" ? 0 : vuelto(recibidoNum, aCubrirEnEfectivo);
+  const aCubrirEnEfectivo = metodo === "MIXTO" ? restoEnEfectivo(aCubrir, qrNum) : aCubrir;
+  // Lo que hay que recibir en mano: la parte en efectivo y la propina en
+  // efectivo (sin propinas, es exactamente lo de siempre).
+  const enMano = Math.round((aCubrirEnEfectivo + extraEfectivo) * 100) / 100;
+  const cambio = metodo === "QR" ? 0 : vuelto(recibidoNum, enMano);
   const falta =
-    metodo === "QR" ? 0 : Math.max(0, Math.round((aCubrirEnEfectivo - recibidoNum) * 100) / 100);
+    metodo === "QR" ? 0 : Math.max(0, Math.round((enMano - recibidoNum) * 100) / 100);
 
-  const sugerencias = useMemo(() => sugerenciasEfectivo(aCubrirEnEfectivo), [aCubrirEnEfectivo]);
+  const sugerencias = useMemo(() => sugerenciasEfectivo(enMano), [enMano]);
+
+  /** Las propinas viajan sólo si hay: el cobro de siempre llama igual que antes. */
+  function enviar(pagos: PagoInput[]) {
+    if (extra) onConfirmar(pagos, extra);
+    else onConfirmar(pagos);
+  }
 
   function confirmar() {
     setErrorLocal("");
+
+    // El vale cubre todo: no hay efectivo ni QR que pedir.
+    if (cubiertoPorVale) return enviar(extras.pagosVale);
 
     if (metodo === "EFECTIVO") {
       if (!formaEfectivo) return setErrorLocal("El negocio no tiene cargada la forma de pago Efectivo.");
       // Con tolerancia: 3 x 8.90 da 26.700000000000003 y el cajero que teclea
       // 26.70 quedaba "faltando Bs 0.00".
-      if (!cubre(recibidoNum, total))
+      if (!cubre(recibidoNum, enMano))
         return setErrorLocal("Lo recibido no alcanza para cubrir el total.");
-      return onConfirmar([
-        { formaPagoId: formaEfectivo.id, monto: total, recibido: recibidoNum },
-      ]);
+      return enviar(
+        [
+          ...extras.pagosVale,
+          // Lo recibido de la VENTA: la propina en efectivo va aparte.
+          { formaPagoId: formaEfectivo.id, monto: aCubrir, recibido: recibidoNum - extraEfectivo },
+        ],
+      );
     }
 
     if (metodo === "QR") {
       if (!formaQr) return setErrorLocal("El negocio no tiene cargada la forma de pago QR.");
       if (!qrConfirmado)
         return setErrorLocal("Confirmá que el pago por QR llegó antes de cobrar.");
-      return onConfirmar([{ formaPagoId: formaQr.id, monto: total }]);
+      return enviar([...extras.pagosVale, { formaPagoId: formaQr.id, monto: aCubrir }]);
     }
 
     // Mixto: se reparte entre QR y efectivo, y la suma tiene que dar el total.
     if (!formaEfectivo || !formaQr)
       return setErrorLocal("Faltan formas de pago cargadas para cobrar mixto.");
     if (!esPositivo(qrNum)) return setErrorLocal("Poné cuánto se paga por QR.");
-    if (!excede(total, qrNum))
+    if (!excede(aCubrir, qrNum))
       return setErrorLocal("Si el QR cubre todo, cobrá con el método QR.");
     if (!qrConfirmado)
       return setErrorLocal("Confirmá que el pago por QR llegó antes de cobrar.");
-    if (!cubre(recibidoNum, aCubrirEnEfectivo))
+    if (!cubre(recibidoNum, enMano))
       return setErrorLocal("El efectivo recibido no cubre lo que falta.");
 
-    onConfirmar([
-      { formaPagoId: formaQr.id, monto: qrNum },
-      { formaPagoId: formaEfectivo.id, monto: aCubrirEnEfectivo, recibido: recibidoNum },
-    ]);
+    enviar(
+      [
+        ...extras.pagosVale,
+        { formaPagoId: formaQr.id, monto: qrNum },
+        {
+          formaPagoId: formaEfectivo.id,
+          monto: aCubrirEnEfectivo,
+          recibido: recibidoNum - extraEfectivo,
+        },
+      ],
+    );
   }
 
   return (
@@ -170,11 +215,18 @@ export default function PantallaCobro({
           {avisoEnvio && (
             <p className="mt-1.5 text-[13px] opacity-90">{avisoEnvio}</p>
           )}
+          {extras.montoVale > 0 && (
+            <p className="mt-1.5 text-[13px] opacity-90">
+              Gift card −{fmtMoney(extras.montoVale)} · resta {fmtMoney(aCubrir)}
+            </p>
+          )}
         </div>
+
+        {extras.ui}
 
         {/* Sin la capacidad no se dibujan botones apagados: el cobro es en
             efectivo y punto, como en un negocio que no cobra por QR. */}
-        {permiteQr && (
+        {permiteQr && !cubiertoPorVale && (
           <div className="grid grid-cols-3 gap-2">
             <BotonMetodo
               activo={metodo === "EFECTIVO"}
@@ -229,11 +281,17 @@ export default function PantallaCobro({
           </>
         )}
 
-        {metodo !== "QR" && (
+        {metodo !== "QR" && !cubiertoPorVale && (
           <>
             <Campo
               label="Efectivo recibido"
-              hint={metodo === "MIXTO" ? `Falta cubrir ${fmtMoney(aCubrirEnEfectivo)}` : undefined}
+              hint={
+                metodo === "MIXTO"
+                  ? `Falta cubrir ${fmtMoney(aCubrirEnEfectivo)}`
+                  : extraEfectivo > 0
+                    ? `Incluye la propina en efectivo (${fmtMoney(extraEfectivo)})`
+                    : undefined
+              }
             >
               <Input
                 type="number"
@@ -243,7 +301,9 @@ export default function PantallaCobro({
                 value={recibido}
                 onChange={(e) => setRecibido(e.target.value)}
                 placeholder="0,00"
-                autoFocus
+                // Con un vale aplicado no se roba el foco: el campo aparece mientras
+                // la cajera todavía está tecleando cuánto usar del vale.
+                autoFocus={extras.montoVale === 0}
                 className="text-lg font-bold"
               />
             </Campo>
@@ -280,15 +340,15 @@ export default function PantallaCobro({
           </>
         )}
 
-        {metodo === "QR" && (
+        {metodo === "QR" && !cubiertoPorVale && (
           <div className="rounded-2xl border border-borde bg-white p-5">
             <p className="mb-3 text-center text-sm font-semibold text-texto">
-              Cobrá {fmtMoney(total)} por QR
+              Cobrá {fmtMoney(aCubrir)} por QR
             </p>
             <QrParaCobrar
               confirmado={qrConfirmado}
               onConfirmar={() => setQrConfirmado(true)}
-              monto={fmtMoney(total)}
+              monto={fmtMoney(aCubrir)}
             />
           </div>
         )}

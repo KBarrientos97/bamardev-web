@@ -1100,6 +1100,8 @@ export interface PagoInput {
   formaPagoId: number;
   monto: number;
   recibido?: number;
+  /** Belleza: el código del vale con el que se paga esta parte (forma "Gift card"). */
+  giftCardCodigo?: string;
 }
 
 /** Datos del fiado cuando la venta se cobra a crédito. */
@@ -1141,6 +1143,8 @@ export interface VentaInput {
   clienteId?: number;
   cupones?: string[];
   descuentosEsperados?: { promocionId: number; monto: number }[];
+  /** Belleza: propina por profesional. No suma al total ni a los pagos. */
+  propinas?: { recursoId: number; monto: number; formaPagoId: number }[];
 }
 
 export interface Repartidor {

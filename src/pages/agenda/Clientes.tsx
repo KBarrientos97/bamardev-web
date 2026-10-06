@@ -7,6 +7,7 @@ import type { CitaHistorial, ClienteFicha, ClienteFichaDetalle } from "../../lib
 import { fmtFecha, fmtMoney, iniciales } from "../../lib/format";
 import { Telefono } from "../../lib/telefono";
 import { useApi } from "../../lib/useApi";
+import { FichaTecnicaCliente } from "../belleza/ExtrasAgenda";
 import { BadgeEstado, Rotulo } from "./piezas";
 
 /** Lo que tarda en buscar después de la última tecla. */
@@ -218,6 +219,8 @@ export function FichaCliente({
                 </p>
               </section>
               <HistorialCitas citas={f.citas} />
+              {/* Belleza fase 4: fórmulas y fotos (sólo con su feature). */}
+              <FichaTecnicaCliente clienteId={f.id} />
               <Compras ficha={f} />
             </>
           )}
