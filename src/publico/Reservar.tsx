@@ -10,7 +10,7 @@ import {
 } from "./apiReserva";
 import Confirmada from "./Confirmada";
 import { Aviso, BotonPrincipal, Cabecera, CargandoPublico, IconoVolver, Marco, NoDisponible, Pasos } from "./piezas";
-import { horaCorta, precioTexto, rutaPublica, ultimaReserva, useNegocioPublico } from "./util";
+import { cuentaReserva, horaCorta, precioTexto, rutaPublica, ultimaReserva, useNegocioPublico } from "./util";
 import SelectorHorario from "./SelectorHorario";
 
 /**
@@ -113,8 +113,15 @@ function Asistente({ datos, sucursal, sub }: { datos: NegocioPublico; sucursal: 
     () => sucursal.servicios.filter((s) => elegidos.includes(s.id)),
     [sucursal.servicios, elegidos],
   );
-  const duracion = servicios.reduce((t, s) => t + s.duracionMin, 0);
-  const total = servicios.reduce((t, s) => t + (s.precio ?? 0), 0);
+  // Precio y duración del profesional elegido (o el rango con "cualquiera"):
+  // lo mismo con que se crea la cita y se cobra en el local (QA N2-06).
+  const cuenta = cuentaReserva(
+    servicios,
+    profesional != null ? sucursal.profesionales.find((p) => p.id === profesional) : null,
+  );
+  const duracion = cuenta.duracion;
+  const total = cuenta.precio;
+  const desde = cuenta.desde ? "desde " : "";
   // P3: sólo los publicados que hacen TODOS los servicios elegidos.
   const quienes = sucursal.profesionales.filter((p) => elegidos.every((id) => p.servicioIds.includes(id)));
   const categorias = agrupar(sucursal);
@@ -218,9 +225,15 @@ function Asistente({ datos, sucursal, sub }: { datos: NegocioPublico; sucursal: 
                     />
                     <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                       <strong className="text-[15px]">{s.nombre}</strong>
-                      <span className="text-[13px] text-[#6B7280]">{duracionTexto(s.duracionMin)}</span>
+                      <span className="text-[13px] text-[#6B7280]">{duracionTexto(s.duracionDesde ?? s.duracionMin)}</span>
                     </span>
-                    {s.precio != null && <span className="text-sm font-medium">{precioTexto(s.precio)}</span>}
+                    {s.precio != null && (
+                      <span className="text-sm font-medium">
+                        {s.precioDesde != null && s.precioHasta != null && s.precioDesde !== s.precioHasta
+                          ? `desde ${precioTexto(s.precioDesde)}`
+                          : precioTexto(s.precioDesde ?? s.precio)}
+                      </span>
+                    )}
                   </label>
                 );
               })}
@@ -231,11 +244,11 @@ function Asistente({ datos, sucursal, sub }: { datos: NegocioPublico; sucursal: 
           <div className="flex min-w-0 flex-1 flex-col">
             <strong className="text-[15px]">
               {elegidos.length
-                ? `${elegidos.length === 1 ? "1 servicio" : `${elegidos.length} servicios`} · ${duracionTexto(duracion)}`
+                ? `${elegidos.length === 1 ? "1 servicio" : `${elegidos.length} servicios`} · ${desde}${duracionTexto(duracion)}`
                 : "Elegí un servicio"}
             </strong>
             <span className="text-[13px] text-[#6B7280]">
-              {sucursal.reglas.mostrarPrecios && elegidos.length ? `${precioTexto(total)} · ` : ""}Se paga en el local
+              {sucursal.reglas.mostrarPrecios && elegidos.length ? `${desde}${precioTexto(total)} · ` : ""}Se paga en el local
             </span>
           </div>
           <BotonPrincipal
@@ -264,7 +277,9 @@ function Asistente({ datos, sucursal, sub }: { datos: NegocioPublico; sucursal: 
         <div className="flex min-w-0 flex-col">
           <strong className="text-[15px]">{datos.negocio.nombre}</strong>
           <span className="truncate text-xs text-[#6B7280]">
-            {resumen} · {duracionTexto(duracion)}
+            {resumen} · {desde}
+            {duracionTexto(duracion)}
+            {sucursal.reglas.mostrarPrecios ? ` · ${precioTexto(total)}` : ""}
           </span>
         </div>
       </header>

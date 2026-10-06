@@ -21,6 +21,9 @@ import { useApi } from "../../lib/useApi";
 
 const mensaje = (e: unknown) => (e instanceof Error ? e.message : "No se pudo guardar");
 
+/** Un costo que puede no venir (sin `costos.ver`, QA S2SEG-04). */
+const dinero = (n: number | null | undefined) => (n == null ? "—" : fmtMoney(n));
+
 type Pestana = "recetas" | "margen";
 
 /**
@@ -94,7 +97,7 @@ function Recetas() {
               </p>
             </div>
             <div className="text-right">
-              <p className="text-sm font-semibold text-texto">{fmtMoney(r.costo)}</p>
+              <p className="text-sm font-semibold text-texto">{dinero(r.costo)}</p>
               <p className="text-[12px] text-texto-3">costo de insumos</p>
             </div>
             <Boton variante="ghost" onClick={() => setEditando(r)}>
@@ -147,9 +150,10 @@ export function EditarReceta({
   }
 
   const porId = new Map(insumos.map((i) => [i.id, i]));
+  const conCosto = insumos.every((i) => i.costo != null);
   const costo = filas.reduce((s, f) => {
     const i = f.insumoId ? porId.get(f.insumoId) : undefined;
-    return s + (i ? i.costo * parsearMontoO(f.cantidad) : 0);
+    return s + (i ? (i.costo ?? 0) * parsearMontoO(f.cantidad) : 0);
   }, 0);
 
   const guardar = async () => {
@@ -251,9 +255,11 @@ export function EditarReceta({
         <Boton variante="soft" icono="plus" onClick={() => setFilas((fs) => [...fs, { insumoId: "", cantidad: "" }])}>
           Agregar insumo
         </Boton>
-        <p className="text-right text-sm text-texto-2">
-          Costo por servicio <strong className="text-texto">{fmtMoney(costo)}</strong>
-        </p>
+        {conCosto && (
+          <p className="text-right text-sm text-texto-2">
+            Costo por servicio <strong className="text-texto">{fmtMoney(costo)}</strong>
+          </p>
+        )}
       </div>
     </Modal>
   );
@@ -289,8 +295,8 @@ function Margen() {
         <>
           <div className="grid gap-3 sm:grid-cols-3">
             <Kpi etiqueta="Ingreso por servicios" valor={fmtMoney(d.ingreso)} icono="dollar" />
-            <Kpi etiqueta="Costo de insumos" valor={fmtMoney(d.costoInsumos)} icono="sack" tono="amarillo" />
-            <Kpi etiqueta="Margen" valor={fmtMoney(d.margen)} icono="trendingUp" />
+            <Kpi etiqueta="Costo de insumos" valor={dinero(d.costoInsumos)} icono="sack" tono="amarillo" />
+            <Kpi etiqueta="Margen" valor={dinero(d.margen)} icono="trendingUp" />
           </div>
           <div className="card overflow-x-auto">
             <table className="w-full text-[13px]">
@@ -310,11 +316,13 @@ function Margen() {
                     <td className="p-3 text-right text-texto-2">{fmtNum(s.cantidad)}</td>
                     <td className="p-3 text-right text-texto-2">{fmtMoney(s.ingreso)}</td>
                     <td className="p-3 text-right text-texto-2">
-                      {fmtMoney(s.costoInsumos)}
-                      <span className="block text-[11px] text-texto-4">{fmtMoney(s.costoPorServicio)} c/u</span>
+                      {dinero(s.costoInsumos)}
+                      {s.costoPorServicio != null && (
+                        <span className="block text-[11px] text-texto-4">{fmtMoney(s.costoPorServicio)} c/u</span>
+                      )}
                     </td>
                     <td className="p-3 text-right font-semibold text-texto">
-                      {fmtMoney(s.margen)}
+                      {dinero(s.margen)}
                       <span className="block text-[11px] font-normal text-texto-4">
                         {s.margenPct == null ? "—" : `${Math.round(s.margenPct)}%`}
                       </span>

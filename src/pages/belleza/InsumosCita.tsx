@@ -26,7 +26,9 @@ export default function InsumosCita({
   const [agregando, setAgregando] = useState(false);
   const d = datos.datos;
   const ventaId = d?.ventas[0]?.id ?? null;
-  const costo = (d?.consumos ?? []).reduce((s, c) => s + c.costo, 0);
+  // Sin `costos.ver` el backend no manda el costo: no se muestra (S2SEG-04).
+  const conCosto = (d?.consumos ?? []).every((c) => c.costo != null);
+  const costo = (d?.consumos ?? []).reduce((s, c) => s + (c.costo ?? 0), 0);
 
   return (
     <section className="space-y-2" aria-label="Insumos usados">
@@ -55,7 +57,7 @@ export default function InsumosCita({
               <FilaConsumo key={c.id} consumo={c} onGuardado={datos.recargar} />
             ))}
           </ul>
-          {d.consumos.length > 0 && (
+          {d.consumos.length > 0 && conCosto && (
             <p className="text-right text-[12px] text-texto-3">
               Costo de insumos <strong className="text-texto">{fmtMoney(costo)}</strong>
             </p>

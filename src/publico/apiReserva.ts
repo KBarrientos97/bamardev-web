@@ -78,12 +78,23 @@ export interface ServicioPublico {
   duracionMin: number;
   /** null cuando el negocio no muestra precios online. */
   precio: number | null;
+  /**
+   * El rango entre los profesionales que lo hacen (precio y duración propios,
+   * fase 2): con "cualquiera" se muestra "desde". Opcionales: un backend
+   * anterior no los manda.
+   */
+  precioDesde?: number | null;
+  precioHasta?: number | null;
+  duracionDesde?: number | null;
+  duracionHasta?: number | null;
 }
 
 export interface ProfesionalPublico {
   id: number;
   nombre: string;
   servicioIds: number[];
+  /** Lo que cobra y tarda ESTE profesional en cada servicio (QA N2-06). */
+  servicios?: { servicioId: number; precio: number | null; duracionMin: number }[];
 }
 
 export interface SucursalPublica {

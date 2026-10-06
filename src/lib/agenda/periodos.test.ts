@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { correrPeriodo, periodoActual, periodoDe, textoPeriodo } from "./periodos";
+import { correrPeriodo, periodoActual, periodoCerrado, periodoDe, terminaDespues, textoPeriodo } from "./periodos";
 
 describe("períodos de liquidación", () => {
   it("la semana va de lunes a domingo", () => {
@@ -31,6 +31,15 @@ describe("períodos de liquidación", () => {
       desde: "2026-10-12",
       hasta: "2026-10-18",
     });
+  });
+
+  it("QA N2-08: el último período cerrado es el anterior al de hoy", () => {
+    // Martes 06-oct-2026: la semana en curso (5 al 11) todavía no terminó.
+    expect(terminaDespues(periodoActual("SEMANA", "2026-10-06"), "2026-10-06")).toBe(true);
+    expect(periodoCerrado("SEMANA", "2026-10-06")).toEqual({ tipo: "SEMANA", desde: "2026-09-28", hasta: "2026-10-04" });
+    expect(periodoCerrado("QUINCENA", "2026-10-06")).toEqual({ tipo: "QUINCENA", desde: "2026-09-16", hasta: "2026-09-30" });
+    expect(periodoCerrado("MES", "2026-10-06")).toEqual({ tipo: "MES", desde: "2026-09-01", hasta: "2026-09-30" });
+    expect(terminaDespues(periodoCerrado("SEMANA", "2026-10-06"), "2026-10-06")).toBe(false);
   });
 
   it("se lee en castellano", () => {

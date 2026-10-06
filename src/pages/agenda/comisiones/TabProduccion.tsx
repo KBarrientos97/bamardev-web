@@ -159,7 +159,14 @@ export function TablaLineas({ lineas, vacio = "Sin ventas en el período." }: { 
                 {!l.esServicio && <span className="ml-1 text-texto-4">(producto)</span>}
                 {l.comprobante && <span className="ml-1 text-texto-4">· {l.comprobante}</span>}
               </td>
-              <td className="py-1.5 pr-2 text-right">{fmtMoney(l.subtotal)}</td>
+              <td className="py-1.5 pr-2 text-right">
+                {fmtMoney(l.subtotal)}
+                {(l.descuento ?? 0) > 0 && l.bruto != null && (
+                  <span className="block text-[11px] text-texto-4">
+                    {fmtMoney(l.bruto)} − {fmtMoney(l.descuento ?? 0)}
+                  </span>
+                )}
+              </td>
               <td className="py-1.5 pr-2 text-right" title={l.congelada ? "Congelado al cobrar" : "% vigente: se cobró sin % configurado"}>
                 {l.comisionPct == null ? "—" : `${l.comisionPct}%`}
                 {!l.congelada && l.comisionPct != null ? "*" : ""}

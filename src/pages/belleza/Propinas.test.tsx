@@ -35,8 +35,8 @@ const REPORTE: ReportePropinas = {
   total: 15,
   pendiente: 15,
   profesionales: [
-    { recursoId: 7, nombre: "Ana", total: 10, efectivo: 10, otras: 0, cantidad: 1, pendiente: 10 },
-    { recursoId: 8, nombre: "Beto", total: 5, efectivo: 0, otras: 5, cantidad: 1, pendiente: 5 },
+    { recursoId: 7, nombre: "Ana", total: 10, efectivo: 10, otras: 0, cantidad: 1, pendiente: 10, pendienteEfectivo: 10, pendienteOtras: 0 },
+    { recursoId: 8, nombre: "Beto", total: 5, efectivo: 0, otras: 5, cantidad: 1, pendiente: 5, pendienteEfectivo: 0, pendienteOtras: 5 },
   ],
   detalle: [],
 };
@@ -65,7 +65,7 @@ describe("Propinas", () => {
     expect(ana).toHaveTextContent(/10,00 por entregar/);
   });
 
-  it("el encargado entrega desde su caja", async () => {
+  it("el encargado entrega el efectivo desde la caja donde se cobró", async () => {
     vi.mocked(apiExtras.pagarPropinas).mockResolvedValue({
       recursoId: 7,
       recurso: "Ana",
@@ -79,8 +79,29 @@ describe("Propinas", () => {
     await act(async () => {
       fireEvent.click(screen.getAllByText("Entregar").at(-1)!);
     });
-    expect(apiExtras.pagarPropinas).toHaveBeenCalledWith(7, true);
-    expect(screen.getByText(/Entregaste Bs.10,00 a Ana \(salió de tu caja\)/)).toBeInTheDocument();
+    expect(apiExtras.pagarPropinas).toHaveBeenCalledWith(7, true, false);
+    expect(screen.getByText(/Entregaste Bs.10,00 a Ana \(salió de la caja\)/)).toBeInTheDocument();
+  });
+
+  it("QA S2SEG-06: lo de QR no sale del cajón salvo que se marque", async () => {
+    vi.mocked(apiExtras.pagarPropinas).mockResolvedValue({
+      recursoId: 8,
+      recurso: "Beto",
+      cantidad: 1,
+      total: 5,
+      desdeCaja: true,
+    });
+    await montar();
+    fireEvent.click(within(screen.getByText("Beto").closest("li")!).getByText("Entregar"));
+    const entregar = screen.getAllByText("Entregar").at(-1)!.closest("button")!;
+    // Sólo tiene QR: sin marcar, no hay nada que sacar del cajón.
+    expect(entregar).toBeDisabled();
+    fireEvent.click(screen.getByLabelText(/también/));
+    expect(entregar).not.toBeDisabled();
+    await act(async () => {
+      fireEvent.click(entregar);
+    });
+    expect(apiExtras.pagarPropinas).toHaveBeenCalledWith(8, true, true);
   });
 
   it("o la marca pagada por fuera de la caja", async () => {
@@ -97,7 +118,7 @@ describe("Propinas", () => {
     await act(async () => {
       fireEvent.click(screen.getAllByText("Entregar").at(-1)!);
     });
-    expect(apiExtras.pagarPropinas).toHaveBeenCalledWith(8, false);
+    expect(apiExtras.pagarPropinas).toHaveBeenCalledWith(8, false, true);
   });
 
   it("el profesional ve las suyas sin el botón de entregar", async () => {

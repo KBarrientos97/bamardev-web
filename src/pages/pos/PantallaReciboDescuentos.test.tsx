@@ -76,4 +76,23 @@ describe("ticket con descuentos", () => {
     expect(screen.getAllByText(/− Bs\s?10/).length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText(/Bs\s?90/).length).toBeGreaterThanOrEqual(1);
   });
+
+  it("QA N2-12: con vale y propinas, el ticket dice cuánto pagó el vale, cuánto le queda y las propinas", () => {
+    dibujar(
+      venta({
+        total: 35,
+        giftCards: [{ codigo: "DDX2-2YX9", usado: 24, saldo: 76 }],
+        propinas: [{ recursoId: 2, recurso: "Marco", monto: 10, formaPago: "Efectivo" }],
+      }),
+    );
+    expect(screen.getByText("Vale DDX2-2YX9")).toBeInTheDocument();
+    expect(screen.getByText(/Le quedan Bs\s?76,00/)).toBeInTheDocument();
+    expect(screen.getByText("Para Marco (Efectivo)")).toBeInTheDocument();
+  });
+
+  it("una venta de siempre no gana renglones de vales ni propinas", () => {
+    dibujar(venta());
+    expect(screen.queryByText(/Vale /)).not.toBeInTheDocument();
+    expect(screen.queryByText("PROPINAS")).not.toBeInTheDocument();
+  });
 });

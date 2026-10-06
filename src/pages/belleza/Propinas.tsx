@@ -10,9 +10,21 @@ import { useApi } from "../../lib/useApi";
 const mensaje = (e: unknown) => (e instanceof Error ? e.message : "No se pudo completar");
 
 /**
+ * Lo que se entrega con las opciones elegidas: el efectivo siempre; lo de QR
+ * o tarjeta sólo si se marca (o si se paga todo por fuera, por transferencia).
+ */
+function aEntregar(f: FilaPropinas, porFuera: boolean, conOtras: boolean): number {
+  const efectivo = f.pendienteEfectivo ?? f.pendiente;
+  const otras = f.pendienteOtras ?? 0;
+  return Math.round((efectivo + (porFuera || conOtras ? otras : 0)) * 100) / 100;
+}
+
+/**
  * Propinas por profesional (feature `propinas`). No son ingreso del negocio:
- * no suman a las ventas. La que se dejó en efectivo está en el cajón hasta que
- * se le entrega al profesional ("Entregar", que sale de la caja del turno).
+ * no suman a las ventas. La que se dejó en efectivo está en el cajón donde se
+ * cobró hasta que se le entrega al profesional: "Entregar" la saca de ESA
+ * caja (o de la tuya, si aquella ya se cerró). La de QR o tarjeta nunca pasó
+ * por un cajón: sólo sale en efectivo si se marca (QA N2-01, S2SEG-06).
  *
  * El profesional entra a la misma pantalla y ve sólo las suyas (lo filtra el
  * backend, alcance PROPIO): sin el botón de entregar.
@@ -28,6 +40,7 @@ export default function Propinas() {
   );
   const [aPagar, setAPagar] = useState<FilaPropinas | null>(null);
   const [desdeCaja, setDesdeCaja] = useState(true);
+  const [conOtras, setConOtras] = useState(false);
   const [pagando, setPagando] = useState(false);
   const [error, setError] = useState("");
   const [aviso, setAviso] = useAviso();
@@ -37,9 +50,9 @@ export default function Propinas() {
     setError("");
     setPagando(true);
     try {
-      const r = await apiExtras.pagarPropinas(aPagar.recursoId, desdeCaja);
+      const r = await apiExtras.pagarPropinas(aPagar.recursoId, desdeCaja, !desdeCaja || conOtras);
       setAviso(
-        `Entregaste ${fmtMoney(r.total)} a ${r.recurso}${r.desdeCaja ? " (salió de tu caja)" : ""}.`,
+        `Entregaste ${fmtMoney(r.total)} a ${r.recurso}${r.desdeCaja ? " (salió de la caja)" : " (por fuera de la caja)"}.`,
       );
       rep.recargar();
     } catch (e) {
@@ -103,7 +116,14 @@ export default function Propinas() {
                   </p>
                 </div>
                 {puedePagar && p.pendiente > 0 && (
-                  <Boton variante="soft" onClick={() => setAPagar(p)}>
+                  <Boton
+                    variante="soft"
+                    onClick={() => {
+                      setDesdeCaja(true);
+                      setConOtras(false);
+                      setAPagar(p);
+                    }}
+                  >
                     Entregar
                   </Boton>
                 )}
@@ -140,7 +160,7 @@ export default function Propinas() {
             <Boton variante="ghost" onClick={() => setAPagar(null)} disabled={pagando}>
               Cancelar
             </Boton>
-            <Boton onClick={pagar} disabled={pagando}>
+            <Boton onClick={pagar} disabled={pagando || !aPagar || aEntregar(aPagar, !desdeCaja, conOtras) <= 0}>
               {pagando ? "Entregando…" : "Entregar"}
             </Boton>
           </>
@@ -149,11 +169,25 @@ export default function Propinas() {
         {aPagar && (
           <div className="space-y-3 text-sm text-texto-2">
             <p>
-              <strong className="text-texto">{fmtMoney(aPagar.pendiente)}</strong>{" "}
+              <strong className="text-texto">{fmtMoney(aEntregar(aPagar, !desdeCaja, conOtras))}</strong>{" "}
               {desdeCaja
-                ? "salen en efectivo de tu caja del turno."
+                ? "salen en efectivo de la caja donde se cobraron (si ya se cerró, de la tuya)."
                 : "se marcan como pagados por fuera de la caja."}
             </p>
+            {desdeCaja && (aPagar.pendienteOtras ?? 0) > 0 && (
+              <label className="flex items-start gap-2">
+                <input
+                  type="checkbox"
+                  className="mt-1"
+                  checked={conOtras}
+                  onChange={(e) => setConOtras(e.target.checked)}
+                />
+                <span>
+                  Entregar también {fmtMoney(aPagar.pendienteOtras ?? 0)} que dejaron por QR o tarjeta (salen en
+                  efectivo de tu caja)
+                </span>
+              </label>
+            )}
             <label className="flex items-center gap-2">
               <input
                 type="checkbox"

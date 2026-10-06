@@ -1,6 +1,6 @@
 import { createContext, useContext } from "react";
 import { horaNegocio } from "../lib/agenda/horaAgenda";
-import type { NegocioPublico } from "./apiReserva";
+import type { NegocioPublico, ProfesionalPublico, ServicioPublico } from "./apiReserva";
 
 /**
  * Lo que no es componente de la página pública (aparte de `piezas.tsx` para
@@ -31,6 +31,38 @@ export const NegocioCtx = createContext<ContextoNegocio>({
 });
 
 export const useNegocioPublico = () => useContext(NegocioCtx);
+
+/**
+ * Lo que dura y cuesta lo elegido (QA N2-06). Con un profesional, lo SUYO
+ * (precio y duración propios, como se crea la cita y se cobra); con
+ * "cualquiera", lo más barato y lo más corto, y `desde` si alguno cobra o
+ * tarda distinto.
+ */
+export function cuentaReserva(
+  servicios: ServicioPublico[],
+  profesional: ProfesionalPublico | null | undefined,
+): { duracion: number; precio: number; desde: boolean } {
+  let duracion = 0;
+  let precio = 0;
+  let desde = false;
+  for (const s of servicios) {
+    const propio = profesional?.servicios?.find((x) => x.servicioId === s.id);
+    if (propio) {
+      duracion += propio.duracionMin;
+      precio += propio.precio ?? s.precio ?? 0;
+      continue;
+    }
+    duracion += profesional ? s.duracionMin : (s.duracionDesde ?? s.duracionMin);
+    precio += profesional ? (s.precio ?? 0) : (s.precioDesde ?? s.precio ?? 0);
+    if (
+      !profesional &&
+      ((s.precioHasta ?? s.precioDesde) !== s.precioDesde || (s.duracionHasta ?? s.duracionDesde) !== s.duracionDesde)
+    ) {
+      desde = true;
+    }
+  }
+  return { duracion, precio, desde };
+}
 
 /** "Bs 50" o "Bs 52,50". */
 export function precioTexto(n: number): string {

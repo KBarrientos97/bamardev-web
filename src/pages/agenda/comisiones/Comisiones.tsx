@@ -2,7 +2,12 @@ import { useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { EncabezadoPagina } from "../../../components/filtros";
 import { fechaNegocio } from "../../../lib/agenda/horaAgenda";
-import { periodoActual, type PeriodoElegido } from "../../../lib/agenda/periodos";
+import {
+  periodoActual,
+  periodoCerrado,
+  terminaDespues,
+  type PeriodoElegido,
+} from "../../../lib/agenda/periodos";
 import { tienePermiso } from "../../../lib/permisos";
 import { useAuth } from "../../../store/AuthContext";
 import SelectorPeriodo from "./SelectorPeriodo";
@@ -40,15 +45,23 @@ export default function Comisiones() {
   const [params, setParams] = useSearchParams();
   const pedida = params.get("pestana") as Pestana | null;
   const pestana: Pestana = pedida && pestanas.includes(pedida) ? pedida : "produccion";
+
+  // El período es uno solo para Producción y Liquidar: mirar la quincena y
+  // pasar a liquidarla no obliga a elegirla de nuevo. Para liquidar, por
+  // defecto el último período cerrado (QA N2-08): el de hoy todavía no
+  // terminó y el backend no deja liquidar días que no pasaron.
+  const [periodo, setPeriodo] = useState<PeriodoElegido>(() =>
+    pestana === "liquidar" ? periodoCerrado("SEMANA", fechaNegocio()) : periodoActual("SEMANA", fechaNegocio()),
+  );
   const elegir = (p: Pestana) => {
     const nuevos = new URLSearchParams(params);
     nuevos.set("pestana", p);
     setParams(nuevos, { replace: true });
+    const hoy = fechaNegocio();
+    if (p === "liquidar" && periodo.tipo !== "OTRO" && terminaDespues(periodo, hoy)) {
+      setPeriodo(periodoCerrado(periodo.tipo, hoy));
+    }
   };
-
-  // El período es uno solo para Producción y Liquidar: mirar la quincena y
-  // pasar a liquidarla no obliga a elegirla de nuevo.
-  const [periodo, setPeriodo] = useState<PeriodoElegido>(() => periodoActual("SEMANA", fechaNegocio()));
   const [recursoLiquidar, setRecursoLiquidar] = useState<number | null>(null);
 
   return (
@@ -81,7 +94,7 @@ export default function Comisiones() {
       </div>
 
       {(pestana === "produccion" || pestana === "liquidar") && (
-        <SelectorPeriodo valor={periodo} onChange={setPeriodo} />
+        <SelectorPeriodo valor={periodo} onChange={setPeriodo} libre />
       )}
 
       <div role="tabpanel" id={`panel-${pestana}`} aria-labelledby={`tab-${pestana}`}>
@@ -99,7 +112,12 @@ export default function Comisiones() {
           />
         )}
         {pestana === "liquidar" && liquida && (
-          <TabLiquidar periodo={periodo} recursoId={recursoLiquidar} onRecurso={setRecursoLiquidar} />
+          <TabLiquidar
+            periodo={periodo}
+            onPeriodo={setPeriodo}
+            recursoId={recursoLiquidar}
+            onRecurso={setRecursoLiquidar}
+          />
         )}
         {pestana === "adelantos" && <TabAdelantos puedeRegistrar={liquida} />}
         {pestana === "liquidaciones" && <TabLiquidaciones />}
