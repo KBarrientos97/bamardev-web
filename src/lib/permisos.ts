@@ -108,7 +108,12 @@ export type Seccion =
   /** "Mi página": el editor de la página pública del negocio. */
   | "mi_pagina"
   /** "Mis enlaces": los enlaces cortos con QR y clics. */
-  | "mis_enlaces";
+  | "mis_enlaces"
+  // ── CRM y promociones (PLAN-CRM-Y-PROMOCIONES) ──
+  /** Promociones y cupones: el ABM, los cupones y el enlace de campaña. */
+  | "promociones"
+  /** Los clientes que no vuelven, los segmentos y el contacto por wa.me. */
+  | "retencion";
 
 /**
  * Qué módulo de rol y qué feature de plan exige cada sección. `feature: null`
@@ -186,6 +191,9 @@ const REQUISITOS: Record<Seccion, { modulo: Modulo | null; feature: Feature | nu
   // (el backend exige las dos).
   mi_pagina: { modulo: null, feature: "pagina_publica" },
   mis_enlaces: { modulo: null, feature: "enlaces_cortos" },
+  // Nuevas del 06-oct, sin módulo de rol: las cortan la feature y el permiso.
+  promociones: { modulo: null, feature: "promociones" },
+  retencion: { modulo: null, feature: "clientes_retencion" },
 };
 
 /**
@@ -206,6 +214,9 @@ const FEATURES_ESTRICTAS: Feature[] = [
   "reserva_online",
   "pagina_publica",
   "enlaces_cortos",
+  // Promociones y CRM: nuevas, se prenden por negocio. A Omar no le aparecen.
+  "promociones",
+  "clientes_retencion",
 ];
 
 /**
@@ -269,6 +280,9 @@ const ROLES_PERMITIDOS: Partial<Record<Seccion, Rol[]>> = {
   // La página es la vitrina del negocio: la edita el dueño (§3).
   mi_pagina: ["ADMIN"],
   mis_enlaces: ["ADMIN"],
+  // Respaldo sin permisos del backend (sesión vieja): lo de §9.2 del plan.
+  promociones: ["ADMIN"],
+  retencion: ["ADMIN", "SUPERVISOR", "CAJERO"],
 };
 
 /**
@@ -374,6 +388,8 @@ const PERMISO_SECCION: Partial<
   solicitudes: { permiso: "reservas.aprobar" },
   mi_pagina: { permiso: "negocio.configurar" },
   mis_enlaces: { permiso: "negocio.configurar" },
+  promociones: { permiso: "promociones.gestionar" },
+  retencion: { permiso: "cliente.marketing" },
 };
 
 type ConPermisos = Pick<SesionUsuario, "permisos" | "permisosPropios"> | null | undefined;

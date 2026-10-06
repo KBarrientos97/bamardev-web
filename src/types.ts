@@ -867,6 +867,16 @@ export interface DetalleVenta {
   subtotal: number;
   nota: string | null;
   consumo: Consumo;
+  /** Sólo en una venta con descuento (PLAN-CRM-Y-PROMOCIONES). */
+  descuento?: number;
+  descuentoNombre?: string | null;
+}
+
+/** Un renglón de descuento del recibo: "2x1 martes  − Bs 25". */
+export interface DescuentoRecibo {
+  nombre: string;
+  codigo: string | null;
+  monto: number;
 }
 
 export interface Venta {
@@ -912,6 +922,14 @@ export interface Venta {
   mesero?: string | null;
   /** La cita de la agenda que cobró. Ausente en cualquier otra venta. */
   citaId?: number;
+  /**
+   * Sólo en una venta con cupón o promoción: el bruto, el descuento y cada
+   * renglón con su nombre. `total` sigue siendo lo que se cobró.
+   */
+  subtotal?: number;
+  descuentoTotal?: number;
+  descuentos?: DescuentoRecibo[];
+  clienteId?: number;
 }
 
 export interface DetalleVentaInput {
@@ -1117,6 +1135,12 @@ export interface VentaInput {
   credito?: CreditoInput;
   /** Agenda: la cita que cobra esta venta. La venta la completa (§10). */
   citaId?: number;
+  // Cupones y promociones: el descuento lo calcula el backend. Mandar
+  // `descuentosEsperados` (lo que devolvió /ventas/cotizar) es lo que prende el
+  // motor en esta venta; sin él la venta es la de siempre.
+  clienteId?: number;
+  cupones?: string[];
+  descuentosEsperados?: { promocionId: number; monto: number }[];
 }
 
 export interface Repartidor {

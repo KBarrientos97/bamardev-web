@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Icon } from "../../components/Icon";
 import { Cargando, ErrorMsg } from "../../components/ui";
-import { api } from "../../lib/api";
+import { ApiError, api } from "../../lib/api";
 import { apiAgenda, mensajeDe } from "../../lib/agenda/apiAgenda";
 import {
   citaDeLaUrl,
@@ -42,6 +42,8 @@ import PantallaRecibo from "./PantallaRecibo";
 import PantallaVenta from "./PantallaVenta";
 import { useVentaFarmacia } from "../farmacia/ventaFarmacia";
 import { useCarrito } from "./useCarrito";
+import { useDescuentos } from "./useDescuentos";
+import BloqueDescuentos from "./BloqueDescuentos";
 import { useIntentoDeCobro } from "./useIntentoDeCobro";
 
 type Pantalla =
@@ -156,6 +158,19 @@ export default function Pos() {
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState("");
 
+  // Cupones y promociones (PLAN-CRM-Y-PROMOCIONES): sólo con la feature,
+  // estricta (sin fallar abierto). Sin ella el hook no pide nada y la venta
+  // sale como siempre. Una mesa no aplica promociones en esta versión.
+  const conPromos = !!negocio?.features?.includes("promociones");
+  const descuentos = useDescuentos({
+    activo: conPromos && !mesaCobrando,
+    conCupones: !!negocio?.features?.includes("cupones"),
+    detalles: carrito.aDetalles(),
+    almacenId: caja.datos?.caja?.almacenId ?? null,
+  });
+  /** Lo que se cobra: el neto si hay promociones, el de siempre si no. */
+  const totalCarrito = descuentos.total(carrito.total);
+
   const permiteDelivery = tieneFeature(negocio?.features, "delivery");
   const permiteRecoger = tieneFeature(negocio?.features, "recoger");
 
@@ -254,6 +269,7 @@ export default function Pos() {
   const cuerpoVenta = useCallback(
     (pagos?: PagoInput[]) => ({
       ...conCita(carrito.aDetalles(), citaCobrando),
+      ...descuentos.extraVenta(),
       tipoPedido,
       ...(pagos ? { pagos } : {}),
       ...(datosEntrega
@@ -269,17 +285,18 @@ export default function Pos() {
           }
         : {}),
     }),
-    [carrito, tipoPedido, datosEntrega, citaCobrando],
+    [carrito, tipoPedido, datosEntrega, citaCobrando, descuentos],
   );
 
   const limpiar = useCallback(() => {
     carrito.vaciar();
+    descuentos.reiniciar();
     setTipoPedido("LOCAL");
     setDatosEntrega(null);
     setError("");
     setCitaCobrando(null);
     setErrorCita("");
-  }, [carrito, setCitaCobrando]);
+  }, [carrito, setCitaCobrando, descuentos]);
 
   const cobrar = useCallback(
     async (pagos: PagoInput[]) => {
@@ -312,12 +329,15 @@ export default function Pos() {
         // El stock cambió al vender: el catálogo tiene que reflejarlo.
         productos.recargar();
       } catch (err) {
+        // Una promo cambió entre la cotización y el cobro: se recalcula para
+        // que al volver el carrito muestre el total nuevo.
+        if (err instanceof ApiError && err.codigo === "DESCUENTO_CAMBIO") descuentos.recotizar();
         setError(err instanceof Error ? err.message : "No se pudo registrar la venta");
       } finally {
         setEnviando(false);
       }
     },
-    [cuerpoVenta, limpiar, productos, intento, conAgenda, refrescarCitas],
+    [cuerpoVenta, limpiar, productos, intento, conAgenda, refrescarCitas, descuentos],
   );
 
   /**
@@ -332,6 +352,7 @@ export default function Pos() {
       try {
         const creada = await api.crearVenta({
           detalles: carrito.aDetalles(),
+          ...descuentos.extraVenta(),
           tipoPedido,
           clienteNombre: datos.clienteNombre,
           clienteDireccion: datos.clienteDireccion,
@@ -354,7 +375,7 @@ export default function Pos() {
         setEnviando(false);
       }
     },
-    [carrito, tipoPedido, limpiar, productos, intento],
+    [carrito, tipoPedido, limpiar, productos, intento, descuentos],
   );
 
   /**
@@ -370,6 +391,7 @@ export default function Pos() {
         const creada = await api.crearVenta({
           // Una cita también se puede fiar (§10): la venta la completa igual.
           ...conCita(carrito.aDetalles(), citaCobrando),
+          ...descuentos.extraVenta(),
           tipoPedido: "LOCAL",
           credito,
           ...(pagos.length ? { pagos } : {}),
@@ -386,7 +408,7 @@ export default function Pos() {
         setEnviando(false);
       }
     },
-    [carrito, limpiar, productos, intento, citaCobrando],
+    [carrito, limpiar, productos, intento, citaCobrando, descuentos],
   );
 
   if (caja.cargando) return <Cargando texto="Buscando tu caja…" />;
@@ -489,7 +511,7 @@ export default function Pos() {
     return (
       <PantallaEntrega
         tipo={tipoPedido === "DELIVERY" ? "DELIVERY" : "RECOGER"}
-        total={carrito.total}
+        total={totalCarrito}
         unidades={carrito.unidades}
         repartidores={repartidores.datos ?? []}
         enviando={enviando}
@@ -516,7 +538,7 @@ export default function Pos() {
         //
         // Cobrando una mesa el total es el consumo que cargó el mesero, no el
         // carrito: la cajera no retipea nada de lo que el cliente comió.
-        total={mesaCobrando ? consumoDeMesa(mesaCobrando) : carrito.total}
+        total={mesaCobrando ? consumoDeMesa(mesaCobrando) : totalCarrito}
         subtitulo={
           mesaCobrando
             ? etiquetaMesa(mesaCobrando)
@@ -559,7 +581,7 @@ export default function Pos() {
   if (pantalla === "credito")
     return (
       <PantallaCredito
-        total={carrito.total}
+        total={totalCarrito}
         formasPago={formasPago.datos ?? []}
         onAtras={() => {
           setError("");
@@ -610,6 +632,15 @@ export default function Pos() {
       carrito={carrito}
       onCobrar={() => setPantalla("cobro")}
       sucursalId={abierta.almacenId}
+      descuentos={
+        conPromos
+          ? {
+              total: totalCarrito,
+              nodo: <BloqueDescuentos descuentos={descuentos} conClientes={puede("clientes")} />,
+              bloqueado: descuentos.cargando,
+            }
+          : undefined
+      }
       cabecera={
         <>
         {/* flex-wrap: con el texto en los botones, en una pantalla angosta

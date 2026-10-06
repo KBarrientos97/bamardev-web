@@ -225,6 +225,22 @@ const ITEMS: (ItemNav & { bloque: Bloque })[] = [
     bloque: "administracion",
     hijos: [{ a: "/mis-enlaces", label: "Mis enlaces", icono: "qr", seccion: "mis_enlaces" }],
   },
+  // CRM y promociones (PLAN-CRM-Y-PROMOCIONES): al final del bloque, así a
+  // quien no las tiene no se le mueve nada del menú.
+  {
+    a: "/promociones",
+    label: "Promociones",
+    icono: "dollar",
+    seccion: "promociones",
+    bloque: "administracion",
+  },
+  {
+    a: "/clientes-que-no-vuelven",
+    label: "Clientes que no vuelven",
+    icono: "users",
+    seccion: "retencion",
+    bloque: "administracion",
+  },
 ];
 
 /** Un ítem ya filtrado por permisos, con su nombre según el rubro. */
