@@ -455,17 +455,22 @@ export const ROLES_APP = [
 export type RolApp = (typeof ROLES_APP)[number];
 
 /**
- * ¿El perfil del rubro ofrece este rol? Sólo se pregunta por PROFESIONAL: es
- * el único que depende del rubro. Sin perfil NO se ofrece, porque el backend
- * rechaza asignarlo donde el perfil no lo trae (y un backend sin perfiles ni
- * siquiera tiene el rol).
+ * ¿El perfil del rubro ofrece este rol?
+ *
+ * Si el perfil trae `config.rolesOfrecidos`, esa lista manda para TODOS los
+ * roles: una barbería no tiene repartidores ni meseros, y ofrecérselos sería
+ * invitar al dueño a crear cuentas que no van a ninguna pantalla. Si no la
+ * trae (o no hay perfil, como con el backend de hoy), son los roles de
+ * siempre y PROFESIONAL no: el backend rechaza asignarlo donde el perfil no
+ * lo ofrece, y un backend sin perfiles ni siquiera tiene el rol.
  */
 export function ofreceRol(
   perfil: Pick<PerfilRubro, "config"> | null | undefined,
   rol: Rol,
 ): boolean {
   const ofrecidos = perfil?.config?.rolesOfrecidos;
-  return Array.isArray(ofrecidos) && ofrecidos.includes(rol);
+  if (Array.isArray(ofrecidos)) return ofrecidos.includes(rol);
+  return rol !== "PROFESIONAL";
 }
 
 /**
@@ -493,7 +498,7 @@ export function rolesAsignables(opc: {
       // el formulario para nada.
       (r !== "ADMIN" &&
         (r !== "MESERO" || conSalon) &&
-        (r !== "PROFESIONAL" || ofreceRol(perfil, r)) &&
+        ofreceRol(perfil, r) &&
         (rolActual === "ADMIN" ||
           r === "CAJERO" ||
           r === "MESERO" ||

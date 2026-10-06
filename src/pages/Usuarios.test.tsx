@@ -251,7 +251,7 @@ describe("el profesional en Usuarios", () => {
     expect(screen.queryByRole("button", { name: /@admin\b/ })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Nuevo" }));
-    expect(rolesOfrecidos()).toEqual(["Supervisor", "Recepción", "Repartidor", "Barbero"]);
+    expect(rolesOfrecidos()).toEqual(["Supervisor", "Recepción", "Barbero"]);
   });
 
   it("el supervisor también lo puede asignar", async () => {
@@ -260,7 +260,7 @@ describe("el profesional en Usuarios", () => {
     sesion.actor = { id: 3, rol: "SUPERVISOR" };
     await montar([ADMIN]);
     fireEvent.click(screen.getByRole("button", { name: "Nuevo" }));
-    expect(rolesOfrecidos()).toEqual(["Recepción", "Repartidor", "Barbero"]);
+    expect(rolesOfrecidos()).toEqual(["Recepción", "Barbero"]);
   });
 
   it("su ficha dice qué va a poder hacer", async () => {

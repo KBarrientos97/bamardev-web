@@ -689,26 +689,45 @@ describe("rolesAsignables", () => {
     ]);
   });
 
-  it("un perfil sin rolesOfrecidos tampoco lo ofrece", () => {
+  it("un perfil sin rolesOfrecidos da los de siempre, sin PROFESIONAL", () => {
+    // Sin la clave = los roles de siempre (contrato §7).
+    expect(rolesAsignables({ rolActual: "ADMIN", conSalon: true, perfil: { config: {} } })).toEqual([
+      "SUPERVISOR",
+      "CAJERO",
+      "MESERO",
+      "REPARTIDOR",
+    ]);
+  });
+
+  it("con rolesOfrecidos, la lista filtra todos los roles", () => {
+    // En una barbería no hay repartidores ni meseros: no se ofrecen aunque el
+    // negocio tuviera salón. ADMIN viene en la lista y sigue sin ofrecerse.
     expect(
-      rolesAsignables({ rolActual: "ADMIN", conSalon: true, perfil: { config: {} } }),
-    ).not.toContain("PROFESIONAL");
+      rolesAsignables({ rolActual: "ADMIN", conSalon: false, perfil: PERFIL_BARBERIA }),
+    ).toEqual(["SUPERVISOR", "CAJERO", "PROFESIONAL"]);
+    expect(
+      rolesAsignables({ rolActual: "ADMIN", conSalon: true, perfil: PERFIL_BARBERIA }),
+    ).toEqual(["SUPERVISOR", "CAJERO", "PROFESIONAL"]);
   });
 
-  it("con un perfil que lo ofrece, lo asignan el admin y el supervisor", () => {
-    const admin = rolesAsignables({ rolActual: "ADMIN", conSalon: false, perfil: PERFIL_BARBERIA });
-    expect(admin).toContain("PROFESIONAL");
-    expect(admin).toContain("SUPERVISOR");
-    const supervisor = rolesAsignables({
-      rolActual: "SUPERVISOR",
-      conSalon: false,
-      perfil: PERFIL_BARBERIA,
-    });
-    expect(supervisor).toEqual(["CAJERO", "REPARTIDOR", "PROFESIONAL"]);
+  it("la lista no le abre al mesero un negocio sin salón", () => {
+    const conMesero = { config: { rolesOfrecidos: ["ADMIN", "CAJERO", "MESERO"] } };
+    expect(rolesAsignables({ rolActual: "ADMIN", conSalon: false, perfil: conMesero })).toEqual([
+      "CAJERO",
+    ]);
+    expect(rolesAsignables({ rolActual: "ADMIN", conSalon: true, perfil: conMesero })).toEqual([
+      "CAJERO",
+      "MESERO",
+    ]);
   });
 
-  it("un cajero no asigna nada que no sea personal de piso", () => {
-    // La pantalla de usuarios no es suya, pero la regla no depende de eso.
+  it("el supervisor también asigna al profesional, dentro de la lista", () => {
+    expect(
+      rolesAsignables({ rolActual: "SUPERVISOR", conSalon: false, perfil: PERFIL_BARBERIA }),
+    ).toEqual(["CAJERO", "PROFESIONAL"]);
+  });
+
+  it("sin perfil, un supervisor sólo asigna personal de piso", () => {
     expect(
       rolesAsignables({ rolActual: "SUPERVISOR", conSalon: true, perfil: null }),
     ).toEqual(["CAJERO", "MESERO", "REPARTIDOR"]);
@@ -722,5 +741,14 @@ describe("rolesAsignables", () => {
     expect(rolesAsignables({ rolActual: "ADMIN", rolDelUsuario: "ADMIN", conSalon: false })).toContain(
       "ADMIN",
     );
+    // Lo mismo con un rol que la lista del rubro ya no trae.
+    expect(
+      rolesAsignables({
+        rolActual: "ADMIN",
+        rolDelUsuario: "REPARTIDOR",
+        conSalon: false,
+        perfil: PERFIL_BARBERIA,
+      }),
+    ).toContain("REPARTIDOR");
   });
 });
