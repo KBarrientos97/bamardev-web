@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { CarritoCita } from "../../lib/agenda/tiposAgenda";
 import type { Producto } from "../../types";
 import type { Carrito } from "./useCarrito";
+import type { ProfesionalesDelCarrito } from "./PantallaVenta";
 
 /**
  * El POS entero, con la venta y el cobro de mentira: lo que se prueba acá es
@@ -71,18 +72,43 @@ vi.mock("../../lib/agenda/apiAgenda", () => ({
 // La venta: muestra el carrito (y lo que va arriba) y deja quitar una
 // línea o ir a cobrar.
 vi.mock("./PantallaVenta", () => ({
-  default: (props: { carrito: Carrito; onCobrar: () => void; cabecera?: ReactNode }) => (
+  default: (props: {
+    carrito: Carrito;
+    onCobrar: () => void;
+    cabecera?: ReactNode;
+    profesionales?: ProfesionalesDelCarrito;
+  }) => (
     <div>
       {props.cabecera}
       <ul>
-        {props.carrito.lineas.map((l) => (
-          <li key={l.producto.id}>
-            {l.producto.nombre} x{l.cantidad} a {l.producto.precio}
-            <button onClick={() => props.carrito.quitar(l.producto.id)}>
-              quitar {l.producto.nombre}
-            </button>
-          </li>
-        ))}
+        {props.carrito.lineas.map((l) => {
+          // QA PER-07b: lo que la línea del carrito dice de su profesional.
+          const pro = props.profesionales?.de(l);
+          return (
+            <li key={l.producto.id}>
+              {l.producto.nombre} x{l.cantidad} a {l.producto.precio}
+              {pro && (
+                <select
+                  aria-label={`Quién atendió ${l.producto.nombre}`}
+                  value={pro.actual ?? ""}
+                  onChange={(e) =>
+                    props.profesionales!.onCambiar(l.producto.id, e.target.value ? Number(e.target.value) : null)
+                  }
+                >
+                  <option value="">sin asignar</option>
+                  {pro.opciones.map((o) => (
+                    <option key={o.id} value={o.id}>
+                      {o.nombre}
+                    </option>
+                  ))}
+                </select>
+              )}
+              <button onClick={() => props.carrito.quitar(l.producto.id)}>
+                quitar {l.producto.nombre}
+              </button>
+            </li>
+          );
+        })}
       </ul>
       <button onClick={props.onCobrar}>ir a cobrar</button>
     </div>
@@ -588,6 +614,43 @@ describe("N2-13: venta directa con profesional", () => {
       [189, 4],
       [300, 3],
     ]);
+  });
+
+  it("QA PER-07b: cada línea del carrito dice quién la atendió, y se cambia desde ahí", async () => {
+    sesion.features = ["pos", "caja", "agenda", "propinas"];
+    sesion.conAgenda = true;
+    enCarrito(189, 190);
+    await montar();
+    const linea = (nombre: string) => screen.getByLabelText(`Quién atendió ${nombre}`) as HTMLSelectElement;
+    // Sin nadie elegido, la línea dice "sin asignar".
+    expect(linea("Corte de dama").value).toBe("");
+    fireEvent.change(screen.getByLabelText("Profesional de la venta"), { target: { value: "3" } });
+    expect(linea("Corte de dama").value).toBe("3");
+    expect(linea("Tinte raíz").value).toBe("3");
+    // Cambiar una línea desde el carrito: arriba pasa a "Varios", la otra no se toca.
+    fireEvent.change(linea("Corte de dama"), { target: { value: "4" } });
+    expect(linea("Corte de dama").value).toBe("4");
+    expect(linea("Tinte raíz").value).toBe("3");
+    expect((screen.getByLabelText("Profesional de la venta") as HTMLSelectElement).value).toBe("VARIOS");
+    fireEvent.click(screen.getByRole("button", { name: "ir a cobrar" }));
+    expect(screen.getByText("propina para: Carla, Sofía")).toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "pagar 260" }));
+    });
+    const cuerpo = vi.mocked(api.crearVenta).mock.calls[0][0] as {
+      detalles: { productoId: number; recursoId?: number }[];
+    };
+    expect(cuerpo.detalles.map((d) => [d.productoId, d.recursoId])).toEqual([
+      [189, 4],
+      [190, 3],
+    ]);
+  });
+
+  it("QA PER-07b: sin agenda (Omar) el carrito no dice nada de profesionales", async () => {
+    sesion.features = ["pos", "caja", "salon", "delivery"];
+    enCarrito(189, 190);
+    await montar();
+    expect(screen.queryByLabelText(/Quién atendió/)).not.toBeInTheDocument();
   });
 
   it("QA VER-04: «Por servicio» ofrece sólo a quienes hacen ese servicio", async () => {

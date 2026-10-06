@@ -111,6 +111,52 @@ export function profesionalesDelServicio(
   return lo.some((p) => p.servicioIds.includes(servicioId)) ? lo : profesionales;
 }
 
+/** Quién tiene una línea del carrito y entre quiénes se la puede cambiar. */
+export interface ProfesionalDeLinea {
+  /** El de la línea (null = nadie). */
+  actual: number | null;
+  /** Su nombre, para mostrarlo sin buscar (null = nadie). */
+  nombre: string | null;
+  opciones: ProfesionalPos[];
+}
+
+/**
+ * Lo que la línea del carrito dice de su profesional (QA PER-07b): con
+ * "Por servicio" cada servicio puede ser de alguien distinto y el carrito no
+ * lo mostraba. Un servicio siempre (con "sin asignar" si no hay nadie); un
+ * producto de reventa sólo si ya tiene vendedor —si no, cada champú del
+ * carrito diría "sin asignar" y ensuciaría la venta de siempre—; un paquete,
+ * nunca. Las opciones son las mismas que las de "Por servicio".
+ */
+export function profesionalDeLaLinea(
+  p: Producto,
+  a: AsignacionProfesional,
+  profesionales: ProfesionalPos[],
+): ProfesionalDeLinea | null {
+  if (!profesionales.length) return null;
+  const nombreDe = (id: number | null) => (id == null ? null : (profesionales.find((x) => x.id === id)?.nombre ?? null));
+  if (llevaProfesional(p)) {
+    const actual = profesionalDe(p.id, a);
+    return { actual, nombre: nombreDe(actual), opciones: profesionalesDelServicio(p.id, profesionales, actual) };
+  }
+  if (esReventa(p)) {
+    const actual = a.porServicio[p.id] ?? null;
+    if (actual == null) return null;
+    const opciones = profesionales.filter((x) => x.comisionaProductos || x.id === actual);
+    return { actual, nombre: nombreDe(actual), opciones };
+  }
+  return null;
+}
+
+/** Cambia el profesional de UNA línea: lo demás de la venta queda como estaba. */
+export function conProfesionalEnLinea(
+  a: AsignacionProfesional,
+  productoId: number,
+  recursoId: number | null,
+): AsignacionProfesional {
+  return { ...a, porServicio: { ...a.porServicio, [productoId]: recursoId } };
+}
+
 /**
  * Lo que dice el selector de toda la venta (QA PER-07): el profesional de
  * todos los servicios si es uno solo, o "VARIOS" si "Por servicio" los

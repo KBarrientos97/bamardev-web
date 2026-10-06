@@ -6,9 +6,11 @@ import type { PaqueteDelCliente } from "./tiposSpa";
 import {
   carritoConProfesional,
   carritoConSesiones,
+  conProfesionalEnLinea,
   sesionesParaLaVenta,
   guardarAsignacion,
   leerAsignacion,
+  profesionalDeLaLinea,
   profesionalDeLinea,
   profesionalDeTodos,
   profesionalesDelServicio,
@@ -260,5 +262,37 @@ describe("profesionalDeTodos (QA PER-07)", () => {
     expect(profesionalDeTodos([1, 2], { general: null, porServicio: { 1: 8, 2: 8 } })).toBe(8);
     expect(profesionalDeTodos([1, 2], { general: 7, porServicio: { 1: null } })).toBe("VARIOS");
     expect(profesionalDeTodos([], SIN_ASIGNAR)).toBeNull();
+  });
+});
+
+describe("profesionalDeLaLinea (QA PER-07b): quién tiene cada línea del carrito", () => {
+  it("el servicio dice el suyo (o el de toda la venta), con las opciones de «Por servicio»", () => {
+    const a = { general: 11, porServicio: { 2: 10 } };
+    expect(profesionalDeLaLinea(corte, a, profesionales)).toMatchObject({ actual: 11, nombre: "Beto" });
+    const deTinte = profesionalDeLaLinea(tinte, a, profesionales)!;
+    expect(deTinte).toMatchObject({ actual: 10, nombre: "Ana" });
+    expect(deTinte.opciones.map((p) => p.nombre)).toEqual(["Ana"]);
+    // Sin nadie: la línea igual dice que está sin asignar.
+    expect(profesionalDeLaLinea(corte, SIN_ASIGNAR, profesionales)).toMatchObject({ actual: null, nombre: null });
+  });
+
+  it("el producto de reventa, sólo si ya tiene vendedor; el paquete, nunca", () => {
+    expect(profesionalDeLaLinea(champu, { general: 11, porServicio: {} }, profesionales)).toBeNull();
+    const conVendedor = profesionalDeLaLinea(champu, { general: 11, porServicio: { 3: 10 } }, profesionales)!;
+    expect(conVendedor).toMatchObject({ actual: 10, nombre: "Ana" });
+    // Sólo quienes cobran % de productos.
+    expect(conVendedor.opciones.map((p) => p.nombre)).toEqual(["Ana"]);
+    expect(profesionalDeLaLinea(paquete, { general: 11, porServicio: { 4: 10 } }, profesionales)).toBeNull();
+  });
+
+  it("sin profesionales (la venta de siempre) no hay nada que mostrar", () => {
+    expect(profesionalDeLaLinea(corte, { general: 11, porServicio: {} }, [])).toBeNull();
+  });
+
+  it("cambiar una línea no toca las demás ni el de toda la venta", () => {
+    const a = conProfesionalEnLinea({ general: 11, porServicio: { 3: 10 } }, 2, 10);
+    expect(a).toEqual({ general: 11, porServicio: { 3: 10, 2: 10 } });
+    expect(profesionalDeTodos([1, 2], a)).toBe("VARIOS");
+    expect(conProfesionalEnLinea(a, 1, null).porServicio[1]).toBeNull();
   });
 });

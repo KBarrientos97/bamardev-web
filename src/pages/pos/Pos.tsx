@@ -61,8 +61,10 @@ import { apiConfigAgenda } from "../../lib/agenda/apiConfigAgenda";
 import {
   carritoConProfesional,
   carritoConSesiones,
+  conProfesionalEnLinea,
   guardarAsignacion,
   leerAsignacion,
+  profesionalDeLaLinea,
   profesionalesDeLaVenta,
   profesionalesParaPos,
   sesionesParaLaVenta,
@@ -70,6 +72,7 @@ import {
   type AsignacionProfesional,
 } from "../../lib/agenda/ventaDirecta";
 import { SelectorProfesional } from "./belleza/SelectorProfesional";
+import type { ProfesionalesDelCarrito } from "./PantallaVenta";
 
 type Pantalla =
   | "venta"
@@ -256,6 +259,23 @@ export default function Pos() {
         ? carritoConSesiones(carritoConProfesional(carrito, asignacion, profesionalesPos), sesionesElegidas)
         : carritoDeLaCita(carrito, citaCobrando),
     [ventaDirecta, carrito, asignacion, profesionalesPos, citaCobrando, sesionesElegidas],
+  );
+
+  /**
+   * QA PER-07b: el carrito dice en cada línea quién la atendió y deja
+   * cambiarlo ahí. Sólo en la venta directa con profesionales (belleza con
+   * agenda); sin ellos (Omar) o cobrando una cita, el carrito de siempre.
+   */
+  const profesionalesCarrito = useMemo<ProfesionalesDelCarrito | undefined>(
+    () =>
+      ventaDirecta && profesionalesPos.length > 0
+        ? {
+            de: (l) => profesionalDeLaLinea(l.producto, asignacion, profesionalesPos),
+            onCambiar: (productoId, recursoId) =>
+              setAsignacion(conProfesionalEnLinea(asignacion, productoId, recursoId)),
+          }
+        : undefined,
+    [ventaDirecta, profesionalesPos, asignacion, setAsignacion],
   );
 
   const [datosEntrega, setDatosEntrega] = useState<DatosEntrega | null>(null);
@@ -839,6 +859,7 @@ export default function Pos() {
       categorias={categorias.datos ?? []}
       // Con profesional, el precio propio ya en cada línea; si no, el mismo.
       carrito={carritoVenta}
+      profesionales={profesionalesCarrito}
       onCobrar={() => setPantalla("cobro")}
       sucursalId={abierta.almacenId}
       // QA S2-07: un paquete se vende a un cliente; sin elegirlo, el cobro

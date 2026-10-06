@@ -34,7 +34,7 @@ vi.mock("../../lib/api", () => ({
 
 import { api } from "../../lib/api";
 import { ContextoVentaFarmacia, type VentaFarmacia } from "../farmacia/ventaFarmacia";
-import PantallaVenta from "./PantallaVenta";
+import PantallaVenta, { type ProfesionalesDelCarrito } from "./PantallaVenta";
 import type { Carrito } from "./useCarrito";
 
 function med(over: Partial<Producto>): Producto {
@@ -84,7 +84,11 @@ const fijarCantidad = vi.fn();
 const pedirReceta = vi.fn();
 const onCobrar = vi.fn();
 
-async function montar(productos: Producto[], recetas = new Map<number, RecetaVenta>()) {
+async function montar(
+  productos: Producto[],
+  recetas = new Map<number, RecetaVenta>(),
+  profesionales?: ProfesionalesDelCarrito,
+) {
   const carrito = carritoCon(productos);
   const pantalla = (
     <PantallaVenta
@@ -93,6 +97,7 @@ async function montar(productos: Producto[], recetas = new Map<number, RecetaVen
       carrito={carrito}
       onCobrar={onCobrar}
       sucursalId={917}
+      profesionales={profesionales}
     />
   );
   const venta: VentaFarmacia = {
@@ -236,5 +241,39 @@ describe("el carrito de bamardev-restaurant no cambia", () => {
     await montar([med({ id: 7, nombre: "1/4 Pollo", concentracion: "x", manejaLote: false })]);
     // El renglón del carrito es el <p>; el <h3> es la tarjeta de la grilla.
     expect(screen.getByText("1/4 Pollo", { selector: "p" }).textContent).toBe("1/4 Pollo");
+  });
+});
+
+describe("QA PER-07b: el profesional de cada línea (belleza con agenda)", () => {
+  const marco = { id: 3, nombre: "Marco", precios: {}, servicioIds: [7], comisionaProductos: false };
+  const nico = { id: 4, nombre: "Nico", precios: {}, servicioIds: [7], comisionaProductos: false };
+  const corte = med({ id: 7, nombre: "Corte clásico", tipoProducto: "SERVICIO", manejaLote: false });
+  const pomada = med({ id: 8, nombre: "Pomada", manejaLote: false });
+
+  it("dice quién tiene la línea y se cambia tocándolo; la que no lleva no dice nada", async () => {
+    sesion.rubro = "BARBERIA";
+    sesion.features = new Set();
+    const onCambiar = vi.fn();
+    await montar([corte, pomada], undefined, {
+      de: (l) =>
+        l.producto.id === 7 ? { actual: 4, nombre: "Nico", opciones: [marco, nico] } : null,
+      onCambiar,
+    });
+    const linea = screen.getByLabelText("Quién atendió Corte clásico") as HTMLSelectElement;
+    expect(linea.value).toBe("4");
+    expect(linea.selectedOptions[0].textContent).toBe("Nico");
+    expect(Array.from(linea.options).map((o) => o.textContent)).toEqual(["sin asignar", "Marco", "Nico"]);
+    expect(screen.queryByLabelText("Quién atendió Pomada")).not.toBeInTheDocument();
+    fireEvent.change(linea, { target: { value: "3" } });
+    expect(onCambiar).toHaveBeenCalledWith(7, 3);
+    fireEvent.change(linea, { target: { value: "" } });
+    expect(onCambiar).toHaveBeenLastCalledWith(7, null);
+  });
+
+  it("sin profesionales (Omar) el renglón es el de siempre", async () => {
+    sesion.rubro = "RESTAURANTE";
+    await montar([med({ id: 7, nombre: "1/4 Pollo", manejaLote: false })]);
+    expect(screen.queryByLabelText(/Quién atendió/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
   });
 });

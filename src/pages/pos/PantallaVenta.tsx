@@ -15,6 +15,7 @@ import { useAuth } from "../../store/AuthContext";
 import type { Categoria, Consumo, LotesDelArticulo, Producto } from "../../types";
 import { aplicarOrden, guardarOrden, leerOrden, reordenarVisibles } from "./ordenPos";
 import type { Carrito, LineaCarrito } from "./useCarrito";
+import type { ProfesionalDeLinea } from "../../lib/agenda/ventaDirecta";
 import { useArrastreGrilla } from "./useArrastreGrilla";
 
 const TODAS = "__todas__";
@@ -30,6 +31,7 @@ export default function PantallaVenta({
   sucursalId,
   descuentos,
   bloqueoCobro,
+  profesionales,
 }: {
   productos: Producto[];
   categorias: Categoria[];
@@ -50,6 +52,12 @@ export default function PantallaVenta({
    * carrito es el de siempre.
    */
   descuentos?: ExtraDescuentos;
+  /**
+   * Belleza con agenda (QA PER-07b): quién atendió cada línea, dicho en la
+   * línea y cambiable ahí. Sin esto —Omar, la farmacia, cobrar una cita— el
+   * carrito es el de siempre.
+   */
+  profesionales?: ProfesionalesDelCarrito;
 }) {
   const { negocio, usuario, rubro } = useAuth();
   const [q, setQ] = useState("");
@@ -138,6 +146,7 @@ export default function PantallaVenta({
       sucursalId={sucursalId}
       descuentos={descuentos}
       bloqueoCobro={bloqueoCobro}
+      profesionales={profesionales}
       onCobrar={() => {
         setCarritoAbierto(false);
         onCobrar();
@@ -402,6 +411,13 @@ function TarjetaVenta({
 }
 
 /** Lo que suma el POS cuando el negocio tiene promociones. */
+/** El profesional de cada línea del carrito (belleza con agenda, QA PER-07b). */
+export interface ProfesionalesDelCarrito {
+  /** El de la línea y sus opciones; null = la línea no lleva (o no se muestra). */
+  de: (l: LineaCarrito) => ProfesionalDeLinea | null;
+  onCambiar: (productoId: number, recursoId: number | null) => void;
+}
+
 export interface ExtraDescuentos {
   /** El total a cobrar (el neto que devolvió la cotización). */
   total: number;
@@ -416,6 +432,7 @@ function PanelCarrito({
   sucursalId,
   descuentos,
   bloqueoCobro,
+  profesionales,
   onCobrar,
   onCerrar,
 }: {
@@ -423,6 +440,7 @@ function PanelCarrito({
   sucursalId?: number | null;
   descuentos?: ExtraDescuentos;
   bloqueoCobro?: string | null;
+  profesionales?: ProfesionalesDelCarrito;
   onCobrar: () => void;
   onCerrar: () => void;
 }) {
@@ -530,6 +548,8 @@ function PanelCarrito({
                 carrito={carrito}
                 conMesaLlevar={conMesaLlevar}
                 venta={venta}
+                profesional={profesionales?.de(l) ?? null}
+                onProfesional={(id) => profesionales?.onCambiar(l.producto.id, id)}
                 lotes={
                   conLotes && l.producto.manejaLote
                     ? lotes?.get(l.producto.id)
@@ -601,6 +621,8 @@ function FilaCarrito({
   carrito,
   conMesaLlevar,
   venta,
+  profesional,
+  onProfesional,
   lotes,
 }: {
   linea: LineaCarrito;
@@ -608,6 +630,9 @@ function FilaCarrito({
   conMesaLlevar: boolean;
   /** La venta de la farmacia; null en un restaurante. */
   venta: VentaFarmacia | null;
+  /** Quién atendió la línea (belleza con agenda); null en los demás. */
+  profesional: ProfesionalDeLinea | null;
+  onProfesional: (recursoId: number | null) => void;
   /** null = este renglón no lleva lote; undefined = todavía no se sabe. */
   lotes: LotesDelArticulo | null | undefined;
 }) {
@@ -632,7 +657,21 @@ function FilaCarrito({
               <span className="ml-1 font-semibold text-texto-2">{concentracion}</span>
             )}
           </p>
-          <p className="text-xs text-texto-3">{fmtMoney(l.producto.precio)} c/u</p>
+          <p className="truncate text-xs text-texto-3">
+            {fmtMoney(l.producto.precio)} c/u
+            {/* QA PER-07b: con "Por servicio" cada línea puede ser de alguien
+                distinto; se dice acá, discreto, y se cambia tocándolo. */}
+            {profesional && (
+              <>
+                {" · "}
+                <ProfesionalEnLinea
+                  nombreLinea={l.producto.nombre}
+                  profesional={profesional}
+                  onCambiar={onProfesional}
+                />
+              </>
+            )}
+          </p>
           {/* La receta se muestra también acá, no sólo al agregar: entre que se
               carga el carrito y se cobra puede cambiar de manos, y quien
               entrega tiene que ver qué papel hay que pedir. Sólo aparece en lo
@@ -778,6 +817,41 @@ function FilaCarrito({
       />
       )}
     </li>
+  );
+}
+
+/**
+ * El profesional de una línea del carrito: se lee como texto ("· Marco") y es
+ * un select nativo por debajo, así cambiarlo es un toque y el teclado y el
+ * lector de pantalla lo entienden sin nada extra.
+ */
+function ProfesionalEnLinea({
+  nombreLinea,
+  profesional,
+  onCambiar,
+}: {
+  nombreLinea: string;
+  profesional: ProfesionalDeLinea;
+  onCambiar: (recursoId: number | null) => void;
+}) {
+  const sinNadie = profesional.actual == null;
+  return (
+    <select
+      aria-label={`Quién atendió ${nombreLinea}`}
+      title="Cambiar quién lo atendió"
+      value={profesional.actual == null ? "" : String(profesional.actual)}
+      onChange={(e) => onCambiar(e.target.value === "" ? null : Number(e.target.value))}
+      className={`max-w-[9rem] cursor-pointer appearance-none truncate rounded bg-transparent p-0 text-xs underline-offset-2 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+        sinNadie ? "text-texto-4" : "font-semibold text-texto-2"
+      }`}
+    >
+      <option value="">sin asignar</option>
+      {profesional.opciones.map((p) => (
+        <option key={p.id} value={p.id}>
+          {p.nombre}
+        </option>
+      ))}
+    </select>
   );
 }
 
