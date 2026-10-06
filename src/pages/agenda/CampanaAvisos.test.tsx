@@ -86,3 +86,38 @@ describe("campana de avisos", () => {
     expect(screen.getByRole("button", { name: "Avisos" })).toBeInTheDocument();
   });
 });
+
+describe("el panel en el celular (QA A-04)", () => {
+  function conPantalla(celular: boolean) {
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn(() => ({
+        matches: celular,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      })),
+    );
+  }
+
+  it("a 390 px queda dentro de la pantalla: fijo, con 1rem a cada lado, bajo el botón", async () => {
+    conPantalla(true);
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: /Avisos/ }));
+    const panel = screen.getByRole("dialog", { name: "Avisos de la agenda" });
+    expect(panel).toHaveClass("fixed", "inset-x-4", "max-w-[22rem]");
+    // No queda anclado a la derecha del botón (eso lo sacaba por la izquierda).
+    expect(panel).not.toHaveClass("absolute", "right-0");
+    expect(panel.style.top).not.toBe("");
+    vi.unstubAllGlobals();
+  });
+
+  it("en escritorio sigue anclado al botón, como siempre", async () => {
+    conPantalla(false);
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: /Avisos/ }));
+    const panel = screen.getByRole("dialog", { name: "Avisos de la agenda" });
+    expect(panel).toHaveClass("lg:absolute", "lg:right-0", "lg:w-[min(22rem,calc(100vw-2rem))]");
+    expect(panel.style.top).toBe("");
+    vi.unstubAllGlobals();
+  });
+});
