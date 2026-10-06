@@ -223,6 +223,38 @@ describe("cobrar una cita", () => {
     expect(api.crearVenta).toHaveBeenCalledWith(expect.objectContaining({ citaId: 13 }));
   });
 
+  it("sin promociones, el carrito cobra el precio propio del profesional que trae la cita", async () => {
+    // Sofía cobra el tinte a 180 (su precio propio, fase 2); el de lista es
+    // 150. El backend cobra 180: si el carrito mostraba 150, los pagos no
+    // sumaban y la venta rebotaba (sin `promociones` no hay cotización).
+    vi.mocked(api.getProductos).mockResolvedValue([
+      servicio(189, "Corte de dama", 80),
+      servicio(190, "Tinte raíz", 150),
+    ]);
+    vi.mocked(apiAgenda.carrito).mockResolvedValue({
+      ...cita,
+      lineas: cita.lineas.map((l) => (l.productoId === 190 ? { ...l, precio: 180 } : l)),
+      total: 260,
+    });
+    await montar("/pos?cita=13");
+    expect(screen.getByText(/Tinte raíz x1 a 180/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "ir a cobrar" }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "pagar 260" }));
+    });
+    // La cubre: no pregunta, y cada servicio va con su profesional.
+    expect(screen.queryByText("La venta no cubre la cita")).not.toBeInTheDocument();
+    expect(api.crearVenta).toHaveBeenCalledWith(
+      expect.objectContaining({
+        citaId: 13,
+        detalles: [
+          expect.objectContaining({ productoId: 189, recursoId: 3 }),
+          expect.objectContaining({ productoId: 190, precio: 180, recursoId: 4 }),
+        ],
+      }),
+    );
+  });
+
   it("A-03: el servicio desactivado se carga igual, con el precio de la cita", async () => {
     // El catálogo ya no trae el Tinte (lo desactivaron después de agendar).
     vi.mocked(api.getProductos).mockResolvedValue([servicio(189, "Corte de dama", 80)]);

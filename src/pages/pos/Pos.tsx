@@ -6,6 +6,7 @@ import { ApiError, api } from "../../lib/api";
 import { apiAgenda, mensajeDe } from "../../lib/agenda/apiAgenda";
 import {
   citaDeLaUrl,
+  carritoDeLaCita,
   catalogoConCita,
   citaQueCobra,
   coberturaConPaquetes,
@@ -233,13 +234,18 @@ export default function Pos() {
     guardarAsignacion(a);
   }, []);
   /**
-   * El carrito como se cobra. Cobrando una cita o una mesa, el de siempre: la
-   * cita ya trae a sus profesionales (`detallesConProfesional`).
+   * El carrito como se cobra: en una venta directa, con el profesional
+   * elegido; cobrando una cita, al precio de la cita (el propio de cada
+   * profesional, que es el que cobra el backend; sus profesionales los pone
+   * `detallesConProfesional`). Sin agenda ni cita, el MISMO carrito.
    */
   const ventaDirecta = conAgenda && !citaCobrando;
   const carritoVenta = useMemo(
-    () => (ventaDirecta ? carritoConProfesional(carrito, asignacion, profesionalesPos) : carrito),
-    [ventaDirecta, carrito, asignacion, profesionalesPos],
+    () =>
+      ventaDirecta
+        ? carritoConProfesional(carrito, asignacion, profesionalesPos)
+        : carritoDeLaCita(carrito, citaCobrando),
+    [ventaDirecta, carrito, asignacion, profesionalesPos, citaCobrando],
   );
 
   const [datosEntrega, setDatosEntrega] = useState<DatosEntrega | null>(null);

@@ -1,3 +1,4 @@
+import type { Carrito } from "../../pages/pos/useCarrito";
 import type { DetalleVentaInput, Producto } from "../../types";
 import type { CarritoCita } from "./tiposAgenda";
 
@@ -147,6 +148,62 @@ export function detallesConProfesional(
     if (resto > 0) salida.push({ ...d, cantidad: resto });
   }
   return salida;
+}
+
+/**
+ * El carrito de la cita al precio que cobra el backend.
+ *
+ * El carrito se arma con el catálogo (precio de lista), pero cada servicio de
+ * la cita vale lo que dice su carrito: el precio propio del profesional (fase
+ * 2) si lo tiene. El backend impone ese precio, así que con el de lista los
+ * pagos no sumaban y la venta rebotaba. Con `promociones` no se notaba porque
+ * el total sale de la cotización; sin ella, sí.
+ *
+ * Se cuenta unidad por unidad, como `coberturaConPaquetes`: dos tintes de la
+ * cita con dos profesionales valen lo de cada uno, y lo que se sume de más
+ * (otra unidad, un producto) va al precio del catálogo. Las líneas que paga
+ * una sesión de paquete no están en el carrito y no cuentan. Sin cita, o si
+ * ningún precio cambia, devuelve el MISMO carrito.
+ */
+export function carritoDeLaCita(carrito: Carrito, cita: CarritoCita | null): Carrito {
+  if (!cita) return carrito;
+  const precios = new Map<number, number[]>();
+  for (const l of cita.lineas) {
+    if (l.paquete) continue;
+    precios.set(l.productoId, [...(precios.get(l.productoId) ?? []), l.precio]);
+  }
+  let cambia = false;
+  let total = 0;
+  const lineas = carrito.lineas.map((l) => {
+    const cola = precios.get(l.producto.id) ?? [];
+    let subtotal = 0;
+    let resto = l.cantidad;
+    while (resto >= 1 && cola.length) {
+      subtotal += cola.shift()!;
+      resto -= 1;
+    }
+    subtotal += resto * l.producto.precio;
+    total += subtotal;
+    // Con precios distintos en una misma línea se muestra el promedio: el
+    // total que se cobra es la suma de cada unidad.
+    const precio = l.cantidad > 0 ? Math.round((subtotal / l.cantidad) * 100) / 100 : l.producto.precio;
+    if (Math.abs(precio - l.producto.precio) < 0.005) return l;
+    cambia = true;
+    return { ...l, producto: { ...l.producto, precio } };
+  });
+  if (!cambia) return carrito;
+  const precio = new Map(lineas.map((l) => [l.producto.id, l.producto.precio]));
+  const redondo = Math.round(total * 100) / 100;
+  return {
+    ...carrito,
+    lineas,
+    subtotal: redondo,
+    total: redondo,
+    // El precio del detalle es informativo (lo impone el backend): se manda
+    // el que se mostró.
+    aDetalles: (): DetalleVentaInput[] =>
+      carrito.aDetalles().map((d) => ({ ...d, precio: precio.get(d.productoId) ?? d.precio })),
+  };
 }
 
 /**

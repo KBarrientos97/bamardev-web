@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { Producto } from "../../types";
 import { haceCuanto, sinVer } from "./avisos";
+import type { Carrito } from "../../pages/pos/useCarrito";
 import {
+  carritoDeLaCita,
   catalogoConCita,
   citaDeLaUrl,
   citaQueCobra,
@@ -251,5 +253,58 @@ describe("cobertura con paquetes, precio del profesional y cupones (ola 2)", () 
       total: 80,
     });
     expect(coberturaConPaquetes([], c)).toBeNull();
+  });
+});
+
+describe("carritoDeLaCita: el carrito al precio que cobra el backend", () => {
+  const prod = (id: number, nombre: string, precio: number) => ({ id, nombre, precio }) as Producto;
+  const deCarrito = (lineas: [Producto, number][]): Carrito => {
+    const ls = lineas.map(([producto, cantidad]) => ({ producto, cantidad, enMesa: 0, nota: "" }));
+    const total = ls.reduce((t, l) => t + l.cantidad * l.producto.precio, 0);
+    return {
+      lineas: ls,
+      unidades: ls.reduce((t, l) => t + l.cantidad, 0),
+      subtotal: total,
+      total,
+      aDetalles: () =>
+        ls.map((l) => ({ productoId: l.producto.id, cantidad: l.cantidad, precio: l.producto.precio, consumo: "LLEVAR" as const })),
+    } as unknown as Carrito;
+  };
+  const tinte = prod(2, "Tinte", 150);
+  const champu = prod(3, "Champú", 40);
+  const linea = (precio: number, recursoId: number, paquete = false) => ({
+    productoId: 2,
+    descripcion: "Tinte",
+    cantidad: 1 as const,
+    precio,
+    recursoId,
+    recurso: null,
+    paquete: paquete ? { paqueteClienteId: 1, nombre: "P", restantes: 1, ultimoDia: "2027-01-05" } : null,
+  });
+
+  it("sin cita, o con los mismos precios, es el mismo carrito", () => {
+    const c = deCarrito([[tinte, 1]]);
+    expect(carritoDeLaCita(c, null)).toBe(c);
+    expect(carritoDeLaCita(c, carrito({ lineas: [linea(150, 4)] }))).toBe(c);
+  });
+
+  it("cada unidad al precio de su profesional; lo de más, al del catálogo", () => {
+    const c = carritoDeLaCita(
+      deCarrito([
+        [tinte, 3],
+        [champu, 1],
+      ]),
+      carrito({ lineas: [linea(180, 4), linea(200, 5)] }),
+    );
+    // 180 + 200 + 150 (la tercera no es de la cita) + 40.
+    expect(c.total).toBe(570);
+    expect(c.lineas[0].producto.precio).toBe(176.67);
+    expect(c.lineas[1].producto.precio).toBe(40);
+    expect(c.aDetalles()[0].precio).toBe(176.67);
+  });
+
+  it("lo que paga una sesión de paquete no está en el carrito y no cuenta", () => {
+    const c = carritoDeLaCita(deCarrito([[tinte, 1]]), carrito({ lineas: [linea(0, 4, true), linea(180, 5)] }));
+    expect(c.total).toBe(180);
   });
 });
