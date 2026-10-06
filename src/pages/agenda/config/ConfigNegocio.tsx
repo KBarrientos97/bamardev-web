@@ -35,7 +35,8 @@ import type {
   Reglas,
   ValoresReglas,
 } from "../../../lib/agenda/tiposConfigAgenda";
-import { fmtFechaHora } from "../../../lib/format";
+import { fechaNegocio, horaNegocio } from "../../../lib/agenda/horaAgenda";
+import { fmtFechaNegocio } from "../../../lib/agenda/horarios";
 import { useApi } from "../../../lib/useApi";
 import { useSucursales } from "../../../lib/useSucursales";
 import { useAuth } from "../../../store/AuthContext";
@@ -124,6 +125,20 @@ export default function ConfigNegocio() {
   );
 }
 
+/**
+ * Un valor de la bitácora. `null` es que no había valor propio y se usaba el
+ * heredado (de la sucursal, del negocio o del rubro): "—" se leía como "no
+ * tenía nada" (QA B-25).
+ */
+function valorHistorial(campo: string, valor: CambioRegla["antes"]): string {
+  return valor === null || valor === undefined ? "heredado" : fmtValorRegla(campo, valor);
+}
+
+/** "06/10/2026 00:21": en 24 h y en la hora del negocio, como el resto de la agenda. */
+function fmtCuando(iso: string): string {
+  return `${fmtFechaNegocio(fechaNegocio(iso))} ${horaNegocio(iso)}`;
+}
+
 function Historial({
   filas,
   nombreSucursal,
@@ -141,12 +156,12 @@ function Historial({
           <li key={`${f.en}-${f.campo}-${i}`} className="py-2.5 text-sm">
             <p className="text-texto">
               <span className="font-semibold">{etiquetaCampo(f.campo)}</span>:{" "}
-              <span className="text-texto-3 line-through">{fmtValorRegla(f.campo, f.antes)}</span>{" "}
+              <span className="text-texto-3 line-through">{valorHistorial(f.campo, f.antes)}</span>{" "}
               <Icon name="arrowRight" size={13} className="inline" />{" "}
-              <span className="font-semibold">{fmtValorRegla(f.campo, f.despues)}</span>
+              <span className="font-semibold">{valorHistorial(f.campo, f.despues)}</span>
             </p>
             <p className="text-xs text-texto-4">
-              {fmtFechaHora(f.en)} · {f.usuario ?? "—"} · {nombreSucursal(f.sucursalId)}
+              {fmtCuando(f.en)} · {f.usuario ?? "—"} · {nombreSucursal(f.sucursalId)}
             </p>
           </li>
         ))}

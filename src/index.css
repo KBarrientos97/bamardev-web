@@ -79,6 +79,13 @@
 
 :root {
   color-scheme: light;
+  /*
+   * El monograma de un artículo sin categoría conocida (`colorDeCategoria`).
+   * Éste es el verde de siempre; en belleza `aplicarTema` lo pisa con la
+   * paleta del negocio.
+   */
+  --monograma-bg: #d1fae5;
+  --monograma-fg: #047857;
 }
 
 body {

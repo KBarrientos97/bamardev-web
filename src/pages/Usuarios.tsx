@@ -78,6 +78,14 @@ const PERMISOS_ROL: Record<RolApp, string[]> = {
  */
 const ROLES_CON_PIN: Rol[] = ["ADMIN", "SUPERVISOR"];
 
+/**
+ * Lo que el rol NO hace: va con una cruz neutra y no con la tilde verde, que
+ * se leía "✓ No cobra" (QA B-28). El "No maneja dinero" del mesero queda con
+ * su tilde de siempre a propósito: es pantalla de Omar y no se toca en un
+ * arreglo de belleza.
+ */
+const NEGACIONES = new Set(["No cobra"]);
+
 type FiltroRol = "todos" | RolApp | "inactivos";
 
 const OPC_ROL = [
@@ -126,9 +134,18 @@ export default function Usuarios() {
     const etiqueta = etiquetaRol(rol, negocio);
     return etiqueta === etiquetaRol(rol) ? deSiempre : pluralizar(etiqueta);
   };
+  /**
+   * ¿Se cuenta y se filtra este rol? Los que el rubro no ofrece no aparecen: en
+   * una peluquería no hay repartidores (QA B-20), igual que el selector del
+   * alta. El ADMIN siempre, porque existe en todo negocio aunque no se asigne
+   * desde acá. Sin `rolesOfrecidos` en el perfil (restaurante, farmacia) son
+   * los de siempre.
+   */
+  const muestraRol = (rol: RolApp) =>
+    rol === "ADMIN" ||
+    (ofreceRol(negocio?.perfil, rol) && (rol !== "MESERO" || conSalon));
   const opcionesRol = OPC_ROL.filter(
-    ([valor]) =>
-      (valor !== "MESERO" || conSalon) && (valor !== "PROFESIONAL" || conProfesional),
+    ([valor]) => valor === "todos" || valor === "inactivos" || muestraRol(valor),
   ).map(([valor, texto]) =>
     valor === "todos" || valor === "inactivos"
       ? ([valor, texto] as const)
@@ -186,6 +203,13 @@ export default function Usuarios() {
   }, [lista]);
 
   const inactivos = lista.filter((u) => !u.activo).length;
+  // Con cinco tarjetas van en una fila en pantallas anchas; con seis (salón, o
+  // profesionales y repartidores) van en dos filas de tres. Restaurante con
+  // salón y farmacia quedan como antes (seis y cinco).
+  const tarjetas =
+    2 +
+    (["SUPERVISOR", "CAJERO", "MESERO", "REPARTIDOR"] as RolApp[]).filter(muestraRol).length +
+    (conProfesional ? 1 : 0);
 
   /** Refresca la lista y deja el detalle mostrando la versión recién guardada. */
   function traerDeVuelta(actualizado: Usuario) {
@@ -245,19 +269,28 @@ export default function Usuarios() {
 
       {/* Con meseros son seis tarjetas, y seis en una fila no entran: a 1280 px
           "ADMINISTRADORES" se montaba sobre su ícono. Van en dos filas de tres;
-          sin salón quedan las cinco de siempre en una fila. En belleza no hay
-          salón pero hay profesionales: también son seis. */}
+          con cinco (farmacia, o un salón sin repartidores) en una fila. */}
       <div
-        className={`grid gap-3 sm:grid-cols-2 lg:grid-cols-3 ${conSalon || conProfesional ? "" : "xl:grid-cols-5"}`}
+        className={`grid gap-3 sm:grid-cols-2 lg:grid-cols-3 ${tarjetas === 5 ? "xl:grid-cols-5" : ""}`}
       >
-        <Kpi etiqueta="Administradores" valor={String(conteos.ADMIN)} icono="lock" tono="morado" />
-        <Kpi etiqueta="Supervisores" valor={String(conteos.SUPERVISOR)} icono="users" tono="azul" />
+        {/* El ADMIN con la etiqueta del rubro: en belleza es el "Dueño" (B-19). */}
         <Kpi
-          etiqueta={pluralRol("CAJERO", "Cajeros")}
-          valor={String(conteos.CAJERO)}
-          icono="cart"
-          tono="verde"
+          etiqueta={pluralRol("ADMIN", "Administradores")}
+          valor={String(conteos.ADMIN)}
+          icono="lock"
+          tono="morado"
         />
+        {muestraRol("SUPERVISOR") && (
+          <Kpi etiqueta="Supervisores" valor={String(conteos.SUPERVISOR)} icono="users" tono="azul" />
+        )}
+        {muestraRol("CAJERO") && (
+          <Kpi
+            etiqueta={pluralRol("CAJERO", "Cajeros")}
+            valor={String(conteos.CAJERO)}
+            icono="cart"
+            tono="verde"
+          />
+        )}
         {conProfesional && (
           <Kpi
             etiqueta={pluralRol("PROFESIONAL", "Profesionales")}
@@ -266,15 +299,17 @@ export default function Usuarios() {
             tono="verde"
           />
         )}
-        {conSalon && (
+        {muestraRol("MESERO") && (
           <Kpi etiqueta="Meseros" valor={String(conteos.MESERO)} icono="grid" tono="gris" />
         )}
-        <Kpi
-          etiqueta="Repartidores"
-          valor={String(conteos.REPARTIDOR)}
-          icono="truck"
-          tono="amarillo"
-        />
+        {muestraRol("REPARTIDOR") && (
+          <Kpi
+            etiqueta="Repartidores"
+            valor={String(conteos.REPARTIDOR)}
+            icono="truck"
+            tono="amarillo"
+          />
+        )}
         <Kpi etiqueta="Inactivos" valor={String(inactivos)} icono="x" tono="gris" />
       </div>
 
@@ -554,7 +589,11 @@ function DetalleUsuario({
                   key={p}
                   className="flex items-center gap-1.5 rounded-lg bg-muted px-2.5 py-1.5 text-[13px] text-texto-2"
                 >
-                  <Icon name="check" size={14} color="#059669" />
+                  {NEGACIONES.has(p) ? (
+                    <Icon name="x" size={14} className="text-texto-4" />
+                  ) : (
+                    <Icon name="check" size={14} color="#059669" />
+                  )}
                   {p}
                 </li>
               ))}
@@ -784,7 +823,11 @@ function FormUsuarioCuerpo({
           username: username.trim(),
           password,
           rol,
-          email: email.trim(),
+          // En el alta el email vacío se omite: el DTO de creación valida el
+          // formato de cualquier string que llegue, y `""` daba 400 "El email no
+          // tiene un formato válido" (QA A-01). Al editar sí viaja vacío, que
+          // ahí significa "borralo" y el DTO de update lo tolera.
+          ...(email.trim() ? { email: email.trim() } : {}),
           telefono: telefono.trim(),
           notas: notas.trim(),
           ...(esRepartidor ? { zona: zona.trim(), vehiculo: vehiculo.trim() } : {}),

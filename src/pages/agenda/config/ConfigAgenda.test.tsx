@@ -347,3 +347,93 @@ describe("Horarios", () => {
     );
   });
 });
+
+/**
+ * QA ronda 1 (06-oct): guardar un horario o una excepción que deja citas
+ * afuera las lista para reprogramarlas (M-06), y el bloqueo de día completo
+ * se lee "todo el día" (B-28).
+ */
+describe("citas afectadas y bloqueos de día completo", () => {
+  const AFECTADA = {
+    id: 46,
+    codigo: "C-046",
+    estado: "RESERVADA",
+    inicio: "2099-10-09T14:00:00.000Z",
+    fin: "2099-10-09T14:45:00.000Z",
+    cliente: { nombre: "Carla Pisa" },
+    lineas: [{ servicio: "Corte clásico", recurso: "Juan" }],
+  };
+
+  it("M-06: guardar el horario lista las citas que quedan fuera", async () => {
+    vi.mocked(apiConfigAgenda.guardarHorarios).mockResolvedValue({ tramos: [], citasAfectadas: [AFECTADA] });
+    await montar("horarios");
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Guardar horario" }));
+    });
+    const alerta = screen.getByRole("alert");
+    expect(alerta).toHaveTextContent("1 cita queda fuera del nuevo horario");
+    expect(alerta).toHaveTextContent("Carla Pisa · 09/10/2099 10:00 a 10:45");
+    expect(alerta).toHaveTextContent("No se canceló ninguna");
+  });
+
+  it("M-06: un backend que no manda las afectadas no muestra nada de más", async () => {
+    vi.mocked(apiConfigAgenda.guardarHorarios).mockResolvedValue({ tramos: [] });
+    await montar("horarios");
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Guardar horario" }));
+    });
+    expect(screen.getByText("Horario guardado.")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("M-06: una excepción que deja citas afuera las lista", async () => {
+    vi.mocked(apiConfigAgenda.crearExcepcion).mockResolvedValue({
+      id: 2,
+      recursoId: 10,
+      fecha: "2099-10-09",
+      tramos: [],
+      citasAfectadas: [AFECTADA],
+    });
+    await montar("excepciones");
+    fireEvent.change(screen.getByLabelText("Fecha"), { target: { value: "2099-10-09" } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Guardar excepción" }));
+    });
+    const alerta = screen.getByRole("alert");
+    expect(alerta).toHaveTextContent("1 cita queda fuera del horario de ese día");
+    expect(alerta).toHaveTextContent("Carla Pisa");
+  });
+
+  it("B-28: un bloqueo de medianoche a medianoche se lee 'todo el día'", async () => {
+    vi.mocked(apiConfigAgenda.bloqueos).mockResolvedValue([
+      {
+        id: 1,
+        recursoId: 10,
+        sucursalId: null,
+        inicio: "2099-10-08T04:00:00.000Z",
+        fin: "2099-10-09T04:00:00.000Z",
+        motivo: "Curso",
+      },
+      {
+        id: 2,
+        recursoId: 10,
+        sucursalId: null,
+        inicio: "2099-12-20T04:00:00.000Z",
+        fin: "2099-12-25T04:00:00.000Z",
+        motivo: "Vacaciones",
+      },
+      {
+        id: 3,
+        recursoId: 10,
+        sucursalId: null,
+        inicio: "2099-11-03T13:00:00.000Z",
+        fin: "2099-11-03T17:00:00.000Z",
+        motivo: "Médico",
+      },
+    ]);
+    await montar("bloqueos");
+    expect(screen.getByText("08/10/2099 · todo el día")).toBeInTheDocument();
+    expect(screen.getByText("del 20/12/2099 al 24/12/2099 · todo el día")).toBeInTheDocument();
+    expect(screen.getByText("03/11/2099 09:00 a 13:00")).toBeInTheDocument();
+  });
+});

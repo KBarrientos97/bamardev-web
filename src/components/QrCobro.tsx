@@ -7,6 +7,8 @@ import {
   sincronizarQr,
   subirQr,
 } from "../lib/qrPago";
+import { tieneFeature } from "../lib/permisos";
+import { esBelleza } from "../lib/rubro";
 import { useAuth } from "../store/AuthContext";
 import type { Rol } from "../types";
 import { Icon } from "./Icon";
@@ -25,7 +27,23 @@ function puedeCambiarQr(rol: Rol | undefined): boolean {
  * `qrPago.ts`). Antes quedaba sólo en este equipo y el mesero nunca lo tenía.
  */
 export function CargarQrCobro() {
-  const { negocio, usuario } = useAuth();
+  const { negocio, usuario, rubro } = useAuth();
+  /**
+   * A quién más le llega el QR. En un salón de belleza no hay meseros ni, casi
+   * nunca, reparto (QA B-21): se nombra sólo lo que el negocio tiene. En los
+   * demás rubros, el texto de siempre.
+   */
+  const conSalon = tieneFeature(negocio?.features, "salon");
+  const conReparto = tieneFeature(negocio?.features, "delivery");
+  const quienesMas = !esBelleza(rubro)
+    ? "los meseros y el reparto"
+    : conSalon && conReparto
+      ? "los meseros y el reparto"
+      : conSalon
+        ? "los meseros"
+        : conReparto
+          ? "el reparto"
+          : null;
   const alias = negocio?.alias;
   const [qr, setQr] = useState<string | null>(() => leerQr(alias));
   const [error, setError] = useState("");
@@ -53,7 +71,9 @@ export function CargarQrCobro() {
       const subida = await subirQr(alias);
       if (!subida.ok) {
         setError(
-          `El QR quedó en este equipo, pero no se pudo compartir con los meseros: ${subida.error}`,
+          `El QR quedó en este equipo, pero no se pudo compartir con ${
+            esBelleza(rubro) ? "los demás equipos" : "los meseros"
+          }: ${subida.error}`,
         );
       }
     } else {
@@ -85,9 +105,9 @@ export function CargarQrCobro() {
               ? "Se le muestra al cliente cuando paga por QR."
               : "Subí la imagen de tu QR para mostrársela al cliente al cobrar."}
           </p>
-          <p className="mt-1 text-xs text-texto-4">
-            Lo reciben también los meseros y el reparto.
-          </p>
+          {quienesMas && (
+            <p className="mt-1 text-xs text-texto-4">Lo reciben también {quienesMas}.</p>
+          )}
 
           <div className="mt-2 flex flex-wrap gap-2">
             <button

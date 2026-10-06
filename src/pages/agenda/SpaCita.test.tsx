@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "../../lib/api";
 import { cita } from "../../test/agendaFixtures";
 
@@ -80,6 +80,11 @@ async function abrir(c = CON_CABINA, onCambio = vi.fn()) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // El día de las citas de prueba, a las 11:00 de La Paz: después de su
+  // inicio. Desde la ronda 1 de QA (M-08) la hora decide qué se ofrece y
+  // "Atender" no sale en un día que no llegó.
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-10-21T15:00:00.000Z"));
   sesion.features = ["agenda", "consentimientos", "paquetes"];
   vi.mocked(apiSpa.pendientesDeCita).mockResolvedValue({ faltan: [FALTA] });
   vi.mocked(apiSpa.paquetesDelCliente).mockResolvedValue([
@@ -95,6 +100,10 @@ beforeEach(() => {
       items: [{ servicioId: 100, servicio: "Masaje relajante", sesiones: 5, usadas: 2, restantes: 3 }],
     },
   ]);
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe("detalle de la cita del spa", () => {

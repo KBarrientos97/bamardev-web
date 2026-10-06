@@ -5,7 +5,7 @@ import { AvisoOk, Boton, Cargando, ErrorMsg, Select, Vacio, useAviso } from "../
 import { apiAgenda } from "../../lib/agenda/apiAgenda";
 import { accionesRapidas } from "../../lib/agenda/estadosCita";
 import { capitalizar, fechaLarga, fechaNegocio, horaNegocio } from "../../lib/agenda/horaAgenda";
-import type { AgendaHoy, Cita, EstadoCita } from "../../lib/agenda/tiposAgenda";
+import type { AgendaHoy, Cita, ContadoresHoy, EstadoCita } from "../../lib/agenda/tiposAgenda";
 import { useConsultaPeriodica } from "../../lib/agenda/useConsultaPeriodica";
 import { useSucursalAgenda } from "../../lib/agenda/useSucursalAgenda";
 import { tieneFeature } from "../../lib/permisos";
@@ -38,13 +38,30 @@ function filtrar(citas: Cita[], f: Filtro): Cita[] {
   }
 }
 
+/**
+ * Los contadores de arriba, con la misma cuenta que hace el backend en
+ * `GET /agenda/hoy`. Las solicitudes online son de cualquier día y no salen
+ * de esta lista: se dejan como vinieron.
+ */
+function contadoresDe(citas: Cita[], cola: Cita[], previos?: ContadoresHoy): ContadoresHoy {
+  const cuenta = (estados: EstadoCita[]) => citas.filter((c) => estados.includes(c.estado)).length;
+  return {
+    porConfirmar: cuenta(["RESERVADA", "SOLICITADA"]),
+    enEspera: cuenta(["EN_ESPERA"]) + cola.length,
+    enAtencion: cuenta(["EN_ATENCION"]),
+    porCobrar: cuenta(["POR_COBRAR"]),
+    noShowSugeridos: citas.filter((c) => c.noShowSugerido).length,
+    ...(previos?.solicitudes !== undefined ? { solicitudes: previos.solicitudes } : {}),
+  };
+}
+
 function conCita(d: AgendaHoy | null, c: Cita): AgendaHoy | null {
   if (!d) return d;
-  return {
-    ...d,
-    citas: d.citas.some((x) => x.id === c.id) ? d.citas.map((x) => (x.id === c.id ? c : x)) : [...d.citas, c],
-    cola: d.cola.filter((x) => x.id !== c.id || c.estado === "EN_COLA"),
-  };
+  const citas = d.citas.some((x) => x.id === c.id) ? d.citas.map((x) => (x.id === c.id ? c : x)) : [...d.citas, c];
+  const cola = d.cola.filter((x) => x.id !== c.id || c.estado === "EN_COLA");
+  // Las tarjetas se recalculan junto con la lista (QA M-10): si no, "Llegaron"
+  // y "Por confirmar" quedaban desfasados hasta la siguiente consulta.
+  return { ...d, citas, cola, contadores: contadoresDe(citas, cola, d.contadores) };
 }
 
 /**
@@ -196,7 +213,7 @@ export default function Hoy() {
                 <TarjetaCita
                   key={c.id}
                   cita={c}
-                  rapidas={accionesRapidas(c)}
+                  rapidas={accionesRapidas(c, { ahora: Date.now() })}
                   onAbrir={() => setAbierta(c)}
                   onAccion={(a) => rapida.pedir(c, a)}
                   onCobrar={cobrar ? () => cobrar(c.id) : undefined}

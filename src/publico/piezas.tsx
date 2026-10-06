@@ -46,6 +46,7 @@ export function Marco({
     const nombre = datos?.negocio.nombre;
     document.title = [titulo, nombre].filter(Boolean).join(" · ") || "Reservas";
   }, [titulo, datos?.negocio.nombre]);
+  useMetaReserva(datos?.negocio.nombre ?? null);
 
   return (
     <div style={variables} className={`min-h-dvh ${fondo} font-sans text-[#1F2937]`}>
@@ -54,22 +55,69 @@ export function Marco({
   );
 }
 
-/** La barra de arriba con el nombre del negocio (P2, P7). */
-export function Cabecera({ arriba, titulo, abajo }: { arriba?: ReactNode; titulo: ReactNode; abajo?: ReactNode }) {
+/**
+ * Descripción y `robots` de la página de reservas. WhatsApp y Facebook no
+ * ejecutan JavaScript, así que su vista previa NO sale de acá: llega con la
+ * Pages Function de `link-qa` (B06, pendiente) o, mientras tanto, con el
+ * enlace corto a la página del negocio. Esto sirve a la pestaña y a los
+ * lectores que sí ejecutan JavaScript; `noindex` va igual en `_headers`.
+ */
+function useMetaReserva(nombre: string | null) {
+  useEffect(() => {
+    const metas: HTMLMetaElement[] = [];
+    const poner = (atributo: "name" | "property", clave: string, valor: string) => {
+      const m = document.createElement("meta");
+      m.setAttribute(atributo, clave);
+      m.content = valor;
+      document.head.appendChild(m);
+      metas.push(m);
+    };
+    poner("name", "robots", "noindex, nofollow");
+    if (nombre) {
+      const texto = `Reservá tu cita en ${nombre}: elegí el servicio, el día y la hora, sin registrarte.`;
+      poner("name", "description", texto);
+      poner("property", "og:title", `Reservar en ${nombre}`);
+      poner("property", "og:description", texto);
+    }
+    return () => metas.forEach((m) => m.remove());
+  }, [nombre]);
+}
+
+/**
+ * La barra de arriba con el nombre del negocio (P2, P7). `principal` lo hace
+ * el `<h1>` de la página (la portada no tenía ninguno, B27); donde la
+ * pantalla ya tiene su propio h1 queda como texto.
+ */
+export function Cabecera({
+  arriba,
+  titulo,
+  abajo,
+  principal,
+}: {
+  arriba?: ReactNode;
+  titulo: ReactNode;
+  abajo?: ReactNode;
+  principal?: boolean;
+}) {
+  const Titulo = principal ? "h1" : "strong";
   return (
     <header className="flex flex-col gap-1.5 bg-barra px-5 pb-[18px] pt-5 text-white">
       {arriba && <span className="text-xs opacity-85">{arriba}</span>}
-      <strong className="text-[22px] leading-tight">{titulo}</strong>
+      <Titulo className="text-[22px] font-bold leading-tight">{titulo}</Titulo>
       {abajo && <span className="text-[13px] opacity-90">{abajo}</span>}
     </header>
   );
 }
 
-/** Los cuatro trazos de avance del lienzo. */
-export function Pasos({ hechos }: { hechos: number }) {
+/**
+ * Los trazos de avance. Tantos como pasos tiene de verdad el formulario
+ * (servicios, y día con tus datos): antes eran cuatro y saltaba de "1 de 4"
+ * a "3 de 4" (B16).
+ */
+export function Pasos({ hechos, total = 2 }: { hechos: number; total?: number }) {
   return (
-    <nav aria-label={`Paso ${hechos} de 4`} className="flex gap-1.5 px-5 pb-1.5 pt-3.5">
-      {[1, 2, 3, 4].map((i) => (
+    <nav aria-label={`Paso ${hechos} de ${total}`} className="flex gap-1.5 px-5 pb-1.5 pt-3.5">
+      {Array.from({ length: total }, (_, k) => k + 1).map((i) => (
         <span key={i} className={`h-1 flex-1 rounded ${i <= hechos ? "bg-primary-boton" : "bg-[#E5E7EB]"}`} />
       ))}
     </nav>

@@ -1,16 +1,19 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Icon } from "../../components/Icon";
-import { Cargando, ErrorMsg } from "../../components/ui";
+import { Cargando, Confirmar, ErrorMsg } from "../../components/ui";
 import { ApiError, api } from "../../lib/api";
 import { apiAgenda, mensajeDe } from "../../lib/agenda/apiAgenda";
 import {
   citaDeLaUrl,
+  catalogoConCita,
   citaQueCobra,
+  coberturaConPaquetes,
   detallesConProfesional,
   guardarCitaCobrando,
   leerCitaCobrando,
   productosDeLaCita,
+  textoCoberturaIncompleta,
 } from "../../lib/agenda/cobroCita";
 import type { CarritoCita, Cita } from "../../lib/agenda/tiposAgenda";
 import type { PropinaInput } from "../../lib/belleza/apiExtras";
@@ -85,7 +88,18 @@ export default function Pos() {
   );
   const categorias = useApi(() => api.getCategorias(false), []);
   const formasPago = useApi(() => api.getFormasPago(), []);
-  const repartidores = useApi(() => api.getRepartidores(), []);
+  /**
+   * Lo del salón y del reparto se pide sólo si el plan lo trae (QA M-11): un
+   * salón de belleza comía un 403 por cada uno en cada carga. Omar tiene las
+   * dos features y no ve ningún cambio; `tieneFeature` falla abierto con la
+   * lista vacía, como en el resto de la app.
+   */
+  const conSalon = tieneFeature(negocio?.features, "salon");
+  const conReparto = tieneFeature(negocio?.features, "delivery");
+  const repartidores = useApi(
+    () => (conReparto ? api.getRepartidores() : Promise.resolve([])),
+    [conReparto],
+  );
 
   // Identidad del cobro en curso: sobrevive a los reintentos para que un 504 o
   // un corte de red no terminen en dos ventas. Ver useIntentoDeCobro.
@@ -98,7 +112,10 @@ export default function Pos() {
    * Falla en silencio a propósito: un negocio sin salón responde 403 y eso no
    * es un error que mostrarle a la cajera — simplemente no hay mesas.
    */
-  const porCobrar = useApi(() => api.mesasPorCobrar().catch(() => []), []);
+  const porCobrar = useApi(
+    () => (conSalon ? api.mesasPorCobrar().catch(() => []) : Promise.resolve([])),
+    [conSalon],
+  );
 
   /**
    * El efectivo que los meseros cobraron y todavía no está en el cajón.
@@ -109,7 +126,10 @@ export default function Pos() {
    * que el mesero decía "llevala a caja" y la cajera no tenía dónde recibirla.
    * Falla en silencio por lo mismo que `porCobrar`: sin salón, 403.
    */
-  const entregas = useApi(() => api.entregasMesero().catch(() => null), []);
+  const entregas = useApi(
+    () => (conSalon ? api.entregasMesero().catch(() => null) : Promise.resolve(null)),
+    [conSalon],
+  );
   const mesasEsperando: MesaSalon[] = porCobrar.datos ?? [];
   const pendientesEntrega = (entregas.datos?.items ?? []).filter(
     (e) => e.estado === "PENDIENTE",
@@ -129,7 +149,7 @@ export default function Pos() {
   const { recargar: recargarPorCobrar } = porCobrar;
   const { recargar: recargarEntregas } = entregas;
   useEffect(() => {
-    if (pantalla !== "venta") return;
+    if (pantalla !== "venta" || !conSalon) return;
     const id = window.setInterval(() => {
       // Pestaña en segundo plano: nadie mira, no vale el pedido.
       if (document.hidden) return;
@@ -137,13 +157,26 @@ export default function Pos() {
       recargarEntregas();
     }, SONDEO_SALON_MS);
     return () => window.clearInterval(id);
-  }, [pantalla, recargarPorCobrar, recargarEntregas]);
+  }, [pantalla, conSalon, recargarPorCobrar, recargarEntregas]);
 
   /**
    * La mesa que se está cobrando. Mientras hay una, la pantalla de cobro
    * trabaja con SU total y no con el del carrito: el consumo ya lo cargó el
    * mesero y la cajera no retipea nada.
    */
+  // ── Agenda (belleza): la cita que se está cobrando ────────────────────────
+  //
+  // Sólo existe donde existe la agenda (feature `agenda` y rubro de belleza,
+  // ver permisos.ts): Omar y la farmacia no hacen ni un pedido de más.
+  const conAgenda = puede("hoy");
+  /**
+   * La cita que se está cobrando: sus servicios ya están en el carrito y la
+   * venta la completa. Sobrevive a un F5 igual que el carrito.
+   */
+  const [citaCobrando, setCitaCobrandoEstado] = useState<CarritoCita | null>(() =>
+    conAgenda ? leerCitaCobrando() : null,
+  );
+
   const [mesaCobrando, setMesaCobrando] = useState<MesaSalon | null>(null);
   const [venta, setVenta] = useState<Venta | null>(null);
   const [cajaCerrada, setCajaCerrada] = useState<Caja | null>(null);
@@ -153,7 +186,15 @@ export default function Pos() {
   // El catalogo va al hook para poder rehidratar el carrito despues de un F5:
   // se guardan ids, no productos, asi que las lineas se rearman contra el
   // catalogo fresco (y con el precio de hoy, no el de cuando se cargaron).
-  const carritoPropio = useCarrito(tipoPedido, productos.datos ?? []);
+  //
+  // Con una cita, el catálogo suma los servicios suyos que ya no están en él
+  // (desactivados después de agendar, QA A-03): sin eso el carrito no los
+  // podría rehidratar tras un F5. Sin cita es el mismo arreglo de siempre.
+  const catalogoPos = useMemo(
+    () => catalogoConCita(productos.datos ?? [], citaCobrando),
+    [productos.datos, citaCobrando],
+  );
+  const carritoPropio = useCarrito(tipoPedido, catalogoPos, catalogoPos.length > 0);
   // En una farmacia la venta vive por encima del POS (ver VentaFarmaciaProvider.tsx):
   // ir a Buscar medicamento y volver no la borra. En los demás rubros no hay
   // tal venta y el POS usa la suya, como siempre.
@@ -167,16 +208,7 @@ export default function Pos() {
 
   // ── Agenda (belleza): cobrar una cita ─────────────────────────────────────
   //
-  // Sólo existe donde existe la agenda (feature `agenda` y rubro de belleza,
-  // ver permisos.ts): Omar y la farmacia no hacen ni un pedido de más.
-  const conAgenda = puede("hoy");
-  /**
-   * La cita que se está cobrando: sus servicios ya están en el carrito y la
-   * venta la completa. Sobrevive a un F5 igual que el carrito.
-   */
-  const [citaCobrando, setCitaCobrandoEstado] = useState<CarritoCita | null>(() =>
-    conAgenda ? leerCitaCobrando() : null,
-  );
+  // (El estado de la cita que se cobra está más arriba, antes del carrito.)
   const setCitaCobrando = useCallback((c: CarritoCita | null) => {
     setCitaCobrandoEstado(c);
     guardarCitaCobrando(c);
@@ -228,18 +260,16 @@ export default function Pos() {
   const cargarCita = useCallback(
     (c: CarritoCita) => {
       // Lo que cubre una sesión de paquete no entra al carrito: va aparte, a 0.
-      const { productos: suyos, faltan } = productosDeLaCita(sinLineasConPaquete(c), productos.datos ?? []);
+      // Los servicios desactivados después de agendar se cargan igual, con el
+      // precio del carrito de la cita: el backend los acepta en esta venta.
+      const { productos: suyos } = productosDeLaCita(sinLineasConPaquete(c), productos.datos ?? []);
       carrito.vaciar();
       setTipoPedido("LOCAL");
       setDatosEntrega(null);
       for (const p of suyos) carrito.agregar(p);
       setCitaCobrando(c);
       if (c.cliente.id != null) setClientePaquete({ id: c.cliente.id, nombre: c.cliente.nombre });
-      setErrorCita(
-        faltan.length
-          ? `No están en el catálogo: ${faltan.join(", ")}. Agregalos a mano o revisá el servicio.`
-          : "",
-      );
+      setErrorCita("");
       setPantalla("venta");
     },
     [carrito, productos.datos, setCitaCobrando],
@@ -428,6 +458,38 @@ export default function Pos() {
     [carrito, limpiar, productos, intento, citaCobrando, descuentos],
   );
 
+  /**
+   * Cobrar una cita con una venta que no la cubre (le sacaron un servicio, o
+   * se cobra menos que su total) se puede, pero no en silencio (QA A-02): se
+   * pide confirmación, y el backend la marca para revisar en el cierre. Si la
+   * cubre —o no hay cita— sigue de largo, como siempre.
+   */
+  const [cobroIncompleto, setCobroIncompleto] = useState<{
+    texto: string;
+    seguir: () => void;
+  } | null>(null);
+  const confirmandoCita = (seguir: () => void) => {
+    // Sin las sesiones de paquete, a precio de la cita y en bruto (antes de
+    // cupones): ver `coberturaConPaquetes`.
+    const cobertura = coberturaConPaquetes(carrito.aDetalles(), citaCobrando);
+    if (!cobertura || cobertura.cubre) return seguir();
+    setCobroIncompleto({ texto: textoCoberturaIncompleta(cobertura, fmtMoney), seguir });
+  };
+  const dialogoCobroIncompleto = (
+    <Confirmar
+      abierto={!!cobroIncompleto}
+      titulo="La venta no cubre la cita"
+      texto={cobroIncompleto?.texto ?? ""}
+      etiquetaOk="Cobrar igual"
+      onCancel={() => setCobroIncompleto(null)}
+      onOk={() => {
+        const seguir = cobroIncompleto?.seguir;
+        setCobroIncompleto(null);
+        seguir?.();
+      }}
+    />
+  );
+
   if (caja.cargando) return <Cargando texto="Buscando tu caja…" />;
   if (caja.error)
     return (
@@ -547,6 +609,8 @@ export default function Pos() {
 
   if (pantalla === "cobro")
     return (
+      <>
+      {dialogoCobroIncompleto}
       <PantallaCobro
         // Sólo los productos: el backend arma el total de la venta desde las
         // líneas y exige que los pagos sumen exactamente eso. La tarifa de
@@ -582,7 +646,10 @@ export default function Pos() {
           }
           setPantalla(datosEntrega ? "entrega" : "venta");
         }}
-        onConfirmar={cobrar}
+        onConfirmar={(pagos) =>
+          // Una mesa no es una cita: su cobro sigue directo.
+          mesaCobrando ? void cobrar(pagos) : confirmandoCita(() => void cobrar(pagos))
+        }
         // Fiar sólo tiene sentido en una venta de mostrador: un pedido de
         // delivery ya define quién y cuándo paga, y una mesa se fía desde el
         // salón — el flujo de crédito arma la venta desde el carrito, que
@@ -595,10 +662,13 @@ export default function Pos() {
         enviando={enviando}
         error={error}
       />
+      </>
     );
 
   if (pantalla === "credito")
     return (
+      <>
+      {dialogoCobroIncompleto}
       <PantallaCredito
         total={totalCarrito}
         formasPago={formasPago.datos ?? []}
@@ -606,10 +676,13 @@ export default function Pos() {
           setError("");
           setPantalla("cobro");
         }}
-        onConfirmar={venderACredito}
+        onConfirmar={(credito, pagos) =>
+          confirmandoCita(() => void venderACredito(credito, pagos))
+        }
         enviando={enviando}
         error={error}
       />
+      </>
     );
 
   if (pantalla === "recibo" && venta)

@@ -28,6 +28,7 @@ vi.mock("../../lib/agenda/apiAgenda", async (importOriginal) => {
       crearCliente: vi.fn(),
       huecos: vi.fn(),
       crearCita: vi.fn(),
+      reglas: vi.fn(),
     },
   };
 });
@@ -50,6 +51,7 @@ beforeEach(() => {
     ficha({ id: 9, nombre: "María Flores", telefono: "70011122" }),
   );
   vi.mocked(apiAgenda.huecos).mockResolvedValue({ huecos: [A_LAS_10, A_LAS_1030] });
+  vi.mocked(apiAgenda.reglas).mockRejectedValue(new Error("sin reglas"));
 });
 
 async function montar(onCreada = vi.fn()) {
@@ -180,5 +182,42 @@ describe("A5 · nueva cita", () => {
     expect(screen.queryByRole("dialog", { name: "Autorización del encargado" })).not.toBeInTheDocument();
     expect(vi.mocked(apiAgenda.crearCita).mock.calls[0][0]).toMatchObject({ sobreTurno: true });
     expect(vi.mocked(apiAgenda.crearCita).mock.calls[0][0].pin).toBeUndefined();
+  });
+
+  it("la hora del sobre-turno tiene que caer en la grilla del negocio (QA M-07)", async () => {
+    sesion.rol = "SUPERVISOR";
+    vi.mocked(apiAgenda.reglas).mockResolvedValue({ granularidadMin: 15 } as never);
+    vi.mocked(apiAgenda.crearCita).mockResolvedValue(cita());
+    await montar();
+    await cargarFormulario();
+    fireEvent.click(screen.getByLabelText(/Sobre-turno/));
+    fireEvent.change(screen.getByLabelText("Con"), { target: { value: "1" } });
+    fireEvent.change(screen.getByLabelText(/^Hora del sobre-turno/), { target: { value: "12:07" } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Confirmar cita" }));
+    });
+    expect(apiAgenda.crearCita).not.toHaveBeenCalled();
+    expect(screen.getByText(/Elegí una hora en la grilla de 15 min/)).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText(/^Hora del sobre-turno/), { target: { value: "12:15" } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Confirmar cita" }));
+    });
+    expect(apiAgenda.crearCita).toHaveBeenCalled();
+  });
+
+  it("muestra el mensaje del backend cuando rechaza la hora (HORA_PASADA)", async () => {
+    vi.mocked(apiAgenda.crearCita).mockRejectedValue(
+      Object.assign(new Error("Esa hora ya pasó: elegí un horario de ahora en adelante."), {
+        status: 400,
+        codigo: "HORA_PASADA",
+      }),
+    );
+    await montar();
+    await cargarFormulario();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Confirmar cita" }));
+    });
+    expect(screen.getByText("Esa hora ya pasó: elegí un horario de ahora en adelante.")).toBeInTheDocument();
   });
 });

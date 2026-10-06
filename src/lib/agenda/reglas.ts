@@ -118,7 +118,8 @@ export const META_REGLAS: Record<CampoRegla, MetaRegla> = {
   vencimientoSolicitudHoras: {
     grupo: "online",
     tipo: "numero",
-    etiqueta: "Una solicitud sin respuesta vence a las",
+    // "vence a las 12 horas" se leía como una hora del reloj (B26).
+    etiqueta: "Una solicitud sin respuesta vence después de",
     unidad: "horas",
     min: 1,
     max: 168,

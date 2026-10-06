@@ -649,8 +649,15 @@ describe("etiquetaRol", () => {
     const barberia = { tipoNegocio: "BARBERIA", perfil: PERFIL_BARBERIA };
     expect(etiquetaRol("CAJERO", barberia)).toBe("Recepción");
     expect(etiquetaRol("PROFESIONAL", barberia)).toBe("Barbero");
-    // Lo que el perfil no nombra sigue como siempre.
-    expect(etiquetaRol("ADMIN", barberia)).toBe("Administrador");
+    // Lo que el perfil no nombra cae al respaldo del rubro: en un salón el
+    // ADMIN es el "Dueño" (QA B-19), como lo dice el backend en el login.
+    expect(etiquetaRol("ADMIN", barberia)).toBe("Dueño");
+    expect(etiquetaRol("SUPERVISOR", barberia)).toBe("Supervisor");
+  });
+
+  it("el ADMIN de restaurante y farmacia sigue siendo Administrador", () => {
+    expect(etiquetaRol("ADMIN", { tipoNegocio: "RESTAURANTE" })).toBe("Administrador");
+    expect(etiquetaRol("ADMIN", { tipoNegocio: "FARMACIA" })).toBe("Administrador");
   });
 
   it("el perfil manda sobre el respaldo por rubro", () => {

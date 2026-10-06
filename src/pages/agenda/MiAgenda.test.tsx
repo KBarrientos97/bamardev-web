@@ -111,4 +111,48 @@ describe("A10 · mi agenda", () => {
     await montar();
     expect(screen.getByRole("button", { name: "Nueva cita" })).toBeInTheDocument();
   });
+
+  it("M-12: en una secuencia ve sólo su tramo (hora, duración y servicio)", async () => {
+    const secuencia = cita({
+      id: 13,
+      inicio: "2026-10-21T13:15:00.000Z",
+      fin: "2026-10-21T15:30:00.000Z",
+      cliente: { ...cita().cliente, nombre: "Ana Pisa" },
+      lineas: [
+        {
+          id: 31,
+          servicioId: 100,
+          servicio: "Corte de dama",
+          recursoId: 1,
+          recurso: "Carla R.",
+          inicio: "2026-10-21T13:15:00.000Z",
+          fin: "2026-10-21T14:00:00.000Z",
+          sobreTurno: false,
+          precio: 80,
+        },
+        {
+          id: 32,
+          servicioId: 101,
+          servicio: "Tinte raíz",
+          recursoId: 2,
+          recurso: "Sofía",
+          inicio: "2026-10-21T14:00:00.000Z",
+          fin: "2026-10-21T15:30:00.000Z",
+          sobreTurno: false,
+          precio: 150,
+        },
+      ],
+    });
+    vi.mocked(apiAgenda.miAgenda).mockResolvedValue({
+      recursos: [recurso({ id: 1, usuarioId: 8 })],
+      citas: [secuencia],
+    });
+    await montar();
+    const tarjeta = screen.getByRole("button", { name: "Ver la cita de Ana Pisa" });
+    expect(tarjeta).toHaveTextContent("09:15");
+    expect(tarjeta).toHaveTextContent("45 min");
+    expect(tarjeta).toHaveTextContent("Corte de dama");
+    expect(tarjeta).not.toHaveTextContent("Tinte raíz");
+    expect(tarjeta).not.toHaveTextContent("2 h");
+  });
 });

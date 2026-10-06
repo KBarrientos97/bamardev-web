@@ -179,3 +179,21 @@ export function fmtRangoNegocio(inicio: string, fin: string): string {
   if (a.fecha === b.fecha) return `${fmtFechaNegocio(a.fecha)} ${a.hora} a ${b.hora}`;
   return `${fmtFechaNegocio(a.fecha)} ${a.hora} a ${fmtFechaNegocio(b.fecha)} ${b.hora}`;
 }
+
+/**
+ * Un bloqueo, en palabras: si va de medianoche a medianoche (hora de La Paz)
+ * es de días enteros y se lee "08/10/2026 · todo el día" (o "del 08/10/2026 al
+ * 10/10/2026 · todo el día"); "08/10/2026 00:00 a 09/10/2026 00:00" parecía
+ * que terminaba al día siguiente (QA B-28). Lo demás, como `fmtRangoNegocio`.
+ */
+export function fmtRangoBloqueo(inicio: string, fin: string): string {
+  const a = partesNegocio(inicio);
+  const b = partesNegocio(fin);
+  if (a.hora === "00:00" && b.hora === "00:00" && b.fecha > a.fecha) {
+    const ultimo = sumarDias(b.fecha, -1);
+    return ultimo === a.fecha
+      ? `${fmtFechaNegocio(a.fecha)} · todo el día`
+      : `del ${fmtFechaNegocio(a.fecha)} al ${fmtFechaNegocio(ultimo)} · todo el día`;
+  }
+  return fmtRangoNegocio(inicio, fin);
+}

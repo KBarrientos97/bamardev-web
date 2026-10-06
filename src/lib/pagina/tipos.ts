@@ -40,8 +40,13 @@ export interface EnlacePublico {
 }
 
 export interface SucursalPublica {
-  id: number;
   nombre: string;
+  /**
+   * El slug de la sucursal en la reserva online, o null si no recibe reservas
+   * por internet (entonces su tarjeta no muestra "Reservar"). Sin el id del
+   * almacén: la página no expone ids internos (B07/B23).
+   */
+  reservaSlug: string | null;
   direccion: string | null;
   telefono: string | null;
   horario: string | null;
@@ -93,6 +98,9 @@ export interface SucursalEditor {
   publicarEnPagina: boolean;
   horarioTexto: string | null;
   mapsUrl: string | null;
+  /** Si recibe reservas online y con qué nombre en el enlace (para la vista previa). */
+  publicaReservas?: boolean;
+  slugReservas?: string | null;
 }
 
 export interface AjustesPagina {
@@ -115,7 +123,13 @@ export interface AjustesPagina {
 export interface EstadoEditor {
   subdominio: string | null;
   urlPublica: string | null;
-  negocio: { nombre: string; rubro: string; iniciales: string };
+  negocio: {
+    nombre: string;
+    rubro: string;
+    /** El rubro como lo muestra la página ("Peluquería"). */
+    rubroNombre?: string;
+    iniciales: string;
+  };
   pagina: AjustesPagina;
   imagenes: { logo: string | null; portada: string | null };
   enlaces: EnlaceEditor[];

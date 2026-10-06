@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { Icon } from "../../../components/Icon";
 import {
   AvisoOk,
   Boton,
@@ -13,14 +12,14 @@ import {
 } from "../../../components/ui";
 import { apiConfigAgenda } from "../../../lib/agenda/apiConfigAgenda";
 import {
-  fmtRangoNegocio,
+  fmtRangoBloqueo,
   hoyNegocio,
   instanteNegocio,
   sumarDias,
 } from "../../../lib/agenda/horarios";
 import type { Bloqueo, CitaAfectada, Recurso } from "../../../lib/agenda/tiposConfigAgenda";
 import { useApi } from "../../../lib/useApi";
-import { Bloque, Casilla, PuntoColor } from "./comun";
+import { AvisoCitasAfectadas, Bloque, Casilla, PuntoColor } from "./comun";
 import { mensajeDe, nombreRecurso, type Sucursal } from "./utilConfig";
 
 const DIAS_ADELANTE = 180;
@@ -84,44 +83,7 @@ export default function TabBloqueos({
       <AvisoOk>{aviso}</AvisoOk>
       <ErrorMsg>{error}</ErrorMsg>
 
-      {afectadas.length > 0 && (
-        <div role="alert" className="rounded-xl border border-warning/40 bg-warning-bg p-3.5 text-sm text-warning-text">
-          <div className="flex items-start gap-2">
-            <Icon name="alert" size={17} />
-            <div className="min-w-0 flex-1">
-              <p className="font-semibold">
-                {afectadas.length === 1
-                  ? "1 cita queda dentro del bloqueo"
-                  : `${afectadas.length} citas quedan dentro del bloqueo`}
-              </p>
-              <p className="mt-0.5">
-                No se canceló ninguna: reprogramalas o cancelalas una por una desde la agenda, y
-                avisale a cada cliente.
-              </p>
-              <ul className="mt-2 space-y-1">
-                {afectadas.map((c) => (
-                  <li key={c.id} className="rounded-lg bg-white/60 px-2.5 py-1.5">
-                    <span className="font-semibold">{c.cliente?.nombre ?? "Cliente"}</span>
-                    {c.inicio && c.fin ? ` · ${fmtRangoNegocio(c.inicio, c.fin)}` : ""}
-                    {c.lineas?.length
-                      ? ` · ${c.lineas.map((l) => `${l.servicio} con ${l.recurso}`).join(", ")}`
-                      : ""}
-                    <span className="text-xs"> ({c.codigo})</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-            <button
-              type="button"
-              onClick={() => setAfectadas([])}
-              aria-label="Cerrar el aviso de citas afectadas"
-              className="rounded-lg p-1.5 hover:bg-white/50"
-            >
-              <Icon name="close" size={16} />
-            </button>
-          </div>
-        </div>
-      )}
+      <AvisoCitasAfectadas citas={afectadas} donde="dentro del bloqueo" onCerrar={() => setAfectadas([])} />
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Bloque
@@ -159,7 +121,7 @@ export default function TabBloqueos({
                   <li key={b.id} className="flex items-center gap-3 py-2.5">
                     <div className="min-w-0 flex-1">
                       <p className="font-semibold text-texto">{b.motivo}</p>
-                      <p className="text-[13px] text-texto-3">{fmtRangoNegocio(b.inicio, b.fin)}</p>
+                      <p className="text-[13px] text-texto-3">{fmtRangoBloqueo(b.inicio, b.fin)}</p>
                       <p className="flex items-center gap-1.5 text-xs text-texto-4">
                         {r && <PuntoColor color={r.color} />}
                         {r

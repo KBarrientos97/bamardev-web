@@ -4,6 +4,7 @@ import { apiAgenda, mensajeDe } from "../../lib/agenda/apiAgenda";
 import { guardarVistoHasta, haceCuanto, leerVistoHasta, sinVer } from "../../lib/agenda/avisos";
 import type { AvisoAgenda, Cita, TipoAviso } from "../../lib/agenda/tiposAgenda";
 import { useConsultaPeriodica } from "../../lib/agenda/useConsultaPeriodica";
+import { useEsCelular } from "../../lib/agenda/useEsCelular";
 import { useAuth } from "../../store/AuthContext";
 
 /** Los que piden que alguien haga algo van en ámbar; lo demás es informativo. */
@@ -24,6 +25,14 @@ export default function CampanaAvisos({ onAbrirCita }: { onAbrirCita: (cita: Cit
   const [vistoHasta, setVistoHasta] = useState(() => leerVistoHasta(usuario?.id));
   const [error, setError] = useState("");
   const caja = useRef<HTMLDivElement>(null);
+  /**
+   * En el celular (y la tablet) el panel no se ancla al botón: el botón puede
+   * estar a la izquierda y 22rem anclados a su derecha salían por el borde
+   * izquierdo de la pantalla (QA A-04, 390 px). Ahí va fijo, con 1rem a cada
+   * lado, justo debajo del botón. En escritorio, igual que siempre.
+   */
+  const celular = useEsCelular();
+  const [topCelular, setTopCelular] = useState<number | null>(null);
 
   // `Promise.resolve().then` para que un error al armar el pedido sea un
   // rechazo (la campana queda quieta) y no tumbe la pantalla de la agenda.
@@ -48,6 +57,10 @@ export default function CampanaAvisos({ onAbrirCita }: { onAbrirCita: (cita: Cit
 
   function alternar() {
     const abrir = !abierta;
+    if (abrir) {
+      const borde = caja.current?.getBoundingClientRect().bottom;
+      setTopCelular(borde ? borde + 8 : null);
+    }
     setAbierta(abrir);
     // Abrir la campana es verlos: el contador vuelve a cero, y los que
     // lleguen después vuelven a contar.
@@ -89,7 +102,8 @@ export default function CampanaAvisos({ onAbrirCita }: { onAbrirCita: (cita: Cit
         <div
           role="dialog"
           aria-label="Avisos de la agenda"
-          className="absolute right-0 z-30 mt-2 w-[min(22rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-borde bg-white shadow-xl"
+          style={celular ? { top: topCelular ?? 64 } : undefined}
+          className="fixed inset-x-4 z-30 mx-auto max-w-[22rem] overflow-hidden rounded-2xl border border-borde bg-white shadow-xl lg:absolute lg:left-auto lg:right-0 lg:mx-0 lg:mt-2 lg:w-[min(22rem,calc(100vw-2rem))] lg:max-w-none"
         >
           <p className="border-b border-borde-soft px-4 py-2.5 text-[13px] font-bold text-texto">Avisos</p>
           {error && <p className="px-4 py-2 text-[12px] text-danger-text">{error}</p>}

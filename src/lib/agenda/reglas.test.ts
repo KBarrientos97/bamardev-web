@@ -3,6 +3,7 @@ import {
   cambiosReglas,
   erroresReglas,
   fmtValorRegla,
+  META_REGLAS,
   motivoAnticipo,
   textoOrigen,
   valoresDe,
@@ -72,5 +73,13 @@ describe("reglas del negocio", () => {
     expect(fmtValorRegla("profesionalVeTelefono", true)).toBe("Sí");
     expect(fmtValorRegla("granularidadMin", 10)).toBe("10 min");
     expect(fmtValorRegla("campoNuevo", "x")).toBe("x");
+  });
+});
+
+describe("textos de la reserva online", () => {
+  it("el vencimiento de una solicitud no se lee como una hora del reloj (B26)", () => {
+    const meta = META_REGLAS.vencimientoSolicitudHoras;
+    expect(meta.etiqueta).toBe("Una solicitud sin respuesta vence después de");
+    expect(meta.etiqueta).not.toMatch(/a las$/);
   });
 });
