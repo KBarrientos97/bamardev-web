@@ -46,7 +46,7 @@ export default function PantallaCierre({
   /** Recibir la plata de los meseros sin salir del cierre a buscarla. */
   onIrAEntregas?: () => void;
 }) {
-  const { incluye, rubro } = useAuth();
+  const { incluye, rubro, puede } = useAuth();
   const resumen = useApi(() => api.resumenCaja(caja.id), [caja.id]);
   const [contado, setContado] = useState("");
   const [nota, setNota] = useState("");
@@ -74,6 +74,15 @@ export default function PantallaCierre({
    * que el cajero verifique después de contar, no antes.
    */
   const esperado = r?.saldoEsperado ?? 0;
+  // Belleza (QA DIA-11): las propinas están dentro de ingresos/egresos; se
+  // muestran aparte y el resto queda como "otros". Sin propinas (Omar), las
+  // filas son las de siempre.
+  const propinasEfectivo = r?.propinasEfectivo ?? 0;
+  const propinasSalidas = r?.propinasSalidas ?? 0;
+  const propinasOtras = r?.propinasOtras ?? 0;
+  const hayPropinas = propinasEfectivo > 0 || propinasSalidas > 0;
+  const otrosIngresos = Math.round(((r?.ingresos ?? 0) - propinasEfectivo) * 100) / 100;
+  const otrosEgresos = Math.round(((r?.egresos ?? 0) - propinasSalidas) * 100) / 100;
   // Con parseo de coma: en Bolivia se teclea "150,50" y Number() da NaN, que
   // caía a 0 sin avisar — el conteo del cierre quedaba en cero y la diferencia
   // mostraba un faltante enorme que nadie había cometido.
@@ -145,8 +154,12 @@ export default function PantallaCierre({
               <h2 className="mb-3 text-[13px] font-bold uppercase tracking-wide text-texto-4">
                 Movimiento del turno
               </h2>
+              {/* Dos bloques (QA VER-01 / DIA-11): lo que se vendió, que NO se
+                  suma, y la cuenta del cajón, cuyas filas SÍ suman el
+                  esperado. Antes iba todo junto: el "Cambio entregado" restaba
+                  sin entrar en la cuenta y las propinas salían como "Ingresos
+                  de efectivo". Los números son los de siempre. */}
               <dl className="space-y-1.5 text-sm">
-                <Fila etiqueta="Fondo de apertura" valor={r.montoApertura} />
                 <Fila
                   etiqueta={`Ventas (${r.cantidadVentas})`}
                   valor={r.totalVentas}
@@ -154,13 +167,81 @@ export default function PantallaCierre({
                 {r.porFormaPago.map((f) => (
                   <Fila key={f.nombre} etiqueta={f.nombre} valor={f.monto} sangria />
                 ))}
-                {r.cambioEntregado > 0 && (
-                  <Fila etiqueta="Cambio entregado" valor={-r.cambioEntregado} />
+                {/* Un abono cobrado por QR entró al negocio pero NO al cajón:
+                    sin esta fila el cajero veía el total de cobros del turno
+                    sin poder explicar por qué el efectivo no llegaba. */}
+                {r.abonosPorFormaPago
+                  ?.filter(
+                    (f) => f.monto > 0 && !f.nombre.toLowerCase().includes("efectivo"),
+                  )
+                  .map((f) => (
+                    <Fila
+                      key={f.nombre}
+                      etiqueta={`Abonos por ${f.nombre} (no es efectivo)`}
+                      valor={f.monto}
+                      apagado
+                    />
+                  ))}
+                {r.creditoOtorgado > 0 && (
+                  <Fila
+                    etiqueta="Fiado otorgado (no es efectivo)"
+                    valor={r.creditoOtorgado}
+                    apagado
+                  />
                 )}
-                {r.ingresos > 0 && <Fila etiqueta="Ingresos de efectivo" valor={r.ingresos} />}
-                {r.egresos > 0 && <Fila etiqueta="Egresos de efectivo" valor={-r.egresos} />}
+                {propinasOtras > 0 && (
+                  <Fila
+                    etiqueta="Propinas por QR (no pasan por la caja)"
+                    valor={propinasOtras}
+                    apagado
+                  />
+                )}
+                {r.anuladas > 0 && (
+                  <div className="flex justify-between pt-1 text-texto-3">
+                    <dt>Ventas anuladas</dt>
+                    <dd>{r.anuladas}</dd>
+                  </div>
+                )}
+              </dl>
+
+              <h3 className="mb-2 mt-4 border-t border-borde pt-3 text-[12px] font-bold uppercase tracking-wide text-texto-4">
+                Efectivo en caja
+              </h3>
+              <dl className="space-y-1.5 text-sm">
+                <Fila etiqueta="Fondo de apertura" valor={r.montoApertura} />
+                <div>
+                  <Fila etiqueta="Ventas en efectivo" valor={r.efectivo} />
+                  {/* El cambio ya está descontado de las ventas: se cuenta
+                      cómo se llegó, sin restarlo otra vez. */}
+                  {r.cambioEntregado > 0 && (
+                    <p className="pl-3 text-[12px] text-texto-4">
+                      Recibido {fmtMoney(r.efectivo + r.cambioEntregado)} · cambio entregado{" "}
+                      {fmtMoney(r.cambioEntregado)}
+                    </p>
+                  )}
+                </div>
                 {r.abonosEfectivo > 0 && (
                   <Fila etiqueta="Abonos de créditos (efectivo)" valor={r.abonosEfectivo} />
+                )}
+                {/* La plata de las profesionales, en su fila: está en el cajón
+                    pero no es del negocio. */}
+                {propinasEfectivo > 0 && (
+                  <Fila etiqueta="Propinas en efectivo" valor={propinasEfectivo} />
+                )}
+                {propinasSalidas > 0 && (
+                  <Fila etiqueta="Propinas entregadas" valor={-propinasSalidas} />
+                )}
+                {otrosIngresos > 0 && (
+                  <Fila
+                    etiqueta={hayPropinas ? "Otros ingresos de efectivo" : "Ingresos de efectivo"}
+                    valor={otrosIngresos}
+                  />
+                )}
+                {otrosEgresos > 0 && (
+                  <Fila
+                    etiqueta={hayPropinas ? "Otros egresos de efectivo" : "Egresos de efectivo"}
+                    valor={-otrosEgresos}
+                  />
                 )}
                 {/* La fila que hace cerrar el arqueo cuando el mesero cobra.
                     Esa plata ya está en las ventas en efectivo, pero en el
@@ -188,34 +269,6 @@ export default function PantallaCierre({
                         </>
                       )}
                     </p>
-                  </div>
-                )}
-                {/* Un abono cobrado por QR entró al negocio pero NO al cajón:
-                    sin esta fila el cajero veía el total de cobros del turno
-                    sin poder explicar por qué el efectivo no llegaba. */}
-                {r.abonosPorFormaPago
-                  ?.filter(
-                    (f) => f.monto > 0 && !f.nombre.toLowerCase().includes("efectivo"),
-                  )
-                  .map((f) => (
-                    <Fila
-                      key={f.nombre}
-                      etiqueta={`Abonos por ${f.nombre} (no es efectivo)`}
-                      valor={f.monto}
-                      apagado
-                    />
-                  ))}
-                {r.creditoOtorgado > 0 && (
-                  <Fila
-                    etiqueta="Fiado otorgado (no es efectivo)"
-                    valor={r.creditoOtorgado}
-                    apagado
-                  />
-                )}
-                {r.anuladas > 0 && (
-                  <div className="flex justify-between pt-1 text-texto-3">
-                    <dt>Ventas anuladas</dt>
-                    <dd>{r.anuladas}</dd>
                   </div>
                 )}
               </dl>
@@ -249,19 +302,24 @@ export default function PantallaCierre({
                 label="Efectivo contado"
                 hint="Contá los billetes y monedas que hay en la caja"
               >
-                <button
-                  type="button"
-                  onClick={() => setViendoProductos(true)}
-                  className="mb-2 flex w-full items-center gap-2 rounded-xl border border-borde px-3.5 py-2.5 text-left text-[13px] font-semibold text-texto-2 hover:bg-muted"
-                >
-                  <Icon name="box" size={17} />
-                  {/* "Mostrador" es palabra de restaurante: en un salón se
-                      venden servicios (QA B-21). */}
-                  <span className="flex-1">
-                    {esBelleza(rubro) ? "Ver lo vendido" : "Ver qué salió del mostrador"}
-                  </span>
-                  <Icon name="chevronRight" size={16} />
-                </button>
+                {/* Lo vendido sale de Reportes (encargado o dueño): a quien no
+                    lo puede ver (recepción) el botón le daba "no tenés
+                    permiso" y "no se vendió nada" a la vez (QA DIA-10). */}
+                {puede("reportes") && (
+                  <button
+                    type="button"
+                    onClick={() => setViendoProductos(true)}
+                    className="mb-2 flex w-full items-center gap-2 rounded-xl border border-borde px-3.5 py-2.5 text-left text-[13px] font-semibold text-texto-2 hover:bg-muted"
+                  >
+                    <Icon name="box" size={17} />
+                    {/* "Mostrador" es palabra de restaurante: en un salón se
+                        venden servicios (QA B-21). */}
+                    <span className="flex-1">
+                      {esBelleza(rubro) ? "Ver lo vendido" : "Ver qué salió del mostrador"}
+                    </span>
+                    <Icon name="chevronRight" size={16} />
+                  </button>
+                )}
 
                 <div className="mb-2">
                   <CorteDeCaja
@@ -707,9 +765,10 @@ export function ProductosDelTurno({
     >
       <div className="space-y-3">
         <ErrorMsg>{datos.error}</ErrorMsg>
+        {/* Con error, sólo el error: "no se vendió nada" sería falso. */}
         {datos.cargando ? (
           <Cargando />
-        ) : !d || d.lineas === 0 ? (
+        ) : datos.error ? null : !d || d.lineas === 0 ? (
           <p className="py-6 text-center text-[13px] text-texto-3">
             En este turno todavía no se vendió nada.
           </p>

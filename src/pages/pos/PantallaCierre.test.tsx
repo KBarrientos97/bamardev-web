@@ -1,4 +1,4 @@
-import { act, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Caja, ResumenCaja } from "../../types";
 
@@ -8,12 +8,13 @@ import type { Caja, ResumenCaja } from "../../types";
  * (B-21). Un restaurante ve lo de siempre.
  */
 
-const sesion = vi.hoisted(() => ({ rubro: "PELUQUERIA" as string }));
+const sesion = vi.hoisted(() => ({ rubro: "PELUQUERIA" as string, reportes: true }));
 
 vi.mock("../../store/AuthContext", () => ({
   useAuth: () => ({
     rubro: sesion.rubro,
     incluye: () => true,
+    puede: (s: string) => (s === "reportes" ? sesion.reportes : true),
     usuario: { rol: "ADMIN" },
   }),
 }));
@@ -63,6 +64,7 @@ async function montar() {
 beforeEach(() => {
   vi.clearAllMocks();
   sesion.rubro = "PELUQUERIA";
+  sesion.reportes = true;
 });
 
 describe("B-28: las citas para revisar, con nombre y motivo", () => {
@@ -127,5 +129,107 @@ describe("B-21: sin palabras de restaurante en un salón", () => {
     await montar();
     expect(screen.getByText("Ver qué salió del mostrador")).toBeInTheDocument();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+});
+
+/** Las filas del bloque "Efectivo en caja", como [etiqueta, monto]. */
+function filasDeCaja(): [string, number][] {
+  const titulo = screen.getByText("Efectivo en caja");
+  const dl = titulo.nextElementSibling as HTMLElement;
+  return Array.from(dl.querySelectorAll("dt")).map((dt) => {
+    const txt = (dt.nextElementSibling?.textContent ?? "").replace(/[^\d,-]/g, "").replace(",", ".");
+    return [dt.textContent ?? "", Number(txt)];
+  });
+}
+
+describe("QA VER-01 / DIA-11: las filas del cajón suman el esperado", () => {
+  it("salón: el cambio no resta otra vez y las propinas tienen su fila", async () => {
+    // El caso de DIA-11: fondo 100, efectivo 245 (recibido 275, cambio 30),
+    // propinas en efectivo 23, entregadas 5, QR 12 aparte. Esperado 363.
+    vi.mocked(api.resumenCaja).mockResolvedValue(
+      resumen({
+        totalVentas: 566,
+        porFormaPago: [
+          { nombre: "Efectivo", monto: 245 },
+          { nombre: "QR", monto: 271 },
+        ],
+        creditoOtorgado: 50,
+        efectivo: 245,
+        cambioEntregado: 30,
+        ingresos: 23,
+        egresos: 5,
+        propinasEfectivo: 23,
+        propinasSalidas: 5,
+        propinasOtras: 12,
+        saldoEsperado: 363,
+      }),
+    );
+    await montar();
+    const filas = filasDeCaja();
+    expect(filas.map(([e]) => e)).toEqual([
+      "Fondo de apertura",
+      "Ventas en efectivo",
+      "Propinas en efectivo",
+      "Propinas entregadas",
+    ]);
+    expect(Math.round(filas.reduce((s, [, m]) => s + m, 0) * 100) / 100).toBe(363);
+    expect(screen.getByText(/Recibido Bs.275,00 · cambio entregado Bs.30,00/)).toBeInTheDocument();
+    expect(screen.getByText("Propinas por QR (no pasan por la caja)")).toBeInTheDocument();
+    expect(screen.queryByText("Ingresos de efectivo")).not.toBeInTheDocument();
+    expect(screen.queryByText("Cambio entregado")).not.toBeInTheDocument();
+  });
+
+  it("con un ingreso manual además de las propinas, va como «otros»", async () => {
+    vi.mocked(api.resumenCaja).mockResolvedValue(
+      resumen({ ingresos: 33, propinasEfectivo: 23, saldoEsperado: 463 }),
+    );
+    await montar();
+    const filas = filasDeCaja();
+    expect(filas).toContainEqual(["Otros ingresos de efectivo", 10]);
+    expect(filas.reduce((s, [, m]) => s + m, 0)).toBe(463);
+  });
+
+  it("restaurante (Omar): las mismas cifras, con sus nombres de siempre", async () => {
+    sesion.rubro = "RESTAURANTE";
+    vi.mocked(api.resumenCaja).mockResolvedValue(
+      resumen({
+        efectivo: 330,
+        cambioEntregado: 20,
+        ingresos: 50,
+        egresos: 30,
+        abonosEfectivo: 15,
+        saldoEsperado: 465,
+      }),
+    );
+    await montar();
+    const filas = filasDeCaja();
+    expect(filas).toEqual([
+      ["Fondo de apertura", 100],
+      ["Ventas en efectivo", 330],
+      ["Abonos de créditos (efectivo)", 15],
+      ["Ingresos de efectivo", 50],
+      ["Egresos de efectivo", -30],
+    ]);
+    expect(filas.reduce((s, [, m]) => s + m, 0)).toBe(465);
+    expect(screen.queryByText(/Propinas/)).not.toBeInTheDocument();
+  });
+});
+
+describe("QA DIA-10: «Ver lo vendido» sólo para quien lo puede ver", () => {
+  it("recepción (sin reportes) no ve el botón", async () => {
+    sesion.reportes = false;
+    vi.mocked(api.resumenCaja).mockResolvedValue(resumen());
+    await montar();
+    expect(screen.queryByText("Ver lo vendido")).not.toBeInTheDocument();
+  });
+
+  it("si el pedido falla, sólo el error: no dice que no se vendió nada", async () => {
+    vi.mocked(api.resumenCaja).mockResolvedValue(resumen());
+    vi.mocked(api.reporteCierreProductos).mockRejectedValue(new Error("No tenés permiso para hacer esto"));
+    await montar();
+    fireEvent.click(screen.getByText("Ver lo vendido"));
+    await act(async () => {});
+    expect(screen.getByText("No tenés permiso para hacer esto")).toBeInTheDocument();
+    expect(screen.queryByText(/no se vendió nada/)).not.toBeInTheDocument();
   });
 });

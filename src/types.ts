@@ -836,6 +836,15 @@ export interface ResumenCaja {
   enPoderDeMeseros?: number;
   /** Lo mismo, por mesero: dice a quién pedirle la plata. */
   meserosPendientes?: { meseroId: number | null; nombre: string | null; monto: number }[];
+  /**
+   * Belleza (QA DIA-11): de `ingresos`, las propinas dejadas en efectivo; de
+   * `egresos`, las entregadas a los profesionales (o devueltas al anular). Y
+   * las dejadas por QR o tarjeta, que no pasan por el cajón (informativo).
+   * Opcionales: un backend anterior no los manda (se toman como 0).
+   */
+  propinasEfectivo?: number;
+  propinasSalidas?: number;
+  propinasOtras?: number;
   saldoEsperado: number;
   /**
    * Agenda (belleza): citas de la sucursal que terminaron y nadie cobró, y
