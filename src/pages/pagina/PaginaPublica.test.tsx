@@ -26,7 +26,7 @@ const PAGINA: Pagina = {
   redes: [{ id: 8, tipo: "FACEBOOK", etiqueta: "Facebook", url: "https://www.facebook.com/bs", icono: null }],
   botones: [{ id: 9, tipo: "BOTON", etiqueta: "Ver el menú", url: "https://bs.bo/menu.pdf", icono: "menu" }],
   sucursales: [
-    { id: 1, nombre: "Av. Banzer", direccion: "Av. Banzer, 4to anillo", telefono: "33112233", horario: "11 a 23", mapaUrl: "https://maps.app.goo.gl/x" },
+    { nombre: "Av. Banzer", reservaSlug: "banzer", direccion: "Av. Banzer, 4to anillo", telefono: "33112233", horario: "11 a 23", mapaUrl: "https://maps.app.goo.gl/x" },
   ],
   pie: { atribucionUrl: "https://bamardev.com/?utm_campaign=buensabor" },
   og: { titulo: "Pollería El Buen Sabor", descripcion: "Pollo a la brasa", imagen: null, url: "https://app-qa.bamardev.com/p/buensabor" },
@@ -90,7 +90,16 @@ describe("página pública", () => {
     vi.stubGlobal("fetch", responder(200, { ...PAGINA, reservar: true, destacado: null }));
     await montar();
     expect(screen.getByRole("link", { name: /Reservar turno/ })).toHaveAttribute("href", "/r/buensabor/reservar");
-    expect(screen.getByRole("link", { name: "Reservar" })).toHaveAttribute("href", "/r/buensabor/reservar?sucursal=1");
+    // La tarjeta lleva a la reserva de ESA sucursal, por su slug (B07).
+    expect(screen.getByRole("link", { name: "Reservar" })).toHaveAttribute("href", "/r/buensabor/reservar/banzer");
+  });
+
+  it("una sucursal que no recibe reservas online no muestra Reservar en su tarjeta (B07)", async () => {
+    const sinReserva = { ...PAGINA.sucursales[0], reservaSlug: null };
+    vi.stubGlobal("fetch", responder(200, { ...PAGINA, reservar: true, destacado: null, sucursales: [sinReserva] }));
+    await montar();
+    expect(screen.getByRole("link", { name: /Reservar turno/ })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Reservar" })).not.toBeInTheDocument();
   });
 
   it("un toque en un enlace avisa el clic por beacon", async () => {

@@ -20,10 +20,44 @@ import posthog from "posthog-js";
 
 let activa = false;
 
+/**
+ * Las páginas del cliente final del negocio: la reserva online (`/r/…`, con
+ * el token secreto del enlace de gestión en `/r/<sub>/c/<token>`) y la página
+ * del negocio (`/p/…`). **Nada de ellas va a PostHog** (PLAN-AGENDA-BELLEZA
+ * §8.6 regla 5): ni la URL, ni el token, ni un identificador en el
+ * localStorage de alguien que no es usuario de BamarDev (B01).
+ */
+export function esRutaPublica(ruta = typeof location === "undefined" ? "" : location.pathname): boolean {
+  return /^\/(r|p)(\/|$)/.test(ruta);
+}
+
+/**
+ * Último filtro antes de que un evento salga: si la app ya estaba iniciada y
+ * se navegó a una ruta pública sin recargar, el evento se descarta (llevaría
+ * la URL). Exportado para probarlo.
+ */
+export function filtrarEvento<T extends { properties?: Record<string, unknown> } | null>(evento: T): T | null {
+  if (!evento) return evento;
+  const props = evento.properties ?? {};
+  const url = String(props.$current_url ?? "");
+  const ruta = String(props.$pathname ?? "");
+  let deUrl = "";
+  try {
+    deUrl = url ? new URL(url).pathname : "";
+  } catch {
+    deUrl = "";
+  }
+  if (esRutaPublica() || esRutaPublica(ruta) || esRutaPublica(deUrl)) return null;
+  return evento;
+}
+
 /** Propiedades que acompañan a TODO evento (el `register` de Android). */
 let comunes: Record<string, unknown> = {};
 
 export function iniciarTelemetria() {
+  // En una página del cliente final ni se inicia: así tampoco queda un
+  // `distinct_id` en su navegador ni se baja ningún script de PostHog.
+  if (esRutaPublica()) return;
   const key = import.meta.env.VITE_POSTHOG_KEY?.trim();
   if (!key) {
     console.warn("Sin VITE_POSTHOG_KEY: los errores no se reportarán.");
@@ -39,6 +73,16 @@ export function iniciarTelemetria() {
       // Los errores se mandan a mano desde el interceptor: el handler global
       // de posthog-js duplicaría cada fallo de red que ya reportamos ahí.
       capture_exceptions: false,
+      // La configuración remota del proyecto prendía web vitals y los "dead
+      // clicks", que mandan la URL sola (con el token del enlace de gestión,
+      // B01). Se apagan acá y no se baja ningún script extra.
+      capture_performance: false,
+      capture_dead_clicks: false,
+      capture_heatmaps: false,
+      disable_surveys: true,
+      disable_web_experiments: true,
+      disable_external_dependency_loading: true,
+      before_send: filtrarEvento,
       persistence: "localStorage",
     });
     activa = true;
@@ -102,7 +146,7 @@ export function reportarError(
 ) {
   const error = e instanceof Error ? e : new Error(String(e));
   console.error(`Error en ${donde}`, error);
-  if (!activa) return;
+  if (!activa || esRutaPublica()) return;
   try {
     posthog.capture("error_app", {
       ...comunes,

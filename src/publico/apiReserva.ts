@@ -33,7 +33,10 @@ async function pedir<T>(ruta: string, opciones: RequestInit = {}): Promise<T> {
     res = await fetch(`${BASE}${ruta}`, {
       ...opciones,
       signal: corte.signal,
-      headers: { "Content-Type": "application/json", ...opciones.headers },
+      // El Content-Type sólo cuando hay cuerpo: en un GET convierte el pedido
+      // en "no simple" y el navegador manda un OPTIONS antes de cada consulta
+      // de horarios, el doble de idas y vueltas en 3G (B29).
+      headers: { ...(opciones.body != null ? { "Content-Type": "application/json" } : {}), ...opciones.headers },
     });
   } catch {
     throw new ErrorReserva(

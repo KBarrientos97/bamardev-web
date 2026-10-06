@@ -82,7 +82,13 @@ describe("vista previa desde el editor", () => {
     expect(v.redes.map((r) => r.id)).toEqual([1]);
     expect(v.botones.map((b) => b.id)).toEqual([4]);
     expect(v.sucursales).toEqual([
-      expect.objectContaining({ id: 10, horario: "9 a 20", mapaUrl: expect.stringContaining("query=Jun%C3%ADn%20245") }),
+      expect.objectContaining({
+        nombre: "Centro",
+        horario: "9 a 20",
+        // Sin reserva online no hay "Reservar" en la tarjeta (B07).
+        reservaSlug: null,
+        mapaUrl: expect.stringContaining("query=Jun%C3%ADn%20245"),
+      }),
     ]);
   });
 
@@ -151,7 +157,8 @@ describe("rutas y permisos", () => {
 describe("privacidad del cliente", () => {
   it("el contacto es el WhatsApp de la página, si no el teléfono de una sucursal", () => {
     const v = vistaDesdeEditor(editor());
-    expect(contactoDe(v)).toEqual({ texto: "por WhatsApp", url: "https://wa.me/59170123456" });
+    // Con el número a la vista (B08).
+    expect(contactoDe(v)).toEqual({ texto: "por WhatsApp al 70123456", url: "https://wa.me/59170123456" });
     const sinWa = { ...v, destacado: null, botones: [], redes: [] };
     expect(contactoDe(sinWa)).toEqual({ texto: "al 33445566", url: "tel:33445566" });
     expect(contactoDe({ ...sinWa, sucursales: [] })).toBeNull();

@@ -91,6 +91,22 @@ describe("Mi página", () => {
     expect(within(previa()).getByText("Reservar turno")).toBeInTheDocument();
   });
 
+  it("la vista previa es la página de verdad: rubro, Privacidad, sin otro main ni h1 (B24)", async () => {
+    const base = estado();
+    vi.mocked(apiPagina.estado).mockResolvedValue({
+      ...base,
+      negocio: { ...base.negocio, rubroNombre: "Peluquería" },
+      sucursales: base.sucursales.map((s) => ({ ...s, publicaReservas: true, slugReservas: "centro" })),
+    });
+    await montar();
+    expect(within(previa()).getByText("Peluquería")).toBeInTheDocument();
+    expect(within(previa()).getByRole("link", { name: "Privacidad" })).toBeInTheDocument();
+    expect(within(previa()).queryByRole("main")).not.toBeInTheDocument();
+    expect(within(previa()).queryByRole("heading", { level: 1 })).not.toBeInTheDocument();
+    // La tarjeta de la sucursal que publica reservas también lleva Reservar (B07).
+    expect(within(previa()).getByRole("link", { name: "Reservar" })).toBeInTheDocument();
+  });
+
   it("la vista previa cambia en vivo y Guardar manda sólo lo cambiado", async () => {
     await montar();
     fireEvent.change(screen.getByLabelText("Descripción corta"), { target: { value: "Cortes y color" } });

@@ -66,3 +66,19 @@ export const ultimaReserva = {
 export function horaCorta(iso: string): string {
   return horaNegocio(iso).replace(/^0/, "");
 }
+
+/** Versión de la plantilla de privacidad (legal/PRIVACIDAD-CLIENTE-FINAL.md). La reserva usa la que manda el backend. */
+export const VERSION_POLITICA = "v0.1";
+
+/** Cómo escribirle al negocio desde su política de privacidad. */
+export interface ContactoNegocio {
+  texto: string;
+  url: string;
+}
+
+/** "70123456" → "al 70123456" con su `tel:`. */
+export function contactoPorTelefono(telefono: string | null | undefined): ContactoNegocio | null {
+  if (!telefono?.trim()) return null;
+  const limpio = telefono.trim();
+  return { texto: `al ${limpio}`, url: `tel:${limpio.replace(/[^\d+]/g, "")}` };
+}

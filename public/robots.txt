@@ -1,0 +1,6 @@
+# app.bamardev.com es la app del negocio (con sesión) y la reserva online de
+# sus clientes: lo único que tiene sentido indexar es la página de cada
+# negocio (/p/<subdominio>). Sin este archivo, la SPA devolvía su index.html.
+User-agent: *
+Allow: /p/
+Disallow: /

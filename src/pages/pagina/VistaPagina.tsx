@@ -159,6 +159,10 @@ export default function VistaPagina({ pagina: p, urlReservar, urlPrivacidad, alC
   });
 
   const unaSucursal = p.sucursales.length === 1;
+  // Dentro del editor la vista previa vive adentro del <main> de la app: ahí
+  // no puede abrir otro <main> ni otro <h1> (B24, doble landmark y doble h1).
+  const Principal = enMarco ? "section" : "main";
+  const Titulo = enMarco ? "h2" : "h1";
 
   return (
     <div
@@ -234,7 +238,7 @@ export default function VistaPagina({ pagina: p, urlReservar, urlPrivacidad, alC
               </div>
             )}
           </div>
-          <h1
+          <Titulo
             style={{
               margin: "12px 20px 0",
               fontSize: fuerte ? 28 : 26,
@@ -247,7 +251,7 @@ export default function VistaPagina({ pagina: p, urlReservar, urlPrivacidad, alC
             }}
           >
             {p.nombre}
-          </h1>
+          </Titulo>
           {p.rubro && <span style={{ fontSize: 13, color: GRIS.texto3, marginTop: 2 }}>{p.rubro}</span>}
           {p.descripcion && (
             <p style={{ margin: "8px 24px 0", fontSize: 14, color: GRIS.texto2, textAlign: "center", lineHeight: 1.45 }}>
@@ -282,7 +286,10 @@ export default function VistaPagina({ pagina: p, urlReservar, urlPrivacidad, alC
           )}
         </header>
 
-        <main style={{ padding: "18px 20px 24px", display: "flex", flexDirection: "column", gap: 12 }}>
+        <Principal
+          aria-label={enMarco ? "Vista previa de la página" : undefined}
+          style={{ padding: "18px 20px 24px", display: "flex", flexDirection: "column", gap: 12 }}
+        >
           {p.anuncio && (
             <div
               role="note"
@@ -334,15 +341,22 @@ export default function VistaPagina({ pagina: p, urlReservar, urlPrivacidad, alC
               {unaSucursal ? "DÓNDE ESTAMOS" : "NUESTRAS SUCURSALES"}
             </h2>
           )}
-          {p.sucursales.map((s) => {
+          {p.sucursales.map((s, i) => {
             const acciones = [
               s.mapaUrl && { texto: "Cómo llegar", href: s.mapaUrl, destacado: false },
               s.telefono && { texto: "Llamar", href: urlTelefono(s.telefono), destacado: false },
-              p.reservar && { texto: "Reservar", href: `${urlReservar}?sucursal=${s.id}`, destacado: true },
+              // La reserva de ESA sucursal, por su slug (B07): `?sucursal=<id>`
+              // no lo leía nadie y exponía el id del almacén.
+              p.reservar &&
+                s.reservaSlug && {
+                  texto: "Reservar",
+                  href: `${urlReservar}/${encodeURIComponent(s.reservaSlug)}`,
+                  destacado: true,
+                },
             ].filter(Boolean) as { texto: string; href: string; destacado: boolean }[];
             return (
               <article
-                key={s.id}
+                key={`${s.nombre}-${i}`}
                 style={{
                   background: "#ffffff",
                   border: `1px solid ${GRIS.borde}`,
@@ -409,7 +423,7 @@ export default function VistaPagina({ pagina: p, urlReservar, urlPrivacidad, alC
               </a>
             </span>
           </footer>
-        </main>
+        </Principal>
       </div>
     </div>
   );
