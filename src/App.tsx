@@ -43,6 +43,8 @@ import Proveedores from "./pages/farmacia/Proveedores";
 import VentaFarmaciaProvider from "./pages/farmacia/VentaFarmaciaProvider";
 import Repartidor from "./pages/repartidor/Repartidor";
 import PanelMesero from "./pages/salon/PanelMesero";
+import ConfigAgenda from "./pages/agenda/config/ConfigAgenda";
+import ConfigNegocio from "./pages/agenda/config/ConfigNegocio";
 import { AuthProvider, useAuth } from "./store/AuthContext";
 
 /** Manda a cada rol a su pantalla: cajero al POS, repartidor a entregas. */
@@ -466,6 +468,24 @@ function Rutas() {
           element={
             <Protegida seccion="usuarios">
               <Usuarios />
+            </Protegida>
+          }
+        />
+
+        {/* Agenda de belleza: configuración (A8) y reglas del negocio (A11). */}
+        <Route
+          path="/configuracion/agenda"
+          element={
+            <Protegida seccion="agenda_config">
+              <ConfigAgenda />
+            </Protegida>
+          }
+        />
+        <Route
+          path="/configuracion/negocio"
+          element={
+            <Protegida seccion="config_negocio">
+              <ConfigNegocio />
             </Protegida>
           }
         />
