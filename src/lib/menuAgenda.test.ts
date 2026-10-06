@@ -56,6 +56,13 @@ describe("menú del salón", () => {
     expect(hijos.Marketing).toEqual(["Mi página", "Mis enlaces", "Promociones", "Clientes que no vuelven"]);
   });
 
+  it("PER-09: en la barra de íconos, Clientes y Clientes que no vuelven no comparten ícono", () => {
+    const todos = aplanar(menu("ADMIN", "BARBERIA").flatMap((b) => b.nodos));
+    const icono = (label: string) => todos.find((n) => n.item.label === label)?.item.icono;
+    expect(icono("Clientes")).toBe("users");
+    expect(icono("Clientes que no vuelven")).toBe("userX");
+  });
+
   it("las propinas pasan de Vender a Equipo", () => {
     const m = menu("ADMIN", "BARBERIA");
     const vender = m.find((b) => b.bloque === "vender")?.nodos.map((n) => n.item.label) ?? [];

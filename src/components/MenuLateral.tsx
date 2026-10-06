@@ -168,7 +168,9 @@ export default function MenuLateral({
         <Link
           to={n.item.a}
           onClick={() => navegar(n)}
-          aria-label={n.item.label}
+          // En la barra de íconos el número es sólo un punto: el lector de
+          // pantalla igual tiene que oír cuántas hay (QA PER-09).
+          aria-label={contadorDe(n) > 0 ? `${n.item.label}, ${contadorDe(n)} por atender` : n.item.label}
           aria-current={activo ? "page" : undefined}
           data-fila=""
           data-nav-id={n.id}
@@ -264,9 +266,12 @@ export default function MenuLateral({
           >
             {icono(n, esHijo)}
             <span className="min-w-0 leading-snug">{n.item.label}</span>
-            {/* Cerrado, el grupo dice cuántas pantallas guarda; y si la que
-                está abierta es una de ellas, el contador se enciende: es el
-                "estás acá adentro" cuando el hijo no se ve. */}
+            {/* Cerrado, el grupo dice cuántas pantallas guarda. Lo que hay
+                por atender va en la píldora blanca; el número de pantallas,
+                en cambio, es un dato tenue y sin fondo: con el mismo estilo,
+                un "Agenda 6" se leía como seis solicitudes (QA PER-09). Si
+                la pantalla abierta es una de ellas, el número se aclara: es
+                el "estás acá adentro" cuando el hijo no se ve. */}
             {!abierto && pendientesEn(n) > 0 && (
               <span
                 className="ml-auto rounded-full bg-barra-texto px-1.5 text-[11px] font-bold leading-[18px] text-barra tabular-nums"
@@ -278,9 +283,10 @@ export default function MenuLateral({
             {!abierto && pendientesEn(n) === 0 && (
               <span
                 aria-hidden="true"
+                title={`${n.hijos.length} pantallas`}
                 className={[
-                  "ml-auto rounded-full px-1.5 text-[11px] font-bold leading-[18px] tabular-nums",
-                  dentro ? "bg-barra-texto text-barra" : "bg-white/15 text-barra-texto-2",
+                  "ml-auto px-1 text-[10px] font-medium leading-[18px] tabular-nums",
+                  dentro ? "text-barra-texto" : "text-barra-texto-2 opacity-70",
                 ].join(" ")}
               >
                 {n.hijos.length}

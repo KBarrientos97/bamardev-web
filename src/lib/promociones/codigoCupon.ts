@@ -24,6 +24,22 @@ export function limpiarCodigo(texto: string): string {
     .slice(0, CODIGO_MAX);
 }
 
+/**
+ * Limpia lo escrito y dice dónde queda el cursor: lo que había antes del
+ * cursor, ya limpio, mide lo mismo que su nueva posición. Sin esto, al
+ * corregir en el medio ("QA|S2" + "x-y") el cursor saltaba al final y lo
+ * siguiente se escribía ahí (QA CUP-04).
+ */
+export function limpiarConCursor(
+  texto: string,
+  cursor: number | null,
+  limpiar: (t: string) => string = limpiarCodigo,
+): { valor: string; cursor: number } {
+  const valor = limpiar(texto);
+  if (cursor == null) return { valor, cursor: valor.length };
+  return { valor, cursor: Math.min(limpiar(texto.slice(0, cursor)).length, valor.length) };
+}
+
 export type EstadoCodigo =
   | { estado: "vacio" }
   | { estado: "corto" }
@@ -80,4 +96,28 @@ export function useDisponibilidadCodigo(codigo: string, activo: boolean): Estado
 /** ¿El estado del código deja guardar? Vacío sí: el código es opcional. */
 export function codigoBloqueaGuardar(e: EstadoCodigo): boolean {
   return e.estado === "corto" || e.estado === "consultando" || e.estado === "tomado" || e.estado === "invalido";
+}
+
+/** Un código que el backend rechazó con 409 `CUPON_EXISTE` al guardar. */
+export interface ConflictoCodigo {
+  codigo: string;
+  mensaje: string;
+}
+
+/**
+ * El 409 del alta manda sobre el aviso al instante mientras el código siga
+ * siendo el mismo: entre la consulta y el guardado otro pudo tomarlo, y el
+ * campo seguía diciendo "Disponible" con Guardar habilitado (QA CUP-03).
+ */
+export function conConflicto(
+  estado: EstadoCodigo,
+  codigo: string,
+  conflicto: ConflictoCodigo | null,
+): EstadoCodigo {
+  return conflicto && conflicto.codigo === codigo ? { estado: "tomado", mensaje: conflicto.mensaje } : estado;
+}
+
+/** ¿El error del backend es el 409 de un código tomado? */
+export function esCodigoTomado(e: unknown): boolean {
+  return !!e && typeof e === "object" && (e as { codigo?: unknown }).codigo === "CUPON_EXISTE";
 }

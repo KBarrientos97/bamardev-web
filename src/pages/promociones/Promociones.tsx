@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState, type InputHTMLAttributes } from "react";
 import { Icon } from "../../components/Icon";
 import {
   AvisoOk,
@@ -19,8 +19,12 @@ import { apiPromociones } from "../../lib/promociones/apiPromociones";
 import {
   CODIGO_MAX,
   codigoBloqueaGuardar,
+  conConflicto,
+  esCodigoTomado,
   limpiarCodigo,
+  limpiarConCursor,
   useDisponibilidadCodigo,
+  type ConflictoCodigo,
   type EstadoCodigo,
 } from "../../lib/promociones/codigoCupon";
 import {
@@ -316,7 +320,8 @@ export function EditorPromocion({
   // código", o al pasarla a "con código". Una que ya era con código tiene
   // los suyos en «Cupones», como siempre.
   const pideCodigo = conCupones && f.disparo === "CODIGO" && (nueva || inicial.disparo !== "CODIGO");
-  const estadoCodigo = useDisponibilidadCodigo(f.codigo, pideCodigo);
+  const [conflicto, setConflicto] = useState<ConflictoCodigo | null>(null);
+  const estadoCodigo = conConflicto(useDisponibilidadCodigo(f.codigo, pideCodigo), f.codigo, conflicto);
 
   const guardar = async () => {
     setError("");
@@ -352,6 +357,10 @@ export function EditorPromocion({
       onGuardada(p, nueva, pideCodigo && f.codigo ? f.codigo : undefined);
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudo guardar");
+      if (input.codigo && esCodigoTomado(e)) {
+        const codigo = input.codigo;
+        setConflicto({ codigo, mensaje: e instanceof Error ? e.message : `Ya existe un cupón ${codigo}` });
+      }
     } finally {
       setGuardando(false);
     }
@@ -591,6 +600,74 @@ function CampoCodigo({
   onCambio: (v: string) => void;
   estado: EstadoCodigo;
 }) {
+  return (
+    <div className="space-y-1">
+      <Campo
+        label="Código del cupón"
+        hint="Sólo letras y números, de 3 a 20 (ej. VERANO20). Dejalo vacío si sólo vas a repartir un lote de códigos de un uso desde «Cupones»."
+      >
+        <InputCodigo
+          valor={valor}
+          onCambio={onCambio}
+          placeholder="VERANO20"
+          maxLength={CODIGO_MAX}
+          aria-invalid={estado.estado === "tomado" || estado.estado === "invalido"}
+          aria-describedby="aviso-codigo"
+        />
+      </Campo>
+      <AvisoCodigo id="aviso-codigo" estado={estado} />
+    </div>
+  );
+}
+
+/**
+ * Un campo de código que se limpia mientras se escribe (mayúsculas, sólo A-Z
+ * y 0-9) sin mover el cursor: corregir en el medio sigue escribiendo en el
+ * medio (QA CUP-04). El de la promoción, el de «Un código» y el prefijo.
+ */
+function InputCodigo({
+  valor,
+  onCambio,
+  limpiar = limpiarCodigo,
+  className = "",
+  ...props
+}: Omit<InputHTMLAttributes<HTMLInputElement>, "value" | "onChange"> & {
+  valor: string;
+  onCambio: (v: string) => void;
+  limpiar?: (t: string) => string;
+}) {
+  const nodo = useRef<HTMLInputElement | null>(null);
+  const cursor = useRef<number | null>(null);
+  // Fuerza el render aunque lo limpio no cambie (un guion tecleado): React
+  // repone el valor y el cursor tiene que volver a su lugar igual.
+  const [, setVuelta] = useState(0);
+  useLayoutEffect(() => {
+    const n = nodo.current;
+    if (cursor.current == null || !n) return;
+    if (document.activeElement === n) n.setSelectionRange(cursor.current, cursor.current);
+    cursor.current = null;
+  });
+  return (
+    <Input
+      {...props}
+      value={valor}
+      onChange={(e) => {
+        const r = limpiarConCursor(e.target.value, e.target.selectionStart, limpiar);
+        nodo.current = e.target;
+        cursor.current = r.cursor;
+        onCambio(r.valor);
+        setVuelta((v) => v + 1);
+      }}
+      autoCapitalize="characters"
+      autoComplete="off"
+      spellCheck={false}
+      className={`font-mono ${className}`}
+    />
+  );
+}
+
+/** El aviso al instante debajo del campo del código. */
+function AvisoCodigo({ id, estado }: { id: string; estado: EstadoCodigo }) {
   const aviso: { texto: string; clase: string } | null =
     estado.estado === "corto"
       ? { texto: "Mínimo 3 letras o números.", clase: "text-texto-3" }
@@ -604,33 +681,16 @@ function CampoCodigo({
               ? { texto: "No se pudo revisar ahora: se revisa al guardar.", clase: "text-texto-3" }
               : null;
   return (
-    <div className="space-y-1">
-      <Campo
-        label="Código del cupón"
-        hint="Sólo letras y números, de 3 a 20 (ej. VERANO20). Dejalo vacío si sólo vas a repartir un lote de códigos de un uso desde «Cupones»."
-      >
-        <Input
-          value={valor}
-          onChange={(e) => onCambio(limpiarCodigo(e.target.value))}
-          placeholder="VERANO20"
-          maxLength={CODIGO_MAX}
-          autoCapitalize="characters"
-          autoComplete="off"
-          spellCheck={false}
-          aria-invalid={estado.estado === "tomado" || estado.estado === "invalido"}
-          aria-describedby="aviso-codigo"
-          className="font-mono"
-        />
-      </Campo>
-      <p id="aviso-codigo" role="status" aria-live="polite" className={`min-h-[1.25rem] text-[13px] font-semibold ${aviso?.clase ?? ""}`}>
-        {estado.estado === "libre" && <Icon name="check" size={13} className="mr-1 inline" />}
-        {aviso?.texto ?? ""}
-      </p>
-    </div>
+    <p id={id} role="status" aria-live="polite" className={`min-h-[1.25rem] text-[13px] font-semibold ${aviso?.clase ?? ""}`}>
+      {estado.estado === "libre" && <Icon name="check" size={13} className="mr-1 inline" />}
+      {aviso?.texto ?? ""}
+    </p>
   );
 }
 
 // ── Cupones ────────────────────────────────────────────────────────────────
+
+const limpiarPrefijo = (t: string) => limpiarCodigo(t).slice(0, 8);
 
 function PanelCupones({ promo, onCerrar }: { promo: Promocion; onCerrar: () => void }) {
   const lista = useApi(() => apiPromociones.cupones(promo.id), [promo.id]);
@@ -642,6 +702,10 @@ function PanelCupones({ promo, onCerrar }: { promo: Promocion; onCerrar: () => v
   const [vence, setVence] = useState("");
   const [error, setError] = useState("");
   const [creando, setCreando] = useState(false);
+  // El mismo aviso al instante que el código de la promoción (QA CUP-05).
+  const [conflicto, setConflicto] = useState<ConflictoCodigo | null>(null);
+  const estadoCodigo = conConflicto(useDisponibilidadCodigo(codigo, modo === "codigo"), codigo, conflicto);
+  const bloqueado = modo === "codigo" && (codigo.length < 3 || codigoBloqueaGuardar(estadoCodigo));
 
   const crear = async () => {
     setError("");
@@ -656,6 +720,9 @@ function PanelCupones({ promo, onCerrar }: { promo: Promocion; onCerrar: () => v
       lista.recargar();
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudo crear");
+      if (modo === "codigo" && esCodigoTomado(e)) {
+        setConflicto({ codigo, mensaje: e instanceof Error ? e.message : `Ya existe un cupón ${codigo}` });
+      }
     } finally {
       setCreando(false);
     }
@@ -677,7 +744,11 @@ function PanelCupones({ promo, onCerrar }: { promo: Promocion; onCerrar: () => v
               key={m}
               type="button"
               aria-pressed={modo === m}
-              onClick={() => setModo(m)}
+              onClick={() => {
+                setModo(m);
+                // El error era del otro modo: en este no dice nada (QA CUP-05).
+                setError("");
+              }}
               className={`rounded-lg border px-3 py-1.5 text-xs font-semibold ${
                 modo === m ? "border-primary bg-primary-50 text-primary-700" : "border-borde text-texto-3"
               }`}
@@ -688,22 +759,26 @@ function PanelCupones({ promo, onCerrar }: { promo: Promocion; onCerrar: () => v
         </div>
         <div className="grid gap-2 sm:grid-cols-3">
           {modo === "codigo" ? (
-            <Campo label="Código">
-              <Input
-                value={codigo}
-                onChange={(e) => setCodigo(limpiarCodigo(e.target.value))}
-                placeholder="VERANO20"
-                maxLength={CODIGO_MAX}
-                className="font-mono"
-              />
-            </Campo>
+            <div className="space-y-1">
+              <Campo label="Código">
+                <InputCodigo
+                  valor={codigo}
+                  onCambio={setCodigo}
+                  placeholder="VERANO20"
+                  maxLength={CODIGO_MAX}
+                  aria-invalid={estadoCodigo.estado === "tomado" || estadoCodigo.estado === "invalido"}
+                  aria-describedby="aviso-codigo-cupon"
+                />
+              </Campo>
+              <AvisoCodigo id="aviso-codigo-cupon" estado={estadoCodigo} />
+            </div>
           ) : (
             <>
               <Campo label="Cantidad">
                 <Input type="number" value={cantidad} onChange={(e) => setCantidad(e.target.value)} />
               </Campo>
               <Campo label="Prefijo">
-                <Input value={prefijo} onChange={(e) => setPrefijo(limpiarCodigo(e.target.value).slice(0, 8))} maxLength={8} />
+                <InputCodigo valor={prefijo} onCambio={setPrefijo} limpiar={limpiarPrefijo} maxLength={8} />
               </Campo>
             </>
           )}
@@ -716,7 +791,7 @@ function PanelCupones({ promo, onCerrar }: { promo: Promocion; onCerrar: () => v
         </div>
         <ErrorMsg>{error}</ErrorMsg>
         <div className="flex flex-wrap gap-2">
-          <Boton onClick={() => void crear()} disabled={creando || (modo === "codigo" && codigo.trim().length < 3)}>
+          <Boton onClick={() => void crear()} disabled={creando || bloqueado}>
             {creando ? "Creando…" : "Crear"}
           </Boton>
           <Boton

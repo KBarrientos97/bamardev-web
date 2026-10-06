@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Promocion } from "../../lib/promociones/tipos";
 
@@ -74,6 +74,19 @@ function promo(cambios: Partial<Promocion> = {}): Promocion {
     creadoEn: "2026-10-06T00:00:00Z",
     ...cambios,
   };
+}
+
+/**
+ * Lo que hace el navegador al teclear en el medio: cambia el valor y deja el
+ * cursor donde quedó. El setter del prototipo, para que React vea el cambio.
+ */
+function escribirConCursor(campo: HTMLInputElement, valor: string, cursor: number) {
+  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+  act(() => {
+    setter.call(campo, valor);
+    campo.setSelectionRange(cursor, cursor);
+    campo.dispatchEvent(new Event("input", { bubbles: true }));
+  });
 }
 
 beforeEach(() => {
@@ -168,6 +181,41 @@ describe("Promociones", () => {
       expect(api.disponibilidadCupon).not.toHaveBeenCalled();
     });
 
+    it("CUP-03: si al guardar vuelve 409 (otro lo tomó), el campo dice que está tomado y no deja guardar", async () => {
+      api.disponibilidadCupon.mockResolvedValue({ codigo: "VERANO20", disponible: true });
+      api.crear.mockRejectedValue(
+        Object.assign(new Error("Ya existe un cupón VERANO20"), { status: 409, codigo: "CUPON_EXISTE" }),
+      );
+      const dialogo = await abrirConCodigo();
+      const campo = within(dialogo).getByLabelText(/Código del cupón/);
+      fireEvent.change(campo, { target: { value: "VERANO20" } });
+      expect(await within(dialogo).findByText("Disponible.")).toBeInTheDocument();
+      fireEvent.click(within(dialogo).getByRole("button", { name: "Guardar" }));
+      await waitFor(() => expect(within(dialogo).getByRole("button", { name: "Guardar" })).toBeDisabled());
+      expect(within(dialogo).queryByText("Disponible.")).not.toBeInTheDocument();
+      expect(campo).toHaveAttribute("aria-invalid", "true");
+      expect(within(dialogo).getAllByText("Ya existe un cupón VERANO20").length).toBeGreaterThan(0);
+      // Otro código vuelve a consultar como siempre.
+      fireEvent.change(campo, { target: { value: "VERANO21" } });
+      expect(await within(dialogo).findByText("Disponible.")).toBeInTheDocument();
+      expect(within(dialogo).getByRole("button", { name: "Guardar" })).toBeEnabled();
+    });
+
+    it("CUP-04: corregir en el medio no manda el cursor al final", async () => {
+      const dialogo = await abrirConCodigo();
+      const campo = within(dialogo).getByLabelText(/Código del cupón/) as HTMLInputElement;
+      fireEvent.change(campo, { target: { value: "QAS2R1" } });
+      campo.focus();
+      // Lo que hace el navegador al teclear "x-y" después de "QA".
+      escribirConCursor(campo, "QAx-yS2R1", 5);
+      expect(campo).toHaveValue("QAXYS2R1");
+      expect(campo.selectionStart).toBe(4);
+      // Un guion solo no cambia lo limpio, pero el cursor tampoco salta.
+      escribirConCursor(campo, "QA-XYS2R1", 3);
+      expect(campo).toHaveValue("QAXYS2R1");
+      expect(campo.selectionStart).toBe(2);
+    });
+
     it("editar una que ya es con código no lo pide: sus cupones siguen en «Cupones»", async () => {
       api.listar.mockResolvedValue([promo({ disparo: "CODIGO", cupones: 2 })]);
       render(<Promociones />);
@@ -175,6 +223,49 @@ describe("Promociones", () => {
       const dialogo = await screen.findByRole("dialog");
       expect(within(dialogo).queryByLabelText(/Código del cupón/)).not.toBeInTheDocument();
       expect(screen.getByRole("button", { name: "Cupones" })).toBeInTheDocument();
+    });
+  });
+
+  describe("«Cupones» › Un código (CUP-05)", () => {
+    async function abrirCupones() {
+      api.listar.mockResolvedValue([promo({ disparo: "CODIGO", cupones: 0 })]);
+      api.cupones.mockResolvedValue([]);
+      render(<Promociones />);
+      fireEvent.click(await screen.findByRole("button", { name: "Cupones" }));
+      return screen.findByRole("dialog");
+    }
+
+    it("avisa al instante si el código ya existe y no deja crear", async () => {
+      api.disponibilidadCupon.mockResolvedValue({
+        codigo: "S2SEGR4",
+        disponible: false,
+        motivo: "EXISTE",
+        mensaje: 'Ya existe el cupón S2SEGR4 (promoción "Otra")',
+      });
+      const dialogo = await abrirCupones();
+      const campo = within(dialogo).getByLabelText("Código");
+      fireEvent.change(campo, { target: { value: "s2seg-r4" } });
+      expect(campo).toHaveValue("S2SEGR4");
+      expect(await within(dialogo).findByText(/Ya existe el cupón S2SEGR4/)).toBeInTheDocument();
+      expect(within(dialogo).getByRole("button", { name: "Crear" })).toBeDisabled();
+      expect(api.crearCupones).not.toHaveBeenCalled();
+    });
+
+    it("el error de un modo no queda visible al pasar al otro", async () => {
+      api.disponibilidadCupon.mockResolvedValue({ codigo: "NUEVO10", disponible: true });
+      api.crearCupones.mockRejectedValue(
+        Object.assign(new Error("Ya existe un cupón NUEVO10"), { status: 409, codigo: "CUPON_EXISTE" }),
+      );
+      const dialogo = await abrirCupones();
+      fireEvent.change(within(dialogo).getByLabelText("Código"), { target: { value: "nuevo10" } });
+      expect(await within(dialogo).findByText("Disponible.")).toBeInTheDocument();
+      fireEvent.click(within(dialogo).getByRole("button", { name: "Crear" }));
+      // El 409 queda en el campo, como en la promoción.
+      await waitFor(() => expect(within(dialogo).getByRole("button", { name: "Crear" })).toBeDisabled());
+      expect(within(dialogo).getAllByText("Ya existe un cupón NUEVO10").length).toBeGreaterThan(0);
+      fireEvent.click(within(dialogo).getByRole("button", { name: "Lote para imprimir" }));
+      expect(within(dialogo).queryByText("Ya existe un cupón NUEVO10")).not.toBeInTheDocument();
+      expect(within(dialogo).getByRole("button", { name: "Crear" })).toBeEnabled();
     });
   });
 

@@ -183,6 +183,38 @@ export function cabecerasSeguridad(pathname: string): Record<string, string> {
   return {};
 }
 
+/**
+ * El `index.html` para un lector de vista previa cuando el API dice que esa
+ * dirección no existe (o se despublicó, o la promo terminó): sin el título
+ * de la app, que en WhatsApp hacía pasar un enlace muerto por "Inventario y
+ * Punto de Venta", y con `noindex` para que Google no lo tome por una página
+ * (soft-404). QA S2 CUP, observación.
+ */
+export function inyectarNoDisponible(html: string): string {
+  const titulo = "<title>Página no disponible</title>";
+  const metas = [
+    `<meta name="robots" content="noindex, nofollow" />`,
+    `<meta property="og:title" content="Página no disponible" />`,
+    `<meta property="og:description" content="Este enlace ya no está disponible." />`,
+  ].join("\n    ");
+  const conTitulo = /<title>[\s\S]*?<\/title>/i.test(html)
+    ? html.replace(/<title>[\s\S]*?<\/title>/i, titulo)
+    : html.replace(/<\/head>/i, `  ${titulo}\n  </head>`);
+  return conTitulo.replace(/<\/head>/i, `  ${metas}\n  </head>`);
+}
+
+/**
+ * ¿El 404 del API vale para esta dirección? La página (`/p/<sub>`) y la
+ * promo, sí. Lo demás que cuelga de `/p/<sub>` (la política de privacidad,
+ * que la reserva enlaza aunque la página no esté publicada) y la reserva
+ * (`/r/…`, con sus propias puertas y su gestión por enlace) siguen con la
+ * SPA tal cual.
+ */
+function respondeNoExiste(d: DestinoOg, pathname: string): boolean {
+  if (d.de === "promo") return true;
+  return d.de === "pagina" && pathname.split("/").filter(Boolean).length === 2;
+}
+
 /** Cuánto se espera al backend antes de servir la SPA sin vista previa. */
 export const ESPERA_API_MS = 2500;
 
@@ -211,20 +243,31 @@ export async function responder(ctx: Contexto): Promise<Response> {
   }
   const base = baseApi(ctx.env, url.hostname);
   let og: DatosOg | null = null;
+  let noExiste = false;
   try {
     const r = await ctx.pedirApi(`${base}${rutaApi(destino)}`);
     if (r.ok) og = aDatosOg(destino, await r.json(), base);
+    // Sólo un 404 dice "no existe"; un 5xx o un 429 es el backend, y para eso
+    // sigue la SPA tal cual (una vista previa pobre, no un enlace "muerto").
+    else noExiste = r.status === 404 && respondeNoExiste(destino, url.pathname);
   } catch {
     og = null;
   }
+  // El cuerpo cambia: la huella y el largo del index ya no valen.
+  const cambiado = (html: string, status: number, segundos: number) => {
+    cabeceras.delete("etag");
+    cabeceras.delete("content-length");
+    cabeceras.set("content-type", "text/html; charset=utf-8");
+    cabeceras.set("cache-control", `public, max-age=${segundos}`);
+    return new Response(html, { status, headers: cabeceras });
+  };
+  if (noExiste) {
+    cabeceras.set("X-Robots-Tag", "noindex, nofollow");
+    // Poco tiempo en caché: la página puede publicarse en un rato.
+    return cambiado(inyectarNoDisponible(await index.text()), 404, 60);
+  }
   if (!og) return sinTocar();
-  const html = inyectarOg(await index.text(), og);
-  // El cuerpo cambió: la huella y el largo del index ya no valen.
-  cabeceras.delete("etag");
-  cabeceras.delete("content-length");
-  cabeceras.set("content-type", "text/html; charset=utf-8");
-  cabeceras.set("cache-control", "public, max-age=300");
-  return new Response(html, { status: 200, headers: cabeceras });
+  return cambiado(inyectarOg(await index.text(), og), 200, 300);
 }
 
 /** Lo que Pages le pasa a una Function (lo justo que se usa). */

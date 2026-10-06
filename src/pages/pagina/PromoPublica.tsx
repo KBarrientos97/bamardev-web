@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { PromoNoDisponible, pedirPromoPublica } from "../../lib/promociones/apiPromociones";
 import type { PromoPublica as Promo } from "../../lib/promociones/tipos";
+import { urlDeImagen } from "../../lib/pagina/apiPagina";
 import { NoDisponible } from "./PaginaPublica";
 import { MarcaBamarDev } from "./VistaPagina";
 
@@ -51,6 +52,9 @@ export default function PromoPublica() {
     return <div style={{ minHeight: "100dvh", background: "#F6F7F9" }} aria-busy="true" aria-label="Cargando" />;
   }
   const color = promo.negocio.color?.hex ?? "#0C875E";
+  // El backend da la ruta relativa al API; servida tal cual, la pedía a la
+  // SPA y salía rota (QA CUP-02).
+  const logo = urlDeImagen(promo.negocio.logoUrl);
   const p = promo.promo;
 
   return (
@@ -67,8 +71,8 @@ export default function PromoPublica() {
           href={promo.negocio.paginaUrl ?? undefined}
           style={{ display: "flex", alignItems: "center", gap: 10, textDecoration: "none", color: "#1F2937" }}
         >
-          {promo.negocio.logoUrl ? (
-            <img src={promo.negocio.logoUrl} alt="" width={40} height={40} style={{ borderRadius: 999 }} />
+          {logo ? (
+            <img src={logo} alt="" width={40} height={40} style={{ borderRadius: 999 }} />
           ) : (
             <span
               style={{

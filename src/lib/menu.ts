@@ -261,7 +261,7 @@ const ITEMS: (ItemNav & { bloque: Bloque })[] = [
   {
     a: "/clientes-que-no-vuelven",
     label: "Clientes que no vuelven",
-    icono: "users",
+    icono: "userX",
     seccion: "retencion",
     bloque: "administracion",
   },
@@ -312,7 +312,7 @@ const ADMIN_AGENDA: (ItemNav & { bloque: Bloque })[] = [
       {
         a: "/clientes-que-no-vuelven",
         label: "Clientes que no vuelven",
-        icono: "users",
+        icono: "userX",
         seccion: "retencion",
       },
     ],
