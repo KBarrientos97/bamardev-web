@@ -56,6 +56,11 @@ export interface Tema {
   barraTexto2: string;
   /** Degradado de la barra superior y el login. */
   marca: [string, string];
+  /**
+   * Fondo de la pantalla, opcional. Hoy ninguna paleta lo trae: en belleza se
+   * usa `primary50` (ver `aplicarTema`), y en los demás rubros el de siempre.
+   */
+  fondo?: string;
 }
 
 /** Verde esmeralda: el de siempre. Restaurante, minimarket y desconocidos. */
@@ -268,9 +273,29 @@ export function resolverTema(origen: OrigenTema): Tema {
  * Acepta el negocio de la sesión o sólo un rubro (ver `resolverTema`). Sin
  * nada, como antes del login, cae en el verde.
  */
+/** Los rubros de belleza; copia de `rubro.ts` para no atar este archivo a él. */
+const BELLEZA = ['PELUQUERIA', 'BARBERIA', 'SPA', 'UNAS'];
+
 export function aplicarTema(origen: OrigenTema): void {
   const tema = resolverTema(origen);
   const raiz = document.documentElement.style;
+  const rubro = typeof origen === 'string' ? origen : origen?.tipoNegocio;
+  /*
+   * El fondo de la pantalla y el monograma de los artículos sin categoría
+   * siguen la paleta sólo en belleza (QA B-24: un salón Ciruela tenía fondo
+   * menta y círculos verdes). Restaurante y farmacia vuelven al valor de
+   * index.css —el de siempre— quitando la variable, así se ven exactamente
+   * como hoy y un cambio de sesión no les deja el color del negocio anterior.
+   */
+  if (rubro && BELLEZA.includes(rubro)) {
+    raiz.setProperty('--color-fondo', tema.fondo && HEX.test(tema.fondo) ? tema.fondo : tema.primary50);
+    raiz.setProperty('--monograma-bg', tema.primary100);
+    raiz.setProperty('--monograma-fg', tema.primary700);
+  } else {
+    raiz.removeProperty('--color-fondo');
+    raiz.removeProperty('--monograma-bg');
+    raiz.removeProperty('--monograma-fg');
+  }
   raiz.setProperty('--color-primary', tema.primary);
   raiz.setProperty('--color-primary-600', tema.primary600);
   raiz.setProperty('--color-primary-700', tema.primary700);

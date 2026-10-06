@@ -118,8 +118,10 @@ export interface ColorCategoria {
 
 /**
  * Color del monograma según la categoría, con match sin distinguir mayúsculas
- * contra los nombres canónicos. Cualquier categoría no listada cae al verde por
- * defecto. Mismos valores que `colors.xml` de la app.
+ * contra los nombres canónicos. Cualquier categoría no listada cae al color
+ * por defecto: el verde de siempre (los mismos valores que `colors.xml` de la
+ * app), salvo en belleza, donde sigue la paleta del negocio (QA B-24; lo
+ * decide `aplicarTema` con las variables `--monograma-*`).
  */
 export function colorDeCategoria(categoria: string | null | undefined): ColorCategoria {
   switch ((categoria ?? "").trim().toLowerCase()) {
@@ -142,6 +144,6 @@ export function colorDeCategoria(categoria: string | null | undefined): ColorCat
     case "helados":
       return { bg: "#EDE9FE", fg: "#6D28D9" };
     default:
-      return { bg: "#D1FAE5", fg: "#047857" };
+      return { bg: "var(--monograma-bg, #D1FAE5)", fg: "var(--monograma-fg, #047857)" };
   }
 }

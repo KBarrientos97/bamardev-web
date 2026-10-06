@@ -233,3 +233,26 @@ describe("aplicarTema: de dónde sale el color", () => {
     }
   });
 });
+
+describe("fondo y monograma (QA B-24)", () => {
+  const raiz = () => document.documentElement.style;
+
+  it("en belleza siguen la paleta del negocio", () => {
+    aplicarTema({ tipoNegocio: "PELUQUERIA" });
+    expect(raiz().getPropertyValue("--color-fondo")).toBe(TEMAS.PELUQUERIA.primary50);
+    expect(raiz().getPropertyValue("--monograma-bg")).toBe(TEMAS.PELUQUERIA.primary100);
+    expect(raiz().getPropertyValue("--monograma-fg")).toBe(TEMAS.PELUQUERIA.primary700);
+  });
+
+  it("restaurante y farmacia quedan con el de siempre, aunque antes hubiera un salón", () => {
+    for (const rubro of ["RESTAURANTE", "FARMACIA"]) {
+      aplicarTema({ tipoNegocio: "SPA" });
+      aplicarTema({ tipoNegocio: rubro });
+      // Sin la variable en línea manda la de index.css: #f5fbf7 y el verde.
+      expect(raiz().getPropertyValue("--color-fondo")).toBe("");
+      expect(raiz().getPropertyValue("--monograma-bg")).toBe("");
+    }
+    aplicarTema(null);
+    expect(raiz().getPropertyValue("--color-fondo")).toBe("");
+  });
+});
