@@ -8,6 +8,7 @@ import { fmtFecha, fmtMoney, iniciales } from "../../lib/format";
 import { Telefono } from "../../lib/telefono";
 import { useApi } from "../../lib/useApi";
 import { BadgeEstado, Rotulo } from "./piezas";
+import FichaSpa from "./FichaSpa";
 
 /** Lo que tarda en buscar después de la última tecla. */
 const ESPERA_BUSQUEDA_MS = 300;
@@ -193,6 +194,8 @@ export function FichaCliente({
             <>
               <AvisoOk>{aviso}</AvisoOk>
               <Resumen ficha={f} />
+              {/* Fase 3 (spa): paquetes y salud, cada uno con su feature. */}
+              <FichaSpa clienteId={f.id} />
               <section className="space-y-2">
                 <div className="flex items-center justify-between">
                   <Rotulo>Datos de cuidado</Rotulo>

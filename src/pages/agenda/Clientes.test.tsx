@@ -8,6 +8,12 @@ import { ficha } from "../../test/agendaFixtures";
  * y lo que recepción completa a mano (alergias, notas, reserva online).
  */
 
+// La ficha suma lo del spa (fase 3) según las features del negocio: sin
+// ninguna, no se ve ni se pide nada.
+vi.mock("../../store/AuthContext", () => ({
+  useAuth: () => ({ negocio: { features: [] }, usuario: null }),
+}));
+
 vi.mock("../../lib/agenda/apiAgenda", async (importOriginal) => {
   const real = await importOriginal<typeof import("../../lib/agenda/apiAgenda")>();
   return {

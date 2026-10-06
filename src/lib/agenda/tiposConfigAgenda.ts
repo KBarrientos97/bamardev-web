@@ -24,6 +24,10 @@ export interface Servicio {
   /** Quién lo hace: los recursos habilitados para este servicio. */
   recursoIds: number[];
   activo: boolean;
+  /** Fase 3: el tipo de espacio que exige y el tiempo de pose. */
+  requiereEspacioTipoId?: number | null;
+  poseInicioMin?: number | null;
+  poseMin?: number | null;
 }
 
 /** `POST /agenda/servicios`: crea el producto tipo SERVICIO con su duración. */
@@ -45,6 +49,10 @@ export interface ServicioCambios {
   bufferMin?: number;
   reservableOnline?: boolean;
   recursoIds?: number[];
+  /** Fase 3 (sólo se mandan si el negocio tiene la feature). */
+  requiereEspacioTipoId?: number | null;
+  poseInicioMin?: number | null;
+  poseMin?: number | null;
 }
 
 /** Un profesional (o un espacio: cabina, sillón) que se agenda. */
@@ -65,6 +73,8 @@ export interface Recurso {
   orden: number;
   sucursalIds: number[];
   servicioIds: number[];
+  /** Fase 3, sólo ESPACIO: de qué tipo es (Cabina, Camilla…). */
+  tipoEspacioId?: number | null;
 }
 
 /** Cuerpo de `POST /agenda/recursos` y `PATCH /agenda/recursos/:id`. */
@@ -81,6 +91,7 @@ export interface RecursoInput {
   orden?: number;
   sucursalIds: number[];
   servicioIds: number[];
+  tipoEspacioId?: number | null;
 }
 
 /** Un tramo de trabajo dentro de un día: "09:00" a "13:00". */

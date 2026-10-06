@@ -297,6 +297,8 @@ export interface Producto extends FichaFarmaceutica {
    * `GET /productos/buscar` y sólo si alguien lo cargó: es opcional.
    */
   ubicacion?: string | null;
+  /** Agenda fase 3: paquete de sesiones (se vende a un cliente con ficha). */
+  esPaquete?: boolean;
 }
 
 /**
@@ -928,6 +930,8 @@ export interface DetalleVentaInput {
   receta?: RecetaVenta;
   /** Agenda: el profesional que hizo este servicio (su comisión). */
   recursoId?: number;
+  /** Agenda fase 3: se paga con una sesión de paquete del cliente (precio 0). */
+  usarPaquete?: boolean;
 }
 
 /**
@@ -1117,6 +1121,8 @@ export interface VentaInput {
   credito?: CreditoInput;
   /** Agenda: la cita que cobra esta venta. La venta la completa (§10). */
   citaId?: number;
+  /** Agenda fase 3: la ficha de quien compra un paquete o usa una sesión. */
+  clienteId?: number;
 }
 
 export interface Repartidor {

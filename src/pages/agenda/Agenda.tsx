@@ -27,6 +27,8 @@ import TarjetaCita from "./TarjetaCita";
 import { useAccionRapida } from "./useAccionRapida";
 import { useCobrarCita } from "./useCobrarCita";
 import CampanaAvisos from "./CampanaAvisos";
+// Fase 3 (spa): columnas por espacio y la pose partida en dos bloques.
+import { idLineaReal, partirPorPose, useSpa, vistaPorEspacio } from "../../lib/agenda/spa";
 
 /** Reemplaza (o agrega) una cita en la agenda del día y la saca de la cola si dejó de estar. */
 function conCita(d: AgendaDia | null, c: Cita): AgendaDia | null {
@@ -64,6 +66,8 @@ export default function Agenda() {
 
   const conCola = tieneFeature(negocio?.features, "cola_walkin");
   const etiquetaProfesional = etiquetaRol("PROFESIONAL", negocio);
+  const spa = useSpa();
+  const [porEspacio, setPorEspacio] = useState(false);
 
   const dia = useConsultaPeriodica(
     () =>
@@ -89,6 +93,17 @@ export default function Agenda() {
     [datos?.recursos],
   );
   const citas = useMemo(() => datos?.citas ?? [], [datos?.citas]);
+  // Fase 3: con `espacios`, la grilla se puede ver por cabina; por
+  // profesional, una línea con pose se dibuja en dos bloques y el hueco del
+  // medio queda libre (ahí puede ir otra cita suya).
+  const hayEspacios = spa.espacios && recursos.some((r) => r.tipo === "ESPACIO");
+  const verPorEspacio = porEspacio && hayEspacios;
+  const grilla = useMemo(
+    () => (verPorEspacio ? vistaPorEspacio(recursos, citas) : { recursos, citas: partirPorPose(citas) }),
+    [verPorEspacio, recursos, citas],
+  );
+  /** La cita de verdad detrás de un bloque (la grilla puede traer una partida). */
+  const original = (c: Cita) => citas.find((x) => x.id === c.id) ?? c;
   const porCobrar = citas.filter((c) => c.estado === "POR_COBRAR");
   const sugeridas = citas.filter((c) => c.noShowSugerido);
   const nombreRecurso = (id: number) => recursos.find((r) => r.id === id)?.nombre ?? "Profesional";
@@ -118,7 +133,8 @@ export default function Agenda() {
     }
   }
 
-  const recursosCel = recursoCel != null ? recursos.filter((r) => r.id === recursoCel) : recursos.slice(0, 1);
+  const elegidoCel = grilla.recursos.filter((r) => r.id === recursoCel);
+  const recursosCel = elegidoCel.length ? elegidoCel : grilla.recursos.slice(0, 1);
   const listaDelDia = [...citas]
     .filter((c) => vaEnGrilla(c.estado) && c.inicio)
     .sort((a, b) => (a.inicio ?? "").localeCompare(b.inicio ?? ""));
@@ -167,6 +183,16 @@ export default function Agenda() {
             </Select>
           </label>
         )}
+        {hayEspacios && (
+          <Chips
+            valor={verPorEspacio ? "espacio" : "profesional"}
+            opciones={[
+              ["profesional", `Por ${etiquetaProfesional.toLowerCase()}`],
+              ["espacio", "Por espacio"],
+            ]}
+            onChange={(v) => setPorEspacio(v === "espacio")}
+          />
+        )}
         <CampanaAvisos onAbrirCita={setAbierta} />
         <Boton icono="plus" onClick={() => setNueva({ fecha })} disabled={!suc.sucursalId && !datos?.sucursalId}>
           Nueva cita
@@ -196,7 +222,7 @@ export default function Agenda() {
             {vistaCel === "grilla" ? (
               <>
                 <div className="flex gap-2 overflow-x-auto pb-1">
-                  {recursos.map((r) => {
+                  {grilla.recursos.map((r) => {
                     const activo = (recursosCel[0]?.id ?? null) === r.id;
                     return (
                       <button
@@ -217,12 +243,14 @@ export default function Agenda() {
                   <GrillaDia
                     fecha={fecha}
                     recursos={recursosCel}
-                    citas={citas}
+                    citas={grilla.citas}
                     bloqueos={datos.bloqueos}
                     granularidad={granularidad}
                     detalleRecurso={(r) => (r.tipo === "ESPACIO" ? "Espacio" : etiquetaProfesional)}
-                    onTocarHueco={(recursoId, hora) => setNueva({ fecha, recursoId, hora })}
-                    onAbrirCita={setAbierta}
+                    onTocarHueco={(recursoId, hora) =>
+                      setNueva(verPorEspacio ? { fecha, hora } : { fecha, recursoId, hora })
+                    }
+                    onAbrirCita={(c) => setAbierta(original(c))}
                   />
                 </section>
               </>
@@ -251,14 +279,22 @@ export default function Agenda() {
             <section aria-label={`Agenda por ${etiquetaProfesional.toLowerCase()}`} className="card min-w-0 flex-[999_1_560px] overflow-hidden">
               <GrillaDia
                 fecha={fecha}
-                recursos={recursos}
-                citas={citas}
+                recursos={grilla.recursos}
+                citas={grilla.citas}
                 bloqueos={datos.bloqueos}
                 granularidad={granularidad}
                 detalleRecurso={(r) => (r.tipo === "ESPACIO" ? "Espacio" : etiquetaProfesional)}
-                onTocarHueco={(recursoId, hora) => setNueva({ fecha, recursoId, hora })}
-                onAbrirCita={setAbierta}
-                onMover={mover}
+                // Por espacio, tocar un hueco abre la cita sin profesional: la
+                // cabina la asigna el backend al elegir el horario.
+                onTocarHueco={(recursoId, hora) =>
+                  setNueva(verPorEspacio ? { fecha, hora } : { fecha, recursoId, hora })
+                }
+                onAbrirCita={(c) => setAbierta(original(c))}
+                onMover={
+                  verPorEspacio
+                    ? undefined
+                    : (c, lineaId, delta, destino) => mover(original(c), idLineaReal(lineaId), delta, destino)
+                }
                 onArrastrando={setArrastrando}
               />
             </section>

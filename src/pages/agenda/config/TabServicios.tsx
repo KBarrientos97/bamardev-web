@@ -20,6 +20,11 @@ import { fmtMoney } from "../../../lib/format";
 import { useApi } from "../../../lib/useApi";
 import { Casilla, PuntoColor, SelectorVarios } from "./comun";
 import { mensajeDe, nombreRecurso } from "./utilConfig";
+// Fase 3 (spa): espacio que ocupa y tiempo de pose.
+import CamposSpaServicio from "./CamposSpaServicio";
+import { aCambiosSpa, valoresIniciales } from "../../../lib/agenda/servicioSpa";
+import { apiSpa } from "../../../lib/agenda/apiSpa";
+import { useSpa } from "../../../lib/agenda/spa";
 
 /**
  * Servicios de la agenda: cuánto dura cada uno, el margen después, si se
@@ -101,6 +106,8 @@ export default function TabServicios({
                   {!s.activo && <Badge>Inactivo</Badge>}
                   {s.activo && !s.duracionMin && <Badge tono="amarillo">Sin duración</Badge>}
                   {s.reservableOnline && <Badge tono="azul">Online</Badge>}
+                  {s.requiereEspacioTipoId != null && <Badge tono="verde">Con espacio</Badge>}
+                  {s.poseInicioMin != null && <Badge tono="verde">Con pose</Badge>}
                 </div>
                 <p className="mt-0.5 text-[13px] text-texto-3">
                   {s.categoria ?? "Sin categoría"} · {fmtMoney(s.precio)}
@@ -192,6 +199,12 @@ function FormServicio({
   const [recursoIds, setRecursoIds] = useState<number[]>(servicio.recursoIds);
   const [error, setError] = useState("");
   const [guardando, setGuardando] = useState(false);
+  const spa = useSpa();
+  const [valoresSpa, setValoresSpa] = useState(() => valoresIniciales(servicio));
+  const tiposEspacio = useApi(
+    () => (spa.espacios ? apiSpa.tiposEspacio() : Promise.resolve([])),
+    [spa.espacios],
+  );
 
   // Los inactivos no se ofrecen, pero si ya lo hacían se siguen viendo: si no,
   // guardar los sacaría sin que nadie lo haya pedido.
@@ -210,6 +223,11 @@ function FormServicio({
       return;
     }
     if (buf === null) return;
+    const deSpa = aCambiosSpa(valoresSpa, dur, spa.espacios, valoresIniciales(servicio));
+    if ("error" in deSpa) {
+      setError(deSpa.error);
+      return;
+    }
     setGuardando(true);
     setError("");
     try {
@@ -218,6 +236,7 @@ function FormServicio({
         bufferMin: buf,
         reservableOnline: online,
         recursoIds,
+        ...deSpa.cambios,
       });
       onGuardado(s);
     } catch (e) {
@@ -267,6 +286,12 @@ function FormServicio({
             vacio="Todavía no hay profesionales cargados."
           />
         </div>
+        <CamposSpaServicio
+          valores={valoresSpa}
+          onChange={setValoresSpa}
+          tipos={tiposEspacio.datos ?? []}
+          conEspacios={spa.espacios}
+        />
         <p className="text-xs text-texto-4">
           El nombre y el precio se cambian en Artículos, como cualquier otro.
         </p>

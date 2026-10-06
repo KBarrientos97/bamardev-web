@@ -42,6 +42,9 @@ import PantallaRecibo from "./PantallaRecibo";
 import PantallaVenta from "./PantallaVenta";
 import { useVentaFarmacia } from "../farmacia/ventaFarmacia";
 import { useCarrito } from "./useCarrito";
+// Agenda fase 3: sesiones de paquete en el cobro de la cita y venta de paquetes.
+import { ClientePaquete, SesionesDePaquete } from "./PaquetesPos";
+import { detallesDePaquete, sinLineasConPaquete, sinUsarPaquetes } from "../../lib/agenda/spa";
 import { useIntentoDeCobro } from "./useIntentoDeCobro";
 
 type Pantalla =
@@ -177,6 +180,9 @@ export default function Pos() {
   }, []);
   const [errorCita, setErrorCita] = useState("");
   const [cargandoCitaId, setCargandoCitaId] = useState<number | null>(null);
+  /** Paquetes (fase 3): a quién se le vende el paquete que está en el carrito. */
+  const [clientePaquete, setClientePaquete] = useState<{ id: number; nombre: string } | null>(null);
+  const vendePaquete = carrito.lineas.some((l) => l.producto.esPaquete);
   const sucursalCaja = caja.datos?.caja?.almacenId ?? null;
   const citasPorCobrar = useConsultaPeriodica<Cita[]>(
     () =>
@@ -201,12 +207,14 @@ export default function Pos() {
    */
   const cargarCita = useCallback(
     (c: CarritoCita) => {
-      const { productos: suyos, faltan } = productosDeLaCita(c, productos.datos ?? []);
+      // Lo que cubre una sesión de paquete no entra al carrito: va aparte, a 0.
+      const { productos: suyos, faltan } = productosDeLaCita(sinLineasConPaquete(c), productos.datos ?? []);
       carrito.vaciar();
       setTipoPedido("LOCAL");
       setDatosEntrega(null);
       for (const p of suyos) carrito.agregar(p);
       setCitaCobrando(c);
+      if (c.cliente.id != null) setClientePaquete({ id: c.cliente.id, nombre: c.cliente.nombre });
       setErrorCita(
         faltan.length
           ? `No están en el catálogo: ${faltan.join(", ")}. Agregalos a mano o revisá el servicio.`
@@ -256,6 +264,7 @@ export default function Pos() {
       ...conCita(carrito.aDetalles(), citaCobrando),
       tipoPedido,
       ...(pagos ? { pagos } : {}),
+      ...(clientePaquete && vendePaquete ? { clienteId: clientePaquete.id } : {}),
       ...(datosEntrega
         ? {
             clienteNombre: datosEntrega.clienteNombre,
@@ -269,7 +278,7 @@ export default function Pos() {
           }
         : {}),
     }),
-    [carrito, tipoPedido, datosEntrega, citaCobrando],
+    [carrito, tipoPedido, datosEntrega, citaCobrando, clientePaquete, vendePaquete],
   );
 
   const limpiar = useCallback(() => {
@@ -279,6 +288,7 @@ export default function Pos() {
     setError("");
     setCitaCobrando(null);
     setErrorCita("");
+    setClientePaquete(null);
   }, [carrito, setCitaCobrando]);
 
   const cobrar = useCallback(
@@ -721,7 +731,23 @@ export default function Pos() {
                 }}
               />
             )}
+            {citaCobrando && (
+              <SesionesDePaquete
+                cita={citaCobrando}
+                carritoVacio={carrito.lineas.length === 0}
+                procesando={enviando}
+                onCobrarSinPaquete={() => cargarCita(sinUsarPaquetes(citaCobrando))}
+                // Todo con sesiones: la venta va en 0 y sin pagos.
+                onCompletar={() => void cobrar([])}
+              />
+            )}
             <ErrorMsg>{errorCita}</ErrorMsg>
+            {carrito.lineas.length === 0 && <ErrorMsg>{error}</ErrorMsg>}
+          </div>
+        )}
+        {vendePaquete && (
+          <div className="border-b border-borde bg-white px-4 py-3">
+            <ClientePaquete cliente={clientePaquete} onElegir={setClientePaquete} />
           </div>
         )}
         {(mesasEsperando.length > 0 || pendientesEntrega.length > 0 || citasEsperando.length > 0) && (
@@ -781,7 +807,9 @@ const SONDEO_SALON_MS = 10_000;
 
 /** Los detalles con el profesional de cada servicio y, si sigue cobrándola, la cita. */
 function conCita(detalles: DetalleVentaInput[], cita: CarritoCita | null) {
-  const conProfesional = detallesConProfesional(detalles, cita);
+  // Las sesiones de paquete (fase 3) no están en el carrito: se suman acá, a
+  // precio 0 y con `usarPaquete`, y también sostienen el `citaId`.
+  const conProfesional = [...detallesConProfesional(detalles, cita), ...detallesDePaquete(cita)];
   const citaId = citaQueCobra(conProfesional, cita);
   return { detalles: conProfesional, ...(citaId != null ? { citaId } : {}) };
 }
