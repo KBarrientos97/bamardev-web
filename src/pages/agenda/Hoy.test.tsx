@@ -2,18 +2,22 @@ import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "../../lib/api";
-import { cita } from "../../test/agendaFixtures";
+import { cita, recurso, servicio } from "../../test/agendaFixtures";
 
 /**
  * A3 · Hoy y A6 · Cola: los botones del momento, los filtros, "Cobrar" a la
  * vista pero apagado, y la cola sólo con la feature `cola_walkin`.
  */
 
-const sesion = vi.hoisted(() => ({ features: ["agenda", "cola_walkin"] as string[], conPos: false }));
+const sesion = vi.hoisted(() => ({
+  features: ["agenda", "cola_walkin"] as string[],
+  conPos: false,
+  rol: "CAJERO",
+}));
 
 vi.mock("../../store/AuthContext", () => ({
   useAuth: () => ({
-    usuario: { id: 3, username: "recepcion", rol: "CAJERO", sucursalId: 1, sucursal: "Centro", modulos: [] },
+    usuario: { id: 3, username: "recepcion", rol: sesion.rol, sucursalId: 1, sucursal: "Centro", modulos: [] },
     negocio: { id: 1, nombre: "Salón Bella Vista", tipoNegocio: "PELUQUERIA", features: sesion.features },
     puede: (s: string) => s === "pos" && sesion.conPos,
   }),
@@ -28,7 +32,15 @@ vi.mock("../../lib/agenda/apiAgenda", async (importOriginal) => {
   const real = await importOriginal<typeof import("../../lib/agenda/apiAgenda")>();
   return {
     ...real,
-    apiAgenda: { hoy: vi.fn(), cambiarEstado: vi.fn(), atenderAhora: vi.fn(), cita: vi.fn() },
+    apiAgenda: {
+      hoy: vi.fn(),
+      cambiarEstado: vi.fn(),
+      atenderAhora: vi.fn(),
+      cita: vi.fn(),
+      recursos: vi.fn(),
+      servicios: vi.fn(),
+      agregarACola: vi.fn(),
+    },
   };
 });
 
@@ -54,13 +66,23 @@ const enCola = cita({
   inicio: null,
   fin: null,
   lineas: [],
+  // Lo pedido viene acá: un walk-in no tiene líneas hasta que lo atienden.
+  serviciosPedidos: [{ id: 100, nombre: "Corte dama" }],
+  recursoPreferidoId: 1,
   cliente: { ...cita().cliente, nombre: "Carlos Vaca" },
 });
+const carla = recurso({ id: 1, nombre: "Carla R." });
+const sofia = recurso({ id: 7, nombre: "Sofía", orden: 2, servicioIds: [100] });
+// No hace "Corte dama": no se ofrece para Carlos.
+const ana = recurso({ id: 8, nombre: "Ana Uñas", orden: 3, servicioIds: [101] });
+const cabina = recurso({ id: 9, nombre: "Cabina 1", tipo: "ESPACIO", servicioIds: [100] });
 
 beforeEach(() => {
   vi.clearAllMocks();
   sesion.features = ["agenda", "cola_walkin"];
   sesion.conPos = false;
+  sesion.rol = "CAJERO";
+  vi.mocked(apiAgenda.recursos).mockResolvedValue([carla, sofia, ana, cabina]);
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(new Date("2026-10-21T13:00:00.000Z"));
   vi.mocked(apiAgenda.hoy).mockResolvedValue({
@@ -163,24 +185,90 @@ describe("A3 · Hoy", () => {
 });
 
 describe("A6 · Cola de espera", () => {
+  /** La pestaña de la cola, con los profesionales ya cargados. */
+  async function abrirCola() {
+    fireEvent.click(screen.getByRole("tab", { name: "Cola · 1" }));
+    await act(async () => {});
+  }
+
   it("atender ahora sin nadie libre muestra la espera estimada", async () => {
     vi.mocked(apiAgenda.atenderAhora).mockRejectedValue(
       new ApiError("Sin nadie libre", 409, { codigo: "SIN_RECURSO_LIBRE", esperaEstimadaMin: 25 }),
     );
     await montar();
-    fireEvent.click(screen.getByRole("tab", { name: "Cola · 1" }));
+    await abrirCola();
     expect(screen.getByText("Carlos Vaca")).toBeInTheDocument();
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Atender ahora" }));
     });
-    expect(apiAgenda.atenderAhora).toHaveBeenCalledWith(4);
+    expect(apiAgenda.atenderAhora).toHaveBeenCalledWith(4, undefined);
     expect(screen.getByRole("status")).toHaveTextContent("Espera estimada: ~25 min");
+    // Sin elegir, el backend probó con la que pidió: se la nombra.
+    expect(screen.getByRole("status")).toHaveTextContent("Carla R. no está libre ahora");
+    // Hay otra que hace el corte: se dice que se la puede elegir.
+    expect(screen.getByRole("status")).toHaveTextContent("Podés elegir a otro en «Con»");
+  });
+
+  it("dice qué pidió y con quién; se lo puede atender con otro profesional libre", async () => {
+    vi.mocked(apiAgenda.atenderAhora).mockResolvedValue({ ...enCola, estado: "EN_ATENCION" });
+    await montar();
+    await abrirCola();
+    expect(screen.getByText(/Corte dama · con Carla R\. si se puede/)).toBeInTheDocument();
+    const con = screen.getByLabelText("Con quién atender a Carlos Vaca") as HTMLSelectElement;
+    // El preferido primero (es el de por defecto), y sólo quienes hacen el corte:
+    // ni la de uñas ni la cabina.
+    expect(Array.from(con.options).map((o) => o.textContent)).toEqual(["Carla R. (lo pidió)", "Sofía"]);
+    fireEvent.change(con, { target: { value: "7" } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Atender ahora" }));
+    });
+    expect(apiAgenda.atenderAhora).toHaveBeenCalledWith(4, 7);
+  });
+
+  it("el elegido ocupado: lo dice con su nombre", async () => {
+    vi.mocked(apiAgenda.atenderAhora).mockRejectedValue(
+      new ApiError("Sin nadie libre", 409, { codigo: "SIN_RECURSO_LIBRE", esperaEstimadaMin: 10 }),
+    );
+    await montar();
+    await abrirCola();
+    fireEvent.change(screen.getByLabelText("Con quién atender a Carlos Vaca"), { target: { value: "7" } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Atender ahora" }));
+    });
+    expect(screen.getByRole("status")).toHaveTextContent("Sofía no está libre ahora. Espera estimada: ~10 min.");
+  });
+
+  it("al anotar, «Con quién» ofrece sólo profesionales que hacen lo elegido", async () => {
+    vi.mocked(apiAgenda.servicios).mockResolvedValue([
+      servicio({ id: 100, nombre: "Corte dama" }),
+      servicio({ id: 101, nombre: "Manicura" }),
+    ]);
+    vi.mocked(apiAgenda.agregarACola).mockResolvedValue(enCola);
+    await montar();
+    await abrirCola();
+    fireEvent.click(screen.getByRole("button", { name: "Agregar" }));
+    await act(async () => {});
+    const opciones = () =>
+      Array.from((screen.getByLabelText("Con quién") as HTMLSelectElement).options).map((o) => o.textContent);
+    expect(opciones()).toEqual(["Cualquiera", "Carla R.", "Sofía", "Ana Uñas"]);
+    fireEvent.click(screen.getByRole("button", { name: "Manicura" }));
+    expect(opciones()).toEqual(["Cualquiera", "Carla R.", "Ana Uñas"]);
+    fireEvent.change(screen.getByLabelText("Con quién"), { target: { value: "8" } });
+    // Cambia lo elegido y Ana ya no lo hace todo: vuelve a "Cualquiera".
+    fireEvent.click(screen.getByRole("button", { name: "Corte dama" }));
+    expect((screen.getByLabelText("Con quién") as HTMLSelectElement).value).toBe("");
+  });
+
+  it("el profesional no ve la cola (es de recepción)", async () => {
+    sesion.rol = "PROFESIONAL";
+    await montar();
+    expect(screen.queryByRole("tab", { name: /Cola/ })).not.toBeInTheDocument();
   });
 
   it("se fue la marca como abandonada", async () => {
     vi.mocked(apiAgenda.cambiarEstado).mockResolvedValue({ ...enCola, estado: "ABANDONADA" });
     await montar();
-    fireEvent.click(screen.getByRole("tab", { name: "Cola · 1" }));
+    await abrirCola();
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Se fue" }));
     });

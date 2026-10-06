@@ -8,7 +8,7 @@ import { capitalizar, fechaLarga, fechaNegocio, horaNegocio } from "../../lib/ag
 import type { AgendaHoy, Cita, ContadoresHoy, EstadoCita } from "../../lib/agenda/tiposAgenda";
 import { useConsultaPeriodica } from "../../lib/agenda/useConsultaPeriodica";
 import { useSucursalAgenda } from "../../lib/agenda/useSucursalAgenda";
-import { tieneFeature } from "../../lib/permisos";
+import { gestionaCola, tieneFeature } from "../../lib/permisos";
 import { useAuth } from "../../store/AuthContext";
 import ColaEspera from "./ColaEspera";
 import DetalleCita from "./DetalleCita";
@@ -71,14 +71,16 @@ function conCita(d: AgendaHoy | null, c: Cita): AgendaHoy | null {
  * suma la pestaña de la cola (A6).
  */
 export default function Hoy() {
-  const { negocio, puede } = useAuth();
+  const { negocio, puede, usuario } = useAuth();
   const suc = useSucursalAgenda();
   const [pestana, setPestana] = useState<"citas" | "cola">("citas");
   const [filtro, setFiltro] = useState<Filtro>("todas");
   const [abierta, setAbierta] = useState<Cita | null>(null);
   const [nueva, setNueva] = useState(false);
   const [aviso, setAviso] = useAviso(5000);
-  const conCola = tieneFeature(negocio?.features, "cola_walkin");
+  // La cola es de recepción: el profesional no la ve ni anota (el backend le
+  // da la cola vacía y 403 al anotar).
+  const conCola = tieneFeature(negocio?.features, "cola_walkin") && gestionaCola(usuario);
 
   const hoy = useConsultaPeriodica(
     () =>

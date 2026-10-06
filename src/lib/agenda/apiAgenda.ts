@@ -63,8 +63,12 @@ export const apiAgenda = {
   agregarACola: (input: ColaInput) =>
     request<Cita>("/agenda/cola", { method: "POST", body: JSON.stringify(input) }),
 
-  atenderAhora: (id: number) =>
-    request<Cita>(`/agenda/citas/${id}/atender-ahora`, { method: "POST" }),
+  /** Sin `recursoId`, el preferido o el primero libre; con él, ése. */
+  atenderAhora: (id: number, recursoId?: number) =>
+    request<Cita>(`/agenda/citas/${id}/atender-ahora`, {
+      method: "POST",
+      ...(recursoId != null ? { body: JSON.stringify({ recursoId }) } : {}),
+    }),
 
   hoy: (sucursalId?: number | null) =>
     request<AgendaHoy>(`/agenda/hoy${qs({ sucursalId })}`),

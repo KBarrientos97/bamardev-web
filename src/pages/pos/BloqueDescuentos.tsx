@@ -3,6 +3,7 @@ import { Icon } from "../../components/Icon";
 import { apiAgenda } from "../../lib/agenda/apiAgenda";
 import type { ClienteFicha } from "../../lib/agenda/tiposAgenda";
 import { fmtMoney } from "../../lib/format";
+import NuevoCliente, { SinResultadosCliente } from "../agenda/NuevoCliente";
 import type { Descuentos } from "./useDescuentos";
 
 /**
@@ -15,10 +16,13 @@ import type { Descuentos } from "./useDescuentos";
 export default function BloqueDescuentos({
   descuentos,
   conClientes = false,
+  puedeCrearClientes = false,
 }: {
   descuentos: Descuentos;
   /** El negocio tiene la ficha de clientes (`clientes`). */
   conClientes?: boolean;
+  /** Alta rápida si no lo encuentra (QA DIA-09, `cliente.editar`). */
+  puedeCrearClientes?: boolean;
 }) {
   const d = descuentos;
   const [codigo, setCodigo] = useState("");
@@ -100,35 +104,53 @@ export default function BloqueDescuentos({
           ))}
         </div>
       )}
-      {conClientes && <ClienteDeLaVenta descuentos={d} />}
+      {conClientes && <ClienteDeLaVenta descuentos={d} puedeCrear={puedeCrearClientes} />}
     </div>
   );
 }
 
-/** Buscar al cliente por nombre o teléfono y dejarlo en la venta. */
-function ClienteDeLaVenta({ descuentos }: { descuentos: Descuentos }) {
+/**
+ * Buscar al cliente por nombre o teléfono y dejarlo en la venta. Si no está,
+ * lo dice y ofrece darlo de alta ahí mismo (QA DIA-09).
+ */
+function ClienteDeLaVenta({ descuentos, puedeCrear }: { descuentos: Descuentos; puedeCrear: boolean }) {
   const [q, setQ] = useState("");
   const [abierto, setAbierto] = useState(false);
   const [elegido, setElegido] = useState<ClienteFicha | null>(null);
   const [opciones, setOpciones] = useState<ClienteFicha[]>([]);
+  /** Lo que ya respondió el backend: "Sin resultados" no se dice antes. */
+  const [buscado, setBuscado] = useState("");
+  const [creando, setCreando] = useState(false);
+  const texto = q.trim();
+
+  const elegir = (o: ClienteFicha) => {
+    setElegido(o);
+    descuentos.setClienteId(o.id);
+    setAbierto(false);
+    setQ("");
+  };
 
   useEffect(() => {
-    if (!abierto || q.trim().length < 2) {
+    if (!abierto || texto.length < 2) {
       setOpciones([]);
       return;
     }
     let vivo = true;
     const t = setTimeout(() => {
       apiAgenda
-        .buscarClientes(q.trim())
-        .then((r) => vivo && setOpciones(r.slice(0, 6)))
+        .buscarClientes(texto)
+        .then((r) => {
+          if (!vivo) return;
+          setOpciones(r.slice(0, 6));
+          setBuscado(texto);
+        })
         .catch(() => vivo && setOpciones([]));
     }, 250);
     return () => {
       vivo = false;
       clearTimeout(t);
     };
-  }, [q, abierto]);
+  }, [texto, abierto]);
 
   // Vaciar la venta (o cobrarla) suelta al cliente.
   useEffect(() => {
@@ -178,18 +200,27 @@ function ClienteDeLaVenta({ descuentos }: { descuentos: Descuentos }) {
         <button
           key={o.id}
           type="button"
-          onClick={() => {
-            setElegido(o);
-            descuentos.setClienteId(o.id);
-            setAbierto(false);
-            setQ("");
-          }}
+          onClick={() => elegir(o)}
           className="block w-full rounded-lg px-2 py-1 text-left text-sm hover:bg-muted"
         >
           {o.nombre}
           {o.telefono && <span className="ml-1 text-xs text-texto-3">{o.telefono}</span>}
         </button>
       ))}
+      {opciones.length === 0 && texto.length >= 2 && buscado === texto && (
+        <SinResultadosCliente compacto puedeCrear={puedeCrear} onCrear={() => setCreando(true)} />
+      )}
+      {creando && (
+        <NuevoCliente
+          textoBuscado={q}
+          etiquetaExistente={(nombre) => `Elegir a ${nombre}`}
+          onClose={() => setCreando(false)}
+          onListo={(c) => {
+            setCreando(false);
+            elegir(c);
+          }}
+        />
+      )}
     </div>
   );
 }

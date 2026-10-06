@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Boton, Campo, ErrorMsg, Input, Modal, Select, Vacio } from "../../components/ui";
 import { apiAgenda, esperaDelConflicto, mensajeDe } from "../../lib/agenda/apiAgenda";
+import { profesionalesParaCola, serviciosDeLaCola } from "../../lib/agenda/cola";
 import { duracionTexto, minutosEntre } from "../../lib/agenda/horaAgenda";
 import type { Cita, Recurso } from "../../lib/agenda/tiposAgenda";
 import { useApi } from "../../lib/useApi";
@@ -10,6 +11,12 @@ import { useApi } from "../../lib/useApi";
  * se anota con lo que quiere y, si tiene, con quién; "Atender ahora" le busca
  * el primer profesional libre que haga eso (o el preferido) y arranca la cita
  * desde este momento. Si no hay nadie, el backend contesta cuánto falta.
+ *
+ * Probada de punta a punta recién en los detalles chicos (la feature estaba
+ * apagada en QA): ahora dice qué pidió cada uno (venía en `serviciosPedidos`,
+ * no en las líneas) y deja elegir con quién atenderlo. Antes, si el preferido
+ * estaba ocupado, "Atender ahora" insistía con él y no había forma de dárselo
+ * a otro que estuviera libre.
  */
 export default function ColaEspera({
   cola,
@@ -19,7 +26,10 @@ export default function ColaEspera({
 }: {
   cola: Cita[];
   sucursalId: number | null;
-  /** Para nombrar al profesional preferido. */
+  /**
+   * Para nombrar al preferido y ofrecer con quién atender. Sin ellos (Hoy no
+   * los tiene) la cola los pide.
+   */
   recursos?: Recurso[];
   onCambio: () => void;
 }) {
@@ -27,6 +37,13 @@ export default function ColaEspera({
   const [ocupado, setOcupado] = useState<number | null>(null);
   const [aviso, setAviso] = useState("");
   const [error, setError] = useState("");
+  /** Con quién atender a cada uno; sin elegir, el preferido o el primero libre. */
+  const [conQuien, setConQuien] = useState<Record<number, number | "">>({});
+  const propios = useApi(
+    () => (recursos ? Promise.resolve([] as Recurso[]) : apiAgenda.recursos().catch(() => [] as Recurso[])),
+    [!recursos],
+  );
+  const todos = recursos ?? propios.datos ?? [];
 
   const ordenada = useMemo(
     () => [...cola].sort((a, b) => a.creadaEn.localeCompare(b.creadaEn)),
@@ -37,14 +54,19 @@ export default function ColaEspera({
     setError("");
     setAviso("");
     setOcupado(c.id);
+    const elegido = conQuien[c.id];
     try {
-      await apiAgenda.atenderAhora(c.id);
+      await apiAgenda.atenderAhora(c.id, elegido === "" || elegido == null ? undefined : elegido);
       onCambio();
     } catch (e) {
       const espera = esperaDelConflicto(e);
       if (espera !== null) {
+        // Sin elegir, el backend probó con el preferido: es a él a quien nombrar.
+        const intentado = elegido || c.recursoPreferidoId;
+        const quien = intentado ? todos.find((r) => r.id === intentado)?.nombre : null;
         setAviso(
-          `No hay nadie libre para ${c.cliente.nombre} ahora. Espera estimada: ~${duracionTexto(espera)}.`,
+          `${quien ? `${quien} no está libre` : `No hay nadie libre para ${c.cliente.nombre}`} ahora. Espera estimada: ~${duracionTexto(espera)}.` +
+            (otrosQueLoHacen(c, elegido) ? " Podés elegir a otro en «Con»." : ""),
         );
       } else {
         setError(mensajeDe(e));
@@ -53,6 +75,19 @@ export default function ColaEspera({
       setOcupado(null);
     }
   }
+
+  /** Los que pueden atenderlo (hacen todo lo que pidió, en esta sucursal). */
+  const quienesPueden = (c: Cita) =>
+    profesionalesParaCola(
+      todos,
+      (c.serviciosPedidos ?? []).map((s) => s.id),
+      sucursalId,
+    );
+  /** ¿Hay alguien más para elegir que el que se intentó? */
+  const otrosQueLoHacen = (c: Cita, intentado: number | "" | undefined) => {
+    const ya = intentado || c.recursoPreferidoId;
+    return quienesPueden(c).some((r) => r.id !== ya);
+  };
 
   async function seFue(c: Cita) {
     setError("");
@@ -88,10 +123,11 @@ export default function ColaEspera({
       ) : (
         <ol className="space-y-2">
           {ordenada.map((c, i) => {
-            const servicios = [...new Set(c.lineas.map((l) => l.servicio))].join(" + ");
+            const servicios = serviciosDeLaCola(c);
             const preferido = c.recursoPreferidoId
-              ? recursos?.find((r) => r.id === c.recursoPreferidoId)?.nombre
+              ? todos.find((r) => r.id === c.recursoPreferidoId)?.nombre
               : null;
+            const pueden = quienesPueden(c);
             const espera = minutosEntre(c.creadaEn, new Date().toISOString());
             return (
               <li key={c.id} className="space-y-2 rounded-xl border border-borde-soft px-3 py-2.5">
@@ -108,6 +144,28 @@ export default function ColaEspera({
                   </p>
                 </div>
                 </div>
+                {pueden.length > 0 && (
+                  <label className="flex items-center gap-2 text-[13px] text-texto-2">
+                    <span className="shrink-0">Con</span>
+                    <Select
+                      aria-label={`Con quién atender a ${c.cliente.nombre}`}
+                      className="min-w-0 flex-1 py-1.5 text-[13px]"
+                      value={conQuien[c.id] ?? ""}
+                      onChange={(e) =>
+                        setConQuien((x) => ({ ...x, [c.id]: e.target.value ? Number(e.target.value) : "" }))
+                      }
+                    >
+                      <option value="">{preferido ? `${preferido} (lo pidió)` : "El primero libre"}</option>
+                      {pueden
+                        .filter((r) => r.id !== c.recursoPreferidoId)
+                        .map((r) => (
+                          <option key={r.id} value={r.id}>
+                            {r.nombre}
+                          </option>
+                        ))}
+                    </Select>
+                  </label>
+                )}
                 <div className="flex gap-2">
                   <button
                     type="button"
@@ -164,9 +222,11 @@ function AgregarACola({
   const [error, setError] = useState("");
   const [enviando, setEnviando] = useState(false);
 
-  const deLaSucursal = (recursos.datos ?? []).filter(
-    (r) => r.activo !== false && (r.sucursalIds.length === 0 || r.sucursalIds.includes(sucursalId)),
-  );
+  // Sólo profesionales (no cabinas) que hacen todo lo elegido: el backend
+  // rechaza (400) un preferido que no lo hace.
+  const deLaSucursal = profesionalesParaCola(recursos.datos ?? [], elegidos, sucursalId);
+  // Si cambian los servicios y el elegido ya no los hace, vuelve a "Cualquiera".
+  const preferidoValido = preferido !== "" && deLaSucursal.some((r) => r.id === preferido) ? preferido : "";
 
   async function agregar() {
     setError("");
@@ -181,7 +241,7 @@ function AgregarACola({
         // pide. Vacío no se manda, para no chocar con el teléfono único.
         cliente: tel ? { nombre: nombre.trim(), telefono: tel } : { nombre: nombre.trim() },
         servicioIds: elegidos,
-        ...(preferido !== "" ? { recursoPreferidoId: preferido } : {}),
+        ...(preferidoValido !== "" ? { recursoPreferidoId: preferidoValido } : {}),
       });
       onAgregado();
     } catch (e) {
@@ -248,7 +308,11 @@ function AgregarACola({
           )}
         </div>
         <Campo label="Con quién">
-          <Select value={preferido} onChange={(e) => setPreferido(e.target.value ? Number(e.target.value) : "")}>
+          <Select
+            aria-label="Con quién"
+            value={preferidoValido}
+            onChange={(e) => setPreferido(e.target.value ? Number(e.target.value) : "")}
+          >
             <option value="">Cualquiera</option>
             {deLaSucursal.map((r) => (
               <option key={r.id} value={r.id}>

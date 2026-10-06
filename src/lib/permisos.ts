@@ -510,6 +510,27 @@ export function editaSalud(usuario: (ConPermisos & { rol?: Rol }) | null | undef
 }
 
 /**
+ * ¿Da de alta clientes (QA DIA-09)? Lo mismo que pide el backend
+ * (`cliente.editar`); sin permisos del backend, los que atienden el
+ * mostrador. La feature `clientes` la mira quien lo llama: Clientes ya vive
+ * detrás de ella y el POS la pregunta con `puede("clientes")`.
+ */
+export function creaClientes(usuario: (ConPermisos & { rol?: Rol }) | null | undefined): boolean {
+  return tienePermiso(usuario, "cliente.editar", usuario?.rol !== "PROFESIONAL");
+}
+
+/**
+ * ¿Opera la cola de espera (anotar, atender, "se fue")? El backend pide
+ * `agenda.gestionar` o `cola.gestionar`; sin permisos del backend, quien no
+ * es profesional. Al profesional la cola le llega vacía y anotar le da 403:
+ * mostrarle la pestaña con "Agregar" era ofrecerle un error.
+ */
+export function gestionaCola(usuario: (ConPermisos & { rol?: Rol }) | null | undefined): boolean {
+  const respaldo = usuario?.rol !== "PROFESIONAL";
+  return tienePermiso(usuario, "cola.gestionar", respaldo) || tienePermiso(usuario, "agenda.gestionar", respaldo);
+}
+
+/**
  * El profesional en la agenda: la ve sólo sobre lo suyo y no la gestiona.
  * Respaldo: el rol PROFESIONAL, como hasta ahora.
  */

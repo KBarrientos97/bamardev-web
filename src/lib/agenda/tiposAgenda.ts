@@ -79,6 +79,11 @@ export interface Cita {
   nota: string | null;
   cliente: ClienteCita;
   lineas: LineaCita[];
+  /**
+   * Lo que pidió un walk-in de la cola (todavía sin líneas). El backend lo
+   * manda en toda cita; opcional por si una respuesta vieja no lo trae.
+   */
+  serviciosPedidos?: { id: number; nombre: string }[];
   recursoPreferidoId: number | null;
   ventaId: number | null;
   /**

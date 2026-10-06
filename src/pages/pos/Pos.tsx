@@ -22,7 +22,7 @@ import { cobraPropinas } from "../../lib/belleza/capacidades";
 import { useConsultaPeriodica } from "../../lib/agenda/useConsultaPeriodica";
 import CitasPorCobrar from "./CitasPorCobrar";
 import { fmtHora, fmtMoney } from "../../lib/format";
-import { tieneFeature } from "../../lib/permisos";
+import { creaClientes, tieneFeature } from "../../lib/permisos";
 import { esFarmacia } from "../../lib/rubro";
 import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
@@ -61,8 +61,10 @@ import { apiConfigAgenda } from "../../lib/agenda/apiConfigAgenda";
 import {
   carritoConProfesional,
   carritoConSesiones,
+  conProfesionalEnLinea,
   guardarAsignacion,
   leerAsignacion,
+  profesionalDeLaLinea,
   profesionalesDeLaVenta,
   profesionalesParaPos,
   sesionesParaLaVenta,
@@ -70,6 +72,7 @@ import {
   type AsignacionProfesional,
 } from "../../lib/agenda/ventaDirecta";
 import { SelectorProfesional } from "./belleza/SelectorProfesional";
+import type { ProfesionalesDelCarrito } from "./PantallaVenta";
 
 type Pantalla =
   | "venta"
@@ -89,7 +92,10 @@ type Pantalla =
   | "citasPorCobrar";
 
 export default function Pos() {
-  const { negocio, rubro, puede } = useAuth();
+  const { negocio, rubro, puede, usuario } = useAuth();
+  // QA DIA-09: los buscadores de cliente del POS ofrecen el alta a quien
+  // puede crear fichas, en un negocio que las tiene.
+  const puedeCrearClientes = puede("clientes") && creaClientes(usuario);
   // La caja manda: sin turno abierto el POS no deja vender, porque toda venta
   // tiene que caer dentro de un arqueo.
   const caja = useApi(() => api.cajaActual(), []);
@@ -256,6 +262,23 @@ export default function Pos() {
         ? carritoConSesiones(carritoConProfesional(carrito, asignacion, profesionalesPos), sesionesElegidas)
         : carritoDeLaCita(carrito, citaCobrando),
     [ventaDirecta, carrito, asignacion, profesionalesPos, citaCobrando, sesionesElegidas],
+  );
+
+  /**
+   * QA PER-07b: el carrito dice en cada línea quién la atendió y deja
+   * cambiarlo ahí. Sólo en la venta directa con profesionales (belleza con
+   * agenda); sin ellos (Omar) o cobrando una cita, el carrito de siempre.
+   */
+  const profesionalesCarrito = useMemo<ProfesionalesDelCarrito | undefined>(
+    () =>
+      ventaDirecta && profesionalesPos.length > 0
+        ? {
+            de: (l) => profesionalDeLaLinea(l.producto, asignacion, profesionalesPos),
+            onCambiar: (productoId, recursoId) =>
+              setAsignacion(conProfesionalEnLinea(asignacion, productoId, recursoId)),
+          }
+        : undefined,
+    [ventaDirecta, profesionalesPos, asignacion, setAsignacion],
   );
 
   const [datosEntrega, setDatosEntrega] = useState<DatosEntrega | null>(null);
@@ -839,6 +862,7 @@ export default function Pos() {
       categorias={categorias.datos ?? []}
       // Con profesional, el precio propio ya en cada línea; si no, el mismo.
       carrito={carritoVenta}
+      profesionales={profesionalesCarrito}
       onCobrar={() => setPantalla("cobro")}
       sucursalId={abierta.almacenId}
       // QA S2-07: un paquete se vende a un cliente; sin elegirlo, el cobro
@@ -850,7 +874,13 @@ export default function Pos() {
         conPromos
           ? {
               total: totalCarrito,
-              nodo: <BloqueDescuentos descuentos={descuentos} conClientes={puede("clientes")} />,
+              nodo: (
+                <BloqueDescuentos
+                  descuentos={descuentos}
+                  conClientes={puede("clientes")}
+                  puedeCrearClientes={puedeCrearClientes}
+                />
+              ),
               bloqueado: descuentos.cargando,
             }
           : undefined
@@ -989,7 +1019,11 @@ export default function Pos() {
         )}
         {vendePaquete && (
           <div className="border-b border-borde bg-white px-4 py-3">
-            <ClientePaquete cliente={clientePaquete} onElegir={setClientePaquete} />
+            <ClientePaquete
+              cliente={clientePaquete}
+              onElegir={setClientePaquete}
+              puedeCrear={puedeCrearClientes}
+            />
           </div>
         )}
         {sesionesOfrecidas.length > 0 && (

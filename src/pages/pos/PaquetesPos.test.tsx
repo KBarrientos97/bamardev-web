@@ -9,7 +9,7 @@ import type { CarritoCita } from "../../lib/agenda/tiposAgenda";
 
 vi.mock("../../lib/agenda/apiAgenda", async (importOriginal) => {
   const real = await importOriginal<typeof import("../../lib/agenda/apiAgenda")>();
-  return { ...real, apiAgenda: { buscarClientes: vi.fn() } };
+  return { ...real, apiAgenda: { buscarClientes: vi.fn(), crearCliente: vi.fn() } };
 });
 
 import { apiAgenda } from "../../lib/agenda/apiAgenda";
@@ -115,6 +115,72 @@ describe("a quién se le vende el paquete", () => {
     fireEvent.click(screen.getByRole("button", { name: /Rosa Mamani/ }));
     expect(apiAgenda.buscarClientes).toHaveBeenCalledWith("rosa");
     expect(elegir).toHaveBeenCalledWith({ id: 5, nombre: "Rosa Mamani" });
+  });
+
+  /** Escribe en el buscador y deja que responda. */
+  async function buscar(texto: string) {
+    vi.useFakeTimers();
+    fireEvent.change(screen.getByLabelText("Cliente del paquete"), { target: { value: texto } });
+    await act(async () => {
+      vi.advanceTimersByTime(350);
+    });
+    vi.useRealTimers();
+    await act(async () => {});
+  }
+
+  it("QA DIA-09: sin resultados lo dice y da de alta con el teléfono que se escribió", async () => {
+    vi.mocked(apiAgenda.buscarClientes).mockResolvedValue([]);
+    vi.mocked(apiAgenda.crearCliente).mockResolvedValue({
+      id: 44,
+      nombre: "Lucía Nueva",
+      telefono: "70012345",
+      fechaNacimiento: null,
+      alergias: null,
+      notas: null,
+      noShows: 0,
+      bloqueadoOnline: false,
+      ultimaVisita: null,
+      creadoEn: "x",
+    });
+    const elegir = vi.fn();
+    render(<ClientePaquete cliente={null} onElegir={elegir} puedeCrear />);
+    await buscar("7001 2345");
+    expect(screen.getByText("Sin resultados")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "+ Nuevo cliente" }));
+    // Lo escrito era un teléfono: va al teléfono, y el nombre queda por poner.
+    expect(screen.getByPlaceholderText("70012345")).toHaveValue("7001 2345");
+    fireEvent.click(screen.getByRole("button", { name: "Crear cliente" }));
+    expect(screen.getByText("Poné el nombre del cliente.")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Nombre"), { target: { value: "Lucía Nueva" } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Crear cliente" }));
+    });
+    expect(apiAgenda.crearCliente).toHaveBeenCalledWith({ nombre: "Lucía Nueva", telefono: "70012345" });
+    expect(elegir).toHaveBeenCalledWith({ id: 44, nombre: "Lucía Nueva" });
+  });
+
+  it("QA DIA-09: lo escrito sin dígitos precarga el nombre", async () => {
+    vi.mocked(apiAgenda.buscarClientes).mockResolvedValue([]);
+    render(<ClientePaquete cliente={null} onElegir={vi.fn()} puedeCrear />);
+    await buscar("Lucía");
+    fireEvent.click(screen.getByRole("button", { name: "+ Nuevo cliente" }));
+    expect(screen.getByLabelText("Nombre")).toHaveValue("Lucía");
+    expect(screen.getByPlaceholderText("70012345")).toHaveValue("");
+  });
+
+  it("QA DIA-09: quien no crea fichas ve «Sin resultados» pero no el alta", async () => {
+    vi.mocked(apiAgenda.buscarClientes).mockResolvedValue([]);
+    render(<ClientePaquete cliente={null} onElegir={vi.fn()} />);
+    await buscar("Lucía");
+    expect(screen.getByText("Sin resultados")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "+ Nuevo cliente" })).not.toBeInTheDocument();
+  });
+
+  it("QA DIA-09: si la búsqueda falla no dice «Sin resultados»", async () => {
+    vi.mocked(apiAgenda.buscarClientes).mockRejectedValue(new Error("403"));
+    render(<ClientePaquete cliente={null} onElegir={vi.fn()} puedeCrear />);
+    await buscar("Lucía");
+    expect(screen.queryByText("Sin resultados")).not.toBeInTheDocument();
   });
 
   it("con cliente elegido, se puede cambiar", () => {
