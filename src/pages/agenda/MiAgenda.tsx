@@ -15,6 +15,7 @@ import {
   sumarDias,
 } from "../../lib/agenda/horaAgenda";
 import type { Cita, MiAgendaRespuesta } from "../../lib/agenda/tiposAgenda";
+import { tramoDe } from "../../lib/agenda/lineasCita";
 import { useConsultaPeriodica } from "../../lib/agenda/useConsultaPeriodica";
 import { etiquetaRol } from "../../lib/permisos";
 import { useApi } from "../../lib/useApi";
@@ -61,10 +62,14 @@ export default function MiAgenda() {
   const rapida = useAccionRapida((c) => agenda.setDatos((d) => conCita(d, c)));
 
   const recursos = agenda.datos?.recursos ?? [];
-  const todas = useMemo(
-    () => [...(agenda.datos?.citas ?? [])].sort((a, b) => (a.inicio ?? "").localeCompare(b.inicio ?? "")),
-    [agenda.datos?.citas],
-  );
+  // Cada cita, recortada a SU tramo: sus servicios y sus horas, no la
+  // secuencia entera (QA M-12). El detalle sigue mostrando la cita completa.
+  const todas = useMemo(() => {
+    const suyos = (agenda.datos?.recursos ?? []).map((r) => r.id);
+    return (agenda.datos?.citas ?? [])
+      .map((c) => tramoDe(c, suyos))
+      .sort((a, b) => (a.inicio ?? "").localeCompare(b.inicio ?? ""));
+  }, [agenda.datos?.citas, agenda.datos?.recursos]);
   const delDia = todas.filter(
     (c) => c.inicio && fechaNegocio(c.inicio) === dia && !["CANCELADA", "RECHAZADA", "EXPIRADA"].includes(c.estado),
   );
