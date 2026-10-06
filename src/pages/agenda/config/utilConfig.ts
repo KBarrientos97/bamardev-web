@@ -10,7 +10,7 @@ import type { Recurso } from "../../../lib/agenda/tiposConfigAgenda";
  */
 
 /** Las pestañas de la configuración de agenda (A8). */
-export type Pestana = "servicios" | "recursos" | "horarios" | "excepciones" | "bloqueos";
+export type Pestana = "servicios" | "recursos" | "horarios" | "excepciones" | "bloqueos" | "reservas";
 
 /** Una sucursal que atiende (los depósitos no tienen agenda). */
 export interface Sucursal {

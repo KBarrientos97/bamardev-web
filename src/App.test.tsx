@@ -34,6 +34,22 @@ vi.mock("./pages/salon/PanelMesero", async () => {
   };
 });
 
+// La reserva pública no toca la API de la app: tiene su propio cliente.
+vi.mock("./publico/apiReserva", async (importOriginal) => {
+  const real = await importOriginal<typeof import("./publico/apiReserva")>();
+  return {
+    ...real,
+    apiReserva: {
+      ...real.apiReserva,
+      negocio: vi.fn(async () => ({
+        negocio: { nombre: "Salón Bella Vista", subdominio: "bellavista", rubro: "PELUQUERIA", telefono: null, direccion: null, tema: null },
+        privacidadVersion: "v0.1",
+        sucursales: [],
+      })),
+    },
+  };
+});
+
 import App from "./App";
 import { NEGOCIO_KEY, USER_KEY, api, tokenStore } from "./lib/api";
 
@@ -181,5 +197,18 @@ describe("el profesional (belleza, sin agenda todavía)", () => {
     abrir("/mi-agenda");
     expect(screen.getByText("Inicio del administrador")).toBeInTheDocument();
     expect(window.location.pathname).toBe("/inventario");
+  });
+});
+
+describe("la reserva pública (/r/…)", () => {
+  it("se abre sin sesión: ni login ni redirección, aunque haya un token viejo", async () => {
+    tokenStore.set("token-viejo");
+    localStorage.setItem(USER_KEY, JSON.stringify(ADMIN));
+    localStorage.setItem(NEGOCIO_KEY, JSON.stringify(RESTAURANTE));
+    abrir("/r/bellavista");
+    expect(await screen.findByText("Salón Bella Vista")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Iniciar sesión" })).toBeNull();
+    expect(window.location.pathname).toBe("/r/bellavista");
+    expect(api.licencia).not.toHaveBeenCalled();
   });
 });

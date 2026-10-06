@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { lazy, Suspense, useEffect, useRef } from "react";
 import {
   BrowserRouter,
   Navigate,
@@ -23,6 +23,7 @@ import Agenda from "./pages/agenda/Agenda";
 import Hoy from "./pages/agenda/Hoy";
 import Clientes from "./pages/agenda/Clientes";
 import MiAgenda from "./pages/agenda/MiAgenda";
+import Solicitudes from "./pages/agenda/Solicitudes";
 import Almacenes from "./pages/inventario/Almacenes";
 import Categorias from "./pages/inventario/Categorias";
 import Dashboard from "./pages/inventario/Dashboard";
@@ -50,6 +51,13 @@ import PanelMesero from "./pages/salon/PanelMesero";
 import ConfigAgenda from "./pages/agenda/config/ConfigAgenda";
 import ConfigNegocio from "./pages/agenda/config/ConfigNegocio";
 import { AuthProvider, useAuth } from "./store/AuthContext";
+
+/**
+ * La reserva online del cliente final (`/r/<subdominio>…`). Diferida: es una
+ * página pública liviana y no tiene por qué bajar la app entera, ni la app
+ * cargar sus pantallas.
+ */
+const ReservaPublica = lazy(() => import("./publico/ReservaPublica"));
 
 /** Manda a cada rol a su pantalla: cajero al POS, repartidor a entregas. */
 function Inicio() {
@@ -275,6 +283,15 @@ function Rutas() {
           element={
             <Protegida seccion="clientes">
               <Clientes />
+            </Protegida>
+          }
+        />
+        {/* A9: lo que entró por la reserva online (fase 2). */}
+        <Route
+          path="/solicitudes"
+          element={
+            <Protegida seccion="solicitudes">
+              <Solicitudes />
             </Protegida>
           }
         />
@@ -550,11 +567,30 @@ function SinPantallaEnBlanco({ children }: { children: React.ReactNode }) {
 export default function App() {
   return (
     <BrowserRouter>
-      <AuthProvider>
-        <SinPantallaEnBlanco>
-          <Rutas />
-        </SinPantallaEnBlanco>
-      </AuthProvider>
+      <Routes>
+        {/* Fuera del AuthProvider a propósito: la reserva pública no tiene
+            sesión, y así ni el login ni el cierre por licencia o por 401
+            pueden alcanzarla (PLAN-AGENDA-BELLEZA §8.6). */}
+        <Route
+          path="/r/*"
+          element={
+            <Suspense fallback={<div className="min-h-dvh bg-white" />}>
+              <ReservaPublica />
+            </Suspense>
+          }
+        />
+        <Route path="*" element={<AppConSesion />} />
+      </Routes>
     </BrowserRouter>
+  );
+}
+
+function AppConSesion() {
+  return (
+    <AuthProvider>
+      <SinPantallaEnBlanco>
+        <Rutas />
+      </SinPantallaEnBlanco>
+    </AuthProvider>
   );
 }

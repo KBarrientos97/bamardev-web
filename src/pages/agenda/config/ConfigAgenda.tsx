@@ -14,6 +14,7 @@ import TabBloqueos from "./TabBloqueos";
 import TabExcepciones from "./TabExcepciones";
 import TabHorarios from "./TabHorarios";
 import TabRecursos from "./TabRecursos";
+import TabReservaOnline from "./TabReservaOnline";
 import TabServicios from "./TabServicios";
 
 /**
@@ -27,7 +28,7 @@ import TabServicios from "./TabServicios";
  * a Servicios en medio de cargar horarios.
  */
 
-const PESTANAS: Pestana[] = ["servicios", "recursos", "horarios", "excepciones", "bloqueos"];
+const PESTANAS: Pestana[] = ["servicios", "recursos", "horarios", "excepciones", "bloqueos", "reservas"];
 
 export default function ConfigAgenda() {
   const { puede } = useAuth();
@@ -55,6 +56,7 @@ export default function ConfigAgenda() {
     horarios: "Horarios",
     excepciones: "Excepciones",
     bloqueos: "Bloqueos",
+    reservas: "Reserva online",
   };
 
   const elegir = (p: Pestana) => {
@@ -180,5 +182,7 @@ function Contenido({
       return <TabExcepciones recursos={recursos} irA={irA} />;
     case "bloqueos":
       return <TabBloqueos recursos={recursos} sucursales={sucursales} />;
+    case "reservas":
+      return <TabReservaOnline servicios={servicios} recursos={recursos} onCambio={recargarTodo} />;
   }
 }

@@ -380,7 +380,7 @@ function FormRecurso({
           <Casilla checked={activo} onChange={setActivo} ayuda="Inactivo no aparece en la agenda; sus citas no se tocan.">
             Activo
           </Casilla>
-          <Casilla checked={publicado} onChange={setPublicado} ayuda="Llega con la reserva online: se guarda desde ya.">
+          <Casilla checked={publicado} onChange={setPublicado} ayuda="Aparece en tu página de reservas con su nombre público.">
             Se puede elegir al reservar online
           </Casilla>
         </div>

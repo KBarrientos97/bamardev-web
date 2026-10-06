@@ -68,6 +68,14 @@ const ITEMS: (ItemNav & { bloque: Bloque })[] = [
   { a: "/agenda", label: "Agenda", icono: "calendar", seccion: "agenda", bloque: "agenda" },
   { a: "/hoy", label: "Hoy", icono: "clock", seccion: "hoy", bloque: "agenda" },
   { a: "/clientes", label: "Clientes", icono: "users", seccion: "clientes", bloque: "agenda" },
+  // A9: con contador de pendientes (ver MenuLateral). Sólo con la reserva online.
+  {
+    a: "/solicitudes",
+    label: "Solicitudes online",
+    icono: "bell",
+    seccion: "solicitudes",
+    bloque: "agenda",
+  },
   {
     a: "/configuracion/agenda",
     label: "Configuración de agenda",

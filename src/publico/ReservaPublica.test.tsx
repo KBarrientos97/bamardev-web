@@ -1,0 +1,350 @@
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { CitaPublica, NegocioPublico } from "./apiReserva";
+
+/**
+ * La reserva pública (P1-P8) con la API mockeada: el recorrido completo, el
+ * 409 que no pierde lo cargado, el campo trampa, el 404 genérico y el enlace
+ * de gestión (confirmar, cancelar, fuera de ventana).
+ */
+
+vi.mock("./apiReserva", async (importOriginal) => {
+  const real = await importOriginal<typeof import("./apiReserva")>();
+  return {
+    ...real,
+    apiReserva: {
+      negocio: vi.fn(),
+      disponibilidad: vi.fn(),
+      reservar: vi.fn(),
+      ver: vi.fn(),
+      confirmar: vi.fn(),
+      cancelar: vi.fn(),
+      reprogramar: vi.fn(),
+      pedirBorrado: vi.fn(),
+      urlIcs: (sub: string, token: string) => `/api/publico/reservas/${sub}/citas/${token}/ics`,
+    },
+  };
+});
+
+import { apiReserva, ErrorReserva } from "./apiReserva";
+import ReservaPublica from "./ReservaPublica";
+
+/** Martes 13-oct-2026: las 14:30Z son las 10:30 de La Paz. */
+const H1030 = "2026-10-13T14:30:00.000Z";
+const H1100 = "2026-10-13T15:00:00.000Z";
+const H1500 = "2026-10-13T19:00:00.000Z";
+
+const NEGOCIO: NegocioPublico = {
+  negocio: {
+    nombre: "Salón Bella Vista",
+    subdominio: "bellavista",
+    rubro: "PELUQUERIA",
+    telefono: "33000000",
+    direccion: "Av. Busch 123",
+    tema: null,
+  },
+  privacidadVersion: "v0.1",
+  sucursales: [
+    {
+      slug: "centro",
+      nombre: "Centro",
+      direccion: "Av. Busch 123",
+      telefono: "33000000",
+      servicios: [
+        { id: 1, nombre: "Corte dama", categoria: "Cortes", duracionMin: 45, precio: 80 },
+        { id: 2, nombre: "Lavado y secado", categoria: "Cortes", duracionMin: 30, precio: 40 },
+        { id: 3, nombre: "Tinte raíz", categoria: "Color", duracionMin: 90, precio: 180 },
+      ],
+      profesionales: [
+        { id: 10, nombre: "Carla", servicioIds: [1, 2, 3] },
+        { id: 11, nombre: "Marcos", servicioIds: [1] },
+      ],
+      reglas: {
+        modoConfirmacion: "MANUAL",
+        anticipacionMinHoras: 2,
+        anticipacionMaxDias: 30,
+        ventanaCancelacionHoras: 4,
+        mostrarPrecios: true,
+        primeraFecha: "2026-10-13",
+        ultimaFecha: "2026-11-12",
+      },
+    },
+  ],
+};
+
+function citaPublica(extra: Partial<CitaPublica> = {}): CitaPublica {
+  return {
+    codigo: "K7M2QX",
+    estado: "SOLICITADA",
+    inicio: H1030,
+    fin: "2026-10-13T15:45:00.000Z",
+    primerNombre: "María",
+    servicios: [
+      { id: 1, nombre: "Corte dama", duracionMin: 45 },
+      { id: 2, nombre: "Lavado y secado", duracionMin: 30 },
+    ],
+    profesional: null,
+    sucursal: { slug: "centro", nombre: "Centro", direccion: "Av. Busch 123", telefono: "33000000" },
+    negocio: { nombre: "Salón Bella Vista", telefono: "33000000" },
+    motivoRechazo: null,
+    canceladaPorCliente: false,
+    borradoSolicitado: false,
+    ventanaCancelacionHoras: 4,
+    limiteCambiosEn: "2026-10-13T10:30:00.000Z",
+    puede: { confirmar: false, cancelar: true, reprogramar: true, pedirBorrado: true },
+    ...extra,
+  };
+}
+
+async function abrir(ruta: string) {
+  render(
+    <MemoryRouter initialEntries={[ruta]}>
+      <Routes>
+        <Route path="/r/*" element={<ReservaPublica />} />
+      </Routes>
+    </MemoryRouter>,
+  );
+  await act(async () => {});
+  await act(async () => {});
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  localStorage.clear();
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-10-12T14:00:00.000Z"));
+  vi.mocked(apiReserva.negocio).mockResolvedValue(NEGOCIO);
+  vi.mocked(apiReserva.disponibilidad).mockResolvedValue({
+    desde: "2026-10-13",
+    ultimaFecha: "2026-11-12",
+    dias: [
+      { fecha: "2026-10-13", inicios: [H1030, H1100, H1500] },
+      { fecha: "2026-10-14", inicios: [] },
+    ],
+  });
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+});
+
+describe("reservar (P2-P6)", () => {
+  async function hastaElHorario() {
+    await abrir("/r/bellavista/reservar");
+    fireEvent.click(screen.getByRole("checkbox", { name: /Corte dama/ }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /Lavado y secado/ }));
+    expect(screen.getByText("2 servicios · 1 h 15")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Siguiente" }));
+    await act(async () => {});
+  }
+
+  function completarDatos() {
+    fireEvent.click(screen.getByRole("button", { name: "10:30" }));
+    fireEvent.change(screen.getByLabelText("Nombre"), { target: { value: "María Flores" } });
+    fireEvent.change(screen.getByLabelText("Teléfono"), { target: { value: "76543210" } });
+    fireEvent.click(screen.getByRole("checkbox", { name: /cancelo con el enlace hasta 4 horas/ }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /Acepto la política de privacidad/ }));
+  }
+
+  it("sólo ofrece a quien hace todos los servicios y manda la reserva entera", async () => {
+    await hastaElHorario();
+    // Marcos no hace "Lavado y secado": no aparece.
+    const quien = screen.getByRole("region", { name: "Con quién" });
+    expect(within(quien).getByRole("button", { name: /Carla/ })).toBeInTheDocument();
+    expect(within(quien).queryByRole("button", { name: /Marcos/ })).toBeNull();
+    // El día sin lugar se ve, pero no se toca.
+    expect(screen.getByRole("button", { name: /Miércoles 14 de octubre, sin lugar/ })).toBeDisabled();
+
+    vi.mocked(apiReserva.reservar).mockResolvedValue({ token: "tok_tok_tok_tok_tok_12", cita: citaPublica() });
+    completarDatos();
+    fireEvent.click(screen.getByRole("button", { name: "Reservar Martes 13 · 10:30" }));
+    await act(async () => {});
+
+    expect(apiReserva.reservar).toHaveBeenCalledWith("bellavista", {
+      sucursal: "centro",
+      servicioIds: [1, 2],
+      profesionalId: null,
+      inicio: H1030,
+      nombre: "María Flores",
+      telefono: "76543210",
+      nota: undefined,
+      aceptaPrivacidad: true,
+      privacidadVersion: "v0.1",
+      sitioWeb: undefined,
+    });
+    expect(screen.getByRole("heading", { name: "Reserva enviada" })).toBeInTheDocument();
+    expect(screen.getByText("K7M2QX")).toBeInTheDocument();
+    expect(screen.getByText("Con quien esté libre (te avisan al confirmar)")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Ver mi reserva" })).toHaveAttribute(
+      "href",
+      "/r/bellavista/c/tok_tok_tok_tok_tok_12",
+    );
+    expect(screen.getByRole("link", { name: /Agregar a mi calendario/ })).toHaveAttribute(
+      "href",
+      "/api/publico/reservas/bellavista/citas/tok_tok_tok_tok_tok_12/ics",
+    );
+    // Queda guardada en el teléfono para "Ver mi última reserva".
+    expect(localStorage.getItem("bamardev_reserva_bellavista")).toBe("tok_tok_tok_tok_tok_12");
+  });
+
+  it("sin las casillas no manda nada", async () => {
+    await hastaElHorario();
+    fireEvent.click(screen.getByRole("button", { name: "10:30" }));
+    fireEvent.change(screen.getByLabelText("Nombre"), { target: { value: "María" } });
+    fireEvent.change(screen.getByLabelText("Teléfono"), { target: { value: "76543210" } });
+    fireEvent.click(screen.getByRole("button", { name: /Reservar Martes 13/ }));
+    await act(async () => {});
+    expect(apiReserva.reservar).not.toHaveBeenCalled();
+    expect(screen.getByRole("alert")).toHaveTextContent("marcá las dos casillas");
+  });
+
+  it("si el horario se ocupó (409), avisa, recalcula y no pierde los datos", async () => {
+    await hastaElHorario();
+    completarDatos();
+    vi.mocked(apiReserva.reservar).mockRejectedValue(
+      new ErrorReserva("Ese horario se acaba de ocupar. Elegí otro de los que siguen libres.", 409, {
+        codigo: "HUECO_OCUPADO",
+        huecos: [H1100],
+      }),
+    );
+    vi.mocked(apiReserva.disponibilidad).mockResolvedValue({
+      desde: "2026-10-13",
+      ultimaFecha: "2026-11-12",
+      dias: [{ fecha: "2026-10-13", inicios: [H1100] }],
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Reservar Martes 13 · 10:30" }));
+    await act(async () => {});
+    await act(async () => {});
+
+    expect(screen.getByRole("alert")).toHaveTextContent("se acaba de ocupar");
+    expect(apiReserva.disponibilidad).toHaveBeenCalledTimes(2);
+    expect(screen.queryByRole("button", { name: "10:30" })).toBeNull();
+    expect(screen.getByLabelText("Nombre")).toHaveValue("María Flores");
+    expect(screen.getByRole("button", { name: "Elegí un horario" })).toBeInTheDocument();
+  });
+
+  it("el campo trampa no se ve ni se alcanza con Tab, y viaja si un bot lo llena", async () => {
+    await hastaElHorario();
+    const trampa = document.querySelector<HTMLInputElement>('input[name="sitioWeb"]')!;
+    expect(trampa).toHaveAttribute("tabindex", "-1");
+    expect(trampa.closest("[aria-hidden='true']")).not.toBeNull();
+    completarDatos();
+    fireEvent.change(trampa, { target: { value: "http://spam" } });
+    vi.mocked(apiReserva.reservar).mockResolvedValue({ token: "x".repeat(22), cita: citaPublica() });
+    fireEvent.click(screen.getByRole("button", { name: /Reservar Martes 13/ }));
+    await act(async () => {});
+    expect(vi.mocked(apiReserva.reservar).mock.calls[0][1].sitioWeb).toBe("http://spam");
+  });
+});
+
+describe("portada y P8", () => {
+  it("la portada lleva a reservar", async () => {
+    await abrir("/r/bellavista");
+    expect(screen.getByText("Salón Bella Vista")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Reservar" })).toHaveAttribute("href", "/r/bellavista/reservar");
+  });
+
+  it("negocio sin reserva online: el aviso genérico", async () => {
+    vi.mocked(apiReserva.negocio).mockRejectedValue(
+      new ErrorReserva("Este negocio no recibe reservas por internet.", 404, { codigo: "RESERVAS_NO_DISPONIBLES" }),
+    );
+    await abrir("/r/otro/reservar");
+    expect(screen.getByRole("heading", { name: "No disponible por internet" })).toBeInTheDocument();
+  });
+
+  it("la política de privacidad nombra al negocio como responsable", async () => {
+    await abrir("/r/bellavista/privacidad");
+    expect(screen.getAllByText(/Salón Bella Vista/).length).toBeGreaterThan(0);
+    expect(screen.getByText(/es el responsable de tus datos/)).toBeInTheDocument();
+    expect(screen.getByText("Versión v0.1.")).toBeInTheDocument();
+  });
+});
+
+describe("gestión (P7)", () => {
+  const TOKEN = "abcdefghijklmnopqrstuv";
+
+  it("una reservada: confirmo que voy", async () => {
+    vi.mocked(apiReserva.ver).mockResolvedValue(
+      citaPublica({
+        estado: "RESERVADA",
+        profesional: { id: 10, nombre: "Carla" },
+        puede: { confirmar: true, cancelar: true, reprogramar: true, pedirBorrado: true },
+      }),
+    );
+    vi.mocked(apiReserva.confirmar).mockResolvedValue(
+      citaPublica({ estado: "CONFIRMADA", profesional: { id: 10, nombre: "Carla" } }),
+    );
+    await abrir(`/r/bellavista/c/${TOKEN}`);
+    expect(screen.getByText("Hola, María")).toBeInTheDocument();
+    expect(screen.getByText(/con Carla/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Confirmo que voy/ }));
+    await act(async () => {});
+    expect(apiReserva.confirmar).toHaveBeenCalledWith("bellavista", TOKEN);
+    expect(screen.getByText("CONFIRMADA")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Confirmo que voy/ })).toBeNull();
+  });
+
+  it("cancelar pide confirmación y muestra el resultado", async () => {
+    vi.mocked(apiReserva.ver).mockResolvedValue(citaPublica());
+    vi.mocked(apiReserva.cancelar).mockResolvedValue(
+      citaPublica({
+        estado: "CANCELADA",
+        canceladaPorCliente: true,
+        puede: { confirmar: false, cancelar: false, reprogramar: false, pedirBorrado: true },
+      }),
+    );
+    await abrir(`/r/bellavista/c/${TOKEN}`);
+    fireEvent.click(screen.getByRole("button", { name: "Cancelar mi cita" }));
+    expect(apiReserva.cancelar).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Sí, cancelar mi cita" }));
+    await act(async () => {});
+    expect(screen.getByText("Cancelaste esta cita.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Hacer otra reserva" })).toBeInTheDocument();
+  });
+
+  it("fuera de la ventana no ofrece cambiar ni cancelar", async () => {
+    vi.mocked(apiReserva.ver).mockResolvedValue(
+      citaPublica({
+        estado: "RESERVADA",
+        puede: { confirmar: true, cancelar: false, reprogramar: false, pedirBorrado: true },
+      }),
+    );
+    await abrir(`/r/bellavista/c/${TOKEN}`);
+    expect(screen.queryByRole("button", { name: "Cancelar mi cita" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Cambiar día u hora" })).toBeNull();
+    expect(screen.getByText(/Ya no se puede cambiar ni cancelar por acá/)).toBeInTheDocument();
+  });
+
+  it("rechazada: muestra el motivo del negocio", async () => {
+    vi.mocked(apiReserva.ver).mockResolvedValue(
+      citaPublica({
+        estado: "RECHAZADA",
+        motivoRechazo: "Ese día no atendemos",
+        puede: { confirmar: false, cancelar: false, reprogramar: false, pedirBorrado: true },
+      }),
+    );
+    await abrir(`/r/bellavista/c/${TOKEN}`);
+    expect(screen.getByText("NO APROBADA")).toBeInTheDocument();
+    expect(screen.getByText(/Ese día no atendemos/)).toBeInTheDocument();
+  });
+
+  it("un enlace que no existe", async () => {
+    vi.mocked(apiReserva.ver).mockRejectedValue(new ErrorReserva("No encontramos esa reserva.", 404, {}));
+    await abrir(`/r/bellavista/c/${TOKEN}`);
+    expect(screen.getByRole("heading", { name: "No encontramos esa reserva" })).toBeInTheDocument();
+  });
+
+  it("pedir que borren los datos", async () => {
+    vi.mocked(apiReserva.ver).mockResolvedValue(citaPublica());
+    vi.mocked(apiReserva.pedirBorrado).mockResolvedValue(
+      citaPublica({ borradoSolicitado: true, puede: { confirmar: false, cancelar: true, reprogramar: true, pedirBorrado: false } }),
+    );
+    await abrir(`/r/bellavista/c/${TOKEN}`);
+    fireEvent.click(screen.getByRole("button", { name: "Quiero que borren mis datos" }));
+    fireEvent.click(screen.getByRole("button", { name: "Sí, pedir que borren mis datos" }));
+    await act(async () => {});
+    expect(apiReserva.pedirBorrado).toHaveBeenCalledWith("bellavista", TOKEN);
+    expect(screen.getByText(/Pediste que borren tus datos/)).toBeInTheDocument();
+  });
+});

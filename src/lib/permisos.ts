@@ -101,7 +101,9 @@ export type Seccion =
   /** A10: las citas del profesional que entró. Sólo el rol PROFESIONAL. */
   | "mi_agenda"
   /** A7: fichas de cliente con su historial (ola B). Recepción y dueño. */
-  | "clientes";
+  | "clientes"
+  /** A9: las solicitudes que entraron por la reserva online (fase 2). */
+  | "solicitudes";
 
 /**
  * Qué módulo de rol y qué feature de plan exige cada sección. `feature: null`
@@ -173,6 +175,8 @@ const REQUISITOS: Record<Seccion, { modulo: Modulo | null; feature: Feature | nu
   mi_agenda: { modulo: null, feature: "agenda" },
   // La ficha es su propia feature (`clientes`): sin ella el backend da 403.
   clientes: { modulo: null, feature: "clientes" },
+  // La bandeja sólo existe con la reserva online: sin ella no entra nada.
+  solicitudes: { modulo: null, feature: "reserva_online" },
 };
 
 /**
@@ -184,7 +188,7 @@ const REQUISITOS: Record<Seccion, { modulo: Modulo | null; feature: Feature | nu
  * salón que todavía no la tiene no puede encontrarse la configuración de algo
  * que no puede usar, y el fail-open de siempre se la mostraría.
  */
-const FEATURES_ESTRICTAS: Feature[] = ["agenda", "clientes"];
+const FEATURES_ESTRICTAS: Feature[] = ["agenda", "clientes", "reserva_online"];
 
 /**
  * Roles que además pueden entrar a cada sección. El backend lo exige con
@@ -242,6 +246,8 @@ const ROLES_PERMITIDOS: Partial<Record<Seccion, Rol[]>> = {
   // A7 es de recepción y dueño (§5.1): el profesional ve la ficha mínima
   // desde su cita, no la cartera entera.
   clientes: ["ADMIN", "SUPERVISOR", "CAJERO"],
+  // Aprobar una reserva online es de recepción, como confirmar por teléfono.
+  solicitudes: ["ADMIN", "SUPERVISOR", "CAJERO"],
 };
 
 /**
@@ -286,6 +292,7 @@ const SOLO_EN_RUBRO: Partial<Record<Seccion, Rubro[]>> = {
   hoy: RUBROS_BELLEZA,
   mi_agenda: RUBROS_BELLEZA,
   clientes: RUBROS_BELLEZA,
+  solicitudes: RUBROS_BELLEZA,
 };
 
 /**
