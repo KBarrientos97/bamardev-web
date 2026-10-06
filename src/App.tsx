@@ -19,6 +19,9 @@ import Login from "./pages/Login";
 import PagarLicencia from "./pages/PagarLicencia";
 import Reportes from "./pages/Reportes";
 import Usuarios from "./pages/Usuarios";
+import Agenda from "./pages/agenda/Agenda";
+import Hoy from "./pages/agenda/Hoy";
+import MiAgenda from "./pages/agenda/MiAgenda";
 import Almacenes from "./pages/inventario/Almacenes";
 import Categorias from "./pages/inventario/Categorias";
 import Dashboard from "./pages/inventario/Dashboard";
@@ -106,6 +109,16 @@ function SoloProfesional({ children }: { children: React.ReactNode }) {
   const { usuario } = useAuth();
   if (usuario?.rol !== "PROFESIONAL") return <Inicio />;
   return <>{children}</>;
+}
+
+/**
+ * "/mi-agenda" es una sola ruta para el profesional: su agenda si el negocio
+ * tiene la feature `agenda`, y si no el aviso de que llega pronto. Así prender
+ * la agenda desde el panel le cambia la pantalla sin cambiarle a dónde entra.
+ */
+function MiAgendaOPronto() {
+  const { puede } = useAuth();
+  return puede("mi_agenda") ? <MiAgenda /> : <AgendaPronto />;
 }
 
 /**
@@ -214,13 +227,13 @@ function Rutas() {
           que el código de activación sale de la sesión y no del bloqueo. */}
       <Route path="/pagar" element={<PagarConSesion />} />
 
-      {/* Fuera del Layout, como el salón: el profesional todavía no tiene
-          ninguna sección y la barra lateral quedaría vacía. */}
+      {/* Fuera del Layout, como el salón: "Mi agenda" es la única pantalla
+          del profesional y una barra lateral con un solo ítem sobra. */}
       <Route
         path={RUTA_AGENDA_PRONTO}
         element={
           <SoloProfesional>
-            <AgendaPronto />
+            <MiAgendaOPronto />
           </SoloProfesional>
         }
       />
@@ -234,6 +247,25 @@ function Rutas() {
           element={
             <Protegida seccion="pos">
               <Pos />
+            </Protegida>
+          }
+        />
+
+        {/* Agenda de belleza: sólo con la feature `agenda` y en un rubro de
+            belleza (ver permisos.ts). */}
+        <Route
+          path="/agenda"
+          element={
+            <Protegida seccion="agenda">
+              <Agenda />
+            </Protegida>
+          }
+        />
+        <Route
+          path="/hoy"
+          element={
+            <Protegida seccion="hoy">
+              <Hoy />
             </Protegida>
           }
         />

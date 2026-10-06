@@ -121,6 +121,11 @@ export class ApiError extends Error {
   /** LICENCIA_VENCIDA | LICENCIA_SUSPENDIDA cuando el 403 es por licencia. */
   codigo?: string;
   urlPago?: string;
+  /**
+   * El cuerpo entero del error. La agenda lo necesita: un 409 HUECO_OCUPADO
+   * trae los huecos recalculados y un SIN_RECURSO_LIBRE la espera estimada.
+   */
+  detalle: Record<string, unknown>;
 
   constructor(mensaje: string, status: number, extra?: Record<string, unknown>) {
     super(mensaje);
@@ -128,6 +133,7 @@ export class ApiError extends Error {
     this.status = status;
     this.codigo = extra?.codigo as string | undefined;
     this.urlPago = extra?.urlPago as string | undefined;
+    this.detalle = extra ?? {};
   }
 }
 
@@ -1132,3 +1138,8 @@ export interface PagoEntrega {
 }
 
 export { limpiarSesion };
+
+// La agenda tiene su cliente aparte (`lib/agenda/apiAgenda.ts`) y pasa por el
+// mismo interceptor: sesión vencida, licencia y PostHog valen igual para ella.
+// (`request` ya se exporta donde se declara.)
+export { qs };

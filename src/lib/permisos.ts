@@ -92,11 +92,19 @@ export type Seccion =
   /** Servicios con duración, profesionales y espacios, horarios y bloqueos (A8). */
   | "agenda_config"
   /** Las reglas del negocio y cómo se confirma una reserva online (A11). */
-  | "config_negocio";
+  | "config_negocio"
+  // ── Agenda de belleza (fase 1) ──
+  /** A1: la agenda del día, columnas por profesional. Recepción y dueño. */
+  | "agenda"
+  /** A3: la lista de hoy con los botones rápidos (y la cola, A6). */
+  | "hoy"
+  /** A10: las citas del profesional que entró. Sólo el rol PROFESIONAL. */
+  | "mi_agenda";
 
 /**
  * Qué módulo de rol y qué feature de plan exige cada sección. `feature: null`
- * = no está en el catálogo de planes, alcanza con el módulo del rol.
+ * = no está en el catálogo de planes, alcanza con el módulo del rol. `modulo:
+ * null` = no pide módulo (la agenda, D23): la decide la feature y el rol.
  */
 const REQUISITOS: Record<Seccion, { modulo: Modulo | null; feature: Feature | null }> = {
   pos: { modulo: "POS", feature: "pos" },
@@ -158,12 +166,17 @@ const REQUISITOS: Record<Seccion, { modulo: Modulo | null; feature: Feature | nu
   // así que acá tampoco se pide ninguno. Quién entra lo dice ROLES_PERMITIDOS.
   agenda_config: { modulo: null, feature: "agenda" },
   config_negocio: { modulo: null, feature: "agenda" },
+  agenda: { modulo: null, feature: "agenda" },
+  hoy: { modulo: null, feature: "agenda" },
+  mi_agenda: { modulo: null, feature: "agenda" },
 };
 
 /**
  * Features que NO fallan abiertas: sin la feature en la lista, la sección no
- * existe aunque la lista venga vacía. La agenda es lo único nuevo de verdad
- * —ningún negocio la tuvo antes— y se prende a mano por negocio (F1.8): un
+ * existe aunque la lista venga vacía. Cubre todas las secciones de agenda
+ * (A1, Hoy, Mi agenda, A8, A11): al profesional sin la feature lo deja en "Tu
+ * agenda llega pronto" en vez de en un 403. La agenda es lo único nuevo de
+ * verdad —ningún negocio la tuvo antes— y se prende a mano por negocio (F1.8): un
  * salón que todavía no la tiene no puede encontrarse la configuración de algo
  * que no puede usar, y el fail-open de siempre se la mostraría.
  */
@@ -216,6 +229,12 @@ const ROLES_PERMITIDOS: Partial<Record<Seccion, Rol[]>> = {
   // backend no lo exige todavía (D23): es la pantalla la que no lo ofrece.
   agenda_config: ["ADMIN", "SUPERVISOR"],
   config_negocio: ["ADMIN"],
+  // La tabla de §4 del plan de agenda se aplica en las pantallas (el backend
+  // no tiene guard de rol, D23). Recepción es el CAJERO de siempre; el
+  // profesional ve sólo lo suyo, en su propia pantalla.
+  agenda: ["ADMIN", "SUPERVISOR", "CAJERO"],
+  hoy: ["ADMIN", "SUPERVISOR", "CAJERO"],
+  mi_agenda: ["PROFESIONAL"],
 };
 
 /**
@@ -254,6 +273,11 @@ const SOLO_EN_RUBRO: Partial<Record<Seccion, Rubro[]>> = {
   // `agenda` en el panel por error.
   agenda_config: RUBROS_BELLEZA,
   config_negocio: RUBROS_BELLEZA,
+  // Segundo candado de la agenda, además de su feature: Omar y la farmacia no
+  // se encuentran con ella aunque alguien la prenda a mano en el panel.
+  agenda: RUBROS_BELLEZA,
+  hoy: RUBROS_BELLEZA,
+  mi_agenda: RUBROS_BELLEZA,
 };
 
 /**
@@ -282,11 +306,13 @@ export interface ContextoPermisos {
 }
 
 export function puedeVer(ctx: ContextoPermisos, seccion: Seccion): boolean {
-  // El profesional no ve ninguna sección hasta que llegue la agenda (fase 1),
-  // que es lo único suyo. Hace falta decirlo explícito: su rol no tiene
-  // módulos (D23), y con la lista vacía `tieneModulo` falla abierto — sin esta
-  // línea, la primera sección nueva sin `ROLES_PERMITIDOS` le quedaría abierta.
-  if (ctx.rol === "PROFESIONAL") return false;
+  // El profesional sólo ve lo que lo nombra en `ROLES_PERMITIDOS` (su agenda).
+  // Hace falta decirlo explícito: su rol no tiene módulos (D23), y con la
+  // lista vacía `tieneModulo` falla abierto — sin esta línea, la primera
+  // sección nueva sin `ROLES_PERMITIDOS` le quedaría abierta.
+  if (ctx.rol === "PROFESIONAL" && !ROLES_PERMITIDOS[seccion]?.includes("PROFESIONAL")) {
+    return false;
+  }
 
   const fuera = FUERA_DE_RUBRO[seccion];
   if (fuera && ctx.rubro && (fuera as string[]).includes(ctx.rubro)) return false;
@@ -391,9 +417,9 @@ export function puedeSupervisar(rol: Rol): boolean {
  * rebotando en un bucle con la pantalla en blanco.
  */
 export function rutaInicial(ctx: ContextoPermisos): string {
-  // No pasa por la lista: el profesional no ve ninguna sección todavía, y sin
-  // esto caería en "/sin-acceso", que le dice que su cuenta está mal
-  // configurada. No lo está: su pantalla es la agenda, que llega en la fase 1.
+  // No pasa por la lista: con la agenda prendida su pantalla es "Mi agenda", y
+  // sin ella es el aviso de que llega pronto, en la MISMA ruta. Por la lista
+  // caería en "/sin-acceso", que le diría que su cuenta está mal configurada.
   if (ctx.rol === "PROFESIONAL") return RUTA_AGENDA_PRONTO;
 
   const orden: [Seccion, string][] =
@@ -405,8 +431,13 @@ export function rutaInicial(ctx: ContextoPermisos): string {
       : ctx.rol === "REPARTIDOR"
       ? [["reparto", "/reparto"], ["pos", "/pos"]]
       : ctx.rol === "CAJERO"
-        ? [["pos", "/pos"], ["caja", "/pos"], ["creditos", "/creditos"]]
+        ? // Recepción de un salón entra a "Hoy": es su mostrador. Fuera de
+          // belleza (o sin la feature) no existe, y sigue el POS de siempre.
+          [["hoy", "/hoy"], ["pos", "/pos"], ["caja", "/pos"], ["creditos", "/creditos"]]
         : [
+            // Lo mismo para el dueño y el encargado de un salón: su día
+            // empieza en la agenda. Omar y la farmacia no la tienen.
+            ["agenda", "/agenda"],
             ["inventario", "/inventario"],
             ["productos", "/inventario/productos"],
             ["pos", "/pos"],
@@ -429,9 +460,9 @@ export function rutaInicial(ctx: ContextoPermisos): string {
 }
 
 /**
- * Inicio del profesional mientras la agenda no existe: una pantalla que dice
- * que su agenda llega pronto. Es la misma ruta que tendrá "Mi agenda", así la
- * fase 1 cambia la pantalla y no a dónde aterriza cada quien.
+ * Inicio del profesional: "Mi agenda" si el negocio tiene la feature, y si no
+ * el aviso de que llega pronto. Es una sola ruta, así prender la agenda cambia
+ * la pantalla y no a dónde aterriza cada quien.
  */
 export const RUTA_AGENDA_PRONTO = "/mi-agenda";
 

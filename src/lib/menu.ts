@@ -60,9 +60,13 @@ export const TITULO_BLOQUE: Record<Bloque, string> = {
 };
 
 const ITEMS: (ItemNav & { bloque: Bloque })[] = [
-  // Agenda de belleza (A8): primero, porque en un salón la agenda es el día.
-  // La ruta no cuelga de /agenda a propósito: así no se enciende junto con el
-  // ítem de la agenda del día cuando se está configurando.
+  // Agenda de belleza: primero, como en el lienzo aprobado (en un salón la
+  // agenda es el día). Sólo existen en los rubros de belleza con la feature
+  // `agenda` (ver permisos.ts), así que a los demás negocios no les mueven el
+  // menú. La configuración no cuelga de /agenda a propósito: así no se
+  // enciende junto con el ítem de la agenda del día.
+  { a: "/agenda", label: "Agenda", icono: "calendar", seccion: "agenda", bloque: "agenda" },
+  { a: "/hoy", label: "Hoy", icono: "clock", seccion: "hoy", bloque: "agenda" },
   {
     a: "/configuracion/agenda",
     label: "Configuración de agenda",
