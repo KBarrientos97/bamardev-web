@@ -134,6 +134,17 @@ export default function PantallaRecibo({
               <dt>Subtotal</dt>
               <dd>{fmtMoney(subtotal)}</dd>
             </div>
+            {/* Cupones y promociones: cada uno con su nombre. Sólo en una
+                venta con descuento; el ticket de siempre no cambia. */}
+            {(venta.descuentos ?? []).map((x, i) => (
+              <div key={i} className="flex justify-between text-texto-2">
+                <dt>
+                  {x.nombre}
+                  {x.codigo ? ` (${x.codigo})` : ""}
+                </dt>
+                <dd className="shrink-0 whitespace-nowrap">− {fmtMoney(x.monto)}</dd>
+              </div>
+            ))}
             {venta.tarifaEnvio > 0 && (
               <div className="flex justify-between text-texto-2">
                 <dt>Envío</dt>
@@ -286,6 +297,12 @@ function LineaTicket({
         </span>
         <span className="shrink-0 font-bold text-texto">{fmtMoney(linea.subtotal)}</span>
       </div>
+      {!!linea.descuento && linea.descuento > 0 && (
+        <div className="flex items-start justify-between gap-2 text-xs text-texto-3">
+          <span>{linea.descuentoNombre ?? "Descuento"}</span>
+          <span className="shrink-0">− {fmtMoney(linea.descuento)}</span>
+        </div>
+      )}
       {linea.nota && <p className="text-xs italic text-texto-3">{linea.nota}</p>}
     </div>
   );

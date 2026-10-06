@@ -28,6 +28,7 @@ export default function PantallaVenta({
   onCobrar,
   cabecera,
   sucursalId,
+  descuentos,
 }: {
   productos: Producto[];
   categorias: Categoria[];
@@ -36,6 +37,12 @@ export default function PantallaVenta({
   cabecera?: React.ReactNode;
   /** La sucursal de la caja: de ahí salen el stock y la ubicación (farmacia). */
   sucursalId?: number | null;
+  /**
+   * Cupones y promociones (PLAN-CRM-Y-PROMOCIONES): el total neto y los
+   * renglones de descuento. Sin esto —todo negocio sin `promociones`— el
+   * carrito es el de siempre.
+   */
+  descuentos?: ExtraDescuentos;
 }) {
   const { negocio, usuario, rubro } = useAuth();
   const [q, setQ] = useState("");
@@ -122,6 +129,7 @@ export default function PantallaVenta({
     <PanelCarrito
       carrito={carrito}
       sucursalId={sucursalId}
+      descuentos={descuentos}
       onCobrar={() => {
         setCarritoAbierto(false);
         onCobrar();
@@ -226,7 +234,9 @@ export default function PantallaVenta({
           <span className="flex h-6 min-w-6 items-center justify-center rounded-full bg-white/25 px-1.5 text-xs font-bold">
             {fmtNum(carrito.unidades)}
           </span>
-          <span className="text-lg font-extrabold">{fmtMoney(carrito.total)}</span>
+          <span className="text-lg font-extrabold">
+            {fmtMoney(descuentos?.total ?? carrito.total)}
+          </span>
         </button>
       )}
 
@@ -383,17 +393,30 @@ function TarjetaVenta({
   );
 }
 
+/** Lo que suma el POS cuando el negocio tiene promociones. */
+export interface ExtraDescuentos {
+  /** El total a cobrar (el neto que devolvió la cotización). */
+  total: number;
+  /** Renglones de descuento y el campo del cupón, entre subtotal y total. */
+  nodo: React.ReactNode;
+  /** Mientras se recalcula, no se cobra: el total todavía puede cambiar. */
+  bloqueado?: boolean;
+}
+
 function PanelCarrito({
   carrito,
   sucursalId,
+  descuentos,
   onCobrar,
   onCerrar,
 }: {
   carrito: Carrito;
   sucursalId?: number | null;
+  descuentos?: ExtraDescuentos;
   onCobrar: () => void;
   onCerrar: () => void;
 }) {
+  const total = descuentos?.total ?? carrito.total;
   const { incluye, rubro } = useAuth();
   // Sin la capacidad la comanda no distingue destino: todo sale para llevar,
   // que es el valor por defecto con el que nacen las líneas.
@@ -514,9 +537,10 @@ function PanelCarrito({
                 </dt>
                 <dd>{fmtMoney(carrito.subtotal)}</dd>
               </div>
+              {descuentos?.nodo}
               <div className="flex justify-between border-t border-borde-soft pt-1.5 text-base font-extrabold text-texto">
                 <dt>Total</dt>
-                <dd>{fmtMoney(carrito.total)}</dd>
+                <dd>{fmtMoney(total)}</dd>
               </div>
             </dl>
 
@@ -525,9 +549,10 @@ function PanelCarrito({
                 if (venta && sinReceta) venta.pedirReceta(sinReceta.producto);
                 else onCobrar();
               }}
+              disabled={descuentos?.bloqueado}
               className="mt-3 w-full"
             >
-              Cobrar {fmtMoney(carrito.total)}
+              Cobrar {fmtMoney(total)}
             </Boton>
           </div>
         </>

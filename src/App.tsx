@@ -65,6 +65,8 @@ const ReservaPublica = lazy(() => import("./publico/ReservaPublica"));
 // Página del negocio: el editor y los enlaces cortos se bajan sólo si se usan.
 const MiPagina = lazy(() => import("./pages/pagina/MiPagina"));
 const MisEnlaces = lazy(() => import("./pages/pagina/MisEnlaces"));
+const Promociones = lazy(() => import("./pages/promociones/Promociones"));
+const Retencion = lazy(() => import("./pages/clientes/Retencion"));
 
 /** Manda a cada rol a su pantalla: cajero al POS, repartidor a entregas. */
 function Inicio() {
@@ -599,6 +601,28 @@ function Rutas() {
             <Protegida seccion="mis_enlaces">
               <Suspense fallback={null}>
                 <MisEnlaces />
+              </Suspense>
+            </Protegida>
+          }
+        />
+
+        {/* CRM y promociones (PLAN-CRM-Y-PROMOCIONES). */}
+        <Route
+          path="/promociones"
+          element={
+            <Protegida seccion="promociones">
+              <Suspense fallback={null}>
+                <Promociones />
+              </Suspense>
+            </Protegida>
+          }
+        />
+        <Route
+          path="/clientes-que-no-vuelven"
+          element={
+            <Protegida seccion="retencion">
+              <Suspense fallback={null}>
+                <Retencion />
               </Suspense>
             </Protegida>
           }

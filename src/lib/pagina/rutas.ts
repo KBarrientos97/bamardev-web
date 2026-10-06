@@ -9,5 +9,7 @@ export const urlPrivacidadDe = (subdominio: string) => `/p/${encodeURIComponent(
  * RutasPagina.tsx).
  */
 export function esRutaDePaginaPublica(pathname: string): boolean {
-  return /^\/p\/[^/]+(\/privacidad)?\/?$/.test(pathname);
+  // `/p/<negocio>/promo/<slug>`: la página de una promoción (enlaces de
+  // campaña, PLAN-CRM-Y-PROMOCIONES §6.6), también sin sesión.
+  return /^\/p\/[^/]+(\/privacidad|\/promo\/[^/]+)?\/?$/.test(pathname);
 }
