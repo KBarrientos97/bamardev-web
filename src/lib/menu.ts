@@ -233,7 +233,7 @@ const ITEMS: (ItemNav & { bloque: Bloque })[] = [
   // A11: las reglas del negocio y las de la reserva online. Sólo el dueño.
   {
     a: "/configuracion/negocio",
-    label: "Configuración del negocio",
+    label: "Configuración",
     icono: "settings",
     seccion: "config_negocio",
     bloque: "administracion",
@@ -320,7 +320,7 @@ const ADMIN_AGENDA: (ItemNav & { bloque: Bloque })[] = [
   { a: "/mesas", label: "Mesas del salón", icono: "grid", seccion: "mesas", bloque: "administracion" },
   {
     a: "/configuracion/negocio",
-    label: "Configuración del negocio",
+    label: "Configuración",
     icono: "settings",
     seccion: "config_negocio",
     bloque: "administracion",

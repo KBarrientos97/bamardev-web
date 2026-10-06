@@ -49,7 +49,7 @@ describe("menú del salón", () => {
 
   it("Administración va agrupada por tema y Configuración queda suelta", () => {
     const nodos = admin(menu("ADMIN", "BARBERIA"));
-    expect(nodos.map((n) => n.item.label)).toEqual(["Equipo", "Finanzas", "Marketing", "Configuración del negocio"]);
+    expect(nodos.map((n) => n.item.label)).toEqual(["Equipo", "Finanzas", "Marketing", "Configuración"]);
     const hijos = Object.fromEntries(nodos.map((n) => [n.item.label, n.hijos.map((h) => h.item.label)]));
     expect(hijos.Equipo).toEqual(["Personal", "Usuarios", "Comisiones", "Propinas"]);
     expect(hijos.Finanzas).toEqual(["Cuentas por cobrar", "Gastos operativos", "Reportes"]);

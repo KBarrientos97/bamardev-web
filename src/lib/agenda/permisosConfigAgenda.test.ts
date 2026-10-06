@@ -86,7 +86,7 @@ describe("menú", () => {
     ]);
     // El grupo no tiene pantalla propia: lleva a la del día.
     expect(agenda.item.a).toBe("/agenda");
-    expect(m.find((b) => b.bloque === "administracion")?.items).toContain("Configuración del negocio");
+    expect(m.find((b) => b.bloque === "administracion")?.items).toContain("Configuración");
   });
 
   it("en un restaurante el menú queda exactamente igual con o sin la feature", () => {
