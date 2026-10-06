@@ -83,6 +83,14 @@ const ITEMS: (ItemNav & { bloque: Bloque })[] = [
     seccion: "agenda_config",
     bloque: "agenda",
   },
+  // Belleza fase 4: qué gasta cada servicio (tinte, oxidante) y su margen.
+  {
+    a: "/configuracion/insumos-servicio",
+    label: "Insumos por servicio",
+    icono: "sack",
+    seccion: "recetas_servicio",
+    bloque: "agenda",
+  },
   { a: "/pos", label: "Punto de venta", icono: "cart", seccion: "pos", bloque: "vender" },
   // Va segundo y no dentro de Inventario: en una farmacia no es una consulta
   // de catálogo, es parte de atender. Se usa más que ninguna otra pantalla.
@@ -94,6 +102,9 @@ const ITEMS: (ItemNav & { bloque: Bloque })[] = [
     bloque: "vender",
   },
   { a: "/reparto", label: "Mis entregas", icono: "truck", seccion: "reparto", bloque: "vender" },
+  // Belleza fase 4: los vales se venden y se consultan al lado del POS.
+  { a: "/gift-cards", label: "Gift cards", icono: "gift", seccion: "gift_cards", bloque: "vender" },
+  { a: "/propinas", label: "Propinas", icono: "dollar", seccion: "propinas", bloque: "vender" },
   { a: "/encargos", label: "Encargos", icono: "bell", seccion: "encargos", bloque: "vender" },
   // Fuera de Inventario y no dentro: no es catálogo, es la plata que se está
   // por perder. Va donde se vea todos los días.

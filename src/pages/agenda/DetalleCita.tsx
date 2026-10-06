@@ -25,6 +25,7 @@ import { fmtMoney, iniciales } from "../../lib/format";
 import { Telefono } from "../../lib/telefono";
 import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
+import { ExtrasCita } from "../belleza/ExtrasAgenda";
 import MoverCita from "./MoverCita";
 import PedirMotivo from "./PedirMotivo";
 import { useCobrarCita } from "./useCobrarCita";
@@ -57,7 +58,7 @@ export default function DetalleCita({
   /** Después de una acción: la lista de atrás se pone al día con esto. */
   onCambio: (cita: Cita) => void;
 }) {
-  const { negocio } = useAuth();
+  const { negocio, usuario } = useAuth();
   const cobrar = useCobrarCita();
   const profesional = modo === "profesional";
   const completa = useApi(() => apiAgenda.cita(inicial.id), [inicial.id]);
@@ -221,6 +222,12 @@ export default function DetalleCita({
               <p className="rounded-xl bg-muted p-3 text-sm text-texto-2">{cita.nota}</p>
             </section>
           )}
+
+          {/* Belleza fase 4: insumos usados y ficha técnica (sólo con su feature). */}
+          <ExtrasCita
+            citaId={cita.id}
+            ctx={{ features: negocio?.features, rubro: negocio?.tipoNegocio, usuario }}
+          />
 
           <section className="space-y-2">
             <Rotulo>Avisar al cliente</Rotulo>

@@ -108,7 +108,14 @@ export type Seccion =
   /** "Mi página": el editor de la página pública del negocio. */
   | "mi_pagina"
   /** "Mis enlaces": los enlaces cortos con QR y clics. */
-  | "mis_enlaces";
+  | "mis_enlaces"
+  // ── Belleza fase 4 ──
+  /** Vender gift cards, consultar su saldo y el listado. */
+  | "gift_cards"
+  /** Propinas por profesional (el profesional, sólo las suyas). */
+  | "propinas"
+  /** Qué insumos gasta cada servicio, y el costo y margen por servicio. */
+  | "recetas_servicio";
 
 /**
  * Qué módulo de rol y qué feature de plan exige cada sección. `feature: null`
@@ -186,6 +193,10 @@ const REQUISITOS: Record<Seccion, { modulo: Modulo | null; feature: Feature | nu
   // (el backend exige las dos).
   mi_pagina: { modulo: null, feature: "pagina_publica" },
   mis_enlaces: { modulo: null, feature: "enlaces_cortos" },
+  // Belleza fase 4: el backend las corta por permisos (R3), sin módulo.
+  gift_cards: { modulo: null, feature: "gift_cards" },
+  propinas: { modulo: null, feature: "propinas" },
+  recetas_servicio: { modulo: null, feature: "consumo_servicio" },
 };
 
 /**
@@ -206,6 +217,11 @@ const FEATURES_ESTRICTAS: Feature[] = [
   "reserva_online",
   "pagina_publica",
   "enlaces_cortos",
+  // Belleza fase 4: nuevas y prendidas a mano por negocio.
+  "gift_cards",
+  "propinas",
+  "consumo_servicio",
+  "ficha_tecnica",
 ];
 
 /**
@@ -269,6 +285,11 @@ const ROLES_PERMITIDOS: Partial<Record<Seccion, Rol[]>> = {
   // La página es la vitrina del negocio: la edita el dueño (§3).
   mi_pagina: ["ADMIN"],
   mis_enlaces: ["ADMIN"],
+  // Belleza fase 4 (respaldo sin permisos del backend). El profesional entra
+  // a Propinas a ver las suyas.
+  gift_cards: ["ADMIN", "SUPERVISOR", "CAJERO"],
+  propinas: ["ADMIN", "SUPERVISOR", "PROFESIONAL"],
+  recetas_servicio: ["ADMIN", "SUPERVISOR"],
 };
 
 /**
@@ -314,6 +335,9 @@ const SOLO_EN_RUBRO: Partial<Record<Seccion, Rubro[]>> = {
   mi_agenda: RUBROS_BELLEZA,
   clientes: RUBROS_BELLEZA,
   solicitudes: RUBROS_BELLEZA,
+  gift_cards: RUBROS_BELLEZA,
+  propinas: RUBROS_BELLEZA,
+  recetas_servicio: RUBROS_BELLEZA,
 };
 
 /**
@@ -374,6 +398,10 @@ const PERMISO_SECCION: Partial<
   solicitudes: { permiso: "reservas.aprobar" },
   mi_pagina: { permiso: "negocio.configurar" },
   mis_enlaces: { permiso: "negocio.configurar" },
+  // Belleza fase 4: lo mismo que pide cada controlador.
+  gift_cards: { permiso: "vales.vender" },
+  propinas: { permiso: "propinas.ver" },
+  recetas_servicio: { permiso: "consumo.recetas" },
 };
 
 type ConPermisos = Pick<SesionUsuario, "permisos" | "permisosPropios"> | null | undefined;
