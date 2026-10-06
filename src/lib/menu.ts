@@ -276,11 +276,14 @@ const ITEMS: (ItemNav & { bloque: Bloque })[] = [
  */
 const ADMIN_AGENDA: (ItemNav & { bloque: Bloque })[] = [
   {
-    a: "/usuarios",
+    a: "/personal",
     label: "Equipo",
     icono: "users",
     bloque: "administracion",
     hijos: [
+      // PLAN-ROLES §11: Personal es la puerta de entrada (la gente, con o sin
+      // login); Usuarios queda como los accesos.
+      { a: "/personal", label: "Personal", icono: "users", seccion: "personal" },
       { a: "/usuarios", label: "Usuarios", icono: "users", seccion: "usuarios" },
       { a: "/comisiones", label: "Comisiones", icono: "dollar", seccion: "comisiones" },
       { a: "/propinas", label: "Propinas", icono: "dollar", seccion: "propinas" },

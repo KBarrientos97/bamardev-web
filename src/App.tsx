@@ -19,6 +19,7 @@ import Login from "./pages/Login";
 import PagarLicencia from "./pages/PagarLicencia";
 import Reportes from "./pages/Reportes";
 import Usuarios from "./pages/Usuarios";
+import Personal from "./pages/Personal";
 import Agenda from "./pages/agenda/Agenda";
 import Hoy from "./pages/agenda/Hoy";
 import Clientes from "./pages/agenda/Clientes";
@@ -314,6 +315,15 @@ function Rutas() {
           element={
             <Protegida seccion="solicitudes">
               <Solicitudes />
+            </Protegida>
+          }
+        />
+        {/* Personal (PLAN-ROLES §9): la gente del negocio, con o sin login. */}
+        <Route
+          path="/personal"
+          element={
+            <Protegida seccion="personal">
+              <Personal />
             </Protegida>
           }
         />
