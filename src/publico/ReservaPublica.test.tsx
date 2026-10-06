@@ -175,7 +175,8 @@ describe("reservar (P2-P6)", () => {
     });
     expect(screen.getByRole("heading", { name: "Reserva enviada" })).toBeInTheDocument();
     expect(screen.getByText("K7M2QX")).toBeInTheDocument();
-    expect(screen.getByText("Con quien esté libre (te avisan al confirmar)")).toBeInTheDocument();
+    // Sin mensajes salientes: no promete un aviso que nunca llega (B18).
+    expect(screen.getByText("Con quien esté libre (lo vas a ver en tu enlace cuando la confirmen)")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Ver mi reserva" })).toHaveAttribute(
       "href",
       "/r/bellavista/c/tok_tok_tok_tok_tok_12",
@@ -186,6 +187,30 @@ describe("reservar (P2-P6)", () => {
     );
     // Queda guardada en el teléfono para "Ver mi última reserva".
     expect(localStorage.getItem("bamardev_reserva_bellavista")).toBe("tok_tok_tok_tok_tok_12");
+  });
+
+  it("el Atrás vuelve a los servicios sin perder la selección y los pasos son 1 y 2 de 2 (B16)", async () => {
+    await abrir("/r/bellavista/reservar");
+    expect(screen.getByRole("navigation", { name: "Paso 1 de 2" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("checkbox", { name: /Corte dama/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Siguiente" }));
+    await act(async () => {});
+    expect(screen.getByRole("navigation", { name: "Paso 2 de 2" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Volver a los servicios" }));
+    await act(async () => {});
+    expect(screen.getByRole("checkbox", { name: /Corte dama/ })).toBeChecked();
+    expect(screen.getByRole("navigation", { name: "Paso 1 de 2" })).toBeInTheDocument();
+  });
+
+  it("el error de las casillas se trae a la vista (B17)", async () => {
+    const llevar = vi.fn();
+    Element.prototype.scrollIntoView = llevar;
+    await hastaElHorario();
+    fireEvent.click(screen.getByRole("button", { name: "10:30" }));
+    fireEvent.click(screen.getByRole("button", { name: /Reservar Martes 13/ }));
+    await act(async () => {});
+    expect(screen.getByRole("alert")).toHaveTextContent("marcá las dos casillas");
+    expect(llevar).toHaveBeenCalled();
   });
 
   it("sin las casillas no manda nada", async () => {
@@ -241,8 +266,27 @@ describe("reservar (P2-P6)", () => {
 describe("portada y P8", () => {
   it("la portada lleva a reservar", async () => {
     await abrir("/r/bellavista");
-    expect(screen.getByText("Salón Bella Vista")).toBeInTheDocument();
+    // El nombre del negocio es el h1 de la portada (B27).
+    expect(screen.getByRole("heading", { level: 1, name: "Salón Bella Vista" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Reservar" })).toHaveAttribute("href", "/r/bellavista/reservar");
+  });
+
+  it("una sucursal sin teléfono muestra el del negocio (B27)", async () => {
+    vi.mocked(apiReserva.negocio).mockResolvedValue({
+      ...NEGOCIO,
+      sucursales: [{ ...NEGOCIO.sucursales[0], telefono: null }],
+    });
+    await abrir("/r/bellavista");
+    expect(screen.getByRole("link", { name: "33000000" })).toHaveAttribute("href", "tel:33000000");
+  });
+
+  it("la reserva no se indexa y lleva su descripción (B06/B19)", async () => {
+    await abrir("/r/bellavista");
+    expect(document.head.querySelector('meta[name="robots"]')).toHaveAttribute("content", "noindex, nofollow");
+    expect(document.head.querySelector('meta[property="og:title"]')).toHaveAttribute(
+      "content",
+      "Reservar en Salón Bella Vista",
+    );
   });
 
   it("negocio sin reserva online: el aviso genérico", async () => {
@@ -258,6 +302,10 @@ describe("portada y P8", () => {
     expect(screen.getAllByText(/Salón Bella Vista/).length).toBeGreaterThan(0);
     expect(screen.getByText(/es el responsable de tus datos/)).toBeInTheDocument();
     expect(screen.getByText("Versión v0.1.")).toBeInTheDocument();
+    // La misma política que /p: dice lo que se guarda y a quién escribir (B08).
+    expect(screen.getByText(/huella cifrada de tu conexión/)).toBeInTheDocument();
+    expect(screen.getByText(/no usan cookies/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "al 33000000" })).toHaveAttribute("href", "tel:33000000");
   });
 });
 

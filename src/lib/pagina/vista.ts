@@ -44,7 +44,7 @@ export function vistaDesdeEditor(e: EstadoEditor, hoy = hoyBolivia()): PaginaPub
   return {
     subdominio: e.subdominio ?? "",
     nombre: e.negocio.nombre,
-    rubro: "",
+    rubro: e.negocio.rubroNombre ?? "",
     iniciales: e.negocio.iniciales,
     descripcion,
     color: { clave: muestra?.clave ?? "VERDE", hex: muestra?.hex ?? "#0C7A55" },
@@ -60,8 +60,8 @@ export function vistaDesdeEditor(e: EstadoEditor, hoy = hoyBolivia()): PaginaPub
     sucursales: e.sucursales
       .filter((s) => s.publicarEnPagina)
       .map((s) => ({
-        id: s.id,
         nombre: s.nombre,
+        reservaSlug: reservar && s.publicaReservas && s.slugReservas ? s.slugReservas : null,
         direccion: s.direccion,
         telefono: s.telefono,
         horario: s.horarioTexto,

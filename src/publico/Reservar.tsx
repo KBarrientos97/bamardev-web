@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { capitalizar, duracionTexto, fechaLarga, fechaNegocio } from "../lib/agenda/horaAgenda";
 import {
   apiReserva,
@@ -17,9 +17,10 @@ import SelectorHorario from "./SelectorHorario";
  * P2 a P6 (PLAN-AGENDA-BELLEZA §8.2): servicios → con quién, día y hora, y
  * tus datos → reserva enviada o confirmada. Sin cuenta ni app.
  *
- * Todo vive en una sola ruta con el paso en el estado: volver atrás no pierde
- * lo elegido, y un 409 (el horario se ocupó mientras llenaba los datos) no
- * borra nada: recalcula las horas y avisa.
+ * Todo vive en una sola ruta: lo elegido está en el estado, y el paso en la
+ * URL (`?paso=horario`), así el "Atrás" del celular vuelve a los servicios
+ * con la selección en vez de salir de la reserva (B16). Un 409 (el horario
+ * se ocupó mientras llenaba los datos) no borra nada: recalcula y avisa.
  */
 export default function Reservar() {
   const { sub, datos, cargando, noDisponible, error } = useNegocioPublico();
@@ -71,10 +72,10 @@ function ElegirSucursal({ datos, sub }: { datos: NegocioPublico; sub: string }) 
   );
 }
 
-type Paso = "servicios" | "horario";
-
 function Asistente({ datos, sucursal, sub }: { datos: NegocioPublico; sucursal: SucursalPublica; sub: string }) {
-  const [paso, setPaso] = useState<Paso>("servicios");
+  const [params, setParams] = useSearchParams();
+  const navegar = useNavigate();
+  const ubicacion = useLocation();
   const [elegidos, setElegidos] = useState<number[]>([]);
   const [profesional, setProfesional] = useState<number | null>(null);
   const [inicio, setInicio] = useState<string | null>(null);
@@ -88,6 +89,25 @@ function Asistente({ datos, sucursal, sub }: { datos: NegocioPublico; sucursal: 
   const [error, setError] = useState("");
   const [version, setVersion] = useState(0);
   const [hecha, setHecha] = useState<{ token: string; cita: CitaPublica } | null>(null);
+  const errorRef = useRef<HTMLDivElement>(null);
+  // Sin servicios elegidos (recargó estando en el horario) se vuelve a P2.
+  const paso = params.get("paso") === "horario" && elegidos.length ? "horario" : "servicios";
+
+  // El error del pie queda debajo de la barra fija: se lo lleva a la vista
+  // para que no parezca que el botón no hace nada (B17).
+  useEffect(() => {
+    if (error) errorRef.current?.scrollIntoView?.({ behavior: "smooth", block: "center" });
+  }, [error]);
+
+  const irAlHorario = () => {
+    setParams({ paso: "horario" }, { state: { desdeServicios: true } });
+    window.scrollTo?.(0, 0);
+  };
+  const volverAServicios = () => {
+    // Si llegó desde P2, es el mismo "Atrás" del celular; si no, se reemplaza.
+    if ((ubicacion.state as { desdeServicios?: boolean } | null)?.desdeServicios) navegar(-1);
+    else setParams({}, { replace: true });
+  };
 
   const servicios = useMemo(
     () => sucursal.servicios.filter((s) => elegidos.includes(s.id)),
@@ -172,7 +192,7 @@ function Asistente({ datos, sucursal, sub }: { datos: NegocioPublico; sucursal: 
           titulo={datos.negocio.nombre}
           abajo={[sucursal.nombre, sucursal.direccion].filter(Boolean).join(" · ")}
         />
-        <Pasos hechos={1} />
+        <Pasos hechos={1} total={2} />
         <div className="flex flex-1 flex-col gap-3.5 px-5 pb-5 pt-2">
           <div>
             <h1 className="text-xl font-bold">¿Qué te hacés?</h1>
@@ -221,10 +241,7 @@ function Asistente({ datos, sucursal, sub }: { datos: NegocioPublico; sucursal: 
           <BotonPrincipal
             className="!w-auto"
             disabled={!elegidos.length}
-            onClick={() => {
-              setPaso("horario");
-              window.scrollTo?.(0, 0);
-            }}
+            onClick={irAlHorario}
           >
             Siguiente
           </BotonPrincipal>
@@ -239,7 +256,7 @@ function Asistente({ datos, sucursal, sub }: { datos: NegocioPublico; sucursal: 
         <button
           type="button"
           aria-label="Volver a los servicios"
-          onClick={() => setPaso("servicios")}
+          onClick={volverAServicios}
           className="flex h-11 w-11 items-center justify-center rounded-[10px] text-[#374151]"
         >
           <IconoVolver />
@@ -251,7 +268,7 @@ function Asistente({ datos, sucursal, sub }: { datos: NegocioPublico; sucursal: 
           </span>
         </div>
       </header>
-      <Pasos hechos={3} />
+      <Pasos hechos={2} total={2} />
       <div className="flex flex-1 flex-col gap-[18px] px-5 pb-5 pt-2">
         <SelectorHorario
           sub={sub}
@@ -325,7 +342,9 @@ function Asistente({ datos, sucursal, sub }: { datos: NegocioPublico; sucursal: 
             </Link>{" "}
             de {datos.negocio.nombre}: usan mi nombre y teléfono sólo para gestionar mis citas.
           </Casilla>
-          <Aviso>{error}</Aviso>
+          <div ref={errorRef} className="scroll-mb-28">
+            <Aviso>{error}</Aviso>
+          </div>
         </section>
       </div>
       <footer className="sticky bottom-0 border-t border-[#F0F1F4] bg-white px-5 pb-5 pt-3.5">

@@ -78,7 +78,8 @@ export default function Confirmada({
             {cita.profesional
               ? `Con ${cita.profesional.nombre}`
               : manual
-                ? "Con quien esté libre (te avisan al confirmar)"
+                ? // No hay mensajes salientes (§9): nadie le va a avisar, lo ve en su enlace (B18).
+                  "Con quien esté libre (lo vas a ver en tu enlace cuando la confirmen)"
                 : "Con quien esté libre"}
           </span>
           <span className="text-sm text-[#374151]">

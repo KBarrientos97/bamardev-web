@@ -8,7 +8,11 @@ import type { PaginaPublica } from "./tipos";
 export function contactoDe(p: PaginaPublica): { texto: string; url: string } | null {
   const todos = [...(p.destacado ? [p.destacado] : []), ...p.redes, ...p.botones];
   const wa = todos.find((e) => e.tipo === "WHATSAPP");
-  if (wa) return { texto: "por WhatsApp", url: wa.url };
+  if (wa) {
+    // Con el número a la vista: "por WhatsApp" solo no le dice a quién (B08).
+    const numero = /wa\.me\/(\d+)/.exec(wa.url)?.[1]?.replace(/^591(?=\d{8}$)/, "");
+    return { texto: numero ? `por WhatsApp al ${numero}` : "por WhatsApp", url: wa.url };
+  }
   const tel = p.sucursales.find((s) => s.telefono);
   if (tel?.telefono) return { texto: `al ${tel.telefono}`, url: `tel:${tel.telefono.replace(/\s/g, "")}` };
   const correo = todos.find((e) => e.tipo === "CORREO");

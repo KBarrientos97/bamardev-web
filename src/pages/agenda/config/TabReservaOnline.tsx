@@ -249,7 +249,7 @@ function Enlace({ conf, publicadas }: { conf: ConfigReservaOnline; publicadas: S
           rel="noreferrer"
           className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-texto-2 hover:bg-muted"
         >
-          Ver mi página
+          Ver la página de reservas
         </a>
       </div>
       {!publicadas.length && (

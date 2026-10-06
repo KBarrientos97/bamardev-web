@@ -376,7 +376,8 @@ export default function MiPagina() {
       <span className="text-[13px] text-texto-3">Así se ve en un celular</span>
       <div className="h-[600px] w-[300px] overflow-hidden rounded-[36px] border-[10px] border-slate-800 bg-[#F6F7F9] shadow-xl">
         <div className="h-full overflow-y-auto">
-          <VistaPagina pagina={vista} urlReservar="#" enMarco />
+          {/* Con el enlace de Privacidad del pie, como la página de verdad (B24). */}
+          <VistaPagina pagina={vista} urlReservar="#" urlPrivacidad="#" enMarco />
         </div>
       </div>
       {e.subdominio && e.pagina.publicada && (
