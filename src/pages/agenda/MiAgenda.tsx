@@ -184,7 +184,7 @@ export default function MiAgenda() {
                   <TarjetaCita
                     key={c.id}
                     cita={c}
-                    rapidas={esTerminal(c.estado) ? [] : accionesRapidas(c, { profesional: true })}
+                    rapidas={esTerminal(c.estado) ? [] : accionesRapidas(c, { profesional: true, ahora: Date.now() })}
                     onAbrir={() => setAbierta(c)}
                     onAccion={(a) => rapida.pedir(c, a)}
                     ocupado={rapida.ocupadoId === c.id}
