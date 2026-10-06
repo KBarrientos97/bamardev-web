@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type PointerEvent } from "react";
+import { densidadDeFirma } from "../../lib/agenda/spa";
 
 /**
  * Lienzo para firmar con el dedo, el lápiz o el mouse (consentimientos,
@@ -23,13 +24,17 @@ export default function FirmaEnPantalla({
   const hayTrazo = useRef(false);
   const [vacia, setVacia] = useState(true);
 
-  // El lienzo toma el ancho de su contenedor (celular o tablet de recepción).
+  // El lienzo toma el ancho de su contenedor (celular o tablet de recepción)
+  // y se dibuja a la densidad de la pantalla: en un celular (DPR 2-3) un
+  // lienzo de 346 px reales para 346 px CSS salía pixelado (QA S2-16). Se
+  // topa en 2× para que el PNG no pase el tope del backend (60 KB, 2000 px).
   useEffect(() => {
     const c = lienzo.current;
     if (!c) return;
     const ancho = Math.max(300, Math.round(c.parentElement?.clientWidth ?? 480));
-    c.width = Math.min(ancho, 900);
-    c.height = alto;
+    const densidad = densidadDeFirma();
+    c.width = Math.round(Math.min(ancho, 900) * densidad);
+    c.height = Math.round(alto * densidad);
   }, [alto]);
 
   const contexto = () => {
@@ -37,7 +42,8 @@ export default function FirmaEnPantalla({
     if (ctx) {
       const color = getComputedStyle(lienzo.current as HTMLCanvasElement).color || "currentColor";
       ctx.strokeStyle = color;
-      ctx.lineWidth = 2.5;
+      // El trazo se ve del mismo grosor en CSS, sea cual sea la densidad.
+      ctx.lineWidth = 2.5 * densidadDeFirma();
       ctx.lineCap = "round";
       ctx.lineJoin = "round";
     }

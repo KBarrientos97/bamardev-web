@@ -6,7 +6,9 @@ import {
   clienteDelConflicto,
   huecosDelConflicto,
   mensajeDe,
+  mensajeSinEspacio,
 } from "../../lib/agenda/apiAgenda";
+import { useSpa } from "../../lib/agenda/spa";
 import { aMinutos, duracionTexto, fechaNegocio, horaNegocio } from "../../lib/agenda/horaAgenda";
 import { lineasDePropuesta, lineasManuales } from "../../lib/agenda/lineasCita";
 import type {
@@ -110,15 +112,20 @@ export default function NuevaCita({
     () => (servicios.datos ?? []).filter((s) => s.activo !== false),
     [servicios.datos],
   );
+  // Con la feature `espacios`, la cabina la asigna el backend: no va en "Con"
+  // entre las personas (QA S2-15). Sin la feature, un spa que agenda por
+  // cabina (§7.6) sí la elige ahí.
+  const { espacios: conEspacios } = useSpa();
   const recursosSucursal = useMemo(
     () =>
       (recursos.datos ?? []).filter(
         (r) =>
           r.activo !== false &&
+          !(conEspacios && r.tipo === "ESPACIO") &&
           (r.sucursalIds.length === 0 || r.sucursalIds.includes(sucursalId)) &&
           (!soloRecursoIds || soloRecursoIds.includes(r.id)),
       ),
-    [recursos.datos, sucursalId, soloRecursoIds],
+    [recursos.datos, sucursalId, soloRecursoIds, conEspacios],
   );
 
   // ── Cliente ──
@@ -333,9 +340,10 @@ export default function NuevaCita({
         setHuecos(nuevos);
         setElegida(0);
         setConflicto(
-          nuevos.length
-            ? "Ese horario se acaba de ocupar. Elegí otro de la lista: lo demás quedó como estaba."
-            : "Ese horario se acaba de ocupar y no quedan otros ese día. Probá otra fecha.",
+          mensajeSinEspacio(e) ??
+            (nuevos.length
+              ? "Ese horario se acaba de ocupar. Elegí otro de la lista: lo demás quedó como estaba."
+              : "Ese horario se acaba de ocupar y no quedan otros ese día. Probá otra fecha."),
         );
         // El intento fallido no creó nada: el próximo es otra petición.
         requestId.current = nuevoRequestId();

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ApiError } from "../api";
 import { cita, servicio } from "../../test/agendaFixtures";
-import { clienteDelConflicto, esperaDelConflicto, huecosDelConflicto } from "./apiAgenda";
+import { clienteDelConflicto, esperaDelConflicto, huecosDelConflicto, mensajeSinEspacio } from "./apiAgenda";
 import { accionesPara, accionesRapidas, esTerminal, vaEnGrilla } from "./estadosCita";
 import {
   aMinutos,
@@ -163,5 +163,23 @@ describe("los errores de la agenda que se manejan aparte", () => {
     expect(esperaDelConflicto(new ApiError("x", 409, { codigo: "SIN_RECURSO_LIBRE", esperaEstimadaMin: 20 }))).toBe(20);
     const existente = { id: 9, nombre: "Ana" };
     expect(clienteDelConflicto(new ApiError("x", 409, { codigo: "TELEFONO_EXISTE", cliente: existente }))?.id).toBe(9);
+  });
+});
+
+// QA S2-02/S2-08: si el hueco se cae por la cabina, se dice eso.
+describe("conflicto por la cabina", () => {
+  it("con motivo ESPACIO se muestra el mensaje del backend", () => {
+    const e = new ApiError("No queda Cabina libre a las 10:00 (Ana sí está libre).", 409, {
+      codigo: "HUECO_OCUPADO",
+      motivo: "ESPACIO",
+      huecos: [],
+    });
+    expect(mensajeSinEspacio(e)).toMatch(/Cabina/);
+    expect(huecosDelConflicto(e)).toEqual([]);
+  });
+
+  it("un hueco ocupado por el profesional sigue con el texto de siempre", () => {
+    expect(mensajeSinEspacio(new ApiError("Ocupado", 409, { codigo: "HUECO_OCUPADO", huecos: [] }))).toBeNull();
+    expect(mensajeSinEspacio(new Error("x"))).toBeNull();
   });
 });

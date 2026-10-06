@@ -29,11 +29,18 @@ export default function PantallaVenta({
   cabecera,
   sucursalId,
   descuentos,
+  bloqueoCobro,
 }: {
   productos: Producto[];
   categorias: Categoria[];
   carrito: Carrito;
   onCobrar: () => void;
+  /**
+   * Por qué todavía no se puede cobrar (el botón queda apagado y se dice). Hoy
+   * sólo lo usa el paquete de sesiones sin cliente (QA S2-07); sin esto el
+   * POS es el de siempre.
+   */
+  bloqueoCobro?: string | null;
   cabecera?: React.ReactNode;
   /** La sucursal de la caja: de ahí salen el stock y la ubicación (farmacia). */
   sucursalId?: number | null;
@@ -130,6 +137,7 @@ export default function PantallaVenta({
       carrito={carrito}
       sucursalId={sucursalId}
       descuentos={descuentos}
+      bloqueoCobro={bloqueoCobro}
       onCobrar={() => {
         setCarritoAbierto(false);
         onCobrar();
@@ -407,12 +415,14 @@ function PanelCarrito({
   carrito,
   sucursalId,
   descuentos,
+  bloqueoCobro,
   onCobrar,
   onCerrar,
 }: {
   carrito: Carrito;
   sucursalId?: number | null;
   descuentos?: ExtraDescuentos;
+  bloqueoCobro?: string | null;
   onCobrar: () => void;
   onCerrar: () => void;
 }) {
@@ -549,11 +559,16 @@ function PanelCarrito({
                 if (venta && sinReceta) venta.pedirReceta(sinReceta.producto);
                 else onCobrar();
               }}
-              disabled={descuentos?.bloqueado}
+              disabled={descuentos?.bloqueado || !!bloqueoCobro}
               className="mt-3 w-full"
             >
               Cobrar {fmtMoney(total)}
             </Boton>
+            {bloqueoCobro && (
+              <p role="status" className="mt-1.5 text-center text-[12px] font-semibold text-warning-text">
+                {bloqueoCobro}
+              </p>
+            )}
           </div>
         </>
       )}

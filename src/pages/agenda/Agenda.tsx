@@ -28,7 +28,7 @@ import { useAccionRapida } from "./useAccionRapida";
 import { useCobrarCita } from "./useCobrarCita";
 import CampanaAvisos from "./CampanaAvisos";
 // Fase 3 (spa): columnas por espacio y la pose partida en dos bloques.
-import { idLineaReal, partirPorPose, useSpa, vistaPorEspacio } from "../../lib/agenda/spa";
+import { idLineaReal, useSpa, vistaPorEspacio, vistaPorProfesional } from "../../lib/agenda/spa";
 
 /** Reemplaza (o agrega) una cita en la agenda del día y la saca de la cola si dejó de estar. */
 function conCita(d: AgendaDia | null, c: Cita): AgendaDia | null {
@@ -99,8 +99,9 @@ export default function Agenda() {
   const hayEspacios = spa.espacios && recursos.some((r) => r.tipo === "ESPACIO");
   const verPorEspacio = porEspacio && hayEspacios;
   const grilla = useMemo(
-    () => (verPorEspacio ? vistaPorEspacio(recursos, citas) : { recursos, citas: partirPorPose(citas) }),
-    [verPorEspacio, recursos, citas],
+    () =>
+      verPorEspacio ? vistaPorEspacio(recursos, citas) : vistaPorProfesional(recursos, citas, hayEspacios),
+    [verPorEspacio, hayEspacios, recursos, citas],
   );
   /** La cita de verdad detrás de un bloque (la grilla puede traer una partida). */
   const original = (c: Cita) => citas.find((x) => x.id === c.id) ?? c;
@@ -276,7 +277,10 @@ export default function Agenda() {
           </div>
         ) : (
           <div className="flex flex-wrap items-start gap-4">
-            <section aria-label={`Agenda por ${etiquetaProfesional.toLowerCase()}`} className="card min-w-0 flex-[999_1_560px] overflow-hidden">
+            <section
+              aria-label={verPorEspacio ? "Agenda por espacio" : `Agenda por ${etiquetaProfesional.toLowerCase()}`}
+              className="card min-w-0 flex-[999_1_560px] overflow-hidden"
+            >
               <GrillaDia
                 fecha={fecha}
                 recursos={grilla.recursos}

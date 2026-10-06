@@ -125,6 +125,41 @@ describe("A7 · Clientes", () => {
     expect(within(panel).getByText("no permitidas")).toBeInTheDocument();
   });
 
+  it("S2-06: la compra del paquete sale en las compras y la sesión dice de qué paquete", async () => {
+    vi.mocked(apiAgenda.cliente).mockResolvedValue({
+      ...detalle,
+      compras: [
+        {
+          id: 80,
+          comprobante: "V-000020",
+          fecha: "2026-10-06T15:00:00.000Z",
+          total: 0,
+          estado: "APROBADO",
+          citaId: 31,
+          fiado: false,
+          items: [{ producto: "Masaje relajante", cantidad: 1, subtotal: 0, paquete: "Bono 5 masajes" }],
+        },
+        {
+          id: 79,
+          comprobante: "V-000019",
+          fecha: "2026-10-06T14:00:00.000Z",
+          total: 800,
+          estado: "APROBADO",
+          citaId: null,
+          fiado: false,
+          items: [{ producto: "Bono 5 masajes", cantidad: 1, subtotal: 800 }],
+        },
+      ],
+    });
+    await montar();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Ver la ficha de Rosa Mamani" }));
+    });
+    const panel = screen.getByRole("dialog", { name: "Ficha de Rosa Mamani" });
+    expect(within(panel).getByText("Masaje relajante (sesión de Bono 5 masajes)")).toBeInTheDocument();
+    expect(within(panel).getByText(/V-000019/)).toBeInTheDocument();
+  });
+
   it("edita alergias, notas y el bloqueo online; vacío borra", async () => {
     vi.mocked(apiAgenda.editarCliente).mockResolvedValue({ ...rosa, alergias: null, notas: "Viene los sábados", bloqueadoOnline: false });
     await montar();

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { cita, recursoDelDia } from "../../test/agendaFixtures";
 import { aCambiosSpa, valoresIniciales } from "./servicioSpa";
 import {
+  densidadDeFirma,
   detallesDePaquete,
   espacioDeLinea,
   featuresSpa,
@@ -9,8 +10,10 @@ import {
   partirPorPose,
   sinLineasConPaquete,
   sinUsarPaquetes,
+  textoCabinaYPose,
   textoPose,
   vistaPorEspacio,
+  vistaPorProfesional,
 } from "./spa";
 import type { CarritoCita } from "./tiposAgenda";
 
@@ -148,5 +151,48 @@ describe("formulario de pose del servicio", () => {
     const v = { ...inicial, requiereEspacioTipoId: "4" };
     expect(aCambiosSpa(v, 60, true, inicial)).toEqual({ cambios: { requiereEspacioTipoId: 4 } });
     expect(aCambiosSpa(v, 60, false, inicial)).toEqual({ cambios: {} });
+  });
+});
+
+// ── Ronda 2 de QA del spa ──────────────────────────────────────────────────
+
+describe("vista por terapeuta (QA S2-04)", () => {
+  const ana = recursoDelDia({ id: 1, nombre: "Ana" });
+  const cabina = recursoDelDia({ id: 7, tipo: "ESPACIO", nombre: "Cabina 1", tramos: [] });
+
+  it("con `espacios`, las cabinas no son columnas: tienen su vista propia", () => {
+    expect(vistaPorProfesional([ana, cabina], [], true).recursos.map((r) => r.id)).toEqual([1]);
+  });
+
+  it("sin la feature (agenda por cabina) siguen siendo columnas", () => {
+    expect(vistaPorProfesional([ana, cabina], [], false).recursos.map((r) => r.id)).toEqual([1, 7]);
+  });
+});
+
+describe("cabina y pose en las listas (QA S2-14)", () => {
+  it("dice a qué cabina ir y cuándo queda libre", () => {
+    const l = {
+      ...cita().lineas[0],
+      espacioId: 7,
+      espacio: "Cabina 1",
+      // 11:45 a 12:15 en La Paz.
+      poseDesde: "2026-10-21T15:45:00.000Z",
+      poseHasta: "2026-10-21T16:15:00.000Z",
+    };
+    expect(textoCabinaYPose([l])).toBe("Cabina 1 · pose 11:45–12:15");
+    expect(textoCabinaYPose([{ ...l, poseDesde: null, poseHasta: null }])).toBe("Cabina 1");
+  });
+
+  it("sin cabina ni pose no agrega nada", () => {
+    expect(textoCabinaYPose(cita().lineas)).toBeNull();
+  });
+});
+
+describe("firma nítida en el celular (QA S2-16)", () => {
+  it("usa la densidad de la pantalla, entre 1 y 2", () => {
+    expect(densidadDeFirma(3)).toBe(2);
+    expect(densidadDeFirma(1.5)).toBe(1.5);
+    expect(densidadDeFirma(0)).toBe(1);
+    expect(densidadDeFirma(Number.NaN)).toBe(1);
   });
 });

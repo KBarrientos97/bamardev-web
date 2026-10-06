@@ -83,6 +83,8 @@ export function SelectorHuecos({
           <li key={i}>
             <span className="font-semibold text-texto">{nombreServicio(l.servicioId)}</span> ·{" "}
             {horaNegocio(l.inicio)}–{horaNegocio(l.fin)} · con {nombreRecurso(l.recursoId)}
+            {/* QA S2-08: en qué cabina, si el servicio ocupa una. */}
+            {l.espacioId != null && l.espacioId !== l.recursoId ? ` · en ${nombreRecurso(l.espacioId)}` : ""}
           </li>
         ))}
       </ul>
