@@ -4,6 +4,7 @@ import { Input } from "../../components/ui";
 import { apiAgenda } from "../../lib/agenda/apiAgenda";
 import { lineasConPaquete } from "../../lib/agenda/spa";
 import type { CarritoCita, ClienteFicha } from "../../lib/agenda/tiposAgenda";
+import type { SesionOfrecida } from "../../lib/agenda/ventaDirecta";
 import { fmtFecha } from "../../lib/format";
 
 /**
@@ -13,7 +14,9 @@ import { fmtFecha } from "../../lib/format";
  *    del cliente (van a precio 0 y no entran al carrito), con la opción de
  *    cobrarlos igual y, si no queda nada que cobrar, de cerrar la cita sin
  *    pagos;
- *  · al vender un paquete, a qué cliente se le guardan las sesiones.
+ *  · al vender un paquete, a qué cliente se le guardan las sesiones;
+ *  · en una venta directa con cliente (sin cita), qué servicios puede pagar
+ *    con una sesión de su paquete (QA DIA-08).
  */
 
 export function SesionesDePaquete({
@@ -66,6 +69,55 @@ export function SesionesDePaquete({
           Cobrar sin usar el paquete
         </button>
       </div>
+    </div>
+  );
+}
+
+/**
+ * La clienta con bono que llega sin cita (QA DIA-08): sus servicios del
+ * carrito que cubre un paquete vigente, para usar la sesión en vez de
+ * cobrarlos. Se elige por línea: por defecto se cobra, como siempre.
+ */
+export function SesionesEnVentaDirecta({
+  ofrecidas,
+  elegidas,
+  onCambiar,
+}: {
+  ofrecidas: SesionOfrecida[];
+  elegidas: number[];
+  onCambiar: (productoIds: number[]) => void;
+}) {
+  if (!ofrecidas.length) return null;
+  return (
+    <div className="space-y-2 rounded-xl border border-primary/30 bg-primary-50 px-3.5 py-2.5 text-primary-700">
+      <p className="flex items-center gap-2 text-sm font-bold">
+        <Icon name="package" size={17} />
+        Tiene sesiones de paquete
+      </p>
+      <ul className="space-y-1 text-[13px]">
+        {ofrecidas.map((o) => {
+          const usa = elegidas.includes(o.productoId);
+          return (
+            <li key={o.productoId}>
+              <label className="flex items-start gap-2">
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={usa}
+                  onChange={() =>
+                    onCambiar(usa ? elegidas.filter((id) => id !== o.productoId) : [...elegidas, o.productoId])
+                  }
+                />
+                <span>
+                  <span className="font-semibold">Usar sesión del paquete</span> en {o.descripcion}
+                  {o.cantidad > 1 ? ` (${o.cantidad})` : ""} — {o.paquete}, le quedarían {o.restantes} (vence el{" "}
+                  {fmtFecha(`${o.ultimoDia}T12:00:00`)})
+                </span>
+              </label>
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }

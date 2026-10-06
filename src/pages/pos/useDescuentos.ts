@@ -40,7 +40,7 @@ const ESPERA_MS = 350;
 /** Una línea por artículo, como la manda la cotización. */
 function clave(detalles: DetalleVentaInput[], cupones: string[], clienteId: number | null, citaId: number | null) {
   return JSON.stringify([
-    detalles.map((d) => [d.productoId, d.cantidad, d.recursoId ?? null]),
+    detalles.map((d) => [d.productoId, d.cantidad, d.recursoId ?? null, !!d.usarPaquete]),
     cupones,
     clienteId,
     citaId,
@@ -90,6 +90,9 @@ export function useDescuentos(opc: {
             productoId: d.productoId,
             cantidad: d.cantidad,
             ...(d.recursoId != null ? { recursoId: d.recursoId } : {}),
+            // Una sesión de paquete en la venta directa (QA DIA-08): va a 0
+            // y no entra al motor, igual que en la venta.
+            ...(d.usarPaquete ? { usarPaquete: true } : {}),
           })),
           ...(almacenId != null ? { almacenId } : {}),
           ...(cupones.length ? { cupones } : {}),

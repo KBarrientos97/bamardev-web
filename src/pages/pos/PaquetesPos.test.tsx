@@ -13,7 +13,7 @@ vi.mock("../../lib/agenda/apiAgenda", async (importOriginal) => {
 });
 
 import { apiAgenda } from "../../lib/agenda/apiAgenda";
-import { ClientePaquete, SesionesDePaquete } from "./PaquetesPos";
+import { ClientePaquete, SesionesDePaquete, SesionesEnVentaDirecta } from "./PaquetesPos";
 
 const CITA: CarritoCita = {
   citaId: 9,
@@ -122,5 +122,38 @@ describe("a quién se le vende el paquete", () => {
     render(<ClientePaquete cliente={{ id: 5, nombre: "Rosa" }} onElegir={elegir} />);
     fireEvent.click(screen.getByRole("button", { name: "Cambiar" }));
     expect(elegir).toHaveBeenCalledWith(null);
+  });
+});
+
+describe("QA DIA-08: sesión del paquete en la venta directa", () => {
+  const OFRECIDA = {
+    productoId: 100,
+    descripcion: "Depilación láser",
+    cantidad: 1,
+    paquete: "3 depilaciones",
+    restantes: 0,
+    ultimoDia: "2026-12-31",
+  };
+
+  it("ofrece usar la sesión por línea; por defecto se cobra", () => {
+    const onCambiar = vi.fn();
+    render(<SesionesEnVentaDirecta ofrecidas={[OFRECIDA]} elegidas={[]} onCambiar={onCambiar} />);
+    const caja = screen.getByRole("checkbox");
+    expect(caja).not.toBeChecked();
+    expect(screen.getByText(/Usar sesión del paquete/)).toBeInTheDocument();
+    fireEvent.click(caja);
+    expect(onCambiar).toHaveBeenCalledWith([100]);
+  });
+
+  it("destildar la vuelve a cobrar", () => {
+    const onCambiar = vi.fn();
+    render(<SesionesEnVentaDirecta ofrecidas={[OFRECIDA]} elegidas={[100]} onCambiar={onCambiar} />);
+    fireEvent.click(screen.getByRole("checkbox"));
+    expect(onCambiar).toHaveBeenCalledWith([]);
+  });
+
+  it("sin nada que cubra, no dibuja nada", () => {
+    const { container } = render(<SesionesEnVentaDirecta ofrecidas={[]} elegidas={[]} onCambiar={() => {}} />);
+    expect(container).toBeEmptyDOMElement();
   });
 });

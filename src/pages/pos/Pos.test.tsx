@@ -552,6 +552,62 @@ describe("N2-13: venta directa con profesional", () => {
     expect((screen.getByLabelText("Profesional de Tinte raíz") as HTMLSelectElement).value).toBe("4");
   });
 
+  it("QA DIA-07: el producto de reventa lleva a quien lo vendió, sólo si se elige", async () => {
+    sesion.features = ["pos", "caja", "agenda"];
+    sesion.conAgenda = true;
+    vi.mocked(api.getProductos).mockResolvedValue([
+      servicio(189, "Corte de dama", 80),
+      { ...servicio(300, "Champú", 40), tipoProducto: "ALMACENABLE", stockTotal: 10 } as Producto,
+    ]);
+    vi.mocked(apiConfigAgenda.recursos).mockResolvedValue([
+      { ...profesional(3, "Carla"), comisionProductoPct: 10 } as Recurso,
+      profesional(4, "Sofía"),
+    ]);
+    enCarrito(189, 300);
+    await montar();
+    fireEvent.change(screen.getByLabelText("Profesional de la venta"), { target: { value: "4" } });
+    // Sólo quien cobra % de productos se ofrece para el champú.
+    const champu = screen.getByLabelText("Quién vendió Champú") as HTMLSelectElement;
+    expect(Array.from(champu.options).map((o) => o.textContent)).toEqual(["Sin asignar", "Carla"]);
+    expect(champu.value).toBe("");
+    fireEvent.change(champu, { target: { value: "3" } });
+    // Cambiar el de toda la venta no le saca el vendedor al champú.
+    fireEvent.change(screen.getByLabelText("Profesional de la venta"), { target: { value: "3" } });
+    fireEvent.change(screen.getByLabelText("Profesional de la venta"), { target: { value: "4" } });
+    expect((screen.getByLabelText("Quién vendió Champú") as HTMLSelectElement).value).toBe("3");
+    fireEvent.click(screen.getByRole("button", { name: "ir a cobrar" }));
+    // La propina es para quien hizo el servicio.
+    expect(screen.getByText("propina para: Sofía")).toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "pagar 120" }));
+    });
+    const cuerpo = vi.mocked(api.crearVenta).mock.calls[0][0] as {
+      detalles: { productoId: number; recursoId?: number }[];
+    };
+    expect(cuerpo.detalles.map((d) => [d.productoId, d.recursoId])).toEqual([
+      [189, 4],
+      [300, 3],
+    ]);
+  });
+
+  it("QA VER-04: «Por servicio» ofrece sólo a quienes hacen ese servicio", async () => {
+    sesion.features = ["pos", "caja", "agenda"];
+    sesion.conAgenda = true;
+    vi.mocked(apiConfigAgenda.recursos).mockResolvedValue([
+      profesional(3, "Carla"),
+      { ...profesional(4, "Sofía"), servicioIds: [189] } as Recurso,
+    ]);
+    enCarrito(189, 190);
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Por servicio" }));
+    const nombres = (etiqueta: string) =>
+      Array.from((screen.getByLabelText(etiqueta) as HTMLSelectElement).options).map((o) => o.textContent);
+    expect(nombres("Profesional de Corte de dama")).toEqual(["Sin asignar", "Carla", "Sofía"]);
+    expect(nombres("Profesional de Tinte raíz")).toEqual(["Sin asignar", "Carla"]);
+    // Arriba siguen todos: "uno para todo" no se filtra.
+    expect(nombres("Profesional de la venta")).toEqual(["Sin asignar", "Carla", "Sofía"]);
+  });
+
   it("sin elegir a nadie, con agenda, la venta sale como siempre", async () => {
     sesion.features = ["pos", "caja", "agenda"];
     sesion.conAgenda = true;

@@ -2,11 +2,16 @@ import { beforeEach, describe, expect, it } from "vitest";
 import type { Carrito, LineaCarrito } from "../../pages/pos/useCarrito";
 import type { DetalleVentaInput, Producto } from "../../types";
 import type { Recurso } from "./tiposConfigAgenda";
+import type { PaqueteDelCliente } from "./tiposSpa";
 import {
   carritoConProfesional,
+  carritoConSesiones,
+  sesionesParaLaVenta,
   guardarAsignacion,
   leerAsignacion,
+  profesionalDeLinea,
   profesionalDeTodos,
+  profesionalesDelServicio,
   profesionalesDeLaVenta,
   profesionalesParaPos,
   SIN_ASIGNAR,
@@ -47,12 +52,14 @@ const ana = recurso({
   id: 10,
   nombre: "Ana",
   orden: 1,
+  servicioIds: [1, 2],
+  comisionProductoPct: 10,
   serviciosPropios: [
     { servicioId: 2, precio: 250, duracionMin: null, comisionPct: null },
     { servicioId: 1, precio: null, duracionMin: 20, comisionPct: null },
   ],
 });
-const beto = recurso({ id: 11, nombre: "Beto", orden: 2 });
+const beto = recurso({ id: 11, nombre: "Beto", orden: 2, servicioIds: [1] });
 const profesionales = profesionalesParaPos(
   [
     beto,
@@ -139,6 +146,109 @@ describe("venta directa con profesional (N2-13)", () => {
       expect(sessionStorage.getItem("bamar.profesionalVenta")).toBeNull();
       expect(leerAsignacion()).toEqual(SIN_ASIGNAR);
     });
+  });
+});
+
+describe("QA DIA-07: el producto de reventa, sólo si se elige quién lo vendió", () => {
+  it("sabe quién cobra % de productos", () => {
+    expect(profesionales.map((p) => [p.nombre, p.comisionaProductos])).toEqual([
+      ["Ana", true],
+      ["Beto", false],
+    ]);
+  });
+
+  it("el de toda la venta no lo toca; el elegido en su línea va en el detalle", () => {
+    const a = { general: 11, porServicio: { 3: 10 } };
+    expect(profesionalDeLinea(champu, a)).toBe(10);
+    expect(profesionalDeLinea(champu, { general: 11, porServicio: {} })).toBeNull();
+    expect(profesionalDeLinea(paquete, { general: 11, porServicio: { 4: 10 } })).toBeNull();
+    const c = carritoConProfesional(
+      carrito([
+        [corte, 1],
+        [champu, 2],
+      ]),
+      a,
+      profesionales,
+    );
+    expect(c.aDetalles().map((d) => [d.productoId, d.recursoId])).toEqual([
+      [1, 11],
+      [3, 10],
+    ]);
+    // El precio del producto no cambia: el propio es sólo de servicios.
+    expect(c.total).toBe(130);
+  });
+
+  it("la propina sigue siendo para quien hizo un servicio", () => {
+    const c = carrito([
+      [corte, 1],
+      [champu, 1],
+    ]);
+    expect(profesionalesDeLaVenta(c, { general: 11, porServicio: { 3: 10 } }, profesionales)).toEqual([
+      { id: 11, nombre: "Beto" },
+    ]);
+  });
+});
+
+describe("QA VER-04: «Por servicio» ofrece a quienes hacen ese servicio", () => {
+  it("filtra por servicio y deja al que ya tiene la línea", () => {
+    expect(profesionalesDelServicio(2, profesionales, null).map((p) => p.nombre)).toEqual(["Ana"]);
+    expect(profesionalesDelServicio(2, profesionales, 11).map((p) => p.nombre)).toEqual(["Ana", "Beto"]);
+    expect(profesionalesDelServicio(1, profesionales, null).map((p) => p.nombre)).toEqual(["Ana", "Beto"]);
+  });
+
+  it("si nadie lo tiene cargado, ofrece a todos (no frena la venta)", () => {
+    expect(profesionalesDelServicio(99, profesionales, null)).toEqual(profesionales);
+  });
+});
+
+describe("QA DIA-08: la clienta con bono que llega sin cita", () => {
+  const paquete = (p: Partial<PaqueteDelCliente> & { id: number }): PaqueteDelCliente => ({
+    nombre: "3 cortes",
+    compradoEn: "2026-10-01T12:00:00Z",
+    venceEn: "2026-12-01T04:00:00Z",
+    ultimoDia: "2026-11-30",
+    estado: "ACTIVO",
+    vencido: false,
+    ventaId: 1,
+    items: [{ servicioId: 1, servicio: "Corte", sesiones: 3, usadas: 1, restantes: 2 }],
+    ...p,
+  });
+
+  it("ofrece los servicios que cubre un paquete vigente con saldo, el que vence antes", () => {
+    const lineas = carrito([
+      [corte, 1],
+      [tinte, 1],
+      [champu, 1],
+    ]).lineas;
+    const ofrecidas = sesionesParaLaVenta(lineas, [
+      paquete({ id: 2, nombre: "Nuevo", venceEn: "2027-01-01T04:00:00Z", ultimoDia: "2026-12-31" }),
+      paquete({ id: 1, nombre: "Viejo" }),
+      paquete({ id: 3, nombre: "Anulado", estado: "ANULADO", items: [{ servicioId: 2, servicio: "Tinte", sesiones: 1, usadas: 0, restantes: 1 }] }),
+    ]);
+    expect(ofrecidas).toEqual([
+      { productoId: 1, descripcion: "Corte", cantidad: 1, paquete: "Viejo", restantes: 1, ultimoDia: "2026-11-30" },
+    ]);
+  });
+
+  it("sin saldo para la cantidad entera, no se ofrece", () => {
+    const lineas = carrito([[corte, 3]]).lineas;
+    expect(sesionesParaLaVenta(lineas, [paquete({ id: 1 })])).toEqual([]);
+    expect(sesionesParaLaVenta(lineas, [paquete({ id: 1, vencido: true })])).toEqual([]);
+  });
+
+  it("la línea elegida va a 0 con usarPaquete; sin elegir, el mismo carrito", () => {
+    const base = carrito([
+      [corte, 1],
+      [tinte, 1],
+    ]);
+    expect(carritoConSesiones(base, [])).toBe(base);
+    expect(carritoConSesiones(base, [99])).toBe(base);
+    const c = carritoConSesiones(base, [1]);
+    expect(c.total).toBe(200);
+    expect(c.aDetalles()).toEqual([
+      { productoId: 1, cantidad: 1, precio: 0, consumo: "LLEVAR", usarPaquete: true },
+      { productoId: 2, cantidad: 1, precio: 200, consumo: "LLEVAR" },
+    ]);
   });
 });
 

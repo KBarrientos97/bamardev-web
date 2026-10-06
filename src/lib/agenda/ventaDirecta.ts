@@ -1,6 +1,7 @@
 import type { Carrito, LineaCarrito } from "../../pages/pos/useCarrito";
 import type { DetalleVentaInput, Producto } from "../../types";
 import type { Recurso } from "./tiposConfigAgenda";
+import type { PaqueteDelCliente } from "./tiposSpa";
 
 /**
  * Venta directa en el POS con profesional (N2-13, PLAN-DESARROLLO-BELLEZA §12
@@ -11,9 +12,11 @@ import type { Recurso } from "./tiposConfigAgenda";
  * por línea y el backend hace el resto.
  *
  * En el mostrador casi siempre atiende una sola persona: se elige UNA para
- * toda la venta y, si hace falta, se cambia por servicio. Sólo los servicios
- * llevan profesional (igual que lo que se suma en el cobro de una cita): un
- * champú de reventa o un paquete van sin nadie.
+ * toda la venta y, si hace falta, se cambia por servicio. Lo de "toda la
+ * venta" vale para los servicios. Un producto de reventa (un champú) lleva a
+ * alguien sólo si se lo elige en su línea, y sólo entre quienes cobran % de
+ * productos (QA DIA-07): así su comisión de venta se genera, y una venta de
+ * mostrador sin vendedor sigue saliendo sin nadie. Un paquete nunca lleva.
  *
  * Piezas puras, sin pantalla: el POS las usa sólo en un negocio con agenda.
  */
@@ -24,6 +27,10 @@ export interface ProfesionalPos {
   nombre: string;
   /** Precio propio por servicio (fase 2). Sólo los que lo tienen. */
   precios: Record<number, number>;
+  /** Los servicios que hace (para "Por servicio", QA VER-04). */
+  servicioIds: number[];
+  /** Cobra % sobre los productos de reventa: se le puede asignar uno (QA DIA-07). */
+  comisionaProductos: boolean;
 }
 
 /** Quién hizo qué: uno para toda la venta y, si se cambió, por servicio. */
@@ -55,7 +62,13 @@ export function profesionalesParaPos(recursos: Recurso[], sucursalId: number | n
       for (const p of r.serviciosPropios ?? []) {
         if (p.precio != null) precios[p.servicioId] = Number(p.precio);
       }
-      return { id: r.id, nombre: r.nombre, precios };
+      return {
+        id: r.id,
+        nombre: r.nombre,
+        precios,
+        servicioIds: r.servicioIds ?? [],
+        comisionaProductos: r.comisionProductoPct != null,
+      };
     });
 }
 
@@ -64,9 +77,38 @@ export function llevaProfesional(p: Producto): boolean {
   return p.tipoProducto === "SERVICIO" && !p.esPaquete;
 }
 
+/** Un producto de reventa (ni servicio ni paquete): lleva vendedor sólo si se elige. */
+export function esReventa(p: Producto): boolean {
+  return p.tipoProducto !== "SERVICIO" && !p.esPaquete;
+}
+
 /** Quién hizo este servicio: el suyo si se cambió, si no el de toda la venta. */
 export function profesionalDe(productoId: number, a: AsignacionProfesional): number | null {
   return productoId in a.porServicio ? a.porServicio[productoId] : a.general;
+}
+
+/**
+ * El profesional de una línea cualquiera: el servicio sigue al de toda la
+ * venta; el producto de reventa, sólo al suyo; el paquete, a nadie.
+ */
+export function profesionalDeLinea(p: Producto, a: AsignacionProfesional): number | null {
+  if (llevaProfesional(p)) return profesionalDe(p.id, a);
+  if (esReventa(p)) return a.porServicio[p.id] ?? null;
+  return null;
+}
+
+/**
+ * Para "Por servicio" (QA VER-04): quienes hacen ese servicio, más el que ya
+ * tiene la línea (si no, el select no lo podría mostrar). Si nadie lo tiene
+ * cargado, todos: no se frena una venta por la configuración de la agenda.
+ */
+export function profesionalesDelServicio(
+  servicioId: number,
+  profesionales: ProfesionalPos[],
+  actual: number | null,
+): ProfesionalPos[] {
+  const lo = profesionales.filter((p) => p.servicioIds.includes(servicioId) || p.id === actual);
+  return lo.some((p) => p.servicioIds.includes(servicioId)) ? lo : profesionales;
 }
 
 /**
@@ -93,8 +135,7 @@ export function carritoConProfesional(
 ): Carrito {
   const porId = new Map(profesionales.map((p) => [p.id, p]));
   const de = (l: LineaCarrito) => {
-    if (!llevaProfesional(l.producto)) return null;
-    const id = profesionalDe(l.producto.id, a);
+    const id = profesionalDeLinea(l.producto, a);
     return id != null ? (porId.get(id) ?? null) : null;
   };
   if (!carrito.lineas.some((l) => de(l) != null)) return carrito;
@@ -123,6 +164,80 @@ export function carritoConProfesional(
         // se mostró, así no queda un aviso de "precio distinto" en el log.
         return { ...d, precio: precio.get(d.productoId) ?? d.precio, recursoId };
       }),
+  };
+}
+
+// ── Sesiones de paquete sin cita (QA DIA-08) ────────────────────────────────
+
+/** Un servicio del carrito que el paquete del cliente cubre. */
+export interface SesionOfrecida {
+  productoId: number;
+  descripcion: string;
+  cantidad: number;
+  paquete: string;
+  /** Las que le quedan después de usar éstas. */
+  restantes: number;
+  ultimoDia: string;
+}
+
+/**
+ * La clienta con bono que llega sin cita: qué servicios del carrito cubre un
+ * paquete suyo vigente y con saldo (el que vence antes, como lo consume el
+ * backend). La línea entera va con el paquete: hace falta un paquete con
+ * tantas sesiones como la cantidad.
+ */
+export function sesionesParaLaVenta(lineas: LineaCarrito[], paquetes: PaqueteDelCliente[]): SesionOfrecida[] {
+  const usables = paquetes
+    .filter((p) => p.estado === "ACTIVO" && !p.vencido)
+    .sort((a, b) => a.venceEn.localeCompare(b.venceEn));
+  const quedan = new Map<string, number>();
+  const out: SesionOfrecida[] = [];
+  for (const l of lineas) {
+    if (!llevaProfesional(l.producto) || !Number.isInteger(l.cantidad)) continue;
+    for (const p of usables) {
+      const item = p.items.find((i) => i.servicioId === l.producto.id);
+      if (!item) continue;
+      const clave = `${p.id}:${item.servicioId}`;
+      const restantes = quedan.get(clave) ?? item.restantes;
+      if (restantes < l.cantidad) continue;
+      quedan.set(clave, restantes - l.cantidad);
+      out.push({
+        productoId: l.producto.id,
+        descripcion: l.producto.nombre,
+        cantidad: l.cantidad,
+        paquete: p.nombre,
+        restantes: restantes - l.cantidad,
+        ultimoDia: p.ultimoDia,
+      });
+      break;
+    }
+  }
+  return out;
+}
+
+/**
+ * El carrito con las sesiones elegidas: esas líneas van a 0 y con
+ * `usarPaquete` (el backend descuenta la sesión y comisiona sobre lo que vale).
+ * Sin ninguna elegida devuelve el MISMO carrito.
+ */
+export function carritoConSesiones(carrito: Carrito, productoIds: number[]): Carrito {
+  const usar = new Set(productoIds.filter((id) => carrito.lineas.some((l) => l.producto.id === id)));
+  if (!usar.size) return carrito;
+  let subtotal = 0;
+  const lineas = carrito.lineas.map((l) => {
+    const linea = usar.has(l.producto.id) ? { ...l, producto: { ...l.producto, precio: 0 } } : l;
+    subtotal += linea.cantidad * linea.producto.precio;
+    return linea;
+  });
+  return {
+    ...carrito,
+    lineas,
+    subtotal,
+    total: Math.round(subtotal * 100) / 100,
+    aDetalles: (): DetalleVentaInput[] =>
+      carrito
+        .aDetalles()
+        .map((d) => (usar.has(d.productoId) ? { ...d, precio: 0, usarPaquete: true } : d)),
   };
 }
 

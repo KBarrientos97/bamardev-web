@@ -2,9 +2,11 @@ import { useState } from "react";
 import { Icon } from "../../../components/Icon";
 import { Select } from "../../../components/ui";
 import {
+  esReventa,
   llevaProfesional,
   profesionalDe,
   profesionalDeTodos,
+  profesionalesDelServicio,
   type AsignacionProfesional,
   type ProfesionalPos,
 } from "../../../lib/agenda/ventaDirecta";
@@ -18,6 +20,10 @@ import type { LineaCarrito } from "../useCarrito";
  * Elegir no es obligatorio: sin nadie, la venta sale como siempre (precio de
  * lista, sin comisión ni propina). Sólo aparece en un negocio con agenda, con
  * algún servicio en el carrito y sin una cita cobrándose.
+ *
+ * Un producto de reventa tiene su propia línea, opcional, con quienes cobran
+ * % de productos (QA DIA-07): "uno para todo" no lo toca, porque vender un
+ * champú no es lo mismo que haber hecho el corte.
  */
 export function SelectorProfesional({
   lineas,
@@ -33,19 +39,34 @@ export function SelectorProfesional({
   const servicios = lineas.filter((l) => llevaProfesional(l.producto));
   const cambiados = servicios.some((l) => l.producto.id in asignacion.porServicio);
   const [porServicio, setPorServicio] = useState(cambiados);
-  if (!servicios.length || !profesionales.length) return null;
+  const vendedores = profesionales.filter((p) => p.comisionaProductos);
+  const productos = vendedores.length ? lineas.filter((l) => esReventa(l.producto)) : [];
+  if ((!servicios.length && !productos.length) || !profesionales.length) return null;
 
   const valor = (id: number | null) => (id == null ? "" : String(id));
   const leer = (v: string) => (v === "" ? null : Number(v));
+  /** Lo elegido para los productos: "uno para todo" no lo pisa. */
+  const deProductos = () => {
+    const quedan: Record<number, number | null> = {};
+    for (const l of productos) {
+      if (l.producto.id in asignacion.porServicio) quedan[l.producto.id] = asignacion.porServicio[l.producto.id];
+    }
+    return quedan;
+  };
+  const elegir = (productoId: number, v: string) =>
+    onCambiar({
+      ...asignacion,
+      porServicio: { ...asignacion.porServicio, [productoId]: leer(v) },
+    });
   // QA PER-07: si "Por servicio" los separó, arriba dice "Varios".
   const deTodos = profesionalDeTodos(
     servicios.map((l) => l.producto.id),
     asignacion,
   );
-  const opciones = (
+  const opciones = (lista: ProfesionalPos[]) => (
     <>
       <option value="">Sin asignar</option>
-      {profesionales.map((p) => (
+      {lista.map((p) => (
         <option key={p.id} value={p.id}>
           {p.nombre}
         </option>
@@ -60,29 +81,32 @@ export function SelectorProfesional({
           <Icon name="user" size={17} />
           ¿Quién atendió?
         </label>
-        <Select
-          id="profesional-venta"
-          aria-label="Profesional de la venta"
-          className="min-w-0 flex-1 sm:max-w-xs"
-          value={deTodos === "VARIOS" ? "VARIOS" : valor(deTodos)}
-          // Elegir arriba es "uno para todo": vale para todos los servicios,
-          // también los que se habían cambiado a mano. Si no, con "Varios"
-          // elegir a alguien no cambiaba lo que el selector mostraba.
-          onChange={(e) => onCambiar({ general: leer(e.target.value), porServicio: {} })}
-        >
-          {deTodos === "VARIOS" && (
-            <option value="VARIOS" disabled>
-              Varios
-            </option>
-          )}
-          {opciones}
-        </Select>
+        {servicios.length > 0 && (
+          <Select
+            id="profesional-venta"
+            aria-label="Profesional de la venta"
+            className="min-w-0 flex-1 sm:max-w-xs"
+            value={deTodos === "VARIOS" ? "VARIOS" : valor(deTodos)}
+            // Elegir arriba es "uno para todo": vale para todos los servicios,
+            // también los que se habían cambiado a mano. Si no, con "Varios"
+            // elegir a alguien no cambiaba lo que el selector mostraba. Lo
+            // elegido para los productos se queda (QA DIA-07).
+            onChange={(e) => onCambiar({ general: leer(e.target.value), porServicio: deProductos() })}
+          >
+            {deTodos === "VARIOS" && (
+              <option value="VARIOS" disabled>
+                Varios
+              </option>
+            )}
+            {opciones(profesionales)}
+          </Select>
+        )}
         {servicios.length > 1 && (
           <button
             type="button"
             onClick={() => {
               // Al cerrar "Por servicio" vuelve a valer uno para todo.
-              if (porServicio) onCambiar({ ...asignacion, porServicio: {} });
+              if (porServicio) onCambiar({ ...asignacion, porServicio: deProductos() });
               setPorServicio(!porServicio);
             }}
             className="rounded-lg px-2 py-1 text-[13px] font-semibold text-primary-700 hover:bg-primary-50"
@@ -93,21 +117,39 @@ export function SelectorProfesional({
       </div>
       {porServicio && servicios.length > 1 && (
         <ul className="space-y-1.5">
-          {servicios.map((l) => (
+          {servicios.map((l) => {
+            const actual = profesionalDe(l.producto.id, asignacion);
+            return (
+              <li key={l.producto.id} className="flex items-center gap-2 text-sm">
+                <span className="min-w-0 flex-1 truncate text-texto-2">{l.producto.nombre}</span>
+                <Select
+                  aria-label={`Profesional de ${l.producto.nombre}`}
+                  className="w-40 shrink-0 sm:w-48"
+                  value={valor(actual)}
+                  onChange={(e) => elegir(l.producto.id, e.target.value)}
+                >
+                  {/* Sólo quienes hacen ese servicio (QA VER-04). */}
+                  {opciones(profesionalesDelServicio(l.producto.id, profesionales, actual))}
+                </Select>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      {productos.length > 0 && (
+        <ul className="space-y-1.5" aria-label="Quién vendió cada producto">
+          {productos.map((l) => (
             <li key={l.producto.id} className="flex items-center gap-2 text-sm">
-              <span className="min-w-0 flex-1 truncate text-texto-2">{l.producto.nombre}</span>
+              <span className="min-w-0 flex-1 truncate text-texto-2">
+                {l.producto.nombre} <span className="text-[12px] text-texto-4">(lo vendió)</span>
+              </span>
               <Select
-                aria-label={`Profesional de ${l.producto.nombre}`}
+                aria-label={`Quién vendió ${l.producto.nombre}`}
                 className="w-40 shrink-0 sm:w-48"
-                value={valor(profesionalDe(l.producto.id, asignacion))}
-                onChange={(e) =>
-                  onCambiar({
-                    ...asignacion,
-                    porServicio: { ...asignacion.porServicio, [l.producto.id]: leer(e.target.value) },
-                  })
-                }
+                value={valor(asignacion.porServicio[l.producto.id] ?? null)}
+                onChange={(e) => elegir(l.producto.id, e.target.value)}
               >
-                {opciones}
+                {opciones(vendedores)}
               </Select>
             </li>
           ))}

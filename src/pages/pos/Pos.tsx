@@ -52,17 +52,20 @@ import { useCarrito } from "./useCarrito";
 import { useDescuentos } from "./useDescuentos";
 import BloqueDescuentos from "./BloqueDescuentos";
 // Agenda fase 3: sesiones de paquete en el cobro de la cita y venta de paquetes.
-import { ClientePaquete, SesionesDePaquete } from "./PaquetesPos";
-import { detallesDePaquete, sinLineasConPaquete, sinUsarPaquetes } from "../../lib/agenda/spa";
+import { ClientePaquete, SesionesDePaquete, SesionesEnVentaDirecta } from "./PaquetesPos";
+import { detallesDePaquete, featuresSpa, sinLineasConPaquete, sinUsarPaquetes } from "../../lib/agenda/spa";
+import { apiSpa } from "../../lib/agenda/apiSpa";
 import { useIntentoDeCobro } from "./useIntentoDeCobro";
 // Venta directa con profesional (N2-13): quién hizo cada servicio sin cita.
 import { apiConfigAgenda } from "../../lib/agenda/apiConfigAgenda";
 import {
   carritoConProfesional,
+  carritoConSesiones,
   guardarAsignacion,
   leerAsignacion,
   profesionalesDeLaVenta,
   profesionalesParaPos,
+  sesionesParaLaVenta,
   SIN_ASIGNAR,
   type AsignacionProfesional,
 } from "../../lib/agenda/ventaDirecta";
@@ -242,12 +245,17 @@ export default function Pos() {
    * `detallesConProfesional`). Sin agenda ni cita, el MISMO carrito.
    */
   const ventaDirecta = conAgenda && !citaCobrando;
+  /**
+   * QA DIA-08: en la venta directa, los servicios que se pagan con una
+   * sesión del paquete del cliente (sin cita). Vacío = se cobra todo.
+   */
+  const [sesionesElegidas, setSesionesElegidas] = useState<number[]>([]);
   const carritoVenta = useMemo(
     () =>
       ventaDirecta
-        ? carritoConProfesional(carrito, asignacion, profesionalesPos)
+        ? carritoConSesiones(carritoConProfesional(carrito, asignacion, profesionalesPos), sesionesElegidas)
         : carritoDeLaCita(carrito, citaCobrando),
-    [ventaDirecta, carrito, asignacion, profesionalesPos, citaCobrando],
+    [ventaDirecta, carrito, asignacion, profesionalesPos, citaCobrando, sesionesElegidas],
   );
 
   const [datosEntrega, setDatosEntrega] = useState<DatosEntrega | null>(null);
@@ -290,6 +298,35 @@ export default function Pos() {
   });
   /** Lo que se cobra: el neto si hay promociones, el de siempre si no. */
   const totalCarrito = descuentos.total(carritoVenta.total);
+
+  // QA DIA-08: la clienta con bono que llega sin cita. Con el cliente de la
+  // venta (o el del paquete que se le vende) se piden sus paquetes y se
+  // ofrece usar la sesión en los servicios que cubren. Sin la feature, sin
+  // cliente o cobrando una cita, ni un pedido.
+  const clienteVenta =
+    ventaDirecta && featuresSpa(negocio?.features).paquetes
+      ? (descuentos.clienteId ?? clientePaquete?.id ?? null)
+      : null;
+  const paquetesCliente = useApi(
+    () => (clienteVenta != null ? apiSpa.paquetesDelCliente(clienteVenta).catch(() => []) : Promise.resolve([])),
+    [clienteVenta],
+  );
+  const sesionesOfrecidas = useMemo(
+    () => (clienteVenta != null ? sesionesParaLaVenta(carrito.lineas, paquetesCliente.datos ?? []) : []),
+    [clienteVenta, carrito.lineas, paquetesCliente.datos],
+  );
+  // Lo elegido que ya no se ofrece (otro cliente, se quitó la línea, subió
+  // la cantidad más allá del saldo) se suelta: si no, la venta rebota.
+  useEffect(() => {
+    if (paquetesCliente.cargando) return;
+    const quedan = sesionesElegidas.filter((id) => sesionesOfrecidas.some((o) => o.productoId === id));
+    if (quedan.length !== sesionesElegidas.length) setSesionesElegidas(quedan);
+  }, [sesionesOfrecidas, sesionesElegidas, paquetesCliente.cargando]);
+  /** El cliente que la venta tiene que llevar para usar las sesiones. */
+  const clienteDeSesiones = useMemo(
+    () => (sesionesElegidas.length && clienteVenta != null ? { clienteId: clienteVenta } : {}),
+    [sesionesElegidas.length, clienteVenta],
+  );
 
   const sucursalCaja = caja.datos?.caja?.almacenId ?? null;
   const citasPorCobrar = useConsultaPeriodica<Cita[]>(
@@ -372,6 +409,7 @@ export default function Pos() {
       tipoPedido,
       ...(pagos ? { pagos } : {}),
       ...(clientePaquete && vendePaquete ? { clienteId: clientePaquete.id } : {}),
+      ...clienteDeSesiones,
       ...(datosEntrega
         ? {
             clienteNombre: datosEntrega.clienteNombre,
@@ -385,7 +423,7 @@ export default function Pos() {
           }
         : {}),
     }),
-    [carritoVenta, tipoPedido, datosEntrega, citaCobrando, descuentos, clientePaquete, vendePaquete],
+    [carritoVenta, tipoPedido, datosEntrega, citaCobrando, descuentos, clientePaquete, vendePaquete, clienteDeSesiones],
   );
 
   const limpiar = useCallback(() => {
@@ -398,6 +436,7 @@ export default function Pos() {
     setErrorCita("");
     setClientePaquete(null);
     setAsignacion(SIN_ASIGNAR);
+    setSesionesElegidas([]);
     setPropinasCredito([]);
   }, [carrito, setCitaCobrando, descuentos, setAsignacion]);
 
@@ -497,6 +536,7 @@ export default function Pos() {
           // Una cita también se puede fiar (§10): la venta la completa igual.
           ...conCita(carritoVenta.aDetalles(), citaCobrando),
           ...descuentos.extraVenta(),
+          ...clienteDeSesiones,
           tipoPedido: "LOCAL",
           credito,
           ...(pagos.length ? { pagos } : {}),
@@ -515,7 +555,7 @@ export default function Pos() {
         setEnviando(false);
       }
     },
-    [carritoVenta, limpiar, productos, intento, citaCobrando, descuentos],
+    [carritoVenta, limpiar, productos, intento, citaCobrando, descuentos, clienteDeSesiones],
   );
 
   /**
@@ -950,6 +990,15 @@ export default function Pos() {
         {vendePaquete && (
           <div className="border-b border-borde bg-white px-4 py-3">
             <ClientePaquete cliente={clientePaquete} onElegir={setClientePaquete} />
+          </div>
+        )}
+        {sesionesOfrecidas.length > 0 && (
+          <div className="border-b border-borde bg-white px-4 py-3">
+            <SesionesEnVentaDirecta
+              ofrecidas={sesionesOfrecidas}
+              elegidas={sesionesElegidas}
+              onCambiar={setSesionesElegidas}
+            />
           </div>
         )}
         {ventaDirecta && profesionalesPos.length > 0 && carrito.lineas.length > 0 && (
