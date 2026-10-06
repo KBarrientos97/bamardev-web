@@ -61,6 +61,10 @@ export default function MenuLateral({
   // Solicitudes online por atender (A9): el número va al lado del ítem.
   const solicitudes = useContadorSolicitudes(menu.planos.some((n) => n.item.seccion === "solicitudes"));
   const contadorDe = (n: NodoMenu) => (n.item.seccion === "solicitudes" ? solicitudes : 0);
+  // Las solicitudes viven dentro del grupo Agenda: cerrado, el grupo muestra
+  // las pendientes en vez de cuántas pantallas guarda, o nadie las vería.
+  const pendientesEn = (n: NodoMenu): number =>
+    contadorDe(n) + n.hijos.reduce((t, h) => t + pendientesEn(h), 0);
 
   // Tooltip propio para la barra de íconos: el `title` del navegador tarda un
   // segundo en salir y no aparece con el teclado. Va con posición fija porque
@@ -263,7 +267,15 @@ export default function MenuLateral({
             {/* Cerrado, el grupo dice cuántas pantallas guarda; y si la que
                 está abierta es una de ellas, el contador se enciende: es el
                 "estás acá adentro" cuando el hijo no se ve. */}
-            {!abierto && (
+            {!abierto && pendientesEn(n) > 0 && (
+              <span
+                className="ml-auto rounded-full bg-barra-texto px-1.5 text-[11px] font-bold leading-[18px] text-barra tabular-nums"
+                aria-label={`${pendientesEn(n)} por atender`}
+              >
+                {pendientesEn(n)}
+              </span>
+            )}
+            {!abierto && pendientesEn(n) === 0 && (
               <span
                 aria-hidden="true"
                 className={[
@@ -335,7 +347,11 @@ export default function MenuLateral({
   const compactos = (nodos: NodoMenu[]) => {
     const padres = new Map<NodoMenu, NodoMenu>();
     for (const p of aplanar(nodos)) for (const h of p.hijos) padres.set(h, p);
-    return aplanar(nodos).map((n) => nodoCompacto(n, padres.get(n) ?? null));
+    // Un grupo sin pantalla propia (Agenda, Equipo) lleva a la de su primer
+    // hijo: en la columna de íconos sería el mismo destino dos veces.
+    return aplanar(nodos)
+      .filter((n) => n.item.seccion)
+      .map((n) => nodoCompacto(n, padres.get(n) ?? null));
   };
 
   return (

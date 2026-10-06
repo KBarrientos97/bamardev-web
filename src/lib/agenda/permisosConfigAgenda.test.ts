@@ -75,8 +75,17 @@ describe("menú", () => {
     const m = rotulos(ctx("ADMIN", "PELUQUERIA"));
     expect(m[0]).toEqual({
       bloque: "agenda",
-      items: ["Agenda", "Hoy", "Reportes de agenda", "Configuración de agenda"],
+      items: ["Agenda"],
     });
+    const agenda = construirMenu((s) => puedeVer(ctx("ADMIN", "PELUQUERIA"), s), "PELUQUERIA")[0].nodos[0];
+    expect(agenda.hijos.map((h) => h.item.label)).toEqual([
+      "Agenda del día",
+      "Hoy",
+      "Reportes de agenda",
+      "Configuración de agenda",
+    ]);
+    // El grupo no tiene pantalla propia: lleva a la del día.
+    expect(agenda.item.a).toBe("/agenda");
     expect(m.find((b) => b.bloque === "administracion")?.items).toContain("Configuración del negocio");
   });
 

@@ -91,8 +91,8 @@ describe("el menú", () => {
       .flatMap((b) => b.nodos)
       .map((n) => n.item.label);
 
-  it("en un salón con agenda, Agenda, Hoy y Clientes van primero", () => {
-    expect(etiquetas(ctx("CAJERO", "PELUQUERIA")).slice(0, 4)).toEqual(["Agenda", "Hoy", "Clientes", "Punto de venta"]);
+  it("en un salón con agenda, el grupo Agenda y Clientes van primero", () => {
+    expect(etiquetas(ctx("CAJERO", "PELUQUERIA")).slice(0, 3)).toEqual(["Agenda", "Clientes", "Punto de venta"]);
   });
 
   it("al restaurante no le aparece nada nuevo", () => {

@@ -3,7 +3,7 @@ import { useLocation } from "react-router-dom";
 import type { NombreIcono } from "../components/Icon";
 import { useAuth } from "../store/AuthContext";
 import type { Seccion } from "./permisos";
-import { termino, type Termino, type Vocabulario } from "./rubro";
+import { esBelleza, termino, type Termino, type Vocabulario } from "./rubro";
 
 /**
  * El árbol del menú lateral, y el estado de qué grupos están abiertos.
@@ -19,7 +19,12 @@ export interface ItemNav {
   a: string;
   label: string;
   icono: NombreIcono;
-  seccion: Seccion;
+  /**
+   * Sin sección, el ítem es un grupo SIN pantalla propia (Agenda, Equipo,
+   * Finanzas): se ve sólo si le quedan dos hijos o más, y su nombre lleva al
+   * primero que se puede ver. Con uno solo, el hijo va suelto en su lugar.
+   */
+  seccion?: Seccion;
   /**
    * Se marca activo sólo con la ruta EXACTA. Lo necesitan los ítems que tienen
    * sub-rutas colgando: sin esto, "Movimientos" queda encendido al mismo tiempo
@@ -52,8 +57,9 @@ export type Bloque = "agenda" | "vender" | "stock" | "administracion";
 
 export const TITULO_BLOQUE: Record<Bloque, string> = {
   // Sólo belleza con la feature `agenda`: en los demás rubros no hay ningún
-  // ítem en este bloque y el rótulo no se dibuja.
-  agenda: "Agenda",
+  // ítem en este bloque y el rótulo no se dibuja. No se llama "Agenda" por lo
+  // mismo que Stock: adentro vive el grupo Agenda.
+  agenda: "Atención",
   vender: "Vender",
   stock: "Stock",
   administracion: "Administración",
@@ -63,43 +69,39 @@ const ITEMS: (ItemNav & { bloque: Bloque })[] = [
   // Agenda de belleza: primero, como en el lienzo aprobado (en un salón la
   // agenda es el día). Sólo existen en los rubros de belleza con la feature
   // `agenda` (ver permisos.ts), así que a los demás negocios no les mueven el
-  // menú. La configuración no cuelga de /agenda a propósito: así no se
-  // enciende junto con el ítem de la agenda del día.
-  { a: "/agenda", label: "Agenda", icono: "calendar", seccion: "agenda", bloque: "agenda" },
-  { a: "/hoy", label: "Hoy", icono: "clock", seccion: "hoy", bloque: "agenda" },
+  // menú. Va como un grupo sin pantalla propia: sueltas eran siete renglones
+  // de primer nivel arriba del POS. Las demás no cuelgan de la ruta /agenda a
+  // propósito: así no se encienden junto con la del día.
+  {
+    a: "/agenda",
+    label: "Agenda",
+    icono: "calendar",
+    bloque: "agenda",
+    hijos: [
+      { a: "/agenda", label: "Agenda del día", icono: "calendar", seccion: "agenda", exacto: true },
+      { a: "/hoy", label: "Hoy", icono: "clock", seccion: "hoy" },
+      // A9: con contador de pendientes (ver MenuLateral). Sólo con la reserva online.
+      { a: "/solicitudes", label: "Solicitudes online", icono: "bell", seccion: "solicitudes" },
+      // Fase 2: los números de la agenda (ocupación, no-shows, retención).
+      { a: "/reportes-agenda", label: "Reportes de agenda", icono: "chart", seccion: "reportes_agenda" },
+      {
+        a: "/configuracion/agenda",
+        label: "Configuración de agenda",
+        icono: "settings",
+        seccion: "agenda_config",
+      },
+      // Belleza fase 4: qué gasta cada servicio (tinte, oxidante) y su margen.
+      {
+        a: "/configuracion/insumos-servicio",
+        label: "Insumos por servicio",
+        icono: "sack",
+        seccion: "recetas_servicio",
+      },
+    ],
+  },
+  // Fuera del grupo: la ficha es su propia feature (`clientes`) y la cartera
+  // de clientes no es una pantalla de la agenda, es a quién se atiende.
   { a: "/clientes", label: "Clientes", icono: "users", seccion: "clientes", bloque: "agenda" },
-  // A9: con contador de pendientes (ver MenuLateral). Sólo con la reserva online.
-  {
-    a: "/solicitudes",
-    label: "Solicitudes online",
-    icono: "bell",
-    seccion: "solicitudes",
-    bloque: "agenda",
-  },
-  // Fase 2: los números de la agenda (ocupación, no-shows, retención). No
-  // cuelga de /agenda, como la configuración: así no se encienden los dos.
-  {
-    a: "/reportes-agenda",
-    label: "Reportes de agenda",
-    icono: "chart",
-    seccion: "reportes_agenda",
-    bloque: "agenda",
-  },
-  {
-    a: "/configuracion/agenda",
-    label: "Configuración de agenda",
-    icono: "settings",
-    seccion: "agenda_config",
-    bloque: "agenda",
-  },
-  // Belleza fase 4: qué gasta cada servicio (tinte, oxidante) y su margen.
-  {
-    a: "/configuracion/insumos-servicio",
-    label: "Insumos por servicio",
-    icono: "sack",
-    seccion: "recetas_servicio",
-    bloque: "agenda",
-  },
   { a: "/pos", label: "Punto de venta", icono: "cart", seccion: "pos", bloque: "vender" },
   // Va segundo y no dentro de Inventario: en una farmacia no es una consulta
   // de catálogo, es parte de atender. Se usa más que ninguna otra pantalla.
@@ -265,6 +267,80 @@ const ITEMS: (ItemNav & { bloque: Bloque })[] = [
   },
 ];
 
+/**
+ * Administración de un negocio con agenda (el salón): la misma lista, pero
+ * agrupada por tema. Con la agenda se suman comisiones, propinas, la página,
+ * los enlaces, promociones y retención, y sueltos eran diez renglones. Las
+ * propinas vienen de "Vender": en el salón son plata del equipo, no del POS.
+ * Los demás rubros siguen con `ITEMS` tal cual: a Omar no se le mueve nada.
+ */
+const ADMIN_AGENDA: (ItemNav & { bloque: Bloque })[] = [
+  {
+    a: "/usuarios",
+    label: "Equipo",
+    icono: "users",
+    bloque: "administracion",
+    hijos: [
+      { a: "/usuarios", label: "Usuarios", icono: "users", seccion: "usuarios" },
+      { a: "/comisiones", label: "Comisiones", icono: "dollar", seccion: "comisiones" },
+      { a: "/propinas", label: "Propinas", icono: "dollar", seccion: "propinas" },
+    ],
+  },
+  {
+    a: "/creditos",
+    label: "Finanzas",
+    icono: "chart",
+    bloque: "administracion",
+    hijos: [
+      { a: "/creditos", label: "Cuentas por cobrar", icono: "dollar", seccion: "creditos" },
+      { a: "/gastos", label: "Gastos operativos", icono: "archive", seccion: "gastos" },
+      { a: "/reportes", label: "Reportes", icono: "chart", seccion: "reportes" },
+    ],
+  },
+  {
+    a: "/mi-pagina",
+    label: "Marketing",
+    icono: "home",
+    bloque: "administracion",
+    hijos: [
+      { a: "/mi-pagina", label: "Mi página", icono: "home", seccion: "mi_pagina" },
+      { a: "/mis-enlaces", label: "Mis enlaces", icono: "qr", seccion: "mis_enlaces" },
+      { a: "/promociones", label: "Promociones", icono: "dollar", seccion: "promociones" },
+      {
+        a: "/clientes-que-no-vuelven",
+        label: "Clientes que no vuelven",
+        icono: "users",
+        seccion: "retencion",
+      },
+    ],
+  },
+  { a: "/mesas", label: "Mesas del salón", icono: "grid", seccion: "mesas", bloque: "administracion" },
+  {
+    a: "/configuracion/negocio",
+    label: "Configuración del negocio",
+    icono: "settings",
+    seccion: "config_negocio",
+    bloque: "administracion",
+  },
+];
+
+/**
+ * ¿El menú se arma como el del salón? Hace falta la feature y el rubro, los
+ * mismos dos candados de las pantallas de agenda (ver `SOLO_EN_RUBRO`): una
+ * pollería con `agenda` prendida por error no cambia de menú.
+ */
+export function esMenuDeAgenda(rubro: string | undefined, features: string[] | undefined): boolean {
+  return esBelleza(rubro) && !!features?.includes("agenda");
+}
+
+function itemsDe(conAgenda: boolean) {
+  if (!conAgenda) return ITEMS;
+  return [
+    ...ITEMS.filter((i) => i.bloque !== "administracion" && i.seccion !== "propinas"),
+    ...ADMIN_AGENDA,
+  ];
+}
+
 /** Un ítem ya filtrado por permisos, con su nombre según el rubro. */
 export interface NodoMenu {
   item: ItemNav;
@@ -298,6 +374,17 @@ function filtrar(
   const salida: NodoMenu[] = [];
   for (const i of items) {
     const hijos = filtrar(i.hijos ?? [], puede, rubro, vocabulario);
+    if (!i.seccion) {
+      // Grupo sin pantalla propia: con un solo hijo, el hijo va suelto.
+      if (hijos.length < 2) {
+        salida.push(...hijos);
+        continue;
+      }
+      // El nombre lleva al primer hijo visible, que es "su" pantalla: por eso
+      // es título (no se marca activo, lo marca el hijo).
+      salida.push({ item: { ...i, a: hijos[0].item.a }, id: `grupo:${i.label}`, hijos, esTitulo: true });
+      continue;
+    }
     if (!puede(i.seccion)) {
       salida.push(...hijos);
       continue;
@@ -326,9 +413,11 @@ export function construirMenu(
   puede: (s: Seccion) => boolean,
   rubro: string | undefined,
   vocabulario?: Vocabulario,
+  /** Ver `esMenuDeAgenda`. */
+  conAgenda = false,
 ): BloqueMenu[] {
   const bloques: BloqueMenu[] = [];
-  for (const i of ITEMS) {
+  for (const i of itemsDe(conAgenda)) {
     const nodos = filtrar([i], puede, rubro, vocabulario);
     if (nodos.length === 0) continue;
     const ultimo = bloques[bloques.length - 1];
@@ -462,9 +551,10 @@ export function useMenu(): Menu {
   // una feature al negocio (`refrescarFeatures`), la sección se va del menú en
   // caliente. Lo guardado de un grupo que ya no existe queda en el storage sin
   // molestar; si la feature vuelve, el grupo vuelve como estaba.
+  const conAgenda = esMenuDeAgenda(rubro, negocio?.features);
   const bloques = useMemo(
-    () => construirMenu(puede, rubro, vocabulario),
-    [puede, rubro, vocabulario],
+    () => construirMenu(puede, rubro, vocabulario, conAgenda),
+    [puede, rubro, vocabulario, conAgenda],
   );
   const raices = useMemo(() => bloques.flatMap((b) => b.nodos), [bloques]);
   const planos = useMemo(() => aplanar(raices), [raices]);

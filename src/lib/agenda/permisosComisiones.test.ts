@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Feature, Rol } from "../../types";
-import { construirMenu } from "../menu";
+import { aplanar, construirMenu } from "../menu";
 import { puedeVer, type ContextoPermisos } from "../permisos";
 
 /**
@@ -69,7 +69,9 @@ describe("reportes de agenda", () => {
 describe("menú", () => {
   it("el dueño de un salón tiene Reportes de agenda y Comisiones", () => {
     const c = ctx("ADMIN");
-    const items = construirMenu((s) => puedeVer(c, s), c.rubro).flatMap((b) => b.nodos.map((n) => n.item.label));
+    const items = aplanar(construirMenu((s) => puedeVer(c, s), c.rubro).flatMap((b) => b.nodos)).map(
+      (n) => n.item.label,
+    );
     expect(items).toContain("Reportes de agenda");
     expect(items).toContain("Comisiones");
   });
