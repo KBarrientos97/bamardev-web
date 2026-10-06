@@ -5,7 +5,7 @@ import { useSpa } from "../../lib/agenda/spa";
 import type { Cita } from "../../lib/agenda/tiposAgenda";
 import type { ConsentimientoFaltante } from "../../lib/agenda/tiposSpa";
 import { fmtFecha } from "../../lib/format";
-import { tienePermiso } from "../../lib/permisos";
+import { editaSalud, tienePermiso } from "../../lib/permisos";
 import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
 import FirmarConsentimiento from "./FirmarConsentimiento";
@@ -28,7 +28,11 @@ export default function SpaCita({ cita }: { cita: Cita }) {
   const [firmando, setFirmando] = useState<ConsentimientoFaltante | null>(null);
   const clienteId = cita.cliente.id;
   const porAtender = POR_ATENDER.includes(cita.estado);
-  const puedeFirmar = tienePermiso(usuario, "cliente.ver_salud", true);
+  const veSalud = tienePermiso(usuario, "cliente.ver_salud", true);
+  // Ver la salud no alcanza para tomar la firma (S2SEG-18): la recepción ve
+  // el aviso de lo que falta, pero firma el dueño o el profesional del
+  // cliente, como pide el backend.
+  const puedeFirmar = editaSalud(usuario);
 
   const pendientes = useApi(
     () =>
@@ -42,13 +46,13 @@ export default function SpaCita({ cita }: { cita: Cita }) {
   // quien ve datos de salud y mientras la cita está por atenderse.
   const salud = useApi(
     () =>
-      spa.consentimientos && porAtender && puedeFirmar && clienteId != null
+      spa.consentimientos && porAtender && veSalud && clienteId != null
         ? Promise.resolve()
             .then(() => apiSpa.saludDelCliente(clienteId))
             .then((r) => r.ficha)
             .catch(() => null)
         : Promise.resolve(null),
-    [clienteId, spa.consentimientos, porAtender, puedeFirmar],
+    [clienteId, spa.consentimientos, porAtender, veSalud],
   );
   const paquetes = useApi(
     () =>

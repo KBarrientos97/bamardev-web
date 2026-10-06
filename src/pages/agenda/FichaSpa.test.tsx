@@ -8,12 +8,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const sesion = vi.hoisted(() => ({
   features: ["clientes", "paquetes", "consentimientos"] as string[],
-  permisos: ["cliente.ver_ficha", "cliente.ver_salud"] as string[],
+  permisos: ["cliente.ver_ficha", "cliente.ver_salud", "cliente.editar_salud"] as string[],
+  rol: "PROFESIONAL",
 }));
 
 vi.mock("../../store/AuthContext", () => ({
   useAuth: () => ({
-    usuario: { id: 3, rol: "CAJERO", permisos: sesion.permisos },
+    usuario: { id: 3, rol: sesion.rol, permisos: sesion.permisos },
     negocio: { id: 1, tipoNegocio: "SPA", features: sesion.features },
   }),
 }));
@@ -38,7 +39,8 @@ const montar = async () => {
 beforeEach(() => {
   vi.clearAllMocks();
   sesion.features = ["clientes", "paquetes", "consentimientos"];
-  sesion.permisos = ["cliente.ver_ficha", "cliente.ver_salud"];
+  sesion.permisos = ["cliente.ver_ficha", "cliente.ver_salud", "cliente.editar_salud"];
+  sesion.rol = "PROFESIONAL";
   vi.mocked(apiSpa.paquetesDelCliente).mockResolvedValue([
     {
       id: 3,
@@ -117,6 +119,21 @@ describe("ficha del cliente: paquetes y salud", () => {
       observaciones: null,
       embarazo: null,
     });
+  });
+
+  it("S2SEG-18: la recepción ve la ficha de salud pero no la edita", async () => {
+    sesion.rol = "CAJERO";
+    sesion.permisos = ["cliente.ver_ficha", "cliente.ver_salud"];
+    await montar();
+    expect(screen.getByText("Hipertensión")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Editar|Completar/ })).toBeNull();
+  });
+
+  it("S2SEG-18: sin permisos del backend (sesión vieja), el dueño edita", async () => {
+    sesion.permisos = undefined as unknown as string[];
+    sesion.rol = "ADMIN";
+    await montar();
+    expect(screen.getByRole("button", { name: /Editar/ })).toBeTruthy();
   });
 
   it("sin el permiso de salud no la pide; sin las features, nada", async () => {

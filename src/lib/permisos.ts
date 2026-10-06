@@ -471,6 +471,17 @@ export function soloLoSuyo(usuario: ConPermisos, codigo: string, respaldo: boole
 }
 
 /**
+ * ¿Edita la ficha de salud y toma la firma de un consentimiento? (decisión
+ * del 07-oct, S2SEG-18). Ver salud no alcanza: la recepción la lee para
+ * avisar, pero la escriben el dueño y el profesional de ese cliente (el
+ * backend recorta "de ese cliente" con el alcance PROPIO). Respaldo sin
+ * permisos del backend: esos dos roles.
+ */
+export function editaSalud(usuario: (ConPermisos & { rol?: Rol }) | null | undefined): boolean {
+  return tienePermiso(usuario, "cliente.editar_salud", usuario?.rol === "ADMIN" || usuario?.rol === "PROFESIONAL");
+}
+
+/**
  * El profesional en la agenda: la ve sólo sobre lo suyo y no la gestiona.
  * Respaldo: el rol PROFESIONAL, como hasta ahora.
  */

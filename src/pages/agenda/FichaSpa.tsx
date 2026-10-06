@@ -6,7 +6,7 @@ import { mensajeDe } from "../../lib/agenda/apiAgenda";
 import { useSpa } from "../../lib/agenda/spa";
 import type { FichaSalud, FichaSaludInput, PaqueteDelCliente } from "../../lib/agenda/tiposSpa";
 import { fmtFecha } from "../../lib/format";
-import { tienePermiso } from "../../lib/permisos";
+import { editaSalud, tienePermiso } from "../../lib/permisos";
 import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
 import { Rotulo } from "./piezas";
@@ -26,7 +26,7 @@ export default function FichaSpa({ clienteId }: { clienteId: number }) {
   return (
     <>
       {spa.paquetes && <PaquetesCliente clienteId={clienteId} />}
-      {veSalud && <SaludCliente clienteId={clienteId} />}
+      {veSalud && <SaludCliente clienteId={clienteId} edita={editaSalud(usuario)} />}
     </>
   );
 }
@@ -79,7 +79,12 @@ const CAMPOS: { campo: keyof Omit<FichaSalud, "actualizadoEn" | "embarazo">; tit
   { campo: "observaciones", titulo: "Observaciones" },
 ];
 
-function SaludCliente({ clienteId }: { clienteId: number }) {
+/**
+ * `edita`: la recepción ve la ficha de salud para avisar, pero no la escribe
+ * (decisión del 07-oct, S2SEG-18): sin el permiso no hay botón, y el backend
+ * igual la rechaza con 403.
+ */
+function SaludCliente({ clienteId, edita }: { clienteId: number; edita: boolean }) {
   const salud = useApi(() => apiSpa.saludDelCliente(clienteId), [clienteId]);
   const [editando, setEditando] = useState(false);
   const [viendo, setViendo] = useState<number | null>(null);
@@ -91,7 +96,7 @@ function SaludCliente({ clienteId }: { clienteId: number }) {
     <section className="space-y-2">
       <div className="flex items-center justify-between">
         <Rotulo>Salud y consentimientos</Rotulo>
-        {salud.datos && (
+        {salud.datos && edita && (
           <button
             type="button"
             onClick={() => setEditando(true)}
@@ -153,7 +158,7 @@ function SaludCliente({ clienteId }: { clienteId: number }) {
           ))}
         </ul>
       )}
-      {editando && salud.datos && (
+      {editando && edita && salud.datos && (
         <EditarSalud
           clienteId={clienteId}
           ficha={ficha}

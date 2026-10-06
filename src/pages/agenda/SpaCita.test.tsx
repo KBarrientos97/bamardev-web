@@ -10,11 +10,14 @@ import { cita } from "../../test/agendaFixtures";
  * mismo), el saldo de paquetes y "Atender igual" cuando falta la firma.
  */
 
-const sesion = vi.hoisted(() => ({ features: ["agenda", "consentimientos", "paquetes"] as string[] }));
+const sesion = vi.hoisted(() => ({
+  features: ["agenda", "consentimientos", "paquetes"] as string[],
+  permisos: ["agenda.ver", "cliente.ver_salud", "cliente.editar_salud"] as string[],
+}));
 
 vi.mock("../../store/AuthContext", () => ({
   useAuth: () => ({
-    usuario: { id: 3, username: "recepcion", rol: "CAJERO", permisos: ["agenda.ver", "cliente.ver_salud"] },
+    usuario: { id: 3, username: "recepcion", rol: "CAJERO", permisos: sesion.permisos },
     negocio: { id: 1, nombre: "Spa Lavanda", tipoNegocio: "SPA", features: sesion.features },
     puede: () => false,
   }),
@@ -86,6 +89,7 @@ beforeEach(() => {
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(new Date("2026-10-21T15:00:00.000Z"));
   sesion.features = ["agenda", "consentimientos", "paquetes"];
+  sesion.permisos = ["agenda.ver", "cliente.ver_salud", "cliente.editar_salud"];
   vi.mocked(apiSpa.pendientesDeCita).mockResolvedValue({ faltan: [FALTA] });
   vi.mocked(apiSpa.paquetesDelCliente).mockResolvedValue([
     {
@@ -137,6 +141,13 @@ describe("detalle de la cita del spa", () => {
       version: 2,
     });
     expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("S2SEG-18: la recepción (ve salud, no la edita) ve el aviso pero no toma la firma", async () => {
+    sesion.permisos = ["agenda.ver", "cliente.ver_salud"];
+    await abrir();
+    expect(screen.getByRole("alert").textContent).toContain("Masaje relajante");
+    expect(screen.queryByRole("button", { name: "Firmar ahora" })).toBeNull();
   });
 
   it("atender sin la firma pide confirmación y queda como 'atender igual'", async () => {
