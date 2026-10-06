@@ -19,11 +19,18 @@ vi.mock("../../lib/agenda/apiAgenda", async (importOriginal) => {
   const real = await importOriginal<typeof import("../../lib/agenda/apiAgenda")>();
   return {
     ...real,
-    apiAgenda: { buscarClientes: vi.fn(), cliente: vi.fn(), editarCliente: vi.fn() },
+    apiAgenda: { buscarClientes: vi.fn(), cliente: vi.fn(), editarCliente: vi.fn(), crearCliente: vi.fn() },
   };
 });
 
+vi.mock("../../lib/crm/apiCrm", async (importOriginal) => {
+  const real = await importOriginal<typeof import("../../lib/crm/apiCrm")>();
+  return { ...real, apiCrm: { marketing: vi.fn(async () => ({ acepta: true, en: null, canal: "LOCAL" })) } };
+});
+
 import { apiAgenda } from "../../lib/agenda/apiAgenda";
+import { apiCrm } from "../../lib/crm/apiCrm";
+import { ApiError } from "../../lib/api";
 import Clientes from "./Clientes";
 
 const rosa = ficha({ noShows: 2, bloqueadoOnline: true, ultimaVisita: "2026-10-01T14:00:00.000Z" });
@@ -180,5 +187,55 @@ describe("A7 · Clientes", () => {
     });
     expect(screen.getByText("Ficha guardada")).toBeInTheDocument();
     expect(screen.getByText("permitidas")).toBeInTheDocument();
+  });
+
+  describe("alta sin cita (DIA-09)", () => {
+    const abrir = async () => {
+      await montar();
+      fireEvent.click(screen.getByRole("button", { name: "Nuevo cliente" }));
+      return screen.getByRole("dialog", { name: "Nuevo cliente" });
+    };
+
+    it("pide nombre y teléfono como Nueva cita, y guarda si acepta promociones", async () => {
+      const nueva = ficha({ id: 40, nombre: "Elena Spa", telefono: "70044001" });
+      vi.mocked(apiAgenda.crearCliente).mockResolvedValue(nueva);
+      const dialogo = await abrir();
+      fireEvent.change(within(dialogo).getByLabelText("Nombre"), { target: { value: "Elena Spa" } });
+      fireEvent.change(within(dialogo).getByLabelText(/Teléfono/), { target: { value: "700 44" } });
+      await act(async () => {
+        fireEvent.click(within(dialogo).getByRole("button", { name: "Crear cliente" }));
+      });
+      expect(within(dialogo).getByText(/Poné el teléfono del cliente/)).toBeInTheDocument();
+      expect(apiAgenda.crearCliente).not.toHaveBeenCalled();
+
+      fireEvent.change(within(dialogo).getByLabelText(/Teléfono/), { target: { value: "700-44 001" } });
+      fireEvent.change(within(dialogo).getByLabelText("¿Acepta recibir promociones?"), { target: { value: "si" } });
+      await act(async () => {
+        fireEvent.click(within(dialogo).getByRole("button", { name: "Crear cliente" }));
+      });
+      expect(apiAgenda.crearCliente).toHaveBeenCalledWith({ nombre: "Elena Spa", telefono: "70044001" });
+      expect(apiCrm.marketing).toHaveBeenCalledWith(40, true);
+      expect(screen.getByText('"Elena Spa" quedó como cliente.')).toBeInTheDocument();
+      // Se abre su ficha.
+      expect(apiAgenda.cliente).toHaveBeenCalledWith(40);
+    });
+
+    it("sin preguntar por promociones no marca nada; un teléfono que ya existe lleva a esa ficha", async () => {
+      vi.mocked(apiAgenda.crearCliente).mockRejectedValue(
+        new ApiError("Ya existe", 409, { codigo: "TELEFONO_EXISTE", cliente: rosa }),
+      );
+      const dialogo = await abrir();
+      fireEvent.change(within(dialogo).getByLabelText("Nombre"), { target: { value: "Otra Rosa" } });
+      fireEvent.change(within(dialogo).getByLabelText(/Teléfono/), { target: { value: "70012345" } });
+      await act(async () => {
+        fireEvent.click(within(dialogo).getByRole("button", { name: "Crear cliente" }));
+      });
+      expect(apiCrm.marketing).not.toHaveBeenCalled();
+      expect(within(dialogo).getByText(`Ese teléfono ya es de ${rosa.nombre}.`)).toBeInTheDocument();
+      await act(async () => {
+        fireEvent.click(within(dialogo).getByRole("button", { name: `Abrir la ficha de ${rosa.nombre}` }));
+      });
+      expect(apiAgenda.cliente).toHaveBeenCalledWith(rosa.id);
+    });
   });
 });

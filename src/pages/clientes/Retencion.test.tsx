@@ -101,3 +101,14 @@ describe("Clientes que no vuelven", () => {
     expect(crm.clientes).toHaveBeenCalledWith({ dias: 60, modo: "RECURRENCIA", segmento: "NUEVO" });
   });
 });
+
+describe("haceDias (QA DIA-05)", () => {
+  it("nunca dice «hace -1 días»", async () => {
+    const { haceDias } = await vi.importActual<typeof import("../../lib/crm/apiCrm")>("../../lib/crm/apiCrm");
+    expect(haceDias(-1)).toBe("hoy");
+    expect(haceDias(0)).toBe("hoy");
+    expect(haceDias(1)).toBe("ayer");
+    expect(haceDias(12)).toBe("hace 12 días");
+    expect(haceDias(null)).toBe("—");
+  });
+});

@@ -1,7 +1,10 @@
 import { useEffect, useState } from "react";
 import { Icon } from "../../components/Icon";
-import { AvisoOk, Boton, Cargando, ErrorMsg, Input, Vacio, useAviso } from "../../components/ui";
-import { apiAgenda, mensajeDe } from "../../lib/agenda/apiAgenda";
+import { AvisoOk, Boton, Campo, Cargando, ErrorMsg, Input, Modal, Select, Vacio, useAviso } from "../../components/ui";
+import { apiAgenda, clienteDelConflicto, mensajeDe } from "../../lib/agenda/apiAgenda";
+import { apiCrm } from "../../lib/crm/apiCrm";
+import { tienePermiso } from "../../lib/permisos";
+import { useAuth } from "../../store/AuthContext";
 import { horaNegocio } from "../../lib/agenda/horaAgenda";
 import type { CitaHistorial, ClienteFicha, ClienteFichaDetalle } from "../../lib/agenda/tiposAgenda";
 import { fmtFecha, fmtMoney, iniciales } from "../../lib/format";
@@ -19,13 +22,20 @@ const ESPERA_BUSQUEDA_MS = 300;
  * con su historia —citas con servicio y profesional, compras—, sus no-shows,
  * alergias y notas, y el "no permitir reservas online".
  *
- * Las fichas nacen solas al agendar con teléfono (ola B): esta pantalla es
- * para encontrarlas y completarlas, no para darlas de alta una por una.
+ * Las fichas nacen solas al agendar con teléfono (ola B). También se dan de
+ * alta acá (QA DIA-09): a quien llega a comprar un bono sin cita no hay que
+ * inventarle una para tenerla como cliente.
  */
 export default function Clientes() {
   const [texto, setTexto] = useState("");
   const [q, setQ] = useState("");
   const [abierta, setAbierta] = useState<number | null>(null);
+  const [creando, setCreando] = useState(false);
+  const [aviso, setAviso] = useAviso(5000);
+  const { usuario } = useAuth();
+  // El alta pide lo mismo que el backend (`cliente.editar`); sin permisos del
+  // backend, los que atienden el mostrador.
+  const puedeCrear = tienePermiso(usuario, "cliente.editar", usuario?.rol !== "PROFESIONAL");
 
   useEffect(() => {
     const t = window.setTimeout(() => setQ(texto.trim()), ESPERA_BUSQUEDA_MS);
@@ -37,12 +47,20 @@ export default function Clientes() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-4 p-4 sm:p-6">
-      <header>
-        <h1 className="text-xl font-bold text-texto">Clientes</h1>
-        <p className="text-[13px] text-texto-3">
-          {q ? "Por nombre o teléfono" : "Los que vinieron hace menos tiempo primero"}
-        </p>
+      <header className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-bold text-texto">Clientes</h1>
+          <p className="text-[13px] text-texto-3">
+            {q ? "Por nombre o teléfono" : "Los que vinieron hace menos tiempo primero"}
+          </p>
+        </div>
+        {puedeCrear && (
+          <Boton icono="plus" onClick={() => setCreando(true)}>
+            Nuevo cliente
+          </Boton>
+        )}
       </header>
+      <AvisoOk>{aviso}</AvisoOk>
 
       <div className="relative">
         <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-texto-4">
@@ -64,7 +82,13 @@ export default function Clientes() {
         <Vacio
           icono="users"
           titulo={q ? "Nadie con ese nombre o teléfono" : "Todavía no hay clientes"}
-          texto={q ? undefined : "La ficha se crea sola al agendar una cita con teléfono."}
+          texto={
+            q
+              ? puedeCrear
+                ? "Si es nuevo, dalo de alta con «Nuevo cliente»."
+                : undefined
+              : "La ficha se crea sola al agendar una cita con teléfono, o con «Nuevo cliente»."
+          }
         />
       ) : (
         <ul className="space-y-2">
@@ -93,6 +117,19 @@ export default function Clientes() {
         </ul>
       )}
 
+      {creando && (
+        <NuevoCliente
+          nombreInicial={/\d/.test(texto) ? "" : texto.trim()}
+          telefonoInicial={/\d/.test(texto) ? texto.trim() : ""}
+          onClose={() => setCreando(false)}
+          onListo={(c, msj) => {
+            setCreando(false);
+            if (msj) setAviso(msj);
+            lista.recargar();
+            setAbierta(c.id);
+          }}
+        />
+      )}
       {abierta !== null && (
         <FichaCliente
           id={abierta}
@@ -101,6 +138,116 @@ export default function Clientes() {
         />
       )}
     </div>
+  );
+}
+
+/**
+ * Alta de un cliente sin cita (QA DIA-09), con lo mismo que pide "Nueva cita":
+ * nombre y teléfono (es para avisarle), y si acepta promociones (el CSV y el
+ * WhatsApp de Marketing sólo usan a quien dijo que sí). Un teléfono que ya es
+ * de alguien no crea otro: lleva a su ficha.
+ */
+function NuevoCliente({
+  nombreInicial,
+  telefonoInicial,
+  onClose,
+  onListo,
+}: {
+  nombreInicial: string;
+  telefonoInicial: string;
+  onClose: () => void;
+  onListo: (c: ClienteFicha, aviso: string) => void;
+}) {
+  const [nombre, setNombre] = useState(nombreInicial);
+  const [telefono, setTelefono] = useState(telefonoInicial);
+  const [promos, setPromos] = useState<"" | "si" | "no">("");
+  const [existente, setExistente] = useState<ClienteFicha | null>(null);
+  const [error, setError] = useState("");
+  const [enviando, setEnviando] = useState(false);
+  const digitos = telefono.replace(/\D/g, "");
+
+  const guardar = async () => {
+    setError("");
+    setExistente(null);
+    if (nombre.trim().length < 2) return setError("Poné el nombre del cliente.");
+    if (digitos.length < 7) return setError("Poné el teléfono del cliente: es para avisarle de sus citas.");
+    setEnviando(true);
+    try {
+      const c = await apiAgenda.crearCliente({ nombre: nombre.trim(), telefono: digitos });
+      let aviso = `"${c.nombre}" quedó como cliente.`;
+      if (promos) {
+        try {
+          await apiCrm.marketing(c.id, promos === "si");
+        } catch {
+          aviso += " No se pudo guardar si acepta promociones: marcalo desde Clientes que no vuelven.";
+        }
+      }
+      onListo(c, aviso);
+    } catch (e) {
+      const ya = clienteDelConflicto(e);
+      if (ya) {
+        setExistente(ya);
+        setError(`Ese teléfono ya es de ${ya.nombre}.`);
+      } else {
+        setError(mensajeDe(e, "No se pudo crear el cliente"));
+      }
+    } finally {
+      setEnviando(false);
+    }
+  };
+
+  return (
+    <Modal
+      abierto
+      titulo="Nuevo cliente"
+      subtitulo="Sin agendarle una cita."
+      onClose={onClose}
+      cerrarAlClicAfuera={false}
+      acciones={
+        <>
+          <Boton variante="ghost" onClick={onClose} disabled={enviando}>
+            Cancelar
+          </Boton>
+          <Boton onClick={() => void guardar()} disabled={enviando}>
+            {enviando ? "Guardando…" : "Crear cliente"}
+          </Boton>
+        </>
+      }
+    >
+      <div className="space-y-3">
+        <Campo label="Teléfono" hint="Para avisarle de sus citas por WhatsApp.">
+          <Input
+            type="tel"
+            inputMode="tel"
+            autoComplete="off"
+            value={telefono}
+            onChange={(e) => setTelefono(e.target.value)}
+            placeholder="70012345"
+            autoFocus={!telefonoInicial}
+          />
+        </Campo>
+        <Campo label="Nombre">
+          <Input value={nombre} onChange={(e) => setNombre(e.target.value)} autoFocus={!!telefonoInicial} />
+        </Campo>
+        <Campo label="¿Acepta recibir promociones?" hint="Sólo a quien dijo que sí se le escribe con promociones.">
+          <Select
+            value={promos}
+            onChange={(e) => setPromos(e.target.value as "" | "si" | "no")}
+            aria-label="¿Acepta recibir promociones?"
+          >
+            <option value="">No se le preguntó</option>
+            <option value="si">Sí, acepta</option>
+            <option value="no">No</option>
+          </Select>
+        </Campo>
+        <ErrorMsg>{error}</ErrorMsg>
+        {existente && (
+          <Boton variante="soft" onClick={() => onListo(existente, "")}>
+            Abrir la ficha de {existente.nombre}
+          </Boton>
+        )}
+      </div>
+    </Modal>
   );
 }
 

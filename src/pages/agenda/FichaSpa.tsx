@@ -31,6 +31,19 @@ export default function FichaSpa({ clienteId }: { clienteId: number }) {
   );
 }
 
+/**
+ * La ficha de salud y los consentimientos de la clienta, desde el detalle de
+ * su cita (QA DIA-06): la terapeuta no entra a Clientes (es la cartera de
+ * recepción), pero completa la salud de SUS clientas (`cliente.editar_salud`
+ * PROPIO, decisión del 07-oct). El backend recorta a las suyas.
+ */
+export function SaludDeLaCita({ clienteId }: { clienteId: number }) {
+  const spa = useSpa();
+  const { usuario } = useAuth();
+  if (!spa.consentimientos || !tienePermiso(usuario, "cliente.ver_salud", true)) return null;
+  return <SaludCliente clienteId={clienteId} edita={editaSalud(usuario)} />;
+}
+
 function PaquetesCliente({ clienteId }: { clienteId: number }) {
   const paquetes = useApi(() => apiSpa.paquetesDelCliente(clienteId), [clienteId]);
   const lista = paquetes.datos ?? [];

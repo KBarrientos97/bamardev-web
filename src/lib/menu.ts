@@ -114,7 +114,9 @@ const ITEMS: (ItemNav & { bloque: Bloque })[] = [
   },
   // Fuera del grupo: la ficha es su propia feature (`clientes`) y la cartera
   // de clientes no es una pantalla de la agenda, es a quién se atiende.
-  { a: "/clientes", label: "Clientes", icono: "users", seccion: "clientes", bloque: "agenda" },
+  // Íconos distintos en la barra colapsada (QA VER-06). Los de Omar no
+  // cambian: Clientes, Comisiones, Propinas y Promociones no existen para él.
+  { a: "/clientes", label: "Clientes", icono: "userHeart", seccion: "clientes", bloque: "agenda" },
   { a: "/pos", label: "Punto de venta", icono: "cart", seccion: "pos", bloque: "vender" },
   // Va segundo y no dentro de Inventario: en una farmacia no es una consulta
   // de catálogo, es parte de atender. Se usa más que ninguna otra pantalla.
@@ -128,7 +130,7 @@ const ITEMS: (ItemNav & { bloque: Bloque })[] = [
   { a: "/reparto", label: "Mis entregas", icono: "truck", seccion: "reparto", bloque: "vender" },
   // Belleza fase 4: los vales se venden y se consultan al lado del POS.
   { a: "/gift-cards", label: "Gift cards", icono: "gift", seccion: "gift_cards", bloque: "vender" },
-  { a: "/propinas", label: "Propinas", icono: "dollar", seccion: "propinas", bloque: "vender" },
+  { a: "/propinas", label: "Propinas", icono: "coins", seccion: "propinas", bloque: "vender" },
   { a: "/encargos", label: "Encargos", icono: "bell", seccion: "encargos", bloque: "vender" },
   // Fuera de Inventario y no dentro: no es catálogo, es la plata que se está
   // por perder. Va donde se vea todos los días.
@@ -240,7 +242,7 @@ const ITEMS: (ItemNav & { bloque: Bloque })[] = [
     bloque: "administracion",
   },
   // Al lado de Gastos: es lo que se le paga a cada profesional (fase 2).
-  { a: "/comisiones", label: "Comisiones", icono: "dollar", seccion: "comisiones", bloque: "administracion" },
+  { a: "/comisiones", label: "Comisiones", icono: "percent", seccion: "comisiones", bloque: "administracion" },
   { a: "/reportes", label: "Reportes", icono: "chart", seccion: "reportes", bloque: "administracion" },
   { a: "/usuarios", label: "Usuarios", icono: "users", seccion: "usuarios", bloque: "administracion" },
   // A11: las reglas del negocio y las de la reserva online. Sólo el dueño.
@@ -267,7 +269,7 @@ const ITEMS: (ItemNav & { bloque: Bloque })[] = [
   {
     a: "/promociones",
     label: "Promociones",
-    icono: "dollar",
+    icono: "tag",
     seccion: "promociones",
     bloque: "administracion",
   },
@@ -297,9 +299,10 @@ const ADMIN_AGENDA: (ItemNav & { bloque: Bloque })[] = [
       // PLAN-ROLES §11: Personal es la puerta de entrada (la gente, con o sin
       // login); Usuarios queda como los accesos.
       { a: "/personal", label: "Personal", icono: "users", seccion: "personal" },
-      { a: "/usuarios", label: "Usuarios", icono: "users", seccion: "usuarios" },
-      { a: "/comisiones", label: "Comisiones", icono: "dollar", seccion: "comisiones" },
-      { a: "/propinas", label: "Propinas", icono: "dollar", seccion: "propinas" },
+      // Íconos distintos (QA VER-06): en la barra colapsada no hay grupo.
+      { a: "/usuarios", label: "Usuarios", icono: "key", seccion: "usuarios" },
+      { a: "/comisiones", label: "Comisiones", icono: "percent", seccion: "comisiones" },
+      { a: "/propinas", label: "Propinas", icono: "coins", seccion: "propinas" },
     ],
   },
   {
@@ -321,7 +324,7 @@ const ADMIN_AGENDA: (ItemNav & { bloque: Bloque })[] = [
     hijos: [
       { a: "/mi-pagina", label: "Mi página", icono: "home", seccion: "mi_pagina" },
       { a: "/mis-enlaces", label: "Mis enlaces", icono: "qr", seccion: "mis_enlaces" },
-      { a: "/promociones", label: "Promociones", icono: "dollar", seccion: "promociones" },
+      { a: "/promociones", label: "Promociones", icono: "tag", seccion: "promociones" },
       {
         a: "/clientes-que-no-vuelven",
         label: "Clientes que no vuelven",

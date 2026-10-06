@@ -346,6 +346,53 @@ const paths: Record<string, ReactNode> = {
       <path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z" />
     </>
   ),
+  /*
+   * Los de la barra colapsada del salón (QA VER-06): Clientes, Personal y
+   * Usuarios compartían `users`, y Comisiones, Propinas, Cuentas por cobrar y
+   * Promociones el mismo `dollar`. Sólo se distinguían por el tooltip.
+   */
+  /** Clientes: una persona con un corazón (la cartera). */
+  userHeart: (
+    <>
+      <path d="M14 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+      <circle cx="8" cy="7" r="4" />
+      <path d="M19 20.5s-4-2.4-4-5.1a2 2 0 0 1 4-.9 2 2 0 0 1 4 .9c0 2.7-4 5.1-4 5.1z" />
+    </>
+  ),
+  /** Usuarios: la llave (los accesos al sistema). */
+  key: (
+    <>
+      <circle cx="7.5" cy="15.5" r="4.5" />
+      <path d="M10.7 12.3 21 2" />
+      <path d="M16 7l3 3" />
+      <path d="M18.5 4.5l2 2" />
+    </>
+  ),
+  /** Comisiones: el porcentaje. */
+  percent: (
+    <>
+      <line x1="19" y1="5" x2="5" y2="19" />
+      <circle cx="6.5" cy="6.5" r="2.5" />
+      <circle cx="17.5" cy="17.5" r="2.5" />
+    </>
+  ),
+  /** Propinas: monedas apiladas. */
+  coins: (
+    <>
+      <ellipse cx="9" cy="6" rx="6" ry="3" />
+      <path d="M3 6v4c0 1.7 2.7 3 6 3s6-1.3 6-3V6" />
+      <path d="M3 10v4c0 1.7 2.7 3 6 3 1.1 0 2.1-.1 3-.4" />
+      <ellipse cx="17" cy="15" rx="4" ry="2" />
+      <path d="M13 15v3c0 1.1 1.8 2 4 2s4-.9 4-2v-3" />
+    </>
+  ),
+  /** Promociones: la etiqueta de precio. */
+  tag: (
+    <>
+      <path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L2 12V2h10l8.6 8.6a2 2 0 0 1 0 2.8z" />
+      <circle cx="7" cy="7" r="1.5" />
+    </>
+  ),
   /** Cámara: fotos antes/después de la ficha técnica. */
   camara: (
     <>

@@ -74,7 +74,12 @@ export interface Recurso {
   comisionPct: number | null;
   /** El usuario con rol PROFESIONAL que entra a "Mi agenda" con este recurso. */
   usuarioId: number | null;
-  usuario: { id: number; nombre: string; username: string } | null;
+  /**
+   * `activo: false` = "Sin usuario" le quitó el acceso (QA VER-03): el
+   * usuario sigue siendo de esa persona y se le devuelve en Personal.
+   * Opcional: un backend viejo no lo manda.
+   */
+  usuario: { id: number; nombre: string; username: string; activo?: boolean } | null;
   /**
    * La persona de Personal que es este profesional (PLAN-ROLES §9): de ella
    * son su comisión y sus propinas. Null en un espacio. Opcional: un backend
@@ -95,6 +100,12 @@ export interface Recurso {
   serviciosPropios?: ServicioPropio[];
   /** Fase 3, sólo ESPACIO: de qué tipo es (Cabina, Camilla…). */
   tipoEspacioId?: number | null;
+  /**
+   * Si tiene algún tramo de horario. Sin horario no se le ofrece ningún
+   * turno (ni online ni en "Nueva cita"). Opcional: un backend viejo no lo
+   * manda, y entonces no se avisa nada.
+   */
+  conHorario?: boolean;
   /**
    * Al desactivarlo, sus citas que todavía no pasaron (§7.3, QA S2-03). Sólo
    * viene en la respuesta del PATCH.

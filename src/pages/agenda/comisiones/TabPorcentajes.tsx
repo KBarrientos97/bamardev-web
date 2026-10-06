@@ -101,27 +101,43 @@ function FormPct({ config, onGuardado }: { config: ConfigComision; onGuardado: (
       </h2>
       <div className="grid gap-3 sm:grid-cols-2">
         <Campo label="Comisión sobre servicios (%)" hint="Vacío = no comisiona.">
-          <Input type="number" value={base} onChange={(e) => setBase(e.target.value)} placeholder="40" />
+          {/* Sin un "40" de ejemplo: se leía como que ya comisiona 40 % (QA DIA-14). */}
+          <Input type="number" value={base} onChange={(e) => setBase(e.target.value)} placeholder="Sin comisión" />
         </Campo>
         <Campo label="Comisión sobre productos (%)" hint="Lo que vende de reventa. Vacío = no comisiona.">
-          <Input type="number" value={productos} onChange={(e) => setProductos(e.target.value)} placeholder="Opcional" />
+          <Input
+            type="number"
+            value={productos}
+            onChange={(e) => setProductos(e.target.value)}
+            placeholder="Sin comisión"
+          />
         </Campo>
       </div>
       {config.servicios.length > 0 && (
         <div>
           <p className="mb-1.5 text-[13px] font-semibold text-texto-2">% propio por servicio (opcional)</p>
+          <p className="mb-2 text-[12px] text-texto-3">
+            {base.trim()
+              ? `Vacío = el ${base.trim()} % de sus servicios.`
+              : "Vacío = no comisiona ese servicio."}
+          </p>
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {config.servicios.map((s) => (
               <label key={s.servicioId} className="flex items-center gap-2 text-[13px] text-texto-2">
-                <span className="min-w-0 flex-1 truncate">{s.servicio}</span>
-                <Input
-                  type="number"
-                  aria-label={`% de ${s.servicio}`}
-                  value={porServicio[s.servicioId] ?? ""}
-                  onChange={(e) => setPorServicio((v) => ({ ...v, [s.servicioId]: e.target.value }))}
-                  placeholder={base || "—"}
-                  className="w-20 shrink-0"
-                />
+                <span className="min-w-0 flex-1 truncate" title={s.servicio}>
+                  {s.servicio}
+                </span>
+                {/* El ancho va en un envoltorio: el `w-full` del Input le ganaba
+                    al `w-20` y el nombre del servicio quedaba en 0 px (QA DIA-01). */}
+                <span className="w-24 shrink-0">
+                  <Input
+                    type="number"
+                    aria-label={`% de ${s.servicio}`}
+                    value={porServicio[s.servicioId] ?? ""}
+                    onChange={(e) => setPorServicio((v) => ({ ...v, [s.servicioId]: e.target.value }))}
+                    placeholder={base.trim() ? `${base.trim()} %` : "—"}
+                  />
+                </span>
               </label>
             ))}
           </div>

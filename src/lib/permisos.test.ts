@@ -759,3 +759,38 @@ describe("rolesAsignables", () => {
     ).toContain("REPARTIDOR");
   });
 });
+
+describe("belleza: ventas, caja y créditos por permiso (QA VER-05)", () => {
+  const recepcion = ["ventas.vender", "ventas.historial", "caja.operar", "credito.otorgar", "credito.cobrar"];
+  const salon = (rol: Rol, permisos: string[]) => ({
+    // Un salón no tiene reparto: la plantilla de belleza no trae `delivery`.
+    ...ctx(rol, ["POS", "CAJA"], [...PLAN_FULL.filter((f) => f !== "delivery"), "agenda"]),
+    rubro: "UNAS",
+    permisos,
+    permisosPropios: [],
+  });
+
+  it("el repartidor que quedó de antes no ve POS, caja ni créditos", () => {
+    const rep = salon("REPARTIDOR", ["ventas.ver_precios"]);
+    for (const s of ["pos", "caja", "creditos"] as Seccion[]) expect(puedeVer(rep, s)).toBe(false);
+    expect(rutaInicial(rep)).toBe("/sin-acceso");
+  });
+
+  it("la recepción con sus permisos sí; sin `ventas.vender` no ve el POS", () => {
+    const rec = salon("CAJERO", recepcion);
+    for (const s of ["pos", "caja", "creditos"] as Seccion[]) expect(puedeVer(rec, s)).toBe(true);
+    const sinVender = salon("CAJERO", recepcion.filter((p) => p !== "ventas.vender"));
+    expect(puedeVer(sinVender, "pos")).toBe(false);
+    expect(puedeVer(sinVender, "caja")).toBe(true);
+  });
+
+  it("el módulo del rol se sigue exigiendo, como en el backend", () => {
+    const sinModulo = { ...salon("CAJERO", recepcion), modulos: ["REPORTES"] as Modulo[] };
+    expect(puedeVer(sinModulo, "pos")).toBe(false);
+  });
+
+  it("Omar no cambia: sus permisos siguen en sombra", () => {
+    const cajero = { ...ctx("CAJERO"), rubro: "RESTAURANTE", permisos: ["ventas.ver_precios"], permisosPropios: [] };
+    for (const s of ["pos", "caja", "creditos"] as Seccion[]) expect(puedeVer(cajero, s)).toBe(true);
+  });
+});

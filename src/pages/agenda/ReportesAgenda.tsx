@@ -21,7 +21,9 @@ const ORIGEN: Record<string, string> = { INTERNA: "Agendadas", ONLINE: "Reserva 
 
 /** Un porcentaje del backend (ya en 0-100, o null si no se puede calcular). */
 const pct = (n: number | null) => (n == null ? "—" : `${n.toLocaleString("es-BO")}%`);
-const horas = (min: number) => `${Math.round(min / 6) / 10} h`;
+// Con coma decimal, como el resto de la pantalla ("3,8 h", no "3.8 h": QA DIA-21).
+const UNA_CIFRA = new Intl.NumberFormat("es-BO", { maximumFractionDigits: 1 });
+const horas = (min: number) => `${UNA_CIFRA.format(Math.round(min / 6) / 10)} h`;
 
 /**
  * Reportes de agenda (PLAN-AGENDA-BELLEZA §12, fase 4): producción por

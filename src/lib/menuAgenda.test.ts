@@ -59,8 +59,18 @@ describe("menú del salón", () => {
   it("PER-09: en la barra de íconos, Clientes y Clientes que no vuelven no comparten ícono", () => {
     const todos = aplanar(menu("ADMIN", "BARBERIA").flatMap((b) => b.nodos));
     const icono = (label: string) => todos.find((n) => n.item.label === label)?.item.icono;
-    expect(icono("Clientes")).toBe("users");
+    expect(icono("Clientes")).toBe("userHeart");
     expect(icono("Clientes que no vuelven")).toBe("userX");
+  });
+
+  it("VER-06: Clientes, Personal, Usuarios y las pantallas de plata no repiten ícono", () => {
+    const todos = aplanar(menu("ADMIN", "BARBERIA").flatMap((b) => b.nodos));
+    const icono = (label: string) => todos.find((n) => n.item.label === label && n.item.seccion)?.item.icono;
+    const personas = ["Clientes", "Personal", "Usuarios"].map(icono);
+    const plata = ["Comisiones", "Propinas", "Cuentas por cobrar", "Promociones"].map(icono);
+    expect(personas.every(Boolean) && plata.every(Boolean)).toBe(true);
+    expect(new Set(personas).size).toBe(3);
+    expect(new Set(plata).size).toBe(4);
   });
 
   it("las propinas pasan de Vender a Equipo", () => {

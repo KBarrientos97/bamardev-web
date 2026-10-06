@@ -255,6 +255,19 @@ describe("comisiones", () => {
     });
   });
 
+  it("DIA-01/DIA-14: cada % propio dice su servicio y vacío no se lee como un 40 %", async () => {
+    await montar("porcentajes");
+    const form = screen.getByRole("region", { name: "Porcentajes de Beto" });
+    expect(within(form).getByText("Corte")).toBeInTheDocument();
+    expect(within(form).getByLabelText("% de Corte")).toHaveAttribute("placeholder", "50 %");
+    expect(within(form).getByText("Vacío = el 50 % de sus servicios.")).toBeInTheDocument();
+    const base = within(form).getByLabelText(/Comisión sobre servicios/);
+    fireEvent.change(base, { target: { value: "" } });
+    expect(base).toHaveAttribute("placeholder", "Sin comisión");
+    expect(within(form).getByLabelText("% de Corte")).toHaveAttribute("placeholder", "—");
+    expect(within(form).getByText("Vacío = no comisiona ese servicio.")).toBeInTheDocument();
+  });
+
   it("un % fuera de 0 a 100 no se manda", async () => {
     await montar("porcentajes");
     const form = screen.getByRole("region", { name: "Porcentajes de Beto" });
@@ -283,7 +296,7 @@ describe("comisiones", () => {
     fireEvent.click(screen.getByRole("button", { name: "Nuevo adelanto" }));
     await act(async () => {});
     const dialogo = screen.getByRole("dialog", { name: "Nuevo adelanto" });
-    fireEvent.change(within(dialogo).getByLabelText("Profesional"), { target: { value: "7" } });
+    fireEvent.change(within(dialogo).getByLabelText("Estilista"), { target: { value: "7" } });
     fireEvent.change(within(dialogo).getByLabelText("Monto (Bs)"), { target: { value: "50" } });
     await act(async () => {
       fireEvent.click(within(dialogo).getByRole("button", { name: "Registrar" }));

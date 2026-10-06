@@ -23,7 +23,7 @@ import {
 import { api } from "../../lib/api";
 import { fmtMoney, fmtNum } from "../../lib/format";
 import { ICONOS_ARTICULO, iconoPorLlave } from "../../lib/iconosArticulo";
-import { esFarmacia, termino } from "../../lib/rubro";
+import { esBelleza, esFarmacia, termino } from "../../lib/rubro";
 import { FichaMedicamento, TarjetaMedicamento } from "../farmacia/FichaMedicamento";
 import { useBusquedaProductos } from "../farmacia/useBusquedaProductos";
 import { useApi } from "../../lib/useApi";
@@ -78,6 +78,15 @@ const CONDICIONES: Record<
     tono: "rojo",
   },
 };
+
+/**
+ * El nombre del tipo en este rubro. En un salón el SERVICIO es un servicio
+ * (un corte, una manicura), no un "Elaborado" de cocina (QA DIA-17d). Los
+ * demás rubros, Omar incluido, siguen con la etiqueta de siempre.
+ */
+function etiquetaTipo(t: TipoProducto, rubro: string | null | undefined): string {
+  return t === "SERVICIO" && esBelleza(rubro) ? "Servicio" : TIPOS[t].label;
+}
 
 type FiltroStock = "todos" | "activos" | "bajo" | "sin" | "papelera";
 type FiltroTipo = "todos" | TipoProducto;
@@ -219,10 +228,11 @@ export default function Productos() {
   // cargado de antes: filtrar por un tipo que no existe no le sirve a nadie.
   const opcionesTipo = useMemo(
     () =>
-      incluye("combos") || lista.some((p) => p.tipoProducto === "COMPUESTO")
+      (incluye("combos") || lista.some((p) => p.tipoProducto === "COMPUESTO")
         ? OPC_TIPO
-        : OPC_TIPO.filter(([k]) => k !== "COMPUESTO"),
-    [incluye, lista],
+        : OPC_TIPO.filter(([k]) => k !== "COMPUESTO")
+      ).map(([k, texto]) => [k, k === "todos" ? texto : etiquetaTipo(k, rubro)] as const),
+    [incluye, lista, rubro],
   );
 
   const almacenesActivos = (almacenes.datos ?? []).filter((a) => a.activo);
@@ -624,7 +634,7 @@ function TarjetaProducto({ producto: p, onClick }: { producto: Producto; onClick
         </div>
 
         <div className="mt-3 flex items-center justify-between">
-          <Badge tono={tipo.tono}>{tipo.label}</Badge>
+          <Badge tono={tipo.tono}>{etiquetaTipo(p.tipoProducto, rubro)}</Badge>
           <span className="flex items-center gap-1 text-xs text-texto-4">
             {p.categoria?.nombre ?? "Sin categoría"}
           </span>
@@ -710,7 +720,7 @@ function DetalleProducto({
             <h3 className="truncate text-base font-bold text-texto">{p.nombre}</h3>
             <p className="text-[13px] text-texto-3">{p.descripcion || "Sin descripción"}</p>
             <Badge tono={tipo.tono} className="mt-1.5">
-              {tipo.label}
+              {etiquetaTipo(p.tipoProducto, rubro)}
             </Badge>
           </div>
         </div>
@@ -1186,7 +1196,7 @@ function FormProductoCuerpo({
             <Select value={tipo} onChange={(e) => setTipo(e.target.value as TipoProducto)}>
               {tiposDisponibles.map((t) => (
                 <option key={t} value={t}>
-                  {TIPOS[t].label}
+                  {etiquetaTipo(t, rubro)}
                 </option>
               ))}
             </Select>

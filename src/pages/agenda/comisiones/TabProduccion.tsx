@@ -6,6 +6,7 @@ import type { LineaComision, ProduccionProfesional } from "../../../lib/agenda/t
 import { fmtFecha, fmtMoney } from "../../../lib/format";
 import { useApi } from "../../../lib/useApi";
 import { PuntoColor } from "../config/comun";
+import { useNombreProfesional } from "../config/utilConfig";
 
 /**
  * Producción y comisión de cada profesional en el período: lo cobrado (neto
@@ -24,6 +25,8 @@ export default function TabProduccion({
     [periodo.desde, periodo.hasta],
   );
   const [detalle, setDetalle] = useState<ProduccionProfesional | null>(null);
+  // La columna con la palabra del rubro (QA DIA-17b: "PROFESIONAL" en uñas).
+  const nombres = useNombreProfesional();
 
   if (resumen.error) return <ErrorMsg onReintentar={resumen.recargar}>{resumen.error}</ErrorMsg>;
   if (!resumen.datos) return <Cargando />;
@@ -42,7 +45,7 @@ export default function TabProduccion({
         <table className="w-full min-w-[640px] text-sm">
           <thead className="bg-muted text-left text-[12px] uppercase tracking-wide text-texto-4">
             <tr>
-              <th className="px-4 py-2.5">Profesional</th>
+              <th className="px-4 py-2.5">{nombres.singular}</th>
               <th className="px-3 py-2.5 text-right">Producción</th>
               <th className="px-3 py-2.5 text-right">Servicios</th>
               <th className="px-3 py-2.5 text-right">Comisión</th>
