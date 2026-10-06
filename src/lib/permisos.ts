@@ -99,7 +99,12 @@ export type Seccion =
   /** A3: la lista de hoy con los botones rápidos (y la cola, A6). */
   | "hoy"
   /** A10: las citas del profesional que entró. Sólo el rol PROFESIONAL. */
-  | "mi_agenda";
+  | "mi_agenda"
+  // ── Página del negocio (todas las verticales) ──
+  /** "Mi página": el editor de la página pública del negocio. */
+  | "mi_pagina"
+  /** "Mis enlaces": los enlaces cortos con QR y clics. */
+  | "mis_enlaces";
 
 /**
  * Qué módulo de rol y qué feature de plan exige cada sección. `feature: null`
@@ -169,6 +174,10 @@ const REQUISITOS: Record<Seccion, { modulo: Modulo | null; feature: Feature | nu
   agenda: { modulo: null, feature: "agenda" },
   hoy: { modulo: null, feature: "agenda" },
   mi_agenda: { modulo: null, feature: "agenda" },
+  // La página no tiene módulo de rol: la decide la feature y el rol ADMIN
+  // (el backend exige las dos).
+  mi_pagina: { modulo: null, feature: "pagina_publica" },
+  mis_enlaces: { modulo: null, feature: "enlaces_cortos" },
 };
 
 /**
@@ -179,8 +188,11 @@ const REQUISITOS: Record<Seccion, { modulo: Modulo | null; feature: Feature | nu
  * verdad —ningún negocio la tuvo antes— y se prende a mano por negocio (F1.8): un
  * salón que todavía no la tiene no puede encontrarse la configuración de algo
  * que no puede usar, y el fail-open de siempre se la mostraría.
+ *
+ * La página del negocio y los enlaces cortos, igual: son nuevos y se prenden
+ * por negocio. A Omar no le aparece "Mi página" hasta que se la prendan.
  */
-const FEATURES_ESTRICTAS: Feature[] = ["agenda"];
+const FEATURES_ESTRICTAS: Feature[] = ["agenda", "pagina_publica", "enlaces_cortos"];
 
 /**
  * Roles que además pueden entrar a cada sección. El backend lo exige con
@@ -235,6 +247,9 @@ const ROLES_PERMITIDOS: Partial<Record<Seccion, Rol[]>> = {
   agenda: ["ADMIN", "SUPERVISOR", "CAJERO"],
   hoy: ["ADMIN", "SUPERVISOR", "CAJERO"],
   mi_agenda: ["PROFESIONAL"],
+  // La página es la vitrina del negocio: la edita el dueño (§3).
+  mi_pagina: ["ADMIN"],
+  mis_enlaces: ["ADMIN"],
 };
 
 /**
