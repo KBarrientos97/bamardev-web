@@ -184,7 +184,13 @@ export default function TabReservaOnline({
       </Bloque>
 
       <p className="text-[13px] text-texto-3">
-        Cómo se confirman las reservas ({c.modoConfirmacion === "AUTOMATICA" ? "automáticamente" : "las aprobás vos"}),
+        Cómo se confirman las reservas (
+        {c.modoConfirmacion === "AUTOMATICA"
+          ? "automáticamente"
+          : c.modoConfirmacion === "AUTOMATICA_CONOCIDOS"
+            ? "solas para tus clientes conocidos; las demás las aprobás vos"
+            : "las aprobás vos"}
+        ),
         con cuánta anticipación y hasta cuándo se pueden cancelar
         {puede("config_negocio") ? (
           <>

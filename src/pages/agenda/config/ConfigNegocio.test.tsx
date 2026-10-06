@@ -82,10 +82,10 @@ beforeEach(() => {
 });
 
 describe("modo de confirmación", () => {
-  it("tiene tres opciones y la del anticipo por QR está deshabilitada: Próximamente", async () => {
+  it("tiene cuatro opciones (B28 suma «sólo conocidos») y la del anticipo por QR está deshabilitada: Próximamente", async () => {
     await montar();
     const radios = screen.getAllByRole("radio");
-    expect(radios).toHaveLength(3);
+    expect(radios).toHaveLength(4);
     expect(screen.getByRole("radio", { name: /La apruebo yo/ })).toBeChecked();
     expect(screen.getByRole("radio", { name: /Queda lista cuando el cliente la confirma/ })).toBeEnabled();
     const anticipo = screen.getByRole("radio", { name: /anticipo por QR/ });
@@ -120,6 +120,27 @@ describe("modo de confirmación", () => {
       modoConfirmacion: "AUTOMATICA",
     });
     expect(screen.getByText("Reglas guardadas.")).toBeInTheDocument();
+  });
+});
+
+describe("B28: automática sólo para clientes conocidos", () => {
+  it("es una opción más, con su explicación, y se guarda como AUTOMATICA_CONOCIDOS", async () => {
+    vi.mocked(apiConfigAgenda.guardarReglas).mockResolvedValue({
+      ...REGLAS,
+      modoConfirmacion: "AUTOMATICA_CONOCIDOS",
+    });
+    await montar();
+    const conocidos = screen.getByRole("radio", { name: /Lista sola si ya es tu cliente/ });
+    expect(conocidos).toBeEnabled();
+    expect(screen.getByText(/al menos una cita completada/)).toBeInTheDocument();
+    fireEvent.click(conocidos);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
+    });
+    expect(apiConfigAgenda.guardarReglas).toHaveBeenCalledWith({
+      sucursalId: null,
+      modoConfirmacion: "AUTOMATICA_CONOCIDOS",
+    });
   });
 });
 
@@ -237,5 +258,38 @@ describe("historial", () => {
     expect(historial).not.toHaveTextContent(/a\. m\.|p\. m\./);
     expect(historial).toHaveTextContent("heredado");
     expect(historial).not.toHaveTextContent("—");
+  });
+
+  it("B11: con el valor efectivo del backend dice lo que regía, no «heredado»", async () => {
+    vi.mocked(apiConfigAgenda.historialReglas).mockResolvedValue([
+      {
+        campo: "modoConfirmacion",
+        antes: null,
+        despues: "AUTOMATICA",
+        antesEfectivo: "MANUAL",
+        despuesEfectivo: "AUTOMATICA",
+        sucursalId: null,
+        usuario: "Dueña",
+        en: "2026-10-06T16:30:00.000Z",
+      },
+      {
+        campo: "modoConfirmacion",
+        antes: "AUTOMATICA",
+        despues: null,
+        antesEfectivo: "AUTOMATICA",
+        despuesEfectivo: "MANUAL",
+        sucursalId: null,
+        usuario: "Dueña",
+        en: "2026-10-06T17:30:00.000Z",
+      },
+    ]);
+    await montar();
+    const historial = screen.getByRole("region", { name: "Historial de cambios" });
+    const filas = within(historial).getAllByRole("listitem");
+    // Lo más nuevo primero: volvió al sugerido del rubro.
+    expect(filas[0]).toHaveTextContent("Queda lista cuando el cliente la confirma");
+    expect(filas[0]).toHaveTextContent("La apruebo yo (heredado)");
+    expect(filas[1]).toHaveTextContent(/La apruebo yo.*Queda lista cuando el cliente la confirma/);
+    expect(filas[1]).not.toHaveTextContent("heredado");
   });
 });

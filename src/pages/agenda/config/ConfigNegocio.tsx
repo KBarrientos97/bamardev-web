@@ -128,10 +128,20 @@ export default function ConfigNegocio() {
 /**
  * Un valor de la bitácora. `null` es que no había valor propio y se usaba el
  * heredado (de la sucursal, del negocio o del rubro): "—" se leía como "no
- * tenía nada" (QA B-25).
+ * tenía nada" (QA B-25). Desde B11 el backend manda además lo que regía de
+ * verdad (`efectivo`): "La apruebo yo → Automática" dice más que "heredado".
+ * Al volver a heredar (`marcarHeredado`) se aclara, porque el valor ya no es
+ * propio y cambia si cambia el del negocio o el del rubro.
  */
-function valorHistorial(campo: string, valor: CambioRegla["antes"]): string {
-  return valor === null || valor === undefined ? "heredado" : fmtValorRegla(campo, valor);
+function valorHistorial(
+  campo: string,
+  valor: CambioRegla["antes"],
+  efectivo: CambioRegla["antesEfectivo"],
+  marcarHeredado = false,
+): string {
+  if (valor !== null && valor !== undefined) return fmtValorRegla(campo, valor);
+  if (efectivo === null || efectivo === undefined) return "heredado";
+  return marcarHeredado ? `${fmtValorRegla(campo, efectivo)} (heredado)` : fmtValorRegla(campo, efectivo);
 }
 
 /** "06/10/2026 00:21": en 24 h y en la hora del negocio, como el resto de la agenda. */
@@ -156,9 +166,9 @@ function Historial({
           <li key={`${f.en}-${f.campo}-${i}`} className="py-2.5 text-sm">
             <p className="text-texto">
               <span className="font-semibold">{etiquetaCampo(f.campo)}</span>:{" "}
-              <span className="text-texto-3 line-through">{valorHistorial(f.campo, f.antes)}</span>{" "}
+              <span className="text-texto-3 line-through">{valorHistorial(f.campo, f.antes, f.antesEfectivo)}</span>{" "}
               <Icon name="arrowRight" size={13} className="inline" />{" "}
-              <span className="font-semibold">{valorHistorial(f.campo, f.despues)}</span>
+              <span className="font-semibold">{valorHistorial(f.campo, f.despues, f.despuesEfectivo, true)}</span>
             </p>
             <p className="text-xs text-texto-4">
               {fmtCuando(f.en)} · {f.usuario ?? "—"} · {nombreSucursal(f.sucursalId)}

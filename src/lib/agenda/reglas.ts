@@ -264,6 +264,12 @@ export const MODOS_CONFIRMACION: {
       "El cliente elige el horario, confirma y la cita queda reservada sin que tengas que hacer nada.",
   },
   {
+    modo: "AUTOMATICA_CONOCIDOS",
+    titulo: "Lista sola si ya es tu cliente; si no, la apruebo yo",
+    texto:
+      "Si el teléfono es de un cliente que ya vino (al menos una cita completada) y nunca faltó sin avisar, la reserva queda lista sola. Un cliente nuevo, o uno que faltó alguna vez, entra como solicitud para que la apruebes.",
+  },
+  {
     modo: "ANTICIPO_QR",
     titulo: "Queda lista cuando paga un anticipo por QR",
     texto:
