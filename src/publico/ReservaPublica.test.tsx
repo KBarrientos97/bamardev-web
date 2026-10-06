@@ -189,6 +189,42 @@ describe("reservar (P2-P6)", () => {
     expect(localStorage.getItem("bamardev_reserva_bellavista")).toBe("tok_tok_tok_tok_tok_12");
   });
 
+  it("QA N2-06: precio y duración del profesional elegido, y \"desde\" con cualquiera", async () => {
+    const suc = NEGOCIO.sucursales[0];
+    vi.mocked(apiReserva.negocio).mockResolvedValue({
+      ...NEGOCIO,
+      sucursales: [
+        {
+          ...suc,
+          servicios: suc.servicios.map((s) =>
+            s.id === 1
+              ? { ...s, precioDesde: 80, precioHasta: 100, duracionDesde: 45, duracionHasta: 60 }
+              : { ...s, precioDesde: s.precio, precioHasta: s.precio, duracionDesde: s.duracionMin, duracionHasta: s.duracionMin },
+          ),
+          profesionales: [
+            { id: 10, nombre: "Carla", servicioIds: [1, 2, 3] },
+            {
+              id: 11,
+              nombre: "Marcos",
+              servicioIds: [1],
+              servicios: [{ servicioId: 1, precio: 100, duracionMin: 60 }],
+            },
+          ],
+        },
+      ],
+    });
+    await abrir("/r/bellavista/reservar");
+    const corte = screen.getByRole("checkbox", { name: /Corte dama/ }).closest("label")!;
+    expect(corte).toHaveTextContent("desde Bs 80");
+    fireEvent.click(screen.getByRole("checkbox", { name: /Corte dama/ }));
+    expect(screen.getByText(/desde Bs 80 · Se paga en el local/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Siguiente" }));
+    await act(async () => {});
+    fireEvent.click(within(screen.getByRole("region", { name: "Con quién" })).getByRole("button", { name: /Marcos/ }));
+    await act(async () => {});
+    expect(screen.getByText(/Corte dama · 1 h · Bs 100/)).toBeInTheDocument();
+  });
+
   it("el Atrás vuelve a los servicios sin perder la selección y los pasos son 1 y 2 de 2 (B16)", async () => {
     await abrir("/r/bellavista/reservar");
     expect(screen.getByRole("navigation", { name: "Paso 1 de 2" })).toBeInTheDocument();

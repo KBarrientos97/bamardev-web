@@ -22,6 +22,9 @@ export default function MiProduccion() {
   const filas = resumen.datos?.profesionales ?? [];
   const suma = (k: "produccion" | "comision" | "porLiquidar" | "adelantosPendientes" | "servicios") =>
     filas.reduce((s, f) => s + f[k], 0);
+  // Lo que se le va a descontar por ventas anuladas después de pagadas (QA
+  // N2-11): ya está restado en "Por liquidar"; acá se dice por qué.
+  const ajustes = filas.reduce((s, f) => s + (f.ajustesPendientes ?? 0), 0);
 
   return (
     <section aria-label="Mi producción" className="card space-y-3 p-4">
@@ -32,7 +35,13 @@ export default function MiProduccion() {
         <dl className="grid grid-cols-2 gap-3">
           <Dato etiqueta="Producción" valor={fmtMoney(suma("produccion"))} pie={`${suma("servicios")} servicios`} />
           <Dato etiqueta="Mi comisión" valor={fmtMoney(suma("comision"))} destacado />
-          <Dato etiqueta="Por liquidar" valor={fmtMoney(suma("porLiquidar"))} />
+          <Dato
+            etiqueta="Por liquidar"
+            valor={fmtMoney(suma("porLiquidar"))}
+            pie={
+              ajustes < 0 ? `Incluye ${fmtMoney(ajustes)} de ventas anuladas ya pagadas` : undefined
+            }
+          />
           <Dato etiqueta="Adelantos a descontar" valor={fmtMoney(suma("adelantosPendientes"))} />
         </dl>
       )}

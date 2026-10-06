@@ -182,7 +182,33 @@ export default function PantallaRecibo({
                 <dd>{fmtMoney(venta.cambio)}</dd>
               </div>
             )}
+            {/* Belleza: lo que se pagó con cada vale y lo que le queda (QA
+                N2-12). Sólo si la venta usó vales: el ticket de siempre no
+                cambia. */}
+            {(venta.giftCards ?? []).map((g) => (
+              <div key={g.codigo} className="text-texto-2">
+                <div className="flex justify-between">
+                  <dt>Vale {g.codigo}</dt>
+                  <dd className="font-bold text-texto">{fmtMoney(g.usado)}</dd>
+                </div>
+                <p className="text-right text-xs">Le quedan {fmtMoney(g.saldo)}</p>
+              </div>
+            ))}
           </dl>
+
+          {(venta.propinas ?? []).length > 0 && (
+            <dl className="mt-2 space-y-1 border-t border-dashed border-borde pt-2 text-sm" aria-label="Propinas">
+              <p className="text-xs font-bold tracking-wide text-texto">PROPINAS</p>
+              {(venta.propinas ?? []).map((x, i) => (
+                <div key={i} className="flex justify-between text-texto-2">
+                  <dt>
+                    Para {x.recurso} ({x.formaPago})
+                  </dt>
+                  <dd className="font-bold text-texto">{fmtMoney(x.monto)}</dd>
+                </div>
+              ))}
+            </dl>
+          )}
 
           {venta.credito && (
             <div className="mt-2 border-t border-dashed border-borde pt-2 text-sm">

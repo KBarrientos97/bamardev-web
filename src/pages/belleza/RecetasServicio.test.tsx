@@ -118,4 +118,34 @@ describe("Insumos por servicio", () => {
     expect(fila).toHaveTextContent("103,50");
     expect(fila).toHaveTextContent("69%");
   });
+
+  it("QA S2SEG-04: sin costos.ver el backend no manda costos y se ve una raya", async () => {
+    vi.mocked(apiExtras.rentabilidadServicios).mockResolvedValue({
+      desde: "2026-09-07",
+      hasta: "2026-10-06",
+      ingreso: 150,
+      costoInsumos: null,
+      margen: null,
+      servicios: [
+        {
+          servicioId: 100,
+          servicio: "Tinte raíz",
+          cantidad: 1,
+          ingreso: 150,
+          costoInsumos: null,
+          costoPorServicio: null,
+          margen: null,
+          margenPct: null,
+        },
+      ],
+    });
+    await montar();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("tab", { name: "Costo y margen" }));
+    });
+    const fila = screen.getByRole("row", { name: /Tinte raíz/ });
+    expect(fila).toHaveTextContent("150,00");
+    expect(fila).toHaveTextContent("—");
+    expect(fila).not.toHaveTextContent("0,00 c/u");
+  });
 });

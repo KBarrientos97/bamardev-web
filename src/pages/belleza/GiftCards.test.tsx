@@ -163,4 +163,31 @@ describe("Gift cards", () => {
     expect(apiExtras.anularVale).toHaveBeenCalledWith(5, expect.any(String));
     expect(screen.getByText(/Devolvé Bs.60,00 en efectivo/)).toBeInTheDocument();
   });
+
+  it("QA N2-18: un vale cuyo uso se devolvió (venta anulada) se puede anular", async () => {
+    sesion.rol = "SUPERVISOR";
+    sesion.permisos = ["vales.vender", "vales.anular"];
+    const base = detalle().movimientos;
+    vi.mocked(apiExtras.vale).mockResolvedValue(
+      detalle({
+        saldo: 200,
+        movimientos: [
+          ...base,
+          {
+            id: 3,
+            tipo: "DEVOLUCION",
+            monto: 120,
+            saldoDespues: 200,
+            fecha: "2026-10-06T12:00:00Z",
+            venta: { id: 9, comprobante: "V-000009", estado: "ANULADO" },
+          },
+        ],
+      }),
+    );
+    await montar();
+    await act(async () => {
+      fireEvent.click(screen.getByText("K7QM-2XPA"));
+    });
+    expect(screen.getByText("Anular vale")).toBeInTheDocument();
+  });
 });

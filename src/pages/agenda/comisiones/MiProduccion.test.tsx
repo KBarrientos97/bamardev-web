@@ -116,6 +116,18 @@ describe("A10 · mi producción", () => {
     expect(apiComisiones.resumen).toHaveBeenLastCalledWith({ desde: "2026-10-01", hasta: "2026-10-31" });
   });
 
+  it("QA N2-11: por liquidar dice cuánto se descuenta por ventas anuladas ya pagadas", async () => {
+    const base = await apiComisiones.resumen({ desde: "", hasta: "" });
+    vi.mocked(apiComisiones.resumen).mockResolvedValue({
+      ...base,
+      profesionales: [{ ...base.profesionales[0], porLiquidar: 2.8, ajustesPendientes: -24 }],
+    });
+    await montar();
+    const tarjeta = screen.getByRole("region", { name: "Mi producción" });
+    expect(tarjeta).toHaveTextContent("2,80");
+    expect(tarjeta).toHaveTextContent(/Incluye Bs.-24,00 de ventas anuladas ya pagadas/);
+  });
+
   it("sin comisiones (o sin permiso) no aparece ni se pide", async () => {
     auth.ve = false;
     await montar();

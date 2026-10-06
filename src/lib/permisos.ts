@@ -419,9 +419,10 @@ export interface ContextoPermisos {
  * cambio. `alcance` distingue la agenda de recepción (GENERAL) de "Mi agenda"
  * del profesional (PROPIO).
  */
-const PERMISO_SECCION: Partial<
-  Record<Seccion, { permiso: string; alcance?: "GENERAL" | "PROPIO" }>
-> = {
+/** Con `tambien`, alcanza con cualquiera de esos permisos (el primero manda el alcance). */
+type ReqPermiso = { permiso: string; alcance?: "GENERAL" | "PROPIO"; tambien?: string[] };
+
+const PERMISO_SECCION: Partial<Record<Seccion, ReqPermiso>> = {
   agenda: { permiso: "agenda.ver", alcance: "GENERAL" },
   hoy: { permiso: "agenda.ver", alcance: "GENERAL" },
   mi_agenda: { permiso: "agenda.ver", alcance: "PROPIO" },
@@ -445,7 +446,11 @@ const PERMISO_SECCION: Partial<
   retencion: { permiso: "cliente.marketing" },
   // Belleza fase 4: lo mismo que pide cada controlador.
   gift_cards: { permiso: "vales.vender" },
-  propinas: { permiso: "propinas.ver" },
+  // QA N2-01: la recepción que el dueño habilita a entregar propinas
+  // (`propinas.pagar`, ajuste apagado del CAJERO) entra a la pantalla aunque
+  // no tenga "ver propinas": tiene que ver qué entrega. El backend pide lo
+  // mismo en GET /propinas.
+  propinas: { permiso: "propinas.ver", tambien: ["propinas.pagar"] },
   recetas_servicio: { permiso: "consumo.recetas" },
 };
 
@@ -474,10 +479,11 @@ export function veSoloSuAgenda(usuario: (ConPermisos & { rol?: Rol }) | null | u
   return soloLoSuyo(usuario, "agenda.ver", false) && !usuario.permisos.includes("agenda.gestionar");
 }
 
-function cumplePermiso(ctx: ContextoPermisos, req: { permiso: string; alcance?: "GENERAL" | "PROPIO" }) {
+function cumplePermiso(ctx: ContextoPermisos, req: ReqPermiso) {
   const permisos = ctx.permisos ?? [];
-  if (!permisos.includes(req.permiso)) return false;
-  const propio = (ctx.permisosPropios ?? []).includes(req.permiso);
+  const codigo = [req.permiso, ...(req.tambien ?? [])].find((c) => permisos.includes(c));
+  if (!codigo) return false;
+  const propio = (ctx.permisosPropios ?? []).includes(codigo);
   if (req.alcance === "GENERAL") return !propio;
   if (req.alcance === "PROPIO") return propio;
   return true;

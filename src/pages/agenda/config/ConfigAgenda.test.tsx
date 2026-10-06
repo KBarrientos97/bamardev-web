@@ -8,9 +8,13 @@ import type { Recurso, Servicio, TramoHorario } from "../../../lib/agenda/tiposC
  * todavía no existe (se programa en paralelo contra el contrato de §10.1).
  */
 
+const sesion = vi.hoisted(() => ({
+  usuario: { id: 1, rol: "ADMIN", sucursalId: null } as { id: number; rol: string; sucursalId: null; permisos?: string[] },
+}));
+
 vi.mock("../../../store/AuthContext", () => ({
   useAuth: () => ({
-    usuario: { id: 1, rol: "ADMIN", sucursalId: null },
+    usuario: sesion.usuario,
     negocio: {
       id: 15,
       nombre: "Barbería de prueba",
@@ -199,6 +203,24 @@ describe("pestañas", () => {
     });
     expect(apiConfigAgenda.actualizarRecurso).toHaveBeenCalled();
     expect(apiConfigAgenda.guardarServiciosRecurso).not.toHaveBeenCalled();
+  });
+
+  it("QA N2-04: quien no liquida comisiones no ve el % ni lo manda (no lo borra)", async () => {
+    sesion.usuario = { id: 1, rol: "SUPERVISOR", sucursalId: null, permisos: ["agenda.configurar", "comisiones.ver"] };
+    try {
+      await montar("recursos");
+      vi.mocked(apiConfigAgenda.actualizarRecurso).mockResolvedValue(JUAN);
+      fireEvent.click(screen.getByRole("button", { name: "Editar Juan" }));
+      await act(async () => {});
+      const dialogo = screen.getByRole("dialog", { name: "Editar Juan" });
+      expect(within(dialogo).queryByText("Comisión (%)")).toBeNull();
+      await act(async () => {
+        fireEvent.click(within(dialogo).getByRole("button", { name: "Guardar" }));
+      });
+      expect(vi.mocked(apiConfigAgenda.actualizarRecurso).mock.calls[0][1]).not.toHaveProperty("comisionPct");
+    } finally {
+      sesion.usuario = { id: 1, rol: "ADMIN", sucursalId: null };
+    }
   });
 
   it("Profesionales: no deja guardar sin sucursal", async () => {

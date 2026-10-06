@@ -947,6 +947,12 @@ export interface Venta {
   descuentoTotal?: number;
   descuentos?: DescuentoRecibo[];
   clienteId?: number;
+  /**
+   * Belleza (fase 4): los vales con que se pagó (cuánto se usó y cuánto le
+   * queda) y las propinas por profesional. Ausentes en cualquier otra venta.
+   */
+  giftCards?: { codigo: string; usado: number; saldo: number }[];
+  propinas?: { recursoId: number; recurso: string; monto: number; formaPago: string }[];
 }
 
 export interface DetalleVentaInput {

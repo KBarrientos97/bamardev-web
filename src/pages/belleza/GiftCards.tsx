@@ -29,6 +29,19 @@ import { cubre, parsearMontoO, vuelto } from "../../lib/dinero";
 import { fmtFecha, fmtFechaHora, fmtMoney } from "../../lib/format";
 import { useApi } from "../../lib/useApi";
 
+/**
+ * ¿El vale se usó de verdad? Neto por venta: un uso cuya venta se anuló (y le
+ * devolvió el saldo) no cuenta, y ese vale se puede anular (QA N2-18).
+ */
+function usadoDeVerdad(movimientos: { tipo: string; monto: number; venta: { id: number } | null }[]) {
+  const neto = new Map<number, number>();
+  for (const m of movimientos) {
+    if ((m.tipo !== "USO" && m.tipo !== "DEVOLUCION") || !m.venta) continue;
+    neto.set(m.venta.id, (neto.get(m.venta.id) ?? 0) + m.monto);
+  }
+  return [...neto.values()].some((n) => n < -0.004);
+}
+
 const mensaje = (e: unknown, porDefecto = "No se pudo completar") =>
   e instanceof Error ? e.message : porDefecto;
 
@@ -453,7 +466,7 @@ function DetalleVale({
   const [error, setError] = useState("");
   const [aviso, setAviso] = useAviso();
   const v = detalle.datos;
-  const sinUsar = !!v && v.estado !== "ANULADA" && !v.movimientos.some((m) => m.tipo === "USO");
+  const sinUsar = !!v && v.estado !== "ANULADA" && !usadoDeVerdad(v.movimientos);
 
   const anular = async () => {
     if (!v) return;
@@ -465,7 +478,7 @@ function DetalleVale({
       onCambio();
       setAviso(
         r.devolucion.desdeCaja
-          ? `Devolvé ${fmtMoney(r.devolucion.monto)} en efectivo: salió de tu caja.`
+          ? `Devolvé ${fmtMoney(r.devolucion.monto)} en efectivo: salió de la caja${r.devolucion.cajaId ? ` #${r.devolucion.cajaId}` : ""}.`
           : `Devolvé ${fmtMoney(r.devolucion.monto)} por ${r.devolucion.formaPago ?? "el mismo medio"}.`,
       );
     } catch (e) {

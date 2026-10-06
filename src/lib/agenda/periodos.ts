@@ -9,11 +9,25 @@ import type { Periodo } from "./tiposComisiones";
 
 export type TipoPeriodo = Exclude<Periodo, "OTRO">;
 
-/** Un período elegido en pantalla. */
+/** Un período elegido en pantalla: uno de los de siempre o un rango libre ("OTRO"). */
 export interface PeriodoElegido {
-  tipo: TipoPeriodo;
+  tipo: Periodo;
   desde: string;
   hasta: string;
+}
+
+/**
+ * El último período de ese tipo que ya terminó: el anterior al de hoy. Es lo
+ * que se liquida por defecto (QA N2-08: la pantalla abría en la semana en
+ * curso y dejaba cerrar días que todavía no pasaron).
+ */
+export function periodoCerrado(tipo: TipoPeriodo, hoy: string): PeriodoElegido {
+  return { tipo, ...correrPeriodo(tipo, periodoDe(tipo, hoy), -1) };
+}
+
+/** ¿El período termina después de hoy? (no se puede liquidar entero todavía) */
+export function terminaDespues(p: { hasta: string }, hoy: string): boolean {
+  return p.hasta > hoy;
 }
 
 /** El período de hoy de un tipo. */

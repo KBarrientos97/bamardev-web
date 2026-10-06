@@ -18,8 +18,13 @@ export interface ProduccionProfesional {
   produccionProductos: number;
   servicios: number;
   comision: number;
-  /** Lo que todavía no entró en ninguna liquidación. */
+  /**
+   * Lo que todavía no entró en ninguna liquidación, ya con el descuento de
+   * las comisiones pagadas de ventas que se anularon después.
+   */
   porLiquidar: number;
+  /** Negativo o 0: comisiones ya pagadas de ventas anuladas (QA N2-11). */
+  ajustesPendientes?: number;
   adelantosPendientes: number;
 }
 
@@ -41,7 +46,11 @@ export interface LineaComision {
   descripcion: string;
   esServicio: boolean;
   cantidad: number;
+  /** Lo cobrado (bruto − descuento): la base de la comisión (QA N2-02). */
   subtotal: number;
+  /** El bruto y su descuento, para explicar el importe (backend nuevo). */
+  bruto?: number;
+  descuento?: number;
   comisionPct: number | null;
   comision: number;
   /** false = se cobró sin % y se calcula con el vigente. */
@@ -83,6 +92,8 @@ export interface PreviaLiquidacion {
   lineasAjuste: LineaComision[];
   adelantosPendientes: AdelantoPendiente[];
   atrasadas: number;
+  /** Cobros sin liquidar de días anteriores que no entran en este período. */
+  sinLiquidarAntes?: number;
 }
 
 export interface Liquidacion {

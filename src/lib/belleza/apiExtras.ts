@@ -92,6 +92,26 @@ export interface FilaPropinas {
   cantidad: number;
   /** Lo que hoy se le debe (de todo el tiempo, no sólo del período). */
   pendiente: number;
+  /**
+   * Lo pendiente según cómo entró: el efectivo está en un cajón; lo de QR o
+   * tarjeta no, y entregarlo en efectivo es una decisión aparte (QA S2SEG-06).
+   * Opcionales: un backend anterior no los manda.
+   */
+  pendienteEfectivo?: number;
+  pendienteOtras?: number;
+}
+
+/** Lo que responde "Entregar". */
+export interface PagoPropinas {
+  recursoId: number;
+  recurso: string;
+  cantidad: number;
+  total: number;
+  desdeCaja: boolean;
+  /** De qué caja salió cada egreso (la de origen, o la tuya si ya se cerró). */
+  egresos?: { cajaId: number; monto: number }[];
+  /** Lo de QR o tarjeta que quedó pendiente. */
+  pendienteOtras?: number;
 }
 
 export interface ReportePropinas {
@@ -114,14 +134,16 @@ export interface ReportePropinas {
 }
 
 // ── Consumo de insumos ──────────────────────────────────────────────────────
+// Los costos vienen en null sin `costos.ver` (QA S2SEG-04): el profesional y
+// la recepción corrigen cantidades, no miran a cuánto compra el negocio.
 
 export interface ItemReceta {
   insumoId: number;
   insumo: string;
   unidad: string | null;
   cantidad: number;
-  costoUnitario: number;
-  costo: number;
+  costoUnitario: number | null;
+  costo: number | null;
 }
 
 export interface RecetaServicio {
@@ -130,13 +152,13 @@ export interface RecetaServicio {
   precio: number;
   habilitado: boolean;
   items: ItemReceta[];
-  costo: number;
+  costo: number | null;
 }
 
 export interface InsumoElegible {
   id: number;
   nombre: string;
-  costo: number;
+  costo: number | null;
   esInsumo: boolean;
   unidad: string | null;
 }
@@ -154,8 +176,8 @@ export interface ConsumoCita {
   recurso: string | null;
   cantidadReceta: number;
   cantidad: number;
-  costoUnitario: number;
-  costo: number;
+  costoUnitario: number | null;
+  costo: number | null;
   ajustadoEn: string | null;
 }
 
@@ -169,16 +191,16 @@ export interface RentabilidadServicios {
   desde: string;
   hasta: string;
   ingreso: number;
-  costoInsumos: number;
-  margen: number;
+  costoInsumos: number | null;
+  margen: number | null;
   servicios: {
     servicioId: number;
     servicio: string;
     cantidad: number;
     ingreso: number;
-    costoInsumos: number;
-    costoPorServicio: number;
-    margen: number;
+    costoInsumos: number | null;
+    costoPorServicio: number | null;
+    margen: number | null;
     margenPct: number | null;
   }[];
 }
@@ -246,7 +268,11 @@ export const apiExtras = {
   emitirVale: (input: EmitirValeInput) =>
     request<Vale & { cambio: number }>("/gift-cards", { method: "POST", ...json(input) }),
   anularVale: (id: number, motivo?: string) =>
-    request<ValeDetalle & { devolucion: { monto: number; desdeCaja: boolean; formaPago: string | null } }>(
+    request<
+      ValeDetalle & {
+        devolucion: { monto: number; desdeCaja: boolean; cajaId?: number | null; formaPago: string | null };
+      }
+    >(
       `/gift-cards/${id}/anular`,
       { method: "POST", ...json(motivo ? { motivo } : {}) },
     ),
@@ -254,11 +280,11 @@ export const apiExtras = {
   // Propinas
   propinas: (p: { desde?: string; hasta?: string; recursoId?: number } = {}) =>
     request<ReportePropinas>(`/propinas${qs(p)}`),
-  pagarPropinas: (recursoId: number, desdeCaja = true) =>
-    request<{ recursoId: number; recurso: string; cantidad: number; total: number; desdeCaja: boolean }>(
-      "/propinas/pagar",
-      { method: "POST", ...json({ recursoId, desdeCaja }) },
-    ),
+  pagarPropinas: (recursoId: number, desdeCaja = true, incluirOtras = false) =>
+    request<PagoPropinas>("/propinas/pagar", {
+      method: "POST",
+      ...json({ recursoId, desdeCaja, incluirOtras }),
+    }),
 
   // Consumo de insumos
   recetas: () => request<RecetaServicio[]>("/consumo-servicio/recetas"),

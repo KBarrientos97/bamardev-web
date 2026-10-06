@@ -11,7 +11,14 @@ import {
   useAviso,
 } from "../../../components/ui";
 import { apiComisiones } from "../../../lib/agenda/apiComisiones";
-import { textoPeriodo, type PeriodoElegido } from "../../../lib/agenda/periodos";
+import { fechaNegocio } from "../../../lib/agenda/horaAgenda";
+import {
+  periodoCerrado,
+  terminaDespues,
+  textoPeriodo,
+  type PeriodoElegido,
+  type TipoPeriodo,
+} from "../../../lib/agenda/periodos";
 import type { LiquidarInput } from "../../../lib/agenda/tiposComisiones";
 import { fmtFecha, fmtMoney } from "../../../lib/format";
 import { useApi } from "../../../lib/useApi";
@@ -33,13 +40,19 @@ const YA_LIQUIDADO = /se pisa con una liquidación ya cerrada/;
  */
 export default function TabLiquidar({
   periodo,
+  onPeriodo,
   recursoId,
   onRecurso,
 }: {
   periodo: PeriodoElegido;
+  onPeriodo?: (p: PeriodoElegido) => void;
   recursoId: number | null;
   onRecurso: (id: number | null) => void;
 }) {
+  const hoy = fechaNegocio();
+  // Un período que termina después de hoy no se liquida (QA N2-08): ni se
+  // pide la previa, se ofrece hasta hoy o el período anterior.
+  const futuro = terminaDespues(periodo, hoy);
   const { negocio } = useAuth();
   const usaGastos = (negocio?.features ?? []).includes("gastos");
   const config = useApi(() => apiComisiones.config(), []);
@@ -48,10 +61,10 @@ export default function TabLiquidar({
 
   const previa = useApi(
     () =>
-      elegido == null
+      elegido == null || futuro
         ? Promise.resolve(null)
         : apiComisiones.previa({ recursoId: elegido, desde: periodo.desde, hasta: periodo.hasta }),
-    [elegido, periodo.desde, periodo.hasta],
+    [elegido, periodo.desde, periodo.hasta, futuro],
   );
 
   const [nota, setNota] = useState("");
@@ -116,12 +129,36 @@ export default function TabLiquidar({
       </div>
       <ErrorMsg onReintentar={config.recargar}>{config.error}</ErrorMsg>
 
-      {elegido != null && (
+      {elegido != null && futuro && (
+        <div className="card space-y-3 p-4 text-sm text-texto-2" role="status">
+          <p>
+            Este período termina el {fmtFecha(periodo.hasta)} y todavía no pasó: no se liquidan días que no
+            terminaron.
+          </p>
+          {onPeriodo && (
+            <div className="flex flex-wrap gap-2">
+              {periodo.desde <= hoy && (
+                <Boton variante="soft" onClick={() => onPeriodo({ tipo: "OTRO", desde: periodo.desde, hasta: hoy })}>
+                  Liquidar hasta hoy
+                </Boton>
+              )}
+              {periodo.tipo !== "OTRO" && (
+                <Boton variante="soft" onClick={() => onPeriodo(periodoCerrado(periodo.tipo as TipoPeriodo, hoy))}>
+                  Ir al período anterior
+                </Boton>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {elegido != null && !futuro && (
         <>
           {previa.error && YA_LIQUIDADO.test(previa.error) ? (
             // No es una falla: ese período ya se pagó. Se dice como dato.
             <p className="card p-4 text-sm text-texto-2">
-              {previa.error} Elegí otro período o mirala en Liquidaciones.
+              {previa.error} Elegí otro período (con "Otro" podés liquidar sólo los días que faltan) o mirala
+              en Liquidaciones.
             </p>
           ) : previa.error ? (
             <ErrorMsg onReintentar={previa.recargar}>{previa.error}</ErrorMsg>
@@ -139,13 +176,20 @@ export default function TabLiquidar({
                     períodos ya liquidados.
                   </p>
                 )}
+                {(p.sinLiquidarAntes ?? 0) > 0 && (
+                  <p className="mt-2 rounded-xl bg-warning-bg px-3 py-2 text-[13px] text-warning-text">
+                    Hay {p.sinLiquidarAntes} {p.sinLiquidarAntes === 1 ? "cobro" : "cobros"} de días anteriores sin
+                    liquidar que no entran en este período: elegí un rango que los incluya para no olvidarlos.
+                  </p>
+                )}
               </header>
 
               <dl className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                 <Renglon etiqueta="Producción" valor={p.produccion} />
                 <Renglon etiqueta="Comisión" valor={p.comision} />
                 {p.ajustes !== 0 && <Renglon etiqueta="Ventas anuladas ya pagadas" valor={p.ajustes} />}
-                <Renglon etiqueta="Adelantos" valor={-p.adelantos} />
+                {/* Sin adelantos, 0 (QA N2-10: "-0,00"). */}
+                <Renglon etiqueta="Adelantos" valor={p.adelantos ? -p.adelantos : 0} />
                 {p.saldoAnterior !== 0 && <Renglon etiqueta="Saldo de la anterior" valor={p.saldoAnterior} />}
                 <Renglon etiqueta="A pagar" valor={p.neto} destacado />
               </dl>

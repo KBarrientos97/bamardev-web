@@ -15,6 +15,8 @@ import { api } from "../../../lib/api";
 import { apiConfigAgenda } from "../../../lib/agenda/apiConfigAgenda";
 import type { Recurso, RecursoInput, Servicio, TipoRecurso } from "../../../lib/agenda/tiposConfigAgenda";
 import { useApi } from "../../../lib/useApi";
+import { tienePermiso } from "../../../lib/permisos";
+import { useAuth } from "../../../store/AuthContext";
 import { Casilla, PuntoColor, SelectorVarios } from "./comun";
 import { mensajeDe, useNombreProfesional, type Sucursal } from "./utilConfig";
 import { apiSpa } from "../../../lib/agenda/apiSpa";
@@ -175,6 +177,11 @@ function FormRecurso({
 }) {
   const nombres = useNombreProfesional();
   const usuarios = useApi(() => api.getUsuarios(), []);
+  // El % de comisión es plata del profesional: lo cambia quien liquida (QA
+  // N2-04, el backend lo exige). Quien no puede no ve el campo ni lo manda:
+  // mandar el que no ve (null) se lo borraría.
+  const { usuario } = useAuth();
+  const cambiaComision = tienePermiso(usuario, "comisiones.liquidar", usuario?.rol === "ADMIN");
 
   const [tipo, setTipo] = useState<TipoRecurso>(recurso?.tipo ?? tipoInicial);
   const [nombre, setNombre] = useState(recurso?.nombre ?? "");
@@ -265,7 +272,7 @@ function FormRecurso({
       nombrePublico: nombrePublico.trim() || null,
       color,
       telefono: telefono.trim() || null,
-      comisionPct: esProfesional ? com : null,
+      ...(cambiaComision ? { comisionPct: esProfesional ? com : null } : {}),
       usuarioId: esProfesional && usuarioId ? Number(usuarioId) : null,
       publicadoOnline: publicado,
       activo,
@@ -384,9 +391,11 @@ function FormRecurso({
             <Campo label="Teléfono" hint="Opcional, para el equipo.">
               <Input type="tel" value={telefono} onChange={(e) => setTelefono(e.target.value)} />
             </Campo>
-            <Campo label="Comisión (%)" hint="Sobre sus servicios. El % por servicio y de productos, en Comisiones.">
-              <Input type="number" value={comision} onChange={(e) => setComision(e.target.value)} placeholder="Opcional" />
-            </Campo>
+            {cambiaComision && (
+              <Campo label="Comisión (%)" hint="Sobre sus servicios. El % por servicio y de productos, en Comisiones.">
+                <Input type="number" value={comision} onChange={(e) => setComision(e.target.value)} placeholder="Opcional" />
+              </Campo>
+            )}
             <Campo label="Orden en la agenda" hint="Las columnas van de menor a mayor.">
               <Input type="number" inputMode="numeric" value={orden} onChange={(e) => setOrden(e.target.value)} />
             </Campo>

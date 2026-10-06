@@ -175,7 +175,9 @@ describe("comisiones", () => {
     await montar();
     fireEvent.click(screen.getByRole("button", { name: "Liquidar a Beto" }));
     await act(async () => {});
-    expect(apiComisiones.previa).toHaveBeenCalledWith({ recursoId: 7, desde: "2026-10-19", hasta: "2026-10-25" });
+    // Hoy es miércoles 21: la semana en curso no terminó, así que se liquida
+    // la anterior (QA N2-08).
+    expect(apiComisiones.previa).toHaveBeenCalledWith({ recursoId: 7, desde: "2026-10-12", hasta: "2026-10-18" });
     const seccion = screen.getByRole("region", { name: "Liquidación a cerrar" });
     expect(within(seccion).getByText("A pagar").nextSibling).toHaveTextContent("9,00");
     expect(within(seccion).getByText(/pasaje/)).toBeInTheDocument();
@@ -188,14 +190,43 @@ describe("comisiones", () => {
     });
     expect(apiComisiones.liquidar).toHaveBeenCalledWith({
       recursoId: 7,
-      desde: "2026-10-19",
-      hasta: "2026-10-25",
+      desde: "2026-10-12",
+      hasta: "2026-10-18",
       periodo: "SEMANA",
       nota: null,
       registrarGasto: true,
       metodoPago: "EFECTIVO",
     });
     expect(screen.getByText(/Liquidación de Beto cerrada/)).toHaveTextContent("(registrada en Gastos)");
+  });
+
+  it("QA N2-08: un período que no terminó no se liquida; se ofrece hasta hoy o un rango libre", async () => {
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Liquidar a Beto" }));
+    await act(async () => {});
+    // Volver a la semana en curso con la flecha.
+    fireEvent.click(screen.getByRole("button", { name: "Período siguiente" }));
+    await act(async () => {});
+    expect(screen.getByText(/todavía no pasó/)).toBeInTheDocument();
+    expect(apiComisiones.previa).not.toHaveBeenCalledWith(expect.objectContaining({ hasta: "2026-10-25" }));
+    vi.mocked(apiComisiones.previa).mockClear();
+    fireEvent.click(screen.getByRole("button", { name: "Liquidar hasta hoy" }));
+    await act(async () => {});
+    expect(apiComisiones.previa).toHaveBeenCalledWith({ recursoId: 7, desde: "2026-10-19", hasta: "2026-10-21" });
+    // El rango libre: "Otro" con sus fechas.
+    expect(screen.getByRole("button", { name: "Otro" })).toHaveAttribute("aria-pressed", "true");
+    fireEvent.change(screen.getByLabelText("Desde"), { target: { value: "2026-10-20" } });
+    await act(async () => {});
+    expect(apiComisiones.previa).toHaveBeenLastCalledWith({ recursoId: 7, desde: "2026-10-20", hasta: "2026-10-21" });
+  });
+
+  it("QA N2-10: sin adelantos dice 0, no -0", async () => {
+    vi.mocked(apiComisiones.previa).mockResolvedValue({ ...PREVIA, adelantos: 0, adelantosPendientes: [] });
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Liquidar a Beto" }));
+    await act(async () => {});
+    const seccion = screen.getByRole("region", { name: "Liquidación a cerrar" });
+    expect(within(seccion).getByText("Adelantos").nextSibling!.textContent).not.toContain("-");
   });
 
   it("un período ya liquidado muestra el motivo del backend", async () => {
