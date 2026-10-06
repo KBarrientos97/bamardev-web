@@ -4,6 +4,7 @@ import { Select } from "../../../components/ui";
 import {
   llevaProfesional,
   profesionalDe,
+  profesionalDeTodos,
   type AsignacionProfesional,
   type ProfesionalPos,
 } from "../../../lib/agenda/ventaDirecta";
@@ -36,6 +37,11 @@ export function SelectorProfesional({
 
   const valor = (id: number | null) => (id == null ? "" : String(id));
   const leer = (v: string) => (v === "" ? null : Number(v));
+  // QA PER-07: si "Por servicio" los separó, arriba dice "Varios".
+  const deTodos = profesionalDeTodos(
+    servicios.map((l) => l.producto.id),
+    asignacion,
+  );
   const opciones = (
     <>
       <option value="">Sin asignar</option>
@@ -58,11 +64,17 @@ export function SelectorProfesional({
           id="profesional-venta"
           aria-label="Profesional de la venta"
           className="min-w-0 flex-1 sm:max-w-xs"
-          value={valor(asignacion.general)}
-          // Cambiar el de toda la venta no pisa lo que se cambió a mano en un
-          // servicio: eso fue una decisión explícita.
-          onChange={(e) => onCambiar({ ...asignacion, general: leer(e.target.value) })}
+          value={deTodos === "VARIOS" ? "VARIOS" : valor(deTodos)}
+          // Elegir arriba es "uno para todo": vale para todos los servicios,
+          // también los que se habían cambiado a mano. Si no, con "Varios"
+          // elegir a alguien no cambiaba lo que el selector mostraba.
+          onChange={(e) => onCambiar({ general: leer(e.target.value), porServicio: {} })}
         >
+          {deTodos === "VARIOS" && (
+            <option value="VARIOS" disabled>
+              Varios
+            </option>
+          )}
           {opciones}
         </Select>
         {servicios.length > 1 && (

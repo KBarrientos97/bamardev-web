@@ -38,11 +38,12 @@ export interface Descuentos {
 const ESPERA_MS = 350;
 
 /** Una línea por artículo, como la manda la cotización. */
-function clave(detalles: DetalleVentaInput[], cupones: string[], clienteId: number | null) {
+function clave(detalles: DetalleVentaInput[], cupones: string[], clienteId: number | null, citaId: number | null) {
   return JSON.stringify([
     detalles.map((d) => [d.productoId, d.cantidad, d.recursoId ?? null]),
     cupones,
     clienteId,
+    citaId,
   ]);
 }
 
@@ -51,8 +52,11 @@ export function useDescuentos(opc: {
   conCupones: boolean;
   detalles: DetalleVentaInput[];
   almacenId?: number | null;
+  /** La cita que se cobra, si es eso: la cotización valida el profesional como la venta. */
+  citaId?: number | null;
 }): Descuentos {
   const { activo, conCupones, detalles, almacenId } = opc;
+  const citaId = opc.citaId ?? null;
   const [cupones, setCupones] = useState<string[]>([]);
   const [clienteId, setClienteId] = useState<number | null>(null);
   const [cotizacion, setCotizacion] = useState<Cotizacion | null>(null);
@@ -62,7 +66,10 @@ export function useDescuentos(opc: {
   const [vuelta, setVuelta] = useState(0);
   const pedido = useRef(0);
 
-  const actual = useMemo(() => clave(detalles, cupones, clienteId), [detalles, cupones, clienteId]);
+  const actual = useMemo(
+    () => clave(detalles, cupones, clienteId, citaId),
+    [detalles, cupones, clienteId, citaId],
+  );
 
   useEffect(() => {
     if (!activo) return;
@@ -87,6 +94,7 @@ export function useDescuentos(opc: {
           ...(almacenId != null ? { almacenId } : {}),
           ...(cupones.length ? { cupones } : {}),
           ...(clienteId != null ? { clienteId } : {}),
+          ...(citaId != null ? { citaId } : {}),
         })
         .then((c) => {
           if (mio !== pedido.current) return;

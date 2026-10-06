@@ -18,6 +18,7 @@ import {
 } from "../../lib/agenda/cobroCita";
 import type { CarritoCita, Cita } from "../../lib/agenda/tiposAgenda";
 import type { PropinaInput } from "../../lib/belleza/apiExtras";
+import { cobraPropinas } from "../../lib/belleza/capacidades";
 import { useConsultaPeriodica } from "../../lib/agenda/useConsultaPeriodica";
 import CitasPorCobrar from "./CitasPorCobrar";
 import { fmtHora, fmtMoney } from "../../lib/format";
@@ -29,6 +30,7 @@ import type {
   Caja,
   CreditoInput,
   DetalleVentaInput,
+  FormaPago,
   PagoInput,
   TipoPedido,
   Venta,
@@ -249,6 +251,8 @@ export default function Pos() {
   );
 
   const [datosEntrega, setDatosEntrega] = useState<DatosEntrega | null>(null);
+  /** Las propinas anotadas en el cobro antes de pasar a "fiado". */
+  const [propinasCredito, setPropinasCredito] = useState<PropinaInput[]>([]);
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState("");
 
@@ -280,6 +284,9 @@ export default function Pos() {
     // cotización. Las sesiones de paquete no están en el carrito ni entran.
     detalles: detallesConProfesional(carritoVenta.aDetalles(), citaCobrando),
     almacenId: caja.datos?.caja?.almacenId ?? null,
+    // Con la cita, el profesional de una línea no se valida en firme (QA
+    // PER-12: la agenda de un spa por cabina trae la cabina como recurso).
+    citaId: citaCobrando?.citaId ?? null,
   });
   /** Lo que se cobra: el neto si hay promociones, el de siempre si no. */
   const totalCarrito = descuentos.total(carritoVenta.total);
@@ -391,6 +398,7 @@ export default function Pos() {
     setErrorCita("");
     setClientePaquete(null);
     setAsignacion(SIN_ASIGNAR);
+    setPropinasCredito([]);
   }, [carrito, setCitaCobrando, descuentos, setAsignacion]);
 
   const cobrar = useCallback(
@@ -481,7 +489,7 @@ export default function Pos() {
    * en Cuentas por cobrar.
    */
   const venderACredito = useCallback(
-    async (credito: CreditoInput, pagos: PagoInput[]) => {
+    async (credito: CreditoInput, pagos: PagoInput[], propinas: PropinaInput[] = []) => {
       setError("");
       setEnviando(true);
       try {
@@ -492,6 +500,8 @@ export default function Pos() {
           tipoPedido: "LOCAL",
           credito,
           ...(pagos.length ? { pagos } : {}),
+          // La propina se deja en el momento aunque la venta se fíe.
+          ...(propinas.length ? { propinas } : {}),
           clienteRequestId: intento.actual(),
         });
         intento.registrado();
@@ -703,17 +713,25 @@ export default function Pos() {
           }
           setPantalla(datosEntrega ? "entrega" : "venta");
         }}
-        onConfirmar={(pagos) =>
-          // Una mesa no es una cita: su cobro sigue directo.
-          mesaCobrando ? void cobrar(pagos) : confirmandoCita(() => void cobrar(pagos))
+        onConfirmar={(pagos, extra) =>
+          // Una mesa no es una cita: su cobro sigue directo (y no lleva
+          // propinas por profesional: el cobro de la mesa no las ofrece).
+          // QA PER-01: el `extra` (las propinas) se descartaba acá y ninguna
+          // propina cobrada desde la web llegaba al backend.
+          mesaCobrando ? void cobrar(pagos) : confirmandoCita(() => void cobrar(pagos, extra))
         }
         // Fiar sólo tiene sentido en una venta de mostrador: un pedido de
         // delivery ya define quién y cuándo paga, y una mesa se fía desde el
         // salón — el flujo de crédito arma la venta desde el carrito, que
-        // cobrando una mesa está vacío.
+        // cobrando una mesa está vacío. Una venta en 0 (todo con paquete) no
+        // tiene nada que fiar.
         onCredito={
-          tieneFeature(negocio?.features, "fiado") && !datosEntrega && !mesaCobrando
-            ? () => setPantalla("credito")
+          tieneFeature(negocio?.features, "fiado") && !datosEntrega && !mesaCobrando && totalCarrito > 0
+            ? (extra) => {
+                // Las propinas que se anotaron en el cobro viajan con el fiado.
+                setPropinasCredito(extra?.propinas ?? []);
+                setPantalla("credito");
+              }
             : undefined
         }
         enviando={enviando}
@@ -729,12 +747,13 @@ export default function Pos() {
       <PantallaCredito
         total={totalCarrito}
         formasPago={formasPago.datos ?? []}
+        avisoPropinas={textoPropinasCredito(propinasCredito, formasPago.datos ?? [])}
         onAtras={() => {
           setError("");
           setPantalla("cobro");
         }}
         onConfirmar={(credito, pagos) =>
-          confirmandoCita(() => void venderACredito(credito, pagos))
+          confirmandoCita(() => void venderACredito(credito, pagos, propinasCredito))
         }
         enviando={enviando}
         error={error}
@@ -913,8 +932,15 @@ export default function Pos() {
                 carritoVacio={carrito.lineas.length === 0}
                 procesando={enviando}
                 onCobrarSinPaquete={() => cargarCita(sinUsarPaquetes(citaCobrando))}
-                // Todo con sesiones: la venta va en 0 y sin pagos.
-                onCompletar={() => void cobrar([])}
+                // Todo con sesiones: la venta va en 0 y sin pagos. Con
+                // propinas pasa por el cobro (en 0) para poder dejarle una
+                // a quien atendió, que en un spa es lo usual (QA PER-10).
+                onCompletar={() =>
+                  cobraPropinas({ features: negocio?.features, rubro }) &&
+                  profesionalesDeCita(citaCobrando).length > 0
+                    ? setPantalla("cobro")
+                    : void cobrar([])
+                }
               />
             )}
             <ErrorMsg>{errorCita}</ErrorMsg>
@@ -998,6 +1024,21 @@ function profesionalesDeCita(cita: CarritoCita | null): { id: number; nombre: st
     if (l.recursoId != null && !vistos.has(l.recursoId)) vistos.set(l.recursoId, l.recurso ?? "Profesional");
   }
   return [...vistos.entries()].map(([id, nombre]) => ({ id, nombre }));
+}
+
+/**
+ * El aviso del fiado cuando en el cobro se anotaron propinas: van con la venta
+ * aunque se fíe, y la que es en efectivo se recibe aparte del adelanto.
+ */
+function textoPropinasCredito(propinas: PropinaInput[], formas: FormaPago[]): string | undefined {
+  if (!propinas.length) return undefined;
+  const efectivo = formas.find((f) => f.nombre.toLowerCase() === "efectivo")?.id;
+  const total = Math.round(propinas.reduce((s, p) => s + p.monto, 0) * 100) / 100;
+  const enMano =
+    Math.round(propinas.filter((p) => p.formaPagoId === efectivo).reduce((s, p) => s + p.monto, 0) * 100) / 100;
+  return enMano > 0
+    ? `Más la propina de ${fmtMoney(total)} (${fmtMoney(enMano)} en efectivo, que se recibe aparte del adelanto).`
+    : `Más la propina de ${fmtMoney(total)}.`;
 }
 
 /** Los detalles con el profesional de cada servicio y, si sigue cobrándola, la cita. */

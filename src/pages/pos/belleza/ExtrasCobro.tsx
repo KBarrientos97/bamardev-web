@@ -57,7 +57,9 @@ export function useExtrasCobro({
   formasPago: FormaPago[];
   permiteQr: boolean;
 }) {
-  const conVale = cobraConVale(ctx);
+  // Una venta en 0 (todo con paquete) no tiene qué pagar con un vale: al
+  // cobro se llega sólo por la propina (QA PER-10).
+  const conVale = cobraConVale(ctx) && total > 0;
   const conPropinas = cobraPropinas(ctx) && profesionales.length > 0;
 
   const [abiertoVale, setAbiertoVale] = useState(false);

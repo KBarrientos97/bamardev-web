@@ -33,6 +33,7 @@ function diasAFinDeMes(): number {
 export default function PantallaCredito({
   total,
   formasPago,
+  avisoPropinas,
   onAtras,
   onConfirmar,
   enviando,
@@ -40,6 +41,8 @@ export default function PantallaCredito({
 }: {
   total: number;
   formasPago: FormaPago[];
+  /** Belleza: las propinas anotadas en el cobro, que viajan con el fiado. */
+  avisoPropinas?: string;
   onAtras: () => void;
   onConfirmar: (credito: CreditoInput, pagos: PagoInput[]) => void;
   enviando: boolean;
@@ -190,6 +193,7 @@ export default function PantallaCredito({
               De {fmtMoney(total)}, adelanta {fmtMoney(adelantoNum)}
             </p>
           )}
+          {avisoPropinas && <p className="mt-1.5 text-[13px] opacity-90">{avisoPropinas}</p>}
         </div>
 
         {lista.length > 0 && (

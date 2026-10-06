@@ -74,6 +74,24 @@ export default function PantallaRecibo({
   // de pagos: el cliente busca "Efectivo recibido" y "Cambio entregado".
   const efectivo = pagos.find((p) => /efectivo/i.test(p.formaPago ?? ""));
   const qr = pagos.find((p) => /qr|transfer/i.test(p.formaPago ?? ""));
+
+  // Belleza (QA PER-01): el pago guarda lo recibido de la VENTA (así el
+  // backend calcula bien el vuelto), y la propina en efectivo va aparte. Pero
+  // el cliente entregó todo junto: el papel dice lo que dio, propina incluida.
+  const propinas = venta.propinas ?? [];
+  const propinaEnEfectivo =
+    Math.round(
+      propinas.filter((x) => /efectivo/i.test(x.formaPago)).reduce((s, x) => s + x.monto, 0) * 100,
+    ) / 100;
+  const efectivoRecibido = efectivo
+    ? Math.round(((efectivo.recibido ?? efectivo.monto) + propinaEnEfectivo) * 100) / 100
+    : 0;
+  // El cobro manda el cambio; una reimpresión desde el historial (QA PER-08)
+  // no lo trae, pero cada pago guarda el suyo.
+  const cambio =
+    typeof venta.cambio === "number"
+      ? venta.cambio
+      : Math.round(pagos.reduce((s, p) => s + (p.entregado ?? 0), 0) * 100) / 100;
   const metodo =
     venta.formasPago?.join(" + ") ||
     pagos
@@ -164,10 +182,13 @@ export default function PantallaRecibo({
             </div>
             {efectivo && (
               <div className="flex justify-between text-texto-2">
-                <dt>Efectivo recibido</dt>
-                <dd className="font-bold text-texto">
-                  {fmtMoney(efectivo.recibido ?? efectivo.monto)}
-                </dd>
+                <dt>
+                  Efectivo recibido
+                  {propinaEnEfectivo > 0 && (
+                    <span className="block text-xs">(incluye la propina)</span>
+                  )}
+                </dt>
+                <dd className="font-bold text-texto">{fmtMoney(efectivoRecibido)}</dd>
               </div>
             )}
             {qr && (
@@ -176,10 +197,10 @@ export default function PantallaRecibo({
                 <dd className="font-bold text-texto">{fmtMoney(qr.monto)}</dd>
               </div>
             )}
-            {typeof venta.cambio === "number" && venta.cambio > 0 && (
+            {cambio > 0 && (
               <div className="flex justify-between font-bold text-texto">
                 <dt>Cambio entregado</dt>
-                <dd>{fmtMoney(venta.cambio)}</dd>
+                <dd>{fmtMoney(cambio)}</dd>
               </div>
             )}
             {/* Belleza: lo que se pagó con cada vale y lo que le queda (QA
@@ -196,10 +217,10 @@ export default function PantallaRecibo({
             ))}
           </dl>
 
-          {(venta.propinas ?? []).length > 0 && (
+          {propinas.length > 0 && (
             <dl className="mt-2 space-y-1 border-t border-dashed border-borde pt-2 text-sm" aria-label="Propinas">
               <p className="text-xs font-bold tracking-wide text-texto">PROPINAS</p>
-              {(venta.propinas ?? []).map((x, i) => (
+              {propinas.map((x, i) => (
                 <div key={i} className="flex justify-between text-texto-2">
                   <dt>
                     Para {x.recurso} ({x.formaPago})

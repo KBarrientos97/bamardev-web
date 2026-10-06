@@ -319,7 +319,9 @@ function DetalleVenta({
   const esPedido = v.tipoPedido !== "LOCAL";
   const entregado = v.estadoEntrega === "ENTREGADO";
   const pendiente = esPedido && v.estado === "APROBADO" && v.estadoEntrega === "PENDIENTE";
-  const conComprobante = esPedido && v.estado === "APROBADO" && (v.prepagado || entregado);
+  // Una venta de mostrador ya está cobrada: su recibo se puede volver a dar
+  // (QA PER-08: una vez que se salía del recibo no había forma de reimprimirlo).
+  const conComprobante = v.estado === "APROBADO" && (!esPedido || v.prepagado || entregado);
 
   return (
     <>

@@ -70,6 +70,17 @@ export function profesionalDe(productoId: number, a: AsignacionProfesional): num
 }
 
 /**
+ * Lo que dice el selector de toda la venta (QA PER-07): el profesional de
+ * todos los servicios si es uno solo, o "VARIOS" si "Por servicio" los
+ * separó. Antes seguía diciendo el general aunque una línea fuera de otro.
+ */
+export function profesionalDeTodos(productoIds: number[], a: AsignacionProfesional): number | null | "VARIOS" {
+  if (!productoIds.length) return a.general;
+  const quienes = new Set(productoIds.map((id) => profesionalDe(id, a)));
+  return quienes.size > 1 ? "VARIOS" : [...quienes][0];
+}
+
+/**
  * El carrito como lo cobra el backend: cada servicio con su profesional, al
  * precio propio de éste si lo tiene (el backend impone ese precio; mostrar el
  * de lista haría que los pagos no sumen y la venta rebote). Sin nadie

@@ -921,6 +921,8 @@ export type PaqueteRecibo =
       items: { servicio: string; sesiones: number }[];
       ultimoDia: string;
       estado: string;
+      /** A nombre de quién quedó (QA PER-14). El `texto` ya lo dice. */
+      cliente?: string | null;
       texto: string;
     };
 

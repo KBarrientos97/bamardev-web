@@ -15,6 +15,9 @@ import type { Carrito } from "./useCarrito";
  *   • A-02: cobrar una cita con una venta que no la cubre pide confirmación.
  *   • A-03: un servicio de la cita que ya no está en el catálogo se carga igual.
  *   • N2-13 (07-oct): venta directa con profesional, sólo con agenda.
+ *   • PER-01 (S2 ronda 1): las propinas del cobro llegan a la venta (cita,
+ *     venta directa y fiado). PER-10: una sesión de paquete pasa por el
+ *     cobro para la propina. PER-07: "Varios" arriba si difieren.
  */
 
 const sesion = vi.hoisted(() => ({
@@ -86,17 +89,44 @@ vi.mock("./PantallaVenta", () => ({
   ),
 }));
 
-// El cobro: paga justo el total, y dice a quién le ofrece propina.
+// El cobro: paga justo el total, y dice a quién le ofrece propina. "con
+// propina" le deja Bs 5 al primero, como lo manda la pantalla de verdad
+// (`onConfirmar(pagos, { propinas })`).
 vi.mock("./PantallaCobro", () => ({
   default: (props: {
     total: number;
     profesionales?: { id: number; nombre: string }[];
-    onConfirmar: (p: unknown[]) => void;
-  }) => (
+    onConfirmar: (p: unknown[], extra?: unknown) => void;
+    onCredito?: (extra?: unknown) => void;
+  }) => {
+    const pagos = props.total > 0 ? [{ formaPagoId: 1, monto: props.total }] : [];
+    const primero = props.profesionales?.[0];
+    const propina = primero ? { propinas: [{ recursoId: primero.id, monto: 5, formaPagoId: 1 }] } : undefined;
+    return (
+      <div>
+        <p>propina para: {(props.profesionales ?? []).map((p) => p.nombre).join(", ") || "nadie"}</p>
+        <button onClick={() => props.onConfirmar(pagos)}>pagar {props.total}</button>
+        {propina && (
+          <button onClick={() => props.onConfirmar(pagos, propina)}>pagar {props.total} con propina</button>
+        )}
+        {propina && props.onCredito && (
+          <button onClick={() => props.onCredito!(propina)}>fiar con propina</button>
+        )}
+      </div>
+    );
+  },
+}));
+
+vi.mock("./PantallaCredito", () => ({
+  default: (props: { avisoPropinas?: string; onConfirmar: (c: unknown, p: unknown[]) => void }) => (
     <div>
-      <p>propina para: {(props.profesionales ?? []).map((p) => p.nombre).join(", ") || "nadie"}</p>
-      <button onClick={() => props.onConfirmar([{ formaPagoId: 1, monto: props.total }])}>
-        pagar {props.total}
+      <p>{props.avisoPropinas ?? "fiado sin propinas"}</p>
+      <button
+        onClick={() =>
+          props.onConfirmar({ clienteNombre: "Rosa", fechaCompromiso: "2026-10-13T12:00:00-04:00" }, [])
+        }
+      >
+        fiar
       </button>
     </div>
   ),
@@ -255,6 +285,102 @@ describe("cobrar una cita", () => {
     );
   });
 
+  it("QA PER-01: la propina del cobro de la cita llega a la venta", async () => {
+    sesion.features = ["pos", "caja", "agenda", "propinas"];
+    vi.mocked(api.getProductos).mockResolvedValue([
+      servicio(189, "Corte de dama", 80),
+      servicio(190, "Tinte raíz", 150),
+    ]);
+    await montar("/pos?cita=13");
+    fireEvent.click(screen.getByRole("button", { name: "ir a cobrar" }));
+    expect(screen.getByText("propina para: Carla, Sofía")).toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "pagar 230 con propina" }));
+    });
+    expect(api.crearVenta).toHaveBeenCalledWith(
+      expect.objectContaining({
+        citaId: 13,
+        pagos: [{ formaPagoId: 1, monto: 230 }],
+        propinas: [{ recursoId: 3, monto: 5, formaPagoId: 1 }],
+      }),
+    );
+  });
+
+  it("QA PER-01: pasar a fiado no pierde la propina", async () => {
+    sesion.features = ["pos", "caja", "agenda", "propinas", "fiado"];
+    vi.mocked(api.getProductos).mockResolvedValue([
+      servicio(189, "Corte de dama", 80),
+      servicio(190, "Tinte raíz", 150),
+    ]);
+    await montar("/pos?cita=13");
+    fireEvent.click(screen.getByRole("button", { name: "ir a cobrar" }));
+    fireEvent.click(screen.getByRole("button", { name: "fiar con propina" }));
+    expect(screen.getByText(/Más la propina de Bs.5,00/)).toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "fiar" }));
+    });
+    expect(api.crearVenta).toHaveBeenCalledWith(
+      expect.objectContaining({
+        citaId: 13,
+        credito: expect.objectContaining({ clienteNombre: "Rosa" }),
+        propinas: [{ recursoId: 3, monto: 5, formaPagoId: 1 }],
+      }),
+    );
+  });
+
+  describe("QA PER-10: la cita entera con paquete", () => {
+    const conPaquete: CarritoCita = {
+      ...cita,
+      lineas: [
+        {
+          productoId: 189,
+          descripcion: "Corte de dama",
+          cantidad: 1,
+          precio: 80,
+          recursoId: 3,
+          recurso: "Carla",
+          paquete: { paqueteClienteId: 2, nombre: "5 cortes", restantes: 3, ultimoDia: "2026-12-31" },
+        },
+      ],
+      total: 80,
+      totalConPaquetes: 0,
+    };
+
+    beforeEach(() => {
+      vi.mocked(api.getProductos).mockResolvedValue([servicio(189, "Corte de dama", 80)]);
+      vi.mocked(apiAgenda.carrito).mockResolvedValue(conPaquete);
+    });
+
+    it("con propinas, pasa por el cobro en 0 y la propina viaja con la sesión", async () => {
+      sesion.features = ["pos", "caja", "agenda", "paquetes", "propinas"];
+      await montar("/pos?cita=13");
+      fireEvent.click(screen.getByRole("button", { name: "Completar con el paquete" }));
+      expect(api.crearVenta).not.toHaveBeenCalled();
+      expect(screen.getByText("propina para: Carla")).toBeInTheDocument();
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: "pagar 0 con propina" }));
+      });
+      expect(api.crearVenta).toHaveBeenCalledWith(
+        expect.objectContaining({
+          citaId: 13,
+          pagos: [],
+          detalles: [expect.objectContaining({ productoId: 189, usarPaquete: true, recursoId: 3 })],
+          propinas: [{ recursoId: 3, monto: 5, formaPagoId: 1 }],
+        }),
+      );
+    });
+
+    it("sin propinas en el plan, se completa en el acto como siempre", async () => {
+      sesion.features = ["pos", "caja", "agenda", "paquetes"];
+      await montar("/pos?cita=13");
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: "Completar con el paquete" }));
+      });
+      expect(api.crearVenta).toHaveBeenCalledWith(expect.objectContaining({ citaId: 13, pagos: [] }));
+      expect(vi.mocked(api.crearVenta).mock.calls[0][0]).not.toHaveProperty("propinas");
+    });
+  });
+
   it("A-03: el servicio desactivado se carga igual, con el precio de la cita", async () => {
     // El catálogo ya no trae el Tinte (lo desactivaron después de agendar).
     vi.mocked(api.getProductos).mockResolvedValue([servicio(189, "Corte de dama", 80)]);
@@ -388,6 +514,42 @@ describe("N2-13: venta directa con profesional", () => {
       [189, 4],
       [190, 3],
     ]);
+  });
+
+  it("QA PER-01: la propina de una venta directa llega a la venta", async () => {
+    sesion.features = ["pos", "caja", "agenda", "propinas"];
+    sesion.conAgenda = true;
+    enCarrito(189);
+    await montar();
+    fireEvent.change(screen.getByLabelText("Profesional de la venta"), { target: { value: "4" } });
+    fireEvent.click(screen.getByRole("button", { name: "ir a cobrar" }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "pagar 80 con propina" }));
+    });
+    expect(api.crearVenta).toHaveBeenCalledWith(
+      expect.objectContaining({
+        detalles: [expect.objectContaining({ productoId: 189, recursoId: 4 })],
+        propinas: [{ recursoId: 4, monto: 5, formaPagoId: 1 }],
+      }),
+    );
+  });
+
+  it('QA PER-07: arriba dice "Varios" si por servicio quedaron distintos, y elegir ahí vale para todos', async () => {
+    sesion.features = ["pos", "caja", "agenda"];
+    sesion.conAgenda = true;
+    enCarrito(189, 190);
+    await montar();
+    const general = () => screen.getByLabelText("Profesional de la venta") as HTMLSelectElement;
+    fireEvent.change(general(), { target: { value: "3" } });
+    fireEvent.click(screen.getByRole("button", { name: "Por servicio" }));
+    expect(general().value).toBe("3");
+    fireEvent.change(screen.getByLabelText("Profesional de Corte de dama"), { target: { value: "4" } });
+    expect(general().value).toBe("VARIOS");
+    expect(general().selectedOptions[0].textContent).toBe("Varios");
+    // Elegir arriba con "Varios" vuelve a ser uno para todo.
+    fireEvent.change(general(), { target: { value: "4" } });
+    expect(general().value).toBe("4");
+    expect((screen.getByLabelText("Profesional de Tinte raíz") as HTMLSelectElement).value).toBe("4");
   });
 
   it("sin elegir a nadie, con agenda, la venta sale como siempre", async () => {

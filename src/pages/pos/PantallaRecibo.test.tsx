@@ -233,3 +233,47 @@ describe("belleza: profesional y paquetes en el ticket (07-oct)", () => {
     expect(screen.queryByText(/sesi/i)).not.toBeInTheDocument();
   });
 });
+
+describe("QA PER-01: el efectivo recibido incluye la propina en efectivo", () => {
+  beforeEach(() => {
+    sesion.rubro = "BARBERIA";
+  });
+
+  it("el pago guarda lo de la venta; el papel dice lo que el cliente entregó", () => {
+    // Corte de 35, propina de 5 en efectivo, el cliente dio 50: el pago de la
+    // venta registra 45 recibidos (vuelto 10) y la propina va aparte.
+    dibujar(
+      venta({
+        total: 35,
+        detalles: [
+          { productoId: 1, producto: "Corte", cantidad: 1, precio: 35, subtotal: 35, nota: null, consumo: "LLEVAR" },
+        ],
+        pagos: [{ formaPagoId: 10, formaPago: "Efectivo", monto: 35, recibido: 45, entregado: 10 }],
+        cambio: 10,
+        propinas: [{ recursoId: 3, recurso: "Nico", monto: 5, formaPago: "Efectivo" }],
+      }),
+    );
+    expect(screen.getByText("Efectivo recibido").nextElementSibling).toHaveTextContent(/50,00/);
+    expect(screen.getByText("(incluye la propina)")).toBeInTheDocument();
+    expect(screen.getByText("Cambio entregado").nextElementSibling).toHaveTextContent(/10,00/);
+    expect(screen.getByText(/Para Nico/)).toBeInTheDocument();
+  });
+
+  it("una reimpresión (sin `cambio`) toma el vuelto de los pagos", () => {
+    dibujar(
+      venta({
+        total: 35,
+        pagos: [{ formaPagoId: 10, formaPago: "Efectivo", monto: 35, recibido: 45, entregado: 10 }],
+        propinas: [{ recursoId: 3, recurso: "Nico", monto: 5, formaPago: "Efectivo" }],
+      }),
+    );
+    expect(screen.getByText("Cambio entregado").nextElementSibling).toHaveTextContent(/10,00/);
+  });
+
+  it("sin propinas, lo de siempre", () => {
+    sesion.rubro = "RESTAURANTE";
+    dibujar(venta({ pagos: [{ formaPagoId: 10, formaPago: "Efectivo", monto: 80, recibido: 100, entregado: 20 }], cambio: 20 }));
+    expect(screen.getByText("Efectivo recibido").nextElementSibling).toHaveTextContent(/100,00/);
+    expect(screen.queryByText("(incluye la propina)")).not.toBeInTheDocument();
+  });
+});
