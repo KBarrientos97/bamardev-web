@@ -106,3 +106,15 @@ export const apiCrm = {
   exportar: (f: FiltroRetencion & { lista: "NO_VUELVEN" | "SEGMENTO" }) =>
     descargar(`/crm/exportar.csv${qs(f)}`, "clientes.csv"),
 };
+
+/**
+ * "hoy", "ayer", "hace 5 días". Nunca "hace -1 días": una cita completada
+ * antes de su hora no es una visita del futuro (QA DIA-05; el backend ya no
+ * lo manda negativo, esto cubre a uno viejo).
+ */
+export function haceDias(dias: number | null): string {
+  if (dias == null) return "—";
+  if (dias <= 0) return "hoy";
+  if (dias === 1) return "ayer";
+  return `hace ${dias} días`;
+}

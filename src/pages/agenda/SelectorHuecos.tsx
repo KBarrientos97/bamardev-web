@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { horaNegocio } from "../../lib/agenda/horaAgenda";
 import type { Propuesta } from "../../lib/agenda/tiposAgenda";
+import { useNombreProfesional } from "./config/utilConfig";
 
 /** Cuántos horarios se ven antes de "Ver más": un día entero son 40 chips. */
 const VISIBLES = 12;
@@ -26,6 +27,7 @@ export function SelectorHuecos({
   nombreRecurso: (id: number) => string;
 }) {
   const [todos, setTodos] = useState(false);
+  const nombres = useNombreProfesional();
 
   if (cargando) {
     return <p className="text-[13px] text-texto-3">Buscando horarios libres…</p>;
@@ -40,7 +42,9 @@ export function SelectorHuecos({
   if (huecos.length === 0) {
     return (
       <p className="rounded-xl bg-warning-bg px-3.5 py-2.5 text-[13px] text-warning-text">
-        No hay horarios libres ese día para esos servicios. Probá otra fecha u otro profesional.
+        {/* Con la palabra del rubro y sin género (QA DIA-17b: "otro profesional" en el spa). */}
+        No hay horarios libres ese día para esos servicios. Probá otra fecha o cambiá de{" "}
+        {nombres.singular.toLowerCase()}.
       </p>
     );
   }

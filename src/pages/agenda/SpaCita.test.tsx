@@ -37,6 +37,8 @@ vi.mock("../../lib/agenda/apiSpa", async (importOriginal) => {
       paquetesDelCliente: vi.fn(),
       firmar: vi.fn(),
       atenderSinConsentimiento: vi.fn(),
+      saludDelCliente: vi.fn(),
+      guardarFichaSalud: vi.fn(),
     },
   };
 });
@@ -173,5 +175,50 @@ describe("detalle de la cita del spa", () => {
     expect(apiSpa.pendientesDeCita).not.toHaveBeenCalled();
     expect(apiSpa.paquetesDelCliente).not.toHaveBeenCalled();
     expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  describe("DIA-06: la ficha de salud desde la cita del profesional", () => {
+    beforeEach(() => {
+      vi.mocked(apiSpa.saludDelCliente).mockResolvedValue({ ficha: null, firmados: [] });
+      vi.mocked(apiSpa.guardarFichaSalud).mockResolvedValue({} as never);
+    });
+
+    it("la terapeuta la completa desde el detalle de su cita", async () => {
+      vi.mocked(apiAgenda.cita).mockResolvedValue(CON_CABINA);
+      render(
+        <MemoryRouter>
+          <DetalleCita cita={CON_CABINA} modo="profesional" onClose={vi.fn()} onCambio={vi.fn()} />
+        </MemoryRouter>,
+      );
+      await act(async () => {});
+      expect(screen.getByText("Salud y consentimientos")).toBeTruthy();
+      expect(screen.getByText("Sin ficha de salud todavía.")).toBeTruthy();
+      fireEvent.click(screen.getByRole("button", { name: /Completar/ }));
+      const dialogo = screen.getByRole("dialog", { name: /Ficha de salud/ });
+      fireEvent.change(within(dialogo).getByLabelText("Medicamentos"), { target: { value: "Ibuprofeno" } });
+      await act(async () => {
+        fireEvent.click(within(dialogo).getByRole("button", { name: "Guardar" }));
+      });
+      expect(apiSpa.guardarFichaSalud).toHaveBeenCalledWith(
+        CON_CABINA.cliente.id,
+        expect.objectContaining({ medicamentos: "Ibuprofeno" }),
+      );
+    });
+
+    it("sin editar salud la ve pero no la completa; la recepción no la ve en el detalle", async () => {
+      sesion.permisos = ["agenda.ver", "cliente.ver_salud"];
+      vi.mocked(apiAgenda.cita).mockResolvedValue(CON_CABINA);
+      const { unmount } = render(
+        <MemoryRouter>
+          <DetalleCita cita={CON_CABINA} modo="profesional" onClose={vi.fn()} onCambio={vi.fn()} />
+        </MemoryRouter>,
+      );
+      await act(async () => {});
+      expect(screen.getByText("Salud y consentimientos")).toBeTruthy();
+      expect(screen.queryByRole("button", { name: /Completar/ })).toBeNull();
+      unmount();
+      await abrir();
+      expect(screen.queryByText("Salud y consentimientos")).toBeNull();
+    });
   });
 });

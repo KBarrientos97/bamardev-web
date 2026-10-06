@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Icon } from "../../components/Icon";
 import { AvisoOk, Badge, Boton, Cargando, ErrorMsg, Input, Modal, Select, Vacio } from "../../components/ui";
-import { apiCrm, SEGMENTOS, type FilaCliente, type ResumenCliente, type Segmento } from "../../lib/crm/apiCrm";
+import { apiCrm, haceDias, SEGMENTOS, type FilaCliente, type ResumenCliente, type Segmento } from "../../lib/crm/apiCrm";
 import { fmtFecha, fmtMoney } from "../../lib/format";
 import { tienePermiso } from "../../lib/permisos";
 import { apiPromociones } from "../../lib/promociones/apiPromociones";
@@ -244,7 +244,7 @@ export default function Retencion() {
                       {c.telefono && <div className="text-xs text-texto-3">{c.telefono}</div>}
                     </td>
                     <td className="px-3 py-2">
-                      {c.diasSinVenir != null ? `hace ${c.diasSinVenir} días` : "—"}
+                      {haceDias(c.diasSinVenir)}
                     </td>
                     <td className="px-3 py-2 text-right">{c.visitas}</td>
                     <td className="px-3 py-2 text-right">{fmtMoney(c.gastoTotal)}</td>
@@ -353,7 +353,7 @@ export function FichaAmpliada({
               <Dato titulo="Visitas" valor={String(d.metricas.visitas)} />
               <Dato
                 titulo="Última visita"
-                valor={d.metricas.diasSinVenir != null ? `hace ${d.metricas.diasSinVenir} días` : "—"}
+                valor={haceDias(d.metricas.diasSinVenir)}
               />
               <Dato
                 titulo="Suele venir"

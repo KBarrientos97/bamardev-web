@@ -36,6 +36,9 @@ import { apiPersonal, type Persona } from "../../../lib/personal";
  */
 const COLORES = ["#9B2C6B", "#7357B8", "#2563EB", "#0E9F6E", "#D97706", "#DC2626", "#0891B2", "#4A4744"];
 
+/** Un profesional activo sin ningún tramo de horario (con un backend que lo dice). */
+const sinHorario = (r: Recurso) => r.tipo === "PROFESIONAL" && r.activo && r.conHorario === false;
+
 /**
  * Profesionales y espacios (cabinas, sillones): lo que se agenda. Un
  * profesional puede tener usuario (entra a "Mi agenda") o no: en una barbería
@@ -77,7 +80,7 @@ export default function TabRecursos({
           {titulo} <span className="font-normal text-texto-4">({items.filter((r) => r.activo).length})</span>
         </h2>
         <Boton variante="soft" icono="plus" onClick={() => nuevo(tipo)}>
-          {tipo === "PROFESIONAL" ? `Nuevo ${nombres.singular.toLowerCase()}` : "Nuevo espacio"}
+          {tipo === "PROFESIONAL" ? `Agregar ${nombres.singular.toLowerCase()}` : "Nuevo espacio"}
         </Boton>
       </header>
       {items.length === 0 ? (
@@ -97,13 +100,24 @@ export default function TabRecursos({
                   )}
                   {!r.activo && <Badge>Inactivo</Badge>}
                   {r.publicadoOnline && <Badge tono="azul">Online</Badge>}
+                  {sinHorario(r) && <Badge tono="amarillo">Sin horario</Badge>}
                 </div>
                 <p className="mt-0.5 text-[13px] text-texto-3">
                   {r.sucursalIds.length ? r.sucursalIds.map(nombreSucursal).join(", ") : "Sin sucursal"}
                   {" · "}
                   {r.servicioIds.length === 1 ? "1 servicio" : `${r.servicioIds.length} servicios`}
-                  {r.usuario ? ` · entra como @${r.usuario.username}` : ""}
+                  {r.usuario
+                    ? r.usuario.activo === false
+                      ? ` · @${r.usuario.username} sin acceso`
+                      : ` · entra como @${r.usuario.username}`
+                    : ""}
                 </p>
+                {sinHorario(r) && (
+                  <p className="mt-0.5 text-[12px] text-warning-text">
+                    Sin horario no se le ofrece ningún turno, ni online ni en &quot;Nueva cita&quot;: cargalo en
+                    Horarios.
+                  </p>
+                )}
               </div>
               <Boton
                 variante="ghost"
@@ -139,7 +153,7 @@ export default function TabRecursos({
             texto="Cada uno es una columna de la agenda. Puede tener usuario para ver su propia agenda, o no."
             accion={
               <Boton icono="plus" onClick={() => nuevo("PROFESIONAL")}>
-                Nuevo {nombres.singular.toLowerCase()}
+                Agregar {nombres.singular.toLowerCase()}
               </Boton>
             }
           />
@@ -166,7 +180,14 @@ export default function TabRecursos({
           onClose={() => setEditando(null)}
           onGuardado={(r, citas) => {
             setEditando(null);
-            setAviso(`"${r.nombre}" quedó guardado.`);
+            // Un profesional recién creado nace sin horario: sin avisarlo, no
+            // aparece en la reserva ni en "Nueva cita" y nadie sabe por qué
+            // (QA DIA-16).
+            setAviso(
+              sinHorario(r)
+                ? `"${r.nombre}" quedó guardado. Todavía no tiene horario: cargalo en la pestaña Horarios para que se le puedan dar turnos.`
+                : `"${r.nombre}" quedó guardado.`,
+            );
             setAfectadas(citas.length ? { nombre: r.nombre, citas } : null);
             onCambio();
           }}
@@ -209,7 +230,11 @@ function FormRecurso({
   );
   const [telefono, setTelefono] = useState(recurso?.telefono ?? "");
   const [comision, setComision] = useState(recurso?.comisionPct != null ? String(recurso.comisionPct) : "");
-  const [usuarioId, setUsuarioId] = useState(recurso?.usuarioId != null ? String(recurso.usuarioId) : "");
+  // Un usuario al que "Sin usuario" le quitó el acceso sigue atado a la
+  // persona (QA VER-03): se muestra como "Sin usuario", que es lo que es.
+  const usuarioInicial =
+    recurso?.usuarioId != null && recurso.usuario?.activo !== false ? String(recurso.usuarioId) : "";
+  const [usuarioId, setUsuarioId] = useState(usuarioInicial);
   const [publicado, setPublicado] = useState(recurso?.publicadoOnline ?? false);
   const [activo, setActivo] = useState(recurso?.activo ?? true);
   // El que sigue al último, no la cantidad: con un orden movido a mano,
@@ -294,6 +319,10 @@ function FormRecurso({
     }
   }, [recurso?.id]);
   const cambiaLogin = !!recurso && usuarioId !== "" && usuarioId !== String(recurso.usuarioId ?? "");
+  // Lo que pasa con el usuario que tenía (ver `personal/vinculo.ts` del backend).
+  const usuarioAntes = recurso && usuarioInicial !== "" ? recurso.usuario : null;
+  const quitaAcceso = !!usuarioAntes && usuarioId === "";
+  const cambiaDeUsuario = !!usuarioAntes && usuarioId !== "" && usuarioId !== usuarioInicial;
   const fichaDelLogin = cambiaLogin
     ? (fichas.datos ?? []).find((p) => String(p.usuarioId) === usuarioId && p.id !== recurso?.personalId)
     : undefined;
@@ -337,7 +366,11 @@ function FormRecurso({
       ...(cambiaComision ? { comisionPct: esProfesional ? com : null } : {}),
       ...(esProfesional && persona
         ? { personalId: persona.id }
-        : { usuarioId: esProfesional && usuarioId ? Number(usuarioId) : null }),
+        : // Al editar, el usuario va sólo si se cambió: mandarlo igual volvía
+          // a "quitarle el acceso" en cada guardado.
+          recurso && usuarioId === usuarioInicial && (recurso.tipo === "PROFESIONAL") === esProfesional
+          ? {}
+          : { usuarioId: esProfesional && usuarioId ? Number(usuarioId) : null }),
       publicadoOnline: publicado,
       activo,
       orden: ord,
@@ -367,7 +400,7 @@ function FormRecurso({
   const titulo = recurso
     ? `Editar ${recurso.nombre}`
     : esProfesional
-      ? `Nuevo ${nombres.singular.toLowerCase()}`
+      ? `Agregar ${nombres.singular.toLowerCase()}`
       : "Nuevo espacio";
 
   return (
@@ -480,6 +513,29 @@ function FormRecurso({
                     );
                   })}
                 </Select>
+                {quitaAcceso && usuarioAntes && (
+                  <span
+                    role="alert"
+                    className="mt-1.5 block rounded-xl border border-warning/40 bg-warning-bg px-3 py-2 text-xs text-warning-text"
+                  >
+                    Al guardar, @{usuarioAntes.username} deja de entrar al sistema (también a la caja, si la usa) y
+                    libera un lugar del cupo. Sigue siendo de {recurso?.nombre}: se le devuelve en Personal. Si sólo
+                    tiene que salir de la agenda, desactivá la columna.
+                  </span>
+                )}
+                {cambiaDeUsuario && usuarioAntes && (
+                  <span
+                    role="alert"
+                    className="mt-1.5 block rounded-xl border border-warning/40 bg-warning-bg px-3 py-2 text-xs text-warning-text"
+                  >
+                    @{usuarioAntes.username} deja de entrar al sistema: un usuario no pasa de una persona a otra.
+                  </span>
+                )}
+                {!usuarioInicial && recurso?.usuario?.activo === false && usuarioId === "" && (
+                  <span className="mt-1.5 block text-xs text-texto-3">
+                    @{recurso.usuario.username} está sin acceso: se le devuelve en Personal.
+                  </span>
+                )}
                 {fichaDelLogin && (
                   <span
                     role="alert"
@@ -487,7 +543,8 @@ function FormRecurso({
                   >
                     Ese usuario ya tiene su ficha en Personal (&quot;{fichaDelLogin.nombre}&quot;
                     {fichaDelLogin.cargo ? `, ${fichaDelLogin.cargo}` : ""}). Al guardar, se une a la de este
-                    profesional: lo que le falte a éste lo toma de aquélla, y la otra ficha desaparece.
+                    profesional: lo que le falte a éste lo toma de aquélla, y la otra ficha desaparece. El usuario
+                    pasa a llamarse &quot;{recurso?.nombre}&quot;.
                   </span>
                 )}
               </Campo>

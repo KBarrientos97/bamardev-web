@@ -128,7 +128,11 @@ export default function SpaCita({ cita }: { cita: Cita }) {
               </li>
             ))}
           </ul>
-          <p className="text-[12px] text-texto-3">Al cobrar la cita se descuenta una sesión en vez de cobrarla.</p>
+          {/* Lo que va a pasar al cobrar, sólo si todavía se cobra: en una cita
+              ya completada se leía como si faltara (QA DIA-18b). */}
+          {[...POR_ATENDER, "POR_COBRAR"].includes(cita.estado) && (
+            <p className="text-[12px] text-texto-3">Al cobrar la cita se descuenta una sesión en vez de cobrarla.</p>
+          )}
         </div>
       )}
       {firmando && clienteId != null && (

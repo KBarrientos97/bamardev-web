@@ -34,6 +34,7 @@ import { useCobrarCita } from "./useCobrarCita";
 import { BadgeEstado, IconoCompartir, IconoCopiar, IconoWhatsApp, Rotulo } from "./piezas";
 // Fase 3 (spa): cabina, pose, paquetes y consentimientos.
 import SpaCita from "./SpaCita";
+import { SaludDeLaCita } from "./FichaSpa";
 import { textoPose } from "../../lib/agenda/spa";
 import { apiSpa, faltantesDelConflicto } from "../../lib/agenda/apiSpa";
 
@@ -251,6 +252,10 @@ export default function DetalleCita({
           </section>
 
           <SpaCita cita={cita} />
+
+          {/* QA DIA-06: la terapeuta completa la ficha de salud de su clienta
+              acá; Clientes es de recepción y a ella la manda a Mi agenda. */}
+          {profesional && cita.cliente.id != null && <SaludDeLaCita clienteId={cita.cliente.id} />}
 
           {cita.nota && (
             <section className="space-y-2">

@@ -24,7 +24,7 @@ import { fmtFecha, fmtMoney } from "../../../lib/format";
 import { useApi } from "../../../lib/useApi";
 import { useAuth } from "../../../store/AuthContext";
 import { Casilla } from "../config/comun";
-import { mensajeDe } from "../config/utilConfig";
+import { mensajeDe, useNombreProfesional } from "../config/utilConfig";
 import { TablaLineas } from "./TabProduccion";
 
 type Metodo = NonNullable<LiquidarInput["metodoPago"]>;
@@ -54,6 +54,7 @@ export default function TabLiquidar({
   // pide la previa, se ofrece hasta hoy o el período anterior.
   const futuro = terminaDespues(periodo, hoy);
   const { negocio } = useAuth();
+  const nombres = useNombreProfesional();
   const usaGastos = (negocio?.features ?? []).includes("gastos");
   const config = useApi(() => apiComisiones.config(), []);
   const profesionales = (config.datos ?? []).filter((p) => p.activo || p.recursoId === recursoId);
@@ -112,7 +113,7 @@ export default function TabLiquidar({
     <div className="space-y-4">
       <AvisoOk>{aviso}</AvisoOk>
       <div className="card p-4">
-        <Campo label="Profesional">
+        <Campo label={nombres.singular}>
           <Select
             value={elegido ?? ""}
             onChange={(e) => onRecurso(e.target.value ? Number(e.target.value) : null)}

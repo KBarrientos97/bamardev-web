@@ -309,4 +309,24 @@ describe("Personal", () => {
     });
     expect(screen.getByText(/volvió al equipo\. Su columna en la agenda sigue inactiva/)).toBeInTheDocument();
   });
+
+  it("con la columna apagada no dice «En la agenda» (VER-02) y dice dónde reactivarla", async () => {
+    const inactivo = { ...LUCHO, profesional: { recursoId: 30, nombre: "Lucho", activo: false } };
+    vi.mocked(apiPersonal.listar).mockResolvedValue([base, inactivo, ANA]);
+    await montar();
+    const lucho = within(screen.getByRole("list", { name: "Personal" })).getByRole("button", { name: "Ver Lucho" });
+    expect(lucho).not.toHaveTextContent("En la agenda");
+    expect(lucho).toHaveTextContent("Agenda inactiva");
+    fireEvent.click(lucho);
+    expect(screen.getByText(/En la agenda es "Lucho" \(columna inactiva\)/)).toBeInTheDocument();
+  });
+
+  it("a quien no es profesional le dice dónde darle agenda, con la pestaña del rubro (DIA-16)", async () => {
+    await montar();
+    fireEvent.click(within(screen.getByRole("list", { name: "Personal" })).getByRole("button", { name: "Ver Ana" }));
+    expect(screen.getByRole("link", { name: "Configuración de agenda › Barberos y espacios" })).toHaveAttribute(
+      "href",
+      "/configuracion/agenda?pestana=recursos",
+    );
+  });
 });

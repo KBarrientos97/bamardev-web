@@ -18,10 +18,12 @@ import {
 import { api } from "../lib/api";
 import { apiPersonal, type Persona, type PersonaInput } from "../lib/personal";
 import { etiquetaRol, tienePermiso } from "../lib/permisos";
+import { plural } from "./agenda/config/utilConfig";
 import { contiene } from "../lib/texto";
 import { useApi } from "../lib/useApi";
 import { useAuth } from "../store/AuthContext";
 import type { Almacen, Rol } from "../types";
+import { Link } from "react-router-dom";
 
 /**
  * Personal (PLAN-ROLES §9.4 y §11): la gente del negocio, entre o no al
@@ -157,7 +159,13 @@ export default function Personal() {
                     <span className="font-semibold text-texto">{p.nombre}</span>
                     {p.cargo && <span className="text-[13px] text-texto-3">{p.cargo}</span>}
                     {!p.activo && <Badge>De baja</Badge>}
-                    {p.profesional && <Badge tono="morado">En la agenda</Badge>}
+                    {/* Con la columna apagada no está en la agenda de hoy (QA VER-02). */}
+                    {p.profesional &&
+                      (p.profesional.activo ? (
+                        <Badge tono="morado">En la agenda</Badge>
+                      ) : (
+                        <Badge>Agenda inactiva</Badge>
+                      ))}
                     {p.conAcceso ? (
                       <Badge tono="verde">Con acceso</Badge>
                     ) : p.acceso ? (
@@ -212,7 +220,10 @@ function FichaPersona({
   onClose: () => void;
   onGuardado: (p: Persona, aviso: string) => void;
 }) {
-  const { usuario, negocio } = useAuth();
+  const { usuario, negocio, puede } = useAuth();
+  // Cómo se llama la pestaña de los profesionales en este rubro (QA DIA-17f:
+  // el aviso decía "Profesionales" y la pestaña "Manicuristas y espacios").
+  const pestanaProfesionales = `${plural(etiquetaRol("PROFESIONAL", negocio))} y espacios`;
   // El % es plata del profesional: lo cambia quien liquida (el backend lo exige).
   const cambiaComision = tienePermiso(usuario, "comisiones.liquidar", usuario?.rol === "ADMIN");
   const sugeridos = useApi(() => apiPersonal.cargos().catch(() => ({ sugeridos: [] })), []);
@@ -313,8 +324,23 @@ function FichaPersona({
                 : persona.acceso
                   ? `Se le quitó el acceso (@${persona.acceso.username}). No ocupa cupo.`
                   : "No entra al sistema. Igual puede tener agenda, comisión y propinas."}
-              {persona.profesional ? ` En la agenda es "${persona.profesional.nombre}".` : ""}
+              {persona.profesional
+                ? ` En la agenda es "${persona.profesional.nombre}"${persona.profesional.activo ? "" : " (columna inactiva)"}.`
+                : ""}
             </p>
+            {/* QA DIA-16: decía que puede tener agenda y no decía dónde. */}
+            {!persona.profesional && persona.activo && puede("agenda_config") && (
+              <p className="mt-1 text-[13px] text-texto-3">
+                Para darle agenda:{" "}
+                <Link
+                  to="/configuracion/agenda?pestana=recursos"
+                  className="font-semibold text-primary-700 hover:underline"
+                >
+                  Configuración de agenda › {pestanaProfesionales}
+                </Link>{" "}
+                y en &quot;¿Quién es?&quot; elegí a {persona.nombre}.
+              </p>
+            )}
             {persona.activo && (
               <div className="mt-2 flex flex-wrap gap-2">
                 {persona.conAcceso ? (
@@ -419,7 +445,7 @@ function FichaPersona({
                     // hacerlo (QA PER-14).
                     (p) =>
                       p.profesional && !p.profesional.activo
-                        ? `"${p.nombre}" volvió al equipo. Su columna en la agenda sigue inactiva: reactivala en Configuración de la agenda › Profesionales.`
+                        ? `"${p.nombre}" volvió al equipo. Su columna en la agenda sigue inactiva: reactivala en Configuración de agenda › ${pestanaProfesionales}.`
                         : `"${p.nombre}" volvió al equipo.`,
                   )
                 }
@@ -738,7 +764,8 @@ function Vincular({
         </Campo>
         <p className="text-[13px] text-texto-3">
           Todo usuario tiene su ficha en Personal. Al vincularlo, su ficha se une a la de {persona.nombre}: lo que
-          falte acá se toma de allá, y la otra ficha deja de existir.
+          falte acá se toma de allá, y la otra ficha deja de existir. El usuario pasa a llamarse
+          &quot;{persona.nombre}&quot;: los datos personales salen de Personal.
         </p>
         {elegido && datos.length > 0 && (
           <p role="alert" className="rounded-xl border border-warning/40 bg-warning-bg px-3 py-2 text-[13px] text-warning-text">

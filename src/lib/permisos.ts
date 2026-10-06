@@ -469,6 +469,19 @@ const PERMISO_SECCION: Partial<Record<Seccion, ReqPermiso>> = {
   personal: { permiso: "personal.gestionar" },
 };
 
+/**
+ * En belleza el backend ya corta ventas, caja y créditos por permiso (QA
+ * SEG-04, `@CortadaEnVertical('BELLEZA')`): la pantalla pide lo mismo, así un
+ * repartidor que quedó de antes (con el módulo POS) no ve un POS que le da 403
+ * (QA VER-05). A diferencia de `PERMISO_SECCION`, el módulo del rol se sigue
+ * exigiendo: el backend también lo pide. Fuera de belleza (Omar) no se usa.
+ */
+const PERMISO_SECCION_BELLEZA: Partial<Record<Seccion, ReqPermiso>> = {
+  pos: { permiso: "ventas.vender" },
+  caja: { permiso: "caja.operar" },
+  creditos: { permiso: "credito.otorgar", tambien: ["credito.cobrar"] },
+};
+
 type ConPermisos = Pick<SesionUsuario, "permisos" | "permisosPropios"> | null | undefined;
 
 /**
@@ -538,8 +551,14 @@ export function puedeVer(ctx: ContextoPermisos, seccion: Seccion): boolean {
   // Con permisos del backend, la sección que ya se cortó por permisos (la
   // agenda) se decide por permiso y no por nombre de rol ni módulo.
   const porPermiso = ctx.permisos ? PERMISO_SECCION[seccion] : undefined;
+  const corteBelleza =
+    ctx.permisos && ctx.rubro && (RUBROS_BELLEZA as string[]).includes(ctx.rubro)
+      ? PERMISO_SECCION_BELLEZA[seccion]
+      : undefined;
   if (porPermiso) {
     if (!cumplePermiso(ctx, porPermiso)) return false;
+  } else if (corteBelleza) {
+    if (!cumplePermiso(ctx, corteBelleza)) return false;
   } else {
     const roles = ROLES_PERMITIDOS[seccion];
     if (roles && !roles.includes(ctx.rol)) return false;

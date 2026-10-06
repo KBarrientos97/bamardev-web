@@ -207,7 +207,7 @@ describe("pestañas", () => {
   it("Profesionales: el orden de uno nuevo sigue al último, no a la cantidad (QA PER-14)", async () => {
     vi.mocked(apiConfigAgenda.recursos).mockResolvedValue([JUAN, { ...SILLON, orden: 7 }]);
     await montar("recursos");
-    fireEvent.click(screen.getByRole("button", { name: /Nuevo barbero/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Agregar barbero/ }));
     await act(async () => {});
     const dialogo = screen.getByRole("dialog");
     expect(within(dialogo).getByLabelText(/Orden en la agenda/)).toHaveValue("8");
@@ -286,9 +286,9 @@ describe("pestañas", () => {
     ]);
     vi.mocked(apiConfigAgenda.crearRecurso).mockResolvedValue({ ...JUAN, id: 12, nombre: "Lucho", personalId: 7 });
     await montar("recursos");
-    fireEvent.click(screen.getByRole("button", { name: "Nuevo barbero" }));
+    fireEvent.click(screen.getByRole("button", { name: "Agregar barbero" }));
     await act(async () => {});
-    const dialogo = screen.getByRole("dialog", { name: "Nuevo barbero" });
+    const dialogo = screen.getByRole("dialog", { name: "Agregar barbero" });
     expect(apiPersonal.listar).toHaveBeenCalledWith({ sinProfesional: true });
     fireEvent.change(within(dialogo).getByLabelText("Persona de Personal"), { target: { value: "7" } });
     expect(within(dialogo).getByLabelText("Nombre")).toHaveValue("Lucho");
@@ -314,9 +314,9 @@ describe("pestañas", () => {
 
   it("Profesionales: no deja guardar sin sucursal", async () => {
     await montar("recursos");
-    fireEvent.click(screen.getByRole("button", { name: "Nuevo barbero" }));
+    fireEvent.click(screen.getByRole("button", { name: "Agregar barbero" }));
     await act(async () => {});
-    const dialogo = screen.getByRole("dialog", { name: "Nuevo barbero" });
+    const dialogo = screen.getByRole("dialog", { name: "Agregar barbero" });
     fireEvent.change(within(dialogo).getByLabelText("Nombre"), { target: { value: "Pedro" } });
     await act(async () => {
       fireEvent.click(within(dialogo).getByRole("button", { name: "Guardar" }));
@@ -611,5 +611,80 @@ describe("desactivar lista las citas afectadas", () => {
       fireEvent.click(within(dialogo).getByRole("button", { name: "Guardar" }));
     });
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+});
+
+describe("QA S2 ronda 2: el usuario del profesional y el horario", () => {
+  const CON_LOGIN: Recurso = {
+    ...JUAN,
+    usuarioId: 20,
+    usuario: { id: 20, nombre: "Ana Pérez", username: "ana", activo: true },
+    conHorario: true,
+  };
+
+  it("avisa del profesional sin horario en la lista y al crearlo (DIA-16)", async () => {
+    vi.mocked(apiConfigAgenda.recursos).mockResolvedValue([{ ...JUAN, conHorario: false }, SILLON]);
+    await montar("recursos");
+    expect(screen.getByText("Sin horario")).toBeInTheDocument();
+    vi.mocked(apiConfigAgenda.crearRecurso).mockResolvedValue({ ...JUAN, id: 12, nombre: "Nico", conHorario: false });
+    fireEvent.click(screen.getByRole("button", { name: "Agregar barbero" }));
+    await act(async () => {});
+    const dialogo = screen.getByRole("dialog", { name: "Agregar barbero" });
+    fireEvent.change(within(dialogo).getByLabelText("Nombre"), { target: { value: "Nico" } });
+    fireEvent.click(
+      within(within(dialogo).getByRole("group", { name: "Sucursales donde atiende" })).getByRole("button", {
+        name: /Centro/,
+      }),
+    );
+    await act(async () => {
+      fireEvent.click(within(dialogo).getByRole("button", { name: "Guardar" }));
+    });
+    expect(screen.getByText(/"Nico" quedó guardado\. Todavía no tiene horario/)).toBeInTheDocument();
+  });
+
+  it("guardar sin tocar el usuario no lo manda (VER-03)", async () => {
+    vi.mocked(apiConfigAgenda.recursos).mockResolvedValue([CON_LOGIN, SILLON]);
+    vi.mocked(apiConfigAgenda.actualizarRecurso).mockResolvedValue(CON_LOGIN);
+    await montar("recursos");
+    expect(screen.getByText(/entra como @ana/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Editar Juan" }));
+    await act(async () => {});
+    const dialogo = screen.getByRole("dialog", { name: "Editar Juan" });
+    await act(async () => {
+      fireEvent.click(within(dialogo).getByRole("button", { name: "Guardar" }));
+    });
+    expect(vi.mocked(apiConfigAgenda.actualizarRecurso).mock.calls[0][1]).not.toHaveProperty("usuarioId");
+  });
+
+  it("«Sin usuario» avisa que le quita el acceso y lo manda en null", async () => {
+    vi.mocked(apiConfigAgenda.recursos).mockResolvedValue([CON_LOGIN, SILLON]);
+    vi.mocked(apiConfigAgenda.actualizarRecurso).mockResolvedValue({
+      ...CON_LOGIN,
+      usuario: { ...CON_LOGIN.usuario!, activo: false },
+    });
+    await montar("recursos");
+    fireEvent.click(screen.getByRole("button", { name: "Editar Juan" }));
+    await act(async () => {});
+    const dialogo = screen.getByRole("dialog", { name: "Editar Juan" });
+    fireEvent.change(within(dialogo).getByLabelText(/Usuario vinculado/), { target: { value: "" } });
+    expect(within(dialogo).getByText(/@ana deja de entrar al sistema/)).toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(within(dialogo).getByRole("button", { name: "Guardar" }));
+    });
+    expect(vi.mocked(apiConfigAgenda.actualizarRecurso).mock.calls[0][1]).toMatchObject({ usuarioId: null });
+  });
+
+  it("un usuario al que se le quitó el acceso se muestra así, no como vinculado", async () => {
+    vi.mocked(apiConfigAgenda.recursos).mockResolvedValue([
+      { ...CON_LOGIN, usuario: { ...CON_LOGIN.usuario!, activo: false } },
+      SILLON,
+    ]);
+    await montar("recursos");
+    expect(screen.getByText(/@ana sin acceso/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Editar Juan" }));
+    await act(async () => {});
+    const dialogo = screen.getByRole("dialog", { name: "Editar Juan" });
+    expect(within(dialogo).getByLabelText(/Usuario vinculado/)).toHaveValue("");
+    expect(within(dialogo).getByText(/@ana está sin acceso: se le devuelve en Personal/)).toBeInTheDocument();
   });
 });

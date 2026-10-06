@@ -151,7 +151,8 @@ export default function Solicitudes() {
                 Nuevas, ya confirmadas <Badge tono="azul">{nuevas.length}</Badge>
               </h2>
               <p className="text-[13px] text-texto-3">
-                Entraron solas porque la reserva online está en modo automático. Marcalas como vistas.
+                Entraron solas, sin pasar por tu aprobación, por cómo está configurada la confirmación de la
+                reserva online. Marcalas como vistas.
               </p>
               {nuevas.map((c) => (
                 <TarjetaSolicitud

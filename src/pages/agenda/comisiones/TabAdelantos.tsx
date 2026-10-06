@@ -19,7 +19,7 @@ import type { Adelanto } from "../../../lib/agenda/tiposComisiones";
 import { parsearMonto } from "../../../lib/dinero";
 import { fmtFecha, fmtMoney } from "../../../lib/format";
 import { useApi } from "../../../lib/useApi";
-import { mensajeDe } from "../config/utilConfig";
+import { mensajeDe, useNombreProfesional } from "../config/utilConfig";
 
 /**
  * Adelantos: la plata que el profesional recibe a cuenta antes de cobrar su
@@ -140,6 +140,7 @@ export default function TabAdelantos({ puedeRegistrar }: { puedeRegistrar: boole
 
 function NuevoAdelanto({ onClose, onCreado }: { onClose: () => void; onCreado: (a: Adelanto) => void }) {
   const config = useApi(() => apiComisiones.config(), []);
+  const nombres = useNombreProfesional();
   const [recursoId, setRecursoId] = useState("");
   const [fecha, setFecha] = useState(fechaNegocio());
   const [monto, setMonto] = useState("");
@@ -187,7 +188,7 @@ function NuevoAdelanto({ onClose, onCreado }: { onClose: () => void; onCreado: (
       }
     >
       <div className="space-y-3">
-        <Campo label="Profesional">
+        <Campo label={nombres.singular}>
           <Select value={recursoId} onChange={(e) => setRecursoId(e.target.value)} disabled={config.cargando}>
             <option value="">Elegí a quién</option>
             {(config.datos ?? [])
