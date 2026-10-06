@@ -14,6 +14,8 @@ import DetalleCita from "./DetalleCita";
 import NuevaCita from "./NuevaCita";
 import TarjetaCita from "./TarjetaCita";
 import { useAccionRapida } from "./useAccionRapida";
+import { useCobrarCita } from "./useCobrarCita";
+import CampanaAvisos from "./CampanaAvisos";
 
 type Filtro = "todas" | "confirmar" | "cobrar" | "online" | "noshow";
 
@@ -46,9 +48,9 @@ function conCita(d: AgendaHoy | null, c: Cita): AgendaHoy | null {
 
 /**
  * A3 · Hoy (Hoy.dc del lienzo): la lista de recepción, en orden, con los
- * botones del momento —Llegó · Atender · Finalizar · No vino— y "Cobrar"
- * a la vista pero apagado hasta que llegue el cobro (F1.5). Con la feature
- * `cola_walkin` suma la pestaña de la cola (A6).
+ * botones del momento —Llegó · Atender · Finalizar · No vino · Cobrar—.
+ * "Cobrar" abre el POS con la cita cargada. Con la feature `cola_walkin`
+ * suma la pestaña de la cola (A6).
  */
 export default function Hoy() {
   const { negocio } = useAuth();
@@ -71,6 +73,7 @@ export default function Hoy() {
     { pausado: nueva || abierta !== null },
   );
   const rapida = useAccionRapida((c) => hoy.setDatos((d) => conCita(d, c)));
+  const cobrar = useCobrarCita();
 
   const citas = useMemo(
     () =>
@@ -117,6 +120,7 @@ export default function Hoy() {
             ))}
           </Select>
         )}
+        <CampanaAvisos onAbrirCita={(c) => setAbierta(c)} />
         <Boton icono="plus" onClick={() => setNueva(true)} disabled={!sucursalId}>
           Nueva cita
         </Boton>
@@ -183,6 +187,7 @@ export default function Hoy() {
                   rapidas={accionesRapidas(c)}
                   onAbrir={() => setAbierta(c)}
                   onAccion={(a) => rapida.pedir(c, a)}
+                  onCobrar={cobrar ? () => cobrar(c.id) : undefined}
                   ocupado={rapida.ocupadoId === c.id}
                 />
               ))}

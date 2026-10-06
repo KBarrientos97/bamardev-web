@@ -3,8 +3,12 @@ import type {
   AccionCita,
   AgendaDia,
   AgendaHoy,
+  AvisoAgenda,
+  CarritoCita,
   Cita,
   ClienteFicha,
+  ClienteFichaDetalle,
+  EditarClienteInput,
   ColaInput,
   CrearCitaInput,
   LineaPedida,
@@ -74,6 +78,20 @@ export const apiAgenda = {
 
   crearCliente: (input: { nombre: string; telefono: string }) =>
     request<ClienteFicha>("/agenda/clientes", { method: "POST", body: JSON.stringify(input) }),
+
+  /** La ficha con su historial de citas y compras (A7). */
+  cliente: (id: number) => request<ClienteFichaDetalle>(`/agenda/clientes/${id}`),
+
+  editarCliente: (id: number, input: EditarClienteInput) =>
+    request<ClienteFicha>(`/agenda/clientes/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
+
+  // ── Cobro y avisos (ola B) ─────────────────────────────────────────────────
+  /** Lo que el POS precarga para cobrar la cita, al precio vigente. */
+  carrito: (citaId: number) => request<CarritoCita>(`/agenda/citas/${citaId}/carrito`),
+
+  /** Lo que pasó en la agenda desde `desde` (ISO), para la campana. */
+  avisos: (desde?: string) =>
+    request<{ ahora: string; avisos: AvisoAgenda[] }>(`/agenda/avisos${qs({ desde })}`),
 };
 
 /** Los `codigo` de error de la agenda que las pantallas manejan aparte. */

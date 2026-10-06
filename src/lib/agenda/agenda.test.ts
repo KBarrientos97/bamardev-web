@@ -47,11 +47,17 @@ describe("acciones según el estado de la cita (§6)", () => {
   });
 
   it("los terminales no ofrecen nada: una cancelada no se reabre", () => {
-    const terminales: EstadoCita[] = ["COMPLETADA", "CANCELADA", "NO_ASISTIO", "RECHAZADA", "EXPIRADA", "ABANDONADA"];
+    const terminales: EstadoCita[] = ["COMPLETADA", "CANCELADA", "RECHAZADA", "EXPIRADA", "ABANDONADA"];
     for (const e of terminales) {
       expect(esTerminal(e), e).toBe(true);
       expect(accionesPara(e), e).toEqual([]);
     }
+  });
+
+  it("un «No vino» por error se deshace, pero el profesional no lo ofrece", () => {
+    expect(esTerminal("NO_ASISTIO")).toBe(true);
+    expect(accionesPara("NO_ASISTIO")).toEqual(["DESHACER_NO_ASISTIO"]);
+    expect(accionesPara("NO_ASISTIO", { profesional: true })).toEqual([]);
   });
 
   it("el profesional marca llegó, atender, finalizar y no vino; nunca cancela ni confirma", () => {

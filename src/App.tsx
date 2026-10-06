@@ -21,6 +21,7 @@ import Reportes from "./pages/Reportes";
 import Usuarios from "./pages/Usuarios";
 import Agenda from "./pages/agenda/Agenda";
 import Hoy from "./pages/agenda/Hoy";
+import Clientes from "./pages/agenda/Clientes";
 import MiAgenda from "./pages/agenda/MiAgenda";
 import Almacenes from "./pages/inventario/Almacenes";
 import Categorias from "./pages/inventario/Categorias";
@@ -266,6 +267,14 @@ function Rutas() {
           element={
             <Protegida seccion="hoy">
               <Hoy />
+            </Protegida>
+          }
+        />
+        <Route
+          path="/clientes"
+          element={
+            <Protegida seccion="clientes">
+              <Clientes />
             </Protegida>
           }
         />

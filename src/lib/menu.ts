@@ -67,6 +67,7 @@ const ITEMS: (ItemNav & { bloque: Bloque })[] = [
   // enciende junto con el ítem de la agenda del día.
   { a: "/agenda", label: "Agenda", icono: "calendar", seccion: "agenda", bloque: "agenda" },
   { a: "/hoy", label: "Hoy", icono: "clock", seccion: "hoy", bloque: "agenda" },
+  { a: "/clientes", label: "Clientes", icono: "users", seccion: "clientes", bloque: "agenda" },
   {
     a: "/configuracion/agenda",
     label: "Configuración de agenda",

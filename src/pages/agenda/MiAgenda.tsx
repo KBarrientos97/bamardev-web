@@ -23,6 +23,7 @@ import DetalleCita from "./DetalleCita";
 import NuevaCita from "./NuevaCita";
 import TarjetaCita from "./TarjetaCita";
 import { useAccionRapida } from "./useAccionRapida";
+import CampanaAvisos from "./CampanaAvisos";
 
 function conCita(d: MiAgendaRespuesta | null, c: Cita): MiAgendaRespuesta | null {
   if (!d) return d;
@@ -85,6 +86,9 @@ export default function MiAgenda() {
               {negocio?.nombre ? ` · ${negocio.nombre}` : ""}
             </p>
           </div>
+          {/* "Cambios en tu agenda" (§9.1): el backend sólo le manda lo de
+              sus recursos. */}
+          <CampanaAvisos onAbrirCita={setAbierta} />
           {puedeAgendar && (
             <button
               type="button"
