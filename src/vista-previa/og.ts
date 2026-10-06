@@ -67,13 +67,14 @@ export function esLectorDeVistaPrevia(userAgent: string | null | undefined): boo
 
 /**
  * La URL del API. `API_URL` (variable de entorno de Pages) manda; si no está,
- * se deduce del dominio: la web de PROD habla con el API de PROD y todo lo
- * demás (QA, previews, local) con el de QA, que es el lado seguro de errar.
+ * se deduce del dominio: la web de PROD (`app` y `link`) habla con el API de
+ * PROD y todo lo demás (QA, previews, local) con el de QA, que es el lado
+ * seguro de errar.
  */
 export function baseApi(env: { API_URL?: string } | undefined, hostname: string): string {
   const fija = env?.API_URL?.trim();
   if (fija) return fija.replace(/\/+$/, "");
-  if (hostname === "app.bamardev.com" || hostname === "bamar-app.pages.dev") {
+  if (hostname === "app.bamardev.com" || hostname === "link.bamardev.com" || hostname === "bamar-app.pages.dev") {
     return "https://api.bamardev.com/api";
   }
   return "https://api-qa.bamardev.com/api";
@@ -221,6 +222,11 @@ export const ESPERA_API_MS = 2500;
 export interface Contexto {
   request: Request;
   env?: { API_URL?: string };
+  /**
+   * La dirección larga (`/p/…` o `/r/…`) que se atiende, si no es la del
+   * pedido: en `link.bamardev.com/<sub>` es `/p/<sub>` (ver `link.ts`).
+   */
+  ruta?: string;
   /** El `index.html` de la SPA (en Pages: `env.ASSETS.fetch`). */
   traerIndex: (url: URL) => Promise<Response>;
   /** `fetch` al API (inyectable para los tests). */
@@ -230,13 +236,14 @@ export interface Contexto {
 /** Lo que responde la Function para una ruta `/p/*` o `/r/*`. */
 export async function responder(ctx: Contexto): Promise<Response> {
   const url = new URL(ctx.request.url);
+  const ruta = ctx.ruta ?? url.pathname;
   const index = await ctx.traerIndex(new URL("/", url));
   const cabeceras = new Headers(index.headers);
-  for (const [k, v] of Object.entries(cabecerasSeguridad(url.pathname))) cabeceras.set(k, v);
+  for (const [k, v] of Object.entries(cabecerasSeguridad(ruta))) cabeceras.set(k, v);
   // La misma URL responde distinto a un lector de vista previa y a una
   // persona: lo que se cachee en el medio tiene que separarlos.
   cabeceras.append("vary", "User-Agent");
-  const destino = destinoDe(url.pathname);
+  const destino = destinoDe(ruta);
   const sinTocar = () => new Response(index.body, { status: index.status, headers: cabeceras });
   if (!index.ok || !destino || !esLectorDeVistaPrevia(ctx.request.headers.get("user-agent"))) {
     return sinTocar();
@@ -249,7 +256,7 @@ export async function responder(ctx: Contexto): Promise<Response> {
     if (r.ok) og = aDatosOg(destino, await r.json(), base);
     // Sólo un 404 dice "no existe"; un 5xx o un 429 es el backend, y para eso
     // sigue la SPA tal cual (una vista previa pobre, no un enlace "muerto").
-    else noExiste = r.status === 404 && respondeNoExiste(destino, url.pathname);
+    else noExiste = r.status === 404 && respondeNoExiste(destino, ruta);
   } catch {
     og = null;
   }
@@ -277,21 +284,27 @@ export interface ContextoPages {
 }
 
 /**
- * El manejador de `functions/p/[[ruta]].ts` y `functions/r/[[ruta]].ts`. El
- * pedido al API se guarda 5 minutos en la caché de Cloudflare (`cf`), así un
- * grupo de WhatsApp que pega el mismo enlace no le pega al backend por cada
- * vista previa.
+ * El pedido al API desde Cloudflare: se guarda 5 minutos en su caché (`cf`),
+ * así un grupo de WhatsApp que pega el mismo enlace no le pega al backend por
+ * cada vista previa.
+ */
+export function pedirApiConCache(url: string): Promise<Response> {
+  return fetch(url, {
+    headers: { accept: "application/json" },
+    signal: AbortSignal.timeout(ESPERA_API_MS),
+    cf: { cacheTtl: 300, cacheEverything: true },
+  } as RequestInit);
+}
+
+/**
+ * El manejador de `functions/p/[[ruta]].ts` y `functions/r/[[ruta]].ts` (en
+ * `app…`; el host link pasa por `link.ts`).
  */
 export function manejarVistaPrevia(ctx: ContextoPages): Promise<Response> {
   return responder({
     request: ctx.request,
     env: ctx.env,
     traerIndex: (url) => ctx.env.ASSETS.fetch(url.toString()),
-    pedirApi: (url) =>
-      fetch(url, {
-        headers: { accept: "application/json" },
-        signal: AbortSignal.timeout(ESPERA_API_MS),
-        cf: { cacheTtl: 300, cacheEverything: true },
-      } as RequestInit),
+    pedirApi: pedirApiConCache,
   });
 }

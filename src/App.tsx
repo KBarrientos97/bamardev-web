@@ -54,7 +54,7 @@ import PanelMesero from "./pages/salon/PanelMesero";
 import ConfigAgenda from "./pages/agenda/config/ConfigAgenda";
 import ConfigNegocio from "./pages/agenda/config/ConfigNegocio";
 import RutasPaginaPublica from "./pages/pagina/RutasPagina";
-import { esRutaDePaginaPublica } from "./lib/pagina/rutas";
+import { enHostLink, esRutaDePaginaPublica } from "./lib/pagina/rutas";
 import { AuthProvider, useAuth } from "./store/AuthContext";
 
 /**
@@ -63,6 +63,8 @@ import { AuthProvider, useAuth } from "./store/AuthContext";
  * cargar sus pantallas.
  */
 const ReservaPublica = lazy(() => import("./publico/ReservaPublica"));
+/** Todo `link(-qa).bamardev.com`: la página y la reserva, sin la app. */
+const RutasLink = lazy(() => import("./pages/pagina/RutasLink"));
 // Página del negocio: el editor y los enlaces cortos se bajan sólo si se usan.
 const MiPagina = lazy(() => import("./pages/pagina/MiPagina"));
 const MisEnlaces = lazy(() => import("./pages/pagina/MisEnlaces"));
@@ -690,6 +692,16 @@ function SinPantallaEnBlanco({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
+  // En el host link no existe la app: ni login, ni sesión, ni sus pantallas.
+  if (enHostLink()) {
+    return (
+      <BrowserRouter>
+        <Suspense fallback={<div style={{ minHeight: "100dvh", background: "#F6F7F9" }} />}>
+          <RutasLink />
+        </Suspense>
+      </BrowserRouter>
+    );
+  }
   return (
     <BrowserRouter>
       <Routes>
