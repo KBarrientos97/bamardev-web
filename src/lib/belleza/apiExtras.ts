@@ -112,6 +112,11 @@ export interface PagoPropinas {
   egresos?: { cajaId: number; monto: number }[];
   /** Lo de QR o tarjeta que quedó pendiente. */
   pendienteOtras?: number;
+  /**
+   * Lo de QR o tarjeta que se entregó sin caja abierta: quedó pagado por
+   * fuera (QA DIA-13). Opcional: un backend anterior no lo manda.
+   */
+  fueraDeCaja?: number;
 }
 
 export interface ReportePropinas {
@@ -125,6 +130,8 @@ export interface ReportePropinas {
     fecha: string;
     ventaId: number;
     comprobante: string | null;
+    /** La caja de la venta: el comprobante se repite entre turnos (QA DIA-12). */
+    cajaId?: number;
     recursoId: number;
     recurso: string;
     monto: number;

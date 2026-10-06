@@ -51,9 +51,17 @@ export default function Propinas() {
     setPagando(true);
     try {
       const r = await apiExtras.pagarPropinas(aPagar.recursoId, desdeCaja, !desdeCaja || conOtras);
-      setAviso(
-        `Entregaste ${fmtMoney(r.total)} a ${r.recurso}${r.desdeCaja ? " (salió de la caja)" : " (por fuera de la caja)"}.`,
-      );
+      // Lo de QR sin caja abierta queda entregado por fuera (QA DIA-13): se
+      // dice cuánto, para que nadie lo busque en el arqueo.
+      const porFuera = r.desdeCaja && (r.fueraDeCaja ?? 0) > 0 ? r.fueraDeCaja! : 0;
+      const donde = !r.desdeCaja
+        ? " (por fuera de la caja)"
+        : porFuera >= r.total
+          ? " (por fuera de la caja: no tenías caja abierta)"
+          : porFuera > 0
+            ? ` (${fmtMoney(porFuera)} de QR por fuera de la caja; el resto salió de la caja)`
+            : " (salió de la caja)";
+      setAviso(`Entregaste ${fmtMoney(r.total)} a ${r.recurso}${donde}.`);
       rep.recargar();
     } catch (e) {
       setError(mensaje(e));
@@ -136,7 +144,10 @@ export default function Propinas() {
               {d.detalle.map((x) => (
                 <li key={x.id} className="flex items-center justify-between gap-2 py-1.5">
                   <span className="text-texto-2">
-                    {x.recurso} · {x.comprobante ?? `venta ${x.ventaId}`} · {x.formaPago}
+                    {/* El comprobante se repite entre turnos (QA DIA-12): con la
+                        caja (y la fecha abajo) cada venta se distingue. */}
+                    {x.recurso} · {x.comprobante ?? `venta ${x.ventaId}`}
+                    {x.cajaId != null ? ` (caja #${x.cajaId})` : ""} · {x.formaPago}
                     <span className="block text-[11px] text-texto-4">{fmtFechaHora(x.fecha)}</span>
                   </span>
                   <span className="text-right">
@@ -168,12 +179,18 @@ export default function Propinas() {
       >
         {aPagar && (
           <div className="space-y-3 text-sm text-texto-2">
-            <p>
-              <strong className="text-texto">{fmtMoney(aEntregar(aPagar, !desdeCaja, conOtras))}</strong>{" "}
-              {desdeCaja
-                ? "salen en efectivo de la caja donde se cobraron (si ya se cerró, de la tuya)."
-                : "se marcan como pagados por fuera de la caja."}
-            </p>
+            {desdeCaja && aEntregar(aPagar, false, conOtras) <= 0 ? (
+              // Sólo le quedan propinas de QR: "Bs 0,00 salen de la caja" no
+              // decía qué hacer (QA DIA-13).
+              <p>Sólo le quedan propinas que dejaron por QR o tarjeta: marcá abajo para entregarlas.</p>
+            ) : (
+              <p>
+                <strong className="text-texto">{fmtMoney(aEntregar(aPagar, !desdeCaja, conOtras))}</strong>{" "}
+                {desdeCaja
+                  ? "salen en efectivo de la caja donde se cobraron (si ya se cerró, de la tuya)."
+                  : "se marcan como pagados por fuera de la caja."}
+              </p>
+            )}
             {desdeCaja && (aPagar.pendienteOtras ?? 0) > 0 && (
               <label className="flex items-start gap-2">
                 <input
@@ -184,7 +201,7 @@ export default function Propinas() {
                 />
                 <span>
                   Entregar también {fmtMoney(aPagar.pendienteOtras ?? 0)} que dejaron por QR o tarjeta (salen en
-                  efectivo de tu caja)
+                  efectivo de tu caja; si no tenés una abierta, quedan entregadas por fuera)
                 </span>
               </label>
             )}

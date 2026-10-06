@@ -133,3 +133,39 @@ describe("Propinas", () => {
     expect(screen.queryByText("Entregar")).not.toBeInTheDocument();
   });
 });
+
+describe("QA S2 ronda 2", () => {
+  it("DIA-13: sin caja abierta, lo de QR queda entregado por fuera y el aviso lo dice", async () => {
+    vi.mocked(apiExtras.pagarPropinas).mockResolvedValue({
+      recursoId: 8,
+      recurso: "Beto",
+      cantidad: 1,
+      total: 5,
+      desdeCaja: true,
+      egresos: [],
+      fueraDeCaja: 5,
+    });
+    await montar();
+    fireEvent.click(within(screen.getByText("Beto").closest("li")!).getByText("Entregar"));
+    // Sólo le queda QR: el diálogo dice qué hacer en vez de "Bs 0,00 salen".
+    expect(screen.getByText(/Sólo le quedan propinas que dejaron por QR/)).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText(/también/));
+    await act(async () => {
+      fireEvent.click(screen.getAllByText("Entregar").at(-1)!);
+    });
+    expect(screen.getByText(/Entregaste Bs.5,00 a Beto \(por fuera de la caja: no tenías caja abierta\)/)).toBeInTheDocument();
+  });
+
+  it("DIA-12: el detalle distingue comprobantes repetidos por la caja", async () => {
+    vi.mocked(apiExtras.propinas).mockResolvedValue({
+      ...REPORTE,
+      detalle: [
+        { id: 1, fecha: "2026-10-06T15:29:00Z", ventaId: 10, comprobante: "V-000003", cajaId: 88, recursoId: 7, recurso: "Ana", monto: 5, formaPago: "Efectivo", pagadaEn: null },
+        { id: 2, fecha: "2026-10-06T15:13:00Z", ventaId: 20, comprobante: "V-000003", cajaId: 91, recursoId: 7, recurso: "Ana", monto: 5, formaPago: "QR", pagadaEn: null },
+      ],
+    });
+    await montar();
+    expect(screen.getByText(/V-000003 \(caja #88\)/)).toBeInTheDocument();
+    expect(screen.getByText(/V-000003 \(caja #91\)/)).toBeInTheDocument();
+  });
+});

@@ -252,3 +252,33 @@ describe("QA PER-08: el recibo de una venta de mostrador se vuelve a dar", () =>
     expect(screen.queryByRole("button", { name: "Ver comprobante" })).not.toBeInTheDocument();
   });
 });
+
+describe("QA DIA-15: un fiado no figura como una venta pagada en efectivo", () => {
+  const listar = async () => {
+    render(
+      <MemoryRouter>
+        <PantallaHistorial caja={{ id: 1 } as Caja} onAtras={() => {}} onCierre={() => {}} onVerComprobante={() => {}} />
+      </MemoryRouter>,
+    );
+    return (await screen.findByRole("button", { name: /T-0007/ })).textContent;
+  };
+  const credito = { montoTotal: 70, adelanto: 20, saldo: 50 } as Venta["credito"];
+
+  it("con adelanto dice cuánto se pagó y cuánto quedó fiado", async () => {
+    vi.mocked(api.getVentas).mockResolvedValue([{ ...venta, total: 70, credito }]);
+    expect(await listar()).toMatch(/Efectivo Bs.20,00 · Fiado Bs.50,00/);
+  });
+
+  it("sin adelanto, «Fiado/Crédito»", async () => {
+    vi.mocked(api.getVentas).mockResolvedValue([
+      { ...venta, formasPago: [], pagos: [], credito: { ...credito!, adelanto: 0 } },
+    ]);
+    expect(await listar()).toMatch(/Fiado\/Crédito/);
+  });
+
+  it("una venta pagada, como siempre", async () => {
+    const texto = await listar();
+    expect(texto).toMatch(/· Efectivo/);
+    expect(texto).not.toMatch(/Fiado/);
+  });
+});

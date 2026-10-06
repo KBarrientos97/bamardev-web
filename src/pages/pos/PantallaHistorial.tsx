@@ -205,7 +205,7 @@ export default function PantallaHistorial({
                       <p className="mt-0.5 text-xs text-texto-3">
                         {fmtHora(v.fecha)} · {v.items ?? 0}{" "}
                         {(v.items ?? 0) === 1 ? "artículo" : "artículos"}
-                        {v.formasPago?.length ? ` · ${v.formasPago.join(" + ")}` : ""}
+                        {comoSePago(v) ? ` · ${comoSePago(v)}` : ""}
                       </p>
                     </div>
                     <span
@@ -844,4 +844,18 @@ function DatoPedido({ etiqueta, valor }: { etiqueta: string; valor: string }) {
       <dd className="truncate text-[13px] font-semibold text-texto">{valor}</dd>
     </div>
   );
+}
+
+/**
+ * Cómo se pagó, para la lista del turno. Un fiado decía sólo "Efectivo" (el
+ * adelanto), igual que una venta pagada (QA DIA-15): ahora dice que es fiado
+ * y, si dejó algo, cuánto de cada cosa.
+ */
+function comoSePago(v: Pick<Venta, "formasPago" | "credito">): string {
+  const formas = v.formasPago?.join(" + ") ?? "";
+  const c = v.credito;
+  if (!c) return formas;
+  const fiado = Math.round((c.montoTotal - c.adelanto) * 100) / 100;
+  if (!(c.adelanto > 0) || !formas) return "Fiado/Crédito";
+  return `${formas} ${fmtMoney(c.adelanto)} · Fiado ${fmtMoney(fiado)}`;
 }
