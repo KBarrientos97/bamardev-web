@@ -13,6 +13,7 @@ import { compartirTexto, copiarTexto, puedeCompartirTexto } from "../../../lib/a
 import type { Recurso, Servicio } from "../../../lib/agenda/tiposConfigAgenda";
 import { useApi } from "../../../lib/useApi";
 import { useAuth } from "../../../store/AuthContext";
+import { useSpa } from "../../../lib/agenda/spa";
 import { Bloque, Casilla } from "./comun";
 import { mensajeDe, nombreRecurso, useNombreProfesional } from "./utilConfig";
 
@@ -34,6 +35,7 @@ export default function TabReservaOnline({
   onCambio: () => void;
 }) {
   const { puede } = useAuth();
+  const { espacios: conEspacios } = useSpa();
   const nombres = useNombreProfesional();
   const conf = useApi(() => apiReservaOnline.configuracion(), []);
   const [aviso, setAviso] = useAviso();
@@ -45,7 +47,10 @@ export default function TabReservaOnline({
   const c = conf.datos;
   const publicadas = c.sucursales.filter((s) => s.publicaReservas && s.slugReservas);
   const enLinea = servicios.filter((s) => s.activo && s.reservableOnline);
-  const profesionales = recursos.filter((r) => r.activo);
+  // Con `espacios`, la cabina la asigna el sistema: no se publica como si
+  // fuera una terapeuta (QA S2-15). Sin la feature (agenda por cabina, §7.6)
+  // la cabina es lo que se elige y se sigue ofreciendo.
+  const profesionales = recursos.filter((r) => r.activo && !(conEspacios && r.tipo === "ESPACIO"));
 
   async function hacer(clave: string, fn: () => Promise<unknown>, ok: string, recargarTodo = false) {
     setOcupado(clave);

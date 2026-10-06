@@ -28,6 +28,11 @@ export interface Servicio {
   requiereEspacioTipoId?: number | null;
   poseInicioMin?: number | null;
   poseMin?: number | null;
+  /**
+   * Al desactivarlo, las citas que lo tienen y todavía no pasaron (§7.3, QA
+   * S2-03): nada se cancela solo. Sólo viene en la respuesta del PATCH.
+   */
+  citasAfectadas?: CitaAfectada[];
 }
 
 /** `POST /agenda/servicios`: crea el producto tipo SERVICIO con su duración. */
@@ -49,6 +54,8 @@ export interface ServicioCambios {
   bufferMin?: number;
   reservableOnline?: boolean;
   recursoIds?: number[];
+  /** Desactivarlo devuelve `citasAfectadas` (QA S2-03). */
+  activo?: boolean;
   /** Fase 3 (sólo se mandan si el negocio tiene la feature). */
   requiereEspacioTipoId?: number | null;
   poseInicioMin?: number | null;
@@ -82,6 +89,11 @@ export interface Recurso {
   serviciosPropios?: ServicioPropio[];
   /** Fase 3, sólo ESPACIO: de qué tipo es (Cabina, Camilla…). */
   tipoEspacioId?: number | null;
+  /**
+   * Al desactivarlo, sus citas que todavía no pasaron (§7.3, QA S2-03). Sólo
+   * viene en la respuesta del PATCH.
+   */
+  citasAfectadas?: CitaAfectada[];
 }
 
 /** Duración, precio y % propios de un profesional en un servicio. */

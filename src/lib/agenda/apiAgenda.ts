@@ -110,6 +110,17 @@ export function huecosDelConflicto(e: unknown): Propuesta[] | null {
   return Array.isArray(huecos) ? (huecos as Propuesta[]) : [];
 }
 
+/**
+ * Si el 409 de hueco es porque falta la cabina (QA S2-02/S2-08, `motivo:
+ * "ESPACIO"`), el mensaje del backend lo dice ("No queda Cabina libre a las
+ * 10:00… Ana sí está libre"): se muestra ése y no el genérico. Null en
+ * cualquier otro caso.
+ */
+export function mensajeSinEspacio(e: unknown): string | null {
+  if (!(e instanceof ApiError) || e.codigo !== CODIGOS_AGENDA.HUECO_OCUPADO) return null;
+  return e.detalle.motivo === "ESPACIO" && e.message ? e.message : null;
+}
+
 /** La espera que trae un 409 SIN_RECURSO_LIBRE, en minutos (o null). */
 export function esperaDelConflicto(e: unknown): number | null {
   if (!(e instanceof ApiError) || e.codigo !== CODIGOS_AGENDA.SIN_RECURSO_LIBRE) return null;

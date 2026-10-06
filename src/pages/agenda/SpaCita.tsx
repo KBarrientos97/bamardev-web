@@ -37,6 +37,19 @@ export default function SpaCita({ cita }: { cita: Cita }) {
         : Promise.resolve([] as ConsentimientoFaltante[]),
     [cita.id, spa.consentimientos, porAtender],
   );
+  // QA S2-13: lo que la ficha de salud dice que impide o condiciona el
+  // tratamiento, a la vista de quien atiende (como las alergias). Sólo para
+  // quien ve datos de salud y mientras la cita está por atenderse.
+  const salud = useApi(
+    () =>
+      spa.consentimientos && porAtender && puedeFirmar && clienteId != null
+        ? Promise.resolve()
+            .then(() => apiSpa.saludDelCliente(clienteId))
+            .then((r) => r.ficha)
+            .catch(() => null)
+        : Promise.resolve(null),
+    [clienteId, spa.consentimientos, porAtender, puedeFirmar],
+  );
   const paquetes = useApi(
     () =>
       spa.paquetes && clienteId != null
@@ -54,11 +67,25 @@ export default function SpaCita({ cita }: { cita: Cita }) {
         .map((i) => ({ paquete: p, item: i })),
     );
   const faltan = pendientes.datos ?? [];
+  const ficha = salud.datos ?? null;
+  const avisosSalud = [
+    ficha?.contraindicaciones ? `Contraindicaciones: ${ficha.contraindicaciones}` : "",
+    ficha?.medicamentos ? `Medicamentos: ${ficha.medicamentos}` : "",
+    ficha?.embarazo ? "Embarazada" : "",
+  ].filter(Boolean);
 
-  if (!faltan.length && !saldos.length) return null;
+  if (!faltan.length && !saldos.length && !avisosSalud.length) return null;
 
   return (
     <section className="space-y-2.5">
+      {avisosSalud.length > 0 && (
+        <div className="rounded-xl bg-danger-bg px-3 py-2 text-[13px] text-danger-text">
+          <p className="font-bold">Ficha de salud</p>
+          {avisosSalud.map((t) => (
+            <p key={t}>{t}</p>
+          ))}
+        </div>
+      )}
       {faltan.length > 0 && (
         <div role="alert" className="space-y-2 rounded-xl bg-warning-bg p-3 text-warning-text">
           <p className="flex items-center gap-2 text-sm font-bold">

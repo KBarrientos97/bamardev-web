@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Boton, Campo, ErrorMsg, Input, Modal, Select } from "../../components/ui";
-import { apiAgenda, huecosDelConflicto, mensajeDe } from "../../lib/agenda/apiAgenda";
+import { apiAgenda, huecosDelConflicto, mensajeDe, mensajeSinEspacio } from "../../lib/agenda/apiAgenda";
 import { fechaNegocio } from "../../lib/agenda/horaAgenda";
 import { lineasDePropuesta } from "../../lib/agenda/lineasCita";
 import type { Cita, Propuesta } from "../../lib/agenda/tiposAgenda";
@@ -82,7 +82,7 @@ export default function MoverCita({
       if (nuevos) {
         setHuecos(nuevos);
         setElegida(0);
-        setConflicto("Ese horario se acaba de ocupar. Elegí otro de la lista.");
+        setConflicto(mensajeSinEspacio(e) ?? "Ese horario se acaba de ocupar. Elegí otro de la lista.");
       } else {
         setError(mensajeDe(e, "No se pudo mover la cita"));
       }

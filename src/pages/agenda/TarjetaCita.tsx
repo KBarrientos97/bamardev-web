@@ -1,6 +1,7 @@
 import { ETIQUETA_ACCION, type Rapida } from "../../lib/agenda/estadosCita";
 import { duracionTexto, horaNegocio, minutosEntre } from "../../lib/agenda/horaAgenda";
 import type { AccionCita, Cita } from "../../lib/agenda/tiposAgenda";
+import { textoCabinaYPose } from "../../lib/agenda/spa";
 import { BadgeEstado } from "./piezas";
 
 /**
@@ -35,6 +36,8 @@ export default function TarjetaCita({
     .filter(Boolean)
     .join(" · ");
   const duracion = cita.inicio && cita.fin ? duracionTexto(minutosEntre(cita.inicio, cita.fin)) : "";
+  // Spa: a qué cabina ir y cuándo queda libre por la pose (QA S2-14).
+  const cabinaYPose = textoCabinaYPose(cita.lineas);
   // Lo que recepción tiene que ver antes de que la clienta se siente.
   const avisos: [string, string][] = [];
   if (cita.noShowSugerido) avisos.push(["No llegó", "font-semibold text-warning-text"]);
@@ -65,6 +68,7 @@ export default function TarjetaCita({
         <div className="min-w-0 flex-1">
           <p className="truncate text-[15px] font-bold text-texto">{cita.cliente.nombre}</p>
           <p className="text-[13px] text-texto-2">{detalle}</p>
+          {cabinaYPose && <p className="text-[12px] font-semibold text-primary-700">{cabinaYPose}</p>}
           {avisos.length > 0 && (
             <p className="mt-0.5 flex flex-wrap gap-x-2 text-[12px]">
               {avisos.map(([texto, clase]) => (

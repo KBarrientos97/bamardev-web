@@ -172,7 +172,13 @@ export interface CompraHistorial {
   estado: string;
   citaId: number | null;
   fiado: boolean;
-  items: { producto: string; cantidad: number; subtotal: number }[];
+  items: {
+    producto: string;
+    cantidad: number;
+    subtotal: number;
+    /** La línea se pagó con una sesión de este paquete (QA S2-06). */
+    paquete?: string;
+  }[];
 }
 
 /** `GET /agenda/clientes/:id`: la ficha con su historia (ola B). */

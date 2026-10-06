@@ -334,7 +334,13 @@ function Compras({ ficha }: { ficha: ClienteFichaDetalle }) {
                 {v.estado === "ANULADO" && <span className="ml-1 font-semibold text-danger-text">· anulada</span>}
               </p>
               <p className="truncate text-[12px] text-texto-3">
-                {v.items.map((i) => (i.cantidad === 1 ? i.producto : `${i.cantidad} × ${i.producto}`)).join(", ")}
+                {v.items
+                  .map((i) => {
+                    const que = i.cantidad === 1 ? i.producto : `${i.cantidad} × ${i.producto}`;
+                    // QA S2-06: la sesión que salió de un paquete lo dice.
+                    return i.paquete ? `${que} (sesión de ${i.paquete})` : que;
+                  })
+                  .join(", ")}
               </p>
             </div>
             <span className={`text-sm font-semibold ${v.estado === "ANULADO" ? "text-texto-4 line-through" : "text-texto"}`}>

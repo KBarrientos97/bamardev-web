@@ -13,9 +13,15 @@ import {
 } from "../../../components/ui";
 import { api } from "../../../lib/api";
 import { apiConfigAgenda } from "../../../lib/agenda/apiConfigAgenda";
-import type { Recurso, RecursoInput, Servicio, TipoRecurso } from "../../../lib/agenda/tiposConfigAgenda";
+import type {
+  CitaAfectada,
+  Recurso,
+  RecursoInput,
+  Servicio,
+  TipoRecurso,
+} from "../../../lib/agenda/tiposConfigAgenda";
 import { useApi } from "../../../lib/useApi";
-import { Casilla, PuntoColor, SelectorVarios } from "./comun";
+import { AvisoCitasAfectadas, Casilla, PuntoColor, SelectorVarios } from "./comun";
 import { mensajeDe, useNombreProfesional, type Sucursal } from "./utilConfig";
 import { apiSpa } from "../../../lib/agenda/apiSpa";
 import { useSpa } from "../../../lib/agenda/spa";
@@ -47,6 +53,9 @@ export default function TabRecursos({
   const [editando, setEditando] = useState<Recurso | "nuevo" | null>(null);
   const [tipoNuevo, setTipoNuevo] = useState<TipoRecurso>("PROFESIONAL");
   const [aviso, setAviso] = useAviso();
+  // Las citas que quedaron con un profesional o un espacio recién desactivado
+  // (§7.3, QA S2-03): no se cancelan solas, se listan para reprogramarlas.
+  const [afectadas, setAfectadas] = useState<{ nombre: string; citas: CitaAfectada[] } | null>(null);
 
   const ordenados = [...recursos].sort((a, b) => a.orden - b.orden || a.nombre.localeCompare(b.nombre));
   const profesionales = ordenados.filter((r) => r.tipo === "PROFESIONAL");
@@ -112,6 +121,13 @@ export default function TabRecursos({
   return (
     <div className="space-y-4">
       <AvisoOk>{aviso}</AvisoOk>
+      {afectadas && (
+        <AvisoCitasAfectadas
+          citas={afectadas.citas}
+          donde={`con "${afectadas.nombre}", que quedó inactivo`}
+          onCerrar={() => setAfectadas(null)}
+        />
+      )}
       {recursos.length === 0 ? (
         <div className="card">
           <Vacio
@@ -145,9 +161,10 @@ export default function TabRecursos({
           servicios={servicios}
           sucursales={sucursales}
           onClose={() => setEditando(null)}
-          onGuardado={(r) => {
+          onGuardado={(r, citas) => {
             setEditando(null);
             setAviso(`"${r.nombre}" quedó guardado.`);
+            setAfectadas(citas.length ? { nombre: r.nombre, citas } : null);
             onCambio();
           }}
         />
@@ -171,7 +188,7 @@ function FormRecurso({
   servicios: Servicio[];
   sucursales: Sucursal[];
   onClose: () => void;
-  onGuardado: (r: Recurso) => void;
+  onGuardado: (r: Recurso, citasAfectadas: CitaAfectada[]) => void;
 }) {
   const nombres = useNombreProfesional();
   const usuarios = useApi(() => api.getUsuarios(), []);
@@ -282,7 +299,10 @@ function FormRecurso({
       const r = recurso
         ? await apiConfigAgenda.actualizarRecurso(recurso.id, input)
         : await apiConfigAgenda.crearRecurso(input);
-      onGuardado(conPropios ? await apiConfigAgenda.guardarServiciosRecurso(r.id, lista) : r);
+      onGuardado(
+        conPropios ? await apiConfigAgenda.guardarServiciosRecurso(r.id, lista) : r,
+        r.citasAfectadas ?? [],
+      );
     } catch (e) {
       setError(mensajeDe(e));
     } finally {
@@ -492,9 +512,13 @@ function FormRecurso({
           <Casilla checked={activo} onChange={setActivo} ayuda="Inactivo no aparece en la agenda; sus citas no se tocan.">
             Activo
           </Casilla>
-          <Casilla checked={publicado} onChange={setPublicado} ayuda="Aparece en tu página de reservas con su nombre público.">
-            Se puede elegir al reservar online
-          </Casilla>
+          {/* Con `espacios` la cabina la asigna el sistema: no se elige al
+              reservar (QA S2-15). */}
+          {(esProfesional || !spa.espacios) && (
+            <Casilla checked={publicado} onChange={setPublicado} ayuda="Aparece en tu página de reservas con su nombre público.">
+              Se puede elegir al reservar online
+            </Casilla>
+          )}
         </div>
         <ErrorMsg>{error}</ErrorMsg>
       </div>

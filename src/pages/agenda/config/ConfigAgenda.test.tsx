@@ -437,3 +437,68 @@ describe("citas afectadas y bloqueos de día completo", () => {
     expect(screen.getByText("03/11/2099 09:00 a 13:00")).toBeInTheDocument();
   });
 });
+
+// QA S2-03 (ronda 2 del spa, §7.3): desactivar un profesional, un espacio o
+// un servicio no cancela nada, pero lista las citas que quedan con él.
+describe("desactivar lista las citas afectadas", () => {
+  const AFECTADA = {
+    id: 72,
+    codigo: "C-0072",
+    estado: "RESERVADA",
+    inicio: "2099-10-07T17:15:00.000Z",
+    fin: "2099-10-07T18:15:00.000Z",
+    cliente: { nombre: "Marta Quispe" },
+    lineas: [{ servicio: "Corte clásico", recurso: "Juan" }],
+  };
+
+  it("un profesional desactivado muestra sus citas para reprogramar", async () => {
+    vi.mocked(apiConfigAgenda.actualizarRecurso).mockResolvedValue({
+      ...JUAN,
+      activo: false,
+      citasAfectadas: [AFECTADA],
+    });
+    await montar("recursos");
+    fireEvent.click(screen.getByRole("button", { name: "Editar Juan" }));
+    await act(async () => {});
+    const dialogo = screen.getByRole("dialog");
+    fireEvent.click(within(dialogo).getByRole("checkbox", { name: /^Activo/ }));
+    await act(async () => {
+      fireEvent.click(within(dialogo).getByRole("button", { name: "Guardar" }));
+    });
+    expect(vi.mocked(apiConfigAgenda.actualizarRecurso).mock.calls[0][1]).toMatchObject({ activo: false });
+    const alerta = screen.getByRole("alert");
+    expect(alerta).toHaveTextContent('1 cita queda con "Juan", que quedó inactivo');
+    expect(alerta).toHaveTextContent("Marta Quispe");
+    expect(alerta).toHaveTextContent("No se canceló ninguna");
+  });
+
+  it("un servicio se desactiva desde la agenda y lista sus citas", async () => {
+    vi.mocked(apiConfigAgenda.actualizarServicio).mockResolvedValue({
+      ...CORTE,
+      activo: false,
+      citasAfectadas: [AFECTADA],
+    });
+    await montar("servicios");
+    fireEvent.click(screen.getByRole("button", { name: "Editar Corte clásico" }));
+    const dialogo = screen.getByRole("dialog", { name: "Corte clásico" });
+    fireEvent.click(within(dialogo).getByRole("checkbox", { name: /^Activo/ }));
+    await act(async () => {
+      fireEvent.click(within(dialogo).getByRole("button", { name: "Guardar" }));
+    });
+    expect(vi.mocked(apiConfigAgenda.actualizarServicio).mock.calls[0][1]).toMatchObject({ activo: false });
+    expect(screen.getByRole("alert")).toHaveTextContent('1 cita queda con "Corte clásico", que quedó desactivado');
+  });
+
+  it("sin citas afectadas no aparece ningún aviso de más", async () => {
+    vi.mocked(apiConfigAgenda.actualizarRecurso).mockResolvedValue({ ...JUAN, activo: false });
+    await montar("recursos");
+    fireEvent.click(screen.getByRole("button", { name: "Editar Juan" }));
+    await act(async () => {});
+    const dialogo = screen.getByRole("dialog");
+    fireEvent.click(within(dialogo).getByRole("checkbox", { name: /^Activo/ }));
+    await act(async () => {
+      fireEvent.click(within(dialogo).getByRole("button", { name: "Guardar" }));
+    });
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+});

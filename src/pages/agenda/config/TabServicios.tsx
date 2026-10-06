@@ -15,10 +15,10 @@ import {
 } from "../../../components/ui";
 import { api } from "../../../lib/api";
 import { apiConfigAgenda } from "../../../lib/agenda/apiConfigAgenda";
-import type { Recurso, Servicio } from "../../../lib/agenda/tiposConfigAgenda";
+import type { CitaAfectada, Recurso, Servicio } from "../../../lib/agenda/tiposConfigAgenda";
 import { fmtMoney } from "../../../lib/format";
 import { useApi } from "../../../lib/useApi";
-import { Casilla, PuntoColor, SelectorVarios } from "./comun";
+import { AvisoCitasAfectadas, Casilla, PuntoColor, SelectorVarios } from "./comun";
 import { mensajeDe, nombreRecurso } from "./utilConfig";
 // Fase 3 (spa): espacio que ocupa y tiempo de pose.
 import CamposSpaServicio from "./CamposSpaServicio";
@@ -46,6 +46,9 @@ export default function TabServicios({
   const [editando, setEditando] = useState<Servicio | null>(null);
   const [creando, setCreando] = useState(false);
   const [aviso, setAviso] = useAviso();
+  // Las citas que quedaron con un servicio recién desactivado (§7.3, QA
+  // S2-03): se listan para reprogramarlas.
+  const [afectadas, setAfectadas] = useState<{ nombre: string; citas: CitaAfectada[] } | null>(null);
 
   const activos = servicios.filter((s) => s.activo);
   const sinDuracion = activos.filter((s) => !s.duracionMin);
@@ -63,6 +66,13 @@ export default function TabServicios({
       </div>
 
       <AvisoOk>{aviso}</AvisoOk>
+      {afectadas && (
+        <AvisoCitasAfectadas
+          citas={afectadas.citas}
+          donde={`con "${afectadas.nombre}", que quedó desactivado`}
+          onCerrar={() => setAfectadas(null)}
+        />
+      )}
 
       {/* Sin duración la agenda no sabe cuánto ocupa: el servicio no aparece
           al dar una cita. Pasa con los servicios que ya estaban en el
@@ -155,6 +165,7 @@ export default function TabServicios({
           onGuardado={(s) => {
             setEditando(null);
             setAviso(`"${s.nombre}" quedó guardado.`);
+            setAfectadas(s.citasAfectadas?.length ? { nombre: s.nombre, citas: s.citasAfectadas } : null);
             onCambio();
           }}
         />
@@ -196,6 +207,7 @@ function FormServicio({
   const [duracion, setDuracion] = useState(servicio.duracionMin ? String(servicio.duracionMin) : "");
   const [buffer, setBuffer] = useState(servicio.bufferMin ? String(servicio.bufferMin) : "");
   const [online, setOnline] = useState(servicio.reservableOnline);
+  const [activo, setActivo] = useState(servicio.activo);
   const [recursoIds, setRecursoIds] = useState<number[]>(servicio.recursoIds);
   const [error, setError] = useState("");
   const [guardando, setGuardando] = useState(false);
@@ -237,6 +249,8 @@ function FormServicio({
         reservableOnline: online,
         recursoIds,
         ...deSpa.cambios,
+        // Sólo si cambia: desactivarlo devuelve las citas que lo tienen.
+        ...(activo !== servicio.activo ? { activo } : {}),
       });
       onGuardado(s);
     } catch (e) {
@@ -275,6 +289,13 @@ function FormServicio({
         </div>
         <Casilla checked={online} onChange={setOnline} ayuda="Aparece en tu página de reservas.">
           Se puede reservar online
+        </Casilla>
+        <Casilla
+          checked={activo}
+          onChange={setActivo}
+          ayuda="Desactivado no se agenda ni se vende; las citas que ya lo tienen no se tocan y se listan para reprogramarlas."
+        >
+          Activo
         </Casilla>
         <div>
           <p className="mb-1.5 text-[13px] font-semibold text-texto-2">Quién lo hace</p>

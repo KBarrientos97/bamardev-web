@@ -724,6 +724,11 @@ export default function Pos() {
       carrito={carrito}
       onCobrar={() => setPantalla("cobro")}
       sucursalId={abierta.almacenId}
+      // QA S2-07: un paquete se vende a un cliente; sin elegirlo, el cobro
+      // rebotaba recién al confirmar, en una pantalla donde no se lo elige.
+      bloqueoCobro={
+        vendePaquete && !clientePaquete ? "Elegí a nombre de quién queda el paquete (arriba) para cobrar." : null
+      }
       descuentos={
         conPromos
           ? {

@@ -84,6 +84,25 @@ export function vistaPorEspacio(
   };
 }
 
+/**
+ * La agenda "Por terapeuta" (QA S2-04): con la feature `espacios`, las
+ * cabinas tienen su propia vista ("Por espacio") y acá no van como columnas
+ * —salían grises, "No trabaja este día", aunque estuvieran ocupadas, y
+ * empujaban a las terapeutas fuera de la pantalla—. Sin la feature, un spa
+ * que agenda por cabina (§7.6) las sigue viendo: ahí la cabina ES la agenda.
+ * La pose se parte en dos bloques como siempre.
+ */
+export function vistaPorProfesional(
+  recursos: RecursoDelDia[],
+  citas: Cita[],
+  conEspacios: boolean,
+): { recursos: RecursoDelDia[]; citas: Cita[] } {
+  return {
+    recursos: conEspacios ? recursos.filter((r) => r.tipo !== "ESPACIO") : recursos,
+    citas: partirPorPose(citas),
+  };
+}
+
 // ── Tiempo de pose ──────────────────────────────────────────────────────────
 
 /**
@@ -122,6 +141,33 @@ export function idLineaReal(id: number): number {
 export function textoPose(l: LineaSpa): string | null {
   if (!l.poseDesde || !l.poseHasta) return null;
   return `Pose ${horaNegocio(l.poseDesde)} – ${horaNegocio(l.poseHasta)}: queda libre`;
+}
+
+/**
+ * La cabina y la pose de una cita en una línea, para las listas (Mi agenda,
+ * Hoy): "Cabina 1 · pose 11:45–12:15". Sin esto, un facial con pose y la
+ * depilación metida en esa pose parecían dos citas encimadas, y la terapeuta
+ * no sabía a qué cabina ir sin abrir cada una (QA S2-14). Null si la cita no
+ * ocupa cabina ni tiene pose.
+ */
+export function textoCabinaYPose(lineas: LineaConSpa[]): string | null {
+  const partes = lineas
+    .map((l) => {
+      const pose = l.poseDesde && l.poseHasta ? `pose ${horaNegocio(l.poseDesde)}–${horaNegocio(l.poseHasta)}` : "";
+      return [l.espacio ?? "", pose].filter(Boolean).join(" · ");
+    })
+    .filter(Boolean);
+  return partes.length ? [...new Set(partes)].join("; ") : null;
+}
+
+// ── Firma ───────────────────────────────────────────────────────────────────
+
+/**
+ * Píxeles reales por píxel CSS del lienzo de firma (QA S2-16): los de la
+ * pantalla, entre 1 y 2 (más de 2× pasaría el tope del PNG en el backend).
+ */
+export function densidadDeFirma(dpr = typeof window === "undefined" ? 1 : window.devicePixelRatio): number {
+  return Math.min(2, Math.max(1, Number.isFinite(dpr) && dpr > 0 ? dpr : 1));
 }
 
 // ── Paquetes en el cobro de la cita ─────────────────────────────────────────
