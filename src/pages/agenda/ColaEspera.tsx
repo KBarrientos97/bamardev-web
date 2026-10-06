@@ -61,7 +61,9 @@ export default function ColaEspera({
     } catch (e) {
       const espera = esperaDelConflicto(e);
       if (espera !== null) {
-        const quien = elegido ? todos.find((r) => r.id === elegido)?.nombre : null;
+        // Sin elegir, el backend probó con el preferido: es a él a quien nombrar.
+        const intentado = elegido || c.recursoPreferidoId;
+        const quien = intentado ? todos.find((r) => r.id === intentado)?.nombre : null;
         setAviso(
           `${quien ? `${quien} no está libre` : `No hay nadie libre para ${c.cliente.nombre}`} ahora. Espera estimada: ~${duracionTexto(espera)}.` +
             (otrosQueLoHacen(c, elegido) ? " Podés elegir a otro en «Con»." : ""),

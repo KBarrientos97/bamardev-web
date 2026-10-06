@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { Boton, Campo, ErrorMsg, Input, Modal, Select } from "../../components/ui";
 import { apiAgenda, clienteDelConflicto, mensajeDe } from "../../lib/agenda/apiAgenda";
 import type { ClienteFicha } from "../../lib/agenda/tiposAgenda";
@@ -77,7 +78,9 @@ export default function NuevoCliente({
     }
   };
 
-  return (
+  // En el body y no donde se abre: el buscador del carrito vive dentro del
+  // `<dl>` de los totales, y un diálogo ahí adentro es marcado inválido.
+  return createPortal(
     <Modal
       abierto
       titulo="Nuevo cliente"
@@ -128,7 +131,8 @@ export default function NuevoCliente({
           </Boton>
         )}
       </div>
-    </Modal>
+    </Modal>,
+    document.body,
   );
 }
 

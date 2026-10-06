@@ -203,6 +203,8 @@ describe("A6 · Cola de espera", () => {
     });
     expect(apiAgenda.atenderAhora).toHaveBeenCalledWith(4, undefined);
     expect(screen.getByRole("status")).toHaveTextContent("Espera estimada: ~25 min");
+    // Sin elegir, el backend probó con la que pidió: se la nombra.
+    expect(screen.getByRole("status")).toHaveTextContent("Carla R. no está libre ahora");
     // Hay otra que hace el corte: se dice que se la puede elegir.
     expect(screen.getByRole("status")).toHaveTextContent("Podés elegir a otro en «Con»");
   });
