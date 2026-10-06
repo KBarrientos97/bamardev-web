@@ -8,7 +8,9 @@ import {
   type NegocioPublico,
   type SucursalPublica,
 } from "./apiReserva";
+import Captcha from "./Captcha";
 import Confirmada from "./Confirmada";
+import { siteKeyTurnstile } from "../lib/turnstile";
 import { Aviso, BotonPrincipal, Cabecera, CargandoPublico, IconoVolver, Marco, NoDisponible, Pasos } from "./piezas";
 import { cuentaReserva, horaCorta, precioTexto, rutaPublica, ultimaReserva, useNegocioPublico } from "./util";
 import SelectorHorario from "./SelectorHorario";
@@ -89,6 +91,11 @@ function Asistente({ datos, sucursal, sub }: { datos: NegocioPublico; sucursal: 
   const [error, setError] = useState("");
   const [version, setVersion] = useState(0);
   const [hecha, setHecha] = useState<{ token: string; cita: CitaPublica } | null>(null);
+  // Turnstile, sólo si el build trae la site key. `vueltaCaptcha` remonta el
+  // widget para pedir otro token: el backend gasta el anterior en cada intento.
+  const siteKey = siteKeyTurnstile();
+  const [captcha, setCaptcha] = useState<string | null>(null);
+  const [vueltaCaptcha, setVueltaCaptcha] = useState(0);
   const errorRef = useRef<HTMLDivElement>(null);
   // Sin servicios elegidos (recargó estando en el horario) se vuelve a P2.
   const paso = params.get("paso") === "horario" && elegidos.length ? "horario" : "servicios";
@@ -151,6 +158,7 @@ function Asistente({ datos, sucursal, sub }: { datos: NegocioPublico; sucursal: 
   if (nombre.trim().length < 2) faltan.push("escribí tu nombre");
   if (telefono.replace(/\D/g, "").length < 7) faltan.push("escribí tu teléfono");
   if (!aceptaCancelacion || !aceptaPrivacidad) faltan.push("marcá las dos casillas");
+  if (siteKey && !captcha) faltan.push("completá la verificación anti-robots");
 
   async function reservar() {
     if (!inicio || faltan.length) {
@@ -171,6 +179,7 @@ function Asistente({ datos, sucursal, sub }: { datos: NegocioPublico; sucursal: 
         aceptaPrivacidad,
         privacidadVersion: datos.privacidadVersion,
         sitioWeb: trampa || undefined,
+        ...(siteKey && captcha ? { captcha } : {}),
       });
       ultimaReserva.guardar(sub, r.token);
       setHecha(r);
@@ -182,6 +191,12 @@ function Asistente({ datos, sucursal, sub }: { datos: NegocioPublico; sucursal: 
         // sin perder nombre, teléfono ni servicios.
         setInicio(null);
         setVersion((v) => v + 1);
+      }
+      if (siteKey) {
+        // El token ya se gastó (con un 400 CAPTCHA o con cualquier otro
+        // error): el próximo intento necesita uno nuevo.
+        setCaptcha(null);
+        setVueltaCaptcha((v) => v + 1);
       }
       setError((e as Error).message);
     } finally {
@@ -357,6 +372,7 @@ function Asistente({ datos, sucursal, sub }: { datos: NegocioPublico; sucursal: 
             </Link>{" "}
             de {datos.negocio.nombre}: usan mi nombre y teléfono sólo para gestionar mis citas.
           </Casilla>
+          {siteKey && <Captcha key={vueltaCaptcha} siteKey={siteKey} onToken={setCaptcha} />}
           <div ref={errorRef} className="scroll-mb-28">
             <Aviso>{error}</Aviso>
           </div>

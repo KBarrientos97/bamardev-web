@@ -297,6 +297,99 @@ describe("reservar (P2-P6)", () => {
     await act(async () => {});
     expect(vi.mocked(apiReserva.reservar).mock.calls[0][1].sitioWeb).toBe("http://spam");
   });
+
+  describe("captcha Turnstile", () => {
+    /** El Turnstile falso: cada widget que se dibuja entrega su propio token. */
+    let dibujados = 0;
+    const turnstile = {
+      render: vi.fn((_caja: HTMLElement, o: { callback?: (t: string) => void }) => {
+        dibujados += 1;
+        o.callback?.(`tok-${dibujados}`);
+        return `w${dibujados}`;
+      }),
+      reset: vi.fn(),
+      remove: vi.fn(),
+    };
+
+    beforeEach(() => {
+      dibujados = 0;
+      window.turnstile = turnstile;
+    });
+
+    afterEach(() => {
+      vi.unstubAllEnvs();
+      delete window.turnstile;
+    });
+
+    it("sin site key no se dibuja ni viaja nada (como siempre)", async () => {
+      vi.stubEnv("VITE_TURNSTILE_SITE_KEY", "");
+      await hastaElHorario();
+      expect(screen.queryByTestId("captcha")).toBeNull();
+      vi.mocked(apiReserva.reservar).mockResolvedValue({ token: "x".repeat(22), cita: citaPublica() });
+      completarDatos();
+      fireEvent.click(screen.getByRole("button", { name: /Reservar Martes 13/ }));
+      await act(async () => {});
+      expect(turnstile.render).not.toHaveBeenCalled();
+      expect(vi.mocked(apiReserva.reservar).mock.calls[0][1]).not.toHaveProperty("captcha");
+    });
+
+    it("con site key: dibuja el widget en castellano y el token viaja con la reserva", async () => {
+      vi.stubEnv("VITE_TURNSTILE_SITE_KEY", "0xCLAVE_PUBLICA");
+      await hastaElHorario();
+      await act(async () => {});
+      expect(screen.getByTestId("captcha")).toBeInTheDocument();
+      expect(turnstile.render).toHaveBeenCalledWith(
+        screen.getByTestId("captcha"),
+        expect.objectContaining({ sitekey: "0xCLAVE_PUBLICA", language: "es" }),
+      );
+      vi.mocked(apiReserva.reservar).mockResolvedValue({ token: "x".repeat(22), cita: citaPublica() });
+      completarDatos();
+      fireEvent.click(screen.getByRole("button", { name: /Reservar Martes 13/ }));
+      await act(async () => {});
+      expect(vi.mocked(apiReserva.reservar).mock.calls[0][1].captcha).toBe("tok-1");
+    });
+
+    it("sin token todavía no manda la reserva", async () => {
+      vi.stubEnv("VITE_TURNSTILE_SITE_KEY", "0xCLAVE_PUBLICA");
+      // Cloudflare todavía no resolvió: el widget está, pero sin token.
+      turnstile.render.mockImplementationOnce(() => "w-pendiente");
+      await hastaElHorario();
+      await act(async () => {});
+      completarDatos();
+      fireEvent.click(screen.getByRole("button", { name: /Reservar Martes 13/ }));
+      await act(async () => {});
+      expect(apiReserva.reservar).not.toHaveBeenCalled();
+      expect(screen.getByRole("alert")).toHaveTextContent("completá la verificación anti-robots");
+    });
+
+    it("400 CAPTCHA: muestra el mensaje, pide otro token y el reintento lo lleva", async () => {
+      vi.stubEnv("VITE_TURNSTILE_SITE_KEY", "0xCLAVE_PUBLICA");
+      await hastaElHorario();
+      await act(async () => {});
+      vi.mocked(apiReserva.reservar)
+        .mockRejectedValueOnce(
+          new ErrorReserva("No pudimos verificar que seas una persona. Volvé a intentar.", 400, {
+            codigo: "CAPTCHA",
+          }),
+        )
+        .mockResolvedValueOnce({ token: "x".repeat(22), cita: citaPublica() });
+      completarDatos();
+      fireEvent.click(screen.getByRole("button", { name: /Reservar Martes 13/ }));
+      await act(async () => {});
+      await act(async () => {});
+      expect(screen.getByRole("alert")).toHaveTextContent("No pudimos verificar que seas una persona");
+      // El widget viejo se quita y se dibuja otro: el token gastado no se reusa.
+      expect(turnstile.remove).toHaveBeenCalledWith("w1");
+      expect(turnstile.render).toHaveBeenCalledTimes(2);
+
+      fireEvent.click(screen.getByRole("button", { name: /Reservar Martes 13/ }));
+      await act(async () => {});
+      const llamadas = vi.mocked(apiReserva.reservar).mock.calls;
+      expect(llamadas[0][1].captcha).toBe("tok-1");
+      expect(llamadas[1][1].captcha).toBe("tok-2");
+      expect(screen.getByRole("heading", { name: "Reserva enviada" })).toBeInTheDocument();
+    });
+  });
 });
 
 describe("portada y P8", () => {

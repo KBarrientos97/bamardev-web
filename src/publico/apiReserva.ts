@@ -179,6 +179,8 @@ export interface ReservaInput {
   privacidadVersion: string;
   /** El campo trampa: una persona nunca lo ve ni lo llena. */
   sitioWeb?: string;
+  /** Token de Turnstile; sólo viaja si el build trae la site key. */
+  captcha?: string;
 }
 
 const base = (sub: string) => `/publico/reservas/${encodeURIComponent(sub)}`;
