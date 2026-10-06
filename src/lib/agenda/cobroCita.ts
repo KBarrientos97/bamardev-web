@@ -23,24 +23,83 @@ export function citaDeLaUrl(buscar: string | URLSearchParams): number | null {
 }
 
 /**
- * Los productos del catálogo que hay que cargar al carrito, uno por línea de
- * la cita (dos líneas del mismo servicio son dos unidades). `faltan` son los
- * servicios que el catálogo ya no tiene —uno eliminado después de agendar—:
- * la pantalla lo avisa en vez de cobrar de menos sin decir nada.
+ * El producto que representa un servicio de la cita que el catálogo del POS ya
+ * no trae (lo desactivaron después de agendar). Se arma con lo que manda el
+ * carrito de la cita: id, nombre y precio vigente. Un servicio no lleva stock.
+ */
+function productoDeLinea(l: CarritoCita["lineas"][number]): Producto {
+  return {
+    id: l.productoId,
+    nombre: l.descripcion,
+    descripcion: null,
+    codBarra: null,
+    tipoProducto: "SERVICIO",
+    precio: l.precio,
+    costo: 0,
+    stockMinimo: 0,
+    // No está habilitado para la venta suelta: entra sólo porque es de esta
+    // cita, y el backend lo acepta en una venta con su `citaId`.
+    habilitado: false,
+    icono: null,
+    categoria: null,
+    unidadMedida: null,
+    stockTotal: 0,
+    componentes: [],
+    principioActivo: null,
+    concentracion: null,
+    formaFarmaceutica: null,
+    laboratorio: null,
+    registroSanitario: null,
+    condicionVenta: "LIBRE",
+    manejaLote: false,
+    controlado: false,
+  };
+}
+
+/**
+ * El catálogo del POS más los servicios de la cita que no están en él. Es lo
+ * que se le pasa al carrito para que esas líneas también vuelvan después de un
+ * F5 (el carrito rehidrata por id contra el catálogo). Sin cita, el mismo
+ * catálogo, sin copiarlo.
+ */
+export function catalogoConCita(catalogo: Producto[], cita: CarritoCita | null): Producto[] {
+  if (!cita) return catalogo;
+  const ids = new Set(catalogo.map((p) => p.id));
+  const extra: Producto[] = [];
+  for (const l of cita.lineas) {
+    if (ids.has(l.productoId)) continue;
+    ids.add(l.productoId);
+    extra.push(productoDeLinea(l));
+  }
+  return extra.length ? [...catalogo, ...extra] : catalogo;
+}
+
+/**
+ * Los productos que hay que cargar al carrito, uno por línea de la cita (dos
+ * líneas del mismo servicio son dos unidades).
+ *
+ * Un servicio que el catálogo ya no trae —lo desactivaron después de
+ * agendar— se arma igual con lo que manda el carrito de la cita (QA A-03):
+ * antes quedaba en "faltan" y la cita no se podía cobrar nunca. Va en
+ * `desactivados` sólo para poder decirlo.
  */
 export function productosDeLaCita(
   cita: CarritoCita,
   catalogo: Producto[],
-): { productos: Producto[]; faltan: string[] } {
+): { productos: Producto[]; desactivados: string[] } {
   const porId = new Map(catalogo.map((p) => [p.id, p]));
   const productos: Producto[] = [];
-  const faltan: string[] = [];
+  const desactivados: string[] = [];
   for (const l of cita.lineas) {
     const p = porId.get(l.productoId);
-    if (p) productos.push(p);
-    else faltan.push(l.descripcion);
+    if (p) {
+      productos.push(p);
+    } else {
+      productos.push(productoDeLinea(l));
+      desactivados.push(l.descripcion);
+    }
   }
-  return { productos, faltan };
+  return { productos, desactivados };
 }
 
 /**
@@ -102,6 +161,65 @@ export function citaQueCobra(
   if (!cita) return null;
   const suyos = new Set(cita.lineas.map((l) => l.productoId));
   return detalles.some((d) => suyos.has(d.productoId)) ? cita.citaId : null;
+}
+
+/** Lo que una venta deja sin cobrar de la cita (QA A-02). */
+export interface CoberturaCita {
+  /** ¿La venta cubre la cita: todos sus servicios y al menos su total? */
+  cubre: boolean;
+  /** Los servicios de la cita que ya no están en el carrito, uno por unidad. */
+  faltan: string[];
+  /** Lo que se va a cobrar. */
+  cobrado: number;
+  /** El total de la cita, como lo armó el backend. */
+  totalCita: number;
+}
+
+/**
+ * ¿La venta cubre la cita que va a completar?
+ *
+ * Se compara por servicio como multiconjunto (dos cortes agendados piden dos
+ * en el carrito) y por plata (cobrar menos que el total de la cita). Lo que
+ * se sume de más —un producto, otra unidad— no la descubre. `null` si la venta
+ * no cobra ninguna cita: sin cita, o si la cajera sacó todos sus servicios
+ * (ahí `citaQueCobra` ya no manda el `citaId`).
+ */
+export function coberturaCita(
+  detalles: DetalleVentaInput[],
+  cita: CarritoCita | null,
+  cobrado: number,
+): CoberturaCita | null {
+  if (!cita || citaQueCobra(detalles, cita) == null) return null;
+  const enCarrito = new Map<number, number>();
+  for (const d of detalles) {
+    enCarrito.set(d.productoId, (enCarrito.get(d.productoId) ?? 0) + d.cantidad);
+  }
+  const faltan: string[] = [];
+  for (const l of cita.lineas) {
+    const quedan = enCarrito.get(l.productoId) ?? 0;
+    if (quedan >= 1) enCarrito.set(l.productoId, quedan - 1);
+    else faltan.push(l.descripcion);
+  }
+  // Medio centavo de tolerancia: los totales vienen de sumas de decimales.
+  const deMenos = cobrado < cita.total - 0.005;
+  return { cubre: faltan.length === 0 && !deMenos, faltan, cobrado, totalCita: cita.total };
+}
+
+/**
+ * El texto de la confirmación cuando la venta no cubre la cita. La plata se
+ * formatea afuera para no atar esta pieza a la moneda del negocio.
+ */
+export function textoCoberturaIncompleta(
+  c: CoberturaCita,
+  dinero: (n: number) => string,
+): string {
+  const partes: string[] = [];
+  if (c.faltan.length) partes.push(`faltan: ${c.faltan.join(", ")}`);
+  partes.push(`cobrás ${dinero(c.cobrado)} de ${dinero(c.totalCita)}`);
+  return (
+    `Esta venta no cubre toda la cita (${partes.join(" · ")}). ` +
+    "La cita se dará por cobrada pero quedará marcada para revisar en el cierre de caja."
+  );
 }
 
 /**

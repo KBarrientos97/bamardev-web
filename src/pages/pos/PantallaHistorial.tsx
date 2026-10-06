@@ -18,7 +18,7 @@ import { api, type PagoEntrega } from "../../lib/api";
 import { parsearMontoO } from "../../lib/dinero";
 import { fmtFechaHora, fmtHora, fmtMoney, fmtNum } from "../../lib/format";
 import { Telefono } from "../../lib/telefono";
-import { puedeSupervisar } from "../../lib/permisos";
+import { puedeSupervisar, tieneFeature } from "../../lib/permisos";
 import { esFarmacia } from "../../lib/rubro";
 import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
@@ -36,9 +36,15 @@ export default function PantallaHistorial({
   /** Abre el recibo de una venta ya hecha (el POS es quien tiene esa pantalla). */
   onVerComprobante: (venta: Venta) => void;
 }) {
-  const { puede } = useAuth();
+  const { puede, negocio } = useAuth();
   const ventas = useApi(() => api.getVentas(caja.id), [caja.id]);
-  const pendientes = useApi(() => api.getPedidosPendientes(), []);
+  // Los pedidos por entregar son del reparto: sin la feature `delivery` el
+  // backend responde 403 (QA M-11, un salón de belleza). Con ella, lo de siempre.
+  const conReparto = tieneFeature(negocio?.features, "delivery");
+  const pendientes = useApi(
+    () => (conReparto ? api.getPedidosPendientes() : Promise.resolve([] as Venta[])),
+    [conReparto],
+  );
   const [detalle, setDetalle] = useState<Venta | null>(null);
   const [entregando, setEntregando] = useState<Venta | null>(null);
 
