@@ -16,10 +16,31 @@
  *
  * El color también sale del rubro, pero vive aparte en `temas.ts` porque se
  * aplica de otra forma (variables CSS al iniciar sesión).
+ *
+ * Desde la fase 0 de belleza el backend manda además el PERFIL del rubro
+ * (`negocio.perfil`): el vocabulario y las etiquetas de rol salen de ahí. Lo de
+ * este archivo queda de respaldo, para un backend que todavía no lo manda.
  */
 
+import type { Rol } from "../types";
+
 /** Los rubros del backend (enum `TipoNegocio`). */
-export type Rubro = "FARMACIA" | "MINIMARKET" | "RESTAURANTE" | "FERRETERIA" | "REPUESTOS";
+export type Rubro =
+  | "FARMACIA"
+  | "MINIMARKET"
+  | "RESTAURANTE"
+  | "FERRETERIA"
+  | "REPUESTOS"
+  | "PELUQUERIA"
+  | "BARBERIA"
+  | "SPA"
+  | "UNAS";
+
+/**
+ * Los de belleza: trabajan con turnos y profesionales, no con mesas ni con
+ * materia prima. Aparte porque varias listas los tratan en bloque.
+ */
+export const RUBROS_BELLEZA: Rubro[] = ["PELUQUERIA", "BARBERIA", "SPA", "UNAS"];
 
 export const RUBROS: Rubro[] = [
   "FARMACIA",
@@ -27,6 +48,7 @@ export const RUBROS: Rubro[] = [
   "RESTAURANTE",
   "FERRETERIA",
   "REPUESTOS",
+  ...RUBROS_BELLEZA,
 ];
 
 export function esRubro(valor: string | null | undefined): valor is Rubro {
@@ -36,6 +58,10 @@ export function esRubro(valor: string | null | undefined): valor is Rubro {
 /** Atajo, porque farmacia es el rubro con más piezas propias. */
 export function esFarmacia(rubro: string | null | undefined): boolean {
   return rubro === "FARMACIA";
+}
+
+export function esBelleza(rubro: string | null | undefined): boolean {
+  return !!rubro && (RUBROS_BELLEZA as string[]).includes(rubro);
 }
 
 // ── Vocabulario ─────────────────────────────────────────────────────────────
@@ -77,11 +103,58 @@ const POR_RUBRO: Partial<Record<Rubro, Partial<Record<Termino, string>>>> = {
   },
 };
 
+/** El vocabulario que manda el backend en `negocio.perfil.vocabulario`. */
+export type Vocabulario = Partial<Record<Termino, string>>;
+
+/** Un texto que se puede mostrar: el JSON del perfil lo edita una persona. */
+function conTexto(valor: unknown): string | undefined {
+  return typeof valor === "string" && valor.trim() ? valor : undefined;
+}
+
 /**
- * La palabra que corresponde al rubro. Sin rubro (o con uno desconocido)
- * devuelve la de siempre: ante la duda, el producto habla como hoy.
+ * La palabra que corresponde al rubro. Primero la del perfil del negocio, si
+ * vino; después la de `POR_RUBRO`; y si no, la de siempre: ante la duda, el
+ * producto habla como hoy.
  */
-export function termino(rubro: string | null | undefined, clave: Termino): string {
+export function termino(
+  rubro: string | null | undefined,
+  clave: Termino,
+  vocabulario?: Vocabulario | null,
+): string {
+  const delPerfil = conTexto(vocabulario?.[clave]);
+  if (delPerfil) return delPerfil;
   const propio = esRubro(rubro) ? POR_RUBRO[rubro]?.[clave] : undefined;
   return propio ?? BASE[clave];
+}
+
+// ── Etiquetas de rol ────────────────────────────────────────────────────────
+
+/**
+ * Cómo se llama cada rol en cada rubro, de respaldo. El código del rol no
+ * cambia (el backend sigue diciendo CAJERO); cambia lo que lee el dueño: en
+ * un salón el que cobra y agenda es "Recepción", y el profesional tiene el
+ * nombre de su oficio.
+ *
+ * Lo normal es que llegue en `perfil.etiquetasRol`; esto cubre al backend que
+ * todavía no lo manda, para que una barbería no vea "Cajero" mientras tanto.
+ */
+const ROL_POR_RUBRO: Partial<Record<Rubro, Partial<Record<Rol, string>>>> = {
+  PELUQUERIA: { CAJERO: "Recepción", PROFESIONAL: "Estilista" },
+  BARBERIA: { CAJERO: "Recepción", PROFESIONAL: "Barbero" },
+  SPA: { CAJERO: "Recepción", PROFESIONAL: "Terapeuta" },
+  UNAS: { CAJERO: "Recepción", PROFESIONAL: "Manicurista" },
+};
+
+/**
+ * La etiqueta propia del rol en este negocio, o `undefined` si habla como
+ * siempre. Primero el perfil, después el respaldo por rubro.
+ */
+export function etiquetaRolDelRubro(
+  rol: Rol,
+  rubro: string | null | undefined,
+  etiquetas?: Partial<Record<string, string>> | null,
+): string | undefined {
+  return (
+    conTexto(etiquetas?.[rol]) ?? (esRubro(rubro) ? ROL_POR_RUBRO[rubro]?.[rol] : undefined)
+  );
 }

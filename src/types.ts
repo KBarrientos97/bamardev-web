@@ -2,6 +2,9 @@
 // Se mantienen los nombres del API en español para que no haya traducción
 // mental entre lo que viaja por la red y lo que se lee acá.
 
+import type { Tema } from "./lib/temas";
+import type { Vocabulario } from "./lib/rubro";
+
 // ── Sesión y permisos ───────────────────────────────────────────────────────
 
 /** Roles de la app. El backend los devuelve en mayúsculas. */
@@ -12,6 +15,13 @@ export type Rol =
   | "REPARTIDOR"
   /** Atiende el salón: abre mesas y manda comandas, pero NO cobra. */
   | "MESERO"
+  /**
+   * Belleza: el que atiende (estilista, barbero…). Interino (D23 de
+   * PLAN-AGENDA-BELLEZA): es una fila en `Rol` sin módulos, así que no entra a
+   * ninguna sección hasta que llegue la agenda. Se ofrece sólo si el perfil
+   * del rubro lo trae en `config.rolesOfrecidos`.
+   */
+  | "PROFESIONAL"
   | "PLATAFORMA";
 
 /**
@@ -79,6 +89,35 @@ export interface SesionUsuario {
   sucursal?: string | null;
 }
 
+/**
+ * La paleta que el panel le eligió al negocio (tabla `Paleta`). `tokens` tiene
+ * la forma de `Tema`, pero viene de la red: `aplicarTema` la valida antes de
+ * pintar y, si no sirve, cae al color del rubro.
+ */
+export interface TemaNegocio {
+  clave: string;
+  tokens: Tema;
+}
+
+/**
+ * El perfil del rubro (tabla `PerfilRubro`): cómo habla y qué ofrece cada tipo
+ * de negocio. Contrato de PLAN-DESARROLLO-BELLEZA §7. Todo lo que se lee de acá
+ * tiene respaldo local, porque un backend viejo no lo manda.
+ */
+export interface PerfilRubro {
+  /** = `tipoNegocio`, ej. "BARBERIA". */
+  rubro: string;
+  nombre: string;
+  vertical: string;
+  estado: "EN_DESARROLLO" | "DISPONIBLE";
+  icono: string;
+  vocabulario?: Vocabulario;
+  /** `{ CAJERO: "Recepción", PROFESIONAL: "Barbero" }`. */
+  etiquetasRol?: Partial<Record<string, string>>;
+  /** Sin `rolesOfrecidos` = los roles de siempre (y sin PROFESIONAL). */
+  config?: { rolesOfrecidos?: string[] };
+}
+
 export interface SesionNegocio {
   id: number;
   nombre: string;
@@ -87,6 +126,15 @@ export interface SesionNegocio {
   tipoNegocio?: string;
   /** Features del PLAN, en minúsculas. */
   features?: Feature[];
+  /**
+   * Los tres campos de belleza (fase 0). Opcionales: el backend de hoy no los
+   * manda y una sesión guardada antes tampoco los tiene; sin ellos todo se ve
+   * como siempre. `perfilVersion` llega en `/licencia/estado` y se guarda acá
+   * para saber cuándo repintar.
+   */
+  tema?: TemaNegocio | null;
+  perfil?: PerfilRubro | null;
+  perfilVersion?: number | null;
 }
 
 export interface LoginResponse {
@@ -1216,6 +1264,14 @@ export interface EstadoLicencia {
    * manda, y en ese caso el menú se queda con lo del login, como antes.
    */
   features?: string[];
+  /**
+   * Paleta y perfil del negocio, por lo mismo que `features`: si el panel le
+   * cambia la paleta, la pestaña abierta se repinta sola. `perfilVersion`
+   * cambia cuando cambia cualquiera de los dos, y es lo único que se compara.
+   */
+  tema?: TemaNegocio | null;
+  perfil?: PerfilRubro | null;
+  perfilVersion?: number | null;
 }
 
 // -- Pago de la licencia por QR (pantalla pública /pagar) --------------------

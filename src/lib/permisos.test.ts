@@ -1,6 +1,16 @@
 import { describe, expect, it } from "vitest";
 import type { Feature, Modulo, Rol } from "../types";
-import { puede, puedeVer, rutaInicial, tieneFeature, tieneModulo } from "./permisos";
+import {
+  RUTA_AGENDA_PRONTO,
+  etiquetaRol,
+  puede,
+  puedeVer,
+  rolesAsignables,
+  rutaInicial,
+  tieneFeature,
+  tieneModulo,
+  type Seccion,
+} from "./permisos";
 
 /** Lo que trae el login de un ADMIN con plan completo. */
 const TODOS_MODULOS: Modulo[] = [
@@ -536,5 +546,209 @@ describe("gastos operativos", () => {
     const soloGastos = ctx("ADMIN", ["REPORTES"], ["gastos"]);
     expect(puedeVer(soloGastos, "gastos")).toBe(true);
     expect(rutaInicial(soloGastos)).toBe("/gastos");
+  });
+});
+
+// ── Belleza (fase 0) ────────────────────────────────────────────────────────
+
+/** Todas las secciones, para probar que el profesional no ve NINGUNA. */
+const TODAS: Seccion[] = [
+  "pos", "caja", "inventario", "productos", "insumos", "almacenes",
+  "movimientos", "creditos", "reportes", "usuarios", "reparto", "salon",
+  "mesas", "dashboard", "busqueda", "vencimientos", "encargos", "controlados",
+  "proveedores", "ingreso_mercaderia", "salida_mercaderia",
+  "transferencia_mercaderia", "gastos",
+];
+
+/** El perfil que manda el backend para una barbería (contrato §7). */
+const PERFIL_BARBERIA = {
+  etiquetasRol: { CAJERO: "Recepción", PROFESIONAL: "Barbero" },
+  config: { rolesOfrecidos: ["ADMIN", "SUPERVISOR", "CAJERO", "PROFESIONAL"] },
+};
+
+describe("el profesional (interino, sin agenda todavía)", () => {
+  it("no ve ninguna sección, aunque sus listas vengan vacías", () => {
+    // Su rol no tiene módulos (D23): con la lista vacía todo falla abierto, y
+    // es justo el caso que tiene que seguir cerrado.
+    const sinNada = { rol: "PROFESIONAL" as Rol, modulos: [], features: [], rubro: "BARBERIA" };
+    const conTodo = { ...ctx("PROFESIONAL"), rubro: "BARBERIA" };
+    for (const seccion of TODAS) {
+      expect(puedeVer(sinNada, seccion), seccion).toBe(false);
+      expect(puedeVer(conTodo, seccion), seccion).toBe(false);
+    }
+  });
+
+  it("aterriza en el aviso de su agenda, no en /sin-acceso", () => {
+    // "/sin-acceso" le diría que su cuenta está mal configurada.
+    expect(RUTA_AGENDA_PRONTO).toBe("/mi-agenda");
+    expect(rutaInicial({ rol: "PROFESIONAL", modulos: [], features: [], rubro: "BARBERIA" })).toBe(
+      "/mi-agenda",
+    );
+    expect(rutaInicial({ rol: "PROFESIONAL" })).toBe("/mi-agenda");
+  });
+
+  it("los demás roles siguen aterrizando donde siempre", () => {
+    expect(rutaInicial({ ...ctx("ADMIN"), rubro: "BARBERIA" })).toBe("/inventario");
+    expect(rutaInicial({ ...ctx("CAJERO", ["POS", "CAJA"]), rubro: "BARBERIA" })).toBe("/pos");
+  });
+});
+
+describe("belleza: lo de gastronomía no existe", () => {
+  it.each(["PELUQUERIA", "BARBERIA", "SPA", "UNAS"])(
+    "%s no tiene salón, mesas ni insumos, aunque el plan los traiga",
+    (rubro) => {
+      // Segundo candado: el backend ya no le da esas features, pero con la
+      // lista vacía (o una prendida a mano) fallarían abiertas.
+      for (const features of [PLAN_FULL, []]) {
+        const admin = { ...ctx("ADMIN", TODOS_MODULOS, features), rubro };
+        expect(puedeVer(admin, "mesas")).toBe(false);
+        expect(puedeVer(admin, "salon")).toBe(false);
+        expect(puedeVer(admin, "insumos")).toBe(false);
+        expect(puede(admin, "mesa_llevar")).toBe(false);
+      }
+    },
+  );
+
+  it("una barbería sí vende, cobra y maneja su catálogo", () => {
+    const barberia = { ...ctx("ADMIN"), rubro: "BARBERIA" };
+    expect(puedeVer(barberia, "pos")).toBe(true);
+    expect(puedeVer(barberia, "caja")).toBe(true);
+    expect(puedeVer(barberia, "productos")).toBe(true);
+    expect(puedeVer(barberia, "reportes")).toBe(true);
+    expect(puedeVer(barberia, "usuarios")).toBe(true);
+    // Lo de farmacia tampoco aparece: la lista blanca no la incluye.
+    expect(puedeVer(barberia, "busqueda")).toBe(false);
+  });
+
+  it("restaurante, minimarket y farmacia quedan como estaban", () => {
+    const resto = { ...ctx("ADMIN"), rubro: "RESTAURANTE" };
+    const mini = { ...ctx("ADMIN"), rubro: "MINIMARKET" };
+    expect(puedeVer(resto, "mesas")).toBe(true);
+    expect(puedeVer(resto, "salon")).toBe(true);
+    expect(puedeVer(mini, "insumos")).toBe(true);
+    // Lista vacía = falla abierto: el restaurante sigue partiendo mesa/llevar.
+    expect(puede({ ...ctx("ADMIN", TODOS_MODULOS, []), rubro: "RESTAURANTE" }, "mesa_llevar")).toBe(
+      true,
+    );
+    expect(puede({ ...ctx("ADMIN", TODOS_MODULOS, []), rubro: "FARMACIA" }, "mesa_llevar")).toBe(
+      false,
+    );
+  });
+});
+
+describe("etiquetaRol", () => {
+  it("sin negocio, o en los rubros de siempre, dice lo de siempre", () => {
+    expect(etiquetaRol("CAJERO")).toBe("Cajero");
+    expect(etiquetaRol("ADMIN")).toBe("Administrador");
+    expect(etiquetaRol("PROFESIONAL")).toBe("Profesional");
+    expect(etiquetaRol("CAJERO", { tipoNegocio: "RESTAURANTE" })).toBe("Cajero");
+    expect(etiquetaRol("CAJERO", { tipoNegocio: "FARMACIA" })).toBe("Cajero");
+  });
+
+  it("con el perfil, usa sus etiquetas", () => {
+    const barberia = { tipoNegocio: "BARBERIA", perfil: PERFIL_BARBERIA };
+    expect(etiquetaRol("CAJERO", barberia)).toBe("Recepción");
+    expect(etiquetaRol("PROFESIONAL", barberia)).toBe("Barbero");
+    // Lo que el perfil no nombra sigue como siempre.
+    expect(etiquetaRol("ADMIN", barberia)).toBe("Administrador");
+  });
+
+  it("el perfil manda sobre el respaldo por rubro", () => {
+    const propio = {
+      tipoNegocio: "PELUQUERIA",
+      perfil: { etiquetasRol: { PROFESIONAL: "Colorista" } },
+    };
+    expect(etiquetaRol("PROFESIONAL", propio)).toBe("Colorista");
+  });
+
+  it("en belleza sin perfil (backend viejo) cae al respaldo del rubro", () => {
+    expect(etiquetaRol("CAJERO", { tipoNegocio: "SPA" })).toBe("Recepción");
+    expect(etiquetaRol("PROFESIONAL", { tipoNegocio: "SPA" })).toBe("Terapeuta");
+    expect(etiquetaRol("PROFESIONAL", { tipoNegocio: "UNAS" })).toBe("Manicurista");
+    expect(etiquetaRol("PROFESIONAL", { tipoNegocio: "PELUQUERIA" })).toBe("Estilista");
+  });
+
+  it("una etiqueta vacía del perfil no deja el rol sin nombre", () => {
+    const vacio = { tipoNegocio: "RESTAURANTE", perfil: { etiquetasRol: { CAJERO: "  " } } };
+    expect(etiquetaRol("CAJERO", vacio)).toBe("Cajero");
+  });
+});
+
+describe("rolesAsignables", () => {
+  it("sin perfil no ofrece PROFESIONAL: es lo de siempre", () => {
+    expect(rolesAsignables({ rolActual: "ADMIN", conSalon: true })).toEqual([
+      "SUPERVISOR",
+      "CAJERO",
+      "MESERO",
+      "REPARTIDOR",
+    ]);
+    expect(rolesAsignables({ rolActual: "ADMIN", conSalon: false, perfil: null })).toEqual([
+      "SUPERVISOR",
+      "CAJERO",
+      "REPARTIDOR",
+    ]);
+  });
+
+  it("un perfil sin rolesOfrecidos da los de siempre, sin PROFESIONAL", () => {
+    // Sin la clave = los roles de siempre (contrato §7).
+    expect(rolesAsignables({ rolActual: "ADMIN", conSalon: true, perfil: { config: {} } })).toEqual([
+      "SUPERVISOR",
+      "CAJERO",
+      "MESERO",
+      "REPARTIDOR",
+    ]);
+  });
+
+  it("con rolesOfrecidos, la lista filtra todos los roles", () => {
+    // En una barbería no hay repartidores ni meseros: no se ofrecen aunque el
+    // negocio tuviera salón. ADMIN viene en la lista y sigue sin ofrecerse.
+    expect(
+      rolesAsignables({ rolActual: "ADMIN", conSalon: false, perfil: PERFIL_BARBERIA }),
+    ).toEqual(["SUPERVISOR", "CAJERO", "PROFESIONAL"]);
+    expect(
+      rolesAsignables({ rolActual: "ADMIN", conSalon: true, perfil: PERFIL_BARBERIA }),
+    ).toEqual(["SUPERVISOR", "CAJERO", "PROFESIONAL"]);
+  });
+
+  it("la lista no le abre al mesero un negocio sin salón", () => {
+    const conMesero = { config: { rolesOfrecidos: ["ADMIN", "CAJERO", "MESERO"] } };
+    expect(rolesAsignables({ rolActual: "ADMIN", conSalon: false, perfil: conMesero })).toEqual([
+      "CAJERO",
+    ]);
+    expect(rolesAsignables({ rolActual: "ADMIN", conSalon: true, perfil: conMesero })).toEqual([
+      "CAJERO",
+      "MESERO",
+    ]);
+  });
+
+  it("el supervisor también asigna al profesional, dentro de la lista", () => {
+    expect(
+      rolesAsignables({ rolActual: "SUPERVISOR", conSalon: false, perfil: PERFIL_BARBERIA }),
+    ).toEqual(["CAJERO", "PROFESIONAL"]);
+  });
+
+  it("sin perfil, un supervisor sólo asigna personal de piso", () => {
+    expect(
+      rolesAsignables({ rolActual: "SUPERVISOR", conSalon: true, perfil: null }),
+    ).toEqual(["CAJERO", "MESERO", "REPARTIDOR"]);
+  });
+
+  it("el rol que ya tiene el usuario se sigue mostrando", () => {
+    // Un profesional creado antes de que el perfil dejara de ofrecerlo: si no
+    // se mostrara, guardarle el teléfono le cambiaría el rol.
+    const r = rolesAsignables({ rolActual: "ADMIN", rolDelUsuario: "PROFESIONAL", conSalon: false });
+    expect(r).toContain("PROFESIONAL");
+    expect(rolesAsignables({ rolActual: "ADMIN", rolDelUsuario: "ADMIN", conSalon: false })).toContain(
+      "ADMIN",
+    );
+    // Lo mismo con un rol que la lista del rubro ya no trae.
+    expect(
+      rolesAsignables({
+        rolActual: "ADMIN",
+        rolDelUsuario: "REPARTIDOR",
+        conSalon: false,
+        perfil: PERFIL_BARBERIA,
+      }),
+    ).toContain("REPARTIDOR");
   });
 });

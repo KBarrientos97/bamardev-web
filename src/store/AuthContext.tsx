@@ -25,6 +25,8 @@ import {
   type ContextoPermisos,
   type Seccion,
 } from "../lib/permisos";
+import { conPerfilDelEstado } from "../lib/perfilNegocio";
+import type { Vocabulario } from "../lib/rubro";
 import type { EstadoLicencia, SesionNegocio, SesionUsuario } from "../types";
 
 /** Alias del negocio: se recuerda para no re-tipearlo en cada login. */
@@ -42,6 +44,12 @@ interface AuthValue {
    * existen y cómo se llaman las cosas; ver `lib/rubro.ts`.
    */
   rubro: string | undefined;
+  /**
+   * Las palabras propias del negocio (`perfil.vocabulario`), para pasarle a
+   * `termino()`. `undefined` con un backend que no manda perfil: ahí `termino`
+   * usa lo de `rubro.ts`.
+   */
+  vocabulario: Vocabulario | undefined;
   login: (username: string, password: string, negocio: string) => Promise<void>;
   logout: () => void;
   /** ¿Se muestra esta sección? Rol ∩ plan, con fail-open. */
@@ -80,22 +88,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // La moneda del negocio vale para todo el formateo; se fija al rehidratar.
   if (negocio?.moneda) fijarMoneda(negocio.moneda);
-  // Igual que la moneda: el tema del rubro se aplica también al rehidratar, o
-  // un F5 devolvería la app al verde por defecto hasta el siguiente login.
-  aplicarTema(negocio?.tipoNegocio);
+  // Igual que la moneda: el tema se aplica también al rehidratar, o un F5
+  // devolvería la app al verde por defecto hasta el siguiente login. Va con el
+  // negocio entero y no sólo el rubro: la paleta es la que eligió el panel
+  // (`negocio.tema`), y el rubro es el respaldo. Como corre en cada render,
+  // también repinta cuando `refrescarNegocio` trae un perfil nuevo.
+  aplicarTema(negocio);
 
   const login = useCallback(async (username: string, password: string, alias: string) => {
     const res = await api.login(username, password, alias);
+    // `perfilVersion` viaja en el estado de la licencia y no en el negocio:
+    // si el login trae la licencia, se toma de ahí, y así el primer chequeo
+    // del poller no repinta lo mismo que se acaba de pintar.
+    const sesion =
+      res.negocio && res.licencia ? conPerfilDelEstado(res.negocio, res.licencia) : res.negocio;
     tokenStore.set(res.accessToken);
     localStorage.setItem(USER_KEY, JSON.stringify(res.usuario));
-    localStorage.setItem(NEGOCIO_KEY, JSON.stringify(res.negocio));
+    localStorage.setItem(NEGOCIO_KEY, JSON.stringify(sesion));
     localStorage.setItem(ALIAS_KEY, alias);
     if (res.licencia) localStorage.setItem(LICENCIA_KEY, JSON.stringify(res.licencia));
     fijarMoneda(res.negocio?.moneda);
-    aplicarTema(res.negocio?.tipoNegocio);
+    aplicarTema(sesion);
     setToken(res.accessToken);
     setUsuario(res.usuario);
-    setNegocio(res.negocio);
+    setNegocio(sesion);
     setLicencia(res.licencia ?? null);
     setAlias(alias);
     identificar(alias, res.usuario.username, res.usuario.rol);
@@ -145,6 +161,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   /**
+   * Lo mismo que `refrescarFeatures`, para la paleta y el perfil: si el panel
+   * le cambia el color a un negocio, la pestaña abierta se repinta en el
+   * próximo chequeo en vez de esperar al siguiente login. El repintado en sí
+   * lo hace el `aplicarTema(negocio)` del render.
+   */
+  const refrescarPerfil = useCallback((estado: EstadoLicencia) => {
+    setNegocio((previo) => {
+      if (!previo) return previo;
+      const actualizado = conPerfilDelEstado(previo, estado);
+      if (actualizado !== previo) {
+        localStorage.setItem(NEGOCIO_KEY, JSON.stringify(actualizado));
+      }
+      return actualizado;
+    });
+  }, []);
+
+  /**
    * Revalida la licencia contra el backend: al abrir la pestaña y cada 15 min.
    * Es el equivalente al `LicenciaGuard.chequear()` del onResume de Android.
    *
@@ -165,6 +198,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           localStorage.setItem(LICENCIA_KEY, JSON.stringify(estado));
           setLicencia(estado);
           refrescarFeatures(estado.features);
+          refrescarPerfil(estado);
         })
         // Falla abierto, igual que Android: un error de red no puede dejar al
         // cajero trabado. Si la licencia de verdad venció, el próximo request
@@ -186,7 +220,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       clearInterval(id);
       document.removeEventListener("visibilitychange", alVolver);
     };
-  }, [token, refrescarFeatures]);
+  }, [token, refrescarFeatures, refrescarPerfil]);
 
   // Reidentifica en PostHog tras un F5: el usuario se rehidrata de
   // localStorage sin pasar por `login`, y sin esto los errores de esa sesión
@@ -230,6 +264,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       licencia,
       aliasRecordado,
       rubro: negocio?.tipoNegocio,
+      vocabulario: negocio?.perfil?.vocabulario,
       login,
       logout,
       puede,

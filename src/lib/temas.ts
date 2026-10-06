@@ -7,7 +7,12 @@
  * variables CSS al entrar. Por eso cambiar un rubro es cambiar seis valores y
  * nada más, sin tocar las ~40 pantallas.
  *
- * El rubro llega en el login (`negocio.tipoNegocio`, el enum de la base).
+ * Desde la fase 0 de belleza (oct-2026) el color es del NEGOCIO y no del
+ * rubro: el login y `/licencia/estado` traen `negocio.tema.tokens`, la paleta
+ * que el panel le eligió. La tabla `TEMAS` por rubro queda de respaldo para un
+ * backend que todavía no manda el tema (o una sesión guardada antes), y el
+ * verde, para todo lo demás.
+ *
  * Restaurante y minimarket se quedan con el verde de siempre: es el color con
  * el que Omar y los clientes actuales ya conocen el producto, y cambiárselo
  * sería un rediseño que nadie pidió.
@@ -54,7 +59,7 @@ export interface Tema {
 }
 
 /** Verde esmeralda: el de siempre. Restaurante, minimarket y desconocidos. */
-const VERDE: Tema = {
+export const VERDE: Tema = {
   primary: '#10b981',
   primary600: '#059669',
   primary700: '#047857',
@@ -120,16 +125,151 @@ export const TEMAS: Record<string, Tema> = {
   },
   RESTAURANTE: VERDE,
   MINIMARKET: VERDE,
+  // Belleza (D25 de PLAN-AGENDA-BELLEZA). La fuente es la tabla `Paleta` del
+  // backend y llegan en `negocio.tema`; éstas son copia fija de
+  // PALETAS-BELLEZA.json para que un salón no quede en verde si el backend
+  // todavía no manda el tema. Son las mismas claves que siembra la base.
+  PELUQUERIA: {
+    // CIRUELA
+    primary: '#9B2C6B',
+    primary600: '#84255B',
+    primary700: '#6D1F4B',
+    primary50: '#F9F2F6',
+    primary100: '#F1E1EA',
+    primary200: '#E3C4D6',
+    boton: '#9B2C6B',
+    botonHover: '#85265C',
+    botonActivo: '#73214F',
+    barra: '#84255B',
+    barraActivo: '#933F6F',
+    barraTexto2: '#E0C9D6',
+    marca: ['#9B2C6B', '#84255B'],
+  },
+  BARBERIA: {
+    // CARBON
+    primary: '#4A4744',
+    primary600: '#3F3C3A',
+    primary700: '#343230',
+    primary50: '#F4F4F4',
+    primary100: '#E6E5E5',
+    primary200: '#CCCBCB',
+    boton: '#4A4744',
+    botonHover: '#403D3A',
+    botonActivo: '#373532',
+    barra: '#3F3C3A',
+    barraActivo: '#565352',
+    barraTexto2: '#CFCECE',
+    marca: ['#4A4744', '#3F3C3A'],
+  },
+  SPA: {
+    // LAVANDA
+    primary: '#7357B8',
+    primary600: '#624A9C',
+    primary700: '#513D81',
+    primary50: '#F7F5FB',
+    primary100: '#EBE7F5',
+    primary200: '#D8D0EB',
+    boton: '#7357B8',
+    botonHover: '#634B9E',
+    botonActivo: '#554088',
+    barra: '#624A9C',
+    barraActivo: '#7560A8',
+    barraTexto2: '#D8D2E6',
+    marca: ['#7357B8', '#624A9C'],
+  },
+  UNAS: {
+    // FRAMBUESA
+    primary: '#B5285A',
+    primary600: '#9A224D',
+    primary700: '#7F1C3F',
+    primary50: '#FBF2F5',
+    primary100: '#F5E1E8',
+    primary200: '#EAC3D1',
+    boton: '#B5285A',
+    botonHover: '#9C224D',
+    botonActivo: '#861E43',
+    barra: '#9A224D',
+    barraActivo: '#A63D62',
+    barraTexto2: '#E6C8D3',
+    marca: ['#B5285A', '#9A224D'],
+  },
 };
 
+/** Los doce tonos sueltos de un tema; `marca` va aparte porque es un par. */
+const CLAVES_TONO = [
+  'primary',
+  'primary600',
+  'primary700',
+  'primary50',
+  'primary100',
+  'primary200',
+  'boton',
+  'botonHover',
+  'botonActivo',
+  'barra',
+  'barraActivo',
+  'barraTexto2',
+] as const;
+
+const HEX = /^#[0-9a-fA-F]{6}$/;
+
 /**
- * Aplica el tema del rubro reescribiendo las variables CSS en :root.
+ * ¿Estos tokens se pueden pintar tal cual?
  *
- * Un rubro desconocido (o sin rubro, como antes del login) cae en el verde:
- * ante la duda, el producto se ve como siempre en vez de quedar sin color.
+ * Vienen de la red, así que se revisan enteros antes de tocar una sola
+ * variable: un valor mal formado no da error en CSS, deja la pantalla sin
+ * color. Y es todo o nada a propósito: mezclar la mitad de una paleta con la
+ * mitad del respaldo daría un botón de un color sobre una barra de otro.
  */
-export function aplicarTema(rubro: string | null | undefined): void {
-  const tema = (rubro && TEMAS[rubro]) || VERDE;
+export function esTemaValido(tokens: unknown): tokens is Tema {
+  if (!tokens || typeof tokens !== 'object') return false;
+  const t = tokens as Record<string, unknown>;
+  for (const clave of CLAVES_TONO) {
+    const v = t[clave];
+    if (typeof v !== 'string' || !HEX.test(v)) return false;
+  }
+  const marca = t.marca;
+  return (
+    Array.isArray(marca) &&
+    marca.length === 2 &&
+    marca.every((c) => typeof c === 'string' && HEX.test(c))
+  );
+}
+
+/**
+ * De dónde sale el color: el negocio de la sesión (o sólo su rubro, como se
+ * llamaba antes). Es estructural para no atar este archivo a `types.ts`.
+ */
+export type OrigenTema =
+  | string
+  | {
+      tipoNegocio?: string | null;
+      tema?: { tokens?: unknown } | null;
+    }
+  | null
+  | undefined;
+
+/**
+ * El tema que corresponde, en orden: la paleta del negocio si vino y está
+ * entera, la del rubro, y si no el verde. Ante la duda, el producto se ve
+ * como siempre en vez de quedar sin color.
+ */
+export function resolverTema(origen: OrigenTema): Tema {
+  if (typeof origen === 'string') return TEMAS[origen] || VERDE;
+  const tokens = origen?.tema?.tokens;
+  if (esTemaValido(tokens)) return tokens;
+  const rubro = origen?.tipoNegocio;
+  return (rubro && TEMAS[rubro]) || VERDE;
+}
+
+/**
+ * Aplica el tema del negocio reescribiendo las variables CSS en :root.
+ *
+ * Acepta el negocio de la sesión o sólo un rubro (ver `resolverTema`). Sin
+ * nada, como antes del login, cae en el verde.
+ */
+export function aplicarTema(origen: OrigenTema): void {
+  const tema = resolverTema(origen);
   const raiz = document.documentElement.style;
   raiz.setProperty('--color-primary', tema.primary);
   raiz.setProperty('--color-primary-600', tema.primary600);
