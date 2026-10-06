@@ -4,8 +4,10 @@ import type {
   BloqueoCreado,
   BloqueoInput,
   CambioRegla,
+  ExcepcionCreada,
   ExcepcionHorario,
   ExcepcionInput,
+  HorariosGuardados,
   Recurso,
   RecursoInput,
   Reglas,
@@ -70,7 +72,7 @@ export const apiConfigAgenda = {
   },
   /** Reemplaza TODA la semana del recurso, en todas sus sucursales. */
   guardarHorarios: (recursoId: number, tramos: TramoHorario[]) =>
-    request<{ tramos: TramoHorario[] } | TramoHorario[]>(`/agenda/recursos/${recursoId}/horarios`, {
+    request<HorariosGuardados | TramoHorario[]>(`/agenda/recursos/${recursoId}/horarios`, {
       method: "PUT",
       body: json({ tramos }),
     }),
@@ -81,7 +83,7 @@ export const apiConfigAgenda = {
       `/agenda/recursos/${recursoId}/excepciones${qs({ desde, hasta })}`,
     ),
   crearExcepcion: (recursoId: number, input: ExcepcionInput) =>
-    request<ExcepcionHorario>(`/agenda/recursos/${recursoId}/excepciones`, {
+    request<ExcepcionCreada>(`/agenda/recursos/${recursoId}/excepciones`, {
       method: "POST",
       body: json(input),
     }),

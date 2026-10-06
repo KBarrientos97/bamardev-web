@@ -151,6 +151,20 @@ export interface BloqueoCreado extends Bloqueo {
   citasAfectadas?: CitaAfectada[];
 }
 
+/**
+ * Guardar la semana tipo o una excepción también devuelve las citas que
+ * quedaron fuera del horario nuevo, desde hoy (QA M-06, §7.3). Opcional: un
+ * backend anterior no lo manda.
+ */
+export interface HorariosGuardados {
+  tramos: TramoHorario[];
+  citasAfectadas?: CitaAfectada[];
+}
+
+export interface ExcepcionCreada extends ExcepcionHorario {
+  citasAfectadas?: CitaAfectada[];
+}
+
 // ── Reglas del negocio (A11) ────────────────────────────────────────────────
 
 export type ModoConfirmacion = "MANUAL" | "AUTOMATICA" | "ANTICIPO_QR";

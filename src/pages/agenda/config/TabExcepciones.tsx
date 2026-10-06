@@ -21,9 +21,15 @@ import {
   resumenTramos,
   sumarDias,
 } from "../../../lib/agenda/horarios";
-import type { ExcepcionHorario, Recurso, Tramo } from "../../../lib/agenda/tiposConfigAgenda";
+import type {
+  CitaAfectada,
+  ExcepcionCreada,
+  ExcepcionHorario,
+  Recurso,
+  Tramo,
+} from "../../../lib/agenda/tiposConfigAgenda";
 import { useApi } from "../../../lib/useApi";
-import { Bloque } from "./comun";
+import { AvisoCitasAfectadas, Bloque } from "./comun";
 import { mensajeDe, nombreRecurso, type Pestana } from "./utilConfig";
 import EditorTramos from "./EditorTramos";
 
@@ -55,6 +61,7 @@ export default function TabExcepciones({
   const [procesando, setProcesando] = useState(false);
   const [error, setError] = useState("");
   const [aviso, setAviso] = useAviso();
+  const [afectadas, setAfectadas] = useState<CitaAfectada[]>([]);
 
   if (!activos.length) {
     return (
@@ -91,7 +98,13 @@ export default function TabExcepciones({
     <div className="space-y-4">
       <div className="card p-4">
         <Campo label="Excepciones de">
-          <Select value={recursoId ?? ""} onChange={(e) => setRecursoId(Number(e.target.value))}>
+          <Select
+            value={recursoId ?? ""}
+            onChange={(e) => {
+              setRecursoId(Number(e.target.value));
+              setAfectadas([]);
+            }}
+          >
             {activos.map((r) => (
               <option key={r.id} value={r.id}>
                 {nombreRecurso(r)}
@@ -103,6 +116,11 @@ export default function TabExcepciones({
 
       <AvisoOk>{aviso}</AvisoOk>
       <ErrorMsg>{error}</ErrorMsg>
+      <AvisoCitasAfectadas
+        citas={afectadas}
+        donde="fuera del horario de ese día"
+        onCerrar={() => setAfectadas([])}
+      />
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Bloque titulo="Próximas excepciones">
@@ -144,6 +162,8 @@ export default function TabExcepciones({
             recursoId={recursoId}
             hoy={hoy}
             onCreada={(x) => {
+              // Las citas que quedan fuera del horario de ese día (QA M-06).
+              setAfectadas(x.citasAfectadas ?? []);
               setAviso(`Excepción del ${fmtFechaNegocio(x.fecha)} guardada.`);
               lista.recargar();
             }}
@@ -176,7 +196,7 @@ function NuevaExcepcion({
 }: {
   recursoId: number;
   hoy: string;
-  onCreada: (x: ExcepcionHorario) => void;
+  onCreada: (x: ExcepcionCreada) => void;
 }) {
   const [fecha, setFecha] = useState("");
   const [trabaja, setTrabaja] = useState(false);

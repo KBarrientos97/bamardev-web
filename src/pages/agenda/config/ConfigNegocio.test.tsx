@@ -209,4 +209,33 @@ describe("historial", () => {
     expect(historial).toHaveTextContent("10 min");
     expect(historial).toHaveTextContent("Dueña · Sur");
   });
+
+  it("B-25: la hora va en 24 h de La Paz y el valor heredado se nombra", async () => {
+    vi.mocked(apiConfigAgenda.historialReglas).mockResolvedValue([
+      {
+        campo: "profesionalVeTelefono",
+        antes: null,
+        despues: true,
+        sucursalId: null,
+        usuario: "Dueña",
+        // 00:21 del 06/10 en La Paz.
+        en: "2026-10-06T04:21:00.000Z",
+      },
+      {
+        campo: "granularidadMin",
+        antes: 15,
+        despues: null,
+        sucursalId: null,
+        usuario: "Dueña",
+        en: "2026-10-06T16:30:00.000Z",
+      },
+    ]);
+    await montar();
+    const historial = screen.getByRole("region", { name: "Historial de cambios" });
+    expect(historial).toHaveTextContent("06/10/2026 00:21");
+    expect(historial).toHaveTextContent("06/10/2026 12:30");
+    expect(historial).not.toHaveTextContent(/a\. m\.|p\. m\./);
+    expect(historial).toHaveTextContent("heredado");
+    expect(historial).not.toHaveTextContent("—");
+  });
 });

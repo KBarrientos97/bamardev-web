@@ -19,9 +19,9 @@ import {
   semanaDeSucursal,
   type Semana,
 } from "../../../lib/agenda/horarios";
-import type { Recurso, TramoHorario } from "../../../lib/agenda/tiposConfigAgenda";
+import type { CitaAfectada, Recurso, TramoHorario } from "../../../lib/agenda/tiposConfigAgenda";
 import { useApi } from "../../../lib/useApi";
-import { Casilla } from "./comun";
+import { AvisoCitasAfectadas, Casilla } from "./comun";
 import { codigoDe, mensajeDe, nombreRecurso, type Pestana, type Sucursal } from "./utilConfig";
 import EditorTramos from "./EditorTramos";
 
@@ -144,6 +144,7 @@ function EditorSemana({
   const [superpuesto, setSuperpuesto] = useState(false);
   const [guardando, setGuardando] = useState(false);
   const [aviso, setAviso] = useAviso();
+  const [afectadas, setAfectadas] = useState<CitaAfectada[]>([]);
 
   const hayErrores = DIAS.some(({ dia }) => erroresTramos(semana[dia] ?? []).length > 0);
 
@@ -158,9 +159,13 @@ function EditorSemana({
     setGuardando(true);
     setError("");
     setSuperpuesto(false);
+    setAfectadas([]);
     try {
       const tramos = reemplazarSucursal(todos, sucursalId, semana);
-      await apiConfigAgenda.guardarHorarios(recursoId, tramos);
+      const r = await apiConfigAgenda.guardarHorarios(recursoId, tramos);
+      // Las citas que el horario nuevo dejó afuera (QA M-06): se listan para
+      // reprogramarlas, como con un bloqueo.
+      setAfectadas(Array.isArray(r) ? [] : (r?.citasAfectadas ?? []));
       onGuardado(tramos);
       setAviso("Horario guardado.");
     } catch (e) {
@@ -261,6 +266,11 @@ function EditorSemana({
       )}
       {!superpuesto && <ErrorMsg>{error}</ErrorMsg>}
       <AvisoOk>{aviso}</AvisoOk>
+      <AvisoCitasAfectadas
+        citas={afectadas}
+        donde="fuera del nuevo horario"
+        onCerrar={() => setAfectadas([])}
+      />
 
       <div className="flex justify-end gap-2">
         <Boton
