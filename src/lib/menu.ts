@@ -48,15 +48,28 @@ export interface ItemNav {
  * El del medio se llama "Stock" y no "Inventario" porque adentro vive el grupo
  * Inventario: el rótulo y el ítem se leían como un renglón repetido.
  */
-export type Bloque = "vender" | "stock" | "administracion";
+export type Bloque = "agenda" | "vender" | "stock" | "administracion";
 
 export const TITULO_BLOQUE: Record<Bloque, string> = {
+  // Sólo belleza con la feature `agenda`: en los demás rubros no hay ningún
+  // ítem en este bloque y el rótulo no se dibuja.
+  agenda: "Agenda",
   vender: "Vender",
   stock: "Stock",
   administracion: "Administración",
 };
 
 const ITEMS: (ItemNav & { bloque: Bloque })[] = [
+  // Agenda de belleza (A8): primero, porque en un salón la agenda es el día.
+  // La ruta no cuelga de /agenda a propósito: así no se enciende junto con el
+  // ítem de la agenda del día cuando se está configurando.
+  {
+    a: "/configuracion/agenda",
+    label: "Configuración de agenda",
+    icono: "settings",
+    seccion: "agenda_config",
+    bloque: "agenda",
+  },
   { a: "/pos", label: "Punto de venta", icono: "cart", seccion: "pos", bloque: "vender" },
   // Va segundo y no dentro de Inventario: en una farmacia no es una consulta
   // de catálogo, es parte de atender. Se usa más que ninguna otra pantalla.
@@ -180,6 +193,14 @@ const ITEMS: (ItemNav & { bloque: Bloque })[] = [
   },
   { a: "/reportes", label: "Reportes", icono: "chart", seccion: "reportes", bloque: "administracion" },
   { a: "/usuarios", label: "Usuarios", icono: "users", seccion: "usuarios", bloque: "administracion" },
+  // A11: las reglas del negocio y las de la reserva online. Sólo el dueño.
+  {
+    a: "/configuracion/negocio",
+    label: "Configuración del negocio",
+    icono: "settings",
+    seccion: "config_negocio",
+    bloque: "administracion",
+  },
 ];
 
 /** Un ítem ya filtrado por permisos, con su nombre según el rubro. */

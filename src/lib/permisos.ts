@@ -87,13 +87,18 @@ export type Seccion =
    */
   | "transferencia_mercaderia"
   /** Gastos operativos: el libro del resultado, aparte de la caja. */
-  | "gastos";
+  | "gastos"
+  // ── Agenda de belleza: configuración ──
+  /** Servicios con duración, profesionales y espacios, horarios y bloqueos (A8). */
+  | "agenda_config"
+  /** Las reglas del negocio y cómo se confirma una reserva online (A11). */
+  | "config_negocio";
 
 /**
  * Qué módulo de rol y qué feature de plan exige cada sección. `feature: null`
  * = no está en el catálogo de planes, alcanza con el módulo del rol.
  */
-const REQUISITOS: Record<Seccion, { modulo: Modulo; feature: Feature | null }> = {
+const REQUISITOS: Record<Seccion, { modulo: Modulo | null; feature: Feature | null }> = {
   pos: { modulo: "POS", feature: "pos" },
   caja: { modulo: "CAJA", feature: "caja" },
   inventario: { modulo: "INVENTARIO", feature: "inventario" },
@@ -149,7 +154,20 @@ const REQUISITOS: Record<Seccion, { modulo: Modulo; feature: Feature | null }> =
   // gasto es del libro del resultado, no de la caja del turno, y la feature
   // `gastos` esta en el catalogo desde sep-2026.
   gastos: { modulo: "REPORTES", feature: "gastos" },
+  // La agenda no tiene módulo de rol (D23): el backend sólo exige la feature,
+  // así que acá tampoco se pide ninguno. Quién entra lo dice ROLES_PERMITIDOS.
+  agenda_config: { modulo: null, feature: "agenda" },
+  config_negocio: { modulo: null, feature: "agenda" },
 };
+
+/**
+ * Features que NO fallan abiertas: sin la feature en la lista, la sección no
+ * existe aunque la lista venga vacía. La agenda es lo único nuevo de verdad
+ * —ningún negocio la tuvo antes— y se prende a mano por negocio (F1.8): un
+ * salón que todavía no la tiene no puede encontrarse la configuración de algo
+ * que no puede usar, y el fail-open de siempre se la mostraría.
+ */
+const FEATURES_ESTRICTAS: Feature[] = ["agenda"];
 
 /**
  * Roles que además pueden entrar a cada sección. El backend lo exige con
@@ -193,6 +211,11 @@ const ROLES_PERMITIDOS: Partial<Record<Seccion, Rol[]>> = {
   transferencia_mercaderia: ["ADMIN", "SUPERVISOR"],
   // El backend lo exige con RolesGuard: un cajero no carga gastos del negocio.
   gastos: ["ADMIN", "SUPERVISOR"],
+  // §4 de PLAN-AGENDA-BELLEZA: horarios, servicios y recursos los tocan el
+  // dueño y el encargado; las reglas del negocio (A11), sólo el dueño. El
+  // backend no lo exige todavía (D23): es la pantalla la que no lo ofrece.
+  agenda_config: ["ADMIN", "SUPERVISOR"],
+  config_negocio: ["ADMIN"],
 };
 
 /**
@@ -226,6 +249,11 @@ const SOLO_EN_RUBRO: Partial<Record<Seccion, Rubro[]>> = {
   ingreso_mercaderia: ["FARMACIA"],
   salida_mercaderia: ["FARMACIA"],
   transferencia_mercaderia: ["FARMACIA"],
+  // La agenda nace en belleza. Además de la feature estricta, el rubro: un
+  // restaurante o una farmacia no ven nada nuevo aunque alguien les prenda
+  // `agenda` en el panel por error.
+  agenda_config: RUBROS_BELLEZA,
+  config_negocio: RUBROS_BELLEZA,
 };
 
 /**
@@ -272,8 +300,11 @@ export function puedeVer(ctx: ContextoPermisos, seccion: Seccion): boolean {
   if (roles && !roles.includes(ctx.rol)) return false;
 
   const req = REQUISITOS[seccion];
-  if (!tieneModulo(ctx.modulos, req.modulo)) return false;
+  if (req.modulo && !tieneModulo(ctx.modulos, req.modulo)) return false;
   if (req.feature && !tieneFeature(ctx.features, req.feature)) return false;
+  if (req.feature && FEATURES_ESTRICTAS.includes(req.feature) && !ctx.features?.includes(req.feature)) {
+    return false;
+  }
   return true;
 }
 

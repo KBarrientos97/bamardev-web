@@ -221,8 +221,11 @@ function qs(params: object = {}): string {
  * reglas transversales: cerrar sesión si el token murió, cortar si la licencia
  * dejó de estar vigente, y reportar a PostHog lo que falló. Ponerlas en cada
  * pantalla sería garantizar que alguna quede afuera.
+ *
+ * Se exporta para los clientes de la agenda (`lib/agenda/`), que viven en sus
+ * propios archivos y tienen que pasar por las mismas tres reglas.
  */
-async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+export async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = tokenStore.get();
   const metodo = options.method ?? "GET";
   // La ruta sin ids: "/productos/42" y "/productos/7" son el mismo endpoint, y
