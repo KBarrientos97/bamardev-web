@@ -49,26 +49,19 @@ export function Trazo({
 
 const GRIS = { fondo: "#F6F7F9", borde: "#E5E7EB", texto: "#1F2937", texto2: "#374151", texto3: "#6B7280" };
 
-/** Logo de BamarDev en chico, para el pie. */
+/**
+ * Logo de BamarDev en chico, para el pie: el robot, el mismo de la app y de
+ * la pestaña del navegador. Decorativo: al lado siempre va el texto.
+ */
 export function MarcaBamarDev({ size = 18 }: { size?: number }) {
   return (
-    <span
-      style={{
-        width: size,
-        height: size,
-        borderRadius: size * 0.28,
-        background: "#0C875E",
-        color: "#ffffff",
-        fontSize: size * 0.56,
-        fontWeight: 700,
-        display: "inline-flex",
-        alignItems: "center",
-        justifyContent: "center",
-        flex: "none",
-      }}
-    >
-      B
-    </span>
+    <img
+      src="/logo-marca.png"
+      alt=""
+      width={size}
+      height={size}
+      style={{ width: size, height: size, flex: "none", objectFit: "contain" }}
+    />
   );
 }
 

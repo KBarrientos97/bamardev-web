@@ -80,9 +80,7 @@ export default function Login() {
     <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-b from-primary-50 via-white to-fondo px-5 py-10">
       <div className="w-full max-w-sm">
         <div className="mb-6 flex flex-col items-center text-center">
-          <div className="flex h-20 w-20 items-center justify-center rounded-3xl bg-marca text-white shadow-lg shadow-primary/30">
-            <Icon name="archive" size={38} strokeWidth={2.2} />
-          </div>
+          <img src="/logo-marca.png" alt="" width={88} height={88} className="h-22 w-22 drop-shadow-md" />
           <h1 className="mt-4 text-2xl font-extrabold tracking-tight text-primary">
             BamarDev
           </h1>
