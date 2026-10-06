@@ -24,6 +24,7 @@ import NuevaCita from "./NuevaCita";
 import TarjetaCita from "./TarjetaCita";
 import { useAccionRapida } from "./useAccionRapida";
 import CampanaAvisos from "./CampanaAvisos";
+import MiProduccion from "./comisiones/MiProduccion";
 
 function conCita(d: MiAgendaRespuesta | null, c: Cita): MiAgendaRespuesta | null {
   if (!d) return d;
@@ -42,7 +43,8 @@ function conCita(d: MiAgendaRespuesta | null, c: Cita): MiAgendaRespuesta | null
  * mesero: es su única pantalla.
  */
 export default function MiAgenda() {
-  const { usuario, negocio, logout } = useAuth();
+  const { usuario, negocio, logout, puede } = useAuth();
+  const veProduccion = puede?.("mi_produccion") ?? false;
   const hoy = fechaNegocio();
   const [dia, setDia] = useState(hoy);
   const [abierta, setAbierta] = useState<Cita | null>(null);
@@ -194,6 +196,9 @@ export default function MiAgenda() {
                 ))}
               </div>
             )}
+            {/* Fase 2: su producción y su comisión, si el negocio tiene
+                comisiones y su rol puede verlas (sólo las suyas). */}
+            {veProduccion && <MiProduccion />}
             {sinTelefono && (
               <p className="flex items-center gap-2 px-1 text-[12px] text-texto-3">
                 <Icon name="lock" size={15} />

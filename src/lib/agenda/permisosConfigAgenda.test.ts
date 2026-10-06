@@ -73,7 +73,10 @@ describe("menú", () => {
 
   it("en un salón con agenda aparece el bloque Agenda y la configuración del negocio", () => {
     const m = rotulos(ctx("ADMIN", "PELUQUERIA"));
-    expect(m[0]).toEqual({ bloque: "agenda", items: ["Agenda", "Hoy", "Configuración de agenda"] });
+    expect(m[0]).toEqual({
+      bloque: "agenda",
+      items: ["Agenda", "Hoy", "Reportes de agenda", "Configuración de agenda"],
+    });
     expect(m.find((b) => b.bloque === "administracion")?.items).toContain("Configuración del negocio");
   });
 

@@ -191,6 +191,18 @@ function FormRecurso({
     recurso?.sucursalIds ?? (sucursales.length === 1 ? [sucursales[0].id] : []),
   );
   const [servicioIds, setServicioIds] = useState<number[]>(recurso?.servicioIds ?? []);
+  // Fase 2: duración y precio propios por servicio ("" = los del servicio).
+  const [propios, setPropios] = useState<Record<number, { duracion: string; precio: string }>>(() =>
+    Object.fromEntries(
+      (recurso?.serviciosPropios ?? []).map((p) => [
+        p.servicioId,
+        { duracion: p.duracionMin == null ? "" : String(p.duracionMin), precio: p.precio == null ? "" : String(p.precio) },
+      ]),
+    ),
+  );
+  const [verPropios, setVerPropios] = useState(() =>
+    (recurso?.serviciosPropios ?? []).some((p) => p.duracionMin != null || p.precio != null),
+  );
   const [error, setError] = useState("");
   const [guardando, setGuardando] = useState(false);
 
@@ -215,6 +227,27 @@ function FormRecurso({
       return setError("La comisión va de 0 a 100 %.");
     }
     if (!Number.isInteger(ord) || ord < 0) return setError("El orden es un número entero, cero o más.");
+    const lista = servicioIds.map((id) => {
+      const p = propios[id];
+      const d = p?.duracion.trim() ? Number(p.duracion) : null;
+      const pr = p?.precio.trim() ? Number(p.precio) : null;
+      return { servicioId: id, duracionMin: d, precio: pr };
+    });
+    const malo = lista.find(
+      (l) =>
+        (l.duracionMin != null && (!Number.isInteger(l.duracionMin) || l.duracionMin < 1)) ||
+        (l.precio != null && (!Number.isFinite(l.precio) || l.precio < 0)),
+    );
+    if (esProfesional && malo) {
+      const s = servicios.find((x) => x.id === malo.servicioId);
+      return setError(`Revisá la duración o el precio propio de "${s?.nombre ?? "un servicio"}".`);
+    }
+    // Sólo se manda si hay algo propio (o había y se borró): un salón que no
+    // usa precios por profesional guarda como siempre.
+    const conPropios =
+      esProfesional &&
+      (lista.some((l) => l.duracionMin != null || l.precio != null) ||
+        (recurso?.serviciosPropios ?? []).some((p) => p.duracionMin != null || p.precio != null));
     const input: RecursoInput = {
       tipo,
       nombre: nombre.trim(),
@@ -235,7 +268,7 @@ function FormRecurso({
       const r = recurso
         ? await apiConfigAgenda.actualizarRecurso(recurso.id, input)
         : await apiConfigAgenda.crearRecurso(input);
-      onGuardado(r);
+      onGuardado(conPropios ? await apiConfigAgenda.guardarServiciosRecurso(r.id, lista) : r);
     } catch (e) {
       setError(mensajeDe(e));
     } finally {
@@ -337,7 +370,7 @@ function FormRecurso({
             <Campo label="Teléfono" hint="Opcional, para el equipo.">
               <Input type="tel" value={telefono} onChange={(e) => setTelefono(e.target.value)} />
             </Campo>
-            <Campo label="Comisión (%)" hint="Para el reporte de producción (fase 2).">
+            <Campo label="Comisión (%)" hint="Sobre sus servicios. El % por servicio y de productos, en Comisiones.">
               <Input type="number" value={comision} onChange={(e) => setComision(e.target.value)} placeholder="Opcional" />
             </Campo>
             <Campo label="Orden en la agenda" hint="Las columnas van de menor a mayor.">
@@ -375,6 +408,50 @@ function FormRecurso({
             vacio="Todavía no hay servicios: cargalos en la pestaña Servicios."
           />
         </div>
+        {esProfesional && servicioIds.length > 0 && (
+          <div>
+            <Casilla
+              checked={verPropios}
+              onChange={setVerPropios}
+              ayuda="Si cobra distinto o tarda distinto que lo de lista. Vacío = lo del servicio."
+            >
+              Precio y duración propios
+            </Casilla>
+            {verPropios && (
+              <ul className="mt-2 space-y-2" aria-label="Precio y duración propios">
+                {servicioIds.map((id) => {
+                  const s = servicios.find((x) => x.id === id);
+                  if (!s) return null;
+                  const p = propios[id] ?? { duracion: "", precio: "" };
+                  const cambiar = (campo: "duracion" | "precio", v: string) =>
+                    setPropios((prev) => ({ ...prev, [id]: { ...p, [campo]: v } }));
+                  return (
+                    <li key={id} className="flex flex-wrap items-center gap-2 text-[13px] text-texto-2">
+                      <span className="min-w-0 flex-1 basis-40 truncate font-semibold">{s.nombre}</span>
+                      <Input
+                        type="number"
+                        inputMode="numeric"
+                        aria-label={`Minutos de ${s.nombre}`}
+                        value={p.duracion}
+                        onChange={(e) => cambiar("duracion", e.target.value)}
+                        placeholder={s.duracionMin != null ? `${s.duracionMin} min` : "min"}
+                        className="w-24"
+                      />
+                      <Input
+                        type="number"
+                        aria-label={`Precio de ${s.nombre}`}
+                        value={p.precio}
+                        onChange={(e) => cambiar("precio", e.target.value)}
+                        placeholder={`Bs ${s.precio}`}
+                        className="w-28"
+                      />
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+        )}
 
         <div className="space-y-1">
           <Casilla checked={activo} onChange={setActivo} ayuda="Inactivo no aparece en la agenda; sus citas no se tocan.">

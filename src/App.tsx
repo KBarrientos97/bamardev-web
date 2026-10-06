@@ -24,6 +24,8 @@ import Hoy from "./pages/agenda/Hoy";
 import Clientes from "./pages/agenda/Clientes";
 import MiAgenda from "./pages/agenda/MiAgenda";
 import Solicitudes from "./pages/agenda/Solicitudes";
+import Comisiones from "./pages/agenda/comisiones/Comisiones";
+import ReportesAgenda from "./pages/agenda/ReportesAgenda";
 import Almacenes from "./pages/inventario/Almacenes";
 import Categorias from "./pages/inventario/Categorias";
 import Dashboard from "./pages/inventario/Dashboard";
@@ -306,6 +308,23 @@ function Rutas() {
           element={
             <Protegida seccion="solicitudes">
               <Solicitudes />
+            </Protegida>
+          }
+        />
+        {/* Fase 2: comisiones y liquidación, y los reportes de la agenda. */}
+        <Route
+          path="/comisiones"
+          element={
+            <Protegida seccion="comisiones">
+              <Comisiones />
+            </Protegida>
+          }
+        />
+        <Route
+          path="/reportes-agenda"
+          element={
+            <Protegida seccion="reportes_agenda">
+              <ReportesAgenda />
             </Protegida>
           }
         />
