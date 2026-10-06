@@ -134,6 +134,7 @@ export default function PantallaCierre({
           <ErrorMsg onReintentar={resumen.recargar}>{resumen.error}</ErrorMsg>
         ) : (
           <>
+            <AvisoCitas porCobrar={r.citasPorCobrar ?? 0} revisar={r.citasCobroRevisar ?? 0} />
             <section className="card p-4">
               <h2 className="mb-3 text-[13px] font-bold uppercase tracking-wide text-texto-4">
                 Movimiento del turno
@@ -510,6 +511,35 @@ function DialogoMovimiento({
 }
 
 /** Comprobante del arqueo, con lo que se contó y la diferencia. */
+/**
+ * Belleza (PLAN-AGENDA-BELLEZA §9.1): "hay 2 citas finalizadas sin cobrar".
+ * No frena el cierre —puede ser una cortesía que nadie cerró—, pero se ve
+ * antes de contar la plata. Un negocio sin agenda recibe ceros y no ve nada.
+ */
+function AvisoCitas({ porCobrar, revisar }: { porCobrar: number; revisar: number }) {
+  if (porCobrar <= 0 && revisar <= 0) return null;
+  return (
+    <section role="alert" className="space-y-1 rounded-2xl border border-warning/40 bg-warning-bg p-4 text-warning-text">
+      {porCobrar > 0 && (
+        <p className="text-sm font-bold">
+          {porCobrar === 1 ? "Hay 1 cita finalizada sin cobrar" : `Hay ${porCobrar} citas finalizadas sin cobrar`}
+        </p>
+      )}
+      {revisar > 0 && (
+        <p className="text-sm font-bold">
+          {revisar === 1
+            ? "1 cita se cobró de más (ya estaba cobrada o cerrada): revisala"
+            : `${revisar} citas se cobraron de más (ya estaban cobradas o cerradas): revisalas`}
+        </p>
+      )}
+      <p className="text-[13px]">
+        Cobralas desde «Citas por cobrar» del punto de venta, o cerralas sin cargo en la agenda. Un cobro de más se
+        corrige anulando esa venta.
+      </p>
+    </section>
+  );
+}
+
 export function CierreOk({ caja, onSalir }: { caja: Caja; onSalir: () => void }) {
   const diferencia = caja.montoDiferencia ?? 0;
   return (

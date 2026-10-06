@@ -798,6 +798,13 @@ export interface ResumenCaja {
   /** Lo mismo, por mesero: dice a quién pedirle la plata. */
   meserosPendientes?: { meseroId: number | null; nombre: string | null; monto: number }[];
   saldoEsperado: number;
+  /**
+   * Agenda (belleza): citas de la sucursal que terminaron y nadie cobró, y
+   * citas que esta caja cobró y quedaron para revisar (cobro repetido o cita
+   * ya cerrada). Opcionales: un backend anterior no los manda.
+   */
+  citasPorCobrar?: number;
+  citasCobroRevisar?: number;
 }
 
 // ── Ventas ──────────────────────────────────────────────────────────────────
@@ -866,6 +873,8 @@ export interface Venta {
   mesaNombre?: string | null;
   /** Quién atendió la mesa (no quién cobró: ése es `cajero`). */
   mesero?: string | null;
+  /** La cita de la agenda que cobró. Ausente en cualquier otra venta. */
+  citaId?: number;
 }
 
 export interface DetalleVentaInput {
@@ -880,6 +889,8 @@ export interface DetalleVentaInput {
    * Sin ella el backend rechaza la venta de uno de esos.
    */
   receta?: RecetaVenta;
+  /** Agenda: el profesional que hizo este servicio (su comisión). */
+  recursoId?: number;
 }
 
 /**
@@ -1067,6 +1078,8 @@ export interface VentaInput {
   minutosEstimados?: number;
   notaPedido?: string;
   credito?: CreditoInput;
+  /** Agenda: la cita que cobra esta venta. La venta la completa (§10). */
+  citaId?: number;
 }
 
 export interface Repartidor {

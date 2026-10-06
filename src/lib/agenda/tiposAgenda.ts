@@ -74,6 +74,12 @@ export interface Cita {
   lineas: LineaCita[];
   recursoPreferidoId: number | null;
   ventaId: number | null;
+  /**
+   * Cobrada dos veces, o cobrada estando cancelada / no vino: la venta se
+   * aceptó y queda para revisar en el cierre de caja (ola B). Opcional: un
+   * backend anterior no lo manda.
+   */
+  cobroRevisar?: boolean;
   noShowSugerido: boolean;
   creadaEn: string;
   /** Sólo en `GET /agenda/citas/:id`. */
@@ -113,6 +119,106 @@ export interface ClienteFicha {
   bloqueadoOnline: boolean;
   ultimaVisita: string | null;
   creadoEn: string;
+}
+
+/** Una cita en el historial de la ficha (A7). */
+export interface CitaHistorial {
+  id: number;
+  codigo: string;
+  estado: EstadoCita;
+  origen: OrigenCita;
+  sucursalId: number;
+  sucursal: string;
+  inicio: string | null;
+  fin: string | null;
+  /** 0 si quien mira es PROFESIONAL: la ficha no le muestra montos. */
+  total: number;
+  ventaId: number | null;
+  cobroRevisar: boolean;
+  motivoCancelacion: string | null;
+  lineas: {
+    servicioId: number;
+    servicio: string;
+    recursoId: number;
+    recurso: string;
+    inicio: string;
+    fin: string;
+    precio: number;
+  }[];
+}
+
+/** Una venta del cliente: la que cobró una de sus citas o una que se le fió. */
+export interface CompraHistorial {
+  id: number;
+  comprobante: string | null;
+  fecha: string;
+  total: number;
+  estado: string;
+  citaId: number | null;
+  fiado: boolean;
+  items: { producto: string; cantidad: number; subtotal: number }[];
+}
+
+/** `GET /agenda/clientes/:id`: la ficha con su historia (ola B). */
+export type ClienteFichaDetalle = ClienteFicha & {
+  citas: CitaHistorial[];
+  compras: CompraHistorial[];
+};
+
+/** Lo que se puede cambiar de la ficha desde A7. `null` borra el dato. */
+export interface EditarClienteInput {
+  nombre?: string;
+  telefono?: string | null;
+  fechaNacimiento?: string | null;
+  alergias?: string | null;
+  notas?: string | null;
+  bloqueadoOnline?: boolean;
+}
+
+/** `GET /agenda/citas/:id/carrito`: lo que el POS precarga para cobrar la cita. */
+export interface CarritoCita {
+  citaId: number;
+  codigo: string;
+  estado: EstadoCita;
+  /** La venta que ya la cobró, si la hay: cobrarla otra vez queda para revisar. */
+  ventaId: number | null;
+  cobroRevisar: boolean;
+  sucursalId: number;
+  cliente: { id: number | null; nombre: string };
+  lineas: {
+    productoId: number;
+    descripcion: string;
+    cantidad: 1;
+    /** El precio vigente (el de la sucursal si lo tiene): el que va a cobrar la venta. */
+    precio: number;
+    recursoId: number | null;
+    recurso: string | null;
+  }[];
+  total: number;
+}
+
+export type TipoAviso =
+  | "CITA_NUEVA"
+  | "RESERVA_ONLINE"
+  | "SOLICITUD_ONLINE"
+  | "CITA_MOVIDA"
+  | "CITA_CANCELADA"
+  | "NO_SHOW_SUGERIDO"
+  | "COBRO_REVISAR";
+
+/** Un aviso interno (§9.1). `texto` viene listo para mostrar. */
+export interface AvisoAgenda {
+  clave: string;
+  tipo: TipoAviso;
+  citaId: number;
+  codigo: string;
+  cliente: string;
+  sucursalId: number;
+  inicio: string | null;
+  recursos: string[];
+  usuario: string | null;
+  en: string;
+  texto: string;
 }
 
 // ── De §10.1, sólo lectura ───────────────────────────────────────────────────
@@ -201,7 +307,9 @@ export type AccionCita =
   | "NO_ASISTIO"
   | "CANCELAR"
   | "SIN_CARGO"
-  | "ABANDONO";
+  | "ABANDONO"
+  /** Corrige un "No vino" marcado por error: vuelve a como estaba. */
+  | "DESHACER_NO_ASISTIO";
 
 export interface LineaPedida {
   servicioId: number;

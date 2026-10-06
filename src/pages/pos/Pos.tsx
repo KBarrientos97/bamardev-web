@@ -1,13 +1,33 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Icon } from "../../components/Icon";
 import { Cargando, ErrorMsg } from "../../components/ui";
 import { api } from "../../lib/api";
+import { apiAgenda, mensajeDe } from "../../lib/agenda/apiAgenda";
+import {
+  citaDeLaUrl,
+  citaQueCobra,
+  detallesConProfesional,
+  guardarCitaCobrando,
+  leerCitaCobrando,
+  productosDeLaCita,
+} from "../../lib/agenda/cobroCita";
+import type { CarritoCita, Cita } from "../../lib/agenda/tiposAgenda";
+import { useConsultaPeriodica } from "../../lib/agenda/useConsultaPeriodica";
+import CitasPorCobrar from "./CitasPorCobrar";
 import { fmtHora, fmtMoney } from "../../lib/format";
 import { tieneFeature } from "../../lib/permisos";
 import { esFarmacia } from "../../lib/rubro";
 import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
-import type { Caja, CreditoInput, PagoInput, TipoPedido, Venta } from "../../types";
+import type {
+  Caja,
+  CreditoInput,
+  DetalleVentaInput,
+  PagoInput,
+  TipoPedido,
+  Venta,
+} from "../../types";
 import AperturaCaja from "./AperturaCaja";
 import PantallaCierre, { CierreOk } from "./PantallaCierre";
 import PantallaCobro from "./PantallaCobro";
@@ -37,10 +57,12 @@ type Pantalla =
   /** Las cuentas que el salón mandó a caja. */
   | "mesasPorCobrar"
   /** El efectivo que los meseros cobraron y todavía no está en el cajón. */
-  | "entregas";
+  | "entregas"
+  /** Belleza: las citas terminadas que nadie cobró. */
+  | "citasPorCobrar";
 
 export default function Pos() {
-  const { negocio, rubro } = useAuth();
+  const { negocio, rubro, puede } = useAuth();
   // La caja manda: sin turno abierto el POS no deja vender, porque toda venta
   // tiene que caer dentro de un arqueo.
   const caja = useApi(() => api.cajaActual(), []);
@@ -137,10 +159,101 @@ export default function Pos() {
   const permiteDelivery = tieneFeature(negocio?.features, "delivery");
   const permiteRecoger = tieneFeature(negocio?.features, "recoger");
 
+  // ── Agenda (belleza): cobrar una cita ─────────────────────────────────────
+  //
+  // Sólo existe donde existe la agenda (feature `agenda` y rubro de belleza,
+  // ver permisos.ts): Omar y la farmacia no hacen ni un pedido de más.
+  const conAgenda = puede("hoy");
+  /**
+   * La cita que se está cobrando: sus servicios ya están en el carrito y la
+   * venta la completa. Sobrevive a un F5 igual que el carrito.
+   */
+  const [citaCobrando, setCitaCobrandoEstado] = useState<CarritoCita | null>(() =>
+    conAgenda ? leerCitaCobrando() : null,
+  );
+  const setCitaCobrando = useCallback((c: CarritoCita | null) => {
+    setCitaCobrandoEstado(c);
+    guardarCitaCobrando(c);
+  }, []);
+  const [errorCita, setErrorCita] = useState("");
+  const [cargandoCitaId, setCargandoCitaId] = useState<number | null>(null);
+  const sucursalCaja = caja.datos?.caja?.almacenId ?? null;
+  const citasPorCobrar = useConsultaPeriodica<Cita[]>(
+    () =>
+      conAgenda && caja.datos?.caja
+        ? apiAgenda
+            .hoy(sucursalCaja)
+            .then((d) => d.citas.filter((c) => c.estado === "POR_COBRAR"))
+            // Como las mesas: si falla no es un error que mostrarle a la
+            // cajera en medio de una venta, simplemente no hay aviso.
+            .catch(() => [])
+        : Promise.resolve([]),
+    [conAgenda, sucursalCaja, !!caja.datos?.caja],
+    { cadaMs: 30_000, pausado: pantalla !== "venta" && pantalla !== "citasPorCobrar" },
+  );
+  const citasEsperando = (citasPorCobrar.datos ?? []).filter((c) => c.id !== citaCobrando?.citaId);
+  const { refrescar: refrescarCitas } = citasPorCobrar;
+
+  /**
+   * Carga la cita al carrito: vacía lo que hubiera (era de otro cliente) y
+   * suma un renglón por servicio. El precio lo pone el backend al cobrar,
+   * como en cualquier venta.
+   */
+  const cargarCita = useCallback(
+    (c: CarritoCita) => {
+      const { productos: suyos, faltan } = productosDeLaCita(c, productos.datos ?? []);
+      carrito.vaciar();
+      setTipoPedido("LOCAL");
+      setDatosEntrega(null);
+      for (const p of suyos) carrito.agregar(p);
+      setCitaCobrando(c);
+      setErrorCita(
+        faltan.length
+          ? `No están en el catálogo: ${faltan.join(", ")}. Agregalos a mano o revisá el servicio.`
+          : "",
+      );
+      setPantalla("venta");
+    },
+    [carrito, productos.datos, setCitaCobrando],
+  );
+
+  const cobrarCita = useCallback(
+    async (citaId: number) => {
+      setErrorCita("");
+      setCargandoCitaId(citaId);
+      try {
+        cargarCita(await apiAgenda.carrito(citaId));
+      } catch (e) {
+        setErrorCita(mensajeDe(e, "No se pudo cargar la cita"));
+        setPantalla("venta");
+      } finally {
+        setCargandoCitaId(null);
+      }
+    },
+    [cargarCita],
+  );
+
+  // "Cobrar" en la agenda llega acá con `?cita=`: se carga una vez, con el
+  // catálogo a mano, y se saca de la URL para que un F5 no la vuelva a cargar
+  // encima de lo que la cajera haya sumado.
+  const [params, setParams] = useSearchParams();
+  const citaPedida = conAgenda ? citaDeLaUrl(params) : null;
+  const catalogoListo = !productos.cargando && productos.datos !== null;
+  // Una sola vez por pedido: sacar el `?cita=` de la URL no es instantáneo, y
+  // un render en el medio la volvería a cargar.
+  const citaYaPedida = useRef<number | null>(null);
+  useEffect(() => {
+    if (citaPedida == null || !catalogoListo) return;
+    if (citaYaPedida.current === citaPedida) return;
+    citaYaPedida.current = citaPedida;
+    setParams({}, { replace: true });
+    void cobrarCita(citaPedida);
+  }, [citaPedida, catalogoListo, cobrarCita, setParams]);
+
   /** Arma el cuerpo de la venta juntando carrito y datos de entrega. */
   const cuerpoVenta = useCallback(
     (pagos?: PagoInput[]) => ({
-      detalles: carrito.aDetalles(),
+      ...conCita(carrito.aDetalles(), citaCobrando),
       tipoPedido,
       ...(pagos ? { pagos } : {}),
       ...(datosEntrega
@@ -156,7 +269,7 @@ export default function Pos() {
           }
         : {}),
     }),
-    [carrito, tipoPedido, datosEntrega],
+    [carrito, tipoPedido, datosEntrega, citaCobrando],
   );
 
   const limpiar = useCallback(() => {
@@ -164,7 +277,9 @@ export default function Pos() {
     setTipoPedido("LOCAL");
     setDatosEntrega(null);
     setError("");
-  }, [carrito]);
+    setCitaCobrando(null);
+    setErrorCita("");
+  }, [carrito, setCitaCobrando]);
 
   const cobrar = useCallback(
     async (pagos: PagoInput[]) => {
@@ -191,6 +306,8 @@ export default function Pos() {
         } else {
           limpiar();
         }
+        // La cita cobrada sale de "por cobrar" en el acto, sin esperar el sondeo.
+        if (conAgenda) refrescarCitas();
         setPantalla("recibo");
         // El stock cambió al vender: el catálogo tiene que reflejarlo.
         productos.recargar();
@@ -200,7 +317,7 @@ export default function Pos() {
         setEnviando(false);
       }
     },
-    [cuerpoVenta, limpiar, productos, intento],
+    [cuerpoVenta, limpiar, productos, intento, conAgenda, refrescarCitas],
   );
 
   /**
@@ -251,7 +368,8 @@ export default function Pos() {
       setEnviando(true);
       try {
         const creada = await api.crearVenta({
-          detalles: carrito.aDetalles(),
+          // Una cita también se puede fiar (§10): la venta la completa igual.
+          ...conCita(carrito.aDetalles(), citaCobrando),
           tipoPedido: "LOCAL",
           credito,
           ...(pagos.length ? { pagos } : {}),
@@ -268,7 +386,7 @@ export default function Pos() {
         setEnviando(false);
       }
     },
-    [carrito, limpiar, productos, intento],
+    [carrito, limpiar, productos, intento, citaCobrando],
   );
 
   if (caja.cargando) return <Cargando texto="Buscando tu caja…" />;
@@ -339,6 +457,19 @@ export default function Pos() {
       />
     );
 
+  if (pantalla === "citasPorCobrar")
+    return (
+      <CitasPorCobrar
+        citas={citasEsperando}
+        cargando={citasPorCobrar.cargando}
+        error={citasPorCobrar.error}
+        onReintentar={citasPorCobrar.recargar}
+        onAtras={() => setPantalla("venta")}
+        onCobrar={(c) => void cobrarCita(c.id)}
+        cobrandoId={cargandoCitaId}
+      />
+    );
+
   if (pantalla === "historial")
     return (
       <PantallaHistorial
@@ -386,7 +517,13 @@ export default function Pos() {
         // Cobrando una mesa el total es el consumo que cargó el mesero, no el
         // carrito: la cajera no retipea nada de lo que el cliente comió.
         total={mesaCobrando ? consumoDeMesa(mesaCobrando) : carrito.total}
-        subtitulo={mesaCobrando ? etiquetaMesa(mesaCobrando) : undefined}
+        subtitulo={
+          mesaCobrando
+            ? etiquetaMesa(mesaCobrando)
+            : citaCobrando
+              ? `Cita de ${citaCobrando.cliente.nombre}`
+              : undefined
+        }
         avisoEnvio={
           datosEntrega?.tarifaEnvio
             ? `El envío (${fmtMoney(datosEntrega.tarifaEnvio)}) lo cobra el repartidor aparte.`
@@ -532,6 +669,16 @@ export default function Pos() {
                 }}
               />
             )}
+            {/* Igual que las mesas: sólo con citas terminadas sin cobrar, y
+                sólo en un negocio con agenda. */}
+            {citasEsperando.length > 0 && (
+              <BotonTipo
+                icono="calendar"
+                etiqueta={`Citas (${citasEsperando.length})`}
+                titulo={`Citas por cobrar (${citasEsperando.length})`}
+                onClick={() => setPantalla("citasPorCobrar")}
+              />
+            )}
             {/* Sólo aparece cuando hay cuentas esperando: si el negocio no
                 usa el salón, no existe. */}
             {mesasEsperando.length > 0 && (
@@ -561,8 +708,37 @@ export default function Pos() {
             y no sólo como ícono: el mesero llega con la cuenta o con la plata
             en medio del servicio, y un ícono chico en la esquina no se ve.
             Un negocio sin salón no ve ninguno de los dos. */}
-        {(mesasEsperando.length > 0 || pendientesEntrega.length > 0) && (
+        {(citaCobrando || errorCita) && (
           <div className="space-y-2 border-b border-borde bg-white px-4 py-3">
+            {citaCobrando && (
+              <BannerCita
+                cita={citaCobrando}
+                onSoltar={() => {
+                  // Soltar la cita no vacía el carrito: lo que se cargó queda
+                  // como una venta común, por si sólo se quería cobrar eso.
+                  setCitaCobrando(null);
+                  setErrorCita("");
+                }}
+              />
+            )}
+            <ErrorMsg>{errorCita}</ErrorMsg>
+          </div>
+        )}
+        {(mesasEsperando.length > 0 || pendientesEntrega.length > 0 || citasEsperando.length > 0) && (
+          <div className="space-y-2 border-b border-borde bg-white px-4 py-3">
+            {citasEsperando.length > 0 && (
+              <AvisoSalon
+                tono="ambar"
+                icono="calendar"
+                titulo={
+                  citasEsperando.length === 1
+                    ? "1 cita terminada sin cobrar"
+                    : `${citasEsperando.length} citas terminadas sin cobrar`
+                }
+                detalle={`${citasEsperando.map((c) => c.cliente.nombre).join(", ")} · tocá para cobrarlas`}
+                onClick={() => setPantalla("citasPorCobrar")}
+              />
+            )}
             {mesasEsperando.length > 0 && (
               <AvisoSalon
                 tono="verde"
@@ -603,6 +779,51 @@ export default function Pos() {
 /** Cada cuánto se refrescan los avisos del salón. El mismo que la app. */
 const SONDEO_SALON_MS = 10_000;
 
+/** Los detalles con el profesional de cada servicio y, si sigue cobrándola, la cita. */
+function conCita(detalles: DetalleVentaInput[], cita: CarritoCita | null) {
+  const conProfesional = detallesConProfesional(detalles, cita);
+  const citaId = citaQueCobra(conProfesional, cita);
+  return { detalles: conProfesional, ...(citaId != null ? { citaId } : {}) };
+}
+
+/**
+ * La cita que se está cobrando, arriba del catálogo: de quién es, qué se le
+ * hizo y con quién. Si ya estaba cobrada lo dice antes de cobrar: la segunda
+ * venta se acepta, pero queda para revisar en el cierre.
+ */
+function BannerCita({ cita, onSoltar }: { cita: CarritoCita; onSoltar: () => void }) {
+  const servicios = cita.lineas
+    .map((l) => (l.recurso ? `${l.descripcion} · ${l.recurso}` : l.descripcion))
+    .join(", ");
+  const yaCobrada = cita.ventaId != null || cita.estado === "COMPLETADA";
+  const cerrada = cita.estado === "CANCELADA" || cita.estado === "NO_ASISTIO";
+  return (
+    <div className="flex items-start gap-3 rounded-xl border border-primary/30 bg-primary-50 px-3.5 py-2.5 text-primary-700">
+      <Icon name="calendar" size={20} />
+      <div className="min-w-0 flex-1">
+        <p className="text-[13px] font-bold">
+          Cobrando la cita de {cita.cliente.nombre} · {cita.codigo}
+        </p>
+        <p className="truncate text-xs opacity-90">{servicios}</p>
+        {(yaCobrada || cerrada) && (
+          <p className="mt-1 text-xs font-semibold text-warning-text">
+            {yaCobrada
+              ? "Esta cita ya se cobró. Si la cobrás de nuevo, queda para revisar en el cierre de caja."
+              : "Esta cita está cerrada (cancelada o no vino). El cobro se registra y queda para revisar."}
+          </p>
+        )}
+      </div>
+      <button
+        type="button"
+        onClick={onSoltar}
+        className="shrink-0 rounded-lg px-2 py-1 text-xs font-semibold hover:bg-primary-100"
+      >
+        Soltar cita
+      </button>
+    </div>
+  );
+}
+
 function AvisoSalon({
   tono,
   icono,
@@ -611,7 +832,7 @@ function AvisoSalon({
   onClick,
 }: {
   tono: "verde" | "ambar";
-  icono: "grid" | "users";
+  icono: "grid" | "users" | "calendar";
   titulo: string;
   detalle: string;
   onClick: () => void;
@@ -651,7 +872,7 @@ function BotonTipo({
   onClick,
   deshabilitado,
 }: {
-  icono: "truck" | "clock" | "fileText" | "lock" | "grid";
+  icono: "truck" | "clock" | "fileText" | "lock" | "grid" | "calendar";
   etiqueta: string;
   titulo: string;
   onClick: () => void;

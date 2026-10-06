@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Cita, EstadoCita } from "../../lib/agenda/tiposAgenda";
 import { cita } from "../../test/agendaFixtures";
@@ -8,12 +9,22 @@ import { cita } from "../../test/agendaFixtures";
  * de quién mira; el aviso al cliente sale por wa.me sólo si hay teléfono.
  */
 
+/** Si quien mira tiene el punto de venta: decide si "Cobrar" abre el POS. */
+const sesion = vi.hoisted(() => ({ conPos: false }));
+
 vi.mock("../../store/AuthContext", () => ({
   useAuth: () => ({
     usuario: { id: 3, username: "recepcion", rol: "CAJERO", sucursalId: 1, modulos: [] },
     negocio: { id: 1, nombre: "Salón Bella Vista", tipoNegocio: "PELUQUERIA" },
+    puede: (s: string) => s === "pos" && sesion.conPos,
   }),
 }));
+
+/** Dónde quedó la app después de tocar algo. */
+function Ubicacion() {
+  const l = useLocation();
+  return <span data-testid="ubicacion">{`${l.pathname}${l.search}`}</span>;
+}
 
 vi.mock("../../lib/agenda/apiAgenda", async (importOriginal) => {
   const real = await importOriginal<typeof import("../../lib/agenda/apiAgenda")>();
@@ -32,7 +43,12 @@ const EVENTOS: Cita["eventos"] = [
 
 async function abrir(c: Cita, modo: "recepcion" | "profesional" = "recepcion", onCambio = vi.fn()) {
   vi.mocked(apiAgenda.cita).mockResolvedValue({ ...c, eventos: EVENTOS });
-  render(<DetalleCita cita={c} modo={modo} sucursal="Centro" onClose={vi.fn()} onCambio={onCambio} />);
+  render(
+    <MemoryRouter>
+      <DetalleCita cita={c} modo={modo} sucursal="Centro" onClose={vi.fn()} onCambio={onCambio} />
+      <Ubicacion />
+    </MemoryRouter>,
+  );
   await act(async () => {});
   return onCambio;
 }
@@ -45,6 +61,7 @@ const botones = () =>
 
 beforeEach(() => {
   vi.clearAllMocks();
+  sesion.conPos = false;
 });
 
 describe("A4 · acciones según el estado", () => {
@@ -53,8 +70,9 @@ describe("A4 · acciones según el estado", () => {
     ["CONFIRMADA", ["Llegó", "Atender", "No vino", "Mover", "Cancelar cita"], ["Confirmar", "Finalizar"]],
     ["EN_ESPERA", ["Atender", "Cancelar cita"], ["Mover", "Llegó"]],
     ["EN_ATENCION", ["Finalizar"], ["Mover", "Cancelar cita", "Llegó"]],
-    ["POR_COBRAR", ["Cobrar · llega pronto", "Sin cargo"], ["Finalizar", "Cancelar cita"]],
+    ["POR_COBRAR", ["Cobrar en caja", "Sin cargo"], ["Finalizar", "Cancelar cita"]],
     ["COMPLETADA", [], ["Finalizar", "Cancelar cita", "Mover", "Llegó"]],
+    ["NO_ASISTIO", ["Deshacer «No vino»"], ["Llegó", "Cancelar cita", "Mover"]],
     ["CANCELADA", [], ["Cancelar cita", "Mover", "Llegó", "Confirmar"]],
   ])("%s ofrece %j", async (estado, si, no) => {
     await abrir(cita({ estado }));
@@ -63,9 +81,30 @@ describe("A4 · acciones según el estado", () => {
     for (const b of no) expect(hay, b).not.toContain(b);
   });
 
-  it("cobrar se ve pero está apagado: llega en la próxima entrega", async () => {
+  it("sin punto de venta, cobrar se ve apagado: la cobra la caja", async () => {
     await abrir(cita({ estado: "POR_COBRAR" }));
-    expect(screen.getByRole("button", { name: "Cobrar · llega pronto" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Cobrar en caja" })).toBeDisabled();
+  });
+
+  it("con punto de venta, cobrar abre el POS con la cita", async () => {
+    sesion.conPos = true;
+    await abrir(cita({ id: 7, estado: "POR_COBRAR" }));
+    fireEvent.click(screen.getByRole("button", { name: /^Cobrar Bs/ }));
+    expect(screen.getByTestId("ubicacion")).toHaveTextContent("/pos?cita=7");
+  });
+
+  it("deshacer el no vino llama al backend con su acción", async () => {
+    vi.mocked(apiAgenda.cambiarEstado).mockResolvedValue(cita({ estado: "CONFIRMADA" }));
+    await abrir(cita({ estado: "NO_ASISTIO" }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Deshacer «No vino»" }));
+    });
+    expect(apiAgenda.cambiarEstado).toHaveBeenCalledWith(1, "DESHACER_NO_ASISTIO", undefined);
+  });
+
+  it("una cita cobrada dos veces lo dice", async () => {
+    await abrir(cita({ estado: "COMPLETADA", cobroRevisar: true }));
+    expect(screen.getByText("Cobro para revisar en el cierre de caja")).toBeInTheDocument();
   });
 
   it("el profesional marca sus estados pero no mueve, no cancela ni confirma", async () => {

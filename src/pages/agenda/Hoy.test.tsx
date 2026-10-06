@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "../../lib/api";
 import { cita } from "../../test/agendaFixtures";
@@ -8,14 +9,20 @@ import { cita } from "../../test/agendaFixtures";
  * vista pero apagado, y la cola sólo con la feature `cola_walkin`.
  */
 
-const sesion = vi.hoisted(() => ({ features: ["agenda", "cola_walkin"] as string[] }));
+const sesion = vi.hoisted(() => ({ features: ["agenda", "cola_walkin"] as string[], conPos: false }));
 
 vi.mock("../../store/AuthContext", () => ({
   useAuth: () => ({
     usuario: { id: 3, username: "recepcion", rol: "CAJERO", sucursalId: 1, sucursal: "Centro", modulos: [] },
     negocio: { id: 1, nombre: "Salón Bella Vista", tipoNegocio: "PELUQUERIA", features: sesion.features },
+    puede: (s: string) => s === "pos" && sesion.conPos,
   }),
 }));
+
+function Ubicacion() {
+  const l = useLocation();
+  return <span data-testid="ubicacion">{`${l.pathname}${l.search}`}</span>;
+}
 
 vi.mock("../../lib/agenda/apiAgenda", async (importOriginal) => {
   const real = await importOriginal<typeof import("../../lib/agenda/apiAgenda")>();
@@ -53,6 +60,7 @@ const enCola = cita({
 beforeEach(() => {
   vi.clearAllMocks();
   sesion.features = ["agenda", "cola_walkin"];
+  sesion.conPos = false;
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(new Date("2026-10-21T13:00:00.000Z"));
   vi.mocked(apiAgenda.hoy).mockResolvedValue({
@@ -67,7 +75,12 @@ afterEach(() => {
 });
 
 async function montar() {
-  render(<Hoy />);
+  render(
+    <MemoryRouter>
+      <Hoy />
+      <Ubicacion />
+    </MemoryRouter>,
+  );
   await act(async () => {});
 }
 
@@ -83,7 +96,15 @@ describe("A3 · Hoy", () => {
     expect(within(tarjeta("Rosa Mamani")).getByRole("button", { name: "Llegó" })).toBeEnabled();
     expect(within(tarjeta("Rosa Mamani")).getByRole("button", { name: "No vino" })).toBeEnabled();
     expect(within(tarjeta("Valeria Arce")).getByRole("button", { name: "Confirmar" })).toBeEnabled();
-    expect(within(tarjeta("Jorge Rojas")).getByRole("button", { name: "Cobrar · llega pronto" })).toBeDisabled();
+    // Sin punto de venta en el rol, "Cobrar" se ve pero lo hace la caja.
+    expect(within(tarjeta("Jorge Rojas")).getByRole("button", { name: "Cobrar en caja" })).toBeDisabled();
+  });
+
+  it("con punto de venta, Cobrar abre el POS con la cita cargada", async () => {
+    sesion.conPos = true;
+    await montar();
+    fireEvent.click(within(tarjeta("Jorge Rojas")).getByRole("button", { name: "Cobrar" }));
+    expect(screen.getByTestId("ubicacion")).toHaveTextContent("/pos?cita=2");
   });
 
   it("Llegó va directo; No vino pregunta antes", async () => {

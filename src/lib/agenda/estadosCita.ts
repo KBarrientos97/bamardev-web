@@ -34,6 +34,7 @@ export const ETIQUETA_ACCION: Record<AccionCita, string> = {
   CANCELAR: "Cancelar cita",
   SIN_CARGO: "Sin cargo",
   ABANDONO: "Se fue",
+  DESHACER_NO_ASISTIO: "Deshacer «No vino»",
 };
 
 const TERMINALES: EstadoCita[] = [
@@ -63,11 +64,13 @@ const ACCIONES: Record<EstadoCita, AccionCita[]> = {
   EN_ESPERA: ["ATENDER", "CANCELAR"],
   EN_COLA: ["ABANDONO"],
   EN_ATENCION: ["FINALIZAR"],
-  // Cobrar es el POS (la siguiente entrega); sin cargo cierra sin venta.
+  // Cobrar es el POS (con el carrito de la cita); sin cargo cierra sin venta.
   POR_COBRAR: ["SIN_CARGO"],
   COMPLETADA: [],
   CANCELADA: [],
-  NO_ASISTIO: [],
+  // Un "No vino" por error se corrige: suma a la ficha y puede cortarle la
+  // reserva online al cliente, así que no puede quedar sin vuelta atrás.
+  NO_ASISTIO: ["DESHACER_NO_ASISTIO"],
   RECHAZADA: [],
   EXPIRADA: [],
   ABANDONADA: [],
@@ -102,8 +105,9 @@ export function sePuedeMover(estado: EstadoCita): boolean {
 }
 
 /**
- * Un botón rápido de las listas (Hoy, Mi agenda). "COBRAR" es especial: se
- * dibuja deshabilitado con "llega pronto" hasta que exista el cobro (F1.5).
+ * Un botón rápido de las listas (Hoy, Mi agenda). "COBRAR" es especial: no
+ * es una transición sino abrir el POS con el carrito de la cita (§10); la
+ * venta es la que la completa.
  */
 export type Rapida = { accion: AccionCita | "COBRAR"; principal: boolean };
 

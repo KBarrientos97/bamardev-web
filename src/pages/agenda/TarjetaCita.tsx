@@ -14,6 +14,7 @@ export default function TarjetaCita({
   rapidas,
   onAbrir,
   onAccion,
+  onCobrar,
   ocupado = false,
   mostrarRecurso = true,
   destacada = false,
@@ -22,6 +23,8 @@ export default function TarjetaCita({
   rapidas: Rapida[];
   onAbrir: () => void;
   onAccion: (accion: AccionCita) => void;
+  /** Abre el POS con la cita. Sin esto (quien mira no tiene caja) el botón se ve apagado. */
+  onCobrar?: () => void;
   ocupado?: boolean;
   mostrarRecurso?: boolean;
   destacada?: boolean;
@@ -79,16 +82,17 @@ export default function TarjetaCita({
         <div className="flex gap-2">
           {rapidas.map((r) =>
             r.accion === "COBRAR" ? (
-              // El cobro desde la agenda es la siguiente entrega (F1.5): se ve
-              // dónde va a estar, pero todavía no hace nada.
+              // Cobrar no es una transición: abre el POS con el carrito de la
+              // cita, y la venta la completa (§10).
               <button
                 key="cobrar"
                 type="button"
-                disabled
-                title="El cobro desde la agenda llega pronto"
-                className="h-11 flex-1 cursor-not-allowed rounded-xl bg-warning-bg text-sm font-bold text-warning-text opacity-70"
+                disabled={!onCobrar}
+                onClick={onCobrar}
+                title={onCobrar ? "Abrir el punto de venta con esta cita" : "La cobra quien tiene la caja abierta"}
+                className="h-11 flex-1 rounded-xl bg-warning-bg text-sm font-bold text-warning-text hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-70"
               >
-                Cobrar · llega pronto
+                {onCobrar ? "Cobrar" : "Cobrar en caja"}
               </button>
             ) : (
               <button

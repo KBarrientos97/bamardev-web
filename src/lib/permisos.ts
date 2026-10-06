@@ -99,7 +99,9 @@ export type Seccion =
   /** A3: la lista de hoy con los botones rápidos (y la cola, A6). */
   | "hoy"
   /** A10: las citas del profesional que entró. Sólo el rol PROFESIONAL. */
-  | "mi_agenda";
+  | "mi_agenda"
+  /** A7: fichas de cliente con su historial (ola B). Recepción y dueño. */
+  | "clientes";
 
 /**
  * Qué módulo de rol y qué feature de plan exige cada sección. `feature: null`
@@ -169,6 +171,8 @@ const REQUISITOS: Record<Seccion, { modulo: Modulo | null; feature: Feature | nu
   agenda: { modulo: null, feature: "agenda" },
   hoy: { modulo: null, feature: "agenda" },
   mi_agenda: { modulo: null, feature: "agenda" },
+  // La ficha es su propia feature (`clientes`): sin ella el backend da 403.
+  clientes: { modulo: null, feature: "clientes" },
 };
 
 /**
@@ -180,7 +184,7 @@ const REQUISITOS: Record<Seccion, { modulo: Modulo | null; feature: Feature | nu
  * salón que todavía no la tiene no puede encontrarse la configuración de algo
  * que no puede usar, y el fail-open de siempre se la mostraría.
  */
-const FEATURES_ESTRICTAS: Feature[] = ["agenda"];
+const FEATURES_ESTRICTAS: Feature[] = ["agenda", "clientes"];
 
 /**
  * Roles que además pueden entrar a cada sección. El backend lo exige con
@@ -235,6 +239,9 @@ const ROLES_PERMITIDOS: Partial<Record<Seccion, Rol[]>> = {
   agenda: ["ADMIN", "SUPERVISOR", "CAJERO"],
   hoy: ["ADMIN", "SUPERVISOR", "CAJERO"],
   mi_agenda: ["PROFESIONAL"],
+  // A7 es de recepción y dueño (§5.1): el profesional ve la ficha mínima
+  // desde su cita, no la cartera entera.
+  clientes: ["ADMIN", "SUPERVISOR", "CAJERO"],
 };
 
 /**
@@ -278,6 +285,7 @@ const SOLO_EN_RUBRO: Partial<Record<Seccion, Rubro[]>> = {
   agenda: RUBROS_BELLEZA,
   hoy: RUBROS_BELLEZA,
   mi_agenda: RUBROS_BELLEZA,
+  clientes: RUBROS_BELLEZA,
 };
 
 /**

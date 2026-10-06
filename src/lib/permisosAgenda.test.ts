@@ -84,13 +84,33 @@ describe("el menú", () => {
       .flatMap((b) => b.nodos)
       .map((n) => n.item.label);
 
-  it("en un salón con agenda, Agenda y Hoy van primero", () => {
-    expect(etiquetas(ctx("CAJERO", "PELUQUERIA")).slice(0, 3)).toEqual(["Agenda", "Hoy", "Punto de venta"]);
+  it("en un salón con agenda, Agenda, Hoy y Clientes van primero", () => {
+    expect(etiquetas(ctx("CAJERO", "PELUQUERIA")).slice(0, 4)).toEqual(["Agenda", "Hoy", "Clientes", "Punto de venta"]);
   });
 
   it("al restaurante no le aparece nada nuevo", () => {
     const menu = etiquetas(ctx("ADMIN", "RESTAURANTE"));
     expect(menu).not.toContain("Agenda");
     expect(menu).not.toContain("Hoy");
+    expect(menu).not.toContain("Clientes");
+  });
+});
+
+describe("A7 · Clientes", () => {
+  it("recepción y dueño la ven; el profesional no (ve la ficha mínima en su cita)", () => {
+    expect(puedeVer(ctx("ADMIN", "PELUQUERIA"), "clientes")).toBe(true);
+    expect(puedeVer(ctx("SUPERVISOR", "SPA"), "clientes")).toBe(true);
+    expect(puedeVer(ctx("CAJERO", "BARBERIA"), "clientes")).toBe(true);
+    expect(puedeVer(ctx("PROFESIONAL", "PELUQUERIA"), "clientes")).toBe(false);
+  });
+
+  it("sin la feature `clientes` no existe, aunque la lista venga vacía", () => {
+    expect(puedeVer(ctx("ADMIN", "PELUQUERIA", ["pos", "agenda"]), "clientes")).toBe(false);
+    expect(puedeVer(ctx("ADMIN", "PELUQUERIA", []), "clientes")).toBe(false);
+  });
+
+  it("Omar y la farmacia no la ven aunque tengan la feature", () => {
+    expect(puedeVer(ctx("ADMIN", "RESTAURANTE"), "clientes")).toBe(false);
+    expect(puedeVer(ctx("ADMIN", "FARMACIA"), "clientes")).toBe(false);
   });
 });

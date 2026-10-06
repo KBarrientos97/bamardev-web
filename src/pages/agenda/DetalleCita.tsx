@@ -27,6 +27,7 @@ import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
 import MoverCita from "./MoverCita";
 import PedirMotivo from "./PedirMotivo";
+import { useCobrarCita } from "./useCobrarCita";
 import { BadgeEstado, IconoCompartir, IconoCopiar, IconoWhatsApp, Rotulo } from "./piezas";
 
 const ORIGEN: Record<Cita["origen"], string> = {
@@ -57,6 +58,7 @@ export default function DetalleCita({
   onCambio: (cita: Cita) => void;
 }) {
   const { negocio } = useAuth();
+  const cobrar = useCobrarCita();
   const profesional = modo === "profesional";
   const completa = useApi(() => apiAgenda.cita(inicial.id), [inicial.id]);
   const cita = completa.datos ?? inicial;
@@ -181,6 +183,11 @@ export default function DetalleCita({
                   Pasaron 15 min y no llegó
                 </span>
               )}
+              {cita.cobroRevisar && (
+                <span className="rounded-lg bg-warning-bg px-2 py-1 font-semibold text-warning-text">
+                  Cobro para revisar en el cierre de caja
+                </span>
+              )}
             </div>
           </section>
 
@@ -267,9 +274,17 @@ export default function DetalleCita({
         <footer className="space-y-2.5 border-t border-borde-soft bg-muted px-5 py-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
           <ErrorMsg>{error}</ErrorMsg>
           {principal?.accion === "COBRAR" ? (
-            <Boton disabled className="w-full py-3 text-base" title="El cobro desde la agenda llega pronto">
-              Cobrar · llega pronto
-            </Boton>
+            cobrar ? (
+              // Abre el POS con los servicios y quién hizo cada uno; la venta
+              // completa la cita (§10).
+              <Boton onClick={() => cobrar(cita.id)} className="w-full py-3 text-base">
+                Cobrar {fmtMoney(cita.total)}
+              </Boton>
+            ) : (
+              <Boton disabled className="w-full py-3 text-base" title="La cobra quien tiene la caja abierta">
+                Cobrar en caja
+              </Boton>
+            )
           ) : principal ? (
             <Boton onClick={() => pedir(principal.accion as AccionCita)} disabled={ocupado} className="w-full py-3 text-base">
               {ETIQUETA_ACCION[principal.accion as AccionCita]}
@@ -370,8 +385,16 @@ function lineaHistorial(ev: EventoCita): string {
       ? horaNegocio(ev.en)
       : `${fechaLarga(fechaNegocio(ev.en)).split(" ").slice(0, 2).join(" ")} · ${horaNegocio(ev.en)}`;
   const quien = ev.usuario ?? (ev.origen === "ENLACE" ? "El cliente" : "Sistema");
-  const que = ev.de
-    ? `${ETIQUETA_ESTADO[ev.de]} → ${ETIQUETA_ESTADO[ev.a]}`
-    : `creó la cita (${ETIQUETA_ESTADO[ev.a]})`;
+  // El cobro no es un cambio de estado como los otros: dice qué pasó con la plata.
+  const que =
+    ev.accion === "COBRAR"
+      ? "la cobró en caja"
+      : ev.accion === "COBRO_REVISAR"
+        ? "la cobró otra vez (queda para revisar)"
+        : ev.accion === "ANULAR_COBRO"
+          ? `se anuló su venta (${ETIQUETA_ESTADO[ev.a]})`
+          : ev.de
+            ? `${ETIQUETA_ESTADO[ev.de]} → ${ETIQUETA_ESTADO[ev.a]}`
+            : `creó la cita (${ETIQUETA_ESTADO[ev.a]})`;
   return `${cuando} · ${quien}: ${que}`;
 }

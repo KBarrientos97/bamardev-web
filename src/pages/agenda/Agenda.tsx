@@ -25,6 +25,8 @@ import GrillaDia from "./GrillaDia";
 import NuevaCita, { type PrecargaCita } from "./NuevaCita";
 import TarjetaCita from "./TarjetaCita";
 import { useAccionRapida } from "./useAccionRapida";
+import { useCobrarCita } from "./useCobrarCita";
+import CampanaAvisos from "./CampanaAvisos";
 
 /** Reemplaza (o agrega) una cita en la agenda del día y la saca de la cola si dejó de estar. */
 function conCita(d: AgendaDia | null, c: Cita): AgendaDia | null {
@@ -48,6 +50,7 @@ function conCita(d: AgendaDia | null, c: Cita): AgendaDia | null {
  */
 export default function Agenda() {
   const { negocio } = useAuth();
+  const cobrar = useCobrarCita();
   const suc = useSucursalAgenda();
   const esCelular = useEsCelular();
   const [fecha, setFecha] = useState(fechaNegocio());
@@ -164,6 +167,7 @@ export default function Agenda() {
             </Select>
           </label>
         )}
+        <CampanaAvisos onAbrirCita={setAbierta} />
         <Boton icono="plus" onClick={() => setNueva({ fecha })} disabled={!suc.sucursalId && !datos?.sucursalId}>
           Nueva cita
         </Boton>
@@ -232,6 +236,7 @@ export default function Agenda() {
                     rapidas={accionesRapidas(c)}
                     onAbrir={() => setAbierta(c)}
                     onAccion={(a) => rapida.pedir(c, a)}
+                    onCobrar={cobrar ? () => cobrar(c.id) : undefined}
                     ocupado={rapida.ocupadoId === c.id}
                   />
                 ))}
@@ -264,14 +269,26 @@ export default function Agenda() {
               {porCobrar.length > 0 && (
                 <section className="flex items-start gap-2.5 rounded-2xl border border-warning/40 bg-warning-bg p-4 text-warning-text">
                   <Icon name="alert" size={20} />
-                  <div className="space-y-0.5">
+                  <div className="min-w-0 flex-1 space-y-1.5">
                     <p className="text-sm font-bold">
                       {porCobrar.length} {porCobrar.length === 1 ? "cita por cobrar" : "citas por cobrar"}
                     </p>
-                    <p className="text-[13px]">
-                      {porCobrar.map((c) => c.cliente.nombre).join(", ")}. El cobro desde la agenda llega pronto: por ahora,
-                      en el punto de venta.
-                    </p>
+                    {porCobrar.map((c) => (
+                      <div key={c.id} className="flex items-center gap-2 text-[13px]">
+                        <button type="button" onClick={() => setAbierta(c)} className="min-w-0 flex-1 truncate text-left underline-offset-2 hover:underline">
+                          {c.cliente.nombre} · {horaNegocio(c.inicio)}
+                        </button>
+                        {cobrar && (
+                          <button
+                            type="button"
+                            onClick={() => cobrar(c.id)}
+                            className="shrink-0 rounded-lg bg-white/70 px-2.5 py-1 font-bold hover:bg-white"
+                          >
+                            Cobrar
+                          </button>
+                        )}
+                      </div>
+                    ))}
                   </div>
                 </section>
               )}

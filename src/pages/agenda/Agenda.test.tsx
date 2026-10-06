@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "../../lib/api";
 import { FECHA, cita, propuesta, recurso, recursoDelDia, servicio } from "../../test/agendaFixtures";
@@ -64,7 +65,11 @@ afterEach(() => {
 });
 
 async function montar() {
-  render(<Agenda />);
+  render(
+    <MemoryRouter>
+      <Agenda />
+    </MemoryRouter>,
+  );
   await act(async () => {});
 }
 
