@@ -50,6 +50,8 @@ import Repartidor from "./pages/repartidor/Repartidor";
 import PanelMesero from "./pages/salon/PanelMesero";
 import ConfigAgenda from "./pages/agenda/config/ConfigAgenda";
 import ConfigNegocio from "./pages/agenda/config/ConfigNegocio";
+import RutasPaginaPublica from "./pages/pagina/RutasPagina";
+import { esRutaDePaginaPublica } from "./lib/pagina/rutas";
 import { AuthProvider, useAuth } from "./store/AuthContext";
 
 /**
@@ -58,6 +60,9 @@ import { AuthProvider, useAuth } from "./store/AuthContext";
  * cargar sus pantallas.
  */
 const ReservaPublica = lazy(() => import("./publico/ReservaPublica"));
+// Página del negocio: el editor y los enlaces cortos se bajan sólo si se usan.
+const MiPagina = lazy(() => import("./pages/pagina/MiPagina"));
+const MisEnlaces = lazy(() => import("./pages/pagina/MisEnlaces"));
 
 /** Manda a cada rol a su pantalla: cajero al POS, repartidor a entregas. */
 function Inicio() {
@@ -202,6 +207,7 @@ function PagarConSesion() {
 function Rutas() {
   const { token } = useAuth();
   const navigate = useNavigate();
+  const { pathname } = useLocation();
   const teniaSesion = useRef(token !== null);
 
   // Al cerrar sesión la dirección vuelve a "/". Antes quedaba la del que
@@ -214,6 +220,9 @@ function Rutas() {
     if (teniaSesion.current && !token) navigate("/", { replace: true });
     teniaSesion.current = token !== null;
   }, [token, navigate]);
+
+  // La página pública del negocio no pide sesión (ver RutasPagina.tsx).
+  if (esRutaDePaginaPublica(pathname)) return <RutasPaginaPublica />;
 
   if (!token) return <Login />;
 
@@ -544,6 +553,29 @@ function Rutas() {
           element={
             <Protegida seccion="config_negocio">
               <ConfigNegocio />
+            </Protegida>
+          }
+        />
+
+        {/* Página del negocio (PLAN-PAGINA-NEGOCIO): el editor y los
+            enlaces cortos. La página pública vive fuera de la sesión. */}
+        <Route
+          path="/mi-pagina"
+          element={
+            <Protegida seccion="mi_pagina">
+              <Suspense fallback={null}>
+                <MiPagina />
+              </Suspense>
+            </Protegida>
+          }
+        />
+        <Route
+          path="/mis-enlaces"
+          element={
+            <Protegida seccion="mis_enlaces">
+              <Suspense fallback={null}>
+                <MisEnlaces />
+              </Suspense>
             </Protegida>
           }
         />

@@ -214,6 +214,17 @@ const ITEMS: (ItemNav & { bloque: Bloque })[] = [
     seccion: "config_negocio",
     bloque: "administracion",
   },
+  // La página pública del negocio (todas las verticales, con su feature). Los
+  // enlaces cortos cuelgan de acá: casi siempre apuntan a la página.
+  {
+    a: "/mi-pagina",
+    label: "Mi página",
+    icono: "home",
+    seccion: "mi_pagina",
+    exacto: true,
+    bloque: "administracion",
+    hijos: [{ a: "/mis-enlaces", label: "Mis enlaces", icono: "qr", seccion: "mis_enlaces" }],
+  },
 ];
 
 /** Un ítem ya filtrado por permisos, con su nombre según el rubro. */
