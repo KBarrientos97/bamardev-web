@@ -64,6 +64,16 @@ export function esBelleza(rubro: string | null | undefined): boolean {
   return !!rubro && (RUBROS_BELLEZA as string[]).includes(rubro);
 }
 
+/**
+ * ¿Las líneas de la venta dicen si son para la mesa o para llevar? Es cosa de
+ * la comanda de un restaurante: una farmacia no tiene mesas, y un corte de
+ * pelo no se sirve en mesa (QA M-09: el ticket de una peluquería decía "M" en
+ * cada línea). Sin rubro (sesión vieja) se muestra, como siempre.
+ */
+export function marcaConsumo(rubro: string | null | undefined): boolean {
+  return !esFarmacia(rubro) && !esBelleza(rubro);
+}
+
 // ── Vocabulario ─────────────────────────────────────────────────────────────
 
 /**

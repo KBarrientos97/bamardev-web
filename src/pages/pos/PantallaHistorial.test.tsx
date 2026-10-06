@@ -119,6 +119,37 @@ describe("farmacia: no hay mesas", () => {
   });
 });
 
+describe("peluquería (QA ronda 1)", () => {
+  it("M-09: los renglones no dicen Mesa ni Llevar", async () => {
+    sesion.rubro = "PELUQUERIA";
+    await abrirDetalle();
+    expect(screen.queryByText("Mesa")).not.toBeInTheDocument();
+    expect(screen.queryByText("Llevar")).not.toBeInTheDocument();
+  });
+
+  it("B-21: anular no promete devolver stock de servicios", async () => {
+    sesion.rubro = "PELUQUERIA";
+    await abrirDetalle();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Anular venta" }));
+    });
+    const dialogo = screen.getByRole("dialog", { name: "Anular venta" });
+    expect(dialogo).toHaveTextContent("si tenía productos, vuelven al inventario");
+    expect(dialogo).not.toHaveTextContent("el stock vuelve al inventario");
+  });
+
+  it("restaurante: el texto de siempre", async () => {
+    sesion.rubro = "RESTAURANTE";
+    await abrirDetalle();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Anular venta" }));
+    });
+    expect(screen.getByRole("dialog", { name: "Anular venta" })).toHaveTextContent(
+      "La venta queda anulada y el stock vuelve al inventario.",
+    );
+  });
+});
+
 describe("anular una venta cobrada por QR (los dos rubros)", () => {
   // El bug: lo cobrado por QR no se podía anular. Anular no es devolver la
   // plata, es el asiento: bloquearlo dejaba el stock (y en farmacia el libro de
