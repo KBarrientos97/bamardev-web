@@ -212,7 +212,11 @@ function FormRecurso({
   const [usuarioId, setUsuarioId] = useState(recurso?.usuarioId != null ? String(recurso.usuarioId) : "");
   const [publicado, setPublicado] = useState(recurso?.publicadoOnline ?? false);
   const [activo, setActivo] = useState(recurso?.activo ?? true);
-  const [orden, setOrden] = useState(String(recurso?.orden ?? recursos.length + 1));
+  // El que sigue al último, no la cantidad: con un orden movido a mano,
+  // contar proponía uno que ya existía (QA PER-14).
+  const [orden, setOrden] = useState(
+    String(recurso?.orden ?? Math.max(0, ...recursos.map((r) => r.orden)) + 1),
+  );
   // Con una sola sucursal no hay nada que elegir: va ahí.
   const [sucursalIds, setSucursalIds] = useState<number[]>(
     recurso?.sucursalIds ?? (sucursales.length === 1 ? [sucursales[0].id] : []),
@@ -277,6 +281,22 @@ function FormRecurso({
   const cuentas = (usuarios.datos ?? []).filter(
     (u) => u.rol === "PROFESIONAL" && (u.activo || String(u.id) === usuarioId),
   );
+  // Al editar, el profesional ya es una persona de Personal: atarle un login
+  // une la ficha propia de ese login a la suya, y la otra desaparece (QA
+  // PER-06). Se avisa antes, con lo que esa ficha tiene. En el alta sin
+  // persona no hay nada que unir: el profesional pasa a ser la ficha del login.
+  const fichas = useApi(async () => {
+    if (!recurso) return [] as Persona[];
+    try {
+      return await apiPersonal.listar({ incluirInactivos: true });
+    } catch {
+      return [] as Persona[];
+    }
+  }, [recurso?.id]);
+  const cambiaLogin = !!recurso && usuarioId !== "" && usuarioId !== String(recurso.usuarioId ?? "");
+  const fichaDelLogin = cambiaLogin
+    ? (fichas.datos ?? []).find((p) => String(p.usuarioId) === usuarioId && p.id !== recurso?.personalId)
+    : undefined;
 
   const guardar = async () => {
     const com = comision.trim() === "" ? null : Number(comision);
@@ -442,7 +462,7 @@ function FormRecurso({
             ) : (
               <Campo
                 label="Usuario vinculado"
-                hint={`Con usuario, entra a "Mi agenda" y ve sólo lo suyo. Las cuentas se crean en Usuarios con el rol ${nombres.singular}.`}
+                hint={`Con usuario, entra a "Mi agenda" y ve sólo lo suyo. El acceso se da o se quita en Personal (rol ${nombres.singular}).`}
                 error={usuarios.error ? "No se pudieron cargar los usuarios." : undefined}
               >
                 <Select
@@ -460,6 +480,16 @@ function FormRecurso({
                     );
                   })}
                 </Select>
+                {fichaDelLogin && (
+                  <span
+                    role="alert"
+                    className="mt-1.5 block rounded-xl border border-warning/40 bg-warning-bg px-3 py-2 text-xs text-warning-text"
+                  >
+                    Ese usuario ya tiene su ficha en Personal (&quot;{fichaDelLogin.nombre}&quot;
+                    {fichaDelLogin.cargo ? `, ${fichaDelLogin.cargo}` : ""}). Al guardar, se une a la de este
+                    profesional: lo que le falte a éste lo toma de aquélla, y la otra ficha desaparece.
+                  </span>
+                )}
               </Campo>
             )}
             <Campo label="Teléfono" hint="Opcional, para el equipo.">

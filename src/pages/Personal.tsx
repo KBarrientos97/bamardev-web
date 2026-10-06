@@ -68,7 +68,8 @@ export default function Personal() {
     if (filtro === "con_acceso" && !(p.activo && p.conAcceso)) return false;
     if (filtro === "sin_acceso" && !(p.activo && !p.conAcceso)) return false;
     if (cargo && p.cargo !== cargo) return false;
-    if (sucursal && !p.sucursalIds.includes(Number(sucursal))) return false;
+    // Sin sucursal = toda la organización (el dueño): aparece en todas.
+    if (sucursal && p.sucursalIds.length > 0 && !p.sucursalIds.includes(Number(sucursal))) return false;
     return !buscar.trim() || contiene(p.nombre, buscar) || contiene(p.cargo ?? "", buscar);
   });
   const activos = todas.filter((p) => p.activo);
@@ -81,10 +82,13 @@ export default function Personal() {
   };
 
   return (
-    <div className="space-y-4">
+    <div className="mx-auto max-w-6xl space-y-4 p-5">
       <EncabezadoPagina
         titulo="Personal"
-        subtitulo={`${activos.length} personas · ${conAcceso} con acceso al sistema`}
+        subtitulo={
+          // Mientras carga no hay "0 personas" (QA PER-13).
+          personas.datos ? `${activos.length} personas · ${conAcceso} con acceso al sistema` : "Cargando…"
+        }
         accion={
           <Boton icono="plus" onClick={() => setEditando("nueva")}>
             Nueva persona
@@ -166,7 +170,9 @@ export default function Personal() {
                     {[
                       p.acceso ? `@${p.acceso.username}` : null,
                       p.telefono,
-                      p.sucursalIds.map(nombreSucursal).join(", ") || null,
+                      sucursales.length > 1
+                        ? p.sucursalIds.map(nombreSucursal).join(", ") || "Todas las sucursales"
+                        : null,
                       p.zona || p.vehiculo ? [p.zona, p.vehiculo].filter(Boolean).join(" · ") : null,
                     ]
                       .filter(Boolean)
@@ -206,7 +212,7 @@ function FichaPersona({
   onClose: () => void;
   onGuardado: (p: Persona, aviso: string) => void;
 }) {
-  const { usuario } = useAuth();
+  const { usuario, negocio } = useAuth();
   // El % es plata del profesional: lo cambia quien liquida (el backend lo exige).
   const cambiaComision = tienePermiso(usuario, "comisiones.liquidar", usuario?.rol === "ADMIN");
   const sugeridos = useApi(() => apiPersonal.cargos().catch(() => ({ sugeridos: [] })), []);
@@ -303,7 +309,7 @@ function FichaPersona({
             <p className="text-[13px] font-semibold text-texto-2">Acceso al sistema</p>
             <p className="mt-0.5 text-[13px] text-texto-3">
               {persona.conAcceso
-                ? `Entra como @${persona.acceso?.username} (${etiquetaRol((persona.acceso?.rol ?? "CAJERO") as Rol)}). Ocupa un lugar del cupo de usuarios.`
+                ? `Entra como @${persona.acceso?.username} (${etiquetaRol((persona.acceso?.rol ?? "CAJERO") as Rol, negocio)}). Ocupa un lugar del cupo de usuarios.`
                 : persona.acceso
                   ? `Se le quitó el acceso (@${persona.acceso.username}). No ocupa cupo.`
                   : "No entra al sistema. Igual puede tener agenda, comisión y propinas."}
@@ -339,7 +345,8 @@ function FichaPersona({
               value={cargo}
               onChange={(e) => setCargo(e.target.value)}
               list="cargos-sugeridos"
-              placeholder="Estilista"
+              // El primero de los del rubro: "Barbero" en una barbería (QA PER-14).
+              placeholder={sugeridos.datos?.sugeridos[0] ?? "Encargado"}
             />
             <datalist id="cargos-sugeridos">
               {(sugeridos.datos?.sugeridos ?? []).map((c) => (
@@ -356,9 +363,7 @@ function FichaPersona({
           <Campo label="Fecha de ingreso">
             <Input type="date" value={fechaIngreso} onChange={(e) => setFechaIngreso(e.target.value)} />
           </Campo>
-          <Campo label="Color en la agenda">
-            <Input type="color" value={color || "#7357B8"} onChange={(e) => setColor(e.target.value)} />
-          </Campo>
+          <ColorAgenda valor={color} onChange={setColor} />
           {cambiaComision && (
             <Campo label="Comisión base (%)" hint="Si es profesional, la de sus servicios.">
               <Input type="number" value={comision} onChange={(e) => setComision(e.target.value)} placeholder="Opcional" />
@@ -409,7 +414,13 @@ function FichaPersona({
                 onClick={() =>
                   accion(
                     () => apiPersonal.editar(persona.id, { activo: true }),
-                    (p) => `"${p.nombre}" volvió al equipo.`,
+                    // Volver no le reactiva la columna en la agenda (sus citas
+                    // se reprogramaron al darla de baja): se avisa dónde
+                    // hacerlo (QA PER-14).
+                    (p) =>
+                      p.profesional && !p.profesional.activo
+                        ? `"${p.nombre}" volvió al equipo. Su columna en la agenda sigue inactiva: reactivala en Configuración de la agenda › Profesionales.`
+                        : `"${p.nombre}" volvió al equipo.`,
                   )
                 }
               >
@@ -472,6 +483,47 @@ function FichaPersona({
         />
       )}
     </Modal>
+  );
+}
+
+/** El color que se propone al elegir uno (el primero de la agenda). */
+const COLOR_SUGERIDO = "#7357B8";
+
+/**
+ * Color en la agenda. Lo que se ve es lo que se guarda (QA PER-04): antes el
+ * campo mostraba un violeta elegido y se guardaba "sin color", y el
+ * `<input type="color">` con el estilo de un texto se dibujaba como una raya.
+ */
+function ColorAgenda({ valor, onChange }: { valor: string; onChange: (c: string) => void }) {
+  return (
+    <div role="group" aria-label="Color en la agenda">
+      <span className="mb-1.5 block text-[13px] font-semibold text-texto-2">Color en la agenda</span>
+      <div className="flex min-h-[42px] flex-wrap items-center gap-2">
+        {valor ? (
+          <>
+            <input
+              type="color"
+              aria-label="Elegir color"
+              value={valor}
+              onChange={(e) => onChange(e.target.value)}
+              className="h-10 w-14 cursor-pointer rounded-lg border border-borde bg-white p-1"
+            />
+            <span className="text-[13px] text-texto-3">{valor.toUpperCase()}</span>
+            <Boton type="button" variante="ghost" onClick={() => onChange("")}>
+              Sin color
+            </Boton>
+          </>
+        ) : (
+          <>
+            <span className="inline-block h-6 w-6 rounded-full border border-dashed border-texto-4" aria-hidden />
+            <span className="text-[13px] text-texto-3">Sin color</span>
+            <Boton type="button" variante="soft" onClick={() => onChange(COLOR_SUGERIDO)}>
+              Elegir color
+            </Boton>
+          </>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -593,7 +645,26 @@ function DarAcceso({
   );
 }
 
-/** Vincular a la persona un usuario que ya existe (creado antes en Usuarios). */
+/** Lo que una ficha de Personal tiene cargado (lo que se fundiría al vincular). */
+function datosDeFicha(p: Persona | undefined): string[] {
+  if (!p) return [];
+  return [
+    p.cargo,
+    p.ci ? `CI ${p.ci}` : null,
+    p.telefono ? `tel. ${p.telefono}` : null,
+    p.comisionPct != null ? `${p.comisionPct} % de comisión` : null,
+    p.notas ? "notas" : null,
+  ].filter((x): x is string => !!x);
+}
+
+/**
+ * Vincular a la persona un usuario que ya existe (creado antes en Usuarios).
+ *
+ * El usuario ya tiene su propia ficha (la crea el alta): al vincularlo, esa
+ * ficha se funde en ésta y desaparece (QA PER-06). Se avisa antes y se dice
+ * qué datos tiene; un usuario que ya es otro profesional ni se ofrece (su
+ * comisión y sus propinas son de esa persona: el backend da 409).
+ */
 function Vincular({
   persona,
   personas,
@@ -605,14 +676,24 @@ function Vincular({
   onClose: () => void;
   onListo: (p: Persona) => void;
 }) {
+  const { usuario } = useAuth();
   const usuarios = useApi(() => api.getUsuarios(), []);
-  // Un usuario que ya es otro profesional de la agenda no se ofrece: su
-  // comisión y sus propinas son de esa persona (el backend da 409).
-  const ocupados = new Set(personas.filter((p) => p.recursoId != null && p.usuarioId != null).map((p) => p.usuarioId));
-  const opciones = (usuarios.datos ?? []).filter((u) => u.activo && u.rol !== "ADMIN" && !ocupados.has(u.id));
+  const fichaDe = new Map(personas.filter((p) => p.usuarioId != null).map((p) => [p.usuarioId!, p]));
+  // El encargado no administra a otro encargado (el backend da 403).
+  const esSupervisor = usuario?.rol === "SUPERVISOR";
+  const opciones = (usuarios.datos ?? []).filter(
+    (u) =>
+      u.activo &&
+      u.rol !== "ADMIN" &&
+      !(esSupervisor && u.rol === "SUPERVISOR") &&
+      fichaDe.get(u.id)?.recursoId == null,
+  );
   const [usuarioId, setUsuarioId] = useState("");
   const [error, setError] = useState("");
   const [enviando, setEnviando] = useState(false);
+  const elegido = opciones.find((u) => String(u.id) === usuarioId);
+  const ficha = elegido ? fichaDe.get(elegido.id) : undefined;
+  const datos = datosDeFicha(ficha);
 
   const enviar = async () => {
     if (!usuarioId) return setError("Elegí el usuario.");
@@ -650,11 +731,21 @@ function Vincular({
             <option value="">Elegí…</option>
             {opciones.map((u) => (
               <option key={u.id} value={u.id}>
-                {u.nombre} (@{u.usuario})
+                {u.nombre} (@{u.usuario}){datosDeFicha(fichaDe.get(u.id)).length ? " · tiene ficha propia" : ""}
               </option>
             ))}
           </Select>
         </Campo>
+        <p className="text-[13px] text-texto-3">
+          Todo usuario tiene su ficha en Personal. Al vincularlo, su ficha se une a la de {persona.nombre}: lo que
+          falte acá se toma de allá, y la otra ficha deja de existir.
+        </p>
+        {elegido && datos.length > 0 && (
+          <p role="alert" className="rounded-xl border border-warning/40 bg-warning-bg px-3 py-2 text-[13px] text-warning-text">
+            @{elegido.usuario} ya tiene su ficha &quot;{ficha?.nombre}&quot; con {datos.join(", ")}. Si lo vinculás, esa
+            ficha se une a ésta y desaparece; a {persona.nombre} sólo se le completa lo que no tiene.
+          </p>
+        )}
         <ErrorMsg>{error}</ErrorMsg>
       </div>
     </Modal>

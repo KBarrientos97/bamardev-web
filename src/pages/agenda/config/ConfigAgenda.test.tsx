@@ -177,6 +177,42 @@ describe("pestañas", () => {
     expect(opciones).toEqual(["Sin usuario", "Ana Pérez (@ana)"]);
   });
 
+  it("Profesionales: atarle un login avisa que su ficha de Personal se une (QA PER-06)", async () => {
+    vi.mocked(apiPersonal.listar).mockResolvedValue([
+      {
+        id: 7,
+        nombre: "Ana Pérez",
+        cargo: "Barbera",
+        activo: true,
+        color: null,
+        sucursalIds: [1],
+        usuarioId: 20,
+        conAcceso: true,
+        recursoId: null,
+        profesional: null,
+      },
+    ]);
+    await montar("recursos");
+    fireEvent.click(screen.getByRole("button", { name: "Editar Juan" }));
+    await act(async () => {});
+    const dialogo = screen.getByRole("dialog", { name: "Editar Juan" });
+    expect(within(dialogo).getByText(/El acceso se da o se quita en Personal/)).toBeInTheDocument();
+    expect(within(dialogo).queryByRole("alert")).toBeNull();
+    fireEvent.change(within(dialogo).getByLabelText(/Usuario vinculado/), { target: { value: "20" } });
+    expect(within(dialogo).getByRole("alert")).toHaveTextContent(
+      'Ese usuario ya tiene su ficha en Personal ("Ana Pérez", Barbera)',
+    );
+  });
+
+  it("Profesionales: el orden de uno nuevo sigue al último, no a la cantidad (QA PER-14)", async () => {
+    vi.mocked(apiConfigAgenda.recursos).mockResolvedValue([JUAN, { ...SILLON, orden: 7 }]);
+    await montar("recursos");
+    fireEvent.click(screen.getByRole("button", { name: /Nuevo barbero/ }));
+    await act(async () => {});
+    const dialogo = screen.getByRole("dialog");
+    expect(within(dialogo).getByLabelText(/Orden en la agenda/)).toHaveValue("8");
+  });
+
   it("Profesionales: precio y duración propios por servicio (fase 2)", async () => {
     await montar("recursos");
     vi.mocked(apiConfigAgenda.actualizarRecurso).mockResolvedValue(JUAN);

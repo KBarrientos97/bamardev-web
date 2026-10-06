@@ -43,6 +43,7 @@ vi.mock("../lib/personal", () => ({
   },
 }));
 
+import { api } from "../lib/api";
 import { apiPersonal } from "../lib/personal";
 import Personal from "./Personal";
 
@@ -198,5 +199,114 @@ describe("Personal", () => {
     });
     expect(apiPersonal.quitarAcceso).toHaveBeenCalledWith(3);
     expect(screen.getByText('"Ana" ya no entra al sistema.')).toBeInTheDocument();
+  });
+  // ── QA S2 ronda 1 (PER-02 a PER-14) ───────────────────────────────────────
+
+  it("mientras carga no dice 0 personas (PER-13)", async () => {
+    vi.mocked(apiPersonal.listar).mockReturnValue(new Promise(() => {}));
+    render(
+      <MemoryRouter>
+        <Personal />
+      </MemoryRouter>,
+    );
+    // El subtítulo (y la lista) dicen "Cargando…", no un conteo en cero.
+    expect(screen.getAllByText("Cargando…").length).toBeGreaterThanOrEqual(2);
+    expect(screen.queryByText(/0 personas/)).toBeNull();
+  });
+
+  it("el dueño sin sucursal aparece al filtrar por cualquiera y dice Todas (PER-03)", async () => {
+    vi.mocked(api.getSucursales).mockResolvedValue([
+      { id: 1, nombre: "Centro", activo: true, tipo: "SUCURSAL" },
+      { id: 2, nombre: "Norte", activo: true, tipo: "SUCURSAL" },
+    ] as never);
+    await montar();
+    const lista = () => screen.getByRole("list", { name: "Personal" });
+    expect(within(lista()).getByRole("button", { name: "Ver Dueño" })).toHaveTextContent("Todas las sucursales");
+    fireEvent.change(screen.getByLabelText("Sucursal"), { target: { value: "2" } });
+    expect(within(lista()).getAllByRole("button").map((b) => b.getAttribute("aria-label"))).toEqual(["Ver Dueño"]);
+  });
+
+  it("la línea de acceso dice el rol con la palabra del rubro (PER-05)", async () => {
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Ver Ana" }));
+    await act(async () => {});
+    expect(screen.getByRole("region", { name: "Acceso al sistema" })).toHaveTextContent(
+      "Entra como @ana (Recepción)",
+    );
+  });
+
+  it("el cargo propone uno del rubro y el color se guarda como se ve (PER-04, PER-14)", async () => {
+    vi.mocked(apiPersonal.crear).mockResolvedValue({ ...LUCHO, id: 4, nombre: "Nico" });
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Nueva persona" }));
+    await act(async () => {});
+    const dialogo = screen.getByRole("dialog", { name: "Nueva persona" });
+    expect(within(dialogo).getByLabelText(/Cargo/)).toHaveAttribute("placeholder", "Barbero");
+    // Sin elegir: dice "Sin color" y guarda null.
+    expect(within(dialogo).getByRole("group", { name: "Color en la agenda" })).toHaveTextContent("Sin color");
+    fireEvent.change(within(dialogo).getByLabelText("Nombre"), { target: { value: "Nico" } });
+    await act(async () => {
+      fireEvent.click(within(dialogo).getByRole("button", { name: "Guardar" }));
+    });
+    expect(apiPersonal.crear).toHaveBeenLastCalledWith(expect.objectContaining({ color: null }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Nueva persona" }));
+    await act(async () => {});
+    const otra = screen.getByRole("dialog", { name: "Nueva persona" });
+    fireEvent.change(within(otra).getByLabelText("Nombre"), { target: { value: "Nico" } });
+    fireEvent.click(within(otra).getByRole("button", { name: "Elegir color" }));
+    expect(within(otra).getByLabelText("Elegir color")).toHaveValue("#7357b8");
+    await act(async () => {
+      fireEvent.click(within(otra).getByRole("button", { name: "Guardar" }));
+    });
+    expect(apiPersonal.crear).toHaveBeenLastCalledWith(expect.objectContaining({ color: "#7357B8" }));
+  });
+
+  it("al vincular avisa que la ficha propia del usuario se une y desaparece (PER-06)", async () => {
+    const PABLO: Persona = {
+      ...base,
+      id: 5,
+      nombre: "Pablo Ríos",
+      cargo: "Barbero",
+      ci: "1234567",
+      sucursalIds: [1],
+      usuarioId: 20,
+      acceso: { usuarioId: 20, username: "pablo", rol: "PROFESIONAL", activo: true, ultimoLogin: null },
+    };
+    const SIN_LOGIN: Persona = { ...LUCHO, id: 6, nombre: "Nueva", recursoId: null, profesional: null };
+    vi.mocked(apiPersonal.listar).mockResolvedValue([base, LUCHO, ANA, PABLO, SIN_LOGIN]);
+    vi.mocked(api.getUsuarios).mockResolvedValue([
+      { id: 10, nombre: "Dueño", usuario: "admin", rol: "ADMIN", activo: true },
+      { id: 20, nombre: "Pablo Ríos", usuario: "pablo", rol: "PROFESIONAL", activo: true },
+      { id: 21, nombre: "Suelto", usuario: "suelto", rol: "CAJERO", activo: true },
+    ] as never);
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Ver Nueva" }));
+    await act(async () => {});
+    fireEvent.click(screen.getByRole("button", { name: "Vincular a un usuario existente" }));
+    await act(async () => {});
+    const dialogo = screen.getByRole("dialog", { name: "Vincular a un usuario" });
+    expect(within(dialogo).getByRole("option", { name: /Pablo Ríos \(@pablo\) · tiene ficha propia/ })).toBeInTheDocument();
+    expect(within(dialogo).queryByRole("option", { name: /@admin/ })).toBeNull();
+    fireEvent.change(within(dialogo).getByLabelText("Usuario"), { target: { value: "20" } });
+    expect(within(dialogo).getByRole("alert")).toHaveTextContent(
+      '@pablo ya tiene su ficha "Pablo Ríos" con Barbero, CI 1234567',
+    );
+    fireEvent.change(within(dialogo).getByLabelText("Usuario"), { target: { value: "21" } });
+    expect(within(dialogo).queryByRole("alert")).toBeNull();
+  });
+
+  it("reactivar a un profesional avisa que su columna de la agenda sigue inactiva (PER-14)", async () => {
+    const DE_BAJA: Persona = { ...LUCHO, activo: false, profesional: { recursoId: 30, nombre: "Lucho", activo: false } };
+    vi.mocked(apiPersonal.listar).mockResolvedValue([base, DE_BAJA, ANA]);
+    vi.mocked(apiPersonal.editar).mockResolvedValue({ ...DE_BAJA, activo: true });
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Todos" }));
+    fireEvent.click(screen.getByRole("button", { name: "Ver Lucho" }));
+    await act(async () => {});
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Reactivar" }));
+    });
+    expect(screen.getByText(/volvió al equipo\. Su columna en la agenda sigue inactiva/)).toBeInTheDocument();
   });
 });
