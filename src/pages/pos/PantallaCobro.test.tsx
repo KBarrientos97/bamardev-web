@@ -38,14 +38,19 @@ const FORMAS = [
   { id: 11, nombre: "QR" },
 ];
 
-function montar(onConfirmar = vi.fn(), profesionales?: { id: number; nombre: string }[]) {
+function montar(
+  onConfirmar = vi.fn(),
+  profesionales?: { id: number; nombre: string }[],
+  opc: { total?: number; onCredito?: (extra?: unknown) => void } = {},
+) {
   render(
     <PantallaCobro
-      total={200}
+      total={opc.total ?? 200}
       formasPago={FORMAS}
       profesionales={profesionales}
       onAtras={() => {}}
       onConfirmar={onConfirmar}
+      onCredito={opc.onCredito}
       enviando={false}
       error=""
     />,
@@ -154,6 +159,29 @@ describe("propinas al cobrar", () => {
   it("sin profesionales en la venta, no hay propina", () => {
     montar();
     expect(screen.queryByText(/Propina/)).not.toBeInTheDocument();
+  });
+
+  it("QA PER-10: una sesión de paquete (total 0) pasa por acá sólo por la propina", () => {
+    const onConfirmar = montar(vi.fn(), [{ id: 7, nombre: "Marta" }], { total: 0 });
+    // Nada que cobrar: ni efectivo, ni QR, ni vale.
+    expect(screen.queryByLabelText(/Efectivo recibido/)).not.toBeInTheDocument();
+    expect(screen.queryByText("Pagar con gift card")).not.toBeInTheDocument();
+    expect(screen.queryByText("Mixto")).not.toBeInTheDocument();
+    escribir("Propina para Marta", "20");
+    fireEvent.click(screen.getByText(/Confirmar cobro/));
+    expect(onConfirmar).toHaveBeenCalledWith([], {
+      propinas: [{ recursoId: 7, monto: 20, formaPagoId: 10 }],
+    });
+  });
+
+  it("pasar a fiado lleva las propinas anotadas", () => {
+    const onCredito = vi.fn();
+    montar(vi.fn(), [{ id: 7, nombre: "Ana" }], { onCredito });
+    escribir("Propina para Ana", "10");
+    fireEvent.click(screen.getByText("Vender a crédito (fiado)"));
+    expect(onCredito).toHaveBeenCalledWith({
+      propinas: [{ recursoId: 7, monto: 10, formaPagoId: 10 }],
+    });
   });
 });
 

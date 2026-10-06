@@ -224,3 +224,31 @@ describe("anular una venta cobrada por QR (los dos rubros)", () => {
     expect(screen.getByText("Autorizó: Regente")).toBeInTheDocument();
   });
 });
+
+describe("QA PER-08: el recibo de una venta de mostrador se vuelve a dar", () => {
+  it("una venta cobrada en el local ofrece el comprobante y lo abre con la venta completa", async () => {
+    const onVerComprobante = vi.fn();
+    render(
+      <MemoryRouter>
+        <PantallaHistorial
+          caja={{ id: 1 } as Caja}
+          onAtras={() => {}}
+          onCierre={() => {}}
+          onVerComprobante={onVerComprobante}
+        />
+      </MemoryRouter>,
+    );
+    fireEvent.click(await screen.findByRole("button", { name: /T-0007/ }));
+    await screen.findByText("Pollo entero");
+    fireEvent.click(screen.getByRole("button", { name: "Ver comprobante" }));
+    expect(onVerComprobante).toHaveBeenCalledWith(expect.objectContaining({ id: 7 }));
+  });
+
+  it("una anulada no", async () => {
+    const anulada = { ...venta, estado: "ANULADO" } as Venta;
+    vi.mocked(api.getVentas).mockResolvedValue([anulada]);
+    vi.mocked(api.getVenta).mockResolvedValue(anulada);
+    await abrirDetalle();
+    expect(screen.queryByRole("button", { name: "Ver comprobante" })).not.toBeInTheDocument();
+  });
+});

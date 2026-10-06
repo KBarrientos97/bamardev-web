@@ -63,8 +63,8 @@ export default function PantallaCobro({
   onAtras: () => void;
   /** `extra` sólo viaja con propinas (belleza); el cobro de siempre no lo trae. */
   onConfirmar: (pagos: PagoInput[], extra?: { propinas?: PropinaInput[] }) => void;
-  /** Sólo se ofrece si el plan incluye fiado. */
-  onCredito?: () => void;
+  /** Sólo se ofrece si el plan incluye fiado. Lleva las propinas anotadas acá. */
+  onCredito?: (extra?: { propinas?: PropinaInput[] }) => void;
   enviando: boolean;
   error: string;
 }) {
@@ -89,7 +89,11 @@ export default function PantallaCobro({
   });
   /** Lo que queda por cobrar en efectivo o QR, después del vale. */
   const aCubrir = Math.round((total - extras.montoVale) * 100) / 100;
-  const cubiertoPorVale = extras.montoVale > 0 && aCubrir <= 0.004;
+  /**
+   * No hay efectivo ni QR que pedir: el vale cubre todo, o la venta sale en 0
+   * (una sesión de paquete, QA PER-10) y se pasa por acá sólo por la propina.
+   */
+  const nadaQueCobrar = aCubrir <= 0.004;
   /** La propina en efectivo se recibe en mano junto con el cobro. */
   const extraEfectivo = extras.propinasEfectivo;
   const extra = extras.propinas.length ? { propinas: extras.propinas } : undefined;
@@ -135,8 +139,9 @@ export default function PantallaCobro({
   function confirmar() {
     setErrorLocal("");
 
-    // El vale cubre todo: no hay efectivo ni QR que pedir.
-    if (cubiertoPorVale) return enviar(extras.pagosVale);
+    // El vale cubre todo (o no hay nada que cobrar): ni efectivo ni QR. La
+    // propina en efectivo se recibe en mano y la registra el backend.
+    if (nadaQueCobrar) return enviar(extras.pagosVale);
 
     if (metodo === "EFECTIVO") {
       if (!formaEfectivo) return setErrorLocal("El negocio no tiene cargada la forma de pago Efectivo.");
@@ -226,7 +231,7 @@ export default function PantallaCobro({
 
         {/* Sin la capacidad no se dibujan botones apagados: el cobro es en
             efectivo y punto, como en un negocio que no cobra por QR. */}
-        {permiteQr && !cubiertoPorVale && (
+        {permiteQr && !nadaQueCobrar && (
           <div className="grid grid-cols-3 gap-2">
             <BotonMetodo
               activo={metodo === "EFECTIVO"}
@@ -281,7 +286,7 @@ export default function PantallaCobro({
           </>
         )}
 
-        {metodo !== "QR" && !cubiertoPorVale && (
+        {metodo !== "QR" && !nadaQueCobrar && (
           <>
             <Campo
               label="Efectivo recibido"
@@ -340,7 +345,7 @@ export default function PantallaCobro({
           </>
         )}
 
-        {metodo === "QR" && !cubiertoPorVale && (
+        {metodo === "QR" && !nadaQueCobrar && (
           <div className="rounded-2xl border border-borde bg-white p-5">
             <p className="mb-3 text-center text-sm font-semibold text-texto">
               Cobrá {fmtMoney(aCubrir)} por QR
@@ -366,7 +371,7 @@ export default function PantallaCobro({
           {enviando ? "Registrando…" : `Confirmar cobro · ${fmtMoney(total)}`}
         </Boton>
         {onCredito && (
-          <Boton variante="ghost" onClick={onCredito} disabled={enviando} className="w-full">
+          <Boton variante="ghost" onClick={() => onCredito(extra)} disabled={enviando} className="w-full">
             Vender a crédito (fiado)
           </Boton>
         )}

@@ -187,6 +187,8 @@ export interface CotizarInput {
   almacenId?: number;
   cupones?: string[];
   clienteId?: number;
+  /** La cita que se cobra: con ella el profesional raro de una línea no frena la cotización (QA PER-12). */
+  citaId?: number;
 }
 
 // ── Página pública de la promo ─────────────────────────────────────────────

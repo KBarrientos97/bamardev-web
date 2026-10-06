@@ -84,4 +84,23 @@ describe("useDescuentos (POS)", () => {
     expect(result.current.total(100)).toBe(100);
     expect(result.current.extraVenta()).toEqual({});
   });
+
+  it("QA PER-12: cobrando una cita, la cotización lleva la cita", async () => {
+    cotizar.mockResolvedValue({
+      subtotal: 100,
+      descuentoTotal: 0,
+      total: 100,
+      aplicadas: [],
+      descartadas: [],
+      descuentosEsperados: [],
+    });
+    renderHook(() => useDescuentos({ activo: true, conCupones: false, detalles, citaId: 13 }));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(400);
+    });
+    expect(cotizar).toHaveBeenLastCalledWith({
+      detalles: [{ productoId: 1, cantidad: 2 }],
+      citaId: 13,
+    });
+  });
 });

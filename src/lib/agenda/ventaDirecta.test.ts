@@ -6,6 +6,7 @@ import {
   carritoConProfesional,
   guardarAsignacion,
   leerAsignacion,
+  profesionalDeTodos,
   profesionalesDeLaVenta,
   profesionalesParaPos,
   SIN_ASIGNAR,
@@ -138,5 +139,16 @@ describe("venta directa con profesional (N2-13)", () => {
       expect(sessionStorage.getItem("bamar.profesionalVenta")).toBeNull();
       expect(leerAsignacion()).toEqual(SIN_ASIGNAR);
     });
+  });
+});
+
+describe("profesionalDeTodos (QA PER-07)", () => {
+  it("uno solo para todos los servicios, o VARIOS si difieren", () => {
+    expect(profesionalDeTodos([1, 2], { general: 7, porServicio: {} })).toBe(7);
+    expect(profesionalDeTodos([1, 2], { general: 7, porServicio: { 2: 7 } })).toBe(7);
+    expect(profesionalDeTodos([1, 2], { general: 7, porServicio: { 2: 8 } })).toBe("VARIOS");
+    expect(profesionalDeTodos([1, 2], { general: null, porServicio: { 1: 8, 2: 8 } })).toBe(8);
+    expect(profesionalDeTodos([1, 2], { general: 7, porServicio: { 1: null } })).toBe("VARIOS");
+    expect(profesionalDeTodos([], SIN_ASIGNAR)).toBeNull();
   });
 });
