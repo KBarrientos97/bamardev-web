@@ -87,6 +87,21 @@ export interface SesionUsuario {
    */
   sucursalId?: number | null;
   sucursal?: string | null;
+  /**
+   * Permisos efectivos (PLAN-ROLES §8.1): ya cruzados con las features del
+   * plan. **Opcionales**: un backend anterior no los manda y una sesión
+   * guardada antes tampoco; sin ellos todo se decide como siempre (por rol y
+   * módulos). Hoy mandan en las pantallas de la agenda.
+   */
+  permisos?: string[];
+  /** El subconjunto con alcance PROPIO (sólo lo suyo). */
+  permisosPropios?: string[];
+  /** ADMIN, CAJERO, PROFESIONAL…: el rol "de fondo" (decide la ruta inicial). */
+  arquetipo?: string | null;
+  /** Cómo se llama el rol en este rubro ("Barbero", "Recepción"). */
+  rolEtiqueta?: string | null;
+  /** Huella de los permisos: si cambia, se vuelven a pedir a /auth/me. */
+  permisosVersion?: string;
 }
 
 /**
@@ -152,6 +167,28 @@ export interface Me {
   negocioId: number | null;
   modulos: Modulo[];
   esPlataforma: boolean;
+  permisos?: string[];
+  permisosPropios?: string[];
+  arquetipo?: string | null;
+  permisosVersion?: string;
+}
+
+/** Un permiso de un rol, como lo devuelve el backend (PLAN-ROLES §4). */
+export interface PermisoDeRol {
+  codigo: string;
+  nombre: string;
+  dominio: string;
+  alcance: "GENERAL" | "PROPIO";
+}
+
+/** GET /roles/ofrecidos: un rol que quien usa la pantalla puede asignar. */
+export interface RolOfrecido {
+  codigo: Rol;
+  etiqueta: string;
+  descripcion: string | null;
+  nivel: number | null;
+  arquetipo: string | null;
+  permisos: PermisoDeRol[];
 }
 
 // ── Catálogo ────────────────────────────────────────────────────────────────
@@ -1277,6 +1314,12 @@ export interface EstadoLicencia {
    * manda, y en ese caso el menú se queda con lo del login, como antes.
    */
   features?: string[];
+  /**
+   * Huella de los permisos del usuario (PLAN-ROLES §8.1): si no coincide con
+   * la de la sesión, se vuelven a pedir a `/auth/me`. Opcional: un backend
+   * anterior no la manda.
+   */
+  permisosVersion?: string;
   /**
    * Paleta y perfil del negocio, por lo mismo que `features`: si el panel le
    * cambia la paleta, la pestaña abierta se repinta sola. `perfilVersion`

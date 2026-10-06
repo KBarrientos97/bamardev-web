@@ -1,4 +1,4 @@
-import type { Feature, Modulo, PerfilRubro, Rol } from "../types";
+import type { Feature, Modulo, PerfilRubro, Rol, SesionUsuario } from "../types";
 import { RUBROS_BELLEZA, etiquetaRolDelRubro, type Rubro } from "./rubro";
 
 /**
@@ -339,6 +339,68 @@ export interface ContextoPermisos {
   features?: Feature[];
   /** `negocio.tipoNegocio` del login. Sin rubro, se ve todo (como antes). */
   rubro?: string;
+  /**
+   * Permisos efectivos del login (PLAN-ROLES §8.2), ya cruzados con el plan.
+   * `undefined` = backend o sesión anteriores: se decide como siempre.
+   */
+  permisos?: string[];
+  permisosPropios?: string[];
+  /** El rol "de fondo" de la plantilla; decide la ruta inicial si viene. */
+  arquetipo?: string | null;
+}
+
+/**
+ * Qué permiso exige cada sección **cuando el backend manda permisos**
+ * (PLAN-ROLES §8.2, fase R4). Por ahora sólo la agenda, que el backend ya
+ * corta por permisos (R3): el resto sigue con `ROLES_PERMITIDOS` y los módulos
+ * hasta que su controlador se corte, así Omar y la farmacia no ven ningún
+ * cambio. `alcance` distingue la agenda de recepción (GENERAL) de "Mi agenda"
+ * del profesional (PROPIO).
+ */
+const PERMISO_SECCION: Partial<
+  Record<Seccion, { permiso: string; alcance?: "GENERAL" | "PROPIO" }>
+> = {
+  agenda: { permiso: "agenda.ver", alcance: "GENERAL" },
+  hoy: { permiso: "agenda.ver", alcance: "GENERAL" },
+  mi_agenda: { permiso: "agenda.ver", alcance: "PROPIO" },
+  agenda_config: { permiso: "agenda.configurar" },
+  // Las reglas del negocio (A11) son configuración de la agenda: el mismo
+  // permiso que el backend pide para guardarlas.
+  config_negocio: { permiso: "agenda.configurar" },
+};
+
+type ConPermisos = Pick<SesionUsuario, "permisos" | "permisosPropios"> | null | undefined;
+
+/**
+ * ¿Tiene este permiso? Si el backend mandó permisos, manda eso; si no (backend
+ * o sesión viejos), el `respaldo` de siempre (por rol).
+ */
+export function tienePermiso(usuario: ConPermisos, codigo: string, respaldo: boolean): boolean {
+  return usuario?.permisos ? usuario.permisos.includes(codigo) : respaldo;
+}
+
+/** ¿Lo tiene sólo sobre lo suyo (alcance PROPIO)? Con respaldo, igual que arriba. */
+export function soloLoSuyo(usuario: ConPermisos, codigo: string, respaldo: boolean): boolean {
+  if (!usuario?.permisos) return respaldo;
+  return usuario.permisos.includes(codigo) && (usuario.permisosPropios ?? []).includes(codigo);
+}
+
+/**
+ * El profesional en la agenda: la ve sólo sobre lo suyo y no la gestiona.
+ * Respaldo: el rol PROFESIONAL, como hasta ahora.
+ */
+export function veSoloSuAgenda(usuario: (ConPermisos & { rol?: Rol }) | null | undefined): boolean {
+  if (!usuario?.permisos) return usuario?.rol === "PROFESIONAL";
+  return soloLoSuyo(usuario, "agenda.ver", false) && !usuario.permisos.includes("agenda.gestionar");
+}
+
+function cumplePermiso(ctx: ContextoPermisos, req: { permiso: string; alcance?: "GENERAL" | "PROPIO" }) {
+  const permisos = ctx.permisos ?? [];
+  if (!permisos.includes(req.permiso)) return false;
+  const propio = (ctx.permisosPropios ?? []).includes(req.permiso);
+  if (req.alcance === "GENERAL") return !propio;
+  if (req.alcance === "PROPIO") return propio;
+  return true;
 }
 
 export function puedeVer(ctx: ContextoPermisos, seccion: Seccion): boolean {
@@ -346,7 +408,10 @@ export function puedeVer(ctx: ContextoPermisos, seccion: Seccion): boolean {
   // Hace falta decirlo explícito: su rol no tiene módulos (D23), y con la
   // lista vacía `tieneModulo` falla abierto — sin esta línea, la primera
   // sección nueva sin `ROLES_PERMITIDOS` le quedaría abierta.
-  if (ctx.rol === "PROFESIONAL" && !ROLES_PERMITIDOS[seccion]?.includes("PROFESIONAL")) {
+  if (
+    (ctx.arquetipo ?? ctx.rol) === "PROFESIONAL" &&
+    !ROLES_PERMITIDOS[seccion]?.includes("PROFESIONAL")
+  ) {
     return false;
   }
 
@@ -358,11 +423,18 @@ export function puedeVer(ctx: ContextoPermisos, seccion: Seccion): boolean {
   // es no puede aterrizar en una pantalla que sólo tiene sentido en uno.
   if (propia && !(ctx.rubro && (propia as string[]).includes(ctx.rubro))) return false;
 
-  const roles = ROLES_PERMITIDOS[seccion];
-  if (roles && !roles.includes(ctx.rol)) return false;
+  // Con permisos del backend, la sección que ya se cortó por permisos (la
+  // agenda) se decide por permiso y no por nombre de rol ni módulo.
+  const porPermiso = ctx.permisos ? PERMISO_SECCION[seccion] : undefined;
+  if (porPermiso) {
+    if (!cumplePermiso(ctx, porPermiso)) return false;
+  } else {
+    const roles = ROLES_PERMITIDOS[seccion];
+    if (roles && !roles.includes(ctx.rol)) return false;
+  }
 
   const req = REQUISITOS[seccion];
-  if (req.modulo && !tieneModulo(ctx.modulos, req.modulo)) return false;
+  if (!porPermiso && req.modulo && !tieneModulo(ctx.modulos, req.modulo)) return false;
   if (req.feature && !tieneFeature(ctx.features, req.feature)) return false;
   if (req.feature && FEATURES_ESTRICTAS.includes(req.feature) && !ctx.features?.includes(req.feature)) {
     return false;
@@ -453,20 +525,23 @@ export function puedeSupervisar(rol: Rol): boolean {
  * rebotando en un bucle con la pantalla en blanco.
  */
 export function rutaInicial(ctx: ContextoPermisos): string {
+  // Por arquetipo si viene (PLAN-ROLES §8.2): un rol nuevo con arquetipo
+  // conocido aterriza donde corresponde sin tocar esta función.
+  const rol = (ctx.arquetipo ?? ctx.rol) as Rol;
   // No pasa por la lista: con la agenda prendida su pantalla es "Mi agenda", y
   // sin ella es el aviso de que llega pronto, en la MISMA ruta. Por la lista
   // caería en "/sin-acceso", que le diría que su cuenta está mal configurada.
-  if (ctx.rol === "PROFESIONAL") return RUTA_AGENDA_PRONTO;
+  if (rol === "PROFESIONAL") return RUTA_AGENDA_PRONTO;
 
   const orden: [Seccion, string][] =
     // El mesero entra directo al salón: es su única pantalla. Igual que
     // AuthenticationActivity en Android, que lo manda a MeserosActivity sin
     // pasar por el menú del admin.
-    ctx.rol === "MESERO"
+    rol === "MESERO"
       ? [["salon", "/salon"]]
-      : ctx.rol === "REPARTIDOR"
+      : rol === "REPARTIDOR"
       ? [["reparto", "/reparto"], ["pos", "/pos"]]
-      : ctx.rol === "CAJERO"
+      : rol === "CAJERO"
         ? // Recepción de un salón entra a "Hoy": es su mostrador. Fuera de
           // belleza (o sin la feature) no existe, y sigue el POS de siempre.
           [["hoy", "/hoy"], ["pos", "/pos"], ["caja", "/pos"], ["creditos", "/creditos"]]

@@ -178,6 +178,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   /**
+   * Lo mismo para los permisos (PLAN-ROLES §8.1): si la huella que manda
+   * `/licencia/estado` no es la de la sesión —el operador cambió un ajuste,
+   * el plan sumó una feature, la regla de la agenda cambió—, se vuelven a
+   * pedir a `/auth/me` sin cerrar la sesión. Sin huella (backend viejo) no se
+   * hace nada.
+   */
+  const versionPermisos = usuario?.permisosVersion;
+  const refrescarPermisos = useCallback(
+    (version: string | undefined) => {
+      if (!version || version === versionPermisos) return;
+      api
+        .me()
+        .then((me) => {
+          if (!me.permisos) return;
+          setUsuario((previo) => {
+            if (!previo) return previo;
+            const actualizado = {
+              ...previo,
+              permisos: me.permisos,
+              permisosPropios: me.permisosPropios ?? [],
+              arquetipo: me.arquetipo ?? previo.arquetipo,
+              permisosVersion: me.permisosVersion ?? version,
+            };
+            localStorage.setItem(USER_KEY, JSON.stringify(actualizado));
+            return actualizado;
+          });
+        })
+        .catch(() => undefined);
+    },
+    [versionPermisos],
+  );
+
+  /**
    * Revalida la licencia contra el backend: al abrir la pestaña y cada 15 min.
    * Es el equivalente al `LicenciaGuard.chequear()` del onResume de Android.
    *
@@ -199,6 +232,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setLicencia(estado);
           refrescarFeatures(estado.features);
           refrescarPerfil(estado);
+          refrescarPermisos(estado.permisosVersion);
         })
         // Falla abierto, igual que Android: un error de red no puede dejar al
         // cajero trabado. Si la licencia de verdad venció, el próximo request
@@ -220,7 +254,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       clearInterval(id);
       document.removeEventListener("visibilitychange", alVolver);
     };
-  }, [token, refrescarFeatures, refrescarPerfil]);
+  }, [token, refrescarFeatures, refrescarPerfil, refrescarPermisos]);
 
   // Reidentifica en PostHog tras un F5: el usuario se rehidrata de
   // localStorage sin pasar por `login`, y sin esto los errores de esa sesión
@@ -241,6 +275,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             modulos: usuario.modulos,
             features: negocio?.features,
             rubro: negocio?.tipoNegocio,
+            // PLAN-ROLES §8.2: si el backend los mandó, las secciones ya
+            // cortadas por permisos (la agenda) se deciden con ellos.
+            permisos: usuario.permisos,
+            permisosPropios: usuario.permisosPropios,
+            arquetipo: usuario.arquetipo,
           }
         : null,
     [usuario, negocio],

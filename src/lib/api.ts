@@ -63,6 +63,7 @@ import type {
   Repartidor,
   ResumenCaja,
   UnidadMedida,
+  RolOfrecido,
   Usuario,
   Vencimientos,
   Venta,
@@ -914,6 +915,8 @@ export const api = {
 
   // ── Usuarios ──────────────────────────────────────────────────────────────
   getUsuarios: () => request<Usuario[]>("/usuarios"),
+  /** Los roles que este usuario puede asignar en su negocio (PLAN-ROLES §7.4). */
+  getRolesOfrecidos: () => request<RolOfrecido[]>("/roles/ofrecidos"),
   crearUsuario: (input: CrearUsuarioInput) =>
     request<Usuario>("/usuarios", { method: "POST", body: JSON.stringify(input) }),
   actualizarUsuario: (id: number, input: ActualizarUsuarioInput) =>
