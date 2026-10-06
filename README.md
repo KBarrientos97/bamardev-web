@@ -30,8 +30,26 @@ mismo `admin` existe en varios negocios y sin alias el backend no sabe a cuál.
 `push a dev` despliega QA y `push a main` despliega PROD, igual que el panel.
 Los tests corren en Actions antes de desplegar.
 
+| Página y reserva (direcciones cortas) | `link-qa.bamardev.com/<sub>` | `link.bamardev.com/<sub>` |
+
 > Al publicar un dominio nuevo hay que agregarlo a `CORS_ORIGINS` en
 > `/opt/stack/.env` del VPS, o el navegador bloqueará las llamadas.
+
+### El host `link`
+
+`link(-qa).bamardev.com` es este mismo proyecto de Pages con un dominio más.
+Ahí sólo existen la página del negocio y su reserva, con direcciones cortas
+(`/<sub>`, `/<sub>/reservar`, `/<sub>/promo/<slug>`, `/<sub>/c/<token>`); la
+app no. Lo deciden `src/lib/pagina/link.ts` (qué forma tiene cada dirección),
+`src/pages/pagina/RutasLink.tsx` (la SPA) y `functions/_middleware.ts` (raíz a
+la landing, `robots.txt`, Open Graph y el 404). En cualquier otro host el
+middleware sigue de largo. `/p/…` y `/r/…` en `app…` no cambian.
+
+Para probarlo en la PC: `npm run dev` y abrir `http://link.localhost:5173/<sub>`
+(o `VITE_HOST_LINK=1` en `.env.local` si el navegador no resuelve
+`*.localhost`). Con la Function: `npm run build:qa` y
+`npx wrangler pages dev dist --binding API_URL=http://127.0.0.1:3000/api`,
+y pedir con `curl -H "Host: link-qa.bamardev.com" http://127.0.0.1:8788/<sub>`.
 
 ## Comandos
 

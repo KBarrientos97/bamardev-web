@@ -1,4 +1,6 @@
 import posthog from "posthog-js";
+import { esHostLink } from "./pagina/link";
+import { enHostLink } from "./pagina/rutas";
 
 /**
  * Reporte de errores a PostHog. Espejo de `Telemetria.kt` (Android): mismos
@@ -23,12 +25,13 @@ let activa = false;
 /**
  * Las páginas del cliente final del negocio: la reserva online (`/r/…`, con
  * el token secreto del enlace de gestión en `/r/<sub>/c/<token>`) y la página
- * del negocio (`/p/…`). **Nada de ellas va a PostHog** (PLAN-AGENDA-BELLEZA
- * §8.6 regla 5): ni la URL, ni el token, ni un identificador en el
+ * del negocio (`/p/…`), y TODO el host `link(-qa).bamardev.com`, que no tiene
+ * otra cosa (`/<sub>/c/<token>`). **Nada de ellas va a PostHog** (PLAN-AGENDA-
+ * BELLEZA §8.6 regla 5): ni la URL, ni el token, ni un identificador en el
  * localStorage de alguien que no es usuario de BamarDev (B01).
  */
 export function esRutaPublica(ruta = typeof location === "undefined" ? "" : location.pathname): boolean {
-  return /^\/(r|p)(\/|$)/.test(ruta);
+  return enHostLink() || /^\/(r|p)(\/|$)/.test(ruta);
 }
 
 /**
@@ -42,12 +45,13 @@ export function filtrarEvento<T extends { properties?: Record<string, unknown> }
   const url = String(props.$current_url ?? "");
   const ruta = String(props.$pathname ?? "");
   let deUrl = "";
+  let hostUrl = "";
   try {
-    deUrl = url ? new URL(url).pathname : "";
+    if (url) ({ pathname: deUrl, hostname: hostUrl } = new URL(url));
   } catch {
     deUrl = "";
   }
-  if (esRutaPublica() || esRutaPublica(ruta) || esRutaPublica(deUrl)) return null;
+  if (esRutaPublica() || esRutaPublica(ruta) || esRutaPublica(deUrl) || esHostLink(hostUrl)) return null;
   return evento;
 }
 

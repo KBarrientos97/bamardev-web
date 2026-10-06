@@ -380,10 +380,18 @@ export default function MiPagina() {
           <VistaPagina pagina={vista} urlReservar="#" urlPrivacidad="#" enMarco />
         </div>
       </div>
+      {/* A la dirección que se comparte (`link…/<sub>` cuando el backend
+          la tiene configurada); si no vino, a la de siempre dentro de la app. */}
       {e.subdominio && e.pagina.publicada && (
-        <Link to={`/p/${e.subdominio}`} target="_blank" className="text-sm font-semibold" style={{ color: c.oscuro }}>
+        <a
+          href={e.urlPublica ?? `/p/${e.subdominio}`}
+          target="_blank"
+          rel="noopener"
+          className="text-sm font-semibold"
+          style={{ color: c.oscuro }}
+        >
           Ver la página completa
-        </Link>
+        </a>
       )}
     </div>
   );

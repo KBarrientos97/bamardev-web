@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Outlet, Route, Routes, useParams } from "react-router-dom";
 import { apiReserva, ErrorReserva, type NegocioPublico } from "./apiReserva";
 import Gestion from "./Gestion";
@@ -10,8 +10,9 @@ import Reservar from "./Reservar";
 
 /**
  * La página pública de reservas (PLAN-AGENDA-BELLEZA §8, PLAN-DESARROLLO-
- * BELLEZA §11): vive dentro de la app web en `/r/<subdominio>…` hasta que
- * exista `link.bamardev.com`.
+ * BELLEZA §11): vive dentro de la app web en `/r/<subdominio>…` y, con las
+ * mismas rutas sin el `/r`, en `link.bamardev.com/<subdominio>…` (ahí la
+ * monta RutasLink.tsx, y `/<sub>` y `/<sub>/privacidad` son de la página).
  *
  *   /r/:sub                    portada mínima con Reservar
  *   /r/:sub/reservar[/:suc]    P2-P6
@@ -40,7 +41,27 @@ export default function ReservaPublica() {
 /** Carga el negocio una vez para todas sus páginas. */
 function ConNegocio() {
   const { subdominio = "" } = useParams();
-  const sub = subdominio.toLowerCase();
+  return (
+    <ProveedorNegocio sub={subdominio.toLowerCase()}>
+      <Outlet />
+    </ProveedorNegocio>
+  );
+}
+
+/**
+ * La política de privacidad de la reserva para `link…/<sub>/privacidad`
+ * cuando el negocio no tiene la página publicada (ver RutasLink.tsx): la
+ * reserva la enlaza desde el consentimiento y tiene que abrir igual.
+ */
+export function PrivacidadDeLaReserva({ sub }: { sub: string }) {
+  return (
+    <ProveedorNegocio sub={sub.toLowerCase()}>
+      <Privacidad />
+    </ProveedorNegocio>
+  );
+}
+
+function ProveedorNegocio({ sub, children }: { sub: string; children: ReactNode }) {
   const [estado, setEstado] = useState<Omit<ContextoNegocio, "sub">>({
     datos: null,
     cargando: true,
@@ -65,9 +86,7 @@ function ConNegocio() {
   }, [sub]);
 
   return (
-    <NegocioCtx.Provider value={{ sub, ...estado }}>
-      <Outlet />
-    </NegocioCtx.Provider>
+    <NegocioCtx.Provider value={{ sub, ...estado }}>{children}</NegocioCtx.Provider>
   );
 }
 

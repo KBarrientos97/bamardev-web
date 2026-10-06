@@ -11,7 +11,8 @@ const PromoPublica = lazy(() => import("./PromoPublica"));
  * mostraría el login) y fuera del Layout. Se carga aparte (lazy): quien entra
  * desde Instagram no baja las pantallas de la app.
  *
- * Lista para mudarse a `link.bamardev.com/<subdominio>` cuando exista el DNS.
+ * En `link.bamardev.com/<subdominio>` las mismas pantallas las monta
+ * RutasLink.tsx, con direcciones cortas.
  */
 export default function RutasPaginaPublica() {
   return (

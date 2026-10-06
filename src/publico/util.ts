@@ -1,5 +1,6 @@
 import { createContext, useContext } from "react";
 import { horaNegocio } from "../lib/agenda/horaAgenda";
+import { enHostLink } from "../lib/pagina/rutas";
 import type { NegocioPublico, ProfesionalPublico, ServicioPublico } from "./apiReserva";
 
 /**
@@ -7,12 +8,16 @@ import type { NegocioPublico, ProfesionalPublico, ServicioPublico } from "./apiR
  * que el refresco en caliente de Vite siga funcionando).
  */
 
-/** Dónde vive cada página. Un solo lugar para mudarla a `link.bamardev.com`. */
+/**
+ * Dónde vive cada página: `/r/<sub>…` en la app y `/<sub>…` en
+ * `link.bamardev.com` (ver `lib/pagina/link.ts`). Sin `resto`, en el host link
+ * es la página del negocio: la portada mínima de la reserva no existe ahí.
+ */
 export function rutaPublica(subdominio: string, resto = ""): string {
-  return `/r/${subdominio}${resto}`;
+  return enHostLink() ? `/${subdominio}${resto}` : `/r/${subdominio}${resto}`;
 }
 
-/** El negocio que cargó la ruta `/r/:subdominio`, para todas sus páginas. */
+/** El negocio que cargó la ruta `/r/:subdominio` (o `link…/:subdominio`), para todas sus páginas. */
 export interface ContextoNegocio {
   sub: string;
   datos: NegocioPublico | null;

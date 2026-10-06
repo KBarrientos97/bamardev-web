@@ -11,8 +11,8 @@ import VistaPagina, { MarcaBamarDev } from "./VistaPagina";
 /**
  * Pone título y etiquetas para compartir. WhatsApp y Facebook no ejecutan
  * JavaScript, así que esto no les llega (para eso el enlace corto les sirve
- * el HTML con Open Graph, y en `link.bamardev.com` lo hará una Pages
- * Function): sirve para la pestaña del navegador y para quien sí lo lee.
+ * el HTML con Open Graph, y la página las Pages Functions, también en
+ * `link.bamardev.com`): sirve para la pestaña del navegador y para quien sí lo lee.
  */
 function useMetadatosPagina(p: Pagina | null) {
   useEffect(() => {
@@ -94,7 +94,7 @@ function Cargando() {
 /**
  * `/p/:subdominio`: la página pública del negocio (PLAN-PAGINA-NEGOCIO §2).
  * Fuera de la sesión de la app: la ve cualquiera, y un error acá nunca manda
- * al login. Lista para mudarse a `link.bamardev.com/<subdominio>`.
+ * al login. También en `link.bamardev.com/<subdominio>` (RutasLink.tsx).
  */
 export default function PaginaPublica() {
   const { subdominio } = useParams();
