@@ -72,7 +72,22 @@ export type PromocionInput = Partial<
     | "categoriaIds"
     | "excluirProductoIds"
   >
->;
+> & {
+  /**
+   * El código del cupón genérico, en la misma promoción "con código" (§12,
+   * decisión 8): se crea junto con ella. Opcional.
+   */
+  codigo?: string;
+};
+
+/** `GET /promociones/cupones/disponible`: el aviso al instante del formulario. */
+export interface DisponibilidadCupon {
+  /** Como se guardaría (mayúsculas, sin espacios ni guiones). */
+  codigo: string;
+  disponible: boolean;
+  motivo?: "FORMATO" | "EXISTE";
+  mensaje?: string;
+}
 
 export interface Cupon {
   id: number;

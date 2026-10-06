@@ -4,6 +4,7 @@ import type {
   CotizarInput,
   Cupon,
   CuponesInput,
+  DisponibilidadCupon,
   EnlaceCampana,
   EstadoPromocion,
   Promocion,
@@ -33,6 +34,9 @@ export const apiPromociones = {
     request<{ ok: true; url: string }>(`/promociones/${id}/anunciar`, { method: "POST" }),
 
   cupones: (id: number) => request<Cupon[]>(`/promociones/${id}/cupones`),
+  /** ¿El código está libre en el negocio? Sólo lee. */
+  disponibilidadCupon: (codigo: string) =>
+    request<DisponibilidadCupon>(`/promociones/cupones/disponible?codigo=${encodeURIComponent(codigo)}`),
   crearCupones: (id: number, input: CuponesInput) =>
     request<Cupon[]>(`/promociones/${id}/cupones`, { method: "POST", ...json(input) }),
   anularCupon: (cuponId: number) =>
