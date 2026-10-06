@@ -162,9 +162,35 @@ describe("responder", () => {
     expect(r.headers.get("x-frame-options")).toBe("DENY");
   });
 
-  it("si el API falla, no existe o tarda, la SPA sin tocar", async () => {
+  it("una página o promo que no existe: 404 sin el título de la app y sin indexar", async () => {
+    for (const ruta of ["/p/no-existe", "/p/bellavista/promo/archivada"]) {
+      const { ctx } = contexto(ruta, WHATSAPP, () => json({ statusCode: 404 }, 404));
+      const r = await responder(ctx);
+      expect(r.status).toBe(404);
+      const html = await r.text();
+      expect(html).toContain("<title>Página no disponible</title>");
+      expect(html).not.toContain("Inventario y Punto de Venta");
+      expect(html).toContain('<meta name="robots" content="noindex, nofollow" />');
+      expect(html).toContain('<div id="root"></div>');
+      expect(r.headers.get("x-robots-tag")).toBe("noindex, nofollow");
+      expect(r.headers.get("etag")).toBeNull();
+      expect(r.headers.get("x-frame-options")).toBe("DENY");
+    }
+  });
+
+  it("la privacidad y la reserva no se dan por muertas con el 404 de la página", async () => {
+    for (const ruta of ["/p/bellavista/privacidad", "/r/bellavista/reservar"]) {
+      const { ctx } = contexto(ruta, WHATSAPP, () => json({ statusCode: 404 }, 404));
+      const r = await responder(ctx);
+      expect(r.status).toBe(200);
+      expect(await r.text()).toBe(INDEX);
+    }
+  });
+
+  it("si el API falla, tarda o responde raro, la SPA sin tocar", async () => {
     for (const api of [
-      () => json({ statusCode: 404 }, 404),
+      () => json({ statusCode: 500 }, 500),
+      () => json({ statusCode: 429 }, 429),
       () => Promise.reject(new Error("timeout")),
       () => json({ algo: "raro" }),
     ]) {

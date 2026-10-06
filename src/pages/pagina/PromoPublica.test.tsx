@@ -2,6 +2,7 @@ import { render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { BASE_API } from "../../lib/pagina/apiPagina";
 import { esRutaDePaginaPublica } from "../../lib/pagina/rutas";
 import PromoPublica from "./PromoPublica";
 
@@ -60,6 +61,37 @@ describe("página pública de la promo", () => {
     expect(screen.getByRole("link", { name: /Quiero la promo/ })).toHaveAttribute(
       "href",
       "https://wa.me/59170000000?text=Hola",
+    );
+  });
+
+  it("CUP-02: el logo del negocio se pide al API, no a la SPA", async () => {
+    responder(200, {
+      negocio: {
+        nombre: "Salón",
+        subdominio: "omar",
+        paginaUrl: null,
+        color: null,
+        logoUrl: "/publico/pagina/omar/imagen/logo?v=3",
+        iniciales: "S",
+      },
+      promo: {
+        nombre: "Verano",
+        descripcion: null,
+        beneficio: "Bs 15 menos",
+        condiciones: [],
+        codigo: null,
+        conCodigo: true,
+        vigenciaHasta: null,
+        programada: false,
+        url: "x",
+      },
+      whatsapp: null,
+    });
+    const { container } = dibujar();
+    await screen.findByText("Bs 15 menos");
+    expect(container.querySelector("img")).toHaveAttribute(
+      "src",
+      `${BASE_API}/publico/pagina/omar/imagen/logo?v=3`,
     );
   });
 
