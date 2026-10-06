@@ -480,13 +480,18 @@ function conOffset(d: Date): string {
  * Se pide ANTES de mandar la venta, no después del rechazo: el carrito sigue
  * armado y el cliente no ve un error. Mismo patrón que la anulación —el PIN se
  * teclea en el mismo dispositivo sin cerrar la sesión del cajero.
+ *
+ * Exportado para el sobre-turno de la agenda, que pide la misma firma
+ * (PLAN-AGENDA-BELLEZA §4): cambia sólo el subtítulo.
  */
-function PedirPinCredito({
+export function PedirPinCredito({
   onCancelar,
   onFirmar,
+  subtitulo = "Este fiado pasa el límite del cliente",
 }: {
   onCancelar: () => void;
   onFirmar: (usuario: string, pin: string) => void;
+  subtitulo?: string;
 }) {
   const { usuario: actual } = useAuth();
   // Un encargado firma con su propio PIN; un cajero necesita además el usuario
@@ -512,7 +517,7 @@ function PedirPinCredito({
     <Modal
       abierto
       titulo="Autorización del encargado"
-      subtitulo="Este fiado pasa el límite del cliente"
+      subtitulo={subtitulo}
       onClose={onCancelar}
       ancho="max-w-sm"
       acciones={
