@@ -104,6 +104,16 @@ export type Seccion =
   | "clientes"
   /** A9: las solicitudes que entraron por la reserva online (fase 2). */
   | "solicitudes"
+  // ── Agenda de belleza (fase 2) ──
+  /** Comisiones de los profesionales: producción, adelantos y liquidación. */
+  | "comisiones"
+  /**
+   * "Mi producción" dentro de Mi agenda (A10): la comisión del profesional
+   * que entró. No es una ruta: es la tarjeta de su pantalla.
+   */
+  | "mi_produccion"
+  /** Producción, no-shows, ocupación y retención de la agenda. */
+  | "reportes_agenda"
   // ── Página del negocio (todas las verticales) ──
   /** "Mi página": el editor de la página pública del negocio. */
   | "mi_pagina"
@@ -182,6 +192,11 @@ const REQUISITOS: Record<Seccion, { modulo: Modulo | null; feature: Feature | nu
   clientes: { modulo: null, feature: "clientes" },
   // La bandeja sólo existe con la reserva online: sin ella no entra nada.
   solicitudes: { modulo: null, feature: "reserva_online" },
+  // Las comisiones son su propia feature (fase 2): el backend la exige en
+  // todas sus rutas. Los reportes de agenda van con la agenda.
+  comisiones: { modulo: null, feature: "comisiones" },
+  mi_produccion: { modulo: null, feature: "comisiones" },
+  reportes_agenda: { modulo: null, feature: "agenda" },
   // La página no tiene módulo de rol: la decide la feature y el rol ADMIN
   // (el backend exige las dos).
   mi_pagina: { modulo: null, feature: "pagina_publica" },
@@ -204,6 +219,7 @@ const FEATURES_ESTRICTAS: Feature[] = [
   "agenda",
   "clientes",
   "reserva_online",
+  "comisiones",
   "pagina_publica",
   "enlaces_cortos",
 ];
@@ -266,6 +282,11 @@ const ROLES_PERMITIDOS: Partial<Record<Seccion, Rol[]>> = {
   clientes: ["ADMIN", "SUPERVISOR", "CAJERO"],
   // Aprobar una reserva online es de recepción, como confirmar por teléfono.
   solicitudes: ["ADMIN", "SUPERVISOR", "CAJERO"],
+  // §4: la producción y la comisión de todos las ven el dueño y el encargado;
+  // recepción no. El profesional ve la suya en Mi agenda.
+  comisiones: ["ADMIN", "SUPERVISOR"],
+  mi_produccion: ["PROFESIONAL"],
+  reportes_agenda: ["ADMIN", "SUPERVISOR"],
   // La página es la vitrina del negocio: la edita el dueño (§3).
   mi_pagina: ["ADMIN"],
   mis_enlaces: ["ADMIN"],
@@ -314,6 +335,9 @@ const SOLO_EN_RUBRO: Partial<Record<Seccion, Rubro[]>> = {
   mi_agenda: RUBROS_BELLEZA,
   clientes: RUBROS_BELLEZA,
   solicitudes: RUBROS_BELLEZA,
+  comisiones: RUBROS_BELLEZA,
+  mi_produccion: RUBROS_BELLEZA,
+  reportes_agenda: RUBROS_BELLEZA,
 };
 
 /**
@@ -372,6 +396,11 @@ const PERMISO_SECCION: Partial<
   // profesional ve la ficha mínima desde su cita, no la lista.
   clientes: { permiso: "cliente.ver_ficha", alcance: "GENERAL" },
   solicitudes: { permiso: "reservas.aprobar" },
+  // Fase 2: la pantalla de comisiones es la de todos (GENERAL); el
+  // profesional, con alcance PROPIO, ve la suya en Mi agenda.
+  comisiones: { permiso: "comisiones.ver", alcance: "GENERAL" },
+  mi_produccion: { permiso: "comisiones.ver", alcance: "PROPIO" },
+  reportes_agenda: { permiso: "agenda.reportes" },
   mi_pagina: { permiso: "negocio.configurar" },
   mis_enlaces: { permiso: "negocio.configurar" },
 };

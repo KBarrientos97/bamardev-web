@@ -65,6 +65,21 @@ export interface Recurso {
   orden: number;
   sucursalIds: number[];
   servicioIds: number[];
+  /** % sobre productos de reventa (fase 2). Opcional: un backend viejo no lo manda. */
+  comisionProductoPct?: number | null;
+  /**
+   * Fase 2: lo propio de este profesional en cada servicio que hace (null =
+   * el del servicio). Opcional por la misma razón.
+   */
+  serviciosPropios?: ServicioPropio[];
+}
+
+/** Duración, precio y % propios de un profesional en un servicio. */
+export interface ServicioPropio {
+  servicioId: number;
+  duracionMin: number | null;
+  precio: number | null;
+  comisionPct: number | null;
 }
 
 /** Cuerpo de `POST /agenda/recursos` y `PATCH /agenda/recursos/:id`. */

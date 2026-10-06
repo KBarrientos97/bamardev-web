@@ -45,6 +45,7 @@ vi.mock("../../../lib/agenda/apiConfigAgenda", () => ({
     recursos: vi.fn(),
     crearRecurso: vi.fn(),
     actualizarRecurso: vi.fn(),
+    guardarServiciosRecurso: vi.fn(),
     horarios: vi.fn(),
     guardarHorarios: vi.fn(),
     excepciones: vi.fn(),
@@ -163,6 +164,41 @@ describe("pestañas", () => {
     const usuario = screen.getByLabelText(/Usuario vinculado/);
     const opciones = within(usuario).getAllByRole("option").map((o) => o.textContent);
     expect(opciones).toEqual(["Sin usuario", "Ana Pérez (@ana)"]);
+  });
+
+  it("Profesionales: precio y duración propios por servicio (fase 2)", async () => {
+    await montar("recursos");
+    vi.mocked(apiConfigAgenda.actualizarRecurso).mockResolvedValue(JUAN);
+    vi.mocked(apiConfigAgenda.guardarServiciosRecurso).mockResolvedValue(JUAN);
+    fireEvent.click(screen.getByRole("button", { name: "Editar Juan" }));
+    await act(async () => {});
+    const dialogo = screen.getByRole("dialog", { name: "Editar Juan" });
+    fireEvent.click(within(dialogo).getByRole("checkbox", { name: /Precio y duración propios/ }));
+    // Vacío muestra lo del servicio como pista.
+    const minutos = within(dialogo).getByLabelText("Minutos de Corte clásico");
+    expect(minutos).toHaveAttribute("placeholder", "30 min");
+    fireEvent.change(minutos, { target: { value: "25" } });
+    fireEvent.change(within(dialogo).getByLabelText("Precio de Corte clásico"), { target: { value: "60" } });
+    await act(async () => {
+      fireEvent.click(within(dialogo).getByRole("button", { name: "Guardar" }));
+    });
+    expect(apiConfigAgenda.actualizarRecurso).toHaveBeenCalled();
+    expect(apiConfigAgenda.guardarServiciosRecurso).toHaveBeenCalledWith(10, [
+      { servicioId: 100, duracionMin: 25, precio: 60 },
+    ]);
+  });
+
+  it("Profesionales: sin nada propio se guarda como siempre", async () => {
+    await montar("recursos");
+    vi.mocked(apiConfigAgenda.actualizarRecurso).mockResolvedValue(JUAN);
+    fireEvent.click(screen.getByRole("button", { name: "Editar Juan" }));
+    await act(async () => {});
+    const dialogo = screen.getByRole("dialog", { name: "Editar Juan" });
+    await act(async () => {
+      fireEvent.click(within(dialogo).getByRole("button", { name: "Guardar" }));
+    });
+    expect(apiConfigAgenda.actualizarRecurso).toHaveBeenCalled();
+    expect(apiConfigAgenda.guardarServiciosRecurso).not.toHaveBeenCalled();
   });
 
   it("Profesionales: no deja guardar sin sucursal", async () => {

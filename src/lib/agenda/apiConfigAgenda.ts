@@ -55,6 +55,18 @@ export const apiConfigAgenda = {
     request<Recurso>("/agenda/recursos", { method: "POST", body: json(input) }),
   actualizarRecurso: (id: number, input: RecursoInput) =>
     request<Recurso>(`/agenda/recursos/${id}`, { method: "PATCH", body: json(input) }),
+  /**
+   * Fase 2: qué servicios hace y, en cada uno, su duración y su precio
+   * propios (null = los del servicio). Reemplaza la lista.
+   */
+  guardarServiciosRecurso: (
+    id: number,
+    servicios: { servicioId: number; duracionMin: number | null; precio: number | null }[],
+  ) =>
+    request<Recurso>(`/agenda/recursos/${id}/servicios`, {
+      method: "PUT",
+      body: json({ servicios }),
+    }),
 
   // ── Horarios (semana tipo) ────────────────────────────────────────────────
   /**

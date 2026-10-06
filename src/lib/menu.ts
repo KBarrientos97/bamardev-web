@@ -76,6 +76,15 @@ const ITEMS: (ItemNav & { bloque: Bloque })[] = [
     seccion: "solicitudes",
     bloque: "agenda",
   },
+  // Fase 2: los números de la agenda (ocupación, no-shows, retención). No
+  // cuelga de /agenda, como la configuración: así no se encienden los dos.
+  {
+    a: "/reportes-agenda",
+    label: "Reportes de agenda",
+    icono: "chart",
+    seccion: "reportes_agenda",
+    bloque: "agenda",
+  },
   {
     a: "/configuracion/agenda",
     label: "Configuración de agenda",
@@ -204,6 +213,8 @@ const ITEMS: (ItemNav & { bloque: Bloque })[] = [
     seccion: "gastos",
     bloque: "administracion",
   },
+  // Al lado de Gastos: es lo que se le paga a cada profesional (fase 2).
+  { a: "/comisiones", label: "Comisiones", icono: "dollar", seccion: "comisiones", bloque: "administracion" },
   { a: "/reportes", label: "Reportes", icono: "chart", seccion: "reportes", bloque: "administracion" },
   { a: "/usuarios", label: "Usuarios", icono: "users", seccion: "usuarios", bloque: "administracion" },
   // A11: las reglas del negocio y las de la reserva online. Sólo el dueño.
