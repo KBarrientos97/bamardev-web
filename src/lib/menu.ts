@@ -57,6 +57,11 @@ export const TITULO_BLOQUE: Record<Bloque, string> = {
 };
 
 const ITEMS: (ItemNav & { bloque: Bloque })[] = [
+  // Agenda de belleza: primeras, como en el lienzo aprobado. Sólo existen en
+  // los rubros de belleza con la feature `agenda` (ver permisos.ts), así que a
+  // los demás negocios no les mueven el menú.
+  { a: "/agenda", label: "Agenda", icono: "calendar", seccion: "agenda", bloque: "vender" },
+  { a: "/hoy", label: "Hoy", icono: "clock", seccion: "hoy", bloque: "vender" },
   { a: "/pos", label: "Punto de venta", icono: "cart", seccion: "pos", bloque: "vender" },
   // Va segundo y no dentro de Inventario: en una farmacia no es una consulta
   // de catálogo, es parte de atender. Se usa más que ninguna otra pantalla.
