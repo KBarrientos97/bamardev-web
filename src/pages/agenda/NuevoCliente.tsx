@@ -9,7 +9,7 @@ import { apiCrm } from "../../lib/crm/apiCrm";
  * con dígitos es un teléfono, si no, un nombre. Así quien buscó "7001 2345"
  * o "Rosa" y no la encontró no lo tiene que tipear de nuevo.
  */
-export function inicialesDeBusqueda(texto: string): { nombre: string; telefono: string } {
+function inicialesDeBusqueda(texto: string): { nombre: string; telefono: string } {
   const t = texto.trim();
   return /\d/.test(t) ? { nombre: "", telefono: t } : { nombre: t, telefono: "" };
 }

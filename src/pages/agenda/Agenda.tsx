@@ -16,7 +16,7 @@ import type { AgendaDia, Cita } from "../../lib/agenda/tiposAgenda";
 import { useConsultaPeriodica } from "../../lib/agenda/useConsultaPeriodica";
 import { useEsCelular } from "../../lib/agenda/useEsCelular";
 import { useSucursalAgenda } from "../../lib/agenda/useSucursalAgenda";
-import { etiquetaRol, tieneFeature } from "../../lib/permisos";
+import { etiquetaRol, gestionaCola, tieneFeature } from "../../lib/permisos";
 import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
 import ColaEspera from "./ColaEspera";
@@ -51,7 +51,7 @@ function conCita(d: AgendaDia | null, c: Cita): AgendaDia | null {
  * una cita o hay un formulario abierto.
  */
 export default function Agenda() {
-  const { negocio } = useAuth();
+  const { negocio, usuario } = useAuth();
   const cobrar = useCobrarCita();
   const suc = useSucursalAgenda();
   const esCelular = useEsCelular();
@@ -64,7 +64,9 @@ export default function Agenda() {
   const [aviso, setAviso] = useAviso(5000);
   const [errorMover, setErrorMover] = useState("");
 
-  const conCola = tieneFeature(negocio?.features, "cola_walkin");
+  // La cola es de recepción: el profesional no la ve ni anota (el backend le
+  // da la cola vacía y 403 al anotar).
+  const conCola = tieneFeature(negocio?.features, "cola_walkin") && gestionaCola(usuario);
   const etiquetaProfesional = etiquetaRol("PROFESIONAL", negocio);
   const spa = useSpa();
   const [porEspacio, setPorEspacio] = useState(false);

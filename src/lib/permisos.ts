@@ -520,6 +520,17 @@ export function creaClientes(usuario: (ConPermisos & { rol?: Rol }) | null | und
 }
 
 /**
+ * ¿Opera la cola de espera (anotar, atender, "se fue")? El backend pide
+ * `agenda.gestionar` o `cola.gestionar`; sin permisos del backend, quien no
+ * es profesional. Al profesional la cola le llega vacía y anotar le da 403:
+ * mostrarle la pestaña con "Agregar" era ofrecerle un error.
+ */
+export function gestionaCola(usuario: (ConPermisos & { rol?: Rol }) | null | undefined): boolean {
+  const respaldo = usuario?.rol !== "PROFESIONAL";
+  return tienePermiso(usuario, "cola.gestionar", respaldo) || tienePermiso(usuario, "agenda.gestionar", respaldo);
+}
+
+/**
  * El profesional en la agenda: la ve sólo sobre lo suyo y no la gestiona.
  * Respaldo: el rol PROFESIONAL, como hasta ahora.
  */
