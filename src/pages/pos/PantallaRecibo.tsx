@@ -330,6 +330,16 @@ function LineaTicket({
         </div>
       )}
       {linea.nota && <p className="text-xs italic text-texto-3">{linea.nota}</p>}
+      {/* Belleza: quién lo hizo y, si es de un paquete, qué sesión fue o qué
+          trae. Una venta sin profesional ni paquetes no lo trae y el ticket
+          de siempre no cambia. */}
+      {linea.recurso && <p className="text-xs text-texto-3">Atendió: {linea.recurso}</p>}
+      {linea.paquete && (
+        <p className="text-xs font-semibold text-texto-2">
+          {linea.paquete.tipo === "SESION" ? `${linea.paquete.nombre}: ` : ""}
+          {linea.paquete.texto}
+        </p>
+      )}
     </div>
   );
 }

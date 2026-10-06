@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -13,6 +14,7 @@ import type { Carrito } from "./useCarrito";
  *     tiene y hace los mismos pedidos de siempre.
  *   • A-02: cobrar una cita con una venta que no la cubre pide confirmación.
  *   • A-03: un servicio de la cita que ya no está en el catálogo se carga igual.
+ *   • N2-13 (07-oct): venta directa con profesional, sólo con agenda.
  */
 
 const sesion = vi.hoisted(() => ({
@@ -51,6 +53,10 @@ vi.mock("../../lib/api", () => ({
   },
 }));
 
+vi.mock("../../lib/agenda/apiConfigAgenda", () => ({
+  apiConfigAgenda: { recursos: vi.fn(async () => []) },
+}));
+
 vi.mock("../../lib/agenda/apiAgenda", () => ({
   apiAgenda: {
     hoy: vi.fn(async () => ({ citas: [] })),
@@ -59,14 +65,16 @@ vi.mock("../../lib/agenda/apiAgenda", () => ({
   mensajeDe: (_e: unknown, d: string) => d,
 }));
 
-// La venta: muestra el carrito y deja quitar una línea o ir a cobrar.
+// La venta: muestra el carrito (y lo que va arriba) y deja quitar una
+// línea o ir a cobrar.
 vi.mock("./PantallaVenta", () => ({
-  default: (props: { carrito: Carrito; onCobrar: () => void }) => (
+  default: (props: { carrito: Carrito; onCobrar: () => void; cabecera?: ReactNode }) => (
     <div>
+      {props.cabecera}
       <ul>
         {props.carrito.lineas.map((l) => (
           <li key={l.producto.id}>
-            {l.producto.nombre} x{l.cantidad}
+            {l.producto.nombre} x{l.cantidad} a {l.producto.precio}
             <button onClick={() => props.carrito.quitar(l.producto.id)}>
               quitar {l.producto.nombre}
             </button>
@@ -78,12 +86,19 @@ vi.mock("./PantallaVenta", () => ({
   ),
 }));
 
-// El cobro: paga justo el total.
+// El cobro: paga justo el total, y dice a quién le ofrece propina.
 vi.mock("./PantallaCobro", () => ({
-  default: (props: { total: number; onConfirmar: (p: unknown[]) => void }) => (
-    <button onClick={() => props.onConfirmar([{ formaPagoId: 1, monto: props.total }])}>
-      pagar {props.total}
-    </button>
+  default: (props: {
+    total: number;
+    profesionales?: { id: number; nombre: string }[];
+    onConfirmar: (p: unknown[]) => void;
+  }) => (
+    <div>
+      <p>propina para: {(props.profesionales ?? []).map((p) => p.nombre).join(", ") || "nadie"}</p>
+      <button onClick={() => props.onConfirmar([{ formaPagoId: 1, monto: props.total }])}>
+        pagar {props.total}
+      </button>
+    </div>
   ),
 }));
 
@@ -91,6 +106,8 @@ vi.mock("./PantallaRecibo", () => ({ default: () => <p>recibo</p> }));
 
 import { api } from "../../lib/api";
 import { apiAgenda } from "../../lib/agenda/apiAgenda";
+import { apiConfigAgenda } from "../../lib/agenda/apiConfigAgenda";
+import type { Recurso } from "../../lib/agenda/tiposConfigAgenda";
 import Pos from "./Pos";
 
 async function montar(ruta = "/pos") {
@@ -222,5 +239,135 @@ describe("cobrar una cita", () => {
         detalles: expect.arrayContaining([expect.objectContaining({ productoId: 190, precio: 150 })]),
       }),
     );
+  });
+});
+
+describe("N2-13: venta directa con profesional", () => {
+  const servicio = (id: number, nombre: string, precio: number): Producto =>
+    ({
+      id,
+      nombre,
+      precio,
+      tipoProducto: "SERVICIO",
+      stockTotal: 0,
+      habilitado: true,
+      componentes: [],
+    }) as unknown as Producto;
+
+  const profesional = (id: number, nombre: string, propios: Record<number, number> = {}): Recurso =>
+    ({
+      id,
+      tipo: "PROFESIONAL",
+      nombre,
+      activo: true,
+      orden: id,
+      sucursalIds: [1],
+      servicioIds: [189, 190],
+      serviciosPropios: Object.entries(propios).map(([sid, precio]) => ({
+        servicioId: Number(sid),
+        precio,
+        duracionMin: null,
+        comisionPct: null,
+      })),
+    }) as unknown as Recurso;
+
+  /** El carrito que quedó de antes de un F5: así el POS lo rehidrata. */
+  const enCarrito = (...ids: number[]) =>
+    sessionStorage.setItem(
+      "bamar.carrito.LOCAL",
+      JSON.stringify(ids.map((id) => ({ id, cantidad: 1, enMesa: 1, nota: "" }))),
+    );
+
+  beforeEach(() => {
+    vi.mocked(api.getProductos).mockResolvedValue([
+      servicio(189, "Corte de dama", 80),
+      servicio(190, "Tinte raíz", 150),
+    ]);
+    vi.mocked(api.crearVenta).mockResolvedValue({ id: 51 } as never);
+    vi.mocked(apiConfigAgenda.recursos).mockResolvedValue([
+      profesional(3, "Carla", { 190: 180 }),
+      profesional(4, "Sofía"),
+    ]);
+  });
+
+  it("sin agenda (Omar) no pide profesionales, no hay selector y la venta es la de siempre", async () => {
+    sesion.features = ["pos", "caja", "salon", "delivery"];
+    enCarrito(189);
+    await montar();
+    expect(apiConfigAgenda.recursos).not.toHaveBeenCalled();
+    expect(screen.queryByText("¿Quién atendió?")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "ir a cobrar" }));
+    expect(screen.getByText("propina para: nadie")).toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "pagar 80" }));
+    });
+    const cuerpo = vi.mocked(api.crearVenta).mock.calls[0][0] as { detalles: object[] };
+    expect(cuerpo.detalles).toEqual([{ productoId: 189, cantidad: 1, precio: 80, consumo: "MESA" }]);
+    expect(cuerpo).not.toHaveProperty("citaId");
+  });
+
+  it("con agenda: elegir quién atendió cobra su precio, manda recursoId y ofrece su propina", async () => {
+    sesion.features = ["pos", "caja", "agenda", "propinas"];
+    sesion.conAgenda = true;
+    enCarrito(189, 190);
+    await montar();
+    expect(apiConfigAgenda.recursos).toHaveBeenCalled();
+    expect(screen.getByText("¿Quién atendió?")).toBeInTheDocument();
+    // Sin elegir, el precio de lista.
+    expect(screen.getByText(/Tinte raíz x1 a 150/)).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Profesional de la venta"), { target: { value: "3" } });
+    // Carla cobra el tinte a 180 (su precio propio): el total del cobro es ése.
+    expect(screen.getByText(/Tinte raíz x1 a 180/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "ir a cobrar" }));
+    expect(screen.getByText("propina para: Carla")).toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "pagar 260" }));
+    });
+    expect(api.crearVenta).toHaveBeenCalledWith(
+      expect.objectContaining({
+        detalles: [
+          expect.objectContaining({ productoId: 189, precio: 80, recursoId: 3 }),
+          expect.objectContaining({ productoId: 190, precio: 180, recursoId: 3 }),
+        ],
+      }),
+    );
+    // La venta siguiente arranca sin profesional.
+    expect(sessionStorage.getItem("bamar.profesionalVenta")).toBeNull();
+  });
+
+  it("por servicio: cada uno con su profesional, y la propina para los dos", async () => {
+    sesion.features = ["pos", "caja", "agenda", "propinas"];
+    sesion.conAgenda = true;
+    enCarrito(189, 190);
+    await montar();
+    fireEvent.change(screen.getByLabelText("Profesional de la venta"), { target: { value: "3" } });
+    fireEvent.click(screen.getByRole("button", { name: "Por servicio" }));
+    fireEvent.change(screen.getByLabelText("Profesional de Corte de dama"), { target: { value: "4" } });
+    fireEvent.click(screen.getByRole("button", { name: "ir a cobrar" }));
+    expect(screen.getByText("propina para: Carla, Sofía")).toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "pagar 260" }));
+    });
+    const cuerpo = vi.mocked(api.crearVenta).mock.calls[0][0] as {
+      detalles: { productoId: number; recursoId?: number }[];
+    };
+    expect(cuerpo.detalles.map((d) => [d.productoId, d.recursoId])).toEqual([
+      [189, 4],
+      [190, 3],
+    ]);
+  });
+
+  it("sin elegir a nadie, con agenda, la venta sale como siempre", async () => {
+    sesion.features = ["pos", "caja", "agenda"];
+    sesion.conAgenda = true;
+    enCarrito(189);
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "ir a cobrar" }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "pagar 80" }));
+    });
+    const cuerpo = vi.mocked(api.crearVenta).mock.calls[0][0] as { detalles: object[] };
+    expect(cuerpo.detalles).toEqual([{ productoId: 189, cantidad: 1, precio: 80, consumo: "MESA" }]);
   });
 });

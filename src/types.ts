@@ -887,7 +887,40 @@ export interface DetalleVenta {
   /** Sólo en una venta con descuento (PLAN-CRM-Y-PROMOCIONES). */
   descuento?: number;
   descuentoNombre?: string | null;
+  /** Belleza: quién hizo el servicio (cita o venta directa con profesional). */
+  recursoId?: number;
+  recurso?: string | null;
+  /** Belleza (paquetes): la sesión que pagó la línea, o el paquete que vendió. */
+  paquete?: PaqueteRecibo;
 }
+
+/**
+ * Lo que el recibo dice de un paquete (decisión 6 del 07-oct). `texto` ya
+ * viene armado por el backend —"Sesión 3 de 10 · quedan 7" o "10 sesiones ·
+ * vale hasta el 05/01/2027"— para que la web y la app impriman lo mismo.
+ */
+export type PaqueteRecibo =
+  | {
+      tipo: "SESION";
+      paqueteClienteId: number;
+      nombre: string;
+      desde: number;
+      hasta: number;
+      sesiones: number;
+      restantes: number;
+      ultimoDia: string;
+      texto: string;
+    }
+  | {
+      tipo: "COMPRA";
+      paqueteClienteId: number;
+      nombre: string;
+      sesiones: number;
+      items: { servicio: string; sesiones: number }[];
+      ultimoDia: string;
+      estado: string;
+      texto: string;
+    };
 
 /** Un renglón de descuento del recibo: "2x1 martes  − Bs 25". */
 export interface DescuentoRecibo {
