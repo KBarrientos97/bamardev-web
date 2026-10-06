@@ -159,6 +159,9 @@ export default function MenuLateral({
 
   const icono = (n: NodoMenu, chico: boolean) => <Icon name={n.item.icono} size={chico ? 17 : 19} />;
 
+  /** En la barra de íconos no se ve el grupo: va el nombre completo. */
+  const nombre = (n: NodoMenu) => n.item.titulo ?? n.item.label;
+
   /** Barra de íconos: todo el árbol en una columna. */
   const nodoCompacto = (n: NodoMenu, padre: NodoMenu | null) => {
     const activo = !n.esTitulo && esActivo(n.item, pathname);
@@ -170,11 +173,11 @@ export default function MenuLateral({
           onClick={() => navegar(n)}
           // En la barra de íconos el número es sólo un punto: el lector de
           // pantalla igual tiene que oír cuántas hay (QA PER-09).
-          aria-label={contadorDe(n) > 0 ? `${n.item.label}, ${contadorDe(n)} por atender` : n.item.label}
+          aria-label={contadorDe(n) > 0 ? `${nombre(n)}, ${contadorDe(n)} por atender` : nombre(n)}
           aria-current={activo ? "page" : undefined}
           data-fila=""
           data-nav-id={n.id}
-          {...mostrarTip(n.item.label)}
+          {...mostrarTip(nombre(n))}
           className={[
             "flex items-center justify-center rounded-xl py-2.5 transition-colors",
             foco,

@@ -81,8 +81,8 @@ describe("menú", () => {
     expect(agenda.hijos.map((h) => h.item.label)).toEqual([
       "Agenda del día",
       "Hoy",
-      "Reportes de agenda",
-      "Configuración de agenda",
+      "Reportes",
+      "Configuración",
     ]);
     // El grupo no tiene pantalla propia: lleva a la del día.
     expect(agenda.item.a).toBe("/agenda");

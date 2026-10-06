@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Feature, Modulo, Rol } from "../types";
-import { aplanar, construirMenu, esMenuDeAgenda } from "./menu";
+import { aplanar, construirMenu, esMenuDeAgenda, tituloDe } from "./menu";
 import { puedeVer } from "./permisos";
 
 /**
@@ -92,5 +92,20 @@ describe("menú del salón", () => {
     const plano = construirMenu((s) => puedeVer(c, s), "RESTAURANTE");
     expect(menu("ADMIN", "RESTAURANTE", base)).toEqual(plano);
     expect(admin(plano).every((n) => n.hijos.length === 0)).toBe(true);
+  });
+});
+
+describe("nombres dentro del grupo Agenda", () => {
+  it("dentro del grupo van cortos y la cabecera usa el nombre completo", () => {
+    const m = menu("ADMIN", "BARBERIA");
+    const agenda = m[0].nodos.find((n) => n.item.label === "Agenda");
+    const hijos = agenda?.hijos.map((h) => h.item.label) ?? [];
+    expect(hijos).toContain("Reportes");
+    expect(hijos).toContain("Configuración");
+    expect(hijos).not.toContain("Reportes de agenda");
+    const planos = aplanar(m.flatMap((b) => b.nodos));
+    expect(tituloDe(planos, "/reportes-agenda")).toBe("Reportes de agenda");
+    expect(tituloDe(planos, "/configuracion/agenda")).toBe("Configuración de agenda");
+    expect(tituloDe(planos, "/reportes")).toBe("Reportes");
   });
 });

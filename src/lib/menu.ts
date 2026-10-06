@@ -18,6 +18,12 @@ import { esBelleza, termino, type Termino, type Vocabulario } from "./rubro";
 export interface ItemNav {
   a: string;
   label: string;
+  /**
+   * El nombre completo, para donde no se ve el grupo: la cabecera del celular
+   * y la barra de íconos. Dentro de Agenda basta "Reportes", pero solo, en la
+   * cabecera, se confundiría con los de Finanzas.
+   */
+  titulo?: string;
   icono: NombreIcono;
   /**
    * Sin sección, el ítem es un grupo SIN pantalla propia (Agenda, Equipo,
@@ -83,10 +89,17 @@ const ITEMS: (ItemNav & { bloque: Bloque })[] = [
       // A9: con contador de pendientes (ver MenuLateral). Sólo con la reserva online.
       { a: "/solicitudes", label: "Solicitudes online", icono: "bell", seccion: "solicitudes" },
       // Fase 2: los números de la agenda (ocupación, no-shows, retención).
-      { a: "/reportes-agenda", label: "Reportes de agenda", icono: "chart", seccion: "reportes_agenda" },
+      {
+        a: "/reportes-agenda",
+        label: "Reportes",
+        titulo: "Reportes de agenda",
+        icono: "chart",
+        seccion: "reportes_agenda",
+      },
       {
         a: "/configuracion/agenda",
-        label: "Configuración de agenda",
+        label: "Configuración",
+        titulo: "Configuración de agenda",
         icono: "settings",
         seccion: "agenda_config",
       },
@@ -463,7 +476,8 @@ function nodoDeRuta(planos: NodoMenu[], pathname: string): NodoMenu | null {
 
 /** Título de la barra móvil. */
 export function tituloDe(planos: NodoMenu[], pathname: string): string {
-  return nodoDeRuta(planos, pathname)?.item.label ?? "BamarDev";
+  const n = nodoDeRuta(planos, pathname)?.item;
+  return n ? (n.titulo ?? n.label) : "BamarDev";
 }
 
 /**

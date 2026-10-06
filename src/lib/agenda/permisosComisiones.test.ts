@@ -70,7 +70,7 @@ describe("menú", () => {
   it("el dueño de un salón tiene Reportes de agenda y Comisiones", () => {
     const c = ctx("ADMIN");
     const items = aplanar(construirMenu((s) => puedeVer(c, s), c.rubro).flatMap((b) => b.nodos)).map(
-      (n) => n.item.label,
+      (n) => n.item.titulo ?? n.item.label,
     );
     expect(items).toContain("Reportes de agenda");
     expect(items).toContain("Comisiones");
