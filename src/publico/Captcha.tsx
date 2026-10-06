@@ -27,6 +27,9 @@ export default function Captcha({ siteKey, onToken }: { siteKey: string; onToken
         id = ts.render(caja.current, {
           sitekey: siteKey,
           language: "es",
+          // La página es blanca: con "auto", un teléfono en modo oscuro lo
+          // pintaría negro en medio del formulario.
+          theme: "light",
           // Ocupa el ancho del formulario (mínimo 300 px): a 390 px entra.
           size: "flexible",
           callback: (token) => avisar.current(token),

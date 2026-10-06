@@ -15,6 +15,7 @@ const SCRIPT = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=exp
 export interface OpcionesTurnstile {
   sitekey: string;
   language?: string;
+  theme?: "auto" | "light" | "dark";
   size?: "normal" | "flexible" | "compact";
   callback?: (token: string) => void;
   "expired-callback"?: () => void;
