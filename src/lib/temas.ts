@@ -267,15 +267,15 @@ export function resolverTema(origen: OrigenTema): Tema {
   return (rubro && TEMAS[rubro]) || VERDE;
 }
 
+/** Los rubros de belleza; copia de `rubro.ts` para no atar este archivo a él. */
+const BELLEZA = ['PELUQUERIA', 'BARBERIA', 'SPA', 'UNAS'];
+
 /**
  * Aplica el tema del negocio reescribiendo las variables CSS en :root.
  *
  * Acepta el negocio de la sesión o sólo un rubro (ver `resolverTema`). Sin
  * nada, como antes del login, cae en el verde.
  */
-/** Los rubros de belleza; copia de `rubro.ts` para no atar este archivo a él. */
-const BELLEZA = ['PELUQUERIA', 'BARBERIA', 'SPA', 'UNAS'];
-
 export function aplicarTema(origen: OrigenTema): void {
   const tema = resolverTema(origen);
   const raiz = document.documentElement.style;
