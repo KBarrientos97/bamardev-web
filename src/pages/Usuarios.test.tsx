@@ -29,6 +29,8 @@ vi.mock("../store/AuthContext", () => ({
 vi.mock("../lib/api", () => ({
   api: {
     getUsuarios: vi.fn(),
+    // Por defecto, un backend sin el endpoint: la pantalla usa su lista.
+    getRolesOfrecidos: vi.fn(),
     getAlmacenes: vi.fn(async () => []),
     actualizarUsuario: vi.fn(),
     crearUsuario: vi.fn(),
@@ -92,6 +94,7 @@ async function editarAlMesero() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(api.getRolesOfrecidos).mockRejectedValue(new Error("404"));
   sesion.conSalon = true;
   sesion.actor = { id: 1, rol: "ADMIN" };
   sesion.negocio = null;
@@ -268,7 +271,7 @@ describe("el profesional en Usuarios", () => {
     sesion.negocio = BARBERIA;
     await montar([ADMIN, BARBERO]);
     fireEvent.click(screen.getByRole("button", { name: /@juan\b/ }));
-    expect(screen.getByText("Ve su agenda (llega con la agenda)")).toBeInTheDocument();
+    expect(screen.getByText("Ve su agenda y sus clientes")).toBeInTheDocument();
   });
 
   it("sin perfil (backend de hoy) no aparece en ningún lado", async () => {
@@ -278,5 +281,71 @@ describe("el profesional en Usuarios", () => {
     expect(kpi("Cajeros")).toBe("0");
     fireEvent.click(screen.getByRole("button", { name: "Nuevo" }));
     expect(rolesOfrecidos()).toEqual(["Supervisor", "Cajero", "Mesero", "Repartidor"]);
+  });
+});
+
+/**
+ * Con el backend de PLAN-ROLES la lista sale de `GET /roles/ofrecidos`: la
+ * etiqueta del rubro y lo que puede hacer cada rol vienen del backend. Para
+ * un restaurante no cambia nada de lo que se ve.
+ */
+describe("los roles del backend (/roles/ofrecidos)", () => {
+  const permiso = (codigo: string, nombre: string, dominio: string, alcance: "GENERAL" | "PROPIO" = "GENERAL") => ({
+    codigo,
+    nombre,
+    dominio,
+    alcance,
+  });
+
+  it("restaurante: las mismas opciones y la misma ayuda que siempre", async () => {
+    vi.mocked(api.getRolesOfrecidos).mockResolvedValue([
+      { codigo: "SUPERVISOR", etiqueta: "Supervisor", descripcion: "El encargado", nivel: 80, arquetipo: "SUPERVISOR", permisos: [] },
+      { codigo: "CAJERO", etiqueta: "Cajero", descripcion: "Atiende", nivel: 50, arquetipo: "CAJERO", permisos: [permiso("ventas.vender", "Vender", "Ventas")] },
+      { codigo: "MESERO", etiqueta: "Mesero", descripcion: "Mesas", nivel: 30, arquetipo: "MESERO", permisos: [] },
+      { codigo: "REPARTIDOR", etiqueta: "Repartidor", descripcion: "Entrega", nivel: 30, arquetipo: "REPARTIDOR", permisos: [] },
+    ]);
+    await montar([ADMIN]);
+    fireEvent.click(screen.getByRole("button", { name: "Nuevo" }));
+    await act(async () => {});
+    expect(rolesOfrecidos()).toEqual(["Supervisor", "Cajero", "Mesero", "Repartidor"]);
+    expect(screen.getByText("Ventas · Caja propia")).toBeInTheDocument();
+  });
+
+  it("barbería: la etiqueta y los permisos del profesional salen del backend", async () => {
+    sesion.conSalon = false;
+    vi.mocked(api.getRolesOfrecidos).mockResolvedValue([
+      { codigo: "SUPERVISOR", etiqueta: "Supervisor", descripcion: null, nivel: 80, arquetipo: "SUPERVISOR", permisos: [] },
+      { codigo: "CAJERO", etiqueta: "Recepción", descripcion: null, nivel: 50, arquetipo: "CAJERO", permisos: [] },
+      {
+        codigo: "PROFESIONAL",
+        etiqueta: "Barbero",
+        descripcion: "Ve su agenda y sus clientes; no cobra.",
+        nivel: 40,
+        arquetipo: "PROFESIONAL",
+        permisos: [
+          permiso("agenda.ver", "Ver la agenda", "Agenda", "PROPIO"),
+          permiso("cliente.ver_ficha", "Ver fichas", "Clientes", "PROPIO"),
+        ],
+      },
+    ]);
+    await montar([ADMIN]);
+    fireEvent.click(screen.getByRole("button", { name: "Nuevo" }));
+    await act(async () => {});
+    expect(rolesOfrecidos()).toEqual(["Supervisor", "Recepción", "Barbero"]);
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "PROFESIONAL" } });
+    expect(screen.getByText("Ve su agenda y sus clientes; no cobra.")).toBeInTheDocument();
+    expect(screen.getByText("Qué puede hacer barbero")).toBeInTheDocument();
+    expect(screen.getByText(/Ver la agenda \(sólo lo suyo\)/)).toBeInTheDocument();
+  });
+
+  it("al editar, el rol que ya tiene se sigue ofreciendo aunque el backend no lo liste", async () => {
+    vi.mocked(api.getRolesOfrecidos).mockResolvedValue([
+      { codigo: "CAJERO", etiqueta: "Cajero", descripcion: null, nivel: 50, arquetipo: "CAJERO", permisos: [] },
+    ]);
+    await montar([ADMIN, MESERO]);
+    await editarAlMesero();
+    await act(async () => {});
+    expect(screen.getByRole("combobox")).toHaveValue("MESERO");
+    expect(rolesOfrecidos()).toEqual(["Cajero", "Mesero"]);
   });
 });

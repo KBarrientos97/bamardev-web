@@ -18,7 +18,7 @@ import type {
   Servicio,
 } from "../../lib/agenda/tiposAgenda";
 import { fmtMoney } from "../../lib/format";
-import { puedeSupervisar } from "../../lib/permisos";
+import { puedeSupervisar, tienePermiso, veSoloSuAgenda } from "../../lib/permisos";
 import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
 import { PedirPinCredito } from "../pos/PantallaCredito";
@@ -76,8 +76,15 @@ export default function NuevaCita({
   onCreada: (cita: Cita) => void;
 }) {
   const { usuario } = useAuth();
-  const esProfesional = usuario?.rol === "PROFESIONAL";
-  const esEncargado = puedeSupervisar(usuario?.rol ?? "CAJERO");
+  // Por permisos si el backend los manda (PLAN-ROLES R4); si no, por rol.
+  const esProfesional = veSoloSuAgenda(usuario);
+  // Superponer sin PIN: el permiso `agenda.sobreturno` (al cajero se le puede
+  // prender como ajuste); sin permisos, el encargado de siempre.
+  const esEncargado = tienePermiso(
+    usuario,
+    "agenda.sobreturno",
+    puedeSupervisar(usuario?.rol ?? "CAJERO"),
+  );
 
   const servicios = useApi(() => apiAgenda.servicios(), []);
   const recursos = useApi(() => apiAgenda.recursos(), []);

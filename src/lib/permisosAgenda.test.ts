@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest";
 import type { Feature, Rol } from "../types";
 import { construirMenu } from "./menu";
-import { puedeVer, rutaInicial, type ContextoPermisos, type Seccion } from "./permisos";
+import {
+  puedeVer,
+  rutaInicial,
+  tienePermiso,
+  veSoloSuAgenda,
+  type ContextoPermisos,
+  type Seccion,
+} from "./permisos";
 
 /**
  * Las secciones de la agenda (fase 1 de belleza): las decide la feature
@@ -92,5 +99,81 @@ describe("el menú", () => {
     const menu = etiquetas(ctx("ADMIN", "RESTAURANTE"));
     expect(menu).not.toContain("Agenda");
     expect(menu).not.toContain("Hoy");
+  });
+});
+
+/**
+ * PLAN-ROLES R4: cuando el backend manda `permisos`, las secciones de la
+ * agenda (que el backend ya corta por permisos) se deciden con ellos y no
+ * por el nombre del rol. Sin permisos, todo sigue como arriba.
+ */
+describe("la agenda por permisos (cuando vienen)", () => {
+  const RECEPCION = ["agenda.ver", "agenda.gestionar", "agenda.estado", "cliente.ver_ficha"];
+  const conPermisos = (
+    rol: Rol,
+    permisos: string[],
+    propios: string[] = [],
+    rubro = "PELUQUERIA",
+  ): ContextoPermisos => ({ ...ctx(rol, rubro), permisos, permisosPropios: propios, arquetipo: rol });
+  const ver = (c: ContextoPermisos) =>
+    (["agenda", "hoy", "mi_agenda", "agenda_config", "config_negocio"] as Seccion[]).filter((s) =>
+      puedeVer(c, s),
+    );
+
+  it("recepción ve Agenda y Hoy, no la configuración", () => {
+    expect(ver(conPermisos("CAJERO", RECEPCION))).toEqual(["agenda", "hoy"]);
+  });
+
+  it("el profesional (alcance PROPIO) ve sólo Mi agenda", () => {
+    expect(ver(conPermisos("PROFESIONAL", ["agenda.ver", "agenda.estado"], ["agenda.ver", "agenda.estado"]))).toEqual([
+      "mi_agenda",
+    ]);
+  });
+
+  it("el encargado con agenda.configurar ve la configuración y las reglas", () => {
+    expect(ver(conPermisos("SUPERVISOR", [...RECEPCION, "agenda.configurar"]))).toEqual([
+      "agenda",
+      "hoy",
+      "agenda_config",
+      "config_negocio",
+    ]);
+  });
+
+  it("un cajero al que no le llegó agenda.ver no ve la agenda aunque su rol la tuviera", () => {
+    expect(ver(conPermisos("CAJERO", ["ventas.vender"]))).toEqual([]);
+  });
+
+  it("el rubro sigue mandando: un restaurante no ve la agenda aunque lleguen permisos", () => {
+    expect(ver(conPermisos("ADMIN", [...RECEPCION, "agenda.configurar"], [], "RESTAURANTE"))).toEqual([]);
+  });
+
+  it("lo demás no cambia por traer permisos (Omar y la farmacia)", () => {
+    const omar = { ...ctx("CAJERO", "RESTAURANTE", ["pos", "caja", "fiado"]), permisos: ["ventas.vender"] };
+    expect(puedeVer(omar, "pos")).toBe(true);
+    expect(puedeVer(omar, "caja")).toBe(true);
+    expect(puedeVer(omar, "reportes")).toBe(false);
+  });
+
+  it("la ruta inicial sale del arquetipo si viene", () => {
+    expect(rutaInicial({ ...conPermisos("PROFESIONAL", ["agenda.ver"], ["agenda.ver"]) })).toBe("/mi-agenda");
+    expect(rutaInicial(conPermisos("CAJERO", RECEPCION))).toBe("/hoy");
+  });
+});
+
+describe("tienePermiso / veSoloSuAgenda", () => {
+  it("con permisos manda el permiso; sin ellos, el respaldo", () => {
+    expect(tienePermiso({ permisos: ["agenda.sobreturno"] }, "agenda.sobreturno", false)).toBe(true);
+    expect(tienePermiso({ permisos: [] }, "agenda.sobreturno", true)).toBe(false);
+    expect(tienePermiso({}, "agenda.sobreturno", true)).toBe(true);
+    expect(tienePermiso(null, "agenda.sobreturno", false)).toBe(false);
+  });
+
+  it("ve sólo su agenda: por alcance si hay permisos, por rol si no", () => {
+    expect(veSoloSuAgenda({ rol: "PROFESIONAL" })).toBe(true);
+    expect(veSoloSuAgenda({ rol: "CAJERO" })).toBe(false);
+    expect(veSoloSuAgenda({ rol: "CAJERO", permisos: ["agenda.ver"], permisosPropios: ["agenda.ver"] })).toBe(true);
+    expect(
+      veSoloSuAgenda({ rol: "PROFESIONAL", permisos: ["agenda.ver", "agenda.gestionar"], permisosPropios: [] }),
+    ).toBe(false);
   });
 });

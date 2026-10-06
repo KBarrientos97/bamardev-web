@@ -28,7 +28,14 @@ import {
 } from "../lib/permisos";
 import { useApi } from "../lib/useApi";
 import { useAuth } from "../store/AuthContext";
-import type { ActualizarUsuarioInput, CrearUsuarioInput, Rol, Usuario } from "../types";
+import type {
+  ActualizarUsuarioInput,
+  CrearUsuarioInput,
+  PermisoDeRol,
+  Rol,
+  RolOfrecido,
+  Usuario,
+} from "../types";
 
 // `ROLES_APP` y quién asigna qué viven en permisos.ts: se prueban sin montar
 // la pantalla, y el rol PROFESIONAL depende del perfil del rubro.
@@ -58,9 +65,9 @@ const PERMISOS_ROL: Record<RolApp, string[]> = {
   // cajero y lo que el dueño tiene que saber antes de darle la cuenta a alguien.
   MESERO: ["Salón y mesas", "Tomar pedidos", "Mandar la cuenta a caja", "No maneja dinero"],
   REPARTIDOR: ["Entregas", "Cobro contra entrega", "Rendición"],
-  // Honesto a propósito: hoy entra y no ve nada más que el aviso. El dueño
-  // tiene que saberlo antes de crearle la cuenta (D23, sin módulos).
-  PROFESIONAL: ["Ve su agenda (llega con la agenda)"],
+  // Desde PLAN-ROLES R3 el backend se lo hace cumplir: sólo lo suyo, sin
+  // cobrar ni configurar. Lo fino (teléfono, agendar) son reglas del negocio.
+  PROFESIONAL: ["Ve su agenda y sus clientes", "No cobra"],
 };
 
 /**
@@ -591,6 +598,46 @@ function Dato({ label, valor }: { label: string; valor: string }) {
   );
 }
 
+/**
+ * La línea de ayuda debajo del rol. Para los roles de siempre, la de siempre
+ * (la misma que la app Android); para uno que la web no tiene escrito (el
+ * profesional, o uno nuevo), la descripción que manda el backend.
+ */
+function resumenRol(rol: RolApp, ofrecido: RolOfrecido | null): string {
+  const deSiempre = rol === "PROFESIONAL" ? undefined : PERMISOS_ROL[rol];
+  if (deSiempre) return deSiempre.join(" · ");
+  return ofrecido?.descripcion ?? "";
+}
+
+/**
+ * "Qué puede hacer este rol" (PLAN-ROLES §11): los permisos que el backend
+ * resolvió para ESTE negocio (ya cruzados con el plan), agrupados por tema.
+ * Plegado: está para el que quiere el detalle antes de entregar una cuenta.
+ */
+function PermisosDelRol({ rol }: { rol: RolOfrecido }) {
+  const porDominio = new Map<string, PermisoDeRol[]>();
+  for (const p of rol.permisos) {
+    porDominio.set(p.dominio, [...(porDominio.get(p.dominio) ?? []), p]);
+  }
+  return (
+    <details className="mt-2 text-xs text-texto-3">
+      <summary className="cursor-pointer select-none">
+        Qué puede hacer {rol.etiqueta.toLowerCase()}
+      </summary>
+      <ul className="mt-2 space-y-1">
+        {[...porDominio.entries()].map(([dominio, permisos]) => (
+          <li key={dominio}>
+            <span className="font-medium">{dominio}:</span>{" "}
+            {permisos
+              .map((p) => (p.alcance === "PROPIO" ? `${p.nombre} (sólo lo suyo)` : p.nombre))
+              .join(" · ")}
+          </li>
+        ))}
+      </ul>
+    </details>
+  );
+}
+
 function FormUsuario({
   abierto,
   usuario,
@@ -634,12 +681,31 @@ function FormUsuarioCuerpo({
   // sin mesas, no tendría ninguna pantalla a la que entrar. El profesional,
   // sólo donde el perfil del rubro lo trae (ver `rolesAsignables`).
   const conSalon = puede("salon");
-  const rolesAsignables = calcularRolesAsignables({
-    rolActual: actual?.rol,
-    rolDelUsuario: usuario?.rol,
-    conSalon,
-    perfil: negocio?.perfil,
-  });
+  /**
+   * Los roles que el backend dice que este usuario puede asignar en este
+   * negocio, con la etiqueta del rubro y sus permisos (PLAN-ROLES §8.2). Si
+   * el backend todavía no tiene el endpoint (o falla), la lista de siempre.
+   */
+  const ofrecidos = useApi(() => api.getRolesOfrecidos().catch(() => null), []);
+  const delBackend = ofrecidos.datos ?? null;
+  const rolesAsignables: RolApp[] = delBackend
+    ? [
+        ...delBackend.map((r) => r.codigo as RolApp),
+        // El rol que YA tiene se sigue mostrando: si no, editarle el teléfono
+        // a un admin le cambiaría el rol sin querer al guardar.
+        ...(usuario && !delBackend.some((r) => r.codigo === usuario.rol)
+          ? [usuario.rol as RolApp]
+          : []),
+      ]
+    : calcularRolesAsignables({
+        rolActual: actual?.rol,
+        rolDelUsuario: usuario?.rol,
+        conSalon,
+        perfil: negocio?.perfil,
+      });
+  const ofrecido = delBackend?.find((r) => r.codigo === rol) ?? null;
+  const etiquetaDe = (r: RolApp) =>
+    delBackend?.find((o) => o.codigo === r)?.etiqueta ?? etiquetaRol(r, negocio);
   const [email, setEmail] = useState(usuario?.email ?? "");
   const [telefono, setTelefono] = useState(usuario?.telefono ?? "");
   const [notas, setNotas] = useState(usuario?.notas ?? "");
@@ -779,14 +845,15 @@ function FormUsuarioCuerpo({
 
         {/* `?? []`: un rol que la web todavía no conoce deja la ayuda vacía en
             vez de tirar la pantalla, que es lo que pasaba con el mesero. */}
-        <Campo label="Rol" hint={(PERMISOS_ROL[rol] ?? []).join(" · ")}>
+        <Campo label="Rol" hint={resumenRol(rol, ofrecido)}>
           <Select value={rol} onChange={(e) => setRol(e.target.value as RolApp)}>
             {rolesAsignables.map((r) => (
               <option key={r} value={r}>
-                {etiquetaRol(r, negocio)}
+                {etiquetaDe(r)}
               </option>
             ))}
           </Select>
+          {ofrecido && ofrecido.permisos.length > 0 && <PermisosDelRol rol={ofrecido} />}
         </Campo>
 
         {mostrarSucursal && puedeAsignarSucursal && (

@@ -59,6 +59,11 @@ function Inicio() {
     modulos: usuario.modulos,
     features: negocio?.features,
     rubro: negocio?.tipoNegocio,
+    // PLAN-ROLES R4: con permisos, la agenda se decide por ellos y la ruta
+    // inicial por el arquetipo. Sin ellos (backend viejo), como siempre.
+    permisos: usuario.permisos,
+    permisosPropios: usuario.permisosPropios,
+    arquetipo: usuario.arquetipo,
   });
   return <Navigate to={destino} replace />;
 }
