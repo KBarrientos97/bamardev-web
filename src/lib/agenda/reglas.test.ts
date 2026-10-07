@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  CAMPOS_REGLA,
   cambiosReglas,
   erroresReglas,
+  etiquetaCampo,
   fmtValorRegla,
   META_REGLAS,
   motivoAnticipo,
@@ -13,10 +15,6 @@ import type { Reglas } from "./tiposConfigAgenda";
 const REGLAS_DEFECTO: Reglas = {
   granularidadMin: 15,
   bufferGeneralMin: 0,
-  profesionalPuedeAgendar: false,
-  profesionalPuedeBloquear: false,
-  profesionalVeTelefono: false,
-  profesionalVePrecios: true,
   modoConfirmacion: "MANUAL",
   anticipacionMinHoras: 2,
   anticipacionMaxDias: 30,
@@ -34,10 +32,10 @@ const REGLAS_DEFECTO: Reglas = {
 describe("reglas del negocio", () => {
   it("sólo viaja lo que cambió: lo demás sigue heredando", () => {
     const original = valoresDe(REGLAS_DEFECTO);
-    const editado = { ...original, granularidadMin: 10, profesionalVeTelefono: true };
+    const editado = { ...original, granularidadMin: 10, mostrarPreciosOnline: false };
     expect(cambiosReglas(original, editado)).toEqual({
       granularidadMin: 10,
-      profesionalVeTelefono: true,
+      mostrarPreciosOnline: false,
     });
     expect(cambiosReglas(original, original)).toEqual({});
   });
@@ -45,6 +43,16 @@ describe("reglas del negocio", () => {
   it("los valores no llevan el origen ni campos desconocidos", () => {
     const v = valoresDe({ ...REGLAS_DEFECTO, origen: { granularidadMin: "NEGOCIO" } });
     expect("origen" in v).toBe(false);
+  });
+
+  it("las reglas del profesional ya no se editan ni vuelven en el PUT (son permisos del rol)", () => {
+    // El backend las sigue mandando, sin efecto: no se cuelan de vuelta.
+    const delBackend = { ...REGLAS_DEFECTO, profesionalPuedeAgendar: true, profesionalVeTelefono: false } as Reglas;
+    const v = valoresDe(delBackend);
+    expect("profesionalPuedeAgendar" in v).toBe(false);
+    expect(CAMPOS_REGLA.filter((c) => c.startsWith("profesional"))).toEqual([]);
+    // Sus cambios viejos siguen en la bitácora y se leen como antes.
+    expect(etiquetaCampo("profesionalVeTelefono")).toBe("Ve el teléfono del cliente");
   });
 
   it("avisa los números fuera de rango o no enteros", () => {

@@ -16,13 +16,14 @@ import {
   Vacio,
 } from "../components/ui";
 import { api } from "../lib/api";
-import { apiPersonal, type Persona, type PersonaInput } from "../lib/personal";
+import { apiPersonal, type CargoRol, type Persona, type PersonaInput } from "../lib/personal";
 import { etiquetaRol, tienePermiso } from "../lib/permisos";
+import { apiRoles, mensajeDeError } from "../lib/roles";
 import { plural } from "./agenda/config/utilConfig";
 import { contiene } from "../lib/texto";
 import { useApi } from "../lib/useApi";
 import { useAuth } from "../store/AuthContext";
-import type { Almacen, Rol } from "../types";
+import type { Almacen, RolNegocio } from "../types";
 import { Link } from "react-router-dom";
 
 /**
@@ -44,8 +45,9 @@ const FILTROS = [
   ["todos", "Todos"],
 ] as const;
 
-const mensaje = (e: unknown, generico = "No se pudo guardar") =>
-  e instanceof Error && e.message ? e.message : generico;
+// Con los rechazos de rol del contrato (ROL_NO_ASIGNABLE, ROL_INVALIDO,
+// NOMBRE_REPETIDO al crear un cargo) en palabras del dueño.
+const mensaje = (e: unknown, generico = "No se pudo guardar") => mensajeDeError(e, { generico });
 
 export default function Personal() {
   const [filtro, setFiltro] = useState<Filtro>("activos");
@@ -56,20 +58,28 @@ export default function Personal() {
   const [aviso, setAviso] = useAviso();
 
   const personas = useApi(() => apiPersonal.listar({ incluirInactivos: true }), []);
+  // Los cargos son los roles del negocio (PLAN-ROLES-NEGOCIO). Sin la lista
+  // (un error) se filtra con los cargos que tiene la gente.
+  const cargosRol = useApi(
+    () => apiPersonal.cargos().then((c) => (Array.isArray(c) ? c : [])).catch(() => [] as CargoRol[]),
+    [],
+  );
   const almacenes = useApi(() => api.getSucursales().catch(() => [] as Almacen[]), []);
   const sucursales = (almacenes.datos ?? []).filter((a) => a.activo && a.tipo !== "DEPOSITO");
   const nombreSucursal = (id: number) => sucursales.find((s) => s.id === id)?.nombre ?? `#${id}`;
 
   const todas = personas.datos ?? [];
-  const cargos = useMemo(
-    () => [...new Set(todas.map((p) => p.cargo).filter((c): c is string => !!c))].sort(),
-    [todas],
-  );
+  const cargos = useMemo(() => {
+    const m = new Map<number, string>();
+    for (const c of cargosRol.datos ?? []) m.set(c.id, c.nombre);
+    for (const p of todas) if (p.cargoRolId != null && !m.has(p.cargoRolId)) m.set(p.cargoRolId, p.cargo ?? `#${p.cargoRolId}`);
+    return [...m.entries()].sort((a, b) => a[1].localeCompare(b[1]));
+  }, [cargosRol.datos, todas]);
   const visibles = todas.filter((p) => {
     if (filtro === "activos" && !p.activo) return false;
     if (filtro === "con_acceso" && !(p.activo && p.conAcceso)) return false;
     if (filtro === "sin_acceso" && !(p.activo && !p.conAcceso)) return false;
-    if (cargo && p.cargo !== cargo) return false;
+    if (cargo && String(p.cargoRolId) !== cargo) return false;
     // Sin sucursal = toda la organización (el dueño): aparece en todas.
     if (sucursal && p.sucursalIds.length > 0 && !p.sucursalIds.includes(Number(sucursal))) return false;
     return !buscar.trim() || contiene(p.nombre, buscar) || contiene(p.cargo ?? "", buscar);
@@ -103,9 +113,9 @@ export default function Personal() {
         {cargos.length > 0 && (
           <Select value={cargo} onChange={(e) => setCargo(e.target.value)} aria-label="Cargo" className="w-auto">
             <option value="">Todos los cargos</option>
-            {cargos.map((c) => (
-              <option key={c} value={c}>
-                {c}
+            {cargos.map(([id, nombre]) => (
+              <option key={id} value={id}>
+                {nombre}
               </option>
             ))}
           </Select>
@@ -198,6 +208,8 @@ export default function Personal() {
           persona={editando === "nueva" ? null : editando}
           sucursales={sucursales}
           personas={todas}
+          cargos={cargosRol.datos ?? []}
+          onCargoNuevo={() => cargosRol.recargar()}
           onClose={() => setEditando(null)}
           onGuardado={alGuardar}
         />
@@ -211,12 +223,16 @@ function FichaPersona({
   persona,
   sucursales,
   personas,
+  cargos,
+  onCargoNuevo,
   onClose,
   onGuardado,
 }: {
   persona: Persona | null;
   sucursales: Almacen[];
   personas: Persona[];
+  cargos: CargoRol[];
+  onCargoNuevo: () => void;
   onClose: () => void;
   onGuardado: (p: Persona, aviso: string) => void;
 }) {
@@ -225,11 +241,10 @@ function FichaPersona({
   // el aviso decía "Profesionales" y la pestaña "Manicuristas y espacios").
   const pestanaProfesionales = `${plural(etiquetaRol("PROFESIONAL", negocio))} y espacios`;
   // El % es plata del profesional: lo cambia quien liquida (el backend lo exige).
-  const cambiaComision = tienePermiso(usuario, "comisiones.liquidar", usuario?.rol === "ADMIN");
-  const sugeridos = useApi(() => apiPersonal.cargos().catch(() => ({ sugeridos: [] })), []);
+  const cambiaComision = tienePermiso(usuario, "comisiones.liquidar");
 
   const [nombre, setNombre] = useState(persona?.nombre ?? "");
-  const [cargo, setCargo] = useState(persona?.cargo ?? "");
+  const [cargoRolId, setCargoRolId] = useState<number | null>(persona?.cargoRolId ?? null);
   const [ci, setCi] = useState(persona?.ci ?? "");
   const [telefono, setTelefono] = useState(persona?.telefono ?? "");
   const [fechaIngreso, setFechaIngreso] = useState(persona?.fechaIngreso ?? "");
@@ -245,7 +260,13 @@ function FichaPersona({
   const [guardando, setGuardando] = useState(false);
   const [modo, setModo] = useState<"acceso" | "vincular" | "quitar" | "baja" | null>(null);
 
-  const esRepartidor = persona?.acceso?.rol === "REPARTIDOR" || !!persona?.zona || !!persona?.vehiculo;
+  // Zona y vehículo son de quien reparte: su cargo entrega pedidos, o ya los
+  // tiene cargados.
+  const cargoElegido = cargos.find((c) => c.id === cargoRolId);
+  const esRepartidor =
+    !!cargoElegido?.permisos?.some((p) => p.codigo === "entregas.realizar") ||
+    !!persona?.zona ||
+    !!persona?.vehiculo;
 
   const guardar = async () => {
     setError("");
@@ -259,7 +280,7 @@ function FichaPersona({
     }
     const input: PersonaInput = {
       nombre: nombre.trim(),
-      cargo: cargo.trim() || null,
+      cargoRolId,
       ci: ci.trim() || null,
       telefono: telefono.trim() || null,
       fechaIngreso: fechaIngreso || null,
@@ -320,7 +341,7 @@ function FichaPersona({
             <p className="text-[13px] font-semibold text-texto-2">Acceso al sistema</p>
             <p className="mt-0.5 text-[13px] text-texto-3">
               {persona.conAcceso
-                ? `Entra como @${persona.acceso?.username} (${etiquetaRol((persona.acceso?.rol ?? "CAJERO") as Rol, negocio)}). Ocupa un lugar del cupo de usuarios.`
+                ? `Entra como @${persona.acceso?.username} (${persona.acceso?.rolNombre ?? persona.acceso?.rol ?? "sin rol"}). Ocupa un lugar del cupo de usuarios.`
                 : persona.acceso
                   ? `Se le quitó el acceso (@${persona.acceso.username}). No ocupa cupo.`
                   : "No entra al sistema. Igual puede tener agenda, comisión y propinas."}
@@ -366,20 +387,12 @@ function FichaPersona({
           <Campo label="Nombre">
             <Input value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Ana Pérez" />
           </Campo>
-          <Campo label="Cargo" hint="Texto libre.">
-            <Input
-              value={cargo}
-              onChange={(e) => setCargo(e.target.value)}
-              list="cargos-sugeridos"
-              // El primero de los del rubro: "Barbero" en una barbería (QA PER-14).
-              placeholder={sugeridos.datos?.sugeridos[0] ?? "Encargado"}
-            />
-            <datalist id="cargos-sugeridos">
-              {(sugeridos.datos?.sugeridos ?? []).map((c) => (
-                <option key={c} value={c} />
-              ))}
-            </datalist>
-          </Campo>
+          <ElegirCargo
+            valor={cargoRolId}
+            cargos={cargos}
+            onChange={setCargoRolId}
+            onCreado={onCargoNuevo}
+          />
           <Campo label="Teléfono">
             <Input type="tel" value={telefono} onChange={(e) => setTelefono(e.target.value)} />
           </Campo>
@@ -461,6 +474,7 @@ function FichaPersona({
       {persona && modo === "acceso" && (
         <DarAcceso
           persona={persona}
+          cargoRolId={cargoRolId}
           sucursales={sucursales}
           onClose={() => setModo(null)}
           onListo={(p) => {
@@ -512,6 +526,88 @@ function FichaPersona({
   );
 }
 
+const NUEVO = "__nuevo";
+
+/**
+ * El cargo es un rol del negocio. Quien edita roles puede crear uno en el
+ * momento ("Ayudante", "Lavacabezas"): nace sin permisos, que es lo que
+ * corresponde a alguien que no entra al sistema; si después se le da acceso,
+ * los permisos del rol se eligen en Roles.
+ */
+function ElegirCargo({
+  valor,
+  cargos,
+  onChange,
+  onCreado,
+}: {
+  valor: number | null;
+  cargos: CargoRol[];
+  onChange: (id: number | null) => void;
+  onCreado: () => void;
+}) {
+  const { usuario } = useAuth();
+  const creaRoles = tienePermiso(usuario, "roles.gestionar");
+  const [creando, setCreando] = useState(false);
+  const [nombre, setNombre] = useState("");
+  const [error, setError] = useState("");
+  const [enviando, setEnviando] = useState(false);
+  // El cargo actual aunque ya no esté en la lista (un rol borrado).
+  const opciones = cargos.filter((c) => !c.esAdministrador || c.id === valor);
+
+  const crear = async () => {
+    setError("");
+    if (!nombre.trim()) return setError("Poné el nombre del cargo.");
+    setEnviando(true);
+    try {
+      const rol = await apiRoles.crear({ nombre: nombre.trim(), permisos: [] });
+      onCreado();
+      onChange(rol.id);
+      setCreando(false);
+      setNombre("");
+    } catch (e) {
+      setError(mensaje(e, "No se pudo crear el cargo"));
+    } finally {
+      setEnviando(false);
+    }
+  };
+
+  if (creando) {
+    return (
+      <Campo label="Cargo nuevo" error={error || undefined} hint="Se crea como un rol sin permisos: sólo dice qué hace.">
+        <div className="flex gap-2">
+          <Input value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Ayudante" autoFocus />
+          <Boton type="button" onClick={crear} disabled={enviando}>
+            {enviando ? "…" : "Crear"}
+          </Boton>
+          <Boton type="button" variante="ghost" onClick={() => setCreando(false)} disabled={enviando}>
+            Cancelar
+          </Boton>
+        </div>
+      </Campo>
+    );
+  }
+  return (
+    <Campo label="Cargo" hint="Es uno de los roles del negocio.">
+      <Select
+        value={valor ?? ""}
+        aria-label="Cargo"
+        onChange={(e) => {
+          if (e.target.value === NUEVO) return setCreando(true);
+          onChange(e.target.value === "" ? null : Number(e.target.value));
+        }}
+      >
+        <option value="">Sin cargo</option>
+        {opciones.map((c) => (
+          <option key={c.id} value={c.id}>
+            {c.nombre}
+          </option>
+        ))}
+        {creaRoles && <option value={NUEVO}>+ Crear un cargo nuevo…</option>}
+      </Select>
+    </Campo>
+  );
+}
+
 /** El color que se propone al elegir uno (el primero de la agenda). */
 const COLOR_SUGERIDO = "#7357B8";
 
@@ -553,29 +649,37 @@ function ColorAgenda({ valor, onChange }: { valor: string; onChange: (c: string)
   );
 }
 
-/** "Darle acceso": su login, con un rol de los que ofrece el rubro. */
+/**
+ * "Darle acceso": su login, con un rol de los que quien mira puede asignar.
+ * Arranca en el de su cargo: el cargo ya dice qué hace, y al darle acceso ese
+ * rol le da los permisos.
+ */
 function DarAcceso({
   persona,
+  cargoRolId,
   sucursales,
   onClose,
   onListo,
 }: {
   persona: Persona;
+  cargoRolId: number | null;
   sucursales: Almacen[];
   onClose: () => void;
   onListo: (p: Persona) => void;
 }) {
-  const { usuario, negocio } = useAuth();
+  const { usuario } = useAuth();
   const reactivar = !!persona.acceso;
-  const ofrecidos = useApi(() => api.getRolesOfrecidos().catch(() => null), []);
-  const roles = (ofrecidos.datos ?? []).filter((r) => r.codigo !== "ADMIN");
+  const asignables = useApi(() => apiRoles.asignables(), []);
+  // El Administrador no se da desde acá: nace con el negocio.
+  const roles: RolNegocio[] = (asignables.datos ?? []).filter((r) => !r.esAdministrador);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [rol, setRol] = useState("");
   const [sucursalId, setSucursalId] = useState(persona.sucursalIds[0] ? String(persona.sucursalIds[0]) : "");
   const [error, setError] = useState("");
   const [enviando, setEnviando] = useState(false);
-  const rolElegido = rol || (roles.find((r) => r.codigo === "PROFESIONAL")?.codigo ?? roles[0]?.codigo ?? "");
+  const rolElegido =
+    rol || String(roles.find((r) => r.id === cargoRolId)?.id ?? roles[0]?.id ?? "");
   const eligeSucursal = sucursales.length > 1 && usuario?.sucursalId == null;
 
   const enviar = async () => {
@@ -599,7 +703,7 @@ function DarAcceso({
             : {
                 username: username.trim().toLowerCase(),
                 password,
-                rol: rolElegido,
+                rolId: Number(rolElegido),
                 ...(eligeSucursal && sucursalId ? { sucursalId: Number(sucursalId) } : {}),
               },
         ),
@@ -640,11 +744,15 @@ function DarAcceso({
             <Campo label="Usuario">
               <Input value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="off" />
             </Campo>
-            <Campo label="Rol">
+            <Campo
+              label="Rol"
+              hint="Lo que va a poder hacer en el sistema."
+              error={asignables.error ? "No se pudieron cargar los roles." : undefined}
+            >
               <Select value={rolElegido} onChange={(e) => setRol(e.target.value)} aria-label="Rol">
                 {roles.map((r) => (
-                  <option key={r.codigo} value={r.codigo}>
-                    {r.etiqueta || etiquetaRol(r.codigo, negocio)}
+                  <option key={r.id} value={r.id}>
+                    {r.nombre}
                   </option>
                 ))}
               </Select>
@@ -702,16 +810,16 @@ function Vincular({
   onClose: () => void;
   onListo: (p: Persona) => void;
 }) {
-  const { usuario } = useAuth();
   const usuarios = useApi(() => api.getUsuarios(), []);
+  // Sólo cuentas cuyo rol quien mira podría asignar: con las demás (las de
+  // un rol con más permisos que el suyo) el backend da 403.
+  const asignables = useApi(() => apiRoles.asignables().catch(() => null), []);
   const fichaDe = new Map(personas.filter((p) => p.usuarioId != null).map((p) => [p.usuarioId!, p]));
-  // El encargado no administra a otro encargado (el backend da 403).
-  const esSupervisor = usuario?.rol === "SUPERVISOR";
   const opciones = (usuarios.datos ?? []).filter(
     (u) =>
       u.activo &&
-      u.rol !== "ADMIN" &&
-      !(esSupervisor && u.rol === "SUPERVISOR") &&
+      !u.esAdministrador &&
+      (!asignables.datos || asignables.datos.some((r) => r.id === u.rolId)) &&
       fichaDe.get(u.id)?.recursoId == null,
   );
   const [usuarioId, setUsuarioId] = useState("");

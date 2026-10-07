@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { Feature, Modulo, Rol } from "../../types";
+import type { Feature } from "../../types";
+import { ctxDe, type Plantilla } from "../../test/sesiones";
 import { construirMenu } from "../menu";
 import { puedeVer, rutaInicial, type Seccion } from "../permisos";
 
@@ -9,11 +10,10 @@ import { puedeVer, rutaInicial, type Seccion } from "../permisos";
  * la agenda se arma en varias ramas.
  */
 
-const MODULOS: Modulo[] = ["INVENTARIO", "POS", "CAJA", "REPORTES", "USUARIOS", "CONFIG"];
 const PLAN_BELLEZA: Feature[] = ["pos", "caja", "catalogo", "usuarios", "inventario", "reportes", "agenda"];
 
-function ctx(rol: Rol, rubro: string | undefined, features: Feature[] = PLAN_BELLEZA, modulos = MODULOS) {
-  return { rol, rubro, features, modulos };
+function ctx(plantilla: Plantilla, rubro: string | undefined, features: Feature[] = PLAN_BELLEZA) {
+  return ctxDe(plantilla, rubro, features);
 }
 
 const AMBAS: Seccion[] = ["agenda_config", "config_negocio"];
@@ -23,9 +23,20 @@ describe("configuración de la agenda", () => {
     for (const s of AMBAS) expect(puedeVer(ctx("ADMIN", "PELUQUERIA"), s)).toBe(true);
   });
 
-  it("el encargado configura la agenda pero no las reglas del negocio", () => {
+  it("el encargado, con agenda.configurar, ve la de la agenda; las reglas del negocio no", () => {
     expect(puedeVer(ctx("SUPERVISOR", "BARBERIA"), "agenda_config")).toBe(true);
+    // Son `negocio.configurar`, que es lo que pide el backend y sólo trae el
+    // Administrador en las plantillas.
     expect(puedeVer(ctx("SUPERVISOR", "BARBERIA"), "config_negocio")).toBe(false);
+    // Un encargado al que el dueño le sacó la configuración, tampoco la de la agenda.
+    const sinConfig = ctxDe("SUPERVISOR", "BARBERIA", PLAN_BELLEZA, { sin: ["agenda.configurar"] });
+    for (const s of AMBAS) expect(puedeVer(sinConfig, s)).toBe(false);
+  });
+
+  it("un rol con negocio.configurar ve las reglas del negocio, se llame como se llame", () => {
+    const conNegocio = ctxDe("SUPERVISOR", "BARBERIA", PLAN_BELLEZA, { extra: ["negocio.configurar"] });
+    expect(puedeVer(conNegocio, "config_negocio")).toBe(true);
+    expect(puedeVer({ rubro: "UNAS", features: PLAN_BELLEZA, permisos: ["negocio.configurar"] }, "config_negocio")).toBe(true);
   });
 
   it("recepción y el profesional no la ven", () => {
@@ -35,8 +46,9 @@ describe("configuración de la agenda", () => {
     }
   });
 
-  it("no pide módulo de rol (D23): un admin sin módulos la sigue viendo", () => {
-    expect(puedeVer(ctx("ADMIN", "UNAS", PLAN_BELLEZA, ["POS"]), "agenda_config")).toBe(true);
+  it("la decide el permiso, no el nombre del rol", () => {
+    const soloConfig = { rubro: "UNAS", features: PLAN_BELLEZA, permisos: ["agenda.configurar"] };
+    expect(puedeVer(soloConfig, "agenda_config")).toBe(true);
   });
 
   it("sin la feature `agenda` no existe", () => {
@@ -47,7 +59,7 @@ describe("configuración de la agenda", () => {
   it("no falla abierta: con la lista de features vacía tampoco aparece", () => {
     for (const s of AMBAS) {
       expect(puedeVer(ctx("ADMIN", "PELUQUERIA", []), s)).toBe(false);
-      expect(puedeVer({ rol: "ADMIN", rubro: "PELUQUERIA" }, s)).toBe(false);
+      expect(puedeVer({ rubro: "PELUQUERIA", permisos: ["agenda.configurar", "negocio.configurar"] }, s)).toBe(false);
     }
   });
 

@@ -245,6 +245,10 @@ const ITEMS: (ItemNav & { bloque: Bloque })[] = [
   { a: "/comisiones", label: "Comisiones", icono: "percent", seccion: "comisiones", bloque: "administracion" },
   { a: "/reportes", label: "Reportes", icono: "chart", seccion: "reportes", bloque: "administracion" },
   { a: "/usuarios", label: "Usuarios", icono: "users", seccion: "usuarios", bloque: "administracion" },
+  // Al lado de Usuarios: es qué puede hacer cada uno (PLAN-ROLES-NEGOCIO).
+  // Suelto y no como grupo con Usuarios, así al que no edita roles no se le
+  // mueve nada del menú.
+  { a: "/roles", label: "Roles", icono: "key", seccion: "roles", bloque: "administracion" },
   // A11: las reglas del negocio y las de la reserva online. Sólo el dueño.
   {
     a: "/configuracion/negocio",
@@ -301,6 +305,8 @@ const ADMIN_AGENDA: (ItemNav & { bloque: Bloque })[] = [
       { a: "/personal", label: "Personal", icono: "users", seccion: "personal" },
       // Íconos distintos (QA VER-06): en la barra colapsada no hay grupo.
       { a: "/usuarios", label: "Usuarios", icono: "key", seccion: "usuarios" },
+      // Qué puede hacer cada uno: el cargo de la gente es uno de estos roles.
+      { a: "/roles", label: "Roles", icono: "lock", seccion: "roles" },
       { a: "/comisiones", label: "Comisiones", icono: "percent", seccion: "comisiones" },
       { a: "/propinas", label: "Propinas", icono: "coins", seccion: "propinas" },
     ],

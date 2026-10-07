@@ -26,15 +26,19 @@ const sesion = vi.hoisted(() => ({
   conAgenda: false,
 }));
 
-vi.mock("../../store/AuthContext", () => ({
-  useAuth: () => ({
-    negocio: { id: 1, nombre: "Prueba", features: sesion.features },
-    usuario: { id: 1, username: "caja", rol: "CAJERO" },
-    rubro: sesion.conAgenda ? "PELUQUERIA" : "RESTAURANTE",
-    incluye: () => true,
-    puede: (s: string) => (s === "hoy" ? sesion.conAgenda : true),
-  }),
-}));
+vi.mock("../../store/AuthContext", async () => {
+  // Los permisos de la plantilla de ese rol: la pantalla decide sólo con ellos.
+  const { permisosDe } = await import("../../test/sesiones");
+  return {
+    useAuth: () => ({
+      negocio: { id: 1, nombre: "Prueba", features: sesion.features },
+      usuario: { id: 1, username: "caja", rol: "CAJERO", ...permisosDe("CAJERO") },
+      rubro: sesion.conAgenda ? "PELUQUERIA" : "RESTAURANTE",
+      incluye: () => true,
+      puede: (s: string) => (s === "hoy" ? sesion.conAgenda : true),
+    }),
+  };
+});
 
 vi.mock("../../lib/api", () => ({
   api: {

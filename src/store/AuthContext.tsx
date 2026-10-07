@@ -52,8 +52,14 @@ interface AuthValue {
   vocabulario: Vocabulario | undefined;
   login: (username: string, password: string, negocio: string) => Promise<void>;
   logout: () => void;
-  /** ¿Se muestra esta sección? Rol ∩ plan, con fail-open. */
+  /** ¿Se muestra esta sección? Permisos ∩ plan ∩ rubro. */
   puede: (seccion: Seccion) => boolean;
+  /**
+   * false mientras una sesión guardada sin permisos los está pidiendo a
+   * `/auth/me`: las rutas esperan en vez de mandar a "sin acceso" a alguien
+   * que en un segundo va a tener su menú.
+   */
+  permisosListos: boolean;
   /** ¿El plan incluye esta capacidad? Para botones dentro de una pantalla. */
   incluye: (capacidad: Capacidad) => boolean;
 }
@@ -178,36 +184,66 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   /**
-   * Lo mismo para los permisos (PLAN-ROLES §8.1): si la huella que manda
-   * `/licencia/estado` no es la de la sesión —el operador cambió un ajuste,
-   * el plan sumó una feature, la regla de la agenda cambió—, se vuelven a
-   * pedir a `/auth/me` sin cerrar la sesión. Sin huella (backend viejo) no se
-   * hace nada.
+   * Trae de `/auth/me` los permisos y el rol (PLAN-ROLES-NEGOCIO §8) y los
+   * guarda en la sesión. El rol viaja junto con los permisos: si el dueño le
+   * renombra el rol a alguien o se lo cambia, la etiqueta de la cabecera
+   * cambia con el menú y no recién en el próximo login.
+   */
+  const traerPermisos = useCallback(async (version?: string) => {
+    const me = await api.me();
+    if (!me.permisos) return;
+    setUsuario((previo) => {
+      if (!previo) return previo;
+      const actualizado: SesionUsuario = {
+        ...previo,
+        rol: me.rol ?? previo.rol,
+        rolId: me.rolId ?? previo.rolId,
+        rolNombre: me.rolNombre ?? previo.rolNombre,
+        esAdministrador: me.esAdministrador ?? previo.esAdministrador,
+        permisos: me.permisos,
+        permisosPropios: me.permisosPropios ?? [],
+        permisosVersion: me.permisosVersion ?? version ?? previo.permisosVersion,
+      };
+      localStorage.setItem(USER_KEY, JSON.stringify(actualizado));
+      return actualizado;
+    });
+  }, []);
+
+  /**
+   * Una sesión guardada antes de que el backend mandara permisos no tiene con
+   * qué decidir nada: se piden una vez, al montar. Si no vienen (o falla), la
+   * sesión queda sin acceso — no hay respaldo por nombre de rol.
+   */
+  const sinPermisos = !!usuario && !usuario.permisos;
+  const [pidiendoPermisos, setPidiendoPermisos] = useState(sinPermisos);
+  useEffect(() => {
+    if (!token || !sinPermisos) return;
+    let vivo = true;
+    setPidiendoPermisos(true);
+    traerPermisos()
+      .catch(() => undefined)
+      .finally(() => {
+        if (vivo) setPidiendoPermisos(false);
+      });
+    return () => {
+      vivo = false;
+    };
+  }, [token, sinPermisos, traerPermisos]);
+  const permisosListos = !sinPermisos || !pidiendoPermisos;
+
+  /**
+   * Lo mismo cuando cambian (PLAN-ROLES §8.1): si la huella que manda
+   * `/licencia/estado` no es la de la sesión —el dueño editó el rol, se lo
+   * cambió, el plan sumó una feature—, se vuelven a pedir a `/auth/me` sin
+   * cerrar la sesión. Sin huella no se hace nada.
    */
   const versionPermisos = usuario?.permisosVersion;
   const refrescarPermisos = useCallback(
     (version: string | undefined) => {
       if (!version || version === versionPermisos) return;
-      api
-        .me()
-        .then((me) => {
-          if (!me.permisos) return;
-          setUsuario((previo) => {
-            if (!previo) return previo;
-            const actualizado = {
-              ...previo,
-              permisos: me.permisos,
-              permisosPropios: me.permisosPropios ?? [],
-              arquetipo: me.arquetipo ?? previo.arquetipo,
-              permisosVersion: me.permisosVersion ?? version,
-            };
-            localStorage.setItem(USER_KEY, JSON.stringify(actualizado));
-            return actualizado;
-          });
-        })
-        .catch(() => undefined);
+      traerPermisos(version).catch(() => undefined);
     },
-    [versionPermisos],
+    [versionPermisos, traerPermisos],
   );
 
   /**
@@ -271,15 +307,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () =>
       usuario
         ? {
-            rol: usuario.rol,
-            modulos: usuario.modulos,
             features: negocio?.features,
             rubro: negocio?.tipoNegocio,
-            // PLAN-ROLES §8.2: si el backend los mandó, las secciones ya
-            // cortadas por permisos (la agenda) se deciden con ellos.
+            // Lo único que decide qué ve cada quien (PLAN-ROLES-NEGOCIO).
             permisos: usuario.permisos,
             permisosPropios: usuario.permisosPropios,
-            arquetipo: usuario.arquetipo,
           }
         : null,
     [usuario, negocio],
@@ -308,8 +340,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       logout,
       puede,
       incluye,
+      permisosListos,
     }),
-    [token, usuario, negocio, licencia, aliasRecordado, login, logout, puede, incluye],
+    [token, usuario, negocio, licencia, aliasRecordado, login, logout, puede, incluye, permisosListos],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

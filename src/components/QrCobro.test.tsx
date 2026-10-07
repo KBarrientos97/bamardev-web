@@ -9,15 +9,20 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const sesion = vi.hoisted(() => ({
   rubro: "RESTAURANTE" as string,
   features: [] as string[],
+  plantilla: "ADMIN" as "ADMIN" | "MESERO",
 }));
 
-vi.mock("../store/AuthContext", () => ({
-  useAuth: () => ({
-    rubro: sesion.rubro,
-    negocio: { alias: "prueba", features: sesion.features },
-    usuario: { rol: "ADMIN" },
-  }),
-}));
+vi.mock("../store/AuthContext", async () => {
+  // Los permisos de la plantilla de ese rol: la pantalla decide sólo con ellos.
+  const { permisosDe } = await import("../test/sesiones");
+  return {
+    useAuth: () => ({
+      rubro: sesion.rubro,
+      negocio: { alias: "prueba", features: sesion.features },
+      usuario: { rol: sesion.plantilla, ...permisosDe(sesion.plantilla) },
+    }),
+  };
+});
 
 vi.mock("../lib/qrPago", () => ({
   leerQr: vi.fn(() => null),
@@ -28,6 +33,7 @@ vi.mock("../lib/qrPago", () => ({
   subirQr: vi.fn(),
 }));
 
+import { sincronizarQr } from "../lib/qrPago";
 import { CargarQrCobro } from "./QrCobro";
 
 async function montar() {
@@ -36,8 +42,10 @@ async function montar() {
 }
 
 beforeEach(() => {
+  vi.clearAllMocks();
   sesion.rubro = "RESTAURANTE";
   sesion.features = [];
+  sesion.plantilla = "ADMIN";
 });
 
 describe("QR de cobro: a quién más le llega", () => {
@@ -66,5 +74,13 @@ describe("QR de cobro: a quién más le llega", () => {
     sesion.features = ["pos", "agenda", "delivery"];
     await montar();
     expect(screen.getByText("Lo reciben también el reparto.")).toBeInTheDocument();
+  });
+
+  it("sube el QR quien tiene `qr.configurar`; el mesero sólo lo recibe", async () => {
+    await montar();
+    expect(sincronizarQr).toHaveBeenLastCalledWith("prueba", true);
+    sesion.plantilla = "MESERO";
+    await montar();
+    expect(sincronizarQr).toHaveBeenLastCalledWith("prueba", false);
   });
 });

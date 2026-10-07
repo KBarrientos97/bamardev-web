@@ -11,7 +11,8 @@ import { ficha } from "../../test/agendaFixtures";
 // La ficha suma lo del spa (fase 3) y lo de la fase 4 (ficha técnica) según
 // las features del negocio: sin ninguna, no se ve ni se pide nada.
 vi.mock("../../store/AuthContext", () => {
-  const auth = { negocio: { features: [] }, usuario: null };
+  // La recepción: ve y da de alta clientes (`cliente.editar`).
+  const auth = { negocio: { features: [] }, usuario: { permisos: ["cliente.ver_ficha", "cliente.editar"] } };
   return { useAuth: () => auth, useAuthOpcional: () => auth };
 });
 

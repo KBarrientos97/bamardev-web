@@ -129,11 +129,12 @@ describe("ficha del cliente: paquetes y salud", () => {
     expect(screen.queryByRole("button", { name: /Editar|Completar/ })).toBeNull();
   });
 
-  it("S2SEG-18: sin permisos del backend (sesión vieja), el dueño edita", async () => {
+  it("sin permisos en la sesión no se ve ni se edita la salud, sea cual sea el rol", async () => {
     sesion.permisos = undefined as unknown as string[];
     sesion.rol = "ADMIN";
     await montar();
-    expect(screen.getByRole("button", { name: /Editar/ })).toBeTruthy();
+    expect(apiSpa.saludDelCliente).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: /Editar|Completar/ })).toBeNull();
   });
 
   it("sin el permiso de salud no la pide; sin las features, nada", async () => {
@@ -148,5 +149,16 @@ describe("ficha del cliente: paquetes y salud", () => {
     await montar();
     expect(apiSpa.paquetesDelCliente).not.toHaveBeenCalled();
     expect(apiSpa.saludDelCliente).not.toHaveBeenCalled();
+  });
+
+  it("07-oct: con `consentimientos` apagada no hay salud ni firmas, aunque el rol traiga los permisos", async () => {
+    // Deuda técnica: el backend apaga la feature en todos los negocios.
+    sesion.features = ["clientes", "paquetes"];
+    await montar();
+    expect(apiSpa.paquetesDelCliente).toHaveBeenCalled();
+    expect(apiSpa.saludDelCliente).not.toHaveBeenCalled();
+    expect(screen.queryByText("Salud y consentimientos")).toBeNull();
+    expect(screen.queryByText("Dato sensible")).toBeNull();
+    expect(screen.queryByRole("button", { name: /Completar|Editar/ })).toBeNull();
   });
 });

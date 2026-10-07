@@ -6,7 +6,7 @@ import { puedeVer } from "./permisos";
  * Promociones y CRM son nuevas y estrictas: sin la feature no existen, aunque
  * la lista venga vacía (fail-open de siempre). A Omar no le aparece nada.
  */
-const base = { rol: "ADMIN" as const, modulos: [], rubro: "RESTAURANTE" };
+const base = { rubro: "RESTAURANTE" };
 
 describe("secciones de promociones y CRM", () => {
   it("sin la feature no se ven, ni con la lista de features vacía", () => {
@@ -19,14 +19,13 @@ describe("secciones de promociones y CRM", () => {
     expect(
       puedeVer({ ...base, features, permisos: ["promociones.gestionar", "cliente.marketing"] }, "promociones"),
     ).toBe(true);
-    expect(puedeVer({ ...base, rol: "CAJERO", features, permisos: ["cliente.marketing"] }, "promociones")).toBe(false);
-    expect(puedeVer({ ...base, rol: "CAJERO", features, permisos: ["cliente.marketing"] }, "retencion")).toBe(true);
+    expect(puedeVer({ ...base, features, permisos: ["cliente.marketing"] }, "promociones")).toBe(false);
+    expect(puedeVer({ ...base, features, permisos: ["cliente.marketing"] }, "retencion")).toBe(true);
   });
 
-  it("sesión vieja sin permisos: decide el rol", () => {
+  it("sin permisos no se ven: no hay respaldo por nombre de rol", () => {
     const features = ["promociones", "clientes_retencion"] as Feature[];
-    expect(puedeVer({ ...base, features }, "promociones")).toBe(true);
-    expect(puedeVer({ ...base, rol: "CAJERO", features }, "promociones")).toBe(false);
-    expect(puedeVer({ ...base, rol: "CAJERO", features }, "retencion")).toBe(true);
+    expect(puedeVer({ ...base, features }, "promociones")).toBe(false);
+    expect(puedeVer({ ...base, features }, "retencion")).toBe(false);
   });
 });

@@ -7,16 +7,16 @@ import {
   sincronizarQr,
   subirQr,
 } from "../lib/qrPago";
-import { tieneFeature } from "../lib/permisos";
+import { tienePermiso, tieneFeature } from "../lib/permisos";
 import { esBelleza } from "../lib/rubro";
 import { useAuth } from "../store/AuthContext";
-import type { Rol } from "../types";
+import type { SesionUsuario } from "../types";
 import { Icon } from "./Icon";
 import { ErrorMsg, Modal } from "./ui";
 
-/** Quién maneja la caja y puede cambiar el QR. Tiene que coincidir con el backend. */
-function puedeCambiarQr(rol: Rol | undefined): boolean {
-  return rol === "ADMIN" || rol === "SUPERVISOR" || rol === "CAJERO";
+/** Quién puede cambiar el QR: el mismo permiso que pide el backend. */
+function puedeCambiarQr(usuario: SesionUsuario | null): boolean {
+  return tienePermiso(usuario, "qr.configurar");
 }
 
 /**
@@ -52,13 +52,13 @@ export function CargarQrCobro() {
   // Si otro equipo ya lo subió, se muestra ése: no hay que volver a elegirlo.
   useEffect(() => {
     let vivo = true;
-    void sincronizarQr(alias, puedeCambiarQr(usuario?.rol)).then((q) => {
+    void sincronizarQr(alias, puedeCambiarQr(usuario)).then((q) => {
       if (vivo) setQr(q);
     });
     return () => {
       vivo = false;
     };
-  }, [alias, usuario?.rol]);
+  }, [alias, usuario]);
 
   async function elegir(archivo: File | undefined) {
     if (!archivo) return;
@@ -172,7 +172,7 @@ export function QrParaCobrar({
   const alias = negocio?.alias;
   const [qr, setQr] = useState<string | null>(() => leerQr(alias));
   const [ampliado, setAmpliado] = useState(false);
-  const puedeCargar = puedeCambiarQr(usuario?.rol);
+  const puedeCargar = puedeCambiarQr(usuario);
   const input = useRef<HTMLInputElement>(null);
   const [cargando, setCargando] = useState(false);
   const [errorCarga, setErrorCarga] = useState("");
@@ -201,13 +201,13 @@ export function QrParaCobrar({
   // si la caja la cambió (o, en el equipo del mesero, porque nunca la tuvo).
   useEffect(() => {
     let vivo = true;
-    void sincronizarQr(alias, puedeCambiarQr(usuario?.rol)).then((q) => {
+    void sincronizarQr(alias, puedeCambiarQr(usuario)).then((q) => {
       if (vivo) setQr(q);
     });
     return () => {
       vivo = false;
     };
-  }, [alias, usuario?.rol]);
+  }, [alias, usuario]);
 
   return (
     <div className="space-y-3">

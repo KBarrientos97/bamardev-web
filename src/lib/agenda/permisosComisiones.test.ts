@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
-import type { Feature, Rol } from "../../types";
+import type { Feature } from "../../types";
 import { aplanar, construirMenu } from "../menu";
 import { puedeVer, type ContextoPermisos } from "../permisos";
 
 /**
  * Comisiones, "Mi producción" y reportes de agenda (fase 2): quién los ve,
- * con los permisos que manda el backend (PLAN-ROLES §5.4) y sin ellos.
+ * con los permisos que manda el backend (PLAN-ROLES §5.4).
  */
 
 const PLAN: Feature[] = ["pos", "caja", "catalogo", "usuarios", "reportes", "agenda", "comisiones"];
@@ -18,9 +18,9 @@ const PERMISOS: Record<string, { permisos: string[]; propios: string[] }> = {
   PROFESIONAL: { permisos: ["agenda.ver", "comisiones.ver"], propios: ["agenda.ver", "comisiones.ver"] },
 };
 
-function ctx(rol: Rol, rubro = "PELUQUERIA", features: Feature[] = PLAN): ContextoPermisos {
+function ctx(rol: string, rubro = "PELUQUERIA", features: Feature[] = PLAN): ContextoPermisos {
   const p = PERMISOS[rol];
-  return { rol, rubro, features, modulos: [], permisos: p.permisos, permisosPropios: p.propios };
+  return { rubro, features, permisos: p.permisos, permisosPropios: p.propios };
 }
 
 describe("comisiones (fase 2)", () => {
@@ -41,7 +41,7 @@ describe("comisiones (fase 2)", () => {
     const sin = PLAN.filter((f) => f !== "comisiones");
     expect(puedeVer(ctx("ADMIN", "PELUQUERIA", sin), "comisiones")).toBe(false);
     expect(puedeVer(ctx("PROFESIONAL", "PELUQUERIA", sin), "mi_produccion")).toBe(false);
-    expect(puedeVer({ rol: "ADMIN", rubro: "PELUQUERIA", features: [] }, "comisiones")).toBe(false);
+    expect(puedeVer(ctx("ADMIN", "PELUQUERIA", []), "comisiones")).toBe(false);
   });
 
   it("un restaurante o una farmacia no las ven aunque alguien prenda la feature", () => {

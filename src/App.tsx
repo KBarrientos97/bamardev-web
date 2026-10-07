@@ -9,8 +9,8 @@ import {
 } from "react-router-dom";
 import AtajaErrores from "./components/AtajaErrores";
 import Layout from "./components/Layout";
-import { RUTA_AGENDA_PRONTO, rutaInicial, type Seccion } from "./lib/permisos";
-import { esFarmacia } from "./lib/rubro";
+import { RUTA_AGENDA_PRONTO, rutaInicial, veSoloSuAgenda, type Seccion } from "./lib/permisos";
+import { esBelleza, esFarmacia } from "./lib/rubro";
 import AgendaPronto from "./pages/AgendaPronto";
 import Creditos from "./pages/Creditos";
 import Gastos from "./pages/Gastos";
@@ -19,6 +19,7 @@ import Login from "./pages/Login";
 import PagarLicencia from "./pages/PagarLicencia";
 import Reportes from "./pages/Reportes";
 import Usuarios from "./pages/Usuarios";
+import Roles from "./pages/roles/Roles";
 import Personal from "./pages/Personal";
 import Agenda from "./pages/agenda/Agenda";
 import Hoy from "./pages/agenda/Hoy";
@@ -75,38 +76,51 @@ const GiftCards = lazy(() => import("./pages/belleza/GiftCards"));
 const Propinas = lazy(() => import("./pages/belleza/Propinas"));
 const RecetasServicio = lazy(() => import("./pages/belleza/RecetasServicio"));
 
-/** Manda a cada rol a su pantalla: cajero al POS, repartidor a entregas. */
+/** Manda a cada quien a su pantalla, según sus permisos (ver `rutaInicial`). */
 function Inicio() {
   const { usuario, negocio } = useAuth();
   if (!usuario) return <Navigate to="/" replace />;
   const destino = rutaInicial({
-    rol: usuario.rol,
-    modulos: usuario.modulos,
     features: negocio?.features,
     rubro: negocio?.tipoNegocio,
-    // PLAN-ROLES R4: con permisos, la agenda se decide por ellos y la ruta
-    // inicial por el arquetipo. Sin ellos (backend viejo), como siempre.
     permisos: usuario.permisos,
     permisosPropios: usuario.permisosPropios,
-    arquetipo: usuario.arquetipo,
   });
   return <Navigate to={destino} replace />;
 }
 
 /**
- * Ni el rol ni el plan habilitan una sola sección. Pasa con una cuenta mal
+ * Ni los permisos ni el plan habilitan una sola sección. Pasa con un rol sin
+ * permisos (un "Ayudante" al que le dieron acceso) o una cuenta mal
  * configurada; sin esta pantalla el usuario vería un blanco y no sabría a
  * quién reclamarle.
  */
 function SinAcceso() {
-  const { usuario, logout } = useAuth();
+  const { usuario, negocio, logout } = useAuth();
+  const rol = usuario?.rolNombre?.trim();
+  // Si mientras tanto llegaron los permisos (una sesión vieja que los pidió a
+  // /auth/me, o el dueño le dio un rol con algo), se va a su inicio solo.
+  const destino = usuario
+    ? rutaInicial({
+        features: negocio?.features,
+        rubro: negocio?.tipoNegocio,
+        permisos: usuario.permisos,
+        permisosPropios: usuario.permisosPropios,
+      })
+    : "/";
+  if (destino !== "/sin-acceso") return <Navigate to={destino} replace />;
+  // En un salón que todavía no tiene la agenda, quien no ve nada es casi
+  // siempre el profesional: el backend no le manda los permisos de una agenda
+  // que el plan no incluye. Para él no es una cuenta mal configurada, es la
+  // agenda que llega pronto.
+  if (esBelleza(negocio?.tipoNegocio) && !negocio?.features?.includes("agenda")) return <AgendaPronto />;
   return (
     <div className="flex min-h-full items-center justify-center p-6">
       <div className="max-w-sm text-center">
         <h1 className="text-lg font-bold text-texto">Tu cuenta no tiene secciones</h1>
         <p className="mt-2 text-[13px] text-texto-3">
-          El rol {usuario?.rol} de este negocio no tiene ningún módulo habilitado.
-          Pedile al administrador que revise los permisos o el plan contratado.
+          {rol ? `El rol "${rol}"` : "Tu rol"} no tiene permisos para ninguna sección de este
+          negocio. Pedile al administrador que revise los permisos del rol o el plan contratado.
         </p>
         <button
           onClick={logout}
@@ -120,9 +134,9 @@ function SinAcceso() {
 }
 
 /**
- * Una sección que el rol o el plan no habilitan no se renderiza: el backend
- * igual respondería 403, y es mejor devolver a la pantalla de inicio que
- * mostrar un error después de cargar.
+ * Una sección que los permisos o el plan no habilitan no se renderiza: el
+ * backend igual respondería 403, y es mejor devolver a la pantalla de inicio
+ * que mostrar un error después de cargar.
  */
 function Protegida({ seccion, children }: { seccion: Seccion; children: React.ReactNode }) {
   const { puede } = useAuth();
@@ -131,24 +145,17 @@ function Protegida({ seccion, children }: { seccion: Seccion; children: React.Re
 }
 
 /**
- * La pantalla del profesional. No es una `Seccion`: no pide módulo ni feature
- * (su rol no tiene módulos, D23), es la de un rol y de nadie más. Cualquier
- * otro rol que entre por URL vuelve a su inicio.
- */
-function SoloProfesional({ children }: { children: React.ReactNode }) {
-  const { usuario } = useAuth();
-  if (usuario?.rol !== "PROFESIONAL") return <Inicio />;
-  return <>{children}</>;
-}
-
-/**
- * "/mi-agenda" es una sola ruta para el profesional: su agenda si el negocio
- * tiene la feature `agenda`, y si no el aviso de que llega pronto. Así prender
- * la agenda desde el panel le cambia la pantalla sin cambiarle a dónde entra.
+ * "/mi-agenda" es una sola ruta para quien ve sólo su agenda: la suya si el
+ * negocio tiene la feature `agenda` (la sección `mi_agenda`), y si no el aviso
+ * de que llega pronto. Así prender la agenda desde el panel le cambia la
+ * pantalla sin cambiarle a dónde entra. Quien no ve sólo su agenda —se llame
+ * como se llame su rol— vuelve a su inicio.
  */
 function MiAgendaOPronto() {
-  const { puede } = useAuth();
-  return puede("mi_agenda") ? <MiAgenda /> : <AgendaPronto />;
+  const { puede, usuario } = useAuth();
+  if (puede("mi_agenda")) return <MiAgenda />;
+  if (veSoloSuAgenda(usuario)) return <AgendaPronto />;
+  return <Inicio />;
 }
 
 /**
@@ -221,7 +228,7 @@ function PagarConSesion() {
 }
 
 function Rutas() {
-  const { token } = useAuth();
+  const { token, permisosListos } = useAuth();
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const teniaSesion = useRef(token !== null);
@@ -241,6 +248,9 @@ function Rutas() {
   if (esRutaDePaginaPublica(pathname)) return <RutasPaginaPublica />;
 
   if (!token) return <Login />;
+  // Una sesión vieja sin permisos los está trayendo de /auth/me: sin esperar,
+  // el inicio la mandaría a "sin acceso" un segundo antes de tener su menú.
+  if (!permisosListos) return <div className="min-h-dvh bg-fondo" aria-busy="true" />;
 
   return (
     <Routes>
@@ -263,14 +273,7 @@ function Rutas() {
 
       {/* Fuera del Layout, como el salón: "Mi agenda" es la única pantalla
           del profesional y una barra lateral con un solo ítem sobra. */}
-      <Route
-        path={RUTA_AGENDA_PRONTO}
-        element={
-          <SoloProfesional>
-            <MiAgendaOPronto />
-          </SoloProfesional>
-        }
-      />
+      <Route path={RUTA_AGENDA_PRONTO} element={<MiAgendaOPronto />} />
 
       <Route element={<LayoutSegunRubro />}>
         <Route path="/" element={<Inicio />} />
@@ -577,6 +580,15 @@ function Rutas() {
           element={
             <Protegida seccion="usuarios">
               <Usuarios />
+            </Protegida>
+          }
+        />
+        {/* Los roles del negocio (PLAN-ROLES-NEGOCIO): todas las verticales. */}
+        <Route
+          path="/roles"
+          element={
+            <Protegida seccion="roles">
+              <Roles />
             </Protegida>
           }
         />

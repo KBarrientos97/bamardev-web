@@ -28,7 +28,7 @@ export default function SpaCita({ cita }: { cita: Cita }) {
   const [firmando, setFirmando] = useState<ConsentimientoFaltante | null>(null);
   const clienteId = cita.cliente.id;
   const porAtender = POR_ATENDER.includes(cita.estado);
-  const veSalud = tienePermiso(usuario, "cliente.ver_salud", true);
+  const veSalud = tienePermiso(usuario, "cliente.ver_salud");
   // Ver la salud no alcanza para tomar la firma (S2SEG-18): la recepción ve
   // el aviso de lo que falta, pero firma el dueño o el profesional del
   // cliente, como pide el backend.

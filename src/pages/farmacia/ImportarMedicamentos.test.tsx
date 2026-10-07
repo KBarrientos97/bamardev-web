@@ -12,9 +12,13 @@ import type { ImportarMedicamentosInput, RespuestaImportacion } from "../../type
 
 const sesion = vi.hoisted(() => ({ sucursalId: null as number | null }));
 
-vi.mock("../../store/AuthContext", () => ({
-  useAuth: () => ({ usuario: { rol: "ADMIN", sucursalId: sesion.sucursalId } }),
-}));
+vi.mock("../../store/AuthContext", async () => {
+  // Los permisos de la plantilla de ese rol: la pantalla decide sólo con ellos.
+  const { permisosDe } = await import("../../test/sesiones");
+  return {
+    useAuth: () => ({ usuario: { rol: "ADMIN", ...permisosDe("ADMIN"), sucursalId: sesion.sucursalId } }),
+  };
+});
 
 vi.mock("../../lib/api", () => ({
   api: { getAlmacenes: vi.fn(), importarMedicamentos: vi.fn() },

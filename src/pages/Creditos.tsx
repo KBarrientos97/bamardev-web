@@ -10,7 +10,7 @@ import {
   parsearMonto,
   restoEnEfectivo,
 } from "../lib/dinero";
-import { puedeSupervisar } from "../lib/permisos";
+import { tienePermiso } from "../lib/permisos";
 import { useAuth } from "../store/AuthContext";
 import { Icon } from "../components/Icon";
 import { Buscador, Chips, EncabezadoPagina } from "../components/filtros";
@@ -121,20 +121,18 @@ export default function Creditos() {
    * (`CuentasPorCobrarFragment`), y esta página la abre cualquiera desde el
    * menú, con o sin caja.
    *
-   * La regla es la misma de `FormAbono` y del backend (`cobraSinCaja`): sólo el
-   * ADMIN cobra sin caja, así que a él ni se le pregunta. Un supervisor sí ve
-   * el aviso —si mañana también cobra sin caja, cambia acá, en FormAbono y en
-   * la app a la vez (ver HANDOFF-2026-09-15 §5.2).
+   * La regla es la misma de `FormAbono` y del backend: quien tiene
+   * `credito.cobrar_sin_caja` cobra sin caja, así que a él ni se le pregunta.
    */
-  const esDuenio = usuario?.rol === "ADMIN";
+  const cobraSinCaja = tienePermiso(usuario, "credito.cobrar_sin_caja");
   const caja = useApi(
-    () => (esDuenio ? Promise.resolve({ caja: null }) : api.cajaActual()),
-    [esDuenio],
+    () => (cobraSinCaja ? Promise.resolve({ caja: null }) : api.cajaActual()),
+    [cobraSinCaja],
   );
   // Si no se pudo preguntar (error) no se avisa nada: el cobro puede andar
   // igual. Misma decisión que la app, que trata ese caso como "no sé".
   const sinCaja =
-    !esDuenio && !caja.cargando && !caja.error && caja.datos?.caja == null;
+    !cobraSinCaja && !caja.cargando && !caja.error && caja.datos?.caja == null;
 
   const lista = creditos.datos ?? [];
   const listaClientes = clientes.datos ?? [];
@@ -418,9 +416,9 @@ function TarjetaCliente({
   onLimite: (c: ClienteCredito) => void;
 }) {
   const { usuario } = useAuth();
-  // A un CAJERO se le esconde el lápiz: un ícono de editar que no responde se
-  // lee como app rota, no como falta de permiso. El backend además lo impide.
-  const puedeEditarLimite = puedeSupervisar(usuario?.rol);
+  // A quien no puede cambiar límites se le esconde el lápiz: un ícono de
+  // editar que no responde se lee como app rota, no como falta de permiso.
+  const puedeEditarLimite = tienePermiso(usuario, "credito.limite_editar");
 
   return (
     <li className="card p-4">
@@ -660,12 +658,12 @@ function FormAbono({
   /**
    * Donde termina la plata, que no es lo mismo para todos.
    *
-   * El duenio puede cobrar un fiado sin caja abierta (lo permite el backend):
-   * ahi el cobro queda registrado a su nombre y no entra a ningun arqueo. Al
-   * cajero se le sigue exigiendo su caja, asi que para el la frase de siempre
-   * es la correcta.
+   * Quien tiene `credito.cobrar_sin_caja` (el dueño, en la plantilla) puede
+   * cobrar un fiado sin caja abierta: ahi el cobro queda registrado a su
+   * nombre y no entra a ningun arqueo. Al resto se le sigue exigiendo su
+   * caja, asi que para ellos la frase de siempre es la correcta.
    */
-  const esDuenio = usuario?.rol === "ADMIN";
+  const cobraSinCaja = tienePermiso(usuario, "credito.cobrar_sin_caja");
   const { incluye } = useAuth();
 
   const [monto, setMonto] = useState("");
@@ -807,7 +805,7 @@ function FormAbono({
         <Campo
           label="Forma de pago"
           hint={
-            esDuenio
+            cobraSinCaja
               ? "Con tu caja abierta entra ahi; si no, queda registrado a tu nombre"
               : "El abono entra en tu caja abierta"
           }

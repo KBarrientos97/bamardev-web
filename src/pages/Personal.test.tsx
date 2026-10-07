@@ -5,11 +5,14 @@ import type { Persona } from "../lib/personal";
 
 /**
  * Personal (PLAN-ROLES §9.4): la lista con y sin acceso, el alta de alguien
- * sin login, "Darle acceso" (con el rol ofrecido del rubro) y "Quitar acceso".
+ * sin login, "Darle acceso" (con un rol del negocio) y "Quitar acceso". El
+ * cargo es un rol del negocio (PLAN-ROLES-NEGOCIO), elegible de la lista o
+ * creado en el momento por quien edita roles.
  */
 
+const PERMISOS_DUENIO = ["personal.gestionar", "comisiones.liquidar", "roles.gestionar"];
 const sesion = vi.hoisted(() => ({
-  usuario: { id: 1, rol: "ADMIN", sucursalId: null, permisos: ["personal.gestionar", "comisiones.liquidar"] },
+  usuario: { id: 1, rol: "ADMIN", sucursalId: null, permisos: [] as string[] },
 }));
 
 vi.mock("../store/AuthContext", () => ({
@@ -20,21 +23,43 @@ vi.mock("../store/AuthContext", () => ({
   }),
 }));
 
-vi.mock("../lib/api", () => ({
+vi.mock("../lib/api", async (importOriginal) => ({
+  // ApiError real: los rechazos de rol se reconocen por su código.
+  ApiError: (await importOriginal<typeof import("../lib/api")>()).ApiError,
   api: {
     getSucursales: vi.fn(async () => [{ id: 1, nombre: "Centro", activo: true, tipo: "SUCURSAL" }]),
-    getRolesOfrecidos: vi.fn(async () => [
-      { codigo: "CAJERO", etiqueta: "Recepción", descripcion: null, nivel: 50, arquetipo: "CAJERO", permisos: [] },
-      { codigo: "PROFESIONAL", etiqueta: "Barbero", descripcion: null, nivel: 40, arquetipo: "PROFESIONAL", permisos: [] },
-    ]),
     getUsuarios: vi.fn(async () => []),
   },
 }));
 
+/** Los roles del negocio, como los devuelve el backend (contrato §8). */
+const ROLES = vi.hoisted(() => {
+  const rol = (id: number, nombre: string, esAdministrador = false) => ({
+    id,
+    nombre,
+    descripcion: null,
+    esAdministrador,
+    plantilla: null,
+    usuarios: 0,
+    personal: 0,
+    permisos: [],
+  });
+  return [rol(1, "Administrador", true), rol(3, "Recepción"), rol(4, "Barbero")];
+});
+
+vi.mock("../lib/roles", async (importOriginal) => {
+  const real = await importOriginal<typeof import("../lib/roles")>();
+  return {
+    ...real,
+    // El Administrador nunca es asignable desde acá.
+    apiRoles: { asignables: vi.fn(async () => ROLES.slice(1)), crear: vi.fn() },
+  };
+});
+
 vi.mock("../lib/personal", () => ({
   apiPersonal: {
     listar: vi.fn(),
-    cargos: vi.fn(async () => ({ sugeridos: ["Barbero", "Recepción"] })),
+    cargos: vi.fn(async () => ROLES),
     crear: vi.fn(),
     editar: vi.fn(),
     darAcceso: vi.fn(),
@@ -43,14 +68,16 @@ vi.mock("../lib/personal", () => ({
   },
 }));
 
-import { api } from "../lib/api";
+import { ApiError, api } from "../lib/api";
 import { apiPersonal } from "../lib/personal";
+import { apiRoles } from "../lib/roles";
 import Personal from "./Personal";
 
 const base: Persona = {
   id: 1,
   nombre: "Dueño",
-  cargo: null,
+  cargoRolId: 1,
+  cargo: "Administrador",
   activo: true,
   color: null,
   sucursalIds: [],
@@ -65,12 +92,13 @@ const base: Persona = {
   notas: null,
   zona: null,
   vehiculo: null,
-  acceso: { usuarioId: 10, username: "admin", rol: "ADMIN", activo: true, ultimoLogin: null },
+  acceso: { usuarioId: 10, username: "admin", rol: "ADMIN", rolId: 1, rolNombre: "Administrador", activo: true, ultimoLogin: null },
 };
 const LUCHO: Persona = {
   ...base,
   id: 2,
   nombre: "Lucho",
+  cargoRolId: 4,
   cargo: "Barbero",
   sucursalIds: [1],
   usuarioId: null,
@@ -83,10 +111,12 @@ const ANA: Persona = {
   ...base,
   id: 3,
   nombre: "Ana",
+  cargoRolId: 3,
   cargo: "Recepción",
   sucursalIds: [1],
   usuarioId: 11,
-  acceso: { usuarioId: 11, username: "ana", rol: "CAJERO", activo: true, ultimoLogin: null },
+  // El código legado dice CAJERO; lo que se muestra es el nombre del rol.
+  acceso: { usuarioId: 11, username: "ana", rol: "CAJERO", rolId: 3, rolNombre: "Recepción", activo: true, ultimoLogin: null },
 };
 
 async function montar() {
@@ -100,6 +130,7 @@ async function montar() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  sesion.usuario = { id: 1, rol: "ADMIN", sucursalId: null, permisos: PERMISOS_DUENIO };
   vi.mocked(apiPersonal.listar).mockResolvedValue([base, LUCHO, ANA]);
 });
 
@@ -124,23 +155,23 @@ describe("Personal", () => {
     fireEvent.click(screen.getByRole("button", { name: "Nueva persona" }));
     const dialogo = screen.getByRole("dialog", { name: "Nueva persona" });
     fireEvent.change(within(dialogo).getByLabelText("Nombre"), { target: { value: "Nico" } });
-    fireEvent.change(within(dialogo).getByLabelText(/Cargo/), { target: { value: "Barbero" } });
+    fireEvent.change(within(dialogo).getByLabelText("Cargo"), { target: { value: "4" } });
     fireEvent.change(within(dialogo).getByLabelText(/Comisión base/), { target: { value: "40" } });
     await act(async () => {
       fireEvent.click(within(dialogo).getByRole("button", { name: "Guardar" }));
     });
     expect(apiPersonal.crear).toHaveBeenCalledWith(
-      expect.objectContaining({ nombre: "Nico", cargo: "Barbero", comisionPct: 40, sucursalIds: [1] }),
+      expect.objectContaining({ nombre: "Nico", cargoRolId: 4, comisionPct: 40, sucursalIds: [1] }),
     );
     expect(screen.getByText('"Nico" quedó guardado.')).toBeInTheDocument();
   });
 
-  it("le da acceso a un profesional sin login, con el rol ofrecido del rubro", async () => {
+  it("le da acceso a un profesional sin login, con el rol de su cargo", async () => {
     vi.mocked(apiPersonal.darAcceso).mockResolvedValue({
       ...LUCHO,
       usuarioId: 12,
       conAcceso: true,
-      acceso: { usuarioId: 12, username: "lucho", rol: "PROFESIONAL", activo: true, ultimoLogin: null },
+      acceso: { usuarioId: 12, username: "lucho", rol: "PROFESIONAL", rolId: 4, rolNombre: "Barbero", activo: true, ultimoLogin: null },
     });
     await montar();
     fireEvent.click(screen.getByRole("button", { name: "Ver Lucho" }));
@@ -148,9 +179,9 @@ describe("Personal", () => {
     fireEvent.click(screen.getByRole("button", { name: "Darle acceso" }));
     await act(async () => {});
     const dialogo = screen.getByRole("dialog", { name: "Darle acceso" });
-    // El rol por defecto es el del profesional, con la etiqueta del rubro.
-    expect(within(dialogo).getByLabelText("Rol")).toHaveValue("PROFESIONAL");
-    expect(within(dialogo).getByRole("option", { name: "Barbero" })).toBeInTheDocument();
+    // El rol por defecto es el de su cargo; el Administrador no se ofrece.
+    expect(within(dialogo).getByLabelText("Rol")).toHaveValue("4");
+    expect(within(dialogo).getAllByRole("option").map((o) => o.textContent)).toEqual(["Recepción", "Barbero"]);
     fireEvent.change(within(dialogo).getByLabelText("Usuario"), { target: { value: "Lucho" } });
     fireEvent.change(within(dialogo).getByLabelText("Contraseña"), { target: { value: "secreto1" } });
     await act(async () => {
@@ -159,7 +190,7 @@ describe("Personal", () => {
     expect(apiPersonal.darAcceso).toHaveBeenCalledWith(2, {
       username: "lucho",
       password: "secreto1",
-      rol: "PROFESIONAL",
+      rolId: 4,
     });
     expect(screen.getByText('"Lucho" ya puede entrar como @lucho.')).toBeInTheDocument();
   });
@@ -180,6 +211,26 @@ describe("Personal", () => {
       fireEvent.click(within(dialogo).getByRole("button", { name: "Darle acceso" }));
     });
     expect(within(dialogo).getByText(/Tu plan permite 4 usuarios activos/)).toBeInTheDocument();
+  });
+
+  it("un rol que quien da el acceso no puede asignar (403 ROL_NO_ASIGNABLE), en palabras", async () => {
+    vi.mocked(apiPersonal.darAcceso).mockRejectedValue(
+      new ApiError("Forbidden", 403, { codigo: "ROL_NO_ASIGNABLE" }),
+    );
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Ver Lucho" }));
+    await act(async () => {});
+    fireEvent.click(screen.getByRole("button", { name: "Darle acceso" }));
+    await act(async () => {});
+    const dialogo = screen.getByRole("dialog", { name: "Darle acceso" });
+    fireEvent.change(within(dialogo).getByLabelText("Usuario"), { target: { value: "lucho" } });
+    fireEvent.change(within(dialogo).getByLabelText("Contraseña"), { target: { value: "secreto1" } });
+    await act(async () => {
+      fireEvent.click(within(dialogo).getByRole("button", { name: "Darle acceso" }));
+    });
+    expect(
+      within(dialogo).getByText("No podés asignar ese rol: tiene permisos que vos no tenés."),
+    ).toBeInTheDocument();
   });
 
   it("quitar acceso pide confirmación y la persona sigue", async () => {
@@ -226,7 +277,7 @@ describe("Personal", () => {
     expect(within(lista()).getAllByRole("button").map((b) => b.getAttribute("aria-label"))).toEqual(["Ver Dueño"]);
   });
 
-  it("la línea de acceso dice el rol con la palabra del rubro (PER-05)", async () => {
+  it("la línea de acceso dice el nombre del rol del negocio (PER-05)", async () => {
     await montar();
     fireEvent.click(screen.getByRole("button", { name: "Ver Ana" }));
     await act(async () => {});
@@ -235,13 +286,64 @@ describe("Personal", () => {
     );
   });
 
-  it("el cargo propone uno del rubro y el color se guarda como se ve (PER-04, PER-14)", async () => {
+  it("el cargo se elige de los roles del negocio, sin el Administrador", async () => {
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Nueva persona" }));
+    await act(async () => {});
+    const dialogo = screen.getByRole("dialog", { name: "Nueva persona" });
+    expect(within(within(dialogo).getByLabelText("Cargo")).getAllByRole("option").map((o) => o.textContent)).toEqual([
+      "Sin cargo",
+      "Recepción",
+      "Barbero",
+      "+ Crear un cargo nuevo…",
+    ]);
+  });
+
+  it("quien edita roles crea un cargo nuevo en el momento: un rol sin permisos", async () => {
+    vi.mocked(apiRoles.crear).mockResolvedValue({ ...ROLES[1], id: 9, nombre: "Ayudante" });
+    vi.mocked(apiPersonal.cargos).mockResolvedValueOnce(ROLES).mockResolvedValue([...ROLES, { ...ROLES[1], id: 9, nombre: "Ayudante" }]);
+    vi.mocked(apiPersonal.crear).mockResolvedValue({ ...LUCHO, id: 7, nombre: "Rita" });
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Nueva persona" }));
+    await act(async () => {});
+    const dialogo = screen.getByRole("dialog", { name: "Nueva persona" });
+    fireEvent.change(within(dialogo).getByLabelText("Nombre"), { target: { value: "Rita" } });
+    fireEvent.change(within(dialogo).getByLabelText("Cargo"), { target: { value: "__nuevo" } });
+    fireEvent.change(within(dialogo).getByPlaceholderText("Ayudante"), { target: { value: "Ayudante" } });
+    await act(async () => {
+      fireEvent.click(within(dialogo).getByRole("button", { name: "Crear" }));
+    });
+    expect(apiRoles.crear).toHaveBeenCalledWith({ nombre: "Ayudante", permisos: [] });
+    expect(within(dialogo).getByLabelText("Cargo")).toHaveValue("9");
+    await act(async () => {
+      fireEvent.click(within(dialogo).getByRole("button", { name: "Guardar" }));
+    });
+    expect(apiPersonal.crear).toHaveBeenCalledWith(expect.objectContaining({ nombre: "Rita", cargoRolId: 9 }));
+  });
+
+  it("sin roles.gestionar no se ofrece crear un cargo", async () => {
+    sesion.usuario = { id: 1, rol: "SUPERVISOR", sucursalId: null, permisos: ["personal.gestionar"] };
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Nueva persona" }));
+    await act(async () => {});
+    const dialogo = screen.getByRole("dialog", { name: "Nueva persona" });
+    expect(within(dialogo).queryByRole("option", { name: /Crear un cargo nuevo/ })).toBeNull();
+  });
+
+  it("filtra por cargo con los roles del negocio", async () => {
+    await montar();
+    fireEvent.change(screen.getByLabelText("Cargo"), { target: { value: "4" } });
+    expect(
+      within(screen.getByRole("list", { name: "Personal" })).getAllByRole("button").map((b) => b.getAttribute("aria-label")),
+    ).toEqual(["Ver Lucho"]);
+  });
+
+  it("el color se guarda como se ve (PER-04, PER-14)", async () => {
     vi.mocked(apiPersonal.crear).mockResolvedValue({ ...LUCHO, id: 4, nombre: "Nico" });
     await montar();
     fireEvent.click(screen.getByRole("button", { name: "Nueva persona" }));
     await act(async () => {});
     const dialogo = screen.getByRole("dialog", { name: "Nueva persona" });
-    expect(within(dialogo).getByLabelText(/Cargo/)).toHaveAttribute("placeholder", "Barbero");
     // Sin elegir: dice "Sin color" y guarda null.
     expect(within(dialogo).getByRole("group", { name: "Color en la agenda" })).toHaveTextContent("Sin color");
     fireEvent.change(within(dialogo).getByLabelText("Nombre"), { target: { value: "Nico" } });
@@ -271,14 +373,16 @@ describe("Personal", () => {
       ci: "1234567",
       sucursalIds: [1],
       usuarioId: 20,
-      acceso: { usuarioId: 20, username: "pablo", rol: "PROFESIONAL", activo: true, ultimoLogin: null },
+      acceso: { usuarioId: 20, username: "pablo", rol: "PROFESIONAL", rolId: 4, rolNombre: "Barbero", activo: true, ultimoLogin: null },
     };
     const SIN_LOGIN: Persona = { ...LUCHO, id: 6, nombre: "Nueva", recursoId: null, profesional: null };
     vi.mocked(apiPersonal.listar).mockResolvedValue([base, LUCHO, ANA, PABLO, SIN_LOGIN]);
     vi.mocked(api.getUsuarios).mockResolvedValue([
-      { id: 10, nombre: "Dueño", usuario: "admin", rol: "ADMIN", activo: true },
-      { id: 20, nombre: "Pablo Ríos", usuario: "pablo", rol: "PROFESIONAL", activo: true },
-      { id: 21, nombre: "Suelto", usuario: "suelto", rol: "CAJERO", activo: true },
+      { id: 10, nombre: "Dueño", usuario: "admin", rol: "ADMIN", rolId: 1, esAdministrador: true, activo: true },
+      { id: 20, nombre: "Pablo Ríos", usuario: "pablo", rol: "PROFESIONAL", rolId: 4, activo: true },
+      { id: 21, nombre: "Suelto", usuario: "suelto", rol: "CAJERO", rolId: 3, activo: true },
+      // Un rol que quien mira no puede asignar (el backend daría 403): no se ofrece.
+      { id: 22, nombre: "Otro encargado", usuario: "otro", rol: "SUPERVISOR", rolId: 2, activo: true },
     ] as never);
     await montar();
     fireEvent.click(screen.getByRole("button", { name: "Ver Nueva" }));
@@ -288,6 +392,7 @@ describe("Personal", () => {
     const dialogo = screen.getByRole("dialog", { name: "Vincular a un usuario" });
     expect(within(dialogo).getByRole("option", { name: /Pablo Ríos \(@pablo\) · tiene ficha propia/ })).toBeInTheDocument();
     expect(within(dialogo).queryByRole("option", { name: /@admin/ })).toBeNull();
+    expect(within(dialogo).queryByRole("option", { name: /@otro/ })).toBeNull();
     fireEvent.change(within(dialogo).getByLabelText("Usuario"), { target: { value: "20" } });
     expect(within(dialogo).getByRole("alert")).toHaveTextContent(
       '@pablo ya tiene su ficha "Pablo Ríos" con Barbero, CI 1234567',

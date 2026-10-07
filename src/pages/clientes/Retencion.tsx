@@ -34,8 +34,8 @@ function leerContactados(): Record<string, number> {
 
 export default function Retencion() {
   const { negocio, usuario } = useAuth();
-  const puedeExportar = tienePermiso(usuario, "cliente.exportar", usuario?.rol === "ADMIN");
-  const puedeEditar = tienePermiso(usuario, "cliente.marketing", true);
+  const puedeExportar = tienePermiso(usuario, "cliente.exportar");
+  const puedeEditar = tienePermiso(usuario, "cliente.marketing");
   const conPromos = !!negocio?.features?.includes("promociones");
   const [modo, setModo] = useState<"RECURRENCIA" | "FIJO">("RECURRENCIA");
   const [dias, setDias] = useState(60);

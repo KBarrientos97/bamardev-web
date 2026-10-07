@@ -285,14 +285,14 @@ export interface Recurso {
   servicioIds: number[];
 }
 
-/** Las reglas que estas pantallas consultan; el resto las usa la fase 2. */
+/**
+ * Las reglas que estas pantallas consultan; el resto las usa la fase 2. Lo
+ * que puede hacer el profesional (agendar, bloquear, ver teléfono y precios)
+ * ya no sale de acá sino de los permisos de su rol.
+ */
 export interface ReglasAgenda {
   granularidadMin: number;
   bufferGeneralMin: number;
-  profesionalPuedeAgendar: boolean;
-  profesionalPuedeBloquear: boolean;
-  profesionalVeTelefono: boolean;
-  profesionalVePrecios: boolean;
 }
 
 // ── Respuestas ───────────────────────────────────────────────────────────────

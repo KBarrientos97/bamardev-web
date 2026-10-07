@@ -4,6 +4,7 @@ import { Boton, Cargando, ErrorMsg } from "../../components/ui";
 import { api } from "../../lib/api";
 import { fmtFechaHora, fmtMoney } from "../../lib/format";
 import { useApi } from "../../lib/useApi";
+import { tienePermiso } from "../../lib/permisos";
 import { useAuth } from "../../store/AuthContext";
 import type { EntregaMesero } from "../../types/salon";
 
@@ -32,8 +33,11 @@ export default function Entregas({ onVolver }: { onVolver?: () => void }) {
   const [aprobando, setAprobando] = useState(false);
   const [error, setError] = useState("");
 
-  /** true si quien mira es el que RECIBE la plata, no el que la tiene. */
-  const puedeAprobar = usuario?.rol !== "MESERO";
+  /**
+   * true si quien mira es el que RECIBE la plata (cobra las mesas en caja),
+   * no el mesero que la tiene.
+   */
+  const puedeAprobar = tienePermiso(usuario, "salon.cobrar");
 
   const datos = entregas.datos;
   const items = datos?.items ?? [];

@@ -37,7 +37,7 @@ const ETIQUETAS: Record<Pestana, string> = {
  */
 export default function Comisiones() {
   const { usuario } = useAuth();
-  const liquida = tienePermiso(usuario, "comisiones.liquidar", usuario?.rol === "ADMIN");
+  const liquida = tienePermiso(usuario, "comisiones.liquidar");
   const pestanas: Pestana[] = liquida
     ? ["produccion", "liquidar", "adelantos", "liquidaciones", "porcentajes"]
     : ["produccion", "adelantos", "liquidaciones"];

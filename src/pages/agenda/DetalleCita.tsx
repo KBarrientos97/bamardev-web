@@ -69,12 +69,8 @@ export default function DetalleCita({
   const cobrar = useCobrarCita();
   const profesional = modo === "profesional";
   // "Sin cargo" es decidir no cobrar (QA SEG-02): agenda.gestionar o
-  // ventas.vender. Sin permisos del backend, el de siempre: todos menos el
-  // profesional.
-  const respaldoSinCargo = usuario?.rol !== "PROFESIONAL";
-  const puedeSinCargo =
-    tienePermiso(usuario, "agenda.gestionar", respaldoSinCargo) ||
-    tienePermiso(usuario, "ventas.vender", respaldoSinCargo);
+  // ventas.vender.
+  const puedeSinCargo = tienePermiso(usuario, "agenda.gestionar") || tienePermiso(usuario, "ventas.vender");
   const completa = useApi(() => apiAgenda.cita(inicial.id), [inicial.id]);
   const cita = completa.datos ?? inicial;
   const eventos = completa.datos?.eventos ?? inicial.eventos;

@@ -7,20 +7,23 @@ import type { Vocabulario } from "./lib/rubro";
 
 // ── Sesión y permisos ───────────────────────────────────────────────────────
 
-/** Roles de la app. El backend los devuelve en mayúsculas. */
-export type Rol =
+/**
+ * El código legado del rol (ADMIN, CAJERO, MESERO…). Desde PLAN-ROLES-NEGOCIO
+ * cada negocio tiene sus propios roles y el backend sigue mandando este código
+ * sólo para el APK viejo: es el del rol del que nació, o el del arquetipo más
+ * cercano en uno creado por el negocio. **Ninguna pantalla decide con él**:
+ * lo que alguien puede hacer lo dicen `permisos` y `permisosPropios`, y cómo
+ * se llama su rol, `rolNombre`. Por eso no es una unión cerrada.
+ */
+export type Rol = string;
+
+/** Los códigos legados que el backend conoce hoy (sólo para leer datos viejos). */
+export type RolLegado =
   | "ADMIN"
   | "SUPERVISOR"
   | "CAJERO"
   | "REPARTIDOR"
-  /** Atiende el salón: abre mesas y manda comandas, pero NO cobra. */
   | "MESERO"
-  /**
-   * Belleza: el que atiende (estilista, barbero…). Interino (D23 de
-   * PLAN-AGENDA-BELLEZA): es una fila en `Rol` sin módulos, así que no entra a
-   * ninguna sección hasta que llegue la agenda. Se ofrece sólo si el perfil
-   * del rubro lo trae en `config.rolesOfrecidos`.
-   */
   | "PROFESIONAL"
   | "PLATAFORMA";
 
@@ -75,9 +78,14 @@ export interface SesionUsuario {
   id: number;
   username: string;
   nombre?: string;
+  /** Código legado del rol: sólo para la telemetría y el APK viejo (ver `Rol`). */
   rol: Rol;
-  /** Módulos del ROL, en MAYÚSCULAS. */
-  modulos: Modulo[];
+  /** Id del rol del negocio (PLAN-ROLES-NEGOCIO §8). */
+  rolId?: number | null;
+  /** Nombre visible del rol, el que eligió el negocio ("Encargada", "Barbero"). */
+  rolNombre?: string | null;
+  /** El rol bloqueado del negocio: todos los permisos, no se edita ni se borra. */
+  esAdministrador?: boolean;
   /**
    * Sucursal del que entró. **`null` = toda la organización.**
    *
@@ -88,18 +96,15 @@ export interface SesionUsuario {
   sucursalId?: number | null;
   sucursal?: string | null;
   /**
-   * Permisos efectivos (PLAN-ROLES §8.1): ya cruzados con las features del
-   * plan. **Opcionales**: un backend anterior no los manda y una sesión
-   * guardada antes tampoco; sin ellos todo se decide como siempre (por rol y
-   * módulos). Hoy mandan en las pantallas de la agenda.
+   * Permisos efectivos (PLAN-ROLES §8.1): los de su rol, ya cruzados con las
+   * features del plan. **Son lo único que decide qué ve y qué puede tocar.**
+   * Opcionales sólo porque una sesión guardada antes de que el backend los
+   * mandara se rehidrata sin ellos: ahí se piden a `/auth/me`, y si tampoco
+   * vienen la sesión queda sin acceso (no hay respaldo por nombre de rol).
    */
   permisos?: string[];
   /** El subconjunto con alcance PROPIO (sólo lo suyo). */
   permisosPropios?: string[];
-  /** ADMIN, CAJERO, PROFESIONAL…: el rol "de fondo" (decide la ruta inicial). */
-  arquetipo?: string | null;
-  /** Cómo se llama el rol en este rubro ("Barbero", "Recepción"). */
-  rolEtiqueta?: string | null;
   /** Huella de los permisos: si cambia, se vuelven a pedir a /auth/me. */
   permisosVersion?: string;
 }
@@ -164,31 +169,122 @@ export interface Me {
   id: number;
   username: string;
   rol: Rol;
+  rolId?: number | null;
+  rolNombre?: string | null;
+  esAdministrador?: boolean;
   negocioId: number | null;
-  modulos: Modulo[];
   esPlataforma: boolean;
   permisos?: string[];
   permisosPropios?: string[];
-  arquetipo?: string | null;
   permisosVersion?: string;
 }
 
-/** Un permiso de un rol, como lo devuelve el backend (PLAN-ROLES §4). */
+// ── Roles del negocio (PLAN-ROLES-NEGOCIO §8) ───────────────────────────────
+
+export type Alcance = "GENERAL" | "PROPIO";
+
+/** Un permiso dentro de un rol, como se manda al crear o editar uno. */
 export interface PermisoDeRol {
   codigo: string;
-  nombre: string;
-  dominio: string;
-  alcance: "GENERAL" | "PROPIO";
+  alcance: Alcance;
 }
 
-/** GET /roles/ofrecidos: un rol que quien usa la pantalla puede asignar. */
-export interface RolOfrecido {
-  codigo: Rol;
-  etiqueta: string;
+/**
+ * Un permiso de un rol tal como lo devuelven `GET /roles` y
+ * `/roles/asignables`: con su nombre y su dominio, para mostrar "qué puede
+ * hacer" sin pedir el catálogo (que es de quien edita roles). `dominio` null =
+ * un código que el catálogo no conoce.
+ */
+export interface PermisoDeRolVista extends PermisoDeRol {
+  nombre: string;
+  dominio: string | null;
+}
+
+/** `GET /roles` y `GET /roles/asignables`: un rol del negocio. */
+export interface RolNegocio {
+  id: number;
+  nombre: string;
   descripcion: string | null;
-  nivel: number | null;
-  arquetipo: string | null;
-  permisos: PermisoDeRol[];
+  esAdministrador: boolean;
+  /** La plantilla de la que nació (null = lo creó el negocio). */
+  plantilla: string | null;
+  /** Usuarios activos con este rol. */
+  usuarios: number;
+  /** Personas de Personal que lo tienen como cargo. */
+  personal: number;
+  /**
+   * El Administrador trae todos menos los de ejecutor (`entregas.realizar`,
+   * `salon.cobrar_mesero`, `agenda.crear_propias`, `agenda.bloquear_propias`):
+   * los cubre con los generales, y con ellos aparecería como repartidor o
+   * mesero.
+   */
+  permisos: PermisoDeRolVista[];
+}
+
+/** Un permiso del catálogo, tal como lo ve quien edita roles. */
+export interface PermisoCatalogo {
+  codigo: string;
+  nombre: string;
+  descripcion: string;
+  sensible: boolean;
+  admitePropio: boolean;
+  /** El plan del negocio lo incluye. */
+  disponible: boolean;
+  /**
+   * Hasta qué alcance lo puede dar quien edita (nadie da lo que no tiene;
+   * "general" cubre "sólo lo suyo"). null = no lo puede dar.
+   */
+  otorgable: Alcance | null;
+}
+
+/** `GET /roles/catalogo`: los permisos agrupados por dominio. */
+export interface DominioPermisos {
+  dominio: string;
+  nombre: string;
+  permisos: PermisoCatalogo[];
+}
+
+export interface RolInput {
+  nombre?: string;
+  descripcion?: string | null;
+  /** Al editar es un reemplazo completo. */
+  permisos?: { codigo: string; alcance: Alcance }[];
+}
+
+export type AccionBitacoraRol = "CREAR" | "RENOMBRAR" | "PERMISOS" | "ELIMINAR" | "RESTABLECER";
+
+/**
+ * Qué cambió en un evento de la bitácora (§8.1). Es un objeto, no un texto:
+ * PERMISOS `{ agregados, quitados, cambiados? }`; RENOMBRAR `{ de, a }` (y
+ * `descripcion` si cambió); ELIMINAR `{ reasignadoA, usuarios, personal }`;
+ * CREAR y RESTABLECER, los permisos que agregaron o quitaron.
+ */
+export interface DetalleEventoRol {
+  agregados?: PermisoDeRol[];
+  quitados?: PermisoDeRol[];
+  cambiados?: { codigo: string; de: Alcance; a: Alcance }[];
+  de?: string;
+  a?: string;
+  descripcion?: { de: string | null; a: string | null };
+  reasignadoA?: { id: number; nombre: string } | null;
+  usuarios?: number;
+  personal?: number;
+  plantillaId?: number;
+}
+
+/** Un renglón de la bitácora de roles. */
+export interface EventoRol {
+  id: number;
+  fecha: string;
+  accion: AccionBitacoraRol | (string & {});
+  rolId: number;
+  rolNombre: string;
+  detalle: DetalleEventoRol | null;
+  autor: { id: number; nombre: string | null } | null;
+  /** Lo hizo el soporte de BamarDev desde el panel. */
+  porSoporte: boolean;
+  /** Por qué lo cambió el soporte (obligatorio en el panel). */
+  motivo?: string | null;
 }
 
 // ── Catálogo ────────────────────────────────────────────────────────────────
@@ -1298,7 +1394,12 @@ export interface Usuario {
   nombre: string;
   /** El backend devuelve el username bajo la clave `usuario`. */
   usuario: string;
+  /** Código legado (ver `Rol`): no se decide nada con él. */
   rol: Rol;
+  /** El rol del negocio (PLAN-ROLES-NEGOCIO §8). */
+  rolId?: number | null;
+  rolNombre?: string | null;
+  esAdministrador?: boolean;
   activo: boolean;
   email: string | null;
   telefono: string | null;
@@ -1324,7 +1425,8 @@ export interface CrearUsuarioInput {
   nombre: string;
   username: string;
   password: string;
-  rol: Rol;
+  /** El rol del negocio. */
+  rolId: number;
   email?: string;
   telefono?: string;
   notas?: string;
@@ -1341,7 +1443,8 @@ export interface CrearUsuarioInput {
  */
 export interface ActualizarUsuarioInput {
   nombre?: string;
-  rol?: Rol;
+  /** Sólo si cambia: el backend no deja asignar lo que el actor no puede dar. */
+  rolId?: number;
   email?: string;
   telefono?: string;
   notas?: string;

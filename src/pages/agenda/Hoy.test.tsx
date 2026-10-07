@@ -15,13 +15,25 @@ const sesion = vi.hoisted(() => ({
   rol: "CAJERO",
 }));
 
-vi.mock("../../store/AuthContext", () => ({
-  useAuth: () => ({
-    usuario: { id: 3, username: "recepcion", rol: sesion.rol, sucursalId: 1, sucursal: "Centro", modulos: [] },
-    negocio: { id: 1, nombre: "Salón Bella Vista", tipoNegocio: "PELUQUERIA", features: sesion.features },
-    puede: (s: string) => s === "pos" && sesion.conPos,
-  }),
-}));
+vi.mock("../../store/AuthContext", async () => {
+  // Los permisos de la plantilla de ese rol: la pantalla decide sólo con ellos.
+  const { permisosDe } = await import("../../test/sesiones");
+  return {
+    useAuth: () => ({
+      usuario: {
+        id: 3,
+        username: "recepcion",
+        rol: sesion.rol,
+        sucursalId: 1,
+        sucursal: "Centro",
+        // La plantilla de recepción trae la cola de espera (`cola.gestionar`).
+        ...permisosDe(sesion.rol as Parameters<typeof permisosDe>[0]),
+      },
+      negocio: { id: 1, nombre: "Salón Bella Vista", tipoNegocio: "PELUQUERIA", features: sesion.features },
+      puede: (s: string) => s === "pos" && sesion.conPos,
+    }),
+  };
+});
 
 function Ubicacion() {
   const l = useLocation();

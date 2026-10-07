@@ -10,14 +10,18 @@ import type { Caja, ResumenCaja } from "../../types";
 
 const sesion = vi.hoisted(() => ({ rubro: "PELUQUERIA" as string, reportes: true }));
 
-vi.mock("../../store/AuthContext", () => ({
-  useAuth: () => ({
-    rubro: sesion.rubro,
-    incluye: () => true,
-    puede: (s: string) => (s === "reportes" ? sesion.reportes : true),
-    usuario: { rol: "ADMIN" },
-  }),
-}));
+vi.mock("../../store/AuthContext", async () => {
+  // Los permisos de la plantilla de ese rol: la pantalla decide sólo con ellos.
+  const { permisosDe } = await import("../../test/sesiones");
+  return {
+    useAuth: () => ({
+      rubro: sesion.rubro,
+      incluye: () => true,
+      puede: (s: string) => (s === "reportes" ? sesion.reportes : true),
+      usuario: { rol: "ADMIN", ...permisosDe("ADMIN") },
+    }),
+  };
+});
 
 vi.mock("../../lib/api", () => ({
   api: { resumenCaja: vi.fn(), reporteCierreProductos: vi.fn(), cerrarCaja: vi.fn() },

@@ -12,9 +12,13 @@ import type { Gasto, PlantillaGasto, ResumenGastos } from "../types";
  * filas no tenían fondo y "Venció hace 8 días" salía gris.
  */
 
-vi.mock("../store/AuthContext", () => ({
-  useAuth: () => ({ usuario: { rol: "ADMIN", sucursalId: null } }),
-}));
+vi.mock("../store/AuthContext", async () => {
+  // Los permisos de la plantilla de ese rol: la pantalla decide sólo con ellos.
+  const { permisosDe } = await import("../test/sesiones");
+  return {
+    useAuth: () => ({ usuario: { rol: "ADMIN", ...permisosDe("ADMIN"), sucursalId: null } }),
+  };
+});
 
 vi.mock("../lib/api", () => ({
   api: {

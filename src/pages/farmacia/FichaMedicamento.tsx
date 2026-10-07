@@ -6,6 +6,7 @@ import { api } from "../../lib/api";
 import { fmtFecha, fmtMoney, fmtNum } from "../../lib/format";
 import { useApi } from "../../lib/useApi";
 import { contiene } from "../../lib/texto";
+import { tienePermiso } from "../../lib/permisos";
 import { useAuth } from "../../store/AuthContext";
 import type { Existencia, Producto } from "../../types";
 import {
@@ -358,8 +359,9 @@ function StockPorSucursal({
    */
   const deAca = varias ? lista.find((e) => e.almacenId === donde) : undefined;
   const otras = deAca ? lista.filter((e) => e !== deAca) : lista;
-  const ordena = usuario?.rol === "ADMIN" || usuario?.rol === "SUPERVISOR";
-  // Un supervisor de sucursal ordena la suya; el dueño, cualquiera.
+  // La ubicación la carga quien edita el catálogo (lo mismo que pide el
+  // backend); atado a una sucursal, sólo en la suya.
+  const ordena = tienePermiso(usuario, "catalogo.editar");
   const puedeUbicar = (e: Existencia) =>
     ordena && (miSucursal == null || miSucursal === e.almacenId);
 
