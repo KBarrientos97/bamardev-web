@@ -89,8 +89,8 @@ export default function ConfigAgenda() {
         titulo="Configuración de agenda"
         subtitulo="Qué se atiende, quién lo hace y cuándo."
         accion={
-          // Las reglas (granularidad, qué ve el profesional, reserva online)
-          // viven en la configuración del negocio, que es sólo del dueño.
+          // Las reglas (granularidad, reserva online) viven en la
+          // configuración del negocio, con `negocio.configurar`.
           puede("config_negocio") ? (
             <Link
               to="/configuracion/negocio"

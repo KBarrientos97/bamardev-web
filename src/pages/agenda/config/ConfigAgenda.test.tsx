@@ -168,6 +168,12 @@ describe("pestañas", () => {
     );
   });
 
+  it("07-oct: sin la feature `consentimientos` no hay pestaña, ni entrando por el enlace", async () => {
+    await montar("consentimientos");
+    expect(screen.queryByRole("tab", { name: "Consentimientos" })).toBeNull();
+    expect(screen.getByRole("tab", { name: "Servicios" })).toHaveAttribute("aria-selected", "true");
+  });
+
   it("Servicios: duración, margen, online, quién lo hace y aviso de los que no tienen duración", async () => {
     await montar("servicios");
     expect(screen.getByText(/Cortes · Bs 50,00 · 30 min \+ 5 min de margen/)).toBeInTheDocument();

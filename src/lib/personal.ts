@@ -1,5 +1,5 @@
 import { request } from "./api";
-import type { RolNegocio } from "../types";
+import type { PermisoDeRol, RolNegocio } from "../types";
 
 /**
  * Personal (PLAN-ROLES §9): la gente del negocio, entre o no al sistema.
@@ -14,8 +14,8 @@ export interface AccesoPersonal {
   /** Código legado (sólo para el APK viejo): no se decide nada con él. */
   rol: string | null;
   /** El rol del negocio con el que entra (PLAN-ROLES-NEGOCIO §8). */
-  rolId?: number | null;
-  rolNombre?: string | null;
+  rolId: number | null;
+  rolNombre: string | null;
   /** false = se le quitó el acceso (no ocupa cupo). */
   activo: boolean;
   ultimoLogin: string | null;
@@ -88,11 +88,13 @@ function qs(params: Record<string, string | number | boolean | null | undefined>
 const json = (cuerpo: unknown) => JSON.stringify(cuerpo);
 
 /**
- * Un cargo de `GET /personal/cargos`: un rol del negocio. El contrato sólo
- * promete que son "los roles del negocio"; lo seguro es el id y el nombre.
+ * Un cargo de `GET /personal/cargos`: un rol del negocio, con sus permisos
+ * pelados (código y alcance, sin nombre): alcanzan para saber si el cargo
+ * reparte o atiende la agenda, no para mostrarlos.
  */
-export type CargoRol = Pick<RolNegocio, "id" | "nombre"> &
-  Partial<Pick<RolNegocio, "esAdministrador" | "permisos">>;
+export type CargoRol = Pick<RolNegocio, "id" | "nombre" | "esAdministrador"> & {
+  permisos: PermisoDeRol[];
+};
 
 export const apiPersonal = {
   listar: (f: { incluirInactivos?: boolean; sucursalId?: number | null; sinProfesional?: boolean } = {}) =>

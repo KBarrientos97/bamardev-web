@@ -23,12 +23,20 @@ describe("configuración de la agenda", () => {
     for (const s of AMBAS) expect(puedeVer(ctx("ADMIN", "PELUQUERIA"), s)).toBe(true);
   });
 
-  it("el encargado, con agenda.configurar, ve las dos (es el permiso que pide el backend)", () => {
+  it("el encargado, con agenda.configurar, ve la de la agenda; las reglas del negocio no", () => {
     expect(puedeVer(ctx("SUPERVISOR", "BARBERIA"), "agenda_config")).toBe(true);
-    expect(puedeVer(ctx("SUPERVISOR", "BARBERIA"), "config_negocio")).toBe(true);
-    // Un encargado al que el dueño le sacó la configuración, no.
+    // Son `negocio.configurar`, que es lo que pide el backend y sólo trae el
+    // Administrador en las plantillas.
+    expect(puedeVer(ctx("SUPERVISOR", "BARBERIA"), "config_negocio")).toBe(false);
+    // Un encargado al que el dueño le sacó la configuración, tampoco la de la agenda.
     const sinConfig = ctxDe("SUPERVISOR", "BARBERIA", PLAN_BELLEZA, { sin: ["agenda.configurar"] });
     for (const s of AMBAS) expect(puedeVer(sinConfig, s)).toBe(false);
+  });
+
+  it("un rol con negocio.configurar ve las reglas del negocio, se llame como se llame", () => {
+    const conNegocio = ctxDe("SUPERVISOR", "BARBERIA", PLAN_BELLEZA, { extra: ["negocio.configurar"] });
+    expect(puedeVer(conNegocio, "config_negocio")).toBe(true);
+    expect(puedeVer({ rubro: "UNAS", features: PLAN_BELLEZA, permisos: ["negocio.configurar"] }, "config_negocio")).toBe(true);
   });
 
   it("recepción y el profesional no la ven", () => {
@@ -51,7 +59,7 @@ describe("configuración de la agenda", () => {
   it("no falla abierta: con la lista de features vacía tampoco aparece", () => {
     for (const s of AMBAS) {
       expect(puedeVer(ctx("ADMIN", "PELUQUERIA", []), s)).toBe(false);
-      expect(puedeVer({ rubro: "PELUQUERIA", permisos: ["agenda.configurar"] }, s)).toBe(false);
+      expect(puedeVer({ rubro: "PELUQUERIA", permisos: ["agenda.configurar", "negocio.configurar"] }, s)).toBe(false);
     }
   });
 

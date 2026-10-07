@@ -22,13 +22,7 @@ import {
 import { api } from "../lib/api";
 import { fmtFechaHora, iniciales, tiempoRelativo } from "../lib/format";
 import { tienePermiso } from "../lib/permisos";
-import {
-  apiRoles,
-  nombresDelCatalogo,
-  rolTiene,
-  tonoDeRol,
-  type NombresPermisos,
-} from "../lib/roles";
+import { apiRoles, mensajeDeError, rolTiene, tonoDeRol } from "../lib/roles";
 import { useApi } from "../lib/useApi";
 import { useAuth } from "../store/AuthContext";
 import type { ActualizarUsuarioInput, CrearUsuarioInput, RolNegocio, Usuario } from "../types";
@@ -71,19 +65,13 @@ function llevaPin(rol: RolNegocio | null, conPin: boolean): boolean {
 type FiltroRol = "todos" | "inactivos" | `rol:${number}`;
 
 export default function Usuarios() {
-  const { incluye, usuario: actual } = useAuth();
+  const { incluye } = useAuth();
   // El PIN sólo existe si el plan incluye la autorización con PIN.
   const conPin = incluye("autorizacion_pin");
   const usuarios = useApi(() => api.getUsuarios(), []);
   const roles = useApi(() => apiRoles.listar(), []);
-  // Los nombres de los permisos salen del catálogo, que es de quien edita
-  // roles. A quien no, no se le pide (sería un 403): se usa lo que traiga el rol.
-  const editaRoles = tienePermiso(actual, "roles.gestionar");
-  const catalogo = useApi(
-    () => (editaRoles ? apiRoles.catalogo().catch(() => null) : Promise.resolve(null)),
-    [editaRoles],
-  );
-  const nombres = useMemo(() => nombresDelCatalogo(catalogo.datos), [catalogo.datos]);
+  // Los permisos de cada rol llegan con su nombre y su dominio en `/roles`:
+  // "qué puede hacer" no necesita el catálogo.
   const listaRoles = useMemo(() => roles.datos ?? [], [roles.datos]);
 
   const [q, setQ] = useState("");
@@ -257,7 +245,6 @@ export default function Usuarios() {
       <DetalleUsuario
         usuario={detalle}
         roles={listaRoles}
-        nombres={nombres}
         onClose={() => setDetalle(null)}
         onEditar={(u) => {
           setDetalle(null);
@@ -274,7 +261,6 @@ export default function Usuarios() {
         abierto={creando || !!editando}
         usuario={editando}
         roles={listaRoles}
-        nombres={nombres}
         onClose={() => {
           setCreando(false);
           setEditando(null);
@@ -391,7 +377,6 @@ function DetalleUsuario({
   conPin,
   usuario: u,
   roles,
-  nombres,
   onClose,
   onEditar,
   onPassword,
@@ -401,7 +386,6 @@ function DetalleUsuario({
 }: {
   usuario: Usuario | null;
   roles: RolNegocio[];
-  nombres: NombresPermisos;
   onClose: () => void;
   onEditar: (u: Usuario) => void;
   onPassword: (u: Usuario) => void;
@@ -498,7 +482,6 @@ function DetalleUsuario({
             <PermisosDelRol
               nombre={rol.nombre}
               permisos={rol.permisos}
-              nombres={nombres}
               esAdministrador={rol.esAdministrador}
               plegado={false}
             />
@@ -549,14 +532,12 @@ function FormUsuario({
   abierto,
   usuario,
   roles,
-  nombres,
   onClose,
   onGuardado,
 }: {
   abierto: boolean;
   usuario: Usuario | null;
   roles: RolNegocio[];
-  nombres: NombresPermisos;
   onClose: () => void;
   onGuardado: (u: Usuario) => void;
 }) {
@@ -568,7 +549,6 @@ function FormUsuario({
       key={usuario?.id ?? "nuevo"}
       usuario={usuario}
       roles={roles}
-      nombres={nombres}
       onClose={onClose}
       onGuardado={onGuardado}
     />
@@ -578,13 +558,11 @@ function FormUsuario({
 function FormUsuarioCuerpo({
   usuario,
   roles,
-  nombres,
   onClose,
   onGuardado,
 }: {
   usuario: Usuario | null;
   roles: RolNegocio[];
-  nombres: NombresPermisos;
   onClose: () => void;
   onGuardado: (u: Usuario) => void;
 }) {
@@ -710,7 +688,8 @@ function FormUsuarioCuerpo({
         onGuardado(await api.crearUsuario(input));
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo guardar");
+      // ROL_NO_ASIGNABLE / ROL_INVALIDO, en palabras del dueño.
+      setError(mensajeDeError(err));
     } finally {
       setGuardando(false);
     }
@@ -779,7 +758,6 @@ function FormUsuarioCuerpo({
             <PermisosDelRol
               nombre={rol.nombre}
               permisos={rol.permisos}
-              nombres={nombres}
               esAdministrador={rol.esAdministrador}
             />
           )}

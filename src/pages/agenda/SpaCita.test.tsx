@@ -177,6 +177,23 @@ describe("detalle de la cita del spa", () => {
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
+  it("07-oct: con `consentimientos` apagada no hay aviso de firma ni ficha de salud, ni para el profesional", async () => {
+    // Deuda técnica: el backend apaga la feature en todos los negocios.
+    sesion.features = ["agenda", "paquetes"];
+    vi.mocked(apiAgenda.cita).mockResolvedValue(CON_CABINA);
+    render(
+      <MemoryRouter>
+        <DetalleCita cita={CON_CABINA} modo="profesional" onClose={vi.fn()} onCambio={vi.fn()} />
+      </MemoryRouter>,
+    );
+    await act(async () => {});
+    expect(apiSpa.pendientesDeCita).not.toHaveBeenCalled();
+    expect(apiSpa.saludDelCliente).not.toHaveBeenCalled();
+    expect(screen.queryByText("Salud y consentimientos")).toBeNull();
+    expect(screen.queryByText("Falta el consentimiento firmado")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Firmar ahora" })).toBeNull();
+  });
+
   describe("DIA-06: la ficha de salud desde la cita del profesional", () => {
     beforeEach(() => {
       vi.mocked(apiSpa.saludDelCliente).mockResolvedValue({ ficha: null, firmados: [] });

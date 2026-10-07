@@ -23,7 +23,9 @@ vi.mock("../store/AuthContext", () => ({
   }),
 }));
 
-vi.mock("../lib/api", () => ({
+vi.mock("../lib/api", async (importOriginal) => ({
+  // ApiError real: los rechazos de rol se reconocen por su código.
+  ApiError: (await importOriginal<typeof import("../lib/api")>()).ApiError,
   api: {
     getSucursales: vi.fn(async () => [{ id: 1, nombre: "Centro", activo: true, tipo: "SUCURSAL" }]),
     getUsuarios: vi.fn(async () => []),
@@ -42,7 +44,7 @@ const ROLES = vi.hoisted(() => {
     personal: 0,
     permisos: [],
   });
-  return [rol(1, "Dueño", true), rol(3, "Recepción"), rol(4, "Barbero")];
+  return [rol(1, "Administrador", true), rol(3, "Recepción"), rol(4, "Barbero")];
 });
 
 vi.mock("../lib/roles", async (importOriginal) => {
@@ -66,7 +68,7 @@ vi.mock("../lib/personal", () => ({
   },
 }));
 
-import { api } from "../lib/api";
+import { ApiError, api } from "../lib/api";
 import { apiPersonal } from "../lib/personal";
 import { apiRoles } from "../lib/roles";
 import Personal from "./Personal";
@@ -75,7 +77,7 @@ const base: Persona = {
   id: 1,
   nombre: "Dueño",
   cargoRolId: 1,
-  cargo: "Dueño",
+  cargo: "Administrador",
   activo: true,
   color: null,
   sucursalIds: [],
@@ -90,7 +92,7 @@ const base: Persona = {
   notas: null,
   zona: null,
   vehiculo: null,
-  acceso: { usuarioId: 10, username: "admin", rol: "ADMIN", rolId: 1, rolNombre: "Dueño", activo: true, ultimoLogin: null },
+  acceso: { usuarioId: 10, username: "admin", rol: "ADMIN", rolId: 1, rolNombre: "Administrador", activo: true, ultimoLogin: null },
 };
 const LUCHO: Persona = {
   ...base,
@@ -209,6 +211,26 @@ describe("Personal", () => {
       fireEvent.click(within(dialogo).getByRole("button", { name: "Darle acceso" }));
     });
     expect(within(dialogo).getByText(/Tu plan permite 4 usuarios activos/)).toBeInTheDocument();
+  });
+
+  it("un rol que quien da el acceso no puede asignar (403 ROL_NO_ASIGNABLE), en palabras", async () => {
+    vi.mocked(apiPersonal.darAcceso).mockRejectedValue(
+      new ApiError("Forbidden", 403, { codigo: "ROL_NO_ASIGNABLE" }),
+    );
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Ver Lucho" }));
+    await act(async () => {});
+    fireEvent.click(screen.getByRole("button", { name: "Darle acceso" }));
+    await act(async () => {});
+    const dialogo = screen.getByRole("dialog", { name: "Darle acceso" });
+    fireEvent.change(within(dialogo).getByLabelText("Usuario"), { target: { value: "lucho" } });
+    fireEvent.change(within(dialogo).getByLabelText("Contraseña"), { target: { value: "secreto1" } });
+    await act(async () => {
+      fireEvent.click(within(dialogo).getByRole("button", { name: "Darle acceso" }));
+    });
+    expect(
+      within(dialogo).getByText("No podés asignar ese rol: tiene permisos que vos no tenés."),
+    ).toBeInTheDocument();
   });
 
   it("quitar acceso pide confirmación y la persona sigue", async () => {
@@ -351,7 +373,7 @@ describe("Personal", () => {
       ci: "1234567",
       sucursalIds: [1],
       usuarioId: 20,
-      acceso: { usuarioId: 20, username: "pablo", rol: "PROFESIONAL", activo: true, ultimoLogin: null },
+      acceso: { usuarioId: 20, username: "pablo", rol: "PROFESIONAL", rolId: 4, rolNombre: "Barbero", activo: true, ultimoLogin: null },
     };
     const SIN_LOGIN: Persona = { ...LUCHO, id: 6, nombre: "Nueva", recursoId: null, profesional: null };
     vi.mocked(apiPersonal.listar).mockResolvedValue([base, LUCHO, ANA, PABLO, SIN_LOGIN]);

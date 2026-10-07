@@ -183,16 +183,21 @@ export interface Me {
 
 export type Alcance = "GENERAL" | "PROPIO";
 
-/**
- * Un permiso dentro de un rol. `nombre` y `dominio` son opcionales: el
- * contrato de `GET /roles` sólo promete el código y el alcance, y el nombre se
- * toma del catálogo cuando quien mira lo puede pedir.
- */
+/** Un permiso dentro de un rol, como se manda al crear o editar uno. */
 export interface PermisoDeRol {
   codigo: string;
   alcance: Alcance;
-  nombre?: string;
-  dominio?: string;
+}
+
+/**
+ * Un permiso de un rol tal como lo devuelven `GET /roles` y
+ * `/roles/asignables`: con su nombre y su dominio, para mostrar "qué puede
+ * hacer" sin pedir el catálogo (que es de quien edita roles). `dominio` null =
+ * un código que el catálogo no conoce.
+ */
+export interface PermisoDeRolVista extends PermisoDeRol {
+  nombre: string;
+  dominio: string | null;
 }
 
 /** `GET /roles` y `GET /roles/asignables`: un rol del negocio. */
@@ -207,7 +212,13 @@ export interface RolNegocio {
   usuarios: number;
   /** Personas de Personal que lo tienen como cargo. */
   personal: number;
-  permisos: PermisoDeRol[];
+  /**
+   * El Administrador trae todos menos los de ejecutor (`entregas.realizar`,
+   * `salon.cobrar_mesero`, `agenda.crear_propias`, `agenda.bloquear_propias`):
+   * los cubre con los generales, y con ellos aparecería como repartidor o
+   * mesero.
+   */
+  permisos: PermisoDeRolVista[];
 }
 
 /** Un permiso del catálogo, tal como lo ve quien edita roles. */
@@ -219,8 +230,11 @@ export interface PermisoCatalogo {
   admitePropio: boolean;
   /** El plan del negocio lo incluye. */
   disponible: boolean;
-  /** Quien edita lo tiene, así que lo puede dar. */
-  otorgable: boolean;
+  /**
+   * Hasta qué alcance lo puede dar quien edita (nadie da lo que no tiene;
+   * "general" cubre "sólo lo suyo"). null = no lo puede dar.
+   */
+  otorgable: Alcance | null;
 }
 
 /** `GET /roles/catalogo`: los permisos agrupados por dominio. */
@@ -239,6 +253,25 @@ export interface RolInput {
 
 export type AccionBitacoraRol = "CREAR" | "RENOMBRAR" | "PERMISOS" | "ELIMINAR" | "RESTABLECER";
 
+/**
+ * Qué cambió en un evento de la bitácora (§8.1). Es un objeto, no un texto:
+ * PERMISOS `{ agregados, quitados, cambiados? }`; RENOMBRAR `{ de, a }` (y
+ * `descripcion` si cambió); ELIMINAR `{ reasignadoA, usuarios, personal }`;
+ * CREAR y RESTABLECER, los permisos que agregaron o quitaron.
+ */
+export interface DetalleEventoRol {
+  agregados?: PermisoDeRol[];
+  quitados?: PermisoDeRol[];
+  cambiados?: { codigo: string; de: Alcance; a: Alcance }[];
+  de?: string;
+  a?: string;
+  descripcion?: { de: string | null; a: string | null };
+  reasignadoA?: { id: number; nombre: string } | null;
+  usuarios?: number;
+  personal?: number;
+  plantillaId?: number;
+}
+
 /** Un renglón de la bitácora de roles. */
 export interface EventoRol {
   id: number;
@@ -246,10 +279,12 @@ export interface EventoRol {
   accion: AccionBitacoraRol | (string & {});
   rolId: number;
   rolNombre: string;
-  detalle: string | null;
-  autor: { id: number; nombre: string } | null;
+  detalle: DetalleEventoRol | null;
+  autor: { id: number; nombre: string | null } | null;
   /** Lo hizo el soporte de BamarDev desde el panel. */
   porSoporte: boolean;
+  /** Por qué lo cambió el soporte (obligatorio en el panel). */
+  motivo?: string | null;
 }
 
 // ── Catálogo ────────────────────────────────────────────────────────────────

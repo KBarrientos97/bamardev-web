@@ -237,10 +237,10 @@ export type OrigenRegla = "SUCURSAL" | "NEGOCIO" | "DEFECTO";
 export interface Reglas {
   granularidadMin: number;
   bufferGeneralMin: number;
-  profesionalPuedeAgendar: boolean;
-  profesionalPuedeBloquear: boolean;
-  profesionalVeTelefono: boolean;
-  profesionalVePrecios: boolean;
+  // Los 4 interruptores del profesional (agendar, bloquear, ver teléfono y
+  // precios) ya no están: el backend los sigue mandando, pero no deciden nada
+  // desde PLAN-ROLES-NEGOCIO (son permisos del rol). Fuera del tipo, ni se
+  // muestran ni vuelven en el PUT.
   // Reserva online: se guardan desde ya, se usan en la fase 2.
   modoConfirmacion: ModoConfirmacion;
   anticipacionMinHoras: number;

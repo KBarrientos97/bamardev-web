@@ -227,7 +227,7 @@ describe("una sesión guardada sin permisos", () => {
       username: "admin",
       rol: "ADMIN",
       rolId: 1,
-      rolNombre: "Dueño",
+      rolNombre: "Administrador",
       esAdministrador: true,
       negocioId: 1,
       esPlataforma: false,
@@ -241,7 +241,7 @@ describe("una sesión guardada sin permisos", () => {
     expect(await screen.findByText("Inicio del administrador")).toBeInTheDocument();
     expect(window.location.pathname).toBe("/inventario");
     const guardado = JSON.parse(localStorage.getItem(USER_KEY) ?? "{}");
-    expect(guardado.rolNombre).toBe("Dueño");
+    expect(guardado.rolNombre).toBe("Administrador");
     expect(guardado.permisos).toContain("dashboard.ver");
   });
 

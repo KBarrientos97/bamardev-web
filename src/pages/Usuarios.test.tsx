@@ -1,12 +1,12 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { DominioPermisos, PermisoDeRol, RolNegocio, SesionUsuario, Usuario } from "../types";
+import type { PermisoDeRolVista, RolNegocio, SesionUsuario, Usuario } from "../types";
 
 /**
  * Usuarios con los roles del negocio (PLAN-ROLES-NEGOCIO): las tarjetas, los
  * filtros, el combo de rol, el detalle y el PIN salen de la lista de roles y
  * de los permisos, nunca de un nombre de rol escrito en la pantalla. El API de
- * roles todavía no existe en el backend: se mockea con el contrato de §8.
+ * roles se mockea con el contrato de §8.
  */
 
 const sesion = vi.hoisted(() => ({
@@ -46,9 +46,20 @@ import { apiRoles } from "../lib/roles";
 import { usuarioDe } from "../test/sesiones";
 import Usuarios from "./Usuarios";
 
-const p = (codigo: string, alcance: PermisoDeRol["alcance"] = "GENERAL"): PermisoDeRol => ({ codigo, alcance });
+/** Nombre y dominio de cada permiso, como los manda `GET /roles` (§8). */
+const NOMBRES: Record<string, [string, string]> = {
+  "ventas.vender": ["Vender", "Ventas"],
+  "caja.operar": ["Operar su caja", "Caja"],
+};
 
-function rol(id: number, nombre: string, permisos: PermisoDeRol[], extra: Partial<RolNegocio> = {}): RolNegocio {
+const p = (codigo: string, alcance: PermisoDeRolVista["alcance"] = "GENERAL"): PermisoDeRolVista => ({
+  codigo,
+  alcance,
+  nombre: NOMBRES[codigo]?.[0] ?? codigo,
+  dominio: NOMBRES[codigo]?.[1] ?? null,
+});
+
+function rol(id: number, nombre: string, permisos: PermisoDeRolVista[], extra: Partial<RolNegocio> = {}): RolNegocio {
   return { id, nombre, descripcion: null, esAdministrador: false, plantilla: null, usuarios: 0, personal: 0, permisos, ...extra };
 }
 
@@ -63,23 +74,6 @@ const REPARTIDOR = rol(5, "Repartidor", [p("entregas.realizar", "PROPIO")], { pl
 /** Uno que creó el negocio: no nace de ninguna plantilla. */
 const LAVAPLATOS = rol(6, "Lavaplatos", []);
 const ROLES = [ADMINISTRADOR, ENCARGADO, CAJERO, MESERO, REPARTIDOR];
-
-const CATALOGO: DominioPermisos[] = [
-  {
-    dominio: "Ventas",
-    nombre: "Ventas",
-    permisos: [
-      { codigo: "ventas.vender", nombre: "Vender", descripcion: "", sensible: false, admitePropio: false, disponible: true, otorgable: true },
-    ],
-  },
-  {
-    dominio: "Caja",
-    nombre: "Caja",
-    permisos: [
-      { codigo: "caja.operar", nombre: "Operar su caja", descripcion: "", sensible: false, admitePropio: false, disponible: true, otorgable: true },
-    ],
-  },
-];
 
 function cuenta(datos: Partial<Usuario>): Usuario {
   return {
@@ -142,7 +136,6 @@ beforeEach(() => {
   sesion.actor = usuarioDe("ADMIN", { id: 1, username: "omar" }, { extra: ["roles.gestionar", "usuarios.asignar_pin", "sucursales.todas"] });
   sesion.conPin = true;
   vi.mocked(apiRoles.asignables).mockResolvedValue([ENCARGADO, CAJERO, MESERO, REPARTIDOR]);
-  vi.mocked(apiRoles.catalogo).mockResolvedValue(CATALOGO);
 });
 
 describe("tarjetas y filtros, uno por rol del negocio", () => {
@@ -264,7 +257,7 @@ describe("crear y editar con los roles asignables", () => {
 });
 
 describe("el detalle muestra los permisos reales del rol", () => {
-  it("con los nombres del catálogo, agrupados por dominio", async () => {
+  it("con los nombres que trae el rol, agrupados por dominio", async () => {
     await montar([OMAR, ANA]);
     abrir("ana");
     expect(screen.getByText("Ventas:")).toBeInTheDocument();
@@ -278,13 +271,18 @@ describe("el detalle muestra los permisos reales del rol", () => {
     expect(screen.getByText("Todos los permisos que incluye el plan del negocio.")).toBeInTheDocument();
   });
 
-  it("quien no edita roles no pide el catálogo (sería un 403)", async () => {
+  it("no pide el catálogo: los nombres llegan en /roles, también para quien no edita roles", async () => {
     sesion.actor = usuarioDe("SUPERVISOR", { id: 5, username: "elsa" });
     await montar([OMAR, ANA]);
-    expect(apiRoles.catalogo).not.toHaveBeenCalled();
     abrir("ana");
-    // Sin catálogo, el código: mejor eso que un renglón vacío.
-    expect(screen.getByText(/ventas.vender · caja.operar/)).toBeInTheDocument();
+    expect(screen.getByText("Vender")).toBeInTheDocument();
+    expect(apiRoles.catalogo).not.toHaveBeenCalled();
+  });
+
+  it("un permiso sin nombre (el backend no lo conoce) se muestra por su código", async () => {
+    await montar([OMAR, ANA], [ADMINISTRADOR, rol(3, "Cajero", [p("ventas.vender"), p("otro.permiso")])]);
+    abrir("ana");
+    expect(screen.getByText("Otros:").parentElement).toHaveTextContent("Otros: otro.permiso");
   });
 });
 

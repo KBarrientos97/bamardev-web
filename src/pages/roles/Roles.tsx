@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Chips, EncabezadoPagina } from "../../components/filtros";
 import { Icon } from "../../components/Icon";
 import { AvisoOk, Badge, Boton, Cargando, ErrorMsg, useAviso, Vacio } from "../../components/ui";
-import { apiRoles, resumenGente, tonoDeRol } from "../../lib/roles";
+import { apiRoles, nombresDelCatalogo, resumenGente, tonoDeRol } from "../../lib/roles";
 import { useApi } from "../../lib/useApi";
 import type { RolNegocio } from "../../types";
 import BitacoraRoles from "./BitacoraRoles";
@@ -28,6 +28,7 @@ export default function Roles() {
   const roles = useApi(() => apiRoles.listar(), []);
   // Sin el catálogo el editor no sabe qué permisos ofrecer: se avisa al abrirlo.
   const catalogo = useApi(() => apiRoles.catalogo(), []);
+  const nombres = useMemo(() => nombresDelCatalogo(catalogo.datos), [catalogo.datos]);
   const [pestana, setPestana] = useState<Pestana>("roles");
   const [editando, setEditando] = useState<RolNegocio | "nuevo" | null>(null);
   const [borrando, setBorrando] = useState<RolNegocio | null>(null);
@@ -55,7 +56,7 @@ export default function Roles() {
       <AvisoOk>{aviso}</AvisoOk>
 
       {pestana === "bitacora" ? (
-        <BitacoraRoles />
+        <BitacoraRoles nombres={nombres} />
       ) : roles.cargando && !roles.datos ? (
         <Cargando />
       ) : roles.error ? (

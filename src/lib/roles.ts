@@ -4,9 +4,9 @@ import type {
   DominioPermisos,
   EventoRol,
   PermisoDeRol,
+  PermisoDeRolVista,
   RolInput,
   RolNegocio,
-  SesionUsuario,
 } from "../types";
 
 /**
@@ -21,7 +21,7 @@ export const apiRoles = {
   listar: () => request<RolNegocio[]>("/roles"),
   /** Los que quien está mirando puede asignar (nunca más de lo que él tiene). */
   asignables: () => request<RolNegocio[]>("/roles/asignables"),
-  /** Todos los permisos, por dominio, con lo que el plan incluye y lo que el actor puede dar. */
+  /** Todos los permisos, por dominio, con lo que el plan incluye y hasta dónde el actor los puede dar. */
   catalogo: () => request<DominioPermisos[]>("/roles/catalogo"),
   crear: (input: RolInput & { nombre: string }) =>
     request<RolNegocio>("/roles", { method: "POST", body: json(input) }),
@@ -37,10 +37,24 @@ export const apiRoles = {
   bitacoraDe: (id: number) => request<EventoRol[]>(`/roles/${id}/bitacora`),
 };
 
-/** ¿El rol trae este permiso? El Administrador los tiene todos. */
+/**
+ * Los permisos "de ejecutor": el trabajo de una persona (repartir lo suyo,
+ * cobrar sus mesas, agendar o bloquear lo suyo). El Administrador no los
+ * recibe: los cubre con la versión general, y con ellos la web lo trataría
+ * como repartidor o mesero (`cubiertoPor` en catalogo.ts del backend).
+ */
+export const PERMISOS_DE_EJECUTOR = [
+  "entregas.realizar",
+  "salon.cobrar_mesero",
+  "agenda.crear_propias",
+  "agenda.bloquear_propias",
+];
+
+/** ¿El rol trae este permiso? El Administrador, todos menos los de ejecutor. */
 export function rolTiene(rol: Pick<RolNegocio, "esAdministrador" | "permisos"> | null | undefined, codigo: string) {
   if (!rol) return false;
-  return rol.esAdministrador || rol.permisos.some((p) => p.codigo === codigo);
+  if (rol.esAdministrador) return !PERMISOS_DE_EJECUTOR.includes(codigo);
+  return rol.permisos.some((p) => p.codigo === codigo);
 }
 
 /**
@@ -64,13 +78,17 @@ export function nombresDelCatalogo(catalogo: DominioPermisos[] | null | undefine
   return mapa;
 }
 
+/** Un permiso de rol con o sin su nombre (los de `/personal/cargos` vienen sin). */
+type PermisoConNombre = PermisoDeRol & Partial<Pick<PermisoDeRolVista, "nombre" | "dominio">>;
+
 /**
  * Los permisos de un rol agrupados por dominio, con su nombre. El nombre sale
- * del propio permiso si el backend lo manda, si no del catálogo, y como último
- * recurso del código ("ventas.vender"): mejor un código que un renglón vacío.
+ * del propio permiso (`GET /roles` lo manda), si no del catálogo, y como
+ * último recurso del código ("ventas.vender"): mejor un código que un renglón
+ * vacío.
  */
 export function agruparPorDominio(
-  permisos: PermisoDeRol[],
+  permisos: PermisoConNombre[],
   nombres: NombresPermisos,
 ): { dominio: string; permisos: (PermisoDeRol & { nombre: string })[] }[] {
   const grupos = new Map<string, (PermisoDeRol & { nombre: string })[]>();
@@ -81,21 +99,6 @@ export function agruparPorDominio(
     grupos.set(dominio, [...(grupos.get(dominio) ?? []), { ...p, nombre }]);
   }
   return [...grupos.entries()].map(([dominio, lista]) => ({ dominio, permisos: lista }));
-}
-
-/**
- * Hasta dónde puede dar un permiso quien edita: nadie da lo que no tiene, y
- * "general" cubre "sólo lo suyo" (quien ve toda la agenda puede dar "ver su
- * agenda"; quien ve sólo la suya, no puede dar la de todos). Se calcula con la
- * sesión porque `otorgable` del catálogo es un sí/no y no dice el alcance.
- */
-export function alcanceOtorgable(
-  actor: Pick<SesionUsuario, "permisos" | "permisosPropios" | "esAdministrador"> | null | undefined,
-  codigo: string,
-): Alcance | null {
-  if (actor?.esAdministrador) return "GENERAL";
-  if (!actor?.permisos?.includes(codigo)) return null;
-  return actor.permisosPropios?.includes(codigo) ? "PROPIO" : "GENERAL";
 }
 
 /** Texto de la cantidad de gente de un rol: "3 usuarios · 1 en personal". */
@@ -123,13 +126,81 @@ export function tonoDeRol(rol: Pick<RolNegocio, "id" | "esAdministrador"> | null
   return i < 0 ? "gris" : TONOS[i % TONOS.length];
 }
 
-/** Los rechazos del backend, en palabras del dueño (contrato §8). */
-export function mensajeDeError(e: unknown): string {
-  if (e instanceof ApiError) {
-    if (e.codigo === "NOMBRE_REPETIDO") return "Ya hay un rol con ese nombre.";
-    if (e.codigo === "PERMISO_NO_OTORGABLE") return "Hay permisos que no tenés: no los podés dar.";
-    if (e.codigo === "ROL_BLOQUEADO") return "El Administrador no se edita ni se borra.";
-    if (e.codigo === "REASIGNAR_REQUERIDO") return "El rol tiene gente: elegí a qué rol pasarla.";
+const plural = (n: number, uno: string, varios: string) => `${n} ${n === 1 ? uno : varios}`;
+
+const ALCANCE_TEXTO: Record<Alcance, string> = { GENERAL: "general", PROPIO: "sólo lo suyo" };
+
+/**
+ * El detalle de un evento de la bitácora, en renglones legibles. El backend
+ * lo guarda como objeto (§8.1); los permisos se nombran con el catálogo si
+ * está a mano, si no por su código. Un detalle viejo en texto sale tal cual.
+ */
+export function renglonesDetalle(evento: Pick<EventoRol, "detalle" | "motivo">, nombres: NombresPermisos): string[] {
+  const d = evento.detalle as EventoRol["detalle"] | string;
+  const nombre = (codigo: string) => nombres.get(codigo)?.nombre ?? codigo;
+  const lista = (ps: PermisoDeRol[]) =>
+    ps.map((p) => (p.alcance === "PROPIO" ? `${nombre(p.codigo)} (sólo lo suyo)` : nombre(p.codigo))).join(", ");
+  const renglones: string[] = [];
+  if (typeof d === "string") {
+    if (d.trim()) renglones.push(d);
+  } else if (d) {
+    if (d.de != null && d.a != null) renglones.push(`${d.de} → ${d.a}`);
+    if (d.descripcion) renglones.push("Cambió la descripción");
+    if (d.agregados?.length) renglones.push(`Agregó: ${lista(d.agregados)}`);
+    if (d.quitados?.length) renglones.push(`Quitó: ${lista(d.quitados)}`);
+    for (const c of d.cambiados ?? []) {
+      renglones.push(`${nombre(c.codigo)}: ${ALCANCE_TEXTO[c.de]} → ${ALCANCE_TEXTO[c.a]}`);
+    }
+    if (d.reasignadoA) renglones.push(`Su gente pasó a ${d.reasignadoA.nombre}`);
   }
-  return e instanceof Error && e.message ? e.message : "No se pudo guardar";
+  if (evento.motivo?.trim()) renglones.push(`Motivo: ${evento.motivo.trim()}`);
+  return renglones;
+}
+
+/**
+ * Los rechazos del backend, en palabras del dueño (contrato §8). Sirve para
+ * la pantalla de Roles y para todo lo que asigna un rol (Usuarios, Personal).
+ * `nombres` (del catálogo) nombra los permisos de PERMISO_NO_OTORGABLE; sin
+ * él, queda el mensaje del backend, que ya los nombra.
+ */
+export function mensajeDeError(
+  e: unknown,
+  opciones: { nombres?: NombresPermisos; generico?: string } = {},
+): string {
+  const generico = opciones.generico ?? "No se pudo guardar";
+  if (e instanceof ApiError) {
+    const d = e.detalle;
+    switch (e.codigo) {
+      case "NOMBRE_REPETIDO":
+        return "Ya hay un rol con ese nombre.";
+      case "PERMISO_NO_OTORGABLE": {
+        const codigos = Array.isArray(d.permisos) ? (d.permisos as unknown[]).map(String) : [];
+        const conNombre = codigos.map((c) => opciones.nombres?.get(c)?.nombre).filter(Boolean);
+        if (codigos.length && conNombre.length === codigos.length) {
+          return `No podés dar lo que no tenés: ${conNombre.join(", ")}.`;
+        }
+        return e.message || "Hay permisos que no tenés: no los podés dar.";
+      }
+      case "ROL_BLOQUEADO":
+        return "El Administrador no se edita ni se borra.";
+      case "REASIGNAR_REQUERIDO": {
+        const usuarios = Number(d.usuarios) || 0;
+        const personal = Number(d.personal) || 0;
+        const partes = [
+          usuarios ? plural(usuarios, "usuario", "usuarios") : "",
+          personal ? plural(personal, "persona", "personas") + " de Personal" : "",
+        ].filter(Boolean);
+        return partes.length
+          ? `El rol lo tienen ${partes.join(" y ")}: elegí a qué rol pasan.`
+          : "El rol tiene gente: elegí a qué rol pasarla.";
+      }
+      // Al asignar o reasignar un rol con más permisos que los de quien lo hace.
+      case "ROL_NO_ASIGNABLE":
+        return "No podés asignar ese rol: tiene permisos que vos no tenés.";
+      // El rol se borró mientras el formulario estaba abierto.
+      case "ROL_INVALIDO":
+        return "Ese rol ya no existe. Recargá la página y elegí otro.";
+    }
+  }
+  return e instanceof Error && e.message ? e.message : generico;
 }

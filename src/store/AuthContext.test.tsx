@@ -23,7 +23,7 @@ const ADMIN: SesionUsuario = {
   username: "admin",
   rol: "ADMIN",
   rolId: 1,
-  rolNombre: "Dueño",
+  rolNombre: "Administrador",
   esAdministrador: true,
   permisos: ["ventas.vender", "reportes.ver"],
   permisosPropios: [],

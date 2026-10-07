@@ -10,10 +10,12 @@ import { cita, recurso } from "../../test/agendaFixtures";
  */
 
 const logout = vi.fn();
+// Los permisos de más de su rol (`agenda.crear_propias` = agendar lo suyo).
+const sesion = vi.hoisted(() => ({ extra: [] as string[] }));
 
 vi.mock("../../store/AuthContext", () => ({
   useAuth: () => ({
-    usuario: { id: 8, username: "carla", nombre: "Carla", rol: "PROFESIONAL", rolNombre: "Estilista", sucursalId: null, permisos: ["agenda.ver", "agenda.estado", "comisiones.ver"], permisosPropios: ["agenda.ver", "agenda.estado", "comisiones.ver"] },
+    usuario: { id: 8, username: "carla", nombre: "Carla", rol: "PROFESIONAL", rolNombre: "Estilista", sucursalId: null, permisos: ["agenda.ver", "agenda.estado", "comisiones.ver", ...sesion.extra], permisosPropios: ["agenda.ver", "agenda.estado", "comisiones.ver", ...sesion.extra] },
     negocio: { id: 1, nombre: "Salón Bella Vista", tipoNegocio: "PELUQUERIA" },
     logout,
   }),
@@ -36,6 +38,7 @@ beforeEach(() => {
   vi.useFakeTimers({ toFake: ["Date"] });
   // Miércoles 21-oct-2026, 09:00 en La Paz.
   vi.setSystemTime(new Date("2026-10-21T13:00:00.000Z"));
+  sesion.extra = [];
   vi.mocked(apiAgenda.reglas).mockRejectedValue(new Error("sin reglas"));
 });
 
@@ -98,18 +101,22 @@ describe("A10 · mi agenda", () => {
     expect(screen.getByText("Paola Suárez")).toBeInTheDocument();
   });
 
-  it("con la regla del negocio prendida puede agendar", async () => {
+  it("con `agenda.crear_propias` en su rol puede agendar", async () => {
+    sesion.extra = ["agenda.crear_propias"];
+    vi.mocked(apiAgenda.miAgenda).mockResolvedValue({ recursos: [recurso({ usuarioId: 8 })], citas: [] });
+    await montar();
+    expect(screen.getByRole("button", { name: "Nueva cita" })).toBeInTheDocument();
+  });
+
+  it("la regla vieja de la agenda ya no decide: sin el permiso no agenda aunque esté prendida", async () => {
     vi.mocked(apiAgenda.reglas).mockResolvedValue({
       granularidadMin: 15,
       bufferGeneralMin: 0,
       profesionalPuedeAgendar: true,
-      profesionalPuedeBloquear: false,
-      profesionalVeTelefono: false,
-      profesionalVePrecios: false,
-    });
+    } as Awaited<ReturnType<typeof apiAgenda.reglas>>);
     vi.mocked(apiAgenda.miAgenda).mockResolvedValue({ recursos: [recurso({ usuarioId: 8 })], citas: [] });
     await montar();
-    expect(screen.getByRole("button", { name: "Nueva cita" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Nueva cita" })).not.toBeInTheDocument();
   });
 
   it("M-12: en una secuencia ve sólo su tramo (hora, duración y servicio)", async () => {

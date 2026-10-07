@@ -136,8 +136,9 @@ describe("la agenda, permiso por permiso", () => {
     ]);
   });
 
-  it("con agenda.configurar se ve la configuración y las reglas", () => {
-    expect(verTodo(conPermisos([...RECEPCION, "agenda.configurar"]))).toEqual([
+  it("con agenda.configurar se ve la configuración; las reglas del negocio piden negocio.configurar", () => {
+    expect(verTodo(conPermisos([...RECEPCION, "agenda.configurar"]))).toEqual(["agenda", "hoy", "agenda_config"]);
+    expect(verTodo(conPermisos([...RECEPCION, "agenda.configurar", "negocio.configurar"]))).toEqual([
       "agenda",
       "hoy",
       "agenda_config",

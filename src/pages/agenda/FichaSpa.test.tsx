@@ -150,4 +150,15 @@ describe("ficha del cliente: paquetes y salud", () => {
     expect(apiSpa.paquetesDelCliente).not.toHaveBeenCalled();
     expect(apiSpa.saludDelCliente).not.toHaveBeenCalled();
   });
+
+  it("07-oct: con `consentimientos` apagada no hay salud ni firmas, aunque el rol traiga los permisos", async () => {
+    // Deuda técnica: el backend apaga la feature en todos los negocios.
+    sesion.features = ["clientes", "paquetes"];
+    await montar();
+    expect(apiSpa.paquetesDelCliente).toHaveBeenCalled();
+    expect(apiSpa.saludDelCliente).not.toHaveBeenCalled();
+    expect(screen.queryByText("Salud y consentimientos")).toBeNull();
+    expect(screen.queryByText("Dato sensible")).toBeNull();
+    expect(screen.queryByRole("button", { name: /Completar|Editar/ })).toBeNull();
+  });
 });

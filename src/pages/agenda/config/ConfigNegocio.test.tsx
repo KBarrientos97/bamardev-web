@@ -8,7 +8,7 @@ import type { Reglas } from "../../../lib/agenda/tiposConfigAgenda";
  * se programa en paralelo contra §10.1).
  */
 
-const sesion = vi.hoisted(() => ({ features: ["agenda"] as string[] }));
+const sesion = vi.hoisted(() => ({ features: ["agenda"] as string[], veRoles: true }));
 
 vi.mock("../../../store/AuthContext", async () => {
   // Los permisos de la plantilla de ese rol: la pantalla decide sólo con ellos.
@@ -23,7 +23,7 @@ vi.mock("../../../store/AuthContext", async () => {
         features: sesion.features,
         perfil: { etiquetasRol: { PROFESIONAL: "Estilista" } },
       },
-      puede: () => true,
+      puede: (seccion: string) => (seccion === "roles" ? sesion.veRoles : true),
     }),
   };
 });
@@ -51,10 +51,6 @@ import ConfigNegocio from "./ConfigNegocio";
 const REGLAS: Reglas = {
   granularidadMin: 15,
   bufferGeneralMin: 0,
-  profesionalPuedeAgendar: false,
-  profesionalPuedeBloquear: false,
-  profesionalVeTelefono: false,
-  profesionalVePrecios: true,
   modoConfirmacion: "MANUAL",
   anticipacionMinHoras: 2,
   anticipacionMaxDias: 30,
@@ -81,6 +77,7 @@ async function montar() {
 beforeEach(() => {
   vi.clearAllMocks();
   sesion.features = ["agenda"];
+  sesion.veRoles = true;
   vi.mocked(apiConfigAgenda.reglas).mockResolvedValue(REGLAS);
   vi.mocked(apiConfigAgenda.historialReglas).mockResolvedValue([]);
 });
@@ -149,12 +146,9 @@ describe("B28: automática sólo para clientes conocidos", () => {
 });
 
 describe("reglas", () => {
-  it("se agrupan en agenda interna, profesional y reserva online", async () => {
+  it("se agrupan en agenda interna y reserva online", async () => {
     await montar();
     expect(screen.getByRole("region", { name: "Agenda interna" })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "Reglas del profesional" })).toHaveTextContent(
-      "cada estilista",
-    );
     const online = screen.getByRole("region", { name: "Reserva online" });
     // Desde la fase 2 la reserva online existe: ya no dice "llega pronto" y
     // lleva a publicar y compartir el enlace.
@@ -194,24 +188,65 @@ describe("reglas", () => {
     expect(screen.getByText("Heredado de todo el negocio")).toBeInTheDocument();
     expect(screen.getByText("Valor sugerido del rubro")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByLabelText(/Ve el teléfono del cliente/));
+    fireEvent.click(screen.getByLabelText(/Mostrar precios en la página de reservas/));
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
     });
     expect(apiConfigAgenda.guardarReglas).toHaveBeenCalledWith({
       sucursalId: 2,
-      profesionalVeTelefono: true,
+      mostrarPreciosOnline: false,
     });
   });
 
   it("muestra el error del backend tal cual", async () => {
     vi.mocked(apiConfigAgenda.guardarReglas).mockRejectedValue(new Error("Próximamente"));
     await montar();
-    fireEvent.click(screen.getByLabelText(/Ve precios y totales/));
+    fireEvent.click(screen.getByLabelText(/Mostrar precios en la página de reservas/));
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
     });
     expect(screen.getByText("Próximamente", { selector: "span.flex-1" })).toBeInTheDocument();
+  });
+});
+
+describe("lo del profesional (PLAN-ROLES-NEGOCIO)", () => {
+  // Agendar, bloquear su horario, ver el teléfono y los precios pasaron a ser
+  // permisos del rol: el backend ya no mira estas reglas.
+  const CON_REGLAS_VIEJAS = {
+    ...REGLAS,
+    profesionalPuedeAgendar: true,
+    profesionalPuedeBloquear: false,
+    profesionalVeTelefono: false,
+    profesionalVePrecios: true,
+  } as Reglas;
+
+  it("ya no hay interruptores: un texto lleva a Roles", async () => {
+    vi.mocked(apiConfigAgenda.reglas).mockResolvedValue(CON_REGLAS_VIEJAS);
+    await montar();
+    expect(screen.queryByRole("region", { name: "Reglas del profesional" })).not.toBeInTheDocument();
+    for (const texto of [/Puede agendar/, /Puede bloquear/, /Ve el teléfono/, /Ve precios y totales/]) {
+      expect(screen.queryByLabelText(texto)).not.toBeInTheDocument();
+    }
+    expect(screen.getByText(/Lo que puede hacer cada profesional se configura en/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Roles" })).toHaveAttribute("href", "/roles");
+  });
+
+  it("aunque el backend las siga mandando, no vuelven en el PUT", async () => {
+    vi.mocked(apiConfigAgenda.reglas).mockResolvedValue(CON_REGLAS_VIEJAS);
+    vi.mocked(apiConfigAgenda.guardarReglas).mockResolvedValue(CON_REGLAS_VIEJAS);
+    await montar();
+    fireEvent.click(screen.getByLabelText(/Mostrar precios en la página de reservas/));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
+    });
+    expect(apiConfigAgenda.guardarReglas).toHaveBeenCalledWith({ sucursalId: null, mostrarPreciosOnline: false });
+  });
+
+  it("sin acceso a Roles el texto queda, sin el enlace", async () => {
+    sesion.veRoles = false;
+    await montar();
+    expect(screen.getByText(/Lo que puede hacer cada profesional se configura en/)).toHaveTextContent("Roles");
+    expect(screen.queryByRole("link", { name: "Roles" })).not.toBeInTheDocument();
   });
 });
 
@@ -257,6 +292,8 @@ describe("historial", () => {
     ]);
     await montar();
     const historial = screen.getByRole("region", { name: "Historial de cambios" });
+    // Una regla que ya no se edita (ahora es permiso del rol) se sigue leyendo.
+    expect(historial).toHaveTextContent("Ve el teléfono del cliente");
     expect(historial).toHaveTextContent("06/10/2026 00:21");
     expect(historial).toHaveTextContent("06/10/2026 12:30");
     expect(historial).not.toHaveTextContent(/a\. m\.|p\. m\./);

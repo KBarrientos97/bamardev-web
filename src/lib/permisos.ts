@@ -216,9 +216,11 @@ const REQUISITOS: Record<Seccion, Requisito> = {
   hoy: { permiso: "agenda.ver", alcance: "GENERAL", feature: "agenda" },
   mi_agenda: { permiso: "agenda.ver", alcance: "PROPIO", feature: "agenda" },
   agenda_config: { permiso: "agenda.configurar", feature: "agenda" },
-  // Las reglas del negocio (A11) son configuración de la agenda: el mismo
-  // permiso que el backend pide para guardarlas.
-  config_negocio: { permiso: "agenda.configurar", feature: "agenda" },
+  // Las reglas del negocio (A11): el mismo permiso que el backend pide para
+  // guardarlas. Es `negocio.configurar` (sólo el Administrador en las
+  // plantillas) y no `agenda.configurar`: el Encargado arma servicios y
+  // horarios, pero cómo entran las reservas lo decide el dueño.
+  config_negocio: { permiso: "negocio.configurar", feature: "agenda" },
   // La cartera de clientes (A7) es la general; el profesional ve la ficha
   // mínima desde su cita, no la lista.
   clientes: { permiso: "cliente.ver_ficha", alcance: "GENERAL", feature: "clientes" },

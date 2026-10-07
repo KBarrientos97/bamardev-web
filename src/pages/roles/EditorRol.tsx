@@ -1,8 +1,7 @@
 import { useMemo, useState } from "react";
 import { Icon } from "../../components/Icon";
 import { Boton, Campo, ErrorMsg, Input, Modal } from "../../components/ui";
-import { alcanceOtorgable, apiRoles, mensajeDeError } from "../../lib/roles";
-import { useAuth } from "../../store/AuthContext";
+import { apiRoles, mensajeDeError, nombresDelCatalogo } from "../../lib/roles";
 import type { Alcance, DominioPermisos, PermisoCatalogo, RolNegocio } from "../../types";
 import BitacoraRoles from "./BitacoraRoles";
 
@@ -11,8 +10,10 @@ import BitacoraRoles from "./BitacoraRoles";
  * igual, pero en sólo lectura y con el candado: tiene todo y no se toca.
  *
  * Cada permiso es un renglón con su casilla y, si admite "sólo lo suyo", el
- * alcance. Lo que no se puede dar se ve apagado y dice por qué: si el plan no
- * lo incluye, o si quien edita no lo tiene (nadie da lo que no tiene). Los
+ * alcance. Lo que el plan no incluye no aparece (salvo que el rol ya lo
+ * traiga: se ve apagado, para poder sacarlo). Lo que quien edita no tiene se
+ * ve apagado y dice por qué (nadie da lo que no tiene; lo dice `otorgable`
+ * del catálogo, con el alcance hasta el que llega). Los
  * dominios van plegados: en el celular son 60 renglones, y se abre el tema
  * que se quiere tocar.
  */
@@ -31,7 +32,6 @@ export default function EditorRol({
   onGuardado: (aviso: string) => void;
   onBorrar: (rol: RolNegocio) => void;
 }) {
-  const { usuario } = useAuth();
   const soloLectura = !!rol?.esAdministrador;
   const [nombre, setNombre] = useState(rol?.nombre ?? "");
   const [descripcion, setDescripcion] = useState(rol?.descripcion ?? "");
@@ -43,6 +43,7 @@ export default function EditorRol({
   const [error, setError] = useState("");
   const [guardando, setGuardando] = useState(false);
   const [verBitacora, setVerBitacora] = useState(false);
+  const nombres = useMemo(() => nombresDelCatalogo(catalogo), [catalogo]);
 
   const cambiaron = useMemo(() => {
     if (elegidos.size !== inicial.size) return true;
@@ -55,7 +56,7 @@ export default function EditorRol({
       const nuevo = new Map(antes);
       if (!prendido) nuevo.delete(p.codigo);
       // Al prender, el alcance más amplio que quien edita puede dar.
-      else nuevo.set(p.codigo, alcanceOtorgable(usuario, p.codigo) ?? "GENERAL");
+      else nuevo.set(p.codigo, p.otorgable ?? "GENERAL");
       return nuevo;
     });
   const fijarAlcance = (codigo: string, alcance: Alcance) =>
@@ -88,7 +89,7 @@ export default function EditorRol({
         onGuardado(`Rol "${limpio}" guardado.`);
       }
     } catch (e) {
-      setError(mensajeDeError(e));
+      setError(mensajeDeError(e, { nombres }));
     } finally {
       setGuardando(false);
     }
@@ -135,7 +136,8 @@ export default function EditorRol({
           <p className="flex items-start gap-2 rounded-xl bg-purple-50 px-3.5 py-2.5 text-[13px] text-purple-800">
             <Icon name="lock" size={16} className="mt-0.5 shrink-0" />
             El Administrador es el rol del dueño: tiene siempre todos los permisos que incluye el plan, y el
-            negocio no puede quedarse sin nadie que lo tenga.
+            negocio no puede quedarse sin nadie que lo tenga. Lo de quien hace el trabajo (repartir, cobrar sus
+            mesas, agendar o bloquear lo suyo) no lo lleva: lo cubre con los permisos generales.
           </p>
         )}
 
@@ -159,6 +161,7 @@ export default function EditorRol({
                 key={d.dominio}
                 dominio={d}
                 elegidos={elegidos}
+                inicial={inicial}
                 soloLectura={soloLectura}
                 alternar={alternar}
                 fijarAlcance={fijarAlcance}
@@ -180,7 +183,7 @@ export default function EditorRol({
             </button>
             {verBitacora && (
               <div className="mt-2">
-                <BitacoraRoles rolId={rol.id} compacta />
+                <BitacoraRoles rolId={rol.id} compacta nombres={nombres} />
               </div>
             )}
           </div>
@@ -192,38 +195,50 @@ export default function EditorRol({
   );
 }
 
-/** Un dominio (Ventas, Caja, Agenda…): plegado, con cuántos tiene prendidos. */
+/**
+ * Un dominio (Ventas, Caja, Agenda…): plegado, con cuántos tiene prendidos.
+ * Lo que el plan no incluye (o una feature apagada para todos, como la ficha
+ * de salud y los consentimientos desde el 07-oct) no se muestra: ofrecerlo
+ * apagado invitaba a pedir algo que no existe. Salvo que el rol ya lo traiga,
+ * para que se pueda sacar. Un dominio sin nada que mostrar, tampoco.
+ */
 function Dominio({
   dominio,
   elegidos,
+  inicial,
   soloLectura,
   alternar,
   fijarAlcance,
 }: {
   dominio: DominioPermisos;
   elegidos: Map<string, Alcance>;
+  /** Lo que el rol traía al abrirlo. */
+  inicial: Map<string, Alcance>;
   soloLectura: boolean;
   alternar: (p: PermisoCatalogo, prendido: boolean) => void;
   fijarAlcance: (codigo: string, alcance: Alcance) => void;
 }) {
-  const total = dominio.permisos.length;
-  const prendidos = soloLectura
-    ? dominio.permisos.filter((p) => p.disponible).length
-    : dominio.permisos.filter((p) => elegidos.has(p.codigo)).length;
+  const visibles = dominio.permisos.filter((p) => p.disponible || (!soloLectura && inicial.has(p.codigo)));
+  // El Administrador se ve con lo que de verdad trae (`GET /roles`), cruzado
+  // con el plan: sin los de ejecutor, que no recibe.
+  const alcanceDe = (p: PermisoCatalogo) =>
+    soloLectura && !p.disponible ? undefined : elegidos.get(p.codigo);
+  const prendidos = visibles.filter((p) => alcanceDe(p) !== undefined).length;
+  if (visibles.length === 0) return null;
   return (
     <details className="rounded-xl border border-borde-soft">
       <summary className="flex cursor-pointer select-none items-center justify-between gap-2 px-3.5 py-3">
         <span className="text-sm font-semibold text-texto">{dominio.nombre || dominio.dominio}</span>
         <span className={`text-xs ${prendidos ? "font-semibold text-primary-700" : "text-texto-4"}`}>
-          {prendidos} de {total}
+          {prendidos} de {visibles.length}
         </span>
       </summary>
       <ul className="divide-y divide-borde-soft border-t border-borde-soft">
-        {dominio.permisos.map((p) => (
+        {visibles.map((p) => (
           <RenglonPermiso
             key={p.codigo}
             permiso={p}
-            alcance={soloLectura ? (p.disponible ? "GENERAL" : undefined) : elegidos.get(p.codigo)}
+            alcance={alcanceDe(p)}
             soloLectura={soloLectura}
             alternar={alternar}
             fijarAlcance={fijarAlcance}
@@ -247,9 +262,8 @@ function RenglonPermiso({
   alternar: (p: PermisoCatalogo, prendido: boolean) => void;
   fijarAlcance: (codigo: string, alcance: Alcance) => void;
 }) {
-  const { usuario } = useAuth();
   const prendido = alcance !== undefined;
-  const maximo = p.otorgable ? alcanceOtorgable(usuario, p.codigo) ?? "GENERAL" : null;
+  const maximo = p.otorgable;
   /**
    * Por qué no se puede prender. Apagar sí se puede siempre (sacar no es dar):
    * un permiso que el rol ya traía y quien edita no tiene se puede quitar, y

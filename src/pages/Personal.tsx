@@ -18,7 +18,7 @@ import {
 import { api } from "../lib/api";
 import { apiPersonal, type CargoRol, type Persona, type PersonaInput } from "../lib/personal";
 import { etiquetaRol, tienePermiso } from "../lib/permisos";
-import { apiRoles } from "../lib/roles";
+import { apiRoles, mensajeDeError } from "../lib/roles";
 import { plural } from "./agenda/config/utilConfig";
 import { contiene } from "../lib/texto";
 import { useApi } from "../lib/useApi";
@@ -45,8 +45,9 @@ const FILTROS = [
   ["todos", "Todos"],
 ] as const;
 
-const mensaje = (e: unknown, generico = "No se pudo guardar") =>
-  e instanceof Error && e.message ? e.message : generico;
+// Con los rechazos de rol del contrato (ROL_NO_ASIGNABLE, ROL_INVALIDO,
+// NOMBRE_REPETIDO al crear un cargo) en palabras del dueño.
+const mensaje = (e: unknown, generico = "No se pudo guardar") => mensajeDeError(e, { generico });
 
 export default function Personal() {
   const [filtro, setFiltro] = useState<Filtro>("activos");

@@ -13,11 +13,10 @@ import type {
  * sin montar la pantalla.
  */
 
-export type GrupoRegla = "interna" | "profesional" | "online";
+export type GrupoRegla = "interna" | "online";
 
 export const TITULO_GRUPO: Record<GrupoRegla, string> = {
   interna: "Agenda interna",
-  profesional: "Reglas del profesional",
   online: "Reserva online",
 };
 
@@ -64,27 +63,6 @@ export const META_REGLAS: Record<CampoRegla, MetaRegla> = {
     min: 0,
     max: 120,
     ayuda: "Para limpiar o preparar. Cada servicio puede tener el suyo.",
-  },
-  profesionalPuedeAgendar: {
-    grupo: "profesional",
-    tipo: "booleano",
-    etiqueta: "Puede agendar y mover sus propias citas",
-  },
-  profesionalPuedeBloquear: {
-    grupo: "profesional",
-    tipo: "booleano",
-    etiqueta: "Puede bloquear su horario",
-  },
-  profesionalVeTelefono: {
-    grupo: "profesional",
-    tipo: "booleano",
-    etiqueta: "Ve el teléfono del cliente",
-    ayuda: "Apagado, el que se va no se lleva la cartera de clientes.",
-  },
-  profesionalVePrecios: {
-    grupo: "profesional",
-    tipo: "booleano",
-    etiqueta: "Ve precios y totales",
   },
   modoConfirmacion: {
     grupo: "online",
@@ -292,10 +270,22 @@ export function motivoAnticipo(features: Feature[] | undefined): string {
   return "Para pedir anticipo necesitás el QR automático de tu banco integrado con BamarDev. Pedilo a soporte.";
 }
 
+/**
+ * Las reglas del profesional que pasaron a ser permisos del rol
+ * (PLAN-ROLES-NEGOCIO, decisión 4). Ya no se editan, pero sus cambios viejos
+ * siguen en la bitácora y tienen que leerse como antes.
+ */
+const ETIQUETAS_RETIRADAS: Record<string, string> = {
+  profesionalPuedeAgendar: "Puede agendar y mover sus propias citas",
+  profesionalPuedeBloquear: "Puede bloquear su horario",
+  profesionalVeTelefono: "Ve el teléfono del cliente",
+  profesionalVePrecios: "Ve precios y totales",
+};
+
 /** Nombre de un campo para la bitácora; uno desconocido se muestra tal cual. */
 export function etiquetaCampo(campo: string): string {
   const meta = META_REGLAS[campo as CampoRegla];
-  if (!meta) return campo;
+  if (!meta) return ETIQUETAS_RETIRADAS[campo] ?? campo;
   if (campo === "anticipacionMaxDias") return "Anticipación máxima";
   if (campo === "modoConfirmacion") return "Modo de confirmación";
   return meta.etiqueta;

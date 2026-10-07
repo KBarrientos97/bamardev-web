@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { DominioPermisos, EventoRol, PermisoCatalogo, RolNegocio, SesionUsuario } from "../../types";
+import type { DominioPermisos, EventoRol, PermisoCatalogo, PermisoDeRolVista, RolNegocio, SesionUsuario } from "../../types";
 
 /**
  * La pantalla Roles (PLAN-ROLES-NEGOCIO): lista, crear, renombrar, editar
@@ -42,7 +42,7 @@ const permiso = (codigo: string, nombre: string, extra: Partial<PermisoCatalogo>
   sensible: false,
   admitePropio: false,
   disponible: true,
-  otorgable: true,
+  otorgable: "GENERAL",
   ...extra,
 });
 
@@ -58,6 +58,8 @@ const CATALOGO: DominioPermisos[] = [
     permisos: [
       permiso("agenda.ver", "Ver la agenda", { admitePropio: true }),
       permiso("agenda.configurar", "Configurar la agenda"),
+      // De ejecutor: el Administrador no lo recibe (lo cubre `agenda.gestionar`).
+      permiso("agenda.crear_propias", "Agendar sus citas", { admitePropio: true }),
     ],
   },
   {
@@ -65,22 +67,41 @@ const CATALOGO: DominioPermisos[] = [
     nombre: "Reportes",
     permisos: [
       permiso("reportes.rentabilidad", "Rentabilidad", { disponible: false }),
-      permiso("gastos.gestionar", "Gastos", { otorgable: false }),
+      permiso("gastos.gestionar", "Gastos", { otorgable: null }),
     ],
   },
+  {
+    // La ficha de salud quedó como deuda técnica (07-oct): su feature está
+    // apagada en todos los negocios, así que el dominio entero se esconde.
+    dominio: "Salud",
+    nombre: "Salud",
+    permisos: [permiso("cliente.editar_salud", "Completar la ficha de salud", { disponible: false, admitePropio: true })],
+  },
 ];
+
+/** Un permiso de rol como lo manda `GET /roles`, con su nombre y su dominio. */
+function pr(codigo: string, alcance: "GENERAL" | "PROPIO" = "GENERAL"): PermisoDeRolVista {
+  const dominio = CATALOGO.find((d) => d.permisos.some((p) => p.codigo === codigo));
+  const nombre = dominio?.permisos.find((p) => p.codigo === codigo)?.nombre ?? codigo;
+  return { codigo, alcance, nombre, dominio: dominio?.nombre ?? null };
+}
 
 function rol(id: number, nombre: string, extra: Partial<RolNegocio> = {}): RolNegocio {
   return { id, nombre, descripcion: null, esAdministrador: false, plantilla: null, usuarios: 0, personal: 0, permisos: [], ...extra };
 }
-const ADMINISTRADOR = rol(1, "Administrador", { esAdministrador: true, usuarios: 1 });
+// El Administrador trae todo el catálogo menos lo de ejecutor, sin cruzarlo
+// con el plan (eso lo hace la pantalla).
+const ADMINISTRADOR = rol(1, "Administrador", {
+  esAdministrador: true,
+  usuarios: 1,
+  permisos: CATALOGO.flatMap((d) => d.permisos)
+    .filter((p) => p.codigo !== "agenda.crear_propias")
+    .map((p) => pr(p.codigo)),
+});
 const CAJERO = rol(3, "Cajero", {
   usuarios: 2,
   personal: 1,
-  permisos: [
-    { codigo: "ventas.vender", alcance: "GENERAL" },
-    { codigo: "gastos.gestionar", alcance: "GENERAL" },
-  ],
+  permisos: [pr("ventas.vender"), pr("gastos.gestionar")],
 });
 const AYUDANTE = rol(7, "Ayudante");
 const ROLES = [ADMINISTRADOR, CAJERO, AYUDANTE];
@@ -164,18 +185,52 @@ describe("crear un rol", () => {
     });
   });
 
-  it("lo que el plan no incluye o quien edita no tiene, apagado y con el motivo", async () => {
+  it("lo que el plan no incluye no aparece; lo que quien edita no tiene, apagado y con el motivo", async () => {
     await montar();
     fireEvent.click(screen.getByRole("button", { name: "Nuevo rol" }));
     abrirDominio("Reportes");
-    expect(within(editor()).getByLabelText(/Rentabilidad/)).toBeDisabled();
-    expect(within(editor()).getByText("Tu plan no lo incluye.")).toBeInTheDocument();
+    expect(within(editor()).queryByLabelText(/Rentabilidad/)).toBeNull();
+    expect(within(editor()).queryByText("Tu plan no lo incluye.")).toBeNull();
+    // El total del dominio cuenta sólo lo que se ofrece.
+    expect(screen.getByText("Reportes", { selector: "summary span" }).parentElement).toHaveTextContent("0 de 1");
     expect(within(editor()).getByLabelText(/^Gastos/)).toBeDisabled();
     expect(within(editor()).getByText("No lo tenés, así que no lo podés dar.")).toBeInTheDocument();
   });
 
-  it("quien tiene un permiso sólo sobre lo suyo no puede dar el general", async () => {
-    sesion.actor = { ...sesion.actor, permisosPropios: ["agenda.ver"] };
+  it("un dominio con todo apagado (la ficha de salud) no se muestra", async () => {
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Nuevo rol" }));
+    expect(within(editor()).queryByText("Salud", { selector: "summary span" })).toBeNull();
+    expect(within(editor()).queryByLabelText(/ficha de salud/)).toBeNull();
+  });
+
+  it("un permiso fuera del plan que el rol ya trae se ve, para poder sacarlo", async () => {
+    vi.mocked(apiRoles.listar).mockResolvedValue([
+      ADMINISTRADOR,
+      rol(8, "Terapeuta", { permisos: [pr("cliente.editar_salud", "PROPIO")] }),
+    ]);
+    vi.mocked(apiRoles.editar).mockResolvedValue(rol(8, "Terapeuta"));
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Ver el rol Terapeuta" }));
+    abrirDominio("Salud");
+    const salud = within(editor()).getByLabelText(/^Completar la ficha de salud/);
+    expect(salud).toBeChecked();
+    fireEvent.click(salud);
+    expect(salud).toBeDisabled();
+    expect(within(editor()).getByText("Tu plan no lo incluye.")).toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(within(editor()).getByRole("button", { name: "Guardar" }));
+    });
+    expect(apiRoles.editar).toHaveBeenCalledWith(8, { permisos: [] });
+  });
+
+  it("quien tiene un permiso sólo sobre lo suyo no puede dar el general (lo dice `otorgable`)", async () => {
+    vi.mocked(apiRoles.catalogo).mockResolvedValue(
+      CATALOGO.map((d) => ({
+        ...d,
+        permisos: d.permisos.map((p) => (p.codigo === "agenda.ver" ? { ...p, otorgable: "PROPIO" as const } : p)),
+      })),
+    );
     await montar();
     fireEvent.click(screen.getByRole("button", { name: "Nuevo rol" }));
     abrirDominio("Agenda");
@@ -194,6 +249,22 @@ describe("crear un rol", () => {
       fireEvent.click(within(editor()).getByRole("button", { name: "Guardar" }));
     });
     expect(within(editor()).getByText("Ya hay un rol con ese nombre.")).toBeInTheDocument();
+  });
+
+  it("403 PERMISO_NO_OTORGABLE nombra los permisos con el catálogo", async () => {
+    vi.mocked(apiRoles.crear).mockRejectedValue(
+      new ApiError("No podés dar un permiso que vos no tenés: Gastos.", 403, {
+        codigo: "PERMISO_NO_OTORGABLE",
+        permisos: ["gastos.gestionar"],
+      }),
+    );
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Nuevo rol" }));
+    fireEvent.change(within(editor()).getByLabelText(/^Nombre/), { target: { value: "Caja chica" } });
+    await act(async () => {
+      fireEvent.click(within(editor()).getByRole("button", { name: "Guardar" }));
+    });
+    expect(within(editor()).getByText("No podés dar lo que no tenés: Gastos.")).toBeInTheDocument();
   });
 });
 
@@ -260,6 +331,18 @@ describe("editar un rol", () => {
     expect(within(editor()).getByLabelText(/^Vender/)).toBeDisabled();
   });
 
+  it("el Administrador se ve con lo que trae: sin lo que el plan no incluye ni lo de ejecutor", async () => {
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Ver el rol Administrador" }));
+    abrirDominio("Agenda");
+    expect(within(editor()).getByLabelText(/^Ver la agenda/)).toBeChecked();
+    expect(within(editor()).getByLabelText(/^Agendar sus citas/)).not.toBeChecked();
+    abrirDominio("Reportes");
+    expect(within(editor()).queryByLabelText(/^Rentabilidad/)).toBeNull();
+    expect(within(editor()).queryByText("Salud", { selector: "summary span" })).toBeNull();
+    expect(within(editor()).getByText(/agendar o bloquear lo suyo/)).toBeInTheDocument();
+  });
+
   it("muestra el historial del rol", async () => {
     const evento: EventoRol = {
       id: 1,
@@ -267,7 +350,7 @@ describe("editar un rol", () => {
       accion: "PERMISOS",
       rolId: 3,
       rolNombre: "Cajero",
-      detalle: "+ Anular ventas",
+      detalle: { agregados: [{ codigo: "ventas.anular", alcance: "GENERAL" }], quitados: [] },
       autor: { id: 1, nombre: "Omar" },
       porSoporte: false,
     };
@@ -278,7 +361,7 @@ describe("editar un rol", () => {
       fireEvent.click(within(editor()).getByRole("button", { name: "Historial de cambios" }));
     });
     expect(apiRoles.bitacoraDe).toHaveBeenCalledWith(3);
-    expect(within(editor()).getByText("+ Anular ventas")).toBeInTheDocument();
+    expect(within(editor()).getByText("Agregó: Anular ventas")).toBeInTheDocument();
   });
 });
 
@@ -320,13 +403,15 @@ describe("borrar un rol", () => {
   });
 
   it("si mientras tanto alguien le asignó el rol (409), pide el destino", async () => {
-    vi.mocked(apiRoles.borrar).mockRejectedValue(new ApiError("Conflict", 409, { codigo: "REASIGNAR_REQUERIDO" }));
+    vi.mocked(apiRoles.borrar).mockRejectedValue(
+      new ApiError("Conflict", 409, { codigo: "REASIGNAR_REQUERIDO", usuarios: 1, personal: 0 }),
+    );
     await borrar("Ayudante");
     const dialogo = screen.getByRole("dialog", { name: 'Borrar "Ayudante"' });
     await act(async () => {
       fireEvent.click(within(dialogo).getByRole("button", { name: "Borrar rol" }));
     });
-    expect(within(dialogo).getByText("El rol tiene gente: elegí a qué rol pasarla.")).toBeInTheDocument();
+    expect(within(dialogo).getByText("El rol lo tienen 1 usuario: elegí a qué rol pasan.")).toBeInTheDocument();
     expect(within(dialogo).getByLabelText("Pasan a")).toBeInTheDocument();
   });
 });
@@ -334,15 +419,23 @@ describe("borrar un rol", () => {
 describe("la bitácora", () => {
   it("dice quién cambió qué, y lo que hizo el soporte", async () => {
     vi.mocked(apiRoles.bitacora).mockResolvedValue([
-      { id: 2, fecha: "2026-10-07T16:00:00.000Z", accion: "RENOMBRAR", rolId: 3, rolNombre: "Caja", detalle: "Cajero → Caja", autor: { id: 1, nombre: "Omar" }, porSoporte: false },
-      { id: 1, fecha: "2026-10-07T15:00:00.000Z", accion: "RESTABLECER", rolId: 3, rolNombre: "Cajero", detalle: "Motivo: pedido del dueño", autor: null, porSoporte: true },
+      { id: 3, fecha: "2026-10-07T17:00:00.000Z", accion: "PERMISOS", rolId: 3, rolNombre: "Caja", detalle: { agregados: [], quitados: [{ codigo: "gastos.gestionar", alcance: "GENERAL" }], cambiados: [{ codigo: "agenda.ver", de: "GENERAL", a: "PROPIO" }] }, autor: { id: 1, nombre: "Omar" }, porSoporte: false },
+      { id: 2, fecha: "2026-10-07T16:00:00.000Z", accion: "RENOMBRAR", rolId: 3, rolNombre: "Caja", detalle: { de: "Cajero", a: "Caja" }, autor: { id: 1, nombre: "Omar" }, porSoporte: false },
+      { id: 1, fecha: "2026-10-07T15:00:00.000Z", accion: "RESTABLECER", rolId: 3, rolNombre: "Cajero", detalle: { plantillaId: 4, agregados: [{ codigo: "ventas.vender", alcance: "GENERAL" }], quitados: [] }, motivo: "pedido del dueño", autor: null, porSoporte: true },
+      { id: 0, fecha: "2026-10-07T14:00:00.000Z", accion: "ELIMINAR", rolId: 8, rolNombre: "Lavaplatos", detalle: { reasignadoA: { id: 7, nombre: "Ayudante" }, usuarios: 1, personal: 0 }, autor: { id: 1, nombre: "Omar" }, porSoporte: false },
     ]);
     await montar();
     fireEvent.click(screen.getByRole("button", { name: "Bitácora" }));
     await act(async () => {});
     const lista = screen.getByRole("list", { name: "Bitácora de roles" });
     expect(lista).toHaveTextContent("Omar renombró Caja");
+    expect(lista).toHaveTextContent("Cajero → Caja");
+    // Los permisos, por su nombre (el catálogo está a mano en esta pantalla).
+    expect(lista).toHaveTextContent("Quitó: Gastos");
+    expect(lista).toHaveTextContent("Ver la agenda: general → sólo lo suyo");
     expect(lista).toHaveTextContent("Soporte de BamarDev restableció Cajero");
+    expect(lista).toHaveTextContent("Agregó: Vender");
     expect(lista).toHaveTextContent("Motivo: pedido del dueño");
+    expect(lista).toHaveTextContent("Su gente pasó a Ayudante");
   });
 });

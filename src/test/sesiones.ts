@@ -11,7 +11,11 @@ import { FEATURE_DE_PERMISO, PLANTILLAS } from "./plantillasRoles";
 
 export type Plantilla = keyof typeof PLANTILLAS;
 
-/** Los permisos nuevos de PLAN-ROLES-NEGOCIO §8, que el catálogo todavía no trae. */
+/**
+ * Los permisos nuevos de PLAN-ROLES-NEGOCIO §8. El Administrador los recibe
+ * en la migración; van aparte de su plantilla para poder comparar lo que ve
+ * hoy (sin ellos) con lo que ve después.
+ */
 export const PERMISOS_NUEVOS = ["roles.gestionar", "usuarios.asignar_pin", "sucursales.todas"];
 
 /** El nombre con que el alta copia cada plantilla (§7). */

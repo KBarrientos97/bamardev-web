@@ -17,8 +17,7 @@ import {
 import type { Cita, MiAgendaRespuesta } from "../../lib/agenda/tiposAgenda";
 import { tramoDe } from "../../lib/agenda/lineasCita";
 import { useConsultaPeriodica } from "../../lib/agenda/useConsultaPeriodica";
-import { etiquetaRol } from "../../lib/permisos";
-import { useApi } from "../../lib/useApi";
+import { etiquetaRol, tienePermiso } from "../../lib/permisos";
 import { useAuth } from "../../store/AuthContext";
 import DetalleCita from "./DetalleCita";
 import NuevaCita from "./NuevaCita";
@@ -40,7 +39,7 @@ function conCita(d: MiAgendaRespuesta | null, c: Cita): MiAgendaRespuesta | null
  *
  * Sólo lo suyo lo decide el backend (`/agenda/mi-agenda` trae las citas de los
  * recursos vinculados a su usuario) y el teléfono del cliente llega en null si
- * el negocio no se lo deja ver. Va sin la barra lateral, como el salón del
+ * su rol no se lo deja ver (`cliente.ver_telefono`). Va sin la barra lateral, como el salón del
  * mesero: es su única pantalla.
  */
 export default function MiAgenda() {
@@ -58,9 +57,6 @@ export default function MiAgenda() {
     [lunes],
     { pausado: abierta !== null || nueva },
   );
-  // Si el negocio le deja agendar (regla del panel, §7.4). Si las reglas no
-  // llegan, no se ofrece: es lo que viene apagado por defecto.
-  const reglas = useApi(() => apiAgenda.reglas().catch(() => null), []);
   const rapida = useAccionRapida((c) => agenda.setDatos((d) => conCita(d, c)));
 
   const recursos = agenda.datos?.recursos ?? [];
@@ -80,7 +76,13 @@ export default function MiAgenda() {
   const etiqueta = usuario ? usuario.rolNombre?.trim() || etiquetaRol(usuario.rol, negocio) : "Profesional";
   const nombre = usuario?.nombre?.trim() || usuario?.username || "";
   const sucursalId = usuario?.sucursalId ?? recursos[0]?.sucursalIds[0] ?? null;
-  const puedeAgendar = !!reglas.datos?.profesionalPuedeAgendar && recursos.length > 0 && sucursalId != null;
+  // Si su rol le deja agendar sus citas (`agenda.crear_propias`, antes la
+  // regla `profesionalPuedeAgendar` de la agenda; PLAN-ROLES-NEGOCIO). Quien
+  // gestiona la agenda de todos también, que lo cubre.
+  const puedeAgendar =
+    (tienePermiso(usuario, "agenda.crear_propias") || tienePermiso(usuario, "agenda.gestionar")) &&
+    recursos.length > 0 &&
+    sucursalId != null;
 
   return (
     <div className="flex min-h-[100dvh] flex-col bg-fondo">

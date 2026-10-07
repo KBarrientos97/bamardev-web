@@ -41,11 +41,12 @@ import { useApi } from "../../../lib/useApi";
 import { useSucursales } from "../../../lib/useSucursales";
 import { useAuth } from "../../../store/AuthContext";
 import { Bloque, Casilla } from "./comun";
-import { mensajeDe, useNombreProfesional } from "./utilConfig";
+import { mensajeDe } from "./utilConfig";
 
 /**
  * A11 · Configuración del negocio (PLAN-AGENDA-BELLEZA §8.9): las reglas de la
- * agenda y de la reserva online en un solo lugar. Sólo el dueño (ADMIN).
+ * agenda y de la reserva online en un solo lugar. Con `negocio.configurar`
+ * (el Administrador en las plantillas).
  *
  * Cada regla vale para todo el negocio salvo que una sucursal tenga la suya.
  * El backend devuelve los valores ya resueltos con su `origen`, y la pantalla
@@ -223,8 +224,7 @@ function FormReglas({
   sucursalId: number | null;
   onGuardado: (r: Reglas) => void;
 }) {
-  const { negocio } = useAuth();
-  const nombres = useNombreProfesional();
+  const { negocio, puede } = useAuth();
   const original = useMemo(() => valoresDe(reglas), [reglas]);
   const [borrador, setBorrador] = useState<Borrador>(() => aBorrador(original));
   const [error, setError] = useState("");
@@ -312,12 +312,24 @@ function FormReglas({
         </div>
       </Bloque>
 
-      <Bloque
-        titulo={TITULO_GRUPO.profesional}
-        subtitulo={`Qué puede hacer y ver cada ${nombres.singular.toLowerCase()} que entra con su usuario.`}
-      >
-        <div className="space-y-1">{camposDe("profesional").map((c) => casilla(c))}</div>
-      </Bloque>
+      {/* Agendar, bloquear su horario, ver el teléfono y los precios eran
+          reglas de acá; desde PLAN-ROLES-NEGOCIO son permisos del rol y el
+          backend ya no mira las reglas. Se avisa dónde quedaron en vez de
+          dejar el hueco. */}
+      <p className="flex items-start gap-2 rounded-xl bg-info-bg px-3.5 py-2.5 text-[13px] text-info-text">
+        <Icon name="info" size={16} className="mt-0.5 shrink-0" />
+        <span>
+          Lo que puede hacer cada profesional se configura en{" "}
+          {puede("roles") ? (
+            <Link to="/roles" className="font-semibold underline">
+              Roles
+            </Link>
+          ) : (
+            "Roles"
+          )}
+          .
+        </span>
+      </p>
 
       <Bloque
         titulo={TITULO_GRUPO.online}

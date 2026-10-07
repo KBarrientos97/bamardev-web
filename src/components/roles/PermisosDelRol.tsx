@@ -1,5 +1,7 @@
 import { agruparPorDominio, type NombresPermisos } from "../../lib/roles";
-import type { PermisoDeRol } from "../../types";
+import type { PermisoDeRolVista } from "../../types";
+
+const SIN_CATALOGO: NombresPermisos = new Map();
 
 /**
  * "Qué puede hacer este rol" (PLAN-ROLES §11): los permisos reales del rol en
@@ -12,13 +14,14 @@ import type { PermisoDeRol } from "../../types";
 export default function PermisosDelRol({
   nombre,
   permisos,
-  nombres,
+  nombres = SIN_CATALOGO,
   esAdministrador = false,
   plegado = true,
 }: {
   nombre: string;
-  permisos: PermisoDeRol[];
-  nombres: NombresPermisos;
+  permisos: PermisoDeRolVista[];
+  /** Del catálogo, para quien lo tenga a mano; los permisos ya traen su nombre. */
+  nombres?: NombresPermisos;
   esAdministrador?: boolean;
   plegado?: boolean;
 }) {

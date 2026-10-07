@@ -71,8 +71,8 @@ export default function Layout() {
               {negocio?.nombre ?? "BamarDev"}
             </h2>
             <span className="text-xs text-barra-texto-2">
-              {/* La del login manda (el backend sabe cómo se llama el rol en
-                  este rubro: "Dueño" en un salón); sin ella, la de siempre. */}
+              {/* La del login manda: es el nombre del rol en este negocio
+                  ("Recepción", "Barbero"); sin ella, la de siempre. */}
               {usuario ? usuario.rolNombre?.trim() || etiquetaRol(usuario.rol, negocio) : ""}
             </span>
           </div>

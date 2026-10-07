@@ -572,8 +572,7 @@ function etiquetaServicio(s: Servicio, esProfesional: boolean): string {
   const partes = [s.nombre];
   if (s.duracionMin) partes.push(duracionTexto(s.duracionMin));
   // El profesional no ve precios acá: elegir el servicio no los necesita, y
-  // si el negocio no se los deja ver (`profesionalVePrecios`) no hay que
-  // pedir las reglas sólo para esconderlos.
+  // así no depende de si su rol trae `ventas.ver_precios`.
   if (!esProfesional) partes.push(fmtMoney(s.precio));
   return partes.join(" · ");
 }

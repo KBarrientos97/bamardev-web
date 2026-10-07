@@ -492,7 +492,9 @@ describe("etiquetaRol (vocabulario del rubro)", () => {
   it("con el perfil, usa sus etiquetas; si no, el respaldo del rubro", () => {
     const barberia = { tipoNegocio: "BARBERIA", perfil: PERFIL_BARBERIA };
     expect(etiquetaRol("PROFESIONAL", barberia)).toBe("Barbero");
-    expect(etiquetaRol("ADMIN", barberia)).toBe("Dueño");
+    // "Administrador" en todos los rubros (antes "Dueño" en un salón).
+    expect(etiquetaRol("ADMIN", barberia)).toBe("Administrador");
+    expect(etiquetaRol("ADMIN", { tipoNegocio: "PELUQUERIA" })).toBe("Administrador");
     expect(etiquetaRol("PROFESIONAL", { tipoNegocio: "SPA" })).toBe("Terapeuta");
     expect(etiquetaRol("PROFESIONAL", { tipoNegocio: "UNAS" })).toBe("Manicurista");
   });
