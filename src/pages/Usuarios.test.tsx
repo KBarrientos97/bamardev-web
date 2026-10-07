@@ -173,6 +173,23 @@ describe("tarjetas y filtros, uno por rol del negocio", () => {
     expect(screen.getByLabelText("Cuentas por rol")).toHaveClass("xl:grid-cols-5");
   });
 
+  it("QA R1 W-11: el Encargado no ve la tarjeta ni el filtro del Administrador", async () => {
+    // El backend le esconde las cuentas del dueño: la tarjeta decía "0".
+    sesion.actor = usuarioDe("SUPERVISOR", { id: 5, username: "elsa" });
+    await montar([ANA, ELSA]);
+    const tarjetas = screen.getByLabelText("Cuentas por rol");
+    expect(within(tarjetas).queryByText("Administrador")).toBeNull();
+    expect(kpi("Encargado")).toBe("1");
+    expect(screen.queryByRole("button", { name: "Administrador" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Cajero" })).toBeInTheDocument();
+  });
+
+  it("QA R1 W-11: el Administrador sí la ve", async () => {
+    await montar([OMAR, ANA]);
+    expect(kpi("Administrador")).toBe("1");
+    expect(screen.getByRole("button", { name: "Administrador" })).toBeInTheDocument();
+  });
+
   it("la tarjeta dice el nombre que el negocio le puso al rol", async () => {
     await montar([OMAR, de(CAJERO, { id: 2, usuario: "ana", rolNombre: "Cajera de la tarde" })]);
     const tarjeta = screen.getByRole("button", { name: /@ana\b/ });
@@ -247,6 +264,34 @@ describe("crear y editar con los roles asignables", () => {
     expect(api.actualizarUsuario).toHaveBeenCalledWith(2, expect.objectContaining({ rolId: 4 }));
   });
 
+  it("QA R1 W-10: un rol sin permisos avisa que la persona no va a ver nada", async () => {
+    vi.mocked(apiRoles.asignables).mockResolvedValue([
+      CAJERO,
+      LAVAPLATOS,
+      // Trae permisos, pero ninguno que el negocio pueda usar.
+      rol(8, "Ayudante", [{ ...p("agenda.ver"), disponible: false }]),
+    ]);
+    await montar([OMAR], [...ROLES, LAVAPLATOS]);
+    await llenarAlta();
+    expect(screen.queryByText(/Este rol no tiene permisos/)).toBeNull();
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "6" } });
+    expect(screen.getByRole("status")).toHaveTextContent("Este rol no tiene permisos: la persona no va a ver nada.");
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "8" } });
+    expect(screen.getByText(/Este rol no tiene permisos/)).toBeInTheDocument();
+    // Avisa, no prohíbe: puede ser a propósito.
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
+    });
+    expect(api.crearUsuario).toHaveBeenCalledWith(expect.objectContaining({ rolId: 8 }));
+  });
+
+  it("QA R1 W-09: «Qué puede hacer» con el nombre del rol tal cual", async () => {
+    vi.mocked(apiRoles.asignables).mockResolvedValue([rol(9, "QA-R1W Caja simple", [p("ventas.vender")])]);
+    await montar([OMAR]);
+    await llenarAlta();
+    expect(screen.getByText("Qué puede hacer QA-R1W Caja simple")).toBeInTheDocument();
+  });
+
   it("zona y vehículo aparecen con un rol que entrega pedidos, se llame como se llame", async () => {
     await montar([OMAR]);
     await llenarAlta();
@@ -277,6 +322,26 @@ describe("el detalle muestra los permisos reales del rol", () => {
     abrir("ana");
     expect(screen.getByText("Vender")).toBeInTheDocument();
     expect(apiRoles.catalogo).not.toHaveBeenCalled();
+  });
+
+  it("QA R1 W-03: sólo lo que el negocio puede usar (sin la agenda ni las alergias en una pollería)", async () => {
+    const cajeroPlantilla = rol(3, "Cajero", [
+      p("ventas.vender"),
+      { codigo: "agenda.ver", alcance: "GENERAL", nombre: "Ver la agenda", dominio: "Agenda", disponible: false },
+      { codigo: "cliente.ver_alergias", alcance: "GENERAL", nombre: "Ver alergias", dominio: "Clientes", disponible: false },
+    ]);
+    await montar([OMAR, ANA], [ADMINISTRADOR, cajeroPlantilla]);
+    abrir("ana");
+    const dialogo = screen.getByRole("dialog");
+    expect(within(dialogo).getByText("Vender")).toBeInTheDocument();
+    expect(dialogo).not.toHaveTextContent("Agenda");
+    expect(dialogo).not.toHaveTextContent("Ver alergias");
+  });
+
+  it("QA R1 W-03: un rol con todo fuera del plan dice que no tiene permisos", async () => {
+    await montar([OMAR, ANA], [ADMINISTRADOR, rol(3, "Cajero", [{ ...p("agenda.ver"), disponible: false }])]);
+    abrir("ana");
+    expect(screen.getByText(/Ningún permiso/)).toBeInTheDocument();
   });
 
   it("un permiso sin nombre (el backend no lo conoce) se muestra por su código", async () => {

@@ -198,6 +198,13 @@ export interface PermisoDeRol {
 export interface PermisoDeRolVista extends PermisoDeRol {
   nombre: string;
   dominio: string | null;
+  /**
+   * El negocio lo puede usar: su plan, su rubro y la feature lo incluyen
+   * (QA R1 W-02). Un rol de plantilla puede traer permisos que acá no rigen
+   * (la agenda en una ferretería): los guarda, pero no cuentan ni se
+   * muestran como "qué puede hacer". Sin el campo (backend viejo) = sí.
+   */
+  disponible?: boolean;
 }
 
 /** `GET /roles` y `GET /roles/asignables`: un rol del negocio. */
@@ -219,6 +226,8 @@ export interface RolNegocio {
    * mesero.
    */
   permisos: PermisoDeRolVista[];
+  /** Cuántos de `permisos` son `disponible` (lo que de verdad puede hacer). */
+  permisosDisponibles?: number;
 }
 
 /** Un permiso del catálogo, tal como lo ve quien edita roles. */
@@ -228,7 +237,7 @@ export interface PermisoCatalogo {
   descripcion: string;
   sensible: boolean;
   admitePropio: boolean;
-  /** El plan del negocio lo incluye. */
+  /** El plan, el rubro y las features del negocio lo incluyen. */
   disponible: boolean;
   /**
    * Hasta qué alcance lo puede dar quien edita (nadie da lo que no tiene;
@@ -251,20 +260,27 @@ export interface RolInput {
   permisos?: { codigo: string; alcance: Alcance }[];
 }
 
-export type AccionBitacoraRol = "CREAR" | "RENOMBRAR" | "PERMISOS" | "ELIMINAR" | "RESTABLECER";
+export type AccionBitacoraRol = "CREAR" | "RENOMBRAR" | "DESCRIPCION" | "PERMISOS" | "ELIMINAR" | "RESTABLECER";
+
+/**
+ * Quién originó un evento: el negocio desde su app, el soporte de BamarDev
+ * desde el panel, o el sistema (la migración o el alta, sin autor).
+ */
+export type OrigenEventoRol = "NEGOCIO" | "SOPORTE" | "SISTEMA";
 
 /**
  * Qué cambió en un evento de la bitácora (§8.1). Es un objeto, no un texto:
  * PERMISOS `{ agregados, quitados, cambiados? }`; RENOMBRAR `{ de, a }` (y
- * `descripcion` si cambió); ELIMINAR `{ reasignadoA, usuarios, personal }`;
+ * `descripcion` si cambió, en los eventos viejos); DESCRIPCION `{ de, a }`
+ * (la descripción de antes y la de ahora, null = sin descripción); ELIMINAR `{ reasignadoA, usuarios, personal }`;
  * CREAR y RESTABLECER, los permisos que agregaron o quitaron.
  */
 export interface DetalleEventoRol {
   agregados?: PermisoDeRol[];
   quitados?: PermisoDeRol[];
   cambiados?: { codigo: string; de: Alcance; a: Alcance }[];
-  de?: string;
-  a?: string;
+  de?: string | null;
+  a?: string | null;
   descripcion?: { de: string | null; a: string | null };
   reasignadoA?: { id: number; nombre: string } | null;
   usuarios?: number;
@@ -278,11 +294,14 @@ export interface EventoRol {
   fecha: string;
   accion: AccionBitacoraRol | (string & {});
   rolId: number;
+  /** El nombre que tenía el rol en ese momento (no el de hoy). */
   rolNombre: string;
   detalle: DetalleEventoRol | null;
   autor: { id: number; nombre: string | null } | null;
   /** Lo hizo el soporte de BamarDev desde el panel. */
   porSoporte: boolean;
+  /** Sin el campo (backend viejo) se deduce de `porSoporte` y del autor. */
+  origen?: OrigenEventoRol;
   /** Por qué lo cambió el soporte (obligatorio en el panel). */
   motivo?: string | null;
 }

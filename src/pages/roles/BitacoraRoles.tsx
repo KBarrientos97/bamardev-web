@@ -1,12 +1,13 @@
 import { Cargando, ErrorMsg, Vacio } from "../../components/ui";
 import { fmtFechaHora } from "../../lib/format";
-import { apiRoles, renglonesDetalle, type NombresPermisos } from "../../lib/roles";
+import { apiRoles, autorDelEvento, renglonesDetalle, type NombresPermisos } from "../../lib/roles";
 import { useApi } from "../../lib/useApi";
 import type { EventoRol } from "../../types";
 
 const ACCION: Record<string, string> = {
   CREAR: "Creó",
   RENOMBRAR: "Renombró",
+  DESCRIPCION: "Cambió la descripción de",
   PERMISOS: "Cambió los permisos de",
   ELIMINAR: "Borró",
   RESTABLECER: "Restableció",
@@ -15,8 +16,10 @@ const ACCION: Record<string, string> = {
 /**
  * Quién cambió qué rol y cuándo. Sin `rolId`, la de todo el negocio (la
  * pestaña Bitácora); con él, la de un rol (dentro de su editor). Lo que hizo
- * el soporte de BamarDev desde el panel se dice: el dueño tiene que saber que
- * no lo tocó nadie de su equipo. `nombres` (del catálogo) nombra los permisos
+ * el soporte de BamarDev desde el panel se dice, y lo de la migración o el
+ * alta va como "Sistema": el dueño tiene que saber que no lo tocó nadie de su
+ * equipo. Cada evento nombra al rol como se llamaba entonces (`rolNombre`
+ * del evento): renombrarlo no reescribe la historia. `nombres` (del catálogo) nombra los permisos
  * del detalle; sin él, van por su código.
  */
 export default function BitacoraRoles({
@@ -52,7 +55,7 @@ export default function BitacoraRoles({
 }
 
 function Renglon({ evento: e, compacta, nombres }: { evento: EventoRol; compacta: boolean; nombres: NombresPermisos }) {
-  const quien = e.porSoporte ? "Soporte de BamarDev" : (e.autor?.nombre ?? "Alguien");
+  const quien = autorDelEvento(e);
   const detalle = renglonesDetalle(e, nombres);
   return (
     <li className={compacta ? "text-[13px]" : "px-4 py-3 text-sm"}>

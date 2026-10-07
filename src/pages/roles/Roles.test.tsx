@@ -145,6 +145,22 @@ describe("la lista", () => {
     expect(admin).toHaveTextContent("Sólo lectura");
     expect(admin).toHaveTextContent("Todos los permisos");
   });
+
+  it("QA R1 W-02: el conteo es de lo que el negocio puede usar, no de lo que trae la plantilla", async () => {
+    vi.mocked(apiRoles.listar).mockResolvedValue([
+      ADMINISTRADOR,
+      // El backend ya lo cuenta...
+      rol(4, "Vendedor", { permisos: [pr("ventas.vender"), { ...pr("agenda.ver"), disponible: false }], permisosDisponibles: 1 }),
+      // ...y si no lo manda, se cuenta acá con `disponible`.
+      rol(5, "Recepción", { permisos: [pr("ventas.vender"), pr("ventas.anular"), { ...pr("agenda.ver"), disponible: false }] }),
+      rol(6, "Mozo", { permisos: [{ ...pr("agenda.ver"), disponible: false }] }),
+    ]);
+    await montar();
+    const lista = screen.getByRole("list", { name: "Roles del negocio" });
+    expect(within(lista).getByRole("button", { name: "Ver el rol Vendedor" })).toHaveTextContent("1 permiso");
+    expect(within(lista).getByRole("button", { name: "Ver el rol Recepción" })).toHaveTextContent("2 permisos");
+    expect(within(lista).getByRole("button", { name: "Ver el rol Mozo" })).toHaveTextContent("Sin permisos");
+  });
 });
 
 describe("crear un rol", () => {
@@ -204,24 +220,65 @@ describe("crear un rol", () => {
     expect(within(editor()).queryByLabelText(/ficha de salud/)).toBeNull();
   });
 
-  it("un permiso fuera del plan que el rol ya trae se ve, para poder sacarlo", async () => {
+  it("un permiso fuera del plan que el rol ya trae va aparte, plegado, y se puede sacar (QA R1 W-02)", async () => {
     vi.mocked(apiRoles.listar).mockResolvedValue([
       ADMINISTRADOR,
-      rol(8, "Terapeuta", { permisos: [pr("cliente.editar_salud", "PROPIO")] }),
+      rol(8, "Terapeuta", { permisos: [pr("ventas.vender"), { ...pr("cliente.editar_salud", "PROPIO"), disponible: false }] }),
     ]);
     vi.mocked(apiRoles.editar).mockResolvedValue(rol(8, "Terapeuta"));
     await montar();
     fireEvent.click(screen.getByRole("button", { name: "Ver el rol Terapeuta" }));
-    abrirDominio("Salud");
+    // Su dominio no aparece: no se mezcla con lo que sí hace.
+    expect(within(editor()).queryByText("Salud", { selector: "summary span" })).toBeNull();
+    const aparte = within(editor()).getByText("No incluidos en tu plan", { selector: "summary span" });
+    expect(aparte.closest("details")).not.toHaveAttribute("open");
+    fireEvent.click(aparte);
     const salud = within(editor()).getByLabelText(/^Completar la ficha de salud/);
     expect(salud).toBeChecked();
     fireEvent.click(salud);
+    // Sacado, no se vuelve a dar.
     expect(salud).toBeDisabled();
-    expect(within(editor()).getByText("Tu plan no lo incluye.")).toBeInTheDocument();
     await act(async () => {
       fireEvent.click(within(editor()).getByRole("button", { name: "Guardar" }));
     });
-    expect(apiRoles.editar).toHaveBeenCalledWith(8, { permisos: [] });
+    expect(apiRoles.editar).toHaveBeenCalledWith(8, { permisos: [{ codigo: "ventas.vender", alcance: "GENERAL" }] });
+  });
+
+  it("lo del rol fuera del plan no infla el conteo de su dominio (QA R1 W-02/W-04)", async () => {
+    vi.mocked(apiRoles.listar).mockResolvedValue([
+      ADMINISTRADOR,
+      rol(9, "Vendedor", { permisos: [pr("ventas.vender"), { ...pr("reportes.rentabilidad"), disponible: false }] }),
+    ]);
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Ver el rol Vendedor" }));
+    expect(screen.getByText("Reportes", { selector: "summary span" }).parentElement).toHaveTextContent("0 de 1");
+    const reportes = screen.getByText("Reportes", { selector: "summary span" }).closest("details")!;
+    expect(within(reportes).queryByLabelText(/^Rentabilidad/)).toBeNull();
+    fireEvent.click(within(editor()).getByText("No incluidos en tu plan", { selector: "summary span" }));
+    expect(within(editor()).getByLabelText(/^Rentabilidad/)).toBeChecked();
+  });
+
+  it("un permiso que el catálogo ya ni lista (otro rubro) también va aparte, con su nombre", async () => {
+    vi.mocked(apiRoles.listar).mockResolvedValue([
+      ADMINISTRADOR,
+      rol(10, "Encargado", {
+        permisos: [
+          pr("ventas.vender"),
+          { codigo: "controlados.libro", alcance: "GENERAL", nombre: "Libro de controlados", dominio: "Farmacia", disponible: false },
+        ],
+      }),
+    ]);
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Ver el rol Encargado" }));
+    expect(within(editor()).queryByText("Farmacia", { selector: "summary span" })).toBeNull();
+    fireEvent.click(within(editor()).getByText("No incluidos en tu plan", { selector: "summary span" }));
+    expect(within(editor()).getByLabelText(/^Libro de controlados/)).toBeChecked();
+  });
+
+  it("un rol sin nada fuera del plan no muestra la sección aparte", async () => {
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Ver el rol Cajero" }));
+    expect(within(editor()).queryByText("No incluidos en tu plan")).toBeNull();
   });
 
   it("quien tiene un permiso sólo sobre lo suyo no puede dar el general (lo dice `otorgable`)", async () => {
@@ -249,6 +306,35 @@ describe("crear un rol", () => {
       fireEvent.click(within(editor()).getByRole("button", { name: "Guardar" }));
     });
     expect(within(editor()).getByText("Ya hay un rol con ese nombre.")).toBeInTheDocument();
+  });
+
+  it("QA R1 W-01: el error sale en el pie, junto a Guardar, no al final de los dominios", async () => {
+    vi.mocked(apiRoles.crear).mockRejectedValue(new ApiError("Conflict", 409, { codigo: "NOMBRE_REPETIDO" }));
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Nuevo rol" }));
+    fireEvent.change(within(editor()).getByLabelText(/^Nombre/), { target: { value: "cajero" } });
+    await act(async () => {
+      fireEvent.click(within(editor()).getByRole("button", { name: "Guardar" }));
+    });
+    const alerta = within(editor()).getByRole("alert");
+    expect(alerta).toHaveTextContent("Ya hay un rol con ese nombre.");
+    // Mismo contenedor que los botones (el pie fijo del modal), no el cuerpo
+    // con scroll donde están los permisos.
+    const pie = alerta.parentElement!;
+    expect(within(pie).getByRole("button", { name: "Guardar" })).toBeInTheDocument();
+    expect(within(pie).queryByText("Ventas", { selector: "summary span" })).toBeNull();
+  });
+
+  it("QA R1 W-01: sin nombre, el aviso también se ve junto a Guardar", async () => {
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Nuevo rol" }));
+    await act(async () => {
+      fireEvent.click(within(editor()).getByRole("button", { name: "Guardar" }));
+    });
+    expect(apiRoles.crear).not.toHaveBeenCalled();
+    const alerta = within(editor()).getByRole("alert");
+    expect(alerta).toHaveTextContent("Poné el nombre del rol.");
+    expect(within(alerta.parentElement!).getByRole("button", { name: "Guardar" })).toBeInTheDocument();
   });
 
   it("403 PERMISO_NO_OTORGABLE nombra los permisos con el catálogo", async () => {
@@ -437,5 +523,50 @@ describe("la bitácora", () => {
     expect(lista).toHaveTextContent("Agregó: Vender");
     expect(lista).toHaveTextContent("Motivo: pedido del dueño");
     expect(lista).toHaveTextContent("Su gente pasó a Ayudante");
+  });
+
+  it("QA R1 W-05: cada evento con el nombre que tenía el rol en ese momento", async () => {
+    vi.mocked(apiRoles.bitacora).mockResolvedValue([
+      { id: 3, fecha: "2026-10-07T17:00:00.000Z", accion: "RENOMBRAR", rolId: 9, rolNombre: "Caja y reportes", detalle: { de: "Caja simple", a: "Caja y reportes" }, autor: { id: 1, nombre: "Diego" }, porSoporte: false, origen: "NEGOCIO" },
+      { id: 2, fecha: "2026-10-07T16:00:00.000Z", accion: "PERMISOS", rolId: 9, rolNombre: "Caja simple", detalle: { agregados: [{ codigo: "ventas.anular", alcance: "GENERAL" }], quitados: [] }, autor: { id: 1, nombre: "Diego" }, porSoporte: false, origen: "NEGOCIO" },
+      { id: 1, fecha: "2026-10-07T15:00:00.000Z", accion: "CREAR", rolId: 9, rolNombre: "Caja simple", detalle: null, autor: { id: 1, nombre: "Diego" }, porSoporte: false, origen: "NEGOCIO" },
+    ]);
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Bitácora" }));
+    await act(async () => {});
+    const renglones = within(screen.getByRole("list", { name: "Bitácora de roles" })).getAllByRole("listitem");
+    expect(renglones[0]).toHaveTextContent("Diego renombró Caja y reportes");
+    expect(renglones[1]).toHaveTextContent("Diego cambió los permisos de Caja simple");
+    expect(renglones[2]).toHaveTextContent("Diego creó Caja simple");
+  });
+
+  it("QA R1 W-06: lo de la migración o el alta es del Sistema, no de «Alguien»", async () => {
+    vi.mocked(apiRoles.bitacora).mockResolvedValue([
+      { id: 2, fecha: "2026-10-07T15:00:00.000Z", accion: "CREAR", rolId: 1, rolNombre: "Administrador", detalle: null, autor: null, porSoporte: false, origen: "SISTEMA" },
+      // Backend sin `origen`: sin autor y sin soporte, también es del sistema.
+      { id: 1, fecha: "2026-10-07T15:00:00.000Z", accion: "CREAR", rolId: 2, rolNombre: "Encargado", detalle: null, autor: null, porSoporte: false },
+    ]);
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Bitácora" }));
+    await act(async () => {});
+    const lista = screen.getByRole("list", { name: "Bitácora de roles" });
+    expect(lista).toHaveTextContent("Sistema creó Administrador");
+    expect(lista).toHaveTextContent("Sistema creó Encargado");
+    expect(lista).not.toHaveTextContent("Alguien");
+  });
+
+  it("QA R1 W-05: cambiar sólo la descripción se lee (DESCRIPCION y el RENOMBRAR viejo)", async () => {
+    vi.mocked(apiRoles.bitacora).mockResolvedValue([
+      { id: 2, fecha: "2026-10-07T16:00:00.000Z", accion: "DESCRIPCION", rolId: 3, rolNombre: "Cajero", detalle: { de: null, a: "Cobra en caja" }, autor: { id: 1, nombre: "Omar" }, porSoporte: false, origen: "NEGOCIO" },
+      { id: 1, fecha: "2026-10-07T15:00:00.000Z", accion: "RENOMBRAR", rolId: 3, rolNombre: "Cajero", detalle: { descripcion: { de: "Cobra", a: null } }, autor: { id: 1, nombre: "Omar" }, porSoporte: false },
+    ]);
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Bitácora" }));
+    await act(async () => {});
+    const renglones = within(screen.getByRole("list", { name: "Bitácora de roles" })).getAllByRole("listitem");
+    expect(renglones[0]).toHaveTextContent("Omar cambió la descripción de Cajero");
+    expect(renglones[0]).toHaveTextContent("sin descripción → «Cobra en caja»");
+    expect(renglones[0]).not.toHaveTextContent("DESCRIPCION");
+    expect(renglones[1]).toHaveTextContent("Descripción: «Cobra» → sin descripción");
   });
 });

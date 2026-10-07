@@ -3,7 +3,7 @@ import {
   CAMPOS_REGLA,
   cambiosReglas,
   erroresReglas,
-  etiquetaCampo,
+  esCampoRetirado,
   fmtValorRegla,
   META_REGLAS,
   motivoAnticipo,
@@ -51,8 +51,12 @@ describe("reglas del negocio", () => {
     const v = valoresDe(delBackend);
     expect("profesionalPuedeAgendar" in v).toBe(false);
     expect(CAMPOS_REGLA.filter((c) => c.startsWith("profesional"))).toEqual([]);
-    // Sus cambios viejos siguen en la bitácora y se leen como antes.
-    expect(etiquetaCampo("profesionalVeTelefono")).toBe("Ve el teléfono del cliente");
+    // Sus cambios viejos siguen en la bitácora del backend, pero el historial
+    // no los muestra: hablaban de interruptores que ya no existen (QA R1 W-14).
+    for (const c of ["profesionalPuedeAgendar", "profesionalPuedeBloquear", "profesionalVeTelefono", "profesionalVePrecios"]) {
+      expect(esCampoRetirado(c)).toBe(true);
+    }
+    expect(esCampoRetirado("granularidadMin")).toBe(false);
   });
 
   it("avisa los números fuera de rango o no enteros", () => {

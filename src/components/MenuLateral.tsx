@@ -45,11 +45,14 @@ export default function MenuLateral({
   menu,
   compacta,
   onNavegar,
+  onCambiarPassword,
 }: {
   menu: Menu;
   compacta: boolean;
   /** Cierra el cajón del celular al elegir una pantalla. */
   onNavegar: () => void;
+  /** "Cambiar mi contraseña": el formulario vive en el Layout (ver ahí). */
+  onCambiarPassword?: () => void;
 }) {
   const { logout } = useAuth();
   const uid = useId();
@@ -399,6 +402,30 @@ export default function MenuLateral({
       })}
 
       <div className="my-2 border-t border-white/15" />
+
+      {/* Lo de la cuenta de quien está sentado, para cualquier rol: cambiar
+          la propia clave no depende de administrar usuarios (API-12). */}
+      {onCambiarPassword && (
+        <button
+          type="button"
+          onClick={() => {
+            setTip(null);
+            onCambiarPassword();
+          }}
+          aria-label={compacta ? "Cambiar mi contraseña" : undefined}
+          data-fila=""
+          data-nav-id="mi-password"
+          {...mostrarTip("Cambiar mi contraseña")}
+          className={[
+            "flex items-center gap-3 rounded-xl py-2.5 text-sm font-semibold text-barra-texto-2 transition-colors hover:bg-white/10 hover:text-barra-texto",
+            foco,
+            compacta ? "justify-center px-0" : "px-3",
+          ].join(" ")}
+        >
+          <Icon name="lock" size={19} />
+          {!compacta && <span>Cambiar mi contraseña</span>}
+        </button>
+      )}
 
       <button
         type="button"

@@ -19,6 +19,7 @@ import {
   camposDe,
   cambiosReglas,
   erroresReglas,
+  esCampoRetirado,
   etiquetaCampo,
   fmtValorRegla,
   META_REGLAS,
@@ -57,6 +58,11 @@ export default function ConfigNegocio() {
   const suc = useSucursales();
   const reglas = useApi(() => apiConfigAgenda.reglas(suc.sucursalId), [suc.sucursalId]);
   const historial = useApi(() => apiConfigAgenda.historialReglas(), []);
+  // Sin los interruptores del profesional que pasaron a Roles (QA R1 W-14).
+  const cambios = useMemo(
+    () => historial.datos?.filter((f) => !esCampoRetirado(f.campo)) ?? [],
+    [historial.datos],
+  );
   const [version, setVersion] = useState(0);
   // Acá y no en el formulario: guardar lo vuelve a montar (la clave cambia)
   // y el aviso se perdería en el mismo instante en que aparece.
@@ -116,10 +122,10 @@ export default function ConfigNegocio() {
           <ErrorMsg onReintentar={historial.recargar}>{historial.error}</ErrorMsg>
         ) : historial.cargando ? (
           <Cargando />
-        ) : !historial.datos?.length ? (
+        ) : !cambios.length ? (
           <p className="py-2 text-sm text-texto-3">Todavía no se cambió ninguna regla.</p>
         ) : (
-          <Historial filas={historial.datos} nombreSucursal={nombreSucursal} />
+          <Historial filas={cambios} nombreSucursal={nombreSucursal} />
         )}
       </Bloque>
     </div>

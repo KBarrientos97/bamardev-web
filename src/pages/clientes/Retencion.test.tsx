@@ -4,10 +4,13 @@ import type { FilaCliente } from "../../lib/crm/apiCrm";
 
 /** Clientes que no vuelven: la lista, el WhatsApp y la exportación. */
 
-const sesion = vi.hoisted(() => ({ permisos: ["cliente.marketing"] as string[] }));
+const sesion = vi.hoisted(() => ({
+  permisos: ["cliente.marketing"] as string[],
+  features: ["clientes_retencion"] as string[],
+}));
 vi.mock("../../store/AuthContext", () => ({
   useAuth: () => ({
-    negocio: { nombre: "Pollería Omar", features: ["clientes_retencion"] },
+    negocio: { nombre: "Pollería Omar", features: sesion.features },
     usuario: { rol: "CAJERO", permisos: sesion.permisos },
   }),
 }));
@@ -27,6 +30,7 @@ vi.mock("../../lib/promociones/apiPromociones", () => ({
 }));
 
 import { apiCrm } from "../../lib/crm/apiCrm";
+import { apiPromociones } from "../../lib/promociones/apiPromociones";
 import Retencion from "./Retencion";
 
 const crm = vi.mocked(apiCrm);
@@ -57,6 +61,7 @@ const RESUMEN = { NUEVO: 1, FRECUENTE: 0, OCASIONAL: 0, EN_RIESGO: 0, PERDIDO: 2
 beforeEach(() => {
   vi.clearAllMocks();
   sesion.permisos = ["cliente.marketing"];
+  sesion.features = ["clientes_retencion"];
   localStorage.clear();
   crm.noVuelven.mockResolvedValue({
     resumen: RESUMEN,
@@ -64,6 +69,30 @@ beforeEach(() => {
       fila({}),
       fila({ id: 2, nombre: "Carla Vaca", whatsapp: null, contactable: false, marketingAcepta: null }),
     ],
+  });
+});
+
+describe("compartir una promo (QA R1 W-08)", () => {
+  it("con la feature pero sin `promociones.gestionar` no pide las promociones (era un 403)", async () => {
+    sesion.features = ["clientes_retencion", "promociones"];
+    render(<Retencion />);
+    expect(await screen.findByText("Beto Suárez")).toBeInTheDocument();
+    expect(apiPromociones.listar).not.toHaveBeenCalled();
+  });
+
+  it("con la feature y el permiso, sí", async () => {
+    sesion.features = ["clientes_retencion", "promociones"];
+    sesion.permisos = ["cliente.marketing", "promociones.gestionar"];
+    render(<Retencion />);
+    expect(await screen.findByText("Beto Suárez")).toBeInTheDocument();
+    expect(apiPromociones.listar).toHaveBeenCalled();
+  });
+
+  it("con el permiso pero sin la feature, tampoco", async () => {
+    sesion.permisos = ["cliente.marketing", "promociones.gestionar"];
+    render(<Retencion />);
+    expect(await screen.findByText("Beto Suárez")).toBeInTheDocument();
+    expect(apiPromociones.listar).not.toHaveBeenCalled();
   });
 });
 

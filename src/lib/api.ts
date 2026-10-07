@@ -112,8 +112,12 @@ export const tokenStore = {
   clear: () => localStorage.removeItem(TOKEN_KEY),
 };
 
-/** Rutas donde un 401 significa "credenciales mal", no "sesión vencida". */
-const RUTAS_LOGIN = ["/auth/login", "/auth/panel/login"];
+/**
+ * Rutas donde un 401 significa "credenciales mal", no "sesión vencida". Cambiar
+ * la propia clave también: si el backend contesta 401 a una contraseña actual
+ * equivocada, cerrar la sesión por eso sería castigar un error de tipeo.
+ */
+const RUTAS_LOGIN = ["/auth/login", "/auth/panel/login", "/usuarios/me/password"];
 
 /** Error del API con el status y, si el backend lo mandó, el código de negocio. */
 export class ApiError extends Error {
@@ -922,6 +926,15 @@ export const api = {
     request<{ mensaje: string }>(`/usuarios/${id}/password`, {
       method: "PATCH",
       body: JSON.stringify({ password }),
+    }),
+  /**
+   * Cualquiera cambia SU clave, con la actual (API-12). La de otro la cambia
+   * quien administra usuarios, sin la actual (`cambiarPassword`).
+   */
+  cambiarMiPassword: (actual: string, nueva: string) =>
+    request<unknown>("/usuarios/me/password", {
+      method: "PATCH",
+      body: JSON.stringify({ actual, nueva }),
     }),
   /** Le saca la autorización: sin PIN no anula ni fía de más. Sólo el ADMIN. */
   quitarPin: (id: number) =>

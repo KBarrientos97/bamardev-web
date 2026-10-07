@@ -10,8 +10,10 @@ import BitacoraRoles from "./BitacoraRoles";
  * igual, pero en sólo lectura y con el candado: tiene todo y no se toca.
  *
  * Cada permiso es un renglón con su casilla y, si admite "sólo lo suyo", el
- * alcance. Lo que el plan no incluye no aparece (salvo que el rol ya lo
- * traiga: se ve apagado, para poder sacarlo). Lo que quien edita no tiene se
+ * alcance. Lo que el plan o el rubro no incluyen no aparece en su dominio ni
+ * cuenta; si el rol ya lo trae (las plantillas copian permisos de otros
+ * rubros), va aparte y plegado en "No incluidos en tu plan", para poder
+ * sacarlo (QA R1 W-02/W-04). Lo que quien edita no tiene se
  * ve apagado y dice por qué (nadie da lo que no tiene; lo dice `otorgable`
  * del catálogo, con el alcance hasta el que llega). Los
  * dominios van plegados: en el celular son 60 renglones, y se abre el tema
@@ -44,6 +46,7 @@ export default function EditorRol({
   const [guardando, setGuardando] = useState(false);
   const [verBitacora, setVerBitacora] = useState(false);
   const nombres = useMemo(() => nombresDelCatalogo(catalogo), [catalogo]);
+  const fueraDelPlan = useMemo(() => noIncluidos(rol, catalogo), [rol, catalogo]);
 
   const cambiaron = useMemo(() => {
     if (elegidos.size !== inicial.size) return true;
@@ -116,6 +119,14 @@ export default function EditorRol({
           </Boton>
         ) : (
           <>
+            {/* El error va en el pie, junto a Guardar, que siempre está a la
+                vista: al final del cuerpo quedaba debajo de los dominios y,
+                en el celular, Guardar parecía no hacer nada (QA R1 W-01). */}
+            {error && (
+              <div role="alert" className="basis-full">
+                <ErrorMsg>{error}</ErrorMsg>
+              </div>
+            )}
             {rol && (
               <Boton variante="ghost" icono="trash" onClick={() => onBorrar(rol)} disabled={guardando} className="mr-auto">
                 Borrar
@@ -161,12 +172,14 @@ export default function EditorRol({
                 key={d.dominio}
                 dominio={d}
                 elegidos={elegidos}
-                inicial={inicial}
                 soloLectura={soloLectura}
                 alternar={alternar}
                 fijarAlcance={fijarAlcance}
               />
             ))}
+            {!soloLectura && fueraDelPlan.length > 0 && (
+              <NoIncluidos permisos={fueraDelPlan} elegidos={elegidos} alternar={alternar} fijarAlcance={fijarAlcance} />
+            )}
           </div>
         )}
 
@@ -188,41 +201,61 @@ export default function EditorRol({
             )}
           </div>
         )}
-
-        <ErrorMsg>{error}</ErrorMsg>
       </div>
     </Modal>
   );
 }
 
 /**
+ * Los permisos que el rol trae y el negocio no puede usar (su plan, su rubro o
+ * una feature apagada no los incluyen): los del catálogo con `disponible`
+ * false y los que el catálogo ya ni lista. Para el editor, con su nombre.
+ */
+function noIncluidos(rol: RolNegocio | null, catalogo: DominioPermisos[] | null): PermisoCatalogo[] {
+  if (!rol || rol.esAdministrador || !catalogo) return [];
+  const delCatalogo = new Map(catalogo.flatMap((d) => d.permisos).map((p) => [p.codigo, p]));
+  return rol.permisos.flatMap((p): PermisoCatalogo[] => {
+    const c = delCatalogo.get(p.codigo);
+    if (c) return c.disponible ? [] : [c];
+    return [
+      {
+        codigo: p.codigo,
+        nombre: p.nombre || p.codigo,
+        descripcion: p.dominio ?? "",
+        sensible: false,
+        admitePropio: false,
+        disponible: false,
+        otorgable: null,
+      },
+    ];
+  });
+}
+
+/**
  * Un dominio (Ventas, Caja, Agenda…): plegado, con cuántos tiene prendidos.
- * Lo que el plan no incluye (o una feature apagada para todos, como la ficha
- * de salud y los consentimientos desde el 07-oct) no se muestra: ofrecerlo
- * apagado invitaba a pedir algo que no existe. Salvo que el rol ya lo traiga,
- * para que se pueda sacar. Un dominio sin nada que mostrar, tampoco.
+ * Lo que el plan o el rubro no incluyen (o una feature apagada para todos,
+ * como la ficha de salud y los consentimientos desde el 07-oct) no se
+ * muestra ni cuenta: ofrecerlo apagado invitaba a pedir algo que no existe.
+ * Si el rol lo trae, va en "No incluidos en tu plan". Un dominio sin nada que
+ * mostrar, tampoco.
  */
 function Dominio({
   dominio,
   elegidos,
-  inicial,
   soloLectura,
   alternar,
   fijarAlcance,
 }: {
   dominio: DominioPermisos;
   elegidos: Map<string, Alcance>;
-  /** Lo que el rol traía al abrirlo. */
-  inicial: Map<string, Alcance>;
   soloLectura: boolean;
   alternar: (p: PermisoCatalogo, prendido: boolean) => void;
   fijarAlcance: (codigo: string, alcance: Alcance) => void;
 }) {
-  const visibles = dominio.permisos.filter((p) => p.disponible || (!soloLectura && inicial.has(p.codigo)));
-  // El Administrador se ve con lo que de verdad trae (`GET /roles`), cruzado
-  // con el plan: sin los de ejecutor, que no recibe.
-  const alcanceDe = (p: PermisoCatalogo) =>
-    soloLectura && !p.disponible ? undefined : elegidos.get(p.codigo);
+  const visibles = dominio.permisos.filter((p) => p.disponible);
+  // El Administrador se ve con lo que de verdad trae (`GET /roles`): sin los
+  // de ejecutor, que no recibe.
+  const alcanceDe = (p: PermisoCatalogo) => elegidos.get(p.codigo);
   const prendidos = visibles.filter((p) => alcanceDe(p) !== undefined).length;
   if (visibles.length === 0) return null;
   return (
@@ -249,18 +282,65 @@ function Dominio({
   );
 }
 
+/**
+ * Lo que el rol trae y el negocio no puede usar, plegado y al final: no
+ * infla los conteos y no se confunde con lo que sí hace. Se puede sacar
+ * (sacar no es dar); una vez sacado, no se vuelve a poner.
+ */
+function NoIncluidos({
+  permisos,
+  elegidos,
+  alternar,
+  fijarAlcance,
+}: {
+  permisos: PermisoCatalogo[];
+  elegidos: Map<string, Alcance>;
+  alternar: (p: PermisoCatalogo, prendido: boolean) => void;
+  fijarAlcance: (codigo: string, alcance: Alcance) => void;
+}) {
+  const quedan = permisos.filter((p) => elegidos.has(p.codigo)).length;
+  return (
+    <details className="rounded-xl border border-dashed border-borde">
+      <summary className="flex cursor-pointer select-none items-center justify-between gap-2 px-3.5 py-3">
+        <span className="text-sm font-semibold text-texto-3">No incluidos en tu plan</span>
+        <span className="text-xs text-texto-4">{quedan}</span>
+      </summary>
+      <p className="border-t border-borde-soft px-3.5 py-2.5 text-xs text-texto-3">
+        El rol los trae, pero tu plan o tu rubro no los incluyen: nadie los puede usar y no cuentan entre sus
+        permisos. Podés sacarlos.
+      </p>
+      <ul className="divide-y divide-borde-soft border-t border-borde-soft">
+        {permisos.map((p) => (
+          <RenglonPermiso
+            key={p.codigo}
+            permiso={p}
+            alcance={elegidos.get(p.codigo)}
+            soloLectura={false}
+            alternar={alternar}
+            fijarAlcance={fijarAlcance}
+            sinMotivo
+          />
+        ))}
+      </ul>
+    </details>
+  );
+}
+
 function RenglonPermiso({
   permiso: p,
   alcance,
   soloLectura,
   alternar,
   fijarAlcance,
+  sinMotivo = false,
 }: {
   permiso: PermisoCatalogo;
   alcance: Alcance | undefined;
   soloLectura: boolean;
   alternar: (p: PermisoCatalogo, prendido: boolean) => void;
   fijarAlcance: (codigo: string, alcance: Alcance) => void;
+  /** El motivo ya lo dice el grupo (los no incluidos en el plan). */
+  sinMotivo?: boolean;
 }) {
   const prendido = alcance !== undefined;
   const maximo = p.otorgable;
@@ -291,7 +371,7 @@ function RenglonPermiso({
         <label htmlFor={id} className={`min-w-0 flex-1 ${bloqueado && !prendido ? "opacity-60" : ""}`}>
           <span className="block text-sm font-medium text-texto">{p.nombre}</span>
           <span className="block text-xs text-texto-3">{p.descripcion}</span>
-          {motivo && !soloLectura && <span className="mt-0.5 block text-xs text-warning-text">{motivo}</span>}
+          {motivo && !soloLectura && !sinMotivo && <span className="mt-0.5 block text-xs text-warning-text">{motivo}</span>}
         </label>
       </div>
       {p.admitePropio && prendido && !soloLectura && (
