@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Chips, EncabezadoPagina } from "../../components/filtros";
 import { Icon } from "../../components/Icon";
 import { AvisoOk, Badge, Boton, Cargando, ErrorMsg, useAviso, Vacio } from "../../components/ui";
-import { apiRoles, nombresDelCatalogo, resumenGente, tonoDeRol } from "../../lib/roles";
+import { apiRoles, nombresDelCatalogo, resumenGente, textoCantidadPermisos, tonoDeRol } from "../../lib/roles";
 import { useApi } from "../../lib/useApi";
 import type { RolNegocio } from "../../types";
 import BitacoraRoles from "./BitacoraRoles";
@@ -88,13 +88,9 @@ export default function Roles() {
                 </div>
                 {r.descripcion && <p className="mt-1 line-clamp-2 text-[13px] text-texto-3">{r.descripcion}</p>}
                 <div className="mt-auto flex flex-wrap items-center gap-2 pt-3 text-xs text-texto-4">
-                  <Badge tono={tonoDeRol(r, lista)}>
-                    {r.esAdministrador
-                      ? "Todos los permisos"
-                      : r.permisos.length === 0
-                        ? "Sin permisos"
-                        : `${r.permisos.length} ${r.permisos.length === 1 ? "permiso" : "permisos"}`}
-                  </Badge>
+                  {/* Sólo lo que el negocio puede usar: una plantilla trae
+                      permisos de otros rubros que no cuentan (QA R1 W-02). */}
+                  <Badge tono={tonoDeRol(r, lista)}>{textoCantidadPermisos(r)}</Badge>
                   <span className="flex items-center gap-1">
                     <Icon name="users" size={13} />
                     {resumenGente(r)}

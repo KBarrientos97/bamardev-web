@@ -195,6 +195,27 @@ describe("Personal", () => {
     expect(screen.getByText('"Lucho" ya puede entrar como @lucho.')).toBeInTheDocument();
   });
 
+  it("QA R1 W-10: si arranca en un cargo sin permisos, avisa que no va a ver nada", async () => {
+    const vende = { codigo: "ventas.vender", alcance: "GENERAL" as const, nombre: "Vender", dominio: "Ventas" };
+    vi.mocked(apiRoles.asignables).mockResolvedValueOnce([
+      { ...ROLES[1], permisos: [vende] },
+      // El cargo de Lucho: un rol sin permisos ("Lavacabezas").
+      { ...ROLES[2], permisos: [] },
+    ]);
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Ver Lucho" }));
+    await act(async () => {});
+    fireEvent.click(screen.getByRole("button", { name: "Darle acceso" }));
+    await act(async () => {});
+    const dialogo = screen.getByRole("dialog", { name: "Darle acceso" });
+    expect(within(dialogo).getByLabelText("Rol")).toHaveValue("4");
+    expect(within(dialogo).getByRole("status")).toHaveTextContent(
+      "Este rol no tiene permisos: la persona no va a ver nada.",
+    );
+    fireEvent.change(within(dialogo).getByLabelText("Rol"), { target: { value: "3" } });
+    expect(within(dialogo).queryByRole("status")).toBeNull();
+  });
+
   it("muestra el error del cupo que devuelve el backend", async () => {
     vi.mocked(apiPersonal.darAcceso).mockRejectedValue(
       new Error("Tu plan permite 4 usuarios activos. Desactivá uno o contratá usuarios extra."),

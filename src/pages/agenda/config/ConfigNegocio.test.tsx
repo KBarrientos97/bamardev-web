@@ -251,6 +251,42 @@ describe("lo del profesional (PLAN-ROLES-NEGOCIO)", () => {
 });
 
 describe("historial", () => {
+  it("QA R1 W-14: no muestra los interruptores del profesional que pasaron a Roles", async () => {
+    const viejo = (campo: string, en: string) => ({
+      campo,
+      antes: false,
+      despues: null,
+      despuesEfectivo: true,
+      sucursalId: null,
+      usuario: "Dueña",
+      en,
+    });
+    vi.mocked(apiConfigAgenda.historialReglas).mockResolvedValue([
+      viejo("profesionalPuedeAgendar", "2026-10-01T13:00:00.000Z"),
+      viejo("profesionalPuedeBloquear", "2026-10-01T13:01:00.000Z"),
+      viejo("profesionalVeTelefono", "2026-10-01T13:02:00.000Z"),
+      viejo("profesionalVePrecios", "2026-10-01T13:03:00.000Z"),
+      { campo: "granularidadMin", antes: 15, despues: 10, sucursalId: null, usuario: "Dueña", en: "2026-10-02T13:00:00.000Z" },
+    ]);
+    await montar();
+    const historial = screen.getByRole("region", { name: "Historial de cambios" });
+    expect(historial).toHaveTextContent("Los turnos empiezan cada");
+    for (const texto of [/agendar/i, /bloquear/i, /teléfono/i, /Ve precios/, /profesional/]) {
+      expect(historial).not.toHaveTextContent(texto);
+    }
+    expect(within(historial).getAllByRole("listitem")).toHaveLength(1);
+  });
+
+  it("si sólo había cambios de esos interruptores, queda como sin cambios", async () => {
+    vi.mocked(apiConfigAgenda.historialReglas).mockResolvedValue([
+      { campo: "profesionalVePrecios", antes: false, despues: true, sucursalId: null, usuario: "Dueña", en: "2026-10-01T13:00:00.000Z" },
+    ]);
+    await montar();
+    expect(screen.getByRole("region", { name: "Historial de cambios" })).toHaveTextContent(
+      "Todavía no se cambió ninguna regla.",
+    );
+  });
+
   it("lista quién cambió qué, con el valor anterior y el nuevo", async () => {
     vi.mocked(apiConfigAgenda.historialReglas).mockResolvedValue([
       {
@@ -273,7 +309,7 @@ describe("historial", () => {
   it("B-25: la hora va en 24 h de La Paz y el valor heredado se nombra", async () => {
     vi.mocked(apiConfigAgenda.historialReglas).mockResolvedValue([
       {
-        campo: "profesionalVeTelefono",
+        campo: "mostrarPreciosOnline",
         antes: null,
         despues: true,
         sucursalId: null,
@@ -292,8 +328,7 @@ describe("historial", () => {
     ]);
     await montar();
     const historial = screen.getByRole("region", { name: "Historial de cambios" });
-    // Una regla que ya no se edita (ahora es permiso del rol) se sigue leyendo.
-    expect(historial).toHaveTextContent("Ve el teléfono del cliente");
+    expect(historial).toHaveTextContent("Mostrar precios en la página de reservas");
     expect(historial).toHaveTextContent("06/10/2026 00:21");
     expect(historial).toHaveTextContent("06/10/2026 12:30");
     expect(historial).not.toHaveTextContent(/a\. m\.|p\. m\./);

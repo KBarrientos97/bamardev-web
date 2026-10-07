@@ -397,3 +397,16 @@ describe("barra de sólo íconos", () => {
     expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
   });
 });
+
+describe("la cuenta de quien está sentado (API-12)", () => {
+  it("«Cambiar mi contraseña» está en el menú, para cualquier rol, y abre el formulario", () => {
+    sesion.rol = "CAJERO";
+    sesion.rubro = "RESTAURANTE";
+    const nav = abrir("/pos");
+    fireEvent.click(nav.getByRole("button", { name: "Cambiar mi contraseña" }));
+    const dialogo = screen.getByRole("dialog", { name: "Cambiar mi contraseña" });
+    expect(within(dialogo).getByLabelText("Contraseña actual")).toBeInTheDocument();
+    fireEvent.click(within(dialogo).getByRole("button", { name: "Cancelar" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+});

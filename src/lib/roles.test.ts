@@ -3,10 +3,15 @@ import { ApiError } from "./api";
 import type { PermisoDeRolVista, RolNegocio } from "../types";
 import {
   agruparPorDominio,
+  autorDelEvento,
+  cantidadPermisos,
   mensajeDeError,
   nombresDelCatalogo,
+  renglonesDetalle,
   resumenGente,
+  rolSinPermisos,
   rolTiene,
+  textoCantidadPermisos,
   tonoDeRol,
   veSoloSuAgendaRol,
 } from "./roles";
@@ -158,5 +163,61 @@ describe("lib/roles", () => {
   it("la gente de un rol: usuarios y, si hay, personal", () => {
     expect(resumenGente({ usuarios: 1, personal: 0 })).toBe("1 usuario");
     expect(resumenGente({ usuarios: 2, personal: 3 })).toBe("2 usuarios · 3 en personal");
+  });
+});
+
+describe("lo efectivo de un rol (QA R1 W-02/W-03/W-10)", () => {
+  const fuera = (codigo: string, alcance: "GENERAL" | "PROPIO" = "GENERAL") => ({ ...p(codigo, alcance), disponible: false });
+
+  it("cuenta sólo lo disponible; el número del backend manda si llega", () => {
+    const r = rol(1, { permisos: [p("ventas.vender"), fuera("agenda.ver"), p("caja.operar")] });
+    expect(cantidadPermisos(r)).toBe(2);
+    expect(cantidadPermisos({ ...r, permisosDisponibles: 1 })).toBe(1);
+    expect(textoCantidadPermisos(r)).toBe("2 permisos");
+    expect(textoCantidadPermisos({ ...r, permisosDisponibles: 1 })).toBe("1 permiso");
+    expect(textoCantidadPermisos(rol(2, { permisos: [fuera("agenda.ver")] }))).toBe("Sin permisos");
+    expect(textoCantidadPermisos(rol(3, { esAdministrador: true }))).toBe("Todos los permisos");
+  });
+
+  it("sin el campo disponible (backend viejo, /personal/cargos) cuenta todo", () => {
+    expect(cantidadPermisos(rol(1, { permisos: [p("ventas.vender"), p("agenda.ver")] }))).toBe(2);
+  });
+
+  it("un permiso fuera del plan no lo tiene: ni para el PIN, ni la sucursal, ni la agenda propia", () => {
+    const r = rol(1, { permisos: [fuera("autorizar.pin"), fuera("agenda.ver", "PROPIO")] });
+    expect(rolTiene(r, "autorizar.pin")).toBe(false);
+    expect(veSoloSuAgendaRol(r)).toBe(false);
+  });
+
+  it("un rol sin nada efectivo avisa; el Administrador nunca", () => {
+    expect(rolSinPermisos(rol(1))).toBe(true);
+    expect(rolSinPermisos(rol(1, { permisos: [fuera("agenda.ver")] }))).toBe(true);
+    expect(rolSinPermisos(rol(1, { permisos: [p("ventas.vender")] }))).toBe(false);
+    expect(rolSinPermisos(rol(1, { esAdministrador: true }))).toBe(false);
+    expect(rolSinPermisos(null)).toBe(false);
+  });
+});
+
+describe("la bitácora (QA R1 W-05/W-06)", () => {
+  it("quién: Sistema, Soporte o la persona", () => {
+    expect(autorDelEvento({ origen: "SISTEMA", porSoporte: false, autor: null })).toBe("Sistema");
+    expect(autorDelEvento({ origen: "SOPORTE", porSoporte: true, autor: { id: 1, nombre: "Kevin" } })).toBe("Soporte de BamarDev");
+    expect(autorDelEvento({ origen: "NEGOCIO", porSoporte: false, autor: { id: 1, nombre: "Omar" } })).toBe("Omar");
+    // Backend sin `origen`.
+    expect(autorDelEvento({ porSoporte: true, autor: null })).toBe("Soporte de BamarDev");
+    expect(autorDelEvento({ porSoporte: false, autor: null })).toBe("Sistema");
+  });
+
+  it("DESCRIPCION se lee como un cambio de descripción, no de nombre", () => {
+    const nombres = nombresDelCatalogo([]);
+    expect(renglonesDetalle({ accion: "DESCRIPCION", detalle: { de: "Cobra", a: "Cobra y vende" } }, nombres)).toEqual([
+      "«Cobra» → «Cobra y vende»",
+    ]);
+    expect(renglonesDetalle({ accion: "DESCRIPCION", detalle: { de: "Cobra", a: null } }, nombres)).toEqual([
+      "«Cobra» → sin descripción",
+    ]);
+    expect(
+      renglonesDetalle({ accion: "RENOMBRAR", detalle: { de: "Caja", a: "Cajero", descripcion: { de: null, a: "Cobra" } } }, nombres),
+    ).toEqual(["Caja → Cajero", "Descripción: sin descripción → «Cobra»"]);
   });
 });

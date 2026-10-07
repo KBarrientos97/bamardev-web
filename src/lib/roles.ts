@@ -15,6 +15,7 @@ import type {
  */
 
 const json = (cuerpo: unknown) => JSON.stringify(cuerpo);
+const plural = (n: number, uno: string, varios: string) => `${n} ${n === 1 ? uno : varios}`;
 
 export const apiRoles = {
   /** Los roles activos, con cuántos usuarios y personas los tienen. */
@@ -50,11 +51,49 @@ export const PERMISOS_DE_EJECUTOR = [
   "agenda.bloquear_propias",
 ];
 
-/** ¿El rol trae este permiso? El Administrador, todos menos los de ejecutor. */
+/**
+ * ¿El negocio puede usar este permiso? (plan + rubro + feature, lo calcula el
+ * backend). Sin el campo, sí: así lee igual un backend anterior al 07-oct y
+ * `/personal/cargos`, que no lo manda.
+ */
+export function esDisponible(p: { disponible?: boolean }): boolean {
+  return p.disponible !== false;
+}
+
+/**
+ * Lo que el rol de verdad permite en ESTE negocio (QA R1 W-02/W-03): las
+ * plantillas por rubro pueden traer permisos de otras verticales (la agenda o
+ * las mesas en una ferretería), que el rol guarda pero nadie usa. Todo lo que
+ * cuenta o dice "qué puede hacer" sale de acá, no de `permisos` crudo.
+ */
+export function permisosEfectivos<P extends { disponible?: boolean }>(rol: { permisos: P[] }): P[] {
+  return rol.permisos.filter(esDisponible);
+}
+
+/** Cuántos permisos efectivos tiene: el número del backend, o contados acá. */
+export function cantidadPermisos(rol: Pick<RolNegocio, "permisos" | "permisosDisponibles">): number {
+  return rol.permisosDisponibles ?? permisosEfectivos(rol).length;
+}
+
+/**
+ * ¿Quien tenga este rol entra y no ve nada? (QA R1 W-10). El Administrador
+ * nunca: tiene todo lo del plan.
+ */
+export function rolSinPermisos(rol: Pick<RolNegocio, "esAdministrador" | "permisos" | "permisosDisponibles"> | null | undefined): boolean {
+  return !!rol && !rol.esAdministrador && cantidadPermisos(rol) === 0;
+}
+
+/** Aviso al dar un rol sin permisos: entra, no ve nada y ocupa cupo. */
+export const AVISO_ROL_SIN_PERMISOS = "Este rol no tiene permisos: la persona no va a ver nada.";
+
+/**
+ * ¿El rol trae este permiso, y el negocio lo puede usar? El Administrador,
+ * todos menos los de ejecutor.
+ */
 export function rolTiene(rol: Pick<RolNegocio, "esAdministrador" | "permisos"> | null | undefined, codigo: string) {
   if (!rol) return false;
   if (rol.esAdministrador) return !PERMISOS_DE_EJECUTOR.includes(codigo);
-  return rol.permisos.some((p) => p.codigo === codigo);
+  return permisosEfectivos(rol).some((p) => p.codigo === codigo);
 }
 
 /**
@@ -63,8 +102,8 @@ export function rolTiene(rol: Pick<RolNegocio, "esAdministrador" | "permisos"> |
  */
 export function veSoloSuAgendaRol(rol: RolNegocio | null | undefined): boolean {
   if (!rol || rol.esAdministrador) return false;
-  const ver = rol.permisos.find((p) => p.codigo === "agenda.ver");
-  return ver?.alcance === "PROPIO" && !rol.permisos.some((p) => p.codigo === "agenda.gestionar");
+  const ver = permisosEfectivos(rol).find((p) => p.codigo === "agenda.ver");
+  return ver?.alcance === "PROPIO" && !rolTiene(rol, "agenda.gestionar");
 }
 
 /** Nombre y dominio de cada permiso, sacados del catálogo. */
@@ -101,9 +140,16 @@ export function agruparPorDominio(
   return [...grupos.entries()].map(([dominio, lista]) => ({ dominio, permisos: lista }));
 }
 
+/** "1 permiso", "Sin permisos", "12 permisos": lo que el rol de verdad permite. */
+export function textoCantidadPermisos(rol: Pick<RolNegocio, "esAdministrador" | "permisos" | "permisosDisponibles">): string {
+  if (rol.esAdministrador) return "Todos los permisos";
+  const n = cantidadPermisos(rol);
+  return n === 0 ? "Sin permisos" : plural(n, "permiso", "permisos");
+}
+
 /** Texto de la cantidad de gente de un rol: "3 usuarios · 1 en personal". */
 export function resumenGente(rol: Pick<RolNegocio, "usuarios" | "personal">): string {
-  const partes = [`${rol.usuarios} ${rol.usuarios === 1 ? "usuario" : "usuarios"}`];
+  const partes = [plural(rol.usuarios, "usuario", "usuarios")];
   // Las personas sin login (el ayudante con el rol como cargo) cuentan aparte:
   // también hay que reasignarlas antes de borrar el rol.
   if (rol.personal > 0) partes.push(`${rol.personal} en personal`);
@@ -126,16 +172,33 @@ export function tonoDeRol(rol: Pick<RolNegocio, "id" | "esAdministrador"> | null
   return i < 0 ? "gris" : TONOS[i % TONOS.length];
 }
 
-const plural = (n: number, uno: string, varios: string) => `${n} ${n === 1 ? uno : varios}`;
-
 const ALCANCE_TEXTO: Record<Alcance, string> = { GENERAL: "general", PROPIO: "sólo lo suyo" };
+
+/**
+ * Quién hizo un cambio, como se lee en la bitácora (QA R1 W-06). Lo que hizo
+ * la migración o el alta (`origen: SISTEMA`, sin autor) es del "Sistema", no
+ * de "Alguien": el dueño tiene que saber que no lo tocó nadie de su equipo.
+ * Sin `origen` (backend viejo), un evento sin autor también es del sistema.
+ */
+export function autorDelEvento(e: Pick<EventoRol, "origen" | "porSoporte" | "autor">): string {
+  if (e.origen === "SISTEMA") return "Sistema";
+  if (e.origen === "SOPORTE" || e.porSoporte) return "Soporte de BamarDev";
+  if (e.autor?.nombre) return e.autor.nombre;
+  return e.origen === "NEGOCIO" ? "Alguien del equipo" : "Sistema";
+}
+
+/** Una descripción en la bitácora: entre comillas, o "sin descripción". */
+const textoDescripcion = (d: string | null | undefined) => (d?.trim() ? `«${d.trim()}»` : "sin descripción");
 
 /**
  * El detalle de un evento de la bitácora, en renglones legibles. El backend
  * lo guarda como objeto (§8.1); los permisos se nombran con el catálogo si
  * está a mano, si no por su código. Un detalle viejo en texto sale tal cual.
  */
-export function renglonesDetalle(evento: Pick<EventoRol, "detalle" | "motivo">, nombres: NombresPermisos): string[] {
+export function renglonesDetalle(
+  evento: Pick<EventoRol, "detalle" | "motivo"> & Partial<Pick<EventoRol, "accion">>,
+  nombres: NombresPermisos,
+): string[] {
   const d = evento.detalle as EventoRol["detalle"] | string;
   const nombre = (codigo: string) => nombres.get(codigo)?.nombre ?? codigo;
   const lista = (ps: PermisoDeRol[]) =>
@@ -143,9 +206,15 @@ export function renglonesDetalle(evento: Pick<EventoRol, "detalle" | "motivo">, 
   const renglones: string[] = [];
   if (typeof d === "string") {
     if (d.trim()) renglones.push(d);
+  } else if (d && evento.accion === "DESCRIPCION") {
+    // `{ de, a }` acá son descripciones, no nombres: cualquiera puede ser null.
+    renglones.push(`${textoDescripcion(d.de)} → ${textoDescripcion(d.a)}`);
   } else if (d) {
     if (d.de != null && d.a != null) renglones.push(`${d.de} → ${d.a}`);
-    if (d.descripcion) renglones.push("Cambió la descripción");
+    // Los eventos viejos traían la descripción dentro del RENOMBRAR.
+    if (d.descripcion) {
+      renglones.push(`Descripción: ${textoDescripcion(d.descripcion.de)} → ${textoDescripcion(d.descripcion.a)}`);
+    }
     if (d.agregados?.length) renglones.push(`Agregó: ${lista(d.agregados)}`);
     if (d.quitados?.length) renglones.push(`Quitó: ${lista(d.quitados)}`);
     for (const c of d.cambiados ?? []) {

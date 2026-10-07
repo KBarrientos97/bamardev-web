@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { contiene } from "../lib/texto";
 import { Icon } from "../components/Icon";
 import { Buscador, Chips, EncabezadoPagina } from "../components/filtros";
+import AvisoSinPermisos from "../components/roles/AvisoSinPermisos";
 import PermisosDelRol from "../components/roles/PermisosDelRol";
 import {
   AvisoOk,
@@ -22,7 +23,7 @@ import {
 import { api } from "../lib/api";
 import { fmtFechaHora, iniciales, tiempoRelativo } from "../lib/format";
 import { tienePermiso } from "../lib/permisos";
-import { apiRoles, mensajeDeError, rolTiene, tonoDeRol } from "../lib/roles";
+import { apiRoles, mensajeDeError, rolSinPermisos, rolTiene, tonoDeRol } from "../lib/roles";
 import { useApi } from "../lib/useApi";
 import { useAuth } from "../store/AuthContext";
 import type { ActualizarUsuarioInput, CrearUsuarioInput, RolNegocio, Usuario } from "../types";
@@ -50,7 +51,9 @@ function nombreRol(u: Pick<Usuario, "rolId" | "rolNombre" | "rol">, roles: RolNe
  * Administrador tiene todos los permisos, pero no por eso es repartidor.
  */
 function reparte(rol: RolNegocio | null): boolean {
-  return !!rol && !rol.esAdministrador && rol.permisos.some((p) => p.codigo === "entregas.realizar");
+  // `rolTiene` ya deja afuera al Administrador (repartir es de ejecutor) y lo
+  // que el plan no incluye: sin delivery, nadie carga zona ni vehículo.
+  return rolTiene(rol, "entregas.realizar");
 }
 
 /**
@@ -65,7 +68,7 @@ function llevaPin(rol: RolNegocio | null, conPin: boolean): boolean {
 type FiltroRol = "todos" | "inactivos" | `rol:${number}`;
 
 export default function Usuarios() {
-  const { incluye } = useAuth();
+  const { incluye, usuario: actor } = useAuth();
   // El PIN sólo existe si el plan incluye la autorización con PIN.
   const conPin = incluye("autorizacion_pin");
   const usuarios = useApi(() => api.getUsuarios(), []);
@@ -73,6 +76,16 @@ export default function Usuarios() {
   // Los permisos de cada rol llegan con su nombre y su dominio en `/roles`:
   // "qué puede hacer" no necesita el catálogo.
   const listaRoles = useMemo(() => roles.datos ?? [], [roles.datos]);
+  /**
+   * Las tarjetas y los filtros, sin el Administrador para quien no lo es
+   * (QA R1 W-11): al Encargado el backend le esconde las cuentas del dueño, y
+   * la tarjeta "Administrador 0" contaba algo que él no puede ver ni tocar.
+   * Sin el dato en la sesión (una vieja), como antes: se muestra.
+   */
+  const rolesVisibles = useMemo(
+    () => (actor?.esAdministrador === false ? listaRoles.filter((r) => !r.esAdministrador) : listaRoles),
+    [listaRoles, actor?.esAdministrador],
+  );
 
   const [q, setQ] = useState("");
   const [filtroRol, setFiltroRol] = useState<FiltroRol>("todos");
@@ -104,10 +117,10 @@ export default function Usuarios() {
     () =>
       [
         ["todos", "Todos"],
-        ...listaRoles.map((r) => [`rol:${r.id}`, r.nombre] as const),
+        ...rolesVisibles.map((r) => [`rol:${r.id}`, r.nombre] as const),
         ["inactivos", "Inactivos"],
       ] as readonly (readonly [FiltroRol, string])[],
-    [listaRoles],
+    [rolesVisibles],
   );
 
   const filtrados = useMemo(() => {
@@ -122,7 +135,7 @@ export default function Usuarios() {
 
   const inactivos = lista.filter((u) => !u.activo).length;
   // Con cinco tarjetas van en una fila en pantallas anchas; si no, de a tres.
-  const tarjetas = listaRoles.length + 1;
+  const tarjetas = rolesVisibles.length + 1;
 
   /** Refresca la lista y deja el detalle mostrando la versión recién guardada. */
   function traerDeVuelta(actualizado: Usuario) {
@@ -185,7 +198,7 @@ export default function Usuarios() {
         className={`grid grid-cols-2 gap-3 lg:grid-cols-3 ${tarjetas === 5 ? "xl:grid-cols-5" : ""}`}
         aria-label="Cuentas por rol"
       >
-        {listaRoles.map((r) => (
+        {rolesVisibles.map((r) => (
           <Kpi
             key={r.id}
             etiqueta={r.nombre}
@@ -754,12 +767,16 @@ function FormUsuarioCuerpo({
               </option>
             ))}
           </Select>
-          {rol && (
-            <PermisosDelRol
-              nombre={rol.nombre}
-              permisos={rol.permisos}
-              esAdministrador={rol.esAdministrador}
-            />
+          {rolSinPermisos(rol) ? (
+            <AvisoSinPermisos />
+          ) : (
+            rol && (
+              <PermisosDelRol
+                nombre={rol.nombre}
+                permisos={rol.permisos}
+                esAdministrador={rol.esAdministrador}
+              />
+            )
           )}
         </Campo>
 

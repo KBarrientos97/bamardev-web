@@ -36,7 +36,10 @@ export default function Retencion() {
   const { negocio, usuario } = useAuth();
   const puedeExportar = tienePermiso(usuario, "cliente.exportar");
   const puedeEditar = tienePermiso(usuario, "cliente.marketing");
-  const conPromos = !!negocio?.features?.includes("promociones");
+  // Compartir una promo pide listarlas, y `GET /promociones` exige
+  // `promociones.gestionar` además de la feature: sin el permiso era un 403
+  // en cada carga y un selector que nunca llenaba (QA R1 W-08).
+  const conPromos = !!negocio?.features?.includes("promociones") && tienePermiso(usuario, "promociones.gestionar");
   const [modo, setModo] = useState<"RECURRENCIA" | "FIJO">("RECURRENCIA");
   const [dias, setDias] = useState(60);
   const [segmento, setSegmento] = useState<Segmento | "NO_VUELVEN">("NO_VUELVEN");

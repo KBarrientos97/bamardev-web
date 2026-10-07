@@ -272,20 +272,27 @@ export function motivoAnticipo(features: Feature[] | undefined): string {
 
 /**
  * Las reglas del profesional que pasaron a ser permisos del rol
- * (PLAN-ROLES-NEGOCIO, decisión 4). Ya no se editan, pero sus cambios viejos
- * siguen en la bitácora y tienen que leerse como antes.
+ * (PLAN-ROLES-NEGOCIO, decisión 4). Sus cambios viejos siguen en la bitácora
+ * del backend, pero no se muestran (QA R1 W-14): hablaban de interruptores
+ * que ya no están en la pantalla, y "Ve precios: No → Sí" hacía creer que
+ * esa regla todavía decide algo. Hoy lo decide el rol.
  */
-const ETIQUETAS_RETIRADAS: Record<string, string> = {
-  profesionalPuedeAgendar: "Puede agendar y mover sus propias citas",
-  profesionalPuedeBloquear: "Puede bloquear su horario",
-  profesionalVeTelefono: "Ve el teléfono del cliente",
-  profesionalVePrecios: "Ve precios y totales",
-};
+const CAMPOS_RETIRADOS = new Set([
+  "profesionalPuedeAgendar",
+  "profesionalPuedeBloquear",
+  "profesionalVeTelefono",
+  "profesionalVePrecios",
+]);
+
+/** ¿El cambio es de una regla que ya no existe? (no va al historial) */
+export function esCampoRetirado(campo: string): boolean {
+  return CAMPOS_RETIRADOS.has(campo);
+}
 
 /** Nombre de un campo para la bitácora; uno desconocido se muestra tal cual. */
 export function etiquetaCampo(campo: string): string {
   const meta = META_REGLAS[campo as CampoRegla];
-  if (!meta) return ETIQUETAS_RETIRADAS[campo] ?? campo;
+  if (!meta) return campo;
   if (campo === "anticipacionMaxDias") return "Anticipación máxima";
   if (campo === "modoConfirmacion") return "Modo de confirmación";
   return meta.etiqueta;

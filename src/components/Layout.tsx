@@ -5,6 +5,7 @@ import { tituloDe, useMenu } from "../lib/menu";
 import { etiquetaRol } from "../lib/permisos";
 import { useAuth } from "../store/AuthContext";
 import AvisoLicencia from "./AvisoLicencia";
+import CambiarMiPassword from "./CambiarMiPassword";
 import { Icon } from "./Icon";
 import MenuLateral from "./MenuLateral";
 
@@ -31,6 +32,13 @@ export default function Layout() {
   const { usuario, negocio } = useAuth();
   const [abierto, setAbierto] = useState(false);
   const [colapsada, setColapsada] = useState(leerColapsada);
+  // Acá y no en el menú: en el celular, abrir el formulario cierra el cajón,
+  // y con él se desmontaría el menú y el formulario adentro.
+  const [cambiandoPassword, setCambiandoPassword] = useState(false);
+  const cambiarPassword = () => {
+    setAbierto(false);
+    setCambiandoPassword(true);
+  };
   const menu = useMenu();
 
   useEffect(() => {
@@ -116,7 +124,12 @@ export default function Layout() {
         ].join(" ")}
       >
         {encabezado(colapsada)}
-        <MenuLateral menu={menu} compacta={colapsada} onNavegar={() => setAbierto(false)} />
+        <MenuLateral
+          menu={menu}
+          compacta={colapsada}
+          onNavegar={() => setAbierto(false)}
+          onCambiarPassword={cambiarPassword}
+        />
 
         {/* Montado sobre el borde derecho para no restarle alto a la
             navegación, que con Inventario abierto ya llega larga. */}
@@ -140,7 +153,12 @@ export default function Layout() {
           />
           <aside className="absolute inset-y-0 left-0 flex w-72 flex-col bg-barra shadow-2xl">
             {encabezado(false)}
-            <MenuLateral menu={menu} compacta={false} onNavegar={() => setAbierto(false)} />
+            <MenuLateral
+              menu={menu}
+              compacta={false}
+              onNavegar={() => setAbierto(false)}
+              onCambiarPassword={cambiarPassword}
+            />
           </aside>
         </div>
       )}
@@ -168,6 +186,8 @@ export default function Layout() {
           <Outlet />
         </main>
       </div>
+
+      {cambiandoPassword && <CambiarMiPassword onClose={() => setCambiandoPassword(false)} />}
     </div>
   );
 }

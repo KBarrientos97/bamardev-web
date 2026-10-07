@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { Buscador, Chips, EncabezadoPagina } from "../components/filtros";
+import AvisoSinPermisos from "../components/roles/AvisoSinPermisos";
 import {
   AvisoOk,
   Badge,
@@ -18,7 +19,7 @@ import {
 import { api } from "../lib/api";
 import { apiPersonal, type CargoRol, type Persona, type PersonaInput } from "../lib/personal";
 import { etiquetaRol, tienePermiso } from "../lib/permisos";
-import { apiRoles, mensajeDeError } from "../lib/roles";
+import { apiRoles, mensajeDeError, rolSinPermisos } from "../lib/roles";
 import { plural } from "./agenda/config/utilConfig";
 import { contiene } from "../lib/texto";
 import { useApi } from "../lib/useApi";
@@ -756,6 +757,9 @@ function DarAcceso({
                   </option>
                 ))}
               </Select>
+              {/* Arranca en el cargo, que muchas veces es un rol sin permisos
+                  ("Lavacabezas"): entraría a una pantalla vacía (QA R1 W-10). */}
+              {rolSinPermisos(roles.find((r) => String(r.id) === rolElegido)) && <AvisoSinPermisos />}
             </Campo>
             {eligeSucursal && (
               <Campo label="Sucursal" hint="La de sus datos al entrar.">
