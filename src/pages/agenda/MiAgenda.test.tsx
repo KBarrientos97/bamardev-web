@@ -162,4 +162,22 @@ describe("A10 · mi agenda", () => {
     expect(tarjeta).not.toHaveTextContent("Tinte raíz");
     expect(tarjeta).not.toHaveTextContent("2 h");
   });
+
+  it("QA R2-03: sin menú lateral, el profesional cambia su contraseña desde la cabecera", async () => {
+    vi.mocked(apiAgenda.miAgenda).mockResolvedValue({
+      recursos: [recurso({ usuarioId: 8 })],
+      citas: [],
+    });
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Cambiar mi contraseña" }));
+    expect(screen.getByText("Contraseña actual")).toBeInTheDocument();
+    expect(screen.getByText("Repetir la nueva")).toBeInTheDocument();
+  });
+
+  it("QA R2-03: también sin recurso vinculado", async () => {
+    vi.mocked(apiAgenda.miAgenda).mockResolvedValue({ recursos: [], citas: [] });
+    await montar();
+    // El de la cabecera y el de la tarjeta.
+    expect(screen.getAllByRole("button", { name: /Cambiar mi contraseña/ })).toHaveLength(2);
+  });
 });

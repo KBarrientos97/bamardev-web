@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { api, ApiError } from "../lib/api";
+import { Icon } from "./Icon";
 import { AvisoOk, Boton, Campo, ErrorMsg, InputPassword, Modal } from "./ui";
 
 /**
@@ -97,6 +98,44 @@ export default function CambiarMiPassword({ onClose }: { onClose: () => void }) 
         </div>
       )}
     </Modal>
+  );
+}
+
+/**
+ * El acceso a "Cambiar mi contraseña" de las pantallas que van sin el menú
+ * lateral (QA R2-03): Mi agenda del profesional, su aviso de "llega pronto" y
+ * el turno del mesero. En el menú lo abre el Layout; acá cada botón trae su
+ * formulario. `icono` es el botón cuadrado de una cabecera oscura (junto a
+ * Salir); si no, una línea de texto como el "Cerrar sesión" de al lado.
+ */
+export function BotonCambiarMiPassword({
+  icono = false,
+  className = "",
+}: {
+  icono?: boolean;
+  className?: string;
+}) {
+  const [abierto, setAbierto] = useState(false);
+  return (
+    <>
+      {icono ? (
+        <button
+          type="button"
+          onClick={() => setAbierto(true)}
+          aria-label="Cambiar mi contraseña"
+          title="Cambiar mi contraseña"
+          className={className}
+        >
+          <Icon name="lock" size={20} />
+        </button>
+      ) : (
+        <button type="button" onClick={() => setAbierto(true)} className={className}>
+          <Icon name="lock" size={15} />
+          Cambiar mi contraseña
+        </button>
+      )}
+      {abierto && <CambiarMiPassword onClose={() => setAbierto(false)} />}
+    </>
   );
 }
 

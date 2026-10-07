@@ -127,4 +127,12 @@ describe("Mi turno del mesero (web)", () => {
     await screen.findByText("Mesas cobradas en mi turno");
     expect(screen.queryByText("Cómo fue cada turno")).not.toBeInTheDocument();
   });
+
+  it("QA R2-03: el mesero (sin menú lateral) cambia su contraseña junto a la salida", async () => {
+    turnoMesero.mockResolvedValue(turno());
+    render(<MiTurno />);
+    await screen.findByText("Mesas cobradas en mi turno");
+    fireEvent.click(screen.getByRole("button", { name: /Cambiar mi contraseña/ }));
+    expect(screen.getByText("Contraseña actual")).toBeInTheDocument();
+  });
 });
