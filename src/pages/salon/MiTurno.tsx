@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { BotonCambiarMiPassword } from "../../components/CambiarMiPassword";
 import { Icon } from "../../components/Icon";
 import { Boton, Cargando, ErrorMsg, Modal } from "../../components/ui";
 import { api } from "../../lib/api";
@@ -316,6 +317,9 @@ export default function MiTurno({ onIrAEntregas }: { onIrAEntregas?: () => void 
         <Icon name="logout" size={15} />
         Cerrar sesión
       </button>
+      {/* El panel del mesero va sin menú lateral: su "Cambiar mi contraseña"
+          va junto a la salida (QA R2-03). */}
+      <BotonCambiarMiPassword className="flex w-full items-center justify-center gap-1.5 py-2 text-[13px] font-semibold text-texto-3 hover:text-texto-2" />
 
       {saliendo && (
         <Modal

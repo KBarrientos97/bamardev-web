@@ -22,7 +22,7 @@ import { cobraPropinas } from "../../lib/belleza/capacidades";
 import { useConsultaPeriodica } from "../../lib/agenda/useConsultaPeriodica";
 import CitasPorCobrar from "./CitasPorCobrar";
 import { fmtHora, fmtMoney } from "../../lib/format";
-import { creaClientes, tieneFeature } from "../../lib/permisos";
+import { creaClientes, tieneFeature, tienePermiso } from "../../lib/permisos";
 import { esFarmacia } from "../../lib/rubro";
 import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
@@ -119,6 +119,14 @@ export default function Pos() {
    * lista vacía, como en el resto de la app.
    */
   const conSalon = tieneFeature(negocio?.features, "salon");
+  /**
+   * Y además, sólo a quien tiene el permiso de cada lista (QA R2-02): con la
+   * feature sola, el Dependiente de una farmacia con `salon` prendida (o un
+   * rol propio de restaurante sin mesas) comía dos 403 en cada carga. Son los
+   * mismos permisos que pide el backend en cada ruta.
+   */
+  const veMesasPorCobrar = conSalon && tienePermiso(usuario, "salon.cobrar");
+  const veEntregas = conSalon && tienePermiso(usuario, "salon.atender");
   const conReparto = tieneFeature(negocio?.features, "delivery");
   const repartidores = useApi(
     () => (conReparto ? api.getRepartidores() : Promise.resolve([])),
@@ -137,8 +145,8 @@ export default function Pos() {
    * es un error que mostrarle a la cajera — simplemente no hay mesas.
    */
   const porCobrar = useApi(
-    () => (conSalon ? api.mesasPorCobrar().catch(() => []) : Promise.resolve([])),
-    [conSalon],
+    () => (veMesasPorCobrar ? api.mesasPorCobrar().catch(() => []) : Promise.resolve([])),
+    [veMesasPorCobrar],
   );
 
   /**
@@ -151,8 +159,8 @@ export default function Pos() {
    * Falla en silencio por lo mismo que `porCobrar`: sin salón, 403.
    */
   const entregas = useApi(
-    () => (conSalon ? api.entregasMesero().catch(() => null) : Promise.resolve(null)),
-    [conSalon],
+    () => (veEntregas ? api.entregasMesero().catch(() => null) : Promise.resolve(null)),
+    [veEntregas],
   );
   const mesasEsperando: MesaSalon[] = porCobrar.datos ?? [];
   const pendientesEntrega = (entregas.datos?.items ?? []).filter(
@@ -173,15 +181,15 @@ export default function Pos() {
   const { recargar: recargarPorCobrar } = porCobrar;
   const { recargar: recargarEntregas } = entregas;
   useEffect(() => {
-    if (pantalla !== "venta" || !conSalon) return;
+    if (pantalla !== "venta" || (!veMesasPorCobrar && !veEntregas)) return;
     const id = window.setInterval(() => {
       // Pestaña en segundo plano: nadie mira, no vale el pedido.
       if (document.hidden) return;
-      recargarPorCobrar();
-      recargarEntregas();
+      if (veMesasPorCobrar) recargarPorCobrar();
+      if (veEntregas) recargarEntregas();
     }, SONDEO_SALON_MS);
     return () => window.clearInterval(id);
-  }, [pantalla, conSalon, recargarPorCobrar, recargarEntregas]);
+  }, [pantalla, veMesasPorCobrar, veEntregas, recargarPorCobrar, recargarEntregas]);
 
   /**
    * La mesa que se está cobrando. Mientras hay una, la pantalla de cobro

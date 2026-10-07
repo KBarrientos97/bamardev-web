@@ -12,7 +12,8 @@ import type { ProfesionalesDelCarrito } from "./PantallaVenta";
  * lo que decide el propio POS (QA ronda 1 de la agenda, 06-oct).
  *
  *   • M-11: lo del salón y del reparto se pide sólo con su feature. Omar las
- *     tiene y hace los mismos pedidos de siempre.
+ *     tiene y hace los mismos pedidos de siempre. R2-02 (QA roles R2): lo
+ *     del salón, además, sólo con el permiso de cada lista.
  *   • A-02: cobrar una cita con una venta que no la cubre pide confirmación.
  *   • A-03: un servicio de la cita que ya no está en el catálogo se carga igual.
  *   • N2-13 (07-oct): venta directa con profesional, sólo con agenda.
@@ -24,6 +25,8 @@ import type { ProfesionalesDelCarrito } from "./PantallaVenta";
 const sesion = vi.hoisted(() => ({
   features: [] as string[],
   conAgenda: false,
+  /** Permisos que se le sacan a la plantilla CAJERO. */
+  sinPermisos: [] as string[],
 }));
 
 vi.mock("../../store/AuthContext", async () => {
@@ -32,7 +35,12 @@ vi.mock("../../store/AuthContext", async () => {
   return {
     useAuth: () => ({
       negocio: { id: 1, nombre: "Prueba", features: sesion.features },
-      usuario: { id: 1, username: "caja", rol: "CAJERO", ...permisosDe("CAJERO") },
+      usuario: {
+        id: 1,
+        username: "caja",
+        rol: "CAJERO",
+        ...permisosDe("CAJERO", { sin: sesion.sinPermisos }),
+      },
       rubro: sesion.conAgenda ? "PELUQUERIA" : "RESTAURANTE",
       incluye: () => true,
       puede: (s: string) => (s === "hoy" ? sesion.conAgenda : true),
@@ -185,6 +193,7 @@ beforeEach(() => {
   sessionStorage.clear();
   sesion.features = [];
   sesion.conAgenda = false;
+  sesion.sinPermisos = [];
 });
 
 describe("M-11: lo del salón y del reparto, sólo con su feature", () => {
@@ -209,6 +218,32 @@ describe("M-11: lo del salón y del reparto, sólo con su feature", () => {
     await montar();
     expect(api.mesasPorCobrar).toHaveBeenCalled();
     expect(api.getRepartidores).not.toHaveBeenCalled();
+  });
+});
+
+describe("R2-02: lo del salón, sólo con el permiso de cada lista", () => {
+  it("con la feature pero sin salon.* (Dependiente de una farmacia con salón) no pide nada del salón", async () => {
+    sesion.features = ["pos", "caja", "salon"];
+    sesion.sinPermisos = ["salon.atender", "salon.cobrar"];
+    await montar();
+    expect(api.mesasPorCobrar).not.toHaveBeenCalled();
+    expect(api.entregasMesero).not.toHaveBeenCalled();
+  });
+
+  it("sólo salon.cobrar: las mesas por cobrar sí, las entregas (salon.atender) no", async () => {
+    sesion.features = ["pos", "caja", "salon"];
+    sesion.sinPermisos = ["salon.atender"];
+    await montar();
+    expect(api.mesasPorCobrar).toHaveBeenCalled();
+    expect(api.entregasMesero).not.toHaveBeenCalled();
+  });
+
+  it("sólo salon.atender: las entregas sí, las mesas por cobrar (salon.cobrar) no", async () => {
+    sesion.features = ["pos", "caja", "salon"];
+    sesion.sinPermisos = ["salon.cobrar"];
+    await montar();
+    expect(api.mesasPorCobrar).not.toHaveBeenCalled();
+    expect(api.entregasMesero).toHaveBeenCalled();
   });
 });
 

@@ -1,3 +1,4 @@
+import { BotonCambiarMiPassword } from "../components/CambiarMiPassword";
 import { Icon } from "../components/Icon";
 import { Boton } from "../components/ui";
 import { etiquetaRol } from "../lib/permisos";
@@ -41,6 +42,8 @@ export default function AgendaPronto() {
           <Boton variante="ghost" icono="logout" onClick={logout} className="w-full">
             Cerrar sesión
           </Boton>
+          {/* Sin menú lateral: el "Cambiar mi contraseña" va acá (QA R2-03). */}
+          <BotonCambiarMiPassword className="flex w-full items-center justify-center gap-1.5 py-1 text-[13px] font-semibold text-texto-3 hover:text-texto-2" />
         </div>
       </div>
     </div>

@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { BotonCambiarMiPassword } from "../../components/CambiarMiPassword";
 import { Icon } from "../../components/Icon";
 import { AvisoOk, Boton, Cargando, ErrorMsg, useAviso } from "../../components/ui";
 import { apiAgenda } from "../../lib/agenda/apiAgenda";
@@ -108,6 +109,12 @@ export default function MiAgenda() {
               <Icon name="plus" size={20} />
             </button>
           )}
+          {/* Sin menú lateral, el "Cambiar mi contraseña" va acá (QA R2-03):
+              el profesional es quien más entra sin ser administrador. */}
+          <BotonCambiarMiPassword
+            icono
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white/15 text-barra-texto hover:bg-white/25"
+          />
           <button
             type="button"
             onClick={logout}
@@ -278,6 +285,10 @@ function SinRecurso({ etiqueta }: { etiqueta: string }) {
       <Boton variante="ghost" icono="logout" onClick={logout} className="w-full">
         Cerrar sesión
       </Boton>
+      <BotonCambiarMiPassword className={LINEA_SECUNDARIA} />
     </div>
   );
 }
+
+const LINEA_SECUNDARIA =
+  "flex w-full items-center justify-center gap-1.5 py-2 text-[13px] font-semibold text-texto-3 hover:text-texto-2";
