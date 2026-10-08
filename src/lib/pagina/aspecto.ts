@@ -1,8 +1,8 @@
-import type { FormaBotones, TipoEnlace, Tipografia } from "./tipos";
+import type { TipoEnlace } from "./tipos";
 
 /**
  * La apariencia de la página del negocio (PLAN-PAGINA-NEGOCIO §1.5): cómo se
- * pinta el color de la muestra, la forma de los botones y la tipografía.
+ * pinta el color de la muestra y los íconos.
  *
  * Mismas cuentas que el lienzo aprobado (BioPublica / MiPagina): el tinte es
  * la muestra mezclada con 88 % de blanco (fondo de los íconos) y el oscuro, con
@@ -36,54 +36,7 @@ export function paleta(hex: string): Paleta {
   };
 }
 
-export const RADIO_BOTON: Record<FormaBotones, string> = {
-  REDONDEADO: "14px",
-  PILDORA: "999px",
-  RECTO: "4px",
-};
-
-export function radioBoton(forma: string): string {
-  return RADIO_BOTON[forma as FormaBotones] ?? RADIO_BOTON.REDONDEADO;
-}
-
-export const FUENTE_TITULO: Record<Tipografia, string> = {
-  MODERNA: "Roboto, system-ui, sans-serif",
-  ELEGANTE: '"Playfair Display", Georgia, serif',
-  FUERTE: "Oswald, Impact, sans-serif",
-};
-
-export function fuenteTitulo(tipografia: string): string {
-  return FUENTE_TITULO[tipografia as Tipografia] ?? FUENTE_TITULO.MODERNA;
-}
-
-export const NOMBRE_FORMA: Record<FormaBotones, string> = {
-  REDONDEADO: "Redondeados",
-  PILDORA: "Píldora",
-  RECTO: "Rectos",
-};
-
-export const NOMBRE_TIPOGRAFIA: Record<Tipografia, string> = {
-  MODERNA: "Moderna",
-  ELEGANTE: "Elegante",
-  FUERTE: "Fuerte",
-};
-
-const FUENTES_GOOGLE =
-  "https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Playfair+Display:wght@600;700&family=Oswald:wght@500;600&display=swap";
-
-/**
- * Carga las tres tipografías de la página una sola vez. La app no las usa, así
- * que no van en `index.html`: sólo las baja quien abre una página o el editor.
- */
-export function cargarFuentesPagina(): void {
-  if (typeof document === "undefined") return;
-  if (document.getElementById("fuentes-pagina")) return;
-  const link = document.createElement("link");
-  link.id = "fuentes-pagina";
-  link.rel = "stylesheet";
-  link.href = FUENTES_GOOGLE;
-  document.head.appendChild(link);
-}
+// La forma de los botones, la letra del nombre y el anuncio: `estilos.ts`.
 
 // ── Íconos ─────────────────────────────────────────────────────────────────
 // Set propio de trazos (§1.5: no se cargan scripts de las redes). viewBox 24.

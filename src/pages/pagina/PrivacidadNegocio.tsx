@@ -1,6 +1,7 @@
 import { useEffect, type ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
-import { cargarFuentesPagina, paleta } from "../../lib/pagina/aspecto";
+import { paleta } from "../../lib/pagina/aspecto";
+import { cargarFuentesPagina } from "../../lib/pagina/estilos";
 import { contactoDe } from "../../lib/pagina/contacto";
 import { urlPaginaDe } from "../../lib/pagina/rutas";
 import { usePaginaPublica } from "../../lib/pagina/usePaginaPublica";
@@ -25,7 +26,8 @@ export default function PrivacidadNegocio({ siNoHay }: { siNoHay?: ReactNode }) 
   const { subdominio } = useParams();
   const escritorio = useCoincideMedia(`(min-width: ${ANCHO_ESCRITORIO}px)`);
   const { pagina, error } = usePaginaPublica(subdominio);
-  useEffect(cargarFuentesPagina, []);
+  // Sólo Roboto: acá el nombre no va con la letra de la página.
+  useEffect(() => cargarFuentesPagina(), []);
   if (error) return siNoHay ?? <NoDisponible mensaje={error} />;
   if (!pagina) return null;
   const c = paleta(pagina.color.hex);

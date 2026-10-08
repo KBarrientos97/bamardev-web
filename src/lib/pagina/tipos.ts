@@ -3,8 +3,63 @@
  * el backend (`src/pagina/` y `src/enlaces/` del API).
  */
 
-export type FormaBotones = "REDONDEADO" | "PILDORA" | "RECTO";
-export type Tipografia = "MODERNA" | "ELEGANTE" | "FUERTE";
+/** Las claves de `pagina/muestras.ts` del backend; cómo se pintan, en `estilos.ts`. */
+export type FormaBotones =
+  | "REDONDEADO"
+  | "PILDORA"
+  | "RECTO"
+  | "CONTORNO"
+  | "TINTE"
+  | "SOMBRA_DURA"
+  | "RELIEVE"
+  | "DEGRADADO"
+  | "HOJA"
+  | "ESQUINA"
+  | "SUBRAYADO";
+
+export type Tipografia =
+  | "MODERNA"
+  | "MONTSERRAT"
+  | "POPPINS"
+  | "RALEWAY"
+  | "JOSEFIN"
+  | "NUNITO"
+  | "QUICKSAND"
+  | "COMFORTAA"
+  | "VARELA"
+  | "FREDOKA"
+  | "ELEGANTE"
+  | "LORA"
+  | "MERRIWEATHER"
+  | "CORMORANT"
+  | "DM_SERIF"
+  | "CINZEL"
+  | "FUERTE"
+  | "BEBAS"
+  | "ANTON"
+  | "ARCHIVO_BLACK"
+  | "ABRIL"
+  | "ALFA_SLAB"
+  | "RIGHTEOUS"
+  | "PACIFICO"
+  | "LOBSTER"
+  | "DANCING"
+  | "GREAT_VIBES"
+  | "CAVEAT"
+  | "KAUSHAN"
+  | "MARKER";
+
+export type EstiloAnuncio =
+  | "SUAVE"
+  | "SOLIDO"
+  | "CONTORNO"
+  | "PILDORA"
+  | "CINTA"
+  | "ICONO"
+  | "MARQUESINA"
+  | "TARJETA"
+  | "DEGRADADO"
+  | "MINIMAL";
 
 export type TipoEnlace =
   | "WHATSAPP"
@@ -53,6 +108,19 @@ export interface SucursalPublica {
   mapaUrl: string | null;
 }
 
+/**
+ * La franja destacada. El estilo y los colores son opcionales en el tipo: un
+ * backend anterior no los manda, y entonces se ve la franja de siempre.
+ */
+export interface AnuncioPublico {
+  texto: string;
+  url: string | null;
+  estilo?: EstiloAnuncio | string;
+  /** `#RRGGBB` o null = automático. */
+  colorFondo?: string | null;
+  colorTexto?: string | null;
+}
+
 /** `GET /publico/pagina/:subdominio`. */
 export interface PaginaPublica {
   subdominio: string;
@@ -66,7 +134,7 @@ export interface PaginaPublica {
   /** Ruta relativa al API (`/publico/...`) o URL absoluta. */
   logoUrl: string | null;
   portadaUrl: string | null;
-  anuncio: { texto: string; url: string | null } | null;
+  anuncio: AnuncioPublico | null;
   reservar: boolean;
   destacado: EnlacePublico | null;
   redes: EnlacePublico[];
@@ -114,6 +182,10 @@ export interface AjustesPagina {
   anuncioTexto: string | null;
   anuncioHasta: string | null;
   anuncioUrl: string | null;
+  /** Opcionales por lo mismo que en `AnuncioPublico`: sin ellos, SUAVE y automático. */
+  anuncioEstilo?: EstiloAnuncio;
+  anuncioColorFondo?: string | null;
+  anuncioColorTexto?: string | null;
   enlaceDestacadoId: number | null;
   mostrarReservar: boolean;
   actualizadoEn: string;
@@ -150,6 +222,9 @@ export type CambiosPagina = Partial<
     | "anuncioTexto"
     | "anuncioHasta"
     | "anuncioUrl"
+    | "anuncioEstilo"
+    | "anuncioColorFondo"
+    | "anuncioColorTexto"
     | "enlaceDestacadoId"
     | "mostrarReservar"
   >

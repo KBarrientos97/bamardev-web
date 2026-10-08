@@ -15,16 +15,8 @@ import {
   useAviso,
 } from "../../components/ui";
 import { apiPagina, urlDeImagen } from "../../lib/pagina/apiPagina";
-import {
-  cargarFuentesPagina,
-  FUENTE_TITULO,
-  iconoDe,
-  NOMBRE_FORMA,
-  NOMBRE_TIPOGRAFIA,
-  nombreTipo,
-  paleta,
-  RADIO_BOTON,
-} from "../../lib/pagina/aspecto";
+import { iconoDe, nombreTipo, paleta } from "../../lib/pagina/aspecto";
+import { cargarFuentesPagina } from "../../lib/pagina/estilos";
 import { prepararImagen } from "../../lib/pagina/imagen";
 import type {
   AjustesPagina,
@@ -32,16 +24,15 @@ import type {
   EnlaceEditor,
   EnlaceInput,
   EstadoEditor,
-  FormaBotones,
   FormatoEnlace,
   SucursalEditor,
   TipoEnlace,
-  Tipografia,
 } from "../../lib/pagina/tipos";
 import { vistaDesdeEditor } from "../../lib/pagina/vista";
 import { useApi } from "../../lib/useApi";
 import CartelQR from "./CartelQR";
 import EditorEnlace from "./EditorEnlace";
+import { EditorAnuncio, SelectorForma, SelectorLetra } from "./EstilosPagina";
 import { Trazo } from "./VistaPagina";
 import VistaPrevia, { type ModoPrevia } from "./VistaPrevia";
 
@@ -405,7 +396,8 @@ export default function MiPagina() {
   const [opcionPrincipal, setOpcionPrincipal] = useState<OpcionPrincipal | null>(null);
   const arrastrado = useRef<number | null>(null);
 
-  useEffect(cargarFuentesPagina, []);
+  // Roboto; la letra del nombre la carga su selector (sólo las que se ven).
+  useEffect(() => cargarFuentesPagina(), []);
 
   // Con cambios sin guardar, el navegador pregunta antes de cerrar o recargar:
   // la apariencia se arma de a poco y perderla entera por un F5 desanima.
@@ -706,55 +698,13 @@ export default function MiPagina() {
               <span className="text-xs text-texto-3">Todos los colores están probados para que el texto se lea bien.</span>
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="space-y-2">
-                <span className="block text-[13px] font-semibold text-texto-2">Forma de los botones</span>
-                <div className="flex gap-1.5">
-                  {(Object.keys(NOMBRE_FORMA) as FormaBotones[]).map((f) => (
-                    <button
-                      key={f}
-                      type="button"
-                      aria-pressed={ajustes.formaBotones === f}
-                      onClick={() => cambiar({ formaBotones: f })}
-                      className="h-10 flex-1 text-[13px]"
-                      style={{
-                        borderRadius: RADIO_BOTON[f],
-                        border: ajustes.formaBotones === f ? `2px solid ${c.acento}` : "1px solid #E5E7EB",
-                        background: ajustes.formaBotones === f ? c.tinte : "#ffffff",
-                        color: ajustes.formaBotones === f ? c.oscuro : "#374151",
-                        fontWeight: ajustes.formaBotones === f ? 600 : 400,
-                      }}
-                    >
-                      {NOMBRE_FORMA[f]}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div className="space-y-2">
-                <span className="block text-[13px] font-semibold text-texto-2">Letra del nombre</span>
-                <div className="flex gap-1.5">
-                  {(Object.keys(NOMBRE_TIPOGRAFIA) as Tipografia[]).map((t) => (
-                    <button
-                      key={t}
-                      type="button"
-                      aria-pressed={ajustes.tipografia === t}
-                      onClick={() => cambiar({ tipografia: t })}
-                      className="h-10 flex-1 rounded-[10px] text-sm"
-                      style={{
-                        fontFamily: FUENTE_TITULO[t],
-                        textTransform: t === "FUERTE" ? "uppercase" : undefined,
-                        border: ajustes.tipografia === t ? `2px solid ${c.acento}` : "1px solid #E5E7EB",
-                        background: ajustes.tipografia === t ? c.tinte : "#ffffff",
-                        color: ajustes.tipografia === t ? c.oscuro : "#374151",
-                        fontWeight: ajustes.tipografia === t ? 700 : 400,
-                      }}
-                    >
-                      {NOMBRE_TIPOGRAFIA[t]}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
+            <SelectorForma valor={ajustes.formaBotones} c={c} onCambio={(f) => cambiar({ formaBotones: f })} />
+            <SelectorLetra
+              valor={ajustes.tipografia}
+              nombre={e.negocio.nombre}
+              c={c}
+              onCambio={(t) => cambiar({ tipografia: t })}
+            />
 
             <div className="grid gap-3 sm:grid-cols-[3fr_1fr]">
               <Campo label="Anuncio destacado (opcional)" hint="Una franja arriba de los botones. Se quita sola el día que elijas.">
@@ -784,6 +734,9 @@ export default function MiPagina() {
                   placeholder="https://…"
                 />
               </Campo>
+            )}
+            {ajustes.anuncioTexto?.trim() && (
+              <EditorAnuncio ajustes={ajustes} c={c} muestras={e.muestras} cambiar={cambiar} />
             )}
           </Seccion>
 

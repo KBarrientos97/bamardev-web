@@ -134,6 +134,28 @@ describe("página pública", () => {
     expect(beacon).toHaveBeenCalledWith("/api/publico/pagina/buensabor/clic/9");
   });
 
+  it("baja sólo la letra elegida y pinta la forma y el anuncio que eligió el negocio", async () => {
+    document.head.querySelectorAll("link[id^=fuentes-pagina]").forEach((l) => l.remove());
+    vi.stubGlobal(
+      "fetch",
+      responder(200, {
+        ...PAGINA,
+        tipografia: "GREAT_VIBES",
+        formaBotones: "SOMBRA_DURA",
+        anuncio: { texto: "Martes 2x1", url: null, estilo: "SOLIDO", colorFondo: "#111827", colorTexto: "#FDE047" },
+      }),
+    );
+    await montar();
+    const hojas = Array.from(document.head.querySelectorAll<HTMLLinkElement>("link[id^=fuentes-pagina]"), (l) => l.href);
+    expect(hojas).toHaveLength(2);
+    expect(hojas.join(" ")).toContain("family=Great+Vibes");
+    expect(hojas.join(" ")).not.toMatch(/Pacifico|Lobster|Oswald|Playfair/);
+    expect(screen.getByRole("heading", { level: 1 }).style.fontFamily).toContain("Great Vibes");
+    expect(screen.getByRole("link", { name: /Hacé tu pedido por WhatsApp/ }).style.boxShadow).toBe("4px 4px 0 #111827");
+    expect(screen.getByRole("note")).toHaveStyle({ background: "#111827" });
+    expect(screen.getByText("Martes 2x1")).toHaveStyle({ color: "#FDE047" });
+  });
+
   it("si no está disponible lo dice, sin mandar al login", async () => {
     vi.stubGlobal("fetch", responder(404, { message: "Esta página no está disponible" }));
     await montar("/p/no-existe");
