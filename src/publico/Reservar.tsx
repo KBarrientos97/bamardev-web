@@ -11,7 +11,18 @@ import {
 import Captcha from "./Captcha";
 import Confirmada from "./Confirmada";
 import { siteKeyTurnstile } from "../lib/turnstile";
-import { Aviso, BotonPrincipal, Cabecera, CargandoPublico, IconoVolver, Marco, NoDisponible, Pasos } from "./piezas";
+import {
+  Aviso,
+  BotonPrincipal,
+  Cabecera,
+  CargandoPublico,
+  FilaResumen,
+  IconoVolver,
+  Marco,
+  NoDisponible,
+  Pasos
+} from "./piezas";
+import { useEscritorio } from "./useEscritorio";
 import { cuentaReserva, horaCorta, precioTexto, rutaPublica, ultimaReserva, useNegocioPublico } from "./util";
 import SelectorHorario from "./SelectorHorario";
 
@@ -23,6 +34,9 @@ import SelectorHorario from "./SelectorHorario";
  * URL (`?paso=horario`), así el "Atrás" del celular vuelve a los servicios
  * con la selección en vez de salir de la reserva (B16). Un 409 (el horario
  * se ocupó mientras llenaba los datos) no borra nada: recalcula y avisa.
+ *
+ * En la computadora el negocio y el resumen de lo elegido van a la izquierda
+ * (`Marco` con `lateral`) y el paso a la derecha; el flujo es el mismo.
  */
 export default function Reservar() {
   const { sub, datos, cargando, noDisponible, error } = useNegocioPublico();
@@ -55,20 +69,31 @@ export default function Reservar() {
 /** Con varias sucursales que publican, primero se elige dónde (P1). */
 function ElegirSucursal({ datos, sub }: { datos: NegocioPublico; sub: string }) {
   return (
-    <Marco datos={datos} titulo="Elegí la sucursal">
-      <Cabecera arriba="Reservá tu cita" titulo={datos.negocio.nombre} />
-      <div className="flex flex-col gap-3 px-5 py-5">
+    <Marco
+      datos={datos}
+      titulo="Elegí la sucursal"
+      cabecera={<Cabecera arriba="Reservá tu cita" titulo={datos.negocio.nombre} />}
+      lateral={
+        <p className="text-sm text-[#4B5563]">
+          Elegí dónde te vas a atender. Después elegís el servicio, el día y la hora.
+        </p>
+      }
+      etiquetaLateral="El negocio"
+    >
+      <div className="flex flex-col gap-3 px-5 py-5 lg:px-8 lg:py-8">
         <h1 className="text-xl font-bold">¿En qué sucursal?</h1>
-        {datos.sucursales.map((s) => (
-          <Link
-            key={s.slug}
-            to={rutaPublica(sub, `/reservar/${s.slug}`)}
-            className="flex min-h-16 flex-col justify-center gap-0.5 rounded-[14px] border border-[#E5E7EB] px-4 py-3 hover:bg-[#F9FAFB]"
-          >
-            <strong className="text-[15px]">{s.nombre}</strong>
-            {s.direccion && <span className="text-[13px] text-[#6B7280]">{s.direccion}</span>}
-          </Link>
-        ))}
+        <div className="flex flex-col gap-3 lg:grid lg:grid-cols-2">
+          {datos.sucursales.map((s) => (
+            <Link
+              key={s.slug}
+              to={rutaPublica(sub, `/reservar/${s.slug}`)}
+              className="flex min-h-16 flex-col justify-center gap-0.5 rounded-[14px] border border-[#E5E7EB] px-4 py-3 hover:bg-[#F9FAFB]"
+            >
+              <strong className="text-[15px]">{s.nombre}</strong>
+              {s.direccion && <span className="text-[13px] text-[#6B7280]">{s.direccion}</span>}
+            </Link>
+          ))}
+        </div>
       </div>
     </Marco>
   );
@@ -76,6 +101,7 @@ function ElegirSucursal({ datos, sub }: { datos: NegocioPublico; sub: string }) 
 
 function Asistente({ datos, sucursal, sub }: { datos: NegocioPublico; sucursal: SucursalPublica; sub: string }) {
   const [params, setParams] = useSearchParams();
+  const escritorio = useEscritorio();
   const navegar = useNavigate();
   const ubicacion = useLocation();
   const [elegidos, setElegidos] = useState<number[]>([]);
@@ -205,17 +231,33 @@ function Asistente({ datos, sucursal, sub }: { datos: NegocioPublico; sucursal: 
   }
 
   const resumen = servicios.map((s) => s.nombre).join(" + ");
+  const cabecera = (
+    <Cabecera
+      arriba="Reservá tu cita"
+      titulo={datos.negocio.nombre}
+      abajo={[sucursal.nombre, sucursal.direccion].filter(Boolean).join(" · ")}
+    />
+  );
+  const lateral = (
+    <ResumenReserva
+      servicios={servicios}
+      profesional={
+        paso === "servicios"
+          ? null
+          : (sucursal.profesionales.find((p) => p.id === profesional)?.nombre ?? "Cualquiera")
+      }
+      inicio={paso === "servicios" ? null : inicio}
+      duracion={duracion}
+      precio={sucursal.reglas.mostrarPrecios ? total : null}
+      desde={desde}
+    />
+  );
 
   if (paso === "servicios") {
     return (
-      <Marco datos={datos} titulo="Reservar">
-        <Cabecera
-          arriba="Reservá tu cita"
-          titulo={datos.negocio.nombre}
-          abajo={[sucursal.nombre, sucursal.direccion].filter(Boolean).join(" · ")}
-        />
+      <Marco datos={datos} titulo="Reservar" cabecera={cabecera} lateral={lateral} etiquetaLateral="Tu reserva">
         <Pasos hechos={1} total={2} />
-        <div className="flex flex-1 flex-col gap-3.5 px-5 pb-5 pt-2">
+        <div className="flex flex-1 flex-col gap-3.5 px-5 pb-5 pt-2 lg:gap-5 lg:px-8 lg:pb-8 lg:pt-4">
           <div>
             <h1 className="text-xl font-bold">¿Qué te hacés?</h1>
             <p className="text-[13px] text-[#6B7280]">Podés elegir más de uno: se hacen uno después del otro.</p>
@@ -223,39 +265,45 @@ function Asistente({ datos, sucursal, sub }: { datos: NegocioPublico; sucursal: 
           {categorias.map(([cat, lista]) => (
             <section key={cat} className="flex flex-col gap-2" aria-label={cat}>
               <h2 className="text-[13px] tracking-[0.06em] text-[#6B7280]">{cat.toUpperCase()}</h2>
-              {lista.map((s) => {
-                const elegido = elegidos.includes(s.id);
-                return (
-                  <label
-                    key={s.id}
-                    className={`flex min-h-16 cursor-pointer items-center gap-3 rounded-[14px] px-3.5 py-3 ${
-                      elegido ? "border-2 border-primary bg-primary-50" : "border border-[#E5E7EB] bg-white"
-                    }`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={elegido}
-                      onChange={() => alternar(s.id)}
-                      className="h-5 w-5 shrink-0 accent-[var(--color-primary-boton)]"
-                    />
-                    <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                      <strong className="text-[15px]">{s.nombre}</strong>
-                      <span className="text-[13px] text-[#6B7280]">{duracionTexto(s.duracionDesde ?? s.duracionMin)}</span>
-                    </span>
-                    {s.precio != null && (
-                      <span className="text-sm font-medium">
-                        {s.precioDesde != null && s.precioHasta != null && s.precioDesde !== s.precioHasta
-                          ? `desde ${precioTexto(s.precioDesde)}`
-                          : precioTexto(s.precioDesde ?? s.precio)}
+              {/* En la computadora, de a dos por fila: una lista de 700 px de
+                  ancho con el precio en la otra punta se lee mal. */}
+              <div className="flex flex-col gap-2 lg:grid lg:grid-cols-2 lg:gap-3">
+                {lista.map((s) => {
+                  const elegido = elegidos.includes(s.id);
+                  return (
+                    <label
+                      key={s.id}
+                      className={`flex min-h-16 cursor-pointer items-center gap-3 rounded-[14px] px-3.5 py-3 ${
+                        elegido
+                          ? "border-2 border-primary bg-primary-50"
+                          : "border border-[#E5E7EB] bg-white lg:hover:bg-[#F9FAFB]"
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={elegido}
+                        onChange={() => alternar(s.id)}
+                        className="h-5 w-5 shrink-0 accent-[var(--color-primary-boton)]"
+                      />
+                      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                        <strong className="text-[15px]">{s.nombre}</strong>
+                        <span className="text-[13px] text-[#6B7280]">{duracionTexto(s.duracionDesde ?? s.duracionMin)}</span>
                       </span>
-                    )}
-                  </label>
-                );
-              })}
+                      {s.precio != null && (
+                        <span className="text-sm font-medium">
+                          {s.precioDesde != null && s.precioHasta != null && s.precioDesde !== s.precioHasta
+                            ? `desde ${precioTexto(s.precioDesde)}`
+                            : precioTexto(s.precioDesde ?? s.precio)}
+                        </span>
+                      )}
+                    </label>
+                  );
+                })}
+              </div>
             </section>
           ))}
         </div>
-        <footer className="sticky bottom-0 flex items-center gap-3 border-t border-[#F0F1F4] bg-white px-5 pb-5 pt-3.5">
+        <footer className="sticky bottom-0 flex items-center gap-3 border-t border-[#F0F1F4] bg-white px-5 pb-5 pt-3.5 lg:px-8 lg:py-4">
           <div className="flex min-w-0 flex-1 flex-col">
             <strong className="text-[15px]">
               {elegidos.length
@@ -279,27 +327,49 @@ function Asistente({ datos, sucursal, sub }: { datos: NegocioPublico; sucursal: 
   }
 
   return (
-    <Marco datos={datos} titulo="Elegí día y hora">
-      <header className="flex items-center gap-2 px-3 pb-1 pt-3">
-        <button
-          type="button"
-          aria-label="Volver a los servicios"
-          onClick={volverAServicios}
-          className="flex h-11 w-11 items-center justify-center rounded-[10px] text-[#374151]"
-        >
-          <IconoVolver />
-        </button>
-        <div className="flex min-w-0 flex-col">
-          <strong className="text-[15px]">{datos.negocio.nombre}</strong>
-          <span className="truncate text-xs text-[#6B7280]">
-            {resumen} · {desde}
-            {duracionTexto(duracion)}
-            {sucursal.reglas.mostrarPrecios ? ` · ${precioTexto(total)}` : ""}
-          </span>
+    <Marco
+      datos={datos}
+      titulo="Elegí día y hora"
+      cabecera={escritorio ? cabecera : undefined}
+      lateral={lateral}
+      etiquetaLateral="Tu reserva"
+    >
+      {/* La pantalla no tenía título: para quien navega por encabezados. */}
+      <h1 className="sr-only">Elegí día y hora</h1>
+      {escritorio ? (
+        // El nombre y el resumen ya están a la izquierda: arriba sólo queda volver.
+        <div className="px-8 pt-6">
+          <button
+            type="button"
+            onClick={volverAServicios}
+            className="inline-flex h-10 items-center gap-1 rounded-[10px] border border-[#E5E7EB] pl-2 pr-3.5 text-sm text-[#374151] hover:bg-[#F9FAFB]"
+          >
+            <IconoVolver />
+            Volver a los servicios
+          </button>
         </div>
-      </header>
+      ) : (
+        <header className="flex items-center gap-2 px-3 pb-1 pt-3">
+          <button
+            type="button"
+            aria-label="Volver a los servicios"
+            onClick={volverAServicios}
+            className="flex h-11 w-11 items-center justify-center rounded-[10px] text-[#374151]"
+          >
+            <IconoVolver />
+          </button>
+          <div className="flex min-w-0 flex-col">
+            <strong className="text-[15px]">{datos.negocio.nombre}</strong>
+            <span className="truncate text-xs text-[#6B7280]">
+              {resumen} · {desde}
+              {duracionTexto(duracion)}
+              {sucursal.reglas.mostrarPrecios ? ` · ${precioTexto(total)}` : ""}
+            </span>
+          </div>
+        </header>
+      )}
       <Pasos hechos={2} total={2} />
-      <div className="flex flex-1 flex-col gap-[18px] px-5 pb-5 pt-2">
+      <div className="flex flex-1 flex-col gap-[18px] px-5 pb-5 pt-2 lg:gap-6 lg:px-8 lg:pb-8 lg:pt-4">
         <SelectorHorario
           sub={sub}
           sucursal={sucursal.slug}
@@ -317,19 +387,22 @@ function Asistente({ datos, sucursal, sub }: { datos: NegocioPublico; sucursal: 
           version={version}
         />
 
-        <section className="flex flex-col gap-3 border-t border-[#F0F1F4] pt-4" aria-label="Tus datos">
+        <section className="flex flex-col gap-3 border-t border-[#F0F1F4] pt-4 lg:pt-6" aria-label="Tus datos">
           <h2 className="text-lg font-bold">Tus datos</h2>
-          <CampoTexto etiqueta="Nombre" valor={nombre} onCambio={setNombre} autoComplete="name" maxLength={80} />
-          <CampoTexto
-            etiqueta="Teléfono"
-            valor={telefono}
-            onCambio={setTelefono}
-            autoComplete="tel"
-            inputMode="tel"
-            tipo="tel"
-            placeholder="7 000 0000"
-            maxLength={30}
-          />
+          {/* Nombre y teléfono lado a lado en la computadora. */}
+          <div className="flex flex-col gap-3 lg:grid lg:grid-cols-2 lg:gap-4">
+            <CampoTexto etiqueta="Nombre" valor={nombre} onCambio={setNombre} autoComplete="name" maxLength={80} />
+            <CampoTexto
+              etiqueta="Teléfono"
+              valor={telefono}
+              onCambio={setTelefono}
+              autoComplete="tel"
+              inputMode="tel"
+              tipo="tel"
+              placeholder="7 000 0000"
+              maxLength={30}
+            />
+          </div>
           <label className="flex flex-col gap-1.5 text-[13px] text-[#374151]">
             Nota para el negocio (opcional)
             <textarea
@@ -378,8 +451,8 @@ function Asistente({ datos, sucursal, sub }: { datos: NegocioPublico; sucursal: 
           </div>
         </section>
       </div>
-      <footer className="sticky bottom-0 border-t border-[#F0F1F4] bg-white px-5 pb-5 pt-3.5">
-        <BotonPrincipal onClick={reservar} disabled={enviando}>
+      <footer className="sticky bottom-0 border-t border-[#F0F1F4] bg-white px-5 pb-5 pt-3.5 lg:flex lg:justify-end lg:px-8 lg:py-4">
+        <BotonPrincipal onClick={reservar} disabled={enviando} className="lg:w-auto lg:min-w-[320px]">
           {enviando
             ? "Reservando…"
             : inicio
@@ -388,6 +461,75 @@ function Asistente({ datos, sucursal, sub }: { datos: NegocioPublico; sucursal: 
         </BotonPrincipal>
       </footer>
     </Marco>
+  );
+}
+
+/**
+ * Lo elegido hasta ahora, en la columna izquierda de la computadora. En el
+ * celular este resumen ya va en la barra de abajo (servicios) o en la
+ * cabecera (horario), así que no se repite.
+ */
+function ResumenReserva({
+  servicios,
+  profesional,
+  inicio,
+  duracion,
+  precio,
+  desde,
+}: {
+  servicios: SucursalPublica["servicios"];
+  /** null mientras se eligen los servicios: se elige en el paso siguiente. */
+  profesional: string | null;
+  inicio: string | null;
+  duracion: number;
+  /** null si el negocio no muestra precios online. */
+  precio: number | null;
+  desde: string;
+}) {
+  return (
+    <section aria-labelledby="titulo-resumen" className="flex flex-col gap-4">
+      <h2 id="titulo-resumen" className="text-[13px] tracking-[0.06em] text-[#6B7280]">
+        TU RESERVA
+      </h2>
+      {servicios.length ? (
+        <FilaResumen etiqueta={servicios.length === 1 ? "Servicio" : "Servicios"}>
+          <ul className="flex flex-col gap-0.5">
+            {servicios.map((s) => (
+              <li key={s.id} className="font-medium">
+                {s.nombre}
+              </li>
+            ))}
+          </ul>
+        </FilaResumen>
+      ) : (
+        <p className="text-sm text-[#6B7280]">Todavía no elegiste ningún servicio.</p>
+      )}
+      <FilaResumen etiqueta="Con quién">{profesional ?? "Lo elegís en el paso siguiente"}</FilaResumen>
+      <FilaResumen etiqueta="Día y hora">
+        {inicio ? `${capitalizar(fechaLarga(fechaNegocio(inicio)))} · ${horaCorta(inicio)}` : "Sin elegir todavía"}
+      </FilaResumen>
+      {servicios.length > 0 && (
+        <div className="flex flex-col gap-1 border-t border-[#F0F1F4] pt-4">
+          <div className="flex items-baseline justify-between gap-3 text-sm">
+            <span className="text-[#4B5563]">Duración</span>
+            <strong>
+              {desde}
+              {duracionTexto(duracion)}
+            </strong>
+          </div>
+          {precio != null && (
+            <div className="flex items-baseline justify-between gap-3">
+              <span className="text-sm text-[#4B5563]">Total</span>
+              <strong className="text-lg">
+                {desde}
+                {precioTexto(precio)}
+              </strong>
+            </div>
+          )}
+        </div>
+      )}
+      <p className="text-xs text-[#6B7280]">Se paga en el local. Sin registrarte ni bajar nada.</p>
+    </section>
   );
 }
 

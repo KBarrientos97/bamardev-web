@@ -525,3 +525,85 @@ describe("gestión (P7)", () => {
     expect(screen.getByText(/Pediste que borren tus datos/)).toBeInTheDocument();
   });
 });
+
+describe("en la computadora", () => {
+  /** Una pantalla que se puede agrandar o achicar en medio de la prueba. */
+  function pantalla(escritorio: boolean) {
+    const avisos = new Set<() => void>();
+    const estado = { escritorio };
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn(() => ({
+        get matches() {
+          return estado.escritorio;
+        },
+        addEventListener: (_: string, fn: () => void) => avisos.add(fn),
+        removeEventListener: (_: string, fn: () => void) => avisos.delete(fn),
+      })),
+    );
+    return (nuevo: boolean) => {
+      estado.escritorio = nuevo;
+      act(() => avisos.forEach((fn) => fn()));
+    };
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("el resumen de lo elegido va en la columna izquierda", async () => {
+    pantalla(true);
+    await abrir("/r/bellavista/reservar");
+    const resumen = () => screen.getByRole("complementary", { name: "Tu reserva" });
+    expect(within(resumen()).getByText("Salón Bella Vista")).toBeInTheDocument();
+    expect(within(resumen()).getByText("Todavía no elegiste ningún servicio.")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("checkbox", { name: /Corte dama/ }));
+    expect(within(resumen()).getByText("Corte dama")).toBeInTheDocument();
+    expect(within(resumen()).getByText("Bs 80")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Siguiente" }));
+    await act(async () => {});
+    // Un solo h1 por pantalla, aunque el paso del horario no lo muestre.
+    expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
+    expect(within(resumen()).getByText("Cualquiera")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "10:30" }));
+    expect(within(resumen()).getByText("Martes 13 de octubre · 10:30")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Volver a los servicios" }));
+    expect(screen.getByRole("checkbox", { name: /Corte dama/ })).toBeChecked();
+  });
+
+  it("en el celular no hay columna aparte", async () => {
+    pantalla(false);
+    await abrir("/r/bellavista/reservar");
+    expect(screen.queryByRole("complementary")).toBeNull();
+  });
+
+  it("agrandar la ventana no vuelve a montar el paso ni pierde la hora", async () => {
+    const cambiar = pantalla(false);
+    await abrir("/r/bellavista/reservar");
+    fireEvent.click(screen.getByRole("checkbox", { name: /Corte dama/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Siguiente" }));
+    await act(async () => {});
+    fireEvent.click(screen.getByRole("button", { name: "10:30" }));
+    expect(apiReserva.disponibilidad).toHaveBeenCalledTimes(1);
+
+    cambiar(true);
+    await act(async () => {});
+    expect(screen.getByRole("complementary", { name: "Tu reserva" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "10:30" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Reservar Martes 13 · 10:30" })).toBeInTheDocument();
+    // Si el selector se hubiera vuelto a montar, habría pedido los horarios otra vez.
+    expect(apiReserva.disponibilidad).toHaveBeenCalledTimes(1);
+  });
+
+  it("la gestión deja la cita a la izquierda y las acciones a la derecha", async () => {
+    pantalla(true);
+    vi.mocked(apiReserva.ver).mockResolvedValue(citaPublica());
+    await abrir("/r/bellavista/c/abcdefghijklmnopqrstuv");
+    const lado = screen.getByRole("complementary", { name: "Tu reserva" });
+    expect(within(lado).getByRole("heading", { level: 1, name: "Hola, María" })).toBeInTheDocument();
+    expect(within(lado).getByText("POR CONFIRMAR")).toBeInTheDocument();
+    expect(within(screen.getByRole("main")).getByRole("button", { name: "Cancelar mi cita" })).toBeInTheDocument();
+  });
+});
