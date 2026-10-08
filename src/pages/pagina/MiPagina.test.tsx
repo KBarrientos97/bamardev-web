@@ -165,6 +165,69 @@ describe("Mi página", () => {
     });
   });
 
+  it("botón principal: sin botón saca «Reservar turno» de la página", async () => {
+    await montar();
+    expect(screen.getByRole("radio", { name: /Reservar turno/ })).toBeChecked();
+    fireEvent.click(screen.getByRole("radio", { name: /Sin botón principal/ }));
+    expect(within(previa()).queryByText("Reservar turno")).not.toBeInTheDocument();
+
+    vi.mocked(apiPagina.guardar).mockResolvedValue(estado({ mostrarReservar: false }));
+    fireEvent.click(screen.getByRole("button", { name: "Guardar cambios" }));
+    await act(async () => {});
+    expect(apiPagina.guardar).toHaveBeenCalledWith({ mostrarReservar: false, enlaceDestacadoId: null });
+  });
+
+  it("botón principal sin reserva online (una pollería): no ofrece reservar", async () => {
+    vi.mocked(apiPagina.estado).mockResolvedValue({ ...estado(), reservaOnline: false });
+    await montar();
+    expect(screen.queryByRole("radio", { name: /Reservar turno/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: /Sin botón principal/ })).toBeChecked();
+  });
+
+  it("botón principal WhatsApp sin cargar: lo crea y queda como principal", async () => {
+    const wa = {
+      id: 5,
+      tipo: "WHATSAPP" as const,
+      formato: "BOTON" as const,
+      etiqueta: "Escribinos por WhatsApp",
+      valor: "70123456",
+      url: "https://wa.me/59170123456",
+      icono: null,
+      orden: 3,
+      visible: true,
+      clics: 0,
+    };
+    vi.mocked(apiPagina.crearEnlace).mockResolvedValue(wa);
+    await montar();
+    fireEvent.click(screen.getByRole("radio", { name: /WhatsApp/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Agregar mi WhatsApp" }));
+    const dialogo = screen.getByRole("dialog");
+    fireEvent.change(within(dialogo).getByLabelText("Número"), { target: { value: "70123456" } });
+    vi.mocked(apiPagina.estado).mockResolvedValue({ ...estado(), enlaces: [...estado().enlaces, wa] });
+    fireEvent.click(within(dialogo).getByRole("button", { name: "Guardar" }));
+    await act(async () => {});
+    expect(apiPagina.crearEnlace).toHaveBeenCalledWith(expect.objectContaining({ tipo: "WHATSAPP", formato: "BOTON" }));
+    expect(screen.getByRole("radio", { name: /WhatsApp/ })).toBeChecked();
+    expect(within(previa()).getByRole("link", { name: /Escribinos por WhatsApp/ })).toBeInTheDocument();
+    expect(within(previa()).queryByText("Reservar turno")).not.toBeInTheDocument();
+
+    vi.mocked(apiPagina.guardar).mockResolvedValue(estado({ mostrarReservar: false, enlaceDestacadoId: 5 }));
+    fireEvent.click(screen.getByRole("button", { name: "Guardar cambios" }));
+    await act(async () => {});
+    expect(apiPagina.guardar).toHaveBeenCalledWith({ mostrarReservar: false, enlaceDestacadoId: 5 });
+  });
+
+  it("la vista previa se puede ver en computadora", async () => {
+    await montar();
+    expect(previa()).toHaveAttribute("data-modo", "movil");
+    fireEvent.click(screen.getByRole("button", { name: "Computadora" }));
+    expect(previa()).toHaveAttribute("data-modo", "escritorio");
+    expect(screen.getByRole("button", { name: "Computadora" })).toHaveAttribute("aria-pressed", "true");
+    expect(within(previa()).getByText("Reservar turno")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Celular" }));
+    expect(previa()).toHaveAttribute("data-modo", "movil");
+  });
+
   it("el error del backend se muestra en el formulario", async () => {
     vi.mocked(apiPagina.crearEnlace).mockRejectedValue(new Error("Ese enlace no es de Instagram"));
     await montar();

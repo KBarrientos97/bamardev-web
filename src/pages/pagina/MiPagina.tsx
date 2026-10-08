@@ -42,7 +42,8 @@ import { vistaDesdeEditor } from "../../lib/pagina/vista";
 import { useApi } from "../../lib/useApi";
 import CartelQR from "./CartelQR";
 import EditorEnlace from "./EditorEnlace";
-import VistaPagina, { Trazo } from "./VistaPagina";
+import { Trazo } from "./VistaPagina";
+import VistaPrevia, { type ModoPrevia } from "./VistaPrevia";
 
 const MAX_DESCRIPCION = 160;
 
@@ -225,6 +226,140 @@ function FilaSucursal({
   );
 }
 
+type OpcionPrincipal = "RESERVAR" | "WHATSAPP" | "OTRO" | "NINGUNO";
+
+/**
+ * El botón grande de arriba, que es opcional: no todos los negocios reservan
+ * (una pollería quiere su WhatsApp o su menú). Por debajo sigue siendo lo de
+ * siempre —`mostrarReservar` y el enlace destacado—; esto sólo lo presenta
+ * como una elección, y si el WhatsApp o el botón todavía no existen, los crea.
+ */
+function BotonPrincipal({
+  reservaOnline,
+  ajustes,
+  enlaces,
+  acento,
+  opcionUi,
+  setOpcionUi,
+  cambiar,
+  onCrear,
+}: {
+  reservaOnline: boolean;
+  ajustes: AjustesPagina;
+  enlaces: EnlaceEditor[];
+  acento: string;
+  /** La elección que todavía no tiene enlace (WhatsApp sin cargar, botón por crear). */
+  opcionUi: OpcionPrincipal | null;
+  setOpcionUi: (o: OpcionPrincipal | null) => void;
+  cambiar: (c: CambiosPagina) => void;
+  onCrear: (tipo: TipoEnlace) => void;
+}) {
+  const destacado = enlaces.find((x) => x.id === ajustes.enlaceDestacadoId) ?? null;
+  const whatsapps = enlaces.filter((x) => x.tipo === "WHATSAPP");
+  const otros = enlaces.filter((x) => x.tipo !== "WHATSAPP");
+  const derivada: OpcionPrincipal =
+    reservaOnline && ajustes.mostrarReservar
+      ? "RESERVAR"
+      : destacado
+        ? destacado.tipo === "WHATSAPP"
+          ? "WHATSAPP"
+          : "OTRO"
+        : "NINGUNO";
+  const opcion = opcionUi ?? derivada;
+
+  const elegir = (o: OpcionPrincipal) => {
+    setOpcionUi(null);
+    if (o === "RESERVAR") return cambiar({ mostrarReservar: true });
+    if (o === "NINGUNO") return cambiar({ mostrarReservar: false, enlaceDestacadoId: null });
+    const candidatos = o === "WHATSAPP" ? whatsapps : otros;
+    const actual = candidatos.find((x) => x.id === destacado?.id);
+    if (candidatos.length === 0) {
+      // Todavía no hay a qué apuntar: queda elegido y se ofrece crearlo.
+      setOpcionUi(o);
+      return cambiar({ mostrarReservar: false, enlaceDestacadoId: null });
+    }
+    cambiar({ mostrarReservar: false, enlaceDestacadoId: (actual ?? candidatos[0]).id });
+  };
+
+  const opciones: { valor: OpcionPrincipal; titulo: string; detalle: string }[] = [
+    ...(reservaOnline
+      ? [{ valor: "RESERVAR" as const, titulo: "Reservar turno", detalle: "Lleva a tu reserva online." }]
+      : []),
+    { valor: "WHATSAPP", titulo: "WhatsApp", detalle: "Te escriben directo a tu número." },
+    { valor: "OTRO", titulo: "Otro botón", detalle: "Tu menú, un formulario, una red: el texto y el enlace que quieras." },
+    {
+      valor: "NINGUNO",
+      titulo: "Sin botón principal",
+      detalle: reservaOnline ? "La reserva online sigue andando con su enlace." : "Sólo tus redes y tus botones.",
+    },
+  ];
+
+  const selectorDe = (lista: EnlaceEditor[], etiqueta: string) => (
+    <Select
+      aria-label={etiqueta}
+      value={String(ajustes.enlaceDestacadoId ?? "")}
+      onChange={(ev) => cambiar({ mostrarReservar: false, enlaceDestacadoId: Number(ev.target.value) })}
+    >
+      {lista.map((x) => (
+        <option key={x.id} value={x.id}>
+          {x.etiqueta}
+        </option>
+      ))}
+    </Select>
+  );
+
+  return (
+    <fieldset className="space-y-2">
+      <legend className="block text-[13px] font-semibold text-texto-2">Botón principal</legend>
+      <p className="text-xs text-texto-3">El botón grande, arriba de todo. Es opcional.</p>
+      <div className="grid gap-2 sm:grid-cols-2">
+        {opciones.map((o) => {
+          const elegida = opcion === o.valor;
+          return (
+            <label
+              key={o.valor}
+              className="flex cursor-pointer items-start gap-3 rounded-xl border bg-white p-3"
+              style={{ borderColor: elegida ? acento : "#E5E7EB", boxShadow: elegida ? `0 0 0 1px ${acento}` : undefined }}
+            >
+              <input
+                type="radio"
+                name="boton-principal"
+                className="mt-0.5 h-[18px] w-[18px] shrink-0"
+                style={{ accentColor: acento }}
+                checked={elegida}
+                onChange={() => elegir(o.valor)}
+              />
+              <span className="flex min-w-0 flex-col">
+                <strong className="text-sm text-texto">{o.titulo}</strong>
+                <span className="text-xs text-texto-3">{o.detalle}</span>
+              </span>
+            </label>
+          );
+        })}
+      </div>
+      {opcion === "WHATSAPP" &&
+        (whatsapps.length === 0 ? (
+          <div className="flex flex-wrap items-center gap-2 rounded-xl bg-muted p-3">
+            <span className="text-sm text-texto-2">Todavía no cargaste tu WhatsApp.</span>
+            <Boton icono="plus" onClick={() => onCrear("WHATSAPP")}>
+              Agregar mi WhatsApp
+            </Boton>
+          </div>
+        ) : (
+          whatsapps.length > 1 && selectorDe(whatsapps, "Qué WhatsApp")
+        ))}
+      {opcion === "OTRO" && (
+        <div className="flex flex-wrap items-center gap-2">
+          {otros.length > 0 && <div className="min-w-0 flex-[1_1_220px]">{selectorDe(otros, "Qué botón")}</div>}
+          <Boton variante={otros.length > 0 ? "ghost" : "primary"} icono="plus" onClick={() => onCrear("BOTON")}>
+            Crear botón personalizado
+          </Boton>
+        </div>
+      )}
+    </fieldset>
+  );
+}
+
 /**
  * "Mi página" (lienzo MiPagina, B2): el editor de la página pública del
  * negocio, con la vista previa en vivo al lado. Sólo el ADMIN y con la
@@ -245,10 +380,14 @@ export default function MiPagina() {
     enlace: EnlaceEditor | null;
     tipo?: TipoEnlace;
     formato?: FormatoEnlace;
+    /** Se crea desde "Botón principal": al guardarlo queda como principal. */
+    principal?: boolean;
   }>({ abierto: false, enlace: null });
   const [aBorrar, setABorrar] = useState<EnlaceEditor | null>(null);
   const [cartel, setCartel] = useState(false);
   const [previaCelular, setPreviaCelular] = useState(false);
+  const [modoPrevia, setModoPrevia] = useState<ModoPrevia>("movil");
+  const [opcionPrincipal, setOpcionPrincipal] = useState<OpcionPrincipal | null>(null);
   const arrastrado = useRef<number | null>(null);
 
   useEffect(cargarFuentesPagina, []);
@@ -300,7 +439,15 @@ export default function MiPagina() {
 
   const guardarEnlace = async (input: EnlaceInput) => {
     if (editor.enlace) await apiPagina.editarEnlace(editor.enlace.id, input);
-    else await apiPagina.crearEnlace(input);
+    else {
+      const nuevo = await apiPagina.crearEnlace(input);
+      // Creado desde "Botón principal": queda elegido en el borrador, como
+      // cualquier otro cambio de la presentación (se guarda con el resto).
+      if (editor.principal) {
+        setOpcionPrincipal(null);
+        cambiar({ mostrarReservar: false, enlaceDestacadoId: nuevo.id });
+      }
+    }
     carga.recargar();
     setAviso(editor.enlace ? "Enlace actualizado" : "Enlace agregado");
   };
@@ -371,30 +518,22 @@ export default function MiPagina() {
     <Badge tono="gris">Sin publicar</Badge>
   );
 
+  // A la dirección que se comparte (`link…/<sub>` cuando el backend la tiene
+  // configurada); si no vino, a la de siempre dentro de la app.
+  const urlCompleta = e.subdominio ? (e.urlPublica ?? `/p/${e.subdominio}`) : null;
   const previa = (
-    <div className="flex flex-col items-center gap-3">
-      <span className="text-[13px] text-texto-3">Así se ve en un celular</span>
-      <div className="h-[600px] w-[300px] overflow-hidden rounded-[36px] border-[10px] border-slate-800 bg-[#F6F7F9] shadow-xl">
-        <div className="h-full overflow-y-auto">
-          {/* Con el enlace de Privacidad del pie, como la página de verdad (B24). */}
-          <VistaPagina pagina={vista} urlReservar="#" urlPrivacidad="#" enMarco />
-        </div>
-      </div>
-      {/* A la dirección que se comparte (`link…/<sub>` cuando el backend
-          la tiene configurada); si no vino, a la de siempre dentro de la app. */}
-      {e.subdominio && e.pagina.publicada && (
-        <a
-          href={e.urlPublica ?? `/p/${e.subdominio}`}
-          target="_blank"
-          rel="noopener"
-          className="text-sm font-semibold"
-          style={{ color: c.oscuro }}
-        >
-          Ver la página completa
-        </a>
-      )}
-    </div>
+    <VistaPrevia
+      pagina={vista}
+      modo={modoPrevia}
+      onModo={setModoPrevia}
+      direccion={(urlCompleta ?? "").replace(/^https?:\/\//, "")}
+      urlCompleta={e.pagina.publicada ? urlCompleta : null}
+      colorEnlace={c.oscuro}
+    />
   );
+  // En computadora la vista previa necesita el ancho entero: va arriba del
+  // formulario y no en la columna de al lado.
+  const previaAncha = modoPrevia === "escritorio";
 
   return (
     <div className="mx-auto max-w-6xl space-y-4 p-4 sm:p-5">
@@ -429,6 +568,8 @@ export default function MiPagina() {
       )}
       <ErrorMsg>{error}</ErrorMsg>
       <AvisoOk>{aviso}</AvisoOk>
+
+      {previaAncha && <section className="card p-3 sm:p-4">{previa}</section>}
 
       <div className="flex flex-wrap items-start gap-4">
         <div className="min-w-0 flex-[999_1_520px] space-y-4">
@@ -605,30 +746,16 @@ export default function MiPagina() {
                 placeholder="Qué hacés, en una línea. Ej.: Pollo a la brasa y broaster desde 2009."
               />
             </Campo>
-            <Campo
-              label="Botón principal"
-              hint={e.reservaOnline ? "Con la reserva online, «Reservar turno» va arriba de todo." : "El botón grande de arriba."}
-            >
-              <Select
-                aria-label="Botón principal"
-                value={
-                  e.reservaOnline && ajustes.mostrarReservar ? "RESERVAR" : String(ajustes.enlaceDestacadoId ?? "")
-                }
-                onChange={(ev) => {
-                  const v = ev.target.value;
-                  if (v === "RESERVAR") cambiar({ mostrarReservar: true });
-                  else cambiar({ mostrarReservar: false, enlaceDestacadoId: v ? Number(v) : null });
-                }}
-              >
-                {e.reservaOnline && <option value="RESERVAR">Reservar turno (reserva online)</option>}
-                <option value="">Ninguno</option>
-                {enlaces.map((x) => (
-                  <option key={x.id} value={x.id}>
-                    {x.etiqueta}
-                  </option>
-                ))}
-              </Select>
-            </Campo>
+            <BotonPrincipal
+              reservaOnline={e.reservaOnline}
+              ajustes={ajustes}
+              enlaces={enlaces}
+              acento={c.acento}
+              opcionUi={opcionPrincipal}
+              setOpcionUi={setOpcionPrincipal}
+              cambiar={cambiar}
+              onCrear={(tipo) => setEditor({ abierto: true, enlace: null, tipo, formato: "BOTON", principal: true })}
+            />
           </Seccion>
 
           <Seccion
@@ -764,20 +891,29 @@ export default function MiPagina() {
           </Seccion>
 
           <div className="sticky bottom-0 z-10 -mx-4 flex flex-wrap justify-end gap-2 border-t border-borde bg-white/95 px-4 py-3 backdrop-blur sm:static sm:mx-0 sm:border-0 sm:bg-transparent sm:p-0">
-            <Boton variante="ghost" className="lg:hidden" onClick={() => setPreviaCelular((v) => !v)}>
-              {previaCelular ? "Ocultar vista previa" : "Ver vista previa"}
-            </Boton>
-            <Boton variante="ghost" disabled={!sucio || guardando} onClick={() => setBorrador({})}>
+            {!previaAncha && (
+              <Boton variante="ghost" className="lg:hidden" onClick={() => setPreviaCelular((v) => !v)}>
+                {previaCelular ? "Ocultar vista previa" : "Ver vista previa"}
+              </Boton>
+            )}
+            <Boton
+              variante="ghost"
+              disabled={!sucio || guardando}
+              onClick={() => {
+                setBorrador({});
+                setOpcionPrincipal(null);
+              }}
+            >
               Descartar
             </Boton>
             <Boton disabled={!sucio || guardando} onClick={() => void guardar()}>
               {guardando ? "Guardando…" : "Guardar cambios"}
             </Boton>
           </div>
-          {previaCelular && <div className="lg:hidden">{previa}</div>}
+          {!previaAncha && previaCelular && <div className="lg:hidden">{previa}</div>}
         </div>
 
-        <aside className="sticky top-4 hidden flex-[1_1_300px] lg:block">{previa}</aside>
+        {!previaAncha && <aside className="sticky top-4 hidden flex-[1_1_300px] lg:block">{previa}</aside>}
       </div>
 
       <EditorEnlace
