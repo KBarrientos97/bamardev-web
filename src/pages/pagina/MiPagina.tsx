@@ -11,11 +11,12 @@ import {
   Confirmar,
   ErrorMsg,
   Input,
+  Modal,
   Select,
   useAviso,
 } from "../../components/ui";
 import { apiPagina, urlDeImagen } from "../../lib/pagina/apiPagina";
-import { iconoDe, nombreTipo, paleta } from "../../lib/pagina/aspecto";
+import { ICONO_RESERVAR, iconoDe, nombreTipo, paleta } from "../../lib/pagina/aspecto";
 import { cargarFuentesPagina } from "../../lib/pagina/estilos";
 import { prepararImagen } from "../../lib/pagina/imagen";
 import type {
@@ -32,7 +33,7 @@ import { vistaDesdeEditor } from "../../lib/pagina/vista";
 import { useApi } from "../../lib/useApi";
 import CartelQR from "./CartelQR";
 import EditorEnlace from "./EditorEnlace";
-import { EditorAnuncio, SelectorForma, SelectorLetra } from "./EstilosPagina";
+import { EditorAnuncio, FilaEleccion, SelectorColorPagina, SelectorForma, SelectorLetra } from "./EstilosPagina";
 import { Trazo } from "./VistaPagina";
 import VistaPrevia, { type ModoPrevia } from "./VistaPrevia";
 
@@ -236,6 +237,7 @@ type OpcionPrincipal = "RESERVAR" | "WHATSAPP" | "OTRO" | "NINGUNO";
  * (una pollería quiere su WhatsApp o su menú). Por debajo sigue siendo lo de
  * siempre —`mostrarReservar` y el enlace destacado—; esto sólo lo presenta
  * como una elección, y si el WhatsApp o el botón todavía no existen, los crea.
+ * A la vista, sólo lo elegido; las opciones, en un popup (como la apariencia).
  */
 function BotonPrincipal({
   reservaOnline,
@@ -269,6 +271,7 @@ function BotonPrincipal({
           : "OTRO"
         : "NINGUNO";
   const opcion = opcionUi ?? derivada;
+  const [abierto, setAbierto] = useState(false);
 
   const elegir = (o: OpcionPrincipal) => {
     setOpcionUi(null);
@@ -311,55 +314,96 @@ function BotonPrincipal({
     </Select>
   );
 
+  const resumen =
+    opcion === "RESERVAR"
+      ? "Reservar turno"
+      : opcion === "WHATSAPP"
+        ? destacado
+          ? `WhatsApp · ${destacado.etiqueta}`
+          : "WhatsApp (falta cargar tu número)"
+        : opcion === "OTRO"
+          ? (destacado?.etiqueta ?? "Otro botón (falta crearlo)")
+          : "Sin botón principal";
+  const icono =
+    opcion === "RESERVAR" ? ICONO_RESERVAR : destacado ? iconoDe(destacado.tipo, destacado.icono) : null;
+  const crear = (tipo: TipoEnlace) => {
+    setAbierto(false);
+    onCrear(tipo);
+  };
+
   return (
-    <fieldset className="space-y-2">
-      <legend className="block text-[13px] font-semibold text-texto-2">Botón principal</legend>
-      <p className="text-xs text-texto-3">El botón grande, arriba de todo. Es opcional.</p>
-      <div className="grid gap-2 sm:grid-cols-2">
-        {opciones.map((o) => {
-          const elegida = opcion === o.valor;
-          return (
-            <label
-              key={o.valor}
-              className="flex cursor-pointer items-start gap-3 rounded-xl border bg-white p-3"
-              style={{ borderColor: elegida ? acento : "#E5E7EB", boxShadow: elegida ? `0 0 0 1px ${acento}` : undefined }}
-            >
-              <input
-                type="radio"
-                name="boton-principal"
-                className="mt-0.5 h-[18px] w-[18px] shrink-0"
-                style={{ accentColor: acento }}
-                checked={elegida}
-                onChange={() => elegir(o.valor)}
-              />
-              <span className="flex min-w-0 flex-col">
-                <strong className="text-sm text-texto">{o.titulo}</strong>
-                <span className="text-xs text-texto-3">{o.detalle}</span>
-              </span>
-            </label>
-          );
-        })}
-      </div>
-      {opcion === "WHATSAPP" &&
-        (whatsapps.length === 0 ? (
-          <div className="flex flex-wrap items-center gap-2 rounded-xl bg-muted p-3">
-            <span className="text-sm text-texto-2">Todavía no cargaste tu WhatsApp.</span>
-            <Boton icono="plus" onClick={() => onCrear("WHATSAPP")}>
-              Agregar mi WhatsApp
-            </Boton>
+    <>
+      <FilaEleccion
+        etiqueta="Botón principal"
+        resumen={resumen}
+        muestra={
+          icono ? (
+            <span className="flex h-9 w-9 items-center justify-center rounded-lg" style={{ background: acento }}>
+              <Trazo d={icono} color="#ffffff" size={18} />
+            </span>
+          ) : (
+            <span className="block h-9 w-9 rounded-lg border-2 border-dashed border-slate-300" />
+          )
+        }
+        onAbrir={() => setAbierto(true)}
+      />
+      <Modal
+        abierto={abierto}
+        titulo="Botón principal"
+        subtitulo="El botón grande, arriba de todo. Es opcional."
+        onClose={() => setAbierto(false)}
+        ancho="max-w-2xl"
+        acciones={<Boton onClick={() => setAbierto(false)}>Listo</Boton>}
+      >
+        <fieldset className="space-y-3">
+          <legend className="sr-only">Botón principal</legend>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {opciones.map((o) => {
+              const elegida = opcion === o.valor;
+              return (
+                <label
+                  key={o.valor}
+                  className="flex cursor-pointer items-start gap-3 rounded-xl border bg-white p-3"
+                  style={{ borderColor: elegida ? acento : "#E5E7EB", boxShadow: elegida ? `0 0 0 1px ${acento}` : undefined }}
+                >
+                  <input
+                    type="radio"
+                    name="boton-principal"
+                    className="mt-0.5 h-[18px] w-[18px] shrink-0"
+                    style={{ accentColor: acento }}
+                    checked={elegida}
+                    onChange={() => elegir(o.valor)}
+                  />
+                  <span className="flex min-w-0 flex-col">
+                    <strong className="text-sm text-texto">{o.titulo}</strong>
+                    <span className="text-xs text-texto-3">{o.detalle}</span>
+                  </span>
+                </label>
+              );
+            })}
           </div>
-        ) : (
-          whatsapps.length > 1 && selectorDe(whatsapps, "Qué WhatsApp")
-        ))}
-      {opcion === "OTRO" && (
-        <div className="flex flex-wrap items-center gap-2">
-          {otros.length > 0 && <div className="min-w-0 flex-[1_1_220px]">{selectorDe(otros, "Qué botón")}</div>}
-          <Boton variante={otros.length > 0 ? "ghost" : "primary"} icono="plus" onClick={() => onCrear("BOTON")}>
-            Crear botón personalizado
-          </Boton>
-        </div>
-      )}
-    </fieldset>
+          {opcion === "WHATSAPP" &&
+            (whatsapps.length === 0 ? (
+              <div className="flex flex-wrap items-center gap-2 rounded-xl bg-muted p-3">
+                <span className="text-sm text-texto-2">Todavía no cargaste tu WhatsApp.</span>
+                <Boton icono="plus" onClick={() => crear("WHATSAPP")}>
+                  Agregar mi WhatsApp
+                </Boton>
+              </div>
+            ) : (
+              whatsapps.length > 1 && selectorDe(whatsapps, "Qué WhatsApp")
+            ))}
+          {opcion === "OTRO" && (
+            <div className="flex flex-wrap items-center gap-2">
+              {otros.length > 0 && <div className="min-w-0 flex-[1_1_220px]">{selectorDe(otros, "Qué botón")}</div>}
+              <Boton variante={otros.length > 0 ? "ghost" : "primary"} icono="plus" onClick={() => crear("BOTON")}>
+                Crear botón personalizado
+              </Boton>
+            </div>
+          )}
+        </fieldset>
+      </Modal>
+    </>
   );
 }
 
@@ -674,37 +718,21 @@ export default function MiPagina() {
               />
             </div>
 
-            <div className="space-y-2">
-              <span className="block text-[13px] font-semibold text-texto-2">Color de la página</span>
-              <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Color de la página">
-                {e.muestras.map((m) => (
-                  <button
-                    key={m.clave}
-                    type="button"
-                    role="radio"
-                    aria-checked={ajustes.colorClave === m.clave}
-                    aria-label={`Color ${m.nombre}`}
-                    title={m.nombre}
-                    onClick={() => cambiar({ colorClave: m.clave })}
-                    className="h-10 w-10 rounded-full"
-                    style={{
-                      background: m.hex,
-                      border: `3px solid ${ajustes.colorClave === m.clave ? "#1F2937" : "#ffffff"}`,
-                      boxShadow: "0 0 0 1px #E5E7EB",
-                    }}
-                  />
-                ))}
-              </div>
-              <span className="text-xs text-texto-3">Todos los colores están probados para que el texto se lea bien.</span>
+            {/* Cada elección muestra sólo lo elegido; las opciones, en su popup. */}
+            <div className="grid gap-3 sm:grid-cols-2">
+              <SelectorColorPagina
+                valor={ajustes.colorClave}
+                muestras={e.muestras}
+                onCambio={(clave) => cambiar({ colorClave: clave })}
+              />
+              <SelectorForma valor={ajustes.formaBotones} c={c} onCambio={(f) => cambiar({ formaBotones: f })} />
+              <SelectorLetra
+                valor={ajustes.tipografia}
+                nombre={e.negocio.nombre}
+                c={c}
+                onCambio={(t) => cambiar({ tipografia: t })}
+              />
             </div>
-
-            <SelectorForma valor={ajustes.formaBotones} c={c} onCambio={(f) => cambiar({ formaBotones: f })} />
-            <SelectorLetra
-              valor={ajustes.tipografia}
-              nombre={e.negocio.nombre}
-              c={c}
-              onCambio={(t) => cambiar({ tipografia: t })}
-            />
 
             <div className="grid gap-3 sm:grid-cols-[3fr_1fr]">
               <Campo label="Anuncio destacado (opcional)" hint="Una franja arriba de los botones. Se quita sola el día que elijas.">

@@ -75,6 +75,11 @@ async function montar() {
 }
 
 const previa = () => screen.getByTestId("vista-pagina");
+/** Las elecciones muestran sólo lo elegido: las opciones están en su popup. */
+const abrir = (etiqueta: string) =>
+  fireEvent.click(screen.getByRole("button", { name: new RegExp(`^${etiqueta}:`) }));
+const fila = (etiqueta: string, elegido: string) =>
+  screen.getByRole("button", { name: `${etiqueta}: ${elegido}. Cambiar` });
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -111,8 +116,11 @@ describe("Mi página", () => {
     await montar();
     fireEvent.change(screen.getByLabelText("Descripción corta"), { target: { value: "Cortes y color" } });
     expect(within(previa()).getByText("Cortes y color")).toBeInTheDocument();
+    expect(fila("Color de la página", "Ciruela")).toBeInTheDocument();
+    abrir("Color de la página");
     fireEvent.click(screen.getByRole("radio", { name: "Color Lavanda" }));
-    expect(screen.getByRole("radio", { name: "Color Lavanda" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(fila("Color de la página", "Lavanda")).toBeInTheDocument();
 
     vi.mocked(apiPagina.guardar).mockResolvedValue(estado({ descripcion: "Cortes y color", colorClave: "LAVANDA" }));
     fireEvent.click(screen.getByRole("button", { name: "Guardar cambios" }));
@@ -167,8 +175,14 @@ describe("Mi página", () => {
 
   it("botón principal: sin botón saca «Reservar turno» de la página", async () => {
     await montar();
+    // A la vista sólo lo elegido, sin las cuatro opciones.
+    expect(fila("Botón principal", "Reservar turno")).toBeInTheDocument();
+    expect(screen.queryByRole("radio", { name: /Sin botón principal/ })).not.toBeInTheDocument();
+    abrir("Botón principal");
     expect(screen.getByRole("radio", { name: /Reservar turno/ })).toBeChecked();
     fireEvent.click(screen.getByRole("radio", { name: /Sin botón principal/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Listo" }));
+    expect(fila("Botón principal", "Sin botón principal")).toBeInTheDocument();
     expect(within(previa()).queryByText("Reservar turno")).not.toBeInTheDocument();
 
     vi.mocked(apiPagina.guardar).mockResolvedValue(estado({ mostrarReservar: false }));
@@ -180,6 +194,8 @@ describe("Mi página", () => {
   it("botón principal sin reserva online (una pollería): no ofrece reservar", async () => {
     vi.mocked(apiPagina.estado).mockResolvedValue({ ...estado(), reservaOnline: false });
     await montar();
+    expect(fila("Botón principal", "Sin botón principal")).toBeInTheDocument();
+    abrir("Botón principal");
     expect(screen.queryByRole("radio", { name: /Reservar turno/ })).not.toBeInTheDocument();
     expect(screen.getByRole("radio", { name: /Sin botón principal/ })).toBeChecked();
   });
@@ -199,7 +215,9 @@ describe("Mi página", () => {
     };
     vi.mocked(apiPagina.crearEnlace).mockResolvedValue(wa);
     await montar();
+    abrir("Botón principal");
     fireEvent.click(screen.getByRole("radio", { name: /WhatsApp/ }));
+    // Crear el WhatsApp cierra este popup y abre el del enlace.
     fireEvent.click(screen.getByRole("button", { name: "Agregar mi WhatsApp" }));
     const dialogo = screen.getByRole("dialog");
     fireEvent.change(within(dialogo).getByLabelText("Número"), { target: { value: "70123456" } });
@@ -207,7 +225,7 @@ describe("Mi página", () => {
     fireEvent.click(within(dialogo).getByRole("button", { name: "Guardar" }));
     await act(async () => {});
     expect(apiPagina.crearEnlace).toHaveBeenCalledWith(expect.objectContaining({ tipo: "WHATSAPP", formato: "BOTON" }));
-    expect(screen.getByRole("radio", { name: /WhatsApp/ })).toBeChecked();
+    expect(fila("Botón principal", "WhatsApp · Escribinos por WhatsApp")).toBeInTheDocument();
     expect(within(previa()).getByRole("link", { name: /Escribinos por WhatsApp/ })).toBeInTheDocument();
     expect(within(previa()).queryByText("Reservar turno")).not.toBeInTheDocument();
 
@@ -275,18 +293,17 @@ describe("Mi página", () => {
     expect(within(dialogo).getByText("Ese enlace no es de Instagram")).toBeInTheDocument();
   });
 
-  it("Más formas: popup con al menos 9 formas; la elegida se ve en vivo y se manda al guardar", async () => {
+  it("forma de los botones: a la vista la elegida; en el popup ≥ 9, en vivo y se manda al guardar", async () => {
     await montar();
-    expect(screen.getByRole("button", { name: "Redondeados" })).toHaveAttribute("aria-pressed", "true");
-    fireEvent.click(screen.getByRole("button", { name: "Más formas" }));
+    expect(fila("Forma de los botones", "Redondeados")).toBeInTheDocument();
+    abrir("Forma de los botones");
     const dialogo = screen.getByRole("dialog", { name: "Forma de los botones" });
     expect(within(dialogo).getAllByRole("radio").length).toBeGreaterThanOrEqual(9);
     expect(within(dialogo).getByRole("radio", { name: "Redondeados" })).toHaveAttribute("aria-checked", "true");
 
     fireEvent.click(within(dialogo).getByRole("radio", { name: "Contorno" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Más formas (elegida: Contorno)" })).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByRole("button", { name: "Redondeados" })).toHaveAttribute("aria-pressed", "false");
+    expect(fila("Forma de los botones", "Contorno")).toBeInTheDocument();
     // El botón principal de la vista previa ya es de contorno: blanco con borde de color.
     const reservar = within(previa()).getByText("Reservar turno");
     expect(reservar.style.border).toBe("2px solid rgb(155, 44, 107)");
@@ -298,10 +315,11 @@ describe("Mi página", () => {
     expect(apiPagina.guardar).toHaveBeenCalledWith({ formaBotones: "CONTORNO" });
   });
 
-  it("Más letras: 30 letras agrupadas con el nombre del negocio; carga el catálogo sólo al abrir", async () => {
+  it("letra del nombre: a la vista la elegida; en el popup 30 agrupadas, y el catálogo baja sólo al abrir", async () => {
     await montar();
+    expect(fila("Letra del nombre", "Moderna")).toBeInTheDocument();
     expect(document.getElementById("fuentes-pagina-catalogo")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Más letras" }));
+    abrir("Letra del nombre");
     const dialogo = screen.getByRole("dialog", { name: "Letra del nombre" });
     expect(document.getElementById("fuentes-pagina-catalogo")).not.toBeNull();
     expect(within(dialogo).getAllByRole("radio")).toHaveLength(30);
@@ -312,7 +330,7 @@ describe("Mi página", () => {
 
     fireEvent.click(within(dialogo).getByRole("radio", { name: "Pacifico" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Más letras (elegida: Pacifico)" })).toHaveAttribute("aria-pressed", "true");
+    expect(fila("Letra del nombre", "Pacifico")).toBeInTheDocument();
     expect(within(previa()).getByRole("heading", { name: "Salón Bella Vista" }).style.fontFamily).toContain("Pacifico");
     // La vista previa baja la letra elegida.
     expect(document.getElementById("fuentes-pagina-pacifico")).not.toBeNull();
@@ -326,8 +344,11 @@ describe("Mi página", () => {
   it("anuncio: 10 estilos y colores; avisa si la letra se lee mal y se manda al guardar", async () => {
     await montar();
     // Sin texto no hay nada que estilizar.
-    expect(screen.queryByRole("radiogroup", { name: "Estilo del anuncio" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Diseño del anuncio:/ })).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Anuncio destacado"), { target: { value: "2x1 los martes" } });
+    // A la vista, sólo el diseño elegido; estilos y colores, en el popup.
+    expect(screen.queryByRole("radiogroup", { name: "Estilo del anuncio" })).not.toBeInTheDocument();
+    abrir("Diseño del anuncio");
     const estilos = screen.getByRole("radiogroup", { name: "Estilo del anuncio" });
     expect(within(estilos).getAllByRole("radio")).toHaveLength(10);
     // Por defecto, la franja de siempre.
@@ -353,6 +374,8 @@ describe("Mi página", () => {
     // A mano, en hex (sin el #, como lo copiaría cualquiera).
     fireEvent.change(screen.getByLabelText("Color del anuncio en hex"), { target: { value: "111827" } });
     expect(within(previa()).getByRole("note")).toHaveStyle({ background: "#111827" });
+    fireEvent.click(screen.getByRole("button", { name: "Listo" }));
+    expect(fila("Diseño del anuncio", "Franja llena · colores propios")).toBeInTheDocument();
 
     vi.mocked(apiPagina.guardar).mockResolvedValue(estado());
     fireEvent.click(screen.getByRole("button", { name: "Guardar cambios" }));
@@ -363,13 +386,17 @@ describe("Mi página", () => {
       anuncioColorFondo: "#111827",
       anuncioColorTexto: null,
     });
-  });
+    // Popup con dos paletas de ~45 muestras: con la suite entera en paralelo
+    // pasa los 5 s por defecto.
+  }, 15_000);
 
   it("anuncio con estilo guardado: el editor lo muestra elegido", async () => {
     vi.mocked(apiPagina.estado).mockResolvedValue(
       estado({ anuncioTexto: "Martes 2x1", anuncioEstilo: "MARQUESINA", anuncioColorFondo: "#111827", anuncioColorTexto: "#FFFFFF" }),
     );
     await montar();
+    expect(fila("Diseño del anuncio", "Marquesina · colores propios")).toBeInTheDocument();
+    abrir("Diseño del anuncio");
     expect(screen.getByRole("radio", { name: "Marquesina" })).toHaveAttribute("aria-checked", "true");
     expect(screen.getByRole("radio", { name: "Color de la letra #FFFFFF" })).toHaveAttribute("aria-checked", "true");
     expect(screen.getByLabelText("Color del anuncio en hex")).toHaveValue("#111827");
