@@ -102,6 +102,31 @@ describe("página pública", () => {
     expect(screen.queryByRole("link", { name: "Reservar" })).not.toBeInTheDocument();
   });
 
+  it("en una pantalla ancha se arma en dos columnas, con lo mismo adentro", async () => {
+    // jsdom no tiene medidas: se simula una computadora de 1280 px. El
+    // `clientWidth` de verdad vive en Element.prototype; al terminar se borra
+    // el de HTMLElement y vuelve a valer ese.
+    Object.defineProperty(HTMLElement.prototype, "clientWidth", { configurable: true, get: () => 1280 });
+    try {
+      vi.stubGlobal("fetch", responder(200, PAGINA));
+      await montar();
+      expect(screen.getByTestId("vista-pagina")).toHaveAttribute("data-modo", "escritorio");
+      expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
+      expect(screen.getAllByRole("main")).toHaveLength(1);
+      expect(screen.getByRole("link", { name: /Hacé tu pedido por WhatsApp/ })).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: "Ver el menú" })).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: "Cómo llegar" })).toBeInTheDocument();
+    } finally {
+      delete (HTMLElement.prototype as { clientWidth?: number }).clientWidth;
+    }
+  });
+
+  it("en un celular, una columna", async () => {
+    vi.stubGlobal("fetch", responder(200, PAGINA));
+    await montar();
+    expect(screen.getByTestId("vista-pagina")).toHaveAttribute("data-modo", "movil");
+  });
+
   it("un toque en un enlace avisa el clic por beacon", async () => {
     vi.stubGlobal("fetch", responder(200, PAGINA));
     await montar();
