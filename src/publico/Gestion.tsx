@@ -2,7 +2,19 @@ import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { capitalizar, duracionTexto, fechaLarga, fechaNegocio } from "../lib/agenda/horaAgenda";
 import { apiReserva, ErrorReserva, huecosDelConflicto, type CitaPublica, type EstadoCitaPublica } from "./apiReserva";
-import { Aviso, BotonPrincipal, BotonSecundario, Cabecera, CargandoPublico, Circulo, IconoCalendario, IconoCheck, IconoX, Marco } from "./piezas";
+import {
+  Aviso,
+  BotonPrincipal,
+  BotonSecundario,
+  Cabecera,
+  CargandoPublico,
+  Circulo,
+  IconoCalendario,
+  IconoCheck,
+  IconoX,
+  Marco
+} from "./piezas";
+import { useEscritorio } from "./useEscritorio";
 import { horaCorta, rutaPublica, ultimaReserva, useNegocioPublico } from "./util";
 import SelectorHorario from "./SelectorHorario";
 
@@ -33,6 +45,9 @@ const TONO = {
  * deja confirmar que va, cambiar la hora o cancelar dentro de la ventana.
  * Afuera de la ventana, o con la cita ya terminada, sólo muestra y da el
  * teléfono. Abajo, el pedido de borrado de datos (§8.8).
+ *
+ * En la computadora la cita va a la columna izquierda y las acciones a la
+ * derecha: al cambiar la hora se ve la cita actual al lado de la grilla.
  */
 export default function Gestion() {
   const { sub, datos } = useNegocioPublico();
@@ -44,6 +59,7 @@ export default function Gestion() {
   const [aviso, setAviso] = useState("");
   const [enviando, setEnviando] = useState(false);
   const [modo, setModo] = useState<"ver" | "reprogramar" | "cancelar" | "borrar">("ver");
+  const escritorio = useEscritorio();
 
   useEffect(() => {
     let vigente = true;
@@ -116,33 +132,75 @@ export default function Gestion() {
     sucursalCatalogo?.profesionales.filter((p) => servicioIds.every((id) => p.servicioIds.includes(id))) ?? [];
   const puedeReprogramar = cita.puede.reprogramar && !!sucursalCatalogo;
 
+  const tarjeta = (
+    <section
+      aria-label="Tu cita"
+      className={`flex flex-col gap-2.5 ${escritorio ? "" : "rounded-2xl border border-[#E5E7EB] bg-white p-4"}`}
+    >
+      <div className="flex items-center justify-between">
+        <span className="text-[13px] text-[#6B7280]">Tu cita · {cita.codigo}</span>
+        <span className={`rounded-lg px-2 py-[3px] text-[11px] font-bold ${TONO[etiqueta.tono]}`}>{etiqueta.texto}</span>
+      </div>
+      <strong className="text-lg">
+        {capitalizar(fechaLarga(fechaNegocio(cita.inicio)))} · {horaCorta(cita.inicio)}
+      </strong>
+      <span className="text-sm text-[#374151]">
+        {cita.servicios.map((s) => s.nombre).join(" + ")} · {duracionTexto(duracion)}
+        {cita.profesional ? ` · con ${cita.profesional.nombre}` : ""}
+      </span>
+      <span className="text-sm text-[#374151]">
+        {[cita.sucursal.nombre, cita.sucursal.direccion].filter(Boolean).join(" · ")}
+      </span>
+      <Explicacion cita={cita} />
+    </section>
+  );
+  const dudas = telefono && (
+    <p className={`text-[13px] text-[#6B7280] ${escritorio ? "border-t border-[#F0F1F4] pt-4" : "text-center"}`}>
+      ¿Dudas? Llamá al negocio:{" "}
+      <a href={`tel:${telefono}`} className="underline">
+        {telefono}
+      </a>
+    </p>
+  );
+
   return (
-    <Marco datos={datos} titulo="Mi reserva" fondo="bg-[#F6F7F9]">
-      <Cabecera arriba={cita.negocio.nombre} titulo={cita.primerNombre ? `Hola, ${cita.primerNombre}` : "Tu reserva"} />
-      <div className="flex flex-1 flex-col gap-4 p-5">
-        <section className="flex flex-col gap-2.5 rounded-2xl border border-[#E5E7EB] bg-white p-4">
-          <div className="flex items-center justify-between">
-            <span className="text-[13px] text-[#6B7280]">Tu cita · {cita.codigo}</span>
-            <span className={`rounded-lg px-2 py-[3px] text-[11px] font-bold ${TONO[etiqueta.tono]}`}>{etiqueta.texto}</span>
-          </div>
-          <strong className="text-lg">
-            {capitalizar(fechaLarga(fechaNegocio(cita.inicio)))} · {horaCorta(cita.inicio)}
-          </strong>
-          <span className="text-sm text-[#374151]">
-            {cita.servicios.map((s) => s.nombre).join(" + ")} · {duracionTexto(duracion)}
-            {cita.profesional ? ` · con ${cita.profesional.nombre}` : ""}
-          </span>
-          <span className="text-sm text-[#374151]">
-            {[cita.sucursal.nombre, cita.sucursal.direccion].filter(Boolean).join(" · ")}
-          </span>
-          <Explicacion cita={cita} />
-        </section>
+    <Marco
+      datos={datos}
+      titulo="Mi reserva"
+      fondo="bg-[#F6F7F9]"
+      // La pantalla no tenía h1: el saludo lo es (se ve igual).
+      cabecera={
+        <Cabecera
+          arriba={cita.negocio.nombre}
+          titulo={cita.primerNombre ? `Hola, ${cita.primerNombre}` : "Tu reserva"}
+          principal
+        />
+      }
+      lateral={
+        escritorio ? (
+          <>
+            {tarjeta}
+            {dudas}
+          </>
+        ) : undefined
+      }
+      etiquetaLateral="Tu reserva"
+    >
+      <div className="flex flex-1 flex-col gap-4 p-5 lg:p-8">
+        {!escritorio && tarjeta}
+
+        {/* La cita quedó a la izquierda: sin este título, la derecha arrancaría
+            con botones sueltos. */}
+        {escritorio && modo === "ver" && activa && <h2 className="text-lg font-bold">¿Qué querés hacer?</h2>}
 
         <Aviso tono="info">{aviso}</Aviso>
         <Aviso>{error}</Aviso>
 
         {modo === "ver" && (
-          <>
+          // `contents` en el celular: los botones siguen siendo hijos directos
+          // de la columna, como antes. En la computadora no se estiran a todo
+          // el ancho: con botones de 700 px se pierde cuál es cuál.
+          <div className="contents lg:flex lg:max-w-md lg:flex-col lg:gap-4">
             {cita.puede.confirmar && cita.estado === "RESERVADA" && (
               <BotonPrincipal disabled={enviando} onClick={() => accion(() => apiReserva.confirmar(sub, token), "¡Listo! Le avisamos al negocio que vas.")}>
                 <IconoCheck />
@@ -185,11 +243,11 @@ export default function Gestion() {
                 Hacer otra reserva
               </Link>
             )}
-          </>
+          </div>
         )}
 
         {modo === "cancelar" && (
-          <section className="flex flex-col gap-3 rounded-2xl border border-[#FECACA] bg-white p-4">
+          <section className="flex flex-col gap-3 rounded-2xl border border-[#FECACA] bg-white p-4 lg:max-w-md">
             <p className="text-sm">¿Seguro que querés cancelar? El horario queda libre para otra persona.</p>
             <BotonSecundario
               peligro
@@ -227,14 +285,7 @@ export default function Gestion() {
           />
         )}
 
-        {telefono && (
-          <p className="text-center text-[13px] text-[#6B7280]">
-            ¿Dudas? Llamá al negocio:{" "}
-            <a href={`tel:${telefono}`} className="underline">
-              {telefono}
-            </a>
-          </p>
-        )}
+        {!escritorio && dudas}
 
         <div className="mt-auto border-t border-[#E5E7EB] pt-4 text-center">
           {cita.borradoSolicitado ? (

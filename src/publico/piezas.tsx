@@ -1,11 +1,14 @@
 import { useEffect, type CSSProperties, type ReactNode } from "react";
 import { resolverTema } from "../lib/temas";
+import { useEscritorio } from "./useEscritorio";
 import type { NegocioPublico } from "./apiReserva";
 
 /**
  * Piezas de la página pública de reservas (lienzo aprobado: ReservaServicios,
  * ReservaHorario, ReservaConfirmada y ReservaGestion). Mobile-first: se diseñó
- * a 390 px y en una pantalla grande queda una columna centrada.
+ * a 390 px. En una computadora (desde `lg`, 1024 px) se arma en dos columnas:
+ * a la izquierda el negocio y el resumen, a la derecha el paso actual con más
+ * aire. El celular no cambia.
  *
  * El color es el del NEGOCIO: la paleta que eligió en el panel, aplicada con
  * las mismas variables CSS que usa la app (`bg-primary`, `bg-barra`…) pero
@@ -13,19 +16,36 @@ import type { NegocioPublico } from "./apiReserva";
  * a nada fuera de ella.
  */
 
-
-
-/** El marco con la paleta del negocio. */
+/**
+ * El marco con la paleta del negocio.
+ *
+ * `cabecera` y `lateral` son lo que en la computadora va a la columna de la
+ * izquierda (la tarjeta del negocio y el resumen). En el celular la cabecera
+ * queda arriba, como siempre, y `lateral` no se muestra: cada pantalla ya
+ * tiene su resumen en la barra de abajo o en la cabecera.
+ */
 export function Marco({
   datos,
   titulo,
   children,
   fondo = "bg-white",
+  cabecera,
+  lateral,
+  etiquetaLateral = "Resumen",
+  estirar = true,
 }: {
   datos: NegocioPublico | null;
   titulo?: string;
   children: ReactNode;
   fondo?: string;
+  cabecera?: ReactNode;
+  lateral?: ReactNode;
+  etiquetaLateral?: string;
+  /**
+   * En la computadora, la tarjeta de la derecha llega hasta abajo (para la
+   * barra pegada de los pasos). Con poco contenido, mejor que mida lo suyo.
+   */
+  estirar?: boolean;
 }) {
   const tema = resolverTema({ tipoNegocio: datos?.negocio.rubro, tema: datos?.negocio.tema ?? null });
   const variables = {
@@ -47,10 +67,67 @@ export function Marco({
     document.title = [titulo, nombre].filter(Boolean).join(" · ") || "Reservas";
   }, [titulo, datos?.negocio.nombre]);
   useMetaReserva(datos?.negocio.nombre ?? null);
+  const escritorio = useEscritorio();
 
+  // Computadora: dos tarjetas sobre gris. La de la izquierda queda fija al
+  // bajar (el resumen siempre a la vista) y, si no entra, se desplaza sola.
+  // Sin nada para la izquierda (un error, el 404), una sola tarjeta centrada:
+  // media pantalla vacía parece rota.
+  //
+  // Los dos armados tienen el mismo árbol (contenedor > [aside?, main >
+  // contenido]) y sólo cambian las clases: si no, al girar una tablet o
+  // achicar la ventana React volvería a montar el paso y se perderían el día
+  // a la vista, la verificación anti-robots o el horario a medio cambiar.
+  const conLateral = escritorio && !!(cabecera || lateral);
   return (
-    <div style={variables} className={`min-h-dvh ${fondo} font-sans text-[#1F2937]`}>
-      <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col">{children}</div>
+    <div
+      style={variables}
+      data-modo={escritorio ? "escritorio" : "movil"}
+      className={`min-h-dvh font-sans text-[#1F2937] ${escritorio ? "bg-[#F6F7F9]" : fondo}`}
+    >
+      <div
+        className={
+          !escritorio
+            ? "mx-auto flex min-h-dvh w-full max-w-md flex-col"
+            : `mx-auto grid w-full items-start gap-8 px-8 py-10 ${
+                conLateral ? "max-w-6xl grid-cols-[minmax(0,360px)_minmax(0,1fr)]" : "max-w-xl"
+              }`
+        }
+      >
+        {conLateral && (
+          <aside
+            aria-label={etiquetaLateral}
+            className="sticky top-10 flex max-h-[calc(100dvh-5rem)] flex-col overflow-y-auto rounded-2xl border border-[#E5E7EB] bg-white shadow-sm"
+          >
+            {cabecera}
+            {lateral && <div className="flex flex-col gap-4 p-6">{lateral}</div>}
+          </aside>
+        )}
+        {/* `overflow-clip` y no `hidden`: recorta las esquinas sin volverse
+            contenedor de scroll, así la barra de abajo sigue pegada a la ventana. */}
+        <main
+          className={
+            !escritorio
+              ? "flex flex-1 flex-col"
+              : `flex min-w-0 flex-col overflow-clip rounded-2xl border border-[#E5E7EB] bg-white shadow-sm ${
+                  estirar ? "min-h-[min(640px,calc(100dvh-5rem))]" : ""
+                }`
+          }
+        >
+          {!escritorio && cabecera}
+          {children}
+        </main>
+      </div>
+    </div>
+  );
+}
+
+/** Una fila del resumen de la columna izquierda (computadora). */
+export function FilaResumen({ etiqueta, children }: { etiqueta: string; children: ReactNode }) {
+  return (
+    <div className="flex flex-col gap-0.5">
+      <span className="text-xs text-[#6B7280]">{etiqueta}</span>
+      <span className="text-sm text-[#1F2937]">{children}</span>
     </div>
   );
 }
@@ -101,7 +178,7 @@ export function Cabecera({
 }) {
   const Titulo = principal ? "h1" : "strong";
   return (
-    <header className="flex flex-col gap-1.5 bg-barra px-5 pb-[18px] pt-5 text-white">
+    <header className="flex flex-col gap-1.5 bg-barra px-5 pb-[18px] pt-5 text-white lg:px-6 lg:pb-6 lg:pt-7">
       {arriba && <span className="text-xs opacity-85">{arriba}</span>}
       <Titulo className="text-[22px] font-bold leading-tight">{titulo}</Titulo>
       {abajo && <span className="text-[13px] opacity-90">{abajo}</span>}
@@ -116,7 +193,7 @@ export function Cabecera({
  */
 export function Pasos({ hechos, total = 2 }: { hechos: number; total?: number }) {
   return (
-    <nav aria-label={`Paso ${hechos} de ${total}`} className="flex gap-1.5 px-5 pb-1.5 pt-3.5">
+    <nav aria-label={`Paso ${hechos} de ${total}`} className="flex gap-1.5 px-5 pb-1.5 pt-3.5 lg:px-8 lg:pt-6">
       {Array.from({ length: total }, (_, k) => k + 1).map((i) => (
         <span key={i} className={`h-1 flex-1 rounded ${i <= hechos ? "bg-primary-boton" : "bg-[#E5E7EB]"}`} />
       ))}

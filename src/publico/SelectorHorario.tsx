@@ -20,6 +20,10 @@ const DIAS_POR_PAGINA = 7;
  *
  * Nunca muestra quién tiene las otras citas: el backend sólo manda inicios
  * libres. Los días sin lugar se ven tachados para que nadie los toque de más.
+ *
+ * En la computadora (`lg:`) los profesionales bajan de renglón en vez de
+ * deslizarse (con mouse no hay gesto para eso), los días son más altos y las
+ * horas van de a seis por fila.
  */
 export default function SelectorHorario({
   sub,
@@ -107,7 +111,7 @@ export default function SelectorHorario({
       {profesionales.length > 0 && (
         <section className="flex flex-col gap-2.5" aria-label="Con quién">
           <h2 className="text-lg font-bold">¿Con quién?</h2>
-          <div className="-mx-5 flex gap-2 overflow-x-auto px-5 pb-1">
+          <div className="-mx-5 flex gap-2 overflow-x-auto px-5 pb-1 lg:mx-0 lg:flex-wrap lg:overflow-visible lg:px-0">
             <ChipProfesional
               nombre="Cualquiera"
               iniciales="★"
@@ -148,7 +152,7 @@ export default function SelectorHorario({
             Buscando horarios libres…
           </p>
         ) : (
-          <div className="grid grid-cols-7 gap-1.5">
+          <div className="grid grid-cols-7 gap-1.5 lg:gap-2.5">
             {(dias ?? []).map((d) => {
               const lleno = d.inicios.length === 0;
               const elegido = d.fecha === fecha;
@@ -161,16 +165,16 @@ export default function SelectorHorario({
                   aria-pressed={elegido}
                   aria-label={`${capitalizar(fechaLarga(d.fecha))}${lleno ? ", sin lugar" : ""}`}
                   onClick={() => setFecha(d.fecha)}
-                  className={`flex h-[58px] flex-col items-center justify-center gap-0.5 rounded-xl text-[#374151] ${
+                  className={`flex h-[58px] flex-col items-center justify-center gap-0.5 rounded-xl text-[#374151] lg:h-[72px] ${
                     elegido
                       ? "bg-primary-boton text-white"
                       : lleno
                         ? "border border-[#F0F1F4] bg-[#F9FAFB] text-[#9CA3AF] line-through"
-                        : "border border-[#E5E7EB] bg-white"
+                        : "border border-[#E5E7EB] bg-white lg:hover:bg-[#F9FAFB]"
                   }`}
                 >
-                  <span className="text-[11px]">{diaCorto(d.fecha)}</span>
-                  <strong className="text-[15px]">{Number(num)}</strong>
+                  <span className="text-[11px] lg:text-xs">{diaCorto(d.fecha)}</span>
+                  <strong className="text-[15px] lg:text-lg">{Number(num)}</strong>
                 </button>
               );
             })}
@@ -199,7 +203,7 @@ export default function SelectorHorario({
           (horas as string[]).length ? (
             <div key={titulo as string} className="flex flex-col gap-2">
               <h3 className="mt-1 text-xs tracking-[0.06em] text-[#6B7280]">{titulo as string}</h3>
-              <div className="grid grid-cols-4 gap-2">
+              <div className="grid grid-cols-4 gap-2 lg:grid-cols-6">
                 {(horas as string[]).map((iso) => {
                   const elegida = iso === inicio;
                   return (
@@ -209,7 +213,9 @@ export default function SelectorHorario({
                       aria-pressed={elegida}
                       onClick={() => onInicio(iso)}
                       className={`h-11 rounded-[10px] text-sm ${
-                        elegida ? "bg-primary-boton font-bold text-white" : "border border-[#E5E7EB] bg-white text-[#374151]"
+                        elegida
+                          ? "bg-primary-boton font-bold text-white"
+                          : "border border-[#E5E7EB] bg-white text-[#374151] lg:hover:bg-[#F9FAFB]"
                       }`}
                     >
                       {horaCorta(iso)}
@@ -242,7 +248,9 @@ function ChipProfesional({
       aria-pressed={elegido}
       onClick={onClick}
       className={`flex min-w-[76px] flex-none flex-col items-center gap-1.5 rounded-[14px] px-2 py-2.5 ${
-        elegido ? "border-2 border-primary bg-primary-50 text-primary-700" : "border border-[#E5E7EB] bg-white text-[#374151]"
+        elegido
+          ? "border-2 border-primary bg-primary-50 text-primary-700"
+          : "border border-[#E5E7EB] bg-white text-[#374151] lg:hover:bg-[#F9FAFB]"
       }`}
     >
       <span

@@ -4,9 +4,10 @@ import { cargarFuentesPagina, paleta } from "../../lib/pagina/aspecto";
 import { contactoDe } from "../../lib/pagina/contacto";
 import { urlPaginaDe } from "../../lib/pagina/rutas";
 import { usePaginaPublica } from "../../lib/pagina/usePaginaPublica";
+import { useCoincideMedia } from "../../lib/useCoincideMedia";
 import PoliticaNegocio from "../../publico/PoliticaNegocio";
 import { NoDisponible } from "./PaginaPublica";
-import { MarcaBamarDev } from "./VistaPagina";
+import { ANCHO_ESCRITORIO, MarcaBamarDev } from "./VistaPagina";
 
 /**
  * `/p/:subdominio/privacidad`: la política para el cliente del negocio. Es el
@@ -16,9 +17,13 @@ import { MarcaBamarDev } from "./VistaPagina";
  * `siNoHay`: lo que se muestra si la página no está publicada. En el host
  * link, `/<sub>/privacidad` es de la página y de la reserva a la vez, y un
  * negocio puede tener sólo la reserva (ver RutasLink.tsx).
+ *
+ * En la computadora no se parte en columnas (es un texto para leer de
+ * corrido): la hoja se ensancha hasta un largo de renglón cómodo y gana aire.
  */
 export default function PrivacidadNegocio({ siNoHay }: { siNoHay?: ReactNode }) {
   const { subdominio } = useParams();
+  const escritorio = useCoincideMedia(`(min-width: ${ANCHO_ESCRITORIO}px)`);
   const { pagina, error } = usePaginaPublica(subdominio);
   useEffect(cargarFuentesPagina, []);
   if (error) return siNoHay ?? <NoDisponible mensaje={error} />;
@@ -27,15 +32,22 @@ export default function PrivacidadNegocio({ siNoHay }: { siNoHay?: ReactNode }) 
   const contacto = contactoDe(pagina);
   const n = pagina.nombre;
   return (
-    <div style={{ minHeight: "100dvh", background: "#F6F7F9", fontFamily: "Roboto, system-ui, sans-serif", padding: 16 }}>
+    <div
+      style={{
+        minHeight: "100dvh",
+        background: "#F6F7F9",
+        fontFamily: "Roboto, system-ui, sans-serif",
+        padding: escritorio ? "48px 32px" : 16,
+      }}
+    >
       <article
         style={{
-          maxWidth: 560,
+          maxWidth: escritorio ? 760 : 560,
           margin: "0 auto",
           background: "#ffffff",
           border: "1px solid #E5E7EB",
-          borderRadius: 16,
-          padding: 24,
+          borderRadius: escritorio ? 20 : 16,
+          padding: escritorio ? "36px 48px" : 24,
           color: "#1F2937",
           lineHeight: 1.55,
         }}
@@ -43,7 +55,7 @@ export default function PrivacidadNegocio({ siNoHay }: { siNoHay?: ReactNode }) 
         <Link to={urlPaginaDe(pagina.subdominio)} style={{ fontSize: 14, color: c.oscuro, fontWeight: 500 }}>
           ← Volver a {n}
         </Link>
-        <h1 style={{ fontSize: 22, margin: "14px 0 12px" }}>Tus datos en {n}</h1>
+        <h1 style={{ fontSize: escritorio ? 28 : 22, margin: "14px 0 12px" }}>Tus datos en {n}</h1>
         <div style={{ fontSize: 15 }}>
           <PoliticaNegocio negocio={n} contacto={contacto} colorEnlace={c.oscuro} />
         </div>

@@ -1,11 +1,12 @@
 import { useEffect } from "react";
 import { useParams } from "react-router-dom";
+import { useCoincideMedia } from "../../lib/useCoincideMedia";
 import { avisarClic } from "../../lib/pagina/apiPagina";
 import { urlPrivacidadDe, urlReservaDe } from "../../lib/pagina/rutas";
 import { usePaginaPublica } from "../../lib/pagina/usePaginaPublica";
 import { cargarFuentesPagina } from "../../lib/pagina/aspecto";
 import type { PaginaPublica as Pagina } from "../../lib/pagina/tipos";
-import VistaPagina, { MarcaBamarDev } from "./VistaPagina";
+import VistaPagina, { ANCHO_ESCRITORIO, MarcaBamarDev } from "./VistaPagina";
 
 
 /**
@@ -78,7 +79,46 @@ export function NoDisponible({ mensaje = "Esta página no está disponible" }: {
   );
 }
 
+/**
+ * El esqueleto con la forma de la página que viene: en la computadora, la
+ * portada a todo el ancho y la tarjeta del negocio a la izquierda (como
+ * `VistaPagina`), así no salta de una columna a dos al terminar de cargar.
+ */
 function Cargando() {
+  const escritorio = useCoincideMedia(`(min-width: ${ANCHO_ESCRITORIO}px)`);
+  if (escritorio) {
+    return (
+      <div style={{ minHeight: "100dvh", background: "#F6F7F9" }} aria-busy="true" aria-label="Cargando">
+        <div style={{ height: 300, background: "#E5E7EB" }} />
+        <div
+          style={{
+            maxWidth: 1120,
+            margin: "0 auto",
+            padding: "0 32px",
+            display: "grid",
+            gridTemplateColumns: "340px minmax(0, 1fr)",
+            gap: 32,
+            alignItems: "start",
+          }}
+        >
+          <div
+            style={{
+              marginTop: -110,
+              height: 380,
+              background: "#ffffff",
+              border: "1px solid #E5E7EB",
+              borderRadius: 20,
+            }}
+          />
+          <div style={{ paddingTop: 28, display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
+            {[0, 1, 2, 3].map((i) => (
+              <div key={i} style={{ height: 64, background: "#E5E7EB", borderRadius: 14 }} />
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
   return (
     <div style={{ minHeight: "100dvh", background: "#F6F7F9" }} aria-busy="true" aria-label="Cargando">
       <div style={{ maxWidth: 480, margin: "0 auto" }}>
