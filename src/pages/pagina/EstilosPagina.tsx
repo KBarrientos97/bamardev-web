@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties } from "react";
+import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { Icon } from "../../components/Icon";
 import { Boton, Modal } from "../../components/ui";
 import { ICONO_BOTON, ICONO_RESERVAR, type Paleta } from "../../lib/pagina/aspecto";
@@ -12,38 +12,30 @@ import {
   estiloBotones,
   estiloLetra,
   FORMAS,
-  FORMAS_A_LA_VISTA,
   GRIS_PAGINA,
   GRUPOS_LETRA,
   HEX_COLOR,
   letraTitulo,
   LETRAS,
-  LETRAS_A_LA_VISTA,
   nombreForma,
 } from "../../lib/pagina/estilos";
 import type { AjustesPagina, CambiosPagina, FormaBotones, Muestra, Tipografia } from "../../lib/pagina/tipos";
 import { AnuncioPagina, Trazo } from "./VistaPagina";
 
 /**
- * Los selectores de la apariencia de "Mi página" (08-oct): forma de los
- * botones y letra del nombre (tres a la vista y el resto en un popup, cada
- * opción con su muestra real) y el estilo y los colores del anuncio.
+ * Los selectores de la apariencia de "Mi página" (08-oct): color, forma de
+ * los botones, letra del nombre y diseño del anuncio.
+ *
+ * Pedido del dueño de BamarDev: la pantalla muestra SÓLO lo elegido, en una
+ * fila con "Cambiar"; las opciones (y sus combinaciones de color) viven en un
+ * popup. Con todas las opciones a la vista la pantalla se llenaba de botones
+ * y colores y no se entendía.
  *
  * Todo va al borrador del editor: la vista previa lo muestra al instante y se
  * manda con "Guardar cambios".
  */
 
-/** El botón de una opción a la vista, marcado con el color de la página. */
-function estiloOpcion(elegida: boolean, c: Paleta): CSSProperties {
-  return {
-    border: elegida ? `2px solid ${c.acento}` : "1px solid #E5E7EB",
-    background: elegida ? c.tinte : "#ffffff",
-    color: elegida ? c.oscuro : "#374151",
-    fontWeight: elegida ? 600 : 400,
-  };
-}
-
-/** La tarjeta de una opción del popup. */
+/** La tarjeta de una opción del popup, marcada con el color de la página. */
 function estiloTarjeta(elegida: boolean, c: Paleta): CSSProperties {
   return {
     border: elegida ? `2px solid ${c.acento}` : "1px solid #E5E7EB",
@@ -51,38 +43,143 @@ function estiloTarjeta(elegida: boolean, c: Paleta): CSSProperties {
   };
 }
 
-function Etiqueta({ children }: { children: React.ReactNode }) {
+function Etiqueta({ children }: { children: ReactNode }) {
   return <span className="block text-[13px] font-semibold text-texto-2">{children}</span>;
 }
 
+/**
+ * Lo elegido, en una fila: su muestra, su nombre y "Cambiar". Es el único
+ * control a la vista; tocarlo abre el popup.
+ */
+export function FilaEleccion({
+  etiqueta,
+  resumen,
+  muestra,
+  onAbrir,
+}: {
+  etiqueta: string;
+  resumen: string;
+  muestra: ReactNode;
+  onAbrir: () => void;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <Etiqueta>{etiqueta}</Etiqueta>
+      <button
+        type="button"
+        aria-haspopup="dialog"
+        aria-label={`${etiqueta}: ${resumen}. Cambiar`}
+        onClick={onAbrir}
+        className="flex min-h-14 w-full items-center gap-3 rounded-xl border border-borde bg-white px-3 py-2 text-left transition-colors hover:bg-muted"
+      >
+        <span className="flex min-w-0 shrink-0 items-center" aria-hidden="true">
+          {muestra}
+        </span>
+        <span className="min-w-0 flex-1 truncate text-sm font-semibold text-texto">{resumen}</span>
+        <span className="flex shrink-0 items-center gap-0.5 text-[13px] font-semibold text-texto-3">
+          Cambiar
+          <Icon name="chevronRight" size={15} />
+        </span>
+      </button>
+    </div>
+  );
+}
+
+// ── Color de la página ─────────────────────────────────────────────────────
+
+export function SelectorColorPagina({
+  valor,
+  muestras,
+  onCambio,
+}: {
+  valor: string;
+  muestras: Muestra[];
+  onCambio: (clave: string) => void;
+}) {
+  const [abierto, setAbierto] = useState(false);
+  const actual = muestras.find((m) => m.clave === valor) ?? muestras[0];
+  return (
+    <>
+      <FilaEleccion
+        etiqueta="Color de la página"
+        resumen={actual?.nombre ?? ""}
+        muestra={<span className="block h-8 w-8 rounded-full" style={{ background: actual?.hex, boxShadow: "0 0 0 1px #E5E7EB" }} />}
+        onAbrir={() => setAbierto(true)}
+      />
+      <Modal
+        abierto={abierto}
+        titulo="Color de la página"
+        subtitulo={`${muestras.length} colores, todos probados para que el texto blanco se lea bien.`}
+        onClose={() => setAbierto(false)}
+        ancho="max-w-2xl"
+      >
+        <div role="radiogroup" aria-label="Colores de la página" className="grid grid-cols-4 gap-2 sm:grid-cols-6">
+          {muestras.map((m) => {
+            const elegido = m.clave === valor;
+            return (
+              <button
+                key={m.clave}
+                type="button"
+                role="radio"
+                aria-checked={elegido}
+                aria-label={`Color ${m.nombre}`}
+                onClick={() => {
+                  onCambio(m.clave);
+                  setAbierto(false);
+                }}
+                className="flex flex-col items-center gap-1.5 rounded-xl p-1.5 hover:bg-muted"
+              >
+                <span
+                  className="block h-11 w-11 rounded-full"
+                  style={{
+                    background: m.hex,
+                    border: `3px solid ${elegido ? "#1F2937" : "#ffffff"}`,
+                    boxShadow: "0 0 0 1px #E5E7EB",
+                  }}
+                />
+                <span className={`text-[11px] ${elegido ? "font-bold text-texto" : "text-texto-3"}`}>{m.nombre}</span>
+              </button>
+            );
+          })}
+        </div>
+      </Modal>
+    </>
+  );
+}
+
 // ── Forma de los botones ───────────────────────────────────────────────────
+
+/** El botón principal de verdad, en chico. */
+function MiniPrincipal({ forma, c, ancho }: { forma: string; c: Paleta; ancho?: number }) {
+  const b = estiloBotones(forma, c);
+  return (
+    <span
+      style={{
+        minHeight: 32,
+        width: ancho,
+        boxSizing: "border-box",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 6,
+        fontSize: 12,
+        fontWeight: 700,
+        padding: "0 10px",
+        ...b.principal.estilo,
+      }}
+    >
+      <Trazo d={ICONO_RESERVAR} color={b.principal.icono} size={14} ancho={2} />
+      Reservar
+    </span>
+  );
+}
 
 /** El botón principal y uno secundario de verdad, en chico, sobre el gris de la página. */
 function MiniBotones({ forma, c }: { forma: string; c: Paleta }) {
   const b = estiloBotones(forma, c);
   return (
-    <span
-      aria-hidden="true"
-      className="flex flex-col gap-2 rounded-lg p-2.5"
-      style={{ background: GRIS_PAGINA.fondo }}
-    >
-      <span
-        style={{
-          minHeight: 34,
-          boxSizing: "border-box",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          gap: 6,
-          fontSize: 12,
-          fontWeight: 700,
-          padding: "0 10px",
-          ...b.principal.estilo,
-        }}
-      >
-        <Trazo d={ICONO_RESERVAR} color={b.principal.icono} size={14} ancho={2} />
-        Reservar
-      </span>
+    <span aria-hidden="true" className="flex flex-col gap-2 rounded-lg p-2.5" style={{ background: GRIS_PAGINA.fondo }}>
+      <MiniPrincipal forma={forma} c={c} />
       <span
         style={{
           minHeight: 30,
@@ -112,36 +209,18 @@ export function SelectorForma({
   onCambio: (f: FormaBotones) => void;
 }) {
   const [abierto, setAbierto] = useState(false);
-  const extra = !FORMAS_A_LA_VISTA.includes(valor as FormaBotones);
   return (
-    <div className="space-y-2">
-      <Etiqueta>Forma de los botones</Etiqueta>
-      <div className="flex flex-wrap gap-1.5">
-        {FORMAS_A_LA_VISTA.map((f) => (
-          <button
-            key={f}
-            type="button"
-            aria-pressed={valor === f}
-            onClick={() => onCambio(f)}
-            className="h-10 min-w-[92px] flex-1 text-[13px]"
-            style={{ ...estiloOpcion(valor === f, c), borderRadius: estiloBotones(f, c).principal.estilo.borderRadius }}
-          >
-            {nombreForma(f)}
-          </button>
-        ))}
-        <button
-          type="button"
-          aria-haspopup="dialog"
-          aria-pressed={extra}
-          aria-label={extra ? `Más formas (elegida: ${nombreForma(valor)})` : "Más formas"}
-          onClick={() => setAbierto(true)}
-          className="flex h-10 min-w-[92px] flex-1 items-center justify-center gap-1 rounded-[10px] px-2 text-[13px]"
-          style={estiloOpcion(extra, c)}
-        >
-          {extra ? nombreForma(valor) : "Más formas"}
-          <Icon name="chevronRight" size={14} />
-        </button>
-      </div>
+    <>
+      <FilaEleccion
+        etiqueta="Forma de los botones"
+        resumen={nombreForma(valor)}
+        muestra={
+          <span className="block rounded-lg p-1.5" style={{ background: GRIS_PAGINA.fondo }}>
+            <MiniPrincipal forma={valor} c={c} ancho={104} />
+          </span>
+        }
+        onAbrir={() => setAbierto(true)}
+      />
       <Modal
         abierto={abierto}
         titulo="Forma de los botones"
@@ -176,7 +255,7 @@ export function SelectorForma({
           })}
         </div>
       </Modal>
-    </div>
+    </>
   );
 }
 
@@ -195,54 +274,28 @@ export function SelectorLetra({
   onCambio: (t: Tipografia) => void;
 }) {
   const [abierto, setAbierto] = useState(false);
-  const extra = !LETRAS_A_LA_VISTA.includes(valor as Tipografia);
-  // Las tres de la vista y la elegida (para la vista previa); las 30, sólo
-  // cuando se abre el popup.
-  useEffect(() => {
-    for (const t of LETRAS_A_LA_VISTA) cargarFuentesPagina(t);
-  }, []);
+  // A la vista sólo la elegida; las 30, recién al abrir el popup.
   useEffect(() => cargarFuentesPagina(valor), [valor]);
   useEffect(() => {
     if (abierto) cargarCatalogoLetras();
   }, [abierto]);
+  const l = letraTitulo(valor);
 
   return (
-    <div className="space-y-2">
-      <Etiqueta>Letra del nombre</Etiqueta>
-      <div className="flex flex-wrap gap-1.5">
-        {LETRAS_A_LA_VISTA.map((t) => {
-          const l = letraTitulo(t);
-          return (
-            <button
-              key={t}
-              type="button"
-              aria-pressed={valor === t}
-              onClick={() => onCambio(t)}
-              className="h-10 min-w-[92px] flex-1 rounded-[10px] text-sm"
-              style={{
-                ...estiloOpcion(valor === t, c),
-                fontFamily: l.familia,
-                textTransform: l.mayusculas ? "uppercase" : undefined,
-                fontWeight: valor === t ? 700 : 400,
-              }}
-            >
-              {l.nombre}
-            </button>
-          );
-        })}
-        <button
-          type="button"
-          aria-haspopup="dialog"
-          aria-pressed={extra}
-          aria-label={extra ? `Más letras (elegida: ${letraTitulo(valor).nombre})` : "Más letras"}
-          onClick={() => setAbierto(true)}
-          className="flex h-10 min-w-[92px] flex-1 items-center justify-center gap-1 rounded-[10px] px-2 text-sm"
-          style={{ ...estiloOpcion(extra, c), ...(extra ? { fontFamily: letraTitulo(valor).familia } : {}) }}
-        >
-          {extra ? letraTitulo(valor).nombre : "Más letras"}
-          <Icon name="chevronRight" size={14} />
-        </button>
-      </div>
+    <>
+      <FilaEleccion
+        etiqueta="Letra del nombre"
+        resumen={l.nombre}
+        muestra={
+          <span
+            className="flex h-10 min-w-12 items-center justify-center rounded-lg px-2"
+            style={{ ...estiloLetra(l, 20), background: GRIS_PAGINA.fondo, color: GRIS_PAGINA.texto }}
+          >
+            Aa
+          </span>
+        }
+        onAbrir={() => setAbierto(true)}
+      />
       <Modal
         abierto={abierto}
         titulo="Letra del nombre"
@@ -255,17 +308,17 @@ export function SelectorLetra({
             <section key={g}>
               <h3 className="mb-2 text-xs font-bold uppercase tracking-wide text-texto-3">{g}</h3>
               <div role="radiogroup" aria-label={`Letras ${g.toLowerCase()}`} className="grid gap-2 sm:grid-cols-2">
-                {LETRAS.filter((l) => l.grupo === g).map((l) => {
-                  const elegida = valor === l.clave;
+                {LETRAS.filter((x) => x.grupo === g).map((x) => {
+                  const elegida = valor === x.clave;
                   return (
                     <button
-                      key={l.clave}
+                      key={x.clave}
                       type="button"
                       role="radio"
                       aria-checked={elegida}
-                      aria-label={l.nombre}
+                      aria-label={x.nombre}
                       onClick={() => {
-                        onCambio(l.clave);
+                        onCambio(x.clave);
                         setAbierto(false);
                       }}
                       className="flex min-w-0 flex-col gap-0.5 rounded-xl bg-white px-3 py-2.5 text-left transition-shadow hover:shadow-md"
@@ -273,11 +326,11 @@ export function SelectorLetra({
                     >
                       <span
                         className="block truncate"
-                        style={{ ...estiloLetra(l, 21), color: GRIS_PAGINA.texto, lineHeight: 1.3 }}
+                        style={{ ...estiloLetra(x, 21), color: GRIS_PAGINA.texto, lineHeight: 1.3 }}
                       >
                         {nombre}
                       </span>
-                      <span className="text-[11px] text-texto-3">{l.nombre}</span>
+                      <span className="text-[11px] text-texto-3">{x.nombre}</span>
                     </button>
                   );
                 })}
@@ -286,13 +339,35 @@ export function SelectorLetra({
           ))}
         </div>
       </Modal>
-    </div>
+    </>
   );
 }
 
 // ── Anuncio destacado ──────────────────────────────────────────────────────
 
 const unico = (xs: string[]) => [...new Set(xs.map((x) => x.toUpperCase()))];
+
+/**
+ * Los claros para el fondo del anuncio (los colores de la página son todos
+ * oscuros: sirven para la letra o para un anuncio lleno).
+ */
+const CLAROS = [
+  "#FFFFFF",
+  "#FFFBEB",
+  "#FEF3C7",
+  "#FDE047",
+  "#FFEDD5",
+  "#FFE4E6",
+  "#FCE7F3",
+  "#F3E8FF",
+  "#E0E7FF",
+  "#DBEAFE",
+  "#CFFAFE",
+  "#D1FAE5",
+  "#ECFCCB",
+  "#F5F5F4",
+  "#E5E7EB",
+];
 
 /** Muestras + selector del navegador + hex a mano. null = automático. */
 function SelectorColor({
@@ -329,7 +404,7 @@ function SelectorColor({
           aria-label={`${etiqueta}: automático`}
           title="Automático"
           onClick={() => onCambio(null)}
-          className="flex h-8 items-center rounded-full px-2.5 text-[11px] font-semibold text-texto-2"
+          className="flex h-7 items-center rounded-full px-2.5 text-[11px] font-semibold text-texto-2"
           style={{ ...circulo(actual === null), background: "#ffffff" }}
         >
           Auto
@@ -343,7 +418,7 @@ function SelectorColor({
             aria-label={`${etiqueta} ${m}`}
             title={m}
             onClick={() => onCambio(m)}
-            className="h-8 w-8 rounded-full"
+            className="h-7 w-7 rounded-full"
             style={{ ...circulo(actual === m), background: m }}
           />
         ))}
@@ -384,9 +459,10 @@ const AYUDA_COLOR: Record<string, string> = {
 };
 
 /**
- * Estilo y colores del anuncio, con el aviso de contraste. No bloquea: si el
- * dueño quiere una letra que se lee mal, se le avisa claro y se le ofrece
- * volver a lo automático.
+ * Diseño del anuncio: a la vista, el anuncio como va a salir; en el popup, el
+ * estilo, los dos colores y el aviso de contraste. No bloquea: si el dueño
+ * quiere una letra que se lee mal, se le avisa claro y se le ofrece volver a
+ * lo automático.
  */
 export function EditorAnuncio({
   ajustes,
@@ -399,6 +475,7 @@ export function EditorAnuncio({
   muestras: Muestra[];
   cambiar: (cambios: CambiosPagina) => void;
 }) {
+  const [abierto, setAbierto] = useState(false);
   const estilo = ajustes.anuncioEstilo ?? "SUAVE";
   const fondo = ajustes.anuncioColorFondo ?? null;
   const texto = ajustes.anuncioColorTexto ?? null;
@@ -406,92 +483,124 @@ export function EditorAnuncio({
   const bajo = k.contraste < CONTRASTE_MINIMO;
   const deLaPagina = muestras.map((m) => m.hex);
   const ratio = k.contraste.toFixed(1).replace(".", ",");
+  const nombreEstilo = ESTILOS_ANUNCIO.find((x) => x.clave === estilo)?.nombre ?? "Franja suave";
+  const automatico = !fondo && !texto;
+  const textoMuestra = ajustes.anuncioTexto?.trim() || "¡2x1 hoy!";
+  const anuncio = (est: string) => ({ texto: textoMuestra, url: null, estilo: est, colorFondo: fondo, colorTexto: texto });
 
   return (
-    <div className="space-y-4 rounded-xl border border-borde-soft p-3">
-      <div className="space-y-2">
-        <Etiqueta>Estilo del anuncio</Etiqueta>
-        <div role="radiogroup" aria-label="Estilo del anuncio" className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
-          {ESTILOS_ANUNCIO.map((x) => {
-            const elegido = estilo === x.clave;
-            return (
-              <button
-                key={x.clave}
-                type="button"
-                role="radio"
-                aria-checked={elegido}
-                aria-label={x.nombre}
-                onClick={() => cambiar({ anuncioEstilo: x.clave })}
-                className="flex min-w-0 flex-col gap-1.5 rounded-xl bg-white p-1.5 text-left"
-                style={estiloTarjeta(elegido, c)}
-              >
-                <span
-                  aria-hidden="true"
-                  className="pointer-events-none block overflow-hidden rounded-lg p-1.5"
-                  style={{ background: GRIS_PAGINA.fondo, whiteSpace: "nowrap" }}
-                >
-                  <AnuncioPagina
-                    anuncio={{ texto: "¡2x1 hoy!", url: null, estilo: x.clave, colorFondo: fondo, colorTexto: texto }}
-                    paleta={c}
-                    estatico
-                  />
-                </span>
-                <span className="px-1 text-[12px] font-semibold text-texto">{x.nombre}</span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      <div className="grid gap-4 sm:grid-cols-2">
-        <SelectorColor
-          etiqueta="Color del anuncio"
-          ayuda={colorEsFondo(estilo) ? "El fondo del anuncio." : AYUDA_COLOR[estilo]}
-          valor={fondo}
-          automatico={k.color}
-          muestras={unico(["#FFFBEB", "#FEF3C7", "#FDE047", "#FFFFFF", "#111827", ...deLaPagina])}
-          onCambio={(hex) => cambiar({ anuncioColorFondo: hex })}
-        />
-        <SelectorColor
-          etiqueta="Color de la letra"
-          ayuda="Elegí uno que se lea bien sobre el anuncio."
-          valor={texto}
-          automatico={k.texto}
-          muestras={unico(["#FFFFFF", "#111827", "#78350F", c.oscuro, ...deLaPagina])}
-          onCambio={(hex) => cambiar({ anuncioColorTexto: hex })}
-        />
-      </div>
-
-      {bajo ? (
-        <div role="alert" className="flex flex-wrap items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
-          <Icon name="alert" size={18} />
-          <span className="min-w-0 flex-[1_1_240px]">
-            <strong>La letra se va a leer mal.</strong> El contraste es de {ratio} a 1 y lo mínimo recomendado es 4,5 a 1:
-            mucha gente (y cualquiera al sol) no va a poder leer tu anuncio.
-          </span>
-          <Boton
-            variante="ghost"
-            className="!px-3 !py-1.5 text-[13px]"
-            onClick={() => cambiar({ anuncioColorFondo: null, anuncioColorTexto: null })}
+    <>
+      <FilaEleccion
+        etiqueta="Diseño del anuncio"
+        resumen={`${nombreEstilo} · ${automatico ? "colores automáticos" : "colores propios"}${bajo ? " · se lee mal" : ""}`}
+        muestra={
+          <span
+            className="pointer-events-none block w-36 overflow-hidden rounded-lg p-1 sm:w-48"
+            style={{ background: GRIS_PAGINA.fondo, whiteSpace: "nowrap" }}
           >
-            Usar automático
-          </Boton>
-        </div>
-      ) : (
-        <div className="flex flex-wrap items-center gap-2 text-xs text-texto-3">
-          <span>Contraste {ratio} a 1: se lee bien.</span>
-          {(fondo || texto) && (
-            <button
-              type="button"
-              className="font-semibold underline"
-              style={{ color: c.oscuro }}
-              onClick={() => cambiar({ anuncioColorFondo: null, anuncioColorTexto: null })}
-            >
-              Usar automático
-            </button>
+            <AnuncioPagina anuncio={anuncio(estilo)} paleta={c} estatico />
+          </span>
+        }
+        onAbrir={() => setAbierto(true)}
+      />
+      <Modal
+        abierto={abierto}
+        titulo="Diseño del anuncio"
+        subtitulo="El estilo de la franja y sus colores. Se ve al toque en la vista previa."
+        onClose={() => setAbierto(false)}
+        ancho="max-w-3xl"
+        acciones={<Boton onClick={() => setAbierto(false)}>Listo</Boton>}
+      >
+        <div className="space-y-5">
+          <div className="rounded-xl p-3" style={{ background: GRIS_PAGINA.fondo }} aria-label="Así queda tu anuncio">
+            <AnuncioPagina anuncio={anuncio(estilo)} paleta={c} estatico />
+          </div>
+
+          <div className="space-y-2">
+            <Etiqueta>Estilo</Etiqueta>
+            <div role="radiogroup" aria-label="Estilo del anuncio" className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-5">
+              {ESTILOS_ANUNCIO.map((x) => {
+                const elegido = estilo === x.clave;
+                return (
+                  <button
+                    key={x.clave}
+                    type="button"
+                    role="radio"
+                    aria-checked={elegido}
+                    aria-label={x.nombre}
+                    onClick={() => cambiar({ anuncioEstilo: x.clave })}
+                    className="flex min-w-0 flex-col gap-1.5 rounded-xl bg-white p-1.5 text-left"
+                    style={estiloTarjeta(elegido, c)}
+                  >
+                    <span
+                      aria-hidden="true"
+                      className="pointer-events-none block overflow-hidden rounded-lg p-1.5"
+                      style={{ background: GRIS_PAGINA.fondo, whiteSpace: "nowrap" }}
+                    >
+                      <AnuncioPagina
+                        anuncio={{ texto: "¡2x1!", url: null, estilo: x.clave, colorFondo: fondo, colorTexto: texto }}
+                        paleta={c}
+                        estatico
+                      />
+                    </span>
+                    <span className="px-1 text-[12px] font-semibold text-texto">{x.nombre}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="grid gap-5 sm:grid-cols-2">
+            <SelectorColor
+              etiqueta="Color del anuncio"
+              ayuda={colorEsFondo(estilo) ? "El fondo del anuncio." : AYUDA_COLOR[estilo]}
+              valor={fondo}
+              automatico={k.color}
+              muestras={unico([...CLAROS, ...deLaPagina])}
+              onCambio={(hex) => cambiar({ anuncioColorFondo: hex })}
+            />
+            <SelectorColor
+              etiqueta="Color de la letra"
+              ayuda="Elegí uno que se lea bien sobre el anuncio."
+              valor={texto}
+              automatico={k.texto}
+              muestras={unico(["#FFFFFF", "#111827", "#78350F", c.oscuro, ...deLaPagina, ...CLAROS.slice(1, 8)])}
+              onCambio={(hex) => cambiar({ anuncioColorTexto: hex })}
+            />
+          </div>
+
+          {bajo ? (
+            <div role="alert" className="flex flex-wrap items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+              <Icon name="alert" size={18} />
+              <span className="min-w-0 flex-[1_1_240px]">
+                <strong>La letra se va a leer mal.</strong> El contraste es de {ratio} a 1 y lo mínimo recomendado es 4,5 a
+                1: mucha gente (y cualquiera al sol) no va a poder leer tu anuncio.
+              </span>
+              <Boton
+                variante="ghost"
+                className="!px-3 !py-1.5 text-[13px]"
+                onClick={() => cambiar({ anuncioColorFondo: null, anuncioColorTexto: null })}
+              >
+                Usar automático
+              </Boton>
+            </div>
+          ) : (
+            <div className="flex flex-wrap items-center gap-2 text-xs text-texto-3">
+              <span>Contraste {ratio} a 1: se lee bien.</span>
+              {!automatico && (
+                <button
+                  type="button"
+                  className="font-semibold underline"
+                  style={{ color: c.oscuro }}
+                  onClick={() => cambiar({ anuncioColorFondo: null, anuncioColorTexto: null })}
+                >
+                  Usar automático
+                </button>
+              )}
+            </div>
           )}
         </div>
-      )}
-    </div>
+      </Modal>
+    </>
   );
 }
