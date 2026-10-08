@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { puedeVer } from "../permisos";
 import { contactoDe } from "./contacto";
 import { esRutaDePaginaPublica } from "./rutas";
-import { iconoDe, ICONO_BOTON, ICONO_RED, mezcla, paleta, radioBoton } from "./aspecto";
+import { iconoDe, ICONO_BOTON, ICONO_RED, mezcla, paleta } from "./aspecto";
+import { estiloBotones } from "./estilos";
 import { medidas } from "./imagen";
 import type { EstadoEditor } from "./tipos";
 import { hoyBolivia, urlMapa, vistaDesdeEditor } from "./vista";
@@ -60,9 +61,10 @@ describe("apariencia", () => {
   });
 
   it("la forma de los botones y un valor desconocido", () => {
-    expect(radioBoton("PILDORA")).toBe("999px");
-    expect(radioBoton("RECTO")).toBe("4px");
-    expect(radioBoton("OTRA")).toBe("14px");
+    const radio = (f: string) => estiloBotones(f, paleta("#9B2C6B")).principal.estilo.borderRadius;
+    expect(radio("PILDORA")).toBe("999px");
+    expect(radio("RECTO")).toBe("4px");
+    expect(radio("OTRA")).toBe("14px");
   });
 
   it("el ícono es el de la red, salvo el botón libre que lleva el elegido", () => {
@@ -107,7 +109,8 @@ describe("vista previa desde el editor", () => {
       { ...base, pagina: { ...base.pagina, anuncioTexto: " 2x1 ", anuncioHasta: "2026-10-06" } },
       "2026-10-06",
     );
-    expect(vigente.anuncio).toEqual({ texto: "2x1", url: null });
+    // Sin estilo guardado (backend anterior): la franja de siempre.
+    expect(vigente.anuncio).toEqual({ texto: "2x1", url: null, estilo: "SUAVE", colorFondo: null, colorTexto: null });
   });
 
   it("hoy en Bolivia es UTC−4", () => {

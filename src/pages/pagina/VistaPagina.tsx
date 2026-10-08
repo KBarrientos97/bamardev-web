@@ -1,14 +1,8 @@
 import { useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
 import { urlDeImagen } from "../../lib/pagina/apiPagina";
-import {
-  fuenteTitulo,
-  ICONO_ANUNCIO,
-  ICONO_RESERVAR,
-  iconoDe,
-  paleta,
-  radioBoton,
-} from "../../lib/pagina/aspecto";
-import type { EnlacePublico, PaginaPublica } from "../../lib/pagina/tipos";
+import { ICONO_ANUNCIO, ICONO_RESERVAR, iconoDe, mezcla, paleta, type Paleta } from "../../lib/pagina/aspecto";
+import { coloresAnuncio, estiloBotones, estiloLetra, GRIS_PAGINA, letraTitulo } from "../../lib/pagina/estilos";
+import type { AnuncioPublico, EnlacePublico, PaginaPublica } from "../../lib/pagina/tipos";
 import { urlTelefono } from "../../lib/pagina/vista";
 
 /**
@@ -48,7 +42,7 @@ export function Trazo({
   );
 }
 
-const GRIS = { fondo: "#F6F7F9", borde: "#E5E7EB", texto: "#1F2937", texto2: "#374151", texto3: "#6B7280" };
+const GRIS = GRIS_PAGINA;
 
 /**
  * Logo de BamarDev en chico, para el pie: el robot, el mismo de la app y de
@@ -83,6 +77,190 @@ function Enlace({
     <a href={href} style={style} onClick={onClick} rel="noopener noreferrer" aria-label={etiqueta}>
       {children}
     </a>
+  );
+}
+
+/**
+ * La marquesina se mueve con una animación CSS (no hay keyframes en línea).
+ * Se detiene al pasar el mouse y, con "reducir movimiento", queda quieta y
+ * en varias líneas: el texto nunca se pierde.
+ */
+const CSS_MARQUESINA = `@keyframes bm-marquesina{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+.bm-marquesina-pista{animation:bm-marquesina linear infinite}
+.bm-marquesina:hover .bm-marquesina-pista,.bm-marquesina:focus-within .bm-marquesina-pista{animation-play-state:paused}
+@media (prefers-reduced-motion: reduce){.bm-marquesina-pista{animation:none;min-width:0!important;white-space:normal!important}.bm-marquesina-copia{display:none!important}}`;
+
+/**
+ * El anuncio destacado con el estilo y los colores que eligió el dueño (o
+ * los automáticos). Sin estilo, la franja ámbar de siempre. `estatico`: para
+ * las miniaturas del editor (la marquesina no se mueve).
+ */
+export function AnuncioPagina({
+  anuncio,
+  paleta: c,
+  estatico,
+}: {
+  anuncio: AnuncioPublico;
+  paleta: Paleta;
+  estatico?: boolean;
+}) {
+  const estilo = anuncio.estilo ?? "SUAVE";
+  const k = coloresAnuncio(estilo, anuncio.colorFondo, anuncio.colorTexto, c);
+  const lleno = !["SUAVE", "CONTORNO", "TARJETA", "MINIMAL"].includes(estilo);
+  const letra: CSSProperties = { fontSize: 14, color: k.texto, fontWeight: lleno ? 600 : undefined };
+  const texto = anuncio.url ? (
+    <a href={anuncio.url} rel="noopener noreferrer" style={letra}>
+      {anuncio.texto}
+    </a>
+  ) : (
+    <span style={letra}>{anuncio.texto}</span>
+  );
+  const icono = <Trazo d={ICONO_ANUNCIO} color={k.icono} />;
+  const franja: CSSProperties = {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    borderRadius: 14,
+    padding: "10px 14px",
+  };
+
+  if (estilo === "MARQUESINA" && !estatico) {
+    const copia = (oculta: boolean) => (
+      <span
+        className="bm-marquesina-copia"
+        aria-hidden={oculta || undefined}
+        style={{ display: "inline-flex", alignItems: "center", gap: 10, flex: "1 0 auto", padding: "0 40px 0 14px" }}
+      >
+        <Trazo d={ICONO_ANUNCIO} color={k.icono} />
+        <span style={letra}>{anuncio.texto}</span>
+      </span>
+    );
+    const pista = (
+      <div
+        className="bm-marquesina-pista"
+        style={{
+          display: "flex",
+          width: "max-content",
+          minWidth: "200%",
+          whiteSpace: "nowrap",
+          animationDuration: `${Math.max(10, anuncio.texto.length * 0.35)}s`,
+        }}
+      >
+        {copia(false)}
+        {copia(true)}
+      </div>
+    );
+    return (
+      <div
+        role="note"
+        className="bm-marquesina"
+        style={{ background: k.color, borderRadius: 12, overflow: "hidden", padding: "10px 0" }}
+      >
+        <style>{CSS_MARQUESINA}</style>
+        {anuncio.url ? (
+          <a href={anuncio.url} rel="noopener noreferrer" style={{ display: "block", textDecoration: "none" }}>
+            {pista}
+          </a>
+        ) : (
+          pista
+        )}
+      </div>
+    );
+  }
+
+  let caja: CSSProperties;
+  switch (estilo) {
+    case "SOLIDO":
+      caja = { ...franja, background: k.color };
+      break;
+    case "MARQUESINA":
+      // Quieta (miniatura del editor): una línea llena, cortada con "…".
+      caja = { ...franja, background: k.color, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" };
+      break;
+    case "CONTORNO":
+      caja = { ...franja, background: "#ffffff", border: `2px solid ${k.color}` };
+      break;
+    case "PILDORA":
+      return (
+        <div role="note" style={{ display: "flex", justifyContent: "center" }}>
+          <div
+            style={{
+              ...franja,
+              display: "inline-flex",
+              maxWidth: "100%",
+              boxSizing: "border-box",
+              borderRadius: 999,
+              padding: "8px 18px",
+              background: k.color,
+              textAlign: "center",
+            }}
+          >
+            {icono}
+            {texto}
+          </div>
+        </div>
+      );
+    case "CINTA":
+      caja = {
+        ...franja,
+        borderRadius: "6px 0 0 6px",
+        background: k.color,
+        padding: "10px 34px 10px 14px",
+        clipPath: "polygon(0 0, 100% 0, calc(100% - 16px) 50%, 100% 100%, 0 100%)",
+      };
+      break;
+    case "ICONO":
+      return (
+        <div role="note" style={{ ...franja, gap: 12, padding: 12, borderRadius: 16, background: k.color }}>
+          <span
+            style={{
+              width: 44,
+              height: 44,
+              flex: "none",
+              borderRadius: 999,
+              background: mezcla(k.color, k.texto, 0.18),
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Trazo d={ICONO_ANUNCIO} color={k.icono} size={24} ancho={2} />
+          </span>
+          {texto}
+        </div>
+      );
+    case "TARJETA":
+      caja = {
+        ...franja,
+        background: "#ffffff",
+        borderRadius: 16,
+        borderLeft: `5px solid ${k.color}`,
+        boxShadow: "0 8px 24px rgba(0,0,0,0.08)",
+        padding: "12px 14px",
+      };
+      break;
+    case "DEGRADADO":
+      caja = { ...franja, background: `linear-gradient(135deg, ${k.color}, ${k.color2})` };
+      break;
+    case "MINIMAL":
+      caja = {
+        ...franja,
+        justifyContent: "center",
+        borderRadius: 0,
+        padding: "8px 4px",
+        borderBottom: `2px solid ${k.color}`,
+        textAlign: "center",
+      };
+      break;
+    default:
+      // SUAVE: la franja de siempre (con los colores elegidos, si hay).
+      caja = { ...franja, background: k.color, border: `1px solid ${k.borde}` };
+  }
+  return (
+    <div role="note" style={caja}>
+      {icono}
+      {texto}
+    </div>
   );
 }
 
@@ -145,9 +323,9 @@ export default function VistaPagina({
   // computadora no (es la página a tamaño real, escalada).
   const chico = !!enMarco && !escritorio;
   const c = paleta(p.color.hex);
-  const radio = radioBoton(p.formaBotones);
-  const fuente = fuenteTitulo(p.tipografia);
-  const fuerte = p.tipografia === "FUERTE";
+  // La forma decide fondo, borde, sombra y radio; el tamaño y el armado son de acá.
+  const b = estiloBotones(p.formaBotones, c);
+  const letraNombre = letraTitulo(p.tipografia);
   const logo = urlDeImagen(p.logoUrl);
   const portada = urlDeImagen(p.portadaUrl);
   const clic = (e: EnlacePublico) => () => alClic?.(e);
@@ -156,9 +334,6 @@ export default function VistaPagina({
     minHeight: 56,
     boxSizing: "border-box",
     width: "100%",
-    borderRadius: radio,
-    background: c.acento,
-    color: "#ffffff",
     fontSize: 16,
     fontWeight: 700,
     display: "flex",
@@ -167,16 +342,12 @@ export default function VistaPagina({
     gap: 10,
     padding: "0 16px",
     textDecoration: "none",
-    boxShadow: "0 6px 18px rgba(0,0,0,0.12)",
     textAlign: "center",
+    ...b.principal.estilo,
   };
   const botonSecundario: CSSProperties = {
     minHeight: 52,
     boxSizing: "border-box",
-    borderRadius: radio,
-    background: "#ffffff",
-    border: `1px solid ${GRIS.borde}`,
-    color: GRIS.texto,
     fontSize: 15,
     fontWeight: 500,
     display: "flex",
@@ -184,13 +355,10 @@ export default function VistaPagina({
     gap: 12,
     padding: "0 16px",
     textDecoration: "none",
+    ...b.secundario.estilo,
   };
   const botonChico = (destacado = false): CSSProperties => ({
     minHeight: 44,
-    borderRadius: radio === "999px" ? 999 : radio === "4px" ? 4 : 12,
-    border: destacado ? "none" : `1px solid ${GRIS.borde}`,
-    background: destacado ? c.tinte : "#ffffff",
-    color: destacado ? c.oscuro : GRIS.texto2,
     fontSize: 13,
     fontWeight: destacado ? 500 : 400,
     display: "flex",
@@ -198,6 +366,7 @@ export default function VistaPagina({
     justifyContent: "center",
     textDecoration: "none",
     padding: "0 6px",
+    ...(destacado ? b.chicoDestacado : b.chico).estilo,
   });
 
   const unaSucursal = p.sucursales.length === 1;
@@ -261,9 +430,10 @@ export default function VistaPagina({
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
+            ...estiloLetra(letraNombre, chico ? 26 : 34),
+            // Sin el ajuste de tamaño ni las mayúsculas del nombre: el círculo
+            // es chico y las iniciales tienen que entrar.
             fontSize: chico ? 26 : 34,
-            fontWeight: 700,
-            fontFamily: fuente,
           }}
         >
           {p.iniciales}
@@ -277,13 +447,9 @@ export default function VistaPagina({
       <Titulo
         style={{
           margin: "12px 20px 0",
-          fontSize: (fuerte ? 28 : 26) + (escritorio ? 2 : 0),
           lineHeight: 1.15,
-          fontFamily: fuente,
           textAlign: "center",
-          textTransform: fuerte ? "uppercase" : undefined,
-          letterSpacing: fuerte ? "0.01em" : undefined,
-          fontWeight: 700,
+          ...estiloLetra(letraNombre, 26 + (escritorio ? 2 : 0)),
         }}
       >
         {p.nombre}
@@ -323,49 +489,27 @@ export default function VistaPagina({
     </>
   );
 
-  const anuncio = p.anuncio && (
-    <div
-      role="note"
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 10,
-        background: "#FFFBEB",
-        border: "1px solid #FDE68A",
-        borderRadius: 14,
-        padding: "10px 14px",
-      }}
-    >
-      <Trazo d={ICONO_ANUNCIO} color="#B45309" />
-      {p.anuncio.url ? (
-        <a href={p.anuncio.url} rel="noopener noreferrer" style={{ fontSize: 14, color: "#78350F" }}>
-          {p.anuncio.texto}
-        </a>
-      ) : (
-        <span style={{ fontSize: 14, color: "#78350F" }}>{p.anuncio.texto}</span>
-      )}
-    </div>
-  );
+  const anuncio = p.anuncio && <AnuncioPagina anuncio={p.anuncio} paleta={c} />;
 
   // El botón grande es opcional: reservar, el enlace que eligió el dueño
   // (su WhatsApp, su menú, el que sea) o ninguno.
   const principal = p.reservar ? (
     <a href={urlReservar} style={botonPrincipal}>
-      <Trazo d={ICONO_RESERVAR} color="#ffffff" ancho={2} />
+      <Trazo d={ICONO_RESERVAR} color={b.principal.icono} ancho={2} />
       Reservar turno
     </a>
   ) : p.destacado ? (
     <Enlace href={p.destacado.url} onClick={clic(p.destacado)} style={botonPrincipal}>
-      <Trazo d={iconoDe(p.destacado.tipo, p.destacado.icono)} color="#ffffff" />
+      <Trazo d={iconoDe(p.destacado.tipo, p.destacado.icono)} color={b.principal.icono} />
       {p.destacado.etiqueta}
     </Enlace>
   ) : null;
 
-  const botones = p.botones.map((b) => (
-    <Enlace key={b.id} href={b.url} onClick={clic(b)} style={botonSecundario}>
-      <Trazo d={iconoDe(b.tipo, b.icono)} color={c.oscuro} size={18} />
-      <span style={{ flex: 1 }}>{b.etiqueta}</span>
-      <Trazo d="m9 6 6 6-6 6" color="#9CA3AF" size={16} ancho={2} />
+  const botones = p.botones.map((x) => (
+    <Enlace key={x.id} href={x.url} onClick={clic(x)} style={botonSecundario}>
+      <Trazo d={iconoDe(x.tipo, x.icono)} color={b.secundario.icono} size={18} />
+      <span style={{ flex: 1 }}>{x.etiqueta}</span>
+      <Trazo d="m9 6 6 6-6 6" color={b.flecha} size={16} ancho={2} />
     </Enlace>
   ));
 

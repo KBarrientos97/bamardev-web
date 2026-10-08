@@ -52,7 +52,15 @@ export function vistaDesdeEditor(e: EstadoEditor, hoy = hoyBolivia()): PaginaPub
     tipografia: p.tipografia,
     logoUrl: e.imagenes.logo,
     portadaUrl: e.imagenes.portada,
-    anuncio: anuncioVigente ? { texto: p.anuncioTexto!.trim(), url: p.anuncioUrl || null } : null,
+    anuncio: anuncioVigente
+      ? {
+          texto: p.anuncioTexto!.trim(),
+          url: p.anuncioUrl || null,
+          estilo: p.anuncioEstilo ?? "SUAVE",
+          colorFondo: p.anuncioColorFondo ?? null,
+          colorTexto: p.anuncioColorTexto ?? null,
+        }
+      : null,
     reservar,
     destacado,
     redes,

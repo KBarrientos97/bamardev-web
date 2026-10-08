@@ -274,4 +274,108 @@ describe("Mi página", () => {
     await act(async () => {});
     expect(within(dialogo).getByText("Ese enlace no es de Instagram")).toBeInTheDocument();
   });
+
+  it("Más formas: popup con al menos 9 formas; la elegida se ve en vivo y se manda al guardar", async () => {
+    await montar();
+    expect(screen.getByRole("button", { name: "Redondeados" })).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(screen.getByRole("button", { name: "Más formas" }));
+    const dialogo = screen.getByRole("dialog", { name: "Forma de los botones" });
+    expect(within(dialogo).getAllByRole("radio").length).toBeGreaterThanOrEqual(9);
+    expect(within(dialogo).getByRole("radio", { name: "Redondeados" })).toHaveAttribute("aria-checked", "true");
+
+    fireEvent.click(within(dialogo).getByRole("radio", { name: "Contorno" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Más formas (elegida: Contorno)" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Redondeados" })).toHaveAttribute("aria-pressed", "false");
+    // El botón principal de la vista previa ya es de contorno: blanco con borde de color.
+    const reservar = within(previa()).getByText("Reservar turno");
+    expect(reservar.style.border).toBe("2px solid rgb(155, 44, 107)");
+    expect(reservar.style.background).toBe("rgb(255, 255, 255)");
+
+    vi.mocked(apiPagina.guardar).mockResolvedValue(estado({ formaBotones: "CONTORNO" }));
+    fireEvent.click(screen.getByRole("button", { name: "Guardar cambios" }));
+    await act(async () => {});
+    expect(apiPagina.guardar).toHaveBeenCalledWith({ formaBotones: "CONTORNO" });
+  });
+
+  it("Más letras: 30 letras agrupadas con el nombre del negocio; carga el catálogo sólo al abrir", async () => {
+    await montar();
+    expect(document.getElementById("fuentes-pagina-catalogo")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Más letras" }));
+    const dialogo = screen.getByRole("dialog", { name: "Letra del nombre" });
+    expect(document.getElementById("fuentes-pagina-catalogo")).not.toBeNull();
+    expect(within(dialogo).getAllByRole("radio")).toHaveLength(30);
+    expect(within(dialogo).getAllByText("Salón Bella Vista")).toHaveLength(30);
+    for (const grupo of ["Modernas", "Redondeadas", "Elegantes", "Fuertes", "Manuscritas"]) {
+      expect(within(dialogo).getByRole("heading", { name: grupo })).toBeInTheDocument();
+    }
+
+    fireEvent.click(within(dialogo).getByRole("radio", { name: "Pacifico" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Más letras (elegida: Pacifico)" })).toHaveAttribute("aria-pressed", "true");
+    expect(within(previa()).getByRole("heading", { name: "Salón Bella Vista" }).style.fontFamily).toContain("Pacifico");
+    // La vista previa baja la letra elegida.
+    expect(document.getElementById("fuentes-pagina-pacifico")).not.toBeNull();
+
+    vi.mocked(apiPagina.guardar).mockResolvedValue(estado({ tipografia: "PACIFICO" }));
+    fireEvent.click(screen.getByRole("button", { name: "Guardar cambios" }));
+    await act(async () => {});
+    expect(apiPagina.guardar).toHaveBeenCalledWith({ tipografia: "PACIFICO" });
+  });
+
+  it("anuncio: 10 estilos y colores; avisa si la letra se lee mal y se manda al guardar", async () => {
+    await montar();
+    // Sin texto no hay nada que estilizar.
+    expect(screen.queryByRole("radiogroup", { name: "Estilo del anuncio" })).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Anuncio destacado"), { target: { value: "2x1 los martes" } });
+    const estilos = screen.getByRole("radiogroup", { name: "Estilo del anuncio" });
+    expect(within(estilos).getAllByRole("radio")).toHaveLength(10);
+    // Por defecto, la franja de siempre.
+    expect(within(estilos).getByRole("radio", { name: "Franja suave" })).toHaveAttribute("aria-checked", "true");
+    expect(within(previa()).getByRole("note")).toHaveStyle({ background: "#FFFBEB" });
+
+    fireEvent.click(within(estilos).getByRole("radio", { name: "Franja llena" }));
+    // Automático: el color de la página con letra blanca.
+    expect(within(previa()).getByRole("note")).toHaveStyle({ background: "#9B2C6B" });
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+
+    // Amarillo con letra blanca: se puede, pero avisa.
+    fireEvent.click(screen.getByRole("radio", { name: "Color del anuncio #FDE047" }));
+    fireEvent.click(screen.getByRole("radio", { name: "Color de la letra #FFFFFF" }));
+    expect(within(previa()).getByRole("note")).toHaveStyle({ background: "#FDE047" });
+    expect(screen.getByRole("alert")).toHaveTextContent(/La letra se va a leer mal/);
+    expect(screen.getByRole("alert")).toHaveTextContent(/4,5 a 1/);
+
+    fireEvent.click(within(screen.getByRole("alert")).getByRole("button", { name: "Usar automático" }));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "Color del anuncio: automático" })).toHaveAttribute("aria-checked", "true");
+
+    // A mano, en hex (sin el #, como lo copiaría cualquiera).
+    fireEvent.change(screen.getByLabelText("Color del anuncio en hex"), { target: { value: "111827" } });
+    expect(within(previa()).getByRole("note")).toHaveStyle({ background: "#111827" });
+
+    vi.mocked(apiPagina.guardar).mockResolvedValue(estado());
+    fireEvent.click(screen.getByRole("button", { name: "Guardar cambios" }));
+    await act(async () => {});
+    expect(apiPagina.guardar).toHaveBeenCalledWith({
+      anuncioTexto: "2x1 los martes",
+      anuncioEstilo: "SOLIDO",
+      anuncioColorFondo: "#111827",
+      anuncioColorTexto: null,
+    });
+  });
+
+  it("anuncio con estilo guardado: el editor lo muestra elegido", async () => {
+    vi.mocked(apiPagina.estado).mockResolvedValue(
+      estado({ anuncioTexto: "Martes 2x1", anuncioEstilo: "MARQUESINA", anuncioColorFondo: "#111827", anuncioColorTexto: "#FFFFFF" }),
+    );
+    await montar();
+    expect(screen.getByRole("radio", { name: "Marquesina" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("radio", { name: "Color de la letra #FFFFFF" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByLabelText("Color del anuncio en hex")).toHaveValue("#111827");
+    // La marquesina repite el texto para el bucle, pero la copia no se lee dos veces.
+    const nota = within(previa()).getByRole("note");
+    expect(within(nota).getAllByText("Martes 2x1")).toHaveLength(2);
+    expect(nota.querySelectorAll('[aria-hidden="true"].bm-marquesina-copia')).toHaveLength(1);
+  });
 });

@@ -4,7 +4,7 @@ import { useCoincideMedia } from "../../lib/useCoincideMedia";
 import { avisarClic } from "../../lib/pagina/apiPagina";
 import { urlPrivacidadDe, urlReservaDe } from "../../lib/pagina/rutas";
 import { usePaginaPublica } from "../../lib/pagina/usePaginaPublica";
-import { cargarFuentesPagina } from "../../lib/pagina/aspecto";
+import { cargarFuentesPagina } from "../../lib/pagina/estilos";
 import type { PaginaPublica as Pagina } from "../../lib/pagina/tipos";
 import VistaPagina, { ANCHO_ESCRITORIO, MarcaBamarDev } from "./VistaPagina";
 
@@ -139,7 +139,9 @@ function Cargando() {
 export default function PaginaPublica() {
   const { subdominio } = useParams();
   const { pagina, error } = usePaginaPublica(subdominio);
-  useEffect(cargarFuentesPagina, []);
+  // Roboto y sólo la letra que eligió el negocio para su nombre, no las 30.
+  const tipografia = pagina?.tipografia;
+  useEffect(() => cargarFuentesPagina(tipografia), [tipografia]);
   useMetadatosPagina(pagina);
 
   if (error) return <NoDisponible mensaje={error} />;
