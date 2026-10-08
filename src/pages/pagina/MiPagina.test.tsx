@@ -228,6 +228,41 @@ describe("Mi página", () => {
     expect(previa()).toHaveAttribute("data-modo", "movil");
   });
 
+  it("el mapa y el horario de la sucursal se guardan con «Guardar cambios» y se ven en la vista previa", async () => {
+    await montar();
+    fireEvent.change(screen.getByLabelText("Mapa de Centro"), { target: { value: "https://maps.app.goo.gl/abc" } });
+    expect(within(previa()).getByRole("link", { name: "Cómo llegar" })).toHaveAttribute("href", "https://maps.app.goo.gl/abc");
+    expect(screen.getByRole("button", { name: "Guardar cambios" })).toBeEnabled();
+
+    const s = estado().sucursales[0];
+    vi.mocked(apiPagina.sucursal).mockResolvedValue({ ...s, mapsUrl: "https://maps.app.goo.gl/abc" });
+    fireEvent.click(screen.getByRole("button", { name: "Guardar cambios" }));
+    await act(async () => {});
+    expect(apiPagina.sucursal).toHaveBeenCalledWith(10, { horarioTexto: "9 a 20", mapsUrl: "https://maps.app.goo.gl/abc" });
+    // Sólo cambió la sucursal: la página no se manda.
+    expect(apiPagina.guardar).not.toHaveBeenCalled();
+    expect(screen.getByText("Cambios guardados")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Guardar cambios" })).toBeDisabled();
+  });
+
+  it("un mapa que no es de Google Maps: dice de qué sucursal y no pierde lo escrito", async () => {
+    vi.mocked(apiPagina.sucursal).mockRejectedValue(new Error("Ese enlace no es de Google Maps"));
+    await montar();
+    fireEvent.change(screen.getByLabelText("Mapa de Centro"), { target: { value: "https://otro.com" } });
+    fireEvent.click(screen.getByRole("button", { name: "Guardar cambios" }));
+    await act(async () => {});
+    expect(screen.getByText("Centro: Ese enlace no es de Google Maps")).toBeInTheDocument();
+    expect(screen.getByLabelText("Mapa de Centro")).toHaveValue("https://otro.com");
+  });
+
+  it("volver a escribir lo guardado no deja la página como cambiada", async () => {
+    await montar();
+    fireEvent.change(screen.getByLabelText("Horario de Centro"), { target: { value: "9 a 21" } });
+    expect(screen.getByRole("button", { name: "Guardar cambios" })).toBeEnabled();
+    fireEvent.change(screen.getByLabelText("Horario de Centro"), { target: { value: "9 a 20" } });
+    expect(screen.getByRole("button", { name: "Guardar cambios" })).toBeDisabled();
+  });
+
   it("el error del backend se muestra en el formulario", async () => {
     vi.mocked(apiPagina.crearEnlace).mockRejectedValue(new Error("Ese enlace no es de Instagram"));
     await montar();
