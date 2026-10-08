@@ -150,22 +150,33 @@ function Imagen({
   );
 }
 
-/** Una sucursal en la página: si sale, su horario y su mapa. */
+/** Lo que el dueño escribió en una sucursal y todavía no se guardó. */
+type BorradorSucursal = { horarioTexto: string; mapsUrl: string };
+
+/**
+ * Una sucursal en la página: si sale (se guarda al toque, como los enlaces),
+ * su horario y su mapa. Esos dos van al borrador y se guardan con "Guardar
+ * cambios": antes tenían un botón propio y el dueño, con razón, apretaba el
+ * de abajo y el mapa se perdía sin aviso.
+ */
 function FilaSucursal({
   s,
+  borrador,
   acento,
+  onCambio,
   onGuardada,
   onError,
 }: {
   s: SucursalEditor;
+  borrador: BorradorSucursal | undefined;
   acento: string;
+  onCambio: (b: BorradorSucursal) => void;
   onGuardada: (s: SucursalEditor) => void;
   onError: (m: string) => void;
 }) {
-  const [horario, setHorario] = useState(s.horarioTexto ?? "");
-  const [mapa, setMapa] = useState(s.mapsUrl ?? "");
+  const horario = borrador?.horarioTexto ?? s.horarioTexto ?? "";
+  const mapa = borrador?.mapsUrl ?? s.mapsUrl ?? "";
   const [guardando, setGuardando] = useState(false);
-  const sucio = horario !== (s.horarioTexto ?? "") || mapa !== (s.mapsUrl ?? "");
   const guardar = async (cambios: Partial<SucursalEditor>) => {
     setGuardando(true);
     onError("");
@@ -199,27 +210,28 @@ function FilaSucursal({
       {s.publicarEnPagina && (
         <div className="grid gap-2 sm:grid-cols-2">
           <Campo label="Horario" hint="Como lo dirías: «Lun a sáb 9:00 – 20:00»">
-            <Input aria-label={`Horario de ${s.nombre}`} value={horario} onChange={(e) => setHorario(e.target.value)} maxLength={120} />
+            <Input
+              aria-label={`Horario de ${s.nombre}`}
+              value={horario}
+              onChange={(e) => onCambio({ horarioTexto: e.target.value, mapsUrl: mapa })}
+              maxLength={120}
+            />
           </Campo>
-          <Campo label="Enlace de Google Maps (opcional)" hint="Sin enlace, «Cómo llegar» busca la dirección.">
+          <Campo
+            label="Enlace de Google Maps (opcional)"
+            hint={
+              s.direccion
+                ? "Sin enlace, «Cómo llegar» busca la dirección."
+                : "Sin enlace ni dirección cargada, la página no muestra «Cómo llegar»."
+            }
+          >
             <Input
               aria-label={`Mapa de ${s.nombre}`}
               value={mapa}
-              onChange={(e) => setMapa(e.target.value)}
+              onChange={(e) => onCambio({ horarioTexto: horario, mapsUrl: e.target.value })}
               placeholder="https://maps.app.goo.gl/…"
             />
           </Campo>
-          {sucio && (
-            <div className="sm:col-span-2">
-              <Boton
-                variante="soft"
-                disabled={guardando}
-                onClick={() => void guardar({ horarioTexto: horario.trim() || null, mapsUrl: mapa.trim() || null })}
-              >
-                Guardar sucursal
-              </Boton>
-            </div>
-          )}
         </div>
       )}
     </div>
@@ -365,13 +377,16 @@ function BotonPrincipal({
  * negocio, con la vista previa en vivo al lado. Sólo el ADMIN y con la
  * feature `pagina_publica` (permisos.ts y el backend).
  *
- * La apariencia y la presentación se juntan en un borrador y se guardan con
- * "Guardar cambios"; los enlaces, las sucursales y las imágenes se guardan al
- * toque (cada uno es una acción completa).
+ * La apariencia, la presentación y el horario y el mapa de cada sucursal se
+ * juntan en un borrador y se guardan con "Guardar cambios"; los enlaces, si
+ * una sucursal sale o no, y las imágenes se guardan al toque (cada uno es una
+ * acción completa).
  */
 export default function MiPagina() {
   const carga = useApi(() => apiPagina.estado(), []);
   const [borrador, setBorrador] = useState<CambiosPagina>({});
+  // Sólo las sucursales cambiadas: una que vuelve a su valor guardado sale.
+  const [borradorSucursales, setBorradorSucursales] = useState<Record<number, BorradorSucursal>>({});
   const [aviso, setAviso] = useAviso();
   const [error, setError] = useState("");
   const [guardando, setGuardando] = useState(false);
@@ -394,7 +409,7 @@ export default function MiPagina() {
 
   // Con cambios sin guardar, el navegador pregunta antes de cerrar o recargar:
   // la apariencia se arma de a poco y perderla entera por un F5 desanima.
-  const haySinGuardar = Object.keys(borrador).length > 0;
+  const haySinGuardar = Object.keys(borrador).length > 0 || Object.keys(borradorSucursales).length > 0;
   useEffect(() => {
     if (!haySinGuardar) return;
     const avisar = (ev: BeforeUnloadEvent) => ev.preventDefault();
@@ -415,20 +430,58 @@ export default function MiPagina() {
   }
 
   const ajustes: AjustesPagina = { ...e.pagina, ...borrador };
-  const editado: EstadoEditor = { ...e, pagina: ajustes };
+  const limpio = (b: BorradorSucursal) => ({
+    horarioTexto: b.horarioTexto.trim() || null,
+    mapsUrl: b.mapsUrl.trim() || null,
+  });
+  // La vista previa muestra el horario y el mapa que se están escribiendo.
+  const sucursalesEditadas = e.sucursales.map((s) =>
+    borradorSucursales[s.id] ? { ...s, ...limpio(borradorSucursales[s.id]) } : s,
+  );
+  const editado: EstadoEditor = { ...e, pagina: ajustes, sucursales: sucursalesEditadas };
   const vista = vistaDesdeEditor(editado);
   const c = paleta(vista.color.hex);
-  const sucio = Object.keys(borrador).length > 0;
+  const sucio = haySinGuardar;
   const cambiar = (cambios: CambiosPagina) => setBorrador((b) => ({ ...b, ...cambios }));
   const enlaces = [...e.enlaces].sort((a, b) => a.orden - b.orden || a.id - b.id);
+
+  const cambiarSucursal = (s: SucursalEditor, b: BorradorSucursal) =>
+    setBorradorSucursales((todos) => {
+      const resto = { ...todos };
+      if (b.horarioTexto === (s.horarioTexto ?? "") && b.mapsUrl === (s.mapsUrl ?? "")) delete resto[s.id];
+      else resto[s.id] = b;
+      return resto;
+    });
 
   const guardar = async (extra: CambiosPagina = {}, texto = "Cambios guardados") => {
     setGuardando(true);
     setError("");
     try {
-      const nuevo = await apiPagina.guardar({ ...borrador, ...extra });
-      carga.setDatos(nuevo);
-      setBorrador({});
+      // Primero las sucursales: si un mapa no es de Google Maps, el error
+      // dice cuál y el resto de lo escrito sigue en pantalla.
+      let sucursales = e.sucursales;
+      for (const [id, b] of Object.entries(borradorSucursales)) {
+        const s = e.sucursales.find((x) => x.id === Number(id));
+        try {
+          const nueva = await apiPagina.sucursal(Number(id), limpio(b));
+          sucursales = sucursales.map((x) => (x.id === nueva.id ? { ...x, ...nueva } : x));
+          setBorradorSucursales((todos) => {
+            const resto = { ...todos };
+            delete resto[Number(id)];
+            return resto;
+          });
+        } catch (err) {
+          carga.setDatos({ ...e, sucursales });
+          throw new Error(`${s?.nombre ?? "Sucursal"}: ${mensaje(err)}`);
+        }
+      }
+      const cambios = { ...borrador, ...extra };
+      if (Object.keys(cambios).length > 0) {
+        carga.setDatos(await apiPagina.guardar(cambios));
+        setBorrador({});
+      } else {
+        carga.setDatos({ ...e, sucursales });
+      }
       setAviso(texto);
     } catch (err) {
       setError(mensaje(err));
@@ -869,16 +922,20 @@ export default function MiPagina() {
           </Seccion>
 
           <Seccion titulo="Sucursales en la página">
-            <p className="-mt-2 text-[13px] text-texto-3">La dirección y el teléfono salen de tus sucursales.</p>
+            <p className="-mt-2 text-[13px] text-texto-3">
+              La dirección y el teléfono salen de tus sucursales. El horario y el mapa se guardan con «Guardar cambios».
+            </p>
             {e.sucursales.length === 0 ? (
               <p className="text-sm text-texto-3">No hay sucursales activas.</p>
             ) : (
               <div className="space-y-2">
                 {e.sucursales.map((s) => (
                   <FilaSucursal
-                    key={`${s.id}-${s.publicarEnPagina}-${s.horarioTexto}-${s.mapsUrl}`}
+                    key={s.id}
                     s={s}
+                    borrador={borradorSucursales[s.id]}
                     acento={c.acento}
+                    onCambio={(b) => cambiarSucursal(s, b)}
                     onError={setError}
                     onGuardada={(nueva) => {
                       carga.setDatos({ ...e, sucursales: e.sucursales.map((x) => (x.id === nueva.id ? nueva : x)) });
@@ -901,6 +958,7 @@ export default function MiPagina() {
               disabled={!sucio || guardando}
               onClick={() => {
                 setBorrador({});
+                setBorradorSucursales({});
                 setOpcionPrincipal(null);
               }}
             >
