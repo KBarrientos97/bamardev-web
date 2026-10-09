@@ -45,11 +45,18 @@ export interface EstiloPagina {
     arco: boolean;
     /** Cuántas se ven a la vez en computadora (decisión 6: hasta 3). */
     porVistaEscritorio: number;
+    /**
+     * Carrusel (09-oct: "no debe verse como un e-commerce"); lista de menú con
+     * el precio a la derecha (Carta) o bloques de la grilla (Mosaico).
+     */
+    presentacion: "carrusel" | "menu" | "bloques";
   };
   /** Las sucursales en tarjeta o como texto con separadores (Boutique). */
   sucursales: "tarjeta" | "texto";
   /** Sin portada se ve peor: el editor lo avisa. */
   pideFoto: boolean;
+  /** Sin catálogo pierde lo principal (Carta): el editor lo avisa. */
+  pideCatalogo: boolean;
 }
 
 export const ESTILOS_PAGINA: EstiloPagina[] = [
@@ -62,9 +69,10 @@ export const ESTILOS_PAGINA: EstiloPagina[] = [
     letras: ["MODERNA", "MONTSERRAT", "ELEGANTE"],
     formas: ["REDONDEADO", "PILDORA", "RECTO"],
     colores: ["VERDE", "AZUL", "CIRUELA"],
-    catalogo: { proporcion: "4 / 3", proporcionEscritorio: "1 / 1", sinCaja: false, arco: false, porVistaEscritorio: 3 },
+    catalogo: { proporcion: "4 / 3", proporcionEscritorio: "1 / 1", sinCaja: false, arco: false, porVistaEscritorio: 3, presentacion: "carrusel" },
     sucursales: "tarjeta",
     pideFoto: false,
+    pideCatalogo: false,
   },
   {
     clave: "VITRINA",
@@ -75,9 +83,10 @@ export const ESTILOS_PAGINA: EstiloPagina[] = [
     letras: ["MONTSERRAT", "ELEGANTE", "RALEWAY"],
     formas: ["PILDORA", "CONTORNO", "REDONDEADO"],
     colores: ["CARBON", "TEJA", "SALVIA"],
-    catalogo: { proporcion: "4 / 5", proporcionEscritorio: "4 / 5", sinCaja: false, arco: false, porVistaEscritorio: 3 },
+    catalogo: { proporcion: "4 / 5", proporcionEscritorio: "4 / 5", sinCaja: false, arco: false, porVistaEscritorio: 3, presentacion: "carrusel" },
     sucursales: "tarjeta",
     pideFoto: true,
+    pideCatalogo: false,
   },
   {
     clave: "VIVO",
@@ -88,9 +97,10 @@ export const ESTILOS_PAGINA: EstiloPagina[] = [
     letras: ["POPPINS", "ARCHIVO_BLACK", "FREDOKA"],
     formas: ["RELIEVE", "PILDORA", "SOMBRA_DURA"],
     colores: ["ROJO", "NARANJA", "ESMERALDA"],
-    catalogo: { proporcion: "4 / 3", proporcionEscritorio: "1 / 1", sinCaja: false, arco: false, porVistaEscritorio: 2 },
+    catalogo: { proporcion: "4 / 3", proporcionEscritorio: "1 / 1", sinCaja: false, arco: false, porVistaEscritorio: 2, presentacion: "carrusel" },
     sucursales: "tarjeta",
     pideFoto: false,
+    pideCatalogo: false,
   },
   {
     clave: "NOCHE",
@@ -101,9 +111,10 @@ export const ESTILOS_PAGINA: EstiloPagina[] = [
     letras: ["BEBAS", "ANTON", "FUERTE"],
     formas: ["RECTO", "CONTORNO", "ESQUINA"],
     colores: ["TEJA", "OCRE", "ROJO"],
-    catalogo: { proporcion: "1 / 1", proporcionEscritorio: "1 / 1", sinCaja: false, arco: false, porVistaEscritorio: 3 },
+    catalogo: { proporcion: "1 / 1", proporcionEscritorio: "1 / 1", sinCaja: false, arco: false, porVistaEscritorio: 3, presentacion: "carrusel" },
     sucursales: "tarjeta",
     pideFoto: false,
+    pideCatalogo: false,
   },
   {
     clave: "BOUTIQUE",
@@ -114,9 +125,68 @@ export const ESTILOS_PAGINA: EstiloPagina[] = [
     letras: ["CORMORANT", "ELEGANTE", "DM_SERIF"],
     formas: ["SUBRAYADO", "CONTORNO", "TINTE"],
     colores: ["CIRUELA", "SALVIA", "VINO"],
-    catalogo: { proporcion: "4 / 5", proporcionEscritorio: "4 / 5", sinCaja: true, arco: true, porVistaEscritorio: 2 },
+    catalogo: { proporcion: "4 / 5", proporcionEscritorio: "4 / 5", sinCaja: true, arco: true, porVistaEscritorio: 2, presentacion: "carrusel" },
     sucursales: "texto",
     pideFoto: false,
+    pideCatalogo: false,
+  },
+  // ── Fase 2 (IDEAS/5 §4.3, maqueta aprobada el 09-oct) ──
+  {
+    clave: "POSTAL",
+    nombre: "Postal",
+    linea: "Una tarjeta flotando sobre tu portada desenfocada.",
+    letra: "QUICKSAND",
+    forma: "TINTE",
+    letras: ["QUICKSAND", "DANCING", "COMFORTAA"],
+    formas: ["TINTE", "PILDORA", "REDONDEADO"],
+    colores: ["ROSA", "CAFE", "LAVANDA"],
+    // La tarjeta mide 560 px en computadora: de a dos se ven mejor que de a tres.
+    catalogo: { proporcion: "4 / 3", proporcionEscritorio: "4 / 3", sinCaja: false, arco: false, porVistaEscritorio: 2, presentacion: "carrusel" },
+    sucursales: "tarjeta",
+    pideFoto: false,
+    pideCatalogo: false,
+  },
+  {
+    clave: "CARTA",
+    nombre: "Carta",
+    linea: "Tus productos con su precio, como un menú.",
+    letra: "ALFA_SLAB",
+    forma: "REDONDEADO",
+    letras: ["ALFA_SLAB", "MONTSERRAT", "ABRIL"],
+    formas: ["REDONDEADO", "RELIEVE", "RECTO"],
+    colores: ["ROJO", "TEJA", "AMBAR"],
+    catalogo: { proporcion: "1 / 1", proporcionEscritorio: "1 / 1", sinCaja: false, arco: false, porVistaEscritorio: 1, presentacion: "menu" },
+    sucursales: "tarjeta",
+    pideFoto: false,
+    pideCatalogo: true,
+  },
+  {
+    clave: "DULCE",
+    nombre: "Dulce",
+    linea: "Pastel, todo redondo y suave.",
+    letra: "FREDOKA",
+    forma: "PILDORA",
+    letras: ["FREDOKA", "NUNITO", "PACIFICO"],
+    formas: ["PILDORA", "TINTE", "REDONDEADO"],
+    colores: ["FRAMBUESA", "ROSA", "LAVANDA"],
+    catalogo: { proporcion: "4 / 3", proporcionEscritorio: "4 / 3", sinCaja: false, arco: false, porVistaEscritorio: 2, presentacion: "carrusel" },
+    sucursales: "tarjeta",
+    pideFoto: false,
+    pideCatalogo: false,
+  },
+  {
+    clave: "MOSAICO",
+    nombre: "Mosaico",
+    linea: "Bloques de distintos tamaños, como una grilla.",
+    letra: "MONTSERRAT",
+    forma: "REDONDEADO",
+    letras: ["MONTSERRAT", "ARCHIVO_BLACK", "POPPINS"],
+    formas: ["REDONDEADO", "RECTO", "SOMBRA_DURA"],
+    colores: ["NEGRO", "MARINO", "VIOLETA"],
+    catalogo: { proporcion: "1 / 1", proporcionEscritorio: "1 / 1", sinCaja: false, arco: false, porVistaEscritorio: 1, presentacion: "bloques" },
+    sucursales: "tarjeta",
+    pideFoto: false,
+    pideCatalogo: false,
   },
 ];
 
@@ -127,8 +197,8 @@ export function estiloPagina(clave?: string | null): EstiloPagina {
 
 /**
  * El estilo que se le sugiere a cada rubro (`TipoNegocio`; tabla de IDEAS/5
- * §4.5 adaptada a los 5 de la fase 1: Carta y Dulce todavía no existen).
- * Es un dato de diseño: un rubro que no está acá se queda con Clásico.
+ * §4.5, con la fase 2). Es un dato de diseño: un rubro que no está acá se
+ * queda con Clásico.
  */
 export const ESTILO_POR_RUBRO: Record<string, ClaveEstilo> = {
   RESTAURANTE: "VIVO",
@@ -139,11 +209,20 @@ export const ESTILO_POR_RUBRO: Record<string, ClaveEstilo> = {
   PELUQUERIA: "BOUTIQUE",
   SPA: "BOUTIQUE",
   BARBERIA: "NOCHE",
-  UNAS: "VIVO",
+  UNAS: "DULCE",
 };
 
-export function estiloRecomendado(rubro?: string | null): ClaveEstilo {
-  return ESTILO_POR_RUBRO[(rubro ?? "").toUpperCase()] ?? "CLASICO";
+/**
+ * Los rubros que venden con precio: con ítems en el catálogo les va Carta;
+ * sin ellos, Carta se queda sin lo principal y vale lo de la tabla.
+ */
+const CARTA_CON_CATALOGO = new Set(["RESTAURANTE", "FARMACIA"]);
+
+/** El sugerido para el rubro; `conCatalogo`: si la página tiene ítems visibles en el catálogo. */
+export function estiloRecomendado(rubro?: string | null, conCatalogo = false): ClaveEstilo {
+  const r = (rubro ?? "").toUpperCase();
+  if (conCatalogo && CARTA_CON_CATALOGO.has(r)) return "CARTA";
+  return ESTILO_POR_RUBRO[r] ?? "CLASICO";
 }
 
 // ── Colores de cada estilo ─────────────────────────────────────────────────
@@ -168,6 +247,11 @@ export function rgbaCapa(capa: CapaFoto): string {
 export interface TonosPagina {
   /** Sobre qué se pintan los botones y el anuncio (`estiloBotones`, `coloresAnuncio`). */
   superficie: Superficie;
+  /**
+   * Los botones chicos de las sucursales, si su tarjeta no es de la misma
+   * familia que la página (Mosaico: página clara y sucursal en bloque oscuro).
+   */
+  superficieTarjeta?: Superficie;
   /** El fondo de la página. */
   fondo: string;
   /** Texto directo sobre el fondo: principal, secundario y terciario (rubro, pie). */
@@ -185,6 +269,8 @@ export interface TonosPagina {
   texto3Tarjeta: string;
   /** El precio del catálogo y los íconos de acento de las tarjetas. */
   precio: string;
+  /** Dónde queda el precio, si no es la tarjeta (la lista de Carta va sobre la página). */
+  fondosPrecio?: string[];
   icono: string;
   /** Un ítem del catálogo sin foto: el fondo y la inicial. */
   sinFotoFondo: string;
@@ -210,6 +296,25 @@ export interface TonosPagina {
   barra: string;
   /** El cartel "Abierto ahora" / "Cerrado" de la sucursal, sobre su tarjeta. */
   estado: { abierto: ColoresEstado; cerrado: ColoresEstado };
+  /** Los bloques de color de Mosaico. */
+  bloques?: BloquesMosaico;
+}
+
+/** Un bloque de Mosaico: su fondo y su letra. */
+export interface ColoresBloque {
+  fondo: string;
+  texto: string;
+}
+
+export interface BloquesMosaico {
+  /** El botón grande, a lo ancho: del color del negocio. */
+  principal: ColoresBloque;
+  /** Las redes: cuadrados del tinte con el nombre de la red. */
+  red: ColoresBloque;
+  /** Los botones secundarios: cuadrados blancos. */
+  boton: ColoresBloque;
+  /** El ítem grande del catálogo: título y precio sobre la foto, con esta capa mínima detrás. */
+  capaFoto: CapaFoto;
 }
 
 /** Un cartel de estado: la píldora, su letra y el punto de color. */
@@ -257,6 +362,42 @@ const ESTADO_NOCHE = {
   abierto: { fondo: "#12301F", texto: "#86EFAC", punto: "#22C55E" },
   cerrado: { fondo: NOCHE.chip, texto: NOCHE.texto2, punto: "#F87171" },
 };
+
+/** Postal: la tarjeta blanca y, adentro, las tarjetas apenas grises con su borde. */
+export const POSTAL = {
+  tarjeta: "#F8FAFB",
+  borde: "#EEF0F2",
+  /** Cuánto se oscurece la portada desenfocada (IDEAS/5: 30 %). */
+  oscurecer: 0.28,
+};
+
+/** Postal: el cartel va sobre la tarjeta gris clarito; el verde y el gris de siempre. */
+const ESTADO_POSTAL = ESTADO_CLARO;
+
+/** Carta: papel crema, líneas punteadas entre los platos. */
+export const CARTA = {
+  fondo: "#FFFCF7",
+  borde: "#ECE7E1",
+  linea: "#DDD5CB",
+};
+
+/** Carta: el cartel del encabezado va sobre la crema y el de las sucursales, en blanco. */
+const ESTADO_CARTA = ESTADO_CLARO;
+
+/** Dulce: el cartel sobre la tarjeta blanca; el verde y el gris no chocan con el pastel. */
+const ESTADO_DULCE = ESTADO_CLARO;
+
+/** Mosaico: el gris cálido de la grilla y su texto tenue (el gris de siempre no llega a 4.5:1 ahí). */
+export const MOSAICO = {
+  fondo: "#F1F1EE",
+  texto3: "#5B616B",
+};
+
+/** Mosaico: el título y el precio del ítem grande van sobre la foto con al menos 60 % de negro. */
+const CAPA_MOSAICO: CapaFoto = { color: "#000000", opacidad: 0.6 };
+
+/** Mosaico: la sucursal es un bloque oscuro; el cartel, el de Noche. */
+const ESTADO_MOSAICO = ESTADO_NOCHE;
 
 /**
  * Los colores de la página con ese estilo y ese color. `portada`: si hay
@@ -400,6 +541,153 @@ export function tonosPagina(clave: string | null | undefined, c: Paleta, portada
         estado: ESTADO_BOUTIQUE,
       };
     }
+    case "POSTAL":
+      // Todo va adentro de la tarjeta blanca: el fondo desenfocado no lleva texto.
+      return {
+        superficie: { tipo: "clara", fondo: "#ffffff", tarjeta: POSTAL.tarjeta },
+        fondo: "#ffffff",
+        texto: g.texto,
+        texto2: g.texto2,
+        texto3: g.texto3,
+        titulo: g.texto,
+        tarjeta: POSTAL.tarjeta,
+        borde: POSTAL.borde,
+        sombra: null,
+        textoTarjeta: g.texto,
+        texto2Tarjeta: "#4B5563",
+        texto3Tarjeta: g.texto3,
+        precio: c.oscuro,
+        icono: c.oscuro,
+        sinFotoFondo: c.tinte,
+        sinFotoTexto: c.oscuro,
+        puntoOn: c.oscuro,
+        puntoOff: "#C7CCD3",
+        linea: POSTAL.borde,
+        redFondo: c.tinte,
+        redTrazo: c.oscuro,
+        textoEncabezado: g.texto,
+        texto2Encabezado: "#4B5563",
+        fondosEncabezado: ["#ffffff"],
+        capa: null,
+        familia,
+        barra: c.oscuro,
+        estado: ESTADO_POSTAL,
+      };
+    case "CARTA": {
+      const precio = oscuroLegible(c.acento, CARTA.fondo);
+      return {
+        superficie: { tipo: "clara", fondo: CARTA.fondo, tarjeta: "#ffffff" },
+        fondo: CARTA.fondo,
+        texto: g.texto,
+        texto2: "#4B5563",
+        texto3: g.texto3,
+        titulo: g.texto,
+        tarjeta: "#ffffff",
+        borde: CARTA.borde,
+        sombra: null,
+        textoTarjeta: g.texto,
+        texto2Tarjeta: "#4B5563",
+        texto3Tarjeta: g.texto3,
+        precio,
+        // La lista de platos va directo sobre la crema; las tarjetas, en blanco.
+        fondosPrecio: [CARTA.fondo, "#ffffff"],
+        icono: c.oscuro,
+        sinFotoFondo: c.tinte,
+        sinFotoTexto: c.oscuro,
+        puntoOn: c.oscuro,
+        puntoOff: "#B8BEC7",
+        linea: CARTA.linea,
+        redFondo: null,
+        redTrazo: c.oscuro,
+        textoEncabezado: g.texto,
+        texto2Encabezado: "#4B5563",
+        fondosEncabezado: [CARTA.fondo],
+        capa: null,
+        familia,
+        barra: c.acento,
+        estado: ESTADO_CARTA,
+      };
+    }
+    case "DULCE": {
+      // Lo que va directo sobre el pastel, en el oscuro del color (pasa en las 32).
+      const acento = oscuroLegible(c.acento, c.tinte);
+      return {
+        superficie: { tipo: "clara", fondo: c.tinte, tarjeta: "#ffffff" },
+        fondo: c.tinte,
+        texto: g.texto,
+        texto2: "#4B5563",
+        texto3: acento,
+        titulo: acento,
+        tarjeta: "#ffffff",
+        borde: null,
+        // La sombra del color y no gris: sobre el pastel una gris se ve sucia.
+        sombra: `0 10px 24px ${rgbaCapa({ color: c.acento, opacidad: 0.18 })}`,
+        textoTarjeta: g.texto,
+        texto2Tarjeta: "#4B5563",
+        texto3Tarjeta: g.texto3,
+        precio: c.oscuro,
+        icono: c.oscuro,
+        sinFotoFondo: c.tinte,
+        sinFotoTexto: c.oscuro,
+        puntoOn: c.acento,
+        puntoOff: mezcla(c.acento, "#ffffff", 0.65),
+        linea: mezcla(c.acento, "#ffffff", 0.75),
+        redFondo: "#ffffff",
+        redTrazo: c.oscuro,
+        textoEncabezado: g.texto,
+        texto2Encabezado: "#4B5563",
+        fondosEncabezado: [c.tinte],
+        capa: null,
+        familia,
+        barra: c.acento,
+        estado: ESTADO_DULCE,
+      };
+    }
+    case "MOSAICO": {
+      const sobreTinte = oscuroLegible(c.acento, c.tinte);
+      return {
+        superficie: { tipo: "clara", fondo: MOSAICO.fondo, tarjeta: "#ffffff" },
+        // La sucursal es un bloque oscuro: sus botones chicos, como en Noche.
+        superficieTarjeta: { tipo: "oscura", fondo: NOCHE.tarjeta, tarjeta: NOCHE.tarjeta },
+        fondo: MOSAICO.fondo,
+        texto: g.texto,
+        texto2: "#4B5563",
+        texto3: MOSAICO.texto3,
+        titulo: g.texto,
+        tarjeta: NOCHE.tarjeta,
+        borde: null,
+        sombra: null,
+        textoTarjeta: NOCHE.texto,
+        texto2Tarjeta: NOCHE.texto2,
+        texto3Tarjeta: NOCHE.texto3,
+        // El precio de los ítems chicos va en una etiqueta blanca sobre la foto.
+        precio: g.texto,
+        fondosPrecio: ["#ffffff"],
+        icono: acentoNoche(c),
+        sinFotoFondo: c.tinte,
+        sinFotoTexto: c.oscuro,
+        puntoOn: c.oscuro,
+        puntoOff: "#B8BEC7",
+        linea: NOCHE.borde,
+        redFondo: c.tinte,
+        redTrazo: sobreTinte,
+        textoEncabezado: g.texto,
+        texto2Encabezado: g.texto3,
+        // El nombre va en el bloque blanco de arriba.
+        fondosEncabezado: ["#ffffff"],
+        capa: null,
+        familia,
+        barra: MOSAICO.fondo,
+        estado: ESTADO_MOSAICO,
+        bloques: {
+          // Las 32 muestras pasan 4.5:1 con blanco (como en Vivo).
+          principal: { fondo: c.acento, texto: "#ffffff" },
+          red: { fondo: c.tinte, texto: sobreTinte },
+          boton: { fondo: "#ffffff", texto: g.texto },
+          capaFoto: CAPA_MOSAICO,
+        },
+      };
+    }
     default:
       // Clásico: los grises de siempre (GRIS_PAGINA), sin tocar un píxel.
       return {
@@ -461,8 +749,14 @@ export function paresDeTexto(t: TonosPagina): ParTexto[] {
   agregar("nombre del ítem y de la sucursal", t.textoTarjeta, [t.tarjeta]);
   agregar("dirección", t.texto2Tarjeta, [t.tarjeta]);
   agregar("descripción del ítem y horario", t.texto3Tarjeta, [t.tarjeta]);
-  agregar("precio", t.precio, [t.tarjeta]);
+  agregar("precio", t.precio, t.fondosPrecio ?? [t.tarjeta]);
   agregar("cartel abierto", t.estado.abierto.texto, [t.estado.abierto.fondo]);
   agregar("cartel cerrado", t.estado.cerrado.texto, [t.estado.cerrado.fondo]);
+  if (t.bloques) {
+    agregar("bloque del botón grande", t.bloques.principal.texto, [t.bloques.principal.fondo]);
+    agregar("bloque de una red", t.bloques.red.texto, [t.bloques.red.fondo]);
+    agregar("bloque de un botón", t.bloques.boton.texto, [t.bloques.boton.fondo]);
+    agregar("título y precio sobre la foto", "#ffffff", [fondoBajoCapa(t.bloques.capaFoto)]);
+  }
   return pares;
 }

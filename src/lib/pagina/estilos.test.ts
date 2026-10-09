@@ -230,13 +230,17 @@ describe("estilos de página: todo se lee en cualquier combinación", () => {
             }
           }
           if (!portada) continue;
-          for (const f of FORMAS) {
-            const b = estiloBotones(f.clave, c, t.superficie);
-            for (const [pieza, p] of Object.entries(b)) {
-              if (typeof p === "string") continue;
-              for (const fondo of p.fondos) {
-                if (contraste(p.texto, fondo) < CONTRASTE_MINIMO) {
-                  fallas.push(`${estilo.clave} ${f.clave} ${pieza} ${hex}: ${p.texto} sobre ${fondo}`);
+          // La de la página y, si la tarjeta de la sucursal es de otra familia (Mosaico), la suya.
+          for (const sup of [t.superficie, t.superficieTarjeta]) {
+            if (!sup) continue;
+            for (const f of FORMAS) {
+              const b = estiloBotones(f.clave, c, sup);
+              for (const [pieza, p] of Object.entries(b)) {
+                if (typeof p === "string") continue;
+                for (const fondo of p.fondos) {
+                  if (contraste(p.texto, fondo) < CONTRASTE_MINIMO) {
+                    fallas.push(`${estilo.clave} ${sup.tipo} ${f.clave} ${pieza} ${hex}: ${p.texto} sobre ${fondo}`);
+                  }
                 }
               }
             }
@@ -249,6 +253,24 @@ describe("estilos de página: todo se lee en cualquier combinación", () => {
       }
     }
     expect(fallas).toEqual([]);
+  });
+
+  it("fase 2: cada texto se mide contra su fondo real (la tarjeta de Postal, el tinte de Dulce, la crema de Carta, los bloques de Mosaico)", () => {
+    const c = paleta("#B23A2E");
+    const fondos = (clave: string, portada = true) => paresDeTexto(tonosPagina(clave, c, portada)).map((p) => p.fondo);
+    expect(fondos("POSTAL")).toContain("#ffffff");
+    expect(fondos("POSTAL", false)).toContain("#ffffff");
+    expect(fondos("DULCE")).toContain(c.tinte);
+    expect(fondos("CARTA")).toContain("#FFFCF7");
+    // El precio de la lista de Carta va sobre la crema, no en una tarjeta.
+    expect(paresDeTexto(tonosPagina("CARTA", c)).filter((p) => p.que === "precio").map((p) => p.fondo)).toEqual(["#FFFCF7", "#ffffff"]);
+    const mosaico = paresDeTexto(tonosPagina("MOSAICO", c));
+    expect(mosaico.map((p) => p.que)).toEqual(
+      expect.arrayContaining(["bloque del botón grande", "bloque de una red", "bloque de un botón", "título y precio sobre la foto"]),
+    );
+    expect(mosaico.find((p) => p.que === "bloque del botón grande")).toMatchObject({ texto: "#ffffff", fondo: c.acento });
+    // La sucursal de Mosaico es un bloque oscuro: sus botones chicos, con la superficie oscura.
+    expect(tonosPagina("MOSAICO", c).superficieTarjeta?.tipo).toBe("oscura");
   });
 
   it("con un fondo de anuncio elegido y la letra automática, también en cada estilo", () => {
@@ -298,10 +320,41 @@ describe("estilos de página: todo se lee en cualquier combinación", () => {
   });
 });
 
+describe("letra del texto de la fase 2", () => {
+  afterEach(() => document.head.querySelectorAll("link").forEach((l) => l.remove()));
+  const hojas = () => Array.from(document.head.querySelectorAll<HTMLLinkElement>("link[rel=stylesheet]"), (l) => l.href).join(" ");
+
+  it("cada estilo baja sólo su letra (y no Roboto): Postal Quicksand, Carta y Mosaico Montserrat, Dulce Nunito", () => {
+    for (const [estilo, familia] of [
+      ["POSTAL", "Quicksand:wght@500;700"],
+      ["CARTA", "Montserrat:wght@400;500;700"],
+      ["DULCE", "Nunito:wght@400;600;700"],
+      ["MOSAICO", "Montserrat:wght@500;700;800"],
+    ]) {
+      document.head.querySelectorAll("link").forEach((l) => l.remove());
+      cargarFuentesPagina(undefined, estilo);
+      expect(hojas(), estilo).toContain(`family=${familia}`);
+      expect(hojas(), estilo).not.toContain("Roboto");
+    }
+  });
+
+  it("las letras recomendadas de la fase 2 están en el catálogo de 30", () => {
+    for (const clave of ["POSTAL", "CARTA", "DULCE", "MOSAICO"]) {
+      const e = ESTILOS_PAGINA.find((x) => x.clave === clave)!;
+      expect(LETRAS.some((l) => l.clave === e.letra), clave).toBe(true);
+    }
+    expect(ESTILOS_PAGINA.find((x) => x.clave === "POSTAL")!).toMatchObject({ letra: "QUICKSAND", forma: "TINTE" });
+    expect(ESTILOS_PAGINA.find((x) => x.clave === "CARTA")!).toMatchObject({ letra: "ALFA_SLAB" });
+    expect(ESTILOS_PAGINA.find((x) => x.clave === "DULCE")!).toMatchObject({ letra: "FREDOKA", forma: "PILDORA" });
+    expect(ESTILOS_PAGINA.find((x) => x.clave === "MOSAICO")!).toMatchObject({ letra: "MONTSERRAT" });
+  });
+});
+
 describe("sugerencia por rubro", () => {
   it("cada rubro con su estilo; uno que no está en la tabla, Clásico", () => {
     expect(estiloRecomendado("RESTAURANTE")).toBe("VIVO");
-    expect(estiloRecomendado("UNAS")).toBe("VIVO");
+    // Fase 2 (09-oct): uñas pasa de Vivo a Dulce.
+    expect(estiloRecomendado("UNAS")).toBe("DULCE");
     expect(estiloRecomendado("FARMACIA")).toBe("CLASICO");
     expect(estiloRecomendado("PELUQUERIA")).toBe("BOUTIQUE");
     expect(estiloRecomendado("SPA")).toBe("BOUTIQUE");
@@ -310,8 +363,28 @@ describe("sugerencia por rubro", () => {
     expect(estiloRecomendado(undefined)).toBe("CLASICO");
   });
 
-  it("los 5 estilos con sus 3 recomendados de cada cosa, válidos", () => {
-    expect(ESTILOS_PAGINA.map((e) => e.nombre)).toEqual(["Clásico", "Vitrina", "Vivo", "Noche", "Boutique"]);
+  it("con ítems en el catálogo, al restaurante y a la farmacia les va Carta; al resto no le cambia", () => {
+    expect(estiloRecomendado("RESTAURANTE", true)).toBe("CARTA");
+    expect(estiloRecomendado("FARMACIA", true)).toBe("CARTA");
+    expect(estiloRecomendado("RESTAURANTE", false)).toBe("VIVO");
+    expect(estiloRecomendado("FARMACIA", false)).toBe("CLASICO");
+    expect(estiloRecomendado("UNAS", true)).toBe("DULCE");
+    expect(estiloRecomendado("PELUQUERIA", true)).toBe("BOUTIQUE");
+    expect(estiloRecomendado("VETERINARIA", true)).toBe("CLASICO");
+  });
+
+  it("los 9 estilos con sus 3 recomendados de cada cosa, válidos", () => {
+    expect(ESTILOS_PAGINA.map((e) => e.nombre)).toEqual([
+      "Clásico",
+      "Vitrina",
+      "Vivo",
+      "Noche",
+      "Boutique",
+      "Postal",
+      "Carta",
+      "Dulce",
+      "Mosaico",
+    ]);
     for (const e of ESTILOS_PAGINA) {
       expect(e.letras[0]).toBe(e.letra);
       expect(e.formas[0]).toBe(e.forma);

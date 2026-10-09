@@ -18,6 +18,7 @@ import { urlTelefono } from "../../lib/pagina/vista";
 import ArmadoEstilo, { type PiezasArmado } from "./ArmadosPagina";
 import CatalogoPagina, { type AccionCatalogo, type AspectoCatalogo } from "./CatalogoPagina";
 import { EstadoSucursal, SemanaSucursal } from "./HorarioSucursal";
+import type { AccionPagina, DatosVisor } from "./piezasArmado";
 import { Enlace, PiePagina, TarjetaSucursal, TituloSeccion, Trazo, type AccionSucursal } from "./piezasPagina";
 
 // Las piezas chicas viven en piezasPagina.tsx; se siguen pidiendo de acá.
@@ -30,7 +31,8 @@ export { MarcaBamarDev, Trazo } from "./piezasPagina";
  * y la vista previa del editor, que le pasa lo que se está editando. Tiene dos
  * armados: celular (una columna) y computadora, según el ancho, y desde el
  * 09-oct uno por estilo de página (`estilosPagina.ts`): el Clásico es el de
- * siempre, tal cual; Vitrina, Vivo, Noche y Boutique, en ArmadosPagina.tsx.
+ * siempre, tal cual; los demás, en ArmadosPagina.tsx (y los de la fase 2,
+ * Postal, Carta, Dulce y Mosaico, en un archivo cada uno).
  * Estilos en línea y no clases del tema de la app: la página no lee la paleta
  * de la app (§1.5), sólo su muestra de color.
  */
@@ -310,6 +312,9 @@ export default function VistaPagina({
   // La forma decide fondo, borde, sombra y radio; el tamaño y el armado son de
   // acá. La superficie (el fondo del estilo) decide cómo se leen sobre él.
   const b = estiloBotones(p.formaBotones, c, t.superficie);
+  // Los botones chicos van en la tarjeta de la sucursal: si es de otra
+  // familia que la página (el bloque oscuro de Mosaico), con la suya.
+  const bTarjeta = t.superficieTarjeta ? estiloBotones(p.formaBotones, c, t.superficieTarjeta) : b;
   const letraNombre = letraTitulo(p.tipografia);
   const clic = (e: EnlacePublico) => () => alClic?.(e);
   // Los que van en mayúsculas espaciadas: el botón grande de Noche y de Boutique.
@@ -359,7 +364,7 @@ export default function VistaPagina({
     justifyContent: "center",
     textDecoration: "none",
     padding: "0 6px",
-    ...(destacado ? b.chicoDestacado : b.chico).estilo,
+    ...(destacado ? bTarjeta.chicoDestacado : bTarjeta.chico).estilo,
   });
 
   const unaSucursal = p.sucursales.length === 1;
@@ -383,6 +388,33 @@ export default function VistaPagina({
       {p.destacado.etiqueta}
     </Enlace>
   ) : null;
+
+  // Los mismos botones como datos, para los armados que los dibujan a su
+  // modo (los mosaicos de acción de Carta, los bloques de Mosaico).
+  const acciones: AccionPagina[] = [
+    ...(p.reservar
+      ? [{ clave: "reservar", texto: "Reservar turno", icono: ICONO_RESERVAR, href: urlReservar, principal: true }]
+      : p.destacado
+        ? [
+            {
+              clave: `enlace-${p.destacado.id}`,
+              texto: p.destacado.etiqueta,
+              icono: iconoDe(p.destacado.tipo, p.destacado.icono),
+              href: p.destacado.url,
+              onClick: clic(p.destacado),
+              principal: true,
+            },
+          ]
+        : []),
+    ...p.botones.map((x) => ({
+      clave: `enlace-${x.id}`,
+      texto: x.etiqueta,
+      icono: iconoDe(x.tipo, x.icono),
+      href: x.url,
+      onClick: clic(x),
+      principal: false,
+    })),
+  ];
 
   const botones = p.botones.map((x) =>
     centrados ? (
@@ -417,7 +449,9 @@ export default function VistaPagina({
     ? 4
     : p.formaBotones === "HOJA"
       ? "20px 4px 20px 4px"
-      : 16;
+      : estilo.clave === "DULCE"
+        ? 24 // Dulce: todo bien redondo.
+        : 16;
 
   // El botón del visor del catálogo: reservar si la página reserva; si no,
   // consultar por el WhatsApp del negocio con el ítem en el mensaje.
@@ -435,6 +469,8 @@ export default function VistaPagina({
   // El visor es siempre blanco: su botón va con la forma sobre fondo claro
   // (el invertido de Vivo, blanco sobre blanco, no se vería).
   const bVisor = t.superficie.tipo === "clara" ? b : estiloBotones(p.formaBotones, c);
+  // La lista de menú (Carta) va directo sobre la página, sin tarjeta.
+  const menu = estilo.catalogo.presentacion === "menu";
   const aspectoCatalogo: AspectoCatalogo | undefined = clasico
     ? undefined
     : {
@@ -442,8 +478,10 @@ export default function VistaPagina({
         tarjeta: t.tarjeta,
         borde: t.borde,
         sombra: t.sombra,
-        texto: t.textoTarjeta,
-        texto3: t.texto3Tarjeta,
+        texto: menu ? t.texto : t.textoTarjeta,
+        texto3: menu ? t.texto3 : t.texto3Tarjeta,
+        linea: t.linea,
+        precioItem: menu ? { ...estiloLetra(letraNombre, 17), textTransform: undefined, letterSpacing: undefined } : undefined,
         precio: t.precio,
         sinFotoFondo: t.sinFotoFondo,
         sinFotoTexto: t.sinFotoTexto,
@@ -478,11 +516,45 @@ export default function VistaPagina({
     />
   );
 
+  const visor: DatosVisor | null =
+    p.catalogo && p.catalogo.items.length > 0
+      ? {
+          items: p.catalogo.items,
+          titulo: p.catalogo.titulo,
+          c,
+          familia: t.familia,
+          escritorio,
+          enMarco: enCaja,
+          accion: accionCatalogo,
+          estiloBoton: { ...tamanoPrincipal, ...bVisor.principal.estilo },
+          colorIconoBoton: bVisor.principal.icono,
+        }
+      : null;
+
   const pie = <PiePagina p={p} urlPrivacidad={urlPrivacidad} color={t.texto3} />;
   const etiquetaPrincipal = enCaja ? "Vista previa de la página" : undefined;
   const testId = miniatura ? "miniatura-pagina" : "vista-pagina";
 
   if (!clasico) {
+    const tituloSucursales = unaSucursal ? "Dónde estamos" : "Nuestras sucursales";
+    // En las columnas angostas de computadora (la tarjeta de Postal, la columna
+    // de Dulce, el panel de Carta junto a la lista) dos tarjetas por fila no
+    // dejan entrar los botones.
+    const angosta = ["POSTAL", "DULCE"].includes(estilo.clave) || (estilo.clave === "CARTA" && !!catalogo);
+    const tarjetasSucursal = p.sucursales.map((s, i) => (
+      <TarjetaSucursal
+        key={`${s.nombre}-${i}`}
+        s={s}
+        acciones={accionesDe(s)}
+        estiloAccion={botonChico}
+        t={t}
+        letra={letraNombre}
+        presentacion={estilo.sucursales}
+        radio={radioTarjeta}
+        primera={i === 0}
+        estado={<EstadoSucursal tramos={s.horarioSemanal} t={t} />}
+      />
+    ));
     const piezas: PiezasArmado = {
       p,
       c,
@@ -516,34 +588,27 @@ export default function VistaPagina({
         p.sucursales.length > 0 ? (
           <>
             <TituloSeccion estilo={estilo.clave} t={t} letra={letraNombre} escritorio={escritorio}>
-              {unaSucursal ? "Dónde estamos" : "Nuestras sucursales"}
+              {tituloSucursales}
             </TituloSeccion>
             <div
               style={
-                escritorio && estilo.sucursales === "tarjeta" && !unaSucursal
+                escritorio && estilo.sucursales === "tarjeta" && !unaSucursal && !angosta
                   ? { display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }
                   : { display: "flex", flexDirection: "column", gap: estilo.sucursales === "texto" ? 0 : 12 }
               }
             >
-              {p.sucursales.map((s, i) => (
-                <TarjetaSucursal
-                  key={`${s.nombre}-${i}`}
-                  s={s}
-                  acciones={accionesDe(s)}
-                  estiloAccion={botonChico}
-                  t={t}
-                  letra={letraNombre}
-                  presentacion={estilo.sucursales}
-                  radio={radioTarjeta}
-                  primera={i === 0}
-                  estado={<EstadoSucursal tramos={s.horarioSemanal} t={t} />}
-                />
-              ))}
+              {tarjetasSucursal}
             </div>
           </>
         ) : null,
       pie,
       clic,
+      b,
+      radio: radioTarjeta,
+      acciones,
+      tarjetasSucursal,
+      tituloSucursales,
+      visor,
     };
     return <ArmadoEstilo {...piezas} />;
   }

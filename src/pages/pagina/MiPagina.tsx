@@ -814,6 +814,11 @@ export default function MiPagina() {
                   Vitrina luce con una foto de portada. Sin foto, arriba va un bloque de tu color.
                 </p>
               )}
+              {estilo.pideCatalogo && !vista.catalogo && (
+                <p className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-2.5 text-[13px] text-amber-900">
+                  Carta luce con tu catálogo. Sin productos se ven tus botones y tus sucursales.
+                </p>
+              )}
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2">

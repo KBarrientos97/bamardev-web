@@ -9,8 +9,9 @@ import VistaPagina from "./VistaPagina";
 /**
  * El estilo de la página en "Mi página" (IDEAS/5 §4.6, aprobado el 09-oct):
  * una fila con la miniatura de la página como está y "Cambiar"; el popup
- * muestra los 5 estilos armados con los datos del propio negocio (su logo, su
- * nombre, su color, su portada) y marca el que se le sugiere a su rubro.
+ * muestra los 9 estilos armados con los datos del propio negocio (su logo, su
+ * nombre, su color, su portada) y marca el que se le sugiere a su rubro (y a
+ * si tiene catálogo: a un restaurante con platos le va Carta).
  * Tocar una miniatura la marca; "Usar este estilo" la confirma y va al
  * borrador, como todo lo de la apariencia.
  */
@@ -34,9 +35,21 @@ function useAncho(inicial: number) {
 }
 
 /**
- * La página de verdad (VistaPagina en modo celular), achicada. Sin catálogo
- * (no se cargan sus fotos por cada miniatura), quieta y fuera del árbol de
- * accesibilidad: es un dibujo, el nombre lo dice el botón que la contiene.
+ * El catálogo de una miniatura: sin fotos (no se cargan por cada miniatura).
+ * Donde el catálogo es el armado (la lista de Carta, los bloques de Mosaico)
+ * van los primeros ítems con su inicial en vez de la foto: sin ellos la
+ * miniatura no mostraría qué es el estilo. En el resto, nada.
+ */
+function catalogoDeMiniatura(pagina: PaginaPublica): PaginaPublica["catalogo"] {
+  const cat = pagina.catalogo;
+  if (!cat || estiloPagina(pagina.estilo).catalogo.presentacion === "carrusel") return null;
+  return { ...cat, items: cat.items.slice(0, 3).map((it) => ({ ...it, fotoUrl: null })) };
+}
+
+/**
+ * La página de verdad (VistaPagina en modo celular), achicada, quieta y fuera
+ * del árbol de accesibilidad: es un dibujo, el nombre lo dice el botón que la
+ * contiene.
  */
 export function MiniaturaPagina({
   pagina,
@@ -68,7 +81,7 @@ export function MiniaturaPagina({
       }}
     >
       <div style={{ width: ANCHO_PAGINA, transform: `scale(${escala})`, transformOrigin: "top left" }}>
-        <VistaPagina pagina={{ ...pagina, catalogo: null }} urlReservar="#" modo="movil" miniatura />
+        <VistaPagina pagina={{ ...pagina, catalogo: catalogoDeMiniatura(pagina) }} urlReservar="#" modo="movil" miniatura />
       </div>
     </div>
   );
@@ -88,10 +101,10 @@ export default function SelectorEstilo({
   const actual = estiloPagina(vista.estilo);
   const [abierto, setAbierto] = useState(false);
   const [marcado, setMarcado] = useState<ClaveEstilo>(actual.clave);
-  const sugerido = estiloRecomendado(rubro);
+  const sugerido = estiloRecomendado(rubro, (vista.catalogo?.items.length ?? 0) > 0);
   const elegido = estiloPagina(marcado);
 
-  // Las letras de las 5 miniaturas, recién al abrir (como "Más letras").
+  // Las letras de las 9 miniaturas, recién al abrir (como "Más letras").
   useEffect(() => {
     if (abierto) cargarFuentesEstilos(ESTILOS_PAGINA.map((e) => e.letra));
   }, [abierto]);
@@ -174,6 +187,12 @@ export default function SelectorEstilo({
             <p role="status" className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
               <strong>Vitrina luce con una foto de portada.</strong> Sin foto, arriba va un bloque de tu color. Podés subirla
               en «Foto de portada».
+            </p>
+          )}
+          {elegido.pideCatalogo && !vista.catalogo?.items.length && (
+            <p role="status" className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+              <strong>Carta luce con tu catálogo.</strong> Sin productos se ven tus botones y tus sucursales. Podés cargarlos
+              en «Catálogo».
             </p>
           )}
           <p className="rounded-xl bg-muted p-3 text-[13px] text-texto-2">

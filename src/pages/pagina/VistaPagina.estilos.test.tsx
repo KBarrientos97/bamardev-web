@@ -154,7 +154,8 @@ describe("estilos de página", () => {
   });
 
   it("un estilo desconocido también cae en el Clásico", () => {
-    montar({ estilo: "MOSAICO" }, "escritorio");
+    // (Hasta el 09-oct era "MOSAICO", que desde la fase 2 existe.)
+    montar({ estilo: "INEXISTENTE" }, "escritorio");
     expect(screen.getByTestId("vista-pagina")).toHaveAttribute("data-estilo", "CLASICO");
   });
 });
