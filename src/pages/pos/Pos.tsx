@@ -25,6 +25,7 @@ import { fmtHora, fmtMoney } from "../../lib/format";
 import { creaClientes, tieneFeature, tienePermiso } from "../../lib/permisos";
 import { esFarmacia } from "../../lib/rubro";
 import { useApi } from "../../lib/useApi";
+import { useBloqueoCupo } from "../../lib/useBloqueoCupo";
 import { useAuth } from "../../store/AuthContext";
 import type {
   Caja,
@@ -137,6 +138,16 @@ export default function Pos() {
   // un corte de red no terminen en dos ventas. Ver useIntentoDeCobro.
   const intento = useIntentoDeCobro();
   const [pantalla, setPantalla] = useState<Pantalla>("venta");
+  /**
+   * Plan Emprendedor (§5.2): el cupo de ventas del día. En un negocio sin
+   * cupo (Omar, cualquier Básico o Profesional) deja pasar todo y no pide
+   * nada, así que el POS se comporta exactamente como antes.
+   */
+  const {
+    verificar: hayLugarParaVender,
+    manejarError: rechazoPorCupo,
+    registrar: registrarConsumo,
+  } = useBloqueoCupo("VENTA", { refrescarAlMontar: true });
 
   /**
    * Las mesas que el salón mandó a caja.
@@ -474,6 +485,12 @@ export default function Pos() {
   const cobrar = useCallback(
     async (pagos: PagoInput[], extra?: { propinas?: PropinaInput[] }) => {
       setError("");
+      const cuerpo = mesaCobrando ? null : cuerpoVenta(pagos);
+      // Sin cupo ni créditos no se manda nada: se abre la hoja de compra y el
+      // cobro queda como estaba para reintentar. La mesa no se bloquea (el
+      // servidor la acepta igual: lo que se comió no se rechaza) y la venta
+      // que cobra una cita tampoco, porque no consume (§2.3).
+      if (cuerpo && !esVentaDeCita(cuerpo) && !hayLugarParaVender()) return;
       setEnviando(true);
       try {
         // Cobrar una mesa es otro endpoint: la cuenta ya existe en el salón,
@@ -485,12 +502,13 @@ export default function Pos() {
               clienteRequestId: intento.actual(),
             })
           : await api.crearVenta({
-              ...cuerpoVenta(pagos),
+              ...(cuerpo ?? cuerpoVenta(pagos)),
               // Belleza: la propina viaja aparte (no suma a la venta).
               ...(extra?.propinas?.length ? { propinas: extra.propinas } : {}),
               clienteRequestId: intento.actual(),
             });
         intento.registrado();
+        registrarConsumo(creada);
         setVenta(creada);
         if (mesaCobrando) {
           setMesaCobrando(null);
@@ -504,6 +522,9 @@ export default function Pos() {
         // El stock cambió al vender: el catálogo tiene que reflejarlo.
         productos.recargar();
       } catch (err) {
+        // Otro equipo usó el último lugar del día (403 CUPO_AGOTADO): se abre
+        // la hoja de compra y el carrito sigue armado para reintentar.
+        if (rechazoPorCupo(err)) return;
         // Una promo cambió entre la cotización y el cobro: se recalcula para
         // que al volver el carrito muestre el total nuevo.
         if (err instanceof ApiError && err.codigo === "DESCUENTO_CAMBIO") descuentos.recotizar();
@@ -512,7 +533,18 @@ export default function Pos() {
         setEnviando(false);
       }
     },
-    [cuerpoVenta, limpiar, productos, intento, conAgenda, refrescarCitas, descuentos],
+    [
+      cuerpoVenta,
+      limpiar,
+      productos,
+      intento,
+      conAgenda,
+      refrescarCitas,
+      descuentos,
+      hayLugarParaVender,
+      rechazoPorCupo,
+      registrarConsumo,
+    ],
   );
 
   /**
@@ -523,6 +555,7 @@ export default function Pos() {
   const crearPedidoPendiente = useCallback(
     async (datos: DatosEntrega) => {
       setError("");
+      if (!hayLugarParaVender()) return;
       setEnviando(true);
       try {
         const creada = await api.crearVenta({
@@ -540,17 +573,19 @@ export default function Pos() {
           clienteRequestId: intento.actual(),
         });
         intento.registrado();
+        registrarConsumo(creada);
         setVenta(creada);
         limpiar();
         setPantalla("pedidoOk");
         productos.recargar();
       } catch (err) {
+        if (rechazoPorCupo(err)) return;
         setError(err instanceof Error ? err.message : "No se pudo crear el pedido");
       } finally {
         setEnviando(false);
       }
     },
-    [carritoVenta, tipoPedido, limpiar, productos, intento, descuentos],
+    [carritoVenta, tipoPedido, limpiar, productos, intento, descuentos, hayLugarParaVender, rechazoPorCupo, registrarConsumo],
   );
 
   /**
@@ -561,11 +596,13 @@ export default function Pos() {
   const venderACredito = useCallback(
     async (credito: CreditoInput, pagos: PagoInput[], propinas: PropinaInput[] = []) => {
       setError("");
+      const conLaCita = conCita(carritoVenta.aDetalles(), citaCobrando);
+      if (!esVentaDeCita(conLaCita) && !hayLugarParaVender()) return;
       setEnviando(true);
       try {
         const creada = await api.crearVenta({
           // Una cita también se puede fiar (§10): la venta la completa igual.
-          ...conCita(carritoVenta.aDetalles(), citaCobrando),
+          ...conLaCita,
           ...descuentos.extraVenta(),
           ...clienteDeSesiones,
           tipoPedido: "LOCAL",
@@ -576,17 +613,30 @@ export default function Pos() {
           clienteRequestId: intento.actual(),
         });
         intento.registrado();
+        registrarConsumo(creada);
         setVenta(creada);
         limpiar();
         setPantalla("recibo");
         productos.recargar();
       } catch (err) {
+        if (rechazoPorCupo(err)) return;
         setError(err instanceof Error ? err.message : "No se pudo registrar el fiado");
       } finally {
         setEnviando(false);
       }
     },
-    [carritoVenta, limpiar, productos, intento, citaCobrando, descuentos, clienteDeSesiones],
+    [
+      carritoVenta,
+      limpiar,
+      productos,
+      intento,
+      citaCobrando,
+      descuentos,
+      clienteDeSesiones,
+      hayLugarParaVender,
+      rechazoPorCupo,
+      registrarConsumo,
+    ],
   );
 
   /**
@@ -871,7 +921,13 @@ export default function Pos() {
       // Con profesional, el precio propio ya en cada línea; si no, el mismo.
       carrito={carritoVenta}
       profesionales={profesionalesCarrito}
-      onCobrar={() => setPantalla("cobro")}
+      // Plan Emprendedor: sin lugar en el cupo ni créditos se abre la hoja de
+      // compra antes de pasar al cobro, para no hacerle cargar los pagos a la
+      // cajera y rebotar al final. Cobrando una cita no se mira (no consume).
+      onCobrar={() => {
+        if (!citaCobrando && !hayLugarParaVender()) return;
+        setPantalla("cobro");
+      }}
       sucursalId={abierta.almacenId}
       // QA S2-07: un paquete se vende a un cliente; sin elegirlo, el cobro
       // rebotaba recién al confirmar, en una pantalla donde no se lo elige.
@@ -1130,6 +1186,15 @@ function textoPropinasCredito(propinas: PropinaInput[], formas: FormaPago[]): st
   return enMano > 0
     ? `Más la propina de ${fmtMoney(total)} (${fmtMoney(enMano)} en efectivo, que se recibe aparte del adelanto).`
     : `Más la propina de ${fmtMoney(total)}.`;
+}
+
+/**
+ * ¿La venta cobra una cita? Esa no consume cupo (§2.3): la cita ya lo usó al
+ * agendarse. Se mira el cuerpo que se manda y no `citaCobrando`, porque es el
+ * `citaId` del cuerpo lo que el backend usa para decidir.
+ */
+function esVentaDeCita(cuerpo: { citaId?: number }): boolean {
+  return cuerpo.citaId != null;
 }
 
 /** Los detalles con el profesional de cada servicio y, si sigue cobrándola, la cita. */
