@@ -3,6 +3,11 @@
  * el backend (`src/pagina/` y `src/enlaces/` del API).
  */
 
+import type { Tramo } from "./horario";
+
+/** Un tramo del horario de una sucursal (la regla, en `horario.ts`). */
+export type { Tramo };
+
 /** Las claves de `pagina/muestras.ts` del backend; cómo se pintan, en `estilos.ts`. */
 export type FormaBotones =
   | "REDONDEADO"
@@ -111,8 +116,14 @@ export interface SucursalPublica {
   reservaSlug: string | null;
   direccion: string | null;
   telefono: string | null;
+  /** El horario en texto libre: con el estructurado, sólo aclaraciones ("feriados cerrado"). */
   horario: string | null;
   mapaUrl: string | null;
+  /**
+   * El horario por día, para "Abierto ahora · cierra 21:00". Opcional: un
+   * backend anterior no lo manda; ausente = null (sin cartel).
+   */
+  horarioSemanal?: Tramo[] | null;
 }
 
 /**
@@ -201,6 +212,8 @@ export interface SucursalEditor {
   publicarEnPagina: boolean;
   horarioTexto: string | null;
   mapsUrl: string | null;
+  /** El horario por día; opcional por lo mismo que en `SucursalPublica` (ausente = null). */
+  horarioSemanal?: Tramo[] | null;
   /** Si recibe reservas online y con qué nombre en el enlace (para la vista previa). */
   publicaReservas?: boolean;
   slugReservas?: string | null;

@@ -94,6 +94,7 @@ export function vistaDesdeEditor(e: EstadoEditor, hoy = hoyBolivia()): PaginaPub
         telefono: s.telefono,
         horario: s.horarioTexto,
         mapaUrl: urlMapa(s.mapsUrl, s.direccion),
+        horarioSemanal: s.horarioSemanal?.length ? s.horarioSemanal : null,
       })),
     catalogo: catalogoVisible(e),
     pie: { atribucionUrl: "https://bamardev.com" },

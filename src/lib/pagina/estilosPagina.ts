@@ -208,7 +208,26 @@ export interface TonosPagina {
   familia: string;
   /** El color de la barra del navegador (`theme-color`). */
   barra: string;
+  /** El cartel "Abierto ahora" / "Cerrado" de la sucursal, sobre su tarjeta. */
+  estado: { abierto: ColoresEstado; cerrado: ColoresEstado };
 }
+
+/** Un cartel de estado: la píldora, su letra y el punto de color. */
+export interface ColoresEstado {
+  fondo: string;
+  texto: string;
+  punto: string;
+}
+
+/**
+ * El cartel sobre una tarjeta clara (blanca o marfil): verde si abre, gris
+ * con el punto rojo si no. El rojo va sólo en el punto: "Cerrado" en rojo
+ * entero parece un error, y la letra gris se lee mejor.
+ */
+const ESTADO_CLARO = {
+  abierto: { fondo: "#DCFCE7", texto: "#166534", punto: "#16A34A" },
+  cerrado: { fondo: "#F3F4F6", texto: "#374151", punto: "#DC2626" },
+};
 
 /** Vitrina: el texto va sobre la foto con una capa de al menos 60 % de negro detrás. */
 const CAPA_VITRINA: CapaFoto = { color: "#000000", opacidad: 0.6 };
@@ -225,6 +244,18 @@ export const BOUTIQUE = {
   texto: "#2B2522",
   texto2: "#5B5049",
   texto3: "#6E625A",
+};
+
+/** Boutique: el verde y el gris llevados al marfil, para que el cartel no grite. */
+const ESTADO_BOUTIQUE = {
+  abierto: { fondo: "#E9EFE2", texto: "#2F5A2B", punto: "#4D7C45" },
+  cerrado: { fondo: "#F0EAE2", texto: BOUTIQUE.texto2, punto: "#B4483C" },
+};
+
+/** Noche: la píldora oscura con la letra clara (el verde y el rojo, aclarados). */
+const ESTADO_NOCHE = {
+  abierto: { fondo: "#12301F", texto: "#86EFAC", punto: "#22C55E" },
+  cerrado: { fondo: NOCHE.chip, texto: NOCHE.texto2, punto: "#F87171" },
 };
 
 /**
@@ -266,6 +297,7 @@ export function tonosPagina(clave: string | null | undefined, c: Paleta, portada
         capa: portada ? CAPA_VITRINA : null,
         familia,
         barra: c.oscuro,
+        estado: ESTADO_CLARO,
       };
     case "VIVO":
       return {
@@ -298,6 +330,7 @@ export function tonosPagina(clave: string | null | undefined, c: Paleta, portada
         capa: null,
         familia,
         barra: c.acento,
+        estado: ESTADO_CLARO,
       };
     case "NOCHE": {
       const claro = acentoNoche(c);
@@ -330,6 +363,7 @@ export function tonosPagina(clave: string | null | undefined, c: Paleta, portada
         capa: portada ? CAPA_NOCHE : null,
         familia,
         barra: NOCHE.fondo,
+        estado: ESTADO_NOCHE,
       };
     }
     case "BOUTIQUE": {
@@ -363,6 +397,7 @@ export function tonosPagina(clave: string | null | undefined, c: Paleta, portada
         capa: null,
         familia,
         barra: BOUTIQUE.fondo,
+        estado: ESTADO_BOUTIQUE,
       };
     }
     default:
@@ -396,6 +431,7 @@ export function tonosPagina(clave: string | null | undefined, c: Paleta, portada
         capa: null,
         familia,
         barra: c.acento,
+        estado: ESTADO_CLARO,
       };
   }
 }
@@ -426,5 +462,7 @@ export function paresDeTexto(t: TonosPagina): ParTexto[] {
   agregar("dirección", t.texto2Tarjeta, [t.tarjeta]);
   agregar("descripción del ítem y horario", t.texto3Tarjeta, [t.tarjeta]);
   agregar("precio", t.precio, [t.tarjeta]);
+  agregar("cartel abierto", t.estado.abierto.texto, [t.estado.abierto.fondo]);
+  agregar("cartel cerrado", t.estado.cerrado.texto, [t.estado.cerrado.fondo]);
   return pares;
 }

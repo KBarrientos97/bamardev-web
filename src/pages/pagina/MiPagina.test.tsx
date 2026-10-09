@@ -289,9 +289,9 @@ describe("Mi página", () => {
 
   it("volver a escribir lo guardado no deja la página como cambiada", async () => {
     await montar();
-    fireEvent.change(screen.getByLabelText("Horario de Centro"), { target: { value: "9 a 21" } });
+    fireEvent.change(screen.getByLabelText("Aclaración del horario de Centro"), { target: { value: "9 a 21" } });
     expect(screen.getByRole("button", { name: "Guardar cambios" })).toBeEnabled();
-    fireEvent.change(screen.getByLabelText("Horario de Centro"), { target: { value: "9 a 20" } });
+    fireEvent.change(screen.getByLabelText("Aclaración del horario de Centro"), { target: { value: "9 a 20" } });
     expect(screen.getByRole("button", { name: "Guardar cambios" })).toBeDisabled();
   });
 
@@ -717,5 +717,119 @@ describe("Mi página: catálogo", () => {
     await montar();
     expect(screen.getByText("2 de 2")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Agregar" })).toBeDisabled();
+  });
+});
+
+describe("Mi página: horario por día de la sucursal", () => {
+  const HABILES = [1, 2, 3, 4, 5].map((dia) => ({ dia, desde: "09:00", hasta: "20:00" }));
+  const filaHorario = () => screen.getByRole("button", { name: /^Horario de Centro:/ });
+
+  it("se carga en el popup (copiar a días hábiles, corte, error) y se guarda con «Guardar cambios»", async () => {
+    await montar();
+    expect(filaHorario()).toHaveTextContent("Sin horario cargado");
+    fireEvent.click(filaHorario());
+    const d = screen.getByRole("dialog", { name: "Horario de Centro" });
+
+    // Lunes 9 a 20, y lo mismo de martes a viernes.
+    fireEvent.click(within(d).getByRole("switch", { name: "Lunes abierto" }));
+    expect(within(d).getByLabelText("Lunes: abre")).toHaveValue("09:00");
+    fireEvent.change(within(d).getByLabelText("Lunes: cierra"), { target: { value: "20:00" } });
+    fireEvent.click(within(d).getByRole("button", { name: "Copiar a todos los días hábiles" }));
+    expect(within(d).getByRole("switch", { name: "Viernes abierto" })).toHaveAttribute("aria-checked", "true");
+    expect(within(d).getByLabelText("Viernes: cierra")).toHaveValue("20:00");
+    expect(within(d).getByRole("switch", { name: "Sábado abierto" })).toHaveAttribute("aria-checked", "false");
+
+    // El sábado arranca con las horas del viernes; cierra a la una.
+    fireEvent.click(within(d).getByRole("switch", { name: "Sábado abierto" }));
+    fireEvent.change(within(d).getByLabelText("Sábado: cierra"), { target: { value: "13:00" } });
+
+    // Un corte el lunes que se pisa: el error va en el lunes y "Listo" no cierra.
+    fireEvent.click(within(d).getByRole("button", { name: "Agregar corte el lunes" }));
+    expect(within(d).getByLabelText("Lunes: cierra")).toHaveValue("13:00");
+    expect(within(d).getByLabelText("Lunes: abre (después del corte)")).toHaveValue("15:00");
+    fireEvent.change(within(d).getByLabelText("Lunes: abre (después del corte)"), { target: { value: "12:00" } });
+    expect(within(d).getByRole("alert")).toHaveTextContent("El lunes: los tramos 09:00-13:00 y 12:00-20:00 se pisan");
+    fireEvent.click(within(d).getByRole("button", { name: "Listo" }));
+    expect(screen.getByRole("dialog", { name: "Horario de Centro" })).toBeInTheDocument();
+
+    // Sin el corte vuelve a 9 a 13: se deja el lunes 9 a 20 otra vez.
+    fireEvent.click(within(d).getByRole("button", { name: "Quitar el segundo horario del lunes" }));
+    fireEvent.change(within(d).getByLabelText("Lunes: cierra"), { target: { value: "20:00" } });
+    expect(within(d).queryByRole("alert")).not.toBeInTheDocument();
+    fireEvent.click(within(d).getByRole("button", { name: "Listo" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(filaHorario()).toHaveTextContent("Lun a vie 9:00–20:00 · Sáb 9:00–13:00 · Dom cerrado");
+    // La vista previa ya lo muestra.
+    expect(within(previa()).getByText("Ver horario")).toBeInTheDocument();
+    expect(within(previa()).getByTestId("estado-sucursal")).toBeInTheDocument();
+
+    const s = estado().sucursales[0];
+    vi.mocked(apiPagina.sucursal).mockResolvedValue({ ...s, horarioSemanal: [...HABILES, { dia: 6, desde: "09:00", hasta: "13:00" }] });
+    fireEvent.click(screen.getByRole("button", { name: "Guardar cambios" }));
+    await act(async () => {});
+    expect(apiPagina.sucursal).toHaveBeenCalledWith(10, {
+      horarioTexto: "9 a 20",
+      mapsUrl: null,
+      horarioSemanal: [...HABILES, { dia: 6, desde: "09:00", hasta: "13:00" }],
+    });
+    expect(screen.getByText("Cambios guardados")).toBeInTheDocument();
+    expect(filaHorario()).toHaveTextContent("Lun a vie 9:00–20:00 · Sáb 9:00–13:00 · Dom cerrado");
+  });
+
+  it("Quitar horario lo deja en null; Descartar lo vuelve atrás", async () => {
+    const base = estado();
+    vi.mocked(apiPagina.estado).mockResolvedValue({
+      ...base,
+      sucursales: [{ ...base.sucursales[0], horarioSemanal: HABILES }],
+    });
+    await montar();
+    expect(filaHorario()).toHaveTextContent("Lun a vie 9:00–20:00 · Sáb y dom cerrado");
+
+    fireEvent.click(filaHorario());
+    fireEvent.click(screen.getByRole("button", { name: "Quitar horario" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(filaHorario()).toHaveTextContent("Sin horario cargado");
+    expect(within(previa()).queryByText("Ver horario")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Descartar" }));
+    expect(filaHorario()).toHaveTextContent("Lun a vie 9:00–20:00 · Sáb y dom cerrado");
+    expect(screen.getByRole("button", { name: "Guardar cambios" })).toBeDisabled();
+
+    fireEvent.click(filaHorario());
+    fireEvent.click(screen.getByRole("button", { name: "Quitar horario" }));
+    vi.mocked(apiPagina.sucursal).mockResolvedValue({ ...base.sucursales[0], horarioSemanal: null });
+    fireEvent.click(screen.getByRole("button", { name: "Guardar cambios" }));
+    await act(async () => {});
+    expect(apiPagina.sucursal).toHaveBeenCalledWith(10, { horarioTexto: "9 a 20", mapsUrl: null, horarioSemanal: null });
+  });
+
+  it("cerrar el popup sin «Listo» no cambia nada; volver al horario guardado no deja cambios", async () => {
+    const base = estado();
+    vi.mocked(apiPagina.estado).mockResolvedValue({ ...base, sucursales: [{ ...base.sucursales[0], horarioSemanal: HABILES }] });
+    await montar();
+    fireEvent.click(filaHorario());
+    fireEvent.click(screen.getByRole("switch", { name: "Lunes abierto" }));
+    fireEvent.click(screen.getByRole("button", { name: "Cancelar" }));
+    expect(filaHorario()).toHaveTextContent("Lun a vie 9:00–20:00");
+    expect(screen.getByRole("button", { name: "Guardar cambios" })).toBeDisabled();
+
+    // Cerrar el lunes y volver a abrirlo recupera sus horas: queda como estaba.
+    fireEvent.click(filaHorario());
+    fireEvent.click(screen.getByRole("switch", { name: "Lunes abierto" }));
+    fireEvent.click(screen.getByRole("switch", { name: "Lunes abierto" }));
+    fireEvent.click(screen.getByRole("button", { name: "Listo" }));
+    expect(screen.getByRole("button", { name: "Guardar cambios" })).toBeDisabled();
+  });
+
+  it("el error del backend dice de qué sucursal es", async () => {
+    vi.mocked(apiPagina.sucursal).mockRejectedValue(new Error("El lunes: hasta 2 tramos por día (por ejemplo, mañana y tarde)"));
+    await montar();
+    fireEvent.click(filaHorario());
+    fireEvent.click(screen.getByRole("switch", { name: "Lunes abierto" }));
+    fireEvent.click(screen.getByRole("button", { name: "Listo" }));
+    fireEvent.click(screen.getByRole("button", { name: "Guardar cambios" }));
+    await act(async () => {});
+    expect(screen.getByText("Centro: El lunes: hasta 2 tramos por día (por ejemplo, mañana y tarde)")).toBeInTheDocument();
+    expect(filaHorario()).toHaveTextContent("Lun 9:00–18:00");
   });
 });
