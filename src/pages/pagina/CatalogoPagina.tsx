@@ -93,68 +93,14 @@ export default function CatalogoPagina({ catalogo, c, escritorio, enMarco, radio
       >
         {catalogo.titulo}
       </h2>
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: escritorio ? "repeat(auto-fill, minmax(200px, 1fr))" : "repeat(2, minmax(0, 1fr))",
-          gap: escritorio ? 16 : 10,
-        }}
-      >
-        {items.map((it, i) => {
-          const precio = formatoPrecio(it.precio, it.precioDesde);
-          const foto = urlDeImagen(it.fotoUrl);
-          return (
-            <button
-              key={it.id}
-              type="button"
-              aria-haspopup="dialog"
-              aria-label={precio ? `${it.titulo}, ${precio}` : it.titulo}
-              onClick={() => setAbierto(i)}
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                minWidth: 0,
-                padding: 0,
-                margin: 0,
-                textAlign: "left",
-                background: "#ffffff",
-                border: `1px solid ${GRIS.borde}`,
-                borderRadius: radio,
-                overflow: "hidden",
-                cursor: "pointer",
-                font: "inherit",
-                color: GRIS.texto,
-              }}
-            >
-              {/* La foto va absoluta: una vertical no estira el cuadrado. */}
-              <div style={{ position: "relative", width: "100%", aspectRatio: "1 / 1", overflow: "hidden", background: c.tinte }}>
-                {foto ? (
-                  <img
-                    src={foto}
-                    alt={it.titulo}
-                    loading="lazy"
-                    decoding="async"
-                    style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", display: "block" }}
-                  />
-                ) : (
-                  <SinFoto item={it} c={c} tamano={escritorio ? 56 : 40} />
-                )}
-              </div>
-              <div style={{ padding: "10px 12px 12px", display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
-                <strong
-                  style={{ fontSize: 14, lineHeight: 1.3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
-                >
-                  {it.titulo}
-                </strong>
-                {precio && <span style={{ fontSize: 14, fontWeight: 700, color: c.oscuro }}>{precio}</span>}
-                {it.descripcion && (
-                  <span style={{ ...dosLineas, fontSize: 12.5, lineHeight: 1.4, color: GRIS.texto3 }}>{it.descripcion}</span>
-                )}
-              </div>
-            </button>
-          );
-        })}
-      </div>
+      <Carrusel
+        items={items}
+        c={c}
+        escritorio={escritorio}
+        radio={radio}
+        detenido={indice != null}
+        onAbrir={setAbierto}
+      />
       {indice != null && (
         <Visor
           items={items}
@@ -170,6 +116,277 @@ export default function CatalogoPagina({ catalogo, c, escritorio, enMarco, radio
         />
       )}
     </section>
+  );
+}
+
+/** Cada cuánto pasa solo a la siguiente (pedido del dueño, 09-oct). */
+export const PASO_CARRUSEL_MS = 3000;
+/** Con más posiciones que esto, los puntitos no entran: va "3 / 24". */
+const MAX_PUNTOS = 10;
+const ESPACIO = 16;
+
+function prefiereSinMovimiento(): boolean {
+  try {
+    return window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * El catálogo como carrusel y no como grilla de tienda (09-oct: "no debe
+ * verse como un ecommerce"): en el celular se ve uno solo y en computadora
+ * hasta tres, y pasan de a uno cada 3 s. Tocarlo (o deslizarlo, o usar los
+ * puntitos o las flechas) lo deja quieto ahí: el que tocó está mirando algo y
+ * no se le tiene que ir. En computadora, además, se queda quieto mientras el
+ * mouse o el foco están encima. Quien pidió menos movimiento al sistema no lo
+ * ve pasar solo.
+ */
+function Carrusel({
+  items,
+  c,
+  escritorio,
+  radio,
+  detenido,
+  onAbrir,
+}: {
+  items: ItemCatalogoPublico[];
+  c: Paleta;
+  escritorio: boolean;
+  radio: CSSProperties["borderRadius"];
+  /** El visor está abierto: no pasa nada por debajo. */
+  detenido: boolean;
+  onAbrir: (i: number) => void;
+}) {
+  const n = items.length;
+  const porVista = escritorio ? Math.min(3, n) : 1;
+  const ultimo = Math.max(0, n - porVista);
+  const [inicioCrudo, setInicio] = useState(0);
+  // En la vista previa los ítems cambian en vivo: nunca queda corrido de más.
+  const inicio = Math.min(inicioCrudo, ultimo);
+  const [quieto, setQuieto] = useState(false);
+  const [encima, setEncima] = useState(false);
+  const toque = useRef<{ x: number; y: number } | null>(null);
+  const deslizo = useRef(false);
+
+  const pasa = ultimo > 0 && !quieto && !encima && !detenido && !prefiereSinMovimiento();
+  useEffect(() => {
+    if (!pasa) return;
+    const t = window.setInterval(() => setInicio((i) => (Math.min(i, ultimo) >= ultimo ? 0 : i + 1)), PASO_CARRUSEL_MS);
+    return () => window.clearInterval(t);
+  }, [pasa, ultimo]);
+
+  const irA = (i: number) => {
+    setQuieto(true);
+    setInicio(Math.max(0, Math.min(ultimo, i)));
+  };
+
+  // Deslizar con el dedo: sólo cuenta un gesto bien horizontal; el vertical
+  // sigue siendo el scroll de la página.
+  const empezarToque = (e: EventoPuntero<HTMLDivElement>) => {
+    setQuieto(true);
+    toque.current = { x: e.clientX, y: e.clientY };
+    deslizo.current = false;
+  };
+  const terminarToque = (e: EventoPuntero<HTMLDivElement>) => {
+    const t = toque.current;
+    toque.current = null;
+    if (!t) return;
+    const dx = e.clientX - t.x;
+    const dy = e.clientY - t.y;
+    if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+      deslizo.current = true;
+      irA(inicio + (dx < 0 ? 1 : -1));
+    }
+  };
+
+  // Ancho de cada tarjeta y cuánto se corre la fila: en % del ancho visible.
+  const ancho = `calc((100% - ${(porVista - 1) * ESPACIO}px) / ${porVista})`;
+  const corrimiento = `translateX(calc(${-inicio} * ((100% - ${(porVista - 1) * ESPACIO}px) / ${porVista} + ${ESPACIO}px)))`;
+  const posiciones = ultimo + 1;
+  const flecha = (lado: "izq" | "der"): CSSProperties => ({
+    ...botonRedondo,
+    width: 40,
+    height: 40,
+    position: "absolute",
+    top: "38%",
+    [lado === "izq" ? "left" : "right"]: -14,
+    transform: "translateY(-50%)",
+    zIndex: 1,
+  });
+
+  return (
+    <div
+      aria-roledescription="carrusel"
+      onMouseEnter={() => setEncima(true)}
+      onMouseLeave={() => setEncima(false)}
+      onFocus={() => setEncima(true)}
+      onBlur={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setEncima(false);
+      }}
+      style={{ display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}
+    >
+      <div style={{ position: "relative", minWidth: 0 }}>
+        <div
+          onPointerDown={empezarToque}
+          onPointerUp={terminarToque}
+          onPointerCancel={() => (toque.current = null)}
+          style={{ overflow: "hidden", touchAction: "pan-y", borderRadius: radio }}
+        >
+          <div
+            data-testid="fila-catalogo"
+            style={{
+              display: "flex",
+              gap: ESPACIO,
+              transform: corrimiento,
+              transition: prefiereSinMovimiento() ? undefined : "transform 450ms ease",
+            }}
+          >
+            {items.map((it, i) => {
+              const precio = formatoPrecio(it.precio, it.precioDesde);
+              const foto = urlDeImagen(it.fotoUrl);
+              const visible = i >= inicio && i < inicio + porVista;
+              return (
+                <button
+                  key={it.id}
+                  type="button"
+                  aria-haspopup="dialog"
+                  aria-roledescription="diapositiva"
+                  aria-label={`${precio ? `${it.titulo}, ${precio}` : it.titulo} (${i + 1} de ${n})`}
+                  aria-hidden={!visible}
+                  tabIndex={visible ? 0 : -1}
+                  onClick={() => {
+                    // Al soltar un deslizamiento el navegador manda igual el clic.
+                    if (deslizo.current) {
+                      deslizo.current = false;
+                      return;
+                    }
+                    setQuieto(true);
+                    onAbrir(i);
+                  }}
+                  style={{
+                    flex: `0 0 ${ancho}`,
+                    display: "flex",
+                    flexDirection: "column",
+                    minWidth: 0,
+                    padding: 0,
+                    margin: 0,
+                    textAlign: "left",
+                    background: "#ffffff",
+                    border: `1px solid ${GRIS.borde}`,
+                    borderRadius: radio,
+                    overflow: "hidden",
+                    cursor: "pointer",
+                    font: "inherit",
+                    color: GRIS.texto,
+                    userSelect: "none",
+                  }}
+                >
+                  {/* La foto va absoluta: una vertical no estira el recuadro. */}
+                  <div
+                    style={{
+                      position: "relative",
+                      width: "100%",
+                      aspectRatio: escritorio ? "1 / 1" : "4 / 3",
+                      overflow: "hidden",
+                      background: c.tinte,
+                    }}
+                  >
+                    {foto ? (
+                      <img
+                        src={foto}
+                        alt={it.titulo}
+                        loading="lazy"
+                        decoding="async"
+                        draggable={false}
+                        style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                      />
+                    ) : (
+                      <SinFoto item={it} c={c} tamano={56} />
+                    )}
+                  </div>
+                  <div style={{ padding: "12px 14px 14px", display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
+                    <strong
+                      style={{ fontSize: 15, lineHeight: 1.3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
+                    >
+                      {it.titulo}
+                    </strong>
+                    {precio && <span style={{ fontSize: 15, fontWeight: 700, color: c.oscuro }}>{precio}</span>}
+                    {it.descripcion && (
+                      <span style={{ ...dosLineas, fontSize: 13, lineHeight: 1.4, color: GRIS.texto3 }}>{it.descripcion}</span>
+                    )}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        {/* Flechas sólo en computadora: en el celular se desliza con el dedo. */}
+        {escritorio && posiciones > 1 && (
+          <>
+            <button
+              type="button"
+              aria-label="Anterior"
+              disabled={inicio === 0}
+              onClick={() => irA(inicio - 1)}
+              style={{ ...flecha("izq"), opacity: inicio === 0 ? 0 : 1 }}
+            >
+              <Icono d="m15 6-6 6 6 6" color={GRIS.texto} />
+            </button>
+            <button
+              type="button"
+              aria-label="Siguiente"
+              disabled={inicio === ultimo}
+              onClick={() => irA(inicio + 1)}
+              style={{ ...flecha("der"), opacity: inicio === ultimo ? 0 : 1 }}
+            >
+              <Icono d="m9 6 6 6-6 6" color={GRIS.texto} />
+            </button>
+          </>
+        )}
+      </div>
+
+      {posiciones > 1 &&
+        (posiciones <= MAX_PUNTOS ? (
+          <div style={{ display: "flex", justifyContent: "center", gap: 2 }}>
+            {Array.from({ length: posiciones }, (_, i) => (
+              <button
+                key={i}
+                type="button"
+                aria-label={`Ver ${items[i].titulo}`}
+                aria-current={i === inicio ? "true" : undefined}
+                onClick={() => irA(i)}
+                // El punto se ve chico, pero el área para tocarlo no.
+                style={{
+                  width: 24,
+                  height: 24,
+                  padding: 0,
+                  border: "none",
+                  background: "transparent",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  cursor: "pointer",
+                }}
+              >
+                <span
+                  style={{
+                    width: i === inicio ? 18 : 8,
+                    height: 8,
+                    borderRadius: 999,
+                    background: i === inicio ? c.oscuro : "#B8BEC7",
+                    transition: "width 200ms ease",
+                  }}
+                />
+              </button>
+            ))}
+          </div>
+        ) : (
+          <span aria-live="off" style={{ textAlign: "center", fontSize: 13, color: GRIS.texto3 }}>
+            {inicio + 1} / {posiciones}
+          </span>
+        ))}
+    </div>
   );
 }
 

@@ -95,8 +95,10 @@ export const NOMBRE_ICONO_BOTON: Record<string, string> = {
   formulario: "Formulario",
 };
 
+// Insignia con "%" ("badge-percent" de Lucide, ISC): el megáfono de antes, a
+// 20 px, se leía como el ícono de sonido. Esto dice "promoción" de un vistazo.
 export const ICONO_ANUNCIO =
-  "M3 11v2a1 1 0 0 0 1 1h2l5 4V6L6 10H4a1 1 0 0 0-1 1ZM15 9a3 3 0 0 1 0 6M18 6a7 7 0 0 1 0 12";
+  "M3.85 8.62a4 4 0 0 1 4.78-4.77 4 4 0 0 1 6.74 0 4 4 0 0 1 4.78 4.78 4 4 0 0 1 0 6.74 4 4 0 0 1-4.77 4.78 4 4 0 0 1-6.75 0 4 4 0 0 1-4.78-4.77 4 4 0 0 1 0-6.76ZM15 9l-6 6M9 9h.01M15 15h.01";
 export const ICONO_RESERVAR = "M3 5h18v16H3zM3 10h18M8 3v4M16 3v4";
 
 /** El trazo de un enlace: el de su red, o el ícono elegido si es un botón. */
