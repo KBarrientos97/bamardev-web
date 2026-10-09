@@ -100,6 +100,12 @@ export const NEGOCIO_KEY = "bamardev_web_negocio";
 /** Último estado de licencia conocido: sobrevive al F5 (ver AuthContext). */
 export const LICENCIA_KEY = "bamardev_web_licencia";
 /**
+ * Último cupo del Plan Emprendedor (contador del día y saldo). Sobrevive al F5
+ * como la licencia: sin él, recargar la página dejaba vender sin el chequeo
+ * previo hasta que llegara el primer `/licencia/estado`.
+ */
+export const CUPO_KEY = "bamardev_web_cupo";
+/**
  * Motivo del bloqueo por licencia, escrito justo antes de recargar hacia el
  * login. Es lo único que sobrevive a `window.location.assign`, y sin esto el
  * cajero volvería a una pantalla de login limpia sin saber por qué lo echó.
@@ -146,6 +152,7 @@ function limpiarSesion() {
   localStorage.removeItem(USER_KEY);
   localStorage.removeItem(NEGOCIO_KEY);
   localStorage.removeItem(LICENCIA_KEY);
+  localStorage.removeItem(CUPO_KEY);
 }
 
 /**

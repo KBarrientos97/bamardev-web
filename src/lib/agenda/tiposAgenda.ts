@@ -9,6 +9,7 @@
  * De §10.1 sólo está lo que estas pantallas leen (servicios, recursos, reglas).
  */
 
+import type { ConsumoVista } from "../../types";
 import type { CoberturaPaquete } from "./tiposSpa";
 
 export type EstadoCita =
@@ -96,6 +97,11 @@ export interface Cita {
   creadaEn: string;
   /** Sólo en `GET /agenda/citas/:id`. */
   eventos?: EventoCita[];
+  /**
+   * Plan Emprendedor: lo que consumió agendar, aprobar o atender esta cita.
+   * Sólo en esas respuestas y sólo en un negocio con cupo.
+   */
+  consumo?: ConsumoVista;
 }
 
 export interface Bloqueo {

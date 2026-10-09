@@ -1,4 +1,4 @@
-import { act, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { EstadoLicencia, SesionNegocio, SesionUsuario } from "../types";
 
@@ -11,10 +11,13 @@ import type { EstadoLicencia, SesionNegocio, SesionUsuario } from "../types";
 
 vi.mock("../lib/api", async (importOriginal) => {
   const real = await importOriginal<typeof import("../lib/api")>();
-  return { ...real, api: { licencia: vi.fn(), me: vi.fn() } };
+  return { ...real, api: { licencia: vi.fn(), me: vi.fn(), login: vi.fn() } };
 });
+vi.mock("../lib/apiMonedero", () => ({ apiMonedero: { monedero: vi.fn() } }));
 
-import { LICENCIA_KEY, NEGOCIO_KEY, USER_KEY, api, tokenStore } from "../lib/api";
+import { CUPO_KEY, LICENCIA_KEY, NEGOCIO_KEY, USER_KEY, api, tokenStore } from "../lib/api";
+import { apiMonedero } from "../lib/apiMonedero";
+import { cupoEmprendedor } from "../test/cupoFixtures";
 import { TEMAS } from "../lib/temas";
 import { AuthProvider, useAuth } from "./AuthContext";
 
@@ -162,5 +165,73 @@ describe("refresco del perfil con el estado de la licencia", () => {
     await montar();
     expect(primary()).toBe(TEMAS.BARBERIA.primary.toLowerCase());
     expect(JSON.parse(localStorage.getItem(NEGOCIO_KEY) ?? "{}").tema.clave).toBe("CARBON");
+  });
+});
+
+describe("cupo del Plan Emprendedor (§5.2)", () => {
+  function SondaCupo() {
+    const { cupo, refrescarCupo, login, logout } = useAuth();
+    return (
+      <div>
+        <p>
+          cupo:{cupo ? `${cupo.plan} ${cupo.hoy.ventas.usadas}/${cupo.hoy.ventas.limite} saldo ${cupo.creditos.saldo}` : "-"}
+        </p>
+        <button onClick={() => void refrescarCupo()}>refrescar</button>
+        <button onClick={() => void login("admin", "x", "barberia")}>entrar</button>
+        <button onClick={logout}>salir</button>
+      </div>
+    );
+  }
+
+  async function montarCupo() {
+    await act(async () => {
+      render(
+        <AuthProvider>
+          <SondaCupo />
+        </AuthProvider>,
+      );
+    });
+  }
+
+  it("estado.cupo se guarda (y sobrevive al F5)", async () => {
+    vi.mocked(api.licencia).mockResolvedValue({ ...ESTADO, cupo: cupoEmprendedor({ ventas: 32, saldo: 240 }) });
+    await montarCupo();
+    expect(screen.getByText("cupo:EMPRENDEDOR 32/50 saldo 240")).toBeInTheDocument();
+    expect(JSON.parse(localStorage.getItem(CUPO_KEY) ?? "null").hoy.ventas.usadas).toBe(32);
+  });
+
+  it("un backend que no manda cupo deja todo como siempre", async () => {
+    vi.mocked(api.licencia).mockResolvedValue(ESTADO);
+    await montarCupo();
+    expect(screen.getByText("cupo:-")).toBeInTheDocument();
+    expect(localStorage.getItem(CUPO_KEY)).toBeNull();
+  });
+
+  it("el login guarda el cupo de la raíz; salir lo borra", async () => {
+    // El chequeo de licencia que dispara el token nuevo trae el mismo cupo:
+    // un backend que lo manda en el login lo manda también en el estado.
+    vi.mocked(api.licencia).mockImplementation(async () =>
+      tokenStore.get() === "t2" ? { ...ESTADO, cupo: cupoEmprendedor({ ventas: 5, saldo: 10 }) } : ESTADO,
+    );
+    vi.mocked(api.login).mockResolvedValue({
+      accessToken: "t2",
+      usuario: ADMIN,
+      negocio: BARBERIA,
+      cupo: cupoEmprendedor({ ventas: 5, saldo: 10 }),
+    });
+    await montarCupo();
+    await act(async () => fireEvent.click(screen.getByText("entrar")));
+    expect(screen.getByText("cupo:EMPRENDEDOR 5/50 saldo 10")).toBeInTheDocument();
+    await act(async () => fireEvent.click(screen.getByText("salir")));
+    expect(screen.getByText("cupo:-")).toBeInTheDocument();
+  });
+
+  it("refrescarCupo lo pide a GET /monedero", async () => {
+    vi.mocked(api.licencia).mockResolvedValue({ ...ESTADO, cupo: cupoEmprendedor({ ventas: 1 }) });
+    vi.mocked(apiMonedero.monedero).mockResolvedValue(cupoEmprendedor({ ventas: 2, saldo: 50 }));
+    await montarCupo();
+    await act(async () => fireEvent.click(screen.getByText("refrescar")));
+    expect(apiMonedero.monedero).toHaveBeenCalledTimes(1);
+    expect(screen.getByText("cupo:EMPRENDEDOR 2/50 saldo 50")).toBeInTheDocument();
   });
 });
