@@ -121,6 +121,24 @@ export interface AnuncioPublico {
   colorTexto?: string | null;
 }
 
+/** Un ítem del catálogo tal como lo ve el cliente (sólo los visibles, en orden). */
+export interface ItemCatalogoPublico {
+  id: number;
+  titulo: string;
+  descripcion: string | null;
+  /** En Bs; null = sin precio (no se muestra nada). */
+  precio: number | null;
+  /** "Desde Bs 80": el precio es el mínimo. */
+  precioDesde: boolean;
+  /** Ruta relativa al API o URL absoluta: pasa por `urlDeImagen`. */
+  fotoUrl: string | null;
+}
+
+export interface CatalogoPublico {
+  titulo: string;
+  items: ItemCatalogoPublico[];
+}
+
 /** `GET /publico/pagina/:subdominio`. */
 export interface PaginaPublica {
   subdominio: string;
@@ -140,6 +158,11 @@ export interface PaginaPublica {
   redes: EnlacePublico[];
   botones: EnlacePublico[];
   sucursales: SucursalPublica[];
+  /**
+   * null si no hay ítems visibles. Opcional en el tipo: la web y el API se
+   * despliegan por separado y un backend anterior no lo manda.
+   */
+  catalogo?: CatalogoPublico | null;
   pie: { atribucionUrl: string };
   og: { titulo: string; descripcion: string; imagen: string | null; url: string };
 }
@@ -188,7 +211,31 @@ export interface AjustesPagina {
   anuncioColorTexto?: string | null;
   enlaceDestacadoId: number | null;
   mostrarReservar: boolean;
+  /** El título de la sección del catálogo; null = "Catálogo". Opcional como `catalogo`. */
+  catalogoTitulo?: string | null;
   actualizadoEn: string;
+}
+
+/** Un ítem del catálogo en el editor (`GET /pagina`, ya ordenado). */
+export interface ItemCatalogoEditor {
+  id: number;
+  titulo: string;
+  descripcion: string | null;
+  precio: number | null;
+  precioDesde: boolean;
+  visible: boolean;
+  orden: number;
+  /** Ruta relativa al API: pasa por `urlDeImagen`. */
+  fotoUrl: string | null;
+}
+
+/** Alta (`POST /pagina/catalogo`) y, parcial, edición (`PATCH /pagina/catalogo/:id`). */
+export interface ItemCatalogoInput {
+  titulo: string;
+  descripcion?: string | null;
+  precio?: number | null;
+  precioDesde?: boolean;
+  visible?: boolean;
 }
 
 /** `GET /pagina`: todo lo que necesita el editor "Mi página". */
@@ -209,6 +256,10 @@ export interface EstadoEditor {
   reservaOnline: boolean;
   enlacesCortos: boolean;
   muestras: Muestra[];
+  /** Opcionales por lo mismo que `PaginaPublica.catalogo`. */
+  catalogo?: ItemCatalogoEditor[];
+  /** Cuántos ítems admite el catálogo (60). */
+  topeCatalogo?: number;
 }
 
 export type CambiosPagina = Partial<
@@ -227,6 +278,7 @@ export type CambiosPagina = Partial<
     | "anuncioColorTexto"
     | "enlaceDestacadoId"
     | "mostrarReservar"
+    | "catalogoTitulo"
   >
 >;
 

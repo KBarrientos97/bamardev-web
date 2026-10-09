@@ -31,6 +31,7 @@ function editor(cambios: Partial<EstadoEditor> = {}): EstadoEditor {
       anuncioUrl: null,
       enlaceDestacadoId: 2,
       mostrarReservar: true,
+      catalogoTitulo: null,
       actualizadoEn: "2026-10-06T00:00:00Z",
     },
     imagenes: { logo: null, portada: null },
@@ -47,6 +48,8 @@ function editor(cambios: Partial<EstadoEditor> = {}): EstadoEditor {
     reservaOnline: false,
     enlacesCortos: true,
     muestras: MUESTRAS,
+    catalogo: [],
+    topeCatalogo: 60,
     ...cambios,
   };
 }
@@ -113,6 +116,30 @@ describe("vista previa desde el editor", () => {
     expect(vigente.anuncio).toEqual({ texto: "2x1", url: null, estilo: "SUAVE", colorFondo: null, colorTexto: null });
   });
 
+  it("el catálogo: sólo los visibles, en orden, y sin ítems no hay sección", () => {
+    expect(vistaDesdeEditor(editor()).catalogo).toBeNull();
+    const item = (id: number, orden: number, visible = true) => ({
+      id,
+      titulo: `Ítem ${id}`,
+      descripcion: null,
+      precio: 80,
+      precioDesde: false,
+      visible,
+      orden,
+      fotoUrl: null,
+    });
+    const v = vistaDesdeEditor(editor({ catalogo: [item(1, 2), item(2, 1), item(3, 3, false)] }));
+    expect(v.catalogo?.titulo).toBe("Catálogo");
+    expect(v.catalogo?.items.map((x) => x.id)).toEqual([2, 1]);
+    expect(v.catalogo?.items[0]).not.toHaveProperty("visible");
+    // El título del borrador, recortado.
+    const base = editor({ catalogo: [item(1, 1)] });
+    const conTitulo = vistaDesdeEditor({ ...base, pagina: { ...base.pagina, catalogoTitulo: " Menú " } });
+    expect(conTitulo.catalogo?.titulo).toBe("Menú");
+    // Todos ocultos: como si no hubiera.
+    expect(vistaDesdeEditor(editor({ catalogo: [item(1, 1, false)] })).catalogo).toBeNull();
+  });
+
   it("hoy en Bolivia es UTC−4", () => {
     expect(hoyBolivia(new Date("2026-10-07T03:00:00Z"))).toBe("2026-10-06");
     expect(hoyBolivia(new Date("2026-10-07T05:00:00Z"))).toBe("2026-10-07");
@@ -133,6 +160,15 @@ describe("imágenes", () => {
   it("la portada sólo se achica a 1600 de ancho", () => {
     expect(medidas("portada", 4000, 2000)).toMatchObject({ ancho: 1600, alto: 800 });
     expect(medidas("portada", 1000, 500)).toMatchObject({ ancho: 1000, alto: 500 });
+  });
+
+  it("la foto del catálogo conserva la proporción: lado mayor 1200, nunca se agranda", () => {
+    expect(medidas("catalogo", 4000, 3000)).toEqual({ ancho: 1200, alto: 900, sx: 0, sy: 0, sw: 4000, sh: 3000 });
+    // Vertical: manda el alto.
+    expect(medidas("catalogo", 3000, 4000)).toMatchObject({ ancho: 900, alto: 1200 });
+    expect(medidas("catalogo", 800, 600)).toMatchObject({ ancho: 800, alto: 600 });
+    // Una panorámica no queda con el lado corto bajo los 200 que pide el backend.
+    expect(medidas("catalogo", 4000, 500)).toMatchObject({ ancho: 1600, alto: 200 });
   });
 });
 

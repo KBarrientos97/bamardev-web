@@ -52,6 +52,7 @@ const PAGINA: Pagina = {
   sucursales: [
     { nombre: "Centro", reservaSlug: "centro", direccion: null, telefono: null, horario: null, mapaUrl: null },
   ],
+  catalogo: null,
   pie: { atribucionUrl: "https://bamardev.com" },
   og: { titulo: "Salón Bella Vista", descripcion: "", imagen: null, url: "https://link-qa.bamardev.com/bellavista" },
 };

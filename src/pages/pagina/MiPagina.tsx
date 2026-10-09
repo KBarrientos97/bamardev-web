@@ -19,6 +19,7 @@ import { apiPagina, urlDeImagen } from "../../lib/pagina/apiPagina";
 import { ICONO_RESERVAR, iconoDe, nombreTipo, paleta } from "../../lib/pagina/aspecto";
 import { cargarFuentesPagina } from "../../lib/pagina/estilos";
 import { prepararImagen } from "../../lib/pagina/imagen";
+import { TOPE_CATALOGO } from "../../lib/pagina/catalogo";
 import type {
   AjustesPagina,
   CambiosPagina,
@@ -26,32 +27,23 @@ import type {
   EnlaceInput,
   EstadoEditor,
   FormatoEnlace,
+  ItemCatalogoEditor,
   SucursalEditor,
   TipoEnlace,
 } from "../../lib/pagina/tipos";
 import { vistaDesdeEditor } from "../../lib/pagina/vista";
 import { useApi } from "../../lib/useApi";
 import CartelQR from "./CartelQR";
+import CatalogoEditor from "./CatalogoEditor";
 import EditorEnlace from "./EditorEnlace";
 import { EditorAnuncio, FilaEleccion, SelectorColorPagina, SelectorForma, SelectorLetra } from "./EstilosPagina";
 import { Trazo } from "./VistaPagina";
+import Seccion from "./Seccion";
 import VistaPrevia, { type ModoPrevia } from "./VistaPrevia";
 
 const MAX_DESCRIPCION = 160;
 
 const mensaje = (e: unknown, defecto = "No se pudo guardar") => (e instanceof Error ? e.message : defecto);
-
-function Seccion({ titulo, extra, children }: { titulo: string; extra?: React.ReactNode; children: React.ReactNode }) {
-  return (
-    <section className="card space-y-4 p-4 sm:p-5">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-base font-bold text-texto">{titulo}</h2>
-        {extra}
-      </div>
-      {children}
-    </section>
-  );
-}
 
 /** Logo o portada: elegir, achicar en el navegador, subir, quitar. */
 function Imagen({
@@ -439,6 +431,10 @@ export default function MiPagina() {
   const [modoPrevia, setModoPrevia] = useState<ModoPrevia>("movil");
   const [opcionPrincipal, setOpcionPrincipal] = useState<OpcionPrincipal | null>(null);
   const arrastrado = useRef<number | null>(null);
+  // Lo último que se cargó o se cambió: el catálogo se actualiza después de
+  // cada respuesta y, entre una y otra, el render todavía no pasó.
+  const ultimo = useRef<EstadoEditor | null>(null);
+  ultimo.current = carga.datos;
 
   // Roboto; la letra del nombre la carga su selector (sólo las que se ven).
   useEffect(() => cargarFuentesPagina(), []);
@@ -481,6 +477,21 @@ export default function MiPagina() {
   const cambiar = (cambios: CambiosPagina) => setBorrador((b) => ({ ...b, ...cambios }));
   const enlaces = [...e.enlaces].sort((a, b) => a.orden - b.orden || a.id - b.id);
 
+  const actualizarCatalogo = (cambio: (actuales: ItemCatalogoEditor[]) => ItemCatalogoEditor[]) => {
+    const d = ultimo.current;
+    if (!d) return;
+    const nuevo = { ...d, catalogo: cambio(d.catalogo ?? []) };
+    ultimo.current = nuevo;
+    carga.setDatos(nuevo);
+  };
+  // Un estado que vuelve de guardar la página o de ordenar los enlaces trae
+  // el catálogo; si un backend anterior no lo manda, queda el que había.
+  const conCatalogo = (nuevo: EstadoEditor): EstadoEditor => ({
+    ...nuevo,
+    catalogo: nuevo.catalogo ?? e.catalogo,
+    topeCatalogo: nuevo.topeCatalogo ?? e.topeCatalogo,
+  });
+
   const cambiarSucursal = (s: SucursalEditor, b: BorradorSucursal) =>
     setBorradorSucursales((todos) => {
       const resto = { ...todos };
@@ -513,7 +524,7 @@ export default function MiPagina() {
       }
       const cambios = { ...borrador, ...extra };
       if (Object.keys(cambios).length > 0) {
-        carga.setDatos(await apiPagina.guardar(cambios));
+        carga.setDatos(conCatalogo(await apiPagina.guardar(cambios)));
         setBorrador({});
       } else {
         carga.setDatos({ ...e, sucursales });
@@ -544,7 +555,7 @@ export default function MiPagina() {
   const reordenar = async (ids: number[]) => {
     setError("");
     try {
-      carga.setDatos(await apiPagina.ordenar(ids));
+      carga.setDatos(conCatalogo(await apiPagina.ordenar(ids)));
     } catch (err) {
       setError(mensaje(err));
     }
@@ -791,6 +802,17 @@ export default function MiPagina() {
               onCrear={(tipo) => setEditor({ abierto: true, enlace: null, tipo, formato: "BOTON", principal: true })}
             />
           </Seccion>
+
+          <CatalogoEditor
+            items={e.catalogo ?? []}
+            tope={e.topeCatalogo ?? TOPE_CATALOGO}
+            titulo={ajustes.catalogoTitulo ?? ""}
+            // Vacío vuelve a "Catálogo": el backend lo guarda como null.
+            onTitulo={(t) => cambiar({ catalogoTitulo: t.trim() ? t : null })}
+            onItems={actualizarCatalogo}
+            c={c}
+            onAviso={setAviso}
+          />
 
           <Seccion
             titulo="Redes y botones"
