@@ -15,6 +15,8 @@ const sesion = vi.hoisted(() => ({
   rubro: "FARMACIA" as string,
   features: [] as string[],
   rol: "ADMIN" as string,
+  /** Plan Emprendedor: sin cupo (lo de siempre) salvo en sus casos. */
+  cupo: null as import("../types").CupoEstado | null,
 }));
 
 vi.mock("../store/AuthContext", async () => {
@@ -26,6 +28,7 @@ vi.mock("../store/AuthContext", async () => {
       usuario: { id: 7, nombre: "Regente", username: "admin", rol: sesion.rol, rolNombre: "Regente general" },
       negocio: { id: 3, nombre: "Negocio de prueba" },
       licencia: null,
+      cupo: sesion.cupo,
       logout: () => {},
       rubro: sesion.rubro,
       puede: (s: Parameters<typeof puedeVer>[1]) =>
@@ -41,6 +44,8 @@ vi.mock("../store/AuthContext", async () => {
   };
 });
 
+import { fechaNegocio } from "../lib/agenda/horaAgenda";
+import { CUPO_ILIMITADO, cupoEmprendedor } from "../test/cupoFixtures";
 import Layout from "./Layout";
 
 function arbol(ruta: string) {
@@ -65,6 +70,7 @@ beforeEach(() => {
   sesion.rubro = "FARMACIA";
   sesion.features = [];
   sesion.rol = "ADMIN";
+  sesion.cupo = null;
   localStorage.clear();
 });
 
@@ -408,5 +414,21 @@ describe("la cuenta de quien está sentado (API-12)", () => {
     expect(within(dialogo).getByLabelText("Contraseña actual")).toBeInTheDocument();
     fireEvent.click(within(dialogo).getByRole("button", { name: "Cancelar" }));
     expect(screen.queryByRole("dialog")).toBeNull();
+  });
+});
+
+describe("Plan Emprendedor: el chip de ventas junto al aviso de licencia", () => {
+  it("un negocio Básico o Profesional (ilimitado) no ve ningún chip", () => {
+    sesion.rubro = "RESTAURANTE";
+    sesion.cupo = CUPO_ILIMITADO;
+    abrir("/pos");
+    expect(screen.queryByRole("button", { name: /Créditos/ })).not.toBeInTheDocument();
+  });
+
+  it("un Emprendedor ve «Hoy 32/50 · Créditos 240»", () => {
+    sesion.rubro = "RESTAURANTE";
+    sesion.cupo = cupoEmprendedor({ fecha: fechaNegocio(), ventas: 32, saldo: 240 });
+    abrir("/pos");
+    expect(screen.getByRole("button", { name: /Créditos 240/ })).toHaveTextContent("Hoy 32/50 · Créditos 240");
   });
 });
