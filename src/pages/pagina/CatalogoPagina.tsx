@@ -63,6 +63,12 @@ export interface AspectoCatalogo {
   tituloItem?: CSSProperties;
   /** La letra del texto de la página, para el visor. */
   familia: string;
+  /** Carrusel (el de siempre) o lista de menú (Carta). Los bloques de Mosaico los arma su armado. */
+  presentacion?: "carrusel" | "menu" | "bloques";
+  /** La línea punteada entre los platos de la lista de menú. */
+  linea?: string;
+  /** La letra del precio en la lista de menú (Carta lo escribe con la del nombre). */
+  precioItem?: CSSProperties;
 }
 
 const aspectoDeSiempre = (c: Paleta): AspectoCatalogo => ({
@@ -112,7 +118,7 @@ function Icono({ d, color, size = 20 }: { d: string; color: string; size?: numbe
 }
 
 /** Sin foto: el tinte del color de la página con la inicial del título. */
-function SinFoto({ item, fondo, color, tamano }: { item: ItemCatalogoPublico; fondo: string; color: string; tamano: number }) {
+export function SinFoto({ item, fondo, color, tamano }: { item: ItemCatalogoPublico; fondo: string; color: string; tamano: number }) {
   return (
     <div
       aria-hidden="true"
@@ -134,7 +140,7 @@ function SinFoto({ item, fondo, color, tamano }: { item: ItemCatalogoPublico; fo
 }
 
 /** La descripción cortada en dos líneas (el resto, en el visor). */
-const dosLineas: CSSProperties = {
+export const dosLineas: CSSProperties = {
   display: "-webkit-box",
   WebkitLineClamp: 2,
   WebkitBoxOrient: "vertical",
@@ -173,16 +179,20 @@ export default function CatalogoPagina({
           {catalogo.titulo}
         </h2>
       )}
-      <Carrusel
-        items={items}
-        a={a}
-        escritorio={escritorio}
-        radio={radio}
-        detenido={indice != null}
-        onAbrir={setAbierto}
-      />
+      {a.presentacion === "menu" ? (
+        <ListaMenu items={items} a={a} onAbrir={setAbierto} />
+      ) : (
+        <Carrusel
+          items={items}
+          a={a}
+          escritorio={escritorio}
+          radio={radio}
+          detenido={indice != null}
+          onAbrir={setAbierto}
+        />
+      )}
       {indice != null && (
-        <Visor
+        <VisorCatalogo
           items={items}
           indice={indice}
           onIndice={setAbierto}
@@ -339,7 +349,7 @@ function Carrusel({
                   type="button"
                   aria-haspopup="dialog"
                   aria-roledescription="diapositiva"
-                  aria-label={`${precio ? `${it.titulo}, ${precio}` : it.titulo} (${i + 1} de ${n})`}
+                  aria-label={etiquetaItem(it, i, n)}
                   aria-hidden={!visible}
                   tabIndex={visible ? 0 : -1}
                   onClick={() => {
@@ -496,6 +506,112 @@ function Carrusel({
   );
 }
 
+/** "Fade, Bs 50 (1 de 2)": lo que lee el lector de pantalla en cada ítem. */
+export function etiquetaItem(it: ItemCatalogoPublico, i: number, n: number): string {
+  const precio = formatoPrecio(it.precio, it.precioDesde);
+  return `${precio ? `${it.titulo}, ${precio}` : it.titulo} (${i + 1} de ${n})`;
+}
+
+/**
+ * El catálogo como la carta de un restaurante (estilo Carta, maqueta del
+ * 09-oct): todos los ítems uno debajo del otro, con la foto chica a la
+ * izquierda, el título y la descripción al medio y el precio a la derecha,
+ * separados por una línea punteada. Un menú se lee de arriba abajo: no pasa
+ * solo como el carrusel. Tocar uno abre el mismo visor.
+ */
+function ListaMenu({
+  items,
+  a,
+  onAbrir,
+}: {
+  items: ItemCatalogoPublico[];
+  a: AspectoCatalogo;
+  onAbrir: (i: number) => void;
+}) {
+  const n = items.length;
+  return (
+    <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column" }}>
+      {items.map((it, i) => {
+        const foto = urlDeImagen(it.fotoUrl);
+        const numero = formatoPrecio(it.precio);
+        return (
+          <li key={it.id} style={{ borderTop: i === 0 ? undefined : `1px dashed ${a.linea ?? GRIS.borde}` }}>
+            <button
+              type="button"
+              aria-haspopup="dialog"
+              aria-label={etiquetaItem(it, i, n)}
+              onClick={() => onAbrir(i)}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 12,
+                width: "100%",
+                minHeight: 72,
+                padding: "12px 0",
+                margin: 0,
+                border: "none",
+                background: "transparent",
+                textAlign: "left",
+                font: "inherit",
+                color: a.texto,
+                cursor: "pointer",
+              }}
+            >
+              <span
+                style={{
+                  position: "relative",
+                  width: 72,
+                  height: 72,
+                  flex: "none",
+                  borderRadius: 12,
+                  overflow: "hidden",
+                  background: a.sinFotoFondo,
+                }}
+              >
+                {foto ? (
+                  <img
+                    src={foto}
+                    alt=""
+                    width={72}
+                    height={72}
+                    loading="lazy"
+                    decoding="async"
+                    style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                  />
+                ) : (
+                  <SinFoto item={it} fondo={a.sinFotoFondo} color={a.sinFotoTexto} tamano={28} />
+                )}
+              </span>
+              <span style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 3 }}>
+                <strong style={{ fontSize: 15, lineHeight: 1.3, overflowWrap: "anywhere", ...a.tituloItem }}>{it.titulo}</strong>
+                {it.descripcion && (
+                  <span style={{ ...dosLineas, fontSize: 13, lineHeight: 1.4, color: a.texto3 }}>{it.descripcion}</span>
+                )}
+              </span>
+              {numero && (
+                <span
+                  style={{
+                    flex: "none",
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "flex-end",
+                    color: a.precio,
+                    lineHeight: 1.15,
+                  }}
+                >
+                  {/* "Desde" chiquito arriba: el número es lo que se busca con la vista. */}
+                  {it.precioDesde && <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.04em" }}>desde</span>}
+                  <span style={{ fontSize: 17, fontWeight: 700, whiteSpace: "nowrap", ...a.precioItem }}>{numero}</span>
+                </span>
+              )}
+            </button>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
 const ENFOCABLES = 'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 const botonRedondo: CSSProperties = {
@@ -517,8 +633,9 @@ const botonRedondo: CSSProperties = {
  * El visor: la foto grande y entera, el detalle y el botón de acción. Va con
  * `position: fixed`; dentro del editor, el marco de la vista previa es su
  * bloque contenedor (VistaPrevia), así que tapa el celular y no el editor.
+ * Mosaico, que dibuja los ítems como bloques de su grilla, lo abre él mismo.
  */
-function Visor({
+export function VisorCatalogo({
   items,
   indice,
   onIndice,

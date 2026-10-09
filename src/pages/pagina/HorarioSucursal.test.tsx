@@ -148,3 +148,42 @@ describe("cartel de abierto/cerrado de la sucursal", () => {
     expect(within(semana).getByText("Cerrado")).toBeInTheDocument();
   });
 });
+
+describe("cartel de abierto/cerrado en los estilos de la fase 2", () => {
+  const FASE2 = ["POSTAL", "CARTA", "DULCE", "MOSAICO"] as const;
+  for (const estilo of FASE2) {
+    for (const modo of MODOS) {
+      it(`${estilo} en ${modo}: el cartel va en la tarjeta de la sucursal con su «Ver horario»`, () => {
+        vi.setSystemTime(new Date("2026-10-12T14:00:00Z")); // lunes 10:00 en Bolivia
+        montar({ estilo }, modo);
+        expect(carteles()).toHaveLength(1);
+        expect(carteles()[0]).toHaveTextContent("Abierto ahora · cierra 21:00");
+        const tarjeta = screen.getByText("Av. Banzer").closest("article")!;
+        expect(within(tarjeta).getByTestId("estado-sucursal")).toBeInTheDocument();
+        expect(within(tarjeta).getByText("Feriados cerrado")).toBeInTheDocument();
+        expect(within(tarjeta).getByText("Ver horario")).toBeInTheDocument();
+      });
+    }
+  }
+
+  it("Carta: el encabezado lleva el cartel de la sucursal principal (la primera); sin su horario, nada", () => {
+    vi.setSystemTime(new Date("2026-10-13T01:30:00Z")); // lunes 21:30
+    const { unmount } = montar({ estilo: "CARTA" });
+    const encabezado = screen.getByTestId("estado-encabezado");
+    expect(encabezado).toHaveTextContent("Cerrado · abre mañana 9:00");
+    expect(encabezado.closest("article")).toBeNull();
+    expect(screen.getByRole("heading", { level: 1 }).parentElement).toContainElement(encabezado);
+    unmount();
+    // La principal sin horario por día: no se toma el de otra sucursal.
+    montar({ estilo: "CARTA", sucursales: [PAGINA.sucursales[1], PAGINA.sucursales[0]] });
+    expect(screen.queryByTestId("estado-encabezado")).not.toBeInTheDocument();
+    expect(carteles()).toHaveLength(1);
+  });
+
+  it("Mosaico: el cartel oscuro del bloque de la sucursal", () => {
+    vi.setSystemTime(new Date("2026-10-12T14:00:00Z"));
+    montar({ estilo: "MOSAICO" });
+    expect(carteles()[0].style.background).toBe("rgb(18, 48, 31)");
+    expect(carteles()[0].style.color).toBe("rgb(134, 239, 172)");
+  });
+});

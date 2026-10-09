@@ -433,7 +433,7 @@ describe("Mi página: estilo", () => {
     expect(screen.getAllByTestId("vista-pagina")).toHaveLength(1);
   });
 
-  it("el popup muestra los 5 con miniaturas y marca el recomendado para el rubro (peluquería → Boutique)", async () => {
+  it("el popup muestra los 9 con miniaturas y marca el recomendado para el rubro (peluquería → Boutique)", async () => {
     await montar();
     abrir("Estilo");
     const dialogo = screen.getByRole("dialog", { name: "Estilo de tu página" });
@@ -444,9 +444,15 @@ describe("Mi página: estilo", () => {
       "Vivo",
       "Noche",
       "Boutique (recomendado para tu rubro)",
+      "Postal",
+      "Carta",
+      "Dulce",
+      "Mosaico",
     ]);
     expect(within(dialogo).getAllByText("Recomendado")).toHaveLength(1);
-    expect(within(dialogo).getAllByTestId("miniatura-pagina")).toHaveLength(5);
+    expect(within(dialogo).getAllByTestId("miniatura-pagina")).toHaveLength(9);
+    // Con 9, la grilla sigue cómoda: 2 columnas en el celular y 3 en computadora.
+    expect(within(dialogo).getByRole("radiogroup", { name: "Estilos de la página" })).toHaveClass("grid-cols-2", "sm:grid-cols-3");
     expect(within(dialogo).getByRole("radio", { name: "Clásico" })).toHaveAttribute("aria-checked", "true");
   });
 
@@ -456,6 +462,48 @@ describe("Mi página: estilo", () => {
     await montar();
     abrir("Estilo");
     expect(screen.getByRole("radio", { name: "Noche (recomendado para tu rubro)" })).toBeInTheDocument();
+  });
+
+  it("uñas tiene Dulce como recomendado (antes Vivo)", async () => {
+    const base = estado();
+    vi.mocked(apiPagina.estado).mockResolvedValue({ ...base, negocio: { ...base.negocio, rubro: "UNAS" } });
+    await montar();
+    abrir("Estilo");
+    expect(screen.getByRole("radio", { name: "Dulce (recomendado para tu rubro)" })).toBeInTheDocument();
+    expect(screen.getAllByText("Recomendado")).toHaveLength(1);
+  });
+
+  it("un restaurante con ítems en el catálogo tiene Carta; sin ítems, Vivo", async () => {
+    const base = conCatalogo();
+    vi.mocked(apiPagina.estado).mockResolvedValue({ ...base, negocio: { ...base.negocio, rubro: "RESTAURANTE" } });
+    await montar();
+    abrir("Estilo");
+    expect(screen.getByRole("radio", { name: "Carta (recomendado para tu rubro)" })).toBeInTheDocument();
+    // La miniatura de Carta muestra la lista de menú (sin fotos); las de carrusel, nada del catálogo.
+    const carta = screen.getByRole("radio", { name: /^Carta/ });
+    expect(within(carta).getByText("Corte clásico")).toBeInTheDocument();
+    expect(carta.querySelector("img[src*='catalogo']")).toBeNull();
+    expect(within(screen.getByRole("radio", { name: "Vivo" })).queryByText("Corte clásico")).not.toBeInTheDocument();
+  });
+
+  it("un restaurante sin ítems en el catálogo tiene Vivo", async () => {
+    const sin = estado();
+    vi.mocked(apiPagina.estado).mockResolvedValue({ ...sin, negocio: { ...sin.negocio, rubro: "RESTAURANTE" } });
+    await montar();
+    abrir("Estilo");
+    expect(screen.getByRole("radio", { name: "Vivo (recomendado para tu rubro)" })).toBeInTheDocument();
+  });
+
+  it("Carta sin catálogo: el popup y el editor avisan que luce con productos", async () => {
+    await montar();
+    abrir("Estilo");
+    fireEvent.click(screen.getByRole("radio", { name: "Carta" }));
+    expect(screen.getByText("Carta luce con tu catálogo.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Usar este estilo" }));
+    expect(screen.getByText(/Carta luce con tu catálogo\. Sin productos/)).toBeInTheDocument();
+    expect(fila("Letra del nombre", "Alfa Slab")).toBeInTheDocument();
+    expect(fila("Forma de los botones", "Redondeados")).toBeInTheDocument();
+    expect(previa()).toHaveAttribute("data-estilo", "CARTA");
   });
 
   it("elegir un estilo pasa la letra y los botones a los suyos; «Mantener los míos» los devuelve y Guardar manda el estilo", async () => {

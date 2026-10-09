@@ -32,13 +32,25 @@ function useAhora(): Date {
   return ahora;
 }
 
-/** El cartel, o nada si la sucursal no tiene horario por día. */
-export function EstadoSucursal({ tramos, t }: { tramos: Tramo[] | null | undefined; t: TonosPagina }) {
+/**
+ * El cartel, o nada si la sucursal no tiene horario por día. `testId`: el del
+ * encabezado de Carta, que repite el de la sucursal principal, se distingue
+ * del de las tarjetas.
+ */
+export function EstadoSucursal({
+  tramos,
+  t,
+  testId = "estado-sucursal",
+}: {
+  tramos: Tramo[] | null | undefined;
+  t: TonosPagina;
+  testId?: string;
+}) {
   if (!tramos?.length) return null;
-  return <Cartel tramos={tramos} t={t} />;
+  return <Cartel tramos={tramos} t={t} testId={testId} />;
 }
 
-function Cartel({ tramos, t }: { tramos: Tramo[]; t: TonosPagina }) {
+function Cartel({ tramos, t, testId }: { tramos: Tramo[]; t: TonosPagina; testId: string }) {
   const ahora = useAhora();
   const estado = estadoHorario(tramos, ahora);
   const texto = textoEstado(estado);
@@ -46,7 +58,7 @@ function Cartel({ tramos, t }: { tramos: Tramo[]; t: TonosPagina }) {
   const k = estado.abierto ? t.estado.abierto : t.estado.cerrado;
   return (
     <span
-      data-testid="estado-sucursal"
+      data-testid={testId}
       data-abierto={estado.abierto}
       style={{
         display: "inline-flex",

@@ -1,9 +1,24 @@
-import type { CSSProperties, ReactNode, RefObject } from "react";
-import type { Paleta } from "../../lib/pagina/aspecto";
-import { estiloLetra, NOCHE, type Letra } from "../../lib/pagina/estilos";
-import { BRILLO_NOCHE, rgbaCapa, type EstiloPagina, type TonosPagina } from "../../lib/pagina/estilosPagina";
-import type { EnlacePublico, PaginaPublica } from "../../lib/pagina/tipos";
+import type { CSSProperties } from "react";
+import { NOCHE } from "../../lib/pagina/estilos";
+import { BRILLO_NOCHE, rgbaCapa } from "../../lib/pagina/estilosPagina";
+import ArmadoCarta from "./ArmadoCarta";
+import ArmadoDulce from "./ArmadoDulce";
+import ArmadoMosaico from "./ArmadoMosaico";
+import ArmadoPostal from "./ArmadoPostal";
+import {
+  BotonesEnGrilla,
+  columna,
+  conAlfa,
+  Nombre,
+  Portada,
+  Raiz,
+  rubroYDescripcion,
+  tamanoNombre,
+  type PiezasArmado,
+} from "./piezasArmado";
 import { LogoNegocio, RedesPagina } from "./piezasPagina";
+
+export type { PiezasArmado } from "./piezasArmado";
 
 /**
  * Los armados de los estilos de página nuevos (IDEAS/5 §4.3, maqueta aprobada
@@ -11,113 +26,9 @@ import { LogoNegocio, RedesPagina } from "./piezasPagina";
  * computadora. Reciben las piezas ya hechas por `VistaPagina` (botones,
  * anuncio, catálogo, sucursales, pie) y sólo deciden dónde va cada una y cómo
  * es el encabezado. El Clásico no pasa por acá: sigue en VistaPagina tal cual.
+ * Los de la fase 2 (Postal, Carta, Dulce y Mosaico) van cada uno en su
+ * archivo; las piezas comunes, en piezasArmado.tsx.
  */
-
-export interface PiezasArmado {
-  p: PaginaPublica;
-  c: Paleta;
-  t: TonosPagina;
-  estilo: EstiloPagina;
-  letra: Letra;
-  escritorio: boolean;
-  /** El celular del editor o una miniatura: encabezados más bajos. */
-  chico: boolean;
-  enMarco: boolean;
-  logo: string | null;
-  portada: string | null;
-  /** La portada se pide primero (no en las miniaturas del editor). */
-  prioridad: boolean;
-  Titulo: "h1" | "h2";
-  Principal: "main" | "section";
-  etiquetaPrincipal?: string;
-  raiz: RefObject<HTMLDivElement | null>;
-  testId: string;
-  raizEstilo: CSSProperties;
-  /** El alto de la pantalla: el de la ventana o el del marco de la computadora del editor. */
-  altoPantalla: number | string;
-  anuncio: ReactNode;
-  principal: ReactNode;
-  botones: ReactNode[];
-  catalogo: ReactNode;
-  sucursales: ReactNode;
-  pie: ReactNode;
-  clic: (e: EnlacePublico) => () => void;
-}
-
-function conAlfa(hex: string, alfa: number): string {
-  const h = hex.replace("#", "");
-  const [r, g, b] = [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16));
-  return `rgba(${r},${g},${b},${alfa})`;
-}
-
-const columna: CSSProperties = { display: "flex", flexDirection: "column", minWidth: 0 };
-
-/**
- * La portada como imagen (Vivo, Boutique): con su proporción y medidas, para
- * que la página no salte al llegar, y pedida antes que el resto.
- */
-function Portada({ x, proporcion, ancho, alto, style }: { x: PiezasArmado; proporcion: string; ancho: number; alto: number; style: CSSProperties }) {
-  if (!x.portada) return null;
-  return (
-    <img
-      src={x.portada}
-      alt=""
-      width={ancho}
-      height={alto}
-      decoding="async"
-      fetchPriority={x.prioridad ? "high" : undefined}
-      style={{ width: "100%", height: "auto", aspectRatio: proporcion, objectFit: "cover", display: "block", ...style }}
-    />
-  );
-}
-
-/** La raíz de cada armado: mide el ancho (celular o computadora) y dice qué estilo es. */
-function Raiz({ x, style, children }: { x: PiezasArmado; style?: CSSProperties; children: ReactNode }) {
-  return (
-    <div
-      ref={x.raiz}
-      data-testid={x.testId}
-      data-modo={x.escritorio ? "escritorio" : "movil"}
-      data-estilo={x.estilo.clave}
-      style={{ ...x.raizEstilo, ...style }}
-    >
-      {children}
-    </div>
-  );
-}
-
-function BotonesEnGrilla({ botones, dos }: { botones: ReactNode[]; dos: boolean }) {
-  if (botones.length === 0) return null;
-  return (
-    <div
-      style={
-        dos
-          ? { display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }
-          : { display: "flex", flexDirection: "column", gap: 12 }
-      }
-    >
-      {botones}
-    </div>
-  );
-}
-
-/** El nombre del negocio: un solo h1 en la página (h2 dentro del editor). */
-function Nombre({ x, tamano, style }: { x: PiezasArmado; tamano: number; style?: CSSProperties }) {
-  const T = x.Titulo;
-  return (
-    <T style={{ margin: 0, overflowWrap: "anywhere", ...estiloLetra(x.letra, tamano), ...style }}>{x.p.nombre}</T>
-  );
-}
-
-/** Un nombre largo baja de tamaño: en las letras grandes de Noche y Vitrina ocuparía media pantalla. */
-function tamanoNombre(nombre: string, grande: number): number {
-  return nombre.length > 34 ? Math.round(grande * 0.7) : nombre.length > 22 ? Math.round(grande * 0.84) : grande;
-}
-
-/** "Peluquería · Color, corte y uñas, con calma." en una línea (o dos). */
-function rubroYDescripcion(p: PaginaPublica): string {
-  return [p.rubro, p.descripcion].filter(Boolean).join(" · ");
-}
 
 /**
  * El encabezado de color: el de Vivo y el de Vitrina cuando no hay portada.
@@ -554,6 +465,14 @@ export default function ArmadoEstilo(x: PiezasArmado) {
       return <Vivo {...x} />;
     case "NOCHE":
       return <Noche {...x} />;
+    case "POSTAL":
+      return <ArmadoPostal {...x} />;
+    case "CARTA":
+      return <ArmadoCarta {...x} />;
+    case "DULCE":
+      return <ArmadoDulce {...x} />;
+    case "MOSAICO":
+      return <ArmadoMosaico {...x} />;
     default:
       return <Boutique {...x} />;
   }

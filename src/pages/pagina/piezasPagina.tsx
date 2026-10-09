@@ -76,6 +76,19 @@ export function Enlace({
   );
 }
 
+/** Fuera de la vista y presente para el lector de pantalla (los títulos que el diseño no muestra). */
+export const soloLector: CSSProperties = {
+  position: "absolute",
+  width: 1,
+  height: 1,
+  padding: 0,
+  margin: -1,
+  overflow: "hidden",
+  clip: "rect(0 0 0 0)",
+  whiteSpace: "nowrap",
+  border: 0,
+};
+
 export const ICONO_PIN = "M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21ZM12 7a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5Z";
 export const ICONO_RELOJ = "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18ZM12 7v5l3 2";
 
@@ -203,8 +216,11 @@ export function RedesPagina({
 
 /**
  * El título de una sección ("Nuestro catálogo", "Dónde estamos") como lo
- * pide cada estilo: con la letra del nombre (Vitrina, Noche), en mayúsculas
- * espaciadas (Vivo) o en versalitas entre dos líneas finas (Boutique).
+ * pide cada estilo: con la letra del nombre (Vitrina, Noche, Carta, Dulce),
+ * en mayúsculas espaciadas (Vivo), en versalitas entre dos líneas finas
+ * (Boutique), con la letra del texto (Postal) o sólo para el lector de
+ * pantalla (Mosaico: los bloques se explican solos y un título partiría la
+ * grilla).
  */
 export function TituloSeccion({
   id,
@@ -229,6 +245,21 @@ export function TituloSeccion({
     case "NOCHE":
       s = { ...estiloLetra(letra, escritorio ? 30 : 26), textTransform: "uppercase", letterSpacing: "0.06em", margin: "12px 0 0", lineHeight: 1.1 };
       break;
+    case "POSTAL":
+      s = { fontSize: 17, fontWeight: 700, margin: "8px 0 0", lineHeight: 1.25 };
+      break;
+    case "CARTA":
+      s = { ...estiloLetra(letra, escritorio ? 24 : 22), margin: "10px 0 0", lineHeight: 1.15 };
+      break;
+    case "DULCE":
+      s = { ...estiloLetra(letra, 21), margin: "10px 0 0", lineHeight: 1.2 };
+      break;
+    case "MOSAICO":
+      return (
+        <h2 id={id} style={soloLector}>
+          {children}
+        </h2>
+      );
     case "BOUTIQUE":
       return (
         <h2

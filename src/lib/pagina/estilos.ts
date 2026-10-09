@@ -557,11 +557,17 @@ function ponerHoja(id: string, href: string): void {
 
 /**
  * La letra del texto (no del nombre) de los estilos de página que no usan
- * Roboto. El resto (Clásico, Vitrina, Noche) sigue en Roboto.
+ * Roboto. El resto (Clásico, Vitrina, Noche) sigue en Roboto. Carta y Mosaico
+ * piden Montserrat con pesos distintos: cada estilo baja sólo los que usa.
  */
 export const LETRA_TEXTO: Record<string, { familia: string; google: string }> = {
   VIVO: { familia: `Poppins, ${SANS}`, google: "Poppins:wght@400;600;700" },
   BOUTIQUE: { familia: `Lora, ${SERIF}`, google: "Lora:ital,wght@0,400;0,600;1,400" },
+  // Fase 2 (09-oct): la letra del texto de la propuesta, de las 30 del catálogo.
+  POSTAL: { familia: `Quicksand, ${SANS}`, google: "Quicksand:wght@500;700" },
+  CARTA: { familia: `Montserrat, ${SANS}`, google: "Montserrat:wght@400;500;700" },
+  DULCE: { familia: `Nunito, ${SANS}`, google: "Nunito:wght@400;600;700" },
+  MOSAICO: { familia: `Montserrat, ${SANS}`, google: "Montserrat:wght@500;700;800" },
 };
 
 /** El `font-family` del texto de la página con ese estilo. */

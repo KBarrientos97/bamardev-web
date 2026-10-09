@@ -59,7 +59,16 @@ export type Tipografia =
  * fondo, tarjetas, letras). Las claves de `pagina/muestras.ts` del backend;
  * cómo se pinta cada uno, en `estilosPagina.ts`.
  */
-export type ClaveEstilo = "CLASICO" | "VITRINA" | "VIVO" | "NOCHE" | "BOUTIQUE";
+export type ClaveEstilo =
+  | "CLASICO"
+  | "VITRINA"
+  | "VIVO"
+  | "NOCHE"
+  | "BOUTIQUE"
+  | "POSTAL"
+  | "CARTA"
+  | "DULCE"
+  | "MOSAICO";
 
 export type EstiloAnuncio =
   | "SUAVE"
