@@ -16,12 +16,13 @@ import {
   useAviso,
 } from "../../components/ui";
 import { apiPagina, urlDeImagen } from "../../lib/pagina/apiPagina";
-import { ICONO_RESERVAR, iconoDe, nombreTipo, paleta } from "../../lib/pagina/aspecto";
+import { ICONO_RESERVAR, iconoDe, nombreTipo, paleta, type Paleta } from "../../lib/pagina/aspecto";
 import { cargarFuentesPagina } from "../../lib/pagina/estilos";
 import { estiloPagina, tonosPagina } from "../../lib/pagina/estilosPagina";
 import { leerColoresDeImagen, muestrasDeColores } from "../../lib/pagina/coloresLogo";
 import { prepararImagen } from "../../lib/pagina/imagen";
 import { TOPE_CATALOGO } from "../../lib/pagina/catalogo";
+import { mismoHorario } from "../../lib/pagina/horario";
 import type {
   AjustesPagina,
   CambiosPagina,
@@ -35,12 +36,14 @@ import type {
   SucursalEditor,
   TipoEnlace,
   Tipografia,
+  Tramo,
 } from "../../lib/pagina/tipos";
 import { vistaDesdeEditor } from "../../lib/pagina/vista";
 import { useApi } from "../../lib/useApi";
 import CartelQR from "./CartelQR";
 import CatalogoEditor from "./CatalogoEditor";
 import EditorEnlace from "./EditorEnlace";
+import EditorHorario from "./EditorHorario";
 import { EditorAnuncio, FilaEleccion, SelectorColorPagina, SelectorForma, SelectorLetra } from "./EstilosPagina";
 import { Trazo } from "./VistaPagina";
 import Seccion from "./Seccion";
@@ -145,31 +148,37 @@ function Imagen({
 }
 
 /** Lo que el dueño escribió en una sucursal y todavía no se guardó. */
-type BorradorSucursal = { horarioTexto: string; mapsUrl: string };
+type BorradorSucursal = { horarioTexto: string; mapsUrl: string; horarioSemanal: Tramo[] | null };
+
+/** Lo guardado de una sucursal, como borrador (para comparar y para seguir editando). */
+const borradorDe = (s: SucursalEditor): BorradorSucursal => ({
+  horarioTexto: s.horarioTexto ?? "",
+  mapsUrl: s.mapsUrl ?? "",
+  horarioSemanal: s.horarioSemanal ?? null,
+});
 
 /**
  * Una sucursal en la página: si sale (se guarda al toque, como los enlaces),
- * su horario y su mapa. Esos dos van al borrador y se guardan con "Guardar
+ * su horario y su mapa. Esos van al borrador y se guardan con "Guardar
  * cambios": antes tenían un botón propio y el dueño, con razón, apretaba el
- * de abajo y el mapa se perdía sin aviso.
+ * de abajo y el mapa se perdía sin aviso. El horario por día, en su popup.
  */
 function FilaSucursal({
   s,
   borrador,
-  acento,
+  c,
   onCambio,
   onGuardada,
   onError,
 }: {
   s: SucursalEditor;
   borrador: BorradorSucursal | undefined;
-  acento: string;
+  c: Paleta;
   onCambio: (b: BorradorSucursal) => void;
   onGuardada: (s: SucursalEditor) => void;
   onError: (m: string) => void;
 }) {
-  const horario = borrador?.horarioTexto ?? s.horarioTexto ?? "";
-  const mapa = borrador?.mapsUrl ?? s.mapsUrl ?? "";
+  const actual = borrador ?? borradorDe(s);
   const [guardando, setGuardando] = useState(false);
   const guardar = async (cambios: Partial<SucursalEditor>) => {
     setGuardando(true);
@@ -188,7 +197,7 @@ function FilaSucursal({
         <input
           type="checkbox"
           className="mt-0.5 h-[18px] w-[18px]"
-          style={{ accentColor: acento }}
+          style={{ accentColor: c.acento }}
           checked={s.publicarEnPagina}
           disabled={guardando}
           onChange={(e) => void guardar({ publicarEnPagina: e.target.checked })}
@@ -202,12 +211,27 @@ function FilaSucursal({
         </span>
       </label>
       {s.publicarEnPagina && (
+        <EditorHorario
+          nombre={s.nombre}
+          valor={actual.horarioSemanal}
+          c={c}
+          onCambio={(horarioSemanal) => onCambio({ ...actual, horarioSemanal })}
+        />
+      )}
+      {s.publicarEnPagina && (
         <div className="grid gap-2 sm:grid-cols-2">
-          <Campo label="Horario" hint="Como lo dirías: «Lun a sáb 9:00 – 20:00»">
+          <Campo
+            label="Aclaración del horario (opcional)"
+            hint={
+              actual.horarioSemanal
+                ? "Lo que el horario no dice: «Feriados cerrado»."
+                : "Como lo dirías: «Lun a sáb 9:00 – 20:00». Mejor cargá el horario de arriba."
+            }
+          >
             <Input
-              aria-label={`Horario de ${s.nombre}`}
-              value={horario}
-              onChange={(e) => onCambio({ horarioTexto: e.target.value, mapsUrl: mapa })}
+              aria-label={`Aclaración del horario de ${s.nombre}`}
+              value={actual.horarioTexto}
+              onChange={(e) => onCambio({ ...actual, horarioTexto: e.target.value })}
               maxLength={120}
             />
           </Campo>
@@ -221,8 +245,8 @@ function FilaSucursal({
           >
             <Input
               aria-label={`Mapa de ${s.nombre}`}
-              value={mapa}
-              onChange={(e) => onCambio({ horarioTexto: horario, mapsUrl: e.target.value })}
+              value={actual.mapsUrl}
+              onChange={(e) => onCambio({ ...actual, mapsUrl: e.target.value })}
               placeholder="https://maps.app.goo.gl/…"
             />
           </Campo>
@@ -496,7 +520,14 @@ export default function MiPagina() {
   const limpio = (b: BorradorSucursal) => ({
     horarioTexto: b.horarioTexto.trim() || null,
     mapsUrl: b.mapsUrl.trim() || null,
+    horarioSemanal: b.horarioSemanal,
   });
+  // Lo que se manda de una sucursal: el horario por día sólo si cambió (un
+  // backend anterior no lo conoce, y mandarlo igual no aporta nada).
+  const cuerpoSucursal = (s: SucursalEditor | undefined, b: BorradorSucursal) => {
+    const { horarioSemanal, ...resto } = limpio(b);
+    return mismoHorario(horarioSemanal, s?.horarioSemanal) ? resto : { ...resto, horarioSemanal };
+  };
   // La vista previa muestra el horario y el mapa que se están escribiendo.
   const sucursalesEditadas = e.sucursales.map((s) =>
     borradorSucursales[s.id] ? { ...s, ...limpio(borradorSucursales[s.id]) } : s,
@@ -551,7 +582,13 @@ export default function MiPagina() {
   const cambiarSucursal = (s: SucursalEditor, b: BorradorSucursal) =>
     setBorradorSucursales((todos) => {
       const resto = { ...todos };
-      if (b.horarioTexto === (s.horarioTexto ?? "") && b.mapsUrl === (s.mapsUrl ?? "")) delete resto[s.id];
+      const guardado = borradorDe(s);
+      if (
+        b.horarioTexto === guardado.horarioTexto &&
+        b.mapsUrl === guardado.mapsUrl &&
+        mismoHorario(b.horarioSemanal, guardado.horarioSemanal)
+      )
+        delete resto[s.id];
       else resto[s.id] = b;
       return resto;
     });
@@ -566,7 +603,7 @@ export default function MiPagina() {
       for (const [id, b] of Object.entries(borradorSucursales)) {
         const s = e.sucursales.find((x) => x.id === Number(id));
         try {
-          const nueva = await apiPagina.sucursal(Number(id), limpio(b));
+          const nueva = await apiPagina.sucursal(Number(id), cuerpoSucursal(s, b));
           sucursales = sucursales.map((x) => (x.id === nueva.id ? { ...x, ...nueva } : x));
           setBorradorSucursales((todos) => {
             const resto = { ...todos };
@@ -1022,7 +1059,7 @@ export default function MiPagina() {
                     key={s.id}
                     s={s}
                     borrador={borradorSucursales[s.id]}
-                    acento={c.acento}
+                    c={c}
                     onCambio={(b) => cambiarSucursal(s, b)}
                     onError={setError}
                     onGuardada={(nueva) => {

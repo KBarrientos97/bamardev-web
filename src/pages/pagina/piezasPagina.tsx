@@ -3,6 +3,7 @@ import { iconoDe } from "../../lib/pagina/aspecto";
 import { estiloLetra, type Letra } from "../../lib/pagina/estilos";
 import type { ClaveEstilo, TonosPagina } from "../../lib/pagina/estilosPagina";
 import type { EnlacePublico, PaginaPublica, SucursalPublica } from "../../lib/pagina/tipos";
+import { SemanaSucursal } from "./HorarioSucursal";
 
 /**
  * Las piezas de la página del negocio que comparten los estilos (09-oct):
@@ -269,9 +270,9 @@ export interface AccionSucursal {
 
 /**
  * Una sucursal: en tarjeta (Vitrina, Vivo, Noche) o como texto entre
- * separadores (Boutique). `estado` es el lugar del chip "Abierto ahora ·
- * cierra 21:00", que llega cuando el horario de la sucursal sea estructurado
- * (hoy es texto libre y no se puede calcular).
+ * separadores (Boutique). `estado` es el cartel "Abierto ahora · cierra
+ * 21:00" (`EstadoSucursal`), al lado del nombre; debajo del horario en texto
+ * va "Ver horario" con la semana. Los dos, sólo si hay horario por día.
  */
 export function TarjetaSucursal({
   s,
@@ -342,6 +343,7 @@ export function TarjetaSucursal({
         </div>
         {s.direccion && <span style={{ fontSize: 14.5, color: t.texto2Tarjeta, lineHeight: 1.45 }}>{s.direccion}</span>}
         {s.horario && <span style={{ fontSize: 14, color: t.texto3Tarjeta, fontStyle: "italic" }}>{s.horario}</span>}
+        <SemanaSucursal tramos={s.horarioSemanal} t={t} centrada />
         {botones}
       </article>
     );
@@ -375,6 +377,7 @@ export function TarjetaSucursal({
       </div>
       {s.direccion && linea(ICONO_PIN, s.direccion, t.texto2Tarjeta, 14)}
       {s.horario && linea(ICONO_RELOJ, s.horario, t.texto3Tarjeta, 13)}
+      <SemanaSucursal tramos={s.horarioSemanal} t={t} />
       {botones}
     </article>
   );

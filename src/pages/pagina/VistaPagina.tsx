@@ -17,6 +17,7 @@ import type { AnuncioPublico, EnlacePublico, PaginaPublica } from "../../lib/pag
 import { urlTelefono } from "../../lib/pagina/vista";
 import ArmadoEstilo, { type PiezasArmado } from "./ArmadosPagina";
 import CatalogoPagina, { type AccionCatalogo, type AspectoCatalogo } from "./CatalogoPagina";
+import { EstadoSucursal, SemanaSucursal } from "./HorarioSucursal";
 import { Enlace, PiePagina, TarjetaSucursal, TituloSeccion, Trazo, type AccionSucursal } from "./piezasPagina";
 
 // Las piezas chicas viven en piezasPagina.tsx; se siguen pidiendo de acá.
@@ -535,6 +536,7 @@ export default function VistaPagina({
                   presentacion={estilo.sucursales}
                   radio={radioTarjeta}
                   primera={i === 0}
+                  estado={<EstadoSucursal tramos={s.horarioSemanal} t={t} />}
                 />
               ))}
             </div>
@@ -682,9 +684,18 @@ export default function VistaPagina({
           gap: 6,
         }}
       >
-        <strong style={{ fontSize: 16 }}>{s.nombre}</strong>
+        {/* Con horario por día, el cartel al lado del nombre; sin él, lo de siempre (ni un píxel distinto). */}
+        {s.horarioSemanal?.length ? (
+          <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
+            <strong style={{ fontSize: 16 }}>{s.nombre}</strong>
+            <EstadoSucursal tramos={s.horarioSemanal} t={t} />
+          </div>
+        ) : (
+          <strong style={{ fontSize: 16 }}>{s.nombre}</strong>
+        )}
         {s.direccion && <span style={{ fontSize: 14, color: "#4B5563" }}>{s.direccion}</span>}
         {s.horario && <span style={{ fontSize: 13, color: GRIS.texto3 }}>{s.horario}</span>}
+        <SemanaSucursal tramos={s.horarioSemanal} t={t} />
         {acciones.length > 0 && (
           <div
             style={{

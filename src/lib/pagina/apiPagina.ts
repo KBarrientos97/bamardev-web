@@ -80,7 +80,7 @@ export const apiPagina = {
     request<EstadoEditor>("/pagina/enlaces/orden", { method: "PUT", body: json({ ids }) }),
   sucursal: (
     id: number,
-    cambios: Partial<Pick<SucursalEditor, "publicarEnPagina" | "horarioTexto" | "mapsUrl">>,
+    cambios: Partial<Pick<SucursalEditor, "publicarEnPagina" | "horarioTexto" | "mapsUrl" | "horarioSemanal">>,
   ) => request<SucursalEditor>(`/pagina/sucursales/${id}`, { method: "PATCH", body: json(cambios) }),
   borrarImagen: (tipo: "logo" | "portada") =>
     request<void>(`/pagina/imagen/${tipo}`, { method: "DELETE" }),
