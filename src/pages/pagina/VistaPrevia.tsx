@@ -1,12 +1,12 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import type { PaginaPublica } from "../../lib/pagina/tipos";
-import VistaPagina from "./VistaPagina";
+import VistaPagina, { ALTO_PANTALLA_PC } from "./VistaPagina";
 
 export type ModoPrevia = "movil" | "escritorio";
 
 /** La computadora de la vista previa: la página a tamaño real, achicada. */
 const ANCHO_PC = 1280;
-const ALTO_PC = 800;
+const ALTO_PC = ALTO_PANTALLA_PC;
 
 /**
  * Los marcos son el bloque contenedor de lo que la página pone con

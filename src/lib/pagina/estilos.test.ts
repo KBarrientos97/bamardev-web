@@ -14,6 +14,7 @@ import {
   letraTitulo,
   textoQueContrasta,
 } from "./estilos";
+import { ESTILOS_PAGINA, estiloRecomendado, paresDeTexto, tonosPagina } from "./estilosPagina";
 
 /** Las 32 muestras de la página (`pagina/muestras.ts` del backend). */
 const MUESTRAS = [
@@ -210,5 +211,113 @@ describe("anuncio destacado", () => {
 
   it("un color que no es hex se ignora (automático)", () => {
     expect(coloresAnuncio("SOLIDO", "red", "javascript:x", c)).toMatchObject({ color: "#0C7A55", texto: "#FFFFFF" });
+  });
+});
+
+describe("estilos de página: todo se lee en cualquier combinación", () => {
+  // Estilo × 32 muestras × 11 formas × 10 anuncios, con y sin portada: los
+  // tokens de verdad (`tonosPagina`), los mismos que lee VistaPagina.
+  it("los textos, los botones y el anuncio automático pasan 4.5:1 sobre su fondo real", () => {
+    const fallas: string[] = [];
+    for (const estilo of ESTILOS_PAGINA) {
+      for (const hex of MUESTRAS) {
+        const c = paleta(hex);
+        for (const portada of [true, false]) {
+          const t = tonosPagina(estilo.clave, c, portada);
+          for (const par of paresDeTexto(t)) {
+            if (contraste(par.texto, par.fondo) < CONTRASTE_MINIMO) {
+              fallas.push(`${estilo.clave} ${hex} ${par.que}: ${par.texto} sobre ${par.fondo}`);
+            }
+          }
+          if (!portada) continue;
+          for (const f of FORMAS) {
+            const b = estiloBotones(f.clave, c, t.superficie);
+            for (const [pieza, p] of Object.entries(b)) {
+              if (typeof p === "string") continue;
+              for (const fondo of p.fondos) {
+                if (contraste(p.texto, fondo) < CONTRASTE_MINIMO) {
+                  fallas.push(`${estilo.clave} ${f.clave} ${pieza} ${hex}: ${p.texto} sobre ${fondo}`);
+                }
+              }
+            }
+          }
+          for (const e of ESTILOS_ANUNCIO) {
+            const k = coloresAnuncio(e.clave, null, null, c, t.superficie);
+            if (k.contraste < CONTRASTE_MINIMO) fallas.push(`${estilo.clave} anuncio ${e.clave} ${hex}: ${k.contraste.toFixed(2)}`);
+          }
+        }
+      }
+    }
+    expect(fallas).toEqual([]);
+  });
+
+  it("con un fondo de anuncio elegido y la letra automática, también en cada estilo", () => {
+    const c = paleta("#0C7A55");
+    for (const estilo of ESTILOS_PAGINA) {
+      const t = tonosPagina(estilo.clave, c);
+      for (const fondo of ["#FDE047", "#FFFFFF", "#111827", "#FEF3C7", "#1D4ED8", "#F97316"]) {
+        for (const e of ESTILOS_ANUNCIO) {
+          expect(coloresAnuncio(e.clave, fondo, null, c, t.superficie).contraste, `${estilo.clave} ${e.clave} ${fondo}`).toBeGreaterThanOrEqual(
+            CONTRASTE_MINIMO,
+          );
+        }
+      }
+    }
+  });
+
+  it("el Clásico pinta los botones y el anuncio exactamente como antes", () => {
+    for (const hex of MUESTRAS) {
+      const c = paleta(hex);
+      const t = tonosPagina("CLASICO", c);
+      for (const f of FORMAS) expect(estiloBotones(f.clave, c, t.superficie)).toEqual(estiloBotones(f.clave, c));
+      for (const e of ESTILOS_ANUNCIO) expect(coloresAnuncio(e.clave, null, null, c, t.superficie)).toEqual(coloresAnuncio(e.clave, null, null, c));
+    }
+    // Sin estilo (un backend anterior) es Clásico.
+    expect(tonosPagina(undefined, paleta("#0C7A55"))).toEqual(tonosPagina("CLASICO", paleta("#0C7A55")));
+  });
+
+  it("sobre el color (Vivo) el botón lleno se invierte y sobre Noche las cajas son oscuras", () => {
+    const c = paleta("#C0262D");
+    const vivo = estiloBotones("REDONDEADO", c, tonosPagina("VIVO", c).superficie);
+    expect(vivo.principal.estilo).toMatchObject({ background: "#ffffff", color: c.oscuro });
+    const noche = estiloBotones("REDONDEADO", c, tonosPagina("NOCHE", c).superficie);
+    expect(noche.secundario.estilo).toMatchObject({ background: "#1C1C1F", color: "#F4F4F5" });
+    expect(noche.principal.estilo).toMatchObject({ background: "#C0262D", color: "#ffffff" });
+    // El anuncio automático de Vivo va blanco con letra del color.
+    expect(coloresAnuncio("SUAVE", null, null, c, tonosPagina("VIVO", c).superficie)).toMatchObject({ color: "#FFFFFF", texto: c.oscuro });
+  });
+
+  it("las fuentes: Vivo baja Poppins en vez de Roboto; los demás, Roboto", () => {
+    document.head.querySelectorAll("link").forEach((l) => l.remove());
+    cargarFuentesPagina("POPPINS", "VIVO");
+    const hojas = Array.from(document.head.querySelectorAll<HTMLLinkElement>("link[rel=stylesheet]"), (l) => l.href);
+    expect(hojas.join(" ")).toContain("family=Poppins:wght@400;600;700");
+    expect(hojas.join(" ")).not.toContain("Roboto");
+    expect(hojas.every((h) => h.includes("display=swap"))).toBe(true);
+    document.head.querySelectorAll("link").forEach((l) => l.remove());
+  });
+});
+
+describe("sugerencia por rubro", () => {
+  it("cada rubro con su estilo; uno que no está en la tabla, Clásico", () => {
+    expect(estiloRecomendado("RESTAURANTE")).toBe("VIVO");
+    expect(estiloRecomendado("UNAS")).toBe("VIVO");
+    expect(estiloRecomendado("FARMACIA")).toBe("CLASICO");
+    expect(estiloRecomendado("PELUQUERIA")).toBe("BOUTIQUE");
+    expect(estiloRecomendado("SPA")).toBe("BOUTIQUE");
+    expect(estiloRecomendado("BARBERIA")).toBe("NOCHE");
+    expect(estiloRecomendado("VETERINARIA")).toBe("CLASICO");
+    expect(estiloRecomendado(undefined)).toBe("CLASICO");
+  });
+
+  it("los 5 estilos con sus 3 recomendados de cada cosa, válidos", () => {
+    expect(ESTILOS_PAGINA.map((e) => e.nombre)).toEqual(["Clásico", "Vitrina", "Vivo", "Noche", "Boutique"]);
+    for (const e of ESTILOS_PAGINA) {
+      expect(e.letras[0]).toBe(e.letra);
+      expect(e.formas[0]).toBe(e.forma);
+      expect(e.letras.every((l) => LETRAS.some((x) => x.clave === l))).toBe(true);
+      expect(e.formas.every((f) => FORMAS.some((x) => x.clave === f))).toBe(true);
+      expect(e.colores).toHaveLength(3);
+    }
   });
 });

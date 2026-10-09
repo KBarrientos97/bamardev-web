@@ -421,6 +421,108 @@ describe("Mi página", () => {
   });
 });
 
+describe("Mi página: estilo", () => {
+  it("la fila Estilo va primera en Apariencia, con la miniatura de la página y el estilo de hoy (Clásico)", async () => {
+    await montar();
+    const estilo = fila("Estilo", "Clásico");
+    const color = fila("Color de la página", "Ciruela");
+    // Antes que el color (y que todo lo demás de la apariencia).
+    expect(estilo.compareDocumentPosition(color) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(within(estilo).getByTestId("miniatura-pagina")).toBeInTheDocument();
+    // La miniatura no es la vista previa: hay una sola.
+    expect(screen.getAllByTestId("vista-pagina")).toHaveLength(1);
+  });
+
+  it("el popup muestra los 5 con miniaturas y marca el recomendado para el rubro (peluquería → Boutique)", async () => {
+    await montar();
+    abrir("Estilo");
+    const dialogo = screen.getByRole("dialog", { name: "Estilo de tu página" });
+    const radios = within(dialogo).getAllByRole("radio");
+    expect(radios.map((r) => r.getAttribute("aria-label"))).toEqual([
+      "Clásico",
+      "Vitrina",
+      "Vivo",
+      "Noche",
+      "Boutique (recomendado para tu rubro)",
+    ]);
+    expect(within(dialogo).getAllByText("Recomendado")).toHaveLength(1);
+    expect(within(dialogo).getAllByTestId("miniatura-pagina")).toHaveLength(5);
+    expect(within(dialogo).getByRole("radio", { name: "Clásico" })).toHaveAttribute("aria-checked", "true");
+  });
+
+  it("una barbería tiene Noche como recomendado", async () => {
+    const base = estado();
+    vi.mocked(apiPagina.estado).mockResolvedValue({ ...base, negocio: { ...base.negocio, rubro: "BARBERIA" } });
+    await montar();
+    abrir("Estilo");
+    expect(screen.getByRole("radio", { name: "Noche (recomendado para tu rubro)" })).toBeInTheDocument();
+  });
+
+  it("elegir un estilo pasa la letra y los botones a los suyos; «Mantener los míos» los devuelve y Guardar manda el estilo", async () => {
+    await montar();
+    abrir("Estilo");
+    const dialogo = screen.getByRole("dialog", { name: "Estilo de tu página" });
+    fireEvent.click(within(dialogo).getByRole("radio", { name: "Noche" }));
+    // Tocar sólo marca: todavía no cambia nada.
+    expect(fila("Estilo", "Clásico")).toBeInTheDocument();
+    fireEvent.click(within(dialogo).getByRole("button", { name: "Usar este estilo" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(fila("Estilo", "Noche")).toBeInTheDocument();
+    expect(fila("Letra del nombre", "Bebas Neue")).toBeInTheDocument();
+    expect(fila("Forma de los botones", "Rectos")).toBeInTheDocument();
+    expect(previa()).toHaveAttribute("data-estilo", "NOCHE");
+    // El color se conserva.
+    expect(fila("Color de la página", "Ciruela")).toBeInTheDocument();
+    expect(screen.getByText("Usamos la letra y los botones que mejor van con este estilo.")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Mantener los míos" }));
+    expect(fila("Letra del nombre", "Moderna")).toBeInTheDocument();
+    expect(fila("Forma de los botones", "Redondeados")).toBeInTheDocument();
+    expect(fila("Estilo", "Noche")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Mantener los míos" })).not.toBeInTheDocument();
+
+    vi.mocked(apiPagina.guardar).mockResolvedValue(estado({ estiloClave: "NOCHE" }));
+    fireEvent.click(screen.getByRole("button", { name: "Guardar cambios" }));
+    await act(async () => {});
+    expect(apiPagina.guardar).toHaveBeenCalledWith({ estiloClave: "NOCHE" });
+  });
+
+  it("sin «Mantener los míos» se guardan el estilo, la letra y la forma", async () => {
+    await montar();
+    abrir("Estilo");
+    fireEvent.click(screen.getByRole("radio", { name: /^Boutique/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Usar este estilo" }));
+    vi.mocked(apiPagina.guardar).mockResolvedValue(estado({ estiloClave: "BOUTIQUE" }));
+    fireEvent.click(screen.getByRole("button", { name: "Guardar cambios" }));
+    await act(async () => {});
+    expect(apiPagina.guardar).toHaveBeenCalledWith({ estiloClave: "BOUTIQUE", tipografia: "CORMORANT", formaBotones: "SUBRAYADO" });
+  });
+
+  it("Vitrina sin portada: el popup y el editor avisan que luce con una foto", async () => {
+    await montar();
+    abrir("Estilo");
+    fireEvent.click(screen.getByRole("radio", { name: "Vitrina" }));
+    expect(screen.getByText("Vitrina luce con una foto de portada.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Usar este estilo" }));
+    expect(screen.getByText(/Vitrina luce con una foto de portada\. Sin foto/)).toBeInTheDocument();
+  });
+
+  it("los popups de color, forma y letra muestran primero los recomendados para el estilo", async () => {
+    vi.mocked(apiPagina.estado).mockResolvedValue(estado({ estiloClave: "NOCHE", tipografia: "BEBAS", formaBotones: "RECTO" }));
+    await montar();
+    abrir("Forma de los botones");
+    const recoForma = screen.getByRole("radiogroup", { name: "Formas recomendadas para este estilo" });
+    expect(within(recoForma).getAllByRole("radio").map((r) => r.getAttribute("aria-label"))).toEqual(["Rectos", "Contorno", "Esquina cortada"]);
+    expect(screen.getAllByRole("radio")).toHaveLength(11);
+    fireEvent.click(screen.getByRole("button", { name: /Cerrar/ }));
+
+    abrir("Letra del nombre");
+    const recoLetra = screen.getByRole("radiogroup", { name: "Letras recomendadas para este estilo" });
+    expect(within(recoLetra).getAllByRole("radio").map((r) => r.getAttribute("aria-label"))).toEqual(["Bebas Neue", "Anton", "Fuerte"]);
+    expect(screen.getAllByRole("radio")).toHaveLength(30);
+  });
+});
+
 const ITEMS: ItemCatalogoEditor[] = [
   { id: 1, titulo: "Corte clásico", descripcion: null, precio: 50, precioDesde: false, visible: true, orden: 1, fotoUrl: null },
   { id: 2, titulo: "Uñas acrílicas", descripcion: "Con diseño a elección", precio: 120, precioDesde: true, visible: true, orden: 2, fotoUrl: "/pagina/catalogo/2/foto?v=1" },

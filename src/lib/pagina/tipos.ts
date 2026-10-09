@@ -49,6 +49,13 @@ export type Tipografia =
   | "KAUSHAN"
   | "MARKER";
 
+/**
+ * Los estilos de página (09-oct): el armado entero de la página (encabezado,
+ * fondo, tarjetas, letras). Las claves de `pagina/muestras.ts` del backend;
+ * cómo se pinta cada uno, en `estilosPagina.ts`.
+ */
+export type ClaveEstilo = "CLASICO" | "VITRINA" | "VIVO" | "NOCHE" | "BOUTIQUE";
+
 export type EstiloAnuncio =
   | "SUAVE"
   | "SOLIDO"
@@ -149,6 +156,11 @@ export interface PaginaPublica {
   color: { clave: string; hex: string };
   formaBotones: FormaBotones | string;
   tipografia: Tipografia | string;
+  /**
+   * El estilo de la página. Opcional: la web y el API se despliegan por
+   * separado y un backend anterior no lo manda; ausente = Clásico.
+   */
+  estilo?: ClaveEstilo | string;
   /** Ruta relativa al API (`/publico/...`) o URL absoluta. */
   logoUrl: string | null;
   portadaUrl: string | null;
@@ -202,6 +214,8 @@ export interface AjustesPagina {
   colorClave: string;
   formaBotones: FormaBotones;
   tipografia: Tipografia;
+  /** Opcional por lo mismo que `PaginaPublica.estilo`: ausente = Clásico. */
+  estiloClave?: ClaveEstilo;
   anuncioTexto: string | null;
   anuncioHasta: string | null;
   anuncioUrl: string | null;
@@ -244,6 +258,7 @@ export interface EstadoEditor {
   urlPublica: string | null;
   negocio: {
     nombre: string;
+    /** El rubro como clave (`TipoNegocio`: RESTAURANTE, PELUQUERIA…). */
     rubro: string;
     /** El rubro como lo muestra la página ("Peluquería"). */
     rubroNombre?: string;
@@ -270,6 +285,7 @@ export type CambiosPagina = Partial<
     | "colorClave"
     | "formaBotones"
     | "tipografia"
+    | "estiloClave"
     | "anuncioTexto"
     | "anuncioHasta"
     | "anuncioUrl"

@@ -1,4 +1,12 @@
-import { useEffect, useId, useRef, useState, type CSSProperties, type PointerEvent as EventoPuntero } from "react";
+import {
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type CSSProperties,
+  type PointerEvent as EventoPuntero,
+  type ReactNode,
+} from "react";
 import { urlDeImagen } from "../../lib/pagina/apiPagina";
 import type { Paleta } from "../../lib/pagina/aspecto";
 import { formatoPrecio } from "../../lib/pagina/catalogo";
@@ -25,6 +33,58 @@ export interface AccionCatalogo {
   alClic?: () => void;
 }
 
+/**
+ * Cómo se presenta el catálogo en cada estilo de página (09-oct): la foto
+ * 4:5 de Vitrina y Boutique, la cuadrada de Noche, sin caja y con arco en
+ * Boutique, y los colores de la tarjeta. Sin aspecto, el de siempre.
+ */
+export interface AspectoCatalogo {
+  proporcion: string;
+  proporcionEscritorio: string;
+  /** Sin tarjeta: la foto y el texto sueltos sobre la página (Boutique). */
+  sinCaja: boolean;
+  /** El borde de arriba de la foto en arco, como una ventana. */
+  arco: boolean;
+  porVistaEscritorio: number;
+  tarjeta: string;
+  borde: string | null;
+  sombra: string | null;
+  texto: string;
+  /** La descripción del ítem. */
+  texto3: string;
+  precio: string;
+  sinFotoFondo: string;
+  sinFotoTexto: string;
+  puntoOn: string;
+  puntoOff: string;
+  /** El "3 / 24" cuando hay muchos: va sobre la página, no sobre la tarjeta. */
+  contador: string;
+  /** La letra del título del ítem (Boutique lo escribe con la del nombre). */
+  tituloItem?: CSSProperties;
+  /** La letra del texto de la página, para el visor. */
+  familia: string;
+}
+
+const aspectoDeSiempre = (c: Paleta): AspectoCatalogo => ({
+  proporcion: "4 / 3",
+  proporcionEscritorio: "1 / 1",
+  sinCaja: false,
+  arco: false,
+  porVistaEscritorio: 3,
+  tarjeta: "#ffffff",
+  borde: GRIS.borde,
+  sombra: null,
+  texto: GRIS.texto,
+  texto3: GRIS.texto3,
+  precio: c.oscuro,
+  sinFotoFondo: c.tinte,
+  sinFotoTexto: c.oscuro,
+  puntoOn: c.oscuro,
+  puntoOff: "#B8BEC7",
+  contador: GRIS.texto3,
+  familia: "Roboto, system-ui, sans-serif",
+});
+
 interface Props {
   catalogo: CatalogoPublico;
   c: Paleta;
@@ -37,6 +97,10 @@ interface Props {
   /** El estilo del botón grande de la página (forma, color, tamaño). */
   estiloBoton: CSSProperties;
   colorIconoBoton: string;
+  /** La presentación del estilo de página; sin ella, la de siempre (Clásico). */
+  aspecto?: AspectoCatalogo;
+  /** El título de la sección como lo dibuja el estilo; recibe el id para `aria-labelledby`. */
+  renderTitulo?: (id: string, texto: string) => ReactNode;
 }
 
 function Icono({ d, color, size = 20 }: { d: string; color: string; size?: number }) {
@@ -48,15 +112,15 @@ function Icono({ d, color, size = 20 }: { d: string; color: string; size?: numbe
 }
 
 /** Sin foto: el tinte del color de la página con la inicial del título. */
-function SinFoto({ item, c, tamano }: { item: ItemCatalogoPublico; c: Paleta; tamano: number }) {
+function SinFoto({ item, fondo, color, tamano }: { item: ItemCatalogoPublico; fondo: string; color: string; tamano: number }) {
   return (
     <div
       aria-hidden="true"
       style={{
         width: "100%",
         height: "100%",
-        background: c.tinte,
-        color: c.oscuro,
+        background: fondo,
+        color,
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
@@ -77,7 +141,19 @@ const dosLineas: CSSProperties = {
   overflow: "hidden",
 };
 
-export default function CatalogoPagina({ catalogo, c, escritorio, enMarco, radio, accion, estiloBoton, colorIconoBoton }: Props) {
+export default function CatalogoPagina({
+  catalogo,
+  c,
+  escritorio,
+  enMarco,
+  radio,
+  accion,
+  estiloBoton,
+  colorIconoBoton,
+  aspecto,
+  renderTitulo,
+}: Props) {
+  const a = aspecto ?? aspectoDeSiempre(c);
   const [abierto, setAbierto] = useState<number | null>(null);
   const idTitulo = useId();
   const items = catalogo.items;
@@ -87,15 +163,19 @@ export default function CatalogoPagina({ catalogo, c, escritorio, enMarco, radio
 
   return (
     <section aria-labelledby={idTitulo} style={{ display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>
-      <h2
-        id={idTitulo}
-        style={{ margin: escritorio ? "8px 0 0" : "10px 0 0", fontSize: escritorio ? 20 : 17, fontWeight: 700, color: GRIS.texto }}
-      >
-        {catalogo.titulo}
-      </h2>
+      {renderTitulo ? (
+        renderTitulo(idTitulo, catalogo.titulo)
+      ) : (
+        <h2
+          id={idTitulo}
+          style={{ margin: escritorio ? "8px 0 0" : "10px 0 0", fontSize: escritorio ? 20 : 17, fontWeight: 700, color: GRIS.texto }}
+        >
+          {catalogo.titulo}
+        </h2>
+      )}
       <Carrusel
         items={items}
-        c={c}
+        a={a}
         escritorio={escritorio}
         radio={radio}
         detenido={indice != null}
@@ -108,6 +188,7 @@ export default function CatalogoPagina({ catalogo, c, escritorio, enMarco, radio
           onIndice={setAbierto}
           onCerrar={() => setAbierto(null)}
           c={c}
+          familia={a.familia}
           escritorio={escritorio}
           enMarco={enMarco}
           accion={accion}
@@ -144,14 +225,14 @@ function prefiereSinMovimiento(): boolean {
  */
 function Carrusel({
   items,
-  c,
+  a,
   escritorio,
   radio,
   detenido,
   onAbrir,
 }: {
   items: ItemCatalogoPublico[];
-  c: Paleta;
+  a: AspectoCatalogo;
   escritorio: boolean;
   radio: CSSProperties["borderRadius"];
   /** El visor está abierto: no pasa nada por debajo. */
@@ -159,7 +240,7 @@ function Carrusel({
   onAbrir: (i: number) => void;
 }) {
   const n = items.length;
-  const porVista = escritorio ? Math.min(3, n) : 1;
+  const porVista = escritorio ? Math.min(a.porVistaEscritorio, n) : 1;
   const ultimo = Math.max(0, n - porVista);
   const [inicioCrudo, setInicio] = useState(0);
   // En la vista previa los ítems cambian en vivo: nunca queda corrido de más.
@@ -231,7 +312,13 @@ function Carrusel({
           onPointerDown={empezarToque}
           onPointerUp={terminarToque}
           onPointerCancel={() => (toque.current = null)}
-          style={{ overflow: "hidden", touchAction: "pan-y", borderRadius: radio }}
+          style={{
+            overflow: "hidden",
+            touchAction: "pan-y",
+            borderRadius: a.sinCaja ? 0 : radio,
+            // La sombra de abajo de las tarjetas (Vitrina, Vivo) no se corta.
+            paddingBottom: a.sombra ? 8 : undefined,
+          }}
         >
           <div
             data-testid="fila-catalogo"
@@ -272,13 +359,14 @@ function Carrusel({
                     padding: 0,
                     margin: 0,
                     textAlign: "left",
-                    background: "#ffffff",
-                    border: `1px solid ${GRIS.borde}`,
-                    borderRadius: radio,
+                    background: a.sinCaja ? "transparent" : a.tarjeta,
+                    border: a.sinCaja || !a.borde ? "none" : `1px solid ${a.borde}`,
+                    boxShadow: a.sombra ?? undefined,
+                    borderRadius: a.sinCaja ? 0 : radio,
                     overflow: "hidden",
                     cursor: "pointer",
                     font: "inherit",
-                    color: GRIS.texto,
+                    color: a.texto,
                     userSelect: "none",
                   }}
                 >
@@ -287,9 +375,11 @@ function Carrusel({
                     style={{
                       position: "relative",
                       width: "100%",
-                      aspectRatio: escritorio ? "1 / 1" : "4 / 3",
+                      aspectRatio: escritorio ? a.proporcionEscritorio : a.proporcion,
                       overflow: "hidden",
-                      background: c.tinte,
+                      background: a.sinFotoFondo,
+                      // El arco: medio ancho de radio horizontal y, en una foto 4:5, 40 % del alto.
+                      borderRadius: a.arco ? "50% 50% 0 0 / 40% 40% 0 0" : undefined,
                     }}
                   >
                     {foto ? (
@@ -302,18 +392,34 @@ function Carrusel({
                         style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", display: "block" }}
                       />
                     ) : (
-                      <SinFoto item={it} c={c} tamano={56} />
+                      <SinFoto item={it} fondo={a.sinFotoFondo} color={a.sinFotoTexto} tamano={56} />
                     )}
                   </div>
-                  <div style={{ padding: "12px 14px 14px", display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
+                  <div
+                    style={{
+                      padding: a.sinCaja ? "12px 2px 0" : "12px 14px 14px",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 3,
+                      minWidth: 0,
+                      textAlign: a.sinCaja ? "center" : undefined,
+                    }}
+                  >
                     <strong
-                      style={{ fontSize: 15, lineHeight: 1.3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
+                      style={{
+                        fontSize: 15,
+                        lineHeight: 1.3,
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        ...a.tituloItem,
+                      }}
                     >
                       {it.titulo}
                     </strong>
-                    {precio && <span style={{ fontSize: 15, fontWeight: 700, color: c.oscuro }}>{precio}</span>}
+                    {precio && <span style={{ fontSize: 15, fontWeight: 700, color: a.precio }}>{precio}</span>}
                     {it.descripcion && (
-                      <span style={{ ...dosLineas, fontSize: 13, lineHeight: 1.4, color: GRIS.texto3 }}>{it.descripcion}</span>
+                      <span style={{ ...dosLineas, fontSize: 13, lineHeight: 1.4, color: a.texto3 }}>{it.descripcion}</span>
                     )}
                   </div>
                 </button>
@@ -374,7 +480,7 @@ function Carrusel({
                     width: i === inicio ? 18 : 8,
                     height: 8,
                     borderRadius: 999,
-                    background: i === inicio ? c.oscuro : "#B8BEC7",
+                    background: i === inicio ? a.puntoOn : a.puntoOff,
                     transition: "width 200ms ease",
                   }}
                 />
@@ -382,7 +488,7 @@ function Carrusel({
             ))}
           </div>
         ) : (
-          <span aria-live="off" style={{ textAlign: "center", fontSize: 13, color: GRIS.texto3 }}>
+          <span aria-live="off" style={{ textAlign: "center", fontSize: 13, color: a.contador }}>
             {inicio + 1} / {posiciones}
           </span>
         ))}
@@ -418,6 +524,7 @@ function Visor({
   onIndice,
   onCerrar,
   c,
+  familia,
   escritorio,
   enMarco,
   accion,
@@ -429,6 +536,7 @@ function Visor({
   onIndice: (i: number) => void;
   onCerrar: () => void;
   c: Paleta;
+  familia: string;
   escritorio: boolean;
   enMarco: boolean;
   accion: AccionCatalogo | null;
@@ -543,7 +651,7 @@ function Visor({
         background: "rgba(17,24,39,0.97)",
         display: "flex",
         flexDirection: "column",
-        fontFamily: "Roboto, system-ui, sans-serif",
+        fontFamily: familia,
       }}
     >
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 12px", color: "#ffffff" }}>
@@ -583,7 +691,7 @@ function Visor({
           />
         ) : (
           <div style={{ width: "min(70%, 320px)", aspectRatio: "1 / 1", borderRadius: 16, overflow: "hidden" }}>
-            <SinFoto item={item} c={c} tamano={96} />
+            <SinFoto item={item} fondo={c.tinte} color={c.oscuro} tamano={96} />
           </div>
         )}
         {n > 1 && (

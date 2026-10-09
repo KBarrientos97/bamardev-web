@@ -68,6 +68,8 @@ export function vistaDesdeEditor(e: EstadoEditor, hoy = hoyBolivia()): PaginaPub
     color: { clave: muestra?.clave ?? "VERDE", hex: muestra?.hex ?? "#0C7A55" },
     formaBotones: p.formaBotones,
     tipografia: p.tipografia,
+    // Un backend anterior no manda el estilo: la página queda en Clásico.
+    estilo: p.estiloClave ?? "CLASICO",
     logoUrl: e.imagenes.logo,
     portadaUrl: e.imagenes.portada,
     anuncio: anuncioVigente

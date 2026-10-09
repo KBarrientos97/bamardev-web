@@ -5,6 +5,8 @@ import { avisarClic } from "../../lib/pagina/apiPagina";
 import { urlPrivacidadDe, urlReservaDe } from "../../lib/pagina/rutas";
 import { usePaginaPublica } from "../../lib/pagina/usePaginaPublica";
 import { cargarFuentesPagina } from "../../lib/pagina/estilos";
+import { tonosPagina } from "../../lib/pagina/estilosPagina";
+import { paleta } from "../../lib/pagina/aspecto";
 import type { PaginaPublica as Pagina } from "../../lib/pagina/tipos";
 import VistaPagina, { ANCHO_ESCRITORIO, MarcaBamarDev } from "./VistaPagina";
 
@@ -31,7 +33,8 @@ function useMetadatosPagina(p: Pagina | null) {
     poner("name", "description", p.og.descripcion);
     poner("property", "og:title", p.og.titulo);
     poner("property", "og:description", p.og.descripcion);
-    poner("name", "theme-color", p.color.hex);
+    // La barra del navegador del color del estilo (Noche, oscura; Boutique, marfil).
+    poner("name", "theme-color", tonosPagina(p.estilo, paleta(p.color.hex), !!p.portadaUrl).barra);
     return () => {
       document.title = anterior;
       metas.forEach((m) => m.remove());
@@ -139,9 +142,11 @@ function Cargando() {
 export default function PaginaPublica() {
   const { subdominio } = useParams();
   const { pagina, error } = usePaginaPublica(subdominio);
-  // Roboto y sólo la letra que eligió el negocio para su nombre, no las 30.
+  // La letra del texto del estilo y sólo la que eligió el negocio para su
+  // nombre, no las 30.
   const tipografia = pagina?.tipografia;
-  useEffect(() => cargarFuentesPagina(tipografia), [tipografia]);
+  const estilo = pagina?.estilo;
+  useEffect(() => cargarFuentesPagina(tipografia, estilo), [tipografia, estilo]);
   useMetadatosPagina(pagina);
 
   if (error) return <NoDisponible mensaje={error} />;
