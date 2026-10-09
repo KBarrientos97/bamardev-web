@@ -1,86 +1,40 @@
-import { useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
+import { useLayoutEffect, useRef, useState, type CSSProperties, type RefObject } from "react";
+import { preload } from "react-dom";
 import { urlDeImagen } from "../../lib/pagina/apiPagina";
 import { ICONO_ANUNCIO, ICONO_RESERVAR, iconoDe, mezcla, paleta, type Paleta } from "../../lib/pagina/aspecto";
 import { enlaceWhatsapp, urlConsultaWhatsapp } from "../../lib/pagina/catalogo";
-import { coloresAnuncio, estiloBotones, estiloLetra, GRIS_PAGINA, letraTitulo } from "../../lib/pagina/estilos";
+import {
+  coloresAnuncio,
+  estiloBotones,
+  estiloLetra,
+  GRIS_PAGINA,
+  letraTitulo,
+  SUPERFICIE_CLASICA,
+  type Superficie,
+} from "../../lib/pagina/estilos";
+import { estiloPagina, tonosPagina } from "../../lib/pagina/estilosPagina";
 import type { AnuncioPublico, EnlacePublico, PaginaPublica } from "../../lib/pagina/tipos";
 import { urlTelefono } from "../../lib/pagina/vista";
-import CatalogoPagina, { type AccionCatalogo } from "./CatalogoPagina";
+import ArmadoEstilo, { type PiezasArmado } from "./ArmadosPagina";
+import CatalogoPagina, { type AccionCatalogo, type AspectoCatalogo } from "./CatalogoPagina";
+import { Enlace, PiePagina, TarjetaSucursal, TituloSeccion, Trazo, type AccionSucursal } from "./piezasPagina";
+
+// Las piezas chicas viven en piezasPagina.tsx; se siguen pidiendo de acá.
+export { MarcaBamarDev, Trazo } from "./piezasPagina";
 
 /**
  * La página del negocio tal como la ve su cliente (lienzo BioPublica / B4).
  *
  * Es presentacional a propósito: la usan la página pública (`/p/:subdominio`)
  * y la vista previa del editor, que le pasa lo que se está editando. Tiene dos
- * armados: celular (una columna) y computadora (dos columnas), según el ancho.
+ * armados: celular (una columna) y computadora, según el ancho, y desde el
+ * 09-oct uno por estilo de página (`estilosPagina.ts`): el Clásico es el de
+ * siempre, tal cual; Vitrina, Vivo, Noche y Boutique, en ArmadosPagina.tsx.
  * Estilos en línea y no clases del tema de la app: la página no lee la paleta
  * de la app (§1.5), sólo su muestra de color.
  */
-export function Trazo({
-  d,
-  color,
-  size = 20,
-  ancho = 1.8,
-}: {
-  d: string;
-  color: string;
-  size?: number;
-  ancho?: number;
-}) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke={color}
-      strokeWidth={ancho}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d={d} />
-    </svg>
-  );
-}
 
 const GRIS = GRIS_PAGINA;
-
-/**
- * Logo de BamarDev en chico, para el pie: el robot, el mismo de la app y de
- * la pestaña del navegador. Decorativo: al lado siempre va el texto.
- */
-export function MarcaBamarDev({ size = 18 }: { size?: number }) {
-  return (
-    <img
-      src="/logo-marca.png"
-      alt=""
-      width={size}
-      height={size}
-      style={{ width: size, height: size, flex: "none", objectFit: "contain" }}
-    />
-  );
-}
-
-function Enlace({
-  href,
-  style,
-  children,
-  onClick,
-  etiqueta,
-}: {
-  href: string;
-  style: CSSProperties;
-  children: ReactNode;
-  onClick?: () => void;
-  etiqueta?: string;
-}) {
-  return (
-    <a href={href} style={style} onClick={onClick} rel="noopener noreferrer" aria-label={etiqueta}>
-      {children}
-    </a>
-  );
-}
 
 /**
  * La marquesina se mueve con una animación CSS (no hay keyframes en línea).
@@ -95,19 +49,22 @@ const CSS_MARQUESINA = `@keyframes bm-marquesina{from{transform:translateX(0)}to
 /**
  * El anuncio destacado con el estilo y los colores que eligió el dueño (o
  * los automáticos). Sin estilo, la franja ámbar de siempre. `estatico`: para
- * las miniaturas del editor (la marquesina no se mueve).
+ * las miniaturas del editor (la marquesina no se mueve). `superficie`: sobre
+ * qué se pinta (la del estilo de página; sin ella, el gris de siempre).
  */
 export function AnuncioPagina({
   anuncio,
   paleta: c,
   estatico,
+  superficie = SUPERFICIE_CLASICA,
 }: {
   anuncio: AnuncioPublico;
   paleta: Paleta;
   estatico?: boolean;
+  superficie?: Superficie;
 }) {
   const estilo = anuncio.estilo ?? "SUAVE";
-  const k = coloresAnuncio(estilo, anuncio.colorFondo, anuncio.colorTexto, c);
+  const k = coloresAnuncio(estilo, anuncio.colorFondo, anuncio.colorTexto, c, superficie);
   const lleno = !["SUAVE", "CONTORNO", "TARJETA", "MINIMAL"].includes(estilo);
   const letra: CSSProperties = { fontSize: 14, color: k.texto, fontWeight: lleno ? 600 : undefined };
   const texto = anuncio.url ? (
@@ -180,7 +137,7 @@ export function AnuncioPagina({
       caja = { ...franja, background: k.color, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" };
       break;
     case "CONTORNO":
-      caja = { ...franja, background: "#ffffff", border: `2px solid ${k.color}` };
+      caja = { ...franja, background: k.caja, border: `2px solid ${k.color}` };
       break;
     case "PILDORA":
       return (
@@ -234,7 +191,7 @@ export function AnuncioPagina({
     case "TARJETA":
       caja = {
         ...franja,
-        background: "#ffffff",
+        background: k.caja,
         borderRadius: 16,
         borderLeft: `5px solid ${k.color}`,
         boxShadow: "0 8px 24px rgba(0,0,0,0.08)",
@@ -268,6 +225,12 @@ export function AnuncioPagina({
 
 /** Desde este ancho la página se arma en dos columnas (computadora). */
 export const ANCHO_ESCRITORIO = 900;
+
+/**
+ * El alto de la "pantalla" de la computadora en la vista previa del editor:
+ * ahí la foto fija de Vitrina no puede medir el alto de la ventana.
+ */
+export const ALTO_PANTALLA_PC = 800;
 
 export type ModoVista = "auto" | "movil" | "escritorio";
 
@@ -309,6 +272,11 @@ export interface PropsVista {
    * El editor fuerza uno u otro para la vista previa.
    */
   modo?: ModoVista;
+  /**
+   * Una miniatura del editor (la fila y el popup de estilos): la marquesina
+   * quieta y otro `data-testid`, para no confundirla con la vista previa.
+   */
+  miniatura?: boolean;
 }
 
 export default function VistaPagina({
@@ -318,21 +286,40 @@ export default function VistaPagina({
   alClic,
   enMarco,
   modo = "auto",
+  miniatura,
 }: PropsVista) {
   const raiz = useRef<HTMLDivElement>(null);
   const escritorio = useEsEscritorio(modo, raiz);
   // El marco del celular del editor achica la portada y el logo; el de la
   // computadora no (es la página a tamaño real, escalada).
-  const chico = !!enMarco && !escritorio;
+  const chico = (!!enMarco || !!miniatura) && !escritorio;
+  const enCaja = !!enMarco || !!miniatura;
   const c = paleta(p.color.hex);
-  // La forma decide fondo, borde, sombra y radio; el tamaño y el armado son de acá.
-  const b = estiloBotones(p.formaBotones, c);
-  const letraNombre = letraTitulo(p.tipografia);
+  const estilo = estiloPagina(p.estilo);
+  const clasico = estilo.clave === "CLASICO";
   const logo = urlDeImagen(p.logoUrl);
   const portada = urlDeImagen(p.portadaUrl);
+  const t = tonosPagina(estilo.clave, c, !!portada);
+  // La portada es lo más grande que se pinta arriba: se pide antes que el
+  // resto. Donde es fondo de CSS (Clásico, Vitrina, Noche) el navegador la
+  // descubre tarde; el preload la adelanta sin tocar cómo se ve. Donde es
+  // <img> (Vivo, Boutique) lleva `fetchpriority` ella misma.
+  const portadaDeFondo = ["CLASICO", "VITRINA", "NOCHE"].includes(estilo.clave);
+  if (portada && portadaDeFondo && !miniatura) preload(portada, { as: "image", fetchPriority: "high" });
+  // La forma decide fondo, borde, sombra y radio; el tamaño y el armado son de
+  // acá. La superficie (el fondo del estilo) decide cómo se leen sobre él.
+  const b = estiloBotones(p.formaBotones, c, t.superficie);
+  const letraNombre = letraTitulo(p.tipografia);
   const clic = (e: EnlacePublico) => () => alClic?.(e);
+  // Los que van en mayúsculas espaciadas: el botón grande de Noche y de Boutique.
+  const mayusculas: CSSProperties =
+    estilo.clave === "NOCHE"
+      ? { textTransform: "uppercase", letterSpacing: "0.04em", fontSize: 15 }
+      : estilo.clave === "BOUTIQUE"
+        ? { textTransform: "uppercase", letterSpacing: "0.18em", fontSize: 13, fontWeight: 600 }
+        : {};
 
-  const botonPrincipal: CSSProperties = {
+  const tamanoPrincipal: CSSProperties = {
     minHeight: 56,
     boxSizing: "border-box",
     width: "100%",
@@ -345,8 +332,10 @@ export default function VistaPagina({
     padding: "0 16px",
     textDecoration: "none",
     textAlign: "center",
-    ...b.principal.estilo,
   };
+  const botonPrincipal: CSSProperties = { ...tamanoPrincipal, ...mayusculas, ...b.principal.estilo };
+  // Boutique: los botones sin ícono ni flecha y con el texto al medio.
+  const centrados = estilo.clave === "BOUTIQUE";
   const botonSecundario: CSSProperties = {
     minHeight: 52,
     boxSizing: "border-box",
@@ -357,6 +346,7 @@ export default function VistaPagina({
     gap: 12,
     padding: "0 16px",
     textDecoration: "none",
+    ...(centrados ? { justifyContent: "center", textAlign: "center" } : {}),
     ...b.secundario.estilo,
   };
   const botonChico = (destacado = false): CSSProperties => ({
@@ -374,8 +364,189 @@ export default function VistaPagina({
   const unaSucursal = p.sucursales.length === 1;
   // Dentro del editor la vista previa vive adentro del <main> de la app: ahí
   // no puede abrir otro <main> ni otro <h1> (B24, doble landmark y doble h1).
-  const Principal = enMarco ? "section" : "main";
-  const Titulo = enMarco ? "h2" : "h1";
+  const Principal = enCaja ? "section" : "main";
+  const Titulo = enCaja ? "h2" : "h1";
+
+  const anuncio = p.anuncio && <AnuncioPagina anuncio={p.anuncio} paleta={c} estatico={miniatura} superficie={t.superficie} />;
+
+  // El botón grande es opcional: reservar, el enlace que eligió el dueño
+  // (su WhatsApp, su menú, el que sea) o ninguno.
+  const principal = p.reservar ? (
+    <a href={urlReservar} style={botonPrincipal}>
+      <Trazo d={ICONO_RESERVAR} color={b.principal.icono} ancho={2} />
+      Reservar turno
+    </a>
+  ) : p.destacado ? (
+    <Enlace href={p.destacado.url} onClick={clic(p.destacado)} style={botonPrincipal}>
+      <Trazo d={iconoDe(p.destacado.tipo, p.destacado.icono)} color={b.principal.icono} />
+      {p.destacado.etiqueta}
+    </Enlace>
+  ) : null;
+
+  const botones = p.botones.map((x) =>
+    centrados ? (
+      <Enlace key={x.id} href={x.url} onClick={clic(x)} style={botonSecundario}>
+        {x.etiqueta}
+      </Enlace>
+    ) : (
+      <Enlace key={x.id} href={x.url} onClick={clic(x)} style={botonSecundario}>
+        <Trazo d={iconoDe(x.tipo, x.icono)} color={b.secundario.icono} size={18} />
+        <span style={{ flex: 1 }}>{x.etiqueta}</span>
+        <Trazo d="m9 6 6 6-6 6" color={b.flecha} size={16} ancho={2} />
+      </Enlace>
+    ),
+  );
+
+  const accionesDe = (s: PaginaPublica["sucursales"][number]): AccionSucursal[] =>
+    [
+      s.mapaUrl && { texto: "Cómo llegar", href: s.mapaUrl, destacado: false },
+      s.telefono && { texto: "Llamar", href: urlTelefono(s.telefono), destacado: false },
+      // La reserva de ESA sucursal, por su slug (B07): `?sucursal=<id>`
+      // no lo leía nadie y exponía el id del almacén.
+      p.reservar &&
+        s.reservaSlug && {
+          texto: "Reservar",
+          href: `${urlReservar}/${encodeURIComponent(s.reservaSlug)}`,
+          destacado: true,
+        },
+    ].filter(Boolean) as AccionSucursal[];
+
+  // Las tarjetas siguen la forma de los botones, sin llegar a píldora.
+  const radioTarjeta: CSSProperties["borderRadius"] = ["RECTO", "ESQUINA", "SUBRAYADO"].includes(p.formaBotones)
+    ? 4
+    : p.formaBotones === "HOJA"
+      ? "20px 4px 20px 4px"
+      : 16;
+
+  // El botón del visor del catálogo: reservar si la página reserva; si no,
+  // consultar por el WhatsApp del negocio con el ítem en el mensaje.
+  const whatsapp = p.reservar ? null : enlaceWhatsapp(p);
+  const accionCatalogo: AccionCatalogo | null = p.reservar
+    ? { texto: "Reservar", icono: ICONO_RESERVAR, href: () => urlReservar }
+    : whatsapp
+      ? {
+          texto: "Consultar por WhatsApp",
+          icono: iconoDe("WHATSAPP", null),
+          href: (it) => urlConsultaWhatsapp(whatsapp.url, it.titulo),
+          alClic: clic(whatsapp),
+        }
+      : null;
+  // El visor es siempre blanco: su botón va con la forma sobre fondo claro
+  // (el invertido de Vivo, blanco sobre blanco, no se vería).
+  const bVisor = t.superficie.tipo === "clara" ? b : estiloBotones(p.formaBotones, c);
+  const aspectoCatalogo: AspectoCatalogo | undefined = clasico
+    ? undefined
+    : {
+        ...estilo.catalogo,
+        tarjeta: t.tarjeta,
+        borde: t.borde,
+        sombra: t.sombra,
+        texto: t.textoTarjeta,
+        texto3: t.texto3Tarjeta,
+        precio: t.precio,
+        sinFotoFondo: t.sinFotoFondo,
+        sinFotoTexto: t.sinFotoTexto,
+        puntoOn: t.puntoOn,
+        puntoOff: t.puntoOff,
+        contador: t.texto3,
+        tituloItem: estilo.catalogo.sinCaja
+          ? { ...estiloLetra(letraNombre, 19), textTransform: undefined, letterSpacing: undefined, color: t.textoTarjeta }
+          : undefined,
+        familia: t.familia,
+      };
+  const catalogo = p.catalogo && p.catalogo.items.length > 0 && (
+    <CatalogoPagina
+      catalogo={p.catalogo}
+      c={c}
+      escritorio={escritorio}
+      enMarco={enCaja}
+      radio={radioTarjeta}
+      accion={accionCatalogo}
+      estiloBoton={{ ...tamanoPrincipal, ...bVisor.principal.estilo }}
+      colorIconoBoton={bVisor.principal.icono}
+      aspecto={aspectoCatalogo}
+      renderTitulo={
+        clasico
+          ? undefined
+          : (id, texto) => (
+              <TituloSeccion id={id} estilo={estilo.clave} t={t} letra={letraNombre} escritorio={escritorio}>
+                {texto}
+              </TituloSeccion>
+            )
+      }
+    />
+  );
+
+  const pie = <PiePagina p={p} urlPrivacidad={urlPrivacidad} color={t.texto3} />;
+  const etiquetaPrincipal = enCaja ? "Vista previa de la página" : undefined;
+  const testId = miniatura ? "miniatura-pagina" : "vista-pagina";
+
+  if (!clasico) {
+    const piezas: PiezasArmado = {
+      p,
+      c,
+      t,
+      estilo,
+      letra: letraNombre,
+      escritorio,
+      chico,
+      enMarco: enCaja,
+      logo,
+      portada,
+      prioridad: !miniatura,
+      Titulo,
+      Principal,
+      etiquetaPrincipal,
+      raiz,
+      testId,
+      raizEstilo: {
+        background: t.fondo,
+        color: t.texto,
+        fontFamily: t.familia,
+        // En el marco de la computadora llena la "pantalla" aunque sea corta.
+        minHeight: enCaja ? (escritorio ? "100%" : undefined) : "100dvh",
+      },
+      altoPantalla: enCaja ? ALTO_PANTALLA_PC : "100dvh",
+      anuncio,
+      principal,
+      botones,
+      catalogo,
+      sucursales:
+        p.sucursales.length > 0 ? (
+          <>
+            <TituloSeccion estilo={estilo.clave} t={t} letra={letraNombre} escritorio={escritorio}>
+              {unaSucursal ? "Dónde estamos" : "Nuestras sucursales"}
+            </TituloSeccion>
+            <div
+              style={
+                escritorio && estilo.sucursales === "tarjeta" && !unaSucursal
+                  ? { display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }
+                  : { display: "flex", flexDirection: "column", gap: estilo.sucursales === "texto" ? 0 : 12 }
+              }
+            >
+              {p.sucursales.map((s, i) => (
+                <TarjetaSucursal
+                  key={`${s.nombre}-${i}`}
+                  s={s}
+                  acciones={accionesDe(s)}
+                  estiloAccion={botonChico}
+                  t={t}
+                  letra={letraNombre}
+                  presentacion={estilo.sucursales}
+                  radio={radioTarjeta}
+                  primera={i === 0}
+                />
+              ))}
+            </div>
+          </>
+        ) : null,
+      pie,
+      clic,
+    };
+    return <ArmadoEstilo {...piezas} />;
+  }
+
+  // ── Clásico: el armado de siempre, sin tocar un píxel ─────────────────────
 
   const fondoPortada: CSSProperties = {
     width: "100%",
@@ -491,48 +662,13 @@ export default function VistaPagina({
     </>
   );
 
-  const anuncio = p.anuncio && <AnuncioPagina anuncio={p.anuncio} paleta={c} />;
-
-  // El botón grande es opcional: reservar, el enlace que eligió el dueño
-  // (su WhatsApp, su menú, el que sea) o ninguno.
-  const principal = p.reservar ? (
-    <a href={urlReservar} style={botonPrincipal}>
-      <Trazo d={ICONO_RESERVAR} color={b.principal.icono} ancho={2} />
-      Reservar turno
-    </a>
-  ) : p.destacado ? (
-    <Enlace href={p.destacado.url} onClick={clic(p.destacado)} style={botonPrincipal}>
-      <Trazo d={iconoDe(p.destacado.tipo, p.destacado.icono)} color={b.principal.icono} />
-      {p.destacado.etiqueta}
-    </Enlace>
-  ) : null;
-
-  const botones = p.botones.map((x) => (
-    <Enlace key={x.id} href={x.url} onClick={clic(x)} style={botonSecundario}>
-      <Trazo d={iconoDe(x.tipo, x.icono)} color={b.secundario.icono} size={18} />
-      <span style={{ flex: 1 }}>{x.etiqueta}</span>
-      <Trazo d="m9 6 6 6-6 6" color={b.flecha} size={16} ancho={2} />
-    </Enlace>
-  ));
-
   const tituloSucursales = p.sucursales.length > 0 && (
     <h2 style={{ margin: "10px 0 0", fontSize: 13, letterSpacing: "0.06em", color: GRIS.texto3, fontWeight: 700 }}>
       {unaSucursal ? "DÓNDE ESTAMOS" : "NUESTRAS SUCURSALES"}
     </h2>
   );
   const sucursales = p.sucursales.map((s, i) => {
-    const acciones = [
-      s.mapaUrl && { texto: "Cómo llegar", href: s.mapaUrl, destacado: false },
-      s.telefono && { texto: "Llamar", href: urlTelefono(s.telefono), destacado: false },
-      // La reserva de ESA sucursal, por su slug (B07): `?sucursal=<id>`
-      // no lo leía nadie y exponía el id del almacén.
-      p.reservar &&
-        s.reservaSlug && {
-          texto: "Reservar",
-          href: `${urlReservar}/${encodeURIComponent(s.reservaSlug)}`,
-          destacado: true,
-        },
-    ].filter(Boolean) as { texto: string; href: string; destacado: boolean }[];
+    const acciones = accionesDe(s);
     return (
       <article
         key={`${s.nombre}-${i}`}
@@ -572,81 +708,12 @@ export default function VistaPagina({
     );
   });
 
-  // El botón del visor del catálogo: reservar si la página reserva; si no,
-  // consultar por el WhatsApp del negocio con el ítem en el mensaje.
-  const whatsapp = p.reservar ? null : enlaceWhatsapp(p);
-  const accionCatalogo: AccionCatalogo | null = p.reservar
-    ? { texto: "Reservar", icono: ICONO_RESERVAR, href: () => urlReservar }
-    : whatsapp
-      ? {
-          texto: "Consultar por WhatsApp",
-          icono: iconoDe("WHATSAPP", null),
-          href: (it) => urlConsultaWhatsapp(whatsapp.url, it.titulo),
-          alClic: clic(whatsapp),
-        }
-      : null;
-  // Las tarjetas siguen la forma de los botones, sin llegar a píldora.
-  const radioTarjeta: CSSProperties["borderRadius"] = ["RECTO", "ESQUINA", "SUBRAYADO"].includes(p.formaBotones)
-    ? 4
-    : p.formaBotones === "HOJA"
-      ? "20px 4px 20px 4px"
-      : 16;
-  const catalogo = p.catalogo && p.catalogo.items.length > 0 && (
-    <CatalogoPagina
-      catalogo={p.catalogo}
-      c={c}
-      escritorio={escritorio}
-      enMarco={!!enMarco}
-      radio={radioTarjeta}
-      accion={accionCatalogo}
-      estiloBoton={botonPrincipal}
-      colorIconoBoton={b.principal.icono}
-    />
-  );
-
-  const pie = (
-    <footer
-      style={{
-        marginTop: 14,
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        gap: 8,
-        fontSize: 12,
-        color: GRIS.texto3,
-      }}
-    >
-      <a
-        href={p.pie.atribucionUrl}
-        rel="noopener"
-        style={{ display: "flex", alignItems: "center", gap: 6, color: GRIS.texto3, textDecoration: "none" }}
-      >
-        <MarcaBamarDev />
-        Hecho con BamarDev
-      </a>
-      <span style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: "4px 12px" }}>
-        {urlPrivacidad && (
-          <a href={urlPrivacidad} style={{ color: GRIS.texto3 }}>
-            Privacidad
-          </a>
-        )}
-        <a href="https://bamardev.com/terminos" rel="noopener" style={{ color: GRIS.texto3 }}>
-          Términos de BamarDev
-        </a>
-        <a href="https://bamardev.com/privacidad" rel="noopener" style={{ color: GRIS.texto3 }}>
-          Privacidad de BamarDev
-        </a>
-      </span>
-    </footer>
-  );
-
-  const etiquetaPrincipal = enMarco ? "Vista previa de la página" : undefined;
   const raizEstilo: CSSProperties = {
     background: GRIS.fondo,
     color: GRIS.texto,
     fontFamily: "Roboto, system-ui, sans-serif",
     // En el marco de la computadora llena la "pantalla" aunque sea corta.
-    minHeight: enMarco ? (escritorio ? "100%" : undefined) : "100dvh",
+    minHeight: enCaja ? (escritorio ? "100%" : undefined) : "100dvh",
   };
 
   if (escritorio) {
@@ -656,7 +723,7 @@ export default function VistaPagina({
     // derecha, la tarjeta va sola y centrada: media pantalla vacía parece rota.
     const hayDerecha = !!anuncio || botones.length > 0 || sucursales.length > 0;
     return (
-      <div ref={raiz} data-testid="vista-pagina" data-modo="escritorio" style={raizEstilo}>
+      <div ref={raiz} data-testid={testId} data-modo="escritorio" data-estilo="CLASICO" style={raizEstilo}>
         <div style={{ ...fondoPortada, height: 300 }}>{capaPortada}</div>
         <Principal aria-label={etiquetaPrincipal} style={{ maxWidth: 1120, margin: "0 auto", padding: "0 32px" }}>
           <div
@@ -714,7 +781,7 @@ export default function VistaPagina({
   }
 
   return (
-    <div ref={raiz} data-testid="vista-pagina" data-modo="movil" style={raizEstilo}>
+    <div ref={raiz} data-testid={testId} data-modo="movil" data-estilo="CLASICO" style={raizEstilo}>
       <div style={{ maxWidth: 480, margin: "0 auto", display: "flex", flexDirection: "column" }}>
         <header style={{ position: "relative", display: "flex", flexDirection: "column", alignItems: "center" }}>
           <div style={{ ...fondoPortada, height: chico ? 130 : 200 }}>{capaPortada}</div>

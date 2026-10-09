@@ -18,18 +18,23 @@ import {
 import { apiPagina, urlDeImagen } from "../../lib/pagina/apiPagina";
 import { ICONO_RESERVAR, iconoDe, nombreTipo, paleta } from "../../lib/pagina/aspecto";
 import { cargarFuentesPagina } from "../../lib/pagina/estilos";
+import { estiloPagina, tonosPagina } from "../../lib/pagina/estilosPagina";
+import { leerColoresDeImagen, muestrasDeColores } from "../../lib/pagina/coloresLogo";
 import { prepararImagen } from "../../lib/pagina/imagen";
 import { TOPE_CATALOGO } from "../../lib/pagina/catalogo";
 import type {
   AjustesPagina,
   CambiosPagina,
+  ClaveEstilo,
   EnlaceEditor,
   EnlaceInput,
   EstadoEditor,
   FormatoEnlace,
+  FormaBotones,
   ItemCatalogoEditor,
   SucursalEditor,
   TipoEnlace,
+  Tipografia,
 } from "../../lib/pagina/tipos";
 import { vistaDesdeEditor } from "../../lib/pagina/vista";
 import { useApi } from "../../lib/useApi";
@@ -39,6 +44,7 @@ import EditorEnlace from "./EditorEnlace";
 import { EditorAnuncio, FilaEleccion, SelectorColorPagina, SelectorForma, SelectorLetra } from "./EstilosPagina";
 import { Trazo } from "./VistaPagina";
 import Seccion from "./Seccion";
+import SelectorEstilo from "./SelectorEstilo";
 import VistaPrevia, { type ModoPrevia } from "./VistaPrevia";
 
 const MAX_DESCRIPCION = 160;
@@ -53,6 +59,7 @@ function Imagen({
   iniciales,
   onCambio,
   onError,
+  onArchivo,
 }: {
   tipo: "logo" | "portada";
   url: string | null;
@@ -60,12 +67,15 @@ function Imagen({
   iniciales: string;
   onCambio: () => void;
   onError: (m: string) => void;
+  /** El archivo recién elegido, antes de subirlo (para leerle los colores al logo). */
+  onArchivo?: (archivo: File) => void;
 }) {
   const input = useRef<HTMLInputElement>(null);
   const [subiendo, setSubiendo] = useState(false);
   const src = urlDeImagen(url);
   const elegir = async (archivo: File | undefined) => {
     if (!archivo) return;
+    onArchivo?.(archivo);
     setSubiendo(true);
     onError("");
     try {
@@ -430,6 +440,10 @@ export default function MiPagina() {
   const [previaCelular, setPreviaCelular] = useState(false);
   const [modoPrevia, setModoPrevia] = useState<ModoPrevia>("movil");
   const [opcionPrincipal, setOpcionPrincipal] = useState<OpcionPrincipal | null>(null);
+  // La letra y la forma que tenía antes de cambiar de estilo: "Mantener los míos".
+  const [avisoEstilo, setAvisoEstilo] = useState<{ tipografia: Tipografia; formaBotones: FormaBotones } | null>(null);
+  // Los colores del logo (hex), para la fila "De tu logo" del popup de color.
+  const [coloresLogo, setColoresLogo] = useState<string[]>([]);
   const arrastrado = useRef<number | null>(null);
   // Lo último que se cargó o se cambió: el catálogo se actualiza después de
   // cada respuesta y, entre una y otra, el render todavía no pasó.
@@ -438,6 +452,23 @@ export default function MiPagina() {
 
   // Roboto; la letra del nombre la carga su selector (sólo las que se ven).
   useEffect(() => cargarFuentesPagina(), []);
+  // La letra del texto del estilo que se está viendo en la vista previa.
+  const estiloVisto = borrador.estiloClave ?? carga.datos?.pagina.estiloClave;
+  useEffect(() => cargarFuentesPagina(undefined, estiloVisto), [estiloVisto]);
+
+  // Los colores del logo ya subido. Se lee del API con CORS (ver
+  // coloresLogo.ts); si el navegador no deja leerlo, la fila no aparece y
+  // vuelve a aparecer al elegir un logo nuevo (que se lee del archivo local).
+  const logoGuardado = carga.datos?.imagenes.logo ?? null;
+  useEffect(() => {
+    if (!logoGuardado) return;
+    let vigente = true;
+    const url = urlDeImagen(logoGuardado);
+    if (url) void leerColoresDeImagen(url).then((c) => vigente && c.length > 0 && setColoresLogo(c));
+    return () => {
+      vigente = false;
+    };
+  }, [logoGuardado]);
 
   // Con cambios sin guardar, el navegador pregunta antes de cerrar o recargar:
   // la apariencia se arma de a poco y perderla entera por un F5 desanima.
@@ -473,8 +504,33 @@ export default function MiPagina() {
   const editado: EstadoEditor = { ...e, pagina: ajustes, sucursales: sucursalesEditadas };
   const vista = vistaDesdeEditor(editado);
   const c = paleta(vista.color.hex);
+  const estilo = estiloPagina(ajustes.estiloClave);
+  const tonos = tonosPagina(estilo.clave, c, !!e.imagenes.portada);
+  const fondoEstilo = { superficie: tonos.superficie, fondo: tonos.fondo };
   const sucio = haySinGuardar;
   const cambiar = (cambios: CambiosPagina) => setBorrador((b) => ({ ...b, ...cambios }));
+  // Como `cambiar`, pero lo que vuelve a quedar como está guardado sale del
+  // borrador: "Mantener los míos" no manda la letra y la forma de siempre.
+  const cambiarLimpio = (cambios: CambiosPagina) =>
+    setBorrador((b) => {
+      const nuevo: Record<string, unknown> = { ...b, ...cambios };
+      const guardado: Record<string, unknown> = { ...e.pagina, estiloClave: e.pagina.estiloClave ?? "CLASICO" };
+      for (const k of Object.keys(cambios)) if (nuevo[k] === guardado[k]) delete nuevo[k];
+      return nuevo as CambiosPagina;
+    });
+
+  // Decisión del 09-oct: al cambiar de estilo se conserva el color y la letra
+  // y los botones pasan a los recomendados, con "Mantener los míos".
+  const elegirEstilo = (clave: ClaveEstilo) => {
+    const nuevo = estiloPagina(clave);
+    const antes = { tipografia: ajustes.tipografia, formaBotones: ajustes.formaBotones };
+    cambiarLimpio({ estiloClave: clave, tipografia: nuevo.letra, formaBotones: nuevo.forma });
+    setAvisoEstilo(antes.tipografia !== nuevo.letra || antes.formaBotones !== nuevo.forma ? antes : null);
+  };
+  const mantenerLosMios = () => {
+    if (avisoEstilo) cambiarLimpio(avisoEstilo);
+    setAvisoEstilo(null);
+  };
   const enlaces = [...e.enlaces].sort((a, b) => a.orden - b.orden || a.id - b.id);
 
   const actualizarCatalogo = (cambio: (actuales: ItemCatalogoEditor[]) => ItemCatalogoEditor[]) => {
@@ -526,6 +582,7 @@ export default function MiPagina() {
       if (Object.keys(cambios).length > 0) {
         carga.setDatos(conCatalogo(await apiPagina.guardar(cambios)));
         setBorrador({});
+        setAvisoEstilo(null);
       } else {
         carga.setDatos({ ...e, sucursales });
       }
@@ -704,6 +761,24 @@ export default function MiPagina() {
           )}
 
           <Seccion titulo="Apariencia">
+            {/* El estilo va primero: decide todo lo demás de una vez. */}
+            <div className="space-y-2">
+              <SelectorEstilo vista={vista} rubro={e.negocio.rubro} onElegir={elegirEstilo} />
+              {avisoEstilo && (
+                <div role="status" className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl bg-muted px-3 py-2.5 text-[13px] text-texto-2">
+                  <span className="min-w-0 flex-[1_1_240px]">Usamos la letra y los botones que mejor van con este estilo.</span>
+                  <button type="button" className="font-semibold underline" style={{ color: c.oscuro }} onClick={mantenerLosMios}>
+                    Mantener los míos
+                  </button>
+                </div>
+              )}
+              {estilo.pideFoto && !e.imagenes.portada && (
+                <p className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-2.5 text-[13px] text-amber-900">
+                  Vitrina luce con una foto de portada. Sin foto, arriba va un bloque de tu color.
+                </p>
+              )}
+            </div>
+
             <div className="grid gap-3 sm:grid-cols-2">
               <Imagen
                 tipo="logo"
@@ -715,6 +790,7 @@ export default function MiPagina() {
                   setAviso("Logo actualizado");
                 }}
                 onError={setError}
+                onArchivo={(archivo) => void leerColoresDeImagen(archivo).then((c) => c.length > 0 && setColoresLogo(c))}
               />
               <Imagen
                 tipo="portada"
@@ -734,13 +810,22 @@ export default function MiPagina() {
               <SelectorColorPagina
                 valor={ajustes.colorClave}
                 muestras={e.muestras}
+                recomendados={estilo.colores}
+                deTuLogo={muestrasDeColores(coloresLogo, e.muestras)}
                 onCambio={(clave) => cambiar({ colorClave: clave })}
               />
-              <SelectorForma valor={ajustes.formaBotones} c={c} onCambio={(f) => cambiar({ formaBotones: f })} />
+              <SelectorForma
+                valor={ajustes.formaBotones}
+                c={c}
+                recomendadas={estilo.formas}
+                fondo={fondoEstilo}
+                onCambio={(f) => cambiar({ formaBotones: f })}
+              />
               <SelectorLetra
                 valor={ajustes.tipografia}
                 nombre={e.negocio.nombre}
                 c={c}
+                recomendadas={estilo.letras}
                 onCambio={(t) => cambiar({ tipografia: t })}
               />
             </div>
@@ -775,7 +860,7 @@ export default function MiPagina() {
               </Campo>
             )}
             {ajustes.anuncioTexto?.trim() && (
-              <EditorAnuncio ajustes={ajustes} c={c} muestras={e.muestras} cambiar={cambiar} />
+              <EditorAnuncio ajustes={ajustes} c={c} muestras={e.muestras} pagina={fondoEstilo} cambiar={cambiar} />
             )}
           </Seccion>
 
@@ -963,6 +1048,7 @@ export default function MiPagina() {
                 setBorrador({});
                 setBorradorSucursales({});
                 setOpcionPrincipal(null);
+                setAvisoEstilo(null);
               }}
             >
               Descartar
