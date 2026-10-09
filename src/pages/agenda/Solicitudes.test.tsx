@@ -8,10 +8,20 @@ import { permisosDe } from "../../test/sesiones";
 
 /** A9 · Solicitudes online: aprobar, rechazar con motivo, las "nuevas" y quién la ve. */
 
+/** Plan Emprendedor: sin cupo en los casos de siempre. */
+const sesion = vi.hoisted(() => ({
+  cupo: undefined as import("../../types").CupoEstado | undefined,
+  actualizarCupo: vi.fn(),
+  refrescarCupo: vi.fn(async () => {}),
+}));
+
 vi.mock("../../store/AuthContext", () => ({
   useAuth: () => ({
     usuario: { id: 3, username: "recepcion", rol: "CAJERO", sucursalId: 1, permisos: ["agenda.ver", "reservas.aprobar"] },
     negocio: { id: 1, nombre: "Salón Bella Vista", tipoNegocio: "PELUQUERIA", features: ["agenda", "reserva_online"] },
+    cupo: sesion.cupo,
+    actualizarCupo: sesion.actualizarCupo,
+    refrescarCupo: sesion.refrescarCupo,
   }),
 }));
 
@@ -24,6 +34,9 @@ vi.mock("../../lib/agenda/apiReservaOnline", async (importOriginal) => {
 });
 
 import { apiReservaOnline } from "../../lib/agenda/apiReservaOnline";
+import { fechaNegocio } from "../../lib/agenda/horaAgenda";
+import { EVENTO_HOJA_CUPO } from "../../lib/hojaCupo";
+import { CUPO_ILIMITADO, cupoEmprendedor } from "../../test/cupoFixtures";
 import Solicitudes from "./Solicitudes";
 
 const solicitud: CitaSolicitud = {
@@ -44,6 +57,7 @@ const nueva: CitaSolicitud = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  sesion.cupo = undefined;
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(new Date("2026-10-21T13:00:00.000Z"));
   vi.mocked(apiReservaOnline.bandeja).mockResolvedValue({
@@ -129,5 +143,78 @@ describe("quién ve la bandeja", () => {
     expect(puedeVer({ ...base, ...admin, features: ["agenda"] }, "solicitudes")).toBe(false);
     expect(puedeVer({ ...base, ...admin, features: [] }, "solicitudes")).toBe(false);
     expect(puedeVer({ ...admin, rubro: "RESTAURANTE", features: ["reserva_online"] }, "solicitudes")).toBe(false);
+  });
+});
+
+describe("Plan Emprendedor: aprobar sin cupo (D20)", () => {
+  const AVISO = "No te queda cupo de citas hoy. Comprá créditos para aprobarla; la solicitud sigue pendiente.";
+
+  it("un negocio Básico (ilimitado) aprueba como siempre", async () => {
+    sesion.cupo = CUPO_ILIMITADO;
+    vi.mocked(apiReservaOnline.aprobar).mockResolvedValue({ ...solicitud, estado: "RESERVADA" });
+    await montar();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Aprobar" }));
+    });
+    expect(apiReservaOnline.aprobar).toHaveBeenCalledWith(7);
+    expect(screen.queryByText(AVISO)).not.toBeInTheDocument();
+    expect(sesion.refrescarCupo).not.toHaveBeenCalled();
+  });
+
+  it("sin cupo ni créditos (1 no alcanza: una cita usa 2) no llama, avisa y ofrece comprar", async () => {
+    sesion.cupo = cupoEmprendedor({ fecha: fechaNegocio(), citas: 50, saldo: 1 });
+    const pedidos: Event[] = [];
+    const escuchar = (e: Event) => pedidos.push(e);
+    window.addEventListener(EVENTO_HOJA_CUPO, escuchar);
+    await montar();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Aprobar" }));
+    });
+    expect(apiReservaOnline.aprobar).not.toHaveBeenCalled();
+    expect(screen.getByRole("alert")).toHaveTextContent(AVISO);
+    // La solicitud sigue en la bandeja.
+    expect(screen.getByRole("article", { name: "Solicitud de María Flores" })).toBeInTheDocument();
+    // La hoja no se abre sola: la abre el botón.
+    expect(pedidos).toHaveLength(0);
+    fireEvent.click(screen.getByRole("button", { name: "Comprar créditos" }));
+    expect((pedidos[0] as CustomEvent).detail).toEqual({ unidad: "CITA", agotado: true });
+    window.removeEventListener(EVENTO_HOJA_CUPO, escuchar);
+  });
+
+  it("un 403 CUPO_AGOTADO deja la solicitud pendiente y guarda el cupo del servidor", async () => {
+    sesion.cupo = cupoEmprendedor({ fecha: fechaNegocio(), citas: 49, saldo: 0 });
+    const delServidor = cupoEmprendedor({ fecha: fechaNegocio(), citas: 50, saldo: 0 });
+    vi.mocked(apiReservaOnline.aprobar).mockRejectedValue(
+      Object.assign(new Error("Llegaste a tus 50 citas de hoy y no te quedan créditos."), {
+        status: 403,
+        codigo: "CUPO_AGOTADO",
+        detalle: { codigo: "CUPO_AGOTADO", unidad: "CITA", cupo: delServidor },
+      }),
+    );
+    await montar();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Aprobar" }));
+    });
+    expect(apiReservaOnline.aprobar).toHaveBeenCalledWith(7);
+    expect(sesion.actualizarCupo).toHaveBeenCalledWith(delServidor);
+    expect(screen.getByRole("alert")).toHaveTextContent(AVISO);
+    expect(screen.getByRole("article", { name: "Solicitud de María Flores" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Comprar créditos" })).toBeInTheDocument();
+  });
+
+  it("aprobar con lugar guarda el consumo que trae la respuesta", async () => {
+    sesion.cupo = cupoEmprendedor({ fecha: fechaNegocio(), citas: 3, saldo: 0 });
+    const despues = cupoEmprendedor({ fecha: fechaNegocio(), citas: 4, saldo: 0 });
+    vi.mocked(apiReservaOnline.aprobar).mockResolvedValue({
+      ...solicitud,
+      estado: "RESERVADA",
+      consumo: { unidad: "CITA", fuente: "CUPO", creditos: 0, cupo: despues },
+    });
+    await montar();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Aprobar" }));
+    });
+    expect(sesion.actualizarCupo).toHaveBeenCalledWith(despues);
+    expect(screen.queryByRole("article", { name: "Solicitud de María Flores" })).not.toBeInTheDocument();
   });
 });

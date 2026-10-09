@@ -11,13 +11,18 @@ import { cita, recurso } from "../../test/agendaFixtures";
 
 const logout = vi.fn();
 // Los permisos de más de su rol (`agenda.crear_propias` = agendar lo suyo).
-const sesion = vi.hoisted(() => ({ extra: [] as string[] }));
+const sesion = vi.hoisted(() => ({
+  extra: [] as string[],
+  /** Plan Emprendedor: sin cupo en los casos de siempre. */
+  cupo: undefined as import("../../types").CupoEstado | undefined,
+}));
 
 vi.mock("../../store/AuthContext", () => ({
   useAuth: () => ({
     usuario: { id: 8, username: "carla", nombre: "Carla", rol: "PROFESIONAL", rolNombre: "Estilista", sucursalId: null, permisos: ["agenda.ver", "agenda.estado", "comisiones.ver", ...sesion.extra], permisosPropios: ["agenda.ver", "agenda.estado", "comisiones.ver", ...sesion.extra] },
     negocio: { id: 1, nombre: "Salón Bella Vista", tipoNegocio: "PELUQUERIA" },
     logout,
+    cupo: sesion.cupo,
   }),
 }));
 
@@ -30,6 +35,7 @@ vi.mock("../../lib/agenda/apiAgenda", async (importOriginal) => {
 });
 
 import { apiAgenda } from "../../lib/agenda/apiAgenda";
+import { CUPO_ILIMITADO, cupoEmprendedor } from "../../test/cupoFixtures";
 import MiAgenda from "./MiAgenda";
 
 beforeEach(() => {
@@ -39,6 +45,7 @@ beforeEach(() => {
   // Miércoles 21-oct-2026, 09:00 en La Paz.
   vi.setSystemTime(new Date("2026-10-21T13:00:00.000Z"));
   sesion.extra = [];
+  sesion.cupo = undefined;
   vi.mocked(apiAgenda.reglas).mockRejectedValue(new Error("sin reglas"));
 });
 
@@ -179,5 +186,25 @@ describe("A10 · mi agenda", () => {
     await montar();
     // El de la cabecera y el de la tarjeta.
     expect(screen.getAllByRole("button", { name: /Cambiar mi contraseña/ })).toHaveLength(2);
+  });
+});
+
+describe("Plan Emprendedor: el chip de citas en Mi agenda (fuera del Layout)", () => {
+  it("quien agenda, en un Emprendedor, ve el chip y tocarlo abre la hoja acá mismo", async () => {
+    sesion.extra = ["agenda.crear_propias"];
+    sesion.cupo = cupoEmprendedor({ fecha: "2026-10-21", citas: 3, saldo: 10 });
+    vi.mocked(apiAgenda.miAgenda).mockResolvedValue({ recursos: [recurso({ usuarioId: 8 })], citas: [] });
+    await montar();
+    const chip = screen.getByRole("button", { name: /Créditos 10/ });
+    expect(chip).toHaveTextContent("Citas hoy 3/50 · Créditos 10");
+  });
+
+  it("con ilimitado no hay chip aunque pueda agendar", async () => {
+    sesion.extra = ["agenda.crear_propias"];
+    sesion.cupo = CUPO_ILIMITADO;
+    vi.mocked(apiAgenda.miAgenda).mockResolvedValue({ recursos: [recurso({ usuarioId: 8 })], citas: [] });
+    await montar();
+    expect(screen.getByRole("button", { name: "Nueva cita" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Créditos/ })).not.toBeInTheDocument();
   });
 });

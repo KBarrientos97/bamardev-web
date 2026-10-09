@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import ChipCupo from "../../components/ChipCupo";
 import { Chips } from "../../components/filtros";
 import { AvisoOk, Boton, Cargando, ErrorMsg, Select, Vacio, useAviso } from "../../components/ui";
 import { apiAgenda } from "../../lib/agenda/apiAgenda";
@@ -140,6 +141,8 @@ export default function Hoy() {
             ))}
           </Select>
         )}
+        {/* Plan Emprendedor: "Citas hoy 12/50 · Créditos 240". Sin cupo no existe. */}
+        <ChipCupo unidad="CITA" />
         <CampanaAvisos onAbrirCita={(c) => setAbierta(c)} />
         <Boton icono="plus" onClick={() => setNueva(true)} disabled={!sucursalId}>
           Nueva cita

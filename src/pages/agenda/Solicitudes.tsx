@@ -16,7 +16,9 @@ import {
 import { enlaceWhatsApp } from "../../lib/agenda/recordatorio";
 import { EVENTO_SOLICITUDES } from "../../lib/agenda/contadorSolicitudes";
 import { useConsultaPeriodica } from "../../lib/agenda/useConsultaPeriodica";
+import { abrirHojaCupo } from "../../lib/hojaCupo";
 import { Telefono } from "../../lib/telefono";
+import { useBloqueoCupo } from "../../lib/useBloqueoCupo";
 import { useAuth } from "../../store/AuthContext";
 import PedirMotivo from "./PedirMotivo";
 
@@ -43,6 +45,17 @@ export default function Solicitudes() {
   const [rechazando, setRechazando] = useState<CitaSolicitud | null>(null);
   const [ocupada, setOcupada] = useState<number | null>(null);
   const [error, setError] = useState("");
+  /**
+   * Plan Emprendedor (D20): aprobar consume una cita del cupo. Sin lugar, la
+   * solicitud se queda en la bandeja y se ofrece comprar créditos con un
+   * aviso —no se abre la hoja sola: quien aprueba quizá sólo quería mirar—.
+   */
+  const [sinCupo, setSinCupo] = useState(false);
+  const {
+    verificar: hayLugarParaCita,
+    manejarError: rechazoPorCupo,
+    registrar: registrarConsumo,
+  } = useBloqueoCupo("CITA", { abrirHoja: false });
   const bandeja = useConsultaPeriodica<BandejaSolicitudes>(
     () => apiReservaOnline.bandeja(usuario?.sucursalId ?? null),
     [usuario?.sucursalId],
@@ -65,15 +78,27 @@ export default function Solicitudes() {
         : d,
     );
 
-  async function hacer(c: CitaSolicitud, fn: () => Promise<unknown>, ok: string) {
-    setOcupada(c.id);
+  async function hacer(c: CitaSolicitud, fn: () => Promise<unknown>, ok: string, aprueba = false) {
     setError("");
+    setSinCupo(false);
+    if (aprueba && !hayLugarParaCita()) {
+      setSinCupo(true);
+      return;
+    }
+    setOcupada(c.id);
     try {
-      await fn();
+      const r = await fn();
+      if (aprueba) registrarConsumo(r as CitaSolicitud);
       quitar(c.id);
       setAviso(ok);
       window.dispatchEvent(new Event(EVENTO_SOLICITUDES));
     } catch (e) {
+      // 403 CUPO_AGOTADO: el backend revirtió todo y la cita sigue
+      // SOLICITADA. No se recarga la bandeja: no cambió nada.
+      if (aprueba && rechazoPorCupo(e)) {
+        setSinCupo(true);
+        return;
+      }
       setError(mensajeDe(e));
       bandeja.refrescar();
     } finally {
@@ -102,6 +127,20 @@ export default function Solicitudes() {
 
       <AvisoOk>{aviso}</AvisoOk>
       <ErrorMsg>{error}</ErrorMsg>
+      {sinCupo && (
+        <div
+          role="alert"
+          className="flex flex-wrap items-center gap-3 rounded-xl bg-warning-bg px-3.5 py-2.5 text-sm text-warning-text"
+        >
+          <Icon name="alert" size={17} />
+          <span className="min-w-0 flex-1 basis-56 font-semibold">
+            No te queda cupo de citas hoy. Comprá créditos para aprobarla; la solicitud sigue pendiente.
+          </span>
+          <Boton icono="coins" variante="soft" onClick={() => abrirHojaCupo({ unidad: "CITA", agotado: true })}>
+            Comprar créditos
+          </Boton>
+        </div>
+      )}
 
       {bandeja.error && !bandeja.datos ? (
         <ErrorMsg onReintentar={bandeja.recargar}>{bandeja.error}</ErrorMsg>
@@ -131,7 +170,9 @@ export default function Solicitudes() {
                       <Boton
                         icono="check"
                         disabled={ocupada === c.id}
-                        onClick={() => hacer(c, () => apiReservaOnline.aprobar(c.id), `Aprobada la cita de ${c.cliente.nombre}.`)}
+                        onClick={() =>
+                          hacer(c, () => apiReservaOnline.aprobar(c.id), `Aprobada la cita de ${c.cliente.nombre}.`, true)
+                        }
                       >
                         Aprobar
                       </Boton>

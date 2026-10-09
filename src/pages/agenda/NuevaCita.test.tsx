@@ -8,7 +8,13 @@ import { FECHA, cita, ficha, propuesta, recurso, servicio } from "../../test/age
  * medio, el 409 trae los huecos recalculados y NADA de lo cargado se pierde.
  */
 
-const sesion = vi.hoisted(() => ({ rol: "CAJERO" as string }));
+const sesion = vi.hoisted(() => ({
+  rol: "CAJERO" as string,
+  /** Plan Emprendedor: sin cupo en los casos de siempre. */
+  cupo: undefined as import("../../types").CupoEstado | undefined,
+  actualizarCupo: vi.fn(),
+  refrescarCupo: vi.fn(async () => {}),
+}));
 
 vi.mock("../../store/AuthContext", async () => {
   // Los permisos de la plantilla de ese rol: la pantalla decide sólo con ellos.
@@ -23,6 +29,9 @@ vi.mock("../../store/AuthContext", async () => {
         ...permisosDe(sesion.rol as Parameters<typeof permisosDe>[0]),
       },
       negocio: { id: 1, nombre: "Salón Bella Vista", tipoNegocio: "PELUQUERIA" },
+      cupo: sesion.cupo,
+      actualizarCupo: sesion.actualizarCupo,
+      refrescarCupo: sesion.refrescarCupo,
     }),
   };
 });
@@ -44,6 +53,9 @@ vi.mock("../../lib/agenda/apiAgenda", async (importOriginal) => {
 });
 
 import { apiAgenda } from "../../lib/agenda/apiAgenda";
+import { fechaNegocio } from "../../lib/agenda/horaAgenda";
+import { EVENTO_HOJA_CUPO } from "../../lib/hojaCupo";
+import { CUPO_ILIMITADO, cupoEmprendedor } from "../../test/cupoFixtures";
 import NuevaCita from "./NuevaCita";
 
 const A_LAS_10 = propuesta("2026-10-21T14:00:00.000Z");
@@ -54,6 +66,7 @@ const A_LAS_1130 = propuesta("2026-10-21T15:30:00.000Z");
 beforeEach(() => {
   vi.clearAllMocks();
   sesion.rol = "CAJERO";
+  sesion.cupo = undefined;
   vi.mocked(apiAgenda.servicios).mockResolvedValue([servicio()]);
   vi.mocked(apiAgenda.recursos).mockResolvedValue([recurso()]);
   vi.mocked(apiAgenda.buscarClientes).mockResolvedValue([]);
@@ -229,5 +242,95 @@ describe("A5 · nueva cita", () => {
       fireEvent.click(screen.getByRole("button", { name: "Confirmar cita" }));
     });
     expect(screen.getByText("Esa hora ya pasó: elegí un horario de ahora en adelante.")).toBeInTheDocument();
+  });
+});
+
+describe("Plan Emprendedor: el cupo de citas al confirmar (§5.1)", () => {
+  const pedidos: Event[] = [];
+  const escuchar = (e: Event) => pedidos.push(e);
+  beforeEach(() => {
+    pedidos.length = 0;
+    window.addEventListener(EVENTO_HOJA_CUPO, escuchar);
+    return () => window.removeEventListener(EVENTO_HOJA_CUPO, escuchar);
+  });
+
+  it("un negocio Básico (ilimitado) agenda como siempre", async () => {
+    sesion.cupo = CUPO_ILIMITADO;
+    vi.mocked(apiAgenda.crearCita).mockResolvedValue(cita({ id: 8 }));
+    const onCreada = await montar();
+    await cargarFormulario();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Confirmar cita" }));
+    });
+    expect(apiAgenda.crearCita).toHaveBeenCalledTimes(1);
+    expect(onCreada).toHaveBeenCalled();
+    expect(pedidos).toHaveLength(0);
+    expect(sesion.refrescarCupo).not.toHaveBeenCalled();
+  });
+
+  it("una cita cuesta 2 créditos: con el cupo lleno y 1 crédito no se manda y se abre la hoja", async () => {
+    sesion.cupo = cupoEmprendedor({ fecha: fechaNegocio(), citas: 50, saldo: 1 });
+    const onCreada = await montar();
+    await cargarFormulario();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Confirmar cita" }));
+    });
+    expect(apiAgenda.crearCita).not.toHaveBeenCalled();
+    expect(apiAgenda.crearCliente).not.toHaveBeenCalled();
+    expect(onCreada).not.toHaveBeenCalled();
+    expect((pedidos[0] as CustomEvent).detail).toEqual({ unidad: "CITA", agotado: true });
+    expect(screen.getByText(/No te queda cupo de citas hoy/)).toBeInTheDocument();
+    // Lo cargado sigue ahí.
+    expect(screen.getByLabelText("Nota (opcional)")).toHaveValue("Pidió no cortar las puntas");
+  });
+
+  it("con 2 créditos alcanza: agenda y guarda el consumo", async () => {
+    sesion.cupo = cupoEmprendedor({ fecha: fechaNegocio(), citas: 50, saldo: 2 });
+    const despues = cupoEmprendedor({ fecha: fechaNegocio(), citas: 50, saldo: 0 });
+    vi.mocked(apiAgenda.crearCita).mockResolvedValue({
+      ...cita({ id: 9 }),
+      consumo: { unidad: "CITA", fuente: "CREDITOS", creditos: 2, cupo: despues },
+    });
+    const onCreada = await montar();
+    await cargarFormulario();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Confirmar cita" }));
+    });
+    expect(apiAgenda.crearCita).toHaveBeenCalledTimes(1);
+    expect(sesion.actualizarCupo).toHaveBeenCalledWith(despues);
+    expect(onCreada).toHaveBeenCalled();
+    expect(pedidos).toHaveLength(0);
+  });
+
+  it("un 403 CUPO_AGOTADO abre la hoja, no borra nada y reintenta con el mismo pedido", async () => {
+    sesion.cupo = cupoEmprendedor({ fecha: fechaNegocio(), citas: 49, saldo: 0 });
+    const delServidor = cupoEmprendedor({ fecha: fechaNegocio(), citas: 50, saldo: 0 });
+    vi.mocked(apiAgenda.crearCita).mockRejectedValueOnce(
+      new ApiError("Llegaste a tus 50 citas de hoy y no te quedan créditos.", 403, {
+        codigo: "CUPO_AGOTADO",
+        unidad: "CITA",
+        cupo: delServidor,
+      }),
+    );
+    const onCreada = await montar();
+    await cargarFormulario();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Confirmar cita" }));
+    });
+    expect(sesion.actualizarCupo).toHaveBeenCalledWith(delServidor);
+    expect((pedidos[0] as CustomEvent).detail).toEqual({ unidad: "CITA", agotado: true });
+    expect(screen.getByText(/No te queda cupo de citas hoy/)).toBeInTheDocument();
+    expect(screen.getByLabelText("Nota (opcional)")).toHaveValue("Pidió no cortar las puntas");
+    expect(onCreada).not.toHaveBeenCalled();
+
+    // Compró créditos: el snapshot nuevo deja pasar y el reintento es el mismo pedido.
+    sesion.cupo = cupoEmprendedor({ fecha: fechaNegocio(), citas: 50, saldo: 50 });
+    vi.mocked(apiAgenda.crearCita).mockResolvedValueOnce(cita({ id: 10 }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Confirmar cita" }));
+    });
+    const [primero, segundo] = vi.mocked(apiAgenda.crearCita).mock.calls.map((c) => c[0]);
+    expect(segundo.clienteRequestId).toBe(primero.clienteRequestId);
+    expect(onCreada).toHaveBeenCalledWith(expect.objectContaining({ id: 10 }));
   });
 });
