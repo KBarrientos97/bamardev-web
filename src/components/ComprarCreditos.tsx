@@ -219,6 +219,17 @@ export default function ComprarCreditos({
                 <span className="flex-1">{recordatorio}</span>
               </p>
             )}
+            {/* §5: dos meses seguidos gastando de más en créditos, se le
+                sugiere el Básico. Sólo se sugiere: el plan no cambia solo. */}
+            {cupo?.sugerirBasico && !compra && (
+              <p className="flex items-start gap-2 rounded-xl bg-info-bg px-3.5 py-2.5 text-[13px] text-info-text">
+                <Icon name="info" size={17} />
+                <span className="flex-1">
+                  Con lo que venís gastando en créditos te conviene el plan Básico, sin límite por día. Pedíselo a
+                  BamarDev cuando quieras.
+                </span>
+              </p>
+            )}
             {error && <ErrorMsg>{error}</ErrorMsg>}
             {compra ? (
               <VistaQr

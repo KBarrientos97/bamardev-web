@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CompraCreditosVista, CupoEstado, EstadoLicencia, PaqueteCreditosVista, PaquetesCreditos } from "../types";
 import { cupoEmprendedor } from "../test/cupoFixtures";
@@ -150,6 +150,15 @@ describe("la hoja de comprar créditos", () => {
     await abrir();
     expect(screen.getByRole("status")).toHaveTextContent("Tu mensualidad venció el 05/10: te quedan 2 días para pagarla.");
     expect(screen.getByRole("button", { name: "50 créditos por Bs 20" })).toBeEnabled();
+  });
+
+  it("si gasta de más en créditos se le sugiere el Básico (sólo con sugerirBasico)", async () => {
+    await abrir();
+    expect(screen.queryByText(/te conviene el plan Básico/)).not.toBeInTheDocument();
+    cleanup();
+    sesion.cupo = { ...cupoEmprendedor({ ventas: 50 }), sugerirBasico: true };
+    await abrir();
+    expect(screen.getByText(/te conviene el plan Básico/)).toBeInTheDocument();
   });
 
   it("suspendida no puede comprar: ni siquiera pide los paquetes", async () => {
