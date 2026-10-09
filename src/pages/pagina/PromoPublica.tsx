@@ -102,7 +102,7 @@ export default function PromoPublica() {
       }}
     >
       <MarcaBamarDev />
-      Hecho con BamarDev
+      Powered by BamarDev
     </a>
   );
 

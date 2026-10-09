@@ -3,6 +3,7 @@ import { Icon } from "../components/Icon";
 import { Boton, Campo, ErrorMsg, Input, InputPassword } from "../components/ui";
 import { BLOQUEO_KEY } from "../lib/api";
 import { useAuth } from "../store/AuthContext";
+import PoweredByBamarDev from "../components/PoweredByBamarDev";
 import PagarLicencia from "./PagarLicencia";
 
 interface Bloqueo {
@@ -186,6 +187,9 @@ export default function Login() {
             Pagar la licencia con QR
           </button>
         </form>
+        <div className="mt-8 flex justify-center">
+          <PoweredByBamarDev />
+        </div>
       </div>
     </div>
   );

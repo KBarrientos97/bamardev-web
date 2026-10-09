@@ -64,7 +64,7 @@ describe("estilos de página", () => {
           expect(screen.getByRole("heading", { level: 2, name: /sucursales/i })).toBeInTheDocument();
           expect(screen.getByRole("link", { name: "Reservar" })).toHaveAttribute("href", "/r/elfilo/reservar/centro");
           expect(screen.getByRole("link", { name: "Llamar" })).toHaveAttribute("href", "tel:+59133112233");
-          expect(screen.getByRole("link", { name: /Hecho con BamarDev/ })).toBeInTheDocument();
+          expect(screen.getByRole("link", { name: /Powered by BamarDev/ })).toBeInTheDocument();
           // La portada: como <img> decorativa (Vivo, Boutique) o de fondo (el resto).
           const html = vista.innerHTML;
           expect(html.includes("imagen/portada")).toBe(conPortada);
@@ -136,7 +136,7 @@ describe("estilos de página", () => {
         expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(/Hermanas Gutiérrez/);
         expect(screen.queryByRole("note")).not.toBeInTheDocument();
         expect(screen.queryByRole("heading", { level: 2 })).not.toBeInTheDocument();
-        expect(screen.getByRole("link", { name: /Hecho con BamarDev/ })).toBeInTheDocument();
+        expect(screen.getByRole("link", { name: /Powered by BamarDev/ })).toBeInTheDocument();
         unmount();
       }
     }

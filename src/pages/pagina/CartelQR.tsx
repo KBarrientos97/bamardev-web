@@ -120,7 +120,7 @@ export function Cartel({ datos, url, svgQr }: { datos: DatosCartel; url: string;
         }}
       >
         <MarcaBamarDev size={16} />
-        Hecho con BamarDev
+        Powered by BamarDev
       </div>
     </div>
   );

@@ -47,7 +47,7 @@ export function Trazo({
 export function MarcaBamarDev({ size = 18 }: { size?: number }) {
   return (
     <img
-      src="/logo-marca.png"
+      src="/logo-marca-48.png"
       alt=""
       width={size}
       height={size}
@@ -383,7 +383,7 @@ export function TarjetaSucursal({
   );
 }
 
-/** "Hecho con BamarDev" y los enlaces legales, del color del texto tenue de la página. */
+/** "Powered by BamarDev" y los enlaces legales, del color del texto tenue de la página. */
 export function PiePagina({
   p,
   urlPrivacidad,
@@ -413,7 +413,7 @@ export function PiePagina({
         style={{ display: "flex", alignItems: "center", gap: 6, color, textDecoration: "none" }}
       >
         <MarcaBamarDev />
-        Hecho con BamarDev
+        Powered by BamarDev
       </a>
       <span style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: "4px 12px" }}>
         {urlPrivacidad && (

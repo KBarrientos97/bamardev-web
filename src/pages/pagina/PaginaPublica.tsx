@@ -75,7 +75,7 @@ export function NoDisponible({ mensaje = "Esta página no está disponible" }: {
           style={{ display: "inline-flex", gap: 6, alignItems: "center", fontSize: 12, color: "#6B7280", textDecoration: "none" }}
         >
           <MarcaBamarDev />
-          Hecho con BamarDev
+          Powered by BamarDev
         </a>
       </div>
     </div>

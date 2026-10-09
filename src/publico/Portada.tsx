@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { Aviso, Cabecera, CargandoPublico, IconoMapa, Marco, NoDisponible } from "./piezas";
 import { useEscritorio } from "./useEscritorio";
+import PoweredByBamarDev from "../components/PoweredByBamarDev";
 import { enlaceMapa, rutaPublica, ultimaReserva, useNegocioPublico } from "./util";
 
 /**
@@ -90,12 +91,12 @@ export default function Portada() {
           </div>
         </section>
 
-        <p className="mt-auto pt-6 text-center text-xs text-[#9CA3AF]">
+        <div className="mt-auto flex flex-col items-center gap-2 pt-6 text-center text-xs text-[#6B7280]">
+          <PoweredByBamarDev />
           <Link to={rutaPublica(sub, "/privacidad")} className="underline">
             Política de privacidad
-          </Link>{" "}
-          · Reservas con BamarDev
-        </p>
+          </Link>
+        </div>
       </div>
     </Marco>
   );

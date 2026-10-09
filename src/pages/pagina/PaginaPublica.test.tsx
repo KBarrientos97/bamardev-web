@@ -79,7 +79,7 @@ describe("página pública", () => {
     );
     // Sin reserva online no hay botón Reservar.
     expect(screen.queryByText("Reservar turno")).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Hecho con BamarDev/ })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: /Powered by BamarDev/ })).toHaveAttribute(
       "href",
       "https://bamardev.com/?utm_campaign=buensabor",
     );
