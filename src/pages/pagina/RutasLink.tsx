@@ -1,9 +1,12 @@
 import { lazy, Suspense } from "react";
 import { Navigate, Route, Routes, useLocation, useParams } from "react-router-dom";
 import { rutaCortaDeVieja, rutaLargaDeLink } from "../../lib/pagina/link";
-import { NoDisponible } from "./PaginaPublica";
 
 const PaginaPublica = lazy(() => import("./PaginaPublica"));
+// Diferido como lo demás: importado directo, cualquier reserva o gestión de
+// cita en este host bajaba también la página del negocio (con su vista),
+// sólo por este aviso.
+const NoDisponible = lazy(() => import("./PaginaPublica").then((m) => ({ default: m.NoDisponible })));
 const PrivacidadNegocio = lazy(() => import("./PrivacidadNegocio"));
 const PromoPublica = lazy(() => import("./PromoPublica"));
 const ReservaPublica = lazy(() => import("../../publico/ReservaPublica"));

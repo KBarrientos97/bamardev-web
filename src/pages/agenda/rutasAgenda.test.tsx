@@ -46,6 +46,9 @@ vi.mock("../../components/Layout", async () => {
 });
 
 import App from "../../App";
+// La app se baja aparte (`lazy`, ver App.tsx): cargada acá, en la recolección,
+// el `act` de cada test alcanza para que aparezca.
+import "../../AppNegocio";
 import { NEGOCIO_KEY, USER_KEY, tokenStore } from "../../lib/api";
 import { usuarioDe } from "../../test/sesiones";
 

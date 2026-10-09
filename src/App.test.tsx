@@ -51,6 +51,9 @@ vi.mock("./publico/apiReserva", async (importOriginal) => {
 });
 
 import App from "./App";
+// La app se baja aparte (`lazy`, ver App.tsx): cargada acá, en la recolección,
+// cada test sólo espera un tick y no los segundos de transformarla entera.
+import "./AppNegocio";
 import { NEGOCIO_KEY, USER_KEY, api, tokenStore } from "./lib/api";
 import { permisosDe, usuarioDe } from "./test/sesiones";
 
@@ -59,9 +62,16 @@ const RESTAURANTE: SesionNegocio = { id: 1, nombre: "Restaurante", alias: "resto
 const MESERO: SesionUsuario = usuarioDe("MESERO", { id: 7, username: "mesero", nombre: "Mesero" });
 const ADMIN: SesionUsuario = usuarioDe("ADMIN", { id: 1, username: "admin", nombre: "Administrador" });
 
-function abrir(ruta: string) {
+/**
+ * La app se baja aparte (`lazy`, ver App.tsx): se espera a que llegue para
+ * que el test vea la pantalla y no el fondo de espera.
+ */
+async function abrir(ruta: string) {
   window.history.replaceState(null, "", ruta);
   render(<App />);
+  await act(async () => {
+    await import("./AppNegocio");
+  });
 }
 
 async function entrarComo(usuario: SesionUsuario) {
@@ -90,7 +100,7 @@ describe("cerrar sesión y que entre otro", () => {
     tokenStore.set("token-mesero");
     localStorage.setItem(USER_KEY, JSON.stringify(MESERO));
     localStorage.setItem(NEGOCIO_KEY, JSON.stringify(RESTAURANTE));
-    abrir("/salon");
+    await abrir("/salon");
 
     fireEvent.click(screen.getByRole("button", { name: "Cerrar sesión del panel" }));
     expect(screen.getByRole("button", { name: "Iniciar sesión" })).toBeInTheDocument();
@@ -104,7 +114,7 @@ describe("cerrar sesión y que entre otro", () => {
   it("un link abierto sin sesión sigue llevando a donde apuntaba", async () => {
     // A propósito: lo que se resetea es lo que dejó el que salió, no la
     // dirección que alguien abrió.
-    abrir("/salon");
+    await abrir("/salon");
     await entrarComo(ADMIN);
     expect(screen.getByRole("button", { name: "Cerrar sesión del panel" })).toBeInTheDocument();
     expect(window.location.pathname).toBe("/salon");
@@ -144,7 +154,7 @@ describe("el profesional (belleza, sin agenda todavía)", () => {
   });
 
   it("al entrar cae en el aviso de su agenda, con el color del negocio", async () => {
-    abrir("/");
+    await abrir("/");
     vi.mocked(api.login).mockResolvedValue({
       accessToken: "token-barbero",
       usuario: PROFESIONAL,
@@ -173,26 +183,26 @@ describe("el profesional (belleza, sin agenda todavía)", () => {
     expect(guardado.perfil.etiquetasRol.PROFESIONAL).toBe("Barbero");
   });
 
-  it("una ruta de otra sección lo devuelve a su aviso", () => {
+  it("una ruta de otra sección lo devuelve a su aviso", async () => {
     tokenStore.set("token-barbero");
     localStorage.setItem(USER_KEY, JSON.stringify(PROFESIONAL));
     localStorage.setItem(NEGOCIO_KEY, JSON.stringify(BARBERIA));
-    abrir("/pos");
+    await abrir("/pos");
     expect(screen.getByText("Tu agenda llega pronto")).toBeInTheDocument();
     expect(window.location.pathname).toBe("/mi-agenda");
   });
 
-  it("cerrar sesión desde el aviso vuelve al login", () => {
+  it("cerrar sesión desde el aviso vuelve al login", async () => {
     tokenStore.set("token-barbero");
     localStorage.setItem(USER_KEY, JSON.stringify(PROFESIONAL));
     localStorage.setItem(NEGOCIO_KEY, JSON.stringify(BARBERIA));
-    abrir("/mi-agenda");
+    await abrir("/mi-agenda");
     fireEvent.click(screen.getByRole("button", { name: "Cerrar sesión" }));
     expect(screen.getByRole("button", { name: "Iniciar sesión" })).toBeInTheDocument();
     expect(window.location.pathname).toBe("/");
   });
 
-  it("quien ve sólo su agenda entra ahí aunque su rol se llame de otra forma", () => {
+  it("quien ve sólo su agenda entra ahí aunque su rol se llame de otra forma", async () => {
     // Un rol creado por el negocio ("Ayudante con agenda"), con código legado
     // de cajero: manda el permiso, no el nombre ni el código.
     tokenStore.set("token-x");
@@ -201,16 +211,16 @@ describe("el profesional (belleza, sin agenda todavía)", () => {
       JSON.stringify({ ...PROFESIONAL, rol: "CAJERO", rolNombre: "Ayudante con agenda" }),
     );
     localStorage.setItem(NEGOCIO_KEY, JSON.stringify(BARBERIA));
-    abrir("/");
+    await abrir("/");
     expect(screen.getByText("Tu agenda llega pronto")).toBeInTheDocument();
     expect(window.location.pathname).toBe("/mi-agenda");
   });
 
-  it("otro rol que abre /mi-agenda va a su inicio", () => {
+  it("otro rol que abre /mi-agenda va a su inicio", async () => {
     tokenStore.set("token-admin");
     localStorage.setItem(USER_KEY, JSON.stringify(ADMIN));
     localStorage.setItem(NEGOCIO_KEY, JSON.stringify(RESTAURANTE));
-    abrir("/mi-agenda");
+    await abrir("/mi-agenda");
     expect(screen.getByText("Inicio del administrador")).toBeInTheDocument();
     expect(window.location.pathname).toBe("/inventario");
   });
@@ -237,7 +247,7 @@ describe("una sesión guardada sin permisos", () => {
     tokenStore.set("token-admin");
     localStorage.setItem(USER_KEY, JSON.stringify(VIEJA));
     localStorage.setItem(NEGOCIO_KEY, JSON.stringify(RESTAURANTE));
-    abrir("/");
+    await abrir("/");
     expect(await screen.findByText("Inicio del administrador")).toBeInTheDocument();
     expect(window.location.pathname).toBe("/inventario");
     const guardado = JSON.parse(localStorage.getItem(USER_KEY) ?? "{}");
@@ -256,7 +266,7 @@ describe("una sesión guardada sin permisos", () => {
     tokenStore.set("token-admin");
     localStorage.setItem(USER_KEY, JSON.stringify(VIEJA));
     localStorage.setItem(NEGOCIO_KEY, JSON.stringify(RESTAURANTE));
-    abrir("/");
+    await abrir("/");
     expect(await screen.findByText("Tu cuenta no tiene secciones")).toBeInTheDocument();
     expect(window.location.pathname).toBe("/sin-acceso");
     expect(screen.queryByText("Inicio del administrador")).toBeNull();
@@ -268,10 +278,29 @@ describe("la reserva pública (/r/…)", () => {
     tokenStore.set("token-viejo");
     localStorage.setItem(USER_KEY, JSON.stringify(ADMIN));
     localStorage.setItem(NEGOCIO_KEY, JSON.stringify(RESTAURANTE));
-    abrir("/r/bellavista");
+    await abrir("/r/bellavista");
     expect(await screen.findByText("Salón Bella Vista")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Iniciar sesión" })).toBeNull();
     expect(window.location.pathname).toBe("/r/bellavista");
     expect(api.licencia).not.toHaveBeenCalled();
+  });
+});
+
+describe("la página pública del negocio (/p/…)", () => {
+  it("se abre sin cargar la app: ni login ni sesión, aunque haya un token viejo", async () => {
+    tokenStore.set("token-viejo");
+    localStorage.setItem(USER_KEY, JSON.stringify(ADMIN));
+    localStorage.setItem(NEGOCIO_KEY, JSON.stringify(RESTAURANTE));
+    // Sin backend: la página queda en "no disponible", que alcanza para ver
+    // que la atendió la pública y no la app.
+    const red = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("{}", { status: 404 }));
+    window.history.replaceState(null, "", "/p/bellavista");
+    render(<App />);
+    expect(await screen.findByText("Esta página no está disponible")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Iniciar sesión" })).toBeNull();
+    expect(window.location.pathname).toBe("/p/bellavista");
+    expect(api.licencia).not.toHaveBeenCalled();
+    expect(api.me).not.toHaveBeenCalled();
+    red.mockRestore();
   });
 });
