@@ -5,6 +5,7 @@ import "./index.css";
 import { rutaLargaDeLink } from "./lib/pagina/link";
 import { enHostLink, esRutaDePaginaPublica } from "./lib/pagina/rutas";
 import { iniciarTelemetria, reportarError } from "./lib/telemetria";
+import { instalarRecargaPorVersion } from "./lib/recargaPorVersion";
 
 // La página del negocio pide sus letras a Google Fonts apenas monta (ver
 // `cargarFuentesPagina`), y eso son dos dominios más con su DNS y su TLS.
@@ -30,6 +31,10 @@ if (ruta && esRutaDePaginaPublica(ruta)) {
 // (posthog-js se baja aparte y lo que pase mientras tanto espera en una fila).
 // En lo público no hace nada: ni se baja.
 void iniciarTelemetria();
+
+// Una pestaña que quedó abierta durante un deploy pide pedazos de la versión
+// vieja: se recarga una vez en vez de mostrar el error (ver el módulo).
+instalarRecargaPorVersion();
 
 // Red de seguridad para lo que NO pasa por el interceptor del API: un error de
 // render, un `undefined.map` en una pantalla, una promesa sin catch. Sin esto
