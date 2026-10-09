@@ -8,6 +8,15 @@ export type ModoPrevia = "movil" | "escritorio";
 const ANCHO_PC = 1280;
 const ALTO_PC = 800;
 
+/**
+ * Los marcos son el bloque contenedor de lo que la página pone con
+ * `position: fixed` (el visor del catálogo): un `transform` en un ancestro
+ * hace que `fixed` se mida contra él y no contra la ventana. Así el visor
+ * tapa la pantalla del celular o de la computadora y no el editor. Tiene que
+ * ser un elemento que NO scrollea; si no, el visor se iría con el scroll.
+ */
+const CONTIENE_FIJOS = { transform: "translateZ(0)" } as const;
+
 /** Celular / Computadora: cómo se ve la página en cada pantalla. */
 export function SelectorModo({ modo, onModo }: { modo: ModoPrevia; onModo: (m: ModoPrevia) => void }) {
   const opciones: { m: ModoPrevia; texto: string }[] = [
@@ -66,16 +75,19 @@ function MarcoComputadora({ pagina, direccion }: { pagina: PaginaPublica; direcc
           </span>
         </div>
         <div style={{ height: ALTO_PC * escala, overflow: "hidden" }}>
+          {/* El que escala (y contiene al visor) no scrollea; scrollea el de adentro. */}
           <div
             style={{
               width: ANCHO_PC,
               height: ALTO_PC,
               transform: `scale(${escala})`,
               transformOrigin: "top left",
-              overflowY: "auto",
+              overflow: "hidden",
             }}
           >
-            <VistaPagina pagina={pagina} urlReservar="#" urlPrivacidad="#" enMarco modo="escritorio" />
+            <div style={{ height: "100%", overflowY: "auto" }}>
+              <VistaPagina pagina={pagina} urlReservar="#" urlPrivacidad="#" enMarco modo="escritorio" />
+            </div>
           </div>
         </div>
       </div>
@@ -114,7 +126,10 @@ export default function VistaPrevia({
         <SelectorModo modo={modo} onModo={onModo} />
       </div>
       {modo === "movil" ? (
-        <div className="h-[600px] w-[300px] overflow-hidden rounded-[36px] border-[10px] border-slate-800 bg-[#F6F7F9] shadow-xl">
+        <div
+          className="h-[600px] w-[300px] overflow-hidden rounded-[36px] border-[10px] border-slate-800 bg-[#F6F7F9] shadow-xl"
+          style={CONTIENE_FIJOS}
+        >
           <div className="h-full overflow-y-auto">
             {/* Con el enlace de Privacidad del pie, como la página de verdad (B24). */}
             <VistaPagina pagina={pagina} urlReservar="#" urlPrivacidad="#" enMarco modo="movil" />

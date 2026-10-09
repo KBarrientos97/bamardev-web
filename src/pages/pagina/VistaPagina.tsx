@@ -1,9 +1,11 @@
 import { useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
 import { urlDeImagen } from "../../lib/pagina/apiPagina";
 import { ICONO_ANUNCIO, ICONO_RESERVAR, iconoDe, mezcla, paleta, type Paleta } from "../../lib/pagina/aspecto";
+import { enlaceWhatsapp, urlConsultaWhatsapp } from "../../lib/pagina/catalogo";
 import { coloresAnuncio, estiloBotones, estiloLetra, GRIS_PAGINA, letraTitulo } from "../../lib/pagina/estilos";
 import type { AnuncioPublico, EnlacePublico, PaginaPublica } from "../../lib/pagina/tipos";
 import { urlTelefono } from "../../lib/pagina/vista";
+import CatalogoPagina, { type AccionCatalogo } from "./CatalogoPagina";
 
 /**
  * La página del negocio tal como la ve su cliente (lienzo BioPublica / B4).
@@ -570,6 +572,38 @@ export default function VistaPagina({
     );
   });
 
+  // El botón del visor del catálogo: reservar si la página reserva; si no,
+  // consultar por el WhatsApp del negocio con el ítem en el mensaje.
+  const whatsapp = p.reservar ? null : enlaceWhatsapp(p);
+  const accionCatalogo: AccionCatalogo | null = p.reservar
+    ? { texto: "Reservar", icono: ICONO_RESERVAR, href: () => urlReservar }
+    : whatsapp
+      ? {
+          texto: "Consultar por WhatsApp",
+          icono: iconoDe("WHATSAPP", null),
+          href: (it) => urlConsultaWhatsapp(whatsapp.url, it.titulo),
+          alClic: clic(whatsapp),
+        }
+      : null;
+  // Las tarjetas siguen la forma de los botones, sin llegar a píldora.
+  const radioTarjeta: CSSProperties["borderRadius"] = ["RECTO", "ESQUINA", "SUBRAYADO"].includes(p.formaBotones)
+    ? 4
+    : p.formaBotones === "HOJA"
+      ? "20px 4px 20px 4px"
+      : 16;
+  const catalogo = p.catalogo && p.catalogo.items.length > 0 && (
+    <CatalogoPagina
+      catalogo={p.catalogo}
+      c={c}
+      escritorio={escritorio}
+      enMarco={!!enMarco}
+      radio={radioTarjeta}
+      accion={accionCatalogo}
+      estiloBoton={botonPrincipal}
+      colorIconoBoton={b.principal.icono}
+    />
+  );
+
   const pie = (
     <footer
       style={{
@@ -624,55 +658,55 @@ export default function VistaPagina({
     return (
       <div ref={raiz} data-testid="vista-pagina" data-modo="escritorio" style={raizEstilo}>
         <div style={{ ...fondoPortada, height: 300 }}>{capaPortada}</div>
-        <Principal
-          aria-label={etiquetaPrincipal}
-          style={{
-            maxWidth: 1120,
-            margin: "0 auto",
-            padding: "0 32px",
-            display: "grid",
-            gridTemplateColumns: hayDerecha ? "340px minmax(0, 1fr)" : "minmax(0, 400px)",
-            justifyContent: "center",
-            gap: 32,
-            alignItems: "start",
-          }}
-        >
-          <header
+        <Principal aria-label={etiquetaPrincipal} style={{ maxWidth: 1120, margin: "0 auto", padding: "0 32px" }}>
+          <div
             style={{
-              marginTop: -110,
-              position: "relative",
-              background: "#ffffff",
-              border: `1px solid ${GRIS.borde}`,
-              borderRadius: 20,
-              boxShadow: "0 10px 30px rgba(0,0,0,0.08)",
-              padding: "0 4px 24px",
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
+              display: "grid",
+              gridTemplateColumns: hayDerecha ? "340px minmax(0, 1fr)" : "minmax(0, 400px)",
+              justifyContent: "center",
+              gap: 32,
+              alignItems: "start",
             }}
           >
-            {circuloLogo}
-            {identidad}
-            {principal && (
-              <div style={{ width: "100%", boxSizing: "border-box", padding: "20px 20px 0" }}>{principal}</div>
+            <header
+              style={{
+                marginTop: -110,
+                position: "relative",
+                background: "#ffffff",
+                border: `1px solid ${GRIS.borde}`,
+                borderRadius: 20,
+                boxShadow: "0 10px 30px rgba(0,0,0,0.08)",
+                padding: "0 4px 24px",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+              }}
+            >
+              {circuloLogo}
+              {identidad}
+              {principal && (
+                <div style={{ width: "100%", boxSizing: "border-box", padding: "20px 20px 0" }}>{principal}</div>
+              )}
+            </header>
+            {hayDerecha && (
+              <div style={{ paddingTop: 28, display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
+                {anuncio}
+                {botones.length > 0 && (
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
+                    {botones}
+                  </div>
+                )}
+                {tituloSucursales}
+                {sucursales.length > 0 && (
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
+                    {sucursales}
+                  </div>
+                )}
+              </div>
             )}
-          </header>
-          {hayDerecha && (
-            <div style={{ paddingTop: 28, display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
-              {anuncio}
-              {botones.length > 0 && (
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
-                  {botones}
-                </div>
-              )}
-              {tituloSucursales}
-              {sucursales.length > 0 && (
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
-                  {sucursales}
-                </div>
-              )}
-            </div>
-          )}
+          </div>
+          {/* El catálogo, debajo de las dos columnas y a todo el ancho. */}
+          {catalogo && <div style={{ paddingTop: 36 }}>{catalogo}</div>}
         </Principal>
         <div style={{ padding: "24px 32px 40px" }}>{pie}</div>
       </div>
@@ -695,6 +729,7 @@ export default function VistaPagina({
           {anuncio}
           {principal}
           {botones}
+          {catalogo}
           {tituloSucursales}
           {sucursales}
           {pie}

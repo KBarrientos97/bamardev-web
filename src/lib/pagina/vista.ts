@@ -1,4 +1,5 @@
-import type { EnlaceEditor, EnlacePublico, EstadoEditor, PaginaPublica } from "./tipos";
+import { TITULO_CATALOGO } from "./catalogo";
+import type { CatalogoPublico, EnlaceEditor, EnlacePublico, EstadoEditor, PaginaPublica } from "./tipos";
 
 /** Día de hoy en Bolivia (UTC−4), como lo compara el backend. */
 export function hoyBolivia(ahora = new Date()): string {
@@ -10,6 +11,23 @@ export function urlMapa(mapsUrl: string | null, direccion: string | null): strin
   if (mapsUrl) return mapsUrl;
   if (!direccion) return null;
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(direccion)}`;
+}
+
+/** El catálogo como lo sirve el backend: sólo lo visible, en orden; null si no queda nada. */
+function catalogoVisible(e: EstadoEditor): CatalogoPublico | null {
+  const items = (e.catalogo ?? [])
+    .filter((x) => x.visible)
+    .sort((a, b) => a.orden - b.orden || a.id - b.id)
+    .map((x) => ({
+      id: x.id,
+      titulo: x.titulo,
+      descripcion: x.descripcion,
+      precio: x.precio,
+      precioDesde: x.precioDesde,
+      fotoUrl: x.fotoUrl,
+    }));
+  if (items.length === 0) return null;
+  return { titulo: e.pagina.catalogoTitulo?.trim() || TITULO_CATALOGO, items };
 }
 
 /**
@@ -75,6 +93,7 @@ export function vistaDesdeEditor(e: EstadoEditor, hoy = hoyBolivia()): PaginaPub
         horario: s.horarioTexto,
         mapaUrl: urlMapa(s.mapsUrl, s.direccion),
       })),
+    catalogo: catalogoVisible(e),
     pie: { atribucionUrl: "https://bamardev.com" },
     og: { titulo: e.negocio.nombre, descripcion: descripcion ?? "", imagen: null, url: e.urlPublica ?? "" },
   };

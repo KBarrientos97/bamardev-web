@@ -8,6 +8,8 @@ import type {
   EnlaceInput,
   EstadisticasEnlace,
   EstadoEditor,
+  ItemCatalogoEditor,
+  ItemCatalogoInput,
   PaginaPublica,
   SucursalEditor,
 } from "./tipos";
@@ -22,6 +24,44 @@ export function urlDeImagen(ruta: string | null): string | null {
 }
 
 const json = (cuerpo: unknown) => JSON.stringify(cuerpo);
+
+/** La extensión según lo que dio el canvas (WebP, o JPG en un Safari viejo). */
+function nombreDeFoto(archivo: Blob): string {
+  return archivo.type === "image/jpeg" ? "foto.jpg" : "foto.webp";
+}
+
+/**
+ * Sube una imagen por multipart (campo `archivo`). Va por fuera de `request`
+ * porque éste fija `Content-Type: application/json`, y un multipart necesita
+ * que el navegador ponga el suyo (con el separador).
+ */
+async function subirArchivo<T>(ruta: string, archivo: Blob, nombre: string): Promise<T> {
+  const datos = new FormData();
+  datos.append("archivo", archivo, nombre);
+  const token = tokenStore.get();
+  let res: Response;
+  try {
+    res = await fetch(`${BASE_API}${ruta}`, {
+      method: "POST",
+      body: datos,
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+  } catch {
+    throw new ApiError("No se pudo conectar con el servidor. Probá en un momento.", 0);
+  }
+  const cuerpo = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+  if (!res.ok) {
+    const m = cuerpo.message;
+    const mensaje =
+      res.status === 413
+        ? "La imagen pesa más de 2 MB."
+        : Array.isArray(m)
+          ? m.join(", ")
+          : String(m ?? "No se pudo subir la imagen");
+    throw new ApiError(mensaje, res.status, cuerpo);
+  }
+  return cuerpo as T;
+}
 
 /**
  * Editor "Mi página" y enlaces cortos: pasan por el `request` de siempre
@@ -47,38 +87,27 @@ export const apiPagina = {
   enlaceCorto: (canal: "CARTEL" | "COMPARTIR" | "RESERVA" = "CARTEL") =>
     request<EnlaceCortoSistema>("/pagina/enlace-corto", { method: "POST", body: json({ canal }) }),
 
-  /**
-   * Sube el logo o la portada. Va por fuera de `request` porque éste fija
-   * `Content-Type: application/json`, y un multipart necesita que el
-   * navegador ponga el suyo (con el separador).
-   */
-  async subirImagen(tipo: "logo" | "portada", archivo: Blob): Promise<{ url: string | null }> {
-    const datos = new FormData();
-    datos.append("archivo", archivo, tipo === "logo" ? "logo.webp" : "portada.webp");
-    const token = tokenStore.get();
-    let res: Response;
-    try {
-      res = await fetch(`${BASE_API}/pagina/imagen/${tipo}`, {
-        method: "POST",
-        body: datos,
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-    } catch {
-      throw new ApiError("No se pudo conectar con el servidor. Probá en un momento.", 0);
-    }
-    const cuerpo = (await res.json().catch(() => ({}))) as Record<string, unknown>;
-    if (!res.ok) {
-      const m = cuerpo.message;
-      const mensaje =
-        res.status === 413
-          ? "La imagen pesa más de 2 MB."
-          : Array.isArray(m)
-            ? m.join(", ")
-            : String(m ?? "No se pudo subir la imagen");
-      throw new ApiError(mensaje, res.status, cuerpo);
-    }
-    return cuerpo as { url: string | null };
-  },
+  /** Sube el logo o la portada (ver `subirArchivo`). */
+  subirImagen: (tipo: "logo" | "portada", archivo: Blob) =>
+    subirArchivo<{ url: string | null }>(
+      `/pagina/imagen/${tipo}`,
+      archivo,
+      tipo === "logo" ? "logo.webp" : "portada.webp",
+    ),
+
+  // ── Catálogo: cada acción se guarda al toque, como los enlaces ──
+  crearItemCatalogo: (input: ItemCatalogoInput) =>
+    request<ItemCatalogoEditor>("/pagina/catalogo", { method: "POST", body: json(input) }),
+  editarItemCatalogo: (id: number, cambios: Partial<ItemCatalogoInput>) =>
+    request<ItemCatalogoEditor>(`/pagina/catalogo/${id}`, { method: "PATCH", body: json(cambios) }),
+  /** Todos los ids, en el orden nuevo. */
+  ordenarCatalogo: (ids: number[]) =>
+    request<ItemCatalogoEditor[]>("/pagina/catalogo/orden", { method: "PUT", body: json({ ids }) }),
+  borrarItemCatalogo: (id: number) => request<void>(`/pagina/catalogo/${id}`, { method: "DELETE" }),
+  subirFotoCatalogo: (id: number, archivo: Blob) =>
+    subirArchivo<ItemCatalogoEditor>(`/pagina/catalogo/${id}/foto`, archivo, nombreDeFoto(archivo)),
+  borrarFotoCatalogo: (id: number) =>
+    request<ItemCatalogoEditor>(`/pagina/catalogo/${id}/foto`, { method: "DELETE" }),
 
   // ── Mis enlaces ──
   enlaces: () => request<EnlaceCorto[]>("/enlaces"),

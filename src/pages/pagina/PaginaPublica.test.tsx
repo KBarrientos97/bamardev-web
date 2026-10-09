@@ -28,6 +28,7 @@ const PAGINA: Pagina = {
   sucursales: [
     { nombre: "Av. Banzer", reservaSlug: "banzer", direccion: "Av. Banzer, 4to anillo", telefono: "33112233", horario: "11 a 23", mapaUrl: "https://maps.app.goo.gl/x" },
   ],
+  catalogo: null,
   pie: { atribucionUrl: "https://bamardev.com/?utm_campaign=buensabor" },
   og: { titulo: "Pollería El Buen Sabor", descripcion: "Pollo a la brasa", imagen: null, url: "https://app-qa.bamardev.com/p/buensabor" },
 };

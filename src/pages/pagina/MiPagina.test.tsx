@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { EstadoEditor } from "../../lib/pagina/tipos";
+import type { EstadoEditor, ItemCatalogoEditor } from "../../lib/pagina/tipos";
 
 /** "Mi página" con la API simulada: editar, ver la vista previa y guardar. */
 
@@ -19,7 +19,18 @@ vi.mock("../../lib/pagina/apiPagina", () => ({
     borrarImagen: vi.fn(),
     subirImagen: vi.fn(),
     enlaceCorto: vi.fn(),
+    crearItemCatalogo: vi.fn(),
+    editarItemCatalogo: vi.fn(),
+    ordenarCatalogo: vi.fn(),
+    borrarItemCatalogo: vi.fn(),
+    subirFotoCatalogo: vi.fn(),
+    borrarFotoCatalogo: vi.fn(),
   },
+}));
+
+// jsdom no tiene canvas: la foto "achicada" es un blob cualquiera.
+vi.mock("../../lib/pagina/imagen", () => ({
+  prepararImagen: vi.fn(async () => new Blob(["x"], { type: "image/webp" })),
 }));
 
 import { apiPagina } from "../../lib/pagina/apiPagina";
@@ -48,6 +59,7 @@ function estado(cambios: Partial<EstadoEditor["pagina"]> = {}): EstadoEditor {
       anuncioUrl: null,
       enlaceDestacadoId: null,
       mostrarReservar: true,
+      catalogoTitulo: null,
       actualizadoEn: "2026-10-06T00:00:00Z",
       ...cambios,
     },
@@ -62,6 +74,8 @@ function estado(cambios: Partial<EstadoEditor["pagina"]> = {}): EstadoEditor {
     reservaOnline: true,
     enlacesCortos: false,
     muestras: MUESTRAS,
+    catalogo: [],
+    topeCatalogo: 60,
   };
 }
 
@@ -404,5 +418,202 @@ describe("Mi página", () => {
     const nota = within(previa()).getByRole("note");
     expect(within(nota).getAllByText("Martes 2x1")).toHaveLength(2);
     expect(nota.querySelectorAll('[aria-hidden="true"].bm-marquesina-copia')).toHaveLength(1);
+  });
+});
+
+const ITEMS: ItemCatalogoEditor[] = [
+  { id: 1, titulo: "Corte clásico", descripcion: null, precio: 50, precioDesde: false, visible: true, orden: 1, fotoUrl: null },
+  { id: 2, titulo: "Uñas acrílicas", descripcion: "Con diseño a elección", precio: 120, precioDesde: true, visible: true, orden: 2, fotoUrl: "/pagina/catalogo/2/foto?v=1" },
+];
+
+function conCatalogo(items: ItemCatalogoEditor[] = ITEMS): EstadoEditor {
+  return { ...estado(), catalogo: items };
+}
+
+/** Los ítems de la grilla del editor, en el orden en que se ven. */
+const tarjetas = () =>
+  within(screen.getByRole("list", { name: "Ítems del catálogo" }))
+    .getAllByRole("button", { name: /^Editar / })
+    .map((b) => b.getAttribute("aria-label"));
+
+describe("Mi página: catálogo", () => {
+  it("vacío: un texto amable y un solo «Agregar», sin contador", async () => {
+    await montar();
+    expect(screen.getByText("Mostrá lo que hacés o vendés, con foto y precio.")).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Agregar" })).toHaveLength(1);
+    expect(screen.queryByText(/de 60/)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Título de la sección")).not.toBeInTheDocument();
+  });
+
+  it("agregar con título y precio con coma: manda el precio como número y se ve al toque", async () => {
+    const nuevo: ItemCatalogoEditor = { id: 7, titulo: "Uñas acrílicas", descripcion: null, precio: 80.5, precioDesde: false, visible: true, orden: 1, fotoUrl: null };
+    vi.mocked(apiPagina.crearItemCatalogo).mockResolvedValue(nuevo);
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Agregar" }));
+    const dialogo = screen.getByRole("dialog", { name: "Agregar al catálogo" });
+    expect(within(dialogo).getByText("Si en la foto se reconoce a una persona, pedile permiso antes de publicarla.")).toBeInTheDocument();
+    // "Es precio desde" sólo con precio.
+    expect(within(dialogo).getByLabelText(/Es precio desde/)).toBeDisabled();
+    fireEvent.change(within(dialogo).getByLabelText("Título"), { target: { value: "Uñas acrílicas" } });
+    fireEvent.change(within(dialogo).getByLabelText("Precio"), { target: { value: "80,50" } });
+    expect(within(dialogo).getByLabelText(/Es precio desde/)).toBeEnabled();
+    fireEvent.click(within(dialogo).getByRole("button", { name: "Guardar" }));
+    await act(async () => {});
+    expect(apiPagina.crearItemCatalogo).toHaveBeenCalledWith({ titulo: "Uñas acrílicas", precio: 80.5, precioDesde: false, visible: true });
+    expect(apiPagina.subirFotoCatalogo).not.toHaveBeenCalled();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByText("Agregado al catálogo")).toBeInTheDocument();
+    expect(tarjetas()).toEqual(["Editar Uñas acrílicas"]);
+    expect(screen.getByText("1 de 60")).toBeInTheDocument();
+    // La vista previa ya lo muestra, con el precio formateado.
+    expect(within(previa()).getByRole("heading", { name: "Catálogo" })).toBeInTheDocument();
+    expect(within(previa()).getByText("Bs 80,50")).toBeInTheDocument();
+  });
+
+  it("valida antes de mandar: título vacío, precio 0 y con 3 decimales", async () => {
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Agregar" }));
+    const dialogo = screen.getByRole("dialog", { name: "Agregar al catálogo" });
+    fireEvent.change(within(dialogo).getByLabelText("Precio"), { target: { value: "0" } });
+    fireEvent.click(within(dialogo).getByRole("button", { name: "Guardar" }));
+    expect(within(dialogo).getByText("Escribí un título.")).toBeInTheDocument();
+    expect(within(dialogo).getByText(/El precio tiene que ser mayor a 0/)).toBeInTheDocument();
+    fireEvent.change(within(dialogo).getByLabelText("Título"), { target: { value: "Corte" } });
+    fireEvent.change(within(dialogo).getByLabelText("Precio"), { target: { value: "80.555" } });
+    fireEvent.click(within(dialogo).getByRole("button", { name: "Guardar" }));
+    expect(within(dialogo).getByText("El precio puede tener hasta 2 decimales.")).toBeInTheDocument();
+    expect(within(dialogo).queryByText("Escribí un título.")).not.toBeInTheDocument();
+    await act(async () => {});
+    expect(apiPagina.crearItemCatalogo).not.toHaveBeenCalled();
+  });
+
+  it("con ítems: contador, título de la sección al borrador y tarjetas con su precio", async () => {
+    vi.mocked(apiPagina.estado).mockResolvedValue(conCatalogo());
+    await montar();
+    expect(screen.getByText("2 de 60")).toBeInTheDocument();
+    expect(tarjetas()).toEqual(["Editar Corte clásico", "Editar Uñas acrílicas"]);
+    expect(within(screen.getByRole("list", { name: "Ítems del catálogo" })).getByText("Desde Bs 120")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Título de la sección"), { target: { value: "Nuestros trabajos" } });
+    expect(within(previa()).getByRole("heading", { name: "Nuestros trabajos" })).toBeInTheDocument();
+
+    vi.mocked(apiPagina.guardar).mockResolvedValue({ ...conCatalogo(), pagina: { ...estado().pagina, catalogoTitulo: "Nuestros trabajos" } });
+    fireEvent.click(screen.getByRole("button", { name: "Guardar cambios" }));
+    await act(async () => {});
+    expect(apiPagina.guardar).toHaveBeenCalledWith({ catalogoTitulo: "Nuestros trabajos" });
+  });
+
+  it("editar un ítem manda sólo lo que cambió", async () => {
+    vi.mocked(apiPagina.estado).mockResolvedValue(conCatalogo());
+    vi.mocked(apiPagina.editarItemCatalogo).mockResolvedValue({ ...ITEMS[0], titulo: "Corte y peinado", precio: 65 });
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Editar Corte clásico" }));
+    const dialogo = screen.getByRole("dialog", { name: "Editar" });
+    expect(within(dialogo).getByLabelText("Título")).toHaveValue("Corte clásico");
+    expect(within(dialogo).getByLabelText("Precio")).toHaveValue("50");
+    fireEvent.change(within(dialogo).getByLabelText("Título"), { target: { value: "Corte y peinado" } });
+    fireEvent.change(within(dialogo).getByLabelText("Precio"), { target: { value: "65" } });
+    fireEvent.click(within(dialogo).getByRole("button", { name: "Guardar" }));
+    await act(async () => {});
+    expect(apiPagina.editarItemCatalogo).toHaveBeenCalledWith(1, { titulo: "Corte y peinado", precio: 65 });
+    expect(tarjetas()).toEqual(["Editar Corte y peinado", "Editar Uñas acrílicas"]);
+  });
+
+  it("ocultarlo lo atenúa en el editor y lo saca de la vista previa", async () => {
+    vi.mocked(apiPagina.estado).mockResolvedValue(conCatalogo());
+    vi.mocked(apiPagina.editarItemCatalogo).mockResolvedValue({ ...ITEMS[1], visible: false });
+    await montar();
+    expect(within(previa()).getByText("Uñas acrílicas")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Editar Uñas acrílicas" }));
+    const dialogo = screen.getByRole("dialog", { name: "Editar" });
+    fireEvent.click(within(dialogo).getByLabelText("Mostrar en mi página"));
+    fireEvent.click(within(dialogo).getByRole("button", { name: "Guardar" }));
+    await act(async () => {});
+    expect(apiPagina.editarItemCatalogo).toHaveBeenCalledWith(2, { visible: false });
+    expect(screen.getByRole("button", { name: "Editar Uñas acrílicas (oculto)" })).toBeInTheDocument();
+    expect(screen.getByText("Oculto")).toBeInTheDocument();
+    expect(within(previa()).queryByText("Uñas acrílicas")).not.toBeInTheDocument();
+  });
+
+  it("quitarlo pide confirmación", async () => {
+    vi.mocked(apiPagina.estado).mockResolvedValue(conCatalogo());
+    vi.mocked(apiPagina.borrarItemCatalogo).mockResolvedValue(undefined);
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Editar Corte clásico" }));
+    fireEvent.click(screen.getByRole("button", { name: "Quitar del catálogo" }));
+    const confirmar = screen.getByRole("dialog", { name: "Quitar del catálogo" });
+    expect(apiPagina.borrarItemCatalogo).not.toHaveBeenCalled();
+    fireEvent.click(within(confirmar).getByRole("button", { name: "Quitar" }));
+    await act(async () => {});
+    expect(apiPagina.borrarItemCatalogo).toHaveBeenCalledWith(1);
+    expect(tarjetas()).toEqual(["Editar Uñas acrílicas"]);
+    expect(screen.getByText("1 de 60")).toBeInTheDocument();
+  });
+
+  it("«Mover después» manda el orden nuevo con todos los ids", async () => {
+    vi.mocked(apiPagina.estado).mockResolvedValue(conCatalogo());
+    vi.mocked(apiPagina.ordenarCatalogo).mockResolvedValue([
+      { ...ITEMS[1], orden: 1 },
+      { ...ITEMS[0], orden: 2 },
+    ]);
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Editar Corte clásico" }));
+    const dialogo = screen.getByRole("dialog", { name: "Editar" });
+    expect(within(dialogo).getByText("Lugar 1 de 2")).toBeInTheDocument();
+    expect(within(dialogo).getByRole("button", { name: "Mover antes" })).toBeDisabled();
+    fireEvent.click(within(dialogo).getByRole("button", { name: "Mover después" }));
+    await act(async () => {});
+    expect(apiPagina.ordenarCatalogo).toHaveBeenCalledWith([2, 1]);
+    expect(within(dialogo).getByText("Lugar 2 de 2")).toBeInTheDocument();
+    expect(tarjetas()).toEqual(["Editar Uñas acrílicas", "Editar Corte clásico"]);
+  });
+
+  it("si el orden no se guarda, vuelve al de antes y lo dice", async () => {
+    vi.mocked(apiPagina.estado).mockResolvedValue(conCatalogo());
+    vi.mocked(apiPagina.ordenarCatalogo).mockRejectedValue(new Error("Sin conexión"));
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Editar Corte clásico" }));
+    fireEvent.click(screen.getByRole("button", { name: "Mover después" }));
+    await act(async () => {});
+    expect(apiPagina.ordenarCatalogo).toHaveBeenCalledWith([2, 1]);
+    expect(screen.getByText("Sin conexión")).toBeInTheDocument();
+    expect(tarjetas()).toEqual(["Editar Corte clásico", "Editar Uñas acrílicas"]);
+  });
+
+  it("agregar con foto: si la foto falla, el ítem queda creado y el reintento no lo duplica", async () => {
+    const nuevo: ItemCatalogoEditor = { id: 7, titulo: "Pollo entero", descripcion: null, precio: null, precioDesde: false, visible: true, orden: 1, fotoUrl: null };
+    vi.mocked(apiPagina.crearItemCatalogo).mockResolvedValue(nuevo);
+    vi.mocked(apiPagina.subirFotoCatalogo)
+      .mockRejectedValueOnce(new Error("La imagen pesa más de 2 MB."))
+      .mockResolvedValueOnce({ ...nuevo, fotoUrl: "/pagina/catalogo/7/foto?v=1" });
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Agregar" }));
+    let dialogo = screen.getByRole("dialog", { name: "Agregar al catálogo" });
+    fireEvent.change(within(dialogo).getByLabelText("Título"), { target: { value: "Pollo entero" } });
+    const archivo = new File(["x"], "pollo.jpg", { type: "image/jpeg" });
+    fireEvent.change(within(dialogo).getByLabelText("Elegir foto"), { target: { files: [archivo] } });
+    await act(async () => {});
+    expect(within(dialogo).getByRole("button", { name: /Cambiar foto/ })).toBeInTheDocument();
+    fireEvent.click(within(dialogo).getByRole("button", { name: "Guardar" }));
+    await act(async () => {});
+    expect(apiPagina.crearItemCatalogo).toHaveBeenCalledTimes(1);
+    expect(apiPagina.subirFotoCatalogo).toHaveBeenCalledWith(7, expect.any(Blob));
+    // Sigue abierto, ya editando el ítem creado, con el error.
+    dialogo = screen.getByRole("dialog", { name: "Editar" });
+    expect(within(dialogo).getByText(/Se agregó al catálogo, pero la foto no se pudo subir: La imagen pesa más de 2 MB/)).toBeInTheDocument();
+    expect(tarjetas()).toEqual(["Editar Pollo entero"]);
+
+    fireEvent.click(within(dialogo).getByRole("button", { name: "Guardar" }));
+    await act(async () => {});
+    expect(apiPagina.crearItemCatalogo).toHaveBeenCalledTimes(1);
+    expect(apiPagina.subirFotoCatalogo).toHaveBeenCalledTimes(2);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(tarjetas()).toEqual(["Editar Pollo entero"]);
+  });
+
+  it("con el catálogo lleno no deja agregar", async () => {
+    vi.mocked(apiPagina.estado).mockResolvedValue({ ...conCatalogo(), topeCatalogo: 2 });
+    await montar();
+    expect(screen.getByText("2 de 2")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Agregar" })).toBeDisabled();
   });
 });
