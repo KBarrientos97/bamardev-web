@@ -162,7 +162,7 @@ describe("Plan Emprendedor: aprobar sin cupo (D20)", () => {
   });
 
   it("sin cupo ni créditos (1 no alcanza: una cita usa 2) no llama, avisa y ofrece comprar", async () => {
-    sesion.cupo = cupoEmprendedor({ fecha: fechaNegocio(), citas: 50, saldo: 1 });
+    sesion.cupo = cupoEmprendedor({ fecha: fechaNegocio(), citas: 25, saldo: 1 });
     const pedidos: Event[] = [];
     const escuchar = (e: Event) => pedidos.push(e);
     window.addEventListener(EVENTO_HOJA_CUPO, escuchar);
@@ -182,10 +182,10 @@ describe("Plan Emprendedor: aprobar sin cupo (D20)", () => {
   });
 
   it("un 403 CUPO_AGOTADO deja la solicitud pendiente y guarda el cupo del servidor", async () => {
-    sesion.cupo = cupoEmprendedor({ fecha: fechaNegocio(), citas: 49, saldo: 0 });
-    const delServidor = cupoEmprendedor({ fecha: fechaNegocio(), citas: 50, saldo: 0 });
+    sesion.cupo = cupoEmprendedor({ fecha: fechaNegocio(), citas: 24, saldo: 0 });
+    const delServidor = cupoEmprendedor({ fecha: fechaNegocio(), citas: 25, saldo: 0 });
     vi.mocked(apiReservaOnline.aprobar).mockRejectedValue(
-      Object.assign(new Error("Llegaste a tus 50 citas de hoy y no te quedan créditos."), {
+      Object.assign(new Error("Llegaste a tus 25 citas de hoy y no te quedan créditos."), {
         status: 403,
         codigo: "CUPO_AGOTADO",
         detalle: { codigo: "CUPO_AGOTADO", unidad: "CITA", cupo: delServidor },

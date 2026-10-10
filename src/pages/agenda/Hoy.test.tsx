@@ -300,9 +300,9 @@ describe("Plan Emprendedor: el chip de citas en Hoy", () => {
     expect(screen.queryByRole("button", { name: /Créditos/ })).not.toBeInTheDocument();
   });
 
-  it('un Emprendedor ve "Citas hoy 12/50 · Créditos 240"', async () => {
+  it('un Emprendedor ve "Citas hoy 12/25 · Créditos 240"', async () => {
     sesion.cupo = cupoEmprendedor({ fecha: "2026-10-21", citas: 12, saldo: 240 });
     await montar();
-    expect(screen.getByRole("button", { name: /Créditos 240/ })).toHaveTextContent("Citas hoy 12/50 · Créditos 240");
+    expect(screen.getByRole("button", { name: /Créditos 240/ })).toHaveTextContent("Citas hoy 12/25 · Créditos 240");
   });
 });

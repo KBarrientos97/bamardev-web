@@ -129,9 +129,9 @@ describe("la hoja de comprar créditos", () => {
   });
 
   it("para citas, el texto dice que cada cita usa 2", async () => {
-    sesion.cupo = cupoEmprendedor({ citas: 50, saldo: 1 });
+    sesion.cupo = cupoEmprendedor({ citas: 25, saldo: 1 });
     await abrir({ unidad: "CITA", agotado: true });
-    const hoja = screen.getByRole("dialog", { name: "Llegaste a tus 50 citas de hoy" });
+    const hoja = screen.getByRole("dialog", { name: "Llegaste a tus 25 citas de hoy" });
     expect(hoja).toHaveTextContent("Te queda 1 crédito, y cada cita fuera del cupo usa 2.");
   });
 

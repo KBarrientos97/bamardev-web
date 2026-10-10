@@ -9,7 +9,7 @@ import { Icon } from "./Icon";
 
 /**
  * El chip del Plan Emprendedor: "Hoy 32/50 · Créditos 240" en el POS y
- * "Citas hoy 12/50 · Créditos 240" en la agenda (§5.1). Tocarlo abre la hoja
+ * "Citas hoy 12/25 · Créditos 240" en la agenda (§5.1). Tocarlo abre la hoja
  * de compra.
  *
  * Sin cupo (Básico, Profesional, backend viejo) devuelve null: ni un píxel de

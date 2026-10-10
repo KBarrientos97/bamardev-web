@@ -141,7 +141,7 @@ export default function Hoy() {
             ))}
           </Select>
         )}
-        {/* Plan Emprendedor: "Citas hoy 12/50 · Créditos 240". Sin cupo no existe. */}
+        {/* Plan Emprendedor: "Citas hoy 12/25 · Créditos 240". Sin cupo no existe. */}
         <ChipCupo unidad="CITA" />
         <CampanaAvisos onAbrirCita={(c) => setAbierta(c)} />
         <Boton icono="plus" onClick={() => setNueva(true)} disabled={!sucursalId}>
