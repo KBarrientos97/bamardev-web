@@ -8,10 +8,19 @@ import { CUPO_ILIMITADO, cupoEmprendedor } from "../test/cupoFixtures";
  * Sin `cupo`, o con `ilimitado` (Básico, Profesional: Omar), no existe.
  */
 
-const sesion = vi.hoisted(() => ({ cupo: null as CupoEstado | null | undefined }));
+const sesion = vi.hoisted(() => ({
+  cupo: null as CupoEstado | null | undefined,
+  negocio: { id: 1 } as { id: number } | undefined,
+}));
 
 vi.mock("../store/AuthContext", () => ({
-  useAuth: () => ({ cupo: sesion.cupo, actualizarCupo: vi.fn(), refrescarCupo: vi.fn(async () => {}), licencia: null }),
+  useAuth: () => ({
+    cupo: sesion.cupo,
+    negocio: sesion.negocio,
+    actualizarCupo: vi.fn(),
+    refrescarCupo: vi.fn(async () => {}),
+    licencia: null,
+  }),
 }));
 
 // El chip compara contra el día del negocio: se fija para que el snapshot sea de hoy.
@@ -26,6 +35,7 @@ import ChipCupo, { BarraCupo } from "./ChipCupo";
 beforeEach(() => {
   localStorage.clear();
   sesion.cupo = null;
+  sesion.negocio = { id: 1 };
 });
 
 describe("ChipCupo", () => {
@@ -93,6 +103,17 @@ describe("BarraCupo: el chip del Layout y los avisos del día", () => {
     render(<BarraCupo chip="VENTA" avisos={["VENTA"]} />);
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Hoy 40\/50/ })).toBeInTheDocument();
+  });
+
+  it("la marca de «ya se mostró» es del negocio: otro negocio en el mismo navegador ve su aviso", () => {
+    sesion.cupo = cupoEmprendedor({ ventas: 40, saldo: 100 });
+    const { unmount } = render(<BarraCupo chip="VENTA" avisos={["VENTA"]} />);
+    expect(screen.getByRole("status")).toHaveTextContent("Te quedan 10 ventas en el cupo de hoy");
+    unmount();
+    // Salió y entró otro negocio Emprendedor, el mismo día, en esta máquina.
+    sesion.negocio = { id: 2 };
+    render(<BarraCupo chip="VENTA" avisos={["VENTA"]} />);
+    expect(screen.getByRole("status")).toHaveTextContent("Te quedan 10 ventas en el cupo de hoy");
   });
 
   it("la primera vez que se usan créditos avisa cuánto cuesta cada una", () => {

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { fechaNegocio } from "../lib/agenda/horaAgenda";
 import { avisosDe, marcarMostrado, proyectar, sinMostrar, textoChip, type AvisoCupo } from "../lib/cupo";
 import { abrirHojaCupo } from "../lib/hojaCupo";
+import { useAuth } from "../store/AuthContext";
 import { useCupo } from "../store/useCupo";
 import type { UnidadCupo } from "../types";
 import { Icon } from "./Icon";
@@ -53,6 +54,10 @@ export default function ChipCupo({ unidad, className = "" }: { unidad: UnidadCup
  */
 export function BarraCupo({ chip, avisos }: { chip?: UnidadCupo; avisos: UnidadCupo[] }) {
   const { cupo, aplica } = useCupo();
+  // Las marcas de "ya se mostró" viven en el navegador: sin el negocio en la
+  // clave, si en la misma máquina entraba otro negocio Emprendedor el mismo
+  // día, no veía ninguno de los avisos que ya había visto el anterior.
+  const negocioId = (useAuth() as Partial<ReturnType<typeof useAuth>>).negocio?.id ?? "";
   const [visible, setVisible] = useState<AvisoCupo | null>(null);
   const clave = avisos.join(",");
 
@@ -64,13 +69,13 @@ export function BarraCupo({ chip, avisos }: { chip?: UnidadCupo; avisos: UnidadC
     const hoy = fechaNegocio();
     const unidades = clave ? (clave.split(",") as UnidadCupo[]) : [];
     const pendientes = sinMostrar(
-      unidades.flatMap((u) => avisosDe(cupo, u, hoy)),
+      unidades.flatMap((u) => avisosDe(cupo, u, hoy)).map((a) => ({ ...a, clave: `${negocioId}:${a.clave}` })),
       hoy,
     );
     if (!pendientes.length) return;
     marcarMostrado(pendientes[0].clave, hoy);
     setVisible(pendientes[0]);
-  }, [cupo, aplica, visible, clave]);
+  }, [cupo, aplica, visible, clave, negocioId]);
 
   if (!aplica || (!chip && !visible)) return null;
   return (
