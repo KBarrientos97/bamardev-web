@@ -62,6 +62,8 @@ export default function ComprarCreditos({
   const [verificando, setVerificando] = useState(false);
   const [pausado, setPausado] = useState(false);
   const sondeos = useRef(0);
+  /** La última consulta rebotó con 429: el tope sigue, no hay que reanudar. */
+  const limitado = useRef(false);
   const pagada = compra?.estado === "PAGADA";
 
   const cargar = useCallback(async () => {
@@ -118,6 +120,7 @@ export default function ComprarCreditos({
 
   const consultar = useCallback(
     async (id: number) => {
+      limitado.current = false;
       try {
         const r = await apiMonedero.compraCreditos(id);
         setCompra((previa) => (previa ? { ...previa, ...r, qr: r.qr ?? previa.qr } : r));
@@ -125,7 +128,10 @@ export default function ComprarCreditos({
         return r.estado;
       } catch (e) {
         // 429: se agotó el tope del endpoint. Seguir preguntando lo empeora.
-        if ((e as { status?: number })?.status === 429) setPausado(true);
+        if ((e as { status?: number })?.status === 429) {
+          limitado.current = true;
+          setPausado(true);
+        }
         // Otro fallo suelto no se muestra: sería un cartel parpadeando cada
         // cinco segundos mientras el dueño escanea.
         return null;
@@ -162,7 +168,10 @@ export default function ComprarCreditos({
     } else {
       setError("");
     }
-    // Volver a mirar reanuda el sondeo: el dueño sigue en la pantalla.
+    // Volver a mirar reanuda el sondeo: el dueño sigue en la pantalla. Salvo
+    // que esta consulta también haya rebotado con 429: reanudar ahí era
+    // seguir golpeando un endpoint que ya dijo basta.
+    if (limitado.current) return;
     sondeos.current = 0;
     setPausado(false);
   };

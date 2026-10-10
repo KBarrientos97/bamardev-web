@@ -270,6 +270,27 @@ describe("compra por QR y sondeo", () => {
     expect(screen.getByText(/tocá «Ya pagué» para confirmarlo/)).toBeInTheDocument();
   });
 
+  it("«Ya pagué» que también rebota con 429 no reanuda el sondeo", async () => {
+    vi.useFakeTimers();
+    vi.mocked(apiMonedero.comprarCreditos).mockResolvedValue(compra());
+    vi.mocked(apiMonedero.compraCreditos).mockRejectedValue(Object.assign(new Error("Demasiadas"), { status: 429 }));
+    await abrir();
+    fireEvent.click(screen.getByRole("button", { name: "50 créditos por Bs 20" }));
+    await flush();
+    await act(async () => vi.advanceTimersByTime(SONDEO_MS));
+    await flush();
+    expect(apiMonedero.compraCreditos).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "Ya pagué, verificar" }));
+    await flush();
+    expect(apiMonedero.compraCreditos).toHaveBeenCalledTimes(2);
+    // Sigue el tope: preguntar sola cada 5 s sólo lo alarga.
+    await act(async () => vi.advanceTimersByTime(SONDEO_MS * 4));
+    await flush();
+    expect(apiMonedero.compraCreditos).toHaveBeenCalledTimes(2);
+    expect(screen.getByText(/tocá «Ya pagué» para confirmarlo/)).toBeInTheDocument();
+  });
+
   it("el recordatorio de gracia también llega con la compra", async () => {
     vi.mocked(apiMonedero.comprarCreditos).mockResolvedValue(
       compra({ recordatorioLicencia: "Recordá pagar la mensualidad: vence en 2 días." }),
