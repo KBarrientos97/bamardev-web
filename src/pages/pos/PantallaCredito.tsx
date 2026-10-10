@@ -65,10 +65,11 @@ export default function PantallaCredito({
   const [qrConfirmado, setQrConfirmado] = useState(false);
   /** Techo con el que nace la ficha de un cliente nuevo. Vacío = sin límite. */
   const [limiteNuevo, setLimiteNuevo] = useState("");
-  /** Firma del encargado cuando la venta pasa el techo del cliente. */
-  const [autorizacion, setAutorizacion] = useState<{ usuario: string; pin: string } | null>(
-    null,
-  );
+  // La firma del encargado NO se guarda para reusarla: si el backend la
+  // rechazaba (PIN mal tipeado), cada "Registrar fiado" volvía a mandar el
+  // mismo PIN malo sin mostrar el diálogo, hasta que el backend bloqueaba los
+  // PIN de ese cajero por 15 minutos (429), anular incluido. Cada intento que
+  // pasa el techo la pide de nuevo.
   const [pidiendoPin, setPidiendoPin] = useState(false);
 
   const { incluye } = useAuth();
@@ -139,7 +140,7 @@ export default function PantallaCredito({
     // Pasa el techo y todavía no hay firma: se pide acá, con el carrito
     // intacto, en vez de mandar la venta para que el backend la rechace con el
     // cliente enfrente.
-    const conFirma = firma ?? autorizacion;
+    const conFirma = firma;
     if (superaLimite && !conFirma) {
       setPidiendoPin(true);
       return;
@@ -188,9 +189,11 @@ export default function PantallaCredito({
             Queda debiendo
           </p>
           <p className="mt-1 text-4xl font-extrabold tracking-tight">{fmtMoney(saldo)}</p>
-          {adelantoNum > 0 && (
+          {/* El adelanto entero: en mixto, efectivo + QR (con sólo el efectivo
+              no cerraba con el saldo de arriba). */}
+          {adelantoTotal > 0 && (
             <p className="mt-1.5 text-[13px] opacity-90">
-              De {fmtMoney(total)}, adelanta {fmtMoney(adelantoNum)}
+              De {fmtMoney(total)}, adelanta {fmtMoney(adelantoTotal)}
             </p>
           )}
           {avisoPropinas && <p className="mt-1.5 text-[13px] opacity-90">{avisoPropinas}</p>}
@@ -411,7 +414,6 @@ export default function PantallaCredito({
             onCancelar={() => setPidiendoPin(false)}
             onFirmar={(usuario, pin) => {
               setPidiendoPin(false);
-              setAutorizacion({ usuario, pin });
               // Se reintenta sola con la firma: perder el carrito porque el
               // encargado tardó en llegar sería el peor final posible.
               confirmar({ usuario, pin });
