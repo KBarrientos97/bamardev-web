@@ -235,3 +235,106 @@ describe("cupo del Plan Emprendedor (§5.2)", () => {
     expect(screen.getByText("cupo:EMPRENDEDOR 2/50 saldo 50")).toBeInTheDocument();
   });
 });
+
+describe("cupo: una respuesta vieja no pisa una más nueva", () => {
+  function Sonda() {
+    const { cupo, refrescarCupo, actualizarCupo, login, logout } = useAuth();
+    return (
+      <div>
+        <p>cupo:{cupo ? `${cupo.hoy.ventas.usadas}/${cupo.hoy.ventas.limite} saldo ${cupo.creditos.saldo}` : "-"}</p>
+        <button onClick={() => void refrescarCupo()}>refrescar</button>
+        <button onClick={() => actualizarCupo(cupoEmprendedor({ ventas: 41, saldo: 0 }))}>vender</button>
+        <button onClick={() => void login("admin", "x", "otro")}>entrar</button>
+        <button onClick={logout}>salir</button>
+      </div>
+    );
+  }
+
+  function diferida<T>() {
+    let resolver!: (v: T) => void;
+    const promesa = new Promise<T>((r) => (resolver = r));
+    return { promesa, resolver };
+  }
+
+  async function montarSonda() {
+    await act(async () => {
+      render(
+        <AuthProvider>
+          <Sonda />
+        </AuthProvider>,
+      );
+    });
+  }
+
+  it("un GET /monedero que salió antes de la venta no pisa el contador de la venta", async () => {
+    vi.mocked(api.licencia).mockResolvedValue({ ...ESTADO, cupo: cupoEmprendedor({ ventas: 40 }) });
+    const viejo = diferida<ReturnType<typeof cupoEmprendedor>>();
+    vi.mocked(apiMonedero.monedero).mockReturnValue(viejo.promesa);
+    await montarSonda();
+    // El POS pide el contador al montarse; antes de que vuelva, la venta
+    // responde con su `consumo.cupo` (41/50).
+    await act(async () => fireEvent.click(screen.getByText("refrescar")));
+    await act(async () => fireEvent.click(screen.getByText("vender")));
+    expect(screen.getByText("cupo:41/50 saldo 0")).toBeInTheDocument();
+    await act(async () => viejo.resolver(cupoEmprendedor({ ventas: 40 })));
+    expect(screen.getByText("cupo:41/50 saldo 0")).toBeInTheDocument();
+    expect(JSON.parse(localStorage.getItem(CUPO_KEY) ?? "null").hoy.ventas.usadas).toBe(41);
+  });
+
+  it("el chequeo de licencia en vuelo tampoco pisa lo que llegó después", async () => {
+    const viejo = diferida<EstadoLicencia>();
+    vi.mocked(api.licencia).mockReturnValueOnce(viejo.promesa);
+    await montarSonda();
+    await act(async () => fireEvent.click(screen.getByText("vender")));
+    await act(async () => viejo.resolver({ ...ESTADO, cupo: cupoEmprendedor({ ventas: 40 }) }));
+    expect(screen.getByText("cupo:41/50 saldo 0")).toBeInTheDocument();
+  });
+
+  it("el GET /monedero de la sesión anterior no se mete en la del negocio nuevo", async () => {
+    vi.mocked(api.licencia).mockResolvedValue({ ...ESTADO, cupo: cupoEmprendedor({ ventas: 7, saldo: 3 }) });
+    const deA = diferida<ReturnType<typeof cupoEmprendedor>>();
+    vi.mocked(apiMonedero.monedero).mockReturnValue(deA.promesa);
+    vi.mocked(api.login).mockResolvedValue({
+      accessToken: "t2",
+      usuario: ADMIN,
+      negocio: { ...BARBERIA, id: 9 },
+      cupo: cupoEmprendedor({ ventas: 0, saldo: 10 }),
+    });
+    await montarSonda();
+    await act(async () => fireEvent.click(screen.getByText("refrescar")));
+    await act(async () => fireEvent.click(screen.getByText("salir")));
+    // El chequeo de la sesión nueva devuelve el mismo cupo que su login.
+    vi.mocked(api.licencia).mockResolvedValue({ ...ESTADO, cupo: cupoEmprendedor({ ventas: 0, saldo: 10 }) });
+    await act(async () => fireEvent.click(screen.getByText("entrar")));
+    expect(screen.getByText("cupo:0/50 saldo 10")).toBeInTheDocument();
+    // Vuelve tarde la respuesta del negocio anterior (con su token).
+    await act(async () => deA.resolver(cupoEmprendedor({ ventas: 49, saldo: 0 })));
+    expect(screen.getByText("cupo:0/50 saldo 10")).toBeInTheDocument();
+    expect(JSON.parse(localStorage.getItem(CUPO_KEY) ?? "null").creditos.saldo).toBe(10);
+  });
+
+  it("después de salir, una respuesta en vuelo no deja el cupo guardado", async () => {
+    vi.mocked(api.licencia).mockResolvedValue({ ...ESTADO, cupo: cupoEmprendedor({ ventas: 7 }) });
+    const enVuelo = diferida<ReturnType<typeof cupoEmprendedor>>();
+    vi.mocked(apiMonedero.monedero).mockReturnValue(enVuelo.promesa);
+    await montarSonda();
+    await act(async () => fireEvent.click(screen.getByText("refrescar")));
+    await act(async () => fireEvent.click(screen.getByText("salir")));
+    await act(async () => enVuelo.resolver(cupoEmprendedor({ ventas: 8 })));
+    expect(screen.getByText("cupo:-")).toBeInTheDocument();
+    expect(localStorage.getItem(CUPO_KEY)).toBeNull();
+  });
+
+  it("dos pedidos en vuelo: gana el que salió último aunque vuelva primero", async () => {
+    vi.mocked(api.licencia).mockResolvedValue({ ...ESTADO, cupo: cupoEmprendedor({ ventas: 1 }) });
+    const primero = diferida<ReturnType<typeof cupoEmprendedor>>();
+    const segundo = diferida<ReturnType<typeof cupoEmprendedor>>();
+    vi.mocked(apiMonedero.monedero).mockReturnValueOnce(primero.promesa).mockReturnValueOnce(segundo.promesa);
+    await montarSonda();
+    await act(async () => fireEvent.click(screen.getByText("refrescar")));
+    await act(async () => fireEvent.click(screen.getByText("refrescar")));
+    await act(async () => segundo.resolver(cupoEmprendedor({ ventas: 6 })));
+    await act(async () => primero.resolver(cupoEmprendedor({ ventas: 5 })));
+    expect(screen.getByText("cupo:6/50 saldo 0")).toBeInTheDocument();
+  });
+});

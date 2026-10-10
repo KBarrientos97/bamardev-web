@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -112,7 +113,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    * licencia, `/monedero`, la respuesta de cada venta o cita y el cuerpo del
    * 403) y todos lo pasan por acá, así que se guarda igual venga de donde venga.
    */
-  const actualizarCupo = useCallback((nuevo: CupoEstado | null | undefined) => {
+  const guardarCupo = useCallback((nuevo: CupoEstado | null | undefined) => {
     const valor = nuevo ?? null;
     try {
       if (valor) localStorage.setItem(CUPO_KEY, JSON.stringify(valor));
@@ -123,9 +124,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setCupo(valor);
   }, []);
 
+  /**
+   * Orden de los snapshots. Las consultas (`/monedero`, `/licencia/estado`)
+   * pueden volver DESPUÉS de algo más nuevo: el POS pide el contador al
+   * montarse, la cajera vende antes de que vuelva, y la respuesta vieja
+   * (40/50) pisaba la de la venta (41/50). Peor: después de comprar créditos
+   * un chequeo en vuelo podía devolver el saldo 0 y volver a bloquear, y tras
+   * salir y entrar a otro negocio, el `/monedero` de la sesión anterior se
+   * metía en la nueva. Cada consulta anota su turno al SALIR y sólo se aplica
+   * si nada más nuevo se escribió mientras tanto.
+   */
+  const turnoCupo = useRef(0);
+  const turnoAplicado = useRef(0);
+  const pedirTurnoCupo = useCallback(() => ++turnoCupo.current, []);
+  const aplicarConsulta = useCallback(
+    (turno: number, nuevo: CupoEstado | null | undefined) => {
+      if (turno < turnoAplicado.current) return;
+      turnoAplicado.current = turno;
+      guardarCupo(nuevo);
+    },
+    [guardarCupo],
+  );
+
+  /** Lo que ya es un hecho (una venta, una cita, un 403, el login): va siempre. */
+  const actualizarCupo = useCallback(
+    (nuevo: CupoEstado | null | undefined) => {
+      turnoAplicado.current = ++turnoCupo.current;
+      guardarCupo(nuevo);
+    },
+    [guardarCupo],
+  );
+
   const refrescarCupo = useCallback(async () => {
-    actualizarCupo(await apiMonedero.monedero());
-  }, [actualizarCupo]);
+    const turno = pedirTurnoCupo();
+    aplicarConsulta(turno, await apiMonedero.monedero());
+  }, [pedirTurnoCupo, aplicarConsulta]);
 
   // La moneda del negocio vale para todo el formateo; se fija al rehidratar.
   if (negocio?.moneda) fijarMoneda(negocio.moneda);
@@ -171,8 +204,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUsuario(null);
     setNegocio(null);
     setLicencia(null);
-    setCupo(null);
-  }, []);
+    // Lo que todavía esté en vuelo es de esta sesión: no tiene que volver.
+    actualizarCupo(null);
+  }, [actualizarCupo]);
 
   /**
    * Repinta el menú cuando el panel prende o apaga una sección.
@@ -299,6 +333,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let vivo = true;
 
     const revisar = () => {
+      const turno = pedirTurnoCupo();
       api
         .licencia()
         .then((estado) => {
@@ -310,7 +345,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           refrescarPermisos(estado.permisosVersion);
           // El contador viaja en este mismo estado: cada 15 min y al volver a
           // la pestaña llega el del día, aunque nadie haya vendido acá.
-          actualizarCupo(estado.cupo);
+          aplicarConsulta(turno, estado.cupo);
         })
         // Falla abierto, igual que Android: un error de red no puede dejar al
         // cajero trabado. Si la licencia de verdad venció, el próximo request
@@ -332,7 +367,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       clearInterval(id);
       document.removeEventListener("visibilitychange", alVolver);
     };
-  }, [token, refrescarFeatures, refrescarPerfil, refrescarPermisos, actualizarCupo]);
+  }, [token, refrescarFeatures, refrescarPerfil, refrescarPermisos, pedirTurnoCupo, aplicarConsulta]);
 
   // Reidentifica en PostHog tras un F5: el usuario se rehidrata de
   // localStorage sin pasar por `login`, y sin esto los errores de esa sesión
