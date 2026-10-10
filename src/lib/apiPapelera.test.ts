@@ -12,7 +12,7 @@ afterEach(() => {
 });
 
 function fetchVacio() {
-  const f = vi.fn(async () => new Response("[]", { status: 200, headers: { "Content-Type": "application/json" } }));
+  const f = vi.fn(async (_url: RequestInfo | URL) => new Response("[]", { status: 200, headers: { "Content-Type": "application/json" } }));
   vi.stubGlobal("fetch", f);
   return f;
 }
