@@ -108,9 +108,22 @@ export default function Pos() {
    * 2.000 artículos para no usarlos sería pagar la espera de abrir el POS por
    * nada. La lista vacía es correcta ahí — la grilla no se dibuja.
    */
+  //
+  // Con la sucursal de la caja: de ahí salen el PRECIO y el STOCK. Sin ella,
+  // al dueño (usuario de toda la organización) el backend le daba el precio
+  // de lista y el stock sumado de todos los almacenes, y la venta cobraba el
+  // de la sucursal: "los pagos (12) deben sumar el total (15)". Mientras la
+  // caja carga se espera (la promesa queda pendiente y `useApi` la descarta
+  // al volver a pedir): pedir antes sería traer el catálogo dos veces.
+  const almacenCaja = caja.datos?.caja?.almacenId ?? null;
   const productos = useApi(
-    () => (esFarmacia(rubro) ? Promise.resolve([]) : api.getProductos()),
-    [rubro],
+    () =>
+      esFarmacia(rubro)
+        ? Promise.resolve([])
+        : caja.cargando
+          ? new Promise<never>(() => {})
+          : api.getProductos(false, almacenCaja),
+    [rubro, caja.cargando, almacenCaja],
   );
   const categorias = useApi(() => api.getCategorias(false), []);
   const formasPago = useApi(() => api.getFormasPago(), []);

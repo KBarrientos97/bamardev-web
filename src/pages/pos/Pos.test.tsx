@@ -216,6 +216,16 @@ beforeEach(() => {
   sesion.cupo = undefined;
 });
 
+describe("pase oct: el catálogo del POS es el de la sucursal de la caja", () => {
+  it("pide precio y stock de la sucursal donde está abierta la caja, una sola vez", async () => {
+    await montar();
+    // Sin la sucursal, al dueño le llegaba el precio de lista y la venta
+    // cobraba el de la sucursal ("los pagos no suman el total").
+    expect(api.getProductos).toHaveBeenCalledWith(false, 1);
+    expect(api.getProductos).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("M-11: lo del salón y del reparto, sólo con su feature", () => {
   it("restaurante con salón y delivery: los mismos pedidos de siempre", async () => {
     sesion.features = ["pos", "caja", "salon", "delivery"];
