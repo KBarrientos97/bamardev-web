@@ -114,7 +114,7 @@ export default function DetalleCita({
       aplicar(await apiAgenda.cambiarEstado(cita.id, accion, motivo));
       // Plan Emprendedor (D19): cancelar devuelve la cita del día y la
       // respuesta no trae el contador. Sin pedirlo, la nueva cita seguía
-      // bloqueada con 50/50 hasta el chequeo de los 15 min.
+      // bloqueada con 25/25 hasta el chequeo de los 15 min.
       if (accion === "CANCELAR" && conCupo) refrescarCupo();
       setPidiendo(null);
     } catch (e) {

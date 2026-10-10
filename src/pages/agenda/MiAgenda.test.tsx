@@ -196,7 +196,7 @@ describe("Plan Emprendedor: el chip de citas en Mi agenda (fuera del Layout)", (
     vi.mocked(apiAgenda.miAgenda).mockResolvedValue({ recursos: [recurso({ usuarioId: 8 })], citas: [] });
     await montar();
     const chip = screen.getByRole("button", { name: /Créditos 10/ });
-    expect(chip).toHaveTextContent("Citas hoy 3/50 · Créditos 10");
+    expect(chip).toHaveTextContent("Citas hoy 3/25 · Créditos 10");
   });
 
   it("con ilimitado no hay chip aunque pueda agendar", async () => {

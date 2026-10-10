@@ -94,7 +94,7 @@ export function palabraUnidad(unidad: UnidadCupo, n: number): string {
 
 /**
  * El texto del chip: "Hoy 32/50 · Créditos 240" en el POS y
- * "Citas hoy 12/50 · Créditos 240" en la agenda. Sin límite para esa unidad
+ * "Citas hoy 12/25 · Créditos 240" en la agenda. Sin límite para esa unidad
  * sólo queda el saldo: un "12/∞" no le dice nada a nadie.
  */
 export function textoChip(cupo: CupoEstado, unidad: UnidadCupo, hoy?: string): { contador: string | null; creditos: string } {

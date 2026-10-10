@@ -50,7 +50,7 @@ describe("proyectar", () => {
   });
 
   it("una cita fuera del cupo cuesta 2 créditos: con 1 no alcanza", () => {
-    const sinLugar = { citas: 50, ventas: 50 };
+    const sinLugar = { citas: 25, ventas: 50 };
     expect(proyectar(cupoEmprendedor({ ...sinLugar, saldo: 1 }), "CITA", { hoy: HOY }).puede).toBe(false);
     expect(proyectar(cupoEmprendedor({ ...sinLugar, saldo: 1 }), "VENTA", { hoy: HOY }).puede).toBe(true);
     expect(proyectar(cupoEmprendedor({ ...sinLugar, saldo: 2 }), "CITA", { hoy: HOY })).toMatchObject({
@@ -65,7 +65,7 @@ describe("proyectar", () => {
   });
 
   it("un snapshot de ayer arranca el día en 0 y conserva el saldo", () => {
-    const ayer = cupoEmprendedor({ fecha: "2026-10-08", ventas: 50, citas: 50, saldo: 7 });
+    const ayer = cupoEmprendedor({ fecha: "2026-10-08", ventas: 50, citas: 25, saldo: 7 });
     expect(proyectar(ayer, "VENTA", { hoy: HOY })).toMatchObject({ usadas: 0, restante: 50, saldo: 7, puede: true });
     expect(proyectar(ayer, "CITA", { hoy: HOY })).toMatchObject({ usadas: 0, puede: true });
   });
@@ -77,7 +77,7 @@ describe("proyectar", () => {
   });
 
   it("las citas no tienen pendientes (no son offline)", () => {
-    const p = proyectar(cupoEmprendedor({ citas: 48 }), "CITA", { hoy: HOY, pendientes: 5 });
+    const p = proyectar(cupoEmprendedor({ citas: 23 }), "CITA", { hoy: HOY, pendientes: 5 });
     expect(p.restante).toBe(2);
   });
 
@@ -91,7 +91,7 @@ describe("textos", () => {
   it('el chip dice "Hoy 32/50 · Créditos 240" y en la agenda "Citas hoy"', () => {
     const c = cupoEmprendedor({ ventas: 32, citas: 12, saldo: 240 });
     expect(textoChip(c, "VENTA", HOY)).toEqual({ contador: "Hoy 32/50", creditos: "Créditos 240" });
-    expect(textoChip(c, "CITA", HOY)).toEqual({ contador: "Citas hoy 12/50", creditos: "Créditos 240" });
+    expect(textoChip(c, "CITA", HOY)).toEqual({ contador: "Citas hoy 12/25", creditos: "Créditos 240" });
   });
 
   it("el saldo negativo lleva el signo menos de verdad", () => {
@@ -117,9 +117,9 @@ describe("avisos del día", () => {
     expect(v.map((x) => x.texto)).toContain(
       "Ya usaste las 50 de hoy: desde ahora cada venta usa 1 crédito (te quedan 240)",
     );
-    const c = avisosDe(cupoEmprendedor({ citas: 50, saldo: 240 }), "CITA", HOY);
+    const c = avisosDe(cupoEmprendedor({ citas: 25, saldo: 240 }), "CITA", HOY);
     expect(c.map((x) => x.texto)).toContain(
-      "Ya usaste las 50 de hoy: desde ahora cada cita usa 2 créditos (te quedan 240)",
+      "Ya usaste las 25 de hoy: desde ahora cada cita usa 2 créditos (te quedan 240)",
     );
   });
 

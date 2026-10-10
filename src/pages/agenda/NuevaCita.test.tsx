@@ -269,7 +269,7 @@ describe("Plan Emprendedor: el cupo de citas al confirmar (§5.1)", () => {
   });
 
   it("una cita cuesta 2 créditos: con el cupo lleno y 1 crédito no se manda y se abre la hoja", async () => {
-    sesion.cupo = cupoEmprendedor({ fecha: fechaNegocio(), citas: 50, saldo: 1 });
+    sesion.cupo = cupoEmprendedor({ fecha: fechaNegocio(), citas: 25, saldo: 1 });
     const onCreada = await montar();
     await cargarFormulario();
     await act(async () => {
@@ -285,8 +285,8 @@ describe("Plan Emprendedor: el cupo de citas al confirmar (§5.1)", () => {
   });
 
   it("con 2 créditos alcanza: agenda y guarda el consumo", async () => {
-    sesion.cupo = cupoEmprendedor({ fecha: fechaNegocio(), citas: 50, saldo: 2 });
-    const despues = cupoEmprendedor({ fecha: fechaNegocio(), citas: 50, saldo: 0 });
+    sesion.cupo = cupoEmprendedor({ fecha: fechaNegocio(), citas: 25, saldo: 2 });
+    const despues = cupoEmprendedor({ fecha: fechaNegocio(), citas: 25, saldo: 0 });
     vi.mocked(apiAgenda.crearCita).mockResolvedValue({
       ...cita({ id: 9 }),
       consumo: { unidad: "CITA", fuente: "CREDITOS", creditos: 2, cupo: despues },
@@ -303,10 +303,10 @@ describe("Plan Emprendedor: el cupo de citas al confirmar (§5.1)", () => {
   });
 
   it("un 403 CUPO_AGOTADO abre la hoja, no borra nada y reintenta con el mismo pedido", async () => {
-    sesion.cupo = cupoEmprendedor({ fecha: fechaNegocio(), citas: 49, saldo: 0 });
-    const delServidor = cupoEmprendedor({ fecha: fechaNegocio(), citas: 50, saldo: 0 });
+    sesion.cupo = cupoEmprendedor({ fecha: fechaNegocio(), citas: 24, saldo: 0 });
+    const delServidor = cupoEmprendedor({ fecha: fechaNegocio(), citas: 25, saldo: 0 });
     vi.mocked(apiAgenda.crearCita).mockRejectedValueOnce(
-      new ApiError("Llegaste a tus 50 citas de hoy y no te quedan créditos.", 403, {
+      new ApiError("Llegaste a tus 25 citas de hoy y no te quedan créditos.", 403, {
         codigo: "CUPO_AGOTADO",
         unidad: "CITA",
         cupo: delServidor,
@@ -324,7 +324,7 @@ describe("Plan Emprendedor: el cupo de citas al confirmar (§5.1)", () => {
     expect(onCreada).not.toHaveBeenCalled();
 
     // Compró créditos: el snapshot nuevo deja pasar y el reintento es el mismo pedido.
-    sesion.cupo = cupoEmprendedor({ fecha: fechaNegocio(), citas: 50, saldo: 50 });
+    sesion.cupo = cupoEmprendedor({ fecha: fechaNegocio(), citas: 25, saldo: 50 });
     vi.mocked(apiAgenda.crearCita).mockResolvedValueOnce(cita({ id: 10 }));
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Confirmar cita" }));
@@ -335,14 +335,14 @@ describe("Plan Emprendedor: el cupo de citas al confirmar (§5.1)", () => {
   });
   it("una cita que quedó en duda (sin respuesta) se reintenta aunque el contador ya diga lleno", async () => {
     // La cita se grabó con el último lugar pero la respuesta se perdió; el
-    // chequeo de licencia trajo 50/50 sin créditos. El reintento con el mismo
+    // chequeo de licencia trajo 25/25 sin créditos. El reintento con el mismo
     // clienteRequestId devuelve la cita existente sin consumir otra vez.
-    sesion.cupo = cupoEmprendedor({ fecha: fechaNegocio(), citas: 49, saldo: 0 });
+    sesion.cupo = cupoEmprendedor({ fecha: fechaNegocio(), citas: 24, saldo: 0 });
     let intentos = 0;
     vi.mocked(apiAgenda.crearCita).mockImplementation(async () => {
       intentos += 1;
       if (intentos > 1) return cita({ id: 11 });
-      sesion.cupo = cupoEmprendedor({ fecha: fechaNegocio(), citas: 50, saldo: 0 });
+      sesion.cupo = cupoEmprendedor({ fecha: fechaNegocio(), citas: 25, saldo: 0 });
       throw new ApiError("Sin internet. Revisá la conexión del local.", 0);
     });
     const onCreada = await montar();

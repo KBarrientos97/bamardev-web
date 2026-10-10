@@ -57,7 +57,7 @@ describe("ChipCupo", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it('Emprendedor: "Hoy 32/50 · Créditos 240" y en la agenda "Citas hoy 12/50 · Créditos 240"', () => {
+  it('Emprendedor: "Hoy 32/50 · Créditos 240" y en la agenda "Citas hoy 12/25 · Créditos 240"', () => {
     sesion.cupo = cupoEmprendedor({ ventas: 32, citas: 12, saldo: 240 });
     render(
       <>
@@ -67,7 +67,7 @@ describe("ChipCupo", () => {
     );
     const [ventas, citas] = screen.getAllByRole("button");
     expect(ventas).toHaveTextContent("Hoy 32/50 · Créditos 240");
-    expect(citas).toHaveTextContent("Citas hoy 12/50 · Créditos 240");
+    expect(citas).toHaveTextContent("Citas hoy 12/25 · Créditos 240");
   });
 
   it("con saldo negativo muestra «Créditos −3» en rojo", () => {

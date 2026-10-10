@@ -2,7 +2,7 @@ import type { CupoEstado } from "../types";
 
 /**
  * Un cupo del Plan Emprendedor para los tests, con lo del contrato (§4.1):
- * 50 ventas y 50 citas por día, 1 crédito por venta y 2 por cita. Se pisa lo
+ * 50 ventas y 25 citas por día (D26), 1 crédito por venta y 2 por cita. Se pisa lo
  * que cada caso necesita.
  */
 export function cupoEmprendedor(
@@ -21,7 +21,7 @@ export function cupoEmprendedor(
     fecha: over.fecha ?? "2026-10-09",
     hoy: {
       ventas: { usadas: over.ventas ?? 0, limite: over.limiteVentas === undefined ? 50 : over.limiteVentas },
-      citas: { usadas: over.citas ?? 0, limite: over.limiteCitas === undefined ? 50 : over.limiteCitas },
+      citas: { usadas: over.citas ?? 0, limite: over.limiteCitas === undefined ? 25 : over.limiteCitas },
     },
     creditos: { saldo: over.saldo ?? 0, congelado: false },
     creditosPorVenta: 1,
