@@ -435,7 +435,8 @@ export const api = {
   getProductos: (eliminados?: boolean, sucursalId?: number | null) =>
     request<Producto[]>(
       `/productos${qs({
-        eliminados: eliminados ? 1 : undefined,
+        // El backend compara el texto `=== 'true'`: con `1` daba el activo.
+        eliminados: eliminados ? "true" : undefined,
         sucursalId: sucursalId ?? undefined,
       })}`,
     ),
@@ -657,7 +658,8 @@ export const api = {
   getInsumos: (eliminados?: boolean, sucursalId?: number | null) =>
     request<Insumo[]>(
       `/insumos${qs({
-        eliminados: eliminados ? 1 : undefined,
+        // El backend compara el texto `=== 'true'`: con `1` daba el activo.
+        eliminados: eliminados ? "true" : undefined,
         sucursalId: sucursalId ?? undefined,
       })}`,
     ),
