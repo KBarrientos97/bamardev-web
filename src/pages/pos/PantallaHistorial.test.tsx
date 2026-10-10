@@ -1,7 +1,8 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Caja, Venta } from "../../types";
+import type { Caja, CupoEstado, Venta } from "../../types";
+import { cupoEmprendedor } from "../../test/cupoFixtures";
 
 /**
  * El detalle de una venta en "Ventas del turno".
@@ -11,7 +12,11 @@ import type { Caja, Venta } from "../../types";
  * y cada medicamento salía marcado "Mesa".
  */
 
-const sesion = vi.hoisted(() => ({ rubro: "RESTAURANTE" as string | undefined }));
+const sesion = vi.hoisted(() => ({
+  rubro: "RESTAURANTE" as string | undefined,
+  cupo: null as CupoEstado | null,
+  refrescarCupo: vi.fn(async () => {}),
+}));
 
 vi.mock("../../store/AuthContext", () => ({
   useAuth: () => ({
@@ -20,6 +25,8 @@ vi.mock("../../store/AuthContext", () => ({
     usuario: { rol: "ADMIN", permisos: ["ventas.anular", "autorizar.pin"] },
     puede: () => false,
     incluye: () => true,
+    cupo: sesion.cupo,
+    refrescarCupo: sesion.refrescarCupo,
   }),
 }));
 
@@ -79,6 +86,7 @@ const venta = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  sesion.cupo = null;
   vi.mocked(api.getVentas).mockResolvedValue([venta]);
   vi.mocked(api.getVenta).mockResolvedValue(venta);
   vi.mocked(api.getPedidosPendientes).mockResolvedValue([]);
@@ -281,5 +289,33 @@ describe("QA DIA-15: un fiado no figura como una venta pagada en efectivo", () =
     const texto = await listar();
     expect(texto).toMatch(/· Efectivo/);
     expect(texto).not.toMatch(/Fiado/);
+  });
+});
+
+describe("Plan Emprendedor: anular devuelve el lugar del día (D10)", () => {
+  async function anularLaVenta() {
+    vi.mocked(api.anularVenta).mockResolvedValue({ ...venta, estado: "ANULADO" } as Venta);
+    await abrirDetalle();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Anular venta" }));
+    });
+    const dialogo = screen.getByRole("dialog", { name: "Anular venta" });
+    fireEvent.change(within(dialogo).getByLabelText("PIN de autorización"), { target: { value: "1234" } });
+    fireEvent.click(within(dialogo).getByRole("button", { name: "Devolución del cliente" }));
+    await act(async () => {
+      fireEvent.click(within(dialogo).getByRole("button", { name: "Anular" }));
+    });
+    expect(api.anularVenta).toHaveBeenCalled();
+  }
+
+  it("con cupo, después de anular se vuelve a pedir el contador (si no, el POS seguía bloqueado)", async () => {
+    sesion.cupo = cupoEmprendedor({ ventas: 50, saldo: 0 });
+    await anularLaVenta();
+    expect(sesion.refrescarCupo).toHaveBeenCalledTimes(1);
+  });
+
+  it("sin cupo (Básico, Profesional) no pide nada de más", async () => {
+    await anularLaVenta();
+    expect(sesion.refrescarCupo).not.toHaveBeenCalled();
   });
 });
