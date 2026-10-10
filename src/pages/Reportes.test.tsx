@@ -33,6 +33,7 @@ vi.mock("../lib/api", () => ({
 }));
 
 import Reportes from "./Reportes";
+import { api } from "../lib/api";
 
 async function montar() {
   render(
@@ -49,6 +50,8 @@ async function montar() {
 
 beforeEach(() => {
   sesion.rubro = "FARMACIA";
+  // Cada test arranca con el resumen cargando para siempre, como el mock base.
+  vi.mocked(api.reporte).mockImplementation(() => new Promise(() => {}));
 });
 
 /**
@@ -82,5 +85,43 @@ describe("los reportes propios de la farmacia", () => {
     expect(tarjeta("Vencimientos y mermas")).toBeNull();
     expect(tarjeta("Ventas por mesero")).not.toBeNull();
     expect(tarjeta("Insumos")).not.toBeNull();
+  });
+});
+
+/**
+ * Tope de reportes: el backend rechaza con un `message` pensado para el
+ * cliente ("elegí un período más corto"). Se ve ese texto, donde iba el
+ * reporte, y no un error genérico ni la pantalla rota.
+ */
+describe("un reporte rechazado por el tope", () => {
+  const DEMASIADO_GRANDE =
+    "Este período tiene 18.230 ventas y el máximo por reporte es 15.000. Elegí un período más corto.";
+
+  it("al abrir un reporte muestra el mensaje del backend en su lugar, con Reintentar", async () => {
+    sesion.rubro = "RESTAURANTE";
+    vi.mocked(api.reporte).mockImplementation((nombre: string) =>
+      nombre === "top-productos"
+        ? Promise.reject(new Error(DEMASIADO_GRANDE))
+        : new Promise(() => {}),
+    );
+    await montar();
+    await act(async () => {
+      fireEvent.click(tarjeta("Productos más vendidos")!);
+    });
+    const dialogo = screen.getByRole("dialog");
+    expect(dialogo).toHaveTextContent(DEMASIADO_GRANDE);
+    expect(dialogo).not.toHaveTextContent(/Error 422/);
+    expect(screen.getByRole("button", { name: "Reintentar" })).toBeInTheDocument();
+  });
+
+  it("si el resumen del período es el rechazado, el mensaje va arriba y las tarjetas siguen", async () => {
+    sesion.rubro = "RESTAURANTE";
+    const ocupado = "Hay otro reporte grande en curso. Probá de nuevo en unos segundos.";
+    vi.mocked(api.reporte).mockImplementation((nombre: string) =>
+      nombre === "resumen" ? Promise.reject(new Error(ocupado)) : new Promise(() => {}),
+    );
+    await montar();
+    expect(screen.getByText(ocupado)).toBeInTheDocument();
+    expect(tarjeta("Productos más vendidos")).not.toBeNull();
   });
 });

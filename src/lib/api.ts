@@ -300,7 +300,10 @@ export async function request<T>(path: string, options: RequestInit = {}): Promi
 
     // 502/503/504 es el servidor no disponible, típico durante un despliegue:
     // el cuerpo viene en HTML y el mensaje genérico no ayudaba a esperar.
-    if (res.status === 502 || res.status === 503 || res.status === 504) {
+    // Salvo que el 503 sea nuestro y venga con `codigo` (REPORTES_OCUPADO: hay
+    // otro reporte grande en curso): ese mensaje dice qué pasa y se respeta.
+    const conCodigo = typeof cuerpo.codigo === "string";
+    if (!conCodigo && (res.status === 502 || res.status === 503 || res.status === 504)) {
       mensaje = "El servidor no está disponible en este momento. Probá en unos segundos.";
     }
 
