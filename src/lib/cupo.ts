@@ -218,3 +218,16 @@ export function cupoDelError(e: unknown): CupoEstado | null {
   const cupo = detalle?.cupo as CupoEstado | undefined;
   return cupo && typeof cupo === "object" && "hoy" in cupo ? cupo : null;
 }
+
+/**
+ * ¿El POST pudo haber grabado algo aunque falló? Sin respuesta (red, timeout:
+ * status 0) o un 5xx (un 504 es el proxy cortando con el backend todavía
+ * trabajando). En ese caso el reintento va con el mismo `clienteRequestId` y
+ * NO se le aplica el chequeo previo del cupo: si la venta o la cita ya
+ * existían el servidor las devuelve sin consumir de nuevo, y si no, rebota
+ * con su propio 403, que ya se maneja.
+ */
+export function quedoEnDuda(e: unknown): boolean {
+  const status = (e as { status?: unknown } | null)?.status;
+  return typeof status === "number" && (status === 0 || status >= 500);
+}

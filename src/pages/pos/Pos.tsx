@@ -25,6 +25,7 @@ import { fmtHora, fmtMoney } from "../../lib/format";
 import { creaClientes, tieneFeature, tienePermiso } from "../../lib/permisos";
 import { esFarmacia } from "../../lib/rubro";
 import { useApi } from "../../lib/useApi";
+import { quedoEnDuda } from "../../lib/cupo";
 import { useBloqueoCupo } from "../../lib/useBloqueoCupo";
 import { useAuth } from "../../store/AuthContext";
 import type {
@@ -148,6 +149,17 @@ export default function Pos() {
     manejarError: rechazoPorCupo,
     registrar: registrarConsumo,
   } = useBloqueoCupo("VENTA", { refrescarAlMontar: true });
+  /**
+   * El último cobro quedó en duda: el POST salió pero no volvió respuesta
+   * (corte de red, 5xx). Pudo haber grabado la venta con el último lugar del
+   * día, y si en el medio el chequeo de licencia trajo 50/50 sin créditos, el
+   * chequeo previo bloqueaba el reintento y mandaba a comprar créditos por
+   * una venta que ya existía. Con el mismo `clienteRequestId` el reintento
+   * devuelve esa venta sin consumir nada, o rebota con el 403 del servidor,
+   * que ya se maneja: en duda, se deja ir al servidor.
+   */
+  const cobroEnDuda = useRef(false);
+  const hayLugar = useCallback(() => cobroEnDuda.current || hayLugarParaVender(), [hayLugarParaVender]);
 
   /**
    * Las mesas que el salón mandó a caja.
@@ -490,7 +502,7 @@ export default function Pos() {
       // cobro queda como estaba para reintentar. La mesa no se bloquea (el
       // servidor la acepta igual: lo que se comió no se rechaza) y la venta
       // que cobra una cita tampoco, porque no consume (§2.3).
-      if (cuerpo && !esVentaDeCita(cuerpo) && !hayLugarParaVender()) return;
+      if (cuerpo && !esVentaDeCita(cuerpo) && !hayLugar()) return;
       setEnviando(true);
       try {
         // Cobrar una mesa es otro endpoint: la cuenta ya existe en el salón,
@@ -508,6 +520,7 @@ export default function Pos() {
               clienteRequestId: intento.actual(),
             });
         intento.registrado();
+        cobroEnDuda.current = false;
         registrarConsumo(creada);
         setVenta(creada);
         if (mesaCobrando) {
@@ -524,6 +537,7 @@ export default function Pos() {
       } catch (err) {
         // Otro equipo usó el último lugar del día (403 CUPO_AGOTADO): se abre
         // la hoja de compra y el carrito sigue armado para reintentar.
+        cobroEnDuda.current = quedoEnDuda(err);
         if (rechazoPorCupo(err)) return;
         // Una promo cambió entre la cotización y el cobro: se recalcula para
         // que al volver el carrito muestre el total nuevo.
@@ -541,7 +555,7 @@ export default function Pos() {
       conAgenda,
       refrescarCitas,
       descuentos,
-      hayLugarParaVender,
+      hayLugar,
       rechazoPorCupo,
       registrarConsumo,
     ],
@@ -555,7 +569,7 @@ export default function Pos() {
   const crearPedidoPendiente = useCallback(
     async (datos: DatosEntrega) => {
       setError("");
-      if (!hayLugarParaVender()) return;
+      if (!hayLugar()) return;
       setEnviando(true);
       try {
         const creada = await api.crearVenta({
@@ -573,19 +587,21 @@ export default function Pos() {
           clienteRequestId: intento.actual(),
         });
         intento.registrado();
+        cobroEnDuda.current = false;
         registrarConsumo(creada);
         setVenta(creada);
         limpiar();
         setPantalla("pedidoOk");
         productos.recargar();
       } catch (err) {
+        cobroEnDuda.current = quedoEnDuda(err);
         if (rechazoPorCupo(err)) return;
         setError(err instanceof Error ? err.message : "No se pudo crear el pedido");
       } finally {
         setEnviando(false);
       }
     },
-    [carritoVenta, tipoPedido, limpiar, productos, intento, descuentos, hayLugarParaVender, rechazoPorCupo, registrarConsumo],
+    [carritoVenta, tipoPedido, limpiar, productos, intento, descuentos, hayLugar, rechazoPorCupo, registrarConsumo],
   );
 
   /**
@@ -597,7 +613,7 @@ export default function Pos() {
     async (credito: CreditoInput, pagos: PagoInput[], propinas: PropinaInput[] = []) => {
       setError("");
       const conLaCita = conCita(carritoVenta.aDetalles(), citaCobrando);
-      if (!esVentaDeCita(conLaCita) && !hayLugarParaVender()) return;
+      if (!esVentaDeCita(conLaCita) && !hayLugar()) return;
       setEnviando(true);
       try {
         const creada = await api.crearVenta({
@@ -613,12 +629,14 @@ export default function Pos() {
           clienteRequestId: intento.actual(),
         });
         intento.registrado();
+        cobroEnDuda.current = false;
         registrarConsumo(creada);
         setVenta(creada);
         limpiar();
         setPantalla("recibo");
         productos.recargar();
       } catch (err) {
+        cobroEnDuda.current = quedoEnDuda(err);
         if (rechazoPorCupo(err)) return;
         setError(err instanceof Error ? err.message : "No se pudo registrar el fiado");
       } finally {
@@ -633,7 +651,7 @@ export default function Pos() {
       citaCobrando,
       descuentos,
       clienteDeSesiones,
-      hayLugarParaVender,
+      hayLugar,
       rechazoPorCupo,
       registrarConsumo,
     ],
@@ -925,7 +943,7 @@ export default function Pos() {
       // compra antes de pasar al cobro, para no hacerle cargar los pagos a la
       // cajera y rebotar al final. Cobrando una cita no se mira (no consume).
       onCobrar={() => {
-        if (!citaCobrando && !hayLugarParaVender()) return;
+        if (!citaCobrando && !hayLugar()) return;
         setPantalla("cobro");
       }}
       sucursalId={abierta.almacenId}

@@ -22,6 +22,7 @@ import type {
 import { fmtMoney } from "../../lib/format";
 import { tienePermiso, veSoloSuAgenda } from "../../lib/permisos";
 import { useApi } from "../../lib/useApi";
+import { quedoEnDuda } from "../../lib/cupo";
 import { useBloqueoCupo } from "../../lib/useBloqueoCupo";
 import { useAuth } from "../../store/AuthContext";
 import { PedirPinCredito } from "../pos/PantallaCredito";
@@ -101,6 +102,11 @@ export default function NuevaCita({
     manejarError: rechazoPorCupo,
     registrar: registrarConsumo,
   } = useBloqueoCupo("CITA");
+  // El último intento quedó sin respuesta: pudo haber grabado la cita con el
+  // último lugar. El reintento (mismo `clienteRequestId`) no se bloquea acá
+  // aunque el contador ya diga lleno: lo decide el servidor (ver `quedoEnDuda`).
+  const citaEnDuda = useRef(false);
+  const hayLugar = () => citaEnDuda.current || hayLugarParaCita();
 
   const servicios = useApi(() => apiAgenda.servicios(), []);
   const reglas = useApi(
@@ -313,7 +319,7 @@ export default function NuevaCita({
       );
       // Sin cupo se avisa antes de pedirle la firma a nadie: el encargado
       // firmaría para nada.
-      if (!hayLugarParaCita()) return setError(SIN_CUPO_CITAS);
+      if (!hayLugar()) return setError(SIN_CUPO_CITAS);
       // El cajero necesita la firma de un encargado, como al anular (§4).
       if (!esEncargado && !firma) {
         setPidiendoPin(true);
@@ -327,7 +333,7 @@ export default function NuevaCita({
 
     // Sin lugar en el cupo ni créditos no se manda nada (§5.1): se abre la
     // hoja de compra y el formulario queda como está para confirmar después.
-    if (!hayLugarParaCita()) return setError(SIN_CUPO_CITAS);
+    if (!hayLugar()) return setError(SIN_CUPO_CITAS);
     setEnviando(true);
     try {
       const quien = await resolverCliente();
@@ -348,6 +354,7 @@ export default function NuevaCita({
       registrarConsumo(cita);
       onCreada(cita);
     } catch (e) {
+      citaEnDuda.current = quedoEnDuda(e);
       // Otro equipo agendó la última del día (403 CUPO_AGOTADO): se abre la
       // hoja y no se borra nada. La cita no se creó, así que el mismo
       // `clienteRequestId` sirve para reintentar después de comprar.

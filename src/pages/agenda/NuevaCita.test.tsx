@@ -333,4 +333,30 @@ describe("Plan Emprendedor: el cupo de citas al confirmar (§5.1)", () => {
     expect(segundo.clienteRequestId).toBe(primero.clienteRequestId);
     expect(onCreada).toHaveBeenCalledWith(expect.objectContaining({ id: 10 }));
   });
+  it("una cita que quedó en duda (sin respuesta) se reintenta aunque el contador ya diga lleno", async () => {
+    // La cita se grabó con el último lugar pero la respuesta se perdió; el
+    // chequeo de licencia trajo 50/50 sin créditos. El reintento con el mismo
+    // clienteRequestId devuelve la cita existente sin consumir otra vez.
+    sesion.cupo = cupoEmprendedor({ fecha: fechaNegocio(), citas: 49, saldo: 0 });
+    let intentos = 0;
+    vi.mocked(apiAgenda.crearCita).mockImplementation(async () => {
+      intentos += 1;
+      if (intentos > 1) return cita({ id: 11 });
+      sesion.cupo = cupoEmprendedor({ fecha: fechaNegocio(), citas: 50, saldo: 0 });
+      throw new ApiError("Sin internet. Revisá la conexión del local.", 0);
+    });
+    const onCreada = await montar();
+    await cargarFormulario();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Confirmar cita" }));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Confirmar cita" }));
+    });
+    expect(pedidos).toHaveLength(0);
+    expect(apiAgenda.crearCita).toHaveBeenCalledTimes(2);
+    const [primero, segundo] = vi.mocked(apiAgenda.crearCita).mock.calls.map((c) => c[0]);
+    expect(segundo.clienteRequestId).toBe(primero.clienteRequestId);
+    expect(onCreada).toHaveBeenCalledWith(expect.objectContaining({ id: 11 }));
+  });
 });

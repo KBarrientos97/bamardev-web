@@ -57,6 +57,9 @@ vi.mock("../../store/AuthContext", async () => {
 });
 
 vi.mock("../../lib/api", () => ({
+  // El catch del cobro pregunta `instanceof ApiError`: sin la clase, un error
+  // cualquiera del POST rompía el test en vez de mostrarse.
+  ApiError: class ApiError extends Error {},
   api: {
     cajaActual: vi.fn(async () => ({
       caja: {
@@ -868,6 +871,52 @@ describe("Plan Emprendedor: el cupo de ventas en el cobro (§5.2)", () => {
       fireEvent.click(screen.getByRole("button", { name: "pagar 80" }));
     });
     expect(sesion.actualizarCupo).toHaveBeenCalledWith(despues);
+  });
+
+  it("un cobro que quedó en duda (sin respuesta) se reintenta aunque el contador ya diga lleno", async () => {
+    // El POST llegó y grabó la venta con el último lugar, pero la respuesta se
+    // perdió. Mientras tanto el chequeo de licencia trajo 50/50 sin créditos.
+    // El reintento con el mismo clienteRequestId devuelve la venta que ya
+    // existe sin consumir nada: bloquearlo mandaba a comprar créditos por una
+    // venta ya registrada.
+    sesion.cupo = cupoEmprendedor({ fecha: fechaNegocio(), ventas: 49, saldo: 0 });
+    let intentos = 0;
+    vi.mocked(api.crearVenta).mockImplementation(async () => {
+      intentos += 1;
+      if (intentos > 1) return { id: 62 } as never;
+      sesion.cupo = cupoEmprendedor({ fecha: fechaNegocio(), ventas: 50, saldo: 0 });
+      throw Object.assign(new Error("Sin internet. Revisá la conexión del local."), { status: 0 });
+    });
+    await montarConHoja();
+    fireEvent.click(screen.getByRole("button", { name: "ir a cobrar" }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "pagar 80" }));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "pagar 80" }));
+    });
+    expect(hoja()).not.toBeInTheDocument();
+    expect(api.crearVenta).toHaveBeenCalledTimes(2);
+    const [primero, segundo] = vi.mocked(api.crearVenta).mock.calls;
+    expect(segundo[0].clienteRequestId).toBe(primero[0].clienteRequestId);
+  });
+
+  it("un rechazo seguro (4xx) no deja el cobro en duda: con el contador lleno, bloquea", async () => {
+    sesion.cupo = cupoEmprendedor({ fecha: fechaNegocio(), ventas: 49, saldo: 0 });
+    vi.mocked(api.crearVenta).mockImplementation(async () => {
+      sesion.cupo = cupoEmprendedor({ fecha: fechaNegocio(), ventas: 50, saldo: 0 });
+      throw Object.assign(new Error("Stock insuficiente"), { status: 400 });
+    });
+    await montarConHoja();
+    fireEvent.click(screen.getByRole("button", { name: "ir a cobrar" }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "pagar 80" }));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "pagar 80" }));
+    });
+    expect(api.crearVenta).toHaveBeenCalledTimes(1);
+    expect(hoja()).toBeInTheDocument();
   });
 
   it("la venta de una cita no se bloquea aunque no quede cupo ni créditos", async () => {
