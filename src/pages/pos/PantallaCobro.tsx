@@ -3,6 +3,7 @@ import { Icon } from "../../components/Icon";
 import { QrParaCobrar } from "../../components/QrCobro";
 import { Boton, Campo, ErrorMsg, Input } from "../../components/ui";
 import {
+  aCentavos,
   cubre,
   esPositivo,
   excede,
@@ -32,7 +33,9 @@ function sugerenciasEfectivo(total: number): number[] {
   const base = [10, 20, 50, 100, 200];
   const out = new Set<number>();
   // El total exacto siempre sirve: es el caso de "justo".
-  out.add(Math.ceil(total * 100) / 100);
+  // `aCentavos` y no `Math.ceil(total * 100)`: en punto flotante 35.2 * 100
+  // da 3520.0000000000005 y el chip "justo" decía un centavo de más.
+  out.add(aCentavos(total));
   for (const b of base) {
     const redondeado = Math.ceil(total / b) * b;
     if (redondeado > total) out.add(redondeado);
@@ -116,8 +119,10 @@ export default function PantallaCobro({
    */
   const [qrConfirmado, setQrConfirmado] = useState(false);
 
-  const recibidoNum = parsearMontoO(recibido);
-  const qrNum = parsearMontoO(montoQr);
+  // En centavos, como los guarda el backend: un "33.335" tecleado viajaba
+  // tal cual y el QR más el efectivo dejaban de sumar el total (400).
+  const recibidoNum = aCentavos(parsearMontoO(recibido));
+  const qrNum = aCentavos(parsearMontoO(montoQr));
 
   /** Cambiar de método o el monto del QR obliga a confirmar de nuevo. */
   function elegirMetodo(m: Metodo) {
