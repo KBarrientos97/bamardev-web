@@ -13,6 +13,8 @@ const sesion = vi.hoisted(() => ({
   features: ["agenda", "cola_walkin"] as string[],
   conPos: false,
   rol: "CAJERO",
+  /** Plan Emprendedor: sin cupo en los casos de siempre. */
+  cupo: undefined as import("../../types").CupoEstado | undefined,
 }));
 
 vi.mock("../../store/AuthContext", async () => {
@@ -31,6 +33,7 @@ vi.mock("../../store/AuthContext", async () => {
       },
       negocio: { id: 1, nombre: "Salón Bella Vista", tipoNegocio: "PELUQUERIA", features: sesion.features },
       puede: (s: string) => s === "pos" && sesion.conPos,
+      cupo: sesion.cupo,
     }),
   };
 });
@@ -57,6 +60,7 @@ vi.mock("../../lib/agenda/apiAgenda", async (importOriginal) => {
 });
 
 import { apiAgenda } from "../../lib/agenda/apiAgenda";
+import { CUPO_ILIMITADO, cupoEmprendedor } from "../../test/cupoFixtures";
 import Hoy from "./Hoy";
 
 const confirmada = cita({ id: 1, estado: "CONFIRMADA" });
@@ -94,6 +98,7 @@ beforeEach(() => {
   sesion.features = ["agenda", "cola_walkin"];
   sesion.conPos = false;
   sesion.rol = "CAJERO";
+  sesion.cupo = undefined;
   vi.mocked(apiAgenda.recursos).mockResolvedValue([carla, sofia, ana, cabina]);
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(new Date("2026-10-21T13:00:00.000Z"));
@@ -285,5 +290,19 @@ describe("A6 · Cola de espera", () => {
       fireEvent.click(screen.getByRole("button", { name: "Se fue" }));
     });
     expect(apiAgenda.cambiarEstado).toHaveBeenCalledWith(4, "ABANDONO");
+  });
+});
+
+describe("Plan Emprendedor: el chip de citas en Hoy", () => {
+  it("un negocio Básico o Profesional (ilimitado) no ve ningún chip", async () => {
+    sesion.cupo = CUPO_ILIMITADO;
+    await montar();
+    expect(screen.queryByRole("button", { name: /Créditos/ })).not.toBeInTheDocument();
+  });
+
+  it('un Emprendedor ve "Citas hoy 12/50 · Créditos 240"', async () => {
+    sesion.cupo = cupoEmprendedor({ fecha: "2026-10-21", citas: 12, saldo: 240 });
+    await montar();
+    expect(screen.getByRole("button", { name: /Créditos 240/ })).toHaveTextContent("Citas hoy 12/50 · Créditos 240");
   });
 });

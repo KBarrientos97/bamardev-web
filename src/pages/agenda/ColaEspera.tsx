@@ -5,6 +5,7 @@ import { profesionalesParaCola, serviciosDeLaCola } from "../../lib/agenda/cola"
 import { duracionTexto, minutosEntre } from "../../lib/agenda/horaAgenda";
 import type { Cita, Recurso } from "../../lib/agenda/tiposAgenda";
 import { useApi } from "../../lib/useApi";
+import { useBloqueoCupo } from "../../lib/useBloqueoCupo";
 
 /**
  * A6 · Cola de espera (walk-in, feature `cola_walkin`). El que llega sin turno
@@ -44,6 +45,13 @@ export default function ColaEspera({
     [!recursos],
   );
   const todos = recursos ?? propios.datos ?? [];
+  // Plan Emprendedor: anotar en la cola no consume; "Atender ahora" sí,
+  // porque ahí el walk-in pasa a ser una cita (§2.3).
+  const {
+    verificar: hayLugarParaCita,
+    manejarError: rechazoPorCupo,
+    registrar: registrarConsumo,
+  } = useBloqueoCupo("CITA");
 
   const ordenada = useMemo(
     () => [...cola].sort((a, b) => a.creadaEn.localeCompare(b.creadaEn)),
@@ -53,12 +61,16 @@ export default function ColaEspera({
   async function atender(c: Cita) {
     setError("");
     setAviso("");
+    // Sin cupo ni créditos no se llama: se abre la hoja y sigue en la cola.
+    if (!hayLugarParaCita()) return;
     setOcupado(c.id);
     const elegido = conQuien[c.id];
     try {
-      await apiAgenda.atenderAhora(c.id, elegido === "" || elegido == null ? undefined : elegido);
+      const atendida = await apiAgenda.atenderAhora(c.id, elegido === "" || elegido == null ? undefined : elegido);
+      registrarConsumo(atendida);
       onCambio();
     } catch (e) {
+      if (rechazoPorCupo(e)) return;
       const espera = esperaDelConflicto(e);
       if (espera !== null) {
         // Sin elegir, el backend probó con el preferido: es a él a quien nombrar.

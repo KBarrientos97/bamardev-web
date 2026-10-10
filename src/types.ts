@@ -162,6 +162,12 @@ export interface LoginResponse {
   usuario: SesionUsuario;
   negocio: SesionNegocio;
   licencia?: EstadoLicencia;
+  /**
+   * Plan Emprendedor: el contador del día y el monedero, en la raíz del login
+   * (PLAN-EMPRENDEDOR-TECNICO §4.2). Opcional: un backend anterior no lo manda
+   * y sin él no se muestra ni se bloquea nada.
+   */
+  cupo?: CupoEstado;
 }
 
 /** GET /auth/me — el token ya resuelto por el backend. */
@@ -1114,6 +1120,12 @@ export interface Venta {
    */
   giftCards?: { codigo: string; usado: number; saldo: number }[];
   propinas?: { recursoId: number; recurso: string; monto: number; formaPago: string }[];
+  /**
+   * Plan Emprendedor: qué consumió esta venta (cupo o créditos) y el contador
+   * como quedó. Sólo en un negocio con cupo; un reintento idempotente tampoco
+   * lo trae.
+   */
+  consumo?: ConsumoVista;
 }
 
 export interface DetalleVentaInput {
@@ -1551,6 +1563,12 @@ export interface EstadoLicencia {
   tema?: TemaNegocio | null;
   perfil?: PerfilRubro | null;
   perfilVersion?: number | null;
+  /**
+   * Plan Emprendedor (§4.2): el contador del día y el saldo de créditos. Viaja
+   * acá por lo mismo que `features`: este estado ya se consulta solo cada
+   * 15 min. Con `ilimitado` (Básico, Profesional) o ausente, nada cambia.
+   */
+  cupo?: CupoEstado;
 }
 
 // -- Pago de la licencia por QR (pantalla pública /pagar) --------------------
@@ -2150,4 +2168,112 @@ export interface RespuestaImportacion {
   resultados: ResultadoImportado[];
   /** El ingreso "Inventario inicial" de esta tanda; null si no entró stock. */
   movimientoId: number | null;
+}
+
+// -- Plan Emprendedor: cupo diario y créditos (PLAN-EMPRENDEDOR-TECNICO §4.1) --
+
+/**
+ * El contador del día y el monedero de un negocio. Con `ilimitado: true`
+ * (cualquier plan que no sea EMPRENDEDOR) el cliente no muestra nada de cupo
+ * ni bloquea nada: es el caso de Omar.
+ */
+export interface CupoEstado {
+  plan: "EMPRENDEDOR" | "BASICO" | "PRO";
+  ilimitado: boolean;
+  /** Día del servidor en Bolivia al que se refiere `hoy` (AAAA-MM-DD). */
+  fecha: string;
+  hoy: {
+    /** `limite` null = ilimitado. */
+    ventas: { usadas: number; limite: number | null };
+    citas: { usadas: number; limite: number | null };
+  };
+  /** `congelado` = el plan ya no es EMPRENDEDOR: el saldo se guarda pero no se usa. */
+  creditos: { saldo: number; congelado: boolean };
+  creditosPorVenta: number;
+  creditosPorCita: number;
+  /** Gastó lo suficiente en créditos para que le convenga el Básico. */
+  sugerirBasico: boolean;
+}
+
+export type UnidadCupo = "VENTA" | "CITA";
+
+/** Lo que consumió una venta o una cita recién creada. Sólo si !ilimitado. */
+export interface ConsumoVista {
+  unidad: UnidadCupo;
+  fuente: "CUPO" | "CREDITOS";
+  /** 0 si entró por el cupo. */
+  creditos: number;
+  /** El estado después de esta operación. */
+  cupo: CupoEstado;
+}
+
+/** Cuerpo del 403 `CUPO_AGOTADO` (ventas y agenda). */
+export interface ErrorCupoAgotado {
+  statusCode: 403;
+  error?: "Forbidden";
+  codigo: "CUPO_AGOTADO";
+  message: string;
+  unidad: UnidadCupo;
+  cupo: CupoEstado;
+}
+
+export interface PaqueteCreditosVista {
+  id: number;
+  nombre: string | null;
+  creditos: number;
+  precio: number;
+  moneda: "BOB";
+  precioPorCredito: number;
+  /** Cuántas ventas o cuántas citas paga el paquete (lo calcula el backend). */
+  alcanzaVentas: number;
+  alcanzaCitas: number;
+  activo: boolean;
+  orden: number;
+}
+
+/** GET /monedero/paquetes */
+export interface PaquetesCreditos {
+  paquetes: PaqueteCreditosVista[];
+  saldo: number;
+  puedeComprar: boolean;
+  /** Por qué no puede comprar, listo para mostrar. */
+  motivo: string | null;
+  /** D24: la mensualidad pendiente cuando la licencia está en gracia o por vencer. */
+  recordatorioLicencia: string | null;
+}
+
+export interface CompraCreditosVista {
+  id: number;
+  estado: "PENDIENTE" | "PAGADA" | "VENCIDA" | "ANULADA";
+  creditos: number;
+  monto: number;
+  moneda: "BOB";
+  metodo: "QR" | "EFECTIVO" | "TRANSFERENCIA" | "OTRO";
+  paquete: { id: number; nombre: string | null; creditos: number } | null;
+  /** Sólo con estado PENDIENTE y metodo QR. `imagenQr` es un data URL. */
+  qr: { alias: string; imagenQr: string; venceEn: string } | null;
+  creadoEn: string;
+  pagadaEn: string | null;
+  /** Saldo del monedero AHORA. */
+  saldo: number;
+  recordatorioLicencia: string | null;
+}
+
+export interface MovimientoCreditoVista {
+  id: number;
+  tipo: "REGALO" | "COMPRA" | "CONSUMO_VENTA" | "CONSUMO_CITA" | "DEVOLUCION" | "AJUSTE_PANEL";
+  cantidad: number;
+  saldoDespues: number;
+  fecha: string;
+  ventaId: number | null;
+  citaId: number | null;
+  compraId: number | null;
+  motivo: string | null;
+}
+
+/** GET /monedero/movimientos */
+export interface MovimientosCredito {
+  saldo: number;
+  movimientos: MovimientoCreditoVista[];
+  siguiente: number | null;
 }

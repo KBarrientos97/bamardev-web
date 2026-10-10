@@ -1,5 +1,7 @@
 import { useMemo, useState } from "react";
 import { BotonCambiarMiPassword } from "../../components/CambiarMiPassword";
+import ChipCupo, { BarraCupo } from "../../components/ChipCupo";
+import { HojaCupoHost } from "../../components/ComprarCreditos";
 import { Icon } from "../../components/Icon";
 import { AvisoOk, Boton, Cargando, ErrorMsg, useAviso } from "../../components/ui";
 import { apiAgenda } from "../../lib/agenda/apiAgenda";
@@ -20,6 +22,7 @@ import { tramoDe } from "../../lib/agenda/lineasCita";
 import { useConsultaPeriodica } from "../../lib/agenda/useConsultaPeriodica";
 import { etiquetaRol, tienePermiso } from "../../lib/permisos";
 import { useAuth } from "../../store/AuthContext";
+import { useCupo } from "../../store/useCupo";
 import DetalleCita from "./DetalleCita";
 import NuevaCita from "./NuevaCita";
 import TarjetaCita from "./TarjetaCita";
@@ -46,6 +49,7 @@ function conCita(d: MiAgendaRespuesta | null, c: Cita): MiAgendaRespuesta | null
 export default function MiAgenda() {
   const { usuario, negocio, logout, puede } = useAuth();
   const veProduccion = puede?.("mi_produccion") ?? false;
+  const { aplica: conCupo } = useCupo();
   const hoy = fechaNegocio();
   const [dia, setDia] = useState(hoy);
   const [abierta, setAbierta] = useState<Cita | null>(null);
@@ -125,6 +129,13 @@ export default function MiAgenda() {
             <Icon name="logout" size={20} />
           </button>
         </div>
+        {/* Plan Emprendedor: sólo a quien agenda, que es quien consume citas.
+            Sin cupo el chip no existe y este bloque no ocupa lugar. */}
+        {puedeAgendar && conCupo && (
+          <div className="mx-auto flex max-w-2xl">
+            <ChipCupo unidad="CITA" />
+          </div>
+        )}
         {proxima && (
           <div className="mx-auto max-w-2xl rounded-2xl bg-white/15 p-3.5">
             <p className="text-[12px] font-semibold uppercase tracking-wide text-barra-texto-2">{proxima.rotulo}</p>
@@ -140,6 +151,8 @@ export default function MiAgenda() {
           </div>
         )}
       </header>
+      {/* Los avisos del cupo de citas, como en el Layout (acá no hay Layout). */}
+      {puedeAgendar && <BarraCupo avisos={["CITA"]} />}
 
       <main className="mx-auto w-full max-w-2xl flex-1 space-y-3 px-4 py-3">
         {agenda.cargando && !agenda.datos ? (
@@ -245,6 +258,9 @@ export default function MiAgenda() {
         />
       )}
       {rapida.dialogo}
+      {/* Mi agenda vive fuera del Layout: la hoja de comprar créditos que
+          piden el chip y la nueva cita se dibuja acá. */}
+      <HojaCupoHost />
     </div>
   );
 }

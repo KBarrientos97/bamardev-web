@@ -27,6 +27,10 @@ const sesion = vi.hoisted(() => ({
   conAgenda: false,
   /** Permisos que se le sacan a la plantilla CAJERO. */
   sinPermisos: [] as string[],
+  /** Plan Emprendedor: sin cupo en todos los casos de siempre. */
+  cupo: undefined as import("../../types").CupoEstado | undefined,
+  actualizarCupo: vi.fn(),
+  refrescarCupo: vi.fn(async () => {}),
 }));
 
 vi.mock("../../store/AuthContext", async () => {
@@ -44,11 +48,18 @@ vi.mock("../../store/AuthContext", async () => {
       rubro: sesion.conAgenda ? "PELUQUERIA" : "RESTAURANTE",
       incluye: () => true,
       puede: (s: string) => (s === "hoy" ? sesion.conAgenda : true),
+      cupo: sesion.cupo,
+      licencia: null,
+      actualizarCupo: sesion.actualizarCupo,
+      refrescarCupo: sesion.refrescarCupo,
     }),
   };
 });
 
 vi.mock("../../lib/api", () => ({
+  // El catch del cobro pregunta `instanceof ApiError`: sin la clase, un error
+  // cualquiera del POST rompía el test en vez de mostrarse.
+  ApiError: class ApiError extends Error {},
   api: {
     cajaActual: vi.fn(async () => ({
       caja: {
@@ -67,6 +78,10 @@ vi.mock("../../lib/api", () => ({
     entregasMesero: vi.fn(async () => null),
     crearVenta: vi.fn(),
   },
+}));
+
+vi.mock("../../lib/apiMonedero", () => ({
+  apiMonedero: { paquetesCreditos: vi.fn(), comprarCreditos: vi.fn(), compraCreditos: vi.fn() },
 }));
 
 vi.mock("../../lib/agenda/apiConfigAgenda", () => ({
@@ -176,6 +191,10 @@ import { api } from "../../lib/api";
 import { apiAgenda } from "../../lib/agenda/apiAgenda";
 import { apiConfigAgenda } from "../../lib/agenda/apiConfigAgenda";
 import type { Recurso } from "../../lib/agenda/tiposConfigAgenda";
+import { apiMonedero } from "../../lib/apiMonedero";
+import { fechaNegocio } from "../../lib/agenda/horaAgenda";
+import { HojaCupoHost } from "../../components/ComprarCreditos";
+import { CUPO_ILIMITADO, cupoEmprendedor } from "../../test/cupoFixtures";
 import Pos from "./Pos";
 
 async function montar(ruta = "/pos") {
@@ -194,6 +213,7 @@ beforeEach(() => {
   sesion.features = [];
   sesion.conAgenda = false;
   sesion.sinPermisos = [];
+  sesion.cupo = undefined;
 });
 
 describe("M-11: lo del salón y del reparto, sólo con su feature", () => {
@@ -721,5 +741,209 @@ describe("N2-13: venta directa con profesional", () => {
     });
     const cuerpo = vi.mocked(api.crearVenta).mock.calls[0][0] as { detalles: object[] };
     expect(cuerpo.detalles).toEqual([{ productoId: 189, cantidad: 1, precio: 80, consumo: "MESA" }]);
+  });
+});
+
+describe("Plan Emprendedor: el cupo de ventas en el cobro (§5.2)", () => {
+  const producto = (id: number, nombre: string, precio: number): Producto =>
+    ({ id, nombre, precio, tipoProducto: "SIMPLE", stockTotal: 10, habilitado: true, componentes: [] }) as unknown as Producto;
+
+  const enCarrito = (...ids: number[]) =>
+    sessionStorage.setItem(
+      "bamar.carrito.LOCAL",
+      JSON.stringify(ids.map((id) => ({ id, cantidad: 1, enMesa: 1, nota: "" }))),
+    );
+
+  /** El POS con la hoja montada al lado, como en el Layout. */
+  async function montarConHoja(ruta = "/pos") {
+    render(
+      <MemoryRouter initialEntries={[ruta]}>
+        <Pos />
+        <HojaCupoHost />
+      </MemoryRouter>,
+    );
+    await act(async () => {});
+    await act(async () => {});
+  }
+
+  const hoja = () => screen.queryByRole("dialog", { name: "Llegaste a tus 50 ventas de hoy" });
+
+  beforeEach(() => {
+    sesion.features = ["pos", "caja"];
+    vi.mocked(api.getProductos).mockResolvedValue([producto(189, "Pollo a la brasa", 80)]);
+    vi.mocked(api.crearVenta).mockResolvedValue({ id: 60 } as never);
+    vi.mocked(apiMonedero.paquetesCreditos).mockResolvedValue({
+      paquetes: [],
+      saldo: 0,
+      puedeComprar: true,
+      motivo: null,
+      recordatorioLicencia: null,
+    });
+    enCarrito(189);
+  });
+
+  it("un negocio Básico (ilimitado) cobra como siempre: sin hoja y sin pedir /monedero", async () => {
+    sesion.cupo = CUPO_ILIMITADO;
+    await montarConHoja();
+    expect(sesion.refrescarCupo).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "ir a cobrar" }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "pagar 80" }));
+    });
+    expect(api.crearVenta).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(sesion.actualizarCupo).not.toHaveBeenCalled();
+    expect(screen.getByText("recibo")).toBeInTheDocument();
+  });
+
+  it("sin cupo en la sesión (backend viejo) tampoco cambia nada", async () => {
+    await montarConHoja();
+    fireEvent.click(screen.getByRole("button", { name: "ir a cobrar" }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "pagar 80" }));
+    });
+    expect(api.crearVenta).toHaveBeenCalledTimes(1);
+    expect(sesion.refrescarCupo).not.toHaveBeenCalled();
+  });
+
+  it("Emprendedor: al montarse pide el contador a /monedero", async () => {
+    sesion.cupo = cupoEmprendedor({ fecha: fechaNegocio(), ventas: 3, saldo: 10 });
+    await montarConHoja();
+    expect(sesion.refrescarCupo).toHaveBeenCalledTimes(1);
+  });
+
+  it("sin cupo ni créditos no llama a crearVenta y abre la hoja; el carrito sigue armado", async () => {
+    sesion.cupo = cupoEmprendedor({ fecha: fechaNegocio(), ventas: 50, saldo: 0 });
+    await montarConHoja();
+    fireEvent.click(screen.getByRole("button", { name: "ir a cobrar" }));
+    await act(async () => {});
+    expect(hoja()).toBeInTheDocument();
+    expect(api.crearVenta).not.toHaveBeenCalled();
+    expect(screen.getByText(/Pollo a la brasa x1/)).toBeInTheDocument();
+  });
+
+  it("con el cupo lleno pero con créditos, cobra", async () => {
+    sesion.cupo = cupoEmprendedor({ fecha: fechaNegocio(), ventas: 50, saldo: 3 });
+    await montarConHoja();
+    fireEvent.click(screen.getByRole("button", { name: "ir a cobrar" }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "pagar 80" }));
+    });
+    expect(api.crearVenta).toHaveBeenCalledTimes(1);
+    expect(hoja()).not.toBeInTheDocument();
+  });
+
+  it("un 403 CUPO_AGOTADO abre la hoja con el cupo del servidor, sin cartel de error", async () => {
+    sesion.cupo = cupoEmprendedor({ fecha: fechaNegocio(), ventas: 49, saldo: 0 });
+    const delServidor = cupoEmprendedor({ fecha: fechaNegocio(), ventas: 50, saldo: 0 });
+    vi.mocked(api.crearVenta).mockRejectedValue(
+      Object.assign(new Error("Llegaste a tus 50 ventas de hoy y no te quedan créditos."), {
+        status: 403,
+        codigo: "CUPO_AGOTADO",
+        detalle: { codigo: "CUPO_AGOTADO", unidad: "VENTA", cupo: delServidor },
+      }),
+    );
+    await montarConHoja();
+    fireEvent.click(screen.getByRole("button", { name: "ir a cobrar" }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "pagar 80" }));
+    });
+    await act(async () => {});
+    expect(api.crearVenta).toHaveBeenCalledTimes(1);
+    expect(sesion.actualizarCupo).toHaveBeenCalledWith(delServidor);
+    expect(screen.getByRole("dialog", { name: /Llegaste a tus 50 ventas de hoy/ })).toBeInTheDocument();
+    expect(screen.queryByText(/no te quedan créditos/)).not.toBeInTheDocument();
+    // El cobro sigue ahí para reintentar después de comprar.
+    expect(screen.getByRole("button", { name: "pagar 80" })).toBeInTheDocument();
+    expect(screen.queryByText("recibo")).not.toBeInTheDocument();
+  });
+
+  it("después de cobrar guarda el consumo.cupo que trae la venta", async () => {
+    sesion.cupo = cupoEmprendedor({ fecha: fechaNegocio(), ventas: 10, saldo: 0 });
+    const despues = cupoEmprendedor({ fecha: fechaNegocio(), ventas: 11, saldo: 0 });
+    vi.mocked(api.crearVenta).mockResolvedValue({
+      id: 61,
+      consumo: { unidad: "VENTA", fuente: "CUPO", creditos: 0, cupo: despues },
+    } as never);
+    await montarConHoja();
+    fireEvent.click(screen.getByRole("button", { name: "ir a cobrar" }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "pagar 80" }));
+    });
+    expect(sesion.actualizarCupo).toHaveBeenCalledWith(despues);
+  });
+
+  it("un cobro que quedó en duda (sin respuesta) se reintenta aunque el contador ya diga lleno", async () => {
+    // El POST llegó y grabó la venta con el último lugar, pero la respuesta se
+    // perdió. Mientras tanto el chequeo de licencia trajo 50/50 sin créditos.
+    // El reintento con el mismo clienteRequestId devuelve la venta que ya
+    // existe sin consumir nada: bloquearlo mandaba a comprar créditos por una
+    // venta ya registrada.
+    sesion.cupo = cupoEmprendedor({ fecha: fechaNegocio(), ventas: 49, saldo: 0 });
+    let intentos = 0;
+    vi.mocked(api.crearVenta).mockImplementation(async () => {
+      intentos += 1;
+      if (intentos > 1) return { id: 62 } as never;
+      sesion.cupo = cupoEmprendedor({ fecha: fechaNegocio(), ventas: 50, saldo: 0 });
+      throw Object.assign(new Error("Sin internet. Revisá la conexión del local."), { status: 0 });
+    });
+    await montarConHoja();
+    fireEvent.click(screen.getByRole("button", { name: "ir a cobrar" }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "pagar 80" }));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "pagar 80" }));
+    });
+    expect(hoja()).not.toBeInTheDocument();
+    expect(api.crearVenta).toHaveBeenCalledTimes(2);
+    const [primero, segundo] = vi.mocked(api.crearVenta).mock.calls;
+    expect(segundo[0].clienteRequestId).toBe(primero[0].clienteRequestId);
+  });
+
+  it("un rechazo seguro (4xx) no deja el cobro en duda: con el contador lleno, bloquea", async () => {
+    sesion.cupo = cupoEmprendedor({ fecha: fechaNegocio(), ventas: 49, saldo: 0 });
+    vi.mocked(api.crearVenta).mockImplementation(async () => {
+      sesion.cupo = cupoEmprendedor({ fecha: fechaNegocio(), ventas: 50, saldo: 0 });
+      throw Object.assign(new Error("Stock insuficiente"), { status: 400 });
+    });
+    await montarConHoja();
+    fireEvent.click(screen.getByRole("button", { name: "ir a cobrar" }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "pagar 80" }));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "pagar 80" }));
+    });
+    expect(api.crearVenta).toHaveBeenCalledTimes(1);
+    expect(hoja()).toBeInTheDocument();
+  });
+
+  it("la venta de una cita no se bloquea aunque no quede cupo ni créditos", async () => {
+    sesion.features = ["pos", "caja", "agenda"];
+    sesion.conAgenda = true;
+    sesion.cupo = cupoEmprendedor({ fecha: fechaNegocio(), ventas: 50, saldo: 0 });
+    sessionStorage.clear();
+    vi.mocked(api.getProductos).mockResolvedValue([
+      { id: 189, nombre: "Corte de dama", precio: 80, tipoProducto: "SERVICIO", stockTotal: 0, habilitado: true, componentes: [] },
+    ] as unknown as Producto[]);
+    vi.mocked(apiAgenda.carrito).mockResolvedValue({
+      citaId: 13,
+      codigo: "K7M2QX",
+      estado: "POR_COBRAR",
+      ventaId: null,
+      cobroRevisar: false,
+      sucursalId: 1,
+      cliente: { id: 5, nombre: "Rosa Mamani" },
+      lineas: [{ productoId: 189, descripcion: "Corte de dama", cantidad: 1, precio: 80, recursoId: 3, recurso: "Carla" }],
+      total: 80,
+    });
+    await montarConHoja("/pos?cita=13");
+    fireEvent.click(screen.getByRole("button", { name: "ir a cobrar" }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "pagar 80" }));
+    });
+    expect(hoja()).not.toBeInTheDocument();
+    expect(api.crearVenta).toHaveBeenCalledWith(expect.objectContaining({ citaId: 13 }));
   });
 });

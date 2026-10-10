@@ -6,6 +6,8 @@ import { etiquetaRol } from "../lib/permisos";
 import { useAuth } from "../store/AuthContext";
 import AvisoLicencia from "./AvisoLicencia";
 import CambiarMiPassword from "./CambiarMiPassword";
+import { BarraCupo } from "./ChipCupo";
+import { HojaCupoHost } from "./ComprarCreditos";
 import { Icon } from "./Icon";
 import MenuLateral from "./MenuLateral";
 
@@ -29,7 +31,7 @@ function leerColapsada(): boolean {
 }
 
 export default function Layout() {
-  const { usuario, negocio } = useAuth();
+  const { usuario, negocio, puede } = useAuth();
   const [abierto, setAbierto] = useState(false);
   const [colapsada, setColapsada] = useState(leerColapsada);
   // Acá y no en el menú: en el celular, abrir el formulario cierra el cajón,
@@ -181,6 +183,15 @@ export default function Layout() {
         {/* Fuera del <main> con scroll: el aviso de vencimiento tiene que
             quedar a la vista aunque la pantalla esté scrolleada. */}
         <AvisoLicencia />
+        {/* Plan Emprendedor: el chip de ventas y los avisos del cupo. Sin
+            cupo (Básico, Profesional) no dibuja nada. */}
+        <BarraCupo
+          chip={puede("pos") ? "VENTA" : undefined}
+          avisos={[
+            ...(puede("pos") ? (["VENTA"] as const) : []),
+            ...(puede("hoy") || puede("agenda") ? (["CITA"] as const) : []),
+          ]}
+        />
 
         <main className="min-h-0 flex-1 overflow-y-auto print:overflow-visible">
           <Outlet />
@@ -188,6 +199,8 @@ export default function Layout() {
       </div>
 
       {cambiandoPassword && <CambiarMiPassword onClose={() => setCambiandoPassword(false)} />}
+      {/* La hoja de comprar créditos: la piden el chip, el POS y la agenda. */}
+      <HojaCupoHost />
     </div>
   );
 }

@@ -3,6 +3,8 @@ import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Cita, EstadoCita } from "../../lib/agenda/tiposAgenda";
 import { cita } from "../../test/agendaFixtures";
+import { cupoEmprendedor } from "../../test/cupoFixtures";
+import type { CupoEstado } from "../../types";
 
 /**
  * A4 · Detalle de la cita: las acciones que ofrece dependen del estado (§6) y
@@ -14,6 +16,8 @@ const sesion = vi.hoisted(() => ({
   conPos: false,
   /** Los permisos del login (por defecto, los de recepción). */
   permisos: [] as string[] | undefined,
+  cupo: null as CupoEstado | null,
+  refrescarCupo: vi.fn(async () => {}),
 }));
 
 vi.mock("../../store/AuthContext", () => ({
@@ -27,6 +31,8 @@ vi.mock("../../store/AuthContext", () => ({
     },
     negocio: { id: 1, nombre: "Salón Bella Vista", tipoNegocio: "PELUQUERIA" },
     puede: (s: string) => s === "pos" && sesion.conPos,
+    cupo: sesion.cupo,
+    refrescarCupo: sesion.refrescarCupo,
   }),
 }));
 
@@ -72,6 +78,7 @@ const botones = () =>
 beforeEach(() => {
   vi.clearAllMocks();
   sesion.conPos = false;
+  sesion.cupo = null;
   sesion.permisos = ["agenda.ver", "agenda.gestionar", "agenda.estado", "ventas.vender"];
   // El día de las citas de prueba, a las 11:00 de La Paz: después de su inicio
   // (10:00). Desde la ronda 1 de QA la hora decide qué se ofrece.
@@ -276,5 +283,39 @@ describe("QA ronda 1 · detalle de la cita", () => {
   it("B-23: una cita confirmada sí", async () => {
     await abrir(cita({ estado: "CONFIRMADA" }));
     expect(screen.getByRole("button", { name: /Copiar recordatorio/ })).toBeInTheDocument();
+  });
+});
+
+describe("Plan Emprendedor: cancelar devuelve la cita del día (D19)", () => {
+  async function cancelar() {
+    vi.mocked(apiAgenda.cambiarEstado).mockResolvedValue(cita({ estado: "CANCELADA" }));
+    await abrir(cita({ estado: "CONFIRMADA" }));
+    fireEvent.click(screen.getByRole("button", { name: "Cancelar cita" }));
+    fireEvent.click(screen.getByRole("button", { name: "Cliente avisó" }));
+    await act(async () => {
+      fireEvent.click(screen.getAllByRole("button", { name: "Cancelar cita" }).at(-1)!);
+    });
+    expect(apiAgenda.cambiarEstado).toHaveBeenCalledWith(1, "CANCELAR", "Cliente avisó");
+  }
+
+  it("con cupo, se vuelve a pedir el contador: la nueva cita no queda bloqueada", async () => {
+    sesion.cupo = cupoEmprendedor({ citas: 50, saldo: 0 });
+    await cancelar();
+    expect(sesion.refrescarCupo).toHaveBeenCalledTimes(1);
+  });
+
+  it("otras acciones (Llegó) no lo piden", async () => {
+    sesion.cupo = cupoEmprendedor({ citas: 50, saldo: 0 });
+    vi.mocked(apiAgenda.cambiarEstado).mockResolvedValue(cita({ estado: "EN_ESPERA" }));
+    await abrir(cita({ estado: "CONFIRMADA" }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Llegó" }));
+    });
+    expect(sesion.refrescarCupo).not.toHaveBeenCalled();
+  });
+
+  it("sin cupo no pide nada de más", async () => {
+    await cancelar();
+    expect(sesion.refrescarCupo).not.toHaveBeenCalled();
   });
 });

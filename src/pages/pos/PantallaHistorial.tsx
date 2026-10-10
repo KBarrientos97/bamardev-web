@@ -22,6 +22,7 @@ import { tienePermiso, tieneFeature } from "../../lib/permisos";
 import { esBelleza, marcaConsumo } from "../../lib/rubro";
 import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
+import { useCupo } from "../../store/useCupo";
 import type { Caja, Venta } from "../../types";
 
 export default function PantallaHistorial({
@@ -528,6 +529,7 @@ function DialogoAnular({
   onAnulada: () => void;
 }) {
   const { rubro } = useAuth();
+  const { aplica: conCupo, refrescarCupo } = useCupo();
   const [autorizador, setAutorizador] = useState("");
   const [pin, setPin] = useState("");
   const [motivo, setMotivo] = useState<MotivoAnulacion | "">("");
@@ -570,6 +572,10 @@ function DialogoAnular({
         autorizadorPin: pin,
         motivo: textoMotivo,
       });
+      // Plan Emprendedor (D10): la anulación devuelve el lugar del día (o
+      // los créditos) y la respuesta no trae el contador. Sin pedirlo, el
+      // POS seguía bloqueando con 50/50 hasta el chequeo de los 15 min.
+      if (conCupo) refrescarCupo();
       onAnulada();
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo anular");

@@ -22,6 +22,8 @@ import type {
 import { fmtMoney } from "../../lib/format";
 import { tienePermiso, veSoloSuAgenda } from "../../lib/permisos";
 import { useApi } from "../../lib/useApi";
+import { quedoEnDuda } from "../../lib/cupo";
+import { useBloqueoCupo } from "../../lib/useBloqueoCupo";
 import { useAuth } from "../../store/AuthContext";
 import { PedirPinCredito } from "../pos/PantallaCredito";
 import { SelectorHuecos } from "./SelectorHuecos";
@@ -46,6 +48,9 @@ function telNormal(t: string | null | undefined): string {
   const d = (t ?? "").replace(/\D/g, "");
   return d.startsWith("591") && d.length > 8 ? d.slice(3) : d;
 }
+
+/** Lo que queda escrito en el formulario mientras la hoja de compra está arriba. */
+const SIN_CUPO_CITAS = "No te queda cupo de citas hoy. Comprá créditos para agendarla: lo cargado sigue acá.";
 
 function nuevoRequestId(): string {
   return typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -90,6 +95,18 @@ export default function NuevaCita({
   // Superponer sin PIN: el permiso `agenda.sobreturno` (a la recepción se le
   // puede prender en su rol).
   const esEncargado = tienePermiso(usuario, "agenda.sobreturno");
+  // Plan Emprendedor: el cupo de citas del día (cada una fuera del cupo usa
+  // 2 créditos). Sin cupo (Básico, Profesional) no cambia nada.
+  const {
+    verificar: hayLugarParaCita,
+    manejarError: rechazoPorCupo,
+    registrar: registrarConsumo,
+  } = useBloqueoCupo("CITA");
+  // El último intento quedó sin respuesta: pudo haber grabado la cita con el
+  // último lugar. El reintento (mismo `clienteRequestId`) no se bloquea acá
+  // aunque el contador ya diga lleno: lo decide el servidor (ver `quedoEnDuda`).
+  const citaEnDuda = useRef(false);
+  const hayLugar = () => citaEnDuda.current || hayLugarParaCita();
 
   const servicios = useApi(() => apiAgenda.servicios(), []);
   const reglas = useApi(
@@ -300,6 +317,9 @@ export default function NuevaCita({
         lineas.map((l) => ({ servicioId: l.servicioId!, recursoId: l.recursoId! })),
         listaServicios,
       );
+      // Sin cupo se avisa antes de pedirle la firma a nadie: el encargado
+      // firmaría para nada.
+      if (!hayLugar()) return setError(SIN_CUPO_CITAS);
       // El cajero necesita la firma de un encargado, como al anular (§4).
       if (!esEncargado && !firma) {
         setPidiendoPin(true);
@@ -311,6 +331,9 @@ export default function NuevaCita({
       lineasCita = lineasDePropuesta(p);
     }
 
+    // Sin lugar en el cupo ni créditos no se manda nada (§5.1): se abre la
+    // hoja de compra y el formulario queda como está para confirmar después.
+    if (!hayLugar()) return setError(SIN_CUPO_CITAS);
     setEnviando(true);
     try {
       const quien = await resolverCliente();
@@ -328,8 +351,14 @@ export default function NuevaCita({
           : {}),
         clienteRequestId: requestId.current,
       });
+      registrarConsumo(cita);
       onCreada(cita);
     } catch (e) {
+      citaEnDuda.current = quedoEnDuda(e);
+      // Otro equipo agendó la última del día (403 CUPO_AGOTADO): se abre la
+      // hoja y no se borra nada. La cita no se creó, así que el mismo
+      // `clienteRequestId` sirve para reintentar después de comprar.
+      if (rechazoPorCupo(e)) return setError(SIN_CUPO_CITAS);
       const nuevos = huecosDelConflicto(e);
       if (nuevos) {
         // §7.2: otro lo tomó primero. Lista nueva, todo lo demás queda.

@@ -4,10 +4,12 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
 import {
+  CUPO_KEY,
   LICENCIA_KEY,
   NEGOCIO_KEY,
   USER_KEY,
@@ -15,6 +17,7 @@ import {
   limpiarSesion,
   tokenStore,
 } from "../lib/api";
+import { apiMonedero } from "../lib/apiMonedero";
 import { identificar, olvidarUsuario } from "../lib/telemetria";
 import { fijarMoneda } from "../lib/format";
 import { aplicarTema } from "../lib/temas";
@@ -27,7 +30,7 @@ import {
 } from "../lib/permisos";
 import { conPerfilDelEstado } from "../lib/perfilNegocio";
 import type { Vocabulario } from "../lib/rubro";
-import type { EstadoLicencia, SesionNegocio, SesionUsuario } from "../types";
+import type { CupoEstado, EstadoLicencia, SesionNegocio, SesionUsuario } from "../types";
 
 /** Alias del negocio: se recuerda para no re-tipearlo en cada login. */
 const ALIAS_KEY = "bamardev_web_alias";
@@ -62,6 +65,16 @@ interface AuthValue {
   permisosListos: boolean;
   /** ¿El plan incluye esta capacidad? Para botones dentro de una pantalla. */
   incluye: (capacidad: Capacidad) => boolean;
+  /**
+   * Plan Emprendedor: el último contador del día y saldo conocidos (el
+   * "snapshot" de §5.1). null = el backend no lo mandó; con `ilimitado` es un
+   * plan sin cupo. En los dos casos nadie muestra ni bloquea nada.
+   */
+  cupo: CupoEstado | null;
+  /** Pisa el snapshot con uno más nuevo (el de una venta, una cita o un 403). */
+  actualizarCupo: (cupo: CupoEstado | null | undefined) => void;
+  /** Lo pide de nuevo a `GET /monedero`. Sólo tiene sentido con cupo. */
+  refrescarCupo: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthValue | null>(null);
@@ -91,6 +104,61 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     leer<EstadoLicencia>(LICENCIA_KEY),
   );
   const [aliasRecordado, setAlias] = useState(() => localStorage.getItem(ALIAS_KEY) ?? "");
+  // Se rehidrata por lo mismo que la licencia: tras un F5 el POS tiene que
+  // poder decidir si deja cobrar antes de que vuelva el primer chequeo.
+  const [cupo, setCupo] = useState<CupoEstado | null>(() => leer<CupoEstado>(CUPO_KEY));
+
+  /**
+   * Guarda el snapshot del cupo. Llega de cinco lados (login, estado de la
+   * licencia, `/monedero`, la respuesta de cada venta o cita y el cuerpo del
+   * 403) y todos lo pasan por acá, así que se guarda igual venga de donde venga.
+   */
+  const guardarCupo = useCallback((nuevo: CupoEstado | null | undefined) => {
+    const valor = nuevo ?? null;
+    try {
+      if (valor) localStorage.setItem(CUPO_KEY, JSON.stringify(valor));
+      else localStorage.removeItem(CUPO_KEY);
+    } catch {
+      /* sin almacenamiento: vale para esta pestaña y listo */
+    }
+    setCupo(valor);
+  }, []);
+
+  /**
+   * Orden de los snapshots. Las consultas (`/monedero`, `/licencia/estado`)
+   * pueden volver DESPUÉS de algo más nuevo: el POS pide el contador al
+   * montarse, la cajera vende antes de que vuelva, y la respuesta vieja
+   * (40/50) pisaba la de la venta (41/50). Peor: después de comprar créditos
+   * un chequeo en vuelo podía devolver el saldo 0 y volver a bloquear, y tras
+   * salir y entrar a otro negocio, el `/monedero` de la sesión anterior se
+   * metía en la nueva. Cada consulta anota su turno al SALIR y sólo se aplica
+   * si nada más nuevo se escribió mientras tanto.
+   */
+  const turnoCupo = useRef(0);
+  const turnoAplicado = useRef(0);
+  const pedirTurnoCupo = useCallback(() => ++turnoCupo.current, []);
+  const aplicarConsulta = useCallback(
+    (turno: number, nuevo: CupoEstado | null | undefined) => {
+      if (turno < turnoAplicado.current) return;
+      turnoAplicado.current = turno;
+      guardarCupo(nuevo);
+    },
+    [guardarCupo],
+  );
+
+  /** Lo que ya es un hecho (una venta, una cita, un 403, el login): va siempre. */
+  const actualizarCupo = useCallback(
+    (nuevo: CupoEstado | null | undefined) => {
+      turnoAplicado.current = ++turnoCupo.current;
+      guardarCupo(nuevo);
+    },
+    [guardarCupo],
+  );
+
+  const refrescarCupo = useCallback(async () => {
+    const turno = pedirTurnoCupo();
+    aplicarConsulta(turno, await apiMonedero.monedero());
+  }, [pedirTurnoCupo, aplicarConsulta]);
 
   // La moneda del negocio vale para todo el formateo; se fija al rehidratar.
   if (negocio?.moneda) fijarMoneda(negocio.moneda);
@@ -113,6 +181,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(NEGOCIO_KEY, JSON.stringify(sesion));
     localStorage.setItem(ALIAS_KEY, alias);
     if (res.licencia) localStorage.setItem(LICENCIA_KEY, JSON.stringify(res.licencia));
+    // El contrato lo manda en la raíz; si un backend lo mandara sólo dentro de
+    // la licencia, también sirve.
+    actualizarCupo(res.cupo ?? res.licencia?.cupo);
     fijarMoneda(res.negocio?.moneda);
     aplicarTema(sesion);
     setToken(res.accessToken);
@@ -121,7 +192,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setLicencia(res.licencia ?? null);
     setAlias(alias);
     identificar(alias, res.usuario.username, res.usuario.rol);
-  }, []);
+  }, [actualizarCupo]);
 
   const logout = useCallback(() => {
     limpiarSesion();
@@ -133,7 +204,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUsuario(null);
     setNegocio(null);
     setLicencia(null);
-  }, []);
+    // Lo que todavía esté en vuelo es de esta sesión: no tiene que volver.
+    actualizarCupo(null);
+  }, [actualizarCupo]);
 
   /**
    * Repinta el menú cuando el panel prende o apaga una sección.
@@ -260,6 +333,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let vivo = true;
 
     const revisar = () => {
+      const turno = pedirTurnoCupo();
       api
         .licencia()
         .then((estado) => {
@@ -269,6 +343,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           refrescarFeatures(estado.features);
           refrescarPerfil(estado);
           refrescarPermisos(estado.permisosVersion);
+          // El contador viaja en este mismo estado: cada 15 min y al volver a
+          // la pestaña llega el del día, aunque nadie haya vendido acá.
+          aplicarConsulta(turno, estado.cupo);
         })
         // Falla abierto, igual que Android: un error de red no puede dejar al
         // cajero trabado. Si la licencia de verdad venció, el próximo request
@@ -290,7 +367,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       clearInterval(id);
       document.removeEventListener("visibilitychange", alVolver);
     };
-  }, [token, refrescarFeatures, refrescarPerfil, refrescarPermisos]);
+  }, [token, refrescarFeatures, refrescarPerfil, refrescarPermisos, pedirTurnoCupo, aplicarConsulta]);
 
   // Reidentifica en PostHog tras un F5: el usuario se rehidrata de
   // localStorage sin pasar por `login`, y sin esto los errores de esa sesión
@@ -341,8 +418,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       puede,
       incluye,
       permisosListos,
+      cupo,
+      actualizarCupo,
+      refrescarCupo,
     }),
-    [token, usuario, negocio, licencia, aliasRecordado, login, logout, puede, incluye, permisosListos],
+    [
+      token,
+      usuario,
+      negocio,
+      licencia,
+      aliasRecordado,
+      login,
+      logout,
+      puede,
+      incluye,
+      permisosListos,
+      cupo,
+      actualizarCupo,
+      refrescarCupo,
+    ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

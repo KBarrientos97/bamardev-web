@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import ChipCupo from "../../components/ChipCupo";
 import { Chips } from "../../components/filtros";
 import { Icon } from "../../components/Icon";
 import { AvisoOk, Boton, Cargando, ErrorMsg, Select, useAviso } from "../../components/ui";
@@ -196,6 +197,9 @@ export default function Agenda() {
             onChange={(v) => setPorEspacio(v === "espacio")}
           />
         )}
+        {/* Plan Emprendedor: el contador es el de HOY aunque se mire otro día:
+            una cita consume el día en que se agenda, no el de la cita (§2.1). */}
+        <ChipCupo unidad="CITA" />
         <CampanaAvisos onAbrirCita={setAbierta} />
         <Boton icono="plus" onClick={() => setNueva({ fecha })} disabled={!suc.sucursalId && !datos?.sucursalId}>
           Nueva cita

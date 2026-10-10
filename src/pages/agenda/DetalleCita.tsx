@@ -27,6 +27,7 @@ import { tienePermiso } from "../../lib/permisos";
 import { Telefono } from "../../lib/telefono";
 import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
+import { useCupo } from "../../store/useCupo";
 import { ExtrasCita } from "../belleza/ExtrasAgenda";
 import MoverCita from "./MoverCita";
 import PedirMotivo from "./PedirMotivo";
@@ -66,6 +67,7 @@ export default function DetalleCita({
   onCambio: (cita: Cita) => void;
 }) {
   const { negocio, usuario } = useAuth();
+  const { aplica: conCupo, refrescarCupo } = useCupo();
   const cobrar = useCobrarCita();
   const profesional = modo === "profesional";
   // "Sin cargo" es decidir no cobrar (QA SEG-02): agenda.gestionar o
@@ -110,6 +112,10 @@ export default function DetalleCita({
     setOcupado(true);
     try {
       aplicar(await apiAgenda.cambiarEstado(cita.id, accion, motivo));
+      // Plan Emprendedor (D19): cancelar devuelve la cita del día y la
+      // respuesta no trae el contador. Sin pedirlo, la nueva cita seguía
+      // bloqueada con 50/50 hasta el chequeo de los 15 min.
+      if (accion === "CANCELAR" && conCupo) refrescarCupo();
       setPidiendo(null);
     } catch (e) {
       const faltan = faltantesDelConflicto(e);
