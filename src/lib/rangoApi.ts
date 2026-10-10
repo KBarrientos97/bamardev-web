@@ -49,6 +49,20 @@ export function rangoParaApi<T extends { desde?: string; hasta?: string }>(r: T)
 }
 
 /**
+ * Lo mismo para un período cuyo `hasta` YA es exclusivo (el mes de Gastos:
+ * del 1 al 1 del mes siguiente, ver `finDeMes`): las dos puntas son la
+ * medianoche local de ese día, sin correr el `hasta` un día más. Lo que ya
+ * trae hora pasa tal cual.
+ */
+export function periodoParaApi<T extends { desde?: string; hasta?: string }>(r: T): T {
+  return {
+    ...r,
+    ...(r.desde && SOLO_DIA.test(r.desde) ? { desde: medianocheLocal(r.desde) } : {}),
+    ...(r.hasta && SOLO_DIA.test(r.hasta) ? { hasta: medianocheLocal(r.hasta) } : {}),
+  };
+}
+
+/**
  * Minutos a sumarle a UTC para llegar a la hora local (Bolivia = −240). Lo
  * piden los reportes mensuales para cortar cada mes en el reloj del negocio.
  */

@@ -86,7 +86,7 @@ import type {
   ZonaSalon,
 } from "../types/salon";
 import { reportarError } from "./telemetria";
-import { rangoParaApi, tzOffsetMin } from "./rangoApi";
+import { periodoParaApi, rangoParaApi, tzOffsetMin } from "./rangoApi";
 
 // URL del backend. En los builds la fija VITE_API_URL (QA o PROD); en `npm run
 // dev` queda vacía a propósito y pegamos a /api, que el proxy de Vite reenvía
@@ -825,11 +825,14 @@ export const api = {
 
   /** El hero: total, pagado y pendiente del periodo. Viaja aparte de la lista
    *  porque es del periodo entero y no cambia con la pestana. */
+  //  El mes se corta en la medianoche LOCAL (`periodoParaApi`): con el día
+  //  pelado el backend tomaba la de UTC, y "Sobre las ventas" sumaba la noche
+  //  del último día del mes anterior y dejaba afuera la del último de éste.
   getResumenGastos: (params: {
     desde: string;
     hasta: string;
     sucursalId?: number | null;
-  }) => request<ResumenGastos>(`/gastos/resumen${qs(params)}`),
+  }) => request<ResumenGastos>(`/gastos/resumen${qs(periodoParaApi(params))}`),
 
   getGastos: (
     params: {
@@ -840,7 +843,7 @@ export const api = {
       categoria?: string;
       sucursalId?: number | null;
     },
-  ) => request<Gasto[]>(`/gastos${qs(params)}`),
+  ) => request<Gasto[]>(`/gastos${qs(periodoParaApi(params))}`),
 
   crearGasto: (input: GastoInput) =>
     request<Gasto>("/gastos", { method: "POST", body: JSON.stringify(input) }),
