@@ -207,7 +207,18 @@ export default function ComprarCreditos({
     : `Tu saldo: ${fmtCreditos(saldo)} ${saldo === 1 ? "crédito" : "créditos"}`;
 
   return createPortal(
-    <Modal abierto titulo={titulo} subtitulo={subtitulo} onClose={onClose} ancho="max-w-md">
+    // Sin cerrar al clic afuera: la hoja se abre desde un clic en Cobrar, y el
+    // segundo clic de un doble clic caía en el fondo y la cerraba en el acto
+    // (y un clic suelto mientras se escanea perdía el QR en pantalla). Se
+    // cierra con la X, con Escape o con «Seguir vendiendo».
+    <Modal
+      abierto
+      titulo={titulo}
+      subtitulo={subtitulo}
+      onClose={onClose}
+      ancho="max-w-md"
+      cerrarAlClicAfuera={false}
+    >
       <div className="space-y-4">
         {bloqueada ? (
           <p role="alert" className="rounded-xl bg-danger-bg px-3.5 py-3 text-sm text-danger-text">
@@ -426,19 +437,25 @@ function Exito({
  * alguna en la pantalla.
  */
 export function HojaCupoHost() {
-  const [pedido, setPedido] = useState<(PedidoHojaCupo & { n: number }) | null>(null);
+  const [pedido, setPedido] = useState<(PedidoHojaCupo & { n: number; abierta: boolean }) | null>(null);
   useEffect(() => {
     const abrir = (e: Event) => {
       const detalle = (e as CustomEvent<PedidoHojaCupo>).detail ?? {};
       // Cada pedido arranca limpio (`key`): una compra a medio pagar de antes
-      // no tiene que aparecer en la hoja de un bloqueo nuevo.
-      setPedido((previo) => ({ ...detalle, n: (previo?.n ?? 0) + 1 }));
+      // no tiene que aparecer en la hoja de un bloqueo nuevo. Pero con la
+      // hoja ABIERTA un pedido nuevo (Enter o doble clic en Cobrar, que
+      // sigue con el foco) no la reinicia: se perdía el QR que se estaba
+      // por pagar. Sólo se actualiza el motivo.
+      setPedido((previo) =>
+        previo?.abierta ? { ...previo, ...detalle } : { ...detalle, n: (previo?.n ?? 0) + 1, abierta: true },
+      );
     };
     window.addEventListener(EVENTO_HOJA_CUPO, abrir);
     return () => window.removeEventListener(EVENTO_HOJA_CUPO, abrir);
   }, []);
-  const cerrar = useCallback(() => setPedido(null), []);
-  if (!pedido) return null;
+  // Se conserva `n` al cerrar: el próximo pedido monta una hoja nueva.
+  const cerrar = useCallback(() => setPedido((previo) => (previo ? { ...previo, abierta: false } : previo)), []);
+  if (!pedido?.abierta) return null;
   return <ComprarCreditos key={pedido.n} unidad={pedido.unidad} agotado={pedido.agotado} onClose={cerrar} />;
 }
 

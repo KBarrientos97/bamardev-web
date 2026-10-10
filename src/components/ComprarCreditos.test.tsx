@@ -310,4 +310,24 @@ describe("compra por QR y sondeo", () => {
     expect(deAbajo).not.toHaveBeenCalled();
     document.removeEventListener("keydown", deAbajo);
   });
+
+  it("un segundo pedido con la hoja abierta (doble clic en Cobrar) no la reinicia ni pierde el QR", async () => {
+    vi.mocked(apiMonedero.comprarCreditos).mockResolvedValue(compra());
+    await abrir();
+    fireEvent.click(screen.getByRole("button", { name: "50 créditos por Bs 20" }));
+    await flush();
+    expect(screen.getByRole("img", { name: "Código QR para pagar los créditos" })).toBeInTheDocument();
+    await act(async () => abrirHojaCupo({ unidad: "VENTA", agotado: true }));
+    await flush();
+    expect(screen.getByRole("img", { name: "Código QR para pagar los créditos" })).toBeInTheDocument();
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
+    expect(apiMonedero.comprarCreditos).toHaveBeenCalledTimes(1);
+  });
+
+  it("el segundo clic de un doble clic (cae en el fondo) no la cierra", async () => {
+    await abrir();
+    const fondo = screen.getByRole("dialog").parentElement!;
+    fireEvent.mouseDown(fondo);
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
 });
