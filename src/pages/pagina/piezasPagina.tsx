@@ -446,19 +446,26 @@ export function PiePagina({
         <MarcaBamarDev />
         Powered by BamarDev
       </a>
-      <span style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: "4px 12px" }}>
-        {urlPrivacidad && (
+      {/* La fila sólo existe si hay algo que poner: vacía, sumaba el `gap`
+          del pie como un renglón en blanco. */}
+      {urlPrivacidad && (
+        <span style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: "4px 12px" }}>
           <a href={urlPrivacidad} style={{ color }}>
             Privacidad
           </a>
-        )}
-        <a href="https://bamardev.com/terminos" rel="noopener" style={{ color }}>
-          Términos de BamarDev
-        </a>
-        <a href="https://bamardev.com/privacidad" rel="noopener" style={{ color }}>
-          Privacidad de BamarDev
-        </a>
-      </span>
+          {/* Decisión D1 (pase de octubre): los textos legales de BamarDev
+              quedan ocultos hasta completarlos, y bamardev.com/terminos y
+              /privacidad redirigen a la portada. Volver a mostrarlos cuando
+              estén publicados.
+          <a href="https://bamardev.com/terminos" rel="noopener" style={{ color }}>
+            Términos de BamarDev
+          </a>
+          <a href="https://bamardev.com/privacidad" rel="noopener" style={{ color }}>
+            Privacidad de BamarDev
+          </a>
+          */}
+        </span>
+      )}
     </footer>
   );
 }
