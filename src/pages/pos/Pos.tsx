@@ -57,7 +57,7 @@ import BloqueDescuentos from "./BloqueDescuentos";
 import { ClientePaquete, SesionesDePaquete, SesionesEnVentaDirecta } from "./PaquetesPos";
 import { detallesDePaquete, featuresSpa, sinLineasConPaquete, sinUsarPaquetes } from "../../lib/agenda/spa";
 import { apiSpa } from "../../lib/agenda/apiSpa";
-import { useIntentoDeCobro } from "./useIntentoDeCobro";
+import { huellaDeCobro, useIntentoDeCobro } from "./useIntentoDeCobro";
 // Venta directa con profesional (N2-13): quién hizo cada servicio sin cita.
 import { apiConfigAgenda } from "../../lib/agenda/apiConfigAgenda";
 import {
@@ -108,9 +108,22 @@ export default function Pos() {
    * 2.000 artículos para no usarlos sería pagar la espera de abrir el POS por
    * nada. La lista vacía es correcta ahí — la grilla no se dibuja.
    */
+  //
+  // Con la sucursal de la caja: de ahí salen el PRECIO y el STOCK. Sin ella,
+  // al dueño (usuario de toda la organización) el backend le daba el precio
+  // de lista y el stock sumado de todos los almacenes, y la venta cobraba el
+  // de la sucursal: "los pagos (12) deben sumar el total (15)". Mientras la
+  // caja carga se espera (la promesa queda pendiente y `useApi` la descarta
+  // al volver a pedir): pedir antes sería traer el catálogo dos veces.
+  const almacenCaja = caja.datos?.caja?.almacenId ?? null;
   const productos = useApi(
-    () => (esFarmacia(rubro) ? Promise.resolve([]) : api.getProductos()),
-    [rubro],
+    () =>
+      esFarmacia(rubro)
+        ? Promise.resolve([])
+        : caja.cargando
+          ? new Promise<never>(() => {})
+          : api.getProductos(false, almacenCaja),
+    [rubro, caja.cargando, almacenCaja],
   );
   const categorias = useApi(() => api.getCategorias(false), []);
   const formasPago = useApi(() => api.getFormasPago(), []);
@@ -511,14 +524,17 @@ export default function Pos() {
         const creada = mesaCobrando
           ? await api.cobrarMesa(mesaCobrando.id, {
               pagos,
-              clienteRequestId: intento.actual(),
+              clienteRequestId: intento.actual(`mesa:${mesaCobrando.id}`),
             })
-          : await api.crearVenta({
-              ...(cuerpo ?? cuerpoVenta(pagos)),
-              // Belleza: la propina viaja aparte (no suma a la venta).
-              ...(extra?.propinas?.length ? { propinas: extra.propinas } : {}),
-              clienteRequestId: intento.actual(),
-            });
+          : await (() => {
+              const venta = cuerpo ?? cuerpoVenta(pagos);
+              return api.crearVenta({
+                ...venta,
+                // Belleza: la propina viaja aparte (no suma a la venta).
+                ...(extra?.propinas?.length ? { propinas: extra.propinas } : {}),
+                clienteRequestId: intento.actual(huellaDeCobro(venta.detalles, venta.tipoPedido)),
+              });
+            })();
         intento.registrado();
         cobroEnDuda.current = false;
         registrarConsumo(creada);
@@ -572,8 +588,9 @@ export default function Pos() {
       if (!hayLugar()) return;
       setEnviando(true);
       try {
+        const detalles = carritoVenta.aDetalles();
         const creada = await api.crearVenta({
-          detalles: carritoVenta.aDetalles(),
+          detalles,
           ...descuentos.extraVenta(),
           tipoPedido,
           clienteNombre: datos.clienteNombre,
@@ -584,7 +601,7 @@ export default function Pos() {
           minutosEstimados: datos.minutosEstimados,
           notaPedido: datos.notaPedido,
           prepagado: false,
-          clienteRequestId: intento.actual(),
+          clienteRequestId: intento.actual(huellaDeCobro(detalles, tipoPedido)),
         });
         intento.registrado();
         cobroEnDuda.current = false;
@@ -626,7 +643,7 @@ export default function Pos() {
           ...(pagos.length ? { pagos } : {}),
           // La propina se deja en el momento aunque la venta se fíe.
           ...(propinas.length ? { propinas } : {}),
-          clienteRequestId: intento.actual(),
+          clienteRequestId: intento.actual(huellaDeCobro(conLaCita.detalles, "LOCAL")),
         });
         intento.registrado();
         cobroEnDuda.current = false;

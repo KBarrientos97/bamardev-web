@@ -119,7 +119,9 @@ export default function PagarLicencia({ aliasInicial, onSalir }: Props) {
     } finally {
       setGenerando(false);
     }
-  }, []);
+    // Con `opciones`: con la lista vacía de deps el cierre las leía siempre
+    // null (de antes de pedirlas) y "Cubre hasta el …" no salía nunca.
+  }, [opciones]);
 
   // Con el alias a mano (la sesión, o el que acaba de tipear en el login) se
   // saltea el primer paso y se va directo a elegir el plazo. Ya no se genera el

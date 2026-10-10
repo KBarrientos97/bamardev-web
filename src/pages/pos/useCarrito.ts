@@ -280,18 +280,23 @@ export function useCarrito(
     const out: DetalleVentaInput[] = [];
     for (const l of lineas) {
       const nota = l.nota.trim() || undefined;
+      // Un delivery o un "recoger" no tienen mesa. El carrito se arma con el
+      // pedido en LOCAL (en mesa) y recién después se elige el tipo, así que
+      // las líneas llegan acá con su reparto del mostrador: se mandan todas
+      // para llevar, sin tocarlo (si vuelve al mostrador, sigue como estaba).
+      const enMesa = enMesaPorDefecto ? l.enMesa : 0;
       // Una línea partida viaja como dos detalles: el backend guarda el
       // consumo por detalle, así la comanda sabe qué va a la mesa.
-      if (l.enMesa > 0) {
+      if (enMesa > 0) {
         out.push({
           productoId: l.producto.id,
-          cantidad: l.enMesa,
+          cantidad: enMesa,
           precio: l.producto.precio,
           consumo: "MESA",
           ...(nota ? { nota } : {}),
         });
       }
-      const llevar = l.cantidad - l.enMesa;
+      const llevar = l.cantidad - enMesa;
       if (llevar > 0) {
         out.push({
           productoId: l.producto.id,
@@ -303,7 +308,7 @@ export function useCarrito(
       }
     }
     return out;
-  }, [lineas]);
+  }, [lineas, enMesaPorDefecto]);
 
   return {
     lineas,

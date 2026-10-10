@@ -273,3 +273,31 @@ describe("un negocio sin estas features (Omar)", () => {
     expect(onConfirmar.mock.calls[0]).toHaveLength(1);
   });
 });
+
+describe("pase oct: centavos en el cobro de Omar", () => {
+  beforeEach(() => {
+    sesion.rubro = "RESTAURANTE";
+    sesion.features = ["pos", "pago_qr_mixto"];
+  });
+
+  it("la sugerencia de efectivo 'justo' es el total, no un centavo más", () => {
+    // Math.ceil(35.2 * 100) daba 3521: el chip decía Bs 35,21 y dejaba un
+    // cambio de Bs 0,01 grabado como entregado.
+    montar(vi.fn(), undefined, { total: 35.2 });
+    expect(screen.getByRole("button", { name: /^Bs.35,20$/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Bs.35,21$/ })).not.toBeInTheDocument();
+  });
+
+  it("mixto con un QR de tres decimales: los pagos van en centavos y suman el total", () => {
+    const onConfirmar = montar(vi.fn(), undefined, { total: 100 });
+    fireEvent.click(screen.getByRole("button", { name: "Mixto" }));
+    escribir(/Monto pagado por QR/, "33.335");
+    fireEvent.click(screen.getByText("Ya llegó el QR"));
+    escribir(/Efectivo recibido/, "70");
+    fireEvent.click(screen.getByText(/Confirmar cobro/));
+    const pagos = onConfirmar.mock.calls[0][0] as { monto: number }[];
+    for (const p of pagos) expect(Math.round(p.monto * 100) / 100).toBe(p.monto);
+    // El backend exige que la suma dé el total (al centavo).
+    expect(Math.round(pagos.reduce((s, p) => s + p.monto, 0) * 100)).toBe(10000);
+  });
+});

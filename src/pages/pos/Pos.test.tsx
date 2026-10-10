@@ -151,6 +151,7 @@ vi.mock("./PantallaCobro", () => ({
     profesionales?: { id: number; nombre: string }[];
     onConfirmar: (p: unknown[], extra?: unknown) => void;
     onCredito?: (extra?: unknown) => void;
+    onAtras?: () => void;
   }) => {
     const pagos = props.total > 0 ? [{ formaPagoId: 1, monto: props.total }] : [];
     const primero = props.profesionales?.[0];
@@ -159,6 +160,7 @@ vi.mock("./PantallaCobro", () => ({
       <div>
         <p>propina para: {(props.profesionales ?? []).map((p) => p.nombre).join(", ") || "nadie"}</p>
         <button onClick={() => props.onConfirmar(pagos)}>pagar {props.total}</button>
+        <button onClick={() => props.onAtras?.()}>volver al carrito</button>
         {propina && (
           <button onClick={() => props.onConfirmar(pagos, propina)}>pagar {props.total} con propina</button>
         )}
@@ -214,6 +216,16 @@ beforeEach(() => {
   sesion.conAgenda = false;
   sesion.sinPermisos = [];
   sesion.cupo = undefined;
+});
+
+describe("pase oct: el catálogo del POS es el de la sucursal de la caja", () => {
+  it("pide precio y stock de la sucursal donde está abierta la caja, una sola vez", async () => {
+    await montar();
+    // Sin la sucursal, al dueño le llegaba el precio de lista y la venta
+    // cobraba el de la sucursal ("los pagos no suman el total").
+    expect(api.getProductos).toHaveBeenCalledWith(false, 1);
+    expect(api.getProductos).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("M-11: lo del salón y del reparto, sólo con su feature", () => {
@@ -945,5 +957,60 @@ describe("Plan Emprendedor: el cupo de ventas en el cobro (§5.2)", () => {
     });
     expect(hoja()).not.toBeInTheDocument();
     expect(api.crearVenta).toHaveBeenCalledWith(expect.objectContaining({ citaId: 13 }));
+  });
+});
+
+describe("pase oct: el clienteRequestId es el de ESE cobro", () => {
+  const producto = (id: number, nombre: string, precio: number): Producto =>
+    ({ id, nombre, precio, tipoProducto: "SIMPLE", stockTotal: 10, habilitado: true, componentes: [] }) as unknown as Producto;
+
+  beforeEach(() => {
+    sesion.features = ["pos", "caja"];
+    vi.mocked(api.getProductos).mockResolvedValue([producto(189, "Pollo a la brasa", 80), producto(7, "Coca-Cola", 10)]);
+    sessionStorage.setItem(
+      "bamar.carrito.LOCAL",
+      JSON.stringify([189, 7].map((id) => ({ id, cantidad: 1, enMesa: 1, nota: "" }))),
+    );
+    // El primer POST se queda sin respuesta (pudo haberse grabado).
+    let intentos = 0;
+    vi.mocked(api.crearVenta).mockImplementation(async () => {
+      intentos += 1;
+      if (intentos > 1) return { id: 70 + intentos } as never;
+      throw Object.assign(new Error("Sin internet. Revisá la conexión del local."), { status: 0 });
+    });
+  });
+
+  it("si después del fallo se cambia lo que se cobra, es otra venta: id nuevo", async () => {
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "ir a cobrar" }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "pagar 90" }));
+    });
+    // Vuelve al carrito, saca la Coca-Cola y cobra lo que queda.
+    fireEvent.click(screen.getByRole("button", { name: "volver al carrito" }));
+    fireEvent.click(screen.getByRole("button", { name: "quitar Coca-Cola" }));
+    fireEvent.click(screen.getByRole("button", { name: "ir a cobrar" }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "pagar 80" }));
+    });
+    const [primero, segundo] = vi.mocked(api.crearVenta).mock.calls;
+    // Con el mismo id el backend devolvía la venta de 90 como si fuera ésta:
+    // el ticket decía "registrada" y la de 80 no existía.
+    expect(segundo[0].clienteRequestId).not.toBe(primero[0].clienteRequestId);
+  });
+
+  it("si se vuelve al carrito y se cobra lo mismo, es el mismo cobro: mismo id", async () => {
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "ir a cobrar" }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "pagar 90" }));
+    });
+    fireEvent.click(screen.getByRole("button", { name: "volver al carrito" }));
+    fireEvent.click(screen.getByRole("button", { name: "ir a cobrar" }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "pagar 90" }));
+    });
+    const [primero, segundo] = vi.mocked(api.crearVenta).mock.calls;
+    expect(segundo[0].clienteRequestId).toBe(primero[0].clienteRequestId);
   });
 });

@@ -16,14 +16,30 @@ import { useCallback, useRef } from "react";
  * duplica la venta y descuenta el stock dos veces. Lo mismo vale para el fallo
  * de red, donde la respuesta se pierde pero el POST pudo haber llegado.
  *
- * El id se renueva SÓLO ante un éxito confirmado: renovarlo ante un error
- * rompería justamente la protección que da este hook.
+ * El id se renueva ante un éxito confirmado, o cuando lo que se cobra ya no
+ * es lo mismo (`huella`): renovarlo ante un error con el mismo carrito
+ * rompería justamente la protección que da este hook. Pero con OTRO carrito
+ * el mismo id era peor: si el intento fallido sí se grabó, el backend
+ * devolvía esa venta vieja como si fuera la nueva, el ticket decía
+ * "registrada" y la venta nueva no existía. Android lo resuelve igual: volver
+ * al carrito a corregir estrena id (ver `IntentoDeCobro.kt`).
  */
 export function useIntentoDeCobro() {
   const id = useRef<string>(nuevo());
+  /** De qué cobro es el id vigente; null = todavía no se mandó nada. */
+  const huellaDelId = useRef<string | null>(null);
 
-  /** El id a mandar. Se repite mientras el cobro no se haya concretado. */
-  const actual = useCallback(() => id.current, []);
+  /**
+   * El id a mandar. Se repite mientras el cobro no se haya concretado y lo
+   * que se cobra (`huella`: las líneas de la venta, o la mesa) sea lo mismo.
+   */
+  const actual = useCallback((huella?: string) => {
+    if (huella !== undefined) {
+      if (huellaDelId.current !== null && huellaDelId.current !== huella) id.current = nuevo();
+      huellaDelId.current = huella;
+    }
+    return id.current;
+  }, []);
 
   /**
    * La venta quedó registrada: el próximo cobro es otra venta y necesita otra
@@ -31,9 +47,19 @@ export function useIntentoDeCobro() {
    */
   const registrado = useCallback(() => {
     id.current = nuevo();
+    huellaDelId.current = null;
   }, []);
 
   return { actual, registrado };
+}
+
+/**
+ * Lo que identifica QUÉ se cobra: las líneas (artículo, cantidad, consumo) y
+ * el tipo de pedido. Los pagos no entran a propósito: reintentar con otro
+ * monto entregado es el mismo cobro.
+ */
+export function huellaDeCobro(detalles: unknown, tipoPedido?: string): string {
+  return JSON.stringify([tipoPedido ?? null, detalles]);
 }
 
 /**

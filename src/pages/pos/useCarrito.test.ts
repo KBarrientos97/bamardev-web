@@ -1,6 +1,6 @@
 import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
-import type { Producto } from "../../types";
+import type { Producto, TipoPedido } from "../../types";
 import { idsGuardados, paraVender, useCarrito } from "./useCarrito";
 
 function producto(over: Partial<Producto> = {}): Producto {
@@ -218,6 +218,27 @@ describe("useCarrito", () => {
     const { result } = renderHook(() => useCarrito("DELIVERY"));
     act(() => result.current.agregar(producto()));
     expect(result.current.lineas[0].enMesa).toBe(0);
+  });
+
+  it("pase oct: lo armado en el mostrador y pasado a delivery o recoger viaja para llevar", () => {
+    // El carrito se arma con el pedido en LOCAL (líneas en mesa) y recién
+    // después se toca "Delivery": sin esto la venta a domicilio se grababa
+    // con consumo MESA y el historial le ponía la etiqueta "Mesa".
+    const p = producto();
+    const { result, rerender } = renderHook(({ t }) => useCarrito(t), {
+      initialProps: { t: "LOCAL" as TipoPedido },
+    });
+    act(() => result.current.agregar(p));
+    act(() => result.current.agregar(p));
+    rerender({ t: "DELIVERY" });
+    expect(result.current.aDetalles()).toEqual([
+      expect.objectContaining({ productoId: 1, cantidad: 2, consumo: "LLEVAR" }),
+    ]);
+    rerender({ t: "RECOGER" });
+    expect(result.current.aDetalles()).toEqual([expect.objectContaining({ cantidad: 2, consumo: "LLEVAR" })]);
+    // Al volver al mostrador, el reparto que había elegido sigue ahí.
+    rerender({ t: "LOCAL" });
+    expect(result.current.aDetalles()).toEqual([expect.objectContaining({ cantidad: 2, consumo: "MESA" })]);
   });
 
   it("sumar una unidad a una línea entera en mesa la deja entera en mesa", () => {

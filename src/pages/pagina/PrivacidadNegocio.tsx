@@ -8,7 +8,8 @@ import { usePaginaPublica } from "../../lib/pagina/usePaginaPublica";
 import { useCoincideMedia } from "../../lib/useCoincideMedia";
 import PoliticaNegocio from "../../publico/PoliticaNegocio";
 import { NoDisponible } from "./PaginaPublica";
-import { ANCHO_ESCRITORIO, MarcaBamarDev } from "./VistaPagina";
+// `MarcaBamarDev` vuelve con el enlace a la privacidad de BamarDev (D1, abajo).
+import { ANCHO_ESCRITORIO /* , MarcaBamarDev */ } from "./VistaPagina";
 
 /**
  * `/p/:subdominio/privacidad`: la política para el cliente del negocio. Es el
@@ -61,6 +62,9 @@ export default function PrivacidadNegocio({ siNoHay }: { siNoHay?: ReactNode }) 
         <div style={{ fontSize: 15 }}>
           <PoliticaNegocio negocio={n} contacto={contacto} colorEnlace={c.oscuro} />
         </div>
+        {/* Decisión D1 (pase de octubre): la política de BamarDev queda oculta
+            hasta completarla (bamardev.com/privacidad redirige a la portada).
+            La del negocio, arriba, sigue. Volver a mostrarla cuando esté.
         <a
           href="https://bamardev.com/privacidad"
           style={{ display: "inline-flex", gap: 6, alignItems: "center", fontSize: 12, color: "#6B7280", marginTop: 6 }}
@@ -68,6 +72,7 @@ export default function PrivacidadNegocio({ siNoHay }: { siNoHay?: ReactNode }) 
           <MarcaBamarDev />
           Privacidad de BamarDev
         </a>
+        */}
       </article>
     </div>
   );
