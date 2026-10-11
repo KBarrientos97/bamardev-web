@@ -9,6 +9,9 @@ export default defineConfig(({ mode }) => {
   // cuando el cambio todavía no está desplegado.
   const env = loadEnv(mode, process.cwd(), '')
   const destino = env.API_PROXY || 'https://api-qa.bamardev.com'
+  // El asistente de la página (bamardev-chat) vive en el mismo dominio, en
+  // `/chat`. Con `CHAT_PROXY=http://localhost:3100` se prueba el de acá.
+  const destinoChat = env.CHAT_PROXY || destino
 
   return {
     plugins: [react(), tailwindcss()],
@@ -29,6 +32,11 @@ export default defineConfig(({ mode }) => {
           // Contra el backend local es http: exigir certificado válido ahí
           // haría fallar la conexión.
           secure: destino.startsWith('https'),
+        },
+        '/chat': {
+          target: destinoChat,
+          changeOrigin: true,
+          secure: destinoChat.startsWith('https'),
         },
       },
     },
