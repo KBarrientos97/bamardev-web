@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { RUBROS, esBelleza, esFarmacia, esRubro, termino } from "./rubro";
+import { RUBROS, esBelleza, esBillar, esFarmacia, esRubro, marcaConsumo, termino } from "./rubro";
 
 describe("termino", () => {
   it("en una farmacia los artículos son medicamentos", () => {
@@ -84,5 +84,23 @@ describe("rubros de belleza", () => {
       expect(esBelleza(r)).toBe(false);
     }
     expect(esBelleza(undefined)).toBe(false);
+  });
+});
+
+describe("rubro billar", () => {
+  it("es un rubro conocido y no es de belleza", () => {
+    expect(esRubro("BILLAR")).toBe(true);
+    expect(RUBROS).toContain("BILLAR");
+    expect(esBillar("BILLAR")).toBe(true);
+    expect(esBelleza("BILLAR")).toBe(false);
+    expect(esBillar("RESTAURANTE")).toBe(false);
+  });
+
+  it("su ticket no marca mesa o para llevar; el restaurante sí, como siempre", () => {
+    // En un billar la "mesa" es la de pool: una "M" en el ticket del POS se
+    // leería como esa.
+    expect(marcaConsumo("BILLAR")).toBe(false);
+    expect(marcaConsumo("RESTAURANTE")).toBe(true);
+    expect(marcaConsumo(undefined)).toBe(true);
   });
 });

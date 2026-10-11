@@ -210,6 +210,8 @@ export const ESTILO_POR_RUBRO: Record<string, ClaveEstilo> = {
   SPA: "BOUTIQUE",
   BARBERIA: "NOCHE",
   UNAS: "DULCE",
+  // Oscura, como su app en negro.
+  BILLAR: "NOCHE",
 };
 
 /**

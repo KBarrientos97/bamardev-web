@@ -34,7 +34,10 @@ export type Rubro =
   | "PELUQUERIA"
   | "BARBERIA"
   | "SPA"
-  | "UNAS";
+  | "UNAS"
+  // Oct-2026: su propia vertical, en negro. Las pantallas del billar son
+  // todavía una maqueta (ver pages/billar).
+  | "BILLAR";
 
 /**
  * Los de belleza: trabajan con turnos y profesionales, no con mesas ni con
@@ -49,6 +52,7 @@ export const RUBROS: Rubro[] = [
   "FERRETERIA",
   "REPUESTOS",
   ...RUBROS_BELLEZA,
+  "BILLAR",
 ];
 
 export function esRubro(valor: string | null | undefined): valor is Rubro {
@@ -64,14 +68,20 @@ export function esBelleza(rubro: string | null | undefined): boolean {
   return !!rubro && (RUBROS_BELLEZA as string[]).includes(rubro);
 }
 
+export function esBillar(rubro: string | null | undefined): boolean {
+  return rubro === "BILLAR";
+}
+
 /**
  * ¿Las líneas de la venta dicen si son para la mesa o para llevar? Es cosa de
  * la comanda de un restaurante: una farmacia no tiene mesas, y un corte de
  * pelo no se sirve en mesa (QA M-09: el ticket de una peluquería decía "M" en
- * cada línea). Sin rubro (sesión vieja) se muestra, como siempre.
+ * cada línea). En un billar la "mesa" es la de pool y la cobra el tablero: una
+ * "M" en el ticket del POS se leería como esa. Sin rubro (sesión vieja) se
+ * muestra, como siempre.
  */
 export function marcaConsumo(rubro: string | null | undefined): boolean {
-  return !esFarmacia(rubro) && !esBelleza(rubro);
+  return !esFarmacia(rubro) && !esBelleza(rubro) && !esBillar(rubro);
 }
 
 // ── Vocabulario ─────────────────────────────────────────────────────────────

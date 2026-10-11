@@ -198,6 +198,25 @@ export const TEMAS: Record<string, Tema> = {
     barraTexto2: '#E6C8D3',
     marca: ['#B5285A', '#9A224D'],
   },
+  // NEGRO: pedido del dueño (11-oct-2026), "toda la interfaz" en negro. Copia
+  // fija de la fila que siembra el backend (migración 20261028110000), como
+  // las de belleza. Blanco sobre el botón 17,7:1 y sobre la barra 19,9:1.
+  BILLAR: {
+    primary: '#18181B',
+    primary600: '#0F0F11',
+    primary700: '#09090B',
+    primary50: '#F4F4F5',
+    primary100: '#E4E4E7',
+    primary200: '#D4D4D8',
+    // Un negro no se oscurece más: el hover y el presionado aclaran.
+    boton: '#18181B',
+    botonHover: '#27272A',
+    botonActivo: '#3F3F46',
+    barra: '#09090B',
+    barraActivo: '#27272A',
+    barraTexto2: '#C2C2C3',
+    marca: ['#27272A', '#09090B'],
+  },
 };
 
 /** Los doce tonos sueltos de un tema; `marca` va aparte porque es un par. */
@@ -271,6 +290,14 @@ export function resolverTema(origen: OrigenTema): Tema {
 const BELLEZA = ['PELUQUERIA', 'BARBERIA', 'SPA', 'UNAS'];
 
 /**
+ * Los rubros cuya pantalla entera sigue la paleta, no sólo los botones y la
+ * barra: belleza (QA B-24) y el billar, que va en negro de punta a punta. Con
+ * el fondo menta y los monogramas verdes de siempre, un billar negro quedaba
+ * con media pantalla de restaurante.
+ */
+const PANTALLA_CON_PALETA = [...BELLEZA, 'BILLAR'];
+
+/**
  * Aplica el tema del negocio reescribiendo las variables CSS en :root.
  *
  * Acepta el negocio de la sesión o sólo un rubro (ver `resolverTema`). Sin
@@ -282,12 +309,13 @@ export function aplicarTema(origen: OrigenTema): void {
   const rubro = typeof origen === 'string' ? origen : origen?.tipoNegocio;
   /*
    * El fondo de la pantalla y el monograma de los artículos sin categoría
-   * siguen la paleta sólo en belleza (QA B-24: un salón Ciruela tenía fondo
-   * menta y círculos verdes). Restaurante y farmacia vuelven al valor de
-   * index.css —el de siempre— quitando la variable, así se ven exactamente
-   * como hoy y un cambio de sesión no les deja el color del negocio anterior.
+   * siguen la paleta sólo en belleza y en el billar (QA B-24: un salón Ciruela
+   * tenía fondo menta y círculos verdes). Restaurante y farmacia vuelven al
+   * valor de index.css —el de siempre— quitando la variable, así se ven
+   * exactamente como hoy y un cambio de sesión no les deja el color del
+   * negocio anterior.
    */
-  if (rubro && BELLEZA.includes(rubro)) {
+  if (rubro && PANTALLA_CON_PALETA.includes(rubro)) {
     raiz.setProperty('--color-fondo', tema.fondo && HEX.test(tema.fondo) ? tema.fondo : tema.primary50);
     raiz.setProperty('--monograma-bg', tema.primary100);
     raiz.setProperty('--monograma-fg', tema.primary700);
