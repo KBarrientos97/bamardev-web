@@ -28,3 +28,39 @@ export function contiene(texto: string | null | undefined, busqueda: string): bo
   if (!texto) return false;
   return normalizar(texto).includes(normalizar(busqueda));
 }
+
+/**
+ * Dónde cae la coincidencia **en el texto original**, para poder resaltarla.
+ *
+ * No alcanza con buscar sobre el texto normalizado: al sacarle las tildes, los
+ * índices dejan de corresponder con los del original y el resaltado se corre
+ * (en "Ibuprofeno jarabe" no se nota, en "Solución" sí). Por eso se normaliza
+ * carácter por carácter y se guarda de dónde vino cada uno.
+ *
+ * Devuelve `[inicio, fin)` del original, o `null` si no hay coincidencia.
+ */
+export function posicionDe(
+  texto: string | null | undefined,
+  busqueda: string,
+): [number, number] | null {
+  const aguja = normalizar(busqueda.trim());
+  if (!texto || !aguja) return null;
+
+  let pajar = "";
+  // Por cada carácter del texto normalizado, de qué carácter del original vino.
+  const origen: number[] = [];
+  for (let i = 0; i < texto.length; i++) {
+    const norm = normalizar(texto[i]);
+    for (const c of norm) {
+      pajar += c;
+      origen.push(i);
+    }
+  }
+
+  const desde = pajar.indexOf(aguja);
+  if (desde === -1) return null;
+  const hasta = desde + aguja.length - 1;
+  // `+1` porque el fin es exclusivo y `origen[hasta]` es el índice del último
+  // carácter que entra en la coincidencia.
+  return [origen[desde], origen[hasta] + 1];
+}

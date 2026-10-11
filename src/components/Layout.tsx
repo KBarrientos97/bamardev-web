@@ -1,36 +1,15 @@
 import { useEffect, useState } from "react";
-import { NavLink, Outlet, useLocation } from "react-router-dom";
+import { Outlet } from "react-router-dom";
 import { iniciales } from "../lib/format";
-import { etiquetaRol, type Seccion } from "../lib/permisos";
+import { tituloDe, useMenu } from "../lib/menu";
+import { etiquetaRol } from "../lib/permisos";
 import { useAuth } from "../store/AuthContext";
 import AvisoLicencia from "./AvisoLicencia";
-import { Icon, type NombreIcono } from "./Icon";
-
-interface ItemNav {
-  a: string;
-  label: string;
-  icono: NombreIcono;
-  seccion: Seccion;
-  /** Se dibuja indentado bajo Inventario. */
-  sub?: boolean;
-}
-
-const ITEMS: ItemNav[] = [
-  { a: "/pos", label: "Punto de venta", icono: "cart", seccion: "pos" },
-  { a: "/reparto", label: "Mis entregas", icono: "truck", seccion: "reparto" },
-  { a: "/inventario", label: "Inventario", icono: "archive", seccion: "inventario" },
-  { a: "/inventario/productos", label: "Artículos", icono: "box", seccion: "productos", sub: true },
-  { a: "/inventario/categorias", label: "Categorías", icono: "grid", seccion: "productos", sub: true },
-  { a: "/inventario/insumos", label: "Insumos", icono: "sack", seccion: "insumos", sub: true },
-  { a: "/inventario/almacenes", label: "Almacenes", icono: "warehouse", seccion: "almacenes", sub: true },
-  { a: "/inventario/movimientos", label: "Movimientos", icono: "swap", seccion: "movimientos", sub: true },
-  // Va suelto y no como sub-ítem de Inventario: las mesas no son catálogo,
-  // son el salón. En la app está en el mismo lugar del drawer.
-  { a: "/mesas", label: "Mesas del salón", icono: "grid", seccion: "mesas" },
-  { a: "/creditos", label: "Cuentas por cobrar", icono: "dollar", seccion: "creditos" },
-  { a: "/reportes", label: "Reportes", icono: "chart", seccion: "reportes" },
-  { a: "/usuarios", label: "Usuarios", icono: "users", seccion: "usuarios" },
-];
+import CambiarMiPassword from "./CambiarMiPassword";
+import { BarraCupo } from "./ChipCupo";
+import { HojaCupoHost } from "./ComprarCreditos";
+import { Icon } from "./Icon";
+import MenuLateral from "./MenuLateral";
 
 /**
  * Preferencia de barra colapsada. Es del dispositivo y no del usuario: en la
@@ -40,83 +19,48 @@ const ITEMS: ItemNav[] = [
 const COLAPSADA_KEY = "bamardev.sidebar.colapsada";
 
 /**
- * Título de la barra móvil. Se queda con la ruta MÁS LARGA que coincide:
- * "/inventario/productos" empieza con "/inventario", y quedarse con la
- * primera mostraría "Inventario" estando en Artículos.
+ * Sin almacenamiento (modo privado, cuota llena) la barra arranca ancha y el
+ * botón sigue andando: sólo se pierde el recuerdo entre recargas.
  */
-function tituloDe(items: ItemNav[], pathname: string): string {
-  let mejor: ItemNav | null = null;
-  for (const i of items) {
-    if (pathname === i.a || pathname.startsWith(`${i.a}/`)) {
-      if (!mejor || i.a.length > mejor.a.length) mejor = i;
-    }
+function leerColapsada(): boolean {
+  try {
+    return localStorage.getItem(COLAPSADA_KEY) === "1";
+  } catch {
+    return false;
   }
-  return mejor?.label ?? "BamarDev";
 }
 
 export default function Layout() {
-  const { usuario, negocio, logout, puede } = useAuth();
+  const { usuario, negocio, puede } = useAuth();
   const [abierto, setAbierto] = useState(false);
-  const [colapsada, setColapsada] = useState(
-    () => localStorage.getItem(COLAPSADA_KEY) === "1",
-  );
-  const location = useLocation();
+  const [colapsada, setColapsada] = useState(leerColapsada);
+  // Acá y no en el menú: en el celular, abrir el formulario cierra el cajón,
+  // y con él se desmontaría el menú y el formulario adentro.
+  const [cambiandoPassword, setCambiandoPassword] = useState(false);
+  const cambiarPassword = () => {
+    setAbierto(false);
+    setCambiandoPassword(true);
+  };
+  const menu = useMenu();
 
   useEffect(() => {
-    localStorage.setItem(COLAPSADA_KEY, colapsada ? "1" : "0");
+    try {
+      localStorage.setItem(COLAPSADA_KEY, colapsada ? "1" : "0");
+    } catch {
+      // Ver `leerColapsada`.
+    }
   }, [colapsada]);
 
-  const visibles = ITEMS.filter((i) => puede(i.seccion));
-
-  /**
-   * `compacta` aplica sólo a la barra de escritorio: el drawer del móvil se
-   * abre completo siempre, porque ahí el ancho no estorba (se cierra al elegir).
-   */
-  const nav = (compacta: boolean) => (
-    <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto overflow-x-hidden p-3">
-      {visibles.map((item) => (
-        <NavLink
-          key={item.a}
-          to={item.a}
-          end={item.a === "/inventario"}
-          onClick={() => setAbierto(false)}
-          title={compacta ? item.label : undefined}
-          className={({ isActive }) =>
-            [
-              "flex items-center gap-3 rounded-xl py-2.5 text-sm font-semibold transition-colors",
-              compacta ? "justify-center px-0" : "px-3",
-              // Sin etiqueta al lado, la sangría de los sub-items sólo
-              // descentraría el ícono respecto de los demás.
-              item.sub && !compacta ? "ml-3 text-[13px]" : "",
-              // Sobre la barra de color: el activo se marca con un bloque
-              // más claro y blanco pleno; el resto va en el gris teñido, que
-              // mantiene 4.5:1 contra el fondo.
-              isActive
-                ? "bg-barra-activo text-barra-texto"
-                : "text-barra-texto-2 hover:bg-barra-activo hover:text-barra-texto",
-            ].join(" ")
-          }
-        >
-          <Icon name={item.icono} size={item.sub && !compacta ? 17 : 19} />
-          {!compacta && <span>{item.label}</span>}
-        </NavLink>
-      ))}
-
-      <div className="my-2 border-t border-white/15" />
-
-      <button
-        onClick={logout}
-        title={compacta ? "Cerrar sesión" : undefined}
-        className={[
-          "flex items-center gap-3 rounded-xl py-2.5 text-sm font-semibold text-barra-texto-2 transition-colors hover:bg-danger hover:text-white",
-          compacta ? "justify-center px-0" : "px-3",
-        ].join(" ")}
-      >
-        <Icon name="logout" size={19} />
-        {!compacta && <span>Cerrar sesión</span>}
-      </button>
-    </nav>
-  );
+  // Escape cierra el cajón del celular, como cualquier panel que se abre
+  // encima: con teclado (o un lector de pantalla) no hay fondo que tocar.
+  useEffect(() => {
+    if (!abierto) return;
+    const alTeclear = (e: globalThis.KeyboardEvent) => {
+      if (e.key === "Escape") setAbierto(false);
+    };
+    document.addEventListener("keydown", alTeclear);
+    return () => document.removeEventListener("keydown", alTeclear);
+  }, [abierto]);
 
   const encabezado = (compacta: boolean) => (
     <div
@@ -137,7 +81,9 @@ export default function Layout() {
               {negocio?.nombre ?? "BamarDev"}
             </h2>
             <span className="text-xs text-barra-texto-2">
-              {usuario ? etiquetaRol(usuario.rol) : ""}
+              {/* La del login manda: es el nombre del rol en este negocio
+                  ("Recepción", "Barbero"); sin ella, la de siempre. */}
+              {usuario ? usuario.rolNombre?.trim() || etiquetaRol(usuario.rol, negocio) : ""}
             </span>
           </div>
         )}
@@ -180,7 +126,12 @@ export default function Layout() {
         ].join(" ")}
       >
         {encabezado(colapsada)}
-        {nav(colapsada)}
+        <MenuLateral
+          menu={menu}
+          compacta={colapsada}
+          onNavegar={() => setAbierto(false)}
+          onCambiarPassword={cambiarPassword}
+        />
 
         {/* Montado sobre el borde derecho para no restarle alto a la
             navegación, que con Inventario abierto ya llega larga. */}
@@ -204,7 +155,12 @@ export default function Layout() {
           />
           <aside className="absolute inset-y-0 left-0 flex w-72 flex-col bg-barra shadow-2xl">
             {encabezado(false)}
-            {nav(false)}
+            <MenuLateral
+              menu={menu}
+              compacta={false}
+              onNavegar={() => setAbierto(false)}
+              onCambiarPassword={cambiarPassword}
+            />
           </aside>
         </div>
       )}
@@ -220,18 +176,31 @@ export default function Layout() {
             <Icon name="menu" size={22} />
           </button>
           <span className="text-[15px] font-bold text-texto">
-            {tituloDe(visibles, location.pathname)}
+            {tituloDe(menu.planos, menu.pathname)}
           </span>
         </header>
 
         {/* Fuera del <main> con scroll: el aviso de vencimiento tiene que
             quedar a la vista aunque la pantalla esté scrolleada. */}
         <AvisoLicencia />
+        {/* Plan Emprendedor: el chip de ventas y los avisos del cupo. Sin
+            cupo (Básico, Profesional) no dibuja nada. */}
+        <BarraCupo
+          chip={puede("pos") ? "VENTA" : undefined}
+          avisos={[
+            ...(puede("pos") ? (["VENTA"] as const) : []),
+            ...(puede("hoy") || puede("agenda") ? (["CITA"] as const) : []),
+          ]}
+        />
 
         <main className="min-h-0 flex-1 overflow-y-auto print:overflow-visible">
           <Outlet />
         </main>
       </div>
+
+      {cambiandoPassword && <CambiarMiPassword onClose={() => setCambiandoPassword(false)} />}
+      {/* La hoja de comprar créditos: la piden el chip, el POS y la agenda. */}
+      <HojaCupoHost />
     </div>
   );
 }

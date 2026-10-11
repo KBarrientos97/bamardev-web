@@ -1,9 +1,11 @@
 import { Link } from "react-router-dom";
 import { Icon } from "../../components/Icon";
 import { Badge, Cargando, ErrorMsg, Kpi, Vacio } from "../../components/ui";
+import { Chips } from "../../components/filtros";
 import { api } from "../../lib/api";
 import { fmtFecha, fmtMoney, fmtNum } from "../../lib/format";
 import { useApi } from "../../lib/useApi";
+import { useSucursales } from "../../lib/useSucursales";
 import type { EstadoDocumento } from "../../types";
 
 const TONO_ESTADO: Record<EstadoDocumento, "verde" | "amarillo" | "rojo"> = {
@@ -13,7 +15,13 @@ const TONO_ESTADO: Record<EstadoDocumento, "verde" | "amarillo" | "rojo"> = {
 };
 
 export default function Dashboard() {
-  const { datos, cargando, error } = useApi(() => api.getDashboard(), []);
+  // Con depósitos: la mercadería entra ahí antes de repartirse, así que su
+  // stock es parte del inventario que este resumen valoriza.
+  const suc = useSucursales({ incluirDepositos: true });
+  const { datos, cargando, error } = useApi(
+    () => api.getDashboard(suc.sucursalId),
+    [suc.sucursalId],
+  );
 
   if (cargando) return <Cargando />;
   if (error)
@@ -29,9 +37,15 @@ export default function Dashboard() {
       <header>
         <h1 className="text-xl font-bold text-texto">Dashboard</h1>
         <p className="mt-0.5 text-[13px] text-texto-3">
-          Vista general del sistema de inventario
+          {suc.nombre
+            ? `Inventario de ${suc.nombre}`
+            : "Vista general del sistema de inventario"}
         </p>
       </header>
+
+      {suc.elegir && (
+        <Chips valor={suc.valorChip} opciones={suc.opciones} onChange={suc.alElegir} />
+      )}
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Kpi

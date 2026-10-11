@@ -1,0 +1,97 @@
+import { describe, expect, it } from "vitest";
+import {
+  CAMPOS_REGLA,
+  cambiosReglas,
+  erroresReglas,
+  esCampoRetirado,
+  fmtValorRegla,
+  META_REGLAS,
+  motivoAnticipo,
+  textoOrigen,
+  valoresDe,
+} from "./reglas";
+import type { Reglas } from "./tiposConfigAgenda";
+
+const REGLAS_DEFECTO: Reglas = {
+  granularidadMin: 15,
+  bufferGeneralMin: 0,
+  modoConfirmacion: "MANUAL",
+  anticipacionMinHoras: 2,
+  anticipacionMaxDias: 30,
+  ventanaCancelacionHoras: 4,
+  vencimientoSolicitudHoras: 12,
+  citasActivasPorTelefono: 2,
+  citasPorTelefonoPorDia: 1,
+  noShowsParaBloquear: 3,
+  mostrarPreciosOnline: true,
+  anticipoPct: 30,
+  anticipoPlazoMin: 15,
+  origen: {},
+};
+
+describe("reglas del negocio", () => {
+  it("sólo viaja lo que cambió: lo demás sigue heredando", () => {
+    const original = valoresDe(REGLAS_DEFECTO);
+    const editado = { ...original, granularidadMin: 10, mostrarPreciosOnline: false };
+    expect(cambiosReglas(original, editado)).toEqual({
+      granularidadMin: 10,
+      mostrarPreciosOnline: false,
+    });
+    expect(cambiosReglas(original, original)).toEqual({});
+  });
+
+  it("los valores no llevan el origen ni campos desconocidos", () => {
+    const v = valoresDe({ ...REGLAS_DEFECTO, origen: { granularidadMin: "NEGOCIO" } });
+    expect("origen" in v).toBe(false);
+  });
+
+  it("las reglas del profesional ya no se editan ni vuelven en el PUT (son permisos del rol)", () => {
+    // El backend las sigue mandando, sin efecto: no se cuelan de vuelta.
+    const delBackend = { ...REGLAS_DEFECTO, profesionalPuedeAgendar: true, profesionalVeTelefono: false } as Reglas;
+    const v = valoresDe(delBackend);
+    expect("profesionalPuedeAgendar" in v).toBe(false);
+    expect(CAMPOS_REGLA.filter((c) => c.startsWith("profesional"))).toEqual([]);
+    // Sus cambios viejos siguen en la bitácora del backend, pero el historial
+    // no los muestra: hablaban de interruptores que ya no existen (QA R1 W-14).
+    for (const c of ["profesionalPuedeAgendar", "profesionalPuedeBloquear", "profesionalVeTelefono", "profesionalVePrecios"]) {
+      expect(esCampoRetirado(c)).toBe(true);
+    }
+    expect(esCampoRetirado("granularidadMin")).toBe(false);
+  });
+
+  it("avisa los números fuera de rango o no enteros", () => {
+    const v = valoresDe(REGLAS_DEFECTO);
+    expect(erroresReglas(v)).toEqual({});
+    const e = erroresReglas({ ...v, granularidadMin: 0, anticipacionMaxDias: Number.NaN, bufferGeneralMin: 2.5 });
+    expect(Object.keys(e).sort()).toEqual(["anticipacionMaxDias", "bufferGeneralMin", "granularidadMin"]);
+  });
+
+  it("el origen se cuenta distinto según se mire el negocio o una sucursal", () => {
+    expect(textoOrigen("DEFECTO", "NEGOCIO")).toBe("Valor sugerido del rubro");
+    expect(textoOrigen("NEGOCIO", "NEGOCIO")).toBeNull();
+    expect(textoOrigen("NEGOCIO", "SUCURSAL")).toBe("Heredado de todo el negocio");
+    expect(textoOrigen("SUCURSAL", "SUCURSAL")).toBe("Propio de esta sucursal");
+  });
+
+  it("el motivo del anticipo (D20) sale de las features", () => {
+    expect(motivoAnticipo(["agenda"])).toBe("Disponible en el plan Profesional.");
+    expect(motivoAnticipo(["agenda", "sena_online"])).toMatch(/QR automático de tu banco/);
+  });
+
+  it("la bitácora se lee en palabras", () => {
+    expect(fmtValorRegla("modoConfirmacion", "AUTOMATICA")).toBe(
+      "Queda lista cuando el cliente la confirma",
+    );
+    expect(fmtValorRegla("profesionalVeTelefono", true)).toBe("Sí");
+    expect(fmtValorRegla("granularidadMin", 10)).toBe("10 min");
+    expect(fmtValorRegla("campoNuevo", "x")).toBe("x");
+  });
+});
+
+describe("textos de la reserva online", () => {
+  it("el vencimiento de una solicitud no se lee como una hora del reloj (B26)", () => {
+    const meta = META_REGLAS.vencimientoSolicitudHoras;
+    expect(meta.etiqueta).toBe("Una solicitud sin respuesta vence después de");
+    expect(meta.etiqueta).not.toMatch(/a las$/);
+  });
+});

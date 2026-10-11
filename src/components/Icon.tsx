@@ -51,6 +51,15 @@ const paths: Record<string, ReactNode> = {
       <rect x="3" y="14" width="7" height="7" />
     </>
   ),
+  /** Un panel de resumen. Distinto de `grid`, que ya es Categorías. */
+  tablero: (
+    <>
+      <rect x="3" y="3" width="7" height="9" rx="1" />
+      <rect x="14" y="3" width="7" height="5" rx="1" />
+      <rect x="14" y="12" width="7" height="9" rx="1" />
+      <rect x="3" y="16" width="7" height="5" rx="1" />
+    </>
+  ),
   chart: (
     <>
       <line x1="18" y1="20" x2="18" y2="10" />
@@ -156,6 +165,20 @@ const paths: Record<string, ReactNode> = {
     <>
       <rect x="3" y="11" width="18" height="11" rx="2" />
       <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+    </>
+  ),
+  ojo: (
+    <>
+      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+      <circle cx="12" cy="12" r="3" />
+    </>
+  ),
+  ojoTachado: (
+    <>
+      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" />
+      <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" />
+      <path d="M14.12 14.12a3 3 0 1 1-4.24-4.24" />
+      <path d="M1 1l22 22" />
     </>
   ),
   settings: (
@@ -299,6 +322,82 @@ const paths: Record<string, ReactNode> = {
       <circle cx="9" cy="7" r="4" />
       <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
       <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+    </>
+  ),
+  /**
+   * Una persona tachada: "Clientes que no vuelven". Con el mismo de
+   * "Clientes", en la barra de íconos no se distinguían (QA PER-09).
+   */
+  userX: (
+    <>
+      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+      <circle cx="9" cy="7" r="4" />
+      <path d="M17 8l5 5" />
+      <path d="M22 8l-5 5" />
+    </>
+  ),
+  /** Gift cards (belleza fase 4). */
+  gift: (
+    <>
+      <polyline points="20 12 20 22 4 22 4 12" />
+      <rect x="2" y="7" width="20" height="5" />
+      <line x1="12" y1="22" x2="12" y2="7" />
+      <path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z" />
+      <path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z" />
+    </>
+  ),
+  /*
+   * Los de la barra colapsada del salón (QA VER-06): Clientes, Personal y
+   * Usuarios compartían `users`, y Comisiones, Propinas, Cuentas por cobrar y
+   * Promociones el mismo `dollar`. Sólo se distinguían por el tooltip.
+   */
+  /** Clientes: una persona con un corazón (la cartera). */
+  userHeart: (
+    <>
+      <path d="M14 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+      <circle cx="8" cy="7" r="4" />
+      <path d="M19 20.5s-4-2.4-4-5.1a2 2 0 0 1 4-.9 2 2 0 0 1 4 .9c0 2.7-4 5.1-4 5.1z" />
+    </>
+  ),
+  /** Usuarios: la llave (los accesos al sistema). */
+  key: (
+    <>
+      <circle cx="7.5" cy="15.5" r="4.5" />
+      <path d="M10.7 12.3 21 2" />
+      <path d="M16 7l3 3" />
+      <path d="M18.5 4.5l2 2" />
+    </>
+  ),
+  /** Comisiones: el porcentaje. */
+  percent: (
+    <>
+      <line x1="19" y1="5" x2="5" y2="19" />
+      <circle cx="6.5" cy="6.5" r="2.5" />
+      <circle cx="17.5" cy="17.5" r="2.5" />
+    </>
+  ),
+  /** Propinas: monedas apiladas. */
+  coins: (
+    <>
+      <ellipse cx="9" cy="6" rx="6" ry="3" />
+      <path d="M3 6v4c0 1.7 2.7 3 6 3s6-1.3 6-3V6" />
+      <path d="M3 10v4c0 1.7 2.7 3 6 3 1.1 0 2.1-.1 3-.4" />
+      <ellipse cx="17" cy="15" rx="4" ry="2" />
+      <path d="M13 15v3c0 1.1 1.8 2 4 2s4-.9 4-2v-3" />
+    </>
+  ),
+  /** Promociones: la etiqueta de precio. */
+  tag: (
+    <>
+      <path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L2 12V2h10l8.6 8.6a2 2 0 0 1 0 2.8z" />
+      <circle cx="7" cy="7" r="1.5" />
+    </>
+  ),
+  /** Cámara: fotos antes/después de la ficha técnica. */
+  camara: (
+    <>
+      <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+      <circle cx="12" cy="13" r="4" />
     </>
   ),
 };

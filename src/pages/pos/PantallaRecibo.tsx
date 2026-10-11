@@ -3,6 +3,7 @@ import { Icon } from "../../components/Icon";
 import { Boton } from "../../components/ui";
 import { compartirComoImagen } from "../../lib/compartirTicket";
 import { fmtFecha, fmtFechaHora, fmtMoney, fmtNum } from "../../lib/format";
+import { marcaConsumo } from "../../lib/rubro";
 import { useAuth } from "../../store/AuthContext";
 import type { Venta } from "../../types";
 
@@ -26,7 +27,7 @@ export default function PantallaRecibo({
   onNuevaVenta: () => void;
   onHistorial: () => void;
 }) {
-  const { negocio, incluye } = useAuth();
+  const { negocio, incluye, rubro } = useAuth();
 
   /**
    * El ticket que se rasteriza al compartir: se manda la MISMA vista que se
@@ -57,8 +58,13 @@ export default function PantallaRecibo({
   const pagos = venta.pagos ?? [];
 
   // El badge M/LL sólo aplica a ventas de local: en delivery/recoger todo va
-  // para llevar y ensuciaría el ticket (misma regla que TicketItems.kt).
-  const mostrarConsumo = venta.tipoPedido === "LOCAL";
+  // para llevar y ensuciaría el ticket (misma regla que TicketItems.kt). En una
+  // farmacia no hay mesas, y la "M" en el ticket no querría decir nada.
+  //
+  // Se pregunta por el RUBRO y no por `incluye("mesa_llevar")`: eso también
+  // depende del plan, y a un restaurante al que el panel le saque la feature se
+  // le borraban las marcas de un ticket que siempre las tuvo.
+  const mostrarConsumo = venta.tipoPedido === "LOCAL" && marcaConsumo(rubro);
 
   // Subtotal = suma de las líneas. El envío va aparte, así que Subtotal y TOTAL
   // sólo difieren cuando el pedido tiene tarifa de entrega.
@@ -68,6 +74,31 @@ export default function PantallaRecibo({
   // de pagos: el cliente busca "Efectivo recibido" y "Cambio entregado".
   const efectivo = pagos.find((p) => /efectivo/i.test(p.formaPago ?? ""));
   const qr = pagos.find((p) => /qr|transfer/i.test(p.formaPago ?? ""));
+
+  // Belleza (QA PER-01): el pago guarda lo recibido de la VENTA (así el
+  // backend calcula bien el vuelto), y la propina en efectivo va aparte. Pero
+  // el cliente entregó todo junto: el papel dice lo que dio, propina incluida.
+  const propinas = venta.propinas ?? [];
+  const propinaEnEfectivo =
+    Math.round(
+      propinas.filter((x) => /efectivo/i.test(x.formaPago)).reduce((s, x) => s + x.monto, 0) * 100,
+    ) / 100;
+  // Lo mismo con el QR (QA DIA-02): la transferencia del cliente trae la
+  // propina por QR; el papel dice lo que transfirió, no sólo lo de la venta.
+  const propinaPorQr =
+    Math.round(
+      propinas.filter((x) => /qr|transfer/i.test(x.formaPago)).reduce((s, x) => s + x.monto, 0) * 100,
+    ) / 100;
+  const montoQr = Math.round(((qr?.monto ?? 0) + propinaPorQr) * 100) / 100;
+  const efectivoRecibido = efectivo
+    ? Math.round(((efectivo.recibido ?? efectivo.monto) + propinaEnEfectivo) * 100) / 100
+    : 0;
+  // El cobro manda el cambio; una reimpresión desde el historial (QA PER-08)
+  // no lo trae, pero cada pago guarda el suyo.
+  const cambio =
+    typeof venta.cambio === "number"
+      ? venta.cambio
+      : Math.round(pagos.reduce((s, p) => s + (p.entregado ?? 0), 0) * 100) / 100;
   const metodo =
     venta.formasPago?.join(" + ") ||
     pagos
@@ -106,6 +137,13 @@ export default function PantallaRecibo({
           <dl className="border-t border-dashed border-borde pt-2 text-xs">
             <FilaDato etiqueta="Ticket:" valor={venta.comprobante ?? `#${venta.id}`} />
             <FilaDato etiqueta="Fecha:" valor={fmtFechaHora(venta.fecha)} />
+            {/* Cobrando una mesa, el ticket salía como uno de mostrador: sin
+                mesa ni mesero (visto en QA). El cliente reconoce su cuenta por
+                la mesa, y el mesero es a quien se le reclama. */}
+            {/* El código y no el nombre: el nombre suele ser "Mesa M1" y
+                quedaba "Mesa: Mesa M1". El código es lo que dice el salón. */}
+            {venta.mesa && <FilaDato etiqueta="Mesa:" valor={venta.mesa} />}
+            {venta.mesero && <FilaDato etiqueta="Atendió:" valor={venta.mesero} />}
             {venta.cajero && <FilaDato etiqueta="Cajero:" valor={venta.cajero} />}
             <FilaDato etiqueta="Pago:" valor={metodo} />
           </dl>
@@ -121,6 +159,17 @@ export default function PantallaRecibo({
               <dt>Subtotal</dt>
               <dd>{fmtMoney(subtotal)}</dd>
             </div>
+            {/* Cupones y promociones: cada uno con su nombre. Sólo en una
+                venta con descuento; el ticket de siempre no cambia. */}
+            {(venta.descuentos ?? []).map((x, i) => (
+              <div key={i} className="flex justify-between text-texto-2">
+                <dt>
+                  {x.nombre}
+                  {x.codigo ? ` (${x.codigo})` : ""}
+                </dt>
+                <dd className="shrink-0 whitespace-nowrap">− {fmtMoney(x.monto)}</dd>
+              </div>
+            ))}
             {venta.tarifaEnvio > 0 && (
               <div className="flex justify-between text-texto-2">
                 <dt>Envío</dt>
@@ -140,25 +189,59 @@ export default function PantallaRecibo({
             </div>
             {efectivo && (
               <div className="flex justify-between text-texto-2">
-                <dt>Efectivo recibido</dt>
-                <dd className="font-bold text-texto">
-                  {fmtMoney(efectivo.recibido ?? efectivo.monto)}
-                </dd>
+                <dt>
+                  Efectivo recibido
+                  {propinaEnEfectivo > 0 && (
+                    <span className="block text-xs">(incluye la propina)</span>
+                  )}
+                </dt>
+                <dd className="font-bold text-texto">{fmtMoney(efectivoRecibido)}</dd>
               </div>
             )}
-            {qr && (
+            {(qr || propinaPorQr > 0) && (
               <div className="flex justify-between text-texto-2">
-                <dt>Monto QR</dt>
-                <dd className="font-bold text-texto">{fmtMoney(qr.monto)}</dd>
+                <dt>
+                  Monto QR
+                  {propinaPorQr > 0 && (
+                    <span className="block text-xs">{qr ? "(incluye la propina)" : "(la propina)"}</span>
+                  )}
+                </dt>
+                <dd className="font-bold text-texto">{fmtMoney(montoQr)}</dd>
               </div>
             )}
-            {typeof venta.cambio === "number" && venta.cambio > 0 && (
+            {cambio > 0 && (
               <div className="flex justify-between font-bold text-texto">
                 <dt>Cambio entregado</dt>
-                <dd>{fmtMoney(venta.cambio)}</dd>
+                <dd>{fmtMoney(cambio)}</dd>
               </div>
             )}
+            {/* Belleza: lo que se pagó con cada vale y lo que le queda (QA
+                N2-12). Sólo si la venta usó vales: el ticket de siempre no
+                cambia. */}
+            {(venta.giftCards ?? []).map((g) => (
+              <div key={g.codigo} className="text-texto-2">
+                <div className="flex justify-between">
+                  <dt>Vale {g.codigo}</dt>
+                  <dd className="font-bold text-texto">{fmtMoney(g.usado)}</dd>
+                </div>
+                <p className="text-right text-xs">Le quedan {fmtMoney(g.saldo)}</p>
+              </div>
+            ))}
           </dl>
+
+          {propinas.length > 0 && (
+            <dl className="mt-2 space-y-1 border-t border-dashed border-borde pt-2 text-sm" aria-label="Propinas">
+              <p className="text-xs font-bold tracking-wide text-texto">PROPINAS</p>
+              {propinas.map((x, i) => (
+                <div key={i} className="flex justify-between text-texto-2">
+                  <dt>
+                    Para {x.recurso} ({x.formaPago})
+                  </dt>
+                  <dd className="font-bold text-texto">{fmtMoney(x.monto)}</dd>
+                </div>
+              ))}
+            </dl>
+          )}
 
           {venta.credito && (
             <div className="mt-2 border-t border-dashed border-borde pt-2 text-sm">
@@ -273,7 +356,23 @@ function LineaTicket({
         </span>
         <span className="shrink-0 font-bold text-texto">{fmtMoney(linea.subtotal)}</span>
       </div>
+      {!!linea.descuento && linea.descuento > 0 && (
+        <div className="flex items-start justify-between gap-2 text-xs text-texto-3">
+          <span>{linea.descuentoNombre ?? "Descuento"}</span>
+          <span className="shrink-0">− {fmtMoney(linea.descuento)}</span>
+        </div>
+      )}
       {linea.nota && <p className="text-xs italic text-texto-3">{linea.nota}</p>}
+      {/* Belleza: quién lo hizo y, si es de un paquete, qué sesión fue o qué
+          trae. Una venta sin profesional ni paquetes no lo trae y el ticket
+          de siempre no cambia. */}
+      {linea.recurso && <p className="text-xs text-texto-3">Atendió: {linea.recurso}</p>}
+      {linea.paquete && (
+        <p className="text-xs font-semibold text-texto-2">
+          {linea.paquete.tipo === "SESION" ? `${linea.paquete.nombre}: ` : ""}
+          {linea.paquete.texto}
+        </p>
+      )}
     </div>
   );
 }

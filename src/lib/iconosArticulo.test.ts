@@ -63,4 +63,14 @@ describe("iconosArticulo", () => {
     expect(colorDeCategoria("Ferretería")).toEqual(defecto);
     expect(colorDeCategoria(undefined)).toEqual(defecto);
   });
+
+  it("el por defecto es el verde de siempre, pero se puede teñir con la paleta (B-24)", () => {
+    // Sin la variable (restaurante, farmacia) el navegador usa el respaldo.
+    expect(colorDeCategoria(null)).toEqual({
+      bg: "var(--monograma-bg, #D1FAE5)",
+      fg: "var(--monograma-fg, #047857)",
+    });
+    // Las categorías conocidas no cambian.
+    expect(colorDeCategoria("Bebidas")).toEqual({ bg: "#DBEAFE", fg: "#1D4ED8" });
+  });
 });

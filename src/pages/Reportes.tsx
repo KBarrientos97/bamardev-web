@@ -1,14 +1,29 @@
 import { useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Icon, type NombreIcono } from "../components/Icon";
 import { Chips, EncabezadoPagina } from "../components/filtros";
-import { Boton, Campo, Cargando, ErrorMsg, Input, Kpi, Modal, Vacio } from "../components/ui";
+import {
+  Boton,
+  Campo,
+  Cargando,
+  ErrorMsg,
+  Input,
+  Kpi,
+  Modal,
+  Select,
+  Vacio,
+} from "../components/ui";
 import { api } from "../lib/api";
 import { fmtFecha, fmtFechaHora, fmtMoney, fmtNum, isoDia } from "../lib/format";
-import type { Capacidad } from "../lib/permisos";
+import type { Capacidad, Seccion } from "../lib/permisos";
+import type { Rubro } from "../lib/rubro";
 import { useApi } from "../lib/useApi";
+import { useSucursales } from "../lib/useSucursales";
 import { useAuth } from "../store/AuthContext";
 import type { RangoReporte } from "../types";
 import Finanzas from "./Finanzas";
+import { EstadoResultadoVista, PuntoEquilibrioVista } from "./reportes/ResultadoPeriodo";
+import { CierresVista, type CierreFila } from "./reportes/CierresVista";
 
 // ── Período ─────────────────────────────────────────────────────────────────
 
@@ -67,6 +82,30 @@ interface FichaReporte {
    * mira la plata: margen, costos y deuda.
    */
   capacidad?: Capacidad;
+  /**
+   * Sección que además hace falta poder ver. El resultado y el punto de
+   * equilibrio leen los gastos operativos, que el backend sólo sirve con la
+   * feature `gastos` y a ADMIN/SUPERVISOR: sin esto, a quien no la tiene le
+   * aparecía un reporte que siempre falla.
+   */
+  seccion?: Seccion;
+  /**
+   * Rubros donde el reporte no existe, pase lo que pase con el plan. Una
+   * farmacia no tiene meseros ni transforma materia prima: ofrecerle esos
+   * reportes es mostrarle una pantalla siempre vacía.
+   */
+  fueraDeRubro?: Rubro[];
+  /**
+   * Rubros donde SÓLO existe: la otra mitad del par. Un reporte construido
+   * para un rubro no se le ofrece a los demás (ante la duda, no se ve).
+   */
+  soloEnRubro?: Rubro[];
+  /**
+   * Pantalla propia en lugar de la tabla genérica: para el reporte que no se
+   * lee y listo, sino que se trabaja (la sugerencia de compra se ajusta y se
+   * imprime como pedido).
+   */
+  ruta?: string;
 }
 
 const REPORTES: FichaReporte[] = [
@@ -117,6 +156,7 @@ const REPORTES: FichaReporte[] = [
     texto: "Quién atendió, cuánto vendió y qué anuló.",
     icono: "users",
     capacidad: "reportes_operacion",
+    fueraDeRubro: ["FARMACIA"],
   },
   {
     nombre: "cierres",
@@ -138,11 +178,30 @@ const REPORTES: FichaReporte[] = [
     icono: "warehouse",
   },
   {
+    nombre: "sugerencia-compra",
+    titulo: "Sugerencia de compra",
+    texto: "Qué pedir según lo que se vende y el stock de seguridad.",
+    icono: "cart",
+    capacidad: "reportes_operacion",
+    soloEnRubro: ["FARMACIA"],
+    ruta: "/reportes/sugerencia-compra",
+  },
+  {
+    nombre: "mermas",
+    titulo: "Vencimientos y mermas",
+    texto: "Lo perdido por vencido o dañado, las devoluciones y lo que está en riesgo.",
+    icono: "trendingDown",
+    capacidad: "reportes_rentabilidad",
+    soloEnRubro: ["FARMACIA"],
+    ruta: "/reportes/mermas",
+  },
+  {
     nombre: "insumos",
     titulo: "Insumos",
     texto: "Compras de materia prima y su costo.",
     icono: "sack",
     capacidad: "reportes_rentabilidad",
+    fueraDeRubro: ["FARMACIA"],
   },
   {
     nombre: "financiero",
@@ -150,6 +209,22 @@ const REPORTES: FichaReporte[] = [
     texto: "Ventas contra compras y margen del período.",
     icono: "dollar",
     capacidad: "reportes_rentabilidad",
+  },
+  {
+    nombre: "resultado",
+    titulo: "Estado de resultado",
+    texto: "Lo que quedó después del costo y de los gastos operativos.",
+    icono: "trendingUp",
+    capacidad: "reportes_rentabilidad",
+    seccion: "gastos",
+  },
+  {
+    nombre: "punto-equilibrio",
+    titulo: "Punto de equilibrio",
+    texto: "Cuánto hay que vender para no perder.",
+    icono: "chart",
+    capacidad: "reportes_rentabilidad",
+    seccion: "gastos",
   },
   {
     nombre: "creditos",
@@ -237,8 +312,42 @@ function esDinero(clave: string): boolean {
 
 const ISO_FECHA = /^\d{4}-\d{2}-\d{2}(T|$)/;
 
-/** camelCase → "Texto legible": las claves salen del backend sin traducir. */
+/**
+ * Cómo se llama cada columna en la pantalla.
+ *
+ * La tabla genérica arma los encabezados con las claves del JSON, así que sin
+ * esto el dueño leía **"Venta id"**, **"Compra id"** o **"Margen pct"**: jerga
+ * de base de datos en la pantalla por la que paga. Sólo hace falta para las
+ * claves que no quedan bien con el camelCase → espacios de abajo.
+ */
+const NOMBRE_COLUMNA: Record<string, string> = {
+  ventaId: "N° de venta",
+  compraId: "N° de compra",
+  clienteId: "Cliente",
+  productoId: "Producto",
+  formaPagoId: "Forma de pago",
+  usuarioId: "Usuario",
+  almacenId: "Sucursal",
+  margenPct: "Margen",
+  invertidoDeltaPct: "Variación",
+  numCompras: "Compras",
+  esInsumo: "Insumo",
+  codBarra: "Código de barras",
+  stockMinimo: "Stock mínimo",
+  creadoEn: "Fecha",
+  createdAt: "Fecha",
+  updatedAt: "Última edición",
+};
+
+/**
+ * camelCase → "Texto legible".
+ *
+ * Primero mira el diccionario de arriba; lo que no esté ahí se separa por
+ * mayúsculas, que alcanza para la mayoría ("subtotal", "comprobante").
+ */
 function legible(clave: string): string {
+  const propio = NOMBRE_COLUMNA[clave];
+  if (propio) return propio;
   const conEspacios = clave
     .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
     .replace(/[_-]+/g, " ")
@@ -332,8 +441,10 @@ function esObjetoPlano(v: unknown): v is Record<string, unknown> {
 // ── Página ──────────────────────────────────────────────────────────────────
 
 export default function Reportes() {
-  const { incluye } = useAuth();
+  const { incluye, puede, rubro } = useAuth();
+  const navigate = useNavigate();
   const [preset, setPreset] = useState<Preset>("mes");
+
   const [desdeManual, setDesdeManual] = useState(() => rangoDePreset("mes").desde ?? "");
   const [hastaManual, setHastaManual] = useState(() => isoDia(new Date()));
   const [abierto, setAbierto] = useState<FichaReporte | null>(null);
@@ -347,28 +458,61 @@ export default function Reportes() {
   // Los reportes que el plan no incluye no se ofrecen: pedirlos igual
   // devolvería datos, pero se venden por separado.
   const disponibles = useMemo(
-    () => REPORTES.filter((r) => !r.capacidad || incluye(r.capacidad)),
-    [incluye],
+    () =>
+      REPORTES.filter(
+        (r) =>
+          (!r.capacidad || incluye(r.capacidad)) &&
+          (!r.seccion || puede(r.seccion)) &&
+          !(rubro && r.fueraDeRubro?.includes(rubro as Rubro)) &&
+          (!r.soloEnRubro || (!!rubro && r.soloEnRubro.includes(rubro as Rubro))),
+      ),
+    [incluye, puede, rubro],
   );
 
+  /**
+   * De que local son los numeros.
+   *
+   * Las tres reglas (2+ sucursales, solo usuario de organizacion, null =
+   * todas) viven en `useSucursales`. Esta pantalla las tenia copiadas a mano
+   * —igual que apertura de caja, y que las dos equivalentes en Android—: eran
+   * cuatro copias que alguien tenia que acordarse de sincronizar, que es
+   * exactamente como se desincronizaron la vez anterior.
+   */
+  const suc = useSucursales();
+  const { sucursalId, elegir: elegirSucursal } = suc;
+
+  /**
+   * El filtro entero: fechas + local.
+   *
+   * La sucursal va adentro del rango porque cada llamada hace
+   * `qs({ ...rango })`: asi los 15 reportes de detalle y las dos pestanas de
+   * Finanzas quedaron filtrados sin tocar ninguno por separado.
+   */
   const rango: RangoReporte = useMemo(
-    () =>
-      preset === "custom"
+    () => ({
+      ...(preset === "custom"
         ? { desde: desdeManual, hasta: hastaManual }
-        : rangoDePreset(preset),
-    [preset, desdeManual, hastaManual],
+        : rangoDePreset(preset)),
+      ...(elegirSucursal && sucursalId != null ? { sucursalId } : {}),
+    }),
+    [preset, desdeManual, hastaManual, elegirSucursal, sucursalId],
   );
+
+  /** El nombre del local elegido, para el subtitulo. Vacio cuando son todos. */
+  const nombreSucursal = suc.nombre;
 
   const resumen = useApi<Record<string, unknown>>(
     () => api.reporte<Record<string, unknown>>("resumen", rango),
-    [rango.desde, rango.hasta],
+    [rango.desde, rango.hasta, rango.sucursalId],
   );
 
   return (
     <div className="mx-auto max-w-6xl space-y-4 p-5">
       <EncabezadoPagina
         titulo={vista === "reportes" ? "Reportes" : "Finanzas"}
-        subtitulo={`Del ${fmtFecha(rango.desde)} al ${fmtFecha(rango.hasta)}`}
+        subtitulo={`Del ${fmtFecha(rango.desde)} al ${fmtFecha(rango.hasta)}${
+          nombreSucursal ? ` · ${nombreSucursal}` : ""
+        }`}
       />
 
       <div className="flex gap-2">
@@ -389,6 +533,30 @@ export default function Reportes() {
 
       <div className="space-y-3">
         <Chips valor={preset} opciones={OPC_PRESET} onChange={setPreset} />
+        {/* El local va junto al periodo: son los dos filtros de TODA la
+            seccion, y los dos viajan al detalle. */}
+        {/* Ancho acotado: es un filtro de dos palabras, y estirado a los 1100px
+            de la pagina quedaba un campo enorme pegado al borde derecho. */}
+        {elegirSucursal && (
+          <div className="max-w-sm">
+            <Campo
+              label="Sucursal"
+              hint="Todas = el consolidado del negocio, sumando los locales"
+            >
+              <Select
+                value={suc.valorSelect}
+                onChange={(e) => suc.alElegirSelect(e.target.value)}
+              >
+                <option value="">Todas las sucursales</option>
+                {suc.sucursales.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.nombre}
+                  </option>
+                ))}
+              </Select>
+            </Campo>
+          </div>
+        )}
         {preset === "custom" && (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Campo label="Desde">
@@ -429,7 +597,7 @@ export default function Reportes() {
           {disponibles.map((r) => (
             <li key={r.nombre}>
               <button
-                onClick={() => setAbierto(r)}
+                onClick={() => (r.ruta ? navigate(r.ruta) : setAbierto(r))}
                 className="card flex w-full items-start gap-3 p-4 text-left transition-shadow hover:shadow-md"
               >
                 <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary-50 text-primary-700">
@@ -450,7 +618,7 @@ export default function Reportes() {
 
       {abierto && (
         <VistaReporte
-          key={`${abierto.nombre}-${rango.desde}-${rango.hasta}`}
+          key={`${abierto.nombre}-${rango.desde}-${rango.hasta}-${rango.sucursalId ?? ""}`}
           ficha={abierto}
           rango={rango}
           onClose={() => setAbierto(null)}
@@ -530,7 +698,13 @@ function VistaReporte({
   rango: RangoReporte;
   onClose: () => void;
 }) {
-  const datos = useApi<unknown>(() => api.reporte(ficha.nombre, rango), [ficha.nombre]);
+  // Los dos reportes que la web arma sola (cruzan el financiero con los
+  // gastos) no tienen endpoint propio: no se pide nada genérico por ellos.
+  const armado = ficha.nombre === "resultado" || ficha.nombre === "punto-equilibrio";
+  const datos = useApi<unknown>(
+    () => (armado ? Promise.resolve(null) : api.reporte(ficha.nombre, rango)),
+    [ficha.nombre],
+  );
 
   return (
     <Modal
@@ -538,12 +712,36 @@ function VistaReporte({
       titulo={ficha.titulo}
       subtitulo={`Del ${fmtFecha(rango.desde)} al ${fmtFecha(rango.hasta)}`}
       onClose={onClose}
-      ancho="max-w-4xl"
+      ancho={armado ? "max-w-2xl" : "max-w-4xl"}
     >
-      {datos.cargando ? (
+      {ficha.nombre === "resultado" ? (
+        <EstadoResultadoVista rango={rango} />
+      ) : ficha.nombre === "punto-equilibrio" ? (
+        <PuntoEquilibrioVista rango={rango} />
+      ) : datos.cargando ? (
         <Cargando />
       ) : datos.error ? (
-        <ErrorMsg>{datos.error}</ErrorMsg>
+        <ErrorMsg onReintentar={datos.recargar}>{datos.error}</ErrorMsg>
+      ) : ficha.nombre === "cierres" && esObjetoPlano(datos.datos) ? (
+        // Los turnos van en su propia lista, que se abre en el arqueo de cada
+        // uno; el resto del reporte (el desempeño por cajero) sigue genérico.
+        <div className="space-y-5">
+          <CierresVista
+            historial={
+              Array.isArray(datos.datos.historial)
+                ? (datos.datos.historial as CierreFila[])
+                : []
+            }
+          />
+          {/* Sólo si trae algo: vacío, el genérico dice "Sin datos" justo
+              debajo de una lista de cierres, que se contradice. */}
+          {Array.isArray(datos.datos.performance) && datos.datos.performance.length > 0 && (
+            <Renderizador
+              nombre={ficha.nombre}
+              datos={{ performance: datos.datos.performance }}
+            />
+          )}
+        </div>
       ) : (
         <Renderizador nombre={ficha.nombre} datos={datos.datos} />
       )}

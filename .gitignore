@@ -26,3 +26,6 @@ dist-ssr
 # Capturas paso a paso de las pruebas funcionales: son 8 MB que caducan en la
 # proxima release. El informe y los GIF si se versionan.
 evidencia-qa/capturas/
+
+# Estado local de `wrangler pages dev` (probar las Functions de functions/).
+.wrangler/

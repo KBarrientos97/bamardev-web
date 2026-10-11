@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { TEMAS, type Tema } from "./temas";
+import { beforeEach, describe, expect, it } from "vitest";
+import { TEMAS, VERDE, aplicarTema, esTemaValido, resolverTema, type Tema } from "./temas";
 
 /**
  * Contraste de los temas, medido — no mirado.
@@ -140,5 +140,119 @@ describe("forma de los temas", () => {
     // Decisión de producto: a los clientes actuales no se les cambia el color.
     expect(TEMAS.RESTAURANTE).toBe(TEMAS.MINIMARKET);
     expect(TEMAS.RESTAURANTE.primary).toBe("#10b981");
+  });
+});
+
+describe("las paletas de belleza", () => {
+  it("cada rubro tiene la suya de respaldo (D25)", () => {
+    // Copia fija de PALETAS-BELLEZA.json: si el backend no manda el tema, el
+    // salón igual se ve con su color. El contraste lo validan los tests de
+    // arriba, que recorren TEMAS entero.
+    expect(TEMAS.PELUQUERIA.primary).toBe("#9B2C6B"); // Ciruela
+    expect(TEMAS.BARBERIA.primary).toBe("#4A4744"); // Carbón
+    expect(TEMAS.SPA.primary).toBe("#7357B8"); // Lavanda
+    expect(TEMAS.UNAS.primary).toBe("#B5285A"); // Frambuesa
+  });
+});
+
+/** Una paleta que no es la de ningún rubro, para saber de dónde salió. */
+const PROPIA: Tema = {
+  ...TEMAS.SPA,
+  primary: "#123456",
+  boton: "#123456",
+  marca: ["#123456", "#654321"],
+};
+
+const variable = (nombre: string) =>
+  document.documentElement.style.getPropertyValue(nombre).trim().toLowerCase();
+
+describe("aplicarTema: de dónde sale el color", () => {
+  beforeEach(() => {
+    document.documentElement.removeAttribute("style");
+  });
+
+  it("usa la paleta del negocio cuando viene entera", () => {
+    const negocio = { tipoNegocio: "BARBERIA", tema: { clave: "X", tokens: PROPIA } };
+    expect(resolverTema(negocio)).toBe(PROPIA);
+    aplicarTema(negocio);
+    expect(variable("--color-primary")).toBe("#123456");
+    expect(variable("--color-primary-boton")).toBe("#123456");
+    expect(variable("--marca-a")).toBe("#654321");
+  });
+
+  it("la paleta del negocio manda aunque el rubro tenga otra", () => {
+    // Un restaurante al que el panel le eligió otra paleta: gana la elegida.
+    const negocio = { tipoNegocio: "RESTAURANTE", tema: { clave: "LAVANDA", tokens: TEMAS.SPA } };
+    expect(resolverTema(negocio)).toBe(TEMAS.SPA);
+  });
+
+  it("con tokens inválidos cae al color del rubro, sin mezclar", () => {
+    const rotos: unknown[] = [
+      { ...PROPIA, primary: "violeta" }, // no es hex
+      { ...PROPIA, boton: "#12345" }, // 5 dígitos
+      { ...PROPIA, marca: ["#123456"] }, // marca de un solo extremo
+      { ...PROPIA, marca: "#123456" }, // marca que no es par
+      (({ barraTexto2: _fuera, ...resto }) => resto)(PROPIA), // falta una clave
+      "CIRUELA",
+      null,
+    ];
+    for (const tokens of rotos) {
+      const negocio = { tipoNegocio: "BARBERIA", tema: { tokens } };
+      expect(resolverTema(negocio), JSON.stringify(tokens)).toBe(TEMAS.BARBERIA);
+    }
+    aplicarTema({ tipoNegocio: "BARBERIA", tema: { tokens: { ...PROPIA, primary: "violeta" } } });
+    // Todo del rubro: ni el primary roto ni el resto de la paleta propia.
+    expect(variable("--color-primary")).toBe(TEMAS.BARBERIA.primary.toLowerCase());
+    expect(variable("--color-primary-boton")).toBe(TEMAS.BARBERIA.boton.toLowerCase());
+  });
+
+  it("sin tema usa el del rubro, como antes", () => {
+    expect(resolverTema({ tipoNegocio: "FARMACIA" })).toBe(TEMAS.FARMACIA);
+    expect(resolverTema({ tipoNegocio: "FARMACIA", tema: null })).toBe(TEMAS.FARMACIA);
+    // Y sigue aceptando el rubro suelto.
+    expect(resolverTema("FERRETERIA")).toBe(TEMAS.FERRETERIA);
+  });
+
+  it("sin nada, o con un rubro desconocido, es el verde", () => {
+    expect(resolverTema(null)).toBe(VERDE);
+    expect(resolverTema(undefined)).toBe(VERDE);
+    expect(resolverTema({})).toBe(VERDE);
+    expect(resolverTema({ tipoNegocio: "OTRO" })).toBe(VERDE);
+    aplicarTema(null);
+    expect(variable("--color-primary")).toBe("#10b981");
+  });
+
+  it("restaurante y minimarket siguen en verde", () => {
+    expect(resolverTema({ tipoNegocio: "RESTAURANTE" })).toBe(VERDE);
+    expect(resolverTema({ tipoNegocio: "MINIMARKET" })).toBe(VERDE);
+  });
+
+  it("esTemaValido acepta todas las de la tabla", () => {
+    for (const [rubro, tema] of entradas) {
+      expect(esTemaValido(tema), rubro).toBe(true);
+    }
+  });
+});
+
+describe("fondo y monograma (QA B-24)", () => {
+  const raiz = () => document.documentElement.style;
+
+  it("en belleza siguen la paleta del negocio", () => {
+    aplicarTema({ tipoNegocio: "PELUQUERIA" });
+    expect(raiz().getPropertyValue("--color-fondo")).toBe(TEMAS.PELUQUERIA.primary50);
+    expect(raiz().getPropertyValue("--monograma-bg")).toBe(TEMAS.PELUQUERIA.primary100);
+    expect(raiz().getPropertyValue("--monograma-fg")).toBe(TEMAS.PELUQUERIA.primary700);
+  });
+
+  it("restaurante y farmacia quedan con el de siempre, aunque antes hubiera un salón", () => {
+    for (const rubro of ["RESTAURANTE", "FARMACIA"]) {
+      aplicarTema({ tipoNegocio: "SPA" });
+      aplicarTema({ tipoNegocio: rubro });
+      // Sin la variable en línea manda la de index.css: #f5fbf7 y el verde.
+      expect(raiz().getPropertyValue("--color-fondo")).toBe("");
+      expect(raiz().getPropertyValue("--monograma-bg")).toBe("");
+    }
+    aplicarTema(null);
+    expect(raiz().getPropertyValue("--color-fondo")).toBe("");
   });
 });

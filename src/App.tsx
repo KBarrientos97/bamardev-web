@@ -1,229 +1,159 @@
-import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
-import Layout from "./components/Layout";
-import { rutaInicial, type Seccion } from "./lib/permisos";
-import Creditos from "./pages/Creditos";
-import Login from "./pages/Login";
-import PagarLicencia from "./pages/PagarLicencia";
-import Reportes from "./pages/Reportes";
-import Usuarios from "./pages/Usuarios";
-import Almacenes from "./pages/inventario/Almacenes";
-import Categorias from "./pages/inventario/Categorias";
-import Dashboard from "./pages/inventario/Dashboard";
-import Insumos from "./pages/inventario/Insumos";
-import Mesas from "./pages/inventario/Mesas";
-import Movimientos from "./pages/inventario/Movimientos";
-import Productos from "./pages/inventario/Productos";
-import Pos from "./pages/pos/Pos";
-import Repartidor from "./pages/repartidor/Repartidor";
-import PanelMesero from "./pages/salon/PanelMesero";
-import { AuthProvider, useAuth } from "./store/AuthContext";
+import { Component, lazy, Suspense, type ReactNode } from "react";
+import { BrowserRouter, Route, Routes, useLocation } from "react-router-dom";
+import { enHostLink, esRutaDePaginaPublica } from "./lib/pagina/rutas";
+import { reportarError } from "./lib/telemetria";
+import RutasPaginaPublica from "./pages/pagina/RutasPagina";
 
-/** Manda a cada rol a su pantalla: cajero al POS, repartidor a entregas. */
-function Inicio() {
-  const { usuario, negocio } = useAuth();
-  if (!usuario) return <Navigate to="/" replace />;
-  const destino = rutaInicial({
-    rol: usuario.rol,
-    modulos: usuario.modulos,
-    features: negocio?.features,
-  });
-  return <Navigate to={destino} replace />;
-}
-
-/**
- * Ni el rol ni el plan habilitan una sola sección. Pasa con una cuenta mal
- * configurada; sin esta pantalla el usuario vería un blanco y no sabría a
- * quién reclamarle.
+/*
+ * La entrada de la SPA: decide qué se baja según la dirección, y nada más.
+ *
+ * Una misma SPA atiende la app del negocio (POS, agenda, reportes…) y lo
+ * público: la página del negocio (`/p/<sub>`), la reserva online (`/r/<sub>…`)
+ * y todo `link(-qa).bamardev.com`. Lo público lo abren clientes finales desde
+ * Instagram o WhatsApp, con celulares baratos y datos móviles; si este archivo
+ * importara la app, cada uno bajaría ≈ 1,5 MB de JS que nunca usa antes de
+ * ver la página. Por eso acá sólo hay imports livianos, y la app entera
+ * (sesión, login, menú, pantallas) vive en AppNegocio.tsx, que se baja recién
+ * cuando se entra a ella. Lo cuida `separacion.test.ts`: nada pesado puede
+ * colarse por un import estático de este archivo.
  */
-function SinAcceso() {
-  const { usuario, logout } = useAuth();
-  return (
-    <div className="flex min-h-full items-center justify-center p-6">
-      <div className="max-w-sm text-center">
-        <h1 className="text-lg font-bold text-texto">Tu cuenta no tiene secciones</h1>
-        <p className="mt-2 text-[13px] text-texto-3">
-          El rol {usuario?.rol} de este negocio no tiene ningún módulo habilitado.
-          Pedile al administrador que revise los permisos o el plan contratado.
-        </p>
-        <button
-          onClick={logout}
-          className="mt-5 rounded-xl border border-borde bg-white px-4 py-2.5 text-sm font-semibold text-texto-2 hover:bg-muted"
-        >
-          Cerrar sesión
-        </button>
-      </div>
-    </div>
-  );
-}
 
-/**
- * Una sección que el rol o el plan no habilitan no se renderiza: el backend
- * igual respondería 403, y es mejor devolver a la pantalla de inicio que
- * mostrar un error después de cargar.
- */
-function Protegida({ seccion, children }: { seccion: Seccion; children: React.ReactNode }) {
-  const { puede } = useAuth();
-  if (!puede(seccion)) return <Inicio />;
-  return <>{children}</>;
-}
+const AppNegocio = lazy(() => import("./AppNegocio"));
+/** La reserva online del cliente final (`/r/<subdominio>…`). */
+const ReservaPublica = lazy(() => import("./publico/ReservaPublica"));
+/** Todo `link(-qa).bamardev.com`: la página y la reserva, sin la app. */
+const RutasLink = lazy(() => import("./pages/pagina/RutasLink"));
 
-/**
- * Pago de la licencia estando la sesión abierta (durante la gracia, antes del
- * bloqueo). Es la misma pantalla que se ve deslogueado; sólo cambia de dónde
- * sale el código de activación y a dónde vuelve al salir.
- */
-function PagarConSesion() {
-  const { negocio } = useAuth();
-  return (
-    <PagarLicencia
-      aliasInicial={negocio?.alias ?? null}
-      onSalir={() => window.history.back()}
-    />
-  );
-}
-
-function Rutas() {
-  const { token } = useAuth();
-
-  if (!token) return <Login />;
-
-  return (
-    <Routes>
-      {/* Fuera del Layout a propósito: el panel del mesero no tiene barra
-          lateral ni cabecera de la app, tiene sus tres pestañas y nada más.
-          Igual que MeserosActivity en Android, que es una activity aparte. */}
-      <Route
-        path="/salon"
-        element={
-          <Protegida seccion="salon">
-            <PanelMesero />
-          </Protegida>
-        }
-      />
-
-      {/* Fuera del Layout: trae su propio fondo y no necesita la barra
-          lateral. Acá el negocio todavía puede operar (está en gracia), así
-          que el código de activación sale de la sesión y no del bloqueo. */}
-      <Route path="/pagar" element={<PagarConSesion />} />
-
-      <Route element={<Layout />}>
-        <Route path="/" element={<Inicio />} />
-        <Route path="/sin-acceso" element={<SinAcceso />} />
-
-        <Route
-          path="/pos"
-          element={
-            <Protegida seccion="pos">
-              <Pos />
-            </Protegida>
-          }
-        />
-
-        <Route
-          path="/reparto"
-          element={
-            <Protegida seccion="reparto">
-              <Repartidor />
-            </Protegida>
-          }
-        />
-
-        <Route
-          path="/inventario"
-          element={
-            <Protegida seccion="inventario">
-              <Dashboard />
-            </Protegida>
-          }
-        />
-        <Route
-          path="/inventario/productos"
-          element={
-            <Protegida seccion="productos">
-              <Productos />
-            </Protegida>
-          }
-        />
-        <Route
-          path="/inventario/categorias"
-          element={
-            <Protegida seccion="productos">
-              <Categorias />
-            </Protegida>
-          }
-        />
-        <Route
-          path="/inventario/insumos"
-          element={
-            <Protegida seccion="insumos">
-              <Insumos />
-            </Protegida>
-          }
-        />
-        <Route
-          path="/inventario/almacenes"
-          element={
-            <Protegida seccion="almacenes">
-              <Almacenes />
-            </Protegida>
-          }
-        />
-        <Route
-          path="/inventario/movimientos"
-          element={
-            <Protegida seccion="movimientos">
-              <Movimientos />
-            </Protegida>
-          }
-        />
-
-        <Route
-          path="/mesas"
-          element={
-            <Protegida seccion="mesas">
-              <Mesas />
-            </Protegida>
-          }
-        />
-
-        <Route
-          path="/creditos"
-          element={
-            <Protegida seccion="creditos">
-              <Creditos />
-            </Protegida>
-          }
-        />
-        <Route
-          path="/reportes"
-          element={
-            <Protegida seccion="reportes">
-              <Reportes />
-            </Protegida>
-          }
-        />
-        <Route
-          path="/usuarios"
-          element={
-            <Protegida seccion="usuarios">
-              <Usuarios />
-            </Protegida>
-          }
-        />
-
-        {/* Cualquier ruta desconocida vuelve al inicio del rol. */}
-        <Route path="*" element={<Inicio />} />
-      </Route>
-    </Routes>
-  );
-}
+/** El gris de la página pública mientras llega su pantalla. */
+const ESPERA_PAGINA = <div style={{ minHeight: "100dvh", background: "#F6F7F9" }} />;
 
 export default function App() {
+  // En el host link no existe la app: ni login, ni sesión, ni sus pantallas.
+  if (enHostLink()) {
+    return (
+      <BrowserRouter>
+        <FalloDeCarga>
+          <Suspense fallback={ESPERA_PAGINA}>
+            <RutasLink />
+          </Suspense>
+        </FalloDeCarga>
+      </BrowserRouter>
+    );
+  }
   return (
     <BrowserRouter>
-      <AuthProvider>
-        <Rutas />
-      </AuthProvider>
+      <FalloDeCarga>
+        <Routes>
+          {/* Fuera del AuthProvider a propósito: la reserva pública no tiene
+              sesión, y así ni el login ni el cierre por licencia o por 401
+              pueden alcanzarla (PLAN-AGENDA-BELLEZA §8.6). */}
+          <Route
+            path="/r/*"
+            element={
+              <Suspense fallback={<div className="min-h-dvh bg-white" />}>
+                <ReservaPublica />
+              </Suspense>
+            }
+          />
+          <Route path="*" element={<PaginaOApp />} />
+        </Routes>
+      </FalloDeCarga>
     </BrowserRouter>
   );
+}
+
+/**
+ * `/p/<subdominio>` (y su privacidad y sus promos) es la página PÚBLICA del
+ * negocio: se atiende antes de cargar la app, así no pasa por la sesión —una
+ * sesión vencida en ese navegador no la manda al login— ni baja sus pantallas.
+ * Todo lo demás es la app.
+ */
+function PaginaOApp() {
+  const { pathname } = useLocation();
+  if (esRutaDePaginaPublica(pathname)) return <RutasPaginaPublica />;
+  return (
+    // El mismo fondo que pinta la app mientras espera sus permisos: entrar no
+    // parpadea en blanco.
+    <Suspense fallback={<div className="min-h-dvh bg-fondo" aria-busy="true" />}>
+      <AppNegocio />
+    </Suspense>
+  );
+}
+
+interface EstadoFallo {
+  error: boolean;
+  ruta: string;
+}
+
+/**
+ * Si un pedazo no llega (datos móviles que se cortan a mitad de la carga, o un
+ * despliegue que reemplazó los archivos mientras la pestaña estaba abierta),
+ * `lazy` revienta y React desmontaría todo: una página en blanco. Esto deja un
+ * aviso con un botón para reintentar. Va con estilos en línea porque puede
+ * verse antes de que llegue nada más; y en lo público no reporta (ver
+ * `esRutaPublica` en telemetria.ts). Los errores de las pantallas de la app
+ * los ataja antes `AtajaErrores`, adentro de AppNegocio.
+ */
+function FalloDeCarga({ children }: { children: ReactNode }) {
+  const { pathname } = useLocation();
+  return <AtajaFallo ruta={pathname}>{children}</AtajaFallo>;
+}
+
+class AtajaFallo extends Component<{ ruta: string; children: ReactNode }, EstadoFallo> {
+  state: EstadoFallo = { error: false, ruta: this.props.ruta };
+
+  static getDerivedStateFromError() {
+    return { error: true };
+  }
+
+  // Cambiar de dirección (el botón Atrás) vuelve a intentar.
+  static getDerivedStateFromProps(props: { ruta: string }, estado: EstadoFallo) {
+    return props.ruta === estado.ruta ? null : { error: false, ruta: props.ruta };
+  }
+
+  componentDidCatch(error: Error) {
+    reportarError("carga", error);
+  }
+
+  render() {
+    if (!this.state.error) return this.props.children;
+    return (
+      <div
+        role="alert"
+        style={{
+          minHeight: "100dvh",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 16,
+          padding: 24,
+          textAlign: "center",
+          background: "#F6F7F9",
+          color: "#1F2937",
+          fontFamily: "system-ui, sans-serif",
+        }}
+      >
+        <p style={{ margin: 0, maxWidth: 320, fontSize: 15 }}>
+          No se pudo abrir esta página. Revisá tu conexión y probá de nuevo.
+        </p>
+        <button
+          type="button"
+          onClick={() => window.location.reload()}
+          style={{
+            minHeight: 44,
+            padding: "0 20px",
+            border: 0,
+            borderRadius: 12,
+            background: "#047857",
+            color: "#fff",
+            fontSize: 15,
+            fontWeight: 600,
+          }}
+        >
+          Reintentar
+        </button>
+      </div>
+    );
+  }
 }

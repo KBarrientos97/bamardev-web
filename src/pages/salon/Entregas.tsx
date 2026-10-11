@@ -4,6 +4,7 @@ import { Boton, Cargando, ErrorMsg } from "../../components/ui";
 import { api } from "../../lib/api";
 import { fmtFechaHora, fmtMoney } from "../../lib/format";
 import { useApi } from "../../lib/useApi";
+import { tienePermiso } from "../../lib/permisos";
 import { useAuth } from "../../store/AuthContext";
 import type { EntregaMesero } from "../../types/salon";
 
@@ -32,8 +33,11 @@ export default function Entregas({ onVolver }: { onVolver?: () => void }) {
   const [aprobando, setAprobando] = useState(false);
   const [error, setError] = useState("");
 
-  /** true si quien mira es el que RECIBE la plata, no el que la tiene. */
-  const puedeAprobar = usuario?.rol !== "MESERO";
+  /**
+   * true si quien mira es el que RECIBE la plata (cobra las mesas en caja),
+   * no el mesero que la tiene.
+   */
+  const puedeAprobar = tienePermiso(usuario, "salon.cobrar");
 
   const datos = entregas.datos;
   const items = datos?.items ?? [];
@@ -157,9 +161,14 @@ export default function Entregas({ onVolver }: { onVolver?: () => void }) {
             onClick={marcarTodas}
             className="self-start text-[13px] font-semibold text-primary-700 hover:text-primary"
           >
-            {marcadas.size === pendientes.length
-              ? "Desmarcar todas"
-              : `Marcar las ${pendientes.length} pendientes`}
+            {/* Con una sola decía "Marcar las 1 pendientes" (visto en QA). */}
+            {pendientes.length === 1
+              ? marcadas.size === 1
+                ? "Desmarcar"
+                : "Marcar la pendiente"
+              : marcadas.size === pendientes.length
+                ? "Desmarcar todas"
+                : `Marcar las ${pendientes.length} pendientes`}
           </button>
           <Boton
             onClick={aprobar}

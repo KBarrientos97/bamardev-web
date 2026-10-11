@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { parsearMonto } from "../../lib/dinero";
 import { contiene } from "../../lib/texto";
 import { Icon } from "../../components/Icon";
@@ -18,7 +18,9 @@ import {
 import { api } from "../../lib/api";
 import { fmtFecha, fmtFechaHora, fmtMoney, fmtNum, isoDia } from "../../lib/format";
 import { useApi } from "../../lib/useApi";
+import { useSucursales } from "../../lib/useSucursales";
 import { useAuth } from "../../store/AuthContext";
+import ElegirArticulo from "./ElegirArticulo";
 import type {
   Almacen,
   ArticuloMovimiento,
@@ -40,6 +42,7 @@ const OPC_TIPO = [
   ["ENTRADA", "Entradas"],
   ["SALIDA", "Salidas"],
   ["AJUSTE", "Ajustes"],
+  ["TRANSFERENCIA", "Transferencias"],
 ] as const satisfies readonly (readonly [FiltroTipo, string])[];
 
 const OPC_ESTADO = [
@@ -65,16 +68,40 @@ const ETIQUETA_TIPO: Record<TipoMovimiento, string> = {
   ENTRADA: "Entrada",
   SALIDA: "Salida",
   AJUSTE: "Ajuste",
+  TRANSFERENCIA: "Transferencia",
 };
 
-/** Sólo la entrada suma: salida y ajuste se leen como movimiento negativo. */
+/**
+ * Lo que se puede cargar desde "Nuevo": entrada y salida, igual que la app.
+ *
+ * El AJUSTE no se ofrece: fija el stock en lo que se escribe (no suma ni
+ * resta), confundía con la salida y, una vez aprobado, no se puede anular. La
+ * TRANSFERENCIA tampoco: este formulario no tiene dónde elegir el destino, así
+ * que el servidor la rechazaba siempre. Un error se corrige anulando el
+ * movimiento y cargándolo bien. Los ajustes que ya existen se siguen viendo.
+ */
+const TIPOS_DEL_FORMULARIO: TipoMovimiento[] = ["ENTRADA", "SALIDA"];
+
+/**
+ * Sólo la entrada suma: salida y ajuste se leen como movimiento negativo.
+ *
+ * Una TRANSFERENCIA no suma ni resta al negocio —la mercadería cambia de
+ * almacén, no de dueño— así que se trata como no-entrada: lo que se muestra es
+ * el movimiento, no una variación del inventario total.
+ */
 function esEntrada(tipo: TipoMovimiento): boolean {
   return tipo === "ENTRADA";
 }
 
 export default function Movimientos() {
   const { incluye } = useAuth();
-  const movimientos = useApi(() => api.getMovimientos(), []);
+  // Inventario SÍ incluye depósitos: la mercadería entra ahí antes de
+  // repartirse a los locales, así que sus entradas son las que más importan.
+  const suc = useSucursales({ incluirDepositos: true });
+  const movimientos = useApi(
+    () => api.getMovimientos(suc.sucursalId),
+    [suc.sucursalId],
+  );
   const almacenes = useApi(() => api.getAlmacenes(), []);
 
   const [q, setQ] = useState("");
@@ -123,14 +150,31 @@ export default function Movimientos() {
     [incluye, pendientes],
   );
 
+  // Ajustes y transferencias ya no se cargan: su chip aparece sólo si hay
+  // alguno viejo para encontrar (o si está elegido, para poder soltarlo).
+  const opcionesTipo = useMemo(
+    () =>
+      OPC_TIPO.filter(
+        ([k]) =>
+          k === "todos" ||
+          TIPOS_DEL_FORMULARIO.includes(k) ||
+          k === filtroTipo ||
+          (movimientos.datos ?? []).some((m) => m.tipo === k),
+      ),
+    [movimientos.datos, filtroTipo],
+  );
+
   return (
     <div className="mx-auto max-w-6xl space-y-4 p-5">
       <EncabezadoPagina
         titulo="Movimientos"
         subtitulo={
-          pendientes
-            ? `${lista.length} registrados · ${pendientes} sin aprobar`
-            : `${lista.length} registrados`
+          // Antes de la primera respuesta no hay "0 registrados": no se sabe.
+          !movimientos.datos && movimientos.cargando
+            ? "Cargando…"
+            : pendientes
+              ? `${lista.length} registrados · ${pendientes} sin aprobar`
+              : `${lista.length} registrados`
         }
         accion={
           <Boton icono="plus" onClick={() => setCreando(true)}>
@@ -166,7 +210,10 @@ export default function Movimientos() {
             {fecha ? "" : " en total"}
           </span>
         </div>
-        <Chips valor={filtroTipo} opciones={OPC_TIPO} onChange={setFiltroTipo} />
+        {suc.elegir && (
+          <Chips valor={suc.valorChip} opciones={suc.opciones} onChange={suc.alElegir} />
+        )}
+        <Chips valor={filtroTipo} opciones={opcionesTipo} onChange={setFiltroTipo} />
         <Chips valor={filtroEstado} opciones={opcionesEstado} onChange={setFiltroEstado} />
         <Chips valor={filtroOrigen} opciones={OPC_ORIGEN} onChange={setFiltroOrigen} />
       </div>
@@ -206,7 +253,11 @@ export default function Movimientos() {
         <DetalleMovimiento
           id={detalleId}
           onClose={() => setDetalleId(null)}
-          onCambio={() => {
+          // Un renglón agregado, corregido o quitado refresca la lista de atrás
+          // SIN cerrar el detalle: se seguía cargando y había que volver a
+          // abrirlo para agregar el siguiente.
+          onCambio={() => movimientos.recargar()}
+          onCerrarYRecargar={() => {
             setDetalleId(null);
             movimientos.recargar();
           }}
@@ -287,11 +338,15 @@ function DetalleMovimiento({
   id,
   onClose,
   onCambio,
+  onCerrarYRecargar,
   onError,
 }: {
   id: number;
   onClose: () => void;
+  /** Cambió un renglón: refresca la lista de atrás sin cerrar el detalle. */
   onCambio: () => void;
+  /** Se aprobó, anuló o eliminó: el detalle ya no tiene más que hacer. */
+  onCerrarYRecargar: () => void;
   onError: (mensaje: string) => void;
 }) {
   const mov = useApi(() => api.getMovimiento(id), [id]);
@@ -299,6 +354,12 @@ function DetalleMovimiento({
     null,
   );
   const [procesando, setProcesando] = useState(false);
+  /**
+   * Aprobar, anular o eliminar en curso. `procesando` apaga el botón recién
+   * en el render siguiente: un doble clic aprobaba dos veces y, mientras el
+   * servidor no lo frene, el stock se movía dos veces.
+   */
+  const enVuelo = useRef(false);
   const [error, setError] = useState("");
   /** Línea que se está editando, o "nueva" para agregar una. */
   const [editandoLinea, setEditandoLinea] = useState<LineaMovimiento | "nueva" | null>(
@@ -340,7 +401,8 @@ function DetalleMovimiento({
   );
 
   async function ejecutar() {
-    if (!m || !confirmando) return;
+    if (!m || !confirmando || enVuelo.current) return;
+    enVuelo.current = true;
     setError("");
     setProcesando(true);
     try {
@@ -349,11 +411,12 @@ function DetalleMovimiento({
       else await api.eliminarMovimiento(m.id);
       setConfirmando(null);
       onError("");
-      onCambio();
+      onCerrarYRecargar();
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo completar la acción");
       setConfirmando(null);
     } finally {
+      enVuelo.current = false;
       setProcesando(false);
     }
   }
@@ -711,30 +774,47 @@ function FormLineaMovimiento({
       }
     >
       <div className="space-y-3">
-        <Campo label="Artículo">
-          <Select
-            value={productoId}
-            onChange={(e) => {
-              const id = e.target.value;
-              setProductoId(id);
-              // El costo del artículo se autocompleta SIEMPRE, también en 0:
-              // saltearlo dejaba pegado el costo del artículo anterior.
-              const a = articulos.find((x) => String(x.id) === id);
-              if (a && !esEdicion) setCosto(String(a.costo ?? 0));
-            }}
-            // Cambiar de artículo en una línea ya guardada obligaría a
-            // revalidar el stock de dos productos a la vez; se edita la
-            // cantidad o se quita la línea y se agrega otra.
-            disabled={esEdicion}
-          >
-            <option value="">Elegí un artículo</option>
-            {articulos.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.nombre} · {fmtNum(a.stock, 2)} en stock
-              </option>
-            ))}
-          </Select>
-        </Campo>
+        {/* Un div y no `Campo`: Campo es un <label>, y adentro va la lista del
+            buscador con sus botones. */}
+        <div>
+          <span className="mb-1.5 block text-[13px] font-semibold text-texto-2">Artículo</span>
+          {esEdicion || elegido ? (
+            <div className="flex min-h-[42px] items-center gap-2 rounded-xl border border-borde bg-muted px-3.5 py-2 text-sm">
+              <span className="min-w-0 flex-1 truncate font-semibold text-texto">
+                {elegido?.nombre ?? linea?.producto}
+              </span>
+              {elegido && (
+                <span className="shrink-0 text-xs text-texto-3">
+                  {fmtNum(elegido.stock, 2)} {elegido.unidad} en stock
+                </span>
+              )}
+              {/* Cambiar de artículo en una línea ya guardada obligaría a
+                  revalidar el stock de dos productos a la vez; se edita la
+                  cantidad o se quita la línea y se agrega otra. */}
+              {!esEdicion && (
+                <button
+                  type="button"
+                  onClick={() => setProductoId("")}
+                  aria-label={`Cambiar ${elegido?.nombre ?? "el artículo"}`}
+                  className="shrink-0 rounded-lg p-1 text-texto-3 hover:bg-white hover:text-texto"
+                >
+                  <Icon name="close" size={16} />
+                </button>
+              )}
+            </div>
+          ) : (
+            <ElegirArticulo
+              articulos={articulos}
+              autoFocus
+              onElegir={(a) => {
+                setProductoId(String(a.id));
+                // El costo del artículo se autocompleta SIEMPRE, también en 0:
+                // saltearlo dejaba pegado el costo del artículo anterior.
+                setCosto(String(a.costo ?? 0));
+              }}
+            />
+          )}
+        </div>
 
         <div className="grid grid-cols-2 gap-3">
           <Campo
@@ -752,7 +832,8 @@ function FormLineaMovimiento({
               min="0"
               value={cantidad}
               onChange={(e) => setCantidad(e.target.value)}
-              autoFocus
+              // En el alta el foco va al buscador: primero se elige qué.
+              autoFocus={esEdicion}
             />
           </Campo>
           <Campo label="Costo unitario">
@@ -788,6 +869,25 @@ function Dato({ label, valor }: { label: string; valor: string }) {
   );
 }
 
+/**
+ * Aviso cuando un lote entra con poca vida útil.
+ *
+ * Los 90 días son el corte del rubro: por debajo de eso ya no hay tiempo de
+ * venderlo con tranquilidad ni de devolverlo al proveedor. No bloquea el
+ * ingreso —a veces se compra barato justamente por eso— pero tiene que decirse
+ * ANTES de aprobar, no cuando aparezca en rojo en el semáforo.
+ */
+function avisoVidaUtil(l: LineaDetalle): string | null {
+  if (!l.loteVencimiento) return null;
+  const dia = 24 * 60 * 60 * 1000;
+  const dias = Math.round(
+    (new Date(`${l.loteVencimiento}T12:00:00`).getTime() - Date.now()) / dia,
+  );
+  if (dias < 0) return `Ojo: ese lote ya está vencido.`;
+  if (dias <= 90) return `Ojo: entra con ${dias} días de vida útil (menos de 90).`;
+  return null;
+}
+
 /** Línea en edición: el costo viaja como texto para no pelear con el input. */
 interface LineaDetalle {
   articuloId: number;
@@ -795,6 +895,11 @@ interface LineaDetalle {
   unidad: string;
   cantidad: string;
   costo: string;
+  /** Rubro farmacia: sólo en las líneas de un artículo que maneja lote. */
+  manejaLote?: boolean;
+  loteCodigo?: string;
+  /** yyyy-MM-dd */
+  loteVencimiento?: string;
 }
 
 function FormMovimiento({
@@ -863,6 +968,9 @@ function FormMovimientoCuerpo({
         // Se prellena con el costo del artículo: en la mayoría de las entradas
         // se compra al mismo precio de la última vez.
         costo: String(art.costo),
+        manejaLote: art.manejaLote,
+        loteCodigo: "",
+        loteVencimiento: "",
       },
     ]);
   }
@@ -900,7 +1008,20 @@ function FormMovimientoCuerpo({
         }
       }
 
-      detalles.push({ productoId: l.articuloId, cantidad, costo });
+      detalles.push({
+        productoId: l.articuloId,
+        cantidad,
+        costo,
+        // Sólo en una ENTRADA: es lo que dice el papel de la compra. Una
+        // salida no elige lote — sale el más próximo a vencer, que es la regla
+        // del depósito y no una decisión de quien carga el formulario.
+        ...(tipo === "ENTRADA" && l.manejaLote && l.loteCodigo?.trim()
+          ? {
+              loteCodigo: l.loteCodigo.trim(),
+              ...(l.loteVencimiento ? { loteVencimiento: l.loteVencimiento } : {}),
+            }
+          : {}),
+      });
     }
 
     const input: MovimientoInput = {
@@ -932,6 +1053,7 @@ function FormMovimientoCuerpo({
     <Modal
       abierto
       titulo="Nuevo movimiento"
+      cerrarAlClicAfuera={false}
       subtitulo="Nace pendiente: recién al aprobarlo se mueve el stock"
       onClose={onClose}
       ancho="max-w-2xl"
@@ -950,7 +1072,7 @@ function FormMovimientoCuerpo({
         <div className="grid gap-3 sm:grid-cols-2">
           <Campo label="Tipo">
             <Select value={tipo} onChange={(e) => setTipo(e.target.value as TipoMovimiento)}>
-              {(Object.keys(ETIQUETA_TIPO) as TipoMovimiento[]).map((t) => (
+              {TIPOS_DEL_FORMULARIO.map((t) => (
                 <option key={t} value={t}>
                   {ETIQUETA_TIPO[t]}
                 </option>
@@ -1043,35 +1165,52 @@ function FormMovimientoCuerpo({
                       </p>
                     </div>
                   </div>
+
+                  {/* Lote y vencimiento: sólo al RECIBIR mercadería y sólo en
+                      los artículos que los llevan. Una salida no elige lote
+                      —sale el más próximo a vencer— y a un termómetro no se le
+                      pide una fecha que no tiene. */}
+                  {tipo === "ENTRADA" && l.manejaLote && (
+                    <div className="mt-2 grid grid-cols-2 gap-2">
+                      <Campo label="Lote">
+                        <Input
+                          value={l.loteCodigo ?? ""}
+                          onChange={(e) => editarLinea(i, { loteCodigo: e.target.value })}
+                          placeholder="AMX-2601"
+                        />
+                      </Campo>
+                      <Campo label="Vence">
+                        <Input
+                          type="date"
+                          value={l.loteVencimiento ?? ""}
+                          onChange={(e) =>
+                            editarLinea(i, { loteVencimiento: e.target.value })
+                          }
+                        />
+                      </Campo>
+                      {avisoVidaUtil(l) && (
+                        <p className="col-span-2 rounded-lg bg-warning-bg px-2.5 py-2 text-[12px] text-warning-text">
+                          {avisoVidaUtil(l)}
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </li>
               ))}
             </ul>
           )}
 
-          <Select
-            value=""
-            disabled={!almacenId || articulos.cargando}
-            onChange={(e) => {
-              const art = (articulos.datos ?? []).find(
-                (a) => a.id === Number(e.target.value),
-              );
-              if (art) agregarLinea(art);
-            }}
-          >
-            <option value="">
-              {!almacenId
+          <ElegirArticulo
+            articulos={disponibles}
+            onElegir={agregarLinea}
+            bloqueado={
+              !almacenId
                 ? "Elegí primero un almacén…"
                 : articulos.cargando
                   ? "Cargando artículos…"
-                  : "+ Agregar artículo…"}
-            </option>
-            {disponibles.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.nombre} — {fmtNum(a.stock, 2)} {a.unidad}
-                {a.esInsumo ? " (insumo)" : ""}
-              </option>
-            ))}
-          </Select>
+                  : undefined
+            }
+          />
 
           {lineas.length > 0 && (
             <div className="mt-3 flex items-center justify-between border-t border-borde-soft pt-3">

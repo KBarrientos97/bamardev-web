@@ -1,0 +1,109 @@
+import { TITULO_CATALOGO } from "./catalogo";
+import type { CatalogoPublico, EnlaceEditor, EnlacePublico, EstadoEditor, PaginaPublica } from "./tipos";
+
+/** Día de hoy en Bolivia (UTC−4), como lo compara el backend. */
+export function hoyBolivia(ahora = new Date()): string {
+  return new Date(ahora.getTime() - 4 * 3_600_000).toISOString().slice(0, 10);
+}
+
+/** URL de "Cómo llegar": el mapa pegado o una búsqueda por dirección. */
+export function urlMapa(mapsUrl: string | null, direccion: string | null): string | null {
+  if (mapsUrl) return mapsUrl;
+  if (!direccion) return null;
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(direccion)}`;
+}
+
+/** El catálogo como lo sirve el backend: sólo lo visible, en orden; null si no queda nada. */
+function catalogoVisible(e: EstadoEditor): CatalogoPublico | null {
+  const items = (e.catalogo ?? [])
+    .filter((x) => x.visible)
+    .sort((a, b) => a.orden - b.orden || a.id - b.id)
+    .map((x) => ({
+      id: x.id,
+      titulo: x.titulo,
+      descripcion: x.descripcion,
+      precio: x.precio,
+      precioDesde: x.precioDesde,
+      fotoUrl: x.fotoUrl,
+    }));
+  if (items.length === 0) return null;
+  return { titulo: e.pagina.catalogoTitulo?.trim() || TITULO_CATALOGO, items };
+}
+
+/**
+ * Arma, con lo que se está editando, la misma página que serviría el backend
+ * (`pagina-publica.service.ts`, función `armar`). Es lo que alimenta la vista
+ * previa en vivo: cada tecla se ve en el celular de al lado sin guardar.
+ *
+ * Si se toca una regla acá hay que tocarla allá (y al revés): la vista previa
+ * tiene que mentir lo menos posible.
+ */
+export function vistaDesdeEditor(e: EstadoEditor, hoy = hoyBolivia()): PaginaPublica {
+  const p = e.pagina;
+  const muestra = e.muestras.find((m) => m.clave === p.colorClave) ?? e.muestras[0];
+  const visibles = [...e.enlaces].filter((x) => x.visible).sort((a, b) => a.orden - b.orden || a.id - b.id);
+  const publico = (x: EnlaceEditor): EnlacePublico => ({
+    id: x.id,
+    tipo: x.tipo,
+    etiqueta: x.etiqueta,
+    url: x.url,
+    icono: x.icono,
+  });
+  const reservar = e.reservaOnline && p.mostrarReservar;
+  const destacadoFila = visibles.find((x) => x.id === p.enlaceDestacadoId) ?? null;
+  const destacado = !reservar && destacadoFila ? publico(destacadoFila) : null;
+  const botones = visibles
+    .filter((x) => x.formato === "BOTON" && x.id !== destacado?.id)
+    .sort((a, b) => (a.id === p.enlaceDestacadoId ? -1 : b.id === p.enlaceDestacadoId ? 1 : 0))
+    .map(publico);
+  const redes = visibles.filter((x) => x.formato !== "BOTON" && x.id !== destacado?.id).map(publico);
+  const anuncioVigente = !!p.anuncioTexto?.trim() && (!p.anuncioHasta || p.anuncioHasta >= hoy);
+  const descripcion = p.descripcion?.trim() || null;
+  return {
+    subdominio: e.subdominio ?? "",
+    nombre: e.negocio.nombre,
+    rubro: e.negocio.rubroNombre ?? "",
+    iniciales: e.negocio.iniciales,
+    descripcion,
+    color: { clave: muestra?.clave ?? "VERDE", hex: muestra?.hex ?? "#0C7A55" },
+    formaBotones: p.formaBotones,
+    tipografia: p.tipografia,
+    // Un backend anterior no manda el estilo: la página queda en Clásico.
+    estilo: p.estiloClave ?? "CLASICO",
+    logoUrl: e.imagenes.logo,
+    portadaUrl: e.imagenes.portada,
+    anuncio: anuncioVigente
+      ? {
+          texto: p.anuncioTexto!.trim(),
+          url: p.anuncioUrl || null,
+          estilo: p.anuncioEstilo ?? "SUAVE",
+          colorFondo: p.anuncioColorFondo ?? null,
+          colorTexto: p.anuncioColorTexto ?? null,
+        }
+      : null,
+    reservar,
+    destacado,
+    redes,
+    botones,
+    sucursales: e.sucursales
+      .filter((s) => s.publicarEnPagina)
+      .map((s) => ({
+        nombre: s.nombre,
+        reservaSlug: reservar && s.publicaReservas && s.slugReservas ? s.slugReservas : null,
+        direccion: s.direccion,
+        telefono: s.telefono,
+        horario: s.horarioTexto,
+        mapaUrl: urlMapa(s.mapsUrl, s.direccion),
+        horarioSemanal: s.horarioSemanal?.length ? s.horarioSemanal : null,
+      })),
+    catalogo: catalogoVisible(e),
+    pie: { atribucionUrl: "https://bamardev.com" },
+    og: { titulo: e.negocio.nombre, descripcion: descripcion ?? "", imagen: null, url: e.urlPublica ?? "" },
+  };
+}
+
+/** Teléfono a `tel:` (Bolivia por defecto). */
+export function urlTelefono(telefono: string): string {
+  const d = telefono.replace(/\D/g, "");
+  return `tel:+${d.length === 8 ? `591${d}` : d}`;
+}

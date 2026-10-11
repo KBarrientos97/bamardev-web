@@ -55,6 +55,35 @@ export default function Salon({
   const salon = useApi(() => api.salon(), []);
   const turno = useApi(() => api.turnoMesero(), []);
 
+  /**
+   * El salón se refresca solo cada medio minuto.
+   *
+   * Sin esto, la pantalla sólo se recargaba cuando ESTE mesero hacía algo: con
+   * dos en turno, el que miraba veía mesas que el otro ya había liberado y
+   * pedidos listos que no aparecían en "Por servir". En un salón el estado lo
+   * cambia el de al lado todo el tiempo, así que es más sensible que la lista
+   * del repartidor (que va a 60s).
+   *
+   * Sólo con la pestaña visible: refrescar en segundo plano gasta datos del
+   * celular sin que nadie lo esté mirando. Mismo patrón que `Repartidor.tsx`.
+   */
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (document.visibilityState === "visible") salon.recargar();
+    }, 30_000);
+    const alVolver = () => {
+      if (document.visibilityState === "visible") salon.recargar();
+    };
+    document.addEventListener("visibilitychange", alVolver);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", alVolver);
+    };
+    // Sólo al montar: `recargar` es estable y resuscribirse en cada render
+    // dejaría timers colgados.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const [zona, setZona] = useState<string | null>(null);
   const [soloMias, setSoloMias] = useState(false);
 
@@ -119,7 +148,9 @@ export default function Salon({
           </button>
         )}
 
-        {salon.error && <ErrorMsg>{salon.error}</ErrorMsg>}
+        {salon.error && (
+          <ErrorMsg onReintentar={salon.recargar}>{salon.error}</ErrorMsg>
+        )}
         {salon.cargando && !salon.datos ? (
           <Cargando />
         ) : (

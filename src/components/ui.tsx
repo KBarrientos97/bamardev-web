@@ -64,27 +64,133 @@ export function Campo({
   );
 }
 
-export function Input({ className = "", ...props }: InputHTMLAttributes<HTMLInputElement>) {
+/**
+ * Campo de texto de la app.
+ *
+ * **`type="number"` no se le pasa al navegador.** Con un campo numérico el
+ * navegador decide qué hacer con la coma según SU idioma: en uno en inglés,
+ * "50,50" quedaba como `5050` antes de que la pantalla lo viera, y un abono de
+ * Bs 50,50 se registraba como Bs 5.050 (lo frenaba sólo si el saldo era menor).
+ * Pasaba en el cobro, el arqueo, la apertura, los abonos, los precios…
+ *
+ * Así que un campo numérico se dibuja como texto con teclado numérico
+ * (`inputMode`), y la coma se convierte en punto al teclear: el valor que le
+ * llega a la pantalla es siempre `50.50`, que entienden igual `parsearMonto` y
+ * `Number()`.
+ */
+export function Input({
+  className = "",
+  type,
+  inputMode,
+  onChange,
+  ...props
+}: InputHTMLAttributes<HTMLInputElement>) {
+  const numerico = type === "number";
   return (
     <input
       {...props}
+      type={numerico ? "text" : type}
+      inputMode={numerico ? (inputMode ?? "decimal") : inputMode}
+      onChange={(e) => {
+        if (numerico && e.target.value.includes(",")) {
+          e.target.value = e.target.value.replace(/,/g, ".");
+        }
+        onChange?.(e);
+      }}
       className={`w-full rounded-xl border border-borde bg-white px-3.5 py-2.5 text-sm text-texto outline-none transition-colors placeholder:text-texto-4 focus:border-primary focus:ring-2 focus:ring-primary-100 disabled:bg-muted ${className}`}
     />
   );
 }
 
+/**
+ * Campo de contraseña con el ojito para ver lo tipeado, igual que en la app.
+ *
+ * Por defecto cada campo maneja su propio ojo. Con `visible` y
+ * `onCambiarVisible` lo maneja el padre, para "Cambiar contraseña": la nueva y
+ * la repetida se muestran juntas, porque ver una sola no sirve para
+ * compararlas. `sinOjo` deja el campo siguiendo al otro sin dibujar un segundo
+ * botón.
+ *
+ * El `pr-11` le reserva lugar al ojo: sin eso, una contraseña larga se mete
+ * abajo del ícono.
+ */
+export function InputPassword({
+  visible,
+  onCambiarVisible,
+  sinOjo = false,
+  className = "",
+  ...props
+}: Omit<InputHTMLAttributes<HTMLInputElement>, "type"> & {
+  visible?: boolean;
+  onCambiarVisible?: (visible: boolean) => void;
+  sinOjo?: boolean;
+}) {
+  const [visiblePropio, setVisiblePropio] = useState(false);
+  const mostrando = visible ?? visiblePropio;
+  const alternar = () => {
+    if (onCambiarVisible) onCambiarVisible(!mostrando);
+    else setVisiblePropio(!mostrando);
+  };
+
+  return (
+    <div className="relative">
+      <Input
+        {...props}
+        type={mostrando ? "text" : "password"}
+        className={`${sinOjo ? "" : "pr-11"} ${className}`}
+      />
+      {!sinOjo && (
+        <button
+          type="button"
+          onClick={alternar}
+          // Sin esto, el clic le saca el foco al campo y el que tipeaba tiene
+          // que volver a tocarlo para seguir escribiendo.
+          onMouseDown={(e) => e.preventDefault()}
+          aria-label={mostrando ? "Ocultar contraseña" : "Mostrar contraseña"}
+          aria-pressed={mostrando}
+          title={mostrando ? "Ocultar contraseña" : "Mostrar contraseña"}
+          className="absolute inset-y-0 right-0 flex w-11 items-center justify-center rounded-r-xl text-texto-4 transition-colors hover:text-texto-2 focus-visible:text-primary focus-visible:outline-none"
+        >
+          {/* El ícono muestra lo que va a pasar al tocarlo, como en Chrome. */}
+          <Icon name={mostrando ? "ojoTachado" : "ojo"} size={18} />
+        </button>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Desplegable.
+ *
+ * La flecha nativa no se usa: cada navegador dibuja la suya —en Chrome de
+ * Windows, un triangulito gris pegado al borde— y al lado de un campo
+ * redondeado se leia como un detalle suelto, sobre todo en un select ancho,
+ * donde queda a media pantalla del texto. Con `appearance-none` se apaga y se
+ * dibuja el chevron del sistema de iconos, separado del borde y del mismo gris
+ * que el resto de los campos.
+ *
+ * El `pr-10` es parte del arreglo, no decoracion: sin ese lugar reservado, una
+ * opcion larga se mete abajo de la flecha.
+ */
 export function Select({
   className = "",
   children,
   ...props
 }: InputHTMLAttributes<HTMLSelectElement> & { children: ReactNode }) {
   return (
-    <select
-      {...props}
-      className={`w-full rounded-xl border border-borde bg-white px-3.5 py-2.5 text-sm text-texto outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary-100 ${className}`}
-    >
-      {children}
-    </select>
+    <div className="relative">
+      <select
+        {...props}
+        className={`w-full cursor-pointer appearance-none rounded-xl border border-borde bg-white py-2.5 pl-3.5 pr-10 text-sm text-texto outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary-100 ${className}`}
+      >
+        {children}
+      </select>
+      {/* pointer-events-none: el click tiene que abrir el desplegable, no morir
+          en el icono. */}
+      <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center">
+        <Icon name="chevronDown" size={16} color="#94A3B8" />
+      </span>
+    </div>
   );
 }
 
@@ -150,12 +256,55 @@ export function Cargando({ texto = "Cargando…" }: { texto?: string }) {
   );
 }
 
-export function ErrorMsg({ children }: { children: ReactNode }) {
+/**
+ * Un aviso que NO es un error: algo salió bien, o salió distinto de lo pedido
+ * pero está resuelto.
+ *
+ * Existe porque el bloque estaba copiado inline en tres pantallas y las demás,
+ * al no tenerlo a mano, mandaban sus avisos por `ErrorMsg` — que es rojo y con
+ * ícono de alerta. Así, "el artículo ya tenía ventas, se archivó en vez de
+ * borrarse" (una operación exitosa) se leía como una falla.
+ */
+export function AvisoOk({ children }: { children: ReactNode }) {
+  if (!children) return null;
+  return (
+    <div className="flex items-start gap-2 rounded-xl bg-primary-50 px-3.5 py-2.5 text-sm text-primary-700">
+      <Icon name="check" size={17} />
+      <span>{children}</span>
+    </div>
+  );
+}
+
+/**
+ * Un error, con salida.
+ *
+ * `onReintentar` dibuja el botón: sin él, una pantalla que falla al cargar
+ * queda en un cartel rojo y NADA más. El caso que lo motiva es el POS cuando
+ * parpadea el wifi del local (el escenario que `api.ts` anticipa): el cajero
+ * se quedaba sin forma de seguir salvo F5 — y en una tablet en modo kiosco, ni
+ * eso. `useApi` ya devolvía `recargar()`; no lo cableaba nadie.
+ */
+export function ErrorMsg({
+  children,
+  onReintentar,
+}: {
+  children: ReactNode;
+  onReintentar?: () => void;
+}) {
   if (!children) return null;
   return (
     <div className="flex items-start gap-2 rounded-xl bg-danger-bg px-3.5 py-2.5 text-sm text-danger-text">
       <Icon name="alert" size={17} />
-      <span>{children}</span>
+      <span className="flex-1">{children}</span>
+      {onReintentar && (
+        <button
+          type="button"
+          onClick={onReintentar}
+          className="shrink-0 rounded-lg border border-danger-text/30 px-2.5 py-1 text-xs font-semibold text-danger-text transition-colors hover:bg-danger-text/10"
+        >
+          Reintentar
+        </button>
+      )}
     </div>
   );
 }
@@ -169,6 +318,8 @@ export function Modal({
   children,
   acciones,
   ancho = "max-w-lg",
+  encabezado,
+  cerrarAlClicAfuera = true,
 }: {
   abierto: boolean;
   titulo: string;
@@ -177,13 +328,40 @@ export function Modal({
   children: ReactNode;
   acciones?: ReactNode;
   ancho?: string;
+  /**
+   * Reemplaza la barra de título por una cabecera propia —la ficha del
+   * medicamento la usa para su franja de color, donde el nombre es lo primero
+   * que se ve. `titulo` se sigue pidiendo: es el `aria-label` del diálogo.
+   *
+   * La cruz de cerrar la pone igual el Modal, sobre la cabecera y en blanco:
+   * quien pasa una cabecera acá la está pintando de un color fuerte.
+   */
+  encabezado?: ReactNode;
+  /**
+   * `false` en los modales con formulario: un clic al costado borraba todo lo
+   * tecleado. El peor caso era el alta de producto —nombre, precio, costo,
+   * categoría, ícono y la receta entera de un combo— que al reabrir arrancaba
+   * limpio. Se cierra con la X o con Cancelar, que es deliberado.
+   */
+  cerrarAlClicAfuera?: boolean;
 }) {
+  // Escape cierra, como cualquier diálogo. No lo hacía: el `role="dialog"` es
+  // un div, no un `<dialog>` nativo, así que el navegador no lo maneja solo.
+  useEffect(() => {
+    if (!abierto) return;
+    const alTecla = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", alTecla);
+    return () => document.removeEventListener("keydown", alTecla);
+  }, [abierto, onClose]);
+
   if (!abierto) return null;
   return (
     <div
       className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-0 sm:items-center sm:p-4"
       onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onClose();
+        if (cerrarAlClicAfuera && e.target === e.currentTarget) onClose();
       }}
     >
       <div
@@ -192,19 +370,32 @@ export function Modal({
         aria-label={titulo}
         className={`flex max-h-[92dvh] w-full ${ancho} flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl sm:rounded-2xl`}
       >
-        <div className="flex items-start justify-between gap-4 border-b border-borde-soft px-5 py-4">
-          <div>
-            <h2 className="text-base font-bold text-texto">{titulo}</h2>
-            {subtitulo && <p className="mt-0.5 text-[13px] text-texto-3">{subtitulo}</p>}
+        {encabezado ? (
+          <div className="relative shrink-0">
+            {encabezado}
+            <button
+              onClick={onClose}
+              aria-label="Cerrar"
+              className="absolute right-4 top-4 rounded-full bg-white/20 p-2 text-white transition-colors hover:bg-white/30"
+            >
+              <Icon name="close" size={19} />
+            </button>
           </div>
-          <button
-            onClick={onClose}
-            aria-label="Cerrar"
-            className="rounded-lg p-2.5 text-texto-3 transition-colors hover:bg-muted"
-          >
-            <Icon name="close" size={19} />
-          </button>
-        </div>
+        ) : (
+          <div className="flex items-start justify-between gap-4 border-b border-borde-soft px-5 py-4">
+            <div>
+              <h2 className="text-base font-bold text-texto">{titulo}</h2>
+              {subtitulo && <p className="mt-0.5 text-[13px] text-texto-3">{subtitulo}</p>}
+            </div>
+            <button
+              onClick={onClose}
+              aria-label="Cerrar"
+              className="rounded-lg p-2.5 text-texto-3 transition-colors hover:bg-muted"
+            >
+              <Icon name="close" size={19} />
+            </button>
+          </div>
+        )}
         <div className="flex-1 overflow-y-auto px-5 py-4">{children}</div>
         {acciones && (
           <div className="flex flex-wrap justify-end gap-2 border-t border-borde-soft bg-muted px-5 py-3.5 pb-[max(0.875rem,env(safe-area-inset-bottom))]">
@@ -274,15 +465,24 @@ export function Kpi({
   icono,
   tono = "verde",
   pie,
+  alerta = false,
 }: {
   etiqueta: string;
   valor: string;
   icono?: NombreIcono;
   tono?: Tono;
   pie?: string;
+  /**
+   * El número es una mala noticia (los gastos ya pasan lo vendido): valor y pie
+   * en rojo, el color de "egreso / vencido" en toda la app. Sin esto la tarjeta
+   * se dibuja exactamente como siempre.
+   */
+  alerta?: boolean;
 }) {
   return (
-    <div className="card p-4">
+    // Las clases sin alerta son, letra por letra, las de siempre: esta tarjeta
+    // está en todos los reportes y no tiene por qué cambiar en ninguno.
+    <div className={alerta ? "card border-danger/40 p-4" : "card p-4"}>
       <div className="flex items-center justify-between">
         <span className="text-[12px] font-semibold uppercase tracking-wide text-texto-4">
           {etiqueta}
@@ -295,8 +495,18 @@ export function Kpi({
           </span>
         )}
       </div>
-      <p className="mt-2 truncate text-xl font-bold tracking-tight text-texto sm:text-2xl">{valor}</p>
-      {pie && <p className="mt-0.5 text-xs text-texto-3">{pie}</p>}
+      <p
+        className={`mt-2 truncate text-xl font-bold tracking-tight ${
+          alerta ? "text-danger-text" : "text-texto"
+        } sm:text-2xl`}
+      >
+        {valor}
+      </p>
+      {pie && (
+        <p className={alerta ? "mt-0.5 text-xs font-semibold text-danger-text" : "mt-0.5 text-xs text-texto-3"}>
+          {pie}
+        </p>
+      )}
     </div>
   );
 }

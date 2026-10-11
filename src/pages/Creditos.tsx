@@ -1,11 +1,21 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import ComprobanteCredito, { type TipoComprobante } from "../components/ComprobanteCredito";
-import { parsearMonto } from "../lib/dinero";
-import { puedeSupervisar } from "../lib/permisos";
+import { QrParaCobrar } from "../components/QrCobro";
+import {
+  aCentavos,
+  esCero,
+  esPositivo,
+  excede,
+  parsearMonto,
+  restoEnEfectivo,
+} from "../lib/dinero";
+import { tienePermiso } from "../lib/permisos";
 import { useAuth } from "../store/AuthContext";
 import { Icon } from "../components/Icon";
 import { Buscador, Chips, EncabezadoPagina } from "../components/filtros";
 import {
+  AvisoOk,
   Badge,
   Boton,
   Campo,
@@ -21,6 +31,7 @@ import {
 import { api } from "../lib/api";
 import { fmtFecha, fmtFechaHora, fmtMoney, fmtNum } from "../lib/format";
 import { useApi } from "../lib/useApi";
+import { useSucursales } from "../lib/useSucursales";
 import type { ClienteCredito, Credito, EstadoCredito, FiltroCredito, FormaPago } from "../types";
 
 const OPC_FILTRO = [
@@ -84,11 +95,16 @@ export default function Creditos() {
   // viejos no están en la lista que ya se descargó.
   const [qBuscado, setQBuscado] = useState("");
 
+  // Sin depósitos: se fía en el mostrador, no en un depósito.
+  const suc = useSucursales();
   const creditos = useApi<CreditoApi[]>(
-    () => api.getCreditos({ filtro, q: qBuscado || undefined }),
-    [filtro, qBuscado],
+    () => api.getCreditos({ filtro, q: qBuscado || undefined, sucursalId: suc.sucursalId }),
+    [filtro, qBuscado, suc.sucursalId],
   );
-  const clientes = useApi(() => api.getClientesCredito(), []);
+  const clientes = useApi(
+    () => api.getClientesCredito(suc.sucursalId),
+    [suc.sucursalId],
+  );
   const formasPago = useApi(() => api.getFormasPago(), []);
 
   const [detalleId, setDetalleId] = useState<number | null>(null);
@@ -96,6 +112,27 @@ export default function Creditos() {
   const [editandoLimite, setEditandoLimite] = useState<ClienteCredito | null>(null);
   const [reciboDe, setReciboDe] = useState<{ credito: CreditoApi; monto: number } | null>(null);
   const [aviso, setAviso] = useAviso();
+
+  const navigate = useNavigate();
+  const { usuario } = useAuth();
+  /**
+   * Al cajero se le avisa ANTES de que llene el formulario, no con el 400 del
+   * backend después de teclear el monto. Es lo que hace la app
+   * (`CuentasPorCobrarFragment`), y esta página la abre cualquiera desde el
+   * menú, con o sin caja.
+   *
+   * La regla es la misma de `FormAbono` y del backend: quien tiene
+   * `credito.cobrar_sin_caja` cobra sin caja, así que a él ni se le pregunta.
+   */
+  const cobraSinCaja = tienePermiso(usuario, "credito.cobrar_sin_caja");
+  const caja = useApi(
+    () => (cobraSinCaja ? Promise.resolve({ caja: null }) : api.cajaActual()),
+    [cobraSinCaja],
+  );
+  // Si no se pudo preguntar (error) no se avisa nada: el cobro puede andar
+  // igual. Misma decisión que la app, que trata ese caso como "no sé".
+  const sinCaja =
+    !cobraSinCaja && !caja.cargando && !caja.error && caja.datos?.caja == null;
 
   const lista = creditos.datos ?? [];
   const listaClientes = clientes.datos ?? [];
@@ -147,6 +184,20 @@ export default function Creditos() {
         />
       </div>
 
+      {sinCaja && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-warning-bg px-3.5 py-2.5 text-[13px] text-warning-text">
+          <span className="flex items-center gap-2">
+            <Icon name="alert" size={17} />
+            Para cobrar hace falta tu caja abierta: el abono entra a la caja de quien
+            cobra.
+          </span>
+          {/* La caja se abre en el POS: es la misma pantalla de apertura de siempre. */}
+          <Boton variante="ghost" icono="lock" onClick={() => navigate("/pos")}>
+            Abrir caja
+          </Boton>
+        </div>
+      )}
+
       <div className="space-y-3">
         <div className="flex gap-2">
           <Buscador
@@ -164,16 +215,14 @@ export default function Creditos() {
             Buscar
           </Boton>
         </div>
+        {suc.elegir && (
+          <Chips valor={suc.valorChip} opciones={suc.opciones} onChange={suc.alElegir} />
+        )}
         <Chips valor={filtro} opciones={OPC_FILTRO} onChange={setFiltro} />
       </div>
 
       <ErrorMsg>{creditos.error}</ErrorMsg>
-      {aviso && (
-        <div className="flex items-start gap-2 rounded-xl bg-primary-50 px-3.5 py-2.5 text-sm text-primary-700">
-          <Icon name="check" size={17} />
-          <span>{aviso}</span>
-        </div>
-      )}
+      <AvisoOk>{aviso}</AvisoOk>
 
       {creditos.cargando ? (
         <Cargando />
@@ -367,9 +416,9 @@ function TarjetaCliente({
   onLimite: (c: ClienteCredito) => void;
 }) {
   const { usuario } = useAuth();
-  // A un CAJERO se le esconde el lápiz: un ícono de editar que no responde se
-  // lee como app rota, no como falta de permiso. El backend además lo impide.
-  const puedeEditarLimite = puedeSupervisar(usuario?.rol);
+  // A quien no puede cambiar límites se le esconde el lápiz: un ícono de
+  // editar que no responde se lee como app rota, no como falta de permiso.
+  const puedeEditarLimite = tienePermiso(usuario, "credito.limite_editar");
 
   return (
     <li className="card p-4">
@@ -591,6 +640,9 @@ function Dato({ label, valor }: { label: string; valor: string }) {
   );
 }
 
+/** Valor del desplegable para el cobro repartido entre efectivo y QR. */
+const MIXTO = "__mixto__";
+
 function FormAbono({
   credito: c,
   formasPago,
@@ -602,35 +654,105 @@ function FormAbono({
   onClose: () => void;
   onGuardado: (monto: number) => void;
 }) {
+  const { usuario } = useAuth();
+  /**
+   * Donde termina la plata, que no es lo mismo para todos.
+   *
+   * Quien tiene `credito.cobrar_sin_caja` (el dueño, en la plantilla) puede
+   * cobrar un fiado sin caja abierta: ahi el cobro queda registrado a su
+   * nombre y no entra a ningun arqueo. Al resto se le sigue exigiendo su
+   * caja, asi que para ellos la frase de siempre es la correcta.
+   */
+  const cobraSinCaja = tienePermiso(usuario, "credito.cobrar_sin_caja");
+  const { incluye } = useAuth();
+
   const [monto, setMonto] = useState("");
   // Las formas de pago se resuelven por NOMBRE porque los ids son por negocio:
   // el "1" de un negocio no es el efectivo de otro.
   const [formaNombre, setFormaNombre] = useState(
     () => formasPago.find((f) => f.nombre === "Efectivo")?.nombre ?? formasPago[0]?.nombre ?? "",
   );
+
+  /**
+   * QR y mixto, como en la app (`RegistrarAbonoDialog`).
+   *
+   * Antes elegir "QR" en el desplegable registraba el abono al instante: no se
+   * mostraba el QR ni se pedía confirmar que la plata llegó, y al cliente se
+   * le borraba una deuda que todavía podía deber. Ahora con QR de por medio el
+   * botón no se habilita hasta dar el pago por recibido, igual que en el POS.
+   */
+  const formaEfectivo = formasPago.find((f) => f.nombre.toLowerCase() === "efectivo");
+  const formaQr = formasPago.find((f) => f.nombre.toLowerCase() === "qr");
+  const permiteMixto = incluye("pago_qr_mixto") && !!formaEfectivo && !!formaQr;
+  const esMixto = formaNombre === MIXTO;
+  const [montoQr, setMontoQr] = useState("");
+  /** El monto por QR que se dio por recibido. Si el monto cambia, deja de valer. */
+  const [qrConfirmadoPor, setQrConfirmadoPor] = useState<number | null>(null);
+
+  const montoNum = parsearMonto(monto) ?? 0;
+  const qrMixtoNum = parsearMonto(montoQr) ?? 0;
+  const esQr = !esMixto && formaNombre.toLowerCase() === "qr";
+  /** Cuánto de este cobro entra por QR: todo, la parte del mixto, o nada. */
+  const qrDelCobro = esQr ? montoNum : esMixto ? qrMixtoNum : 0;
+  const efectivoDelMixto = restoEnEfectivo(montoNum, qrMixtoNum);
+  const qrConfirmado =
+    qrConfirmadoPor != null && esPositivo(qrDelCobro) && esCero(qrConfirmadoPor - qrDelCobro);
   const [error, setError] = useState("");
   const [guardando, setGuardando] = useState(false);
+  /**
+   * El candado de verdad, y acá es plata que entra a la caja.
+   *
+   * `setGuardando(true)` no frena un segundo clic en el MISMO tick: React
+   * batchea el estado y las dos llamadas salen antes del re-render, así que el
+   * `disabled` del botón llega tarde. `registrarAbono` no manda clave de
+   * idempotencia y el backend no deduplica: un doble clic nervioso en el
+   * mostrador registraba DOS abonos. El cliente quedaba con un saldo menor al
+   * que pagó y el arqueo del turno cerraba con plata que nunca entró.
+   */
+  const enVuelo = useRef(false);
 
   async function guardar() {
+    if (enVuelo.current) return;
     setError("");
-    const montoNum = Number(monto);
-    if (!Number.isFinite(montoNum) || montoNum <= 0)
-      return setError("Poné un monto mayor a cero.");
-    if (montoNum > c.saldo)
+    // parsearMonto y no Number(): "150,50" es como se teclea en Bolivia.
+    if (!esPositivo(montoNum)) return setError("Poné un monto mayor a cero.");
+    if (excede(montoNum, c.saldo))
       return setError(`El abono no puede pasar el saldo (${fmtMoney(c.saldo)}).`);
 
-    const forma = formasPago.find((f) => f.nombre === formaNombre);
-    if (!forma) return setError("Elegí una forma de pago.");
+    let pagos: { monto: number; formaPagoId: number }[];
+    if (esMixto) {
+      if (!formaEfectivo || !formaQr) return setError("Faltan las formas de pago Efectivo y QR.");
+      // El QR es exacto (no da vuelto), así que no puede superar el abono.
+      if (excede(qrMixtoNum, montoNum))
+        return setError(`Por QR no puede ir más que el abono (${fmtMoney(montoNum)}).`);
+      // Cada parte por separado: si fuera una sola línea de efectivo, el
+      // arqueo esperaría plata que se fue por transferencia. Las partes en 0
+      // no se mandan (el backend las rechaza).
+      pagos = [
+        ...(esPositivo(efectivoDelMixto)
+          ? [{ monto: efectivoDelMixto, formaPagoId: formaEfectivo.id }]
+          : []),
+        ...(esPositivo(qrMixtoNum) ? [{ monto: aCentavos(qrMixtoNum), formaPagoId: formaQr.id }] : []),
+      ];
+    } else {
+      const forma = formasPago.find((f) => f.nombre === formaNombre);
+      if (!forma) return setError("Elegí una forma de pago.");
+      pagos = [{ monto: aCentavos(montoNum), formaPagoId: forma.id }];
+    }
+    if (esPositivo(qrDelCobro) && !qrConfirmado)
+      return setError("Confirmá que el pago por QR llegó antes de registrar el abono.");
 
+    enVuelo.current = true;
     setGuardando(true);
     try {
       // Sin cajaId a propósito: el backend usa la caja abierta de quien cobra,
       // que es la única donde el dinero puede entrar de verdad.
-      await api.registrarAbono(c.id, { monto: montoNum, formaPagoId: forma.id });
+      await api.registrarAbono(c.id, { pagos });
       onGuardado(montoNum);
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo registrar el abono");
-    } finally {
+      // Sólo al fallar: si salió bien el modal se cierra y no hay que liberarlo.
+      enVuelo.current = false;
       setGuardando(false);
     }
   }
@@ -647,7 +769,11 @@ function FormAbono({
           <Boton variante="ghost" onClick={onClose}>
             Cancelar
           </Boton>
-          <Boton icono="save" onClick={guardar} disabled={guardando}>
+          <Boton
+            icono="save"
+            onClick={guardar}
+            disabled={guardando || (esPositivo(qrDelCobro) && !qrConfirmado)}
+          >
             {guardando ? "Guardando…" : "Cobrar"}
           </Boton>
         </>
@@ -676,15 +802,53 @@ function FormAbono({
           Pagar todo ({fmtMoney(c.saldo)})
         </Boton>
 
-        <Campo label="Forma de pago" hint="El abono entra en tu caja abierta">
-          <Select value={formaNombre} onChange={(e) => setFormaNombre(e.target.value)}>
+        <Campo
+          label="Forma de pago"
+          hint={
+            cobraSinCaja
+              ? "Con tu caja abierta entra ahi; si no, queda registrado a tu nombre"
+              : "El abono entra en tu caja abierta"
+          }
+        >
+          <Select
+            value={formaNombre}
+            onChange={(e) => {
+              setFormaNombre(e.target.value);
+              setQrConfirmadoPor(null);
+            }}
+          >
             {formasPago.map((f) => (
               <option key={f.id} value={f.nombre}>
                 {f.nombre}
               </option>
             ))}
+            {permiteMixto && <option value={MIXTO}>Efectivo + QR (mixto)</option>}
           </Select>
         </Campo>
+
+        {esMixto && (
+          <div className="space-y-2">
+            <Campo label="Cuánto paga por QR">
+              <Input
+                inputMode="decimal"
+                value={montoQr}
+                onChange={(e) => setMontoQr(e.target.value)}
+                placeholder="0,00"
+              />
+            </Campo>
+            <p className="text-[13px] text-texto-2">
+              En efectivo: <strong>{fmtMoney(efectivoDelMixto)}</strong>
+            </p>
+          </div>
+        )}
+
+        {esPositivo(qrDelCobro) && (
+          <QrParaCobrar
+            confirmado={qrConfirmado}
+            onConfirmar={() => setQrConfirmadoPor(qrDelCobro)}
+            monto={fmtMoney(qrDelCobro)}
+          />
+        )}
 
         <ErrorMsg>{error}</ErrorMsg>
       </div>

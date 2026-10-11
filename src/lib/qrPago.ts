@@ -1,30 +1,37 @@
+import { api } from "./api";
+
 /**
  * QR de cobro del negocio: la imagen que el dueño sube y que se le muestra al
  * cliente cuando paga por QR o transferencia.
  *
- * Port de `QrPago.kt` (Android). Igual que allá, vive en el DISPOSITIVO y no en
- * el backend: no depende de que el turno esté abierto ni de qué cajero entró, y
- * se sube una vez por equipo. Por eso tampoco se borra al cerrar sesión — es
- * configuración de la máquina, como la impresora.
+ * Port de `QrPago.kt` (Android). El original vive en el backend (`/qr-cobro`):
+ * lo sube quien abre la caja y lo bajan todos los equipos del negocio. Lo que
+ * guarda este archivo en localStorage es la copia del equipo, que es la que se
+ * muestra: así el cobro no depende de que el backend conteste en ese momento.
  *
- * La contrapartida de guardarlo local: cada navegador lo carga por separado. Es
- * el mismo comportamiento que la app, donde cada tablet sube el suyo.
+ * Antes vivía SÓLO en el equipo y cada navegador lo cargaba por separado: el
+ * mesero, que nunca abre la caja, nunca lo tenía.
  *
  * La clave lleva el alias del negocio para que un equipo que cambia de cliente
- * no le muestre a uno el QR del otro (lo que `CambioDeNegocio` resuelve en la
- * app borrando los datos del negocio anterior).
+ * no le muestre a uno el QR del otro.
  */
 
 const PREFIJO = "bamardev.qr.cobro";
+/** El equipo recibió el QR del backend al menos una vez (ver sincronizarQr). */
+const PREFIJO_SINCRONIZADO = "bamardev.qr.cobro.sincronizado";
 
 /**
- * Lado máximo al guardar. Una foto de 12 MP no hace al QR más escaneable y sí
- * llena la cuota de localStorage, que ronda los 5 MB por origen.
+ * Lado máximo. Una foto de 12 MP no hace al QR más escaneable, y la imagen
+ * viaja al backend, que acepta hasta 90 000 caracteres: 600 px alcanzan de
+ * sobra para que escanee.
  */
-const LADO_MAX = 900;
+const LADO_MAX = 600;
 
-/** Calidad del JPEG/WebP resultante: suficiente para que el QR escanee bien. */
-const CALIDAD = 0.85;
+/** Largo máximo del data URL, con margen bajo el tope del backend. */
+const LARGO_MAX = 85_000;
+
+/** Calidades a probar, de mejor a peor, hasta que la imagen entre en el tope. */
+const CALIDADES = [0.85, 0.75, 0.65, 0.55, 0.45];
 
 function clave(alias: string | null | undefined): string {
   return `${PREFIJO}_${alias || "sin_negocio"}`;
@@ -44,12 +51,93 @@ export function hayQr(alias: string | null | undefined): boolean {
   return leerQr(alias) !== null;
 }
 
-/** Borra el QR guardado: el cobro vuelve a mostrar el marcador de ejemplo. */
+/** Borra la copia del equipo: el cobro vuelve a decir que no hay QR. */
 export function borrarQr(alias: string | null | undefined): void {
   try {
     localStorage.removeItem(clave(alias));
   } catch {
     /* sin storage no hay nada que borrar */
+  }
+}
+
+function marcarSincronizado(alias: string | null | undefined): void {
+  try {
+    localStorage.setItem(`${PREFIJO_SINCRONIZADO}_${alias || "sin_negocio"}`, "1");
+  } catch {
+    /* sin storage se vuelve a sincronizar la próxima vez, no pasa nada */
+  }
+}
+
+function yaSincronizado(alias: string | null | undefined): boolean {
+  try {
+    return localStorage.getItem(`${PREFIJO_SINCRONIZADO}_${alias || "sin_negocio"}`) === "1";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Trae el QR del backend y lo deja como copia del equipo. Devuelve el QR con
+ * que quedó el equipo. Sin internet sigue con la copia que tenía.
+ *
+ * `puedeSubir`: si quien mira maneja la caja (no el mesero ni el repartidor).
+ */
+export async function sincronizarQr(
+  alias: string | null | undefined,
+  puedeSubir: boolean,
+): Promise<string | null> {
+  let remoto: string | null;
+  try {
+    remoto = (await api.qrCobro()).imagen;
+  } catch {
+    return leerQr(alias);
+  }
+  if (remoto) {
+    try {
+      localStorage.setItem(clave(alias), remoto);
+      marcarSincronizado(alias);
+    } catch {
+      /* sin storage se muestra igual lo que vino, abajo */
+      return remoto;
+    }
+  } else if (yaSincronizado(alias)) {
+    // Este equipo ya lo había recibido: alguien lo quitó a propósito, y
+    // seguir mostrando la copia sería cobrar a una cuenta dada de baja.
+    borrarQr(alias);
+  } else if (puedeSubir && leerQr(alias)) {
+    // La caja de antes de que el QR viviera en el backend: ya lo tenía
+    // cargado. Se sube para que lo reciban los meseros sin volver a elegirlo.
+    if ((await subirQr(alias)).ok) marcarSincronizado(alias);
+  }
+  return leerQr(alias);
+}
+
+/** Sube la copia del equipo al backend, para el resto de los equipos. */
+export async function subirQr(alias: string | null | undefined): Promise<ResultadoQr> {
+  const qr = leerQr(alias);
+  if (!qr) return { ok: false, error: "No hay QR para compartir." };
+  try {
+    await api.subirQrCobro(qr);
+    marcarSincronizado(alias);
+    return { ok: true };
+  } catch (e) {
+    return {
+      ok: false,
+      error: e instanceof Error ? e.message : "No se pudo compartir el QR.",
+    };
+  }
+}
+
+/** Lo quita para todos los equipos del negocio, no sólo de éste. */
+export async function quitarQrDelNegocio(): Promise<ResultadoQr> {
+  try {
+    await api.borrarQrCobro();
+    return { ok: true };
+  } catch (e) {
+    return {
+      ok: false,
+      error: e instanceof Error ? e.message : "No se pudo quitar el QR de los otros equipos.",
+    };
   }
 }
 
@@ -80,7 +168,7 @@ export async function guardarQr(
     return {
       ok: false,
       error: lleno
-        ? "La imagen es muy pesada para guardarla en este equipo. Probá con una más chica."
+        ? "La imagen es muy pesada. Probá con una captura del QR solo, sin el resto de la pantalla."
         : "No se pudo leer la imagen. Probá con otro archivo.",
     };
   }
@@ -103,7 +191,11 @@ function reescalar(archivo: File): Promise<string> {
       ctx.fillStyle = "#fff";
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      resolver(canvas.toDataURL("image/jpeg", CALIDAD));
+      for (const calidad of CALIDADES) {
+        const dataUrl = canvas.toDataURL("image/jpeg", calidad);
+        if (dataUrl.length <= LARGO_MAX) return resolver(dataUrl);
+      }
+      rechazar(new DOMException("imagen muy pesada", "QuotaExceededError"));
     };
     img.onerror = () => {
       URL.revokeObjectURL(url);

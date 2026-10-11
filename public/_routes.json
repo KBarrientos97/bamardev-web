@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "description": "Las Functions (el middleware del host link y la vista previa de /p y /r) no ven los archivos del build: se sirven directo. Ver src/vista-previa/link.ts.",
+  "include": ["/*"],
+  "exclude": [
+    "/assets/*",
+    "/favicon.ico",
+    "/favicon-32.png",
+    "/apple-touch-icon.png",
+    "/icons.svg",
+    "/logo-marca.png"
+  ]
+}

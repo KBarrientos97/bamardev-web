@@ -1,7 +1,7 @@
 import { act, renderHook } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
-import type { Producto } from "../../types";
-import { useCarrito } from "./useCarrito";
+import { beforeEach, describe, expect, it } from "vitest";
+import type { Producto, TipoPedido } from "../../types";
+import { idsGuardados, paraVender, useCarrito } from "./useCarrito";
 
 function producto(over: Partial<Producto> = {}): Producto {
   return {
@@ -19,9 +19,89 @@ function producto(over: Partial<Producto> = {}): Producto {
     unidadMedida: null,
     stockTotal: 5,
     componentes: [],
+    // Ficha farmacéutica: en un artículo de restaurante es todo neutro, que es
+    // justo lo que el backend devuelve para él.
+    principioActivo: null,
+    concentracion: null,
+    formaFarmaceutica: null,
+    laboratorio: null,
+    registroSanitario: null,
+    condicionVenta: "LIBRE",
+    manejaLote: false,
+    controlado: false,
     ...over,
   };
 }
+
+describe("useCarrito · el carrito sobrevive a un F5", () => {
+  // El caso real: el cajero carga quince items, el navegador recarga la
+  // pestaña (o le da F5 sin querer) y la venta se perdía entera, con el
+  // cliente enfrente.
+  beforeEach(() => sessionStorage.clear());
+
+  it("rehidrata las líneas guardadas contra el catálogo", () => {
+    const p = producto();
+    const primero = renderHook(() => useCarrito("LOCAL", [p]));
+    act(() => primero.result.current.agregar(p));
+    act(() => primero.result.current.setCantidad(p.id, 3));
+    primero.unmount();
+
+    // Otro montaje = lo que pasa al recargar la página.
+    const segundo = renderHook(() => useCarrito("LOCAL", [p]));
+    expect(segundo.result.current.lineas).toHaveLength(1);
+    expect(segundo.result.current.unidades).toBe(3);
+  });
+
+  it("usa el precio de HOY, no el de cuando se cargó la línea", () => {
+    // Se guardan ids, no productos: si el dueño cambió el precio mientras el
+    // carrito estaba a medio armar, la venta tiene que cobrar el nuevo.
+    const antes = producto({ precio: 10 });
+    const primero = renderHook(() => useCarrito("LOCAL", [antes]));
+    act(() => primero.result.current.agregar(antes));
+    primero.unmount();
+
+    const despues = producto({ precio: 15 });
+    const segundo = renderHook(() => useCarrito("LOCAL", [despues]));
+    expect(segundo.result.current.lineas[0].producto.precio).toBe(15);
+    expect(segundo.result.current.total).toBe(15);
+  });
+
+  it("descarta lo que ya no está en el catálogo", () => {
+    // El artículo se dio de baja mientras el carrito esperaba: no puede volver
+    // —la venta lo rechazaría— y el resto del carrito sí.
+    const a = producto({ id: 1 });
+    const b = producto({ id: 2, nombre: "Gaseosa" });
+    const primero = renderHook(() => useCarrito("LOCAL", [a, b]));
+    act(() => primero.result.current.agregar(a));
+    act(() => primero.result.current.agregar(b));
+    primero.unmount();
+
+    const segundo = renderHook(() => useCarrito("LOCAL", [a]));
+    expect(segundo.result.current.lineas).toHaveLength(1);
+    expect(segundo.result.current.lineas[0].producto.id).toBe(1);
+  });
+
+  it("el carrito del mostrador y el del delivery no se pisan", () => {
+    const p = producto();
+    const local = renderHook(() => useCarrito("LOCAL", [p]));
+    act(() => local.result.current.agregar(p));
+    local.unmount();
+
+    const delivery = renderHook(() => useCarrito("DELIVERY", [p]));
+    expect(delivery.result.current.lineas).toHaveLength(0);
+  });
+
+  it("vaciar el carrito también lo borra de la sesión", () => {
+    const p = producto();
+    const primero = renderHook(() => useCarrito("LOCAL", [p]));
+    act(() => primero.result.current.agregar(p));
+    act(() => primero.result.current.vaciar());
+    primero.unmount();
+
+    const segundo = renderHook(() => useCarrito("LOCAL", [p]));
+    expect(segundo.result.current.lineas).toHaveLength(0);
+  });
+});
 
 describe("useCarrito", () => {
   it("suma unidades al agregar el mismo producto dos veces", () => {
@@ -46,6 +126,24 @@ describe("useCarrito", () => {
     act(() => result.current.agregar(p));
 
     expect(result.current.lineas[0].cantidad).toBe(2);
+  });
+
+  it("lo vencido no cuenta para el tope: sigue en el estante pero no se vende", () => {
+    // Farmacia: 5 en stock, 3 de ellas vencidas. El servidor rechaza la venta
+    // que las necesite, así que el carrito no las deja cargar.
+    const { result } = renderHook(() => useCarrito());
+    const p = producto({ stockTotal: 5, stockVencido: 3 });
+    expect(paraVender(p)).toBe(2);
+
+    act(() => result.current.agregar(p));
+    act(() => result.current.agregar(p));
+    act(() => result.current.agregar(p));
+
+    expect(result.current.lineas[0].cantidad).toBe(2);
+  });
+
+  it("sin stockVencido (el restaurante) el tope es el stock de siempre", () => {
+    expect(paraVender(producto({ stockTotal: 4 }))).toBe(4);
   });
 
   it("no limita los elaborados ni los combos, que no llevan stock", () => {
@@ -122,6 +220,27 @@ describe("useCarrito", () => {
     expect(result.current.lineas[0].enMesa).toBe(0);
   });
 
+  it("pase oct: lo armado en el mostrador y pasado a delivery o recoger viaja para llevar", () => {
+    // El carrito se arma con el pedido en LOCAL (líneas en mesa) y recién
+    // después se toca "Delivery": sin esto la venta a domicilio se grababa
+    // con consumo MESA y el historial le ponía la etiqueta "Mesa".
+    const p = producto();
+    const { result, rerender } = renderHook(({ t }) => useCarrito(t), {
+      initialProps: { t: "LOCAL" as TipoPedido },
+    });
+    act(() => result.current.agregar(p));
+    act(() => result.current.agregar(p));
+    rerender({ t: "DELIVERY" });
+    expect(result.current.aDetalles()).toEqual([
+      expect.objectContaining({ productoId: 1, cantidad: 2, consumo: "LLEVAR" }),
+    ]);
+    rerender({ t: "RECOGER" });
+    expect(result.current.aDetalles()).toEqual([expect.objectContaining({ cantidad: 2, consumo: "LLEVAR" })]);
+    // Al volver al mostrador, el reparto que había elegido sigue ahí.
+    rerender({ t: "LOCAL" });
+    expect(result.current.aDetalles()).toEqual([expect.objectContaining({ cantidad: 2, consumo: "MESA" })]);
+  });
+
   it("sumar una unidad a una línea entera en mesa la deja entera en mesa", () => {
     // Sin esto, la segunda unidad de un pedido de mesa se iba sola a "llevar"
     // y la comanda salía partida sin que nadie lo pidiera.
@@ -190,5 +309,26 @@ describe("useCarrito", () => {
     expect(result.current.lineas).toHaveLength(0);
     expect(result.current.unidades).toBe(0);
     expect(result.current.total).toBe(0);
+  });
+});
+
+describe("useCarrito · la venta de la farmacia", () => {
+  // La farmacia no se trae el catálogo: busca los artículos guardados. Con un
+  // carrito vacío no hay nada que buscar, y antes eso dejaba al carrito sin
+  // rehidratar para siempre — y sin rehidratar tampoco guardaba.
+  beforeEach(() => sessionStorage.clear());
+
+  it("con el catálogo 'listo' aunque esté vacío, guarda lo que se agrega", () => {
+    const p = producto({ id: 7 });
+    const { result } = renderHook(() => useCarrito("LOCAL", [], true));
+    act(() => result.current.agregar(p));
+    expect(idsGuardados("LOCAL")).toEqual([7]);
+  });
+
+  it("sin decir nada, se comporta como siempre: espera al catálogo", () => {
+    const p = producto({ id: 7 });
+    const { result } = renderHook(() => useCarrito("LOCAL", []));
+    act(() => result.current.agregar(p));
+    expect(idsGuardados("LOCAL")).toEqual([]);
   });
 });

@@ -5,6 +5,7 @@ import { api } from "../../lib/api";
 import { fmtMoney, fmtNum } from "../../lib/format";
 import type { Comanda, ItemComanda, Mesa } from "../../types/salon";
 import { AnularItem, ElegirMesa, Reserva } from "./AccionesMesa";
+import ComprobanteMesa from "./ComprobanteMesa";
 import {
   cantidadItems,
   consumoDeMesa,
@@ -61,6 +62,7 @@ export default function DetalleMesa({
   const [quitando, setQuitando] = useState(false);
   const [elegir, setElegir] = useState<"pasar" | "juntar" | null>(null);
   const [reservando, setReservando] = useState(false);
+  const [viendoComprobante, setViendoComprobante] = useState(false);
   const [anular, setAnular] = useState<{ comanda: Comanda; item: ItemComanda } | null>(
     null,
   );
@@ -272,8 +274,14 @@ export default function DetalleMesa({
           {/* El banner explica por qué el botón de abajo está apagado: separado
               se vuelve un dato suelto más. */}
           {pie.banner && (
-            <p className="mb-2 flex items-start gap-2 rounded-xl border border-[#FCD34D] bg-[#FFFBEB] px-3.5 py-2.5 text-[13px] text-[#D97706]">
-              <Icon name="info" size={15} />
+            <p
+              className={`mb-2 flex items-start gap-2 rounded-xl border px-3.5 py-2.5 text-[13px] ${
+                pie.tonoBanner === "exito"
+                  ? "border-[#6EE7B7] bg-[#ECFDF5] text-[#059669]"
+                  : "border-[#FCD34D] bg-[#FFFBEB] text-[#D97706]"
+              }`}
+            >
+              <Icon name={pie.tonoBanner === "exito" ? "check" : "info"} size={15} />
               <span>{pie.banner}</span>
             </p>
           )}
@@ -318,8 +326,25 @@ export default function DetalleMesa({
               {pie.terciario.texto}
             </Boton>
           )}
+          {/* El papel de la mesa: la cuenta para que el cliente la mire antes
+              de pagar, o el recibo después. En la app estaba; en la web no, y
+              el mesero no tenía cómo darle un papel al cliente. Sin consumo no
+              se ofrece: un papel en blanco no le sirve a nadie. */}
+          {ocupada && consumo > 0 && (
+            <button
+              onClick={() => setViendoComprobante(true)}
+              className="mt-2 flex w-full items-center justify-center gap-1.5 py-2 text-[13px] font-semibold text-texto-3 hover:text-texto-2"
+            >
+              <Icon name="printer" size={15} />
+              {mesa.cobro ? "Ver el recibo · imprimir o enviar" : "Ver la cuenta · imprimir o enviar"}
+            </button>
+          )}
         </div>
       </div>
+
+      {viendoComprobante && (
+        <ComprobanteMesa mesa={mesa} onCerrar={() => setViendoComprobante(false)} />
+      )}
 
       {elegir && (
         <ElegirMesa

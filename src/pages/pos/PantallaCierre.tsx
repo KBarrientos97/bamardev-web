@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import CorteDeCaja from "../../components/CorteDeCaja";
-import { parsearMontoO } from "../../lib/dinero";
+import { esPositivo, parsearMontoO } from "../../lib/dinero";
 import { Icon } from "../../components/Icon";
 import {
   Badge,
@@ -16,7 +16,9 @@ import { api } from "../../lib/api";
 import { fmtHora, fmtMoney, fmtNum } from "../../lib/format";
 import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
-import type { Caja } from "../../types";
+import { esBelleza } from "../../lib/rubro";
+import { cuandoCita } from "../../lib/agenda/horaAgenda";
+import type { Caja, CitaParaRevisar, MotivoRevisarCita } from "../../types";
 
 /** Motivo libre: es el único que pide escribir la descripción y el sentido. */
 const OTRO = "__otro__";
@@ -36,12 +38,15 @@ export default function PantallaCierre({
   caja,
   onAtras,
   onCerrada,
+  onIrAEntregas,
 }: {
   caja: Caja;
   onAtras: () => void;
   onCerrada: (cerrada: Caja) => void;
+  /** Recibir la plata de los meseros sin salir del cierre a buscarla. */
+  onIrAEntregas?: () => void;
 }) {
-  const { incluye } = useAuth();
+  const { incluye, rubro, puede } = useAuth();
   const resumen = useApi(() => api.resumenCaja(caja.id), [caja.id]);
   const [contado, setContado] = useState("");
   const [nota, setNota] = useState("");
@@ -52,18 +57,32 @@ export default function PantallaCierre({
 
   const r = resumen.datos;
   /**
-   * El conteo arranca con el saldo esperado ya puesto: acelera el arqueo de la
-   * mayoría de los turnos, donde la caja cuadra. Si el cajero ya tecleó algo no
-   * se pisa — corregirle el número mientras cuenta sería peor que no ayudarlo.
+   * El campo arranca VACÍO, a propósito.
+   *
+   * Antes se precargaba con el saldo esperado para "acelerar el arqueo de la
+   * mayoría de los turnos, donde la caja cuadra" — pero eso sólo se sabe
+   * DESPUÉS de contar. El cajero entraba, veía el número ya puesto y el cartel
+   * verde "La caja cuadra" sin haber tocado un billete, y el camino de menor
+   * esfuerzo con clientes esperando era confirmar. Todo faltante o sobrante
+   * real se volvía invisible, que es exactamente lo que el arqueo existe para
+   * detectar.
+   *
+   * Peor: la precarga desactivaba el propio guard de abajo (`conteoHecho`
+   * mira `contado !== ""`, y el precargado ya lo dejaba lleno).
+   *
+   * El esperado sigue estando a la vista en el resumen de arriba: sirve para
+   * que el cajero verifique después de contar, no antes.
    */
-  const [precargado, setPrecargado] = useState(false);
   const esperado = r?.saldoEsperado ?? 0;
-  useEffect(() => {
-    // Sólo una vez, y sólo si el cajero todavía no escribió nada.
-    if (precargado || !r || contado !== "") return;
-    setContado(String(esperado));
-    setPrecargado(true);
-  }, [r, esperado, contado, precargado]);
+  // Belleza (QA DIA-11): las propinas están dentro de ingresos/egresos; se
+  // muestran aparte y el resto queda como "otros". Sin propinas (Omar), las
+  // filas son las de siempre.
+  const propinasEfectivo = r?.propinasEfectivo ?? 0;
+  const propinasSalidas = r?.propinasSalidas ?? 0;
+  const propinasOtras = r?.propinasOtras ?? 0;
+  const hayPropinas = propinasEfectivo > 0 || propinasSalidas > 0;
+  const otrosIngresos = Math.round(((r?.ingresos ?? 0) - propinasEfectivo) * 100) / 100;
+  const otrosEgresos = Math.round(((r?.egresos ?? 0) - propinasSalidas) * 100) / 100;
   // Con parseo de coma: en Bolivia se teclea "150,50" y Number() da NaN, que
   // caía a 0 sin avisar — el conteo del cierre quedaba en cero y la diferencia
   // mostraba un faltante enorme que nadie había cometido.
@@ -123,59 +142,220 @@ export default function PantallaCierre({
         {resumen.cargando ? (
           <Cargando texto="Calculando el arqueo…" />
         ) : !r ? (
-          <ErrorMsg>{resumen.error}</ErrorMsg>
+          <ErrorMsg onReintentar={resumen.recargar}>{resumen.error}</ErrorMsg>
         ) : (
           <>
+            <AvisoCitas
+              porCobrar={r.citasPorCobrar ?? 0}
+              revisar={r.citasCobroRevisar ?? 0}
+              cuales={r.citasRevisar}
+            />
             <section className="card p-4">
               <h2 className="mb-3 text-[13px] font-bold uppercase tracking-wide text-texto-4">
                 Movimiento del turno
               </h2>
-              <dl className="space-y-1.5 text-sm">
-                <Fila etiqueta="Fondo de apertura" valor={r.montoApertura} />
-                <Fila
-                  etiqueta={`Ventas (${r.cantidadVentas})`}
-                  valor={r.totalVentas}
-                />
-                {r.porFormaPago.map((f) => (
-                  <Fila key={f.nombre} etiqueta={f.nombre} valor={f.monto} sangria />
-                ))}
-                {r.cambioEntregado > 0 && (
-                  <Fila etiqueta="Cambio entregado" valor={-r.cambioEntregado} />
-                )}
-                {r.ingresos > 0 && <Fila etiqueta="Ingresos de efectivo" valor={r.ingresos} />}
-                {r.egresos > 0 && <Fila etiqueta="Egresos de efectivo" valor={-r.egresos} />}
-                {r.abonosEfectivo > 0 && (
-                  <Fila etiqueta="Abonos de créditos (efectivo)" valor={r.abonosEfectivo} />
-                )}
-                {/* Un abono cobrado por QR entró al negocio pero NO al cajón:
-                    sin esta fila el cajero veía el total de cobros del turno
-                    sin poder explicar por qué el efectivo no llegaba. */}
-                {r.abonosPorFormaPago
-                  ?.filter(
-                    (f) => f.monto > 0 && !f.nombre.toLowerCase().includes("efectivo"),
-                  )
-                  .map((f) => (
+              {/* El cierre en dos bloques es sólo para el salón (`esBelleza`,
+                  la misma condición que ya usa esta pantalla para "Ver lo
+                  vendido"): ahí están las propinas y el cambio que confundían
+                  el arqueo (QA VER-01 / DIA-11). Omar y los demás rubros ven el
+                  cierre exactamente como antes. */}
+              {esBelleza(rubro) ? (
+                <>
+                  {/* Dos bloques (QA VER-01 / DIA-11): lo que se vendió, que NO se
+                      suma, y la cuenta del cajón, cuyas filas SÍ suman el
+                      esperado. Antes iba todo junto: el "Cambio entregado" restaba
+                      sin entrar en la cuenta y las propinas salían como "Ingresos
+                      de efectivo". Los números son los de siempre. */}
+                  <dl className="space-y-1.5 text-sm">
                     <Fila
-                      key={f.nombre}
-                      etiqueta={`Abonos por ${f.nombre} (no es efectivo)`}
-                      valor={f.monto}
+                      etiqueta={`Ventas (${r.cantidadVentas})`}
+                      valor={r.totalVentas}
+                    />
+                    {r.porFormaPago.map((f) => (
+                      <Fila key={f.nombre} etiqueta={f.nombre} valor={f.monto} sangria />
+                    ))}
+                    {/* Un abono cobrado por QR entró al negocio pero NO al cajón:
+                        sin esta fila el cajero veía el total de cobros del turno
+                        sin poder explicar por qué el efectivo no llegaba. */}
+                    {r.abonosPorFormaPago
+                      ?.filter(
+                        (f) => f.monto > 0 && !f.nombre.toLowerCase().includes("efectivo"),
+                      )
+                      .map((f) => (
+                        <Fila
+                          key={f.nombre}
+                          etiqueta={`Abonos por ${f.nombre} (no es efectivo)`}
+                          valor={f.monto}
+                          apagado
+                        />
+                      ))}
+                    {r.creditoOtorgado > 0 && (
+                      <Fila
+                        etiqueta="Fiado otorgado (no es efectivo)"
+                        valor={r.creditoOtorgado}
+                        apagado
+                      />
+                    )}
+                    {propinasOtras > 0 && (
+                      <Fila
+                        etiqueta="Propinas por QR (no pasan por la caja)"
+                        valor={propinasOtras}
+                        apagado
+                      />
+                    )}
+                    {r.anuladas > 0 && (
+                      <div className="flex justify-between pt-1 text-texto-3">
+                        <dt>Ventas anuladas</dt>
+                        <dd>{r.anuladas}</dd>
+                      </div>
+                    )}
+                  </dl>
+
+                  <h3 className="mb-2 mt-4 border-t border-borde pt-3 text-[12px] font-bold uppercase tracking-wide text-texto-4">
+                    Efectivo en caja
+                  </h3>
+                  <dl className="space-y-1.5 text-sm">
+                    <Fila etiqueta="Fondo de apertura" valor={r.montoApertura} />
+                    <div>
+                      <Fila etiqueta="Ventas en efectivo" valor={r.efectivo} />
+                      {/* El cambio ya está descontado de las ventas: se cuenta
+                          cómo se llegó, sin restarlo otra vez. */}
+                      {r.cambioEntregado > 0 && (
+                        <p className="pl-3 text-[12px] text-texto-4">
+                          Recibido {fmtMoney(r.efectivo + r.cambioEntregado)} · cambio entregado{" "}
+                          {fmtMoney(r.cambioEntregado)}
+                        </p>
+                      )}
+                    </div>
+                    {r.abonosEfectivo > 0 && (
+                      <Fila etiqueta="Abonos de créditos (efectivo)" valor={r.abonosEfectivo} />
+                    )}
+                    {/* La plata de las profesionales, en su fila: está en el cajón
+                        pero no es del negocio. */}
+                    {propinasEfectivo > 0 && (
+                      <Fila etiqueta="Propinas en efectivo" valor={propinasEfectivo} />
+                    )}
+                    {propinasSalidas > 0 && (
+                      <Fila etiqueta="Propinas entregadas" valor={-propinasSalidas} />
+                    )}
+                    {otrosIngresos > 0 && (
+                      <Fila
+                        etiqueta={hayPropinas ? "Otros ingresos de efectivo" : "Ingresos de efectivo"}
+                        valor={otrosIngresos}
+                      />
+                    )}
+                    {otrosEgresos > 0 && (
+                      <Fila
+                        etiqueta={hayPropinas ? "Otros egresos de efectivo" : "Egresos de efectivo"}
+                        valor={-otrosEgresos}
+                      />
+                    )}
+                    {/* La fila que hace cerrar el arqueo cuando el mesero cobra.
+                        Esa plata ya está en las ventas en efectivo, pero en el
+                        delantal: el backend la resta del esperado. Sin mostrar la
+                        resta, el cajero suma a mano, le da otro número y sale a
+                        buscar un faltante que no existe. Y se nombra a quién:
+                        "faltan Bs 180" manda a recorrer el salón preguntando. */}
+                    {esPositivo(r.enPoderDeMeseros ?? 0) && (
+                      <div>
+                        <Fila etiqueta="En poder de meseros" valor={-(r.enPoderDeMeseros ?? 0)} />
+                        <p className="pl-3 text-[12px] text-texto-4">
+                          {(r.meserosPendientes ?? [])
+                            .map((m) => `${m.nombre ?? "Mesero"} ${fmtMoney(m.monto)}`)
+                            .join(" · ")}
+                          {onIrAEntregas && (
+                            <>
+                              {" · "}
+                              <button
+                                type="button"
+                                onClick={onIrAEntregas}
+                                className="font-semibold text-primary-700 underline"
+                              >
+                                Recibir
+                              </button>
+                            </>
+                          )}
+                        </p>
+                      </div>
+                    )}
+                  </dl>
+                </>
+              ) : (
+                <dl className="space-y-1.5 text-sm">
+                  <Fila etiqueta="Fondo de apertura" valor={r.montoApertura} />
+                  <Fila
+                    etiqueta={`Ventas (${r.cantidadVentas})`}
+                    valor={r.totalVentas}
+                  />
+                  {r.porFormaPago.map((f) => (
+                    <Fila key={f.nombre} etiqueta={f.nombre} valor={f.monto} sangria />
+                  ))}
+                  {r.cambioEntregado > 0 && (
+                    <Fila etiqueta="Cambio entregado" valor={-r.cambioEntregado} />
+                  )}
+                  {r.ingresos > 0 && <Fila etiqueta="Ingresos de efectivo" valor={r.ingresos} />}
+                  {r.egresos > 0 && <Fila etiqueta="Egresos de efectivo" valor={-r.egresos} />}
+                  {r.abonosEfectivo > 0 && (
+                    <Fila etiqueta="Abonos de créditos (efectivo)" valor={r.abonosEfectivo} />
+                  )}
+                  {/* La fila que hace cerrar el arqueo cuando el mesero cobra.
+                      Esa plata ya está en las ventas en efectivo, pero en el
+                      delantal: el backend la resta del esperado. Sin mostrar la
+                      resta, el cajero suma a mano, le da otro número y sale a
+                      buscar un faltante que no existe. Y se nombra a quién:
+                      "faltan Bs 180" manda a recorrer el salón preguntando. */}
+                  {esPositivo(r.enPoderDeMeseros ?? 0) && (
+                    <div>
+                      <Fila etiqueta="En poder de meseros" valor={-(r.enPoderDeMeseros ?? 0)} />
+                      <p className="pl-3 text-[12px] text-texto-4">
+                        {(r.meserosPendientes ?? [])
+                          .map((m) => `${m.nombre ?? "Mesero"} ${fmtMoney(m.monto)}`)
+                          .join(" · ")}
+                        {onIrAEntregas && (
+                          <>
+                            {" · "}
+                            <button
+                              type="button"
+                              onClick={onIrAEntregas}
+                              className="font-semibold text-primary-700 underline"
+                            >
+                              Recibir
+                            </button>
+                          </>
+                        )}
+                      </p>
+                    </div>
+                  )}
+                  {/* Un abono cobrado por QR entró al negocio pero NO al cajón:
+                      sin esta fila el cajero veía el total de cobros del turno
+                      sin poder explicar por qué el efectivo no llegaba. */}
+                  {r.abonosPorFormaPago
+                    ?.filter(
+                      (f) => f.monto > 0 && !f.nombre.toLowerCase().includes("efectivo"),
+                    )
+                    .map((f) => (
+                      <Fila
+                        key={f.nombre}
+                        etiqueta={`Abonos por ${f.nombre} (no es efectivo)`}
+                        valor={f.monto}
+                        apagado
+                      />
+                    ))}
+                  {r.creditoOtorgado > 0 && (
+                    <Fila
+                      etiqueta="Fiado otorgado (no es efectivo)"
+                      valor={r.creditoOtorgado}
                       apagado
                     />
-                  ))}
-                {r.creditoOtorgado > 0 && (
-                  <Fila
-                    etiqueta="Fiado otorgado (no es efectivo)"
-                    valor={r.creditoOtorgado}
-                    apagado
-                  />
-                )}
-                {r.anuladas > 0 && (
-                  <div className="flex justify-between pt-1 text-texto-3">
-                    <dt>Ventas anuladas</dt>
-                    <dd>{r.anuladas}</dd>
-                  </div>
-                )}
-              </dl>
+                  )}
+                  {r.anuladas > 0 && (
+                    <div className="flex justify-between pt-1 text-texto-3">
+                      <dt>Ventas anuladas</dt>
+                      <dd>{r.anuladas}</dd>
+                    </div>
+                  )}
+                </dl>
+              )}
 
               <div className="mt-3 flex items-center justify-between border-t border-borde pt-3">
                 <span className="text-[13px] font-bold text-texto">
@@ -206,15 +386,24 @@ export default function PantallaCierre({
                 label="Efectivo contado"
                 hint="Contá los billetes y monedas que hay en la caja"
               >
-                <button
-                  type="button"
-                  onClick={() => setViendoProductos(true)}
-                  className="mb-2 flex w-full items-center gap-2 rounded-xl border border-borde px-3.5 py-2.5 text-left text-[13px] font-semibold text-texto-2 hover:bg-muted"
-                >
-                  <Icon name="box" size={17} />
-                  <span className="flex-1">Ver qué salió del mostrador</span>
-                  <Icon name="chevronRight" size={16} />
-                </button>
+                {/* Lo vendido sale de Reportes (encargado o dueño): a quien no
+                    lo puede ver (recepción) el botón le daba "no tenés
+                    permiso" y "no se vendió nada" a la vez (QA DIA-10). */}
+                {puede("reportes") && (
+                  <button
+                    type="button"
+                    onClick={() => setViendoProductos(true)}
+                    className="mb-2 flex w-full items-center gap-2 rounded-xl border border-borde px-3.5 py-2.5 text-left text-[13px] font-semibold text-texto-2 hover:bg-muted"
+                  >
+                    <Icon name="box" size={17} />
+                    {/* "Mostrador" es palabra de restaurante: en un salón se
+                        venden servicios (QA B-21). */}
+                    <span className="flex-1">
+                      {esBelleza(rubro) ? "Ver lo vendido" : "Ver qué salió del mostrador"}
+                    </span>
+                    <Icon name="chevronRight" size={16} />
+                  </button>
+                )}
 
                 <div className="mb-2">
                   <CorteDeCaja
@@ -474,6 +663,69 @@ function DialogoMovimiento({
 }
 
 /** Comprobante del arqueo, con lo que se contó y la diferencia. */
+/**
+ * Belleza (PLAN-AGENDA-BELLEZA §9.1): "hay 2 citas finalizadas sin cobrar".
+ * No frena el cierre —puede ser una cortesía que nadie cerró—, pero se ve
+ * antes de contar la plata. Un negocio sin agenda recibe ceros y no ve nada.
+ */
+/** El motivo de revisar un cobro de cita, en palabras de la cajera. */
+const MOTIVO_REVISAR: Record<MotivoRevisarCita, string> = {
+  YA_COBRADA: "cobrada dos veces",
+  CITA_CERRADA: "cobrada estando cerrada",
+  COBRO_INCOMPLETO: "cobrada por menos de lo agendado",
+};
+
+function AvisoCitas({
+  porCobrar,
+  revisar,
+  cuales,
+}: {
+  porCobrar: number;
+  revisar: number;
+  /** Cuáles y por qué (QA B-28); sin esto, sólo el conteo de siempre. */
+  cuales?: CitaParaRevisar[];
+}) {
+  if (porCobrar <= 0 && revisar <= 0) return null;
+  const lista = cuales?.length ? cuales : null;
+  return (
+    <section role="alert" className="space-y-1 rounded-2xl border border-warning/40 bg-warning-bg p-4 text-warning-text">
+      {porCobrar > 0 && (
+        <p className="text-sm font-bold">
+          {porCobrar === 1 ? "Hay 1 cita finalizada sin cobrar" : `Hay ${porCobrar} citas finalizadas sin cobrar`}
+        </p>
+      )}
+      {lista ? (
+        <>
+          <p className="text-sm font-bold">
+            {lista.length === 1 ? "1 cobro de cita para revisar:" : `${lista.length} cobros de citas para revisar:`}
+          </p>
+          <ul className="space-y-0.5 text-[13px]">
+            {lista.map((c) => (
+              <li key={`${c.id}-${c.motivo}`}>
+                <span className="font-semibold">{c.cliente}</span> ({c.codigo}) ·{" "}
+                {c.inicio ? `${cuandoCita(c.inicio)} · ` : ""}
+                {MOTIVO_REVISAR[c.motivo as MotivoRevisarCita] ?? "para revisar"}
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : (
+        revisar > 0 && (
+          <p className="text-sm font-bold">
+            {revisar === 1
+              ? "1 cita se cobró de más (ya estaba cobrada o cerrada): revisala"
+              : `${revisar} citas se cobraron de más (ya estaban cobradas o cerradas): revisalas`}
+          </p>
+        )
+      )}
+      <p className="text-[13px]">
+        Cobralas desde «Citas por cobrar» del punto de venta, o cerralas sin cargo en la agenda. Un cobro de más se
+        corrige anulando esa venta; uno de menos, revisando con quien la cobró.
+      </p>
+    </section>
+  );
+}
+
 export function CierreOk({ caja, onSalir }: { caja: Caja; onSalir: () => void }) {
   const diferencia = caja.montoDiferencia ?? 0;
   return (
@@ -530,7 +782,7 @@ export function CierreOk({ caja, onSalir }: { caja: Caja; onSalir: () => void })
  *
  * Ya viene agrupado y ordenado del backend: no se reordena acá.
  */
-function ProductosDelTurno({
+export function ProductosDelTurno({
   cajaId,
   onClose,
 }: {
@@ -597,9 +849,10 @@ function ProductosDelTurno({
     >
       <div className="space-y-3">
         <ErrorMsg>{datos.error}</ErrorMsg>
+        {/* Con error, sólo el error: "no se vendió nada" sería falso. */}
         {datos.cargando ? (
           <Cargando />
-        ) : !d || d.lineas === 0 ? (
+        ) : datos.error ? null : !d || d.lineas === 0 ? (
           <p className="py-6 text-center text-[13px] text-texto-3">
             En este turno todavía no se vendió nada.
           </p>

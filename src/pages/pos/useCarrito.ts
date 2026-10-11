@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Consumo, DetalleVentaInput, Producto, TipoPedido } from "../../types";
 
 /**
@@ -39,15 +39,135 @@ export interface Carrito {
   aDetalles: () => DetalleVentaInput[];
 }
 
+/**
+ * Cuánto se puede VENDER de un artículo: el stock menos lo que está en lotes
+ * vencidos (sólo farmacia, ver `stockVencido`).
+ *
+ * Lo vencido sigue en el estante hasta que se da de baja, así que `stockTotal`
+ * lo cuenta; pero no se vende, y el servidor rechaza la venta que lo necesite.
+ * Sin restarlo, el carrito dejaba cargar cajas que después no se cobraban. Un
+ * artículo sin lotes (todo el restaurante) no trae `stockVencido` y da lo de
+ * siempre.
+ */
+export function paraVender(p: Producto): number {
+  return Math.max(0, p.stockTotal - (p.stockVencido ?? 0));
+}
+
 /** Un artículo con stock agotado no se puede seguir sumando. */
 function topeStock(p: Producto): number {
   // Elaborados y combos no llevan stock propio: se preparan al vender.
   if (p.tipoProducto !== "ALMACENABLE") return Number.POSITIVE_INFINITY;
-  return p.stockTotal;
+  return paraVender(p);
 }
 
-export function useCarrito(tipoPedido: TipoPedido = "LOCAL"): Carrito {
+/**
+ * Dónde se guarda la venta a medio armar.
+ *
+ * `sessionStorage` y no `localStorage` a propósito: el carrito es de ESTA
+ * sesión del navegador. Un cajero que cierra el turno y se va no tiene que
+ * encontrarse mañana con las líneas del cliente de ayer; pero un F5 accidental
+ * —o que el navegador recargue la pestaña por memoria, que en las tablets
+ * baratas del mostrador pasa— no puede costarle la venta que estaba cargando
+ * con el cliente enfrente.
+ *
+ * La clave lleva el tipo de pedido: el carrito del mostrador y el de un
+ * delivery son ventas distintas y no deben pisarse.
+ */
+const CLAVE_CARRITO = "bamar.carrito";
+
+/**
+ * Se guardan sólo los ids y las cantidades, NO el producto entero.
+ *
+ * Si guardáramos el `Producto` completo, al recargar se restauraría con el
+ * precio que tenía cuando se cargó la línea: si el dueño lo cambió mientras
+ * tanto, el POS cobraría el viejo. Al rehidratar se busca cada id en el
+ * catálogo fresco, y lo que ya no existe simplemente no vuelve.
+ */
+interface LineaGuardada {
+  id: number;
+  cantidad: number;
+  enMesa: number;
+  nota: string;
+}
+
+/** Los ids que dejó guardados el carrito de ese tipo de pedido. */
+export function idsGuardados(tipoPedido: TipoPedido = "LOCAL"): number[] {
+  return leerGuardado(`${CLAVE_CARRITO}.${tipoPedido}`).map((l) => l.id);
+}
+
+function leerGuardado(clave: string): LineaGuardada[] {
+  try {
+    const crudo = sessionStorage.getItem(clave);
+    if (!crudo) return [];
+    const datos: unknown = JSON.parse(crudo);
+    return Array.isArray(datos) ? (datos as LineaGuardada[]) : [];
+  } catch {
+    // Modo privado, storage lleno o un JSON de una versión vieja: se sigue sin
+    // carrito, que es exactamente como funcionaba antes.
+    return [];
+  }
+}
+
+export function useCarrito(
+  tipoPedido: TipoPedido = "LOCAL",
+  catalogo: Producto[] = [],
+  /**
+   * Cuándo ya se puede rehidratar. Por defecto, cuando llegó el catálogo. La
+   * farmacia no se trae el catálogo: busca sólo los artículos guardados, y
+   * con un carrito vacío no hay nada que buscar — sin esto nunca rehidrataba
+   * y, por lo tanto, tampoco guardaba.
+   */
+  catalogoListo: boolean = catalogo.length > 0,
+): Carrito {
+  const clave = `${CLAVE_CARRITO}.${tipoPedido}`;
   const [lineas, setLineas] = useState<LineaCarrito[]>([]);
+  const [rehidratado, setRehidratado] = useState(false);
+
+  // Rehidratar en cuanto llega el catálogo: antes no se puede, porque las
+  // líneas necesitan el Producto y sólo tenemos su id.
+  useEffect(() => {
+    if (rehidratado || !catalogoListo) return;
+    const guardadas = leerGuardado(clave);
+    if (guardadas.length > 0) {
+      const porId = new Map(catalogo.map((p) => [p.id, p]));
+      setLineas(
+        guardadas
+          .map((g) => {
+            const producto = porId.get(g.id);
+            if (!producto) return null;
+            return {
+              producto,
+              cantidad: g.cantidad,
+              enMesa: g.enMesa,
+              nota: g.nota,
+            } satisfies LineaCarrito;
+          })
+          .filter((l): l is LineaCarrito => l !== null),
+      );
+    }
+    setRehidratado(true);
+  }, [catalogo, catalogoListo, clave, rehidratado]);
+
+  // Y se guarda con cada cambio. Recién después de rehidratar, para que el
+  // estado vacío del primer render no borre lo que había guardado.
+  useEffect(() => {
+    if (!rehidratado) return;
+    try {
+      if (lineas.length === 0) {
+        sessionStorage.removeItem(clave);
+        return;
+      }
+      const guardar: LineaGuardada[] = lineas.map((l) => ({
+        id: l.producto.id,
+        cantidad: l.cantidad,
+        enMesa: l.enMesa,
+        nota: l.nota,
+      }));
+      sessionStorage.setItem(clave, JSON.stringify(guardar));
+    } catch {
+      /* sin storage se sigue igual: es una comodidad, no un requisito */
+    }
+  }, [lineas, clave, rehidratado]);
 
   /**
    * Consumo con el que nace una línea nueva. En el local la mayoría se sienta
@@ -160,18 +280,23 @@ export function useCarrito(tipoPedido: TipoPedido = "LOCAL"): Carrito {
     const out: DetalleVentaInput[] = [];
     for (const l of lineas) {
       const nota = l.nota.trim() || undefined;
+      // Un delivery o un "recoger" no tienen mesa. El carrito se arma con el
+      // pedido en LOCAL (en mesa) y recién después se elige el tipo, así que
+      // las líneas llegan acá con su reparto del mostrador: se mandan todas
+      // para llevar, sin tocarlo (si vuelve al mostrador, sigue como estaba).
+      const enMesa = enMesaPorDefecto ? l.enMesa : 0;
       // Una línea partida viaja como dos detalles: el backend guarda el
       // consumo por detalle, así la comanda sabe qué va a la mesa.
-      if (l.enMesa > 0) {
+      if (enMesa > 0) {
         out.push({
           productoId: l.producto.id,
-          cantidad: l.enMesa,
+          cantidad: enMesa,
           precio: l.producto.precio,
           consumo: "MESA",
           ...(nota ? { nota } : {}),
         });
       }
-      const llevar = l.cantidad - l.enMesa;
+      const llevar = l.cantidad - enMesa;
       if (llevar > 0) {
         out.push({
           productoId: l.producto.id,
@@ -183,7 +308,7 @@ export function useCarrito(tipoPedido: TipoPedido = "LOCAL"): Carrito {
       }
     }
     return out;
-  }, [lineas]);
+  }, [lineas, enMesaPorDefecto]);
 
   return {
     lineas,

@@ -5,7 +5,7 @@ import { Boton, Campo, ErrorMsg, Input, Modal, Select } from "../../components/u
 import { api } from "../../lib/api";
 import { aCentavos, esPositivo, excede, parsearMontoO } from "../../lib/dinero";
 import { fmtMoney, isoDia } from "../../lib/format";
-import { puedeSupervisar } from "../../lib/permisos";
+import { tienePermiso } from "../../lib/permisos";
 import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
 import type { ClienteCredito, CreditoInput, FormaPago, PagoInput } from "../../types";
@@ -33,6 +33,7 @@ function diasAFinDeMes(): number {
 export default function PantallaCredito({
   total,
   formasPago,
+  avisoPropinas,
   onAtras,
   onConfirmar,
   enviando,
@@ -40,6 +41,8 @@ export default function PantallaCredito({
 }: {
   total: number;
   formasPago: FormaPago[];
+  /** Belleza: las propinas anotadas en el cobro, que viajan con el fiado. */
+  avisoPropinas?: string;
   onAtras: () => void;
   onConfirmar: (credito: CreditoInput, pagos: PagoInput[]) => void;
   enviando: boolean;
@@ -62,10 +65,11 @@ export default function PantallaCredito({
   const [qrConfirmado, setQrConfirmado] = useState(false);
   /** Techo con el que nace la ficha de un cliente nuevo. Vacío = sin límite. */
   const [limiteNuevo, setLimiteNuevo] = useState("");
-  /** Firma del encargado cuando la venta pasa el techo del cliente. */
-  const [autorizacion, setAutorizacion] = useState<{ usuario: string; pin: string } | null>(
-    null,
-  );
+  // La firma del encargado NO se guarda para reusarla: si el backend la
+  // rechazaba (PIN mal tipeado), cada "Registrar fiado" volvía a mandar el
+  // mismo PIN malo sin mostrar el diálogo, hasta que el backend bloqueaba los
+  // PIN de ese cajero por 15 minutos (429), anular incluido. Cada intento que
+  // pasa el techo la pide de nuevo.
   const [pidiendoPin, setPidiendoPin] = useState(false);
 
   const { incluye } = useAuth();
@@ -136,7 +140,7 @@ export default function PantallaCredito({
     // Pasa el techo y todavía no hay firma: se pide acá, con el carrito
     // intacto, en vez de mandar la venta para que el backend la rechace con el
     // cliente enfrente.
-    const conFirma = firma ?? autorizacion;
+    const conFirma = firma;
     if (superaLimite && !conFirma) {
       setPidiendoPin(true);
       return;
@@ -185,11 +189,14 @@ export default function PantallaCredito({
             Queda debiendo
           </p>
           <p className="mt-1 text-4xl font-extrabold tracking-tight">{fmtMoney(saldo)}</p>
-          {adelantoNum > 0 && (
+          {/* El adelanto entero: en mixto, efectivo + QR (con sólo el efectivo
+              no cerraba con el saldo de arriba). */}
+          {adelantoTotal > 0 && (
             <p className="mt-1.5 text-[13px] opacity-90">
-              De {fmtMoney(total)}, adelanta {fmtMoney(adelantoNum)}
+              De {fmtMoney(total)}, adelanta {fmtMoney(adelantoTotal)}
             </p>
           )}
+          {avisoPropinas && <p className="mt-1.5 text-[13px] opacity-90">{avisoPropinas}</p>}
         </div>
 
         {lista.length > 0 && (
@@ -407,7 +414,6 @@ export default function PantallaCredito({
             onCancelar={() => setPidiendoPin(false)}
             onFirmar={(usuario, pin) => {
               setPidiendoPin(false);
-              setAutorizacion({ usuario, pin });
               // Se reintenta sola con la firma: perder el carrito porque el
               // encargado tardó en llegar sería el peor final posible.
               confirmar({ usuario, pin });
@@ -480,18 +486,23 @@ function conOffset(d: Date): string {
  * Se pide ANTES de mandar la venta, no después del rechazo: el carrito sigue
  * armado y el cliente no ve un error. Mismo patrón que la anulación —el PIN se
  * teclea en el mismo dispositivo sin cerrar la sesión del cajero.
+ *
+ * Exportado para el sobre-turno de la agenda, que pide la misma firma
+ * (PLAN-AGENDA-BELLEZA §4): cambia sólo el subtítulo.
  */
-function PedirPinCredito({
+export function PedirPinCredito({
   onCancelar,
   onFirmar,
+  subtitulo = "Este fiado pasa el límite del cliente",
 }: {
   onCancelar: () => void;
   onFirmar: (usuario: string, pin: string) => void;
+  subtitulo?: string;
 }) {
   const { usuario: actual } = useAuth();
-  // Un encargado firma con su propio PIN; un cajero necesita además el usuario
-  // de quien autoriza.
-  const pideUsuario = !puedeSupervisar(actual?.rol);
+  // Quien autoriza con PIN firma con el suyo; el resto necesita además el
+  // usuario de quien autoriza.
+  const pideUsuario = !tienePermiso(actual, "autorizar.pin");
   const [autorizador, setAutorizador] = useState("");
   const [pin, setPin] = useState("");
   const [error, setError] = useState("");
@@ -512,7 +523,7 @@ function PedirPinCredito({
     <Modal
       abierto
       titulo="Autorización del encargado"
-      subtitulo="Este fiado pasa el límite del cliente"
+      subtitulo={subtitulo}
       onClose={onCancelar}
       ancho="max-w-sm"
       acciones={

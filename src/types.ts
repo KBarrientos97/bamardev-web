@@ -2,16 +2,29 @@
 // Se mantienen los nombres del API en español para que no haya traducción
 // mental entre lo que viaja por la red y lo que se lee acá.
 
+import type { Tema } from "./lib/temas";
+import type { Vocabulario } from "./lib/rubro";
+
 // ── Sesión y permisos ───────────────────────────────────────────────────────
 
-/** Roles de la app. El backend los devuelve en mayúsculas. */
-export type Rol =
+/**
+ * El código legado del rol (ADMIN, CAJERO, MESERO…). Desde PLAN-ROLES-NEGOCIO
+ * cada negocio tiene sus propios roles y el backend sigue mandando este código
+ * sólo para el APK viejo: es el del rol del que nació, o el del arquetipo más
+ * cercano en uno creado por el negocio. **Ninguna pantalla decide con él**:
+ * lo que alguien puede hacer lo dicen `permisos` y `permisosPropios`, y cómo
+ * se llama su rol, `rolNombre`. Por eso no es una unión cerrada.
+ */
+export type Rol = string;
+
+/** Los códigos legados que el backend conoce hoy (sólo para leer datos viejos). */
+export type RolLegado =
   | "ADMIN"
   | "SUPERVISOR"
   | "CAJERO"
   | "REPARTIDOR"
-  /** Atiende el salón: abre mesas y manda comandas, pero NO cobra. */
   | "MESERO"
+  | "PROFESIONAL"
   | "PLATAFORMA";
 
 /**
@@ -43,6 +56,7 @@ export type FeatureConocida =
   | "recoger"
   | "fiado"
   | "cocina"
+  | "salon"
   | "pago_qr_mixto"
   | "combos"
   | "mesa_llevar"
@@ -53,16 +67,75 @@ export type FeatureConocida =
   | "exportacion"
   | "reportes"
   | "reportes_operacion"
-  | "reportes_rentabilidad";
+  | "reportes_rentabilidad"
+  /** Vencimientos y el lote que sale por FEFO. Farmacia, plan PRO. */
+  | "lotes"
+  /** Lo que pidieron y no había. Farmacia, BASICO y PRO. */
+  | "encargos";
 export type Feature = FeatureConocida | (string & {});
 
 export interface SesionUsuario {
   id: number;
   username: string;
   nombre?: string;
+  /** Código legado del rol: sólo para la telemetría y el APK viejo (ver `Rol`). */
   rol: Rol;
-  /** Módulos del ROL, en MAYÚSCULAS. */
-  modulos: Modulo[];
+  /** Id del rol del negocio (PLAN-ROLES-NEGOCIO §8). */
+  rolId?: number | null;
+  /** Nombre visible del rol, el que eligió el negocio ("Encargada", "Barbero"). */
+  rolNombre?: string | null;
+  /** El rol bloqueado del negocio: todos los permisos, no se edita ni se borra. */
+  esAdministrador?: boolean;
+  /**
+   * Sucursal del que entró. **`null` = toda la organización.**
+   *
+   * Opcional porque una sesión guardada ANTES de que el backend lo mandara se
+   * rehidrata desde localStorage sin el campo: ahí vale `undefined`, que no es
+   * lo mismo que `null`. Por eso se compara con `== null` donde importa.
+   */
+  sucursalId?: number | null;
+  sucursal?: string | null;
+  /**
+   * Permisos efectivos (PLAN-ROLES §8.1): los de su rol, ya cruzados con las
+   * features del plan. **Son lo único que decide qué ve y qué puede tocar.**
+   * Opcionales sólo porque una sesión guardada antes de que el backend los
+   * mandara se rehidrata sin ellos: ahí se piden a `/auth/me`, y si tampoco
+   * vienen la sesión queda sin acceso (no hay respaldo por nombre de rol).
+   */
+  permisos?: string[];
+  /** El subconjunto con alcance PROPIO (sólo lo suyo). */
+  permisosPropios?: string[];
+  /** Huella de los permisos: si cambia, se vuelven a pedir a /auth/me. */
+  permisosVersion?: string;
+}
+
+/**
+ * La paleta que el panel le eligió al negocio (tabla `Paleta`). `tokens` tiene
+ * la forma de `Tema`, pero viene de la red: `aplicarTema` la valida antes de
+ * pintar y, si no sirve, cae al color del rubro.
+ */
+export interface TemaNegocio {
+  clave: string;
+  tokens: Tema;
+}
+
+/**
+ * El perfil del rubro (tabla `PerfilRubro`): cómo habla y qué ofrece cada tipo
+ * de negocio. Contrato de PLAN-DESARROLLO-BELLEZA §7. Todo lo que se lee de acá
+ * tiene respaldo local, porque un backend viejo no lo manda.
+ */
+export interface PerfilRubro {
+  /** = `tipoNegocio`, ej. "BARBERIA". */
+  rubro: string;
+  nombre: string;
+  vertical: string;
+  estado: "EN_DESARROLLO" | "DISPONIBLE";
+  icono: string;
+  vocabulario?: Vocabulario;
+  /** `{ CAJERO: "Recepción", PROFESIONAL: "Barbero" }`. */
+  etiquetasRol?: Partial<Record<string, string>>;
+  /** Sin `rolesOfrecidos` = los roles de siempre (y sin PROFESIONAL). */
+  config?: { rolesOfrecidos?: string[] };
 }
 
 export interface SesionNegocio {
@@ -73,6 +146,15 @@ export interface SesionNegocio {
   tipoNegocio?: string;
   /** Features del PLAN, en minúsculas. */
   features?: Feature[];
+  /**
+   * Los tres campos de belleza (fase 0). Opcionales: el backend de hoy no los
+   * manda y una sesión guardada antes tampoco los tiene; sin ellos todo se ve
+   * como siempre. `perfilVersion` llega en `/licencia/estado` y se guarda acá
+   * para saber cuándo repintar.
+   */
+  tema?: TemaNegocio | null;
+  perfil?: PerfilRubro | null;
+  perfilVersion?: number | null;
 }
 
 export interface LoginResponse {
@@ -80,6 +162,12 @@ export interface LoginResponse {
   usuario: SesionUsuario;
   negocio: SesionNegocio;
   licencia?: EstadoLicencia;
+  /**
+   * Plan Emprendedor: el contador del día y el monedero, en la raíz del login
+   * (PLAN-EMPRENDEDOR-TECNICO §4.2). Opcional: un backend anterior no lo manda
+   * y sin él no se muestra ni se bloquea nada.
+   */
+  cupo?: CupoEstado;
 }
 
 /** GET /auth/me — el token ya resuelto por el backend. */
@@ -87,9 +175,141 @@ export interface Me {
   id: number;
   username: string;
   rol: Rol;
+  rolId?: number | null;
+  rolNombre?: string | null;
+  esAdministrador?: boolean;
   negocioId: number | null;
-  modulos: Modulo[];
   esPlataforma: boolean;
+  permisos?: string[];
+  permisosPropios?: string[];
+  permisosVersion?: string;
+}
+
+// ── Roles del negocio (PLAN-ROLES-NEGOCIO §8) ───────────────────────────────
+
+export type Alcance = "GENERAL" | "PROPIO";
+
+/** Un permiso dentro de un rol, como se manda al crear o editar uno. */
+export interface PermisoDeRol {
+  codigo: string;
+  alcance: Alcance;
+}
+
+/**
+ * Un permiso de un rol tal como lo devuelven `GET /roles` y
+ * `/roles/asignables`: con su nombre y su dominio, para mostrar "qué puede
+ * hacer" sin pedir el catálogo (que es de quien edita roles). `dominio` null =
+ * un código que el catálogo no conoce.
+ */
+export interface PermisoDeRolVista extends PermisoDeRol {
+  nombre: string;
+  dominio: string | null;
+  /**
+   * El negocio lo puede usar: su plan, su rubro y la feature lo incluyen
+   * (QA R1 W-02). Un rol de plantilla puede traer permisos que acá no rigen
+   * (la agenda en una ferretería): los guarda, pero no cuentan ni se
+   * muestran como "qué puede hacer". Sin el campo (backend viejo) = sí.
+   */
+  disponible?: boolean;
+}
+
+/** `GET /roles` y `GET /roles/asignables`: un rol del negocio. */
+export interface RolNegocio {
+  id: number;
+  nombre: string;
+  descripcion: string | null;
+  esAdministrador: boolean;
+  /** La plantilla de la que nació (null = lo creó el negocio). */
+  plantilla: string | null;
+  /** Usuarios activos con este rol. */
+  usuarios: number;
+  /** Personas de Personal que lo tienen como cargo. */
+  personal: number;
+  /**
+   * El Administrador trae todos menos los de ejecutor (`entregas.realizar`,
+   * `salon.cobrar_mesero`, `agenda.crear_propias`, `agenda.bloquear_propias`):
+   * los cubre con los generales, y con ellos aparecería como repartidor o
+   * mesero.
+   */
+  permisos: PermisoDeRolVista[];
+  /** Cuántos de `permisos` son `disponible` (lo que de verdad puede hacer). */
+  permisosDisponibles?: number;
+}
+
+/** Un permiso del catálogo, tal como lo ve quien edita roles. */
+export interface PermisoCatalogo {
+  codigo: string;
+  nombre: string;
+  descripcion: string;
+  sensible: boolean;
+  admitePropio: boolean;
+  /** El plan, el rubro y las features del negocio lo incluyen. */
+  disponible: boolean;
+  /**
+   * Hasta qué alcance lo puede dar quien edita (nadie da lo que no tiene;
+   * "general" cubre "sólo lo suyo"). null = no lo puede dar.
+   */
+  otorgable: Alcance | null;
+}
+
+/** `GET /roles/catalogo`: los permisos agrupados por dominio. */
+export interface DominioPermisos {
+  dominio: string;
+  nombre: string;
+  permisos: PermisoCatalogo[];
+}
+
+export interface RolInput {
+  nombre?: string;
+  descripcion?: string | null;
+  /** Al editar es un reemplazo completo. */
+  permisos?: { codigo: string; alcance: Alcance }[];
+}
+
+export type AccionBitacoraRol = "CREAR" | "RENOMBRAR" | "DESCRIPCION" | "PERMISOS" | "ELIMINAR" | "RESTABLECER";
+
+/**
+ * Quién originó un evento: el negocio desde su app, el soporte de BamarDev
+ * desde el panel, o el sistema (la migración o el alta, sin autor).
+ */
+export type OrigenEventoRol = "NEGOCIO" | "SOPORTE" | "SISTEMA";
+
+/**
+ * Qué cambió en un evento de la bitácora (§8.1). Es un objeto, no un texto:
+ * PERMISOS `{ agregados, quitados, cambiados? }`; RENOMBRAR `{ de, a }` (y
+ * `descripcion` si cambió, en los eventos viejos); DESCRIPCION `{ de, a }`
+ * (la descripción de antes y la de ahora, null = sin descripción); ELIMINAR `{ reasignadoA, usuarios, personal }`;
+ * CREAR y RESTABLECER, los permisos que agregaron o quitaron.
+ */
+export interface DetalleEventoRol {
+  agregados?: PermisoDeRol[];
+  quitados?: PermisoDeRol[];
+  cambiados?: { codigo: string; de: Alcance; a: Alcance }[];
+  de?: string | null;
+  a?: string | null;
+  descripcion?: { de: string | null; a: string | null };
+  reasignadoA?: { id: number; nombre: string } | null;
+  usuarios?: number;
+  personal?: number;
+  plantillaId?: number;
+}
+
+/** Un renglón de la bitácora de roles. */
+export interface EventoRol {
+  id: number;
+  fecha: string;
+  accion: AccionBitacoraRol | (string & {});
+  rolId: number;
+  /** El nombre que tenía el rol en ese momento (no el de hoy). */
+  rolNombre: string;
+  detalle: DetalleEventoRol | null;
+  autor: { id: number; nombre: string | null } | null;
+  /** Lo hizo el soporte de BamarDev desde el panel. */
+  porSoporte: boolean;
+  /** Sin el campo (backend viejo) se deduce de `porSoporte` y del autor. */
+  origen?: OrigenEventoRol;
+  /** Por qué lo cambió el soporte (obligatorio en el panel). */
+  motivo?: string | null;
 }
 
 // ── Catálogo ────────────────────────────────────────────────────────────────
@@ -124,7 +344,45 @@ export interface ComponenteProducto {
   cantidad: number;
 }
 
-export interface Producto {
+/**
+ * Qué hace falta para venderle un medicamento a alguien. Sale del Reglamento
+ * de Farmacias, no de una preferencia del negocio: es lo que dice el registro
+ * del producto.
+ *
+ * LIBRE es el valor de todo lo demás —un pañal, una leche, un termómetro— y de
+ * los de venta libre. En Bolivia los antibióticos entran ahí: **no** exigen
+ * receta, a diferencia de otros países.
+ */
+export type CondicionVenta =
+  | "LIBRE"
+  | "RECETA_MEDICA"
+  /** La farmacia se queda la receta (psicotrópicos). */
+  | "RECETA_ARCHIVADA"
+  /** Formulario oficial numerado (estupefacientes). */
+  | "RECETA_VALORADA";
+
+/**
+ * Ficha farmacéutica. Viaja en todos los productos: en un artículo de
+ * restaurante son cinco nulos, venta libre y dos `false`.
+ */
+export interface FichaFarmaceutica {
+  /** La droga: "Paracetamol". Es por lo que busca el farmacéutico. */
+  principioActivo: string | null;
+  /** "500 mg", "20 mg/ml". */
+  concentracion: string | null;
+  /** Comprimido, Cápsula, Jarabe… o "Paquete" para lo que no es remedio. */
+  formaFarmaceutica: string | null;
+  /** Laboratorio o marca: BAGÓ, IFA… y también Huggies. */
+  laboratorio: string | null;
+  registroSanitario: string | null;
+  condicionVenta: CondicionVenta;
+  /** Se compra y se vende por lote con vencimiento. */
+  manejaLote: boolean;
+  /** Psicotrópico o estupefaciente (Ley 1737). */
+  controlado: boolean;
+}
+
+export interface Producto extends FichaFarmaceutica {
   id: number;
   nombre: string;
   descripcion: string | null;
@@ -139,6 +397,65 @@ export interface Producto {
   unidadMedida: Pick<UnidadMedida, "id" | "nombre"> | null;
   stockTotal: number;
   componentes: ComponenteProducto[];
+  /**
+   * Si la sucursal lo vende. Lo manda el backend cuando se pregunta por una
+   * sucursal; sin el dato se vende, que es como funcionó siempre.
+   */
+  disponible?: boolean;
+  /**
+   * Sólo lo trae `GET /productos/buscar`: el lote VIGENTE que se vende primero.
+   * Lo vencido ya no se vende, así que no cuenta acá (ver `stockVencido`).
+   */
+  proximoVencimiento?: ProximoVencimiento | null;
+  /**
+   * Sólo lo trae `GET /productos/buscar`: cuánto de `stockTotal` está en lotes
+   * vencidos. Sigue en el estante, pero no se vende: hay que darlo de baja o
+   * devolverlo al proveedor. Ver `paraVender` en `pos/useCarrito.ts`.
+   */
+  stockVencido?: number;
+  /**
+   * Dónde está en la sucursal que se consultó ("Estante 3 · fila B"). Lo trae
+   * `GET /productos/buscar` y sólo si alguien lo cargó: es opcional.
+   */
+  ubicacion?: string | null;
+  /** Agenda fase 3: paquete de sesiones (se vende a un cliente con ficha). */
+  esPaquete?: boolean;
+}
+
+/**
+ * Cuánto hay de un artículo en una sucursal (o depósito) y dónde está. Sin
+ * costos: lo lee quien atiende, para decir "en la sucursal X sí hay".
+ */
+export interface Existencia {
+  almacenId: number;
+  nombre: string;
+  tipo: TipoAlmacen;
+  esPrincipal: boolean;
+  direccion: string | null;
+  telefono: string | null;
+  cantidad: number;
+  ubicacion: string | null;
+}
+
+/**
+ * El vencimiento del lote que se va a vender primero (FEFO), entre los que
+ * tienen saldo en la sucursal. Es el punto de color del mostrador de farmacia.
+ * Null = no maneja lote, o ningún lote con saldo tiene fecha.
+ */
+export interface ProximoVencimiento {
+  fecha: string;
+  /** Negativo = ya venció. */
+  dias: number;
+  tramo: TramoVencimiento;
+}
+
+/** Lo que devuelve `GET /productos/buscar`: una página, no el catálogo. */
+export interface PaginaProductos {
+  items: Producto[];
+  /** Cuántos hay en total con ese filtro, para decir "30 de 412". */
+  total: number;
+  limite: number;
+  offset: number;
 }
 
 export interface ProductoInput {
@@ -158,6 +475,15 @@ export interface ProductoInput {
   categoriaId?: number;
   icono?: string;
   componentes?: { ingredienteId: number; cantidad: number }[];
+  // Ficha farmacéutica: la manda el formulario de farmacia y nadie más.
+  principioActivo?: string;
+  concentracion?: string;
+  formaFarmaceutica?: string;
+  laboratorio?: string;
+  registroSanitario?: string;
+  condicionVenta?: CondicionVenta;
+  manejaLote?: boolean;
+  controlado?: boolean;
 }
 
 // ── Inventario ──────────────────────────────────────────────────────────────
@@ -170,11 +496,27 @@ export interface ArticuloDeAlmacen {
   costo: number;
 }
 
+/**
+ * SUCURSAL vende (tiene caja y usuarios) · DEPOSITO sólo guarda y despacha.
+ *
+ * Un depósito no aparece en el POS y no cuenta para el cupo de sucursales del
+ * plan: cobrarle al negocio por un lugar que no vende no se sostiene.
+ */
+export type TipoAlmacen = "SUCURSAL" | "DEPOSITO";
+
 export interface Almacen {
   id: number;
   nombre: string;
   grupo: string | null;
   activo: boolean;
+  tipo: TipoAlmacen;
+  /**
+   * La sucursal por defecto del negocio: la que se usa cuando una operación no
+   * dice de cuál se trata. Hay exactamente una por negocio.
+   */
+  esPrincipal: boolean;
+  direccion: string | null;
+  telefono: string | null;
   totalArticulos?: number;
   totalUnidades?: number;
   valorTotal?: number;
@@ -185,6 +527,9 @@ export interface AlmacenInput {
   nombre: string;
   grupo?: string;
   activo?: boolean;
+  tipo?: TipoAlmacen;
+  direccion?: string;
+  telefono?: string;
 }
 
 export interface Insumo {
@@ -216,7 +561,7 @@ export interface InsumoInput {
   almacenId?: number;
 }
 
-export type TipoMovimiento = "ENTRADA" | "SALIDA" | "AJUSTE";
+export type TipoMovimiento = "ENTRADA" | "SALIDA" | "AJUSTE" | "TRANSFERENCIA";
 export type EstadoDocumento = "PENDIENTE" | "APROBADO" | "ANULADO";
 
 export interface Movimiento {
@@ -224,13 +569,27 @@ export interface Movimiento {
   tipo: TipoMovimiento;
   comprobante: string | null;
   descripcion: string | null;
+  /**
+   * A quién se le compró, si se eligió de la lista (farmacia). Null en lo
+   * viejo o en lo que cargan Android y el restaurante: ahí el proveedor, si
+   * lo hay, está como texto en `descripcion`.
+   */
+  proveedor?: { id: number; nombre: string } | null;
   estado: EstadoDocumento;
   fecha: string;
   fechaAprobacion: string | null;
   /** De dónde salen los artículos del movimiento. */
   origen: "PRODUCTO" | "INSUMO" | null;
+  /** En una TRANSFERENCIA es el almacén de ORIGEN. */
   almacen: Pick<Almacen, "id" | "nombre"> | null;
+  /** Sólo en TRANSFERENCIA: a dónde va la mercadería. */
+  almacenDestino?: Pick<Almacen, "id" | "nombre"> | null;
   items: number;
+  /**
+   * Nombres de lo que se movió, sin repetir. Opcional: un backend anterior no
+   * lo manda y la pantalla vuelve a "3 artículos".
+   */
+  productos?: string[];
   monto: number;
   detalles?: DetalleMovimiento[];
 }
@@ -243,10 +602,18 @@ export interface DetalleMovimiento {
   costo: number;
   subtotal?: number;
   descripcion: string | null;
+  /** Rubro farmacia: la partida que entró en esta línea. */
+  loteCodigo?: string | null;
+  loteVencimiento?: string | null;
 }
 
 /** Artículo elegible en un movimiento (productos + insumos en una sola lista). */
 export interface ArticuloMovimiento {
+  /**
+   * Dónde está en la sucursal pedida, si alguien lo cargó. Sólo viene cuando
+   * se pide la lista de UNA sucursal.
+   */
+  ubicacion?: string | null;
   id: number;
   nombre: string;
   esInsumo: boolean;
@@ -254,16 +621,129 @@ export interface ArticuloMovimiento {
   precio: number;
   stock: number;
   unidad: string;
+  /**
+   * Si se compra y se vende por lote con vencimiento (rubro farmacia). El
+   * formulario de ingreso pide lote y fecha sólo en estas líneas.
+   */
+  manejaLote?: boolean;
+  /** La del medicamento, para mostrarla si el nombre no la trae. */
+  concentracion?: string | null;
 }
 
 export interface MovimientoInput {
   tipo: TipoMovimiento;
+  /** En una TRANSFERENCIA es el almacén de ORIGEN. */
   almacenId: number;
+  /** Obligatorio en TRANSFERENCIA, rechazado en los demás tipos. */
+  almacenDestinoId?: number;
   /** yyyy-MM-dd; si falta, el backend usa hoy. */
   fecha?: string;
   comprobante?: string;
   descripcion?: string;
+  /** Sólo en una ENTRADA. Al editar, `null` lo quita. */
+  proveedorId?: number | null;
   detalles?: DetalleMovimientoInput[];
+}
+
+/** A quién se le compra la mercadería (farmacia). */
+export interface Proveedor {
+  id: number;
+  nombre: string;
+  nit: string | null;
+  telefono: string | null;
+  /** El vendedor o visitador con el que se habla. */
+  contacto: string | null;
+  nota: string | null;
+  /** Dado de baja: no se ofrece al cargar un ingreso, pero su historia queda. */
+  activo: boolean;
+}
+
+/** Lo que se le compró: entradas APROBADAS, cantidad × costo. */
+export interface ComprasProveedor {
+  total: number;
+  ingresos: number;
+}
+
+export interface ProveedorConCompras extends Proveedor {
+  compras: ComprasProveedor;
+  /** La última entrada aprobada, aunque sea de antes del período. */
+  ultimaCompra: string | null;
+}
+
+export interface ProveedorDetalle extends Proveedor {
+  compras: ComprasProveedor;
+  ultimosIngresos: {
+    id: number;
+    fecha: string;
+    comprobante: string | null;
+    estado: EstadoDocumento;
+    almacen: string;
+    items: number;
+    monto: number;
+  }[];
+}
+
+export type ProveedorInput = Partial<Pick<Proveedor, "nit" | "telefono" | "contacto" | "nota">> & {
+  nombre: string;
+};
+
+/**
+ * Lo que un producto tiene DISTINTO en una sucursal.
+ *
+ * Sólo existen filas para las EXCEPCIONES: si no hay fila, manda el precio del
+ * catálogo. Por eso un negocio de un solo local nunca ve nada acá.
+ */
+export interface PrecioSucursal {
+  productoId: number;
+  producto: string | null;
+  /** El del catálogo, para poder mostrar "Bs 12 → 15" sin otra consulta. */
+  precioLista: number | null;
+  /** null = usa el del catálogo. */
+  precio: number | null;
+  costo: number | null;
+  stockMinimo: number | null;
+  disponible: boolean;
+  orden: number | null;
+}
+
+export interface PrecioSucursalInput {
+  productoId: number;
+  precio?: number | null;
+  costo?: number | null;
+  stockMinimo?: number | null;
+  disponible?: boolean;
+  orden?: number | null;
+}
+
+/** Por qué se movió el stock. Alimenta la bitácora. */
+export type MotivoStock =
+  | "VENTA"
+  | "ANULACION"
+  | "ENTRADA"
+  | "SALIDA"
+  | "AJUSTE"
+  | "TRANSFERENCIA_SALIDA"
+  | "TRANSFERENCIA_ENTRADA"
+  | "COMBO";
+
+/**
+ * Una línea de la bitácora de stock.
+ *
+ * `cantidad` va CON SIGNO (positivo entra, negativo sale) y `saldoDespues` es lo
+ * que quedó: juntos contestan "¿por qué este producto tiene 7 y no 10?".
+ */
+export interface ApunteStock {
+  id: number;
+  cantidad: number;
+  saldoDespues: number;
+  motivo: MotivoStock;
+  fecha: string;
+  producto: { id: number; nombre: string } | null;
+  almacen: { id: number; nombre: string } | null;
+  /** Null = proceso automático (el armado de un combo, por ejemplo). */
+  usuario: { id: number; username: string; nombre: string | null } | null;
+  referenciaTipo: string | null;
+  referenciaId: number | null;
 }
 
 export interface DetalleMovimientoInput {
@@ -271,6 +751,147 @@ export interface DetalleMovimientoInput {
   cantidad: number;
   costo?: number;
   descripcion?: string;
+  /**
+   * Lote y vencimiento (rubro farmacia). En una ENTRADA es lo que dice el
+   * papel de la compra. En una SALIDA el vencimiento no viaja y el lote es
+   * opcional: sin él sale el más próximo a vencer (FEFO); con él —la baja de
+   * un lote elegido en Vencimientos— el servidor descuenta de ese lote.
+   */
+  loteCodigo?: string;
+  /** yyyy-MM-dd */
+  loteVencimiento?: string;
+}
+
+// ── Lotes y vencimientos (rubro farmacia) ───────────────────────────────────
+
+/** En qué tramo del semáforo cae un vencimiento. */
+export type TramoVencimiento =
+  | "VENCIDO"
+  | "HASTA_30"
+  | "HASTA_60"
+  | "HASTA_90"
+  | "LEJOS";
+
+export interface LoteConSaldo {
+  loteId: number;
+  codigo: string;
+  vencimiento: string | null;
+  /** Negativo = ya venció. Null si el lote no tiene fecha. */
+  diasRestantes: number | null;
+  tramo: TramoVencimiento | null;
+  cantidad: number;
+  costoUnitario: number | null;
+  almacen: { id: number; nombre: string };
+}
+
+/**
+ * Un lote con saldo en la sucursal de la caja, como lo ve quien cobra: sin
+ * costo. Viene en el orden en que la venta lo va a descontar (FEFO).
+ */
+export interface LoteParaVender {
+  codigo: string;
+  vencimiento: string | null;
+  /** Negativo = ya venció. Null si el lote no tiene fecha. */
+  dias: number | null;
+  tramo: TramoVencimiento | null;
+  cantidad: number;
+}
+
+/**
+ * Los lotes de un artículo del carrito. Vacío = no tiene lote vigente con
+ * saldo. Desde el 1-oct-2026 no trae los vencidos (la venta no los toca).
+ */
+export interface LotesDelArticulo {
+  productoId: number;
+  lotes: LoteParaVender[];
+  /**
+   * Unidades en lotes vencidos en la sucursal de la caja: siguen en el estante
+   * y no se entregan. Opcional: un backend anterior no lo manda.
+   */
+  vencidas?: number;
+}
+
+export interface LotePorVencer extends LoteConSaldo {
+  diasRestantes: number;
+  tramo: TramoVencimiento;
+  /** Cantidad × costo: la plata parada en este lote. */
+  valor: number;
+  producto: { id: number; nombre: string; laboratorio: string | null };
+}
+
+// ── Encargos (rubro farmacia) ───────────────────────────────────────────────
+
+/**
+ * Por dónde va un encargo. El flujo es lineal: alguien pide algo que no hay →
+ * se le pide al proveedor → llega → se entrega.
+ */
+export type EstadoEncargo =
+  | "ANOTADO"
+  | "PEDIDO"
+  | "LLEGO"
+  | "ENTREGADO"
+  | "CANCELADO";
+
+export interface Encargo {
+  id: number;
+  /** Lo que pidió, tal como se escribió. */
+  descripcion: string;
+  cantidad: number;
+  estado: EstadoEncargo;
+  clienteNombre: string | null;
+  clienteTelefono: string | null;
+  nota: string | null;
+  /** El artículo del catálogo, si está. Null = algo que todavía no se vende. */
+  producto: { id: number; nombre: string; laboratorio: string | null } | null;
+  almacen: { id: number; nombre: string } | null;
+  /** Quién lo anotó. */
+  usuario: string | null;
+  creadoEn: string;
+  llegoEn: string | null;
+  entregadoEn: string | null;
+  /** Cuántas personas están esperando este mismo producto. */
+  pedidoPor: number;
+  /** Varios lo esperan: vale la pena traer más de uno. */
+  muyPedido: boolean;
+  /** Ya hay stock de lo encargado: se le puede avisar. */
+  hayStock: boolean;
+  diasEsperando: number;
+}
+
+export interface ListaEncargos {
+  anotados: number;
+  pedidos: number;
+  llegaron: number;
+  entregados: number;
+  cancelados: number;
+  /** Lo que sigue esperando: el número que dice si hay trabajo. */
+  abiertos: number;
+  items: Encargo[];
+}
+
+export interface EncargoInput {
+  productoId?: number;
+  descripcion: string;
+  cantidad?: number;
+  clienteNombre?: string;
+  clienteTelefono?: string;
+  nota?: string;
+}
+
+export interface ContadorTramo {
+  lotes: number;
+  unidades: number;
+  valor: number;
+}
+
+export interface Vencimientos {
+  vencidos: ContadorTramo;
+  hasta30: ContadorTramo;
+  hasta60: ContadorTramo;
+  hasta90: ContadorTramo;
+  /** Lo que cuesta todo lo que está por vencer o ya venció. */
+  valorEnRiesgo: number;
+  detalle: LotePorVencer[];
 }
 
 // ── Caja ────────────────────────────────────────────────────────────────────
@@ -282,6 +903,13 @@ export interface Caja {
   montoApertura: number;
   descripcion: string | null;
   usuarioAperturaId: number | null;
+  /**
+   * En qué sucursal se abrió. La caja fija el local de TODO el turno: de ahí
+   * sale el stock que se descuenta y los precios que se cobran.
+   */
+  almacenId: number | null;
+  /** Nombre de esa sucursal, para mostrarlo en el POS sin pedir la lista. */
+  almacen: string | null;
   fechaCierre: string | null;
   montoCierre: number | null;
   montoDiferencia: number | null;
@@ -320,7 +948,49 @@ export interface ResumenCaja {
   abonosCredito: number;
   abonosEfectivo: number;
   abonosPorFormaPago: { nombre: string; monto: number }[];
+  /**
+   * Efectivo que los meseros cobraron y todavía no entregaron. Ya está dentro
+   * de las ventas en efectivo, pero en el delantal y no en el cajón: el
+   * backend lo resta de `saldoEsperado`. Opcional porque un backend anterior
+   * al cobro del mesero no lo manda.
+   */
+  enPoderDeMeseros?: number;
+  /** Lo mismo, por mesero: dice a quién pedirle la plata. */
+  meserosPendientes?: { meseroId: number | null; nombre: string | null; monto: number }[];
+  /**
+   * Belleza (QA DIA-11): de `ingresos`, las propinas dejadas en efectivo; de
+   * `egresos`, las entregadas a los profesionales (o devueltas al anular). Y
+   * las dejadas por QR o tarjeta, que no pasan por el cajón (informativo).
+   * Opcionales: un backend anterior no los manda (se toman como 0).
+   */
+  propinasEfectivo?: number;
+  propinasSalidas?: number;
+  propinasOtras?: number;
   saldoEsperado: number;
+  /**
+   * Agenda (belleza): citas de la sucursal que terminaron y nadie cobró, y
+   * citas que esta caja cobró y quedaron para revisar (cobro repetido o cita
+   * ya cerrada). Opcionales: un backend anterior no los manda.
+   */
+  citasPorCobrar?: number;
+  citasCobroRevisar?: number;
+  /**
+   * Cuáles son las que quedaron para revisar y por qué (QA B-28). Opcional:
+   * un backend anterior sólo manda el conteo.
+   */
+  citasRevisar?: CitaParaRevisar[];
+}
+
+/** Por qué un cobro de cita quedó para revisar en el cierre. */
+export type MotivoRevisarCita = "YA_COBRADA" | "CITA_CERRADA" | "COBRO_INCOMPLETO";
+
+export interface CitaParaRevisar {
+  id: number;
+  codigo: string;
+  cliente: string;
+  /** La hora de la cita (ISO). Opcional: un backend anterior no la manda. */
+  inicio?: string | null;
+  motivo: MotivoRevisarCita | (string & {});
 }
 
 // ── Ventas ──────────────────────────────────────────────────────────────────
@@ -346,6 +1016,51 @@ export interface DetalleVenta {
   subtotal: number;
   nota: string | null;
   consumo: Consumo;
+  /** Sólo en una venta con descuento (PLAN-CRM-Y-PROMOCIONES). */
+  descuento?: number;
+  descuentoNombre?: string | null;
+  /** Belleza: quién hizo el servicio (cita o venta directa con profesional). */
+  recursoId?: number;
+  recurso?: string | null;
+  /** Belleza (paquetes): la sesión que pagó la línea, o el paquete que vendió. */
+  paquete?: PaqueteRecibo;
+}
+
+/**
+ * Lo que el recibo dice de un paquete (decisión 6 del 07-oct). `texto` ya
+ * viene armado por el backend —"Sesión 3 de 10 · quedan 7" o "10 sesiones ·
+ * vale hasta el 05/01/2027"— para que la web y la app impriman lo mismo.
+ */
+export type PaqueteRecibo =
+  | {
+      tipo: "SESION";
+      paqueteClienteId: number;
+      nombre: string;
+      desde: number;
+      hasta: number;
+      sesiones: number;
+      restantes: number;
+      ultimoDia: string;
+      texto: string;
+    }
+  | {
+      tipo: "COMPRA";
+      paqueteClienteId: number;
+      nombre: string;
+      sesiones: number;
+      items: { servicio: string; sesiones: number }[];
+      ultimoDia: string;
+      estado: string;
+      /** A nombre de quién quedó (QA PER-14). El `texto` ya lo dice. */
+      cliente?: string | null;
+      texto: string;
+    };
+
+/** Un renglón de descuento del recibo: "2x1 martes  − Bs 25". */
+export interface DescuentoRecibo {
+  nombre: string;
+  codigo: string | null;
+  monto: number;
 }
 
 export interface Venta {
@@ -365,6 +1080,8 @@ export interface Venta {
   formasPago?: string[];
   anuladaEn?: string | null;
   anulacionAutorizadaPor?: string | null;
+  /** Por qué se anuló (desde el 1-oct-2026; null en las anteriores). */
+  motivoAnulacion?: string | null;
   // Bloque de entrega (delivery / recoger)
   tipoPedido: TipoPedido;
   estadoEntrega: EstadoEntrega | null;
@@ -382,6 +1099,33 @@ export interface Venta {
   /** Lo que el repartidor entrega al negocio (sin su tarifa de envío). */
   montoRendicion?: number;
   credito?: Credito | null;
+  /** Mesa del salón de la que salió la venta; null en la de mostrador. */
+  mesa?: string | null;
+  mesaNombre?: string | null;
+  /** Quién atendió la mesa (no quién cobró: ése es `cajero`). */
+  mesero?: string | null;
+  /** La cita de la agenda que cobró. Ausente en cualquier otra venta. */
+  citaId?: number;
+  /**
+   * Sólo en una venta con cupón o promoción: el bruto, el descuento y cada
+   * renglón con su nombre. `total` sigue siendo lo que se cobró.
+   */
+  subtotal?: number;
+  descuentoTotal?: number;
+  descuentos?: DescuentoRecibo[];
+  clienteId?: number;
+  /**
+   * Belleza (fase 4): los vales con que se pagó (cuánto se usó y cuánto le
+   * queda) y las propinas por profesional. Ausentes en cualquier otra venta.
+   */
+  giftCards?: { codigo: string; usado: number; saldo: number }[];
+  propinas?: { recursoId: number; recurso: string; monto: number; formaPago: string }[];
+  /**
+   * Plan Emprendedor: qué consumió esta venta (cupo o créditos) y el contador
+   * como quedó. Sólo en un negocio con cupo; un reintento idempotente tampoco
+   * lo trae.
+   */
+  consumo?: ConsumoVista;
 }
 
 export interface DetalleVentaInput {
@@ -391,12 +1135,171 @@ export interface DetalleVentaInput {
   precio?: number;
   nota?: string;
   consumo?: Consumo;
+  /**
+   * Farmacia: la receta de un psicotrópico o estupefaciente, que va al libro.
+   * Sin ella el backend rechaza la venta de uno de esos.
+   */
+  receta?: RecetaVenta;
+  /** Agenda: el profesional que hizo este servicio (su comisión). */
+  recursoId?: number;
+  /** Agenda fase 3: se paga con una sesión de paquete del cliente (precio 0). */
+  usarPaquete?: boolean;
+}
+
+/**
+ * Los datos de la receta de un controlado, como viajan con la venta y como se
+ * asientan en el libro que pide el SEDES.
+ */
+export interface RecetaVenta {
+  pacienteNombre: string;
+  /** CI u otro documento, si la receta lo trae. */
+  pacienteDocumento?: string;
+  medicoNombre: string;
+  medicoMatricula: string;
+  /** El número del formulario. Obligatorio en la receta valorada. */
+  recetaNumero?: string;
+  /** El día que la extendió el médico: AAAA-MM-DD. */
+  recetaFecha: string;
+}
+
+/** Lo que hay en riesgo en un tramo de vencimiento, hoy. */
+export interface RiesgoTramo {
+  unidades: number;
+  valor: number;
+  lotes: number;
+}
+
+/** Una baja (o devolución) del período, renglón por renglón. */
+export interface BajaMerma {
+  movimientoId: number;
+  fecha: string;
+  motivo: string;
+  nota: string;
+  /** Devolución al proveedor: no es pérdida, vuelve. */
+  devolucion: boolean;
+  /**
+   * Si suma como pérdida (vencido, dañado, robado). Lo cargado de más y lo que
+   * no tiene motivo se listan pero no suman. Ausente con un backend anterior.
+   */
+  perdida?: boolean;
+  productoId: number;
+  nombre: string;
+  laboratorio: string | null;
+  cantidad: number;
+  /** Al costo del lote del que salió. */
+  valor: number;
+  lotes: string[];
+  almacen: string;
+  usuario: string | null;
+}
+
+/** Vencimientos y mermas: lo perdido en el período y lo que está en riesgo hoy. */
+export interface ReporteMermas {
+  resumen: {
+    perdido: number;
+    unidadesPerdidas: number;
+    devuelto: number;
+    unidadesDevueltas: number;
+    enRiesgo: number;
+  };
+  riesgo: Record<"VENCIDO" | "HASTA_30" | "HASTA_60" | "HASTA_90", RiesgoTramo>;
+  porMotivo: {
+    motivo: string;
+    devolucion: boolean;
+    perdida?: boolean;
+    unidades: number;
+    valor: number;
+  }[];
+  porProducto: {
+    productoId: number;
+    nombre: string;
+    laboratorio: string | null;
+    motivos: string[];
+    unidades: number;
+    valor: number;
+  }[];
+  /** AAAA-MM, en la hora del negocio. */
+  porMes: { mes: string; perdido: number; devuelto: number }[];
+  detalle: BajaMerma[];
+}
+
+/** Por qué conviene pedir un artículo: el orden es la urgencia. */
+export type MotivoCompra = "AGOTADO" | "BAJO_MINIMO" | "SE_ACABA" | "ENCARGO";
+
+/** Un artículo que hay que pedir, con la cuenta que lo explica. */
+export interface ItemSugerencia {
+  productoId: number;
+  nombre: string;
+  principioActivo: string | null;
+  concentracion: string | null;
+  laboratorio: string | null;
+  categoria: string | null;
+  unidad: string | null;
+  /** Lo que hay, incluido lo vencido. */
+  stock: number;
+  /** Unidades de lotes vencidos: no cuentan para vender. */
+  vencido: number;
+  stockMinimo: number;
+  /** Lo vendido en los días de historia. */
+  vendidas: number;
+  porDia: number;
+  /** Días que alcanza lo que hay. Null si no se vendió en el período. */
+  alcanzaDias: number | null;
+  /** Encargos de clientes que todavía no se pidieron. */
+  encargos: number;
+  sugerido: number;
+  motivo: MotivoCompra;
+  /** El de la última compra (o el propio de la sucursal). */
+  costo: number;
+  subtotal: number;
+}
+
+export interface SugerenciaCompra {
+  /** Días de ventas que se miraron. */
+  dias: number;
+  /** Para cuántos días tiene que alcanzar lo que se pida. */
+  cobertura: number;
+  items: ItemSugerencia[];
+  resumen: { articulos: number; unidades: number; inversion: number; agotados: number };
+}
+
+/** Los dos libros de la venta: psicotrópicos (archivada) y estupefacientes (valorada). */
+export type LibroControlados = "PSICOTROPICOS" | "ESTUPEFACIENTES";
+
+/** Un asiento del libro de controlados. */
+export interface AsientoControlado {
+  id: number;
+  fecha: string;
+  ventaId: number;
+  comprobante: string | null;
+  /** Copiado al vender: si después se renombra el artículo, esto no cambia. */
+  producto: {
+    id: number;
+    nombre: string;
+    principioActivo: string | null;
+    concentracion: string | null;
+  };
+  condicionVenta: CondicionVenta;
+  controlado: boolean;
+  cantidad: number;
+  pacienteNombre: string;
+  pacienteDocumento: string | null;
+  medicoNombre: string;
+  medicoMatricula: string;
+  recetaNumero: string | null;
+  recetaFecha: string;
+  almacen: { id: number; nombre: string };
+  despachadoPor: { id: number; nombre: string };
+  /** La venta se anuló: el asiento queda, marcado. */
+  anuladaEn: string | null;
 }
 
 export interface PagoInput {
   formaPagoId: number;
   monto: number;
   recibido?: number;
+  /** Belleza: el código del vale con el que se paga esta parte (forma "Gift card"). */
+  giftCardCodigo?: string;
 }
 
 /** Datos del fiado cuando la venta se cobra a crédito. */
@@ -430,6 +1333,18 @@ export interface VentaInput {
   minutosEstimados?: number;
   notaPedido?: string;
   credito?: CreditoInput;
+  /** Agenda: la cita que cobra esta venta. La venta la completa (§10). */
+  citaId?: number;
+  // Cupones y promociones: el descuento lo calcula el backend. Mandar
+  // `descuentosEsperados` (lo que devolvió /ventas/cotizar) es lo que prende el
+  // motor en esta venta; sin él la venta es la de siempre.
+  // `clienteId` también es la ficha de quien compra un paquete o usa una
+  // sesión (agenda fase 3).
+  clienteId?: number;
+  cupones?: string[];
+  descuentosEsperados?: { promocionId: number; monto: number }[];
+  /** Belleza: propina por profesional. No suma al total ni a los pagos. */
+  propinas?: { recursoId: number; monto: number; formaPagoId: number }[];
 }
 
 export interface Repartidor {
@@ -443,6 +1358,8 @@ export interface Repartidor {
 export interface AnularVentaInput {
   autorizadorUsername?: string;
   autorizadorPin?: string;
+  /** Por qué se anula: queda guardado con la venta. */
+  motivo?: string;
 }
 
 // ── Créditos (fiado) ────────────────────────────────────────────────────────
@@ -508,7 +1425,12 @@ export interface Usuario {
   nombre: string;
   /** El backend devuelve el username bajo la clave `usuario`. */
   usuario: string;
+  /** Código legado (ver `Rol`): no se decide nada con él. */
   rol: Rol;
+  /** El rol del negocio (PLAN-ROLES-NEGOCIO §8). */
+  rolId?: number | null;
+  rolNombre?: string | null;
+  esAdministrador?: boolean;
   activo: boolean;
   email: string | null;
   telefono: string | null;
@@ -517,6 +1439,15 @@ export interface Usuario {
   vehiculo: string | null;
   creado: string;
   ultimoLogin: string | null;
+  /**
+   * A qué sucursal pertenece. **`null` = toda la organización** (el dueño, que
+   * ve el consolidado), no "sin asignar" — mostrarlo como un dato faltante
+   * invitaría a "arreglarlo" atando al dueño a un solo local.
+   */
+  sucursalId: number | null;
+  /** Nombre de esa sucursal, para no tener que cruzarlo con la lista. */
+  sucursal: string | null;
+  sucursalDesde: string | null;
   /** El PIN nunca sale del backend; sólo se sabe si tiene uno cargado. */
   tienePin: boolean;
 }
@@ -525,12 +1456,15 @@ export interface CrearUsuarioInput {
   nombre: string;
   username: string;
   password: string;
-  rol: Rol;
+  /** El rol del negocio. */
+  rolId: number;
   email?: string;
   telefono?: string;
   notas?: string;
   zona?: string;
   vehiculo?: string;
+  /** null u omitido = toda la organización. Sólo lo fija un admin de negocio. */
+  sucursalId?: number | null;
 }
 
 /**
@@ -540,12 +1474,19 @@ export interface CrearUsuarioInput {
  */
 export interface ActualizarUsuarioInput {
   nombre?: string;
-  rol?: Rol;
+  /** Sólo si cambia: el backend no deja asignar lo que el actor no puede dar. */
+  rolId?: number;
   email?: string;
   telefono?: string;
   notas?: string;
   zona?: string;
   vehiculo?: string;
+  /**
+   * Acá `null` SÍ es un valor: "pasalo a toda la organización". Es la
+   * excepción a la regla de la cadena vacía de arriba, porque el campo es un
+   * id y no un texto — el backend distingue ausente (no tocar) de null.
+   */
+  sucursalId?: number | null;
 }
 
 // ── Dashboard y licencia ────────────────────────────────────────────────────
@@ -555,7 +1496,14 @@ export interface Dashboard {
   almacenes: number;
   totalInventario: number;
   bajoStock: number;
-  stockCritico: { id: number; nombre: string; stock: number; stockMinimo: number }[];
+  stockCritico: {
+    id: number;
+    nombre: string;
+    stock: number;
+    stockMinimo: number;
+    /** A quién se le vuelve a pedir. Sólo lo carga la ficha de farmacia. */
+    laboratorio?: string | null;
+  }[];
   movimientos: {
     id: number;
     comprobante: string | null;
@@ -592,6 +1540,35 @@ export interface EstadoLicencia {
    * así que no se puede pedir con el token.
    */
   codigoActivacion?: string | null;
+  /**
+   * Las features del negocio, para repintar el menú sin volver a loguearse.
+   *
+   * Viaja acá y no en un endpoint propio porque este estado ya se consulta
+   * solo (cada 15 min y al volver a la pestaña): sumar el campo no cuesta
+   * ningún request. Opcional porque un backend anterior a sep-2026 no lo
+   * manda, y en ese caso el menú se queda con lo del login, como antes.
+   */
+  features?: string[];
+  /**
+   * Huella de los permisos del usuario (PLAN-ROLES §8.1): si no coincide con
+   * la de la sesión, se vuelven a pedir a `/auth/me`. Opcional: un backend
+   * anterior no la manda.
+   */
+  permisosVersion?: string;
+  /**
+   * Paleta y perfil del negocio, por lo mismo que `features`: si el panel le
+   * cambia la paleta, la pestaña abierta se repinta sola. `perfilVersion`
+   * cambia cuando cambia cualquiera de los dos, y es lo único que se compara.
+   */
+  tema?: TemaNegocio | null;
+  perfil?: PerfilRubro | null;
+  perfilVersion?: number | null;
+  /**
+   * Plan Emprendedor (§4.2): el contador del día y el saldo de créditos. Viaja
+   * acá por lo mismo que `features`: este estado ya se consulta solo cada
+   * 15 min. Con `ilimitado` (Básico, Profesional) o ausente, nada cambia.
+   */
+  cupo?: CupoEstado;
 }
 
 // -- Pago de la licencia por QR (pantalla pública /pagar) --------------------
@@ -666,6 +1643,15 @@ export interface EstadoCobroQr {
 export interface RangoReporte {
   desde?: string;
   hasta?: string;
+  /**
+   * Sucursal de la que se piden los numeros. **Ausente = todas**, el
+   * consolidado del negocio.
+   *
+   * Viaja con el rango y no aparte porque es el otro filtro que TODOS los
+   * reportes comparten: como cada llamada hace `qs({ ...rango })`, agregarlo
+   * aca lo mando a los 23 endpoints de una.
+   */
+  sucursalId?: number;
 }
 
 export interface ResumenReportes {
@@ -759,6 +1745,11 @@ export interface ReporteVentasGeneral {
     /** Nombre de la forma de pago, o "Mixto" / "Sin cobrar". */
     metodoPago: string;
     articulos: number;
+    /**
+     * De que local salio. Null en las respuestas viejas y en negocios de una
+     * sola sucursal, donde la columna no se muestra.
+     */
+    sucursal?: string | null;
     total: number;
   }[];
   pagina: PaginaMeta;
@@ -782,6 +1773,8 @@ export interface ReporteVentasDetalle {
     cantidad: number;
     precio: number;
     subtotal: number;
+    /** De que local salio (ver ReporteVentasGeneral). */
+    sucursal?: string | null;
   }[];
   pagina: PaginaMeta;
 }
@@ -947,4 +1940,340 @@ export interface ReporteCierreProductos {
   total: number;
   /** Productos DISTINTOS, no suma de unidades. */
   lineas: number;
+}
+
+
+// ── Gastos operativos ───────────────────────────────────────────────────────
+//
+// La regla que gobierna el modulo: **un gasto NO es un movimiento de caja**.
+// Son dos libros distintos. El del resultado dice que gasto el negocio este
+// mes (el alquiler de septiembre es de septiembre aunque se pague en octubre);
+// el del efectivo, que salio del cajon. Mezclarlos hace que ninguno cierre.
+//
+// Espejo de `GastoDto.kt` en Android: los dos leen el mismo backend y tienen
+// que entender lo mismo.
+
+/** Cuanto se pago del gasto. Lo decide el servidor, no la pantalla. */
+export type EstadoGasto = "PENDIENTE" | "PARCIAL" | "PAGADO";
+
+/** Las pestanas de la lista. VENCIDOS no es un estado: cruza PENDIENTE y
+ *  PARCIAL con la fecha, que es como el dueno mira la pantalla. */
+/**
+ * `ATRASADOS` (desde el 1-oct-2026): lo que se debe de ANTES del mes que se
+ * mira. El resto de los filtros son del mes.
+ */
+export type FiltroGasto = "TODOS" | "PENDIENTES" | "VENCIDOS" | "PAGADOS" | "ATRASADOS";
+
+/** Si el gasto sube cuando sube la venta o no se mueve. */
+export type TipoCostoGasto = "FIJO" | "VARIABLE";
+
+/** Con que se pago. No usa FormaPago (la de las ventas): el alquiler no se
+ *  paga "fiado". */
+export type MetodoPagoGasto = "EFECTIVO" | "TRANSFERENCIA" | "QR" | "TARJETA";
+
+export type FrecuenciaGasto =
+  | "MENSUAL"
+  | "BIMESTRAL"
+  | "TRIMESTRAL"
+  | "SEMESTRAL"
+  | "ANUAL";
+
+export interface CategoriaGasto {
+  /** MAYUSCULAS sin acentos ("MUSICA_EN_VIVO"). El nombre se corrige, el
+   *  codigo no cambia nunca: es lo que queda pegado a cada gasto. */
+  codigo: string;
+  nombre: string;
+  /** false = es del pack base y esta fila solo la retoca. No se puede borrar:
+   *  los gastos viejos la usan. */
+  propia: boolean;
+  tipoCosto: TipoCostoGasto;
+  activa?: boolean;
+}
+
+export interface Gasto {
+  id: number;
+  concepto: string;
+  /** El codigo; `categoriaNombre` es como se muestra. */
+  categoria: string;
+  categoriaNombre: string | null;
+  tipoCosto: TipoCostoGasto | null;
+  monto: number;
+  /** Lo que ya salio. Igual a `monto` cuando esta saldado. */
+  pagado: number;
+  saldo: number;
+  estado: EstadoGasto;
+  /** Cuando ocurrio el gasto (yyyy-MM-dd). Decide a que mes entra. */
+  fecha: string;
+  /** Hasta cuando hay tiempo de pagarlo. null = no vence. */
+  fechaVencimiento: string | null;
+  /** **Vencido no es un estado, es una condicion**: un gasto puede estar
+   *  PENDIENTE y vencido, o PARCIAL y vencido. Lo calcula el servidor. */
+  vencido: boolean;
+  diasAtraso: number;
+  diasParaVencer: number;
+  metodoPago: MetodoPagoGasto | null;
+  beneficiario: string | null;
+  nota: string | null;
+  sucursalId: number | null;
+  sucursal: string | null;
+  recurrente: boolean;
+  numeroFactura: string | null;
+  nit: string | null;
+}
+
+/** El hero de la pantalla: total, pagado y pendiente del periodo. */
+export interface ResumenGastos {
+  total: number;
+  pagado: number;
+  pendiente: number;
+  vencido: number;
+  cantidad: number;
+  cantidadPendientes: number;
+  cantidadVencidos: number;
+  cantidadPagados: number;
+  /** Para el "gastos sobre las ventas del periodo". */
+  ventasPeriodo: number;
+  /**
+   * Lo que se debe de meses ANTERIORES al período: va aparte para que total,
+   * pagado y pendiente sigan siendo del mes. Opcional: un backend anterior al
+   * 1-oct-2026 no lo manda.
+   */
+  atrasado?: GastosAtrasados;
+}
+
+/** Gastos de meses anteriores que todavía tienen saldo. */
+export interface GastosAtrasados {
+  cantidad: number;
+  saldo: number;
+  /** Cuántos de esos ya pasaron su fecha de vencimiento. */
+  vencidos: number;
+}
+
+/** Lo que el formulario manda para crear o corregir un gasto. */
+export interface GastoInput {
+  concepto: string;
+  categoria: string;
+  monto: number;
+  fecha: string;
+  fechaVencimiento?: string | null;
+  /** true = nace pagado. Un gasto que se carga despues de pagarlo es lo mas
+   *  comun. */
+  pagado?: boolean;
+  metodoPago?: MetodoPagoGasto | null;
+  beneficiario?: string | null;
+  nota?: string | null;
+  sucursalId?: number | null;
+  recurrente?: boolean;
+  numeroFactura?: string | null;
+  nit?: string | null;
+}
+
+/** Un pago contra un gasto. `monto` omitido = saldar lo que falte. */
+export interface PagoGastoInput {
+  monto?: number;
+  fechaPago: string;
+  metodoPago: MetodoPagoGasto;
+}
+
+/** La REGLA que crea un gasto sola: "el alquiler, 8.500, todos los 5". */
+export interface PlantillaGasto {
+  id: number;
+  concepto: string;
+  categoria: string;
+  categoriaNombre: string | null;
+  frecuencia: FrecuenciaGasto;
+  /** 1-31. Un 31 en un mes que no lo tiene cae al ultimo dia. */
+  diaDelMes: number;
+  /** null = **monto variable**: la luz y el agua cambian todos los meses, asi
+   *  que el gasto se crea sin monto y el dueno lo completa cuando llega la
+   *  factura. Es distinto de 0. */
+  monto: number | null;
+  activa: boolean;
+  motivoPausa: string | null;
+  beneficiario: string | null;
+  nota: string | null;
+  sucursalId: number | null;
+  sucursal: string | null;
+  /** Cuando dispara la proxima vez. La calcula el servidor: si la calculara la
+   *  pantalla, un navegador con la fecha mal puesta mostraria otro calendario
+   *  del que de verdad va a correr. */
+  proximaCarga: string | null;
+  ultimaCarga: string | null;
+}
+
+export interface PlantillaGastoInput {
+  concepto: string;
+  categoria: string;
+  frecuencia: FrecuenciaGasto;
+  diaDelMes: number;
+  monto?: number | null;
+  activa?: boolean;
+  motivoPausa?: string | null;
+  beneficiario?: string | null;
+  nota?: string | null;
+  sucursalId?: number | null;
+}
+
+// ── Carga desde Excel (farmacia) ───────────────────────────────────────────
+
+/** Un lote de un medicamento del Excel: una fila. Sin código, es stock sin lote. */
+export interface LoteImportado {
+  fila: number;
+  codigo?: string;
+  /** AAAA-MM-DD. */
+  vencimiento?: string;
+  cantidad: number;
+  costo?: number;
+}
+
+/** Un medicamento del Excel con todos sus lotes, como viaja al backend. */
+export interface MedicamentoImportado {
+  /** La primera fila del Excel en la que aparece. */
+  fila: number;
+  codBarra?: string;
+  nombre: string;
+  principioActivo?: string;
+  concentracion?: string;
+  formaFarmaceutica?: string;
+  laboratorio?: string;
+  registroSanitario?: string;
+  categoria?: string;
+  condicionVenta?: CondicionVenta;
+  controlado?: boolean;
+  manejaLote: boolean;
+  precio: number;
+  costo?: number;
+  stockMinimo?: number;
+  lotes: LoteImportado[];
+}
+
+export interface ImportarMedicamentosInput {
+  /** La sucursal donde entra el stock. */
+  almacenId: number;
+  soloRevisar?: boolean;
+  medicamentos: MedicamentoImportado[];
+}
+
+/** LISTO = se va a crear (al revisar). EXISTE = ya estaba y no se tocó, ni su stock. */
+export type EstadoImportado = "LISTO" | "CREADO" | "EXISTE" | "ERROR";
+
+export interface ResultadoImportado {
+  fila: number;
+  estado: EstadoImportado;
+  mensaje?: string;
+  productoId?: number;
+}
+
+export interface RespuestaImportacion {
+  resultados: ResultadoImportado[];
+  /** El ingreso "Inventario inicial" de esta tanda; null si no entró stock. */
+  movimientoId: number | null;
+}
+
+// -- Plan Emprendedor: cupo diario y créditos (PLAN-EMPRENDEDOR-TECNICO §4.1) --
+
+/**
+ * El contador del día y el monedero de un negocio. Con `ilimitado: true`
+ * (cualquier plan que no sea EMPRENDEDOR) el cliente no muestra nada de cupo
+ * ni bloquea nada: es el caso de Omar.
+ */
+export interface CupoEstado {
+  plan: "EMPRENDEDOR" | "BASICO" | "PRO";
+  ilimitado: boolean;
+  /** Día del servidor en Bolivia al que se refiere `hoy` (AAAA-MM-DD). */
+  fecha: string;
+  hoy: {
+    /** `limite` null = ilimitado. */
+    ventas: { usadas: number; limite: number | null };
+    citas: { usadas: number; limite: number | null };
+  };
+  /** `congelado` = el plan ya no es EMPRENDEDOR: el saldo se guarda pero no se usa. */
+  creditos: { saldo: number; congelado: boolean };
+  creditosPorVenta: number;
+  creditosPorCita: number;
+  /** Gastó lo suficiente en créditos para que le convenga el Básico. */
+  sugerirBasico: boolean;
+}
+
+export type UnidadCupo = "VENTA" | "CITA";
+
+/** Lo que consumió una venta o una cita recién creada. Sólo si !ilimitado. */
+export interface ConsumoVista {
+  unidad: UnidadCupo;
+  fuente: "CUPO" | "CREDITOS";
+  /** 0 si entró por el cupo. */
+  creditos: number;
+  /** El estado después de esta operación. */
+  cupo: CupoEstado;
+}
+
+/** Cuerpo del 403 `CUPO_AGOTADO` (ventas y agenda). */
+export interface ErrorCupoAgotado {
+  statusCode: 403;
+  error?: "Forbidden";
+  codigo: "CUPO_AGOTADO";
+  message: string;
+  unidad: UnidadCupo;
+  cupo: CupoEstado;
+}
+
+export interface PaqueteCreditosVista {
+  id: number;
+  nombre: string | null;
+  creditos: number;
+  precio: number;
+  moneda: "BOB";
+  precioPorCredito: number;
+  /** Cuántas ventas o cuántas citas paga el paquete (lo calcula el backend). */
+  alcanzaVentas: number;
+  alcanzaCitas: number;
+  activo: boolean;
+  orden: number;
+}
+
+/** GET /monedero/paquetes */
+export interface PaquetesCreditos {
+  paquetes: PaqueteCreditosVista[];
+  saldo: number;
+  puedeComprar: boolean;
+  /** Por qué no puede comprar, listo para mostrar. */
+  motivo: string | null;
+  /** D24: la mensualidad pendiente cuando la licencia está en gracia o por vencer. */
+  recordatorioLicencia: string | null;
+}
+
+export interface CompraCreditosVista {
+  id: number;
+  estado: "PENDIENTE" | "PAGADA" | "VENCIDA" | "ANULADA";
+  creditos: number;
+  monto: number;
+  moneda: "BOB";
+  metodo: "QR" | "EFECTIVO" | "TRANSFERENCIA" | "OTRO";
+  paquete: { id: number; nombre: string | null; creditos: number } | null;
+  /** Sólo con estado PENDIENTE y metodo QR. `imagenQr` es un data URL. */
+  qr: { alias: string; imagenQr: string; venceEn: string } | null;
+  creadoEn: string;
+  pagadaEn: string | null;
+  /** Saldo del monedero AHORA. */
+  saldo: number;
+  recordatorioLicencia: string | null;
+}
+
+export interface MovimientoCreditoVista {
+  id: number;
+  tipo: "REGALO" | "COMPRA" | "CONSUMO_VENTA" | "CONSUMO_CITA" | "DEVOLUCION" | "AJUSTE_PANEL";
+  cantidad: number;
+  saldoDespues: number;
+  fecha: string;
+  ventaId: number | null;
+  citaId: number | null;
+  compraId: number | null;
+  motivo: string | null;
+}
+
+/** GET /monedero/movimientos */
+export interface MovimientosCredito {
+  saldo: number;
+  movimientos: MovimientoCreditoVista[];
+  siguiente: number | null;
 }

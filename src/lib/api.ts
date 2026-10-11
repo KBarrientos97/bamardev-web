@@ -1,9 +1,15 @@
 import type {
+  Existencia,
+  ApunteStock,
+  PrecioSucursal,
+  PrecioSucursalInput,
   AbonoInput,
   Almacen,
   AlmacenInput,
   AnularVentaInput,
   ArticuloMovimiento,
+  ImportarMedicamentosInput,
+  RespuestaImportacion,
   ActualizarUsuarioInput,
   Caja,
   Categoria,
@@ -17,6 +23,8 @@ import type {
   HistorialCostos,
   DetalleMovimiento,
   DetalleMovimientoInput,
+  Encargo,
+  EncargoInput,
   EstadoCobroQr,
   EstadoLicencia,
   FiltroCredito,
@@ -28,6 +36,18 @@ import type {
   Movimiento,
   MovimientoCaja,
   MovimientoInput,
+  ListaEncargos,
+  LoteConSaldo,
+  LotesDelArticulo,
+  AsientoControlado,
+  LibroControlados,
+  SugerenciaCompra,
+  ReporteMermas,
+  Proveedor,
+  ProveedorConCompras,
+  ProveedorDetalle,
+  ProveedorInput,
+  PaginaProductos,
   Producto,
   ProductoInput,
   RangoReporte,
@@ -44,8 +64,18 @@ import type {
   ResumenCaja,
   UnidadMedida,
   Usuario,
+  Vencimientos,
   Venta,
   VentaInput,
+  CategoriaGasto,
+  FiltroGasto,
+  Gasto,
+  GastoInput,
+  PagoGastoInput,
+  PlantillaGasto,
+  PlantillaGastoInput,
+  ResumenGastos,
+  TipoCostoGasto,
 } from "../types";
 
 import type {
@@ -56,6 +86,7 @@ import type {
   ZonaSalon,
 } from "../types/salon";
 import { reportarError } from "./telemetria";
+import { periodoParaApi, rangoParaApi, tzOffsetMin } from "./rangoApi";
 
 // URL del backend. En los builds la fija VITE_API_URL (QA o PROD); en `npm run
 // dev` queda vacía a propósito y pegamos a /api, que el proxy de Vite reenvía
@@ -69,6 +100,12 @@ export const NEGOCIO_KEY = "bamardev_web_negocio";
 /** Último estado de licencia conocido: sobrevive al F5 (ver AuthContext). */
 export const LICENCIA_KEY = "bamardev_web_licencia";
 /**
+ * Último cupo del Plan Emprendedor (contador del día y saldo). Sobrevive al F5
+ * como la licencia: sin él, recargar la página dejaba vender sin el chequeo
+ * previo hasta que llegara el primer `/licencia/estado`.
+ */
+export const CUPO_KEY = "bamardev_web_cupo";
+/**
  * Motivo del bloqueo por licencia, escrito justo antes de recargar hacia el
  * login. Es lo único que sobrevive a `window.location.assign`, y sin esto el
  * cajero volvería a una pantalla de login limpia sin saber por qué lo echó.
@@ -81,8 +118,12 @@ export const tokenStore = {
   clear: () => localStorage.removeItem(TOKEN_KEY),
 };
 
-/** Rutas donde un 401 significa "credenciales mal", no "sesión vencida". */
-const RUTAS_LOGIN = ["/auth/login", "/auth/panel/login"];
+/**
+ * Rutas donde un 401 significa "credenciales mal", no "sesión vencida". Cambiar
+ * la propia clave también: si el backend contesta 401 a una contraseña actual
+ * equivocada, cerrar la sesión por eso sería castigar un error de tipeo.
+ */
+const RUTAS_LOGIN = ["/auth/login", "/auth/panel/login", "/usuarios/me/password"];
 
 /** Error del API con el status y, si el backend lo mandó, el código de negocio. */
 export class ApiError extends Error {
@@ -90,6 +131,11 @@ export class ApiError extends Error {
   /** LICENCIA_VENCIDA | LICENCIA_SUSPENDIDA cuando el 403 es por licencia. */
   codigo?: string;
   urlPago?: string;
+  /**
+   * El cuerpo entero del error. La agenda lo necesita: un 409 HUECO_OCUPADO
+   * trae los huecos recalculados y un SIN_RECURSO_LIBRE la espera estimada.
+   */
+  detalle: Record<string, unknown>;
 
   constructor(mensaje: string, status: number, extra?: Record<string, unknown>) {
     super(mensaje);
@@ -97,6 +143,7 @@ export class ApiError extends Error {
     this.status = status;
     this.codigo = extra?.codigo as string | undefined;
     this.urlPago = extra?.urlPago as string | undefined;
+    this.detalle = extra ?? {};
   }
 }
 
@@ -105,6 +152,7 @@ function limpiarSesion() {
   localStorage.removeItem(USER_KEY);
   localStorage.removeItem(NEGOCIO_KEY);
   localStorage.removeItem(LICENCIA_KEY);
+  localStorage.removeItem(CUPO_KEY);
 }
 
 /**
@@ -190,8 +238,11 @@ function qs(params: object = {}): string {
  * reglas transversales: cerrar sesión si el token murió, cortar si la licencia
  * dejó de estar vigente, y reportar a PostHog lo que falló. Ponerlas en cada
  * pantalla sería garantizar que alguna quede afuera.
+ *
+ * Se exporta para los clientes de la agenda (`lib/agenda/`), que viven en sus
+ * propios archivos y tienen que pasar por las mismas tres reglas.
  */
-async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+export async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = tokenStore.get();
   const metodo = options.method ?? "GET";
   // La ruta sin ids: "/productos/42" y "/productos/7" son el mismo endpoint, y
@@ -249,7 +300,10 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 
     // 502/503/504 es el servidor no disponible, típico durante un despliegue:
     // el cuerpo viene en HTML y el mensaje genérico no ayudaba a esperar.
-    if (res.status === 502 || res.status === 503 || res.status === 504) {
+    // Salvo que el 503 sea nuestro y venga con `codigo` (REPORTES_OCUPADO: hay
+    // otro reporte grande en curso): ese mensaje dice qué pasa y se respeta.
+    const conCodigo = typeof cuerpo.codigo === "string";
+    if (!conCodigo && (res.status === 502 || res.status === 503 || res.status === 504)) {
       mensaje = "El servidor no está disponible en este momento. Probá en unos segundos.";
     }
 
@@ -343,33 +397,106 @@ export const api = {
   // ── Finanzas ──────────────────────────────────────────────────────────────
   // Los reportes paginados aceptan `page` y `limite`; los mensuales no llevan
   // rango, sólo el año.
+  // Todos los rangos pasan por `rangoParaApi`: con el día pelado el backend
+  // dejaba afuera el último día y cortaba en UTC (ver lib/rangoApi.ts).
   reporteVentas: (p: RangoReporte & { usuarioId?: number; page?: number; limite?: number }) =>
-    request<ReporteVentasGeneral>(`/reportes/ventas${qs(p)}`),
+    request<ReporteVentasGeneral>(`/reportes/ventas${qs(rangoParaApi(p))}`),
   reporteVentasDetalle: (
     p: RangoReporte & { usuarioId?: number; page?: number; limite?: number },
-  ) => request<ReporteVentasDetalle>(`/reportes/ventas-detalle${qs(p)}`),
+  ) => request<ReporteVentasDetalle>(`/reportes/ventas-detalle${qs(rangoParaApi(p))}`),
+  // El mes se corta en el reloj del negocio: sin el offset el backend usaba
+  // la zona del servidor y una venta de la noche del 31 caía en el mes
+  // siguiente.
   reporteVentasMensual: (anio?: number) =>
-    request<ReporteVentasMensual>(`/reportes/ventas-mensual${qs({ anio })}`),
+    request<ReporteVentasMensual>(
+      `/reportes/ventas-mensual${qs({ anio, tzOffsetMin: tzOffsetMin() })}`,
+    ),
   reporteCompras: (
     p: RangoReporte & { tipo?: string; page?: number; limite?: number },
-  ) => request<ReporteComprasGeneral>(`/reportes/compras${qs(p)}`),
+  ) => request<ReporteComprasGeneral>(`/reportes/compras${qs(rangoParaApi(p))}`),
   reporteComprasDetalle: (
     p: RangoReporte & { tipo?: string; page?: number; limite?: number },
-  ) => request<ReporteComprasDetalle>(`/reportes/compras-detalle${qs(p)}`),
+  ) => request<ReporteComprasDetalle>(`/reportes/compras-detalle${qs(rangoParaApi(p))}`),
   reporteComprasMensual: (anio?: number) =>
-    request<ReporteComprasMensual>(`/reportes/compras-mensual${qs({ anio })}`),
+    request<ReporteComprasMensual>(
+      `/reportes/compras-mensual${qs({ anio, tzOffsetMin: tzOffsetMin() })}`,
+    ),
   reporteCompra: (id: number) =>
     request<ReporteCompraDocumento>(`/reportes/compras/${id}`),
   reporteCaja: (p: RangoReporte & { tipo?: string; page?: number; limite?: number }) =>
-    request<ReporteMovimientosCaja>(`/reportes/caja${qs(p)}`),
+    request<ReporteMovimientosCaja>(`/reportes/caja${qs(rangoParaApi(p))}`),
   /** Lo que salió del mostrador en un turno. Baja del arqueo, no del período. */
   reporteCierreProductos: (cierreId: number) =>
     request<ReporteCierreProductos>(`/reportes/cierres/${cierreId}/productos`),
 
   // ── Catálogo ──────────────────────────────────────────────────────────────
-  getProductos: (eliminados?: boolean) =>
-    request<Producto[]>(`/productos${qs({ eliminados: eliminados ? 1 : undefined })}`),
-  getProducto: (id: number) => request<Producto>(`/productos/${id}`),
+  /**
+    * El catálogo. `sucursalId` decide de qué local salen el PRECIO y el STOCK:
+    * sin él, el POS mostraba el precio de lista y la venta cobraba el de la
+    * sucursal, así que el cobro fallaba con "los pagos no suman el total".
+    */
+  getProductos: (eliminados?: boolean, sucursalId?: number | null) =>
+    request<Producto[]>(
+      `/productos${qs({
+        // El backend compara el texto `=== 'true'`: con `1` daba el activo.
+        eliminados: eliminados ? "true" : undefined,
+        sucursalId: sucursalId ?? undefined,
+      })}`,
+    ),
+  getProducto: (id: number, sucursalId?: number | null) =>
+    request<Producto>(`/productos/${id}${qs({ sucursalId: sucursalId ?? undefined })}`),
+  /**
+   * La búsqueda del mostrador: filtra y pagina en el servidor.
+   *
+   * `getProductos` sigue existiendo y trae el catálogo entero — está bien para
+   * 40 artículos. Con un catálogo de farmacia (2.000) hay que usar esto, que
+   * busca por nombre, principio activo, laboratorio, descripción y código de
+   * barras exacto, y devuelve una página con el total.
+   */
+  buscarProductos: (params: {
+    q?: string;
+    limite?: number;
+    offset?: number;
+    soloHabilitados?: boolean;
+    /** Los chips de categoría del punto de venta de farmacia. */
+    categoriaId?: number | null;
+    /**
+     * De qué sucursal salen el stock, el precio y la ubicación. El POS manda la
+     * de su caja; quien pertenece a una sucursal ve siempre la suya.
+     */
+    sucursalId?: number | null;
+  }) =>
+    request<PaginaProductos>(
+      `/productos/buscar${qs({
+        q: params.q,
+        limite: params.limite,
+        offset: params.offset,
+        soloHabilitados: params.soloHabilitados ? "true" : undefined,
+        categoriaId: params.categoriaId ?? undefined,
+        sucursalId: params.sucursalId ?? undefined,
+      })}`,
+    ),
+  /**
+   * De qué lotes sale cada artículo del carrito en esa sucursal, en el orden
+   * en que la venta los descuenta. Sin costos: lo lee quien cobra. Sólo
+   * vuelven los que manejan lote.
+   */
+  lotesParaVender: (ids: number[], sucursalId: number) =>
+    request<LotesDelArticulo[]>(
+      `/productos/lotes-venta${qs({ ids: ids.join(","), sucursalId })}`,
+    ),
+  /** Cuánto hay en cada sucursal y dónde está. Sin costos: lo lee el mostrador. */
+  existenciasProducto: (id: number) =>
+    request<Existencia[]>(`/productos/${id}/existencias`),
+  /** Dónde está en una sucursal. Vacío o null la borra: es opcional. */
+  fijarUbicacionProducto: (id: number, almacenId: number, ubicacion: string | null) =>
+    request<{ ubicacion: string | null }>(`/productos/${id}/ubicacion`, {
+      method: "PUT",
+      body: JSON.stringify({ almacenId, ubicacion }),
+    }),
+  /** Las ubicaciones que ya se usaron, para sugerirlas al escribir. */
+  ubicacionesUsadas: (almacenId?: number) =>
+    request<string[]>(`/productos/ubicaciones${qs({ almacenId })}`),
   crearProducto: (input: ProductoInput) =>
     request<Producto>("/productos", { method: "POST", body: JSON.stringify(input) }),
   actualizarProducto: (id: number, input: Partial<ProductoInput>) =>
@@ -392,7 +519,135 @@ export const api = {
   getUnidades: () => request<UnidadMedida[]>("/unidades-medida"),
 
   // ── Inventario ────────────────────────────────────────────────────────────
+  /**
+   * Los locales SIN números: id, nombre, tipo y si es el principal.
+   *
+   * Para los selectores de sucursal, que sólo necesitan nombres. `getAlmacenes`
+   * devuelve además la valorización del inventario y el detalle de artículos —y
+   * exige ser ADMIN/SUPERVISOR—, así que traía de más y, desde que el listado
+   * completo pide rol, le respondía 403 a un cajero.
+   */
+  getSucursales: () => request<Almacen[]>("/almacenes/mias"),
   getAlmacenes: () => request<Almacen[]>("/almacenes"),
+  /**
+   * Hace de este almacén la sucursal principal: la que el backend usa cuando una
+   * operación no dice de cuál se trata.
+   */
+  marcarAlmacenPrincipal: (id: number) =>
+    request<{ mensaje: string }>(`/almacenes/${id}/principal`, {
+      method: "PATCH",
+    }),
+  // ── Encargos (rubro farmacia) ───────────────────────────────────────────
+  /** Sin filtro trae sólo lo que sigue abierto. */
+  getEncargos: (params: { estado?: string; incluirCerrados?: boolean } = {}) =>
+    request<ListaEncargos>(
+      `/encargos${qs({
+        estado: params.estado,
+        incluirCerrados: params.incluirCerrados ? "true" : undefined,
+      })}`,
+    ),
+  crearEncargo: (input: EncargoInput) =>
+    request<Encargo>("/encargos", { method: "POST", body: JSON.stringify(input) }),
+  /** Mueve el encargo al paso siguiente, o lo cancela. */
+  cambiarEstadoEncargo: (id: number, estado: string) =>
+    request<Encargo>(`/encargos/${id}/estado`, {
+      method: "POST",
+      body: JSON.stringify({ estado }),
+    }),
+  /** Sólo se puede con lo que nunca avanzó; lo demás se cancela. */
+  eliminarEncargo: (id: number) =>
+    request<{ mensaje: string }>(`/encargos/${id}`, { method: "DELETE" }),
+
+  // ── Lotes y vencimientos (rubro farmacia) ───────────────────────────────
+  /**
+   * El semáforo: qué vence y cuánta plata hay parada ahí.
+   *
+   * No hay alta de lotes a propósito — nacen al aprobar una entrada de
+   * mercadería. Un lote que existe sin que haya entrado nada al depósito es un
+   * número que después nadie puede explicar.
+   */
+  vencimientos: (params: { almacenId?: number; dias?: number } = {}) =>
+    request<Vencimientos>(
+      `/lotes/vencimientos${qs({ almacenId: params.almacenId, dias: params.dias })}`,
+    ),
+  /**
+   * El libro de controlados de un período, en orden cronológico. `desde` y
+   * `hasta` son días (AAAA-MM-DD) en la hora del negocio; `hasta` incluido.
+   */
+  libroControlados: (params: {
+    desde?: string;
+    hasta?: string;
+    libro?: LibroControlados | null;
+    almacenId?: number | null;
+  }) =>
+    request<AsientoControlado[]>(
+      `/controlados${qs(
+        rangoParaApi({
+          desde: params.desde,
+          hasta: params.hasta,
+          libro: params.libro ?? undefined,
+          almacenId: params.almacenId ?? undefined,
+        }),
+      )}`,
+    ),
+  /**
+   * Qué pedir para cubrir los próximos `cobertura` días según lo vendido en
+   * los últimos `dias`, con el stock mínimo como seguridad. Sin sucursal, el
+   * negocio entero.
+   */
+  sugerenciaCompra: (params: {
+    dias: number;
+    cobertura: number;
+    sucursalId?: number | null;
+  }) =>
+    request<SugerenciaCompra>(
+      `/reportes/sugerencia-compra${qs({
+        dias: params.dias,
+        cobertura: params.cobertura,
+        sucursalId: params.sucursalId ?? undefined,
+      })}`,
+    ),
+  /**
+   * Vencimientos y mermas: lo dado de baja y lo devuelto en el período
+   * (días AAAA-MM-DD en la hora del negocio, `hasta` incluido), valuado al
+   * costo del lote; y lo que está en riesgo hoy.
+   */
+  mermas: (params: { desde: string; hasta: string; sucursalId?: number | null }) =>
+    request<ReporteMermas>(
+      `/reportes/mermas${qs(
+        rangoParaApi({
+          desde: params.desde,
+          hasta: params.hasta,
+          sucursalId: params.sucursalId ?? undefined,
+        }),
+      )}`,
+    ),
+  /** Los lotes con saldo de un producto, en el orden en que se van a vender. */
+  lotesDeProducto: (productoId: number, almacenId?: number) =>
+    request<LoteConSaldo[]>(`/lotes/producto/${productoId}${qs({ almacenId })}`),
+
+  /** Lo que los productos tienen distinto en esta sucursal (sólo excepciones). */
+  getPreciosSucursal: (almacenId: number) =>
+    request<PrecioSucursal[]>(`/almacenes/${almacenId}/precios`),
+  fijarPrecioSucursal: (almacenId: number, input: PrecioSucursalInput) =>
+    request<{ mensaje: string }>(`/almacenes/${almacenId}/precios`, {
+      method: "PUT",
+      body: JSON.stringify(input),
+    }),
+  /** Saca la excepción: el producto vuelve al precio del catálogo. */
+  quitarPrecioSucursal: (almacenId: number, productoId: number) =>
+    request<{ mensaje: string }>(
+      `/almacenes/${almacenId}/precios/${productoId}`,
+      { method: "DELETE" },
+    ),
+  /** Bitácora de stock: el historial de todo lo que se movió. */
+  getBitacoraStock: (params: {
+    productoId?: number;
+    almacenId?: number;
+    desde?: string;
+    hasta?: string;
+    limite?: number;
+  } = {}) => request<ApunteStock[]>(`/almacenes/bitacora${qs(params)}`),
   getAlmacen: (id: number) => request<Almacen>(`/almacenes/${id}`),
   crearAlmacen: (input: AlmacenInput) =>
     request<Almacen>("/almacenes", { method: "POST", body: JSON.stringify(input) }),
@@ -402,8 +657,15 @@ export const api = {
     request<{ mensaje: string }>(`/almacenes/${id}`, { method: "DELETE" }),
 
   /** El catálogo de insumos; con `eliminados`, la papelera. */
-  getInsumos: (eliminados?: boolean) =>
-    request<Insumo[]>(`/insumos${qs({ eliminados: eliminados ? 1 : undefined })}`),
+  /** Con `sucursalId`, el `stock` es el de ESE almacén y no la suma del negocio. */
+  getInsumos: (eliminados?: boolean, sucursalId?: number | null) =>
+    request<Insumo[]>(
+      `/insumos${qs({
+        // El backend compara el texto `=== 'true'`: con `1` daba el activo.
+        eliminados: eliminados ? "true" : undefined,
+        sucursalId: sucursalId ?? undefined,
+      })}`,
+    ),
   /**
    * A cuánto llegó este artículo en cada compra. Vale también para insumos: son
    * Producto con esInsumo=true y comparten endpoint.
@@ -418,13 +680,47 @@ export const api = {
   eliminarInsumo: (id: number) =>
     request<{ mensaje: string }>(`/insumos/${id}`, { method: "DELETE" }),
 
-  getMovimientos: () => request<Movimiento[]>("/movimientos"),
+  /** Con `sucursalId`, sólo los de ese local (por origen O destino). */
+  getMovimientos: (sucursalId?: number | null) =>
+    request<Movimiento[]>(`/movimientos${qs({ sucursalId: sucursalId ?? undefined })}`),
   getMovimiento: (id: number) => request<Movimiento>(`/movimientos/${id}`),
+
+  // ── Proveedores (farmacia) ──
+  /** Los proveedores con lo que se les compró en el período (días AAAA-MM-DD). */
+  proveedores: (params: { desde?: string; hasta?: string; inactivos?: boolean } = {}) =>
+    request<ProveedorConCompras[]>(
+      `/proveedores${qs(
+        rangoParaApi({
+          desde: params.desde,
+          hasta: params.hasta,
+          inactivos: params.inactivos ? "true" : undefined,
+        }),
+      )}`,
+    ),
+  proveedor: (id: number, params: { desde?: string; hasta?: string } = {}) =>
+    request<ProveedorDetalle>(`/proveedores/${id}${qs(rangoParaApi(params))}`),
+  /** Si el nombre ya existe (sin importar mayúsculas ni tildes), el servidor lo rechaza. */
+  crearProveedor: (input: ProveedorInput) =>
+    request<Proveedor>("/proveedores", { method: "POST", body: JSON.stringify(input) }),
+  actualizarProveedor: (id: number, input: Partial<ProveedorInput> & { activo?: boolean }) =>
+    request<Proveedor>(`/proveedores/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
+  /** Baja lógica: sus ingresos viejos siguen diciendo a quién se le compró. */
+  darDeBajaProveedor: (id: number) =>
+    request<Proveedor>(`/proveedores/${id}`, { method: "DELETE" }),
   /** Productos e insumos juntos, con su stock en el almacén indicado. */
   getArticulosMovimiento: (almacenId?: number) =>
     request<ArticuloMovimiento[]>(`/movimientos/articulos${qs({ almacenId })}`),
   crearMovimiento: (input: MovimientoInput) =>
     request<Movimiento>("/movimientos", { method: "POST", body: JSON.stringify(input) }),
+  /**
+   * Carga desde Excel (farmacia): una tanda de medicamentos con sus lotes. Con
+   * `soloRevisar` dice qué pasaría con cada uno sin escribir nada.
+   */
+  importarMedicamentos: (input: ImportarMedicamentosInput) =>
+    request<RespuestaImportacion>("/importacion/medicamentos", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
   actualizarMovimiento: (id: number, input: Partial<MovimientoInput>) =>
     request<Movimiento>(`/movimientos/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
   agregarDetalleMovimiento: (id: number, input: DetalleMovimientoInput) =>
@@ -447,13 +743,20 @@ export const api = {
   eliminarMovimiento: (id: number) =>
     request<{ mensaje: string }>(`/movimientos/${id}`, { method: "DELETE" }),
 
-  getDashboard: () => request<Dashboard>("/dashboard"),
+  getDashboard: (sucursalId?: number | null) =>
+    request<Dashboard>(`/dashboard${qs({ sucursalId: sucursalId ?? undefined })}`),
 
   // ── Caja ──────────────────────────────────────────────────────────────────
   getFormasPago: () => request<FormaPago[]>("/formas-pago"),
   /** Devuelve `{ caja: null }` cuando el usuario no tiene turno abierto. */
   cajaActual: () => request<{ caja: Caja | null }>("/caja/actual"),
-  abrirCaja: (input: { montoApertura: number; descripcion?: string }) =>
+  /** `almacenId` sólo lo manda un usuario de organización: al resto el backend
+   *  se lo rechaza porque trabaja en su sucursal asignada. */
+  abrirCaja: (input: {
+    montoApertura: number;
+    descripcion?: string;
+    almacenId?: number;
+  }) =>
     request<Caja>("/caja/abrir", { method: "POST", body: JSON.stringify(input) }),
   resumenCaja: (id: number) => request<ResumenCaja>(`/caja/${id}/resumen`),
   cerrarCaja: (id: number, input: { montoCierre: number; notaCierre?: string }) =>
@@ -490,10 +793,20 @@ export const api = {
     request<Venta>(`/ventas/${id}/cancelar`, { method: "POST" }),
 
   // ── Créditos (fiado) ──────────────────────────────────────────────────────
-  getCreditos: (params: { filtro?: FiltroCredito; q?: string; clienteId?: number } = {}) =>
+  /** `sucursalId` acota a lo fiado por ese local. */
+  getCreditos: (
+    params: {
+      filtro?: FiltroCredito;
+      q?: string;
+      clienteId?: number;
+      sucursalId?: number | null;
+    } = {},
+  ) =>
     request<Credito[]>(`/creditos${qs(params)}`),
   getCredito: (id: number) => request<Credito>(`/creditos/${id}`),
-  getClientesCredito: () => request<ClienteCredito[]>("/creditos/clientes"),
+  /** Con `sucursalId`, el saldo del cliente es lo que le debe A ESE local. */
+  getClientesCredito: (sucursalId?: number | null) =>
+    request<ClienteCredito[]>(`/creditos/clientes${qs({ sucursalId: sucursalId ?? undefined })}`),
   /**
    * Techo de deuda del cliente. `null` explícito = sacarle el límite, y por eso
    * el body lo manda siempre (omitirlo y mandar null son cosas distintas).
@@ -508,6 +821,116 @@ export const api = {
   registrarAbono: (id: number, input: AbonoInput) =>
     request<Credito>(`/creditos/${id}/abonos`, { method: "POST", body: JSON.stringify(input) }),
 
+  // ── Gastos operativos ─────────────────────────────────────────────────────
+  //
+  // `sucursalId` acota al local; omitido, el consolidado del negocio. A quien
+  // esta atado a una sucursal el backend le fuerza la suya, mande lo que mande.
+
+  /** El hero: total, pagado y pendiente del periodo. Viaja aparte de la lista
+   *  porque es del periodo entero y no cambia con la pestana. */
+  //  El mes se corta en la medianoche LOCAL (`periodoParaApi`): con el día
+  //  pelado el backend tomaba la de UTC, y "Sobre las ventas" sumaba la noche
+  //  del último día del mes anterior y dejaba afuera la del último de éste.
+  getResumenGastos: (params: {
+    desde: string;
+    hasta: string;
+    sucursalId?: number | null;
+  }) => request<ResumenGastos>(`/gastos/resumen${qs(periodoParaApi(params))}`),
+
+  getGastos: (
+    params: {
+      desde: string;
+      hasta: string;
+      filtro?: FiltroGasto;
+      q?: string;
+      categoria?: string;
+      sucursalId?: number | null;
+    },
+  ) => request<Gasto[]>(`/gastos${qs(periodoParaApi(params))}`),
+
+  crearGasto: (input: GastoInput) =>
+    request<Gasto>("/gastos", { method: "POST", body: JSON.stringify(input) }),
+
+  /** El PATCH corrige lo que el gasto DICE (concepto, categoria, monto). Lo
+   *  que SALIO se corrige con un pago o deshaciendolo: `pagado` es la suma de
+   *  los pagos registrados y pisarlo lo separaria de su historial. */
+  actualizarGasto: (id: number, input: GastoInput) =>
+    request<Gasto>(`/gastos/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
+
+  /** `monto` omitido = saldar lo que falte. Se manda asi y no el numero del
+   *  saldo: entre que se abrio la pantalla y se confirma pudo entrar otro pago,
+   *  y el saldo viejo lo sobrepagaria. */
+  pagarGasto: (id: number, input: PagoGastoInput) =>
+    request<Gasto>(`/gastos/${id}/pagos`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+
+  /** Deshace el ULTIMO pago. Es lo que arregla haberlo cargado por error. */
+  deshacerUltimoPagoGasto: (id: number) =>
+    request<Gasto>(`/gastos/${id}/pagos/ultimo`, { method: "DELETE" }),
+
+  eliminarGasto: (id: number) =>
+    request<{ mensaje: string }>(`/gastos/${id}`, { method: "DELETE" }),
+
+  // Categorias: el pack base (24) vive en el backend y NO se siembra por
+  // negocio; esta lista mezcla el pack con lo que el negocio cambio o invento.
+  getCategoriasGasto: () => request<CategoriaGasto[]>("/gastos/categorias"),
+  crearCategoriaGasto: (input: {
+    nombre: string;
+    tipoCosto?: TipoCostoGasto;
+  }) =>
+    request<CategoriaGasto>("/gastos/categorias", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  /** Renombrar una, o corregirle el fijo/variable. Vale tambien para las del
+   *  pack: casi todo lo que carga un negocio nuevo es del pack, y el punto de
+   *  equilibrio divide justo por esa linea. */
+  actualizarCategoriaGasto: (
+    codigo: string,
+    input: { nombre?: string; tipoCosto?: TipoCostoGasto; activa?: boolean },
+  ) =>
+    request<CategoriaGasto>(`/gastos/categorias/${encodeURIComponent(codigo)}`, {
+      method: "PATCH",
+      body: JSON.stringify(input),
+    }),
+  eliminarCategoriaGasto: (codigo: string) =>
+    request<{ mensaje: string }>(
+      `/gastos/categorias/${encodeURIComponent(codigo)}`,
+      { method: "DELETE" },
+    ),
+
+  // Gastos automaticos (las plantillas): la regla que crea el gasto sola.
+  getPlantillasGasto: (sucursalId?: number | null) =>
+    request<PlantillaGasto[]>(
+      `/gastos/plantillas${qs({ sucursalId: sucursalId ?? undefined })}`,
+    ),
+  crearPlantillaGasto: (input: PlantillaGastoInput) =>
+    request<PlantillaGasto>("/gastos/plantillas", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  actualizarPlantillaGasto: (id: number, input: PlantillaGastoInput) =>
+    request<PlantillaGasto>(`/gastos/plantillas/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(input),
+    }),
+  /** Pausar no borra: la regla se conserva con su historial. `motivoPausa`
+   *  es lo que despues explica por que esa regla esta apagada. */
+  cambiarEstadoPlantillaGasto: (
+    id: number,
+    input: { activa: boolean; motivoPausa?: string | null },
+  ) =>
+    request<PlantillaGasto>(`/gastos/plantillas/${id}/estado`, {
+      method: "PATCH",
+      body: JSON.stringify(input),
+    }),
+  eliminarPlantillaGasto: (id: number) =>
+    request<{ mensaje: string }>(`/gastos/plantillas/${id}`, {
+      method: "DELETE",
+    }),
+
   // ── Usuarios ──────────────────────────────────────────────────────────────
   getUsuarios: () => request<Usuario[]>("/usuarios"),
   crearUsuario: (input: CrearUsuarioInput) =>
@@ -519,6 +942,18 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify({ password }),
     }),
+  /**
+   * Cualquiera cambia SU clave, con la actual (API-12). La de otro la cambia
+   * quien administra usuarios, sin la actual (`cambiarPassword`).
+   */
+  cambiarMiPassword: (actual: string, nueva: string) =>
+    request<unknown>("/usuarios/me/password", {
+      method: "PATCH",
+      body: JSON.stringify({ actual, nueva }),
+    }),
+  /** Le saca la autorización: sin PIN no anula ni fía de más. Sólo el ADMIN. */
+  quitarPin: (id: number) =>
+    request<{ mensaje: string }>(`/usuarios/${id}/pin`, { method: "DELETE" }),
   cambiarPin: (id: number, pin: string) =>
     request<{ mensaje: string }>(`/usuarios/${id}/pin`, {
       method: "PATCH",
@@ -533,7 +968,7 @@ export const api = {
   // ── Reportes ──────────────────────────────────────────────────────────────
   // Todos aceptan ?desde&hasta en ISO; sin ellos el backend usa 7 días.
   reporte: <T = unknown>(nombre: string, rango: RangoReporte = {}, extra = {}) =>
-    request<T>(`/reportes/${nombre}${qs({ ...rango, ...extra })}`),
+    request<T>(`/reportes/${nombre}${qs({ ...rangoParaApi(rango), ...extra })}`),
 
   // ── Salón ─────────────────────────────────────────────────────────────────
   // El panel del mesero. `clienteRequestId` viaja en abrir y en comanda porque
@@ -545,6 +980,11 @@ export const api = {
   /** La carta del mesero: el catálogo con el stock ya comprometido por las mesas. */
   cartaSalon: () => request<Producto[]>("/salon/carta"),
   turnoMesero: () => request<TurnoMesero>("/salon/turno"),
+  /**
+   * Una mesa ya cobrada del turno, para volver a darle el recibo al cliente.
+   * `mesa(id)` no sirve: la mesa ya se levantó y devuelve la gente de AHORA.
+   */
+  mesaCerrada: (sesionId: number) => request<Mesa>(`/salon/turno/mesas/${sesionId}`),
   cerrarTurnoMesero: () =>
     request<TurnoMesero>("/salon/turno/cerrar", { method: "POST" }),
 
@@ -660,6 +1100,22 @@ export const api = {
    */
   entregasMesero: () => request<EntregasMesero>("/salon/entregas"),
 
+  // ── QR de cobro del negocio ───────────────────────────────────────────────
+  // Compartido por todos los equipos: lo sube quien abre la caja y lo bajan
+  // la caja, los meseros y el reparto. Ver lib/qrPago.ts.
+
+  /** El QR vigente; `imagen` null si todavía nadie lo subió. */
+  qrCobro: () =>
+    request<{ imagen: string | null; actualizadoEn: string | null }>("/qr-cobro"),
+  /** Lo sube quien abre la caja. El backend rechaza al mesero y al repartidor. */
+  subirQrCobro: (imagen: string) =>
+    request<{ imagen: string | null }>("/qr-cobro", {
+      method: "PUT",
+      body: JSON.stringify({ imagen }),
+    }),
+  borrarQrCobro: () =>
+    request<{ imagen: null }>("/qr-cobro", { method: "DELETE" }),
+
   /**
    * El cajero confirma que recibió la plata.
    *
@@ -675,8 +1131,11 @@ export const api = {
   // ── Mesas (administración) ────────────────────────────────────────────────
   // El mesero no crea mesas: sólo abre las que el dueño registre. El backend
   // lo exige con RolesGuard (ADMIN, SUPERVISOR).
-  getMesas: () => request<Mesa[]>("/mesas"),
-  getZonas: () => request<ZonaSalon[]>("/mesas/zonas"),
+  /** Con `sucursalId`, sólo las mesas de ese local (por la zona donde están). */
+  getMesas: (sucursalId?: number | null) =>
+    request<Mesa[]>(`/mesas${qs({ sucursalId: sucursalId ?? undefined })}`),
+  getZonas: (sucursalId?: number | null) =>
+    request<ZonaSalon[]>(`/mesas/zonas${qs({ sucursalId: sucursalId ?? undefined })}`),
   crearMesa: (input: {
     codigo: string;
     nombre?: string;
@@ -707,3 +1166,8 @@ export interface PagoEntrega {
 }
 
 export { limpiarSesion };
+
+// La agenda tiene su cliente aparte (`lib/agenda/apiAgenda.ts`) y pasa por el
+// mismo interceptor: sesión vencida, licencia y PostHog valen igual para ella.
+// (`request` ya se exporta donde se declara.)
+export { qs };

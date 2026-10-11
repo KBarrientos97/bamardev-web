@@ -46,8 +46,13 @@ export default function CorteDeCaja({
   }
 
   function limpiar() {
+    // Limpia el CONTEO, no el campo de arriba.
+    //
+    // Antes propagaba `onTotal(0)` y el consumidor hacía `setContado("")`: el
+    // cajero que había tecleado "1.240,50" a mano, abría el acordeón para
+    // chequear algo y tocaba "Limpiar", se quedaba sin el monto y sin aviso.
+    // El botón dice "limpiar el conteo", así que eso es lo único que limpia.
     setConteo({});
-    onTotal(0);
   }
 
   return (
@@ -115,7 +120,7 @@ function Grupo({
                 onClick={() => onFijar(v, n - 1)}
                 disabled={n === 0}
                 aria-label={`Quitar un ${fmtMoney(v)}`}
-                className="flex h-7 w-7 items-center justify-center rounded-lg border border-borde text-texto-2 disabled:opacity-40"
+                className="flex h-9 w-9 items-center justify-center rounded-lg border border-borde text-texto-2 disabled:opacity-40"
               >
                 −
               </button>
@@ -134,7 +139,7 @@ function Grupo({
                 type="button"
                 onClick={() => onFijar(v, n + 1)}
                 aria-label={`Agregar un ${fmtMoney(v)}`}
-                className="flex h-7 w-7 items-center justify-center rounded-lg border border-borde text-texto-2"
+                className="flex h-9 w-9 items-center justify-center rounded-lg border border-borde text-texto-2"
               >
                 +
               </button>

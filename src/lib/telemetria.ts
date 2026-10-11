@@ -1,4 +1,6 @@
-import posthog from "posthog-js";
+import type { PostHog } from "posthog-js";
+import { esHostLink } from "./pagina/link";
+import { enHostLink } from "./pagina/rutas";
 
 /**
  * Reporte de errores a PostHog. Espejo de `Telemetria.kt` (Android): mismos
@@ -16,21 +18,82 @@ import posthog from "posthog-js";
  * Analytics apagado a propósito (igual que en Android): sin session replay, sin
  * autocapture y sin pageviews automáticos. Esto es un POS con datos de clientes;
  * sólo mandamos errores y su contexto.
+ *
+ * `posthog-js` se baja aparte (import dinámico) y sólo si se inicia: es de lo
+ * más pesado del paquete, la página pública —que nunca lo usa— no tiene por
+ * qué cargarlo, y la app tampoco tiene por qué esperarlo para dibujar el
+ * login. Lo que se reporta mientras llega queda en una fila y sale al cargar.
  */
 
-let activa = false;
+/** apagada: no se inició (ruta pública, sin clave o falló la carga). */
+let estado: "apagada" | "cargando" | "lista" = "apagada";
+let posthog: PostHog | null = null;
+/** Lo que se pidió mientras `posthog-js` se bajaba. Con tope: es memoria. */
+let pendientes: ((p: PostHog) => void)[] = [];
+const MAX_PENDIENTES = 50;
+
+/** Hace `accion` con PostHog ya cargado, o la deja en la fila si está llegando. */
+function conPosthog(accion: (p: PostHog) => void) {
+  if (estado === "lista" && posthog) {
+    try {
+      accion(posthog);
+    } catch {
+      /* la telemetría nunca rompe lo que observa (ni el login ni un cobro) */
+    }
+    return;
+  }
+  if (estado === "cargando" && pendientes.length < MAX_PENDIENTES) pendientes.push(accion);
+}
+
+/**
+ * Las páginas del cliente final del negocio: la reserva online (`/r/…`, con
+ * el token secreto del enlace de gestión en `/r/<sub>/c/<token>`) y la página
+ * del negocio (`/p/…`), y TODO el host `link(-qa).bamardev.com`, que no tiene
+ * otra cosa (`/<sub>/c/<token>`). **Nada de ellas va a PostHog** (PLAN-AGENDA-
+ * BELLEZA §8.6 regla 5): ni la URL, ni el token, ni un identificador en el
+ * localStorage de alguien que no es usuario de BamarDev (B01).
+ */
+export function esRutaPublica(ruta = typeof location === "undefined" ? "" : location.pathname): boolean {
+  return enHostLink() || /^\/(r|p)(\/|$)/.test(ruta);
+}
+
+/**
+ * Último filtro antes de que un evento salga: si la app ya estaba iniciada y
+ * se navegó a una ruta pública sin recargar, el evento se descarta (llevaría
+ * la URL). Exportado para probarlo.
+ */
+export function filtrarEvento<T extends { properties?: Record<string, unknown> } | null>(evento: T): T | null {
+  if (!evento) return evento;
+  const props = evento.properties ?? {};
+  const url = String(props.$current_url ?? "");
+  const ruta = String(props.$pathname ?? "");
+  let deUrl = "";
+  let hostUrl = "";
+  try {
+    if (url) ({ pathname: deUrl, hostname: hostUrl } = new URL(url));
+  } catch {
+    deUrl = "";
+  }
+  if (esRutaPublica() || esRutaPublica(ruta) || esRutaPublica(deUrl) || esHostLink(hostUrl)) return null;
+  return evento;
+}
 
 /** Propiedades que acompañan a TODO evento (el `register` de Android). */
 let comunes: Record<string, unknown> = {};
 
-export function iniciarTelemetria() {
+export async function iniciarTelemetria(): Promise<void> {
+  // En una página del cliente final ni se inicia: así tampoco queda un
+  // `distinct_id` en su navegador ni se baja ningún script de PostHog.
+  if (esRutaPublica() || estado !== "apagada") return;
   const key = import.meta.env.VITE_POSTHOG_KEY?.trim();
   if (!key) {
     console.warn("Sin VITE_POSTHOG_KEY: los errores no se reportarán.");
     return;
   }
+  estado = "cargando";
   try {
-    posthog.init(key, {
+    const { default: ph } = await import("posthog-js");
+    ph.init(key, {
       api_host: import.meta.env.VITE_POSTHOG_HOST?.trim() || "https://us.i.posthog.com",
       autocapture: false,
       capture_pageview: false,
@@ -39,11 +102,23 @@ export function iniciarTelemetria() {
       // Los errores se mandan a mano desde el interceptor: el handler global
       // de posthog-js duplicaría cada fallo de red que ya reportamos ahí.
       capture_exceptions: false,
+      // La configuración remota del proyecto prendía web vitals y los "dead
+      // clicks", que mandan la URL sola (con el token del enlace de gestión,
+      // B01). Se apagan acá y no se baja ningún script extra.
+      capture_performance: false,
+      capture_dead_clicks: false,
+      capture_heatmaps: false,
+      disable_surveys: true,
+      disable_web_experiments: true,
+      disable_external_dependency_loading: true,
+      before_send: filtrarEvento,
       persistence: "localStorage",
     });
-    activa = true;
 
     comunes = {
+      // Si el login (o la sesión guardada) llegó antes que posthog-js, el
+      // alias ya está acá: `identificar` no espera a la carga.
+      ...comunes,
       // Sin esto, un error del `npm run dev` de un dev se ve igual que uno del
       // navegador que está en el mostrador: hay que poder filtrar production.
       entorno: import.meta.env.MODE,
@@ -52,10 +127,18 @@ export function iniciarTelemetria() {
       // estar pegándole al ambiente equivocado.
       api_url: import.meta.env.VITE_API_URL || "/api",
     };
-    posthog.register(comunes);
+    ph.register(comunes);
+    posthog = ph;
+    estado = "lista";
   } catch (e) {
+    // Sin red para bajar el chunk, o un init que explotó: queda apagada y la
+    // fila se descarta, igual que sin clave.
+    estado = "apagada";
     console.error("No se pudo iniciar PostHog:", e);
   }
+  const fila = pendientes;
+  pendientes = [];
+  fila.forEach(conPosthog);
 }
 
 /**
@@ -66,29 +149,21 @@ export function identificar(alias: string, username: string, rol: string | null)
   // El alias va aunque PostHog esté apagado: el interceptor lo adjunta a cada
   // error y en dev sirve igual para leerlo por consola.
   comunes = { ...comunes, negocio_alias: alias };
-  if (!activa) return;
-  try {
-    posthog.register({ negocio_alias: alias });
+  conPosthog((p) => {
+    p.register({ negocio_alias: alias });
     // El id incluye el alias: dos negocios pueden tener un "admin" cada uno y
     // no deben mezclarse en el mismo perfil.
-    posthog.identify(`${alias}_${username}`, {
+    p.identify(`${alias}_${username}`, {
       username,
       rol: rol ?? "sin_rol",
       negocio_alias: alias,
     });
-  } catch {
-    /* la telemetría nunca rompe el login */
-  }
+  });
 }
 
 /** Al cerrar sesión los eventos dejan de atribuirse a ese usuario. */
 export function olvidarUsuario() {
-  if (!activa) return;
-  try {
-    posthog.reset();
-  } catch {
-    /* ídem */
-  }
+  conPosthog((p) => p.reset());
 }
 
 /**
@@ -102,17 +177,17 @@ export function reportarError(
 ) {
   const error = e instanceof Error ? e : new Error(String(e));
   console.error(`Error en ${donde}`, error);
-  if (!activa) return;
-  try {
-    posthog.capture("error_app", {
-      ...comunes,
-      donde,
-      excepcion: error.name,
-      mensaje: error.message || "sin mensaje",
-      stack: error.stack?.slice(0, 4000) ?? "",
-      ...extra,
-    });
-  } catch {
-    /* ídem */
-  }
+  if (estado === "apagada" || esRutaPublica()) return;
+  // Las propiedades se arman ya: si el evento espera en la fila, sale con las
+  // de este momento (el alias de quien estaba) más las fijas del build, que
+  // recién existen cuando terminó de cargar posthog-js.
+  const propiedades = {
+    ...comunes,
+    donde,
+    excepcion: error.name,
+    mensaje: error.message || "sin mensaje",
+    stack: error.stack?.slice(0, 4000) ?? "",
+    ...extra,
+  };
+  conPosthog((p) => p.capture("error_app", { ...comunes, ...propiedades }));
 }
