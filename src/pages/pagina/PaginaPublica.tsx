@@ -160,13 +160,16 @@ export default function PaginaPublica() {
         urlPrivacidad={urlPrivacidadDe(pagina.subdominio)}
         alClic={(e) => avisarClic(pagina.subdominio, e.id)}
       />
-      {/* Fuera de VistaPagina: la vista previa del editor no lleva el chat. */}
-      <ChatPagina
-        subdominio={pagina.subdominio}
-        nombre={pagina.nombre}
-        color={pagina.color.hex}
-        reservar={pagina.reservar}
-      />
+      {/* Fuera de VistaPagina: la vista previa del editor no lleva el chat.
+          Sólo con el extra `asistente_pagina` contratado. */}
+      {pagina.asistente && (
+        <ChatPagina
+          subdominio={pagina.subdominio}
+          nombre={pagina.nombre}
+          color={pagina.color.hex}
+          reservar={pagina.reservar}
+        />
+      )}
     </>
   );
 }
