@@ -167,7 +167,12 @@ describe("página pública", () => {
   });
 
   it("con el extra, aparece la burbuja del asistente", async () => {
-    vi.stubGlobal("fetch", responder(200, { ...PAGINA, asistente: true }));
+    const pagina = responder(200, { ...PAGINA, asistente: true });
+    const saludo = responder(200, { bloques: [{ tipo: "texto", texto: "¡Hola!" }] });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string) => (String(url).endsWith("/chat/buensabor/inicio") ? saludo() : pagina())),
+    );
     await montar();
     expect(await screen.findByRole("button", { name: "Abrir el asistente" })).toBeInTheDocument();
   });

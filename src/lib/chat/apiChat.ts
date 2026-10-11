@@ -23,12 +23,16 @@ export type BloqueChat =
       sucursal: string;
       fecha: string;
       etiquetaFecha: string;
-      horas: string[];
-      reservarUrl: string;
+      /** Cada hora lleva a la reserva con el servicio y la hora ya elegidos. */
+      horas: { hora: string; url: string }[];
+      /** La reserva con el servicio elegido, para ver el resto de los horarios. */
+      masUrl: string;
     }
   | { tipo: "ubicacion"; nombre: string; direccion: string | null; mapaUrl: string | null }
   | { tipo: "enlace"; etiqueta: string; url: string }
-  | { tipo: "opciones"; opciones: string[] };
+  | { tipo: "opciones"; opciones: string[] }
+  /** "Dejar un mensaje al negocio": la web muestra el formulario. */
+  | { tipo: "dejarMensaje" };
 
 export interface RespuestaChat {
   sesionId: string;
@@ -48,15 +52,18 @@ export class ErrorChat extends Error {
 }
 
 /**
- * ¿Está andando el servicio? La burbuja sólo aparece si responde: con el chat
- * apagado o sin desplegar, la página queda exactamente como antes.
+ * El saludo y las opciones del negocio, sin sesión ni captcha; null si el
+ * chat no atiende a este negocio o está caído. La burbuja sólo aparece con
+ * respuesta: si no, la página queda exactamente como antes.
  */
-export async function chatDisponible(): Promise<boolean> {
+export async function inicioChat(subdominio: string): Promise<BloqueChat[] | null> {
   try {
-    const r = await fetch(`${baseChat()}/salud`);
-    return r.ok;
+    const r = await fetch(`${baseChat()}/${encodeURIComponent(subdominio)}/inicio`);
+    if (!r.ok) return null;
+    const datos = (await r.json()) as { bloques?: BloqueChat[] };
+    return datos.bloques?.length ? datos.bloques : null;
   } catch {
-    return false;
+    return null;
   }
 }
 

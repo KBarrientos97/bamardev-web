@@ -163,12 +163,7 @@ export default function PaginaPublica() {
       {/* Fuera de VistaPagina: la vista previa del editor no lleva el chat.
           Sólo con el extra `asistente_pagina` contratado. */}
       {pagina.asistente && (
-        <ChatPagina
-          subdominio={pagina.subdominio}
-          nombre={pagina.nombre}
-          color={pagina.color.hex}
-          reservar={pagina.reservar}
-        />
+        <ChatPagina subdominio={pagina.subdominio} nombre={pagina.nombre} color={pagina.color.hex} />
       )}
     </>
   );

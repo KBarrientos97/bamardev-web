@@ -64,6 +64,7 @@ import { AuthProvider, useAuth } from "./store/AuthContext";
 // Página del negocio: el editor y los enlaces cortos se bajan sólo si se usan.
 const MiPagina = lazy(() => import("./pages/pagina/MiPagina"));
 const MisEnlaces = lazy(() => import("./pages/pagina/MisEnlaces"));
+const MiAsistente = lazy(() => import("./pages/pagina/MiAsistente"));
 const Promociones = lazy(() => import("./pages/promociones/Promociones"));
 const Retencion = lazy(() => import("./pages/clientes/Retencion"));
 // Belleza fase 4: sólo se bajan en un salón que las tiene prendidas.
@@ -622,6 +623,17 @@ function Rutas() {
             <Protegida seccion="mis_enlaces">
               <Suspense fallback={null}>
                 <MisEnlaces />
+              </Suspense>
+            </Protegida>
+          }
+        />
+        {/* El asistente de la página (extra `asistente_pagina`, IDEAS/3b). */}
+        <Route
+          path="/mi-asistente"
+          element={
+            <Protegida seccion="mi_asistente">
+              <Suspense fallback={null}>
+                <MiAsistente />
               </Suspense>
             </Protegida>
           }

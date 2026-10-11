@@ -266,7 +266,10 @@ const ITEMS: (ItemNav & { bloque: Bloque })[] = [
     seccion: "mi_pagina",
     exacto: true,
     bloque: "administracion",
-    hijos: [{ a: "/mis-enlaces", label: "Mis enlaces", icono: "qr", seccion: "mis_enlaces" }],
+    hijos: [
+      { a: "/mis-enlaces", label: "Mis enlaces", icono: "qr", seccion: "mis_enlaces" },
+      { a: "/mi-asistente", label: "Mi asistente", icono: "info", seccion: "mi_asistente" },
+    ],
   },
   // CRM y promociones (PLAN-CRM-Y-PROMOCIONES): al final del bloque, así a
   // quien no las tiene no se le mueve nada del menú.
@@ -330,6 +333,7 @@ const ADMIN_AGENDA: (ItemNav & { bloque: Bloque })[] = [
     hijos: [
       { a: "/mi-pagina", label: "Mi página", icono: "home", seccion: "mi_pagina" },
       { a: "/mis-enlaces", label: "Mis enlaces", icono: "qr", seccion: "mis_enlaces" },
+      { a: "/mi-asistente", label: "Mi asistente", icono: "info", seccion: "mi_asistente" },
       { a: "/promociones", label: "Promociones", icono: "tag", seccion: "promociones" },
       {
         a: "/clientes-que-no-vuelven",

@@ -57,9 +57,15 @@ export default function SelectorHorario({
 }) {
   const hoy = fechaNegocio();
   const inicioRango = primeraFecha > hoy ? primeraFecha : hoy;
-  const [desde, setDesde] = useState(inicioRango);
+  // Con una hora ya elegida al montar (viene precargada desde el asistente de
+  // la página), se arranca mirando ese día; si no, desde el primero posible.
+  const [diaInicial] = useState(() => {
+    const f = inicio ? fechaNegocio(inicio) : null;
+    return f && f >= inicioRango && f <= ultimaFecha ? f : null;
+  });
+  const [desde, setDesde] = useState(diaInicial ?? inicioRango);
   const [dias, setDias] = useState<DiaDisponible[] | null>(null);
-  const [fecha, setFecha] = useState<string | null>(null);
+  const [fecha, setFecha] = useState<string | null>(diaInicial);
   const [error, setError] = useState("");
   const clave = servicioIds.join(",");
 

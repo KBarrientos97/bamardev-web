@@ -121,6 +121,8 @@ export type Seccion =
   | "mi_pagina"
   /** "Mis enlaces": los enlaces cortos con QR y clics. */
   | "mis_enlaces"
+  /** "Mi asistente": preguntas frecuentes, mensajes y uso del chat de la página (extra). */
+  | "mi_asistente"
   // ── CRM y promociones (PLAN-CRM-Y-PROMOCIONES) ──
   /** Promociones y cupones: el ABM, los cupones y el enlace de campaña. */
   | "promociones"
@@ -233,6 +235,8 @@ const REQUISITOS: Record<Seccion, Requisito> = {
   // ── Página del negocio, CRM y promociones ──
   mi_pagina: { permiso: "negocio.configurar", feature: "pagina_publica" },
   mis_enlaces: { permiso: "negocio.configurar", feature: "enlaces_cortos" },
+  // El asistente de la página es un EXTRA: fuera de todos los planes.
+  mi_asistente: { permiso: "negocio.configurar", feature: "asistente_pagina" },
   promociones: { permiso: "promociones.gestionar", feature: "promociones" },
   retencion: { permiso: "cliente.marketing", feature: "clientes_retencion" },
   // ── Belleza fase 4 ──
@@ -266,6 +270,7 @@ const FEATURES_ESTRICTAS: Feature[] = [
   "comisiones",
   "pagina_publica",
   "enlaces_cortos",
+  "asistente_pagina",
   "promociones",
   "clientes_retencion",
   "gift_cards",
@@ -588,6 +593,7 @@ const ORDEN_INICIO: [Seccion, string][] = [
   ["config_negocio", "/configuracion/negocio"],
   ["mi_pagina", "/mi-pagina"],
   ["mis_enlaces", "/mis-enlaces"],
+  ["mi_asistente", "/mi-asistente"],
   ["promociones", "/promociones"],
   ["retencion", "/clientes-que-no-vuelven"],
   ["salon", "/salon"],
