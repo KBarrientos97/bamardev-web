@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { lazy, Suspense, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Icon, type NombreIcono } from "../components/Icon";
 import { Chips, EncabezadoPagina } from "../components/filtros";
@@ -24,6 +24,12 @@ import type { RangoReporte } from "../types";
 import Finanzas from "./Finanzas";
 import { EstadoResultadoVista, PuntoEquilibrioVista } from "./reportes/ResultadoPeriodo";
 import { CierresVista, type CierreFila } from "./reportes/CierresVista";
+
+// Billar (extra `billar`, MAQUETA oct-2026): sólo se baja si se abre la pestaña.
+const ReportesBillar = lazy(() => import("./billar/reportes/ReportesBillar"));
+
+type Vista = "reportes" | "finanzas" | "billar";
+const TITULO_VISTA: Record<Vista, string> = { reportes: "Reportes", finanzas: "Finanzas", billar: "Billar" };
 
 // ── Período ─────────────────────────────────────────────────────────────────
 
@@ -453,7 +459,9 @@ export default function Reportes() {
    * los reportes son el resumen del período. Comparten el rango de fechas pero
    * se leen distinto, así que van en pestañas y no mezclados en la misma grilla.
    */
-  const [vista, setVista] = useState<"reportes" | "finanzas">("reportes");
+  const [vista, setVista] = useState<Vista>("reportes");
+  // La pestaña Billar, sólo con el extra (sin él, la pantalla queda como siempre).
+  const vistas: Vista[] = puede("reportes_billar") ? ["reportes", "finanzas", "billar"] : ["reportes", "finanzas"];
 
   // Los reportes que el plan no incluye no se ofrecen: pedirlos igual
   // devolvería datos, pero se venden por separado.
@@ -509,14 +517,14 @@ export default function Reportes() {
   return (
     <div className="mx-auto max-w-6xl space-y-4 p-5">
       <EncabezadoPagina
-        titulo={vista === "reportes" ? "Reportes" : "Finanzas"}
+        titulo={vista === "billar" ? "Reportes de billar" : TITULO_VISTA[vista]}
         subtitulo={`Del ${fmtFecha(rango.desde)} al ${fmtFecha(rango.hasta)}${
           nombreSucursal ? ` · ${nombreSucursal}` : ""
         }`}
       />
 
       <div className="flex gap-2">
-        {(["reportes", "finanzas"] as const).map((v) => (
+        {vistas.map((v) => (
           <button
             key={v}
             onClick={() => setVista(v)}
@@ -526,7 +534,7 @@ export default function Reportes() {
                 : "border border-borde bg-white text-texto-2 hover:bg-muted"
             }`}
           >
-            {v === "reportes" ? "Reportes" : "Finanzas"}
+            {TITULO_VISTA[v]}
           </button>
         ))}
       </div>
@@ -579,7 +587,11 @@ export default function Reportes() {
         )}
       </div>
 
-      {vista === "finanzas" ? (
+      {vista === "billar" ? (
+        <Suspense fallback={<Cargando />}>
+          <ReportesBillar rango={rango} />
+        </Suspense>
+      ) : vista === "finanzas" ? (
         <Finanzas rango={rango} />
       ) : (
         <>

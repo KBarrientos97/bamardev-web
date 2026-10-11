@@ -118,6 +118,10 @@ const ITEMS: (ItemNav & { bloque: Bloque })[] = [
   // cambian: Clientes, Comisiones, Propinas y Promociones no existen para él.
   { a: "/clientes", label: "Clientes", icono: "userHeart", seccion: "clientes", bloque: "agenda" },
   { a: "/pos", label: "Punto de venta", icono: "cart", seccion: "pos", bloque: "vender" },
+  // Billar (extra `billar`): al lado del POS, porque en un billar es donde se
+  // vende. Las pantallas que cuelgan (consumo, cierre, ventas) lo dejan
+  // encendido: no lleva `exacto`.
+  { a: "/billar", label: "Billar", icono: "bola", seccion: "billar", bloque: "vender" },
   // Va segundo y no dentro de Inventario: en una farmacia no es una consulta
   // de catálogo, es parte de atender. Se usa más que ninguna otra pantalla.
   {
@@ -223,6 +227,15 @@ const ITEMS: (ItemNav & { bloque: Bloque })[] = [
     label: "Mesas del salón",
     icono: "grid",
     seccion: "mesas",
+    bloque: "administracion",
+  },
+  // Billar (extra `billar`): las mesas de pool, sus tarifas y los avisos. Al
+  // lado de las del salón: es el mismo ABM, para otro tipo de mesa.
+  {
+    a: "/mesas-billar",
+    label: "Mesas de billar",
+    icono: "numeral",
+    seccion: "mesas_billar",
     bloque: "administracion",
   },
   {

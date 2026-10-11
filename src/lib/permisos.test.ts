@@ -503,3 +503,37 @@ describe("etiquetaRol (vocabulario del rubro)", () => {
     expect(etiquetaRol("COBRADOR")).toBe("COBRADOR");
   });
 });
+
+// ── Billar (maqueta, oct-2026) ──────────────────────────────────────────────
+
+describe("billar: un extra estricto", () => {
+  const conBillar = [...PLAN_FULL, "billar"];
+
+  it("nadie lo ve sin la feature, aunque la lista venga vacía", () => {
+    for (const rubro of ["RESTAURANTE", "MINIMARKET"]) {
+      expect(puedeVer(ctxCon(["billar.operar"], rubro), "billar")).toBe(false);
+      expect(puedeVer(ctxCon(["billar.operar"], rubro, []), "billar")).toBe(false);
+    }
+  });
+
+  it("con la feature y el permiso, sí; sin el permiso, no", () => {
+    expect(puedeVer(ctxCon(["billar.operar"], "RESTAURANTE", conBillar), "billar")).toBe(true);
+    expect(puedeVer(ctxCon(["ventas.vender"], "RESTAURANTE", conBillar), "billar")).toBe(false);
+  });
+
+  it("una farmacia o un salón de belleza no tienen billar aunque se lo prendan", () => {
+    for (const rubro of ["FARMACIA", "BARBERIA"]) {
+      expect(puedeVer(ctxCon(["billar.operar"], rubro, conBillar), "billar")).toBe(false);
+    }
+  });
+
+  it("quien atiende el billar entra al tablero; el dueño, a lo de siempre", () => {
+    expect(rutaInicial(ctxCon(["billar.operar", "ventas.vender"], "RESTAURANTE", conBillar))).toBe("/billar");
+    expect(rutaInicial(ctxCon(["dashboard.ver", "billar.operar"], "RESTAURANTE", conBillar))).toBe("/inventario");
+  });
+
+  it("los negocios de siempre aterrizan donde aterrizaban", () => {
+    expect(rutaInicial(ctxDe("CAJERO", "RESTAURANTE", PLAN_FULL))).toBe("/pos");
+    expect(rutaInicial(ctxDe("ADMIN", "RESTAURANTE", PLAN_FULL))).toBe("/inventario");
+  });
+});
