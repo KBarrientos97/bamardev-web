@@ -79,6 +79,8 @@ export const FEATURE_DE_PERMISO: Record<string, string | null> = {
   "fichatecnica.editar": "ficha_tecnica",
   "cliente.editar_salud": "consentimientos",
   "personal.gestionar": "agenda",
+  "billar.operar": "billar",
+  "billar.admin": "billar",
 };
 
 export const PLANTILLAS = {
@@ -147,6 +149,8 @@ export const PLANTILLAS = {
     "fichatecnica.editar",
     "cliente.editar_salud",
     "personal.gestionar",
+    "billar.operar",
+    "billar.admin",
   ],
   SUPERVISOR: [
     "ventas.vender",
@@ -206,6 +210,8 @@ export const PLANTILLAS = {
     "consumo.ajustar",
     "fichatecnica.ver",
     "fichatecnica.editar",
+    "billar.operar",
+    "billar.admin",
   ],
   CAJERO: [
     "ventas.vender",
@@ -235,6 +241,7 @@ export const PLANTILLAS = {
     "consumo.ajustar",
     "fichatecnica.ver",
     "fichatecnica.editar",
+    "billar.operar",
   ],
   MESERO: [
     "catalogo.ver",

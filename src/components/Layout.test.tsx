@@ -254,9 +254,10 @@ describe("grupos colapsables", () => {
     expect(inventario).toHaveFocus();
     fireEvent.keyDown(inventario, { key: "ArrowLeft" });
     expect(flecha(nav, "Inventario")).toHaveAttribute("aria-expanded", "false");
-    // Cerrado, abajo salta el grupo entero.
+    // Cerrado, abajo salta el grupo entero: va a la primera fila de
+    // Administración (Usuarios, suelto porque sin Roles Equipo tiene uno solo).
     fireEvent.keyDown(inventario, { key: "ArrowDown" });
-    expect(nav.getByRole("link", { name: "Cuentas por cobrar" })).toHaveFocus();
+    expect(nav.getByRole("link", { name: "Usuarios" })).toHaveFocus();
   });
 });
 

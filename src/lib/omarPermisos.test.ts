@@ -1,15 +1,20 @@
 import { describe, expect, it } from "vitest";
 import { ctxDe, PERMISOS_NUEVOS, type Plantilla } from "../test/sesiones";
-import { construirMenu, type NodoMenu } from "./menu";
+import { aplanar, construirMenu, type NodoMenu } from "./menu";
 import { puedeVer, rutaInicial } from "./permisos";
 
 /**
  * Pollos Don Omar con las plantillas nuevas (PLAN-ROLES-NEGOCIO §5, decisión
- * 1): tiene que ver EXACTAMENTE lo mismo que hoy. Las sesiones se arman con
- * los permisos de las plantillas de restaurante de `catalogo.ts` (cruzados con
- * su plan, como lo hace el backend en el login), y lo esperado es lo que
- * dibujaba la web antes de este cambio —por rol y módulos de PROD—, capturado
- * el 06-oct-2026 corriendo el `permisos.ts` viejo.
+ * 1): tiene que ver EXACTAMENTE las mismas pantallas que antes. Las sesiones se
+ * arman con los permisos de las plantillas de restaurante de `catalogo.ts`
+ * (cruzados con su plan, como lo hace el backend en el login), y lo esperado
+ * son las pantallas que dibujaba la web antes —por rol y módulos de PROD—,
+ * capturadas el 06-oct-2026 corriendo el `permisos.ts` viejo.
+ *
+ * El 11-oct Administración pasó a agruparse por tema en todos los rubros (la
+ * división de la barbería, pedido de Kevin): cambió DÓNDE está cada pantalla,
+ * no CUÁLES ve. `PANTALLAS_06_OCT` es lo que no se puede mover; `HOY`, cómo
+ * se dibuja.
  */
 
 /** BASICO + las 12 cortesías del 01-sep (memoria "Features de Omar en prod"). */
@@ -49,15 +54,58 @@ const COMPLETO = [
 const plano = (n: NodoMenu[], d = 0): string[] =>
   n.flatMap((x) => [`${"  ".repeat(d)}${x.item.label} ${x.item.a}`, ...plano(x.hijos, d + 1)]);
 
-function loQueVe(plantilla: Plantilla, features: string[], extra: string[] = []) {
+function menuDe(plantilla: Plantilla, features: string[], extra: string[] = []) {
   const ctx = ctxDe(plantilla, "RESTAURANTE", features, { extra });
+  return { ctx, bloques: construirMenu((s) => puedeVer(ctx, s), "RESTAURANTE") };
+}
+
+function loQueVe(plantilla: Plantilla, features: string[], extra: string[] = []) {
+  const { ctx, bloques } = menuDe(plantilla, features, extra);
   return {
     ruta: rutaInicial(ctx),
-    menu: construirMenu((s) => puedeVer(ctx, s), "RESTAURANTE").map((b) => ({ bloque: b.bloque, items: plano(b.nodos) })),
+    menu: bloques.map((b) => ({ bloque: b.bloque, items: plano(b.nodos) })),
   };
 }
 
-/** Lo que dibujaba la web antes (rol + módulos de PROD). */
+/** Las pantallas, sin los títulos de grupo (Equipo, Finanzas) y sin importar dónde están. */
+function pantallas(plantilla: Plantilla, features: string[]) {
+  const { bloques } = menuDe(plantilla, features);
+  return aplanar(bloques.flatMap((b) => b.nodos))
+    .filter((n) => n.item.seccion)
+    .map((n) => `${n.item.label} ${n.item.a}`)
+    .sort();
+}
+
+const INVENTARIO_OMAR = [
+  "Inventario /inventario",
+  "Artículos /inventario/productos",
+  "Categorías /inventario/categorias",
+  "Insumos /inventario/insumos",
+  "Movimientos /inventario/movimientos",
+];
+
+/** Lo que dibujaba la web el 06-oct (rol + módulos de PROD), aplanado. */
+const PANTALLAS_06_OCT = {
+  OMAR_ADMIN: [
+    "Punto de venta /pos",
+    ...INVENTARIO_OMAR,
+    "Cuentas por cobrar /creditos",
+    "Reportes /reportes",
+    "Usuarios /usuarios",
+  ],
+  COMPLETO_ADMIN: [
+    "Punto de venta /pos",
+    ...INVENTARIO_OMAR,
+    "Almacenes /inventario/almacenes",
+    "Mesas del salón /mesas",
+    "Cuentas por cobrar /creditos",
+    "Gastos operativos /gastos",
+    "Reportes /reportes",
+    "Usuarios /usuarios",
+  ],
+};
+
+/** Cómo se dibuja desde el 11-oct. Vender y Stock, igual que antes. */
 const HOY = {
   OMAR_ADMIN: {
     ruta: "/inventario",
@@ -73,13 +121,19 @@ const HOY = {
           "  Movimientos /inventario/movimientos",
         ],
       },
-      { bloque: "administracion", items: ["Cuentas por cobrar /creditos", "Reportes /reportes", "Usuarios /usuarios"] },
+      {
+        bloque: "administracion",
+        // Sin Roles, Equipo tiene un solo hijo y no se dibuja: Usuarios va
+        // suelto en su lugar.
+        items: ["Usuarios /usuarios", "Finanzas /creditos", "  Cuentas por cobrar /creditos", "  Reportes /reportes"],
+      },
     ],
   },
   CAJERO: {
     ruta: "/pos",
     menu: [
       { bloque: "vender", items: ["Punto de venta /pos"] },
+      // Una carpeta "Finanzas" con una sola cosa adentro sería un clic de más.
       { bloque: "administracion", items: ["Cuentas por cobrar /creditos"] },
     ],
   },
@@ -102,11 +156,13 @@ const HOY = {
       {
         bloque: "administracion",
         items: [
-          "Mesas del salón /mesas",
-          "Cuentas por cobrar /creditos",
-          "Gastos operativos /gastos",
-          "Reportes /reportes",
           "Usuarios /usuarios",
+          "Finanzas /creditos",
+          "  Cuentas por cobrar /creditos",
+          "  Gastos operativos /gastos",
+          "  Reportes /reportes",
+          // Lo que se arma una vez, abajo.
+          "Mesas del salón /mesas",
         ],
       },
     ],
@@ -134,14 +190,31 @@ describe("Omar ve lo mismo que hoy con las plantillas de restaurante", () => {
     expect(loQueVe("REPARTIDOR", COMPLETO)).toEqual(HOY.REPARTIDOR);
   });
 
+  it("la división por tema (11-oct) cambia de lugar las pantallas, no cuáles ve", () => {
+    expect(pantallas("ADMIN", OMAR)).toEqual([...PANTALLAS_06_OCT.OMAR_ADMIN].sort());
+    expect(pantallas("ADMIN", COMPLETO)).toEqual([...PANTALLAS_06_OCT.COMPLETO_ADMIN].sort());
+  });
+
   it("los permisos nuevos sólo le suman la pantalla de Roles, al lado de Usuarios", () => {
     // El Administrador recibe `roles.gestionar` y compañía en la migración:
-    // lo único que se le mueve del menú es el ítem nuevo.
+    // lo único que se le suma es el ítem nuevo, que con Usuarios arma Equipo.
     const conNuevos = loQueVe("ADMIN", OMAR, PERMISOS_NUEVOS);
     expect(conNuevos.ruta).toBe("/inventario");
     expect(conNuevos.menu).toEqual(
       HOY.OMAR_ADMIN.menu.map((b) =>
-        b.bloque === "administracion" ? { ...b, items: [...b.items, "Roles /roles"] } : b,
+        b.bloque === "administracion"
+          ? {
+              ...b,
+              items: [
+                "Equipo /usuarios",
+                "  Usuarios /usuarios",
+                "  Roles /roles",
+                "Finanzas /creditos",
+                "  Cuentas por cobrar /creditos",
+                "  Reportes /reportes",
+              ],
+            }
+          : b,
       ),
     );
   });
