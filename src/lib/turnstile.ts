@@ -17,6 +17,8 @@ export interface OpcionesTurnstile {
   language?: string;
   theme?: "auto" | "light" | "dark";
   size?: "normal" | "flexible" | "compact";
+  /** "interaction-only": invisible salvo que Cloudflare dude y pida un clic. */
+  appearance?: "always" | "execute" | "interaction-only";
   callback?: (token: string) => void;
   "expired-callback"?: () => void;
   "error-callback"?: () => void;

@@ -9,6 +9,7 @@ import { tonosPagina } from "../../lib/pagina/estilosPagina";
 import { paleta } from "../../lib/pagina/aspecto";
 import type { PaginaPublica as Pagina } from "../../lib/pagina/tipos";
 import VistaPagina, { ANCHO_ESCRITORIO, MarcaBamarDev } from "./VistaPagina";
+import ChatPagina from "./ChatPagina";
 
 
 /**
@@ -152,11 +153,18 @@ export default function PaginaPublica() {
   if (error) return <NoDisponible mensaje={error} />;
   if (!pagina) return <Cargando />;
   return (
-    <VistaPagina
-      pagina={pagina}
-      urlReservar={urlReservaDe(pagina.subdominio)}
-      urlPrivacidad={urlPrivacidadDe(pagina.subdominio)}
-      alClic={(e) => avisarClic(pagina.subdominio, e.id)}
-    />
+    <>
+      <VistaPagina
+        pagina={pagina}
+        urlReservar={urlReservaDe(pagina.subdominio)}
+        urlPrivacidad={urlPrivacidadDe(pagina.subdominio)}
+        alClic={(e) => avisarClic(pagina.subdominio, e.id)}
+      />
+      {/* Fuera de VistaPagina: la vista previa del editor no lleva el chat.
+          Sólo con el extra `asistente_pagina` contratado. */}
+      {pagina.asistente && (
+        <ChatPagina subdominio={pagina.subdominio} nombre={pagina.nombre} color={pagina.color.hex} />
+      )}
+    </>
   );
 }

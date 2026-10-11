@@ -186,6 +186,12 @@ export interface PaginaPublica {
   portadaUrl: string | null;
   anuncio: AnuncioPublico | null;
   reservar: boolean;
+  /**
+   * El asistente de la página (bamardev-chat): feature EXTRA
+   * `asistente_pagina`, que no viene en ningún plan. Opcional porque un
+   * backend anterior no la manda (= apagado).
+   */
+  asistente?: boolean;
   destacado: EnlacePublico | null;
   redes: EnlacePublico[];
   botones: EnlacePublico[];

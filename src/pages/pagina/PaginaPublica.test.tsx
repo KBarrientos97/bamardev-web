@@ -157,6 +157,26 @@ describe("página pública", () => {
     expect(screen.getByText("Martes 2x1")).toHaveStyle({ color: "#FDE047" });
   });
 
+  it("el asistente sale sólo con el extra contratado", async () => {
+    const sinExtra = responder(200, PAGINA);
+    vi.stubGlobal("fetch", sinExtra);
+    await montar();
+    // Ni siquiera pregunta si el servicio está andando.
+    expect(JSON.stringify(sinExtra.mock.calls)).not.toContain("/chat/");
+    expect(screen.queryByRole("button", { name: "Abrir el asistente" })).not.toBeInTheDocument();
+  });
+
+  it("con el extra, aparece la burbuja del asistente", async () => {
+    const pagina = responder(200, { ...PAGINA, asistente: true });
+    const saludo = responder(200, { bloques: [{ tipo: "texto", texto: "¡Hola!" }] });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string) => (String(url).endsWith("/chat/buensabor/inicio") ? saludo() : pagina())),
+    );
+    await montar();
+    expect(await screen.findByRole("button", { name: "Abrir el asistente" })).toBeInTheDocument();
+  });
+
   it("si no está disponible lo dice, sin mandar al login", async () => {
     vi.stubGlobal("fetch", responder(404, { message: "Esta página no está disponible" }));
     await montar("/p/no-existe");
