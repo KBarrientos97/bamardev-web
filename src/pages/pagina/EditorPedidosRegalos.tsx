@@ -41,6 +41,7 @@ export default function EditorPedidosRegalos({
   color,
   fotoUrl,
   conGiftCards,
+  conPedidos,
   conWhatsapp,
 }: {
   guardado: ConfigRegalos | undefined;
@@ -53,6 +54,8 @@ export default function EditorPedidosRegalos({
   fotoUrl: string | null;
   /** El negocio tiene la feature `gift_cards` (emitirlas en el POS). */
   conGiftCards: boolean;
+  /** El negocio tiene el extra `pedidos_whatsapp` (el carrito de la página). */
+  conPedidos: boolean;
   /** La página tiene un WhatsApp: adónde llegan pedidos y pedidos de gift card. */
   conWhatsapp: boolean;
 }) {
@@ -107,20 +110,31 @@ export default function EditorPedidosRegalos({
         </p>
       )}
 
-      <label className="flex items-start gap-3">
-        <input
-          type="checkbox"
-          className="mt-1 h-4 w-4"
-          checked={pedidos}
-          onChange={(ev) => cambiar({ pedidosWhatsapp: ev.target.checked })}
-        />
-        <span>
-          <strong className="block text-sm text-texto">Recibir pedidos por WhatsApp</strong>
-          <span className="text-[13px] text-texto-3">
-            Tus clientes suman productos del catálogo y te llega el pedido escrito, con el total.
+      {conPedidos ? (
+        <label className="flex items-start gap-3">
+          <input
+            type="checkbox"
+            className="mt-1 h-4 w-4"
+            checked={pedidos}
+            onChange={(ev) => cambiar({ pedidosWhatsapp: ev.target.checked })}
+          />
+          <span>
+            <strong className="block text-sm text-texto">Recibir pedidos por WhatsApp</strong>
+            <span className="text-[13px] text-texto-3">
+              Tus clientes suman productos del catálogo y te llega el pedido escrito, con el total.
+            </span>
           </span>
-        </span>
-      </label>
+        </label>
+      ) : (
+        // Sin el extra la página no muestra el carrito aunque el interruptor
+        // esté prendido (lo decide el backend): no se ofrece un control que
+        // no tendría efecto.
+        <p className="text-[13px] text-texto-3">
+          <strong className="text-texto">Pedidos por WhatsApp</strong>: tus clientes arman el pedido
+          desde tu catálogo y te llega escrito, con el total. Es un extra: pedilo a BamarDev para
+          activarlo.
+        </p>
+      )}
 
       {conGiftCards ? (
         <div className="space-y-4 border-t border-borde pt-4">

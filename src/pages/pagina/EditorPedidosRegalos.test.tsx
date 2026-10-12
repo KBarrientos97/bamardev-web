@@ -28,6 +28,7 @@ function montar(over: Partial<Parameters<typeof EditorPedidosRegalos>[0]> = {}) 
       color="#3F3C3A"
       fotoUrl={null}
       conGiftCards
+      conPedidos
       conWhatsapp
       {...over}
     />,
@@ -40,6 +41,12 @@ describe("Pedidos y gift cards (editor)", () => {
     const cambiar = montar();
     fireEvent.click(screen.getByRole("checkbox", { name: /Recibir pedidos por WhatsApp/ }));
     expect(cambiar).toHaveBeenCalledWith({ pedidosWhatsapp: true });
+  });
+
+  it("sin el extra de pedidos no ofrece el interruptor y explica cómo pedirlo", () => {
+    montar({ conPedidos: false });
+    expect(screen.queryByRole("checkbox", { name: /Recibir pedidos por WhatsApp/ })).not.toBeInTheDocument();
+    expect(screen.getByText(/Es un extra: pedilo a BamarDev/)).toBeInTheDocument();
   });
 
   it("muestra los 10 diseños con el color y el rubro; sacar uno guarda la lista, y el último no se saca", () => {

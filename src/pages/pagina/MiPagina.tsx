@@ -958,6 +958,7 @@ export default function MiPagina() {
             color={vista.color.hex}
             fotoUrl={urlDeImagen(vista.portadaUrl ?? vista.logoUrl)}
             conGiftCards={tieneFeature(negocioSesion?.features, "gift_cards")}
+            conPedidos={tieneFeature(negocioSesion?.features, "pedidos_whatsapp")}
             conWhatsapp={enlaces.some((x) => x.tipo === "WHATSAPP")}
           />
 
