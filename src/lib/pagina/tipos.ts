@@ -192,6 +192,12 @@ export interface PaginaPublica {
    * backend anterior no la manda (= apagado).
    */
   asistente?: boolean;
+  /** El rubro como clave (`PELUQUERIA`): elige los motivos de las gift cards. */
+  rubroClave?: string;
+  /** "Pedí por WhatsApp" (IDEAS/6 #1): el catálogo arma el pedido. */
+  pedidos?: boolean;
+  /** Gift cards que se piden desde la página (IDEAS/6 #6), o null. */
+  regalos?: RegalosPublicos | null;
   destacado: EnlacePublico | null;
   redes: EnlacePublico[];
   botones: EnlacePublico[];
@@ -255,7 +261,37 @@ export interface AjustesPagina {
   mostrarReservar: boolean;
   /** El título de la sección del catálogo; null = "Catálogo". Opcional como `catalogo`. */
   catalogoTitulo?: string | null;
+  /** "Pedí por WhatsApp" (IDEAS/6 #1). Opcional: un backend anterior no lo manda. */
+  pedidosWhatsapp?: boolean;
+  /** Gift cards desde la página (IDEAS/6 #6). Opcional por lo mismo. */
+  regalos?: ConfigRegalos;
   actualizadoEn: string;
+}
+
+/** Lo que el dueño configura de las gift cards de su página. */
+export interface ConfigRegalos {
+  activo: boolean;
+  /** Montos sugeridos en Bs. */
+  montos: number[];
+  montoLibre: boolean;
+  /** Claves de diseño ofrecidas; vacío = todas. */
+  disenos: string[];
+  /** El que aparece elegido primero. */
+  diseno: string | null;
+  vigenciaDias: number | null;
+  condiciones: string | null;
+}
+
+/** Lo que la página pública ofrece de gift cards (sin nada interno). */
+export interface RegalosPublicos {
+  montos: number[];
+  montoLibre: boolean;
+  montoMin: number;
+  montoMax: number;
+  disenos: string[];
+  diseno: string;
+  vigenciaDias: number | null;
+  condiciones: string | null;
 }
 
 /** Un ítem del catálogo en el editor (`GET /pagina`, ya ordenado). */
@@ -323,8 +359,17 @@ export type CambiosPagina = Partial<
     | "enlaceDestacadoId"
     | "mostrarReservar"
     | "catalogoTitulo"
+    | "pedidosWhatsapp"
   >
->;
+> & {
+  regalosActivo?: boolean;
+  regalosMontos?: number[];
+  regalosMontoLibre?: boolean;
+  regalosDisenos?: string[];
+  regalosDiseno?: string | null;
+  regalosVigenciaDias?: number | null;
+  regalosCondiciones?: string | null;
+};
 
 export interface EnlaceInput {
   tipo: TipoEnlace;

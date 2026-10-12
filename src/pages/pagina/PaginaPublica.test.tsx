@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PaginaPublica as Pagina } from "../../lib/pagina/tipos";
@@ -175,6 +175,80 @@ describe("página pública", () => {
     );
     await montar();
     expect(await screen.findByRole("button", { name: "Abrir el asistente" })).toBeInTheDocument();
+  });
+
+  it("pedidos por WhatsApp: el visor suma al pedido y el pedido sale armado al WhatsApp", async () => {
+    sessionStorage.clear();
+    vi.stubGlobal(
+      "fetch",
+      responder(200, {
+        ...PAGINA,
+        pedidos: true,
+        catalogo: {
+          titulo: "Menú",
+          items: [
+            { id: 11, titulo: "Pollo ¼", descripcion: null, precio: 35, precioDesde: false, fotoUrl: null },
+            { id: 12, titulo: "Chicha", descripcion: null, precio: null, precioDesde: false, fotoUrl: null },
+          ],
+        },
+      }),
+    );
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: /^Pollo ¼, Bs 35/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Agregar al pedido" }));
+    fireEvent.click(screen.getByRole("button", { name: "Agregado ✓" }));
+    fireEvent.click(await screen.findByRole("button", { name: /Ver tu pedido: 2 productos, Bs 70/ }));
+    const enviar = screen.getByRole("link", { name: "Enviar pedido por WhatsApp" });
+    const texto = decodeURIComponent(new URL(enviar.getAttribute("href")!).searchParams.get("text")!);
+    expect(texto).toContain("• 2 × Pollo ¼ (Bs 35) = Bs 70");
+    expect(texto).toContain("Paso a recoger");
+    expect(enviar.getAttribute("href")).toMatch(/^https:\/\/wa\.me\/59170123456\?/);
+  });
+
+  it("sin el interruptor de pedidos, el visor consulta como siempre", async () => {
+    vi.stubGlobal(
+      "fetch",
+      responder(200, {
+        ...PAGINA,
+        catalogo: { titulo: "Menú", items: [{ id: 11, titulo: "Pollo ¼", descripcion: null, precio: 35, precioDesde: false, fotoUrl: null }] },
+      }),
+    );
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: /^Pollo ¼, Bs 35/ }));
+    expect(screen.queryByRole("button", { name: "Agregar al pedido" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Consultar por WhatsApp/ })).toBeInTheDocument();
+  });
+
+  it("gift cards: el botón abre el formulario y el pedido va al WhatsApp con monto y diseño", async () => {
+    vi.stubGlobal(
+      "fetch",
+      responder(200, {
+        ...PAGINA,
+        rubroClave: "RESTAURANTE",
+        regalos: {
+          montos: [50, 100],
+          montoLibre: true,
+          montoMin: 10,
+          montoMax: 10000,
+          disenos: ["VALE", "NEON"],
+          diseno: "NEON",
+          vigenciaDias: 180,
+          condiciones: null,
+        },
+      }),
+    );
+    await montar();
+    fireEvent.click(screen.getByRole("link", { name: /Regalá una gift card/ }));
+    const dialogo = screen.getByRole("dialog", { name: "Regalá una gift card" });
+    expect(within(dialogo).getByRole("radio", { name: "Neón" })).toHaveAttribute("aria-checked", "true");
+    fireEvent.click(within(dialogo).getByRole("button", { name: "Bs 100" }));
+    fireEvent.change(within(dialogo).getByLabelText("Para"), { target: { value: "María" } });
+    expect(within(dialogo).getByText(/Válida por 180 días/)).toBeInTheDocument();
+    const pedir = within(dialogo).getByRole("link", { name: "Pedirla por WhatsApp" });
+    const texto = new URL(pedir.getAttribute("href")!).searchParams.get("text")!;
+    expect(texto).toContain("• Monto: Bs 100");
+    expect(texto).toContain("• Diseño: Neón");
+    expect(texto).toContain("• Para: María");
   });
 
   it("si no está disponible lo dice, sin mandar al login", async () => {

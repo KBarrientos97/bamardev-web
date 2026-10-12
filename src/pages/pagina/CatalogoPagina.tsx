@@ -31,6 +31,11 @@ export interface AccionCatalogo {
   /** A dónde lleva, según el ítem (el WhatsApp lleva el título en el mensaje). */
   href: (item: ItemCatalogoPublico) => string;
   alClic?: () => void;
+  /**
+   * "Pedí por WhatsApp" (IDEAS/6 #1): con esto el botón suma el ítem al
+   * pedido en vez de llevar a `href`.
+   */
+  alAgregar?: (item: ItemCatalogoPublico) => void;
 }
 
 /**
@@ -114,6 +119,41 @@ function Icono({ d, color, size = 20 }: { d: string; color: string; size?: numbe
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <path d={d} />
     </svg>
+  );
+}
+
+/** "Agregar al pedido" con un "Agregado ✓" de un segundo y medio: se nota que sumó. */
+function BotonAgregar({
+  alAgregar,
+  estilo,
+  icono,
+  colorIcono,
+  texto,
+}: {
+  alAgregar: () => void;
+  estilo: CSSProperties;
+  icono: string;
+  colorIcono: string;
+  texto: string;
+}) {
+  const [hecho, setHecho] = useState(false);
+  useEffect(() => {
+    if (!hecho) return;
+    const t = setTimeout(() => setHecho(false), 1500);
+    return () => clearTimeout(t);
+  }, [hecho]);
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        alAgregar();
+        setHecho(true);
+      }}
+      style={estilo}
+    >
+      <Icono d={hecho ? "M5 12l5 5L20 7" : icono} color={colorIcono} />
+      <span aria-live="polite">{hecho ? "Agregado ✓" : texto}</span>
+    </button>
   );
 }
 
@@ -857,16 +897,28 @@ export function VisorCatalogo({
         {item.descripcion && (
           <p style={{ margin: 0, fontSize: 14, lineHeight: 1.5, color: GRIS.texto2, whiteSpace: "pre-line" }}>{item.descripcion}</p>
         )}
-        {accion && href && (
-          <a
-            href={href}
-            rel="noopener noreferrer"
-            onClick={accion.alClic}
-            style={{ ...estiloBoton, marginTop: 10, minHeight: 52 }}
-          >
-            <Icono d={accion.icono} color={colorIconoBoton} />
-            {accion.texto}
-          </a>
+        {accion?.alAgregar ? (
+          <BotonAgregar
+            key={item.id}
+            alAgregar={() => accion.alAgregar!(item)}
+            estilo={{ ...estiloBoton, marginTop: 10, minHeight: 52, border: "none", cursor: "pointer" }}
+            icono={accion.icono}
+            colorIcono={colorIconoBoton}
+            texto={accion.texto}
+          />
+        ) : (
+          accion &&
+          href && (
+            <a
+              href={href}
+              rel="noopener noreferrer"
+              onClick={accion.alClic}
+              style={{ ...estiloBoton, marginTop: 10, minHeight: 52 }}
+            >
+              <Icono d={accion.icono} color={colorIconoBoton} />
+              {accion.texto}
+            </a>
+          )
         )}
       </div>
     </div>

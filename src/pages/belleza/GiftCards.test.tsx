@@ -30,6 +30,7 @@ vi.mock("../../lib/belleza/apiExtras", () => ({
     consultarVale: vi.fn(),
     emitirVale: vi.fn(),
     anularVale: vi.fn(),
+    disenoVale: vi.fn(),
   },
 }));
 
@@ -117,6 +118,41 @@ describe("Gift cards", () => {
     expect(vi.mocked(apiExtras.emitirVale).mock.calls[0][0].clienteRequestId).toBeTruthy();
     expect(screen.getByText("Vale vendido")).toBeInTheDocument();
     expect(screen.getByText(/Cambio/)).toHaveTextContent("50,00");
+  });
+
+  it("con diseño y dedicatoria: la tarjeta sale con el color del negocio y se comparte por enlace", async () => {
+    vi.mocked(apiExtras.disenoVale).mockResolvedValue({
+      negocio: "Spa Aurora",
+      subdominio: "spa-aurora",
+      rubroClave: "SPA",
+      color: { clave: "VERDE", hex: "#2F6F5E" },
+      fotoUrl: null,
+      disenos: ["VALE", "NEON"],
+      diseno: "NEON",
+    });
+    vi.mocked(apiExtras.emitirVale).mockResolvedValue({
+      ...vale({ saldo: 120, montoInicial: 120, disenoClave: "VALE", tokenPublico: "AbCdEfGhIjKlMnOpQrStUv" }),
+      cambio: 0,
+    });
+    await montar();
+    fireEvent.click(screen.getByText("Vender vale"));
+    await act(async () => {});
+    fireEvent.change(screen.getByLabelText("Monto del vale"), { target: { value: "120" } });
+    // El de la página va elegido; se puede cambiar por otro de los ofrecidos.
+    expect(screen.getByRole("radio", { name: "Neón" })).toHaveAttribute("aria-checked", "true");
+    fireEvent.click(screen.getByRole("radio", { name: "Vale" }));
+    fireEvent.change(screen.getByLabelText("Dedicatoria"), { target: { value: "¡Feliz cumple!" } });
+    await act(async () => {
+      fireEvent.click(screen.getByText(/Cobrar Bs/));
+    });
+    expect(apiExtras.emitirVale).toHaveBeenCalledWith(
+      expect.objectContaining({ monto: 120, disenoClave: "VALE", mensaje: "¡Feliz cumple!" }),
+    );
+    const dialogo = screen.getByRole("dialog", { name: "Vale vendido" });
+    expect(within(dialogo).getByRole("img", { name: /Gift card de Spa Aurora/ })).toBeInTheDocument();
+    expect(within(dialogo).getByRole("button", { name: "Copiar enlace" })).toBeInTheDocument();
+    const wa = within(dialogo).getByRole("link", { name: "Mandar por WhatsApp" });
+    expect(decodeURIComponent(wa.getAttribute("href")!)).toContain("/p/spa-aurora/regalo/AbCdEfGhIjKlMnOpQrStUv");
   });
 
   it("consulta el saldo por código", async () => {
