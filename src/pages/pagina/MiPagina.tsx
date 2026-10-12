@@ -859,6 +859,8 @@ export default function MiPagina() {
                 muestras={e.muestras}
                 recomendados={estilo.colores}
                 deTuLogo={muestrasDeColores(coloresLogo, e.muestras)}
+                forma={ajustes.formaBotones}
+                fondo={fondoEstilo}
                 onCambio={(clave) => cambiar({ colorClave: clave })}
               />
               <SelectorForma
@@ -907,7 +909,7 @@ export default function MiPagina() {
               </Campo>
             )}
             {ajustes.anuncioTexto?.trim() && (
-              <EditorAnuncio ajustes={ajustes} c={c} muestras={e.muestras} pagina={fondoEstilo} cambiar={cambiar} />
+              <EditorAnuncio ajustes={ajustes} c={c} pagina={fondoEstilo} cambiar={cambiar} />
             )}
           </Seccion>
 

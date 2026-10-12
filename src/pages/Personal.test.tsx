@@ -366,7 +366,7 @@ describe("Personal", () => {
     await act(async () => {});
     const dialogo = screen.getByRole("dialog", { name: "Nueva persona" });
     // Sin elegir: dice "Sin color" y guarda null.
-    expect(within(dialogo).getByRole("group", { name: "Color en la agenda" })).toHaveTextContent("Sin color");
+    expect(within(dialogo).getByRole("button", { name: "Color en la agenda: Sin color. Cambiar" })).toBeInTheDocument();
     fireEvent.change(within(dialogo).getByLabelText("Nombre"), { target: { value: "Nico" } });
     await act(async () => {
       fireEvent.click(within(dialogo).getByRole("button", { name: "Guardar" }));
@@ -377,8 +377,11 @@ describe("Personal", () => {
     await act(async () => {});
     const otra = screen.getByRole("dialog", { name: "Nueva persona" });
     fireEvent.change(within(otra).getByLabelText("Nombre"), { target: { value: "Nico" } });
-    fireEvent.click(within(otra).getByRole("button", { name: "Elegir color" }));
-    expect(within(otra).getByLabelText("Elegir color")).toHaveValue("#7357b8");
+    // El selector de todo el sistema, con la vista previa de la agenda.
+    fireEvent.click(within(otra).getByRole("button", { name: /^Color en la agenda:/ }));
+    fireEvent.click(within(within(otra).getByRole("radiogroup", { name: "Color en la agenda" })).getByRole("radio", { name: "Lavanda" }));
+    expect(within(otra).getByRole("button", { name: "Color en la agenda: Lavanda. Listo" })).toBeInTheDocument();
+    expect(within(otra).getByText("María López")).toBeInTheDocument();
     await act(async () => {
       fireEvent.click(within(otra).getByRole("button", { name: "Guardar" }));
     });
