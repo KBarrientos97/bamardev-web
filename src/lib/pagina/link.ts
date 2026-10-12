@@ -8,6 +8,7 @@
  *   link…/<sub>/promo/<slug>     una promoción    (= app…/p/<sub>/promo/<slug>)
  *   link…/<sub>/reservar[/<suc>] la reserva       (= app…/r/<sub>/reservar…)
  *   link…/<sub>/c/<token>        gestión de la cita (= app…/r/<sub>/c/<token>)
+ *   link…/<sub>/regalo/<token>   una gift card    (= app…/p/<sub>/regalo/<token>)
  *
  * Lo usan la SPA (qué rutas dibujar) y la Pages Function de la raíz (Open
  * Graph y redirecciones), así que no toca `import.meta.env` ni el DOM: corre
@@ -65,6 +66,8 @@ export function rutaLargaDeLink(pathname: string): string | null {
   if ((segundo === "promo" || segundo === "c") && tercero !== undefined && RESTO.test(tercero)) {
     return segundo === "promo" ? `/p/${sub}/promo/${tercero}` : `/r/${sub}/c/${tercero}`;
   }
+  // La gift card que se comparte (IDEAS/6 #6).
+  if (segundo === "regalo" && tercero !== undefined && RESTO.test(tercero)) return `/p/${sub}/regalo/${tercero}`;
   return null;
 }
 
