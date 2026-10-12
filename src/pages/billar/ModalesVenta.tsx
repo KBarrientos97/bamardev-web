@@ -3,7 +3,6 @@ import { Modal } from "../../components/ui";
 import { fmtMoney } from "../../lib/format";
 import { useAuth } from "../../store/AuthContext";
 import { fechaDe, fmtCobrado, horaDe } from "./calculo";
-import { NEGOCIO_DEMO } from "./demo";
 import { useDialogos } from "./dialogos";
 import { useAhora } from "./reloj";
 import { tipoDe, useBillar } from "./store";
@@ -90,7 +89,9 @@ function Linea({ izq, der, verde = false }: { izq: string; der: string; verde?: 
 
 /**
  * El ticket de 80 mm (§7.8). Al imprimir sale sólo esto: el `id` es el que
- * `index.css` deja visible, igual que el ticket del POS.
+ * `index.css` deja visible, igual que el ticket del POS. La cabecera es la del
+ * POS (el nombre del negocio) más la sucursal: la dirección y el NIT de la
+ * maqueta no están cargados en ningún lado.
  */
 export function ModalTicket({ codigo, onClose }: { codigo: string; onClose: () => void }) {
   const e = useBillar();
@@ -129,10 +130,7 @@ export function ModalTicket({ codigo, onClose }: { codigo: string; onClose: () =
         >
           <header className="text-center">
             <p className="text-[13px] font-bold uppercase">{negocio?.nombre ?? "BamarDev"}</p>
-            <p>
-              {NEGOCIO_DEMO.direccion} · {NEGOCIO_DEMO.sucursal}
-            </p>
-            <p>NIT {NEGOCIO_DEMO.nit}</p>
+            {e.sucursal && <p>{e.sucursal}</p>}
           </header>
           {v.anulada && <p className="mt-2 text-center text-[13px] font-bold">*** ANULADA ***</p>}
           {sep}
@@ -164,7 +162,6 @@ export function ModalTicket({ codigo, onClose }: { codigo: string; onClose: () =
             </>
           )}
           {sep}
-          <p className="text-center">{NEGOCIO_DEMO.pieTicket}</p>
           <p className="text-center">Comprobante interno · no válido como factura</p>
         </article>
       </div>

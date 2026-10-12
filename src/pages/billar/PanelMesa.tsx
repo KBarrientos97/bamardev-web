@@ -5,7 +5,6 @@ import { fmtMoney } from "../../lib/format";
 import { useAccionesMesa } from "./acciones";
 import { etiquetaPagoFijo, fmtCobrado, fmtHace, horaDe } from "./calculo";
 import { useDialogos } from "./dialogos";
-import { billar } from "./store";
 import { BotonB, Circulo, EstadoBadge, Fila, Nota, Rotulo } from "./ui";
 import type { VistaMesa } from "./vista";
 import { cronoDe, textoMetodo } from "./vista";
@@ -106,7 +105,7 @@ export default function PanelMesa({ v, ahora, onCerrar }: { v: VistaMesa; ahora:
                 Registrar pago
               </BotonB>
               {estado === "pausada" ? (
-                <BotonB variante="ambar" icono="play" onClick={() => billar.reanudar(mesa.id)}>
+                <BotonB variante="ambar" icono="play" onClick={() => accion("reanudar")?.hacer()}>
                   Reanudar
                 </BotonB>
               ) : (
@@ -123,7 +122,7 @@ export default function PanelMesa({ v, ahora, onCerrar }: { v: VistaMesa; ahora:
             </BotonB>
           </>
         ) : estado === "fuera" ? (
-          <BotonB variante="verde" grande icono="check" className="w-full" onClick={() => billar.volverAServicio(mesa.id)}>
+          <BotonB variante="verde" grande icono="check" className="w-full" onClick={() => accion("volver")?.hacer()}>
             Volver a servicio
           </BotonB>
         ) : (
@@ -139,7 +138,7 @@ export default function PanelMesa({ v, ahora, onCerrar }: { v: VistaMesa; ahora:
                   </BotonB>
                 </>
               ) : (
-                <BotonB icono="x" className="col-span-2" onClick={() => billar.cancelarReserva(mesa.id)}>
+                <BotonB icono="x" className="col-span-2" onClick={() => accion("cancelar")?.hacer()}>
                   Cancelar reserva
                 </BotonB>
               )}
@@ -214,7 +213,21 @@ function CuentaAbierta({ v, ahora }: { v: VistaMesa; ahora: number }) {
           {cronoDe(v)}
         </p>
         <div className="mt-2 space-y-1 text-[13px]">
-          <Fila etiqueta="Inicio" valor={horaDe(s.start)} />
+          <Fila
+            etiqueta="Inicio"
+            valor={
+              <span className="inline-flex items-center gap-2">
+                {horaDe(s.start)}
+                <button
+                  type="button"
+                  onClick={() => abrir({ tipo: "editarInicio", mesaId: mesa.id })}
+                  className="text-[12px] font-semibold text-texto-3 underline-offset-2 hover:text-texto hover:underline"
+                >
+                  Corregir
+                </button>
+              </span>
+            }
+          />
           <Fila etiqueta="Tarifa" valor={`${fmtMoney(tipo.tarifa)}/h · cada ${tipo.fraccion} min`} />
           {fijo ? (
             <>
@@ -324,6 +337,15 @@ function CuentaAbierta({ v, ahora }: { v: VistaMesa; ahora: number }) {
           </ul>
         )}
       </section>
+
+      <button
+        type="button"
+        onClick={() => abrir({ tipo: "anularMesa", mesaId: mesa.id })}
+        className="flex min-h-10 items-center gap-1.5 text-[13px] font-semibold text-rose-700 hover:underline"
+      >
+        <Icon name="trash" size={15} />
+        Anular mesa (se abrió por error)
+      </button>
     </>
   );
 }

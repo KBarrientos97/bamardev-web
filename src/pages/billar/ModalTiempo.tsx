@@ -1,14 +1,16 @@
-import { useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { Icon } from "../../components/Icon";
 import { Input, Modal } from "../../components/ui";
 import { fmtMoney } from "../../lib/format";
 import { precioFijo, promoPara } from "./calculo";
+import { useIntentoDeCobro } from "../pos/useIntentoDeCobro";
 import { FormCobro } from "./Cobro";
 import { useCobro } from "./useCobro";
+import { useAccion } from "./useAccion";
 import { billar, tipoDe, useBillar } from "./store";
 import type { Mesa, TipoMesa } from "./tipos";
-import { BotonB, Nota, Segmentado } from "./ui";
+import { BotonB, ErrorAccion, Nota, Segmentado } from "./ui";
 
 /**
  * Abrir una mesa (§7.2) y extender su tiempo fijo (§7.3). Comparten el
@@ -17,6 +19,25 @@ import { BotonB, Nota, Segmentado } from "./ui";
  */
 
 const MAX_HORAS = 24;
+
+/**
+ * "Cobrar Bs X y abrir" cambia el diálogo por el cobro, y el botón de
+ * confirmar cae justo donde estaba el que se tocó: en el celular un doble
+ * toque registraba efectivo justo sin que nadie viera el formulario. El de
+ * confirmar no escucha durante este rato después de aparecer.
+ */
+const PAUSA_DOBLE_TOQUE_MS = 600;
+
+function useCobroSinDobleToque() {
+  const [cobrando, setCobrandoInterno] = useState(false);
+  const desde = useRef(0);
+  const setCobrando = (v: boolean) => {
+    desde.current = Date.now();
+    setCobrandoInterno(v);
+  };
+  const recienAbierto = () => Date.now() - desde.current < PAUSA_DOBLE_TOQUE_MS;
+  return { cobrando, setCobrando, recienAbierto };
+}
 
 function SelectorHoras({
   tipo,
@@ -154,20 +175,31 @@ export function ModalAbrir({ mesa, onClose }: { mesa: Mesa; onClose: () => void 
   const [garantia, setGarantia] = useState<Garantia>("Ninguna");
   const [queDeja, setQueDeja] = useState("");
   const [nota, setNota] = useState("");
-  const [cobrando, setCobrando] = useState(false);
+  const { cobrando, setCobrando, recienAbierto } = useCobroSinDobleToque();
   const precio = precioFijo(tipo, horas);
   const cobro = useCobro(precio.precio);
   const promoLibre = promoPara(tipo, Number.POSITIVE_INFINITY);
+  const accion = useAccion();
+  // El mismo id si se reintenta la MISMA apertura: si la primera entró y se
+  // perdió la respuesta, el backend devuelve la mesa ya abierta en vez de
+  // decir "ocupada" (y no cobra dos veces el tiempo fijo).
+  const intento = useIntentoDeCobro();
 
-  const abrirMesa = (conPago: boolean) => {
-    billar.abrir(mesa.id, {
-      modo,
-      horas: modo === "fijo" ? horas : undefined,
-      pago: conPago && cobro.pago ? cobro.pago : undefined,
-      cliente,
-      garantia: garantia === "Otro" ? queDeja.trim() || "Otro" : garantia,
-      nota,
-    });
+  const abrirMesa = async (conPago: boolean) => {
+    const pago = conPago && cobro.pago ? cobro.pago : undefined;
+    const ok = await accion.ejecutar(() =>
+      billar.abrir(mesa.id, {
+        modo,
+        horas: modo === "fijo" ? horas : undefined,
+        pago,
+        cliente,
+        garantia: garantia === "Otro" ? queDeja.trim() || "Otro" : garantia,
+        nota,
+        clienteRequestId: intento.actual(`abrir:${mesa.idInterno}:${modo}:${modo === "fijo" ? horas : 0}:${!!pago}`),
+      }),
+    );
+    if (!ok) return;
+    intento.registrado();
     onClose();
     navigate(`/billar?mesa=${mesa.id}`, { replace: true });
   };
@@ -188,8 +220,8 @@ export function ModalAbrir({ mesa, onClose }: { mesa: Mesa; onClose: () => void 
             <BotonB icono="arrowLeft" onClick={() => setCobrando(false)}>
               Volver
             </BotonB>
-            <BotonB variante="verde" icono="check" disabled={!cobro.pago} onClick={() => abrirMesa(true)}>
-              Cobrar {fmtMoney(precio.precio)} y abrir
+            <BotonB variante="verde" icono="check" disabled={!cobro.pago || accion.enviando} onClick={() => !recienAbierto() && abrirMesa(true)}>
+              {accion.enviando ? "Abriendo…" : `Cobrar ${fmtMoney(precio.precio)} y abrir`}
             </BotonB>
           </>
         }
@@ -202,6 +234,7 @@ export function ModalAbrir({ mesa, onClose }: { mesa: Mesa; onClose: () => void 
           </p>
         </div>
         <FormCobro cobro={cobro} />
+        <ErrorAccion texto={accion.error} />
       </Modal>
     );
   }
@@ -218,15 +251,15 @@ export function ModalAbrir({ mesa, onClose }: { mesa: Mesa; onClose: () => void 
         modo === "libre" ? (
           <>
             <BotonB onClick={onClose}>Cancelar</BotonB>
-            <BotonB variante="verde" icono="play" onClick={() => abrirMesa(false)}>
-              Abrir mesa y arrancar
+            <BotonB variante="verde" icono="play" disabled={accion.enviando} onClick={() => abrirMesa(false)}>
+              {accion.enviando ? "Abriendo…" : "Abrir mesa y arrancar"}
             </BotonB>
           </>
         ) : (
           <>
             <BotonB onClick={onClose}>Cancelar</BotonB>
-            <BotonB icono="clock" onClick={() => abrirMesa(false)}>
-              Abrir · cobrar al final
+            <BotonB icono="clock" disabled={accion.enviando} onClick={() => abrirMesa(false)}>
+              {accion.enviando ? "Abriendo…" : "Abrir · cobrar al final"}
             </BotonB>
             <BotonB variante="verde" icono="billetera" onClick={() => setCobrando(true)}>
               Cobrar {fmtMoney(precio.precio)} y abrir
@@ -309,6 +342,7 @@ export function ModalAbrir({ mesa, onClose }: { mesa: Mesa; onClose: () => void 
           <Input value={nota} onChange={(ev) => setNota(ev.target.value)} placeholder="Algo que el turno deba saber" />
         </label>
       </div>
+      <ErrorAccion texto={accion.error} />
     </Modal>
   );
 }
@@ -318,14 +352,15 @@ export function ModalExtender({ mesa, onClose }: { mesa: Mesa; onClose: () => vo
   const tipo = tipoDe(e, mesa);
   const [horas, setHoras] = useState(1);
   const [otra, setOtra] = useState(false);
-  const [cobrando, setCobrando] = useState(false);
+  const { cobrando, setCobrando, recienAbierto } = useCobroSinDobleToque();
   const precio = precioFijo(tipo, horas);
   const cobro = useCobro(precio.precio);
   const s = mesa.sesion;
+  const accion = useAccion();
 
-  const extender = (conPago: boolean) => {
-    billar.extender(mesa.id, horas, conPago && cobro.pago ? cobro.pago : undefined);
-    onClose();
+  const extender = async (conPago: boolean) => {
+    const pago = conPago && cobro.pago ? cobro.pago : undefined;
+    if (await accion.ejecutar(() => billar.extender(mesa.id, horas, pago))) onClose();
   };
 
   if (!s?.prepago) return null;
@@ -344,15 +379,15 @@ export function ModalExtender({ mesa, onClose }: { mesa: Mesa; onClose: () => vo
             <BotonB icono="arrowLeft" onClick={() => setCobrando(false)}>
               Volver
             </BotonB>
-            <BotonB variante="verde" icono="check" disabled={!cobro.pago} onClick={() => extender(true)}>
-              Cobrar {fmtMoney(precio.precio)} y extender
+            <BotonB variante="verde" icono="check" disabled={!cobro.pago || accion.enviando} onClick={() => !recienAbierto() && extender(true)}>
+              {accion.enviando ? "Extendiendo…" : `Cobrar ${fmtMoney(precio.precio)} y extender`}
             </BotonB>
           </>
         ) : (
           <>
             <BotonB onClick={onClose}>Cancelar</BotonB>
-            <BotonB icono="clock" onClick={() => extender(false)}>
-              Sumar · cobrar al final
+            <BotonB icono="clock" disabled={accion.enviando} onClick={() => extender(false)}>
+              {accion.enviando ? "Extendiendo…" : "Sumar · cobrar al final"}
             </BotonB>
             <BotonB variante="verde" icono="billetera" onClick={() => setCobrando(true)}>
               Cobrar {fmtMoney(precio.precio)} y extender
@@ -378,6 +413,7 @@ export function ModalExtender({ mesa, onClose }: { mesa: Mesa; onClose: () => vo
           <ReglaTarifa tipo={tipo} />
         </div>
       )}
+      <ErrorAccion texto={accion.error} />
     </Modal>
   );
 }

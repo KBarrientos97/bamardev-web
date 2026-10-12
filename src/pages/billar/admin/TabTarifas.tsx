@@ -43,11 +43,13 @@ export function TabTarifas({
   );
 }
 
+// "Anular una venta" y "Aplicar un descuento" estaban en la maqueta y no
+// hacían nada: anular una venta pide PIN siempre en todo el sistema, y el
+// billar no tiene descuentos. Un control que no hace nada es peor que no
+// tenerlo.
 const PINES: { clave: keyof PinesBillar; texto: string }[] = [
   { clave: "anularConsumo", texto: "Anular un consumo de una mesa" },
   { clave: "anularMesa", texto: "Anular una mesa abierta" },
-  { clave: "anularVenta", texto: "Anular una venta del historial" },
-  { clave: "descuento", texto: "Aplicar un descuento" },
 ];
 
 function AjustesGenerales({ b, onCambiar }: { b: BorradorTarifas; onCambiar: (b: BorradorTarifas) => void }) {
@@ -112,12 +114,12 @@ function AjustesGenerales({ b, onCambiar }: { b: BorradorTarifas; onCambiar: (b:
 
           <Nota tono="gris">
             El cajero abre, pausa, reanuda, cambia y cierra mesas sin PIN. Sólo lo marcado en "Acciones que piden PIN"
-            necesita el del administrador.
+            necesita el de un encargado.
           </Nota>
         </div>
 
         <div>
-          <Etiqueta>Acciones que piden PIN del administrador</Etiqueta>
+          <Etiqueta>Acciones que piden PIN</Etiqueta>
           {PINES.map((p) => (
             <Casilla
               key={p.clave}
@@ -127,6 +129,9 @@ function AjustesGenerales({ b, onCambiar }: { b: BorradorTarifas; onCambiar: (b:
               {p.texto}
             </Casilla>
           ))}
+          <p className="mt-2 text-[12px] text-texto-4">
+            Anular una venta y corregir la hora de inicio de una mesa piden PIN siempre, como en todo el sistema.
+          </p>
         </div>
       </div>
     </Tarjeta>

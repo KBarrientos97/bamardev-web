@@ -7,7 +7,7 @@ import type { AjustesBillar, Mesa, Paquete, PinesBillar, Promo, TipoMesa } from 
 /**
  * Lo que se edita en Mesas de billar, como texto mientras se escribe ("2,5",
  * un campo vacío) y la conversión a lo que se guarda, con sus errores. Puro a
- * propósito: los mismos chequeos los repite el backend (`PUT /billar/tipos`).
+ * propósito: los mismos chequeos los repite el backend (`PUT /billar/admin/tipos`).
  */
 
 // ── Números ─────────────────────────────────────────────────────────────────
@@ -67,7 +67,7 @@ export function erroresMesa(b: BorradorMesa, e: EstadoBillar, editando: number |
   const n = entero(b.numero);
   if (n === null) out.numero = "Poné un número de 1 a 999.";
   else if (n !== editando) {
-    const error = errorDeNumero(e, n);
+    const error = errorDeNumero(e.admin.mesas, n);
     if (error) out.numero = error;
   }
   if (b.tarifaPropia !== null) {

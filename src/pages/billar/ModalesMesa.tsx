@@ -1,14 +1,18 @@
-import { useMemo, useRef, useState, type RefObject } from "react";
+import { useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { useNavigate } from "react-router-dom";
 import { Input, Modal } from "../../components/ui";
 import { fmtMoney } from "../../lib/format";
+import { tienePermiso } from "../../lib/permisos";
+import { useAuth } from "../../store/AuthContext";
+import type { Credenciales } from "./api";
 import { FormCobro } from "./Cobro";
 import { useCobro } from "./useCobro";
+import { useAccion } from "./useAccion";
 import { billar, mesasEnUso, tipoDe, useBillar } from "./store";
-import { useAhora } from "./reloj";
+import { ahoraServidor, useAhora } from "./reloj";
 import { cuentaDe, horaDe } from "./calculo";
 import type { Mesa } from "./tipos";
-import { BotonB, Circulo, Nota } from "./ui";
+import { BotonB, Circulo, ErrorAccion, Nota } from "./ui";
 
 /** Cambiar de mesa (§7.12): sólo a una libre. La cuenta entera se muda. */
 export function ModalCambiar({ mesa, onClose }: { mesa: Mesa; onClose: () => void }) {
@@ -16,6 +20,7 @@ export function ModalCambiar({ mesa, onClose }: { mesa: Mesa; onClose: () => voi
   const navigate = useNavigate();
   const libres = mesasEnUso(e).filter((m) => m.estado === "libre");
   const [destino, setDestino] = useState<number | null>(libres[0]?.id ?? null);
+  const accion = useAccion();
   const origen = tipoDe(e, mesa);
   const elegida = libres.find((m) => m.id === destino);
   const nuevo = elegida ? tipoDe(e, elegida) : null;
@@ -34,14 +39,14 @@ export function ModalCambiar({ mesa, onClose }: { mesa: Mesa; onClose: () => voi
           <BotonB onClick={onClose}>Cancelar</BotonB>
           <BotonB
             variante="verde"
-            disabled={!elegida}
-            onClick={() => {
-              billar.cambiarMesa(mesa.id, destino!);
+            disabled={!elegida || accion.enviando}
+            onClick={async () => {
+              if (!(await accion.ejecutar(() => billar.cambiarMesa(mesa.id, destino!)))) return;
               onClose();
               navigate(`/billar?mesa=${destino}`, { replace: true });
             }}
           >
-            Mover a Mesa {destino ?? ""}
+            {accion.enviando ? "Moviendo…" : `Mover a Mesa ${destino ?? ""}`}
           </BotonB>
         </>
       }
@@ -95,6 +100,7 @@ export function ModalCambiar({ mesa, onClose }: { mesa: Mesa; onClose: () => voi
           )}
         </div>
       )}
+      <ErrorAccion texto={accion.error} />
     </Modal>
   );
 }
@@ -116,6 +122,7 @@ export function ModalMotivo({
   const [motivo, setMotivo] = useState(motivos[0]);
   const [otro, setOtro] = useState("");
   const final = motivo === "Otro" ? otro.trim() : motivo;
+  const accion = useAccion();
   return (
     <Modal
       abierto
@@ -133,14 +140,15 @@ export function ModalMotivo({
           <BotonB
             variante={modo === "pausar" ? "ambar" : "verde"}
             icono={modo === "pausar" ? "pausa" : "llave"}
-            disabled={!final}
-            onClick={() => {
-              if (modo === "pausar") billar.pausar(mesa.id, final);
-              else billar.fueraDeServicio(mesa.id, final);
-              onClose();
+            disabled={final.length < 2 || accion.enviando}
+            onClick={async () => {
+              const ok = await accion.ejecutar(() =>
+                modo === "pausar" ? billar.pausar(mesa.id, final) : billar.fueraDeServicio(mesa.id, final),
+              );
+              if (ok) onClose();
             }}
           >
-            {modo === "pausar" ? "Pausar" : "Sacar de servicio"}
+            {accion.enviando ? "Guardando…" : modo === "pausar" ? "Pausar" : "Sacar de servicio"}
           </BotonB>
         </>
       }
@@ -157,6 +165,7 @@ export function ModalMotivo({
           aria-label="Otro motivo"
         />
       )}
+      <ErrorAccion texto={accion.error} />
     </Modal>
   );
 }
@@ -192,6 +201,7 @@ export function ModalReservar({ mesa, onClose }: { mesa: Mesa; onClose: () => vo
   }, []);
   const [hora, setHora] = useState(horas[0]);
   const [nombre, setNombre] = useState("");
+  const accion = useAccion();
   return (
     <Modal
       abierto
@@ -206,13 +216,12 @@ export function ModalReservar({ mesa, onClose }: { mesa: Mesa; onClose: () => vo
           <BotonB
             variante="verde"
             icono="calendar"
-            disabled={!nombre.trim()}
-            onClick={() => {
-              billar.reservar(mesa.id, hora, nombre);
-              onClose();
+            disabled={nombre.trim().length < 2 || accion.enviando}
+            onClick={async () => {
+              if (await accion.ejecutar(() => billar.reservar(mesa.id, hora, nombre))) onClose();
             }}
           >
-            Reservar
+            {accion.enviando ? "Reservando…" : "Reservar"}
           </BotonB>
         </>
       }
@@ -237,6 +246,7 @@ export function ModalReservar({ mesa, onClose }: { mesa: Mesa; onClose: () => vo
         <span className="mb-1.5 block text-[13px] font-semibold text-texto-2">A nombre de</span>
         <Input autoFocus value={nombre} onChange={(ev) => setNombre(ev.target.value)} placeholder="Nombre" />
       </label>
+      <ErrorAccion texto={accion.error} />
     </Modal>
   );
 }
@@ -248,6 +258,7 @@ export function ModalPago({ mesa, onClose }: { mesa: Mesa; onClose: () => void }
   // El saldo de cuando se abrió: con el tiempo corriendo, el tope no se mueve mientras se escribe.
   const [saldo] = useState(() => (mesa.sesion ? cuentaDe(mesa.sesion, tipoDe(e, mesa), ahora).saldo : 0));
   const cobro = useCobro(saldo, true);
+  const accion = useAccion();
   return (
     <Modal
       abierto
@@ -262,34 +273,38 @@ export function ModalPago({ mesa, onClose }: { mesa: Mesa; onClose: () => void }
           <BotonB
             variante="verde"
             icono="check"
-            disabled={!cobro.pago}
-            onClick={() => {
-              billar.pagar(mesa.id, cobro.pago!);
-              onClose();
+            disabled={!cobro.pago || accion.enviando}
+            onClick={async () => {
+              if (await accion.ejecutar(() => billar.pagar(mesa.id, cobro.pago!))) onClose();
             }}
           >
-            Registrar {fmtMoney(cobro.monto)}
+            {accion.enviando ? "Registrando…" : `Registrar ${fmtMoney(cobro.monto)}`}
           </BotonB>
         </>
       }
     >
       <FormCobro cobro={cobro} />
+      <ErrorAccion texto={accion.error} />
     </Modal>
   );
 }
 
 /**
- * Autorización con el PIN del administrador (§7.12): cuatro dígitos y el
- * motivo, que queda en la auditoría. Si en Mesas de billar se apagó el PIN
- * para esta acción, se pide sólo el motivo. MAQUETA: el PIN de prueba es
- * 1234; con el backend se valida como el resto de las anulaciones
- * (`autorizacion_pin`).
+ * Autorización con PIN (§7.12): el motivo, que queda en la auditoría, y el
+ * PIN. Es la misma regla que anular una venta en el POS: quien puede
+ * autorizar pone su propio PIN; un cajero pone el usuario y el PIN del
+ * encargado que lo autoriza (con el permiso de la acción, si no el servidor
+ * lo rechaza). Si en Mesas de billar se apagó el PIN para esta acción, se
+ * pide sólo el motivo.
  */
 export function ModalPin({
-  accion,
+  accion: titulo,
   detalle,
   motivos,
   pedirPin = true,
+  permiso,
+  bloqueado = false,
+  children,
   onClose,
   onAutorizar,
 }: {
@@ -297,39 +312,54 @@ export function ModalPin({
   detalle: string;
   motivos: string[];
   pedirPin?: boolean;
+  /** El permiso de la acción: quien autoriza lo tiene que tener, además de `autorizar.pin`. */
+  permiso: string;
+  /** Otro dato del diálogo todavía no está listo (la hora nueva, por ejemplo). */
+  bloqueado?: boolean;
+  /** Campos propios de la acción, arriba del motivo. */
+  children?: ReactNode;
   onClose: () => void;
-  /** `autorizo`: quién puso el PIN, para la auditoría. */
-  onAutorizar: (motivo: string, autorizo?: string) => void;
+  /** Hace la acción; si el servidor dice que no, el diálogo sigue abierto con su mensaje. */
+  onAutorizar: (motivo: string, cred: Credenciales) => Promise<unknown>;
 }) {
+  const { usuario } = useAuth();
+  const pideUsuario = pedirPin && !(tienePermiso(usuario, "autorizar.pin") && tienePermiso(usuario, permiso));
+  const opciones = [...motivos, "Otro"];
+  const [motivo, setMotivo] = useState(opciones[0]);
+  const [otro, setOtro] = useState("");
+  const [autorizador, setAutorizador] = useState("");
   const [pin, setPin] = useState("");
-  const [motivo, setMotivo] = useState(motivos[0]);
-  const [error, setError] = useState("");
   const campo = useRef<HTMLInputElement>(null);
-  const listo = (!pedirPin || pin.length === 4) && !!motivo;
+  const accion = useAccion();
+  const final = motivo === "Otro" ? otro.trim() : motivo;
+  const listo =
+    !bloqueado &&
+    final.length >= 3 &&
+    (!pedirPin || (/^\d{4,6}$/.test(pin) && (!pideUsuario || autorizador.trim().length >= 3)));
 
-  const autorizar = () => {
-    if (!pedirPin) return onAutorizar(motivo);
-    if (pin !== "1234") {
-      setError("PIN incorrecto. Probá de nuevo.");
+  const autorizar = async () => {
+    if (!listo || accion.enviando) return;
+    const cred: Credenciales = pedirPin
+      ? { ...(pideUsuario ? { autorizadorUsername: autorizador.trim() } : {}), autorizadorPin: pin }
+      : {};
+    if (!(await accion.ejecutar(() => onAutorizar(final, cred)))) {
       setPin("");
       campo.current?.focus();
-      return;
     }
-    onAutorizar(motivo, "Administrador");
   };
 
   return (
     <Modal
       abierto
-      titulo={pedirPin ? "Autorización del administrador" : "Confirmar anulación"}
+      titulo={pedirPin ? "Autorización" : "Confirmar"}
       onClose={onClose}
       cerrarAlClicAfuera={false}
       ancho="max-w-md"
       acciones={
         <>
           <BotonB onClick={onClose}>Cancelar</BotonB>
-          <BotonB variante={pedirPin ? "verde" : "rosa"} disabled={!listo} onClick={autorizar}>
-            {pedirPin ? "Autorizar" : "Anular"}
+          <BotonB variante={pedirPin ? "verde" : "rosa"} disabled={!listo || accion.enviando} onClick={autorizar}>
+            {accion.enviando ? "Enviando…" : pedirPin ? "Autorizar" : "Confirmar"}
           </BotonB>
         </>
       }
@@ -337,40 +367,72 @@ export function ModalPin({
       {pedirPin && (
         <div className="mb-4 flex items-center gap-3">
           <Circulo icono="lock" tono="ambar" />
-          <p className="text-[13px] text-texto-3">Esto necesita el PIN del administrador.</p>
+          <p className="text-[13px] text-texto-3">
+            {pideUsuario ? "Esto necesita el PIN de un encargado." : "Confirmalo con tu PIN."}
+          </p>
         </div>
       )}
       <Nota tono="gris">
-        <b className="text-texto">{accion}</b>
+        <b className="text-texto">{titulo}</b>
         <br />
         {detalle}
       </Nota>
 
+      {children}
+
+      <p className="mb-2 mt-4 text-[13px] font-semibold text-texto-2">Motivo</p>
+      <ChipsMotivo motivos={opciones} valor={motivo} onCambiar={setMotivo} />
+      {motivo === "Otro" && (
+        <Input
+          className="mt-3"
+          value={otro}
+          onChange={(ev) => setOtro(ev.target.value)}
+          placeholder="¿Por qué?"
+          aria-label="Otro motivo"
+        />
+      )}
+
+      {pedirPin && pideUsuario && (
+        <label className="mt-4 block">
+          <span className="mb-1.5 block text-[13px] font-semibold text-texto-2">Usuario del encargado</span>
+          <Input
+            value={autorizador}
+            onChange={(ev) => setAutorizador(ev.target.value)}
+            autoComplete="off"
+            autoCapitalize="none"
+            placeholder="Usuario"
+          />
+        </label>
+      )}
       {pedirPin && (
         <CampoPin
           campo={campo}
           pin={pin}
-          error={error}
+          error={accion.error}
+          titulo={pideUsuario ? "PIN del encargado" : "Tu PIN"}
           listo={listo}
           onPin={(p) => {
-            setError("");
+            accion.setError("");
             setPin(p);
           }}
           onEnter={autorizar}
         />
       )}
-
-      <p className="mb-2 mt-4 text-[13px] font-semibold text-texto-2">Motivo</p>
-      <ChipsMotivo motivos={motivos} valor={motivo} onCambiar={setMotivo} />
+      {!pedirPin && <ErrorAccion texto={accion.error} />}
     </Modal>
   );
 }
 
-/** Los cuatro casilleros del PIN: un input escondido encima, para el teclado del celular. */
+/**
+ * Los casilleros del PIN (de 4 a 6 dígitos, como en todo el sistema): un
+ * input escondido encima, para el teclado del celular. Arranca con cuatro y
+ * crece si el PIN es más largo.
+ */
 function CampoPin({
   campo,
   pin,
   error,
+  titulo,
   listo,
   onPin,
   onEnter,
@@ -378,30 +440,31 @@ function CampoPin({
   campo: RefObject<HTMLInputElement | null>;
   pin: string;
   error: string;
+  titulo: string;
   listo: boolean;
   onPin: (pin: string) => void;
   onEnter: () => void;
 }) {
+  const casilleros = Math.min(6, Math.max(4, pin.length));
   return (
     <>
-      <p className="mb-2 mt-4 text-[13px] font-semibold text-texto-2">PIN del administrador</p>
+      <p className="mb-2 mt-4 text-[13px] font-semibold text-texto-2">{titulo}</p>
       <div className="relative w-fit" onClick={() => campo.current?.focus()}>
         <input
           ref={campo}
-          autoFocus
           inputMode="numeric"
           autoComplete="off"
-          aria-label="PIN del administrador"
+          aria-label={titulo}
           value={pin}
-          maxLength={4}
-          onChange={(ev) => onPin(ev.target.value.replace(/\D/g, "").slice(0, 4))}
+          maxLength={6}
+          onChange={(ev) => onPin(ev.target.value.replace(/\D/g, "").slice(0, 6))}
           onKeyDown={(ev) => {
             if (ev.key === "Enter" && listo) onEnter();
           }}
           className="peer absolute inset-0 h-full w-full cursor-pointer opacity-0"
         />
         <div className="flex gap-2" aria-hidden>
-          {[0, 1, 2, 3].map((i) => (
+          {Array.from({ length: casilleros }, (_, i) => (
             <span
               key={i}
               className={`flex h-14 w-12 items-center justify-center rounded-xl border-2 text-2xl font-bold ${
@@ -413,9 +476,61 @@ function CampoPin({
           ))}
         </div>
       </div>
-      <p className={`mt-1.5 text-xs ${error ? "font-semibold text-rose-700" : "text-texto-4"}`}>
-        {error || "Escribilo con el teclado. PIN de prueba: 1234"}
+      <p
+        role={error ? "alert" : undefined}
+        className={`mt-1.5 text-xs ${error ? "font-semibold text-rose-700" : "text-texto-4"}`}
+      >
+        {error || "De 4 a 6 dígitos. Escribilo con el teclado."}
       </p>
     </>
   );
+}
+
+/**
+ * Corregir la hora de inicio (§7.12): se abrió tarde o se olvidaron de
+ * abrirla. Pide PIN siempre y queda en la auditoría. La hora es de hoy; si
+ * todavía no llegó, es de ayer (una mesa que arrancó antes de la medianoche).
+ */
+export function ModalEditarInicio({ mesa, onClose }: { mesa: Mesa; onClose: () => void }) {
+  const s = mesa.sesion;
+  const [hora, setHora] = useState(() => (s ? horaInput(s.start) : ""));
+  if (!s) return null;
+  const inicio = aHoraDelDia(hora);
+  const valida = inicio !== null && Math.abs(inicio - s.start) >= 60_000;
+  return (
+    <ModalPin
+      accion={`Corregir el inicio de la Mesa ${mesa.id}`}
+      detalle={`Arrancó a las ${horaDe(s.start)}. La cuenta se recalcula desde la hora nueva.`}
+      motivos={["Se olvidó abrirla", "Se abrió tarde", "Error de hora"]}
+      permiso="billar.admin"
+      bloqueado={!valida}
+      onClose={onClose}
+      onAutorizar={async (motivo, cred) => {
+        await billar.editarInicio(mesa.id, inicio!, motivo, cred);
+        onClose();
+      }}
+    >
+      <label className="mt-4 block">
+        <span className="mb-1.5 block text-[13px] font-semibold text-texto-2">Empezaron a jugar a las</span>
+        <Input type="time" value={hora} onChange={(ev) => setHora(ev.target.value)} className="w-40" />
+      </label>
+    </ModalPin>
+  );
+}
+
+/** "21:05", en la hora del local (la del navegador). */
+function horaInput(ms: number): string {
+  const d = new Date(ms);
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
+/** "21:05" → hoy a esa hora, o ayer si todavía no llegó. */
+function aHoraDelDia(hora: string): number | null {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(hora);
+  if (!m) return null;
+  const ahora = ahoraServidor();
+  const d = new Date(ahora);
+  d.setHours(Number(m[1]), Number(m[2]), 0, 0);
+  if (d.getTime() > ahora) d.setDate(d.getDate() - 1);
+  return d.getTime();
 }

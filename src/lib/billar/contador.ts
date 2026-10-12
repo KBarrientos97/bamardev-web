@@ -5,8 +5,8 @@ import { useSyncExternalStore } from "react";
  * alguna está por vencer (BILLAR_MODULO_SPEC §2).
  *
  * Vive aparte del módulo para que el menú no tenga que bajarse las pantallas
- * del billar: el tablero publica acá lo que ve. MAQUETA: con el backend pasa a
- * consultarse solo, como `contadorSolicitudes`.
+ * del billar: el motor de avisos (que corre en el Layout, ver
+ * pages/billar/DeFondo) publica acá lo que trae el tablero.
  */
 
 export interface ContadorBillar {

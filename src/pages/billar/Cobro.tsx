@@ -1,4 +1,5 @@
 import { Icon, type NombreIcono } from "../../components/Icon";
+import { QrParaCobrar } from "../../components/QrCobro";
 import { Input } from "../../components/ui";
 import { parsearMonto } from "../../lib/dinero";
 import { fmtMoney } from "../../lib/format";
@@ -10,8 +11,8 @@ import { sugerencias, type EstadoCobro, type Metodo } from "./useCobro";
  * el tiempo fijo cobrado al abrir o al extender, el pago parcial, el cierre de
  * la mesa y la venta rápida.
  *
- * MAQUETA: el QR no muestra el código del negocio todavía; con el backend va
- * el mismo `QrParaCobrar` del POS.
+ * El QR es el del negocio y el mismo `QrParaCobrar` del POS: hasta que el
+ * cajero confirma que vio el pago, no se puede cobrar.
  */
 
 const METODOS: { metodo: Metodo; icono: NombreIcono }[] = [
@@ -136,13 +137,8 @@ export function FormCobro({ cobro }: { cobro: EstadoCobro }) {
         </div>
       )}
 
-      {c.metodo === "QR" && (
-        <div className="flex items-start gap-3 rounded-xl border border-borde bg-muted px-4 py-3 text-[13px] text-texto-2">
-          <Icon name="qr" size={34} />
-          <p>
-            Mostrá el QR del negocio y confirmá cuando veas el pago de <b className="text-texto">{fmt(c.monto)}</b>.
-          </p>
-        </div>
+      {c.metodo === "QR" && c.monto > 0 && (
+        <QrParaCobrar confirmado={c.qrConfirmado} onConfirmar={c.confirmarQr} monto={fmt(c.montoQr)} />
       )}
 
       {c.metodo === "Mixto" && (
@@ -155,7 +151,12 @@ export function FormCobro({ cobro }: { cobro: EstadoCobro }) {
               {fmt(Math.max(0, round2(c.monto - (parsearMonto(c.efectivoTexto) ?? 0))))}
             </span>
           </div>
-          {!c.pago && c.efectivoTexto.trim() !== "" && (
+          {c.montoQr > 0 && c.montoQr < c.monto && (
+            <div className="mt-3">
+              <QrParaCobrar confirmado={c.qrConfirmado} onConfirmar={c.confirmarQr} monto={fmt(c.montoQr)} />
+            </div>
+          )}
+          {c.efectivoTexto.trim() !== "" && !(c.montoQr > 0 && c.montoQr < c.monto) && (
             <p className="mt-1.5 text-xs text-rose-700">
               El efectivo tiene que ser menos que {fmt(c.monto)}: lo demás va por QR.
             </p>

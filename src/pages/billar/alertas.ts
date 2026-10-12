@@ -1,4 +1,4 @@
-import { fmtMinSeg } from "./calculo";
+import { fmtMinSeg, segundosJugados } from "./calculo";
 import type { Mesa } from "./tipos";
 
 /**
@@ -25,34 +25,70 @@ export function nivelAlcanzado(restante: number, avisos: number[]): Nivel | null
 // ── Una vez por umbral y sesión ─────────────────────────────────────────────
 
 /**
- * MAQUETA: en memoria, porque la demo arranca de cero en cada recarga. Con el
- * backend va a `localStorage` por sesión (§9) para no repetir al recargar.
+ * Lo ya avisado, guardado en el equipo (§9) por sesión y no por mesa: al
+ * recargar no se repite, y al pasar la cuenta a otra mesa tampoco (con la
+ * mesa en la clave, el cambio de mesa volvía a avisar lo mismo).
  */
-const disparados = new Set<string>();
-const clave = (mesaId: number, sesionId: string, nivel: Nivel) => `${mesaId}:${sesionId}:${nivel}`;
+const AVISADOS_KEY = "bamardev.billar.avisados";
+const clave = (sesionId: string, nivel: Nivel) => `${sesionId}:${nivel}`;
 
-export function yaAvisado(mesaId: number, sesionId: string, nivel: Nivel): boolean {
-  return disparados.has(clave(mesaId, sesionId, nivel));
+function leer(): Set<string> | null {
+  try {
+    const crudo = localStorage.getItem(AVISADOS_KEY);
+    return crudo === null ? null : new Set(JSON.parse(crudo) as string[]);
+  } catch {
+    return null;
+  }
+}
+
+const disparados = leer() ?? new Set<string>();
+/** Primera vez en este navegador: lo que ya pasó no se avisa de golpe (ver `prepararAvisos`). */
+let estrenando = leer() === null;
+
+function guardar() {
+  try {
+    localStorage.setItem(AVISADOS_KEY, JSON.stringify([...disparados]));
+  } catch {
+    // Sin almacenamiento vale lo de memoria hasta recargar.
+  }
+}
+
+export function yaAvisado(sesionId: string, nivel: Nivel): boolean {
+  return disparados.has(clave(sesionId, nivel));
 }
 
 /** Marca el nivel y los de arriba: después de avisar 5 min no se avisa 10. */
-export function marcarAvisado(mesaId: number, sesionId: string, nivel: Nivel, avisos: number[]) {
-  for (const n of [...avisos, 0]) if (n >= nivel) disparados.add(clave(mesaId, sesionId, n));
+export function marcarAvisado(sesionId: string, nivel: Nivel, avisos: number[]) {
+  for (const n of [...avisos, 0]) if (n >= nivel) disparados.add(clave(sesionId, n));
+  guardar();
 }
 
 /** Al extender, la sesión vuelve a avisar desde cero. */
 export function olvidarAvisos(sesionId: string) {
-  for (const k of [...disparados]) if (k.split(":")[1] === sesionId) disparados.delete(k);
+  for (const k of [...disparados]) if (k.split(":")[0] === sesionId) disparados.delete(k);
+  guardar();
 }
 
-/** Lo que ya pasó cuando la pantalla arranca no se avisa de golpe. */
-export function marcarLoYaPasado(mesas: Mesa[], avisos: number[], segundos: (m: Mesa) => number) {
-  for (const m of mesas) {
-    const s = m.sesion;
-    if (m.estado !== "abierta" || !s?.prepago) continue;
-    const nivel = nivelAlcanzado(s.prepago.min * 60 - segundos(m), avisos);
-    if (nivel !== null) marcarAvisado(m.id, s.id, nivel, avisos);
+/**
+ * Con el primer tablero: se olvidan las sesiones que ya no están en juego (si
+ * no, la lista crece para siempre) y, si este navegador nunca avisó nada, lo
+ * que ya pasó se da por avisado. Un equipo nuevo que entra al turno con cinco
+ * mesas vencidas no tiene que sonar cinco veces seguidas; uno que ya venía
+ * avisando sí avisa lo que se cruzó mientras estuvo cerrado.
+ */
+export function prepararAvisos(mesas: Mesa[], avisos: number[], ahora: number) {
+  const vivas = new Set(mesas.flatMap((m) => (m.estado === "abierta" && m.sesion ? [m.sesion.id] : [])));
+  for (const k of [...disparados]) if (!vivas.has(k.split(":")[0])) disparados.delete(k);
+  if (estrenando) {
+    for (const m of mesas) {
+      const s = m.sesion;
+      if (m.estado !== "abierta" || !s?.prepago) continue;
+      const nivel = nivelAlcanzado(s.prepago.min * 60 - segundosJugados(s, ahora), avisos);
+      if (nivel !== null) for (const n of [...avisos, 0]) if (n >= nivel) disparados.add(clave(s.id, n));
+    }
+    estrenando = false;
   }
+  guardar();
 }
 
 // ── Los textos ──────────────────────────────────────────────────────────────

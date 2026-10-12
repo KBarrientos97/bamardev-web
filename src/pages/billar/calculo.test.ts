@@ -220,12 +220,12 @@ describe("cuentaDe (§5.4, §5.6)", () => {
 });
 
 describe("estadoVisual (§5.7)", () => {
-  const abierta = (s: Sesion): Mesa => ({ id: 5, tipo: "pool", estado: "abierta", sesion: s });
+  const abierta = (s: Sesion): Mesa => ({ id: 5, idInterno: 50, tipo: "pool", estado: "abierta", sesion: s });
   const fijo = { min: 120, precio: 40, pagado: true };
 
   it("lo guardado pasa tal cual", () => {
-    expect(estadoVisual({ id: 1, tipo: "pool", estado: "libre" }, AHORA, [10, 5, 1])).toBe("libre");
-    expect(estadoVisual({ id: 8, tipo: "pool", estado: "fuera" }, AHORA, [10, 5, 1])).toBe("fuera");
+    expect(estadoVisual({ id: 1, idInterno: 10, tipo: "pool", estado: "libre" }, AHORA, [10, 5, 1])).toBe("libre");
+    expect(estadoVisual({ id: 8, idInterno: 80, tipo: "pool", estado: "fuera" }, AHORA, [10, 5, 1])).toBe("fuera");
   });
 
   it("tiempo fijo: por vencer dentro del aviso más grande, cumplido en cero", () => {

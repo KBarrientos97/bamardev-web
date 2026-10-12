@@ -8,13 +8,15 @@ import { totalCarrito, useCarritoBillar } from "./carrito";
 import { Catalogo, LineasPedido, PantallaPedido } from "./Catalogo";
 import { CajaCerradaAviso } from "./ModalesCaja";
 import { useAhora } from "./reloj";
-import { agruparItems, billar, useBillar } from "./store";
-import { BotonB, Circulo, Encabezado, Fila, Rotulo } from "./ui";
+import { agruparItems, billar, cargarProductos, useBillar } from "./store";
+import { useAccion } from "./useAccion";
+import { BotonB, Circulo, Encabezado, ErrorAccion, Fila, Rotulo } from "./ui";
 import { vistaDe } from "./vista";
 
 /**
  * Agregar consumo a una mesa (§7.4): el POS, con destino "Mesa N". Confirmar
- * carga a la cuenta (no cobra) y descuenta el stock, como una venta.
+ * carga a la cuenta (no cobra). El stock se descuenta al cobrar la mesa, como
+ * en el salón; mientras tanto lo cargado ya no se ofrece a otra mesa.
  */
 export default function ConsumoMesa() {
   const { mesaId } = useParams();
@@ -23,6 +25,7 @@ export default function ConsumoMesa() {
   const navigate = useNavigate();
   const { carrito, poner, vaciar, items } = useCarritoBillar();
   const [verCuenta, setVerCuenta] = useState(false);
+  const accion = useAccion();
   const mesa = e.mesas.find((m) => m.id === Number(mesaId));
   const volver = `/billar?mesa=${mesaId}`;
 
@@ -61,9 +64,13 @@ export default function ConsumoMesa() {
   const yaEnCuenta = agruparItems(mesa.sesion.consumos);
   const agregar = (id: number) => poner(id, (carrito.get(id) ?? 0) + 1);
 
-  const confirmar = () => {
-    billar.agregarConsumos(mesa.id, items);
-    // Vacío antes de irse: un segundo toque en el mismo instante no carga dos veces.
+  const confirmar = async () => {
+    const ok = await accion.ejecutar(() => billar.agregarConsumos(mesa.id, items));
+    if (!ok) {
+      // Si fue por stock, el catálogo de la pantalla ya no es el de verdad.
+      void cargarProductos();
+      return;
+    }
     vaciar();
     billar.avisar({ tono: "verde", titulo: `Se cargó ${fmtMoney(nuevos)} a la Mesa ${mesa.id}`, texto: "Sin cobrar: va a la cuenta de la mesa." });
     navigate(volver);
@@ -132,8 +139,16 @@ export default function ConsumoMesa() {
             <span className="text-xl font-extrabold tabular-nums text-texto">{fmtMoney(round2(c.saldo + nuevos))}</span>
           </div>
         </div>
-        <BotonB variante="verde" grande icono="plus" className="w-full" disabled={cantidad === 0} onClick={confirmar}>
-          Agregar a Mesa {mesa.id} · {fmtMoney(nuevos)}
+        <ErrorAccion texto={accion.error} />
+        <BotonB
+          variante="verde"
+          grande
+          icono="plus"
+          className="w-full"
+          disabled={cantidad === 0 || accion.enviando}
+          onClick={confirmar}
+        >
+          {accion.enviando ? "Cargando…" : `Agregar a Mesa ${mesa.id} · ${fmtMoney(nuevos)}`}
         </BotonB>
       </div>
     </>

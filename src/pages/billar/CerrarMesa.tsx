@@ -1,15 +1,21 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { Icon } from "../../components/Icon";
-import { Input, Modal, Vacio } from "../../components/ui";
+import { Vacio } from "../../components/ui";
 import { fmtMoney } from "../../lib/format";
+import { tienePermiso } from "../../lib/permisos";
+import { useAuth } from "../../store/AuthContext";
+import type { CreditoInput, PagoInput } from "../../types";
+import PantallaCredito from "../pos/PantallaCredito";
+import { useIntentoDeCobro } from "../pos/useIntentoDeCobro";
 import { cuentaDe, fmtCobrado, fmtCrono, horaDe, segundosJugados } from "./calculo";
 import { FormCobro } from "./Cobro";
 import { useCobro } from "./useCobro";
+import { useAccion } from "./useAccion";
 import { CajaCerradaAviso } from "./ModalesCaja";
-import { useAhora } from "./reloj";
+import { ahoraServidor, useAhora } from "./reloj";
 import { agruparItems, billar, tipoDe, useBillar } from "./store";
-import { BotonB, Circulo, Encabezado, Nota, Rotulo } from "./ui";
+import { BotonB, Circulo, Encabezado, ErrorAccion, Nota, Rotulo } from "./ui";
 import { textoMetodo } from "./vista";
 
 /**
@@ -18,15 +24,27 @@ import { textoMetodo } from "./vista";
  *
  * La cuenta se calcula al entrar y queda quieta mientras se cobra: si el
  * tiempo sube de tramo mientras se cuenta el vuelto, el monto no cambia bajo
- * los dedos del cajero.
+ * los dedos del cajero. El servidor cobra hasta esa misma hora (`hasta`) con
+ * las mismas fórmulas, y si su total no es el que se ve acá (otra caja cargó
+ * algo, o pasaron más de 5 minutos), no cobra: la cuenta se recalcula a la
+ * hora de ahora y el cajero confirma de nuevo viendo el monto nuevo.
+ *
+ * El fiado es la pantalla de crédito del POS: el cliente de Cuentas por
+ * cobrar, el plazo, el adelanto y el límite con PIN, todo igual.
  */
 export default function CerrarMesa() {
   const { mesaId } = useParams();
   const e = useBillar();
   const ahora = useAhora();
   const navigate = useNavigate();
-  const [hasta] = useState(() => Date.now());
+  const { usuario } = useAuth();
+  const [hasta, setHasta] = useState(() => ahoraServidor());
   const [fiando, setFiando] = useState(false);
+  const accion = useAccion();
+  const intento = useIntentoDeCobro();
+  useEffect(() => {
+    if (accion.codigo === "MESA_CAMBIO") setHasta(ahoraServidor());
+  }, [accion.codigo]);
   const mesa = e.mesas.find((m) => m.id === Number(mesaId));
   const s = mesa?.estado === "abierta" ? mesa.sesion : undefined;
   const tipo = mesa ? tipoDe(e, mesa) : null;
@@ -74,15 +92,61 @@ export default function CerrarMesa() {
     navigate("/billar", { replace: true });
   };
 
+  // Lo que identifica ESTE cobro: la sesión y la hora de la cuenta. Un
+  // reintento de lo mismo manda el mismo id y, si el primero había entrado,
+  // el backend devuelve esa venta en vez de cobrar dos veces.
+  const huella = `cerrar:${s.id}:${hasta}`;
+
+  const cobrar = async (cobroFinal: Parameters<typeof billar.cerrar>[1], texto: string) => {
+    let codigo = "";
+    const ok = await accion.ejecutar(async () => {
+      codigo = await billar.cerrar(mesa.id, cobroFinal);
+    });
+    if (!ok) return;
+    intento.registrado();
+    terminar(codigo, texto);
+  };
+
   const confirmar = () => {
     const pago = c.saldo > 0 ? cobro.pago : undefined;
     if (c.saldo > 0 && !pago) return;
-    const codigo = billar.cerrar(mesa.id, { pago: pago ?? undefined }, hasta);
-    terminar(
-      codigo,
+    void cobrar(
+      { hasta, totalEsperado: c.total, pago: pago ?? undefined, clienteRequestId: intento.actual(huella) },
       pago?.metodo === "Efectivo" ? `Cambio ${fmtMoney(cobro.cambio)}` : pago ? textoMetodo(pago) : "Estaba todo pagado.",
     );
   };
+
+  const fiar = (credito: CreditoInput, pagos: PagoInput[]) => {
+    const adelanto = pagos.reduce((t, p) => t + p.monto, 0);
+    void cobrar(
+      {
+        hasta,
+        totalEsperado: c.total,
+        credito: { credito, pagos },
+        clienteRequestId: intento.actual(`${huella}:fiado`),
+      },
+      `${fmtMoney(c.saldo - adelanto)} a cuentas por cobrar${credito.clienteNombre ? ` (${credito.clienteNombre})` : ""}.`,
+    );
+  };
+
+  if (fiando) {
+    return (
+      <div className="flex h-full min-h-0 flex-col">
+        <Encabezado titulo={`Fiado · Mesa ${mesa.id}`}>{reloj}</Encabezado>
+        <PantallaCredito
+          total={c.saldo}
+          formasPago={e.formasPago}
+          onAtras={() => {
+            accion.setError("");
+            setFiando(false);
+          }}
+          onConfirmar={fiar}
+          enviando={accion.enviando}
+          error={accion.error}
+        />
+      </div>
+    );
+  }
 
   const secs = segundosJugados(s, hasta);
   const items = agruparItems(s.consumos);
@@ -198,79 +262,39 @@ export default function CerrarMesa() {
               {c.saldo > 0 ? (
                 <>
                   <FormCobro cobro={cobro} />
-                  <BotonB variante="verde" grande className="w-full" disabled={!cobro.pago} onClick={confirmar}>
-                    Confirmar cobro y cerrar mesa · {fmtMoney(c.saldo)}
+                  <ErrorAccion texto={accion.error} />
+                  <BotonB
+                    variante="verde"
+                    grande
+                    className="w-full"
+                    disabled={!cobro.pago || accion.enviando}
+                    onClick={confirmar}
+                  >
+                    {accion.enviando ? "Cobrando…" : `Confirmar cobro y cerrar mesa · ${fmtMoney(c.saldo)}`}
                   </BotonB>
-                  <BotonB icono="fileText" className="w-full" onClick={() => setFiando(true)}>
-                    Pasar saldo a fiado
-                  </BotonB>
+                  {/* Sin permiso de fiar, el servidor lo rechaza: el botón ni aparece. */}
+                  {tienePermiso(usuario, "credito.otorgar") && (
+                    <BotonB icono="fileText" className="w-full" disabled={accion.enviando} onClick={() => setFiando(true)}>
+                      Pasar saldo a fiado
+                    </BotonB>
+                  )}
                 </>
               ) : (
                 <>
                   <Nota icono="checkCirculo">Ya está todo pagado. Cerrar la deja libre y registra la venta.</Nota>
-                  <BotonB variante="verde" grande icono="check" className="w-full" onClick={confirmar}>
-                    Cerrar mesa
+                  <ErrorAccion texto={accion.error} />
+                  <BotonB variante="verde" grande icono="check" className="w-full" disabled={accion.enviando} onClick={confirmar}>
+                    {accion.enviando ? "Cerrando…" : "Cerrar mesa"}
                   </BotonB>
                 </>
               )}
-              <p className="text-center text-[12px] text-texto-4">Calculado a las {horaDe(hasta)}.</p>
+              {/* Sin punto final: la hora ya termina en "p. m." y quedaba "p. m..". */}
+              <p className="text-center text-[12px] text-texto-4">Calculado a las {horaDe(hasta)}</p>
             </section>
           </div>
         </div>
       </div>
 
-      {fiando && (
-        <ModalFiado
-          saldo={c.saldo}
-          clienteInicial={s.cliente ?? ""}
-          onClose={() => setFiando(false)}
-          onConfirmar={(cliente) => {
-            const codigo = billar.cerrar(mesa.id, { fiado: { cliente } }, hasta);
-            terminar(codigo, `${fmtMoney(c.saldo)} a cuentas por cobrar (${cliente}).`);
-          }}
-        />
-      )}
     </div>
-  );
-}
-
-/**
- * Fiado (§7.6): pide a nombre de quién; la deuda va a Cuentas por cobrar.
- * MAQUETA: con el backend se elige el cliente de esa lista.
- */
-function ModalFiado({
-  saldo,
-  clienteInicial,
-  onClose,
-  onConfirmar,
-}: {
-  saldo: number;
-  clienteInicial: string;
-  onClose: () => void;
-  onConfirmar: (cliente: string) => void;
-}) {
-  const [cliente, setCliente] = useState(clienteInicial);
-  return (
-    <Modal
-      abierto
-      titulo="Pasar saldo a fiado"
-      subtitulo={`${fmtMoney(saldo)} quedan en Cuentas por cobrar.`}
-      onClose={onClose}
-      cerrarAlClicAfuera={false}
-      ancho="max-w-md"
-      acciones={
-        <>
-          <BotonB onClick={onClose}>Cancelar</BotonB>
-          <BotonB variante="verde" disabled={!cliente.trim()} onClick={() => onConfirmar(cliente.trim())}>
-            Fiar {fmtMoney(saldo)} y cerrar
-          </BotonB>
-        </>
-      }
-    >
-      <label className="block">
-        <span className="mb-1.5 block text-[13px] font-semibold text-texto-2">¿A nombre de quién?</span>
-        <Input autoFocus value={cliente} onChange={(ev) => setCliente(ev.target.value)} placeholder="Nombre del cliente" />
-      </label>
-    </Modal>
   );
 }

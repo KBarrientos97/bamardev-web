@@ -29,7 +29,6 @@ import {
   type Seccion,
 } from "../lib/permisos";
 import { conPerfilDelEstado } from "../lib/perfilNegocio";
-import { conMaquetaBillar } from "../lib/billar/maqueta";
 import type { Vocabulario } from "../lib/rubro";
 import type { CupoEstado, EstadoLicencia, SesionNegocio, SesionUsuario } from "../types";
 
@@ -384,15 +383,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const contexto = useMemo<ContextoPermisos | null>(
     () =>
       usuario
-        ? // MAQUETA de billar: sólo en `npm run dev` y si se pidió (ver
-          // lib/billar/maqueta.ts). En el build devuelve lo mismo.
-          conMaquetaBillar({
+        ? {
             features: negocio?.features,
             rubro: negocio?.tipoNegocio,
             // Lo único que decide qué ve cada quien (PLAN-ROLES-NEGOCIO).
             permisos: usuario.permisos,
             permisosPropios: usuario.permisosPropios,
-          })
+          }
         : null,
     [usuario, negocio],
   );

@@ -94,6 +94,10 @@ export default function PantallaCierre({
   // y un monto negativo dejaba el arqueo del turno con un faltante falso.
   const conteoHecho = contado !== "" && Number.isFinite(contadoNum) && contadoNum >= 0;
   const diferencia = Math.round((contadoNum - esperado) * 100) / 100;
+  // Billar: con una mesa en juego la caja no cierra (decisión de Kevin,
+  // 11-oct-2026). El backend lo rechaza igual (MESAS_ABIERTAS); acá se dice
+  // antes de contar la plata, y cuáles son. En los demás rubros no viene.
+  const mesasBillar = r?.mesasBillarAbiertas ?? [];
 
   async function cerrar() {
     setError("");
@@ -150,6 +154,7 @@ export default function PantallaCierre({
               revisar={r.citasCobroRevisar ?? 0}
               cuales={r.citasRevisar}
             />
+            {mesasBillar.length > 0 && <AvisoMesasBillar mesas={mesasBillar} />}
             <section className="card p-4">
               <h2 className="mb-3 text-[13px] font-bold uppercase tracking-wide text-texto-4">
                 Movimiento del turno
@@ -326,6 +331,22 @@ export default function PantallaCierre({
                       </p>
                     </div>
                   )}
+                  {/* Billar: el efectivo que se cobró a mesas que siguen
+                      abiertas (adelanto, tiempo fijo) está en el cajón pero
+                      todavía no es una venta, y el backend lo suma al
+                      esperado. Si la mesa la cobró otra caja, es al revés: la
+                      venta está acá y el billete en el otro cajón. Sin la fila
+                      el esperado no sale de sumar las de arriba. */}
+                  {(r.adelantosBillar ?? 0) !== 0 && (
+                    <Fila
+                      etiqueta={
+                        (r.adelantosBillar ?? 0) > 0
+                          ? "Adelantos de mesas de billar (efectivo)"
+                          : "Adelantos de billar cobrados en otra caja"
+                      }
+                      valor={r.adelantosBillar ?? 0}
+                    />
+                  )}
                   {/* Un abono cobrado por QR entró al negocio pero NO al cajón:
                       sin esta fila el cajero veía el total de cobros del turno
                       sin poder explicar por qué el efectivo no llegaba. */}
@@ -465,10 +486,14 @@ export default function PantallaCierre({
       <div className="border-t border-borde bg-white p-4">
         <Boton
           onClick={cerrar}
-          disabled={enviando || resumen.cargando}
+          disabled={enviando || resumen.cargando || mesasBillar.length > 0}
           className="w-full py-3 text-base"
         >
-          {enviando ? "Cerrando…" : "Cerrar caja"}
+          {enviando
+            ? "Cerrando…"
+            : mesasBillar.length > 0
+              ? "Cobrá las mesas en juego para cerrar"
+              : "Cerrar caja"}
         </Boton>
       </div>
 
@@ -674,6 +699,29 @@ const MOTIVO_REVISAR: Record<MotivoRevisarCita, string> = {
   CITA_CERRADA: "cobrada estando cerrada",
   COBRO_INCOMPLETO: "cobrada por menos de lo agendado",
 };
+
+/**
+ * Las mesas de billar que siguen en juego en el local: la caja no cierra con
+ * ellas (decisión de Kevin, 11-oct-2026). Se cobran o se anulan desde el
+ * billar, y recién ahí se cierra.
+ */
+function AvisoMesasBillar({ mesas }: { mesas: { numero: number; alias: string | null }[] }) {
+  const nombres = mesas.map((m) => (m.alias ? `Mesa ${m.numero} (${m.alias})` : `Mesa ${m.numero}`));
+  return (
+    <div role="alert" className="flex items-start gap-2.5 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-[13px] text-amber-800">
+      <span className="mt-px shrink-0">
+        <Icon name="alert" size={17} />
+      </span>
+      <p>
+        <b>
+          {mesas.length === 1 ? "Hay 1 mesa de billar en juego" : `Hay ${mesas.length} mesas de billar en juego`}
+        </b>
+        : {nombres.join(", ")}. La caja no se cierra con mesas abiertas: cobralas (o anulá la que se abrió por error)
+        desde el billar.
+      </p>
+    </div>
+  );
+}
 
 function AvisoCitas({
   porCobrar,

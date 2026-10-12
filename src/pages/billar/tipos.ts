@@ -1,10 +1,9 @@
 /**
  * Los datos del módulo Billar (BILLAR_MODULO_SPEC §4).
  *
- * MAQUETA (oct-2026): todavía no hay backend. Las horas son milisegundos de
- * `Date.now()` y viven en memoria (ver `store.ts`). Cuando llegue el backend
- * la forma se mantiene: la hora la pone el servidor y la pantalla sólo la
- * muestra y calcula lo que falta para dibujar (§9).
+ * Las horas son milisegundos y las pone el servidor (§9): la pantalla sólo
+ * las muestra y calcula lo que falta para dibujar. Llegan del backend con
+ * esta misma forma (ver `api.ts`).
  */
 
 /** Un paquete de tiempo fijo: N horas por un precio cerrado. */
@@ -66,7 +65,11 @@ export interface ItemConsumo {
   anulado?: boolean;
 }
 
-export type MetodoPago = "Efectivo" | "QR" | "Mixto" | "Fiado";
+/** Cómo se cobra en el billar (el mixto viaja como dos pagos: efectivo y QR). */
+export type MetodoCobro = "Efectivo" | "QR" | "Mixto";
+
+/** Fiado sólo aparece en una venta; otra forma de pago del negocio, con su nombre. */
+export type MetodoPago = MetodoCobro | "Fiado" | (string & {});
 
 export interface Pago {
   id: string;
@@ -123,6 +126,8 @@ export interface Sesion {
 export interface Mesa {
   /** El número que se ve: "MESA 5". Único por sucursal. */
   id: number;
+  /** El id del backend, el que va en las rutas (el número lo puede cambiar el administrador). */
+  idInterno: number;
   tipo: string;
   /** Apodo opcional ("Mesa VIP"): va debajo del número. */
   alias?: string;
@@ -149,6 +154,8 @@ export interface ItemVenta {
 
 /** Una venta del turno: de una mesa cerrada o una venta rápida (§4.5). */
 export interface VentaBillar {
+  /** El id de la venta en el backend: con él se anula. */
+  id: number;
   codigo: string;
   hora: number;
   cajero: string;
@@ -175,15 +182,18 @@ export interface ProductoBillar {
   nombre: string;
   precio: number;
   categoria: string;
-  stock: number;
+  /** Lo que queda para vender (lo cargado a mesas abiertas ya está restado); null = servicio, sin stock. */
+  stock: number | null;
 }
 
-/** Qué acciones piden el PIN del administrador (§4.4). */
+/**
+ * Qué acciones piden el PIN de un encargado (§4.4). Anular una venta no está
+ * acá porque en todo el sistema pide PIN siempre, y el billar no tiene
+ * descuentos: esas dos casillas de la maqueta no hacían nada.
+ */
 export interface PinesBillar {
   anularConsumo: boolean;
   anularMesa: boolean;
-  anularVenta: boolean;
-  descuento: boolean;
 }
 
 export interface AjustesBillar {
@@ -191,14 +201,16 @@ export interface AjustesBillar {
   avisos: number[];
   sonido: boolean;
   voz: boolean;
-  /** Silencio global del tablero (la campana tachada). */
+  /** Silencio global del tablero (la campana tachada). Es de este equipo, no viaja. */
   silencio: boolean;
   pin: PinesBillar;
+  /** Si ya hay una llave para la pantalla del salón (la TV sin usuario). */
+  tieneTokenSalon?: boolean;
 }
 
 /** Una línea de la auditoría (§4.7): pausas, anulaciones, cambios de mesa. */
 export interface RegistroAuditoria {
-  id: string;
+  id: number;
   hora: number;
   mesaId?: number;
   /** "Pausó 6 min", "Anuló 1× Cerveza Paceña 620 ml". */
@@ -209,16 +221,11 @@ export interface RegistroAuditoria {
   autorizo?: string;
 }
 
+/** La caja de quien opera: el billar cobra con la caja del cajero, como el POS. */
 export interface Caja {
   abierta: boolean;
+  /** El id de la caja (sólo abierta). */
+  id?: number;
   desde: number;
   inicial: number;
-}
-
-export interface NegocioBillar {
-  nombre: string;
-  direccion: string;
-  sucursal: string;
-  nit: string;
-  pieTicket: string;
 }

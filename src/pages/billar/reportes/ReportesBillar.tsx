@@ -1,40 +1,39 @@
 import { useMemo } from "react";
-import { Kpi, Vacio } from "../../../components/ui";
+import { Cargando, ErrorMsg, Kpi, Vacio } from "../../../components/ui";
 import { fmtMoney, fmtNum } from "../../../lib/format";
+import { useApi } from "../../../lib/useApi";
 import type { RangoReporte } from "../../../types";
+import { apiBillar } from "../api";
 import { horaDe, round2 } from "../calculo";
-import { useBillar } from "../store";
 import { Fila, Tarjeta } from "../ui";
-import { HORARIO, horaCorta, reporteBillar, textoPico, type ReporteBillar } from "./datosReporte";
+import { horaCorta, ordenJornada, textoPico, type ReporteBillar } from "./datosReporte";
 
 /**
  * Reportes → Billar (§7.15): lo que dejaron las mesas en el período elegido
- * arriba (Hoy, Semana, Mes… los mismos filtros de toda la pantalla).
- *
- * MAQUETA (oct-2026): cifras de ejemplo (ver `datosReporte.ts`); la auditoría
- * suma lo que se hizo en el tablero.
+ * arriba (Hoy, Semana, Mes… los mismos filtros de toda la pantalla). Los
+ * números son del backend (`GET /billar/reportes`): lo cobrado de verdad, con
+ * la tarifa con que se cobró cada mesa.
  */
 export default function ReportesBillar({ rango }: { rango: RangoReporte }) {
-  const e = useBillar();
+  const { desde, hasta, sucursalId } = rango;
+  const reporte = useApi(
+    () => (desde && hasta ? apiBillar.reporte(desde, hasta, sucursalId) : Promise.resolve(null)),
+    [desde, hasta, sucursalId],
+  );
   const r = useMemo(
-    () =>
-      rango.desde && rango.hasta
-        ? reporteBillar(rango.desde, rango.hasta, e.productos, e.auditoria, new Date())
-        : null,
-    [rango.desde, rango.hasta, e.productos, e.auditoria],
+    () => (reporte.datos ? { ...reporte.datos, porHora: ordenJornada(reporte.datos.porHora) } : null),
+    [reporte.datos],
   );
 
+  if (reporte.cargando) return <Cargando texto="Armando el reporte del billar…" />;
+  // Un reporte de plata que falla no se muestra en cero: se dice que falló.
+  if (reporte.error) return <ErrorMsg onReintentar={reporte.recargar}>{reporte.error}</ErrorMsg>;
   if (!r || (r.jornadas === 0 && r.auditoria.length === 0)) {
-    const hoy = new Date().getHours() < HORARIO.abre;
     return (
       <Vacio
         icono="bola"
         titulo="Sin movimiento en estas fechas"
-        texto={
-          hoy
-            ? `El billar abre a las ${horaCorta(HORARIO.abre)}: todavía no hay nada jugado hoy. Probá con Semana o Mes.`
-            : "Elegí otro período."
-        }
+        texto="No se cobró ninguna mesa en este período. Probá con Semana o Mes."
       />
     );
   }

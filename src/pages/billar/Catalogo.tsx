@@ -4,7 +4,6 @@ import { inicialesDe } from "../../lib/iconosArticulo";
 import { fmtMoney } from "../../lib/format";
 import { useCoincideMedia } from "../../lib/useCoincideMedia";
 import type { Carrito } from "./carrito";
-import { CATEGORIAS_DEMO, COLOR_CATEGORIA } from "./demo";
 import type { ProductoBillar } from "./tipos";
 import { BotonB, ChipFiltro } from "./ui";
 
@@ -12,9 +11,27 @@ import { BotonB, ChipFiltro } from "./ui";
  * El catálogo del POS para el billar (§7.4, §7.7): buscador, categorías y la
  * grilla con el stock. Lo usan el consumo de una mesa y la venta rápida.
  *
- * MAQUETA: los productos son los del ejemplo. Con el backend es el catálogo de
- * la sucursal de la caja, el mismo del POS (y su stock).
+ * Es el catálogo de la sucursal, el mismo del POS, con lo que queda para
+ * vender: lo cargado a mesas abiertas ya está restado (todavía no salió del
+ * stock, pero tampoco se puede ofrecer a otra mesa). Los servicios no llevan
+ * stock.
  */
+
+/**
+ * El color del monograma por categoría, como en la maqueta: las categorías con
+ * que arranca un billar (el kit del rubro). Una categoría propia del negocio
+ * toma el de la paleta. Va acá y no en `colorDeCategoria` (lib/iconosArticulo)
+ * porque ése lo comparten el POS del restaurante y la farmacia: sumarle
+ * "Comida" le cambiaría el color a un restaurante que tenga una categoría con
+ * ese nombre.
+ */
+const COLOR_CATEGORIA: Record<string, { bg: string; fg: string }> = {
+  Cervezas: { bg: "#FEF3C7", fg: "#B45309" },
+  Bebidas: { bg: "#DBEAFE", fg: "#1D4ED8" },
+  Snacks: { bg: "#FFE4E6", fg: "#BE123C" },
+  Comida: { bg: "#D1FAE5", fg: "#047857" },
+  Accesorios: { bg: "#EDE9FE", fg: "#6D28D9" },
+};
 
 export function Catalogo({
   productos,
@@ -27,6 +44,15 @@ export function Catalogo({
 }) {
   const [busqueda, setBusqueda] = useState("");
   const [categoria, setCategoria] = useState<string | null>(null);
+  // Las del kit en el orden de la maqueta (las cervezas primero, que es lo que
+  // más sale); las que haya creado el negocio, después y por nombre.
+  const categorias = useMemo(() => {
+    const kit = Object.keys(COLOR_CATEGORIA);
+    const lugar = (c: string) => (kit.includes(c) ? kit.indexOf(c) : kit.length);
+    return [...new Set(productos.map((p) => p.categoria))].sort(
+      (a, b) => lugar(a) - lugar(b) || a.localeCompare(b, "es"),
+    );
+  }, [productos]);
   const visibles = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
     return productos.filter(
@@ -52,26 +78,33 @@ export function Catalogo({
         </label>
         <div className="-mx-4 flex w-[calc(100%+2rem)] gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:w-auto sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0">
           <ChipFiltro activo={categoria === null} etiqueta="Todos" onClick={() => setCategoria(null)} />
-          {CATEGORIAS_DEMO.map((c) => (
+          {categorias.map((c) => (
             <ChipFiltro key={c} activo={categoria === c} etiqueta={c} onClick={() => setCategoria(c)} />
           ))}
         </div>
       </div>
 
       {visibles.length === 0 ? (
-        <p className="py-10 text-center text-sm text-texto-3">No hay productos con "{busqueda}".</p>
+        <p className="py-10 text-center text-sm text-texto-3">
+          {productos.length === 0
+            ? "No hay productos para vender en esta sucursal."
+            : busqueda
+              ? `No hay productos con "${busqueda}".`
+              : "No hay productos en esta categoría."}
+        </p>
       ) : (
         <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(150px,1fr))] sm:[grid-template-columns:repeat(auto-fill,minmax(180px,1fr))]">
           {visibles.map((p) => {
             const enCarrito = carrito.get(p.id) ?? 0;
-            const disponible = p.stock - enCarrito;
-            const agotado = p.stock <= 0;
+            // null: un servicio, sin stock que cuidar.
+            const disponible = p.stock === null ? null : p.stock - enCarrito;
+            const agotado = p.stock !== null && p.stock <= 0;
             const color = COLOR_CATEGORIA[p.categoria] ?? { bg: "var(--monograma-bg)", fg: "var(--monograma-fg)" };
             return (
               <button
                 key={p.id}
                 type="button"
-                disabled={agotado || disponible <= 0}
+                disabled={agotado || (disponible !== null && disponible <= 0)}
                 onClick={() => onAgregar(p.id)}
                 aria-label={`${p.nombre}, ${fmtMoney(p.precio)}${enCarrito ? `, ${enCarrito} en el pedido` : ""}`}
                 className={`relative flex flex-col rounded-2xl border bg-white p-3 text-left transition-shadow disabled:cursor-not-allowed ${
@@ -99,11 +132,11 @@ export function Catalogo({
                     <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-bold uppercase text-rose-700">
                       Agotado
                     </span>
-                  ) : (
+                  ) : disponible !== null ? (
                     <span className="rounded-full bg-primary-50 px-2 py-0.5 text-[10px] font-bold tabular-nums text-primary-700">
                       {disponible} disp.
                     </span>
-                  )}
+                  ) : null}
                 </span>
               </button>
             );

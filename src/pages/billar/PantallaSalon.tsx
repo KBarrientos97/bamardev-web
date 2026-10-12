@@ -5,22 +5,24 @@ import { fmtMoney } from "../../lib/format";
 import { useAuth } from "../../store/AuthContext";
 import { fmtCrono, horaDe, promoPara } from "./calculo";
 import { useAhora } from "./reloj";
-import { mesasEnUso, useBillar } from "./store";
+import { mesasEnUso, useBillar, useSondeoBillar } from "./store";
 import { vistaDe, type VistaMesa } from "./vista";
 
 /**
  * La pantalla del salón (§7.11): para una TV, a pantalla completa, con el
  * tiempo de cada mesa y SIN montos ni datos del cajero. Sale con Escape.
  *
- * MAQUETA: se abre desde el tablero, con la sesión del cajero. En producción
- * es una dirección de sólo lectura con token (`/billar/salon?sucursal=X`),
- * para dejarla abierta en la TV sin iniciar sesión.
+ * Se abre desde el tablero, con la sesión del cajero, y se mantiene al día
+ * sola: va fuera del Layout, así que pide el tablero por su cuenta. La TV sin
+ * sesión (con la llave de `/publico/billar/salon/:token`, que el backend ya
+ * tiene) todavía no tiene pantalla en la web.
  */
 export default function PantallaSalon() {
   const e = useBillar();
   const ahora = useAhora();
   const navigate = useNavigate();
   const { negocio } = useAuth();
+  useSondeoBillar(negocio?.alias);
   const vistas = mesasEnUso(e).map((m) => vistaDe(e, m, ahora));
   const libres = vistas.filter((v) => v.estado === "libre").length;
 
@@ -59,6 +61,7 @@ export default function PantallaSalon() {
         </div>
       </header>
 
+      {!e.cargado && <p className="mt-10 text-center text-lg text-white/70">{e.error ?? "Cargando las mesas…"}</p>}
       <div className="mt-6 grid flex-1 content-start gap-4 [grid-template-columns:repeat(auto-fill,minmax(280px,1fr))] sm:gap-5">
         {vistas.map((v) => (
           <TarjetaTv key={v.mesa.id} v={v} />
@@ -71,7 +74,7 @@ export default function PantallaSalon() {
           return (
             <p key={t.id}>
               <b className="text-white">{t.nombre}</b> {fmtMoney(t.tarifa)}/h
-              {t.paquetes.map((p) => ` · ${p.h} h Bs ${p.precio}`).join("")}
+              {t.paquetes.map((p) => ` · ${p.h} h ${fmtMoney(p.precio)}`).join("")}
               {promo && (
                 <b className="text-amber-300">
                   {" "}

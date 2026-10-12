@@ -6,16 +6,19 @@ import { fmtMoney } from "../../lib/format";
 import { totalCarrito, useCarritoBillar } from "./carrito";
 import { Catalogo, LineasPedido, PantallaPedido } from "./Catalogo";
 import { FormCobro } from "./Cobro";
+import { huellaDeCobro, useIntentoDeCobro } from "../pos/useIntentoDeCobro";
 import { useCobro } from "./useCobro";
+import { useAccion } from "./useAccion";
 import { CajaCerradaAviso } from "./ModalesCaja";
-import { billar, useBillar } from "./store";
-import { BotonB, Encabezado, Rotulo } from "./ui";
+import { billar, cargarProductos, useBillar } from "./store";
+import { BotonB, Encabezado, ErrorAccion, Rotulo } from "./ui";
 
 /**
  * Venta rápida, sin mesa (§7.7): el que pasa a comprar una soda o una cerveza.
- * Se cobra en el acto y descuenta stock. No hay fiado acá: el fiado es al
- * cerrar una mesa. Si al final se quedan a jugar, el pedido se carga a una
- * mesa abierta sin cobrarlo.
+ * Es una venta normal del POS (`POST /ventas`): comprobante del turno, stock
+ * y caja como cualquier otra. No hay fiado acá: el fiado es al cerrar una
+ * mesa. Si al final se quedan a jugar, el pedido se carga a una mesa abierta
+ * sin cobrarlo.
  */
 export default function VentaRapida() {
   const e = useBillar();
@@ -28,6 +31,8 @@ export default function VentaRapida() {
   const cantidad = items.reduce((t, i) => t + i.cant, 0);
   const cobro = useCobro(total);
   const abiertas = e.mesas.filter((m) => m.estado === "abierta");
+  const accion = useAccion();
+  const intento = useIntentoDeCobro();
 
   const volver = (
     <BotonB icono="arrowLeft" onClick={() => navigate("/billar")} aria-label="Volver al billar">
@@ -44,10 +49,20 @@ export default function VentaRapida() {
     );
   }
 
-  const confirmar = () => {
-    if (!cobro.pago) return;
+  const confirmar = async () => {
+    const pago = cobro.pago;
+    if (!pago) return;
     const cambio = cobro.cambio;
-    const codigo = billar.ventaRapida(items, cobro.pago, cliente);
+    let codigo = "";
+    const ok = await accion.ejecutar(async () => {
+      // El mismo id mientras el pedido sea el mismo: un reintento no vende dos veces.
+      codigo = await billar.ventaRapida(items, pago, cliente, intento.actual(huellaDeCobro(items)));
+    });
+    if (!ok) {
+      void cargarProductos();
+      return;
+    }
+    intento.registrado();
     billar.avisar({
       tono: "verde",
       titulo: `Venta rápida ${codigo} · ${fmtMoney(total)}`,
@@ -62,8 +77,12 @@ export default function VentaRapida() {
     cobro.setMetodo("Efectivo");
   };
 
-  const cargarAMesa = (mesaId: number) => {
-    billar.agregarConsumos(mesaId, items);
+  const cargarAMesa = async (mesaId: number) => {
+    setAMesa(false);
+    if (!(await accion.ejecutar(() => billar.agregarConsumos(mesaId, items)))) {
+      void cargarProductos();
+      return;
+    }
     vaciar();
     billar.avisar({ tono: "verde", titulo: `Se cargó ${fmtMoney(total)} a la Mesa ${mesaId}`, texto: "Sin cobrar: va a la cuenta de la mesa." });
     navigate(`/billar?mesa=${mesaId}`);
@@ -94,8 +113,16 @@ export default function VentaRapida() {
         <FormCobro cobro={cobro} />
       </div>
       <div className="shrink-0 border-t border-borde px-5 py-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
-        <BotonB variante="verde" grande icono="check" className="w-full" disabled={!cobro.pago} onClick={confirmar}>
-          Confirmar venta · {fmtMoney(total)}
+        <ErrorAccion texto={accion.error} />
+        <BotonB
+          variante="verde"
+          grande
+          icono="check"
+          className="mt-3 w-full"
+          disabled={!cobro.pago || accion.enviando}
+          onClick={confirmar}
+        >
+          {accion.enviando ? "Registrando…" : `Confirmar venta · ${fmtMoney(total)}`}
         </BotonB>
       </div>
     </>
@@ -128,13 +155,14 @@ export default function VentaRapida() {
           <span className="text-[15px] font-bold uppercase text-texto">Total</span>
           <span className="text-2xl font-extrabold tabular-nums text-texto">{fmtMoney(total)}</span>
         </div>
+        {!cobrando && <ErrorAccion texto={accion.error} />}
         <BotonB variante="verde" grande icono="billetera" className="w-full" disabled={cantidad === 0} onClick={() => setCobrando(true)}>
           Cobrar {fmtMoney(total)}
         </BotonB>
         <div className="relative">
           <BotonB
             className="w-full"
-            disabled={cantidad === 0 || abiertas.length === 0}
+            disabled={cantidad === 0 || abiertas.length === 0 || accion.enviando}
             onClick={() => setAMesa((x) => !x)}
             aria-expanded={aMesa}
             title={abiertas.length === 0 ? "No hay mesas abiertas" : undefined}
@@ -148,7 +176,7 @@ export default function VentaRapida() {
                 <li key={m.id}>
                   <button
                     type="button"
-                    onClick={() => cargarAMesa(m.id)}
+                    onClick={() => void cargarAMesa(m.id)}
                     className="flex w-full items-center justify-between gap-2 px-4 py-2.5 text-left text-[13px] hover:bg-muted"
                   >
                     <span className="font-semibold text-texto">Mesa {m.id}</span>

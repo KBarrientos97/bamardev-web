@@ -1,11 +1,11 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Icon } from "../../components/Icon";
 import { Vacio } from "../../components/ui";
 import { fmtMoney } from "../../lib/format";
 import { fmtCobrado, horaDe } from "./calculo";
 import { useDialogos } from "./dialogos";
-import { useBillar } from "./store";
+import { cargarVentas, useBillar } from "./store";
 import type { VentaBillar } from "./tipos";
 import { BotonB, ChipFiltro, Circulo, Encabezado } from "./ui";
 import { resumenTurno } from "./vista";
@@ -46,6 +46,10 @@ export default function VentasTurno() {
   const navigate = useNavigate();
   const { abrir } = useDialogos();
   const [filtro, setFiltro] = useState<Filtro>("todas");
+  // Al entrar, las del momento: las del sondeo pueden tener hasta medio minuto.
+  useEffect(() => {
+    void cargarVentas();
+  }, []);
   const r = resumenTurno(e);
   const ventas = [...e.ventas].sort((a, b) => b.hora - a.hora);
   const visibles = ventas.filter((v) => pasa(v, filtro));
@@ -86,7 +90,7 @@ export default function VentasTurno() {
             </div>
             <span className="ml-auto flex items-center gap-1 text-[12px] text-texto-3">
               <Icon name="lock" size={13} />
-              Anular pide el PIN del administrador
+              Anular pide PIN
             </span>
           </div>
 

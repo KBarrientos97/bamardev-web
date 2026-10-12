@@ -13,6 +13,28 @@ export interface AccionMesa {
   hacer: () => void;
 }
 
+const enCurso = new Set<string>();
+
+/**
+ * Una acción de un toque, sin diálogo (reanudar, cancelar la reserva, volver a
+ * servicio). No se manda dos veces mientras espera, y si el servidor dice que
+ * no (otra caja ya la tocó), se avisa en rojo: un botón que no hace nada sin
+ * decir por qué es peor que un error.
+ */
+export function deUnToque(clave: string, fn: () => Promise<unknown>) {
+  if (enCurso.has(clave)) return;
+  enCurso.add(clave);
+  fn()
+    .catch((err: unknown) =>
+      billar.avisar({
+        tono: "rojo",
+        titulo: "No se pudo",
+        texto: err instanceof Error && err.message ? err.message : "Probá de nuevo.",
+      }),
+    )
+    .finally(() => enCurso.delete(clave));
+}
+
 /**
  * Qué se puede hacer con una mesa según cómo está (§7.1, §7.12). La primera es
  * la principal: va en el botón de la tarjeta.
@@ -34,10 +56,19 @@ export function useAccionesMesa() {
       const pago: AccionMesa = { clave: "pago", etiqueta: "Registrar pago", icono: "billetera", hacer: () => abrir({ tipo: "pago", mesaId: id }) };
       const extender: AccionMesa = { clave: "extender", etiqueta: "Extender", icono: "cronometro", hacer: () => abrir({ tipo: "extender", mesaId: id }) };
       const pausar: AccionMesa = { clave: "pausar", etiqueta: "Pausar", icono: "pausa", hacer: () => abrir({ tipo: "pausar", mesaId: id }) };
-      const reanudar: AccionMesa = { clave: "reanudar", etiqueta: "Reanudar", icono: "play", hacer: () => billar.reanudar(id) };
+      const reanudar: AccionMesa = {
+        clave: "reanudar",
+        etiqueta: "Reanudar",
+        icono: "play",
+        hacer: () => deUnToque(`reanudar:${id}`, () => billar.reanudar(id)),
+      };
       const cambiar: AccionMesa = { clave: "cambiar", etiqueta: "Cambiar mesa", icono: "swap", hacer: () => abrir({ tipo: "cambiar", mesaId: id }) };
       const finalizar: AccionMesa = { clave: "finalizar", etiqueta: "Finalizar mesa", icono: "check", hacer: () => navigate(`/billar/cerrar/${id}`) };
       const historial: AccionMesa = { clave: "historial", etiqueta: "Historial", icono: "clock", hacer: () => abrir({ tipo: "historial", mesaId: id }) };
+      // Sin estas dos, una mesa abierta por error no se podía sacar: no tiene
+      // nada que cobrar, y con ella abierta la caja no cierra.
+      const corregir: AccionMesa = { clave: "inicio", etiqueta: "Corregir inicio", icono: "edit", hacer: () => abrir({ tipo: "editarInicio", mesaId: id }) };
+      const anular: AccionMesa = { clave: "anular", etiqueta: "Anular mesa", icono: "trash", hacer: () => abrir({ tipo: "anularMesa", mesaId: id }) };
 
       switch (v.estado) {
         case "libre":
@@ -48,21 +79,31 @@ export function useAccionesMesa() {
             historial,
           ];
         case "juego":
-          return [consumo, pago, ...(fijo ? [extender] : []), pausar, cambiar, finalizar, historial];
+          return [consumo, pago, ...(fijo ? [extender] : []), pausar, cambiar, finalizar, historial, corregir, anular];
         case "vence":
         case "cumplido":
-          return [extender, consumo, pago, pausar, cambiar, finalizar, historial];
+          return [extender, consumo, pago, pausar, cambiar, finalizar, historial, corregir, anular];
         case "pausada":
-          return [reanudar, consumo, pago, cambiar, finalizar, historial];
+          return [reanudar, consumo, pago, cambiar, finalizar, historial, corregir, anular];
         case "reservada":
           return [
             { clave: "llego", etiqueta: "Llegó · Abrir", icono: "arrowRight", hacer: () => abrir({ tipo: "abrir", mesaId: id }) },
-            { clave: "cancelar", etiqueta: "Cancelar reserva", icono: "x", hacer: () => billar.cancelarReserva(id) },
+            {
+              clave: "cancelar",
+              etiqueta: "Cancelar reserva",
+              icono: "x",
+              hacer: () => deUnToque(`reserva:${id}`, () => billar.cancelarReserva(id)),
+            },
             historial,
           ];
         case "fuera":
           return [
-            { clave: "volver", etiqueta: "Volver a servicio", icono: "check", hacer: () => billar.volverAServicio(id) },
+            {
+              clave: "volver",
+              etiqueta: "Volver a servicio",
+              icono: "check",
+              hacer: () => deUnToque(`servicio:${id}`, () => billar.volverAServicio(id)),
+            },
             historial,
           ];
       }

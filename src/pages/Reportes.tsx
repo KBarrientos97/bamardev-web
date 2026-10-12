@@ -25,7 +25,7 @@ import Finanzas from "./Finanzas";
 import { EstadoResultadoVista, PuntoEquilibrioVista } from "./reportes/ResultadoPeriodo";
 import { CierresVista, type CierreFila } from "./reportes/CierresVista";
 
-// Billar (extra `billar`, MAQUETA oct-2026): sólo se baja si se abre la pestaña.
+// Billar (extra `billar`): sólo se baja si se abre la pestaña.
 const ReportesBillar = lazy(() => import("./billar/reportes/ReportesBillar"));
 
 type Vista = "reportes" | "finanzas" | "billar";

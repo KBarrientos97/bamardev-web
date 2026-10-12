@@ -979,6 +979,14 @@ export interface ResumenCaja {
    * un backend anterior sólo manda el conteo.
    */
   citasRevisar?: CitaParaRevisar[];
+  /**
+   * Billar: el efectivo cobrado a mesas que siguen abiertas (adelantos, tiempo
+   * fijo), que ya está en el cajón y en `saldoEsperado`; negativo si la mesa
+   * la cobró otra caja. Y las mesas en juego del local: con alguna, la caja no
+   * cierra. Opcionales: sólo los manda un negocio con billar.
+   */
+  adelantosBillar?: number;
+  mesasBillarAbiertas?: { numero: number; alias: string | null }[];
 }
 
 /** Por qué un cobro de cita quedó para revisar en el cierre. */

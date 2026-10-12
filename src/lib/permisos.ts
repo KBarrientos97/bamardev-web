@@ -212,9 +212,7 @@ const REQUISITOS: Record<Seccion, Requisito> = {
   salon: { permiso: "salon.atender", feature: "salon" },
   // El ABM de mesas y zonas, parte de la misma sección vendida.
   mesas: { permiso: "salon.administrar", feature: "salon" },
-  // Billar: quien atiende las mesas de pool. El permiso y la feature todavía
-  // no existen en el backend (MAQUETA, oct-2026): nadie lo ve hasta que
-  // existan, salvo la maqueta en `npm run dev` (ver pages/billar/maqueta.ts).
+  // Billar: quien atiende las mesas de pool (el cajero).
   billar: { permiso: "billar.operar", feature: "billar" },
   // Las mesas de billar y sus tarifas son del administrador; la pestaña de
   // Reportes, de quien ve los reportes. Las dos con el mismo extra.

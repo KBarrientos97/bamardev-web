@@ -30,9 +30,10 @@ export function FormMesa({
   onListo: (mensaje: string) => void;
 }) {
   const e = useBillar();
-  const mesa = mesaId === null ? null : (e.mesas.find((m) => m.id === mesaId) ?? null);
+  const mesa = mesaId === null ? null : (e.admin.mesas.find((m) => m.id === mesaId) ?? null);
   const tipos = Object.values(e.tipos);
-  const [inicial] = useState(() => borradorMesa(mesa, siguienteNumero(e), tipos[0]?.id ?? ""));
+  const [inicial] = useState(() => borradorMesa(mesa, siguienteNumero(e.admin.mesas), tipos[0]?.id ?? ""));
+  const [enviando, setEnviando] = useState(false);
   const [b, setB] = useState<BorradorMesa>(inicial);
   const [tocado, setTocado] = useState(false);
   const [errorGuardar, setErrorGuardar] = useState("");
@@ -51,11 +52,13 @@ export function FormMesa({
     setB((x) => ({ ...x, ...cambio }));
   };
 
-  const guardar = () => {
+  const guardar = async () => {
     setTocado(true);
-    if (hayErrores) return;
+    if (hayErrores || enviando) return;
     const datos = datosMesa(b);
-    const error = mesa ? billar.editarMesa(mesa.id, datos) : billar.crearMesa(datos);
+    setEnviando(true);
+    const error = mesa ? await billar.editarMesa(mesa.id, datos) : await billar.crearMesa(datos);
+    setEnviando(false);
     if (error) return setErrorGuardar(error);
     onListo(mesa ? `Mesa ${datos.numero} guardada.` : `Mesa ${datos.numero} creada.`);
   };
@@ -220,8 +223,8 @@ export function FormMesa({
           <BotonB onClick={salir} className={mesa && !enJuego ? "" : "ml-auto"}>
             Cancelar
           </BotonB>
-          <BotonB variante="verde" icono="check" onClick={guardar} disabled={tocado && hayErrores}>
-            {mesa ? "Guardar" : "Crear mesa"}
+          <BotonB variante="verde" icono="check" onClick={() => void guardar()} disabled={(tocado && hayErrores) || enviando}>
+            {enviando ? "Guardando…" : mesa ? "Guardar" : "Crear mesa"}
           </BotonB>
         </div>
       </div>
@@ -242,10 +245,12 @@ export function FormMesa({
         etiquetaOk="Eliminar"
         peligroso
         onCancel={() => setConfirmar(null)}
-        onOk={() => {
-          if (!mesa) return;
-          const error = billar.eliminarMesa(mesa.id);
+        onOk={async () => {
+          if (!mesa || enviando) return;
           setConfirmar(null);
+          setEnviando(true);
+          const error = await billar.eliminarMesa(mesa.id);
+          setEnviando(false);
           if (error) return setErrorGuardar(error);
           onListo(`Mesa ${mesa.id} eliminada.`);
         }}

@@ -1,49 +1,29 @@
 import { useState } from "react";
-import { Input, Modal } from "../../components/ui";
-import { parsearMonto } from "../../lib/dinero";
+import { Modal } from "../../components/ui";
+import AperturaCaja from "../pos/AperturaCaja";
 import { audioBloqueado, desbloquearAudio, hablar, zumbido } from "./alertas";
-import { billar, useBillar } from "./store";
-import { BotonB, Circulo, Nota } from "./ui";
+import { billar, recargar, useBillar } from "./store";
+import { BotonB, Nota } from "./ui";
 
-/** La caja cerrada tapa el tablero, el consumo, el cobro y la venta rápida (§7.13). */
+/**
+ * Sin caja abierta no se abre una mesa, no se carga ni se cobra (§7.13). La
+ * caja es la del propio cajero, la misma del POS, y se abre con la misma
+ * pantalla: el fondo, el corte de billetes y, si es del dueño, la sucursal.
+ */
 export function CajaCerradaAviso() {
   const { mesas } = useBillar();
-  const [inicial, setInicial] = useState("200");
-  const monto = parsearMonto(inicial);
   const siguen = mesas.filter((m) => m.estado === "abierta").length;
   return (
-    <div className="flex flex-1 items-center justify-center p-6">
-      <div className="card w-full max-w-sm p-6 text-center">
-        <div className="mx-auto w-fit">
-          <Circulo icono="lock" tono="gris" size={56} />
+    <div className="min-h-0 flex-1 overflow-y-auto">
+      {siguen > 0 && (
+        <div className="mx-auto max-w-lg px-4 pt-4">
+          <Nota tono="ambar" icono="bola">
+            {siguen === 1 ? "Hay 1 mesa en juego" : `Hay ${siguen} mesas en juego`}: siguen corriendo y se cobran
+            cuando abras tu caja.
+          </Nota>
         </div>
-        <h2 className="mt-3 text-lg font-bold text-texto">Caja cerrada</h2>
-        <p className="mt-1 text-[13px] text-texto-3">
-          Para abrir mesas o vender, abrí la caja del turno con el efectivo que hay para dar cambio.
-        </p>
-        {siguen > 0 && (
-          <div className="mt-4 text-left">
-            <Nota tono="ambar" icono="bola">
-              {siguen === 1 ? "Hay 1 mesa abierta" : `Hay ${siguen} mesas abiertas`} del turno anterior: siguen
-              corriendo y se cobran en el turno que abras.
-            </Nota>
-          </div>
-        )}
-        <label className="mt-4 block text-left">
-          <span className="mb-1.5 block text-[13px] font-semibold text-texto-2">Monto inicial</span>
-          <Input type="number" value={inicial} onChange={(ev) => setInicial(ev.target.value)} />
-        </label>
-        <BotonB
-          variante="verde"
-          grande
-          icono="check"
-          className="mt-4 w-full"
-          disabled={monto === null || monto < 0}
-          onClick={() => billar.abrirCaja(monto ?? 0)}
-        >
-          Abrir caja
-        </BotonB>
-      </div>
+      )}
+      <AperturaCaja onAbierta={() => void recargar(true)} />
     </div>
   );
 }
@@ -117,7 +97,7 @@ export function ModalAvisos({ onClose }: { onClose: () => void }) {
     >
       <div className="divide-y divide-borde-soft">
         <Interruptor
-          etiqueta="Silenciar todo"
+          etiqueta="Silenciar este equipo"
           texto="Siguen los avisos en pantalla, sin sonido ni voz."
           activo={ajustes.silencio}
           onCambiar={(v) => billar.ajustar({ silencio: v })}
@@ -145,7 +125,10 @@ export function ModalAvisos({ onClose }: { onClose: () => void }) {
           </Nota>
         </div>
       )}
-      <p className="mt-3 text-[12px] text-texto-4">Los minutos de aviso se cambian en Mesas de billar → Tarifas y paquetes.</p>
+      <p className="mt-3 text-[12px] text-texto-4">
+        Estos interruptores son de este equipo. Los minutos de aviso, y el zumbido y la voz de todos los equipos, se
+        cambian en Mesas de billar → Tarifas y paquetes.
+      </p>
     </Modal>
   );
 }

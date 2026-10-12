@@ -16,6 +16,8 @@ export type Dialogo =
   | { tipo: "fuera"; mesaId: number }
   | { tipo: "reservar"; mesaId: number }
   | { tipo: "pago"; mesaId: number }
+  | { tipo: "anularMesa"; mesaId: number }
+  | { tipo: "editarInicio"; mesaId: number }
   | { tipo: "historial"; mesaId: number }
   | { tipo: "anularConsumo"; mesaId: number; itemId: string }
   | { tipo: "venta"; codigo: string }
@@ -30,6 +32,13 @@ interface Pila {
   cerrar: () => void;
   /** Cierra todos (después de una acción que termina el flujo). */
   cerrarTodo: () => void;
+  /**
+   * Saca ESE diálogo, esté donde esté. Cerrar dos veces el mismo no cierra el
+   * de abajo: después de anular una venta, el diálogo del PIN se iba solo (la
+   * venta ya estaba anulada) y el cierre del botón se llevaba además el
+   * detalle de la venta, que era a donde había que volver.
+   */
+  quitar: (d: Dialogo) => void;
 }
 
 const Contexto = createContext<Pila | null>(null);
@@ -39,9 +48,10 @@ export function DialogosProvider({ children }: { children: ReactNode }) {
   const abrir = useCallback((d: Dialogo) => setPila((p) => [...p, d]), []);
   const cerrar = useCallback(() => setPila((p) => p.slice(0, -1)), []);
   const cerrarTodo = useCallback(() => setPila([]), []);
+  const quitar = useCallback((d: Dialogo) => setPila((p) => p.filter((x) => x !== d)), []);
   const valor = useMemo(
-    () => ({ actual: pila[pila.length - 1] ?? null, abrir, cerrar, cerrarTodo }),
-    [pila, abrir, cerrar, cerrarTodo],
+    () => ({ actual: pila[pila.length - 1] ?? null, abrir, cerrar, cerrarTodo, quitar }),
+    [pila, abrir, cerrar, cerrarTodo, quitar],
   );
   return <Contexto.Provider value={valor}>{children}</Contexto.Provider>;
 }

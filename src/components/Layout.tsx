@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { Outlet } from "react-router-dom";
 import { iniciales } from "../lib/format";
 import { tituloDe, useMenu } from "../lib/menu";
@@ -10,6 +10,13 @@ import { BarraCupo } from "./ChipCupo";
 import { HojaCupoHost } from "./ComprarCreditos";
 import { Icon } from "./Icon";
 import MenuLateral from "./MenuLateral";
+
+/**
+ * Billar: los avisos de tiempo fijo y el tablero al día en todas las
+ * pantallas, no sólo en /billar (ver pages/billar/DeFondo). Se baja aparte y
+ * sólo se monta si el usuario ve el billar: los demás rubros no cargan nada.
+ */
+const BillarDeFondo = lazy(() => import("../pages/billar/DeFondo"));
 
 /**
  * Preferencia de barra colapsada. Es del dispositivo y no del usuario: en la
@@ -201,6 +208,11 @@ export default function Layout() {
       {cambiandoPassword && <CambiarMiPassword onClose={() => setCambiandoPassword(false)} />}
       {/* La hoja de comprar créditos: la piden el chip, el POS y la agenda. */}
       <HojaCupoHost />
+      {puede("billar") && (
+        <Suspense fallback={null}>
+          <BillarDeFondo />
+        </Suspense>
+      )}
     </div>
   );
 }

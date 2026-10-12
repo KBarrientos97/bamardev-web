@@ -32,7 +32,8 @@ export function TabMesas({
   const [filtro, setFiltro] = useState<string>("todas");
   const [busqueda, setBusqueda] = useState("");
   const tipos = Object.values(e.tipos);
-  const inactivas = e.mesas.filter((m) => m.inactiva).length;
+  const mesas = e.admin.mesas;
+  const inactivas = mesas.filter((m) => m.inactiva).length;
 
   const pasa = (m: Mesa) => {
     const estado = estadoAdminDe(m);
@@ -42,23 +43,23 @@ export function TabMesas({
     const q = busqueda.trim().toLowerCase();
     return !q || `mesa ${m.id}`.includes(q) || String(m.id) === q || (m.alias ?? "").toLowerCase().includes(q);
   };
-  const visibles = e.mesas.filter(pasa);
+  const visibles = mesas.filter(pasa);
 
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
-        <Cifra icono="numeral" tono="verde" etiqueta="Total" valor={e.mesas.length} />
+        <Cifra icono="numeral" tono="verde" etiqueta="Total" valor={mesas.length} />
         <Cifra
           icono="checkCirculo"
           tono="verde"
           etiqueta="Activas"
-          valor={e.mesas.filter((m) => estadoAdminDe(m) === "activa").length}
+          valor={mesas.filter((m) => estadoAdminDe(m) === "activa").length}
         />
         <Cifra
           icono="llave"
           tono="gris"
           etiqueta="Fuera de servicio"
-          valor={e.mesas.filter((m) => estadoAdminDe(m) === "fuera").length}
+          valor={mesas.filter((m) => estadoAdminDe(m) === "fuera").length}
         />
         <Cifra icono="bola" tono="azul" etiqueta="Tipos" valor={tipos.length} />
       </div>
@@ -96,9 +97,9 @@ export function TabMesas({
       {visibles.length === 0 ? (
         <Vacio
           icono="numeral"
-          titulo={e.mesas.length === 0 ? "Todavía no hay mesas" : "No hay mesas acá"}
+          titulo={mesas.length === 0 ? "Todavía no hay mesas" : "No hay mesas acá"}
           texto={
-            e.mesas.length === 0
+            mesas.length === 0
               ? "Creá la primera con Nueva mesa."
               : busqueda
                 ? `Ninguna mesa coincide con "${busqueda}".`

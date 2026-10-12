@@ -71,7 +71,7 @@ const Retencion = lazy(() => import("./pages/clientes/Retencion"));
 const GiftCards = lazy(() => import("./pages/belleza/GiftCards"));
 const Propinas = lazy(() => import("./pages/belleza/Propinas"));
 const RecetasServicio = lazy(() => import("./pages/belleza/RecetasServicio"));
-// Billar (MAQUETA, oct-2026): sólo se baja en un negocio con el extra.
+// Billar: sólo se baja en un negocio con el extra.
 const RutasBillar = lazy(() => import("./pages/billar/RutasBillar"));
 const PantallaSalonBillar = lazy(() => import("./pages/billar/PantallaSalon"));
 const MesasBillar = lazy(() => import("./pages/billar/admin/MesasBillar"));

@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { AvisoOk, useAviso } from "../../../components/ui";
+import { AvisoOk, Cargando, ErrorMsg, useAviso } from "../../../components/ui";
 import { useCoincideMedia } from "../../../lib/useCoincideMedia";
 import { useAuth } from "../../../store/AuthContext";
-import { billar, useBillar } from "../store";
+import { billar, leerBillar, useBillar } from "../store";
 import type { TipoMesa } from "../tipos";
 import { BotonB, Nota } from "../ui";
 import { borradorTarifas, erroresTipo, tipoDeBorrador, type BorradorTarifas } from "./borrador";
@@ -14,14 +14,30 @@ import { TabTarifas } from "./TabTarifas";
 
 /**
  * Mesas de billar (§7.14), del administrador: las mesas y sus tarifas,
- * paquetes, promociones, avisos y PIN.
- *
- * MAQUETA (oct-2026): lee y escribe el mismo estado en memoria que el tablero
- * (`store.ts`), así que lo que se cambia acá se ve en Billar al instante. Con
- * el backend: `GET/POST/PUT/DELETE /billar/mesas`, `PUT /billar/tipos` y
- * `PUT /billar/ajustes`.
+ * paquetes, promociones, avisos y PIN. Todo es del backend
+ * (`/billar/admin/...`): las mesas, también las guardadas sin usar, se traen
+ * al entrar; las tarifas y los ajustes son los del negocio, no los que este
+ * equipo haya tocado en la campana del tablero.
  */
 export default function MesasBillar() {
+  const e = useBillar();
+  useEffect(() => {
+    void billar.cargarAdmin();
+  }, []);
+  if (!e.admin.cargado) {
+    return e.admin.error ? (
+      <div className="p-6">
+        <ErrorMsg onReintentar={() => void billar.cargarAdmin()}>{e.admin.error}</ErrorMsg>
+      </div>
+    ) : (
+      <Cargando texto="Cargando las mesas…" />
+    );
+  }
+  return <MesasBillarCargadas />;
+}
+
+/** La pantalla, con las mesas y las tarifas ya traídas: el borrador arranca de lo guardado. */
+function MesasBillarCargadas() {
   const e = useBillar();
   const { usuario } = useAuth();
   const [params, setParams] = useSearchParams();
@@ -39,7 +55,9 @@ export default function MesasBillar() {
   };
 
   // Tarifas: el borrador y la última versión guardada, para saber si hay cambios.
-  const [guardado, setGuardado] = useState(() => borradorTarifas(e.tipos, e.ajustes));
+  const [guardado, setGuardado] = useState(() => borradorTarifas(e.tipos, e.ajustesNegocio));
+  const [guardando, setGuardando] = useState(false);
+  const [errorTarifas, setErrorTarifas] = useState("");
   const [borrador, setBorrador] = useState<BorradorTarifas>(guardado);
   const [intento, setIntento] = useState(false);
   const sinGuardar = JSON.stringify(borrador) !== JSON.stringify(guardado);
@@ -68,14 +86,20 @@ export default function MesasBillar() {
       { replace: true },
     );
 
-  const guardar = () => {
+  const guardar = async () => {
     setIntento(true);
-    if (hayErrores) return;
+    if (hayErrores || guardando) return;
     const tipos: Record<string, TipoMesa> = {};
     for (const t of borrador.tipos) tipos[t.id] = tipoDeBorrador(t)!;
     const ajustes = { avisos: borrador.avisos, sonido: borrador.sonido, voz: borrador.voz, pin: borrador.pin };
-    billar.guardarTarifas(tipos, ajustes);
-    const nuevo = borradorTarifas(tipos, { ...e.ajustes, ...ajustes });
+    setGuardando(true);
+    setErrorTarifas("");
+    const error = await billar.guardarTarifas(tipos, ajustes);
+    setGuardando(false);
+    if (error) return setErrorTarifas(error);
+    // Lo que quedó guardado de verdad (el backend ordena los avisos y los paquetes).
+    const ahora = leerBillar();
+    const nuevo = borradorTarifas(ahora.tipos, ahora.ajustesNegocio);
     setGuardado(nuevo);
     setBorrador(nuevo);
     setIntento(false);
@@ -102,7 +126,7 @@ export default function MesasBillar() {
         <div className="min-w-[12rem] flex-1">
           <h1 className="text-xl font-bold leading-tight text-texto">Mesas de billar</h1>
           <p className="mt-0.5 text-[13px] text-texto-3">
-            {e.mesas.length} {e.mesas.length === 1 ? "mesa" : "mesas"} en {sucursal}
+            {e.admin.mesas.length} {e.admin.mesas.length === 1 ? "mesa" : "mesas"} en {sucursal}
           </p>
         </div>
         <BotonB variante="verde" icono="plus" onClick={() => abrirForm("nueva")}>
@@ -135,6 +159,12 @@ export default function MesasBillar() {
                       Revisá los campos marcados en rojo.
                     </Nota>
                   </div>
+                ) : errorTarifas ? (
+                  <div className="mr-auto" role="alert">
+                    <Nota tono="rosa" icono="alert">
+                      {errorTarifas}
+                    </Nota>
+                  </div>
                 ) : (
                   <p className="mr-auto text-[13px] text-texto-3">
                     {sinGuardar
@@ -152,8 +182,8 @@ export default function MesasBillar() {
                     Descartar
                   </BotonB>
                 )}
-                <BotonB variante="verde" icono="check" disabled={!sinGuardar} onClick={guardar}>
-                  Guardar cambios
+                <BotonB variante="verde" icono="check" disabled={!sinGuardar || guardando} onClick={() => void guardar()}>
+                  {guardando ? "Guardando…" : "Guardar cambios"}
                 </BotonB>
               </div>
             </div>

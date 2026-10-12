@@ -220,6 +220,21 @@ export function Segmentado<T extends string>({
 }
 
 /** Un aviso dentro de un panel o modal (verde, gris, ámbar, azul). */
+/**
+ * El "no" del servidor dentro del diálogo (caja cerrada, la mesa cambió, PIN
+ * incorrecto…), con rol alert para que el lector de pantalla lo diga.
+ */
+export function ErrorAccion({ texto }: { texto: string }) {
+  if (!texto) return null;
+  return (
+    <div role="alert" className="mt-3">
+      <Nota tono="rosa" icono="alert">
+        {texto}
+      </Nota>
+    </div>
+  );
+}
+
 export function Nota({
   tono = "verde",
   icono = "info",
