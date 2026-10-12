@@ -1,7 +1,12 @@
-import { useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { useCoincideMedia } from "../../lib/useCoincideMedia";
-import { avisarClic } from "../../lib/pagina/apiPagina";
+import { avisarClic, urlDeImagen } from "../../lib/pagina/apiPagina";
+import { enlaceWhatsapp } from "../../lib/pagina/catalogo";
+import type { EnlacePublico } from "../../lib/pagina/tipos";
+import PedidoPagina from "./PedidoPagina";
+import { usePedido } from "../../lib/pagina/usePedido";
+import RegalarPagina from "./RegalarPagina";
 import { urlPrivacidadDe, urlReservaDe } from "../../lib/pagina/rutas";
 import { usePaginaPublica } from "../../lib/pagina/usePaginaPublica";
 import { cargarFuentesPagina } from "../../lib/pagina/estilos";
@@ -9,6 +14,7 @@ import { tonosPagina } from "../../lib/pagina/estilosPagina";
 import { paleta } from "../../lib/pagina/aspecto";
 import type { PaginaPublica as Pagina } from "../../lib/pagina/tipos";
 import VistaPagina, { ANCHO_ESCRITORIO, MarcaBamarDev } from "./VistaPagina";
+import ChatPagina from "./ChatPagina";
 
 
 /**
@@ -134,6 +140,15 @@ function Cargando() {
   );
 }
 
+/** El botón "Regalá una gift card": id negativo, nunca choca con uno del dueño. */
+const BOTON_REGALO: EnlacePublico = {
+  id: -1,
+  tipo: "BOTON",
+  etiqueta: "Regalá una gift card",
+  url: "#regalar",
+  icono: "regalo",
+};
+
 /**
  * `/p/:subdominio`: la página pública del negocio (PLAN-PAGINA-NEGOCIO §2).
  * Fuera de la sesión de la app: la ve cualquiera, y un error acá nunca manda
@@ -148,15 +163,51 @@ export default function PaginaPublica() {
   const estilo = pagina?.estilo;
   useEffect(() => cargarFuentesPagina(tipografia, estilo), [tipografia, estilo]);
   useMetadatosPagina(pagina);
+  const pedido = usePedido(subdominio ?? "");
+  const [regalando, setRegalando] = useState(false);
+
+  // Pedidos y gift cards se mandan al WhatsApp de la página: sin él, no hay.
+  const whatsapp = pagina ? enlaceWhatsapp(pagina) : null;
+  const conPedidos = !!pagina?.pedidos && !!whatsapp;
+  const conRegalos = !!pagina?.regalos && !!whatsapp;
+  // "Regalá una gift card" entra como un botón más de la página, con su
+  // forma y su estilo, sin tocar cada armado.
+  const vista = useMemo(
+    () => (pagina && conRegalos ? { ...pagina, botones: [...pagina.botones, BOTON_REGALO] } : pagina),
+    [pagina, conRegalos],
+  );
 
   if (error) return <NoDisponible mensaje={error} />;
-  if (!pagina) return <Cargando />;
+  if (!pagina || !vista) return <Cargando />;
   return (
-    <VistaPagina
-      pagina={pagina}
-      urlReservar={urlReservaDe(pagina.subdominio)}
-      urlPrivacidad={urlPrivacidadDe(pagina.subdominio)}
-      alClic={(e) => avisarClic(pagina.subdominio, e.id)}
-    />
+    <>
+      <VistaPagina
+        pagina={vista}
+        urlReservar={urlReservaDe(pagina.subdominio)}
+        urlPrivacidad={urlPrivacidadDe(pagina.subdominio)}
+        alClic={(e) => (e.id === BOTON_REGALO.id ? setRegalando(true) : avisarClic(pagina.subdominio, e.id))}
+        alAgregarAlPedido={conPedidos ? pedido.agregar : undefined}
+      />
+      {conPedidos && whatsapp && (
+        <PedidoPagina negocio={pagina.nombre} color={pagina.color.hex} whatsappUrl={whatsapp.url} pedido={pedido} />
+      )}
+      {conRegalos && whatsapp && pagina.regalos && (
+        <RegalarPagina
+          abierto={regalando}
+          onCerrar={() => setRegalando(false)}
+          negocio={pagina.nombre}
+          color={pagina.color.hex}
+          rubro={pagina.rubroClave ?? pagina.rubro}
+          fotoUrl={urlDeImagen(pagina.portadaUrl ?? pagina.logoUrl)}
+          regalos={pagina.regalos}
+          whatsappUrl={whatsapp.url}
+        />
+      )}
+      {/* Fuera de VistaPagina: la vista previa del editor no lleva el chat.
+          Sólo con el extra `asistente_pagina` contratado. */}
+      {pagina.asistente && (
+        <ChatPagina subdominio={pagina.subdominio} nombre={pagina.nombre} color={pagina.color.hex} />
+      )}
+    </>
   );
 }

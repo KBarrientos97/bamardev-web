@@ -17,6 +17,7 @@ import {
   type NodoMenu,
 } from "../lib/menu";
 import { useContadorSolicitudes } from "../lib/agenda/contadorSolicitudes";
+import { useContadorBillar } from "../lib/billar/contador";
 import { useAuth } from "../store/AuthContext";
 import { Icon } from "./Icon";
 
@@ -63,7 +64,12 @@ export default function MenuLateral({
   const conTitulos = bloques.length > 1;
   // Solicitudes online por atender (A9): el número va al lado del ítem.
   const solicitudes = useContadorSolicitudes(menu.planos.some((n) => n.item.seccion === "solicitudes"));
-  const contadorDe = (n: NodoMenu) => (n.item.seccion === "solicitudes" ? solicitudes : 0);
+  // Billar: las mesas abiertas, en ámbar si alguna está por vencer (§2).
+  const billar = useContadorBillar(menu.planos.some((n) => n.item.seccion === "billar"));
+  const contadorDe = (n: NodoMenu) =>
+    n.item.seccion === "solicitudes" ? solicitudes : n.item.seccion === "billar" ? billar.abiertas : 0;
+  const queCuenta = (n: NodoMenu) => (n.item.seccion === "billar" ? "mesas abiertas" : "por atender");
+  const enAlerta = (n: NodoMenu) => n.item.seccion === "billar" && billar.alerta;
   // Las solicitudes viven dentro del grupo Agenda: cerrado, el grupo muestra
   // las pendientes en vez de cuántas pantallas guarda, o nadie las vería.
   const pendientesEn = (n: NodoMenu): number =>
@@ -176,7 +182,7 @@ export default function MenuLateral({
           onClick={() => navegar(n)}
           // En la barra de íconos el número es sólo un punto: el lector de
           // pantalla igual tiene que oír cuántas hay (QA PER-09).
-          aria-label={contadorDe(n) > 0 ? `${nombre(n)}, ${contadorDe(n)} por atender` : nombre(n)}
+          aria-label={contadorDe(n) > 0 ? `${nombre(n)}, ${contadorDe(n)} ${queCuenta(n)}` : nombre(n)}
           aria-current={activo ? "page" : undefined}
           data-fila=""
           data-nav-id={n.id}
@@ -190,7 +196,10 @@ export default function MenuLateral({
           <span className="relative">
             {icono(n, !!padre)}
             {contadorDe(n) > 0 && (
-              <span aria-hidden className="absolute -right-1.5 -top-1 h-2.5 w-2.5 rounded-full bg-white ring-2 ring-barra" />
+              <span
+                aria-hidden
+                className={`absolute -right-1.5 -top-1 h-2.5 w-2.5 rounded-full ring-2 ring-barra ${enAlerta(n) ? "bg-amber-400" : "bg-white"}`}
+              />
             )}
           </span>
         </Link>
@@ -233,8 +242,10 @@ export default function MenuLateral({
             <span className="min-w-0 leading-snug">{n.item.label}</span>
             {contadorDe(n) > 0 && (
               <span
-                className="ml-auto rounded-full bg-barra-texto px-1.5 text-[11px] font-bold leading-[18px] text-barra tabular-nums"
-                aria-label={`${contadorDe(n)} por atender`}
+                className={`ml-auto rounded-full px-1.5 text-[11px] font-bold leading-[18px] tabular-nums ${
+                  enAlerta(n) ? "bg-amber-400 text-amber-950" : "bg-barra-texto text-barra"
+                }`}
+                aria-label={`${contadorDe(n)} ${queCuenta(n)}`}
               >
                 {contadorDe(n)}
               </span>

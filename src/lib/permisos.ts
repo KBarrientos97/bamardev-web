@@ -54,6 +54,16 @@ export type Seccion =
   /** ABM de mesas y zonas: es del admin, no del mesero. */
   | "mesas"
   /**
+   * El tablero de las mesas de billar: cobro por tiempo, consumos y cierre
+   * (BILLAR_MODULO_SPEC). Es un extra (`billar`), no un rubro: lo puede tener
+   * un billar o un bar con mesas de pool.
+   */
+  | "billar"
+  /** Mesas de billar: las mesas, las tarifas, los avisos y el PIN. Del administrador. */
+  | "mesas_billar"
+  /** La pestaña Billar de Reportes. */
+  | "reportes_billar"
+  /**
    * El resumen de la farmacia como primer ítem DENTRO de Inventario. Es la
    * misma ruta que Inventario (`/inventario`): el grupo lleva a su primera
    * pantalla, y el sub-ítem dice cuál es. Sólo farmacia: en los demás rubros
@@ -121,6 +131,8 @@ export type Seccion =
   | "mi_pagina"
   /** "Mis enlaces": los enlaces cortos con QR y clics. */
   | "mis_enlaces"
+  /** "Mi asistente": preguntas frecuentes, mensajes y uso del chat de la página (extra). */
+  | "mi_asistente"
   // ── CRM y promociones (PLAN-CRM-Y-PROMOCIONES) ──
   /** Promociones y cupones: el ABM, los cupones y el enlace de campaña. */
   | "promociones"
@@ -200,6 +212,12 @@ const REQUISITOS: Record<Seccion, Requisito> = {
   salon: { permiso: "salon.atender", feature: "salon" },
   // El ABM de mesas y zonas, parte de la misma sección vendida.
   mesas: { permiso: "salon.administrar", feature: "salon" },
+  // Billar: quien atiende las mesas de pool (el cajero).
+  billar: { permiso: "billar.operar", feature: "billar" },
+  // Las mesas de billar y sus tarifas son del administrador; la pestaña de
+  // Reportes, de quien ve los reportes. Las dos con el mismo extra.
+  mesas_billar: { permiso: "billar.admin", feature: "billar" },
+  reportes_billar: { permiso: "reportes.ver", feature: "billar" },
   // Buscar un medicamento es consultar el catálogo y dónde hay: parte de
   // atender el mostrador. No se vende aparte.
   busqueda: { permiso: "catalogo.ver", feature: null },
@@ -233,6 +251,8 @@ const REQUISITOS: Record<Seccion, Requisito> = {
   // ── Página del negocio, CRM y promociones ──
   mi_pagina: { permiso: "negocio.configurar", feature: "pagina_publica" },
   mis_enlaces: { permiso: "negocio.configurar", feature: "enlaces_cortos" },
+  // El asistente de la página es un EXTRA: fuera de todos los planes.
+  mi_asistente: { permiso: "negocio.configurar", feature: "asistente_pagina" },
   promociones: { permiso: "promociones.gestionar", feature: "promociones" },
   retencion: { permiso: "cliente.marketing", feature: "clientes_retencion" },
   // ── Belleza fase 4 ──
@@ -266,12 +286,15 @@ const FEATURES_ESTRICTAS: Feature[] = [
   "comisiones",
   "pagina_publica",
   "enlaces_cortos",
+  "asistente_pagina",
   "promociones",
   "clientes_retencion",
   "gift_cards",
   "propinas",
   "consumo_servicio",
   "ficha_tecnica",
+  // Billar nace ahora: ningún negocio lo tuvo, se prende a mano.
+  "billar",
 ];
 
 /**
@@ -343,6 +366,11 @@ const FUERA_DE_RUBRO: Partial<Record<Seccion, Rubro[]>> = {
   // no transforma nada, compra y vende lo mismo. El tinte de un salón se
   // gasta, pero no es una receta que se descuente al vender.
   insumos: ["FARMACIA", ...RUBROS_BELLEZA],
+  // Una farmacia o un salón de belleza no tienen mesas de pool, aunque alguien
+  // les prenda el extra en el panel por error.
+  billar: ["FARMACIA", ...RUBROS_BELLEZA],
+  mesas_billar: ["FARMACIA", ...RUBROS_BELLEZA],
+  reportes_billar: ["FARMACIA", ...RUBROS_BELLEZA],
 };
 
 export interface ContextoPermisos {
@@ -560,6 +588,8 @@ export function rutaInicial(ctx: ContextoPermisos): string {
 const ORDEN_INICIO: [Seccion, string][] = [
   ["inventario", "/inventario"],
   ["productos", "/inventario/productos"],
+  // En un billar, quien atiende entra al tablero de las mesas y no al POS.
+  ["billar", "/billar"],
   ["pos", "/pos"],
   ["caja", "/pos"],
   ["reportes", "/reportes"],
@@ -582,12 +612,14 @@ const ORDEN_INICIO: [Seccion, string][] = [
   ["agenda_config", "/configuracion/agenda"],
   ["recetas_servicio", "/configuracion/insumos-servicio"],
   ["mesas", "/mesas"],
+  ["mesas_billar", "/mesas-billar"],
   ["comisiones", "/comisiones"],
   ["personal", "/personal"],
   ["roles", "/roles"],
   ["config_negocio", "/configuracion/negocio"],
   ["mi_pagina", "/mi-pagina"],
   ["mis_enlaces", "/mis-enlaces"],
+  ["mi_asistente", "/mi-asistente"],
   ["promociones", "/promociones"],
   ["retencion", "/clientes-que-no-vuelven"],
   ["salon", "/salon"],

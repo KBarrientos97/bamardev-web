@@ -94,7 +94,12 @@ export function enlaceWhatsapp(p: PaginaPublica): EnlacePublico | null {
  * no con "+": así lo arma WhatsApp y así lo leen todas sus versiones.
  */
 export function urlConsultaWhatsapp(url: string, titulo: string): string {
-  const texto = `text=${encodeURIComponent(`Hola, me interesa: ${titulo}`)}`;
+  return urlWhatsappConTexto(url, `Hola, me interesa: ${titulo}`);
+}
+
+/** El mismo armado con cualquier mensaje (el pedido, el pedido de gift card). */
+export function urlWhatsappConTexto(url: string, mensaje: string): string {
+  const texto = `text=${encodeURIComponent(mensaje)}`;
   try {
     const u = new URL(url);
     u.searchParams.delete("text");

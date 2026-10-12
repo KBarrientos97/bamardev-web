@@ -1,17 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { coloresDominantes, muestraMasParecida, muestrasDeColores } from "./coloresLogo";
 import type { Muestra } from "./tipos";
+import { PALETA } from "../colores/paleta";
 
-/** Las 32 muestras de la página (`pagina/muestras.ts` del backend). */
-const MUESTRAS: Muestra[] = [
-  ["VINO", "#8C1D3A"], ["ROJO", "#C0262D"], ["TEJA", "#B23A2E"], ["FRAMBUESA", "#B5285A"], ["ROSA", "#BE185D"],
-  ["CIRUELA", "#9B2C6B"], ["MAGENTA", "#A21CAF"], ["NARANJA", "#B4501A"], ["OCRE", "#92400E"], ["AMBAR", "#8A5A0B"],
-  ["MOSTAZA", "#7A6400"], ["CAFE", "#7C5A45"], ["CHOCOLATE", "#6B3F25"], ["ARENA", "#76684F"], ["OLIVA", "#5B7320"],
-  ["SALVIA", "#4D6B53"], ["BOSQUE", "#2F6B3A"], ["VERDE", "#0C7A55"], ["ESMERALDA", "#047857"], ["AGUAMARINA", "#0F766E"],
-  ["PETROLEO", "#0F7480"], ["CIELO", "#0369A1"], ["AZUL", "#2565B0"], ["MARINO", "#1E3A8A"], ["INDIGO", "#4B4FB8"],
-  ["LAVANDA", "#7357B8"], ["VIOLETA", "#6D28D9"], ["UVA", "#5B2A86"], ["PIZARRA", "#3F5A6B"], ["ACERO", "#475569"],
-  ["CARBON", "#4A4744"], ["NEGRO", "#18181B"],
-].map(([clave, hex]) => ({ clave, nombre: clave, hex }));
+/** Los colores de la página: la paleta única (`lib/colores/paleta.ts`). */
+const MUESTRAS: Muestra[] = PALETA.map(({ clave, nombre, hex }) => ({ clave, nombre, hex }));
 
 /** Un "ImageData" sintético: cada color con su cantidad de píxeles. */
 function pixeles(...partes: [string, number, number?][]): Uint8ClampedArray {
@@ -54,7 +47,7 @@ describe("colores del logo", () => {
   it("lleva cada color a la muestra del mismo tono, aunque la muestra sea más oscura", () => {
     const de = (hex: string) => muestraMasParecida(hex, MUESTRAS)?.clave;
     expect(["ROJO", "TEJA"]).toContain(de("#E31B23"));
-    expect(["MOSTAZA", "AMBAR"]).toContain(de("#FFC20E"));
+    expect(["ORO", "MOSTAZA", "AMBAR"]).toContain(de("#FFC20E"));
     expect(["AZUL", "CIELO"]).toContain(de("#1565C0"));
     expect(["VERDE", "ESMERALDA", "BOSQUE"]).toContain(de("#00A651"));
     expect(["VIOLETA", "LAVANDA", "UVA", "INDIGO"]).toContain(de("#7B2CBF"));

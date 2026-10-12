@@ -104,9 +104,19 @@ function Asistente({ datos, sucursal, sub }: { datos: NegocioPublico; sucursal: 
   const escritorio = useEscritorio();
   const navegar = useNavigate();
   const ubicacion = useLocation();
-  const [elegidos, setElegidos] = useState<number[]>([]);
+  // El asistente de la página manda `?servicio=<id>&inicio=<ISO>`: llega con el
+  // servicio y la hora ya elegidos y sólo completa sus datos. Si el servicio no
+  // es de esta sucursal o la hora no es un instante válido, se ignora.
+  const [precarga] = useState(() => {
+    const id = Number(params.get("servicio"));
+    const servicio = sucursal.servicios.some((s) => s.id === id) ? id : null;
+    const crudo = params.get("inicio");
+    const inicioPedido = servicio && crudo && !Number.isNaN(Date.parse(crudo)) ? new Date(crudo).toISOString() : null;
+    return { servicio, inicio: inicioPedido };
+  });
+  const [elegidos, setElegidos] = useState<number[]>(() => (precarga.servicio ? [precarga.servicio] : []));
   const [profesional, setProfesional] = useState<number | null>(null);
-  const [inicio, setInicio] = useState<string | null>(null);
+  const [inicio, setInicio] = useState<string | null>(precarga.inicio);
   const [nombre, setNombre] = useState("");
   const [telefono, setTelefono] = useState("");
   const [nota, setNota] = useState("");

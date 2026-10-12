@@ -13,7 +13,7 @@ import {
   type Superficie,
 } from "../../lib/pagina/estilos";
 import { estiloPagina, tonosPagina } from "../../lib/pagina/estilosPagina";
-import type { AnuncioPublico, EnlacePublico, PaginaPublica } from "../../lib/pagina/tipos";
+import type { AnuncioPublico, EnlacePublico, ItemCatalogoPublico, PaginaPublica } from "../../lib/pagina/tipos";
 import { urlTelefono } from "../../lib/pagina/vista";
 import ArmadoEstilo, { type PiezasArmado } from "./ArmadosPagina";
 import CatalogoPagina, { type AccionCatalogo, type AspectoCatalogo } from "./CatalogoPagina";
@@ -280,6 +280,11 @@ export interface PropsVista {
    * quieta y otro `data-testid`, para no confundirla con la vista previa.
    */
   miniatura?: boolean;
+  /**
+   * "Pedí por WhatsApp" (IDEAS/6 #1): con esto, el botón del catálogo suma
+   * al pedido en vez de reservar o consultar. Lo pasa la página pública.
+   */
+  alAgregarAlPedido?: (item: ItemCatalogoPublico) => void;
 }
 
 export default function VistaPagina({
@@ -290,6 +295,7 @@ export default function VistaPagina({
   enMarco,
   modo = "auto",
   miniatura,
+  alAgregarAlPedido,
 }: PropsVista) {
   const raiz = useRef<HTMLDivElement>(null);
   const escritorio = useEsEscritorio(modo, raiz);
@@ -456,7 +462,9 @@ export default function VistaPagina({
   // El botón del visor del catálogo: reservar si la página reserva; si no,
   // consultar por el WhatsApp del negocio con el ítem en el mensaje.
   const whatsapp = p.reservar ? null : enlaceWhatsapp(p);
-  const accionCatalogo: AccionCatalogo | null = p.reservar
+  const accionCatalogo: AccionCatalogo | null = alAgregarAlPedido
+    ? { texto: "Agregar al pedido", icono: "M12 5v14M5 12h14", href: () => "#", alAgregar: alAgregarAlPedido }
+    : p.reservar
     ? { texto: "Reservar", icono: ICONO_RESERVAR, href: () => urlReservar }
     : whatsapp
       ? {

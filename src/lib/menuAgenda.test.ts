@@ -1,12 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { Feature } from "../types";
 import { ctxDe, type Plantilla } from "../test/sesiones";
-import { aplanar, construirMenu, esMenuDeAgenda, tituloDe } from "./menu";
+import { aplanar, construirMenu, tituloDe } from "./menu";
 import { puedeVer } from "./permisos";
 
 /**
  * El menú del salón: la agenda en un grupo y Administración agrupada por tema
- * (Equipo, Finanzas, Marketing). Los demás rubros quedan como estaban.
+ * (Equipo, Finanzas, Marketing). Es la división que el 11-oct pasó a todos los
+ * rubros (ver `menuRubros.test.ts`); acá se cuida que el salón quede igual.
  */
 
 const SALON: Feature[] = [
@@ -34,19 +35,12 @@ const ctx = (plantilla: Plantilla, rubro: string, features: Feature[] = SALON) =
 
 function menu(rol: Plantilla, rubro: string, features: Feature[] = SALON) {
   const c = ctx(rol, rubro, features);
-  return construirMenu((s) => puedeVer(c, s), rubro, undefined, esMenuDeAgenda(rubro, features));
+  return construirMenu((s) => puedeVer(c, s), rubro);
 }
 
 const admin = (m: ReturnType<typeof menu>) => m.find((b) => b.bloque === "administracion")?.nodos ?? [];
 
 describe("menú del salón", () => {
-  it("se arma así sólo con la feature y el rubro de belleza", () => {
-    expect(esMenuDeAgenda("BARBERIA", SALON)).toBe(true);
-    expect(esMenuDeAgenda("BARBERIA", ["pos"])).toBe(false);
-    // Una pollería con `agenda` prendida por error no cambia de menú.
-    expect(esMenuDeAgenda("RESTAURANTE", SALON)).toBe(false);
-  });
-
   it("Administración va agrupada por tema y Configuración queda suelta", () => {
     const nodos = admin(menu("ADMIN", "BARBERIA"));
     expect(nodos.map((n) => n.item.label)).toEqual(["Equipo", "Finanzas", "Marketing", "Configuración"]);
@@ -94,14 +88,6 @@ describe("menú del salón", () => {
     // Los ids no chocan con los de sus hijos (son la clave de "abierto").
     const ids = aplanar(menu("ADMIN", "BARBERIA").flatMap((b) => b.nodos)).map((n) => n.id);
     expect(new Set(ids).size).toBe(ids.length);
-  });
-
-  it("al restaurante no le cambia nada", () => {
-    const base: Feature[] = ["pos", "caja", "catalogo", "usuarios", "inventario", "reportes", "gastos", "fiado"];
-    const c = ctx("ADMIN", "RESTAURANTE", base);
-    const plano = construirMenu((s) => puedeVer(c, s), "RESTAURANTE");
-    expect(menu("ADMIN", "RESTAURANTE", base)).toEqual(plano);
-    expect(admin(plano).every((n) => n.hijos.length === 0)).toBe(true);
   });
 });
 

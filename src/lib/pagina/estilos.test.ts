@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { PALETA } from "../colores/paleta";
 import { paleta } from "./aspecto";
 import {
   cargarCatalogoLetras,
@@ -16,43 +17,8 @@ import {
 } from "./estilos";
 import { ESTILOS_PAGINA, estiloRecomendado, paresDeTexto, tonosPagina } from "./estilosPagina";
 
-/** Las 32 muestras de la página (`pagina/muestras.ts` del backend). */
-const MUESTRAS = [
-  // Las 12 del 06-oct.
-  "#9B2C6B",
-  "#B5285A",
-  "#B23A2E",
-  "#B4501A",
-  "#8A5A0B",
-  "#5B7320",
-  "#0C7A55",
-  "#0F7480",
-  "#2565B0",
-  "#4B4FB8",
-  "#7357B8",
-  "#4A4744",
-  // Las 20 del 08-oct.
-  "#8C1D3A",
-  "#C0262D",
-  "#BE185D",
-  "#A21CAF",
-  "#92400E",
-  "#7A6400",
-  "#7C5A45",
-  "#6B3F25",
-  "#76684F",
-  "#4D6B53",
-  "#2F6B3A",
-  "#047857",
-  "#0F766E",
-  "#0369A1",
-  "#1E3A8A",
-  "#6D28D9",
-  "#5B2A86",
-  "#3F5A6B",
-  "#475569",
-  "#18181B",
-];
+/** Los 40 colores de la página: la paleta única (`lib/colores/paleta.ts`). */
+const MUESTRAS = PALETA.map((c) => c.hex);
 
 describe("contraste", () => {
   it("negro sobre blanco es 21 y un color consigo mismo, 1", () => {

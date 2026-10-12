@@ -131,9 +131,15 @@ describe("Mi página", () => {
     fireEvent.change(screen.getByLabelText("Descripción corta"), { target: { value: "Cortes y color" } });
     expect(within(previa()).getByText("Cortes y color")).toBeInTheDocument();
     expect(fila("Color de la página", "Ciruela")).toBeInTheDocument();
+    // El selector de color de todo el sistema: se abre en el lugar, sin popup.
     abrir("Color de la página");
-    fireEvent.click(screen.getByRole("radio", { name: "Color Lavanda" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    const grilla = screen.getByRole("radiogroup", { name: "Color de la página" });
+    // Sólo las claves que el backend ofrece (el mock manda Ciruela y Lavanda).
+    expect(within(grilla).getAllByRole("radio").map((r) => r.getAttribute("aria-label"))).toEqual(["Lavanda", "Ciruela"]);
+    fireEvent.click(within(grilla).getByRole("radio", { name: "Lavanda" }));
+    expect(screen.getByRole("button", { name: "Color de la página: Lavanda. Listo" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Color de la página: Lavanda. Listo" }));
     expect(fila("Color de la página", "Lavanda")).toBeInTheDocument();
 
     vi.mocked(apiPagina.guardar).mockResolvedValue(estado({ descripcion: "Cortes y color", colorClave: "LAVANDA" }));
@@ -374,9 +380,16 @@ describe("Mi página", () => {
     expect(within(previa()).getByRole("note")).toHaveStyle({ background: "#9B2C6B" });
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
 
-    // Amarillo con letra blanca: se puede, pero avisa.
-    fireEvent.click(screen.getByRole("radio", { name: "Color del anuncio #FDE047" }));
-    fireEvent.click(screen.getByRole("radio", { name: "Color de la letra #FFFFFF" }));
+    // Un color de la paleta: la letra automática se lee bien.
+    abrir("Color del anuncio");
+    fireEvent.click(within(screen.getByRole("radiogroup", { name: "Color del anuncio" })).getByRole("radio", { name: "Marino" }));
+    expect(within(previa()).getByRole("note")).toHaveStyle({ background: "#1E3A8A" });
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+
+    // Amarillo claro (color propio) con letra blanca: se puede, pero avisa.
+    fireEvent.change(screen.getByLabelText("Color del anuncio en hex"), { target: { value: "FDE047" } });
+    abrir("Color de la letra");
+    fireEvent.change(screen.getByLabelText("Color de la letra en hex"), { target: { value: "#FFFFFF" } });
     expect(within(previa()).getByRole("note")).toHaveStyle({ background: "#FDE047" });
     expect(screen.getByRole("alert")).toHaveTextContent(/La letra se va a leer mal/);
     expect(screen.getByRole("alert")).toHaveTextContent(/4,5 a 1/);
@@ -400,7 +413,7 @@ describe("Mi página", () => {
       anuncioColorFondo: "#111827",
       anuncioColorTexto: null,
     });
-    // Popup con dos paletas de ~45 muestras: con la suite entera en paralelo
+    // Popup con dos paletas de 40 colores: con la suite entera en paralelo
     // pasa los 5 s por defecto.
   }, 15_000);
 
@@ -412,7 +425,8 @@ describe("Mi página", () => {
     expect(fila("Diseño del anuncio", "Marquesina · colores propios")).toBeInTheDocument();
     abrir("Diseño del anuncio");
     expect(screen.getByRole("radio", { name: "Marquesina" })).toHaveAttribute("aria-checked", "true");
-    expect(screen.getByRole("radio", { name: "Color de la letra #FFFFFF" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("button", { name: "Color de la letra: Color propio #FFFFFF. Cambiar" })).toBeInTheDocument();
+    abrir("Color del anuncio");
     expect(screen.getByLabelText("Color del anuncio en hex")).toHaveValue("#111827");
     // La marquesina repite el texto para el bucle, pero la copia no se lee dos veces.
     const nota = within(previa()).getByRole("note");

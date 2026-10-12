@@ -189,6 +189,33 @@ describe("reservar (P2-P6)", () => {
     expect(localStorage.getItem("bamardev_reserva_bellavista")).toBe("tok_tok_tok_tok_tok_12");
   });
 
+  it("desde el asistente llega con el servicio y la hora elegidos: sólo faltan sus datos", async () => {
+    await abrir(`/r/bellavista/reservar/centro?paso=horario&servicio=1&inicio=${encodeURIComponent(H1500)}`);
+    expect(apiReserva.disponibilidad).toHaveBeenCalledWith(
+      "bellavista",
+      expect.objectContaining({ servicios: [1], desde: "2026-10-13" }),
+    );
+    expect(screen.getByRole("button", { name: "15:00" })).toHaveAttribute("aria-pressed", "true");
+
+    vi.mocked(apiReserva.reservar).mockResolvedValue({ token: "tok_tok_tok_tok_tok_12", cita: citaPublica() });
+    fireEvent.change(screen.getByLabelText("Nombre"), { target: { value: "María Flores" } });
+    fireEvent.change(screen.getByLabelText("Teléfono"), { target: { value: "76543210" } });
+    fireEvent.click(screen.getByRole("checkbox", { name: /cancelo con el enlace hasta 4 horas/ }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /Acepto la política de privacidad/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Reservar Martes 13 · 15:00" }));
+    await act(async () => {});
+    expect(apiReserva.reservar).toHaveBeenCalledWith(
+      "bellavista",
+      expect.objectContaining({ servicioIds: [1], inicio: H1500 }),
+    );
+  });
+
+  it("un servicio que no es de la sucursal o una hora inválida se ignoran", async () => {
+    await abrir("/r/bellavista/reservar/centro?paso=horario&servicio=99&inicio=mañana");
+    // Sin servicio válido vuelve a P2, como cualquier recarga sin selección.
+    expect(screen.getByRole("checkbox", { name: /Corte dama/ })).not.toBeChecked();
+  });
+
   it("QA N2-06: precio y duración del profesional elegido, y \"desde\" con cualquiera", async () => {
     const suc = NEGOCIO.sucursales[0];
     vi.mocked(apiReserva.negocio).mockResolvedValue({

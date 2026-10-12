@@ -1,4 +1,7 @@
 import { useState } from "react";
+import { SelectorColor } from "../../../components/SelectorColor";
+import { colorParaNuevo } from "../../../lib/colores/paleta";
+import { PreviaColorAgenda } from "../piezas";
 import {
   AvisoOk,
   Badge,
@@ -29,13 +32,6 @@ import { mensajeDe, useNombreProfesional, type Sucursal } from "./utilConfig";
 import { apiSpa } from "../../../lib/agenda/apiSpa";
 import { useSpa } from "../../../lib/agenda/spa";
 import { apiPersonal, type Persona } from "../../../lib/personal";
-
-/**
- * Colores sugeridos para las columnas de la agenda. Son datos del negocio (se
- * guardan en el recurso y se ven en la agenda de todos), no parte del tema:
- * por eso van fijos acá y no salen de los tokens de la paleta.
- */
-const COLORES = ["#9B2C6B", "#7357B8", "#2563EB", "#0E9F6E", "#D97706", "#DC2626", "#0891B2", "#4A4744"];
 
 /** Un profesional activo sin ningún tramo de horario (con un backend que lo dice). */
 const sinHorario = (r: Recurso) => r.tipo === "PROFESIONAL" && r.activo && r.conHorario === false;
@@ -228,7 +224,9 @@ function FormRecurso({
   const [nombre, setNombre] = useState(recurso?.nombre ?? "");
   const [nombrePublico, setNombrePublico] = useState(recurso?.nombrePublico ?? "");
   const [color, setColor] = useState(
-    recurso?.color ?? COLORES[recursos.length % COLORES.length],
+    // El color es dato del negocio (se ve en la agenda de todos), no del tema:
+    // sale de la paleta única, rotando como el backend.
+    recurso?.color ?? colorParaNuevo(recursos.length),
   );
   const [telefono, setTelefono] = useState(recurso?.telefono ?? "");
   const [comision, setComision] = useState(recurso?.comisionPct != null ? String(recurso.comisionPct) : "");
@@ -446,33 +444,13 @@ function FormRecurso({
           </Campo>
         </div>
 
-        <div>
-          <p className="mb-1.5 text-[13px] font-semibold text-texto-2">Color en la agenda</p>
-          <div role="group" aria-label="Color en la agenda" className="flex flex-wrap items-center gap-2">
-            {COLORES.map((c) => (
-              <button
-                key={c}
-                type="button"
-                aria-label={`Color ${c}`}
-                aria-pressed={color.toLowerCase() === c.toLowerCase()}
-                onClick={() => setColor(c)}
-                className={`h-8 w-8 rounded-full border border-black/10 transition-transform ${
-                  color.toLowerCase() === c.toLowerCase() ? "scale-110 ring-2 ring-texto ring-offset-2" : ""
-                }`}
-                style={{ backgroundColor: c }}
-              />
-            ))}
-            <label className="ml-1 inline-flex items-center gap-2 text-xs text-texto-3">
-              Otro
-              <input
-                type="color"
-                value={color}
-                onChange={(e) => setColor(e.target.value)}
-                className="h-8 w-10 cursor-pointer rounded border border-borde bg-white"
-              />
-            </label>
-          </div>
-        </div>
+        <SelectorColor
+          etiqueta="Color en la agenda"
+          valor={color}
+          libre
+          vistaPrevia={(hex) => <PreviaColorAgenda nombre={nombre} color={hex} />}
+          onCambio={(hex) => hex && setColor(hex)}
+        />
 
         {esProfesional && !recurso && (personas.datos ?? []).length > 0 && (
           <Campo

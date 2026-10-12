@@ -37,5 +37,15 @@ export const urlPrivacidadDe = (subdominio: string) => `${urlPaginaDe(subdominio
 export function esRutaDePaginaPublica(pathname: string): boolean {
   // `/p/<negocio>/promo/<slug>`: la página de una promoción (enlaces de
   // campaña, PLAN-CRM-Y-PROMOCIONES §6.6), también sin sesión.
-  return /^\/p\/[^/]+(\/privacidad|\/promo\/[^/]+)?\/?$/.test(pathname);
+  // `/p/<negocio>/regalo/<token>`: la gift card que se comparte (IDEAS/6 #6).
+  return /^\/p\/[^/]+(\/privacidad|\/promo\/[^/]+|\/regalo\/[^/]+)?\/?$/.test(pathname);
+}
+
+/**
+ * La dirección pública de una gift card, para copiar y mandar por WhatsApp.
+ * Absoluta: se comparte fuera de la app. Con el host link si estamos en él.
+ */
+export function urlRegaloDe(subdominio: string, token: string): string {
+  const base = typeof location !== "undefined" ? location.origin : "";
+  return `${base}${urlPaginaDe(subdominio)}/regalo/${encodeURIComponent(token)}`;
 }

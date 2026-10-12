@@ -1,7 +1,9 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { Icon } from "../../components/Icon";
 import { Boton, Modal } from "../../components/ui";
-import { ICONO_BOTON, ICONO_RESERVAR, type Paleta } from "../../lib/pagina/aspecto";
+import { SelectorColor } from "../../components/SelectorColor";
+import { colorDeClave, colorDeHex, PALETA } from "../../lib/colores/paleta";
+import { ICONO_BOTON, ICONO_RESERVAR, paleta, type Paleta } from "../../lib/pagina/aspecto";
 import {
   cargarCatalogoLetras,
   cargarFuentesPagina,
@@ -14,7 +16,6 @@ import {
   FORMAS,
   GRIS_PAGINA,
   GRUPOS_LETRA,
-  HEX_COLOR,
   letraTitulo,
   LETRAS,
   nombreForma,
@@ -110,88 +111,52 @@ export function FilaEleccion({
 
 // ── Color de la página ─────────────────────────────────────────────────────
 
+/**
+ * El color de la página, con el selector de color de todo el sistema. Se
+ * guarda la clave (el backend sólo admite las de su catálogo, sin color
+ * libre): acá se ofrece la paleta única recortada a las claves que el backend
+ * mandó, y la vista previa son los botones de verdad, con la forma y el fondo
+ * del estilo elegido.
+ */
 export function SelectorColorPagina({
   valor,
   muestras,
   recomendados = [],
   deTuLogo = [],
+  forma = "REDONDEADO",
+  fondo = FONDO_CLASICO,
   onCambio,
 }: {
   valor: string;
   muestras: Muestra[];
-  /** Las claves que mejor van con el estilo: se muestran primero. */
+  /** Las claves que mejor van con el estilo. */
   recomendados?: string[];
-  /** Las muestras más parecidas a los colores del logo, arriba de todo. */
+  /** Las muestras más parecidas a los colores del logo. */
   deTuLogo?: string[];
+  forma?: string;
+  fondo?: FondoEstilo;
   onCambio: (clave: string) => void;
 }) {
-  const [abierto, setAbierto] = useState(false);
-  const actual = muestras.find((m) => m.clave === valor) ?? muestras[0];
-  // Cada muestra una sola vez: la del logo no se repite en recomendados ni en el resto.
-  const logo = muestras.filter((m) => deTuLogo.includes(m.clave));
-  const reco = muestras.filter((m) => recomendados.includes(m.clave) && !deTuLogo.includes(m.clave));
-  const resto = muestras.filter((m) => !deTuLogo.includes(m.clave) && !recomendados.includes(m.clave));
-  const grilla = (lista: Muestra[], etiqueta: string) => (
-    <div role="radiogroup" aria-label={etiqueta} className="grid grid-cols-4 gap-2 sm:grid-cols-6">
-      {lista.map((m) => {
-        const elegido = m.clave === valor;
-        return (
-          <button
-            key={m.clave}
-            type="button"
-            role="radio"
-            aria-checked={elegido}
-            aria-label={`Color ${m.nombre}`}
-            onClick={() => {
-              onCambio(m.clave);
-              setAbierto(false);
-            }}
-            className="flex flex-col items-center gap-1.5 rounded-xl p-1.5 hover:bg-muted"
-          >
-            <span
-              className="block h-11 w-11 rounded-full"
-              style={{
-                background: m.hex,
-                border: `3px solid ${elegido ? "#1F2937" : "#ffffff"}`,
-                boxShadow: "0 0 0 1px #E5E7EB",
-              }}
-            />
-            <span className={`text-[11px] ${elegido ? "font-bold text-texto" : "text-texto-3"}`}>{m.nombre}</span>
-          </button>
-        );
-      })}
-    </div>
-  );
+  const claves = new Set(muestras.map((m) => m.clave));
+  const colores = PALETA.filter((c) => claves.has(c.clave));
+  const hexDe = (lista: string[]) => lista.map((k) => colorDeClave(k)?.hex).filter((h): h is string => !!h);
+  const actual = colorDeClave(valor) ?? colorDeHex(muestras.find((m) => m.clave === valor)?.hex);
   return (
-    <>
-      <FilaEleccion
-        etiqueta="Color de la página"
-        resumen={actual?.nombre ?? ""}
-        muestra={<span className="block h-8 w-8 rounded-full" style={{ background: actual?.hex, boxShadow: "0 0 0 1px #E5E7EB" }} />}
-        onAbrir={() => setAbierto(true)}
-      />
-      <Modal
-        abierto={abierto}
-        titulo="Color de la página"
-        subtitulo={`${muestras.length} colores, todos probados para que el texto blanco se lea bien.`}
-        onClose={() => setAbierto(false)}
-        ancho="max-w-2xl"
-      >
-        {logo.length === 0 && reco.length === 0 ? (
-          grilla(muestras, "Colores de la página")
-        ) : (
-          <div className="space-y-5">
-            {logo.length > 0 && (
-              <Grupo titulo="De tu logo">{grilla(logo, "Colores de tu logo")}</Grupo>
-            )}
-            {reco.length > 0 && (
-              <Grupo titulo="Recomendados para este estilo">{grilla(reco, "Colores recomendados para este estilo")}</Grupo>
-            )}
-            <Grupo titulo="Todos los colores">{grilla(resto, "Colores de la página")}</Grupo>
-          </div>
-        )}
-      </Modal>
-    </>
+    <SelectorColor
+      etiqueta="Color de la página"
+      valor={actual?.hex ?? null}
+      colores={colores}
+      sugeridos={[
+        { titulo: "De tu logo", hexes: hexDe(deTuLogo) },
+        { titulo: "Recomendados para este estilo", hexes: hexDe(recomendados.filter((k) => !deTuLogo.includes(k))) },
+      ]}
+      vistaPrevia={(hex) => <MiniBotones forma={forma} c={paleta(hex ?? actual?.hex ?? "#0C7A55")} f={fondo} />}
+      ayuda="Todos se leen bien con letra blanca."
+      onCambio={(hex) => {
+        const c = colorDeHex(hex);
+        if (c) onCambio(c.clave);
+      }}
+    />
   );
 }
 
@@ -425,113 +390,6 @@ export function SelectorLetra({
 
 // ── Anuncio destacado ──────────────────────────────────────────────────────
 
-const unico = (xs: string[]) => [...new Set(xs.map((x) => x.toUpperCase()))];
-
-/**
- * Los claros para el fondo del anuncio (los colores de la página son todos
- * oscuros: sirven para la letra o para un anuncio lleno).
- */
-const CLAROS = [
-  "#FFFFFF",
-  "#FFFBEB",
-  "#FEF3C7",
-  "#FDE047",
-  "#FFEDD5",
-  "#FFE4E6",
-  "#FCE7F3",
-  "#F3E8FF",
-  "#E0E7FF",
-  "#DBEAFE",
-  "#CFFAFE",
-  "#D1FAE5",
-  "#ECFCCB",
-  "#F5F5F4",
-  "#E5E7EB",
-];
-
-/** Muestras + selector del navegador + hex a mano. null = automático. */
-function SelectorColor({
-  etiqueta,
-  ayuda,
-  valor,
-  automatico,
-  muestras,
-  onCambio,
-}: {
-  etiqueta: string;
-  ayuda: string;
-  valor: string | null;
-  /** El color que se usa en automático (para el selector y como pista). */
-  automatico: string;
-  muestras: string[];
-  onCambio: (hex: string | null) => void;
-}) {
-  // Lo que se está tecleando; null = mostrar el valor de verdad.
-  const [tecleado, setTecleado] = useState<string | null>(null);
-  const actual = valor?.toUpperCase() ?? null;
-  const circulo = (elegido: boolean): CSSProperties => ({
-    border: `3px solid ${elegido ? "#1F2937" : "#ffffff"}`,
-    boxShadow: "0 0 0 1px #D1D5DB",
-  });
-  return (
-    <div className="space-y-2">
-      <Etiqueta>{etiqueta}</Etiqueta>
-      <div className="flex flex-wrap items-center gap-1.5" role="radiogroup" aria-label={etiqueta}>
-        <button
-          type="button"
-          role="radio"
-          aria-checked={actual === null}
-          aria-label={`${etiqueta}: automático`}
-          title="Automático"
-          onClick={() => onCambio(null)}
-          className="flex h-7 items-center rounded-full px-2.5 text-[11px] font-semibold text-texto-2"
-          style={{ ...circulo(actual === null), background: "#ffffff" }}
-        >
-          Auto
-        </button>
-        {muestras.map((m) => (
-          <button
-            key={m}
-            type="button"
-            role="radio"
-            aria-checked={actual === m}
-            aria-label={`${etiqueta} ${m}`}
-            title={m}
-            onClick={() => onCambio(m)}
-            className="h-7 w-7 rounded-full"
-            style={{ ...circulo(actual === m), background: m }}
-          />
-        ))}
-      </div>
-      <div className="flex items-center gap-2">
-        <input
-          type="color"
-          aria-label={`${etiqueta}: elegir otro`}
-          value={(actual ?? automatico).toLowerCase()}
-          onChange={(ev) => onCambio(ev.target.value.toUpperCase())}
-          className="h-10 w-12 shrink-0 cursor-pointer rounded-lg border border-borde bg-white p-1"
-        />
-        <input
-          aria-label={`${etiqueta} en hex`}
-          value={tecleado ?? actual ?? ""}
-          placeholder={`Automático (${automatico.toUpperCase()})`}
-          maxLength={7}
-          onChange={(ev) => {
-            const v = ev.target.value.trim();
-            setTecleado(v);
-            if (v === "") return onCambio(null);
-            const hex = v.startsWith("#") ? v : `#${v}`;
-            if (HEX_COLOR.test(hex)) onCambio(hex.toUpperCase());
-          }}
-          onBlur={() => setTecleado(null)}
-          className="min-w-0 flex-1 rounded-xl border border-borde bg-white px-3 py-2 font-mono text-sm uppercase text-texto outline-none placeholder:font-sans placeholder:normal-case placeholder:text-texto-4 focus:border-primary focus:ring-2 focus:ring-primary-100"
-        />
-      </div>
-      <span className="block text-xs text-texto-4">{ayuda}</span>
-    </div>
-  );
-}
-
 const AYUDA_COLOR: Record<string, string> = {
   CONTORNO: "El borde del anuncio (el fondo queda blanco).",
   TARJETA: "La barra de la izquierda (la tarjeta queda blanca).",
@@ -547,13 +405,11 @@ const AYUDA_COLOR: Record<string, string> = {
 export function EditorAnuncio({
   ajustes,
   c,
-  muestras,
   pagina = FONDO_CLASICO,
   cambiar,
 }: {
   ajustes: AjustesPagina;
   c: Paleta;
-  muestras: Muestra[];
   /** El fondo del estilo de página: el anuncio se ve (y se mide) sobre él. */
   pagina?: FondoEstilo;
   cambiar: (cambios: CambiosPagina) => void;
@@ -565,12 +421,20 @@ export function EditorAnuncio({
   const sup = pagina.superficie;
   const k = coloresAnuncio(estilo, fondo, texto, c, sup);
   const bajo = k.contraste < CONTRASTE_MINIMO;
-  const deLaPagina = muestras.map((m) => m.hex);
+  // Lo que saldría en automático, para mostrarlo en "Automático" aunque haya uno elegido.
+  const autoFondo = coloresAnuncio(estilo, null, texto, c, sup).color;
+  const autoTexto = coloresAnuncio(estilo, fondo, null, c, sup).texto;
   const ratio = k.contraste.toFixed(1).replace(".", ",");
   const nombreEstilo = ESTILOS_ANUNCIO.find((x) => x.clave === estilo)?.nombre ?? "Franja suave";
   const automatico = !fondo && !texto;
   const textoMuestra = ajustes.anuncioTexto?.trim() || "¡2x1 hoy!";
   const anuncio = (est: string) => ({ texto: textoMuestra, url: null, estilo: est, colorFondo: fondo, colorTexto: texto });
+  // La vista previa del selector de color: el anuncio con ese color, sin elegirlo todavía.
+  const previaAnuncio = (cambio: { colorFondo?: string | null; colorTexto?: string | null }) => (
+    <span className="block overflow-hidden rounded-lg p-1.5" style={{ background: pagina.fondo, whiteSpace: "nowrap" }}>
+      <AnuncioPagina anuncio={{ ...anuncio(estilo), ...cambio }} paleta={c} estatico superficie={sup} />
+    </span>
+  );
 
   return (
     <>
@@ -638,18 +502,20 @@ export function EditorAnuncio({
           <div className="grid gap-5 sm:grid-cols-2">
             <SelectorColor
               etiqueta="Color del anuncio"
-              ayuda={colorEsFondo(estilo) ? "El fondo del anuncio." : AYUDA_COLOR[estilo]}
+              ayuda={`${colorEsFondo(estilo) ? "El fondo del anuncio." : AYUDA_COLOR[estilo]} Automático: el de tu página.`}
               valor={fondo}
-              automatico={k.color}
-              muestras={unico([...CLAROS, ...deLaPagina])}
+              automatico={{ hex: autoFondo }}
+              libre
+              vistaPrevia={(hex) => previaAnuncio({ colorFondo: hex })}
               onCambio={(hex) => cambiar({ anuncioColorFondo: hex })}
             />
             <SelectorColor
               etiqueta="Color de la letra"
-              ayuda="Elegí uno que se lea bien sobre el anuncio."
+              ayuda="Automático: blanca u oscura, la que mejor se lea sobre el anuncio."
               valor={texto}
-              automatico={k.texto}
-              muestras={unico(["#FFFFFF", "#111827", "#78350F", c.oscuro, ...deLaPagina, ...CLAROS.slice(1, 8)])}
+              automatico={{ hex: autoTexto }}
+              libre
+              vistaPrevia={(hex) => previaAnuncio({ colorTexto: hex })}
               onCambio={(hex) => cambiar({ anuncioColorTexto: hex })}
             />
           </div>

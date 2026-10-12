@@ -26,6 +26,8 @@ import { useApi } from "../lib/useApi";
 import { useAuth } from "../store/AuthContext";
 import type { Almacen, RolNegocio } from "../types";
 import { Link } from "react-router-dom";
+import { SelectorColor } from "../components/SelectorColor";
+import { PreviaColorAgenda } from "./agenda/piezas";
 
 /**
  * Personal (PLAN-ROLES §9.4 y §11): la gente del negocio, entre o no al
@@ -403,7 +405,7 @@ function FichaPersona({
           <Campo label="Fecha de ingreso">
             <Input type="date" value={fechaIngreso} onChange={(e) => setFechaIngreso(e.target.value)} />
           </Campo>
-          <ColorAgenda valor={color} onChange={setColor} />
+          <ColorAgenda valor={color} nombre={nombre} onChange={setColor} />
           {cambiaComision && (
             <Campo label="Comisión base (%)" hint="Si es profesional, la de sus servicios.">
               <Input type="number" value={comision} onChange={(e) => setComision(e.target.value)} placeholder="Opcional" />
@@ -609,43 +611,21 @@ function ElegirCargo({
   );
 }
 
-/** El color que se propone al elegir uno (el primero de la agenda). */
-const COLOR_SUGERIDO = "#7357B8";
-
 /**
- * Color en la agenda. Lo que se ve es lo que se guarda (QA PER-04): antes el
- * campo mostraba un violeta elegido y se guardaba "sin color", y el
- * `<input type="color">` con el estilo de un texto se dibujaba como una raya.
+ * Color en la agenda, con el selector de color de todo el sistema. Lo que se
+ * ve es lo que se guarda (QA PER-04): "Sin color" guarda null.
  */
-function ColorAgenda({ valor, onChange }: { valor: string; onChange: (c: string) => void }) {
+function ColorAgenda({ valor, nombre, onChange }: { valor: string; nombre: string; onChange: (c: string) => void }) {
   return (
-    <div role="group" aria-label="Color en la agenda">
-      <span className="mb-1.5 block text-[13px] font-semibold text-texto-2">Color en la agenda</span>
-      <div className="flex min-h-[42px] flex-wrap items-center gap-2">
-        {valor ? (
-          <>
-            <input
-              type="color"
-              aria-label="Elegir color"
-              value={valor}
-              onChange={(e) => onChange(e.target.value)}
-              className="h-10 w-14 cursor-pointer rounded-lg border border-borde bg-white p-1"
-            />
-            <span className="text-[13px] text-texto-3">{valor.toUpperCase()}</span>
-            <Boton type="button" variante="ghost" onClick={() => onChange("")}>
-              Sin color
-            </Boton>
-          </>
-        ) : (
-          <>
-            <span className="inline-block h-6 w-6 rounded-full border border-dashed border-texto-4" aria-hidden />
-            <span className="text-[13px] text-texto-3">Sin color</span>
-            <Boton type="button" variante="soft" onClick={() => onChange(COLOR_SUGERIDO)}>
-              Elegir color
-            </Boton>
-          </>
-        )}
-      </div>
+    <div className="sm:col-span-2">
+      <SelectorColor
+        etiqueta="Color en la agenda"
+        valor={valor || null}
+        sinColor
+        libre
+        vistaPrevia={(hex) => <PreviaColorAgenda nombre={nombre} color={hex} />}
+        onCambio={(hex) => onChange(hex ?? "")}
+      />
     </div>
   );
 }

@@ -33,6 +33,9 @@ describe("dirección corta → la de siempre", () => {
     expect(rutaLargaDeLink("/bellavista/reservar")).toBe("/r/bellavista/reservar");
     expect(rutaLargaDeLink("/bellavista/reservar/centro")).toBe("/r/bellavista/reservar/centro");
     expect(rutaLargaDeLink("/bellavista/c/Ab3_x-9QkLm2")).toBe("/r/bellavista/c/Ab3_x-9QkLm2");
+    // La gift card que se comparte (IDEAS/6 #6).
+    expect(rutaLargaDeLink("/bellavista/regalo/AbCdEfGhIjKlMnOpQrStUv")).toBe("/p/bellavista/regalo/AbCdEfGhIjKlMnOpQrStUv");
+    expect(rutaLargaDeLink("/bellavista/regalo")).toBeNull();
   });
 
   it("lo demás no es la página de nadie", () => {

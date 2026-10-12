@@ -4,6 +4,7 @@ import { Route, Routes } from "react-router-dom";
 const PaginaPublica = lazy(() => import("./PaginaPublica"));
 const PrivacidadNegocio = lazy(() => import("./PrivacidadNegocio"));
 const PromoPublica = lazy(() => import("./PromoPublica"));
+const VerRegalo = lazy(() => import("./VerRegalo"));
 
 /**
  * `/p/<subdominio>` es la página PÚBLICA del negocio: la abre cualquiera, con
@@ -21,6 +22,7 @@ export default function RutasPaginaPublica() {
         <Route path="/p/:subdominio" element={<PaginaPublica />} />
         <Route path="/p/:subdominio/privacidad" element={<PrivacidadNegocio />} />
         <Route path="/p/:subdominio/promo/:slug" element={<PromoPublica />} />
+        <Route path="/p/:subdominio/regalo/:token" element={<VerRegalo />} />
       </Routes>
     </Suspense>
   );

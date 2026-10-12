@@ -9,7 +9,19 @@ import { cargarTurnstile } from "../lib/turnstile";
  * montar con otra `key` (después de cualquier respuesta del backend, que ya lo
  * gastó).
  */
-export default function Captcha({ siteKey, onToken }: { siteKey: string; onToken: (token: string | null) => void }) {
+export default function Captcha({
+  siteKey,
+  onToken,
+  discreto = false,
+}: {
+  siteKey: string;
+  onToken: (token: string | null) => void;
+  /**
+   * Invisible salvo que Cloudflare dude ("interaction-only"): para el chat de
+   * la página, donde un recuadro antes de la primera pregunta espanta.
+   */
+  discreto?: boolean;
+}) {
   const caja = useRef<HTMLDivElement>(null);
   const avisar = useRef(onToken);
   const [fallo, setFallo] = useState(false);
@@ -32,6 +44,7 @@ export default function Captcha({ siteKey, onToken }: { siteKey: string; onToken
           theme: "light",
           // Ocupa el ancho del formulario (mínimo 300 px): a 390 px entra.
           size: "flexible",
+          ...(discreto ? { appearance: "interaction-only" as const } : {}),
           callback: (token) => avisar.current(token),
           "expired-callback": () => avisar.current(null),
           "timeout-callback": () => avisar.current(null),
@@ -45,11 +58,16 @@ export default function Captcha({ siteKey, onToken }: { siteKey: string; onToken
       vivo = false;
       if (id) window.turnstile?.remove(id);
     };
-  }, [siteKey]);
+  }, [siteKey, discreto]);
 
   return (
     <div className="flex flex-col gap-1.5">
-      <div ref={caja} data-testid="captcha" aria-label="Verificación anti-robots" className="min-h-[65px] w-full" />
+      <div
+        ref={caja}
+        data-testid="captcha"
+        aria-label="Verificación anti-robots"
+        className={discreto ? "w-full" : "min-h-[65px] w-full"}
+      />
       {fallo && (
         <p className="text-xs text-[#B91C1C]">
           No pudimos cargar la verificación anti-robots. Revisá tu conexión (o el bloqueador de anuncios) y recargá

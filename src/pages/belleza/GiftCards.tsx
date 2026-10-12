@@ -1,4 +1,10 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
+import TarjetaRegalo from "../../components/regalos/TarjetaRegalo";
+import { esDiseno, NOMBRE_DISENO, type DisenoRegalo } from "../../lib/regalos/disenos";
+import { urlRegaloDe } from "../../lib/pagina/rutas";
+import { urlDeImagen } from "../../lib/pagina/apiPagina";
+import { compartirComoImagen, puedeCompartirImagen } from "../../lib/compartirTicket";
+import type { DisenoVale } from "../../lib/belleza/apiExtras";
 import { EncabezadoPagina } from "../../components/filtros";
 import {
   AvisoOk,
@@ -97,6 +103,15 @@ export default function GiftCards() {
   const [vender, setVender] = useState(false);
   const [vendido, setVendido] = useState<(Vale & { cambio: number }) | null>(null);
   const [verId, setVerId] = useState<number | null>(null);
+  // Color, rubro y diseños de la página (IDEAS/6 #6). Si falla, se vende igual.
+  const diseno = useApi(
+    () =>
+      Promise.resolve()
+        .then(() => apiExtras.disenoVale())
+        .then((d) => d ?? null)
+        .catch(() => null),
+    [],
+  );
 
   return (
     <div className="mx-auto max-w-4xl space-y-4 p-4 sm:p-5">
@@ -183,6 +198,7 @@ export default function GiftCards() {
       )}
 
       <VenderVale
+        diseno={diseno.datos}
         abierto={vender}
         onClose={() => setVender(false)}
         onVendido={(v) => {
@@ -191,7 +207,7 @@ export default function GiftCards() {
           lista.recargar();
         }}
       />
-      <ValeVendido vale={vendido} onClose={() => setVendido(null)} />
+      <ValeVendido vale={vendido} diseno={diseno.datos} onClose={() => setVendido(null)} />
       <DetalleVale
         id={verId}
         puedeAnular={!!ctx && anulaVales(ctx)}
@@ -261,7 +277,9 @@ function VenderVale({
   abierto,
   onClose,
   onVendido,
+  diseno,
 }: {
+  diseno?: DisenoVale | null;
   abierto: boolean;
   onClose: () => void;
   onVendido: (v: Vale & { cambio: number }) => void;
@@ -273,6 +291,8 @@ function VenderVale({
   const [vence, setVence] = useState("");
   const [beneficiario, setBeneficiario] = useState("");
   const [comprador, setComprador] = useState("");
+  const [mensajeVale, setMensajeVale] = useState("");
+  const [disenoElegido, setDisenoElegido] = useState<DisenoRegalo | null>(null);
   const [error, setError] = useState("");
   const [guardando, setGuardando] = useState(false);
   // Una clave por formulario abierto: el doble toque no vende dos vales.
@@ -283,6 +303,9 @@ function VenderVale({
   const efectivo = !!forma && forma.nombre.toLowerCase().includes("efectivo");
   const montoNum = parsearMontoO(monto);
   const recibidoNum = recibido ? parsearMontoO(recibido) : montoNum;
+  const ofrecidos = (diseno?.disenos ?? []).filter(esDiseno);
+  const disenoActual: DisenoRegalo | null =
+    disenoElegido ?? (esDiseno(diseno?.diseno) ? diseno.diseno : (ofrecidos[0] ?? null));
 
   const limpiar = () => {
     setMonto("");
@@ -290,6 +313,8 @@ function VenderVale({
     setVence("");
     setBeneficiario("");
     setComprador("");
+    setMensajeVale("");
+    setDisenoElegido(null);
     setError("");
     setClave(crypto.randomUUID());
   };
@@ -308,6 +333,8 @@ function VenderVale({
         ...(vence ? { venceEn: vence } : {}),
         ...(beneficiario.trim() ? { beneficiario: beneficiario.trim() } : {}),
         ...(comprador.trim() ? { comprador: comprador.trim() } : {}),
+        ...(disenoActual ? { disenoClave: disenoActual } : {}),
+        ...(mensajeVale.trim() ? { mensaje: mensajeVale.trim() } : {}),
         clienteRequestId: clave,
       });
       limpiar();
@@ -396,12 +423,87 @@ function VenderVale({
             maxLength={120}
           />
         </Campo>
+        <Campo label="Dedicatoria (opcional)" hint="Se ve con la tarjeta que le mandás.">
+          <Input
+            aria-label="Dedicatoria"
+            value={mensajeVale}
+            onChange={(e) => setMensajeVale(e.target.value)}
+            maxLength={200}
+            placeholder="¡Feliz cumple!"
+          />
+        </Campo>
+        {diseno && disenoActual && (
+          <div className="space-y-2">
+            <span className="block text-[13px] font-semibold text-texto-2">Diseño de la tarjeta</span>
+            <TarjetaRegalo
+              datos={{
+                diseno: disenoActual,
+                rubro: diseno.rubroClave,
+                color: diseno.color.hex,
+                negocio: diseno.negocio,
+                monto: montoNum > 0 ? montoNum : null,
+                para: beneficiario,
+                de: comprador,
+                vence,
+                fotoUrl: urlDeImagen(diseno.fotoUrl),
+              }}
+            />
+            {ofrecidos.length > 1 && (
+              <div role="radiogroup" aria-label="Diseño" className="flex gap-2 overflow-x-auto pb-1">
+                {ofrecidos.map((d) => (
+                  <button
+                    key={d}
+                    type="button"
+                    role="radio"
+                    aria-checked={d === disenoActual}
+                    aria-label={NOMBRE_DISENO[d].nombre}
+                    onClick={() => setDisenoElegido(d)}
+                    className={`w-24 shrink-0 rounded-xl border-2 ${d === disenoActual ? "border-primary" : "border-transparent"}`}
+                  >
+                    <TarjetaRegalo
+                      datos={{
+                        diseno: d,
+                        rubro: diseno.rubroClave,
+                        color: diseno.color.hex,
+                        negocio: diseno.negocio,
+                        monto: montoNum > 0 ? montoNum : null,
+                        fotoUrl: urlDeImagen(diseno.fotoUrl),
+                      }}
+                    />
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </Modal>
   );
 }
 
-function ValeVendido({ vale, onClose }: { vale: (Vale & { cambio: number }) | null; onClose: () => void }) {
+function ValeVendido({
+  vale,
+  diseno,
+  onClose,
+}: {
+  vale: (Vale & { cambio: number }) | null;
+  diseno?: DisenoVale | null;
+  onClose: () => void;
+}) {
+  const tarjeta = useRef<HTMLDivElement>(null);
+  const enlace = vale?.tokenPublico && diseno?.subdominio ? urlRegaloDe(diseno.subdominio, vale.tokenPublico) : null;
+  const copiarEnlace = async () => {
+    if (!enlace) return;
+    try {
+      await navigator.clipboard.writeText(enlace);
+      setAviso("Enlace copiado");
+    } catch {
+      setAviso(enlace);
+    }
+  };
+  const textoWhatsapp = vale
+    ? `${vale.beneficiario ? `¡${vale.beneficiario}, ` : "¡"}te regalaron una gift card${diseno ? ` de ${diseno.negocio}` : ""} por ${fmtMoney(vale.saldo)}!${enlace ? ` Mirala acá: ${enlace}` : ` Código: ${vale.codigo}`}`
+    : "";
   const [aviso, setAviso] = useAviso(3000);
   const copiar = async () => {
     if (!vale) return;
@@ -436,9 +538,52 @@ function ValeVendido({ vale, onClose }: { vale: (Vale & { cambio: number }) | nu
               Cambio {fmtMoney(vale.cambio)}
             </p>
           )}
-          <Boton variante="ghost" onClick={copiar}>
-            Copiar código
-          </Boton>
+          {diseno && (
+            <div ref={tarjeta} className="mx-auto max-w-sm text-left">
+              <TarjetaRegalo
+                datos={{
+                  diseno: vale.disenoClave ?? "MINIMAL",
+                  rubro: diseno.rubroClave,
+                  color: diseno.color.hex,
+                  negocio: diseno.negocio,
+                  monto: vale.montoInicial,
+                  para: vale.beneficiario,
+                  de: vale.comprador,
+                  codigo: vale.codigo,
+                  vence: vale.venceEn,
+                  fotoUrl: urlDeImagen(diseno.fotoUrl),
+                }}
+              />
+            </div>
+          )}
+          <div className="flex flex-wrap justify-center gap-2">
+            <Boton variante="ghost" onClick={copiar}>
+              Copiar código
+            </Boton>
+            {enlace && (
+              <Boton variante="ghost" onClick={() => void copiarEnlace()}>
+                Copiar enlace
+              </Boton>
+            )}
+            {diseno && (
+              <Boton
+                variante="ghost"
+                onClick={() => {
+                  if (tarjeta.current) void compartirComoImagen(tarjeta.current, `gift-card-${vale.codigo}.png`);
+                }}
+              >
+                {puedeCompartirImagen() ? "Compartir imagen" : "Bajar imagen"}
+              </Boton>
+            )}
+            <a
+              href={`https://wa.me/?text=${encodeURIComponent(textoWhatsapp)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center rounded-xl bg-[#16A34A] px-4 py-2 text-sm font-semibold text-white"
+            >
+              Mandar por WhatsApp
+            </a>
+          </div>
           <AvisoOk>{aviso}</AvisoOk>
         </div>
       )}

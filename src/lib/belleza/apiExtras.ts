@@ -24,6 +24,12 @@ export interface Vale {
   beneficiario: string | null;
   comprador: string | null;
   nota: string | null;
+  /** Cómo se ve la tarjeta (IDEAS/6 #6); null = Minimal. Opcional: backend anterior. */
+  disenoClave?: string | null;
+  /** Dedicatoria que se ve con la tarjeta. */
+  mensaje?: string | null;
+  /** Para el enlace público de la tarjeta; null si el rol no puede ver el código. */
+  tokenPublico?: string | null;
   formaPago: string | null;
   creadoEn: string;
   anuladaEn: string | null;
@@ -58,7 +64,21 @@ export interface EmitirValeInput {
   beneficiario?: string;
   comprador?: string;
   nota?: string;
+  disenoClave?: string;
+  mensaje?: string;
   clienteRequestId?: string;
+}
+
+/** Con qué se dibuja una gift card de este negocio (GET /gift-cards/diseno). */
+export interface DisenoVale {
+  negocio: string;
+  /** null = sin página: la tarjeta se comparte sólo como imagen. */
+  subdominio: string | null;
+  rubroClave: string | null;
+  color: { clave: string; hex: string };
+  fotoUrl: string | null;
+  disenos: string[];
+  diseno: string;
 }
 
 /** Lo que el recibo de una venta trae de cada vale que la pagó. */
@@ -272,6 +292,7 @@ export const apiExtras = {
   consultarVale: (codigo: string) =>
     request<Vale>(`/gift-cards/codigo/${encodeURIComponent(codigo.trim())}`),
   formaPagoVale: () => request<{ id: number; nombre: string }>("/gift-cards/forma-pago"),
+  disenoVale: () => request<DisenoVale>("/gift-cards/diseno"),
   emitirVale: (input: EmitirValeInput) =>
     request<Vale & { cambio: number }>("/gift-cards", { method: "POST", ...json(input) }),
   anularVale: (id: number, motivo?: string) =>

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Feature } from "../types";
-import { aplanar, construirMenu, esMenuDeAgenda } from "./menu";
+import { aplanar, construirMenu } from "./menu";
 import { puedeVer } from "./permisos";
 
 /**
@@ -50,8 +50,7 @@ describe("sección Personal", () => {
 });
 
 describe("menú: Personal en Equipo", () => {
-  const menu = (c: ReturnType<typeof ctx>) =>
-    construirMenu((s) => puedeVer(c, s), c.rubro, undefined, esMenuDeAgenda(c.rubro, c.features));
+  const menu = (c: ReturnType<typeof ctx>) => construirMenu((s) => puedeVer(c, s), c.rubro);
 
   it("es el primer hijo de Equipo en el salón", () => {
     const m = menu(ctx({ permisos: ["personal.gestionar", "usuarios.administrar"] }));

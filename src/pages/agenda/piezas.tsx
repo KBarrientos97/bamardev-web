@@ -47,6 +47,31 @@ export function AvatarRecurso({
   );
 }
 
+/**
+ * La vista previa del selector de color de la agenda: la columna del
+ * profesional y una cita, pintadas como en la grilla del día (avatar con su
+ * color mezclado y la raya de la izquierda entera).
+ */
+export function PreviaColorAgenda({ nombre, color }: { nombre: string; color: string | null }) {
+  const quien = nombre.trim() || "Ana";
+  return (
+    <div className="flex items-center gap-3">
+      <span className="flex shrink-0 flex-col items-center gap-1">
+        <AvatarRecurso nombre={quien} color={color} tamano={36} />
+        <span className="max-w-16 truncate text-[11px] font-semibold text-texto-2">{quien}</span>
+      </span>
+      <span
+        className="flex min-w-0 flex-1 flex-col gap-0.5 rounded-[10px] border border-l-4 border-borde bg-white px-2.5 py-1.5"
+        style={{ borderLeftColor: color || undefined }}
+      >
+        <span className="text-[11px] text-texto-3">10:00 – 10:45</span>
+        <span className="truncate text-[13px] font-bold text-texto">María López</span>
+        <span className="truncate text-[12px] text-texto-2">Corte y peinado</span>
+      </span>
+    </div>
+  );
+}
+
 /** Rótulo de sección del panel de la cita ("CLIENTE", "SERVICIOS"…). */
 export function Rotulo({ children, accion }: { children: ReactNode; accion?: ReactNode }) {
   return (

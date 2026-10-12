@@ -3,7 +3,7 @@ import { useLocation } from "react-router-dom";
 import type { NombreIcono } from "../components/Icon";
 import { useAuth } from "../store/AuthContext";
 import type { Seccion } from "./permisos";
-import { esBelleza, termino, type Termino, type Vocabulario } from "./rubro";
+import { termino, type Termino, type Vocabulario } from "./rubro";
 
 /**
  * El árbol del menú lateral, y el estado de qué grupos están abiertos.
@@ -52,9 +52,8 @@ export interface ItemNav {
 }
 
 /**
- * Bloques del menú. Agrupan lo que ya estaba en ese orden —no lo reordenan—:
- * el orden de la barra es el del drawer de la app Android y varias posiciones
- * están elegidas a propósito (ver los comentarios de `ITEMS`).
+ * Bloques del menú, en este orden y en todos los rubros. Un bloque sin ítems no
+ * dibuja su rótulo: cada rubro ve sólo los suyos.
  *
  * El del medio se llama "Stock" y no "Inventario" porque adentro vive el grupo
  * Inventario: el rótulo y el ítem se leían como un renglón repetido.
@@ -71,6 +70,28 @@ export const TITULO_BLOQUE: Record<Bloque, string> = {
   administracion: "Administración",
 };
 
+/**
+ * El menú es UNO para todos los rubros: la división de la barbería, que el
+ * 11-oct-2026 pasó a todos. Cada rubro ve sólo lo suyo porque cada ítem pide su
+ * sección y `permisos.ts` decide si existe (permiso + plan + rubro); el orden y
+ * los grupos, en cambio, son los mismos para todos:
+ *
+ *   ATENCIÓN        lo del día con el cliente (la agenda del salón)
+ *   VENDER          el POS y lo que se vende o se atiende al lado
+ *   STOCK           el inventario y lo que vigila el stock
+ *   ADMINISTRACIÓN  Equipo → Finanzas → Marketing → lo que se arma una vez
+ *                   (las mesas) → Configuración
+ *
+ * Un grupo con un solo hijo visible no se dibuja: el hijo va suelto en su
+ * lugar (ver `filtrar`). Así al cajero, que tiene sólo "Cuentas por cobrar",
+ * no le aparece una carpeta "Finanzas" con una cosa adentro.
+ *
+ * Una pantalla nueva entra en el bloque y el grupo de su tema, nunca suelta al
+ * final de Administración: así, módulo a módulo, la del restaurante llegó a
+ * nueve renglones sueltos. Un rubro nuevo no toca este archivo: hereda la
+ * división, y lo que es sólo suyo se encierra en `permisos.ts` (`SOLO_EN_RUBRO`,
+ * `FUERA_DE_RUBRO`). `menuRubros.test.ts` recorre todos los rubros.
+ */
 const ITEMS: (ItemNav & { bloque: Bloque })[] = [
   // Agenda de belleza: primero, como en el lienzo aprobado (en un salón la
   // agenda es el día). Sólo existen en los rubros de belleza con la feature
@@ -118,6 +139,10 @@ const ITEMS: (ItemNav & { bloque: Bloque })[] = [
   // cambian: Clientes, Comisiones, Propinas y Promociones no existen para él.
   { a: "/clientes", label: "Clientes", icono: "userHeart", seccion: "clientes", bloque: "agenda" },
   { a: "/pos", label: "Punto de venta", icono: "cart", seccion: "pos", bloque: "vender" },
+  // Billar (extra `billar`): al lado del POS, porque en un billar es donde se
+  // vende. Las pantallas que cuelgan (consumo, cierre, ventas) lo dejan
+  // encendido: no lleva `exacto`.
+  { a: "/billar", label: "Billar", icono: "bola", seccion: "billar", bloque: "vender" },
   // Va segundo y no dentro de Inventario: en una farmacia no es una consulta
   // de catálogo, es parte de atender. Se usa más que ninguna otra pantalla.
   {
@@ -130,7 +155,6 @@ const ITEMS: (ItemNav & { bloque: Bloque })[] = [
   { a: "/reparto", label: "Mis entregas", icono: "truck", seccion: "reparto", bloque: "vender" },
   // Belleza fase 4: los vales se venden y se consultan al lado del POS.
   { a: "/gift-cards", label: "Gift cards", icono: "gift", seccion: "gift_cards", bloque: "vender" },
-  { a: "/propinas", label: "Propinas", icono: "coins", seccion: "propinas", bloque: "vender" },
   { a: "/encargos", label: "Encargos", icono: "bell", seccion: "encargos", bloque: "vender" },
   // Fuera de Inventario y no dentro: no es catálogo, es la plata que se está
   // por perder. Va donde se vea todos los días.
@@ -214,86 +238,10 @@ const ITEMS: (ItemNav & { bloque: Bloque })[] = [
       },
     ],
   },
-  // Va suelto y no como sub-ítem de Inventario: las mesas no son catálogo,
-  // son el salón. En la app está en el mismo lugar del drawer. Cae en
-  // Administración porque es el ABM de mesas y zonas, que es del admin: el
-  // que atiende el salón es el mesero, desde su propio panel.
-  {
-    a: "/mesas",
-    label: "Mesas del salón",
-    icono: "grid",
-    seccion: "mesas",
-    bloque: "administracion",
-  },
-  {
-    a: "/creditos",
-    label: "Cuentas por cobrar",
-    icono: "dollar",
-    seccion: "creditos",
-    bloque: "administracion",
-  },
-  // Entre las cuentas por cobrar y los reportes, igual que en el drawer de la
-  // app: es plata del negocio, pero del libro del resultado y no de la caja.
-  {
-    a: "/gastos",
-    label: "Gastos operativos",
-    icono: "archive",
-    seccion: "gastos",
-    bloque: "administracion",
-  },
-  // Al lado de Gastos: es lo que se le paga a cada profesional (fase 2).
-  { a: "/comisiones", label: "Comisiones", icono: "percent", seccion: "comisiones", bloque: "administracion" },
-  { a: "/reportes", label: "Reportes", icono: "chart", seccion: "reportes", bloque: "administracion" },
-  { a: "/usuarios", label: "Usuarios", icono: "users", seccion: "usuarios", bloque: "administracion" },
-  // Al lado de Usuarios: es qué puede hacer cada uno (PLAN-ROLES-NEGOCIO).
-  // Suelto y no como grupo con Usuarios, así al que no edita roles no se le
-  // mueve nada del menú.
-  { a: "/roles", label: "Roles", icono: "key", seccion: "roles", bloque: "administracion" },
-  // A11: las reglas del negocio y las de la reserva online. Sólo el dueño.
-  {
-    a: "/configuracion/negocio",
-    label: "Configuración",
-    icono: "settings",
-    seccion: "config_negocio",
-    bloque: "administracion",
-  },
-  // La página pública del negocio (todas las verticales, con su feature). Los
-  // enlaces cortos cuelgan de acá: casi siempre apuntan a la página.
-  {
-    a: "/mi-pagina",
-    label: "Mi página",
-    icono: "home",
-    seccion: "mi_pagina",
-    exacto: true,
-    bloque: "administracion",
-    hijos: [{ a: "/mis-enlaces", label: "Mis enlaces", icono: "qr", seccion: "mis_enlaces" }],
-  },
-  // CRM y promociones (PLAN-CRM-Y-PROMOCIONES): al final del bloque, así a
-  // quien no las tiene no se le mueve nada del menú.
-  {
-    a: "/promociones",
-    label: "Promociones",
-    icono: "tag",
-    seccion: "promociones",
-    bloque: "administracion",
-  },
-  {
-    a: "/clientes-que-no-vuelven",
-    label: "Clientes que no vuelven",
-    icono: "userX",
-    seccion: "retencion",
-    bloque: "administracion",
-  },
-];
-
-/**
- * Administración de un negocio con agenda (el salón): la misma lista, pero
- * agrupada por tema. Con la agenda se suman comisiones, propinas, la página,
- * los enlaces, promociones y retención, y sueltos eran diez renglones. Las
- * propinas vienen de "Vender": en el salón son plata del equipo, no del POS.
- * Los demás rubros siguen con `ITEMS` tal cual: a Omar no se le mueve nada.
- */
-const ADMIN_AGENDA: (ItemNav & { bloque: Bloque })[] = [
+  // ── Administración, agrupada por tema ──
+  // Los grupos no tienen pantalla propia: su nombre lleva a la del primer hijo
+  // que se ve. Nacieron en el salón, donde con la agenda se sumaban comisiones,
+  // propinas, la página y el CRM, y sueltos eran diez renglones.
   {
     a: "/personal",
     label: "Equipo",
@@ -301,13 +249,17 @@ const ADMIN_AGENDA: (ItemNav & { bloque: Bloque })[] = [
     bloque: "administracion",
     hijos: [
       // PLAN-ROLES §11: Personal es la puerta de entrada (la gente, con o sin
-      // login); Usuarios queda como los accesos.
+      // login); Usuarios queda como los accesos. Sólo con agenda.
       { a: "/personal", label: "Personal", icono: "users", seccion: "personal" },
       // Íconos distintos (QA VER-06): en la barra colapsada no hay grupo.
       { a: "/usuarios", label: "Usuarios", icono: "key", seccion: "usuarios" },
-      // Qué puede hacer cada uno: el cargo de la gente es uno de estos roles.
+      // Qué puede hacer cada uno (PLAN-ROLES-NEGOCIO): el cargo de la gente es
+      // uno de estos roles.
       { a: "/roles", label: "Roles", icono: "lock", seccion: "roles" },
+      // Lo que se le paga a cada profesional (belleza, fase 2).
       { a: "/comisiones", label: "Comisiones", icono: "percent", seccion: "comisiones" },
+      // Acá y no en Vender: en el salón las propinas son plata del equipo, no
+      // del POS.
       { a: "/propinas", label: "Propinas", icono: "coins", seccion: "propinas" },
     ],
   },
@@ -318,10 +270,15 @@ const ADMIN_AGENDA: (ItemNav & { bloque: Bloque })[] = [
     bloque: "administracion",
     hijos: [
       { a: "/creditos", label: "Cuentas por cobrar", icono: "dollar", seccion: "creditos" },
+      // Entre las cuentas por cobrar y los reportes, igual que en el drawer de
+      // la app: es plata del negocio, pero del libro del resultado y no de la
+      // caja.
       { a: "/gastos", label: "Gastos operativos", icono: "archive", seccion: "gastos" },
       { a: "/reportes", label: "Reportes", icono: "chart", seccion: "reportes" },
     ],
   },
+  // La página pública del negocio (todas las verticales, con su feature), sus
+  // enlaces cortos y el CRM (PLAN-CRM-Y-PROMOCIONES).
   {
     a: "/mi-pagina",
     label: "Marketing",
@@ -330,6 +287,7 @@ const ADMIN_AGENDA: (ItemNav & { bloque: Bloque })[] = [
     hijos: [
       { a: "/mi-pagina", label: "Mi página", icono: "home", seccion: "mi_pagina" },
       { a: "/mis-enlaces", label: "Mis enlaces", icono: "qr", seccion: "mis_enlaces" },
+      { a: "/mi-asistente", label: "Mi asistente", icono: "info", seccion: "mi_asistente" },
       { a: "/promociones", label: "Promociones", icono: "tag", seccion: "promociones" },
       {
         a: "/clientes-que-no-vuelven",
@@ -339,7 +297,27 @@ const ADMIN_AGENDA: (ItemNav & { bloque: Bloque })[] = [
       },
     ],
   },
-  { a: "/mesas", label: "Mesas del salón", icono: "grid", seccion: "mesas", bloque: "administracion" },
+  // Lo que se arma una vez va abajo, después de lo que se mira todos los días.
+  // Mesas del salón es el ABM de mesas y zonas, que es del admin: el que
+  // atiende el salón es el mesero, desde su propio panel. No va dentro de
+  // Inventario: las mesas no son catálogo, son el salón.
+  {
+    a: "/mesas",
+    label: "Mesas del salón",
+    icono: "grid",
+    seccion: "mesas",
+    bloque: "administracion",
+  },
+  // Billar (extra `billar`): las mesas de pool, sus tarifas y los avisos. Al
+  // lado de las del salón: es el mismo ABM, para otro tipo de mesa.
+  {
+    a: "/mesas-billar",
+    label: "Mesas de billar",
+    icono: "numeral",
+    seccion: "mesas_billar",
+    bloque: "administracion",
+  },
+  // A11: las reglas del negocio y las de la reserva online. Sólo el dueño.
   {
     a: "/configuracion/negocio",
     label: "Configuración",
@@ -348,23 +326,6 @@ const ADMIN_AGENDA: (ItemNav & { bloque: Bloque })[] = [
     bloque: "administracion",
   },
 ];
-
-/**
- * ¿El menú se arma como el del salón? Hace falta la feature y el rubro, los
- * mismos dos candados de las pantallas de agenda (ver `SOLO_EN_RUBRO`): una
- * pollería con `agenda` prendida por error no cambia de menú.
- */
-export function esMenuDeAgenda(rubro: string | undefined, features: string[] | undefined): boolean {
-  return esBelleza(rubro) && !!features?.includes("agenda");
-}
-
-function itemsDe(conAgenda: boolean) {
-  if (!conAgenda) return ITEMS;
-  return [
-    ...ITEMS.filter((i) => i.bloque !== "administracion" && i.seccion !== "propinas"),
-    ...ADMIN_AGENDA,
-  ];
-}
 
 /** Un ítem ya filtrado por permisos, con su nombre según el rubro. */
 export interface NodoMenu {
@@ -438,11 +399,9 @@ export function construirMenu(
   puede: (s: Seccion) => boolean,
   rubro: string | undefined,
   vocabulario?: Vocabulario,
-  /** Ver `esMenuDeAgenda`. */
-  conAgenda = false,
 ): BloqueMenu[] {
   const bloques: BloqueMenu[] = [];
-  for (const i of itemsDe(conAgenda)) {
+  for (const i of ITEMS) {
     const nodos = filtrar([i], puede, rubro, vocabulario);
     if (nodos.length === 0) continue;
     const ultimo = bloques[bloques.length - 1];
@@ -577,11 +536,7 @@ export function useMenu(): Menu {
   // una feature al negocio (`refrescarFeatures`), la sección se va del menú en
   // caliente. Lo guardado de un grupo que ya no existe queda en el storage sin
   // molestar; si la feature vuelve, el grupo vuelve como estaba.
-  const conAgenda = esMenuDeAgenda(rubro, negocio?.features);
-  const bloques = useMemo(
-    () => construirMenu(puede, rubro, vocabulario, conAgenda),
-    [puede, rubro, vocabulario, conAgenda],
-  );
+  const bloques = useMemo(() => construirMenu(puede, rubro, vocabulario), [puede, rubro, vocabulario]);
   const raices = useMemo(() => bloques.flatMap((b) => b.nodos), [bloques]);
   const planos = useMemo(() => aplanar(raices), [raices]);
 

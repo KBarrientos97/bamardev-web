@@ -64,12 +64,17 @@ import { AuthProvider, useAuth } from "./store/AuthContext";
 // Página del negocio: el editor y los enlaces cortos se bajan sólo si se usan.
 const MiPagina = lazy(() => import("./pages/pagina/MiPagina"));
 const MisEnlaces = lazy(() => import("./pages/pagina/MisEnlaces"));
+const MiAsistente = lazy(() => import("./pages/pagina/MiAsistente"));
 const Promociones = lazy(() => import("./pages/promociones/Promociones"));
 const Retencion = lazy(() => import("./pages/clientes/Retencion"));
 // Belleza fase 4: sólo se bajan en un salón que las tiene prendidas.
 const GiftCards = lazy(() => import("./pages/belleza/GiftCards"));
 const Propinas = lazy(() => import("./pages/belleza/Propinas"));
 const RecetasServicio = lazy(() => import("./pages/belleza/RecetasServicio"));
+// Billar: sólo se baja en un negocio con el extra.
+const RutasBillar = lazy(() => import("./pages/billar/RutasBillar"));
+const PantallaSalonBillar = lazy(() => import("./pages/billar/PantallaSalon"));
+const MesasBillar = lazy(() => import("./pages/billar/admin/MesasBillar"));
 
 /** Manda a cada quien a su pantalla, según sus permisos (ver `rutaInicial`). */
 function Inicio() {
@@ -268,6 +273,19 @@ function Rutas() {
           del profesional y una barra lateral con un solo ítem sobra. */}
       <Route path={RUTA_AGENDA_PRONTO} element={<MiAgendaOPronto />} />
 
+      {/* Fuera del Layout: la pantalla del salón del billar es para una TV,
+          a pantalla completa y sin montos (BILLAR_MODULO_SPEC §7.11). */}
+      <Route
+        path="/billar/salon"
+        element={
+          <Protegida seccion="billar">
+            <Suspense fallback={<div className="min-h-dvh bg-[#06281D]" />}>
+              <PantallaSalonBillar />
+            </Suspense>
+          </Protegida>
+        }
+      />
+
       <Route element={<LayoutSegunRubro />}>
         <Route path="/" element={<Inicio />} />
         <Route path="/sin-acceso" element={<SinAcceso />} />
@@ -339,6 +357,19 @@ function Rutas() {
           element={
             <Protegida seccion="reportes_agenda">
               <ReportesAgenda />
+            </Protegida>
+          }
+        />
+
+        {/* Billar: el tablero de las mesas y lo que cuelga de él (consumo,
+            cierre, ventas del turno, venta rápida, cerrar caja). Ver pages/billar. */}
+        <Route
+          path="/billar/*"
+          element={
+            <Protegida seccion="billar">
+              <Suspense fallback={null}>
+                <RutasBillar />
+              </Suspense>
             </Protegida>
           }
         />
@@ -518,6 +549,18 @@ function Rutas() {
           }
         />
 
+        {/* Billar: las mesas, las tarifas y los avisos (del administrador). */}
+        <Route
+          path="/mesas-billar"
+          element={
+            <Protegida seccion="mesas_billar">
+              <Suspense fallback={null}>
+                <MesasBillar />
+              </Suspense>
+            </Protegida>
+          }
+        />
+
         <Route
           path="/creditos"
           element={
@@ -622,6 +665,17 @@ function Rutas() {
             <Protegida seccion="mis_enlaces">
               <Suspense fallback={null}>
                 <MisEnlaces />
+              </Suspense>
+            </Protegida>
+          }
+        />
+        {/* El asistente de la página (extra `asistente_pagina`, IDEAS/3b). */}
+        <Route
+          path="/mi-asistente"
+          element={
+            <Protegida seccion="mi_asistente">
+              <Suspense fallback={null}>
+                <MiAsistente />
               </Suspense>
             </Protegida>
           }

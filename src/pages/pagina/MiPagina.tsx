@@ -42,6 +42,9 @@ import { vistaDesdeEditor } from "../../lib/pagina/vista";
 import { useApi } from "../../lib/useApi";
 import CartelQR from "./CartelQR";
 import CatalogoEditor from "./CatalogoEditor";
+import EditorPedidosRegalos from "./EditorPedidosRegalos";
+import { useAuthOpcional } from "../../store/AuthContext";
+import { tieneFeature } from "../../lib/permisos";
 import EditorEnlace from "./EditorEnlace";
 import EditorHorario from "./EditorHorario";
 import { EditorAnuncio, FilaEleccion, SelectorColorPagina, SelectorForma, SelectorLetra } from "./EstilosPagina";
@@ -445,6 +448,8 @@ function BotonPrincipal({
  */
 export default function MiPagina() {
   const carga = useApi(() => apiPagina.estado(), []);
+  // Opcional: los tests montan el editor sin sesión (sin features = falla abierto).
+  const negocioSesion = useAuthOpcional()?.negocio;
   const [borrador, setBorrador] = useState<CambiosPagina>({});
   // Sólo las sucursales cambiadas: una que vuelve a su valor guardado sale.
   const [borradorSucursales, setBorradorSucursales] = useState<Record<number, BorradorSucursal>>({});
@@ -854,6 +859,8 @@ export default function MiPagina() {
                 muestras={e.muestras}
                 recomendados={estilo.colores}
                 deTuLogo={muestrasDeColores(coloresLogo, e.muestras)}
+                forma={ajustes.formaBotones}
+                fondo={fondoEstilo}
                 onCambio={(clave) => cambiar({ colorClave: clave })}
               />
               <SelectorForma
@@ -902,7 +909,7 @@ export default function MiPagina() {
               </Campo>
             )}
             {ajustes.anuncioTexto?.trim() && (
-              <EditorAnuncio ajustes={ajustes} c={c} muestras={e.muestras} pagina={fondoEstilo} cambiar={cambiar} />
+              <EditorAnuncio ajustes={ajustes} c={c} pagina={fondoEstilo} cambiar={cambiar} />
             )}
           </Seccion>
 
@@ -939,6 +946,20 @@ export default function MiPagina() {
             onItems={actualizarCatalogo}
             c={c}
             onAviso={setAviso}
+          />
+
+          <EditorPedidosRegalos
+            guardado={e.pagina.regalos}
+            pedidosGuardado={e.pagina.pedidosWhatsapp}
+            borrador={borrador}
+            cambiar={cambiar}
+            negocio={e.negocio.nombre}
+            rubro={e.negocio.rubro}
+            color={vista.color.hex}
+            fotoUrl={urlDeImagen(vista.portadaUrl ?? vista.logoUrl)}
+            conGiftCards={tieneFeature(negocioSesion?.features, "gift_cards")}
+            conPedidos={tieneFeature(negocioSesion?.features, "pedidos_whatsapp")}
+            conWhatsapp={enlaces.some((x) => x.tipo === "WHATSAPP")}
           />
 
           <Seccion
