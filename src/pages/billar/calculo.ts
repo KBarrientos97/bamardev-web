@@ -38,6 +38,21 @@ export function segundosJugados(s: Sesion, ahora: number): number {
   return segundosEnMesa(s, ahora) + (s.prev?.secs ?? 0);
 }
 
+/**
+ * Hasta cuántos segundos jugados se puede anular una mesa. Anular es "se abrió
+ * por error": no se cobra nada y se devuelve lo cobrado. Pasados 5 minutos ya
+ * es una mesa jugada, y anularla borraba ese tiempo sin dejar venta (QA del
+ * 12-oct: el botón seguía a los 50 min). El backend rechaza lo mismo con
+ * ANULAR_VENCIDO (`ANULAR_HASTA_SEG` en billar.service.ts): si una cambia,
+ * cambian las dos.
+ */
+export const ANULAR_HASTA_SEG = 5 * 60;
+
+/** Si la mesa todavía se puede anular. Cuenta lo traído de otra mesa, como el reloj. */
+export function sePuedeAnular(c: Pick<Cuenta, "secs"> | null): boolean {
+  return c != null && c.secs < ANULAR_HASTA_SEG;
+}
+
 // ── §5.2 Cobro por fracción (tiempo libre) ──────────────────────────────────
 
 export interface Cobro {

@@ -11,6 +11,7 @@ import {
   precioHoras,
   promoPara,
   segundosJugados,
+  sePuedeAnular,
 } from "./calculo";
 import type { Mesa, Sesion, TipoMesa } from "./tipos";
 
@@ -260,5 +261,20 @@ describe("formatos (§5.9)", () => {
     expect(fmtCobrado(90)).toBe("1:30");
     expect(fmtHace(27 * 60_000)).toBe("27 min");
     expect(fmtHace(62 * 60_000)).toBe("1 h 2 min");
+  });
+});
+
+describe("sePuedeAnular", () => {
+  it("una mesa se anula sólo en los primeros 5 minutos de juego", () => {
+    // QA del 12-oct: "Anular mesa (se abrió por error)" seguía a los 50 min,
+    // cuando ya no es un error sino una mesa jugada.
+    expect(sePuedeAnular(cuentaDe(sesion({ jugados: hms(0, 4, 59) }), POOL, AHORA))).toBe(true);
+    expect(sePuedeAnular(cuentaDe(sesion({ jugados: hms(0, 5) }), POOL, AHORA))).toBe(false);
+    expect(sePuedeAnular(null)).toBe(false);
+  });
+
+  it("lo traído de otra mesa cuenta como jugado", () => {
+    const s = sesion({ jugados: hms(0, 1), prev: { secs: hms(0, 40), min: 45, bs: 15 } });
+    expect(sePuedeAnular(cuentaDe(s, POOL, AHORA))).toBe(false);
   });
 });

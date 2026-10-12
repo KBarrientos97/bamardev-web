@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import type { NombreIcono } from "../../components/Icon";
+import { sePuedeAnular } from "./calculo";
 import { useDialogos } from "./dialogos";
 import { billar } from "./store";
 import type { VistaMesa } from "./vista";
@@ -69,6 +70,9 @@ export function useAccionesMesa() {
       // nada que cobrar, y con ella abierta la caja no cierra.
       const corregir: AccionMesa = { clave: "inicio", etiqueta: "Corregir inicio", icono: "edit", hacer: () => abrir({ tipo: "editarInicio", mesaId: id }) };
       const anular: AccionMesa = { clave: "anular", etiqueta: "Anular mesa", icono: "trash", hacer: () => abrir({ tipo: "anularMesa", mesaId: id }) };
+      // Anular, sólo mientras el reloj no pasa los 5 minutos (`sePuedeAnular`).
+      // Si se dieron cuenta tarde, se finaliza y se anula la venta con PIN.
+      const siAnulable = sePuedeAnular(v.cuenta) ? [anular] : [];
 
       switch (v.estado) {
         case "libre":
@@ -79,12 +83,12 @@ export function useAccionesMesa() {
             historial,
           ];
         case "juego":
-          return [consumo, pago, ...(fijo ? [extender] : []), pausar, cambiar, finalizar, historial, corregir, anular];
+          return [consumo, pago, ...(fijo ? [extender] : []), pausar, cambiar, finalizar, historial, corregir, ...siAnulable];
         case "vence":
         case "cumplido":
-          return [extender, consumo, pago, pausar, cambiar, finalizar, historial, corregir, anular];
+          return [extender, consumo, pago, pausar, cambiar, finalizar, historial, corregir, ...siAnulable];
         case "pausada":
-          return [reanudar, consumo, pago, cambiar, finalizar, historial, corregir, anular];
+          return [reanudar, consumo, pago, cambiar, finalizar, historial, corregir, ...siAnulable];
         case "reservada":
           return [
             { clave: "llego", etiqueta: "Llegó · Abrir", icono: "arrowRight", hacer: () => abrir({ tipo: "abrir", mesaId: id }) },
