@@ -509,6 +509,22 @@ const paths: Record<string, ReactNode> = {
       <line x1="17" y1="16" x2="23" y2="16" />
     </>
   ),
+  /** El botón Compartir de iOS (la caja con la flecha): la guía de instalar lo dibuja igual. */
+  compartir: (
+    <>
+      <path d="M12 3v12" />
+      <polyline points="8 7 12 3 16 7" />
+      <path d="M8 11H6a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1h-2" />
+    </>
+  ),
+  /** "Agregar a inicio" de iOS: el cuadro con el más. */
+  masCuadro: (
+    <>
+      <rect x="3" y="3" width="18" height="18" rx="4" />
+      <path d="M12 8v8" />
+      <path d="M8 12h8" />
+    </>
+  ),
 };
 
 export type NombreIcono = keyof typeof paths | (string & {});

@@ -8,6 +8,12 @@
     "/favicon-32.png",
     "/apple-touch-icon.png",
     "/icons.svg",
-    "/logo-marca.png"
+    "/logo-marca.png",
+    "/sw.js",
+    "/workbox-*",
+    "/manifest.webmanifest",
+    "/manifest-qa.webmanifest",
+    "/pwa-*",
+    "/apple-touch-icon-qa.png"
   ]
 }

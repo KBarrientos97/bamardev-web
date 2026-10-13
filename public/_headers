@@ -20,3 +20,15 @@
   Referrer-Policy: strict-origin-when-cross-origin
   X-Frame-Options: DENY
   Content-Security-Policy: frame-ancestors 'none'
+
+# La app instalable (PLAN-IOS §8). El service worker y el manifest se piden
+# siempre de nuevo: si quedaran en caché, un deploy no le llegaría al celular
+# que tiene la app instalada (y un SW roto no se podría reemplazar).
+/sw.js
+  Cache-Control: no-cache
+/manifest.webmanifest
+  Cache-Control: no-cache
+  Content-Type: application/manifest+json
+/manifest-qa.webmanifest
+  Cache-Control: no-cache
+  Content-Type: application/manifest+json

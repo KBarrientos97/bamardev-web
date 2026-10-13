@@ -9,6 +9,8 @@ import CambiarMiPassword from "./CambiarMiPassword";
 import { BarraCupo } from "./ChipCupo";
 import { HojaCupoHost } from "./ComprarCreditos";
 import { Icon } from "./Icon";
+import { useInstalarDisponible, useOfrecerInstalarUnaVez } from "../lib/pwa/guia";
+import { AvisoVersionNueva, HojaInstalar } from "./InstalarApp";
 import MenuLateral from "./MenuLateral";
 
 /**
@@ -49,6 +51,15 @@ export default function Layout() {
     setCambiandoPassword(true);
   };
   const menu = useMenu();
+  // "Instalar en el celular" (PLAN-IOS): desde el menú, y una vez sola al
+  // entrar desde un celular o tablet que todavía no la tiene instalada.
+  const instalarDisponible = useInstalarDisponible();
+  const [instalando, setInstalando] = useState(false);
+  const [ofrecida, cerrarOfrecida] = useOfrecerInstalarUnaVez();
+  const abrirInstalar = () => {
+    setAbierto(false);
+    setInstalando(true);
+  };
 
   useEffect(() => {
     try {
@@ -121,8 +132,12 @@ export default function Layout() {
   // navegador retraída, así que con la barra visible el layout quedaba más alto
   // que la pantalla y, por el overflow-hidden, ese sobrante no se podía
   // scrollear. Ahí abajo viven "Confirmar cobro" y "Cerrar caja".
+  //
+  // Los `safe-area` son para la app instalada en el iPhone (viewport-fit=cover,
+  // ver lib/pwa): sin ellos esos botones quedan debajo de la barrita de inicio.
+  // En el navegador y en los equipos sin notch valen 0.
   return (
-    <div className="flex h-[100dvh] overflow-hidden bg-fondo print:h-auto print:overflow-visible print:bg-white">
+    <div className="flex h-[100dvh] overflow-hidden bg-fondo pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] print:h-auto print:overflow-visible print:bg-white print:p-0">
       {/* Barra lateral fija en escritorio. Colapsada deja sólo los íconos:
           en la tablet del mostrador esos 256 px son casi un cuarto del ancho,
           y la grilla de productos del POS los aprovecha. */}
@@ -138,6 +153,7 @@ export default function Layout() {
           compacta={colapsada}
           onNavegar={() => setAbierto(false)}
           onCambiarPassword={cambiarPassword}
+          onInstalar={instalarDisponible ? abrirInstalar : undefined}
         />
 
         {/* Montado sobre el borde derecho para no restarle alto a la
@@ -160,13 +176,14 @@ export default function Layout() {
             className="absolute inset-0 bg-slate-900/40"
             onClick={() => setAbierto(false)}
           />
-          <aside className="absolute inset-y-0 left-0 flex w-72 flex-col bg-barra shadow-2xl">
+          <aside className="absolute inset-y-0 left-0 flex w-72 flex-col bg-barra pb-[env(safe-area-inset-bottom)] shadow-2xl">
             {encabezado(false)}
             <MenuLateral
               menu={menu}
               compacta={false}
               onNavegar={() => setAbierto(false)}
               onCambiarPassword={cambiarPassword}
+              onInstalar={instalarDisponible ? abrirInstalar : undefined}
             />
           </aside>
         </div>
@@ -206,6 +223,15 @@ export default function Layout() {
       </div>
 
       {cambiandoPassword && <CambiarMiPassword onClose={() => setCambiandoPassword(false)} />}
+      {(instalando || ofrecida) && (
+        <HojaInstalar
+          onClose={() => {
+            setInstalando(false);
+            cerrarOfrecida();
+          }}
+        />
+      )}
+      <AvisoVersionNueva />
       {/* La hoja de comprar créditos: la piden el chip, el POS y la agenda. */}
       <HojaCupoHost />
       {puede("billar") && (
