@@ -41,9 +41,11 @@ const OPC_FILTRO = [
   ["pagados", "Pagados"],
 ] as const satisfies readonly (readonly [FiltroCredito, string])[];
 
-const TONO_ESTADO: Record<EstadoCredito, "amarillo" | "azul" | "verde" | "gris"> = {
-  PENDIENTE: "amarillo",
-  ABONADO: "azul",
+// En el color del negocio (abonado, pagado) o neutro (pendiente): el amarillo y
+// el azul fijos se mezclaban con el color de cada negocio (12-oct).
+const TONO_ESTADO: Record<EstadoCredito, "marca" | "verde" | "gris"> = {
+  PENDIENTE: "gris",
+  ABONADO: "marca",
   PAGADO: "verde",
   ANULADO: "gris",
 };
