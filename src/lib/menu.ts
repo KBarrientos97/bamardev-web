@@ -120,7 +120,7 @@ const ITEMS: (ItemNav & { bloque: Bloque })[] = [
       {
         a: "/configuracion/agenda",
         label: "Configuración",
-        titulo: "Configuración de agenda",
+        titulo: "Configuración de la agenda",
         icono: "settings",
         seccion: "agenda_config",
       },
@@ -318,6 +318,7 @@ const ITEMS: (ItemNav & { bloque: Bloque })[] = [
     bloque: "administracion",
   },
   // A11: las reglas del negocio y las de la reserva online. Sólo el dueño.
+  // Lleva a la pestaña Reglas de la Configuración de la agenda (ConfigNegocio).
   {
     a: "/configuracion/negocio",
     label: "Configuración",

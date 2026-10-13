@@ -453,7 +453,7 @@ describe("Personal", () => {
   it("a quien no es profesional le dice dónde darle agenda, con la pestaña del rubro (DIA-16)", async () => {
     await montar();
     fireEvent.click(within(screen.getByRole("list", { name: "Personal" })).getByRole("button", { name: "Ver Ana" }));
-    expect(screen.getByRole("link", { name: "Configuración de agenda › Barberos y espacios" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "Configuración de la agenda › Barberos y espacios" })).toHaveAttribute(
       "href",
       "/configuracion/agenda?pestana=recursos",
     );

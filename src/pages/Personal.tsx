@@ -360,7 +360,7 @@ function FichaPersona({
                   to="/configuracion/agenda?pestana=recursos"
                   className="font-semibold text-primary-700 hover:underline"
                 >
-                  Configuración de agenda › {pestanaProfesionales}
+                  Configuración de la agenda › {pestanaProfesionales}
                 </Link>{" "}
                 y en &quot;¿Quién es?&quot; elegí a {persona.nombre}.
               </p>
@@ -461,7 +461,7 @@ function FichaPersona({
                     // hacerlo (QA PER-14).
                     (p) =>
                       p.profesional && !p.profesional.activo
-                        ? `"${p.nombre}" volvió al equipo. Su columna en la agenda sigue inactiva: reactivala en Configuración de agenda › ${pestanaProfesionales}.`
+                        ? `"${p.nombre}" volvió al equipo. Su columna en la agenda sigue inactiva: reactivala en Configuración de la agenda › ${pestanaProfesionales}.`
                         : `"${p.nombre}" volvió al equipo.`,
                   )
                 }

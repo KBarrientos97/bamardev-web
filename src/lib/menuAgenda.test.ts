@@ -101,7 +101,7 @@ describe("nombres dentro del grupo Agenda", () => {
     expect(hijos).not.toContain("Reportes de agenda");
     const planos = aplanar(m.flatMap((b) => b.nodos));
     expect(tituloDe(planos, "/reportes-agenda")).toBe("Reportes de agenda");
-    expect(tituloDe(planos, "/configuracion/agenda")).toBe("Configuración de agenda");
+    expect(tituloDe(planos, "/configuracion/agenda")).toBe("Configuración de la agenda");
     expect(tituloDe(planos, "/reportes")).toBe("Reportes");
   });
 });

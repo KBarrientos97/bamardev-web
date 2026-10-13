@@ -116,7 +116,7 @@ export default function Solicitudes() {
         subtitulo="Las reservas de tu página que esperan respuesta."
         accion={
           <Link
-            to="/configuracion/agenda?pestana=reservas"
+            to="/configuracion/agenda?pestana=online"
             className="inline-flex items-center gap-2 rounded-xl border border-borde bg-white px-4 py-2.5 text-sm font-semibold text-texto-2 hover:bg-muted"
           >
             <Icon name="settings" size={17} />

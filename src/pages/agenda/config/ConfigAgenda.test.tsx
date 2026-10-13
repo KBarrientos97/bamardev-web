@@ -4,12 +4,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Recurso, Servicio, TramoHorario } from "../../../lib/agenda/tiposConfigAgenda";
 
 /**
- * A8 · Configuración de agenda, con la API mockeada: el backend de agenda
- * todavía no existe (se programa en paralelo contra el contrato de §10.1).
+ * A8 + A11 · Configuración de la agenda, con la API mockeada: los cinco temas,
+ * los enlaces de antes, el modo y las reglas del dueño en la misma pantalla.
  */
 
 const sesion = vi.hoisted(() => ({
   usuario: { id: 1, rol: "ADMIN", sucursalId: null } as { id: number; rol: string; sucursalId: null; permisos?: string[] },
+  features: ["agenda"] as string[],
+  // Las secciones que ve: la agenda (`agenda_config`) y las reglas del dueño (`config_negocio`).
+  secciones: ["agenda_config", "config_negocio", "roles"] as string[],
 }));
 
 vi.mock("../../../store/AuthContext", () => ({
@@ -19,10 +22,10 @@ vi.mock("../../../store/AuthContext", () => ({
       id: 15,
       nombre: "Barbería de prueba",
       tipoNegocio: "BARBERIA",
-      features: ["agenda"],
+      features: sesion.features,
       perfil: { etiquetasRol: { PROFESIONAL: "Barbero", CAJERO: "Recepción" } },
     },
-    puede: (s: string) => s === "agenda_config" || s === "config_negocio",
+    puede: (s: string) => sesion.secciones.includes(s),
   }),
 }));
 
@@ -90,10 +93,31 @@ vi.mock("../../../lib/agenda/apiConfigAgenda", () => ({
     borrarBloqueo: vi.fn(),
     modoAgenda: vi.fn(),
     guardarModoAgenda: vi.fn(),
+    reglas: vi.fn(),
+    guardarReglas: vi.fn(),
+    historialReglas: vi.fn(),
+  },
+}));
+
+// Reserva online: sólo lo que la pestaña pide al abrirse.
+vi.mock("../../../lib/agenda/apiReservaOnline", async (importOriginal) => {
+  const real = await importOriginal<typeof import("../../../lib/agenda/apiReservaOnline")>();
+  return { ...real, apiReservaOnline: { ...real.apiReservaOnline, configuracion: vi.fn() } };
+});
+
+// El spa (fase 3): lo que piden sus secciones al abrirse.
+vi.mock("../../../lib/agenda/apiSpa", () => ({
+  apiSpa: {
+    tiposEspacio: vi.fn(async () => []),
+    paquetes: vi.fn(async () => []),
+    plantillasConsentimiento: vi.fn(async () => []),
   },
 }));
 
 import { apiConfigAgenda } from "../../../lib/agenda/apiConfigAgenda";
+import { apiReservaOnline } from "../../../lib/agenda/apiReservaOnline";
+import { apiSpa } from "../../../lib/agenda/apiSpa";
+import type { Reglas } from "../../../lib/agenda/tiposConfigAgenda";
 import { apiPersonal } from "../../../lib/personal";
 import ConfigAgenda from "./ConfigAgenda";
 import { permisosDe } from "../../../test/sesiones";
@@ -139,6 +163,23 @@ const HORARIO: TramoHorario[] = [
   { sucursalId: 2, dia: 2, desde: "09:00", hasta: "18:00" },
 ];
 
+const REGLAS: Reglas = {
+  granularidadMin: 15,
+  bufferGeneralMin: 0,
+  modoConfirmacion: "MANUAL",
+  anticipacionMinHoras: 2,
+  anticipacionMaxDias: 30,
+  ventanaCancelacionHoras: 4,
+  vencimientoSolicitudHoras: 12,
+  citasActivasPorTelefono: 2,
+  citasPorTelefonoPorDia: 1,
+  noShowsParaBloquear: 3,
+  mostrarPreciosOnline: true,
+  anticipoPct: 30,
+  anticipoPlazoMin: 15,
+  origen: {},
+};
+
 async function montar(pestana?: string) {
   render(
     <MemoryRouter initialEntries={[`/configuracion/agenda${pestana ? `?pestana=${pestana}` : ""}`]}>
@@ -148,9 +189,25 @@ async function montar(pestana?: string) {
   await act(async () => {});
 }
 
+/** Los temas que se ven, por su nombre (sin la línea que los describe). */
+const temas = () => screen.getAllByRole("tab").map((t) => t.getAttribute("aria-label"));
+
 beforeEach(() => {
   vi.clearAllMocks();
   sesion.usuario = DUENIO;
+  sesion.features = ["agenda"];
+  sesion.secciones = ["agenda_config", "config_negocio", "roles"];
+  vi.mocked(apiConfigAgenda.reglas).mockResolvedValue(REGLAS);
+  vi.mocked(apiConfigAgenda.historialReglas).mockResolvedValue([]);
+  vi.mocked(apiReservaOnline.configuracion).mockResolvedValue({
+    subdominio: "barberia",
+    negocio: "Barbería de prueba",
+    habilitada: true,
+    modoConfirmacion: "MANUAL",
+    serviciosPublicados: 1,
+    profesionalesPublicados: 0,
+    sucursales: [],
+  });
   vi.mocked(apiConfigAgenda.servicios).mockResolvedValue([CORTE, BARBA]);
   vi.mocked(apiConfigAgenda.recursos).mockResolvedValue([JUAN, SILLON]);
   vi.mocked(apiConfigAgenda.horarios).mockResolvedValue(HORARIO);
@@ -162,14 +219,18 @@ beforeEach(() => {
 });
 
 describe("pestañas", () => {
-  it("arranca en Servicios y el nombre del profesional sale del perfil", async () => {
+  it("arranca en Servicios con los cinco temas y el nombre del profesional sale del perfil", async () => {
     await montar();
     expect(screen.getByRole("tab", { name: "Servicios" })).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByRole("tab", { name: "Barberos y espacios" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Reglas del negocio/ })).toHaveAttribute(
-      "href",
-      "/configuracion/negocio",
+    expect(temas()).toEqual(["Servicios", "Equipo y horarios", "Días libres", "Reserva online", "Reglas"]);
+    // Cada tema dice qué tiene adentro (en la compu se ve al lado).
+    expect(screen.getByRole("tab", { name: "Equipo y horarios" })).toHaveAccessibleDescription(
+      "Quién atiende y en qué horario.",
     );
+    // Las reglas ya no son otra pantalla.
+    expect(screen.queryByRole("link", { name: /Reglas del negocio/ })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: "Equipo y horarios" }));
+    expect(screen.getByRole("button", { name: "Barberos y espacios", pressed: true })).toBeInTheDocument();
   });
 
   it("07-oct: sin la feature `consentimientos` no hay pestaña, ni entrando por el enlace", async () => {
@@ -731,45 +792,175 @@ describe("QA S2 ronda 2: el usuario del profesional y el horario", () => {
   });
 });
 
-describe("¿Cómo trabajás? (IDEAS/7-AGENDA-SIMPLE)", () => {
-  it("en simple (el defecto) se ven las pestañas del día a día y el resto en «Más opciones»", async () => {
+describe("modo de la agenda (IDEAS/7-AGENDA-SIMPLE)", () => {
+  it("en simple (el defecto) se ven Servicios, Horario, Días libres y Reglas; la reserva online, en «Más opciones»", async () => {
     vi.mocked(apiConfigAgenda.modoAgenda).mockResolvedValue({});
     await montar();
-    expect(screen.getByRole("radio", { name: /Solo\/a \(simple\)/ })).toHaveAttribute("aria-checked", "true");
-    const pestanas = screen.getAllByRole("tab").map((t) => t.textContent);
-    expect(pestanas).toEqual(["Servicios", "Horarios", "Días libres", "Bloqueos"]);
+    expect(temas()).toEqual(["Servicios", "Horario", "Días libres", "Reglas"]);
+    expect(screen.getByRole("button", { name: /Modo: Solo\/a · Cambiar/ })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Más opciones" }));
-    expect(screen.getByRole("tab", { name: "Barberos y espacios" })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "Reserva online" })).toBeInTheDocument();
+    expect(temas()).toEqual(["Servicios", "Horario", "Días libres", "Reserva online", "Reglas"]);
   });
 
-  it("un enlace a una pestaña plegada la muestra igual", async () => {
+  it("en simple, con la reserva online contratada, es un tema más y no hay nada plegado", async () => {
+    sesion.features = ["agenda", "reserva_online"];
+    vi.mocked(apiConfigAgenda.modoAgenda).mockResolvedValue({ modoAgenda: "SIMPLE" });
+    await montar();
+    expect(temas()).toEqual(["Servicios", "Horario", "Días libres", "Reserva online", "Reglas"]);
+    expect(screen.queryByRole("button", { name: "Más opciones" })).not.toBeInTheDocument();
+  });
+
+  it("en simple, Horario muestra sólo el horario y el equipo queda a un toque", async () => {
+    vi.mocked(apiConfigAgenda.modoAgenda).mockResolvedValue({ modoAgenda: "SIMPLE" });
+    await montar("equipo");
+    expect(screen.getByRole("tab", { name: "Horario" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.queryByRole("group", { name: "Secciones del equipo" })).not.toBeInTheDocument();
+    expect(apiConfigAgenda.horarios).toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Ver equipo" }));
+    expect(screen.getByText("Sillón 2")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Volver al horario" }));
+    expect(screen.getByRole("button", { name: "Ver equipo" })).toBeInTheDocument();
+  });
+
+  it("un enlace viejo a algo plegado lo muestra igual", async () => {
     vi.mocked(apiConfigAgenda.modoAgenda).mockResolvedValue({ modoAgenda: "SIMPLE" });
     await montar("recursos");
-    expect(screen.getByRole("tab", { name: "Barberos y espacios" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "Horario" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("button", { name: "Volver al horario" })).toBeInTheDocument();
+    expect(screen.getByText("Sillón 2")).toBeInTheDocument();
   });
 
-  it("elegir «Con personal» guarda modoAgenda para todo el negocio y muestra todo", async () => {
+  it("el chip del modo lleva a Reglas, donde está «¿Cómo trabajás?»", async () => {
+    await montar();
+    expect(screen.queryByRole("radiogroup", { name: "¿Cómo trabajás?" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Modo: Con personal · Cambiar/ }));
+    await act(async () => {});
+    expect(screen.getByRole("tab", { name: "Reglas" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("radio", { name: /Con personal/ })).toHaveAttribute("aria-checked", "true");
+  });
+
+  it("elegir «Con personal» guarda modoAgenda para todo el negocio y muestra los cinco temas", async () => {
     vi.mocked(apiConfigAgenda.modoAgenda).mockResolvedValue({ modoAgenda: "SIMPLE" });
     vi.mocked(apiConfigAgenda.guardarModoAgenda).mockResolvedValue({ modoAgenda: "COMPLETO" });
-    await montar();
+    await montar("reglas");
+    expect(screen.getByRole("radio", { name: /Solo\/a \(simple\)/ })).toHaveAttribute("aria-checked", "true");
     await act(async () => {
       fireEvent.click(screen.getByRole("radio", { name: /Con personal/ }));
     });
     expect(apiConfigAgenda.guardarModoAgenda).toHaveBeenCalledWith("COMPLETO");
     expect(screen.getByRole("radio", { name: /Con personal/ })).toHaveAttribute("aria-checked", "true");
-    expect(screen.getByRole("tab", { name: "Excepciones" })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "Barberos y espacios" })).toBeInTheDocument();
+    expect(temas()).toEqual(["Servicios", "Equipo y horarios", "Días libres", "Reserva online", "Reglas"]);
+    expect(screen.getByRole("button", { name: /Modo: Con personal/ })).toBeInTheDocument();
   });
 
   it("si el backend no lo acepta, vuelve a como estaba y lo dice", async () => {
-    vi.mocked(apiConfigAgenda.modoAgenda).mockResolvedValue({ modoAgenda: "COMPLETO" });
     vi.mocked(apiConfigAgenda.guardarModoAgenda).mockRejectedValue(new Error("No tenés permiso"));
-    await montar();
+    await montar("reglas");
     await act(async () => {
       fireEvent.click(screen.getByRole("radio", { name: /Solo\/a/ }));
     });
     expect(screen.getByText("No tenés permiso")).toBeInTheDocument();
     expect(screen.getByRole("radio", { name: /Con personal/ })).toHaveAttribute("aria-checked", "true");
+  });
+});
+
+describe("enlaces de antes (?pestana=)", () => {
+  it.each([
+    ["recursos", "Equipo y horarios", "Barberos y espacios"],
+    ["horarios", "Equipo y horarios", "Horarios"],
+    ["excepciones", "Días libres", "Excepciones"],
+    ["bloqueos", "Días libres", "Bloqueos"],
+  ])("«%s» lleva a %s › %s", async (vieja, tema, seccion) => {
+    await montar(vieja);
+    expect(screen.getByRole("tab", { name: tema })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("button", { name: seccion, pressed: true })).toBeInTheDocument();
+  });
+
+  it("«reservas» lleva a Reserva online", async () => {
+    await montar("reservas");
+    expect(screen.getByRole("tab", { name: "Reserva online" })).toHaveAttribute("aria-selected", "true");
+    expect(apiReservaOnline.configuracion).toHaveBeenCalled();
+  });
+
+  it("con el spa, paquetes y consentimientos son secciones de Servicios y los tipos de espacio, del equipo", async () => {
+    sesion.features = ["agenda", "espacios", "paquetes", "consentimientos"];
+    await montar("paquetes");
+    expect(screen.getByRole("tab", { name: "Servicios" })).toHaveAttribute("aria-selected", "true");
+    const grupo = screen.getByRole("group", { name: "Secciones de servicios" });
+    expect(within(grupo).getAllByRole("button").map((b) => b.textContent)).toEqual([
+      "Servicios",
+      "Paquetes",
+      "Consentimientos",
+    ]);
+    expect(within(grupo).getByRole("button", { name: "Paquetes" })).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(screen.getByRole("tab", { name: "Equipo y horarios" }));
+    await act(async () => {});
+    fireEvent.click(screen.getByRole("button", { name: "Tipos de espacio" }));
+    await act(async () => {});
+    expect(screen.getByRole("button", { name: "Tipos de espacio", pressed: true })).toBeInTheDocument();
+    expect(apiSpa.tiposEspacio).toHaveBeenCalled();
+  });
+
+  it("los temas nuevos también van en la URL", async () => {
+    await montar("dias");
+    expect(screen.getByRole("tab", { name: "Días libres" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("button", { name: "Excepciones", pressed: true })).toBeInTheDocument();
+  });
+});
+
+describe("reglas del negocio en la misma pantalla", () => {
+  it("Reglas: cómo trabaja, la agenda interna y el historial; guardar manda sólo lo cambiado y recarga el historial", async () => {
+    vi.mocked(apiConfigAgenda.guardarReglas).mockResolvedValue({ ...REGLAS, granularidadMin: 10 });
+    await montar("reglas");
+    expect(screen.getByRole("radiogroup", { name: "¿Cómo trabajás?" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Agenda interna" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Historial de cambios" })).toBeInTheDocument();
+    // Las de la reserva online van con la reserva online.
+    expect(screen.queryByRole("region", { name: "Reglas de la reserva online" })).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText(/Los turnos empiezan cada/), { target: { value: "10" } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
+    });
+    expect(apiConfigAgenda.guardarReglas).toHaveBeenCalledWith({ sucursalId: null, granularidadMin: 10 });
+    expect(screen.getByText("Reglas guardadas.")).toBeInTheDocument();
+    expect(apiConfigAgenda.historialReglas).toHaveBeenCalledTimes(2);
+  });
+
+  it("Reserva online: lo que se publica y, debajo, cómo se confirman las reservas", async () => {
+    await montar("online");
+    expect(screen.getByRole("region", { name: "Sucursales" })).toBeInTheDocument();
+    const reglas = screen.getByRole("region", { name: "Reglas de la reserva online" });
+    expect(within(reglas).getAllByRole("radio")).toHaveLength(4);
+    expect(screen.getByText(/se cambia más abajo/)).toBeInTheDocument();
+  });
+
+  it("sin `config_negocio` no ve ni edita las reglas del dueño", async () => {
+    sesion.secciones = ["agenda_config"];
+    await montar("reglas");
+    expect(screen.getByRole("radiogroup", { name: "¿Cómo trabajás?" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Agenda interna" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Historial de cambios" })).not.toBeInTheDocument();
+    expect(screen.getByText(/las decide el dueño/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: "Reserva online" }));
+    await act(async () => {});
+    expect(screen.getByRole("region", { name: "Sucursales" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Reglas de la reserva online" })).not.toBeInTheDocument();
+    expect(screen.getByText(/lo decide el dueño/)).toBeInTheDocument();
+    expect(apiConfigAgenda.reglas).not.toHaveBeenCalled();
+    expect(apiConfigAgenda.historialReglas).not.toHaveBeenCalled();
+  });
+
+  it("con las reglas pero sin la agenda ve sólo Reserva online y Reglas, sin lo de la agenda", async () => {
+    sesion.secciones = ["config_negocio"];
+    await montar();
+    expect(temas()).toEqual(["Reserva online", "Reglas"]);
+    expect(screen.getByRole("tab", { name: "Reglas" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("region", { name: "Agenda interna" })).toBeInTheDocument();
+    // El modo lo guarda quien configura la agenda.
+    expect(screen.queryByRole("radiogroup", { name: "¿Cómo trabajás?" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Modo:/ })).not.toBeInTheDocument();
+    expect(apiConfigAgenda.servicios).not.toHaveBeenCalled();
+    expect(apiConfigAgenda.recursos).not.toHaveBeenCalled();
   });
 });
