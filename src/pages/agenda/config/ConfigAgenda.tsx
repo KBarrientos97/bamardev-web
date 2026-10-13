@@ -207,10 +207,15 @@ export default function ConfigAgenda() {
   const temaInfo: Record<Tema, { etiqueta: string; descripcion: string }> = {
     servicios: {
       etiqueta: "Servicios",
+      // Nombra sólo lo que el negocio tiene del spa.
       descripcion:
-        spa.paquetes || spa.consentimientos
+        spa.paquetes && spa.consentimientos
           ? "Qué ofrecés, paquetes y lo que se firma."
-          : "Qué ofrecés, cuánto dura y cuánto cuesta.",
+          : spa.paquetes
+            ? "Qué ofrecés y los paquetes de sesiones."
+            : spa.consentimientos
+              ? "Qué ofrecés y lo que se firma antes."
+              : "Qué ofrecés, cuánto dura y cuánto cuesta.",
     },
     equipo: simple
       ? { etiqueta: "Horario", descripcion: "Los días y horas en que atendés." }
@@ -286,7 +291,7 @@ export default function ConfigAgenda() {
                       : "border-borde bg-white text-texto-2 hover:bg-muted lg:bg-transparent"
                   }`}
                 >
-                  <Icon name={ICONO[t]} size={17} className="shrink-0 lg:mt-0.5" />
+                  <Icon name={t === "equipo" && simple ? "clock" : ICONO[t]} size={17} className="shrink-0 lg:mt-0.5" />
                   <span className="min-w-0">
                     <span className="block">{temaInfo[t].etiqueta}</span>
                     <span
