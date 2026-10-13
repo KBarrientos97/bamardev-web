@@ -25,8 +25,8 @@ function cual(p: Periodo): string {
     case "mes":
     case "mesPasado":
       return `de ${mes}`;
-    case "anio":
-      return `del ${p.desde.slice(0, 4)}`;
+    case "dias90":
+      return "de los últimos 3 meses";
     case "rango":
       return "del período";
   }

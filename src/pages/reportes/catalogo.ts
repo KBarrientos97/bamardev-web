@@ -74,6 +74,7 @@ const v = {
   asistencia: lazy(() => import("./vistas/agenda/VistasAgenda").then((m) => ({ default: m.Asistencia }))),
   ocupacionAgenda: lazy(() => import("./vistas/agenda/VistasAgenda").then((m) => ({ default: m.OcupacionAgenda }))),
   retencion: lazy(() => import("./vistas/agenda/VistasAgenda").then((m) => ({ default: m.Retencion }))),
+  margenServicios: lazy(() => import("./vistas/agenda/MargenServicios")),
   top: lazy(() => import("./vistas/TopProductos")),
   lentos: lazy(() => import("./vistas/ProductosLentos")),
   categorias: lazy(() => import("./vistas/Categorias")),
@@ -188,6 +189,19 @@ export function catalogo(rubro: string | undefined): FichaReporte[] {
     { id: "asistencia", titulo: "Asistencia", descripcion: "No-shows y cancelaciones", icono: "userX", tono: "ambar", grupo: "rubro", seccion: "reportes_agenda", soloEnRubro: esBelleza, vista: v.asistencia },
     { id: "ocupacion-agenda", titulo: "Ocupación de la agenda", descripcion: "Horas reservadas sobre horas de horario", icono: "calendar", tono: "azul", grupo: "rubro", seccion: "reportes_agenda", soloEnRubro: esBelleza, vista: v.ocupacionAgenda },
     { id: "retencion", titulo: "Retención", descripcion: "Cuántos clientes vuelven", icono: "userHeart", tono: "rosa", grupo: "rubro", seccion: "reportes_agenda", soloEnRubro: esBelleza, vista: v.retencion },
+    // Era la pestaña "Costo y margen" de Insumos por servicio: la ve quien la
+    // veía, el que arma las recetas (misma sección, mismo permiso).
+    {
+      id: "margen-servicios",
+      titulo: "Costo y margen por servicio",
+      descripcion: "Lo que deja cada servicio después de los insumos",
+      icono: "sack",
+      tono: "verde",
+      grupo: "rubro",
+      seccion: "recetas_servicio",
+      soloEnRubro: esBelleza,
+      vista: v.margenServicios,
+    },
 
     // ── Productos ──
     { id: "top-productos", titulo: `Top ${p}`, descripcion: "Más vendidos y más rentables", icono: "trendingUp", tono: "verde", grupo: "productos", ...OPERACION, vista: v.top },

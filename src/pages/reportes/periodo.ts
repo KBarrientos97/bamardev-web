@@ -1,4 +1,5 @@
 import { isoDia } from "../../lib/format";
+import { MAX_DIAS_REPORTE } from "../../lib/topeReportes";
 
 /**
  * El período de Reportes y contra qué se compara cada flecha.
@@ -14,7 +15,11 @@ import { isoDia } from "../../lib/format";
  * ("la semana anterior", "agosto", "1–12 de septiembre").
  */
 
-export type Preset = "hoy" | "ayer" | "semana" | "mes" | "mesPasado" | "dias30" | "anio" | "rango";
+export type Preset = "hoy" | "ayer" | "semana" | "mes" | "mesPasado" | "dias30" | "dias90" | "rango";
+
+// El tope de 3 meses (ver `lib/topeReportes`): por él ya no hay "Año", lo
+// reemplaza "3 meses". Se re-exporta para que la pantalla lo tome de acá.
+export { excedeTope, MAX_DIAS_REPORTE, MENSAJE_TOPE } from "../../lib/topeReportes";
 
 export interface Periodo {
   preset: Preset;
@@ -84,13 +89,14 @@ export function periodoDe(preset: Exclude<Preset, "rango">, hoy = new Date()): P
       return { preset, desde: isoDia(sumarDias(h, -6)), hasta: isoDia(h) };
     case "dias30":
       return { preset, desde: isoDia(sumarDias(h, -29)), hasta: isoDia(h) };
+    // Noventa días que terminan hoy: el más largo de los presets, dentro del tope.
+    case "dias90":
+      return { preset, desde: isoDia(sumarDias(h, -89)), hasta: isoDia(h) };
     case "mes":
       return { preset, desde: isoDia(new Date(y, m, 1)), hasta: isoDia(h) };
     case "mesPasado":
       // El día 0 del mes en curso es el último del anterior.
       return { preset, desde: isoDia(new Date(y, m - 1, 1)), hasta: isoDia(new Date(y, m, 0)) };
-    case "anio":
-      return { preset, desde: isoDia(new Date(y, 0, 1)), hasta: isoDia(h) };
   }
 }
 
@@ -134,14 +140,16 @@ export function comparacionDe(p: Periodo): Comparacion {
       };
     }
     case "semana":
-    case "dias30": {
+    case "dias30":
+    case "dias90": {
       const dias = diasDe(p.desde, p.hasta);
-      return {
-        desde: isoDia(sumarDias(desde, -dias)),
-        hasta: isoDia(sumarDias(desde, -1)),
-        contra: p.preset === "semana" ? "la semana anterior" : "los 30 días anteriores",
-        leyenda: p.preset === "semana" ? "Semana anterior" : "30 días anteriores",
-      };
+      const [contra, leyenda] =
+        p.preset === "semana"
+          ? ["la semana anterior", "Semana anterior"]
+          : p.preset === "dias30"
+            ? ["los 30 días anteriores", "30 días anteriores"]
+            : ["los 3 meses anteriores", "3 meses anteriores"];
+      return { desde: isoDia(sumarDias(desde, -dias)), hasta: isoDia(sumarDias(desde, -1)), contra, leyenda };
     }
     case "mes": {
       // El mismo tramo del mes anterior: del 1 al 12 contra del 1 al 12. Si el
@@ -156,13 +164,6 @@ export function comparacionDe(p: Periodo): Comparacion {
       const inicio = new Date(desde.getFullYear(), desde.getMonth() - 1, 1);
       const fin = new Date(desde.getFullYear(), desde.getMonth(), 0);
       return { desde: isoDia(inicio), hasta: isoDia(fin), contra: nombreMes(inicio), leyenda: capital(nombreMes(inicio)) };
-    }
-    case "anio": {
-      // El año pasado hasta el mismo día. Un 29 de febrero cae en el 28.
-      const y = desde.getFullYear() - 1;
-      const ultimoDelMes = new Date(y, hasta.getMonth() + 1, 0).getDate();
-      const fin = new Date(y, hasta.getMonth(), Math.min(hasta.getDate(), ultimoDelMes));
-      return { desde: `${y}-01-01`, hasta: isoDia(fin), contra: `el ${y} a la misma fecha`, leyenda: String(y) };
     }
     case "rango": {
       const dias = diasDe(p.desde, p.hasta);
@@ -197,8 +198,8 @@ export function enElPeriodo(p: Periodo): string {
       return `en ${nombreMes(aDia(p.desde))}`;
     case "mesPasado":
       return `en ${nombreMes(aDia(p.desde))}`;
-    case "anio":
-      return `en ${aDia(p.desde).getFullYear()}`;
+    case "dias90":
+      return "en los últimos 3 meses";
     case "rango":
       return "en el período";
   }
@@ -219,8 +220,8 @@ export function leyendaDe(p: Periodo): string {
       return "Este mes";
     case "mesPasado":
       return capital(nombreMes(aDia(p.desde)));
-    case "anio":
-      return "Este año";
+    case "dias90":
+      return "Últimos 3 meses";
     case "rango":
       return "Este período";
   }
@@ -234,7 +235,7 @@ export const NOMBRE_PRESET: Record<Preset, string> = {
   mes: "Mes",
   mesPasado: "Mes pasado",
   dias30: "Últimos 30 días",
-  anio: "Año",
+  dias90: "3 meses",
   rango: "Personalizado",
 };
 
@@ -274,8 +275,9 @@ export function diasDelPeriodo(desde: string, hasta: string): string[] {
   const out: string[] = [];
   let d = aDia(desde);
   const fin = aDia(hasta);
-  // Tope de un año y un día: un rango a mano de diez años no arma 3.650 puntos.
-  for (let i = 0; d <= fin && i < 367; i++) {
+  // El tope de los reportes: aun si llegara un rango más largo (uno guardado
+  // de antes), no arma más puntos que los del período más largo permitido.
+  for (let i = 0; d <= fin && i < MAX_DIAS_REPORTE; i++) {
     out.push(isoDia(d));
     d = sumarDias(d, 1);
   }

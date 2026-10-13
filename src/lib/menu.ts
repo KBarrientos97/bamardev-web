@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "react-router-dom";
 import type { NombreIcono } from "../components/Icon";
 import { useAuth } from "../store/AuthContext";
-import type { Seccion } from "./permisos";
+import { SECCIONES_REPORTES, type Seccion } from "./permisos";
 import { termino, type Termino, type Vocabulario } from "./rubro";
 
 /**
@@ -20,8 +20,8 @@ export interface ItemNav {
   label: string;
   /**
    * El nombre completo, para donde no se ve el grupo: la cabecera del celular
-   * y la barra de íconos. Dentro de Agenda basta "Reportes", pero solo, en la
-   * cabecera, se confundiría con los de Finanzas.
+   * y la barra de íconos. Dentro de Agenda basta "Configuración", pero sola,
+   * en la cabecera, se confundiría con la del negocio.
    */
   titulo?: string;
   icono: NombreIcono;
@@ -31,6 +31,12 @@ export interface ItemNav {
    * primero que se puede ver. Con uno solo, el hijo va suelto en su lugar.
    */
   seccion?: Seccion;
+  /**
+   * Otras secciones que también dan entrada a la pantalla: con cualquiera se
+   * ve. Es el caso de Reportes, que junta los de todas las funcionalidades y
+   * existe para quien tiene sólo los de la agenda (ver `SECCIONES_REPORTES`).
+   */
+  tambien?: readonly Seccion[];
   /**
    * Se marca activo sólo con la ruta EXACTA. Lo necesitan los ítems que tienen
    * sub-rutas colgando: sin esto, "Movimientos" queda encendido al mismo tiempo
@@ -79,8 +85,8 @@ export const TITULO_BLOQUE: Record<Bloque, string> = {
  *   ATENCIÓN        lo del día con el cliente (la agenda del salón)
  *   VENDER          el POS y lo que se vende o se atiende al lado
  *   STOCK           el inventario y lo que vigila el stock
- *   ADMINISTRACIÓN  Equipo → Finanzas → Marketing → lo que se arma una vez
- *                   (las mesas) → Configuración
+ *   ADMINISTRACIÓN  Equipo → Finanzas → Reportes → Marketing → lo que se
+ *                   arma una vez (las mesas) → Configuración
  *
  * Un grupo con un solo hijo visible no se dibuja: el hijo va suelto en su
  * lugar (ver `filtrar`). Así al cajero, que tiene sólo "Cuentas por cobrar",
@@ -109,14 +115,6 @@ const ITEMS: (ItemNav & { bloque: Bloque })[] = [
       { a: "/hoy", label: "Hoy", icono: "clock", seccion: "hoy" },
       // A9: con contador de pendientes (ver MenuLateral). Sólo con la reserva online.
       { a: "/solicitudes", label: "Solicitudes online", icono: "bell", seccion: "solicitudes" },
-      // Fase 2: los números de la agenda (ocupación, no-shows, retención).
-      {
-        a: "/reportes-agenda",
-        label: "Reportes",
-        titulo: "Reportes de agenda",
-        icono: "chart",
-        seccion: "reportes_agenda",
-      },
       {
         a: "/configuracion/agenda",
         label: "Configuración",
@@ -266,16 +264,28 @@ const ITEMS: (ItemNav & { bloque: Bloque })[] = [
   {
     a: "/creditos",
     label: "Finanzas",
-    icono: "chart",
+    icono: "billetera",
     bloque: "administracion",
     hijos: [
       { a: "/creditos", label: "Cuentas por cobrar", icono: "dollar", seccion: "creditos" },
-      // Entre las cuentas por cobrar y los reportes, igual que en el drawer de
-      // la app: es plata del negocio, pero del libro del resultado y no de la
-      // caja.
+      // Después de las cuentas por cobrar, igual que en el drawer de la app:
+      // es plata del negocio, pero del libro del resultado y no de la caja.
       { a: "/gastos", label: "Gastos operativos", icono: "archive", seccion: "gastos" },
-      { a: "/reportes", label: "Reportes", icono: "chart", seccion: "reportes" },
     ],
+  },
+  // Reportes, suelto y de primer nivel (13-oct-2026): junta los de TODAS las
+  // funcionalidades —ventas y plata, productos, inventario, la agenda, el
+  // billar, la farmacia, el costo por servicio—, agrupados adentro. Antes
+  // colgaba de Finanzas y la agenda tenía su propio "Reportes" que llevaba
+  // ahí: el dueño entraba por la agenda y se le encendía Finanzas. Lo ve
+  // quien ve al menos un reporte, aunque no tenga el permiso general.
+  {
+    a: "/reportes",
+    label: "Reportes",
+    icono: "chart",
+    seccion: "reportes",
+    tambien: SECCIONES_REPORTES,
+    bloque: "administracion",
   },
   // La página pública del negocio (todas las verticales, con su feature), sus
   // enlaces cortos y el CRM (PLAN-CRM-Y-PROMOCIONES).
@@ -372,7 +382,7 @@ function filtrar(
       salida.push({ item: { ...i, a: hijos[0].item.a }, id: `grupo:${i.label}`, hijos, esTitulo: true });
       continue;
     }
-    if (!puede(i.seccion)) {
+    if (!puede(i.seccion) && !(i.tambien ?? []).some(puede)) {
       salida.push(...hijos);
       continue;
     }

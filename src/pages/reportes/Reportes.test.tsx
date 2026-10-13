@@ -8,18 +8,29 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  * el tope de ventas.
  */
 
-const sesion = vi.hoisted(() => ({ rubro: "FARMACIA" as string }));
+const sesion = vi.hoisted(() => ({ rubro: "FARMACIA" as string, soloAgenda: false }));
 
 vi.mock("../../store/AuthContext", async () => {
   const { permisosDe } = await import("../../test/sesiones");
   return {
-    useAuth: () => ({
-      rubro: sesion.rubro,
-      incluye: () => true,
-      puede: (s: string) => !["reportes_billar", "reportes_agenda"].includes(s),
-      usuario: { rol: "ADMIN", ...permisosDe("ADMIN"), sucursalId: 917 },
-      negocio: { id: 1, nombre: "Prueba", features: [] },
-    }),
+    useAuth: () =>
+      sesion.soloAgenda
+        ? {
+            // La recepción de un salón con los reportes de la agenda y sin el
+            // permiso general (un rol armado por el negocio).
+            rubro: sesion.rubro,
+            incluye: () => true,
+            puede: (s: string) => s === "reportes_agenda",
+            usuario: { rol: "CAJERO", permisos: ["agenda.reportes"], permisosPropios: [], sucursalId: 917 },
+            negocio: { id: 1, nombre: "Prueba", features: [] },
+          }
+        : {
+            rubro: sesion.rubro,
+            incluye: () => true,
+            puede: (s: string) => !["reportes_billar", "reportes_agenda"].includes(s),
+            usuario: { rol: "ADMIN", ...permisosDe("ADMIN"), sucursalId: 917 },
+            negocio: { id: 1, nombre: "Prueba", features: [] },
+          },
   };
 });
 
@@ -37,6 +48,10 @@ vi.mock("../../lib/api", async (original) => {
     request: vi.fn(() => new Promise(() => {})),
   };
 });
+
+vi.mock("../../lib/agenda/apiComisiones", () => ({
+  apiComisiones: { reporteAgenda: vi.fn(() => new Promise(() => {})) },
+}));
 
 import Reportes from "./Reportes";
 import { api } from "../../lib/api";
@@ -58,6 +73,7 @@ const enMenu = (titulo: string) =>
 
 beforeEach(() => {
   sesion.rubro = "FARMACIA";
+  sesion.soloAgenda = false;
   sessionStorage.clear();
   vi.mocked(api.reporte).mockImplementation(() => new Promise(() => {}));
 });
@@ -130,5 +146,98 @@ describe("un reporte rechazado por el tope", () => {
     expect(await screen.findByText(DEMASIADO_GRANDE)).toBeInTheDocument();
     expect(screen.queryByText(/Error 422/)).toBeNull();
     expect(screen.getByRole("button", { name: "Reintentar" })).toBeInTheDocument();
+  });
+});
+
+/**
+ * El tope de 3 meses (regla del dueño, 13-oct-2026): ningún preset lo pasa y
+ * el rango personalizado no deja aplicar más, con un mensaje que dice qué
+ * hacer. El backend rechaza igual lo que pase (400 RANGO_DEMASIADO_LARGO).
+ */
+describe("el tope de 3 meses", () => {
+  async function abrirPersonalizado() {
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /Personalizado/ }));
+    });
+  }
+  const escribir = (etiqueta: string, valor: string) => fireEvent.change(screen.getByLabelText(etiqueta), { target: { value: valor } });
+
+  it("ya no hay \"Año\": el período más largo es 3 meses", async () => {
+    await montar();
+    expect(screen.queryByRole("button", { name: "Año" })).toBeNull();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "3 meses" }));
+    });
+    expect(screen.getByText(/flechas comparadas con los 3 meses anteriores/)).toBeInTheDocument();
+    await abrirPersonalizado();
+    expect(screen.queryByRole("button", { name: "Año" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Últimos 3 meses" })).toBeInTheDocument();
+  });
+
+  it("un rango a mano de más de 3 meses no se aplica y dice por qué", async () => {
+    await montar();
+    await abrirPersonalizado();
+    escribir("Desde", "2026-06-01");
+    escribir("Hasta", "2026-09-30");
+    expect(screen.getByRole("alert")).toHaveTextContent("Un reporte puede abarcar hasta 3 meses (92 días). Acortá el rango. Elegiste 122 días.");
+    expect(screen.getByRole("button", { name: "Aplicar rango" })).toBeDisabled();
+  });
+
+  it("de julio a septiembre entero (92 días) sí se aplica", async () => {
+    await montar();
+    await abrirPersonalizado();
+    escribir("Desde", "2026-07-01");
+    escribir("Hasta", "2026-09-30");
+    expect(screen.queryByRole("alert")).toBeNull();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Aplicar rango" }));
+    });
+    expect(screen.getByRole("button", { name: /01\/07 – 30\/09\/2026/ })).toBeInTheDocument();
+  });
+
+  it("el calendario no ofrece días fuera de los 3 meses", async () => {
+    await montar();
+    await abrirPersonalizado();
+    escribir("Desde", "2026-07-01");
+    expect(screen.getByLabelText("Hasta")).toHaveAttribute("max", "2026-09-30");
+    escribir("Hasta", "2026-09-30");
+    expect(screen.getByLabelText("Desde")).toHaveAttribute("min", "2026-07-01");
+  });
+
+  it("un período largo guardado de antes (o un \"Año\") no se reabre: arranca en el mes", async () => {
+    sessionStorage.setItem("bamardev_reportes_periodo", JSON.stringify({ preset: "rango", desde: "2025-01-01", hasta: "2025-12-31" }));
+    await montar();
+    expect(screen.getByRole("button", { name: "Mes" }).className).toContain("bg-primary-boton");
+    sessionStorage.setItem("bamardev_reportes_periodo", JSON.stringify({ preset: "anio", desde: "2026-01-01", hasta: "2026-10-13" }));
+    await montar();
+    expect(screen.getAllByRole("button", { name: "Mes" }).at(-1)!.className).toContain("bg-primary-boton");
+  });
+});
+
+/**
+ * Reportes es la única pantalla de reportes: también entra quien sólo tiene
+ * los de la agenda (la recepción). Ve sus reportes y nada más.
+ */
+describe("quien sólo ve los reportes de la agenda", () => {
+  beforeEach(() => {
+    sesion.rubro = "BARBERIA";
+    sesion.soloAgenda = true;
+  });
+
+  it("ve el grupo de la agenda, sin Resumen ni los de ventas", async () => {
+    await montar("/reportes/profesionales");
+    expect(enMenu("Producción por profesional")?.getAttribute("href")).toBe("/reportes/profesionales");
+    expect(enMenu("Asistencia")).not.toBeNull();
+    expect(enMenu("Resumen")).toBeNull();
+    expect(enMenu("Ventas")).toBeNull();
+    expect(enMenu("Top productos")).toBeNull();
+    expect(screen.queryByRole("button", { name: /Enviar resumen/ })).toBeNull();
+  });
+
+  it("la portada de Reportes lo lleva a su primer reporte, no a un Resumen que no puede leer", async () => {
+    vi.mocked(api.reporte).mockClear();
+    await montar("/reportes");
+    expect(await screen.findByRole("heading", { name: "Producción por profesional" })).toBeInTheDocument();
+    expect(api.reporte).not.toHaveBeenCalledWith("resumen", expect.anything(), expect.anything());
   });
 });

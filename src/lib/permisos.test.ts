@@ -12,6 +12,7 @@ import {
   sobreTodo,
   tieneFeature,
   tienePermiso,
+  veReportes,
   type ContextoPermisos,
   type Seccion,
 } from "./permisos";
@@ -535,5 +536,28 @@ describe("billar: un extra estricto", () => {
   it("los negocios de siempre aterrizan donde aterrizaban", () => {
     expect(rutaInicial(ctxDe("CAJERO", "RESTAURANTE", PLAN_FULL))).toBe("/pos");
     expect(rutaInicial(ctxDe("ADMIN", "RESTAURANTE", PLAN_FULL))).toBe("/inventario");
+  });
+});
+
+describe("la entrada a Reportes (13-oct-2026: todos los reportes en un lugar)", () => {
+  const SALON: Feature[] = ["pos", "caja", "catalogo", "usuarios", "reportes", "agenda", "consumo_servicio"];
+  const ve = (c: ContextoPermisos) => veReportes((s) => puedeVer(c, s));
+
+  it("la tiene quien ve al menos un reporte, aunque no tenga el permiso general", () => {
+    expect(ve(ctxDe("ADMIN", "RESTAURANTE", PLAN_FULL))).toBe(true);
+    // Sólo los de la agenda (la recepción de un rol armado a mano).
+    expect(ve(ctxCon(["agenda.reportes"], "BARBERIA", SALON))).toBe(true);
+    // Sólo el costo y margen por servicio, que antes era una pestaña de las recetas.
+    expect(ve(ctxCon(["consumo.recetas"], "PELUQUERIA", SALON))).toBe(true);
+  });
+
+  it("no la tiene quien no ve ninguno", () => {
+    expect(ve(ctxDe("CAJERO", "RESTAURANTE", PLAN_FULL))).toBe(false);
+    // Los permisos de un reporte de belleza no existen fuera de belleza.
+    expect(ve(ctxCon(["agenda.reportes", "consumo.recetas"], "RESTAURANTE", SALON))).toBe(false);
+  });
+
+  it("quien sólo ve los de la agenda aterriza en Reportes, no en la dirección vieja", () => {
+    expect(rutaInicial(ctxCon(["agenda.reportes"], "BARBERIA", SALON))).toBe("/reportes");
   });
 });

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Feature } from "../types";
 import { ctxDe, type Plantilla } from "../test/sesiones";
-import { aplanar, construirMenu, tituloDe } from "./menu";
+import { aplanar, caminoA, construirMenu, esActivo, tituloDe } from "./menu";
 import { puedeVer } from "./permisos";
 
 /**
@@ -43,10 +43,11 @@ const admin = (m: ReturnType<typeof menu>) => m.find((b) => b.bloque === "admini
 describe("menú del salón", () => {
   it("Administración va agrupada por tema y Configuración queda suelta", () => {
     const nodos = admin(menu("ADMIN", "BARBERIA"));
-    expect(nodos.map((n) => n.item.label)).toEqual(["Equipo", "Finanzas", "Marketing", "Configuración"]);
+    expect(nodos.map((n) => n.item.label)).toEqual(["Equipo", "Finanzas", "Reportes", "Marketing", "Configuración"]);
     const hijos = Object.fromEntries(nodos.map((n) => [n.item.label, n.hijos.map((h) => h.item.label)]));
     expect(hijos.Equipo).toEqual(["Personal", "Usuarios", "Comisiones", "Propinas"]);
-    expect(hijos.Finanzas).toEqual(["Cuentas por cobrar", "Gastos operativos", "Reportes"]);
+    expect(hijos.Finanzas).toEqual(["Cuentas por cobrar", "Gastos operativos"]);
+    expect(hijos.Reportes).toEqual([]);
     expect(hijos.Marketing).toEqual(["Mi página", "Mis enlaces", "Promociones", "Clientes que no vuelven"]);
   });
 
@@ -96,12 +97,46 @@ describe("nombres dentro del grupo Agenda", () => {
     const m = menu("ADMIN", "BARBERIA");
     const agenda = m[0].nodos.find((n) => n.item.label === "Agenda");
     const hijos = agenda?.hijos.map((h) => h.item.label) ?? [];
-    expect(hijos).toContain("Reportes");
     expect(hijos).toContain("Configuración");
-    expect(hijos).not.toContain("Reportes de agenda");
     const planos = aplanar(m.flatMap((b) => b.nodos));
-    expect(tituloDe(planos, "/reportes-agenda")).toBe("Reportes de agenda");
     expect(tituloDe(planos, "/configuracion/agenda")).toBe("Configuración de la agenda");
     expect(tituloDe(planos, "/reportes")).toBe("Reportes");
+  });
+});
+
+describe("Reportes: una sola entrada, de primer nivel (13-oct-2026)", () => {
+  /** Las rutas que marcan "estás acá" para una pantalla. */
+  const marcados = (m: ReturnType<typeof menu>, ruta: string) =>
+    aplanar(m.flatMap((b) => b.nodos))
+      .filter((n) => !n.esTitulo && esActivo(n.item, ruta))
+      .map((n) => n.item.label);
+
+  it("la agenda ya no tiene su propio Reportes: los suyos viven en Reportes", () => {
+    const m = menu("ADMIN", "BARBERIA");
+    const agenda = m[0].nodos.find((n) => n.item.label === "Agenda");
+    expect(agenda?.hijos.map((h) => h.item.a)).not.toContain("/reportes-agenda");
+    expect(aplanar(m.flatMap((b) => b.nodos)).filter((n) => n.item.label === "Reportes")).toHaveLength(1);
+  });
+
+  it("entrar a un reporte de la agenda marca Reportes, no Finanzas ni Agenda", () => {
+    const m = menu("ADMIN", "BARBERIA");
+    expect(marcados(m, "/reportes/profesionales")).toEqual(["Reportes"]);
+    expect(caminoA(m.flatMap((b) => b.nodos), "/reportes/profesionales")).toEqual([]);
+    expect(tituloDe(aplanar(m.flatMap((b) => b.nodos)), "/reportes/profesionales")).toBe("Reportes");
+  });
+
+  it("la recepción, con los de la agenda y sin el permiso general, también tiene Reportes", () => {
+    // La plantilla de recepción (el cajero del salón) más los reportes de la
+    // agenda: un rol armado por el negocio.
+    const c = ctxDe("CAJERO", "BARBERIA", SALON, { extra: ["agenda.reportes"] });
+    expect(puedeVer(c, "reportes")).toBe(false);
+    expect(puedeVer(c, "reportes_agenda")).toBe(true);
+    const m = construirMenu((s) => puedeVer(c, s), "BARBERIA");
+    expect(marcados(m, "/reportes/asistencia")).toEqual(["Reportes"]);
+  });
+
+  it("quien no ve ningún reporte no tiene la entrada", () => {
+    const m = menu("CAJERO", "BARBERIA");
+    expect(aplanar(m.flatMap((b) => b.nodos)).map((n) => n.item.a)).not.toContain("/reportes");
   });
 });

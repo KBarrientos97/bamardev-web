@@ -124,8 +124,9 @@ const HOY = {
       {
         bloque: "administracion",
         // Sin Roles, Equipo tiene un solo hijo y no se dibuja: Usuarios va
-        // suelto en su lugar.
-        items: ["Usuarios /usuarios", "Finanzas /creditos", "  Cuentas por cobrar /creditos", "  Reportes /reportes"],
+        // suelto en su lugar. Lo mismo Finanzas desde que Reportes es de
+        // primer nivel (13-oct): le queda sólo Cuentas por cobrar.
+        items: ["Usuarios /usuarios", "Cuentas por cobrar /creditos", "Reportes /reportes"],
       },
     ],
   },
@@ -160,7 +161,7 @@ const HOY = {
           "Finanzas /creditos",
           "  Cuentas por cobrar /creditos",
           "  Gastos operativos /gastos",
-          "  Reportes /reportes",
+          "Reportes /reportes",
           // Lo que se arma una vez, abajo.
           "Mesas del salón /mesas",
         ],
@@ -209,9 +210,8 @@ describe("Omar ve lo mismo que hoy con las plantillas de restaurante", () => {
                 "Equipo /usuarios",
                 "  Usuarios /usuarios",
                 "  Roles /roles",
-                "Finanzas /creditos",
-                "  Cuentas por cobrar /creditos",
-                "  Reportes /reportes",
+                "Cuentas por cobrar /creditos",
+                "Reportes /reportes",
               ],
             }
           : b,

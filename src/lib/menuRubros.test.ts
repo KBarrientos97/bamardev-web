@@ -51,7 +51,9 @@ const TODAS = [
 ];
 
 const BLOQUES: Bloque[] = ["agenda", "vender", "stock", "administracion"];
-const GRUPOS = ["Equipo", "Finanzas", "Marketing"];
+// Reportes va entre los grupos, de primer nivel: junta los de todas las
+// funcionalidades y ya no cuelga de Finanzas (13-oct-2026).
+const GRUPOS = ["Equipo", "Finanzas", "Reportes", "Marketing"];
 /** Lo que se arma una vez: suelto, debajo de los grupos y en este orden. */
 const SUELTOS = ["Mesas del salón", "Mesas de billar", "Configuración"];
 
@@ -69,7 +71,7 @@ describe.each([...RUBROS, "RUBRO_NUEVO"])("menú de %s", (rubro) => {
     expect(orden).toEqual(BLOQUES.filter((b) => orden.includes(b)));
   });
 
-  it("Administración: Equipo, Finanzas y Marketing, y abajo lo que se arma una vez", () => {
+  it("Administración: Equipo, Finanzas, Reportes y Marketing, y abajo lo que se arma una vez", () => {
     const items = administracion(menu("ADMIN", rubro));
     expect(items.slice(0, GRUPOS.length)).toEqual(GRUPOS);
     // Nada suelto fuera de esa lista: una pantalla nueva va en su grupo.
@@ -85,5 +87,13 @@ describe.each([...RUBROS, "RUBRO_NUEVO"])("menú de %s", (rubro) => {
         if (n.hijos.length) expect(n.hijos.length, `${rol}: ${n.item.label}`).toBeGreaterThan(1);
       }
     }
+  });
+
+  it("hay UNA sola entrada a reportes, suelta, y ningún grupo esconde otra", () => {
+    const todos = aplanar(menu("ADMIN", rubro).flatMap((b) => b.nodos));
+    const reportes = todos.filter((n) => n.item.a.startsWith("/reportes"));
+    expect(reportes.map((n) => [n.item.a, n.item.label, n.hijos.length])).toEqual([["/reportes", "Reportes", 0]]);
+    const finanzas = todos.find((n) => n.item.label === "Finanzas");
+    expect(finanzas?.hijos.map((h) => h.item.label) ?? []).not.toContain("Reportes");
   });
 });

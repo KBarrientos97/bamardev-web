@@ -94,3 +94,24 @@ describe("cada reporte pide lo mismo que su endpoint", () => {
     expect(gruposVisibles(ctx).map((g) => g.id)).toEqual(["plata", "operacion"]);
   });
 });
+
+describe("el costo y margen por servicio (antes, una pestaña de las recetas)", () => {
+  const conRecetas = (rubro: string, recetas: boolean): ContextoCatalogo => ({
+    rubro,
+    features: [],
+    permisos: [],
+    puede: (s) => s === "reportes_agenda" || (recetas && s === "recetas_servicio"),
+    incluye: () => true,
+  });
+  const fichas = (ctx: ContextoCatalogo) => gruposVisibles(ctx).flatMap((g) => g.fichas.map((f) => f.id));
+
+  it("lo ve quien arma las recetas, en el grupo de la agenda", () => {
+    const g = gruposVisibles(conRecetas("PELUQUERIA", true));
+    expect(g.find((x) => x.id === "rubro")?.fichas.map((f) => f.id)).toContain("margen-servicios");
+  });
+
+  it("sin la sección de recetas no aparece, ni fuera de belleza", () => {
+    expect(fichas(conRecetas("PELUQUERIA", false))).not.toContain("margen-servicios");
+    expect(fichas(conRecetas("RESTAURANTE", true))).not.toContain("margen-servicios");
+  });
+});

@@ -1,6 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { FILA_DESLIZABLE } from "../../components/filtros";
+import { correrDia } from "../../lib/topeReportes";
 import { Icon } from "../../components/Icon";
 import { Boton, Cargando, Input, Modal } from "../../components/ui";
 import { useSucursales } from "../../lib/useSucursales";
@@ -10,6 +11,10 @@ import { gruposVisibles, type FichaReporte, type GrupoVisible } from "./catalogo
 import { bajarXlsx, ContextoReporte, type DatosReporte, type Exportacion } from "./contexto";
 import {
   comparacionDe,
+  diasDe,
+  excedeTope,
+  MAX_DIAS_REPORTE,
+  MENSAJE_TOPE,
   NOMBRE_PRESET,
   periodoDe,
   rangoElegido,
@@ -33,6 +38,12 @@ const EnviarResumen = lazy(() => import("./EnviarResumen"));
  *
  * En el celular no hay columna: el reporte ocupa el ancho y se cambia desde
  * un botón que abre la lista (diez y pico de opciones no entran en chips).
+ *
+ * Es la ÚNICA entrada a los reportes (13-oct-2026): los de la agenda, el
+ * billar, la farmacia y el costo por servicio viven acá, cada uno en su grupo.
+ * Por eso entra también quien no tiene el permiso general de reportes pero sí
+ * alguno suelto (la recepción con los de la agenda): ve sólo sus grupos, sin
+ * el Resumen ni "Enviar resumen", que leen las ventas de todo el negocio.
  */
 export default function Reportes() {
   const { rubro, negocio, usuario, puede, incluye } = useAuth();
@@ -47,6 +58,8 @@ export default function Reportes() {
     [rubro, negocio?.features, usuario?.permisos, puede, incluye],
   );
   const fichas = useMemo(() => grupos.flatMap((g) => g.fichas), [grupos]);
+  // El Resumen y "Enviar resumen" son del permiso general: leen las ventas.
+  const conResumen = puede("reportes");
   const id = location.pathname.replace(/^\/reportes\/?/, "").split("/")[0];
   const ficha = fichas.find((f) => f.id === id) ?? null;
 
@@ -92,14 +105,16 @@ export default function Reportes() {
             </div>
             <div className="flex flex-wrap items-center gap-2">
               {suc.elegir && <SelectorSucursal suc={suc} />}
-              <button
-                type="button"
-                onClick={() => setEnviando(true)}
-                className="inline-flex items-center gap-2 rounded-full bg-primary-boton px-4 py-2.5 text-[13px] font-bold text-white transition-colors hover:bg-primary-boton-hover"
-              >
-                <Icon name="arrowUpRight" size={16} />
-                Enviar resumen
-              </button>
+              {conResumen && (
+                <button
+                  type="button"
+                  onClick={() => setEnviando(true)}
+                  className="inline-flex items-center gap-2 rounded-full bg-primary-boton px-4 py-2.5 text-[13px] font-bold text-white transition-colors hover:bg-primary-boton-hover"
+                >
+                  <Icon name="arrowUpRight" size={16} />
+                  Enviar resumen
+                </button>
+              )}
             </div>
           </header>
           <BarraPeriodo periodo={periodo} onCambio={setPeriodo} contra={comparacion.contra} />
@@ -107,15 +122,21 @@ export default function Reportes() {
 
         <div className="flex min-h-0 flex-1">
           <nav aria-label="Reportes" className="hidden w-64 shrink-0 overflow-y-auto border-r border-borde bg-white/70 px-3 py-4 lg:block">
-            <MenuReportes grupos={grupos} actual={ficha?.id ?? ""} />
+            <MenuReportes grupos={grupos} actual={ficha?.id ?? ""} conResumen={conResumen} />
           </nav>
           <div ref={contenido} className="min-w-0 flex-1 lg:overflow-y-auto">
             <div className="mx-auto max-w-[1080px] space-y-4 px-4 py-5 sm:px-6">
-              <SelectorMovil grupos={grupos} ficha={ficha} />
-              <EncabezadoReporte ficha={ficha} periodo={periodo} exportacion={exportacion} puedeExportar={incluye("exportacion")} />
+              <SelectorMovil grupos={grupos} ficha={ficha} conResumen={conResumen} />
+              {(ficha || conResumen) && (
+                <EncabezadoReporte ficha={ficha} periodo={periodo} exportacion={exportacion} puedeExportar={incluye("exportacion")} conResumen={conResumen} />
+              )}
               <Suspense fallback={<Cargando texto="Abriendo el reporte…" />}>
                 <Routes>
-                  <Route index element={<Resumen />} />
+                  {/* Sin el Resumen, la portada es el primer reporte que ve. */}
+                  <Route
+                    index
+                    element={conResumen ? <Resumen /> : fichas[0] ? <Navigate to={`/reportes/${fichas[0].id}`} replace /> : <SinReportes />}
+                  />
                   {fichas.map((f) => (
                     <Route key={f.id} path={f.id} element={<f.vista />} />
                   ))}
@@ -137,6 +158,13 @@ export default function Reportes() {
   );
 }
 
+/** Sin un solo reporte visible (no debería pasar: el menú no lleva acá). */
+function SinReportes() {
+  return (
+    <div className="card p-6 text-center text-[14px] text-texto-3">No tenés reportes habilitados. Pedile acceso al dueño del negocio.</div>
+  );
+}
+
 // ── Período ─────────────────────────────────────────────────────────────────
 
 const CLAVE_PERIODO = "bamardev_reportes_periodo";
@@ -152,8 +180,14 @@ function usePeriodo(): [Periodo, (p: Periodo) => void] {
   const [periodo, setPeriodo] = useState<Periodo>(() => {
     try {
       const guardado = JSON.parse(sessionStorage.getItem(CLAVE_PERIODO) ?? "null") as Periodo | null;
-      if (guardado?.preset === "rango" && guardado.desde && guardado.hasta) return rangoElegido(guardado.desde, guardado.hasta);
-      if (guardado?.preset && guardado.preset in NOMBRE_PRESET) return periodoDe(guardado.preset as Exclude<Preset, "rango">);
+      // Un rango guardado antes del tope de 3 meses (o un "Año", que ya no
+      // existe) no se reabre: arranca en el mes, como la primera vez.
+      if (guardado?.preset === "rango" && guardado.desde && guardado.hasta && !excedeTope(guardado.desde, guardado.hasta)) {
+        return rangoElegido(guardado.desde, guardado.hasta);
+      }
+      if (guardado?.preset && guardado.preset !== "rango" && guardado.preset in NOMBRE_PRESET) {
+        return periodoDe(guardado.preset as Exclude<Preset, "rango">);
+      }
     } catch {
       // Sin almacenamiento (ventana privada, bloqueado): arranca en el mes.
     }
@@ -170,7 +204,7 @@ function usePeriodo(): [Periodo, (p: Periodo) => void] {
   return [periodo, cambiar];
 }
 
-const CHIPS: Exclude<Preset, "rango" | "mesPasado" | "dias30">[] = ["hoy", "ayer", "semana", "mes", "anio"];
+const CHIPS: Exclude<Preset, "rango" | "mesPasado" | "dias30">[] = ["hoy", "ayer", "semana", "mes", "dias90"];
 
 function BarraPeriodo({ periodo, onCambio, contra }: { periodo: Periodo; onCambio: (p: Periodo) => void; contra: string }) {
   const [eligiendo, setEligiendo] = useState(false);
@@ -221,13 +255,18 @@ const PRESETS_DIALOGO: [Exclude<Preset, "rango">, string][] = [
   ["mes", "Este mes"],
   ["mesPasado", "Mes pasado"],
   ["dias30", "Últimos 30 días"],
-  ["anio", "Año"],
+  ["dias90", "Últimos 3 meses"],
 ];
 
 function DialogoPeriodo({ periodo, onElegir, onCerrar }: { periodo: Periodo; onElegir: (p: Periodo) => void; onCerrar: () => void }) {
   const [desde, setDesde] = useState(periodo.preset === "rango" ? periodo.desde : "");
   const [hasta, setHasta] = useState(periodo.preset === "rango" ? periodo.hasta : "");
-  const valido = /^\d{4}-\d{2}-\d{2}$/.test(desde) && /^\d{4}-\d{2}-\d{2}$/.test(hasta);
+  const completo = /^\d{4}-\d{2}-\d{2}$/.test(desde) && /^\d{4}-\d{2}-\d{2}$/.test(hasta);
+  // El tope de 3 meses: el calendario no deja elegir más allá (min/max), pero
+  // una fecha escrita a mano o un navegador que ignora el min/max puede pasar,
+  // y ahí se avisa en vez de mandar un pedido que el backend rechaza.
+  const largo = completo && excedeTope(desde, hasta);
+  const valido = completo && !largo;
   return (
     <Modal
       abierto
@@ -265,17 +304,38 @@ function DialogoPeriodo({ periodo, onElegir, onCerrar }: { periodo: Periodo; onE
         <div className="grid grid-cols-2 gap-3">
           <label className="block">
             <span className="mb-1 block text-[12px] font-semibold text-texto-2">Desde</span>
-            <Input type="date" value={desde} max={hasta || undefined} onChange={(e) => setDesde(e.target.value)} />
+            <Input
+              type="date"
+              value={desde}
+              min={hasta ? correrDia(hasta, -(MAX_DIAS_REPORTE - 1)) : undefined}
+              max={hasta || undefined}
+              onChange={(e) => setDesde(e.target.value)}
+            />
           </label>
           <label className="block">
             <span className="mb-1 block text-[12px] font-semibold text-texto-2">Hasta</span>
-            <Input type="date" value={hasta} min={desde || undefined} onChange={(e) => setHasta(e.target.value)} />
+            <Input
+              type="date"
+              value={hasta}
+              min={desde || undefined}
+              max={desde ? correrDia(desde, MAX_DIAS_REPORTE - 1) : undefined}
+              onChange={(e) => setHasta(e.target.value)}
+            />
           </label>
         </div>
+        {largo ? (
+          <p role="alert" className="mt-2 text-[12px] font-semibold text-red-600">
+            {MENSAJE_TOPE} Elegiste {diasDe(desde, hasta)} días.
+          </p>
+        ) : (
+          <p className="mt-2 text-[12px] text-texto-3">Hasta 3 meses por reporte.</p>
+        )}
       </div>
     </Modal>
   );
 }
+
+
 
 // ── Sucursal ────────────────────────────────────────────────────────────────
 
@@ -354,10 +414,20 @@ function ItemMenu({ a, icono, tono, titulo, activo, onClick }: { a: string; icon
   );
 }
 
-function MenuReportes({ grupos, actual, onElegir }: { grupos: GrupoVisible[]; actual: string; onElegir?: () => void }) {
+function MenuReportes({
+  grupos,
+  actual,
+  conResumen,
+  onElegir,
+}: {
+  grupos: GrupoVisible[];
+  actual: string;
+  conResumen: boolean;
+  onElegir?: () => void;
+}) {
   return (
     <div className="space-y-4">
-      <ItemMenu a="/reportes" icono="chart" tono="verde" titulo="Resumen" activo={actual === ""} onClick={onElegir} />
+      {conResumen && <ItemMenu a="/reportes" icono="chart" tono="verde" titulo="Resumen" activo={actual === ""} onClick={onElegir} />}
       {grupos.map((g) => (
         <section key={g.id}>
           <h3 className="mb-1.5 flex items-center gap-2 px-2.5 text-[11px] font-bold uppercase tracking-wider text-texto-4">
@@ -376,7 +446,7 @@ function MenuReportes({ grupos, actual, onElegir }: { grupos: GrupoVisible[]; ac
 }
 
 /** En el celular: el reporte abierto y, al tocarlo, la lista entera en una hoja. */
-function SelectorMovil({ grupos, ficha }: { grupos: GrupoVisible[]; ficha: FichaReporte | null }) {
+function SelectorMovil({ grupos, ficha, conResumen }: { grupos: GrupoVisible[]; ficha: FichaReporte | null; conResumen: boolean }) {
   const [abierto, setAbierto] = useState(false);
   return (
     <div className="lg:hidden">
@@ -395,7 +465,7 @@ function SelectorMovil({ grupos, ficha }: { grupos: GrupoVisible[]; ficha: Ficha
       </button>
       {abierto && (
         <Modal abierto titulo="Reportes" subtitulo="Elegí qué querés mirar" onClose={() => setAbierto(false)}>
-          <MenuReportes grupos={grupos} actual={ficha?.id ?? ""} onElegir={() => setAbierto(false)} />
+          <MenuReportes grupos={grupos} actual={ficha?.id ?? ""} conResumen={conResumen} onElegir={() => setAbierto(false)} />
         </Modal>
       )}
     </div>
@@ -409,18 +479,20 @@ function EncabezadoReporte({
   periodo,
   exportacion,
   puedeExportar,
+  conResumen,
 }: {
   ficha: FichaReporte | null;
   periodo: Periodo;
   exportacion: Exportacion | null;
   puedeExportar: boolean;
+  conResumen: boolean;
 }) {
   const navigate = useNavigate();
   const titulo = ficha?.titulo ?? "Resumen";
   const descripcion = ficha?.descripcion ?? "Lo más importante del período";
   return (
     <header className="flex flex-wrap items-center gap-3">
-      {ficha && (
+      {ficha && conResumen && (
         <button
           type="button"
           onClick={() => navigate("/reportes")}

@@ -8,7 +8,7 @@ import {
 } from "react-router-dom";
 import AtajaErrores from "./components/AtajaErrores";
 import Layout from "./components/Layout";
-import { RUTA_AGENDA_PRONTO, rutaInicial, veSoloSuAgenda, type Seccion } from "./lib/permisos";
+import { RUTA_AGENDA_PRONTO, rutaInicial, veReportes, veSoloSuAgenda, type Seccion } from "./lib/permisos";
 import { esBelleza, esFarmacia } from "./lib/rubro";
 import AgendaPronto from "./pages/AgendaPronto";
 import Creditos from "./pages/Creditos";
@@ -25,7 +25,6 @@ import Clientes from "./pages/agenda/Clientes";
 import MiAgenda from "./pages/agenda/MiAgenda";
 import Solicitudes from "./pages/agenda/Solicitudes";
 import Comisiones from "./pages/agenda/comisiones/Comisiones";
-import ReportesAgenda from "./pages/agenda/ReportesAgenda";
 import Almacenes from "./pages/inventario/Almacenes";
 import Categorias from "./pages/inventario/Categorias";
 import Dashboard from "./pages/inventario/Dashboard";
@@ -76,14 +75,14 @@ const MesasBillar = lazy(() => import("./pages/billar/admin/MesasBillar"));
 const Reportes = lazy(() => import("./pages/reportes/Reportes"));
 
 /**
- * Los reportes de la agenda viven ahora dentro de Reportes, en el grupo de la
- * agenda (rediseño de oct-2026). La entrada del menú de la agenda sigue y
- * lleva ahí. Quien ve los de la agenda pero no Reportes (un rol armado a mano)
- * sigue con la pantalla de antes: mandarlo a Reportes sería mandarlo a un 403.
+ * Reportes es la única pantalla de reportes (13-oct-2026) y entra quien ve al
+ * menos uno (`veReportes`): también la recepción, que tiene los de la agenda
+ * sin el permiso general. Adentro, cada reporte pide lo suyo.
  */
-function ReportesDeAgenda() {
+function ProtegidaReportes({ children }: { children: React.ReactNode }) {
   const { puede } = useAuth();
-  return puede("reportes") ? <Navigate to="/reportes/profesionales" replace /> : <ReportesAgenda />;
+  if (!veReportes(puede)) return <Inicio />;
+  return <>{children}</>;
 }
 
 /** Manda a cada quien a su pantalla, según sus permisos (ver `rutaInicial`). */
@@ -362,11 +361,13 @@ function Rutas() {
             </Protegida>
           }
         />
+        {/* Los reportes de la agenda viven en Reportes, en su grupo: la
+            dirección de antes (un favorito, un link viejo) lleva ahí. */}
         <Route
           path="/reportes-agenda"
           element={
             <Protegida seccion="reportes_agenda">
-              <ReportesDeAgenda />
+              <Navigate to="/reportes/profesionales" replace />
             </Protegida>
           }
         />
@@ -601,11 +602,11 @@ function Rutas() {
         <Route
           path="/reportes/*"
           element={
-            <Protegida seccion="reportes">
+            <ProtegidaReportes>
               <Suspense fallback={null}>
                 <Reportes />
               </Suspense>
-            </Protegida>
+            </ProtegidaReportes>
           }
         />
         <Route

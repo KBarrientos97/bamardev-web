@@ -2,12 +2,16 @@ import { describe, expect, it } from "vitest";
 import {
   comparacionDe,
   diasDe,
+  excedeTope,
+  MAX_DIAS_REPORTE,
   diasDelPeriodo,
   enElPeriodo,
   esMesEnCurso,
+  NOMBRE_PRESET,
   periodoDe,
   rangoElegido,
   textoRango,
+  type Preset,
 } from "./periodo";
 
 // Jueves 8 de octubre de 2026, 23:40: la hora no tiene que correr el día.
@@ -55,14 +59,13 @@ describe("contra qué se compara", () => {
     expect(c).toMatchObject({ desde: "2026-08-01", hasta: "2026-08-31", contra: "agosto", leyenda: "Agosto" });
   });
 
-  it("el año, contra el año pasado hasta el mismo día", () => {
-    const c = comparacionDe(periodoDe("anio", HOY));
-    expect(c).toMatchObject({ desde: "2025-01-01", hasta: "2025-10-08", contra: "el 2025 a la misma fecha" });
-  });
-
-  it("un 29 de febrero compara contra el 28 del año anterior", () => {
-    const c = comparacionDe(periodoDe("anio", new Date(2028, 1, 29)));
-    expect(c.hasta).toBe("2027-02-28");
+  it("los últimos 3 meses, contra los 90 días de antes", () => {
+    const p = periodoDe("dias90", HOY);
+    expect(p).toMatchObject({ desde: "2026-07-11", hasta: "2026-10-08" });
+    expect(diasDe(p.desde, p.hasta)).toBe(90);
+    const c = comparacionDe(p);
+    expect(c).toMatchObject({ desde: "2026-04-12", hasta: "2026-07-10", contra: "los 3 meses anteriores" });
+    expect(diasDe(c.desde, c.hasta)).toBe(90);
   });
 
   it("hoy contra ayer, y un rango a mano contra el mismo largo justo antes", () => {
@@ -94,5 +97,39 @@ describe("los textos del período", () => {
     expect(esMesEnCurso(periodoDe("mes", HOY), HOY)).toBe(true);
     expect(esMesEnCurso(periodoDe("mesPasado", HOY), HOY)).toBe(false);
     expect(esMesEnCurso(rangoElegido("2026-10-01", "2026-10-08"), HOY)).toBe(false);
+  });
+});
+
+describe("el tope de 3 meses", () => {
+  it("son 92 días: el trimestre más largo entra entero", () => {
+    expect(MAX_DIAS_REPORTE).toBe(92);
+    expect(excedeTope("2026-07-01", "2026-09-30")).toBe(false); // jul–sep, 92 días
+    expect(excedeTope("2026-11-01", "2027-01-31")).toBe(false); // nov–ene, 92 días
+    expect(excedeTope("2026-07-01", "2026-10-01")).toBe(true); // 93 días
+    expect(excedeTope("2026-01-01", "2026-12-31")).toBe(true);
+  });
+
+  it("ningún preset ni su comparación pasa del tope (ya no hay \"Año\")", () => {
+    const presets = (Object.keys(NOMBRE_PRESET) as Preset[]).filter((p): p is Exclude<Preset, "rango"> => p !== "rango");
+    expect(presets).not.toContain("anio");
+    // Todos los días de un año: el último del mes, un 29 de febrero, un 1 de enero.
+    for (let d = new Date(2028, 0, 1); d.getFullYear() === 2028; d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1)) {
+      for (const preset of presets) {
+        const p = periodoDe(preset, d);
+        const c = comparacionDe(p);
+        expect(excedeTope(p.desde, p.hasta), `${preset} ${p.desde}`).toBe(false);
+        expect(excedeTope(c.desde, c.hasta), `${preset} comparado ${c.desde}`).toBe(false);
+      }
+    }
+  });
+
+  it("un rango a mano de 92 días compara contra 92 días: los dos entran", () => {
+    const c = comparacionDe(rangoElegido("2026-07-01", "2026-09-30"));
+    expect(diasDe(c.desde, c.hasta)).toBe(92);
+    expect(excedeTope(c.desde, c.hasta)).toBe(false);
+  });
+
+  it("el eje del gráfico no arma más días que el tope, aunque llegue un rango viejo", () => {
+    expect(diasDelPeriodo("2025-01-01", "2026-12-31")).toHaveLength(MAX_DIAS_REPORTE);
   });
 });
