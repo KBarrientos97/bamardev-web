@@ -13,8 +13,30 @@ export function urlMapa(mapsUrl: string | null, direccion: string | null): strin
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(direccion)}`;
 }
 
-/** El catálogo como lo sirve el backend: sólo lo visible, en orden; null si no queda nada. */
+/**
+ * El catálogo como lo sirve el backend: uno u otro según el modo, sólo lo
+ * visible, en orden; null si no queda nada. En "Mis productos" los ids son
+ * los del producto (el backend manda los de la fila fijada): para la vista
+ * previa da igual, sólo tienen que ser únicos.
+ */
 function catalogoVisible(e: EstadoEditor): CatalogoPublico | null {
+  const titulo = e.pagina.catalogoTitulo?.trim() || TITULO_CATALOGO;
+  if (e.pagina.catalogoModo === "PRODUCTOS") {
+    const productos = (e.productosCatalogo ?? [])
+      .filter((x) => x.vendible)
+      .sort((a, b) => a.orden - b.orden)
+      .map((x) => ({
+        id: x.id,
+        titulo: x.nombre,
+        descripcion: null,
+        precio: x.precio,
+        precioDesde: false,
+        fotoUrl: null,
+        icono: x.icono,
+        categoria: x.categoria,
+      }));
+    return productos.length ? { titulo, items: productos } : null;
+  }
   const items = (e.catalogo ?? [])
     .filter((x) => x.visible)
     .sort((a, b) => a.orden - b.orden || a.id - b.id)
@@ -27,7 +49,7 @@ function catalogoVisible(e: EstadoEditor): CatalogoPublico | null {
       fotoUrl: x.fotoUrl,
     }));
   if (items.length === 0) return null;
-  return { titulo: e.pagina.catalogoTitulo?.trim() || TITULO_CATALOGO, items };
+  return { titulo, items };
 }
 
 /**

@@ -7,6 +7,7 @@ import {
   type PointerEvent as EventoPuntero,
   type ReactNode,
 } from "react";
+import { iconoPorLlave } from "../../lib/iconosArticulo";
 import { urlDeImagen } from "../../lib/pagina/apiPagina";
 import type { Paleta } from "../../lib/pagina/aspecto";
 import { formatoPrecio } from "../../lib/pagina/catalogo";
@@ -157,8 +158,38 @@ function BotonAgregar({
   );
 }
 
-/** Sin foto: el tinte del color de la página con la inicial del título. */
+/**
+ * La línea chica debajo del título: la descripción del ítem armado a mano o,
+ * en "Mis productos" (que no tiene descripción), la categoría del producto.
+ */
+export function detalleItem(it: ItemCatalogoPublico): string | null {
+  return it.descripcion ?? it.categoria ?? null;
+}
+
+/**
+ * Sin foto: el ícono del producto si lo tiene ("Mis productos", el mismo del
+ * POS) o, si no, el tinte del color de la página con la inicial del título.
+ */
 export function SinFoto({ item, fondo, color, tamano }: { item: ItemCatalogoPublico; fondo: string; color: string; tamano: number }) {
+  const icono = iconoPorLlave(item.icono);
+  if (icono) {
+    return (
+      <div
+        aria-hidden="true"
+        style={{ width: "100%", height: "100%", background: fondo, display: "flex", alignItems: "center", justifyContent: "center" }}
+      >
+        {/* `contain` y con aire: son dibujos con fondo transparente, recortarlos les come el borde. */}
+        <img
+          src={icono.src}
+          alt=""
+          loading="lazy"
+          decoding="async"
+          draggable={false}
+          style={{ width: "72%", height: "72%", objectFit: "contain", display: "block" }}
+        />
+      </div>
+    );
+  }
   return (
     <div
       aria-hidden="true"
@@ -468,8 +499,8 @@ function Carrusel({
                       {it.titulo}
                     </strong>
                     {precio && <span style={{ fontSize: 15, fontWeight: 700, color: a.precio }}>{precio}</span>}
-                    {it.descripcion && (
-                      <span style={{ ...dosLineas, fontSize: 13, lineHeight: 1.4, color: a.texto3 }}>{it.descripcion}</span>
+                    {detalleItem(it) && (
+                      <span style={{ ...dosLineas, fontSize: 13, lineHeight: 1.4, color: a.texto3 }}>{detalleItem(it)}</span>
                     )}
                   </div>
                 </button>
@@ -624,8 +655,8 @@ function ListaMenu({
               </span>
               <span style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 3 }}>
                 <strong style={{ fontSize: 15, lineHeight: 1.3, overflowWrap: "anywhere", ...a.tituloItem }}>{it.titulo}</strong>
-                {it.descripcion && (
-                  <span style={{ ...dosLineas, fontSize: 13, lineHeight: 1.4, color: a.texto3 }}>{it.descripcion}</span>
+                {detalleItem(it) && (
+                  <span style={{ ...dosLineas, fontSize: 13, lineHeight: 1.4, color: a.texto3 }}>{detalleItem(it)}</span>
                 )}
               </span>
               {numero && (
@@ -894,8 +925,8 @@ export function VisorCatalogo({
       >
         <h2 style={{ margin: 0, fontSize: 18, lineHeight: 1.3, fontWeight: 700 }}>{item.titulo}</h2>
         {precio && <span style={{ fontSize: 16, fontWeight: 700, color: c.oscuro }}>{precio}</span>}
-        {item.descripcion && (
-          <p style={{ margin: 0, fontSize: 14, lineHeight: 1.5, color: GRIS.texto2, whiteSpace: "pre-line" }}>{item.descripcion}</p>
+        {detalleItem(item) && (
+          <p style={{ margin: 0, fontSize: 14, lineHeight: 1.5, color: GRIS.texto2, whiteSpace: "pre-line" }}>{detalleItem(item)}</p>
         )}
         {accion?.alAgregar ? (
           <BotonAgregar

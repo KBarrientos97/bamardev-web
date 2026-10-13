@@ -11,6 +11,8 @@ import type {
   ItemCatalogoEditor,
   ItemCatalogoInput,
   PaginaPublica,
+  ProductoFijado,
+  ProductoParaPagina,
   SucursalEditor,
 } from "./tipos";
 
@@ -108,6 +110,19 @@ export const apiPagina = {
     subirArchivo<ItemCatalogoEditor>(`/pagina/catalogo/${id}/foto`, archivo, nombreDeFoto(archivo)),
   borrarFotoCatalogo: (id: number) =>
     request<ItemCatalogoEditor>(`/pagina/catalogo/${id}/foto`, { method: "DELETE" }),
+
+  // ── Catálogo "Mis productos" ──
+  /** El selector: productos a la venta, por nombre (paginado en el backend). */
+  buscarProductosCatalogo: (q: string, offset = 0) => {
+    const params = new URLSearchParams({ offset: String(offset) });
+    if (q.trim()) params.set("q", q.trim());
+    return request<{ items: ProductoParaPagina[]; total: number; limite: number; offset: number }>(
+      `/pagina/catalogo/productos?${params.toString()}`,
+    );
+  },
+  /** La lista entera de productos fijados, en el orden nuevo (fijar, quitar y ordenar). */
+  fijarProductosCatalogo: (productoIds: number[]) =>
+    request<ProductoFijado[]>("/pagina/catalogo/productos", { method: "PUT", body: json({ productoIds }) }),
 
   // ── Mis enlaces ──
   enlaces: () => request<EnlaceCorto[]>("/enlaces"),

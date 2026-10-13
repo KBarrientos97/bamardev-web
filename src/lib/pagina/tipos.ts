@@ -159,6 +159,13 @@ export interface ItemCatalogoPublico {
   precioDesde: boolean;
   /** Ruta relativa al API o URL absoluta: pasa por `urlDeImagen`. */
   fotoUrl: string | null;
+  /**
+   * Sólo en "Mis productos": la llave del ícono del artículo (la misma del
+   * POS), que la web resuelve a su imagen. Sin foto subida, es lo que se ve.
+   */
+  icono?: string | null;
+  /** Sólo en "Mis productos": la categoría del producto, si tiene. */
+  categoria?: string | null;
 }
 
 export interface CatalogoPublico {
@@ -261,6 +268,11 @@ export interface AjustesPagina {
   mostrarReservar: boolean;
   /** El título de la sección del catálogo; null = "Catálogo". Opcional como `catalogo`. */
   catalogoTitulo?: string | null;
+  /**
+   * De dónde sale el catálogo: armado a mano o los productos del sistema
+   * (13-oct). Uno u otro. Opcional: un backend anterior no lo manda (= MANUAL).
+   */
+  catalogoModo?: ModoCatalogo;
   /** "Pedí por WhatsApp" (IDEAS/6 #1). Opcional: un backend anterior no lo manda. */
   pedidosWhatsapp?: boolean;
   /** Gift cards desde la página (IDEAS/6 #6). Opcional por lo mismo. */
@@ -307,6 +319,27 @@ export interface ItemCatalogoEditor {
   fotoUrl: string | null;
 }
 
+/** Los dos modos del catálogo de la página, excluyentes. */
+export type ModoCatalogo = "MANUAL" | "PRODUCTOS";
+
+/** Un producto del sistema como lo ofrece el selector (`GET /pagina/catalogo/productos`). */
+export interface ProductoParaPagina {
+  /** El id del producto: es lo que se manda al fijar. */
+  id: number;
+  nombre: string;
+  /** El precio de lista; null si es 0 (no se muestra "Bs 0"). */
+  precio: number | null;
+  icono: string | null;
+  categoria: string | null;
+}
+
+/** Un producto fijado en la página (`GET /pagina` y `PUT /pagina/catalogo/productos`). */
+export interface ProductoFijado extends ProductoParaPagina {
+  orden: number;
+  /** false = fijado pero hoy no sale (inactivo o dado de baja); vuelve si lo reactivan. */
+  vendible: boolean;
+}
+
 /** Alta (`POST /pagina/catalogo`) y, parcial, edición (`PATCH /pagina/catalogo/:id`). */
 export interface ItemCatalogoInput {
   titulo: string;
@@ -339,6 +372,12 @@ export interface EstadoEditor {
   catalogo?: ItemCatalogoEditor[];
   /** Cuántos ítems admite el catálogo (60). */
   topeCatalogo?: number;
+  /** "Mis productos": los fijados, en orden. Opcionales por lo mismo que `catalogo`. */
+  productosCatalogo?: ProductoFijado[];
+  /** Cuántos productos a la venta tiene el negocio: con 0, el modo no se ofrece. */
+  productosVendibles?: number;
+  /** Cuántos productos se pueden fijar (60). */
+  topeProductos?: number;
 }
 
 export type CambiosPagina = Partial<
@@ -359,6 +398,7 @@ export type CambiosPagina = Partial<
     | "enlaceDestacadoId"
     | "mostrarReservar"
     | "catalogoTitulo"
+    | "catalogoModo"
     | "pedidosWhatsapp"
   >
 > & {

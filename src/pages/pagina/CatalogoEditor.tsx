@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type PointerEvent as EventoPuntero } from "react";
+import { useEffect, useRef, useState, type PointerEvent as EventoPuntero, type ReactNode } from "react";
 import { Icon } from "../../components/Icon";
 import { Boton, Campo, Confirmar, ErrorMsg, Input, Modal } from "../../components/ui";
 import { apiPagina, urlDeImagen } from "../../lib/pagina/apiPagina";
@@ -74,11 +74,13 @@ export interface PropsCatalogo {
   onTitulo: (t: string) => void;
   /** Cambia la lista partiendo de la última (no de la que vio este render). */
   onItems: (cambio: (actuales: ItemCatalogoEditor[]) => ItemCatalogoEditor[]) => void;
+  /** El selector de modo ("armado a mano" o "mis productos"), arriba de todo; null si no se ofrece. */
+  selector?: ReactNode;
   c: Paleta;
   onAviso: (t: string) => void;
 }
 
-export default function CatalogoEditor({ items, tope, titulo, onTitulo, onItems, c, onAviso }: PropsCatalogo) {
+export default function CatalogoEditor({ items, tope, titulo, onTitulo, onItems, selector, c, onAviso }: PropsCatalogo) {
   const [editor, setEditor] = useState<{ item: ItemCatalogoEditor | null } | null>(null);
   const [aQuitar, setAQuitar] = useState<ItemCatalogoEditor | null>(null);
   const [quitando, setQuitando] = useState(false);
@@ -272,6 +274,7 @@ export default function CatalogoEditor({ items, tope, titulo, onTitulo, onItems,
         )
       }
     >
+      {selector}
       <ErrorMsg>{error}</ErrorMsg>
       {items.length === 0 ? (
         <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-slate-300 px-4 py-8 text-center">

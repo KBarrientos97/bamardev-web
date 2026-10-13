@@ -33,6 +33,7 @@ import type {
   FormatoEnlace,
   FormaBotones,
   ItemCatalogoEditor,
+  ProductoFijado,
   SucursalEditor,
   TipoEnlace,
   Tipografia,
@@ -42,6 +43,7 @@ import { vistaDesdeEditor } from "../../lib/pagina/vista";
 import { useApi } from "../../lib/useApi";
 import CartelQR from "./CartelQR";
 import CatalogoEditor from "./CatalogoEditor";
+import CatalogoProductosEditor, { SelectorModoCatalogo } from "./CatalogoProductosEditor";
 import EditorPedidosRegalos from "./EditorPedidosRegalos";
 import { useAuthOpcional } from "../../store/AuthContext";
 import { tieneFeature } from "../../lib/permisos";
@@ -576,13 +578,39 @@ export default function MiPagina() {
     ultimo.current = nuevo;
     carga.setDatos(nuevo);
   };
+  const actualizarProductos = (lista: ProductoFijado[]) => {
+    const d = ultimo.current;
+    if (!d) return;
+    const nuevo = { ...d, productosCatalogo: lista };
+    ultimo.current = nuevo;
+    carga.setDatos(nuevo);
+  };
   // Un estado que vuelve de guardar la página o de ordenar los enlaces trae
   // el catálogo; si un backend anterior no lo manda, queda el que había.
   const conCatalogo = (nuevo: EstadoEditor): EstadoEditor => ({
     ...nuevo,
     catalogo: nuevo.catalogo ?? e.catalogo,
     topeCatalogo: nuevo.topeCatalogo ?? e.topeCatalogo,
+    productosCatalogo: nuevo.productosCatalogo ?? e.productosCatalogo,
+    productosVendibles: nuevo.productosVendibles ?? e.productosVendibles,
+    topeProductos: nuevo.topeProductos ?? e.topeProductos,
   });
+
+  // El catálogo es uno u otro (13-oct): armado a mano o "Mis productos". El
+  // modo va al borrador, como el título, y se guarda con "Guardar cambios".
+  // Sin productos a la venta ni siquiera se pregunta (salvo que ya estuviera
+  // en "Mis productos", para poder volver).
+  const modoCatalogo = ajustes.catalogoModo ?? "MANUAL";
+  const hayProductos = (e.productosVendibles ?? 0) > 0;
+  const selectorModo =
+    hayProductos || modoCatalogo === "PRODUCTOS" ? (
+      <SelectorModoCatalogo
+        modo={modoCatalogo}
+        onModo={(m) => cambiarLimpio({ catalogoModo: m })}
+        hayProductos={hayProductos}
+        c={c}
+      />
+    ) : null;
 
   const cambiarSucursal = (s: SucursalEditor, b: BorradorSucursal) =>
     setBorradorSucursales((todos) => {
@@ -937,16 +965,30 @@ export default function MiPagina() {
             />
           </Seccion>
 
-          <CatalogoEditor
-            items={e.catalogo ?? []}
-            tope={e.topeCatalogo ?? TOPE_CATALOGO}
-            titulo={ajustes.catalogoTitulo ?? ""}
-            // Vacío vuelve a "Catálogo": el backend lo guarda como null.
-            onTitulo={(t) => cambiar({ catalogoTitulo: t.trim() ? t : null })}
-            onItems={actualizarCatalogo}
-            c={c}
-            onAviso={setAviso}
-          />
+          {modoCatalogo === "PRODUCTOS" ? (
+            <CatalogoProductosEditor
+              fijados={e.productosCatalogo ?? []}
+              tope={e.topeProductos ?? TOPE_CATALOGO}
+              titulo={ajustes.catalogoTitulo ?? ""}
+              onTitulo={(t) => cambiar({ catalogoTitulo: t.trim() ? t : null })}
+              onFijados={actualizarProductos}
+              selector={selectorModo}
+              c={c}
+              onAviso={setAviso}
+            />
+          ) : (
+            <CatalogoEditor
+              items={e.catalogo ?? []}
+              tope={e.topeCatalogo ?? TOPE_CATALOGO}
+              titulo={ajustes.catalogoTitulo ?? ""}
+              // Vacío vuelve a "Catálogo": el backend lo guarda como null.
+              onTitulo={(t) => cambiar({ catalogoTitulo: t.trim() ? t : null })}
+              onItems={actualizarCatalogo}
+              selector={selectorModo}
+              c={c}
+              onAviso={setAviso}
+            />
+          )}
 
           <EditorPedidosRegalos
             guardado={e.pagina.regalos}

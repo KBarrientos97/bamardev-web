@@ -140,6 +140,31 @@ describe("vista previa desde el editor", () => {
     expect(vistaDesdeEditor(editor({ catalogo: [item(1, 1, false)] })).catalogo).toBeNull();
   });
 
+  it("el catálogo es uno u otro: en «Mis productos» salen los productos vendibles, en orden", () => {
+    const item = { id: 1, titulo: "Foto del local", descripcion: null, precio: 50, precioDesde: false, visible: true, orden: 1, fotoUrl: null };
+    const producto = (id: number, orden: number, vendible = true) => ({
+      id,
+      nombre: `Producto ${id}`,
+      precio: id === 3 ? null : 10 * id,
+      icono: id === 1 ? "pollo_entero_brasa" : null,
+      categoria: id === 1 ? "Pollos" : null,
+      orden,
+      vendible,
+    });
+    const base = editor({ catalogo: [item], productosCatalogo: [producto(1, 2), producto(2, 3, false), producto(3, 1)] });
+    // MANUAL (o un backend anterior sin el modo): la galería, sin productos.
+    expect(vistaDesdeEditor(base).catalogo?.items.map((x) => x.titulo)).toEqual(["Foto del local"]);
+    const v = vistaDesdeEditor({ ...base, pagina: { ...base.pagina, catalogoModo: "PRODUCTOS" } });
+    expect(v.catalogo?.titulo).toBe("Catálogo");
+    expect(v.catalogo?.items).toEqual([
+      { id: 3, titulo: "Producto 3", descripcion: null, precio: null, precioDesde: false, fotoUrl: null, icono: null, categoria: null },
+      { id: 1, titulo: "Producto 1", descripcion: null, precio: 10, precioDesde: false, fotoUrl: null, icono: "pollo_entero_brasa", categoria: "Pollos" },
+    ]);
+    // Sin productos que se vendan, no hay sección (aunque haya galería guardada).
+    const soloInactivos = editor({ catalogo: [item], productosCatalogo: [producto(2, 1, false)] });
+    expect(vistaDesdeEditor({ ...soloInactivos, pagina: { ...soloInactivos.pagina, catalogoModo: "PRODUCTOS" } }).catalogo).toBeNull();
+  });
+
   it("hoy en Bolivia es UTC−4", () => {
     expect(hoyBolivia(new Date("2026-10-07T03:00:00Z"))).toBe("2026-10-06");
     expect(hoyBolivia(new Date("2026-10-07T05:00:00Z"))).toBe("2026-10-07");

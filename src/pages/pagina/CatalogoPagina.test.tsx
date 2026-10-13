@@ -50,6 +50,26 @@ afterEach(() => vi.useRealTimers());
 const visor = () => screen.getByRole("dialog");
 
 describe("catálogo de la página pública", () => {
+  it("«Mis productos»: el ícono del producto en vez de la inicial, y la categoría debajo", () => {
+    montar({
+      catalogo: {
+        titulo: "Catálogo",
+        items: [
+          { id: 7, titulo: "Pollo entero", descripcion: null, precio: 120, precioDesde: false, fotoUrl: null, icono: "pollo_entero_brasa", categoria: "Pollos" },
+          { id: 8, titulo: "Soda", descripcion: null, precio: 15, precioDesde: false, fotoUrl: null, icono: "llave-que-no-existe", categoria: null },
+        ],
+      },
+    });
+    const pollo = screen.getByText("Pollo entero").closest("button")!;
+    expect(pollo.querySelector("img")).not.toBeNull();
+    expect(within(pollo).getByText("Pollos")).toBeInTheDocument();
+    expect(within(pollo).getByText("Bs 120")).toBeInTheDocument();
+    // Un ícono que la web no conoce cae a la inicial, como en el POS.
+    const soda = screen.getByText("Soda").closest("button")!;
+    expect(soda.querySelector("img")).toBeNull();
+    expect(soda).toHaveTextContent(/^SSoda/);
+  });
+
   it("muestra la sección con su título, las fotos y los precios formateados", () => {
     montar();
     expect(screen.getByRole("heading", { name: "Nuestros trabajos" })).toBeInTheDocument();
