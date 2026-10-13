@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 import { reportarError } from "../telemetria";
-import { abiertaComoApp, esLaApp } from "./entorno";
+import { abiertaComoApp, esIOS, esLaApp } from "./entorno";
 
 /**
  * La web como app instalable (PWA, PLAN-IOS §8): el manifest, el service
@@ -74,7 +74,7 @@ const NOMBRE = esQA ? "BamarDev QA" : "BamarDev";
  * QA lleva otro nombre e ícono: en un mismo celular conviven las dos y
  * confundirlas es cobrar en la equivocada.
  */
-function ponerCabecera(doc: Document) {
+function ponerCabecera(doc: Document, ios: boolean) {
   const link = doc.createElement("link");
   link.rel = "manifest";
   link.href = esQA ? "/manifest-qa.webmanifest" : "/manifest.webmanifest";
@@ -102,9 +102,14 @@ function ponerCabecera(doc: Document) {
   // `viewport-fit=cover`: abajo la app llega hasta el borde y el Layout se
   // corre lo que mide la barrita de inicio del iPhone (safe-area). Sólo en la
   // app: las páginas públicas no están preparadas para el notch acostado.
+  //
+  // `maximum-scale=1`, sólo en iOS: Safari agranda la pantalla al tocar un
+  // campo con letra de menos de 16 px (los nuestros son de 14) y no la
+  // vuelve a achicar. Desde iOS 10 eso no impide pellizcar para agrandar,
+  // que sigue andando; en Android sí lo impediría, por eso no va ahí.
   const viewport = doc.querySelector<HTMLMetaElement>('meta[name="viewport"]');
   if (viewport && !viewport.content.includes("viewport-fit")) {
-    viewport.content = `${viewport.content}, viewport-fit=cover`;
+    viewport.content = `${viewport.content}, viewport-fit=cover${ios ? ", maximum-scale=1" : ""}`;
   }
 }
 
@@ -149,12 +154,13 @@ async function registrar(doc: Document) {
 /** Arranque, desde main.tsx. En lo público no hace nada. */
 export function iniciarPwa(win: Window = window) {
   if (!esLaApp(win.location.hostname, win.location.pathname)) return;
-  ponerCabecera(win.document);
+  const nav = win.navigator as Navigator & { standalone?: boolean };
+  ponerCabecera(win.document, esIOS(nav.userAgent ?? "", nav.maxTouchPoints ?? 0));
 
   cambiar({
     instalada: abiertaComoApp(
       (consulta) => !!win.matchMedia?.(consulta)?.matches,
-      (win.navigator as Navigator & { standalone?: boolean }).standalone,
+      nav.standalone,
     ),
   });
   win.addEventListener("beforeinstallprompt", (e) => {

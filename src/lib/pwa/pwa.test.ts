@@ -6,7 +6,7 @@ import { iniciarPwa, instalar, reiniciarEstadoPwa, type EventoInstalar } from ".
  * negocio agregada a inicio tiene que seguir siendo la del negocio.
  */
 
-function ventana(hostname: string, pathname: string, standalone = false) {
+function ventana(hostname: string, pathname: string, standalone = false, userAgent = "") {
   const doc = document.implementation.createHTMLDocument("prueba");
   doc.head.innerHTML =
     '<meta name="viewport" content="width=device-width, initial-scale=1.0">' +
@@ -15,7 +15,7 @@ function ventana(hostname: string, pathname: string, standalone = false) {
   const win = {
     location: { hostname, pathname },
     document: doc,
-    navigator: { standalone },
+    navigator: { standalone, userAgent, maxTouchPoints: 0 },
     matchMedia: () => ({ matches: false }),
     addEventListener: (tipo: string, f: (e: Event) => void) => {
       oyentes[tipo] = f;
@@ -34,6 +34,17 @@ describe("iniciarPwa", () => {
     expect(doc.querySelector('meta[name="apple-mobile-web-app-capable"]')?.getAttribute("content")).toBe("yes");
     expect(doc.querySelector('meta[name="apple-mobile-web-app-title"]')?.getAttribute("content")).toBe("BamarDev");
     expect(doc.querySelector('meta[name="viewport"]')?.getAttribute("content")).toContain("viewport-fit=cover");
+  });
+
+  it("en el iPhone, maximum-scale=1: si no, tocar un campo agranda la pantalla", () => {
+    const ios = ventana("app.bamardev.com", "/login", false, "Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) Safari/604.1");
+    iniciarPwa(ios.win);
+    expect(ios.doc.querySelector('meta[name="viewport"]')?.getAttribute("content")).toContain("maximum-scale=1");
+
+    // En Android impediría pellizcar para agrandar: ahí no va.
+    const android = ventana("app.bamardev.com", "/login", false, "Mozilla/5.0 (Linux; Android 14) Chrome/138.0 Mobile");
+    iniciarPwa(android.win);
+    expect(android.doc.querySelector('meta[name="viewport"]')?.getAttribute("content")).not.toContain("maximum-scale");
   });
 
   it.each([

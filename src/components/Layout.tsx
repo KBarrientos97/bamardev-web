@@ -5,11 +5,14 @@ import { tituloDe, useMenu } from "../lib/menu";
 import { etiquetaRol } from "../lib/permisos";
 import { useAuth } from "../store/AuthContext";
 import AvisoLicencia from "./AvisoLicencia";
+import CajonMovil from "./CajonMovil";
 import CambiarMiPassword from "./CambiarMiPassword";
 import { BarraCupo } from "./ChipCupo";
 import { HojaCupoHost } from "./ComprarCreditos";
 import { Icon } from "./Icon";
+import { esIOS } from "../lib/pwa/entorno";
 import { useInstalarDisponible, useOfrecerInstalarUnaVez } from "../lib/pwa/guia";
+import { usePwa } from "../lib/pwa/pwa";
 import { AvisoVersionNueva, HojaInstalar } from "./InstalarApp";
 import MenuLateral from "./MenuLateral";
 
@@ -56,6 +59,10 @@ export default function Layout() {
   const instalarDisponible = useInstalarDisponible();
   const [instalando, setInstalando] = useState(false);
   const [ofrecida, cerrarOfrecida] = useOfrecerInstalarUnaVez();
+  // Deslizar desde el borde izquierdo abre el menú, salvo en Safari sin
+  // instalar: ahí ese gesto es "volver" del navegador.
+  const { instalada } = usePwa();
+  const bordeLibre = instalada || !esIOS(navigator.userAgent, navigator.maxTouchPoints ?? 0);
   const abrirInstalar = () => {
     setAbierto(false);
     setInstalando(true);
@@ -169,25 +176,22 @@ export default function Layout() {
         </button>
       </aside>
 
-      {/* Drawer en móvil */}
-      {abierto && (
-        <div className="fixed inset-0 z-40 lg:hidden">
-          <div
-            className="absolute inset-0 bg-slate-900/40"
-            onClick={() => setAbierto(false)}
-          />
-          <aside className="absolute inset-y-0 left-0 flex w-72 flex-col bg-barra pb-[env(safe-area-inset-bottom)] shadow-2xl">
-            {encabezado(false)}
-            <MenuLateral
-              menu={menu}
-              compacta={false}
-              onNavegar={() => setAbierto(false)}
-              onCambiarPassword={cambiarPassword}
-              onInstalar={instalarDisponible ? abrirInstalar : undefined}
-            />
-          </aside>
-        </div>
-      )}
+      {/* Drawer en móvil: sigue al dedo (ver CajonMovil). */}
+      <CajonMovil
+        abierto={abierto}
+        onAbrir={() => setAbierto(true)}
+        onCerrar={() => setAbierto(false)}
+        desdeElBorde={bordeLibre}
+      >
+        {encabezado(false)}
+        <MenuLateral
+          menu={menu}
+          compacta={false}
+          onNavegar={() => setAbierto(false)}
+          onCambiarPassword={cambiarPassword}
+          onInstalar={instalarDisponible ? abrirInstalar : undefined}
+        />
+      </CajonMovil>
 
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Barra superior: sólo hace falta el botón de menú en móvil */}
