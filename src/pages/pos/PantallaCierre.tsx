@@ -16,7 +16,7 @@ import { api } from "../../lib/api";
 import { fmtHora, fmtMoney, fmtNum } from "../../lib/format";
 import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
-import { esBelleza } from "../../lib/rubro";
+import { esBelleza, esBillar } from "../../lib/rubro";
 import { cuandoCita } from "../../lib/agenda/horaAgenda";
 import type { Caja, CitaParaRevisar, MotivoRevisarCita } from "../../types";
 
@@ -164,7 +164,11 @@ export default function PantallaCierre({
                   vendido"): ahí están las propinas y el cambio que confundían
                   el arqueo (QA VER-01 / DIA-11). Omar y los demás rubros ven el
                   cierre exactamente como antes. */}
-              {esBelleza(rubro) ? (
+              {/* El billar también, por ser rubro nuevo y sin clientes: con el
+                  formato de siempre, su QA del 12-oct sumó "Fondo 100 +
+                  Efectivo 40 − Cambio 30 + Adelantos 20 = 130" contra un
+                  esperado de 160. */}
+              {esBelleza(rubro) || esBillar(rubro) ? (
                 <>
                   {/* Dos bloques (QA VER-01 / DIA-11): lo que se vendió, que NO se
                       suma, y la cuenta del cajón, cuyas filas SÍ suman el
@@ -234,6 +238,19 @@ export default function PantallaCierre({
                     </div>
                     {r.abonosEfectivo > 0 && (
                       <Fila etiqueta="Abonos de créditos (efectivo)" valor={r.abonosEfectivo} />
+                    )}
+                    {/* Billar: lo mismo que en el formato de siempre (ver la fila
+                        de abajo, en la otra rama): el adelanto de una mesa que
+                        sigue abierta está en el cajón y todavía no es venta. */}
+                    {(r.adelantosBillar ?? 0) !== 0 && (
+                      <Fila
+                        etiqueta={
+                          (r.adelantosBillar ?? 0) > 0
+                            ? "Adelantos de mesas de billar (efectivo)"
+                            : "Adelantos de billar cobrados en otra caja"
+                        }
+                        valor={r.adelantosBillar ?? 0}
+                      />
                     )}
                     {/* La plata de las profesionales, en su fila: está en el cajón
                         pero no es del negocio. */}

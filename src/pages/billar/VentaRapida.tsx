@@ -72,9 +72,7 @@ export default function VentaRapida() {
     vaciar();
     setCliente("");
     setCobrando(false);
-    cobro.setRecibidoTexto("");
-    cobro.setEfectivoTexto("");
-    cobro.setMetodo("Efectivo");
+    cobro.reiniciar();
   };
 
   const cargarAMesa = async (mesaId: number) => {

@@ -28,9 +28,14 @@ export function nivelAlcanzado(restante: number, avisos: number[]): Nivel | null
  * Lo ya avisado, guardado en el equipo (§9) por sesión y no por mesa: al
  * recargar no se repite, y al pasar la cuenta a otra mesa tampoco (con la
  * mesa en la clave, el cambio de mesa volvía a avisar lo mismo).
+ *
+ * También va el tramo contratado (los minutos de tiempo fijo): `olvidarAvisos`
+ * sólo corre en el equipo que extiende, y la PC de la barra, que ya había
+ * avisado 10 y 5 min, se quedaba callada en la hora nueva que se extendió
+ * desde el celular (QA del 12-oct).
  */
 const AVISADOS_KEY = "bamardev.billar.avisados";
-const clave = (sesionId: string, nivel: Nivel) => `${sesionId}:${nivel}`;
+const clave = (sesionId: string, nivel: Nivel, tramo: number) => `${sesionId}:${nivel}:${tramo}`;
 
 function leer(): Set<string> | null {
   try {
@@ -53,13 +58,13 @@ function guardar() {
   }
 }
 
-export function yaAvisado(sesionId: string, nivel: Nivel): boolean {
-  return disparados.has(clave(sesionId, nivel));
+export function yaAvisado(sesionId: string, nivel: Nivel, tramo: number): boolean {
+  return disparados.has(clave(sesionId, nivel, tramo));
 }
 
 /** Marca el nivel y los de arriba: después de avisar 5 min no se avisa 10. */
-export function marcarAvisado(sesionId: string, nivel: Nivel, avisos: number[]) {
-  for (const n of [...avisos, 0]) if (n >= nivel) disparados.add(clave(sesionId, n));
+export function marcarAvisado(sesionId: string, nivel: Nivel, avisos: number[], tramo: number) {
+  for (const n of [...avisos, 0]) if (n >= nivel) disparados.add(clave(sesionId, n, tramo));
   guardar();
 }
 
@@ -84,7 +89,7 @@ export function prepararAvisos(mesas: Mesa[], avisos: number[], ahora: number) {
       const s = m.sesion;
       if (m.estado !== "abierta" || !s?.prepago) continue;
       const nivel = nivelAlcanzado(s.prepago.min * 60 - segundosJugados(s, ahora), avisos);
-      if (nivel !== null) for (const n of [...avisos, 0]) if (n >= nivel) disparados.add(clave(s.id, n));
+      if (nivel !== null) for (const n of [...avisos, 0]) if (n >= nivel) disparados.add(clave(s.id, n, s.prepago.min));
     }
     estrenando = false;
   }

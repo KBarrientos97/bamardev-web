@@ -1,16 +1,16 @@
-import { useCallback, useEffect, useRef, type ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useRef, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Icon } from "../../components/Icon";
 import { publicarContadorBillar } from "../../lib/billar/contador";
 import { fmtMoney } from "../../lib/format";
 import { desbloquearAudio, hablar, marcarAvisado, nivelAlcanzado, textosAviso, yaAvisado, zumbido } from "./alertas";
-import { fmtTarifaCorta, pagadoDe, segundosJugados } from "./calculo";
+import { cuentaDe, fmtTarifaCorta, pagadoDe, segundosJugados, sePuedeAnular } from "./calculo";
 import { useDialogos, type Dialogo } from "./dialogos";
 import { ModalAbrir, ModalExtender } from "./ModalTiempo";
 import { ModalAvisos } from "./ModalesCaja";
 import { ModalCambiar, ModalEditarInicio, ModalMotivo, ModalPago, ModalPin, ModalReservar } from "./ModalesMesa";
 import { ModalHistorial, ModalTicket, ModalVenta } from "./ModalesVenta";
-import { useAhora } from "./reloj";
+import { ahoraServidor, useAhora } from "./reloj";
 import { billar, leerBillar, tipoDe, useBillar, type EstadoBillar, type Toast } from "./store";
 
 /**
@@ -38,8 +38,8 @@ export function MotorAvisos() {
       const restante = s.prepago.min * 60 - segundosJugados(s, ahora);
       if (restante <= Math.max(0, ...e.ajustes.avisos) * 60) alerta = true;
       const nivel = nivelAlcanzado(restante, e.ajustes.avisos);
-      if (nivel === null || yaAvisado(s.id, nivel)) continue;
-      marcarAvisado(s.id, nivel, e.ajustes.avisos);
+      if (nivel === null || yaAvisado(s.id, nivel, s.prepago.min)) continue;
+      marcarAvisado(s.id, nivel, e.ajustes.avisos, s.prepago.min);
       const t = textosAviso(m.id, restante, s.prepago.min / 60, fmtTarifaCorta(tipoDe(e, m).tarifa));
       billar.avisar({
         tono: nivel > 1 ? "ambar" : "rojo",
@@ -162,7 +162,22 @@ export function DialogoActual() {
   useEffect(() => {
     if (huerfano && actual) quitar(actual);
   }, [huerfano, actual, quitar]);
-  return contenido;
+  return actual && contenido ? <Fragment key={claveDe(actual)}>{contenido}</Fragment> : null;
+}
+
+// Una clave por diálogo de la pila, por identidad: sin ella, React reutilizaba
+// el componente de arriba cuando el siguiente era del mismo tipo. Un
+// "Extender" de la Mesa 7 abierto desde un aviso heredaba el paso de cobro y
+// el QR ya confirmado del "Extender" de la Mesa 5 (QA del 12-oct).
+const claves = new WeakMap<Dialogo, number>();
+let ultimaClave = 0;
+function claveDe(d: Dialogo): number {
+  let k = claves.get(d);
+  if (k === undefined) {
+    k = ++ultimaClave;
+    claves.set(d, k);
+  }
+  return k;
 }
 
 function dibujar(actual: Dialogo, e: EstadoBillar, cerrar: () => void): ReactNode {
@@ -209,6 +224,10 @@ function dibujar(actual: Dialogo, e: EstadoBillar, cerrar: () => void): ReactNod
     }
     case "anularMesa": {
       if (!enJuego?.sesion) return null;
+      // Se cumplió el plazo con el diálogo abierto: se va solo. El servidor lo
+      // rechazaba con ANULAR_VENCIDO y el rechazo se leía como un PIN mal
+      // puesto, con los casilleros vaciándose a cada intento.
+      if (!sePuedeAnular(cuentaDe(enJuego.sesion, tipoDe(e, enJuego), ahoraServidor()))) return null;
       const pagado = pagadoDe(enJuego.sesion.pagos);
       return (
         <ModalPin

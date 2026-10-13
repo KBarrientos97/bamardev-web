@@ -500,7 +500,8 @@ export function ModalEditarInicio({ mesa, onClose }: { mesa: Mesa; onClose: () =
   return (
     <ModalPin
       accion={`Corregir el inicio de la Mesa ${mesa.id}`}
-      detalle={`Arrancó a las ${horaDe(s.start)}. La cuenta se recalcula desde la hora nueva.`}
+      // Sin punto después de la hora: ya termina en "p. m." y quedaba "p. m..".
+      detalle={`Arrancó a las ${horaDe(s.start)}; la cuenta se recalcula desde la hora nueva.`}
       motivos={["Se olvidó abrirla", "Se abrió tarde", "Error de hora"]}
       permiso="billar.admin"
       bloqueado={!valida}

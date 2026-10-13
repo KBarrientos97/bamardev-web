@@ -181,7 +181,9 @@ export function LineasPedido({
               <button
                 type="button"
                 onClick={() => onPoner(id, cant + 1)}
-                disabled={cant >= p.stock}
+                // Un servicio no tiene stock (null): `cant >= null` daba true y el
+                // "+" quedaba muerto.
+                disabled={p.stock !== null && cant >= p.stock}
                 aria-label={`Uno más de ${p.nombre}`}
                 className="flex h-9 w-9 items-center justify-center rounded-full text-texto-2 hover:bg-muted disabled:opacity-40"
               >

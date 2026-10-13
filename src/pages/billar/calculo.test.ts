@@ -273,6 +273,13 @@ describe("sePuedeAnular", () => {
     expect(sePuedeAnular(null)).toBe(false);
   });
 
+  it("sin nada que cobrar se puede anular aunque pasen los 5 minutos", () => {
+    // Con mínimo 0 y tolerancia de más de 5 min, la mesa no se podía finalizar
+    // ("no tiene nada para cobrar") ni anular, y la caja no cerraba.
+    expect(sePuedeAnular({ secs: hms(0, 7), total: 0 })).toBe(true);
+    expect(sePuedeAnular({ secs: hms(0, 7), total: 10 })).toBe(false);
+  });
+
   it("lo traído de otra mesa cuenta como jugado", () => {
     const s = sesion({ jugados: hms(0, 1), prev: { secs: hms(0, 40), min: 45, bs: 15 } });
     expect(sePuedeAnular(cuentaDe(s, POOL, AHORA))).toBe(false);

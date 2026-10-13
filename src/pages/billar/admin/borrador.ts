@@ -131,7 +131,9 @@ export function borradorTarifas(tipos: Record<string, TipoMesa>, ajustes: Ajuste
     tipos: Object.values(tipos).map((t) => ({
       id: t.id,
       nombre: t.nombre,
-      tarifa: texto(t.tarifa),
+      // Con punto: el campo es type="number" (CampoBs), y Chrome descarta un
+      // "22,5" y lo muestra vacío aunque el simulador use la tarifa.
+      tarifa: String(t.tarifa),
       fraccion: t.fraccion,
       minimo: String(t.minimo),
       tolerancia: String(t.tolerancia),

@@ -48,9 +48,13 @@ export function segundosJugados(s: Sesion, ahora: number): number {
  */
 export const ANULAR_HASTA_SEG = 5 * 60;
 
-/** Si la mesa todavía se puede anular. Cuenta lo traído de otra mesa, como el reloj. */
-export function sePuedeAnular(c: Pick<Cuenta, "secs"> | null): boolean {
-  return c != null && c.secs < ANULAR_HASTA_SEG;
+/**
+ * Si la mesa todavía se puede anular. Cuenta lo traído de otra mesa, como el
+ * reloj. Sin nada que cobrar se puede siempre: con mínimo 0 y una tolerancia
+ * de más de 5 min, la mesa no se podía finalizar ni anular.
+ */
+export function sePuedeAnular(c: Pick<Cuenta, "secs" | "total"> | null): boolean {
+  return c != null && (c.secs < ANULAR_HASTA_SEG || c.total <= 0.005);
 }
 
 // ── §5.2 Cobro por fracción (tiempo libre) ──────────────────────────────────

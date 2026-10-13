@@ -2,13 +2,14 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { Icon } from "../../components/Icon";
 import { Vacio } from "../../components/ui";
+import { aCentavos } from "../../lib/dinero";
 import { fmtMoney } from "../../lib/format";
 import { tienePermiso } from "../../lib/permisos";
 import { useAuth } from "../../store/AuthContext";
 import type { CreditoInput, PagoInput } from "../../types";
 import PantallaCredito from "../pos/PantallaCredito";
 import { useIntentoDeCobro } from "../pos/useIntentoDeCobro";
-import { cuentaDe, fmtCobrado, fmtCrono, horaDe, segundosJugados } from "./calculo";
+import { cuentaDe, fmtCobrado, fmtCrono, horaDe, round2, segundosJugados } from "./calculo";
 import { FormCobro } from "./Cobro";
 import { useCobro } from "./useCobro";
 import { useAccion } from "./useAccion";
@@ -46,10 +47,30 @@ export default function CerrarMesa() {
     if (accion.codigo === "MESA_CAMBIO") setHasta(ahoraServidor());
   }, [accion.codigo]);
   const mesa = e.mesas.find((m) => m.id === Number(mesaId));
-  const s = mesa?.estado === "abierta" ? mesa.sesion : undefined;
+  const sVivo = mesa?.estado === "abierta" ? mesa.sesion : undefined;
+  // La cuenta sale de una FOTO de la sesión, no de la que trae el sondeo. Antes
+  // se recalculaba cada 5 s: si otro equipo cargaba algo mientras se cobraba,
+  // el monto cambiaba solo y `totalEsperado` viajaba ya actualizado, así que el
+  // servidor lo aceptaba. Con "Recibido" vacío la venta asentaba en efectivo
+  // más de lo que había entrado al cajón (QA del 12-oct).
+  const [foto, setFoto] = useState(sVivo);
+  useEffect(() => {
+    if (sVivo && foto?.id !== sVivo.id) setFoto(sVivo);
+  }, [sVivo, foto]);
+  const s = sVivo && foto?.id === sVivo.id ? foto : sVivo;
   const tipo = mesa ? tipoDe(e, mesa) : null;
   const c = s && tipo ? cuentaDe(s, tipo, hasta) : null;
   const cobro = useCobro(c?.saldo ?? 0);
+  // Lo que debe la mesa con lo último que llegó. Si no es lo de la foto, se
+  // avisa y no se cobra hasta que el cajero mire el monto nuevo.
+  const cVivo = sVivo && tipo ? cuentaDe(sVivo, tipo, hasta) : null;
+  const cambioLaCuenta =
+    !!c && !!cVivo && (aCentavos(cVivo.total) !== aCentavos(c.total) || aCentavos(cVivo.saldo) !== aCentavos(c.saldo));
+  const usarCuentaNueva = () => {
+    setFoto(sVivo);
+    setHasta(ahoraServidor());
+    cobro.reiniciar();
+  };
 
   const reloj = (
     <span className="flex items-center gap-1.5 text-[13px] font-semibold tabular-nums text-texto-2">
@@ -67,15 +88,22 @@ export default function CerrarMesa() {
     );
   }
   if (!mesa || !s || !c || !tipo) {
+    // Recién cobrada, la mesa ya figura libre pero todavía se traen las ventas
+    // del turno: decía "Puede que ya la haya cerrado otra caja" justo después
+    // de que este cajero la cobró.
     return (
       <div className="flex h-full min-h-0 flex-col">
         <Encabezado titulo={`Cerrar Mesa ${mesaId}`}>{reloj}</Encabezado>
-        <Vacio
-          icono="bola"
-          titulo={`La Mesa ${mesaId} no está abierta`}
-          texto="Puede que ya la haya cerrado otra caja."
-          accion={<BotonB onClick={() => navigate("/billar")}>Volver al tablero</BotonB>}
-        />
+        {accion.enviando ? (
+          <Vacio icono="bola" titulo="Registrando la venta…" texto={`La Mesa ${mesaId} ya quedó libre.`} />
+        ) : (
+          <Vacio
+            icono="bola"
+            titulo={`La Mesa ${mesaId} no está abierta`}
+            texto="Puede que ya la haya cerrado otra caja."
+            accion={<BotonB onClick={() => navigate("/billar")}>Volver al tablero</BotonB>}
+          />
+        )}
       </div>
     );
   }
@@ -91,6 +119,9 @@ export default function CerrarMesa() {
     }
     navigate("/billar", { replace: true });
   };
+
+  /** Lo pagado de más (la cuenta bajó después de un adelanto): hay que devolverlo. */
+  const aFavor = round2(c.pagado - c.total);
 
   // Lo que identifica ESTE cobro: la sesión y la hora de la cuenta. Un
   // reintento de lo mismo manda el mismo id y, si el primero había entrado,
@@ -112,7 +143,13 @@ export default function CerrarMesa() {
     if (c.saldo > 0 && !pago) return;
     void cobrar(
       { hasta, totalEsperado: c.total, pago: pago ?? undefined, clienteRequestId: intento.actual(huella) },
-      pago?.metodo === "Efectivo" ? `Cambio ${fmtMoney(cobro.cambio)}` : pago ? textoMetodo(pago) : "Estaba todo pagado.",
+      pago?.metodo === "Efectivo"
+        ? `Cambio ${fmtMoney(cobro.cambio)}`
+        : pago
+          ? textoMetodo(pago)
+          : aFavor > 0.005
+            ? `Devolvé ${fmtMoney(aFavor)} al cliente.`
+            : "Estaba todo pagado.",
     );
   };
 
@@ -259,6 +296,17 @@ export default function CerrarMesa() {
                   Mesa {mesa.id} · Total {fmtMoney(c.total)} · Pagado {fmtMoney(c.pagado)}
                 </p>
               </div>
+              {cambioLaCuenta && cVivo && (
+                <div className="space-y-2">
+                  <Nota tono="ambar" icono="alert">
+                    La cuenta cambió mientras cobrabas (otro equipo cargó o cobró algo): ahora el saldo es{" "}
+                    {fmtMoney(cVivo.saldo)}.
+                  </Nota>
+                  <BotonB variante="verde" className="w-full" onClick={usarCuentaNueva}>
+                    Usar la cuenta nueva · {fmtMoney(cVivo.saldo)}
+                  </BotonB>
+                </div>
+              )}
               {c.saldo > 0 ? (
                 <>
                   <FormCobro cobro={cobro} />
@@ -267,23 +315,46 @@ export default function CerrarMesa() {
                     variante="verde"
                     grande
                     className="w-full"
-                    disabled={!cobro.pago || accion.enviando}
+                    disabled={!cobro.pago || accion.enviando || cambioLaCuenta}
                     onClick={confirmar}
                   >
                     {accion.enviando ? "Cobrando…" : `Confirmar cobro y cerrar mesa · ${fmtMoney(c.saldo)}`}
                   </BotonB>
                   {/* Sin permiso de fiar, el servidor lo rechaza: el botón ni aparece. */}
                   {tienePermiso(usuario, "credito.otorgar") && (
-                    <BotonB icono="fileText" className="w-full" disabled={accion.enviando} onClick={() => setFiando(true)}>
+                    <BotonB
+                      icono="fileText"
+                      className="w-full"
+                      disabled={accion.enviando || cambioLaCuenta}
+                      onClick={() => setFiando(true)}
+                    >
                       Pasar saldo a fiado
                     </BotonB>
                   )}
                 </>
               ) : (
                 <>
-                  <Nota icono="checkCirculo">Ya está todo pagado. Cerrar la deja libre y registra la venta.</Nota>
+                  {/* Lo pagado puede pasar el total si la cuenta bajó después de
+                      un adelanto (entró una promo, se anuló un consumo). El
+                      arqueo ya da ese sobrante por devuelto, pero la pantalla
+                      decía "Ya está todo pagado" y nadie se lo devolvía: el
+                      cliente pagaba de más y la caja cerraba con sobrante. */}
+                  {aFavor > 0.005 ? (
+                    <Nota tono="ambar" icono="alert">
+                      Pagó {fmtMoney(aFavor)} de más (la cuenta bajó después de pagar): devolvéselo al cliente al cerrar.
+                    </Nota>
+                  ) : (
+                    <Nota icono="checkCirculo">Ya está todo pagado. Cerrar la deja libre y registra la venta.</Nota>
+                  )}
                   <ErrorAccion texto={accion.error} />
-                  <BotonB variante="verde" grande icono="check" className="w-full" disabled={accion.enviando} onClick={confirmar}>
+                  <BotonB
+                    variante="verde"
+                    grande
+                    icono="check"
+                    className="w-full"
+                    disabled={accion.enviando || cambioLaCuenta}
+                    onClick={confirmar}
+                  >
                     {accion.enviando ? "Cerrando…" : "Cerrar mesa"}
                   </BotonB>
                 </>

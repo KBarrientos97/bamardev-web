@@ -37,6 +37,13 @@ export interface EstadoCobro {
   /** El cajero vio entrar el QR por este monto (si cambia el monto, hay que volver a confirmar). */
   qrConfirmado: boolean;
   confirmarQr: () => void;
+  /**
+   * Deja el cobro como recién abierto, confirmación del QR incluida. La venta
+   * rápida usa el mismo cobro venta tras venta: limpiaba el método y los
+   * montos pero no `qrVisto`, y la siguiente venta por QR del mismo monto
+   * salía "Pago confirmado" sin que nadie mirara el banco (QA del 12-oct).
+   */
+  reiniciar: () => void;
   editable: boolean;
   tope: number;
 }
@@ -95,6 +102,13 @@ export function useCobro(total: number, editable = false): EstadoCobro {
       montoQr,
       qrConfirmado,
       confirmarQr: () => setQrVisto(huellaQr),
+      reiniciar: () => {
+        setMetodo("Efectivo");
+        setMontoTexto(editable ? String(total) : "");
+        setRecibidoTexto("");
+        setEfectivoTexto("");
+        setQrVisto(null);
+      },
       editable,
       tope: total,
     };
