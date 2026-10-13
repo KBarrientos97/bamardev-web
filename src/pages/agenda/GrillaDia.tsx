@@ -13,7 +13,8 @@ import { AvatarRecurso } from "./piezas";
 
 /** 96 px por hora, como el lienzo: una cita de 15 min todavía se lee. */
 export const PX_POR_MIN = 1.6;
-const ANCHO_HORAS = 64;
+/** La columna de las horas: angosta, para dejarle el ancho a los profesionales. */
+const ANCHO_HORAS = 48;
 /** Sin horarios cargados se muestra un día de salón típico. */
 const DIA_POR_DEFECTO = { desde: 8 * 60, hasta: 20 * 60 };
 
@@ -39,6 +40,12 @@ interface Arrastre {
  * Arrastrar es sólo con mouse: en un celular o una tablet el dedo tiene que
  * poder deslizar la agenda sin agarrar una cita. Ahí se mueve desde el
  * detalle, con formulario.
+ *
+ * Nunca scrollea de costado (pedido del dueño, 12-oct: "no es natural un
+ * scroll a la izquierda"): las columnas se reparten el ancho que haya, y
+ * quien la usa le pasa sólo las que entran (Agenda pagina de a N). Scrollea
+ * en vertical por dentro, con los nombres fijos arriba, para que el día ocupe
+ * la pantalla y la cabecera no se vaya.
  */
 export default function GrillaDia({
   fecha,
@@ -51,6 +58,7 @@ export default function GrillaDia({
   onAbrirCita,
   onMover,
   onArrastrando,
+  sinCabecera = false,
 }: {
   fecha: string;
   recursos: RecursoDelDia[];
@@ -63,8 +71,12 @@ export default function GrillaDia({
   onAbrirCita: (cita: Cita) => void;
   onMover?: (cita: Cita, lineaId: number, deltaMin: number, recursoDestinoId: number) => void;
   onArrastrando?: (si: boolean) => void;
+  /** Sin la fila de nombres: con una sola persona en la sucursal no dice nada. */
+  sinCabecera?: boolean;
 }) {
   const columnas = useRef<Record<number, HTMLDivElement | null>>({});
+  const scroller = useRef<HTMLDivElement | null>(null);
+  const scrolleadoEn = useRef<string | null>(null);
   const [arrastre, setArrastre] = useState<Arrastre | null>(null);
   const arrastreRef = useRef<Arrastre | null>(null);
   const suprimirClic = useRef(false);
@@ -104,7 +116,24 @@ export default function GrillaDia({
 
   const esHoy = fecha === fechaNegocio();
   const minAhora = minutosDelDia(ahora);
-  const plantilla = { gridTemplateColumns: `${ANCHO_HORAS}px repeat(${recursos.length}, minmax(150px, 1fr))` };
+  // `minmax(0, 1fr)`: las columnas se achican hasta lo que haya y el texto se
+  // trunca; con un mínimo fijo, siete profesionales empujaban la grilla de costado.
+  const plantilla = { gridTemplateColumns: `${ANCHO_HORAS}px repeat(${recursos.length}, minmax(0, 1fr))` };
+
+  // Al abrir un día, la grilla arranca donde pasa algo: la hora actual si es
+  // hoy, si no la primera cita (o el primer horario). Una vez por día: la
+  // consulta de cada 45 s no le mueve la pantalla a nadie.
+  const primeraCita = lineasVisibles.length
+    ? Math.min(...lineasVisibles.map(({ linea }) => enElDia(linea.inicio)))
+    : null;
+  useEffect(() => {
+    const el = scroller.current;
+    if (!el || scrolleadoEn.current === fecha) return;
+    scrolleadoEn.current = fecha;
+    const destino = esHoy ? minAhora - 60 : (primeraCita ?? rango.desde) - 30;
+    el.scrollTop = Math.max(0, (destino - rango.desde) * PX_POR_MIN);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fecha, rango.desde, primeraCita]);
 
   if (recursos.length === 0) {
     return (
@@ -175,27 +204,32 @@ export default function GrillaDia({
   }
 
   return (
-    // `overflow-y-hidden`: con sólo `overflow-x-auto` el navegador también
-    // scrollea en vertical por el rótulo de la última hora, que asoma medio
-    // renglón debajo, y la grilla mostraba una barra que no movía nada.
-    <div className="overflow-x-auto overflow-y-hidden">
-      <div className="pb-3" style={{ minWidth: ANCHO_HORAS + recursos.length * 150 }}>
-        <div className="grid border-b border-borde" style={plantilla}>
-          <div />
-          {recursos.map((r) => (
-            <div key={r.id} className="flex min-w-0 items-center gap-2.5 border-l border-borde-soft p-3">
-              <AvatarRecurso nombre={r.nombre} color={r.color} />
-              <div className="min-w-0">
-                <p className="truncate text-sm font-bold text-texto">{r.nombre}</p>
-                <p className="truncate text-[12px] text-texto-3">
-                  {r.tramos.length ? detalleRecurso(r) : "No trabaja este día"}
-                </p>
+    // Scroll vertical propio y nunca horizontal (`overflow-x-hidden`): el
+    // ancho lo deciden las columnas, que se reparten lo que hay.
+    <div ref={scroller} data-testid="grilla-scroll" className="h-full min-h-0 overflow-y-auto overflow-x-hidden">
+      <div className="pb-3">
+        {!sinCabecera && (
+          <div className="sticky top-0 z-40 grid border-b border-borde bg-white" style={plantilla}>
+            <div />
+            {recursos.map((r) => (
+              <div key={r.id} className="flex min-w-0 items-center gap-2 border-l border-borde-soft px-2 py-2">
+                <AvatarRecurso nombre={r.nombre} color={r.color} />
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-bold text-texto" title={r.nombre}>
+                    {r.nombre}
+                  </p>
+                  <p className="truncate text-[12px] text-texto-3">
+                    {r.tramos.length ? detalleRecurso(r) : "No trabaja este día"}
+                  </p>
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
 
-        <div className="relative grid" style={plantilla}>
+        {/* `mt-2`: el rótulo de la primera hora sube medio renglón y quedaba
+            tapado por la fila de nombres. */}
+        <div className="relative mt-2 grid" style={plantilla}>
           <div className="relative" style={{ height: alto }}>
             {horas.map((h) => (
               <span

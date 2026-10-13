@@ -77,14 +77,20 @@ beforeEach(() => {
   vi.mocked(apiAgenda.reglas).mockRejectedValue(new Error("sin reglas"));
 });
 
-async function montar(onCreada = vi.fn()) {
-  render(<NuevaCita sucursalId={1} precarga={{ fecha: FECHA }} onClose={vi.fn()} onCreada={onCreada} />);
+/** El formulario de siempre (modo completo, el de recepción con personal). */
+async function montar(onCreada = vi.fn(), modo: "SIMPLE" | "COMPLETO" = "COMPLETO") {
+  render(<NuevaCita sucursalId={1} precarga={{ fecha: FECHA }} modo={modo} onClose={vi.fn()} onCreada={onCreada} />);
   await act(async () => {});
   return onCreada;
 }
 
+/** Dos personas en la sucursal: así aparece "Con" para elegir. */
+function conDosProfesionales() {
+  vi.mocked(apiAgenda.recursos).mockResolvedValue([recurso(), recurso({ id: 2, nombre: "Sofía", orden: 2 })]);
+}
+
 async function cargarFormulario() {
-  fireEvent.change(screen.getByLabelText("Teléfono del cliente"), { target: { value: "70011122" } });
+  fireEvent.change(screen.getByLabelText(/^Teléfono/), { target: { value: "70011122" } });
   fireEvent.change(screen.getByLabelText(/^Nombre/), { target: { value: "María Flores" } });
   fireEvent.change(screen.getByLabelText("Servicio 1"), { target: { value: "100" } });
   fireEvent.change(screen.getByLabelText("Nota (opcional)"), { target: { value: "Pidió no cortar las puntas" } });
@@ -113,7 +119,7 @@ describe("A5 · nueva cita", () => {
     expect(screen.getByRole("radio", { name: "11:00" })).toHaveAttribute("aria-checked", "true");
     expect(screen.getByRole("radio", { name: "11:30" })).toBeInTheDocument();
     // Nada de lo cargado se perdió.
-    expect(screen.getByLabelText("Teléfono del cliente")).toHaveValue("70011122");
+    expect(screen.getByLabelText(/^Teléfono/)).toHaveValue("70011122");
     expect(screen.getByText("María Flores")).toBeInTheDocument();
     expect(screen.getByLabelText("Servicio 1")).toHaveValue("100");
     expect(screen.getByLabelText("Nota (opcional)")).toHaveValue("Pidió no cortar las puntas");
@@ -145,7 +151,7 @@ describe("A5 · nueva cita", () => {
     vi.mocked(apiAgenda.crearCita).mockResolvedValue(cita());
     await montar();
 
-    fireEvent.change(screen.getByLabelText("Teléfono del cliente"), { target: { value: "71234567" } });
+    fireEvent.change(screen.getByLabelText(/^Teléfono/), { target: { value: "71234567" } });
     expect(await screen.findByText("Rosa Mamani")).toBeInTheDocument();
     expect(screen.getByText("2 inasistencias")).toBeInTheDocument();
     expect(screen.getByText("Alergia: amoníaco")).toBeInTheDocument();
@@ -160,6 +166,7 @@ describe("A5 · nueva cita", () => {
   });
 
   it("el sobre-turno de recepción pide el PIN de un encargado y lo manda", async () => {
+    conDosProfesionales();
     vi.mocked(apiAgenda.crearCita).mockResolvedValue(cita());
     await montar();
     await cargarFormulario();
@@ -194,6 +201,7 @@ describe("A5 · nueva cita", () => {
 
   it("el encargado hace el sobre-turno sin PIN", async () => {
     sesion.rol = "SUPERVISOR";
+    conDosProfesionales();
     vi.mocked(apiAgenda.crearCita).mockResolvedValue(cita());
     await montar();
     await cargarFormulario();
@@ -209,9 +217,11 @@ describe("A5 · nueva cita", () => {
 
   it("la hora del sobre-turno tiene que caer en la grilla del negocio (QA M-07)", async () => {
     sesion.rol = "SUPERVISOR";
-    vi.mocked(apiAgenda.reglas).mockResolvedValue({ granularidadMin: 15 } as never);
+    conDosProfesionales();
+    vi.mocked(apiAgenda.reglas).mockResolvedValue({ granularidadMin: 15, modoAgenda: "COMPLETO" } as never);
     vi.mocked(apiAgenda.crearCita).mockResolvedValue(cita());
-    await montar();
+    render(<NuevaCita sucursalId={1} precarga={{ fecha: FECHA }} onClose={vi.fn()} onCreada={vi.fn()} />);
+    await act(async () => {});
     await cargarFormulario();
     fireEvent.click(screen.getByLabelText(/Sobre-turno/));
     fireEvent.change(screen.getByLabelText("Con"), { target: { value: "1" } });
@@ -242,6 +252,141 @@ describe("A5 · nueva cita", () => {
       fireEvent.click(screen.getByRole("button", { name: "Confirmar cita" }));
     });
     expect(screen.getByText("Esa hora ya pasó: elegí un horario de ahora en adelante.")).toBeInTheDocument();
+  });
+});
+
+describe("teléfono opcional y una sola persona (IDEAS/7, decisión del 12-oct)", () => {
+  it("agenda sin teléfono: no crea ficha y manda sólo el nombre", async () => {
+    vi.mocked(apiAgenda.crearCita).mockResolvedValue(cita({ id: 3 }));
+    const onCreada = await montar();
+    fireEvent.change(screen.getByLabelText(/^Nombre/), { target: { value: "Juan" } });
+    fireEvent.change(screen.getByLabelText("Servicio 1"), { target: { value: "100" } });
+    await screen.findByRole("radio", { name: "10:00" });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Confirmar cita" }));
+    });
+    expect(apiAgenda.crearCliente).not.toHaveBeenCalled();
+    const enviado = vi.mocked(apiAgenda.crearCita).mock.calls[0][0];
+    expect(enviado.cliente).toEqual({ nombre: "Juan" });
+    expect(enviado.clienteId).toBeUndefined();
+    expect(onCreada).toHaveBeenCalled();
+  });
+
+  it("un teléfono escrito a medias no se manda", async () => {
+    await montar();
+    fireEvent.change(screen.getByLabelText(/^Teléfono/), { target: { value: "7001" } });
+    fireEvent.change(screen.getByLabelText(/^Nombre/), { target: { value: "Juan" } });
+    fireEvent.change(screen.getByLabelText("Servicio 1"), { target: { value: "100" } });
+    await screen.findByRole("radio", { name: "10:00" });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Confirmar cita" }));
+    });
+    expect(screen.getByText(/Ese teléfono está incompleto/)).toBeInTheDocument();
+    expect(apiAgenda.crearCita).not.toHaveBeenCalled();
+  });
+
+  it("con una sola persona en la sucursal no hay «Con» ni «Cualquiera»", async () => {
+    await montar();
+    expect(screen.getByLabelText("Servicio 1")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Con")).not.toBeInTheDocument();
+  });
+
+  it("con dos, «Con» está y arranca en «Cualquiera»", async () => {
+    conDosProfesionales();
+    await montar();
+    expect(screen.getByLabelText("Con")).toHaveValue("");
+  });
+});
+
+describe("modo simple (IDEAS/7, propuesta A)", () => {
+  it("nombre, servicio en chips, la primera hora ya elegida y Guardar: nace confirmada", async () => {
+    vi.mocked(apiAgenda.servicios).mockResolvedValue([servicio(), servicio({ id: 101, nombre: "Barba", precio: 30 })]);
+    vi.mocked(apiAgenda.crearCita).mockResolvedValue(cita({ id: 4 }));
+    const onCreada = await montar(vi.fn(), "SIMPLE");
+
+    // Lo avanzado no está a la vista.
+    expect(screen.queryByLabelText("Nota (opcional)")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/Sobre-turno/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/El cliente ya confirmó/)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Con")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Servicio 1")).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Cliente"), { target: { value: "Juan Pérez" } });
+    // Es un nombre: el teléfono queda al lado y es opcional.
+    expect(screen.getByLabelText("Teléfono (opcional, para recordarle)")).toHaveValue("");
+    fireEvent.click(screen.getByRole("button", { name: /^Corte dama/ }));
+    expect(screen.getByRole("button", { name: /^Corte dama/ })).toHaveAttribute("aria-pressed", "true");
+    expect(await screen.findByRole("radio", { name: "10:00" })).toHaveAttribute("aria-checked", "true");
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
+    });
+    expect(apiAgenda.crearCliente).not.toHaveBeenCalled();
+    expect(vi.mocked(apiAgenda.crearCita).mock.calls[0][0]).toMatchObject({
+      confirmada: true,
+      cliente: { nombre: "Juan Pérez" },
+      lineas: [{ servicioId: 100, recursoId: 1, inicio: "2026-10-21T14:00:00.000Z" }],
+    });
+    expect(onCreada).toHaveBeenCalledWith(expect.objectContaining({ id: 4 }));
+  });
+
+  it("dos chips son dos servicios, en el orden en que se tocaron", async () => {
+    vi.mocked(apiAgenda.servicios).mockResolvedValue([servicio(), servicio({ id: 101, nombre: "Barba", precio: 30 })]);
+    await montar(vi.fn(), "SIMPLE");
+    fireEvent.click(screen.getByRole("button", { name: /^Barba/ }));
+    fireEvent.click(screen.getByRole("button", { name: /^Corte dama/ }));
+    await act(async () => {});
+    const pedido = vi.mocked(apiAgenda.huecos).mock.calls.at(-1)![0];
+    expect(pedido.lineas.map((l) => l.servicioId)).toEqual([101, 100]);
+    // Tocarlo otra vez lo saca.
+    fireEvent.click(screen.getByRole("button", { name: /^Barba/ }));
+    await act(async () => {});
+    expect(vi.mocked(apiAgenda.huecos).mock.calls.at(-1)![0].lineas.map((l) => l.servicioId)).toEqual([100]);
+  });
+
+  it("un número en «Cliente» es el teléfono: lo busca y, si no está, pide el nombre", async () => {
+    vi.mocked(apiAgenda.crearCita).mockResolvedValue(cita());
+    await montar(vi.fn(), "SIMPLE");
+    fireEvent.change(screen.getByLabelText("Cliente"), { target: { value: "70011122" } });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 350));
+    });
+    expect(apiAgenda.buscarClientes).toHaveBeenCalledWith("70011122");
+    fireEvent.change(screen.getByLabelText(/^Nombre/), { target: { value: "María Flores" } });
+    fireEvent.click(screen.getByRole("button", { name: /^Corte dama/ }));
+    await screen.findByRole("radio", { name: "10:00" });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
+    });
+    expect(apiAgenda.crearCliente).toHaveBeenCalledWith({ nombre: "María Flores", telefono: "70011122" });
+    expect(vi.mocked(apiAgenda.crearCita).mock.calls[0][0]).toMatchObject({ clienteId: 9, confirmada: true });
+  });
+
+  it("por nombre sugiere clientes conocidos (no elige solo)", async () => {
+    vi.mocked(apiAgenda.buscarClientes).mockResolvedValue([ficha({ id: 5, nombre: "Rosa Mamani" })]);
+    await montar(vi.fn(), "SIMPLE");
+    fireEvent.change(screen.getByLabelText("Cliente"), { target: { value: "ros" } });
+    const sugerida = await screen.findByRole("button", { name: /Rosa Mamani/ });
+    expect(apiAgenda.buscarClientes).toHaveBeenCalledWith("ros");
+    expect(screen.queryByRole("button", { name: "Cambiar" })).not.toBeInTheDocument();
+    fireEvent.click(sugerida);
+    expect(screen.getByRole("button", { name: "Cambiar" })).toBeInTheDocument();
+  });
+
+  it("sobre-turno y nota están en «Más opciones»", async () => {
+    await montar(vi.fn(), "SIMPLE");
+    fireEvent.click(screen.getByRole("button", { name: "Más opciones" }));
+    expect(screen.getByLabelText("Nota (opcional)")).toBeInTheDocument();
+    expect(screen.getByLabelText(/Sobre-turno/)).toBeInTheDocument();
+  });
+
+  it("sin el modo dado, lo toma de las reglas de la sucursal (sin el dato, simple)", async () => {
+    vi.mocked(apiAgenda.reglas).mockResolvedValue({ granularidadMin: 15, bufferGeneralMin: 0 });
+    render(<NuevaCita sucursalId={1} precarga={{ fecha: FECHA }} onClose={vi.fn()} onCreada={vi.fn()} />);
+    await act(async () => {});
+    expect(apiAgenda.reglas).toHaveBeenCalledWith(1);
+    expect(screen.getByLabelText("Cliente")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Guardar" })).toBeInTheDocument();
   });
 });
 

@@ -1,4 +1,5 @@
 import { request } from "../api";
+import type { ModoAgenda } from "./tiposAgenda";
 import type {
   Bloqueo,
   BloqueoCreado,
@@ -118,4 +119,15 @@ export const apiConfigAgenda = {
   guardarReglas: (input: ReglasInput) =>
     request<Reglas>("/agenda/reglas", { method: "PUT", body: json(input) }),
   historialReglas: () => request<CambioRegla[]>("/agenda/reglas/historial"),
+
+  // ── Modo de la agenda (IDEAS/7-AGENDA-SIMPLE) ─────────────────────────────
+  // Aparte de `reglas`: no es una regla más del formulario de Configuración
+  // del negocio sino la llave de arriba de Configuración de la agenda, y vale
+  // para todo el negocio ("¿cómo trabajás?" no cambia de un local a otro).
+  modoAgenda: () => request<{ modoAgenda?: ModoAgenda }>("/agenda/reglas"),
+  guardarModoAgenda: (modoAgenda: ModoAgenda) =>
+    request<{ modoAgenda?: ModoAgenda }>("/agenda/reglas", {
+      method: "PUT",
+      body: json({ sucursalId: null, modoAgenda }),
+    }),
 };

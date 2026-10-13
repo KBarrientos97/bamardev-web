@@ -1,6 +1,7 @@
 import { ETIQUETA_ACCION, type Rapida } from "../../lib/agenda/estadosCita";
 import { duracionTexto, horaNegocio, minutosEntre } from "../../lib/agenda/horaAgenda";
 import type { AccionCita, Cita } from "../../lib/agenda/tiposAgenda";
+import { fmtMoney } from "../../lib/format";
 import { textoCabinaYPose } from "../../lib/agenda/spa";
 import { BadgeEstado } from "./piezas";
 
@@ -19,6 +20,7 @@ export default function TarjetaCita({
   ocupado = false,
   mostrarRecurso = true,
   destacada = false,
+  simple = false,
 }: {
   cita: Cita;
   rapidas: Rapida[];
@@ -29,6 +31,8 @@ export default function TarjetaCita({
   ocupado?: boolean;
   mostrarRecurso?: boolean;
   destacada?: boolean;
+  /** Modo simple: "Cobrar Bs 30" con el monto, que es lo que se le dice al cliente. */
+  simple?: boolean;
 }) {
   const servicios = [...new Set(cita.lineas.map((l) => l.servicio))].join(" + ");
   const recursos = [...new Set(cita.lineas.map((l) => l.recurso))].join(", ");
@@ -48,6 +52,10 @@ export default function TarjetaCita({
       "text-danger-text",
     ]);
   if (cita.cliente.nuevo) avisos.push(["Primera vez", "text-texto-3"]);
+
+  // Un "Cobrar" de costado sin caja no suma: sería un botón apagado más en
+  // cada tarjeta. Como principal sí se ve ("Cobrar en caja"): dice quién sigue.
+  const botones = rapidas.filter((r) => r.accion !== "COBRAR" || r.principal || onCobrar);
 
   return (
     <article
@@ -82,9 +90,9 @@ export default function TarjetaCita({
         <BadgeEstado estado={cita.estado} />
       </button>
 
-      {rapidas.length > 0 && (
+      {botones.length > 0 && (
         <div className="flex gap-2">
-          {rapidas.map((r) =>
+          {botones.map((r) =>
             r.accion === "COBRAR" ? (
               // Cobrar no es una transición: abre el POS con el carrito de la
               // cita, y la venta la completa (§10).
@@ -94,9 +102,15 @@ export default function TarjetaCita({
                 disabled={!onCobrar}
                 onClick={onCobrar}
                 title={onCobrar ? "Abrir el punto de venta con esta cita" : "La cobra quien tiene la caja abierta"}
-                className="h-11 flex-1 rounded-xl bg-warning-bg text-sm font-bold text-warning-text hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-70"
+                className={`h-11 flex-1 rounded-xl text-sm font-bold hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-70 ${
+                  !r.principal
+                    ? "border border-borde bg-white text-texto-2"
+                    : simple
+                      ? "bg-primary-boton text-white"
+                      : "bg-warning-bg text-warning-text"
+                }`}
               >
-                {onCobrar ? "Cobrar" : "Cobrar en caja"}
+                {!onCobrar ? "Cobrar en caja" : simple && cita.total > 0 ? `Cobrar ${fmtMoney(cita.total)}` : "Cobrar"}
               </button>
             ) : (
               <button

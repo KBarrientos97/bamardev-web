@@ -291,6 +291,7 @@ export function esCampoRetirado(campo: string): boolean {
 
 /** Nombre de un campo para la bitácora; uno desconocido se muestra tal cual. */
 export function etiquetaCampo(campo: string): string {
+  if (campo === "modoAgenda") return "Modo de la agenda";
   const meta = META_REGLAS[campo as CampoRegla];
   if (!meta) return campo;
   if (campo === "anticipacionMaxDias") return "Anticipación máxima";
@@ -304,6 +305,9 @@ export function fmtValorRegla(campo: string, valor: unknown): string {
   if (typeof valor === "boolean") return valor ? "Sí" : "No";
   if (campo === "modoConfirmacion") {
     return MODOS_CONFIRMACION.find((m) => m.modo === valor)?.titulo ?? String(valor);
+  }
+  if (campo === "modoAgenda") {
+    return valor === "COMPLETO" ? "Con personal (completo)" : valor === "SIMPLE" ? "Solo/a (simple)" : String(valor);
   }
   const meta = META_REGLAS[campo as CampoRegla];
   if (meta?.tipo === "numero") return `${String(valor)} ${meta.unidad}`;

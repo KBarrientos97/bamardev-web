@@ -88,6 +88,8 @@ vi.mock("../../../lib/agenda/apiConfigAgenda", () => ({
     bloqueos: vi.fn(),
     crearBloqueo: vi.fn(),
     borrarBloqueo: vi.fn(),
+    modoAgenda: vi.fn(),
+    guardarModoAgenda: vi.fn(),
   },
 }));
 
@@ -155,6 +157,8 @@ beforeEach(() => {
   vi.mocked(apiConfigAgenda.excepciones).mockResolvedValue([]);
   vi.mocked(apiConfigAgenda.bloqueos).mockResolvedValue([]);
   vi.mocked(apiPersonal.listar).mockResolvedValue([]);
+  // Las pruebas de siempre miran todas las pestañas: el modo completo.
+  vi.mocked(apiConfigAgenda.modoAgenda).mockResolvedValue({ modoAgenda: "COMPLETO" });
 });
 
 describe("pestañas", () => {
@@ -724,5 +728,48 @@ describe("QA S2 ronda 2: el usuario del profesional y el horario", () => {
     const dialogo = screen.getByRole("dialog", { name: "Editar Juan" });
     expect(within(dialogo).getByLabelText(/Usuario vinculado/)).toHaveValue("");
     expect(within(dialogo).getByText(/@ana está sin acceso: se le devuelve en Personal/)).toBeInTheDocument();
+  });
+});
+
+describe("¿Cómo trabajás? (IDEAS/7-AGENDA-SIMPLE)", () => {
+  it("en simple (el defecto) se ven las pestañas del día a día y el resto en «Más opciones»", async () => {
+    vi.mocked(apiConfigAgenda.modoAgenda).mockResolvedValue({});
+    await montar();
+    expect(screen.getByRole("radio", { name: /Solo\/a \(simple\)/ })).toHaveAttribute("aria-checked", "true");
+    const pestanas = screen.getAllByRole("tab").map((t) => t.textContent);
+    expect(pestanas).toEqual(["Servicios", "Horarios", "Días libres", "Bloqueos"]);
+    fireEvent.click(screen.getByRole("button", { name: "Más opciones" }));
+    expect(screen.getByRole("tab", { name: "Barberos y espacios" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Reserva online" })).toBeInTheDocument();
+  });
+
+  it("un enlace a una pestaña plegada la muestra igual", async () => {
+    vi.mocked(apiConfigAgenda.modoAgenda).mockResolvedValue({ modoAgenda: "SIMPLE" });
+    await montar("recursos");
+    expect(screen.getByRole("tab", { name: "Barberos y espacios" })).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("elegir «Con personal» guarda modoAgenda para todo el negocio y muestra todo", async () => {
+    vi.mocked(apiConfigAgenda.modoAgenda).mockResolvedValue({ modoAgenda: "SIMPLE" });
+    vi.mocked(apiConfigAgenda.guardarModoAgenda).mockResolvedValue({ modoAgenda: "COMPLETO" });
+    await montar();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("radio", { name: /Con personal/ }));
+    });
+    expect(apiConfigAgenda.guardarModoAgenda).toHaveBeenCalledWith("COMPLETO");
+    expect(screen.getByRole("radio", { name: /Con personal/ })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("tab", { name: "Excepciones" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Barberos y espacios" })).toBeInTheDocument();
+  });
+
+  it("si el backend no lo acepta, vuelve a como estaba y lo dice", async () => {
+    vi.mocked(apiConfigAgenda.modoAgenda).mockResolvedValue({ modoAgenda: "COMPLETO" });
+    vi.mocked(apiConfigAgenda.guardarModoAgenda).mockRejectedValue(new Error("No tenés permiso"));
+    await montar();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("radio", { name: /Solo\/a/ }));
+    });
+    expect(screen.getByText("No tenés permiso")).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: /Con personal/ })).toHaveAttribute("aria-checked", "true");
   });
 });

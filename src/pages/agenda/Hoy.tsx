@@ -6,6 +6,7 @@ import { AvisoOk, Boton, Cargando, ErrorMsg, Select, Vacio, useAviso } from "../
 import { apiAgenda } from "../../lib/agenda/apiAgenda";
 import { accionesRapidas } from "../../lib/agenda/estadosCita";
 import { capitalizar, fechaLarga, fechaNegocio, horaNegocio } from "../../lib/agenda/horaAgenda";
+import { useReglasAgenda } from "../../lib/agenda/modoAgenda";
 import type { AgendaHoy, Cita, ContadoresHoy, EstadoCita } from "../../lib/agenda/tiposAgenda";
 import { useConsultaPeriodica } from "../../lib/agenda/useConsultaPeriodica";
 import { useSucursalAgenda } from "../../lib/agenda/useSucursalAgenda";
@@ -70,6 +71,10 @@ function conCita(d: AgendaHoy | null, c: Cita): AgendaHoy | null {
  * botones del momento —Llegó · Atender · Finalizar · No vino · Cobrar—.
  * "Cobrar" abre el POS con la cita cargada. Con la feature `cola_walkin`
  * suma la pestaña de la cola (A6).
+ *
+ * En modo simple (IDEAS/7) cada tarjeta lleva sólo "Cobrar" y "No vino", y no
+ * se muestran los contadores ni el filtro de pasos que ese modo no usa
+ * (llegaron, en atención, por confirmar).
  */
 export default function Hoy() {
   const { negocio, puede, usuario } = useAuth();
@@ -93,6 +98,7 @@ export default function Hoy() {
     [suc.sucursalId, suc.listo],
     { pausado: nueva || abierta !== null },
   );
+  const { modo, simple } = useReglasAgenda(suc.sucursalId, suc.listo);
   const rapida = useAccionRapida((c) => hoy.setDatos((d) => conCita(d, c)));
   const cobrar = useCobrarCita();
 
@@ -110,7 +116,8 @@ export default function Hoy() {
 
   const opciones: (readonly [Filtro, string])[] = [
     ["todas", `Todas · ${citas.length}`],
-    ["confirmar", `Por confirmar · ${cuenta("confirmar")}`],
+    // En modo simple la cita nace confirmada: no hay nada "por confirmar".
+    ...(simple ? [] : ([["confirmar", `Por confirmar · ${cuenta("confirmar")}`]] as const)),
     ["cobrar", `Por cobrar · ${cuenta("cobrar")}`],
     ["online", `Online · ${cuenta("online")}`],
   ];
@@ -149,7 +156,7 @@ export default function Hoy() {
         </Boton>
       </header>
 
-      {k && (
+      {k && !simple && (
         <dl className="grid grid-cols-4 gap-2">
           <Contador etiqueta="Llegaron" valor={k.enEspera} />
           <Contador etiqueta="En atención" valor={k.enAtencion} />
@@ -203,9 +210,8 @@ export default function Hoy() {
         <ColaEspera cola={cola} sucursalId={sucursalId} onCambio={hoy.refrescar} />
       ) : (
         <>
-          <div className="-mx-1 overflow-x-auto px-1">
-            <Chips valor={filtro} opciones={opciones} onChange={setFiltro} />
-          </div>
+          {/* Los chips bajan de renglón: nada en la agenda scrollea de costado. */}
+          <Chips valor={filtro} opciones={opciones} onChange={setFiltro} />
           {visibles.length === 0 ? (
             <Vacio
               icono="calendar"
@@ -218,7 +224,8 @@ export default function Hoy() {
                 <TarjetaCita
                   key={c.id}
                   cita={c}
-                  rapidas={accionesRapidas(c, { ahora: Date.now() })}
+                  rapidas={accionesRapidas(c, { ahora: Date.now(), simple })}
+                  simple={simple}
                   onAbrir={() => setAbierta(c)}
                   onAccion={(a) => rapida.pedir(c, a)}
                   onCobrar={cobrar ? () => cobrar(c.id) : undefined}
@@ -234,6 +241,7 @@ export default function Hoy() {
         <DetalleCita
           cita={abierta}
           sucursal={suc.nombre}
+          simple={simple}
           onClose={() => setAbierta(null)}
           onCambio={(c) => hoy.setDatos((d) => conCita(d, c))}
         />
@@ -241,6 +249,7 @@ export default function Hoy() {
       {nueva && sucursalId && (
         <NuevaCita
           sucursalId={sucursalId}
+          modo={modo}
           onClose={() => setNueva(false)}
           onCreada={(c) => {
             setNueva(false);

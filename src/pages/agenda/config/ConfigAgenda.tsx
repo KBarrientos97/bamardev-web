@@ -1,10 +1,12 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { EncabezadoPagina } from "../../../components/filtros";
 import { Icon } from "../../../components/Icon";
 import { Cargando, ErrorMsg } from "../../../components/ui";
 import { api } from "../../../lib/api";
 import { apiConfigAgenda } from "../../../lib/agenda/apiConfigAgenda";
+import { modoDe, olvidarModos } from "../../../lib/agenda/modoAgenda";
+import type { ModoAgenda } from "../../../lib/agenda/tiposAgenda";
 import { useApi } from "../../../lib/useApi";
 import { useAuth } from "../../../store/AuthContext";
 import type { Almacen } from "../../../types";
@@ -31,9 +33,16 @@ import { useSpa } from "../../../lib/agenda/spa";
  * de un recurso en una sucursal) y así cambiar de pestaña no vuelve a pedir lo
  * mismo. La pestaña va en la URL (`?pestana=`) para que un F5 no te devuelva
  * a Servicios en medio de cargar horarios.
+ *
+ * Arriba de todo, "¿Cómo trabajás?" (IDEAS/7-AGENDA-SIMPLE): solo/a = modo
+ * simple, el defecto; con personal = completo. En simple se ven las pestañas
+ * del día a día (Servicios, Horarios, Días libres, Bloqueos) y el resto queda
+ * en "Más opciones"; nada se borra ni se apaga.
  */
 
 const PESTANAS_BASE: Pestana[] = ["servicios", "recursos", "horarios", "excepciones", "bloqueos", "reservas"];
+/** Lo que el que trabaja solo necesita a mano; lo demás, en "Más opciones". */
+const ESENCIALES: Pestana[] = ["servicios", "horarios", "excepciones", "bloqueos"];
 
 export default function ConfigAgenda() {
   const { puede } = useAuth();
@@ -48,6 +57,45 @@ export default function ConfigAgenda() {
   const [params, setParams] = useSearchParams();
   const pedida = params.get("pestana") as Pestana | null;
   const pestana: Pestana = pedida && PESTANAS.includes(pedida) ? pedida : "servicios";
+
+  const modoGuardado = useApi(
+    () =>
+      Promise.resolve()
+        .then(() => apiConfigAgenda.modoAgenda())
+        .catch(() => null),
+    [],
+  );
+  const [modoElegido, setModoElegido] = useState<ModoAgenda | null>(null);
+  const [guardandoModo, setGuardandoModo] = useState(false);
+  const [errorModo, setErrorModo] = useState("");
+  const modo: ModoAgenda = modoElegido ?? modoDe(modoGuardado.datos);
+  const simple = modo === "SIMPLE";
+  const [masPestanas, setMasPestanas] = useState(false);
+  // En simple, lo que no es del día a día va plegado, salvo que se esté
+  // mirando (un enlace a ?pestana=recursos no tiene que llevar a la nada).
+  const visibles = simple && !masPestanas && !(pedida && PESTANAS.includes(pedida) && !ESENCIALES.includes(pedida))
+    ? PESTANAS.filter((p) => ESENCIALES.includes(p))
+    : PESTANAS;
+  const plegadas = simple ? PESTANAS.filter((p) => !ESENCIALES.includes(p)) : [];
+
+  async function cambiarModo(nuevo: ModoAgenda) {
+    if (nuevo === modo || guardandoModo) return;
+    const antes = modoElegido;
+    setErrorModo("");
+    setModoElegido(nuevo);
+    setGuardandoModo(true);
+    try {
+      const r = await apiConfigAgenda.guardarModoAgenda(nuevo);
+      setModoElegido(r?.modoAgenda ?? nuevo);
+      // La agenda recordaba el modo por sucursal: que lo vuelva a pedir.
+      olvidarModos();
+    } catch (e) {
+      setModoElegido(antes);
+      setErrorModo(e instanceof Error && e.message ? e.message : "No se pudo cambiar el modo");
+    } finally {
+      setGuardandoModo(false);
+    }
+  }
 
   const servicios = useApi(() => apiConfigAgenda.servicios(), []);
   const recursos = useApi(() => apiConfigAgenda.recursos(true), []);
@@ -66,7 +114,8 @@ export default function ConfigAgenda() {
     servicios: "Servicios",
     recursos: `${nombres.plural} y espacios`,
     horarios: "Horarios",
-    excepciones: "Excepciones",
+    // En simple se lee como lo que es para el que trabaja solo.
+    excepciones: simple ? "Días libres" : "Excepciones",
     bloqueos: "Bloqueos",
     reservas: "Reserva online",
     espacios: "Tipos de espacio",
@@ -103,12 +152,11 @@ export default function ConfigAgenda() {
         }
       />
 
-      <div
-        role="tablist"
-        aria-label="Secciones de la configuración"
-        className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:px-0"
-      >
-        {PESTANAS.map((p) => (
+      <ComoTrabajas modo={modo} guardando={guardandoModo} error={errorModo} onCambiar={cambiarModo} />
+
+      {/* Las pestañas bajan de renglón: nada scrollea de costado. */}
+      <div role="tablist" aria-label="Secciones de la configuración" className="flex flex-wrap gap-2">
+        {visibles.map((p) => (
           <button
             key={p}
             role="tab"
@@ -125,6 +173,21 @@ export default function ConfigAgenda() {
             {etiquetas[p]}
           </button>
         ))}
+        {plegadas.length > 0 && (
+          <button
+            type="button"
+            aria-expanded={visibles.length > ESENCIALES.length}
+            onClick={() => {
+              const abiertas = visibles.length > ESENCIALES.length;
+              setMasPestanas(!abiertas);
+              // Al plegar, si se estaba mirando una de las plegadas, a Servicios.
+              if (abiertas && !ESENCIALES.includes(pestana)) elegir("servicios");
+            }}
+            className="shrink-0 rounded-full px-3 py-2 text-sm font-semibold text-primary-700 hover:bg-primary-50"
+          >
+            {visibles.length > ESENCIALES.length ? "Menos opciones" : "Más opciones"}
+          </button>
+        )}
       </div>
 
       <div role="tabpanel" id={`panel-${pestana}`} aria-labelledby={`tab-${pestana}`}>
@@ -152,6 +215,58 @@ export default function ConfigAgenda() {
         )}
       </div>
     </div>
+  );
+}
+
+/**
+ * "¿Cómo trabajás?": la llave del modo de la agenda. Se guarda al tocar (es
+ * una sola decisión, no un formulario) y vale para todo el negocio.
+ */
+function ComoTrabajas({
+  modo,
+  guardando,
+  error,
+  onCambiar,
+}: {
+  modo: ModoAgenda;
+  guardando: boolean;
+  error: string;
+  onCambiar: (m: ModoAgenda) => void;
+}) {
+  const opcion = (m: ModoAgenda, titulo: string, texto: string) => (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={modo === m}
+      disabled={guardando}
+      onClick={() => onCambiar(m)}
+      className={`flex-1 basis-56 rounded-xl border p-3 text-left transition-colors disabled:opacity-70 ${
+        modo === m ? "border-primary bg-primary-50" : "border-borde bg-white hover:bg-muted"
+      }`}
+    >
+      <span className={`block text-sm font-bold ${modo === m ? "text-primary-700" : "text-texto"}`}>{titulo}</span>
+      <span className="mt-0.5 block text-[12px] text-texto-3">{texto}</span>
+    </button>
+  );
+  return (
+    <section className="card space-y-2.5 p-4">
+      <h2 id="como-trabajas" className="text-sm font-bold text-texto">
+        ¿Cómo trabajás?
+      </h2>
+      <div role="radiogroup" aria-labelledby="como-trabajas" className="flex flex-wrap gap-2">
+        {opcion(
+          "SIMPLE",
+          "Solo/a (simple)",
+          "Agendás en tres toques, la cita nace confirmada y se cierra con Cobrar o No vino.",
+        )}
+        {opcion(
+          "COMPLETO",
+          "Con personal (completo)",
+          "Recepción confirma, marca Llegó, Atender y Finalizar, y ve todas las opciones.",
+        )}
+      </div>
+      <ErrorMsg>{error}</ErrorMsg>
+    </section>
   );
 }
 
