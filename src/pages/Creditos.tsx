@@ -167,7 +167,7 @@ export default function Creditos() {
           etiqueta="Créditos abiertos"
           valor={fmtNum(kpis.abiertos)}
           icono="fileText"
-          tono="azul"
+          tono="verde"
         />
         <Kpi
           etiqueta="Monto vencido"
@@ -180,7 +180,7 @@ export default function Creditos() {
           etiqueta="Clientes con deuda"
           valor={fmtNum(conDeuda.length)}
           icono="users"
-          tono="amarillo"
+          tono="marca"
         />
       </div>
 

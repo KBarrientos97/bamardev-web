@@ -128,7 +128,7 @@ export function LineaComparada({
         {area && <path d={area} fill={`url(#${idGradiente})`} />}
         {anteriores.length > 1 && <path d={caminoSuave(anteriores)} fill="none" stroke="#94A3B8" strokeWidth={2} strokeDasharray="5 5" />}
         {promedio != null && promedio > 0 && (
-          <line x1={izq} x2={w - der} y1={y(promedio)} y2={y(promedio)} stroke="#F59E0B" strokeWidth={1.5} strokeDasharray="6 5" />
+          <line x1={izq} x2={w - der} y1={y(promedio)} y2={y(promedio)} stroke="var(--color-primary-700)" strokeWidth={1.5} strokeDasharray="6 5" />
         )}
         {linea && <path d={linea} fill="none" stroke="var(--color-primary-boton)" strokeWidth={2.5} strokeLinejoin="round" />}
         {puntos.length <= 31 &&
@@ -150,7 +150,7 @@ export function LineaComparada({
       {/* Los globos van en HTML: un texto con fondo redondeado en SVG obliga a medirlo. */}
       {promedio != null && promedio > 0 && etiquetaPromedio && (
         <span
-          className="pointer-events-none absolute -translate-y-1/2 whitespace-nowrap rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[10.5px] font-bold text-amber-800"
+          className="pointer-events-none absolute -translate-y-1/2 whitespace-nowrap rounded-full border border-primary-200 bg-primary-50 px-2 py-0.5 text-[10.5px] font-bold text-primary-700"
           style={{ left: izq + 6, top: y(promedio) }}
         >
           {etiquetaPromedio}
@@ -338,7 +338,7 @@ export function MapaCalor({
                     lleno > 55 ? "text-white" : "text-texto-2"
                   } ${enFoco ? "ring-2 ring-texto/60" : ""}`}
                   style={{
-                    background: v == null ? "#F8FAFC" : `color-mix(in srgb, var(--color-primary-boton) ${Math.max(8, lleno)}%, #EEF4F1)`,
+                    background: v == null ? "#F8FAFC" : `color-mix(in srgb, var(--color-primary-boton) ${Math.max(8, lleno)}%, var(--color-primary-50))`,
                   }}
                   title={v == null ? undefined : detalle(i, j, v)}
                 >
@@ -356,7 +356,7 @@ export function MapaCalor({
       </div>
       <div className="mt-3 flex items-center gap-2 text-[12px] text-texto-3">
         Vacío
-        <span className="h-2 w-28 rounded-full bg-[linear-gradient(90deg,#EEF4F1,var(--color-primary-boton))]" />
+        <span className="h-2 w-28 rounded-full bg-[linear-gradient(90deg,var(--color-primary-50),var(--color-primary-boton))]" />
         Lleno
       </div>
     </div>

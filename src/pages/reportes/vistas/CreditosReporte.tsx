@@ -80,7 +80,7 @@ export default function CreditosReporte() {
                   subtitulo={textoRango(periodo.desde, periodo.hasta)}
                   cuerpo="grid grid-cols-2 divide-x divide-borde-soft"
                 >
-                  <Cifra etiqueta="Se fió" valor={r.fiadoEnPeriodo} color="text-amber-700" />
+                  <Cifra etiqueta="Se fió" valor={r.fiadoEnPeriodo} color="text-primary-700" />
                   <Cifra
                     etiqueta="Se cobró"
                     valor={r.cobradoEnPeriodo}

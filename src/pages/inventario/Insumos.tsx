@@ -571,7 +571,7 @@ function FormInsumoCuerpo({
           </Campo>
         </div>
 
-        <div className="flex items-start gap-2 rounded-xl bg-info-bg px-3.5 py-2.5 text-[13px] text-info-text">
+        <div className="flex items-start gap-2 rounded-xl bg-primary-50 px-3.5 py-2.5 text-[13px] text-primary-700">
           <Icon name="info" size={17} />
           <span>
             El insumo nace sin stock: la existencia entra por movimientos de entrada, no

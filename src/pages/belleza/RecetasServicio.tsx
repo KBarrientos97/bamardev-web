@@ -295,7 +295,7 @@ function Margen() {
         <>
           <div className="grid gap-3 sm:grid-cols-3">
             <Kpi etiqueta="Ingreso por servicios" valor={fmtMoney(d.ingreso)} icono="dollar" />
-            <Kpi etiqueta="Costo de insumos" valor={dinero(d.costoInsumos)} icono="sack" tono="amarillo" />
+            <Kpi etiqueta="Costo de insumos" valor={dinero(d.costoInsumos)} icono="sack" tono="marca" />
             <Kpi etiqueta="Margen" valor={dinero(d.margen)} icono="trendingUp" />
           </div>
           <div className="card overflow-x-auto">

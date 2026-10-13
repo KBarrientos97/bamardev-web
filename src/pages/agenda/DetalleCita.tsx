@@ -196,7 +196,7 @@ export default function DetalleCita({
                 </p>
               </div>
               {cita.cliente.nuevo ? (
-                <span className="rounded-lg bg-info-bg px-2 py-0.5 text-[11px] font-bold uppercase text-info-text">Nuevo</span>
+                <span className="rounded-lg bg-primary-100 px-2 py-0.5 text-[11px] font-bold uppercase text-primary-700">Nuevo</span>
               ) : (
                 <span className="rounded-lg bg-primary-50 px-2 py-0.5 text-[11px] font-bold uppercase text-primary-700">Recurrente</span>
               )}

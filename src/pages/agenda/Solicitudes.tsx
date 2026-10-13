@@ -189,7 +189,7 @@ export default function Solicitudes() {
           {nuevas.length > 0 && (
             <section aria-label="Nuevas confirmadas solas" className="space-y-3">
               <h2 className="text-sm font-bold text-texto-2">
-                Nuevas, ya confirmadas <Badge tono="azul">{nuevas.length}</Badge>
+                Nuevas, ya confirmadas <Badge tono="marca">{nuevas.length}</Badge>
               </h2>
               <p className="text-[13px] text-texto-3">
                 Entraron solas, sin pasar por tu aprobación, por cómo está configurada la confirmación de la
@@ -276,7 +276,7 @@ function TarjetaSolicitud({
       </div>
       <p className="flex flex-wrap items-center gap-2 text-sm text-texto">
         <span className="font-semibold">{cita.cliente.nombre}</span>
-        {cita.cliente.nuevo ? <Badge tono="azul">Nuevo</Badge> : <Badge tono="verde">Ya vino</Badge>}
+        {cita.cliente.nuevo ? <Badge tono="marca">Nuevo</Badge> : <Badge tono="verde">Ya vino</Badge>}
         {cita.cliente.noShows > 0 && (
           <Badge tono="rojo">
             {cita.cliente.noShows === 1 ? "1 vez no vino" : `${cita.cliente.noShows} veces no vino`}

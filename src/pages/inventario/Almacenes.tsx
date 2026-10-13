@@ -243,7 +243,7 @@ function TarjetaAlmacen({ almacen: a, onClick }: { almacen: Almacen; onClick: ()
           <div className="flex items-center gap-2">
             {/* El depósito se marca siempre: es lo que explica por qué no
                 aparece en el POS ni tiene caja. */}
-            {a.tipo === "DEPOSITO" && <Badge tono="azul">Depósito</Badge>}
+            {a.tipo === "DEPOSITO" && <Badge tono="marca">Depósito</Badge>}
             {a.esPrincipal && <Badge tono="verde">Principal</Badge>}
             {!a.activo && <Badge tono="gris">Inactivo</Badge>}
             <Icon name="chevronRight" size={17} color="#94A3B8" />
@@ -338,7 +338,7 @@ function DetalleAlmacen({
             <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
               {/* El tipo primero: es lo que explica por qué un depósito no
                   aparece en el punto de venta ni tiene caja. */}
-              <Badge tono={a.tipo === "DEPOSITO" ? "azul" : "verde"}>
+              <Badge tono={a.tipo === "DEPOSITO" ? "marca" : "verde"}>
                 {a.tipo === "DEPOSITO" ? "Depósito" : "Sucursal"}
               </Badge>
               {a.esPrincipal && <Badge tono="verde">Principal</Badge>}

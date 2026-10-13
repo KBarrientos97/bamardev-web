@@ -173,7 +173,7 @@ export default function MovimientosFarmacia() {
         }
       />
 
-      <div className="flex items-start gap-2.5 rounded-xl bg-info-bg px-4 py-3 text-[13px] text-info-text">
+      <div className="flex items-start gap-2.5 rounded-xl bg-primary-50 px-4 py-3 text-[13px] text-primary-700">
         <span className="mt-0.5 shrink-0">
           <Icon name="info" size={17} />
         </span>

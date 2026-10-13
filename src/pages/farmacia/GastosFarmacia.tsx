@@ -580,7 +580,7 @@ function DetalleGasto({
         </div>
 
         {!saldado(g) && esPositivo(g.pagado) && (
-          <p className="rounded-xl bg-info-bg px-3 py-2 text-[13px] text-info-text">
+          <p className="rounded-xl bg-primary-50 px-3 py-2 text-[13px] text-primary-700">
             Pagado {fmtMoney(g.pagado)} · falta {fmtMoney(g.saldo)}
           </p>
         )}

@@ -124,7 +124,7 @@ export default function AbrirMesa({
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
         {/* Aclaración que dejó el dueño sobre esta mesa concreta. */}
         {mesa.notaMesa && (
-          <div className="mb-3 flex items-start gap-2 rounded-xl border border-[#93C5FD] bg-[#EFF6FF] px-3.5 py-2.5 text-[13px] text-[#2563EB]">
+          <div className="mb-3 flex items-start gap-2 rounded-xl border border-primary-200 bg-primary-50 px-3.5 py-2.5 text-[13px] text-primary-700">
             <Icon name="info" size={16} />
             <span>{mesa.notaMesa}</span>
           </div>

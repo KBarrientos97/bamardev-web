@@ -63,10 +63,12 @@ export type TonoR = "verde" | "ambar" | "rosa" | "azul" | "morado" | "gris";
 /** El cuadradito de color con el ícono: menú de reportes, filas y avisos. */
 const TONO_FICHA: Record<TonoR, string> = {
   verde: "bg-primary-50 text-primary-700",
-  ambar: "bg-amber-50 text-amber-700",
+  // Desde el 12-oct todas las fichas van en el color del negocio (el menú de
+  // reportes era un arcoíris); sólo rosa, que marca lo que está mal, cambia.
+  ambar: "bg-primary-50 text-primary-700",
   rosa: "bg-rose-50 text-rose-600",
-  azul: "bg-blue-50 text-blue-600",
-  morado: "bg-violet-50 text-violet-600",
+  azul: "bg-primary-50 text-primary-700",
+  morado: "bg-primary-50 text-primary-700",
   gris: "bg-slate-100 text-slate-500",
 };
 
@@ -214,7 +216,7 @@ export function Destacado({
 }) {
   const fondo =
     tono === "ambar"
-      ? "bg-[linear-gradient(135deg,#92400E_0%,#B45309_100%)]"
+      ? "bg-[linear-gradient(135deg,var(--color-barra)_0%,var(--color-primary-boton-activo)_100%)]"
       : "bg-[linear-gradient(135deg,var(--color-primary-boton-activo)_0%,var(--color-primary-boton)_100%)]";
   return (
     <section className={`flex flex-col rounded-[20px] p-5 text-white shadow-sm sm:p-6 ${fondo}`}>
@@ -317,12 +319,12 @@ export function Renglon({
   );
 }
 
-/** La nota azul de pie: cómo leer el reporte. */
+/** La nota de pie, en el color del negocio: cómo leer el reporte. */
 export function Nota({ children, tono = "info" }: { children: ReactNode; tono?: "info" | "ambar" }) {
   const clases =
     tono === "ambar"
       ? "border-amber-200 bg-amber-50 text-amber-900"
-      : "border-blue-200 bg-blue-50/70 text-blue-800";
+      : "border-primary-200 bg-primary-50 text-primary-700";
   return (
     <div className={`flex items-start gap-2.5 rounded-2xl border px-4 py-3 text-[13px] leading-relaxed ${clases}`}>
       <span className="mt-0.5 shrink-0">
@@ -374,8 +376,8 @@ export function Chip({ tono = "gris", children }: { tono?: TonoR | "rojo"; child
     ambar: "bg-amber-100 text-amber-800",
     rosa: "bg-rose-50 text-rose-700",
     rojo: "bg-rose-100 text-rose-700",
-    azul: "bg-blue-50 text-blue-700",
-    morado: "bg-violet-100 text-violet-700",
+    azul: "bg-primary-50 text-primary-700",
+    morado: "bg-primary-100 text-primary-700",
     gris: "bg-slate-100 text-slate-600",
   };
   return (
@@ -431,10 +433,10 @@ export function FilaLista({
   }[tonoValor];
   const colorBarra = {
     marca: "bg-primary",
-    azul: "bg-blue-500",
+    azul: "bg-primary",
     rosa: "bg-rose-500",
-    ambar: "bg-amber-500",
-    morado: "bg-violet-500",
+    ambar: "bg-primary/70",
+    morado: "bg-primary/70",
   }[barra?.tono ?? "marca"];
   const cuerpo = (
     <>
@@ -514,7 +516,7 @@ export function BarraFila({
   /** Ancho de la columna del nombre. */
   ancho?: string;
 }) {
-  const color = { marca: "bg-primary", morado: "bg-violet-500", azul: "bg-blue-500", ambar: "bg-amber-500", suave: "bg-primary/45" }[tono];
+  const color = { marca: "bg-primary", morado: "bg-primary/70", azul: "bg-primary", ambar: "bg-primary/70", suave: "bg-primary/45" }[tono];
   return (
     <div className="flex items-center gap-3 text-[13px]">
       <span className={`${ancho} shrink-0 truncate font-semibold text-texto`}>{etiqueta}</span>
@@ -545,7 +547,7 @@ export function BarraPartida({
 }) {
   const total = a + b;
   const fa = total > 0 ? a / total : 0;
-  const colorB = { morado: "bg-violet-500", ambar: "bg-amber-500", rosa: "bg-rose-500" }[tonoB];
+  const colorB = { morado: "bg-primary/45", ambar: "bg-primary/45", rosa: "bg-rose-500" }[tonoB];
   return (
     <div>
       <div className="flex h-3 overflow-hidden rounded-full bg-slate-100" aria-hidden>

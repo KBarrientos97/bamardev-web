@@ -190,7 +190,7 @@ export default function DetalleMesa({
           )}
 
           {mesa.referencia && (
-            <div className="mt-3 flex items-start gap-2 rounded-xl border border-[#93C5FD] bg-[#EFF6FF] px-3.5 py-2.5 text-[13px] text-[#2563EB]">
+            <div className="mt-3 flex items-start gap-2 rounded-xl border border-primary-200 bg-primary-50 px-3.5 py-2.5 text-[13px] text-primary-700">
               <Icon name="user" size={16} />
               <span>{mesa.referencia}</span>
             </div>
@@ -277,7 +277,7 @@ export default function DetalleMesa({
             <p
               className={`mb-2 flex items-start gap-2 rounded-xl border px-3.5 py-2.5 text-[13px] ${
                 pie.tonoBanner === "exito"
-                  ? "border-[#6EE7B7] bg-[#ECFDF5] text-[#059669]"
+                  ? "border-primary-200 bg-primary-50 text-primary-700"
                   : "border-[#FCD34D] bg-[#FFFBEB] text-[#D97706]"
               }`}
             >

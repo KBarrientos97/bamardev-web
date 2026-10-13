@@ -125,7 +125,7 @@ export default function Repartidor() {
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         <Kpi etiqueta="Por entregar" valor={String(pendientes.length)} icono="truck" tono="amarillo" />
         <Kpi etiqueta="Entregadas" valor={String(entregadas.length)} icono="check" />
-        <Kpi etiqueta="A rendir" valor={fmtMoney(aRendir)} icono="dollar" tono="azul" />
+        <Kpi etiqueta="A rendir" valor={fmtMoney(aRendir)} icono="dollar" tono="marca" />
       </div>
 
       <Chips valor={vista} opciones={VISTAS} onChange={setVista} />
@@ -234,7 +234,7 @@ export default function Repartidor() {
               </dl>
             )}
 
-            <p className="rounded-xl bg-info-bg px-3.5 py-2.5 text-[13px] text-info-text">
+            <p className="rounded-xl bg-primary-50 px-3.5 py-2.5 text-[13px] text-primary-700">
               Las tarifas de envío ({fmtMoney(cobradoEnvios)}) son tuyas: no entran en la
               rendición. Los pedidos que ya venían pagados tampoco.
             </p>

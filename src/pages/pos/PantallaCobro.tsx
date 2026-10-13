@@ -359,7 +359,7 @@ export default function PantallaCobro({
             {/* Pagando la venta en efectivo, la propina por QR es una
                 transferencia aparte: que no se olvide. */}
             {metodo === "EFECTIVO" && extraQr > 0 && (
-              <p role="note" className="rounded-xl bg-info-bg px-4 py-2.5 text-[13px] font-semibold text-info-text">
+              <p role="note" className="rounded-xl bg-primary-50 px-4 py-2.5 text-[13px] font-semibold text-primary-700">
                 Además, la propina de {fmtMoney(extraQr)} se cobra por QR, aparte.
               </p>
             )}

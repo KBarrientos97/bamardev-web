@@ -198,7 +198,7 @@ export default function PantallaHistorial({
                         </span>
                         {v.estado === "ANULADO" && <Badge tono="rojo">Anulada</Badge>}
                         {v.tipoPedido !== "LOCAL" && (
-                          <Badge tono="azul">
+                          <Badge tono="marca">
                             {v.tipoPedido === "DELIVERY" ? "Delivery" : "Recojo"}
                           </Badge>
                         )}
@@ -439,7 +439,7 @@ function DetalleVenta({
                     {(mostrarConsumo || d.nota) && (
                       <div className="mt-0.5 flex items-center gap-1.5">
                         {mostrarConsumo && (
-                          <Badge tono={d.consumo === "MESA" ? "azul" : "gris"}>
+                          <Badge tono={d.consumo === "MESA" ? "marca" : "gris"}>
                             {d.consumo === "MESA" ? "Mesa" : "Llevar"}
                           </Badge>
                         )}

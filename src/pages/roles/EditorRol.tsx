@@ -144,7 +144,7 @@ export default function EditorRol({
     >
       <div className="space-y-4">
         {soloLectura && (
-          <p className="flex items-start gap-2 rounded-xl bg-purple-50 px-3.5 py-2.5 text-[13px] text-purple-800">
+          <p className="flex items-start gap-2 rounded-xl bg-primary-50 px-3.5 py-2.5 text-[13px] text-primary-700">
             <Icon name="lock" size={16} className="mt-0.5 shrink-0" />
             El Administrador es el rol del dueño: tiene siempre todos los permisos que incluye el plan, y el
             negocio no puede quedarse sin nadie que lo tenga. Lo de quien hace el trabajo (repartir, cobrar sus

@@ -245,7 +245,7 @@ function EditorSemana({
       </ul>
 
       {otras.length > 0 && (
-        <div className="rounded-xl bg-info-bg px-3.5 py-2.5 text-[13px] text-info-text">
+        <div className="rounded-xl bg-primary-50 px-3.5 py-2.5 text-[13px] text-primary-700">
           <p className="font-semibold">También atiende en:</p>
           {otras.map(({ s, semana: sem }) => (
             <p key={s.id}>

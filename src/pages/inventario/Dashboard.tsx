@@ -52,7 +52,7 @@ export default function Dashboard() {
           etiqueta="Artículos"
           valor={fmtNum(datos.articulos)}
           icono="archive"
-          tono="azul"
+          tono="marca"
           pie="En catálogo"
         />
         <Kpi

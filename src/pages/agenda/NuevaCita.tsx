@@ -615,7 +615,7 @@ function FichaElegida({ cliente, onCambiar }: { cliente: ClienteFicha; onCambiar
           {cliente.ultimaVisita ? (
             <span className="rounded-lg bg-primary-50 px-2 py-0.5 font-semibold text-primary-700">Recurrente</span>
           ) : (
-            <span className="rounded-lg bg-info-bg px-2 py-0.5 font-semibold text-info-text">Cliente nuevo</span>
+            <span className="rounded-lg bg-primary-100 px-2 py-0.5 font-semibold text-primary-700">Cliente nuevo</span>
           )}
           {cliente.noShows > 0 && (
             <span className="rounded-lg bg-danger-bg px-2 py-0.5 font-semibold text-danger-text">

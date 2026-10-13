@@ -43,13 +43,13 @@ describe("el punto de vencimiento del mostrador", () => {
     expect(vencido).toMatchObject({ color: "bg-danger", texto: "Venció hace 24 d", corto: "Vencido" });
   });
 
-  it("ámbar hasta 90 días y verde lo que está lejos", () => {
+  it("ámbar hasta 90 días y el color del negocio lo que está lejos", () => {
     expect(
       puntoVencimiento(med({ proximoVencimiento: { fecha: "x", dias: 73, tramo: "HASTA_90" } })).color,
     ).toBe("bg-warning");
     expect(
       puntoVencimiento(med({ proximoVencimiento: { fecha: "x", dias: 388, tramo: "LEJOS" } })).color,
-    ).toBe("bg-emerald-500");
+    ).toBe("bg-primary");
   });
 
   it("gris lo que no vence, y lo que no tiene lote con fecha", () => {

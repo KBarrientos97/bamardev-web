@@ -732,7 +732,7 @@ function FilaCarrito({
             <button
               onClick={() => carrito.setConsumo(l.producto.id, todaMesa ? "LLEVAR" : "MESA")}
               className={`rounded-lg px-2 py-1 text-[11px] font-bold uppercase tracking-wide ${
-                todaMesa ? "bg-info-bg text-info-text" : "bg-slate-100 text-texto-3"
+                todaMesa ? "bg-primary-100 text-primary-700" : "bg-slate-100 text-texto-3"
               }`}
             >
               {todaMesa ? "Mesa" : "Llevar"}
@@ -742,9 +742,9 @@ function FilaCarrito({
               onClick={() => setSplitAbierto(true)}
               className={`rounded-lg px-2 py-1 text-[11px] font-bold uppercase tracking-wide ${
                 partida
-                  ? "bg-warning-bg text-warning-text"
+                  ? "bg-primary-50 text-primary-700"
                   : todaMesa
-                    ? "bg-info-bg text-info-text"
+                    ? "bg-primary-100 text-primary-700"
                     : "bg-slate-100 text-texto-3"
               }`}
             >

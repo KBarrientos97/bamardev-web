@@ -106,7 +106,7 @@ function Contenido({ r, dias, onDias }: { r: ReporteAgenda; dias: number; onDias
           valor={pct(r.retencion.pct)}
           pie={`${r.retencion.volvieron} de ${r.retencion.clientes} clientes`}
           icono="users"
-          tono="azul"
+          tono="marca"
         />
       </div>
 

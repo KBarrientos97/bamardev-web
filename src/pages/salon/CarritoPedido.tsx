@@ -195,7 +195,7 @@ function Linea({
                 onClick={() => onNota(ind)}
                 className={`shrink-0 whitespace-nowrap rounded-full border px-2.5 py-1 text-xs font-semibold transition-colors ${
                   linea.nota === ind
-                    ? "border-[#D97706] bg-[#FFFBEB] text-[#D97706]"
+                    ? "border-primary bg-primary-50 text-primary-700"
                     : "border-borde bg-white text-texto-2 hover:bg-muted"
                 }`}
               >

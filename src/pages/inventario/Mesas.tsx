@@ -64,7 +64,7 @@ export default function Mesas() {
         </Boton>
       </div>
 
-      <div className="mt-3 flex items-start gap-2 rounded-xl border border-[#93C5FD] bg-[#EFF6FF] px-3.5 py-3 text-[13px] text-[#2563EB]">
+      <div className="mt-3 flex items-start gap-2 rounded-xl border border-primary-200 bg-primary-50 px-3.5 py-3 text-[13px] text-primary-700">
         <Icon name="info" size={16} />
         <div>
           <p className="font-bold">Las mesas se registran acá</p>
@@ -77,7 +77,7 @@ export default function Mesas() {
 
       <div className="mt-3 grid grid-cols-3 gap-2">
         <Kpi valor={enServicio} etiqueta="En servicio" color="text-primary" />
-        <Kpi valor={lugares} etiqueta="Lugares" color="text-[#2563EB]" />
+        <Kpi valor={lugares} etiqueta="Lugares" color="text-primary-700" />
         <Kpi valor={(zonas.datos ?? []).length} etiqueta="Zonas" color="text-texto" />
       </div>
 

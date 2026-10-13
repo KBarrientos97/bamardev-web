@@ -172,7 +172,7 @@ export default function SugerenciaCompraPagina({ embebido }: { embebido?: { sucu
               valor={fmtMoney(totales.inversion)}
               pie="Al costo de la última compra"
               icono="dollar"
-              tono="azul"
+              tono="marca"
             />
             <Kpi
               etiqueta="Agotados"

@@ -194,15 +194,19 @@ export function Select({
   );
 }
 
-type Tono = "verde" | "amarillo" | "rojo" | "azul" | "gris" | "morado";
+type Tono = "verde" | "marca" | "amarillo" | "rojo" | "azul" | "gris" | "morado";
 
 const TONOS: Record<Tono, string> = {
   verde: "bg-primary-50 text-primary-700",
+  // Un paso más fuerte que "verde", también del color del negocio: para
+  // distinguir dos etiquetas sin traer otro color (12-oct).
+  marca: "bg-primary-100 text-primary-700",
   amarillo: "bg-warning-bg text-warning-text",
   rojo: "bg-danger-bg text-danger-text",
   azul: "bg-info-bg text-info-text",
   gris: "bg-slate-100 text-texto-3",
-  morado: "bg-purple-100 text-purple-700",
+  // Era violeta fijo; ahora el tono fuerte del negocio.
+  morado: "bg-primary-100 text-primary-700",
 };
 
 export function Badge({

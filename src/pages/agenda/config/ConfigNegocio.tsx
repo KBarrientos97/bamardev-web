@@ -322,7 +322,7 @@ function FormReglas({
           reglas de acá; desde PLAN-ROLES-NEGOCIO son permisos del rol y el
           backend ya no mira las reglas. Se avisa dónde quedaron en vez de
           dejar el hueco. */}
-      <p className="flex items-start gap-2 rounded-xl bg-info-bg px-3.5 py-2.5 text-[13px] text-info-text">
+      <p className="flex items-start gap-2 rounded-xl bg-primary-50 px-3.5 py-2.5 text-[13px] text-primary-700">
         <Icon name="info" size={16} className="mt-0.5 shrink-0" />
         <span>
           Lo que puede hacer cada profesional se configura en{" "}

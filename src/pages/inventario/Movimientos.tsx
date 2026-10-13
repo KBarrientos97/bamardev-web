@@ -301,7 +301,7 @@ function TarjetaMovimiento({ mov: m, onClick }: { mov: Movimiento; onClick: () =
               {m.comprobante ?? `#${m.id}`}
             </span>
             <Badge tono={TONO_ESTADO[m.estado]}>{m.estado}</Badge>
-            {m.origen && <Badge tono="azul">{m.origen}</Badge>}
+            {m.origen && <Badge tono="marca">{m.origen}</Badge>}
           </div>
           {m.descripcion && (
             <p className="mt-0.5 line-clamp-1 text-[13px] text-texto-3">{m.descripcion}</p>

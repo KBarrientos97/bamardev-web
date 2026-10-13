@@ -22,7 +22,7 @@ export default function TabConsentimientos() {
 
   return (
     <div className="space-y-3">
-      <p className="flex items-start gap-2 rounded-xl bg-info-bg px-3.5 py-2.5 text-sm text-info-text">
+      <p className="flex items-start gap-2 rounded-xl bg-primary-50 px-3.5 py-2.5 text-sm text-primary-700">
         <Icon name="info" size={17} />
         <span>
           El cliente firma en la pantalla antes de atenderse. La firma y su ficha de salud son datos sensibles: sólo los

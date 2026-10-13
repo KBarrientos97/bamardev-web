@@ -162,7 +162,7 @@ export default function Hoy() {
       {!!k?.solicitudes && puede("solicitudes") && (
         <Link
           to="/solicitudes"
-          className="flex items-center justify-between gap-2 rounded-xl bg-info-bg px-4 py-3 text-sm font-semibold text-info-text"
+          className="flex items-center justify-between gap-2 rounded-xl bg-primary-50 px-4 py-3 text-sm font-semibold text-primary-700"
         >
           {k.solicitudes === 1 ? "1 solicitud online por aprobar" : `${k.solicitudes} solicitudes online por aprobar`}
           <span aria-hidden>→</span>
