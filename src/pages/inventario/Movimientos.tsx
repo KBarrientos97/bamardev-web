@@ -201,7 +201,7 @@ export default function Movimientos() {
           />
           <button
             onClick={() => setFecha(fecha ? "" : isoDia(new Date()))}
-            className="rounded-xl border border-borde bg-white px-3 py-2 text-[13px] font-semibold text-texto-2 hover:bg-muted"
+            className="shrink-0 whitespace-nowrap rounded-xl border border-borde bg-white px-3 py-2 text-[13px] font-semibold text-texto-2 hover:bg-muted"
           >
             {fecha ? "Ver todo" : "Sólo hoy"}
           </button>
@@ -212,11 +212,11 @@ export default function Movimientos() {
         </div>
         <FilaFiltros>
           {suc.elegir && (
-            <Chips valor={suc.valorChip} opciones={suc.opciones} onChange={suc.alElegir} />
+            <Chips titulo="Sucursal" valor={suc.valorChip} opciones={suc.opciones} onChange={suc.alElegir} />
           )}
-          <Chips valor={filtroTipo} opciones={opcionesTipo} onChange={setFiltroTipo} />
-          <Chips valor={filtroEstado} opciones={opcionesEstado} onChange={setFiltroEstado} />
-          <Chips valor={filtroOrigen} opciones={OPC_ORIGEN} onChange={setFiltroOrigen} />
+          <Chips titulo="Tipo" valor={filtroTipo} opciones={opcionesTipo} onChange={setFiltroTipo} />
+          <Chips titulo="Estado" valor={filtroEstado} opciones={opcionesEstado} onChange={setFiltroEstado} />
+          <Chips titulo="Origen" valor={filtroOrigen} opciones={OPC_ORIGEN} onChange={setFiltroOrigen} />
         </FilaFiltros>
       </div>
 

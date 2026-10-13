@@ -294,12 +294,13 @@ export default function GastosFarmacia() {
       {/* md:space-y-5: el mismo aire que el `sm:space-y-5` de la página. */}
       <FilaFiltros separacion="md:space-y-5">
         <Chips
+          titulo="Estado"
           valor={filtro}
           opciones={opcionesFiltro((r?.atrasado?.cantidad ?? 0) > 0 || filtro === "ATRASADOS")}
           onChange={setFiltro}
         />
         {chipsCategoria.length > 2 && (
-          <Chips valor={categoriaVigente} opciones={chipsCategoria} onChange={setCategoria} />
+          <Chips titulo="Categoría" valor={categoriaVigente} opciones={chipsCategoria} onChange={setCategoria} />
         )}
       </FilaFiltros>
 

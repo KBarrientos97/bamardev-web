@@ -403,15 +403,15 @@ export default function Productos() {
         </div>
         <FilaFiltros>
           {suc.elegir && (
-            <Chips valor={suc.valorChip} opciones={suc.opciones} onChange={suc.alElegir} />
+            <Chips titulo="Sucursal" valor={suc.valorChip} opciones={suc.opciones} onChange={suc.alElegir} />
           )}
-          <Chips valor={filtroStock} opciones={OPC_STOCK} onChange={setFiltroStock} />
+          <Chips titulo="Estado" valor={filtroStock} opciones={OPC_STOCK} onChange={setFiltroStock} />
           {/* Producto / Elaborado / Combo no existe en una farmacia: no hay nada
               que se prepare al vender, así que el chip filtraba una sola opción
               contra sí misma. Y en modo servidor sólo podría filtrar la tanda que
               está en pantalla, que es peor que no estar. */}
           {!esFarmacia(rubro) && (
-            <Chips valor={filtroTipo} opciones={opcionesTipo} onChange={setFiltroTipo} />
+            <Chips titulo="Tipo" valor={filtroTipo} opciones={opcionesTipo} onChange={setFiltroTipo} />
           )}
         </FilaFiltros>
       </div>

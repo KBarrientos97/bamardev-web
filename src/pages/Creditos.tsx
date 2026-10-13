@@ -219,9 +219,9 @@ export default function Creditos() {
         </div>
         <FilaFiltros>
           {suc.elegir && (
-            <Chips valor={suc.valorChip} opciones={suc.opciones} onChange={suc.alElegir} />
+            <Chips titulo="Sucursal" valor={suc.valorChip} opciones={suc.opciones} onChange={suc.alElegir} />
           )}
-          <Chips valor={filtro} opciones={OPC_FILTRO} onChange={setFiltro} />
+          <Chips titulo="Estado" valor={filtro} opciones={OPC_FILTRO} onChange={setFiltro} />
         </FilaFiltros>
       </div>
 

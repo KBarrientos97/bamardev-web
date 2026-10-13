@@ -136,9 +136,9 @@ export default function Insumos() {
         </div>
         <FilaFiltros>
           {suc.elegir && (
-            <Chips valor={suc.valorChip} opciones={suc.opciones} onChange={suc.alElegir} />
+            <Chips titulo="Sucursal" valor={suc.valorChip} opciones={suc.opciones} onChange={suc.alElegir} />
           )}
-          <Chips valor={filtroStock} opciones={OPC_STOCK} onChange={setFiltroStock} />
+          <Chips titulo="Stock" valor={filtroStock} opciones={OPC_STOCK} onChange={setFiltroStock} />
         </FilaFiltros>
       </div>
 

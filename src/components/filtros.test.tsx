@@ -1,11 +1,12 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
+import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { Chips, FilaFiltros } from "./filtros";
 
 /**
- * En el celular los filtros van en UNA fila que se desliza (decisión del
- * dueño, 13-oct); desde md, como siempre. jsdom no mide, así que se prueba el
- * armado: qué clases quedan y quién es la fila.
+ * En el celular, uno o dos grupos de filtros van en UNA fila que se desliza;
+ * con más, detrás de un botón "Filtros" con su hoja (decisiones del dueño,
+ * 13-oct). Desde md, como siempre. jsdom no mide, así que se prueba el armado.
  */
 
 const TIPOS = [
@@ -77,5 +78,76 @@ describe("FilaFiltros: varios grupos en una sola fila", () => {
     );
     expect(container.firstElementChild!.className).toContain("md:space-y-5");
     expect(container.firstElementChild!.className).not.toContain("md:space-y-3");
+  });
+});
+
+const ORIGENES = [
+  ["", "Todo el origen"],
+  ["PROD", "Productos"],
+  ["INS", "Insumos"],
+] as const;
+
+/** Movimientos en chico: tres grupos con estado de verdad. */
+function TresGrupos() {
+  const [tipo, setTipo] = useState<(typeof TIPOS)[number][0]>("");
+  const [estado, setEstado] = useState<(typeof ESTADOS)[number][0]>("");
+  const [origen, setOrigen] = useState<(typeof ORIGENES)[number][0]>("");
+  return (
+    <FilaFiltros>
+      <Chips titulo="Tipo" valor={tipo} opciones={TIPOS} onChange={setTipo} />
+      <Chips titulo="Estado" valor={estado} opciones={ESTADOS} onChange={setEstado} />
+      <Chips titulo="Origen" valor={origen} opciones={ORIGENES} onChange={setOrigen} />
+    </FilaFiltros>
+  );
+}
+
+describe("FilaFiltros con más de dos grupos: botón Filtros en el celular", () => {
+  it("en el celular, el botón; los renglones de siempre sólo desde md", () => {
+    render(<TresGrupos />);
+    const boton = screen.getByRole("button", { name: /Filtros/ });
+    expect(boton.closest("div")!.className).toContain("md:hidden");
+    // Los chips siguen en la página para la computadora, escondidos en el celular.
+    const escritorio = screen.getByRole("button", { name: "Entradas" }).closest("div")!.parentElement!;
+    expect(escritorio.className).toContain("hidden");
+    expect(escritorio.className).toContain("md:block");
+    expect(screen.getByText("Sin filtros")).toBeInTheDocument();
+  });
+
+  it("la hoja tiene cada grupo con su nombre y filtra al tocar", () => {
+    render(<TresGrupos />);
+    fireEvent.click(screen.getByRole("button", { name: /Filtros/ }));
+    const hoja = screen.getByRole("dialog", { name: "Filtros" });
+    for (const t of ["Tipo", "Estado", "Origen"]) expect(within(hoja).getByText(t)).toBeInTheDocument();
+
+    fireEvent.click(within(hoja).getByRole("button", { name: "Salidas" }));
+    fireEvent.click(within(hoja).getByRole("button", { name: "Insumos" }));
+    // En la hoja los chips van en renglones, no en una fila deslizable.
+    expect(within(hoja).getByRole("button", { name: "Salidas" }).parentElement!.className).not.toContain("overflow-x-auto");
+
+    fireEvent.click(within(hoja).getByRole("button", { name: "Ver resultados" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    // El botón cuenta lo activo y al lado se lee qué se está filtrando.
+    expect(screen.getByRole("button", { name: /Filtros\s*2/ })).toBeInTheDocument();
+    expect(screen.getByText("Salidas · Insumos")).toBeInTheDocument();
+  });
+
+  it("Limpiar vuelve todo al primero de cada grupo", () => {
+    render(<TresGrupos />);
+    fireEvent.click(screen.getByRole("button", { name: /Filtros/ }));
+    const hoja = screen.getByRole("dialog", { name: "Filtros" });
+    fireEvent.click(within(hoja).getByRole("button", { name: "Pendientes" }));
+    fireEvent.click(within(hoja).getByRole("button", { name: "Limpiar" }));
+    fireEvent.click(within(hoja).getByRole("button", { name: "Ver resultados" }));
+    expect(screen.getByText("Sin filtros")).toBeInTheDocument();
+  });
+
+  it("con dos grupos sigue la fila deslizable, sin botón", () => {
+    render(
+      <FilaFiltros>
+        <Chips titulo="Tipo" valor="" opciones={TIPOS} onChange={() => {}} />
+        <Chips titulo="Estado" valor="" opciones={ESTADOS} onChange={() => {}} />
+      </FilaFiltros>,
+    );
+    expect(screen.queryByRole("button", { name: /Filtros/ })).toBeNull();
   });
 });

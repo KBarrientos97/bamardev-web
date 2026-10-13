@@ -102,9 +102,10 @@ export default function MermasPagina({ embebido }: { embebido?: { desde: string;
       <div className="space-y-3 rounded-2xl border border-borde bg-white p-4">
         {!embebido && (
           <FilaFiltros>
-            <Chips valor={periodo} opciones={PERIODOS} onChange={setPeriodo} />
+            <Chips titulo="Período" valor={periodo} opciones={PERIODOS} onChange={setPeriodo} />
             {suc.elegir && (
               <Chips
+                titulo="Sucursal"
                 valor={suc.sucursalId == null ? "" : String(suc.sucursalId)}
                 opciones={suc.opciones}
                 onChange={(v) => suc.setSucursalId(v ? Number(v) : null)}
