@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AvisoGastosAtrasados } from "../../components/AvisoGastosAtrasados";
 import { Link } from "react-router-dom";
-import { Buscador, Chips, EncabezadoPagina } from "../../components/filtros";
+import { Buscador, Chips, EncabezadoPagina, FilaFiltros } from "../../components/filtros";
 import { Icon } from "../../components/Icon";
 import { ProximosAutomaticos } from "../../components/ProximosAutomaticos";
 import {
@@ -291,14 +291,17 @@ export default function GastosFarmacia() {
         onVer={() => setFiltro("ATRASADOS")}
       />
 
-      <Chips
-        valor={filtro}
-        opciones={opcionesFiltro((r?.atrasado?.cantidad ?? 0) > 0 || filtro === "ATRASADOS")}
-        onChange={setFiltro}
-      />
-      {chipsCategoria.length > 2 && (
-        <Chips valor={categoriaVigente} opciones={chipsCategoria} onChange={setCategoria} />
-      )}
+      {/* md:space-y-5: el mismo aire que el `sm:space-y-5` de la página. */}
+      <FilaFiltros separacion="md:space-y-5">
+        <Chips
+          valor={filtro}
+          opciones={opcionesFiltro((r?.atrasado?.cantidad ?? 0) > 0 || filtro === "ATRASADOS")}
+          onChange={setFiltro}
+        />
+        {chipsCategoria.length > 2 && (
+          <Chips valor={categoriaVigente} opciones={chipsCategoria} onChange={setCategoria} />
+        )}
+      </FilaFiltros>
 
       {/* De a dos siempre, y en el teléfono sin la explicación: son accesos,
           y la lista de gastos no puede quedar a media pantalla de distancia. */}

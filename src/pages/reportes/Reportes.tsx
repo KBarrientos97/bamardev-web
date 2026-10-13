@@ -1,5 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
+import { FILA_DESLIZABLE } from "../../components/filtros";
 import { Icon } from "../../components/Icon";
 import { Boton, Cargando, Input, Modal } from "../../components/ui";
 import { useSucursales } from "../../lib/useSucursales";
@@ -180,7 +181,8 @@ function BarraPeriodo({ periodo, onCambio, contra }: { periodo: Periodo; onCambi
     }`;
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 pb-3 sm:px-6">
-      <div className="flex flex-wrap items-center gap-2">
+      {/* En el celular, una sola fila que se desliza (ver FILA_DESLIZABLE). */}
+      <div className={`flex flex-wrap items-center gap-2 max-md:w-full ${FILA_DESLIZABLE}`}>
         <span className="hidden items-center gap-1.5 text-[13px] font-semibold text-texto-3 sm:flex">
           <Icon name="calendar" size={15} />
           Período

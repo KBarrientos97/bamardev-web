@@ -1,6 +1,54 @@
-import type { ReactNode } from "react";
+import { Children, createContext, useContext, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { Icon } from "./Icon";
+
+/**
+ * Una fila que en el celular no se parte en renglones: se desliza de costado
+ * (decisión del dueño, 13-oct; ver PLAN-TABLAS-MOVIL). Partida, con tres o
+ * cuatro grupos de filtros, ocupaba media pantalla antes del primer dato.
+ * Desde `md` (tablet y computadora) sigue como siempre, en renglones.
+ *
+ * Sin barra de scroll a la vista: el chip cortado contra el borde ya dice que
+ * hay más. Con `!`: el `* { scrollbar-width: thin }` de index.css no está en
+ * una capa y le ganaba a la utilidad. Para filas armadas a mano (los períodos de Reportes, los temas de
+ * la agenda) que no usan `Chips`.
+ */
+export const FILA_DESLIZABLE =
+  "max-md:flex-nowrap max-md:overflow-x-auto max-md:overscroll-x-contain max-md:[scrollbar-width:none]! max-md:[&::-webkit-scrollbar]:hidden max-md:[&>*]:shrink-0";
+
+/** Dentro de una `FilaFiltros`: los chips no arman su propia fila en el celular. */
+const EnFilaFiltros = createContext(false);
+
+/**
+ * Varios grupos de chips (tipo, estado, origen…) en UNA sola fila deslizable
+ * en el celular, con una rayita entre grupo y grupo. En `md` en adelante cada
+ * grupo vuelve a su renglón, separados como antes (`md:space-y-3`, que es lo
+ * que les daba el `space-y-3` del contenedor de las pantallas).
+ */
+export function FilaFiltros({
+  children,
+  separacion = "md:space-y-3",
+}: {
+  children: ReactNode;
+  /** El aire entre renglones desde md: el que les daba el contenedor de la pantalla. */
+  separacion?: string;
+}) {
+  const grupos = Children.toArray(children).filter(Boolean);
+  return (
+    <EnFilaFiltros.Provider value>
+      <div className={`flex gap-2 ${FILA_DESLIZABLE} md:block ${separacion}`}>
+        {grupos.map((g, i) => (
+          // `contents` en el celular (los chips pasan a ser de la fila) y
+          // `block` desde md, para que el `space-y-3` los separe.
+          <span key={i} className="contents md:block">
+            {i > 0 && <span aria-hidden="true" className="my-1.5 w-px shrink-0 bg-borde md:hidden" />}
+            {g}
+          </span>
+        ))}
+      </div>
+    </EnFilaFiltros.Provider>
+  );
+}
 
 /** Fila de chips de filtro, como los del diseño. */
 export function Chips<T extends string>({
@@ -12,13 +60,14 @@ export function Chips<T extends string>({
   opciones: readonly (readonly [T, string])[];
   onChange: (v: NoInfer<T>) => void;
 }) {
+  const enFila = useContext(EnFilaFiltros);
   return (
-    <div className="flex flex-wrap gap-2">
+    <div className={`flex flex-wrap gap-2 ${enFila ? "max-md:contents" : FILA_DESLIZABLE}`}>
       {opciones.map(([k, label]) => (
         <button
           key={k}
           onClick={() => onChange(k)}
-          className={`rounded-full px-3.5 py-1.5 text-[13px] font-semibold transition-colors ${
+          className={`whitespace-nowrap rounded-full px-3.5 py-1.5 text-[13px] font-semibold transition-colors ${
             valor === k
               ? "bg-primary-boton text-white"
               : "border border-borde bg-white text-texto-2 hover:bg-muted"

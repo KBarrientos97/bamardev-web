@@ -3,7 +3,7 @@ import { contiene } from "../../lib/texto";
 import HistorialCostos from "../../components/HistorialCostos";
 import { parsearMonto } from "../../lib/dinero";
 import { Icon } from "../../components/Icon";
-import { Buscador, Chips, EncabezadoPagina } from "../../components/filtros";
+import { Buscador, Chips, EncabezadoPagina, FilaFiltros } from "../../components/filtros";
 import {
   Badge,
   Boton,
@@ -134,10 +134,12 @@ export default function Insumos() {
             placeholder="Buscar por nombre, código o proveedor"
           />
         </div>
-        {suc.elegir && (
-          <Chips valor={suc.valorChip} opciones={suc.opciones} onChange={suc.alElegir} />
-        )}
-        <Chips valor={filtroStock} opciones={OPC_STOCK} onChange={setFiltroStock} />
+        <FilaFiltros>
+          {suc.elegir && (
+            <Chips valor={suc.valorChip} opciones={suc.opciones} onChange={suc.alElegir} />
+          )}
+          <Chips valor={filtroStock} opciones={OPC_STOCK} onChange={setFiltroStock} />
+        </FilaFiltros>
       </div>
 
       <ErrorMsg>{errorAccion || insumos.error}</ErrorMsg>

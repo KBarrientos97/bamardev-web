@@ -13,7 +13,7 @@ import {
 import { tienePermiso } from "../lib/permisos";
 import { useAuth } from "../store/AuthContext";
 import { Icon } from "../components/Icon";
-import { Buscador, Chips, EncabezadoPagina } from "../components/filtros";
+import { Buscador, Chips, EncabezadoPagina, FilaFiltros } from "../components/filtros";
 import {
   AvisoOk,
   Badge,
@@ -217,10 +217,12 @@ export default function Creditos() {
             Buscar
           </Boton>
         </div>
-        {suc.elegir && (
-          <Chips valor={suc.valorChip} opciones={suc.opciones} onChange={suc.alElegir} />
-        )}
-        <Chips valor={filtro} opciones={OPC_FILTRO} onChange={setFiltro} />
+        <FilaFiltros>
+          {suc.elegir && (
+            <Chips valor={suc.valorChip} opciones={suc.opciones} onChange={suc.alElegir} />
+          )}
+          <Chips valor={filtro} opciones={OPC_FILTRO} onChange={setFiltro} />
+        </FilaFiltros>
       </div>
 
       <ErrorMsg>{creditos.error}</ErrorMsg>

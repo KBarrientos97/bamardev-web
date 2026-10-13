@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { EncabezadoPagina } from "../../../components/filtros";
+import { EncabezadoPagina, FILA_DESLIZABLE } from "../../../components/filtros";
 import { Icon, type NombreIcono } from "../../../components/Icon";
 import { Cargando, ErrorMsg } from "../../../components/ui";
 import { api } from "../../../lib/api";
@@ -270,7 +270,9 @@ export default function ConfigAgenda() {
           <div
             role="tablist"
             aria-label="Temas de la configuración"
-            className="flex flex-wrap gap-2 lg:flex-col lg:gap-1"
+            // En el celular, una fila que se desliza: partidos en renglones
+            // los temas ocupaban tres antes de llegar a lo que se configura.
+            className={`flex flex-wrap gap-2 lg:flex-col lg:gap-1 ${FILA_DESLIZABLE}`}
           >
             {visibles.map((t) => {
               const activo = tema === t;

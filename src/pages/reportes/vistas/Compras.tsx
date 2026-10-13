@@ -26,6 +26,7 @@ import {
   type FilaCompra,
 } from "./Compras.datos";
 import { ListaRecortada } from "./ListaRecortada";
+import { FILA_DESLIZABLE } from "../../../components/filtros";
 
 type Pestana = "articulos" | "documentos" | "mensual";
 
@@ -342,14 +343,14 @@ function Documentos({ conFiltro, almacen }: { conFiltro: boolean; almacen: strin
 
 function FiltroTipo({ valor, onCambio }: { valor: Tipo; onCambio: (t: Tipo) => void }) {
   return (
-    <div className="flex flex-wrap gap-2" role="group" aria-label="Filtrar por tipo">
+    <div className={`flex flex-wrap gap-2 ${FILA_DESLIZABLE}`} role="group" aria-label="Filtrar por tipo">
       {TIPOS.map(([k, nombre]) => (
         <button
           key={k || "todo"}
           type="button"
           onClick={() => onCambio(k)}
           aria-pressed={valor === k}
-          className={`rounded-full px-3 py-1.5 text-[12.5px] font-semibold transition-colors ${
+          className={`whitespace-nowrap rounded-full px-3 py-1.5 text-[12.5px] font-semibold transition-colors ${
             valor === k ? "bg-primary-50 text-primary-700" : "border border-borde bg-white text-texto-3 hover:bg-muted"
           }`}
         >

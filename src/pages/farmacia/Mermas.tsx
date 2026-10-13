@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Chips, EncabezadoPagina } from "../../components/filtros";
+import { Chips, EncabezadoPagina, FilaFiltros } from "../../components/filtros";
 import { Badge, Boton, Cargando, ErrorMsg, Kpi, Vacio } from "../../components/ui";
 import { api } from "../../lib/api";
 import { fmtFecha, fmtMoney, fmtNum } from "../../lib/format";
@@ -100,13 +100,17 @@ export default function MermasPagina({ embebido }: { embebido?: { desde: string;
 
 
       <div className="space-y-3 rounded-2xl border border-borde bg-white p-4">
-        {!embebido && <Chips valor={periodo} opciones={PERIODOS} onChange={setPeriodo} />}
-        {!embebido && suc.elegir && (
-          <Chips
-            valor={suc.sucursalId == null ? "" : String(suc.sucursalId)}
-            opciones={suc.opciones}
-            onChange={(v) => suc.setSucursalId(v ? Number(v) : null)}
-          />
+        {!embebido && (
+          <FilaFiltros>
+            <Chips valor={periodo} opciones={PERIODOS} onChange={setPeriodo} />
+            {suc.elegir && (
+              <Chips
+                valor={suc.sucursalId == null ? "" : String(suc.sucursalId)}
+                opciones={suc.opciones}
+                onChange={(v) => suc.setSucursalId(v ? Number(v) : null)}
+              />
+            )}
+          </FilaFiltros>
         )}
         {/* Embebida, el Exportar va acá: Reportes no lo dibuja en su
             encabezado para este reporte, que baja su propia planilla. */}

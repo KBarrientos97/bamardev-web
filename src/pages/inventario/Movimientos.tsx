@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { parsearMonto } from "../../lib/dinero";
 import { contiene } from "../../lib/texto";
 import { Icon } from "../../components/Icon";
-import { Buscador, Chips, EncabezadoPagina } from "../../components/filtros";
+import { Buscador, Chips, EncabezadoPagina, FilaFiltros } from "../../components/filtros";
 import {
   Badge,
   Boton,
@@ -210,12 +210,14 @@ export default function Movimientos() {
             {fecha ? "" : " en total"}
           </span>
         </div>
-        {suc.elegir && (
-          <Chips valor={suc.valorChip} opciones={suc.opciones} onChange={suc.alElegir} />
-        )}
-        <Chips valor={filtroTipo} opciones={opcionesTipo} onChange={setFiltroTipo} />
-        <Chips valor={filtroEstado} opciones={opcionesEstado} onChange={setFiltroEstado} />
-        <Chips valor={filtroOrigen} opciones={OPC_ORIGEN} onChange={setFiltroOrigen} />
+        <FilaFiltros>
+          {suc.elegir && (
+            <Chips valor={suc.valorChip} opciones={suc.opciones} onChange={suc.alElegir} />
+          )}
+          <Chips valor={filtroTipo} opciones={opcionesTipo} onChange={setFiltroTipo} />
+          <Chips valor={filtroEstado} opciones={opcionesEstado} onChange={setFiltroEstado} />
+          <Chips valor={filtroOrigen} opciones={OPC_ORIGEN} onChange={setFiltroOrigen} />
+        </FilaFiltros>
       </div>
 
       <ErrorMsg>{errorAccion || movimientos.error}</ErrorMsg>
