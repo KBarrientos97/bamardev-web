@@ -194,7 +194,7 @@ export default function RegalarPagina({
           style={{
             border: "none",
             borderRadius: 999,
-            background: "#16A34A",
+            background: color,
             color: "#ffffff",
             fontWeight: 700,
             fontSize: 15,

@@ -145,7 +145,7 @@ class AtajaFallo extends Component<{ ruta: string; children: ReactNode }, Estado
             padding: "0 20px",
             border: 0,
             borderRadius: 12,
-            background: "#047857",
+            background: "var(--color-primary-boton, #047857)",
             color: "#fff",
             fontSize: 15,
             fontWeight: 600,

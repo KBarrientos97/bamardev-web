@@ -187,7 +187,7 @@ export default function PedidoPagina({
             if (!lineas.length || faltaDireccion) e.preventDefault();
           }}
           style={{
-            ...boton("#16A34A"),
+            ...boton(color),
             textAlign: "center",
             textDecoration: "none",
             opacity: !lineas.length || faltaDireccion ? 0.5 : 1,

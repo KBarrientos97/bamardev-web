@@ -579,7 +579,7 @@ function ValeVendido({
               href={`https://wa.me/?text=${encodeURIComponent(textoWhatsapp)}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center rounded-xl bg-[#16A34A] px-4 py-2 text-sm font-semibold text-white"
+              className="inline-flex items-center rounded-xl bg-primary-boton px-4 py-2 text-sm font-semibold text-white hover:bg-primary-boton-hover"
             >
               Mandar por WhatsApp
             </a>
