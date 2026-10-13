@@ -1,0 +1,134 @@
+import { act, fireEvent, render, screen } from "@testing-library/react";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+/**
+ * La pantalla de Reportes (rediseño de oct-2026): qué reportes ve cada rubro,
+ * el período que vale para todos y qué pasa cuando el backend rechaza uno por
+ * el tope de ventas.
+ */
+
+const sesion = vi.hoisted(() => ({ rubro: "FARMACIA" as string }));
+
+vi.mock("../../store/AuthContext", async () => {
+  const { permisosDe } = await import("../../test/sesiones");
+  return {
+    useAuth: () => ({
+      rubro: sesion.rubro,
+      incluye: () => true,
+      puede: (s: string) => !["reportes_billar", "reportes_agenda"].includes(s),
+      usuario: { rol: "ADMIN", ...permisosDe("ADMIN"), sucursalId: 917 },
+      negocio: { id: 1, nombre: "Prueba", features: [] },
+    }),
+  };
+});
+
+vi.mock("../../lib/api", async (original) => {
+  const real = await original<typeof import("../../lib/api")>();
+  return {
+    ...real,
+    api: {
+      // Todo queda cargando salvo lo que cada test decida.
+      reporte: vi.fn(() => new Promise(() => {})),
+      getSucursales: vi.fn(async () => []),
+      getGastos: vi.fn(() => new Promise(() => {})),
+      mermas: vi.fn(() => new Promise(() => {})),
+    },
+    request: vi.fn(() => new Promise(() => {})),
+  };
+});
+
+import Reportes from "./Reportes";
+import { api } from "../../lib/api";
+
+async function montar(ruta = "/reportes") {
+  render(
+    <MemoryRouter initialEntries={[ruta]}>
+      <Routes>
+        <Route path="/reportes/*" element={<Reportes />} />
+      </Routes>
+    </MemoryRouter>,
+  );
+  await act(async () => {});
+}
+
+/** El menú de la izquierda, por el texto de cada reporte. */
+const enMenu = (titulo: string) =>
+  Array.from(document.querySelectorAll('nav[aria-label="Reportes"] a')).find((a) => a.textContent?.trim() === titulo) ?? null;
+
+beforeEach(() => {
+  sesion.rubro = "FARMACIA";
+  sessionStorage.clear();
+  vi.mocked(api.reporte).mockImplementation(() => new Promise(() => {}));
+});
+
+describe("cada rubro ve sus reportes en el menú", () => {
+  it("la farmacia tiene sus vencimientos y su sugerencia de compra, cada uno en su dirección", async () => {
+    await montar();
+    expect(enMenu("Sugerencia de compra")?.getAttribute("href")).toBe("/reportes/sugerencia-compra");
+    expect(enMenu("Vencimientos y mermas")?.getAttribute("href")).toBe("/reportes/mermas");
+    expect(enMenu("Top medicamentos")).not.toBeNull();
+  });
+
+  it("el restaurante no los ve, y sigue con sus meseros y sus insumos", async () => {
+    sesion.rubro = "RESTAURANTE";
+    await montar();
+    expect(enMenu("Sugerencia de compra")).toBeNull();
+    expect(enMenu("Vencimientos y mermas")).toBeNull();
+    expect(enMenu("Ventas por mesero")).not.toBeNull();
+    expect(enMenu("Insumos")).not.toBeNull();
+  });
+
+  it("un reporte que este usuario no ve (un link viejo) vuelve al resumen", async () => {
+    sesion.rubro = "RESTAURANTE";
+    await montar("/reportes/mermas");
+    expect(await screen.findByText("Lo más importante del período", { exact: false })).toBeInTheDocument();
+  });
+});
+
+describe("el período vale para todos los reportes", () => {
+  it("arranca en el mes en curso y dice contra qué compara cada flecha", async () => {
+    await montar();
+    expect(screen.getByRole("button", { name: "Mes" }).className).toContain("bg-primary-boton");
+    expect(screen.getByText(/flechas comparadas con 1–\d+ de|flechas comparadas con el 1 de/)).toBeInTheDocument();
+  });
+
+  it("al elegir Semana compara contra la semana anterior", async () => {
+    await montar();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Semana" }));
+    });
+    expect(screen.getByText(/flechas comparadas con la semana anterior/)).toBeInTheDocument();
+  });
+});
+
+/**
+ * Tope de reportes: el backend rechaza con un mensaje pensado para el cliente
+ * ("elegí un período más corto"). Se ve ese texto donde iba el reporte, con
+ * Reintentar, y no un error genérico ni la pantalla rota.
+ */
+describe("un reporte rechazado por el tope", () => {
+  const DEMASIADO_GRANDE = "Este período tiene 18.230 ventas y el máximo por reporte es 15.000. Elegí un período más corto.";
+
+  it("si el rechazado es el resumen, el mensaje va en su lugar y el menú sigue", async () => {
+    sesion.rubro = "RESTAURANTE";
+    vi.mocked(api.reporte).mockImplementation((nombre: string) =>
+      nombre === "resumen" ? Promise.reject(new Error(DEMASIADO_GRANDE)) : new Promise(() => {}),
+    );
+    await montar();
+    expect(await screen.findByText(DEMASIADO_GRANDE)).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Reintentar" }).length).toBeGreaterThan(0);
+    expect(enMenu("Top productos")).not.toBeNull();
+  });
+
+  it("al abrir un reporte rechazado se ve el mensaje del backend, con Reintentar", async () => {
+    sesion.rubro = "RESTAURANTE";
+    vi.mocked(api.reporte).mockImplementation((nombre: string) =>
+      nombre === "top-productos" ? Promise.reject(new Error(DEMASIADO_GRANDE)) : new Promise(() => {}),
+    );
+    await montar("/reportes/top-productos");
+    expect(await screen.findByText(DEMASIADO_GRANDE)).toBeInTheDocument();
+    expect(screen.queryByText(/Error 422/)).toBeNull();
+    expect(screen.getByRole("button", { name: "Reintentar" })).toBeInTheDocument();
+  });
+});

@@ -179,6 +179,24 @@ describe("vencimientos y mermas", () => {
   });
 });
 
+describe("dentro de Reportes", () => {
+  it("usa el período y la sucursal de Reportes, sin sus chips ni su encabezado, y conserva su Excel", async () => {
+    // Con dos selectores de período en la misma pantalla, el dueño elegía
+    // "Semana" arriba y seguía viendo el mes de los chips de acá.
+    render(
+      <MemoryRouter>
+        <MermasPagina embebido={{ desde: "2026-10-01", hasta: "2026-10-07", sucursalId: 5 }} />
+      </MemoryRouter>,
+    );
+    await act(async () => {});
+    expect(api.mermas).toHaveBeenLastCalledWith({ desde: "2026-10-01", hasta: "2026-10-07", sucursalId: 5 });
+    expect(screen.queryByRole("button", { name: "Esta gestión" })).toBeNull();
+    expect(screen.queryByRole("heading", { level: 1 })).toBeNull();
+    expect(screen.getByText("Bs 23,00")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Exportar a Excel/ })).toBeEnabled();
+  });
+});
+
 describe("rangoDe", () => {
   const hoy = new Date(2026, 8, 29);
   it("este mes, el pasado, tres meses y la gestión", () => {

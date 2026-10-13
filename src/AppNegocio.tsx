@@ -16,7 +16,6 @@ import Gastos from "./pages/Gastos";
 import GastosFijos from "./pages/GastosFijos";
 import Login from "./pages/Login";
 import PagarLicencia from "./pages/PagarLicencia";
-import Reportes from "./pages/Reportes";
 import Usuarios from "./pages/Usuarios";
 import Roles from "./pages/roles/Roles";
 import Personal from "./pages/Personal";
@@ -45,8 +44,6 @@ import ImportarMedicamentos from "./pages/farmacia/ImportarMedicamentos";
 import MovimientosFarmacia from "./pages/farmacia/MovimientosFarmacia";
 import Vencimientos from "./pages/farmacia/Vencimientos";
 import LibroControlados from "./pages/farmacia/LibroControlados";
-import SugerenciaCompra from "./pages/farmacia/SugerenciaCompra";
-import Mermas from "./pages/farmacia/Mermas";
 import Proveedores from "./pages/farmacia/Proveedores";
 import VentaFarmaciaProvider from "./pages/farmacia/VentaFarmaciaProvider";
 import Repartidor from "./pages/repartidor/Repartidor";
@@ -75,6 +72,19 @@ const RecetasServicio = lazy(() => import("./pages/belleza/RecetasServicio"));
 const RutasBillar = lazy(() => import("./pages/billar/RutasBillar"));
 const PantallaSalonBillar = lazy(() => import("./pages/billar/PantallaSalon"));
 const MesasBillar = lazy(() => import("./pages/billar/admin/MesasBillar"));
+// Reportes: veintipico de pantallas con sus gráficos; se bajan al entrar.
+const Reportes = lazy(() => import("./pages/reportes/Reportes"));
+
+/**
+ * Los reportes de la agenda viven ahora dentro de Reportes, en el grupo de la
+ * agenda (rediseño de oct-2026). La entrada del menú de la agenda sigue y
+ * lleva ahí. Quien ve los de la agenda pero no Reportes (un rol armado a mano)
+ * sigue con la pantalla de antes: mandarlo a Reportes sería mandarlo a un 403.
+ */
+function ReportesDeAgenda() {
+  const { puede } = useAuth();
+  return puede("reportes") ? <Navigate to="/reportes/profesionales" replace /> : <ReportesAgenda />;
+}
 
 /** Manda a cada quien a su pantalla, según sus permisos (ver `rutaInicial`). */
 function Inicio() {
@@ -356,7 +366,7 @@ function Rutas() {
           path="/reportes-agenda"
           element={
             <Protegida seccion="reportes_agenda">
-              <ReportesAgenda />
+              <ReportesDeAgenda />
             </Protegida>
           }
         />
@@ -585,29 +595,16 @@ function Rutas() {
             </Protegida>
           }
         />
+        {/* Reportes (rediseño de oct-2026): una pantalla con su menú y cada
+            reporte en su dirección (`/reportes/top-productos`). La sugerencia
+            de compra y las mermas de la farmacia viven adentro, en su grupo. */}
         <Route
-          path="/reportes"
+          path="/reportes/*"
           element={
             <Protegida seccion="reportes">
-              <Reportes />
-            </Protegida>
-          }
-        />
-        {/* Farmacia: un reporte con pantalla propia (se edita y se imprime el
-            pedido). Se entra desde su tarjeta en Reportes. */}
-        <Route
-          path="/reportes/sugerencia-compra"
-          element={
-            <Protegida seccion="reportes">
-              <SugerenciaCompra />
-            </Protegida>
-          }
-        />
-        <Route
-          path="/reportes/mermas"
-          element={
-            <Protegida seccion="reportes">
-              <Mermas />
+              <Suspense fallback={null}>
+                <Reportes />
+              </Suspense>
             </Protegida>
           }
         />

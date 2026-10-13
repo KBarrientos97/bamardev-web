@@ -1,0 +1,96 @@
+import { describe, expect, it } from "vitest";
+import type { Feature } from "../../types";
+import { gruposVisibles, type ContextoCatalogo } from "./catalogo";
+
+const TODOS_LOS_PERMISOS = ["reportes.ver", "reportes.operacion", "reportes.rentabilidad"];
+
+/** El dueño con el plan completo, en un rubro. */
+function dueno(rubro: string, extra: Partial<ContextoCatalogo> = {}): ContextoCatalogo {
+  return {
+    rubro,
+    features: [],
+    permisos: TODOS_LOS_PERMISOS,
+    puede: (s) => s === "gastos" || (s === "reportes_billar" && rubro === "BILLAR") || (s === "reportes_agenda" && ["PELUQUERIA", "BARBERIA", "SPA", "UNAS"].includes(rubro)),
+    incluye: () => true,
+    ...extra,
+  };
+}
+
+const ids = (ctx: ContextoCatalogo) => gruposVisibles(ctx).map((g) => [g.titulo, g.fichas.map((f) => f.id)] as const);
+
+describe("cada rubro ve sus reportes", () => {
+  it("el billar trae sus mesas en su grupo, con la etiqueta de nuevo, y no los meseros", () => {
+    const g = gruposVisibles(dueno("BILLAR"));
+    const rubro = g.find((x) => x.id === "rubro");
+    expect(rubro).toMatchObject({ titulo: "Billar", nuevo: true });
+    expect(rubro?.fichas.map((f) => f.id)).toEqual(["mesas", "ocupacion", "tiempo-fijo", "pausas-ajustes"]);
+  });
+
+  it("el restaurante ve los meseros y los insumos, y nada del billar ni de la farmacia", () => {
+    const todo = ids(dueno("RESTAURANTE")).flatMap(([, f]) => f);
+    expect(todo).toEqual(expect.arrayContaining(["meseros", "insumos", "resultado", "cierres"]));
+    expect(todo).not.toEqual(expect.arrayContaining(["mesas"]));
+    expect(todo).not.toContain("mermas");
+    expect(todo).not.toContain("profesionales");
+  });
+
+  it("la farmacia ve sus vencimientos y su sugerencia, y habla de medicamentos", () => {
+    const g = gruposVisibles(dueno("FARMACIA"));
+    expect(g.find((x) => x.id === "rubro")?.fichas.map((f) => f.id)).toEqual(["mermas", "sugerencia-compra"]);
+    expect(g.find((x) => x.id === "productos")).toMatchObject({ titulo: "Medicamentos" });
+    expect(g.flatMap((x) => x.fichas).find((f) => f.id === "top-productos")?.titulo).toBe("Top medicamentos");
+    // Una farmacia no transforma materia prima ni tiene meseros.
+    expect(g.flatMap((x) => x.fichas.map((f) => f.id))).not.toEqual(expect.arrayContaining(["insumos"]));
+    expect(g.flatMap((x) => x.fichas.map((f) => f.id))).not.toContain("meseros");
+  });
+
+  it("una peluquería ve su agenda y no los meseros ni los insumos", () => {
+    const g = gruposVisibles(dueno("PELUQUERIA"));
+    expect(g.find((x) => x.id === "rubro")).toMatchObject({ titulo: "Agenda" });
+    expect(g.find((x) => x.id === "rubro")?.fichas.map((f) => f.id)).toEqual([
+      "profesionales",
+      "servicios",
+      "asistencia",
+      "ocupacion-agenda",
+      "retencion",
+    ]);
+    const todo = g.flatMap((x) => x.fichas.map((f) => f.id));
+    expect(todo).not.toContain("meseros");
+    expect(todo).not.toContain("insumos");
+  });
+});
+
+describe("cada reporte pide lo mismo que su endpoint", () => {
+  it("un plan básico ve las ventas y los cierres, no los de operación ni los de plata", () => {
+    const ctx = dueno("RESTAURANTE", { incluye: () => false });
+    const todo = ids(ctx).flatMap(([, f]) => f);
+    expect(todo).toEqual(["ventas", "cierres", "caja"]);
+  });
+
+  it("sin el permiso de rentabilidad no aparecen el resultado, las compras ni los lentos", () => {
+    const ctx = dueno("RESTAURANTE", { permisos: ["reportes.ver", "reportes.operacion"] });
+    const todo = ids(ctx).flatMap(([, f]) => f);
+    expect(todo).not.toContain("resultado");
+    expect(todo).not.toContain("compras");
+    expect(todo).not.toContain("productos-lentos");
+    expect(todo).toContain("top-productos");
+  });
+
+  it("sin acceso a los gastos no se ofrece el estado de resultado, que siempre fallaría", () => {
+    const ctx = dueno("RESTAURANTE", { puede: () => false });
+    const todo = ids(ctx).flatMap(([, f]) => f);
+    expect(todo).not.toContain("resultado");
+    expect(todo).not.toContain("equilibrio");
+  });
+
+  it("sin fiado en el plan no hay reporte de créditos", () => {
+    const features: Feature[] = ["pos", "reportes"];
+    const todo = ids(dueno("RESTAURANTE", { features })).flatMap(([, f]) => f);
+    expect(todo).not.toContain("creditos");
+  });
+
+  it("un grupo sin nada que mostrar no se dibuja", () => {
+    const ctx = dueno("MINIMARKET", { incluye: () => false });
+    expect(gruposVisibles(ctx).map((g) => g.id)).toEqual(["plata", "operacion"]);
+  });
+});
