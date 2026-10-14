@@ -23,6 +23,9 @@ export function usarAlmacenCopias(a: Almacen) {
 
 const claveDe = (ambito: string, nombre: string) => `copia:${ambito}:${nombre}`;
 
+/** La copia del catálogo es por sucursal: de ahí salen el precio y el stock. */
+export const claveCatalogo = (almacenId: number | null) => `productos:${almacenId ?? "todos"}`;
+
 export const SIN_COPIA =
   "Sin conexión y sin datos guardados. Conectate al menos una vez para usar el modo offline.";
 

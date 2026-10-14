@@ -8,6 +8,7 @@ import { fmtMoney, isoDia } from "../../lib/format";
 import { tienePermiso } from "../../lib/permisos";
 import { useApi } from "../../lib/useApi";
 import { conCopia } from "../../lib/offline/copias";
+import { formaPagoFaltante } from "../../lib/formaPagoFaltante";
 import { useAuth } from "../../store/AuthContext";
 import type { ClienteCredito, CreditoInput, FormaPago, PagoInput } from "../../types";
 
@@ -124,14 +125,14 @@ export default function PantallaCredito({
     if (metodo === "EFECTIVO" || metodo === "MIXTO") {
       if (esPositivo(adelantoNum)) {
         if (!formaEfectivo)
-          return setErrorLocal("El negocio no tiene cargada la forma de pago Efectivo.");
+          return setErrorLocal(formaPagoFaltante(formasPago, "Efectivo"));
         pagos.push({ formaPagoId: formaEfectivo.id, monto: adelantoNum, recibido: adelantoNum });
       }
     }
     if (metodo === "QR" || metodo === "MIXTO") {
       const montoQr = metodo === "QR" ? adelantoNum : adelantoQrNum;
       if (esPositivo(montoQr)) {
-        if (!formaQr) return setErrorLocal("El negocio no tiene cargada la forma de pago QR.");
+        if (!formaQr) return setErrorLocal(formaPagoFaltante(formasPago, "QR"));
         if (!qrConfirmado)
           return setErrorLocal("Confirmá que el pago por QR llegó antes de registrar el fiado.");
         // En QR puro el adelanto entero es el QR; en mixto sólo su parte.

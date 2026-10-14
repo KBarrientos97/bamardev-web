@@ -27,7 +27,7 @@ import { esFarmacia } from "../../lib/rubro";
 import { useApi } from "../../lib/useApi";
 import { quedoEnDuda } from "../../lib/cupo";
 import { useBloqueoCupo } from "../../lib/useBloqueoCupo";
-import { conCopia, descontarDeLaCopia } from "../../lib/offline/copias";
+import { claveCatalogo as copiaCatalogo, conCopia, descontarDeLaCopia } from "../../lib/offline/copias";
 import { venderOEncolar } from "../../lib/offline/ventas";
 import AvisoSinSubir from "../../components/offline/AvisoSinSubir";
 import { useAuth } from "../../store/AuthContext";
@@ -78,9 +78,6 @@ import {
 } from "../../lib/agenda/ventaDirecta";
 import { SelectorProfesional } from "./belleza/SelectorProfesional";
 import type { ProfesionalesDelCarrito } from "./PantallaVenta";
-
-/** La copia del catálogo es por sucursal: de ahí salen el precio y el stock. */
-const copiaCatalogo = (almacenId: number | null) => `productos:${almacenId ?? "todos"}`;
 
 type Pantalla =
   | "venta"

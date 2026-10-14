@@ -22,6 +22,7 @@ import { tienePermiso, tieneFeature } from "../../lib/permisos";
 import { esBelleza, marcaConsumo } from "../../lib/rubro";
 import { useApi } from "../../lib/useApi";
 import { conCopia } from "../../lib/offline/copias";
+import { formaPagoFaltante } from "../../lib/formaPagoFaltante";
 import { porSubir, useColaOffline } from "../../lib/offline/cola";
 import AvisoSinSubir from "../../components/offline/AvisoSinSubir";
 import VentasSinSubir from "../../components/offline/VentasSinSubir";
@@ -744,11 +745,11 @@ function EntregarRecoger({
     // se tomó, y volver a registrarla la contaría dos veces en el arqueo.
     if (!pedido.prepagado) {
       if (metodo === "EFECTIVO") {
-        if (!efectivo) return setError("El negocio no tiene cargada la forma de pago Efectivo.");
+        if (!efectivo) return setError(formaPagoFaltante(formas, "Efectivo"));
         if (recibidoNum < total) return setError("Lo recibido no alcanza para cubrir el total.");
         pagos = [{ formaPagoId: efectivo.id, monto: total, recibido: recibidoNum }];
       } else {
-        if (!qr) return setError("El negocio no tiene cargada la forma de pago QR.");
+        if (!qr) return setError(formaPagoFaltante(formas, "QR"));
         if (!qrConfirmado) return setError("Confirmá que el pago por QR llegó antes de entregar.");
         pagos = [{ formaPagoId: qr.id, monto: total }];
       }

@@ -1,8 +1,12 @@
 import { useEffect } from "react";
 import { api } from "../api";
+import { tieneFeature } from "../permisos";
+import { esFarmacia } from "../rubro";
+import { useAuth } from "../../store/AuthContext";
 import { useCupo } from "../../store/useCupo";
 import type { Venta } from "../../types";
 import { cargarCola, porSubir, sincronizar, type ResultadoSync } from "./cola";
+import { claveCatalogo, conCopia } from "./copias";
 import { ventaSinInternet } from "./modo";
 
 /**
@@ -25,12 +29,38 @@ export function sincronizarAhora(): Promise<ResultadoSync> {
   return sincronizar((c) => api.crearVenta(c), alSubirVenta);
 }
 
+/**
+ * Deja guardado todo lo que el POS necesita para cobrar sin señal, apenas la
+ * app entra con internet: Android guarda las formas de pago en el login, y
+ * así no depende de que alguien haya abierto el POS antes de que se corte. Sin
+ * esto, abrir el POS por primera vez ya sin señal dejaba la lista de formas de
+ * pago vacía y el cobro decía que el negocio no tenía "Efectivo".
+ *
+ * Cada pedido por su lado: si uno falla, los demás se guardan igual.
+ */
+async function precargar(opts: { catalogo: boolean; fiado: boolean }) {
+  const caja = await conCopia("caja", () => api.cajaActual()).catch(() => null);
+  const almacen = caja?.caja?.almacenId ?? null;
+  await Promise.allSettled([
+    conCopia("formas_pago", () => api.getFormasPago()),
+    conCopia("categorias", () => api.getCategorias(false)),
+    // Farmacia busca contra el servidor: no se baja el catálogo entero.
+    ...(opts.catalogo && caja?.caja
+      ? [conCopia(claveCatalogo(almacen), () => api.getProductos(false, almacen))]
+      : []),
+    ...(opts.fiado ? [conCopia("clientes_credito", () => api.getClientesCredito())] : []),
+  ]);
+}
+
 const REINTENTOS_AL_VOLVER_LA_RED = [0, 5_000, 15_000, 40_000];
 const CADA_MS = 30_000;
 
 /** Va en la cáscara de la app (Layout): un solo motor para todas las pantallas. */
 export function useMotorOffline() {
   const { actualizarCupo } = useCupo();
+  const auth = useAuth() as Partial<ReturnType<typeof useAuth>>;
+  const conCatalogo = !esFarmacia(auth.rubro);
+  const conFiado = tieneFeature(auth.negocio?.features, "fiado");
 
   useEffect(() => {
     // El contador del cupo vuelve a ser el del servidor con cada venta subida.
@@ -50,11 +80,16 @@ export function useMotorOffline() {
       if (vivo) void sincronizarAhora().catch(() => {});
     };
 
+    const guardarCopias = () => {
+      if (vivo && navigator.onLine !== false) void precargar({ catalogo: conCatalogo, fiado: conFiado });
+    };
+    guardarCopias();
     void cargarCola()
       .then(subir)
       .catch(() => {});
 
     const alVolverLaRed = () => {
+      guardarCopias();
       for (const ms of REINTENTOS_AL_VOLVER_LA_RED) {
         temporizadores.push(
           setTimeout(async () => {
@@ -82,5 +117,5 @@ export function useMotorOffline() {
       window.removeEventListener("online", alVolverLaRed);
       document.removeEventListener("visibilitychange", alVolverALaApp);
     };
-  }, []);
+  }, [conCatalogo, conFiado]);
 }
