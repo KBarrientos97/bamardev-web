@@ -4,6 +4,8 @@ import { urlWhatsappConTexto } from "../../lib/pagina/catalogo";
 import { esDiseno, montoTexto, NOMBRE_DISENO, type DisenoRegalo } from "../../lib/regalos/disenos";
 import type { RegalosPublicos } from "../../lib/pagina/tipos";
 import { mensajeRegalo } from "../../lib/regalos/pedidoRegalo";
+import type { ContactoWhatsapp } from "../../lib/pagina/whatsapp";
+import { ElegirDestino } from "./EleccionWhatsapp";
 
 /**
  * "Regalá una gift card" desde la página (IDEAS/6 #6). El cliente elige el
@@ -21,7 +23,7 @@ export default function RegalarPagina({
   rubro,
   fotoUrl,
   regalos,
-  whatsappUrl,
+  destinos,
 }: {
   abierto: boolean;
   onCerrar: () => void;
@@ -30,7 +32,11 @@ export default function RegalarPagina({
   rubro: string | null | undefined;
   fotoUrl: string | null;
   regalos: RegalosPublicos;
-  whatsappUrl: string;
+  /**
+   * Los WhatsApp a los que se puede pedir (13-oct): con uno, directo; con
+   * varios (sucursales con su número), el cliente elige a cuál.
+   */
+  destinos: ContactoWhatsapp[];
 }) {
   const disenos = regalos.disenos.filter(esDiseno);
   const [diseno, setDiseno] = useState<DisenoRegalo>(esDiseno(regalos.diseno) ? regalos.diseno : disenos[0] ?? "MINIMAL");
@@ -39,6 +45,7 @@ export default function RegalarPagina({
   const [para, setPara] = useState("");
   const [de, setDe] = useState("");
   const [mensaje, setMensaje] = useState("");
+  const [destinoElegido, setDestino] = useState<string | null>(null);
 
   useEffect(() => {
     if (!abierto) return;
@@ -53,10 +60,13 @@ export default function RegalarPagina({
 
   const montoLibre = Number(libre.replace(",", "."));
   const elegido = libre.trim() ? (Number.isFinite(montoLibre) ? Math.round(montoLibre) : null) : monto;
-  const valido = elegido != null && elegido >= regalos.montoMin && elegido <= regalos.montoMax;
-  const url = valido
-    ? urlWhatsappConTexto(whatsappUrl, mensajeRegalo(negocio, { diseno, monto: elegido, para, de, mensaje }))
-    : undefined;
+  // Se recuerda por URL: si cambia la lista, una elección vieja no apunta a otro número.
+  const destino = destinos.length === 1 ? destinos[0] : (destinos.find((d) => d.url === destinoElegido) ?? null);
+  const valido = elegido != null && elegido >= regalos.montoMin && elegido <= regalos.montoMax && !!destino;
+  const url =
+    valido && destino
+      ? urlWhatsappConTexto(destino.url, mensajeRegalo(negocio, { diseno, monto: elegido, para, de, mensaje }))
+      : undefined;
   const campo: CSSProperties = { border: "1px solid #D1D5DB", borderRadius: 10, padding: "10px 12px", fontSize: 14, width: "100%", boxSizing: "border-box" };
   const chip = (activo: boolean): CSSProperties => ({
     border: `1.5px solid ${activo ? color : "#D1D5DB"}`,
@@ -185,6 +195,15 @@ export default function RegalarPagina({
           </p>
         )}
 
+        {destinos.length > 1 && (
+          <ElegirDestino
+            opciones={destinos}
+            elegido={destino ? destinos.indexOf(destino) : null}
+            onElegir={(i) => setDestino(destinos[i].url)}
+            color={color}
+            titulo="¿A qué sucursal se la pedís?"
+          />
+        )}
         <a
           href={url}
           target="_blank"
@@ -194,7 +213,7 @@ export default function RegalarPagina({
           style={{
             border: "none",
             borderRadius: 999,
-            background: "#16A34A",
+            background: color,
             color: "#ffffff",
             fontWeight: 700,
             fontSize: 15,

@@ -110,7 +110,7 @@ export default function MiTurno({ onIrAEntregas }: { onIrAEntregas?: () => void 
       </div>
 
       <div className="mt-3 grid grid-cols-3 gap-2">
-        <Kpi valor={t?.mesasCerradas ?? 0} etiqueta="Mesas cerradas" color="text-[#059669]" />
+        <Kpi valor={t?.mesasCerradas ?? 0} etiqueta="Mesas cerradas" color="text-primary-700" />
         <Kpi valor={t?.mesasAbiertas ?? 0} etiqueta="Abiertas ahora" color="text-[#D97706]" />
         <Kpi valor={t?.comensales ?? 0} etiqueta="Comensales" color="text-primary" />
       </div>
@@ -211,7 +211,7 @@ export default function MiTurno({ onIrAEntregas }: { onIrAEntregas?: () => void 
           const sesionId = h.sesionId;
           const contenido = (
             <>
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#ECFDF5] text-sm font-extrabold text-[#059669]">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary-50 text-sm font-extrabold text-primary-700">
                 {h.mesaCodigo ?? h.codigo}
               </span>
               <div className="min-w-0 flex-1">

@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Chips, EncabezadoPagina } from "../../components/filtros";
+import { Chips, EncabezadoPagina, FilaFiltros } from "../../components/filtros";
 import { Badge, Boton, Cargando, ErrorMsg, Kpi, Vacio } from "../../components/ui";
 import { api } from "../../lib/api";
 import { fmtFecha, fmtMoney, fmtNum } from "../../lib/format";
@@ -50,57 +50,78 @@ function aclaracion(m: { motivo: string; devolucion: boolean; perdida?: boolean 
  * "Cargado de más" corrige una entrada tipeada de más: se lista, pero no suma
  * como pérdida porque esas unidades no existieron. El "Perdido" es el mismo
  * número que resta el Estado de resultado.
+ *
+ * `embebido`: la pantalla vive dentro de Reportes, que ya dibuja el título, el
+ * botón de volver, el período y la sucursal. Con dos selectores de período en
+ * la misma pantalla el dueño elegía "Semana" arriba y seguía viendo el mes.
+ * Ahí usa los de Reportes y deja sólo lo suyo; sin `embebido` es la pantalla
+ * de siempre.
  */
-export default function MermasPagina() {
+export default function MermasPagina({ embebido }: { embebido?: { desde: string; hasta: string; sucursalId: number | null } }) {
   const { puede } = useAuth();
   const navigate = useNavigate();
   const [periodo, setPeriodo] = useState<Periodo>("mes");
   const suc = useSucursales();
-  const { desde, hasta } = rangoDe(periodo);
+  const propio = rangoDe(periodo);
+  const desde = embebido?.desde ?? propio.desde;
+  const hasta = embebido?.hasta ?? propio.hasta;
+  const sucursalId = embebido ? embebido.sucursalId : suc.elegir ? suc.sucursalId : null;
 
   const reporte = useApi(
-    () => api.mermas({ desde, hasta, sucursalId: suc.elegir ? suc.sucursalId : null }),
-    [desde, hasta, suc.elegir, suc.sucursalId],
+    () => api.mermas({ desde, hasta, sucursalId }),
+    [desde, hasta, sucursalId],
   );
   const r = reporte.datos;
   const verVencimientos = puede("vencimientos");
 
+  const exportar = (
+    <Boton
+      variante="soft"
+      icono="download"
+      disabled={!r || r.detalle.length === 0}
+      onClick={() => r && bajarCsv(r.detalle, desde, hasta)}
+    >
+      Exportar a Excel
+    </Boton>
+  );
+
   return (
-    <div className="mx-auto max-w-6xl space-y-4 p-4 sm:p-5">
-      <div>
-        <EncabezadoPagina
-          titulo="Vencimientos y mermas"
-          subtitulo="Lo que se perdió por vencido, dañado o robado, y lo que está por perderse."
-          volver={{ a: "/reportes", etiqueta: "Reportes" }}
-          accion={
-            <div className="flex gap-2">
-              <Boton
-                variante="soft"
-                icono="download"
-                disabled={!r || r.detalle.length === 0}
-                onClick={() => r && bajarCsv(r.detalle, desde, hasta)}
-              >
-                Exportar a Excel
-              </Boton>
-            </div>
-          }
-        />
-      </div>
+    <div className={embebido ? "space-y-4" : "mx-auto max-w-6xl space-y-4 p-4 sm:p-5"}>
+      {!embebido && (
+        <div>
+          <EncabezadoPagina
+            titulo="Vencimientos y mermas"
+            subtitulo="Lo que se perdió por vencido, dañado o robado, y lo que está por perderse."
+            volver={{ a: "/reportes", etiqueta: "Reportes" }}
+            accion={<div className="flex gap-2">{exportar}</div>}
+          />
+        </div>
+      )}
 
 
       <div className="space-y-3 rounded-2xl border border-borde bg-white p-4">
-        <Chips valor={periodo} opciones={PERIODOS} onChange={setPeriodo} />
-        {suc.elegir && (
-          <Chips
-            valor={suc.sucursalId == null ? "" : String(suc.sucursalId)}
-            opciones={suc.opciones}
-            onChange={(v) => suc.setSucursalId(v ? Number(v) : null)}
-          />
+        {!embebido && (
+          <FilaFiltros>
+            <Chips titulo="Período" valor={periodo} opciones={PERIODOS} onChange={setPeriodo} />
+            {suc.elegir && (
+              <Chips
+                titulo="Sucursal"
+                valor={suc.sucursalId == null ? "" : String(suc.sucursalId)}
+                opciones={suc.opciones}
+                onChange={(v) => suc.setSucursalId(v ? Number(v) : null)}
+              />
+            )}
+          </FilaFiltros>
         )}
-        <p className="text-xs text-texto-3">
-          Del {fmtFecha(desde)} al {fmtFecha(hasta)}. Sale de las salidas de mercadería aprobadas,
-          al costo del lote del que salió cada unidad.
-        </p>
+        {/* Embebida, el Exportar va acá: Reportes no lo dibuja en su
+            encabezado para este reporte, que baja su propia planilla. */}
+        <div className={embebido ? "flex flex-wrap items-center justify-between gap-3" : undefined}>
+          <p className={`text-xs text-texto-3 ${embebido ? "min-w-0 flex-1 basis-64" : ""}`}>
+            Del {fmtFecha(desde)} al {fmtFecha(hasta)}. Sale de las salidas de mercadería aprobadas,
+            al costo del lote del que salió cada unidad.
+          </p>
+          {embebido && exportar}
+        </div>
       </div>
 
       {reporte.cargando && !r ? (

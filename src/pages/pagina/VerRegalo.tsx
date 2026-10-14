@@ -159,7 +159,7 @@ export default function VerRegalo() {
             href={whatsapp}
             target="_blank"
             rel="noopener noreferrer"
-            style={{ flex: 1, minWidth: 150, borderRadius: 999, background: "#16A34A", color: "#ffffff", fontWeight: 700, padding: "12px 16px", textAlign: "center", textDecoration: "none" }}
+            style={{ flex: 1, minWidth: 150, borderRadius: 999, background: r.negocio.color.hex, color: "#ffffff", fontWeight: 700, padding: "12px 16px", textAlign: "center", textDecoration: "none" }}
           >
             Reenviar por WhatsApp
           </a>

@@ -219,5 +219,5 @@ export function puntoVencimiento(p: Producto): {
   if (v.tramo === "HASTA_60" || v.tramo === "HASTA_90") {
     return { color: "bg-warning", texto, corto, urgente: false };
   }
-  return { color: "bg-emerald-500", texto, corto, urgente: false };
+  return { color: "bg-primary", texto, corto, urgente: false };
 }

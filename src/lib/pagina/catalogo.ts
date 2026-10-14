@@ -1,4 +1,4 @@
-import type { EnlacePublico, PaginaPublica } from "./tipos";
+import type { CatalogoPublico, EnlacePublico, ItemCatalogoPublico, PaginaPublica } from "./tipos";
 
 /**
  * El catálogo de la página (08-oct): una galería general de fotos con título
@@ -109,4 +109,27 @@ export function urlWhatsappConTexto(url: string, mensaje: string): string {
   } catch {
     return url;
   }
+}
+
+/** Un ítem de «Mis productos» (no de la galería armada a mano). */
+export function esProducto(it: ItemCatalogoPublico): boolean {
+  return it.icono !== undefined || it.categoria !== undefined;
+}
+
+/**
+ * El catálogo tal como se ve con una sucursal elegida (13-oct): el precio de
+ * esa sucursal y sólo lo que ahí se ofrece. Sin sucursales (la galería, o
+ * "Mis productos" con una sola), el catálogo tal cual.
+ */
+export function catalogoEnSucursal(cat: CatalogoPublico, indice: number): CatalogoPublico {
+  const n = cat.sucursales?.length ?? 0;
+  if (n < 2) return cat;
+  const i = indice >= 0 && indice < n ? indice : 0;
+  const items: ItemCatalogoPublico[] = [];
+  for (const it of cat.items) {
+    const en = it.enSucursal?.[i];
+    if (!en) items.push(it);
+    else if (en.disponible) items.push({ ...it, precio: en.precio });
+  }
+  return { ...cat, items };
 }

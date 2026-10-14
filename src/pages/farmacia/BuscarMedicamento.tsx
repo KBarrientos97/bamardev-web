@@ -216,7 +216,7 @@ function Fila({
               columna más a comparar. En las tarjetas del POS sólo se marca lo
               que exige receta. Sin el paréntesis de la ficha, que en una fila
               no entra. */}
-          <span className={`font-semibold ${condicion ? TEXTO_CONDICION[condicion.tono] : "text-emerald-700"}`}>
+          <span className={`font-semibold ${condicion ? TEXTO_CONDICION[condicion.tono] : "text-primary-700"}`}>
             {condicion ? condicion.largo.replace(/ \(.*\)$/, "") : "Libre"}
           </span>
           {p.controlado && <span className="font-semibold text-danger-text"> · Controlado</span>}

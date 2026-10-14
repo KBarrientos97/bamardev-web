@@ -299,7 +299,16 @@ export interface Recurso {
 export interface ReglasAgenda {
   granularidadMin: number;
   bufferGeneralMin: number;
+  /**
+   * IDEAS/7-AGENDA-SIMPLE: SIMPLE (el que trabaja solo: agendar y cobrar) o
+   * COMPLETO (recepción con personal). Opcional: un backend anterior no lo
+   * manda, y eso se lee como SIMPLE, que es el defecto del backend.
+   */
+  modoAgenda?: ModoAgenda;
 }
+
+/** Cómo trabaja el negocio con la agenda (regla `modoAgenda`). */
+export type ModoAgenda = "SIMPLE" | "COMPLETO";
 
 // ── Respuestas ───────────────────────────────────────────────────────────────
 
@@ -365,7 +374,8 @@ export interface LineaReservada {
 export interface CrearCitaInput {
   sucursalId: number;
   clienteId?: number;
-  cliente?: { nombre: string; telefono: string };
+  /** El teléfono es opcional (decisión del 12-oct): sin él no hay ficha ni recordatorio. */
+  cliente?: { nombre: string; telefono?: string };
   lineas: LineaReservada[];
   nota?: string;
   confirmada?: boolean;

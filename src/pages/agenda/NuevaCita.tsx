@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Boton, Campo, ErrorMsg, Input, Modal, Select } from "../../components/ui";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Boton, Campo, Cargando, ErrorMsg, Input, Modal, Select } from "../../components/ui";
 import { ApiError } from "../../lib/api";
 import {
   apiAgenda,
@@ -9,12 +9,14 @@ import {
   mensajeSinEspacio,
 } from "../../lib/agenda/apiAgenda";
 import { useSpa } from "../../lib/agenda/spa";
-import { aMinutos, duracionTexto, fechaNegocio, horaNegocio } from "../../lib/agenda/horaAgenda";
+import { aMinutos, duracionTexto, fechaNegocio, horaNegocio, sumarDias } from "../../lib/agenda/horaAgenda";
 import { lineasDePropuesta, lineasManuales } from "../../lib/agenda/lineasCita";
+import { modoDe } from "../../lib/agenda/modoAgenda";
 import type {
   Cita,
   ClienteFicha,
   CrearCitaInput,
+  ModoAgenda,
   Propuesta,
   Recurso,
   Servicio,
@@ -49,6 +51,15 @@ function telNormal(t: string | null | undefined): string {
   return d.startsWith("591") && d.length > 8 ? d.slice(3) : d;
 }
 
+/**
+ * ¿Lo tecleado en "Nombre o teléfono" es un teléfono? Con una sola letra ya
+ * es un nombre ("Ana 2" no es un número): el mismo criterio que la búsqueda
+ * de clientes del backend.
+ */
+function pareceTelefono(t: string): boolean {
+  return /\d/.test(t) && !/[a-zñáéíóúü]/i.test(t);
+}
+
 /** Lo que queda escrito en el formulario mientras la hoja de compra está arriba. */
 const SIN_CUPO_CITAS = "No te queda cupo de citas hoy. Comprá créditos para agendarla: lo cargado sigue acá.";
 
@@ -63,6 +74,12 @@ function nuevoRequestId(): string {
  * orden con su profesional o "cualquiera", el backend propone el primer hueco
  * y se confirma.
  *
+ * En modo simple (IDEAS/7-AGENDA-SIMPLE, propuesta A) es la hoja corta: un
+ * solo campo "Nombre o teléfono", servicios y horas en chips (la primera hora
+ * libre ya marcada) y Guardar. La cita nace confirmada; sobre-turno y nota
+ * quedan en "Más opciones". El teléfono es opcional en los dos modos
+ * (decisión del 12-oct): sin él no hay recordatorio, pero no frena la cita.
+ *
  * La regla que más importa: si otro tomó el horario mientras tanto (409
  * HUECO_OCUPADO), se avisa, se reemplaza la lista por los huecos recalculados
  * que trae el error y **no se borra nada de lo cargado** (§7.2). Recepción no
@@ -73,6 +90,7 @@ export default function NuevaCita({
   precarga,
   soloRecursoIds,
   granularidad: granularidadDada,
+  modo: modoDado,
   onClose,
   onCreada,
 }: {
@@ -86,6 +104,8 @@ export default function NuevaCita({
    * valida acá (el backend responde FUERA_DE_GRILLA con su mensaje).
    */
   granularidad?: number;
+  /** El modo de la agenda. Si no viene, sale de las mismas reglas. */
+  modo?: ModoAgenda;
   onClose: () => void;
   onCreada: (cita: Cita) => void;
 }) {
@@ -109,16 +129,18 @@ export default function NuevaCita({
   const hayLugar = () => citaEnDuda.current || hayLugarParaCita();
 
   const servicios = useApi(() => apiAgenda.servicios(), []);
+  const faltaRegla = !granularidadDada || !modoDado;
   const reglas = useApi(
     () =>
-      granularidadDada
+      !faltaRegla
         ? Promise.resolve(null)
         : Promise.resolve()
             .then(() => apiAgenda.reglas(sucursalId))
             .catch(() => null),
-    [sucursalId, granularidadDada],
+    [sucursalId, faltaRegla],
   );
   const granularidad = granularidadDada ?? reglas.datos?.granularidadMin ?? null;
+  const simple = (modoDado ?? modoDe(reglas.datos)) === "SIMPLE";
   const recursos = useApi(() => apiAgenda.recursos(), []);
 
   const listaServicios = useMemo(
@@ -140,10 +162,21 @@ export default function NuevaCita({
       ),
     [recursos.datos, sucursalId, soloRecursoIds, conEspacios],
   );
+  // Con una sola persona no hay nada que elegir: ni "Con" ni "Cualquiera"
+  // (IDEAS/7 §3, en los dos modos).
+  const unico = recursosSucursal.length === 1 ? recursosSucursal[0] : null;
 
   // ── Cliente ──
   const [telefono, setTelefono] = useState("");
   const [nombre, setNombre] = useState("");
+  // Modo simple: un solo campo. Si es un número es el teléfono y se pide el
+  // nombre al lado; si es un nombre, el teléfono queda opcional al lado.
+  const [busqueda, setBusqueda] = useState("");
+  const [complemento, setComplemento] = useState("");
+  const q = busqueda.trim();
+  const qEsTelefono = pareceTelefono(q);
+  const nombreDado = simple ? (qEsTelefono ? complemento : busqueda) : nombre;
+  const telefonoDado = simple ? (qEsTelefono ? busqueda : complemento) : telefono;
   const [cliente, setCliente] = useState<ClienteFicha | null>(null);
   const [sugerencias, setSugerencias] = useState<ClienteFicha[]>([]);
 
@@ -164,6 +197,7 @@ export default function NuevaCita({
   // ── Cierre ──
   const [nota, setNota] = useState("");
   const [confirmada, setConfirmada] = useState(false);
+  const [masOpciones, setMasOpciones] = useState(false);
   const [error, setError] = useState("");
   const [conflicto, setConflicto] = useState("");
   const [enviando, setEnviando] = useState(false);
@@ -184,21 +218,25 @@ export default function NuevaCita({
     return hacen.length ? hacen : recursosSucursal;
   }
 
-  // Buscar al cliente por teléfono mientras se teclea. Si el negocio no tiene
-  // la ficha de clientes (403), la búsqueda calla y se sigue con el nombre.
-  const digitos = telefono.replace(/\D/g, "");
+  // Buscar al cliente mientras se teclea: por teléfono (el número exacto lo
+  // elige solo) y, en el modo simple, también por nombre (ahí sólo sugiere:
+  // dos "Juan" no se eligen solos). Si el negocio no tiene la ficha de
+  // clientes (403), la búsqueda calla y se sigue con el nombre.
+  const digitos = telefonoDado.replace(/\D/g, "");
+  const consulta = simple && !qEsTelefono ? (q.length >= 2 ? q : "") : digitos.length >= 4 ? digitos : "";
+  const porTelefono = consulta !== "" && consulta === digitos;
   useEffect(() => {
-    if (cliente || digitos.length < 4) {
+    if (cliente || !consulta) {
       setSugerencias([]);
       return;
     }
     let vivo = true;
     const t = setTimeout(() => {
       apiAgenda
-        .buscarClientes(digitos)
+        .buscarClientes(consulta)
         .then((lista) => {
           if (!vivo) return;
-          const exacto = lista.find((c) => telNormal(c.telefono) === telNormal(digitos));
+          const exacto = porTelefono ? lista.find((c) => telNormal(c.telefono) === telNormal(consulta)) : undefined;
           if (exacto) elegirCliente(exacto);
           else setSugerencias(lista.slice(0, 5));
         })
@@ -208,7 +246,7 @@ export default function NuevaCita({
       vivo = false;
       clearTimeout(t);
     };
-  }, [digitos, cliente]);
+  }, [consulta, porTelefono, cliente]);
 
   function elegirCliente(c: ClienteFicha) {
     setCliente(c);
@@ -271,10 +309,26 @@ export default function NuevaCita({
     );
   }
 
+  /** Modo simple: tocar un servicio lo suma a la cita (en ese orden); tocarlo otra vez lo saca. */
+  function alternarServicio(id: number) {
+    setLineas((ls) => {
+      const elegidas = ls.filter((l) => l.servicioId != null);
+      const con = ls[0]?.recursoId ?? null;
+      if (elegidas.some((l) => l.servicioId === id)) {
+        const quedan = elegidas.filter((l) => l.servicioId !== id);
+        return quedan.length ? quedan : [{ clave: claves.current++, servicioId: null, recursoId: con }];
+      }
+      return [...elegidas, { clave: claves.current++, servicioId: id, recursoId: con }];
+    });
+  }
+
   /** El cliente para el POST: el elegido, uno recién creado o, sin ficha, en línea. */
   async function resolverCliente(): Promise<Pick<CrearCitaInput, "clienteId" | "cliente">> {
     if (cliente) return { clienteId: cliente.id };
-    const datos = { nombre: nombre.trim(), telefono: digitos };
+    // Sin teléfono no hay ficha (el backend la da de alta con teléfono): la
+    // cita lleva el nombre y listo.
+    if (!digitos) return { cliente: { nombre: nombreDado.trim() } };
+    const datos = { nombre: nombreDado.trim(), telefono: digitos };
     try {
       const creado = await apiAgenda.crearCliente(datos);
       setCliente(creado);
@@ -296,14 +350,19 @@ export default function NuevaCita({
 
   async function confirmar(firma?: { usuario: string; pin: string }) {
     setError("");
-    if (!cliente && nombre.trim().length < 2) return setError("Poné el nombre del cliente.");
-    if (!cliente && digitos.length < 7)
-      return setError("Poné el teléfono del cliente: es para avisarle de su cita.");
-    if (!lineas.every((l) => l.servicioId)) return setError("Elegí el servicio de cada línea.");
+    if (!cliente && nombreDado.trim().length < 2) return setError("Poné el nombre del cliente.");
+    // El teléfono es opcional, pero si se escribe tiene que ser uno (si igual
+    // no lo es, el backend responde TELEFONO_INVALIDO con su mensaje).
+    if (!cliente && digitos.length > 0 && digitos.length < 7)
+      return setError("Ese teléfono está incompleto: escribí los 7 u 8 dígitos o dejalo vacío.");
+    if (!lineas.every((l) => l.servicioId))
+      return setError(simple ? "Elegí el servicio." : "Elegí el servicio de cada línea.");
 
     let lineasCita;
     if (sobreTurno) {
-      if (!lineas.every((l) => l.recursoId))
+      // Con una sola persona, el sobre-turno es con ella: no hay "Con" que elegir.
+      const conQuien = lineas.map((l) => l.recursoId ?? unico?.id ?? null);
+      if (!conQuien.every((r) => r != null))
         return setError("En un sobre-turno elegí el profesional de cada servicio.");
       // La hora libre del sobre-turno también cae en la grilla del negocio
       // (QA M-07): una cita a las 12:07 se dibujaba desalineada.
@@ -314,7 +373,7 @@ export default function NuevaCita({
       lineasCita = lineasManuales(
         fecha,
         horaManual,
-        lineas.map((l) => ({ servicioId: l.servicioId!, recursoId: l.recursoId! })),
+        lineas.map((l, i) => ({ servicioId: l.servicioId!, recursoId: conQuien[i]! })),
         listaServicios,
       );
       // Sin cupo se avisa antes de pedirle la firma a nadie: el encargado
@@ -342,7 +401,8 @@ export default function NuevaCita({
         ...quien,
         lineas: lineasCita,
         ...(nota.trim() ? { nota: nota.trim() } : {}),
-        confirmada,
+        // Modo simple: nace confirmada (no hay un paso "Confirmar" después).
+        confirmada: simple || confirmada,
         ...(sobreTurno
           ? {
               sobreTurno: true,
@@ -380,32 +440,261 @@ export default function NuevaCita({
     }
   }
 
-  const cargandoDatos = servicios.cargando || recursos.cargando;
+  // Sin el modo dado, se espera a saberlo: armar un formulario y cambiarlo por
+  // el otro en medio de la carga confunde.
+  const esperandoModo = !modoDado && reglas.cargando;
+  const cargandoDatos = servicios.cargando || recursos.cargando || esperandoModo;
 
-  return (
-    <Modal
-      abierto
-      titulo="Nueva cita"
-      onClose={onClose}
-      cerrarAlClicAfuera={false}
-      acciones={
-        <>
-          <Boton variante="ghost" onClick={onClose}>
-            Cancelar
-          </Boton>
-          <Boton onClick={() => confirmar()} disabled={enviando || cargandoDatos}>
-            {enviando ? "Agendando…" : "Confirmar cita"}
-          </Boton>
-        </>
-      }
-    >
+  // ── Piezas que comparten los dos modos ──
+
+  const listaSugerencias = sugerencias.length > 0 && (
+    <ul className="divide-y divide-borde-soft rounded-xl border border-borde">
+      {sugerencias.map((c) => (
+        <li key={c.id}>
+          <button
+            type="button"
+            onClick={() => elegirCliente(c)}
+            className="flex w-full items-center justify-between gap-3 px-3.5 py-2.5 text-left text-sm hover:bg-muted"
+          >
+            <span className="font-semibold text-texto">{c.nombre}</span>
+            <span className="text-texto-3">{c.telefono}</span>
+          </button>
+        </li>
+      ))}
+    </ul>
+  );
+
+  const bloqueHorario = sobreTurno ? (
+    <Campo label="Hora del sobre-turno" hint="Se superpone a propósito con lo que ya hay.">
+      <Input
+        type="time"
+        value={horaManual}
+        step={granularidad ? granularidad * 60 : undefined}
+        onChange={(e) => setHoraManual(e.target.value)}
+      />
+    </Campo>
+  ) : (
+    <div>
+      <p className="mb-1.5 text-[13px] font-semibold text-texto-2">Horario</p>
+      <SelectorHuecos
+        huecos={huecos}
+        elegida={elegida}
+        onElegir={setElegida}
+        cargando={cargandoHuecos}
+        nombreServicio={nombreServicio}
+        nombreRecurso={nombreRecurso}
+      />
+    </div>
+  );
+
+  const avisoConflicto = conflicto && (
+    <p role="alert" className="rounded-xl bg-warning-bg px-3.5 py-2.5 text-sm font-semibold text-warning-text">
+      {conflicto}
+    </p>
+  );
+
+  const casillaSobreTurno = !esProfesional && (
+    <label className="flex items-start gap-2 text-[13px] text-texto-2">
+      <input
+        type="checkbox"
+        checked={sobreTurno}
+        onChange={(e) => setSobreTurno(e.target.checked)}
+        className="mt-0.5 h-4 w-4 accent-[var(--color-primary-boton)]"
+      />
+      <span>
+        Sobre-turno: superponer a otra cita a propósito
+        {!esEncargado && " (pide el PIN de un encargado)"}
+      </span>
+    </label>
+  );
+
+  const campoNota = (
+    <Campo label="Nota (opcional)">
+      <Input value={nota} onChange={(e) => setNota(e.target.value)} placeholder="Ej. fórmula del tinte, pidió no cortar las puntas" />
+    </Campo>
+  );
+
+  /** "Con" de toda la cita en el modo simple; sólo si hay más de una persona. */
+  const selectorConSimple = !unico && recursosSucursal.length > 0 && (
+    <Campo label="Con">
+      <Select
+        value={lineas[0]?.recursoId ?? ""}
+        onChange={(e) => {
+          const recursoId = e.target.value ? Number(e.target.value) : null;
+          setLineas((ls) => ls.map((l) => ({ ...l, recursoId })));
+        }}
+      >
+        {!soloRecursoIds && <option value="">Cualquiera</option>}
+        {opcionesRecurso(lineas[0]?.servicioId ?? null).map((r) => (
+          <option key={r.id} value={r.id}>
+            {r.nombre}
+          </option>
+        ))}
+      </Select>
+    </Campo>
+  );
+
+  const hoy = fechaNegocio();
+  const manana = sumarDias(hoy, 1);
+
+  let cuerpo: ReactNode;
+  if (esperandoModo) {
+    cuerpo = <Cargando />;
+  } else if (simple) {
+    cuerpo = (
       <div className="space-y-5">
         <ErrorMsg onReintentar={servicios.error ? servicios.recargar : undefined}>
           {servicios.error || recursos.error}
         </ErrorMsg>
 
         <section className="space-y-3">
-          <Campo label="Teléfono del cliente">
+          {cliente ? (
+            <FichaElegida
+              cliente={cliente}
+              onCambiar={() => {
+                // Se limpia lo escrito: con el mismo número la búsqueda
+                // volvería a elegir al mismo cliente.
+                setCliente(null);
+                setBusqueda("");
+                setComplemento("");
+                setTelefono("");
+                setNombre("");
+              }}
+            />
+          ) : (
+            <>
+              <Campo label="Cliente">
+                <Input
+                  autoComplete="off"
+                  value={busqueda}
+                  onChange={(e) => setBusqueda(e.target.value)}
+                  placeholder="Nombre o teléfono"
+                  autoFocus
+                />
+              </Campo>
+              {listaSugerencias}
+              {q !== "" &&
+                (qEsTelefono ? (
+                  <Campo label="Nombre" hint="Si es la primera vez, queda guardado como cliente nuevo.">
+                    <Input value={complemento} onChange={(e) => setComplemento(e.target.value)} />
+                  </Campo>
+                ) : (
+                  <Campo label="Teléfono (opcional, para recordarle)">
+                    <Input
+                      type="tel"
+                      inputMode="tel"
+                      autoComplete="off"
+                      value={complemento}
+                      onChange={(e) => setComplemento(e.target.value)}
+                      placeholder="70012345"
+                    />
+                  </Campo>
+                ))}
+            </>
+          )}
+        </section>
+
+        <section className="space-y-3">
+          <div>
+            <p id="servicios-simple" className="mb-1.5 text-[13px] font-semibold text-texto-2">
+              Servicio
+            </p>
+            <div role="group" aria-labelledby="servicios-simple" className="flex flex-wrap gap-2">
+              {listaServicios.map((s) => {
+                const marcado = lineas.some((l) => l.servicioId === s.id);
+                return (
+                  <button
+                    key={s.id}
+                    type="button"
+                    aria-pressed={marcado}
+                    onClick={() => alternarServicio(s.id)}
+                    className={`rounded-xl px-3 py-2 text-left text-sm transition-colors ${
+                      marcado
+                        ? "bg-primary-boton text-white"
+                        : "border border-borde bg-white text-texto-2 hover:bg-muted"
+                    }`}
+                  >
+                    <span className="block font-semibold">{s.nombre}</span>
+                    <span className={`block text-[12px] ${marcado ? "text-white/85" : "text-texto-3"}`}>
+                      {detalleServicio(s, esProfesional)}
+                    </span>
+                  </button>
+                );
+              })}
+              {!servicios.cargando && listaServicios.length === 0 && (
+                <p className="text-[13px] text-texto-3">No hay servicios cargados: se agregan en Configuración de la agenda.</p>
+              )}
+            </div>
+          </div>
+          {selectorConSimple}
+        </section>
+
+        <section className="space-y-3">
+          <div className="flex flex-wrap items-center gap-2">
+            {(
+              [
+                [hoy, "Hoy"],
+                [manana, "Mañana"],
+              ] as const
+            ).map(([f, texto]) => (
+              <button
+                key={f}
+                type="button"
+                aria-pressed={fecha === f}
+                onClick={() => setFecha(f)}
+                className={`rounded-full px-3.5 py-1.5 text-[13px] font-semibold ${
+                  fecha === f ? "bg-primary-boton text-white" : "border border-borde bg-white text-texto-2 hover:bg-muted"
+                }`}
+              >
+                {texto}
+              </button>
+            ))}
+            <div className="w-40">
+              <Input
+                type="date"
+                aria-label="Otro día"
+                value={fecha}
+                onChange={(e) => e.target.value && setFecha(e.target.value)}
+                className="py-1.5"
+              />
+            </div>
+          </div>
+          {bloqueHorario}
+          {avisoConflicto}
+        </section>
+
+        <div className="rounded-xl border border-borde-soft">
+          <button
+            type="button"
+            aria-expanded={masOpciones}
+            onClick={() => setMasOpciones((v) => !v)}
+            className="flex w-full items-center justify-between px-3.5 py-2.5 text-left text-[13px] font-semibold text-texto-2"
+          >
+            Más opciones
+            <span aria-hidden="true" className={`transition-transform ${masOpciones ? "rotate-180" : ""}`}>
+              ▾
+            </span>
+          </button>
+          {masOpciones && (
+            <div className="space-y-3 border-t border-borde-soft px-3.5 py-3">
+              {casillaSobreTurno}
+              {campoNota}
+            </div>
+          )}
+        </div>
+
+        <ErrorMsg>{error}</ErrorMsg>
+      </div>
+    );
+  } else {
+    cuerpo = (
+      <div className="space-y-5">
+        <ErrorMsg onReintentar={servicios.error ? servicios.recargar : undefined}>
+          {servicios.error || recursos.error}
+        </ErrorMsg>
+
+        <section className="space-y-3">
+          <Campo label="Teléfono (opcional, para recordarle)">
             <Input
               type="tel"
               inputMode="tel"
@@ -419,22 +708,7 @@ export default function NuevaCita({
               autoFocus
             />
           </Campo>
-          {sugerencias.length > 0 && (
-            <ul className="divide-y divide-borde-soft rounded-xl border border-borde">
-              {sugerencias.map((c) => (
-                <li key={c.id}>
-                  <button
-                    type="button"
-                    onClick={() => elegirCliente(c)}
-                    className="flex w-full items-center justify-between gap-3 px-3.5 py-2.5 text-left text-sm hover:bg-muted"
-                  >
-                    <span className="font-semibold text-texto">{c.nombre}</span>
-                    <span className="text-texto-3">{c.telefono}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
+          {listaSugerencias}
           {cliente ? (
             <FichaElegida
               cliente={cliente}
@@ -447,7 +721,7 @@ export default function NuevaCita({
               }}
             />
           ) : (
-            <Campo label="Nombre" hint="Si es la primera vez, queda guardado como cliente nuevo.">
+            <Campo label="Nombre" hint="Si es la primera vez y deja su teléfono, queda guardado como cliente nuevo.">
               <Input value={nombre} onChange={(e) => setNombre(e.target.value)} />
             </Campo>
           )}
@@ -456,7 +730,10 @@ export default function NuevaCita({
         <section className="space-y-3">
           <p className="text-[13px] font-semibold text-texto-2">Servicios, en orden</p>
           {lineas.map((l, i) => (
-            <div key={l.clave} className="grid grid-cols-1 gap-2 rounded-xl border border-borde-soft p-3 sm:grid-cols-2">
+            <div
+              key={l.clave}
+              className={`grid grid-cols-1 gap-2 rounded-xl border border-borde-soft p-3 ${unico ? "" : "sm:grid-cols-2"}`}
+            >
               <Campo label={`Servicio ${i + 1}`}>
                 <Select
                   value={l.servicioId ?? ""}
@@ -472,21 +749,23 @@ export default function NuevaCita({
                   ))}
                 </Select>
               </Campo>
-              <Campo label="Con">
-                <Select
-                  value={l.recursoId ?? ""}
-                  onChange={(e) =>
-                    cambiarLinea(l.clave, { recursoId: e.target.value ? Number(e.target.value) : null })
-                  }
-                >
-                  {!soloRecursoIds && <option value="">Cualquiera</option>}
-                  {opcionesRecurso(l.servicioId).map((r) => (
-                    <option key={r.id} value={r.id}>
-                      {r.nombre}
-                    </option>
-                  ))}
-                </Select>
-              </Campo>
+              {!unico && (
+                <Campo label="Con">
+                  <Select
+                    value={l.recursoId ?? ""}
+                    onChange={(e) =>
+                      cambiarLinea(l.clave, { recursoId: e.target.value ? Number(e.target.value) : null })
+                    }
+                  >
+                    {!soloRecursoIds && <option value="">Cualquiera</option>}
+                    {opcionesRecurso(l.servicioId).map((r) => (
+                      <option key={r.id} value={r.id}>
+                        {r.nombre}
+                      </option>
+                    ))}
+                  </Select>
+                </Campo>
+              )}
               {lineas.length > 1 && (
                 <button
                   type="button"
@@ -519,56 +798,13 @@ export default function NuevaCita({
           <Campo label="Fecha">
             <Input type="date" value={fecha} onChange={(e) => e.target.value && setFecha(e.target.value)} />
           </Campo>
-
-          {sobreTurno ? (
-            <Campo label="Hora del sobre-turno" hint="Se superpone a propósito con lo que ya hay.">
-              <Input
-                type="time"
-                value={horaManual}
-                step={granularidad ? granularidad * 60 : undefined}
-                onChange={(e) => setHoraManual(e.target.value)}
-              />
-            </Campo>
-          ) : (
-            <div>
-              <p className="mb-1.5 text-[13px] font-semibold text-texto-2">Horario</p>
-              <SelectorHuecos
-                huecos={huecos}
-                elegida={elegida}
-                onElegir={setElegida}
-                cargando={cargandoHuecos}
-                nombreServicio={nombreServicio}
-                nombreRecurso={nombreRecurso}
-              />
-            </div>
-          )}
-
-          {conflicto && (
-            <p role="alert" className="rounded-xl bg-warning-bg px-3.5 py-2.5 text-sm font-semibold text-warning-text">
-              {conflicto}
-            </p>
-          )}
-
-          {!esProfesional && (
-            <label className="flex items-start gap-2 text-[13px] text-texto-2">
-              <input
-                type="checkbox"
-                checked={sobreTurno}
-                onChange={(e) => setSobreTurno(e.target.checked)}
-                className="mt-0.5 h-4 w-4 accent-[var(--color-primary-boton)]"
-              />
-              <span>
-                Sobre-turno: superponer a otra cita a propósito
-                {!esEncargado && " (pide el PIN de un encargado)"}
-              </span>
-            </label>
-          )}
+          {bloqueHorario}
+          {avisoConflicto}
+          {casillaSobreTurno}
         </section>
 
         <section className="space-y-3">
-          <Campo label="Nota (opcional)">
-            <Input value={nota} onChange={(e) => setNota(e.target.value)} placeholder="Ej. fórmula del tinte, pidió no cortar las puntas" />
-          </Campo>
+          {campoNota}
           <label className="flex items-start gap-2 text-[13px] text-texto-2">
             <input
               type="checkbox"
@@ -582,6 +818,27 @@ export default function NuevaCita({
 
         <ErrorMsg>{error}</ErrorMsg>
       </div>
+    );
+  }
+
+  return (
+    <Modal
+      abierto
+      titulo="Nueva cita"
+      onClose={onClose}
+      cerrarAlClicAfuera={false}
+      acciones={
+        <>
+          <Boton variante="ghost" onClick={onClose}>
+            Cancelar
+          </Boton>
+          <Boton onClick={() => confirmar()} disabled={enviando || cargandoDatos}>
+            {simple ? (enviando ? "Guardando…" : "Guardar") : enviando ? "Agendando…" : "Confirmar cita"}
+          </Boton>
+        </>
+      }
+    >
+      {cuerpo}
 
       {pidiendoPin && (
         <PedirPinCredito
@@ -595,6 +852,15 @@ export default function NuevaCita({
       )}
     </Modal>
   );
+}
+
+/** "45 min · Bs 80,00": lo que va debajo del nombre en el chip del modo simple. */
+function detalleServicio(s: Servicio, esProfesional: boolean): string {
+  const partes: string[] = [];
+  if (s.duracionMin) partes.push(duracionTexto(s.duracionMin));
+  // El profesional no ve precios acá (ver `etiquetaServicio`).
+  if (!esProfesional) partes.push(fmtMoney(s.precio));
+  return partes.join(" · ");
 }
 
 function etiquetaServicio(s: Servicio, esProfesional: boolean): string {
@@ -615,7 +881,7 @@ function FichaElegida({ cliente, onCambiar }: { cliente: ClienteFicha; onCambiar
           {cliente.ultimaVisita ? (
             <span className="rounded-lg bg-primary-50 px-2 py-0.5 font-semibold text-primary-700">Recurrente</span>
           ) : (
-            <span className="rounded-lg bg-info-bg px-2 py-0.5 font-semibold text-info-text">Cliente nuevo</span>
+            <span className="rounded-lg bg-primary-100 px-2 py-0.5 font-semibold text-primary-700">Cliente nuevo</span>
           )}
           {cliente.noShows > 0 && (
             <span className="rounded-lg bg-danger-bg px-2 py-0.5 font-semibold text-danger-text">

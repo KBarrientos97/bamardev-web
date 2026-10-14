@@ -96,7 +96,7 @@ export default function TabRecursos({
                     <span className="text-[13px] text-texto-3">“{r.nombrePublico}”</span>
                   )}
                   {!r.activo && <Badge>Inactivo</Badge>}
-                  {r.publicadoOnline && <Badge tono="azul">Online</Badge>}
+                  {r.publicadoOnline && <Badge tono="marca">Online</Badge>}
                   {sinHorario(r) && <Badge tono="amarillo">Sin horario</Badge>}
                 </div>
                 <p className="mt-0.5 text-[13px] text-texto-3">

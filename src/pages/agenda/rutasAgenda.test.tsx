@@ -37,6 +37,10 @@ vi.mock("../../lib/agenda/apiAgenda", async (importOriginal) => {
   };
 });
 
+vi.mock("../../lib/agenda/apiComisiones", () => ({
+  apiComisiones: { reporteAgenda: vi.fn(() => new Promise(() => {})) },
+}));
+
 // El POS de verdad pide caja, catálogo…: acá sólo importa que se abra.
 vi.mock("../pos/Pos", () => ({ default: () => <p>Punto de venta</p> }));
 
@@ -132,5 +136,28 @@ describe("rutas de la agenda", () => {
     await act(async () => {});
     expect(window.location.pathname).toBe("/pos");
     expect(screen.getByText("Punto de venta")).toBeInTheDocument();
+  });
+
+  /** Abre la app en una dirección y espera lo lazy (Reportes se baja al entrar). */
+  async function abrir(usuario: SesionUsuario, negocio: SesionNegocio, ruta: string) {
+    tokenStore.set("token");
+    localStorage.setItem(USER_KEY, JSON.stringify(usuario));
+    localStorage.setItem(NEGOCIO_KEY, JSON.stringify(negocio));
+    window.history.replaceState(null, "", ruta);
+    render(<App />);
+    for (let i = 0; i < 5; i++) await act(async () => {});
+  }
+
+  it("la dirección vieja de los reportes de la agenda lleva a Reportes, a su grupo", async () => {
+    // Recepción con los reportes de la agenda y sin el permiso general.
+    const conReportes = usuarioDe("CAJERO", { id: 3, username: "lucia", sucursalId: 1 }, { extra: ["agenda.reportes"] });
+    await abrir(conReportes, SALON(["pos", "caja", "agenda", "reportes"]), "/reportes-agenda");
+    expect(window.location.pathname).toBe("/reportes/profesionales");
+    expect(await screen.findByRole("heading", { name: "Producción por profesional" })).toBeInTheDocument();
+  });
+
+  it("quien no ve ningún reporte y abre /reportes vuelve a su inicio", async () => {
+    await abrir(RECEPCION, SALON(["pos", "caja", "agenda", "reportes"]), "/reportes");
+    expect(window.location.pathname).toBe("/hoy");
   });
 });

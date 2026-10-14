@@ -5,7 +5,7 @@ import type { RecetaServicio } from "../../lib/belleza/apiExtras";
 
 /**
  * Insumos por servicio: la receta de cada servicio (qué insumos gasta al
- * cobrarse) y el costo y margen por servicio.
+ * cobrarse). El costo y margen vive en Reportes (ver MargenServicios.test).
  */
 
 vi.mock("../../lib/belleza/apiExtras", () => ({
@@ -90,62 +90,13 @@ describe("Insumos por servicio", () => {
     expect(screen.getByText("Cada insumo necesita una cantidad mayor a 0.")).toBeInTheDocument();
   });
 
-  it("costo y margen por servicio", async () => {
-    vi.mocked(apiExtras.rentabilidadServicios).mockResolvedValue({
-      desde: "2026-09-07",
-      hasta: "2026-10-06",
-      ingreso: 150,
-      costoInsumos: 46.5,
-      margen: 103.5,
-      servicios: [
-        {
-          servicioId: 100,
-          servicio: "Tinte raíz",
-          cantidad: 1,
-          ingreso: 150,
-          costoInsumos: 46.5,
-          costoPorServicio: 46.5,
-          margen: 103.5,
-          margenPct: 69,
-        },
-      ],
-    });
+  it("el costo y margen ya no es una pestaña: lleva al reporte, en Reportes", async () => {
     await montar();
-    await act(async () => {
-      fireEvent.click(screen.getByRole("tab", { name: "Costo y margen" }));
-    });
-    const fila = screen.getByRole("row", { name: /Tinte raíz/ });
-    expect(fila).toHaveTextContent("103,50");
-    expect(fila).toHaveTextContent("69%");
-  });
-
-  it("QA S2SEG-04: sin costos.ver el backend no manda costos y se ve una raya", async () => {
-    vi.mocked(apiExtras.rentabilidadServicios).mockResolvedValue({
-      desde: "2026-09-07",
-      hasta: "2026-10-06",
-      ingreso: 150,
-      costoInsumos: null,
-      margen: null,
-      servicios: [
-        {
-          servicioId: 100,
-          servicio: "Tinte raíz",
-          cantidad: 1,
-          ingreso: 150,
-          costoInsumos: null,
-          costoPorServicio: null,
-          margen: null,
-          margenPct: null,
-        },
-      ],
-    });
-    await montar();
-    await act(async () => {
-      fireEvent.click(screen.getByRole("tab", { name: "Costo y margen" }));
-    });
-    const fila = screen.getByRole("row", { name: /Tinte raíz/ });
-    expect(fila).toHaveTextContent("150,00");
-    expect(fila).toHaveTextContent("—");
-    expect(fila).not.toHaveTextContent("0,00 c/u");
+    expect(screen.queryByRole("tab", { name: "Costo y margen" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /costo y margen de cada servicio/ })).toHaveAttribute(
+      "href",
+      "/reportes/margen-servicios",
+    );
+    expect(apiExtras.rentabilidadServicios).not.toHaveBeenCalled();
   });
 });

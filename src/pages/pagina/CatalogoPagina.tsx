@@ -7,9 +7,10 @@ import {
   type PointerEvent as EventoPuntero,
   type ReactNode,
 } from "react";
+import { iconoPorLlave } from "../../lib/iconosArticulo";
 import { urlDeImagen } from "../../lib/pagina/apiPagina";
 import type { Paleta } from "../../lib/pagina/aspecto";
-import { formatoPrecio } from "../../lib/pagina/catalogo";
+import { esProducto, formatoPrecio } from "../../lib/pagina/catalogo";
 import { GRIS_PAGINA } from "../../lib/pagina/estilos";
 import type { CatalogoPublico, ItemCatalogoPublico } from "../../lib/pagina/tipos";
 
@@ -30,7 +31,8 @@ export interface AccionCatalogo {
   icono: string;
   /** A dónde lleva, según el ítem (el WhatsApp lleva el título en el mensaje). */
   href: (item: ItemCatalogoPublico) => string;
-  alClic?: () => void;
+  /** Al tocar el botón: cuenta el clic o, con varios WhatsApp, abre la elección. */
+  alClic?: (ev: React.MouseEvent<HTMLAnchorElement>, item: ItemCatalogoPublico) => void;
   /**
    * "Pedí por WhatsApp" (IDEAS/6 #1): con esto el botón suma el ítem al
    * pedido en vez de llevar a `href`.
@@ -112,6 +114,10 @@ interface Props {
   aspecto?: AspectoCatalogo;
   /** El título de la sección como lo dibuja el estilo; recibe el id para `aria-labelledby`. */
   renderTitulo?: (id: string, texto: string) => ReactNode;
+  /** El selector de sucursal («Mis productos» con más de una), debajo del título. */
+  selector?: ReactNode;
+  /** El color de "No hay productos en esta sucursal". */
+  colorVacio?: string;
 }
 
 function Icono({ d, color, size = 20 }: { d: string; color: string; size?: number }) {
@@ -157,8 +163,103 @@ function BotonAgregar({
   );
 }
 
-/** Sin foto: el tinte del color de la página con la inicial del título. */
+/**
+ * La línea chica debajo del título en la tarjeta: la descripción del ítem
+ * armado a mano o, en "Mis productos", la categoría. La descripción del
+ * producto (que puede ser larga o tener notas) va sólo en el visor, al
+ * tocarlo (pedido del dueño, 13-oct).
+ */
+export function detalleItem(it: ItemCatalogoPublico): string | null {
+  return esProducto(it) ? (it.categoria ?? null) : it.descripcion;
+}
+
+/** Los colores del selector de sucursal, según el estilo de la página. */
+export interface ColoresSelector {
+  texto: string;
+  textoElegido: string;
+  fondoElegido: string;
+  borde: string;
+  bordeElegido: string;
+}
+
+/**
+ * «Precios de: Norte · Sur» (13-oct): con más de una sucursal publicada, el
+ * visitante elige de cuál ver precios y disponibilidad. Botones-pastilla que
+ * bajan de renglón (en el celular no hay scroll de costado), con el patrón
+ * de radio para el lector de pantalla.
+ */
+export function SelectorSucursalCatalogo({
+  nombres,
+  indice,
+  onIndice,
+  colores,
+}: {
+  nombres: string[];
+  indice: number;
+  onIndice: (i: number) => void;
+  colores: ColoresSelector;
+}) {
+  return (
+    <div role="radiogroup" aria-label="Sucursal" style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, minWidth: 0 }}>
+      <span style={{ fontSize: 13, color: colores.texto }}>Precios de:</span>
+      {nombres.map((n, i) => {
+        const elegida = i === indice;
+        return (
+          <button
+            key={`${n}-${i}`}
+            type="button"
+            role="radio"
+            aria-checked={elegida}
+            onClick={() => onIndice(i)}
+            style={{
+              border: `${elegida ? 2 : 1}px solid ${elegida ? colores.bordeElegido : colores.borde}`,
+              background: elegida ? colores.fondoElegido : "transparent",
+              color: elegida ? colores.textoElegido : colores.texto,
+              borderRadius: 999,
+              padding: elegida ? "5px 13px" : "6px 14px",
+              fontSize: 14,
+              fontWeight: elegida ? 700 : 500,
+              cursor: "pointer",
+              // La familia de la página, sin el atajo `font`: pisaría el tamaño y el peso.
+              fontFamily: "inherit",
+              maxWidth: "100%",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {n}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
+ * Sin foto: el ícono del producto si lo tiene ("Mis productos", el mismo del
+ * POS) o, si no, el tinte del color de la página con la inicial del título.
+ */
 export function SinFoto({ item, fondo, color, tamano }: { item: ItemCatalogoPublico; fondo: string; color: string; tamano: number }) {
+  const icono = iconoPorLlave(item.icono);
+  if (icono) {
+    return (
+      <div
+        aria-hidden="true"
+        style={{ width: "100%", height: "100%", background: fondo, display: "flex", alignItems: "center", justifyContent: "center" }}
+      >
+        {/* `contain` y con aire: son dibujos con fondo transparente, recortarlos les come el borde. */}
+        <img
+          src={icono.src}
+          alt=""
+          loading="lazy"
+          decoding="async"
+          draggable={false}
+          style={{ width: "72%", height: "72%", objectFit: "contain", display: "block" }}
+        />
+      </div>
+    );
+  }
   return (
     <div
       aria-hidden="true"
@@ -198,6 +299,8 @@ export default function CatalogoPagina({
   colorIconoBoton,
   aspecto,
   renderTitulo,
+  selector,
+  colorVacio,
 }: Props) {
   const a = aspecto ?? aspectoDeSiempre(c);
   const [abierto, setAbierto] = useState<number | null>(null);
@@ -219,7 +322,11 @@ export default function CatalogoPagina({
           {catalogo.titulo}
         </h2>
       )}
-      {a.presentacion === "menu" ? (
+      {selector}
+      {items.length === 0 ? (
+        // Con otra sucursal elegida puede no quedar nada: el selector sigue.
+        <p style={{ margin: 0, fontSize: 14, color: colorVacio ?? GRIS.texto3 }}>No hay productos disponibles en esta sucursal.</p>
+      ) : a.presentacion === "menu" ? (
         <ListaMenu items={items} a={a} onAbrir={setAbierto} />
       ) : (
         <Carrusel
@@ -468,8 +575,8 @@ function Carrusel({
                       {it.titulo}
                     </strong>
                     {precio && <span style={{ fontSize: 15, fontWeight: 700, color: a.precio }}>{precio}</span>}
-                    {it.descripcion && (
-                      <span style={{ ...dosLineas, fontSize: 13, lineHeight: 1.4, color: a.texto3 }}>{it.descripcion}</span>
+                    {detalleItem(it) && (
+                      <span style={{ ...dosLineas, fontSize: 13, lineHeight: 1.4, color: a.texto3 }}>{detalleItem(it)}</span>
                     )}
                   </div>
                 </button>
@@ -624,8 +731,8 @@ function ListaMenu({
               </span>
               <span style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 3 }}>
                 <strong style={{ fontSize: 15, lineHeight: 1.3, overflowWrap: "anywhere", ...a.tituloItem }}>{it.titulo}</strong>
-                {it.descripcion && (
-                  <span style={{ ...dosLineas, fontSize: 13, lineHeight: 1.4, color: a.texto3 }}>{it.descripcion}</span>
+                {detalleItem(it) && (
+                  <span style={{ ...dosLineas, fontSize: 13, lineHeight: 1.4, color: a.texto3 }}>{detalleItem(it)}</span>
                 )}
               </span>
               {numero && (
@@ -892,8 +999,14 @@ export function VisorCatalogo({
           gap: 6,
         }}
       >
+        {esProducto(item) && item.categoria && (
+          <span style={{ fontSize: 12, fontWeight: 600, letterSpacing: "0.04em", textTransform: "uppercase", color: GRIS.texto3 }}>
+            {item.categoria}
+          </span>
+        )}
         <h2 style={{ margin: 0, fontSize: 18, lineHeight: 1.3, fontWeight: 700 }}>{item.titulo}</h2>
         {precio && <span style={{ fontSize: 16, fontWeight: 700, color: c.oscuro }}>{precio}</span>}
+        {/* La descripción (o las notas del producto) se lee acá, no en la tarjeta. */}
         {item.descripcion && (
           <p style={{ margin: 0, fontSize: 14, lineHeight: 1.5, color: GRIS.texto2, whiteSpace: "pre-line" }}>{item.descripcion}</p>
         )}
@@ -912,7 +1025,7 @@ export function VisorCatalogo({
             <a
               href={href}
               rel="noopener noreferrer"
-              onClick={accion.alClic}
+              onClick={(ev) => accion.alClic?.(ev, item)}
               style={{ ...estiloBoton, marginTop: 10, minHeight: 52 }}
             >
               <Icono d={accion.icono} color={colorIconoBoton} />

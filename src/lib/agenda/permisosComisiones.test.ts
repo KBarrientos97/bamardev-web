@@ -67,12 +67,13 @@ describe("reportes de agenda", () => {
 });
 
 describe("menú", () => {
-  it("el dueño de un salón tiene Reportes de agenda y Comisiones", () => {
+  it("el dueño de un salón tiene Reportes (con los de la agenda adentro) y Comisiones", () => {
     const c = ctx("ADMIN");
     const items = aplanar(construirMenu((s) => puedeVer(c, s), c.rubro).flatMap((b) => b.nodos)).map(
       (n) => n.item.titulo ?? n.item.label,
     );
-    expect(items).toContain("Reportes de agenda");
+    expect(items).toContain("Reportes");
+    expect(items).not.toContain("Reportes de agenda");
     expect(items).toContain("Comisiones");
   });
 });

@@ -366,7 +366,7 @@ function TarjetaUsuario({
           </span>
           <div className="flex items-center gap-2">
             {!u.activo && <Badge tono="gris">Inactivo</Badge>}
-            {u.tienePin && llevaPin(rol, conPin) && <Badge tono="azul">PIN</Badge>}
+            {u.tienePin && llevaPin(rol, conPin) && <Badge tono="marca">PIN</Badge>}
             <Icon name="chevronRight" size={17} color="#94A3B8" />
           </div>
         </div>
@@ -456,7 +456,7 @@ function DetalleUsuario({
             <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
               <Badge tono={tonoDeRol(rol, roles)}>{nombreRol(u, roles)}</Badge>
               {!u.activo && <Badge tono="gris">Inactivo</Badge>}
-              {conPinElRol && u.tienePin && <Badge tono="azul">PIN</Badge>}
+              {conPinElRol && u.tienePin && <Badge tono="marca">PIN</Badge>}
             </div>
           </div>
         </div>
@@ -1003,7 +1003,7 @@ function FormPinCuerpo({
       }
     >
       <div className="space-y-4">
-        <p className="rounded-xl bg-info-bg px-3.5 py-2.5 text-[13px] text-info-text">
+        <p className="rounded-xl bg-primary-50 px-3.5 py-2.5 text-[13px] text-primary-700">
           El PIN autoriza anular ventas y fiar por encima del límite del cliente. Lo lleva
           quien tiene un rol que autoriza con PIN.
         </p>

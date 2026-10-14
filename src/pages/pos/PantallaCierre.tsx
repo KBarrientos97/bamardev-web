@@ -15,8 +15,10 @@ import {
 import { api } from "../../lib/api";
 import { fmtHora, fmtMoney, fmtNum } from "../../lib/format";
 import { useApi } from "../../lib/useApi";
+import { porSubir, useColaOffline } from "../../lib/offline/cola";
+import AvisoSinSubir from "../../components/offline/AvisoSinSubir";
 import { useAuth } from "../../store/AuthContext";
-import { esBelleza } from "../../lib/rubro";
+import { esBelleza, esBillar } from "../../lib/rubro";
 import { cuandoCita } from "../../lib/agenda/horaAgenda";
 import type { Caja, CitaParaRevisar, MotivoRevisarCita } from "../../types";
 
@@ -54,6 +56,13 @@ export default function PantallaCierre({
   const [enviando, setEnviando] = useState(false);
   const [movimientoAbierto, setMovimientoAbierto] = useState(false);
   const [viendoProductos, setViendoProductos] = useState(false);
+  /**
+   * Ventas cobradas sin internet que no subieron (app del iPhone): no están
+   * en el resumen del servidor, así que el arqueo saldría con un faltante que
+   * no existe. Como Android (`CierreCajaViewModel`), no se cierra hasta
+   * subirlas. Las rechazadas no traban: ya no van a llegar.
+   */
+  const sinSubir = porSubir(useColaOffline()).length;
 
   const r = resumen.datos;
   /**
@@ -101,6 +110,10 @@ export default function PantallaCierre({
 
   async function cerrar() {
     setError("");
+    if (sinSubir > 0)
+      return setError(
+        `No se puede cerrar caja: hay ${sinSubir} ${sinSubir === 1 ? "venta" : "ventas"} sin sincronizar. Esperá a que vuelva la conexión.`,
+      );
     if (!conteoHecho)
       return setError(
         contado !== ""
@@ -164,7 +177,11 @@ export default function PantallaCierre({
                   vendido"): ahí están las propinas y el cambio que confundían
                   el arqueo (QA VER-01 / DIA-11). Omar y los demás rubros ven el
                   cierre exactamente como antes. */}
-              {esBelleza(rubro) ? (
+              {/* El billar también, por ser rubro nuevo y sin clientes: con el
+                  formato de siempre, su QA del 12-oct sumó "Fondo 100 +
+                  Efectivo 40 − Cambio 30 + Adelantos 20 = 130" contra un
+                  esperado de 160. */}
+              {esBelleza(rubro) || esBillar(rubro) ? (
                 <>
                   {/* Dos bloques (QA VER-01 / DIA-11): lo que se vendió, que NO se
                       suma, y la cuenta del cajón, cuyas filas SÍ suman el
@@ -234,6 +251,19 @@ export default function PantallaCierre({
                     </div>
                     {r.abonosEfectivo > 0 && (
                       <Fila etiqueta="Abonos de créditos (efectivo)" valor={r.abonosEfectivo} />
+                    )}
+                    {/* Billar: lo mismo que en el formato de siempre (ver la fila
+                        de abajo, en la otra rama): el adelanto de una mesa que
+                        sigue abierta está en el cajón y todavía no es venta. */}
+                    {(r.adelantosBillar ?? 0) !== 0 && (
+                      <Fila
+                        etiqueta={
+                          (r.adelantosBillar ?? 0) > 0
+                            ? "Adelantos de mesas de billar (efectivo)"
+                            : "Adelantos de billar cobrados en otra caja"
+                        }
+                        valor={r.adelantosBillar ?? 0}
+                      />
                     )}
                     {/* La plata de las profesionales, en su fila: está en el cajón
                         pero no es del negocio. */}
@@ -477,6 +507,7 @@ export default function PantallaCierre({
                 </Campo>
               </div>
 
+              <AvisoSinSubir />
               <ErrorMsg>{error}</ErrorMsg>
             </section>
           </>
@@ -486,14 +517,16 @@ export default function PantallaCierre({
       <div className="border-t border-borde bg-white p-4">
         <Boton
           onClick={cerrar}
-          disabled={enviando || resumen.cargando || mesasBillar.length > 0}
+          disabled={enviando || resumen.cargando || mesasBillar.length > 0 || sinSubir > 0}
           className="w-full py-3 text-base"
         >
           {enviando
             ? "Cerrando…"
             : mesasBillar.length > 0
               ? "Cobrá las mesas en juego para cerrar"
-              : "Cerrar caja"}
+              : sinSubir > 0
+                ? "Subí las ventas sin internet para cerrar"
+                : "Cerrar caja"}
         </Boton>
       </div>
 

@@ -267,6 +267,21 @@ const REQUISITOS: Record<Seccion, Requisito> = {
   roles: { permiso: "roles.gestionar", feature: null },
 };
 
+/**
+ * Las secciones que dan entrada a Reportes, la única pantalla de reportes del
+ * sistema (13-oct-2026): la general y las de los reportes que se pueden tener
+ * sueltos —la recepción ve los de la agenda sin ver las ventas; quien arma las
+ * recetas, el costo y margen por servicio—. Alcanza con una: así nadie gana ni
+ * pierde un reporte por haberlos juntado. Adentro, cada reporte pide lo suyo
+ * (`pages/reportes/catalogo.ts`).
+ */
+export const SECCIONES_REPORTES: readonly Seccion[] = ["reportes", "reportes_agenda", "recetas_servicio"];
+
+/** ¿Tiene la entrada Reportes? Con `puede` de la sesión (o `puedeVer` con un contexto). */
+export function veReportes(puede: (seccion: Seccion) => boolean): boolean {
+  return SECCIONES_REPORTES.some((s) => puede(s));
+}
+
 /** El permiso que pide una sección (para tests y para explicar un rechazo). */
 export function permisoDeSeccion(seccion: Seccion): string {
   return REQUISITOS[seccion].permiso;
@@ -608,7 +623,7 @@ const ORDEN_INICIO: [Seccion, string][] = [
   ["insumos", "/inventario/insumos"],
   ["proveedores", "/inventario/proveedores"],
   ["solicitudes", "/solicitudes"],
-  ["reportes_agenda", "/reportes-agenda"],
+  ["reportes_agenda", "/reportes"],
   ["agenda_config", "/configuracion/agenda"],
   ["recetas_servicio", "/configuracion/insumos-servicio"],
   ["mesas", "/mesas"],

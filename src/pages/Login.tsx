@@ -67,14 +67,11 @@ export default function Login() {
   }
 
   // El pago vive acá dentro y no en una ruta: sin sesión, App no monta el
-  // router, así que /pagar no sería alcanzable por URL.
+  // router, así que /pagar no sería alcanzable por URL. No se le pasa el
+  // alias del formulario ni el recordado: el dueño pidió que se escriba
+  // siempre (ver PagarLicencia).
   if (pagando) {
-    return (
-      <PagarLicencia
-        aliasInicial={negocio.trim() || aliasRecordado}
-        onSalir={() => setPagando(false)}
-      />
-    );
+    return <PagarLicencia onSalir={() => setPagando(false)} />;
   }
 
   return (

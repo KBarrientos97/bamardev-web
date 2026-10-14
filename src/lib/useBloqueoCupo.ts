@@ -3,6 +3,7 @@ import { useCupo } from "../store/useCupo";
 import type { ConsumoVista, UnidadCupo } from "../types";
 import { cupoDelError, esCupoAgotado, proyectar } from "./cupo";
 import { abrirHojaCupo } from "./hojaCupo";
+import { pendientesDeHoy, useColaOffline } from "./offline/cola";
 
 export interface BloqueoCupo {
   /** ¿Hay cupo que controlar en este negocio? */
@@ -39,6 +40,11 @@ export function useBloqueoCupo(
 ): BloqueoCupo {
   const { cupo, aplica, actualizarCupo, refrescarCupo } = useCupo();
   const { refrescarAlMontar = false, abrirHoja = true } = opts;
+  // Las ventas cobradas sin internet que todavía no subieron ya ocuparon su
+  // lugar (el `P` de §5.1, como en Android). Fuera de la app instalada del
+  // iPhone la cola está vacía y esto es 0.
+  const cola = useColaOffline();
+  const pendientes = unidad === "VENTA" ? pendientesDeHoy(cola) : 0;
 
   // El POS pide el contador al montarse (§5.2): el del login puede ser de
   // hace horas, y otro equipo pudo haber vendido mientras tanto. Sólo con
@@ -52,10 +58,10 @@ export function useBloqueoCupo(
 
   const verificar = useCallback(() => {
     if (!aplica) return true;
-    if (proyectar(cupo, unidad).puede) return true;
+    if (proyectar(cupo, unidad, { pendientes }).puede) return true;
     if (abrirHoja) abrirHojaCupo({ unidad, agotado: true });
     return false;
-  }, [aplica, cupo, unidad, abrirHoja]);
+  }, [aplica, cupo, unidad, abrirHoja, pendientes]);
 
   const manejarError = useCallback(
     (e: unknown) => {

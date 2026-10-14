@@ -140,6 +140,68 @@ describe("vista previa desde el editor", () => {
     expect(vistaDesdeEditor(editor({ catalogo: [item(1, 1, false)] })).catalogo).toBeNull();
   });
 
+  it("el catálogo es uno u otro: en «Mis productos» salen los productos vendibles, en orden", () => {
+    const item = { id: 1, titulo: "Foto del local", descripcion: null, precio: 50, precioDesde: false, visible: true, orden: 1, fotoUrl: null };
+    const producto = (id: number, orden: number, vendible = true) => ({
+      id,
+      nombre: `Producto ${id}`,
+      precio: id === 3 ? null : 10 * id,
+      icono: id === 1 ? "pollo_entero_brasa" : null,
+      categoria: id === 1 ? "Pollos" : null,
+      orden,
+      vendible,
+    });
+    const base = editor({ catalogo: [item], productosCatalogo: [producto(1, 2), producto(2, 3, false), producto(3, 1)] });
+    // MANUAL (o un backend anterior sin el modo): la galería, sin productos.
+    expect(vistaDesdeEditor(base).catalogo?.items.map((x) => x.titulo)).toEqual(["Foto del local"]);
+    const v = vistaDesdeEditor({ ...base, pagina: { ...base.pagina, catalogoModo: "PRODUCTOS" } });
+    expect(v.catalogo?.titulo).toBe("Catálogo");
+    expect(v.catalogo?.items).toEqual([
+      { id: 3, titulo: "Producto 3", descripcion: null, precio: null, precioDesde: false, fotoUrl: null, icono: null, categoria: null },
+      { id: 1, titulo: "Producto 1", descripcion: null, precio: 10, precioDesde: false, fotoUrl: null, icono: "pollo_entero_brasa", categoria: "Pollos" },
+    ]);
+    // Sin productos que se vendan, no hay sección (aunque haya galería guardada).
+    const soloInactivos = editor({ catalogo: [item], productosCatalogo: [producto(2, 1, false)] });
+    expect(vistaDesdeEditor({ ...soloInactivos, pagina: { ...soloInactivos.pagina, catalogoModo: "PRODUCTOS" } }).catalogo).toBeNull();
+  });
+
+  it("«Mis productos» por sucursal: la principal si no hay publicadas; con dos, el selector", () => {
+    const pollo = {
+      id: 1,
+      nombre: "Pollo",
+      precio: 120,
+      icono: null,
+      categoria: null,
+      orden: 1,
+      vendible: true,
+      descripcion: "Con papas",
+      porSucursal: [
+        { almacenId: 10, precio: 99, disponible: true },
+        { almacenId: 11, precio: null, disponible: false },
+      ],
+    };
+    const base = editor({ productosCatalogo: [pollo] });
+    const conModo = (sucursales: EstadoEditor["sucursales"]) =>
+      vistaDesdeEditor({ ...base, sucursales, pagina: { ...base.pagina, catalogoModo: "PRODUCTOS" } }).catalogo;
+    const [centro, sur] = base.sucursales;
+    // Sólo Centro (la principal) publicada: su precio, sin selector.
+    expect(conModo(base.sucursales)).toEqual({
+      titulo: "Catálogo",
+      items: [{ id: 1, titulo: "Pollo", descripcion: "Con papas", precio: 99, precioDesde: false, fotoUrl: null, icono: null, categoria: null }],
+    });
+    // Ninguna publicada: igual la principal.
+    expect(conModo([{ ...centro, publicarEnPagina: false }, sur])?.items[0].precio).toBe(99);
+    // Sólo Sur, donde no se ofrece: no hay sección.
+    expect(conModo([{ ...centro, publicarEnPagina: false }, { ...sur, publicarEnPagina: true }])).toBeNull();
+    // Las dos: el detalle de cada una.
+    const dos = conModo([centro, { ...sur, publicarEnPagina: true }]);
+    expect(dos?.sucursales).toEqual(["Centro", "Sur"]);
+    expect(dos?.items[0].enSucursal).toEqual([
+      { precio: 99, disponible: true },
+      { precio: 120, disponible: false },
+    ]);
+  });
+
   it("hoy en Bolivia es UTC−4", () => {
     expect(hoyBolivia(new Date("2026-10-07T03:00:00Z"))).toBe("2026-10-06");
     expect(hoyBolivia(new Date("2026-10-07T05:00:00Z"))).toBe("2026-10-07");

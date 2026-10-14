@@ -251,8 +251,22 @@ describe("fondo y monograma (QA B-24)", () => {
     expect(raiz().getPropertyValue("--color-barra")).toBe(TEMAS.BILLAR.barra);
   });
 
-  it("restaurante y farmacia quedan con el de siempre, aunque antes hubiera un salón", () => {
-    for (const rubro of ["RESTAURANTE", "FARMACIA"]) {
+  it("ferretería y farmacia también: las tarjetas del POS ya no salen verdes", () => {
+    for (const rubro of ["FERRETERIA", "FARMACIA", "REPUESTOS"]) {
+      aplicarTema({ tipoNegocio: rubro });
+      expect(raiz().getPropertyValue("--color-fondo")).toBe(TEMAS[rubro].primary50);
+      expect(raiz().getPropertyValue("--monograma-bg")).toBe(TEMAS[rubro].primary100);
+      expect(raiz().getPropertyValue("--monograma-fg")).toBe(TEMAS[rubro].primary700);
+    }
+  });
+
+  it("lo decide la paleta del negocio, no el rubro: un restaurante con paleta naranja la sigue", () => {
+    aplicarTema({ tipoNegocio: "RESTAURANTE", tema: { tokens: TEMAS.FERRETERIA } });
+    expect(raiz().getPropertyValue("--monograma-fg")).toBe(TEMAS.FERRETERIA.primary700);
+  });
+
+  it("los negocios verdes quedan con el de siempre, aunque antes hubiera un salón", () => {
+    for (const rubro of ["RESTAURANTE", "MINIMARKET"]) {
       aplicarTema({ tipoNegocio: "SPA" });
       aplicarTema({ tipoNegocio: rubro });
       // Sin la variable en línea manda la de index.css: #f5fbf7 y el verde.

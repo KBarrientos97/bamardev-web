@@ -60,8 +60,27 @@ export function totalPedido(lineas: LineaPedido[]): { total: number; aConfirmar:
   return { total: Math.round(total * 100) / 100, aConfirmar };
 }
 
-/** El mensaje de WhatsApp, prolijo y fácil de leer para quien atiende. */
-export function mensajePedido(negocio: string, lineas: LineaPedido[], d: DatosPedido): string {
+/**
+ * Al cambiar de sucursal (13-oct): cada línea toma el precio de esa sucursal,
+ * y lo que ahí no se ofrece sale del pedido. Lo que no está en el catálogo
+ * (una línea vieja de otra visita) se deja como estaba.
+ */
+export function ajustarASucursal(lineas: LineaPedido[], items: ItemCatalogoPublico[], todos: ItemCatalogoPublico[]): LineaPedido[] {
+  const ahora = new Map(items.map((it) => [it.id, it]));
+  const conocidos = new Set(todos.map((it) => it.id));
+  return lineas
+    .filter((l) => ahora.has(l.id) || !conocidos.has(l.id))
+    .map((l) => {
+      const it = ahora.get(l.id);
+      return it ? { ...l, precio: it.precio, desde: it.precioDesde } : l;
+    });
+}
+
+/**
+ * El mensaje de WhatsApp, prolijo y fácil de leer para quien atiende. Con la
+ * sucursal elegida en el catálogo, la dice: los precios son los de ella.
+ */
+export function mensajePedido(negocio: string, lineas: LineaPedido[], d: DatosPedido, sucursal?: string | null): string {
   const filas = lineas.map((l) => {
     const unitario = formatoPrecio(l.precio, l.desde);
     const sub = l.precio != null && !l.desde ? ` = ${formatoPrecio(l.precio * l.cantidad)}` : "";
@@ -71,7 +90,9 @@ export function mensajePedido(negocio: string, lineas: LineaPedido[], d: DatosPe
   const totalTexto = total > 0 ? `${formatoPrecio(total)}${aConfirmar ? " + lo que confirmen" : ""}` : "a confirmar";
   const entrega =
     d.entrega === "DELIVERY" ? `Delivery a: ${d.direccion.trim() || "(te paso la dirección)"}` : "Paso a recoger";
-  const partes = [`Hola ${negocio}, quiero hacer este pedido:`, "", ...filas, "", `Total: ${totalTexto}`, entrega];
+  const partes = [`Hola ${negocio}, quiero hacer este pedido:`, "", ...filas, "", `Total: ${totalTexto}`];
+  if (sucursal) partes.push(`Sucursal: ${sucursal}`);
+  partes.push(entrega);
   if (d.nombre.trim()) partes.push(`A nombre de: ${d.nombre.trim()}`);
   if (d.nota.trim()) partes.push(`Nota: ${d.nota.trim()}`);
   return partes.join("\n");

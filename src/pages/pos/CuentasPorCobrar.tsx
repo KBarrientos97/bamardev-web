@@ -38,17 +38,17 @@ export default function CuentasPorCobrar({
     <section>
       <button
         onClick={onVerTodos}
-        className="flex w-full items-center gap-3 rounded-2xl border border-[#FCD34D] bg-[#FFFBEB] px-4 py-3.5 text-left"
+        className="flex w-full items-center gap-3 rounded-2xl border border-primary-200 bg-primary-50 px-4 py-3.5 text-left"
       >
-        <span className="text-[#D97706]">
+        <span className="text-primary-700">
           <Icon name="clock" size={22} />
         </span>
         <div className="min-w-0 flex-1">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-[#D97706]">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-primary-700">
             Cuentas por cobrar
           </p>
-          <p className="text-2xl font-extrabold text-[#D97706]">{fmtMoney(total)}</p>
-          <p className="text-[11px] text-[#D97706]">
+          <p className="text-2xl font-extrabold text-primary-700">{fmtMoney(total)}</p>
+          <p className="text-[11px] text-primary-700">
             {abiertos.length} {abiertos.length === 1 ? "crédito abierto" : "créditos abiertos"}
             {vencido > 0 ? ` · ${fmtMoney(vencido)} vencido` : ""}
             {fiadoDelTurno && fiadoDelTurno > 0
@@ -68,7 +68,7 @@ export default function CuentasPorCobrar({
             </h2>
             <button
               onClick={onVerTodos}
-              className="shrink-0 text-[13px] font-semibold text-[#D97706]"
+              className="shrink-0 text-[13px] font-semibold text-primary-700"
             >
               Ver todos
             </button>
@@ -95,7 +95,7 @@ function Tarjeta({ credito: c }: { credito: Credito }) {
       <div className="flex items-start gap-3">
         <span
           className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
-            c.vencido ? "bg-[#FEF2F2] text-[#DC2626]" : "bg-[#FFFBEB] text-[#D97706]"
+            c.vencido ? "bg-[#FEF2F2] text-[#DC2626]" : "bg-primary-100 text-primary-700"
           }`}
         >
           {iniciales(c.clienteNombre)}
@@ -105,7 +105,7 @@ function Tarjeta({ credito: c }: { credito: Credito }) {
             <p className="truncate text-[15px] font-bold text-texto">{c.clienteNombre}</p>
             <span
               className={`shrink-0 text-[15px] font-extrabold ${
-                c.vencido ? "text-[#DC2626]" : "text-[#D97706]"
+                c.vencido ? "text-[#DC2626]" : "text-primary-700"
               }`}
             >
               {fmtMoney(c.saldo)}
@@ -122,7 +122,7 @@ function Tarjeta({ credito: c }: { credito: Credito }) {
           mitad no se trata igual que uno que no pagó nada. */}
       <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted">
         <div
-          className={`h-full rounded-full ${c.vencido ? "bg-[#DC2626]" : "bg-[#D97706]"}`}
+          className={`h-full rounded-full ${c.vencido ? "bg-[#DC2626]" : "bg-primary"}`}
           style={{ width: `${Math.min(100, Math.round(pagado * 100))}%` }}
         />
       </div>
@@ -146,8 +146,8 @@ function Badge({ estado }: { estado: string }) {
     estado === "Vencido"
       ? "bg-[#FEF2F2] text-[#DC2626]"
       : estado === "Abonado"
-        ? "bg-[#FFFBEB] text-[#D97706]"
-        : "bg-[#EFF6FF] text-[#2563EB]";
+        ? "bg-primary-100 text-primary-700"
+        : "bg-slate-100 text-texto-3";
   return (
     <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${clase}`}>
       {estado}

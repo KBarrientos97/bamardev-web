@@ -111,12 +111,23 @@ export default function PantallaRecibo({
     <div className="mx-auto flex h-full min-h-0 w-full max-w-lg flex-col">
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
         <div className="mb-4 flex flex-col items-center text-center print:hidden">
-          <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary-50 text-primary-700">
-            <Icon name="check" size={28} strokeWidth={2.5} />
+          <span
+            className={`flex h-14 w-14 items-center justify-center rounded-2xl ${
+              venta.pendienteSync ? "bg-warning-bg text-warning-text" : "bg-primary-50 text-primary-700"
+            }`}
+          >
+            <Icon name={venta.pendienteSync ? "wifiOff" : "check"} size={28} strokeWidth={2.5} />
           </span>
-          <h1 className="mt-3 text-lg font-bold text-texto">Venta registrada</h1>
+          <h1 className="mt-3 text-lg font-bold text-texto">
+            {venta.pendienteSync ? "Venta guardada sin internet" : "Venta registrada"}
+          </h1>
           <p className="mt-0.5 text-[13px] text-texto-3">
-            {venta.comprobante ?? `#${venta.id}`}
+            {/* Cobrada sin señal (app del iPhone): todavía no tiene número; se
+                lo pone el servidor al subirla. Lo mismo que el SIN
+                SINCRONIZAR del ticket de Android. */}
+            {venta.pendienteSync
+              ? "Se sube sola cuando vuelva la conexión. El número lo pone el sistema al subirla."
+              : (venta.comprobante ?? `#${venta.id}`)}
           </p>
         </div>
 
@@ -135,7 +146,10 @@ export default function PantallaRecibo({
           {/* Cabecera en filas etiquetadas, como en la app: el número de ticket
               queda siempre en el mismo lugar y el cliente lo encuentra solo. */}
           <dl className="border-t border-dashed border-borde pt-2 text-xs">
-            <FilaDato etiqueta="Ticket:" valor={venta.comprobante ?? `#${venta.id}`} />
+            <FilaDato
+              etiqueta="Ticket:"
+              valor={venta.pendienteSync ? "SIN SINCRONIZAR" : (venta.comprobante ?? `#${venta.id}`)}
+            />
             <FilaDato etiqueta="Fecha:" valor={fmtFechaHora(venta.fecha)} />
             {/* Cobrando una mesa, el ticket salía como uno de mostrador: sin
                 mesa ni mesero (visto en QA). El cliente reconoce su cuenta por

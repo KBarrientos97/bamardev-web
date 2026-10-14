@@ -28,10 +28,20 @@ function bs(monto: number): string {
   })}`;
 }
 
+/**
+ * Formato de un alias: el mismo que valida Android (`ConfigNegocio`). Se
+ * chequea antes de llamar porque un alias con un espacio o un acento no existe
+ * en el backend, y el 404 no diría dónde está el problema.
+ */
+const FORMATO_ALIAS = /^[a-z0-9][a-z0-9_-]{2,39}$/;
+
+/** Como lo guarda el backend: sin espacios alrededor y en minúsculas. */
+function normalizarAlias(valor: string): string {
+  return valor.trim().toLowerCase();
+}
+
 interface Props {
-  /** Alias del negocio, si se lo conoce (sesión o login); si no, se pide. */
-  aliasInicial?: string | null;
-  /** Vuelve al login. */
+  /** Vuelve al login (o a donde se estaba, si hay sesión). */
   onSalir: () => void;
 }
 
@@ -40,14 +50,22 @@ interface Props {
  *
  * Va sin login a propósito y no es un descuido: la licencia vencida hace que
  * el backend rechace TODOS los requests autenticados, así que ni el
- * administrador podría entrar a pagar. El negocio se identifica con su código
- * de activación y acá sólo se muestra el monto y el estado del cobro.
+ * administrador podría entrar a pagar. El negocio se identifica con su alias
+ * y acá sólo se muestra el monto y el estado del cobro.
  *
  * El monto lo decide el backend (respeta el precio pactado con cada cliente):
  * si se calculara acá, cualquiera pagaría lo que quisiera.
+ *
+ * El alias se ESCRIBE siempre, a pedido del dueño: antes se salteaba el paso
+ * con el del login, el recordado del navegador o el de la sesión, y en una
+ * computadora compartida se veía el precio de OTRO negocio sin haberlo pedido.
+ * Escribirlo deja claro a quién se le está pagando, igual que en Android.
  */
-export default function PagarLicencia({ aliasInicial, onSalir }: Props) {
-  const [alias, setAlias] = useState(aliasInicial ?? "");
+export default function PagarLicencia({ onSalir }: Props) {
+  /** Lo que está escrito en el campo. */
+  const [alias, setAlias] = useState("");
+  /** El alias con el que se trajeron los plazos: a ese se le genera el QR. */
+  const [aliasPagando, setAliasPagando] = useState("");
   /**
    * Las opciones de plazo (1, 6 y 12 meses) del negocio, ya con sus totales.
    *
@@ -84,7 +102,8 @@ export default function PagarLicencia({ aliasInicial, onSalir }: Props) {
     setError("");
     setGenerando(true);
     try {
-      const r = await api.opcionesPagoLicencia(ali.trim());
+      const r = await api.opcionesPagoLicencia(ali);
+      setAliasPagando(ali);
       setOpciones(r.opciones);
       // Desde cuándo se cuenta la cobertura: lo dice el encabezado del paso.
       setVencimientoActual(r.vencimientoActual ?? null);
@@ -105,7 +124,7 @@ export default function PagarLicencia({ aliasInicial, onSalir }: Props) {
     try {
       // Viaja el plazo, nunca el monto: el backend lo calcula y el callback del
       // banco vuelve a verificarlo antes de acreditar.
-      const r = await api.generarQrLicencia(ali.trim(), periodo);
+      const r = await api.generarQrLicencia(ali, periodo);
       setCobro(r);
       // La fecha del plazo que se acaba de pedir, para mostrarla junto al QR.
       setCubreHasta(
@@ -122,13 +141,6 @@ export default function PagarLicencia({ aliasInicial, onSalir }: Props) {
     // Con `opciones`: con la lista vacía de deps el cierre las leía siempre
     // null (de antes de pedirlas) y "Cubre hasta el …" no salía nunca.
   }, [opciones]);
-
-  // Con el alias a mano (la sesión, o el que acaba de tipear en el login) se
-  // saltea el primer paso y se va directo a elegir el plazo. Ya no se genera el
-  // QR solo: el monto depende de cuantos meses elija.
-  useEffect(() => {
-    if (aliasInicial) void pedirOpciones(aliasInicial);
-  }, [aliasInicial, pedirOpciones]);
 
   const consultar = useCallback(
     async (alias: string) => {
@@ -186,7 +198,28 @@ export default function PagarLicencia({ aliasInicial, onSalir }: Props) {
 
   const enviarAlias = (e: FormEvent) => {
     e.preventDefault();
-    if (alias.trim()) void pedirOpciones(alias);
+    const escrito = normalizarAlias(alias);
+    if (!escrito) return;
+    if (!FORMATO_ALIAS.test(escrito)) {
+      setError("Alias no válido: sólo minúsculas, números, - y _ (ej. pollosdonomar).");
+      return;
+    }
+    setAlias(escrito);
+    void pedirOpciones(escrito);
+  };
+
+  /**
+   * Vuelve al campo del alias. Hace falta ahora que se escribe: un error de
+   * tipeo que existe (otro negocio) mostraría un precio ajeno, y sin esto la
+   * única salida era volver al login.
+   */
+  const cambiarNegocio = () => {
+    setOpciones(null);
+    setCobro(null);
+    setCubreHasta(null);
+    setVencimientoActual(null);
+    setAliasPagando("");
+    setError("");
   };
 
   const vencido = cobro ? new Date(cobro.venceEn).getTime() <= Date.now() : false;
@@ -210,7 +243,7 @@ export default function PagarLicencia({ aliasInicial, onSalir }: Props) {
               <div>
                 <h2 className="text-lg font-bold text-texto">Pagar con QR</h2>
                 <p className="mt-0.5 text-[13px] text-texto-3">
-                  Ingresá el alias de tu negocio y te generamos el QR para pagar.
+                  Escribí el alias de tu negocio para ver cuánto pagar.
                 </p>
               </div>
               {error && <ErrorMsg>{error}</ErrorMsg>}
@@ -218,19 +251,25 @@ export default function PagarLicencia({ aliasInicial, onSalir }: Props) {
                   lo que el dueño escribe en cada login, mientras que el
                   BMD-XXXX lo vio una sola vez al contratar. Se acepta SÓLO el
                   alias, a pedido del usuario: dos identificadores para lo mismo
-                  confundían más de lo que ayudaban. */}
+                  confundían más de lo que ayudaban. Sin autocompletar: el
+                  navegador sugeriría el último negocio, que es justo lo que
+                  se quiere evitar. */}
               <Campo label="Negocio" hint="El mismo alias con el que entrás al sistema">
                 <Input
                   value={alias}
-                  onChange={(e) => setAlias(e.target.value)}
+                  onChange={(e) => {
+                    setAlias(e.target.value);
+                    setError("");
+                  }}
                   placeholder="pollosdonomar"
                   autoCapitalize="none"
-                  autoComplete="organization"
+                  autoComplete="off"
                   spellCheck={false}
+                  autoFocus
                 />
               </Campo>
               <Boton type="submit" className="w-full" disabled={generando || !alias.trim()}>
-                {generando ? "Generando…" : "Generar QR"}
+                {generando ? "Buscando…" : "Ver el precio"}
               </Boton>
               <button
                 type="button"
@@ -246,7 +285,21 @@ export default function PagarLicencia({ aliasInicial, onSalir }: Props) {
             <div className="space-y-4">
               <div>
                 <h2 className="text-lg font-bold text-texto">Elegí tu plazo</h2>
-                <p className="mt-0.5 text-[13px] text-texto-3">
+                {/* A quién se le paga, a la vista: el alias se escribió a
+                    mano y un error de tipeo puede ser otro negocio. */}
+                <div className="mt-1 flex flex-wrap items-baseline gap-x-2 text-[13px]">
+                  <span className="min-w-0 break-all text-texto-2">
+                    Negocio: <span className="font-semibold text-texto">{aliasPagando}</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={cambiarNegocio}
+                    className="font-semibold text-primary-700 hover:text-primary"
+                  >
+                    Cambiar
+                  </button>
+                </div>
+                <p className="mt-1 text-[13px] text-texto-3">
                   Pagando más meses de una vez, cada mes te sale menos.
                 </p>
                 {/* De dónde arranca la cobertura. Si todavía no venció, los
@@ -275,7 +328,7 @@ export default function PagarLicencia({ aliasInicial, onSalir }: Props) {
                 className="w-full"
                 disabled={generando || !elegido}
                 onClick={() => {
-                  if (elegido) void generar(alias || aliasInicial || "", elegido);
+                  if (elegido) void generar(aliasPagando, elegido);
                 }}
               >
                 {generando ? "Generando…" : "Generar QR"}
@@ -319,7 +372,7 @@ export default function PagarLicencia({ aliasInicial, onSalir }: Props) {
                     className="w-full"
                     disabled={generando}
                     onClick={() =>
-                      void generar(alias || aliasInicial || "", elegido ?? undefined)
+                      void generar(aliasPagando, elegido ?? undefined)
                     }
                   >
                     {generando ? "Generando…" : "Generar otro QR"}

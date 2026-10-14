@@ -1,8 +1,8 @@
 import { useLayoutEffect, useRef, useState, type CSSProperties, type RefObject } from "react";
-import { preload } from "react-dom";
+import { createPortal, preload } from "react-dom";
 import { urlDeImagen } from "../../lib/pagina/apiPagina";
 import { ICONO_ANUNCIO, ICONO_RESERVAR, iconoDe, mezcla, paleta, type Paleta } from "../../lib/pagina/aspecto";
-import { enlaceWhatsapp, urlConsultaWhatsapp } from "../../lib/pagina/catalogo";
+import { catalogoEnSucursal, enlaceWhatsapp, urlConsultaWhatsapp } from "../../lib/pagina/catalogo";
 import {
   coloresAnuncio,
   estiloBotones,
@@ -15,8 +15,10 @@ import {
 import { estiloPagina, tonosPagina } from "../../lib/pagina/estilosPagina";
 import type { AnuncioPublico, EnlacePublico, ItemCatalogoPublico, PaginaPublica } from "../../lib/pagina/tipos";
 import { urlTelefono } from "../../lib/pagina/vista";
+import { conMensajeDe, contactosWhatsapp, type ContactoWhatsapp } from "../../lib/pagina/whatsapp";
+import EleccionWhatsapp from "./EleccionWhatsapp";
 import ArmadoEstilo, { type PiezasArmado } from "./ArmadosPagina";
-import CatalogoPagina, { type AccionCatalogo, type AspectoCatalogo } from "./CatalogoPagina";
+import CatalogoPagina, { SelectorSucursalCatalogo, type AccionCatalogo, type AspectoCatalogo } from "./CatalogoPagina";
 import { EstadoSucursal, SemanaSucursal } from "./HorarioSucursal";
 import type { AccionPagina, DatosVisor } from "./piezasArmado";
 import { Enlace, PiePagina, TarjetaSucursal, TituloSeccion, Trazo, type AccionSucursal } from "./piezasPagina";
@@ -285,6 +287,13 @@ export interface PropsVista {
    * al pedido en vez de reservar o consultar. Lo pasa la página pública.
    */
   alAgregarAlPedido?: (item: ItemCatalogoPublico) => void;
+  /**
+   * La sucursal elegida en el catálogo («Mis productos» con más de una), si
+   * la maneja quien la usa (la página pública, para que el pedido sepa de
+   * cuál son los precios). Sin esto la vista lleva la suya.
+   */
+  sucursalCatalogo?: number;
+  onSucursalCatalogo?: (indice: number) => void;
 }
 
 export default function VistaPagina({
@@ -296,8 +305,16 @@ export default function VistaPagina({
   modo = "auto",
   miniatura,
   alAgregarAlPedido,
+  sucursalCatalogo,
+  onSucursalCatalogo,
 }: PropsVista) {
   const raiz = useRef<HTMLDivElement>(null);
+  const [sucursalPropia, setSucursalPropia] = useState(0);
+  // Con más de un WhatsApp (sucursales con el suyo), los botones de WhatsApp
+  // preguntan a cuál escribir en vez de ir directo (13-oct).
+  const [eleccion, setEleccion] = useState<ContactoWhatsapp[] | null>(null);
+  const contactos = contactosWhatsapp(p);
+  const variosWhatsapp = contactos.length > 1;
   const escritorio = useEsEscritorio(modo, raiz);
   // El marco del celular del editor achica la portada y el logo; el de la
   // computadora no (es la página a tamaño real, escalada).
@@ -322,7 +339,13 @@ export default function VistaPagina({
   // familia que la página (el bloque oscuro de Mosaico), con la suya.
   const bTarjeta = t.superficieTarjeta ? estiloBotones(p.formaBotones, c, t.superficieTarjeta) : b;
   const letraNombre = letraTitulo(p.tipografia);
-  const clic = (e: EnlacePublico) => () => alClic?.(e);
+  const clic = (e: EnlacePublico) => (ev?: { preventDefault?: () => void }) => {
+    alClic?.(e);
+    if (e.tipo === "WHATSAPP" && variosWhatsapp) {
+      ev?.preventDefault?.();
+      setEleccion(contactos.map((x) => ({ ...x, url: conMensajeDe(e.url, x.url) })));
+    }
+  };
   // Los que van en mayúsculas espaciadas: el botón grande de Noche y de Boutique.
   const mayusculas: CSSProperties =
     estilo.clave === "NOCHE"
@@ -440,6 +463,8 @@ export default function VistaPagina({
     [
       s.mapaUrl && { texto: "Cómo llegar", href: s.mapaUrl, destacado: false },
       s.telefono && { texto: "Llamar", href: urlTelefono(s.telefono), destacado: false },
+      // El WhatsApp propio de la sucursal, si lo tiene (13-oct).
+      s.whatsappUrl && { texto: "WhatsApp", href: s.whatsappUrl, destacado: false },
       // La reserva de ESA sucursal, por su slug (B07): `?sucursal=<id>`
       // no lo leía nadie y exponía el id del almacén.
       p.reservar &&
@@ -461,18 +486,32 @@ export default function VistaPagina({
 
   // El botón del visor del catálogo: reservar si la página reserva; si no,
   // consultar por el WhatsApp del negocio con el ítem en el mensaje.
+  // Con varios WhatsApp, "Consultar" pregunta a cuál (con el ítem en el mensaje).
   const whatsapp = p.reservar ? null : enlaceWhatsapp(p);
+  const consultaA = p.reservar ? null : (contactos[0] ?? null);
   const accionCatalogo: AccionCatalogo | null = alAgregarAlPedido
     ? { texto: "Agregar al pedido", icono: "M12 5v14M5 12h14", href: () => "#", alAgregar: alAgregarAlPedido }
     : p.reservar
     ? { texto: "Reservar", icono: ICONO_RESERVAR, href: () => urlReservar }
-    : whatsapp
+    : consultaA
       ? {
           texto: "Consultar por WhatsApp",
           icono: iconoDe("WHATSAPP", null),
-          href: (it) => urlConsultaWhatsapp(whatsapp.url, it.titulo),
-          alClic: clic(whatsapp),
+          href: (it) => urlConsultaWhatsapp(consultaA.url, it.titulo),
+          alClic: (ev, it) => {
+            if (whatsapp) alClic?.(whatsapp);
+            if (!variosWhatsapp) return;
+            ev.preventDefault();
+            setEleccion(contactos.map((x) => ({ ...x, url: urlConsultaWhatsapp(x.url, it.titulo) })));
+          },
         }
+      : null;
+  const hojaWhatsapp =
+    eleccion && raiz.current
+      ? createPortal(
+          <EleccionWhatsapp opciones={eleccion} color={c.oscuro} familia={t.familia} onCerrar={() => setEleccion(null)} />,
+          raiz.current,
+        )
       : null;
   // El visor es siempre blanco: su botón va con la forma sobre fondo claro
   // (el invertido de Vivo, blanco sobre blanco, no se vería).
@@ -501,9 +540,35 @@ export default function VistaPagina({
           : undefined,
         familia: t.familia,
       };
-  const catalogo = p.catalogo && p.catalogo.items.length > 0 && (
+  // «Mis productos» con más de una sucursal publicada: el visitante elige de
+  // cuál ver precios y disponibilidad (13-oct). La primera es la principal.
+  const nombresSucursal = p.catalogo?.sucursales ?? [];
+  const elegidaCruda = sucursalCatalogo ?? sucursalPropia;
+  const sucursalElegida = elegidaCruda < nombresSucursal.length ? elegidaCruda : 0;
+  const catalogoVisto = p.catalogo ? catalogoEnSucursal(p.catalogo, sucursalElegida) : null;
+  const selectorSucursal =
+    nombresSucursal.length > 1 ? (
+      <SelectorSucursalCatalogo
+        nombres={nombresSucursal}
+        indice={sucursalElegida}
+        onIndice={(i) => {
+          setSucursalPropia(i);
+          onSucursalCatalogo?.(i);
+        }}
+        colores={{
+          texto: t.texto2,
+          textoElegido: t.textoTarjeta,
+          fondoElegido: t.tarjeta,
+          borde: t.borde ?? t.texto3,
+          bordeElegido: t.precio,
+        }}
+      />
+    ) : null;
+  const catalogo = p.catalogo && catalogoVisto && p.catalogo.items.length > 0 && (
     <CatalogoPagina
-      catalogo={p.catalogo}
+      catalogo={catalogoVisto}
+      selector={selectorSucursal}
+      colorVacio={t.texto3}
       c={c}
       escritorio={escritorio}
       enMarco={enCaja}
@@ -525,10 +590,11 @@ export default function VistaPagina({
   );
 
   const visor: DatosVisor | null =
-    p.catalogo && p.catalogo.items.length > 0
+    p.catalogo && catalogoVisto && p.catalogo.items.length > 0
       ? {
-          items: p.catalogo.items,
+          items: catalogoVisto.items,
           titulo: p.catalogo.titulo,
+          selector: selectorSucursal,
           c,
           familia: t.familia,
           escritorio,
@@ -618,7 +684,12 @@ export default function VistaPagina({
       tituloSucursales,
       visor,
     };
-    return <ArmadoEstilo {...piezas} />;
+    return (
+      <>
+        <ArmadoEstilo {...piezas} />
+        {hojaWhatsapp}
+      </>
+    );
   }
 
   // ── Clásico: el armado de siempre, sin tocar un píxel ─────────────────────
@@ -860,6 +931,7 @@ export default function VistaPagina({
           {catalogo && <div style={{ paddingTop: 36 }}>{catalogo}</div>}
         </Principal>
         <div style={{ padding: "24px 32px 40px" }}>{pie}</div>
+        {hojaWhatsapp}
       </div>
     );
   }
@@ -886,6 +958,7 @@ export default function VistaPagina({
           {pie}
         </Principal>
       </div>
+      {hojaWhatsapp}
     </div>
   );
 }

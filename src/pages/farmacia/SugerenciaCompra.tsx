@@ -41,27 +41,34 @@ const VISTAS = [
  * La cuenta la hace el servidor; acá el dueño la lee, ajusta las cantidades
  * que quiera (cero = no se pide) y se lleva el pedido en Excel, por
  * laboratorio si le pide a una droguería por cada uno.
+ *
+ * `embebido`: la pantalla vive dentro de Reportes, que ya dibuja el título,
+ * el botón de volver y la sucursal; ahí usa esa sucursal (dos selectores en la
+ * misma pantalla podían decir cosas distintas). Los días de historia y de
+ * cobertura siguen acá: no es un reporte por período. Sin `embebido` es la
+ * pantalla de siempre.
  */
-export default function SugerenciaCompraPagina() {
+export default function SugerenciaCompraPagina({ embebido }: { embebido?: { sucursalId: number | null } }) {
   const [dias, setDias] = useState<(typeof HISTORIA)[number][0]>("30");
   const [cobertura, setCobertura] = useState<(typeof COBERTURA)[number][0]>("15");
   const [vista, setVista] = useState<(typeof VISTAS)[number][0]>("urgencia");
   const suc = useSucursales();
+  const sucursalId = embebido ? embebido.sucursalId : suc.elegir ? suc.sucursalId : null;
 
   const sugerencia = useApi(
     () =>
       api.sugerenciaCompra({
         dias: Number(dias),
         cobertura: Number(cobertura),
-        sucursalId: suc.elegir ? suc.sucursalId : null,
+        sucursalId,
       }),
-    [dias, cobertura, suc.elegir, suc.sucursalId],
+    [dias, cobertura, sucursalId],
   );
 
   // Lo que el dueño cambió a mano. Con otra cuenta (otros días, otra
   // sucursal) lo ajustado deja de tener sentido: arranca de nuevo.
   const [ajustes, setAjustes] = useState<Map<number, number>>(new Map());
-  useEffect(() => setAjustes(new Map()), [dias, cobertura, suc.sucursalId]);
+  useEffect(() => setAjustes(new Map()), [dias, cobertura, sucursalId]);
 
   const items = useMemo(() => sugerencia.datos?.items ?? [], [sugerencia.datos]);
   const totales = totalesPedido(items, ajustes);
@@ -77,37 +84,48 @@ export default function SugerenciaCompraPagina() {
     });
   }
 
+  const subtitulo = `Qué pedir para que alcance ${etiqueta(COBERTURA, cobertura)}, según lo vendido en los últimos ${dias} días.`;
+  const exportar = (
+    <Boton
+      variante="soft"
+      icono="download"
+      disabled={totales.articulos === 0}
+      onClick={() => bajarCsv(items, ajustes, Number(dias))}
+    >
+      Exportar a Excel
+    </Boton>
+  );
+
   return (
-    <div className="mx-auto max-w-6xl space-y-4 p-4 sm:p-5">
-      <div>
-        <EncabezadoPagina
-          titulo="Sugerencia de compra"
-          subtitulo={`Qué pedir para que alcance ${etiqueta(COBERTURA, cobertura)}, según lo vendido en los últimos ${dias} días.`}
-          volver={{ a: "/reportes", etiqueta: "Reportes" }}
-          accion={
-            <div className="flex gap-2">
-              <Boton
-                variante="soft"
-                icono="download"
-                disabled={totales.articulos === 0}
-                onClick={() => bajarCsv(items, ajustes, Number(dias))}
-              >
-                Exportar a Excel
-              </Boton>
-            </div>
-          }
-        />
-      </div>
+    <div className={embebido ? "space-y-4" : "mx-auto max-w-6xl space-y-4 p-4 sm:p-5"}>
+      {!embebido && (
+        <div>
+          <EncabezadoPagina
+            titulo="Sugerencia de compra"
+            subtitulo={subtitulo}
+            volver={{ a: "/reportes", etiqueta: "Reportes" }}
+            accion={<div className="flex gap-2">{exportar}</div>}
+          />
+        </div>
+      )}
 
 
       <div className="space-y-3 rounded-2xl border border-borde bg-white p-4">
+        {/* Embebida, el período de arriba de Reportes se sigue viendo pero acá
+            no cuenta: sin decirlo, el dueño elegía "Semana" y esperaba otra
+            sugerencia. */}
+        {embebido && (
+          <p className="text-[13px] text-texto-2">
+            <b className="text-texto">Foto de hoy, no usa el período de arriba.</b> {subtitulo}
+          </p>
+        )}
         <Fila titulo="Mirar las ventas de">
           <Chips valor={dias} opciones={HISTORIA} onChange={setDias} />
         </Fila>
         <Fila titulo="Que alcance para">
           <Chips valor={cobertura} opciones={COBERTURA} onChange={setCobertura} />
         </Fila>
-        {suc.elegir && (
+        {!embebido && suc.elegir && (
           <Fila titulo="Sucursal">
             <Chips
               valor={suc.sucursalId == null ? "" : String(suc.sucursalId)}
@@ -116,11 +134,18 @@ export default function SugerenciaCompraPagina() {
             />
           </Fila>
         )}
-        <p className="border-t border-borde-soft pt-3 text-xs text-texto-3">
-          Pedido = lo que se vende en ese tiempo + el stock mínimo + lo que encargaron clientes −
-          lo que hay (lo vencido no cuenta). Podés cambiar cualquier cantidad antes de exportar; 0
-          es no pedirlo.
-        </p>
+        {/* Embebida, el Exportar va acá: Reportes no lo dibuja en su
+            encabezado para este reporte, que baja su propio pedido. */}
+        <div
+          className={`border-t border-borde-soft pt-3 ${embebido ? "flex flex-wrap items-center justify-between gap-3" : ""}`}
+        >
+          <p className={`text-xs text-texto-3 ${embebido ? "min-w-0 flex-1 basis-64" : ""}`}>
+            Pedido = lo que se vende en ese tiempo + el stock mínimo + lo que encargaron clientes −
+            lo que hay (lo vencido no cuenta). Podés cambiar cualquier cantidad antes de exportar; 0
+            es no pedirlo.
+          </p>
+          {embebido && exportar}
+        </div>
       </div>
 
       {sugerencia.cargando && !sugerencia.datos ? (
@@ -147,7 +172,7 @@ export default function SugerenciaCompraPagina() {
               valor={fmtMoney(totales.inversion)}
               pie="Al costo de la última compra"
               icono="dollar"
-              tono="azul"
+              tono="marca"
             />
             <Kpi
               etiqueta="Agotados"

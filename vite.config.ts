@@ -1,6 +1,7 @@
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
+import { VitePWA } from 'vite-plugin-pwa'
 
 export default defineConfig(({ mode }) => {
   // A dónde manda el proxy de desarrollo. Por defecto QA, que es lo que sirve
@@ -14,7 +15,41 @@ export default defineConfig(({ mode }) => {
   const destinoChat = env.CHAT_PROXY || destino
 
   return {
-    plugins: [react(), tailwindcss()],
+    plugins: [
+      react(),
+      tailwindcss(),
+      // La app instalable (PLAN-IOS §8). Sólo el service worker: el manifest
+      // está en public/ y lo pone `lib/pwa/pwa.ts` únicamente en la app (el
+      // mismo index sirve las páginas públicas, que no se instalan), y el
+      // registro también es nuestro para no recargar a mitad de un cobro.
+      //
+      // Para DESHACERLO en los celulares que ya lo tienen no alcanza con
+      // borrar esto: hay que publicar un deploy con `selfDestroying: true`,
+      // que reemplaza el SW por uno que se desinstala y limpia lo guardado.
+      VitePWA({
+        injectRegister: false,
+        manifest: false,
+        registerType: 'autoUpdate',
+        workbox: {
+          // La app entera queda en el celular: abre sin bajarla aunque la red
+          // esté lenta. Cada deploy baja sólo los pedazos que cambiaron.
+          globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2}'],
+          // Los íconos de instalar los baja el celular una vez; no van guardados.
+          globIgnores: ['**/pwa-*', '**/apple-touch-icon*', '**/logo-marca.png'],
+          // El pedazo grande de la app pasa los 2 MB del default de Workbox.
+          maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
+          // Las rutas de la app se abren con el index guardado; las públicas
+          // (/p, /r) siguen yendo a Cloudflare, que les arma la vista previa
+          // para WhatsApp. El API es otro dominio y el SW no lo toca: los
+          // datos van SIEMPRE por internet, nunca de una copia vieja.
+          navigateFallback: 'index.html',
+          navigateFallbackDenylist: [/^\/p\//, /^\/r\//, /^\/api\//, /^\/chat\//],
+          skipWaiting: true,
+          clientsClaim: true,
+          cleanupOutdatedCaches: true,
+        },
+      }),
+    ],
     // Fuerza una sola copia de React (evita "Invalid hook call" cuando una
     // dependencia arrastra su propia instancia).
     resolve: {

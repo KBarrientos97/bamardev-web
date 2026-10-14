@@ -1,11 +1,12 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { DominioPermisos, EventoRol, PermisoCatalogo, PermisoDeRolVista, RolNegocio, SesionUsuario } from "../../types";
+import type { DominioPermisos, PermisoCatalogo, PermisoDeRolVista, RolNegocio, SesionUsuario } from "../../types";
 
 /**
  * La pantalla Roles (PLAN-ROLES-NEGOCIO): lista, crear, renombrar, editar
  * permisos por dominio (con alcance), el Administrador en sólo lectura,
- * borrar con reasignación y la bitácora. El API de roles se programa contra
+ * borrar con reasignación. La bitácora ya no está en la pantalla (decisión
+ * del dueño, 14-oct) pero su componente sigue probado. El API de roles se programa contra
  * el contrato de §8 y acá va mockeado.
  */
 
@@ -32,7 +33,8 @@ vi.mock("../../lib/roles", async (importOriginal) => {
 });
 
 import { ApiError } from "../../lib/api";
-import { apiRoles } from "../../lib/roles";
+import { apiRoles, nombresDelCatalogo } from "../../lib/roles";
+import BitacoraRoles from "./BitacoraRoles";
 import Roles from "./Roles";
 
 const permiso = (codigo: string, nombre: string, extra: Partial<PermisoCatalogo> = {}): PermisoCatalogo => ({
@@ -429,25 +431,12 @@ describe("editar un rol", () => {
     expect(within(editor()).getByText(/agendar o bloquear lo suyo/)).toBeInTheDocument();
   });
 
-  it("muestra el historial del rol", async () => {
-    const evento: EventoRol = {
-      id: 1,
-      fecha: "2026-10-07T15:00:00.000Z",
-      accion: "PERMISOS",
-      rolId: 3,
-      rolNombre: "Cajero",
-      detalle: { agregados: [{ codigo: "ventas.anular", alcance: "GENERAL" }], quitados: [] },
-      autor: { id: 1, nombre: "Omar" },
-      porSoporte: false,
-    };
-    vi.mocked(apiRoles.bitacoraDe).mockResolvedValue([evento]);
+  it("ya no muestra el historial del rol (decisión del dueño, 14-oct)", async () => {
     await montar();
     fireEvent.click(screen.getByRole("button", { name: "Ver el rol Cajero" }));
-    await act(async () => {
-      fireEvent.click(within(editor()).getByRole("button", { name: "Historial de cambios" }));
-    });
-    expect(apiRoles.bitacoraDe).toHaveBeenCalledWith(3);
-    expect(within(editor()).getByText("Agregó: Anular ventas")).toBeInTheDocument();
+    await act(async () => {});
+    expect(within(editor()).queryByRole("button", { name: "Historial de cambios" })).toBeNull();
+    expect(apiRoles.bitacoraDe).not.toHaveBeenCalled();
   });
 });
 
@@ -503,6 +492,12 @@ describe("borrar un rol", () => {
 });
 
 describe("la bitácora", () => {
+  it("la pantalla de Roles ya no tiene la pestaña Bitácora", async () => {
+    await montar();
+    expect(screen.queryByRole("button", { name: "Bitácora" })).toBeNull();
+    expect(apiRoles.bitacora).not.toHaveBeenCalled();
+  });
+
   it("dice quién cambió qué, y lo que hizo el soporte", async () => {
     vi.mocked(apiRoles.bitacora).mockResolvedValue([
       { id: 3, fecha: "2026-10-07T17:00:00.000Z", accion: "PERMISOS", rolId: 3, rolNombre: "Caja", detalle: { agregados: [], quitados: [{ codigo: "gastos.gestionar", alcance: "GENERAL" }], cambiados: [{ codigo: "agenda.ver", de: "GENERAL", a: "PROPIO" }] }, autor: { id: 1, nombre: "Omar" }, porSoporte: false },
@@ -510,8 +505,7 @@ describe("la bitácora", () => {
       { id: 1, fecha: "2026-10-07T15:00:00.000Z", accion: "RESTABLECER", rolId: 3, rolNombre: "Cajero", detalle: { plantillaId: 4, agregados: [{ codigo: "ventas.vender", alcance: "GENERAL" }], quitados: [] }, motivo: "pedido del dueño", autor: null, porSoporte: true },
       { id: 0, fecha: "2026-10-07T14:00:00.000Z", accion: "ELIMINAR", rolId: 8, rolNombre: "Lavaplatos", detalle: { reasignadoA: { id: 7, nombre: "Ayudante" }, usuarios: 1, personal: 0 }, autor: { id: 1, nombre: "Omar" }, porSoporte: false },
     ]);
-    await montar();
-    fireEvent.click(screen.getByRole("button", { name: "Bitácora" }));
+    render(<BitacoraRoles nombres={nombresDelCatalogo(CATALOGO)} />);
     await act(async () => {});
     const lista = screen.getByRole("list", { name: "Bitácora de roles" });
     expect(lista).toHaveTextContent("Omar renombró Caja");
@@ -531,8 +525,7 @@ describe("la bitácora", () => {
       { id: 2, fecha: "2026-10-07T16:00:00.000Z", accion: "PERMISOS", rolId: 9, rolNombre: "Caja simple", detalle: { agregados: [{ codigo: "ventas.anular", alcance: "GENERAL" }], quitados: [] }, autor: { id: 1, nombre: "Diego" }, porSoporte: false, origen: "NEGOCIO" },
       { id: 1, fecha: "2026-10-07T15:00:00.000Z", accion: "CREAR", rolId: 9, rolNombre: "Caja simple", detalle: null, autor: { id: 1, nombre: "Diego" }, porSoporte: false, origen: "NEGOCIO" },
     ]);
-    await montar();
-    fireEvent.click(screen.getByRole("button", { name: "Bitácora" }));
+    render(<BitacoraRoles nombres={nombresDelCatalogo(CATALOGO)} />);
     await act(async () => {});
     const renglones = within(screen.getByRole("list", { name: "Bitácora de roles" })).getAllByRole("listitem");
     expect(renglones[0]).toHaveTextContent("Diego renombró Caja y reportes");
@@ -546,8 +539,7 @@ describe("la bitácora", () => {
       // Backend sin `origen`: sin autor y sin soporte, también es del sistema.
       { id: 1, fecha: "2026-10-07T15:00:00.000Z", accion: "CREAR", rolId: 2, rolNombre: "Encargado", detalle: null, autor: null, porSoporte: false },
     ]);
-    await montar();
-    fireEvent.click(screen.getByRole("button", { name: "Bitácora" }));
+    render(<BitacoraRoles nombres={nombresDelCatalogo(CATALOGO)} />);
     await act(async () => {});
     const lista = screen.getByRole("list", { name: "Bitácora de roles" });
     expect(lista).toHaveTextContent("Sistema creó Administrador");
@@ -560,8 +552,7 @@ describe("la bitácora", () => {
       { id: 2, fecha: "2026-10-07T16:00:00.000Z", accion: "DESCRIPCION", rolId: 3, rolNombre: "Cajero", detalle: { de: null, a: "Cobra en caja" }, autor: { id: 1, nombre: "Omar" }, porSoporte: false, origen: "NEGOCIO" },
       { id: 1, fecha: "2026-10-07T15:00:00.000Z", accion: "RENOMBRAR", rolId: 3, rolNombre: "Cajero", detalle: { descripcion: { de: "Cobra", a: null } }, autor: { id: 1, nombre: "Omar" }, porSoporte: false },
     ]);
-    await montar();
-    fireEvent.click(screen.getByRole("button", { name: "Bitácora" }));
+    render(<BitacoraRoles nombres={nombresDelCatalogo(CATALOGO)} />);
     await act(async () => {});
     const renglones = within(screen.getByRole("list", { name: "Bitácora de roles" })).getAllByRole("listitem");
     expect(renglones[0]).toHaveTextContent("Omar cambió la descripción de Cajero");

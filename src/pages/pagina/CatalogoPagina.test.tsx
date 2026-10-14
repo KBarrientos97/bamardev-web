@@ -50,6 +50,102 @@ afterEach(() => vi.useRealTimers());
 const visor = () => screen.getByRole("dialog");
 
 describe("catálogo de la página pública", () => {
+  it("«Mis productos» con dos sucursales: se elige la sucursal y cambian precios y productos", () => {
+    montar({
+      catalogo: {
+        titulo: "Catálogo",
+        sucursales: ["Norte", "Sur"],
+        items: [
+          {
+            id: 7,
+            titulo: "Pollo entero",
+            descripcion: "Con papas y ensalada",
+            precio: 120,
+            precioDesde: false,
+            fotoUrl: null,
+            icono: null,
+            categoria: "Pollos",
+            enSucursal: [
+              { precio: 120, disponible: true },
+              { precio: 110, disponible: true },
+            ],
+          },
+          {
+            id: 8,
+            titulo: "Soda",
+            descripcion: null,
+            precio: 15,
+            precioDesde: false,
+            fotoUrl: null,
+            icono: null,
+            categoria: null,
+            enSucursal: [
+              { precio: 15, disponible: true },
+              { precio: 15, disponible: false },
+            ],
+          },
+        ],
+      },
+    });
+    const selector = screen.getByRole("radiogroup", { name: "Sucursal" });
+    expect(within(selector).getByRole("radio", { name: "Norte" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByText("Bs 120")).toBeInTheDocument();
+    expect(screen.getByText("Soda")).toBeInTheDocument();
+    // La descripción no va en la tarjeta: ahí, la categoría.
+    expect(screen.queryByText("Con papas y ensalada")).not.toBeInTheDocument();
+
+    fireEvent.click(within(selector).getByRole("radio", { name: "Sur" }));
+    expect(within(selector).getByRole("radio", { name: "Sur" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByText("Bs 110")).toBeInTheDocument();
+    expect(screen.queryByText("Soda")).not.toBeInTheDocument();
+
+    // Al tocarlo, el visor muestra la descripción (las notas del producto).
+    fireEvent.click(tarjeta("Pollo entero"));
+    expect(within(visor()).getByText("Con papas y ensalada")).toBeInTheDocument();
+    expect(within(visor()).getByText("Bs 110")).toBeInTheDocument();
+  });
+
+  it("«Consultar por WhatsApp» con dos números pregunta a cuál, con el ítem en el mensaje", () => {
+    montar({
+      redes: [WHATSAPP],
+      sucursales: [
+        { nombre: "Norte", reservaSlug: null, direccion: null, telefono: null, horario: null, mapaUrl: null, whatsappUrl: "https://wa.me/59170000002" },
+      ],
+    });
+    fireEvent.click(tarjeta("Uñas acrílicas"));
+    fireEvent.click(within(visor()).getByRole("link", { name: "Consultar por WhatsApp" }));
+    const hoja = screen.getByRole("dialog", { name: "¿A qué WhatsApp escribís?" });
+    const norte = within(hoja).getByRole("link", { name: "Norte" }).getAttribute("href")!;
+    expect(norte).toMatch(/^https:\/\/wa\.me\/59170000002\?/);
+    expect(decodeURIComponent(new URL(norte).searchParams.get("text")!)).toBe("Hola, me interesa: Uñas acrílicas");
+    expect(within(hoja).getByRole("link", { name: "General" })).toBeInTheDocument();
+  });
+
+  it("con una sola sucursal no hay selector", () => {
+    montar();
+    expect(screen.queryByRole("radiogroup", { name: "Sucursal" })).not.toBeInTheDocument();
+  });
+
+  it("«Mis productos»: el ícono del producto en vez de la inicial, y la categoría debajo", () => {
+    montar({
+      catalogo: {
+        titulo: "Catálogo",
+        items: [
+          { id: 7, titulo: "Pollo entero", descripcion: null, precio: 120, precioDesde: false, fotoUrl: null, icono: "pollo_entero_brasa", categoria: "Pollos" },
+          { id: 8, titulo: "Soda", descripcion: null, precio: 15, precioDesde: false, fotoUrl: null, icono: "llave-que-no-existe", categoria: null },
+        ],
+      },
+    });
+    const pollo = screen.getByText("Pollo entero").closest("button")!;
+    expect(pollo.querySelector("img")).not.toBeNull();
+    expect(within(pollo).getByText("Pollos")).toBeInTheDocument();
+    expect(within(pollo).getByText("Bs 120")).toBeInTheDocument();
+    // Un ícono que la web no conoce cae a la inicial, como en el POS.
+    const soda = screen.getByText("Soda").closest("button")!;
+    expect(soda.querySelector("img")).toBeNull();
+    expect(soda).toHaveTextContent(/^SSoda/);
+  });
+
   it("muestra la sección con su título, las fotos y los precios formateados", () => {
     montar();
     expect(screen.getByRole("heading", { name: "Nuestros trabajos" })).toBeInTheDocument();

@@ -286,16 +286,20 @@ export function resolverTema(origen: OrigenTema): Tema {
   return (rubro && TEMAS[rubro]) || VERDE;
 }
 
-/** Los rubros de belleza; copia de `rubro.ts` para no atar este archivo a él. */
-const BELLEZA = ['PELUQUERIA', 'BARBERIA', 'SPA', 'UNAS'];
-
 /**
- * Los rubros cuya pantalla entera sigue la paleta, no sólo los botones y la
- * barra: belleza (QA B-24) y el billar, que va en negro de punta a punta. Con
- * el fondo menta y los monogramas verdes de siempre, un billar negro quedaba
- * con media pantalla de restaurante.
+ * ¿La pantalla entera sigue la paleta, no sólo los botones y la barra?
+ *
+ * Primero fueron belleza (QA B-24) y el billar: con el fondo menta y los
+ * monogramas verdes de siempre, un salón Ciruela o un billar negro quedaban
+ * con media pantalla de restaurante. Desde el 12-oct, cualquier negocio cuya
+ * paleta no sea el verde: en las grabaciones de una ferretería naranja las
+ * tarjetas del POS salían en verde (el monograma de las categorías sin color
+ * propio) sobre el fondo menta. Los negocios en verde (restaurante,
+ * minimarket, Omar) quedan exactamente como siempre.
  */
-const PANTALLA_CON_PALETA = [...BELLEZA, 'BILLAR'];
+function pantallaConPaleta(tema: Tema): boolean {
+  return tema.primary.toLowerCase() !== VERDE.primary.toLowerCase();
+}
 
 /**
  * Aplica el tema del negocio reescribiendo las variables CSS en :root.
@@ -306,16 +310,13 @@ const PANTALLA_CON_PALETA = [...BELLEZA, 'BILLAR'];
 export function aplicarTema(origen: OrigenTema): void {
   const tema = resolverTema(origen);
   const raiz = document.documentElement.style;
-  const rubro = typeof origen === 'string' ? origen : origen?.tipoNegocio;
   /*
    * El fondo de la pantalla y el monograma de los artículos sin categoría
-   * siguen la paleta sólo en belleza y en el billar (QA B-24: un salón Ciruela
-   * tenía fondo menta y círculos verdes). Restaurante y farmacia vuelven al
-   * valor de index.css —el de siempre— quitando la variable, así se ven
-   * exactamente como hoy y un cambio de sesión no les deja el color del
-   * negocio anterior.
+   * siguen la paleta salvo en los negocios verdes, que vuelven al valor de
+   * index.css —el de siempre— quitando la variable: se ven exactamente como
+   * hoy y un cambio de sesión no les deja el color del negocio anterior.
    */
-  if (rubro && PANTALLA_CON_PALETA.includes(rubro)) {
+  if (pantallaConPaleta(tema)) {
     raiz.setProperty('--color-fondo', tema.fondo && HEX.test(tema.fondo) ? tema.fondo : tema.primary50);
     raiz.setProperty('--monograma-bg', tema.primary100);
     raiz.setProperty('--monograma-fg', tema.primary700);
@@ -340,4 +341,8 @@ export function aplicarTema(origen: OrigenTema): void {
   // (`bg-marca` en index.css), así que se pasa por sus dos extremos.
   raiz.setProperty('--marca-de', tema.marca[0]);
   raiz.setProperty('--marca-a', tema.marca[1]);
+  // La barra del navegador en el celular (la de la hora y la batería): el
+  // `theme-color` de index.html es el verde; sin esto una ferretería tenía la
+  // pantalla naranja con la franja de arriba verde.
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', tema.marca[0]);
 }

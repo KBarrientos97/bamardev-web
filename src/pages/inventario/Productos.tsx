@@ -5,7 +5,7 @@ import { contiene } from "../../lib/texto";
 import { Icon } from "../../components/Icon";
 import HistorialCostos from "../../components/HistorialCostos";
 import IconoProducto from "../../components/IconoProducto";
-import { Buscador, Chips, EncabezadoPagina } from "../../components/filtros";
+import { Buscador, Chips, EncabezadoPagina, FilaFiltros } from "../../components/filtros";
 import {
   AvisoOk,
   Badge,
@@ -401,17 +401,19 @@ export default function Productos() {
             }
           />
         </div>
-        {suc.elegir && (
-          <Chips valor={suc.valorChip} opciones={suc.opciones} onChange={suc.alElegir} />
-        )}
-        <Chips valor={filtroStock} opciones={OPC_STOCK} onChange={setFiltroStock} />
-        {/* Producto / Elaborado / Combo no existe en una farmacia: no hay nada
-            que se prepare al vender, así que el chip filtraba una sola opción
-            contra sí misma. Y en modo servidor sólo podría filtrar la tanda que
-            está en pantalla, que es peor que no estar. */}
-        {!esFarmacia(rubro) && (
-          <Chips valor={filtroTipo} opciones={opcionesTipo} onChange={setFiltroTipo} />
-        )}
+        <FilaFiltros>
+          {suc.elegir && (
+            <Chips titulo="Sucursal" valor={suc.valorChip} opciones={suc.opciones} onChange={suc.alElegir} />
+          )}
+          <Chips titulo="Estado" valor={filtroStock} opciones={OPC_STOCK} onChange={setFiltroStock} />
+          {/* Producto / Elaborado / Combo no existe en una farmacia: no hay nada
+              que se prepare al vender, así que el chip filtraba una sola opción
+              contra sí misma. Y en modo servidor sólo podría filtrar la tanda que
+              está en pantalla, que es peor que no estar. */}
+          {!esFarmacia(rubro) && (
+            <Chips titulo="Tipo" valor={filtroTipo} opciones={opcionesTipo} onChange={setFiltroTipo} />
+          )}
+        </FilaFiltros>
       </div>
 
       <ErrorMsg>{errorAccion || errorCarga}</ErrorMsg>

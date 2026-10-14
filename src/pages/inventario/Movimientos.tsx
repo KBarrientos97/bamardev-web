@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { parsearMonto } from "../../lib/dinero";
 import { contiene } from "../../lib/texto";
 import { Icon } from "../../components/Icon";
-import { Buscador, Chips, EncabezadoPagina } from "../../components/filtros";
+import { Buscador, Chips, EncabezadoPagina, FilaFiltros } from "../../components/filtros";
 import {
   Badge,
   Boton,
@@ -201,7 +201,7 @@ export default function Movimientos() {
           />
           <button
             onClick={() => setFecha(fecha ? "" : isoDia(new Date()))}
-            className="rounded-xl border border-borde bg-white px-3 py-2 text-[13px] font-semibold text-texto-2 hover:bg-muted"
+            className="shrink-0 whitespace-nowrap rounded-xl border border-borde bg-white px-3 py-2 text-[13px] font-semibold text-texto-2 hover:bg-muted"
           >
             {fecha ? "Ver todo" : "Sólo hoy"}
           </button>
@@ -210,12 +210,14 @@ export default function Movimientos() {
             {fecha ? "" : " en total"}
           </span>
         </div>
-        {suc.elegir && (
-          <Chips valor={suc.valorChip} opciones={suc.opciones} onChange={suc.alElegir} />
-        )}
-        <Chips valor={filtroTipo} opciones={opcionesTipo} onChange={setFiltroTipo} />
-        <Chips valor={filtroEstado} opciones={opcionesEstado} onChange={setFiltroEstado} />
-        <Chips valor={filtroOrigen} opciones={OPC_ORIGEN} onChange={setFiltroOrigen} />
+        <FilaFiltros>
+          {suc.elegir && (
+            <Chips titulo="Sucursal" valor={suc.valorChip} opciones={suc.opciones} onChange={suc.alElegir} />
+          )}
+          <Chips titulo="Tipo" valor={filtroTipo} opciones={opcionesTipo} onChange={setFiltroTipo} />
+          <Chips titulo="Estado" valor={filtroEstado} opciones={opcionesEstado} onChange={setFiltroEstado} />
+          <Chips titulo="Origen" valor={filtroOrigen} opciones={OPC_ORIGEN} onChange={setFiltroOrigen} />
+        </FilaFiltros>
       </div>
 
       <ErrorMsg>{errorAccion || movimientos.error}</ErrorMsg>
@@ -301,7 +303,7 @@ function TarjetaMovimiento({ mov: m, onClick }: { mov: Movimiento; onClick: () =
               {m.comprobante ?? `#${m.id}`}
             </span>
             <Badge tono={TONO_ESTADO[m.estado]}>{m.estado}</Badge>
-            {m.origen && <Badge tono="azul">{m.origen}</Badge>}
+            {m.origen && <Badge tono="marca">{m.origen}</Badge>}
           </div>
           {m.descripcion && (
             <p className="mt-0.5 line-clamp-1 text-[13px] text-texto-3">{m.descripcion}</p>

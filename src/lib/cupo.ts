@@ -10,9 +10,9 @@ import { fechaNegocio } from "./agenda/horaAgenda";
  * antes—; esto existe para no mandar una venta que ya se sabe que va a rebotar
  * y para avisar antes de que pase.
  *
- * La misma cuenta la hace Android. La web no tiene cola offline, así que sus
- * ventas pendientes de sincronizar (`P` en el plan) son siempre 0; el
- * parámetro queda para que la fórmula se lea igual en los dos clientes.
+ * La misma cuenta la hace Android. En la web, las ventas pendientes de
+ * sincronizar (`P` en el plan) sólo existen en la app instalada del iPhone
+ * (cola offline, PLAN-IOS F3); en el navegador común son siempre 0.
  */
 
 /**
@@ -97,12 +97,20 @@ export function palabraUnidad(unidad: UnidadCupo, n: number): string {
  * "Citas hoy 12/25 · Créditos 240" en la agenda. Sin límite para esa unidad
  * sólo queda el saldo: un "12/∞" no le dice nada a nadie.
  */
-export function textoChip(cupo: CupoEstado, unidad: UnidadCupo, hoy?: string): { contador: string | null; creditos: string } {
-  const p = proyectar(cupo, unidad, { hoy });
+export function textoChip(
+  cupo: CupoEstado,
+  unidad: UnidadCupo,
+  hoy?: string,
+  pendientes = 0,
+): { contador: string | null; creditos: string } {
+  const p = proyectar(cupo, unidad, { hoy, pendientes });
   const prefijo = unidad === "VENTA" ? "Hoy" : "Citas hoy";
+  // Con ventas cobradas sin internet (app del iPhone), el contador y el saldo
+  // ya las descuentan, como el de Android: lo que se ve es lo que va a quedar.
+  const usadas = p.limite == null ? p.usadas : Math.min(p.usadas + (unidad === "VENTA" ? pendientes : 0), p.limite);
   return {
-    contador: p.limite == null ? null : `${prefijo} ${p.usadas}/${p.limite}`,
-    creditos: `Créditos ${fmtCreditos(cupo.creditos.saldo)}`,
+    contador: p.limite == null ? null : `${prefijo} ${usadas}/${p.limite}`,
+    creditos: `Créditos ${fmtCreditos(pendientes > 0 ? p.saldo : cupo.creditos.saldo)}`,
   };
 }
 

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { EncabezadoPagina } from "../../components/filtros";
 import { Icon } from "../../components/Icon";
 import {
@@ -7,7 +8,6 @@ import {
   Cargando,
   ErrorMsg,
   Input,
-  Kpi,
   Modal,
   Select,
   useAviso,
@@ -15,7 +15,7 @@ import {
 } from "../../components/ui";
 import { apiExtras, type InsumoElegible, type RecetaServicio } from "../../lib/belleza/apiExtras";
 import { parsearMontoO } from "../../lib/dinero";
-import { fmtMoney, fmtNum } from "../../lib/format";
+import { fmtMoney } from "../../lib/format";
 import { fmtCantidad } from "../../lib/belleza/formato";
 import { useApi } from "../../lib/useApi";
 
@@ -24,46 +24,32 @@ const mensaje = (e: unknown) => (e instanceof Error ? e.message : "No se pudo gu
 /** Un costo que puede no venir (sin `costos.ver`, QA S2SEG-04). */
 const dinero = (n: number | null | undefined) => (n == null ? "—" : fmtMoney(n));
 
-type Pestana = "recetas" | "margen";
 
 /**
  * Insumos por servicio (feature `consumo_servicio`): qué gasta cada servicio
- * ("Tinte raíz": 60 g de tinte + 90 ml de oxidante) y cuánto cuesta y deja.
+ * ("Tinte raíz": 60 g de tinte + 90 ml de oxidante) y cuánto cuesta. Cuánto
+ * deja cada uno se ve en Reportes → Costo y margen por servicio.
  *
  * Al cobrar el servicio, la venta descuenta la receta del almacén de la
  * sucursal; lo realmente usado se corrige desde la cita.
  */
 export default function RecetasServicio() {
-  const [pestana, setPestana] = useState<Pestana>("recetas");
   return (
     <div className="mx-auto max-w-4xl space-y-4 p-4 sm:p-5">
       <EncabezadoPagina
         titulo="Insumos por servicio"
         subtitulo="Lo que gasta cada servicio se descuenta del stock al cobrarlo, y su costo entra a la rentabilidad."
       />
-      <div className="flex gap-1.5" role="tablist" aria-label="Vista">
-        {(
-          [
-            ["recetas", "Recetas"],
-            ["margen", "Costo y margen"],
-          ] as [Pestana, string][]
-        ).map(([valor, texto]) => (
-          <button
-            key={valor}
-            role="tab"
-            aria-selected={pestana === valor}
-            onClick={() => setPestana(valor)}
-            className={`rounded-xl border px-3 py-1.5 text-[13px] font-semibold transition-colors ${
-              pestana === valor
-                ? "border-primary bg-primary-50 text-primary-700"
-                : "border-borde bg-white text-texto-2 hover:bg-muted"
-            }`}
-          >
-            {texto}
-          </button>
-        ))}
-      </div>
-      {pestana === "recetas" ? <Recetas /> : <Margen />}
+      {/* El costo y margen era una pestaña de acá; desde el 13-oct-2026 es un
+          reporte más, en Reportes (todos los reportes en un solo lugar). */}
+      <Link
+        to="/reportes/margen-servicios"
+        className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-primary-700 hover:underline"
+      >
+        <Icon name="chart" size={15} />
+        Ver el costo y margen de cada servicio en Reportes
+      </Link>
+      <Recetas />
     </div>
   );
 }
@@ -265,75 +251,3 @@ export function EditarReceta({
   );
 }
 
-function Margen() {
-  const [desde, setDesde] = useState("");
-  const [hasta, setHasta] = useState("");
-  const rep = useApi(
-    () => apiExtras.rentabilidadServicios({ desde: desde || undefined, hasta: hasta || undefined }),
-    [desde, hasta],
-  );
-  const d = rep.datos;
-  return (
-    <div className="space-y-3">
-      <div className="flex flex-wrap gap-3">
-        <div className="w-40">
-          <Input aria-label="Desde" type="date" value={desde} onChange={(e) => setDesde(e.target.value)} />
-        </div>
-        <div className="w-40">
-          <Input aria-label="Hasta" type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} />
-        </div>
-      </div>
-      {rep.cargando && !d ? (
-        <Cargando />
-      ) : rep.error ? (
-        <ErrorMsg onReintentar={rep.recargar}>{rep.error}</ErrorMsg>
-      ) : !d || !d.servicios.length ? (
-        <div className="card">
-          <Vacio icono="chart" titulo="Sin servicios cobrados en estos días" />
-        </div>
-      ) : (
-        <>
-          <div className="grid gap-3 sm:grid-cols-3">
-            <Kpi etiqueta="Ingreso por servicios" valor={fmtMoney(d.ingreso)} icono="dollar" />
-            <Kpi etiqueta="Costo de insumos" valor={dinero(d.costoInsumos)} icono="sack" tono="amarillo" />
-            <Kpi etiqueta="Margen" valor={dinero(d.margen)} icono="trendingUp" />
-          </div>
-          <div className="card overflow-x-auto">
-            <table className="w-full text-[13px]">
-              <thead className="text-left text-[11px] uppercase tracking-wide text-texto-4">
-                <tr>
-                  <th className="p-3">Servicio</th>
-                  <th className="p-3 text-right">Cobrados</th>
-                  <th className="p-3 text-right">Ingreso</th>
-                  <th className="p-3 text-right">Insumos</th>
-                  <th className="p-3 text-right">Margen</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-borde-soft">
-                {d.servicios.map((s) => (
-                  <tr key={s.servicioId}>
-                    <td className="p-3 font-semibold text-texto">{s.servicio}</td>
-                    <td className="p-3 text-right text-texto-2">{fmtNum(s.cantidad)}</td>
-                    <td className="p-3 text-right text-texto-2">{fmtMoney(s.ingreso)}</td>
-                    <td className="p-3 text-right text-texto-2">
-                      {dinero(s.costoInsumos)}
-                      {s.costoPorServicio != null && (
-                        <span className="block text-[11px] text-texto-4">{fmtMoney(s.costoPorServicio)} c/u</span>
-                      )}
-                    </td>
-                    <td className="p-3 text-right font-semibold text-texto">
-                      {dinero(s.margen)}
-                      <span className="block text-[11px] font-normal text-texto-4">
-                        {s.margenPct == null ? "—" : `${Math.round(s.margenPct)}%`}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </>
-      )}
-    </div>
-  );
-}

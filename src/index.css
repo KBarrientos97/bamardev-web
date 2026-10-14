@@ -96,6 +96,51 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/*
+ * Al tocar, como una app y no como una página (PLAN-IOS): sin el sombreado
+ * gris de WebKit, sin la demora del doble toque para zoom y sin la vista
+ * previa que abre mantener apretado un botón o un enlace. La respuesta al
+ * toque la da cada botón (ver `Boton`).
+ */
+html {
+  -webkit-tap-highlight-color: transparent;
+}
+button,
+a,
+[role="button"] {
+  touch-action: manipulation;
+  -webkit-touch-callout: none;
+}
+button {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Instalada, la app no rebota entera en los bordes: scrollea lo de adentro. */
+@media (display-mode: standalone) {
+  html,
+  body {
+    overscroll-behavior: none;
+  }
+}
+
+/* Las entradas del celular, con la curva de iOS (ver lib/gestos.ts). */
+@keyframes hoja-sube {
+  from {
+    transform: translateY(100%);
+  }
+}
+@keyframes cajon-entra {
+  from {
+    transform: translateX(-100%);
+  }
+}
+@keyframes velo-aparece {
+  from {
+    opacity: 0;
+  }
+}
+
 /* Scrollbar discreta: en el POS hay varias columnas que scrollean a la vez. */
 * {
   scrollbar-width: thin;

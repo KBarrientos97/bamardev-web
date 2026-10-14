@@ -55,6 +55,7 @@ vi.mock("../../lib/agenda/apiAgenda", async (importOriginal) => {
       recursos: vi.fn(),
       servicios: vi.fn(),
       agregarACola: vi.fn(),
+      reglas: vi.fn(),
     },
   };
 });
@@ -100,6 +101,8 @@ beforeEach(() => {
   sesion.rol = "CAJERO";
   sesion.cupo = undefined;
   vi.mocked(apiAgenda.recursos).mockResolvedValue([carla, sofia, ana, cabina]);
+  // Estas pruebas son de recepción con personal: el modo completo.
+  vi.mocked(apiAgenda.reglas).mockResolvedValue({ granularidadMin: 15, bufferGeneralMin: 0, modoAgenda: "COMPLETO" });
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(new Date("2026-10-21T13:00:00.000Z"));
   vi.mocked(apiAgenda.hoy).mockResolvedValue({
@@ -304,5 +307,32 @@ describe("Plan Emprendedor: el chip de citas en Hoy", () => {
     sesion.cupo = cupoEmprendedor({ fecha: "2026-10-21", citas: 12, saldo: 240 });
     await montar();
     expect(screen.getByRole("button", { name: /Créditos 240/ })).toHaveTextContent("Citas hoy 12/25 · Créditos 240");
+  });
+});
+
+describe("A3 · Hoy en modo simple (IDEAS/7)", () => {
+  it("cada tarjeta ofrece Cobrar con el monto y No vino; sin contadores ni «Por confirmar»", async () => {
+    vi.mocked(apiAgenda.reglas).mockResolvedValue({ granularidadMin: 15, bufferGeneralMin: 0, modoAgenda: "SIMPLE" });
+    vi.setSystemTime(new Date("2026-10-21T14:20:00.000Z"));
+    sesion.conPos = true;
+    await montar();
+    const rosa = tarjeta("Rosa Mamani");
+    expect(within(rosa).getByRole("button", { name: "Cobrar Bs 80,00" })).toBeEnabled();
+    expect(within(rosa).getByRole("button", { name: "No vino" })).toBeInTheDocument();
+    expect(within(rosa).queryByRole("button", { name: "Llegó" })).not.toBeInTheDocument();
+    // Valeria (RESERVADA, más tarde): Cobrar, sin Confirmar.
+    expect(within(tarjeta("Valeria Arce")).queryByRole("button", { name: "Confirmar" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Llegaron", { selector: "dt" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Por confirmar/ })).not.toBeInTheDocument();
+
+    fireEvent.click(within(rosa).getByRole("button", { name: "Cobrar Bs 80,00" }));
+    expect(screen.getByTestId("ubicacion")).toHaveTextContent("/pos?cita=1");
+  });
+
+  it("modo completo: Cobrar también antes de Por cobrar, al costado del paso del momento", async () => {
+    sesion.conPos = true;
+    await montar();
+    expect(within(tarjeta("Rosa Mamani")).getByRole("button", { name: "Llegó" })).toBeInTheDocument();
+    expect(within(tarjeta("Rosa Mamani")).getByRole("button", { name: "Cobrar" })).toBeInTheDocument();
   });
 });

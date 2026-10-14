@@ -11,6 +11,7 @@ import {
   MOTIVOS_SIN_CARGO,
   pideMotivo,
   seLeAvisa,
+  sePuedeCobrar,
   sePuedeMover,
 } from "../../lib/agenda/estadosCita";
 import { capitalizar, fechaLarga, fechaNegocio, horaNegocio } from "../../lib/agenda/horaAgenda";
@@ -56,12 +57,19 @@ export default function DetalleCita({
   cita: inicial,
   modo = "recepcion",
   sucursal,
+  simple = false,
   onClose,
   onCambio,
 }: {
   cita: Cita;
   modo?: "recepcion" | "profesional";
   sucursal?: string | null;
+  /**
+   * Modo simple de la agenda (IDEAS/7-AGENDA-SIMPLE): abajo sólo "Cobrar" y
+   * "No vino"; reprogramar y cancelar quedan como enlaces chicos. Sin los
+   * pasos Confirmar/Llegó/Atender/Finalizar.
+   */
+  simple?: boolean;
   onClose: () => void;
   /** Después de una acción: la lista de atrás se pone al día con esto. */
   onCambio: (cita: Cita) => void;
@@ -135,19 +143,28 @@ export default function DetalleCita({
   // La hora también decide (QA M-08): "No vino" recién desde el inicio, y
   // "Llegó"/"Atender" sólo el día de la cita.
   const ahora = Date.now();
+  const conPasos = !simple || profesional;
   const acciones = accionesPara(cita.estado, {
     profesional,
     ahora,
     inicio: cita.inicio,
     sinCargo: puedeSinCargo,
-  });
-  const rapidas = accionesRapidas(cita, { profesional, ahora }).filter(
+  }).filter((a) => conPasos || !PASOS_DE_RECEPCION.includes(a));
+  const rapidas = accionesRapidas(cita, { profesional, ahora, simple: !conPasos }).filter(
     (r) => r.accion === "COBRAR" || acciones.includes(r.accion),
   );
   const principal = rapidas.find((r) => r.principal);
-  const secundarias = acciones.filter((a) => a !== principal?.accion && a !== "CANCELAR");
+  const secundarias = acciones.filter(
+    (a) => a !== principal?.accion && a !== "CANCELAR" && (conPasos || a !== "NO_ASISTIO"),
+  );
   const puedeMover = !profesional && sePuedeMover(cita.estado);
   const puedeCancelar = acciones.includes("CANCELAR");
+  // "Cobrar" de costado (modo completo, antes de POR_COBRAR): para el que se
+  // atiende y paga sin que nadie marque los pasos. Sin caja no se muestra.
+  const cobrarDeCostado =
+    conPasos && !profesional && !!cobrar && principal?.accion !== "COBRAR" && sePuedeCobrar(cita, ahora);
+  // Modo simple: "No vino" va grande, debajo de Cobrar (salvo que ya sea el principal).
+  const noVinoGrande = !conPasos && principal?.accion !== "NO_ASISTIO" && acciones.includes("NO_ASISTIO");
 
   const fecha = cita.inicio ? fechaNegocio(cita.inicio) : null;
   const recordatorio = textoRecordatorio(cita, { negocio: negocio?.nombre, sucursal });
@@ -196,7 +213,7 @@ export default function DetalleCita({
                 </p>
               </div>
               {cita.cliente.nuevo ? (
-                <span className="rounded-lg bg-info-bg px-2 py-0.5 text-[11px] font-bold uppercase text-info-text">Nuevo</span>
+                <span className="rounded-lg bg-primary-100 px-2 py-0.5 text-[11px] font-bold uppercase text-primary-700">Nuevo</span>
               ) : (
                 <span className="rounded-lg bg-primary-50 px-2 py-0.5 text-[11px] font-bold uppercase text-primary-700">Recurrente</span>
               )}
@@ -342,33 +359,69 @@ export default function DetalleCita({
               {ETIQUETA_ACCION[principal.accion as AccionCita]}
             </Boton>
           ) : null}
-          {secundarias.length > 0 && (
-            <div className="flex flex-wrap gap-2">
-              {secundarias.map((a) => (
-                <Boton key={a} variante="ghost" onClick={() => pedir(a)} disabled={ocupado} className="flex-1">
-                  {ETIQUETA_ACCION[a]}
-                </Boton>
-              ))}
-            </div>
+          {noVinoGrande && (
+            <Boton variante="ghost" onClick={() => pedir("NO_ASISTIO")} disabled={ocupado} className="w-full py-3 text-base">
+              No vino
+            </Boton>
           )}
-          {(puedeMover || puedeCancelar) && (
-            <div className="flex gap-2">
-              {puedeMover && (
-                <Boton variante="ghost" onClick={() => setMoviendo(true)} disabled={ocupado} className="flex-1">
-                  Mover
-                </Boton>
+          {conPasos ? (
+            <>
+              {(secundarias.length > 0 || cobrarDeCostado) && (
+                <div className="flex flex-wrap gap-2">
+                  {secundarias.map((a) => (
+                    <Boton key={a} variante="ghost" onClick={() => pedir(a)} disabled={ocupado} className="flex-1">
+                      {ETIQUETA_ACCION[a]}
+                    </Boton>
+                  ))}
+                  {cobrarDeCostado && (
+                    <Boton variante="ghost" onClick={() => cobrar?.(cita.id)} className="flex-1">
+                      Cobrar {fmtMoney(cita.total)}
+                    </Boton>
+                  )}
+                </div>
               )}
-              {puedeCancelar && (
-                <button
-                  type="button"
-                  onClick={() => pedir("CANCELAR")}
-                  disabled={ocupado}
-                  className="flex-1 rounded-xl border border-borde bg-white px-4 py-2.5 text-sm font-semibold text-danger-text hover:bg-muted disabled:opacity-50"
-                >
-                  Cancelar cita
-                </button>
+              {(puedeMover || puedeCancelar) && (
+                <div className="flex gap-2">
+                  {puedeMover && (
+                    <Boton variante="ghost" onClick={() => setMoviendo(true)} disabled={ocupado} className="flex-1">
+                      Mover
+                    </Boton>
+                  )}
+                  {puedeCancelar && (
+                    <button
+                      type="button"
+                      onClick={() => pedir("CANCELAR")}
+                      disabled={ocupado}
+                      className="flex-1 rounded-xl border border-borde bg-white px-4 py-2.5 text-sm font-semibold text-danger-text hover:bg-muted disabled:opacity-50"
+                    >
+                      Cancelar cita
+                    </button>
+                  )}
+                </div>
               )}
-            </div>
+            </>
+          ) : (
+            // Lo que no es del día a día del que trabaja solo, chico y abajo:
+            // sigue a mano sin competir con Cobrar.
+            (secundarias.length > 0 || puedeMover || puedeCancelar) && (
+              <div className="flex flex-wrap justify-center gap-x-5 gap-y-1 pt-1">
+                {puedeMover && (
+                  <BotonEnlace onClick={() => setMoviendo(true)} disabled={ocupado}>
+                    Reprogramar
+                  </BotonEnlace>
+                )}
+                {secundarias.map((a) => (
+                  <BotonEnlace key={a} onClick={() => pedir(a)} disabled={ocupado}>
+                    {ETIQUETA_ACCION[a]}
+                  </BotonEnlace>
+                ))}
+                {puedeCancelar && (
+                  <BotonEnlace onClick={() => pedir("CANCELAR")} disabled={ocupado} peligro>
+                    Cancelar cita
+                  </BotonEnlace>
+                )}
+              </div>
+            )
           )}
         </footer>
       </aside>
@@ -434,6 +487,34 @@ export default function DetalleCita({
         />
       )}
     </div>
+  );
+}
+
+/** Las acciones de recepción que el modo simple no muestra (nace confirmada y se cobra). */
+const PASOS_DE_RECEPCION: AccionCita[] = ["CONFIRMAR", "LLEGO", "ATENDER", "FINALIZAR"];
+
+function BotonEnlace({
+  onClick,
+  disabled,
+  peligro = false,
+  children,
+}: {
+  onClick: () => void;
+  disabled?: boolean;
+  peligro?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={`min-h-11 px-1 text-[13px] font-semibold underline-offset-2 hover:underline disabled:opacity-50 ${
+        peligro ? "text-danger-text" : "text-texto-2"
+      }`}
+    >
+      {children}
+    </button>
   );
 }
 

@@ -133,6 +133,11 @@ export interface SucursalPublica {
    * backend anterior no lo manda; ausente = null (sin cartel).
    */
   horarioSemanal?: Tramo[] | null;
+  /**
+   * El WhatsApp propio de la sucursal (`https://wa.me/<n>`), o null si usa el
+   * general. Opcional: un backend anterior no lo manda.
+   */
+  whatsappUrl?: string | null;
 }
 
 /**
@@ -159,11 +164,36 @@ export interface ItemCatalogoPublico {
   precioDesde: boolean;
   /** Ruta relativa al API o URL absoluta: pasa por `urlDeImagen`. */
   fotoUrl: string | null;
+  /**
+   * Sólo en "Mis productos": la llave del ícono del artículo (la misma del
+   * POS), que la web resuelve a su imagen. Sin foto subida, es lo que se ve.
+   */
+  icono?: string | null;
+  /** Sólo en "Mis productos": la categoría del producto, si tiene. */
+  categoria?: string | null;
+  /**
+   * Sólo en "Mis productos" con más de una sucursal publicada: el precio y si
+   * se ofrece en cada una, en el orden de `CatalogoPublico.sucursales`.
+   */
+  enSucursal?: EnSucursal[];
+}
+
+/** Cómo sale un producto en una sucursal. */
+export interface EnSucursal {
+  precio: number | null;
+  disponible: boolean;
 }
 
 export interface CatalogoPublico {
   titulo: string;
   items: ItemCatalogoPublico[];
+  /**
+   * "Mis productos" con más de una sucursal publicada: sus nombres, para que
+   * el visitante elija de cuál ver los precios (la principal primero).
+   */
+  sucursales?: string[];
+  /** Con `sucursales`: el WhatsApp de cada una (null = el general), en el mismo orden. */
+  whatsapps?: (string | null)[];
 }
 
 /** `GET /publico/pagina/:subdominio`. */
@@ -235,6 +265,8 @@ export interface SucursalEditor {
   mapsUrl: string | null;
   /** El horario por día; opcional por lo mismo que en `SucursalPublica` (ausente = null). */
   horarioSemanal?: Tramo[] | null;
+  /** El WhatsApp propio (sólo dígitos, con 591), o null = usa el general. */
+  whatsapp?: string | null;
   /** Si recibe reservas online y con qué nombre en el enlace (para la vista previa). */
   publicaReservas?: boolean;
   slugReservas?: string | null;
@@ -261,6 +293,11 @@ export interface AjustesPagina {
   mostrarReservar: boolean;
   /** El título de la sección del catálogo; null = "Catálogo". Opcional como `catalogo`. */
   catalogoTitulo?: string | null;
+  /**
+   * De dónde sale el catálogo: armado a mano o los productos del sistema
+   * (13-oct). Uno u otro. Opcional: un backend anterior no lo manda (= MANUAL).
+   */
+  catalogoModo?: ModoCatalogo;
   /** "Pedí por WhatsApp" (IDEAS/6 #1). Opcional: un backend anterior no lo manda. */
   pedidosWhatsapp?: boolean;
   /** Gift cards desde la página (IDEAS/6 #6). Opcional por lo mismo. */
@@ -307,6 +344,34 @@ export interface ItemCatalogoEditor {
   fotoUrl: string | null;
 }
 
+/** Los dos modos del catálogo de la página, excluyentes. */
+export type ModoCatalogo = "MANUAL" | "PRODUCTOS";
+
+/** Un producto del sistema como lo ofrece el selector (`GET /pagina/catalogo/productos`). */
+export interface ProductoParaPagina {
+  /** El id del producto: es lo que se manda al fijar. */
+  id: number;
+  nombre: string;
+  /** El precio de lista; null si es 0 (no se muestra "Bs 0"). */
+  precio: number | null;
+  icono: string | null;
+  categoria: string | null;
+}
+
+/** Un producto fijado en la página (`GET /pagina` y `PUT /pagina/catalogo/productos`). */
+export interface ProductoFijado extends ProductoParaPagina {
+  orden: number;
+  /** false = fijado pero hoy no sale (inactivo o dado de baja); vuelve si lo reactivan. */
+  vendible: boolean;
+  /** Lo que la página muestra al tocarlo. Opcional: un backend anterior no lo manda. */
+  descripcion?: string | null;
+  /**
+   * Las excepciones de cada sucursal (precio propio, null = el de lista; y si
+   * se ofrece ahí). Con esto la vista previa arma lo mismo que la página.
+   */
+  porSucursal?: { almacenId: number; precio: number | null; disponible: boolean }[];
+}
+
 /** Alta (`POST /pagina/catalogo`) y, parcial, edición (`PATCH /pagina/catalogo/:id`). */
 export interface ItemCatalogoInput {
   titulo: string;
@@ -339,6 +404,12 @@ export interface EstadoEditor {
   catalogo?: ItemCatalogoEditor[];
   /** Cuántos ítems admite el catálogo (60). */
   topeCatalogo?: number;
+  /** "Mis productos": los fijados, en orden. Opcionales por lo mismo que `catalogo`. */
+  productosCatalogo?: ProductoFijado[];
+  /** Cuántos productos a la venta tiene el negocio: con 0, el modo no se ofrece. */
+  productosVendibles?: number;
+  /** Cuántos productos se pueden fijar (60). */
+  topeProductos?: number;
 }
 
 export type CambiosPagina = Partial<
@@ -359,6 +430,7 @@ export type CambiosPagina = Partial<
     | "enlaceDestacadoId"
     | "mostrarReservar"
     | "catalogoTitulo"
+    | "catalogoModo"
     | "pedidosWhatsapp"
   >
 > & {

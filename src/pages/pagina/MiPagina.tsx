@@ -33,15 +33,18 @@ import type {
   FormatoEnlace,
   FormaBotones,
   ItemCatalogoEditor,
+  ProductoFijado,
   SucursalEditor,
   TipoEnlace,
   Tipografia,
   Tramo,
 } from "../../lib/pagina/tipos";
 import { vistaDesdeEditor } from "../../lib/pagina/vista";
+import { numeroParaEditar } from "../../lib/pagina/whatsapp";
 import { useApi } from "../../lib/useApi";
 import CartelQR from "./CartelQR";
 import CatalogoEditor from "./CatalogoEditor";
+import CatalogoProductosEditor, { SelectorModoCatalogo } from "./CatalogoProductosEditor";
 import EditorPedidosRegalos from "./EditorPedidosRegalos";
 import { useAuthOpcional } from "../../store/AuthContext";
 import { tieneFeature } from "../../lib/permisos";
@@ -151,13 +154,14 @@ function Imagen({
 }
 
 /** Lo que el dueño escribió en una sucursal y todavía no se guardó. */
-type BorradorSucursal = { horarioTexto: string; mapsUrl: string; horarioSemanal: Tramo[] | null };
+type BorradorSucursal = { horarioTexto: string; mapsUrl: string; horarioSemanal: Tramo[] | null; whatsapp: string };
 
 /** Lo guardado de una sucursal, como borrador (para comparar y para seguir editando). */
 const borradorDe = (s: SucursalEditor): BorradorSucursal => ({
   horarioTexto: s.horarioTexto ?? "",
   mapsUrl: s.mapsUrl ?? "",
   horarioSemanal: s.horarioSemanal ?? null,
+  whatsapp: numeroParaEditar(s.whatsapp),
 });
 
 /**
@@ -251,6 +255,17 @@ function FilaSucursal({
               value={actual.mapsUrl}
               onChange={(e) => onCambio({ ...actual, mapsUrl: e.target.value })}
               placeholder="https://maps.app.goo.gl/…"
+            />
+          </Campo>
+          {/* 13-oct: opcional. Con dos o más números distintos, la página pregunta a cuál escribir. */}
+          <Campo label="WhatsApp de esta sucursal (opcional)" hint="Vacío: usa el WhatsApp de tu página.">
+            <Input
+              aria-label={`WhatsApp de ${s.nombre}`}
+              value={actual.whatsapp}
+              onChange={(e) => onCambio({ ...actual, whatsapp: e.target.value })}
+              inputMode="tel"
+              placeholder="70123456"
+              maxLength={40}
             />
           </Campo>
         </div>
@@ -526,12 +541,15 @@ export default function MiPagina() {
     horarioTexto: b.horarioTexto.trim() || null,
     mapsUrl: b.mapsUrl.trim() || null,
     horarioSemanal: b.horarioSemanal,
+    whatsapp: b.whatsapp.trim() || null,
   });
   // Lo que se manda de una sucursal: el horario por día sólo si cambió (un
   // backend anterior no lo conoce, y mandarlo igual no aporta nada).
   const cuerpoSucursal = (s: SucursalEditor | undefined, b: BorradorSucursal) => {
-    const { horarioSemanal, ...resto } = limpio(b);
-    return mismoHorario(horarioSemanal, s?.horarioSemanal) ? resto : { ...resto, horarioSemanal };
+    const { horarioSemanal, whatsapp, ...resto } = limpio(b);
+    // El WhatsApp, igual: sólo si cambió (13-oct).
+    const conWhatsapp = (whatsapp ?? "") === numeroParaEditar(s?.whatsapp) ? resto : { ...resto, whatsapp };
+    return mismoHorario(horarioSemanal, s?.horarioSemanal) ? conWhatsapp : { ...conWhatsapp, horarioSemanal };
   };
   // La vista previa muestra el horario y el mapa que se están escribiendo.
   const sucursalesEditadas = e.sucursales.map((s) =>
@@ -576,13 +594,39 @@ export default function MiPagina() {
     ultimo.current = nuevo;
     carga.setDatos(nuevo);
   };
+  const actualizarProductos = (lista: ProductoFijado[]) => {
+    const d = ultimo.current;
+    if (!d) return;
+    const nuevo = { ...d, productosCatalogo: lista };
+    ultimo.current = nuevo;
+    carga.setDatos(nuevo);
+  };
   // Un estado que vuelve de guardar la página o de ordenar los enlaces trae
   // el catálogo; si un backend anterior no lo manda, queda el que había.
   const conCatalogo = (nuevo: EstadoEditor): EstadoEditor => ({
     ...nuevo,
     catalogo: nuevo.catalogo ?? e.catalogo,
     topeCatalogo: nuevo.topeCatalogo ?? e.topeCatalogo,
+    productosCatalogo: nuevo.productosCatalogo ?? e.productosCatalogo,
+    productosVendibles: nuevo.productosVendibles ?? e.productosVendibles,
+    topeProductos: nuevo.topeProductos ?? e.topeProductos,
   });
+
+  // El catálogo es uno u otro (13-oct): armado a mano o "Mis productos". El
+  // modo va al borrador, como el título, y se guarda con "Guardar cambios".
+  // Sin productos a la venta ni siquiera se pregunta (salvo que ya estuviera
+  // en "Mis productos", para poder volver).
+  const modoCatalogo = ajustes.catalogoModo ?? "MANUAL";
+  const hayProductos = (e.productosVendibles ?? 0) > 0;
+  const selectorModo =
+    hayProductos || modoCatalogo === "PRODUCTOS" ? (
+      <SelectorModoCatalogo
+        modo={modoCatalogo}
+        onModo={(m) => cambiarLimpio({ catalogoModo: m })}
+        hayProductos={hayProductos}
+        c={c}
+      />
+    ) : null;
 
   const cambiarSucursal = (s: SucursalEditor, b: BorradorSucursal) =>
     setBorradorSucursales((todos) => {
@@ -591,6 +635,7 @@ export default function MiPagina() {
       if (
         b.horarioTexto === guardado.horarioTexto &&
         b.mapsUrl === guardado.mapsUrl &&
+        b.whatsapp.trim() === guardado.whatsapp &&
         mismoHorario(b.horarioSemanal, guardado.horarioSemanal)
       )
         delete resto[s.id];
@@ -937,16 +982,30 @@ export default function MiPagina() {
             />
           </Seccion>
 
-          <CatalogoEditor
-            items={e.catalogo ?? []}
-            tope={e.topeCatalogo ?? TOPE_CATALOGO}
-            titulo={ajustes.catalogoTitulo ?? ""}
-            // Vacío vuelve a "Catálogo": el backend lo guarda como null.
-            onTitulo={(t) => cambiar({ catalogoTitulo: t.trim() ? t : null })}
-            onItems={actualizarCatalogo}
-            c={c}
-            onAviso={setAviso}
-          />
+          {modoCatalogo === "PRODUCTOS" ? (
+            <CatalogoProductosEditor
+              fijados={e.productosCatalogo ?? []}
+              tope={e.topeProductos ?? TOPE_CATALOGO}
+              titulo={ajustes.catalogoTitulo ?? ""}
+              onTitulo={(t) => cambiar({ catalogoTitulo: t.trim() ? t : null })}
+              onFijados={actualizarProductos}
+              selector={selectorModo}
+              c={c}
+              onAviso={setAviso}
+            />
+          ) : (
+            <CatalogoEditor
+              items={e.catalogo ?? []}
+              tope={e.topeCatalogo ?? TOPE_CATALOGO}
+              titulo={ajustes.catalogoTitulo ?? ""}
+              // Vacío vuelve a "Catálogo": el backend lo guarda como null.
+              onTitulo={(t) => cambiar({ catalogoTitulo: t.trim() ? t : null })}
+              onItems={actualizarCatalogo}
+              selector={selectorModo}
+              c={c}
+              onAviso={setAviso}
+            />
+          )}
 
           <EditorPedidosRegalos
             guardado={e.pagina.regalos}

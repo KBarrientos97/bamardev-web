@@ -8,7 +8,7 @@ import {
 } from "react-router-dom";
 import AtajaErrores from "./components/AtajaErrores";
 import Layout from "./components/Layout";
-import { RUTA_AGENDA_PRONTO, rutaInicial, veSoloSuAgenda, type Seccion } from "./lib/permisos";
+import { RUTA_AGENDA_PRONTO, rutaInicial, veReportes, veSoloSuAgenda, type Seccion } from "./lib/permisos";
 import { esBelleza, esFarmacia } from "./lib/rubro";
 import AgendaPronto from "./pages/AgendaPronto";
 import Creditos from "./pages/Creditos";
@@ -16,7 +16,6 @@ import Gastos from "./pages/Gastos";
 import GastosFijos from "./pages/GastosFijos";
 import Login from "./pages/Login";
 import PagarLicencia from "./pages/PagarLicencia";
-import Reportes from "./pages/Reportes";
 import Usuarios from "./pages/Usuarios";
 import Roles from "./pages/roles/Roles";
 import Personal from "./pages/Personal";
@@ -26,7 +25,6 @@ import Clientes from "./pages/agenda/Clientes";
 import MiAgenda from "./pages/agenda/MiAgenda";
 import Solicitudes from "./pages/agenda/Solicitudes";
 import Comisiones from "./pages/agenda/comisiones/Comisiones";
-import ReportesAgenda from "./pages/agenda/ReportesAgenda";
 import Almacenes from "./pages/inventario/Almacenes";
 import Categorias from "./pages/inventario/Categorias";
 import Dashboard from "./pages/inventario/Dashboard";
@@ -45,8 +43,6 @@ import ImportarMedicamentos from "./pages/farmacia/ImportarMedicamentos";
 import MovimientosFarmacia from "./pages/farmacia/MovimientosFarmacia";
 import Vencimientos from "./pages/farmacia/Vencimientos";
 import LibroControlados from "./pages/farmacia/LibroControlados";
-import SugerenciaCompra from "./pages/farmacia/SugerenciaCompra";
-import Mermas from "./pages/farmacia/Mermas";
 import Proveedores from "./pages/farmacia/Proveedores";
 import VentaFarmaciaProvider from "./pages/farmacia/VentaFarmaciaProvider";
 import Repartidor from "./pages/repartidor/Repartidor";
@@ -75,6 +71,19 @@ const RecetasServicio = lazy(() => import("./pages/belleza/RecetasServicio"));
 const RutasBillar = lazy(() => import("./pages/billar/RutasBillar"));
 const PantallaSalonBillar = lazy(() => import("./pages/billar/PantallaSalon"));
 const MesasBillar = lazy(() => import("./pages/billar/admin/MesasBillar"));
+// Reportes: veintipico de pantallas con sus gráficos; se bajan al entrar.
+const Reportes = lazy(() => import("./pages/reportes/Reportes"));
+
+/**
+ * Reportes es la única pantalla de reportes (13-oct-2026) y entra quien ve al
+ * menos uno (`veReportes`): también la recepción, que tiene los de la agenda
+ * sin el permiso general. Adentro, cada reporte pide lo suyo.
+ */
+function ProtegidaReportes({ children }: { children: React.ReactNode }) {
+  const { puede } = useAuth();
+  if (!veReportes(puede)) return <Inicio />;
+  return <>{children}</>;
+}
 
 /** Manda a cada quien a su pantalla, según sus permisos (ver `rutaInicial`). */
 function Inicio() {
@@ -214,17 +223,11 @@ function LayoutSegunRubro() {
 
 /**
  * Pago de la licencia estando la sesión abierta (durante la gracia, antes del
- * bloqueo). Es la misma pantalla que se ve deslogueado; sólo cambia de dónde
- * sale el código de activación y a dónde vuelve al salir.
+ * bloqueo). Es la misma pantalla que se ve deslogueado, con el alias escrito a
+ * mano también acá (no se toma el de la sesión); sólo cambia a dónde vuelve.
  */
 function PagarConSesion() {
-  const { negocio } = useAuth();
-  return (
-    <PagarLicencia
-      aliasInicial={negocio?.alias ?? null}
-      onSalir={() => window.history.back()}
-    />
-  );
+  return <PagarLicencia onSalir={() => window.history.back()} />;
 }
 
 function Rutas() {
@@ -352,11 +355,13 @@ function Rutas() {
             </Protegida>
           }
         />
+        {/* Los reportes de la agenda viven en Reportes, en su grupo: la
+            dirección de antes (un favorito, un link viejo) lleva ahí. */}
         <Route
           path="/reportes-agenda"
           element={
             <Protegida seccion="reportes_agenda">
-              <ReportesAgenda />
+              <Navigate to="/reportes/profesionales" replace />
             </Protegida>
           }
         />
@@ -585,30 +590,17 @@ function Rutas() {
             </Protegida>
           }
         />
+        {/* Reportes (rediseño de oct-2026): una pantalla con su menú y cada
+            reporte en su dirección (`/reportes/top-productos`). La sugerencia
+            de compra y las mermas de la farmacia viven adentro, en su grupo. */}
         <Route
-          path="/reportes"
+          path="/reportes/*"
           element={
-            <Protegida seccion="reportes">
-              <Reportes />
-            </Protegida>
-          }
-        />
-        {/* Farmacia: un reporte con pantalla propia (se edita y se imprime el
-            pedido). Se entra desde su tarjeta en Reportes. */}
-        <Route
-          path="/reportes/sugerencia-compra"
-          element={
-            <Protegida seccion="reportes">
-              <SugerenciaCompra />
-            </Protegida>
-          }
-        />
-        <Route
-          path="/reportes/mermas"
-          element={
-            <Protegida seccion="reportes">
-              <Mermas />
-            </Protegida>
+            <ProtegidaReportes>
+              <Suspense fallback={null}>
+                <Reportes />
+              </Suspense>
+            </ProtegidaReportes>
           }
         />
         <Route

@@ -319,3 +319,43 @@ describe("Plan Emprendedor: cancelar devuelve la cita del día (D19)", () => {
     expect(sesion.refrescarCupo).not.toHaveBeenCalled();
   });
 });
+
+describe("modo simple (IDEAS/7): Cobrar y No vino, lo demás chico", () => {
+  async function abrirSimple(c: Cita) {
+    vi.mocked(apiAgenda.cita).mockResolvedValue({ ...c, eventos: EVENTOS });
+    render(
+      <MemoryRouter>
+        <DetalleCita cita={c} simple sucursal="Centro" onClose={vi.fn()} onCambio={vi.fn()} />
+        <Ubicacion />
+      </MemoryRouter>,
+    );
+    await act(async () => {});
+  }
+
+  it.each<EstadoCita>(["RESERVADA", "CONFIRMADA", "EN_ESPERA", "EN_ATENCION", "POR_COBRAR"])(
+    "%s se cobra desde el detalle y abre el POS",
+    async (estado) => {
+      sesion.conPos = true;
+      await abrirSimple(cita({ id: 7, estado }));
+      const hay = botones();
+      for (const b of ["Confirmar", "Llegó", "Atender", "Finalizar"]) expect(hay, b).not.toContain(b);
+      fireEvent.click(screen.getByRole("button", { name: "Cobrar Bs 80,00" }));
+      expect(screen.getByTestId("ubicacion")).toHaveTextContent("/pos?cita=7");
+    },
+  );
+
+  it("una reservada ofrece No vino grande y Reprogramar y Cancelar como enlaces", async () => {
+    sesion.conPos = true;
+    await abrirSimple(cita({ estado: "RESERVADA" }));
+    expect(botones()).toEqual(expect.arrayContaining(["Cobrar Bs 80,00", "No vino", "Reprogramar", "Cancelar cita"]));
+    expect(botones()).not.toContain("Mover");
+  });
+
+  it("el modo completo también ofrece cobrar antes de Por cobrar (con caja)", async () => {
+    sesion.conPos = true;
+    await abrir(cita({ id: 7, estado: "EN_ATENCION" }));
+    expect(botones()).toEqual(expect.arrayContaining(["Finalizar", "Cobrar Bs 80,00"]));
+    fireEvent.click(screen.getByRole("button", { name: "Cobrar Bs 80,00" }));
+    expect(screen.getByTestId("ubicacion")).toHaveTextContent("/pos?cita=7");
+  });
+});

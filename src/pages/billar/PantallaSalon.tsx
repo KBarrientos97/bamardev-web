@@ -42,7 +42,13 @@ export default function PantallaSalon() {
         <div>
           <h1 className="text-2xl font-extrabold uppercase tracking-wide sm:text-3xl">{negocio?.nombre ?? "Billar"}</h1>
           <p className="text-base font-semibold text-emerald-300 sm:text-lg">
-            {libres === 0 ? "Todas las mesas ocupadas" : `${libres} ${libres === 1 ? "mesa libre" : "mesas libres"} · pedila en caja`}
+            {/* Sin tablero todavía (cargando, o falló) no hay mesas: "Todas
+                las mesas ocupadas" se leía en la tele mientras cargaba. */}
+            {!e.cargado || vistas.length === 0
+              ? " "
+              : libres === 0
+                ? "Todas las mesas ocupadas"
+                : `${libres} ${libres === 1 ? "mesa libre" : "mesas libres"} · pedila en caja`}
           </p>
         </div>
         <div className="flex items-center gap-4">

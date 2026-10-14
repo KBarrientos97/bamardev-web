@@ -34,6 +34,8 @@ export interface DatosVisor {
   accion: AccionCatalogo | null;
   estiloBoton: CSSProperties;
   colorIconoBoton: string;
+  /** El selector de sucursal de «Mis productos», si hay más de una. */
+  selector?: ReactNode;
 }
 
 export interface PiezasArmado {

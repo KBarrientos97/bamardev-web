@@ -115,7 +115,7 @@ export default function TabServicios({
                   <span className="font-semibold text-texto">{s.nombre}</span>
                   {!s.activo && <Badge>Inactivo</Badge>}
                   {s.activo && !s.duracionMin && <Badge tono="amarillo">Sin duración</Badge>}
-                  {s.reservableOnline && <Badge tono="azul">Online</Badge>}
+                  {s.reservableOnline && <Badge tono="marca">Online</Badge>}
                   {s.requiereEspacioTipoId != null && <Badge tono="verde">Con espacio</Badge>}
                   {s.poseInicioMin != null && <Badge tono="verde">Con pose</Badge>}
                 </div>

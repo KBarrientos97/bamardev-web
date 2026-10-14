@@ -3,7 +3,6 @@ import { Icon } from "../../components/Icon";
 import { Boton, Campo, ErrorMsg, Input, Modal } from "../../components/ui";
 import { apiRoles, mensajeDeError, nombresDelCatalogo } from "../../lib/roles";
 import type { Alcance, DominioPermisos, PermisoCatalogo, RolNegocio } from "../../types";
-import BitacoraRoles from "./BitacoraRoles";
 
 /**
  * Crear, renombrar y editar los permisos de un rol. El Administrador se abre
@@ -44,7 +43,6 @@ export default function EditorRol({
   const [elegidos, setElegidos] = useState<Map<string, Alcance>>(inicial);
   const [error, setError] = useState("");
   const [guardando, setGuardando] = useState(false);
-  const [verBitacora, setVerBitacora] = useState(false);
   const nombres = useMemo(() => nombresDelCatalogo(catalogo), [catalogo]);
   const fueraDelPlan = useMemo(() => noIncluidos(rol, catalogo), [rol, catalogo]);
 
@@ -144,7 +142,7 @@ export default function EditorRol({
     >
       <div className="space-y-4">
         {soloLectura && (
-          <p className="flex items-start gap-2 rounded-xl bg-purple-50 px-3.5 py-2.5 text-[13px] text-purple-800">
+          <p className="flex items-start gap-2 rounded-xl bg-primary-50 px-3.5 py-2.5 text-[13px] text-primary-700">
             <Icon name="lock" size={16} className="mt-0.5 shrink-0" />
             El Administrador es el rol del dueño: tiene siempre todos los permisos que incluye el plan, y el
             negocio no puede quedarse sin nadie que lo tenga. Lo de quien hace el trabajo (repartir, cobrar sus
@@ -183,24 +181,6 @@ export default function EditorRol({
           </div>
         )}
 
-        {rol && (
-          <div className="border-t border-borde-soft pt-3">
-            <button
-              type="button"
-              onClick={() => setVerBitacora((v) => !v)}
-              className="flex items-center gap-1.5 text-[13px] font-semibold text-texto-2"
-              aria-expanded={verBitacora}
-            >
-              <Icon name={verBitacora ? "chevronDown" : "chevronRight"} size={15} />
-              Historial de cambios
-            </button>
-            {verBitacora && (
-              <div className="mt-2">
-                <BitacoraRoles rolId={rol.id} compacta nombres={nombres} />
-              </div>
-            )}
-          </div>
-        )}
       </div>
     </Modal>
   );

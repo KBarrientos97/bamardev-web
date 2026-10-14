@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { ApiError } from "../api";
 import { cita, servicio } from "../../test/agendaFixtures";
 import { clienteDelConflicto, esperaDelConflicto, huecosDelConflicto, mensajeSinEspacio } from "./apiAgenda";
-import { accionesPara, accionesRapidas, esTerminal, vaEnGrilla } from "./estadosCita";
+import { accionesPara, accionesRapidas, esTerminal, sePuedeCobrar, vaEnGrilla } from "./estadosCita";
 import {
   aMinutos,
   deMinutos,
@@ -69,14 +69,49 @@ describe("acciones según el estado de la cita (§6)", () => {
   it("los botones rápidos siguen el momento de la cita", () => {
     const de = (estado: EstadoCita, extra = {}) =>
       accionesRapidas(cita({ estado, ...extra })).map((r) => `${r.accion}${r.principal ? "*" : ""}`);
-    expect(de("RESERVADA")).toEqual(["CONFIRMAR*", "LLEGO"]);
-    expect(de("CONFIRMADA")).toEqual(["LLEGO*", "NO_ASISTIO"]);
-    expect(de("EN_ESPERA")).toEqual(["ATENDER*"]);
-    expect(de("EN_ATENCION")).toEqual(["FINALIZAR*"]);
-    // Cobrar se ve, pero es la siguiente entrega: la tarjeta lo dibuja apagado.
+    // "Cobrar" también desde antes de POR_COBRAR (IDEAS/7 §6), al final: el
+    // paso del momento sigue primero en el modo completo.
+    expect(de("RESERVADA")).toEqual(["CONFIRMAR*", "LLEGO", "COBRAR"]);
+    expect(de("CONFIRMADA")).toEqual(["LLEGO*", "NO_ASISTIO", "COBRAR"]);
+    expect(de("EN_ESPERA")).toEqual(["ATENDER*", "COBRAR"]);
+    expect(de("EN_ATENCION")).toEqual(["FINALIZAR*", "COBRAR"]);
     expect(de("POR_COBRAR")).toEqual(["COBRAR*"]);
     // El sistema sugiere el no-show, no lo marca: va primero, con "Llegó" al lado.
     expect(de("CONFIRMADA", { noShowSugerido: true })).toEqual(["NO_ASISTIO*", "LLEGO"]);
+  });
+
+  it("el profesional no cobra: ni en POR_COBRAR ni antes", () => {
+    const de = (estado: EstadoCita) =>
+      accionesRapidas(cita({ estado }), { profesional: true }).map((r) => r.accion);
+    expect(de("RESERVADA")).not.toContain("COBRAR");
+    expect(de("EN_ATENCION")).not.toContain("COBRAR");
+    expect(de("POR_COBRAR")).toEqual([]);
+  });
+
+  it("modo simple: sólo Cobrar y No vino, sin los pasos de recepción", () => {
+    // 11:00 de La Paz del día de la cita (empieza 10:00): "No vino" ya vale.
+    const ahora = Date.parse("2026-10-21T15:00:00.000Z");
+    const de = (estado: EstadoCita, extra = {}) =>
+      accionesRapidas(cita({ estado, ...extra }), { simple: true, ahora }).map(
+        (r) => `${r.accion}${r.principal ? "*" : ""}`,
+      );
+    expect(de("RESERVADA")).toEqual(["COBRAR*", "NO_ASISTIO"]);
+    expect(de("CONFIRMADA")).toEqual(["COBRAR*", "NO_ASISTIO"]);
+    expect(de("EN_ESPERA")).toEqual(["COBRAR*"]);
+    expect(de("EN_ATENCION")).toEqual(["COBRAR*"]);
+    expect(de("POR_COBRAR")).toEqual(["COBRAR*"]);
+    expect(de("CONFIRMADA", { noShowSugerido: true })).toEqual(["NO_ASISTIO*", "COBRAR"]);
+    expect(de("COMPLETADA")).toEqual([]);
+    expect(de("NO_ASISTIO")).toEqual([]);
+  });
+
+  it("no se cobra una cita de un día que todavía no llegó", () => {
+    const hoy = Date.parse("2026-10-20T15:00:00.000Z");
+    expect(sePuedeCobrar(cita({ estado: "RESERVADA" }), hoy)).toBe(false);
+    expect(sePuedeCobrar(cita({ estado: "RESERVADA" }), Date.parse("2026-10-21T13:00:00.000Z"))).toBe(true);
+    expect(sePuedeCobrar(cita({ estado: "SOLICITADA" }))).toBe(false);
+    expect(sePuedeCobrar(cita({ estado: "CANCELADA" }))).toBe(false);
+    expect(accionesRapidas(cita({ estado: "RESERVADA" }), { simple: true, ahora: hoy })).toEqual([]);
   });
 
   it("lo que liberó el hueco no se dibuja en la grilla", () => {

@@ -2,6 +2,8 @@ import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { formatoPrecio, urlWhatsappConTexto } from "../../lib/pagina/catalogo";
 import { cantidadTotal, mensajePedido, totalPedido, type DatosPedido } from "../../lib/pagina/pedido";
 import type { Pedido } from "../../lib/pagina/usePedido";
+import type { ContactoWhatsapp } from "../../lib/pagina/whatsapp";
+import { ElegirDestino } from "./EleccionWhatsapp";
 
 /**
  * El pedido de la página (IDEAS/6 #1): el botón flotante muestra cuánto
@@ -23,16 +25,23 @@ const boton = (color: string): CSSProperties => ({
 export default function PedidoPagina({
   negocio,
   color,
-  whatsappUrl,
+  destinos,
   pedido,
+  sucursal,
 }: {
   negocio: string;
   color: string;
-  /** El WhatsApp de la página (sin él, no hay carrito). */
-  whatsappUrl: string;
+  /**
+   * A qué WhatsApp puede ir el pedido (sin ninguno, no hay carrito). Con uno,
+   * directo; con varios (sucursales con su número, 13-oct), el cliente elige.
+   */
+  destinos: ContactoWhatsapp[];
   pedido: Pedido;
+  /** La sucursal elegida en el catálogo, si hay más de una: de ella son los precios. */
+  sucursal?: string | null;
 }) {
   const [abierto, setAbierto] = useState(false);
+  const [destinoElegido, setDestino] = useState<string | null>(null);
   const [datos, setDatos] = useState<DatosPedido>({ nombre: "", entrega: "RETIRO", direccion: "", nota: "" });
   const burbuja = useRef<HTMLButtonElement>(null);
   const { lineas } = pedido;
@@ -51,8 +60,15 @@ export default function PedidoPagina({
   if (!cantidad && !abierto) return null;
 
   const totalTexto = total > 0 ? `${formatoPrecio(total)}${aConfirmar ? " +" : ""}` : "a confirmar";
-  const url = urlWhatsappConTexto(whatsappUrl, mensajePedido(negocio, lineas, datos));
+  // Se recuerda por URL: con otra sucursal elegida en el catálogo cambia la
+  // lista, y una elección vieja no apunta a otro número.
+  const destino = destinos.length === 1 ? destinos[0] : (destinos.find((d) => d.url === destinoElegido) ?? null);
+  // La sucursal del mensaje: la elegida en el catálogo o, si se eligió a qué
+  // WhatsApp mandarlo, ésa (el general no es una sucursal).
+  const sucursalMensaje = sucursal ?? (destinos.length > 1 && destino && destino.etiqueta !== "General" ? destino.etiqueta : null);
+  const url = destino ? urlWhatsappConTexto(destino.url, mensajePedido(negocio, lineas, datos, sucursalMensaje)) : undefined;
   const faltaDireccion = datos.entrega === "DELIVERY" && datos.direccion.trim().length < 5;
+  const bloqueado = !lineas.length || faltaDireccion || !destino;
 
   if (!abierto) {
     return (
@@ -178,19 +194,27 @@ export default function PedidoPagina({
         <input aria-label="Tu nombre" placeholder="Tu nombre (opcional)" value={datos.nombre} maxLength={60} onChange={(e) => setDatos({ ...datos, nombre: e.target.value })} style={campo} />
         <input aria-label="Nota para el negocio" placeholder="Nota (sin cebolla, extra crema…)" value={datos.nota} maxLength={200} onChange={(e) => setDatos({ ...datos, nota: e.target.value })} style={campo} />
 
+        {destinos.length > 1 && (
+          <ElegirDestino
+            opciones={destinos}
+            elegido={destino ? destinos.indexOf(destino) : null}
+            onElegir={(i) => setDestino(destinos[i].url)}
+            color={color}
+          />
+        )}
         <a
-          href={lineas.length && !faltaDireccion ? url : undefined}
+          href={bloqueado ? undefined : url}
           target="_blank"
           rel="noopener noreferrer"
-          aria-disabled={!lineas.length || faltaDireccion}
+          aria-disabled={bloqueado}
           onClick={(e) => {
-            if (!lineas.length || faltaDireccion) e.preventDefault();
+            if (bloqueado) e.preventDefault();
           }}
           style={{
-            ...boton("#16A34A"),
+            ...boton(color),
             textAlign: "center",
             textDecoration: "none",
-            opacity: !lineas.length || faltaDireccion ? 0.5 : 1,
+            opacity: bloqueado ? 0.5 : 1,
           }}
         >
           Enviar pedido por WhatsApp

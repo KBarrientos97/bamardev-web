@@ -3,7 +3,7 @@ import { contiene } from "../../lib/texto";
 import HistorialCostos from "../../components/HistorialCostos";
 import { parsearMonto } from "../../lib/dinero";
 import { Icon } from "../../components/Icon";
-import { Buscador, Chips, EncabezadoPagina } from "../../components/filtros";
+import { Buscador, Chips, EncabezadoPagina, FilaFiltros } from "../../components/filtros";
 import {
   Badge,
   Boton,
@@ -134,10 +134,12 @@ export default function Insumos() {
             placeholder="Buscar por nombre, código o proveedor"
           />
         </div>
-        {suc.elegir && (
-          <Chips valor={suc.valorChip} opciones={suc.opciones} onChange={suc.alElegir} />
-        )}
-        <Chips valor={filtroStock} opciones={OPC_STOCK} onChange={setFiltroStock} />
+        <FilaFiltros>
+          {suc.elegir && (
+            <Chips titulo="Sucursal" valor={suc.valorChip} opciones={suc.opciones} onChange={suc.alElegir} />
+          )}
+          <Chips titulo="Stock" valor={filtroStock} opciones={OPC_STOCK} onChange={setFiltroStock} />
+        </FilaFiltros>
       </div>
 
       <ErrorMsg>{errorAccion || insumos.error}</ErrorMsg>
@@ -571,7 +573,7 @@ function FormInsumoCuerpo({
           </Campo>
         </div>
 
-        <div className="flex items-start gap-2 rounded-xl bg-info-bg px-3.5 py-2.5 text-[13px] text-info-text">
+        <div className="flex items-start gap-2 rounded-xl bg-primary-50 px-3.5 py-2.5 text-[13px] text-primary-700">
           <Icon name="info" size={17} />
           <span>
             El insumo nace sin stock: la existencia entra por movimientos de entrada, no

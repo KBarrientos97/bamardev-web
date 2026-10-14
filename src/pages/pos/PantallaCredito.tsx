@@ -7,6 +7,8 @@ import { aCentavos, esPositivo, excede, parsearMontoO } from "../../lib/dinero";
 import { fmtMoney, isoDia } from "../../lib/format";
 import { tienePermiso } from "../../lib/permisos";
 import { useApi } from "../../lib/useApi";
+import { conCopia } from "../../lib/offline/copias";
+import { formaPagoFaltante } from "../../lib/formaPagoFaltante";
 import { useAuth } from "../../store/AuthContext";
 import type { ClienteCredito, CreditoInput, FormaPago, PagoInput } from "../../types";
 
@@ -50,7 +52,9 @@ export default function PantallaCredito({
 }) {
   // Los clientes que ya fiaron antes: reusarlos evita duplicar la ficha y
   // deja ver de una si el cliente ya arrastra deuda.
-  const clientes = useApi(() => api.getClientesCredito(), []);
+  // En la app del iPhone guarda copia: sin señal se puede fiar igual a un
+  // cliente que ya estaba (Android: `clientes_credito`).
+  const clientes = useApi(() => conCopia("clientes_credito", () => api.getClientesCredito()), []);
 
   const [clienteId, setClienteId] = useState("");
   const [nombre, setNombre] = useState("");
@@ -121,14 +125,14 @@ export default function PantallaCredito({
     if (metodo === "EFECTIVO" || metodo === "MIXTO") {
       if (esPositivo(adelantoNum)) {
         if (!formaEfectivo)
-          return setErrorLocal("El negocio no tiene cargada la forma de pago Efectivo.");
+          return setErrorLocal(formaPagoFaltante(formasPago, "Efectivo"));
         pagos.push({ formaPagoId: formaEfectivo.id, monto: adelantoNum, recibido: adelantoNum });
       }
     }
     if (metodo === "QR" || metodo === "MIXTO") {
       const montoQr = metodo === "QR" ? adelantoNum : adelantoQrNum;
       if (esPositivo(montoQr)) {
-        if (!formaQr) return setErrorLocal("El negocio no tiene cargada la forma de pago QR.");
+        if (!formaQr) return setErrorLocal(formaPagoFaltante(formasPago, "QR"));
         if (!qrConfirmado)
           return setErrorLocal("Confirmá que el pago por QR llegó antes de registrar el fiado.");
         // En QR puro el adelanto entero es el QR; en mixto sólo su parte.

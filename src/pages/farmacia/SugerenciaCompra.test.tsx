@@ -152,3 +152,24 @@ describe("la sugerencia", () => {
     expect(screen.getByRole("button", { name: /Exportar a Excel/ })).toBeDisabled();
   });
 });
+
+describe("dentro de Reportes", () => {
+  it("usa la sucursal de Reportes, avisa que el período de arriba no cuenta y conserva sus días y su Excel", async () => {
+    render(
+      <MemoryRouter>
+        <SugerenciaCompraPagina embebido={{ sucursalId: 7 }} />
+      </MemoryRouter>,
+    );
+    await act(async () => {});
+    expect(api.sugerenciaCompra).toHaveBeenLastCalledWith({ dias: 30, cobertura: 15, sucursalId: 7 });
+    // El período de Reportes se sigue viendo arriba: sin el aviso, el dueño
+    // elegía "Semana" y esperaba otra sugerencia.
+    expect(screen.getByText(/no usa el período de arriba/)).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { level: 1 })).toBeNull();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "60 días" }));
+    });
+    expect(api.sugerenciaCompra).toHaveBeenLastCalledWith({ dias: 60, cobertura: 15, sucursalId: 7 });
+    expect(screen.getByRole("button", { name: /Exportar a Excel/ })).toBeEnabled();
+  });
+});

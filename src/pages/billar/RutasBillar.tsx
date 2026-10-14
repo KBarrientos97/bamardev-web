@@ -39,6 +39,11 @@ export default function RutasBillar() {
         )
       ) : (
         <>
+          {/* Ya cargado, un sondeo que falla no se mostraba: el tablero quedaba
+              congelado con los relojes corriendo (se cayó el wifi, o otra
+              pestaña cambió la sesión) y nada avisaba. Se va solo cuando el
+              tablero vuelve a llegar (`aplicarTablero` limpia el error). */}
+          {e.error && <SinConexion texto={e.error} />}
           <AccionDeLaDireccion />
           <Routes>
             <Route index element={<Tablero />} />
@@ -85,4 +90,21 @@ function AccionDeLaDireccion() {
   }, [accion, mesa, ticket, abrir, setParams]);
 
   return null;
+}
+
+/** Flotante y no una franja arriba: no le cambia el alto a ninguna pantalla del billar. */
+function SinConexion({ texto }: { texto: string }) {
+  return (
+    <div
+      role="status"
+      className="fixed inset-x-4 bottom-4 z-40 mx-auto flex max-w-xl items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] text-amber-900 shadow-lg"
+    >
+      <span className="min-w-0 flex-1">
+        <b>Sin conexión con el servidor.</b> Lo que ves puede estar desactualizado. ({texto})
+      </span>
+      <button type="button" onClick={() => void recargar(true)} className="shrink-0 font-bold underline">
+        Reintentar
+      </button>
+    </div>
+  );
 }

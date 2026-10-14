@@ -1,5 +1,12 @@
 import { TITULO_CATALOGO } from "./catalogo";
-import type { CatalogoPublico, EnlaceEditor, EnlacePublico, EstadoEditor, PaginaPublica } from "./tipos";
+import type { CatalogoPublico, EnlaceEditor, EnlacePublico, EstadoEditor, ItemCatalogoPublico, PaginaPublica } from "./tipos";
+import { numeroInternacional } from "./whatsapp";
+
+/** El `wa.me` del WhatsApp de una sucursal, como lo arma el backend. */
+function urlWhatsappSucursal(numero: string | null | undefined): string | null {
+  const n = numeroInternacional(numero);
+  return n ? `https://wa.me/${n}` : null;
+}
 
 /** Día de hoy en Bolivia (UTC−4), como lo compara el backend. */
 export function hoyBolivia(ahora = new Date()): string {
@@ -13,8 +20,15 @@ export function urlMapa(mapsUrl: string | null, direccion: string | null): strin
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(direccion)}`;
 }
 
-/** El catálogo como lo sirve el backend: sólo lo visible, en orden; null si no queda nada. */
+/**
+ * El catálogo como lo sirve el backend: uno u otro según el modo, sólo lo
+ * visible, en orden; null si no queda nada. En "Mis productos" los ids son
+ * los del producto (el backend manda los de la fila fijada): para la vista
+ * previa da igual, sólo tienen que ser únicos.
+ */
 function catalogoVisible(e: EstadoEditor): CatalogoPublico | null {
+  const titulo = e.pagina.catalogoTitulo?.trim() || TITULO_CATALOGO;
+  if (e.pagina.catalogoModo === "PRODUCTOS") return productosVisibles(e, titulo);
   const items = (e.catalogo ?? [])
     .filter((x) => x.visible)
     .sort((a, b) => a.orden - b.orden || a.id - b.id)
@@ -27,7 +41,44 @@ function catalogoVisible(e: EstadoEditor): CatalogoPublico | null {
       fotoUrl: x.fotoUrl,
     }));
   if (items.length === 0) return null;
-  return { titulo: e.pagina.catalogoTitulo?.trim() || TITULO_CATALOGO, items };
+  return { titulo, items };
+}
+
+/**
+ * «Mis productos» como los arma el backend (`armarProductosPublicos`): el
+ * precio sale de las sucursales publicadas (la principal primero) o, si no se
+ * publicó ninguna, de la principal; la excepción de la sucursal manda sobre
+ * el precio de lista, y lo que ahí no se ofrece no sale. Con dos o más
+ * publicadas, el detalle de cada una para el selector.
+ */
+function productosVisibles(e: EstadoEditor, titulo: string): CatalogoPublico | null {
+  const publicadas = e.sucursales.filter((s) => s.publicarEnPagina);
+  const principal = e.sucursales.find((s) => s.esPrincipal);
+  const fuentes = publicadas.length ? publicadas : principal ? [principal] : [];
+  const items: ItemCatalogoPublico[] = [];
+  for (const x of [...(e.productosCatalogo ?? [])].filter((x) => x.vendible).sort((a, b) => a.orden - b.orden)) {
+    const en = fuentes.map((s) => {
+      const f = x.porSucursal?.find((p) => p.almacenId === s.id);
+      const precio = f?.precio ?? x.precio;
+      return { precio: precio != null && precio > 0 ? precio : null, disponible: f?.disponible ?? true };
+    });
+    if (en.length && !en.some((s) => s.disponible)) continue;
+    const item: ItemCatalogoPublico = {
+      id: x.id,
+      titulo: x.nombre,
+      descripcion: x.descripcion ?? null,
+      precio: en.length ? en[0].precio : x.precio,
+      precioDesde: false,
+      fotoUrl: null,
+      icono: x.icono,
+      categoria: x.categoria,
+    };
+    items.push(fuentes.length > 1 ? { ...item, enSucursal: en } : item);
+  }
+  if (!items.length) return null;
+  return fuentes.length > 1
+    ? { titulo, items, sucursales: fuentes.map((s) => s.nombre), whatsapps: fuentes.map((s) => urlWhatsappSucursal(s.whatsapp)) }
+    : { titulo, items };
 }
 
 /**
@@ -95,6 +146,7 @@ export function vistaDesdeEditor(e: EstadoEditor, hoy = hoyBolivia()): PaginaPub
         horario: s.horarioTexto,
         mapaUrl: urlMapa(s.mapsUrl, s.direccion),
         horarioSemanal: s.horarioSemanal?.length ? s.horarioSemanal : null,
+        whatsappUrl: urlWhatsappSucursal(s.whatsapp),
       })),
     catalogo: catalogoVisible(e),
     pie: { atribucionUrl: "https://bamardev.com" },

@@ -220,6 +220,29 @@ describe("comisiones", () => {
     expect(apiComisiones.previa).toHaveBeenLastCalledWith({ recursoId: 7, desde: "2026-10-20", hasta: "2026-10-21" });
   });
 
+  it("el rango libre no pasa de 3 meses, como todos los reportes", async () => {
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Liquidar a Beto" }));
+    await act(async () => {});
+    fireEvent.click(screen.getByRole("button", { name: "Período siguiente" }));
+    await act(async () => {});
+    fireEvent.click(screen.getByRole("button", { name: "Liquidar hasta hoy" }));
+    await act(async () => {});
+    // El calendario no ofrece más de 92 días para atrás.
+    expect(screen.getByLabelText("Desde")).toHaveAttribute("min", "2026-07-22");
+    vi.mocked(apiComisiones.previa).mockClear();
+    // Escrito a mano: no se aplica, y dice por qué.
+    fireEvent.change(screen.getByLabelText("Desde"), { target: { value: "2026-01-01" } });
+    await act(async () => {});
+    expect(screen.getByRole("alert")).toHaveTextContent("hasta 3 meses (92 días)");
+    expect(apiComisiones.previa).not.toHaveBeenCalledWith(expect.objectContaining({ desde: "2026-01-01" }));
+    // Dentro del tope, sí.
+    fireEvent.change(screen.getByLabelText("Desde"), { target: { value: "2026-07-22" } });
+    await act(async () => {});
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(apiComisiones.previa).toHaveBeenLastCalledWith({ recursoId: 7, desde: "2026-07-22", hasta: "2026-10-21" });
+  });
+
   it("QA N2-10: sin adelantos dice 0, no -0", async () => {
     vi.mocked(apiComisiones.previa).mockResolvedValue({ ...PREVIA, adelantos: 0, adelantosPendientes: [] });
     await montar();

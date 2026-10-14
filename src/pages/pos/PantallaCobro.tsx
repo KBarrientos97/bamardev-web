@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Icon } from "../../components/Icon";
 import { QrParaCobrar } from "../../components/QrCobro";
 import { Boton, Campo, ErrorMsg, Input } from "../../components/ui";
+import { formaPagoFaltante } from "../../lib/formaPagoFaltante";
 import {
   aCentavos,
   cubre,
@@ -158,7 +159,7 @@ export default function PantallaCobro({
     if (nadaQueCobrar) return enviar(extras.pagosVale);
 
     if (metodo === "EFECTIVO") {
-      if (!formaEfectivo) return setErrorLocal("El negocio no tiene cargada la forma de pago Efectivo.");
+      if (!formaEfectivo) return setErrorLocal(formaPagoFaltante(formasPago, "Efectivo"));
       // Con tolerancia: 3 x 8.90 da 26.700000000000003 y el cajero que teclea
       // 26.70 quedaba "faltando Bs 0.00".
       if (!cubre(recibidoNum, enMano))
@@ -173,7 +174,7 @@ export default function PantallaCobro({
     }
 
     if (metodo === "QR") {
-      if (!formaQr) return setErrorLocal("El negocio no tiene cargada la forma de pago QR.");
+      if (!formaQr) return setErrorLocal(formaPagoFaltante(formasPago, "QR"));
       if (!qrConfirmado)
         return setErrorLocal("Confirmá que el pago por QR llegó antes de cobrar.");
       return enviar([...extras.pagosVale, { formaPagoId: formaQr.id, monto: aCubrir }]);
@@ -359,7 +360,7 @@ export default function PantallaCobro({
             {/* Pagando la venta en efectivo, la propina por QR es una
                 transferencia aparte: que no se olvide. */}
             {metodo === "EFECTIVO" && extraQr > 0 && (
-              <p role="note" className="rounded-xl bg-info-bg px-4 py-2.5 text-[13px] font-semibold text-info-text">
+              <p role="note" className="rounded-xl bg-primary-50 px-4 py-2.5 text-[13px] font-semibold text-primary-700">
                 Además, la propina de {fmtMoney(extraQr)} se cobra por QR, aparte.
               </p>
             )}

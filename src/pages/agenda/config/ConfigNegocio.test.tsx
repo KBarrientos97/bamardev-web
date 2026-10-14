@@ -1,14 +1,15 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Reglas } from "../../../lib/agenda/tiposConfigAgenda";
 
 /**
- * A11 · Configuración del negocio, con la API mockeada (el backend de agenda
- * se programa en paralelo contra §10.1).
+ * A11 · Las reglas del negocio, con la API mockeada: las piezas que la
+ * Configuración de la agenda pone en Reglas (agenda interna e historial) y en
+ * Reserva online, y la ruta vieja /configuracion/negocio que lleva ahí.
  */
 
-const sesion = vi.hoisted(() => ({ features: ["agenda"] as string[], veRoles: true }));
+const sesion = vi.hoisted(() => ({ features: ["agenda"] as string[], veRoles: true, veAgenda: true }));
 
 vi.mock("../../../store/AuthContext", async () => {
   // Los permisos de la plantilla de ese rol: la pantalla decide sólo con ellos.
@@ -23,7 +24,8 @@ vi.mock("../../../store/AuthContext", async () => {
         features: sesion.features,
         perfil: { etiquetasRol: { PROFESIONAL: "Estilista" } },
       },
-      puede: (seccion: string) => (seccion === "roles" ? sesion.veRoles : true),
+      puede: (seccion: string) =>
+        seccion === "roles" ? sesion.veRoles : seccion === "agenda_config" ? sesion.veAgenda : true,
     }),
   };
 });
@@ -42,11 +44,13 @@ vi.mock("../../../lib/agenda/apiConfigAgenda", () => ({
     reglas: vi.fn(),
     guardarReglas: vi.fn(),
     historialReglas: vi.fn(),
+    modoAgenda: vi.fn(async () => ({})),
   },
 }));
 
 import { apiConfigAgenda } from "../../../lib/agenda/apiConfigAgenda";
 import ConfigNegocio from "./ConfigNegocio";
+import { HistorialReglas, ReglasInternas, ReglasOnline } from "./ReglasNegocio";
 
 const REGLAS: Reglas = {
   granularidadMin: 15,
@@ -65,19 +69,23 @@ const REGLAS: Reglas = {
   origen: {},
 };
 
-async function montar() {
-  render(
-    <MemoryRouter>
-      <ConfigNegocio />
-    </MemoryRouter>,
-  );
+/** Una de las piezas, como la monta la Configuración de la agenda. */
+async function montar(ui: React.ReactElement = <ReglasOnline />) {
+  render(<MemoryRouter>{ui}</MemoryRouter>);
   await act(async () => {});
+}
+
+/** Dónde quedó la navegación (para ver la redirección de la ruta vieja). */
+function Donde() {
+  const l = useLocation();
+  return <p data-testid="donde">{`${l.pathname}${l.search}`}</p>;
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
   sesion.features = ["agenda"];
   sesion.veRoles = true;
+  sesion.veAgenda = true;
   vi.mocked(apiConfigAgenda.reglas).mockResolvedValue(REGLAS);
   vi.mocked(apiConfigAgenda.historialReglas).mockResolvedValue([]);
 });
@@ -146,17 +154,19 @@ describe("B28: automática sólo para clientes conocidos", () => {
 });
 
 describe("reglas", () => {
-  it("se agrupan en agenda interna y reserva online", async () => {
-    await montar();
+  it("cada pieza muestra su grupo: la agenda interna en Reglas, la online con la reserva online", async () => {
+    await montar(<ReglasInternas />);
     expect(screen.getByRole("region", { name: "Agenda interna" })).toBeInTheDocument();
-    const online = screen.getByRole("region", { name: "Reserva online" });
-    // Desde la fase 2 la reserva online existe: ya no dice "llega pronto" y
-    // lleva a publicar y compartir el enlace.
+    expect(screen.queryByRole("region", { name: "Reglas de la reserva online" })).not.toBeInTheDocument();
+    expect(screen.queryAllByRole("radio")).toHaveLength(0);
+  });
+
+  it("la online ya no lleva a otra pestaña: está debajo de lo que se publica", async () => {
+    await montar();
+    const online = screen.getByRole("region", { name: "Reglas de la reserva online" });
     expect(online).not.toHaveTextContent("Llega con la reserva online");
-    expect(within(online).getByRole("link", { name: /Publicar y compartir/ })).toHaveAttribute(
-      "href",
-      "/configuracion/agenda?pestana=reservas",
-    );
+    expect(within(online).queryByRole("link", { name: /Publicar y compartir/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Agenda interna" })).not.toBeInTheDocument();
   });
 
   it("un número fuera de rango no deja guardar", async () => {
@@ -179,13 +189,29 @@ describe("reglas", () => {
         : REGLAS,
     );
     vi.mocked(apiConfigAgenda.guardarReglas).mockResolvedValue(REGLAS);
-    await montar();
+    await montar(<ReglasInternas />);
 
     fireEvent.change(screen.getByLabelText("Reglas de"), { target: { value: "2" } });
     await act(async () => {});
     expect(apiConfigAgenda.reglas).toHaveBeenLastCalledWith(2);
     expect(screen.getByText("Propio de esta sucursal")).toBeInTheDocument();
     expect(screen.getByText("Heredado de todo el negocio")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText(/Margen entre citas/), { target: { value: "5" } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
+    });
+    expect(apiConfigAgenda.guardarReglas).toHaveBeenCalledWith({ sucursalId: 2, bufferGeneralMin: 5 });
+  });
+
+  it("la online también se mira y se guarda por sucursal", async () => {
+    vi.mocked(apiConfigAgenda.reglas).mockImplementation(async (sucursalId) =>
+      sucursalId === 2 ? { ...REGLAS, origen: { anticipacionMinHoras: "DEFECTO" } } : REGLAS,
+    );
+    vi.mocked(apiConfigAgenda.guardarReglas).mockResolvedValue(REGLAS);
+    await montar();
+    fireEvent.change(screen.getByLabelText("Reglas de"), { target: { value: "2" } });
+    await act(async () => {});
     expect(screen.getByText("Valor sugerido del rubro")).toBeInTheDocument();
 
     fireEvent.click(screen.getByLabelText(/Mostrar precios en la página de reservas/));
@@ -222,7 +248,7 @@ describe("lo del profesional (PLAN-ROLES-NEGOCIO)", () => {
 
   it("ya no hay interruptores: un texto lleva a Roles", async () => {
     vi.mocked(apiConfigAgenda.reglas).mockResolvedValue(CON_REGLAS_VIEJAS);
-    await montar();
+    await montar(<ReglasInternas />);
     expect(screen.queryByRole("region", { name: "Reglas del profesional" })).not.toBeInTheDocument();
     for (const texto of [/Puede agendar/, /Puede bloquear/, /Ve el teléfono/, /Ve precios y totales/]) {
       expect(screen.queryByLabelText(texto)).not.toBeInTheDocument();
@@ -244,7 +270,7 @@ describe("lo del profesional (PLAN-ROLES-NEGOCIO)", () => {
 
   it("sin acceso a Roles el texto queda, sin el enlace", async () => {
     sesion.veRoles = false;
-    await montar();
+    await montar(<ReglasInternas />);
     expect(screen.getByText(/Lo que puede hacer cada profesional se configura en/)).toHaveTextContent("Roles");
     expect(screen.queryByRole("link", { name: "Roles" })).not.toBeInTheDocument();
   });
@@ -268,7 +294,7 @@ describe("historial", () => {
       viejo("profesionalVePrecios", "2026-10-01T13:03:00.000Z"),
       { campo: "granularidadMin", antes: 15, despues: 10, sucursalId: null, usuario: "Dueña", en: "2026-10-02T13:00:00.000Z" },
     ]);
-    await montar();
+    await montar(<HistorialReglas />);
     const historial = screen.getByRole("region", { name: "Historial de cambios" });
     expect(historial).toHaveTextContent("Los turnos empiezan cada");
     for (const texto of [/agendar/i, /bloquear/i, /teléfono/i, /Ve precios/, /profesional/]) {
@@ -281,7 +307,7 @@ describe("historial", () => {
     vi.mocked(apiConfigAgenda.historialReglas).mockResolvedValue([
       { campo: "profesionalVePrecios", antes: false, despues: true, sucursalId: null, usuario: "Dueña", en: "2026-10-01T13:00:00.000Z" },
     ]);
-    await montar();
+    await montar(<HistorialReglas />);
     expect(screen.getByRole("region", { name: "Historial de cambios" })).toHaveTextContent(
       "Todavía no se cambió ninguna regla.",
     );
@@ -298,7 +324,7 @@ describe("historial", () => {
         en: "2026-10-21T13:00:00.000Z",
       },
     ]);
-    await montar();
+    await montar(<HistorialReglas />);
     const historial = screen.getByRole("region", { name: "Historial de cambios" });
     expect(historial).toHaveTextContent("Los turnos empiezan cada");
     expect(historial).toHaveTextContent("15 min");
@@ -326,7 +352,7 @@ describe("historial", () => {
         en: "2026-10-06T16:30:00.000Z",
       },
     ]);
-    await montar();
+    await montar(<HistorialReglas />);
     const historial = screen.getByRole("region", { name: "Historial de cambios" });
     expect(historial).toHaveTextContent("Mostrar precios en la página de reservas");
     expect(historial).toHaveTextContent("06/10/2026 00:21");
@@ -359,7 +385,7 @@ describe("historial", () => {
         en: "2026-10-06T17:30:00.000Z",
       },
     ]);
-    await montar();
+    await montar(<HistorialReglas />);
     const historial = screen.getByRole("region", { name: "Historial de cambios" });
     const filas = within(historial).getAllByRole("listitem");
     // Lo más nuevo primero: volvió al sugerido del rubro.
@@ -367,5 +393,34 @@ describe("historial", () => {
     expect(filas[0]).toHaveTextContent("La apruebo yo (heredado)");
     expect(filas[1]).toHaveTextContent(/La apruebo yo.*Queda lista cuando el cliente la confirma/);
     expect(filas[1]).not.toHaveTextContent("heredado");
+  });
+});
+
+describe("la ruta vieja /configuracion/negocio", () => {
+  const entrar = async () => {
+    render(
+      <MemoryRouter initialEntries={["/configuracion/negocio"]}>
+        <Routes>
+          <Route path="/configuracion/negocio" element={<ConfigNegocio />} />
+          <Route path="/configuracion/agenda" element={null} />
+        </Routes>
+        <Donde />
+      </MemoryRouter>,
+    );
+    await act(async () => {});
+  };
+
+  it("lleva a la pestaña Reglas de la Configuración de la agenda", async () => {
+    await entrar();
+    expect(screen.getByTestId("donde")).toHaveTextContent("/configuracion/agenda?pestana=reglas");
+  });
+
+  it("a quien tiene las reglas pero no la agenda le muestra la pantalla ahí mismo, sólo con lo suyo", async () => {
+    sesion.veAgenda = false;
+    await entrar();
+    expect(screen.getByTestId("donde")).toHaveTextContent("/configuracion/negocio");
+    expect(screen.getAllByRole("tab").map((t) => t.getAttribute("aria-label"))).toEqual(["Reserva online", "Reglas"]);
+    expect(screen.getByRole("region", { name: "Agenda interna" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Historial de cambios" })).not.toBeInTheDocument();
   });
 });

@@ -277,6 +277,7 @@ export default function ArmadoMosaico(x: PiezasArmado) {
       catalogo = (
         <section aria-label={x.visor?.titulo} style={{ position: "relative" }}>
           {titulo}
+          {x.visor?.selector && <div style={{ marginBottom: ESPACIO }}>{x.visor.selector}</div>}
           <Fila alto={alto}>
             {[
               bloqueItem(grande, 0, true, alto),
@@ -303,11 +304,21 @@ export default function ArmadoMosaico(x: PiezasArmado) {
       catalogo = (
         <section aria-label={x.visor?.titulo} style={{ ...columna, position: "relative", gap: ESPACIO }}>
           {titulo}
+          {x.visor?.selector}
           <Fila>{[bloqueItem(grande, 0, true, chico ? 220 : 300)]}</Fila>
           {itemsChicos.length > 0 && <Fila alto={altoChico + 24}>{itemsChicos}</Fila>}
         </section>
       );
     }
+  } else if (x.visor?.selector) {
+    // Con otra sucursal elegida puede no quedar nada: el selector sigue.
+    catalogo = (
+      <section aria-label={x.visor.titulo} style={{ ...columna, gap: 8 }}>
+        <h2 style={soloLector}>{x.visor.titulo}</h2>
+        {x.visor.selector}
+        <p style={{ margin: 0, fontSize: 14 }}>No hay productos disponibles en esta sucursal.</p>
+      </section>
+    );
   }
 
   // Las sucursales y el anuncio, como bloques anchos: de a dos en computadora.

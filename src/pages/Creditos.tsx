@@ -13,7 +13,7 @@ import {
 import { tienePermiso } from "../lib/permisos";
 import { useAuth } from "../store/AuthContext";
 import { Icon } from "../components/Icon";
-import { Buscador, Chips, EncabezadoPagina } from "../components/filtros";
+import { Buscador, Chips, EncabezadoPagina, FilaFiltros } from "../components/filtros";
 import {
   AvisoOk,
   Badge,
@@ -41,9 +41,11 @@ const OPC_FILTRO = [
   ["pagados", "Pagados"],
 ] as const satisfies readonly (readonly [FiltroCredito, string])[];
 
-const TONO_ESTADO: Record<EstadoCredito, "amarillo" | "azul" | "verde" | "gris"> = {
-  PENDIENTE: "amarillo",
-  ABONADO: "azul",
+// En el color del negocio (abonado, pagado) o neutro (pendiente): el amarillo y
+// el azul fijos se mezclaban con el color de cada negocio (12-oct).
+const TONO_ESTADO: Record<EstadoCredito, "marca" | "verde" | "gris"> = {
+  PENDIENTE: "gris",
+  ABONADO: "marca",
   PAGADO: "verde",
   ANULADO: "gris",
 };
@@ -167,7 +169,7 @@ export default function Creditos() {
           etiqueta="Créditos abiertos"
           valor={fmtNum(kpis.abiertos)}
           icono="fileText"
-          tono="azul"
+          tono="verde"
         />
         <Kpi
           etiqueta="Monto vencido"
@@ -180,7 +182,7 @@ export default function Creditos() {
           etiqueta="Clientes con deuda"
           valor={fmtNum(conDeuda.length)}
           icono="users"
-          tono="amarillo"
+          tono="marca"
         />
       </div>
 
@@ -215,10 +217,12 @@ export default function Creditos() {
             Buscar
           </Boton>
         </div>
-        {suc.elegir && (
-          <Chips valor={suc.valorChip} opciones={suc.opciones} onChange={suc.alElegir} />
-        )}
-        <Chips valor={filtro} opciones={OPC_FILTRO} onChange={setFiltro} />
+        <FilaFiltros>
+          {suc.elegir && (
+            <Chips titulo="Sucursal" valor={suc.valorChip} opciones={suc.opciones} onChange={suc.alElegir} />
+          )}
+          <Chips titulo="Estado" valor={filtro} opciones={OPC_FILTRO} onChange={setFiltro} />
+        </FilaFiltros>
       </div>
 
       <ErrorMsg>{creditos.error}</ErrorMsg>

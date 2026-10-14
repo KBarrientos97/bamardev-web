@@ -25,6 +25,8 @@ vi.mock("../../lib/pagina/apiPagina", () => ({
     borrarItemCatalogo: vi.fn(),
     subirFotoCatalogo: vi.fn(),
     borrarFotoCatalogo: vi.fn(),
+    buscarProductosCatalogo: vi.fn(),
+    fijarProductosCatalogo: vi.fn(),
   },
 }));
 
@@ -280,6 +282,21 @@ describe("Mi página", () => {
     // Sólo cambió la sucursal: la página no se manda.
     expect(apiPagina.guardar).not.toHaveBeenCalled();
     expect(screen.getByText("Cambios guardados")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Guardar cambios" })).toBeDisabled();
+  });
+
+  it("el WhatsApp de la sucursal es opcional, va con «Guardar cambios» y se ve en la tarjeta", async () => {
+    await montar();
+    fireEvent.change(screen.getByLabelText("WhatsApp de Centro"), { target: { value: "7012-3456" } });
+    // La vista previa ya lo muestra, normalizado como lo guarda el backend.
+    expect(within(previa()).getByRole("link", { name: "WhatsApp" })).toHaveAttribute("href", "https://wa.me/59170123456");
+    const s = estado().sucursales[0];
+    vi.mocked(apiPagina.sucursal).mockResolvedValue({ ...s, whatsapp: "59170123456" });
+    fireEvent.click(screen.getByRole("button", { name: "Guardar cambios" }));
+    await act(async () => {});
+    expect(apiPagina.sucursal).toHaveBeenCalledWith(10, { horarioTexto: "9 a 20", mapsUrl: null, whatsapp: "7012-3456" });
+    // Guardado se muestra sin el 591.
+    expect(screen.getByLabelText("WhatsApp de Centro")).toHaveValue("70123456");
     expect(screen.getByRole("button", { name: "Guardar cambios" })).toBeDisabled();
   });
 
@@ -893,5 +910,117 @@ describe("Mi página: horario por día de la sucursal", () => {
     await act(async () => {});
     expect(screen.getByText("Centro: El lunes: hasta 2 tramos por día (por ejemplo, mañana y tarde)")).toBeInTheDocument();
     expect(filaHorario()).toHaveTextContent("Lun 9:00–18:00");
+  });
+});
+
+describe("Mi página: el catálogo es armado a mano o «Mis productos»", () => {
+  const fijado = (id: number, nombre: string, orden: number, vendible = true) => ({
+    id,
+    nombre,
+    precio: 10 * id,
+    icono: null,
+    categoria: "Pollos",
+    orden,
+    vendible,
+  });
+  // Como lo manda el backend: el modo siempre viene (MANUAL por defecto).
+  const conProductos = (cambios: Partial<EstadoEditor["pagina"]> = {}): EstadoEditor => ({
+    ...estado({ catalogoModo: "MANUAL", ...cambios }),
+    productosVendibles: 5,
+    topeProductos: 60,
+    productosCatalogo: [fijado(1, "Pollo entero", 1), fijado(2, "Pollo descontinuado", 2, false)],
+  });
+
+  it("sin productos a la venta no pregunta: queda el armado a mano", async () => {
+    vi.mocked(apiPagina.estado).mockResolvedValue({ ...estado(), productosVendibles: 0 });
+    await montar();
+    expect(screen.queryByText("¿Qué muestra tu catálogo?")).not.toBeInTheDocument();
+    expect(screen.queryByRole("radio", { name: /Mis productos/ })).not.toBeInTheDocument();
+  });
+
+  it("elegir «Mis productos» cambia la sección y la vista previa, y se guarda con el resto", async () => {
+    vi.mocked(apiPagina.estado).mockResolvedValue(conProductos());
+    await montar();
+    expect(screen.getByRole("radio", { name: /Armado a mano/ })).toBeChecked();
+    expect(within(previa()).queryByText("Pollo entero")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("radio", { name: /Mis productos/ }));
+    expect(screen.getByRole("radio", { name: /Mis productos/ })).toBeChecked();
+    const lista = screen.getByRole("list", { name: "Productos en tu página" });
+    expect(within(lista).getByText("Pollo entero")).toBeInTheDocument();
+    // El inactivo sigue en la lista, avisado, pero no sale en la página.
+    expect(within(lista).getByText("No se muestra")).toBeInTheDocument();
+    expect(within(previa()).getByText("Pollo entero")).toBeInTheDocument();
+    expect(within(previa()).queryByText("Pollo descontinuado")).not.toBeInTheDocument();
+
+    vi.mocked(apiPagina.guardar).mockResolvedValue(conProductos({ catalogoModo: "PRODUCTOS" }));
+    fireEvent.click(screen.getByRole("button", { name: "Guardar cambios" }));
+    await act(async () => {});
+    expect(apiPagina.guardar).toHaveBeenCalledWith({ catalogoModo: "PRODUCTOS" });
+  });
+
+  it("volver al modo guardado no deja nada sin guardar", async () => {
+    vi.mocked(apiPagina.estado).mockResolvedValue(conProductos());
+    await montar();
+    fireEvent.click(screen.getByRole("radio", { name: /Mis productos/ }));
+    expect(screen.getByRole("button", { name: "Guardar cambios" })).toBeEnabled();
+    fireEvent.click(screen.getByRole("radio", { name: /Armado a mano/ }));
+    expect(screen.getByRole("button", { name: "Guardar cambios" })).toBeDisabled();
+  });
+
+  it("el selector busca en el backend y guarda la lista entera, lo nuevo al final", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      vi.mocked(apiPagina.estado).mockResolvedValue(conProductos({ catalogoModo: "PRODUCTOS" }));
+      vi.mocked(apiPagina.buscarProductosCatalogo).mockResolvedValue({
+        items: [
+          { id: 1, nombre: "Pollo entero", precio: 10, icono: null, categoria: "Pollos" },
+          { id: 3, nombre: "Soda 2 L", precio: 15.5, icono: null, categoria: null },
+        ],
+        total: 2,
+        limite: 30,
+        offset: 0,
+      });
+      vi.mocked(apiPagina.fijarProductosCatalogo).mockResolvedValue([
+        fijado(1, "Pollo entero", 1),
+        fijado(2, "Pollo descontinuado", 2, false),
+        fijado(3, "Soda 2 L", 3),
+      ]);
+      await montar();
+      fireEvent.click(screen.getByRole("button", { name: "Elegir productos" }));
+      await act(async () => {});
+      const dialogo = screen.getByRole("dialog", { name: "Elegir productos" });
+      expect(apiPagina.buscarProductosCatalogo).toHaveBeenCalledWith("", 0);
+      expect(within(dialogo).getByRole("checkbox", { name: "Pollo entero" })).toBeChecked();
+
+      fireEvent.change(within(dialogo).getByLabelText("Buscar productos"), { target: { value: "soda" } });
+      await act(async () => {
+        vi.advanceTimersByTime(300);
+      });
+      expect(apiPagina.buscarProductosCatalogo).toHaveBeenLastCalledWith("soda", 0);
+
+      fireEvent.click(within(dialogo).getByRole("checkbox", { name: "Soda 2 L" }));
+      fireEvent.click(within(dialogo).getByRole("button", { name: "Guardar" }));
+      await act(async () => {});
+      expect(apiPagina.fijarProductosCatalogo).toHaveBeenCalledWith([1, 2, 3]);
+      expect(screen.queryByRole("dialog", { name: "Elegir productos" })).not.toBeInTheDocument();
+      expect(within(screen.getByRole("list", { name: "Productos en tu página" })).getByText("Soda 2 L")).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("quitar y ordenar se guardan al toque", async () => {
+    vi.mocked(apiPagina.estado).mockResolvedValue(conProductos({ catalogoModo: "PRODUCTOS" }));
+    vi.mocked(apiPagina.fijarProductosCatalogo)
+      .mockResolvedValueOnce([fijado(2, "Pollo descontinuado", 1, false), fijado(1, "Pollo entero", 2)])
+      .mockResolvedValueOnce([fijado(2, "Pollo descontinuado", 1, false)]);
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Bajar Pollo entero" }));
+    await act(async () => {});
+    expect(apiPagina.fijarProductosCatalogo).toHaveBeenLastCalledWith([2, 1]);
+    fireEvent.click(screen.getByRole("button", { name: "Quitar Pollo entero de la página" }));
+    await act(async () => {});
+    expect(apiPagina.fijarProductosCatalogo).toHaveBeenLastCalledWith([2]);
   });
 });

@@ -47,6 +47,7 @@ export default function MenuLateral({
   compacta,
   onNavegar,
   onCambiarPassword,
+  onInstalar,
 }: {
   menu: Menu;
   compacta: boolean;
@@ -54,6 +55,11 @@ export default function MenuLateral({
   onNavegar: () => void;
   /** "Cambiar mi contraseña": el formulario vive en el Layout (ver ahí). */
   onCambiarPassword?: () => void;
+  /**
+   * "Instalar en el celular" (PLAN-IOS). Sin ella no se dibuja: ya está
+   * instalada o es una computadora, donde no hay nada que instalar.
+   */
+  onInstalar?: () => void;
 }) {
   const { logout } = useAuth();
   const uid = useId();
@@ -416,6 +422,28 @@ export default function MenuLateral({
 
       {/* Lo de la cuenta de quien está sentado, para cualquier rol: cambiar
           la propia clave no depende de administrar usuarios (API-12). */}
+      {onInstalar && (
+        <button
+          type="button"
+          onClick={() => {
+            setTip(null);
+            onInstalar();
+          }}
+          aria-label={compacta ? "Instalar en el celular" : undefined}
+          data-fila=""
+          data-nav-id="instalar"
+          {...mostrarTip("Instalar en el celular")}
+          className={[
+            "flex items-center gap-3 rounded-xl py-2.5 text-sm font-semibold text-barra-texto-2 transition-colors hover:bg-white/10 hover:text-barra-texto",
+            foco,
+            compacta ? "justify-center px-0" : "px-3",
+          ].join(" ")}
+        >
+          <Icon name="download" size={19} />
+          {!compacta && <span>Instalar en el celular</span>}
+        </button>
+      )}
+
       {onCambiarPassword && (
         <button
           type="button"

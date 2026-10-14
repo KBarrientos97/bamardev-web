@@ -89,7 +89,12 @@ function Diferencia({ esperado, conteo }: { esperado: number; conteo: number }) 
   );
 }
 
-function ArqueoDetalle({ cierre: c, onCerrar }: { cierre: CierreFila; onCerrar: () => void }) {
+/**
+ * El arqueo de un turno, con "Productos vendidos". Exportado porque lo usa
+ * también el reporte nuevo de Cierres de caja (`vistas/Cierres.tsx`): es el
+ * mismo arqueo, no una copia que se desincronice.
+ */
+export function ArqueoDetalle({ cierre: c, onCerrar }: { cierre: CierreFila; onCerrar: () => void }) {
   const [viendoProductos, setViendoProductos] = useState(false);
   return (
     <Modal

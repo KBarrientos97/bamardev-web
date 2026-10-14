@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
 import { Icon } from "../../../components/Icon";
 import { AvisoOk, Badge, Boton, Cargando, ErrorMsg, Input, useAviso } from "../../../components/ui";
 import { apiConfigAgenda } from "../../../lib/agenda/apiConfigAgenda";
@@ -23,7 +22,8 @@ import { mensajeDe, nombreRecurso, useNombreProfesional } from "./utilConfig";
  * menú de compartir del teléfono o `wa.me`, PLAN-AGENDA-BELLEZA §9.2).
  *
  * Cómo se confirma lo que entra (manual o automático) y los topes son reglas
- * del negocio: viven en "Configuración del negocio" (A11), que es del dueño.
+ * del negocio (A11), que son del dueño: la pantalla las pone debajo de esto,
+ * en la misma pestaña, sólo a quien tiene `config_negocio`.
  */
 export default function TabReservaOnline({
   servicios,
@@ -192,18 +192,8 @@ export default function TabReservaOnline({
             : "las aprobás vos"}
         ),
         con cuánta anticipación y hasta cuándo se pueden cancelar
-        {puede("config_negocio") ? (
-          <>
-            {" "}
-            se cambia en{" "}
-            <Link to="/configuracion/negocio" className="font-semibold text-primary-700 underline">
-              Configuración del negocio
-            </Link>
-            .
-          </>
-        ) : (
-          " lo decide el dueño en Configuración del negocio."
-        )}
+        {/* Con permiso, esas reglas están justo debajo, en la misma pestaña. */}
+        {puede("config_negocio") ? " se cambia más abajo, en las reglas de la reserva online." : " lo decide el dueño."}
       </p>
     </div>
   );

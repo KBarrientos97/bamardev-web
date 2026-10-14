@@ -294,6 +294,18 @@ const paths: Record<string, ReactNode> = {
       <polyline points="12 6 12 12 16 14" />
     </>
   ),
+  /** Sin conexión: el POS del iPhone cobrando a la cola (PLAN-IOS F3). */
+  wifiOff: (
+    <>
+      <line x1="1" y1="1" x2="23" y2="23" />
+      <path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55" />
+      <path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39" />
+      <path d="M10.71 5.05A16 16 0 0 1 22.58 9" />
+      <path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88" />
+      <path d="M8.53 16.11a6 6 0 0 1 6.95 0" />
+      <line x1="12" y1="20" x2="12.01" y2="20" />
+    </>
+  ),
   home: (
     <>
       <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
@@ -507,6 +519,22 @@ const paths: Record<string, ReactNode> = {
       <line x1="1" y1="14" x2="7" y2="14" />
       <line x1="9" y1="8" x2="15" y2="8" />
       <line x1="17" y1="16" x2="23" y2="16" />
+    </>
+  ),
+  /** El botón Compartir de iOS (la caja con la flecha): la guía de instalar lo dibuja igual. */
+  compartir: (
+    <>
+      <path d="M12 3v12" />
+      <polyline points="8 7 12 3 16 7" />
+      <path d="M8 11H6a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1h-2" />
+    </>
+  ),
+  /** "Agregar a inicio" de iOS: el cuadro con el más. */
+  masCuadro: (
+    <>
+      <rect x="3" y="3" width="18" height="18" rx="4" />
+      <path d="M12 8v8" />
+      <path d="M8 12h8" />
     </>
   ),
 };

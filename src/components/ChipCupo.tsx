@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { fechaNegocio } from "../lib/agenda/horaAgenda";
 import { avisosDe, marcarMostrado, proyectar, sinMostrar, textoChip, type AvisoCupo } from "../lib/cupo";
 import { abrirHojaCupo } from "../lib/hojaCupo";
+import { pendientesDeHoy, useColaOffline } from "../lib/offline/cola";
 import { useAuth } from "../store/AuthContext";
 import { useCupo } from "../store/useCupo";
 import type { UnidadCupo } from "../types";
@@ -17,9 +18,11 @@ import { Icon } from "./Icon";
  */
 export default function ChipCupo({ unidad, className = "" }: { unidad: UnidadCupo; className?: string }) {
   const { cupo, aplica } = useCupo();
+  const cola = useColaOffline();
   if (!aplica || !cupo) return null;
-  const { contador, creditos } = textoChip(cupo, unidad);
-  const p = proyectar(cupo, unidad);
+  const pendientes = unidad === "VENTA" ? pendientesDeHoy(cola) : 0;
+  const { contador, creditos } = textoChip(cupo, unidad, undefined, pendientes);
+  const p = proyectar(cupo, unidad, { pendientes });
   const negativo = cupo.creditos.saldo < 0;
   // Verde mientras sobra; ámbar desde el 80 % o ya usando créditos; rojo
   // cuando no queda nada (la próxima se bloquea).

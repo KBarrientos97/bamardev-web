@@ -21,6 +21,11 @@ import { Telefono } from "../../lib/telefono";
 import { tienePermiso, tieneFeature } from "../../lib/permisos";
 import { esBelleza, marcaConsumo } from "../../lib/rubro";
 import { useApi } from "../../lib/useApi";
+import { conCopia } from "../../lib/offline/copias";
+import { formaPagoFaltante } from "../../lib/formaPagoFaltante";
+import { porSubir, useColaOffline } from "../../lib/offline/cola";
+import AvisoSinSubir from "../../components/offline/AvisoSinSubir";
+import VentasSinSubir from "../../components/offline/VentasSinSubir";
 import { useAuth } from "../../store/AuthContext";
 import { useCupo } from "../../store/useCupo";
 import type { Caja, Venta } from "../../types";
@@ -38,7 +43,9 @@ export default function PantallaHistorial({
   onVerComprobante: (venta: Venta) => void;
 }) {
   const { puede, negocio } = useAuth();
-  const ventas = useApi(() => api.getVentas(caja.id), [caja.id]);
+  // Con copia en la app del iPhone (Android: `historial_ventas_{caja}`): sin
+  // señal se ve lo que ya había subido, más lo cobrado sin internet.
+  const ventas = useApi(() => conCopia(`historial:${caja.id}`, () => api.getVentas(caja.id)), [caja.id]);
   // Los pedidos por entregar son del reparto: sin la feature `delivery` el
   // backend responde 403 (QA M-11, un salón de belleza). Con ella, lo de siempre.
   const conReparto = tieneFeature(negocio?.features, "delivery");
@@ -50,7 +57,10 @@ export default function PantallaHistorial({
   const [entregando, setEntregando] = useState<Venta | null>(null);
 
   const lista = ventas.datos ?? [];
-  const aprobadas = lista.filter((v) => v.estado === "APROBADO");
+  // Las cobradas sin internet también son del turno: cuentan en el resumen,
+  // como en Android (las rechazadas no, porque no van a llegar).
+  const sinSubir = porSubir(useColaOffline()).map((v) => v.recibo);
+  const aprobadas = [...sinSubir, ...lista.filter((v) => v.estado === "APROBADO")];
   const totalVendido = aprobadas.reduce((s, v) => s + v.total, 0);
   const porEntregar = pendientes.datos ?? [];
 
@@ -94,6 +104,11 @@ export default function PantallaHistorial({
             onVerTodos={() => navigate("/creditos")}
           />
         )}
+
+        <AvisoSinSubir />
+        {/* Lo cobrado sin internet va primero, como en la app: es lo que
+            todavía no está en el servidor (ni en el arqueo). */}
+        <VentasSinSubir onVerTicket={(v) => onVerComprobante(v)} />
 
         {porEntregar.length > 0 && (
           <section>
@@ -198,7 +213,7 @@ export default function PantallaHistorial({
                         </span>
                         {v.estado === "ANULADO" && <Badge tono="rojo">Anulada</Badge>}
                         {v.tipoPedido !== "LOCAL" && (
-                          <Badge tono="azul">
+                          <Badge tono="marca">
                             {v.tipoPedido === "DELIVERY" ? "Delivery" : "Recojo"}
                           </Badge>
                         )}
@@ -439,7 +454,7 @@ function DetalleVenta({
                     {(mostrarConsumo || d.nota) && (
                       <div className="mt-0.5 flex items-center gap-1.5">
                         {mostrarConsumo && (
-                          <Badge tono={d.consumo === "MESA" ? "azul" : "gris"}>
+                          <Badge tono={d.consumo === "MESA" ? "marca" : "gris"}>
                             {d.consumo === "MESA" ? "Mesa" : "Llevar"}
                           </Badge>
                         )}
@@ -730,11 +745,11 @@ function EntregarRecoger({
     // se tomó, y volver a registrarla la contaría dos veces en el arqueo.
     if (!pedido.prepagado) {
       if (metodo === "EFECTIVO") {
-        if (!efectivo) return setError("El negocio no tiene cargada la forma de pago Efectivo.");
+        if (!efectivo) return setError(formaPagoFaltante(formas, "Efectivo"));
         if (recibidoNum < total) return setError("Lo recibido no alcanza para cubrir el total.");
         pagos = [{ formaPagoId: efectivo.id, monto: total, recibido: recibidoNum }];
       } else {
-        if (!qr) return setError("El negocio no tiene cargada la forma de pago QR.");
+        if (!qr) return setError(formaPagoFaltante(formas, "QR"));
         if (!qrConfirmado) return setError("Confirmá que el pago por QR llegó antes de entregar.");
         pagos = [{ formaPagoId: qr.id, monto: total }];
       }

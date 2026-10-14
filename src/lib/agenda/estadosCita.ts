@@ -159,32 +159,75 @@ export function sePuedeMover(estado: EstadoCita): boolean {
 export type Rapida = { accion: AccionCita | "COBRAR"; principal: boolean };
 
 /**
+ * Desde dónde se puede cobrar una cita (IDEAS/7-AGENDA-SIMPLE §6). El backend
+ * ya acepta la venta con `citaId` desde cualquier estado no terminal
+ * (`cobro-cita.service.ts`): esperar a POR_COBRAR era una decisión de
+ * pantalla, y obligaba a marcar Llegó → Atender → Finalizar sólo para poder
+ * cobrar.
+ */
+const COBRABLES: EstadoCita[] = ["RESERVADA", "CONFIRMADA", "EN_ESPERA", "EN_ATENCION", "POR_COBRAR"];
+
+/**
+ * ¿Se ofrece "Cobrar"? Una cita de un día que todavía no llegó no: cobrarla
+ * hoy la completaría antes de que pase (como "Llegó" y "Atender", QA M-08).
+ * Sin `ahora`, sólo por estado.
+ */
+export function sePuedeCobrar(
+  cita: { estado: EstadoCita; inicio?: string | null },
+  ahora?: number,
+): boolean {
+  if (!COBRABLES.includes(cita.estado)) return false;
+  if (cita.estado === "POR_COBRAR" || ahora === undefined || !cita.inicio) return true;
+  return fechaNegocio(cita.inicio) <= fechaNegocio(new Date(ahora));
+}
+
+/**
  * Los dos botones de una tarjeta, en el orden del lienzo (Hoy.dc): el que
  * corresponde al momento va primero y lleno. Una cita con no-show sugerido
  * ofrece "No vino" primero: el sistema sugiere, no marca solo (§5.2).
  */
 export function accionesRapidas(
   cita: Cita,
-  opc: { profesional?: boolean; ahora?: number } = {},
+  opc: {
+    profesional?: boolean;
+    ahora?: number;
+    /**
+     * Modo simple (IDEAS/7-AGENDA-SIMPLE): sólo "Cobrar" y "No vino". Al
+     * profesional no le cambia nada: no cobra.
+     */
+    simple?: boolean;
+  } = {},
 ): Rapida[] {
   const posibles = new Set(accionesPara(cita.estado, { ...opc, inicio: cita.inicio }));
   const r = (accion: AccionCita, principal = false): Rapida[] =>
     posibles.has(accion) ? [{ accion, principal }] : [];
+  // El profesional no cobra; recepción, desde que la cita es de hoy.
+  const cobrable = !opc.profesional && sePuedeCobrar(cita, opc.ahora);
+  const cobrar = (principal = false): Rapida[] => (cobrable ? [{ accion: "COBRAR", principal }] : []);
+
+  if (opc.simple && !opc.profesional) {
+    if (cita.noShowSugerido && posibles.has("NO_ASISTIO")) return [...r("NO_ASISTIO", true), ...cobrar()];
+    return [...cobrar(true), ...r("NO_ASISTIO")];
+  }
 
   if (cita.noShowSugerido && posibles.has("NO_ASISTIO")) {
     return [...r("NO_ASISTIO", true), ...r("LLEGO")];
   }
+  // En el modo completo el paso del momento sigue primero; "Cobrar" va al
+  // final, para el que llega, se atiende y paga sin que nadie marque los pasos.
   switch (cita.estado) {
     case "RESERVADA":
-      return opc.profesional ? [...r("LLEGO", true), ...r("ATENDER")] : [...r("CONFIRMAR", true), ...r("LLEGO")];
+      return opc.profesional
+        ? [...r("LLEGO", true), ...r("ATENDER")]
+        : [...r("CONFIRMAR", true), ...r("LLEGO"), ...cobrar()];
     case "CONFIRMADA":
-      return [...r("LLEGO", true), ...r("NO_ASISTIO")];
+      return [...r("LLEGO", true), ...r("NO_ASISTIO"), ...cobrar()];
     case "EN_ESPERA":
-      return r("ATENDER", true);
+      return [...r("ATENDER", true), ...cobrar()];
     case "EN_ATENCION":
-      return r("FINALIZAR", true);
+      return [...r("FINALIZAR", true), ...cobrar()];
     case "POR_COBRAR":
-      return opc.profesional ? [] : [{ accion: "COBRAR", principal: true }];
+      return cobrar(true);
     default:
       return [];
   }
