@@ -223,17 +223,11 @@ function LayoutSegunRubro() {
 
 /**
  * Pago de la licencia estando la sesión abierta (durante la gracia, antes del
- * bloqueo). Es la misma pantalla que se ve deslogueado; sólo cambia de dónde
- * sale el código de activación y a dónde vuelve al salir.
+ * bloqueo). Es la misma pantalla que se ve deslogueado, con el alias escrito a
+ * mano también acá (no se toma el de la sesión); sólo cambia a dónde vuelve.
  */
 function PagarConSesion() {
-  const { negocio } = useAuth();
-  return (
-    <PagarLicencia
-      aliasInicial={negocio?.alias ?? null}
-      onSalir={() => window.history.back()}
-    />
-  );
+  return <PagarLicencia onSalir={() => window.history.back()} />;
 }
 
 function Rutas() {
