@@ -133,6 +133,11 @@ export interface SucursalPublica {
    * backend anterior no lo manda; ausente = null (sin cartel).
    */
   horarioSemanal?: Tramo[] | null;
+  /**
+   * El WhatsApp propio de la sucursal (`https://wa.me/<n>`), o null si usa el
+   * general. Opcional: un backend anterior no lo manda.
+   */
+  whatsappUrl?: string | null;
 }
 
 /**
@@ -187,6 +192,8 @@ export interface CatalogoPublico {
    * el visitante elija de cuál ver los precios (la principal primero).
    */
   sucursales?: string[];
+  /** Con `sucursales`: el WhatsApp de cada una (null = el general), en el mismo orden. */
+  whatsapps?: (string | null)[];
 }
 
 /** `GET /publico/pagina/:subdominio`. */
@@ -258,6 +265,8 @@ export interface SucursalEditor {
   mapsUrl: string | null;
   /** El horario por día; opcional por lo mismo que en `SucursalPublica` (ausente = null). */
   horarioSemanal?: Tramo[] | null;
+  /** El WhatsApp propio (sólo dígitos, con 591), o null = usa el general. */
+  whatsapp?: string | null;
   /** Si recibe reservas online y con qué nombre en el enlace (para la vista previa). */
   publicaReservas?: boolean;
   slugReservas?: string | null;

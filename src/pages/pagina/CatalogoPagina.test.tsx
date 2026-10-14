@@ -105,6 +105,22 @@ describe("catálogo de la página pública", () => {
     expect(within(visor()).getByText("Bs 110")).toBeInTheDocument();
   });
 
+  it("«Consultar por WhatsApp» con dos números pregunta a cuál, con el ítem en el mensaje", () => {
+    montar({
+      redes: [WHATSAPP],
+      sucursales: [
+        { nombre: "Norte", reservaSlug: null, direccion: null, telefono: null, horario: null, mapaUrl: null, whatsappUrl: "https://wa.me/59170000002" },
+      ],
+    });
+    fireEvent.click(tarjeta("Uñas acrílicas"));
+    fireEvent.click(within(visor()).getByRole("link", { name: "Consultar por WhatsApp" }));
+    const hoja = screen.getByRole("dialog", { name: "¿A qué WhatsApp escribís?" });
+    const norte = within(hoja).getByRole("link", { name: "Norte" }).getAttribute("href")!;
+    expect(norte).toMatch(/^https:\/\/wa\.me\/59170000002\?/);
+    expect(decodeURIComponent(new URL(norte).searchParams.get("text")!)).toBe("Hola, me interesa: Uñas acrílicas");
+    expect(within(hoja).getByRole("link", { name: "General" })).toBeInTheDocument();
+  });
+
   it("con una sola sucursal no hay selector", () => {
     montar();
     expect(screen.queryByRole("radiogroup", { name: "Sucursal" })).not.toBeInTheDocument();

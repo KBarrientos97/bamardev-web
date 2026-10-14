@@ -31,7 +31,8 @@ export interface AccionCatalogo {
   icono: string;
   /** A dónde lleva, según el ítem (el WhatsApp lleva el título en el mensaje). */
   href: (item: ItemCatalogoPublico) => string;
-  alClic?: () => void;
+  /** Al tocar el botón: cuenta el clic o, con varios WhatsApp, abre la elección. */
+  alClic?: (ev: React.MouseEvent<HTMLAnchorElement>, item: ItemCatalogoPublico) => void;
   /**
    * "Pedí por WhatsApp" (IDEAS/6 #1): con esto el botón suma el ítem al
    * pedido en vez de llevar a `href`.
@@ -1024,7 +1025,7 @@ export function VisorCatalogo({
             <a
               href={href}
               rel="noopener noreferrer"
-              onClick={accion.alClic}
+              onClick={(ev) => accion.alClic?.(ev, item)}
               style={{ ...estiloBoton, marginTop: 10, minHeight: 52 }}
             >
               <Icono d={accion.icono} color={colorIconoBoton} />

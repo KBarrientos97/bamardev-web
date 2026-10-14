@@ -285,6 +285,21 @@ describe("Mi página", () => {
     expect(screen.getByRole("button", { name: "Guardar cambios" })).toBeDisabled();
   });
 
+  it("el WhatsApp de la sucursal es opcional, va con «Guardar cambios» y se ve en la tarjeta", async () => {
+    await montar();
+    fireEvent.change(screen.getByLabelText("WhatsApp de Centro"), { target: { value: "7012-3456" } });
+    // La vista previa ya lo muestra, normalizado como lo guarda el backend.
+    expect(within(previa()).getByRole("link", { name: "WhatsApp" })).toHaveAttribute("href", "https://wa.me/59170123456");
+    const s = estado().sucursales[0];
+    vi.mocked(apiPagina.sucursal).mockResolvedValue({ ...s, whatsapp: "59170123456" });
+    fireEvent.click(screen.getByRole("button", { name: "Guardar cambios" }));
+    await act(async () => {});
+    expect(apiPagina.sucursal).toHaveBeenCalledWith(10, { horarioTexto: "9 a 20", mapsUrl: null, whatsapp: "7012-3456" });
+    // Guardado se muestra sin el 591.
+    expect(screen.getByLabelText("WhatsApp de Centro")).toHaveValue("70123456");
+    expect(screen.getByRole("button", { name: "Guardar cambios" })).toBeDisabled();
+  });
+
   it("un mapa que no es de Google Maps: dice de qué sucursal y no pierde lo escrito", async () => {
     vi.mocked(apiPagina.sucursal).mockRejectedValue(new Error("Ese enlace no es de Google Maps"));
     await montar();

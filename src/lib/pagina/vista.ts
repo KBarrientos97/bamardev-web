@@ -1,5 +1,12 @@
 import { TITULO_CATALOGO } from "./catalogo";
 import type { CatalogoPublico, EnlaceEditor, EnlacePublico, EstadoEditor, ItemCatalogoPublico, PaginaPublica } from "./tipos";
+import { numeroInternacional } from "./whatsapp";
+
+/** El `wa.me` del WhatsApp de una sucursal, como lo arma el backend. */
+function urlWhatsappSucursal(numero: string | null | undefined): string | null {
+  const n = numeroInternacional(numero);
+  return n ? `https://wa.me/${n}` : null;
+}
 
 /** Día de hoy en Bolivia (UTC−4), como lo compara el backend. */
 export function hoyBolivia(ahora = new Date()): string {
@@ -69,7 +76,9 @@ function productosVisibles(e: EstadoEditor, titulo: string): CatalogoPublico | n
     items.push(fuentes.length > 1 ? { ...item, enSucursal: en } : item);
   }
   if (!items.length) return null;
-  return fuentes.length > 1 ? { titulo, items, sucursales: fuentes.map((s) => s.nombre) } : { titulo, items };
+  return fuentes.length > 1
+    ? { titulo, items, sucursales: fuentes.map((s) => s.nombre), whatsapps: fuentes.map((s) => urlWhatsappSucursal(s.whatsapp)) }
+    : { titulo, items };
 }
 
 /**
@@ -137,6 +146,7 @@ export function vistaDesdeEditor(e: EstadoEditor, hoy = hoyBolivia()): PaginaPub
         horario: s.horarioTexto,
         mapaUrl: urlMapa(s.mapsUrl, s.direccion),
         horarioSemanal: s.horarioSemanal?.length ? s.horarioSemanal : null,
+        whatsappUrl: urlWhatsappSucursal(s.whatsapp),
       })),
     catalogo: catalogoVisible(e),
     pie: { atribucionUrl: "https://bamardev.com" },

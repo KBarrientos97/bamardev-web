@@ -238,6 +238,96 @@ describe("página pública", () => {
     expect(texto).toContain("Sucursal: Sur");
   });
 
+  describe("WhatsApp por sucursal (13-oct)", () => {
+    const dosNumeros: Pagina = {
+      ...PAGINA,
+      sucursales: [
+        { ...PAGINA.sucursales[0], nombre: "Norte", whatsappUrl: "https://wa.me/59170000002" },
+        { ...PAGINA.sucursales[0], nombre: "Sur", reservaSlug: null, whatsappUrl: null },
+      ],
+    };
+
+    it("un solo número: el botón de WhatsApp va directo", async () => {
+      vi.stubGlobal("fetch", responder(200, PAGINA));
+      await montar();
+      fireEvent.click(screen.getByRole("link", { name: /Hacé tu pedido por WhatsApp/ }));
+      expect(screen.queryByRole("dialog", { name: "¿A qué WhatsApp escribís?" })).not.toBeInTheDocument();
+    });
+
+    it("dos números: el botón pregunta a cuál, con el nombre de cada sucursal; la tarjeta muestra el suyo", async () => {
+      vi.stubGlobal("fetch", responder(200, dosNumeros));
+      await montar();
+      // La tarjeta de Norte lleva su WhatsApp; la de Sur, no.
+      expect(screen.getByRole("link", { name: "WhatsApp" })).toHaveAttribute("href", "https://wa.me/59170000002");
+      fireEvent.click(screen.getByRole("link", { name: /Hacé tu pedido por WhatsApp/ }));
+      const hoja = screen.getByRole("dialog", { name: "¿A qué WhatsApp escribís?" });
+      expect(within(hoja).getByRole("link", { name: "Norte" })).toHaveAttribute("href", "https://wa.me/59170000002");
+      expect(within(hoja).getByRole("link", { name: "General" })).toHaveAttribute("href", "https://wa.me/59170123456");
+      fireEvent.click(within(hoja).getByRole("button", { name: "Cerrar" }));
+      expect(screen.queryByRole("dialog", { name: "¿A qué WhatsApp escribís?" })).not.toBeInTheDocument();
+    });
+
+    it("catálogo armado a mano con dos números: el pedido pregunta a qué sucursal mandarlo", async () => {
+      sessionStorage.clear();
+      vi.stubGlobal(
+        "fetch",
+        responder(200, {
+          ...dosNumeros,
+          pedidos: true,
+          catalogo: { titulo: "Menú", items: [{ id: 11, titulo: "Pollo ¼", descripcion: null, precio: 35, precioDesde: false, fotoUrl: null }] },
+        }),
+      );
+      await montar();
+      fireEvent.click(screen.getByRole("button", { name: /^Pollo ¼, Bs 35/ }));
+      fireEvent.click(screen.getByRole("button", { name: "Agregar al pedido" }));
+      fireEvent.click(screen.getByRole("button", { name: "Cerrar" }));
+      fireEvent.click(await screen.findByRole("button", { name: /Ver tu pedido/ }));
+      const panel = screen.getByRole("dialog", { name: "Tu pedido" });
+      // Sin elegir a qué sucursal, no se puede mandar (el <a> no tiene destino).
+      expect(within(panel).getByText("Enviar pedido por WhatsApp")).toHaveAttribute("aria-disabled", "true");
+      fireEvent.click(within(panel).getByRole("radio", { name: "Norte" }));
+      const enviar = within(panel).getByRole("link", { name: "Enviar pedido por WhatsApp" });
+      expect(enviar).toHaveAttribute("aria-disabled", "false");
+      expect(enviar.getAttribute("href")).toMatch(/^https:\/\/wa\.me\/59170000002\?/);
+      const texto = decodeURIComponent(new URL(enviar.getAttribute("href")!).searchParams.get("text")!);
+      expect(texto).toContain("Sucursal: Norte");
+    });
+
+    it("«Mis productos» con sucursal elegida: el pedido va directo a su WhatsApp, o al general si no tiene", async () => {
+      sessionStorage.clear();
+      const en = [
+        { precio: 35, disponible: true },
+        { precio: 40, disponible: true },
+      ];
+      vi.stubGlobal(
+        "fetch",
+        responder(200, {
+          ...dosNumeros,
+          pedidos: true,
+          catalogo: {
+            titulo: "Menú",
+            sucursales: ["Norte", "Sur"],
+            whatsapps: ["https://wa.me/59170000002", null],
+            items: [{ id: 11, titulo: "Pollo ¼", descripcion: null, precio: 35, precioDesde: false, fotoUrl: null, icono: null, categoria: null, enSucursal: en }],
+          },
+        }),
+      );
+      await montar();
+      fireEvent.click(screen.getByRole("button", { name: /^Pollo ¼, Bs 35/ }));
+      fireEvent.click(screen.getByRole("button", { name: "Agregar al pedido" }));
+      fireEvent.click(screen.getByRole("button", { name: "Cerrar" }));
+      fireEvent.click(await screen.findByRole("button", { name: /Ver tu pedido/ }));
+      // No pregunta: va a la sucursal elegida en «Precios de:».
+      expect(within(screen.getByRole("dialog", { name: "Tu pedido" })).queryByRole("radio", { name: "Norte" })).not.toBeInTheDocument();
+      expect(screen.getByRole("link", { name: "Enviar pedido por WhatsApp" }).getAttribute("href")).toMatch(/^https:\/\/wa\.me\/59170000002\?/);
+      // Sur no tiene número propio: al general.
+      fireEvent.click(screen.getByRole("button", { name: "Cerrar el pedido" }));
+      fireEvent.click(screen.getByRole("radio", { name: "Sur" }));
+      fireEvent.click(await screen.findByRole("button", { name: /Ver tu pedido/ }));
+      expect(screen.getByRole("link", { name: "Enviar pedido por WhatsApp" }).getAttribute("href")).toMatch(/^https:\/\/wa\.me\/59170123456\?/);
+    });
+  });
+
   it("sin el interruptor de pedidos, el visor consulta como siempre", async () => {
     vi.stubGlobal(
       "fetch",

@@ -3,6 +3,7 @@ import { useParams } from "react-router-dom";
 import { useCoincideMedia } from "../../lib/useCoincideMedia";
 import { avisarClic, urlDeImagen } from "../../lib/pagina/apiPagina";
 import { catalogoEnSucursal, enlaceWhatsapp } from "../../lib/pagina/catalogo";
+import { contactosWhatsapp, type ContactoWhatsapp } from "../../lib/pagina/whatsapp";
 import type { EnlacePublico } from "../../lib/pagina/tipos";
 import PedidoPagina from "./PedidoPagina";
 import { usePedido } from "../../lib/pagina/usePedido";
@@ -175,10 +176,22 @@ export default function PaginaPublica() {
     if (pagina?.catalogo) pedido.ajustar(catalogoEnSucursal(pagina.catalogo, i).items, pagina.catalogo.items);
   };
 
-  // Pedidos y gift cards se mandan al WhatsApp de la página: sin él, no hay.
+  // Pedidos y gift cards se mandan por WhatsApp: al general o al de alguna
+  // sucursal (13-oct). Sin ningún número, no hay.
   const whatsapp = pagina ? enlaceWhatsapp(pagina) : null;
-  const conPedidos = !!pagina?.pedidos && !!whatsapp;
-  const conRegalos = !!pagina?.regalos && !!whatsapp;
+  const contactos = pagina ? contactosWhatsapp(pagina) : [];
+  const conPedidos = !!pagina?.pedidos && contactos.length > 0;
+  const conRegalos = !!pagina?.regalos && contactos.length > 0;
+  // El pedido de «Mis productos» con sucursal elegida va al WhatsApp de esa
+  // sucursal o, si no tiene, al general. Sin selector, a cualquiera de los
+  // números (si hay varios, el cliente elige en el pedido).
+  const catalogo = pagina?.catalogo;
+  let destinosPedido: ContactoWhatsapp[] = contactos;
+  if (catalogo?.sucursales && catalogo.sucursales.length > 1) {
+    const i = sucursal < catalogo.sucursales.length ? sucursal : 0;
+    const url = catalogo.whatsapps?.[i] ?? whatsapp?.url ?? null;
+    if (url) destinosPedido = [{ etiqueta: catalogo.sucursales[i], url }];
+  }
   // "Regalá una gift card" entra como un botón más de la página, con su
   // forma y su estilo, sin tocar cada armado.
   const vista = useMemo(
@@ -199,16 +212,16 @@ export default function PaginaPublica() {
         sucursalCatalogo={sucursal}
         onSucursalCatalogo={elegirSucursal}
       />
-      {conPedidos && whatsapp && (
+      {conPedidos && (
         <PedidoPagina
           negocio={pagina.nombre}
           color={pagina.color.hex}
-          whatsappUrl={whatsapp.url}
+          destinos={destinosPedido}
           pedido={pedido}
           sucursal={nombreSucursal}
         />
       )}
-      {conRegalos && whatsapp && pagina.regalos && (
+      {conRegalos && pagina.regalos && (
         <RegalarPagina
           abierto={regalando}
           onCerrar={() => setRegalando(false)}
@@ -217,7 +230,7 @@ export default function PaginaPublica() {
           rubro={pagina.rubroClave ?? pagina.rubro}
           fotoUrl={urlDeImagen(pagina.portadaUrl ?? pagina.logoUrl)}
           regalos={pagina.regalos}
-          whatsappUrl={whatsapp.url}
+          destinos={contactos}
         />
       )}
       {/* Fuera de VistaPagina: la vista previa del editor no lleva el chat.

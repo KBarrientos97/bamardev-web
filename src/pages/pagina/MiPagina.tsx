@@ -40,6 +40,7 @@ import type {
   Tramo,
 } from "../../lib/pagina/tipos";
 import { vistaDesdeEditor } from "../../lib/pagina/vista";
+import { numeroParaEditar } from "../../lib/pagina/whatsapp";
 import { useApi } from "../../lib/useApi";
 import CartelQR from "./CartelQR";
 import CatalogoEditor from "./CatalogoEditor";
@@ -153,13 +154,14 @@ function Imagen({
 }
 
 /** Lo que el dueño escribió en una sucursal y todavía no se guardó. */
-type BorradorSucursal = { horarioTexto: string; mapsUrl: string; horarioSemanal: Tramo[] | null };
+type BorradorSucursal = { horarioTexto: string; mapsUrl: string; horarioSemanal: Tramo[] | null; whatsapp: string };
 
 /** Lo guardado de una sucursal, como borrador (para comparar y para seguir editando). */
 const borradorDe = (s: SucursalEditor): BorradorSucursal => ({
   horarioTexto: s.horarioTexto ?? "",
   mapsUrl: s.mapsUrl ?? "",
   horarioSemanal: s.horarioSemanal ?? null,
+  whatsapp: numeroParaEditar(s.whatsapp),
 });
 
 /**
@@ -253,6 +255,17 @@ function FilaSucursal({
               value={actual.mapsUrl}
               onChange={(e) => onCambio({ ...actual, mapsUrl: e.target.value })}
               placeholder="https://maps.app.goo.gl/…"
+            />
+          </Campo>
+          {/* 13-oct: opcional. Con dos o más números distintos, la página pregunta a cuál escribir. */}
+          <Campo label="WhatsApp de esta sucursal (opcional)" hint="Vacío: usa el WhatsApp de tu página.">
+            <Input
+              aria-label={`WhatsApp de ${s.nombre}`}
+              value={actual.whatsapp}
+              onChange={(e) => onCambio({ ...actual, whatsapp: e.target.value })}
+              inputMode="tel"
+              placeholder="70123456"
+              maxLength={40}
             />
           </Campo>
         </div>
@@ -528,12 +541,15 @@ export default function MiPagina() {
     horarioTexto: b.horarioTexto.trim() || null,
     mapsUrl: b.mapsUrl.trim() || null,
     horarioSemanal: b.horarioSemanal,
+    whatsapp: b.whatsapp.trim() || null,
   });
   // Lo que se manda de una sucursal: el horario por día sólo si cambió (un
   // backend anterior no lo conoce, y mandarlo igual no aporta nada).
   const cuerpoSucursal = (s: SucursalEditor | undefined, b: BorradorSucursal) => {
-    const { horarioSemanal, ...resto } = limpio(b);
-    return mismoHorario(horarioSemanal, s?.horarioSemanal) ? resto : { ...resto, horarioSemanal };
+    const { horarioSemanal, whatsapp, ...resto } = limpio(b);
+    // El WhatsApp, igual: sólo si cambió (13-oct).
+    const conWhatsapp = (whatsapp ?? "") === numeroParaEditar(s?.whatsapp) ? resto : { ...resto, whatsapp };
+    return mismoHorario(horarioSemanal, s?.horarioSemanal) ? conWhatsapp : { ...conWhatsapp, horarioSemanal };
   };
   // La vista previa muestra el horario y el mapa que se están escribiendo.
   const sucursalesEditadas = e.sucursales.map((s) =>
@@ -619,6 +635,7 @@ export default function MiPagina() {
       if (
         b.horarioTexto === guardado.horarioTexto &&
         b.mapsUrl === guardado.mapsUrl &&
+        b.whatsapp.trim() === guardado.whatsapp &&
         mismoHorario(b.horarioSemanal, guardado.horarioSemanal)
       )
         delete resto[s.id];
