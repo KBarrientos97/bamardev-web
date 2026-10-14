@@ -243,7 +243,8 @@ export default function CatalogoProductosEditor({
             ))}
           </ol>
           <p className="text-xs text-texto-4">
-            El nombre, el precio y el ícono salen de tu sistema: si los cambiás allá, cambian acá.
+            El nombre, el precio y el ícono salen de tu sistema: si los cambiás allá, cambian acá. Si una sucursal tiene
+            su propio precio o no ofrece un producto, tu página lo respeta.
             {ocultos > 0 &&
               ` ${ocultos === 1 ? "Uno está inactivo o dado de baja" : `${ocultos} están inactivos o dados de baja`}: no se ve${ocultos === 1 ? "" : "n"} hasta que lo${ocultos === 1 ? "" : "s"} reactives.`}
           </p>

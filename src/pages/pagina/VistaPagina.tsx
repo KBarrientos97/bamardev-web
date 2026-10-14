@@ -2,7 +2,7 @@ import { useLayoutEffect, useRef, useState, type CSSProperties, type RefObject }
 import { preload } from "react-dom";
 import { urlDeImagen } from "../../lib/pagina/apiPagina";
 import { ICONO_ANUNCIO, ICONO_RESERVAR, iconoDe, mezcla, paleta, type Paleta } from "../../lib/pagina/aspecto";
-import { enlaceWhatsapp, urlConsultaWhatsapp } from "../../lib/pagina/catalogo";
+import { catalogoEnSucursal, enlaceWhatsapp, urlConsultaWhatsapp } from "../../lib/pagina/catalogo";
 import {
   coloresAnuncio,
   estiloBotones,
@@ -16,7 +16,7 @@ import { estiloPagina, tonosPagina } from "../../lib/pagina/estilosPagina";
 import type { AnuncioPublico, EnlacePublico, ItemCatalogoPublico, PaginaPublica } from "../../lib/pagina/tipos";
 import { urlTelefono } from "../../lib/pagina/vista";
 import ArmadoEstilo, { type PiezasArmado } from "./ArmadosPagina";
-import CatalogoPagina, { type AccionCatalogo, type AspectoCatalogo } from "./CatalogoPagina";
+import CatalogoPagina, { SelectorSucursalCatalogo, type AccionCatalogo, type AspectoCatalogo } from "./CatalogoPagina";
 import { EstadoSucursal, SemanaSucursal } from "./HorarioSucursal";
 import type { AccionPagina, DatosVisor } from "./piezasArmado";
 import { Enlace, PiePagina, TarjetaSucursal, TituloSeccion, Trazo, type AccionSucursal } from "./piezasPagina";
@@ -285,6 +285,13 @@ export interface PropsVista {
    * al pedido en vez de reservar o consultar. Lo pasa la página pública.
    */
   alAgregarAlPedido?: (item: ItemCatalogoPublico) => void;
+  /**
+   * La sucursal elegida en el catálogo («Mis productos» con más de una), si
+   * la maneja quien la usa (la página pública, para que el pedido sepa de
+   * cuál son los precios). Sin esto la vista lleva la suya.
+   */
+  sucursalCatalogo?: number;
+  onSucursalCatalogo?: (indice: number) => void;
 }
 
 export default function VistaPagina({
@@ -296,8 +303,11 @@ export default function VistaPagina({
   modo = "auto",
   miniatura,
   alAgregarAlPedido,
+  sucursalCatalogo,
+  onSucursalCatalogo,
 }: PropsVista) {
   const raiz = useRef<HTMLDivElement>(null);
+  const [sucursalPropia, setSucursalPropia] = useState(0);
   const escritorio = useEsEscritorio(modo, raiz);
   // El marco del celular del editor achica la portada y el logo; el de la
   // computadora no (es la página a tamaño real, escalada).
@@ -501,9 +511,35 @@ export default function VistaPagina({
           : undefined,
         familia: t.familia,
       };
-  const catalogo = p.catalogo && p.catalogo.items.length > 0 && (
+  // «Mis productos» con más de una sucursal publicada: el visitante elige de
+  // cuál ver precios y disponibilidad (13-oct). La primera es la principal.
+  const nombresSucursal = p.catalogo?.sucursales ?? [];
+  const elegidaCruda = sucursalCatalogo ?? sucursalPropia;
+  const sucursalElegida = elegidaCruda < nombresSucursal.length ? elegidaCruda : 0;
+  const catalogoVisto = p.catalogo ? catalogoEnSucursal(p.catalogo, sucursalElegida) : null;
+  const selectorSucursal =
+    nombresSucursal.length > 1 ? (
+      <SelectorSucursalCatalogo
+        nombres={nombresSucursal}
+        indice={sucursalElegida}
+        onIndice={(i) => {
+          setSucursalPropia(i);
+          onSucursalCatalogo?.(i);
+        }}
+        colores={{
+          texto: t.texto2,
+          textoElegido: t.textoTarjeta,
+          fondoElegido: t.tarjeta,
+          borde: t.borde ?? t.texto3,
+          bordeElegido: t.precio,
+        }}
+      />
+    ) : null;
+  const catalogo = p.catalogo && catalogoVisto && p.catalogo.items.length > 0 && (
     <CatalogoPagina
-      catalogo={p.catalogo}
+      catalogo={catalogoVisto}
+      selector={selectorSucursal}
+      colorVacio={t.texto3}
       c={c}
       escritorio={escritorio}
       enMarco={enCaja}
@@ -525,10 +561,11 @@ export default function VistaPagina({
   );
 
   const visor: DatosVisor | null =
-    p.catalogo && p.catalogo.items.length > 0
+    p.catalogo && catalogoVisto && p.catalogo.items.length > 0
       ? {
-          items: p.catalogo.items,
+          items: catalogoVisto.items,
           titulo: p.catalogo.titulo,
+          selector: selectorSucursal,
           c,
           familia: t.familia,
           escritorio,

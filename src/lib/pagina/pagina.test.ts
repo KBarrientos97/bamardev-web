@@ -165,6 +165,43 @@ describe("vista previa desde el editor", () => {
     expect(vistaDesdeEditor({ ...soloInactivos, pagina: { ...soloInactivos.pagina, catalogoModo: "PRODUCTOS" } }).catalogo).toBeNull();
   });
 
+  it("«Mis productos» por sucursal: la principal si no hay publicadas; con dos, el selector", () => {
+    const pollo = {
+      id: 1,
+      nombre: "Pollo",
+      precio: 120,
+      icono: null,
+      categoria: null,
+      orden: 1,
+      vendible: true,
+      descripcion: "Con papas",
+      porSucursal: [
+        { almacenId: 10, precio: 99, disponible: true },
+        { almacenId: 11, precio: null, disponible: false },
+      ],
+    };
+    const base = editor({ productosCatalogo: [pollo] });
+    const conModo = (sucursales: EstadoEditor["sucursales"]) =>
+      vistaDesdeEditor({ ...base, sucursales, pagina: { ...base.pagina, catalogoModo: "PRODUCTOS" } }).catalogo;
+    const [centro, sur] = base.sucursales;
+    // Sólo Centro (la principal) publicada: su precio, sin selector.
+    expect(conModo(base.sucursales)).toEqual({
+      titulo: "Catálogo",
+      items: [{ id: 1, titulo: "Pollo", descripcion: "Con papas", precio: 99, precioDesde: false, fotoUrl: null, icono: null, categoria: null }],
+    });
+    // Ninguna publicada: igual la principal.
+    expect(conModo([{ ...centro, publicarEnPagina: false }, sur])?.items[0].precio).toBe(99);
+    // Sólo Sur, donde no se ofrece: no hay sección.
+    expect(conModo([{ ...centro, publicarEnPagina: false }, { ...sur, publicarEnPagina: true }])).toBeNull();
+    // Las dos: el detalle de cada una.
+    const dos = conModo([centro, { ...sur, publicarEnPagina: true }]);
+    expect(dos?.sucursales).toEqual(["Centro", "Sur"]);
+    expect(dos?.items[0].enSucursal).toEqual([
+      { precio: 99, disponible: true },
+      { precio: 120, disponible: false },
+    ]);
+  });
+
   it("hoy en Bolivia es UTC−4", () => {
     expect(hoyBolivia(new Date("2026-10-07T03:00:00Z"))).toBe("2026-10-06");
     expect(hoyBolivia(new Date("2026-10-07T05:00:00Z"))).toBe("2026-10-07");

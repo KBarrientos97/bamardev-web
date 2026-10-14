@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { useCoincideMedia } from "../../lib/useCoincideMedia";
 import { avisarClic, urlDeImagen } from "../../lib/pagina/apiPagina";
-import { enlaceWhatsapp } from "../../lib/pagina/catalogo";
+import { catalogoEnSucursal, enlaceWhatsapp } from "../../lib/pagina/catalogo";
 import type { EnlacePublico } from "../../lib/pagina/tipos";
 import PedidoPagina from "./PedidoPagina";
 import { usePedido } from "../../lib/pagina/usePedido";
@@ -165,6 +165,15 @@ export default function PaginaPublica() {
   useMetadatosPagina(pagina);
   const pedido = usePedido(subdominio ?? "");
   const [regalando, setRegalando] = useState(false);
+  // La sucursal elegida en el catálogo («Mis productos» con más de una): de
+  // ella son los precios del pedido, y el mensaje la nombra.
+  const [sucursal, setSucursal] = useState(0);
+  const sucursales = pagina?.catalogo?.sucursales ?? [];
+  const nombreSucursal = sucursales.length > 1 ? (sucursales[sucursal] ?? sucursales[0]) : null;
+  const elegirSucursal = (i: number) => {
+    setSucursal(i);
+    if (pagina?.catalogo) pedido.ajustar(catalogoEnSucursal(pagina.catalogo, i).items, pagina.catalogo.items);
+  };
 
   // Pedidos y gift cards se mandan al WhatsApp de la página: sin él, no hay.
   const whatsapp = pagina ? enlaceWhatsapp(pagina) : null;
@@ -187,9 +196,17 @@ export default function PaginaPublica() {
         urlPrivacidad={urlPrivacidadDe(pagina.subdominio)}
         alClic={(e) => (e.id === BOTON_REGALO.id ? setRegalando(true) : avisarClic(pagina.subdominio, e.id))}
         alAgregarAlPedido={conPedidos ? pedido.agregar : undefined}
+        sucursalCatalogo={sucursal}
+        onSucursalCatalogo={elegirSucursal}
       />
       {conPedidos && whatsapp && (
-        <PedidoPagina negocio={pagina.nombre} color={pagina.color.hex} whatsappUrl={whatsapp.url} pedido={pedido} />
+        <PedidoPagina
+          negocio={pagina.nombre}
+          color={pagina.color.hex}
+          whatsappUrl={whatsapp.url}
+          pedido={pedido}
+          sucursal={nombreSucursal}
+        />
       )}
       {conRegalos && whatsapp && pagina.regalos && (
         <RegalarPagina

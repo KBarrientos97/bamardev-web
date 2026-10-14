@@ -166,11 +166,27 @@ export interface ItemCatalogoPublico {
   icono?: string | null;
   /** Sólo en "Mis productos": la categoría del producto, si tiene. */
   categoria?: string | null;
+  /**
+   * Sólo en "Mis productos" con más de una sucursal publicada: el precio y si
+   * se ofrece en cada una, en el orden de `CatalogoPublico.sucursales`.
+   */
+  enSucursal?: EnSucursal[];
+}
+
+/** Cómo sale un producto en una sucursal. */
+export interface EnSucursal {
+  precio: number | null;
+  disponible: boolean;
 }
 
 export interface CatalogoPublico {
   titulo: string;
   items: ItemCatalogoPublico[];
+  /**
+   * "Mis productos" con más de una sucursal publicada: sus nombres, para que
+   * el visitante elija de cuál ver los precios (la principal primero).
+   */
+  sucursales?: string[];
 }
 
 /** `GET /publico/pagina/:subdominio`. */
@@ -338,6 +354,13 @@ export interface ProductoFijado extends ProductoParaPagina {
   orden: number;
   /** false = fijado pero hoy no sale (inactivo o dado de baja); vuelve si lo reactivan. */
   vendible: boolean;
+  /** Lo que la página muestra al tocarlo. Opcional: un backend anterior no lo manda. */
+  descripcion?: string | null;
+  /**
+   * Las excepciones de cada sucursal (precio propio, null = el de lista; y si
+   * se ofrece ahí). Con esto la vista previa arma lo mismo que la página.
+   */
+  porSucursal?: { almacenId: number; precio: number | null; disponible: boolean }[];
 }
 
 /** Alta (`POST /pagina/catalogo`) y, parcial, edición (`PATCH /pagina/catalogo/:id`). */

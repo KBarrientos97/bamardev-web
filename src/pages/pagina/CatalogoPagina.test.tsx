@@ -50,6 +50,66 @@ afterEach(() => vi.useRealTimers());
 const visor = () => screen.getByRole("dialog");
 
 describe("catálogo de la página pública", () => {
+  it("«Mis productos» con dos sucursales: se elige la sucursal y cambian precios y productos", () => {
+    montar({
+      catalogo: {
+        titulo: "Catálogo",
+        sucursales: ["Norte", "Sur"],
+        items: [
+          {
+            id: 7,
+            titulo: "Pollo entero",
+            descripcion: "Con papas y ensalada",
+            precio: 120,
+            precioDesde: false,
+            fotoUrl: null,
+            icono: null,
+            categoria: "Pollos",
+            enSucursal: [
+              { precio: 120, disponible: true },
+              { precio: 110, disponible: true },
+            ],
+          },
+          {
+            id: 8,
+            titulo: "Soda",
+            descripcion: null,
+            precio: 15,
+            precioDesde: false,
+            fotoUrl: null,
+            icono: null,
+            categoria: null,
+            enSucursal: [
+              { precio: 15, disponible: true },
+              { precio: 15, disponible: false },
+            ],
+          },
+        ],
+      },
+    });
+    const selector = screen.getByRole("radiogroup", { name: "Sucursal" });
+    expect(within(selector).getByRole("radio", { name: "Norte" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByText("Bs 120")).toBeInTheDocument();
+    expect(screen.getByText("Soda")).toBeInTheDocument();
+    // La descripción no va en la tarjeta: ahí, la categoría.
+    expect(screen.queryByText("Con papas y ensalada")).not.toBeInTheDocument();
+
+    fireEvent.click(within(selector).getByRole("radio", { name: "Sur" }));
+    expect(within(selector).getByRole("radio", { name: "Sur" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByText("Bs 110")).toBeInTheDocument();
+    expect(screen.queryByText("Soda")).not.toBeInTheDocument();
+
+    // Al tocarlo, el visor muestra la descripción (las notas del producto).
+    fireEvent.click(tarjeta("Pollo entero"));
+    expect(within(visor()).getByText("Con papas y ensalada")).toBeInTheDocument();
+    expect(within(visor()).getByText("Bs 110")).toBeInTheDocument();
+  });
+
+  it("con una sola sucursal no hay selector", () => {
+    montar();
+    expect(screen.queryByRole("radiogroup", { name: "Sucursal" })).not.toBeInTheDocument();
+  });
+
   it("«Mis productos»: el ícono del producto en vez de la inicial, y la categoría debajo", () => {
     montar({
       catalogo: {

@@ -205,6 +205,39 @@ describe("página pública", () => {
     expect(enviar.getAttribute("href")).toMatch(/^https:\/\/wa\.me\/59170123456\?/);
   });
 
+  it("pedidos con sucursal elegida: el precio es el de esa sucursal y el mensaje la nombra", async () => {
+    sessionStorage.clear();
+    const en = (norte: number, sur: number) => [
+      { precio: norte, disponible: true },
+      { precio: sur, disponible: true },
+    ];
+    vi.stubGlobal(
+      "fetch",
+      responder(200, {
+        ...PAGINA,
+        pedidos: true,
+        catalogo: {
+          titulo: "Menú",
+          sucursales: ["Norte", "Sur"],
+          items: [
+            { id: 11, titulo: "Pollo ¼", descripcion: null, precio: 35, precioDesde: false, fotoUrl: null, icono: null, categoria: null, enSucursal: en(35, 40) },
+          ],
+        },
+      }),
+    );
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: /^Pollo ¼, Bs 35/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Agregar al pedido" }));
+    fireEvent.click(screen.getByRole("button", { name: "Cerrar" }));
+    // Cambiar de sucursal con el pedido armado: toma el precio de Sur.
+    fireEvent.click(screen.getByRole("radio", { name: "Sur" }));
+    fireEvent.click(await screen.findByRole("button", { name: /Ver tu pedido: 1 producto, Bs 40/ }));
+    const enviar = screen.getByRole("link", { name: "Enviar pedido por WhatsApp" });
+    const texto = decodeURIComponent(new URL(enviar.getAttribute("href")!).searchParams.get("text")!);
+    expect(texto).toContain("• 1 × Pollo ¼ (Bs 40) = Bs 40");
+    expect(texto).toContain("Sucursal: Sur");
+  });
+
   it("sin el interruptor de pedidos, el visor consulta como siempre", async () => {
     vi.stubGlobal(
       "fetch",

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { agregarLinea, cambiarCantidad, type LineaPedido } from "./pedido";
+import { agregarLinea, ajustarASucursal, cambiarCantidad, type LineaPedido } from "./pedido";
 import type { ItemCatalogoPublico } from "./tipos";
 
 /**
@@ -35,6 +35,9 @@ export function usePedido(sub: string) {
     lineas,
     agregar: (item: ItemCatalogoPublico) => setLineas((l) => agregarLinea(l, item)),
     cambiar: (id: number, delta: number) => setLineas((l) => cambiarCantidad(l, id, delta)),
+    /** Otra sucursal elegida: sus precios, y fuera lo que ahí no se ofrece. */
+    ajustar: (items: ItemCatalogoPublico[], todos: ItemCatalogoPublico[]) =>
+      setLineas((l) => ajustarASucursal(l, items, todos)),
     vaciar: () => setLineas([]),
   };
 }

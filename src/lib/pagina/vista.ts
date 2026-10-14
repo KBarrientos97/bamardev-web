@@ -1,5 +1,5 @@
 import { TITULO_CATALOGO } from "./catalogo";
-import type { CatalogoPublico, EnlaceEditor, EnlacePublico, EstadoEditor, PaginaPublica } from "./tipos";
+import type { CatalogoPublico, EnlaceEditor, EnlacePublico, EstadoEditor, ItemCatalogoPublico, PaginaPublica } from "./tipos";
 
 /** Día de hoy en Bolivia (UTC−4), como lo compara el backend. */
 export function hoyBolivia(ahora = new Date()): string {
@@ -21,22 +21,7 @@ export function urlMapa(mapsUrl: string | null, direccion: string | null): strin
  */
 function catalogoVisible(e: EstadoEditor): CatalogoPublico | null {
   const titulo = e.pagina.catalogoTitulo?.trim() || TITULO_CATALOGO;
-  if (e.pagina.catalogoModo === "PRODUCTOS") {
-    const productos = (e.productosCatalogo ?? [])
-      .filter((x) => x.vendible)
-      .sort((a, b) => a.orden - b.orden)
-      .map((x) => ({
-        id: x.id,
-        titulo: x.nombre,
-        descripcion: null,
-        precio: x.precio,
-        precioDesde: false,
-        fotoUrl: null,
-        icono: x.icono,
-        categoria: x.categoria,
-      }));
-    return productos.length ? { titulo, items: productos } : null;
-  }
+  if (e.pagina.catalogoModo === "PRODUCTOS") return productosVisibles(e, titulo);
   const items = (e.catalogo ?? [])
     .filter((x) => x.visible)
     .sort((a, b) => a.orden - b.orden || a.id - b.id)
@@ -50,6 +35,41 @@ function catalogoVisible(e: EstadoEditor): CatalogoPublico | null {
     }));
   if (items.length === 0) return null;
   return { titulo, items };
+}
+
+/**
+ * «Mis productos» como los arma el backend (`armarProductosPublicos`): el
+ * precio sale de las sucursales publicadas (la principal primero) o, si no se
+ * publicó ninguna, de la principal; la excepción de la sucursal manda sobre
+ * el precio de lista, y lo que ahí no se ofrece no sale. Con dos o más
+ * publicadas, el detalle de cada una para el selector.
+ */
+function productosVisibles(e: EstadoEditor, titulo: string): CatalogoPublico | null {
+  const publicadas = e.sucursales.filter((s) => s.publicarEnPagina);
+  const principal = e.sucursales.find((s) => s.esPrincipal);
+  const fuentes = publicadas.length ? publicadas : principal ? [principal] : [];
+  const items: ItemCatalogoPublico[] = [];
+  for (const x of [...(e.productosCatalogo ?? [])].filter((x) => x.vendible).sort((a, b) => a.orden - b.orden)) {
+    const en = fuentes.map((s) => {
+      const f = x.porSucursal?.find((p) => p.almacenId === s.id);
+      const precio = f?.precio ?? x.precio;
+      return { precio: precio != null && precio > 0 ? precio : null, disponible: f?.disponible ?? true };
+    });
+    if (en.length && !en.some((s) => s.disponible)) continue;
+    const item: ItemCatalogoPublico = {
+      id: x.id,
+      titulo: x.nombre,
+      descripcion: x.descripcion ?? null,
+      precio: en.length ? en[0].precio : x.precio,
+      precioDesde: false,
+      fotoUrl: null,
+      icono: x.icono,
+      categoria: x.categoria,
+    };
+    items.push(fuentes.length > 1 ? { ...item, enSucursal: en } : item);
+  }
+  if (!items.length) return null;
+  return fuentes.length > 1 ? { titulo, items, sucursales: fuentes.map((s) => s.nombre) } : { titulo, items };
 }
 
 /**

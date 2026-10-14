@@ -25,12 +25,15 @@ export default function PedidoPagina({
   color,
   whatsappUrl,
   pedido,
+  sucursal,
 }: {
   negocio: string;
   color: string;
   /** El WhatsApp de la página (sin él, no hay carrito). */
   whatsappUrl: string;
   pedido: Pedido;
+  /** La sucursal elegida en el catálogo, si hay más de una: de ella son los precios. */
+  sucursal?: string | null;
 }) {
   const [abierto, setAbierto] = useState(false);
   const [datos, setDatos] = useState<DatosPedido>({ nombre: "", entrega: "RETIRO", direccion: "", nota: "" });
@@ -51,7 +54,7 @@ export default function PedidoPagina({
   if (!cantidad && !abierto) return null;
 
   const totalTexto = total > 0 ? `${formatoPrecio(total)}${aConfirmar ? " +" : ""}` : "a confirmar";
-  const url = urlWhatsappConTexto(whatsappUrl, mensajePedido(negocio, lineas, datos));
+  const url = urlWhatsappConTexto(whatsappUrl, mensajePedido(negocio, lineas, datos, sucursal));
   const faltaDireccion = datos.entrega === "DELIVERY" && datos.direccion.trim().length < 5;
 
   if (!abierto) {
