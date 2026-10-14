@@ -18,6 +18,13 @@ export interface DatosReporte {
   rangoAnterior: RangoReporte;
   /** El local elegido, para los textos. Vacío = todas las sucursales. */
   sucursalNombre: string;
+  /**
+   * A qué hora termina la jornada (minutos; ver `lib/jornada.ts`). Sólo un
+   * billar tiene uno (cierra a las 2 a. m.); 0 o ausente = el calendario.
+   * Ya va dentro de `rango`: esto es para lo que calcula la pantalla ("¿es el
+   * mes en curso?").
+   */
+  corteMin?: number;
   registrarExportacion: (e: Exportacion | null) => void;
   /**
    * ¿Este usuario ve ese otro reporte? Para los "Ver compras" y "Ver

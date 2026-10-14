@@ -10,6 +10,7 @@ import { huellaDeCobro, useIntentoDeCobro } from "../pos/useIntentoDeCobro";
 import { useCobro } from "./useCobro";
 import { useAccion } from "./useAccion";
 import { CajaCerradaAviso } from "./ModalesCaja";
+import { huellaConsumos } from "./reintentos";
 import { billar, cargarProductos, useBillar } from "./store";
 import { BotonB, Encabezado, ErrorAccion, Rotulo } from "./ui";
 
@@ -33,6 +34,7 @@ export default function VentaRapida() {
   const abiertas = e.mesas.filter((m) => m.estado === "abierta");
   const accion = useAccion();
   const intento = useIntentoDeCobro();
+  const intentoMesa = useIntentoDeCobro();
 
   const volver = (
     <BotonB icono="arrowLeft" onClick={() => navigate("/billar")} aria-label="Volver al billar">
@@ -77,10 +79,16 @@ export default function VentaRapida() {
 
   const cargarAMesa = async (mesaId: number) => {
     setAMesa(false);
-    if (!(await accion.ejecutar(() => billar.agregarConsumos(mesaId, items)))) {
+    // Otro id que el de la venta: cargar a una mesa es otra acción. El mismo
+    // mientras el pedido y la mesa sean los mismos, para que el reintento no
+    // cargue todo dos veces a la cuenta.
+    const sesionId = abiertas.find((m) => m.id === mesaId)?.sesion?.id ?? String(mesaId);
+    const clave = intentoMesa.actual(huellaConsumos(sesionId, items));
+    if (!(await accion.ejecutar(() => billar.agregarConsumos(mesaId, items, clave)))) {
       void cargarProductos();
       return;
     }
+    intentoMesa.registrado();
     vaciar();
     billar.avisar({ tono: "verde", titulo: `Se cargó ${fmtMoney(total)} a la Mesa ${mesaId}`, texto: "Sin cobrar: va a la cuenta de la mesa." });
     navigate(`/billar?mesa=${mesaId}`);

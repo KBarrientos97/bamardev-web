@@ -16,6 +16,9 @@ describe("telemetría en las páginas públicas", () => {
     expect(esRutaPublica("/r/bellavista/c/aMj7OBA9fSpfPPFJ7sJeFw")).toBe(true);
     expect(esRutaPublica("/r/bellavista")).toBe(true);
     expect(esRutaPublica("/p/bellavista/privacidad")).toBe(true);
+    // La TV del billar lleva su llave en la URL.
+    expect(esRutaPublica("/tv/billar/aMj7OBA9fSpfPPFJ7sJeFwXXXXXXXXXX")).toBe(true);
+    expect(esRutaPublica("/tvs")).toBe(false);
     expect(esRutaPublica("/pos")).toBe(false);
     expect(esRutaPublica("/pagina")).toBe(false);
     expect(esRutaPublica("/reportes")).toBe(false);

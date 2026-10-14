@@ -3,19 +3,21 @@ import { useNavigate } from "react-router-dom";
 import { Icon } from "../../components/Icon";
 import { Input, Modal } from "../../components/ui";
 import { fmtMoney } from "../../lib/format";
-import { precioFijo, promoPara } from "./calculo";
+import { precioFijo, precioHoras, promoPara } from "./calculo";
+import { opcionesHoras } from "./ModalTiempo.datos";
 import { useIntentoDeCobro } from "../pos/useIntentoDeCobro";
 import { FormCobro } from "./Cobro";
 import { useCobro } from "./useCobro";
 import { useAccion } from "./useAccion";
+import { huellaExtension } from "./reintentos";
 import { billar, tipoDe, useBillar } from "./store";
 import type { Mesa, TipoMesa } from "./tipos";
 import { BotonB, ErrorAccion, Nota, Segmentado } from "./ui";
 
 /**
  * Abrir una mesa (§7.2) y extender su tiempo fijo (§7.3). Comparten el
- * selector de horas: los paquetes, y "Otra cantidad" de 1 a 24 h con la
- * combinación más barata.
+ * selector de horas: 1, 2 y 3 h siempre, más los paquetes (`opcionesHoras`),
+ * y "Otra cantidad" de 1 a 24 h con la combinación más barata.
  */
 
 const MAX_HORAS = 24;
@@ -54,6 +56,8 @@ function SelectorHoras({
   prefijo?: string;
 }) {
   const precio = precioFijo(tipo, horas);
+  const opciones = opcionesHoras(tipo);
+  const elegida = otra ? null : opciones.find((o) => o.h === horas);
   const chip = (activo: boolean) =>
     `inline-flex min-h-10 items-center gap-1.5 rounded-full px-3.5 text-[13px] font-semibold tabular-nums transition-colors ${
       activo ? "bg-primary-boton text-white" : "bg-white text-texto-2 ring-1 ring-inset ring-borde hover:bg-muted"
@@ -61,23 +65,36 @@ function SelectorHoras({
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap gap-2">
-        {tipo.paquetes.map((p) => (
-          <button
-            key={p.h}
-            type="button"
-            aria-pressed={!otra && horas === p.h}
-            onClick={() => onElegir(p.h, false)}
-            className={chip(!otra && horas === p.h)}
-          >
-            {prefijo}
-            {p.h} h · {fmtMoney(precioFijo(tipo, p.h).precio)}
-          </button>
-        ))}
+        {opciones.map((o) => {
+          const activo = !otra && horas === o.h;
+          return (
+            <button key={o.h} type="button" aria-pressed={activo} onClick={() => onElegir(o.h, false)} className={chip(activo)}>
+              {prefijo}
+              {o.h} h · {fmtMoney(o.precio)}
+              {/* El paquete con precio especial se marca: es la oferta que armó el negocio. */}
+              {o.especial && (
+                <span
+                  className={`rounded-full px-1.5 text-[10px] font-bold uppercase leading-[18px] tracking-wide ${
+                    activo ? "bg-white/25 text-white" : "bg-primary-50 text-primary-700"
+                  }`}
+                >
+                  Paquete
+                </span>
+              )}
+            </button>
+          );
+        })}
         <button type="button" aria-pressed={otra} onClick={() => onElegir(Math.max(horas, 4), true)} className={chip(otra)}>
           <Icon name="edit" size={14} />
           Otra cantidad
         </button>
       </div>
+      {elegida && elegida.ahorro > 0 && (
+        <p className="text-[12px] text-texto-3">
+          {elegida.paquete ? `Paquete de ${elegida.h} h` : `Con paquetes (${precioHoras(tipo, elegida.h).partes.join(" + ")})`}:
+          ahorran {fmtMoney(elegida.ahorro)} contra la tarifa por hora.
+        </p>
+      )}
       {otra && (
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center rounded-full bg-white ring-1 ring-inset ring-borde">
@@ -357,10 +374,18 @@ export function ModalExtender({ mesa, onClose }: { mesa: Mesa; onClose: () => vo
   const cobro = useCobro(precio.precio);
   const s = mesa.sesion;
   const accion = useAccion();
+  // El mismo id si se reintenta la MISMA extensión: con wifi malo la
+  // respuesta se perdía, el cajero volvía a tocar y se sumaban las horas (y
+  // su cobro) dos veces.
+  const intento = useIntentoDeCobro();
 
   const extender = async (conPago: boolean) => {
+    if (!s) return;
     const pago = conPago && cobro.pago ? cobro.pago : undefined;
-    if (await accion.ejecutar(() => billar.extender(mesa.id, horas, pago))) onClose();
+    const clave = intento.actual(huellaExtension(s.id, horas, pago));
+    if (!(await accion.ejecutar(() => billar.extender(mesa.id, horas, pago, clave)))) return;
+    intento.registrado();
+    onClose();
   };
 
   if (!s?.prepago) return null;

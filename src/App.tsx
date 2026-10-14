@@ -23,6 +23,8 @@ const AppNegocio = lazy(() => import("./AppNegocio"));
 const ReservaPublica = lazy(() => import("./publico/ReservaPublica"));
 /** Todo `link(-qa).bamardev.com`: la página y la reserva, sin la app. */
 const RutasLink = lazy(() => import("./pages/pagina/RutasLink"));
+/** La TV del salón del billar con su llave (`/tv/billar/<llave>`), sin sesión. */
+const RutasTv = lazy(() => import("./publico/tv/TvBillar"));
 
 /** El gris de la página pública mientras llega su pantalla. */
 const ESPERA_PAGINA = <div style={{ minHeight: "100dvh", background: "#F6F7F9" }} />;
@@ -52,6 +54,17 @@ export default function App() {
             element={
               <Suspense fallback={<div className="min-h-dvh bg-white" />}>
                 <ReservaPublica />
+              </Suspense>
+            }
+          />
+          {/* También fuera del AuthProvider: el televisor del salón no tiene
+              sesión, y si esa compu tiene una guardada, la TV no la lee (ni
+              su tema, ni su negocio) ni la puede cerrar con un 401. */}
+          <Route
+            path="/tv/*"
+            element={
+              <Suspense fallback={<div className="min-h-dvh bg-[#06281D]" />}>
+                <RutasTv />
               </Suspense>
             }
           />

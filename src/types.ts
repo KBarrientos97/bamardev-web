@@ -1670,6 +1670,14 @@ export interface RangoReporte {
    * aca lo mando a los 23 endpoints de una.
    */
   sucursalId?: number;
+  /**
+   * Sólo en un billar: a qué hora termina la jornada (minutos desde la
+   * medianoche, ver `lib/jornada.ts`). Con él, `rangoParaApi` arma cada día de
+   * la hora del corte a la misma hora del día siguiente, porque el billar
+   * cierra a las 2 a. m. Ausente = el día del calendario, como siempre. No
+   * viaja al backend: `rangoParaApi` lo saca.
+   */
+  corteMin?: number;
 }
 
 export interface ResumenReportes {

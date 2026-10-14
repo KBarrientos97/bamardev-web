@@ -3,6 +3,7 @@ import type { PinesBillar } from "../tipos";
 import { BotonB, Nota, Tarjeta } from "../ui";
 import { MINUTOS_AVISO, type BorradorTarifas, type ErroresTipo } from "./borrador";
 import { Casilla, Etiqueta } from "./piezas";
+import { TarjetaJornada } from "./TarjetaJornada";
 import { TarjetaTipo } from "./TarjetaTipo";
 
 /**
@@ -39,6 +40,7 @@ export function TabTarifas({
         ))}
       </div>
       <AjustesGenerales b={b} onCambiar={onCambiar} />
+      <TarjetaJornada b={b} onCambiar={onCambiar} />
     </div>
   );
 }

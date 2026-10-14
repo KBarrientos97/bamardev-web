@@ -1,5 +1,5 @@
 # Cabeceras de Cloudflare Pages para las páginas del cliente final (B19 de la
-# ronda 1 de QA). La app (POS) no cambia: sólo /r/* y /p/*.
+# ronda 1 de QA). La app (POS) no cambia: sólo /r/*, /p/* y /tv/*.
 #
 # /r/* es la reserva online, y /r/<sub>/c/<token> lleva el token secreto del
 # enlace de gestión en la URL:
@@ -20,6 +20,15 @@
   Referrer-Policy: strict-origin-when-cross-origin
   X-Frame-Options: DENY
   Content-Security-Policy: frame-ancestors 'none'
+
+# La TV del salón del billar: /tv/billar/<llave> lleva en la URL la llave que
+# abre la pantalla. Que no se indexe ni viaje como referer. Sí se puede
+# enmarcar: no tiene nada que robar con un clic (sólo "Pantalla completa"), y
+# los reproductores de cartelería digital suelen mostrar la página dentro de
+# un marco.
+/tv/*
+  X-Robots-Tag: noindex, nofollow
+  Referrer-Policy: no-referrer
 
 # La app instalable (PLAN-IOS §8). El service worker y el manifest se piden
 # siempre de nuevo: si quedaran en caché, un deploy no le llegaría al celular

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Modal } from "../../components/ui";
 import AperturaCaja from "../pos/AperturaCaja";
 import { audioBloqueado, desbloquearAudio, hablar, zumbido } from "./alertas";
-import { billar, recargar, useBillar } from "./store";
+import { billar, useBillar } from "./store";
 import { BotonB, Nota } from "./ui";
 
 /**
@@ -11,7 +11,7 @@ import { BotonB, Nota } from "./ui";
  * pantalla: el fondo, el corte de billetes y, si es del dueño, la sucursal.
  */
 export function CajaCerradaAviso() {
-  const { mesas } = useBillar();
+  const { mesas, sucursalId } = useBillar();
   const siguen = mesas.filter((m) => m.estado === "abierta").length;
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
@@ -23,7 +23,10 @@ export function CajaCerradaAviso() {
           </Nota>
         </div>
       )}
-      <AperturaCaja onAbierta={() => void recargar(true)} />
+      {/* El dueño con varios locales: se propone el del tablero que está
+          mirando, y si abre en otro, el tablero se va con la caja (es donde
+          puede operar). Con un solo local es el recargar de siempre. */}
+      <AperturaCaja sucursalInicial={sucursalId} onAbierta={(caja) => billar.seguirCaja(caja.almacenId)} />
     </div>
   );
 }

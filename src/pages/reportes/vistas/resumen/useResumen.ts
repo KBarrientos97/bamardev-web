@@ -1,6 +1,6 @@
 import { api } from "../../../../lib/api";
 import { apiComisiones } from "../../../../lib/agenda/apiComisiones";
-import { rangoParaApi } from "../../../../lib/rangoApi";
+import { rangoParaApi, sinJornada } from "../../../../lib/rangoApi";
 import { estadoResultado } from "../../../../lib/resultado";
 import { useApi } from "../../../../lib/useApi";
 import { useAuth } from "../../../../store/AuthContext";
@@ -8,9 +8,14 @@ import type { RangoReporte } from "../../../../types";
 import { apiReportes } from "../../api";
 import { useReporte } from "../../contexto";
 
-/** Los gastos con el mismo corte que las ventas (medianoche local a medianoche local). */
+/**
+ * Los gastos de los mismos días que las ventas, de medianoche local a
+ * medianoche local. Sin el corte de la jornada de un billar: un gasto lleva
+ * fecha y no hora (se guarda a la medianoche), y con el corte el del día 1 se
+ * iría al mes anterior.
+ */
 function gastosDe(r: RangoReporte) {
-  const { desde, hasta } = rangoParaApi(r);
+  const { desde, hasta } = rangoParaApi(sinJornada(r));
   return api.getGastos({ desde: desde ?? "", hasta: hasta ?? "", sucursalId: r.sucursalId ?? null });
 }
 

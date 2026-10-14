@@ -1,7 +1,7 @@
 import { useEffect, useSyncExternalStore } from "react";
-import { api } from "../../lib/api";
+import { api, ApiError } from "../../lib/api";
 import type { CreditoInput, FormaPago, PagoInput } from "../../types";
-import { olvidarAvisos, prepararAvisos } from "./alertas";
+import { olvidarAvisos, prepararAvisos, reestrenarAvisos } from "./alertas";
 import { tarifaDe } from "./calculo";
 import {
   aMesa,
@@ -47,8 +47,16 @@ export interface EstadoBillar {
   cargado: boolean;
   /** Por qué falló la última carga del tablero; null si anduvo. */
   error: string | null;
-  /** La sucursal del tablero (la del cajero). */
+  /** La sucursal del tablero: la del cajero; la que elige el dueño (o la de su caja). */
   sucursal: string;
+  /** Su id. null hasta que llega el primer tablero. */
+  sucursalId: number | null;
+  /**
+   * Dónde está la caja abierta de quien mira. Si no es la del tablero, el
+   * dueño está mirando otro local: ve las mesas pero no las opera desde ahí
+   * (el backend exige la caja en el local de la mesa).
+   */
+  cajaSucursalId: number | null;
   tipos: Record<string, TipoMesa>;
   productos: ProductoBillar[];
   formasPago: FormaPago[];
@@ -121,6 +129,44 @@ let ajustesNegocio: AjustesApi = {
 
 const conPrefs = (a: AjustesApi): AjustesBillar => ({ silencio: false, ...a, ...prefs });
 
+// ── La sucursal que mira el dueño ───────────────────────────────────────────
+
+/**
+ * La sucursal que eligió el usuario de organización en el tablero, recordada
+ * en el equipo como la vista de tarjetas (multisucursal, 13-oct). Vale para
+ * todo lo que lee este store: el tablero, el consumo, la TV interna, los
+ * avisos de fondo y Mesas de billar. Va por negocio: el id de un local no
+ * significa nada en otro.
+ *
+ * null = no eligió: el backend decide (al cajero, la suya; al dueño, la de su
+ * caja abierta o la principal). Un negocio de un solo local nunca elige, así
+ * que pide lo mismo que antes. Al cajero el backend le fuerza la suya aunque
+ * llegue otra, así que un número viejo guardado acá no le cambia nada.
+ */
+const SUCURSAL_KEY = "bamardev.billar.sucursal";
+let sucursalPedida: number | null = null;
+
+const claveSucursal = (negocio: string) => `${SUCURSAL_KEY}.${negocio}`;
+
+function leerSucursal(negocio: string): number | null {
+  try {
+    const n = Number(localStorage.getItem(claveSucursal(negocio)));
+    return Number.isInteger(n) && n > 0 ? n : null;
+  } catch {
+    return null;
+  }
+}
+
+function guardarSucursal(negocio: string | null, id: number | null) {
+  if (!negocio) return;
+  try {
+    if (id == null) localStorage.removeItem(claveSucursal(negocio));
+    else localStorage.setItem(claveSucursal(negocio), String(id));
+  } catch {
+    // Sin almacenamiento la elección dura hasta recargar.
+  }
+}
+
 // ── El estado ───────────────────────────────────────────────────────────────
 
 function inicial(): EstadoBillar {
@@ -128,6 +174,8 @@ function inicial(): EstadoBillar {
     cargado: false,
     error: null,
     sucursal: "",
+    sucursalId: null,
+    cajaSucursalId: null,
     tipos: {},
     productos: [],
     formasPago: [],
@@ -183,6 +231,8 @@ function aplicarTablero(t: TableroApi) {
     cargado: true,
     error: null,
     sucursal: t.sucursal.nombre,
+    sucursalId: t.sucursal.id,
+    cajaSucursalId: t.caja.abierta ? (t.caja.sucursalId ?? null) : null,
     tipos: Object.fromEntries(t.tipos.map((x) => [x.id, x])),
     ajustes: conPrefs(t.ajustes),
     ajustesNegocio: { silencio: false, ...t.ajustes },
@@ -198,26 +248,48 @@ export async function recargar(forzar = false): Promise<void> {
   if (trayendo && !forzar) return;
   trayendo = true;
   const marca = acciones;
+  const pedida = sucursalPedida;
   const pedido = Date.now();
   try {
-    const t = await apiBillar.tablero();
+    const t = await apiBillar.tablero(pedida);
     // La hora del servidor, corrida a la mitad del viaje: sin esto, una compu
     // con el reloj adelantado cobraba con una hora que el servidor rechaza.
     fijarDesfase(t.ahora - (pedido + Date.now()) / 2);
-    if (marca !== acciones) return;
+    // Si mientras viajaba el dueño cambió de sucursal, es el tablero de otro local.
+    if (marca !== acciones || pedida !== sucursalPedida) return;
     const primera = !estado.cargado;
     aplicarTablero(t);
     if (primera) prepararAvisos(estado.mesas, estado.ajustes.avisos, ahoraServidor());
   } catch (err) {
+    // La sucursal recordada ya no sirve (la borraron, o pasó a depósito): el
+    // backend responde 400 y "Reintentar" volvía a pedir la misma, con el
+    // billar trabado para siempre en este equipo. Se olvida y se pide lo que
+    // decide el backend.
+    if (pedida != null && pedida === sucursalPedida && err instanceof ApiError && err.status === 400) {
+      olvidarSucursal();
+      trayendo = false;
+      await recargar(true);
+      return;
+    }
     cambiar((e) => ({ ...e, error: mensaje(err, "No se pudo traer el tablero") }));
   } finally {
     trayendo = false;
   }
 }
 
+/** Deja de pedir la sucursal elegida, también en el equipo. */
+function olvidarSucursal() {
+  sucursalPedida = null;
+  guardarSucursal(negocioCargado, null);
+}
+
 export async function cargarProductos(): Promise<void> {
+  const pedida = sucursalPedida;
   try {
-    const productos = await apiBillar.productos();
+    const productos = await apiBillar.productos(pedida);
+    // El catálogo trae el precio y el stock de UN local: el de antes de
+    // cambiar de sucursal no sirve.
+    if (pedida !== sucursalPedida) return;
     cambiar((e) => ({ ...e, productos }));
   } catch {
     // Queda el catálogo anterior; la próxima acción lo vuelve a pedir.
@@ -264,6 +336,21 @@ function alVolver() {
 }
 
 /**
+ * De qué negocio es lo que hay en memoria, con la sucursal que recordaba este
+ * equipo para él. La llama también Mesas de billar, que no sondea: quien sólo
+ * administra no pasa por el tablero y tiene que ver el local que eligió.
+ */
+export function usarNegocio(negocio: string | undefined) {
+  if (negocio !== undefined && negocioCargado !== negocio) {
+    // Sin avisar a nadie: esto corre en pleno render, y lo que se monta ahora
+    // ya lee el estado vacío.
+    if (negocioCargado !== null) estado = inicial();
+    negocioCargado = negocio;
+    sucursalPedida = leerSucursal(negocio);
+  }
+}
+
+/**
  * Mantiene el tablero al día mientras la pantalla que lo usa está montada:
  * otra caja pudo abrir, cobrar o mover una mesa. Con la pestaña escondida no
  * pregunta; al volver, pregunta enseguida.
@@ -272,12 +359,7 @@ function alVolver() {
  * sin recargar la página), lo de antes se borra antes de mostrar nada.
  */
 export function useSondeoBillar(negocio: string | undefined) {
-  if (negocio !== undefined && negocioCargado !== negocio) {
-    // Sin avisar a nadie: esto corre en pleno render, y lo que se monta ahora
-    // ya lee el estado vacío.
-    if (negocioCargado !== null) estado = inicial();
-    negocioCargado = negocio;
-  }
+  usarNegocio(negocio);
   useEffect(() => {
     usuarios++;
     if (usuarios === 1) {
@@ -416,11 +498,17 @@ export const billar = {
   },
 
   /** Carga a la cuenta. El stock se descuenta al cobrar, pero ya no se ofrece a otra mesa. */
-  async agregarConsumos(mesaId: number, items: { productoId: number; cant: number }[]): Promise<Mesa> {
+  /** `clienteRequestId`: el mismo en un reintento de la misma carga (ver reintentos.ts). */
+  async agregarConsumos(
+    mesaId: number,
+    items: { productoId: number; cant: number }[],
+    clienteRequestId: string,
+  ): Promise<Mesa> {
     const { sesionId } = sesionDe(mesaId);
     const r = await apiBillar.consumos(
       sesionId,
       items.filter((i) => i.cant > 0).map((i) => ({ productoId: i.productoId, cantidad: i.cant })),
+      clienteRequestId,
     );
     void cargarProductos();
     return ponerMesa(r);
@@ -434,9 +522,9 @@ export const billar = {
   },
 
   /** Un adelanto o pago parcial: entra a la caja ahora y queda en la cuenta. */
-  async pagar(mesaId: number, pago: PagoNuevo): Promise<Mesa> {
+  async pagar(mesaId: number, pago: PagoNuevo, clienteRequestId: string): Promise<Mesa> {
     const { sesionId } = sesionDe(mesaId);
-    return ponerMesa(await apiBillar.pagar(sesionId, aPagos(pago, await formasPago())));
+    return ponerMesa(await apiBillar.pagar(sesionId, aPagos(pago, await formasPago()), clienteRequestId));
   },
 
   async pausar(mesaId: number, motivo: string): Promise<Mesa> {
@@ -448,10 +536,10 @@ export const billar = {
   },
 
   /** Suma horas al tiempo fijo; con `pago`, cobradas ahora. */
-  async extender(mesaId: number, horas: number, pago?: PagoNuevo): Promise<Mesa> {
+  async extender(mesaId: number, horas: number, pago: PagoNuevo | undefined, clienteRequestId: string): Promise<Mesa> {
     const { sesionId } = sesionDe(mesaId);
     const pagos = pago ? aPagos(pago, await formasPago()) : undefined;
-    const r = await apiBillar.extender(sesionId, horas, pagos);
+    const r = await apiBillar.extender(sesionId, horas, pagos, clienteRequestId);
     // Las horas nuevas vuelven a avisar desde cero.
     olvidarAvisos(sesionId);
     return ponerMesa(r);
@@ -477,9 +565,9 @@ export const billar = {
   },
 
   /** La mesa se abrió por error: no se cobra nada. Devuelve cuánto hay que devolverle al cliente. */
-  async anularMesa(mesaId: number, motivo: string, cred: Credenciales): Promise<number> {
+  async anularMesa(mesaId: number, motivo: string, cred: Credenciales, clienteRequestId: string): Promise<number> {
     const { sesionId } = sesionDe(mesaId);
-    const r = await apiBillar.anular(sesionId, motivo, cred);
+    const r = await apiBillar.anular(sesionId, motivo, cred, clienteRequestId);
     ponerMesa(r.mesa);
     void cargarProductos();
     return r.devolver;
@@ -579,14 +667,69 @@ export const billar = {
     cambiar((e) => ({ ...e, ajustes: conPrefs(ajustesNegocio) }));
   },
 
+  // ── La sucursal (usuario de organización) ──
+
+  /** La que eligió en este equipo; null si no eligió (decide el backend). */
+  sucursalElegida(): number | null {
+    return sucursalPedida;
+  },
+
+  /**
+   * El dueño elige qué local mira (ver `sucursalPedida`). Lo del local de
+   * antes se vacía en el acto: si no, por un momento se veían sus mesas con
+   * el nombre del nuevo. Los avisos arrancan como en un equipo nuevo.
+   */
+  elegirSucursal(id: number | null) {
+    if (id === sucursalPedida) return;
+    sucursalPedida = id;
+    guardarSucursal(negocioCargado, id);
+    reestrenarAvisos();
+    cambiar((e) => ({ ...e, cargado: false, error: null, mesas: [], productos: [] }));
+    // Sin nadie mirando el tablero (Mesas de billar de quien sólo administra)
+    // no se pide: le daría 403, y el 400 de una sucursal vieja la olvidaría.
+    if (usuarios === 0) return;
+    void recargar(true);
+    void cargarProductos();
+  },
+
+  /**
+   * Recién abierta la caja desde el billar. Si el dueño había elegido un
+   * local y abrió la caja en otro, el tablero pasa al de la caja: es donde
+   * puede operar. Sin elección (un negocio de un solo local, o un cajero) es
+   * el `recargar` de siempre.
+   */
+  seguirCaja(cajaSucursalId: number | null) {
+    if (sucursalPedida != null && cajaSucursalId != null && cajaSucursalId !== sucursalPedida) {
+      billar.elegirSucursal(cajaSucursalId);
+    } else {
+      void recargar(true);
+    }
+  },
+
   // ── Mesas de billar (administrador) ──
 
+  /**
+   * Las mesas del local elegido, las tarifas y los ajustes, todo de
+   * `/billar/admin`. Antes las tarifas venían del tablero, que pide atender
+   * el billar: un rol que lo administra sin atenderlo no podía entrar
+   * (13-oct).
+   */
   async cargarAdmin(): Promise<void> {
+    const pedida = sucursalPedida;
     try {
-      const [mesas, t] = await Promise.all([apiBillar.adminMesas(), apiBillar.tablero()]);
-      aplicarTablero(t);
+      const [mesas, tipos, ajustes] = await Promise.all([
+        apiBillar.adminMesas(pedida),
+        apiBillar.adminTipos(),
+        apiBillar.adminAjustes(),
+      ]);
+      // Cambió de sucursal mientras viajaba: esas mesas son de otro local.
+      if (pedida !== sucursalPedida) return;
+      ajustesNegocio = ajustes;
       cambiar((e) => ({
         ...e,
+        tipos: Object.fromEntries(tipos.map((x) => [x.id, x])),
+        ajustes: conPrefs(ajustes),
+        ajustesNegocio: { silencio: false, ...ajustes },
         admin: { mesas: mesas.map(aMesaAdmin).sort((a, b) => a.id - b.id), cargado: true, error: null },
       }));
     } catch (err) {
@@ -599,7 +742,12 @@ export const billar = {
     const error = errorDeNumero(estado.admin.mesas, d.numero);
     if (error) return error;
     try {
-      await apiBillar.crearMesa({ ...d, tarifaPropia: d.tarifaPropia ?? null });
+      await apiBillar.crearMesa({
+        ...d,
+        tarifaPropia: d.tarifaPropia ?? null,
+        // En el local que se está mirando: el número es único por sucursal.
+        ...(sucursalPedida != null ? { sucursalId: sucursalPedida } : {}),
+      });
     } catch (err) {
       return mensaje(err, "No se pudo crear la mesa");
     }
@@ -646,7 +794,7 @@ export const billar = {
   /** PUT tipos + PUT ajustes, juntos: es un solo "Guardar cambios". */
   async guardarTarifas(
     tipos: Record<string, TipoMesa>,
-    ajustes: Pick<AjustesBillar, "avisos" | "sonido" | "voz" | "pin">,
+    ajustes: Pick<AjustesBillar, "avisos" | "sonido" | "voz" | "pin" | "horaCorteMin">,
   ): Promise<string | null> {
     try {
       await apiBillar.guardarTipos(
@@ -667,6 +815,8 @@ export const billar = {
         voz: ajustes.voz,
         pinAnularConsumo: ajustes.pin.anularConsumo,
         pinAnularMesa: ajustes.pin.anularMesa,
+        // La hora en que termina la jornada (reportes); sin ella no se toca.
+        ...(ajustes.horaCorteMin != null ? { horaCorteMin: ajustes.horaCorteMin } : {}),
       });
     } catch (err) {
       return mensaje(err, "No se pudieron guardar las tarifas");

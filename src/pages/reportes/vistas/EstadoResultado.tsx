@@ -8,7 +8,7 @@ import { fmtFecha, fmtMoney, fmtNum } from "../../../lib/format";
 import { badgeEstado } from "../../../lib/gastos";
 import { desgloseGastos, estadoLinea, grupoDe, listaNombres, pareceDeBanco, type EstadoLinea, type GrupoGasto } from "../../../lib/grupoGasto";
 import { mesEnCurso, type MesEnCurso } from "../../../lib/mesEnCurso";
-import { rangoParaApi } from "../../../lib/rangoApi";
+import { rangoParaApi, sinJornada } from "../../../lib/rangoApi";
 import { estadoResultado, type EstadoResultado as Er } from "../../../lib/resultado";
 import { esBelleza, esBillar, termino } from "../../../lib/rubro";
 import { tieneFeature } from "../../../lib/permisos";
@@ -53,9 +53,10 @@ export default function EstadoResultado() {
   const { rubro, negocio } = useAuth();
 
   const mitades = useApi(() => {
-    // Los gastos con el MISMO corte que las ventas: medianoche local del
-    // primer día a medianoche local del día siguiente al último.
-    const { desde, hasta } = rangoParaApi(rango);
+    // Los gastos de los MISMOS días que las ventas: medianoche local del
+    // primer día a medianoche local del día siguiente al último. Sin el corte
+    // de la jornada de un billar: el gasto lleva fecha, no hora (ver `sinJornada`).
+    const { desde, hasta } = rangoParaApi(sinJornada(rango));
     return Promise.all([
       apiReportes.financiero(rango, rangoAnterior),
       api.getGastos({ desde: desde ?? "", hasta: hasta ?? "", sucursalId: rango.sucursalId ?? null }),
@@ -142,7 +143,10 @@ function Contenido({
   const navigate = useNavigate();
   const [detalle, setDetalle] = useState<Detalle | null>(null);
   const desglose = desgloseGastos(gastos);
-  const enCurso = esMesEnCurso(periodo);
+  // "Este mes" de un billar a la 1 a. m. del día 1 todavía es el mes que se
+  // está cerrando: el de la jornada que corre.
+  const { corteMin } = useReporte();
+  const enCurso = esMesEnCurso(periodo, new Date(), corteMin);
   const hoy = aDia(periodo.hasta);
   // La meta cubre también las mermas: son plata que se fue, igual que un gasto.
   const mes = enCurso

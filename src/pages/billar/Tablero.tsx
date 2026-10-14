@@ -4,15 +4,17 @@ import { Icon } from "../../components/Icon";
 import { Vacio } from "../../components/ui";
 import { fmtMoney } from "../../lib/format";
 import { useCoincideMedia } from "../../lib/useCoincideMedia";
+import { useSucursales } from "../../lib/useSucursales";
 import { round2 } from "./calculo";
 import { useDialogos } from "./dialogos";
 import ListaMesas from "./ListaMesas";
 import { CajaCerradaAviso } from "./ModalesCaja";
 import PanelMesa from "./PanelMesa";
 import { useAhora } from "./reloj";
-import { mesasEnUso, useBillar } from "./store";
+import { billar, mesasEnUso, useBillar } from "./store";
+import { atajoDelTablero, mirandoOtraSucursal } from "./Tablero.datos";
 import TarjetaMesa from "./TarjetaMesa";
-import { BotonB, ChipFiltro, Circulo, Encabezado } from "./ui";
+import { BotonB, ChipFiltro, Circulo, Encabezado, Nota, SelectorSucursal } from "./ui";
 import { FILTROS, pasaBusqueda, pasaFiltro, vistaDe, type Filtro } from "./vista";
 
 /** Tarjetas o lista: preferencia del dispositivo, como la barra colapsada. */
@@ -65,23 +67,41 @@ export default function Tablero() {
     }
   }, [vista]);
 
-  // "/" busca y Escape cierra el panel (§7.1). Con un diálogo abierto, el
-  // Escape es de él.
+  // "/" busca y Escape cierra el panel (§7.1). Con un diálogo abierto las dos
+  // son de él (ver `atajoDelTablero`). No alcanza con los del billar
+  // (`actual`): el menú "…" de la mesa en el celular es un Modal suelto, así
+  // que también cuenta cualquier `aria-modal` que esté en pantalla.
   const hayDialogo = actual !== null;
+  const hojaPanel = !!elegida && !ancha;
   useEffect(() => {
     const tecla = (ev: KeyboardEvent) => {
       const t = ev.target as HTMLElement | null;
-      const escribiendo = !!t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable);
-      if (ev.key === "/" && !escribiendo) {
+      const atajo = atajoDelTablero({
+        tecla: ev.key,
+        escribiendo: !!t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable),
+        hayDialogo: hayDialogo || document.querySelector('[aria-modal="true"]') !== null,
+        buscadorTapado: hojaPanel,
+      });
+      if (atajo === "buscar") {
         ev.preventDefault();
         buscador.current?.focus();
-      } else if (ev.key === "Escape" && !hayDialogo && !escribiendo) {
+      } else if (atajo === "cerrar") {
         elegir(null);
       }
     };
     document.addEventListener("keydown", tecla);
     return () => document.removeEventListener("keydown", tecla);
   });
+
+  // Varias sucursales (13-oct): el dueño elige el local en el encabezado. Con
+  // un solo local, o para el cajero, `elegir` es falso y no aparece nada.
+  const suc = useSucursales();
+  const otraSucursal = mirandoOtraSucursal(e);
+  const nombreCaja = suc.sucursales.find((s) => s.id === e.cajaSucursalId)?.nombre ?? "otra sucursal";
+  const selector =
+    suc.elegir && e.sucursalId != null ? (
+      <SelectorSucursal valor={e.sucursalId} sucursales={suc.sucursales} onElegir={billar.elegirSucursal} />
+    ) : undefined;
 
   const vistas = useMemo(() => mesasEnUso(e).map((m) => vistaDe(e, m, ahora)), [e, ahora]);
   const abiertas = vistas.filter((v) => v.cuenta);
@@ -104,7 +124,7 @@ export default function Tablero() {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <Encabezado titulo="Billar">
+      <Encabezado titulo="Billar" sucursal={selector}>
         <div className="flex w-full flex-wrap items-center gap-2 xl:w-auto">
           <label className="relative order-last w-full sm:order-none sm:w-56">
             <span className="sr-only">Buscar mesa o cliente</span>
@@ -153,9 +173,13 @@ export default function Tablero() {
               <span aria-hidden className="absolute right-2 top-2 h-2 w-2 rounded-full bg-amber-500 ring-2 ring-white" />
             )}
           </button>
-          <BotonB variante="menta" icono="cart" onClick={() => navigate("/billar/venta-rapida")} aria-label="Venta rápida">
-            <span className="hidden sm:inline">Venta rápida</span>
-          </BotonB>
+          {/* Mirando otro local no: la venta cae en la caja (la de otro local)
+              con el catálogo y los precios de éste, y el cobro no cuadra. */}
+          {!otraSucursal && (
+            <BotonB variante="menta" icono="cart" onClick={() => navigate("/billar/venta-rapida")} aria-label="Venta rápida">
+              <span className="hidden sm:inline">Venta rápida</span>
+            </BotonB>
+          )}
           <BotonB icono="fileText" onClick={() => navigate("/billar/ventas")} aria-label="Ventas del turno">
             <span className="hidden sm:inline">Ventas</span>
           </BotonB>
@@ -176,6 +200,19 @@ export default function Tablero() {
 
       <div className="flex min-h-0 flex-1">
         <div className="min-w-0 flex-1 space-y-4 overflow-y-auto px-4 py-4 sm:px-6 sm:py-5">
+          {otraSucursal && (
+            <Nota tono="ambar" icono="alert">
+              Estás mirando <b>{e.sucursal}</b>, pero tu caja está abierta en <b>{nombreCaja}</b>. Estas mesas se
+              abren y se cobran con una caja de este local.{" "}
+              <button
+                type="button"
+                onClick={() => billar.elegirSucursal(e.cajaSucursalId)}
+                className="font-bold underline"
+              >
+                Volver a {nombreCaja}
+              </button>
+            </Nota>
+          )}
           <div className="grid grid-cols-2 gap-3 sm:gap-4">
             <Resumen
               icono="fileText"

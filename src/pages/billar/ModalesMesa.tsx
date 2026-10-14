@@ -4,10 +4,12 @@ import { Input, Modal } from "../../components/ui";
 import { fmtMoney } from "../../lib/format";
 import { tienePermiso } from "../../lib/permisos";
 import { useAuth } from "../../store/AuthContext";
+import { useIntentoDeCobro } from "../pos/useIntentoDeCobro";
 import type { Credenciales } from "./api";
 import { FormCobro } from "./Cobro";
 import { useCobro } from "./useCobro";
 import { useAccion } from "./useAccion";
+import { huellaAdelanto } from "./reintentos";
 import { billar, mesasEnUso, tipoDe, useBillar } from "./store";
 import { ahoraServidor, useAhora } from "./reloj";
 import { cuentaDe, horaDe } from "./calculo";
@@ -259,6 +261,17 @@ export function ModalPago({ mesa, onClose }: { mesa: Mesa; onClose: () => void }
   const [saldo] = useState(() => (mesa.sesion ? cuentaDe(mesa.sesion, tipoDe(e, mesa), ahora).saldo : 0));
   const cobro = useCobro(saldo, true);
   const accion = useAccion();
+  // Con wifi malo la respuesta se pierde y el cajero vuelve a tocar
+  // "Registrar": el mismo id hace que el adelanto entre una sola vez al cajón.
+  const intento = useIntentoDeCobro();
+  const registrar = async () => {
+    const pago = cobro.pago;
+    if (!pago || !mesa.sesion) return;
+    const clave = intento.actual(huellaAdelanto(mesa.sesion.id, pago));
+    if (!(await accion.ejecutar(() => billar.pagar(mesa.id, pago, clave)))) return;
+    intento.registrado();
+    onClose();
+  };
   return (
     <Modal
       abierto
@@ -274,9 +287,7 @@ export function ModalPago({ mesa, onClose }: { mesa: Mesa; onClose: () => void }
             variante="verde"
             icono="check"
             disabled={!cobro.pago || accion.enviando}
-            onClick={async () => {
-              if (await accion.ejecutar(() => billar.pagar(mesa.id, cobro.pago!))) onClose();
-            }}
+            onClick={() => void registrar()}
           >
             {accion.enviando ? "Registrando…" : `Registrar ${fmtMoney(cobro.monto)}`}
           </BotonB>
@@ -319,8 +330,13 @@ export function ModalPin({
   /** Campos propios de la acción, arriba del motivo. */
   children?: ReactNode;
   onClose: () => void;
-  /** Hace la acción; si el servidor dice que no, el diálogo sigue abierto con su mensaje. */
-  onAutorizar: (motivo: string, cred: Credenciales) => Promise<unknown>;
+  /**
+   * Hace la acción; si el servidor dice que no, el diálogo sigue abierto con su
+   * mensaje. `clienteRequestId` es el mismo mientras el diálogo siga abierto:
+   * la acción que lo use (anular la mesa) no se repite si el cajero reintenta
+   * porque la respuesta no llegó.
+   */
+  onAutorizar: (motivo: string, cred: Credenciales, clienteRequestId: string) => Promise<unknown>;
 }) {
   const { usuario } = useAuth();
   const pideUsuario = pedirPin && !(tienePermiso(usuario, "autorizar.pin") && tienePermiso(usuario, permiso));
@@ -331,6 +347,7 @@ export function ModalPin({
   const [pin, setPin] = useState("");
   const campo = useRef<HTMLInputElement>(null);
   const accion = useAccion();
+  const intento = useIntentoDeCobro();
   const final = motivo === "Otro" ? otro.trim() : motivo;
   const listo =
     !bloqueado &&
@@ -342,10 +359,12 @@ export function ModalPin({
     const cred: Credenciales = pedirPin
       ? { ...(pideUsuario ? { autorizadorUsername: autorizador.trim() } : {}), autorizadorPin: pin }
       : {};
-    if (!(await accion.ejecutar(() => onAutorizar(final, cred)))) {
+    if (!(await accion.ejecutar(() => onAutorizar(final, cred, intento.actual())))) {
       setPin("");
       campo.current?.focus();
+      return;
     }
+    intento.registrado();
   };
 
   return (

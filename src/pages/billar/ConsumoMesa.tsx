@@ -3,10 +3,12 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { Icon } from "../../components/Icon";
 import { Vacio } from "../../components/ui";
 import { fmtMoney } from "../../lib/format";
+import { useIntentoDeCobro } from "../pos/useIntentoDeCobro";
 import { round2 } from "./calculo";
 import { totalCarrito, useCarritoBillar } from "./carrito";
 import { Catalogo, LineasPedido, PantallaPedido } from "./Catalogo";
 import { CajaCerradaAviso } from "./ModalesCaja";
+import { huellaConsumos } from "./reintentos";
 import { useAhora } from "./reloj";
 import { agruparItems, billar, cargarProductos, useBillar } from "./store";
 import { useAccion } from "./useAccion";
@@ -26,6 +28,7 @@ export default function ConsumoMesa() {
   const { carrito, poner, vaciar, items } = useCarritoBillar();
   const [verCuenta, setVerCuenta] = useState(false);
   const accion = useAccion();
+  const intento = useIntentoDeCobro();
   const mesa = e.mesas.find((m) => m.id === Number(mesaId));
   const volver = `/billar?mesa=${mesaId}`;
 
@@ -65,12 +68,16 @@ export default function ConsumoMesa() {
   const agregar = (id: number) => poner(id, (carrito.get(id) ?? 0) + 1);
 
   const confirmar = async () => {
-    const ok = await accion.ejecutar(() => billar.agregarConsumos(mesa.id, items));
+    // El mismo id mientras el pedido sea el mismo: con wifi malo el reintento
+    // de "Agregar" cargaba todo otra vez a la cuenta.
+    const clave = intento.actual(huellaConsumos(mesa.sesion!.id, items));
+    const ok = await accion.ejecutar(() => billar.agregarConsumos(mesa.id, items, clave));
     if (!ok) {
       // Si fue por stock, el catálogo de la pantalla ya no es el de verdad.
       void cargarProductos();
       return;
     }
+    intento.registrado();
     vaciar();
     billar.avisar({ tono: "verde", titulo: `Se cargó ${fmtMoney(nuevos)} a la Mesa ${mesa.id}`, texto: "Sin cobrar: va a la cuenta de la mesa." });
     navigate(volver);

@@ -52,9 +52,12 @@ function conPosthog(accion: (p: PostHog) => void) {
  * otra cosa (`/<sub>/c/<token>`). **Nada de ellas va a PostHog** (PLAN-AGENDA-
  * BELLEZA §8.6 regla 5): ni la URL, ni el token, ni un identificador en el
  * localStorage de alguien que no es usuario de BamarDev (B01).
+ *
+ * También la TV del salón del billar (`/tv/billar/<llave>`): la llave va en
+ * la URL y es lo único que abre esa pantalla, y el televisor no es de nadie.
  */
 export function esRutaPublica(ruta = typeof location === "undefined" ? "" : location.pathname): boolean {
-  return enHostLink() || /^\/(r|p)(\/|$)/.test(ruta);
+  return enHostLink() || /^\/(r|p|tv)(\/|$)/.test(ruta);
 }
 
 /**

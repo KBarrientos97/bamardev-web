@@ -68,6 +68,17 @@ export function marcarAvisado(sesionId: string, nivel: Nivel, avisos: number[], 
   guardar();
 }
 
+/**
+ * Al cambiar de sucursal (el dueño, en el tablero): el próximo tablero se toma
+ * como el de un equipo nuevo. El otro local puede tener cinco mesas vencidas
+ * que este equipo nunca avisó, y sonaban todas juntas al elegirlo; y al volver
+ * al primero, lo suyo ya se había olvidado (`prepararAvisos` borra lo que no
+ * está en el tablero) y sonaba de nuevo.
+ */
+export function reestrenarAvisos() {
+  estrenando = true;
+}
+
 /** Al extender, la sesión vuelve a avisar desde cero. */
 export function olvidarAvisos(sesionId: string) {
   for (const k of [...disparados]) if (k.split(":")[0] === sesionId) disparados.delete(k);

@@ -1,4 +1,5 @@
 import { isoDia } from "../../lib/format";
+import { fechaDeJornada, horaDeCorte } from "../../lib/jornada";
 import { MAX_DIAS_REPORTE } from "../../lib/topeReportes";
 
 /**
@@ -69,13 +70,19 @@ export function diasDe(desde: string, hasta: string): number {
   return Math.max(1, Math.round(ms / 86_400_000) + 1);
 }
 
-function soloHoy(hoy: Date): Date {
-  return new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate());
+/**
+ * El día de `hoy` a medianoche. Con `corteMin` (un billar), el de la jornada
+ * que corre: a la 1:30 a. m. del 14 con corte a las 6, el 13 — la noche en
+ * curso, que es lo que el dueño quiere ver en "Hoy" (`lib/jornada.ts`). Con
+ * corte 0, el día del calendario.
+ */
+function soloHoy(hoy: Date, corteMin = 0): Date {
+  return aDia(fechaDeJornada(hoy, corteMin));
 }
 
-/** El período de un preset, al día de `hoy`. */
-export function periodoDe(preset: Exclude<Preset, "rango">, hoy = new Date()): Periodo {
-  const h = soloHoy(hoy);
+/** El período de un preset, al día (o la jornada, con `corteMin`) de `hoy`. */
+export function periodoDe(preset: Exclude<Preset, "rango">, hoy = new Date(), corteMin = 0): Periodo {
+  const h = soloHoy(hoy, corteMin);
   const y = h.getFullYear();
   const m = h.getMonth();
   switch (preset) {
@@ -244,8 +251,8 @@ export const NOMBRE_PRESET: Record<Preset, string> = {
  * compara días de ventas contra un mes entero de gastos fijos, y lo que sirve
  * es cuánto falta vender, no la pérdida a mitad de camino.
  */
-export function esMesEnCurso(p: Periodo, hoy = new Date()): boolean {
-  const h = soloHoy(hoy);
+export function esMesEnCurso(p: Periodo, hoy = new Date(), corteMin = 0): boolean {
+  const h = soloHoy(hoy, corteMin);
   return p.preset === "mes" && p.hasta === isoDia(h) && p.desde === isoDia(new Date(h.getFullYear(), h.getMonth(), 1));
 }
 
@@ -282,4 +289,22 @@ export function diasDelPeriodo(desde: string, hasta: string): string[] {
     d = sumarDias(d, 1);
   }
   return out;
+}
+
+/**
+ * Qué instantes mira un período de jornadas, para ponerlo al lado del rango:
+ * "13/10 6:00 a. m. → ahora", "01/09 6:00 a. m. → 01/10 6:00 a. m.". Sin eso
+ * el dueño de un billar lee "13/10" y no sabe si la 1 a. m. está adentro.
+ * Null con corte 0: el día del calendario no necesita explicación.
+ */
+export function textoJornada(p: Pick<Periodo, "desde" | "hasta">, corteMin: number, ahora = new Date()): string | null {
+  if (!(corteMin > 0)) return null;
+  const hora = horaDeCorte(corteMin);
+  const inicio = aDia(p.desde);
+  const fin = sumarDias(aDia(p.hasta), 1);
+  // Si el período llega a la jornada que corre, termina "ahora": el corte de
+  // mañana todavía no pasó y poner esa hora parece un dato del futuro.
+  if (p.hasta >= fechaDeJornada(ahora, corteMin)) return `${diaMes(inicio)} ${hora} → ahora`;
+  const conAnio = inicio.getFullYear() !== fin.getFullYear();
+  return `${diaMes(inicio, conAnio)} ${hora} → ${diaMes(fin, conAnio)} ${hora}`;
 }
