@@ -21,6 +21,10 @@ import { Telefono } from "../../lib/telefono";
 import { tienePermiso, tieneFeature } from "../../lib/permisos";
 import { esBelleza, marcaConsumo } from "../../lib/rubro";
 import { useApi } from "../../lib/useApi";
+import { conCopia } from "../../lib/offline/copias";
+import { porSubir, useColaOffline } from "../../lib/offline/cola";
+import AvisoSinSubir from "../../components/offline/AvisoSinSubir";
+import VentasSinSubir from "../../components/offline/VentasSinSubir";
 import { useAuth } from "../../store/AuthContext";
 import { useCupo } from "../../store/useCupo";
 import type { Caja, Venta } from "../../types";
@@ -38,7 +42,9 @@ export default function PantallaHistorial({
   onVerComprobante: (venta: Venta) => void;
 }) {
   const { puede, negocio } = useAuth();
-  const ventas = useApi(() => api.getVentas(caja.id), [caja.id]);
+  // Con copia en la app del iPhone (Android: `historial_ventas_{caja}`): sin
+  // señal se ve lo que ya había subido, más lo cobrado sin internet.
+  const ventas = useApi(() => conCopia(`historial:${caja.id}`, () => api.getVentas(caja.id)), [caja.id]);
   // Los pedidos por entregar son del reparto: sin la feature `delivery` el
   // backend responde 403 (QA M-11, un salón de belleza). Con ella, lo de siempre.
   const conReparto = tieneFeature(negocio?.features, "delivery");
@@ -50,7 +56,10 @@ export default function PantallaHistorial({
   const [entregando, setEntregando] = useState<Venta | null>(null);
 
   const lista = ventas.datos ?? [];
-  const aprobadas = lista.filter((v) => v.estado === "APROBADO");
+  // Las cobradas sin internet también son del turno: cuentan en el resumen,
+  // como en Android (las rechazadas no, porque no van a llegar).
+  const sinSubir = porSubir(useColaOffline()).map((v) => v.recibo);
+  const aprobadas = [...sinSubir, ...lista.filter((v) => v.estado === "APROBADO")];
   const totalVendido = aprobadas.reduce((s, v) => s + v.total, 0);
   const porEntregar = pendientes.datos ?? [];
 
@@ -94,6 +103,11 @@ export default function PantallaHistorial({
             onVerTodos={() => navigate("/creditos")}
           />
         )}
+
+        <AvisoSinSubir />
+        {/* Lo cobrado sin internet va primero, como en la app: es lo que
+            todavía no está en el servidor (ni en el arqueo). */}
+        <VentasSinSubir onVerTicket={(v) => onVerComprobante(v)} />
 
         {porEntregar.length > 0 && (
           <section>

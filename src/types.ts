@@ -1134,6 +1134,11 @@ export interface Venta {
    * lo trae.
    */
   consumo?: ConsumoVista;
+  /**
+   * Sólo en el equipo: la venta se cobró sin internet y todavía no subió
+   * (PLAN-IOS F3). El ticket dice "pendiente" y no tiene número.
+   */
+  pendienteSync?: boolean;
 }
 
 export interface DetalleVentaInput {
@@ -1323,6 +1328,11 @@ export interface CreditoInput {
   /** Firma del encargado cuando la venta pasa el techo del cliente. */
   autorizadorUsername?: string;
   autorizadorPin?: string;
+  /**
+   * Fiado cobrado sin internet (cola offline): el servidor lo acepta aunque
+   * pase el techo, porque ya se fió con el cliente adelante.
+   */
+  encolado?: boolean;
 }
 
 export interface VentaInput {

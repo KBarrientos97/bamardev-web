@@ -7,6 +7,7 @@ import { enHostLink, esRutaDePaginaPublica } from "./lib/pagina/rutas";
 import { iniciarTelemetria, reportarError } from "./lib/telemetria";
 import { instalarRecargaPorVersion } from "./lib/recargaPorVersion";
 import { iniciarPwa } from "./lib/pwa/pwa";
+import { ventaSinInternet } from "./lib/offline/modo";
 
 // La página del negocio pide sus letras a Google Fonts apenas monta (ver
 // `cargarFuentesPagina`), y eso son dos dominios más con su DNS y su TLS.
@@ -40,6 +41,11 @@ instalarRecargaPorVersion();
 // La app instalable (manifest y service worker). Sólo en la app: las páginas
 // públicas de los negocios no se instalan como BamarDev (ver el módulo).
 iniciarPwa();
+
+// Si esta pantalla vende sin internet (app instalada del iPhone, PLAN-IOS F3)
+// se decide al arrancar: el `?offline=1` de prueba viene en la primera URL, y
+// el login la cambia antes de que el POS pregunte.
+ventaSinInternet();
 
 // Red de seguridad para lo que NO pasa por el interceptor del API: un error de
 // render, un `undefined.map` en una pantalla, una promesa sin catch. Sin esto

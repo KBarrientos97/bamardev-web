@@ -27,6 +27,9 @@ import { esFarmacia } from "../../lib/rubro";
 import { useApi } from "../../lib/useApi";
 import { quedoEnDuda } from "../../lib/cupo";
 import { useBloqueoCupo } from "../../lib/useBloqueoCupo";
+import { conCopia, descontarDeLaCopia } from "../../lib/offline/copias";
+import { venderOEncolar } from "../../lib/offline/ventas";
+import AvisoSinSubir from "../../components/offline/AvisoSinSubir";
 import { useAuth } from "../../store/AuthContext";
 import type {
   Caja,
@@ -76,6 +79,9 @@ import {
 import { SelectorProfesional } from "./belleza/SelectorProfesional";
 import type { ProfesionalesDelCarrito } from "./PantallaVenta";
 
+/** La copia del catálogo es por sucursal: de ahí salen el precio y el stock. */
+const copiaCatalogo = (almacenId: number | null) => `productos:${almacenId ?? "todos"}`;
+
 type Pantalla =
   | "venta"
   | "entrega"
@@ -100,7 +106,12 @@ export default function Pos() {
   const puedeCrearClientes = puede("clientes") && creaClientes(usuario);
   // La caja manda: sin turno abierto el POS no deja vender, porque toda venta
   // tiene que caer dentro de un arqueo.
-  const caja = useApi(() => api.cajaActual(), []);
+  //
+  // En la app instalada del iPhone (PLAN-IOS F3) caja, catálogo y formas de
+  // pago guardan su copia: sin señal el POS abre con lo último que vio, como
+  // Android (`CacheLectura`). En el navegador común `conCopia` es el pedido
+  // de siempre.
+  const caja = useApi(() => conCopia("caja", () => api.cajaActual()), []);
   /**
    * El catálogo de la grilla.
    *
@@ -122,11 +133,29 @@ export default function Pos() {
         ? Promise.resolve([])
         : caja.cargando
           ? new Promise<never>(() => {})
-          : api.getProductos(false, almacenCaja),
+          : conCopia(copiaCatalogo(almacenCaja), () => api.getProductos(false, almacenCaja)),
     [rubro, caja.cargando, almacenCaja],
   );
-  const categorias = useApi(() => api.getCategorias(false), []);
-  const formasPago = useApi(() => api.getFormasPago(), []);
+  const categorias = useApi(() => conCopia("categorias", () => api.getCategorias(false)), []);
+  const formasPago = useApi(() => conCopia("formas_pago", () => api.getFormasPago()), []);
+  /**
+   * `crearVenta`, o la cola si no hay señal (sólo en la app del iPhone). El
+   * ticket de una venta encolada lo arma el equipo con este catálogo.
+   */
+  const vender = useCallback(
+    async (cuerpo: Parameters<typeof api.crearVenta>[0] & { clienteRequestId: string }) => {
+      const r = await venderOEncolar(cuerpo, api.crearVenta, {
+        productos: productos.datos ?? [],
+        formasPago: formasPago.datos ?? [],
+        cajero: usuario?.nombre ?? usuario?.username ?? null,
+      });
+      // El stock de la copia baja lo vendido: al recargar sin señal no vuelve
+      // el de antes (Android: `descontarVendidos`).
+      if (r.encolada) await descontarDeLaCopia(copiaCatalogo(almacenCaja), cuerpo.detalles);
+      return r;
+    },
+    [productos.datos, formasPago.datos, usuario, almacenCaja],
+  );
   /**
    * Lo del salón y del reparto se pide sólo si el plan lo trae (QA M-11): un
    * salón de belleza comía un 403 por cada uno en cada carga. Omar tiene las
@@ -526,18 +555,20 @@ export default function Pos() {
               pagos,
               clienteRequestId: intento.actual(`mesa:${mesaCobrando.id}`),
             })
-          : await (() => {
+          : await (async () => {
               const venta = cuerpo ?? cuerpoVenta(pagos);
-              return api.crearVenta({
+              const r = await vender({
                 ...venta,
                 // Belleza: la propina viaja aparte (no suma a la venta).
                 ...(extra?.propinas?.length ? { propinas: extra.propinas } : {}),
                 clienteRequestId: intento.actual(huellaDeCobro(venta.detalles, venta.tipoPedido)),
               });
+              return r.venta;
             })();
         intento.registrado();
         cobroEnDuda.current = false;
-        registrarConsumo(creada);
+        // Una venta encolada no trae contador: lo descuenta la cola (§5.1).
+        if (!creada.pendienteSync) registrarConsumo(creada);
         setVenta(creada);
         if (mesaCobrando) {
           setMesaCobrando(null);
@@ -565,6 +596,7 @@ export default function Pos() {
     },
     [
       cuerpoVenta,
+      vender,
       limpiar,
       productos,
       intento,
@@ -589,7 +621,7 @@ export default function Pos() {
       setEnviando(true);
       try {
         const detalles = carritoVenta.aDetalles();
-        const creada = await api.crearVenta({
+        const { venta: creada } = await vender({
           detalles,
           ...descuentos.extraVenta(),
           tipoPedido,
@@ -605,7 +637,7 @@ export default function Pos() {
         });
         intento.registrado();
         cobroEnDuda.current = false;
-        registrarConsumo(creada);
+        if (!creada.pendienteSync) registrarConsumo(creada);
         setVenta(creada);
         limpiar();
         setPantalla("pedidoOk");
@@ -618,7 +650,7 @@ export default function Pos() {
         setEnviando(false);
       }
     },
-    [carritoVenta, tipoPedido, limpiar, productos, intento, descuentos, hayLugar, rechazoPorCupo, registrarConsumo],
+    [carritoVenta, tipoPedido, limpiar, productos, intento, descuentos, hayLugar, rechazoPorCupo, registrarConsumo, vender],
   );
 
   /**
@@ -633,7 +665,7 @@ export default function Pos() {
       if (!esVentaDeCita(conLaCita) && !hayLugar()) return;
       setEnviando(true);
       try {
-        const creada = await api.crearVenta({
+        const { venta: creada } = await vender({
           // Una cita también se puede fiar (§10): la venta la completa igual.
           ...conLaCita,
           ...descuentos.extraVenta(),
@@ -647,7 +679,7 @@ export default function Pos() {
         });
         intento.registrado();
         cobroEnDuda.current = false;
-        registrarConsumo(creada);
+        if (!creada.pendienteSync) registrarConsumo(creada);
         setVenta(creada);
         limpiar();
         setPantalla("recibo");
@@ -671,6 +703,7 @@ export default function Pos() {
       hayLugar,
       rechazoPorCupo,
       registrarConsumo,
+      vender,
     ],
   );
 
@@ -1076,6 +1109,12 @@ export default function Pos() {
               onClick={() => setPantalla("cierre")}
             />
           </div>
+        </div>
+
+        {/* Ventas cobradas sin internet que esperan subir (sólo la app del
+            iPhone; en el navegador común no dibuja nada). */}
+        <div className="px-4 pt-3 empty:hidden">
+          <AvisoSinSubir />
         </div>
 
         {/* Los mismos dos avisos que el POS de la app. Van arriba del catálogo

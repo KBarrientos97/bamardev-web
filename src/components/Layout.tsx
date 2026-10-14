@@ -13,6 +13,7 @@ import { Icon } from "./Icon";
 import { esIOS } from "../lib/pwa/entorno";
 import { useInstalarDisponible, useOfrecerInstalarUnaVez } from "../lib/pwa/guia";
 import { usePwa } from "../lib/pwa/pwa";
+import { useMotorOffline } from "../lib/offline/motor";
 import { AvisoVersionNueva, HojaInstalar } from "./InstalarApp";
 import MenuLateral from "./MenuLateral";
 
@@ -54,6 +55,9 @@ export default function Layout() {
     setCambiandoPassword(true);
   };
   const menu = useMenu();
+  // La cola de ventas cobradas sin internet sube desde acá, con cualquier
+  // pantalla abierta (sólo en la app instalada del iPhone, PLAN-IOS F3).
+  useMotorOffline();
   // "Instalar en el celular" (PLAN-IOS): desde el menú, y una vez sola al
   // entrar desde un celular o tablet que todavía no la tiene instalada.
   const instalarDisponible = useInstalarDisponible();

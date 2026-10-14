@@ -7,6 +7,7 @@ import { aCentavos, esPositivo, excede, parsearMontoO } from "../../lib/dinero";
 import { fmtMoney, isoDia } from "../../lib/format";
 import { tienePermiso } from "../../lib/permisos";
 import { useApi } from "../../lib/useApi";
+import { conCopia } from "../../lib/offline/copias";
 import { useAuth } from "../../store/AuthContext";
 import type { ClienteCredito, CreditoInput, FormaPago, PagoInput } from "../../types";
 
@@ -50,7 +51,9 @@ export default function PantallaCredito({
 }) {
   // Los clientes que ya fiaron antes: reusarlos evita duplicar la ficha y
   // deja ver de una si el cliente ya arrastra deuda.
-  const clientes = useApi(() => api.getClientesCredito(), []);
+  // En la app del iPhone guarda copia: sin señal se puede fiar igual a un
+  // cliente que ya estaba (Android: `clientes_credito`).
+  const clientes = useApi(() => conCopia("clientes_credito", () => api.getClientesCredito()), []);
 
   const [clienteId, setClienteId] = useState("");
   const [nombre, setNombre] = useState("");
