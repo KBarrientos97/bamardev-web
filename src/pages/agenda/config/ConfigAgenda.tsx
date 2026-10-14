@@ -13,7 +13,7 @@ import { useAuth } from "../../../store/AuthContext";
 import type { Almacen } from "../../../types";
 import type { Recurso, Servicio } from "../../../lib/agenda/tiposConfigAgenda";
 import { useNombreProfesional, type Pestana, type Sucursal } from "./utilConfig";
-import { HistorialReglas, ReglasInternas, ReglasOnline } from "./ReglasNegocio";
+import { ReglasInternas, ReglasOnline } from "./ReglasNegocio";
 import TabBloqueos from "./TabBloqueos";
 import TabExcepciones from "./TabExcepciones";
 import TabHorarios from "./TabHorarios";
@@ -200,9 +200,6 @@ export default function ConfigAgenda() {
     [almacenes.datos],
   );
 
-  // Cada vez que se guardan reglas, el historial se vuelve a pedir.
-  const [versionHistorial, setVersionHistorial] = useState(0);
-  const alGuardarReglas = () => setVersionHistorial((v) => v + 1);
 
   const temaInfo: Record<Tema, { etiqueta: string; descripcion: string }> = {
     servicios: {
@@ -361,8 +358,6 @@ export default function ConfigAgenda() {
               guardandoModo={guardandoModo}
               errorModo={errorModo}
               onCambiarModo={cambiarModo}
-              versionHistorial={versionHistorial}
-              onReglasGuardadas={alGuardarReglas}
             />
           )}
         </div>
@@ -507,8 +502,6 @@ function ContenidoTema({
   guardandoModo,
   errorModo,
   onCambiarModo,
-  versionHistorial,
-  onReglasGuardadas,
 }: {
   tema: Tema;
   seccion: Pestana | null;
@@ -527,8 +520,6 @@ function ContenidoTema({
   guardandoModo: boolean;
   errorModo: string;
   onCambiarModo: (m: ModoAgenda) => void;
-  versionHistorial: number;
-  onReglasGuardadas: () => void;
 }) {
   // Un servicio dice quién lo hace y un recurso qué servicios hace: es la
   // misma relación vista de los dos lados, así que guardar una recarga ambas.
@@ -622,7 +613,7 @@ function ContenidoTema({
       return (
         <>
           {veAgenda && seccionDe("reservas")}
-          {veReglas && <ReglasOnline onGuardado={onReglasGuardadas} />}
+          {veReglas && <ReglasOnline />}
         </>
       );
     case "reglas":
@@ -633,8 +624,10 @@ function ContenidoTema({
           )}
           {veReglas ? (
             <>
-              <ReglasInternas onGuardado={onReglasGuardadas} />
-              <HistorialReglas version={versionHistorial} />
+              {/* Sin "Historial de cambios" (decisión del dueño, 14-oct: no
+                  aportaba). El registro sigue en el backend y el componente
+                  (`HistorialReglas`) queda listo por si vuelve. */}
+              <ReglasInternas />
             </>
           ) : (
             <p className="flex items-start gap-2 rounded-xl bg-primary-50 px-3.5 py-2.5 text-[13px] text-primary-700">

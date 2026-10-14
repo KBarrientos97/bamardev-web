@@ -909,12 +909,13 @@ describe("enlaces de antes (?pestana=)", () => {
 });
 
 describe("reglas del negocio en la misma pantalla", () => {
-  it("Reglas: cómo trabaja, la agenda interna y el historial; guardar manda sólo lo cambiado y recarga el historial", async () => {
+  it("Reglas: cómo trabaja y la agenda interna, sin historial; guardar manda sólo lo cambiado", async () => {
     vi.mocked(apiConfigAgenda.guardarReglas).mockResolvedValue({ ...REGLAS, granularidadMin: 10 });
     await montar("reglas");
     expect(screen.getByRole("radiogroup", { name: "¿Cómo trabajás?" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Agenda interna" })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "Historial de cambios" })).toBeInTheDocument();
+    // El historial ya no se muestra (decisión del dueño, 14-oct).
+    expect(screen.queryByRole("region", { name: "Historial de cambios" })).not.toBeInTheDocument();
     // Las de la reserva online van con la reserva online.
     expect(screen.queryByRole("region", { name: "Reglas de la reserva online" })).not.toBeInTheDocument();
 
@@ -924,7 +925,7 @@ describe("reglas del negocio en la misma pantalla", () => {
     });
     expect(apiConfigAgenda.guardarReglas).toHaveBeenCalledWith({ sucursalId: null, granularidadMin: 10 });
     expect(screen.getByText("Reglas guardadas.")).toBeInTheDocument();
-    expect(apiConfigAgenda.historialReglas).toHaveBeenCalledTimes(2);
+    expect(apiConfigAgenda.historialReglas).not.toHaveBeenCalled();
   });
 
   it("Reserva online: lo que se publica y, debajo, cómo se confirman las reservas", async () => {

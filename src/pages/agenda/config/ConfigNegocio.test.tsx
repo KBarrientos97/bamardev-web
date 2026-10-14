@@ -421,6 +421,6 @@ describe("la ruta vieja /configuracion/negocio", () => {
     expect(screen.getByTestId("donde")).toHaveTextContent("/configuracion/negocio");
     expect(screen.getAllByRole("tab").map((t) => t.getAttribute("aria-label"))).toEqual(["Reserva online", "Reglas"]);
     expect(screen.getByRole("region", { name: "Agenda interna" })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "Historial de cambios" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Historial de cambios" })).not.toBeInTheDocument();
   });
 });

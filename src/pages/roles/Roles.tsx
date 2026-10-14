@@ -1,11 +1,10 @@
-import { useMemo, useState } from "react";
-import { Chips, EncabezadoPagina } from "../../components/filtros";
+import { useState } from "react";
+import { EncabezadoPagina } from "../../components/filtros";
 import { Icon } from "../../components/Icon";
 import { AvisoOk, Badge, Boton, Cargando, ErrorMsg, useAviso, Vacio } from "../../components/ui";
-import { apiRoles, nombresDelCatalogo, resumenGente, textoCantidadPermisos, tonoDeRol } from "../../lib/roles";
+import { apiRoles, resumenGente, textoCantidadPermisos, tonoDeRol } from "../../lib/roles";
 import { useApi } from "../../lib/useApi";
 import type { RolNegocio } from "../../types";
-import BitacoraRoles from "./BitacoraRoles";
 import BorrarRol from "./BorrarRol";
 import EditorRol from "./EditorRol";
 
@@ -18,18 +17,10 @@ import EditorRol from "./EditorRol";
  * editor es una hoja que sube desde abajo, con los permisos plegados por tema.
  */
 
-type Pestana = "roles" | "bitacora";
-const PESTANAS = [
-  ["roles", "Roles"],
-  ["bitacora", "Bitácora"],
-] as const;
-
 export default function Roles() {
   const roles = useApi(() => apiRoles.listar(), []);
   // Sin el catálogo el editor no sabe qué permisos ofrecer: se avisa al abrirlo.
   const catalogo = useApi(() => apiRoles.catalogo(), []);
-  const nombres = useMemo(() => nombresDelCatalogo(catalogo.datos), [catalogo.datos]);
-  const [pestana, setPestana] = useState<Pestana>("roles");
   const [editando, setEditando] = useState<RolNegocio | "nuevo" | null>(null);
   const [borrando, setBorrando] = useState<RolNegocio | null>(null);
   const [aviso, setAviso] = useAviso();
@@ -52,12 +43,12 @@ export default function Roles() {
           </Boton>
         }
       />
-      <Chips valor={pestana} opciones={PESTANAS} onChange={setPestana} />
+      {/* Sin la pestaña "Bitácora" (decisión del dueño, 14-oct: no aportaba).
+          Los cambios se siguen registrando en el backend y `BitacoraRoles`
+          queda listo por si vuelve. */}
       <AvisoOk>{aviso}</AvisoOk>
 
-      {pestana === "bitacora" ? (
-        <BitacoraRoles nombres={nombres} />
-      ) : roles.cargando && !roles.datos ? (
+      {roles.cargando && !roles.datos ? (
         <Cargando />
       ) : roles.error ? (
         <ErrorMsg>{roles.error}</ErrorMsg>

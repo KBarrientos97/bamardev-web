@@ -3,7 +3,6 @@ import { Icon } from "../../components/Icon";
 import { Boton, Campo, ErrorMsg, Input, Modal } from "../../components/ui";
 import { apiRoles, mensajeDeError, nombresDelCatalogo } from "../../lib/roles";
 import type { Alcance, DominioPermisos, PermisoCatalogo, RolNegocio } from "../../types";
-import BitacoraRoles from "./BitacoraRoles";
 
 /**
  * Crear, renombrar y editar los permisos de un rol. El Administrador se abre
@@ -44,7 +43,6 @@ export default function EditorRol({
   const [elegidos, setElegidos] = useState<Map<string, Alcance>>(inicial);
   const [error, setError] = useState("");
   const [guardando, setGuardando] = useState(false);
-  const [verBitacora, setVerBitacora] = useState(false);
   const nombres = useMemo(() => nombresDelCatalogo(catalogo), [catalogo]);
   const fueraDelPlan = useMemo(() => noIncluidos(rol, catalogo), [rol, catalogo]);
 
@@ -183,24 +181,6 @@ export default function EditorRol({
           </div>
         )}
 
-        {rol && (
-          <div className="border-t border-borde-soft pt-3">
-            <button
-              type="button"
-              onClick={() => setVerBitacora((v) => !v)}
-              className="flex items-center gap-1.5 text-[13px] font-semibold text-texto-2"
-              aria-expanded={verBitacora}
-            >
-              <Icon name={verBitacora ? "chevronDown" : "chevronRight"} size={15} />
-              Historial de cambios
-            </button>
-            {verBitacora && (
-              <div className="mt-2">
-                <BitacoraRoles rolId={rol.id} compacta nombres={nombres} />
-              </div>
-            )}
-          </div>
-        )}
       </div>
     </Modal>
   );
