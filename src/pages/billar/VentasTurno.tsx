@@ -226,7 +226,11 @@ function Kpi({
 }) {
   return (
     <div className="card flex items-start gap-3 px-4 py-3.5">
-      <Circulo icono={icono} tono={tono} size={36} />
+      {/* En el celular el círculo le quitaba el ancho al monto: "Bs 35..." en vez
+          de "Bs 358,67" (360 px). Como en el tablero, sólo desde `sm`. */}
+      <span className="hidden sm:block">
+        <Circulo icono={icono} tono={tono} size={36} />
+      </span>
       <div className="min-w-0">
         <p className="text-[10px] font-bold uppercase tracking-wider text-texto-3 sm:text-[11px]">{etiqueta}</p>
         <p className="truncate text-lg font-extrabold tabular-nums text-texto sm:text-[22px]">{valor}</p>
