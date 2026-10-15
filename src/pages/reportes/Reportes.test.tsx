@@ -241,3 +241,30 @@ describe("quien sólo ve los reportes de la agenda", () => {
     expect(api.reporte).not.toHaveBeenCalledWith("resumen", expect.anything(), expect.anything());
   });
 });
+
+/**
+ * Un reporte abierto desde otro (el Estado de resultado lleva a Ventas, a
+ * Compras…) vuelve a ése con la flecha, como en la app. Antes volvía siempre
+ * al resumen y el dueño tenía que buscar de nuevo el resultado que miraba.
+ */
+describe("la flecha de volver", () => {
+  it("abierto desde el estado de resultado, vuelve a él", async () => {
+    render(
+      <MemoryRouter initialEntries={["/reportes/resultado", { pathname: "/reportes/equilibrio", state: { volverA: "Estado de resultado" } }]} initialIndex={1}>
+        <Routes>
+          <Route path="/reportes/*" element={<Reportes />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    await act(async () => {});
+    const flecha = screen.getByRole("button", { name: "Volver a Estado de resultado" });
+    fireEvent.click(flecha);
+    await act(async () => {});
+    expect(await screen.findByRole("heading", { name: "Estado de resultado" })).toBeInTheDocument();
+  });
+
+  it("abierto desde el menú, vuelve al resumen como siempre", async () => {
+    await montar("/reportes/equilibrio");
+    expect(screen.getByRole("button", { name: "Volver al resumen" })).toBeInTheDocument();
+  });
+});

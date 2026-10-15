@@ -558,16 +558,22 @@ function EncabezadoReporte({
   conResumen: boolean;
 }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const titulo = ficha?.titulo ?? "Resumen";
   const descripcion = ficha?.descripcion ?? "Lo más importante del período";
+  // Abierto desde otro reporte (el Estado de resultado lleva a Ventas, a
+  // Compras…): la flecha vuelve a ése, como en la app. Antes volvía siempre al
+  // resumen y el dueño tenía que buscar de nuevo el resultado que miraba.
+  const volverA = (location.state as { volverA?: string } | null)?.volverA;
+  const etiquetaVolver = volverA ? `Volver a ${volverA}` : "Volver al resumen";
   return (
     <header className="flex flex-wrap items-center gap-3">
-      {ficha && conResumen && (
+      {ficha && (conResumen || volverA) && (
         <button
           type="button"
-          onClick={() => navigate("/reportes")}
-          aria-label="Volver al resumen"
-          title="Volver al resumen"
+          onClick={() => (volverA ? navigate(-1) : navigate("/reportes"))}
+          aria-label={etiquetaVolver}
+          title={etiquetaVolver}
           className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-borde bg-white text-texto-2 transition-colors hover:bg-muted"
         >
           <Icon name="arrowLeft" size={18} />
