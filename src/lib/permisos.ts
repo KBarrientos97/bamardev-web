@@ -153,7 +153,22 @@ export type Seccion =
   | "personal"
   // ── Roles del negocio (PLAN-ROLES-NEGOCIO) ──
   /** Crear, renombrar, editar y borrar los roles del negocio, con su bitácora. */
-  | "roles";
+  | "roles"
+  // ── Vertical Educación, ronda 1 (PLAN-ACADEMIAS-TECNICO §8) ──
+  /** E1: el tablero del día de la secretaría y la dirección (no el del docente). */
+  | "academia_hoy"
+  /** E2/E3: los grupos (el docente, sólo los suyos). */
+  | "academia_grupos"
+  /** E7/E6: los alumnos y su ficha. */
+  | "academia_alumnos"
+  /** E20: lo que llega desde la página del instituto. */
+  | "academia_preinscripciones"
+  /** E8: las cuotas que se deben, con el recordatorio por WhatsApp. */
+  | "academia_cobranza"
+  /** E17: carreras, materias y planes de pago. */
+  | "academia_carreras"
+  /** Ajustes académicos: nota mínima, tolerancia, topes de promoción. */
+  | "academia_ajustes";
 
 /**
  * Qué pide cada sección: un permiso (o varios, con `tambien`: alcanza con
@@ -177,6 +192,12 @@ interface Requisito {
   alcance?: "GENERAL" | "PROPIO";
   sinGeneral?: string;
   feature: Feature | null;
+  /**
+   * Otra feature que también la habilita (con cualquiera de las dos alcanza).
+   * Personal nació con la agenda de belleza, y el instituto, que no tiene
+   * agenda, la necesita para sus docentes.
+   */
+  oFeature?: Feature;
 }
 
 const REQUISITOS: Record<Seccion, Requisito> = {
@@ -261,10 +282,23 @@ const REQUISITOS: Record<Seccion, Requisito> = {
   // tiene que ver qué entrega. El backend pide lo mismo en GET /propinas.
   propinas: { permiso: "propinas.ver", tambien: ["propinas.pagar"], feature: "propinas" },
   recetas_servicio: { permiso: "consumo.recetas", feature: "consumo_servicio" },
-  // Personal va con la feature `agenda` (07-oct): sólo en los negocios con agenda.
-  personal: { permiso: "personal.gestionar", feature: "agenda" },
+  // Personal va con la feature `agenda` (07-oct): sólo en los negocios con
+  // agenda. O con `academia`: los docentes del instituto son su Personal.
+  personal: { permiso: "personal.gestionar", feature: "agenda", oFeature: "academia" },
   // Los roles del negocio existen en todos los rubros y no se venden aparte.
   roles: { permiso: "roles.gestionar", feature: null },
+  // ── Educación (PLAN-ACADEMIAS-TECNICO §5.2) ──
+  // Hoy es de la secretaría y la dirección: el docente (academia.ver PROPIO)
+  // entra a sus grupos, como el profesional entra a "Mi agenda".
+  academia_hoy: { permiso: "academia.ver", alcance: "GENERAL", feature: "academia" },
+  academia_grupos: { permiso: "academia.ver", feature: "academia" },
+  academia_alumnos: { permiso: "academia.ver", feature: "academia" },
+  // La bandeja existe sólo con el formulario de la página prendido: sin él no
+  // llega nada (igual que las solicitudes con `reserva_online`).
+  academia_preinscripciones: { permiso: "academia.inscribir", feature: "preinscripcion_online" },
+  academia_cobranza: { permiso: "academia.cobranza", feature: "academia" },
+  academia_carreras: { permiso: "academia.configurar", feature: "academia" },
+  academia_ajustes: { permiso: "academia.configurar", feature: "academia" },
 };
 
 /**
@@ -310,6 +344,12 @@ const FEATURES_ESTRICTAS: Feature[] = [
   "ficha_tecnica",
   // Billar nace ahora: ningún negocio lo tuvo, se prende a mano.
   "billar",
+  // La vertical Educación, ídem (y sólo compatibles con EDUCACION).
+  "academia",
+  "asistencia",
+  "notas",
+  "planilla_docente",
+  "preinscripcion_online",
 ];
 
 /**
@@ -362,8 +402,9 @@ const SOLO_EN_RUBRO: Partial<Record<Seccion, Rubro[]>> = {
   propinas: RUBROS_BELLEZA,
   recetas_servicio: RUBROS_BELLEZA,
   // Personal existe sólo en los negocios con agenda (07-oct): Omar tiene su
-  // gente cargada por el backfill, pero no ve la pantalla.
-  personal: RUBROS_BELLEZA,
+  // gente cargada por el backfill, pero no ve la pantalla. El instituto sí:
+  // ahí carga a sus docentes, con su % y su retención.
+  personal: [...RUBROS_BELLEZA, "ACADEMIA"],
 };
 
 /**
@@ -374,18 +415,21 @@ const SOLO_EN_RUBRO: Partial<Record<Seccion, Rubro[]>> = {
  */
 const FUERA_DE_RUBRO: Partial<Record<Seccion, Rubro[]>> = {
   // El salón entero es de restaurante: una farmacia no atiende mesas, y una
-  // peluquería tampoco (su "salón" es otra cosa).
-  mesas: ["FARMACIA", ...RUBROS_BELLEZA],
-  salon: ["FARMACIA", ...RUBROS_BELLEZA],
+  // peluquería tampoco (su "salón" es otra cosa). Un instituto, menos.
+  mesas: ["FARMACIA", ...RUBROS_BELLEZA, "ACADEMIA"],
+  salon: ["FARMACIA", ...RUBROS_BELLEZA, "ACADEMIA"],
   // Los insumos son materia prima: harina, aceite, pollo crudo. Una farmacia
   // no transforma nada, compra y vende lo mismo. El tinte de un salón se
   // gasta, pero no es una receta que se descuente al vender.
-  insumos: ["FARMACIA", ...RUBROS_BELLEZA],
+  insumos: ["FARMACIA", ...RUBROS_BELLEZA, "ACADEMIA"],
   // Una farmacia o un salón de belleza no tienen mesas de pool, aunque alguien
   // les prenda el extra en el panel por error.
-  billar: ["FARMACIA", ...RUBROS_BELLEZA],
-  mesas_billar: ["FARMACIA", ...RUBROS_BELLEZA],
-  reportes_billar: ["FARMACIA", ...RUBROS_BELLEZA],
+  billar: ["FARMACIA", ...RUBROS_BELLEZA, "ACADEMIA"],
+  mesas_billar: ["FARMACIA", ...RUBROS_BELLEZA, "ACADEMIA"],
+  reportes_billar: ["FARMACIA", ...RUBROS_BELLEZA, "ACADEMIA"],
+  // En un instituto lo que se debe son cuotas, y eso es Cobranza
+  // (PLAN-ACADEMIAS §4): "Cuentas por cobrar" no aparece.
+  creditos: ["ACADEMIA"],
 };
 
 export interface ContextoPermisos {
@@ -474,11 +518,26 @@ export function puedeVer(ctx: ContextoPermisos, seccion: Seccion): boolean {
 
   const req = REQUISITOS[seccion];
   if (!cumplePermiso(ctx, req)) return false;
-  if (req.feature && !tieneFeature(ctx.features, req.feature)) return false;
-  if (req.feature && FEATURES_ESTRICTAS.includes(req.feature) && !ctx.features?.includes(req.feature)) {
-    return false;
-  }
+  if (!req.feature) return true;
+  return cumpleFeature(ctx, req.feature) || (!!req.oFeature && cumpleFeature(ctx, req.oFeature));
+}
+
+/** ¿El plan trae la feature? Las estrictas no fallan abiertas con la lista vacía. */
+function cumpleFeature(ctx: ContextoPermisos, feature: Feature): boolean {
+  if (!tieneFeature(ctx.features, feature)) return false;
+  if (FEATURES_ESTRICTAS.includes(feature) && !ctx.features?.includes(feature)) return false;
   return true;
+}
+
+/**
+ * ¿Cobra cuotas en el POS (E9)? Con la feature `academia` y viendo a los
+ * alumnos de todos: el docente (alcance PROPIO) no cobra. No es una sección:
+ * es el botón "Cuotas por cobrar" dentro del POS, que sin esto ni se pide.
+ */
+export function cobraCuotas(ctx: ContextoPermisos): boolean {
+  if (!cumpleFeature(ctx, "academia")) return false;
+  const permisos = ctx.permisos ?? [];
+  return permisos.includes("academia.ver") && !(ctx.permisosPropios ?? []).includes("academia.ver");
 }
 
 /**
@@ -540,7 +599,7 @@ const PERMISO_CAPACIDAD: Partial<Record<Capacidad, string>> = {
  */
 const CAPACIDAD_FUERA_DE_RUBRO: Partial<Record<Capacidad, Rubro[]>> = {
   // Un corte de pelo no se sirve en mesa ni se lleva: en belleza tampoco.
-  mesa_llevar: ["FARMACIA", ...RUBROS_BELLEZA],
+  mesa_llevar: ["FARMACIA", ...RUBROS_BELLEZA, "ACADEMIA"],
 };
 
 export function puede(ctx: ContextoPermisos, capacidad: Capacidad): boolean {
@@ -601,6 +660,11 @@ export function rutaInicial(ctx: ContextoPermisos): string {
  * "/sin-acceso" con esa misma sección dibujada en la barra de al lado.
  */
 const ORDEN_INICIO: [Seccion, string][] = [
+  // El instituto empieza el día en Hoy (la secretaría y la dirección) o en
+  // sus grupos (el docente). Sin la feature `academia` no existen y la lista
+  // sigue como siempre.
+  ["academia_hoy", "/academia/hoy"],
+  ["academia_grupos", "/academia/grupos"],
   ["inventario", "/inventario"],
   ["productos", "/inventario/productos"],
   // En un billar, quien atiende entra al tablero de las mesas y no al POS.
@@ -637,6 +701,11 @@ const ORDEN_INICIO: [Seccion, string][] = [
   ["mi_asistente", "/mi-asistente"],
   ["promociones", "/promociones"],
   ["retencion", "/clientes-que-no-vuelven"],
+  ["academia_alumnos", "/academia/alumnos"],
+  ["academia_preinscripciones", "/academia/preinscripciones"],
+  ["academia_cobranza", "/academia/cobranza"],
+  ["academia_carreras", "/configuracion/carreras"],
+  ["academia_ajustes", "/configuracion/academia"],
   ["salon", "/salon"],
   ["reparto", "/reparto"],
 ];

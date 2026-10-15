@@ -81,6 +81,20 @@ export const FEATURE_DE_PERMISO: Record<string, string | null> = {
   "personal.gestionar": "agenda",
   "billar.operar": "billar",
   "billar.admin": "billar",
+  // Educación (PLAN-ACADEMIAS-TECNICO §5.2).
+  "academia.ver": "academia",
+  "academia.configurar": "academia",
+  "academia.grupos": "academia",
+  "academia.inscribir": "academia",
+  "academia.becas": "academia",
+  "academia.cobranza": "academia",
+  "asistencia.registrar": "asistencia",
+  "asistencia.llegadas": "asistencia",
+  "asistencia.justificar": "asistencia",
+  "notas.registrar": "notas",
+  "notas.reabrir": "notas",
+  "planilla.ver": "planilla_docente",
+  "planilla.liquidar": "planilla_docente",
 };
 
 export const PLANTILLAS = {
@@ -151,6 +165,19 @@ export const PLANTILLAS = {
     "personal.gestionar",
     "billar.operar",
     "billar.admin",
+    "academia.ver",
+    "academia.configurar",
+    "academia.grupos",
+    "academia.inscribir",
+    "academia.becas",
+    "academia.cobranza",
+    "asistencia.registrar",
+    "asistencia.llegadas",
+    "asistencia.justificar",
+    "notas.registrar",
+    "notas.reabrir",
+    "planilla.ver",
+    "planilla.liquidar",
   ],
   SUPERVISOR: [
     "ventas.vender",
@@ -212,6 +239,18 @@ export const PLANTILLAS = {
     "fichatecnica.editar",
     "billar.operar",
     "billar.admin",
+    // Coordinación (§5.3): academia.* salvo configurar, asistencia, notas y planilla.ver.
+    "academia.ver",
+    "academia.grupos",
+    "academia.inscribir",
+    "academia.becas",
+    "academia.cobranza",
+    "asistencia.registrar",
+    "asistencia.llegadas",
+    "asistencia.justificar",
+    "notas.registrar",
+    "notas.reabrir",
+    "planilla.ver",
   ],
   CAJERO: [
     "ventas.vender",
@@ -242,6 +281,12 @@ export const PLANTILLAS = {
     "fichatecnica.ver",
     "fichatecnica.editar",
     "billar.operar",
+    // Secretaría (§5.3).
+    "academia.ver",
+    "academia.inscribir",
+    "academia.cobranza",
+    "asistencia.registrar",
+    "asistencia.llegadas",
   ],
   MESERO: [
     "catalogo.ver",
@@ -266,5 +311,10 @@ export const PLANTILLAS = {
     "consumo.ajustar:PROPIO",
     "fichatecnica.ver:PROPIO",
     "fichatecnica.editar:PROPIO",
+    // Docente (§5.3): lo suyo.
+    "academia.ver:PROPIO",
+    "asistencia.registrar:PROPIO",
+    "notas.registrar:PROPIO",
+    "planilla.ver:PROPIO",
   ],
 } as const;

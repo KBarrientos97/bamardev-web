@@ -3,7 +3,7 @@ import { useLocation } from "react-router-dom";
 import type { NombreIcono } from "../components/Icon";
 import { useAuth } from "../store/AuthContext";
 import { SECCIONES_REPORTES, type Seccion } from "./permisos";
-import { termino, type Termino, type Vocabulario } from "./rubro";
+import { conMayuscula, termino, type Termino, type Vocabulario } from "./rubro";
 
 /**
  * El árbol del menú lateral, y el estado de qué grupos están abiertos.
@@ -48,6 +48,12 @@ export interface ItemNav {
    * y esto es la palabra que lo reemplaza donde corresponda (ver `rubro.ts`).
    */
   termino?: Termino;
+  /**
+   * El nombre armado con el vocabulario del perfil, cuando no es UNA palabra:
+   * "Carreras y planes" (o "Cursos y planes", si el instituto dice "curso").
+   * Recibe `termino` ya atado al rubro y al perfil del negocio.
+   */
+  etiqueta?: (palabra: (clave: Termino) => string) => string;
   /**
    * Las pantallas que cuelgan de ésta. Antes la jerarquía era una sangría
    * (`nivel`) sobre una lista plana, y el padre se deducía por posición: si
@@ -136,6 +142,36 @@ const ITEMS: (ItemNav & { bloque: Bloque })[] = [
   // Íconos distintos en la barra colapsada (QA VER-06). Los de Omar no
   // cambian: Clientes, Comisiones, Propinas y Promociones no existen para él.
   { a: "/clientes", label: "Clientes", icono: "userHeart", seccion: "clientes", bloque: "agenda" },
+  // Educación (PLAN-ACADEMIAS §4): lo del día con el alumno, en Atención.
+  // Sólo existen con la feature `academia` (estricta, ver permisos.ts): a los
+  // demás rubros no les mueven el menú.
+  {
+    a: "/academia/hoy",
+    label: "Hoy",
+    titulo: "Hoy en la academia",
+    icono: "clock",
+    seccion: "academia_hoy",
+    bloque: "agenda",
+  },
+  { a: "/academia/grupos", label: "Grupos", icono: "birrete", seccion: "academia_grupos", bloque: "agenda" },
+  {
+    a: "/academia/alumnos",
+    label: "Alumnos",
+    etiqueta: (palabra) => conMayuscula(palabra("clientes")),
+    icono: "users",
+    seccion: "academia_alumnos",
+    bloque: "agenda",
+    // E20 cuelga de Alumnos, con su contador (ver MenuLateral). Sin el
+    // formulario de la página no existe, y Alumnos queda solo.
+    hijos: [
+      {
+        a: "/academia/preinscripciones",
+        label: "Preinscripciones",
+        icono: "bell",
+        seccion: "academia_preinscripciones",
+      },
+    ],
+  },
   { a: "/pos", label: "Punto de venta", icono: "cart", seccion: "pos", bloque: "vender" },
   // Billar (extra `billar`): al lado del POS, porque en un billar es donde se
   // vende. Las pantallas que cuelgan (consumo, cierre, ventas) lo dejan
@@ -268,6 +304,9 @@ const ITEMS: (ItemNav & { bloque: Bloque })[] = [
     bloque: "administracion",
     hijos: [
       { a: "/creditos", label: "Cuentas por cobrar", icono: "dollar", seccion: "creditos" },
+      // Educación: lo que se debe son cuotas (E8). Toma el lugar de las cuentas
+      // por cobrar, que en un instituto no existen.
+      { a: "/academia/cobranza", label: "Cobranza", icono: "coins", seccion: "academia_cobranza" },
       // Después de las cuentas por cobrar, igual que en el drawer de la app:
       // es plata del negocio, pero del libro del resultado y no de la caja.
       { a: "/gastos", label: "Gastos operativos", icono: "archive", seccion: "gastos" },
@@ -327,14 +366,33 @@ const ITEMS: (ItemNav & { bloque: Bloque })[] = [
     seccion: "mesas_billar",
     bloque: "administracion",
   },
-  // A11: las reglas del negocio y las de la reserva online. Sólo el dueño.
-  // Lleva a la pestaña Reglas de la Configuración de la agenda (ConfigNegocio).
+  // Configuración: un grupo sin pantalla propia. En un salón tiene un solo
+  // hijo (las reglas del negocio) y se ve suelto, como siempre; en un
+  // instituto junta las carreras y los ajustes académicos.
   {
     a: "/configuracion/negocio",
     label: "Configuración",
     icono: "settings",
-    seccion: "config_negocio",
     bloque: "administracion",
+    hijos: [
+      // A11: las reglas del negocio y las de la reserva online. Sólo el dueño.
+      // Lleva a la pestaña Reglas de la Configuración de la agenda (ConfigNegocio).
+      { a: "/configuracion/negocio", label: "Configuración", icono: "settings", seccion: "config_negocio" },
+      // E17: carreras, materias y planes de pago.
+      {
+        a: "/configuracion/carreras",
+        label: "Cursos y planes",
+        etiqueta: (palabra) => `${conMayuscula(palabra("carreras"))} y planes`,
+        icono: "birrete",
+        seccion: "academia_carreras",
+      },
+      {
+        a: "/configuracion/academia",
+        label: "Ajustes académicos",
+        icono: "perillas",
+        seccion: "academia_ajustes",
+      },
+    ],
   },
 ];
 
@@ -388,7 +446,9 @@ function filtrar(
     }
     const item: ItemNav = i.termino
       ? { ...i, label: termino(rubro, i.termino, vocabulario) }
-      : i;
+      : i.etiqueta
+        ? { ...i, label: i.etiqueta((clave) => termino(rubro, clave, vocabulario)) }
+        : i;
     const id = `${i.seccion}:${i.a}`;
 
     // Un grupo de un solo hijo es un clic de más para llegar a una sola

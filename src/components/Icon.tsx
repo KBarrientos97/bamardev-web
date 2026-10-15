@@ -529,6 +529,14 @@ const paths: Record<string, ReactNode> = {
       <path d="M8 11H6a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1h-2" />
     </>
   ),
+  /** El birrete: grupos y carreras de un instituto (perfil ACADEMIA). */
+  birrete: (
+    <>
+      <path d="M22 9 12 4 2 9l10 5 10-5Z" />
+      <path d="M6 11v5c0 1.7 2.7 3 6 3s6-1.3 6-3v-5" />
+      <path d="M22 9v6" />
+    </>
+  ),
   /** "Agregar a inicio" de iOS: el cuadro con el más. */
   masCuadro: (
     <>

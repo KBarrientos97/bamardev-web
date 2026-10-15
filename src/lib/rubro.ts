@@ -37,7 +37,9 @@ export type Rubro =
   | "UNAS"
   // Oct-2026: su propia vertical, en negro. Las pantallas del billar son
   // todavía una maqueta (ver pages/billar).
-  | "BILLAR";
+  | "BILLAR"
+  // Vertical Educación (PLAN-ACADEMIAS): institutos técnicos y academias.
+  | "ACADEMIA";
 
 /**
  * Los de belleza: trabajan con turnos y profesionales, no con mesas ni con
@@ -53,6 +55,7 @@ export const RUBROS: Rubro[] = [
   "REPUESTOS",
   ...RUBROS_BELLEZA,
   "BILLAR",
+  "ACADEMIA",
 ];
 
 export function esRubro(valor: string | null | undefined): valor is Rubro {
@@ -81,7 +84,8 @@ export function esBillar(rubro: string | null | undefined): boolean {
  * muestra, como siempre.
  */
 export function marcaConsumo(rubro: string | null | undefined): boolean {
-  return !esFarmacia(rubro) && !esBelleza(rubro) && !esBillar(rubro);
+  // Una cuota o una polera de un instituto tampoco se sirven en mesa.
+  return !esFarmacia(rubro) && !esBelleza(rubro) && !esBillar(rubro) && rubro !== "ACADEMIA";
 }
 
 // ── Vocabulario ─────────────────────────────────────────────────────────────
@@ -101,13 +105,38 @@ export function marcaConsumo(rubro: string | null | undefined): boolean {
  * LOCAL, una sucursal (octubre de 2026), y el resto de sus pantallas ya decía
  * "sucursal". El restaurante sigue diciendo "almacén", como su app.
  */
-export type Termino = "articulos" | "articulo" | "articuloCap" | "almacenes";
+export type Termino =
+  | "articulos"
+  | "articulo"
+  | "articuloCap"
+  | "almacenes"
+  // Las de la vertical Educación (contrato de la ronda 1): en minúscula, como
+  // las manda el perfil; la pantalla las pone en mayúscula donde empieza la
+  // frase (`conMayuscula`). En los demás rubros no se usan.
+  | "cliente"
+  | "clientes"
+  | "profesional"
+  | "sucursal"
+  | "sucursales"
+  | "carrera"
+  | "carreras"
+  | "materia"
+  | "materias";
 
 const BASE: Record<Termino, string> = {
   articulos: "Artículos",
   articulo: "artículo",
   articuloCap: "Artículo",
   almacenes: "Almacenes",
+  cliente: "cliente",
+  clientes: "clientes",
+  profesional: "profesional",
+  sucursal: "sucursal",
+  sucursales: "sucursales",
+  carrera: "curso",
+  carreras: "cursos",
+  materia: "módulo",
+  materias: "módulos",
 };
 
 /**
@@ -120,6 +149,21 @@ const POR_RUBRO: Partial<Record<Rubro, Partial<Record<Termino, string>>>> = {
     articulo: "medicamento",
     articuloCap: "Medicamento",
     almacenes: "Sucursales",
+  },
+  // Respaldo del perfil ACADEMIA (contrato de la ronda 1), por si un backend
+  // anterior todavía no manda su vocabulario. La sede es un almacén SUCURSAL
+  // (PLAN-ACADEMIAS §10.1): en pantalla nunca dice "almacén".
+  ACADEMIA: {
+    almacenes: "Sedes",
+    cliente: "alumno",
+    clientes: "alumnos",
+    profesional: "docente",
+    sucursal: "sede",
+    sucursales: "sedes",
+    carrera: "carrera",
+    carreras: "carreras",
+    materia: "materia",
+    materias: "materias",
   },
 };
 
@@ -141,10 +185,27 @@ export function termino(
   clave: Termino,
   vocabulario?: Vocabulario | null,
 ): string {
-  const delPerfil = conTexto(vocabulario?.[clave]);
+  const delPerfil = conTexto(vocabulario?.[clave]) ?? pluralDelPerfil(clave, vocabulario);
   if (delPerfil) return delPerfil;
   const propio = esRubro(rubro) ? POR_RUBRO[rubro]?.[clave] : undefined;
   return propio ?? BASE[clave];
+}
+
+/**
+ * El contrato del perfil ACADEMIA manda el singular de carrera y materia, no
+ * el plural: "carreras" sale de "carrera" (un instituto que diga "curso" ve
+ * "cursos"). Sólo para esas dos, que son regulares en castellano.
+ */
+function pluralDelPerfil(clave: Termino, vocabulario?: Vocabulario | null): string | undefined {
+  if (clave !== "carreras" && clave !== "materias") return undefined;
+  const singular = conTexto(vocabulario?.[clave === "carreras" ? "carrera" : "materia"]);
+  if (!singular) return undefined;
+  return /[aeiouáéó]$/i.test(singular) ? `${singular}s` : `${singular}es`;
+}
+
+/** La palabra con la primera letra en mayúscula: "alumnos" → "Alumnos". */
+export function conMayuscula(texto: string): string {
+  return texto ? texto.charAt(0).toLocaleUpperCase("es") + texto.slice(1) : texto;
 }
 
 // ── Etiquetas de rol ────────────────────────────────────────────────────────
@@ -166,6 +227,8 @@ const ROL_POR_RUBRO: Partial<Record<Rubro, Partial<Record<Rol, string>>>> = {
   BARBERIA: { CAJERO: "Recepción", PROFESIONAL: "Barbero" },
   SPA: { CAJERO: "Recepción", PROFESIONAL: "Terapeuta" },
   UNAS: { CAJERO: "Recepción", PROFESIONAL: "Manicurista" },
+  // Las plantillas del rubro (PLAN-ACADEMIAS-TECNICO §5.3).
+  ACADEMIA: { SUPERVISOR: "Coordinación", CAJERO: "Secretaría", PROFESIONAL: "Docente" },
 };
 
 /**
