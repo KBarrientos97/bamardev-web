@@ -1056,7 +1056,14 @@ function FormMovimientoCuerpo({
       abierto
       titulo="Nuevo movimiento"
       cerrarAlClicAfuera={false}
-      subtitulo="Nace pendiente: recién al aprobarlo se mueve el stock"
+      // Sin el doble control se aprueba al guardar (ver `guardar`): decirle
+      // "nace pendiente" al dueño que carga 50 cervezas le hacía creer que
+      // todavía faltaba un paso para que entraran al stock.
+      subtitulo={
+        conAprobacion
+          ? "Nace pendiente: recién al aprobarlo se mueve el stock"
+          : "Al guardar se actualiza el stock: una entrada suma y una salida resta"
+      }
       onClose={onClose}
       ancho="max-w-2xl"
       acciones={
