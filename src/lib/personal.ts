@@ -46,6 +46,12 @@ export interface Persona {
   telefono?: string | null;
   fechaIngreso?: string | null;
   comisionPct?: number | null;
+  /**
+   * Educación (contrato de la ronda 1): lo que se le retiene al docente que no
+   * factura y su NIT. Opcionales: un backend anterior no los manda.
+   */
+  retencionPct?: number | null;
+  nit?: string | null;
   notas?: string | null;
   zona?: string | null;
   vehiculo?: string | null;
@@ -60,6 +66,8 @@ export interface PersonaInput {
   fechaIngreso?: string | null;
   color?: string | null;
   comisionPct?: number | null;
+  retencionPct?: number | null;
+  nit?: string | null;
   notas?: string | null;
   zona?: string | null;
   vehiculo?: string | null;
