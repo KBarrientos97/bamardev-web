@@ -30,6 +30,10 @@ export const urlReservaDe = (subdominio: string) =>
 
 export const urlPrivacidadDe = (subdominio: string) => `${urlPaginaDe(subdominio)}/privacidad`;
 
+/** El formulario de preinscripción a un grupo (P2, academias). */
+export const urlInscribirmeDe = (subdominio: string, grupoId: number) =>
+  `${urlPaginaDe(subdominio)}/inscribirme/${grupoId}`;
+
 /**
  * `/p/<subdominio>` y su privacidad se atienden antes de mirar el token (ver
  * RutasPagina.tsx). En el host link no se usa: ahí no hay app (RutasLink.tsx).
@@ -38,7 +42,8 @@ export function esRutaDePaginaPublica(pathname: string): boolean {
   // `/p/<negocio>/promo/<slug>`: la página de una promoción (enlaces de
   // campaña, PLAN-CRM-Y-PROMOCIONES §6.6), también sin sesión.
   // `/p/<negocio>/regalo/<token>`: la gift card que se comparte (IDEAS/6 #6).
-  return /^\/p\/[^/]+(\/privacidad|\/promo\/[^/]+|\/regalo\/[^/]+)?\/?$/.test(pathname);
+  // `/p/<negocio>/inscribirme/<grupo>`: la preinscripción de una academia (P2).
+  return /^\/p\/[^/]+(\/privacidad|\/promo\/[^/]+|\/regalo\/[^/]+|\/inscribirme\/\d+)?\/?$/.test(pathname);
 }
 
 /**

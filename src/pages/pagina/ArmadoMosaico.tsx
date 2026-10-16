@@ -348,6 +348,7 @@ export default function ArmadoMosaico(x: PiezasArmado) {
         <Fila>{[identidad]}</Fila>
         <Principal aria-label={x.etiquetaPrincipal} style={{ ...columna, gap: ESPACIO }}>
           {principal && <Fila>{[principal]}</Fila>}
+          {x.cursos}
           {catalogo}
           <Filas bloques={sueltos} porFila={porFila} alto={altoChico} />
           {x.tarjetasSucursal.length > 0 && (

@@ -18,6 +18,7 @@ import { urlTelefono } from "../../lib/pagina/vista";
 import { conMensajeDe, contactosWhatsapp, type ContactoWhatsapp } from "../../lib/pagina/whatsapp";
 import EleccionWhatsapp from "./EleccionWhatsapp";
 import ArmadoEstilo, { type PiezasArmado } from "./ArmadosPagina";
+import CursosPagina from "./CursosPagina";
 import CatalogoPagina, { SelectorSucursalCatalogo, type AccionCatalogo, type AspectoCatalogo } from "./CatalogoPagina";
 import { EstadoSucursal, SemanaSucursal } from "./HorarioSucursal";
 import type { AccionPagina, DatosVisor } from "./piezasArmado";
@@ -294,6 +295,11 @@ export interface PropsVista {
    */
   sucursalCatalogo?: number;
   onSucursalCatalogo?: (indice: number) => void;
+  /**
+   * Academias (P1): a dónde lleva "Preinscribirme" de un curso. Sin esto (la
+   * vista previa del editor) el botón se dibuja y no lleva a ningún lado.
+   */
+  urlInscribirme?: (grupoId: number) => string;
 }
 
 export default function VistaPagina({
@@ -307,6 +313,7 @@ export default function VistaPagina({
   alAgregarAlPedido,
   sucursalCatalogo,
   onSucursalCatalogo,
+  urlInscribirme,
 }: PropsVista) {
   const raiz = useRef<HTMLDivElement>(null);
   const [sucursalPropia, setSucursalPropia] = useState(0);
@@ -564,7 +571,28 @@ export default function VistaPagina({
         }}
       />
     ) : null;
-  const catalogo = p.catalogo && catalogoVisto && p.catalogo.items.length > 0 && (
+  // P1: los cursos de un instituto, arriba del catálogo (un instituto casi
+  // nunca tiene las dos cosas, pero si las tiene, primero lo que enseña).
+  const cursos = p.cursos?.length ? (
+    <CursosPagina
+      cursos={p.cursos}
+      t={t}
+      colorBoton={c.oscuro}
+      radio={radioTarjeta}
+      escritorio={escritorio}
+      urlInscribirme={urlInscribirme}
+      titulo={
+        clasico ? (
+          <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: t.texto }}>Cursos</h2>
+        ) : (
+          <TituloSeccion estilo={estilo.clave} t={t} letra={letraNombre} escritorio={escritorio}>
+            Cursos
+          </TituloSeccion>
+        )
+      }
+    />
+  ) : null;
+  const soloCatalogo = p.catalogo && catalogoVisto && p.catalogo.items.length > 0 && (
     <CatalogoPagina
       catalogo={catalogoVisto}
       selector={selectorSucursal}
@@ -588,6 +616,14 @@ export default function VistaPagina({
       }
     />
   );
+
+  const catalogo =
+    cursos || soloCatalogo ? (
+      <>
+        {cursos}
+        {soloCatalogo}
+      </>
+    ) : null;
 
   const visor: DatosVisor | null =
     p.catalogo && catalogoVisto && p.catalogo.items.length > 0
@@ -658,6 +694,7 @@ export default function VistaPagina({
       principal,
       botones,
       catalogo,
+      cursos,
       sucursales:
         p.sucursales.length > 0 ? (
           <>

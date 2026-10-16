@@ -39,6 +39,11 @@ export interface DatosVisor {
 }
 
 export interface PiezasArmado {
+  /**
+   * La sección Cursos de un instituto (P1), aparte para el armado que no usa
+   * `catalogo` (Mosaico). En los demás ya va dentro de `catalogo`.
+   */
+  cursos?: ReactNode;
   p: PaginaPublica;
   c: Paleta;
   t: TonosPagina;
