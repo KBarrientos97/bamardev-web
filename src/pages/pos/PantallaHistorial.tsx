@@ -25,6 +25,7 @@ import { enlaceWhatsApp, mensajePedido, pedidoDeVenta } from "../../lib/mensajeP
 import { conCopia } from "../../lib/offline/copias";
 import { formaPagoFaltante } from "../../lib/formaPagoFaltante";
 import { porSubir, useColaOffline } from "../../lib/offline/cola";
+import { motivosRevision, requiereRevision } from "../../lib/revisionVenta";
 import AvisoSinSubir from "../../components/offline/AvisoSinSubir";
 import VentasSinSubir from "../../components/offline/VentasSinSubir";
 import { useAuth } from "../../store/AuthContext";
@@ -60,11 +61,21 @@ export default function PantallaHistorial({
   const [detalle, setDetalle] = useState<Venta | null>(null);
   const [entregando, setEntregando] = useState<Venta | null>(null);
 
-  const lista = ventas.datos ?? [];
+  const todas = ventas.datos ?? [];
+  /**
+   * Las marcadas "a revisar" (C1). El filtro es local, sobre la misma lista del
+   * turno: así funciona también con la copia offline. Sólo se ofrece si hay
+   * alguna, y si deja de haberlas el filtro se apaga solo: si no, quedaría
+   * prendido y oculto, con la lista vacía.
+   */
+  const aRevisar = todas.filter(requiereRevision).length;
+  const [soloRevisar, setSoloRevisar] = useState(false);
+  const filtrando = soloRevisar && aRevisar > 0;
+  const lista = filtrando ? todas.filter(requiereRevision) : todas;
   // Las cobradas sin internet también son del turno: cuentan en el resumen,
   // como en Android (las rechazadas no, porque no van a llegar).
   const sinSubir = porSubir(useColaOffline()).map((v) => v.recibo);
-  const aprobadas = [...sinSubir, ...lista.filter((v) => v.estado === "APROBADO")];
+  const aprobadas = [...sinSubir, ...todas.filter((v) => v.estado === "APROBADO")];
   const totalVendido = aprobadas.reduce((s, v) => s + v.total, 0);
   const porEntregar = pendientes.datos ?? [];
 
@@ -182,6 +193,18 @@ export default function PantallaHistorial({
           <h2 className="mb-2 text-[13px] font-bold uppercase tracking-wide text-texto-4">
             Ventas
           </h2>
+          {aRevisar > 0 && (
+            <div className="mb-2">
+              <Chips
+                valor={filtrando ? "revisar" : "todas"}
+                opciones={[
+                  ["todas", "Todas"],
+                  ["revisar", `Sólo a revisar (${aRevisar})`],
+                ]}
+                onChange={(k) => setSoloRevisar(k === "revisar")}
+              />
+            </div>
+          )}
           <ErrorMsg>{ventas.error}</ErrorMsg>
           {ventas.cargando ? (
             <Cargando />
@@ -221,12 +244,20 @@ export default function PantallaHistorial({
                             {v.tipoPedido === "DELIVERY" ? "Delivery" : "Recojo"}
                           </Badge>
                         )}
+                        {requiereRevision(v) && <Badge tono="amarillo">A revisar</Badge>}
                       </div>
                       <p className="mt-0.5 text-xs text-texto-3">
                         {fmtHora(v.fecha)} · {v.items ?? 0}{" "}
                         {(v.items ?? 0) === 1 ? "artículo" : "artículos"}
                         {comoSePago(v) ? ` · ${comoSePago(v)}` : ""}
                       </p>
+                      {/* El porqué en la misma fila: la marca sola obliga a
+                          abrir cada venta para saber si es grave. */}
+                      {requiereRevision(v) && motivosRevision(v).length > 0 && (
+                        <p className="mt-0.5 text-xs font-semibold text-warning-text">
+                          {motivosRevision(v).join(" · ")}
+                        </p>
+                      )}
                     </div>
                     <span
                       className={`shrink-0 text-sm font-bold ${
@@ -380,6 +411,24 @@ function DetalleVenta({
                 {v.motivoAnulacion && <p className="mt-0.5">Motivo: {v.motivoAnulacion}</p>}
                 {v.anulacionAutorizadaPor && (
                   <p className="mt-0.5">Autorizó: {v.anulacionAutorizadaPor}</p>
+                )}
+              </div>
+            )}
+
+            {/* La venta vale (ya se cobró); la marca dice qué mirar. Casi
+                siempre viene de un equipo que vendió sin señal con datos
+                viejos: precio, cupo, límite de fiado o stock. */}
+            {requiereRevision(v) && (
+              <div className="rounded-xl bg-warning-bg px-3.5 py-2.5 text-[13px] text-warning-text">
+                <p className="font-bold">A revisar</p>
+                {motivosRevision(v).length > 0 ? (
+                  <ul className="mt-0.5 list-disc pl-4">
+                    {motivosRevision(v).map((m) => (
+                      <li key={m}>{m}</li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="mt-0.5">El sistema la marcó para que alguien la mire.</p>
                 )}
               </div>
             )}
