@@ -15,7 +15,7 @@ import {
   type TableroApi,
 } from "./api";
 import { ahoraServidor, fijarDesfase } from "./reloj";
-import type { AjustesBillar, Caja, ItemVenta, Mesa, MetodoCobro, ProductoBillar, TipoMesa, VentaBillar } from "./tipos";
+import type { AjustesBillar, Caja, Devolucion, ItemVenta, Mesa, MetodoCobro, ProductoBillar, TipoMesa, VentaBillar } from "./tipos";
 
 /**
  * El estado del billar y lo que se puede hacer con él.
@@ -564,13 +564,21 @@ export const billar = {
     return ponerMesa(await apiBillar.editarInicio(sesionId, inicio, motivo, cred));
   },
 
-  /** La mesa se abrió por error: no se cobra nada. Devuelve cuánto hay que devolverle al cliente. */
-  async anularMesa(mesaId: number, motivo: string, cred: Credenciales, clienteRequestId: string): Promise<number> {
+  /**
+   * La mesa se abrió por error: no se cobra nada. Devuelve cuánto hay que
+   * devolverle al cliente y en qué (el detalle, si el backend ya lo manda).
+   */
+  async anularMesa(
+    mesaId: number,
+    motivo: string,
+    cred: Credenciales,
+    clienteRequestId: string,
+  ): Promise<{ total: number; detalle?: Devolucion }> {
     const { sesionId } = sesionDe(mesaId);
     const r = await apiBillar.anular(sesionId, motivo, cred, clienteRequestId);
     ponerMesa(r.mesa);
     void cargarProductos();
-    return r.devolver;
+    return { total: r.devolver, detalle: r.devolverDetalle };
   },
 
   async reservar(mesaId: number, hora: number, nombre: string): Promise<Mesa> {

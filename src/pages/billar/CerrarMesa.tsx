@@ -9,7 +9,7 @@ import { useAuth } from "../../store/AuthContext";
 import type { CreditoInput, PagoInput } from "../../types";
 import PantallaCredito from "../pos/PantallaCredito";
 import { useIntentoDeCobro } from "../pos/useIntentoDeCobro";
-import { cuentaDe, fmtCobrado, fmtCrono, horaDe, round2, segundosJugados } from "./calculo";
+import { cuentaDe, devolucionDe, fmtCobrado, fmtCrono, horaDe, round2, segundosJugados, textoDevolucion } from "./calculo";
 import { FormCobro } from "./Cobro";
 import { useCobro } from "./useCobro";
 import { useAccion } from "./useAccion";
@@ -122,6 +122,8 @@ export default function CerrarMesa() {
 
   /** Lo pagado de más (la cuenta bajó después de un adelanto): hay que devolverlo. */
   const aFavor = round2(c.pagado - c.total);
+  /** Y en qué: "Bs 40,00 en efectivo y Bs 20,00 por QR", como lo guarda la venta. */
+  const devolver = textoDevolucion(devolucionDe(s.pagos, c.total));
 
   // Lo que identifica ESTE cobro: la sesión y la hora de la cuenta. Un
   // reintento de lo mismo manda el mismo id y, si el primero había entrado,
@@ -148,7 +150,7 @@ export default function CerrarMesa() {
         : pago
           ? textoMetodo(pago)
           : aFavor > 0.005
-            ? `Devolvé ${fmtMoney(aFavor)} al cliente.`
+            ? `Devolvé ${devolver} al cliente.`
             : "Estaba todo pagado.",
     );
   };
@@ -341,7 +343,7 @@ export default function CerrarMesa() {
                       cliente pagaba de más y la caja cerraba con sobrante. */}
                   {aFavor > 0.005 ? (
                     <Nota tono="ambar" icono="alert">
-                      Pagó {fmtMoney(aFavor)} de más (la cuenta bajó después de pagar): devolvéselo al cliente al cerrar.
+                      Pagó {fmtMoney(aFavor)} de más (la cuenta bajó después de pagar): al cerrar, devolvé {devolver}.
                     </Nota>
                   ) : (
                     <Nota icono="checkCirculo">Ya está todo pagado. Cerrar la deja libre y registra la venta.</Nota>

@@ -1,5 +1,6 @@
-import { fmtFecha, fmtHora } from "../../lib/format";
+import { fmtFecha, fmtHora, fmtMoney } from "../../lib/format";
 import type {
+  Devolucion,
   EstadoVisual,
   Mesa,
   Pago,
@@ -173,6 +174,56 @@ export function consumosDe(s: Pick<Sesion, "consumos">): number {
 
 export function pagadoDe(pagos: Pago[]): number {
   return round2(pagos.reduce((t, p) => t + p.monto, 0));
+}
+
+// ── Lo pagado de más ────────────────────────────────────────────────────────
+
+/** El mismo criterio que `esEfectivo` del backend: el nombre lo dice. */
+const esDeEfectivo = (metodo: string) => metodo.toLowerCase().includes("efectivo");
+
+/**
+ * Qué parte de cada pago previo cubre la cuenta y cuánto sobra: lo que no es
+ * efectivo cubre primero, así lo que sobra es efectivo y sale del cajón. Es la
+ * misma regla con que el backend arma los pagos de la venta (`imputarPagos` de
+ * su calculo.ts): si una cambia, cambian las dos.
+ *
+ * En el orden en que se cobraron, el sobrante caía en el último pago fuera
+ * cual fuera: con Bs 40 en efectivo y Bs 30 por QR y la cuenta en Bs 10, la
+ * pantalla pedía devolver Bs 60 sin decir en qué, el cajero los sacaba del
+ * cajón y al cerrar faltaban Bs 30 (prueba del 16-oct).
+ */
+export function imputarPagos<P extends Pick<Pago, "metodo" | "monto">>(
+  pagos: P[],
+  total: number,
+): { pago: P; cubre: number; sobra: number }[] {
+  const orden = [...pagos.filter((p) => !esDeEfectivo(p.metodo)), ...pagos.filter((p) => esDeEfectivo(p.metodo))];
+  let resta = round2(Math.max(0, total));
+  return orden.map((pago) => {
+    const cubre = round2(Math.min(pago.monto, resta));
+    resta = round2(resta - cubre);
+    return { pago, cubre, sobra: round2(pago.monto - cubre) };
+  });
+}
+
+/** Cuánto devolver y en qué. Con `total` 0 (mesa anulada) se devuelve todo. */
+export function devolucionDe(pagos: Pick<Pago, "metodo" | "monto">[], total: number): Devolucion {
+  let efectivo = 0;
+  const otros = new Map<string, number>();
+  for (const { pago, sobra } of imputarPagos(pagos, total)) {
+    if (sobra <= 0.005) continue;
+    if (esDeEfectivo(pago.metodo)) efectivo = round2(efectivo + sobra);
+    else otros.set(pago.metodo, round2((otros.get(pago.metodo) ?? 0) + sobra));
+  }
+  return { efectivo, otros: [...otros].map(([metodo, monto]) => ({ metodo, monto })) };
+}
+
+/** "Bs 40,00 en efectivo y Bs 20,00 por QR". Vacío si no hay nada que devolver. */
+export function textoDevolucion(d: Devolucion): string {
+  const partes = [
+    ...(d.efectivo > 0.005 ? [`${fmtMoney(d.efectivo)} en efectivo`] : []),
+    ...d.otros.filter((o) => o.monto > 0.005).map((o) => `${fmtMoney(o.monto)} por ${o.metodo}`),
+  ];
+  return partes.length > 1 ? `${partes.slice(0, -1).join(", ")} y ${partes[partes.length - 1]}` : (partes[0] ?? "");
 }
 
 export function cuentaDe(s: Sesion, t: TipoMesa, ahora: number): Cuenta {

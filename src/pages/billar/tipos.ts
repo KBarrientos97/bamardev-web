@@ -173,7 +173,19 @@ export interface VentaBillar {
   /** Del último cobro en efectivo, para el ticket. */
   recibido?: number;
   cambio?: number;
+  /**
+   * Lo devuelto porque la cuenta bajó después de pagar. Cuando lo hay no hubo
+   * cobro final: reemplaza al recibido y al cambio en el ticket.
+   */
+  devuelto?: Devolucion;
   anulada?: { hora: number; quien: string; motivo: string };
+}
+
+/** Lo que hay que devolverle al cliente cuando lo pagado pasa la cuenta. */
+export interface Devolucion {
+  efectivo: number;
+  /** Lo que se devuelve por el mismo medio en que entró (QR, tarjeta). */
+  otros: { metodo: string; monto: number }[];
 }
 
 /** Un producto del inventario, visto desde el billar. */

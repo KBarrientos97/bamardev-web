@@ -2,6 +2,7 @@ import { request } from "../../lib/api";
 import type { CreditoInput, FormaPago, PagoInput } from "../../types";
 import type {
   AjustesBillar,
+  Devolucion,
   EstadoMesa,
   Mesa,
   Pago,
@@ -203,7 +204,13 @@ export const apiBillar = {
   editarInicio: (sesionId: string, inicio: number, motivo: string, cred: Credenciales) =>
     enviar<MesaApi>(`${sesion(sesionId)}/inicio`, { inicio: new Date(inicio).toISOString(), motivo, ...cred }),
   anular: (sesionId: string, motivo: string, cred: Credenciales, clienteRequestId: string) =>
-    enviar<{ mesa: MesaApi; devolver: number }>(`${sesion(sesionId)}/anular`, { motivo, ...cred, clienteRequestId }),
+    // `devolverDetalle` llega desde el 16-oct (backend del mismo día): sin él,
+    // la pantalla lo calcula con los pagos de la mesa.
+    enviar<{ mesa: MesaApi; devolver: number; devolverDetalle?: Devolucion }>(`${sesion(sesionId)}/anular`, {
+      motivo,
+      ...cred,
+      clienteRequestId,
+    }),
   cerrar: (
     sesionId: string,
     cuerpo: {

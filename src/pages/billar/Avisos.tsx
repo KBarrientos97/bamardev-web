@@ -4,7 +4,15 @@ import { Icon } from "../../components/Icon";
 import { publicarContadorBillar } from "../../lib/billar/contador";
 import { fmtMoney } from "../../lib/format";
 import { desbloquearAudio, hablar, marcarAvisado, nivelAlcanzado, textosAviso, yaAvisado, zumbido } from "./alertas";
-import { cuentaDe, fmtTarifaCorta, pagadoDe, segundosJugados, sePuedeAnular } from "./calculo";
+import {
+  cuentaDe,
+  devolucionDe,
+  fmtTarifaCorta,
+  pagadoDe,
+  segundosJugados,
+  sePuedeAnular,
+  textoDevolucion,
+} from "./calculo";
 import { useDialogos, type Dialogo } from "./dialogos";
 import { ModalAbrir, ModalExtender } from "./ModalTiempo";
 import { ModalAvisos } from "./ModalesCaja";
@@ -229,11 +237,14 @@ function dibujar(actual: Dialogo, e: EstadoBillar, cerrar: () => void): ReactNod
       // puesto, con los casilleros vaciándose a cada intento.
       if (!sePuedeAnular(cuentaDe(enJuego.sesion, tipoDe(e, enJuego), ahoraServidor()))) return null;
       const pagado = pagadoDe(enJuego.sesion.pagos);
+      // Cada parte por donde entró: "Devolvé Bs 70" con Bs 30 llegados por QR
+      // hacía que el cajero sacara los 70 del cajón (16-oct).
+      const pagos = enJuego.sesion.pagos;
       return (
         <ModalPin
           accion={`Anular la Mesa ${enJuego.id}`}
           detalle={`Se abrió por error: no se cobra nada y queda libre.${
-            pagado > 0 ? ` Ya pagó ${fmtMoney(pagado)}: hay que devolvérselo.` : ""
+            pagado > 0 ? ` Ya pagó ${fmtMoney(pagado)}: hay que devolverle ${textoDevolucion(devolucionDe(pagos, 0))}.` : ""
           }`}
           motivos={["Se abrió por error", "Se fueron sin jugar"]}
           pedirPin={e.ajustes.pin.anularMesa}
@@ -244,10 +255,13 @@ function dibujar(actual: Dialogo, e: EstadoBillar, cerrar: () => void): ReactNod
             // vuelve a decir cuánto devolver en vez de "Esa mesa se anuló".
             const devolver = await billar.anularMesa(enJuego.id, motivo, cred, clave);
             cerrar();
+            // El detalle del servidor manda (pudo entrar un pago mientras tanto);
+            // sin él, la cuenta con los pagos que se veían.
+            const detalle = devolver.detalle ?? devolucionDe(pagos, 0);
             billar.avisar({
-              tono: devolver > 0 ? "ambar" : "verde",
+              tono: devolver.total > 0 ? "ambar" : "verde",
               titulo: `Mesa ${enJuego.id} anulada`,
-              texto: devolver > 0 ? `Devolvé ${fmtMoney(devolver)} al cliente.` : "No se cobró nada.",
+              texto: devolver.total > 0 ? `Devolvé ${textoDevolucion(detalle) || fmtMoney(devolver.total)} al cliente.` : "No se cobró nada.",
             });
           }}
         />

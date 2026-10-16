@@ -2,16 +2,19 @@ import { describe, expect, it } from "vitest";
 import {
   cobroTiempo,
   cuentaDe,
+  devolucionDe,
   estadoVisual,
   etiquetaPagoFijo,
   fmtCobrado,
   fmtCrono,
   fmtHace,
+  imputarPagos,
   precioFijo,
   precioHoras,
   promoPara,
   segundosJugados,
   sePuedeAnular,
+  textoDevolucion,
 } from "./calculo";
 import type { Mesa, Sesion, TipoMesa } from "./tipos";
 
@@ -283,5 +286,61 @@ describe("sePuedeAnular", () => {
   it("lo traído de otra mesa cuenta como jugado", () => {
     const s = sesion({ jugados: hms(0, 1), prev: { secs: hms(0, 40), min: 45, bs: 15 } });
     expect(sePuedeAnular(cuentaDe(s, POOL, AHORA))).toBe(false);
+  });
+});
+
+// Los mismos casos que `bamardev-backend/src/billar/calculo.spec.ts`: la
+// pantalla dice cuánto devolver con la misma cuenta con que la venta lo guarda.
+describe("lo pagado de más", () => {
+  it("lo que no es efectivo cubre primero y el sobrante se devuelve en efectivo", () => {
+    // Prueba del 16-oct: Bs 40 en efectivo y Bs 30 por QR, y la cuenta bajó a
+    // Bs 10. La pantalla pedía devolver Bs 60 sin decir en qué, el cajero los
+    // sacaba del cajón y al cerrar faltaban Bs 30.
+    const pagos = [
+      { metodo: "Efectivo", monto: 40 },
+      { metodo: "QR", monto: 30 },
+    ];
+    expect(imputarPagos(pagos, 10).map((x) => [x.pago.metodo, x.cubre, x.sobra])).toEqual([
+      ["QR", 10, 20],
+      ["Efectivo", 0, 40],
+    ]);
+    const d = devolucionDe(pagos, 10);
+    expect(d).toEqual({ efectivo: 40, otros: [{ metodo: "QR", monto: 20 }] });
+    expect(textoDevolucion(d)).toBe("Bs 40,00 en efectivo y Bs 20,00 por QR");
+  });
+
+  it("si el efectivo alcanza, el sobrante sale entero del cajón", () => {
+    const d = devolucionDe(
+      [
+        { metodo: "Efectivo", monto: 40 },
+        { metodo: "QR", monto: 35 },
+      ],
+      50,
+    );
+    expect(d).toEqual({ efectivo: 25, otros: [] });
+    expect(textoDevolucion(d)).toBe("Bs 25,00 en efectivo");
+  });
+
+  it("sin sobrante no hay nada que devolver", () => {
+    const pagos = [
+      { metodo: "Efectivo", monto: 20 },
+      { metodo: "QR", monto: 10 },
+    ];
+    expect(devolucionDe(pagos, 45)).toEqual({ efectivo: 0, otros: [] });
+    expect(textoDevolucion(devolucionDe(pagos, 45))).toBe("");
+    expect(imputarPagos(pagos, 45).map((x) => x.cubre)).toEqual([10, 20]);
+  });
+
+  it("una mesa anulada devuelve todo, cada parte por donde entró", () => {
+    const pagos = [
+      { metodo: "Efectivo", monto: 20 },
+      { metodo: "QR", monto: 10 },
+      { metodo: "QR", monto: 5 },
+    ];
+    expect(devolucionDe(pagos, 0)).toEqual({ efectivo: 20, otros: [{ metodo: "QR", monto: 15 }] });
+  });
+
+  it("reconoce el efectivo aunque el negocio lo haya llamado distinto", () => {
+    expect(devolucionDe([{ metodo: "Efectivo Bs", monto: 30 }], 10)).toEqual({ efectivo: 20, otros: [] });
   });
 });

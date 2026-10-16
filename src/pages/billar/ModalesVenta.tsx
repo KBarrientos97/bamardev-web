@@ -2,7 +2,7 @@ import { Icon } from "../../components/Icon";
 import { Modal } from "../../components/ui";
 import { fmtMoney } from "../../lib/format";
 import { useAuth } from "../../store/AuthContext";
-import { fechaDe, fmtCobrado, horaDe } from "./calculo";
+import { fechaDe, fmtCobrado, horaDe, textoDevolucion } from "./calculo";
 import { useDialogos } from "./dialogos";
 import { useAhora } from "./reloj";
 import { tipoDe, useBillar } from "./store";
@@ -73,6 +73,9 @@ export function ModalVenta({ codigo, onClose }: { codigo: string; onClose: () =>
             <span className="font-semibold tabular-nums text-texto">{fmtMoney(p.monto)}</span>
           </div>
         ))}
+        {v.devuelto && textoDevolucion(v.devuelto) && (
+          <p className="text-texto-3">Devuelto al cliente: {textoDevolucion(v.devuelto)}</p>
+        )}
       </div>
     </Modal>
   );
@@ -155,11 +158,24 @@ export function ModalTicket({ codigo, onClose }: { codigo: string; onClose: () =
               )}
             </div>
           ))}
-          {v.recibido !== undefined && efectivoFinal && (
+          {/* Con devolución no hubo cobro final: el único cambio es el que
+              sobró de los adelantos, y un adelanto que queda entero afuera no
+              es un pago de la venta. Decía "Cambio Bs 10" con Bs 60 devueltos. */}
+          {v.devuelto ? (
             <>
-              {fila("Recibido", fmtMoney(v.recibido))}
-              {fila("Cambio", fmtMoney(v.cambio ?? 0))}
+              {v.devuelto.efectivo > 0.005 && fila("Devuelto en efectivo", fmtMoney(v.devuelto.efectivo))}
+              {v.devuelto.otros.map((o) => (
+                <div key={o.metodo}>{fila(`Devuelto por ${o.metodo}`, fmtMoney(o.monto))}</div>
+              ))}
             </>
+          ) : (
+            v.recibido !== undefined &&
+            efectivoFinal && (
+              <>
+                {fila("Recibido", fmtMoney(v.recibido))}
+                {fila("Cambio", fmtMoney(v.cambio ?? 0))}
+              </>
+            )
           )}
           {sep}
           <p className="text-center">Comprobante interno · no válido como factura</p>
