@@ -19,6 +19,7 @@ import { api } from "../../lib/api";
 import { fmtFecha, fmtFechaHora, fmtMoney, fmtNum, isoDia } from "../../lib/format";
 import { useApi } from "../../lib/useApi";
 import { useSucursales } from "../../lib/useSucursales";
+import { ofreceAprobarMovimiento } from "../../lib/permisos";
 import { useAuth } from "../../store/AuthContext";
 import ElegirArticulo from "./ElegirArticulo";
 import type {
@@ -351,6 +352,7 @@ function DetalleMovimiento({
   onCerrarYRecargar: () => void;
   onError: (mensaje: string) => void;
 }) {
+  const { usuario } = useAuth();
   const mov = useApi(() => api.getMovimiento(id), [id]);
   const [confirmando, setConfirmando] = useState<"aprobar" | "anular" | "eliminar" | null>(
     null,
@@ -377,6 +379,9 @@ function DetalleMovimiento({
    * y el documento otra.
    */
   const editable = m?.estado === "PENDIENTE";
+  // Una transferencia la aprueba sólo quien tiene el permiso propio: sin él
+  // el botón terminaba en un 403 (ver `ofreceAprobarMovimiento`).
+  const ofreceAprobar = ofreceAprobarMovimiento(usuario, m?.tipo);
 
   /** Artículos del almacén con su stock, para el tope de las salidas. */
   const articulosAlmacen = useApi(
@@ -442,9 +447,11 @@ function DetalleMovimiento({
               >
                 Eliminar
               </Boton>
-              <Boton icono="check" disabled={procesando} onClick={() => setConfirmando("aprobar")}>
-                Aprobar
-              </Boton>
+              {ofreceAprobar && (
+                <Boton icono="check" disabled={procesando} onClick={() => setConfirmando("aprobar")}>
+                  Aprobar
+                </Boton>
+              )}
             </>
           ) : m?.estado === "APROBADO" ? (
             <Boton
@@ -597,6 +604,8 @@ function DetalleMovimiento({
                 <span>
                   Todavía no tocó el inventario: recién al aprobarlo se mueve el stock de
                   verdad.
+                  {!ofreceAprobar &&
+                    " La aprueba quien tiene el permiso «Aprobar transferencias» (de fábrica, el Administrador y el Encargado)."}
                 </span>
               </div>
             )}

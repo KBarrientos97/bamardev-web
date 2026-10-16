@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { Feature } from "../types";
-import { ctxDe } from "../test/sesiones";
+import { ctxDe, permisosDe } from "../test/sesiones";
 import {
   RUTA_AGENDA_PRONTO,
   etiquetaRol,
+  ofreceAprobarMovimiento,
   permisoDeSeccion,
   puede,
   puedeVer,
@@ -587,5 +588,25 @@ describe("la entrada a Reportes (13-oct-2026: todos los reportes en un lugar)", 
 
   it("quien sólo ve los de la agenda aterriza en Reportes, no en la dirección vieja", () => {
     expect(rutaInicial(ctxCon(["agenda.reportes"], "BARBERIA", SALON))).toBe("/reportes");
+  });
+});
+
+describe("aprobar un movimiento de inventario (16-oct)", () => {
+  it("una transferencia la aprueban de fábrica sólo el Administrador y el Encargado", () => {
+    expect(ofreceAprobarMovimiento(permisosDe("ADMIN"), "TRANSFERENCIA")).toBe(true);
+    expect(ofreceAprobarMovimiento(permisosDe("SUPERVISOR"), "TRANSFERENCIA")).toBe(true);
+    expect(ofreceAprobarMovimiento(permisosDe("CAJERO"), "TRANSFERENCIA")).toBe(false);
+  });
+
+  it("con `inventario.aprobar` solo no alcanza para una transferencia", () => {
+    const usuario = { permisos: ["inventario.mover", "inventario.aprobar"] };
+    expect(ofreceAprobarMovimiento(usuario, "TRANSFERENCIA")).toBe(false);
+  });
+
+  it("entradas, salidas y ajustes siguen como antes: el botón está y decide el servidor", () => {
+    const usuario = { permisos: ["inventario.mover"] };
+    for (const tipo of ["ENTRADA", "SALIDA", "AJUSTE"]) {
+      expect(ofreceAprobarMovimiento(usuario, tipo)).toBe(true);
+    }
   });
 });

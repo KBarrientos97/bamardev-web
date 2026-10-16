@@ -412,6 +412,23 @@ export function tienePermiso(usuario: ConPermisos, codigo: string): boolean {
   return !!usuario?.permisos?.includes(codigo);
 }
 
+/**
+ * ¿Se le ofrece "Aprobar" en un movimiento de inventario de este tipo?
+ *
+ * Una TRANSFERENCIA pide SIEMPRE `inventario.aprobar_transferencias` (16-oct):
+ * mueve mercadería entre locales, y si falta algo entre dos sucursales tiene
+ * que haber pocas personas que la hayan dado por buena. Viene de fábrica en
+ * Administrador y Encargado.
+ *
+ * Entradas, salidas y ajustes siguen como antes: el botón se ofrece y el
+ * servidor decide (con el doble control aprueba sólo `inventario.aprobar`,
+ * sin él alcanza con mover inventario; ver `puedeAprobar` en el backend).
+ */
+export function ofreceAprobarMovimiento(usuario: ConPermisos, tipo: string | undefined): boolean {
+  if (tipo === "TRANSFERENCIA") return tienePermiso(usuario, "inventario.aprobar_transferencias");
+  return true;
+}
+
 /** ¿Lo tiene sólo sobre lo suyo (alcance PROPIO)? */
 export function soloLoSuyo(usuario: ConPermisos, codigo: string): boolean {
   return tienePermiso(usuario, codigo) && !!usuario?.permisosPropios?.includes(codigo);

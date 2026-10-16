@@ -5,6 +5,7 @@ import { Boton, Campo, Cargando, Confirmar, ErrorMsg, Input, Select } from "../.
 import { api } from "../../lib/api";
 import { parsearMonto } from "../../lib/dinero";
 import { fmtFecha, fmtNum, isoDia } from "../../lib/format";
+import { ofreceAprobarMovimiento } from "../../lib/permisos";
 import { contiene } from "../../lib/texto";
 import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
@@ -56,6 +57,13 @@ export default function FormTransferencia() {
   // El extra "Aprobar movimientos" (doble control): quien carga sólo guarda y
   // aprueba otra persona desde Movimientos, igual que en Ingreso y Salida.
   const dobleControl = incluye("aprobacion_inventario");
+  /**
+   * "Guardar y aprobar" sólo para quien puede aprobar una transferencia
+   * (`inventario.aprobar_transferencias`, 16-oct). Sin el permiso, el botón
+   * guardaba y el servidor rechazaba la aprobación: quedaba pendiente con un
+   * aviso de error por algo que no era un error.
+   */
+  const soloGuardar = dobleControl || !ofreceAprobarMovimiento(usuario, "TRANSFERENCIA");
   /** El usuario de una sucursal sólo manda desde la suya: el servidor no le deja otra. */
   const miSucursal = usuario?.sucursalId ?? null;
 
@@ -515,7 +523,9 @@ export default function FormTransferencia() {
           <p className="mt-0.5 text-[12px] text-texto-3">
             {dobleControl
               ? "Queda pendiente: la mercadería se mueve cuando alguien la aprueba en Movimientos."
-              : "Guardar la deja pendiente: la mercadería se mueve recién al aprobarla."}
+              : soloGuardar
+                ? "Queda pendiente: la mercadería se mueve cuando la aprueba alguien con el permiso «Aprobar transferencias»."
+                : "Guardar la deja pendiente: la mercadería se mueve recién al aprobarla."}
           </p>
         </div>
         {/* En el celular: Cancelar y Guardar se reparten la fila, aprobar abajo entero. */}
@@ -529,7 +539,7 @@ export default function FormTransferencia() {
             Cancelar
           </Boton>
           <Boton
-            variante={dobleControl ? "primary" : "soft"}
+            variante={soloGuardar ? "primary" : "soft"}
             onClick={() => guardar()}
             disabled={guardando}
             className="flex-1 sm:flex-none"
@@ -540,7 +550,7 @@ export default function FormTransferencia() {
                 ? "Guardar cambios"
                 : "Guardar transferencia"}
           </Boton>
-          {!dobleControl && (
+          {!soloGuardar && (
             <Boton
               icono="check"
               onClick={pedirAprobacion}
