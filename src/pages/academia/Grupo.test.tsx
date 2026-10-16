@@ -62,7 +62,13 @@ beforeEach(() => {
   sesion.permisos = null;
   sesion.propios = [];
   vi.mocked(apiAcademia.grupo).mockResolvedValue(grupoDetalle());
-  vi.mocked(apiAcademia.alumnosDelGrupo).mockResolvedValue({ items: [MATEO, CAMILA], total: 28, page: 1, pageSize: 20 });
+  // La lista, y los números de cada filtro (pedidos con una página de 1 fila).
+  const TOTALES = { todos: 28, deben: 5, aldia: 23, retirados: 1 } as const;
+  vi.mocked(apiAcademia.alumnosDelGrupo).mockImplementation(async (_id, filtro = "todos", p = {}) =>
+    p.pageSize === 1
+      ? { items: [], total: TOTALES[filtro], page: 1, pageSize: 1 }
+      : { items: [MATEO, CAMILA], total: TOTALES[filtro], page: 1, pageSize: 20 },
+  );
   vi.mocked(apiAcademia.alumno).mockResolvedValue(fichaCamila());
 });
 
@@ -74,11 +80,26 @@ describe("E3 · detalle de grupo", () => {
     expect(screen.getByText(/M2 Degradados · actual/)).toBeInTheDocument();
     const filtros = screen.getByRole("tablist", { name: "Filtrar alumnos" });
     expect(within(filtros).getByRole("tab", { name: "Todos 28" })).toHaveAttribute("aria-selected", "true");
-    fireEvent.click(within(filtros).getByRole("tab", { name: "Deben 5" }));
-    await act(async () => {});
-    expect(apiAcademia.alumnosDelGrupo).toHaveBeenLastCalledWith(7, "deben", { page: 1, pageSize: 20 });
     // 28 alumnos: la barra de páginas con el pie del grupo.
     expect(screen.getByText(/Mostrando 1–20 de 28/)).toHaveTextContent(/M2 cobrado a 22 · base del docente Bs\s?6\.930/);
+    // Los números son los de cada lista: "Todos" incluye al retirado.
+    expect(within(filtros).getByRole("tab", { name: "Retirados 1" })).toBeInTheDocument();
+    expect(within(filtros).getByRole("tab", { name: "Al día 23" })).toBeInTheDocument();
+    fireEvent.click(within(filtros).getByRole("tab", { name: "Vencidos 5" }));
+    await act(async () => {});
+    expect(apiAcademia.alumnosDelGrupo).toHaveBeenLastCalledWith(7, "deben", { page: 1, pageSize: 20 });
+  });
+
+  it("el nombre abre el panel, Cobrar es otro botón (no uno dentro del otro) y con el panel se va la columna", async () => {
+    await montar();
+    const ver = screen.getByRole("button", { name: "Ver a Bustillos Rek, Camila" });
+    const cobrarFila = screen.getByRole("button", { name: "Cobrar a Bustillos Rek, Camila" });
+    expect(ver.contains(cobrarFila)).toBe(false);
+    expect(cobrarFila.closest("button")).toBe(cobrarFila);
+    fireEvent.click(ver);
+    await act(async () => {});
+    expect(screen.queryByRole("button", { name: "Cobrar a Bustillos Rek, Camila" })).not.toBeInTheDocument();
+    expect(screen.getByText("Saldo")).toBeInTheDocument();
   });
 
   it("tocar la fila abre el panel con el estado de cuenta, y Cobrar lleva al POS", async () => {

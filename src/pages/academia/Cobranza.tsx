@@ -259,7 +259,12 @@ function ListaCobranza({
   const contacto = (f: FilaCobranza) =>
     f.contacto.esTutor ? `Tutor: ${f.contacto.nombre}${f.contacto.telefono ? ` · ${f.contacto.telefono}` : ""}` : f.contacto.telefono ?? "";
   const ocupada = (f: FilaCobranza) => avisando !== null && f.cuotas.some((c) => c.id === avisando);
-  const col = "grid-cols-[minmax(180px,1.6fr)_minmax(150px,1.3fr)_minmax(150px,1.3fr)_100px_80px_150px]";
+  // Con el panel abierto las acciones de la fila quedarían debajo de él: el
+  // panel ya trae WhatsApp y Cobrar, así que la columna se va.
+  const conAcciones = !elegida;
+  const col = conAcciones
+    ? "grid-cols-[minmax(180px,1.6fr)_minmax(150px,1.3fr)_minmax(150px,1.3fr)_100px_80px_150px]"
+    : "grid-cols-[minmax(160px,1.6fr)_minmax(130px,1.3fr)_minmax(130px,1.3fr)_100px_70px]";
 
   return (
     <>
@@ -270,22 +275,29 @@ function ListaCobranza({
           <span>Cuota</span>
           <span className="text-right">Saldo</span>
           <span className="text-right">{urgente ? "Atraso" : ""}</span>
-          <span />
+          {conAcciones && <span />}
         </div>
         <ul>
           {filas.map((f, i) => (
             <li key={`${f.alumno.id}-${f.cuotas[0]?.id ?? i}`}>
+              {/* La fila no es un botón: el nombre abre el panel (estirado
+                  sobre la fila con `after:`) y WhatsApp y Cobrar son botones
+                  aparte, encima. Nada de un botón dentro de otro. */}
               <div
-                role="button"
-                tabIndex={0}
-                onClick={() => onElegir(f)}
-                onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), onElegir(f))}
-                className={`grid ${col} cursor-pointer items-center gap-3 rounded-xl px-3 py-3 transition-colors ${
+                className={`relative grid ${col} items-center gap-3 rounded-xl px-3 py-3 transition-colors ${
                   elegida === f ? "bg-primary-50" : "hover:bg-muted"
                 }`}
               >
                 <span className="min-w-0">
-                  <span className="block truncate text-sm font-semibold text-texto">{f.alumno.nombre}</span>
+                  <button
+                    type="button"
+                    aria-label={`Ver a ${f.alumno.nombre}`}
+                    aria-expanded={elegida === f}
+                    onClick={() => onElegir(f)}
+                    className="block max-w-full truncate text-left text-sm font-semibold text-texto after:absolute after:inset-0 after:rounded-xl after:content-[''] focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-primary"
+                  >
+                    {f.alumno.nombre}
+                  </button>
                   <span className="block truncate text-[12px] text-texto-3">{contacto(f)}</span>
                 </span>
                 <span className="min-w-0">
@@ -300,31 +312,23 @@ function ListaCobranza({
                   {fmtMoney(f.saldo)}
                 </span>
                 <span className="text-right text-sm tabular-nums text-texto-2">{urgente ? `${f.diasAtraso} d` : ""}</span>
-                <span className="flex justify-end gap-3 text-[13px] font-semibold">
-                  <button
-                    type="button"
-                    disabled={ocupada(f)}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onWhatsapp(f);
-                    }}
-                    className="text-primary-700 hover:underline disabled:opacity-50"
-                  >
-                    WhatsApp
-                  </button>
-                  {cobra && (
+                {conAcciones && (
+                  <span className="relative z-10 flex justify-end gap-3 text-[13px] font-semibold">
                     <button
                       type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onCobrar(f);
-                      }}
-                      className="text-primary-700 hover:underline"
+                      disabled={ocupada(f)}
+                      onClick={() => onWhatsapp(f)}
+                      className="text-primary-700 hover:underline disabled:opacity-50"
                     >
-                      Cobrar
+                      WhatsApp
                     </button>
-                  )}
-                </span>
+                    {cobra && (
+                      <button type="button" onClick={() => onCobrar(f)} className="text-primary-700 hover:underline">
+                        Cobrar
+                      </button>
+                    )}
+                  </span>
+                )}
               </div>
             </li>
           ))}

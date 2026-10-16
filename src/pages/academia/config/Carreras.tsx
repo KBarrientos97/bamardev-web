@@ -80,11 +80,15 @@ export default function Carreras() {
                     type="button"
                     aria-current={elegida?.id === c.id ? "true" : undefined}
                     onClick={() => setElegidaId(c.id)}
-                    className={`w-full rounded-xl px-3 py-2.5 text-left transition-colors ${
-                      elegida?.id === c.id ? "bg-primary-50" : "hover:bg-muted"
+                    className={`w-full rounded-xl border-l-4 px-3 py-2.5 text-left transition-colors ${
+                      elegida?.id === c.id
+                        ? "border-primary bg-primary-50"
+                        : "border-transparent hover:bg-muted"
                     } ${c.activa ? "" : "opacity-60"}`}
                   >
-                    <span className="block text-sm font-semibold text-texto">{c.nombre}</span>
+                    <span className={`block text-sm font-semibold ${elegida?.id === c.id ? "text-primary-700" : "text-texto"}`}>
+                      {c.nombre}
+                    </span>
                     <span className="block text-[12px] text-texto-3">
                       {c.horasTotales} h · {c.materias.filter((m) => m.activa).length} {p.materias} · {c.planes.filter((x) => x.activo).length}{" "}
                       planes · {c.gruposActivos} {c.gruposActivos === 1 ? "grupo" : "grupos"}

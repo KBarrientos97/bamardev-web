@@ -48,6 +48,26 @@ export default function Grupo() {
 
   const grupo = useApi(() => apiAcademia.grupo(grupoId), [grupoId]);
   const alumnos = usePaginado((pg) => apiAcademia.alumnosDelGrupo(grupoId, filtro, pg), [grupoId, filtro]);
+  /**
+   * Los números de cada filtro, contados con el mismo filtro que la lista
+   * (una página de 1 fila por filtro): así "Todos" incluye al retirado que se
+   * ve en la lista, y "Vencidos" es exactamente lo que muestra ese filtro. Los
+   * contadores del grupo (`inscritos`, `deben`) cuentan otra cosa: sólo las
+   * inscripciones vivas.
+   */
+  const conteos = useApi(
+    () =>
+      Promise.all(
+        (["todos", "deben", "aldia", "retirados"] as const).map((f) =>
+          apiAcademia
+            .alumnosDelGrupo(grupoId, f, { page: 1, pageSize: 1 })
+            .then((r) => [f, r.total] as const)
+            .catch(() => [f, null] as const),
+        ),
+      ).then((pares) => Object.fromEntries(pares) as Record<FiltroAlumnosGrupo, number | null>),
+    [grupoId],
+  );
+  const n = (f: FiltroAlumnosGrupo) => conteos.datos?.[f] ?? null;
 
   // El docente ve a sus alumnos sin montos (PLAN-ACADEMIAS §4).
   const sinMontos = soloLoSuyo(usuario, "academia.ver");
@@ -151,14 +171,16 @@ export default function Grupo() {
         opciones={
           pestana === "alumnos"
             ? [
-                { clave: "todos", label: "Todos", n: g.inscritos },
+                { clave: "todos", label: "Todos", n: n("todos") },
                 ...(sinMontos
                   ? []
                   : [
-                      { clave: "deben" as const, label: "Deben", n: g.deben, urgente: true },
-                      { clave: "aldia" as const, label: "Al día", n: g.alDia },
+                      // Vencidos y no "Deben": la columna Saldo muestra también lo que
+                      // todavía no venció, y "Deben 2" con seis montos se leía mal.
+                      { clave: "deben" as const, label: "Vencidos", n: n("deben"), urgente: true },
+                      { clave: "aldia" as const, label: "Al día", n: n("aldia") },
                     ]),
-                { clave: "retirados", label: "Retirados" },
+                { clave: "retirados", label: "Retirados", n: n("retirados") },
               ]
             : [{ clave: "todos", label: pestana === "asistencia" ? "Asistencia" : "Notas" }]
         }
@@ -214,6 +236,9 @@ export default function Grupo() {
           <TablaAlumnos
             filas={alumnos.items}
             elegido={elegido?.inscripcionId ?? null}
+            // Con el panel abierto la columna Cobrar quedaría debajo: el panel ya
+            // tiene su "Cobrar".
+            conPanel={!!elegido}
             sinMontos={sinMontos}
             cobra={cobra}
             onElegir={setElegido}
@@ -246,6 +271,7 @@ export default function Grupo() {
             setInscribiendo(false);
             grupo.recargar();
             alumnos.recargar();
+            conteos.recargar();
             if (r.cobrar) navigate(rutaCobroInscripcion(r.inscripcion.id, g.sede));
           }}
         />
@@ -326,6 +352,7 @@ function subtituloFila(a: AlumnoDelGrupo, sinMontos: boolean): string {
 function TablaAlumnos({
   filas,
   elegido,
+  conPanel,
   sinMontos,
   cobra,
   onElegir,
@@ -333,14 +360,18 @@ function TablaAlumnos({
 }: {
   filas: AlumnoDelGrupo[];
   elegido: number | null;
+  conPanel: boolean;
   sinMontos: boolean;
   cobra: boolean;
   onElegir: (a: AlumnoDelGrupo) => void;
   onCobrar: (a: AlumnoDelGrupo) => void;
 }) {
+  const conCobrar = !sinMontos && !conPanel;
   const columnas = sinMontos
     ? "grid-cols-[minmax(200px,2fr)_110px_120px_90px]"
-    : "grid-cols-[minmax(200px,2fr)_110px_120px_90px_110px_70px]";
+    : conCobrar
+      ? "grid-cols-[minmax(200px,2fr)_110px_120px_90px_110px_70px]"
+      : "grid-cols-[minmax(180px,2fr)_100px_110px_80px_100px]";
   return (
     <>
       <div className="hidden md:block">
@@ -349,26 +380,33 @@ function TablaAlumnos({
           <span>Plan</span>
           <span>Pagos</span>
           <span>Asistencia</span>
-          {!sinMontos && <span className="text-right">Debe</span>}
-          {!sinMontos && <span />}
+          {!sinMontos && <span className="text-right">Saldo</span>}
+          {conCobrar && <span />}
         </div>
         <ul>
           {filas.map((a) => {
             const retirado = a.estado === "RETIRADA";
             return (
               <li key={a.inscripcionId}>
+                {/* La fila no es un botón: el nombre es el botón que abre el
+                    panel (y se estira sobre toda la fila con `after:`), y
+                    "Cobrar" es otro botón aparte, encima. Un botón dentro de
+                    otro es HTML inválido y los lectores de pantalla lo pierden. */}
                 <div
-                  role="button"
-                  tabIndex={0}
-                  aria-label={`Ver a ${nombreAlumno(a.alumno)}`}
-                  onClick={() => onElegir(a)}
-                  onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), onElegir(a))}
-                  className={`grid ${columnas} cursor-pointer items-center gap-3 rounded-xl px-3 py-3 transition-colors ${
+                  className={`relative grid ${columnas} items-center gap-3 rounded-xl px-3 py-3 transition-colors ${
                     elegido === a.inscripcionId ? "bg-primary-50" : "hover:bg-muted"
                   } ${retirado ? "opacity-50" : ""}`}
                 >
                   <span className="min-w-0">
-                    <span className="block truncate text-sm font-semibold text-texto">{nombreAlumno(a.alumno)}</span>
+                    <button
+                      type="button"
+                      aria-label={`Ver a ${nombreAlumno(a.alumno)}`}
+                      aria-expanded={elegido === a.inscripcionId}
+                      onClick={() => onElegir(a)}
+                      className="block max-w-full truncate text-left text-sm font-semibold text-texto after:absolute after:inset-0 after:rounded-xl after:content-[''] focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-primary"
+                    >
+                      {nombreAlumno(a.alumno)}
+                    </button>
                     <span className="block truncate text-[12px] text-texto-3">{subtituloFila(a, sinMontos)}</span>
                   </span>
                   <span className="truncate text-sm text-texto-2">{a.plan?.nombre ?? "—"}</span>
@@ -379,16 +417,14 @@ function TablaAlumnos({
                       {(a.saldo ?? 0) > 0 ? fmtMoney(a.saldo) : ""}
                     </span>
                   )}
-                  {!sinMontos && (
+                  {conCobrar && (
                     <span className="text-right">
                       {cobra && (a.saldo ?? 0) > 0 && !retirado && (
                         <button
                           type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onCobrar(a);
-                          }}
-                          className="text-[13px] font-semibold text-primary-700 hover:underline"
+                          aria-label={`Cobrar a ${nombreAlumno(a.alumno)}`}
+                          onClick={() => onCobrar(a)}
+                          className="relative z-10 text-[13px] font-semibold text-primary-700 hover:underline"
                         >
                           Cobrar
                         </button>
