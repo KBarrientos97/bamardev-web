@@ -10,10 +10,11 @@ import { FormCobro } from "./Cobro";
 import { useCobro } from "./useCobro";
 import { useAccion } from "./useAccion";
 import { huellaAdelanto } from "./reintentos";
+import { inicioCorregido } from "./ModalesMesa.datos";
 import { billar, mesasEnUso, tipoDe, useBillar } from "./store";
 import { ahoraServidor, useAhora } from "./reloj";
-import { cuentaDe, horaDe } from "./calculo";
-import type { Mesa } from "./tipos";
+import { cuentaDe, fmtCrono, horaDe, segundosEnMesa, segundosJugados } from "./calculo";
+import type { Mesa, TipoMesa } from "./tipos";
 import { BotonB, Circulo, ErrorAccion, Nota } from "./ui";
 
 /** Cambiar de mesa (§7.12): sólo a una libre. La cuenta entera se muda. */
@@ -26,8 +27,15 @@ export function ModalCambiar({ mesa, onClose }: { mesa: Mesa; onClose: () => voi
   const origen = tipoDe(e, mesa);
   const elegida = libres.find((m) => m.id === destino);
   const nuevo = elegida ? tipoDe(e, elegida) : null;
-  // La misma regla que `billar.cambiarMesa`: otro tipo u otra tarifa, y no en tiempo fijo.
-  const otroTipo = !!nuevo && (nuevo.id !== origen.id || nuevo.tarifa !== origen.tarifa) && !mesa.sesion?.prepago;
+  // La misma regla que el backend (`cambiar`): cobra distinto si cambia
+  // cualquier cosa de la tarifa (precio, fracción, tolerancia, mínimo,
+  // paquetes, promos), y en tiempo fijo la cuenta se muda tal cual.
+  const otroTipo = !!nuevo && !cobranIgual(origen, nuevo) && !mesa.sesion?.prepago;
+  // Antes del mínimo de la de origen (y sin cuenta traída), el backend pasa la
+  // cuenta ENTERA a la tarifa nueva. El aviso decía que lo jugado quedaba a la
+  // vieja: el cajero le explicaba al cliente lo contrario de lo que se cobraba.
+  const enteraALaNueva =
+    otroTipo && !!mesa.sesion && !mesa.sesion.prev && segundosJugados(mesa.sesion, ahoraServidor()) < origen.minimo * 60;
 
   return (
     <Modal
@@ -92,7 +100,12 @@ export function ModalCambiar({ mesa, onClose }: { mesa: Mesa; onClose: () => voi
               );
             })}
           </div>
-          {otroTipo ? (
+          {otroTipo && enteraALaNueva ? (
+            <Nota tono="ambar">
+              La Mesa {destino} es {nuevo.nombre} ({fmtMoney(nuevo.tarifa)}/h). Como todavía no cumplieron el mínimo de{" "}
+              {origen.minimo} min, toda la cuenta pasa a {fmtMoney(nuevo.tarifa)}/h, como si hubieran empezado ahí.
+            </Nota>
+          ) : otroTipo ? (
             <Nota tono="ambar">
               La Mesa {destino} es {nuevo.nombre} ({fmtMoney(nuevo.tarifa)}/h). Lo jugado hasta ahora queda a{" "}
               {fmtMoney(origen.tarifa)}/h y desde el cambio corre a {fmtMoney(nuevo.tarifa)}/h.
@@ -105,6 +118,13 @@ export function ModalCambiar({ mesa, onClose }: { mesa: Mesa; onClose: () => voi
       <ErrorAccion texto={accion.error} />
     </Modal>
   );
+}
+
+/** Si dos tarifas cobran lo mismo: todo menos el nombre (como `cobraIgual` del backend). */
+function cobranIgual(a: TipoMesa, b: TipoMesa): boolean {
+  const como = (t: TipoMesa) =>
+    JSON.stringify([t.tarifa, t.fraccion, t.tolerancia, t.minimo, t.paquetes, t.promos]);
+  return como(a) === como(b);
 }
 
 const MOTIVOS_PAUSA = ["Problema con la mesa", "Corte de luz", "Cliente salió", "Otro"];
@@ -514,8 +534,15 @@ export function ModalEditarInicio({ mesa, onClose }: { mesa: Mesa; onClose: () =
   const s = mesa.sesion;
   const [hora, setHora] = useState(() => (s ? horaInput(s.start) : ""));
   if (!s) return null;
-  const inicio = aHoraDelDia(hora);
+  const ahora = ahoraServidor();
+  // De ayer sólo si la mesa arrancó antes de la medianoche: a más de 12 h es
+  // un error de tipeo (ver `inicioCorregido`).
+  const r = inicioCorregido(hora, ahora);
+  const inicio = "inicio" in r ? r.inicio : null;
+  const todaviaNoLlego = "error" in r && r.error === "noLlego";
   const valida = inicio !== null && Math.abs(inicio - s.start) >= 60_000;
+  // Cómo queda la mesa con la hora nueva, antes de poner el PIN.
+  const quedan = inicio !== null ? segundosEnMesa({ ...s, start: inicio }, ahora) + (s.prev?.secs ?? 0) : null;
   return (
     <ModalPin
       accion={`Corregir el inicio de la Mesa ${mesa.id}`}
@@ -534,6 +561,15 @@ export function ModalEditarInicio({ mesa, onClose }: { mesa: Mesa; onClose: () =
         <span className="mb-1.5 block text-[13px] font-semibold text-texto-2">Empezaron a jugar a las</span>
         <Input type="time" value={hora} onChange={(ev) => setHora(ev.target.value)} className="w-40" />
       </label>
+      {todaviaNoLlego ? (
+        <p className="mt-1.5 text-[12px] font-semibold text-rose-700">
+          Las {hora} todavía no llegaron: revisá la hora.
+        </p>
+      ) : quedan !== null && valida ? (
+        <p className="mt-1.5 text-[12px] text-texto-3">
+          La mesa queda con {fmtCrono(quedan)} jugadas{"deAyer" in r && r.deAyer ? " (arrancó ayer)" : ""}.
+        </p>
+      ) : null}
     </ModalPin>
   );
 }
@@ -542,15 +578,4 @@ export function ModalEditarInicio({ mesa, onClose }: { mesa: Mesa; onClose: () =
 function horaInput(ms: number): string {
   const d = new Date(ms);
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-}
-
-/** "21:05" → hoy a esa hora, o ayer si todavía no llegó. */
-function aHoraDelDia(hora: string): number | null {
-  const m = /^(\d{1,2}):(\d{2})$/.exec(hora);
-  if (!m) return null;
-  const ahora = ahoraServidor();
-  const d = new Date(ahora);
-  d.setHours(Number(m[1]), Number(m[2]), 0, 0);
-  if (d.getTime() > ahora) d.setDate(d.getDate() - 1);
-  return d.getTime();
 }

@@ -246,10 +246,17 @@ function CuentaAbierta({ v, ahora }: { v: VistaMesa; ahora: number }) {
           ) : (
             <>
               <Fila etiqueta="Tiempo cobrado" valor={`${fmtCobrado(c.cobradoMin)} → ${fmtMoney(c.tiempoBs)}`} />
+              {/* El tiempo de arriba (y el del tramo siguiente) ya viene con la
+                  promo. Decía "−Bs 6" como si faltara restarlo: el cajero le
+                  decía 48 al cliente y el cierre cobraba 54. */}
               {c.promo && (
                 <Fila
                   etiqueta={<span className="font-semibold text-primary-700">{c.promo.nombre}</span>}
-                  valor={<span className="text-primary-700">−{c.promo.pct} % · −{fmtMoney(c.promo.descuento)}</span>}
+                  valor={
+                    <span className="text-primary-700">
+                      −{c.promo.pct} % · ya descontado {fmtMoney(c.promo.descuento)}
+                    </span>
+                  }
                 />
               )}
               {s.prev && (
