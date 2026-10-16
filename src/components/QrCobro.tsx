@@ -14,7 +14,11 @@ import type { SesionUsuario } from "../types";
 import { Icon } from "./Icon";
 import { ErrorMsg, Modal } from "./ui";
 
-/** Quién puede cambiar el QR: el mismo permiso que pide el backend. */
+/**
+ * Quién puede cambiar el QR: el mismo permiso que pide el backend. Desde el
+ * 16-oct, de fábrica sólo el Administrador: el QR es la cuenta a la que entra
+ * la plata, y un cajero que lo cambia desvía los cobros sin que nadie lo note.
+ */
 function puedeCambiarQr(usuario: SesionUsuario | null): boolean {
   return tienePermiso(usuario, "qr.configurar");
 }
@@ -48,6 +52,10 @@ export function CargarQrCobro() {
   const [qr, setQr] = useState<string | null>(() => leerQr(alias));
   const [error, setError] = useState("");
   const input = useRef<HTMLInputElement>(null);
+  // Sin el permiso se ve cuál es (para saber que está), pero no se toca: el
+  // backend rechaza el cambio y antes el botón estaba igual, y lo elegido
+  // quedaba sólo en este equipo con un error de "no se pudo compartir".
+  const puedeCambiar = puedeCambiarQr(usuario);
 
   // Si otro equipo ya lo subió, se muestra ése: no hay que volver a elegirlo.
   useEffect(() => {
@@ -103,37 +111,41 @@ export function CargarQrCobro() {
           <p className="mt-0.5 text-xs text-texto-3">
             {qr
               ? "Se le muestra al cliente cuando paga por QR."
-              : "Subí la imagen de tu QR para mostrársela al cliente al cobrar."}
+              : puedeCambiar
+                ? "Subí la imagen de tu QR para mostrársela al cliente al cobrar."
+                : "Todavía no hay QR del negocio. Lo carga el administrador."}
           </p>
           {quienesMas && (
             <p className="mt-1 text-xs text-texto-4">Lo reciben también {quienesMas}.</p>
           )}
 
-          <div className="mt-2 flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => input.current?.click()}
-              className="rounded-lg border border-borde bg-white px-3 py-1.5 text-xs font-semibold text-texto-2 hover:bg-muted"
-            >
-              {qr ? "Cambiar" : "Subir QR"}
-            </button>
-            {qr && (
+          {puedeCambiar && (
+            <div className="mt-2 flex flex-wrap gap-2">
               <button
                 type="button"
-                onClick={async () => {
-                  borrarQr(alias);
-                  setQr(null);
-                  // Quitarlo acá y dejarlo en los celulares de los meseros
-                  // sería seguir cobrando a una cuenta dada de baja.
-                  const res = await quitarQrDelNegocio();
-                  if (!res.ok) setError(res.error);
-                }}
-                className="rounded-lg px-3 py-1.5 text-xs font-semibold text-danger-text hover:bg-danger-bg"
+                onClick={() => input.current?.click()}
+                className="rounded-lg border border-borde bg-white px-3 py-1.5 text-xs font-semibold text-texto-2 hover:bg-muted"
               >
-                Quitar
+                {qr ? "Cambiar" : "Subir QR"}
               </button>
-            )}
-          </div>
+              {qr && (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    borrarQr(alias);
+                    setQr(null);
+                    // Quitarlo acá y dejarlo en los celulares de los meseros
+                    // sería seguir cobrando a una cuenta dada de baja.
+                    const res = await quitarQrDelNegocio();
+                    if (!res.ok) setError(res.error);
+                  }}
+                  className="rounded-lg px-3 py-1.5 text-xs font-semibold text-danger-text hover:bg-danger-bg"
+                >
+                  Quitar
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
@@ -226,12 +238,12 @@ export function QrParaCobrar({
           <span className="text-xs text-texto-3">
             {puedeCargar
               ? "Todavía no hay QR del negocio."
-              : "Todavía no hay QR del negocio. Lo carga el encargado desde la caja."}
+              : "Todavía no hay QR del negocio. Lo carga el administrador."}
           </span>
           {/* Cargarlo acá mismo. Antes el único lugar era la apertura de caja,
               y con la caja ya abierta no había dónde: en QA llevaba una semana
-              abierta y el QR no se podía subir. El mesero no lo ve (no puede
-              cambiarlo: ver el modelo QrCobro en el backend). */}
+              abierta y el QR no se podía subir. Sólo quien tiene
+              `qr.configurar` (de fábrica, el Administrador) lo ve. */}
           {puedeCargar && (
             <>
               <button
