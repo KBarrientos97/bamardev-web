@@ -1032,11 +1032,8 @@ export interface DetalleVenta {
   recurso?: string | null;
   /** Belleza (paquetes): la sesión que pagó la línea, o el paquete que vendió. */
   paquete?: PaqueteRecibo;
-  /**
-   * Educación: la cuota que cobró la línea. Supuesto (el contrato no fija la
-   * forma del recibo): `concepto` ya armado ("Cuota 2/2 · M2–M3") y cuándo vencía.
-   */
-  cuota?: { cuotaId?: number; concepto: string; vence?: string | null } | null;
+  /** Educación: la cuota que cobró la línea (su concepto viene en `Venta.cuotas`). */
+  cuotaId?: number | null;
 }
 
 /**
@@ -1134,18 +1131,25 @@ export interface Venta {
   giftCards?: { codigo: string; usado: number; saldo: number }[];
   propinas?: { recursoId: number; recurso: string; monto: number; formaPago: string }[];
   /**
-   * Educación (E10): con cuotas, de quién son y el saldo del curso después de
-   * este pago. Supuesto: el contrato sólo dice "si viene"; ausente en
-   * cualquier otra venta, y el ticket queda como siempre.
+   * Educación (E10): cómo quedó cada cuota que cobró la venta (lo que se
+   * cobró, lo pagado y el saldo). Sólo en la respuesta de una venta con
+   * cuotas; ausente en cualquier otra, y el ticket queda como siempre.
    */
-  academia?: {
+  cuotas?: {
+    cuotaId: number;
+    concepto: string;
     alumno: string;
-    codigo?: string | null;
-    ci?: string | null;
-    grupo?: string | null;
-    saldoCurso: number;
-    proximaCuota?: { vence: string; monto: number } | null;
-  } | null;
+    cobrado: number;
+    pagado: number;
+    saldo: number;
+    estado: string;
+  }[];
+  /**
+   * Supuesto: si el backend llega a mandar el saldo de todo el curso y la
+   * próxima cuota (E10 los pide), el recibo los muestra.
+   */
+  saldoCurso?: number | null;
+  proximaCuota?: { vence: string; monto: number } | null;
   /**
    * Plan Emprendedor: qué consumió esta venta (cupo o créditos) y el contador
    * como quedó. Sólo en un negocio con cupo; un reintento idempotente tampoco

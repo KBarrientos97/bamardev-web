@@ -34,8 +34,8 @@ function cuotaARecordar(f: FilaCobranza) {
 /**
  * E8 · Cobranza (PLAN-ACADEMIAS §5): las cuotas que se deben. Las pestañas
  * son los indicadores (Vencidas · Por vencer · Abonos parciales); filtros de
- * sede, carrera y antigüedad, y "agrupar por alumno" para ver una sola vez al
- * que debe dos cuotas. WhatsApp pide al backend el mensaje armado (y deja
+ * sede, carrera y antigüedad. Cada fila es una inscripción con sus cuotas:
+ * el que debe dos se ve una sola vez (el backend ya las agrupa). WhatsApp pide al backend el mensaje armado (y deja
  * anotado el recordatorio) y abre `wa.me`; Cobrar lleva al POS.
  */
 export default function Cobranza() {
@@ -48,7 +48,6 @@ export default function Cobranza() {
   const [tipo, setTipo] = useState<TipoCobranza>(inicial);
   const [carreraId, setCarreraId] = useState<number | null>(null);
   const [antiguedad, setAntiguedad] = useState<"" | Antiguedad>("");
-  const [agrupar, setAgrupar] = useState(true);
   const [elegida, setElegida] = useState<FilaCobranza | null>(null);
   const [totales, setTotales] = useState<RespuestaCobranza["totales"] | null>(null);
   const [error, setError] = useState("");
@@ -63,12 +62,11 @@ export default function Cobranza() {
         sede: sede.sucursalId,
         carreraId,
         antiguedad: tipo === "vencidas" ? antiguedad : "",
-        ...(agrupar ? { agrupar: "alumno" as const } : {}),
       });
       setTotales(r.totales);
       return r;
     },
-    [tipo, sede.sucursalId, carreraId, antiguedad, agrupar],
+    [tipo, sede.sucursalId, carreraId, antiguedad],
   );
   const cobra = cobraCuotas({ features: negocio?.features, rubro, permisos: usuario?.permisos, permisosPropios: usuario?.permisosPropios });
 
@@ -135,10 +133,6 @@ export default function Cobranza() {
             </Select>
           </div>
         )}
-        <label className="flex items-center gap-2 text-sm text-texto-2">
-          <input type="checkbox" className="h-4 w-4 accent-[var(--color-primary-boton)]" checked={agrupar} onChange={(e) => setAgrupar(e.target.checked)} />
-          Agrupar por {p.alumno}
-        </label>
       </div>
 
       <FiltrosConteo

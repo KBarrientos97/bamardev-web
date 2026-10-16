@@ -530,14 +530,16 @@ function cumpleFeature(ctx: ContextoPermisos, feature: Feature): boolean {
 }
 
 /**
- * ¿Cobra cuotas en el POS (E9)? Con la feature `academia` y viendo a los
- * alumnos de todos: el docente (alcance PROPIO) no cobra. No es una sección:
- * es el botón "Cuotas por cobrar" dentro del POS, que sin esto ni se pide.
+ * ¿Cobra cuotas en el POS (E9)? Con la feature `academia` y con lo mismo que
+ * el backend pide para buscar al alumno y traer su carrito: inscribir o
+ * gestionar la cobranza (la secretaría y la coordinación; el docente, no). No
+ * es una sección: es el botón "Cuotas por cobrar" dentro del POS, que sin
+ * esto ni se pide.
  */
 export function cobraCuotas(ctx: ContextoPermisos): boolean {
   if (!cumpleFeature(ctx, "academia")) return false;
   const permisos = ctx.permisos ?? [];
-  return permisos.includes("academia.ver") && !(ctx.permisosPropios ?? []).includes("academia.ver");
+  return permisos.includes("academia.inscribir") || permisos.includes("academia.cobranza");
 }
 
 /**

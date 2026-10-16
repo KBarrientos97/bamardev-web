@@ -102,11 +102,13 @@ export function montoValido(monto: number, saldo: number): boolean {
   return Number.isFinite(monto) && monto > 0 && monto <= saldo + 0.005;
 }
 
-/** Quién paga por defecto: el tutor principal si lo hay, si no el alumno. */
+/**
+ * Quién paga por defecto: el primero marcado como principal, en el orden en
+ * que los manda el backend (con un menor, el tutor principal primero; con un
+ * adulto, el alumno). Si ninguno lo está, el primero.
+ */
 export function pagadorPorDefecto(pagadores: CarritoInscripcion["pagadores"]): number | null {
-  const tutor = pagadores.find((x) => x.rol === "TUTOR" && x.principal) ?? pagadores.find((x) => x.rol === "TUTOR");
-  const alumno = pagadores.find((x) => x.rol === "ALUMNO");
-  return (tutor ?? alumno ?? pagadores[0])?.clienteId ?? null;
+  return (pagadores.find((x) => x.principal) ?? pagadores[0])?.clienteId ?? null;
 }
 
 const CLAVE = "bamar.cobroCuotas";

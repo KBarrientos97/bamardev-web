@@ -44,8 +44,9 @@ export function FiltrosConteo<T extends string>({
               }`}
             >
               {o.label}
+              {o.n != null && " "}
               {o.n != null && (
-                <span className={`ml-1.5 tabular-nums ${o.urgente && o.n > 0 ? "text-danger-text" : "text-texto-4"}`}>
+                <span className={`ml-1 tabular-nums ${o.urgente && o.n > 0 ? "text-danger-text" : "text-texto-4"}`}>
                   {o.n}
                 </span>
               )}

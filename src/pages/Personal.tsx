@@ -247,9 +247,11 @@ function FichaPersona({
   // se llama "% docente" y suman la retención y el NIT.
   const conDocentes = negocio?.tipoNegocio === "ACADEMIA" || !!negocio?.features?.includes("academia");
   // El % es plata del profesional: lo cambia quien liquida (el backend lo
-  // exige). En el instituto, quien liquida la planilla del docente.
+  // exige). En el instituto, quien liquida la planilla del docente o
+  // configura la academia (lo mismo que pide el backend).
   const cambiaComision =
-    tienePermiso(usuario, "comisiones.liquidar") || (conDocentes && tienePermiso(usuario, "planilla.liquidar"));
+    tienePermiso(usuario, "comisiones.liquidar") ||
+    (conDocentes && (tienePermiso(usuario, "planilla.liquidar") || tienePermiso(usuario, "academia.configurar")));
 
   const [nombre, setNombre] = useState(persona?.nombre ?? "");
   const [cargoRolId, setCargoRolId] = useState<number | null>(persona?.cargoRolId ?? null);
