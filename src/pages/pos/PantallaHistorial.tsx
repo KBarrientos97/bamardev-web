@@ -21,6 +21,7 @@ import { Telefono } from "../../lib/telefono";
 import { tienePermiso, tieneFeature } from "../../lib/permisos";
 import { esBelleza, marcaConsumo } from "../../lib/rubro";
 import { useApi } from "../../lib/useApi";
+import { enlaceWhatsApp, mensajePedido, pedidoDeVenta } from "../../lib/mensajePedido";
 import { conCopia } from "../../lib/offline/copias";
 import { formaPagoFaltante } from "../../lib/formaPagoFaltante";
 import { porSubir, useColaOffline } from "../../lib/offline/cola";
@@ -295,7 +296,7 @@ function DetalleVenta({
   /** Reimprimir el comprobante de un pedido ya cobrado. */
   onVerComprobante?: (venta: Venta) => void;
 }) {
-  const { usuario, incluye, rubro } = useAuth();
+  const { usuario, incluye, rubro, negocio } = useAuth();
   const completa = useApi(() => api.getVenta(venta.id), [venta.id]);
   const [anulando, setAnulando] = useState(false);
 
@@ -414,7 +415,17 @@ function DetalleVenta({
                       Llamar al cliente
                     </a>
                     <a
-                      href={`https://wa.me/${Telefono.paraWhatsApp(v.clienteTelefono)}`}
+                      href={
+                        // Sin entregar: el chat abre con el mensaje del pedido ya
+                        // escrito, el mismo de la app (Kevin, 15-oct). Para recoger
+                        // no dice que el delivery llegó (ver mensajePedido).
+                        entregado
+                          ? `https://wa.me/${Telefono.paraWhatsApp(v.clienteTelefono)}`
+                          : enlaceWhatsApp(
+                              Telefono.paraWhatsApp(v.clienteTelefono),
+                              mensajePedido(pedidoDeVenta(v), negocio?.nombre),
+                            )
+                      }
                       target="_blank"
                       rel="noreferrer"
                       className="flex items-center justify-center gap-1.5 rounded-lg border border-borde bg-white px-3 py-2 text-xs font-semibold text-texto-2 hover:border-primary hover:text-primary-700"
