@@ -19,6 +19,11 @@ export type TipoAjuste = "anulaciones" | "pausas" | "cambios" | "horas" | "exten
 const TIPO_POR_CODIGO: Record<string, TipoAjuste> = {
   ANULAR_MESA: "anulaciones",
   ANULAR_CONSUMO: "anulaciones",
+  // Desde el 16-oct: la venta de una mesa ya jugada que se anuló (la única
+  // forma de anularla pasados 5 minutos) y la mesa cobrada sin reanudar (el
+  // tiempo en pausa no se cobró). No dejaban rastro en esta pantalla.
+  ANULAR_VENTA: "anulaciones",
+  COBRADA_EN_PAUSA: "pausas",
   REANUDAR: "pausas",
   CAMBIAR_MESA: "cambios",
   EDITAR_INICIO: "horas",
@@ -63,7 +68,9 @@ export function resumenAjustes(lista: readonly Ajuste[]): ResumenAjustes {
   return {
     total: lista.length,
     porTipo,
-    mesasAnuladas: lista.filter((a) => a.codigo === "ANULAR_MESA").length,
+    // Las abiertas por error y las ya jugadas cuya venta se anuló: las dos son
+    // tiempo de mesa que no entró.
+    mesasAnuladas: lista.filter((a) => a.codigo === "ANULAR_MESA" || a.codigo === "ANULAR_VENTA").length,
     consumosAnulados: lista.filter((a) => a.codigo === "ANULAR_CONSUMO").length,
   };
 }

@@ -9,7 +9,17 @@ import { useAuth } from "../../store/AuthContext";
 import type { CreditoInput, PagoInput } from "../../types";
 import PantallaCredito from "../pos/PantallaCredito";
 import { useIntentoDeCobro } from "../pos/useIntentoDeCobro";
-import { cuentaDe, devolucionDe, fmtCobrado, fmtCrono, horaDe, round2, segundosJugados, textoDevolucion } from "./calculo";
+import {
+  cuentaDe,
+  devolucionDe,
+  fmtCobrado,
+  fmtCrono,
+  fmtHace,
+  horaDe,
+  round2,
+  segundosJugados,
+  textoDevolucion,
+} from "./calculo";
 import { FormCobro } from "./Cobro";
 import { useCobro } from "./useCobro";
 import { useAccion } from "./useAccion";
@@ -292,6 +302,26 @@ export default function CerrarMesa() {
             </section>
 
             <section className="card space-y-4 p-4 sm:p-5">
+              {/* En pausa el reloj no corre, y cobrarla así deja ese tiempo sin
+                  cobrar: pausada a las 20:30 "salieron a comer" y cobrada a las
+                  23:30 sin reanudar salía media hora (revisión del 16-oct). */}
+              {sVivo?.pausedAt && (
+                <div className="space-y-2">
+                  <Nota tono="ambar" icono="alert">
+                    La mesa está en pausa desde las {horaDe(sVivo.pausedAt)} ({fmtHace(ahora - sVivo.pausedAt)}
+                    {sVivo.pauseMotivo ? ` · ${sVivo.pauseMotivo}` : ""}): ese tiempo no se cobra. Si siguieron jugando,
+                    reanudala antes de cobrar.
+                  </Nota>
+                  <BotonB
+                    icono="play"
+                    className="w-full"
+                    disabled={accion.enviando}
+                    onClick={() => void accion.ejecutar(() => billar.reanudar(mesa.id))}
+                  >
+                    Reanudar la mesa
+                  </BotonB>
+                </div>
+              )}
               <div className="rounded-2xl bg-gradient-to-br from-primary-boton to-primary-700 px-5 py-4 text-white">
                 <p className="text-[11px] font-bold uppercase tracking-wider text-white/80">Total a cobrar</p>
                 <p className="text-3xl font-extrabold tabular-nums">{fmtMoney(c.saldo)}</p>

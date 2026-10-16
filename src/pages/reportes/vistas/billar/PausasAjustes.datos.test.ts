@@ -34,6 +34,15 @@ describe("pausas y ajustes del billar", () => {
     expect(r.porTipo).toEqual({ anulaciones: 3, pausas: 1, cambios: 1, horas: 0, extensiones: 0 });
   });
 
+  it("la venta anulada de una mesa jugada y la mesa cobrada en pausa también cuentan", () => {
+    // Revisión del 16-oct: pasados 5 minutos la mesa sólo se anula anulando su
+    // venta, y cobrarla sin reanudar deja el tiempo en pausa sin cobrar. Ninguna
+    // de las dos aparecía: "Mesas anuladas: 0" con una mesa jugada y anulada.
+    const r = resumenAjustes([ajuste(1, "ANULAR_VENTA"), ajuste(2, "COBRADA_EN_PAUSA"), ajuste(3, "ANULAR_MESA")]);
+    expect(r.mesasAnuladas).toBe(2);
+    expect(r.porTipo).toEqual({ anulaciones: 2, pausas: 1, cambios: 0, horas: 0, extensiones: 0 });
+  });
+
   it("con un backend que no manda el código no inventa ceros", () => {
     // Un "0 mesas anuladas" con los códigos faltando se leería como que nadie
     // anuló; lo que pasa es que no se sabe.
