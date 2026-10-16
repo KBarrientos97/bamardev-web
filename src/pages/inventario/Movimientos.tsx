@@ -941,6 +941,8 @@ function FormMovimientoCuerpo({
 }) {
   const { incluye } = useAuth();
   const conAprobacion = incluye("aprobacion_inventario");
+  // Sin `lotes` el plan no tiene Vencimientos: el lote no se pide (16-oct).
+  const conLotes = incluye("lotes");
   const [tipo, setTipo] = useState<TipoMovimiento>("ENTRADA");
   const [almacenId, setAlmacenId] = useState(String(almacenes[0]?.id ?? ""));
   const [fecha, setFecha] = useState(isoDia(new Date()));
@@ -1026,7 +1028,7 @@ function FormMovimientoCuerpo({
         // Sólo en una ENTRADA: es lo que dice el papel de la compra. Una
         // salida no elige lote — sale el más próximo a vencer, que es la regla
         // del depósito y no una decisión de quien carga el formulario.
-        ...(tipo === "ENTRADA" && l.manejaLote && l.loteCodigo?.trim()
+        ...(tipo === "ENTRADA" && conLotes && l.manejaLote && l.loteCodigo?.trim()
           ? {
               loteCodigo: l.loteCodigo.trim(),
               ...(l.loteVencimiento ? { loteVencimiento: l.loteVencimiento } : {}),
@@ -1188,7 +1190,7 @@ function FormMovimientoCuerpo({
                       los artículos que los llevan. Una salida no elige lote
                       —sale el más próximo a vencer— y a un termómetro no se le
                       pide una fecha que no tiene. */}
-                  {tipo === "ENTRADA" && l.manejaLote && (
+                  {tipo === "ENTRADA" && conLotes && l.manejaLote && (
                     <div className="mt-2 grid grid-cols-2 gap-2">
                       <Campo label="Lote">
                         <Input

@@ -45,7 +45,10 @@ export default function CatalogoVenta({
   sucursalId?: number | null;
 }) {
   const venta = useVentaFarmacia();
-  const { puede } = useAuth();
+  const { puede, incluye } = useAuth();
+  // Sin `lotes` el plan no tiene Vencimientos: el punto de color ("Vence hoy",
+  // "Sin fecha") no tiene de dónde salir ni adónde llevar.
+  const conLotes = incluye("lotes");
   const [q, setQ] = useState("");
   const [categoriaId, setCategoriaId] = useState<number | null>(null);
   const campo = useRef<HTMLInputElement>(null);
@@ -151,6 +154,7 @@ export default function CatalogoVenta({
                   key={p.id}
                   producto={p}
                   cantidad={enCarrito.get(p.id) ?? 0}
+                  conVencimiento={conLotes}
                   onAgregar={() => agregar(p)}
                 />
               ))}
@@ -204,10 +208,13 @@ function Chip({
 function TarjetaVenta({
   producto: p,
   cantidad,
+  conVencimiento,
   onAgregar,
 }: {
   producto: Producto;
   cantidad: number;
+  /** El plan tiene `lotes`: sin eso no hay punto de vencimiento. */
+  conVencimiento: boolean;
   onAgregar: () => void;
 }) {
   const vendible = sePuedeVender(p);
@@ -236,11 +243,13 @@ function TarjetaVenta({
             {p.nombre}
             {concentracion && <span className="font-semibold text-texto-2"> {concentracion}</span>}
           </span>
-          <span
-            aria-label={`Vencimiento: ${punto.texto}`}
-            title={punto.texto}
-            className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${punto.color}`}
-          />
+          {conVencimiento && (
+            <span
+              aria-label={`Vencimiento: ${punto.texto}`}
+              title={punto.texto}
+              className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${punto.color}`}
+            />
+          )}
         </span>
         <span className="truncate text-xs text-texto-3">
           {detalle || p.principioActivo || p.categoria?.nombre || "Sin ficha cargada"}

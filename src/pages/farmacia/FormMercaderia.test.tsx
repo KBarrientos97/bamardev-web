@@ -237,6 +237,40 @@ describe("El lote que sale, según el plan", () => {
   });
 });
 
+describe("Recibir sin `lotes` en el plan (16-oct)", () => {
+  // Un renglón sin lote de un medicamento que maneja lote (nació así cuando el
+  // alta lo prendía por defecto). Sin `lotes` no hay Vencimientos que lo use, y
+  // la ficha ya no muestra el interruptor para apagarlo: pedirlo dejaba al
+  // negocio tecleando lote y fecha en cada compra, sin salida.
+  const sinLote: Movimiento = {
+    ...salidaPendiente,
+    detalles: [{ ...salidaPendiente.detalles![0], loteCodigo: null, loteVencimiento: null }],
+  };
+
+  beforeEach(() => {
+    vi.mocked(api.getMovimiento).mockResolvedValue(sinLote);
+  });
+
+  it("con `lotes`, un medicamento con lote lo pide al recibir", async () => {
+    await abrirEdicion();
+    await clickEn(/Entrada/);
+    expect(screen.getByPlaceholderText("Lote")).toBeInTheDocument();
+  });
+
+  it("sin `lotes` no lo pide, y guarda sin hablar de Vencimientos", async () => {
+    plan.lotes = false;
+    await abrirEdicion();
+    await clickEn(/Entrada/);
+    expect(screen.queryByPlaceholderText("Lote")).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText("MM/AAAA")).not.toBeInTheDocument();
+
+    await clickEn(/Guardar cambios/);
+    expect(screen.queryByText(/Falta el lote/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Vencimientos/)).not.toBeInTheDocument();
+    expect(api.actualizarMovimiento).toHaveBeenCalled();
+  });
+});
+
 describe("Editar un movimiento pendiente", () => {
   it("cambiar de almacén deja los renglones donde están", async () => {
     await abrirEdicion();

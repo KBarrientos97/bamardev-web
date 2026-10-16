@@ -13,6 +13,8 @@ const sesion = vi.hoisted(() => ({
   pos: true,
   rol: "ADMIN" as string,
   sucursalId: null as number | null,
+  /** `lotes` es PRO: una farmacia BASICO no tiene Vencimientos. */
+  lotes: true,
 }));
 
 vi.mock("../../store/AuthContext", async () => {
@@ -21,7 +23,7 @@ vi.mock("../../store/AuthContext", async () => {
   return {
     useAuth: () => ({
       puede: (s: string) => (s === "pos" ? sesion.pos : true),
-      incluye: () => true,
+      incluye: (c: string) => (c === "lotes" ? sesion.lotes : true),
       usuario: {
         rol: sesion.rol,
         sucursalId: sesion.sucursalId,
@@ -134,6 +136,7 @@ beforeEach(() => {
   sesion.pos = true;
   sesion.rol = "ADMIN";
   sesion.sucursalId = null;
+  sesion.lotes = true;
   vi.mocked(api.cajaActual).mockResolvedValue({ caja: null });
   vi.mocked(api.buscarProductos).mockResolvedValue({
     items: [amoxicilina, ranitidina],
@@ -172,6 +175,20 @@ describe("la tabla", () => {
     sesion.pos = false;
     await montar();
     expect(within(fila("Amoxicilina 500 mg")).queryByRole("button", { name: "Agregar" })).toBeNull();
+  });
+
+  it("con `lotes`, la columna dice cuánto le queda al lote que sale primero", async () => {
+    await montar();
+    expect(screen.getByText("Vencimiento")).toBeInTheDocument();
+    expect(within(fila("Amoxicilina 500 mg")).getAllByText("338 días").length).toBeGreaterThan(0);
+  });
+
+  it("sin `lotes` no hay columna de vencimiento ni «Vence…» en las filas", async () => {
+    // El bug del 16-oct: una farmacia sin Vencimientos veía "Vence hoy".
+    sesion.lotes = false;
+    await montar();
+    expect(screen.queryByText("Vencimiento")).not.toBeInTheDocument();
+    expect(within(fila("Amoxicilina 500 mg")).queryByText("338 días")).not.toBeInTheDocument();
   });
 
   it("la ubicación se ve sólo si alguien la cargó", async () => {

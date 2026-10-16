@@ -16,12 +16,14 @@ const sesion = vi.hoisted(() => ({
   rubro: "RESTAURANTE" as string | undefined,
   /** Las secciones que el usuario puede abrir, aparte del catálogo. */
   secciones: [] as string[],
+  /** `lotes` es PRO: una farmacia BASICO no tiene Vencimientos. */
+  lotes: true,
 }));
 
 vi.mock("../../store/AuthContext", () => ({
   useAuth: () => ({
     rubro: sesion.rubro,
-    incluye: () => true,
+    incluye: (c: string) => (c === "lotes" ? sesion.lotes : true),
     puede: (s: string) => sesion.secciones.includes(s),
   }),
 }));
@@ -87,6 +89,7 @@ function buscar(texto: string) {
 beforeEach(() => {
   getProductos.mockReset();
   sesion.secciones = [];
+  sesion.lotes = true;
 });
 
 describe("bamardev-restaurant: el catálogo se ve como siempre", () => {
@@ -255,5 +258,17 @@ describe("el alta: el stock de un producto entra por Movimientos", () => {
     sesion.rubro = "RESTAURANTE";
     await abrirAlta();
     expect(screen.queryByRole("checkbox", { name: /Maneja lote/ })).not.toBeInTheDocument();
+  });
+
+  it("farmacia sin `lotes`: no hay «Maneja lote» ni se promete lote en el ingreso", async () => {
+    // El bug del 16-oct: nacía con lote prendido en un plan sin Vencimientos,
+    // y el mostrador decía "Vence hoy" de algo que el plan no controla.
+    sesion.rubro = "FARMACIA";
+    sesion.lotes = false;
+    await abrirAlta();
+    expect(screen.queryByRole("checkbox", { name: /Maneja lote/ })).not.toBeInTheDocument();
+    expect(screen.getByText("El stock entra después, con un Ingreso de mercadería.")).toBeInTheDocument();
+    // El controlado sigue: es la ley, no el plan.
+    expect(screen.getByRole("checkbox", { name: /Medicamento controlado/ })).toBeInTheDocument();
   });
 });

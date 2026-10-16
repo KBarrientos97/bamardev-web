@@ -541,8 +541,10 @@ export type Capacidad =
   /**
    * Consultar las partidas: el lote que sale por FEFO en una salida y los
    * lotes de la ficha del medicamento. Es la misma feature que la sección
-   * Vencimientos, pero se usa DENTRO de pantallas que igual se ven. Cargar el
-   * lote al recibir no depende de esto: el backend lo guarda con cualquier plan.
+   * Vencimientos, pero se usa DENTRO de pantallas que igual se ven. El backend
+   * guarda el lote con cualquier plan, pero desde el 16-oct la web no lo pide
+   * al recibir sin esta feature, ni muestra "Maneja lote" ni el vencimiento en
+   * el mostrador: nada de eso tiene adónde llevar sin Vencimientos.
    */
   | "lotes";
 

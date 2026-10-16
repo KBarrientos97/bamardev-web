@@ -663,7 +663,7 @@ function DetalleProducto({
   onEliminar: (p: Producto) => void;
   onRestaurar: (p: Producto) => void;
 }) {
-  const { rubro, vocabulario } = useAuth();
+  const { rubro, vocabulario, incluye } = useAuth();
   const [viendoCostos, setViendoCostos] = useState(false);
   if (!p) return null;
   const tipo = TIPOS[p.tipoProducto];
@@ -750,7 +750,7 @@ function DetalleProducto({
           <div>
             <h4 className="mb-2 text-[13px] font-bold text-texto">
               Ficha farmacéutica
-              {p.manejaLote && (
+              {p.manejaLote && incluye("lotes") && (
                 <span className="ml-1.5 font-normal text-texto-3">
                   — se controla por lote y vencimiento
                 </span>
@@ -943,6 +943,14 @@ function FormProductoCuerpo({
   onGuardado: () => void;
 }) {
   const esEdicion = !!producto;
+  const { incluye, rubro, vocabulario } = useAuth();
+  const conFicha = esFarmacia(rubro);
+  /**
+   * Sin la feature `lotes` el plan no tiene Vencimientos, ni semáforo, ni
+   * FEFO: el interruptor de "Maneja lote" no se muestra y un artículo nuevo
+   * nace sin lote (ver `manejaLote`).
+   */
+  const conLotes = incluye("lotes");
   const [nombre, setNombre] = useState(producto?.nombre ?? "");
   const [descripcion, setDescripcion] = useState(producto?.descripcion ?? "");
   const [codBarra, setCodBarra] = useState(producto?.codBarra ?? "");
@@ -986,19 +994,21 @@ function FormProductoCuerpo({
   const [condicionVenta, setCondicionVenta] = useState<CondicionVenta>(
     producto?.condicionVenta ?? "LIBRE",
   );
-  // Un medicamento nuevo arranca controlado por lote y vencimiento. Olvidarse de
-  // apagarlo sólo pide un dato de más al recibir; olvidarse de prenderlo lo deja
-  // sin control de vencimiento, y nada lo avisa: el ingreso muestra "—" donde
-  // irían lote y fecha. El valor viaja sólo con la ficha de farmacia (ver
-  // `guardar`), así que en otro rubro no sale de este formulario.
-  const [manejaLote, setManejaLote] = useState(producto?.manejaLote ?? true);
+  // Un artículo nuevo arranca con lote SÓLO en una farmacia con `lotes`: ahí
+  // casi todo vence (la carga por Excel también toma "Maneja lote" vacío como
+  // Sí), olvidarse de apagarlo sólo pide un dato de más al recibir, y olvidarse
+  // de prenderlo lo deja sin control de vencimiento sin que nada lo avise.
+  // En cualquier otro caso arranca apagado: antes nacía prendido también sin
+  // la feature, y el mostrador decía "Vence hoy" en un plan sin Vencimientos.
+  // Al editar se respeta lo guardado. El valor viaja sólo con la ficha de
+  // farmacia (ver `guardar`), así que en otro rubro no sale de este formulario.
+  const [manejaLote, setManejaLote] = useState(
+    producto?.manejaLote ?? (conFicha && conLotes),
+  );
   const [controlado, setControlado] = useState(producto?.controlado ?? false);
 
   const [error, setError] = useState("");
   const [guardando, setGuardando] = useState(false);
-
-  const { incluye, rubro, vocabulario } = useAuth();
-  const conFicha = esFarmacia(rubro);
 
   /**
    * Laboratorios y formas que ya se usaron, para sugerir mientras se escribe.
@@ -1323,7 +1333,9 @@ function FormProductoCuerpo({
               !esEdicion && (
                 <p className="self-end rounded-xl bg-muted px-3.5 py-2.5 text-xs text-texto-3">
                   {conFicha
-                    ? "El stock entra después, con un Ingreso de mercadería: ahí van el lote y el vencimiento."
+                    ? conLotes
+                      ? "El stock entra después, con un Ingreso de mercadería: ahí van el lote y el vencimiento."
+                      : "El stock entra después, con un Ingreso de mercadería."
                     : "El stock entra después, con una entrada en Movimientos."}
                 </p>
               )
@@ -1416,13 +1428,15 @@ function FormProductoCuerpo({
               </div>
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-2">
-              <Interruptor
-                titulo="Maneja lote y vencimiento"
-                ayuda="Pide lote y fecha al ingresar"
-                activo={manejaLote}
-                onChange={setManejaLote}
-              />
+            <div className={`grid gap-3 ${conLotes ? "sm:grid-cols-2" : ""}`}>
+              {conLotes && (
+                <Interruptor
+                  titulo="Maneja lote y vencimiento"
+                  ayuda="Pide lote y fecha al ingresar"
+                  activo={manejaLote}
+                  onChange={setManejaLote}
+                />
+              )}
               <Interruptor
                 titulo="Medicamento controlado"
                 ayuda="Psicotrópico o estupefaciente: va al libro"
