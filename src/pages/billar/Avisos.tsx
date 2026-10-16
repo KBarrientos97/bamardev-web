@@ -5,10 +5,12 @@ import { publicarContadorBillar } from "../../lib/billar/contador";
 import { fmtMoney } from "../../lib/format";
 import { desbloquearAudio, hablar, marcarAvisado, nivelAlcanzado, textosAviso, yaAvisado, zumbido } from "./alertas";
 import {
+  consumosDe,
   cuentaDe,
   devolucionDe,
   fmtTarifaCorta,
   pagadoDe,
+  segundosDesdeQueSeAbrio,
   segundosJugados,
   sePuedeAnular,
   textoDevolucion,
@@ -235,17 +237,32 @@ function dibujar(actual: Dialogo, e: EstadoBillar, cerrar: () => void): ReactNod
       // Se cumplió el plazo con el diálogo abierto: se va solo. El servidor lo
       // rechazaba con ANULAR_VENCIDO y el rechazo se leía como un PIN mal
       // puesto, con los casilleros vaciándose a cada intento.
-      if (!sePuedeAnular(cuentaDe(enJuego.sesion, tipoDe(e, enJuego), ahoraServidor()))) return null;
+      const ahoraAnular = ahoraServidor();
+      if (
+        !sePuedeAnular(
+          cuentaDe(enJuego.sesion, tipoDe(e, enJuego), ahoraAnular),
+          segundosDesdeQueSeAbrio(enJuego.sesion, ahoraAnular),
+        )
+      )
+        return null;
       const pagado = pagadoDe(enJuego.sesion.pagos);
       // Cada parte por donde entró: "Devolvé Bs 70" con Bs 30 llegados por QR
       // hacía que el cajero sacara los 70 del cajón (16-oct).
       const pagos = enJuego.sesion.pagos;
+      // Con consumos cargados el backend no la anula (ANULAR_CON_CONSUMOS): se
+      // perdían sin cobrar ni bajar del stock. Se dice qué hacer antes del PIN.
+      const cargado = consumosDe(enJuego.sesion);
       return (
         <ModalPin
           accion={`Anular la Mesa ${enJuego.id}`}
-          detalle={`Se abrió por error: no se cobra nada y queda libre.${
-            pagado > 0 ? ` Ya pagó ${fmtMoney(pagado)}: hay que devolverle ${textoDevolucion(devolucionDe(pagos, 0))}.` : ""
-          }`}
+          detalle={
+            cargado > 0.005
+              ? `Tiene consumos cargados (${fmtMoney(cargado)}) y ya se tomaron: no se puede anular. Pasá la cuenta a la mesa correcta con "Cambiar mesa", o anulá los consumos que se cargaron por error.`
+              : `Se abrió por error: no se cobra nada y queda libre.${
+                  pagado > 0 ? ` Ya pagó ${fmtMoney(pagado)}: hay que devolverle ${textoDevolucion(devolucionDe(pagos, 0))}.` : ""
+                }`
+          }
+          bloqueado={cargado > 0.005}
           motivos={["Se abrió por error", "Se fueron sin jugar"]}
           pedirPin={e.ajustes.pin.anularMesa}
           permiso="billar.admin"

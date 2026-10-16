@@ -130,5 +130,7 @@ export function vistaSalon(mesa: Mesa, tipos: Record<string, TipoMesa>, avisos: 
     tipo,
     estado: estadoVisual(mesa, ahora, avisos),
     cuenta: mesa.estado === "abierta" && mesa.sesion ? cuentaDe(mesa.sesion, tipo, ahora) : null,
+    // La TV no anula nada.
+    anulable: false,
   };
 }

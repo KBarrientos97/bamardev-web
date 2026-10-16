@@ -104,6 +104,8 @@ export interface TiempoPrevio {
 export interface Sesion {
   id: string;
   start: number;
+  /** Cuándo se abrió de verdad (el inicio se puede corregir). Para el plazo de anular. */
+  abierta?: number;
   pausedAt: number | null;
   /** Segundos acumulados en pausa. */
   pausedTotal: number;

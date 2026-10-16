@@ -53,9 +53,18 @@ export const ANULAR_HASTA_SEG = 5 * 60;
  * Si la mesa todavía se puede anular. Cuenta lo traído de otra mesa, como el
  * reloj. Sin nada que cobrar se puede siempre: con mínimo 0 y una tolerancia
  * de más de 5 min, la mesa no se podía finalizar ni anular.
+ *
+ * Los 5 minutos corren también desde que se abrió (`desdeQueSeAbrio`), como en
+ * el backend: pausada a los 2 minutos, o con el inicio corrido hacia adelante,
+ * una mesa jugada horas seguía ofreciendo "Anular" (revisión del 16-oct).
  */
-export function sePuedeAnular(c: Pick<Cuenta, "secs" | "total"> | null): boolean {
-  return c != null && (c.secs < ANULAR_HASTA_SEG || c.total <= 0.005);
+export function sePuedeAnular(c: Pick<Cuenta, "secs" | "total"> | null, desdeQueSeAbrio = 0): boolean {
+  return c != null && (c.total <= 0.005 || (c.secs < ANULAR_HASTA_SEG && desdeQueSeAbrio < ANULAR_HASTA_SEG));
+}
+
+/** Segundos desde que se abrió la mesa (sin `abierta`, un backend viejo: desde el inicio). */
+export function segundosDesdeQueSeAbrio(s: Pick<Sesion, "abierta" | "start">, ahora: number): number {
+  return Math.max(0, Math.floor((ahora - (s.abierta ?? s.start)) / 1000));
 }
 
 // ── §5.2 Cobro por fracción (tiempo libre) ──────────────────────────────────

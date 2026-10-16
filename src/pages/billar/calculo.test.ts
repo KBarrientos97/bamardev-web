@@ -12,6 +12,7 @@ import {
   precioFijo,
   precioHoras,
   promoPara,
+  segundosDesdeQueSeAbrio,
   segundosJugados,
   sePuedeAnular,
   textoDevolucion,
@@ -286,6 +287,22 @@ describe("sePuedeAnular", () => {
   it("lo traído de otra mesa cuenta como jugado", () => {
     const s = sesion({ jugados: hms(0, 1), prev: { secs: hms(0, 40), min: 45, bs: 15 } });
     expect(sePuedeAnular(cuentaDe(s, POOL, AHORA))).toBe(false);
+  });
+
+  it("los 5 minutos corren desde que se abrió, aunque la pausen o le corran el inicio", () => {
+    // Revisión del 16-oct: pausada a los 2 minutos (o con el inicio corrido
+    // hacia adelante), el reloj de juego no llegaba a 5 y una mesa jugada horas
+    // se anulaba sin dejar venta.
+    const c = { secs: hms(0, 2), total: 10 };
+    expect(sePuedeAnular(c, hms(0, 4, 59))).toBe(true);
+    expect(sePuedeAnular(c, hms(3, 0))).toBe(false);
+    // Sin nada que cobrar sigue pudiéndose (si no, la caja no cierra).
+    expect(sePuedeAnular({ secs: hms(0, 2), total: 0 }, hms(3, 0))).toBe(true);
+  });
+
+  it("sin la hora de apertura (backend viejo) cuenta desde el inicio", () => {
+    expect(segundosDesdeQueSeAbrio({ start: AHORA - 90_000 }, AHORA)).toBe(90);
+    expect(segundosDesdeQueSeAbrio({ start: AHORA - 90_000, abierta: AHORA - 600_000 }, AHORA)).toBe(600);
   });
 });
 

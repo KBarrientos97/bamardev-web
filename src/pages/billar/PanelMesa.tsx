@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Icon, type NombreIcono } from "../../components/Icon";
 import { fmtMoney } from "../../lib/format";
 import { useAccionesMesa } from "./acciones";
-import { etiquetaPagoFijo, fmtCobrado, fmtHace, horaDe, sePuedeAnular } from "./calculo";
+import { etiquetaPagoFijo, fmtCobrado, fmtHace, horaDe } from "./calculo";
 import { useDialogos } from "./dialogos";
 import { BotonB, Circulo, EstadoBadge, Fila, Nota, Rotulo } from "./ui";
 import type { VistaMesa } from "./vista";
@@ -345,8 +345,8 @@ function CuentaAbierta({ v, ahora }: { v: VistaMesa; ahora: number }) {
         )}
       </section>
 
-      {/* Sólo en los primeros 5 minutos de juego: después ya no es un error (`sePuedeAnular`). */}
-      {sePuedeAnular(c) && (
+      {/* Sólo en los primeros 5 minutos desde que se abrió: después ya no es un error (`v.anulable`). */}
+      {v.anulable && (
         <button
           type="button"
           onClick={() => abrir({ tipo: "anularMesa", mesaId: mesa.id })}

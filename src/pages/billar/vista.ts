@@ -1,5 +1,5 @@
 import { fmtMoney } from "../../lib/format";
-import { cuentaDe, estadoVisual, fmtCrono, round2, type Cuenta } from "./calculo";
+import { cuentaDe, estadoVisual, fmtCrono, round2, segundosDesdeQueSeAbrio, sePuedeAnular, type Cuenta } from "./calculo";
 import { tipoDe, type EstadoBillar } from "./store";
 import type { EstadoVisual, Mesa, Pago, TipoMesa, VentaBillar } from "./tipos";
 
@@ -10,15 +10,19 @@ export interface VistaMesa {
   estado: EstadoVisual;
   /** null si no está abierta. */
   cuenta: Cuenta | null;
+  /** Si todavía se puede anular (`sePuedeAnular`, con el plazo desde que se abrió). */
+  anulable: boolean;
 }
 
 export function vistaDe(e: EstadoBillar, mesa: Mesa, ahora: number): VistaMesa {
   const tipo = tipoDe(e, mesa);
+  const cuenta = mesa.estado === "abierta" && mesa.sesion ? cuentaDe(mesa.sesion, tipo, ahora) : null;
   return {
     mesa,
     tipo,
     estado: estadoVisual(mesa, ahora, e.ajustes.avisos),
-    cuenta: mesa.estado === "abierta" && mesa.sesion ? cuentaDe(mesa.sesion, tipo, ahora) : null,
+    cuenta,
+    anulable: !!mesa.sesion && sePuedeAnular(cuenta, segundosDesdeQueSeAbrio(mesa.sesion, ahora)),
   };
 }
 

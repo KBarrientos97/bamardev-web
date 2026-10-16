@@ -41,6 +41,8 @@ interface SesionApi {
   id: number;
   version: number;
   start: number;
+  /** Desde el 16-oct (backend del mismo día). */
+  abierta?: number;
   pausedAt: number | null;
   pausedTotal: number;
   pauseMotivo?: string;
@@ -287,6 +289,7 @@ function aSesion(s: SesionApi): Sesion {
   return {
     id: String(s.id),
     start: s.start,
+    abierta: s.abierta,
     pausedAt: s.pausedAt,
     pausedTotal: s.pausedTotal,
     pauseMotivo: s.pauseMotivo,
