@@ -78,7 +78,9 @@ export const FEATURE_DE_PERMISO: Record<string, string | null> = {
   "fichatecnica.ver": "ficha_tecnica",
   "fichatecnica.editar": "ficha_tecnica",
   "cliente.editar_salud": "consentimientos",
-  "personal.gestionar": "agenda",
+  // Sin feature: va atado a las verticales BELLEZA y EDUCACION (migración
+  // 20261109140000), como `controlados.libro` con farmacia.
+  "personal.gestionar": null,
   "billar.operar": "billar",
   "billar.admin": "billar",
   // Educación (PLAN-ACADEMIAS-TECNICO §5.2).

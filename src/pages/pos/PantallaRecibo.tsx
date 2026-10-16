@@ -257,37 +257,10 @@ export default function PantallaRecibo({
             </dl>
           )}
 
-          {/* Educación (E10): cada cuota cobrada con lo que queda, y el saldo
-              del curso si el backend lo manda. Sólo si la venta cobró cuotas:
-              el ticket de siempre no cambia. */}
-          {venta.cuotas && venta.cuotas.length > 0 && (
-            <div className="mt-2 border-t border-dashed border-borde pt-2 text-sm" aria-label="Cuotas">
-              <p className="text-xs font-bold tracking-wide text-texto">CUOTAS · {venta.cuotas[0].alumno.toUpperCase()}</p>
-              <dl className="mt-1 space-y-1">
-                {venta.cuotas.map((q) => (
-                  <div key={q.cuotaId} className="text-texto-2">
-                    <div className="flex justify-between gap-2">
-                      <dt>{q.concepto}</dt>
-                      <dd className="shrink-0 font-bold text-texto">{fmtMoney(q.cobrado)}</dd>
-                    </div>
-                    <p className="text-right text-xs">{q.saldo > 0 ? `Queda ${fmtMoney(q.saldo)}` : "Pagada"}</p>
-                  </div>
-                ))}
-                {venta.saldoCurso != null && (
-                  <div className="flex justify-between font-bold text-texto">
-                    <dt>SALDO DEL CURSO</dt>
-                    <dd>{fmtMoney(venta.saldoCurso)}</dd>
-                  </div>
-                )}
-                {venta.saldoCurso === 0 && <p className="text-xs text-texto-3">Curso pagado por completo.</p>}
-                {venta.proximaCuota && (
-                  <p className="text-xs text-texto-3">
-                    Próxima cuota: {fmtMoney(venta.proximaCuota.monto)} el {fmtFecha(venta.proximaCuota.vence)}
-                  </p>
-                )}
-              </dl>
-            </div>
-          )}
+          {/* Educación (E10): cada cuota cobrada con lo que queda y, al pie, el
+              saldo del curso después de este pago y la próxima cuota. Sólo si
+              la venta cobró cuotas: el ticket de siempre no cambia. */}
+          {venta.cuotas && venta.cuotas.length > 0 && <CuotasRecibo cuotas={venta.cuotas} />}
 
           {venta.credito && (
             <div className="mt-2 border-t border-dashed border-borde pt-2 text-sm">
@@ -419,6 +392,44 @@ function LineaTicket({
           {linea.paquete.texto}
         </p>
       )}
+    </div>
+  );
+}
+
+/**
+ * Las cuotas del recibo. Todas las de una venta son de una inscripción (el
+ * POS cobra las de un alumno por vez): el saldo del curso y la próxima cuota
+ * son los de la última, que es como quedó la inscripción después de la venta.
+ */
+function CuotasRecibo({ cuotas }: { cuotas: NonNullable<Venta["cuotas"]> }) {
+  const ultima = cuotas[cuotas.length - 1];
+  return (
+    <div className="mt-2 border-t border-dashed border-borde pt-2 text-sm" aria-label="Cuotas">
+      <p className="text-xs font-bold tracking-wide text-texto">CUOTAS · {cuotas[0].alumno.toUpperCase()}</p>
+      <dl className="mt-1 space-y-1">
+        {cuotas.map((q) => (
+          <div key={q.cuotaId} className="text-texto-2">
+            <div className="flex justify-between gap-2">
+              <dt>{q.concepto}</dt>
+              <dd className="shrink-0 font-bold text-texto">{fmtMoney(q.cobrado)}</dd>
+            </div>
+            <p className="text-right text-xs">{q.saldo > 0 ? `Queda ${fmtMoney(q.saldo)}` : "Pagada"}</p>
+          </div>
+        ))}
+        {ultima.saldoCurso != null && (
+          <div className="flex justify-between font-bold text-texto">
+            <dt>SALDO DEL CURSO</dt>
+            <dd>{fmtMoney(ultima.saldoCurso)}</dd>
+          </div>
+        )}
+        <p className="text-xs text-texto-3">
+          {ultima.saldoCurso === 0
+            ? "Curso pagado por completo."
+            : ultima.proximaCuota
+              ? `Próxima cuota: ${fmtMoney(ultima.proximaCuota.monto)} el ${fmtFecha(ultima.proximaCuota.vence)}`
+              : ""}
+        </p>
+      </dl>
     </div>
   );
 }

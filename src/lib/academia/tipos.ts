@@ -83,6 +83,8 @@ export interface Carrera {
   materias: Materia[];
   planes: PlanPago[];
   gruposActivos: number;
+  /** El producto SERVICIO de la carrera: el de las líneas de cuota del POS. */
+  productoId?: number | null;
 }
 
 export interface CarreraInput {
@@ -135,7 +137,10 @@ export interface GrupoResumen {
   inscritos: number;
   alDia: number;
   deben: number;
-  montoDebe: number;
+  /** null para el docente (alcance PROPIO): no ve montos. */
+  montoDebe: number | null;
+  /** Cancelado: no aparece en la lista, pero el detalle lo dice. */
+  cancelado?: boolean;
   materiaActual: { orden: number; nombre: string; docente: string | null } | null;
   materias: { orden: number; estado: EstadoMateriaGrupo }[];
 }
@@ -154,7 +159,8 @@ export interface GrupoDetalle extends GrupoResumen {
   planesOfrecidos: PlanPago[];
   materiasGrupo: MateriaDelGrupo[];
   resumenCobro: {
-    porMateria: { materiaOrden: number; pagaron: number; total: number; pendiente: number; baseDocente: number }[];
+    /** `pendiente` y `baseDocente` van null para el docente. */
+    porMateria: { materiaOrden: number; pagaron: number; total: number; pendiente: number | null; baseDocente: number | null }[];
   };
   /** Al crear: "más de 4 h por día" y parecidos. */
   avisos?: string[];
@@ -173,6 +179,7 @@ export interface DescuentoInscripcion {
   tipo: TipoDescuento;
   pct: number | null;
   monto: number | null;
+  motivo?: string | null;
 }
 
 export interface AlumnoDelGrupo {
@@ -182,7 +189,8 @@ export interface AlumnoDelGrupo {
   plan: Ref | null;
   descuento: DescuentoInscripcion | null;
   pagos: { materiaOrden: number; estado: EstadoPagoMateria; detalle: string }[];
-  saldo: number;
+  /** null para el docente. */
+  saldo: number | null;
   vencido: boolean;
   asistenciaPct: number | null;
 }
@@ -212,6 +220,8 @@ export interface GrupoInput {
   publicarEnPagina?: boolean;
   planesOfrecidos?: number[];
   materias?: MateriaGrupoInput[];
+  /** Sólo en el PATCH: cancelar el grupo o reactivarlo. */
+  cancelado?: boolean;
 }
 
 export interface Docente {
@@ -244,7 +254,8 @@ export interface AlumnoFila {
   telefono: string | null;
   grupoActual: { id: number; nombre: string; sede: string | Ref } | null;
   plan: string | Ref | null;
-  saldo: number;
+  /** null para el docente. */
+  saldo: number | null;
   vencido: boolean;
   ultimaAsistencia: string | null;
   estado: EstadoInscripcion;
@@ -284,16 +295,29 @@ export interface Tutor {
   telefono: string | null;
   parentesco: string;
   principal: boolean;
+  ci?: string | null;
 }
 
 export interface InscripcionDetalle {
   id: number;
   estado: EstadoInscripcion;
+  alumnoId?: number;
+  /** MOSTRADOR u ONLINE. */
+  origen?: string;
+  /** El producto de la carrera: el que lleva cada línea de cuota en el POS. */
+  productoId?: number | null;
+  inscritaEn?: string | null;
+  preinscritaEn?: string | null;
+  retiradaEn?: string | null;
+  retiroMotivo?: string | null;
+  turnoPreferido?: string | null;
+  mensaje?: string | null;
   grupo: { id: number; nombre: string; carrera: Ref | string; sede: Ref | string };
   plan: Ref | null;
-  precioLista: number;
+  /** null para el docente, que tampoco recibe las cuotas. */
+  precioLista: number | null;
   descuento: DescuentoInscripcion | null;
-  total: number;
+  total: number | null;
   cuotas: Cuota[];
   pagos: { ventaId: number; comprobante: string | null; fecha: string; sede: string | Ref; monto: number; cuotaId: number }[];
   eventos: { accion: string; detalle: string | null; usuario: string | null; en: string }[];
@@ -371,8 +395,11 @@ export interface InscripcionInput {
 
 export interface Preinscripcion {
   id: number;
+  /** PREINSCRITA o DESCARTADA (la bandeja también muestra las descartadas). */
+  estado?: EstadoInscripcion;
+  origen?: string;
   alumno: { id: number; apellidos: string; nombres: string; telefono: string | null; menor: boolean };
-  tutor: { nombre: string; telefono: string | null } | null;
+  tutor: { nombre: string; telefono: string | null; parentesco?: string | null } | null;
   grupo: { id: number; nombre: string; carrera: Ref | string; sede: Ref | string };
   turnoPreferido: string | null;
   mensaje: string | null;
@@ -394,7 +421,7 @@ export interface AlumnoPorCobrar {
   nombre: string;
   codigo: string | null;
   grupo: string | Ref;
-  sede: string | Ref;
+  sede: Ref | string;
   saldo: number;
   vencido: boolean;
 }
@@ -456,6 +483,8 @@ export type TipoAvisoHoy = "PREINSCRIPCIONES" | "SIE" | "CUPO" | "NOTAS";
 
 export interface HoyAcademia {
   fecha: string;
+  /** La sede que se miró, o null (todas). */
+  sede?: number | null;
   cobrar: {
     venceHoy: number;
     venceHoyCuotas: number;
@@ -501,6 +530,8 @@ export interface PreinscripcionInput {
   edad?: number;
   tutor?: { nombre: string; telefono: string };
   mensaje?: string;
+  /** Un horario que le quedaría mejor, si ninguno de los grupos le sirve. */
+  turnoPreferido?: string;
   privacidad: true;
   captcha?: string;
 }

@@ -656,7 +656,7 @@ export default function Pos() {
         // Una promo cambió entre la cotización y el cobro: se recalcula para
         // que al volver el carrito muestre el total nuevo.
         if (err instanceof ApiError && err.codigo === "DESCUENTO_CAMBIO") descuentos.recotizar();
-        setError(err instanceof Error ? err.message : "No se pudo registrar la venta");
+        setError(mensajeDelCobro(err));
       } finally {
         setEnviando(false);
       }
@@ -1410,6 +1410,21 @@ function conCita(detalles: DetalleVentaInput[], cita: CarritoCita | null) {
   const conProfesional = [...detallesConProfesional(detalles, cita), ...detallesDePaquete(cita)];
   const citaId = citaQueCobra(conProfesional, cita);
   return { detalles: conProfesional, ...(citaId != null ? { citaId } : {}) };
+}
+
+/**
+ * Lo que se le dice a la cajera cuando el cobro rebota. El texto es el del
+ * backend; con las cuotas (E9) se decide por el `codigo`: si la cuota ya no
+ * tiene ese saldo (otra caja la cobró) o no existe más, se le dice cómo
+ * volver a elegirlas.
+ */
+function mensajeDelCobro(err: unknown): string {
+  const texto = err instanceof Error && err.message ? err.message : "No se pudo registrar la venta";
+  const codigo = err instanceof ApiError ? err.codigo : undefined;
+  if (codigo === "CUOTA_SALDO" || codigo === "CUOTA_NO_EXISTE") {
+    return `${texto} Tocá «Cambiar cuotas» para volver a elegirlas con el saldo de hoy.`;
+  }
+  return texto;
 }
 
 /**

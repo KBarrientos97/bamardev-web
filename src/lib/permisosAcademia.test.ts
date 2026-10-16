@@ -80,11 +80,9 @@ describe("secciones de la academia", () => {
     expect(puedeVer(c, "mesas")).toBe(false);
     expect(puedeVer(c, "insumos")).toBe(false);
     expect(puedeVer(c, "creditos")).toBe(false);
-    // `personal.gestionar` hoy va atado a la feature `agenda` en el catálogo
-    // del backend: al instituto le llega sólo si el backend lo desata. Con el
-    // permiso en la sesión, la pantalla existe por la feature `academia`.
-    expect(puedeVer(c, "personal")).toBe(false);
-    expect(puedeVer({ ...c, permisos: [...(c.permisos ?? []), "personal.gestionar"] }, "personal")).toBe(true);
+    // `personal.gestionar` va sin feature desde el backend de la ronda 1 (#1):
+    // al instituto le llega, y la pantalla existe por la feature `academia`.
+    expect(puedeVer(c, "personal")).toBe(true);
   });
 });
 

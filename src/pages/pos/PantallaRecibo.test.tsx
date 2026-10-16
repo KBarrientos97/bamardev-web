@@ -289,3 +289,44 @@ describe("QA PER-01: el efectivo recibido incluye la propina en efectivo", () =>
     expect(screen.queryByText("(incluye la propina)")).not.toBeInTheDocument();
   });
 });
+
+describe("E10: el recibo de las cuotas de un instituto", () => {
+  it("cada cuota con lo que queda, el saldo del curso y la próxima cuota", () => {
+    sesion.rubro = "ACADEMIA";
+    dibujar(
+      venta({
+        total: 750,
+        cuotas: [
+          {
+            cuotaId: 902,
+            concepto: "Barbería · Cuota 2",
+            alumno: "Bustillos Rek, Camila",
+            cobrado: 500,
+            pagado: 500,
+            saldo: 250,
+            estado: "PARCIAL",
+            saldoCurso: 783,
+            proximaCuota: { vence: "2026-10-17", monto: 250 },
+          },
+        ],
+      }),
+    );
+    const bloque = screen.getByLabelText("Cuotas");
+    expect(bloque).toHaveTextContent("CUOTAS · BUSTILLOS REK, CAMILA");
+    expect(bloque).toHaveTextContent(/Queda Bs\s?250,00/);
+    expect(screen.getByText("SALDO DEL CURSO").nextElementSibling).toHaveTextContent(/783,00/);
+    expect(bloque).toHaveTextContent(/Próxima cuota: Bs\s?250,00 el 17\/10\/2026/);
+  });
+
+  it("con todo pagado lo dice, y sin cuotas el ticket es el de siempre", () => {
+    sesion.rubro = "ACADEMIA";
+    dibujar(
+      venta({
+        cuotas: [
+          { cuotaId: 1, concepto: "Cuota única", alumno: "Mateo", cobrado: 1360, pagado: 1360, saldo: 0, estado: "PAGADA", saldoCurso: 0, proximaCuota: null },
+        ],
+      }),
+    );
+    expect(screen.getByText("Curso pagado por completo.")).toBeInTheDocument();
+  });
+});

@@ -102,9 +102,18 @@ export const apiAcademia = {
   // ── Inscripciones ──────────────────────────────────────────────────────────
   inscribir: (input: InscripcionInput) =>
     request<InscripcionDetalle>("/academia/inscripciones", { method: "POST", body: json(input) }),
-  preinscripciones: (f: { sede?: number | null } & PedidoPagina = {}) =>
+  /** La bandeja: por defecto lo que espera respuesta; también las descartadas. */
+  preinscripciones: (f: { sede?: number | null; estado?: "PREINSCRITA" | "DESCARTADA" } & PedidoPagina = {}) =>
     request<Paginado<Preinscripcion>>(`/academia/inscripciones${qs({ estado: "PREINSCRITA", ...f })}`),
-  convertir: (id: number, input: { planPagoId: number; descuento?: DescuentoInput }) =>
+  convertir: (
+    id: number,
+    input: {
+      planPagoId: number;
+      descuento?: DescuentoInput;
+      tutor?: { nombre: string; telefono: string; parentesco: string; ci?: string };
+      confirmarSobreCupo?: boolean;
+    },
+  ) =>
     request<InscripcionDetalle>(`/academia/inscripciones/${id}/convertir`, { method: "POST", body: json(input) }),
   descartar: (id: number, motivo: string) =>
     request<void>(`/academia/inscripciones/${id}/descartar`, { method: "POST", body: json({ motivo }) }),
@@ -113,10 +122,10 @@ export const apiAcademia = {
       method: "POST",
       body: json({ motivo }),
     }),
-  cambiarGrupo: (id: number, grupoId: number) =>
+  cambiarGrupo: (id: number, grupoId: number, confirmarSobreCupo = false) =>
     request<InscripcionDetalle | void>(`/academia/inscripciones/${id}/cambiar-grupo`, {
       method: "POST",
-      body: json({ grupoId }),
+      body: json(confirmarSobreCupo ? { grupoId, confirmarSobreCupo } : { grupoId }),
     }),
   cambiarPlan: (id: number, planPagoId: number) =>
     request<InscripcionDetalle | void>(`/academia/inscripciones/${id}/cambiar-plan`, {
@@ -148,7 +157,13 @@ export const CODIGOS_ACADEMIA = {
   DESCUENTO_REQUIERE_AUTORIZACION: "DESCUENTO_REQUIERE_AUTORIZACION",
   YA_INSCRIPTO: "YA_INSCRIPTO",
   PLAN_INVALIDO: "PLAN_INVALIDO",
+  CI_DUPLICADO: "CI_DUPLICADO",
+  TELEFONO_DUPLICADO: "TELEFONO_DUPLICADO",
+  GRUPO_CANCELADO: "GRUPO_CANCELADO",
+  CAMBIO_DE_SEDE: "CAMBIO_DE_SEDE",
+  SIN_TELEFONO: "SIN_TELEFONO",
   CUOTA_SALDO: "CUOTA_SALDO",
+  CUOTA_NO_EXISTE: "CUOTA_NO_EXISTE",
   CUOTA_CON_FIADO: "CUOTA_CON_FIADO",
   CUOTA_CON_DESCUENTO: "CUOTA_CON_DESCUENTO",
 } as const;

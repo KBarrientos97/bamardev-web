@@ -1143,13 +1143,11 @@ export interface Venta {
     pagado: number;
     saldo: number;
     estado: string;
+    /** Lo que le queda a la inscripción entera después de esta venta. */
+    saldoCurso: number;
+    /** La próxima cuota con saldo, o null si ya no debe nada. */
+    proximaCuota: { vence: string; monto: number } | null;
   }[];
-  /**
-   * Supuesto: si el backend llega a mandar el saldo de todo el curso y la
-   * próxima cuota (E10 los pide), el recibo los muestra.
-   */
-  saldoCurso?: number | null;
-  proximaCuota?: { vence: string; monto: number } | null;
   /**
    * Plan Emprendedor: qué consumió esta venta (cupo o créditos) y el contador
    * como quedó. Sólo en un negocio con cupo; un reintento idempotente tampoco
