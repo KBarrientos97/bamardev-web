@@ -142,9 +142,9 @@ function ParaCobrar({
           {c.items.length > 0 && (
             <ul className="divide-y divide-borde-soft border-y border-borde-soft">
               {c.items.map((it, i) => (
-                <li key={i} className="flex items-center justify-between gap-3 py-2.5">
+                <li key={`${it.alumno.id}-${i}`} className="flex items-center justify-between gap-3 py-2.5">
                   <span className="min-w-0">
-                    <span className="block truncate text-sm font-semibold text-texto">{it.alumno}</span>
+                    <span className="block truncate text-sm font-semibold text-texto">{it.alumno.nombre}</span>
                     <span className="block truncate text-xs text-texto-3">{it.detalle}</span>
                   </span>
                   <span className="shrink-0 text-sm font-semibold tabular-nums text-texto">{fmtMoney(it.monto)}</span>

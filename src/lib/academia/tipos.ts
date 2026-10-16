@@ -490,7 +490,7 @@ export interface HoyAcademia {
     venceHoyCuotas: number;
     vencido: number;
     vencidoCuotas: number;
-    items: { alumno: string; detalle: string; monto: number }[];
+    items: { alumno: { id: number; nombre: string }; detalle: string; monto: number }[];
   };
   preinscripcionesNuevas: number;
   avisos: { tipo: TipoAvisoHoy; titulo: string; texto: string; grupoId?: number }[];
