@@ -102,6 +102,8 @@ export interface MesaAdminApi {
   fueraMotivo?: string;
   inactiva?: boolean;
   enJuego: boolean;
+  /** Si está reservada: el formulario avisa que dejarla fuera de servicio la cancela. */
+  reserva?: { hora: number; nombre: string };
 }
 
 export type VentaApi = Omit<VentaBillar, "pagos"> & {
@@ -343,6 +345,9 @@ export function aMesaAdmin(m: MesaAdminApi): Mesa {
     estado: m.enJuego ? "abierta" : m.estado,
     fueraMotivo: m.fueraMotivo,
     inactiva: m.inactiva,
+    // Sin esto el aviso de FormMesa ("se cancela al guardar") no salía nunca y
+    // la reserva se borraba en silencio al dejar la mesa fuera de servicio.
+    reserva: m.reserva,
   };
 }
 
