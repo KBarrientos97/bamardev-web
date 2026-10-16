@@ -69,6 +69,13 @@ describe("QR de cobro: a quién más le llega", () => {
     expect(screen.queryByText(/Lo reciben también/)).not.toBeInTheDocument();
   });
 
+  it("instituto sin salón ni reparto: no nombra a nadie", async () => {
+    sesion.rubro = "ACADEMIA";
+    sesion.features = ["pos", "caja", "academia"];
+    await montar();
+    expect(screen.queryByText(/Lo reciben también/)).not.toBeInTheDocument();
+  });
+
   it("peluquería con reparto: sólo el reparto", async () => {
     sesion.rubro = "PELUQUERIA";
     sesion.features = ["pos", "agenda", "delivery"];

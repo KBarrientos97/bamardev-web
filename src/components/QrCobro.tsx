@@ -35,7 +35,9 @@ export function CargarQrCobro() {
    */
   const conSalon = tieneFeature(negocio?.features, "salon");
   const conReparto = tieneFeature(negocio?.features, "delivery");
-  const quienesMas = !esBelleza(rubro)
+  // Un instituto tampoco tiene meseros: como en belleza, se nombra lo que hay.
+  const segunFeatures = esBelleza(rubro) || rubro === "ACADEMIA";
+  const quienesMas = !segunFeatures
     ? "los meseros y el reparto"
     : conSalon && conReparto
       ? "los meseros y el reparto"
@@ -72,7 +74,7 @@ export function CargarQrCobro() {
       if (!subida.ok) {
         setError(
           `El QR quedó en este equipo, pero no se pudo compartir con ${
-            esBelleza(rubro) ? "los demás equipos" : "los meseros"
+            segunFeatures ? "los demás equipos" : "los meseros"
           }: ${subida.error}`,
         );
       }

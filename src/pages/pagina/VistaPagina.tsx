@@ -15,6 +15,7 @@ import {
 import { estiloPagina, tonosPagina } from "../../lib/pagina/estilosPagina";
 import type { AnuncioPublico, EnlacePublico, ItemCatalogoPublico, PaginaPublica } from "../../lib/pagina/tipos";
 import { urlTelefono } from "../../lib/pagina/vista";
+import { termino } from "../../lib/rubro";
 import { conMensajeDe, contactosWhatsapp, type ContactoWhatsapp } from "../../lib/pagina/whatsapp";
 import EleccionWhatsapp from "./EleccionWhatsapp";
 import ArmadoEstilo, { type PiezasArmado } from "./ArmadosPagina";
@@ -327,6 +328,8 @@ export default function VistaPagina({
   // computadora no (es la página a tamaño real, escalada).
   const chico = (!!enMarco || !!miniatura) && !escritorio;
   const enCaja = !!enMarco || !!miniatura;
+  // "sucursales" o como las llame el rubro (en un instituto, "sedes").
+  const palabraSucursales = termino(p.rubroClave, "sucursales");
   const c = paleta(p.color.hex);
   const estilo = estiloPagina(p.estilo);
   const clasico = estilo.clave === "CLASICO";
@@ -646,7 +649,7 @@ export default function VistaPagina({
   const testId = miniatura ? "miniatura-pagina" : "vista-pagina";
 
   if (!clasico) {
-    const tituloSucursales = unaSucursal ? "Dónde estamos" : "Nuestras sucursales";
+    const tituloSucursales = unaSucursal ? "Dónde estamos" : `Nuestras ${palabraSucursales}`;
     // En las columnas angostas de computadora (la tarjeta de Postal, la columna
     // de Dulce, el panel de Carta junto a la lista) dos tarjetas por fila no
     // dejan entrar los botones.
@@ -847,7 +850,7 @@ export default function VistaPagina({
 
   const tituloSucursales = p.sucursales.length > 0 && (
     <h2 style={{ margin: "10px 0 0", fontSize: 13, letterSpacing: "0.06em", color: GRIS.texto3, fontWeight: 700 }}>
-      {unaSucursal ? "DÓNDE ESTAMOS" : "NUESTRAS SUCURSALES"}
+      {unaSucursal ? "DÓNDE ESTAMOS" : `NUESTRAS ${palabraSucursales.toUpperCase()}`}
     </h2>
   );
   const sucursales = p.sucursales.map((s, i) => {

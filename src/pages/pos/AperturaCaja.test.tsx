@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  * tablero del billar, 13-oct). El POS no la pasa y sigue igual: la principal.
  */
 
-const suc = vi.hoisted(() => ({ elegir: true }));
+const suc = vi.hoisted(() => ({ elegir: true, rubro: "BILLAR" }));
 const abrirCaja = vi.hoisted(() => vi.fn());
 
 vi.mock("../../lib/api", async (original) => ({
@@ -27,8 +27,9 @@ vi.mock("../../lib/useSucursales", () => ({
 
 vi.mock("../../store/AuthContext", () => ({
   useAuth: () => ({
-    rubro: "BILLAR",
-    negocio: { alias: "prueba", features: [] },
+    rubro: suc.rubro,
+    // El instituto con sus features (sin salón ni reparto); la lista vacía falla abierta.
+    negocio: { alias: "prueba", features: suc.rubro === "ACADEMIA" ? ["pos", "caja", "academia"] : [] },
     usuario: { nombre: "Dueña", sucursalId: null, permisos: [] },
   }),
 }));
@@ -57,6 +58,7 @@ async function abrirCon(props: Partial<Parameters<typeof AperturaCaja>[0]> = {})
 
 beforeEach(() => {
   suc.elegir = true;
+  suc.rubro = "BILLAR";
   abrirCaja.mockReset();
   abrirCaja.mockImplementation(async (input: { almacenId?: number }) => ({ id: 5, almacenId: input.almacenId ?? 1 }));
 });
@@ -83,5 +85,22 @@ describe("AperturaCaja: la sucursal", () => {
     suc.elegir = false;
     await abrirCon({ sucursalInicial: 1 });
     expect(abrirCaja.mock.calls[0][0]).not.toHaveProperty("almacenId");
+  });
+});
+
+describe("el vocabulario del rubro", () => {
+  it("en un instituto la sucursal es la sede, y el QR no nombra meseros ni reparto", async () => {
+    suc.rubro = "ACADEMIA";
+    render(<AperturaCaja onAbierta={vi.fn()} />);
+    await act(async () => {});
+    expect(screen.getByText("Sede")).toBeInTheDocument();
+    expect(screen.queryByText("Sucursal")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Lo reciben también/)).not.toBeInTheDocument();
+  });
+
+  it("en los demás rubros, la sucursal de siempre", async () => {
+    render(<AperturaCaja onAbierta={vi.fn()} />);
+    await act(async () => {});
+    expect(screen.getByText("Sucursal")).toBeInTheDocument();
   });
 });

@@ -114,6 +114,8 @@ export function vistaDesdeEditor(e: EstadoEditor, hoy = hoyBolivia()): PaginaPub
     subdominio: e.subdominio ?? "",
     nombre: e.negocio.nombre,
     rubro: e.negocio.rubroNombre ?? "",
+    // La clave, para hablar como el rubro ("Nuestras sedes" en un instituto).
+    rubroClave: e.negocio.rubro,
     iniciales: e.negocio.iniciales,
     descripcion,
     color: { clave: muestra?.clave ?? "VERDE", hex: muestra?.hex ?? "#0C7A55" },
