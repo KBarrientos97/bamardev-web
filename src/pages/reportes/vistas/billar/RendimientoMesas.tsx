@@ -29,7 +29,9 @@ export default function RendimientoMesas() {
 
   useExportar(
     "rendimiento-por-mesa",
-    r && filas.length
+    // Sin mesas cobradas la pantalla dice "No se cobró ninguna mesa", y el
+    // Excel bajaba igual una planilla en ceros con las mesas paradas.
+    r && r.porMesa.length > 0 && filas.length
       ? () => [
           hoja<FilaMesa>(
             "Por mesa",

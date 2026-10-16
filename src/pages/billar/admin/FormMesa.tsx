@@ -241,7 +241,11 @@ export function FormMesa({
       <Confirmar
         abierto={confirmar === "eliminar"}
         titulo={`¿Eliminar Mesa ${mesa?.id ?? ""}?`}
-        texto="Desaparece del tablero y de la pantalla del salón. Las ventas hechas siguen en el historial. Si es por un arreglo, mejor ponela Fuera de servicio: vuelve cuando quieras."
+        // Con la mesa reservada se dice: al eliminarla, la reserva se pierde y
+        // el cliente llega sin mesa (revisión del 16-oct).
+        texto={`Desaparece del tablero y de la pantalla del salón. Las ventas hechas siguen en el historial.${
+          mesa?.reserva ? ` Tiene una reserva de ${mesa.reserva.nombre} a las ${horaDe(mesa.reserva.hora)}: se cancela.` : ""
+        } Si es por un arreglo, mejor ponela Fuera de servicio: vuelve cuando quieras.`}
         etiquetaOk="Eliminar"
         peligroso
         onCancel={() => setConfirmar(null)}

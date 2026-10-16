@@ -84,7 +84,12 @@ export function ModalAvisos({ onClose }: { onClose: () => void }) {
     <Modal
       abierto
       titulo="Avisos de tiempo fijo"
-      subtitulo={`Avisa a los ${avisos.join(", ")} min antes y cuando se cumple el tiempo.`}
+      // Con los avisos previos apagados decía "Avisa a los  min antes…".
+      subtitulo={
+        avisos.length
+          ? `Avisa a los ${avisos.join(", ")} min antes y cuando se cumple el tiempo.`
+          : "Avisa sólo cuando se cumple el tiempo."
+      }
       onClose={onClose}
       ancho="max-w-md"
       acciones={

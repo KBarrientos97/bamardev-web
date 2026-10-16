@@ -22,7 +22,7 @@ import { ModalAvisos } from "./ModalesCaja";
 import { ModalCambiar, ModalEditarInicio, ModalMotivo, ModalPago, ModalPin, ModalReservar } from "./ModalesMesa";
 import { ModalHistorial, ModalTicket, ModalVenta } from "./ModalesVenta";
 import { ahoraServidor, useAhora } from "./reloj";
-import { billar, leerBillar, tipoDe, useBillar, type EstadoBillar, type Toast } from "./store";
+import { billar, leerBillar, recargar, tableroViejo, tipoDe, useBillar, type EstadoBillar, type Toast } from "./store";
 
 /**
  * El motor de los avisos de tiempo fijo (§6). Revisa cada segundo, avisa una
@@ -31,6 +31,13 @@ import { billar, leerBillar, tipoDe, useBillar, type EstadoBillar, type Toast } 
  */
 export function MotorAvisos() {
   const ahora = useAhora();
+  // Con la pestaña escondida el sondeo no corre: avisaba "tiempo cumplido" de
+  // una mesa que otro equipo ya había extendido o cobrado, y no avisaba las que
+  // se abrieron en otro lado (revisión del 16-oct). Con la copia vieja se pide
+  // el tablero y se avisa con lo que llega; si el servidor no contesta en 30 s,
+  // se avisa con lo que hay, como antes (sin internet igual tiene que sonar).
+  const viejoDesde = useRef<number | null>(null);
+  const pedidoEn = useRef(0);
 
   // El navegador no deja sonar nada hasta el primer toque: se desbloquea ahí.
   useEffect(() => {
@@ -42,6 +49,17 @@ export function MotorAvisos() {
   useEffect(() => {
     const e = leerBillar();
     if (!e.cargado) return;
+    if (tableroViejo()) {
+      const ya = Date.now();
+      if (ya - pedidoEn.current > 3_000) {
+        pedidoEn.current = ya;
+        void recargar();
+      }
+      viejoDesde.current ??= ya;
+      if (ya - viejoDesde.current < 30_000) return;
+    } else {
+      viejoDesde.current = null;
+    }
     let alerta = false;
     for (const m of e.mesas) {
       const s = m.sesion;

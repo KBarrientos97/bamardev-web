@@ -244,6 +244,18 @@ function aplicarTablero(t: TableroApi) {
   }));
 }
 
+/** Cuándo llegó el último tablero, en la hora de este equipo (0: nunca). */
+let tableroEn = 0;
+
+/**
+ * Si el tablero en memoria es de hace más de `ms`. Con la pestaña escondida el
+ * sondeo no corre y la copia queda vieja: los avisos lo miran antes de sonar
+ * (ver `MotorAvisos`).
+ */
+export function tableroViejo(ms = 10_000): boolean {
+  return Date.now() - tableroEn > ms;
+}
+
 /** Trae el tablero. Sin `forzar`, no se superpone con otra vuelta en curso. */
 export async function recargar(forzar = false): Promise<void> {
   if (trayendo && !forzar) return;
@@ -260,6 +272,7 @@ export async function recargar(forzar = false): Promise<void> {
     if (marca !== acciones || pedida !== sucursalPedida) return;
     const primera = !estado.cargado;
     aplicarTablero(t);
+    tableroEn = Date.now();
     if (primera) prepararAvisos(estado.mesas, estado.ajustes.avisos, ahoraServidor());
   } catch (err) {
     // La sucursal recordada ya no sirve (la borraron, o pasó a depósito): el
