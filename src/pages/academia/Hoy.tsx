@@ -45,7 +45,7 @@ export default function Hoy() {
             {nombreSede ? ` · ${p.Sede} ${nombreSede}` : ""}
           </p>
           <h1 className="text-2xl font-bold text-texto">Hoy</h1>
-          {conCaja && caja.datos !== undefined && !caja.cargando && (
+          {conCaja && !caja.cargando && (
             <p className="flex items-center gap-1.5 text-[13px] text-texto-3">
               <span className={`h-1.5 w-1.5 rounded-full ${caja.datos?.caja ? "bg-primary" : "bg-slate-300"}`} />
               {caja.datos?.caja ? (
