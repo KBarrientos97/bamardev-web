@@ -31,6 +31,7 @@ vi.mock("../../lib/academia/apiAcademia", async (importOriginal) => {
       alumnosDelGrupo: vi.fn(),
       alumno: vi.fn(),
       recordatorio: vi.fn(),
+      editarGrupo: vi.fn(),
       docentes: vi.fn(async () => []),
     },
   };
@@ -119,5 +120,21 @@ describe("E3 · detalle de grupo", () => {
     expect(screen.queryByRole("tab", { name: /Deben/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Cobrar" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Inscribir/ })).not.toBeInTheDocument();
+  });
+
+  it("cancelar el grupo pide confirmación, lo marca y deja de inscribir", async () => {
+    // La coordinación: arma los grupos.
+    sesion.permisos = ["academia.ver", "academia.grupos", "academia.inscribir", "academia.cobranza"];
+    vi.mocked(apiAcademia.editarGrupo).mockResolvedValue(grupoDetalle({ cancelado: true, avisos: [] }));
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Más acciones del grupo" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Cancelar grupo" }));
+    const confirmar = screen.getByRole("dialog", { name: "Cancelar el grupo" });
+    await act(async () => {
+      fireEvent.click(within(confirmar).getByRole("button", { name: "Cancelar grupo" }));
+    });
+    expect(apiAcademia.editarGrupo).toHaveBeenCalledWith(7, { cancelado: true });
+    expect(screen.getByRole("status")).toHaveTextContent("Grupo cancelado");
+    expect(screen.getByRole("button", { name: "Inscribir alumno" })).toBeDisabled();
   });
 });

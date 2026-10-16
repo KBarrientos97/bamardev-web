@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import MenuMas, { type AccionMenu } from "../../components/MenuMas";
 import { Paginacion } from "../../components/Paginacion";
 import PanelLateral from "../../components/PanelLateral";
-import { AvisoOk, Boton, Campo, Cargando, ErrorMsg, Input, Modal, Select, Vacio } from "../../components/ui";
+import { AvisoOk, Boton, Campo, Cargando, Confirmar, ErrorMsg, Input, Modal, Select, Vacio, useAviso } from "../../components/ui";
 import { apiAcademia } from "../../lib/academia/apiAcademia";
 import { fechaCorta, horarioGrupo, nombreAlumno, nombreDe } from "../../lib/academia/formato";
 import type { AlumnoDelGrupo, FiltroAlumnosGrupo, GrupoDetalle } from "../../lib/academia/tipos";
@@ -40,6 +40,11 @@ export default function Grupo() {
   const [elegido, setElegido] = useState<AlumnoDelGrupo | null>(null);
   const [inscribiendo, setInscribiendo] = useState(false);
   const [editando, setEditando] = useState(false);
+  const [cancelando, setCancelando] = useState(false);
+  const [procesando, setProcesando] = useState(false);
+  const [errorAccion, setErrorAccion] = useState("");
+  /** Lo que avisa el backend al guardar (más de 4 h por día, clases regeneradas…). */
+  const [aviso, setAviso] = useAviso(8000);
 
   const grupo = useApi(() => apiAcademia.grupo(grupoId), [grupoId]);
   const alumnos = usePaginado((pg) => apiAcademia.alumnosDelGrupo(grupoId, filtro, pg), [grupoId, filtro]);
@@ -81,8 +86,32 @@ export default function Grupo() {
     { clave: "notas", etiqueta: proximamente("Cargar notas"), onClick: () => {}, deshabilitada: true },
     { clave: "centralizador", etiqueta: proximamente("Exportar centralizador"), onClick: () => {}, deshabilitada: true, separar: true },
     { clave: "sie", etiqueta: proximamente("Lista para el SIE"), onClick: () => {}, deshabilitada: true },
-    ...(arma ? [{ clave: "editar", etiqueta: "Editar grupo", onClick: () => setEditando(true), separar: true }] : []),
+    ...(arma
+      ? [
+          { clave: "editar", etiqueta: "Editar grupo", onClick: () => setEditando(true), separar: true },
+          g.cancelado
+            ? { clave: "reactivar", etiqueta: "Reactivar grupo", onClick: () => void cambiarCancelado(false) }
+            : { clave: "cancelar", etiqueta: "Cancelar grupo", onClick: () => setCancelando(true), peligrosa: true },
+        ]
+      : []),
   ];
+
+  /** Cancelar (o reactivar) el grupo: deja de aparecer en la lista y no inscribe. */
+  async function cambiarCancelado(cancelado: boolean) {
+    setProcesando(true);
+    setErrorAccion("");
+    try {
+      const nuevo = await apiAcademia.editarGrupo(grupoId, { cancelado });
+      grupo.setDatos(nuevo);
+      setCancelando(false);
+      setAviso([cancelado ? "Grupo cancelado." : "Grupo reactivado.", ...(nuevo.avisos ?? [])].join(" "));
+    } catch (e) {
+      setErrorAccion(e instanceof Error ? e.message : "No se pudo guardar");
+      setCancelando(false);
+    } finally {
+      setProcesando(false);
+    }
+  }
 
   return (
     <div className={`mx-auto max-w-6xl space-y-5 p-4 sm:p-6 lg:p-8 ${elegido ? "md:mr-[380px]" : ""}`}>
@@ -98,7 +127,7 @@ export default function Grupo() {
         </div>
         <div className="flex items-center gap-2">
           {inscribe && (
-            <Boton onClick={() => setInscribiendo(true)} disabled={g.estado === "TERMINADO"}>
+            <Boton onClick={() => setInscribiendo(true)} disabled={g.estado === "TERMINADO" || !!g.cancelado}>
               Inscribir {p.alumno}
             </Boton>
           )}
@@ -107,6 +136,13 @@ export default function Grupo() {
       </header>
 
       {state?.avisos?.length ? <AvisoOk>{`Grupo creado. ${state.avisos.join(" · ")}`}</AvisoOk> : null}
+      {g.cancelado && (
+        <p role="status" className="rounded-xl bg-muted px-3.5 py-2.5 text-sm font-semibold text-texto-2">
+          Grupo cancelado: no aparece en la lista ni recibe inscripciones.
+        </p>
+      )}
+      <AvisoOk>{aviso}</AvisoOk>
+      <ErrorMsg>{errorAccion}</ErrorMsg>
 
       <MateriasDelGrupo g={g} />
 
@@ -221,9 +257,20 @@ export default function Grupo() {
           onGuardado={(nuevo) => {
             setEditando(false);
             grupo.setDatos(nuevo);
+            setAviso(["Grupo guardado.", ...(nuevo.avisos ?? [])].join(" "));
           }}
         />
       )}
+      <Confirmar
+        abierto={cancelando}
+        titulo="Cancelar el grupo"
+        texto="Deja de aparecer en la lista y en la página, y no recibe inscripciones. Se puede reactivar."
+        etiquetaOk="Cancelar grupo"
+        peligroso
+        procesando={procesando}
+        onCancel={() => setCancelando(false)}
+        onOk={() => void cambiarCancelado(true)}
+      />
     </div>
   );
 }
@@ -329,12 +376,12 @@ function TablaAlumnos({
                   <span className="text-sm tabular-nums text-texto-2">{a.asistenciaPct != null ? `${Math.round(a.asistenciaPct)} %` : "—"}</span>
                   {!sinMontos && (
                     <span className={`text-right text-sm font-semibold tabular-nums ${a.vencido ? "text-danger-text" : "text-texto-2"}`}>
-                      {a.saldo > 0 ? fmtMoney(a.saldo) : ""}
+                      {(a.saldo ?? 0) > 0 ? fmtMoney(a.saldo) : ""}
                     </span>
                   )}
                   {!sinMontos && (
                     <span className="text-right">
-                      {cobra && a.saldo > 0 && !retirado && (
+                      {cobra && (a.saldo ?? 0) > 0 && !retirado && (
                         <button
                           type="button"
                           onClick={(e) => {
@@ -372,7 +419,7 @@ function TablaAlumnos({
                 </span>
                 <PuntosPago pagos={a.pagos} />
               </span>
-              {!sinMontos && a.saldo > 0 && (
+              {!sinMontos && (a.saldo ?? 0) > 0 && (
                 <span className={`shrink-0 text-[15px] font-bold tabular-nums ${a.vencido ? "text-danger-text" : "text-texto"}`}>
                   {fmtMoney(a.saldo)}
                 </span>
@@ -415,7 +462,9 @@ function PanelAlumno({
   const tutor = datos?.tutores.find((t) => t.principal) ?? datos?.tutores[0] ?? null;
   const pendiente = inscripcion?.cuotas.find((c) => c.estado !== "PAGADA" && c.estado !== "ANULADA" && c.vencida) ??
     inscripcion?.cuotas.find((c) => c.estado !== "PAGADA" && c.estado !== "ANULADA");
-  const destinoWhats = fila.alumno.menor && tutor ? tutor : null;
+  // Como el recordatorio del backend: al tutor si es menor o si el alumno no
+  // tiene teléfono.
+  const destinoWhats = tutor && (fila.alumno.menor || !datos?.telefono) ? tutor : null;
 
   async function whatsapp() {
     setError("");
@@ -450,7 +499,7 @@ function PanelAlumno({
       onClose={onCerrar}
       acciones={
         <>
-          {cobra && !sinMontos && fila.saldo > 0 && fila.estado !== "RETIRADA" && (
+          {cobra && !sinMontos && (fila.saldo ?? 0) > 0 && fila.estado !== "RETIRADA" && (
             <Boton className="w-full" onClick={() => onCobrar(fila)}>
               Cobrar {fmtMoney(fila.saldo)}
             </Boton>

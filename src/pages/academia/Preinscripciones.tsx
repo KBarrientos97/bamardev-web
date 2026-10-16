@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { EncabezadoPagina } from "../../components/filtros";
+import { Chips, EncabezadoPagina, FilaFiltros } from "../../components/filtros";
 import { Icon } from "../../components/Icon";
 import { Paginacion } from "../../components/Paginacion";
 import { AvisoOk, Boton, Cargando, ErrorMsg, Vacio, useAviso } from "../../components/ui";
@@ -35,7 +35,13 @@ export default function Preinscripciones() {
   const [error, setError] = useState("");
   const [inscribiendo, setInscribiendo] = useState<Preinscripcion | null>(null);
   const [descartando, setDescartando] = useState<Preinscripcion | null>(null);
-  const lista = usePaginado((pg) => apiAcademia.preinscripciones({ ...pg, sede: sede.sucursalId }), [sede.sucursalId]);
+  // Por atender (PREINSCRITA) o las descartadas, que quedan con su estado (#7).
+  const [estado, setEstado] = useState<"PREINSCRITA" | "DESCARTADA">("PREINSCRITA");
+  const descartadas = estado === "DESCARTADA";
+  const lista = usePaginado(
+    (pg) => apiAcademia.preinscripciones({ ...pg, sede: sede.sucursalId, estado }),
+    [sede.sucursalId, estado],
+  );
 
   const avisarCambio = () => window.dispatchEvent(new Event(EVENTO_PREINSCRIPCIONES));
 
@@ -61,9 +67,26 @@ export default function Preinscripciones() {
       </nav>
       <EncabezadoPagina
         titulo="Preinscripciones"
-        subtitulo={lista.total ? `${lista.total} por atender` : "Llegan desde la página del instituto."}
+        subtitulo={
+          descartadas
+            ? `${lista.total} descartadas`
+            : lista.total
+              ? `${lista.total} por atender`
+              : "Llegan desde la página del instituto."
+        }
       />
-      {sede.selector}
+      <FilaFiltros>
+        <Chips
+          titulo="Cuáles"
+          valor={estado}
+          opciones={[
+            ["PREINSCRITA", "Por atender"],
+            ["DESCARTADA", "Descartadas"],
+          ]}
+          onChange={setEstado}
+        />
+        {sede.selector}
+      </FilaFiltros>
       <AvisoOk>{aviso}</AvisoOk>
       <ErrorMsg>{error}</ErrorMsg>
 
@@ -72,7 +95,11 @@ export default function Preinscripciones() {
       ) : lista.cargando && !lista.items.length ? (
         <Cargando />
       ) : lista.items.length === 0 ? (
-        <Vacio icono="bell" titulo="No hay preinscripciones por atender" texto="Cuando alguien se preinscriba desde tu página, aparece acá." />
+        descartadas ? (
+          <Vacio icono="bell" titulo="No hay preinscripciones descartadas" />
+        ) : (
+          <Vacio icono="bell" titulo="No hay preinscripciones por atender" texto="Cuando alguien se preinscriba desde tu página, aparece acá." />
+        )
       ) : (
         <>
           <ul className="divide-y divide-borde-soft border-y border-borde-soft">
@@ -89,7 +116,9 @@ export default function Preinscripciones() {
                   <p className="text-[13px] text-texto-3">
                     {[
                       s.alumno.telefono,
-                      s.alumno.menor ? `Menor · tutor: ${s.tutor?.nombre ?? "sin cargar"}` : null,
+                      s.alumno.menor
+                        ? `Menor · tutor: ${s.tutor ? `${s.tutor.nombre}${s.tutor.parentesco ? ` (${s.tutor.parentesco})` : ""}` : "sin cargar"}`
+                        : null,
                       s.turnoPreferido ? `Prefiere: ${s.turnoPreferido}` : null,
                       `llegó ${tiempoRelativo(s.preinscritaEn).toLowerCase()}`,
                     ]
@@ -102,15 +131,18 @@ export default function Preinscripciones() {
                   <Boton variante="ghost" onClick={() => whatsapp(s)}>
                     WhatsApp
                   </Boton>
-                  <Boton onClick={() => setInscribiendo(s)}>Inscribir</Boton>
-                  <button
-                    type="button"
-                    aria-label={`Descartar la preinscripción de ${nombreAlumno(s.alumno)}`}
-                    onClick={() => setDescartando(s)}
-                    className="flex h-10 w-10 items-center justify-center rounded-xl text-texto-3 hover:bg-muted"
-                  >
-                    <Icon name="close" size={18} />
-                  </button>
+                  {/* Una descartada ya no se convierte (400 NO_ES_PREINSCRIPCION). */}
+                  {!descartadas && <Boton onClick={() => setInscribiendo(s)}>Inscribir</Boton>}
+                  {!descartadas && (
+                    <button
+                      type="button"
+                      aria-label={`Descartar la preinscripción de ${nombreAlumno(s.alumno)}`}
+                      onClick={() => setDescartando(s)}
+                      className="flex h-10 w-10 items-center justify-center rounded-xl text-texto-3 hover:bg-muted"
+                    >
+                      <Icon name="close" size={18} />
+                    </button>
+                  )}
                 </div>
               </li>
             ))}

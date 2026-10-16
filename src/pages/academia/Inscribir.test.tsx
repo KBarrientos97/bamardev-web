@@ -180,4 +180,59 @@ describe("E5 · inscribir", () => {
     expect(apiAcademia.inscribir).toHaveBeenCalledWith(expect.objectContaining({ alumnoId: 60 }));
     expect(within(panel()).getByText(/Tutor · obligatorio/)).toBeInTheDocument();
   });
+
+  it("un CI que ya es de otro ofrece buscarlo en vez de crearlo otra vez", async () => {
+    vi.mocked(apiAcademia.inscribir).mockRejectedValueOnce(
+      new ApiError("Ese carnet ya es de otra persona del negocio.", 409, { codigo: "CI_DUPLICADO" }),
+    );
+    await montar();
+    cargarNuevo("2000-01-01");
+    fireEvent.click(within(panel()).getByRole("radio", { name: /Completo/ }));
+    await act(async () => {
+      fireEvent.click(within(panel()).getByRole("button", { name: "Inscribir sin cobrar" }));
+    });
+    expect(within(panel()).getByRole("alert")).toHaveTextContent("Ese carnet ya es de otra persona del negocio.");
+    fireEvent.click(within(panel()).getByRole("button", { name: "Buscarlo" }));
+    expect(within(panel()).getByLabelText("Buscar alumno")).toHaveValue("14550221");
+  });
+
+  it("una preinscripción de un menor sin tutor se convierte con el tutor y, lleno, con confirmarSobreCupo", async () => {
+    vi.mocked(apiAcademia.convertir)
+      .mockRejectedValueOnce(new ApiError("Grupo lleno", 409, { codigo: "GRUPO_LLENO", inscritos: 30, cupo: 30 }))
+      .mockResolvedValueOnce({ id: 600 } as never);
+    render(
+      <MemoryRouter>
+        <Inscribir
+          preinscripcion={{
+            id: 44,
+            alumno: { id: 61, apellidos: "Rojas Lima", nombres: "Thiago", telefono: "77788990", menor: true },
+            tutor: null,
+            grupo: { id: 7, nombre: "Barbería · L-V 10:00", carrera: "Barbería", sede: "Central" },
+            turnoPreferido: null,
+            mensaje: null,
+            preinscritaEn: "2026-10-14T12:00:00.000Z",
+            vieja: false,
+          }}
+          onCerrar={vi.fn()}
+          onInscrito={onInscrito}
+        />
+      </MemoryRouter>,
+    );
+    await act(async () => {});
+    fireEvent.click(within(panel()).getByRole("radio", { name: /Completo/ }));
+    fireEvent.change(within(panel()).getByLabelText("Nombre del tutor"), { target: { value: "Ana Lima" } });
+    fireEvent.change(within(panel()).getByLabelText("WhatsApp"), { target: { value: "77788991" } });
+    await act(async () => {
+      fireEvent.click(within(panel()).getByRole("button", { name: "Inscribir sin cobrar" }));
+    });
+    await act(async () => {
+      fireEvent.click(within(screen.getByRole("dialog", { name: "El grupo está lleno" })).getByRole("button", { name: "Inscribir igual" }));
+    });
+    expect(apiAcademia.convertir).toHaveBeenLastCalledWith(44, {
+      planPagoId: 1,
+      tutor: { nombre: "Ana Lima", telefono: "77788991", parentesco: "Madre" },
+      confirmarSobreCupo: true,
+    });
+    expect(onInscrito).toHaveBeenCalledWith({ inscripcion: { id: 600 }, cobrar: false });
+  });
 });

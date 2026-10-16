@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { Link } from "react-router-dom";
 import { Chips } from "../../components/filtros";
 import { Icon } from "../../components/Icon";
 import { Boton, Campo, Cargando, Confirmar, ErrorMsg, Input, Select } from "../../components/ui";
@@ -115,13 +116,22 @@ export default function Inscribir({
   const [bienvenida, setBienvenida] = useState(true);
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState("");
+  /**
+   * Un rechazo que tiene salida (YA_INSCRIPTO, CI_DUPLICADO…): el mensaje del
+   * backend y lo que se puede hacer, decidido por el `codigo`.
+   */
+  const [salida, setSalida] = useState<{ texto: string; accion: ReactNode } | null>(null);
   const [pidiendoPin, setPidiendoPin] = useState<null | ((f: { username: string; pin: string }) => void)>(null);
   const [lleno, setLleno] = useState<{ inscritos: number; cupo: number; seguir: () => void } | null>(null);
 
   const edad = edadDe(nuevo.fechaNacimiento);
   // Menor por la fecha de nacimiento que se está cargando, o porque el
   // backend lo dijo (un alumno ya cargado, sin tutor).
-  const esMenor = pideTutor || (modo === "nuevo" && !elegido && edad != null && edad < MAYORIA_DE_EDAD);
+  // También la preinscripción de un menor que llegó sin tutor: convertir lo pide.
+  const esMenor =
+    pideTutor ||
+    (modo === "nuevo" && !elegido && edad != null && edad < MAYORIA_DE_EDAD) ||
+    (!!preinscripcion?.alumno.menor && !preinscripcion.tutor);
 
   const vista = useMemo(() => calendarioConDescuento(plan, tipoDesc, enPct, Number(valorDesc) || 0), [plan, tipoDesc, enPct, valorDesc]);
   const sobreTope =
@@ -166,10 +176,18 @@ export default function Inscribir({
         }
       : undefined;
     setError("");
+    setSalida(null);
     setEnviando(true);
     try {
       const inscripcion = preinscripcion
-        ? await apiAcademia.convertir(preinscripcion.id, { planPagoId: plan!.id, ...(descuento ? { descuento } : {}) })
+        ? await apiAcademia.convertir(preinscripcion.id, {
+            planPagoId: plan!.id,
+            ...(descuento ? { descuento } : {}),
+            ...(esMenor && tutor.nombre.trim()
+              ? { tutor: { nombre: tutor.nombre.trim(), telefono: tutor.telefono.trim(), parentesco: tutor.parentesco } }
+              : {}),
+            ...(extra.sobreCupo ? { confirmarSobreCupo: true } : {}),
+          })
         : await apiAcademia.inscribir({
             ...(elegido ? { alumnoId: elegido.id } : {
               alumno: {
@@ -207,6 +225,44 @@ export default function Inscribir({
         setPidiendoPin(() => (f: { username: string; pin: string }) => {
           setFirma(f);
           void enviar(cobrar, { ...extra, firma: f });
+        });
+      } else if (codigo === CODIGOS_ACADEMIA.YA_INSCRIPTO && e instanceof ApiError) {
+        // Ya está en el grupo: si es una preinscripción, se convierte desde la
+        // bandeja; si no, su ficha dice cómo está.
+        const preinscrito = e.detalle.estado === "PREINSCRITA";
+        setSalida({
+          texto: e.message,
+          accion: preinscrito ? (
+            <Link to="/academia/preinscripciones" className="font-semibold underline" onClick={onCerrar}>
+              Ir a Preinscripciones
+            </Link>
+          ) : elegido ? (
+            <Link to={`/academia/alumnos/${elegido.id}`} className="font-semibold underline" onClick={onCerrar}>
+              Ver su ficha
+            </Link>
+          ) : null,
+        });
+      } else if (
+        (codigo === CODIGOS_ACADEMIA.CI_DUPLICADO || codigo === CODIGOS_ACADEMIA.TELEFONO_DUPLICADO) &&
+        e instanceof ApiError
+      ) {
+        // El carnet o el teléfono ya son de alguien: se lo busca en vez de crearlo otra vez.
+        const buscar = codigo === CODIGOS_ACADEMIA.CI_DUPLICADO ? nuevo.ci.trim() : nuevo.telefono.trim();
+        setSalida({
+          texto: e.message,
+          accion: (
+            <button
+              type="button"
+              className="font-semibold underline"
+              onClick={() => {
+                setModo("buscar");
+                setQ(buscar);
+                setSalida(null);
+              }}
+            >
+              Buscarlo
+            </button>
+          ),
         });
       } else {
         setError(e instanceof Error ? e.message : "No se pudo inscribir");
@@ -314,7 +370,7 @@ export default function Inscribir({
               </div>
             )}
 
-            {esMenor && !preinscripcion && (
+            {esMenor && (!preinscripcion || !preinscripcion.tutor) && (
               <div className="mt-4 space-y-3 rounded-xl border border-warning-text/30 bg-warning-bg/40 p-3.5">
                 <p className="text-sm font-semibold text-warning-text">
                   Tutor · obligatorio{edad != null && edad < MAYORIA_DE_EDAD ? ` (menor · ${edad} años)` : ""}
@@ -465,6 +521,12 @@ export default function Inscribir({
           )}
 
           <ErrorMsg>{error}</ErrorMsg>
+          {salida && (
+            <div role="alert" className="space-y-1 rounded-xl bg-warning-bg px-3.5 py-2.5 text-sm text-warning-text">
+              <p>{salida.texto}</p>
+              {salida.accion}
+            </div>
+          )}
         </div>
 
         <footer className="space-y-2 border-t border-borde-soft px-5 py-4 pb-[max(1rem,env(safe-area-inset-bottom))]">

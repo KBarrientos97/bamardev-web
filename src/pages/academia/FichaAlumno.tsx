@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import MenuMas, { type AccionMenu } from "../../components/MenuMas";
-import { AvisoOk, Boton, Campo, Cargando, ErrorMsg, Input, Modal, Select, useAviso } from "../../components/ui";
-import { apiAcademia } from "../../lib/academia/apiAcademia";
+import { AvisoOk, Boton, Campo, Cargando, Confirmar, ErrorMsg, Input, Modal, Select, useAviso } from "../../components/ui";
+import { apiAcademia, CODIGOS_ACADEMIA } from "../../lib/academia/apiAcademia";
+import { ApiError } from "../../lib/api";
 import {
   EXPEDIDOS,
   fechaCorta,
@@ -27,7 +28,8 @@ const MOTIVOS_RETIRO = ["Horario", "Económico", "Cambio de ciudad", "No le gust
 /** Las vivas primero (activa o en observación); después las demás, de la más nueva. */
 function inscripcionActual(a: AlumnoDetalle): InscripcionDetalle | null {
   const vivas = a.inscripciones.filter((i) => ["ACTIVA", "OBSERVACION", "EN_OBSERVACION"].includes(i.estado));
-  return vivas[0] ?? a.inscripciones[0] ?? null;
+  // Una preinscripción descartada nunca fue una inscripción: no es "la actual".
+  return vivas[0] ?? a.inscripciones.find((i) => i.estado !== "DESCARTADA") ?? null;
 }
 
 /**
@@ -55,6 +57,10 @@ export default function FichaAlumno() {
   const sinMontos = soloLoSuyo(usuario, "academia.ver");
   const cobra = cobraCuotas({ features: negocio?.features, rubro, permisos: usuario?.permisos, permisosPropios: usuario?.permisosPropios });
   const inscribe = tienePermiso(usuario, "academia.inscribir");
+  // Editar los datos y los tutores pide inscribir (#4 del contrato); el CI y
+  // la fecha de nacimiento llegan con ese permiso o con los datos personales.
+  const veDatosPersonales = inscribe || tienePermiso(usuario, "cliente.datos_personales");
+  const [grupoLleno, setGrupoLleno] = useState<{ texto: string; seguir: () => void } | null>(null);
 
   const a = ficha.datos;
   if (ficha.error && !a) {
@@ -109,9 +115,35 @@ export default function FichaAlumno() {
       onClick: enviarEstado,
     },
     { clave: "kardex", etiqueta: "Imprimir kárdex · próximamente", onClick: () => {}, deshabilitada: true },
-    { clave: "editar", etiqueta: "Editar datos", onClick: () => setEditando(true), separar: true },
-    { clave: "tutor", etiqueta: "Agregar tutor", onClick: () => setAgregandoTutor(true) },
+    ...(inscribe
+      ? [
+          { clave: "editar", etiqueta: "Editar datos", onClick: () => setEditando(true), separar: true },
+          { clave: "tutor", etiqueta: "Agregar tutor", onClick: () => setAgregandoTutor(true) },
+        ]
+      : []),
   ];
+
+  /**
+   * Cambiar de grupo: si el nuevo está lleno se confirma y se reintenta con
+   * `confirmarSobreCupo`; a otra sede (403 CAMBIO_DE_SEDE) lo dice el backend.
+   */
+  async function cambiarGrupo(inscripcionId: number, grupoId: number, sobreCupo = false) {
+    setError("");
+    try {
+      await apiAcademia.cambiarGrupo(inscripcionId, grupoId, sobreCupo);
+      setAviso("Cambiado de grupo.");
+      ficha.recargar();
+    } catch (e) {
+      if (e instanceof ApiError && e.codigo === CODIGOS_ACADEMIA.GRUPO_LLENO) {
+        setGrupoLleno({
+          texto: `El grupo tiene ${Number(e.detalle.inscritos ?? 0)} inscritos y el cupo es de ${Number(e.detalle.cupo ?? 0)}. ¿Lo pasás igual?`,
+          seguir: () => void cambiarGrupo(inscripcionId, grupoId, true),
+        });
+      } else {
+        setError(e instanceof Error ? e.message : "No se pudo cambiar de grupo");
+      }
+    }
+  }
 
   const accionesInscripcion: AccionMenu[] =
     actual && inscribe && !["RETIRADA", "CONCLUIDA"].includes(actual.estado)
@@ -189,6 +221,12 @@ export default function FichaAlumno() {
                       .filter(Boolean)
                       .join(" · ")}
                   </p>
+                  {actual.estado === "RETIRADA" && (actual.retiradaEn || actual.retiroMotivo) && (
+                    <p className="text-[13px] text-texto-3">
+                      Retirado{actual.retiradaEn ? ` el ${fmtFecha(actual.retiradaEn)}` : ""}
+                      {actual.retiroMotivo ? ` · ${actual.retiroMotivo}` : ""}
+                    </p>
+                  )}
                 </div>
                 <MenuMas etiqueta="Acciones de la inscripción" acciones={accionesInscripcion} />
               </div>
@@ -244,6 +282,7 @@ export default function FichaAlumno() {
                       <p className="text-[13px] text-texto-3">
                         {t.parentesco}
                         {t.telefono ? ` · ${t.telefono}` : ""}
+                        {t.ci ? ` · CI ${t.ci}` : ""}
                       </p>
                       <div className="flex gap-3 text-[13px]">
                         {url && (
@@ -251,13 +290,15 @@ export default function FichaAlumno() {
                             WhatsApp
                           </button>
                         )}
-                        <button
-                          type="button"
-                          onClick={() => void hacer(() => apiAcademia.quitarTutor(a.id, t.id), "Tutor quitado.")}
-                          className="text-texto-3 hover:underline"
-                        >
-                          Quitar
-                        </button>
+                        {inscribe && (
+                          <button
+                            type="button"
+                            onClick={() => void hacer(() => apiAcademia.quitarTutor(a.id, t.id), "Tutor quitado.")}
+                            className="text-texto-3 hover:underline"
+                          >
+                            Quitar
+                          </button>
+                        )}
                       </div>
                     </li>
                   );
@@ -302,10 +343,22 @@ export default function FichaAlumno() {
           onCerrar={() => setCambiandoGrupo(null)}
           onCambiar={async (grupoId) => {
             setCambiandoGrupo(null);
-            await hacer(() => apiAcademia.cambiarGrupo(cambiandoGrupo.id, grupoId), "Cambiado de grupo.");
+            await cambiarGrupo(cambiandoGrupo.id, grupoId);
           }}
         />
       )}
+      <Confirmar
+        abierto={!!grupoLleno}
+        titulo="El grupo está lleno"
+        texto={grupoLleno?.texto ?? ""}
+        etiquetaOk="Pasarlo igual"
+        onCancel={() => setGrupoLleno(null)}
+        onOk={() => {
+          const seguir = grupoLleno?.seguir;
+          setGrupoLleno(null);
+          seguir?.();
+        }}
+      />
       {cambiandoPlan && (
         <CambiarPlan
           inscripcion={cambiandoPlan}
@@ -319,6 +372,7 @@ export default function FichaAlumno() {
       {editando && (
         <EditarAlumno
           alumno={a}
+          veDatosPersonales={veDatosPersonales}
           onCerrar={() => setEditando(false)}
           onGuardado={(nuevo) => {
             setEditando(false);
@@ -490,7 +544,11 @@ function CambiarPlan({
     <Modal
       abierto
       titulo="Cambiar de plan"
-      subtitulo={inscripcion.plan ? `Hoy paga con ${inscripcion.plan.nombre}` : undefined}
+      subtitulo={
+        inscripcion.plan
+          ? `Hoy paga con ${inscripcion.plan.nombre}. Lo ya pagado se descuenta de las cuotas nuevas.`
+          : "Lo ya pagado se descuenta de las cuotas nuevas."
+      }
       onClose={onCerrar}
       acciones={
         <>
@@ -533,10 +591,12 @@ function CambiarPlan({
 
 function EditarAlumno({
   alumno,
+  veDatosPersonales,
   onCerrar,
   onGuardado,
 }: {
   alumno: AlumnoDetalle;
+  veDatosPersonales: boolean;
   onCerrar: () => void;
   onGuardado: (a: AlumnoDetalle) => void;
 }) {
@@ -552,8 +612,9 @@ function EditarAlumno({
   });
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState("");
-  // Sin `cliente.datos_personales` el CI viene null: no se ofrece cambiarlo.
-  const veCi = alumno.ci != null || alumno.fechaNacimiento != null;
+  // Sin `cliente.datos_personales` ni `academia.inscribir` el CI viene null:
+  // no se ofrece cambiarlo (mandarlo vacío lo borraría).
+  const veCi = veDatosPersonales;
 
   async function guardar() {
     if (!f.apellidos.trim() || !f.nombres.trim()) return setError("Faltan los apellidos y los nombres.");

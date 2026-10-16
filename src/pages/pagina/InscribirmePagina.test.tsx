@@ -28,7 +28,7 @@ vi.mock("../../lib/academia/apiPublica", async (importOriginal) => {
   return { ...real, apiAcademiaPublica: { cursos: vi.fn(), preinscribir: vi.fn() } };
 });
 
-import { apiAcademiaPublica } from "../../lib/academia/apiPublica";
+import { apiAcademiaPublica, ErrorPublico } from "../../lib/academia/apiPublica";
 import InscribirmePagina from "./InscribirmePagina";
 
 const CURSO: CursoPublico = {
@@ -105,5 +105,39 @@ describe("P2 · Preinscribirme", () => {
   it("un grupo que ya no está publicado no ofrece el formulario", async () => {
     await montar(99);
     expect(screen.getByText("Este grupo ya no recibe preinscripciones")).toBeInTheDocument();
+  });
+
+  it("manda el horario que prefiere y, si el grupo se cerró mientras tanto, lo dice", async () => {
+    vi.mocked(apiAcademiaPublica.preinscribir).mockRejectedValueOnce(
+      new ErrorPublico("Ese grupo ya no recibe preinscripciones.", 404, "GRUPO_NO_DISPONIBLE"),
+    );
+    await montar();
+    fireEvent.change(screen.getByLabelText("Nombres"), { target: { value: "Sofía" } });
+    fireEvent.change(screen.getByLabelText("Apellidos"), { target: { value: "Ribera" } });
+    fireEvent.change(screen.getByLabelText("WhatsApp"), { target: { value: "70011223" } });
+    fireEvent.change(screen.getByLabelText("Edad"), { target: { value: "22" } });
+    fireEvent.change(screen.getByLabelText(/Ningún horario te queda/), { target: { value: "sábados por la tarde" } });
+    fireEvent.click(screen.getByRole("checkbox"));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Enviar preinscripción" }));
+    });
+    expect(apiAcademiaPublica.preinscribir).toHaveBeenCalledWith("horizonte", expect.objectContaining({ turnoPreferido: "sábados por la tarde" }));
+    expect(screen.getByText("Este grupo ya no recibe preinscripciones")).toBeInTheDocument();
+  });
+
+  it("el tope por teléfono muestra el texto del backend", async () => {
+    vi.mocked(apiAcademiaPublica.preinscribir).mockRejectedValueOnce(
+      new ErrorPublico("Ya recibimos tres preinscripciones de este teléfono hoy.", 429, "TOPE_PREINSCRIPCIONES"),
+    );
+    await montar();
+    fireEvent.change(screen.getByLabelText("Nombres"), { target: { value: "Sofía" } });
+    fireEvent.change(screen.getByLabelText("Apellidos"), { target: { value: "Ribera" } });
+    fireEvent.change(screen.getByLabelText("WhatsApp"), { target: { value: "70011223" } });
+    fireEvent.change(screen.getByLabelText("Edad"), { target: { value: "22" } });
+    fireEvent.click(screen.getByRole("checkbox"));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Enviar preinscripción" }));
+    });
+    expect(screen.getByRole("alert")).toHaveTextContent("Ya recibimos tres preinscripciones de este teléfono hoy.");
   });
 });

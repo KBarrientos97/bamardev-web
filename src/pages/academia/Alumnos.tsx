@@ -218,7 +218,7 @@ function ListaAlumnos({
                   <span className="truncate text-sm text-texto-2">{nombreDe(a.plan) || "—"}</span>
                   {!sinMontos && (
                     <span className={`text-right text-sm font-semibold tabular-nums ${a.vencido ? "text-danger-text" : "text-texto-2"}`}>
-                      {a.saldo > 0 ? fmtMoney(a.saldo) : "—"}
+                      {(a.saldo ?? 0) > 0 ? fmtMoney(a.saldo) : "—"}
                     </span>
                   )}
                   <span className="truncate text-sm text-texto-3">{a.ultimaAsistencia ? fechaCorta(a.ultimaAsistencia) : "—"}</span>
@@ -241,7 +241,7 @@ function ListaAlumnos({
                     {[a.grupoActual?.nombre, nombreDe(a.plan), e.tono !== "normal" ? e.texto : null].filter(Boolean).join(" · ")}
                   </span>
                 </span>
-                {!sinMontos && a.saldo > 0 && (
+                {!sinMontos && (a.saldo ?? 0) > 0 && (
                   <span className={`shrink-0 text-[15px] font-bold tabular-nums ${a.vencido ? "text-danger-text" : "text-texto"}`}>
                     {fmtMoney(a.saldo)}
                   </span>

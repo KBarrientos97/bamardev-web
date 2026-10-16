@@ -52,10 +52,13 @@ async function pedir<T>(ruta: string, opciones: RequestInit = {}): Promise<T> {
       /* sin cuerpo JSON */
     }
     const m = cuerpo.message;
+    const codigo = typeof cuerpo.codigo === "string" ? cuerpo.codigo : undefined;
     let mensaje = Array.isArray(m) ? m.join(". ") : typeof m === "string" ? m : "Algo salió mal. Probá de nuevo.";
-    if (res.status === 429) mensaje = "Ya recibimos varias preinscripciones desde este teléfono hoy. Probá mañana o escribinos por WhatsApp.";
+    // El tope por teléfono trae su `codigo` y su texto (TOPE_PREINSCRIPCIONES);
+    // el 429 pelado es el tope por IP del Throttle.
+    if (res.status === 429 && !codigo) mensaje = "Demasiados intentos seguidos. Probá mañana o escribinos por WhatsApp.";
     if (res.status >= 500) mensaje = "Algo salió mal de nuestro lado. Probá de nuevo en un momento.";
-    throw new ErrorPublico(mensaje, res.status, cuerpo.codigo as string | undefined);
+    throw new ErrorPublico(mensaje, res.status, codigo);
   }
   return res.json() as Promise<T>;
 }

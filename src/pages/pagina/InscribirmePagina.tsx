@@ -41,6 +41,8 @@ export default function InscribirmePagina() {
   const id = Number(grupoId);
   const curso = useMemo(() => cursos?.find((c) => c.grupos.some((g) => g.id === id)) ?? null, [cursos, id]);
   const [enviada, setEnviada] = useState<{ nombre: string; r: PreinscripcionEnviada } | null>(null);
+  /** El backend dijo que el grupo ya no se publica o que la preinscripción se apagó. */
+  const [cerrada, setCerrada] = useState(false);
 
   useEffect(() => {
     if (curso && pagina) document.title = `Preinscribirme · ${curso.nombre} · ${pagina.nombre}`;
@@ -49,7 +51,7 @@ export default function InscribirmePagina() {
   if (errorPagina && !cursos) return <NoDisponible mensaje={errorPagina} />;
   if (errorCursos) return <NoDisponible mensaje="Esta preinscripción no está disponible" />;
   if (!cursos || !pagina) return <div style={{ minHeight: "100dvh", background: "#F6F7F9" }} aria-busy="true" />;
-  if (!curso) return <NoDisponible mensaje="Este grupo ya no recibe preinscripciones" />;
+  if (!curso || cerrada) return <NoDisponible mensaje="Este grupo ya no recibe preinscripciones" />;
 
   const c = paleta(pagina.color.hex);
   return (
@@ -77,6 +79,7 @@ export default function InscribirmePagina() {
               grupoInicial={id}
               color={c.oscuro}
               onEnviada={(nombre, r) => setEnviada({ nombre, r })}
+              onCerrada={() => setCerrada(true)}
             />
           )}
         </main>
@@ -99,6 +102,7 @@ function Formulario({
   grupoInicial,
   color,
   onEnviada,
+  onCerrada,
 }: {
   sub: string;
   negocio: string;
@@ -106,6 +110,7 @@ function Formulario({
   grupoInicial: number;
   color: string;
   onEnviada: (nombre: string, r: PreinscripcionEnviada) => void;
+  onCerrada: () => void;
 }) {
   const [grupoId, setGrupoId] = useState(grupoInicial);
   const [nombres, setNombres] = useState("");
@@ -114,6 +119,8 @@ function Formulario({
   const [edad, setEdad] = useState("");
   const [tutor, setTutor] = useState({ nombre: "", telefono: "" });
   const [mensaje, setMensaje] = useState("");
+  const [turno, setTurno] = useState("");
+  const [telefonoMal, setTelefonoMal] = useState(false);
   const [privacidad, setPrivacidad] = useState(false);
   const [pideTutor, setPideTutor] = useState(false);
   const siteKey = siteKeyTurnstile();
@@ -146,14 +153,22 @@ function Formulario({
         edad: edadN!,
         ...(esMenor ? { tutor: { nombre: tutor.nombre.trim(), telefono: tutor.telefono.trim() } } : {}),
         ...(mensaje.trim() ? { mensaje: mensaje.trim() } : {}),
+        ...(turno.trim() ? { turnoPreferido: turno.trim() } : {}),
         privacidad: true,
         ...(siteKey && captcha ? { captcha } : {}),
       });
       onEnviada(nombres.trim().split(" ")[0], r);
     } catch (e) {
-      if (e instanceof ErrorPublico && e.codigo === "TUTOR_REQUERIDO") {
+      const codigo = e instanceof ErrorPublico ? e.codigo : undefined;
+      if (codigo === "TUTOR_REQUERIDO") {
         setPideTutor(true);
         setError("Sos menor de edad: completá los datos de tu madre, padre o tutor.");
+      } else if (codigo === "GRUPO_NO_DISPONIBLE" || codigo === "PREINSCRIPCION_NO_DISPONIBLE") {
+        onCerrada();
+        return;
+      } else if (codigo === "TELEFONO_INVALIDO") {
+        setTelefonoMal(true);
+        setError(e instanceof Error ? e.message : "Revisá el número de WhatsApp.");
       } else {
         setError(e instanceof Error ? e.message : "No se pudo enviar. Probá de nuevo.");
       }
@@ -212,7 +227,17 @@ function Formulario({
           <input value={apellidos} onChange={(e) => setApellidos(e.target.value)} autoComplete="family-name" className={INPUT} />
         </CampoP>
         <CampoP etiqueta="WhatsApp">
-          <input value={telefono} onChange={(e) => setTelefono(e.target.value)} inputMode="tel" autoComplete="tel" className={INPUT} />
+          <input
+            value={telefono}
+            onChange={(e) => {
+              setTelefono(e.target.value);
+              setTelefonoMal(false);
+            }}
+            inputMode="tel"
+            autoComplete="tel"
+            aria-invalid={telefonoMal || undefined}
+            className={`${INPUT} ${telefonoMal ? "border-[#B91C1C]" : ""}`}
+          />
         </CampoP>
         <CampoP etiqueta="Edad">
           <input value={edad} onChange={(e) => setEdad(e.target.value.replace(/\D/g, "").slice(0, 2))} inputMode="numeric" className={INPUT} />
@@ -229,6 +254,12 @@ function Formulario({
             <input value={tutor.telefono} onChange={(e) => setTutor({ ...tutor, telefono: e.target.value })} inputMode="tel" className={INPUT} />
           </CampoP>
         </div>
+      )}
+
+      {curso.grupos.length > 0 && (
+        <CampoP etiqueta="¿Ningún horario te queda? Contanos cuál preferís (opcional)">
+          <input value={turno} onChange={(e) => setTurno(e.target.value.slice(0, 60))} placeholder="Ej.: sábados por la tarde" className={INPUT} />
+        </CampoP>
       )}
 
       <CampoP etiqueta="¿Algo que quieras preguntar? (opcional)">
