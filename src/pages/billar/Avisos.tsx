@@ -15,6 +15,7 @@ import {
   sePuedeAnular,
   textoDevolucion,
 } from "./calculo";
+import { detalleAnularVenta, efectivoEnOtraCaja } from "./Avisos.datos";
 import { useDialogos, type Dialogo } from "./dialogos";
 import { ModalAbrir, ModalExtender } from "./ModalTiempo";
 import { ModalAvisos } from "./ModalesCaja";
@@ -252,6 +253,9 @@ function dibujar(actual: Dialogo, e: EstadoBillar, cerrar: () => void): ReactNod
       // Con consumos cargados el backend no la anula (ANULAR_CON_CONSUMOS): se
       // perdían sin cobrar ni bajar del stock. Se dice qué hacer antes del PIN.
       const cargado = consumosDe(enJuego.sesion);
+      // Con dos cajas: el efectivo que entró en el cajón de otro cajero. Su
+      // arqueo deja de esperarlo al anular, así que es él quien lo tiene.
+      const enOtraCaja = efectivoEnOtraCaja(pagos, e.caja.id);
       return (
         <ModalPin
           accion={`Anular la Mesa ${enJuego.id}`}
@@ -260,7 +264,7 @@ function dibujar(actual: Dialogo, e: EstadoBillar, cerrar: () => void): ReactNod
               ? `Tiene consumos cargados (${fmtMoney(cargado)}) y ya se tomaron: no se puede anular. Pasá la cuenta a la mesa correcta con "Cambiar mesa", o anulá los consumos que se cargaron por error.`
               : `Se abrió por error: no se cobra nada y queda libre.${
                   pagado > 0 ? ` Ya pagó ${fmtMoney(pagado)}: hay que devolverle ${textoDevolucion(devolucionDe(pagos, 0))}.` : ""
-                }`
+                }${enOtraCaja ? ` ${enOtraCaja}: pedíselos, o que los devuelva quien los cobró.` : ""}`
           }
           bloqueado={cargado > 0.005}
           motivos={["Se abrió por error", "Se fueron sin jugar"]}
@@ -298,7 +302,8 @@ function dibujar(actual: Dialogo, e: EstadoBillar, cerrar: () => void): ReactNod
       return (
         <ModalPin
           accion={`Anular venta ${v.codigo} · ${fmtMoney(v.total)}`}
-          detalle={`${v.origen === "rapida" ? "Venta rápida" : `Mesa ${v.mesaId}`}. Los productos vuelven al stock y el monto sale de la caja del turno.`}
+          // Cuánto devolver y por dónde, y de qué cajón sale (Avisos.datos).
+          detalle={detalleAnularVenta(v)}
           motivos={["Cobro duplicado", "Error de cobro", "Cliente devolvió"]}
           permiso="ventas.anular"
           onClose={cerrar}

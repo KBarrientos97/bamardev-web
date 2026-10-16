@@ -82,6 +82,9 @@ export interface Pago {
   recibido?: number;
   /** "Prepago 2 h", "Adelanto"… sale en el ticket. */
   nota?: string;
+  /** Pagos de una mesa abierta: la caja donde entró y quién lo cobró. */
+  cajaId?: number;
+  cobradoPor?: string;
 }
 
 /** Tiempo fijo: lo contratado, con las extensiones sumadas. */
@@ -180,6 +183,11 @@ export interface VentaBillar {
    * cobro final: reemplaza al recibido y al cambio en el ticket.
    */
   devuelto?: Devolucion;
+  /**
+   * Efectivo de adelantos de esta mesa que cobró OTRA caja, por cajero: si se
+   * anula la venta, esa plata está en el cajón de ellos.
+   */
+  adelantosOtraCaja?: { cajero: string; monto: number }[];
   anulada?: { hora: number; quien: string; motivo: string };
 }
 

@@ -35,6 +35,9 @@ interface PagoApi {
   monto: number;
   recibido: number;
   concepto: "PREPAGO" | "EXTENSION" | "ADELANTO";
+  /** Desde el 16-oct: en qué caja entró y quién lo cobró. */
+  cajaId?: number;
+  cobradoPor?: string;
 }
 
 interface SesionApi {
@@ -316,6 +319,8 @@ function aSesion(s: SesionApi): Sesion {
         monto: p.monto,
         recibido: p.recibido > p.monto ? p.recibido : undefined,
         nota: NOTA_PAGO[p.concepto],
+        cajaId: p.cajaId,
+        cobradoPor: p.cobradoPor,
       }),
     ),
   };
