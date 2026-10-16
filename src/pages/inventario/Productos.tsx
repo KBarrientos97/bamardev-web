@@ -29,6 +29,7 @@ import { useBusquedaProductos } from "../farmacia/useBusquedaProductos";
 import { useApi } from "../../lib/useApi";
 import { useSucursales } from "../../lib/useSucursales";
 import { useAuth } from "../../store/AuthContext";
+import { actualizarConCombo } from "./edicionCombo";
 import type {
   Categoria,
   CondicionVenta,
@@ -1102,7 +1103,8 @@ function FormProductoCuerpo({
 
     setGuardando(true);
     try {
-      if (producto) await api.actualizarProducto(producto.id, input);
+      // Pasar a combo al editar va en dos PATCH: ver actualizarConCombo.
+      if (producto) await actualizarConCombo(producto, input);
       else await api.crearProducto(input);
       onGuardado();
     } catch (err) {
