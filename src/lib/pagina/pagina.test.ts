@@ -238,6 +238,9 @@ describe("rutas y permisos", () => {
   it("sólo /p/<negocio> y su privacidad son públicas", () => {
     expect(esRutaDePaginaPublica("/p/bellavista")).toBe(true);
     expect(esRutaDePaginaPublica("/p/bellavista/privacidad")).toBe(true);
+    // La preinscripción de una academia (P2) también es pública, sin sesión.
+    expect(esRutaDePaginaPublica("/p/horizonte/inscribirme/22")).toBe(true);
+    expect(esRutaDePaginaPublica("/p/horizonte/inscribirme/x")).toBe(false);
     expect(esRutaDePaginaPublica("/p/")).toBe(false);
     expect(esRutaDePaginaPublica("/pos")).toBe(false);
     expect(esRutaDePaginaPublica("/p/bv/otra")).toBe(false);

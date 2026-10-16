@@ -36,6 +36,9 @@ describe("dirección corta → la de siempre", () => {
     // La gift card que se comparte (IDEAS/6 #6).
     expect(rutaLargaDeLink("/bellavista/regalo/AbCdEfGhIjKlMnOpQrStUv")).toBe("/p/bellavista/regalo/AbCdEfGhIjKlMnOpQrStUv");
     expect(rutaLargaDeLink("/bellavista/regalo")).toBeNull();
+    // Academias (P2): la preinscripción a un grupo, con su id numérico.
+    expect(rutaLargaDeLink("/horizonte/inscribirme/22")).toBe("/p/horizonte/inscribirme/22");
+    expect(rutaLargaDeLink("/horizonte/inscribirme/abc")).toBeNull();
   });
 
   it("lo demás no es la página de nadie", () => {
