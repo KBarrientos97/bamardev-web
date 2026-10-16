@@ -28,6 +28,7 @@ import CuotasPorCobrar from "./CuotasPorCobrar";
 import {
   carritoConCuotas,
   detallesDeCuotas,
+  ventaConCuotas,
   guardarCobroCuotas,
   leerCobroCuotas,
   totalCuotas,
@@ -636,7 +637,8 @@ export default function Pos() {
         cobroEnDuda.current = false;
         // Una venta encolada no trae contador: lo descuenta la cola (§5.1).
         if (!creada.pendienteSync) registrarConsumo(creada);
-        setVenta(creada);
+        // Con cuotas, cada renglón con su cuota y quién pagó (para el recibo).
+        setVenta(cobroCuotas ? ventaConCuotas(creada, cobroCuotas) : creada);
         if (mesaCobrando) {
           setMesaCobrando(null);
           porCobrar.recargar();
@@ -673,6 +675,7 @@ export default function Pos() {
       hayLugar,
       rechazoPorCupo,
       registrarConsumo,
+      cobroCuotas,
     ],
   );
 

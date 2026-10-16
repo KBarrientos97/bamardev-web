@@ -329,4 +329,22 @@ describe("E10: el recibo de las cuotas de un instituto", () => {
     );
     expect(screen.getByText("Curso pagado por completo.")).toBeInTheDocument();
   });
+
+  it("el renglón dice qué cuota cobró y el bloque quién pagó, si fue el tutor", () => {
+    sesion.rubro = "ACADEMIA";
+    dibujar(
+      venta({
+        total: 750,
+        detalles: [
+          { productoId: 77, producto: "Barbería y Peluquería", cantidad: 1, precio: 750, subtotal: 750, nota: null, consumo: "LLEVAR", cuotaId: 902 },
+        ],
+        cuotas: [
+          { cuotaId: 902, concepto: "Cuota 2/2", alumno: "Céspedes Molina, Joaquín", cobrado: 750, pagado: 750, saldo: 0, estado: "PAGADA", saldoCurso: 0, proximaCuota: null },
+        ],
+        pagadorCuotas: { nombre: "Patricia Suárez", rol: "TUTOR" },
+      }),
+    );
+    expect(screen.getByText("Cuota 2/2 · Barbería y Peluquería")).toBeInTheDocument();
+    expect(screen.getByText("Pagó: Patricia Suárez (tutor)")).toBeInTheDocument();
+  });
 });

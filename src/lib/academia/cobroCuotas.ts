@@ -1,5 +1,5 @@
 import type { Carrito } from "../../pages/pos/useCarrito";
-import type { DetalleVentaInput } from "../../types";
+import type { DetalleVentaInput, Venta } from "../../types";
 import type { CarritoInscripcion } from "./tipos";
 
 /**
@@ -132,4 +132,29 @@ export function leerCobroCuotas(): CobroCuotas | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * La venta recién cobrada, lista para el recibo (E10). Los renglones del
+ * recibo no traen `cuotaId` y todas las cuotas comparten el producto de su
+ * carrera: se le pone a cada renglón de ese producto la cuota que le toca, en
+ * el orden en que se mandaron (el mismo de `venta.cuotas`). Y si pagó el
+ * tutor, se dice quién. Sin cuotas, la MISMA venta.
+ */
+export function ventaConCuotas(venta: Venta, cobro: CobroCuotas | null): Venta {
+  if (!cobro?.lineas.length) return venta;
+  const productos = new Set(cobro.lineas.map((l) => l.productoId));
+  let k = 0;
+  const detalles = venta.detalles?.map((d) => {
+    if (d.cuotaId != null || !productos.has(d.productoId)) return d;
+    const cuotaId = venta.cuotas?.[k]?.cuotaId ?? cobro.lineas[k]?.cuotaId;
+    k++;
+    return cuotaId != null ? { ...d, cuotaId } : d;
+  });
+  const pagador = cobro.pagadores.find((x) => x.clienteId === cobro.pagadorId);
+  return {
+    ...venta,
+    ...(detalles ? { detalles } : {}),
+    pagadorCuotas: pagador && pagador.rol === "TUTOR" ? { nombre: pagador.nombre, rol: pagador.rol } : null,
+  };
 }

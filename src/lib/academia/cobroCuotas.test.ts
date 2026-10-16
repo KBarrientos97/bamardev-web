@@ -7,8 +7,10 @@ import {
   montoValido,
   pagadorPorDefecto,
   totalCuotas,
+  ventaConCuotas,
   type CobroCuotas,
 } from "./cobroCuotas";
+import type { Venta } from "../../types";
 
 /** El cobro de cuotas en el POS (E9): viajan aparte del carrito de productos. */
 
@@ -109,5 +111,35 @@ describe("las cuotas en la venta", () => {
       ]),
     ).toBe(40);
     expect(pagadorPorDefecto([])).toBeNull();
+  });
+});
+
+describe("la venta recién cobrada, para el recibo", () => {
+  it("cada renglón de la carrera lleva su cuota en orden, y dice si pagó el tutor", () => {
+    const venta = {
+      id: 9,
+      detalles: [
+        { productoId: 5, producto: "Polera", cantidad: 1, precio: 60, subtotal: 60, nota: null, consumo: "LLEVAR" },
+        { productoId: 77, producto: "Barbería", cantidad: 1, precio: 750, subtotal: 750, nota: null, consumo: "LLEVAR" },
+        { productoId: 77, producto: "Barbería", cantidad: 1, precio: 200, subtotal: 200, nota: null, consumo: "LLEVAR" },
+      ],
+      cuotas: [
+        { cuotaId: 11, concepto: "Cuota 2/3", alumno: "A", cobrado: 750, pagado: 750, saldo: 0, estado: "PAGADA", saldoCurso: 333, proximaCuota: null },
+        { cuotaId: 12, concepto: "Cuota 3/3", alumno: "A", cobrado: 200, pagado: 200, saldo: 333, estado: "PARCIAL", saldoCurso: 333, proximaCuota: null },
+      ],
+    } as unknown as Venta;
+    const conTutor: CobroCuotas = {
+      ...COBRO,
+      pagadores: [
+        { clienteId: 70, nombre: "Patricia Suárez", rol: "TUTOR", principal: true },
+        { clienteId: 30, nombre: "Camila", rol: "ALUMNO", principal: false },
+      ],
+      pagadorId: 70,
+    };
+    const r = ventaConCuotas(venta, conTutor);
+    expect(r.detalles?.map((d) => d.cuotaId)).toEqual([undefined, 11, 12]);
+    expect(r.pagadorCuotas).toEqual({ nombre: "Patricia Suárez", rol: "TUTOR" });
+    expect(ventaConCuotas(venta, { ...conTutor, pagadorId: 30 }).pagadorCuotas).toBeNull();
+    expect(ventaConCuotas(venta, null)).toBe(venta);
   });
 });

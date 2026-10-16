@@ -1149,6 +1149,12 @@ export interface Venta {
     proximaCuota: { vence: string; monto: number } | null;
   }[];
   /**
+   * Sólo en el equipo, recién cobrada: quién pagó las cuotas cuando no fue el
+   * alumno (su tutor). El backend no lo devuelve; lo pone el POS, que sabe a
+   * quién eligió, para que el recibo lo diga.
+   */
+  pagadorCuotas?: { nombre: string; rol: "ALUMNO" | "TUTOR" } | null;
+  /**
    * Plan Emprendedor: qué consumió esta venta (cupo o créditos) y el contador
    * como quedó. Sólo en un negocio con cupo; un reintento idempotente tampoco
    * lo trae.

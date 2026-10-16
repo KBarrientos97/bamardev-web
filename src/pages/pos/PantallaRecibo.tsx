@@ -164,7 +164,12 @@ export default function PantallaRecibo({
 
           <div className="mt-2 border-t border-dashed border-borde pt-1">
             {detalles.map((d, i) => (
-              <LineaTicket key={i} linea={d} mostrarConsumo={mostrarConsumo} />
+              <LineaTicket
+                key={i}
+                linea={d}
+                mostrarConsumo={mostrarConsumo}
+                cuota={d.cuotaId != null ? venta.cuotas?.find((q) => q.cuotaId === d.cuotaId)?.concepto : undefined}
+              />
             ))}
           </div>
 
@@ -260,7 +265,9 @@ export default function PantallaRecibo({
           {/* Educación (E10): cada cuota cobrada con lo que queda y, al pie, el
               saldo del curso después de este pago y la próxima cuota. Sólo si
               la venta cobró cuotas: el ticket de siempre no cambia. */}
-          {venta.cuotas && venta.cuotas.length > 0 && <CuotasRecibo cuotas={venta.cuotas} />}
+          {venta.cuotas && venta.cuotas.length > 0 && (
+            <CuotasRecibo cuotas={venta.cuotas} pagador={venta.pagadorCuotas ?? null} />
+          )}
 
           {venta.credito && (
             <div className="mt-2 border-t border-dashed border-borde pt-2 text-sm">
@@ -352,15 +359,18 @@ function FilaDato({ etiqueta, valor }: { etiqueta: string; valor: string }) {
 function LineaTicket({
   linea,
   mostrarConsumo,
+  cuota,
 }: {
   linea: NonNullable<Venta["detalles"]>[number];
   mostrarConsumo: boolean;
+  /** Educación: el concepto de la cuota que cobró ("Cuota 2/2"), delante del producto. */
+  cuota?: string;
 }) {
   const enMesa = linea.consumo === "MESA";
   return (
     <div className="py-1 text-[13px]">
       <div className="flex items-start gap-2">
-        <p className="min-w-0 flex-1 font-semibold text-texto">{linea.producto}</p>
+        <p className="min-w-0 flex-1 font-semibold text-texto">{cuota ? `${cuota} · ${linea.producto}` : linea.producto}</p>
         {mostrarConsumo && (
           <span
             className={`shrink-0 font-bold ${enMesa ? "text-primary-700" : "text-texto-3"}`}
@@ -401,11 +411,19 @@ function LineaTicket({
  * POS cobra las de un alumno por vez): el saldo del curso y la próxima cuota
  * son los de la última, que es como quedó la inscripción después de la venta.
  */
-function CuotasRecibo({ cuotas }: { cuotas: NonNullable<Venta["cuotas"]> }) {
+function CuotasRecibo({
+  cuotas,
+  pagador,
+}: {
+  cuotas: NonNullable<Venta["cuotas"]>;
+  /** Quién pagó, cuando no fue el alumno. */
+  pagador: Venta["pagadorCuotas"] | null;
+}) {
   const ultima = cuotas[cuotas.length - 1];
   return (
     <div className="mt-2 border-t border-dashed border-borde pt-2 text-sm" aria-label="Cuotas">
       <p className="text-xs font-bold tracking-wide text-texto">CUOTAS · {cuotas[0].alumno.toUpperCase()}</p>
+      {pagador && <p className="text-xs text-texto-2">Pagó: {pagador.nombre} (tutor)</p>}
       <dl className="mt-1 space-y-1">
         {cuotas.map((q) => (
           <div key={q.cuotaId} className="text-texto-2">
