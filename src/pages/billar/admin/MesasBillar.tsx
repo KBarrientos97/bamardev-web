@@ -2,15 +2,17 @@ import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { AvisoOk, Cargando, ErrorMsg, useAviso } from "../../../components/ui";
 import { useCoincideMedia } from "../../../lib/useCoincideMedia";
+import { useSucursales } from "../../../lib/useSucursales";
 import { useAuth } from "../../../store/AuthContext";
-import { billar, leerBillar, useBillar } from "../store";
+import { billar, leerBillar, usarNegocio, useBillar } from "../store";
 import type { TipoMesa } from "../tipos";
-import { BotonB, Nota } from "../ui";
+import { BotonB, Nota, SelectorSucursal } from "../ui";
 import { borradorTarifas, erroresTipo, tipoDeBorrador, type BorradorTarifas } from "./borrador";
 import { FormMesa } from "./FormMesa";
 import { Pestanas, type Pestana } from "./piezas";
 import { TabMesas } from "./TabMesas";
 import { TabTarifas } from "./TabTarifas";
+import { TarjetaPantallaSalon } from "./TarjetaPantallaSalon";
 
 /**
  * Mesas de billar (§7.14), del administrador: las mesas y sus tarifas,
@@ -21,6 +23,10 @@ import { TabTarifas } from "./TabTarifas";
  */
 export default function MesasBillar() {
   const e = useBillar();
+  const { negocio } = useAuth();
+  // Quien sólo administra no sondea el tablero: sin esto no se enteraba de la
+  // sucursal que este equipo tenía elegida.
+  usarNegocio(negocio?.alias);
   useEffect(() => {
     void billar.cargarAdmin();
   }, []);
@@ -91,7 +97,13 @@ function MesasBillarCargadas() {
     if (hayErrores || guardando) return;
     const tipos: Record<string, TipoMesa> = {};
     for (const t of borrador.tipos) tipos[t.id] = tipoDeBorrador(t)!;
-    const ajustes = { avisos: borrador.avisos, sonido: borrador.sonido, voz: borrador.voz, pin: borrador.pin };
+    const ajustes = {
+      avisos: borrador.avisos,
+      sonido: borrador.sonido,
+      voz: borrador.voz,
+      pin: borrador.pin,
+      horaCorteMin: borrador.horaCorteMin,
+    };
     setGuardando(true);
     setErrorTarifas("");
     const error = await billar.guardarTarifas(tipos, ajustes);
@@ -106,7 +118,15 @@ function MesasBillarCargadas() {
     setAviso("Cambios guardados. Las mesas en juego siguen con la tarifa con que se abrieron.");
   };
 
-  const sucursal = usuario?.sucursal ?? "Principal";
+  // Las mesas son de un local; las tarifas, del negocio entero. El dueño con
+  // varios locales elige de cuál son las mesas que ve y crea (la misma
+  // elección que el tablero: si administra Norte, el tablero le muestra Norte).
+  // Sin elegir, la principal, que es lo que trae el backend.
+  const suc = useSucursales();
+  const elegida = billar.sucursalElegida() ?? suc.sugerida?.id ?? null;
+  const sucursal = suc.elegir
+    ? (suc.sucursales.find((s) => s.id === elegida)?.nombre ?? "")
+    : (usuario?.sucursal ?? "Principal");
   const panel =
     form !== null ? (
       <FormMesa
@@ -124,7 +144,21 @@ function MesasBillarCargadas() {
     <div className="flex h-full min-h-0 flex-col">
       <header className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-3 border-b border-borde bg-white px-4 py-3 sm:px-6">
         <div className="min-w-[12rem] flex-1">
-          <h1 className="text-xl font-bold leading-tight text-texto">Mesas de billar</h1>
+          <h1 className="flex items-center gap-2 text-xl font-bold leading-tight text-texto">
+            Mesas de billar
+            {suc.elegir && (
+              <SelectorSucursal
+                valor={elegida}
+                sucursales={suc.sucursales}
+                onElegir={(id) => {
+                  // El formulario abierto es de una mesa del local de antes.
+                  setForm(null);
+                  billar.elegirSucursal(id);
+                  void billar.cargarAdmin();
+                }}
+              />
+            )}
+          </h1>
           <p className="mt-0.5 text-[13px] text-texto-3">
             {e.admin.mesas.length} {e.admin.mesas.length === 1 ? "mesa" : "mesas"} en {sucursal}
           </p>
@@ -140,7 +174,16 @@ function MesasBillarCargadas() {
             <Pestanas valor={pestana} onCambiar={irA} sinGuardar={sinGuardar} />
             <AvisoOk>{aviso}</AvisoOk>
             {pestana === "mesas" ? (
-              <TabMesas e={e} editando={typeof form === "number" ? form : null} onEditar={abrirForm} />
+              <>
+                <TabMesas e={e} editando={typeof form === "number" ? form : null} onEditar={abrirForm} />
+                {/* Acá y no en Tarifas: la TV muestra las mesas de ESTE local, y
+                    generar el enlace corre al momento; en Tarifas quedaba
+                    mezclado con lo que espera "Guardar cambios". */}
+                <TarjetaPantallaSalon
+                  sucursalId={suc.elegir ? elegida : (usuario?.sucursalId ?? null)}
+                  sucursal={suc.elegir ? sucursal : undefined}
+                />
+              </>
             ) : (
               <TabTarifas b={borrador} errores={errores} mostrarErrores={intento} onCambiar={setBorrador} />
             )}

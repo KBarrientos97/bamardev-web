@@ -1,5 +1,6 @@
 import { parsearMonto } from "../../../lib/dinero";
 import { fmtMoney } from "../../../lib/format";
+import { CORTE_JORNADA_DEFECTO } from "../../../lib/jornada";
 import { precioHoras, round2 } from "../calculo";
 import { errorDeNumero, type DatosMesa, type EstadoBillar } from "../store";
 import type { AjustesBillar, Mesa, Paquete, PinesBillar, Promo, TipoMesa } from "../tipos";
@@ -122,6 +123,8 @@ export interface BorradorTarifas {
   sonido: boolean;
   voz: boolean;
   pin: PinesBillar;
+  /** A qué hora termina la jornada, en minutos (ver `TarjetaJornada`). */
+  horaCorteMin: number;
 }
 
 const texto = (n: number) => String(n).replace(".", ",");
@@ -144,6 +147,8 @@ export function borradorTarifas(tipos: Record<string, TipoMesa>, ajustes: Ajuste
     sonido: ajustes.sonido,
     voz: ajustes.voz,
     pin: { ...ajustes.pin },
+    // Un backend anterior no lo manda: el de la columna, las 6:00.
+    horaCorteMin: ajustes.horaCorteMin ?? CORTE_JORNADA_DEFECTO,
   };
 }
 

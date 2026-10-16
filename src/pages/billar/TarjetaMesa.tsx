@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "../../components/Icon";
+import { Modal } from "../../components/ui";
 import { fmtMoney } from "../../lib/format";
+import { useCoincideMedia } from "../../lib/useCoincideMedia";
 import { useAccionesMesa, type AccionMesa } from "./acciones";
 import { fmtCobrado, fmtHace, fmtTarifaCorta, horaDe } from "./calculo";
 import { ESTADOS } from "./estilos";
+import { altoMenu, ubicarMenu, type Ubicacion } from "./TarjetaMesa.datos";
 import { BotonB, EstadoBadge, Fila } from "./ui";
 import type { VistaMesa } from "./vista";
 import { cronoDe } from "./vista";
@@ -187,23 +190,48 @@ function etiquetaCorta(a: AccionMesa): string {
   return a.clave === "consumo" ? "Consumo" : a.etiqueta;
 }
 
-/** El menú "…" con todo lo que se puede hacer con la mesa. */
+/**
+ * El menú "…" con todo lo que se puede hacer con la mesa.
+ *
+ * En el celular es una hoja que sube desde abajo (el `Modal`, como la hoja de
+ * Filtros): un desplegable de 208 px no entra en una tarjeta de 160, y en la
+ * columna de la izquierda se cortaba contra el borde de la pantalla (QA del
+ * 13-oct, 375 px). En pantalla ancha sigue siendo un desplegable, que se abre
+ * para el lado donde haya lugar (`ubicarMenu`).
+ */
 export function MenuMesa({
   acciones,
   visible,
   nombre,
-  alineado = "derecha",
 }: {
   acciones: AccionMesa[];
   visible: boolean;
   nombre: string;
-  alineado?: "derecha" | "izquierda";
 }) {
   const [abierto, setAbierto] = useState(false);
+  const [ubicacion, setUbicacion] = useState<Ubicacion>({ horizontal: "derecha", vertical: "abajo" });
   const caja = useRef<HTMLDivElement>(null);
+  const boton = useRef<HTMLButtonElement>(null);
+  const celular = useCoincideMedia("(max-width: 639px)");
+  const enHoja = abierto && celular;
+
+  const alternar = () => {
+    if (!abierto && boton.current) {
+      const r = boton.current.getBoundingClientRect();
+      setUbicacion(
+        ubicarMenu(r, { ancho: window.innerWidth, alto: window.innerHeight }, { ancho: 208, alto: altoMenu(acciones.length) }),
+      );
+    }
+    setAbierto((x) => !x);
+  };
+  const hacer = (a: AccionMesa) => {
+    setAbierto(false);
+    a.hacer();
+  };
 
   useEffect(() => {
-    if (!abierto) return;
+    // La hoja se cierra sola (afuera, Escape, arrastrar): esto es del desplegable.
+    if (!abierto || celular) return;
     const fuera = (e: MouseEvent) => {
       if (!caja.current?.contains(e.target as Node)) setAbierto(false);
     };
@@ -219,38 +247,55 @@ export function MenuMesa({
       document.removeEventListener("mousedown", fuera);
       document.removeEventListener("keydown", tecla, true);
     };
-  }, [abierto]);
+  }, [abierto, celular]);
 
   return (
+    // El clic no sube a la tarjeta (que abriría el panel), tampoco desde la
+    // hoja: aunque se dibuje encima de todo, en React cuelga de acá.
     <div ref={caja} className="relative -mr-1 -mt-1 shrink-0" onClick={(e) => e.stopPropagation()}>
       <button
+        ref={boton}
         type="button"
         aria-label={`Más acciones de ${nombre}`}
-        aria-haspopup="menu"
+        aria-haspopup={celular ? "dialog" : "menu"}
         aria-expanded={abierto}
-        onClick={() => setAbierto((x) => !x)}
+        onClick={alternar}
         className={`flex h-9 w-9 items-center justify-center rounded-full text-texto-3 transition hover:bg-black/5 focus-visible:opacity-100 ${
           visible || abierto ? "opacity-100" : "opacity-100 lg:opacity-0 lg:group-hover:opacity-100"
         }`}
       >
         <Icon name="masH" size={20} />
       </button>
-      {abierto && (
+      {enHoja && (
+        <Modal abierto titulo={nombre} onClose={() => setAbierto(false)} ancho="max-w-md">
+          <div className="-mx-5 -my-4 py-1">
+            {acciones.map((a) => (
+              <button
+                key={a.clave}
+                type="button"
+                onClick={() => hacer(a)}
+                className="flex min-h-12 w-full items-center gap-3 px-5 text-left text-[15px] font-semibold text-texto-2 active:bg-muted"
+              >
+                <Icon name={a.icono} size={18} />
+                {a.etiqueta}
+              </button>
+            ))}
+          </div>
+        </Modal>
+      )}
+      {abierto && !celular && (
         <div
           role="menu"
-          className={`absolute top-10 z-30 w-52 overflow-hidden rounded-xl border border-borde bg-white py-1 shadow-xl ${
-            alineado === "derecha" ? "right-0" : "left-0"
-          }`}
+          className={`absolute z-30 w-52 overflow-hidden rounded-xl border border-borde bg-white py-1 shadow-xl ${
+            ubicacion.horizontal === "derecha" ? "right-0" : "left-0"
+          } ${ubicacion.vertical === "abajo" ? "top-10" : "bottom-10"}`}
         >
           {acciones.map((a) => (
             <button
               key={a.clave}
               type="button"
               role="menuitem"
-              onClick={() => {
-                setAbierto(false);
-                a.hacer();
-              }}
+              onClick={() => hacer(a)}
               className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left text-[13px] font-semibold text-texto-2 hover:bg-muted"
             >
               <Icon name={a.icono} size={16} />

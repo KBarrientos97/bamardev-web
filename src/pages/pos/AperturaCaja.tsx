@@ -8,17 +8,30 @@ import { api } from "../../lib/api";
 import { fmtMoney } from "../../lib/format";
 import { useAuth } from "../../store/AuthContext";
 import { useSucursales } from "../../lib/useSucursales";
+import type { Caja } from "../../types";
 
 /** Montos típicos de fondo de caja: ahorran teclear lo de siempre. */
 const SUGERENCIAS = [50, 100, 200, 500];
 
-export default function AperturaCaja({ onAbierta }: { onAbierta: () => void }) {
+export default function AperturaCaja({
+  onAbierta,
+  sucursalInicial = null,
+}: {
+  /** Recibe la caja recién abierta (con su sucursal). */
+  onAbierta: (caja: Caja) => void;
+  /**
+   * La sucursal que se propone, si la pantalla de atrás ya mira una: el
+   * tablero del billar con el local que eligió el dueño (13-oct). Sin esto,
+   * la principal, como siempre.
+   */
+  sucursalInicial?: number | null;
+}) {
   const { usuario } = useAuth();
   const [monto, setMonto] = useState("");
   const [descripcion, setDescripcion] = useState("");
   const [error, setError] = useState("");
   const [enviando, setEnviando] = useState(false);
-  const [almacenId, setAlmacenId] = useState<number | null>(null);
+  const [almacenId, setAlmacenId] = useState<number | null>(sucursalInicial);
 
   /**
    * En qué sucursal se abre la caja.
@@ -40,7 +53,10 @@ export default function AperturaCaja({ onAbierta }: { onAbierta: () => void }) {
   // concreto. Por eso se usa `sugerida` como valor inicial.
   const suc = useSucursales();
   const { sucursales, elegir: elegirSucursal } = suc;
-  const elegida = almacenId ?? suc.sugerida?.id ?? null;
+  // La propuesta de afuera vale si es una de la lista: una sucursal que se
+  // desactivó después de elegirla no se ofrece (el desplegable no la tiene).
+  const propia = almacenId != null && sucursales.some((a) => a.id === almacenId) ? almacenId : null;
+  const elegida = propia ?? suc.sugerida?.id ?? null;
 
   const montoNum = parsearMontoO(monto, NaN);
   const valido = monto !== "" && Number.isFinite(montoNum) && montoNum >= 0;
@@ -50,12 +66,12 @@ export default function AperturaCaja({ onAbierta }: { onAbierta: () => void }) {
     setError("");
     setEnviando(true);
     try {
-      await api.abrirCaja({
+      const caja = await api.abrirCaja({
         montoApertura: montoNum,
         ...(descripcion.trim() ? { descripcion: descripcion.trim() } : {}),
         ...(elegirSucursal && elegida != null ? { almacenId: elegida } : {}),
       });
-      onAbierta();
+      onAbierta(caja);
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo abrir la caja");
     } finally {

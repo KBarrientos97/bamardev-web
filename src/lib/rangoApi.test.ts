@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { rangoParaApi } from "./rangoApi";
+import { rangoParaApi, sinJornada } from "./rangoApi";
 
 /**
  * Los tests no suponen una zona horaria: comparan contra la medianoche local
@@ -41,5 +41,30 @@ describe("el rango que viaja a los reportes", () => {
     expect(r.desde).toBe("2026-09-19T00:00:00-04:00");
     expect(r.hasta).toBeUndefined();
     expect(r.sucursalId).toBe(3);
+  });
+});
+
+describe("el rango de un billar va por jornadas", () => {
+  it("cada día va de la hora del corte a la misma hora del día siguiente", () => {
+    // Un billar cierra a las 2 a. m.: el 13 va del 13 a las 6:00 al 14 a las 6:00.
+    const r = rangoParaApi({ desde: "2026-10-13", hasta: "2026-10-13", corteMin: 360, sucursalId: 2 });
+    expect(new Date(r.desde!).getTime()).toBe(new Date(2026, 9, 13, 6, 0).getTime());
+    expect(new Date(r.hasta!).getTime()).toBe(new Date(2026, 9, 14, 6, 0).getTime());
+    expect(r.desde).toMatch(/^2026-10-13T06:00:00[+-]\d{2}:\d{2}$/);
+    // El corte no viaja: el backend tiene el suyo.
+    expect(r).not.toHaveProperty("corteMin");
+    expect(r.sucursalId).toBe(2);
+  });
+
+  it("con corte 0 es exactamente el rango de siempre", () => {
+    const r = { desde: "2026-09-19", hasta: "2026-09-25" };
+    expect(rangoParaApi({ ...r, corteMin: 0 })).toEqual(rangoParaApi(r));
+  });
+
+  it("los gastos van por día del calendario: sinJornada le saca el corte", () => {
+    // Un gasto lleva fecha y no hora: el del 1 de octubre es de octubre.
+    const r = rangoParaApi(sinJornada({ desde: "2026-10-01", hasta: "2026-10-31", corteMin: 360 }));
+    expect(new Date(r.desde!).getTime()).toBe(new Date(2026, 9, 1).getTime());
+    expect(new Date(r.hasta!).getTime()).toBe(new Date(2026, 10, 1).getTime());
   });
 });

@@ -16,11 +16,14 @@ const sesion = vi.hoisted(() => ({
   rubro: "RESTAURANTE" as string | undefined,
   cupo: null as CupoEstado | null,
   refrescarCupo: vi.fn(async () => {}),
+  /** Sin features: la web falla abierto (`tieneFeature`). */
+  features: undefined as string[] | undefined,
 }));
 
 vi.mock("../../store/AuthContext", () => ({
   useAuth: () => ({
     rubro: sesion.rubro,
+    negocio: { features: sesion.features },
     // Quien autoriza con PIN se autoriza a sí mismo (no le pide usuario).
     usuario: { rol: "ADMIN", permisos: ["ventas.anular", "autorizar.pin"] },
     puede: () => false,
@@ -87,6 +90,7 @@ const venta = {
 beforeEach(() => {
   vi.clearAllMocks();
   sesion.cupo = null;
+  sesion.features = undefined;
   vi.mocked(api.getVentas).mockResolvedValue([venta]);
   vi.mocked(api.getVenta).mockResolvedValue(venta);
   vi.mocked(api.getPedidosPendientes).mockResolvedValue([]);
@@ -317,5 +321,33 @@ describe("Plan Emprendedor: anular devuelve el lugar del día (D10)", () => {
   it("sin cupo (Básico, Profesional) no pide nada de más", async () => {
     await anularLaVenta();
     expect(sesion.refrescarCupo).not.toHaveBeenCalled();
+  });
+});
+
+describe("los pedidos por entregar según el plan", () => {
+  function abrir() {
+    render(
+      <MemoryRouter>
+        <PantallaHistorial caja={{ id: 1 } as Caja} onAtras={() => {}} onCierre={() => {}} onVerComprobante={() => {}} />
+      </MemoryRouter>,
+    );
+  }
+
+  it("un restaurante Básico (recoger sin delivery) ve sus pedidos para recoger", async () => {
+    // 14-oct: sólo se pedían con `delivery`. El pedido para recoger de otro
+    // turno no aparecía y quedaba sin cobrar.
+    sesion.features = ["pos", "caja", "recoger"];
+    const pedido = { ...venta, id: 9, comprobante: "T-0009", tipoPedido: "RECOGER", estadoEntrega: "PENDIENTE", clienteNombre: "Ana" } as Venta;
+    vi.mocked(api.getPedidosPendientes).mockResolvedValue([pedido]);
+    abrir();
+    expect(await screen.findByText("Ana")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Cobrar y entregar" })).toBeInTheDocument();
+  });
+
+  it("sin recoger ni delivery (un salón de belleza) no se piden: sería un 403 (QA M-11)", async () => {
+    sesion.features = ["pos", "caja", "agenda"];
+    abrir();
+    await screen.findByRole("button", { name: /T-0007/ });
+    expect(api.getPedidosPendientes).not.toHaveBeenCalled();
   });
 });

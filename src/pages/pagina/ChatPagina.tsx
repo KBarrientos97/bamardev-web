@@ -3,6 +3,7 @@ import Captcha from "../../publico/Captcha";
 import { siteKeyTurnstile } from "../../lib/turnstile";
 import { enviarMensaje, ErrorChat, inicioChat, urlSegura, type BloqueChat } from "../../lib/chat/apiChat";
 import { dejarMensaje } from "../../lib/chat/apiAsistente";
+import { geometriaChat, type GeometriaChat } from "../../lib/chat/geometria";
 
 /**
  * El asistente de la página del negocio (IDEAS/3b-CHATBOT-SIN-IA): una
@@ -37,6 +38,29 @@ function leerSesion(subdominio: string): string | null {
   }
 }
 
+/**
+ * El panel sigue al viewport VISUAL: con el teclado de iPhone abierto el de
+ * layout no cambia, y un panel de alto fijo quedaba bajo la barra de estado y
+ * tapado por el teclado (ver `lib/chat/geometria`).
+ */
+function useGeometriaChat(activo: boolean): GeometriaChat {
+  const [g, setG] = useState<GeometriaChat>(() => geometriaChat(null));
+  useEffect(() => {
+    const vv = typeof window !== "undefined" ? window.visualViewport : null;
+    if (!activo || !vv) return;
+    const medir = () =>
+      setG(geometriaChat({ alturaLayout: window.innerHeight, alturaVisible: vv.height, desplazamiento: vv.offsetTop }));
+    medir();
+    vv.addEventListener("resize", medir);
+    vv.addEventListener("scroll", medir);
+    return () => {
+      vv.removeEventListener("resize", medir);
+      vv.removeEventListener("scroll", medir);
+    };
+  }, [activo]);
+  return g;
+}
+
 function guardarSesion(subdominio: string, id: string | null) {
   try {
     if (id) sessionStorage.setItem(claveSesion(subdominio), id);
@@ -69,6 +93,7 @@ export default function ChatPagina({
   const campo = useRef<HTMLInputElement>(null);
   const burbuja = useRef<HTMLButtonElement>(null);
   const yaAbrio = useRef(false);
+  const geometria = useGeometriaChat(abierto);
 
   const siteKey = siteKeyTurnstile();
   const pideCaptcha = !!siteKey && !sesionId;
@@ -92,7 +117,10 @@ export default function ChatPagina({
   useEffect(() => {
     if (abierto) {
       yaAbrio.current = true;
-      campo.current?.focus();
+      // En un celular, enfocar al abrir levanta el teclado y tapa el saludo
+      // antes de que se lea; ahí el foco lo pone el usuario al tocar el campo.
+      const tactil = typeof window.matchMedia === "function" && window.matchMedia("(pointer: coarse)").matches;
+      if (!tactil) campo.current?.focus();
     } else if (yaAbrio.current) {
       burbuja.current?.focus();
     }
@@ -213,10 +241,11 @@ export default function ChatPagina({
       style={{
         position: "fixed",
         right: 16,
-        bottom: 16,
+        bottom: geometria.abajo,
         zIndex: 50,
         width: "min(380px, calc(100vw - 32px))",
-        height: "min(580px, calc(100dvh - 32px))",
+        height: `min(${geometria.altoMax}px, calc(100dvh - 32px))`,
+        maxWidth: "calc(100vw - 32px)",
         display: "flex",
         flexDirection: "column",
         background: "#ffffff",
@@ -276,7 +305,7 @@ export default function ChatPagina({
             maxLength={MAX_LARGO}
             placeholder="Escribí tu consulta"
             aria-label="Tu consulta"
-            style={{ flex: 1, minWidth: 0, border: "1px solid #D1D5DB", borderRadius: 999, padding: "10px 14px", fontSize: 14, outline: "none" }}
+            style={{ flex: 1, minWidth: 0, border: "1px solid #D1D5DB", borderRadius: 999, padding: "10px 14px", fontSize: 16, outline: "none" }}
           />
           <button
             type="submit"
@@ -474,7 +503,7 @@ function FormularioMensaje({ subdominio, color, alEnviar }: { subdominio: string
 
   if (listo) return <p style={{ margin: 0, color: "#047857" }}>Listo, mensaje enviado.</p>;
 
-  const campoEstilo = { border: "1px solid #D1D5DB", borderRadius: 10, padding: "8px 10px", fontSize: 14, width: "100%" } as const;
+  const campoEstilo = { border: "1px solid #D1D5DB", borderRadius: 10, padding: "8px 10px", fontSize: 16, width: "100%" } as const;
   const valido = nombre.trim().length >= 2 && telefono.replace(/\D/g, "").length >= 7 && consulta.trim().length >= 2;
 
   async function enviar(e: FormEvent) {

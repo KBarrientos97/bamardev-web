@@ -537,6 +537,20 @@ describe("billar: un extra estricto", () => {
     expect(rutaInicial(ctxDe("CAJERO", "RESTAURANTE", PLAN_FULL))).toBe("/pos");
     expect(rutaInicial(ctxDe("ADMIN", "RESTAURANTE", PLAN_FULL))).toBe("/inventario");
   });
+
+  it("quien administra el billar sin atenderlo entra a Mesas de billar; quien sólo atiende no la ve", () => {
+    // 13-oct: el menú y la ruta ya lo dejaban pasar, pero la pantalla armaba
+    // las tarifas con el tablero (que pide atender) y le daba error. Lo que
+    // pide ahora está en store.test.ts.
+    const administra = ctxCon(["billar.admin"], "BILLAR", conBillar);
+    expect(puedeVer(administra, "mesas_billar")).toBe(true);
+    expect(puedeVer(administra, "billar")).toBe(false);
+    expect(rutaInicial(administra)).toBe("/mesas-billar");
+
+    const atiende = ctxCon(["billar.operar", "ventas.vender"], "BILLAR", conBillar);
+    expect(puedeVer(atiende, "mesas_billar")).toBe(false);
+    expect(rutaInicial(atiende)).toBe("/billar");
+  });
 });
 
 describe("la entrada a Reportes (13-oct-2026: todos los reportes en un lugar)", () => {

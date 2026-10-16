@@ -110,4 +110,20 @@ describe("lo público no baja la app", () => {
     // Ni el editor de la página, que vive al lado.
     expect(modulos).not.toContain("/src/pages/pagina/MiPagina.tsx");
   });
+
+  it("la TV pública del billar no arrastra la app, ni la API con sesión, ni el store del tablero", () => {
+    // La TV dibuja con las piezas de la TV con sesión (SalonTv), que viven en
+    // pages/billar: ésas sí, y sólo ésas. Si alguien le suma un import de
+    // store.ts, la TV se baja la API que cierra la sesión ante un 401 y el
+    // tablero entero.
+    const modulos = cierre("/src/publico/tv/TvBillar.tsx");
+    for (const m of DE_LA_APP) expect(modulos, m).not.toContain(m);
+    expect(modulos).not.toContain("/src/lib/api.ts");
+    expect([...modulos].filter(esPantallaDeLaApp).sort()).toEqual([
+      "/src/pages/billar/SalonTv.datos.ts",
+      "/src/pages/billar/SalonTv.tsx",
+      "/src/pages/billar/calculo.ts",
+      "/src/pages/billar/reloj.ts",
+    ]);
+  });
 });

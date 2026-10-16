@@ -146,9 +146,17 @@ const enviar = <T>(ruta: string, cuerpo: object = {}, method = "POST") =>
 
 const sesion = (id: string) => `/billar/sesiones/${id}`;
 
+/**
+ * `?sucursalId=` sólo si se eligió una. Sin elegir, el backend decide (la del
+ * cajero; al dueño, la de su caja o la principal): un negocio de un solo local
+ * pide exactamente lo mismo que antes.
+ */
+const deSucursal = (sucursalId?: number | null) => (sucursalId != null ? `?sucursalId=${sucursalId}` : "");
+
 export const apiBillar = {
-  tablero: () => request<TableroApi>("/billar/tablero"),
-  productos: () => request<ProductoBillar[]>("/billar/productos"),
+  tablero: (sucursalId?: number | null) => request<TableroApi>(`/billar/tablero${deSucursal(sucursalId)}`),
+  productos: (sucursalId?: number | null) =>
+    request<ProductoBillar[]>(`/billar/productos${deSucursal(sucursalId)}`),
   ventas: () => request<VentaApi[]>("/billar/ventas"),
   mesa: (idInterno: number) => request<MesaApi>(`/billar/mesas/${idInterno}`),
   reporte: (desde: string, hasta: string, sucursalId?: number) =>
@@ -175,21 +183,25 @@ export const apiBillar = {
     enviar<MesaApi>(`/billar/mesas/${idInterno}/fuera`, { motivo }),
   volverAServicio: (idInterno: number) => enviar<MesaApi>(`/billar/mesas/${idInterno}/servicio`),
 
-  consumos: (sesionId: string, items: { productoId: number; cantidad: number }[]) =>
-    enviar<MesaApi>(`${sesion(sesionId)}/consumos`, { items }),
+  // `clienteRequestId` en las cuatro acciones que mueven plata o la cuenta: con
+  // wifi malo el reintento de la misma acción no cobra ni carga dos veces
+  // (ver reintentos.ts).
+  consumos: (sesionId: string, items: { productoId: number; cantidad: number }[], clienteRequestId: string) =>
+    enviar<MesaApi>(`${sesion(sesionId)}/consumos`, { items, clienteRequestId }),
   anularConsumo: (sesionId: string, consumoId: string, motivo: string, cred: Credenciales) =>
     enviar<MesaApi>(`${sesion(sesionId)}/consumos/${consumoId}/anular`, { motivo, ...cred }),
-  pagar: (sesionId: string, pagos: PagoInput[]) => enviar<MesaApi>(`${sesion(sesionId)}/pagos`, { pagos }),
+  pagar: (sesionId: string, pagos: PagoInput[], clienteRequestId: string) =>
+    enviar<MesaApi>(`${sesion(sesionId)}/pagos`, { pagos, clienteRequestId }),
   pausar: (sesionId: string, motivo: string) => enviar<MesaApi>(`${sesion(sesionId)}/pausar`, { motivo }),
   reanudar: (sesionId: string) => enviar<MesaApi>(`${sesion(sesionId)}/reanudar`),
-  extender: (sesionId: string, horas: number, pagos?: PagoInput[]) =>
-    enviar<MesaApi>(`${sesion(sesionId)}/extender`, { horas, ...(pagos ? { pagos } : {}) }),
+  extender: (sesionId: string, horas: number, pagos: PagoInput[] | undefined, clienteRequestId: string) =>
+    enviar<MesaApi>(`${sesion(sesionId)}/extender`, { horas, ...(pagos ? { pagos } : {}), clienteRequestId }),
   cambiar: (sesionId: string, destinoIdInterno: number) =>
     enviar<MesaApi>(`${sesion(sesionId)}/cambiar`, { mesaId: destinoIdInterno }),
   editarInicio: (sesionId: string, inicio: number, motivo: string, cred: Credenciales) =>
     enviar<MesaApi>(`${sesion(sesionId)}/inicio`, { inicio: new Date(inicio).toISOString(), motivo, ...cred }),
-  anular: (sesionId: string, motivo: string, cred: Credenciales) =>
-    enviar<{ mesa: MesaApi; devolver: number }>(`${sesion(sesionId)}/anular`, { motivo, ...cred }),
+  anular: (sesionId: string, motivo: string, cred: Credenciales, clienteRequestId: string) =>
+    enviar<{ mesa: MesaApi; devolver: number }>(`${sesion(sesionId)}/anular`, { motivo, ...cred, clienteRequestId }),
   cerrar: (
     sesionId: string,
     cuerpo: {
@@ -207,7 +219,12 @@ export const apiBillar = {
     }),
 
   // ── Administración (Mesas de billar) ──
-  adminMesas: () => request<MesaAdminApi[]>("/billar/admin/mesas"),
+  adminMesas: (sucursalId?: number | null) => request<MesaAdminApi[]>(`/billar/admin/mesas${deSucursal(sucursalId)}`),
+  // Las tarifas y los ajustes por su lado y no del tablero: el tablero pide
+  // atender el billar (`billar.operar`) y quien sólo lo administra se quedaba
+  // afuera de Mesas de billar (13-oct).
+  adminTipos: () => request<TipoMesa[]>("/billar/admin/tipos"),
+  adminAjustes: () => request<AjustesApi>("/billar/admin/ajustes"),
   crearMesa: (cuerpo: DatosMesaApi) => enviar<{ id: number }>("/billar/admin/mesas", cuerpo),
   editarMesa: (idInterno: number, cuerpo: DatosMesaApi) =>
     enviar<{ id: number }>(`/billar/admin/mesas/${idInterno}`, cuerpo, "PATCH"),
@@ -219,7 +236,11 @@ export const apiBillar = {
     voz: boolean;
     pinAnularConsumo: boolean;
     pinAnularMesa: boolean;
+    /** A qué hora termina la jornada (minutos, 0 a 720). Sin él, el backend no lo toca. */
+    horaCorteMin?: number;
   }) => enviar<AjustesApi>("/billar/admin/ajustes", cuerpo, "PUT"),
+  /** La llave de la TV del salón que está andando (null si nunca se generó). */
+  llaveSalon: () => request<{ token: string | null }>("/billar/admin/pantalla-salon"),
   nuevaLlaveSalon: () => enviar<{ token: string }>("/billar/admin/pantalla-salon"),
 };
 
@@ -230,6 +251,8 @@ export interface DatosMesaApi {
   tarifaPropia?: number | null;
   estado: "activa" | "fuera" | "inactiva";
   motivo?: string;
+  /** Sólo al crear, y sólo la elige el usuario de organización (el backend fuerza la del cajero). */
+  sucursalId?: number;
 }
 
 export interface TipoMesaApi {

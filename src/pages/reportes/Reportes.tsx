@@ -3,10 +3,14 @@ import { Link, Navigate, Route, Routes, useLocation, useNavigate } from "react-r
 import { FILA_DESLIZABLE } from "../../components/filtros";
 import { correrDia } from "../../lib/topeReportes";
 import { Icon } from "../../components/Icon";
-import { Boton, Cargando, Input, Modal } from "../../components/ui";
+import { Boton, Cargando, ErrorMsg, Input, Modal } from "../../components/ui";
+import { horaDeCorte } from "../../lib/jornada";
+import { esBillar } from "../../lib/rubro";
+import { useApi } from "../../lib/useApi";
 import { useSucursales } from "../../lib/useSucursales";
 import { useAuth } from "../../store/AuthContext";
 import type { RangoReporte } from "../../types";
+import { apiReportes } from "./api";
 import { gruposVisibles, type FichaReporte, type GrupoVisible } from "./catalogo";
 import { bajarXlsx, ContextoReporte, type DatosReporte, type Exportacion } from "./contexto";
 import {
@@ -18,6 +22,7 @@ import {
   NOMBRE_PRESET,
   periodoDe,
   rangoElegido,
+  textoJornada,
   textoRango,
   type Periodo,
   type Preset,
@@ -44,10 +49,39 @@ const EnviarResumen = lazy(() => import("./EnviarResumen"));
  * Por eso entra también quien no tiene el permiso general de reportes pero sí
  * alguno suelto (la recepción con los de la agenda): ve sólo sus grupos, sin
  * el Resumen ni "Enviar resumen", que leen las ventas de todo el negocio.
+ *
+ * En un billar el día es la JORNADA (`lib/jornada.ts`, como el "closeoutHour"
+ * de Toast): cierra a las 2 a. m., y "Hoy" a la 1:30 es la noche que corre.
+ * La hora del corte la decide el backend y se trae ANTES de armar el período:
+ * con el período armado por el calendario y corregido después, cada reporte
+ * se pediría dos veces y "Hoy" parpadearía vacío. Los demás rubros no la
+ * piden (corte 0, exactamente como antes).
  */
 export default function Reportes() {
+  const { rubro, puede } = useAuth();
+  // Fuera del billar ni se pide: la pantalla es exactamente la de antes.
+  return esBillar(rubro) && puede("reportes") ? <ReportesPorJornada /> : <PantallaReportes corteMin={0} />;
+}
+
+function ReportesPorJornada() {
+  const jornada = useApi(() => apiReportes.jornada(), []);
+  if (!jornada.datos) {
+    // Si no llega, no se adivina: con el calendario, la noche del billar se
+    // partiría en dos días sin que el dueño se entere.
+    return jornada.error ? (
+      <div className="p-6">
+        <ErrorMsg onReintentar={jornada.recargar}>{jornada.error}</ErrorMsg>
+      </div>
+    ) : (
+      <Cargando texto="Abriendo los reportes…" />
+    );
+  }
+  return <PantallaReportes corteMin={jornada.datos.corteMin} />;
+}
+
+function PantallaReportes({ corteMin }: { corteMin: number }) {
   const { rubro, negocio, usuario, puede, incluye } = useAuth();
-  const [periodo, setPeriodo] = usePeriodo();
+  const [periodo, setPeriodo] = usePeriodo(corteMin);
   const suc = useSucursales();
   const location = useLocation();
   const [exportacion, setExportacion] = useState<Exportacion | null>(null);
@@ -65,22 +99,25 @@ export default function Reportes() {
 
   const comparacion = useMemo(() => comparacionDe(periodo), [periodo]);
   const conSucursal = suc.elegir && suc.sucursalId != null ? { sucursalId: suc.sucursalId } : {};
+  // El corte va con el rango: `rangoParaApi` arma cada día de jornada. Sin
+  // corte (todo lo que no es billar) el rango es el de siempre, sin el campo.
+  const conCorte = corteMin > 0 ? { corteMin } : {};
   const rango: RangoReporte = useMemo(
-    () => ({ desde: periodo.desde, hasta: periodo.hasta, ...conSucursal }),
+    () => ({ desde: periodo.desde, hasta: periodo.hasta, ...conCorte, ...conSucursal }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [periodo.desde, periodo.hasta, suc.elegir, suc.sucursalId],
+    [periodo.desde, periodo.hasta, corteMin, suc.elegir, suc.sucursalId],
   );
   const rangoAnterior: RangoReporte = useMemo(
-    () => ({ desde: comparacion.desde, hasta: comparacion.hasta, ...conSucursal }),
+    () => ({ desde: comparacion.desde, hasta: comparacion.hasta, ...conCorte, ...conSucursal }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [comparacion.desde, comparacion.hasta, suc.elegir, suc.sucursalId],
+    [comparacion.desde, comparacion.hasta, corteMin, suc.elegir, suc.sucursalId],
   );
 
   const registrarExportacion = useCallback((e: Exportacion | null) => setExportacion(e), []);
   const veReporte = useCallback((idReporte: string) => fichas.some((f) => f.id === idReporte), [fichas]);
   const datos: DatosReporte = useMemo(
-    () => ({ periodo, comparacion, rango, rangoAnterior, sucursalNombre: suc.nombre, registrarExportacion, veReporte }),
-    [periodo, comparacion, rango, rangoAnterior, suc.nombre, registrarExportacion, veReporte],
+    () => ({ periodo, comparacion, rango, rangoAnterior, sucursalNombre: suc.nombre, corteMin, registrarExportacion, veReporte }),
+    [periodo, comparacion, rango, rangoAnterior, suc.nombre, corteMin, registrarExportacion, veReporte],
   );
 
   const contenido = useRef<HTMLDivElement>(null);
@@ -117,7 +154,7 @@ export default function Reportes() {
               )}
             </div>
           </header>
-          <BarraPeriodo periodo={periodo} onCambio={setPeriodo} contra={comparacion.contra} />
+          <BarraPeriodo periodo={periodo} onCambio={setPeriodo} contra={comparacion.contra} corteMin={corteMin} />
         </div>
 
         <div className="flex min-h-0 flex-1">
@@ -175,8 +212,10 @@ const CLAVE_PERIODO = "bamardev_reportes_periodo";
  * al día de hoy —"Semana" guardada ayer es la semana de hoy—; sólo el rango
  * elegido a mano queda con sus fechas. Arranca en el mes en curso: el dueño
  * piensa los números por mes (alquiler, sueldos y luz caen una vez al mes).
+ *
+ * Con `corteMin` (un billar) "hoy" es la jornada que corre (ver `periodoDe`).
  */
-function usePeriodo(): [Periodo, (p: Periodo) => void] {
+function usePeriodo(corteMin: number): [Periodo, (p: Periodo) => void] {
   const [periodo, setPeriodo] = useState<Periodo>(() => {
     try {
       const guardado = JSON.parse(sessionStorage.getItem(CLAVE_PERIODO) ?? "null") as Periodo | null;
@@ -186,12 +225,12 @@ function usePeriodo(): [Periodo, (p: Periodo) => void] {
         return rangoElegido(guardado.desde, guardado.hasta);
       }
       if (guardado?.preset && guardado.preset !== "rango" && guardado.preset in NOMBRE_PRESET) {
-        return periodoDe(guardado.preset as Exclude<Preset, "rango">);
+        return periodoDe(guardado.preset as Exclude<Preset, "rango">, new Date(), corteMin);
       }
     } catch {
       // Sin almacenamiento (ventana privada, bloqueado): arranca en el mes.
     }
-    return periodoDe("mes");
+    return periodoDe("mes", new Date(), corteMin);
   });
   const cambiar = useCallback((p: Periodo) => {
     setPeriodo(p);
@@ -206,9 +245,22 @@ function usePeriodo(): [Periodo, (p: Periodo) => void] {
 
 const CHIPS: Exclude<Preset, "rango" | "mesPasado" | "dias30">[] = ["hoy", "ayer", "semana", "mes", "dias90"];
 
-function BarraPeriodo({ periodo, onCambio, contra }: { periodo: Periodo; onCambio: (p: Periodo) => void; contra: string }) {
+function BarraPeriodo({
+  periodo,
+  onCambio,
+  contra,
+  corteMin,
+}: {
+  periodo: Periodo;
+  onCambio: (p: Periodo) => void;
+  contra: string;
+  corteMin: number;
+}) {
   const [eligiendo, setEligiendo] = useState(false);
   const otro = !(CHIPS as Preset[]).includes(periodo.preset);
+  // En un billar, qué horas mira de verdad el período: "13/10" a secas no
+  // dice si la 1 a. m. de esa noche está adentro.
+  const jornada = textoJornada(periodo, corteMin);
   const chip = (activo: boolean) =>
     `inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 py-1.5 text-[13px] font-semibold transition-colors ${
       activo ? "bg-primary-boton text-white" : "border border-borde bg-white text-texto-2 hover:bg-muted"
@@ -222,7 +274,7 @@ function BarraPeriodo({ periodo, onCambio, contra }: { periodo: Periodo; onCambi
           Período
         </span>
         {CHIPS.map((p) => (
-          <button key={p} type="button" onClick={() => onCambio(periodoDe(p))} className={chip(periodo.preset === p)}>
+          <button key={p} type="button" onClick={() => onCambio(periodoDe(p, new Date(), corteMin))} className={chip(periodo.preset === p)}>
             {NOMBRE_PRESET[p]}
           </button>
         ))}
@@ -232,10 +284,18 @@ function BarraPeriodo({ periodo, onCambio, contra }: { periodo: Periodo; onCambi
         </button>
       </div>
       <p className="ml-auto text-[12px] text-texto-3">
-        <span className="font-semibold text-texto-2">{textoRango(periodo.desde, periodo.hasta)}</span> · flechas comparadas con {contra}
+        <span className="font-semibold text-texto-2">{textoRango(periodo.desde, periodo.hasta)}</span>
+        {jornada && (
+          <span title={`Lo que se cobra antes de las ${horaDeCorte(corteMin)} cuenta para el día anterior.`}>
+            {" "}
+            · jornada <span className="font-semibold text-texto-2">{jornada}</span>
+          </span>
+        )}{" "}
+        · flechas comparadas con {contra}
       </p>
       {eligiendo && (
         <DialogoPeriodo
+          corteMin={corteMin}
           periodo={periodo}
           onElegir={(p) => {
             onCambio(p);
@@ -258,7 +318,17 @@ const PRESETS_DIALOGO: [Exclude<Preset, "rango">, string][] = [
   ["dias90", "Últimos 3 meses"],
 ];
 
-function DialogoPeriodo({ periodo, onElegir, onCerrar }: { periodo: Periodo; onElegir: (p: Periodo) => void; onCerrar: () => void }) {
+function DialogoPeriodo({
+  periodo,
+  corteMin,
+  onElegir,
+  onCerrar,
+}: {
+  periodo: Periodo;
+  corteMin: number;
+  onElegir: (p: Periodo) => void;
+  onCerrar: () => void;
+}) {
   const [desde, setDesde] = useState(periodo.preset === "rango" ? periodo.desde : "");
   const [hasta, setHasta] = useState(periodo.preset === "rango" ? periodo.hasta : "");
   const completo = /^\d{4}-\d{2}-\d{2}$/.test(desde) && /^\d{4}-\d{2}-\d{2}$/.test(hasta);
@@ -290,7 +360,7 @@ function DialogoPeriodo({ periodo, onElegir, onCerrar }: { periodo: Periodo; onE
           <button
             key={p}
             type="button"
-            onClick={() => onElegir(periodoDe(p))}
+            onClick={() => onElegir(periodoDe(p, new Date(), corteMin))}
             className={`rounded-full px-3.5 py-1.5 text-[13px] font-semibold transition-colors ${
               periodo.preset === p ? "bg-primary-boton text-white" : "border border-borde bg-white text-texto-2 hover:bg-muted"
             }`}
@@ -488,16 +558,22 @@ function EncabezadoReporte({
   conResumen: boolean;
 }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const titulo = ficha?.titulo ?? "Resumen";
   const descripcion = ficha?.descripcion ?? "Lo más importante del período";
+  // Abierto desde otro reporte (el Estado de resultado lleva a Ventas, a
+  // Compras…): la flecha vuelve a ése, como en la app. Antes volvía siempre al
+  // resumen y el dueño tenía que buscar de nuevo el resultado que miraba.
+  const volverA = (location.state as { volverA?: string } | null)?.volverA;
+  const etiquetaVolver = volverA ? `Volver a ${volverA}` : "Volver al resumen";
   return (
     <header className="flex flex-wrap items-center gap-3">
-      {ficha && conResumen && (
+      {ficha && (conResumen || volverA) && (
         <button
           type="button"
-          onClick={() => navigate("/reportes")}
-          aria-label="Volver al resumen"
-          title="Volver al resumen"
+          onClick={() => (volverA ? navigate(-1) : navigate("/reportes"))}
+          aria-label={etiquetaVolver}
+          title={etiquetaVolver}
           className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-borde bg-white text-texto-2 transition-colors hover:bg-muted"
         >
           <Icon name="arrowLeft" size={18} />

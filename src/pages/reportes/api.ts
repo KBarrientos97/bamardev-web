@@ -21,7 +21,9 @@ import type { RangoReporte } from "../../types";
 /** El período anterior que eligió la web, para que los deltas del backend comparen contra lo mismo que dice la pantalla. */
 function anterior(r: RangoReporte | undefined): Record<string, string> {
   if (!r?.desde || !r.hasta) return {};
-  const { desde, hasta } = rangoParaApi({ desde: r.desde, hasta: r.hasta });
+  // Con el corte de la jornada, si lo hay: el período anterior de un billar
+  // también son jornadas, o la comparación mediría otras horas.
+  const { desde, hasta } = rangoParaApi({ desde: r.desde, hasta: r.hasta, corteMin: r.corteMin });
   return desde && hasta ? { antDesde: desde, antHasta: hasta } : {};
 }
 
@@ -349,6 +351,12 @@ export interface BillarReporteApi {
 }
 
 export const apiReportes = {
+  /**
+   * A qué hora termina la jornada del negocio (minutos). Un billar cierra a
+   * las 2 a. m. y su "hoy" a la 1:30 es la noche que corre; cualquier otro
+   * rubro responde 0. Lo decide el backend.
+   */
+  jornada: () => request<{ corteMin: number }>("/reportes/jornada"),
   resumen: (r: RangoReporte, ant?: RangoReporte) => api.reporte<ResumenApi>("resumen", r, anterior(ant)),
   financiero: (r: RangoReporte, ant?: RangoReporte) => api.reporte<FinancieroApi>("financiero", r, anterior(ant)),
   insumos: (r: RangoReporte, ant?: RangoReporte) => api.reporte<InsumosApi>("insumos", r, anterior(ant)),

@@ -2,7 +2,7 @@ import { Link } from "react-router-dom";
 import { api } from "../../../lib/api";
 import { esCero, esPositivo } from "../../../lib/dinero";
 import { fmtMoney } from "../../../lib/format";
-import { rangoParaApi } from "../../../lib/rangoApi";
+import { rangoParaApi, sinJornada } from "../../../lib/rangoApi";
 import {
   diasDelRango,
   puntoEquilibrio,
@@ -50,8 +50,9 @@ export default function PuntoEquilibrio() {
     // Los gastos con el MISMO corte que las ventas: medianoche local del
     // primer día a medianoche local del día siguiente al último. El
     // financiero lo convierte solo; getGastos no, porque la pantalla de Gastos
-    // ya manda su `hasta` exclusivo.
-    const { desde, hasta } = rangoParaApi(rango);
+    // ya manda su `hasta` exclusivo. Sin el corte de la jornada de un billar:
+    // el gasto lleva fecha, no hora (ver `sinJornada`).
+    const { desde, hasta } = rangoParaApi(sinJornada(rango));
     return Promise.all([
       apiReportes.financiero(rango, rangoAnterior),
       api.getGastos({

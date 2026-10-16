@@ -239,8 +239,10 @@ function dibujar(actual: Dialogo, e: EstadoBillar, cerrar: () => void): ReactNod
           pedirPin={e.ajustes.pin.anularMesa}
           permiso="billar.admin"
           onClose={cerrar}
-          onAutorizar={async (motivo, cred) => {
-            const devolver = await billar.anularMesa(enJuego.id, motivo, cred);
+          onAutorizar={async (motivo, cred, clave) => {
+            // Con la clave del diálogo: si la respuesta se perdió, el reintento
+            // vuelve a decir cuánto devolver en vez de "Esa mesa se anuló".
+            const devolver = await billar.anularMesa(enJuego.id, motivo, cred, clave);
             cerrar();
             billar.avisar({
               tono: devolver > 0 ? "ambar" : "verde",

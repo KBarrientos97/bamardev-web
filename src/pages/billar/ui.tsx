@@ -117,22 +117,30 @@ export function Circulo({
  */
 export function Encabezado({
   titulo,
+  sucursal,
   children,
 }: {
   titulo: ReactNode;
+  /** Reemplaza la etiqueta de la sucursal: el selector del tablero, para el dueño con varios locales. */
+  sucursal?: ReactNode;
   children?: ReactNode;
 }) {
   const { usuario } = useAuth();
-  const { caja } = useBillar();
+  const { caja, sucursal: delTablero } = useBillar();
   return (
     <header className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-3 border-b border-borde bg-white px-4 py-3 sm:px-6">
       {/* Con un ancho mínimo, si las acciones no entran bajan de renglón en vez de aplastar el título. */}
       <div className="min-w-[14rem] flex-1">
         <h1 className="flex items-center gap-2 text-xl font-bold leading-tight text-texto">
           <span className="truncate">{titulo}</span>
-          <span className="shrink-0 rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-700">
-            {usuario?.sucursal ?? "Principal"}
-          </span>
+          {sucursal ?? (
+            <span className="shrink-0 rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-700">
+              {/* El dueño no tiene sucursal propia: decía "Principal" aunque
+                  el tablero fuera el de otro local. Ahora, el que trae el
+                  tablero (en un negocio de un local se llama "Principal"). */}
+              {usuario?.sucursal ?? (delTablero || "Principal")}
+            </span>
+          )}
         </h1>
         <p className="mt-0.5 flex items-center gap-1.5 text-[13px] text-texto-3">
           <span
@@ -146,6 +154,43 @@ export function Encabezado({
       </div>
       {children}
     </header>
+  );
+}
+
+/**
+ * La sucursal del billar, para el dueño con varios locales (13-oct): va en el
+ * lugar de la etiqueta. Desplegable nativo y no chips ni menú propio: en el
+ * celular abre la lista del sistema y no le suma un renglón al encabezado.
+ * Sin "Todas": un tablero es UN salón, como la agenda de un local.
+ */
+export function SelectorSucursal({
+  valor,
+  sucursales,
+  onElegir,
+}: {
+  valor: number | null;
+  sucursales: { id: number; nombre: string }[];
+  onElegir: (id: number) => void;
+}) {
+  return (
+    <span className="relative inline-flex shrink-0 items-center">
+      <select
+        aria-label="Sucursal"
+        value={valor ?? ""}
+        onChange={(ev) => onElegir(Number(ev.target.value))}
+        className="h-8 max-w-[12rem] cursor-pointer appearance-none truncate rounded-full bg-slate-100 pl-3 pr-7 text-[12px] font-semibold text-slate-700 outline-none hover:bg-slate-200 focus-visible:ring-2 focus-visible:ring-primary-100"
+      >
+        {valor == null && <option value="">Elegí la sucursal</option>}
+        {sucursales.map((s) => (
+          <option key={s.id} value={s.id}>
+            {s.nombre}
+          </option>
+        ))}
+      </select>
+      <span className="pointer-events-none absolute right-2.5 text-slate-500">
+        <Icon name="chevronDown" size={13} />
+      </span>
+    </span>
   );
 }
 

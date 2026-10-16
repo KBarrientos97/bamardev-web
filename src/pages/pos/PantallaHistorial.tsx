@@ -46,12 +46,15 @@ export default function PantallaHistorial({
   // Con copia en la app del iPhone (Android: `historial_ventas_{caja}`): sin
   // señal se ve lo que ya había subido, más lo cobrado sin internet.
   const ventas = useApi(() => conCopia(`historial:${caja.id}`, () => api.getVentas(caja.id)), [caja.id]);
-  // Los pedidos por entregar son del reparto: sin la feature `delivery` el
-  // backend responde 403 (QA M-11, un salón de belleza). Con ella, lo de siempre.
-  const conReparto = tieneFeature(negocio?.features, "delivery");
+  // Los pedidos por entregar: los de delivery son del reparto y los de
+  // recoger, de la caja (el backend le da a quien vende sólo los RECOGER).
+  // Sin ninguna de las dos features no se piden (QA M-11, un salón de
+  // belleza: era un 403). Con sólo `delivery` acá, un restaurante Básico no
+  // veía sus pedidos para recoger de otro turno y quedaban sin cobrar (14-oct).
+  const conPedidos = tieneFeature(negocio?.features, "delivery") || tieneFeature(negocio?.features, "recoger");
   const pendientes = useApi(
-    () => (conReparto ? api.getPedidosPendientes() : Promise.resolve([] as Venta[])),
-    [conReparto],
+    () => (conPedidos ? api.getPedidosPendientes() : Promise.resolve([] as Venta[])),
+    [conPedidos],
   );
   const [detalle, setDetalle] = useState<Venta | null>(null);
   const [entregando, setEntregando] = useState<Venta | null>(null);

@@ -206,6 +206,12 @@ export interface AjustesBillar {
   pin: PinesBillar;
   /** Si ya hay una llave para la pantalla del salón (la TV sin usuario). */
   tieneTokenSalon?: boolean;
+  /**
+   * A qué hora termina la jornada, en minutos desde la medianoche (0 a 720):
+   * lo cobrado antes cuenta para el día anterior en los reportes (ver
+   * `lib/jornada.ts`). Opcional: un backend anterior no lo manda.
+   */
+  horaCorteMin?: number;
 }
 
 /** Una línea de la auditoría (§4.7): pausas, anulaciones, cambios de mesa. */
