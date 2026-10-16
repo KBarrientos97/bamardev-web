@@ -37,7 +37,8 @@ vi.mock("../../lib/useSucursales", () => ({
 
 vi.mock("../../store/AuthContext", () => ({
   useAuth: () => ({
-    usuario: { id: 1, sucursalId: null, sucursal: null, permisos: ["billar.operar"] },
+    // Un cajero: atiende el billar y vende (sin "Vender" no se ofrece la venta rápida).
+    usuario: { id: 1, sucursalId: null, sucursal: null, permisos: ["billar.operar", "ventas.vender"] },
     negocio: { alias: sesion.alias, nombre: "Billar de prueba" },
   }),
 }));

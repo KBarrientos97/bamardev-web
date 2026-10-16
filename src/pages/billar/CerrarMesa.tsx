@@ -39,6 +39,7 @@ export default function CerrarMesa() {
   const ahora = useAhora();
   const navigate = useNavigate();
   const { usuario } = useAuth();
+  const puedeCobrar = tienePermiso(usuario, "ventas.vender");
   const [hasta, setHasta] = useState(() => ahoraServidor());
   const [fiando, setFiando] = useState(false);
   const accion = useAccion();
@@ -309,7 +310,14 @@ export default function CerrarMesa() {
                   </BotonB>
                 </div>
               )}
-              {c.saldo > 0 ? (
+              {/* Sin "Vender" el backend no deja cerrar (cerrar la mesa es una
+                  venta). Antes se veía el cobro entero, se contaba el vuelto y
+                  recién al confirmar decía que no (revisión del 16-oct). */}
+              {!puedeCobrar ? (
+                <Nota tono="ambar" icono="alert">
+                  Tu usuario no puede cobrar: pedile a un encargado que cierre la mesa.
+                </Nota>
+              ) : c.saldo > 0 ? (
                 <>
                   <FormCobro cobro={cobro} />
                   <ErrorAccion texto={accion.error} />

@@ -214,7 +214,10 @@ function dibujar(actual: Dialogo, e: EstadoBillar, cerrar: () => void): ReactNod
     case "editarInicio":
       return enJuego ? <ModalEditarInicio mesa={enJuego} onClose={cerrar} /> : null;
     case "historial":
-      return <ModalHistorial mesaId={actual.mesaId} onClose={cerrar} />;
+      // Si la mesa salió del tablero (la dejaron inactiva o la renumeraron),
+      // el historial se va de la pila: quedaba invisible arriba y Escape dejaba
+      // de cerrar el panel (revisión del 16-oct).
+      return mesa ? <ModalHistorial mesaId={actual.mesaId} onClose={cerrar} /> : null;
     case "anularConsumo": {
       const it = enJuego?.sesion?.consumos.find((c) => c.id === actual.itemId);
       if (!enJuego || !it || it.anulado) return null;

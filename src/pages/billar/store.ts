@@ -1,5 +1,6 @@
 import { useEffect, useSyncExternalStore } from "react";
 import { api, ApiError } from "../../lib/api";
+import { fmtMoney } from "../../lib/format";
 import type { CreditoInput, FormaPago, PagoInput } from "../../types";
 import { olvidarAvisos, prepararAvisos, reestrenarAvisos } from "./alertas";
 import { tarifaDe } from "./calculo";
@@ -636,13 +637,25 @@ export const billar = {
   },
 
   /** Venta sin mesa (§7.7): una venta normal del POS, por el mismo camino. */
+  /**
+   * La venta rápida. Devuelve el comprobante y, si la venta ya había entrado
+   * con OTROS pagos, cómo se cobró de verdad (`yaEntro`).
+   *
+   * Un reintento con la misma clave devuelve la venta que ya estaba, con sus
+   * pagos: si se cortó la respuesta y el cliente dijo "le pago por QR", la
+   * venta seguía en efectivo, el aviso decía "QR" y la caja esperaba un
+   * efectivo que no entró (revisión del 16-oct).
+   *
+   * Sin "Cliente": el backend no guarda el nombre en una venta de mostrador (y
+   * con una sola letra la rechazaba), así que la pantalla ya no lo pide.
+   */
   async ventaRapida(
     items: { productoId: number; cant: number }[],
     pago: PagoNuevo,
-    cliente: string | undefined,
     clienteRequestId: string,
-  ): Promise<string> {
-    const pagos = aPagos(pago, await formasPago());
+  ): Promise<{ codigo: string; yaEntro: string | null }> {
+    const formas = await formasPago();
+    const pagos = aPagos(pago, formas);
     const venta = await api.crearVenta({
       detalles: items
         .filter((i) => i.cant > 0)
@@ -652,13 +665,24 @@ export const billar = {
           precio: estado.productos.find((p) => p.id === i.productoId)?.precio,
         })),
       pagos,
-      ...(cliente?.trim() ? { clienteNombre: cliente.trim() } : {}),
       clienteRequestId,
     });
     acciones++;
     await cargarVentas();
     void cargarProductos();
-    return venta.comprobante ?? `#${venta.id}`;
+    const firma = (ps: { formaPagoId: number; monto: number }[]) =>
+      ps
+        .map((p) => `${p.formaPagoId}:${Math.round(p.monto * 100)}`)
+        .sort()
+        .join("|");
+    const reales = venta.pagos ?? [];
+    const yaEntro =
+      reales.length && firma(reales) !== firma(pagos)
+        ? reales
+            .map((p) => `${p.formaPago ?? formas.find((f) => f.id === p.formaPagoId)?.nombre ?? "otro medio"} ${fmtMoney(p.monto)}`)
+            .join(" + ")
+        : null;
+    return { codigo: venta.comprobante ?? `#${venta.id}`, yaEntro };
   },
 
   /** Anular una venta (PIN siempre, como en todo el sistema): repone el stock y sale de la caja. */

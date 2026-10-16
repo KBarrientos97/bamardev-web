@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Icon } from "../../components/Icon";
-import { Input } from "../../components/ui";
 import { fmtMoney } from "../../lib/format";
 import { totalCarrito, useCarritoBillar } from "./carrito";
 import { Catalogo, LineasPedido, PantallaPedido } from "./Catalogo";
@@ -25,7 +24,6 @@ export default function VentaRapida() {
   const e = useBillar();
   const navigate = useNavigate();
   const { carrito, poner, vaciar, items } = useCarritoBillar();
-  const [cliente, setCliente] = useState("");
   const [cobrando, setCobrando] = useState(false);
   const [aMesa, setAMesa] = useState(false);
   const total = totalCarrito(carrito, e.productos);
@@ -55,24 +53,32 @@ export default function VentaRapida() {
     const pago = cobro.pago;
     if (!pago) return;
     const cambio = cobro.cambio;
-    let codigo = "";
+    let r: { codigo: string; yaEntro: string | null } = { codigo: "", yaEntro: null };
     const ok = await accion.ejecutar(async () => {
       // El mismo id mientras el pedido sea el mismo: un reintento no vende dos veces.
-      codigo = await billar.ventaRapida(items, pago, cliente, intento.actual(huellaDeCobro(items)));
+      r = await billar.ventaRapida(items, pago, intento.actual(huellaDeCobro(items)));
     });
     if (!ok) {
       void cargarProductos();
       return;
     }
     intento.registrado();
-    billar.avisar({
-      tono: "verde",
-      titulo: `Venta rápida ${codigo} · ${fmtMoney(total)}`,
-      texto: cobro.metodo === "Efectivo" ? `Cambio ${fmtMoney(cambio)}` : cobro.metodo,
-      accion: { tipo: "ticket", codigo },
-    });
+    billar.avisar(
+      r.yaEntro
+        ? {
+            tono: "ambar",
+            titulo: `La venta ${r.codigo} ya había entrado`,
+            texto: `Se cobró ${r.yaEntro}: no la cobres de nuevo.`,
+            accion: { tipo: "ticket", codigo: r.codigo },
+          }
+        : {
+            tono: "verde",
+            titulo: `Venta rápida ${r.codigo} · ${fmtMoney(total)}`,
+            texto: cobro.metodo === "Efectivo" ? `Cambio ${fmtMoney(cambio)}` : cobro.metodo,
+            accion: { tipo: "ticket", codigo: r.codigo },
+          },
+    );
     vaciar();
-    setCliente("");
     setCobrando(false);
     cobro.reiniciar();
   };
@@ -113,7 +119,6 @@ export default function VentaRapida() {
           <p className="text-3xl font-extrabold tabular-nums">{fmtMoney(total)}</p>
           <p className="text-[13px] text-white/85">
             {cantidad} {cantidad === 1 ? "producto" : "productos"}
-            {cliente.trim() ? ` · ${cliente.trim()}` : ""}
           </p>
         </div>
         <FormCobro cobro={cobro} />
@@ -149,12 +154,6 @@ export default function VentaRapida() {
         ) : (
           <LineasPedido carrito={carrito} productos={e.productos} onPoner={poner} />
         )}
-        <label className="block">
-          <span className="mb-1.5 block text-[13px] font-semibold text-texto-2">
-            Cliente <span className="font-normal text-texto-4">(opcional, para el ticket)</span>
-          </span>
-          <Input value={cliente} onChange={(ev) => setCliente(ev.target.value)} placeholder="Nombre" />
-        </label>
       </div>
       <div className="shrink-0 space-y-2.5 border-t border-borde px-5 py-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
         <div className="flex items-baseline justify-between">
