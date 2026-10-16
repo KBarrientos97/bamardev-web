@@ -42,7 +42,10 @@ export interface PuntoTendencia {
 }
 
 export interface ResumenApi {
-  /** Σ ventas aprobadas, neto de promos (incluye fiado). */
+  /**
+   * Σ ventas aprobadas, neto de promos (incluye fiado). Sin los pedidos que
+   * todavía no se cobraron: ésos van en `porCobrar`.
+   */
   ventas: number;
   ventasDeltaPct: number | null;
   ventasPeriodoAnterior: number;
@@ -74,6 +77,12 @@ export interface ResumenApi {
     servicios: number;
     productos: number;
   };
+  /**
+   * Pedidos del período (delivery, recoger) que se cobran al entregar y
+   * todavía no se cobraron. NO suman en `ventas`: entran el día que se
+   * cobran. Opcional: un backend anterior no lo manda.
+   */
+  porCobrar?: { cantidad: number; total: number };
 }
 
 export interface FinancieroApi {

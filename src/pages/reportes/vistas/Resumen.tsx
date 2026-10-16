@@ -11,7 +11,7 @@ import { bsEntero, bsResta, bsSubtotal, ejeCorto, horas, pct, variacion } from "
 import { BarrasVerticales, LineaComparada } from "../graficos";
 import { enElPeriodo, leyendaDe } from "../periodo";
 import { Cargador, CifraClara, Cifras, Delta, DeltaClaro, Destacado, FichaIcono, KpiR, Leyenda, Renglon, Tarjeta } from "../ui";
-import { consejos, esMensual, estadisticas, partesVenta, serie, type Consejo } from "./resumen/datos";
+import { consejos, esMensual, estadisticas, filasResumen, partesVenta, pedidosPorCobrar, serie, textoPedidos, type Consejo } from "./resumen/datos";
 import { horasDeJornada } from "./resumen/datos";
 import { useDatosResumen } from "./resumen/useResumen";
 
@@ -25,7 +25,9 @@ import { useDatosResumen } from "./resumen/useResumen";
  * pantalla. Lo demás se pide aparte y aparece cuando llega; si una pieza
  * falla, falla ESA tarjeta (con su Reintentar), no el resumen entero.
  */
-const sinVentas = (r: ResumenApi) => r.tickets.valor === 0 && esCero(r.ventas);
+// Con pedidos sin cobrar el período no está vacío: es justo cuando el dueño
+// necesita ver que hay plata en camino.
+const sinVentas = (r: ResumenApi) => r.tickets.valor === 0 && esCero(r.ventas) && !pedidosPorCobrar(r);
 
 export default function Resumen() {
   const d = useDatosResumen();
@@ -96,6 +98,8 @@ export default function Resumen() {
               <KpiR etiqueta="Unidades" valor={fmtNum(res.unidades.valor, Number.isInteger(res.unidades.valor) ? 0 : 1)} delta={<Delta fraccion={fraccion(res.unidades.deltaPct)} />} />
               <CuartoKpi d={d} res={res} rubro={rubro} />
             </div>
+
+            <PorCobrar res={res} />
 
             <Tarjeta
               titulo="Tendencia de ventas"
@@ -242,6 +246,31 @@ function CuartoKpi({ d, res, rubro }: { d: Datos; res: ResumenApi; rubro: string
   return <KpiR etiqueta="Margen bruto" valor={f.ingresosNetos > 0 ? `${Math.round(f.margenPct)} %` : "—"} delta={<Delta fraccion={fraccion(f.deltaUtilidadPct)} />} pie="utilidad bruta" />;
 }
 
+/**
+ * Los pedidos del período que se cobran al entregar y todavía no se cobraron.
+ * Van aparte y lo dicen: no están en las ventas de arriba (entran el día que
+ * se cobran), y sumarlos de cabeza daría un total que la caja nunca vio.
+ */
+function PorCobrar({ res }: { res: ResumenApi }) {
+  const pc = pedidosPorCobrar(res);
+  if (!pc) return null;
+  return (
+    <section className="card flex items-center gap-3 p-4" aria-label="Por cobrar">
+      <FichaIcono icono="clock" tono="ambar" size={38} />
+      <div className="min-w-0 flex-1">
+        <p className="text-[11px] font-bold uppercase tracking-wider text-texto-3">Por cobrar</p>
+        <p className="text-[13.5px] text-texto-2">
+          <b className="text-texto">{textoPedidos(pc.cantidad)}</b> sin cobrar todavía.{" "}
+          {pc.cantidad === 1
+            ? "No está incluido en las ventas: entra cuando se cobra."
+            : "No están incluidos en las ventas: entran cuando se cobran."}
+        </p>
+      </div>
+      <p className="shrink-0 text-[20px] font-extrabold tabular-nums text-texto">{fmtMoney(pc.total)}</p>
+    </section>
+  );
+}
+
 /** Las ventas de un solo día, por hora (en el orden de la jornada). */
 function PorHora({ porHora }: { porHora: number[] }) {
   const conVentas = porHora.map((v, h) => ({ h, v })).filter((x) => x.v > 0);
@@ -286,25 +315,7 @@ function ParaTenerEnCuenta({ avisos, cual }: { avisos: Consejo[]; cual: string }
 }
 
 function hojasResumen(r: ResumenApi, er: EstadoResultado | null) {
-  const filas: [string, number | null][] = [
-    ["Ventas (Bs)", r.ventas],
-    ["Ventas del período anterior (Bs)", r.ventasPeriodoAnterior],
-    ["Variación de las ventas (%)", r.ventasDeltaPct],
-    ["Tickets", r.tickets.valor],
-    ["Ticket promedio (Bs)", r.ticketPromedio.valor],
-    ["Unidades", r.unidades.valor],
-    ["Ingresos brutos (Bs)", r.finanzas.ingresosBrutos],
-    ["Descuentos y promos (Bs)", r.finanzas.descuentos],
-    ["Costo de venta (Bs)", r.finanzas.costoVenta],
-    ["Utilidad bruta (Bs)", r.finanzas.utilidadBruta],
-    ...(er
-      ? ([
-          ["Gastos operativos (Bs)", er.gastosOperativos],
-          ["Banco e impuestos (Bs)", er.gastosFinancieros + er.impuestos],
-          ["Ganancia real (Bs)", er.utilidadNeta],
-        ] as [string, number][])
-      : []),
-  ];
+  const filas = filasResumen(r, er);
   return [
     hoja("Resumen", [["Concepto", (f: [string, number | null]) => f[0]], ["Valor", (f) => f[1]]], filas),
     hoja(
