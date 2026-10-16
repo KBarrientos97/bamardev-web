@@ -75,9 +75,9 @@ beforeEach(() => {
 });
 
 describe("Almacenes según el rubro", () => {
-  // La sección existe con varias sucursales: es la feature del plan.
+  // Almacenes va con `inventario`; Transferir mercadería, con varias sucursales.
   beforeEach(() => {
-    sesion.features = ["multi_almacen"];
+    sesion.features = ["inventario", "multi_almacen"];
   });
 
   it("en farmacia el ítem se llama Sucursales", () => {
@@ -342,13 +342,17 @@ describe("el árbol según permisos y rubro", () => {
   });
 
   it("un grupo con un solo hijo visible se muestra plano", () => {
-    // Sin catálogo, insumos ni sucursales, a Inventario le queda Movimientos.
+    // El cajero que cobra fiados: Finanzas con sólo Cuentas por cobrar sería
+    // una carpeta de un clic de más. Antes este caso era Inventario con sólo
+    // Movimientos, pero desde el 15-oct Almacenes también va con `inventario`
+    // y a quien mueve stock ese grupo ya no le queda con un hijo.
     sesion.rubro = "RESTAURANTE";
-    sesion.features = ["inventario"];
+    sesion.rol = "CAJERO";
+    sesion.features = ["pos", "caja", "fiado"];
     const nav = abrir("/pos");
     expect(nav.queryByRole("button", { name: /Submenú/ })).not.toBeInTheDocument();
-    expect(nav.getByRole("link", { name: "Inventario" })).toBeInTheDocument();
-    expect(nav.getByRole("link", { name: "Movimientos" })).toBeInTheDocument();
+    expect(nav.getByRole("link", { name: "Cuentas por cobrar" })).toBeInTheDocument();
+    expect(nav.queryByRole("link", { name: "Finanzas" })).not.toBeInTheDocument();
   });
 
   it("si el plan esconde al padre, los hijos suben a su lugar", () => {
@@ -374,7 +378,9 @@ describe("el árbol según permisos y rubro", () => {
     sesion.features = ["inventario", "catalogo", "lotes"];
     rerender(arbol("/inventario/movimientos"));
     expect(screen.queryByRole("link", { name: "Transferir mercadería" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "Sucursales" })).not.toBeInTheDocument();
+    // Sucursales queda: sin `multi_almacen` el negocio ve su local, sólo no
+    // registra otro (15-oct, igual que la app).
+    expect(screen.getByRole("link", { name: "Sucursales" })).toBeInTheDocument();
     // Los grupos que siguen existiendo conservan su estado.
     expect(screen.getByRole("button", { name: "Submenú de Movimientos" })).toHaveAttribute(
       "aria-expanded",

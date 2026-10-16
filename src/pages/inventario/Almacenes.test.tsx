@@ -11,10 +11,14 @@ import type { Almacen } from "../../types";
  * estaban.
  */
 
-const sesion = vi.hoisted(() => ({ rubro: "FARMACIA" as string }));
+const sesion = vi.hoisted(() => ({
+  rubro: "FARMACIA" as string,
+  // undefined = sesión sin features: falla abierto, como antes.
+  features: undefined as string[] | undefined,
+}));
 
 vi.mock("../../store/AuthContext", () => ({
-  useAuth: () => ({ rubro: sesion.rubro }),
+  useAuth: () => ({ rubro: sesion.rubro, negocio: { features: sesion.features } }),
 }));
 
 vi.mock("../../lib/api", () => ({
@@ -51,7 +55,31 @@ const LUGARES = [almacen(1, "Sucursal Centro", "SUCURSAL"), almacen(2, "Depósit
 beforeEach(() => {
   vi.clearAllMocks();
   sesion.rubro = "FARMACIA";
+  sesion.features = undefined;
   vi.mocked(api.getAlmacenes).mockResolvedValue(LUGARES);
+});
+
+describe("Varios almacenes", () => {
+  it("sin la feature se ve el almacén pero no se registra otro, y dice por qué", async () => {
+    // Kevin, 15-oct: igual que la app. Antes la pantalla entera desaparecía.
+    sesion.rubro = "RESTAURANTE";
+    sesion.features = ["inventario"];
+    vi.mocked(api.getAlmacenes).mockResolvedValue([almacen(1, "Almacén principal", "SUCURSAL")]);
+    render(<Almacenes />);
+    expect(await screen.findByText("Almacén principal")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Nuevo" })).not.toBeInTheDocument();
+    expect(screen.getByText(/Tu cuenta permite registrar un solo almacén/)).toBeInTheDocument();
+  });
+
+  it("con la feature se ofrece Nuevo", async () => {
+    sesion.rubro = "RESTAURANTE";
+    sesion.features = ["inventario", "multi_almacen"];
+    vi.mocked(api.getAlmacenes).mockResolvedValue([almacen(1, "Almacén principal", "SUCURSAL")]);
+    render(<Almacenes />);
+    await screen.findByText("Almacén principal");
+    expect(screen.getByRole("button", { name: "Nuevo" })).toBeInTheDocument();
+    expect(screen.queryByText(/Tu cuenta permite registrar/)).not.toBeInTheDocument();
+  });
 });
 
 async function abrir() {

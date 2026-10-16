@@ -1,5 +1,5 @@
 import type { Feature, PerfilRubro, Rol, SesionUsuario } from "../types";
-import { RUBROS_BELLEZA, etiquetaRolDelRubro, type Rubro } from "./rubro";
+import { RUBROS_BELLEZA, esBelleza, etiquetaRolDelRubro, type Rubro } from "./rubro";
 
 /**
  * Qué ve y qué puede tocar cada quien (PLAN-ROLES-NEGOCIO). Hay dos
@@ -168,8 +168,8 @@ export type Seccion =
  *
  * `feature: null` = la sección no se vende aparte; la decide el permiso. El
  * backend ya cruza los permisos con el plan, pero la feature se sigue mirando
- * porque la de la pantalla no siempre es la del permiso (Sucursales pide
- * `multi_almacen`, y su permiso es de `inventario`).
+ * porque la de la pantalla no siempre es la del permiso (Transferir mercadería
+ * pide `multi_almacen`, y su permiso es de `inventario`).
  */
 interface Requisito {
   permiso: string;
@@ -191,8 +191,13 @@ const REQUISITOS: Record<Seccion, Requisito> = {
   // tiene hasta el mesero, y no por eso administra los productos.
   productos: { permiso: "catalogo.editar", feature: "catalogo" },
   insumos: { permiso: "insumos.gestionar", feature: "insumos" },
-  // Sin el plan de varias sucursales no hay qué administrar.
-  almacenes: { permiso: "almacenes.administrar", feature: "multi_almacen" },
+  // Con `inventario`, como en el backend (`almacenes.administrar` es de esa
+  // feature) y como en la app desde el 15-oct: todo negocio tiene su almacén y
+  // lo tiene que poder ver. Con `multi_almacen` la pantalla desaparecía en los
+  // negocios de un local (Kevin: "¿dónde está almacén?"). Lo que vende
+  // `multi_almacen` es registrar OTRO: sin él Almacenes no ofrece "Nuevo".
+  // Belleza sigue pidiendo `multi_almacen` (ver `puedeVer`).
+  almacenes: { permiso: "almacenes.administrar", feature: "inventario" },
   movimientos: { permiso: "inventario.mover", feature: "inventario" },
   // Recibir y dar de baja mercadería SON movimientos de inventario, con
   // pantalla propia: la misma llave que `movimientos`.
@@ -476,6 +481,11 @@ export function puedeVer(ctx: ContextoPermisos, seccion: Seccion): boolean {
   if (!cumplePermiso(ctx, req)) return false;
   if (req.feature && !tieneFeature(ctx.features, req.feature)) return false;
   if (req.feature && FEATURES_ESTRICTAS.includes(req.feature) && !ctx.features?.includes(req.feature)) {
+    return false;
+  }
+  // Belleza carga sus sucursales desde la agenda y Almacenes nunca le apareció
+  // sin `multi_almacen`: ahí sigue como antes del 15-oct (ver `almacenes`).
+  if (seccion === "almacenes" && esBelleza(ctx.rubro) && !tieneFeature(ctx.features, "multi_almacen")) {
     return false;
   }
   return true;

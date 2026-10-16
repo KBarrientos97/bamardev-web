@@ -140,11 +140,25 @@ describe("cada sección, con su permiso", () => {
   });
 
   it("el permiso no alcanza si el plan no incluye la feature de la pantalla", () => {
-    // Sucursales es de `multi_almacen`, aunque su permiso sea de `inventario`.
+    // Transferir es de `multi_almacen`, aunque su permiso sea de `inventario`.
     const unLocal = PLAN_FULL.filter((f) => f !== "multi_almacen");
-    expect(puedeVer(ctxCon(["almacenes.administrar"], "RESTAURANTE", unLocal), "almacenes")).toBe(false);
     expect(puedeVer(ctxCon(["inventario.mover"], "FARMACIA", unLocal), "transferencia_mercaderia")).toBe(false);
     expect(puedeVer(ctxCon(["inventario.mover"], "FARMACIA", unLocal), "ingreso_mercaderia")).toBe(true);
+    const sinInventario = PLAN_FULL.filter((f) => f !== "inventario");
+    expect(puedeVer(ctxCon(["almacenes.administrar"], "RESTAURANTE", sinInventario), "almacenes")).toBe(false);
+  });
+
+  it("un negocio de un local ve su almacén", () => {
+    // Kevin, 15-oct: "¿dónde está almacén?". La pantalla pedía `multi_almacen`
+    // y en un negocio de un local desaparecía, aunque el backend deja verla con
+    // `inventario`. Lo que vende `multi_almacen` es registrar otro (Almacenes).
+    const unLocal = PLAN_FULL.filter((f) => f !== "multi_almacen");
+    expect(puedeVer(ctxCon(["almacenes.administrar"], "RESTAURANTE", unLocal), "almacenes")).toBe(true);
+    expect(puedeVer(ctxCon(["almacenes.administrar"], "FARMACIA", unLocal), "almacenes")).toBe(true);
+    // Belleza no cambia: sus sucursales van por la agenda, y Almacenes sigue
+    // pidiendo varios almacenes como antes.
+    expect(puedeVer(ctxCon(["almacenes.administrar"], "BARBERIA", unLocal), "almacenes")).toBe(false);
+    expect(puedeVer(ctxCon(["almacenes.administrar"], "BARBERIA", PLAN_FULL), "almacenes")).toBe(true);
   });
 });
 

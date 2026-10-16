@@ -16,6 +16,7 @@ import {
 } from "../../components/ui";
 import { api } from "../../lib/api";
 import { fmtMoney, fmtNum } from "../../lib/format";
+import { tieneFeature } from "../../lib/permisos";
 import { esFarmacia, termino } from "../../lib/rubro";
 import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
@@ -58,7 +59,7 @@ function nombreDel(farmacia: boolean, tipo: TipoAlmacen = "SUCURSAL") {
 }
 
 export default function Almacenes() {
-  const { rubro, vocabulario } = useAuth();
+  const { rubro, vocabulario, negocio } = useAuth();
   const farmacia = esFarmacia(rubro);
   const almacenes = useApi(() => api.getAlmacenes(), []);
 
@@ -72,12 +73,19 @@ export default function Almacenes() {
 
   const lista = almacenes.datos ?? [];
   /**
-   * El botón se ofrece siempre: el tope ya no es "un almacén" sino el cupo de
-   * sucursales del PLAN, y eso lo sabe el backend (que responde 409 con el
-   * número contratado). Esconder el botón acá haría que un negocio con cupo de
-   * sobra no pudiera crear su segunda sucursal, y que el mensaje del plan nunca
-   * se leyera.
+   * "Nuevo" va con "Varios almacenes" (`multi_almacen`, se prende en el panel).
+   * Sin la feature el negocio es de un local: ve su almacén pero no registra
+   * otro, y el subtítulo dice por qué (Kevin, 15-oct; igual en la app). Si no
+   * queda ninguno activo sí se ofrece: sin almacén no se vende.
+   *
+   * Con la feature el botón va siempre: el tope fino es el cupo de sucursales
+   * del PLAN, y eso lo sabe el backend (responde 409 con el número contratado).
+   * Esconderlo acá dejaría a un negocio con cupo de sobra sin su segunda
+   * sucursal, y el mensaje del plan nunca se leería.
    */
+  const registraOtro =
+    tieneFeature(negocio?.features, "multi_almacen") ||
+    (!almacenes.cargando && !lista.some((a) => a.activo));
   const sucursales = lista.filter((a) => a.tipo !== "DEPOSITO");
   const depositos = lista.filter((a) => a.tipo === "DEPOSITO");
 
@@ -137,12 +145,17 @@ export default function Almacenes() {
           (depositos.length
             ? ` · ${depositos.length} ${depositos.length === 1 ? "depósito" : "depósitos"}`
             : "") +
-          ` · ${fmtMoney(valorTotal)} en stock`
+          ` · ${fmtMoney(valorTotal)} en stock` +
+          (registraOtro
+            ? ""
+            : ` · Tu cuenta permite registrar ${farmacia ? "una sola sucursal" : "un solo almacén"}`)
         }
         accion={
-          <Boton icono="plus" onClick={() => setCreando(true)}>
-            Nuevo
-          </Boton>
+          registraOtro && (
+            <Boton icono="plus" onClick={() => setCreando(true)}>
+              Nuevo
+            </Boton>
+          )
         }
       />
 
