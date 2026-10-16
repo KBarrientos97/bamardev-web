@@ -257,6 +257,35 @@ export default function PantallaRecibo({
             </dl>
           )}
 
+          {/* Educación (E10): de quién son las cuotas y el saldo del curso
+              después de este pago, con la próxima cuota. Sólo si la venta cobró
+              cuotas y el backend lo manda: el ticket de siempre no cambia. */}
+          {venta.academia && (
+            <div className="mt-2 border-t border-dashed border-borde pt-2 text-sm" aria-label="Saldo del curso">
+              <dl className="space-y-1">
+                <FilaDato etiqueta="Alumno" valor={venta.academia.alumno} />
+                {(venta.academia.codigo || venta.academia.ci) && (
+                  <FilaDato
+                    etiqueta="Código"
+                    valor={[venta.academia.codigo, venta.academia.ci && `CI ${venta.academia.ci}`].filter(Boolean).join(" · ")}
+                  />
+                )}
+                {venta.academia.grupo && <FilaDato etiqueta="Grupo" valor={venta.academia.grupo} />}
+                <div className="flex justify-between font-bold text-texto">
+                  <dt>SALDO DEL CURSO</dt>
+                  <dd>{fmtMoney(venta.academia.saldoCurso)}</dd>
+                </div>
+                <p className="text-xs text-texto-3">
+                  {venta.academia.saldoCurso <= 0
+                    ? "Curso pagado por completo."
+                    : venta.academia.proximaCuota
+                      ? `Próxima cuota: ${fmtMoney(venta.academia.proximaCuota.monto)} el ${fmtFecha(venta.academia.proximaCuota.vence)}`
+                      : ""}
+                </p>
+              </dl>
+            </div>
+          )}
+
           {venta.credito && (
             <div className="mt-2 border-t border-dashed border-borde pt-2 text-sm">
               <p className="text-center text-xs font-bold tracking-wide text-texto">
@@ -377,6 +406,13 @@ function LineaTicket({
         </div>
       )}
       {linea.nota && <p className="text-xs italic text-texto-3">{linea.nota}</p>}
+      {/* Educación: qué cuota cobró la línea y cuándo vencía. */}
+      {linea.cuota && (
+        <p className="text-xs text-texto-2">
+          {linea.cuota.concepto}
+          {linea.cuota.vence ? ` · vencía ${fmtFecha(linea.cuota.vence)}` : ""}
+        </p>
+      )}
       {/* Belleza: quién lo hizo y, si es de un paquete, qué sesión fue o qué
           trae. Una venta sin profesional ni paquetes no lo trae y el ticket
           de siempre no cambia. */}

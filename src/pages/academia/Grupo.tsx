@@ -8,7 +8,7 @@ import { apiAcademia } from "../../lib/academia/apiAcademia";
 import { fechaCorta, horarioGrupo, nombreAlumno, nombreDe } from "../../lib/academia/formato";
 import type { AlumnoDelGrupo, FiltroAlumnosGrupo, GrupoDetalle } from "../../lib/academia/tipos";
 import { usePalabras } from "../../lib/academia/usePalabras";
-import { abrirWhatsapp } from "../../lib/academia/vista";
+import { abrirWhatsapp, rutaCobroInscripcion } from "../../lib/academia/vista";
 import { enlaceWhatsApp } from "../../lib/agenda/recordatorio";
 import { fmtMoney } from "../../lib/format";
 import { usePaginado } from "../../lib/paginado";
@@ -181,7 +181,7 @@ export default function Grupo() {
             sinMontos={sinMontos}
             cobra={cobra}
             onElegir={setElegido}
-            onCobrar={(a) => navigate(`/pos?inscripcion=${a.inscripcionId}`)}
+            onCobrar={(a) => navigate(rutaCobroInscripcion(a.inscripcionId, g.sede))}
           />
           <Paginacion
             {...alumnos.paginacion}
@@ -199,7 +199,7 @@ export default function Grupo() {
         sinMontos={sinMontos}
         cobra={cobra}
         onCerrar={() => setElegido(null)}
-        onCobrar={(a) => navigate(`/pos?inscripcion=${a.inscripcionId}`)}
+        onCobrar={(a) => navigate(rutaCobroInscripcion(a.inscripcionId, g.sede))}
       />
 
       {inscribiendo && (
@@ -210,7 +210,7 @@ export default function Grupo() {
             setInscribiendo(false);
             grupo.recargar();
             alumnos.recargar();
-            if (r.cobrar) navigate(`/pos?inscripcion=${r.inscripcion.id}`);
+            if (r.cobrar) navigate(rutaCobroInscripcion(r.inscripcion.id, g.sede));
           }}
         />
       )}

@@ -8,7 +8,7 @@ import { apiAcademia } from "../../lib/academia/apiAcademia";
 import type { Antiguedad, FilaCobranza, RespuestaCobranza, TipoCobranza } from "../../lib/academia/tipos";
 import { useFiltroSede } from "../../lib/academia/useFiltroSede";
 import { usePalabras } from "../../lib/academia/usePalabras";
-import { abrirWhatsapp, nombreCuota } from "../../lib/academia/vista";
+import { abrirWhatsapp, nombreCuota, rutaCobroInscripcion } from "../../lib/academia/vista";
 import { fmtMoney, tiempoRelativo } from "../../lib/format";
 import { usePaginado } from "../../lib/paginado";
 import { cobraCuotas } from "../../lib/permisos";
@@ -96,7 +96,7 @@ export default function Cobranza() {
   function cobrar(f: FilaCobranza) {
     // Con la inscripción, su carrito; si no vino, el POS busca al alumno.
     const destino = f.inscripcionId
-      ? `/pos?inscripcion=${f.inscripcionId}`
+      ? rutaCobroInscripcion(f.inscripcionId, f.sede)
       : `/pos?alumno=${f.alumno.id}&q=${encodeURIComponent(f.alumno.codigo ?? f.alumno.nombre)}`;
     navigate(destino);
   }

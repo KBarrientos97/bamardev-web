@@ -10,7 +10,7 @@ import { nombreAlumno, nombreDe } from "../../lib/academia/formato";
 import type { Preinscripcion } from "../../lib/academia/tipos";
 import { useFiltroSede } from "../../lib/academia/useFiltroSede";
 import { usePalabras } from "../../lib/academia/usePalabras";
-import { abrirWhatsapp } from "../../lib/academia/vista";
+import { abrirWhatsapp, rutaCobroInscripcion } from "../../lib/academia/vista";
 import { enlaceWhatsApp } from "../../lib/agenda/recordatorio";
 import { tiempoRelativo } from "../../lib/format";
 import { usePaginado } from "../../lib/paginado";
@@ -128,7 +128,7 @@ export default function Preinscripciones() {
             setAviso(`${nombreAlumno(inscribiendo.alumno)} quedó inscrito.`);
             lista.recargar();
             avisarCambio();
-            if (r.cobrar) navigate(`/pos?inscripcion=${r.inscripcion.id}`);
+            if (r.cobrar) navigate(rutaCobroInscripcion(r.inscripcion.id, r.inscripcion.grupo?.sede));
           }}
         />
       )}

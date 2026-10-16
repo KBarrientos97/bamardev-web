@@ -6,6 +6,7 @@ import { apiAcademia } from "../../lib/academia/apiAcademia";
 import type { HoyAcademia } from "../../lib/academia/tipos";
 import { useFiltroSede } from "../../lib/academia/useFiltroSede";
 import { usePalabras } from "../../lib/academia/usePalabras";
+import { rutaCobroInscripcion } from "../../lib/academia/vista";
 import { api } from "../../lib/api";
 import { capitalizar, fechaLarga } from "../../lib/agenda/horaAgenda";
 import { fmtHora, fmtMoney } from "../../lib/format";
@@ -89,7 +90,7 @@ export default function Hoy() {
           onInscrito={(r) => {
             setInscribiendo(false);
             hoy.recargar();
-            if (r.cobrar) navigate(`/pos?inscripcion=${r.inscripcion.id}`);
+            if (r.cobrar) navigate(rutaCobroInscripcion(r.inscripcion.id, r.inscripcion.grupo?.sede));
           }}
         />
       )}

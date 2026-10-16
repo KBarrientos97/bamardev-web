@@ -22,7 +22,18 @@ import { cobraPropinas } from "../../lib/belleza/capacidades";
 import { useConsultaPeriodica } from "../../lib/agenda/useConsultaPeriodica";
 import CitasPorCobrar from "./CitasPorCobrar";
 import { fmtHora, fmtMoney } from "../../lib/format";
-import { creaClientes, tieneFeature, tienePermiso } from "../../lib/permisos";
+import { cobraCuotas, creaClientes, tieneFeature, tienePermiso } from "../../lib/permisos";
+// Educación (E9): las cuotas por cobrar, con el mismo patrón que las citas.
+import CuotasPorCobrar from "./CuotasPorCobrar";
+import {
+  carritoConCuotas,
+  detallesDeCuotas,
+  guardarCobroCuotas,
+  leerCobroCuotas,
+  totalCuotas,
+  type CobroCuotas,
+} from "../../lib/academia/cobroCuotas";
+import type { Ref } from "../../lib/academia/tipos";
 import { esFarmacia } from "../../lib/rubro";
 import { useApi } from "../../lib/useApi";
 import { quedoEnDuda } from "../../lib/cupo";
@@ -94,7 +105,9 @@ type Pantalla =
   /** El efectivo que los meseros cobraron y todavía no está en el cajón. */
   | "entregas"
   /** Belleza: las citas terminadas que nadie cobró. */
-  | "citasPorCobrar";
+  | "citasPorCobrar"
+  /** Educación: buscar al alumno y elegir sus cuotas. */
+  | "cuotasPorCobrar";
 
 export default function Pos() {
   const { negocio, rubro, puede, usuario } = useAuth();
@@ -271,6 +284,29 @@ export default function Pos() {
     conAgenda ? leerCitaCobrando() : null,
   );
 
+  // ── Educación: las cuotas que se están cobrando (E9) ──────────────────────
+  //
+  // Sólo con la feature `academia` y viendo a los alumnos de todos (ver
+  // `cobraCuotas`): los demás rubros no piden nada ni ven el botón, y su venta
+  // sale exactamente como siempre.
+  const conCuotas = cobraCuotas({
+    features: negocio?.features,
+    rubro,
+    permisos: usuario?.permisos,
+    permisosPropios: usuario?.permisosPropios,
+  });
+  const [cobroCuotas, setCobroCuotasEstado] = useState<CobroCuotas | null>(() =>
+    conCuotas ? leerCobroCuotas() : null,
+  );
+  const setCobroCuotas = useCallback((c: CobroCuotas | null) => {
+    setCobroCuotasEstado(c);
+    guardarCobroCuotas(c);
+  }, []);
+  /** Con qué alumno se abre la vista de cuotas (desde el grupo, la ficha o Cobranza). */
+  const [inicialCuotas, setInicialCuotas] = useState<
+    { inscripcionId?: number; alumnoId?: number; q?: string; sede?: Ref } | undefined
+  >(undefined);
+
   const [mesaCobrando, setMesaCobrando] = useState<MesaSalon | null>(null);
   const [venta, setVenta] = useState<Venta | null>(null);
   const [cajaCerrada, setCajaCerrada] = useState<Caja | null>(null);
@@ -389,8 +425,19 @@ export default function Pos() {
     // PER-12: la agenda de un spa por cabina trae la cabina como recurso).
     citaId: citaCobrando?.citaId ?? null,
   });
-  /** Lo que se cobra: el neto si hay promociones, el de siempre si no. */
-  const totalCarrito = descuentos.total(carritoVenta.total);
+  /**
+   * Lo que se cobra: el neto si hay promociones, el de siempre si no. Las
+   * cuotas (E9) van aparte de las promociones (no se les aplica ninguna) y
+   * se suman acá; sin cuotas es el mismo número de siempre.
+   */
+  const totalCarrito = cobroCuotas
+    ? Math.round((descuentos.total(carritoVenta.total) + totalCuotas(cobroCuotas)) * 100) / 100
+    : descuentos.total(carritoVenta.total);
+  /** El carrito que ve la pantalla de venta: con las cuotas sumadas, si hay. */
+  const carritoPantalla = useMemo(
+    () => carritoConCuotas(carritoVenta, cobroCuotas, () => setCobroCuotas(null)),
+    [carritoVenta, cobroCuotas, setCobroCuotas],
+  );
 
   // QA DIA-08: la clienta con bono que llega sin cita. Con el cliente de la
   // venta (o el del paquete que se le vende) se piden sus paquetes y se
@@ -494,10 +541,30 @@ export default function Pos() {
     void cobrarCita(citaPedida);
   }, [citaPedida, catalogoListo, cobrarCita, setParams]);
 
+  // "Cobrar" en el grupo, la ficha o Cobranza llega con `?inscripcion=` (o con
+  // `?alumno=&q=` si no se sabe la inscripción): se abre la vista de cuotas
+  // con ese alumno y se saca de la URL, como la cita.
+  const pedidoCuotas = conCuotas ? (params.get("inscripcion") ?? params.get("alumno")) : null;
+  useEffect(() => {
+    if (!pedidoCuotas) return;
+    const inscripcionId = Number(params.get("inscripcion")) || undefined;
+    const alumnoId = Number(params.get("alumno")) || undefined;
+    const sedeId = Number(params.get("sede")) || 0;
+    const sedeNombre = params.get("sedeNombre");
+    setInicialCuotas({
+      inscripcionId,
+      alumnoId,
+      q: params.get("q") ?? undefined,
+      ...(sedeNombre ? { sede: { id: sedeId, nombre: sedeNombre } } : {}),
+    });
+    setParams({}, { replace: true });
+    setPantalla("cuotasPorCobrar");
+  }, [pedidoCuotas, params, setParams]);
+
   /** Arma el cuerpo de la venta juntando carrito y datos de entrega. */
   const cuerpoVenta = useCallback(
     (pagos?: PagoInput[]) => ({
-      ...conCita(carritoVenta.aDetalles(), citaCobrando),
+      ...cuerpoConCuotas(conCita(carritoVenta.aDetalles(), citaCobrando), cobroCuotas),
       ...descuentos.extraVenta(),
       tipoPedido,
       ...(pagos ? { pagos } : {}),
@@ -515,8 +582,10 @@ export default function Pos() {
             prepagado: datosEntrega.prepagado,
           }
         : {}),
+      // Quien paga las cuotas (el alumno o su tutor) es el cliente de la venta.
+      ...(cobroCuotas?.pagadorId != null ? { clienteId: cobroCuotas.pagadorId } : {}),
     }),
-    [carritoVenta, tipoPedido, datosEntrega, citaCobrando, descuentos, clientePaquete, vendePaquete, clienteDeSesiones],
+    [carritoVenta, tipoPedido, datosEntrega, citaCobrando, descuentos, clientePaquete, vendePaquete, clienteDeSesiones, cobroCuotas],
   );
 
   const limpiar = useCallback(() => {
@@ -527,11 +596,12 @@ export default function Pos() {
     setError("");
     setCitaCobrando(null);
     setErrorCita("");
+    setCobroCuotas(null);
     setClientePaquete(null);
     setAsignacion(SIN_ASIGNAR);
     setSesionesElegidas([]);
     setPropinasCredito([]);
-  }, [carrito, setCitaCobrando, descuentos, setAsignacion]);
+  }, [carrito, setCitaCobrando, descuentos, setAsignacion, setCobroCuotas]);
 
   const cobrar = useCallback(
     async (pagos: PagoInput[], extra?: { propinas?: PropinaInput[] }) => {
@@ -817,6 +887,26 @@ export default function Pos() {
       />
     );
 
+  if (pantalla === "cuotasPorCobrar")
+    return (
+      <CuotasPorCobrar
+        caja={abierta.almacenId != null ? { id: abierta.almacenId, nombre: abierta.almacen } : null}
+        inicial={inicialCuotas}
+        onAtras={() => {
+          setInicialCuotas(undefined);
+          setPantalla("venta");
+        }}
+        onAgregar={(c) => {
+          // Las cuotas son de un alumno: las de otro reemplazan a las que había.
+          setCobroCuotas(c);
+          setInicialCuotas(undefined);
+          setTipoPedido("LOCAL");
+          setDatosEntrega(null);
+          setPantalla("venta");
+        }}
+      />
+    );
+
   if (pantalla === "historial")
     return (
       <PantallaHistorial
@@ -871,7 +961,9 @@ export default function Pos() {
             ? etiquetaMesa(mesaCobrando)
             : citaCobrando
               ? `Cita de ${citaCobrando.cliente.nombre}`
-              : undefined
+              : cobroCuotas
+                ? `Cuotas de ${cobroCuotas.alumno.nombre}`
+                : undefined
         }
         avisoEnvio={
           datosEntrega?.tarifaEnvio
@@ -912,7 +1004,8 @@ export default function Pos() {
         // cobrando una mesa está vacío. Una venta en 0 (todo con paquete) no
         // tiene nada que fiar.
         onCredito={
-          tieneFeature(negocio?.features, "fiado") && !datosEntrega && !mesaCobrando && totalCarrito > 0
+          // Una cuota no se fía (400 CUOTA_CON_FIADO): con cuotas no se ofrece.
+          tieneFeature(negocio?.features, "fiado") && !datosEntrega && !mesaCobrando && !cobroCuotas && totalCarrito > 0
             ? (extra) => {
                 // Las propinas que se anotaron en el cobro viajan con el fiado.
                 setPropinasCredito(extra?.propinas ?? []);
@@ -984,8 +1077,20 @@ export default function Pos() {
       productos={productos.datos ?? []}
       categorias={categorias.datos ?? []}
       // Con profesional, el precio propio ya en cada línea; si no, el mismo.
-      carrito={carritoVenta}
+      // Con cuotas (E9), sumadas al total y en sus renglones de arriba.
+      carrito={carritoPantalla}
       profesionales={profesionalesCarrito}
+      lineasExtra={
+        cobroCuotas ? (
+          <LineasCuotas
+            cobro={cobroCuotas}
+            onQuitar={(cuotaId) => {
+              const quedan = cobroCuotas.lineas.filter((l) => l.cuotaId !== cuotaId);
+              setCobroCuotas(quedan.length ? { ...cobroCuotas, lineas: quedan } : null);
+            }}
+          />
+        ) : undefined
+      }
       // Plan Emprendedor: sin lugar en el cupo ni créditos se abre la hoja de
       // compra antes de pasar al cobro, para no hacerle cargar los pagos a la
       // cajera y rebotar al final. Cobrando una cita no se mira (no consume).
@@ -1041,7 +1146,20 @@ export default function Pos() {
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-1.5">
-            {permiteDelivery && (
+            {/* Educación (E9): junto al buscador, siempre a un toque. */}
+            {conCuotas && (
+              <BotonTipo
+                icono="birrete"
+                etiqueta="Cuotas por cobrar"
+                titulo="Buscar al alumno y cobrar sus cuotas"
+                onClick={() => {
+                  setInicialCuotas(undefined);
+                  setPantalla("cuotasPorCobrar");
+                }}
+              />
+            )}
+            {/* Una cuota se cobra en el local: sin delivery ni recojo mientras haya cuotas. */}
+            {permiteDelivery && !cobroCuotas && (
               <BotonTipo
                 icono="truck"
                 etiqueta="Delivery"
@@ -1057,7 +1175,7 @@ export default function Pos() {
                 }}
               />
             )}
-            {permiteRecoger && (
+            {permiteRecoger && !cobroCuotas && (
               <BotonTipo
                 icono="clock"
                 etiqueta="Para recoger"
@@ -1118,6 +1236,23 @@ export default function Pos() {
             y no sólo como ícono: el mesero llega con la cuenta o con la plata
             en medio del servicio, y un ícono chico en la esquina no se ve.
             Un negocio sin salón no ve ninguno de los dos. */}
+        {/* Educación (E9): de quién son las cuotas, quién paga y si el grupo
+            es de otra sede. */}
+        {cobroCuotas && (
+          <div className="space-y-2 border-b border-borde bg-white px-4 py-3">
+            <BannerCuotas
+              cobro={cobroCuotas}
+              sedeCaja={abierta.almacen ?? null}
+              onPagador={(id) => setCobroCuotas({ ...cobroCuotas, pagadorId: id })}
+              onMas={() => {
+                setInicialCuotas({ inscripcionId: cobroCuotas.inscripcionId });
+                setPantalla("cuotasPorCobrar");
+              }}
+              onSoltar={() => setCobroCuotas(null)}
+            />
+            {carrito.lineas.length === 0 && <ErrorMsg>{error}</ErrorMsg>}
+          </div>
+        )}
         {(citaCobrando || errorCita) && (
           <div className="space-y-2 border-b border-borde bg-white px-4 py-3">
             {citaCobrando && (
@@ -1278,6 +1413,15 @@ function conCita(detalles: DetalleVentaInput[], cita: CarritoCita | null) {
 }
 
 /**
+ * Los detalles con las cuotas al final (E9): cada una con su `cuotaId` y su
+ * `montoCuota`. Sin cuotas, el MISMO cuerpo.
+ */
+function cuerpoConCuotas<T extends { detalles: DetalleVentaInput[] }>(cuerpo: T, cobro: CobroCuotas | null): T {
+  if (!cobro?.lineas.length) return cuerpo;
+  return { ...cuerpo, detalles: [...cuerpo.detalles, ...detallesDeCuotas(cobro)] };
+}
+
+/**
  * La cita que se está cobrando, arriba del catálogo: de quién es, qué se le
  * hizo y con quién. Si ya estaba cobrada lo dice antes de cobrar: la segunda
  * venta se acepta, pero queda para revisar en el cierre.
@@ -1312,6 +1456,95 @@ function BannerCita({ cita, onSoltar }: { cita: CarritoCita; onSoltar: () => voi
         Soltar cita
       </button>
     </div>
+  );
+}
+
+/**
+ * Las cuotas que se están cobrando (E9), arriba del catálogo: de quién son,
+ * quién paga (el alumno o su tutor, que es el cliente de la venta) y, si el
+ * grupo es de otra sede, el aviso de que se cobra en esta caja.
+ */
+function BannerCuotas({
+  cobro,
+  sedeCaja,
+  onPagador,
+  onMas,
+  onSoltar,
+}: {
+  cobro: CobroCuotas;
+  sedeCaja: string | null;
+  onPagador: (clienteId: number) => void;
+  onMas: () => void;
+  onSoltar: () => void;
+}) {
+  return (
+    <div className="space-y-2 rounded-xl border border-primary/30 bg-primary-50 px-3.5 py-2.5 text-primary-700">
+      <div className="flex items-start gap-3">
+        <Icon name="birrete" size={20} />
+        <div className="min-w-0 flex-1">
+          <p className="text-[13px] font-bold">
+            Cuotas de {cobro.alumno.nombre} · {fmtMoney(totalCuotas(cobro))}
+          </p>
+          {cobro.pagadores.length > 1 ? (
+            <label className="mt-1 flex flex-wrap items-center gap-2 text-xs">
+              Paga
+              <select
+                value={cobro.pagadorId ?? ""}
+                onChange={(e) => onPagador(Number(e.target.value))}
+                className="rounded-lg border border-primary/30 bg-white px-2 py-1 text-texto"
+              >
+                {cobro.pagadores.map((x) => (
+                  <option key={x.clienteId} value={x.clienteId}>
+                    {x.nombre} ({x.rol === "TUTOR" ? "tutor" : "alumno"})
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+          {cobro.otraSede && cobro.sedeGrupo && (
+            <p className="mt-1 text-xs font-semibold text-warning-text">
+              Grupo de {cobro.sedeGrupo} · se cobra en {sedeCaja ?? "esta caja"}
+            </p>
+          )}
+        </div>
+        <div className="flex shrink-0 flex-col items-end gap-1">
+          <button type="button" onClick={onMas} className="rounded-lg px-2 py-1 text-xs font-semibold hover:bg-primary-100">
+            Cambiar cuotas
+          </button>
+          <button type="button" onClick={onSoltar} className="rounded-lg px-2 py-1 text-xs font-semibold hover:bg-primary-100">
+            Soltar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Los renglones de las cuotas en el carrito: "Cuota 2/2 · M2–M3 · Bs 750", con su ×. */
+function LineasCuotas({ cobro, onQuitar }: { cobro: CobroCuotas; onQuitar: (cuotaId: number) => void }) {
+  return (
+    <ul aria-label="Cuotas" className="divide-y divide-borde-soft border-b border-borde-soft">
+      {cobro.lineas.map((l) => (
+        <li key={l.cuotaId} className="flex items-start gap-2 px-4 py-2.5">
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-semibold text-texto">{l.descripcion}</span>
+            <span className="block text-xs text-texto-3">
+              {cobro.alumno.nombre}
+              {l.monto < l.saldo ? ` · abono de ${fmtMoney(l.saldo)}` : ""}
+            </span>
+          </span>
+          <span className="shrink-0 text-sm font-bold tabular-nums text-texto">{fmtMoney(l.monto)}</span>
+          <button
+            type="button"
+            onClick={() => onQuitar(l.cuotaId)}
+            aria-label={`Quitar ${l.descripcion}`}
+            className="shrink-0 rounded-lg p-1 text-texto-3 hover:bg-danger-bg hover:text-danger-text"
+          >
+            <Icon name="close" size={16} />
+          </button>
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -1363,7 +1596,7 @@ function BotonTipo({
   onClick,
   deshabilitado,
 }: {
-  icono: "truck" | "clock" | "fileText" | "lock" | "grid" | "calendar";
+  icono: "truck" | "clock" | "fileText" | "lock" | "grid" | "calendar" | "birrete";
   etiqueta: string;
   titulo: string;
   onClick: () => void;

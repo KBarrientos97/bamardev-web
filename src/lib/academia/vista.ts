@@ -1,4 +1,4 @@
-import type { Cuota } from "./tipos";
+import type { Cuota, Ref } from "./tipos";
 import { fechaCorta, textoCubre } from "./formato";
 import { fmtMoney } from "../format";
 
@@ -48,4 +48,20 @@ export function textoEstadoInscripcion(estado: string): { texto: string; tono: "
     default:
       return { texto: "Activo", tono: "normal" };
   }
+}
+
+/**
+ * A dónde lleva "Cobrar": el POS, que abre las cuotas de esa inscripción. La
+ * sede del grupo va en la dirección para avisar si se cobra en otra caja (el
+ * carrito de la inscripción no la trae).
+ */
+export function rutaCobroInscripcion(inscripcionId: number, sede?: string | Ref | null): string {
+  const params = new URLSearchParams({ inscripcion: String(inscripcionId) });
+  if (sede && typeof sede !== "string") {
+    params.set("sede", String(sede.id));
+    params.set("sedeNombre", sede.nombre);
+  } else if (typeof sede === "string" && sede) {
+    params.set("sedeNombre", sede);
+  }
+  return `/pos?${params.toString()}`;
 }

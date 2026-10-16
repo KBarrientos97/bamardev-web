@@ -8,7 +8,7 @@ import { fechaCorta, nombreAlumno, nombreDe } from "../../lib/academia/formato";
 import type { AlumnoFila } from "../../lib/academia/tipos";
 import { useFiltroSede } from "../../lib/academia/useFiltroSede";
 import { usePalabras } from "../../lib/academia/usePalabras";
-import { textoEstadoInscripcion } from "../../lib/academia/vista";
+import { rutaCobroInscripcion, textoEstadoInscripcion } from "../../lib/academia/vista";
 import { fmtMoney } from "../../lib/format";
 import { usePaginado } from "../../lib/paginado";
 import { soloLoSuyo, tienePermiso } from "../../lib/permisos";
@@ -161,7 +161,7 @@ export default function Alumnos() {
           onInscrito={(r) => {
             setInscribiendo(false);
             lista.recargar();
-            if (r.cobrar) navigate(`/pos?inscripcion=${r.inscripcion.id}`);
+            if (r.cobrar) navigate(rutaCobroInscripcion(r.inscripcion.id, r.inscripcion.grupo?.sede));
           }}
         />
       )}

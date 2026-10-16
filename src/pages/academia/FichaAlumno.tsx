@@ -14,7 +14,7 @@ import {
 } from "../../lib/academia/formato";
 import type { AlumnoDetalle, InscripcionDetalle } from "../../lib/academia/tipos";
 import { usePalabras } from "../../lib/academia/usePalabras";
-import { abrirWhatsapp, nombreCuota, textoCuota, textoEstadoInscripcion } from "../../lib/academia/vista";
+import { abrirWhatsapp, nombreCuota, rutaCobroInscripcion, textoCuota, textoEstadoInscripcion } from "../../lib/academia/vista";
 import { enlaceWhatsApp } from "../../lib/agenda/recordatorio";
 import { fmtFecha, fmtMoney, iniciales } from "../../lib/format";
 import { cobraCuotas, soloLoSuyo, tienePermiso } from "../../lib/permisos";
@@ -157,7 +157,7 @@ export default function FichaAlumno() {
         </div>
         <div className="flex items-center gap-2">
           {cobra && !sinMontos && saldo > 0 && actual && (
-            <Boton onClick={() => navigate(`/pos?inscripcion=${actual.id}`)}>Cobrar {fmtMoney(vencido > 0 ? vencido : saldo)}</Boton>
+            <Boton onClick={() => navigate(rutaCobroInscripcion(actual.id, actual.grupo.sede))}>Cobrar {fmtMoney(vencido > 0 ? vencido : saldo)}</Boton>
           )}
           <MenuMas etiqueta={`Más acciones del ${p.alumno}`} acciones={accionesFicha} />
         </div>
