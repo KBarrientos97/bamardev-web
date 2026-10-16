@@ -9,14 +9,16 @@ describe("detalleAnularVenta: qué devolver y de dónde sale", () => {
     // devolvía todo del cajón y al cerrar le faltaba (revisión del 16-oct).
     expect(
       detalleAnularVenta({ origen: "mesa", mesaId: 3, pagos: [pago("QR", 10), pago("Efectivo", 35)] }),
-    ).toBe("Mesa 3. Los productos vuelven al stock. Devolvé al cliente Bs 35,00 en efectivo y Bs 10,00 por QR.");
+    ).toBe(
+      "Mesa 3. Los productos vuelven al stock. Devolvé al cliente Bs 35,00 en efectivo y Bs 10,00 por QR. Ojo: el tiempo de la mesa no se puede volver a cobrar.",
+    );
   });
 
   it("lo fiado no se devuelve: sale de Cuentas por cobrar", () => {
     expect(
       detalleAnularVenta({ origen: "mesa", mesaId: 2, pagos: [pago("Efectivo", 40), pago("Fiado", 30)] }),
     ).toBe(
-      "Mesa 2. Los productos vuelven al stock. Devolvé al cliente Bs 40,00 en efectivo. Bs 30,00 eran fiado: salen de Cuentas por cobrar.",
+      "Mesa 2. Los productos vuelven al stock. Devolvé al cliente Bs 40,00 en efectivo. Bs 30,00 eran fiado: salen de Cuentas por cobrar. Ojo: el tiempo de la mesa no se puede volver a cobrar.",
     );
   });
 
@@ -31,7 +33,7 @@ describe("detalleAnularVenta: qué devolver y de dónde sale", () => {
         adelantosOtraCaja: [{ cajero: "Ana", monto: 40 }],
       }),
     ).toBe(
-      "Mesa 2. Los productos vuelven al stock. Devolvé al cliente Bs 45,00 en efectivo. De ese efectivo, Bs 40,00 entraron en la caja de Ana: pedíselos, porque su arqueo deja de esperarlos.",
+      "Mesa 2. Los productos vuelven al stock. Devolvé al cliente Bs 45,00 en efectivo. De ese efectivo, Bs 40,00 entraron en la caja de Ana: pedíselos, porque su arqueo deja de esperarlos. Ojo: el tiempo de la mesa no se puede volver a cobrar.",
     );
   });
 

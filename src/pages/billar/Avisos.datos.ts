@@ -39,6 +39,10 @@ export function detalleAnularVenta(v: Pick<VentaBillar, "origen" | "mesaId" | "p
     devolver ? `Devolvé al cliente ${devolver}.` : "",
     fiado > 0.005 ? `${fmtMoney(fiado)} eran fiado: salen de Cuentas por cobrar.` : "",
     deOtra.length ? `De ese efectivo, ${dondeEntro(deOtra)}: pedíselos, porque su arqueo deja de esperarlos.` : "",
+    // Anular por "Error de cobro" (marcó QR y era efectivo) dejaba la mesa sin
+    // poder cobrarse de nuevo: el tiempo de mesa no se vende fuera del cierre
+    // (revisión del 16-oct). Que se sepa antes de poner el PIN.
+    v.origen === "mesa" ? "Ojo: el tiempo de la mesa no se puede volver a cobrar." : "",
   ]
     .filter(Boolean)
     .join(" ");

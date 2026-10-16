@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Icon } from "../../components/Icon";
 import { useAuth } from "../../store/AuthContext";
+import { MotorAvisos } from "./Avisos";
 import { useAhora } from "./reloj";
 import { AvisoSinConexionTv, MarcoSalon } from "./SalonTv";
 import { mesasEnUso, recargar, useBillar, useSondeoBillar } from "./store";
@@ -55,6 +56,11 @@ export default function PantallaSalon() {
       {/* Ya cargada, un sondeo que falla no se veía: la TV quedaba con los
           relojes corriendo sobre mesas que pudieron cambiar. */}
       {e.cargado && e.error && <AvisoSinConexionTv detalle={e.error} onReintentar={() => void recargar(true)} />}
+      {/* Va fuera del Layout, así que el motor de avisos de fondo no corre: con
+          la PC de la barra mostrando la TV no sonaba nada (y es la compu con
+          parlantes). Sólo el zumbido y la voz: los avisos flotantes, con su
+          "Extender", no van en la tele (revisión del 16-oct). */}
+      <MotorAvisos />
     </MarcoSalon>
   );
 }

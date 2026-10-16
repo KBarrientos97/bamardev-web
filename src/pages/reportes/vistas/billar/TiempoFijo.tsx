@@ -53,7 +53,6 @@ export default function TiempoFijo() {
                     ["Veces usada", (p) => p.usos],
                     ["Descuento dado (Bs)", (p) => p.descuentoBs],
                     ["Minutos promedio con promo", (p) => (p.conPromo == null ? null : Math.round(p.conPromo))],
-                    ["Minutos promedio sin promo", (p) => (p.sinPromo == null ? null : Math.round(p.sinPromo))],
                   ],
                   promos,
                 ),
@@ -185,18 +184,20 @@ function Promociones({ filas }: { filas: FilaPromo[] }) {
                   {/* El descuento es plata que no entró: va en rojo. Uno en cero va en gris, no se regaló nada. */}
                   <Renglon etiqueta="Descuento dado" valor={bsResta(p.descuentoBs)} resta apagado={!esPositivo(p.descuentoBs)} />
                   {p.conPromo != null && <Renglon etiqueta="Juegan con promo" valor={duracion(p.conPromo)} />}
-                  {p.conPromo != null && p.sinPromo != null && <Renglon etiqueta="Juegan sin promo" valor={duracion(p.sinPromo)} />}
                 </div>
               </li>
             ))}
           </ul>
           <div className="px-4 pb-4 sm:px-5">
-            {/* Sin la segunda frase, una promo "también en tiempo fijo" con pocos
+            {/* Sin la última frase, una promo "también en tiempo fijo" con pocos
                 usos parecía no funcionar: en el fijo el descuento queda dentro
-                del precio del paquete y la sesión no guarda la promo aparte. */}
+                del precio del paquete y la sesión no guarda la promo aparte.
+                Ya no compara "con promo" contra "sin promo": la promo sólo se
+                aplica a quien ya jugó esas horas, así que la comparación daba
+                siempre que la promo alargaba la mesa (revisión del 16-oct). */}
             <Nota>
-              Si los que usan la promo juegan bastante más tiempo, el descuento se paga solo con las horas extra y los
-              consumos. Son las promos del tiempo libre: en el tiempo fijo el descuento ya va dentro del precio del paquete.
+              La promo se aplica a quien ya jugó esas horas: lo que muestra es cuánto juegan los que llegan y cuánto se les
+              descontó. Son las promos del tiempo libre: en el tiempo fijo el descuento ya va dentro del precio del paquete.
             </Nota>
           </div>
         </>
