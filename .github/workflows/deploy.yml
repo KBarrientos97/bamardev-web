@@ -9,6 +9,15 @@ name: Deploy app
 on:
   push:
     branches: [main, dev]
+    # Un cambio sólo de documentación no se compila ni se despliega.
+    paths-ignore:
+      - '**/*.md'
+
+# Un push nuevo a dev cancela el que seguía corriendo (sólo importa el último:
+# ahorra minutos de Actions). En main nunca: un deploy a PROD no se corta.
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   deploy:
