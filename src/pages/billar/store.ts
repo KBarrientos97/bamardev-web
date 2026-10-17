@@ -124,7 +124,7 @@ let ajustesNegocio: AjustesApi = {
   avisos: [10, 5, 1],
   sonido: true,
   voz: true,
-  pin: { anularConsumo: true, anularMesa: true },
+  pin: { anularConsumo: true, anularMesa: true, pausar: true },
   tieneTokenSalon: false,
 };
 
@@ -541,8 +541,9 @@ export const billar = {
     return ponerMesa(await apiBillar.pagar(sesionId, aPagos(pago, await formasPago()), clienteRequestId));
   },
 
-  async pausar(mesaId: number, motivo: string): Promise<Mesa> {
-    return ponerMesa(await apiBillar.pausar(sesionDe(mesaId).sesionId, motivo));
+  /** `cred`: el PIN del encargado si el negocio lo pide para pausar (`ajustes.pin.pausar`). */
+  async pausar(mesaId: number, motivo: string, cred: Credenciales = {}): Promise<Mesa> {
+    return ponerMesa(await apiBillar.pausar(sesionDe(mesaId).sesionId, motivo, cred));
   },
 
   async reanudar(mesaId: number): Promise<Mesa> {
@@ -860,6 +861,7 @@ export const billar = {
         voz: ajustes.voz,
         pinAnularConsumo: ajustes.pin.anularConsumo,
         pinAnularMesa: ajustes.pin.anularMesa,
+        ...(ajustes.pin.pausar != null ? { pinPausar: ajustes.pin.pausar } : {}),
         // La hora en que termina la jornada (reportes); sin ella no se toca.
         ...(ajustes.horaCorteMin != null ? { horaCorteMin: ajustes.horaCorteMin } : {}),
       });

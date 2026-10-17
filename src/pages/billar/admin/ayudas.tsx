@@ -332,6 +332,11 @@ export function AyudaPines({ siempre }: { siempre: string }) {
         Queda registrado quién la hizo, quién la autorizó y por qué, en Reportes → Billar → <b>Pausas y ajustes</b>.
       </p>
       <p>{siempre}</p>
+      <p>
+        <b>Pausar una mesa</b> viene marcada: mientras una mesa está en pausa el tiempo no se cobra, y sin PIN el cajero
+        podría pausar la de un conocido y dejarlo jugar gratis. Si la cajera atiende sola y tiene que poder pausar (un
+        corte de luz), desmarcala: cada pausa igual queda registrada con quién la hizo, por qué y cuánto duró.
+      </p>
       <Nota tono="ambar" icono="key">
         El PIN de cada encargado lo asigna el administrador en Usuarios. Que no lo sepa el cajero: si lo sabe, el control
         no sirve.

@@ -20,7 +20,7 @@ const AJUSTES = {
   avisos: [10, 5, 1],
   sonido: true,
   voz: true,
-  pin: { anularConsumo: true, anularMesa: true },
+  pin: { anularConsumo: true, anularMesa: true, pausar: true },
   tieneTokenSalon: false,
 };
 const tablero = (sucursalId = 1) => ({

@@ -200,7 +200,8 @@ export const apiBillar = {
     enviar<MesaApi>(`${sesion(sesionId)}/consumos/${consumoId}/anular`, { motivo, ...cred }),
   pagar: (sesionId: string, pagos: PagoInput[], clienteRequestId: string) =>
     enviar<MesaApi>(`${sesion(sesionId)}/pagos`, { pagos, clienteRequestId }),
-  pausar: (sesionId: string, motivo: string) => enviar<MesaApi>(`${sesion(sesionId)}/pausar`, { motivo }),
+  pausar: (sesionId: string, motivo: string, cred: Credenciales) =>
+    enviar<MesaApi>(`${sesion(sesionId)}/pausar`, { motivo, ...cred }),
   reanudar: (sesionId: string) => enviar<MesaApi>(`${sesion(sesionId)}/reanudar`),
   extender: (sesionId: string, horas: number, pagos: PagoInput[] | undefined, clienteRequestId: string) =>
     enviar<MesaApi>(`${sesion(sesionId)}/extender`, { horas, ...(pagos ? { pagos } : {}), clienteRequestId }),
@@ -250,6 +251,8 @@ export const apiBillar = {
     voz: boolean;
     pinAnularConsumo: boolean;
     pinAnularMesa: boolean;
+    /** Si pausar pide PIN. Sin él, el backend no lo toca. */
+    pinPausar?: boolean;
     /** A qué hora termina la jornada (minutos, 0 a 720). Sin él, el backend no lo toca. */
     horaCorteMin?: number;
   }) => enviar<AjustesApi>("/billar/admin/ajustes", cuerpo, "PUT"),

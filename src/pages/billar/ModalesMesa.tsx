@@ -10,7 +10,7 @@ import { FormCobro } from "./Cobro";
 import { useCobro } from "./useCobro";
 import { useAccion } from "./useAccion";
 import { huellaAdelanto } from "./reintentos";
-import { inicioCorregido } from "./ModalesMesa.datos";
+import { MOTIVOS_PAUSA, inicioCorregido } from "./ModalesMesa.datos";
 import { billar, mesasEnUso, tipoDe, useBillar } from "./store";
 import { ahoraServidor, useAhora } from "./reloj";
 import { cuentaDe, fmtCrono, horaDe, segundosEnMesa, segundosJugados } from "./calculo";
@@ -132,7 +132,6 @@ function cobranIgual(a: TipoMesa, b: TipoMesa): boolean {
   return como(a) === como(b);
 }
 
-const MOTIVOS_PAUSA = ["Problema con la mesa", "Corte de luz", "Cliente salió", "Otro"];
 const MOTIVOS_FUERA = ["Cambio de paño", "Mantenimiento", "Otro"];
 
 /** Pausar (§7.12) o sacar de servicio: un motivo de los de siempre, u otro escrito. */

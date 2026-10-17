@@ -226,6 +226,11 @@ export interface ProductoBillar {
 export interface PinesBillar {
   anularConsumo: boolean;
   anularMesa: boolean;
+  /**
+   * Pausar congela el reloj: es tiempo que no se cobra. Llega desde el 17-oct;
+   * sin el campo (backend anterior) no se pide PIN, como antes.
+   */
+  pausar: boolean;
 }
 
 export interface AjustesBillar {

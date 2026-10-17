@@ -19,7 +19,15 @@ import { detalleAnularVenta, efectivoEnOtraCaja } from "./Avisos.datos";
 import { useDialogos, type Dialogo } from "./dialogos";
 import { ModalAbrir, ModalExtender } from "./ModalTiempo";
 import { ModalAvisos } from "./ModalesCaja";
-import { ModalCambiar, ModalEditarInicio, ModalMotivo, ModalPago, ModalPin, ModalReservar } from "./ModalesMesa";
+import { MOTIVOS_PAUSA } from "./ModalesMesa.datos";
+import {
+  ModalCambiar,
+  ModalEditarInicio,
+  ModalMotivo,
+  ModalPago,
+  ModalPin,
+  ModalReservar,
+} from "./ModalesMesa";
 import { ModalHistorial, ModalTicket, ModalVenta } from "./ModalesVenta";
 import { ahoraServidor, useAhora } from "./reloj";
 import { billar, leerBillar, recargar, tableroViejo, tipoDe, useBillar, type EstadoBillar, type Toast } from "./store";
@@ -222,7 +230,25 @@ function dibujar(actual: Dialogo, e: EstadoBillar, cerrar: () => void): ReactNod
     case "cambiar":
       return enJuego ? <ModalCambiar mesa={enJuego} onClose={cerrar} /> : null;
     case "pausar":
-      return enJuego ? <ModalMotivo mesa={enJuego} modo="pausar" onClose={cerrar} /> : null;
+      if (!enJuego) return null;
+      // Con "Pausar una mesa" en "Acciones que piden PIN" (el default desde el
+      // 17-oct), la pausa la firma un encargado: es tiempo que no se cobra, y
+      // el cajero pausaba la mesa de un conocido sin que nadie lo supiera. Sin
+      // el campo (backend anterior), como antes.
+      if (e.ajustes.pin.pausar !== true) return <ModalMotivo mesa={enJuego} modo="pausar" onClose={cerrar} />;
+      return (
+        <ModalPin
+          accion={`Pausar la Mesa ${enJuego.id}`}
+          detalle="El cronómetro se frena hasta que la reanuden: ese tiempo no se cobra. Queda registrado quién pausó, quién autorizó y por qué."
+          motivos={MOTIVOS_PAUSA.filter((m) => m !== "Otro")}
+          permiso="billar.admin"
+          onClose={cerrar}
+          onAutorizar={async (motivo, cred) => {
+            await billar.pausar(enJuego.id, motivo, cred);
+            cerrar();
+          }}
+        />
+      );
     case "fuera":
       return mesa ? <ModalMotivo mesa={mesa} modo="fuera" onClose={cerrar} /> : null;
     case "reservar":

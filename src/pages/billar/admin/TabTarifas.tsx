@@ -53,7 +53,12 @@ export function TabTarifas({
 const PIN_SIEMPRE =
   "Anular una venta y corregir la hora de inicio de una mesa piden PIN siempre, como en todo el sistema.";
 
-const PINES: { clave: keyof PinesBillar; texto: string }[] = [
+const PINES: { clave: keyof PinesBillar; texto: string; ayuda?: string }[] = [
+  {
+    clave: "pausar",
+    texto: "Pausar una mesa",
+    ayuda: "Mientras está en pausa el tiempo no se cobra.",
+  },
   { clave: "anularConsumo", texto: "Anular un consumo de una mesa" },
   { clave: "anularMesa", texto: "Anular una mesa abierta" },
 ];
@@ -119,8 +124,8 @@ function AjustesGenerales({ b, onCambiar }: { b: BorradorTarifas; onCambiar: (b:
           </div>
 
           <Nota tono="gris">
-            El cajero abre, pausa, reanuda, cambia y cierra mesas sin PIN. Sólo lo marcado en "Acciones que piden PIN"
-            necesita el de un encargado.
+            El cajero abre, {b.pin.pausar ? "" : "pausa, "}reanuda, cambia y cierra mesas sin PIN. Sólo lo marcado en
+            "Acciones que piden PIN" necesita el de un encargado.
           </Nota>
         </div>
 
@@ -130,6 +135,7 @@ function AjustesGenerales({ b, onCambiar }: { b: BorradorTarifas; onCambiar: (b:
             <Casilla
               key={p.clave}
               marcada={b.pin[p.clave]}
+              ayuda={p.ayuda}
               onCambiar={(v) => onCambiar({ ...b, pin: { ...b.pin, [p.clave]: v } })}
             >
               {p.texto}

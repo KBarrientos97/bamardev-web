@@ -21,3 +21,6 @@ export function inicioCorregido(
   if (ahora - d.getTime() > INICIO_MAX_ATRAS_MS) return { error: "noLlego" };
   return { inicio: d.getTime(), deAyer };
 }
+
+/** Los motivos de una pausa: el diálogo sin PIN y el de autorización usan los mismos. */
+export const MOTIVOS_PAUSA = ["Problema con la mesa", "Corte de luz", "Cliente salió", "Otro"];
