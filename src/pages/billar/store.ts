@@ -699,6 +699,16 @@ export const billar = {
     return { codigo: venta.comprobante ?? `#${venta.id}`, yaEntro };
   },
 
+  /**
+   * Corregir por dónde entró la plata de una venta del turno, sin anularla:
+   * el total no cambia. Con el PIN de un encargado. false si ya estaba así.
+   */
+  async corregirPago(ventaId: number, pago: PagoNuevo, motivo: string, cred: Credenciales): Promise<boolean> {
+    const r = await apiBillar.corregirPago(ventaId, aPagos(pago, await formasPago()), motivo, cred);
+    await cargarVentas();
+    return r.corregida;
+  },
+
   /** Anular una venta (PIN siempre, como en todo el sistema): repone el stock y sale de la caja. */
   async anularVenta(ventaId: number, motivo: string, cred: Credenciales): Promise<void> {
     await api.anularVenta(ventaId, { ...cred, motivo });

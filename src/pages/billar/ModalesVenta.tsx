@@ -8,6 +8,7 @@ import { useAhora } from "./reloj";
 import { tipoDe, useBillar } from "./store";
 import { BotonB, Circulo } from "./ui";
 import { origenDe, textoMetodo, vistaDe } from "./vista";
+import { sePuedeCorregirPago } from "./Avisos.datos";
 
 /** El detalle de una venta (§7.9): con Ticket, Anular (PIN) y Listo. */
 export function ModalVenta({ codigo, onClose }: { codigo: string; onClose: () => void }) {
@@ -29,6 +30,12 @@ export function ModalVenta({ codigo, onClose }: { codigo: string; onClose: () =>
           {!v.anulada && (
             <BotonB variante="rosa" icono="trash" className="mr-auto" onClick={() => abrir({ tipo: "anularVenta", codigo })}>
               Anular venta
+            </BotonB>
+          )}
+          {/* Marcó efectivo y era QR: se corrige sin anular (17-oct). */}
+          {sePuedeCorregirPago(v) && (
+            <BotonB icono="swap" onClick={() => abrir({ tipo: "corregirPago", codigo })}>
+              Corregir pago
             </BotonB>
           )}
           <BotonB icono="fileText" onClick={() => abrir({ tipo: "ticket", codigo })}>

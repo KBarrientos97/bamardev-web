@@ -14,7 +14,7 @@ import type { BillarReporteApi } from "../../api";
 export type Ajuste = BillarReporteApi["auditoria"][number];
 
 /** Los grupos de la pantalla. Se arman por el código, nunca por el texto: el texto se puede reescribir. */
-export type TipoAjuste = "anulaciones" | "pausas" | "cambios" | "horas" | "extensiones";
+export type TipoAjuste = "anulaciones" | "pausas" | "cambios" | "horas" | "extensiones" | "pagos";
 
 const TIPO_POR_CODIGO: Record<string, TipoAjuste> = {
   ANULAR_MESA: "anulaciones",
@@ -28,6 +28,9 @@ const TIPO_POR_CODIGO: Record<string, TipoAjuste> = {
   CAMBIAR_MESA: "cambios",
   EDITAR_INICIO: "horas",
   EXTENDER: "extensiones",
+  // Desde el 17-oct: el medio de pago corregido de una venta del turno (marcó
+  // efectivo y era QR). Es plata que cambió de cajón: el dueño la tiene que ver.
+  CORREGIR_PAGO: "pagos",
 };
 
 export const NOMBRE_TIPO: Record<TipoAjuste, string> = {
@@ -36,6 +39,7 @@ export const NOMBRE_TIPO: Record<TipoAjuste, string> = {
   cambios: "Cambios de mesa",
   horas: "Hora corregida",
   extensiones: "Extensiones",
+  pagos: "Pagos corregidos",
 };
 
 /** El backend arma como mucho los últimos 200: con exactamente 200 puede haber más. */
@@ -60,7 +64,7 @@ export interface ResumenAjustes {
 export function resumenAjustes(lista: readonly Ajuste[]): ResumenAjustes {
   const conCodigo = lista.every((a) => a.codigo);
   if (!conCodigo) return { total: lista.length, porTipo: null, mesasAnuladas: null, consumosAnulados: null };
-  const porTipo: Record<TipoAjuste, number> = { anulaciones: 0, pausas: 0, cambios: 0, horas: 0, extensiones: 0 };
+  const porTipo: Record<TipoAjuste, number> = { anulaciones: 0, pausas: 0, cambios: 0, horas: 0, extensiones: 0, pagos: 0 };
   for (const a of lista) {
     const t = tipoDe(a);
     if (t) porTipo[t] += 1;

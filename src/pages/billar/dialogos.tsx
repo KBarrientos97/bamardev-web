@@ -23,6 +23,7 @@ export type Dialogo =
   | { tipo: "venta"; codigo: string }
   | { tipo: "ticket"; codigo: string }
   | { tipo: "anularVenta"; codigo: string }
+  | { tipo: "corregirPago"; codigo: string }
   | { tipo: "avisos" };
 
 interface Pila {

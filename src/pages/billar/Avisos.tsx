@@ -15,7 +15,8 @@ import {
   sePuedeAnular,
   textoDevolucion,
 } from "./calculo";
-import { detalleAnularVenta, efectivoEnOtraCaja } from "./Avisos.datos";
+import { detalleAnularVenta, efectivoEnOtraCaja, sePuedeCorregirPago } from "./Avisos.datos";
+import { ModalCorregirPago } from "./CorregirPago";
 import { useDialogos, type Dialogo } from "./dialogos";
 import { ModalAbrir, ModalExtender } from "./ModalTiempo";
 import { ModalAvisos } from "./ModalesCaja";
@@ -361,6 +362,11 @@ function dibujar(actual: Dialogo, e: EstadoBillar, cerrar: () => void): ReactNod
           }}
         />
       );
+    }
+    case "corregirPago": {
+      const v = e.ventas.find((x) => x.codigo === actual.codigo);
+      if (!v || !sePuedeCorregirPago(v)) return null;
+      return <ModalCorregirPago venta={v} onClose={cerrar} />;
     }
     case "avisos":
       return <ModalAvisos onClose={cerrar} />;

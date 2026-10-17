@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { detalleAnularVenta, efectivoEnOtraCaja } from "./Avisos.datos";
+import { detalleAnularVenta, efectivoEnOtraCaja, sePuedeCorregirPago } from "./Avisos.datos";
 
 const pago = (metodo: string, monto: number) => ({ id: metodo, hora: 0, metodo, monto });
 
@@ -10,7 +10,7 @@ describe("detalleAnularVenta: qué devolver y de dónde sale", () => {
     expect(
       detalleAnularVenta({ origen: "mesa", mesaId: 3, pagos: [pago("QR", 10), pago("Efectivo", 35)] }),
     ).toBe(
-      "Mesa 3. Los productos vuelven al stock. Devolvé al cliente Bs 35,00 en efectivo y Bs 10,00 por QR. Ojo: el tiempo de la mesa no se puede volver a cobrar.",
+      "Mesa 3. Los productos vuelven al stock. Devolvé al cliente Bs 35,00 en efectivo y Bs 10,00 por QR. Ojo: el tiempo de la mesa no se puede volver a cobrar. Si sólo se marcó mal el medio de pago, no la anules: usá «Corregir pago».",
     );
   });
 
@@ -39,8 +39,28 @@ describe("detalleAnularVenta: qué devolver y de dónde sale", () => {
 
   it("una venta rápida", () => {
     expect(detalleAnularVenta({ origen: "rapida", pagos: [pago("QR", 8)] })).toBe(
-      "Venta rápida. Los productos vuelven al stock. Devolvé al cliente Bs 8,00 por QR.",
+      "Venta rápida. Los productos vuelven al stock. Devolvé al cliente Bs 8,00 por QR. Si sólo se marcó mal el medio de pago, no la anules: usá «Corregir pago».",
     );
+  });
+});
+
+describe("sePuedeCorregirPago: corregir el medio sin anular", () => {
+  it("una venta del turno cobrada en esta caja se corrige", () => {
+    expect(sePuedeCorregirPago({ pagos: [pago("Efectivo", 10)] })).toBe(true);
+    expect(sePuedeCorregirPago({ pagos: [pago("Efectivo", 6), pago("QR", 4)] })).toBe(true);
+  });
+
+  it("lo fiado, lo devuelto y lo cobrado en otra caja no se corrige acá", () => {
+    // Lo mismo que rechaza el backend: el fiado es una cuenta por cobrar, y la
+    // devolución y el adelanto de otra caja viven también fuera de la venta.
+    expect(sePuedeCorregirPago({ pagos: [pago("Efectivo", 40), pago("Fiado", 30)] })).toBe(false);
+    expect(sePuedeCorregirPago({ pagos: [pago("Efectivo", 10)], devuelto: { efectivo: 5, otros: [] } })).toBe(false);
+    expect(
+      sePuedeCorregirPago({ pagos: [pago("Efectivo", 45)], adelantosOtraCaja: [{ cajero: "Ana", monto: 40 }] }),
+    ).toBe(false);
+    expect(
+      sePuedeCorregirPago({ pagos: [pago("Efectivo", 10)], anulada: { hora: 0, quien: "Ana", motivo: "x" } }),
+    ).toBe(false);
   });
 });
 

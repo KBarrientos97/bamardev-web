@@ -22,7 +22,9 @@ export function dondeEntro(partes: { cajero: string; monto: number }[]): string 
  * caja dejaba de esperarlo y la de quien anulaba quedaba corta (revisión del
  * 16-oct). Si cada uno pasa lo suyo, las dos cajas cuadran.
  */
-export function detalleAnularVenta(v: Pick<VentaBillar, "origen" | "mesaId" | "pagos" | "adelantosOtraCaja">): string {
+export function detalleAnularVenta(
+  v: Pick<VentaBillar, "origen" | "mesaId" | "pagos" | "adelantosOtraCaja" | "anulada" | "devuelto">,
+): string {
   const reales = v.pagos.filter((p) => p.metodo !== "Fiado");
   const efectivo = round2(reales.filter((p) => esDeEfectivo(p.metodo)).reduce((t, p) => t + p.monto, 0));
   const otros = new Map<string, number>();
@@ -43,9 +45,29 @@ export function detalleAnularVenta(v: Pick<VentaBillar, "origen" | "mesaId" | "p
     // poder cobrarse de nuevo: el tiempo de mesa no se vende fuera del cierre
     // (revisión del 16-oct). Que se sepa antes de poner el PIN.
     v.origen === "mesa" ? "Ojo: el tiempo de la mesa no se puede volver a cobrar." : "",
+    // Desde el 17-oct el medio se corrige sin anular: si fue eso, que no se
+    // pierda la venta (ni el tiempo de la mesa) por un medio mal marcado.
+    sePuedeCorregirPago(v) ? "Si sólo se marcó mal el medio de pago, no la anules: usá «Corregir pago»." : "",
   ]
     .filter(Boolean)
     .join(" ");
+}
+
+/**
+ * Si el medio de pago de una venta del turno se puede corregir sin anularla.
+ * La misma regla que el backend (`CorreccionPagoBillarService`, que además
+ * exige la caja abierta): sin fiado (es una cuenta por cobrar, no un medio),
+ * sin devolución por pago de más y con todo lo cobrado en esta caja.
+ */
+export function sePuedeCorregirPago(
+  v: Pick<VentaBillar, "anulada" | "pagos" | "devuelto" | "adelantosOtraCaja">,
+): boolean {
+  return (
+    !v.anulada &&
+    !v.pagos.some((p) => p.metodo === "Fiado") &&
+    !v.devuelto &&
+    !(v.adelantosOtraCaja ?? []).some((x) => x.monto > 0.005)
+  );
 }
 
 /**

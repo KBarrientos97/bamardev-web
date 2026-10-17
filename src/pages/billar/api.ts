@@ -203,6 +203,9 @@ export const apiBillar = {
   pausar: (sesionId: string, motivo: string, cred: Credenciales) =>
     enviar<MesaApi>(`${sesion(sesionId)}/pausar`, { motivo, ...cred }),
   reanudar: (sesionId: string) => enviar<MesaApi>(`${sesion(sesionId)}/reanudar`),
+  /** Corregir el medio de pago de una venta del turno (backend del 17-oct). `corregida`: false si ya estaba así. */
+  corregirPago: (ventaId: number, pagos: PagoInput[], motivo: string, cred: Credenciales) =>
+    enviar<{ corregida: boolean }>(`/billar/ventas/${ventaId}/pagos`, { pagos, motivo, ...cred }),
   extender: (sesionId: string, horas: number, pagos: PagoInput[] | undefined, clienteRequestId: string) =>
     enviar<MesaApi>(`${sesion(sesionId)}/extender`, { horas, ...(pagos ? { pagos } : {}), clienteRequestId }),
   cambiar: (sesionId: string, destinoIdInterno: number) =>
