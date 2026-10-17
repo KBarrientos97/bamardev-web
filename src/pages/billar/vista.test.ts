@@ -35,6 +35,14 @@ describe("la pausa a la vista", () => {
     expect(segundosEnPausa({ id: 1, idInterno: 10, tipo: "pool", estado: "libre" }, AHORA)).toBeNull();
   });
 
+  it("después de un cambio de mesa la pausa se cuenta desde que se pausó, no desde el cambio", () => {
+    // Revisión del 17-oct: el cambio a otra tarifa corre pausedAt a la hora
+    // del cambio (para cobrar bien) y el "hace N min" volvía a cero.
+    const mesa = enPausaHace(1);
+    mesa.sesion!.pausaDesde = AHORA - 30 * 60_000;
+    expect(segundosEnPausa(mesa, AHORA)).toBe(30 * 60);
+  });
+
   it("en la TV dice cuánto lleva y la pausa larga se ve en ámbar", () => {
     // Revisión del 17-oct: una pausa olvidada (o "para un conocido") es tiempo
     // que no se cobra, y en la TV sólo decía "Pausada".

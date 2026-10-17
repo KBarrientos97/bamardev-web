@@ -26,8 +26,9 @@ export const PAUSA_LARGA_SEG = 10 * 60;
 
 /** Los segundos que lleva en pausa una mesa, o null si no está pausada. */
 export function segundosEnPausa(mesa: Mesa, ahora: number): number | null {
-  const desde = mesa.estado === "abierta" ? mesa.sesion?.pausedAt : null;
-  return desde ? Math.max(0, Math.floor((ahora - desde) / 1000)) : null;
+  const s = mesa.estado === "abierta" ? mesa.sesion : undefined;
+  if (!s?.pausedAt) return null;
+  return Math.max(0, Math.floor((ahora - (s.pausaDesde ?? s.pausedAt)) / 1000));
 }
 
 export function vistaDe(e: EstadoBillar, mesa: Mesa, ahora: number): VistaMesa {

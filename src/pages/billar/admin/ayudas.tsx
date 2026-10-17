@@ -146,7 +146,7 @@ export function AyudaFraccion({ tipo }: { tipo: TipoMesa | null }) {
           <b>Por minuto:</b> se cobra lo jugado, minuto a minuto.
         </li>
         <li>
-          <b>15 min:</b> se cobra de a cuartos de hora. Si juegan 1:05, se cobra 1:15.
+          <b>15 min:</b> se cobra de a cuartos de hora: el cuarto empezado se cobra entero.
         </li>
       </ul>
       <ConQue
@@ -264,8 +264,8 @@ export function AyudaPromos({ tipo }: { tipo: TipoMesa | null }) {
   return (
     <Ayuda titulo="Promociones por tiempo">
       <p>
-        Un descuento en el tiempo de mesa para el que juega muchas horas. Por ejemplo «desde 3 h, 10 %»: si juegan 3 h o
-        más, todo el tiempo se cobra con 10 % menos.
+        Un descuento en el tiempo de mesa para el que juega muchas horas. Por ejemplo «desde 3 h, 10 %»: cuando el tiempo
+        que se cobra llega a 3 h, todo el tiempo se cobra con 10 % menos.
       </p>
       {ej && (
         <p className="rounded-xl bg-slate-50 px-3 py-2 text-[13px] tabular-nums">

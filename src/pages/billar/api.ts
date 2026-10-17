@@ -49,6 +49,8 @@ interface SesionApi {
   pausedAt: number | null;
   pausedTotal: number;
   pauseMotivo?: string;
+  /** Desde cuándo está en pausa de verdad (backend del 17-oct). */
+  pausaDesde?: number;
   cliente?: string;
   garantia?: string;
   nota?: string;
@@ -307,6 +309,7 @@ function aSesion(s: SesionApi): Sesion {
     pausedAt: s.pausedAt,
     pausedTotal: s.pausedTotal,
     pauseMotivo: s.pauseMotivo,
+    pausaDesde: s.pausaDesde,
     cliente: s.cliente,
     garantia: s.garantia,
     nota: s.nota,

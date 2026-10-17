@@ -150,7 +150,15 @@ function UnToast({ t, onAccion }: { t: Toast; onAccion: () => void }) {
     };
   }, [t.id]);
   const etiqueta =
-    t.accion?.tipo === "extender" ? "Extender" : t.accion?.tipo === "ticket" ? "Imprimir ticket" : t.accion ? "Ver mesa" : null;
+    t.accion?.tipo === "extender"
+      ? "Extender"
+      : t.accion?.tipo === "ticket"
+        ? "Imprimir ticket"
+        : t.accion?.tipo === "venta"
+          ? "Ver la venta"
+          : t.accion
+            ? "Ver mesa"
+            : null;
   return (
     <div
       role={t.tono === "rojo" ? "alert" : "status"}

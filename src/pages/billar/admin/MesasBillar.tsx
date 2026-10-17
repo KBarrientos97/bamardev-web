@@ -185,7 +185,13 @@ function MesasBillarCargadas() {
                 />
               </>
             ) : (
-              <TabTarifas b={borrador} errores={errores} mostrarErrores={intento} onCambiar={setBorrador} />
+              <TabTarifas
+                b={borrador}
+                guardado={guardado}
+                errores={errores}
+                mostrarErrores={intento}
+                onCambiar={setBorrador}
+              />
             )}
           </div>
 

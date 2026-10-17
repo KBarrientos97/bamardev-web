@@ -23,7 +23,10 @@ export function dondeEntro(partes: { cajero: string; monto: number }[]): string 
  * 16-oct). Si cada uno pasa lo suyo, las dos cajas cuadran.
  */
 export function detalleAnularVenta(
-  v: Pick<VentaBillar, "origen" | "mesaId" | "pagos" | "adelantosOtraCaja" | "anulada" | "devuelto" | "pagoCorregido">,
+  v: Pick<
+    VentaBillar,
+    "origen" | "mesaId" | "pagos" | "adelantosOtraCaja" | "anulada" | "devuelto" | "pagoCorregido" | "cobradoEnOtraCaja"
+  >,
 ): string {
   const reales = v.pagos.filter((p) => p.metodo !== "Fiado");
   const efectivo = round2(reales.filter((p) => esDeEfectivo(p.metodo)).reduce((t, p) => t + p.monto, 0));
@@ -60,10 +63,12 @@ export function detalleAnularVenta(
  * sin devolución por pago de más y con todo lo cobrado en esta caja.
  */
 export function sePuedeCorregirPago(
-  v: Pick<VentaBillar, "anulada" | "pagos" | "devuelto" | "adelantosOtraCaja" | "pagoCorregido">,
+  v: Pick<VentaBillar, "anulada" | "pagos" | "devuelto" | "adelantosOtraCaja" | "pagoCorregido" | "cobradoEnOtraCaja">,
 ): boolean {
   return (
     !v.anulada &&
+    // Cualquier adelanto de otra caja, también por QR (ADELANTO_OTRA_CAJA).
+    !v.cobradoEnOtraCaja &&
     // Una vez por venta (el backend rechaza la segunda con YA_CORREGIDA).
     !v.pagoCorregido &&
     !v.pagos.some((p) => p.metodo === "Fiado") &&

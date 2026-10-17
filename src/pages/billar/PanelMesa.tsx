@@ -268,7 +268,7 @@ function CuentaAbierta({ v, ahora }: { v: VistaMesa; ahora: number }) {
             </>
           )}
           {s.pausedAt && (
-            <Fila etiqueta="En pausa" valor={`desde ${horaDe(s.pausedAt)} · ${s.pauseMotivo ?? ""}`} />
+            <Fila etiqueta="En pausa" valor={`desde ${horaDe(s.pausaDesde ?? s.pausedAt)} · ${s.pauseMotivo ?? ""}`} />
           )}
         </div>
       </section>

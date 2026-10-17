@@ -120,6 +120,13 @@ export interface Sesion {
   /** Cuándo se abrió de verdad (el inicio se puede corregir). Para el plazo de anular. */
   abierta?: number;
   pausedAt: number | null;
+  /**
+   * Desde cuándo está en pausa de verdad. `pausedAt` es lo que usa el cobro y un
+   * cambio de mesa de otra tarifa la corre a la hora del cambio; para MEDIR la
+   * pausa ("hace N min", el ámbar) vale ésta. Backend del 17-oct; sin ella,
+   * `pausedAt`.
+   */
+  pausaDesde?: number;
   /** Segundos acumulados en pausa. */
   pausedTotal: number;
   pauseMotivo?: string;
@@ -205,6 +212,8 @@ export interface VentaBillar {
   pausaMin?: number;
   /** Ya se le corrigió el medio de pago (una vez por venta). Desde el 17-oct. */
   pagoCorregido?: boolean;
+  /** Algo de esta mesa se cobró en OTRA caja, en cualquier medio: no se corrige acá. */
+  cobradoEnOtraCaja?: boolean;
   anulada?: { hora: number; quien: string; motivo: string };
 }
 

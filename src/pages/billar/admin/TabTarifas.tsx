@@ -19,11 +19,14 @@ import { TarjetaTipo } from "./TarjetaTipo";
  */
 export function TabTarifas({
   b,
+  guardado,
   errores,
   mostrarErrores,
   onCambiar,
 }: {
   b: BorradorTarifas;
+  /** Lo que está guardado: un PIN guardado lo saca sólo el administrador. */
+  guardado: BorradorTarifas;
   errores: Record<string, ErroresTipo>;
   mostrarErrores: boolean;
   onCambiar: (b: BorradorTarifas) => void;
@@ -41,7 +44,7 @@ export function TabTarifas({
           />
         ))}
       </div>
-      <AjustesGenerales b={b} onCambiar={onCambiar} />
+      <AjustesGenerales b={b} guardado={guardado} onCambiar={onCambiar} />
       <TarjetaJornada b={b} onCambiar={onCambiar} />
     </div>
   );
@@ -52,7 +55,7 @@ export function TabTarifas({
 // billar no tiene descuentos. Un control que no hace nada es peor que no
 // tenerlo.
 const PIN_SIEMPRE =
-  "Anular una venta y corregir la hora de inicio de una mesa piden PIN siempre, como en todo el sistema.";
+  "Piden PIN siempre: anular una venta, corregir la hora de inicio, anular una mesa que ya cobró algo y corregir un pago que saca efectivo de la caja.";
 
 const PINES: { clave: keyof PinesBillar; texto: string; ayuda?: string }[] = [
   {
@@ -64,7 +67,15 @@ const PINES: { clave: keyof PinesBillar; texto: string; ayuda?: string }[] = [
   { clave: "anularMesa", texto: "Anular una mesa abierta" },
 ];
 
-function AjustesGenerales({ b, onCambiar }: { b: BorradorTarifas; onCambiar: (b: BorradorTarifas) => void }) {
+function AjustesGenerales({
+  b,
+  guardado,
+  onCambiar,
+}: {
+  b: BorradorTarifas;
+  guardado: BorradorTarifas;
+  onCambiar: (b: BorradorTarifas) => void;
+}) {
   // Sacar un PIN lo hace sólo el administrador (el backend lo rechaza con
   // PIN_SOLO_ADMINISTRADOR desde el 17-oct): el encargado tiene este permiso
   // para las tarifas, y con eso dejaba al cajero anular o pausar sin firma.
@@ -130,8 +141,8 @@ function AjustesGenerales({ b, onCambiar }: { b: BorradorTarifas; onCambiar: (b:
           </div>
 
           <Nota tono="gris">
-            El cajero abre, {b.pin.pausar ? "" : "pausa, "}reanuda, cambia y cierra mesas sin PIN. Sólo lo marcado en
-            "Acciones que piden PIN" necesita el de un encargado.
+            El cajero abre, {b.pin.pausar ? "" : "pausa, "}reanuda, cambia y cierra mesas sin PIN. Lo marcado en
+            "Acciones que piden PIN", y lo que lo pide siempre, necesita el de un encargado.
           </Nota>
         </div>
 
@@ -141,8 +152,10 @@ function AjustesGenerales({ b, onCambiar }: { b: BorradorTarifas; onCambiar: (b:
             <Casilla
               key={p.clave}
               marcada={b.pin[p.clave]}
-              ayuda={b.pin[p.clave] && !esAdministrador ? "Sólo el administrador lo saca." : p.ayuda}
-              deshabilitada={b.pin[p.clave] && !esAdministrador}
+              // Sólo lo que está GUARDADO: si el encargado lo marcó recién,
+              // lo puede desmarcar antes de guardar.
+              ayuda={guardado.pin[p.clave] && b.pin[p.clave] && !esAdministrador ? "Sólo el administrador lo saca." : p.ayuda}
+              deshabilitada={guardado.pin[p.clave] && b.pin[p.clave] && !esAdministrador}
               onCambiar={(v) => onCambiar({ ...b, pin: { ...b.pin, [p.clave]: v } })}
             >
               {p.texto}

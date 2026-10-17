@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { Icon } from "../../components/Icon";
 import { Vacio } from "../../components/ui";
@@ -55,6 +55,8 @@ export default function CerrarMesa() {
   const [fiando, setFiando] = useState(false);
   const accion = useAccion();
   const intento = useIntentoDeCobro();
+  /** Este equipo mandó un cobro de esta mesa (ver el texto de "no está abierta"). */
+  const intentoCobro = useRef(false);
   useEffect(() => {
     if (accion.codigo === "MESA_CAMBIO") setHasta(ahoraServidor());
   }, [accion.codigo]);
@@ -112,7 +114,14 @@ export default function CerrarMesa() {
           <Vacio
             icono="bola"
             titulo={`La Mesa ${mesaId} no está abierta`}
-            texto="Puede que ya la haya cerrado otra caja."
+            // Se cortó la respuesta del cobro y el tablero la vio cerrada antes
+            // del reintento: el cobro entró, con el medio del primer intento,
+            // y la pantalla culpaba a otra caja (revisión del 17-oct).
+            texto={
+              intentoCobro.current
+                ? "El cobro pudo haber entrado aunque se cortó la conexión: revisá en Ventas con qué medio quedó y, si no es el que pagó, usá «Corregir pago»."
+                : "Puede que ya la haya cerrado otra caja."
+            }
             accion={<BotonB onClick={() => navigate("/billar")}>Volver al tablero</BotonB>}
           />
         )}
@@ -156,6 +165,7 @@ export default function CerrarMesa() {
     texto: string,
     finales: { metodo: string; monto: number }[] | null = null,
   ) => {
+    intentoCobro.current = true;
     let r: Awaited<ReturnType<typeof billar.cerrar>> | null = null;
     const ok = await accion.ejecutar(async () => {
       r = await billar.cerrar(mesa.id, cobroFinal);
@@ -166,7 +176,15 @@ export default function CerrarMesa() {
     // Sólo un reintento puede devolver una venta con otros pagos: la clave es
     // la misma aunque se haya cambiado de medio.
     const venta = hecho.reintento && finales ? leerBillar().ventas.find((v) => v.id === hecho.ventaId) : undefined;
-    terminar(hecho.codigo, texto, venta && finales ? cobroQueFigura(venta.pagos, s.pagos, c.total, finales) : null);
+    // Si las ventas no se pudieron traer, no se sabe con qué medio quedó: que
+    // no salga el aviso verde con el medio nuevo como si fuera seguro.
+    const figura =
+      hecho.reintento && finales
+        ? venta
+          ? cobroQueFigura(venta.pagos, s.pagos, c.total, finales)
+          : "un medio que no se pudo leer: revisalo en Ventas"
+        : null;
+    terminar(hecho.codigo, texto, figura);
   };
 
   const confirmar = () => {
@@ -327,9 +345,10 @@ export default function CerrarMesa() {
               {sVivo?.pausedAt && (
                 <div className="space-y-2">
                   <Nota tono="ambar" icono="alert">
-                    La mesa está en pausa desde las {horaDe(sVivo.pausedAt)} ({fmtHace(ahora - sVivo.pausedAt)}
-                    {sVivo.pauseMotivo ? ` · ${sVivo.pauseMotivo}` : ""}): ese tiempo no se cobra. Si siguieron jugando,
-                    reanudala antes de cobrar.
+                    La mesa está en pausa desde las {horaDe(sVivo.pausaDesde ?? sVivo.pausedAt)} (
+                    {fmtHace(ahora - (sVivo.pausaDesde ?? sVivo.pausedAt))}
+                    {sVivo.pauseMotivo ? ` · ${sVivo.pauseMotivo}` : ""}): ese tiempo no se cobra, aunque la reanudes
+                    ahora. Si en realidad siguieron jugando, que el encargado corrija la hora de inicio antes de cobrar.
                   </Nota>
                   <BotonB
                     icono="play"
@@ -337,7 +356,7 @@ export default function CerrarMesa() {
                     disabled={accion.enviando}
                     onClick={() => void accion.ejecutar(() => billar.reanudar(mesa.id))}
                   >
-                    Reanudar la mesa
+                    Reanudar la mesa (siguen jugando)
                   </BotonB>
                 </div>
               )}

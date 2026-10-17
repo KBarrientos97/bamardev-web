@@ -63,6 +63,9 @@ describe("sePuedeCorregirPago: corregir el medio sin anular", () => {
     ).toBe(false);
     // Una vez por venta: la segunda la rechaza el backend (YA_CORREGIDA).
     expect(sePuedeCorregirPago({ pagos: [pago("QR", 10)], pagoCorregido: true })).toBe(false);
+    // Un adelanto por QR cobrado en otra caja no figura en adelantosOtraCaja
+    // (que es sólo el efectivo), pero el backend igual lo rechaza.
+    expect(sePuedeCorregirPago({ pagos: [pago("QR", 10)], cobradoEnOtraCaja: true })).toBe(false);
   });
 });
 
