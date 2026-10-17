@@ -280,6 +280,9 @@ export function AyudaPromos({ tipo }: { tipo: TipoMesa | null }) {
           En tiempo fijo sólo cuenta si marcás «También en tiempo fijo»: el paquete ya trae su precio.
         </li>
         <li>Con «Activa» la apagás sin borrarla.</li>
+        <li>
+          Si pasan la cuenta a una mesa de otro tipo, lo que ya jugaron conserva la promo que tenían ganada.
+        </li>
       </ul>
     </Ayuda>
   );

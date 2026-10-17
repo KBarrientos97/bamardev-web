@@ -96,11 +96,21 @@ export interface Prepago {
   pagado: boolean;
 }
 
+/** La promo que ya tenía ganada lo jugado en la otra mesa, congelada al cambiar. */
+export interface PromoPrevia {
+  nombre: string;
+  pct: number;
+  descuento: number;
+}
+
 /** Tiempo arrastrado al cambiar a una mesa de otro tipo: se cobra a la tarifa vieja. */
 export interface TiempoPrevio {
   secs: number;
   min: number;
+  /** Antes de la promo: la promo se mira al cerrar (ver `promoDeLaCuenta`). */
   bs: number;
+  /** Null o ausente: no había ganado ninguna (o el backend es de antes del 17-oct). */
+  promo?: PromoPrevia | null;
 }
 
 /** Desde que se abre hasta que se cierra. Al cerrar se convierte en una venta. */

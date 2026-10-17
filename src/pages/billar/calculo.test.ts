@@ -361,3 +361,60 @@ describe("lo pagado de más", () => {
     expect(devolucionDe([{ metodo: "Efectivo Bs", monto: 30 }], 10)).toEqual({ efectivo: 20, otros: [] });
   });
 });
+
+// Los mismos casos que `bamardev-backend/src/billar/calculo.spec.ts`.
+describe("la promo al cambiar de mesa", () => {
+  // 3 h de Pool (Bs 60) con la "Promo 3 h o más" ya ganada: Bs 6 de descuento.
+  const DE_POOL = {
+    secs: hms(3, 0),
+    min: 180,
+    bs: 60,
+    promo: { nombre: "Promo 3 h o más", pct: 10, descuento: 6 },
+  };
+  const conPromo = (t: TipoMesa, pct: number): TipoMesa => ({
+    ...t,
+    promos: [{ id: "c3", nombre: "Promo Carambola", desde: 3, pct, activa: true, fijo: false }],
+  });
+  const SIN_PROMOS: TipoMesa = { ...CARAMBOLA, promos: [] };
+
+  it("lo jugado en la otra mesa conserva la promo que ya había ganado aunque la nueva no tenga", () => {
+    // Antes: sin promociones en la mesa nueva, el descuento ganado en el Pool
+    // desaparecía al pasarlos (Bs 72,50 en vez de Bs 66,50).
+    const c = cuentaDe(sesion({ jugados: hms(0, 30), prev: DE_POOL }), SIN_PROMOS, AHORA);
+    expect(c.promo).toEqual({ nombre: "Promo 3 h o más (mesa anterior)", pct: 10, descuento: 6 });
+    expect(c.tiempoBs).toBe(66.5);
+    expect(c.nextBs).toBe(72.75);
+  });
+
+  it("si la promo de la mesa nueva le da más a lo de allá, va la nueva sobre todo, como antes", () => {
+    const c = cuentaDe(sesion({ jugados: hms(0, 30), prev: DE_POOL }), conPromo(CARAMBOLA, 20), AHORA);
+    expect(c.promo).toEqual({ nombre: "Promo Carambola", pct: 20, descuento: 14.5 });
+    expect(c.tiempoBs).toBe(58);
+  });
+
+  it("con promo en las dos, lo de allá conserva la suya y lo de acá lleva la de acá", () => {
+    const prev = { ...DE_POOL, promo: { nombre: "Promo Pool", pct: 20, descuento: 12 } };
+    const c = cuentaDe(sesion({ jugados: hms(0, 30), prev }), conPromo(CARAMBOLA, 10), AHORA);
+    expect(c.promo).toEqual({ nombre: "Promo Carambola + mesa anterior", pct: 10, descuento: 13.25 });
+    expect(c.tiempoBs).toBe(59.25);
+  });
+
+  it("sin promo ganada en la otra mesa da lo mismo que antes", () => {
+    const sin = sesion({ jugados: hms(0, 30), prev: { ...DE_POOL, promo: null } });
+    expect(cuentaDe(sin, SIN_PROMOS, AHORA).promo).toBeNull();
+    expect(cuentaDe(sin, SIN_PROMOS, AHORA).tiempoBs).toBe(72.5);
+    const viejo = sesion({ jugados: hms(0, 30), prev: { secs: hms(3, 0), min: 180, bs: 60 } });
+    expect(cuentaDe(viejo, conPromo(CARAMBOLA, 10), AHORA).promo).toEqual({
+      nombre: "Promo Carambola",
+      pct: 10,
+      descuento: 7.25,
+    });
+  });
+
+  it("el nombre no se encadena si la cuenta pasa por una tercera mesa", () => {
+    const prev = { ...DE_POOL, promo: { ...DE_POOL.promo, nombre: "Promo 3 h o más (mesa anterior)" } };
+    expect(cuentaDe(sesion({ jugados: hms(0, 30), prev }), SIN_PROMOS, AHORA).promo?.nombre).toBe(
+      "Promo 3 h o más (mesa anterior)",
+    );
+  });
+});

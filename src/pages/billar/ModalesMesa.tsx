@@ -36,6 +36,10 @@ export function ModalCambiar({ mesa, onClose }: { mesa: Mesa; onClose: () => voi
   // vieja: el cajero le explicaba al cliente lo contrario de lo que se cobraba.
   const enteraALaNueva =
     otroTipo && !!mesa.sesion && !mesa.sesion.prev && segundosJugados(mesa.sesion, ahoraServidor()) < origen.minimo * 60;
+  // La promo que ya ganaron viaja con lo jugado (`promoDeLaCuenta`): se dice,
+  // porque la mesa nueva puede no tener promociones y el cliente pregunta.
+  const promoGanada =
+    otroTipo && !enteraALaNueva && mesa.sesion ? cuentaDe(mesa.sesion, origen, ahoraServidor()).promo : null;
 
   return (
     <Modal
@@ -109,6 +113,7 @@ export function ModalCambiar({ mesa, onClose }: { mesa: Mesa; onClose: () => voi
             <Nota tono="ambar">
               La Mesa {destino} es {nuevo.nombre} ({fmtMoney(nuevo.tarifa)}/h). Lo jugado hasta ahora queda a{" "}
               {fmtMoney(origen.tarifa)}/h y desde el cambio corre a {fmtMoney(nuevo.tarifa)}/h.
+              {promoGanada && <> Lo jugado conserva la «{promoGanada.nombre}» que ya tenía ganada.</>}
             </Nota>
           ) : (
             <Nota>El cronómetro, los consumos y los pagos se mueven con la cuenta.</Nota>

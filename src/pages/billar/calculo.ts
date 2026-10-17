@@ -5,6 +5,7 @@ import type {
   Mesa,
   Pago,
   Promo,
+  PromoPrevia,
   Sesion,
   TipoMesa,
 } from "./tipos";
@@ -144,6 +145,45 @@ export function promoPara(t: TipoMesa, horas: number, fijo = false): Promo | nul
   return mejor;
 }
 
+const MESA_ANTERIOR = "mesa anterior";
+
+/**
+ * La promo del tiempo libre, con lo traído de una mesa de otra tarifa. Copia
+ * EXACTA de `promoDeLaCuenta` del backend (calculo.ts): si una cambia,
+ * cambian las dos.
+ *
+ * Lo jugado allá conserva la promo que ya había ganado (`previa`, congelada
+ * al cambiar), salvo que la de esta mesa le dé más; lo jugado acá lleva la de
+ * acá, por el total de horas. Antes se miraba sólo la promo de la mesa nueva
+ * sobre todo: 3 h de Pool con 10 % pasadas a una Carambola sin promociones
+ * perdían el descuento que ya tenían ganado (revisión del 16-oct). Sin
+ * `previa`, o si la de acá cubre lo de allá, da lo mismo que antes.
+ */
+export function promoDeLaCuenta(
+  p: Promo | null,
+  previoBs: number,
+  bsMesa: number,
+  bruto: number,
+  previa: PromoPrevia | null | undefined,
+): Cuenta["promo"] {
+  const ganada = previa && previa.descuento > 0.005 ? previa : null;
+  if (!ganada || (p && round2((previoBs * p.pct) / 100) >= ganada.descuento)) {
+    return p ? { nombre: p.nombre, pct: p.pct, descuento: round2((bruto * p.pct) / 100) } : null;
+  }
+  const deAca = p ? round2((bsMesa * p.pct) / 100) : 0;
+  return {
+    // "+ mesa anterior": el % es el de acá y el descuento suma lo de allá.
+    // El nombre no se encadena si la cuenta pasa por una tercera mesa.
+    nombre: p
+      ? `${p.nombre} + ${MESA_ANTERIOR}`
+      : ganada.nombre.includes(MESA_ANTERIOR)
+        ? ganada.nombre
+        : `${ganada.nombre} (${MESA_ANTERIOR})`,
+    pct: p ? p.pct : ganada.pct,
+    descuento: round2(ganada.descuento + deAca),
+  };
+}
+
 /** El precio de N horas de tiempo fijo, con la promo si la tiene "también en tiempo fijo". */
 export function precioFijo(t: TipoMesa, h: number) {
   const base = precioHoras(t, h);
@@ -270,13 +310,12 @@ export function cuentaDe(s: Sesion, t: TipoMesa, ahora: number): Cuenta {
     cobradoMin = previoMin + c.min;
     const bruto = round2(previoBs + c.bs);
     const p = promoPara(t, cobradoMin / 60);
-    const descuento = p ? round2((bruto * p.pct) / 100) : 0;
-    promo = p ? { nombre: p.nombre, pct: p.pct, descuento } : null;
-    tiempoBs = round2(bruto - descuento);
+    promo = promoDeLaCuenta(p, previoBs, c.bs, bruto, s.prev?.promo);
+    tiempoBs = round2(bruto - (promo?.descuento ?? 0));
     nextSecs = (s.prev?.secs ?? 0) + c.nextSecs;
     const brutoSig = round2(previoBs + c.nextBs);
     const pSig = promoPara(t, (cobradoMin + t.fraccion) / 60);
-    nextBs = round2(brutoSig - (pSig ? round2((brutoSig * pSig.pct) / 100) : 0));
+    nextBs = round2(brutoSig - (promoDeLaCuenta(pSig, previoBs, c.nextBs, brutoSig, s.prev?.promo)?.descuento ?? 0));
   }
 
   const total = round2(tiempoBs + consumosBs);
