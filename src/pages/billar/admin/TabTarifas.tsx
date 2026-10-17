@@ -2,6 +2,7 @@ import { desbloquearAudio, hablar, zumbido } from "../alertas";
 import type { PinesBillar } from "../tipos";
 import { BotonB, Nota, Tarjeta } from "../ui";
 import { MINUTOS_AVISO, type BorradorTarifas, type ErroresTipo } from "./borrador";
+import { AyudaAvisos, AyudaPines } from "./ayudas";
 import { Casilla, Etiqueta } from "./piezas";
 import { TarjetaJornada } from "./TarjetaJornada";
 import { TarjetaTipo } from "./TarjetaTipo";
@@ -49,6 +50,9 @@ export function TabTarifas({
 // hacían nada: anular una venta pide PIN siempre en todo el sistema, y el
 // billar no tiene descuentos. Un control que no hace nada es peor que no
 // tenerlo.
+const PIN_SIEMPRE =
+  "Anular una venta y corregir la hora de inicio de una mesa piden PIN siempre, como en todo el sistema.";
+
 const PINES: { clave: keyof PinesBillar; texto: string }[] = [
   { clave: "anularConsumo", texto: "Anular un consumo de una mesa" },
   { clave: "anularMesa", texto: "Anular una mesa abierta" },
@@ -73,7 +77,7 @@ function AjustesGenerales({ b, onCambiar }: { b: BorradorTarifas; onCambiar: (b:
       <div className="grid gap-6 lg:grid-cols-2">
         <div className="space-y-5">
           <div>
-            <Etiqueta>Avisos antes del fin del tiempo fijo</Etiqueta>
+            <Etiqueta ayuda={<AyudaAvisos />}>Avisos antes del fin del tiempo fijo</Etiqueta>
             <div className="flex flex-wrap gap-2">
               {MINUTOS_AVISO.map((min) => {
                 const activo = b.avisos.includes(min);
@@ -121,7 +125,7 @@ function AjustesGenerales({ b, onCambiar }: { b: BorradorTarifas; onCambiar: (b:
         </div>
 
         <div>
-          <Etiqueta>Acciones que piden PIN</Etiqueta>
+          <Etiqueta ayuda={<AyudaPines siempre={PIN_SIEMPRE} />}>Acciones que piden PIN</Etiqueta>
           {PINES.map((p) => (
             <Casilla
               key={p.clave}
@@ -131,9 +135,7 @@ function AjustesGenerales({ b, onCambiar }: { b: BorradorTarifas; onCambiar: (b:
               {p.texto}
             </Casilla>
           ))}
-          <p className="mt-2 text-[12px] text-texto-4">
-            Anular una venta y corregir la hora de inicio de una mesa piden PIN siempre, como en todo el sistema.
-          </p>
+          <p className="mt-2 text-[12px] text-texto-4">{PIN_SIEMPRE}</p>
         </div>
       </div>
     </Tarjeta>

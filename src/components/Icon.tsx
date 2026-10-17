@@ -537,6 +537,13 @@ const paths: Record<string, ReactNode> = {
       <path d="M8 12h8" />
     </>
   ),
+  pregunta: (
+    <>
+      <circle cx="12" cy="12" r="10" />
+      <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+      <line x1="12" y1="17" x2="12.01" y2="17" />
+    </>
+  ),
 };
 
 export type NombreIcono = keyof typeof paths | (string & {});

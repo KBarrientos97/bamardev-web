@@ -7,6 +7,7 @@ import { CampoBs } from "../Cobro";
 import { billar, siguienteNumero, tarifaVigente, useBillar } from "../store";
 import { BotonB, Circulo, Nota, Segmentado } from "../ui";
 import { borradorMesa, datosMesa, erroresMesa, type BorradorMesa, type EstadoAdmin } from "./borrador";
+import { AyudaEstadoMesa, AyudaTarifaMesa } from "./ayudas";
 import { ErrorCampo, Etiqueta } from "./piezas";
 
 /**
@@ -134,7 +135,7 @@ export function FormMesa({
         </div>
 
         <div>
-          <Etiqueta>Tarifa</Etiqueta>
+          <Etiqueta ayuda={<AyudaTarifaMesa />}>Tarifa</Etiqueta>
           <div role="radiogroup" aria-label="Tarifa" className="space-y-2">
             <OpcionTarifa
               activa={b.tarifaPropia === null}
@@ -166,7 +167,7 @@ export function FormMesa({
         </div>
 
         <div>
-          <Etiqueta>Estado</Etiqueta>
+          <Etiqueta ayuda={<AyudaEstadoMesa />}>Estado</Etiqueta>
           <fieldset disabled={enJuego} className={enJuego ? "opacity-60" : ""}>
             <Segmentado<EstadoAdmin>
               etiqueta="Estado"
