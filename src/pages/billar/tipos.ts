@@ -198,6 +198,11 @@ export interface VentaBillar {
    * anula la venta, esa plata está en el cajón de ellos.
    */
   adelantosOtraCaja?: { cajero: string; monto: number }[];
+  /**
+   * Minutos que la mesa estuvo en pausa (no se cobran). El ticket los muestra
+   * para que el cliente vea el tiempo que no se le cobró. Desde el 17-oct.
+   */
+  pausaMin?: number;
   anulada?: { hora: number; quien: string; motivo: string };
 }
 

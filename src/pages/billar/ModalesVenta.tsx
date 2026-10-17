@@ -52,6 +52,11 @@ export function ModalVenta({ codigo, onClose }: { codigo: string; onClose: () =>
         {v.origen === "mesa" && (
           <Linea izq={`Tiempo de mesa (${fmtCobrado(v.tiempoMin)})`} der={fmtMoney(v.tiempoBs + (v.promo?.descuento ?? 0))} />
         )}
+        {/* La pausa a la vista: el cliente ve el tiempo que no se le cobró, y
+            el dueño, cuánto se pausó en cada mesa sin abrir otro reporte. */}
+        {v.origen === "mesa" && v.pausaMin ? (
+          <p className="text-[12px] text-texto-4">En pausa {fmtCobrado(v.pausaMin)} · no se cobra</p>
+        ) : null}
         {v.promo && <Linea izq={`${v.promo.nombre} −${v.promo.pct} %`} der={`−${fmtMoney(v.promo.descuento)}`} verde />}
         {v.items.map((i) => (
           <Linea key={`${i.productoId}-${i.precio}`} izq={`${i.cant}× ${i.nombre}`} der={fmtMoney(i.precio * i.cant)} />
@@ -144,6 +149,7 @@ export function ModalTicket({ codigo, onClose }: { codigo: string; onClose: () =
           {fila("Origen", origenDe(v, e.tipos))}
           {sep}
           {v.origen === "mesa" && fila(`Tiempo de mesa ${fmtCobrado(v.tiempoMin)}`, fmtMoney(v.tiempoBs + (v.promo?.descuento ?? 0)))}
+          {v.origen === "mesa" && v.pausaMin ? fila(`  En pausa ${fmtCobrado(v.pausaMin)}`, "no se cobra") : null}
           {v.promo && fila(`  ${v.promo.nombre}`, `−${fmtMoney(v.promo.descuento)}`)}
           {v.items.map((i) => (
             <div key={`${i.productoId}-${i.precio}`}>{fila(`${i.cant} × ${i.nombre}`, fmtMoney(i.precio * i.cant))}</div>
