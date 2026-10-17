@@ -12,6 +12,22 @@ export interface VistaMesa {
   cuenta: Cuenta | null;
   /** Si todavía se puede anular (`sePuedeAnular`, con el plazo desde que se abrió). */
   anulable: boolean;
+  /** Segundos que lleva en pausa; null si no está pausada. */
+  pausaSeg?: number | null;
+}
+
+/**
+ * Desde cuántos segundos una pausa se marca en ámbar en la tarjeta y en la TV.
+ * Una pausa olvidada es tiempo que no se cobra; una pausa larga "para un
+ * conocido", también. A la vista protege a la cajera honesta que se olvidó de
+ * reanudar y deja ver la otra (revisión del 17-oct).
+ */
+export const PAUSA_LARGA_SEG = 10 * 60;
+
+/** Los segundos que lleva en pausa una mesa, o null si no está pausada. */
+export function segundosEnPausa(mesa: Mesa, ahora: number): number | null {
+  const desde = mesa.estado === "abierta" ? mesa.sesion?.pausedAt : null;
+  return desde ? Math.max(0, Math.floor((ahora - desde) / 1000)) : null;
 }
 
 export function vistaDe(e: EstadoBillar, mesa: Mesa, ahora: number): VistaMesa {
@@ -23,6 +39,7 @@ export function vistaDe(e: EstadoBillar, mesa: Mesa, ahora: number): VistaMesa {
     estado: estadoVisual(mesa, ahora, e.ajustes.avisos),
     cuenta,
     anulable: !!mesa.sesion && sePuedeAnular(cuenta, segundosDesdeQueSeAbrio(mesa.sesion, ahora)),
+    pausaSeg: segundosEnPausa(mesa, ahora),
   };
 }
 

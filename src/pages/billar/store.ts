@@ -40,7 +40,9 @@ export interface Toast {
   accion?:
     | { tipo: "extender"; mesaId: number }
     | { tipo: "ver"; mesaId: number }
-    | { tipo: "ticket"; codigo: string };
+    | { tipo: "ticket"; codigo: string }
+    /** El detalle de la venta (ahí está "Corregir pago"). */
+    | { tipo: "venta"; codigo: string };
 }
 
 export interface EstadoBillar {
@@ -628,7 +630,7 @@ export const billar = {
       credito?: { credito: CreditoInput; pagos: PagoInput[] };
       clienteRequestId: string;
     },
-  ): Promise<string> {
+  ): Promise<{ codigo: string; ventaId: number; reintento: boolean }> {
     const { sesionId } = sesionDe(mesaId);
     const pagos = cobro.credito
       ? cobro.credito.pagos
@@ -647,7 +649,7 @@ export const billar = {
     else void recargar(true);
     await cargarVentas();
     void cargarProductos();
-    return r.venta.comprobante ?? `#${r.venta.id}`;
+    return { codigo: r.venta.comprobante ?? `#${r.venta.id}`, ventaId: r.venta.id, reintento: !r.mesa };
   },
 
   /** Venta sin mesa (§7.7): una venta normal del POS, por el mismo camino. */
@@ -701,10 +703,17 @@ export const billar = {
 
   /**
    * Corregir por dónde entró la plata de una venta del turno, sin anularla:
-   * el total no cambia. Con el PIN de un encargado. false si ya estaba así.
+   * el total no cambia. Si baja el efectivo, con el PIN de un encargado y el
+   * número de operación del banco (`operacion`). false si ya estaba así.
    */
-  async corregirPago(ventaId: number, pago: PagoNuevo, motivo: string, cred: Credenciales): Promise<boolean> {
-    const r = await apiBillar.corregirPago(ventaId, aPagos(pago, await formasPago()), motivo, cred);
+  async corregirPago(
+    ventaId: number,
+    pago: PagoNuevo,
+    motivo: string,
+    cred: Credenciales,
+    operacion?: string,
+  ): Promise<boolean> {
+    const r = await apiBillar.corregirPago(ventaId, aPagos(pago, await formasPago()), motivo, cred, operacion);
     await cargarVentas();
     return r.corregida;
   },

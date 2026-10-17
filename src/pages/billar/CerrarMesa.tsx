@@ -25,7 +25,8 @@ import { useCobro } from "./useCobro";
 import { useAccion } from "./useAccion";
 import { CajaCerradaAviso } from "./ModalesCaja";
 import { ahoraServidor, useAhora } from "./reloj";
-import { agruparItems, billar, tipoDe, useBillar } from "./store";
+import { agruparItems, billar, leerBillar, tipoDe, useBillar } from "./store";
+import { cobroQueFigura, medioDelBoton, pagosFinales } from "./CerrarMesa.datos";
 import { BotonB, Circulo, Encabezado, ErrorAccion, Nota, Rotulo } from "./ui";
 import { textoMetodo } from "./vista";
 
@@ -119,8 +120,17 @@ export default function CerrarMesa() {
     );
   }
 
-  const terminar = (codigo: string | null, texto: string) => {
-    if (codigo) {
+  const terminar = (codigo: string | null, texto: string, figura: string | null = null) => {
+    if (codigo && figura) {
+      // El reintento devolvió una venta grabada con otro medio (ver
+      // `cobroQueFigura`): que no salga el aviso verde con el medio nuevo.
+      billar.avisar({
+        tono: "ambar",
+        titulo: `La Mesa ${mesa.id} ya se había cobrado (${codigo})`,
+        texto: `Figura ${figura}. Si pagó de otra forma, usá «Corregir pago» en el detalle de la venta antes de cerrar la caja.`,
+        accion: { tipo: "venta", codigo },
+      });
+    } else if (codigo) {
       billar.avisar({
         tono: "verde",
         titulo: `Venta ${codigo} completada · Mesa ${mesa.id} quedó libre`,
@@ -141,14 +151,22 @@ export default function CerrarMesa() {
   // el backend devuelve esa venta en vez de cobrar dos veces.
   const huella = `cerrar:${s.id}:${hasta}`;
 
-  const cobrar = async (cobroFinal: Parameters<typeof billar.cerrar>[1], texto: string) => {
-    let codigo = "";
+  const cobrar = async (
+    cobroFinal: Parameters<typeof billar.cerrar>[1],
+    texto: string,
+    finales: { metodo: string; monto: number }[] | null = null,
+  ) => {
+    let r: Awaited<ReturnType<typeof billar.cerrar>> | null = null;
     const ok = await accion.ejecutar(async () => {
-      codigo = await billar.cerrar(mesa.id, cobroFinal);
+      r = await billar.cerrar(mesa.id, cobroFinal);
     });
-    if (!ok) return;
+    const hecho = r as Awaited<ReturnType<typeof billar.cerrar>> | null;
+    if (!ok || !hecho) return;
     intento.registrado();
-    terminar(codigo, texto);
+    // Sólo un reintento puede devolver una venta con otros pagos: la clave es
+    // la misma aunque se haya cambiado de medio.
+    const venta = hecho.reintento && finales ? leerBillar().ventas.find((v) => v.id === hecho.ventaId) : undefined;
+    terminar(hecho.codigo, texto, venta && finales ? cobroQueFigura(venta.pagos, s.pagos, c.total, finales) : null);
   };
 
   const confirmar = () => {
@@ -163,6 +181,7 @@ export default function CerrarMesa() {
           : aFavor > 0.005
             ? `Devolvé ${devolver} al cliente.`
             : "Estaba todo pagado.",
+      pago ? pagosFinales(pago) : [],
     );
   };
 
@@ -358,7 +377,7 @@ export default function CerrarMesa() {
                     disabled={!cobro.pago || accion.enviando || cambioLaCuenta}
                     onClick={confirmar}
                   >
-                    {accion.enviando ? "Cobrando…" : `Confirmar cobro y cerrar mesa · ${fmtMoney(c.saldo)}`}
+                    {accion.enviando ? "Cobrando…" : `Cobrar ${fmtMoney(c.saldo)} ${medioDelBoton(cobro.metodo)} y cerrar la mesa`}
                   </BotonB>
                   {/* Sin permiso de fiar, el servidor lo rechaza: el botón ni aparece. */}
                   {tienePermiso(usuario, "credito.otorgar") && (

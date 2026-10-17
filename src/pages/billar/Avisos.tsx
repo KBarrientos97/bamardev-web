@@ -131,6 +131,7 @@ export function Toasts() {
             if (!a) return;
             if (a.tipo === "extender") navigate(`/billar?mesa=${a.mesaId}&accion=extender`);
             else if (a.tipo === "ver") navigate(`/billar?mesa=${a.mesaId}`);
+            else if (a.tipo === "venta") navigate(`${enBillar}?venta=${encodeURIComponent(a.codigo)}`);
             else navigate(`${enBillar}?ticket=${encodeURIComponent(a.codigo)}`);
           }}
         />
@@ -316,7 +317,9 @@ function dibujar(actual: Dialogo, e: EstadoBillar, cerrar: () => void): ReactNod
           }
           bloqueado={cargado > 0.005}
           motivos={["Se abrió por error", "Se fueron sin jugar"]}
-          pedirPin={e.ajustes.pin.anularMesa}
+          // Con plata cobrada el PIN va siempre (el backend lo exige desde el
+          // 17-oct): anular la devuelve y el arqueo deja de esperarla.
+          pedirPin={e.ajustes.pin.anularMesa || pagado > 0.005}
           permiso="billar.admin"
           onClose={cerrar}
           onAutorizar={async (motivo, cred, clave) => {
@@ -352,7 +355,9 @@ function dibujar(actual: Dialogo, e: EstadoBillar, cerrar: () => void): ReactNod
           accion={`Anular venta ${v.codigo} · ${fmtMoney(v.total)}`}
           // Cuánto devolver y por dónde, y de qué cajón sale (Avisos.datos).
           detalle={detalleAnularVenta(v)}
-          motivos={["Cobro duplicado", "Error de cobro", "Cliente devolvió"]}
+          // Sin "Error de cobro": si fue el medio, se corrige sin anular
+          // (17-oct), y anular una mesa pierde el tiempo para siempre.
+          motivos={["Cobro duplicado", "Cobró la mesa equivocada", "Cliente devolvió"]}
           permiso="ventas.anular"
           onClose={cerrar}
           onAutorizar={async (motivo, cred) => {

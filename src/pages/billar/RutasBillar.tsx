@@ -63,7 +63,7 @@ export default function RutasBillar() {
 
 /**
  * Lo que piden los avisos flotantes por la dirección: \`accion=extender\` (con
- * \`mesa\`) y \`ticket=\`. Se abre el diálogo y el pedido se borra de la
+ * \`mesa\`), \`ticket=\` y \`venta=\` (el detalle, para "Corregir pago"). Se abre el diálogo y el pedido se borra de la
  * dirección, para que recargar o volver atrás no lo abra de nuevo. Si ya no
  * tiene sentido (la mesa se cerró), \`DialogoActual\` lo descarta solo.
  */
@@ -73,21 +73,24 @@ function AccionDeLaDireccion() {
   const accion = params.get("accion");
   const mesa = Number(params.get("mesa")) || null;
   const ticket = params.get("ticket");
+  const venta = params.get("venta");
 
   useEffect(() => {
-    if (!accion && !ticket) return;
+    if (!accion && !ticket && !venta) return;
     if (accion === "extender" && mesa) abrir({ tipo: "extender", mesaId: mesa });
     if (ticket) abrir({ tipo: "ticket", codigo: ticket });
+    if (venta) abrir({ tipo: "venta", codigo: venta });
     setParams(
       (p) => {
         const n = new URLSearchParams(p);
         n.delete("accion");
         n.delete("ticket");
+        n.delete("venta");
         return n;
       },
       { replace: true },
     );
-  }, [accion, mesa, ticket, abrir, setParams]);
+  }, [accion, mesa, ticket, venta, abrir, setParams]);
 
   return null;
 }

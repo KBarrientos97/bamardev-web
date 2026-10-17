@@ -44,7 +44,7 @@ export function detalleAnularVenta(
     // Anular por "Error de cobro" (marcó QR y era efectivo) dejaba la mesa sin
     // poder cobrarse de nuevo: el tiempo de mesa no se vende fuera del cierre
     // (revisión del 16-oct). Que se sepa antes de poner el PIN.
-    v.origen === "mesa" ? "Ojo: el tiempo de la mesa no se puede volver a cobrar." : "",
+    v.origen === "mesa" ? `Ojo: anular deja SIN COBRAR el tiempo de la Mesa ${v.mesaId}: no se puede volver a cobrar.` : "",
     // Desde el 17-oct el medio se corrige sin anular: si fue eso, que no se
     // pierda la venta (ni el tiempo de la mesa) por un medio mal marcado.
     sePuedeCorregirPago(v) ? "Si sólo se marcó mal el medio de pago, no la anules: usá «Corregir pago»." : "",

@@ -9,7 +9,7 @@ import { ESTADOS } from "./estilos";
 import { altoMenu, ubicarMenu, type Ubicacion } from "./TarjetaMesa.datos";
 import { BotonB, EstadoBadge, Fila } from "./ui";
 import type { VistaMesa } from "./vista";
-import { cronoDe } from "./vista";
+import { PAUSA_LARGA_SEG, cronoDe } from "./vista";
 
 /**
  * Una mesa en el tablero (§7.1, vista Mapa). Tocarla la selecciona y abre el
@@ -77,7 +77,7 @@ export default function TarjetaMesa({
           <p className={`mt-2 text-[26px] font-extrabold leading-none tracking-tight tabular-nums sm:text-[30px] ${estilo.crono}`}>
             {cronoDe(v)}
           </p>
-          <p className={`mt-1.5 flex items-center gap-1 text-[12px] ${subColor(estado)}`}>
+          <p className={`mt-1.5 flex items-center gap-1 text-[12px] ${subColor(estado, v.pausaSeg)}`}>
             {subLinea(v)}
           </p>
           <div className="my-3 border-t border-black/5" />
@@ -150,6 +150,7 @@ function subLinea(v: VistaMesa) {
         <>
           <Icon name="pausa" size={12} />
           {s.pauseMotivo || "En pausa"}
+          {v.pausaSeg != null && <> · hace {fmtHace(v.pausaSeg * 1000)}</>}
         </>
       );
     case "cumplido":
@@ -172,8 +173,10 @@ function subLinea(v: VistaMesa) {
   }
 }
 
-function subColor(estado: VistaMesa["estado"]): string {
+function subColor(estado: VistaMesa["estado"], pausaSeg?: number | null): string {
   if (estado === "vence") return "font-semibold text-amber-800";
+  // La pausa larga, en ámbar: tiempo que no se cobra (ver PAUSA_LARGA_SEG).
+  if (estado === "pausada" && (pausaSeg ?? 0) >= PAUSA_LARGA_SEG) return "font-semibold text-amber-800";
   if (estado === "cumplido") return "font-semibold text-rose-700";
   return "text-texto-3";
 }

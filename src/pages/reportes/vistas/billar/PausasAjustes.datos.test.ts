@@ -31,7 +31,7 @@ describe("pausas y ajustes del billar", () => {
     expect(r.total).toBe(5);
     expect(r.mesasAnuladas).toBe(1);
     expect(r.consumosAnulados).toBe(2);
-    expect(r.porTipo).toEqual({ anulaciones: 3, pausas: 1, cambios: 1, horas: 0, extensiones: 0, pagos: 0 });
+    expect(r.porTipo).toEqual({ anulaciones: 3, pausas: 1, cambios: 1, horas: 0, extensiones: 0, pagos: 0, mesas: 0, pin: 0 });
   });
 
   it("la venta anulada de una mesa jugada y la mesa cobrada en pausa también cuentan", () => {
@@ -40,7 +40,7 @@ describe("pausas y ajustes del billar", () => {
     // de las dos aparecía: "Mesas anuladas: 0" con una mesa jugada y anulada.
     const r = resumenAjustes([ajuste(1, "ANULAR_VENTA"), ajuste(2, "COBRADA_EN_PAUSA"), ajuste(3, "ANULAR_MESA")]);
     expect(r.mesasAnuladas).toBe(2);
-    expect(r.porTipo).toEqual({ anulaciones: 2, pausas: 1, cambios: 0, horas: 0, extensiones: 0, pagos: 0 });
+    expect(r.porTipo).toEqual({ anulaciones: 2, pausas: 1, cambios: 0, horas: 0, extensiones: 0, pagos: 0, mesas: 0, pin: 0 });
   });
 
   it("el medio de pago corregido va en su propio grupo, no entre las anulaciones", () => {
@@ -48,7 +48,7 @@ describe("pausas y ajustes del billar", () => {
     // plata que cambió de cajón y el dueño la tiene que poder filtrar.
     const r = resumenAjustes([ajuste(1, "CORREGIR_PAGO"), ajuste(2, "ANULAR_VENTA")]);
     expect(tipoDe(ajuste(3, "CORREGIR_PAGO"))).toBe("pagos");
-    expect(r.porTipo).toEqual({ anulaciones: 1, pausas: 0, cambios: 0, horas: 0, extensiones: 0, pagos: 1 });
+    expect(r.porTipo).toEqual({ anulaciones: 1, pausas: 0, cambios: 0, horas: 0, extensiones: 0, pagos: 1, mesas: 0, pin: 0 });
     expect(r.mesasAnuladas).toBe(1);
   });
 

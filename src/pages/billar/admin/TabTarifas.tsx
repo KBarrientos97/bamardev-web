@@ -1,3 +1,4 @@
+import { useAuth } from "../../../store/AuthContext";
 import { desbloquearAudio, hablar, zumbido } from "../alertas";
 import type { PinesBillar } from "../tipos";
 import { BotonB, Nota, Tarjeta } from "../ui";
@@ -64,6 +65,11 @@ const PINES: { clave: keyof PinesBillar; texto: string; ayuda?: string }[] = [
 ];
 
 function AjustesGenerales({ b, onCambiar }: { b: BorradorTarifas; onCambiar: (b: BorradorTarifas) => void }) {
+  // Sacar un PIN lo hace sólo el administrador (el backend lo rechaza con
+  // PIN_SOLO_ADMINISTRADOR desde el 17-oct): el encargado tiene este permiso
+  // para las tarifas, y con eso dejaba al cajero anular o pausar sin firma.
+  const { usuario } = useAuth();
+  const esAdministrador = usuario?.esAdministrador === true;
   const alternar = (min: number) =>
     onCambiar({
       ...b,
@@ -135,7 +141,8 @@ function AjustesGenerales({ b, onCambiar }: { b: BorradorTarifas; onCambiar: (b:
             <Casilla
               key={p.clave}
               marcada={b.pin[p.clave]}
-              ayuda={p.ayuda}
+              ayuda={b.pin[p.clave] && !esAdministrador ? "Sólo el administrador lo saca." : p.ayuda}
+              deshabilitada={b.pin[p.clave] && !esAdministrador}
               onCambiar={(v) => onCambiar({ ...b, pin: { ...b.pin, [p.clave]: v } })}
             >
               {p.texto}

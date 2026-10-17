@@ -14,7 +14,7 @@ import type { BillarReporteApi } from "../../api";
 export type Ajuste = BillarReporteApi["auditoria"][number];
 
 /** Los grupos de la pantalla. Se arman por el código, nunca por el texto: el texto se puede reescribir. */
-export type TipoAjuste = "anulaciones" | "pausas" | "cambios" | "horas" | "extensiones" | "pagos";
+export type TipoAjuste = "anulaciones" | "pausas" | "cambios" | "horas" | "extensiones" | "pagos" | "mesas" | "pin";
 
 const TIPO_POR_CODIGO: Record<string, TipoAjuste> = {
   ANULAR_MESA: "anulaciones",
@@ -31,6 +31,13 @@ const TIPO_POR_CODIGO: Record<string, TipoAjuste> = {
   // Desde el 17-oct: el medio de pago corregido de una venta del turno (marcó
   // efectivo y era QR). Es plata que cambió de cajón: el dueño la tiene que ver.
   CORREGIR_PAGO: "pagos",
+  // Desde el 17-oct: una mesa reservada o fuera de servicio no se puede abrir
+  // (se podía esconder una jugada), y un PIN sacado deja al cajero sin firma.
+  RESERVAR: "mesas",
+  CANCELAR_RESERVA: "mesas",
+  FUERA_DE_SERVICIO: "mesas",
+  VOLVER_A_SERVICIO: "mesas",
+  AJUSTE_PIN: "pin",
 };
 
 export const NOMBRE_TIPO: Record<TipoAjuste, string> = {
@@ -40,6 +47,8 @@ export const NOMBRE_TIPO: Record<TipoAjuste, string> = {
   horas: "Hora corregida",
   extensiones: "Extensiones",
   pagos: "Pagos corregidos",
+  mesas: "Reservas y fuera de servicio",
+  pin: "PIN cambiado",
 };
 
 /** El backend arma como mucho los últimos 200: con exactamente 200 puede haber más. */
@@ -64,7 +73,16 @@ export interface ResumenAjustes {
 export function resumenAjustes(lista: readonly Ajuste[]): ResumenAjustes {
   const conCodigo = lista.every((a) => a.codigo);
   if (!conCodigo) return { total: lista.length, porTipo: null, mesasAnuladas: null, consumosAnulados: null };
-  const porTipo: Record<TipoAjuste, number> = { anulaciones: 0, pausas: 0, cambios: 0, horas: 0, extensiones: 0, pagos: 0 };
+  const porTipo: Record<TipoAjuste, number> = {
+    anulaciones: 0,
+    pausas: 0,
+    cambios: 0,
+    horas: 0,
+    extensiones: 0,
+    pagos: 0,
+    mesas: 0,
+    pin: 0,
+  };
   for (const a of lista) {
     const t = tipoDe(a);
     if (t) porTipo[t] += 1;

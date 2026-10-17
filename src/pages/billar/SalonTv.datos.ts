@@ -1,7 +1,7 @@
 import { fmtMoney } from "../../lib/format";
-import { cuentaDe, estadoVisual, fmtCrono, horaDe, promoPara, tarifaDe } from "./calculo";
+import { cuentaDe, estadoVisual, fmtCrono, fmtHace, horaDe, promoPara, tarifaDe } from "./calculo";
 import type { EstadoVisual, Mesa, TipoMesa } from "./tipos";
-import type { VistaMesa } from "./vista";
+import { PAUSA_LARGA_SEG, segundosEnPausa, type VistaMesa } from "./vista";
 
 /**
  * Lo que dibuja la pantalla del salón (§7.11), sin nada de la sesión: lo usan
@@ -66,8 +66,10 @@ export function contenidoTarjeta(v: VistaMesa): ContenidoTarjeta {
     if (v.estado === "vence") color = "text-amber-300";
     if (v.estado === "cumplido") color = "text-rose-300";
     if (v.estado === "pausada") {
-      color = "text-white/50";
-      chico = "Pausada";
+      // Cuánto lleva, a la vista del salón: una pausa larga se ve (17-oct).
+      const larga = (v.pausaSeg ?? 0) >= PAUSA_LARGA_SEG;
+      color = larga ? "text-amber-300" : "text-white/50";
+      chico = v.pausaSeg != null ? `Pausada · hace ${fmtHace(v.pausaSeg * 1000)}` : "Pausada";
     }
     return { grande, chico, progreso, color };
   }
@@ -132,5 +134,6 @@ export function vistaSalon(mesa: Mesa, tipos: Record<string, TipoMesa>, avisos: 
     cuenta: mesa.estado === "abierta" && mesa.sesion ? cuentaDe(mesa.sesion, tipo, ahora) : null,
     // La TV no anula nada.
     anulable: false,
+    pausaSeg: segundosEnPausa(mesa, ahora),
   };
 }

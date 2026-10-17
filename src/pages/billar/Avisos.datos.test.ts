@@ -10,7 +10,7 @@ describe("detalleAnularVenta: qué devolver y de dónde sale", () => {
     expect(
       detalleAnularVenta({ origen: "mesa", mesaId: 3, pagos: [pago("QR", 10), pago("Efectivo", 35)] }),
     ).toBe(
-      "Mesa 3. Los productos vuelven al stock. Devolvé al cliente Bs 35,00 en efectivo y Bs 10,00 por QR. Ojo: el tiempo de la mesa no se puede volver a cobrar. Si sólo se marcó mal el medio de pago, no la anules: usá «Corregir pago».",
+      "Mesa 3. Los productos vuelven al stock. Devolvé al cliente Bs 35,00 en efectivo y Bs 10,00 por QR. Ojo: anular deja SIN COBRAR el tiempo de la Mesa 3: no se puede volver a cobrar. Si sólo se marcó mal el medio de pago, no la anules: usá «Corregir pago».",
     );
   });
 
@@ -18,7 +18,7 @@ describe("detalleAnularVenta: qué devolver y de dónde sale", () => {
     expect(
       detalleAnularVenta({ origen: "mesa", mesaId: 2, pagos: [pago("Efectivo", 40), pago("Fiado", 30)] }),
     ).toBe(
-      "Mesa 2. Los productos vuelven al stock. Devolvé al cliente Bs 40,00 en efectivo. Bs 30,00 eran fiado: salen de Cuentas por cobrar. Ojo: el tiempo de la mesa no se puede volver a cobrar.",
+      "Mesa 2. Los productos vuelven al stock. Devolvé al cliente Bs 40,00 en efectivo. Bs 30,00 eran fiado: salen de Cuentas por cobrar. Ojo: anular deja SIN COBRAR el tiempo de la Mesa 2: no se puede volver a cobrar.",
     );
   });
 
@@ -33,7 +33,7 @@ describe("detalleAnularVenta: qué devolver y de dónde sale", () => {
         adelantosOtraCaja: [{ cajero: "Ana", monto: 40 }],
       }),
     ).toBe(
-      "Mesa 2. Los productos vuelven al stock. Devolvé al cliente Bs 45,00 en efectivo. De ese efectivo, Bs 40,00 entraron en la caja de Ana: pedíselos, porque su arqueo deja de esperarlos. Ojo: el tiempo de la mesa no se puede volver a cobrar.",
+      "Mesa 2. Los productos vuelven al stock. Devolvé al cliente Bs 45,00 en efectivo. De ese efectivo, Bs 40,00 entraron en la caja de Ana: pedíselos, porque su arqueo deja de esperarlos. Ojo: anular deja SIN COBRAR el tiempo de la Mesa 2: no se puede volver a cobrar.",
     );
   });
 
