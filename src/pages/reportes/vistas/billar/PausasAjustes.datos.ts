@@ -51,8 +51,11 @@ export const NOMBRE_TIPO: Record<TipoAjuste, string> = {
   pin: "PIN cambiado",
 };
 
-/** El backend arma como mucho los últimos 200: con exactamente 200 puede haber más. */
-export const TOPE_AJUSTES = 200;
+/**
+ * El backend arma como mucho los últimos 500 (el take de la auditoría en
+ * billar-reportes.service.ts, que tiene que ser igual): con 500 o más puede haber más.
+ */
+export const TOPE_AJUSTES = 500;
 
 /** El grupo de un ajuste, o null si el backend no mandó el código (uno viejo) o es uno que no conocemos. */
 export function tipoDe(a: Ajuste): TipoAjuste | null {
