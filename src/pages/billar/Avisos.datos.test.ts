@@ -61,6 +61,8 @@ describe("sePuedeCorregirPago: corregir el medio sin anular", () => {
     expect(
       sePuedeCorregirPago({ pagos: [pago("Efectivo", 10)], anulada: { hora: 0, quien: "Ana", motivo: "x" } }),
     ).toBe(false);
+    // Una vez por venta: la segunda la rechaza el backend (YA_CORREGIDA).
+    expect(sePuedeCorregirPago({ pagos: [pago("QR", 10)], pagoCorregido: true })).toBe(false);
   });
 });
 

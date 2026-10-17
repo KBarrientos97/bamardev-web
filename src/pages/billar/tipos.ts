@@ -203,6 +203,8 @@ export interface VentaBillar {
    * para que el cliente vea el tiempo que no se le cobró. Desde el 17-oct.
    */
   pausaMin?: number;
+  /** Ya se le corrigió el medio de pago (una vez por venta). Desde el 17-oct. */
+  pagoCorregido?: boolean;
   anulada?: { hora: number; quien: string; motivo: string };
 }
 

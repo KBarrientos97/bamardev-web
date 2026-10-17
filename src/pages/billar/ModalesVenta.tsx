@@ -88,6 +88,8 @@ export function ModalVenta({ codigo, onClose }: { codigo: string; onClose: () =>
         {v.devuelto && textoDevolucion(v.devuelto) && (
           <p className="text-texto-3">Devuelto al cliente: {textoDevolucion(v.devuelto)}</p>
         )}
+        {/* La corrección queda a la vista: quién y por qué, en Pausas y ajustes. */}
+        {v.pagoCorregido && <p className="text-[12px] text-texto-4">Medio de pago corregido después del cobro.</p>}
       </div>
     </Modal>
   );
@@ -171,6 +173,7 @@ export function ModalTicket({ codigo, onClose }: { codigo: string; onClose: () =
               )}
             </div>
           ))}
+          {v.pagoCorregido && <p className="text-[11px]">(medio de pago corregido)</p>}
           {/* Con devolución no hubo cobro final: el único cambio es el que
               sobró de los adelantos, y un adelanto que queda entero afuera no
               es un pago de la venta. Decía "Cambio Bs 10" con Bs 60 devueltos. */}
