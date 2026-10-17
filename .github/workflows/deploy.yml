@@ -32,10 +32,13 @@ jobs:
 
       - run: npm ci
 
-      # Los tests corren acá y no contra el VPS: son unitarios y no tocan red.
-      # Si fallan, no se despliega.
+      # Lint y tests sólo antes de PROD. En dev se corren en LOCAL antes del
+      # push (regla de CLAUDE.md) y QA despliega directo, para ahorrar minutos
+      # de Actions. Si fallan en main, no se despliega.
       - run: npm run lint
+        if: github.ref == 'refs/heads/main'
       - run: npm test
+        if: github.ref == 'refs/heads/main'
 
       - name: Build (main → prod, dev → qa)
         run: |
