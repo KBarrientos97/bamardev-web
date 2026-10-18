@@ -1,6 +1,8 @@
 import { useState } from "react";
 import CorteDeCaja from "../../components/CorteDeCaja";
+import InputMonto from "../../components/InputMonto";
 import { esPositivo, parsearMontoO } from "../../lib/dinero";
+import { leerMonto, montoParaEditar } from "../../lib/montoTecleado";
 import { Icon } from "../../components/Icon";
 import {
   Badge,
@@ -77,7 +79,7 @@ export default function PantallaCierre({
    * detectar.
    *
    * Peor: la precarga desactivaba el propio guard de abajo (`conteoHecho`
-   * mira `contado !== ""`, y el precargado ya lo dejaba lleno).
+   * mira que haya un monto escrito, y el precargado ya lo dejaba lleno).
    *
    * El esperado sigue estando a la vista en el resumen de arriba: sirve para
    * que el cajero verifique después de contar, no antes.
@@ -92,17 +94,27 @@ export default function PantallaCierre({
   const hayPropinas = propinasEfectivo > 0 || propinasSalidas > 0;
   const otrosIngresos = Math.round(((r?.ingresos ?? 0) - propinasEfectivo) * 100) / 100;
   const otrosEgresos = Math.round(((r?.egresos ?? 0) - propinasSalidas) * 100) / 100;
-  // Con parseo de coma: en Bolivia se teclea "150,50" y Number() da NaN, que
-  // caía a 0 sin avisar — el conteo del cierre quedaba en cero y la diferencia
-  // mostraba un faltante enorme que nadie había cometido.
-  const contadoNum = parsearMontoO(contado, NaN);
+  // Se lee como se escribe en Bolivia, "2.258,90" (ver `montoTecleado`). El
+  // campo de antes pasaba la coma a punto y leía con Number(): "2.258,90"
+  // llegaba como "2.258.90", que no es un número, y "1.000" valía Bs 1 (QA de
+  // Kevin, 17-oct). Y antes de eso "150,50" daba NaN, que caía a 0 sin avisar:
+  // el conteo quedaba en cero con un faltante enorme que nadie había cometido.
+  const contadoNum = leerMonto(contado);
 
   // La diferencia sólo tiene sentido una vez que se contó: mostrarla en 0
-  // antes de teclear haría parecer que la caja ya cuadra. Se valida igual
-  // que la apertura: el `min="0"` del input es sólo una pista del navegador
-  // y un monto negativo dejaba el arqueo del turno con un faltante falso.
-  const conteoHecho = contado !== "" && Number.isFinite(contadoNum) && contadoNum >= 0;
-  const diferencia = Math.round((contadoNum - esperado) * 100) / 100;
+  // antes de teclear haría parecer que la caja ya cuadra. Un monto negativo
+  // no se puede escribir: el campo no acepta el signo.
+  const conteoHecho = contadoNum !== null;
+  const diferencia = Math.round(((contadoNum ?? 0) - esperado) * 100) / 100;
+
+  function cambiarContado(texto: string) {
+    setContado(texto);
+    // El "Contá el efectivo" de un intento anterior seguía a la vista con el
+    // monto ya escrito (QA de Kevin, 17-oct) y se leía como que el número no
+    // se había tomado.
+    setError("");
+  }
+
   // Billar: con una mesa en juego la caja no cierra (decisión de Kevin,
   // 11-oct-2026). El backend lo rechaza igual (MESAS_ABIERTAS); acá se dice
   // antes de contar la plata, y cuáles son. En los demás rubros no viene.
@@ -114,12 +126,7 @@ export default function PantallaCierre({
       return setError(
         `No se puede cerrar caja: hay ${sinSubir} ${sinSubir === 1 ? "venta" : "ventas"} sin sincronizar. Esperá a que vuelva la conexión.`,
       );
-    if (!conteoHecho)
-      return setError(
-        contado !== ""
-          ? "El efectivo contado no puede ser negativo."
-          : "Contá el efectivo que hay en la caja.",
-      );
+    if (contadoNum === null) return setError("Contá el efectivo que hay en la caja.");
     setEnviando(true);
     try {
       // Se pasa la caja que devuelve el cierre: es la unica fuente con los
@@ -459,16 +466,12 @@ export default function PantallaCierre({
                 <div className="mb-2">
                   <CorteDeCaja
                     titulo="Contar billete por billete"
-                    onTotal={(t) => setContado(t > 0 ? String(t) : "")}
+                    onTotal={(t) => cambiarContado(t > 0 ? montoParaEditar(t) : "")}
                   />
                 </div>
-                <Input
-                  type="number"
-                  inputMode="decimal"
-                  step="0.01"
-                  min="0"
+                <InputMonto
                   value={contado}
-                  onChange={(e) => setContado(e.target.value)}
+                  onChange={cambiarContado}
                   placeholder="0,00"
                   className="text-lg font-bold"
                 />
