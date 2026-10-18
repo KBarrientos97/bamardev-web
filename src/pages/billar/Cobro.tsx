@@ -97,11 +97,13 @@ export function FormCobro({ cobro }: { cobro: EstadoCobro }) {
       {c.metodo === "Efectivo" && (
         <div>
           <p className="mb-1.5 text-[13px] font-semibold text-texto-2">Recibido</p>
+          {/* El total no va de placeholder: en gris parecía escrito y el
+              cajero cobraba sin contar (QA del dueño, 17-oct). */}
           <CampoBs
             etiqueta="Recibido"
             valor={c.recibidoTexto}
             onCambiar={c.setRecibidoTexto}
-            placeholder={String(c.monto)}
+            placeholder="¿Cuánto te dio?"
           />
           <div className="mt-2 flex flex-wrap gap-1.5">
             <button
@@ -123,7 +125,11 @@ export function FormCobro({ cobro }: { cobro: EstadoCobro }) {
             ))}
           </div>
           <p className="mt-1.5 text-xs text-texto-4">Contá el efectivo antes de confirmar.</p>
-          {c.falta > 0 ? (
+          {c.sinRecibido ? (
+            <div className="mt-3 rounded-xl border border-borde bg-muted px-4 py-3 text-[13px] text-texto-3">
+              Escribí cuánto te dio el cliente (o tocá «Justo») y acá sale el cambio.
+            </div>
+          ) : c.falta > 0 ? (
             <div className="mt-3 flex items-center justify-between rounded-xl border border-rose-200 bg-rose-50 px-4 py-3">
               <span className="text-[12px] font-bold uppercase tracking-wider text-rose-700">Falta</span>
               <span className="text-xl font-extrabold tabular-nums text-rose-700">{fmt(c.falta)}</span>

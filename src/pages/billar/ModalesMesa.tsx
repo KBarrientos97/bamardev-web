@@ -468,8 +468,10 @@ export function ModalPin({
 
 /**
  * Los casilleros del PIN (de 4 a 6 dígitos, como en todo el sistema): un
- * input escondido encima, para el teclado del celular. Arranca con cuatro y
- * crece si el PIN es más largo.
+ * input escondido encima, para el teclado del celular. Van los seis siempre,
+ * los dos últimos punteados: arrancaba con cuatro y crecía recién al teclear
+ * el quinto, y se leía como "el PIN es de 4" (el dueño, 17-oct: "¿qué pasa si
+ * un administrador pone 6 dígitos?").
  */
 function CampoPin({
   campo,
@@ -488,7 +490,6 @@ function CampoPin({
   onPin: (pin: string) => void;
   onEnter: () => void;
 }) {
-  const casilleros = Math.min(6, Math.max(4, pin.length));
   return (
     <>
       <p className="mb-2 mt-4 text-[13px] font-semibold text-texto-2">{titulo}</p>
@@ -506,13 +507,20 @@ function CampoPin({
           }}
           className="peer absolute inset-0 h-full w-full cursor-pointer opacity-0"
         />
-        <div className="flex gap-2" aria-hidden>
-          {Array.from({ length: casilleros }, (_, i) => (
+        {/* Seis de 40 px entran en un celular de 320 px de ancho. */}
+        <div className="flex gap-1.5 sm:gap-2" aria-hidden>
+          {Array.from({ length: 6 }, (_, i) => (
             <span
               key={i}
-              className={`flex h-14 w-12 items-center justify-center rounded-xl border-2 text-2xl font-bold ${
-                i === pin.length ? "border-primary peer-focus:border-primary" : "border-borde"
-              } ${error ? "border-rose-300" : ""}`}
+              className={`flex h-12 w-10 items-center justify-center rounded-xl border-2 text-2xl font-bold sm:h-14 sm:w-12 ${
+                error
+                  ? "border-rose-300"
+                  : i === pin.length
+                    ? "border-primary"
+                    : i >= 4 && !pin[i]
+                      ? "border-dashed border-borde"
+                      : "border-borde"
+              }`}
             >
               {pin[i] ? "•" : ""}
             </span>
@@ -523,7 +531,7 @@ function CampoPin({
         role={error ? "alert" : undefined}
         className={`mt-1.5 text-xs ${error ? "font-semibold text-rose-700" : "text-texto-4"}`}
       >
-        {error || "De 4 a 6 dígitos. Escribilo con el teclado."}
+        {error || "De 4 a 6 dígitos: si el PIN es de 4, los dos últimos quedan vacíos."}
       </p>
     </>
   );

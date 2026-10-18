@@ -15,6 +15,23 @@ export function sugerencias(total: number): number[] {
   return [...out].sort((a, b) => a - b).slice(0, 3);
 }
 
+/**
+ * El efectivo de un cobro. Lo recibido hay que escribirlo (o tocar «Justo»):
+ * vacío ya no es "le dieron justo". Con el total en gris adentro del campo
+ * parecía escrito, y se cobraba sin que nadie contara nada (QA del dueño,
+ * 17-oct). Es como ya cobraba el POS.
+ */
+export function efectivoDelCobro(monto: number, recibidoTexto: string) {
+  const escrito = recibidoTexto.trim() !== "";
+  const recibido = escrito ? round2(parsearMonto(recibidoTexto) ?? 0) : 0;
+  return {
+    escrito,
+    recibido,
+    falta: escrito ? Math.max(0, round2(monto - recibido)) : 0,
+    cambio: escrito ? Math.max(0, round2(recibido - monto)) : 0,
+  };
+}
+
 export interface EstadoCobro {
   metodo: Metodo;
   setMetodo: (m: Metodo) => void;
@@ -27,6 +44,8 @@ export interface EstadoCobro {
   efectivoTexto: string;
   setEfectivoTexto: (t: string) => void;
   recibido: number;
+  /** En efectivo, todavía no se escribió lo recibido: no hay cambio que mostrar ni se puede cobrar. */
+  sinRecibido: boolean;
   cambio: number;
   /** Lo que falta para cubrir (efectivo corto o mixto mal repartido). */
   falta: number;
@@ -65,8 +84,7 @@ export function useCobro(total: number, editable = false): EstadoCobro {
   return useMemo(() => {
     const monto = editable ? round2(parsearMonto(montoTexto) ?? 0) : round2(total);
     const montoOk = monto > 0 && aCentavos(monto) <= aCentavos(total);
-    // Vacío = le dieron justo: es lo más común y no obliga a escribir.
-    const recibido = recibidoTexto.trim() ? round2(parsearMonto(recibidoTexto) ?? 0) : monto;
+    const efectivo = efectivoDelCobro(monto, recibidoTexto);
     let falta = 0;
     let cambio = 0;
     let pago: PagoNuevo | null = null;
@@ -75,15 +93,16 @@ export function useCobro(total: number, editable = false): EstadoCobro {
     const huellaQr = `${metodo}|${montoQr}`;
     const qrConfirmado = qrVisto === huellaQr;
     if (metodo === "Efectivo") {
-      falta = Math.max(0, round2(monto - recibido));
-      cambio = Math.max(0, round2(recibido - monto));
-      if (montoOk && falta === 0) pago = { metodo, monto, recibido };
+      falta = efectivo.falta;
+      cambio = efectivo.cambio;
+      if (montoOk && efectivo.escrito && falta === 0) pago = { metodo, monto, recibido: efectivo.recibido };
     } else if (metodo === "QR") {
       if (montoOk && qrConfirmado) pago = { metodo, monto };
     } else {
-      const efectivo = efectivoMixto;
-      const qr = round2(monto - efectivo);
-      if (montoOk && efectivo > 0 && qr > 0 && qrConfirmado) pago = { metodo, monto, partes: { efectivo, qr } };
+      const qr = round2(monto - efectivoMixto);
+      if (montoOk && efectivoMixto > 0 && qr > 0 && qrConfirmado) {
+        pago = { metodo, monto, partes: { efectivo: efectivoMixto, qr } };
+      }
     }
     return {
       metodo,
@@ -95,7 +114,8 @@ export function useCobro(total: number, editable = false): EstadoCobro {
       setRecibidoTexto,
       efectivoTexto,
       setEfectivoTexto,
-      recibido,
+      recibido: efectivo.recibido,
+      sinRecibido: !efectivo.escrito,
       cambio,
       falta,
       pago,
