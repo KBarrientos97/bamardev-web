@@ -222,6 +222,44 @@ describe("cuentaDe (§5.4, §5.6)", () => {
     // 10 min en Carambola: un bloque de 15 → Bs 6,25.
     expect(c.tiempoBs).toBe(26.25);
   });
+
+  // Prueba profunda del 18-oct: cada tramo se redondeaba por su cuenta, con
+  // la fracción y la tolerancia dos veces. Ahora se redondea el total. Los
+  // mismos números que calculo.spec.ts del backend.
+  it("40 de Pool y 4 de Carambola se cobran 45 min, no 1:00", () => {
+    // Allá 40 min se cerraron en 45 (Bs 15): los 5 que sobran cubren lo de acá.
+    const s = sesion({ jugados: hms(0, 4, 5), prev: { secs: hms(0, 40), min: 45, bs: 15 } });
+    const c = cuentaDe(s, CARAMBOLA, AHORA);
+    expect(c.cobradoMin).toBe(45);
+    expect(c.tiempoBs).toBe(15);
+    // Antes cobraba Bs 21,25: más que los 44 min enteros en Carambola (18,75).
+    // Sube recién a los 48 min del total, con el bloque de 15 a Bs 25/h.
+    expect(c.nextSecs).toBe(hms(0, 48));
+    expect(c.nextBs).toBe(21.25);
+  });
+
+  it("33 de Pool y 2:50 de Carambola se cobran 45 min, no 0:30", () => {
+    // Allá 33 min quedaron en 30 (dentro de la tolerancia). Antes los 2:50 de
+    // acá también entraban en la tolerancia: cambiando de mesa a cada rato,
+    // el bloque que se empezaba no se cobraba nunca.
+    const s = sesion({ jugados: hms(0, 2, 50), prev: { secs: hms(0, 33), min: 30, bs: 10 } });
+    const c = cuentaDe(s, CARAMBOLA, AHORA);
+    expect(c.cobradoMin).toBe(45);
+    // Bs 10 de allá + el bloque de 15 a Bs 25/h.
+    expect(c.tiempoBs).toBe(16.25);
+  });
+
+  it("si la otra mesa redondeó con otra fracción y cobró de más, acá no se cobra hasta pasarla", () => {
+    // 40 min en una de fracción 30 se cerraron en 60. A los 4 min de acá el
+    // total (44) redondea a 45, menos de lo cobrado: no suma nada, y no resta.
+    const s = sesion({ jugados: hms(0, 4), prev: { secs: hms(0, 40), min: 60, bs: 20 } });
+    const c = cuentaDe(s, CARAMBOLA, AHORA);
+    expect(c.cobradoMin).toBe(60);
+    expect(c.tiempoBs).toBe(20);
+    // El primer bloque que pasa los 60: el de 75, a los 63 min del total.
+    expect(c.nextSecs).toBe(hms(1, 3));
+    expect(c.nextBs).toBe(26.25);
+  });
 });
 
 describe("estadoVisual (§5.7)", () => {

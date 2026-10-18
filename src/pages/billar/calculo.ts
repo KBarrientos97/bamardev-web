@@ -7,6 +7,7 @@ import type {
   Promo,
   PromoPrevia,
   Sesion,
+  TiempoPrevio,
   TipoMesa,
 } from "./tipos";
 
@@ -112,6 +113,36 @@ export function cobroTiempo(secs: number, t: TipoMesa, useMin = true): Cobro {
     bs: round2((t.tarifa * min) / 60),
     nextSecs: b * f + tol,
     nextBs: round2((t.tarifa * (b + 1) * t.fraccion) / 60),
+  };
+}
+
+/**
+ * El tramo de ESTA mesa cuando la cuenta vino de una de otra tarifa. El tiempo
+ * se redondea una sola vez, sobre el total jugado y con la regla de esta mesa,
+ * y esta mesa cobra los minutos que ese total le suma a lo ya cobrado allá
+ * (`prev.min`). Lo de allá no se toca: queda a su tarifa, como dice el diálogo
+ * de Cambiar mesa. Sin mínimo: ya lo pagó allá. Igual que el backend.
+ *
+ * Redondear cada tramo por su cuenta aplicaba la fracción y la tolerancia dos
+ * veces (prueba profunda, 18-oct): 40 min de Pool (45) y 4 de Carambola (un
+ * bloque de 15) cobraban 1:00 por 44 min, más que todo en la mesa más cara; y
+ * 33 de Pool (30, dentro de la tolerancia) más 2:50 cobraban 0:30 por casi 36:
+ * cambiando de mesa a cada rato, el bloque que se empezaba no se cobraba nunca.
+ *
+ * `nextSecs` se cuenta desde que empezó esta mesa, como en `cobroTiempo`.
+ */
+export function cobroTramo(secsMesa: number, prev: Pick<TiempoPrevio, "secs" | "min">, t: TipoMesa): Cobro {
+  const total = cobroTiempo(prev.secs + secsMesa, t, false);
+  const min = Math.max(0, total.min - prev.min);
+  // El bloque siguiente que suma minutos a lo ya cobrado. Es el de después
+  // del total, salvo que la otra mesa haya redondeado con otra fracción y ya
+  // haya cobrado más allá.
+  const sig = Math.max(total.min / t.fraccion + 1, Math.floor(prev.min / t.fraccion) + 1);
+  return {
+    min,
+    bs: round2((t.tarifa * min) / 60),
+    nextSecs: (sig - 1) * t.fraccion * 60 + t.tolerancia * 60 - prev.secs,
+    nextBs: round2((t.tarifa * (sig * t.fraccion - prev.min)) / 60),
   };
 }
 
@@ -333,8 +364,9 @@ export function cuentaDe(s: Sesion, t: TipoMesa, ahora: number): Cuenta {
     nextSecs = lim + exc.nextSecs;
     nextBs = round2(s.prepago.precio + exc.nextBs);
   } else {
-    // Lo traído de otra mesa ya pagó el mínimo allá.
-    const c = cobroTiempo(secsMesa, t, !s.prev);
+    // Lo traído de otra mesa ya pagó el mínimo allá, y el tiempo se redondea
+    // sobre el total (`cobroTramo`), no tramo por tramo.
+    const c = s.prev ? cobroTramo(secsMesa, s.prev, t) : cobroTiempo(secsMesa, t, true);
     cobradoMin = previoMin + c.min;
     const bruto = round2(previoBs + c.bs);
     const p = promoPara(t, cobradoMin / 60);
