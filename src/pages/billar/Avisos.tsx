@@ -14,6 +14,7 @@ import {
   segundosJugados,
   sePuedeAnular,
   textoDevolucion,
+  tieneConsumos,
 } from "./calculo";
 import { detalleAnularVenta, efectivoEnOtraCaja, sePuedeCorregirPago } from "./Avisos.datos";
 import { ModalCorregirPago } from "./CorregirPago";
@@ -308,7 +309,10 @@ function dibujar(actual: Dialogo, e: EstadoBillar, cerrar: () => void): ReactNod
       // hacía que el cajero sacara los 70 del cajón (16-oct).
       const pagos = enJuego.sesion.pagos;
       // Con consumos cargados el backend no la anula (ANULAR_CON_CONSUMOS): se
-      // perdían sin cobrar ni bajar del stock. Se dice qué hacer antes del PIN.
+      // perdían sin cobrar ni bajar del stock. El link ya no se ofrece (18-oct);
+      // esto queda por si entra un consumo con el diálogo abierto, con la misma
+      // regla que el backend: cualquiera sin anular, aunque valga Bs 0.
+      const conConsumos = tieneConsumos(enJuego.sesion);
       const cargado = consumosDe(enJuego.sesion);
       // Con dos cajas: el efectivo que entró en el cajón de otro cajero. Su
       // arqueo deja de esperarlo al anular, así que es él quien lo tiene.
@@ -317,13 +321,13 @@ function dibujar(actual: Dialogo, e: EstadoBillar, cerrar: () => void): ReactNod
         <ModalPin
           accion={`Anular la Mesa ${enJuego.id}`}
           detalle={
-            cargado > 0.005
-              ? `Tiene consumos cargados (${fmtMoney(cargado)}) y ya se tomaron: no se puede anular. Pasá la cuenta a la mesa correcta con "Cambiar mesa", o anulá los consumos que se cargaron por error.`
+            conConsumos
+              ? `Ya consumieron${cargado > 0.005 ? ` (${fmtMoney(cargado)})` : ""}: no se abrió por error, se cobra. Si la cuenta es de otra mesa, pasala con "Cambiar mesa"; si algo se cargó por error, anulá ese consumo.`
               : `Se abrió por error: no se cobra nada y queda libre.${
                   pagado > 0 ? ` Ya pagó ${fmtMoney(pagado)}: hay que devolverle ${textoDevolucion(devolucionDe(pagos, 0))}.` : ""
                 }${enOtraCaja ? ` ${enOtraCaja}: pedíselos, o que los devuelva quien los cobró.` : ""}`
           }
-          bloqueado={cargado > 0.005}
+          bloqueado={conConsumos}
           motivos={["Se abrió por error", "Se fueron sin jugar"]}
           // Con plata cobrada el PIN va siempre (el backend lo exige desde el
           // 17-oct): anular la devuelve y el arqueo deja de esperarla.
