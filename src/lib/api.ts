@@ -111,6 +111,12 @@ export const CUPO_KEY = "bamardev_web_cupo";
  * cajero volvería a una pantalla de login limpia sin saber por qué lo echó.
  */
 export const BLOQUEO_KEY = "bamardev_web_bloqueo";
+/**
+ * La sesión se cortó con un 401 (el token dura 7 días y vence en pleno
+ * turno). Como el bloqueo, es lo único que sobrevive a la recarga: sin esto
+ * el login aparecía limpio, sin decir por qué (prueba profunda, 18-oct).
+ */
+export const SESION_VENCIDA_KEY = "bamardev_web_sesion_vencida";
 
 export const tokenStore = {
   get: () => localStorage.getItem(TOKEN_KEY),
@@ -161,8 +167,17 @@ function limpiarSesion() {
  * de verdad; sin este manejo cada acción mostraría "ocurrió un error" hasta
  * que el usuario adivinara que tiene que salir y entrar.
  */
-function cerrarSesionVencida() {
+function cerrarSesionVencida(huboToken: boolean) {
   limpiarSesion();
+  // Sólo si había sesión: un 401 sin token (cerró sesión en otra pestaña) no
+  // es una sesión que venció, como en la app.
+  if (huboToken) {
+    try {
+      localStorage.setItem(SESION_VENCIDA_KEY, "1");
+    } catch {
+      /* sin almacenamiento: el login sale como antes */
+    }
+  }
   window.location.assign("/");
 }
 
@@ -275,7 +290,7 @@ export async function request<T>(path: string, options: RequestInit = {}): Promi
   }
 
   if (res.status === 401 && !RUTAS_LOGIN.includes(path)) {
-    cerrarSesionVencida();
+    cerrarSesionVencida(token != null);
     throw new ApiError("La sesión venció, volvé a iniciar sesión", 401);
   }
 

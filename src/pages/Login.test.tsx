@@ -13,6 +13,7 @@ vi.mock("../store/AuthContext", () => ({
 
 vi.mock("../lib/api", () => ({
   BLOQUEO_KEY: "bamardev_web_bloqueo",
+  SESION_VENCIDA_KEY: "bamardev_web_sesion_vencida",
   api: {
     opcionesPagoLicencia: vi.fn(),
     generarQrLicencia: vi.fn(),
@@ -35,5 +36,19 @@ describe("login → pagar la licencia", () => {
 
     expect(screen.getByPlaceholderText("pollosdonomar")).toHaveValue("");
     expect(api.opcionesPagoLicencia).not.toHaveBeenCalled();
+  });
+});
+
+describe("login después de que se cortó la sesión", () => {
+  it("dice que la sesión se cerró, una sola vez", () => {
+    // Prueba profunda del 18-oct: el token dura 7 días y vence en pleno
+    // turno; el login aparecía limpio, sin decir por qué.
+    localStorage.setItem("bamardev_web_sesion_vencida", "1");
+    const { unmount } = render(<Login />);
+    expect(screen.getByRole("status")).toHaveTextContent("Tu sesión se cerró. Volvé a entrar para seguir.");
+    expect(localStorage.getItem("bamardev_web_sesion_vencida")).toBeNull();
+    unmount();
+    render(<Login />);
+    expect(screen.queryByText(/Tu sesión se cerró/)).not.toBeInTheDocument();
   });
 });
