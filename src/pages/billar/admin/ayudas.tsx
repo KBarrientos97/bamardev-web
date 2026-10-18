@@ -337,6 +337,12 @@ export function AyudaPines({ siempre }: { siempre: string }) {
         podría pausar la de un conocido y dejarlo jugar gratis. Si la cajera atiende sola y tiene que poder pausar (un
         corte de luz), desmarcala: cada pausa igual queda registrada con quién la hizo, por qué y cuánto duró.
       </p>
+      <p>
+        Si alguien escribe mal un PIN, queda anotado con quién, para qué y a qué hora: lo ves arriba de todo y en
+        Usuarios → <b>Intentos de PIN</b>. Si insiste (3 veces seguidas) o si acierta después de equivocarse dos veces, te
+        avisamos en rojo y, si activaste las notificaciones, al celular. Con 10 equivocados en un día, esa persona no
+        puede pedir más autorizaciones con PIN hasta que la habilites (o hasta el día siguiente).
+      </p>
       <Nota tono="ambar" icono="key">
         El PIN de cada encargado lo asigna el administrador en Usuarios. Que no lo sepa el cajero: si lo sabe, el control
         no sirve.

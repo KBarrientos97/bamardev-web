@@ -748,9 +748,14 @@ function DialogoAnular({
             onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))}
             autoComplete="off"
             autoFocus={!pideUsuario}
+            placeholder="4 dígitos"
             className="tracking-[0.3em]"
           />
         </Campo>
+        {/* Fuera del label: los tests buscan el campo por su etiqueta exacta. */}
+        <p className="-mt-2 text-xs text-texto-4">
+          Cada intento queda registrado con tu usuario y lo ve el administrador.
+        </p>
 
         <ErrorMsg>{error}</ErrorMsg>
       </div>

@@ -509,11 +509,15 @@ function CampoPin({
           }}
           className="peer absolute inset-0 h-full w-full cursor-pointer opacity-0"
         />
-        <div className="flex gap-2" aria-hidden>
+        {/* Con un PIN viejo de 5 o 6, más angostos: seis de 48 px no entran en un
+            celular de 360 (seis de 40 sí). */}
+        <div className={`flex ${casilleros > 4 ? "gap-1.5 sm:gap-2" : "gap-2"}`} aria-hidden>
           {Array.from({ length: casilleros }, (_, i) => (
             <span
               key={i}
-              className={`flex h-14 w-12 items-center justify-center rounded-xl border-2 text-2xl font-bold ${
+              className={`flex items-center justify-center rounded-xl border-2 text-2xl font-bold ${
+                casilleros > 4 ? "h-12 w-10 sm:h-14 sm:w-12" : "h-14 w-12"
+              } ${
                 error ? "border-rose-300" : i === pin.length ? "border-primary" : "border-borde"
               }`}
             >
@@ -526,7 +530,9 @@ function CampoPin({
         role={error ? "alert" : undefined}
         className={`mt-1.5 text-xs ${error ? "font-semibold text-rose-700" : "text-texto-4"}`}
       >
-        {error || "4 dígitos. Escribilo con el teclado."}
+        {/* La leyenda disuade (18-oct): lo que más frena es saber que te ven.
+            Y es verdad: cada fallo queda en "Intentos de PIN" del dueño. */}
+        {error || "4 dígitos. Cada intento queda registrado y lo ve el administrador."}
       </p>
     </>
   );

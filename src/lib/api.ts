@@ -290,6 +290,18 @@ export async function request<T>(path: string, options: RequestInit = {}): Promi
       /* respuesta sin cuerpo JSON */
     }
 
+    // Un PIN mal escrito queda anotado para el dueño (18-oct): quien lo pidió
+    // lo lee en el mismo mensaje, en cualquier pantalla que pida PIN, y es
+    // SIEMPRE el mismo texto (no se aprende a partir de cuántos le avisan).
+    // El backend no cambia su `message`: la app lo muestra tal cual.
+    const sinPunto = (m: string) => m.replace(/\.\s*$/, "");
+    if (res.status === 403 && cuerpo.registrado === true) {
+      mensaje = `${sinPunto(mensaje)}. Quedó registrado y lo ve el administrador.`;
+    }
+    if (res.status === 429 && cuerpo.codigo === "PIN_BLOQUEADO" && cuerpo.frenado !== true) {
+      mensaje = `${sinPunto(mensaje)}. El administrador ya lo puede ver.`;
+    }
+
     // Licencia vencida o suspendida: no es un error a mostrar en un cartelito,
     // es el fin de la sesión. Se corta acá para que ninguna pantalla siga
     // trabajando contra un backend que ya no la deja operar.
@@ -1104,9 +1116,12 @@ export const api = {
   // Compartido por todos los equipos: lo sube quien abre la caja y lo bajan
   // la caja, los meseros y el reparto. Ver lib/qrPago.ts.
 
-  /** El QR vigente; `imagen` null si todavía nadie lo subió. */
+  /**
+   * El QR vigente; `imagen` null si todavía nadie lo subió. `actualizadoPor`
+   * es el nombre de quien lo puso (backend del 18-oct en adelante).
+   */
   qrCobro: () =>
-    request<{ imagen: string | null; actualizadoEn: string | null }>("/qr-cobro"),
+    request<{ imagen: string | null; actualizadoEn: string | null; actualizadoPor?: string | null }>("/qr-cobro"),
   /** Lo sube quien abre la caja. El backend rechaza al mesero y al repartidor. */
   subirQrCobro: (imagen: string) =>
     request<{ imagen: string | null }>("/qr-cobro", {

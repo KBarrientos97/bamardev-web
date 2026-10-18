@@ -5,6 +5,7 @@ import { tituloDe, useMenu } from "../lib/menu";
 import { etiquetaRol } from "../lib/permisos";
 import { useAuth } from "../store/AuthContext";
 import AvisoLicencia from "./AvisoLicencia";
+import FranjaIntentosPin from "./seguridad/FranjaIntentosPin";
 import CajonMovil from "./CajonMovil";
 import CambiarMiPassword from "./CambiarMiPassword";
 import { BarraCupo } from "./ChipCupo";
@@ -215,6 +216,9 @@ export default function Layout() {
         {/* Fuera del <main> con scroll: el aviso de vencimiento tiene que
             quedar a la vista aunque la pantalla esté scrolleada. */}
         <AvisoLicencia />
+        {/* Los PIN mal escritos, para quien administra los PIN (18-oct). La
+            TV del salón va fuera del Layout: ahí no sale. */}
+        <FranjaIntentosPin />
         {/* Plan Emprendedor: el chip de ventas y los avisos del cupo. Sin
             cupo (Básico, Profesional) no dibuja nada. */}
         <BarraCupo
