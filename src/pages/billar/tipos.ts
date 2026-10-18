@@ -111,6 +111,11 @@ export interface TiempoPrevio {
   bs: number;
   /** Null o ausente: no había ganado ninguna (o el backend es de antes del 17-oct). */
   promo?: PromoPrevia | null;
+  /**
+   * En qué segundo jugado la mesa anterior habría cobrado el bloque siguiente
+   * (ver `cobroTramo`). Null o ausente con un backend de antes del 18-oct.
+   */
+  hastaSecs?: number | null;
 }
 
 /** Desde que se abre hasta que se cierra. Al cerrar se convierte en una venta. */
@@ -127,6 +132,12 @@ export interface Sesion {
    * `pausedAt`.
    */
   pausaDesde?: number;
+  /**
+   * Los tramos pausados que ya terminaron, en ms: Corregir inicio los usa para
+   * decir cuánto queda jugado si la hora nueva deja pausas afuera (ver
+   * `pausadoAntesDe`). Backend del 18-oct; sin ellos, como antes.
+   */
+  pausas?: { desde: number; hasta: number }[];
   /** Segundos acumulados en pausa. */
   pausedTotal: number;
   pauseMotivo?: string;
@@ -186,6 +197,11 @@ export interface VentaBillar {
   mesaId?: number;
   tipoMesa?: string;
   tiempoMin: number;
+  /**
+   * De `tiempoMin`, los que vinieron de una mesa de otra tarifa (backend del
+   * 18-oct): sin separarlos, todo el tiempo salía con el tipo de la última mesa.
+   */
+  tiempoPrevioMin?: number;
   tiempoBs: number;
   promo?: { nombre: string; pct: number; descuento: number };
   items: ItemVenta[];
@@ -232,6 +248,8 @@ export interface ProductoBillar {
   categoria: string;
   /** Lo que queda para vender (lo cargado a mesas abiertas ya está restado); null = servicio, sin stock. */
   stock: number | null;
+  /** El código de barras, para buscarlo o escanearlo (backend del 18-oct). */
+  codBarra?: string | null;
 }
 
 /**

@@ -10,7 +10,7 @@ import { FormCobro } from "./Cobro";
 import { useCobro } from "./useCobro";
 import { useAccion } from "./useAccion";
 import { huellaAdelanto } from "./reintentos";
-import { MOTIVOS_PAUSA, inicioCorregido } from "./ModalesMesa.datos";
+import { MOTIVOS_PAUSA, conInicioCorregido, inicioCorregido } from "./ModalesMesa.datos";
 import { billar, mesasEnUso, tipoDe, useBillar } from "./store";
 import { ahoraServidor, useAhora } from "./reloj";
 import { cuentaDe, fmtCrono, horaDe, segundosEnMesa, segundosJugados } from "./calculo";
@@ -552,11 +552,15 @@ export function ModalEditarInicio({ mesa, onClose }: { mesa: Mesa; onClose: () =
   // un error de tipeo (ver `inicioCorregido`).
   const r = inicioCorregido(hora, ahora);
   const inicio = "inicio" in r ? r.inicio : null;
-  const todaviaNoLlego = "error" in r && r.error === "noLlego";
-  const muyAtras = "error" in r && r.error === "muyAtras";
+  // Con la misma hora de inicio que ya tiene no hay nada que avisar: una mesa
+  // de anoche abría el diálogo diciendo que su propia hora "no llegó"
+  // (revisión del 18-oct). El botón igual queda apagado.
+  const sinCambio = hora === horaInput(s.start);
+  const descartada = "cuando" in r && !sinCambio ? r : null;
   const valida = inicio !== null && Math.abs(inicio - s.start) >= 60_000;
-  // Cómo queda la mesa con la hora nueva, antes de poner el PIN.
-  const quedan = inicio !== null ? segundosEnMesa({ ...s, start: inicio }, ahora) + (s.prev?.secs ?? 0) : null;
+  // Cómo queda la mesa con la hora nueva, antes de poner el PIN, con las
+  // pausas que la hora nueva deja afuera (ver `conInicioCorregido`).
+  const quedan = inicio !== null ? segundosEnMesa(conInicioCorregido(s, inicio), ahora) + (s.prev?.secs ?? 0) : null;
   return (
     <ModalPin
       accion={`Corregir el inicio de la Mesa ${mesa.id}`}
@@ -575,13 +579,14 @@ export function ModalEditarInicio({ mesa, onClose }: { mesa: Mesa; onClose: () =
         <span className="mb-1.5 block text-[13px] font-semibold text-texto-2">Empezaron a jugar a las</span>
         <Input type="time" value={hora} onChange={(ev) => setHora(ev.target.value)} className="w-40" />
       </label>
-      {todaviaNoLlego ? (
+      {/* La hora con a. m./p. m., como "Arrancó a las…" de arriba: la confusión
+          más probable es escribir 07:30 pensando en la noche (revisión del
+          18-oct). */}
+      {descartada ? (
         <p className="mt-1.5 text-[12px] font-semibold text-rose-700">
-          Las {hora} todavía no llegaron: revisá la hora.
-        </p>
-      ) : muyAtras ? (
-        <p className="mt-1.5 text-[12px] font-semibold text-rose-700">
-          Las {hora} fueron hace más de 12 horas: revisá la hora.
+          {descartada.error === "noLlego"
+            ? `Las ${horaDe(descartada.cuando)} todavía no llegaron, y las de ayer fueron hace más de 12 horas: revisá la hora.`
+            : `Las ${horaDe(descartada.cuando)} fueron hace más de 12 horas: revisá la hora.`}
         </p>
       ) : quedan !== null && valida ? (
         <p className="mt-1.5 text-[12px] text-texto-3">

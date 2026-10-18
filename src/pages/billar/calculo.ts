@@ -98,6 +98,8 @@ export interface Cobro {
   nextSecs: number;
   /** Cuánto pasa a valer el tiempo al subir. */
   nextBs: number;
+  /** Los minutos que se cobran al subir (para la promo del tramo siguiente). */
+  nextMin: number;
 }
 
 export function cobroTiempo(secs: number, t: TipoMesa, useMin = true): Cobro {
@@ -112,8 +114,29 @@ export function cobroTiempo(secs: number, t: TipoMesa, useMin = true): Cobro {
     min,
     bs: round2((t.tarifa * min) / 60),
     nextSecs: b * f + tol,
-    nextBs: round2((t.tarifa * (b + 1) * t.fraccion) / 60),
+    // En el mismo orden que `bs` (tarifa por minutos), como el backend: con una
+    // tarifa como 12,33 el anuncio "sube a Bs 34,94" cobraba después Bs 34,93.
+    nextBs: round2((t.tarifa * ((b + 1) * t.fraccion)) / 60),
+    nextMin: (b + 1) * t.fraccion,
   };
+}
+
+/**
+ * Cuánto de lo pausado (`pausas`, tramos terminados en ms) queda antes de
+ * `nuevo` y después de `inicio`, en segundos: lo que deja de descontarse si
+ * el inicio se corre hasta `nuevo`. Igual que el backend, que lo saca de
+ * `pausadoSeg` al corregir el inicio hacia adelante (prueba profunda,
+ * 18-oct): abierta 20:00, pausada 20:10 a 20:40 y corrida a las 21:00, a las
+ * 22:00 cobraba 30 min de 60.
+ */
+export function pausadoAntesDe(pausas: { desde: number; hasta: number }[], inicio: number, nuevo: number): number {
+  let ms = 0;
+  for (const p of pausas) {
+    const a = Math.max(p.desde, inicio);
+    const b = Math.min(p.hasta, nuevo);
+    if (b > a) ms += b - a;
+  }
+  return Math.round(ms / 1000);
 }
 
 /**
@@ -131,18 +154,49 @@ export function cobroTiempo(secs: number, t: TipoMesa, useMin = true): Cobro {
  *
  * `nextSecs` se cuenta desde que empezó esta mesa, como en `cobroTiempo`.
  */
-export function cobroTramo(secsMesa: number, prev: Pick<TiempoPrevio, "secs" | "min">, t: TipoMesa): Cobro {
-  const total = cobroTiempo(prev.secs + secsMesa, t, false);
-  const min = Math.max(0, total.min - prev.min);
-  // El bloque siguiente que suma minutos a lo ya cobrado. Es el de después
-  // del total, salvo que la otra mesa haya redondeado con otra fracción y ya
-  // haya cobrado más allá.
-  const sig = Math.max(total.min / t.fraccion + 1, Math.floor(prev.min / t.fraccion) + 1);
+export function cobroTramo(
+  secsMesa: number,
+  prev: Pick<TiempoPrevio, "secs" | "min" | "hastaSecs">,
+  t: TipoMesa,
+): Cobro {
+  const f = t.fraccion * 60;
+  const tol = t.tolerancia * 60;
+  // Si la regla de esta mesa es más estricta y a lo jugado allá ya le cobraría
+  // más que la otra (`deMas`), esa diferencia se cobra al terminar una gracia,
+  // como cualquier bloque: ni sube en el instante del cambio ni se regala. La
+  // gracia dura la tolerancia de acá o hasta que la mesa anterior habría
+  // cobrado el bloque siguiente (`prev.hastaSecs`), lo que llegue primero
+  // (revisión del arreglo, 18-oct). Igual que el backend.
+  const deMas = Math.max(0, cobroTiempo(prev.secs, t, false).min - prev.min);
+  const finGracia = deMas > 0 ? Math.min(tol, prev.hastaSecs != null ? prev.hastaSecs - prev.secs : tol) : -1;
+  const minEn = (x: number) =>
+    Math.max(0, cobroTiempo(prev.secs + x, t, false).min - prev.min - (x <= finGracia ? deMas : 0));
+  const min = minEn(secsMesa);
+  // Cuándo sube: en el fin de la gracia o cuando el total pasa un bloque, el
+  // primero de esos momentos que sume minutos.
+  const momentos: number[] = secsMesa <= finGracia ? [finGracia] : [];
+  const desde = Math.max(0, Math.floor((prev.secs + secsMesa - tol) / f));
+  for (let k = desde; k <= desde + 2 + Math.ceil(prev.min / t.fraccion); k++) {
+    const m = k * f + tol - prev.secs;
+    if (m >= secsMesa) momentos.push(m);
+  }
+  momentos.sort((a, b) => a - b);
+  let nextSecs = momentos[momentos.length - 1];
+  let nextMin = minEn(nextSecs + 1);
+  for (const m of momentos) {
+    const despues = minEn(m + 1);
+    if (despues > min) {
+      nextSecs = m;
+      nextMin = despues;
+      break;
+    }
+  }
   return {
     min,
     bs: round2((t.tarifa * min) / 60),
-    nextSecs: (sig - 1) * t.fraccion * 60 + t.tolerancia * 60 - prev.secs,
-    nextBs: round2((t.tarifa * (sig * t.fraccion - prev.min)) / 60),
+    nextSecs,
+    nextBs: round2((t.tarifa * nextMin) / 60),
+    nextMin,
   };
 }
 
@@ -374,7 +428,9 @@ export function cuentaDe(s: Sesion, t: TipoMesa, ahora: number): Cuenta {
     tiempoBs = round2(bruto - (promo?.descuento ?? 0));
     nextSecs = (s.prev?.secs ?? 0) + c.nextSecs;
     const brutoSig = round2(previoBs + c.nextBs);
-    const pSig = promoPara(t, (cobradoMin + t.fraccion) / 60);
+    // Con los minutos del bloque siguiente de verdad (con lo traído de una mesa
+    // de otra fracción no siempre son `cobradoMin + fraccion`), como el backend.
+    const pSig = promoPara(t, (previoMin + c.nextMin) / 60);
     nextBs = round2(brutoSig - (promoDeLaCuenta(pSig, previoBs, c.nextBs, brutoSig, s.prev?.promo)?.descuento ?? 0));
   }
 

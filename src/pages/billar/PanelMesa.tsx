@@ -64,7 +64,9 @@ export default function PanelMesa({ v, ahora, onCerrar }: { v: VistaMesa; ahora:
         ) : estado === "reservada" && mesa.reserva ? (
           <>
             <Nota tono="azul" icono="calendar">
-              Reservada para <b>{mesa.reserva.nombre}</b> a las {horaDe(mesa.reserva.hora)}.
+              {/* Sin punto después de la hora: ya termina en "p. m." y quedaba
+                  "p. m.." (prueba profunda, 18-oct; lo mismo que en Corregir inicio). */}
+              Reservada para <b>{mesa.reserva.nombre}</b> a las {horaDe(mesa.reserva.hora)}
             </Nota>
             <TarjetaTarifa v={v} />
           </>
@@ -240,7 +242,7 @@ function CuentaAbierta({ v, ahora }: { v: VistaMesa; ahora: number }) {
                 <Fila etiqueta="Excedente" valor={`${fmtCobrado(c.excedenteMin)} → ${fmtMoney(c.excedenteBs)}`} />
               )}
               {(c.restante ?? 1) <= 0 && c.nextSecs !== null && (
-                <Fila etiqueta="Siguiente tramo" valor={`a la ${fmtCobrado(c.nextSecs / 60)} → ${fmtMoney(c.nextBs ?? 0)}`} />
+                <Fila etiqueta="Siguiente tramo" valor={`a la ${fmtCobrado(Math.floor(c.nextSecs / 60))} → ${fmtMoney(c.nextBs ?? 0)}`} />
               )}
             </>
           ) : (
@@ -263,7 +265,7 @@ function CuentaAbierta({ v, ahora }: { v: VistaMesa; ahora: number }) {
                 <Fila etiqueta="Traído de otra mesa" valor={`${fmtCobrado(s.prev.min)} → ${fmtMoney(s.prev.bs)}`} />
               )}
               {c.nextSecs !== null && !s.pausedAt && (
-                <Fila etiqueta="Siguiente tramo" valor={`a la ${fmtCobrado(c.nextSecs / 60)} → ${fmtMoney(c.nextBs ?? 0)}`} />
+                <Fila etiqueta="Siguiente tramo" valor={`a la ${fmtCobrado(Math.floor(c.nextSecs / 60))} → ${fmtMoney(c.nextBs ?? 0)}`} />
               )}
             </>
           )}

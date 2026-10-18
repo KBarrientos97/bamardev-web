@@ -57,7 +57,10 @@ export function ModalVenta({ codigo, onClose }: { codigo: string; onClose: () =>
       )}
       <div className="space-y-1.5 text-[13px]">
         {v.origen === "mesa" && (
-          <Linea izq={`Tiempo de mesa (${fmtCobrado(v.tiempoMin)})`} der={fmtMoney(v.tiempoBs + (v.promo?.descuento ?? 0))} />
+          <Linea
+            izq={`Tiempo de mesa (${fmtCobrado(v.tiempoMin)}${v.tiempoPrevioMin ? ` en total; ${fmtCobrado(v.tiempoPrevioMin)} en otra mesa, a su tarifa` : ""})`}
+            der={fmtMoney(v.tiempoBs + (v.promo?.descuento ?? 0))}
+          />
         )}
         {/* La pausa a la vista: el cliente ve el tiempo que no se le cobró, y
             el dueño, cuánto se pausó en cada mesa sin abrir otro reporte. */}
@@ -158,6 +161,12 @@ export function ModalTicket({ codigo, onClose }: { codigo: string; onClose: () =
           {fila("Origen", origenDe(v, e.tipos))}
           {sep}
           {v.origen === "mesa" && fila(`Tiempo de mesa ${fmtCobrado(v.tiempoMin)}`, fmtMoney(v.tiempoBs + (v.promo?.descuento ?? 0)))}
+          {/* Lo traído de una mesa de otra tarifa: sin esto, 45 min de Pool
+              pasados a una Carambola salían "Carambola 0:45" por Bs 15 y se
+              leía como una Carambola más barata (prueba profunda, 18-oct). */}
+          {v.origen === "mesa" && v.tiempoPrevioMin
+            ? fila(`  En otra mesa ${fmtCobrado(v.tiempoPrevioMin)}`, "a su tarifa")
+            : null}
           {v.origen === "mesa" && v.pausaMin ? fila(`  En pausa ${fmtCobrado(v.pausaMin)}`, "no se cobra") : null}
           {v.promo && fila(`  ${v.promo.nombre}`, `−${fmtMoney(v.promo.descuento)}`)}
           {v.items.map((i) => (

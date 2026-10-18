@@ -64,7 +64,9 @@ export default function TarjetaMesa({
           </button>
           {mesa.alias && <p className="truncate text-[12px] font-semibold text-texto-2">{mesa.alias}</p>}
           <p className={`text-[12px] ${apagada ? "text-slate-400" : "text-texto-3"}`}>
-            {tipo.nombre} · {fmtTarifaCorta(tipo.tarifa)}
+            {/* El precio entero en un renglón: a 375 px quedaba "Carambola · Bs"
+                arriba y "25/h" abajo (prueba profunda, 18-oct). */}
+            {tipo.nombre} · <span className="whitespace-nowrap">{fmtTarifaCorta(tipo.tarifa)}</span>
           </p>
         </div>
         <MenuMesa acciones={acciones} visible={seleccionada} nombre={`Mesa ${mesa.id}`} />
@@ -167,7 +169,10 @@ function subLinea(v: VistaMesa) {
       return (
         <>
           Cobrado {fmtCobrado(c.cobradoMin)}
-          {c.nextSecs !== null && <> · sube a la {fmtCobrado(c.nextSecs / 60)}</>}
+          {/* Para abajo y no redondeado: el fin de una gracia no cae en minuto
+              entero y "sube a la 0:38" subía a las 0:37:41 (revisión del
+              18-oct). Nunca promete un minuto de más. */}
+          {c.nextSecs !== null && <> · sube a la {fmtCobrado(Math.floor(c.nextSecs / 60))}</>}
         </>
       );
   }

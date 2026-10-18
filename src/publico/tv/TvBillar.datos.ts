@@ -76,6 +76,9 @@ export function mesasDelSalon(r: SalonPublicoApi): Mesa[] {
           id: "",
           start: m.sesion.start,
           pausedAt: m.sesion.pausedAt,
+          // Sin esto, tras pasar una cuenta pausada a otra mesa la TV decía
+          // "Pausada · hace 0 min" sin el ámbar (prueba profunda, 18-oct).
+          pausaDesde: m.sesion.pausaDesde,
           pausedTotal: m.sesion.pausedTotal,
           prepago: m.sesion.prepago,
           prev: m.sesion.prev,

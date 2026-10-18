@@ -9,6 +9,7 @@ import {
   fmtCrono,
   fmtHace,
   imputarPagos,
+  pausadoAntesDe,
   precioFijo,
   precioHoras,
   promoPara,
@@ -259,6 +260,67 @@ describe("cuentaDe (§5.4, §5.6)", () => {
     // El primer bloque que pasa los 60: el de 75, a los 63 min del total.
     expect(c.nextSecs).toBe(hms(1, 3));
     expect(c.nextBs).toBe(26.25);
+  });
+
+  it("pasar a una mesa de regla más estricta no sube la cuenta en el instante del cambio", () => {
+    // Revisión del arreglo (18-oct): 34 min en una mesa de tolerancia 5 se
+    // cerraron en 30 (Bs 10). Carambola tiene tolerancia 3 y a esos 34 min les
+    // cobraría 45: con 0 s jugados acá aparecía un bloque de Bs 6,25.
+    const prev = { secs: hms(0, 34), min: 30, bs: 10 };
+    const c = cuentaDe(sesion({ jugados: 0, prev }), CARAMBOLA, AHORA);
+    expect(c.cobradoMin).toBe(30);
+    expect(c.tiempoBs).toBe(10);
+    // Sube cuando acá se pasa la tolerancia (3 min desde el cambio).
+    expect(c.nextSecs).toBe(hms(0, 37));
+    expect(c.nextBs).toBe(16.25);
+    expect(cuentaDe(sesion({ jugados: hms(0, 3), prev }), CARAMBOLA, AHORA).tiempoBs).toBe(10);
+  });
+
+  it("la gracia termina antes si la mesa anterior ya habría cobrado el bloque", () => {
+    // Revisión del 18-oct: Pool 15/5 pasada a Carambola 15/3 a los 34:00 y
+    // cerrada a los 36:30 cobraba 30 min; quedándose en Pool eran 45.
+    const prev = { secs: hms(0, 34), min: 30, bs: 10, hastaSecs: hms(0, 35) };
+    expect(cuentaDe(sesion({ jugados: 30, prev }), CARAMBOLA, AHORA).cobradoMin).toBe(30);
+    const c = cuentaDe(sesion({ jugados: hms(0, 2, 30), prev }), CARAMBOLA, AHORA);
+    expect(c.cobradoMin).toBe(45);
+    expect(c.tiempoBs).toBe(16.25);
+  });
+
+  it("pasada la tolerancia de la mesa nueva, ese bloque se cobra: no se regala", () => {
+    // Perdonarlo para siempre dejaba jugar gratis hasta el bloque siguiente.
+    const prev = { secs: hms(0, 34), min: 30, bs: 10 };
+    const c = cuentaDe(sesion({ jugados: hms(0, 3, 1), prev }), CARAMBOLA, AHORA);
+    expect(c.cobradoMin).toBe(45);
+    expect(c.tiempoBs).toBe(16.25);
+    expect(c.nextSecs).toBe(hms(0, 48));
+  });
+});
+
+// Los mismos casos que calculo.spec.ts del backend.
+describe("corregir el inicio con pausas (prueba profunda, 18-oct)", () => {
+  const hora = (h: number, m: number) => Date.UTC(2026, 9, 18, h + 4, m);
+  // Pausada de 20:10 a 20:40 y de 21:20 a 21:30.
+  const pausas = [
+    { desde: hora(20, 10), hasta: hora(20, 40) },
+    { desde: hora(21, 20), hasta: hora(21, 30) },
+  ];
+
+  it("correr el inicio de 20:00 a 21:00 saca la pausa de antes, no la de después", () => {
+    expect(pausadoAntesDe(pausas, hora(20, 0), hora(21, 0))).toBe(30 * 60);
+  });
+
+  it("una pausa que la hora nueva corta al medio sale sólo hasta esa hora", () => {
+    expect(pausadoAntesDe(pausas, hora(20, 0), hora(20, 25))).toBe(15 * 60);
+    expect(pausadoAntesDe(pausas, hora(20, 0), hora(21, 25))).toBe(35 * 60);
+  });
+
+  it("lo pausado antes del inicio de ahora no cuenta (ya no estaba en lo descontado)", () => {
+    expect(pausadoAntesDe(pausas, hora(20, 30), hora(21, 0))).toBe(10 * 60);
+  });
+
+  it("sin pausas antes de la hora nueva no cambia nada", () => {
+    expect(pausadoAntesDe(pausas, hora(20, 0), hora(20, 5))).toBe(0);
+    expect(pausadoAntesDe([], hora(20, 0), hora(21, 0))).toBe(0);
   });
 });
 
