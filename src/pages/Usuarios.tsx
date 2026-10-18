@@ -27,6 +27,7 @@ import { apiRoles, mensajeDeError, rolSinPermisos, rolTiene, tonoDeRol } from ".
 import { useApi } from "../lib/useApi";
 import { useAuth } from "../store/AuthContext";
 import type { ActualizarUsuarioInput, CrearUsuarioInput, RolNegocio, Usuario } from "../types";
+import { paraQueSirveElPin, queDejaDeAutorizar } from "./Usuarios.datos";
 
 /**
  * Usuarios: las cuentas de acceso del negocio (PLAN-ROLES-NEGOCIO). Todo sale
@@ -68,7 +69,7 @@ function llevaPin(rol: RolNegocio | null, conPin: boolean): boolean {
 type FiltroRol = "todos" | "inactivos" | `rol:${number}`;
 
 export default function Usuarios() {
-  const { incluye, usuario: actor } = useAuth();
+  const { incluye, usuario: actor, negocio } = useAuth();
   // El PIN sólo existe si el plan incluye la autorización con PIN.
   const conPin = incluye("autorizacion_pin");
   const usuarios = useApi(() => api.getUsuarios(), []);
@@ -327,7 +328,7 @@ export default function Usuarios() {
       <Confirmar
         abierto={!!quitandoPin}
         titulo="Quitar PIN"
-        texto={`¿Quitarle el PIN a "${quitandoPin?.nombre}"? No va a poder autorizar anulaciones ni fiar por encima del límite hasta que le asignes uno nuevo.`}
+        texto={`¿Quitarle el PIN a "${quitandoPin?.nombre}"? No va a poder autorizar ${queDejaDeAutorizar(negocio?.features)} hasta que le asignes uno nuevo.`}
         etiquetaOk="Quitar PIN"
         peligroso
         procesando={quitandoPinEnCurso}
@@ -963,6 +964,7 @@ function FormPinCuerpo({
   onClose: () => void;
   onGuardado: () => void;
 }) {
+  const { negocio } = useAuth();
   const [pin, setPin] = useState("");
   const [error, setError] = useState("");
   const [guardando, setGuardando] = useState(false);
@@ -1004,8 +1006,8 @@ function FormPinCuerpo({
     >
       <div className="space-y-4">
         <p className="rounded-xl bg-primary-50 px-3.5 py-2.5 text-[13px] text-primary-700">
-          El PIN autoriza anular ventas y fiar por encima del límite del cliente. Lo lleva
-          quien tiene un rol que autoriza con PIN.
+          El PIN autoriza {paraQueSirveElPin(negocio?.features)}. Lo lleva quien tiene un rol que
+          autoriza con PIN.
         </p>
 
         <Campo label="PIN" hint="4 a 6 dígitos">

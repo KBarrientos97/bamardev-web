@@ -4,7 +4,7 @@ import { Icon } from "../../components/Icon";
 import { Vacio } from "../../components/ui";
 import { aCentavos } from "../../lib/dinero";
 import { fmtMoney } from "../../lib/format";
-import { tienePermiso } from "../../lib/permisos";
+import { tieneFeature, tienePermiso } from "../../lib/permisos";
 import { useAuth } from "../../store/AuthContext";
 import type { CreditoInput, PagoInput } from "../../types";
 import PantallaCredito from "../pos/PantallaCredito";
@@ -49,7 +49,7 @@ export default function CerrarMesa() {
   const e = useBillar();
   const ahora = useAhora();
   const navigate = useNavigate();
-  const { usuario } = useAuth();
+  const { usuario, negocio } = useAuth();
   const puedeCobrar = tienePermiso(usuario, "ventas.vender");
   const [hasta, setHasta] = useState(() => ahoraServidor());
   const [fiando, setFiando] = useState(false);
@@ -398,8 +398,11 @@ export default function CerrarMesa() {
                   >
                     {accion.enviando ? "Cobrando…" : `Cobrar ${fmtMoney(c.saldo)} ${medioDelBoton(cobro.metodo)} y cerrar la mesa`}
                   </BotonB>
-                  {/* Sin permiso de fiar, el servidor lo rechaza: el botón ni aparece. */}
-                  {tienePermiso(usuario, "credito.otorgar") && (
+                  {/* Sin permiso de fiar, el servidor lo rechaza: el botón ni aparece.
+                      Y sin fiado en el plan tampoco (el billar no fía, 17-oct): el
+                      permiso ya viene recortado por el plan, esto es por si la
+                      lista de permisos todavía no se refrescó. */}
+                  {tieneFeature(negocio?.features, "fiado") && tienePermiso(usuario, "credito.otorgar") && (
                     <BotonB
                       icono="fileText"
                       className="w-full"
