@@ -111,7 +111,11 @@ export function Pestanas({
   sinGuardar: boolean;
 }) {
   return (
-    <div role="tablist" aria-label="Mesas de billar" className="flex gap-1 overflow-x-auto border-b border-borde">
+    // overflow-y-hidden: overflow-x-auto vuelve "auto" también el eje Y, el
+    // -mb-px de las pestañas lo desborda 1 px, y en Windows eso dibujaba una
+    // barra vertical de 10 px que además se comía la rueda del mouse (prueba
+    // profunda, 18-oct).
+    <div role="tablist" aria-label="Mesas de billar" className="flex gap-1 overflow-x-auto overflow-y-hidden border-b border-borde">
       {PESTANAS.map((p) => {
         const activa = p.valor === valor;
         return (

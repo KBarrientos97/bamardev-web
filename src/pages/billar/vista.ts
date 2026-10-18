@@ -1,4 +1,5 @@
 import { fmtMoney } from "../../lib/format";
+import { contiene } from "../../lib/texto";
 import {
   cuentaDe,
   estadoVisual,
@@ -66,9 +67,14 @@ export function pasaFiltro(v: VistaMesa, f: Filtro): boolean {
   return v.estado === f;
 }
 
-/** Busca por número, apodo o cliente (§7.1). */
+/**
+ * Busca por número, apodo o cliente (§7.1), sin distinguir tildes ni
+ * mayúsculas: "perez" no encontraba a "Juan Pérez" y la pantalla decía
+ * "Ninguna mesa coincide" (prueba profunda, 18-oct). El cajero teclea sin
+ * tildes; para eso está `contiene`.
+ */
 export function pasaBusqueda(v: VistaMesa, texto: string): boolean {
-  const q = texto.trim().toLowerCase();
+  const q = texto.trim();
   if (!q) return true;
   const m = v.mesa;
   const campos = [
@@ -79,7 +85,7 @@ export function pasaBusqueda(v: VistaMesa, texto: string): boolean {
     m.reserva?.nombre ?? "",
     v.tipo.nombre,
   ];
-  return campos.some((c) => c.toLowerCase().includes(q));
+  return campos.some((c) => contiene(c, q));
 }
 
 /** "Mesa 5", y el apodo si tiene. */

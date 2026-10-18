@@ -28,6 +28,16 @@ import type { Caja, CitaParaRevisar, MotivoRevisarCita } from "../../types";
 const OTRO = "__otro__";
 
 /**
+ * La fila del billar en el arqueo, con el signo en el valor. El número es un
+ * neto: lo que entró a este cajón de mesas que no son venta de esta caja,
+ * menos lo que otra caja cobró de ventas de ésta. El rótulo se elegía por el
+ * signo ("…cobrados en otra caja" si era negativo), así que con las dos cosas
+ * a la vez nombraba mal todo el monto (prueba profunda, 18-oct). Neutro, como
+ * en la app.
+ */
+const ETIQUETA_ADELANTOS_BILLAR = "Adelantos de billar";
+
+/**
  * Los movimientos de efectivo que de verdad pasan en un turno. El motivo decide
  * el sentido: nadie ingresa un "pago a proveedor".
  */
@@ -263,14 +273,7 @@ export default function PantallaCierre({
                         de abajo, en la otra rama): el adelanto de una mesa que
                         sigue abierta está en el cajón y todavía no es venta. */}
                     {(r.adelantosBillar ?? 0) !== 0 && (
-                      <Fila
-                        etiqueta={
-                          (r.adelantosBillar ?? 0) > 0
-                            ? "Adelantos de mesas de billar (efectivo)"
-                            : "Adelantos de billar cobrados en otra caja"
-                        }
-                        valor={r.adelantosBillar ?? 0}
-                      />
+                      <Fila etiqueta={ETIQUETA_ADELANTOS_BILLAR} valor={r.adelantosBillar ?? 0} />
                     )}
                     {/* La plata de las profesionales, en su fila: está en el cajón
                         pero no es del negocio. */}
@@ -375,14 +378,7 @@ export default function PantallaCierre({
                       venta está acá y el billete en el otro cajón. Sin la fila
                       el esperado no sale de sumar las de arriba. */}
                   {(r.adelantosBillar ?? 0) !== 0 && (
-                    <Fila
-                      etiqueta={
-                        (r.adelantosBillar ?? 0) > 0
-                          ? "Adelantos de mesas de billar (efectivo)"
-                          : "Adelantos de billar cobrados en otra caja"
-                      }
-                      valor={r.adelantosBillar ?? 0}
-                    />
+                    <Fila etiqueta={ETIQUETA_ADELANTOS_BILLAR} valor={r.adelantosBillar ?? 0} />
                   )}
                   {/* Un abono cobrado por QR entró al negocio pero NO al cajón:
                       sin esta fila el cajero veía el total de cobros del turno
@@ -526,7 +522,7 @@ export default function PantallaCierre({
           {enviando
             ? "Cerrando…"
             : mesasBillar.length > 0
-              ? "Cobrá las mesas en juego para cerrar"
+              ? "Cobrá las mesas abiertas para cerrar"
               : sinSubir > 0
                 ? "Subí las ventas sin internet para cerrar"
                 : "Cerrar caja"}
@@ -750,7 +746,9 @@ function AvisoMesasBillar({ mesas }: { mesas: { numero: number; alias: string | 
       </span>
       <p>
         <b>
-          {mesas.length === 1 ? "Hay 1 mesa de billar en juego" : `Hay ${mesas.length} mesas de billar en juego`}
+          {/* "Abierta" y no "en juego": una pausada también frena el cierre, y el
+              tablero la cuenta en "Pausadas" (prueba profunda, 18-oct). */}
+          {mesas.length === 1 ? "Hay 1 mesa de billar abierta" : `Hay ${mesas.length} mesas de billar abiertas`}
         </b>
         : {nombres.join(", ")}. La caja no se cierra con mesas abiertas: cobralas (o anulá la que se abrió por error)
         desde el billar.

@@ -130,7 +130,10 @@ export function TarjetaTipo({
 
 /**
  * Por minuto, 5, 10, 15 o 30 min. Como el `Segmentado` pero cada opción del
- * ancho de su texto: "Por minuto" no se parte en dos renglones.
+ * ancho de su texto: "Por minuto" no se parte en dos renglones. Si no entran,
+ * pasan a dos renglones en vez de correr de costado: con el scroll, "30 min"
+ * quedaba cortado a 375 px y en el celular la barra no se ve (prueba
+ * profunda, 18-oct).
  */
 function Fracciones({
   etiqueta,
@@ -142,7 +145,7 @@ function Fracciones({
   onCambiar: (v: number) => void;
 }) {
   return (
-    <div role="radiogroup" aria-label={etiqueta} className="flex overflow-x-auto rounded-full bg-slate-100 p-1">
+    <div role="radiogroup" aria-label={etiqueta} className="flex flex-wrap rounded-3xl bg-slate-100 p-1">
       {FRACCIONES.map((f) => (
         <button
           key={f}
@@ -150,7 +153,7 @@ function Fracciones({
           role="radio"
           aria-checked={valor === f}
           onClick={() => onCambiar(f)}
-          className={`min-h-9 flex-auto whitespace-nowrap rounded-full px-3 text-[13px] font-semibold transition-colors ${
+          className={`min-h-9 flex-auto whitespace-nowrap rounded-full px-2 text-[13px] font-semibold transition-colors ${
             valor === f ? "bg-white text-texto shadow-sm" : "text-texto-3 hover:text-texto"
           }`}
         >

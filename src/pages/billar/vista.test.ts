@@ -3,7 +3,7 @@ import { contenidoTarjeta, vistaSalon } from "./SalonTv.datos";
 import type { EstadoBillar } from "./store";
 import type { ItemConsumo, Mesa, Sesion, TipoMesa } from "./tipos";
 import { PAUSA_LARGA_SEG, segundosEnPausa } from "./calculo";
-import { vistaDe } from "./vista";
+import { pasaBusqueda, vistaDe } from "./vista";
 
 const POOL: TipoMesa = {
   id: "pool",
@@ -86,5 +86,23 @@ describe("anular la mesa", () => {
     expect(vistaDe(e, abiertaCon([{ ...cerveza, precio: 0 }]), AHORA).anulable).toBe(false);
     // Lo anulado no cuenta: anulado el consumo cargado por error, se puede.
     expect(vistaDe(e, abiertaCon([{ ...cerveza, anulado: true }]), AHORA).anulable).toBe(true);
+  });
+});
+
+describe("buscar en el tablero", () => {
+  it("encuentra al cliente y el apodo sin las tildes, como los teclea el cajero", () => {
+    // Prueba profunda del 18-oct: "perez" no encontraba a "Juan Pérez" y la
+    // pantalla decía "Ninguna mesa coincide".
+    const e = { tipos: { pool: POOL }, ajustes: { avisos: [10, 5, 1] } } as unknown as EstadoBillar;
+    const mesa: Mesa = {
+      ...enPausaHace(5),
+      alias: "Rincón",
+      sesion: { ...enPausaHace(5).sesion!, cliente: "Juan Pérez de la Fuente Rodríguez" },
+    };
+    const v = vistaDe(e, mesa, AHORA);
+    for (const q of ["perez", "PEREZ", "rodriguez", "Pérez", "rincon", "mesa 3", "3"]) {
+      expect(pasaBusqueda(v, q)).toBe(true);
+    }
+    expect(pasaBusqueda(v, "gonzalez")).toBe(false);
   });
 });

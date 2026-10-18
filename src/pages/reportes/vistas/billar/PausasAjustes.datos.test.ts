@@ -46,6 +46,15 @@ describe("pausas y ajustes del billar", () => {
     expect(r.porTipo).toEqual({ anulaciones: 2, pausas: 1, cambios: 0, horas: 0, extensiones: 0, pagos: 0, mesas: 0, pin: 0 });
   });
 
+  it("la venta rápida anulada cuenta entre las anulaciones pero no como mesa", () => {
+    // Revisión del 18-oct: el backend la manda con ANULAR_VENTA y sin mesa;
+    // sumada a "Mesas anuladas", anular un maní decía que se anuló una mesa.
+    const rapida = { ...ajuste(1, "ANULAR_VENTA"), mesaId: undefined };
+    const r = resumenAjustes([rapida, ajuste(2, "ANULAR_VENTA")]);
+    expect(r.mesasAnuladas).toBe(1);
+    expect(r.porTipo.anulaciones).toBe(2);
+  });
+
   it("el medio de pago corregido va en su propio grupo, no entre las anulaciones", () => {
     // 17-oct: corregir el medio no anula nada (el total no cambia), pero es
     // plata que cambió de cajón y el dueño la tiene que poder filtrar.

@@ -154,7 +154,8 @@ export function FormCobro({ cobro }: { cobro: EstadoCobro }) {
           <div className="mt-3 flex items-center justify-between rounded-xl border border-borde bg-muted px-4 py-3 text-sm">
             <span className="font-semibold text-texto-2">Por QR</span>
             <span className="font-bold tabular-nums text-texto">
-              {fmt(Math.max(0, round2(c.monto - (parsearMonto(c.efectivoTexto) ?? 0))))}
+              {/* Con un efectivo negativo mostraba un QR mayor que el total. */}
+              {fmt(Math.min(c.monto, Math.max(0, round2(c.monto - (parsearMonto(c.efectivoTexto) ?? 0)))))}
             </span>
           </div>
           {c.montoQr > 0 && c.montoQr < c.monto && (
@@ -162,9 +163,13 @@ export function FormCobro({ cobro }: { cobro: EstadoCobro }) {
               <QrParaCobrar confirmado={c.qrConfirmado} onConfirmar={c.confirmarQr} monto={fmt(c.montoQr)} />
             </div>
           )}
+          {/* Las dos partes van con algo: con 0 en efectivo decía "tiene que
+              ser menos que el total", que ya lo es (prueba profunda, 18-oct). */}
           {c.efectivoTexto.trim() !== "" && !(c.montoQr > 0 && c.montoQr < c.monto) && (
             <p className="mt-1.5 text-xs text-rose-700">
-              El efectivo tiene que ser menos que {fmt(c.monto)}: lo demás va por QR.
+              {(parsearMonto(c.efectivoTexto) ?? 0) > 0
+                ? `El efectivo tiene que ser menos que ${fmt(c.monto)}: lo demás va por QR.`
+                : "Escribí cuánto va en efectivo (más de Bs 0): lo demás va por QR. Si es todo por QR, elegí «QR»."}
             </p>
           )}
         </div>

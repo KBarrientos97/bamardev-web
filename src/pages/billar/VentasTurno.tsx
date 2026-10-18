@@ -15,7 +15,9 @@ type Filtro = "todas" | "billar" | "pos" | "anuladas";
 const FILTROS: { clave: Filtro; etiqueta: string }[] = [
   { clave: "todas", etiqueta: "Todas" },
   { clave: "billar", etiqueta: "Billar" },
-  { clave: "pos", etiqueta: "Punto de venta" },
+  // "Venta rápida", como la llaman el botón, el detalle y el ticket (prueba
+  // profunda, 18-oct): "Punto de venta" es también el POS del menú.
+  { clave: "pos", etiqueta: "Venta rápida" },
   { clave: "anuladas", etiqueta: "Anuladas" },
 ];
 
@@ -112,7 +114,7 @@ export default function VentasTurno() {
                       <Circulo icono={v.origen === "mesa" ? "bola" : "cart"} tono={v.anulada ? "gris" : "verde"} size={36} />
                       <div className="min-w-0 flex-1">
                         <p className="text-[13px] font-bold text-texto">
-                          {v.codigo} · {v.origen === "mesa" ? `Mesa ${v.mesaId}` : "Punto de venta"}
+                          {v.codigo} · {v.origen === "mesa" ? `Mesa ${v.mesaId}` : "Venta rápida"}
                         </p>
                         <p className="truncate text-[12px] text-texto-3">
                           {horaDe(v.hora)} · {detalle(v)} · {metodo(v)}
@@ -151,7 +153,7 @@ export default function VentasTurno() {
                         <td className="px-3">
                           <span className="inline-flex items-center gap-1.5">
                             <Icon name={v.origen === "mesa" ? "bola" : "cart"} size={15} />
-                            {v.origen === "mesa" ? `Mesa ${v.mesaId}` : "Punto de venta"}
+                            {v.origen === "mesa" ? `Mesa ${v.mesaId}` : "Venta rápida"}
                           </span>
                         </td>
                         <td className="px-3 text-texto-3">{detalle(v)}</td>

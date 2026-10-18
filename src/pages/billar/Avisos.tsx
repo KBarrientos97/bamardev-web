@@ -279,7 +279,11 @@ function dibujar(actual: Dialogo, e: EstadoBillar, cerrar: () => void): ReactNod
       return (
         <ModalPin
           accion={`Anular ${it.cant}× ${it.nombre} · ${fmtMoney(it.precio * it.cant)}`}
-          detalle={`Mesa ${enJuego.id}. Sale de la cuenta y vuelve a estar disponible para vender.`}
+          // Anular no lo descuenta del stock: un consumo en mal estado o abierto
+          // no "vuelve a estar disponible", hay que darlo de baja (prueba
+          // profunda, 18-oct; antes lo prometía para cualquier motivo). Lo da
+          // de baja el encargado: la cajera no tiene Inventario.
+          detalle={`Mesa ${enJuego.id}. Sale de la cuenta. Si no se puede volver a vender (en mal estado o abierto), avisale al encargado para darlo de baja en Inventario.`}
           motivos={["Error de carga", "Cliente devolvió", "Producto en mal estado"]}
           pedirPin={e.ajustes.pin.anularConsumo}
           permiso="billar.admin"

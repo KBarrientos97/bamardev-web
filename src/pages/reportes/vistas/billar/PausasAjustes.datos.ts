@@ -98,8 +98,12 @@ export function resumenAjustes(lista: readonly Ajuste[]): ResumenAjustes {
     total: lista.length,
     porTipo,
     // Las abiertas por error y las ya jugadas cuya venta se anuló: las dos son
-    // tiempo de mesa que no entró.
-    mesasAnuladas: lista.filter((a) => a.codigo === "ANULAR_MESA" || a.codigo === "ANULAR_VENTA").length,
+    // tiempo de mesa que no entró. La venta rápida anulada viene con el mismo
+    // código y sin mesa (backend del 18-oct): cuenta como anulación, no como
+    // mesa; sumada acá, anular un maní decía "Mesas anuladas: 1".
+    mesasAnuladas: lista.filter(
+      (a) => a.codigo === "ANULAR_MESA" || (a.codigo === "ANULAR_VENTA" && a.mesaId != null),
+    ).length,
     consumosAnulados: lista.filter((a) => a.codigo === "ANULAR_CONSUMO").length,
   };
 }
