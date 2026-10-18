@@ -973,7 +973,9 @@ function FormPinCuerpo({
 
   async function guardar() {
     setError("");
-    if (!/^\d{4,6}$/.test(pin)) return setError("El PIN son 4 a 6 dígitos, sin letras.");
+    // 4 dígitos, ni más ni menos (el dueño, 18-oct). Los de 5 o 6 cargados
+    // antes siguen sirviendo para autorizar; al cambiarlo, queda de 4.
+    if (!/^\d{4}$/.test(pin)) return setError("El PIN son 4 dígitos, sin letras.");
 
     setGuardando(true);
     try {
@@ -1010,14 +1012,14 @@ function FormPinCuerpo({
           autoriza con PIN.
         </p>
 
-        <Campo label="PIN" hint="4 a 6 dígitos">
+        <Campo label="PIN" hint="4 dígitos">
           <Input
             type="password"
             inputMode="numeric"
             autoComplete="off"
-            maxLength={6}
+            maxLength={4}
             value={pin}
-            onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))}
+            onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 4))}
             disabled={rolSinPin}
             autoFocus
           />
