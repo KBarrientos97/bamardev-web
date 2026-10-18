@@ -4,12 +4,12 @@ import { Modal } from "../../components/ui";
 import { fmtMoney } from "../../lib/format";
 import { useCoincideMedia } from "../../lib/useCoincideMedia";
 import { useAccionesMesa, type AccionMesa } from "./acciones";
-import { fmtCobrado, fmtHace, fmtTarifaCorta, horaDe } from "./calculo";
+import { fmtCobrado, fmtHace, fmtTarifaCorta, horaDe, PAUSA_LARGA_SEG } from "./calculo";
 import { ESTADOS } from "./estilos";
 import { altoMenu, ubicarMenu, type Ubicacion } from "./TarjetaMesa.datos";
 import { BotonB, EstadoBadge, Fila } from "./ui";
 import type { VistaMesa } from "./vista";
-import { PAUSA_LARGA_SEG, cronoDe } from "./vista";
+import { cronoDe } from "./vista";
 
 /**
  * Una mesa en el tablero (§7.1, vista Mapa). Tocarla la selecciona y abre el

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { contenidoTarjeta, vistaSalon } from "./SalonTv.datos";
 import type { Mesa, Sesion, TipoMesa } from "./tipos";
-import { PAUSA_LARGA_SEG, segundosEnPausa } from "./vista";
+import { PAUSA_LARGA_SEG, segundosEnPausa } from "./calculo";
 
 const POOL: TipoMesa = {
   id: "pool",

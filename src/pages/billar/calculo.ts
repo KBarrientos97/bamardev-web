@@ -68,6 +68,25 @@ export function segundosDesdeQueSeAbrio(s: Pick<Sesion, "abierta" | "start">, ah
   return Math.max(0, Math.floor((ahora - (s.abierta ?? s.start)) / 1000));
 }
 
+// La pausa a la vista vive acá y no en vista.ts: la TV pública la usa, y
+// vista.ts arrastra el store y la API con sesión (separacion.test.ts; pasó
+// el 17-oct con `1384ac3`).
+
+/**
+ * Desde cuántos segundos una pausa se marca en ámbar en la tarjeta y en la TV.
+ * Una pausa olvidada es tiempo que no se cobra; una pausa larga "para un
+ * conocido", también. A la vista protege a la cajera honesta que se olvidó de
+ * reanudar y deja ver la otra (revisión del 17-oct).
+ */
+export const PAUSA_LARGA_SEG = 10 * 60;
+
+/** Los segundos que lleva en pausa una mesa, o null si no está pausada. */
+export function segundosEnPausa(mesa: Mesa, ahora: number): number | null {
+  const s = mesa.estado === "abierta" ? mesa.sesion : undefined;
+  if (!s?.pausedAt) return null;
+  return Math.max(0, Math.floor((ahora - (s.pausaDesde ?? s.pausedAt)) / 1000));
+}
+
 // ── §5.2 Cobro por fracción (tiempo libre) ──────────────────────────────────
 
 export interface Cobro {

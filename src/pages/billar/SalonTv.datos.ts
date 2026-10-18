@@ -1,7 +1,17 @@
 import { fmtMoney } from "../../lib/format";
-import { cuentaDe, estadoVisual, fmtCrono, fmtHace, horaDe, promoPara, tarifaDe } from "./calculo";
+import {
+  cuentaDe,
+  estadoVisual,
+  fmtCrono,
+  fmtHace,
+  horaDe,
+  PAUSA_LARGA_SEG,
+  promoPara,
+  segundosEnPausa,
+  tarifaDe,
+} from "./calculo";
 import type { EstadoVisual, Mesa, TipoMesa } from "./tipos";
-import { PAUSA_LARGA_SEG, segundosEnPausa, type VistaMesa } from "./vista";
+import type { VistaMesa } from "./vista";
 
 /**
  * Lo que dibuja la pantalla del salón (§7.11), sin nada de la sesión: lo usan

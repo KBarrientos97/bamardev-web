@@ -1,5 +1,14 @@
 import { fmtMoney } from "../../lib/format";
-import { cuentaDe, estadoVisual, fmtCrono, round2, segundosDesdeQueSeAbrio, sePuedeAnular, type Cuenta } from "./calculo";
+import {
+  cuentaDe,
+  estadoVisual,
+  fmtCrono,
+  round2,
+  segundosDesdeQueSeAbrio,
+  segundosEnPausa,
+  sePuedeAnular,
+  type Cuenta,
+} from "./calculo";
 import { tipoDe, type EstadoBillar } from "./store";
 import type { EstadoVisual, Mesa, Pago, TipoMesa, VentaBillar } from "./tipos";
 
@@ -14,21 +23,6 @@ export interface VistaMesa {
   anulable: boolean;
   /** Segundos que lleva en pausa; null si no está pausada. */
   pausaSeg?: number | null;
-}
-
-/**
- * Desde cuántos segundos una pausa se marca en ámbar en la tarjeta y en la TV.
- * Una pausa olvidada es tiempo que no se cobra; una pausa larga "para un
- * conocido", también. A la vista protege a la cajera honesta que se olvidó de
- * reanudar y deja ver la otra (revisión del 17-oct).
- */
-export const PAUSA_LARGA_SEG = 10 * 60;
-
-/** Los segundos que lleva en pausa una mesa, o null si no está pausada. */
-export function segundosEnPausa(mesa: Mesa, ahora: number): number | null {
-  const s = mesa.estado === "abierta" ? mesa.sesion : undefined;
-  if (!s?.pausedAt) return null;
-  return Math.max(0, Math.floor((ahora - (s.pausaDesde ?? s.pausedAt)) / 1000));
 }
 
 export function vistaDe(e: EstadoBillar, mesa: Mesa, ahora: number): VistaMesa {
