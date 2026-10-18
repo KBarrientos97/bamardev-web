@@ -271,6 +271,9 @@ const ITEMS: (ItemNav & { bloque: Bloque })[] = [
       // Después de las cuentas por cobrar, igual que en el drawer de la app:
       // es plata del negocio, pero del libro del resultado y no de la caja.
       { a: "/gastos", label: "Gastos operativos", icono: "archive", seccion: "gastos" },
+      // La cuenta a la que entra la plata por QR: antes sólo se cambiaba desde
+      // la apertura de una caja (el dueño, 18-oct: "no es el lugar").
+      { a: "/configuracion/qr-cobro", label: "QR de cobro", icono: "qr", seccion: "qr_cobro" },
     ],
   },
   // Reportes, suelto y de primer nivel (13-oct-2026): junta los de TODAS las

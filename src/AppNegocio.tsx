@@ -58,6 +58,7 @@ import { AuthProvider, useAuth } from "./store/AuthContext";
  */
 
 // Página del negocio: el editor y los enlaces cortos se bajan sólo si se usan.
+const QrDeCobro = lazy(() => import("./pages/QrDeCobro"));
 const MiPagina = lazy(() => import("./pages/pagina/MiPagina"));
 const MisEnlaces = lazy(() => import("./pages/pagina/MisEnlaces"));
 const MiAsistente = lazy(() => import("./pages/pagina/MiAsistente"));
@@ -579,6 +580,16 @@ function Rutas() {
           element={
             <Protegida seccion="gastos">
               <GastosSegunRubro />
+            </Protegida>
+          }
+        />
+        <Route
+          path="/configuracion/qr-cobro"
+          element={
+            <Protegida seccion="qr_cobro">
+              <Suspense fallback={null}>
+                <QrDeCobro />
+              </Suspense>
             </Protegida>
           }
         />

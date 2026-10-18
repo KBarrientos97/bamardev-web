@@ -100,6 +100,8 @@ export type Seccion =
   | "transferencia_mercaderia"
   /** Gastos operativos: el libro del resultado, aparte de la caja. */
   | "gastos"
+  /** El QR de cobro del negocio, la cuenta a la que entra la plata (18-oct). */
+  | "qr_cobro"
   // ── Agenda de belleza: configuración ──
   /** Servicios con duración, profesionales y espacios, horarios y bloqueos (A8). */
   | "agenda_config"
@@ -234,6 +236,9 @@ const REQUISITOS: Record<Seccion, Requisito> = {
   controlados: { permiso: "controlados.libro", feature: null },
   proveedores: { permiso: "proveedores.gestionar", feature: "inventario" },
   gastos: { permiso: "gastos.gestionar", feature: "gastos" },
+  // El mismo permiso que pide el backend para cambiarlo (de fábrica, sólo el
+  // Administrador desde el 16-oct) y la feature de los cobros por QR.
+  qr_cobro: { permiso: "qr.configurar", feature: "pago_qr_mixto" },
   // ── Agenda de belleza ──
   agenda: { permiso: "agenda.ver", alcance: "GENERAL", feature: "agenda" },
   hoy: { permiso: "agenda.ver", alcance: "GENERAL", feature: "agenda" },
@@ -338,6 +343,9 @@ const FEATURES_ESTRICTAS: Feature[] = [
 const SOLO_EN_RUBRO: Partial<Record<Seccion, Rubro[]>> = {
   dashboard: ["FARMACIA"],
   busqueda: ["FARMACIA"],
+  // Nació en el billar (el dueño, 18-oct). Los demás rubros siguen cambiando
+  // el QR desde la apertura de caja; abrírselo es sumar el rubro acá.
+  qr_cobro: ["BILLAR"],
   vencimientos: ["FARMACIA"],
   encargos: ["FARMACIA"],
   controlados: ["FARMACIA"],
@@ -640,6 +648,7 @@ const ORDEN_INICIO: [Seccion, string][] = [
   ["usuarios", "/usuarios"],
   ["creditos", "/creditos"],
   ["gastos", "/gastos"],
+  ["qr_cobro", "/configuracion/qr-cobro"],
   ["clientes", "/clientes"],
   ["busqueda", "/buscar"],
   ["gift_cards", "/gift-cards"],

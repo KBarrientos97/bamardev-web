@@ -553,6 +553,17 @@ describe("billar: un extra estricto", () => {
     expect(rutaInicial(ctxDe("ADMIN", "RESTAURANTE", PLAN_FULL))).toBe("/inventario");
   });
 
+  it("la pantalla del QR de cobro es de quien lo puede cambiar, y por ahora sólo en un billar", () => {
+    // El dueño, 18-oct: cambiarlo desde la apertura de una caja "no es el
+    // lugar". La cajera no lo cambia (16-oct): con su QR, la plata iría a ella.
+    const conQr = [...conBillar, "pago_qr_mixto"];
+    expect(puedeVer(ctxCon(["qr.configurar"], "BILLAR", conQr), "qr_cobro")).toBe(true);
+    expect(puedeVer(ctxCon(["caja.operar", "ventas.vender"], "BILLAR", conQr), "qr_cobro")).toBe(false);
+    expect(puedeVer(ctxCon(["qr.configurar"], "BILLAR", conBillar), "qr_cobro")).toBe(false);
+    // Un restaurante sigue cambiándolo desde la apertura, como antes.
+    expect(puedeVer(ctxCon(["qr.configurar"], "RESTAURANTE", conQr), "qr_cobro")).toBe(false);
+  });
+
   it("quien administra el billar sin atenderlo entra a Mesas de billar; quien sólo atiende no la ve", () => {
     // 13-oct: el menú y la ruta ya lo dejaban pasar, pero la pantalla armaba
     // las tarifas con el tablero (que pide atender) y le daba error. Lo que

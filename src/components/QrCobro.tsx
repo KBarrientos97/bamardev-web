@@ -8,11 +8,11 @@ import {
   subirQr,
 } from "../lib/qrPago";
 import { tienePermiso, tieneFeature } from "../lib/permisos";
-import { esBelleza } from "../lib/rubro";
+import { esBelleza, esBillar } from "../lib/rubro";
 import { useAuth } from "../store/AuthContext";
 import type { SesionUsuario } from "../types";
 import { Icon } from "./Icon";
-import { ErrorMsg, Modal } from "./ui";
+import { Confirmar, ErrorMsg, Modal } from "./ui";
 
 /**
  * Quién puede cambiar el QR: el mismo permiso que pide el backend. Desde el
@@ -29,17 +29,22 @@ function puedeCambiarQr(usuario: SesionUsuario | null): boolean {
  *
  * Se sube al backend y lo reciben todos los equipos del negocio (ver
  * `qrPago.ts`). Antes quedaba sólo en este equipo y el mesero nunca lo tenía.
+ *
+ * También es la pantalla "QR de cobro" del administrador (`grande`, 18-oct):
+ * cambiarlo desde la apertura de una caja no era el lugar (el dueño). Avisa
+ * con `onCambio` para que esa pantalla vuelva a decir quién lo cambió.
  */
-export function CargarQrCobro() {
+export function CargarQrCobro({ grande = false, onCambio }: { grande?: boolean; onCambio?: () => void } = {}) {
   const { negocio, usuario, rubro } = useAuth();
   /**
    * A quién más le llega el QR. En un salón de belleza no hay meseros ni, casi
-   * nunca, reparto (QA B-21): se nombra sólo lo que el negocio tiene. En los
-   * demás rubros, el texto de siempre.
+   * nunca, reparto (QA B-21), y en un billar tampoco (18-oct: decía "lo
+   * reciben también los meseros y el reparto"): se nombra sólo lo que el
+   * negocio tiene. En los demás rubros, el texto de siempre.
    */
   const conSalon = tieneFeature(negocio?.features, "salon");
   const conReparto = tieneFeature(negocio?.features, "delivery");
-  const quienesMas = !esBelleza(rubro)
+  const quienesMas = !esBelleza(rubro) && !esBillar(rubro)
     ? "los meseros y el reparto"
     : conSalon && conReparto
       ? "los meseros y el reparto"
@@ -51,6 +56,10 @@ export function CargarQrCobro() {
   const alias = negocio?.alias;
   const [qr, setQr] = useState<string | null>(() => leerQr(alias));
   const [error, setError] = useState("");
+  // Quitarlo lo borra en todos los equipos: un toque suelto dejaba a las
+  // cajas sin QR para cobrar. Se confirma antes (18-oct).
+  const [confirmarQuitar, setConfirmarQuitar] = useState(false);
+  const [quitando, setQuitando] = useState(false);
   const input = useRef<HTMLInputElement>(null);
   // Sin el permiso se ve cuál es (para saber que está), pero no se toca: el
   // backend rechaza el cambio y antes el botón estaba igual, y lo elegido
@@ -80,10 +89,11 @@ export function CargarQrCobro() {
       if (!subida.ok) {
         setError(
           `El QR quedó en este equipo, pero no se pudo compartir con ${
-            esBelleza(rubro) ? "los demás equipos" : "los meseros"
+            esBelleza(rubro) || esBillar(rubro) ? "los demás equipos" : "los meseros"
           }: ${subida.error}`,
         );
       }
+      onCambio?.();
     } else {
       setError(res.error);
     }
@@ -91,18 +101,32 @@ export function CargarQrCobro() {
     if (input.current) input.current.value = "";
   }
 
+  async function quitar() {
+    setQuitando(true);
+    borrarQr(alias);
+    setQr(null);
+    // Quitarlo acá y dejarlo en los celulares de los meseros sería seguir
+    // cobrando a una cuenta dada de baja.
+    const res = await quitarQrDelNegocio();
+    setQuitando(false);
+    setConfirmarQuitar(false);
+    if (!res.ok) setError(res.error);
+    onCambio?.();
+  }
+
+  const lado = grande ? "h-40 w-40" : "h-16 w-16";
   return (
     <div className="rounded-xl border border-borde p-3.5">
-      <div className="flex items-start gap-3">
+      <div className={`flex gap-3 ${grande ? "flex-col items-center text-center sm:flex-row sm:items-start sm:text-left" : "items-start"}`}>
         {qr ? (
           <img
             src={qr}
             alt="QR de cobro del negocio"
-            className="h-16 w-16 shrink-0 rounded-lg border border-borde object-contain"
+            className={`${lado} shrink-0 rounded-lg border border-borde object-contain`}
           />
         ) : (
-          <span className="flex h-16 w-16 shrink-0 items-center justify-center rounded-lg bg-muted text-texto-4">
-            <Icon name="qr" size={26} />
+          <span className={`flex ${lado} shrink-0 items-center justify-center rounded-lg bg-muted text-texto-4`}>
+            <Icon name="qr" size={grande ? 44 : 26} />
           </span>
         )}
 
@@ -120,7 +144,7 @@ export function CargarQrCobro() {
           )}
 
           {puedeCambiar && (
-            <div className="mt-2 flex flex-wrap gap-2">
+            <div className={`mt-2 flex flex-wrap gap-2 ${grande ? "justify-center sm:justify-start" : ""}`}>
               <button
                 type="button"
                 onClick={() => input.current?.click()}
@@ -131,14 +155,7 @@ export function CargarQrCobro() {
               {qr && (
                 <button
                   type="button"
-                  onClick={async () => {
-                    borrarQr(alias);
-                    setQr(null);
-                    // Quitarlo acá y dejarlo en los celulares de los meseros
-                    // sería seguir cobrando a una cuenta dada de baja.
-                    const res = await quitarQrDelNegocio();
-                    if (!res.ok) setError(res.error);
-                  }}
+                  onClick={() => setConfirmarQuitar(true)}
                   className="rounded-lg px-3 py-1.5 text-xs font-semibold text-danger-text hover:bg-danger-bg"
                 >
                   Quitar
@@ -158,6 +175,17 @@ export function CargarQrCobro() {
       />
 
       <ErrorMsg>{error}</ErrorMsg>
+
+      <Confirmar
+        abierto={confirmarQuitar}
+        titulo="Quitar el QR de cobro"
+        texto="Se borra en todos los equipos del negocio: hasta que subas otro, ninguna caja va a poder mostrarle un QR al cliente."
+        etiquetaOk="Quitar QR"
+        peligroso
+        procesando={quitando}
+        onCancel={() => setConfirmarQuitar(false)}
+        onOk={quitar}
+      />
     </div>
   );
 }

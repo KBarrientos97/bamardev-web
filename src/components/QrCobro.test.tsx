@@ -76,6 +76,15 @@ describe("QR de cobro: a quién más le llega", () => {
     expect(screen.getByText("Lo reciben también el reparto.")).toBeInTheDocument();
   });
 
+  it("billar: no hay meseros ni reparto que nombrar", async () => {
+    // 18-oct: la apertura del billar decía "Lo reciben también los meseros y
+    // el reparto".
+    sesion.rubro = "BILLAR";
+    sesion.features = ["pos", "caja", "billar", "pago_qr_mixto"];
+    await montar();
+    expect(screen.queryByText(/Lo reciben también/)).not.toBeInTheDocument();
+  });
+
   it("sube el QR quien tiene `qr.configurar`; el mesero sólo lo recibe", async () => {
     await montar();
     expect(sincronizarQr).toHaveBeenLastCalledWith("prueba", true);
