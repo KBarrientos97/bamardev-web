@@ -7,6 +7,7 @@ import {
   segundosDesdeQueSeAbrio,
   segundosEnPausa,
   sePuedeAnular,
+  tieneConsumos,
   type Cuenta,
 } from "./calculo";
 import { tipoDe, type EstadoBillar } from "./store";
@@ -19,7 +20,12 @@ export interface VistaMesa {
   estado: EstadoVisual;
   /** null si no está abierta. */
   cuenta: Cuenta | null;
-  /** Si todavía se puede anular (`sePuedeAnular`, con el plazo desde que se abrió). */
+  /**
+   * Si todavía se puede anular: los 5 minutos de `sePuedeAnular` (con el plazo
+   * desde que se abrió) y sin consumos. Con consumos el link se ofrecía y el
+   * diálogo decía que no se podía (el dueño, 18-oct: "si ya consumieron, no es
+   * un error, se le tiene que cobrar").
+   */
   anulable: boolean;
   /** Segundos que lleva en pausa; null si no está pausada. */
   pausaSeg?: number | null;
@@ -33,7 +39,10 @@ export function vistaDe(e: EstadoBillar, mesa: Mesa, ahora: number): VistaMesa {
     tipo,
     estado: estadoVisual(mesa, ahora, e.ajustes.avisos),
     cuenta,
-    anulable: !!mesa.sesion && sePuedeAnular(cuenta, segundosDesdeQueSeAbrio(mesa.sesion, ahora)),
+    anulable:
+      !!mesa.sesion &&
+      !tieneConsumos(mesa.sesion) &&
+      sePuedeAnular(cuenta, segundosDesdeQueSeAbrio(mesa.sesion, ahora)),
     pausaSeg: segundosEnPausa(mesa, ahora),
   };
 }

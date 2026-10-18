@@ -345,7 +345,8 @@ function CuentaAbierta({ v, ahora }: { v: VistaMesa; ahora: number }) {
         )}
       </section>
 
-      {/* Sólo en los primeros 5 minutos desde que se abrió: después ya no es un error (`v.anulable`). */}
+      {/* Sólo en los primeros 5 minutos desde que se abrió y sin consumos: después,
+          o si ya consumieron, no es un error y se cobra (`v.anulable`). */}
       {v.anulable && (
         <button
           type="button"

@@ -240,6 +240,15 @@ export function consumosDe(s: Pick<Sesion, "consumos">): number {
   return round2(s.consumos.filter((c) => !c.anulado).reduce((t, c) => t + c.precio * c.cant, 0));
 }
 
+/**
+ * Si la mesa tiene algo cargado sin anular, aunque valga Bs 0: es la misma
+ * regla con que el backend rechaza anularla (ANULAR_CON_CONSUMOS). Si ya
+ * consumieron, no se abrió por error: se cobra (el dueño, 18-oct).
+ */
+export function tieneConsumos(s: Pick<Sesion, "consumos">): boolean {
+  return s.consumos.some((c) => !c.anulado);
+}
+
 export function pagadoDe(pagos: Pago[]): number {
   return round2(pagos.reduce((t, p) => t + p.monto, 0));
 }

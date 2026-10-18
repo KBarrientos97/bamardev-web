@@ -69,8 +69,9 @@ export function useAccionesMesa() {
       // nada que cobrar, y con ella abierta la caja no cierra.
       const corregir: AccionMesa = { clave: "inicio", etiqueta: "Corregir inicio", icono: "edit", hacer: () => abrir({ tipo: "editarInicio", mesaId: id }) };
       const anular: AccionMesa = { clave: "anular", etiqueta: "Anular mesa", icono: "trash", hacer: () => abrir({ tipo: "anularMesa", mesaId: id }) };
-      // Anular, sólo en los primeros 5 minutos desde que se abrió (`v.anulable`).
-      // Si se dieron cuenta tarde, se finaliza y se anula la venta con PIN.
+      // Anular, sólo en los primeros 5 minutos desde que se abrió y sin consumos
+      // (`v.anulable`). Si se dieron cuenta tarde, se finaliza y se anula la
+      // venta con PIN; si ya consumieron, se cobra.
       const siAnulable = v.anulable ? [anular] : [];
 
       switch (v.estado) {

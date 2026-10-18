@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { contenidoTarjeta, vistaSalon } from "./SalonTv.datos";
-import type { Mesa, Sesion, TipoMesa } from "./tipos";
+import type { EstadoBillar } from "./store";
+import type { ItemConsumo, Mesa, Sesion, TipoMesa } from "./tipos";
 import { PAUSA_LARGA_SEG, segundosEnPausa } from "./calculo";
+import { vistaDe } from "./vista";
 
 const POOL: TipoMesa = {
   id: "pool",
@@ -52,5 +54,37 @@ describe("la pausa a la vista", () => {
     const larga = contenidoTarjeta(vistaSalon(enPausaHace(PAUSA_LARGA_SEG / 60 + 2), { pool: POOL }, [10, 5, 1], AHORA));
     expect(larga.chico).toBe("Pausada · hace 12 min");
     expect(larga.color).toBe("text-amber-300");
+  });
+});
+
+describe("anular la mesa", () => {
+  it("con algo consumido no se ofrece anular la mesa, aunque esté en los 5 minutos", () => {
+    // El dueño, 18-oct: el link aparecía y el diálogo decía que no se podía.
+    // "Si ya consumieron, no es un error: se le tiene que cobrar".
+    const e = { tipos: { pool: POOL }, ajustes: { avisos: [10, 5, 1] } } as unknown as EstadoBillar;
+    const cerveza: ItemConsumo = { id: "c1", productoId: 7, nombre: "Cerveza", precio: 15, cant: 6, hora: AHORA };
+    const abiertaCon = (consumos: ItemConsumo[]): Mesa => ({
+      id: 1,
+      idInterno: 10,
+      tipo: "pool",
+      estado: "abierta",
+      sesion: {
+        id: "s",
+        start: AHORA - 60_000,
+        abierta: AHORA - 60_000,
+        pausedAt: null,
+        pausedTotal: 0,
+        prepago: null,
+        prev: null,
+        consumos,
+        pagos: [],
+      },
+    });
+    expect(vistaDe(e, abiertaCon([]), AHORA).anulable).toBe(true);
+    expect(vistaDe(e, abiertaCon([cerveza]), AHORA).anulable).toBe(false);
+    // Aunque valga Bs 0: el backend la rechaza igual (ANULAR_CON_CONSUMOS).
+    expect(vistaDe(e, abiertaCon([{ ...cerveza, precio: 0 }]), AHORA).anulable).toBe(false);
+    // Lo anulado no cuenta: anulado el consumo cargado por error, se puede.
+    expect(vistaDe(e, abiertaCon([{ ...cerveza, anulado: true }]), AHORA).anulable).toBe(true);
   });
 });
