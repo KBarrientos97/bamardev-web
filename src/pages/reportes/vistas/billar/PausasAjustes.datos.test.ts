@@ -18,6 +18,9 @@ describe("pausas y ajustes del billar", () => {
     expect(tipoDe(ajuste(2, "ANULAR_CONSUMO"))).toBe("anulaciones");
     expect(tipoDe(ajuste(3, "EDITAR_INICIO"))).toBe("horas");
     expect(tipoDe(ajuste(4, "NUEVO_QUE_NO_CONOCEMOS"))).toBeNull();
+    // La mesa guardada como inactiva va con las que no se pueden abrir: sin
+    // grupo se veía sólo en "Todo" (prueba profunda, 18-oct).
+    expect(tipoDe(ajuste(5, "INACTIVAR_MESA"))).toBe("mesas");
   });
 
   it("cuenta cada grupo y separa las mesas anuladas de los consumos anulados", () => {

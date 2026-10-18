@@ -21,6 +21,12 @@ describe("inicioCorregido: la hora nueva de una mesa", () => {
     expect(inicioCorregido("21:50", hoy(21, 10))).toEqual({ error: "noLlego" });
   });
 
+  it("una hora de hoy que pasó hace más de 12 h no dice que todavía no llegó", () => {
+    // Prueba profunda del 18-oct: a las 21:00, las 08:00 salían con "todavía
+    // no llegaron", y ya habían pasado.
+    expect(inicioCorregido("08:00", hoy(21, 0))).toEqual({ error: "muyAtras" });
+  });
+
   it("sin una hora válida no hay inicio", () => {
     expect(inicioCorregido("", hoy(21, 10))).toEqual({ error: "formato" });
     expect(inicioCorregido("9", hoy(21, 10))).toEqual({ error: "formato" });

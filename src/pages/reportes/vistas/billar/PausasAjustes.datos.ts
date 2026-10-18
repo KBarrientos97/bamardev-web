@@ -37,6 +37,10 @@ const TIPO_POR_CODIGO: Record<string, TipoAjuste> = {
   CANCELAR_RESERVA: "mesas",
   FUERA_DE_SERVICIO: "mesas",
   VOLVER_A_SERVICIO: "mesas",
+  // La mesa guardada como inactiva tampoco sale en el tablero: el backend lo
+  // manda desde el 17-oct y acá no tenía grupo, así que se veía sólo en
+  // "Todo" (prueba profunda, 18-oct).
+  INACTIVAR_MESA: "mesas",
   AJUSTE_PIN: "pin",
 };
 

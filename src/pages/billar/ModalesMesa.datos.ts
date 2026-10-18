@@ -11,14 +11,16 @@ export const INICIO_MAX_ATRAS_MS = 12 * 60 * 60_000;
 export function inicioCorregido(
   hora: string,
   ahora: number,
-): { inicio: number; deAyer: boolean } | { error: "formato" | "noLlego" } {
+): { inicio: number; deAyer: boolean } | { error: "formato" | "noLlego" | "muyAtras" } {
   const m = /^(\d{1,2}):(\d{2})$/.exec(hora);
   if (!m) return { error: "formato" };
   const d = new Date(ahora);
   d.setHours(Number(m[1]), Number(m[2]), 0, 0);
   const deAyer = d.getTime() > ahora;
   if (deAyer) d.setDate(d.getDate() - 1);
-  if (ahora - d.getTime() > INICIO_MAX_ATRAS_MS) return { error: "noLlego" };
+  // Una hora de hoy que ya pasó hace más de 12 h no "todavía no llegó": decía
+  // eso a las 21:00 con las 08:00 (prueba profunda, 18-oct).
+  if (ahora - d.getTime() > INICIO_MAX_ATRAS_MS) return { error: deAyer ? "noLlego" : "muyAtras" };
   return { inicio: d.getTime(), deAyer };
 }
 

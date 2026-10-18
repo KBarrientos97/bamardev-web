@@ -553,6 +553,7 @@ export function ModalEditarInicio({ mesa, onClose }: { mesa: Mesa; onClose: () =
   const r = inicioCorregido(hora, ahora);
   const inicio = "inicio" in r ? r.inicio : null;
   const todaviaNoLlego = "error" in r && r.error === "noLlego";
+  const muyAtras = "error" in r && r.error === "muyAtras";
   const valida = inicio !== null && Math.abs(inicio - s.start) >= 60_000;
   // Cómo queda la mesa con la hora nueva, antes de poner el PIN.
   const quedan = inicio !== null ? segundosEnMesa({ ...s, start: inicio }, ahora) + (s.prev?.secs ?? 0) : null;
@@ -577,6 +578,10 @@ export function ModalEditarInicio({ mesa, onClose }: { mesa: Mesa; onClose: () =
       {todaviaNoLlego ? (
         <p className="mt-1.5 text-[12px] font-semibold text-rose-700">
           Las {hora} todavía no llegaron: revisá la hora.
+        </p>
+      ) : muyAtras ? (
+        <p className="mt-1.5 text-[12px] font-semibold text-rose-700">
+          Las {hora} fueron hace más de 12 horas: revisá la hora.
         </p>
       ) : quedan !== null && valida ? (
         <p className="mt-1.5 text-[12px] text-texto-3">
