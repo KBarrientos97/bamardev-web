@@ -425,6 +425,21 @@ describe("cobrar una cita", () => {
     );
   });
 
+  it("sin el permiso de fiar no se ofrece fiar, aunque el plan traiga fiado", async () => {
+    // El dueño se lo puede sacar al cajero: el POS miraba sólo la feature, y
+    // desde el 18-oct el backend responde 403 a esa venta.
+    sesion.features = ["pos", "caja", "agenda", "propinas", "fiado"];
+    sesion.sinPermisos = ["credito.otorgar"];
+    vi.mocked(api.getProductos).mockResolvedValue([
+      servicio(189, "Corte de dama", 80),
+      servicio(190, "Tinte raíz", 150),
+    ]);
+    await montar("/pos?cita=13");
+    fireEvent.click(screen.getByRole("button", { name: "ir a cobrar" }));
+    expect(screen.getByRole("button", { name: "pagar 230 con propina" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "fiar con propina" })).not.toBeInTheDocument();
+  });
+
   describe("QA PER-10: la cita entera con paquete", () => {
     const conPaquete: CarritoCita = {
       ...cita,
