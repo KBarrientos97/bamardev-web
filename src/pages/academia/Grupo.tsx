@@ -5,10 +5,11 @@ import { Paginacion } from "../../components/Paginacion";
 import PanelLateral from "../../components/PanelLateral";
 import { AvisoOk, Boton, Campo, Cargando, Confirmar, ErrorMsg, Input, Modal, Select, Vacio, useAviso } from "../../components/ui";
 import { apiAcademia } from "../../lib/academia/apiAcademia";
+import { mesCorto, mesDe } from "../../lib/academia/calendario";
 import { fechaCorta, horarioGrupo, nombreAlumno, nombreDe } from "../../lib/academia/formato";
 import type { AlumnoDelGrupo, FiltroAlumnosGrupo, GrupoDetalle } from "../../lib/academia/tipos";
 import { usePalabras } from "../../lib/academia/usePalabras";
-import { abrirWhatsapp, rutaCobroInscripcion } from "../../lib/academia/vista";
+import { abrirWhatsapp, rutaCobroInscripcion, textoFormaPago } from "../../lib/academia/vista";
 import { enlaceWhatsApp } from "../../lib/agenda/recordatorio";
 import { fmtMoney } from "../../lib/format";
 import { usePaginado } from "../../lib/paginado";
@@ -16,17 +17,19 @@ import { cobraCuotas, soloLoSuyo, tienePermiso } from "../../lib/permisos";
 import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
 import Inscribir from "./Inscribir";
-import { EstadoDeCuenta, FiltrosConteo, PuntosPago } from "./piezas";
-
-type Pestana = "alumnos" | "asistencia" | "notas";
+import { EstadoDeCuenta, EstadoPagoTexto, FiltrosConteo, PuntosPago } from "./piezas";
 
 /**
  * E3 · Detalle de grupo, versión limpia (lienzo E3 v2): el centralizador,
- * pero vivo. Arriba la carrera, el horario y la barra de materias; una acción
- * principal (Inscribir) y el resto en "⋯". La pestaña Alumnos lleva los
+ * pero vivo. Arriba el curso, el horario y la barra de módulos con su mes;
+ * una acción principal (Inscribir) y el resto en "⋯". La lista lleva los
  * filtros como indicadores (Todos · Deben · Al día · Retirados) y tocar una
- * fila abre el panel del alumno con su estado de cuenta y las acciones.
- * Asistencia y Notas llegan en F1b.
+ * fila abre el panel del estudiante con su estado de cuenta, Cobrar y el
+ * enlace de pago por WhatsApp. Asistencia y Notas son sus propias pantallas
+ * (N6, E13): cada cosa en su lugar, no las dos en la misma celda.
+ *
+ * El docente ve a los suyos sin montos ni teléfonos: sólo si pagaron el
+ * módulo actual (D6).
  */
 export default function Grupo() {
   const { id } = useParams();
@@ -35,7 +38,6 @@ export default function Grupo() {
   const { state } = useLocation() as { state?: { avisos?: string[] } | null };
   const { usuario, negocio, rubro } = useAuth();
   const p = usePalabras();
-  const [pestana, setPestana] = useState<Pestana>("alumnos");
   const [filtro, setFiltro] = useState<FiltroAlumnosGrupo>("todos");
   const [elegido, setElegido] = useState<AlumnoDelGrupo | null>(null);
   const [inscribiendo, setInscribiendo] = useState(false);
@@ -71,6 +73,7 @@ export default function Grupo() {
 
   // El docente ve a sus alumnos sin montos (PLAN-ACADEMIAS §4).
   const sinMontos = soloLoSuyo(usuario, "academia.ver");
+  const volverA = sinMontos ? "/academia/mis-clases" : "/academia/calendario";
   const cobra = cobraCuotas({ features: negocio?.features, rubro, permisos: usuario?.permisos, permisosPropios: usuario?.permisosPropios });
   const inscribe = tienePermiso(usuario, "academia.inscribir");
   const arma = tienePermiso(usuario, "academia.grupos");
@@ -79,8 +82,8 @@ export default function Grupo() {
   if (grupo.error && !g) {
     return (
       <div className="mx-auto max-w-6xl space-y-4 p-4 sm:p-6 lg:p-8">
-        <Link to="/academia/grupos" className="text-[13px] text-texto-3 hover:underline">
-          ← Grupos
+        <Link to={volverA} className="text-[13px] text-texto-3 hover:underline">
+          ← {sinMontos ? "Mis clases" : "Calendario"}
         </Link>
         <ErrorMsg onReintentar={grupo.recargar}>{grupo.error}</ErrorMsg>
       </div>
@@ -90,22 +93,25 @@ export default function Grupo() {
 
   const actual = g.materiaActual;
   const cobroActual = actual ? g.resumenCobro.porMateria.find((m) => m.materiaOrden === actual.orden) : null;
+  const mgActual = actual ? g.materiasGrupo.find((m) => m.materia.orden === actual.orden) : null;
   const docenteActual = actual?.docente ?? g.materiasGrupo.find((m) => m.docente)?.docente?.nombre ?? null;
   const subtitulo = [
     nombreDe(g.sede),
     g.aula,
     docenteActual ? `Prof. ${docenteActual}` : null,
-    `hasta el ${fechaCorta(g.fechaFin)}`,
+    actual && mgActual
+      ? `M${actual.orden} ${actual.nombre} (${fechaCorta(mgActual.desde)} al ${fechaCorta(mgActual.hasta)})`
+      : `hasta el ${fechaCorta(g.fechaFin)}`,
   ]
     .filter(Boolean)
     .join(" · ");
 
-  const proximamente = (accion: string) => `${accion} · próximamente`;
   const acciones: AccionMenu[] = [
-    { clave: "lista", etiqueta: proximamente("Pasar lista"), onClick: () => {}, deshabilitada: true },
-    { clave: "notas", etiqueta: proximamente("Cargar notas"), onClick: () => {}, deshabilitada: true },
-    { clave: "centralizador", etiqueta: proximamente("Exportar centralizador"), onClick: () => {}, deshabilitada: true, separar: true },
-    { clave: "sie", etiqueta: proximamente("Lista para el SIE"), onClick: () => {}, deshabilitada: true },
+    { clave: "lista", etiqueta: "Pasar lista", icono: "lista", onClick: () => navigate(`/academia/grupos/${grupoId}/lista`) },
+    { clave: "notas", etiqueta: "Cargar notas", icono: "edit", onClick: () => navigate(`/academia/grupos/${grupoId}/notas`) },
+    ...(sinMontos
+      ? []
+      : [{ clave: "excel", etiqueta: "Exportar Excel", icono: "download" as const, detalle: "Pronto", deshabilitada: true, separar: true, onClick: () => {} }]),
     ...(arma
       ? [
           { clave: "editar", etiqueta: "Editar grupo", onClick: () => setEditando(true), separar: true },
@@ -134,11 +140,11 @@ export default function Grupo() {
   }
 
   return (
-    <div className={`mx-auto max-w-6xl space-y-5 p-4 sm:p-6 lg:p-8 ${elegido ? "md:mr-[380px]" : ""}`}>
+    <div className={`mx-auto max-w-6xl space-y-5 p-4 pb-24 sm:p-6 md:pb-6 lg:p-8 ${elegido ? "md:mr-[380px]" : ""}`}>
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0 space-y-1.5">
-          <Link to="/academia/grupos" className="text-[13px] text-texto-3 hover:underline">
-            ← Grupos
+          <Link to={volverA} className="text-[13px] text-texto-3 hover:underline">
+            ← {sinMontos ? "Mis clases" : "Calendario"}
           </Link>
           <h1 className="text-2xl font-bold text-texto">
             {nombreDe(g.carrera)} · {horarioGrupo(g)}
@@ -147,7 +153,7 @@ export default function Grupo() {
         </div>
         <div className="flex items-center gap-2">
           {inscribe && (
-            <Boton onClick={() => setInscribiendo(true)} disabled={g.estado === "TERMINADO" || !!g.cancelado}>
+            <Boton className="hidden md:inline-flex" onClick={() => setInscribiendo(true)} disabled={g.estado === "TERMINADO" || !!g.cancelado}>
               Inscribir {p.alumno}
             </Boton>
           )}
@@ -166,56 +172,36 @@ export default function Grupo() {
 
       <MateriasDelGrupo g={g} />
 
-      <FiltrosConteo
-        etiqueta={pestana === "alumnos" ? `Filtrar ${p.alumnos}` : "Pestañas"}
-        opciones={
-          pestana === "alumnos"
-            ? [
-                { clave: "todos", label: "Todos", n: n("todos") },
-                ...(sinMontos
-                  ? []
-                  : [
-                      // Vencidos y no "Deben": la columna Saldo muestra también lo que
-                      // todavía no venció, y "Deben 2" con seis montos se leía mal.
-                      { clave: "deben" as const, label: "Vencidos", n: n("deben"), urgente: true },
-                      { clave: "aldia" as const, label: "Al día", n: n("aldia") },
-                    ]),
-                { clave: "retirados", label: "Retirados", n: n("retirados") },
-              ]
-            : [{ clave: "todos", label: pestana === "asistencia" ? "Asistencia" : "Notas" }]
-        }
-        valor={pestana === "alumnos" ? filtro : "todos"}
+      <FiltrosConteo<FiltroAlumnosGrupo>
+        etiqueta={`Filtrar ${p.alumnos}`}
+        opciones={[
+          { clave: "todos", label: "Todos", n: n("todos") },
+          ...(sinMontos
+            ? []
+            : [
+                { clave: "deben" as const, label: "Deben", n: n("deben"), urgente: true },
+                { clave: "aldia" as const, label: "Al día", n: n("aldia") },
+              ]),
+          { clave: "retirados", label: "Retirados", n: n("retirados") },
+        ]}
+        valor={filtro}
         onChange={(v) => {
-          setFiltro(v as FiltroAlumnosGrupo);
+          setFiltro(v);
           setElegido(null);
         }}
         derecha={
-          <nav aria-label="Pestañas del grupo" className="flex gap-4 pb-2 text-sm">
-            {(["alumnos", "asistencia", "notas"] as const).map((k) => (
-              <button
-                key={k}
-                type="button"
-                aria-current={pestana === k ? "page" : undefined}
-                onClick={() => {
-                  setPestana(k);
-                  setElegido(null);
-                }}
-                className={pestana === k ? "font-semibold text-texto" : "text-texto-3 hover:text-texto-2"}
-              >
-                {k === "alumnos" ? p.Alumnos : k === "asistencia" ? "Asistencia" : "Notas"}
-              </button>
-            ))}
+          <nav aria-label="Más del grupo" className="flex gap-4 pb-2 text-sm">
+            <Link to={`/academia/grupos/${grupoId}/lista`} className="text-texto-3 hover:text-texto-2">
+              Asistencia
+            </Link>
+            <Link to={`/academia/grupos/${grupoId}/notas`} className="text-texto-3 hover:text-texto-2">
+              Notas
+            </Link>
           </nav>
         }
       />
 
-      {pestana !== "alumnos" ? (
-        <Vacio
-          icono={pestana === "asistencia" ? "checkCirculo" : "fileText"}
-          titulo="Próximamente"
-          texto={pestana === "asistencia" ? "La grilla de clases y asistencia llega con la próxima entrega." : "Las notas por materia llegan con la próxima entrega."}
-        />
-      ) : alumnos.error && !alumnos.items.length ? (
+      {alumnos.error && !alumnos.items.length ? (
         <ErrorMsg onReintentar={alumnos.recargar}>{alumnos.error}</ErrorMsg>
       ) : alumnos.cargando && !alumnos.items.length ? (
         <Cargando />
@@ -246,13 +232,17 @@ export default function Grupo() {
           />
           <Paginacion
             {...alumnos.paginacion}
-            extra={
-              cobroActual && !sinMontos
-                ? `M${cobroActual.materiaOrden} cobrado a ${cobroActual.pagaron} · base del ${p.docente} ${fmtMoney(cobroActual.baseDocente)}`
-                : undefined
-            }
+            extra={cobroActual ? `M${cobroActual.materiaOrden} pagado por ${cobroActual.pagaron} de ${cobroActual.total}` : undefined}
           />
         </>
+      )}
+
+      {inscribe && !g.cancelado && g.estado !== "TERMINADO" && (
+        <div className="fixed inset-x-0 bottom-0 z-20 border-t border-borde-soft bg-white p-3 md:hidden">
+          <Boton className="w-full" onClick={() => setInscribiendo(true)}>
+            Inscribir {p.alumno}
+          </Boton>
+        </div>
       )}
 
       <PanelAlumno
@@ -306,6 +296,7 @@ function MateriasDelGrupo({ g }: { g: GrupoDetalle }) {
   const filas = [...g.materiasGrupo].sort((a, b) => a.materia.orden - b.materia.orden);
   if (!filas.length) return null;
   const estado = (orden: number) => g.materias.find((m) => m.orden === orden)?.estado ?? "FUTURA";
+  const hoy = mesDe(new Date());
   const cols = { gridTemplateColumns: `repeat(${filas.length}, minmax(0, 1fr))` };
   return (
     <div className="space-y-2">
@@ -322,8 +313,8 @@ function MateriasDelGrupo({ g }: { g: GrupoDetalle }) {
           const e = estado(m.materia.orden);
           return (
             <span key={m.id} className={`truncate ${e === "ACTUAL" ? "font-semibold text-primary-700" : "text-texto-3"}`}>
-              M{m.materia.orden} {m.materia.nombre}
-              {e === "CERRADA" ? " ✓" : e === "ACTUAL" ? " · actual" : ` · ${fechaCorta(m.desde)}`}
+              M{m.materia.orden} <span className="hidden sm:inline">{m.materia.nombre} </span>· {mesCorto(m.mesLiquidacion)}
+              {e === "CERRADA" ? " ✓" : e === "ACTUAL" ? " · actual" : m.mesLiquidacion.slice(0, 4) !== hoy.slice(0, 4) ? ` ${m.mesLiquidacion.slice(0, 4)}` : ""}
             </span>
           );
         })}
@@ -366,9 +357,10 @@ function TablaAlumnos({
   onElegir: (a: AlumnoDelGrupo) => void;
   onCobrar: (a: AlumnoDelGrupo) => void;
 }) {
+  const p = usePalabras();
   const conCobrar = !sinMontos && !conPanel;
   const columnas = sinMontos
-    ? "grid-cols-[minmax(200px,2fr)_110px_120px_90px]"
+    ? "grid-cols-[minmax(200px,2fr)_140px_90px]"
     : conCobrar
       ? "grid-cols-[minmax(200px,2fr)_110px_120px_90px_110px_70px]"
       : "grid-cols-[minmax(180px,2fr)_100px_110px_80px_100px]";
@@ -376,11 +368,11 @@ function TablaAlumnos({
     <>
       <div className="hidden md:block">
         <div className={`grid ${columnas} gap-3 px-3 pb-2 text-[12px] text-texto-3`}>
-          <span>Alumno</span>
-          <span>Plan</span>
-          <span>Pagos</span>
+          <span>{p.Alumno}</span>
+          {sinMontos ? <span>Pago del {p.materia}</span> : <span>Forma de pago</span>}
+          {!sinMontos && <span>Pagos</span>}
           <span>Asistencia</span>
-          {!sinMontos && <span className="text-right">Saldo</span>}
+          {!sinMontos && <span className="text-right">Debe</span>}
           {conCobrar && <span />}
         </div>
         <ul>
@@ -409,8 +401,14 @@ function TablaAlumnos({
                     </button>
                     <span className="block truncate text-[12px] text-texto-3">{subtituloFila(a, sinMontos)}</span>
                   </span>
-                  <span className="truncate text-sm text-texto-2">{a.plan?.nombre ?? "—"}</span>
-                  <PuntosPago pagos={a.pagos} />
+                  {sinMontos ? (
+                    <EstadoPagoTexto estado={a.estadoPago} />
+                  ) : (
+                    <>
+                      <span className="truncate text-sm text-texto-2">{textoFormaPago(a.formaPago, a.plan?.nombre)}</span>
+                      <PuntosPago pagos={a.pagos} />
+                    </>
+                  )}
                   <span className="text-sm tabular-nums text-texto-2">{a.asistenciaPct != null ? `${Math.round(a.asistenciaPct)} %` : "—"}</span>
                   {!sinMontos && (
                     <span className={`text-right text-sm font-semibold tabular-nums ${a.vencido ? "text-danger-text" : "text-texto-2"}`}>
@@ -448,12 +446,14 @@ function TablaAlumnos({
             >
               <span className="min-w-0 space-y-1">
                 <span className="block truncate text-[15px] font-semibold text-texto">{nombreAlumno(a.alumno)}</span>
-                <span className="block truncate text-[13px] text-texto-3">
-                  {[a.plan?.nombre, a.asistenciaPct != null ? `${Math.round(a.asistenciaPct)} %` : null, subtituloFila(a, sinMontos)]
-                    .filter(Boolean)
-                    .join(" · ")}
+                <span className="flex items-center gap-2 text-[13px] text-texto-3">
+                  {sinMontos ? <EstadoPagoTexto estado={a.estadoPago} /> : <PuntosPago pagos={a.pagos} />}
+                  <span className="truncate">
+                    {[sinMontos ? null : textoFormaPago(a.formaPago, a.plan?.nombre), a.asistenciaPct != null ? `${Math.round(a.asistenciaPct)} %` : null, subtituloFila(a, sinMontos)]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </span>
                 </span>
-                <PuntosPago pagos={a.pagos} />
               </span>
               {!sinMontos && (a.saldo ?? 0) > 0 && (
                 <span className={`shrink-0 text-[15px] font-bold tabular-nums ${a.vencido ? "text-danger-text" : "text-texto"}`}>
@@ -504,7 +504,8 @@ function PanelAlumno({
 
   async function whatsapp() {
     setError("");
-    // Con algo que se debe, el recordatorio de esa cuota: queda anotado.
+    // Con algo que se debe, el recordatorio de esa cuota con el enlace de
+    // pago (ronda 2): queda anotado.
     if (pendiente && !sinMontos) {
       setAvisando(true);
       try {
@@ -523,7 +524,11 @@ function PanelAlumno({
     else setError("No tiene un teléfono cargado.");
   }
 
-  const subtitulo = [fila.alumno.codigo, fila.plan?.nombre, tutor && fila.alumno.menor ? `tutor: ${tutor.nombre}` : null]
+  const subtitulo = [
+    fila.alumno.codigo,
+    sinMontos ? null : textoFormaPago(fila.formaPago, fila.plan?.nombre),
+    tutor && fila.alumno.menor && !sinMontos ? `tutor: ${tutor.nombre}` : null,
+  ]
     .filter(Boolean)
     .join(" · ");
 
@@ -540,21 +545,33 @@ function PanelAlumno({
               Cobrar {fmtMoney(fila.saldo)}
             </Boton>
           )}
-          <div className="flex gap-2">
-            <Boton variante="ghost" className="flex-1" onClick={() => void whatsapp()} disabled={avisando}>
-              {destinoWhats ? `WhatsApp al tutor` : "WhatsApp"}
-            </Boton>
-            <Boton variante="ghost" className="flex-1" onClick={() => navigate(`/academia/alumnos/${fila.alumno.id}`)}>
-              Ficha completa
-            </Boton>
-          </div>
+          {/* El docente no escribe a los estudiantes ni ve su ficha: lo dice
+              en clase y el recordatorio lo manda la recepción. */}
+          {!sinMontos && (
+            <div className="flex gap-2">
+              <Boton variante="ghost" className="flex-1" onClick={() => void whatsapp()} disabled={avisando}>
+                {pendiente ? (destinoWhats ? "Enviar QR al tutor" : "Enviar QR por WhatsApp") : destinoWhats ? "WhatsApp al tutor" : "WhatsApp"}
+              </Boton>
+              <Boton variante="ghost" className="flex-1" onClick={() => navigate(`/academia/alumnos/${fila.alumno.id}`)}>
+                Ficha completa
+              </Boton>
+            </div>
+          )}
         </>
       }
     >
       <div className="space-y-5">
+        {sinMontos && (
+          <div className="text-sm">
+            <span className="block text-[12px] text-texto-3">Pago del {p.materia} actual</span>
+            <EstadoPagoTexto estado={fila.estadoPago} />
+          </div>
+        )}
         {!sinMontos && (
           <section className="space-y-2.5">
-            <h3 className="text-[12px] text-texto-3">Estado de cuenta</h3>
+            <h3 className="text-[12px] text-texto-3">
+              Estado de cuenta{fila.formaPago || fila.plan ? ` · ${textoFormaPago(fila.formaPago, fila.plan?.nombre)}` : ""}
+            </h3>
             {ficha.cargando && !datos ? (
               <Cargando />
             ) : inscripcion ? (
@@ -576,14 +593,14 @@ function PanelAlumno({
             <dt className="text-[12px] text-texto-3">Asistencia</dt>
             <dd className="text-texto">{fila.asistenciaPct != null ? `${Math.round(fila.asistenciaPct)} %` : "—"}</dd>
           </div>
-          {datos?.telefono && (
+          {datos?.telefono && !sinMontos && (
             <div>
               <dt className="text-[12px] text-texto-3">Teléfono</dt>
               <dd className="text-texto">{datos.telefono}</dd>
             </div>
           )}
         </dl>
-        {fila.alumno.menor && tutor && (
+        {fila.alumno.menor && tutor && !sinMontos && (
           <p className="text-[13px] text-texto-3">
             Tutor: {tutor.nombre} ({tutor.parentesco}){tutor.telefono ? ` · ${tutor.telefono}` : ""}
           </p>

@@ -5,8 +5,9 @@ import { CAMILA, fichaCamila, grupoDetalle, MATEO } from "../../test/academiaFix
 
 /**
  * E3 · Detalle de grupo, versión limpia: los indicadores son los filtros,
- * tocar una fila abre el panel del alumno con su estado de cuenta y "Cobrar"
- * lleva al POS con la inscripción. Asistencia y Notas: próximamente (F1b).
+ * tocar una fila abre el panel del estudiante con su estado de cuenta y "Cobrar"
+ * lleva al POS con la inscripción. Asistencia y Notas son sus pantallas; el
+ * docente ve sólo si pagaron el módulo actual (ronda 2, D6).
  */
 
 const sesion = vi.hoisted(() => ({ permisos: null as string[] | null, propios: [] as string[] }));
@@ -76,16 +77,16 @@ describe("E3 · detalle de grupo", () => {
   it("cabecera, materias y los indicadores como filtros", async () => {
     await montar();
     expect(screen.getByRole("heading", { name: "Barbería y Peluquería · L-V 10:00–12:00" })).toBeInTheDocument();
-    expect(screen.getByText(/Central · Aula 2 · Prof. Marco Rojas · hasta el 13-nov/)).toBeInTheDocument();
-    expect(screen.getByText(/M2 Degradados · actual/)).toBeInTheDocument();
+    expect(screen.getByText(/Central · Aula 2 · Prof. Marco Rojas · M2 Degradados \(17-sep al 16-oct\)/)).toBeInTheDocument();
+    expect(screen.getByText((_, el) => el?.textContent === "M2 Degradados · oct · actual")).toBeInTheDocument();
     const filtros = screen.getByRole("tablist", { name: "Filtrar estudiantes" });
     expect(within(filtros).getByRole("tab", { name: "Todos 28" })).toHaveAttribute("aria-selected", "true");
     // 28 alumnos: la barra de páginas con el pie del grupo.
-    expect(screen.getByText(/Mostrando 1–20 de 28/)).toHaveTextContent(/M2 cobrado a 22 · base del docente Bs\s?6\.930/);
+    expect(screen.getByText(/Mostrando 1–20 de 28/)).toHaveTextContent(/M2 pagado por 22 de 28/);
     // Los números son los de cada lista: "Todos" incluye al retirado.
     expect(within(filtros).getByRole("tab", { name: "Retirados 1" })).toBeInTheDocument();
     expect(within(filtros).getByRole("tab", { name: "Al día 23" })).toBeInTheDocument();
-    fireEvent.click(within(filtros).getByRole("tab", { name: "Vencidos 5" }));
+    fireEvent.click(within(filtros).getByRole("tab", { name: "Deben 5" }));
     await act(async () => {});
     expect(apiAcademia.alumnosDelGrupo).toHaveBeenLastCalledWith(7, "deben", { page: 1, pageSize: 20 });
   });
@@ -99,7 +100,7 @@ describe("E3 · detalle de grupo", () => {
     fireEvent.click(ver);
     await act(async () => {});
     expect(screen.queryByRole("button", { name: "Cobrar a Bustillos Rek, Camila" })).not.toBeInTheDocument();
-    expect(screen.getByText("Saldo")).toBeInTheDocument();
+    expect(screen.getByText("Debe")).toBeInTheDocument();
   });
 
   it("tocar la fila abre el panel con el estado de cuenta, y Cobrar lleva al POS", async () => {
@@ -121,23 +122,43 @@ describe("E3 · detalle de grupo", () => {
     fireEvent.click(screen.getByRole("button", { name: "Ver a Bustillos Rek, Camila" }));
     await act(async () => {});
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "WhatsApp" }));
+      fireEvent.click(screen.getByRole("button", { name: "Enviar QR por WhatsApp" }));
     });
     expect(apiAcademia.recordatorio).toHaveBeenCalledWith(902);
     expect(abrir).toHaveBeenCalledWith("https://wa.me/59175512340?text=Hola", "_blank", "noopener,noreferrer");
     abrir.mockRestore();
   });
 
-  it("Asistencia y Notas llegan después", async () => {
+  it("Asistencia y Notas llevan a sus pantallas", async () => {
     await montar();
-    fireEvent.click(screen.getByRole("button", { name: "Asistencia" }));
-    expect(screen.getByText("Próximamente")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Asistencia" })).toHaveAttribute("href", "/academia/grupos/7/lista");
+    expect(screen.getByRole("link", { name: "Notas" })).toHaveAttribute("href", "/academia/grupos/7/notas");
   });
 
-  it("el docente ve a sus alumnos sin montos ni Cobrar", async () => {
+  it("el docente ve a sus estudiantes sin montos ni Cobrar: sólo si pagaron el módulo", async () => {
     sesion.permisos = ["academia.ver"];
     sesion.propios = ["academia.ver"];
+    vi.mocked(apiAcademia.alumnosDelGrupo).mockImplementation(async (_id, _f, p = {}) =>
+      p.pageSize === 1
+        ? { items: [], total: 2, page: 1, pageSize: 1 }
+        : {
+            items: [
+              { ...MATEO, saldo: null, estadoPago: "PAGADO" },
+              { ...CAMILA, saldo: null, estadoPago: "SIN_PAGAR", pagos: CAMILA.pagos.map((x) => ({ ...x, detalle: null })) },
+            ],
+            total: 2,
+            page: 1,
+            pageSize: 20,
+          },
+    );
     await montar();
+    expect(screen.getAllByText("Sin pagar").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Pagado").length).toBeGreaterThan(0);
+    expect(screen.queryByText(/Bs/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Ver a Bustillos Rek, Camila" }));
+    await act(async () => {});
+    expect(screen.queryByRole("button", { name: /WhatsApp/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Ficha completa" })).not.toBeInTheDocument();
     expect(screen.queryByRole("tab", { name: /Deben/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Cobrar" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Inscribir/ })).not.toBeInTheDocument();

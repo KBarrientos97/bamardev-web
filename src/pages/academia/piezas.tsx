@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
-import type { Cuota, EstadoPagoMateria } from "../../lib/academia/tipos";
-import { nombreCuota, textoCuota } from "../../lib/academia/vista";
+import type { Cuota, EstadoPagoMateria, EstadoPagoModulo } from "../../lib/academia/tipos";
+import { nombreCuota, textoCuota, textoEstadoPago } from "../../lib/academia/vista";
 
 /**
  * Piezas de las pantallas del instituto, con las reglas de la versión limpia
@@ -186,4 +186,17 @@ export function EstadoDeCuenta({ cuotas }: { cuotas: Cuota[] }) {
       })}
     </ul>
   );
+}
+
+const TONO_PAGO = {
+  normal: "text-texto-2",
+  ambar: "font-semibold text-warning-text",
+  rojo: "font-semibold text-danger-text",
+  gris: "text-texto-4",
+} as const;
+
+/** "Pagado · Abonó · Sin pagar": el estado del módulo actual, en texto (D6). */
+export function EstadoPagoTexto({ estado }: { estado: EstadoPagoModulo | null | undefined }) {
+  const t = textoEstadoPago(estado);
+  return <span className={`text-sm ${TONO_PAGO[t.tono]}`}>{t.texto}</span>;
 }

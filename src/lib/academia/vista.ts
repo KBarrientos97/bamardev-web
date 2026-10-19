@@ -1,4 +1,4 @@
-import type { Cuota, Ref } from "./tipos";
+import type { Cuota, EstadoPagoModulo, FormaPago, Ref } from "./tipos";
 import { fechaCorta, textoCubre } from "./formato";
 import { fmtMoney } from "../format";
 
@@ -64,4 +64,28 @@ export function rutaCobroInscripcion(inscripcionId: number, sede?: string | Ref 
     params.set("sedeNombre", sede);
   }
   return `/pos?${params.toString()}`;
+}
+
+/**
+ * Lo único de plata que ve el docente (D6): si el estudiante pagó el módulo
+ * actual. Rojo sólo "Sin pagar", que es lo que pide atención.
+ */
+export function textoEstadoPago(estado: EstadoPagoModulo | null | undefined): { texto: string; tono: "normal" | "ambar" | "rojo" | "gris" } {
+  switch (estado) {
+    case "PAGADO":
+      return { texto: "Pagado", tono: "normal" };
+    case "ABONO":
+      return { texto: "Abonó", tono: "ambar" };
+    case "SIN_PAGAR":
+      return { texto: "Sin pagar", tono: "rojo" };
+    default:
+      return { texto: "—", tono: "gris" };
+  }
+}
+
+/** "Mes a mes", "Pago completo", o el nombre del plan a medida. */
+export function textoFormaPago(forma: FormaPago | null | undefined, plan?: string | null): string {
+  if (forma === "MES_A_MES") return "Mes a mes";
+  if (forma === "COMPLETO") return "Pago completo";
+  return plan ?? "—";
 }
