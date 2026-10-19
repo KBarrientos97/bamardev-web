@@ -152,7 +152,13 @@ const MOTIVOS: Record<MotivoRecalculo, string> = {
  */
 export function avisoCuentaRecalculada(
   antes: CobroIntentado,
-  ahora: { total: number; saldo: number; pagado: number },
+  ahora: {
+    total: number;
+    saldo: number;
+    pagado: number;
+    /** Lo que hay que devolver con la cuenta nueva y en qué medio (`textoDevolucion`). */
+    devolver?: string;
+  },
   motivo: MotivoRecalculo,
 ): { texto: string; sugerido: CobroSugerido } | null {
   if (aCentavos(antes.total) === aCentavos(ahora.total) && aCentavos(antes.pagado) === aCentavos(ahora.pagado)) {
@@ -161,8 +167,14 @@ export function avisoCuentaRecalculada(
   const hay = (x: number) => x > 0.005;
   const base = MOTIVOS[motivo];
   const aFavor = Math.max(0, round2(ahora.pagado - ahora.total));
+  // Con el medio, como lo guarda la venta: lo de más de un adelanto por QR se
+  // devuelve por QR. Decía sólo el monto y el cajero lo sacaba del cajón
+  // (revisión del 18-oct).
+  const aDevolver = ahora.devolver || fmtMoney(aFavor);
   if (!hay(antes.saldo) && !hay(ahora.saldo)) {
-    if (!hay(antes.aFavor)) return { texto: `${base}: ahora hay que devolver ${fmtMoney(aFavor)}.`, sugerido: null };
+    // Otro equipo cargó y cobró lo mismo: decía "hay que devolver Bs 0,00".
+    if (!hay(antes.aFavor) && !hay(aFavor)) return { texto: `${base}: sigue todo pagado.`, sugerido: null };
+    if (!hay(antes.aFavor)) return { texto: `${base}: ahora hay que devolver ${aDevolver}.`, sugerido: null };
     if (!hay(aFavor)) {
       return {
         texto: `${base}: ya no hay nada que devolver (era ${fmtMoney(antes.aFavor)}). Si ya lo devolviste, pedíselo al cliente antes de cerrar.`,
@@ -170,9 +182,13 @@ export function avisoCuentaRecalculada(
       };
     }
     const dif = round2(antes.aFavor - aFavor);
+    // Lo mismo de antes: decía "devolvele Bs -0,00 más".
+    if (!hay(dif) && !hay(-dif)) {
+      return { texto: `${base}: sigue habiendo que devolver ${aDevolver}.`, sugerido: null };
+    }
     return {
       texto:
-        `${base}: ahora hay que devolver ${fmtMoney(aFavor)} (era ${fmtMoney(antes.aFavor)}). ` +
+        `${base}: ahora hay que devolver ${aDevolver} (era ${fmtMoney(antes.aFavor)}). ` +
         (dif > 0
           ? `Si ya devolviste ${fmtMoney(antes.aFavor)}, pedile ${fmtMoney(dif)} al cliente antes de cerrar.`
           : `Si ya devolviste ${fmtMoney(antes.aFavor)}, devolvele ${fmtMoney(-dif)} más.`),
@@ -223,7 +239,7 @@ export function avisoCuentaRecalculada(
   if (hay(antes.efectivo)) {
     if (!hay(ahora.saldo)) {
       return {
-        texto: `${texto} Ya no queda saldo: si ya te dio ${fmtMoney(antes.efectivo)} en efectivo, devolvéselos${hay(aFavor) ? ` y además ${fmtMoney(aFavor)}` : ""}.`,
+        texto: `${texto} Ya no queda saldo: si ya te dio ${fmtMoney(antes.efectivo)} en efectivo, devolvéselos${hay(aFavor) ? ` y además ${aDevolver}` : ""}.`,
         sugerido: null,
       };
     }

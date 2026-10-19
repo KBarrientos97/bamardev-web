@@ -179,3 +179,25 @@ describe("la cuenta que cambió mientras se cobraba", () => {
     );
   });
 });
+
+describe("lo que hay que devolver, con su medio", () => {
+  const pagado = { hasta: 0, total: 15, saldo: 0, pagado: 30, aFavor: 15, qr: 0, efectivo: 0 };
+
+  it("lo de más de un adelanto por QR se devuelve por QR, no del cajón", () => {
+    // Revisión del 18-oct: el aviso decía sólo el monto y el cajero lo sacaba
+    // del cajón.
+    expect(
+      avisoCuentaRecalculada(pagado, { total: 20, saldo: 0, pagado: 30, devolver: "Bs 10,00 por QR" }, "vieja")?.texto,
+    ).toMatch(/ahora hay que devolver Bs 10,00 por QR \(era Bs 15,00\)\./);
+  });
+
+  it("si otro equipo cargó y cobró lo mismo, no dice devolver Bs -0,00 ni Bs 0,00", () => {
+    expect(avisoCuentaRecalculada(pagado, { total: 25, saldo: 0, pagado: 40 }, "otroEquipo")?.texto).toBe(
+      "La cuenta cambió mientras cobrabas (otro equipo cargó o cobró algo): sigue habiendo que devolver Bs 15,00.",
+    );
+    const justo = { ...pagado, pagado: 15, aFavor: 0 };
+    expect(avisoCuentaRecalculada(justo, { total: 25, saldo: 0, pagado: 25 }, "otroEquipo")?.texto).toBe(
+      "La cuenta cambió mientras cobrabas (otro equipo cargó o cobró algo): sigue todo pagado.",
+    );
+  });
+});

@@ -30,6 +30,11 @@ const caso = vi.hoisted(() => ({
   consumoExtra: false,
   demoraTablero: 0,
   promos: [] as unknown[],
+  sesionId: 77,
+  /** Pausada hace N min (respecto de T0), o null. */
+  pausadaHace: null as number | null,
+  /** Cuándo se reanudó (ms), o null. */
+  reanudadaEn: null as number | null,
   cerrar: (_cuerpo: Record<string, unknown>, _vez: number): unknown => {
     throw new Error("sin caso");
   },
@@ -71,6 +76,34 @@ const pool = () => ({ ...POOL, promos: caso.promos });
 const T0 = Date.UTC(2026, 9, 19, 2, 0);
 const MIN = 60_000;
 
+function mesaApi() {
+  const pausa = caso.pausadaHace === null ? null : T0 - caso.pausadaHace * MIN;
+  return {
+    id: 50,
+    numero: 5,
+    tipo: "pool",
+    estado: "abierta",
+    // Con 47 min jugados al entrar al cierre: 45 min, Bs 15. A los 53, Bs 20.
+    sesion: {
+      id: caso.sesionId,
+      version: (caso.consumoExtra ? 2 : 1) + (caso.reanudadaEn ? 1 : 0),
+      start: T0 - caso.jugadosMin * MIN,
+      abierta: T0 - caso.jugadosMin * MIN,
+      pausedAt: pausa !== null && caso.reanudadaEn === null ? pausa : null,
+      pausaDesde: pausa !== null && caso.reanudadaEn === null ? pausa : undefined,
+      pausedTotal: pausa !== null && caso.reanudadaEn !== null ? (caso.reanudadaEn - pausa) / 1000 : 0,
+      pausas: pausa !== null && caso.reanudadaEn !== null ? [{ desde: pausa, hasta: caso.reanudadaEn }] : [],
+      prepago: null,
+      prev: null,
+      tarifa: pool(),
+      consumos: caso.consumoExtra
+        ? [{ id: 9, productoId: 300, nombre: "Paceña", precio: 10, cant: 1, hora: T0, anulado: false }]
+        : [],
+      pagos: caso.pagos,
+    },
+  };
+}
+
 function tablero() {
   return {
     ahora: reloj.ahora,
@@ -78,30 +111,7 @@ function tablero() {
     caja: { abierta: true, id: 9, desde: T0 - 3 * 60 * MIN, inicial: 100, sucursalId: null },
     ajustes: { avisos: [10, 5, 1], sonido: false, voz: false, pin: { anularConsumo: true, anularMesa: true, pausar: true }, tieneTokenSalon: false },
     tipos: [pool()],
-    mesas: [
-      {
-        id: 50,
-        numero: 5,
-        tipo: "pool",
-        estado: "abierta",
-        // Con 47 min jugados al entrar al cierre: 45 min, Bs 15. A los 53, Bs 20.
-        sesion: {
-          id: 77,
-          version: caso.consumoExtra ? 2 : 1,
-          start: T0 - caso.jugadosMin * MIN,
-          abierta: T0 - caso.jugadosMin * MIN,
-          pausedAt: null,
-          pausedTotal: 0,
-          prepago: null,
-          prev: null,
-          tarifa: pool(),
-          consumos: caso.consumoExtra
-            ? [{ id: 9, productoId: 300, nombre: "Paceña", precio: 10, cant: 1, hora: T0, anulado: false }]
-            : [],
-          pagos: caso.pagos,
-        },
-      },
-    ],
+    mesas: [mesaApi()],
   };
 }
 
@@ -156,6 +166,9 @@ beforeEach(() => {
   caso.consumoExtra = false;
   caso.demoraTablero = 0;
   caso.promos = [];
+  caso.sesionId = 77;
+  caso.pausadaHace = null;
+  caso.reanudadaEn = null;
   caso.cerrar = viejaYDespuesCobra;
   cobros.length = 0;
   vi.spyOn(Date, "now").mockImplementation(() => reloj.ahora);
@@ -164,6 +177,10 @@ beforeEach(() => {
     if (url.startsWith("/billar/tablero")) {
       if (caso.demoraTablero) await esperar(caso.demoraTablero);
       return tablero();
+    }
+    if (url.endsWith("/reanudar")) {
+      caso.reanudadaEn = reloj.ahora;
+      return mesaApi();
     }
     if (url.endsWith("/cerrar")) {
       const cuerpo = JSON.parse(opciones?.body ?? "{}") as Record<string, unknown>;
@@ -244,8 +261,9 @@ describe("Cerrar mesa con la cuenta vieja", () => {
     expect(screen.getByText(/Pagó Bs.15,00 de más/)).toBeInTheDocument();
     await tocar(screen.getByRole("button", { name: /^Cerrar mesa$/ }));
 
+    // Con el medio: el adelanto fue en efectivo.
     expect(screen.getByText(/Pasaron 5 minutos/)).toHaveTextContent(
-      /ahora hay que devolver Bs.10,00 \(era Bs.15,00\)\. Si ya devolviste Bs.15,00, pedile Bs.5,00 al cliente antes de cerrar\./,
+      /ahora hay que devolver Bs.10,00 en efectivo \(era Bs.15,00\)\. Si ya devolviste Bs.15,00, pedile Bs.5,00 al cliente antes de cerrar\./,
     );
     expect(screen.getByRole("button", { name: /^Cerrar mesa$/ })).toBeDisabled();
     await tocar(screen.getByRole("button", { name: /Usar la cuenta nueva · devolver Bs.10,00/ }), 0);
@@ -403,5 +421,74 @@ describe("Cerrar mesa con la cuenta vieja", () => {
     expect(screen.getByText(/Sin conexión con el servidor\./)).toBeInTheDocument();
     await tocar(screen.getByRole("button", { name: /Usar la cuenta nueva · Bs.25,00/ }), 0);
     expect(screen.getByText(/Sin conexión con el servidor\./)).toBeInTheDocument();
+  });
+
+  it("un QR a la vista sin confirmar también cuenta: el aviso lo nombra y la cuenta nueva queda en Mixto", async () => {
+    // Revisión del 18-oct: el cajero esperaba la transferencia sin tocar
+    // «Confirmar»; el cliente ya había pagado Bs 15 y, con la cuenta en Bs 20,
+    // se confirmaba un QR de 20.
+    await montar();
+    fireEvent.click(screen.getByRole("radio", { name: /QR/ }));
+    reloj.ahora = T0 + 4 * MIN + 46_000;
+    await act(async () => {
+      await esperar(1_200);
+    });
+    expect(screen.getByText(/Pasaron 5 minutos/)).toHaveTextContent(
+      /Si ya te pagaron Bs.15,00 por QR, no lo cobres otra vez: al aceptar queda en Mixto, con Bs.15,00 por QR y Bs.5,00 en efectivo\./,
+    );
+    await tocar(screen.getByRole("button", { name: /Usar la cuenta nueva · Bs.20,00/ }), 0);
+    expect(screen.getByRole("radio", { name: /Mixto/ })).toHaveAttribute("aria-checked", "true");
+    expect((screen.getByLabelText("En efectivo") as HTMLInputElement).value).toBe("5");
+  });
+
+  it("reanudar desde el cierre pasa la cuenta a la hora de ahora y no la baja", async () => {
+    // Revisión del 18-oct: abierta hace 60 min y pausada hace 11 (49 jugados,
+    // Bs 20). Reanudada a los 3 min, a la hora de antes la pausa se descontaba
+    // entera: 46 min, Bs 15, y el aviso culpaba a "otro equipo".
+    caso.jugadosMin = 60;
+    caso.pausadaHace = 11;
+    await montar();
+    expect(screen.getByText(/Mesa 5 · Total Bs.20,00/)).toBeInTheDocument();
+    reloj.ahora = T0 + 3 * MIN;
+    await tocar(screen.getByRole("button", { name: /Reanudar la mesa/ }));
+    expect(screen.getByText(/Mesa 5 · Total Bs.20,00/)).toBeInTheDocument();
+    expect(screen.queryByText(/La cuenta cambió mientras cobrabas/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Pasaron 5 minutos/)).not.toBeInTheDocument();
+  });
+
+  it("después de un cobro sin respuesta no se recalcula sola: el reintento va con la misma clave", async () => {
+    // Revisión del 18-oct: sin red, a los 4:46 se recalculaba, cambiaba la
+    // clave y el aviso le pedía al cliente Bs 5 más; con la red de vuelta, el
+    // reintento ya no encontraba el cobro que había entrado.
+    caso.cerrar = (_cuerpo, vez) => {
+      if (vez === 1) throw new ApiError("No se pudo conectar con el servidor.", 0);
+      return ventaHecha();
+    };
+    await montar();
+    fireEvent.change(screen.getByLabelText("Recibido"), { target: { value: "20" } });
+    await tocar(screen.getByRole("button", { name: /Cobrar Bs.15,00/ }));
+    expect(screen.getByText(/El cobro pudo haber entrado: tocá «Cobrar» otra vez cuando vuelva la conexión/)).toBeInTheDocument();
+    reloj.ahora = T0 + 4 * MIN + 46_000;
+    await act(async () => {
+      await esperar(1_200);
+    });
+    expect(screen.queryByText(/Pasaron 5 minutos/)).not.toBeInTheDocument();
+    await tocar(screen.getByRole("button", { name: /Cobrar Bs.15,00/ }));
+    expect(cobros).toHaveLength(2);
+    expect(cobros[1].clienteRequestId).toBe(cobros[0].clienteRequestId);
+    expect(cobros[1].hasta).toBe(cobros[0].hasta);
+  });
+
+  it("si otro equipo cobra la mesa y la vuelve a abrir, este cierre no toma la cuenta nueva", async () => {
+    // Revisión del 18-oct: adoptaba la sesión nueva sin avisar, con lo
+    // recibido de la vieja, y la cerraba.
+    await montar();
+    fireEvent.change(screen.getByLabelText("Recibido"), { target: { value: "20" } });
+    caso.sesionId = 78;
+    await act(async () => {
+      await recargar(true);
+    });
+    expect(screen.getByText("La Mesa 5 no está abierta")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Cobrar/ })).not.toBeInTheDocument();
   });
 });

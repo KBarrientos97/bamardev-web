@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { Icon } from "../../components/Icon";
 import { Vacio } from "../../components/ui";
+import { ApiError } from "../../lib/api";
 import { aCentavos } from "../../lib/dinero";
 import { fmtMoney } from "../../lib/format";
 import { tieneFeature, tienePermiso } from "../../lib/permisos";
@@ -45,6 +46,14 @@ function etiquetaCuenta(x: { total: number; saldo: number; pagado: number }): st
   const aFavor = round2(x.pagado - x.total);
   return aFavor > 0.005 ? ` · devolver ${fmtMoney(aFavor)}` : "";
 }
+
+/**
+ * Un "no" del servidor que el aviso de la cuenta nueva ya explica: la mesa
+ * cambió, o lo cobrado no es el saldo. Los otros (sin conexión, caja cerrada)
+ * quedan a la vista: pueden decir que el cobro entró.
+ */
+const esDeLaCuenta = (codigo: string | null) =>
+  !!codigo && (codigo.startsWith("MESA_") || codigo === "MONTO_DISTINTO");
 
 /** Un cobro de antes cuya cuenta se recalculó (ver `recalculada` en CerrarMesa). */
 type Recalculada = CobroIntentado & { vieja: boolean; porRechazo: boolean };
@@ -95,6 +104,12 @@ export default function CerrarMesa() {
    * primer toque de Cobrar parecía no hacer nada (revisión del 18-oct).
    */
   const [actualizada, setActualizada] = useState(false);
+  /**
+   * El último cobro salió y no volvió respuesta (sin conexión, o un error del
+   * servidor): pudo haber entrado. Mientras tanto la cuenta no se recalcula
+   * sola (ver `vencida`).
+   */
+  const [sinRespuesta, setSinRespuesta] = useState(false);
   useEffect(() => {
     if (accion.codigo === "MESA_CAMBIO") {
       const ahoraMs = ahoraServidor();
@@ -117,9 +132,14 @@ export default function CerrarMesa() {
   // más de lo que había entrado al cajón (QA del 12-oct).
   const [foto, setFoto] = useState(sVivo);
   useEffect(() => {
-    if (sVivo && foto?.id !== sVivo.id) setFoto(sVivo);
+    // Sólo si todavía no hay (se entró antes de que llegara el tablero). Otra
+    // sesión en la misma mesa es OTRA cuenta: la cobró otro equipo y la
+    // volvieron a abrir. Se la adoptaba sin avisar, con lo recibido de antes,
+    // y se la cerraba (revisión del 18-oct). Esta pantalla queda en "no está
+    // abierta".
+    if (sVivo && !foto) setFoto(sVivo);
   }, [sVivo, foto]);
-  const s = sVivo && foto?.id === sVivo.id ? foto : sVivo;
+  const s = foto ? (sVivo?.id === foto.id ? foto : undefined) : sVivo;
   const tipo = mesa ? tipoDe(e, mesa) : null;
   const c = s && tipo ? cuentaDe(s, tipo, hasta) : null;
   const cobro = useCobro(c?.saldo ?? 0);
@@ -130,19 +150,26 @@ export default function CerrarMesa() {
     !!c && !!cVivo && (aCentavos(cVivo.total) !== aCentavos(c.total) || aCentavos(cVivo.saldo) !== aCentavos(c.saldo));
   const { setError } = accion;
 
-  // Lo que el cobro ya tiene encaminado con la cuenta de la foto: el QR
-  // confirmado y el efectivo recibido. Si la cuenta cambia, el aviso dice qué
-  // hacer con esa plata (ver `avisoCuentaRecalculada`).
+  // Lo que el cobro ya tiene encaminado con la cuenta de la foto: el QR a la
+  // vista y el efectivo recibido. Si la cuenta cambia, el aviso dice qué hacer
+  // con esa plata (ver `avisoCuentaRecalculada`). El QR cuenta aunque no esté
+  // confirmado: el cliente pudo haberlo pagado mientras el cajero esperaba la
+  // transferencia, y el aviso no lo nombraba (revisión del 18-oct). El aviso
+  // es condicional ("si ya te pagaron…") y el QR se vuelve a confirmar igual.
   const cTotal = c?.total ?? null;
   const cSaldo = c?.saldo ?? 0;
   const cPagado = c?.pagado ?? 0;
-  const qrEnCurso = cobro.qrConfirmado ? cobro.montoQr : 0;
+  const qrALaVista =
+    cobro.metodo === "QR" || (cobro.metodo === "Mixto" && cobro.montoQr > 0 && cobro.montoQr < cobro.monto);
+  const qrEnCurso = qrALaVista ? cobro.montoQr : 0;
+  // En efectivo, lo que hay en la mano: lo escrito, hasta el saldo (con menos,
+  // el aviso mandaba a escribir el saldo entero como si estuviera).
   const efectivoEnCurso =
     cobro.metodo === "Efectivo"
       ? cobro.sinRecibido
         ? 0
-        : cSaldo
-      : cobro.metodo === "Mixto" && cobro.qrConfirmado
+        : Math.min(cobro.recibido, cSaldo)
+      : cobro.metodo === "Mixto" && qrALaVista
         ? Math.max(0, round2(cSaldo - cobro.montoQr))
         : 0;
   const enCurso = useMemo<CobroIntentado | null>(
@@ -167,20 +194,37 @@ export default function CerrarMesa() {
   // un vuelto que después no servía (revisión del 18-oct). Con la hora de
   // este momento y no la del último segundo: así también se nota al escribir
   // o cuando llega el sondeo, aunque el reloj de la pestaña venga atrasado.
-  const vencida = enCurso !== null && ahoraServidor() - hasta >= CUENTA_VIEJA_MS;
+  //
+  // También si la mesa se reanudó después de esa hora (otro equipo): con la
+  // pausa ya descontada entera, a la hora de antes la cuenta bajaba un bloque
+  // (revisión del 18-oct; el backend tampoco cobra con esa hora).
+  //
+  // Pero no después de un cobro sin respuesta: pudo haber entrado, y con otra
+  // hora cambia la clave y el reintento ya no lo encuentra; el aviso le pedía
+  // al cliente plata de más (revisión del 18-oct). El reintento va con la
+  // misma hora y, si no había entrado, el servidor contesta MESA_CAMBIO.
+  const reanudadaDespues = (sVivo?.pausas ?? []).some((p) => p.hasta > hasta);
+  const vencida =
+    enCurso !== null && !sinRespuesta && (ahoraServidor() - hasta >= CUENTA_VIEJA_MS || reanudadaDespues);
   const enviando = accion.enviando;
   useEffect(() => {
     if (!vencida || enviando || recalculada !== null || enCurso === null) return;
     // Si en el mismo render llegó un MESA_CAMBIO, su efecto ya puso el cobro
     // rechazado y gana: pisarlo perdía el "por rechazo" y dejaba el rojo del
     // servidor a la vista (la e2e de la pantalla lo atrapó el 18-oct).
-    setRecalculada((previa) => previa ?? { ...enCurso, vieja: true, porRechazo: false });
+    setRecalculada(
+      (previa) =>
+        previa ?? { ...enCurso, vieja: ahoraServidor() - enCurso.hasta >= CUENTA_VIEJA_MS, porRechazo: false },
+    );
     setHasta(ahoraServidor());
+    // Las notas de la vuelta anterior ya no dicen lo de ahora.
+    setActualizada(false);
+    setSugerirRecargar(false);
   }, [vencida, enviando, recalculada, enCurso]);
 
   /** Lo que un rechazo anterior dejó a la vista, si era de la mesa. Los otros (sin conexión, caja cerrada) quedan: pueden decir que el cobro entró. */
   const limpiarAvisos = () => {
-    if (accion.codigo?.startsWith("MESA_")) setError("");
+    if (esDeLaCuenta(accion.codigo)) setError("");
     setSugerirRecargar(false);
     setActualizada(false);
   };
@@ -197,7 +241,12 @@ export default function CerrarMesa() {
     recalculada && c && !cambioLaCuenta
       ? avisoCuentaRecalculada(
           recalculada,
-          { total: c.total, saldo: c.saldo, pagado: c.pagado },
+          {
+            total: c.total,
+            saldo: c.saldo,
+            pagado: c.pagado,
+            devolver: s ? textoDevolucion(devolucionDe(s.pagos, c.total)) : undefined,
+          },
           recalculada.vieja ? "vieja" : "hora",
         )
       : null;
@@ -233,7 +282,15 @@ export default function CerrarMesa() {
   // Otro equipo cargó o cobró algo: el mismo aviso, contra lo que el cobro ya
   // tenía encaminado. Decía sólo el saldo nuevo: el QR confirmado se perdía y
   // la devolución cambiaba sin decirlo (revisión del 18-oct).
-  const vivo = cVivo ? { total: cVivo.total, saldo: cVivo.saldo, pagado: cVivo.pagado } : null;
+  const vivo =
+    sVivo && cVivo
+      ? {
+          total: cVivo.total,
+          saldo: cVivo.saldo,
+          pagado: cVivo.pagado,
+          devolver: textoDevolucion(devolucionDe(sVivo.pagos, cVivo.total)),
+        }
+      : null;
   const avisoOtro =
     cambioLaCuenta && vivo && enCurso
       ? ((recalculada && avisoCuentaRecalculada(recalculada, vivo, "otroEquipo")) ??
@@ -266,13 +323,14 @@ export default function CerrarMesa() {
    * otra cuenta, y su mensaje dice cuánto. Recargar trae la mesa y la web de
    * ahora.
    */
-  const deLaMesa = accion.codigo?.startsWith("MESA_") ?? false;
   const errorVisible =
-    (cambioLaCuenta || cambioPorLaHora) && deLaMesa
+    (cambioLaCuenta || cambioPorLaHora) && esDeLaCuenta(accion.codigo)
       ? ""
       : sugerirRecargar && accion.codigo === "MESA_CAMBIO" && accion.error
         ? `${accion.error} Si vuelve a pasar con el mismo monto, recargá la página (F5).`
-        : accion.error;
+        : sinRespuesta && accion.error
+          ? `${accion.error} El cobro pudo haber entrado: tocá «Cobrar» otra vez cuando vuelva la conexión, que no se cobra dos veces, y no le pidas ni le devuelvas nada antes.`
+          : accion.error;
 
   const reloj = (
     <span className="flex items-center gap-1.5 text-[13px] font-semibold tabular-nums text-texto-2">
@@ -369,7 +427,19 @@ export default function CerrarMesa() {
     };
     let r: Awaited<ReturnType<typeof billar.cerrar>> | null = null;
     const ok = await accion.ejecutar(async () => {
-      r = await billar.cerrar(mesa.id, cobroFinal);
+      try {
+        r = await billar.cerrar(mesa.id, cobroFinal);
+        setSinRespuesta(false);
+      } catch (err) {
+        // Sin respuesta (o un 5xx), el cobro pudo haber entrado. Con un "no"
+        // del servidor, no: la pantalla de "no está abierta" ya no dice que
+        // pudo haber entrado si después la cobra otro equipo (revisión del
+        // 18-oct).
+        const sinResp = !(err instanceof ApiError) || err.status === 0 || err.status >= 500;
+        setSinRespuesta(sinResp);
+        if (!sinResp) intentoCobro.current = false;
+        throw err;
+      }
     });
     const hecho = r as Awaited<ReturnType<typeof billar.cerrar>> | null;
     if (!ok || !hecho) return;
@@ -568,12 +638,23 @@ export default function CerrarMesa() {
                     icono="play"
                     className="w-full"
                     disabled={accion.enviando}
-                    onClick={() => {
+                    onClick={async () => {
                       // Lo que se intentó cobrar antes no tiene que ver con este "no".
                       intentado.current = null;
                       setSugerirRecargar(false);
                       setActualizada(false);
-                      void accion.ejecutar(() => billar.reanudar(mesa.id));
+                      let reanudada: typeof s | undefined;
+                      const ok = await accion.ejecutar(async () => {
+                        reanudada = (await billar.reanudar(mesa.id)).sesion;
+                      });
+                      // Reanudada, la cuenta es la de ahora: a la hora de antes,
+                      // con la pausa ya descontada entera, bajaba un bloque y el
+                      // aviso culpaba a "otro equipo" (revisión del 18-oct).
+                      if (ok && reanudada) {
+                        setFoto(reanudada);
+                        setHasta(ahoraServidor());
+                        cobro.reiniciar();
+                      }
                     }}
                   >
                     Reanudar la mesa (siguen jugando)

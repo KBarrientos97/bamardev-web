@@ -2,8 +2,13 @@ import { useCallback, useRef, useState } from "react";
 import { ApiError } from "../../lib/api";
 import { recargar } from "./store";
 
-/** Lo que el servidor contesta cuando la mesa ya no está como la ve la pantalla. */
-const MESA_DESACTUALIZADA = new Set(["MESA_CAMBIO", "MESA_OCUPADA", "MESA_CERRADA", "MESA_INACTIVA"]);
+/**
+ * Lo que el servidor contesta cuando la mesa ya no está como la ve la pantalla.
+ * MONTO_DISTINTO también ("se cobra Bs X, no Bs Y"): sin el tablero nuevo, el
+ * rojo quedaba debajo de una cuenta que seguía siendo la vieja (revisión del
+ * 18-oct).
+ */
+const MESA_DESACTUALIZADA = new Set(["MESA_CAMBIO", "MESA_OCUPADA", "MESA_CERRADA", "MESA_INACTIVA", "MONTO_DISTINTO"]);
 
 /**
  * Un botón que llama al backend. Mientras espera no se puede volver a tocar
