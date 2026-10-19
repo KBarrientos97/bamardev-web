@@ -74,7 +74,7 @@ export default function PlanillaMes() {
             <Cifra
               etiqueta="Retención"
               valor={d.retencionActiva ? fmtMoney(d.docentes.reduce((s, x) => s + (x.retencion ?? 0), 0)) : "—"}
-              nota={d.retencionActiva ? undefined : "Por confirmar con el cliente"}
+              nota={d.retencionActiva ? undefined : "Por confirmar con el instituto"}
             />
             <Cifra etiqueta={mes === hoy ? "Líquido provisorio" : "Líquido"} valor={fmtMoney(d.totales.liquido)} nota={d.retencionActiva ? undefined : "sin retención ni atrasos"} />
             <Cifra

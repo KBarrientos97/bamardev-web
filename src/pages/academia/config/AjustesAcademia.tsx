@@ -280,9 +280,9 @@ export default function AjustesAcademia() {
             activo={a.retencionActiva}
             bloqueado
             etiqueta={`Retención por facturación · ${a.retencionPctDefecto} %`}
-            detalle="Por confirmar con el cliente"
+            detalle="Pronto"
           />
-          <Interruptor activo={false} bloqueado etiqueta={`Descuento por atrasos del ${p.docente}`} detalle="Por confirmar con el cliente" />
+          <Interruptor activo={false} bloqueado etiqueta={`Descuento por atrasos del ${p.docente}`} detalle="Pronto" />
         </div>
       </SeccionAjuste>
 

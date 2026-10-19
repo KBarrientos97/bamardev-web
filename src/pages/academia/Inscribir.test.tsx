@@ -263,6 +263,29 @@ describe("E5 · inscribir", () => {
     expect(onInscrito).toHaveBeenCalledWith({ inscripcion: { id: 600 }, cobrar: false });
   });
 
+  it("la preinscripción online de un menor que ya trajo tutor: la bienvenida dice \"al tutor\" (QA ronda 2, N-9)", async () => {
+    render(
+      <MemoryRouter>
+        <Inscribir
+          preinscripcion={{
+            id: 45,
+            alumno: { id: 62, apellidos: "Vaca Rojas", nombres: "Mateo", telefono: null, menor: true },
+            tutor: { nombre: "Ramiro Vaca", telefono: "70011223", parentesco: "Padre" },
+            grupo: { id: 7, nombre: "Barbería · L-V 10:00", carrera: "Barbería", sede: "Central" },
+            turnoPreferido: null,
+            mensaje: null,
+            preinscritaEn: "2026-10-14T12:00:00.000Z",
+            vieja: false,
+          }}
+          onCerrar={vi.fn()}
+          onInscrito={onInscrito}
+        />
+      </MemoryRouter>,
+    );
+    await act(async () => {});
+    expect(within(panel()).getByRole("checkbox", { name: "Enviar bienvenida por WhatsApp al tutor" })).toBeChecked();
+  });
+
   it("paga hoy: la primera cuota por defecto, o un adelanto que llega al POS", async () => {
     await montar();
     cargarNuevo("2000-01-01");

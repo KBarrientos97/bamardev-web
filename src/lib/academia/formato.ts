@@ -126,16 +126,22 @@ export function totalCalendario(cuotas: CuotaPlan[]): number {
  * montos mayores que cero y ninguna cuota que no cubra nada. El backend sigue
  * siendo quien decide; esto sólo ahorra el viaje.
  */
-export function problemasDelPlan(cuotas: CuotaPlan[], materias: Pick<Materia, "orden" | "activa">[]): string[] {
+export function problemasDelPlan(
+  cuotas: CuotaPlan[],
+  materias: Pick<Materia, "orden" | "activa">[],
+  /** Cómo dice el instituto (`usePalabras().materias`): "módulos", "materias"… */
+  palabraMaterias = "módulos",
+): string[] {
   const problemas: string[] = [];
   if (!cuotas.length) problemas.push("El plan necesita al menos una cuota.");
   cuotas.forEach((c, i) => {
     if (!(Number(c.monto) > 0)) problemas.push(`La cuota ${i + 1} necesita un monto mayor que cero.`);
-    if (!c.cubre.length) problemas.push(`La cuota ${i + 1} no cubre ninguna materia.`);
+    if (!c.cubre.length) problemas.push(`La cuota ${i + 1} no cubre nada: marcá qué ${palabraMaterias} paga.`);
   });
   for (const m of materias.filter((x) => x.activa)) {
     const n = cuotas.filter((c) => c.cubre.includes(m.orden)).length;
-    if (n === 0) problemas.push(`M${m.orden} no queda cubierta por ninguna cuota.`);
+    // Sin género: sirve igual para "el módulo" que para "la materia".
+    if (n === 0) problemas.push(`M${m.orden} no está en ninguna cuota.`);
     if (n > 1) problemas.push(`M${m.orden} está en ${n} cuotas: tiene que estar en una sola.`);
   }
   return problemas;

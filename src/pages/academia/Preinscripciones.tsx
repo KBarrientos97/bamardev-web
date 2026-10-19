@@ -156,6 +156,7 @@ export default function Preinscripciones() {
           motivos={MOTIVOS_DESCARTE}
           etiquetaOk="Descartar"
           peligroso
+          faltaMotivo="Elegí el motivo: queda anotado en la ficha."
           onCancelar={() => setDescartando(null)}
           onConfirmar={async (motivo) => {
             const s = descartando;

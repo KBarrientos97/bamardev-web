@@ -90,7 +90,7 @@ describe("E14 · Planilla del mes", () => {
     expect(screen.getByRole("heading", { name: "Planilla docentes · Octubre 2026" })).toBeInTheDocument();
     expect(apiAcademia.planilla).toHaveBeenCalledWith("2026-10", null);
     expect(screen.getByRole("region", { name: "Resumen del mes" })).toHaveTextContent(/4\.040/);
-    expect(screen.getByText("Por confirmar con el cliente")).toBeInTheDocument();
+    expect(screen.getByText("Por confirmar con el instituto")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Ver la planilla de Marco Rojas" })).toHaveAttribute("href", "/academia/planilla/9?mes=2026-10");
     fireEvent.click(screen.getByRole("button", { name: "Mes anterior" }));
     await act(async () => {});

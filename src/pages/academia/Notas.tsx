@@ -432,6 +432,7 @@ function CargaNotas({
           texto="Queda registrado quién las reabrió y por qué."
           motivos={["Corregir una nota mal cargada", "Recuperatorio", "Otro"]}
           etiquetaOk="Reabrir"
+          faltaMotivo="Elegí el motivo: queda anotado en la ficha."
           onCancelar={() => setReabriendo(false)}
           onConfirmar={async (motivo) => {
             setReabriendo(false);

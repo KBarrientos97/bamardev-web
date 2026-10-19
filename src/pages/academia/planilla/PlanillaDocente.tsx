@@ -187,9 +187,9 @@ export default function PlanillaDocente() {
         <Cifra
           etiqueta="Retención"
           valor={r.retencionActiva && r.retencion != null ? `− ${fmtMoney(r.retencion)}` : "—"}
-          nota={r.retencionActiva ? undefined : "Por confirmar con el cliente"}
+          nota={r.retencionActiva ? undefined : "Por confirmar con el instituto"}
         />
-        <Cifra etiqueta="Atrasos" valor={r.atrasos != null ? `− ${fmtMoney(r.atrasos)}` : "—"} nota={r.atrasos != null ? undefined : "Por confirmar con el cliente"} />
+        <Cifra etiqueta="Atrasos" valor={r.atrasos != null ? `− ${fmtMoney(r.atrasos)}` : "—"} nota={r.atrasos != null ? undefined : "Por confirmar con el instituto"} />
         <Cifra etiqueta={d.estado === "EN_CURSO" ? "Líquido provisorio" : "Líquido"} valor={fmtMoney(r.liquido)} />
       </section>
 

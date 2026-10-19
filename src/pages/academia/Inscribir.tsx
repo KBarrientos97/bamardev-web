@@ -394,6 +394,10 @@ export default function Inscribir({
         : Math.max(0, Math.min(vista.total, Number(otroMonto) || 0));
   const saldoQueda = Math.max(0, vista.total - montoHoy);
   const proxima = vista.cuotas.find((_, i) => vista.cuotas.slice(0, i + 1).reduce((s, c) => s + c.monto, 0) > montoHoy);
+  // La bienvenida de un menor va a su tutor (contrato #41): también la del
+  // menor preinscrito online que ya trajo tutor, que no es `esMenor` porque
+  // no hay que pedirlo (QA ronda 2, N-9).
+  const alTutor = esMenor || !!preinscripcion?.alumno.menor;
   const tutorListo = !esMenor || (!!tutor.nombre.trim() && !!tutor.telefono.trim()) || !!preinscripcion?.tutor;
   const datosListos = !!preinscripcion || !!elegido || (!!nuevo.ci.trim() && !!nuevo.apellidos.trim() && !!nuevo.nombres.trim());
 
@@ -766,7 +770,7 @@ export default function Inscribir({
           )}
           <label className="flex items-center gap-2 text-[13px] text-texto-2">
             <input type="checkbox" checked={bienvenida} onChange={(e) => setBienvenida(e.target.checked)} className="h-4 w-4 accent-[var(--color-primary-boton)]" />
-            Enviar bienvenida por WhatsApp{esMenor ? " al tutor" : ""}
+            Enviar bienvenida por WhatsApp{alTutor ? " al tutor" : ""}
           </label>
           {/* Sin las 3 fotos el botón dice cuántas faltan y no inscribe (D7). */}
           <Boton className="w-full" disabled={enviando || faltanFotos.length > 0} onClick={() => void enviar(true)}>

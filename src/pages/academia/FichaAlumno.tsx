@@ -376,6 +376,7 @@ export default function FichaAlumno() {
           motivos={MOTIVOS_RETIRO}
           etiquetaOk="Retirar"
           peligroso
+          faltaMotivo="Elegí el motivo: queda anotado en la ficha."
           onCancelar={() => setRetirando(null)}
           onConfirmar={async (motivo) => {
             const ins = retirando;

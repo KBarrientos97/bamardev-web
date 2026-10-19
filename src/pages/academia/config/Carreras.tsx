@@ -809,7 +809,7 @@ function EditorPlan({
 
   async function guardar(extra: { activo?: boolean } = {}) {
     if (!nombre.trim()) return setErrores(["El plan necesita un nombre."]);
-    const problemas = extra.activo === false ? [] : problemasDelPlan(cuotas, materias);
+    const problemas = extra.activo === false ? [] : problemasDelPlan(cuotas, materias, p.materias);
     if (problemas.length) return setErrores(problemas);
     setGuardando(true);
     setErrores([]);

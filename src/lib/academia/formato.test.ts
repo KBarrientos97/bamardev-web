@@ -88,7 +88,13 @@ describe("el calendario de un plan", () => {
     );
     expect(problemas).toContain("La cuota 1 necesita un monto mayor que cero.");
     expect(problemas).toContain("M2 está en 2 cuotas: tiene que estar en una sola.");
-    expect(problemas).toContain("M3 no queda cubierta por ninguna cuota.");
+    expect(problemas).toContain("M3 no está en ninguna cuota.");
+  });
+
+  it("la cuota que no cubre nada lo dice con el vocabulario del instituto", () => {
+    const vacia = [{ n: 1, monto: 100, vence: { tipo: "INSCRIPCION" as const }, cubre: [] }];
+    expect(problemasDelPlan(vacia, [], "cursos")).toContain("La cuota 1 no cubre nada: marcá qué cursos paga.");
+    expect(problemasDelPlan(vacia, [])).toContain("La cuota 1 no cubre nada: marcá qué módulos paga.");
   });
 
   it("el descuento se reparte entre las cuotas y la suma da el total", () => {

@@ -63,6 +63,16 @@ describe("FotosAlumno · Observar", () => {
     expect(within(dialogo).getByText("Marcá qué foto hay que cambiar.")).toBeInTheDocument();
   });
 
+  it("sin motivo lo pide hablando de la ficha, no de \"la cita\" de la agenda", async () => {
+    const { dialogo } = await abrirObservar();
+    fireEvent.click(within(dialogo).getByRole("checkbox", { name: "Foto del estudiante" }));
+    await act(async () => {
+      fireEvent.click(within(dialogo).getByRole("button", { name: "Observar" }));
+    });
+    expect(within(dialogo).getByText("Elegí el motivo: queda anotado en la ficha.")).toBeInTheDocument();
+    expect(apiAcademia.revisarFotos).not.toHaveBeenCalled();
+  });
+
   it("varias marcadas van en el orden de siempre", async () => {
     const { dialogo } = await abrirObservar();
     fireEvent.click(within(dialogo).getByRole("checkbox", { name: "Carnet, atrás" }));

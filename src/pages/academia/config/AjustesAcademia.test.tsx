@@ -125,7 +125,7 @@ describe("N4 · Ajustes del instituto", () => {
     await montar();
     expect(screen.getByRole("switch", { name: /Retención por facturación/ })).toBeDisabled();
     expect(screen.getByRole("switch", { name: /Descuento por atrasos/ })).toBeDisabled();
-    expect(screen.getAllByText("Por confirmar con el cliente")).toHaveLength(2);
+    expect(screen.getAllByText("Pronto")).toHaveLength(2);
     fireEvent.click(screen.getByRole("switch", { name: /piden PIN/ }));
     await act(async () => {});
     expect(apiAcademia.guardarAjustes).toHaveBeenCalledWith({ topePromoSinPinPct: 100 });
