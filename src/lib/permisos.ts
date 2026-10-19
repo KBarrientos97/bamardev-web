@@ -168,7 +168,24 @@ export type Seccion =
   /** E17: carreras, materias y planes de pago. */
   | "academia_carreras"
   /** Ajustes académicos: nota mínima, tolerancia, topes de promoción. */
-  | "academia_ajustes";
+  | "academia_ajustes"
+  // ── Vertical Educación, ronda 2 (diseño del 16-oct + F1b) ──
+  /** N1: el calendario de módulos, la pantalla de grupos de recepción y administración. */
+  | "academia_calendario"
+  /** E11: las clases de hoy del docente. */
+  | "academia_mis_clases"
+  /** N6: pasar lista en la clase de hoy (el docente). */
+  | "academia_lista"
+  /** E13: cargar las notas de sus módulos (el docente). */
+  | "academia_notas"
+  /** E14/N8: la planilla de los docentes del mes. */
+  | "academia_planilla"
+  /** E16: la planilla en curso del docente que entró. */
+  | "academia_mi_planilla"
+  /** N9: el panel de control del dueño. */
+  | "academia_control"
+  /** E18: los reportes del instituto. */
+  | "academia_reportes";
 
 /**
  * Qué pide cada sección: un permiso (o varios, con `tambien`: alcanza con
@@ -292,13 +309,30 @@ const REQUISITOS: Record<Seccion, Requisito> = {
   // entra a sus grupos, como el profesional entra a "Mi agenda".
   academia_hoy: { permiso: "academia.ver", alcance: "GENERAL", feature: "academia" },
   academia_grupos: { permiso: "academia.ver", feature: "academia" },
-  academia_alumnos: { permiso: "academia.ver", feature: "academia" },
+  // Desde la ronda 2 el docente no tiene la lista de estudiantes ni su ficha
+  // (D6: nunca teléfonos ni montos): ve a los suyos en la lista y en notas.
+  academia_alumnos: { permiso: "academia.ver", alcance: "GENERAL", feature: "academia" },
   // La bandeja existe sólo con el formulario de la página prendido: sin él no
   // llega nada (igual que las solicitudes con `reserva_online`).
   academia_preinscripciones: { permiso: "academia.inscribir", feature: "preinscripcion_online" },
   academia_cobranza: { permiso: "academia.cobranza", feature: "academia" },
   academia_carreras: { permiso: "academia.configurar", feature: "academia" },
   academia_ajustes: { permiso: "academia.configurar", feature: "academia" },
+  // ── Educación, ronda 2 ──
+  // El calendario es de recepción y administración; el docente entra por sus
+  // clases (el backend igual le recorta el calendario a sus grupos).
+  academia_calendario: { permiso: "academia.ver", alcance: "GENERAL", feature: "academia" },
+  // Lo del docente pide el alcance PROPIO: la recepción también puede pasar
+  // lista (asistencia.registrar GENERAL), pero lo hace desde el grupo y no
+  // tiene un "Mis clases" en el menú. Coordinación y dirección, lo mismo.
+  academia_mis_clases: { permiso: "asistencia.registrar", alcance: "PROPIO", feature: "asistencia" },
+  academia_lista: { permiso: "asistencia.registrar", alcance: "PROPIO", feature: "asistencia" },
+  academia_notas: { permiso: "notas.registrar", alcance: "PROPIO", feature: "notas" },
+  academia_planilla: { permiso: "planilla.ver", alcance: "GENERAL", feature: "planilla_docente" },
+  academia_mi_planilla: { permiso: "planilla.ver", alcance: "PROPIO", feature: "planilla_docente" },
+  academia_control: { permiso: "academia.control", feature: "academia" },
+  // Los del instituto, con el permiso de siempre de los reportes.
+  academia_reportes: { permiso: "reportes.ver", feature: "academia" },
 };
 
 /**
@@ -662,10 +696,11 @@ export function rutaInicial(ctx: ContextoPermisos): string {
  * "/sin-acceso" con esa misma sección dibujada en la barra de al lado.
  */
 const ORDEN_INICIO: [Seccion, string][] = [
-  // El instituto empieza el día en Hoy (la secretaría y la dirección) o en
-  // sus grupos (el docente). Sin la feature `academia` no existen y la lista
-  // sigue como siempre.
+  // El instituto empieza el día en Hoy (la recepción y la dirección) o en
+  // sus clases de hoy (el docente, ronda 2). Sin la feature `academia` no
+  // existen y la lista sigue como siempre.
   ["academia_hoy", "/academia/hoy"],
+  ["academia_mis_clases", "/academia/mis-clases"],
   ["academia_grupos", "/academia/grupos"],
   ["inventario", "/inventario"],
   ["productos", "/inventario/productos"],
@@ -708,6 +743,13 @@ const ORDEN_INICIO: [Seccion, string][] = [
   ["academia_cobranza", "/academia/cobranza"],
   ["academia_carreras", "/configuracion/carreras"],
   ["academia_ajustes", "/configuracion/academia"],
+  ["academia_calendario", "/academia/calendario"],
+  ["academia_lista", "/academia/lista"],
+  ["academia_notas", "/academia/notas"],
+  ["academia_mi_planilla", "/academia/mi-planilla"],
+  ["academia_planilla", "/academia/planilla"],
+  ["academia_control", "/academia/control"],
+  ["academia_reportes", "/academia/reportes"],
   ["salon", "/salon"],
   ["reparto", "/reparto"],
 ];

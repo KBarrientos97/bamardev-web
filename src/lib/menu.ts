@@ -70,9 +70,13 @@ export interface ItemNav {
  * El del medio se llama "Stock" y no "Inventario" porque adentro vive el grupo
  * Inventario: el rótulo y el ítem se leían como un renglón repetido.
  */
-export type Bloque = "agenda" | "vender" | "stock" | "administracion";
+export type Bloque = "agenda" | "vender" | "stock" | "administracion" | "dia" | "control" | "clases";
 
 export const TITULO_BLOQUE: Record<Bloque, string> = {
+  // Los del instituto (ver `ITEMS_ACADEMIA`): ningún otro rubro los usa.
+  dia: "Día a día",
+  control: "Control",
+  clases: "Mis clases",
   // Sólo belleza con la feature `agenda`: en los demás rubros no hay ningún
   // ítem en este bloque y el rótulo no se dibuja. No se llama "Agenda" por lo
   // mismo que Stock: adentro vive el grupo Agenda.
@@ -396,6 +400,119 @@ const ITEMS: (ItemNav & { bloque: Bloque })[] = [
   },
 ];
 
+/** Un ítem de `ITEMS` por su ruta: el menú del instituto reusa los generales. */
+function general(a: string, cambios: Partial<ItemNav> = {}): ItemNav {
+  const buscar = (lista: ItemNav[]): ItemNav | undefined => {
+    for (const i of lista) {
+      if (i.a === a && (i.seccion || i.hijos)) return i;
+      const dentro = buscar(i.hijos ?? []);
+      if (dentro) return dentro;
+    }
+    return undefined;
+  };
+  const item = buscar(ITEMS);
+  if (!item) throw new Error(`Falta el ítem general ${a}`);
+  return { ...item, ...cambios };
+}
+
+/**
+ * El menú del instituto (ronda 2, lienzo `MenuV2`): uno por rol, armado con
+ * las mismas reglas de siempre (cada ítem pide su sección), pero con los
+ * bloques que usa el instituto en vez de los de un comercio:
+ *
+ *   DÍA A DÍA       Hoy · Calendario · Estudiantes · Cobranza (recepción)
+ *   VENDER          Punto de venta · Caja
+ *   CONTROL         Panel de control · Planilla docentes · Reportes (el dueño)
+ *   MIS CLASES      Mis clases · Pasar lista · Notas · Mi planilla (el docente)
+ *   ADMINISTRACIÓN  Ajustes (cursos, sedes) y un grupo "Más" plegado con los
+ *                   módulos generales que el dueño ya tenía: inventario,
+ *                   personal, usuarios, gastos, Mi página… No se quita nada,
+ *                   se aparta de lo de todos los días.
+ *
+ * El docente ve sólo su bloque porque lo suyo pide el alcance PROPIO, y la
+ * recepción no ve Control porque no tiene esos permisos: nada se decide por
+ * el nombre del rol. Sólo existe en ACADEMIA; los demás rubros siguen con
+ * `ITEMS`, sin enterarse.
+ */
+const ITEMS_ACADEMIA: (ItemNav & { bloque: Bloque })[] = [
+  { a: "/academia/hoy", label: "Hoy", titulo: "Hoy en el instituto", icono: "clock", seccion: "academia_hoy", bloque: "dia" },
+  { a: "/academia/calendario", label: "Calendario", icono: "calendar", seccion: "academia_calendario", bloque: "dia" },
+  {
+    a: "/academia/alumnos",
+    label: "Estudiantes",
+    etiqueta: (palabra) => conMayuscula(palabra("clientes")),
+    icono: "users",
+    seccion: "academia_alumnos",
+    bloque: "dia",
+    // E20, con su contador (ver MenuLateral). Sin el formulario de la página no existe.
+    hijos: [
+      {
+        a: "/academia/preinscripciones",
+        label: "Inscripciones online",
+        icono: "bell",
+        seccion: "academia_preinscripciones",
+      },
+    ],
+  },
+  { a: "/academia/cobranza", label: "Cobranza", icono: "coins", seccion: "academia_cobranza", bloque: "dia" },
+  { a: "/pos", label: "Punto de venta", icono: "cart", seccion: "pos", bloque: "vender", exacto: true },
+  // La caja del turno: el historial del POS, con el cierre. Lleva a la misma
+  // pantalla con `?vista=caja` (ver Pos.tsx).
+  { a: "/pos?vista=caja", label: "Caja", icono: "billetera", seccion: "caja", bloque: "vender" },
+  { a: "/academia/control", label: "Panel de control", icono: "tablero", seccion: "academia_control", bloque: "control" },
+  {
+    a: "/academia/planilla",
+    label: "Planilla docentes",
+    icono: "fileText",
+    seccion: "academia_planilla",
+    bloque: "control",
+  },
+  { a: "/academia/reportes", label: "Reportes", icono: "chart", seccion: "academia_reportes", bloque: "control" },
+  {
+    a: "/academia/mis-clases",
+    label: "Mis clases de hoy",
+    titulo: "Mis clases",
+    icono: "birrete",
+    seccion: "academia_mis_clases",
+    bloque: "clases",
+  },
+  { a: "/academia/lista", label: "Pasar lista", icono: "lista", seccion: "academia_lista", bloque: "clases" },
+  { a: "/academia/notas", label: "Notas", icono: "edit", seccion: "academia_notas", bloque: "clases" },
+  { a: "/academia/mi-planilla", label: "Mi planilla", icono: "billetera", seccion: "academia_mi_planilla", bloque: "clases" },
+  {
+    a: "/configuracion/academia",
+    label: "Ajustes",
+    titulo: "Ajustes del instituto",
+    icono: "settings",
+    seccion: "academia_ajustes",
+    bloque: "administracion",
+    hijos: [
+      {
+        a: "/configuracion/carreras",
+        label: "Cursos",
+        etiqueta: (palabra) => conMayuscula(palabra("carreras")),
+        icono: "birrete",
+        seccion: "academia_carreras",
+      },
+      general("/inventario/almacenes", { label: "Sedes", icono: "home" }),
+    ],
+  },
+  {
+    a: "/personal",
+    label: "Más",
+    icono: "masCuadro",
+    bloque: "administracion",
+    hijos: [
+      general("/personal"),
+      general("/inventario"),
+      general("/gastos"),
+      // El de ventas y productos de siempre: "Reportes" es el del instituto.
+      general("/reportes", { label: "Más reportes", titulo: "Reportes de ventas" }),
+      general("/mi-pagina"),
+    ],
+  },
+];
+
 /** Un ítem ya filtrado por permisos, con su nombre según el rubro. */
 export interface NodoMenu {
   item: ItemNav;
@@ -472,7 +589,7 @@ export function construirMenu(
   vocabulario?: Vocabulario,
 ): BloqueMenu[] {
   const bloques: BloqueMenu[] = [];
-  for (const i of ITEMS) {
+  for (const i of rubro === "ACADEMIA" ? ITEMS_ACADEMIA : ITEMS) {
     const nodos = filtrar([i], puede, rubro, vocabulario);
     if (nodos.length === 0) continue;
     const ultimo = bloques[bloques.length - 1];

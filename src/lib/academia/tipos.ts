@@ -33,6 +33,23 @@ export interface AjustesAcademia {
   asistenciaMinimaPct: number | null;
   preinscripcionActiva: boolean;
   textosWhatsapp: Record<string, string> | null;
+  // ── Ronda 2 ──
+  /** Todos los módulos del instituto empiezan este día del mes (1..28). */
+  diaInicioModulo: number;
+  /** Cuántos meses dura un módulo (1..6). */
+  duracionModuloMeses: number;
+  /** Las filas del calendario; `almacenId` null = vale para todas las sedes. */
+  franjas: Franja[] | null;
+  /** Sin las 3 fotos la inscripción no pasa (D7). */
+  fotosObligatorias: boolean;
+  /** La retención del 16 %: por confirmar con el cliente (D9), apagada. */
+  retencionActiva: boolean;
+}
+
+export interface Franja {
+  almacenId: number | null;
+  inicio: string;
+  fin: string;
 }
 
 // ── Carreras, materias y planes ─────────────────────────────────────────────
@@ -66,9 +83,13 @@ export interface PlanPago {
   activo: boolean;
   total: number;
   calendario: CuotaPlan[];
-  /** Base del docente por materia, con la clave = orden de la materia. */
+  /** Base del docente por materia, con la clave = orden de la materia. Deja de usarse (D2). */
   baseDocente: Record<string, number>;
+  /** Los dos del modo simple (D4); null = un plan armado a mano. */
+  generado?: PlanGenerado | null;
 }
+
+export type PlanGenerado = "MES_A_MES" | "COMPLETO";
 
 export interface Carrera {
   id: number;
@@ -85,6 +106,27 @@ export interface Carrera {
   gruposActivos: number;
   /** El producto SERVICIO de la carrera: el de las líneas de cuota del POS. */
   productoId?: number | null;
+  // ── Ronda 2: modo simple (D4) ──
+  precioModulo?: number | null;
+  descuentoCompletoPct?: number | null;
+  cupoDefecto?: number | null;
+  /** null = el del instituto (`pctDocenteDefecto`). */
+  pctDocente?: number | null;
+  /** Todos sus planes activos son los generados. */
+  modoSimple?: boolean;
+}
+
+/** `POST /academia/carreras/simple` y `PUT /academia/carreras/:id/simple`. */
+export interface CarreraSimpleInput {
+  nombre: string;
+  descripcion?: string | null;
+  /** En orden; con `id` se renombra o reordena, sin `id` se crea. */
+  modulos: { id?: number; nombre: string }[];
+  precioModulo: number;
+  descuentoCompletoPct: number;
+  cupoDefecto?: number | null;
+  pctDocente?: number | null;
+  publicarEnPagina?: boolean;
 }
 
 export interface CarreraInput {
@@ -182,17 +224,25 @@ export interface DescuentoInscripcion {
   motivo?: string | null;
 }
 
+/** El pago del módulo actual, lo único de plata que ve el docente (D6). */
+export type EstadoPagoModulo = "PAGADO" | "ABONO" | "SIN_PAGAR";
+export type FormaPago = "MES_A_MES" | "COMPLETO" | "OTRO";
+
 export interface AlumnoDelGrupo {
   inscripcionId: number;
   alumno: { id: number; codigo: string | null; apellidos: string; nombres: string; menor: boolean };
   estado: EstadoInscripcion;
   plan: Ref | null;
   descuento: DescuentoInscripcion | null;
-  pagos: { materiaOrden: number; estado: EstadoPagoMateria; detalle: string }[];
+  /** `detalle` va null para el docente. */
+  pagos: { materiaOrden: number; estado: EstadoPagoMateria; detalle: string | null }[];
   /** null para el docente. */
   saldo: number | null;
   vencido: boolean;
   asistenciaPct: number | null;
+  /** Del módulo actual; null si el grupo no empezó o el módulo no tiene cuota. */
+  estadoPago?: EstadoPagoModulo | null;
+  formaPago?: FormaPago | null;
 }
 
 export type FiltroAlumnosGrupo = "todos" | "deben" | "aldia" | "retirados";
@@ -259,6 +309,21 @@ export interface AlumnoFila {
   vencido: boolean;
   ultimaAsistencia: string | null;
   estado: EstadoInscripcion;
+  /** Ronda 2 (D7): cómo están sus 3 fotos. */
+  fotos?: EstadoFotos;
+}
+
+export type EstadoFotos = "COMPLETAS" | "POR_REVISAR" | "OBSERVADAS" | "FALTAN";
+export type TipoFoto = "FOTO" | "CI_ANVERSO" | "CI_REVERSO";
+export const TIPOS_FOTO: TipoFoto[] = ["FOTO", "CI_ANVERSO", "CI_REVERSO"];
+
+/** Los metadatos de una foto: los ve quien ve la ficha; la imagen, sólo con `academia.fotos`. */
+export interface FotoAlumno {
+  tipo: TipoFoto;
+  subidaEn: string;
+  revisadaEn: string | null;
+  revisadaPor: string | null;
+  observacion: string | null;
 }
 
 export interface FiltroAlumnos extends PedidoPagina {
@@ -340,6 +405,8 @@ export interface AlumnoDetalle {
   observaciones: string | null;
   tutores: Tutor[];
   inscripciones: InscripcionDetalle[];
+  /** Ronda 2: las que tiene (las que faltan no vienen). */
+  fotos?: FotoAlumno[];
 }
 
 export interface EditarAlumnoInput {
@@ -406,6 +473,11 @@ export interface Preinscripcion {
   preinscritaEn: string;
   /** Más de 30 días: se calcula, sin cron. */
   vieja: boolean;
+  /** Ronda 2: cuántas de las 3 fotos mandó (0..3). */
+  fotos?: number;
+  planElegido?: { id: number; nombre: string; generado: PlanGenerado | null } | null;
+  /** Siempre false hasta el QR de BISA. */
+  pagoQr?: boolean;
 }
 
 export interface CarritoInscripcion {
@@ -440,6 +512,9 @@ export interface TotalesCobranza {
   venceMes: number;
   venceMesCuotas: number;
   cobradoMes: number;
+  /** Ronda 2: abonos a medias. */
+  parciales?: number;
+  parcialesCuotas?: number;
 }
 
 export interface FilaCobranza {
@@ -457,6 +532,8 @@ export interface FilaCobranza {
   diasAtraso: number;
   ultimoRecordatorioEn: string | null;
   recordatorios: number;
+  /** El enlace público de pago, si ya se creó (ronda 2). */
+  enlacePago?: string | null;
 }
 
 export interface RespuestaCobranza extends Paginado<FilaCobranza> {
@@ -475,11 +552,14 @@ export interface Recordatorio {
   telefono: string;
   texto: string;
   url: string;
+  /** Ronda 2: el estado de cuenta público, ya incluido en `texto`. */
+  enlacePago?: string;
 }
 
 // ── Hoy ─────────────────────────────────────────────────────────────────────
 
-export type TipoAvisoHoy = "PREINSCRIPCIONES" | "SIE" | "CUPO" | "NOTAS";
+/** `SIE` sale de la lista en la ronda 2; se acepta cualquier otro por si el backend suma. */
+export type TipoAvisoHoy = "PREINSCRIPCIONES" | "INSCRIPCIONES_ONLINE" | "EMPIEZA" | "CUPO" | "NOTAS" | (string & {});
 
 export interface HoyAcademia {
   fecha: string;
@@ -494,8 +574,202 @@ export interface HoyAcademia {
   };
   preinscripcionesNuevas: number;
   avisos: { tipo: TipoAvisoHoy; titulo: string; texto: string; grupoId?: number }[];
-  /** Llegan en F1b. */
-  clases: unknown[];
+  /** Las clases de la sede ese día (F1b). */
+  clases: ClaseDelDia[];
+}
+
+// ── Calendario (ronda 2, N1) ────────────────────────────────────────────────
+
+export interface GrupoEnCalendario {
+  grupoId: number;
+  nombre: string;
+  carrera: Ref;
+  modulo: { orden: number; nombre: string; total: number };
+  ultimo: boolean;
+  dias: number[];
+  aula: string | null;
+  docente: { personalId: number; nombre: string } | null;
+  inscritos: number;
+  cupo: number | null;
+  inscripcionAbierta: boolean;
+  /** null para el docente. */
+  pagaronModulo: number | null;
+}
+
+export interface FilaCalendario {
+  inicio: string;
+  fin: string;
+  /** false = un grupo que no calza con ninguna franja abrió su propia fila. */
+  esFranja: boolean;
+  celdas: { mes: string; grupos: GrupoEnCalendario[] }[];
+}
+
+export interface Calendario {
+  sede: Ref | null;
+  /** `AAAA-MM`. */
+  meses: string[];
+  filas: FilaCalendario[];
+}
+
+// ── Asistencia (F1b) ────────────────────────────────────────────────────────
+
+export interface ClaseDelDia {
+  sesionId: number;
+  grupoId: number;
+  nombre: string;
+  carrera: string | Ref;
+  materia: { orden: number; nombre: string };
+  horaInicio: string;
+  horaFin: string;
+  aula: string | null;
+  sede: string | Ref;
+  docente: string | { personalId: number; nombre: string } | null;
+  inscritos: number;
+  pagaronModulo: number | null;
+  llegadaEn: string | null;
+  atrasoMin: number | null;
+  lista: { pasada: boolean; presentes: number; total: number };
+}
+
+export interface ProximaClase {
+  fecha: string;
+  grupoId: number;
+  nombre: string;
+  materia: string | { orden: number; nombre: string };
+  horaInicio: string;
+  horaFin: string;
+  aula: string | null;
+}
+
+export interface MisClases {
+  fecha: string;
+  clases: ClaseDelDia[];
+  proximas: ProximaClase[];
+}
+
+export type EstadoAsistencia = "PRESENTE" | "AUSENTE" | "TARDE" | "JUSTIFICADO";
+
+export interface ListaDeClase {
+  sesion: {
+    id: number;
+    fecha: string;
+    horaInicio: string;
+    horaFin: string;
+    estado: string;
+    materia: { orden: number; nombre: string };
+  };
+  guardada: boolean;
+  editable: boolean;
+  resumen: { pagaron: number; total: number };
+  alumnos: { inscripcionId: number; nombre: string; estadoPago: EstadoPagoModulo | null; estado: EstadoAsistencia | null }[];
+}
+
+// ── Notas (F1b) ─────────────────────────────────────────────────────────────
+
+export interface NotasDelGrupo {
+  materia: { id: number; orden: number; nombre: string; desde: string; hasta: string };
+  materias: { id: number; orden: number; nombre: string; estado: EstadoMateriaGrupo }[];
+  cerrada: boolean;
+  notaMinima: number;
+  escalaMax: number;
+  items: { inscripcionId: number; nombre: string; estadoPago: EstadoPagoModulo | null; nota: number | null }[];
+}
+
+// ── Planilla del docente (F1b, D2) ──────────────────────────────────────────
+
+export type EstadoPlanilla = "EN_CURSO" | "CERRADA" | "PAGADA";
+
+export interface FilaPlanillaMes {
+  personalId: number;
+  nombre: string;
+  grupos: number;
+  cuentan: number;
+  total: number;
+  bruto: number;
+  retencion: number | null;
+  liquido: number;
+  estado: EstadoPlanilla;
+}
+
+export interface PlanillaMes {
+  mes: string;
+  retencionActiva: boolean;
+  docentes: FilaPlanillaMes[];
+  totales: { bruto: number; liquido: number };
+}
+
+export interface LineaPlanilla {
+  inscripcionId: number;
+  alumno: Ref;
+  grupo: Ref;
+  materia: { orden: number; nombre: string };
+  formaPago: FormaPago;
+  cobradoModulo: number;
+  abonado: number;
+  montoModulo: number;
+  pct: number;
+  monto: number;
+  /** "Pagó Bs 1.350 el 8-sep · 1.350 ÷ 3 = 450 · 20 % = Bs 90". */
+  explicacion: string;
+}
+
+export interface PlanillaDocente {
+  docente: { personalId: number; nombre: string };
+  mes: string;
+  estado: EstadoPlanilla;
+  pct: { defecto: number; porCurso: { carrera: string | Ref; pct: number }[] };
+  resumen: {
+    cuentan: number;
+    postergados: number;
+    sinPagar: number;
+    atrasados: number;
+    bruto: number;
+    retencion: number | null;
+    retencionActiva: boolean;
+    /** Por confirmar con el cliente (D9): siempre null. */
+    atrasos: number | null;
+    liquido: number;
+  };
+  /** Para el docente (PROPIO) las cuatro listas llegan vacías. */
+  cuentan: LineaPlanilla[];
+  postergados: LineaPlanilla[];
+  atrasados: LineaPlanilla[];
+  sinPagar: LineaPlanilla[];
+  meses: { mes: string; estado: EstadoPlanilla; liquido: number }[];
+}
+
+// ── Panel de control (N9) y reportes (E18) ──────────────────────────────────
+
+export interface PanelControl {
+  fotosPorRevisar: {
+    alumnoId: number;
+    nombre: string;
+    ci: string | null;
+    fechaNacimiento: string | null;
+    grupo: string | Ref;
+    inscritoPor: string;
+    inscritaEn: string;
+  }[];
+  asistenSinPagar: { alumno: string | Ref; grupo: string | Ref; asistencias: number; estadoPago: EstadoPagoModulo | null; inscritoPor: string }[];
+  pagaronNoVienen: { alumno: string | Ref; grupo: string | Ref; asistencias: number; clasesDelMes: number; inscritoPor: string }[];
+  descuentosConPin: { inscripcionId: number; alumno: string | Ref; descuento: string; autorizadoPor: string; en: string }[];
+  ventasAnuladas: { ventaId: number; comprobante: string | null; total: number; anuladaPor: string; en: string }[];
+  inscripcionesPorUsuario: { usuario: string; sede: string | Ref; cantidad: number; cobrado: number }[];
+}
+
+export interface ReportesAcademia {
+  mes: string;
+  porSede: {
+    sede: string | Ref;
+    cobradoModulos: number;
+    ventasProductos: number;
+    sueldosDocentes: number;
+    otrosGastos: number;
+    resultado: number;
+  }[];
+  activosPorCurso: { curso: string | Ref; activos: number; cupo: number | null }[];
+  morosidad: { vencido: number; estudiantes: number; pctEstudiantes: number };
+  asistenciaPromedioPct: number | null;
 }
 
 // ── Público ─────────────────────────────────────────────────────────────────
@@ -519,6 +793,24 @@ export interface CursoPublico {
   materias: string[];
   desde: number | null;
   grupos: GrupoPublico[];
+  // ── Ronda 2: las dos formas de pagar a la vista ──
+  precioModulo?: number | null;
+  precioCompleto?: number | null;
+  ahorro?: number | null;
+  modulos?: string[];
+  planes?: { id: number; nombre: string; generado: PlanGenerado | null }[];
+}
+
+/** `GET /publico/academia/:sub/pagar/:token` (P6): nunca CI, teléfono ni apellidos. */
+export interface EstadoCuentaPublico {
+  instituto: { nombre: string; logoUrl: string | null; telefono: string | null };
+  alumno: { nombres: string };
+  curso: string;
+  grupo: { nombre: string; sede: string };
+  cuotas: { concepto: string; monto: number; pagado: number; saldo: number; vence: string; vencida: boolean; estado: EstadoCuota }[];
+  proxima: { concepto: string; saldo: number; vence: string; vencida: boolean } | null;
+  saldoTotal: number;
+  qr: { tipo: "FIJO"; imagenUrl: string } | null;
 }
 
 export interface PreinscripcionInput {
@@ -534,7 +826,14 @@ export interface PreinscripcionInput {
   turnoPreferido?: string;
   privacidad: true;
   captcha?: string;
+  // ── Ronda 2 ──
+  planPagoId?: number;
+  ci?: string;
+  ciExpedido?: string;
 }
+
+/** Las 3 fotos (D7), ya achicadas en el navegador. */
+export type FotosInscripcion = Partial<Record<TipoFoto, Blob>>;
 
 export interface PreinscripcionEnviada {
   ok: true;

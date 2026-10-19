@@ -6,7 +6,7 @@ import type { AjustesAcademia as Ajustes } from "../../../lib/academia/tipos";
 import { usePalabras } from "../../../lib/academia/usePalabras";
 import { useApi } from "../../../lib/useApi";
 
-type Numerico = Exclude<keyof Ajustes, "preinscripcionActiva" | "textosWhatsapp">;
+type Numerico = Exclude<keyof Ajustes, "preinscripcionActiva" | "textosWhatsapp" | "franjas" | "fotosObligatorias" | "retencionActiva" | "diaInicioModulo" | "duracionModuloMeses">;
 
 /** Los que pueden quedar vacíos (null = no aplica). */
 const OPCIONALES: Numerico[] = ["descuentoAtrasoPorMin", "asistenciaMinimaPct"];

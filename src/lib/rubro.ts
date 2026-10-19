@@ -150,20 +150,21 @@ const POR_RUBRO: Partial<Record<Rubro, Partial<Record<Termino, string>>>> = {
     articuloCap: "Medicamento",
     almacenes: "Sucursales",
   },
-  // Respaldo del perfil ACADEMIA (contrato de la ronda 1), por si un backend
-  // anterior todavía no manda su vocabulario. La sede es un almacén SUCURSAL
-  // (PLAN-ACADEMIAS §10.1): en pantalla nunca dice "almacén".
+  // Respaldo del perfil ACADEMIA, por si un backend anterior todavía no manda
+  // su vocabulario. Desde la ronda 2 (D1) el instituto dice estudiante, curso
+  // y módulo. La sede es un almacén SUCURSAL (PLAN-ACADEMIAS §10.1): en
+  // pantalla nunca dice "almacén".
   ACADEMIA: {
     almacenes: "Sedes",
-    cliente: "alumno",
-    clientes: "alumnos",
+    cliente: "estudiante",
+    clientes: "estudiantes",
     profesional: "docente",
     sucursal: "sede",
     sucursales: "sedes",
-    carrera: "carrera",
-    carreras: "carreras",
-    materia: "materia",
-    materias: "materias",
+    carrera: "curso",
+    carreras: "cursos",
+    materia: "módulo",
+    materias: "módulos",
   },
 };
 
@@ -227,8 +228,9 @@ const ROL_POR_RUBRO: Partial<Record<Rubro, Partial<Record<Rol, string>>>> = {
   BARBERIA: { CAJERO: "Recepción", PROFESIONAL: "Barbero" },
   SPA: { CAJERO: "Recepción", PROFESIONAL: "Terapeuta" },
   UNAS: { CAJERO: "Recepción", PROFESIONAL: "Manicurista" },
-  // Las plantillas del rubro (PLAN-ACADEMIAS-TECNICO §5.3).
-  ACADEMIA: { SUPERVISOR: "Coordinación", CAJERO: "Secretaría", PROFESIONAL: "Docente" },
+  // Las plantillas del rubro (PLAN-ACADEMIAS-TECNICO §5.3; la ronda 2, D8,
+  // llama "Recepción" a la del mostrador).
+  ACADEMIA: { SUPERVISOR: "Coordinación", CAJERO: "Recepción", PROFESIONAL: "Docente" },
 };
 
 /**

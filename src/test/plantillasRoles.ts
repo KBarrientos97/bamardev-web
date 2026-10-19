@@ -90,6 +90,9 @@ export const FEATURE_DE_PERMISO: Record<string, string | null> = {
   "academia.inscribir": "academia",
   "academia.becas": "academia",
   "academia.cobranza": "academia",
+  // Ronda 2: sólo la plantilla Administrador.
+  "academia.fotos": "academia",
+  "academia.control": "academia",
   "asistencia.registrar": "asistencia",
   "asistencia.llegadas": "asistencia",
   "asistencia.justificar": "asistencia",
@@ -173,6 +176,8 @@ export const PLANTILLAS = {
     "academia.inscribir",
     "academia.becas",
     "academia.cobranza",
+    "academia.fotos",
+    "academia.control",
     "asistencia.registrar",
     "asistencia.llegadas",
     "asistencia.justificar",

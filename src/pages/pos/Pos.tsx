@@ -562,6 +562,15 @@ export default function Pos() {
     setPantalla("cuotasPorCobrar");
   }, [pedidoCuotas, params, setParams]);
 
+  // "Caja" en el menú del instituto llega con `?vista=caja`: la pantalla del
+  // turno (lo vendido y el cierre). Sin caja abierta, primero la apertura.
+  const vistaCaja = params.get("vista") === "caja";
+  useEffect(() => {
+    if (!vistaCaja) return;
+    setParams({}, { replace: true });
+    setPantalla("historial");
+  }, [vistaCaja, setParams]);
+
   /** Arma el cuerpo de la venta juntando carrito y datos de entrega. */
   const cuerpoVenta = useCallback(
     (pagos?: PagoInput[]) => ({

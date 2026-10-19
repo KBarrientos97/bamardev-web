@@ -1,4 +1,5 @@
 import type {
+  AjustesAcademia,
   AlumnoDelGrupo,
   AlumnoDetalle,
   GrupoDetalle,
@@ -9,6 +10,31 @@ import type {
  * Datos de prueba de la vertical Educación, con los nombres del lienzo
  * (PLAN-ACADEMIAS §11): Barbería en Central, Camila debe la cuota 2.
  */
+
+/** Los ajustes del instituto de los tests: los valores por defecto del contrato. */
+export function ajustesDePrueba(cambios: Partial<AjustesAcademia> = {}): AjustesAcademia {
+  return {
+    notaMinima: 51,
+    escalaMax: 100,
+    toleranciaAtrasoMin: 5,
+    descuentoAtrasoPorMin: null,
+    pctDocenteDefecto: 20,
+    retencionPctDefecto: 16,
+    topePromoSinPinPct: 10,
+    asistenciaMinimaPct: null,
+    preinscripcionActiva: true,
+    textosWhatsapp: null,
+    diaInicioModulo: 10,
+    duracionModuloMeses: 1,
+    franjas: [
+      { almacenId: null, inicio: "07:00", fin: "09:00" },
+      { almacenId: null, inicio: "19:00", fin: "21:00" },
+    ],
+    fotosObligatorias: true,
+    retencionActiva: false,
+    ...cambios,
+  };
+}
 
 export const PLAN_COMPLETO: PlanPago = {
   id: 1,

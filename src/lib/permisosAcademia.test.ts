@@ -49,9 +49,9 @@ describe("secciones de la academia", () => {
     ]);
   });
 
-  it("el docente sólo sus grupos y sus alumnos, y entra a sus grupos", () => {
-    expect(ve("PROFESIONAL")).toEqual(["academia_grupos", "academia_alumnos"]);
-    expect(rutaInicial(ctxDe("PROFESIONAL", "ACADEMIA", FEATURES))).toBe("/academia/grupos");
+  it("el docente sólo sus grupos (sin la lista de estudiantes) y entra a sus clases de hoy", () => {
+    expect(ve("PROFESIONAL")).toEqual(["academia_grupos"]);
+    expect(rutaInicial(ctxDe("PROFESIONAL", "ACADEMIA", FEATURES))).toBe("/academia/mis-clases");
   });
 
   it("la secretaría y la dirección empiezan el día en Hoy", () => {
@@ -96,5 +96,51 @@ describe("cobrar cuotas en el POS", () => {
     expect(cobraCuotas(ctxDe("PROFESIONAL", "ACADEMIA", FEATURES))).toBe(false);
     expect(cobraCuotas(ctxDe("ADMIN", "RESTAURANTE", ["pos", "caja"]))).toBe(false);
     expect(cobraCuotas(ctxDe("ADMIN", "ACADEMIA", []))).toBe(false);
+  });
+});
+
+/**
+ * Ronda 2 (MenuV2): lo del docente pide el alcance PROPIO —la recepción
+ * también pasa lista, pero desde el grupo—; el panel de control y las fotos,
+ * sólo el Administrador.
+ */
+describe("secciones de la ronda 2", () => {
+  const NUEVAS: Seccion[] = [
+    "academia_calendario",
+    "academia_mis_clases",
+    "academia_lista",
+    "academia_notas",
+    "academia_planilla",
+    "academia_mi_planilla",
+    "academia_control",
+    "academia_reportes",
+  ];
+  const TODAS = [...FEATURES, "planilla_docente", "reportes"];
+  const veNuevas = (rol: "ADMIN" | "SUPERVISOR" | "CAJERO" | "PROFESIONAL") => {
+    const c = ctxDe(rol, "ACADEMIA", TODAS);
+    return NUEVAS.filter((s) => puedeVer(c, s));
+  };
+
+  it("el administrador: calendario, planilla de todos, control y reportes", () => {
+    expect(veNuevas("ADMIN")).toEqual(["academia_calendario", "academia_planilla", "academia_control", "academia_reportes"]);
+  });
+
+  it("la recepción: sólo el calendario", () => {
+    expect(veNuevas("CAJERO")).toEqual(["academia_calendario"]);
+  });
+
+  it("el docente: sus clases, la lista, las notas y su planilla", () => {
+    expect(veNuevas("PROFESIONAL")).toEqual([
+      "academia_mis_clases",
+      "academia_lista",
+      "academia_notas",
+      "academia_mi_planilla",
+    ]);
+  });
+
+  it("sin la feature de la planilla, nadie ve planillas", () => {
+    const c = ctxDe("ADMIN", "ACADEMIA", FEATURES);
+    expect(puedeVer(c, "academia_planilla")).toBe(false);
+    expect(puedeVer(ctxDe("PROFESIONAL", "ACADEMIA", FEATURES), "academia_mi_planilla")).toBe(false);
   });
 });

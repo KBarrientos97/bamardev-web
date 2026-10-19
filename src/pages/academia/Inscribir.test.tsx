@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { grupoDetalle } from "../../test/academiaFixtures";
+import { ajustesDePrueba, grupoDetalle } from "../../test/academiaFixtures";
 
 /**
  * E5 · Inscribir: alumno nuevo con tutor si es menor, el plan con su
@@ -60,18 +60,7 @@ beforeEach(() => {
   vi.setSystemTime(new Date("2026-10-15T14:00:00.000Z"));
   vi.spyOn(window, "open").mockImplementation(() => null);
   vi.mocked(apiAcademia.grupo).mockResolvedValue(grupoDetalle());
-  vi.mocked(apiAcademia.ajustes).mockResolvedValue({
-    notaMinima: 51,
-    escalaMax: 100,
-    toleranciaAtrasoMin: 5,
-    descuentoAtrasoPorMin: null,
-    pctDocenteDefecto: 20,
-    retencionPctDefecto: 16,
-    topePromoSinPinPct: 10,
-    asistenciaMinimaPct: null,
-    preinscripcionActiva: true,
-    textosWhatsapp: null,
-  });
+  vi.mocked(apiAcademia.ajustes).mockResolvedValue(ajustesDePrueba({ fotosObligatorias: false }));
   vi.mocked(apiAcademia.alumnos).mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 6 });
   vi.mocked(apiAcademia.inscribir).mockResolvedValue({ id: 555 } as never);
 });
