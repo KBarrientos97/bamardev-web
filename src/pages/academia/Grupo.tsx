@@ -17,7 +17,7 @@ import { cobraCuotas, soloLoSuyo, tienePermiso } from "../../lib/permisos";
 import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
 import Inscribir from "./Inscribir";
-import { EstadoDeCuenta, EstadoPagoTexto, FiltrosConteo, PuntosPago } from "./piezas";
+import { ErrorDeCarga, EstadoDeCuenta, EstadoPagoTexto, FiltrosConteo, PuntosPago } from "./piezas";
 
 /**
  * E3 · Detalle de grupo, versión limpia (lienzo E3 v2): el centralizador,
@@ -85,7 +85,13 @@ export default function Grupo() {
         <Link to={volverA} className="text-[13px] text-texto-3 hover:underline">
           ← {sinMontos ? "Mis clases" : "Calendario"}
         </Link>
-        <ErrorMsg onReintentar={grupo.recargar}>{grupo.error}</ErrorMsg>
+        <ErrorDeCarga
+          falla={grupo.falla}
+          mensaje={grupo.error}
+          onReintentar={grupo.recargar}
+          que="este grupo"
+          volver={sinMontos ? { a: "/academia/mis-clases", texto: "Ir a mis clases" } : { a: "/academia/calendario", texto: "Volver al calendario" }}
+        />
       </div>
     );
   }

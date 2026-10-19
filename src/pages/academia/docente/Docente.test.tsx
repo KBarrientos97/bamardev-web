@@ -145,6 +145,16 @@ describe("N6 · Pasar lista", () => {
     expect(screen.getByText("Ese día no hay clase de este grupo")).toBeInTheDocument();
   });
 
+  it("un grupo que no es suyo (404 GRUPO_NO_EXISTE) no es \"no hay clase\": no lo encontramos, y a sus clases (N-3)", async () => {
+    vi.mocked(apiAcademia.lista).mockRejectedValue(new ApiError("Ese grupo no existe", 404, { codigo: "GRUPO_NO_EXISTE" }));
+    vi.mocked(apiAcademia.grupo).mockRejectedValue(new ApiError("Ese grupo no existe", 404, { codigo: "GRUPO_NO_EXISTE" }));
+    await montar("/academia/lista?grupo=83");
+    expect(screen.getByRole("heading", { name: "No encontramos este grupo" })).toBeInTheDocument();
+    expect(screen.queryByText("Ese día no hay clase de este grupo")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Reintentar" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Ir a mis clases" })).toHaveAttribute("href", "/academia/mis-clases");
+  });
+
   it("sin grupo y con una sola clase hoy, abre esa", async () => {
     await montar("/academia/lista");
     expect(apiAcademia.lista).toHaveBeenCalledWith(7, undefined);

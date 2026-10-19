@@ -12,7 +12,7 @@ import { fmtHora, isoDia } from "../../../lib/format";
 import { soloLoSuyo } from "../../../lib/permisos";
 import { useApi } from "../../../lib/useApi";
 import { useAuth } from "../../../store/AuthContext";
-import { EstadoPagoTexto } from "../piezas";
+import { ErrorDeCarga, EstadoPagoTexto } from "../piezas";
 import NavDocente from "./NavDocente";
 
 type Filtro = "todos" | "debe";
@@ -83,11 +83,13 @@ function Lista({
   docente: boolean;
   palabras: ReturnType<typeof usePalabras>;
 }) {
-  // Sin clase ese día (404 SIN_CLASE) no es un error: es "hoy no toca".
+  // Sin clase ese día (404 SIN_CLASE) no es un error: es "hoy no toca". Otro
+  // 404 es un grupo que no existe o, para el docente, que no es suyo
+  // (GRUPO_NO_EXISTE): eso no es "ese día no hay clase" (QA ronda 2, N-3).
   const lista = useApi(
     () =>
       apiAcademia.lista(grupoId, fecha).catch((e: unknown) => {
-        if (e instanceof ApiError && (e.codigo === CODIGOS_ACADEMIA.SIN_CLASE || e.status === 404)) return null;
+        if (e instanceof ApiError && e.codigo === CODIGOS_ACADEMIA.SIN_CLASE) return null;
         throw e;
       }),
     [grupoId, fecha],
@@ -177,7 +179,13 @@ function Lista({
       </header>
 
       {lista.error && !d ? (
-        <ErrorMsg onReintentar={lista.recargar}>{lista.error}</ErrorMsg>
+        <ErrorDeCarga
+          falla={lista.falla}
+          mensaje={lista.error}
+          onReintentar={lista.recargar}
+          que="este grupo"
+          volver={{ a: volver, texto: docente ? "Ir a mis clases" : "Volver al grupo" }}
+        />
       ) : sinClase ? (
         <Vacio
           icono="calendar"

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { textoEvento } from "./vista";
+import { ApiError } from "../api";
+import { fueraDeAlcance, textoEvento } from "./vista";
 
 /**
  * El historial de la ficha: el `detalle` de cada evento es el JSON que guardó
@@ -50,5 +51,16 @@ describe("textoEvento", () => {
 
   it("un detalle de texto se muestra tal cual", () => {
     expect(textoEvento({ accion: "Inscripción", detalle: "plan Cuotas" })).toEqual({ titulo: "Inscripción", detalle: "plan Cuotas" });
+  });
+});
+
+describe("fueraDeAlcance (QA ronda 2, N-3)", () => {
+  it("otra sede, lo que no existe (o no es del docente), y lo que no es de alcance", () => {
+    expect(fueraDeAlcance(new ApiError("Ese grupo es de otra sede", 403, { codigo: "OTRA_SEDE" }))).toBe("OTRA_SEDE");
+    expect(fueraDeAlcance(new ApiError("Ese grupo no existe", 404, { codigo: "GRUPO_NO_EXISTE" }))).toBe("NO_EXISTE");
+    expect(fueraDeAlcance(new ApiError("No existe", 404))).toBe("NO_EXISTE");
+    expect(fueraDeAlcance(new ApiError("Ese día el grupo no tiene clase.", 404, { codigo: "SIN_CLASE" }))).toBeNull();
+    expect(fueraDeAlcance(new ApiError("Sin permiso", 403))).toBeNull();
+    expect(fueraDeAlcance(new Error("Sin conexión"))).toBeNull();
   });
 });

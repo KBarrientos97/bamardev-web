@@ -25,6 +25,7 @@ vi.mock("../../lib/academia/apiAcademia", async (importOriginal) => {
 });
 
 import { apiAcademia } from "../../lib/academia/apiAcademia";
+import { ApiError } from "../../lib/api";
 import { fichaCamila } from "../../test/academiaFixtures";
 import FichaAlumno from "./FichaAlumno";
 
@@ -121,5 +122,17 @@ describe("E6 · ficha del estudiante", () => {
     expect(historial).not.toHaveTextContent("[object Object]");
     expect(historial).toHaveTextContent(/Inscripción · total Bs\s?1\.350,00/);
     expect(historial).toHaveTextContent(/Beca 50 % · − Bs\s?675,00 · Rendimiento/);
+  });
+});
+
+describe("E6 · ficha de otra sede (QA ronda 2, N-3)", () => {
+  it("dice que es de otra sede y ofrece volver a la lista, sin Reintentar", async () => {
+    vi.mocked(apiAcademia.alumno).mockRejectedValue(
+      new ApiError("Ese estudiante es de otra sede: sólo podés operar en la tuya.", 403, { codigo: "OTRA_SEDE" }),
+    );
+    await montar();
+    expect(screen.getByRole("heading", { name: "Es de otra sede" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Reintentar" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /^Volver a / })).toHaveAttribute("href", "/academia/alumnos");
   });
 });

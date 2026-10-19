@@ -1,6 +1,9 @@
 import type { ReactNode } from "react";
+import { Link } from "react-router-dom";
+import { ErrorMsg, Vacio } from "../../components/ui";
 import type { Cuota, EstadoPagoMateria, EstadoPagoModulo } from "../../lib/academia/tipos";
-import { nombreCuota, textoCuota, textoEstadoPago } from "../../lib/academia/vista";
+import { usePalabras } from "../../lib/academia/usePalabras";
+import { fueraDeAlcance, nombreCuota, textoCuota, textoEstadoPago } from "../../lib/academia/vista";
 
 /**
  * Piezas de las pantallas del instituto, con las reglas de la versión limpia
@@ -199,4 +202,38 @@ const TONO_PAGO = {
 export function EstadoPagoTexto({ estado }: { estado: EstadoPagoModulo | null | undefined }) {
   const t = textoEstadoPago(estado);
   return <span className={`text-sm ${TONO_PAGO[t.tono]}`}>{t.texto}</span>;
+}
+
+/**
+ * El error al abrir un grupo o un estudiante (QA ronda 2, N-3). Si es por
+ * alcance (otra sede, o del docente algo que no es suyo) no hay "Reintentar"
+ * que valga: se dice qué pasa y se ofrece volver. Cualquier otro error (la
+ * red, el servidor) sigue con su "Reintentar".
+ */
+export function ErrorDeCarga({
+  falla,
+  mensaje,
+  onReintentar,
+  que,
+  volver,
+}: {
+  falla: unknown;
+  mensaje: string;
+  onReintentar: () => void;
+  /** "este grupo", "este estudiante": lo que no se encontró. */
+  que: string;
+  volver: { a: string; texto: string };
+}) {
+  const p = usePalabras();
+  const alcance = fueraDeAlcance(falla);
+  const enlace = (
+    <Link to={volver.a} className="text-sm font-semibold text-primary-700 hover:underline">
+      {volver.texto}
+    </Link>
+  );
+  if (alcance === "OTRA_SEDE") return <Vacio icono="lock" titulo={`Es de otra ${p.sede}`} texto={mensaje} accion={enlace} />;
+  if (alcance === "NO_EXISTE") {
+    return <Vacio icono="search" titulo={`No encontramos ${que}`} texto="Puede que ya no exista o que no esté a tu cargo." accion={enlace} />;
+  }
+  return <ErrorMsg onReintentar={onReintentar}>{mensaje}</ErrorMsg>;
 }

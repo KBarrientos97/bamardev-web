@@ -1,5 +1,6 @@
 import type { Cuota, EstadoPagoModulo, EstadoPlanilla, EventoInscripcion, FormaPago, Ref } from "./tipos";
 import { fechaCorta, textoCubre } from "./formato";
+import { ApiError } from "../api";
 import { fmtMoney } from "../format";
 
 /**
@@ -198,4 +199,20 @@ export function textoEvento(e: Pick<EventoInscripcion, "accion" | "detalle">): {
       }
   }
   return { titulo, detalle: partes.filter(Boolean).join(" · ") };
+}
+
+export type FueraDeAlcance = "OTRA_SEDE" | "NO_EXISTE";
+
+/**
+ * Un rechazo por alcance (QA ronda 2, N-3; contrato #36 y #44): la recepción
+ * pidió algo de otra sede (403 `OTRA_SEDE`) o el docente, algo que no es de
+ * sus grupos (404, como si no existiera). Reintentar no cambia nada: la
+ * pantalla dice qué pasa y ofrece volver. `SIN_CLASE` es otro 404 que no es
+ * de alcance ("ese día no toca") y lo maneja la lista.
+ */
+export function fueraDeAlcance(e: unknown): FueraDeAlcance | null {
+  if (!(e instanceof ApiError)) return null;
+  if (e.status === 403 && e.codigo === "OTRA_SEDE") return "OTRA_SEDE";
+  if (e.status === 404 && e.codigo !== "SIN_CLASE") return "NO_EXISTE";
+  return null;
 }

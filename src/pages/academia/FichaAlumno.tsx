@@ -23,6 +23,7 @@ import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
 import PedirMotivo from "../agenda/PedirMotivo";
 import FotosAlumno from "./FotosAlumno";
+import { ErrorDeCarga } from "./piezas";
 
 const MOTIVOS_RETIRO = ["Horario", "Económico", "Cambio de ciudad", "No le gustó el curso", "Otro"] as const;
 
@@ -70,7 +71,13 @@ export default function FichaAlumno() {
         <Link to="/academia/alumnos" className="text-[13px] text-texto-3 hover:underline">
           ← {p.Alumnos}
         </Link>
-        <ErrorMsg onReintentar={ficha.recargar}>{ficha.error}</ErrorMsg>
+        <ErrorDeCarga
+          falla={ficha.falla}
+          mensaje={ficha.error}
+          onReintentar={ficha.recargar}
+          que={`este ${p.alumno}`}
+          volver={{ a: "/academia/alumnos", texto: `Volver a ${p.alumnos}` }}
+        />
       </div>
     );
   }

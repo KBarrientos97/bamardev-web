@@ -13,7 +13,7 @@ import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
 import PedirMotivo from "../agenda/PedirMotivo";
 import NavDocente from "./docente/NavDocente";
-import { EstadoPagoTexto } from "./piezas";
+import { ErrorDeCarga, EstadoPagoTexto } from "./piezas";
 
 type Filtro = "todos" | "sin" | "reprobados";
 
@@ -157,7 +157,13 @@ function CargaNotas({
   if (carga.error && !d) {
     return (
       <div className="mx-auto max-w-5xl space-y-4 p-4 sm:p-6 lg:p-8">
-        <ErrorMsg onReintentar={carga.recargar}>{carga.error}</ErrorMsg>
+        <ErrorDeCarga
+          falla={carga.falla}
+          mensaje={carga.error}
+          onReintentar={carga.recargar}
+          que="este grupo"
+          volver={docente ? { a: "/academia/mis-clases", texto: "Ir a mis clases" } : { a: "/academia/calendario", texto: "Volver al calendario" }}
+        />
       </div>
     );
   }

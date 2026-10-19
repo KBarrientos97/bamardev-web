@@ -39,6 +39,7 @@ vi.mock("../../lib/academia/apiAcademia", async (importOriginal) => {
 });
 
 import { apiAcademia } from "../../lib/academia/apiAcademia";
+import { ApiError } from "../../lib/api";
 import Grupo from "./Grupo";
 
 function DondeEstoy() {
@@ -192,5 +193,28 @@ describe("E3 · detalle de grupo", () => {
     await montar();
     fireEvent.click(screen.getByRole("button", { name: "Más acciones del grupo" }));
     expect(screen.getByRole("menuitem", { name: "Cargar notas" })).toBeInTheDocument();
+  });
+});
+
+describe("E3 · errores por alcance (QA ronda 2, N-3)", () => {
+  it("un grupo de otra sede: \"Es de otra sede\", con el motivo y volver, sin Reintentar", async () => {
+    vi.mocked(apiAcademia.grupo).mockRejectedValue(
+      new ApiError("Ese grupo es de otra sede: sólo podés operar en la tuya.", 403, { codigo: "OTRA_SEDE" }),
+    );
+    await montar();
+    expect(screen.getByRole("heading", { name: "Es de otra sede" })).toBeInTheDocument();
+    expect(screen.getByText("Ese grupo es de otra sede: sólo podés operar en la tuya.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Reintentar" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Volver al calendario" })).toHaveAttribute("href", "/academia/calendario");
+  });
+
+  it("un corte de red sigue con Reintentar", async () => {
+    vi.mocked(apiAcademia.grupo).mockRejectedValueOnce(new Error("Sin conexión"));
+    await montar();
+    expect(screen.getByText("Sin conexión")).toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Reintentar" }));
+    });
+    expect(apiAcademia.grupo).toHaveBeenCalledTimes(2);
   });
 });
