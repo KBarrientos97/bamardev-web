@@ -201,3 +201,60 @@ export const SESION_SECRETARIA = {
   rubro: "ACADEMIA",
   vocabulario: undefined,
 };
+
+/** La sesión del dueño (de organización: ve todas las sedes). */
+export const SESION_ADMIN = {
+  usuario: {
+    id: 1,
+    username: "hugo",
+    nombre: "Hugo Salinas",
+    rol: "ADMIN",
+    sucursalId: null,
+    sucursal: null,
+    permisos: [
+      "academia.ver",
+      "academia.configurar",
+      "academia.grupos",
+      "academia.inscribir",
+      "academia.becas",
+      "academia.cobranza",
+      "academia.fotos",
+      "academia.control",
+      "asistencia.registrar",
+      "asistencia.llegadas",
+      "notas.registrar",
+      "notas.reabrir",
+      "planilla.ver",
+      "planilla.liquidar",
+      "reportes.ver",
+      "ventas.vender",
+      "caja.operar",
+    ],
+    permisosPropios: [] as string[],
+  },
+  negocio: {
+    id: 20,
+    nombre: "CCTP Horizonte",
+    tipoNegocio: "ACADEMIA",
+    features: ["academia", "asistencia", "notas", "planilla_docente", "preinscripcion_online", "pos", "caja", "reportes"],
+  },
+  rubro: "ACADEMIA",
+  vocabulario: undefined,
+};
+
+/** La sesión del docente: todo lo suyo, alcance PROPIO. */
+export const SESION_DOCENTE = {
+  usuario: {
+    id: 9,
+    username: "marco",
+    nombre: "Marco Rojas",
+    rol: "PROFESIONAL",
+    sucursalId: 1,
+    sucursal: "Central",
+    permisos: ["academia.ver", "asistencia.registrar", "notas.registrar", "planilla.ver"],
+    permisosPropios: ["academia.ver", "asistencia.registrar", "notas.registrar", "planilla.ver"],
+  },
+  negocio: SESION_ADMIN.negocio,
+  rubro: "ACADEMIA",
+  vocabulario: undefined,
+};

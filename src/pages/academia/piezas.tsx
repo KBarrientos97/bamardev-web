@@ -101,6 +101,71 @@ export function Dato({ etiqueta, children }: { etiqueta: string; children: React
   );
 }
 
+/**
+ * Un interruptor de sí o no, con su texto al lado. `bloqueado` lo deja a la
+ * vista pero sin tocar: lo que el instituto todavía tiene que confirmar
+ * (la retención, los atrasos) o lo que es regla fija (las 3 fotos).
+ */
+export function Interruptor({
+  activo,
+  onCambiar,
+  etiqueta,
+  detalle,
+  bloqueado = false,
+}: {
+  activo: boolean;
+  onCambiar?: (v: boolean) => void;
+  etiqueta: string;
+  detalle?: ReactNode;
+  bloqueado?: boolean;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-4 py-3">
+      <span className="min-w-0">
+        <span className="block text-sm text-texto">{etiqueta}</span>
+        {detalle && <span className="mt-0.5 block text-[13px] text-texto-3">{detalle}</span>}
+      </span>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={activo}
+        aria-label={etiqueta}
+        disabled={bloqueado}
+        onClick={() => onCambiar?.(!activo)}
+        className="relative inline-flex h-6 w-10 shrink-0 items-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-60"
+        style={{ background: activo ? "var(--color-primary-boton)" : "#CBD5E1" }}
+      >
+        <span
+          aria-hidden="true"
+          className="absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-[left] duration-150"
+          style={{ left: activo ? 18 : 2 }}
+        />
+      </button>
+    </div>
+  );
+}
+
+/**
+ * Una sección de los ajustes: el título y para qué sirve a la izquierda, lo
+ * que se toca a la derecha. En el celular, uno debajo del otro.
+ */
+export function SeccionAjuste({ id, titulo, bajada, children }: { id: string; titulo: string; bajada?: string; children: ReactNode }) {
+  return (
+    <section
+      aria-labelledby={id}
+      className="grid gap-3 border-t border-borde-soft py-6 md:grid-cols-[minmax(200px,260px)_minmax(0,1fr)] md:gap-8"
+    >
+      <div>
+        <h2 id={id} className="text-base font-bold text-texto">
+          {titulo}
+        </h2>
+        {bajada && <p className="mt-1 text-[13px] text-texto-3">{bajada}</p>}
+      </div>
+      <div className="min-w-0">{children}</div>
+    </section>
+  );
+}
+
 /** El estado de cuenta corto del panel: un renglón por cuota. */
 export function EstadoDeCuenta({ cuotas }: { cuotas: Cuota[] }) {
   if (!cuotas.length) return <p className="text-sm text-texto-3">Sin cuotas.</p>;
