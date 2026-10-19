@@ -32,6 +32,7 @@ export default function FotosAlumno({
   const [urls, setUrls] = useState<Partial<Record<TipoFoto, string>>>({});
   const [ampliada, setAmpliada] = useState<TipoFoto | null>(null);
   const [observando, setObservando] = useState(false);
+  const [aObservar, setAObservar] = useState<TipoFoto[]>([]);
   const [ocupado, setOcupado] = useState(false);
   const [error, setError] = useState("");
   const firma = fotos.map((f) => `${f.tipo}:${f.subidaEn}`).join("|");
@@ -146,7 +147,15 @@ export default function FotosAlumno({
             </Boton>
           )}
           {fotos.length > 0 && (
-            <Boton variante="ghost" disabled={ocupado} onClick={() => setObservando(true)}>
+            <Boton
+              variante="ghost"
+              disabled={ocupado}
+              onClick={() => {
+                // Empieza sin ninguna marcada, como el motivo: se elige leyendo.
+                setAObservar(fotos.length === 1 ? [fotos[0].tipo] : []);
+                setObservando(true);
+              }}
+            >
               Observar
             </Boton>
           )}
@@ -172,12 +181,34 @@ export default function FotosAlumno({
           texto="Queda anotado en la ficha: recepción ve el motivo y cambia la foto, que vuelve a quedar por revisar."
           motivos={MOTIVOS_OBSERVACION}
           etiquetaOk="Observar"
+          faltaMotivo="Elegí el motivo: queda anotado en la ficha."
+          validar={() => (aObservar.length ? null : "Marcá qué foto hay que cambiar.")}
           onCancelar={() => setObservando(false)}
           onConfirmar={async (observacion) => {
             setObservando(false);
-            await hacer(() => apiAcademia.revisarFotos(alumnoId, { ok: false, observacion }));
+            // Sólo las marcadas quedan observadas; las demás, revisadas sin
+            // observación (contrato #33): recepción cambia nada más que esa.
+            const tipos = TIPOS_FOTO.filter((t) => aObservar.includes(t));
+            await hacer(() => apiAcademia.revisarFotos(alumnoId, { ok: false, observacion, tipos }));
           }}
-        />
+        >
+          <fieldset className="space-y-1.5">
+            <legend className="mb-1 text-[13px] font-semibold text-texto-2">¿Cuál hay que cambiar?</legend>
+            {fotos.map((f) => (
+              <label key={f.tipo} className="flex items-center gap-2 text-sm text-texto">
+                <input
+                  type="checkbox"
+                  checked={aObservar.includes(f.tipo)}
+                  onChange={(e) =>
+                    setAObservar((x) => (e.target.checked ? [...x, f.tipo] : x.filter((t) => t !== f.tipo)))
+                  }
+                  className="h-4 w-4 accent-primary"
+                />
+                {NOMBRE_FOTO[f.tipo]}
+              </label>
+            ))}
+          </fieldset>
+        </PedirMotivo>
       )}
     </section>
   );

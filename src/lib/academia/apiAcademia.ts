@@ -144,7 +144,8 @@ export const apiAcademia = {
     if (!res.ok) throw new ApiError("No se pudo cargar la foto", res.status);
     return URL.createObjectURL(await res.blob());
   },
-  revisarFotos: (alumnoId: number, input: { ok: boolean; observacion?: string }) =>
+  /** Con `ok: false` y `tipos`, la observación va sólo a esas fotos (contrato #33); sin `tipos`, a todas. */
+  revisarFotos: (alumnoId: number, input: { ok: boolean; observacion?: string; tipos?: TipoFoto[] }) =>
     request<unknown>(`/academia/alumnos/${alumnoId}/fotos/revisar`, { method: "POST", body: json(input) }),
 
   // ── Inscripciones ──────────────────────────────────────────────────────────
