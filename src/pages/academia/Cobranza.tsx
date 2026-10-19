@@ -1,28 +1,31 @@
 import { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Chips, EncabezadoPagina, FilaFiltros } from "../../components/filtros";
+import { Chips, FilaFiltros } from "../../components/filtros";
+import { Icon } from "../../components/Icon";
+import MenuMas, { type AccionMenu } from "../../components/MenuMas";
 import { Paginacion } from "../../components/Paginacion";
 import PanelLateral from "../../components/PanelLateral";
 import { Boton, Cargando, ErrorMsg, Select, Vacio } from "../../components/ui";
 import { apiAcademia } from "../../lib/academia/apiAcademia";
-import type { Antiguedad, FilaCobranza, RespuestaCobranza, TipoCobranza } from "../../lib/academia/tipos";
+import { fechaCorta } from "../../lib/academia/formato";
+import type { Antiguedad, FilaCobranza, Recordatorio, RespuestaCobranza, TipoCobranza } from "../../lib/academia/tipos";
 import { useFiltroSede } from "../../lib/academia/useFiltroSede";
 import { usePalabras } from "../../lib/academia/usePalabras";
 import { abrirWhatsapp, nombreCuota, rutaCobroInscripcion } from "../../lib/academia/vista";
-import { fmtMoney, tiempoRelativo } from "../../lib/format";
+import { fmtHora, fmtMoney, tiempoRelativo } from "../../lib/format";
 import { usePaginado } from "../../lib/paginado";
 import { cobraCuotas } from "../../lib/permisos";
 import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
-import { EstadoDeCuenta, FiltrosConteo } from "./piezas";
+import { FiltrosConteo } from "./piezas";
 
 const TIPOS: TipoCobranza[] = ["vencidas", "por-vencer", "parciales"];
 
-/** "Recordada hace 3 días", "Nunca recordado". */
+/** "recordado hace 3 días", "sin recordar". */
 function textoRecordatorio(f: Pick<FilaCobranza, "ultimoRecordatorioEn" | "recordatorios">): string {
-  if (!f.ultimoRecordatorioEn) return "Nunca recordado";
+  if (!f.ultimoRecordatorioEn) return "sin recordar";
   const cuando = tiempoRelativo(f.ultimoRecordatorioEn).toLowerCase();
-  return f.recordatorios > 1 ? `Recordado ${f.recordatorios} veces · ${cuando}` : `Recordado ${cuando}`;
+  return f.recordatorios > 1 ? `recordado ${f.recordatorios} veces · ${cuando}` : `recordado ${cuando}`;
 }
 
 /** La cuota a recordar: la vencida más vieja, si no la primera con saldo. */
@@ -31,12 +34,19 @@ function cuotaARecordar(f: FilaCobranza) {
   return conSaldo.find((c) => c.vencida) ?? conSaldo[0] ?? null;
 }
 
+/** Una fila se identifica por su inscripción (el backend agrupa por ella). */
+const claveDe = (f: FilaCobranza) => String(f.inscripcionId ?? `${f.alumno.id}-${f.cuotas[0]?.id ?? 0}`);
+
 /**
- * E8 · Cobranza (PLAN-ACADEMIAS §5): las cuotas que se deben. Las pestañas
- * son los indicadores (Vencidas · Por vencer · Abonos parciales); filtros de
- * sede, carrera y antigüedad. Cada fila es una inscripción con sus cuotas:
- * el que debe dos se ve una sola vez (el backend ya las agrupa). WhatsApp pide al backend el mensaje armado (y deja
- * anotado el recordatorio) y abre `wa.me`; Cobrar lleva al POS.
+ * N7 · Cobranza con el QR por WhatsApp (ronda 2, requerimiento 9). Las
+ * pestañas son los indicadores, con cuánto y cuántos (Vencidas · Por vencer ·
+ * Abonos a medias). "Enviar QR" abre el panel: a quién va, y "Abrir WhatsApp"
+ * pide al backend el mensaje con el enlace de pago del estudiante (y deja
+ * anotado el recordatorio) y abre `wa.me` con todo escrito: la recepción sólo
+ * toca enviar. No hay envío automático.
+ *
+ * Para varios, se marcan y la acción principal los recorre de a uno: "1 de N
+ * · Siguiente". Cobrar sigue pasando por el POS.
  */
 export default function Cobranza() {
   const { usuario, negocio, rubro } = useAuth();
@@ -48,12 +58,16 @@ export default function Cobranza() {
   const [tipo, setTipo] = useState<TipoCobranza>(inicial);
   const [carreraId, setCarreraId] = useState<number | null>(null);
   const [antiguedad, setAntiguedad] = useState<"" | Antiguedad>("");
-  const [elegida, setElegida] = useState<FilaCobranza | null>(null);
   const [totales, setTotales] = useState<RespuestaCobranza["totales"] | null>(null);
-  const [error, setError] = useState("");
-  const [avisando, setAvisando] = useState<number | null>(null);
+  // Los marcados, con su fila: sobreviven al cambio de página.
+  const [marcados, setMarcados] = useState<Map<string, FilaCobranza>>(new Map());
+  // El panel: una fila suelta, o la cola de los marcados con su posición.
+  const [cola, setCola] = useState<FilaCobranza[]>([]);
+  const [pos, setPos] = useState(0);
+  const [enviados, setEnviados] = useState<Record<string, Recordatorio & { en: string }>>({});
 
   const carreras = useApi(() => apiAcademia.carreras().catch(() => []), []);
+  const ajustes = useApi(() => apiAcademia.ajustes().catch(() => null), []);
   const lista = usePaginado(
     async (pg) => {
       const r = await apiAcademia.cobranza({
@@ -70,39 +84,79 @@ export default function Cobranza() {
   );
   const cobra = cobraCuotas({ features: negocio?.features, rubro, permisos: usuario?.permisos, permisosPropios: usuario?.permisosPropios });
 
-  async function recordar(f: FilaCobranza) {
-    const cuota = cuotaARecordar(f);
-    if (!cuota) return;
-    setError("");
-    setAvisando(cuota.id);
-    try {
-      const r = await apiAcademia.recordatorio(cuota.id);
-      abrirWhatsapp(r.url);
-      // Queda anotado: la fila lo dice sin recargar la lista.
-      const ahora = new Date().toISOString();
-      const marcar = (x: FilaCobranza) =>
-        x === f ? { ...x, ultimoRecordatorioEn: ahora, recordatorios: x.recordatorios + 1 } : x;
-      lista.setItems(lista.items.map(marcar));
-      setElegida((e) => (e ? marcar(e) : e));
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "No se pudo armar el mensaje");
-    } finally {
-      setAvisando(null);
-    }
+  const actual = cola[pos] ?? null;
+  const t = totales;
+  const nMarcados = marcados.size;
+  const visiblesMarcados = lista.items.length > 0 && lista.items.every((f) => marcados.has(claveDe(f)));
+
+  function alternar(f: FilaCobranza) {
+    setMarcados((m) => {
+      const n = new Map(m);
+      if (n.has(claveDe(f))) n.delete(claveDe(f));
+      else n.set(claveDe(f), f);
+      return n;
+    });
+  }
+
+  function alternarPagina() {
+    setMarcados((m) => {
+      const n = new Map(m);
+      for (const f of lista.items) {
+        if (visiblesMarcados) n.delete(claveDe(f));
+        else n.set(claveDe(f), f);
+      }
+      return n;
+    });
   }
 
   function cobrar(f: FilaCobranza) {
-    // Con la inscripción, su carrito; si no vino, el POS busca al alumno.
+    // Con la inscripción, su carrito; si no vino, el POS busca al estudiante.
     const destino = f.inscripcionId
       ? rutaCobroInscripcion(f.inscripcionId, f.sede)
       : `/pos?alumno=${f.alumno.id}&q=${encodeURIComponent(f.alumno.codigo ?? f.alumno.nombre)}`;
     navigate(destino);
   }
 
-  const t = totales;
+  /** Lo que se recordó queda anotado en la fila sin recargar la lista. */
+  function anotar(f: FilaCobranza, r: Recordatorio) {
+    const ahora = new Date().toISOString();
+    setEnviados((e) => ({ ...e, [claveDe(f)]: { ...r, en: ahora } }));
+    const marcar = (x: FilaCobranza) =>
+      claveDe(x) === claveDe(f) ? { ...x, ultimoRecordatorioEn: ahora, recordatorios: x.recordatorios + 1, enlacePago: r.enlacePago ?? x.enlacePago } : x;
+    lista.setItems(lista.items.map(marcar));
+    setCola((c) => c.map(marcar));
+  }
+
+  const acciones: AccionMenu[] = [
+    { clave: "texto", etiqueta: "Editar el texto del mensaje", icono: "edit", detalle: "Pronto", deshabilitada: true, onClick: () => {} },
+    { clave: "excel", etiqueta: "Exportar Excel", icono: "download", detalle: "Pronto", deshabilitada: true, separar: true, onClick: () => {} },
+  ];
+
+  const dia = ajustes.datos?.diaInicioModulo;
+  const subtitulo = [sede.nombre || usuario?.sucursal, dia ? `los ${p.materias} vencen el ${dia} de cada mes` : "lo que se debe"]
+    .filter(Boolean)
+    .join(" · ");
+
   return (
-    <div className={`mx-auto max-w-6xl space-y-5 p-4 sm:p-6 lg:p-8 ${elegida ? "md:mr-[380px]" : ""}`}>
-      <EncabezadoPagina titulo="Cobranza" subtitulo={`Las cuotas que se deben${sede.nombre ? ` en ${sede.nombre}` : ""}.`} />
+    <div className={`mx-auto max-w-6xl space-y-5 p-4 sm:p-6 lg:p-8 ${actual ? "md:mr-[380px]" : ""}`}>
+      <header className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="text-xl font-bold text-texto">Cobranza</h1>
+          <p className="mt-0.5 text-[13px] text-texto-3">{subtitulo}</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Boton
+            disabled={nMarcados === 0}
+            onClick={() => {
+              setCola([...marcados.values()]);
+              setPos(0);
+            }}
+          >
+            {nMarcados === 0 ? "Enviar QR a los marcados" : `Enviar QR a ${nMarcados} ${nMarcados === 1 ? "marcado" : "marcados"}`}
+          </Boton>
+          <MenuMas etiqueta="Más acciones de cobranza" titulo="Cobranza" acciones={acciones} />
+        </div>
+      </header>
 
       <FilaFiltros>
         {sede.selector}
@@ -119,12 +173,10 @@ export default function Cobranza() {
             onChange={setAntiguedad}
           />
         ) : null}
-      </FilaFiltros>
-      <div className="flex flex-wrap items-center gap-3">
         {(carreras.datos?.length ?? 0) > 1 && (
           <div className="w-full sm:w-56">
             <Select aria-label={p.Carrera} value={carreraId ?? ""} onChange={(e) => setCarreraId(e.target.value ? Number(e.target.value) : null)}>
-              <option value="">{p.Carrera}: todas</option>
+              <option value="">{p.Carrera}: todos</option>
               {carreras.datos?.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.nombre}
@@ -133,32 +185,26 @@ export default function Cobranza() {
             </Select>
           </div>
         )}
-      </div>
+      </FilaFiltros>
 
-      <FiltrosConteo
-        etiqueta="Qué cuotas"
+      <FiltrosConteo<TipoCobranza>
+        etiqueta="Filtrar deudas"
         opciones={[
-          { clave: "vencidas", label: "Vencidas", n: t?.vencidoCuotas ?? null, urgente: true },
-          { clave: "por-vencer", label: "Por vencer", n: t?.venceMesCuotas ?? null },
-          { clave: "parciales", label: "Abonos parciales" },
+          { clave: "vencidas", label: t ? `Vencidas ${fmtMoney(t.vencido)} ·` : "Vencidas", n: t?.vencidoCuotas ?? null, urgente: true },
+          { clave: "por-vencer", label: t ? `Por vencer ${fmtMoney(t.venceMes)} ·` : "Por vencer", n: t?.venceMesCuotas ?? null },
+          {
+            clave: "parciales",
+            label: t?.parciales != null ? `Abonos a medias ${fmtMoney(t.parciales)} ·` : "Abonos a medias",
+            n: t?.parcialesCuotas ?? null,
+          },
         ]}
         valor={tipo}
         onChange={(v) => {
           setTipo(v);
-          setElegida(null);
+          setCola([]);
         }}
       />
-      {t && (
-        <p className="text-[13px] text-texto-3">
-          {tipo === "vencidas"
-            ? `${fmtMoney(t.vencido)} vencido · ${t.vencidoAlumnos} ${t.vencidoAlumnos === 1 ? p.alumno : p.alumnos}`
-            : tipo === "por-vencer"
-              ? `Vence esta semana ${fmtMoney(t.venceSemana)} · este mes ${fmtMoney(t.venceMes)}`
-              : null}
-          {tipo !== "parciales" ? " · " : ""}Cobrado este mes {fmtMoney(t.cobradoMes)}
-        </p>
-      )}
-      <ErrorMsg>{error}</ErrorMsg>
+      {t && <p className="text-[13px] text-texto-3">Cobrado este mes {fmtMoney(t.cobradoMes)}</p>}
 
       {lista.error && !lista.items.length ? (
         <ErrorMsg onReintentar={lista.recargar}>{lista.error}</ErrorMsg>
@@ -167,64 +213,46 @@ export default function Cobranza() {
       ) : lista.items.length === 0 ? (
         <Vacio
           icono="coins"
-          titulo={tipo === "vencidas" ? "No hay cuotas vencidas" : tipo === "por-vencer" ? "Nada por vencer" : "No hay abonos parciales"}
+          titulo={tipo === "vencidas" ? "No hay cuotas vencidas" : tipo === "por-vencer" ? "Nada por vencer" : "No hay abonos a medias"}
         />
       ) : (
         <>
           <ListaCobranza
             filas={lista.items}
-            tipo={tipo}
             conSede={sede.variasSedes}
-            cobra={cobra}
-            avisando={avisando}
-            elegida={elegida}
-            onElegir={setElegida}
-            onWhatsapp={(f) => void recordar(f)}
-            onCobrar={cobrar}
+            marcados={marcados}
+            todos={visiblesMarcados}
+            abierta={actual}
+            onAlternar={alternar}
+            onAlternarTodos={alternarPagina}
+            onAbrir={(f) => {
+              setCola([f]);
+              setPos(0);
+            }}
           />
           <Paginacion {...lista.paginacion} />
         </>
       )}
 
-      {elegida && (
-        <PanelLateral
-          abierto
-          titulo={elegida.alumno.nombre}
-          subtitulo={[elegida.alumno.codigo, elegida.grupo.nombre, sede.variasSedes ? elegida.sede.nombre : null].filter(Boolean).join(" · ")}
-          onClose={() => setElegida(null)}
-          acciones={
-            <>
-              {cobra && (
-                <Boton className="w-full" onClick={() => cobrar(elegida)}>
-                  Cobrar {fmtMoney(elegida.saldo)}
-                </Boton>
-              )}
-              <Boton variante="ghost" className="w-full" disabled={avisando !== null} onClick={() => void recordar(elegida)}>
-                {elegida.contacto.esTutor ? "WhatsApp al tutor" : "WhatsApp"}
-              </Boton>
-            </>
-          }
-        >
-          <div className="space-y-5">
-            <section className="space-y-2.5">
-              <h3 className="text-[12px] text-texto-3">Cuotas</h3>
-              <EstadoDeCuenta cuotas={elegida.cuotas} />
-            </section>
-            <dl className="space-y-2 text-sm">
-              <div>
-                <dt className="text-[12px] text-texto-3">{elegida.contacto.esTutor ? "Tutor" : "Contacto"}</dt>
-                <dd className="text-texto">
-                  {elegida.contacto.nombre}
-                  {elegida.contacto.telefono ? ` · ${elegida.contacto.telefono}` : ""}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-[12px] text-texto-3">Recordatorio</dt>
-                <dd className="text-texto-2">{textoRecordatorio(elegida)}</dd>
-              </div>
-            </dl>
-          </div>
-        </PanelLateral>
+      {actual && (
+        <PanelEnvio
+          key={claveDe(actual)}
+          fila={actual}
+          posicion={cola.length > 1 ? { actual: pos, total: cola.length } : null}
+          enviado={enviados[claveDe(actual)] ?? null}
+          cobra={cobra}
+          onEnviado={(r) => anotar(actual, r)}
+          onCobrar={() => cobrar(actual)}
+          onAnterior={() => setPos((x) => Math.max(0, x - 1))}
+          onSiguiente={() => {
+            if (pos + 1 < cola.length) setPos(pos + 1);
+            else {
+              setCola([]);
+              setMarcados(new Map());
+            }
+          }}
+          onCerrar={() => setCola([])}
+        />
       )}
     </div>
   );
@@ -232,137 +260,261 @@ export default function Cobranza() {
 
 function ListaCobranza({
   filas,
-  tipo,
   conSede,
-  cobra,
-  avisando,
-  elegida,
-  onElegir,
-  onWhatsapp,
-  onCobrar,
+  marcados,
+  todos,
+  abierta,
+  onAlternar,
+  onAlternarTodos,
+  onAbrir,
 }: {
   filas: FilaCobranza[];
-  tipo: TipoCobranza;
   conSede: boolean;
-  cobra: boolean;
-  avisando: number | null;
-  elegida: FilaCobranza | null;
-  onElegir: (f: FilaCobranza) => void;
-  onWhatsapp: (f: FilaCobranza) => void;
-  onCobrar: (f: FilaCobranza) => void;
+  marcados: Map<string, FilaCobranza>;
+  todos: boolean;
+  abierta: FilaCobranza | null;
+  onAlternar: (f: FilaCobranza) => void;
+  onAlternarTodos: () => void;
+  onAbrir: (f: FilaCobranza) => void;
 }) {
-  const urgente = tipo === "vencidas";
-  const detalleCuotas = (f: FilaCobranza) =>
-    f.cuotas.length === 1
-      ? `${nombreCuota(f.cuotas[0])}${f.cuotas[0].pagado > 0 ? ` · abonó ${fmtMoney(f.cuotas[0].pagado)} de ${fmtMoney(f.cuotas[0].monto)}` : ""}`
-      : `${f.cuotas.length} cuotas`;
-  const contacto = (f: FilaCobranza) =>
-    f.contacto.esTutor ? `Tutor: ${f.contacto.nombre}${f.contacto.telefono ? ` · ${f.contacto.telefono}` : ""}` : f.contacto.telefono ?? "";
-  const ocupada = (f: FilaCobranza) => avisando !== null && f.cuotas.some((c) => c.id === avisando);
-  // Con el panel abierto las acciones de la fila quedarían debajo de él: el
-  // panel ya trae WhatsApp y Cobrar, así que la columna se va.
-  const conAcciones = !elegida;
-  const col = conAcciones
-    ? "grid-cols-[minmax(180px,1.6fr)_minmax(150px,1.3fr)_minmax(150px,1.3fr)_100px_80px_150px]"
-    : "grid-cols-[minmax(160px,1.6fr)_minmax(130px,1.3fr)_minmax(130px,1.3fr)_100px_70px]";
+  const p = usePalabras();
+  const sub = (f: FilaCobranza) => {
+    const c = cuotaARecordar(f);
+    const cuota = f.cuotas.length === 1 && c ? nombreCuota(c) : `${f.cuotas.length} cuotas`;
+    const abono = f.cuotas.length === 1 && c && c.pagado > 0 ? ` · abonó ${fmtMoney(c.pagado)} de ${fmtMoney(c.monto)}` : "";
+    return [f.grupo.nombre, conSede ? f.sede.nombre : null, `${cuota}${abono}`, f.contacto.esTutor ? `tutor ${f.contacto.nombre}` : null]
+      .filter(Boolean)
+      .join(" · ");
+  };
+  const vencimiento = (f: FilaCobranza) => {
+    const c = cuotaARecordar(f);
+    if (!c) return { texto: "—", urgente: false };
+    return c.vencida ? { texto: `vencida hace ${c.diasAtraso} d`, urgente: true } : { texto: `vence el ${fechaCorta(c.vence)}`, urgente: false };
+  };
+  const col = "grid-cols-[32px_minmax(200px,2fr)_100px_130px_150px_90px]";
+  const chequeo = "h-4 w-4 accent-[var(--color-primary-boton)]";
 
   return (
     <>
       <div className="hidden md:block">
-        <div className={`grid ${col} gap-3 px-3 pb-2 text-[12px] text-texto-3`}>
-          <span>Alumno</span>
-          <span>Grupo</span>
-          <span>Cuota</span>
-          <span className="text-right">Saldo</span>
-          <span className="text-right">{urgente ? "Atraso" : ""}</span>
-          {conAcciones && <span />}
+        <div className={`grid ${col} items-center gap-3 px-3 pb-2 text-[12px] text-texto-3`}>
+          <label className="flex">
+            <input type="checkbox" className={chequeo} checked={todos} onChange={onAlternarTodos} aria-label="Marcar todos los de esta página" />
+          </label>
+          <span>{p.Alumno}</span>
+          <span className="text-right">Debe</span>
+          <span>Vencimiento</span>
+          <span>Recordatorio</span>
+          <span />
         </div>
         <ul>
-          {filas.map((f, i) => (
-            <li key={`${f.alumno.id}-${f.cuotas[0]?.id ?? i}`}>
-              {/* La fila no es un botón: el nombre abre el panel (estirado
-                  sobre la fila con `after:`) y WhatsApp y Cobrar son botones
-                  aparte, encima. Nada de un botón dentro de otro. */}
-              <div
-                className={`relative grid ${col} items-center gap-3 rounded-xl px-3 py-3 transition-colors ${
-                  elegida === f ? "bg-primary-50" : "hover:bg-muted"
-                }`}
-              >
-                <span className="min-w-0">
-                  <button
-                    type="button"
-                    aria-label={`Ver a ${f.alumno.nombre}`}
-                    aria-expanded={elegida === f}
-                    onClick={() => onElegir(f)}
-                    className="block max-w-full truncate text-left text-sm font-semibold text-texto after:absolute after:inset-0 after:rounded-xl after:content-[''] focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-primary"
-                  >
-                    {f.alumno.nombre}
+          {filas.map((f) => {
+            const v = vencimiento(f);
+            const sinRecordar = !f.ultimoRecordatorioEn && v.urgente;
+            return (
+              <li key={claveDe(f)}>
+                <div
+                  className={`grid ${col} items-center gap-3 rounded-xl px-3 py-3 transition-colors ${
+                    abierta && claveDe(abierta) === claveDe(f) ? "bg-primary-50" : "hover:bg-muted"
+                  }`}
+                >
+                  <label className="flex">
+                    <input
+                      type="checkbox"
+                      className={chequeo}
+                      checked={marcados.has(claveDe(f))}
+                      onChange={() => onAlternar(f)}
+                      aria-label={`Marcar a ${f.alumno.nombre}`}
+                    />
+                  </label>
+                  <button type="button" onClick={() => onAbrir(f)} className="min-w-0 text-left">
+                    <span className="block truncate text-sm font-semibold text-texto">{f.alumno.nombre}</span>
+                    <span className="block truncate text-[12px] text-texto-3">{sub(f)}</span>
                   </button>
-                  <span className="block truncate text-[12px] text-texto-3">{contacto(f)}</span>
-                </span>
-                <span className="min-w-0">
-                  <span className="block truncate text-sm text-texto-2">{f.grupo.nombre}</span>
-                  {conSede && <span className="block truncate text-[12px] text-texto-3">{f.sede.nombre}</span>}
-                </span>
-                <span className="min-w-0">
-                  <span className="block truncate text-sm text-texto-2">{detalleCuotas(f)}</span>
-                  <span className="block truncate text-[12px] text-texto-4">{textoRecordatorio(f)}</span>
-                </span>
-                <span className={`text-right text-sm font-semibold tabular-nums ${urgente ? "text-danger-text" : "text-texto"}`}>
-                  {fmtMoney(f.saldo)}
-                </span>
-                <span className="text-right text-sm tabular-nums text-texto-2">{urgente ? `${f.diasAtraso} d` : ""}</span>
-                {conAcciones && (
-                  <span className="relative z-10 flex justify-end gap-3 text-[13px] font-semibold">
-                    <button
-                      type="button"
-                      disabled={ocupada(f)}
-                      onClick={() => onWhatsapp(f)}
-                      className="text-primary-700 hover:underline disabled:opacity-50"
-                    >
-                      WhatsApp
-                    </button>
-                    {cobra && (
-                      <button type="button" onClick={() => onCobrar(f)} className="text-primary-700 hover:underline">
-                        Cobrar
-                      </button>
-                    )}
+                  <span className={`text-right text-sm font-semibold tabular-nums ${v.urgente ? "text-danger-text" : "text-texto-2"}`}>
+                    {fmtMoney(f.saldo)}
                   </span>
-                )}
-              </div>
-            </li>
-          ))}
+                  <span className={`text-[13px] ${v.urgente ? "text-danger-text" : "text-texto-3"}`}>{v.texto}</span>
+                  <span className={`text-[13px] ${sinRecordar ? "font-semibold text-warning-text" : "text-texto-3"}`}>{textoRecordatorio(f)}</span>
+                  <span className="text-right">
+                    <button type="button" onClick={() => onAbrir(f)} className="text-[13px] font-semibold text-primary-700 hover:underline">
+                      Enviar QR
+                    </button>
+                  </span>
+                </div>
+              </li>
+            );
+          })}
         </ul>
       </div>
 
       <ul className="space-y-2 md:hidden">
-        {filas.map((f, i) => (
-          <li key={`${f.alumno.id}-${f.cuotas[0]?.id ?? i}`} className="rounded-xl border border-borde bg-white p-3.5">
-            <button type="button" onClick={() => onElegir(f)} className="block w-full text-left">
-              <span className="flex items-start justify-between gap-3">
-                <span className="min-w-0 truncate text-[15px] font-semibold text-texto">{f.alumno.nombre}</span>
-                <span className={`shrink-0 text-[15px] font-bold tabular-nums ${urgente ? "text-danger-text" : "text-texto"}`}>
-                  {fmtMoney(f.saldo)}
+        {filas.map((f) => {
+          const v = vencimiento(f);
+          return (
+            <li key={claveDe(f)} className="flex items-start gap-3 rounded-xl border border-borde bg-white p-3.5">
+              <input
+                type="checkbox"
+                className={`${chequeo} mt-1`}
+                checked={marcados.has(claveDe(f))}
+                onChange={() => onAlternar(f)}
+                aria-label={`Marcar a ${f.alumno.nombre}`}
+              />
+              <button type="button" onClick={() => onAbrir(f)} className="min-w-0 flex-1 text-left">
+                <span className="flex items-start justify-between gap-3">
+                  <span className="min-w-0 truncate text-[15px] font-semibold text-texto">{f.alumno.nombre}</span>
+                  <span className={`shrink-0 text-[15px] font-bold tabular-nums ${v.urgente ? "text-danger-text" : "text-texto"}`}>
+                    {fmtMoney(f.saldo)}
+                  </span>
                 </span>
-              </span>
-              <span className="mt-0.5 block truncate text-[13px] text-texto-3">
-                {[f.grupo.nombre, detalleCuotas(f), urgente ? `${f.diasAtraso} días` : null].filter(Boolean).join(" · ")}
-              </span>
-              <span className="block truncate text-[12px] text-texto-4">{textoRecordatorio(f)}</span>
-            </button>
-            <div className="mt-3 flex gap-2">
-              <Boton variante="ghost" className="flex-1" disabled={ocupada(f)} onClick={() => onWhatsapp(f)}>
-                WhatsApp
-              </Boton>
-              {cobra && (
-                <Boton className="flex-1" onClick={() => onCobrar(f)}>
-                  Cobrar
-                </Boton>
-              )}
-            </div>
-          </li>
-        ))}
+                <span className="mt-0.5 block truncate text-[13px] text-texto-3">{sub(f)}</span>
+                <span className="block truncate text-[12px] text-texto-4">
+                  {v.texto} · {textoRecordatorio(f)}
+                </span>
+              </button>
+            </li>
+          );
+        })}
       </ul>
     </>
+  );
+}
+
+/**
+ * El panel "Enviar QR por WhatsApp": a quién va (el tutor si es menor o no
+ * tiene celular, como decide el backend), y el botón que arma el mensaje con
+ * el enlace de pago y abre WhatsApp. Después muestra lo que se mandó y lo
+ * deja anotado. En la cola de los marcados, "1 de N" y Siguiente.
+ */
+function PanelEnvio({
+  fila,
+  posicion,
+  enviado,
+  cobra,
+  onEnviado,
+  onCobrar,
+  onAnterior,
+  onSiguiente,
+  onCerrar,
+}: {
+  fila: FilaCobranza;
+  posicion: { actual: number; total: number } | null;
+  enviado: (Recordatorio & { en: string }) | null;
+  cobra: boolean;
+  onEnviado: (r: Recordatorio) => void;
+  onCobrar: () => void;
+  onAnterior: () => void;
+  onSiguiente: () => void;
+  onCerrar: () => void;
+}) {
+  const [enviando, setEnviando] = useState(false);
+  const [error, setError] = useState("");
+  const [copiado, setCopiado] = useState(false);
+  const cuota = cuotaARecordar(fila);
+
+  async function abrir() {
+    if (!cuota) return;
+    // Ya armado: se vuelve a abrir el mismo, sin anotar dos veces.
+    if (enviado) return abrirWhatsapp(enviado.url);
+    setEnviando(true);
+    setError("");
+    try {
+      const r = await apiAcademia.recordatorio(cuota.id);
+      abrirWhatsapp(r.url);
+      onEnviado(r);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudo armar el mensaje");
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  async function copiar() {
+    if (!enviado) return;
+    try {
+      await navigator.clipboard.writeText(enviado.texto);
+      setCopiado(true);
+    } catch {
+      setError("No se pudo copiar: seleccioná el texto a mano.");
+    }
+  }
+
+  const ultimo = posicion ? posicion.actual + 1 === posicion.total : true;
+  return (
+    <PanelLateral
+      abierto
+      titulo={fila.alumno.nombre}
+      subtitulo={`Debe ${fmtMoney(fila.saldo)}${cuota ? ` · ${nombreCuota(cuota)}` : ""}`}
+      onClose={onCerrar}
+      acciones={
+        <>
+          <Boton className="w-full" icono="phone" disabled={enviando || !cuota || !fila.contacto.telefono} onClick={() => void abrir()}>
+            {enviando ? "Armando el mensaje…" : "Abrir WhatsApp"}
+          </Boton>
+          <div className="flex gap-2">
+            {enviado && (
+              <Boton variante="ghost" className="flex-1" onClick={() => void copiar()}>
+                {copiado ? "Copiado" : "Copiar mensaje"}
+              </Boton>
+            )}
+            {cobra && (
+              <Boton variante="ghost" className="flex-1" onClick={onCobrar}>
+                Cobrar
+              </Boton>
+            )}
+          </div>
+        </>
+      }
+    >
+      <div className="space-y-5">
+        {posicion && (
+          <div className="space-y-2 rounded-xl bg-muted p-3">
+            <div className="flex items-baseline justify-between gap-2 text-[13px]">
+              <span className="text-texto-2">Enviando a los {posicion.total} marcados</span>
+              <span className="font-semibold tabular-nums text-texto">
+                {posicion.actual + 1} de {posicion.total}
+              </span>
+            </div>
+            <div aria-hidden="true" className="flex gap-1">
+              {Array.from({ length: posicion.total }, (_, i) => (
+                <span key={i} className={`h-1 flex-1 rounded-full ${i <= posicion.actual ? "bg-primary" : "bg-primary-100"}`} />
+              ))}
+            </div>
+            <div className="flex justify-between gap-2">
+              <button type="button" disabled={posicion.actual === 0} onClick={onAnterior} className="text-[13px] font-semibold text-texto-2 disabled:opacity-40">
+                ‹ Anterior
+              </button>
+              <button type="button" onClick={onSiguiente} className="text-[13px] font-semibold text-primary-700">
+                {ultimo ? "Terminar" : "Siguiente ›"}
+              </button>
+            </div>
+          </div>
+        )}
+
+        <dl className="space-y-1 text-sm">
+          <dt className="text-[12px] text-texto-3">Se envía a</dt>
+          <dd className="font-semibold text-texto">
+            {fila.contacto.nombre}
+            {fila.contacto.esTutor ? " (tutor)" : ""}
+          </dd>
+          <dd className="text-texto-2">{fila.contacto.telefono ? `WhatsApp ${fila.contacto.telefono}` : "No tiene un celular cargado"}</dd>
+        </dl>
+
+        {enviado ? (
+          <section aria-label="El mensaje" className="space-y-2">
+            <p className="text-[12px] text-texto-3">El mensaje</p>
+            <p className="whitespace-pre-wrap rounded-xl bg-primary-50 p-3 text-[13px] text-texto">{enviado.texto}</p>
+            <p role="status" className="flex items-center gap-1.5 text-[13px] text-texto-3">
+              <Icon name="check" size={15} /> Anotado: recordado hoy a las {fmtHora(enviado.en)}
+            </p>
+          </section>
+        ) : (
+          <p className="text-[13px] text-texto-3">
+            WhatsApp se abre con el mensaje y el enlace de pago listos; vos sólo tocás enviar. Queda anotado "recordado hoy".
+          </p>
+        )}
+        <ErrorMsg>{error}</ErrorMsg>
+      </div>
+    </PanelLateral>
   );
 }

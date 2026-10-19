@@ -1,12 +1,13 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { RespuestaCobranza } from "../../lib/academia/tipos";
 
 /**
- * E8 · Cobranza: las pestañas son los indicadores, WhatsApp pide el mensaje
- * al backend (que deja anotado el recordatorio) y abre wa.me, y Cobrar lleva
- * al POS con la inscripción.
+ * N7 · Cobranza: las pestañas son los indicadores (con cuánto y cuántos),
+ * "Enviar QR" abre el panel y "Abrir WhatsApp" pide al backend el mensaje con
+ * el enlace de pago (que deja anotado el recordatorio) y abre wa.me. Para
+ * varios, "1 de N · Siguiente". Cobrar lleva al POS con la inscripción.
  */
 
 vi.mock("../../store/AuthContext", async () => {
@@ -18,7 +19,7 @@ vi.mock("../../lib/academia/apiAcademia", async (importOriginal) => {
   const real = await importOriginal<typeof import("../../lib/academia/apiAcademia")>();
   return {
     ...real,
-    apiAcademia: { cobranza: vi.fn(), recordatorio: vi.fn(), carreras: vi.fn(async () => []) },
+    apiAcademia: { cobranza: vi.fn(), recordatorio: vi.fn(), carreras: vi.fn(async () => []), ajustes: vi.fn(async () => null) },
   };
 });
 
@@ -35,6 +36,8 @@ const RESPUESTA: RespuestaCobranza = {
     venceMes: 5000,
     venceMesCuotas: 14,
     cobradoMes: 21000,
+    parciales: 333,
+    parcialesCuotas: 1,
   },
   items: [
     {
@@ -51,8 +54,22 @@ const RESPUESTA: RespuestaCobranza = {
       ultimoRecordatorioEn: null,
       recordatorios: 0,
     },
+    {
+      inscripcionId: 102,
+      alumno: { id: 52, nombre: "Bustillos Rek, Camila", codigo: "2026-0102" },
+      contacto: { nombre: "Camila", telefono: "75512340", esTutor: false },
+      grupo: { id: 7, nombre: "Barbería · L-V 10:00" },
+      sede: { id: 1, nombre: "Central" },
+      cuotas: [
+        { id: 902, numero: 2, concepto: "M2", materiaOrdenes: [2], monto: 500, pagado: 0, saldo: 500, vence: "2026-10-10", estado: "PENDIENTE", vencida: true, diasAtraso: 6, ultimoRecordatorioEn: "2026-10-13T12:00:00.000Z", recordatorios: 1 },
+      ],
+      saldo: 500,
+      diasAtraso: 6,
+      ultimoRecordatorioEn: "2026-10-13T12:00:00.000Z",
+      recordatorios: 1,
+    },
   ],
-  total: 1,
+  total: 2,
   page: 1,
   pageSize: 20,
 };
@@ -79,14 +96,15 @@ beforeEach(() => {
   vi.mocked(apiAcademia.cobranza).mockResolvedValue(RESPUESTA);
 });
 
-describe("E8 · cobranza", () => {
-  it("arranca en Vencidas, con los totales y la fila del tutor", async () => {
+describe("N7 · cobranza", () => {
+  it("arranca en Vencidas: las pestañas dicen cuánto y cuántos, y la fila del tutor", async () => {
     await montar();
     expect(apiAcademia.cobranza).toHaveBeenCalledWith(expect.objectContaining({ tipo: "vencidas", page: 1, pageSize: 20 }));
-    expect(screen.getByRole("tab", { name: "Vencidas 9" })).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByText(/7 estudiantes/)).toBeInTheDocument();
-    expect(screen.getAllByText("Tutor: Rosa Molina · 71234567").length).toBeGreaterThan(0);
+    expect(screen.getByRole("tab", { name: /Vencidas Bs\s?4\.320,00 · 9/ })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: /Abonos a medias Bs\s?333,00 · 1/ })).toBeInTheDocument();
+    expect(screen.getAllByText(/tutor Rosa Molina/).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/abonó Bs\s?200,00 de Bs\s?533,00/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText("sin recordar").length).toBeGreaterThan(0);
   });
 
   it("la pestaña viene de la dirección (desde Hoy)", async () => {
@@ -94,22 +112,47 @@ describe("E8 · cobranza", () => {
     expect(apiAcademia.cobranza).toHaveBeenCalledWith(expect.objectContaining({ tipo: "por-vencer" }));
   });
 
-  it("WhatsApp registra el recordatorio y abre wa.me; la fila queda anotada", async () => {
+  it("Enviar QR abre el panel; Abrir WhatsApp pide el mensaje con el enlace, abre wa.me y lo anota", async () => {
     const abrir = vi.spyOn(window, "open").mockImplementation(() => null);
-    vi.mocked(apiAcademia.recordatorio).mockResolvedValue({ telefono: "59171234567", texto: "Hola Rosa", url: "https://wa.me/59171234567?text=Hola%20Rosa" });
+    vi.mocked(apiAcademia.recordatorio).mockResolvedValue({
+      telefono: "59171234567",
+      texto: "Hola Rosa, pagá acá: https://app.bamardev.com/p/horizonte/pagar/K7Q2",
+      url: "https://wa.me/59171234567?text=Hola",
+      enlacePago: "https://app.bamardev.com/p/horizonte/pagar/K7Q2",
+    });
     await montar();
+    fireEvent.click(screen.getAllByRole("button", { name: "Enviar QR" })[0]);
+    const panel = screen.getByRole("complementary", { name: "Céspedes Molina, Joaquín" });
+    expect(within(panel).getByText(/Rosa Molina \(tutor\)/)).toBeInTheDocument();
     await act(async () => {
-      fireEvent.click(screen.getAllByRole("button", { name: "WhatsApp" })[0]);
+      fireEvent.click(within(panel).getByRole("button", { name: "Abrir WhatsApp" }));
     });
     expect(apiAcademia.recordatorio).toHaveBeenCalledWith(905);
-    expect(abrir).toHaveBeenCalledWith("https://wa.me/59171234567?text=Hola%20Rosa", "_blank", "noopener,noreferrer");
-    expect(screen.getAllByText(/Recordado recién/).length).toBeGreaterThan(0);
+    expect(abrir).toHaveBeenCalledWith("https://wa.me/59171234567?text=Hola", "_blank", "noopener,noreferrer");
+    expect(within(panel).getByText(/pagar\/K7Q2/)).toBeInTheDocument();
+    expect(within(panel).getByRole("status")).toHaveTextContent("Anotado: recordado hoy");
     abrir.mockRestore();
   });
 
-  it("Cobrar lleva al POS con la inscripción y la sede del grupo", async () => {
+  it("varios marcados se recorren de a uno: 1 de 2 · Siguiente", async () => {
+    vi.spyOn(window, "open").mockImplementation(() => null);
     await montar();
-    fireEvent.click(screen.getAllByRole("button", { name: "Cobrar" })[0]);
+    expect(screen.getByRole("button", { name: "Enviar QR a los marcados" })).toBeDisabled();
+    fireEvent.click(screen.getAllByRole("checkbox", { name: "Marcar todos los de esta página" })[0]);
+    fireEvent.click(screen.getByRole("button", { name: "Enviar QR a 2 marcados" }));
+    expect(screen.getByText("1 de 2")).toBeInTheDocument();
+    expect(screen.getByRole("complementary", { name: "Céspedes Molina, Joaquín" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Siguiente ›" }));
+    expect(screen.getByText("2 de 2")).toBeInTheDocument();
+    expect(screen.getByRole("complementary", { name: "Bustillos Rek, Camila" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Terminar" }));
+    expect(screen.queryByRole("complementary")).not.toBeInTheDocument();
+  });
+
+  it("Cobrar, desde el panel, lleva al POS con la inscripción y la sede del grupo", async () => {
+    await montar();
+    fireEvent.click(screen.getAllByRole("button", { name: "Enviar QR" })[0]);
+    fireEvent.click(screen.getByRole("button", { name: "Cobrar" }));
     expect(screen.getByTestId("destino")).toHaveTextContent("/pos?inscripcion=103&sede=2&sedeNombre=Norte");
   });
 });
