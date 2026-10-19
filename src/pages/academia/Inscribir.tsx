@@ -166,7 +166,21 @@ export default function Inscribir({
     (modo === "nuevo" && !elegido && edad != null && edad < MAYORIA_DE_EDAD) ||
     (!!preinscripcion?.alumno.menor && !preinscripcion.tutor);
 
-  const vista = useMemo(() => calendarioConDescuento(plan, tipoDesc, enPct, Number(valorDesc) || 0), [plan, tipoDesc, enPct, valorDesc]);
+  /**
+   * Lo que está mal en la beca o promoción: ni 0, ni más del 100 %, ni más
+   * que el curso. Mientras esté mal, el resumen no la aplica: mostraba "Beca
+   * 100 %, total Bs 0" con el campo en rojo (QA ronda 2, N-6).
+   */
+  const descuentoMal = (() => {
+    if (!tipoDesc || valorDesc.trim() === "") return "";
+    const n = Number(valorDesc);
+    if (!Number.isFinite(n) || n <= 0) return "Tiene que ser más de 0.";
+    if (enPct && n > 100) return "No puede pasar el 100 %.";
+    if (!enPct && plan && n > plan.total) return `No puede pasar el precio del ${p.carrera} (${fmtMoney(plan.total)}).`;
+    return "";
+  })();
+  const valorDescValido = descuentoMal ? 0 : Number(valorDesc) || 0;
+  const vista = useMemo(() => calendarioConDescuento(plan, tipoDesc, enPct, valorDescValido), [plan, tipoDesc, enPct, valorDescValido]);
   // Un plan de una sola cuota (el pago completo) no tiene "la primera".
   const unaCuota = vista.cuotas.length <= 1;
   const elegidoHoy: PagaHoy = unaCuota && pagaHoy === "primera" ? "todo" : pagaHoy;
@@ -180,15 +194,6 @@ export default function Inscribir({
     const n = Number(otroMonto);
     if (!Number.isFinite(n) || n <= 0) return "Tiene que ser más de Bs 0.";
     if (plan && n > vista.total) return `No puede pasar el total (${fmtMoney(vista.total)}).`;
-    return "";
-  })();
-  /** Lo mismo para la beca o promoción: ni 0, ni más del 100 %, ni más que el curso. */
-  const descuentoMal = (() => {
-    if (!tipoDesc || valorDesc.trim() === "") return "";
-    const n = Number(valorDesc);
-    if (!Number.isFinite(n) || n <= 0) return "Tiene que ser más de 0.";
-    if (enPct && n > 100) return "No puede pasar el 100 %.";
-    if (!enPct && plan && n > plan.total) return `No puede pasar el precio del ${p.carrera} (${fmtMoney(plan.total)}).`;
     return "";
   })();
   const sobreTope =

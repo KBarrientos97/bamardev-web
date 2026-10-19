@@ -318,9 +318,20 @@ describe("E5 · inscribir: los errores se ven y el adelanto se valida (QA ronda 
     fireEvent.click(within(panel()).getByRole("button", { name: "Aplicar otro descuento o beca" }));
     fireEvent.click(within(panel()).getByRole("button", { name: "Beca" }));
     fireEvent.click(within(panel()).getByRole("button", { name: "Bs" }));
-    fireEvent.change(within(panel()).getByLabelText("Descuento"), { target: { value: "99999" } });
+    const campo = within(panel()).getByLabelText("Descuento");
+    fireEvent.change(campo, { target: { value: "99999" } });
     fireEvent.change(within(panel()).getByLabelText("Motivo"), { target: { value: "Prueba" } });
     expect(within(panel()).getByText(/No puede pasar el precio del curso/)).toBeInTheDocument();
+    // El resumen no aplica el descuento inválido: nada de "Beca 100 %, total Bs 0" (QA ronda 2, N-6).
+    const resumen = within(panel()).getByRole("region", { name: "Resumen" });
+    expect(resumen).not.toHaveTextContent(/Beca/);
+    const precio = resumen.querySelector("dd")?.textContent;
+    expect(within(resumen).getByText("Total del curso").nextElementSibling?.textContent).toBe(precio);
+    expect(within(resumen).getByText("Total del curso").nextElementSibling).not.toHaveTextContent(/^Bs\s?0,00$/);
+    // Con un monto válido, sí.
+    fireEvent.change(campo, { target: { value: "100" } });
+    expect(resumen).toHaveTextContent(/Beca/);
+    fireEvent.change(campo, { target: { value: "99999" } });
     fireEvent.click(within(panel()).getByRole("button", { name: "Inscribir sin cobrar" }));
     expect(apiAcademia.inscribir).not.toHaveBeenCalled();
   });
