@@ -111,7 +111,8 @@ export default function Inscribir({
 
   // ── ¿Cómo paga? ──
   const planes = (grupo?.planesOfrecidos ?? []).filter((x) => x.activo !== false);
-  const [planId, setPlanId] = useState<number | null>(null);
+  // La forma de pago que eligió en la página viene marcada.
+  const [planId, setPlanId] = useState<number | null>(preinscripcion?.planElegido?.id ?? null);
   useEffect(() => {
     // Un solo plan: viene elegido. Con varios, la secretaría elige.
     if (planes.length === 1 && planId == null) setPlanId(planes[0].id);

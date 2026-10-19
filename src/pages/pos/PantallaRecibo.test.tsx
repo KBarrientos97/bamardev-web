@@ -31,6 +31,11 @@ vi.mock("../../store/AuthContext", async () => {
   };
 });
 
+vi.mock("../../lib/academia/apiAcademia", () => ({
+  apiAcademia: { enlacePago: vi.fn(async () => ({ enlacePago: "https://app.bamardev.com/p/horizonte/pagar/K7Q2abcdef" })) },
+}));
+
+import { act } from "@testing-library/react";
 import PantallaRecibo from "./PantallaRecibo";
 
 function venta(datos: Partial<Venta> = {}): Venta {
@@ -346,5 +351,19 @@ describe("E10: el recibo de las cuotas de un instituto", () => {
     );
     expect(screen.getByText("Cuota 2/2 · Barbería y Peluquería")).toBeInTheDocument();
     expect(screen.getByText("Pagó: Patricia Suárez (tutor)")).toBeInTheDocument();
+  });
+
+  it("al pie, el enlace del estado de cuenta de la inscripción (S3)", async () => {
+    sesion.rubro = "ACADEMIA";
+    dibujar(
+      venta({
+        cuotas: [
+          { cuotaId: 1, concepto: "M2", alumno: "Camila", cobrado: 300, pagado: 300, saldo: 200, estado: "PARCIAL", saldoCurso: 700, proximaCuota: null },
+        ],
+        inscripcionCuotas: 102,
+      }),
+    );
+    await act(async () => {});
+    expect(screen.getByLabelText("Estado de cuenta")).toHaveTextContent("app.bamardev.com/p/horizonte/pagar/K7Q2abcdef");
   });
 });

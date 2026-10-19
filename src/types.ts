@@ -1154,6 +1154,8 @@ export interface Venta {
    * quién eligió, para que el recibo lo diga.
    */
   pagadorCuotas?: { nombre: string; rol: "ALUMNO" | "TUTOR" } | null;
+  /** Sólo en el equipo, recién cobrada: la inscripción de las cuotas, para el enlace del estado de cuenta (E10). */
+  inscripcionCuotas?: number | null;
   /**
    * Plan Emprendedor: qué consumió esta venta (cupo o créditos) y el contador
    * como quedó. Sólo en un negocio con cupo; un reintento idempotente tampoco

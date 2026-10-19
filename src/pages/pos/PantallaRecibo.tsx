@@ -6,6 +6,7 @@ import { fmtFecha, fmtFechaHora, fmtMoney, fmtNum } from "../../lib/format";
 import { marcaConsumo } from "../../lib/rubro";
 import { useAuth } from "../../store/AuthContext";
 import type { Venta } from "../../types";
+import EnlaceEstadoCuenta from "../academia/EnlaceEstadoCuenta";
 
 /**
  * Comprobante de la venta recién cobrada.
@@ -267,6 +268,9 @@ export default function PantallaRecibo({
               la venta cobró cuotas: el ticket de siempre no cambia. */}
           {venta.cuotas && venta.cuotas.length > 0 && (
             <CuotasRecibo cuotas={venta.cuotas} pagador={venta.pagadorCuotas ?? null} />
+          )}
+          {venta.cuotas && venta.cuotas.length > 0 && venta.inscripcionCuotas != null && (
+            <EnlaceEstadoCuenta inscripcionId={venta.inscripcionCuotas} />
           )}
 
           {venta.credito && (
