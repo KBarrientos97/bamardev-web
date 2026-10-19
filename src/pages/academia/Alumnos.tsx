@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Buscador, FilaFiltros } from "../../components/filtros";
+import { Buscador } from "../../components/filtros";
 import { Icon } from "../../components/Icon";
 import { Paginacion } from "../../components/Paginacion";
 import { Boton, Cargando, ErrorMsg, Select, Vacio } from "../../components/ui";
@@ -130,11 +130,14 @@ export default function Alumnos() {
         }
       />
 
-      <FilaFiltros>
+      {/* La sede va en chips; el buscador y los desplegables, en su propia
+          fila. Antes iban todos dentro de `FilaFiltros`, que sólo sabe de
+          chips: con 2 cursos y 2 grupos la pantalla se caía (QA ronda 2, B-01). */}
+      {sede.selector}
+      <div className="flex flex-wrap gap-2">
         <div className="min-w-0 flex-1 basis-56">
           <Buscador valor={q} onChange={setQ} placeholder="Nombre, CI, código o teléfono" />
         </div>
-        {sede.selector}
         {(carreras.datos?.length ?? 0) > 1 && (
           <div className="w-full sm:w-48">
             <Select
@@ -166,7 +169,7 @@ export default function Alumnos() {
             </Select>
           </div>
         )}
-      </FilaFiltros>
+      </div>
 
       {lista.error && !lista.items.length ? (
         <ErrorMsg onReintentar={lista.recargar}>{lista.error}</ErrorMsg>

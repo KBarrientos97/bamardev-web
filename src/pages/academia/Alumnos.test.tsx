@@ -71,4 +71,33 @@ describe("E7 · Estudiantes", () => {
     await act(async () => {});
     expect(apiAcademia.alumnos).toHaveBeenLastCalledWith(expect.objectContaining({ debe: true, page: 1, pageSize: 20 }));
   });
+
+  it("con 2 cursos y 2 grupos no se cae: buscador y desplegables a la vista (QA ronda 2, B-01)", async () => {
+    vi.mocked(apiAcademia.carreras).mockResolvedValue([
+      { id: 1, nombre: "Barbería" },
+      { id: 2, nombre: "Tatuaje" },
+    ] as never);
+    vi.mocked(apiAcademia.grupos).mockResolvedValue({
+      items: [
+        { id: 7, carrera: { id: 1, nombre: "Barbería" }, dias: [1, 3, 5], horaInicio: "09:00", horaFin: "11:00" },
+        { id: 8, carrera: { id: 2, nombre: "Tatuaje" }, dias: [2, 4], horaInicio: "19:00", horaFin: "21:00" },
+      ],
+      total: 2,
+      page: 1,
+      pageSize: 100,
+    } as never);
+    render(
+      <MemoryRouter>
+        <Alumnos />
+      </MemoryRouter>,
+    );
+    await act(async () => {});
+    expect(screen.queryByText(/tuvo un error/)).not.toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Nombre, CI, código o teléfono")).toBeInTheDocument();
+    const grupo = screen.getByRole("combobox", { name: "Grupo" });
+    expect(screen.getByRole("combobox", { name: /Curso|Carrera/ })).toBeInTheDocument();
+    fireEvent.change(grupo, { target: { value: "8" } });
+    await act(async () => {});
+    expect(apiAcademia.alumnos).toHaveBeenLastCalledWith(expect.objectContaining({ grupoId: 8 }));
+  });
 });

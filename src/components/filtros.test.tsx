@@ -151,3 +151,26 @@ describe("FilaFiltros con más de dos grupos: botón Filtros en el celular", () 
     expect(screen.queryByRole("button", { name: /Filtros/ })).toBeNull();
   });
 });
+
+describe("FilaFiltros con hijos que no son chips (QA ronda 2, B-01)", () => {
+  it("un buscador o un desplegable no la tiran abajo: quedan a la vista y no cuentan como grupo", () => {
+    render(
+      <FilaFiltros>
+        <input placeholder="Buscar" />
+        <Chips titulo="Tipo" valor="" opciones={TIPOS} onChange={() => {}} />
+        <select aria-label="Curso">
+          <option>Todos</option>
+        </select>
+        <select aria-label="Grupo">
+          <option>Todos</option>
+        </select>
+      </FilaFiltros>,
+    );
+    expect(screen.getByPlaceholderText("Buscar")).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Curso" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Grupo" })).toBeInTheDocument();
+    // Un solo grupo de chips: sin botón Filtros.
+    expect(screen.queryByRole("button", { name: /Filtros/ })).toBeNull();
+    expect(screen.getByRole("button", { name: "Entradas" })).toBeInTheDocument();
+  });
+});
