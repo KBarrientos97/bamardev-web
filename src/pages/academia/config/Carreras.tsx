@@ -176,7 +176,7 @@ function FilaCurso({
 }) {
   const p = usePalabras();
   const modulos = [...c.materias].filter((m) => m.activa).sort((a, b) => a.orden - b.orden);
-  const completo = c.planes.find((pl) => pl.activo && pl.generado === "COMPLETO")?.total ?? null;
+  const completo = c.planes.find((pl) => pl.activo && pl.generado === "COMPLETO")?.total ?? c.precioCompleto ?? null;
   const aMedida = c.planes.some((pl) => pl.activo && !pl.generado);
   const pct = c.pctDocente ?? pctInstituto;
   const sub = [modulos.map((m) => m.nombre).join(" · "), c.publicarEnPagina ? "" : "sin publicar", aMedida ? "con planes a medida" : ""]

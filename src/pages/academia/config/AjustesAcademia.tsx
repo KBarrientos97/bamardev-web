@@ -4,6 +4,7 @@ import { Chips } from "../../../components/filtros";
 import { Icon } from "../../../components/Icon";
 import { Campo, Cargando, ErrorMsg, Input, Select } from "../../../components/ui";
 import { apiAcademia } from "../../../lib/academia/apiAcademia";
+import { ApiError } from "../../../lib/api";
 import {
   duracionFranja,
   franjaSiguiente,
@@ -85,7 +86,9 @@ export default function AjustesAcademia() {
     } catch (e) {
       if (mia !== enVuelo.current) return;
       setEstado("error");
-      setError(e instanceof Error ? e.message : "No se pudo guardar");
+      // 400 FRANJAS_INVALIDAS trae el detalle de cada una (cambio #4).
+      const detalles = e instanceof ApiError && Array.isArray(e.detalle.detalles) ? (e.detalle.detalles as string[]) : [];
+      setError(detalles.length ? detalles.join(" ") : e instanceof Error ? e.message : "No se pudo guardar");
     }
   }
 
@@ -371,7 +374,7 @@ function ResumenCursos({ cursos, pctDefecto }: { cursos: Carrera[] | null; pctDe
         <tbody>
           {cursos.map((c) => {
             const mods = c.materias.filter((m) => m.activa).length;
-            const completo = c.planes.find((pl) => pl.activo && pl.generado === "COMPLETO")?.total;
+            const completo = c.planes.find((pl) => pl.activo && pl.generado === "COMPLETO")?.total ?? c.precioCompleto;
             const pct = c.pctDocente ?? pctDefecto;
             return (
               <tr key={c.id} className="border-t border-borde-soft">

@@ -68,7 +68,7 @@ export default function Calendario() {
   const carreras = useApi(() => apiAcademia.carreras(), []);
 
   const datos = cal.datos;
-  const dia = ajustes.datos?.diaInicioModulo ?? 10;
+  const dia = datos?.diaInicioModulo ?? ajustes.datos?.diaInicioModulo ?? 10;
   const nombreSede = datos?.sede?.nombre ?? (sede.nombre || usuario?.sucursal || "");
 
   // Los cursos que aparecen, con cuántos grupos tiene cada uno: los chips.

@@ -94,9 +94,16 @@ export default function Reportes() {
                         <span aria-hidden="true" className="h-1.5 overflow-hidden rounded-full bg-primary-100">
                           {pct != null && <span className="block h-full rounded-full bg-primary" style={{ width: `${pct}%` }} />}
                         </span>
-                        <span className="text-sm tabular-nums text-texto-2">
+                        <span className="text-right text-sm tabular-nums text-texto-2">
                           {c.activos}
                           {c.cupo != null ? ` de ${c.cupo}` : ""} activos
+                          {(c.cobrado != null || c.vencido) && (
+                            <span className="block text-[12px] text-texto-3">
+                              {c.cobrado != null ? `cobrado ${fmtMoney(c.cobrado)}` : ""}
+                              {c.vencido ? <span className="font-semibold text-danger-text"> · vencido {fmtMoney(c.vencido)}</span> : null}
+                            </span>
+                          )}
+                          {c.inscritosPorEmpezar ? <span className="block text-[12px] text-texto-3">{c.inscritosPorEmpezar} por empezar</span> : null}
                         </span>
                       </li>
                     );
@@ -114,7 +121,27 @@ export default function Reportes() {
                 <h2 id="t-asis" className="text-base font-bold text-texto">
                   Asistencia promedio
                 </h2>
-                {d.asistenciaPromedioPct == null ? (
+                {d.asistenciaPorGrupo?.length ? (
+                  <ul className="space-y-2">
+                    {d.asistenciaPorGrupo.map((a) => (
+                      <li key={nombreDe(a.grupo)} className="grid grid-cols-[minmax(0,1fr)_80px_44px] items-center gap-3">
+                        <span className="min-w-0">
+                          <span className="block truncate text-sm text-texto">{nombreDe(a.grupo)}</span>
+                          {a.docente && <span className="block truncate text-[12px] text-texto-3">Prof. {nombreDe(a.docente)}</span>}
+                        </span>
+                        <span aria-hidden="true" className="h-1.5 overflow-hidden rounded-full bg-primary-100">
+                          <span className={`block h-full rounded-full ${a.pct != null && a.pct < 80 ? "bg-warning-text" : "bg-primary"}`} style={{ width: `${Math.min(100, a.pct ?? 0)}%` }} />
+                        </span>
+                        <span className={`text-right text-sm tabular-nums ${a.pct != null && a.pct < 80 ? "font-semibold text-warning-text" : "text-texto"}`}>
+                          {a.pct != null ? `${Math.round(a.pct)} %` : "—"}
+                        </span>
+                      </li>
+                    ))}
+                    {d.asistenciaPromedioPct != null && (
+                      <li className="text-[13px] text-texto-3">Promedio del instituto {Math.round(d.asistenciaPromedioPct)} %</li>
+                    )}
+                  </ul>
+                ) : d.asistenciaPromedioPct == null ? (
                   <p className="text-sm text-texto-3">Todavía no hay listas pasadas este mes.</p>
                 ) : (
                   <div className="space-y-1">
@@ -150,7 +177,9 @@ export default function Reportes() {
                     <span className="block text-[12px] text-texto-3">{p.Alumnos} que deben</span>
                     <span className="block text-lg font-bold tabular-nums text-texto">
                       {d.morosidad.estudiantes}{" "}
-                      <span className="text-sm font-normal text-texto-3">· {Math.round(d.morosidad.pctEstudiantes)} %</span>
+                      <span className="text-sm font-normal text-texto-3">
+                        {d.morosidad.activos != null ? `de ${d.morosidad.activos} ` : ""}· {Math.round(d.morosidad.pctEstudiantes)} %
+                      </span>
                     </span>
                   </div>
                 </div>

@@ -60,7 +60,8 @@ export default function PagarPagina() {
   const color = pagina ? paleta(pagina.color.hex).oscuro : "#111827";
   const logo = urlDeImagen(d.instituto.logoUrl);
   const wa = waDe(d.instituto.telefono);
-  const qr = d.qr ? urlDeImagen(d.qr.imagenUrl) : null;
+  // El QR fijo llega como data URL (cambio #25); una ruta del API, por las dudas.
+  const qr = d.qr ? (/^(data:|https?:)/.test(d.qr.imagenUrl) ? d.qr.imagenUrl : urlDeImagen(d.qr.imagenUrl)) : null;
   const p = d.proxima;
 
   async function copiar() {

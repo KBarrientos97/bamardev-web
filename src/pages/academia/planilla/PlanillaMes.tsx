@@ -120,8 +120,9 @@ export default function PlanillaMes() {
                       {x.grupos} {x.grupos === 1 ? "grupo" : "grupos"}
                     </span>
                   </span>
-                  <span className="text-sm tabular-nums text-texto-2">
+                  <span className="min-w-0 text-sm tabular-nums text-texto-2">
                     {x.cuentan} de {x.total}
+                    {extraDocente(x) && <span className="block truncate text-[12px] text-texto-3">{extraDocente(x)}</span>}
                   </span>
                   <span className="text-right text-sm font-semibold tabular-nums text-texto">{fmtMoney(x.bruto)}</span>
                   <span className="hidden text-right text-[13px] text-texto-3 md:block">{textoRetencion(d.retencionActiva, x.retencion)}</span>
@@ -147,6 +148,14 @@ export default function PlanillaMes() {
       )}
     </div>
   );
+}
+
+/** "+ 2 de meses anteriores", "3 postergados", "todos pagaron". */
+function extraDocente(x: TPlanillaMes["docentes"][number]): string {
+  if (x.atrasados) return `+ ${x.atrasados} de meses anteriores`;
+  if (x.postergados) return `${x.postergados} ${x.postergados === 1 ? "postergado" : "postergados"}`;
+  if (x.total && x.cuentan === x.total) return "todos pagaron";
+  return "";
 }
 
 function subtitulo(d: TPlanillaMes, enCurso: boolean, sede: string): string {

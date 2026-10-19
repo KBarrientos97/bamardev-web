@@ -157,7 +157,22 @@ describe("E16 · Mi planilla", () => {
     mes: "2026-10",
     estado: "EN_CURSO",
     pct: { defecto: 20, porCurso: [] },
-    resumen: { cuentan: 17, postergados: 4, sinPagar: 1, atrasados: 2, bruto: 1850, retencion: null, retencionActiva: false, atrasos: null, liquido: 1850 },
+    resumen: {
+      cuentan: 17,
+      postergados: 4,
+      sinPagar: 1,
+      atrasados: 2,
+      bruto: 1850,
+      retencion: null,
+      retencionActiva: false,
+      atrasos: null,
+      liquido: 1850,
+      cuentanPorForma: { MES_A_MES: 12, COMPLETO: 5, OTRO: 0 },
+      brutoCuentan: 1650,
+      brutoAtrasados: 200,
+      postergadoHasta: 390,
+    },
+    grupos: [{ grupoId: 7, nombre: "L-M-V 09–11", carrera: { id: 3, nombre: "Barbería" }, materia: { orden: 2, nombre: "Degradados" }, sede: { id: 1, nombre: "Central" }, estudiantes: 22, pct: 20 }],
     cuentan: [],
     postergados: [],
     atrasados: [],
@@ -182,6 +197,9 @@ describe("E16 · Mi planilla", () => {
     expect(apiAcademia.planillaDocente).toHaveBeenCalledWith(9, "2026-10");
     expect(screen.getByText("Cuentan 17 estudiantes")).toBeInTheDocument();
     expect(screen.getByText("4 postergados")).toBeInTheDocument();
+    expect(screen.getByText(/12 mes a mes y 5 con el curso completo/)).toBeInTheDocument();
+    expect(screen.getByText("hasta Bs 390,00")).toBeInTheDocument();
+    expect(screen.getByText(/M2 Degradados · Central · 22 estudiantes/)).toBeInTheDocument();
     expect(screen.getByText("1 sin pagar")).toBeInTheDocument();
     expect(screen.getAllByText("Por confirmar con el instituto")).toHaveLength(2);
     expect(screen.getByText("Septiembre 2026")).toBeInTheDocument();

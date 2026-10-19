@@ -114,6 +114,8 @@ export interface Carrera {
   pctDocente?: number | null;
   /** Todos sus planes activos son los generados. */
   modoSimple?: boolean;
+  /** Cambio #5: `round(n × precioModulo × (1 − desc))`, null sin precio. */
+  precioCompleto?: number | null;
 }
 
 /** `POST /academia/carreras/simple` y `PUT /academia/carreras/:id/simple`. */
@@ -573,7 +575,7 @@ export interface HoyAcademia {
     items: { alumno: { id: number; nombre: string }; detalle: string; monto: number }[];
   };
   preinscripcionesNuevas: number;
-  avisos: { tipo: TipoAvisoHoy; titulo: string; texto: string; grupoId?: number }[];
+  avisos: { tipo: TipoAvisoHoy; titulo: string; texto: string; grupoId?: number; cantidad?: number }[];
   /** Las clases de la sede ese día (F1b). */
   clases: ClaseDelDia[];
 }
@@ -606,6 +608,8 @@ export interface FilaCalendario {
 
 export interface Calendario {
   sede: Ref | null;
+  /** Cambio #9. */
+  diaInicioModulo?: number;
   /** `AAAA-MM`. */
   meses: string[];
   filas: FilaCalendario[];
@@ -629,9 +633,15 @@ export interface ClaseDelDia {
   llegadaEn: string | null;
   atrasoMin: number | null;
   lista: { pasada: boolean; presentes: number; total: number };
+  /** Cambio #13. */
+  fecha?: string;
+  estado?: string;
 }
 
 export interface ProximaClase {
+  /** Cambio #13. */
+  sesionId?: number;
+  carrera?: string | Ref;
   fecha: string;
   grupoId: number;
   nombre: string;
@@ -657,7 +667,12 @@ export interface ListaDeClase {
     horaFin: string;
     estado: string;
     materia: { orden: number; nombre: string };
+    /** Cambio #14. */
+    llegadaEn?: string | null;
+    atrasoMin?: number | null;
   };
+  /** Cambio #14: el grupo, para el título. */
+  grupo?: { id: number; nombre: string; carrera: string | Ref; sede: string | Ref; aula: string | null };
   guardada: boolean;
   editable: boolean;
   resumen: { pagaron: number; total: number };
@@ -668,8 +683,10 @@ export interface ListaDeClase {
 
 export interface NotasDelGrupo {
   materia: { id: number; orden: number; nombre: string; desde: string; hasta: string };
-  materias: { id: number; orden: number; nombre: string; estado: EstadoMateriaGrupo }[];
+  materias: { id: number; orden: number; nombre: string; estado: EstadoMateriaGrupo; docente?: string | { personalId: number; nombre: string } | null }[];
   cerrada: boolean;
+  /** Cambio #16. */
+  cerradaEn?: string | null;
   notaMinima: number;
   escalaMax: number;
   items: { inscripcionId: number; nombre: string; estadoPago: EstadoPagoModulo | null; nota: number | null }[];
@@ -689,6 +706,10 @@ export interface FilaPlanillaMes {
   retencion: number | null;
   liquido: number;
   estado: EstadoPlanilla;
+  /** Cambio #18. */
+  atrasados?: number;
+  postergados?: number;
+  sinPagar?: number;
 }
 
 export interface PlanillaMes {
@@ -708,7 +729,10 @@ export interface LineaPlanilla {
   abonado: number;
   montoModulo: number;
   pct: number;
+  /** 0 en postergados y sin pagar (cambio #19): lo que sumaría es `montoPotencial`. */
   monto: number;
+  montoPotencial?: number;
+  sede?: Ref;
   /** "Pagó Bs 1.350 el 8-sep · 1.350 ÷ 3 = 450 · 20 % = Bs 90". */
   explicacion: string;
 }
@@ -718,6 +742,10 @@ export interface PlanillaDocente {
   mes: string;
   estado: EstadoPlanilla;
   pct: { defecto: number; porCurso: { carrera: string | Ref; pct: number }[] };
+  /** Cambio #19: los módulos del mes, también para el docente. */
+  cerradaEn?: string | null;
+  pagadaEn?: string | null;
+  grupos?: { grupoId: number; nombre: string; carrera: Ref; materia: { orden: number; nombre: string }; sede: Ref; estudiantes: number; pct: number }[];
   resumen: {
     cuentan: number;
     postergados: number;
@@ -729,6 +757,12 @@ export interface PlanillaDocente {
     /** Por confirmar con el cliente (D9): siempre null. */
     atrasos: number | null;
     liquido: number;
+    // Cambio #19: cantidades y montos que el docente sí ve.
+    cuentanPorForma?: { MES_A_MES: number; COMPLETO: number; OTRO: number };
+    brutoCuentan?: number;
+    brutoAtrasados?: number;
+    postergadoHasta?: number;
+    retencionPct?: number | null;
   };
   /** Para el docente (PROPIO) las cuatro listas llegan vacías. */
   cuentan: LineaPlanilla[];
@@ -749,12 +783,25 @@ export interface PanelControl {
     grupo: string | Ref;
     inscritoPor: string;
     inscritaEn: string;
+    /** Cambio #28: los tipos cargados. */
+    fotos?: TipoFoto[];
   }[];
   asistenSinPagar: { alumno: string | Ref; grupo: string | Ref; asistencias: number; estadoPago: EstadoPagoModulo | null; inscritoPor: string }[];
   pagaronNoVienen: { alumno: string | Ref; grupo: string | Ref; asistencias: number; clasesDelMes: number; inscritoPor: string }[];
-  descuentosConPin: { inscripcionId: number; alumno: string | Ref; descuento: string; autorizadoPor: string; en: string }[];
-  ventasAnuladas: { ventaId: number; comprobante: string | null; total: number; anuladaPor: string; en: string }[];
-  inscripcionesPorUsuario: { usuario: string; sede: string | Ref; cantidad: number; cobrado: number }[];
+  /** Cambio #28: todas las becas y promociones del mes; `conPin` = las autorizó otra persona. */
+  descuentosConPin: {
+    inscripcionId: number;
+    alumno: string | Ref;
+    descuento: string;
+    autorizadoPor: string | null;
+    en: string;
+    conPin?: boolean;
+    pidio?: string | null;
+    motivo?: string | null;
+    grupo?: string | Ref;
+  }[];
+  ventasAnuladas: { ventaId: number; comprobante: string | null; total: number; anuladaPor: string; en: string; sede?: string | Ref; vendio?: string | null; motivo?: string | null }[];
+  inscripcionesPorUsuario: { usuario: string; sede: string | Ref | null; cantidad: number; cobrado: number; usuarioId?: number | null; descuentos?: number; anulaciones?: number }[];
 }
 
 export interface ReportesAcademia {
@@ -767,9 +814,20 @@ export interface ReportesAcademia {
     otrosGastos: number;
     resultado: number;
   }[];
-  activosPorCurso: { curso: string | Ref; activos: number; cupo: number | null }[];
-  morosidad: { vencido: number; estudiantes: number; pctEstudiantes: number };
+  activosPorCurso: {
+    curso: string | Ref;
+    activos: number;
+    cupo: number | null;
+    // Cambio #29.
+    grupos?: number;
+    inscritosPorEmpezar?: number;
+    cobrado?: number;
+    vencido?: number;
+  }[];
+  morosidad: { vencido: number; estudiantes: number; pctEstudiantes: number; activos?: number };
   asistenciaPromedioPct: number | null;
+  /** Cambio #29. */
+  asistenciaPorGrupo?: { grupo: string | Ref; docente: string | Ref | null; pct: number | null }[];
 }
 
 // ── Público ─────────────────────────────────────────────────────────────────

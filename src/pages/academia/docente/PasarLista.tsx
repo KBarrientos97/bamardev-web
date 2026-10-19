@@ -129,7 +129,9 @@ function Lista({
       setError(
         e instanceof ApiError && e.codigo === CODIGOS_ACADEMIA.LISTA_CERRADA
           ? "La lista de ese día ya cerró: para corregirla, pedíselo a la administración."
-          : e instanceof Error
+          : e instanceof ApiError && e.codigo === "LISTA_FUTURA"
+            ? "Todavía no es el día de esa clase."
+            : e instanceof Error
             ? e.message
             : "No se pudo guardar la lista",
       );
@@ -139,7 +141,11 @@ function Lista({
   }
 
   const g = grupo.datos;
-  const titulo = g ? `${nombreDe(g.carrera)} · ${horarioGrupo(g)}` : "Pasar lista";
+  const titulo = g
+    ? `${nombreDe(g.carrera)} · ${horarioGrupo(g)}`
+    : d?.grupo
+      ? `${nombreDe(d.grupo.carrera)} · ${d.grupo.nombre}`
+      : "Pasar lista";
   const alumnos = (d?.alumnos ?? []).filter((a) => filtro === "todos" || a.estadoPago !== "PAGADO");
   const deben = (d?.alumnos ?? []).filter((a) => a.estadoPago && a.estadoPago !== "PAGADO").length;
   const esHoy = d ? d.sesion.fecha === isoDia(new Date()) : true;
@@ -160,7 +166,7 @@ function Lista({
           <p className="text-[13px] text-texto-3">
             M{d.sesion.materia.orden} {d.sesion.materia.nombre} · {esHoy ? "Hoy " : ""}
             {capitalizar(fechaLarga(d.sesion.fecha)).toLowerCase()}
-            {g?.aula ? ` · ${g.aula}` : ""}
+            {(g?.aula ?? d.grupo?.aula) ? ` · ${g?.aula ?? d.grupo?.aula}` : ""}
           </p>
         )}
         {d && (

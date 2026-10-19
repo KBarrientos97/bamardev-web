@@ -120,6 +120,9 @@ export default function PlanillaDocente() {
             Prof. {d.docente.nombre} · {tituloMes(d.mes)}
           </h1>
           <p className="text-[13px] text-texto-3">
+            {d.grupos?.length
+              ? `${[...new Set(d.grupos.map((g) => g.carrera.nombre))].join(", ")} · ${d.grupos.length} ${d.grupos.length === 1 ? "grupo" : "grupos"} · `
+              : ""}
             Cobra el {pcts} de lo cobrado · {TEXTO_ESTADO[d.estado]}
           </p>
         </div>
@@ -163,7 +166,11 @@ export default function PlanillaDocente() {
           valor={`${r.cuentan} ${r.cuentan === 1 ? p.alumno : p.alumnos}`}
           nota={r.atrasados ? `+ ${r.atrasados} de meses anteriores` : undefined}
         />
-        <Cifra etiqueta="Bruto" valor={fmtMoney(r.bruto)} />
+        <Cifra
+          etiqueta="Bruto"
+          valor={fmtMoney(r.bruto)}
+          nota={r.brutoAtrasados ? `${fmtMoney(r.brutoCuentan ?? 0)} del mes + ${fmtMoney(r.brutoAtrasados)} atrasados` : undefined}
+        />
         <Cifra
           etiqueta="Retención"
           valor={r.retencionActiva && r.retencion != null ? `− ${fmtMoney(r.retencion)}` : "—"}
@@ -204,7 +211,8 @@ export default function PlanillaDocente() {
         porGrupo.map(([grupo, lineas]) => {
           const todos = verTodos[grupo] ?? false;
           const visibles = todos ? lineas : lineas.slice(0, LIMITE);
-          const total = lineas.reduce((s, l) => s + l.monto, 0);
+          const cuenta = lista === "cuentan" || lista === "atrasados";
+          const total = lineas.reduce((s, l) => s + (cuenta ? l.monto : (l.montoPotencial ?? l.monto)), 0);
           return (
             <section key={grupo} aria-label={grupo} className="space-y-2">
               <h2 className="text-sm font-bold text-texto">{grupo}</h2>
@@ -237,7 +245,7 @@ export default function PlanillaDocente() {
                       </span>
                       <span className="hidden text-right text-sm tabular-nums text-texto-3 md:block">{l.pct} %</span>
                       <span className={`text-right text-sm font-semibold tabular-nums ${lista === "cuentan" || lista === "atrasados" ? "text-texto" : "text-texto-3"}`}>
-                        {fmtMoney(l.monto)}
+                        {fmtMoney(lista === "cuentan" || lista === "atrasados" ? l.monto : (l.montoPotencial ?? l.monto))}
                       </span>
                     </button>
                   </li>
@@ -285,7 +293,7 @@ export default function PlanillaDocente() {
                   : lista === "atrasados"
                     ? "Completó un módulo de un mes anterior"
                     : lista === "postergados"
-                      ? `Abonó ${fmtMoney(elegida.abonado)} de ${fmtMoney(elegida.montoModulo)}: se suma cuando complete`
+                      ? `Abonó ${fmtMoney(elegida.abonado)} de ${fmtMoney(elegida.montoModulo)}: suma ${fmtMoney(elegida.montoPotencial ?? 0)} cuando complete`
                       : "No pagó el módulo: no suma"}
               </span>
             </div>

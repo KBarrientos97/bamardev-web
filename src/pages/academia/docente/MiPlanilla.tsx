@@ -59,19 +59,41 @@ function Detalle({ d }: { d: PlanillaDocente }) {
   const r = d.resumen;
   const enCurso = d.estado === "EN_CURSO";
   const pcts = [...new Set([d.pct.defecto, ...d.pct.porCurso.map((x) => x.pct)])];
+  // Sólo cantidades y totales: el backend no le manda al docente quién pagó cuánto.
+  const forma = r.cuentanPorForma;
+  const porForma = forma
+    ? [forma.MES_A_MES ? `${forma.MES_A_MES} mes a mes` : null, forma.COMPLETO ? `${forma.COMPLETO} con el curso completo` : null, forma.OTRO ? `${forma.OTRO} con otro plan` : null]
+        .filter(Boolean)
+        .join(" y ")
+    : "";
   const lineas = [
     {
       titulo: `Cuentan ${r.cuentan} ${r.cuentan === 1 ? p.alumno : p.alumnos}`,
-      detalle: `Pagaron el ${p.materia} completo`,
+      detalle: `Pagaron el ${p.materia} completo${porForma ? `: ${porForma}` : ""}`,
+      monto: r.brutoCuentan != null ? fmtMoney(r.brutoCuentan) : "",
       apagado: false,
     },
     ...(r.atrasados
-      ? [{ titulo: `${r.atrasados} ${r.atrasados === 1 ? "completado" : "completados"} de meses anteriores`, detalle: "Terminaron de pagar un módulo que ya pasó", apagado: false }]
+      ? [
+          {
+            titulo: `${r.atrasados} ${r.atrasados === 1 ? "completado" : "completados"} de meses anteriores`,
+            detalle: "Terminaron de pagar un módulo que ya pasó",
+            monto: r.brutoAtrasados != null ? fmtMoney(r.brutoAtrasados) : "",
+            apagado: false,
+          },
+        ]
       : []),
     ...(r.postergados
-      ? [{ titulo: `${r.postergados} ${r.postergados === 1 ? "postergado" : "postergados"}`, detalle: `Abonaron una parte del ${p.materia}. Se suman cuando completen`, apagado: true }]
+      ? [
+          {
+            titulo: `${r.postergados} ${r.postergados === 1 ? "postergado" : "postergados"}`,
+            detalle: `Abonaron una parte del ${p.materia}. Se suman cuando completen`,
+            monto: r.postergadoHasta ? `hasta ${fmtMoney(r.postergadoHasta)}` : "",
+            apagado: true,
+          },
+        ]
       : []),
-    ...(r.sinPagar ? [{ titulo: `${r.sinPagar} sin pagar`, detalle: "Recordáselo en clase; recepción le manda el QR", apagado: true }] : []),
+    ...(r.sinPagar ? [{ titulo: `${r.sinPagar} sin pagar`, detalle: "Recordáselo en clase; recepción le manda el QR", monto: "—", apagado: true }] : []),
   ];
 
   return (
@@ -91,13 +113,22 @@ function Detalle({ d }: { d: PlanillaDocente }) {
 
       <section aria-labelledby="t-lineas" className="space-y-2">
         <h2 id="t-lineas" className="text-sm font-bold text-texto">
-          {tituloMes(d.mes)} · cobrás el {pcts.join(" o ")} %
+          {d.grupos?.length ? d.grupos.map((g) => `${g.carrera.nombre} · ${g.nombre}`).join(" · ") : tituloMes(d.mes)}
         </h2>
+        <p className="text-[13px] text-texto-3">
+          {d.grupos?.length
+            ? `${d.grupos.map((g) => `M${g.materia.orden} ${g.materia.nombre} · ${g.sede.nombre} · ${g.estudiantes} ${g.estudiantes === 1 ? p.alumno : p.alumnos}`).join(" · ")} · `
+            : ""}
+          cobrás el {pcts.join(" o ")} %
+        </p>
         <ul className="divide-y divide-borde-soft border-y border-borde-soft">
           {lineas.map((l) => (
-            <li key={l.titulo} className="py-2.5">
-              <span className={`block text-sm font-semibold ${l.apagado ? "text-texto-3" : "text-texto"}`}>{l.titulo}</span>
-              <span className="block text-[13px] text-texto-3">{l.detalle}</span>
+            <li key={l.titulo} className="flex items-start justify-between gap-3 py-2.5">
+              <span>
+                <span className={`block text-sm font-semibold ${l.apagado ? "text-texto-3" : "text-texto"}`}>{l.titulo}</span>
+                <span className="block text-[13px] text-texto-3">{l.detalle}</span>
+              </span>
+              {l.monto && <span className={`shrink-0 text-sm font-semibold tabular-nums ${l.apagado ? "text-texto-4" : "text-texto"}`}>{l.monto}</span>}
             </li>
           ))}
         </ul>

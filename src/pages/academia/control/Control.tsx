@@ -152,10 +152,13 @@ export default function Control() {
 
 function ParaMirar({ d, mirar, onMirar }: { d: PanelControl; mirar: Mirar; onMirar: (m: Mirar) => void }) {
   const p = usePalabras();
+  // El backend manda todas las becas y promociones del mes (cambio #28): acá,
+  // las que autorizó otra persona con su PIN.
+  const conPin = d.descuentosConPin.filter((x) => x.conPin !== false);
   const pestanas: { clave: Mirar; label: string; n: number }[] = [
     { clave: "asistenSinPagar", label: "Vienen a clase pero no pagaron", n: d.asistenSinPagar.length },
     { clave: "pagaronNoVienen", label: "Pagaron pero nunca vinieron", n: d.pagaronNoVienen.length },
-    { clave: "descuentosConPin", label: "Descuentos con PIN", n: d.descuentosConPin.length },
+    { clave: "descuentosConPin", label: "Descuentos con PIN", n: conPin.length },
     { clave: "ventasAnuladas", label: "Ventas anuladas", n: d.ventasAnuladas.length },
   ];
   type Fila = { clave: string; titulo: string; sub?: string; b: string; c: string; d: string; urgente?: boolean; a?: string };
@@ -186,13 +189,14 @@ function ParaMirar({ d, mirar, onMirar }: { d: PanelControl; mirar: Mirar; onMir
       })),
     },
     descuentosConPin: {
-      cab: [p.Alumno, "Descuento", "Quién autorizó", "Cuándo"],
-      filas: d.descuentosConPin.map((x) => ({
+      cab: [p.Alumno, "Descuento", "Quién autorizó", "Lo pidió"],
+      filas: conPin.map((x) => ({
         clave: `d${x.inscripcionId}`,
         titulo: nombreDe(x.alumno),
+        sub: [x.grupo ? nombreDe(x.grupo) : null, fechaCorta(x.en), x.motivo].filter(Boolean).join(" · "),
         b: x.descuento,
-        c: x.autorizadoPor,
-        d: fechaCorta(x.en),
+        c: x.autorizadoPor ?? "—",
+        d: x.pidio ?? "—",
         a: typeof x.alumno === "string" ? undefined : `/academia/alumnos/${x.alumno.id}`,
       })),
     },
@@ -201,6 +205,7 @@ function ParaMirar({ d, mirar, onMirar }: { d: PanelControl; mirar: Mirar; onMir
       filas: d.ventasAnuladas.map((x) => ({
         clave: `v${x.ventaId}`,
         titulo: x.comprobante ? `Recibo ${x.comprobante}` : `Venta ${x.ventaId}`,
+        sub: [x.sede ? nombreDe(x.sede) : null, x.vendio ? `vendió ${x.vendio}` : null, x.motivo].filter(Boolean).join(" · "),
         b: fmtMoney(x.total),
         c: fmtFecha(x.en),
         d: x.anuladaPor,
@@ -282,7 +287,14 @@ function PorPersona({ filas, variasSedes }: { filas: PanelControl["inscripciones
               </span>
               <span className="w-8 text-right text-sm tabular-nums text-texto-2">{f.cantidad}</span>
             </span>
-            <span className="w-28 text-right text-sm tabular-nums text-texto">{fmtMoney(f.cobrado)}</span>
+            <span className="w-28 text-right text-sm tabular-nums text-texto">
+              {fmtMoney(f.cobrado)}
+              {(f.descuentos || f.anulaciones) ? (
+                <span className="block text-[12px] font-normal text-texto-3">
+                  {[f.descuentos ? `${f.descuentos} desc.` : null, f.anulaciones ? `${f.anulaciones} anul.` : null].filter(Boolean).join(" · ")}
+                </span>
+              ) : null}
+            </span>
           </li>
         ))}
       </ul>
