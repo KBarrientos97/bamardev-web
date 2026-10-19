@@ -62,8 +62,13 @@ export default function FotosAlumno({
 
   const porTipo = new Map(fotos.map((f) => [f.tipo, f]));
   const completas = TIPOS_FOTO.every((t) => porTipo.has(t));
-  const revisada = completas && fotos.every((f) => f.revisadaEn) ? fotos[0] : null;
-  const observada = fotos.find((f) => f.observacion && !f.revisadaEn) ?? fotos.find((f) => f.observacion);
+  // Observar también deja `revisadaEn` (con su observación): una revisada con
+  // observación está observada, no aprobada. Antes se leía "Revisadas por…"
+  // y recepción nunca se enteraba (QA ronda 2, B-06). Al cambiar la foto se
+  // borra la marca de revisada y vuelve a quedar por revisar.
+  const observadas = fotos.filter(esObservada);
+  const revisada = completas && observadas.length === 0 && fotos.every((f) => f.revisadaEn) ? fotos[0] : null;
+  const motivo = observadas[0]?.observacion ?? "";
 
   async function hacer(fn: () => Promise<unknown>) {
     setOcupado(true);
@@ -92,13 +97,22 @@ export default function FotosAlumno({
               <Icon name="check" size={14} /> Revisadas{revisada.revisadaPor ? ` por ${revisada.revisadaPor}` : ""}
               {revisada.revisadaEn ? ` el ${fechaCorta(revisada.revisadaEn)}` : ""}
             </>
-          ) : observada?.observacion ? (
-            <span className="font-semibold text-danger-text">Observadas: {observada.observacion}</span>
+          ) : observadas.length ? (
+            <span className="font-semibold text-danger-text">
+              {observadas.length === 1 ? "Observada" : "Observadas"}: {motivo}
+            </span>
           ) : (
             <span className="text-warning-text">Por revisar</span>
           )}
         </span>
       </div>
+
+      {observadas.length > 0 && reemplaza && (
+        <p role="alert" className="rounded-xl bg-warning-bg px-3.5 py-2.5 text-sm text-warning-text">
+          <b>Falta corregir:</b> {motivo}. Tocá <b>Cambiar</b> en {observadas.length === 1 ? "la foto marcada" : "las fotos marcadas"} y
+          sacala de nuevo.
+        </p>
+      )}
 
       <div className="grid grid-cols-3 gap-3">
         {TIPOS_FOTO.map((tipo) => (
@@ -155,7 +169,7 @@ export default function FotosAlumno({
       {observando && (
         <PedirMotivo
           titulo="Observar las fotos"
-          texto="Queda anotado y las fotos vuelven a quedar por revisar."
+          texto="Queda anotado en la ficha: recepción ve el motivo y cambia la foto, que vuelve a quedar por revisar."
           motivos={MOTIVOS_OBSERVACION}
           etiquetaOk="Observar"
           onCancelar={() => setObservando(false)}
@@ -188,11 +202,12 @@ function Figura({
 }) {
   const input = useRef<HTMLInputElement>(null);
   const titulo = NOMBRE_FOTO[tipo];
+  const observada = !!foto && esObservada(foto);
   return (
     <figure className="min-w-0">
       <div
         className={`relative flex aspect-[4/3] items-center justify-center overflow-hidden rounded-xl border ${
-          foto ? "border-primary-100 bg-primary-50" : "border-dashed border-danger bg-danger-bg/30"
+          observada ? "border-2 border-warning-text bg-warning-bg/40" : foto ? "border-primary-100 bg-primary-50" : "border-dashed border-danger bg-danger-bg/30"
         }`}
       >
         {url ? (
@@ -209,7 +224,10 @@ function Figura({
         )}
       </div>
       <figcaption className="mt-1 flex items-center justify-between gap-1 text-[12px] text-texto-3">
-        <span className="truncate">{titulo}</span>
+        <span className="min-w-0 truncate">
+          {titulo}
+          {observada && <span className="block font-semibold text-warning-text">Observada</span>}
+        </span>
         {reemplaza && (
           <>
             <input
@@ -227,7 +245,14 @@ function Figura({
                 if (f) onReemplazar(f);
               }}
             />
-            <button type="button" onClick={() => input.current?.click()} className="shrink-0 font-semibold text-primary-700 hover:underline">
+            <button
+              type="button"
+              onClick={() => input.current?.click()}
+              aria-label={`${foto ? "Cambiar" : "Cargar"} ${titulo.toLowerCase()}`}
+              className={`shrink-0 font-semibold ${
+                observada ? "rounded-full bg-primary-boton px-2.5 py-1 text-white hover:bg-primary-boton-hover" : "text-primary-700 hover:underline"
+              }`}
+            >
               {foto ? "Cambiar" : "Cargar"}
             </button>
           </>
@@ -235,4 +260,9 @@ function Figura({
       </figcaption>
     </figure>
   );
+}
+
+/** Revisada con observación y sin cambiar desde entonces (cambiarla borra la marca de revisada). */
+function esObservada(f: FotoAlumno): boolean {
+  return !!f.observacion && !!f.revisadaEn;
 }

@@ -1,4 +1,4 @@
-import type { Cuota, EstadoPagoModulo, EstadoPlanilla, FormaPago, Ref } from "./tipos";
+import type { Cuota, EstadoPagoModulo, EstadoPlanilla, EventoInscripcion, FormaPago, Ref } from "./tipos";
 import { fechaCorta, textoCubre } from "./formato";
 import { fmtMoney } from "../format";
 
@@ -104,4 +104,98 @@ export const TEXTO_ESTADO_PLANILLA: Record<EstadoPlanilla, string> = {
  */
 export function textoRetencion(activa: boolean, monto: number | null): string {
   return activa && monto != null ? `− ${fmtMoney(monto)}` : "por confirmar";
+}
+
+// ── Historial de la ficha ───────────────────────────────────────────────────
+
+const TITULO_EVENTO: Record<string, string> = {
+  INSCRIBIR: "Inscripción",
+  CONVERSION: "Inscripción online confirmada",
+  PREINSCRIBIR: "Inscripción online",
+  BECA: "Beca",
+  PROMO: "Promoción",
+  RETIRO: "Retiro",
+  DESCARTE: "Inscripción online descartada",
+  CAMBIO_GRUPO: "Cambio de grupo",
+  CAMBIO_PLAN: "Cambio de forma de pago",
+  NOTA: "Nota corregida",
+};
+
+const num = (x: unknown): number | null => (typeof x === "number" && Number.isFinite(x) ? x : null);
+const txt = (x: unknown): string | null => (typeof x === "string" && x.trim() ? x.trim() : null);
+const cantidad = (x: unknown, una: string, varias: string): string | null =>
+  Array.isArray(x) && x.length ? `${x.length} ${x.length === 1 ? una : varias}` : null;
+
+/**
+ * Un evento del historial en palabras: "Beca 50 % · rendimiento". El
+ * `detalle` es el JSON que guardó el backend y cambia con la acción; antes
+ * se pintaba tal cual y salía "[object Object]" (QA ronda 2, B-17). Lo que no
+ * se conoce se lee igual, clave por clave, sin los ids (que no le dicen nada
+ * a nadie). Los montos vienen sólo si el backend los manda a ese usuario.
+ */
+export function textoEvento(e: Pick<EventoInscripcion, "accion" | "detalle">): { titulo: string; detalle: string } {
+  const d = e.detalle;
+  const o = d && typeof d === "object" && !Array.isArray(d) ? (d as Record<string, unknown>) : null;
+  // Una acción nueva que todavía no está en la tabla: "CAMBIO_SEDE" → "Cambio sede".
+  let titulo =
+    TITULO_EVENTO[e.accion] ??
+    (/^[A-Z_]+$/.test(e.accion) ? e.accion.charAt(0) + e.accion.slice(1).toLowerCase().replace(/_/g, " ") : e.accion);
+  if (typeof d === "string" || typeof d === "number") return { titulo, detalle: String(d) };
+  if (!o) return { titulo, detalle: "" };
+
+  const partes: (string | null)[] = [];
+  switch (e.accion) {
+    case "INSCRIBIR":
+    case "CONVERSION": {
+      const total = num(o.total);
+      const lista = num(o.precioLista);
+      if (total != null) partes.push(`total ${fmtMoney(total)}`);
+      if (lista != null && total != null && lista > total) partes.push(`precio de lista ${fmtMoney(lista)}`);
+      break;
+    }
+    case "PREINSCRIBIR": {
+      const fotos = Array.isArray(o.fotos) ? o.fotos.length : null;
+      if (o.origen === "ONLINE") partes.push("desde la página");
+      if (num(o.edad) != null) partes.push(`${num(o.edad)} años`);
+      if (fotos != null) partes.push(fotos === 0 ? "sin fotos" : fotos === 3 ? "con las 3 fotos" : `con ${fotos} de 3 fotos`);
+      break;
+    }
+    case "BECA":
+    case "PROMO": {
+      const pct = num(o.pct);
+      const monto = num(o.monto);
+      if (pct != null) titulo = `${titulo} ${String(pct).replace(".", ",")} %`;
+      if (monto != null) partes.push(`− ${fmtMoney(monto)}`);
+      partes.push(txt(o.motivo));
+      break;
+    }
+    case "RETIRO":
+    case "DESCARTE":
+      partes.push(txt(o.motivo), cantidad(o.cuotasAnuladas, "cuota anulada", "cuotas anuladas"));
+      break;
+    case "CAMBIO_PLAN": {
+      const total = num(o.totalNuevo);
+      if (total != null) partes.push(`total nuevo ${fmtMoney(total)}`);
+      partes.push(cantidad(o.cuotasAnuladas, "cuota anulada", "cuotas anuladas"));
+      break;
+    }
+    case "CAMBIO_GRUPO":
+      break;
+    case "NOTA":
+      if (o.reabierta) {
+        titulo = "Notas reabiertas";
+        partes.push(txt(o.motivo));
+      } else {
+        const antes = num(o.anterior);
+        const ahora = num(o.nueva);
+        if (antes != null || ahora != null) partes.push(`de ${antes ?? "—"} a ${ahora ?? "sin nota"}`);
+      }
+      break;
+    default:
+      for (const [k, v] of Object.entries(o)) {
+        if (/id$/i.test(k) || v == null || typeof v === "object") continue;
+        partes.push(typeof v === "boolean" ? (v ? k : null) : `${k} ${v}`);
+      }
+  }
+  return { titulo, detalle: partes.filter(Boolean).join(" · ") };
 }

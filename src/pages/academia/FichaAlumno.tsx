@@ -15,7 +15,7 @@ import {
 } from "../../lib/academia/formato";
 import type { AlumnoDetalle, InscripcionDetalle } from "../../lib/academia/tipos";
 import { usePalabras } from "../../lib/academia/usePalabras";
-import { abrirWhatsapp, nombreCuota, rutaCobroInscripcion, textoCuota, textoEstadoInscripcion } from "../../lib/academia/vista";
+import { abrirWhatsapp, nombreCuota, rutaCobroInscripcion, textoCuota, textoEstadoInscripcion, textoEvento } from "../../lib/academia/vista";
 import { enlaceWhatsApp } from "../../lib/agenda/recordatorio";
 import { fmtFecha, fmtMoney, iniciales } from "../../lib/format";
 import { cobraCuotas, soloLoSuyo, tienePermiso } from "../../lib/permisos";
@@ -503,18 +503,21 @@ function Historial({ alumno }: { alumno: AlumnoDetalle }) {
     <section aria-label="Historial" className="space-y-2">
       <h2 className="text-sm font-bold text-texto">Historial</h2>
       <ul className="space-y-2">
-        {eventos.map((e, i) => (
-          <li key={i} className="text-[13px]">
-            <span className="text-texto-2">
-              {e.accion}
-              {e.detalle ? ` · ${e.detalle}` : ""}
-            </span>
-            <span className="block text-[12px] text-texto-4">
-              {fmtFecha(e.en)}
-              {e.usuario ? ` · ${e.usuario}` : ""} · {e.grupo}
-            </span>
-          </li>
-        ))}
+        {eventos.map((e, i) => {
+          const t = textoEvento(e);
+          return (
+            <li key={i} className="text-[13px]">
+              <span className="text-texto-2">
+                {t.titulo}
+                {t.detalle ? ` · ${t.detalle}` : ""}
+              </span>
+              <span className="block text-[12px] text-texto-4">
+                {fmtFecha(e.en)}
+                {e.usuario ? ` · ${e.usuario}` : ""} · {e.grupo}
+              </span>
+            </li>
+          );
+        })}
       </ul>
     </section>
   );

@@ -89,4 +89,37 @@ describe("E6 · ficha del estudiante", () => {
     expect(abrir).toHaveBeenCalledWith("https://wa.me/591?text=Hola", "_blank", "noopener,noreferrer");
     abrir.mockRestore();
   });
+
+  it("observadas no dicen Revisadas: el motivo a la vista y Cambiar resaltado para recepción (QA ronda 2, B-06)", async () => {
+    const observadas = FOTOS.map((f) => ({
+      ...f,
+      revisadaEn: "2026-10-19T12:00:00.000Z",
+      revisadaPor: "Dirección",
+      observacion: f.tipo === "FOTO" ? "La foto no se ve bien" : null,
+    }));
+    vi.mocked(apiAcademia.alumno).mockResolvedValue({ ...fichaCamila(), fotos: observadas });
+    await montar();
+    const fotos = screen.getByRole("region", { name: "Fotos y carnet" });
+    expect(within(fotos).queryByText(/Revisadas/)).not.toBeInTheDocument();
+    expect(within(fotos).getByText("Observada: La foto no se ve bien")).toBeInTheDocument();
+    expect(within(fotos).getByRole("alert")).toHaveTextContent("Falta corregir: La foto no se ve bien");
+    // Sólo la foto observada lleva el botón resaltado.
+    const cambiar = within(fotos).getByRole("button", { name: /Cambiar foto del estudiante/i });
+    expect(cambiar.className).toContain("bg-primary-boton");
+    expect(within(fotos).getByRole("button", { name: "Cambiar carnet, atrás" }).className).not.toContain("bg-primary-boton");
+  });
+
+  it("el historial se lee en palabras, no [object Object] (QA ronda 2, B-17)", async () => {
+    const ficha = fichaCamila();
+    ficha.inscripciones[0].eventos = [
+      { accion: "INSCRIBIR", detalle: { planPagoId: 3, precioLista: 1350, total: 1350 }, usuario: "lucia", en: "2026-08-17T14:00:00.000Z" },
+      { accion: "BECA", detalle: { pct: 50, monto: 675, motivo: "Rendimiento", autorizadoPorId: 1 }, usuario: "hugo", en: "2026-08-17T14:01:00.000Z" },
+    ];
+    vi.mocked(apiAcademia.alumno).mockResolvedValue({ ...ficha, fotos: FOTOS });
+    await montar();
+    const historial = screen.getByRole("region", { name: "Historial" });
+    expect(historial).not.toHaveTextContent("[object Object]");
+    expect(historial).toHaveTextContent(/Inscripción · total Bs\s?1\.350,00/);
+    expect(historial).toHaveTextContent(/Beca 50 % · − Bs\s?675,00 · Rendimiento/);
+  });
 });

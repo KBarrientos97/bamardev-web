@@ -387,7 +387,18 @@ export interface InscripcionDetalle {
   total: number | null;
   cuotas: Cuota[];
   pagos: { ventaId: number; comprobante: string | null; fecha: string; sede: string | Ref; monto: number; cuotaId: number }[];
-  eventos: { accion: string; detalle: string | null; usuario: string | null; en: string }[];
+  /**
+   * `detalle` es el JSON que guardó el backend (cambia según la acción): se
+   * muestra con `textoEvento`, nunca tal cual (QA ronda 2, B-17).
+   */
+  eventos: EventoInscripcion[];
+}
+
+export interface EventoInscripcion {
+  accion: string;
+  detalle: unknown;
+  usuario: string | null;
+  en: string;
 }
 
 export interface AlumnoDetalle {
