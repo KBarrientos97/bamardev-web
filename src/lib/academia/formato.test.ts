@@ -124,3 +124,15 @@ describe("precio del curso en modo simple", () => {
     expect(precioCurso(500, 0, 10).porModuloCompleto).toBe(0);
   });
 });
+
+describe("nota en letras", () => {
+  it("como en el centralizador", async () => {
+    const { numeroEnLetras } = await import("./formato");
+    expect(numeroEnLetras(76)).toBe("setenta y seis");
+    expect(numeroEnLetras(51)).toBe("cincuenta y uno");
+    expect(numeroEnLetras(22)).toBe("veintidós");
+    expect(numeroEnLetras(40)).toBe("cuarenta");
+    expect(numeroEnLetras(100)).toBe("cien");
+    expect(numeroEnLetras(101)).toBe("");
+  });
+});

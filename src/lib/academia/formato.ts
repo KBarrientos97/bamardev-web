@@ -193,3 +193,22 @@ export function precioCurso(precioModulo: number, modulos: number, descuentoPct:
   const completo = Math.round(lista * (1 - descuentoPct / 100));
   return { lista, completo, ahorro: lista - completo, porModuloCompleto: modulos ? completo / modulos : 0 };
 }
+
+const UNIDADES = [
+  "cero", "uno", "dos", "tres", "cuatro", "cinco", "seis", "siete", "ocho", "nueve", "diez",
+  "once", "doce", "trece", "catorce", "quince", "dieciséis", "diecisiete", "dieciocho", "diecinueve", "veinte",
+  "veintiuno", "veintidós", "veintitrés", "veinticuatro", "veinticinco", "veintiséis", "veintisiete", "veintiocho", "veintinueve",
+];
+const DECENAS: Record<number, string> = { 3: "treinta", 4: "cuarenta", 5: "cincuenta", 6: "sesenta", 7: "setenta", 8: "ochenta", 9: "noventa" };
+
+/**
+ * La nota en letras, como va en el centralizador y el boletín ("setenta y
+ * seis"). De 0 a 100, que es la escala de los institutos; fuera de eso, "".
+ */
+export function numeroEnLetras(n: number): string {
+  if (!Number.isInteger(n) || n < 0 || n > 100) return "";
+  if (n === 100) return "cien";
+  if (n < 30) return UNIDADES[n];
+  const d = Math.floor(n / 10);
+  return n % 10 ? `${DECENAS[d]} y ${UNIDADES[n % 10]}` : DECENAS[d];
+}

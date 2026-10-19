@@ -77,6 +77,10 @@ const Reportes = lazy(() => import("./pages/reportes/Reportes"));
 const HoyAcademia = lazy(() => import("./pages/academia/Hoy"));
 const GruposAcademia = lazy(() => import("./pages/academia/Grupos"));
 const CalendarioAcademia = lazy(() => import("./pages/academia/Calendario"));
+const MisClases = lazy(() => import("./pages/academia/docente/MisClases"));
+const PasarLista = lazy(() => import("./pages/academia/docente/PasarLista"));
+const NotasAcademia = lazy(() => import("./pages/academia/Notas"));
+const MiPlanilla = lazy(() => import("./pages/academia/docente/MiPlanilla"));
 const GrupoAcademia = lazy(() => import("./pages/academia/Grupo"));
 const AlumnosAcademia = lazy(() => import("./pages/academia/Alumnos"));
 const FichaAlumno = lazy(() => import("./pages/academia/FichaAlumno"));
@@ -755,6 +759,14 @@ function Rutas() {
         <Route path="/academia/calendario/lista" element={<Academia seccion="academia_calendario"><GruposAcademia /></Academia>} />
         <Route path="/academia/grupos" element={<Navigate to="/academia/calendario" replace />} />
         <Route path="/academia/grupos/:id" element={<Academia seccion="academia_grupos"><GrupoAcademia /></Academia>} />
+        {/* La lista y las notas desde el grupo (administración y recepción). */}
+        <Route path="/academia/grupos/:id/lista" element={<Academia seccion="academia_grupos"><PasarLista /></Academia>} />
+        <Route path="/academia/grupos/:id/notas" element={<Academia seccion="academia_grupos"><NotasAcademia /></Academia>} />
+        {/* Lo del docente (alcance PROPIO). */}
+        <Route path="/academia/mis-clases" element={<Academia seccion="academia_mis_clases"><MisClases /></Academia>} />
+        <Route path="/academia/lista" element={<Academia seccion="academia_lista"><PasarLista /></Academia>} />
+        <Route path="/academia/notas" element={<Academia seccion="academia_notas"><NotasAcademia /></Academia>} />
+        <Route path="/academia/mi-planilla" element={<Academia seccion="academia_mi_planilla"><MiPlanilla /></Academia>} />
         <Route path="/academia/alumnos" element={<Academia seccion="academia_alumnos"><AlumnosAcademia /></Academia>} />
         <Route path="/academia/alumnos/:id" element={<Academia seccion="academia_alumnos"><FichaAlumno /></Academia>} />
         <Route
