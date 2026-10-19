@@ -73,6 +73,8 @@ export function rutaLargaDeLink(pathname: string): string | null {
   if (segundo === "inscribirme" && tercero !== undefined && /^\d{1,12}$/.test(tercero)) {
     return `/p/${sub}/inscribirme/${tercero}`;
   }
+  // El estado de cuenta de un estudiante (P6), el enlace que va por WhatsApp.
+  if (segundo === "pagar" && tercero !== undefined && RESTO.test(tercero)) return `/p/${sub}/pagar/${tercero}`;
   return null;
 }
 

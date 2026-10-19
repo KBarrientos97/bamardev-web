@@ -39,6 +39,8 @@ describe("dirección corta → la de siempre", () => {
     // Academias (P2): la preinscripción a un grupo, con su id numérico.
     expect(rutaLargaDeLink("/horizonte/inscribirme/22")).toBe("/p/horizonte/inscribirme/22");
     expect(rutaLargaDeLink("/horizonte/inscribirme/abc")).toBeNull();
+    expect(rutaLargaDeLink("/horizonte/pagar/K7Q2abcdef")).toBe("/p/horizonte/pagar/K7Q2abcdef");
+    expect(rutaLargaDeLink("/horizonte/pagar")).toBeNull();
   });
 
   it("lo demás no es la página de nadie", () => {

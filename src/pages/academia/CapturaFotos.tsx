@@ -18,6 +18,7 @@ export default function CapturaFotos({
   yaTiene = [],
   marcadas = [],
   compacto = false,
+  color,
 }: {
   fotos: FotosInscripcion;
   onCambiar: (fotos: FotosInscripcion) => void;
@@ -27,6 +28,8 @@ export default function CapturaFotos({
   marcadas?: TipoFoto[];
   /** Una debajo de la otra (el celular de la página pública). */
   compacto?: boolean;
+  /** El color de la marca en la página pública, que no usa el tema de la app. */
+  color?: string;
 }) {
   const [error, setError] = useState("");
   const [procesando, setProcesando] = useState<TipoFoto | null>(null);
@@ -57,6 +60,7 @@ export default function CapturaFotos({
             marcada={marcadas.includes(tipo)}
             procesando={procesando === tipo}
             compacto={compacto}
+            color={color}
             onElegir={(f) => void elegir(tipo, f)}
             onQuitar={() => {
               const copia = { ...fotos };
@@ -78,6 +82,7 @@ function Foto({
   marcada,
   procesando,
   compacto,
+  color,
   onElegir,
   onQuitar,
 }: {
@@ -87,6 +92,7 @@ function Foto({
   marcada: boolean;
   procesando: boolean;
   compacto: boolean;
+  color?: string;
   onElegir: (f: File | undefined) => void;
   onQuitar: () => void;
 }) {
@@ -153,7 +159,7 @@ function Foto({
             <span className="flex flex-col items-center gap-2">
               <Icon name="camara" size={24} className="text-texto-4" />
               <span className="flex gap-2">
-                <BotonFoto onClick={() => camara.current?.click()} etiqueta={`Tomar foto: ${titulo}`}>
+                <BotonFoto onClick={() => camara.current?.click()} etiqueta={`Tomar foto: ${titulo}`} color={color}>
                   Tomar foto
                 </BotonFoto>
                 <BotonFoto onClick={() => subir.current?.click()} etiqueta={`Subir archivo: ${titulo}`} suave>
@@ -178,7 +184,7 @@ function Foto({
           </button>
         ) : compacto ? (
           <span className="flex gap-2">
-            <BotonFoto onClick={() => camara.current?.click()} etiqueta={`Tomar foto: ${titulo}`}>
+            <BotonFoto onClick={() => camara.current?.click()} etiqueta={`Tomar foto: ${titulo}`} color={color}>
               Tomar foto
             </BotonFoto>
             <BotonFoto onClick={() => subir.current?.click()} etiqueta={`Subir archivo: ${titulo}`} suave>
@@ -193,14 +199,27 @@ function Foto({
   );
 }
 
-function BotonFoto({ onClick, etiqueta, suave = false, children }: { onClick: () => void; etiqueta: string; suave?: boolean; children: string }) {
+function BotonFoto({
+  onClick,
+  etiqueta,
+  suave = false,
+  color,
+  children,
+}: {
+  onClick: () => void;
+  etiqueta: string;
+  suave?: boolean;
+  color?: string;
+  children: string;
+}) {
   return (
     <button
       type="button"
       onClick={onClick}
       aria-label={etiqueta}
+      style={!suave && color ? { background: color } : undefined}
       className={`rounded-lg px-2.5 py-1.5 text-xs font-semibold ${
-        suave ? "border border-borde bg-white text-texto-2 hover:bg-muted" : "bg-primary-boton text-white hover:bg-primary-boton-hover"
+        suave ? "border border-borde bg-white text-texto-2 hover:bg-muted" : color ? "text-white" : "bg-primary-boton text-white hover:bg-primary-boton-hover"
       }`}
     >
       {children}

@@ -6,9 +6,10 @@ import type { CursoPublico } from "../../lib/academia/tipos";
 
 /**
  * P1 · La sección Cursos de la página de un instituto (PLAN-ACADEMIAS-TECNICO
- * §9): una tarjeta por carrera publicada, con su foto, las horas, las
- * materias, "desde Bs X" y los próximos inicios por sede y turno. El botón
- * lleva al formulario de preinscripción (P2), donde se elige el horario.
+ * §9, ronda 2): una tarjeta por curso publicado, con su foto, sus módulos, el
+ * precio de las dos formas ("Bs 500 por módulo · o Bs 1.350 todo junto") con
+ * lo que se ahorra, y el próximo inicio con los lugares que quedan. El botón
+ * lleva a inscribirse (P2), donde se elige el horario.
  *
  * Va con los tonos del estilo de la página (estilos en línea, como el resto
  * de la vista): no es la app, es la vitrina del negocio.
@@ -68,6 +69,9 @@ function TarjetaCurso({
 }) {
   const foto = urlDeImagen(c.fotoUrl);
   const primero = c.grupos[0];
+  const modulos = c.modulos?.length ? c.modulos : c.materias;
+  const n = modulos.length;
+  const bs = (x: number) => `Bs ${x.toLocaleString("es-BO")}`;
   const estiloBoton: CSSProperties = {
     display: "block",
     textAlign: "center",
@@ -96,7 +100,9 @@ function TarjetaCurso({
         <div>
           <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: t.textoTarjeta }}>{c.nombre}</h3>
           <p style={{ margin: "2px 0 0", fontSize: 13, color: t.texto3Tarjeta }}>
-            {c.horasTotales} h{c.materias.length ? ` · ${c.materias.join(" · ")}` : ""}
+            {c.precioModulo != null && n
+              ? `${n} ${n === 1 ? "módulo" : "módulos"}${modulos.length ? ` · ${modulos.join(" · ")}` : ""}`
+              : `${c.horasTotales} h${modulos.length ? ` · ${modulos.join(" · ")}` : ""}`}
           </p>
         </div>
         {c.descripcion && <p style={{ margin: 0, fontSize: 14, color: t.texto2Tarjeta }}>{c.descripcion}</p>}
@@ -121,18 +127,33 @@ function TarjetaCurso({
           </div>
         )}
         <div style={{ marginTop: "auto", display: "flex", flexDirection: "column", gap: 8 }}>
-          {c.desde != null && (
-            <p style={{ margin: 0, fontSize: 14, color: t.texto2Tarjeta }}>
-              Desde <strong style={{ color: t.precio }}>Bs {c.desde.toLocaleString("es-BO")}</strong>
-            </p>
+          {c.precioModulo != null ? (
+            <div>
+              <p style={{ margin: 0, fontSize: 14, color: t.texto2Tarjeta }}>
+                <strong style={{ color: t.precio }}>{bs(c.precioModulo)}</strong> por módulo
+                {c.precioCompleto != null && <> · o {bs(c.precioCompleto)} todo junto</>}
+              </p>
+              {c.ahorro != null && c.ahorro > 0 && (
+                <p style={{ margin: "2px 0 0", fontSize: 13, color: t.texto3Tarjeta }}>Pagando todo junto ahorrás {bs(c.ahorro)}</p>
+              )}
+            </div>
+          ) : (
+            c.desde != null && (
+              <p style={{ margin: 0, fontSize: 14, color: t.texto2Tarjeta }}>
+                Desde <strong style={{ color: t.precio }}>{bs(c.desde)}</strong>
+              </p>
+            )
+          )}
+          {!primero && (
+            <p style={{ margin: 0, fontSize: 13, color: t.texto3Tarjeta }}>Próximo grupo por confirmar.</p>
           )}
           {primero &&
             (urlInscribirme ? (
               <a href={urlInscribirme(primero.id)} style={estiloBoton}>
-                Preinscribirme
+                Inscribirme
               </a>
             ) : (
-              <span style={estiloBoton}>Preinscribirme</span>
+              <span style={estiloBoton}>Inscribirme</span>
             ))}
         </div>
       </div>

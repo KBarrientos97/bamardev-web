@@ -241,6 +241,7 @@ describe("rutas y permisos", () => {
     // La preinscripción de una academia (P2) también es pública, sin sesión.
     expect(esRutaDePaginaPublica("/p/horizonte/inscribirme/22")).toBe(true);
     expect(esRutaDePaginaPublica("/p/horizonte/inscribirme/x")).toBe(false);
+    expect(esRutaDePaginaPublica("/p/horizonte/pagar/K7Q2abcdef")).toBe(true);
     expect(esRutaDePaginaPublica("/p/")).toBe(false);
     expect(esRutaDePaginaPublica("/pos")).toBe(false);
     expect(esRutaDePaginaPublica("/p/bv/otra")).toBe(false);
