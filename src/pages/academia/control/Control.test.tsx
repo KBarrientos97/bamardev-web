@@ -88,6 +88,56 @@ describe("N9 · Panel de control", () => {
   });
 });
 
+describe("N9 · Observadas y sobrecupos (QA ronda 2, B-06 y B-31)", () => {
+  it("la observada queda a la vista con el motivo y la ficha; el grupo pasado de cupo, con inscritos/cupo", async () => {
+    vi.mocked(apiAcademia.control).mockResolvedValue({
+      ...PANEL,
+      fotosObservadas: [
+        {
+          alumnoId: 208,
+          nombre: "Gutiérrez Paz, Iván",
+          ci: "9988776 SC",
+          fechaNacimiento: null,
+          grupo: { id: 77, nombre: "Barbería · L-Mi-V" },
+          inscritoPor: "Rosa",
+          inscritaEn: "2026-10-15T12:00:00.000Z",
+          observadas: ["FOTO", "CI_REVERSO"],
+          observacion: "La foto no se ve bien",
+          observadaEn: "2026-10-18T12:00:00.000Z",
+          observadaPor: "Dirección",
+        },
+      ],
+      sobrecupos: [{ grupoId: 83, nombre: "Tatuaje · M-J", carrera: { id: 2, nombre: "Tatuaje" }, sede: { id: 1, nombre: "Central" }, inscritos: 22, cupo: 20 }],
+    });
+    render(
+      <MemoryRouter>
+        <Control />
+      </MemoryRouter>,
+    );
+    await act(async () => {});
+    const observadas = screen.getByRole("region", { name: /Fotos observadas/ });
+    expect(observadas).toHaveTextContent("Gutiérrez Paz, Iván");
+    expect(observadas).toHaveTextContent("La foto no se ve bien");
+    expect(observadas).toHaveTextContent("foto y carnet de atrás");
+    expect(observadas).toHaveTextContent("observó Dirección");
+    expect(within(observadas).getByRole("link", { name: "Ver la ficha de Gutiérrez Paz, Iván" })).toHaveAttribute("href", "/academia/alumnos/208");
+    const sobrecupos = screen.getByRole("region", { name: /Grupos con sobrecupo/ });
+    expect(sobrecupos).toHaveTextContent("22/20 inscritos");
+    expect(within(sobrecupos).getByRole("link", { name: "Ver el grupo Tatuaje · M-J" })).toHaveAttribute("href", "/academia/grupos/83");
+  });
+
+  it("sin observadas ni sobrecupos (o un backend que no los manda), no hay secciones vacías", async () => {
+    render(
+      <MemoryRouter>
+        <Control />
+      </MemoryRouter>,
+    );
+    await act(async () => {});
+    expect(screen.queryByRole("region", { name: /Fotos observadas/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: /Grupos con sobrecupo/ })).not.toBeInTheDocument();
+  });
+});
+
 describe("E18 · Reportes", () => {
   it("el resultado por sede, los activos por curso y la morosidad", async () => {
     vi.mocked(apiAcademia.reportes).mockResolvedValue({

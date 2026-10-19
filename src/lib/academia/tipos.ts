@@ -340,6 +340,8 @@ export interface FiltroAlumnos extends PedidoPagina {
   grupoId?: number | null;
   estado?: string;
   debe?: boolean;
+  /** Cambio #47: filtra por cómo están las fotos. */
+  fotos?: EstadoFotos;
 }
 
 export type EstadoCuota = "PENDIENTE" | "PARCIAL" | "PAGADA" | "ANULADA";
@@ -812,6 +814,27 @@ export interface PanelControl {
     /** Cambio #28: los tipos cargados. */
     fotos?: TipoFoto[];
   }[];
+  /**
+   * Cambio #33 (QA ronda 2, B-06): los que tienen alguna foto observada. Ya
+   * no esperan al dueño sino a la recepción, que tiene que cambiarlas; un
+   * backend anterior no lo manda.
+   */
+  fotosObservadas?: {
+    alumnoId: number;
+    nombre: string;
+    ci: string | null;
+    fechaNacimiento: string | null;
+    grupo: string | Ref | null;
+    inscritoPor: string;
+    inscritaEn: string | null;
+    fotos?: TipoFoto[];
+    observadas: TipoFoto[];
+    observacion: string | null;
+    observadaEn: string | null;
+    observadaPor: string | null;
+  }[];
+  /** Cambio #49 (B-31): grupos vivos con más inscritos que su cupo, el más pasado primero. */
+  sobrecupos?: { grupoId: number; nombre: string; carrera: Ref | null; sede: Ref | null; inscritos: number; cupo: number }[];
   asistenSinPagar: { alumno: string | Ref; grupo: string | Ref; asistencias: number; estadoPago: EstadoPagoModulo | null; inscritoPor: string }[];
   pagaronNoVienen: { alumno: string | Ref; grupo: string | Ref; asistencias: number; clasesDelMes: number; inscritoPor: string }[];
   /** Cambio #28: todas las becas y promociones del mes; `conPin` = las autorizó otra persona. */

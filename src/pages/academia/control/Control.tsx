@@ -6,7 +6,7 @@ import PanelLateral from "../../../components/PanelLateral";
 import { Boton, Cargando, ErrorMsg, Select } from "../../../components/ui";
 import { apiAcademia } from "../../../lib/academia/apiAcademia";
 import { mesDe, sumarMeses, tituloMes } from "../../../lib/academia/calendario";
-import { NOMBRE_FOTO } from "../../../lib/academia/fotos";
+import { listaDeFotos, NOMBRE_FOTO } from "../../../lib/academia/fotos";
 import { fechaCorta, nombreDe } from "../../../lib/academia/formato";
 import { TIPOS_FOTO, type PanelControl, type TipoFoto } from "../../../lib/academia/tipos";
 import { useFiltroSede } from "../../../lib/academia/useFiltroSede";
@@ -118,6 +118,10 @@ export default function Control() {
             )}
           </section>
 
+          <FotosObservadas filas={d.fotosObservadas ?? []} />
+
+          <Sobrecupos filas={d.sobrecupos ?? []} variasSedes={sede.variasSedes} />
+
           <ParaMirar d={d} mirar={mirar} onMirar={setMirar} />
 
           <section aria-labelledby="t-personas" className="space-y-2">
@@ -147,6 +151,93 @@ export default function Control() {
         />
       )}
     </div>
+  );
+}
+
+/**
+ * Las observadas (QA ronda 2, B-06): el dueño marcó que algo no cuadra y ya
+ * no esperan su revisión sino que la recepción cambie la foto. Antes se
+ * caían de todas las listas; acá quedan a la vista, con el motivo, hasta que
+ * alguien sube la foto nueva (y vuelven a "por revisar").
+ */
+function FotosObservadas({ filas }: { filas: NonNullable<PanelControl["fotosObservadas"]> }) {
+  if (!filas.length) return null;
+  return (
+    <section aria-labelledby="t-observadas" className="space-y-3">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h2 id="t-observadas" className="text-base font-bold text-texto">
+          Fotos observadas <span className="tabular-nums text-danger-text">{filas.length}</span>
+        </h2>
+        <span className="text-[13px] text-texto-3">Esperan que la recepción cambie la foto</span>
+      </div>
+      <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+        {filas.map((f) => {
+          const cuales = listaDeFotos(f.observadas);
+          const quien = [f.observadaPor, f.observadaEn ? tiempoRelativo(f.observadaEn).toLowerCase() : null].filter(Boolean).join(" · ");
+          return (
+            <li key={f.alumnoId} className="flex items-start justify-between gap-3 rounded-xl border border-danger-text/30 p-3">
+              <span className="min-w-0">
+                <span className="block truncate text-sm font-semibold text-texto">{f.nombre}</span>
+                <span className="block text-[13px] text-danger-text">
+                  {f.observacion ?? "Observada"}
+                  {cuales && <span className="text-texto-3"> · {cuales}</span>}
+                </span>
+                {(quien || f.grupo) && (
+                  <span className="block truncate text-[12px] text-texto-3">
+                    {[f.grupo ? nombreDe(f.grupo) : null, quien ? `observó ${quien}` : null].filter(Boolean).join(" · ")}
+                  </span>
+                )}
+              </span>
+              <Link
+                to={`/academia/alumnos/${f.alumnoId}`}
+                aria-label={`Ver la ficha de ${f.nombre}`}
+                className="shrink-0 text-[13px] font-semibold text-primary-700 hover:underline"
+              >
+                Ver ficha
+              </Link>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
+
+/**
+ * Grupos con más inscritos que su cupo (B-31): el sobrecupo confirmado y la
+ * inscripción con el grupo cerrado son a propósito, pero el dueño tiene que
+ * enterarse para conseguir aula o abrir otro grupo.
+ */
+function Sobrecupos({ filas, variasSedes }: { filas: NonNullable<PanelControl["sobrecupos"]>; variasSedes: boolean }) {
+  if (!filas.length) return null;
+  return (
+    <section aria-labelledby="t-sobrecupos" className="space-y-3">
+      <h2 id="t-sobrecupos" className="text-base font-bold text-texto">
+        Grupos con sobrecupo <span className="tabular-nums text-warning-text">{filas.length}</span>
+      </h2>
+      <ul className="divide-y divide-borde-soft border-y border-borde-soft">
+        {filas.map((g) => (
+          <li key={g.grupoId} className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 px-3 py-2.5">
+            <span className="min-w-0">
+              <span className="block truncate text-sm font-semibold text-texto">{g.nombre}</span>
+              <span className="block truncate text-[12px] text-texto-3">
+                {[g.carrera ? nombreDe(g.carrera) : null, variasSedes && g.sede ? nombreDe(g.sede) : null].filter(Boolean).join(" · ")}
+              </span>
+            </span>
+            <span className="text-sm font-semibold tabular-nums text-warning-text">
+              {g.inscritos}/{g.cupo} inscritos
+            </span>
+            <Link
+              to={`/academia/grupos/${g.grupoId}`}
+              aria-label={`Ver el grupo ${g.nombre}`}
+              className="text-[13px] font-semibold text-primary-700 hover:underline"
+            >
+              Ver
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 

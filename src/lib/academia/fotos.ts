@@ -25,6 +25,20 @@ export const NOMBRE_FOTO: Record<TipoFoto, string> = {
   CI_REVERSO: "Carnet, atrás",
 };
 
+/** Cómo se nombra cada foto dentro de una frase ("observadas: foto y carnet de atrás"). */
+export const NOMBRE_FOTO_CORTO: Record<TipoFoto, string> = {
+  FOTO: "foto",
+  CI_ANVERSO: "carnet de adelante",
+  CI_REVERSO: "carnet de atrás",
+};
+
+/** "foto", "foto y carnet de atrás", "foto, carnet de adelante y carnet de atrás". */
+export function listaDeFotos(tipos: TipoFoto[]): string {
+  const ordenadas = TIPOS_FOTO.filter((t) => tipos.includes(t)).map((t) => NOMBRE_FOTO_CORTO[t]);
+  if (ordenadas.length <= 1) return ordenadas.join("");
+  return `${ordenadas.slice(0, -1).join(", ")} y ${ordenadas[ordenadas.length - 1]}`;
+}
+
 /** La extensión según lo que dio el canvas (WebP, o JPG en un Safari viejo). */
 export function nombreArchivo(base: string, archivo: Blob): string {
   return `${base}.${archivo.type === "image/jpeg" ? "jpg" : "webp"}`;
