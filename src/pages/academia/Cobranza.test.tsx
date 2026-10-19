@@ -84,7 +84,7 @@ describe("E8 · cobranza", () => {
     await montar();
     expect(apiAcademia.cobranza).toHaveBeenCalledWith(expect.objectContaining({ tipo: "vencidas", page: 1, pageSize: 20 }));
     expect(screen.getByRole("tab", { name: "Vencidas 9" })).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByText(/7 alumnos/)).toBeInTheDocument();
+    expect(screen.getByText(/7 estudiantes/)).toBeInTheDocument();
     expect(screen.getAllByText("Tutor: Rosa Molina · 71234567").length).toBeGreaterThan(0);
     expect(screen.getAllByText(/abonó Bs\s?200,00 de Bs\s?533,00/).length).toBeGreaterThan(0);
   });

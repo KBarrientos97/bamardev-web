@@ -53,7 +53,7 @@ beforeEach(() => {
 
 async function buscarYElegir() {
   render(<CuotasPorCobrar caja={{ id: 1, nombre: "Central" }} onAtras={vi.fn()} onAgregar={onAgregar} />);
-  fireEvent.change(screen.getByLabelText("Buscar alumno"), { target: { value: "cesp" } });
+  fireEvent.change(screen.getByLabelText("Buscar estudiante"), { target: { value: "cesp" } });
   await act(async () => {
     await new Promise((r) => setTimeout(r, 350));
   });

@@ -44,10 +44,10 @@ async function montar() {
   await act(async () => {});
 }
 
-const panel = () => screen.getByRole("dialog", { name: "Inscribir alumno" });
+const panel = () => screen.getByRole("dialog", { name: "Inscribir estudiante" });
 
 function cargarNuevo(fechaNacimiento: string) {
-  fireEvent.click(within(panel()).getByRole("button", { name: "Nuevo alumno" }));
+  fireEvent.click(within(panel()).getByRole("button", { name: "Nuevo estudiante" }));
   fireEvent.change(within(panel()).getByLabelText("Carnet de identidad"), { target: { value: "14550221" } });
   fireEvent.change(within(panel()).getByLabelText("Apellidos"), { target: { value: "Céspedes Molina" } });
   fireEvent.change(within(panel()).getByLabelText("Nombres"), { target: { value: "Joaquín" } });
@@ -157,7 +157,7 @@ describe("E5 · inscribir", () => {
     vi.mocked(apiAcademia.inscribir).mockRejectedValueOnce(new ApiError("Falta el tutor", 400, { codigo: "TUTOR_REQUERIDO" }));
     vi.useRealTimers();
     await montar();
-    fireEvent.change(within(panel()).getByLabelText("Buscar alumno"), { target: { value: "Thiago" } });
+    fireEvent.change(within(panel()).getByLabelText("Buscar estudiante"), { target: { value: "Thiago" } });
     await act(async () => {
       await new Promise((r) => setTimeout(r, 350));
     });
@@ -182,7 +182,7 @@ describe("E5 · inscribir", () => {
     });
     expect(within(panel()).getByRole("alert")).toHaveTextContent("Ese carnet ya es de otra persona del negocio.");
     fireEvent.click(within(panel()).getByRole("button", { name: "Buscarlo" }));
-    expect(within(panel()).getByLabelText("Buscar alumno")).toHaveValue("14550221");
+    expect(within(panel()).getByLabelText("Buscar estudiante")).toHaveValue("14550221");
   });
 
   it("una preinscripción de un menor sin tutor se convierte con el tutor y, lleno, con confirmarSobreCupo", async () => {

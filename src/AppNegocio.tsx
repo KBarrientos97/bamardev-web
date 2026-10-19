@@ -76,6 +76,7 @@ const Reportes = lazy(() => import("./pages/reportes/Reportes"));
 // Educación (PLAN-ACADEMIAS-TECNICO §8): sólo se bajan en un instituto.
 const HoyAcademia = lazy(() => import("./pages/academia/Hoy"));
 const GruposAcademia = lazy(() => import("./pages/academia/Grupos"));
+const CalendarioAcademia = lazy(() => import("./pages/academia/Calendario"));
 const GrupoAcademia = lazy(() => import("./pages/academia/Grupo"));
 const AlumnosAcademia = lazy(() => import("./pages/academia/Alumnos"));
 const FichaAlumno = lazy(() => import("./pages/academia/FichaAlumno"));
@@ -748,7 +749,11 @@ function Rutas() {
         {/* Educación, ronda 1 (PLAN-ACADEMIAS-TECNICO §8): sólo con la
             feature `academia` (y `preinscripcion_online` para la bandeja). */}
         <Route path="/academia/hoy" element={<Academia seccion="academia_hoy"><HoyAcademia /></Academia>} />
-        <Route path="/academia/grupos" element={<Academia seccion="academia_grupos"><GruposAcademia /></Academia>} />
+        {/* Ronda 2: el calendario reemplaza a la lista de grupos (que queda
+            como "Ver como lista"); la ruta vieja lleva al calendario. */}
+        <Route path="/academia/calendario" element={<Academia seccion="academia_calendario"><CalendarioAcademia /></Academia>} />
+        <Route path="/academia/calendario/lista" element={<Academia seccion="academia_calendario"><GruposAcademia /></Academia>} />
+        <Route path="/academia/grupos" element={<Navigate to="/academia/calendario" replace />} />
         <Route path="/academia/grupos/:id" element={<Academia seccion="academia_grupos"><GrupoAcademia /></Academia>} />
         <Route path="/academia/alumnos" element={<Academia seccion="academia_alumnos"><AlumnosAcademia /></Academia>} />
         <Route path="/academia/alumnos/:id" element={<Academia seccion="academia_alumnos"><FichaAlumno /></Academia>} />

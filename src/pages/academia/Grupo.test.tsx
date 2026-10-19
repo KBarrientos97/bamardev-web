@@ -78,7 +78,7 @@ describe("E3 · detalle de grupo", () => {
     expect(screen.getByRole("heading", { name: "Barbería y Peluquería · L-V 10:00–12:00" })).toBeInTheDocument();
     expect(screen.getByText(/Central · Aula 2 · Prof. Marco Rojas · hasta el 13-nov/)).toBeInTheDocument();
     expect(screen.getByText(/M2 Degradados · actual/)).toBeInTheDocument();
-    const filtros = screen.getByRole("tablist", { name: "Filtrar alumnos" });
+    const filtros = screen.getByRole("tablist", { name: "Filtrar estudiantes" });
     expect(within(filtros).getByRole("tab", { name: "Todos 28" })).toHaveAttribute("aria-selected", "true");
     // 28 alumnos: la barra de páginas con el pie del grupo.
     expect(screen.getByText(/Mostrando 1–20 de 28/)).toHaveTextContent(/M2 cobrado a 22 · base del docente Bs\s?6\.930/);
@@ -156,6 +156,6 @@ describe("E3 · detalle de grupo", () => {
     });
     expect(apiAcademia.editarGrupo).toHaveBeenCalledWith(7, { cancelado: true });
     expect(screen.getByRole("status")).toHaveTextContent("Grupo cancelado");
-    expect(screen.getByRole("button", { name: "Inscribir alumno" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Inscribir estudiante" })).toBeDisabled();
   });
 });
