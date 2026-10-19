@@ -114,7 +114,8 @@ async function irAlCobro() {
 async function cobrarJusto() {
   await irAlCobro();
   await act(async () => {
-    fireEvent.click(screen.getByRole("button", { name: "Justo" }));
+    // «Justo (Bs …)»: el botón dice cuánto (19-oct).
+    fireEvent.click(screen.getByRole("button", { name: /^Justo/ }));
   });
   await act(async () => {
     fireEvent.click(screen.getByRole("button", { name: /^Confirmar venta/ }));

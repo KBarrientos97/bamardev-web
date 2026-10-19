@@ -275,9 +275,9 @@ export function avisoCuentaRecalculada(
       });
     }
     // Con el vuelto ya dado, en la mano quedó justo lo que se cobraba: escrito
-    // en "Recibido", el formulario dice el cambio o lo que falta.
+    // en "Efectivo entregado por el cliente", el formulario dice el cambio o lo que falta.
     return conCorte({
-      texto: `${texto} Si ya diste el vuelto, en «Recibido» escribí ${fmtMoney(antes.efectivo)} (lo que te quedó): el cambio o lo que falta sale solo.`,
+      texto: `${texto} Si ya diste el vuelto, en «Efectivo entregado por el cliente» escribí ${fmtMoney(antes.efectivo)} (lo que te quedó): el cambio o lo que falta sale solo.`,
       sugerido: null,
     });
   }

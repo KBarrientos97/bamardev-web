@@ -8,7 +8,7 @@ import { useBloqueoCupo } from "../../lib/useBloqueoCupo";
 import { precioFijo, precioHoras, promoPara } from "./calculo";
 import { opcionesHoras } from "./ModalTiempo.datos";
 import { useIntentoDeCobro } from "../pos/useIntentoDeCobro";
-import { FormCobro } from "./Cobro";
+import { CambioDelCobro, FormCobro } from "./Cobro";
 import { useCobro } from "./useCobro";
 import { useAccion } from "./useAccion";
 import { huellaExtension } from "./reintentos";
@@ -279,6 +279,7 @@ export function ModalAbrir({ mesa, onClose }: { mesa: Mesa; onClose: () => void 
         ancho="max-w-lg"
         acciones={
           <>
+            <CambioDelCobro cobro={cobro} />
             <BotonB icono="arrowLeft" onClick={() => setCobrando(false)}>
               Volver
             </BotonB>
@@ -295,7 +296,7 @@ export function ModalAbrir({ mesa, onClose }: { mesa: Mesa; onClose: () => void 
             {horas} h{precio.partes.length > 1 ? ` (${precio.partes.join(" + ")})` : ""}
           </p>
         </div>
-        <FormCobro cobro={cobro} />
+        <FormCobro cobro={cobro} cambioEnElPie />
         <ErrorAccion texto={accion.error} />
       </Modal>
     );
@@ -449,6 +450,7 @@ export function ModalExtender({ mesa, onClose }: { mesa: Mesa; onClose: () => vo
       acciones={
         cobrando ? (
           <>
+            <CambioDelCobro cobro={cobro} />
             <BotonB icono="arrowLeft" onClick={() => setCobrando(false)}>
               Volver
             </BotonB>
@@ -470,7 +472,7 @@ export function ModalExtender({ mesa, onClose }: { mesa: Mesa; onClose: () => vo
       }
     >
       {cobrando ? (
-        <FormCobro cobro={cobro} />
+        <FormCobro cobro={cobro} cambioEnElPie />
       ) : (
         <div className="space-y-4">
           <SelectorHoras

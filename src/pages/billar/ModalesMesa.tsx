@@ -6,7 +6,7 @@ import { tienePermiso } from "../../lib/permisos";
 import { useAuth } from "../../store/AuthContext";
 import { useIntentoDeCobro } from "../pos/useIntentoDeCobro";
 import type { Credenciales } from "./api";
-import { FormCobro } from "./Cobro";
+import { CambioDelCobro, FormCobro } from "./Cobro";
 import { useCobro } from "./useCobro";
 import { useAccion } from "./useAccion";
 import { huellaAdelanto } from "./reintentos";
@@ -299,13 +299,16 @@ export function ModalPago({ mesa, onClose }: { mesa: Mesa; onClose: () => void }
   return (
     <Modal
       abierto
-      titulo={`Registrar pago · Mesa ${mesa.id}`}
+      // "Registrar pago" se leía como "el cliente me pagó la cuenta": es cobrar
+      // una parte, y el título lo dice (el dueño, 19-oct).
+      titulo={`Registrar cobro · Mesa ${mesa.id}`}
       subtitulo="Un adelanto o un pago parcial. Se descuenta del saldo al cerrar."
       onClose={onClose}
       cerrarAlClicAfuera={false}
       ancho="max-w-lg"
       acciones={
         <>
+          <CambioDelCobro cobro={cobro} />
           <BotonB onClick={onClose}>Cancelar</BotonB>
           <BotonB
             variante="verde"
@@ -318,7 +321,7 @@ export function ModalPago({ mesa, onClose }: { mesa: Mesa; onClose: () => void }
         </>
       }
     >
-      <FormCobro cobro={cobro} />
+      <FormCobro cobro={cobro} cambioEnElPie />
       <ErrorAccion texto={accion.error} />
     </Modal>
   );

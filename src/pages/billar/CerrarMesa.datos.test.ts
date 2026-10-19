@@ -95,7 +95,7 @@ describe("la cuenta que cambió mientras se cobraba", () => {
 
   it("si subió en efectivo, dice el saldo nuevo y qué escribir en Recibido si ya dio el vuelto", () => {
     expect(avisoCuentaRecalculada(antes, ahora(20), "vieja")?.texto).toBe(
-      "Pasaron 5 minutos y la cuenta se recalculó a la hora de ahora: ahora el saldo es Bs 20,00 (era Bs 15,00). Si ya diste el vuelto, en «Recibido» escribí Bs 15,00 (lo que te quedó): el cambio o lo que falta sale solo.",
+      "Pasaron 5 minutos y la cuenta se recalculó a la hora de ahora: ahora el saldo es Bs 20,00 (era Bs 15,00). Si ya diste el vuelto, en «Efectivo entregado por el cliente» escribí Bs 15,00 (lo que te quedó): el cambio o lo que falta sale solo.",
     );
   });
 
@@ -184,7 +184,7 @@ describe("la cuenta que cambió mientras se cobraba", () => {
     // Revisión del 18-oct: el reintento llegó pasados los 5 minutos, el
     // servidor ya no aceptó la cuenta y subió; el cliente ya se había ido.
     expect(avisoCuentaRecalculada(antes, ahora(20), "trasCorte")?.texto).toBe(
-      "El cobro no había entrado y, mientras no hubo conexión, la cuenta se recalculó a la hora de ahora: ahora el saldo es Bs 20,00 (era Bs 15,00). Si ya diste el vuelto, en «Recibido» escribí Bs 15,00 (lo que te quedó): el cambio o lo que falta sale solo. Si el cliente ya se fue con lo que pagó, no le cobres el tiempo del corte: que el encargado corra el inicio con «Corregir inicio» hasta que la cuenta vuelva a Bs 15,00.",
+      "El cobro no había entrado y, mientras no hubo conexión, la cuenta se recalculó a la hora de ahora: ahora el saldo es Bs 20,00 (era Bs 15,00). Si ya diste el vuelto, en «Efectivo entregado por el cliente» escribí Bs 15,00 (lo que te quedó): el cambio o lo que falta sale solo. Si el cliente ya se fue con lo que pagó, no le cobres el tiempo del corte: que el encargado corra el inicio con «Corregir inicio» hasta que la cuenta vuelva a Bs 15,00.",
     );
   });
 

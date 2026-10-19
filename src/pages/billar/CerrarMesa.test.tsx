@@ -203,7 +203,7 @@ describe("Cerrar mesa con la cuenta vieja", () => {
   it("si el saldo subió, avisa, no deja cobrar y al aceptar borra lo recibido", async () => {
     await montar();
     expect(screen.getByText(/Mesa 5 · Total Bs.15,00/)).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText("Recibido"), { target: { value: "20" } });
+    fireEvent.change(screen.getByLabelText("Efectivo entregado por el cliente"), { target: { value: "20" } });
     expect(screen.getByText(/Bs.5,00/)).toBeInTheDocument();
 
     await tocar(screen.getByRole("button", { name: /Cobrar Bs.15,00/ }));
@@ -217,9 +217,9 @@ describe("Cerrar mesa con la cuenta vieja", () => {
     await tocar(screen.getByRole("button", { name: /Usar la cuenta nueva · Bs.20,00/ }), 0);
     expect(screen.queryByText(/Pasaron 5 minutos/)).not.toBeInTheDocument();
     // Lo recibido se vuelve a escribir contando el efectivo de la cuenta nueva.
-    expect((screen.getByLabelText("Recibido") as HTMLInputElement).value).toBe("");
+    expect((screen.getByLabelText("Efectivo entregado por el cliente") as HTMLInputElement).value).toBe("");
     expect(screen.getByRole("button", { name: /Cobrar Bs.20,00/ })).toBeDisabled();
-    fireEvent.change(screen.getByLabelText("Recibido"), { target: { value: "20" } });
+    fireEvent.change(screen.getByLabelText("Efectivo entregado por el cliente"), { target: { value: "20" } });
     expect(screen.getByRole("button", { name: /Cobrar Bs.20,00/ })).toBeEnabled();
   });
 
@@ -227,7 +227,7 @@ describe("Cerrar mesa con la cuenta vieja", () => {
     // 34 min: 45 min, Bs 15; a los 40 sigue en 45 min.
     caso.jugadosMin = 34;
     await montar();
-    fireEvent.change(screen.getByLabelText("Recibido"), { target: { value: "20" } });
+    fireEvent.change(screen.getByLabelText("Efectivo entregado por el cliente"), { target: { value: "20" } });
     await tocar(screen.getByRole("button", { name: /Cobrar Bs.15,00/ }));
     expect(screen.queryByText(/Pasaron 5 minutos/)).not.toBeInTheDocument();
     expect(screen.queryByText(/volvé a abrir el cierre/)).not.toBeInTheDocument();
@@ -249,7 +249,7 @@ describe("Cerrar mesa con la cuenta vieja", () => {
       throw new ApiError("La cuenta de la Mesa 5 cambió mientras cobrabas: ahora son Bs 25,00.", 400, { codigo: "MESA_CAMBIO" });
     };
     await montar();
-    fireEvent.change(screen.getByLabelText("Recibido"), { target: { value: "20" } });
+    fireEvent.change(screen.getByLabelText("Efectivo entregado por el cliente"), { target: { value: "20" } });
     for (let i = 0; i < 2; i++) await tocar(screen.getByRole("button", { name: /Cobrar Bs.15,00/ }));
     expect(cobros).toHaveLength(2);
     expect(screen.getByText(/ahora son Bs 25,00\. Si vuelve a pasar con el mismo monto, recargá la página \(F5\)\./)).toBeInTheDocument();
@@ -304,7 +304,7 @@ describe("Cerrar mesa con la cuenta vieja", () => {
 
   it("si otro equipo carga algo después del aviso, la cuenta nueva no deja el rojo de antes", async () => {
     await montar();
-    fireEvent.change(screen.getByLabelText("Recibido"), { target: { value: "20" } });
+    fireEvent.change(screen.getByLabelText("Efectivo entregado por el cliente"), { target: { value: "20" } });
     await tocar(screen.getByRole("button", { name: /Cobrar Bs.15,00/ }));
     expect(screen.getByText(/Pasaron 5 minutos/)).toBeInTheDocument();
     caso.consumoExtra = true;
@@ -357,14 +357,14 @@ describe("Cerrar mesa con la cuenta vieja", () => {
     // Revisión del 18-oct: a los 6 minutos se veían "Cambio Bs 5,00" y Cobrar
     // prendido; el servidor la iba a rechazar y el vuelto ya estaba dado.
     await montar();
-    fireEvent.change(screen.getByLabelText("Recibido"), { target: { value: "20" } });
+    fireEvent.change(screen.getByLabelText("Efectivo entregado por el cliente"), { target: { value: "20" } });
     reloj.ahora = T0 + 4 * MIN + 46_000;
     await act(async () => {
       await esperar(1_200);
     });
     // 51:46 jugados: 1:00, Bs 20.
     expect(screen.getByText(/Pasaron 5 minutos/)).toHaveTextContent(
-      /ahora el saldo es Bs.20,00 \(era Bs.15,00\)\. Si ya diste el vuelto, en «Recibido» escribí Bs.15,00/,
+      /ahora el saldo es Bs.20,00 \(era Bs.15,00\)\. Si ya diste el vuelto, en «Efectivo entregado por el cliente» escribí Bs.15,00/,
     );
     expect(screen.getByRole("button", { name: /Cobrar Bs.20,00/ })).toBeDisabled();
     expect(cobros).toHaveLength(0);
@@ -415,7 +415,7 @@ describe("Cerrar mesa con la cuenta vieja", () => {
       throw new ApiError("La caja se cerró: abrí una caja nueva para cobrar.", 400, { codigo: "CAJA_CERRADA" });
     };
     await montar();
-    fireEvent.change(screen.getByLabelText("Recibido"), { target: { value: "20" } });
+    fireEvent.change(screen.getByLabelText("Efectivo entregado por el cliente"), { target: { value: "20" } });
     await tocar(screen.getByRole("button", { name: /Cobrar Bs.15,00/ }));
     caso.consumoExtra = true;
     await act(async () => {
@@ -437,7 +437,7 @@ describe("Cerrar mesa con la cuenta vieja", () => {
       return ventaHecha();
     };
     await montar();
-    fireEvent.change(screen.getByLabelText("Recibido"), { target: { value: "20" } });
+    fireEvent.change(screen.getByLabelText("Efectivo entregado por el cliente"), { target: { value: "20" } });
     await tocar(screen.getByRole("button", { name: /Cobrar Bs.15,00/ }));
     expect(screen.getByText(/El cobro pudo haber entrado/)).toBeInTheDocument();
     caso.consumoExtra = true;
@@ -513,7 +513,7 @@ describe("Cerrar mesa con la cuenta vieja", () => {
       return ventaHecha();
     };
     await montar();
-    fireEvent.change(screen.getByLabelText("Recibido"), { target: { value: "20" } });
+    fireEvent.change(screen.getByLabelText("Efectivo entregado por el cliente"), { target: { value: "20" } });
     await tocar(screen.getByRole("button", { name: /Cobrar Bs.15,00/ }));
     expect(screen.getByText(/El cobro pudo haber entrado: tocá «Cobrar» otra vez cuando vuelva la conexión/)).toBeInTheDocument();
     reloj.ahora = T0 + 4 * MIN + 46_000;
@@ -531,7 +531,7 @@ describe("Cerrar mesa con la cuenta vieja", () => {
     // Revisión del 18-oct: adoptaba la sesión nueva sin avisar, con lo
     // recibido de la vieja, y la cerraba.
     await montar();
-    fireEvent.change(screen.getByLabelText("Recibido"), { target: { value: "20" } });
+    fireEvent.change(screen.getByLabelText("Efectivo entregado por el cliente"), { target: { value: "20" } });
     caso.sesionId = 78;
     await act(async () => {
       await recargar(true);
@@ -547,7 +547,7 @@ describe("Cerrar mesa con la cuenta vieja", () => {
     caso.jugadosMin = 34;
     caso.cerrar = () => ventaHecha();
     await montar();
-    fireEvent.change(screen.getByLabelText("Recibido"), { target: { value: "20" } });
+    fireEvent.change(screen.getByLabelText("Efectivo entregado por el cliente"), { target: { value: "20" } });
     reloj.ahora = T0 + 3 * MIN;
     await tocar(screen.getByRole("button", { name: /Cobrar Bs.15,00/ }));
     expect(cobros).toHaveLength(1);
@@ -582,7 +582,7 @@ describe("Cerrar mesa con la cuenta vieja", () => {
     caso.jugadosMin = 60;
     caso.pausadaHace = 11;
     await montar();
-    fireEvent.change(screen.getByLabelText("Recibido"), { target: { value: "50" } });
+    fireEvent.change(screen.getByLabelText("Efectivo entregado por el cliente"), { target: { value: "50" } });
     reloj.ahora = T0 + 3 * MIN;
     caso.pagos = [
       { id: 1, hora: T0 + 2 * MIN, formaPagoId: 1, metodo: "Efectivo", monto: 10, recibido: 10, concepto: "ADELANTO" },
