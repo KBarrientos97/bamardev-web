@@ -115,6 +115,28 @@ describe("E5 · inscribir", () => {
     expect(texto).not.toContain("Empezás");
   });
 
+  it("si el backend manda la bienvenida, va la suya; con null no se abre WhatsApp", async () => {
+    vi.mocked(apiAcademia.inscribir).mockResolvedValueOnce({
+      id: 555,
+      bienvenida: { telefono: "71234567", aTutor: true, texto: "Hola Rosa", url: "https://wa.me/59171234567?text=Hola%20Rosa" },
+    } as never);
+    await montar();
+    cargarNuevo("2000-01-01");
+    fireEvent.click(within(panel()).getByRole("radio", { name: /Completo/ }));
+    await act(async () => {
+      fireEvent.click(within(panel()).getByRole("button", { name: "Inscribir sin cobrar" }));
+    });
+    expect(window.open).toHaveBeenCalledWith("https://wa.me/59171234567?text=Hola%20Rosa", "_blank", "noopener,noreferrer");
+
+    vi.mocked(window.open).mockClear();
+    vi.mocked(apiAcademia.inscribir).mockResolvedValueOnce({ id: 556, bienvenida: null } as never);
+    fireEvent.change(within(panel()).getByLabelText("Teléfono (opcional)"), { target: { value: "71234567" } });
+    await act(async () => {
+      fireEvent.click(within(panel()).getByRole("button", { name: "Inscribir sin cobrar" }));
+    });
+    expect(window.open).not.toHaveBeenCalled();
+  });
+
   it("una beca sobre el tope pide el PIN de quien autoriza y viaja con él", async () => {
     await montar();
     cargarNuevo("2000-01-01");

@@ -326,6 +326,11 @@ export interface FotoAlumno {
   revisadaEn: string | null;
   revisadaPor: string | null;
   observacion: string | null;
+  /**
+   * Lo que el backend dice de esta foto (QA ronda 2, B-06): la observada no
+   * es revisada. Un backend anterior no lo manda y se deduce de los campos.
+   */
+  estado?: "POR_REVISAR" | "REVISADA" | "OBSERVADA";
 }
 
 export interface FiltroAlumnos extends PedidoPagina {
@@ -392,6 +397,13 @@ export interface InscripcionDetalle {
    * muestra con `textoEvento`, nunca tal cual (QA ronda 2, B-17).
    */
   eventos: EventoInscripcion[];
+  /**
+   * Sólo en la respuesta de inscribir y convertir: el WhatsApp de bienvenida
+   * que arma el backend (QA ronda 2, B-19), al tutor si es menor. `null` si
+   * no hay a quién escribirle. Un backend anterior no lo manda (`undefined`)
+   * y la web lo arma como antes.
+   */
+  bienvenida?: { telefono: string | null; aTutor: boolean; texto: string; url: string } | null;
 }
 
 export interface EventoInscripcion {

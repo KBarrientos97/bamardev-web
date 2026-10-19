@@ -264,5 +264,6 @@ function Figura({
 
 /** Revisada con observación y sin cambiar desde entonces (cambiarla borra la marca de revisada). */
 function esObservada(f: FotoAlumno): boolean {
+  if (f.estado) return f.estado === "OBSERVADA";
   return !!f.observacion && !!f.revisadaEn;
 }

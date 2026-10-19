@@ -288,7 +288,7 @@ export default function Inscribir({
             ...(descuento ? { descuento } : {}),
             ...(extra.sobreCupo ? { confirmarSobreCupo: true } : {}),
           }, fotos);
-      if (bienvenida) mandarBienvenida();
+      if (bienvenida) mandarBienvenida(inscripcion.bienvenida);
       onInscrito({ inscripcion, cobrar, ...(cobrar && montoHoy > 0 ? { montoHoy } : {}) });
     } catch (e) {
       const codigo = e instanceof ApiError ? e.codigo : undefined;
@@ -359,7 +359,13 @@ export default function Inscribir({
   }
 
   /** La bienvenida por wa.me (PA §9): al tutor si lo hay, si no al alumno. */
-  function mandarBienvenida() {
+  function mandarBienvenida(delBackend: InscripcionDetalle["bienvenida"]) {
+    // La arma el backend (con el tutor que tiene guardado aunque acá no se
+    // haya cargado): si la manda, va esa; `null` es que no hay a quién.
+    if (delBackend !== undefined) {
+      if (delBackend?.url) abrirWhatsapp(delBackend.url);
+      return;
+    }
     const telefono = esMenor ? tutor.telefono : preinscripcion?.alumno.telefono ?? elegido?.telefono ?? nuevo.telefono;
     if (!telefono || !grupo) return;
     const delAlumno = nombreFinal.split(",").pop()?.trim().split(" ")[0] ?? "";
