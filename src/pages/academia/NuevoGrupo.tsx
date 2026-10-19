@@ -57,7 +57,9 @@ export default function NuevoGrupo({
   const sedes = useSucursales();
   const carreras = useApi(() => apiAcademia.carreras(), []);
   const ajustes = useApi(() => apiAcademia.ajustes(), []);
-  const docentes = useApi(() => apiAcademia.docentes().catch(() => []), []);
+  // Sin tragar el error: QA vio una vez la lista vacía (ronda 2, B-07) y con
+  // el `.catch(() => [])` no había forma de saber si faltaban o no cargaron.
+  const docentes = useApi(() => apiAcademia.docentes(), []);
 
   const [carreraId, setCarreraId] = useState<number | null>(null);
   // La recepción arma grupos en su sede; la dirección elige.
@@ -332,7 +334,7 @@ export default function NuevoGrupo({
                       value={docentePor[m.id] ?? ""}
                       onChange={(e) => setDocentePor({ ...docentePor, [m.id]: e.target.value ? Number(e.target.value) : null })}
                     >
-                      <option value="">Elegir después</option>
+                      <option value="">{docentes.cargando && !docentes.datos ? "Cargando…" : "Elegir después"}</option>
                       {libres.map((d) => (
                         <option key={d.personalId} value={d.personalId}>
                           {d.nombre}
@@ -343,6 +345,14 @@ export default function NuevoGrupo({
                 </li>
               ))}
             </ul>
+            {docentes.error && (
+              <p className="mt-2 text-xs text-danger-text">
+                No se pudo traer la lista de {p.docente}s.{" "}
+                <button type="button" onClick={docentes.recargar} className="font-semibold underline">
+                  Reintentar
+                </button>
+              </p>
+            )}
           </div>
         )}
 

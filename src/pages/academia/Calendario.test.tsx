@@ -232,4 +232,22 @@ describe("N1 · Calendario con todas las sedes (QA ronda 2, B-07)", () => {
     expect(within(franja).getByRole("option", { name: "09:00–11:00" })).toBeInTheDocument();
     expect(within(franja).queryByRole("option", { name: "10:00–12:00" })).not.toBeInTheDocument();
   });
+
+  it("si la lista de docentes no se pudo traer, lo dice y deja reintentar", async () => {
+    vi.mocked(apiAcademia.carreras).mockResolvedValue([
+      { id: 3, nombre: "Barbería", activa: true, materias: [{ id: 31, orden: 1, nombre: "Corte", activa: true }], planes: [], cupoDefecto: null, pctDocente: null, publicarEnPagina: false },
+    ] as never);
+    vi.mocked(apiAcademia.docentes).mockRejectedValueOnce(new Error("Sin conexión")).mockResolvedValue([]);
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Abrir grupo aquí: 10:00 a 12:00, diciembre" }));
+    await act(async () => {});
+    const panel = screen.getByRole("complementary", { name: "Abrir grupo" });
+    fireEvent.change(within(panel).getByLabelText("Curso"), { target: { value: "3" } });
+    expect(within(panel).getByText(/No se pudo traer la lista de docentes/)).toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(within(panel).getByRole("button", { name: "Reintentar" }));
+    });
+    expect(apiAcademia.docentes).toHaveBeenCalledTimes(2);
+    expect(within(panel).queryByText(/No se pudo traer/)).not.toBeInTheDocument();
+  });
 });
