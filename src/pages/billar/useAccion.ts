@@ -27,8 +27,12 @@ export function useAccion() {
   const [codigo, setCodigo] = useState<string | null>(null);
   const enCurso = useRef(false);
 
-  /** true si salió bien. */
-  const ejecutar = useCallback(async (fn: () => Promise<unknown>): Promise<boolean> => {
+  /**
+   * true si salió bien. `alFallar` ve el error antes que nadie: si devuelve
+   * true ya lo resolvió de otra forma (el 403 `CUPO_AGOTADO` abre la hoja de
+   * comprar créditos) y no queda ningún cartel rojo, porque no es una falla.
+   */
+  const ejecutar = useCallback(async (fn: () => Promise<unknown>, alFallar?: (err: unknown) => boolean): Promise<boolean> => {
     if (enCurso.current) return false;
     enCurso.current = true;
     setEnviando(true);
@@ -38,6 +42,7 @@ export function useAccion() {
       await fn();
       return true;
     } catch (err) {
+      if (alFallar?.(err)) return false;
       setError(err instanceof Error && err.message ? err.message : "No se pudo completar. Probá de nuevo.");
       setCodigo(err instanceof ApiError ? (err.codigo ?? null) : null);
       if (err instanceof ApiError && (MESA_DESACTUALIZADA.has(err.codigo ?? "") || err.status === 404)) {

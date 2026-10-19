@@ -2,7 +2,9 @@ import { useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { Icon } from "../../components/Icon";
 import { Input, Modal } from "../../components/ui";
+import { quedoEnDuda } from "../../lib/cupo";
 import { fmtMoney } from "../../lib/format";
+import { useBloqueoCupo } from "../../lib/useBloqueoCupo";
 import { precioFijo, precioHoras, promoPara } from "./calculo";
 import { opcionesHoras } from "./ModalTiempo.datos";
 import { useIntentoDeCobro } from "../pos/useIntentoDeCobro";
@@ -201,21 +203,51 @@ export function ModalAbrir({ mesa, onClose }: { mesa: Mesa; onClose: () => void 
   // perdió la respuesta, el backend devuelve la mesa ya abierta en vez de
   // decir "ocupada" (y no cobra dos veces el tiempo fijo).
   const intento = useIntentoDeCobro();
+  /**
+   * Plan Emprendedor (D29): abrir una mesa ocupa un lugar del cupo de ventas
+   * del día, como cobrar en el POS (el cierre después no consume ni se
+   * rechaza nunca). Sin lugar ni créditos se abre la misma hoja de comprar
+   * créditos que en el POS y no se manda nada. Sin cupo (Básico,
+   * Profesional) deja pasar todo y no pide nada: el billar queda como siempre.
+   */
+  const {
+    verificar: hayLugarParaAbrir,
+    manejarError: rechazoPorCupo,
+    registrar: registrarConsumo,
+  } = useBloqueoCupo("VENTA", { refrescarAlMontar: true });
+  // El intento anterior quedó sin respuesta (corte, 5xx): pudo haber abierto
+  // la mesa con el último lugar del día. El reintento lleva el mismo
+  // `clienteRequestId` y el backend devuelve la mesa ya abierta sin consumir
+  // de nuevo, así que va al servidor aunque el contador diga lleno (como en el POS).
+  const abrirEnDuda = useRef(false);
+  const hayLugar = () => abrirEnDuda.current || hayLugarParaAbrir();
 
   const abrirMesa = async (conPago: boolean) => {
+    if (!hayLugar()) return;
     const pago = conPago && cobro.pago ? cobro.pago : undefined;
-    const ok = await accion.ejecutar(() =>
-      billar.abrir(mesa.id, {
-        modo,
-        horas: modo === "fijo" ? horas : undefined,
-        pago,
-        cliente,
-        garantia: garantia === "Otro" ? queDeja.trim() || "Otro" : garantia,
-        nota,
-        clienteRequestId: intento.actual(`abrir:${mesa.idInterno}:${modo}:${modo === "fijo" ? horas : 0}:${!!pago}`),
-      }),
+    const ok = await accion.ejecutar(
+      async () => {
+        const r = await billar.abrir(mesa.id, {
+          modo,
+          horas: modo === "fijo" ? horas : undefined,
+          pago,
+          cliente,
+          garantia: garantia === "Otro" ? queDeja.trim() || "Otro" : garantia,
+          nota,
+          clienteRequestId: intento.actual(`abrir:${mesa.idInterno}:${modo}:${modo === "fijo" ? horas : 0}:${!!pago}`),
+        });
+        registrarConsumo(r);
+      },
+      (err) => {
+        abrirEnDuda.current = quedoEnDuda(err);
+        // Otro equipo usó el último lugar del día (403 CUPO_AGOTADO): la hoja
+        // de compra en vez del cartel rojo, y el diálogo queda como estaba
+        // para reintentar después de comprar.
+        return rechazoPorCupo(err);
+      },
     );
     if (!ok) return;
+    abrirEnDuda.current = false;
     intento.registrado();
     onClose();
     navigate(`/billar?mesa=${mesa.id}`, { replace: true });
@@ -278,7 +310,9 @@ export function ModalAbrir({ mesa, onClose }: { mesa: Mesa; onClose: () => void 
             <BotonB icono="clock" disabled={accion.enviando} onClick={() => abrirMesa(false)}>
               {accion.enviando ? "Abriendo…" : "Abrir · cobrar al final"}
             </BotonB>
-            <BotonB variante="verde" icono="billetera" onClick={() => setCobrando(true)}>
+            {/* Sin lugar en el cupo, la hoja de compra antes de pasar al cobro:
+                no hacerle cargar el pago al cajero para rebotar al final. */}
+            <BotonB variante="verde" icono="billetera" onClick={() => hayLugar() && setCobrando(true)}>
               Cobrar {fmtMoney(precio.precio)} y abrir
             </BotonB>
           </>

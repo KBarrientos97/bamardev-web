@@ -1,5 +1,5 @@
 import { request } from "../../lib/api";
-import type { CreditoInput, FormaPago, PagoInput } from "../../types";
+import type { ConsumoVista, CreditoInput, FormaPago, PagoInput } from "../../types";
 import type {
   AjustesBillar,
   Devolucion,
@@ -187,7 +187,11 @@ export const apiBillar = {
       nota?: string;
       clienteRequestId: string;
     },
-  ) => enviar<MesaApi>(`/billar/mesas/${idInterno}/abrir`, cuerpo),
+  ) =>
+    // Plan Emprendedor (D29): abrir una mesa ocupa un lugar del cupo del día
+    // y viene con `consumo`, como una venta. Sin cupo ni créditos, 403
+    // `CUPO_AGOTADO`. Básico y Profesional no lo traen nunca.
+    enviar<MesaApi & { consumo?: ConsumoVista }>(`/billar/mesas/${idInterno}/abrir`, cuerpo),
   reservar: (idInterno: number, hora: number, nombre: string) =>
     enviar<MesaApi>(`/billar/mesas/${idInterno}/reservar`, { hora: new Date(hora).toISOString(), nombre }),
   cancelarReserva: (idInterno: number) => enviar<MesaApi>(`/billar/mesas/${idInterno}/reserva`, {}, "DELETE"),

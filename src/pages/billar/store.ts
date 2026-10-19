@@ -1,7 +1,7 @@
 import { useEffect, useSyncExternalStore } from "react";
 import { api, ApiError } from "../../lib/api";
 import { fmtMoney } from "../../lib/format";
-import type { CreditoInput, FormaPago, PagoInput } from "../../types";
+import type { ConsumoVista, CreditoInput, FormaPago, PagoInput } from "../../types";
 import { olvidarAvisos, prepararAvisos, reestrenarAvisos } from "./alertas";
 import { tarifaDe } from "./calculo";
 import {
@@ -497,7 +497,12 @@ export interface AbrirOpciones {
  * cerrada, mesa que cambió, PIN incorrecto…) sin perder lo que se cargó.
  */
 export const billar = {
-  async abrir(mesaId: number, o: AbrirOpciones): Promise<Mesa> {
+  /**
+   * Devuelve también el `consumo` del cupo (Plan Emprendedor, D29): el
+   * contador vive en la sesión y no en este store, así que lo guarda la
+   * pantalla, igual que después de una venta.
+   */
+  async abrir(mesaId: number, o: AbrirOpciones): Promise<{ mesa: Mesa; consumo?: ConsumoVista }> {
     const mesa = mesaDe(mesaId);
     const pagos = o.pago ? aPagos(o.pago, await formasPago()) : undefined;
     const r = await apiBillar.abrir(mesa.idInterno, {
@@ -510,7 +515,7 @@ export const billar = {
       nota: o.nota?.trim() || undefined,
       clienteRequestId: o.clienteRequestId,
     });
-    return ponerMesa(r);
+    return { mesa: ponerMesa(r), consumo: r.consumo };
   },
 
   /** Carga a la cuenta. El stock se descuenta al cobrar, pero ya no se ofrece a otra mesa. */
