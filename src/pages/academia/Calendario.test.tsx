@@ -36,6 +36,7 @@ vi.mock("../../lib/academia/apiAcademia", async (importOriginal) => {
 });
 
 import { apiAcademia } from "../../lib/academia/apiAcademia";
+import { api } from "../../lib/api";
 import Calendario from "./Calendario";
 
 const tarjeta = (extra: Partial<GrupoEnCalendario> = {}): GrupoEnCalendario => ({
@@ -158,5 +159,77 @@ describe("N1 · Calendario", () => {
     expect(screen.getByRole("region", { name: "09:00 a 11:00" })).toHaveTextContent("M2 de 3 · Degradados");
     fireEvent.click(screen.getByRole("tab", { name: /nov/ }));
     expect(screen.getByRole("region", { name: "11:00 a 13:00" })).toHaveTextContent("Fundamentos");
+  });
+
+  it("el hueco del mes en curso, con su día de inicio ya pasado, propone el del mes siguiente (QA ronda 2, B-03)", async () => {
+    // Hoy es 18-oct y los módulos empiezan el 10: el 10 de octubre ya pasó.
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Abrir grupo aquí: 11:00 a 13:00, octubre" }));
+    await act(async () => {});
+    const panel = screen.getByRole("complementary", { name: "Abrir grupo" });
+    const empieza = within(panel).getByLabelText("Empieza el");
+    expect(empieza).toHaveValue("2026-11");
+    expect(within(empieza).queryByRole("option", { name: /10 de octubre/ })).not.toBeInTheDocument();
+    expect(within(panel).getByText(/El 10 de octubre ya pasó: el primer inicio posible es el 10 de noviembre/)).toBeInTheDocument();
+  });
+});
+
+describe("N1 · Calendario con todas las sedes (QA ronda 2, B-07)", () => {
+  const SEDES = [
+    { id: 1, nombre: "Central", activo: true, tipo: "SUCURSAL", esPrincipal: true },
+    { id: 2, nombre: "Norte", activo: true, tipo: "SUCURSAL", esPrincipal: false },
+  ];
+  const VACIO: TCalendario = {
+    sede: null,
+    meses: CAL.meses,
+    filas: [
+      { inicio: "09:00", fin: "11:00", esFranja: true, celdas: [] },
+      { inicio: "10:00", fin: "12:00", esFranja: true, celdas: [] },
+      { inicio: "19:00", fin: "21:00", esFranja: true, celdas: [] },
+    ],
+  };
+
+  beforeEach(() => {
+    vi.mocked(api.getSucursales).mockResolvedValue(SEDES as never);
+    vi.mocked(apiAcademia.calendario).mockResolvedValue(VACIO);
+    vi.mocked(apiAcademia.ajustes).mockResolvedValue(
+      ajustesDePrueba({
+        franjas: [
+          { almacenId: 1, inicio: "09:00", fin: "11:00" },
+          { almacenId: 2, inicio: "10:00", fin: "12:00" },
+          { almacenId: null, inicio: "19:00", fin: "21:00" },
+        ],
+      }),
+    );
+  });
+
+  it("la franja de una sola sede abre el grupo en esa sede, con sus franjas", async () => {
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Abrir grupo aquí: 10:00 a 12:00, diciembre" }));
+    await act(async () => {});
+    const panel = screen.getByRole("complementary", { name: "Abrir grupo" });
+    expect(within(panel).getByLabelText("Sede")).toHaveValue("2");
+    const franja = within(panel).getByLabelText("Franja horaria");
+    expect(franja).toHaveValue("10:00-12:00");
+    // Las de Central no se ofrecen en Norte.
+    expect(within(franja).queryByRole("option", { name: "09:00–11:00" })).not.toBeInTheDocument();
+  });
+
+  it("la franja de todas las sedes pide elegir la sede; al elegirla quedan sus franjas", async () => {
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Abrir grupo aquí: 19:00 a 21:00, diciembre" }));
+    await act(async () => {});
+    const panel = screen.getByRole("complementary", { name: "Abrir grupo" });
+    const sedeSel = within(panel).getByLabelText("Sede");
+    expect(sedeSel).toHaveValue("");
+    fireEvent.click(within(panel).getByRole("button", { name: "Abrir grupo" }));
+    expect(apiAcademia.crearGrupo).not.toHaveBeenCalled();
+    fireEvent.change(sedeSel, { target: { value: "1" } });
+    await act(async () => {});
+    const franja = within(panel).getByLabelText("Franja horaria");
+    // La de todas las sedes sigue valiendo en Central.
+    expect(franja).toHaveValue("19:00-21:00");
+    expect(within(franja).getByRole("option", { name: "09:00–11:00" })).toBeInTheDocument();
+    expect(within(franja).queryByRole("option", { name: "10:00–12:00" })).not.toBeInTheDocument();
   });
 });

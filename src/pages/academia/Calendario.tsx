@@ -94,8 +94,22 @@ export default function Calendario() {
     ...(!celular ? [{ clave: "imprimir", etiqueta: "Imprimir calendario", icono: "printer" as const, separar: true, onClick: () => window.print() }] : []),
   ];
 
-  const abrirHueco = (fila: FilaCalendario, mes: string) =>
-    setHueco({ inicio: fila.inicio, fin: fila.fin, mes, sede: sede.sucursalId ?? usuario?.sucursalId ?? null });
+  /**
+   * Con "Todas las sedes" la fila no dice de qué sede es: se deduce de las
+   * franjas. Si la franja es de una sola sede, esa; si es de varias o de
+   * todas, se pide elegir. Antes se proponía la principal y el grupo quedaba
+   * fuera de sus franjas (QA ronda 2, B-07).
+   */
+  const abrirHueco = (fila: FilaCalendario, mes: string) => {
+    const base = { inicio: fila.inicio, fin: fila.fin, mes, esFranja: fila.esFranja };
+    const propia = sede.sucursalId ?? usuario?.sucursalId ?? null;
+    if (propia != null || !sede.elegir) return setHueco({ ...base, sede: propia });
+    const iguales = fila.esFranja ? (ajustes.datos?.franjas ?? []).filter((f) => f.inicio === fila.inicio && f.fin === fila.fin) : [];
+    const deTodas = iguales.some((f) => f.almacenId == null);
+    const ids = [...new Set(iguales.map((f) => f.almacenId).filter((x): x is number => x != null))];
+    if (!deTodas && ids.length === 1) return setHueco({ ...base, sede: ids[0] });
+    setHueco({ ...base, sede: null, elegirSede: true, ...(!deTodas && ids.length > 1 ? { sedesPosibles: ids } : {}) });
+  };
 
   const ultimoVisible = sumarMeses(desde, cant - 1);
   const rango = `${nombreMes(desde)} ${desde.slice(0, 4)} – ${nombreMes(ultimoVisible)} ${ultimoVisible.slice(0, 4)}`;

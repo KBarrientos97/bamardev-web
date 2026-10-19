@@ -18,6 +18,15 @@ export interface HuecoCalendario {
   /** `AAAA-MM`: el mes en que arranca el primer módulo. */
   mes?: string;
   sede?: number | null;
+  /** `false`: la fila del hueco no es una franja (un horario suelto): se abre con "Otro horario". */
+  esFranja?: boolean;
+  /**
+   * Con "Todas las sedes" no se sabe de qué sede es el hueco (la franja es de
+   * varias, o de todas): hay que elegirla, y no se propone la principal.
+   */
+  elegirSede?: boolean;
+  /** Las sedes que tienen esa franja, cuando son algunas y no todas. */
+  sedesPosibles?: number[];
 }
 
 const NOMBRE_DIA = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
@@ -53,7 +62,9 @@ export default function NuevoGrupo({
   const [carreraId, setCarreraId] = useState<number | null>(null);
   // La recepción arma grupos en su sede; la dirección elige.
   const [almacenId, setAlmacenId] = useState<number | null>(hueco.sede ?? usuario?.sucursalId ?? null);
-  const [franja, setFranja] = useState<string>(hueco.inicio && hueco.fin ? `${hueco.inicio}-${hueco.fin}` : "");
+  const [franja, setFranja] = useState<string>(
+    hueco.inicio && hueco.fin ? (hueco.esFranja === false ? OTRO : `${hueco.inicio}-${hueco.fin}`) : "",
+  );
   const [horaInicio, setHoraInicio] = useState(hueco.inicio ?? "19:00");
   const [horaFin, setHoraFin] = useState(hueco.fin ?? "21:00");
   const [dias, setDias] = useState<number[]>([1, 3, 5]);
@@ -65,8 +76,11 @@ export default function NuevoGrupo({
   const [guardando, setGuardando] = useState(false);
 
   useEffect(() => {
-    if (almacenId == null && sedes.sugerida) setAlmacenId(sedes.sugerida.id);
-  }, [almacenId, sedes.sugerida]);
+    // Un hueco de "Todas las sedes" que no dice de cuál es: la elige quien abre
+    // el grupo. Proponer la principal armaba el grupo en una sede que no tenía
+    // esa franja (QA ronda 2, B-07).
+    if (almacenId == null && sedes.sugerida && !hueco.elegirSede) setAlmacenId(sedes.sugerida.id);
+  }, [almacenId, sedes.sugerida, hueco.elegirSede]);
 
   const a = ajustes.datos;
   const dia = a?.diaInicioModulo ?? 10;
@@ -85,19 +99,30 @@ export default function NuevoGrupo({
     const propias = franjasDe(a?.franjas, almacenId);
     return propias.length ? propias : franjasDe(a?.franjas, null);
   }, [a?.franjas, almacenId]);
+  // Sin franja elegida, o con una que la sede no tiene (se cambió de sede, o el
+  // hueco era de otra): la primera de la sede. Las que valen para todas las
+  // sedes sirven en cualquiera.
+  const deTodas = useMemo(() => franjasDe(a?.franjas, null), [a?.franjas]);
   useEffect(() => {
-    if (!franja && franjas.length) {
+    if (!franjas.length || franja === OTRO) return;
+    const vale = (f: { inicio: string; fin: string }) => `${f.inicio}-${f.fin}` === franja;
+    const ajena = !!franja && almacenId != null && !franjas.some(vale) && !deTodas.some(vale);
+    if (!franja || ajena) {
       setFranja(`${franjas[0].inicio}-${franjas[0].fin}`);
       setHoraInicio(franjas[0].inicio);
       setHoraFin(franjas[0].fin);
     }
-  }, [franja, franjas]);
+  }, [franja, franjas, deTodas, almacenId]);
 
-  // Los próximos seis días de inicio, desde el más cercano.
+  // Los próximos seis días de inicio, desde el más cercano. El mes del hueco
+  // vale si su día de inicio no pasó: el 19-oct, el hueco de octubre propone
+  // el 10 de noviembre y no el 10 de octubre (QA ronda 2, B-03).
   const primero = mesDe(new Date(`${proximoInicio(dia)}T12:00:00`));
   const inicios = Array.from({ length: 6 }, (_, i) => sumarMeses(primero, i));
-  if (mesInicio && !inicios.includes(mesInicio)) inicios.unshift(mesInicio);
-  const mes = mesInicio ?? primero;
+  const mesValido = mesInicio && mesInicio >= primero ? mesInicio : null;
+  if (mesValido && !inicios.includes(mesValido)) inicios.push(mesValido);
+  const mes = mesValido ?? primero;
+  const yaPaso = !!hueco.mes && hueco.mes < primero;
 
   const nombreSede = sedes.sucursales.find((s) => s.id === almacenId)?.nombre ?? usuario?.sucursal ?? "";
   const pctDocente = carrera?.pctDocente ?? a?.pctDocenteDefecto ?? null;
@@ -114,6 +139,7 @@ export default function NuevoGrupo({
   async function crear() {
     if (!carrera) return setError(`Elegí el ${p.carrera}.`);
     if (almacenId == null) return setError(`Elegí la ${p.sede}.`);
+    if (inicioDelMes(mes, dia) < proximoInicio(dia)) return setError("Esa fecha de inicio ya pasó: elegí otra.");
     if (!dias.length) return setError("Elegí al menos un día.");
     if (horasEntre(horaInicio, horaFin) <= 0) return setError("La hora de fin tiene que ser después de la de inicio.");
     setError("");
@@ -145,13 +171,16 @@ export default function NuevoGrupo({
   }
 
   const alternarDia = (d: number) => setDias((xs) => (xs.includes(d) ? xs.filter((x) => x !== d) : [...xs, d]));
+  const opcionesSede = hueco.sedesPosibles?.length
+    ? sedes.sucursales.filter((s) => hueco.sedesPosibles!.includes(s.id))
+    : sedes.sucursales;
   const libres = (docentes.datos ?? []).filter((d) => almacenId == null || !d.sedes.length || d.sedes.some((s) => s.id === almacenId));
 
   return (
     <PanelLateral
       abierto
       titulo="Abrir grupo"
-      subtitulo={hueco.inicio && hueco.mes ? `Hueco libre de ${hueco.inicio}–${hueco.fin} desde ${nombreMes(hueco.mes)}` : `Los ${p.materias} empiezan el ${dia} de cada mes`}
+      subtitulo={hueco.inicio && hueco.mes ? `Hueco libre de ${hueco.inicio}–${hueco.fin} desde ${nombreMes(mes)}` : `Los ${p.materias} empiezan el ${dia} de cada mes`}
       onClose={onCerrar}
       acciones={
         <>
@@ -181,8 +210,9 @@ export default function NuevoGrupo({
           </Campo>
           {sedes.elegir && (
             <Campo label={p.Sede}>
-              <Select value={almacenId ?? ""} onChange={(e) => setAlmacenId(Number(e.target.value))}>
-                {sedes.sucursales.map((s) => (
+              <Select value={almacenId ?? ""} onChange={(e) => setAlmacenId(e.target.value ? Number(e.target.value) : null)}>
+                {almacenId == null && <option value="">Elegí…</option>}
+                {opcionesSede.map((s) => (
                   <option key={s.id} value={s.id}>
                     {s.nombre}
                   </option>
@@ -254,6 +284,11 @@ export default function NuevoGrupo({
               ))}
             </Select>
           </Campo>
+          {yaPaso && (
+            <p className="mt-1 text-xs text-texto-3">
+              El {dia} de {nombreMes(hueco.mes!)} ya pasó: el primer inicio posible es el {dia} de {nombreMes(primero)}.
+            </p>
+          )}
           <p className="mt-1 text-xs text-texto-4">
             Los {p.materias} empiezan el {dia} de cada mes. Se cambia en{" "}
             <Link to="/configuracion/academia" className="font-semibold text-primary-700 hover:underline">
