@@ -20,13 +20,20 @@ type Filtro = "todos" | "sin" | "reprobados";
 /** Hasta acá se ve todo; más, con "Ver los N restantes" (PLAN-ACADEMIAS §5). */
 const LIMITE = 20;
 
+/** La pausa al tipear tras la que la nota se guarda sola. */
+const PAUSA_GUARDADO_MS = 1200;
+
 /**
  * E13 · Cargar notas (ronda 2, F1b): las notas del módulo, una por
  * estudiante, con su estado de pago (sin montos: D6), la nota en letras y si
- * aprueba. Cada nota se guarda sola al soltar el campo. "Cerrar notas del
- * módulo" pide que estén todas (400 NOTAS_INCOMPLETAS lleva a las que
- * faltan); cerrado, sólo quien tiene `notas.reabrir` lo abre con un motivo.
- * La deuda nunca impide cargar ni cerrar (RM 0008/2016 art. 41).
+ * aprueba. Cada nota se guarda sola al soltar el campo o tras una pausa al
+ * tipear, y cada casilla dice si quedó sin guardar o si el servidor la
+ * rechazó: el "Guardado" de arriba sólo se ve cuando de verdad está todo
+ * guardado (QA ronda 2, B-18). "Cerrar notas del módulo" pide que estén todas
+ * (400 NOTAS_INCOMPLETAS lleva a las que faltan); cerrado, sólo quien tiene
+ * `notas.reabrir` lo abre con un motivo. Quien no tiene `notas.registrar`
+ * (recepción) las ve en sólo lectura, sin cerrar ni reabrir (B-05). La deuda
+ * nunca impide cargar ni cerrar (RM 0008/2016 art. 41).
  *
  * El docente entra desde el menú o Mis clases (`/academia/notas?grupo=`); la
  * administración, desde el grupo (`/academia/grupos/:id/notas`).
@@ -99,6 +106,7 @@ function CargaNotas({
   const navigate = useNavigate();
   const { usuario } = useAuth();
   const reabre = tienePermiso(usuario, "notas.reabrir");
+  const registra = tienePermiso(usuario, "notas.registrar");
   const carga = useApi(() => apiAcademia.notas(grupoId, materiaId), [grupoId, materiaId]);
   const grupo = useApi(() => apiAcademia.grupo(grupoId).catch(() => null), [grupoId]);
   const [notas, setNotas] = useState<Record<number, string>>({});
@@ -106,10 +114,20 @@ function CargaNotas({
   const [verTodos, setVerTodos] = useState(false);
   const [error, setError] = useState("");
   const [aviso, setAviso] = useState("");
-  const [guardado, setGuardado] = useState("");
+  const [mensaje, setMensaje] = useState("");
+  /** Alguna nota se guardó en esta visita: recién ahí tiene sentido decir "Guardado". */
+  const [algoGuardado, setAlgoGuardado] = useState(false);
+  const [guardando, setGuardando] = useState<Record<number, boolean>>({});
+  /** La casilla que el servidor rechazó, con su motivo. */
+  const [fallos, setFallos] = useState<Record<number, string>>({});
   const [cerrando, setCerrando] = useState(false);
   const [reabriendo, setReabriendo] = useState(false);
   const guardadas = useRef<Record<number, number | null>>({});
+  const pausas = useRef<Record<number, ReturnType<typeof setTimeout>>>({});
+  useEffect(() => {
+    const t = pausas.current;
+    return () => Object.values(t).forEach(clearTimeout);
+  }, []);
 
   const d = carga.datos;
   useEffect(() => {
@@ -123,7 +141,10 @@ function CargaNotas({
     const t = v.trim();
     if (t === "") return { tipo: "vacia" as const };
     const num = Number(t);
-    if (!/^\d+$/.test(t) || num < 1 || num > n.escalaMax) return { tipo: "error" as const };
+    // "75,5" o "75.5" se ve tal cual y en rojo. Antes el punto se borraba al
+    // tipear y quedaba 755.
+    if (/[.,]/.test(t)) return { tipo: "error" as const, motivo: "Sin decimales" };
+    if (!/^\d+$/.test(t) || num < 1 || num > n.escalaMax) return { tipo: "error" as const, motivo: `De 1 a ${n.escalaMax}` };
     return { tipo: num >= n.notaMinima ? ("aprueba" as const) : ("reprueba" as const), n: num };
   };
 
@@ -150,26 +171,47 @@ function CargaNotas({
   const visibles = filtro === "todos" && !verTodos ? elegidas.slice(0, LIMITE) : elegidas;
   const g = grupo.datos;
   const m = d.materia;
+  const soloLectura = d.cerrada || !registra;
 
-  /** Guarda una nota al soltar el campo, si cambió y está en la escala. */
-  async function guardarUna(inscripcionId: number) {
-    const v = (notas[inscripcionId] ?? "").trim();
+  /** Lo de la casilla es válido y no es lo que está guardado. */
+  const sinGuardar = (f: (typeof filas)[number]) => {
+    if (f.e.tipo === "error") return false;
+    const nota = "n" in f.e ? (f.e.n ?? null) : null;
+    return guardadas.current[f.inscripcionId] !== nota;
+  };
+  const invalidas = filas.filter((f) => f.e.tipo === "error").length;
+  const nSinGuardar = filas.filter((f) => sinGuardar(f) && !fallos[f.inscripcionId]).length;
+  const enVuelo = Object.values(guardando).some(Boolean);
+
+  /**
+   * Guarda una nota (al soltar el campo o tras la pausa), si cambió y está en
+   * la escala. Recibe el valor: el temporizador no puede leer el estado de su
+   * propio render.
+   */
+  async function guardarUna(inscripcionId: number, valor: string) {
+    clearTimeout(pausas.current[inscripcionId]);
+    const v = valor.trim();
     const nota = v === "" ? null : Number(v);
-    if (nota != null && (!Number.isInteger(nota) || nota < 1 || nota > d!.escalaMax)) return;
-    if (guardadas.current[inscripcionId] === nota) return;
+    if (nota != null && (!/^\d+$/.test(v) || nota < 1 || nota > d!.escalaMax)) return;
+    if (guardadas.current[inscripcionId] === nota && !fallos[inscripcionId]) return;
     setError("");
+    setGuardando((x) => ({ ...x, [inscripcionId]: true }));
     try {
       await apiAcademia.guardarNotas(grupoId, m.id, [{ inscripcionId, nota }]);
       guardadas.current[inscripcionId] = nota;
-      setGuardado("Guardado");
+      setFallos((x) => sinClave(x, inscripcionId));
+      setAlgoGuardado(true);
     } catch (e) {
-      setError(
+      const texto =
         e instanceof ApiError && e.codigo === CODIGOS_ACADEMIA.NOTAS_CERRADAS
           ? `Las notas del M${m.orden} ya están cerradas.`
           : e instanceof Error
             ? e.message
-            : "No se pudo guardar la nota",
-      );
+            : "No se pudo guardar la nota";
+      setFallos((x) => ({ ...x, [inscripcionId]: texto }));
+      setError(texto);
+    } finally {
+      setGuardando((x) => sinClave(x, inscripcionId));
     }
   }
 
@@ -179,6 +221,7 @@ function CargaNotas({
       setAviso(sinNota.length === 1 ? `Falta 1 nota. Cargala antes de cerrar el ${p.materia}.` : `Faltan ${sinNota.length} notas. Cargalas antes de cerrar el ${p.materia}.`);
       return;
     }
+    Object.values(pausas.current).forEach(clearTimeout);
     setCerrando(true);
     setError("");
     setAviso("");
@@ -247,16 +290,27 @@ function CargaNotas({
               </Select>
             </label>
           )}
-          <Boton icono="lock" disabled={d.cerrada || cerrando} onClick={() => void cerrar()}>
-            {d.cerrada ? "Notas cerradas" : cerrando ? "Cerrando…" : `Cerrar notas del ${p.materia}`}
-          </Boton>
+          {registra && (
+            <Boton icono="lock" disabled={d.cerrada || cerrando} onClick={() => void cerrar()}>
+              {d.cerrada ? "Notas cerradas" : cerrando ? "Cerrando…" : `Cerrar notas del ${p.materia}`}
+            </Boton>
+          )}
           <MenuMas etiqueta="Más acciones de las notas" acciones={acciones} />
         </div>
       </header>
 
-      {d.cerrada && (
+      {d.cerrada ? (
         <p role="status" className="rounded-xl bg-muted px-3.5 py-2.5 text-sm text-texto-2">
           Notas del M{m.orden} cerradas.{reabre ? "" : " Para corregir una, pedíselo al administrador."}
+        </p>
+      ) : !registra ? (
+        <p role="status" className="flex items-center gap-1.5 rounded-xl bg-muted px-3.5 py-2.5 text-sm text-texto-2">
+          <Icon name="lock" size={14} /> Sólo lectura: las notas las carga el {p.docente} del {p.materia}.
+        </p>
+      ) : null}
+      {mensaje && (
+        <p role="status" className="text-[13px] text-texto-3">
+          {mensaje}
         </p>
       )}
       {aviso && (
@@ -287,10 +341,14 @@ function CargaNotas({
             </button>
           ))}
         </div>
-        {guardado && (
-          <span role="status" className="flex items-center gap-1 pb-2 text-[13px] text-texto-3">
-            <Icon name="check" size={14} /> {guardado}
-          </span>
+        {!soloLectura && (
+          <EstadoGuardado
+            invalidas={invalidas}
+            fallos={Object.keys(fallos).length}
+            sinGuardar={nSinGuardar}
+            guardando={enVuelo}
+            algoGuardado={algoGuardado}
+          />
         )}
       </div>
 
@@ -304,6 +362,8 @@ function CargaNotas({
       <ul className="divide-y divide-borde-soft">
         {visibles.map((f) => {
           const t = f.e.tipo;
+          const fallo = fallos[f.inscripcionId];
+          const pendiente = !soloLectura && !fallo && sinGuardar(f);
           return (
             <li key={f.inscripcionId} className="grid grid-cols-[minmax(0,1fr)_80px] items-center gap-x-3 gap-y-1 px-3 py-2.5 md:grid-cols-[minmax(180px,2fr)_120px_90px_minmax(120px,1fr)_100px]">
               <span className="min-w-0 truncate text-sm text-texto">{f.nombre}</span>
@@ -314,15 +374,23 @@ function CargaNotas({
                 inputMode="numeric"
                 aria-label={`Nota de ${f.nombre}`}
                 value={f.valor}
-                disabled={d.cerrada}
+                disabled={soloLectura}
+                aria-invalid={t === "error" || !!fallo || undefined}
                 onChange={(e) => {
-                  setNotas({ ...notas, [f.inscripcionId]: e.target.value.replace(/[^0-9]/g, "") });
+                  const valor = e.target.value.replace(/[^0-9.,]/g, "");
+                  setNotas({ ...notas, [f.inscripcionId]: valor });
                   setAviso("");
-                  setGuardado("");
+                  setMensaje("");
+                  clearTimeout(pausas.current[f.inscripcionId]);
+                  pausas.current[f.inscripcionId] = setTimeout(() => void guardarUna(f.inscripcionId, valor), PAUSA_GUARDADO_MS);
                 }}
-                onBlur={() => void guardarUna(f.inscripcionId)}
+                onBlur={() => void guardarUna(f.inscripcionId, f.valor)}
                 className={`row-span-2 w-full rounded-xl border px-3 py-2 text-right text-sm tabular-nums outline-none focus:border-primary focus:ring-2 focus:ring-primary-100 disabled:bg-muted md:row-span-1 ${
-                  t === "error" ? "border-danger bg-danger-bg" : t === "vacia" && !d.cerrada ? "border-warning-text/50 bg-warning-bg/40" : "border-borde bg-white"
+                  t === "error" || fallo
+                    ? "border-danger bg-danger-bg"
+                    : t === "vacia" && !soloLectura
+                      ? "border-warning-text/50 bg-warning-bg/40"
+                      : "border-borde bg-white"
                 }`}
               />
               <span className="hidden text-sm text-texto-3 md:block">{"n" in f.e && f.e.n != null ? numeroEnLetras(f.e.n) : "—"}</span>
@@ -331,7 +399,9 @@ function CargaNotas({
                   t === "reprueba" || t === "error" ? "font-semibold text-danger-text" : t === "vacia" ? "font-semibold text-warning-text" : "text-texto-2"
                 }`}
               >
-                {t === "vacia" ? "Sin nota" : t === "error" ? `De 1 a ${d.escalaMax}` : t === "aprueba" ? "Aprobado" : "Reprobado"}
+                {f.e.tipo === "vacia" ? "Sin nota" : f.e.tipo === "error" ? f.e.motivo : f.e.tipo === "aprueba" ? "Aprobado" : "Reprobado"}
+                {fallo && <span className="block text-[12px] font-semibold text-danger-text">No se guardó</span>}
+                {pendiente && <span className="block text-[12px] font-normal text-texto-4">{guardando[f.inscripcionId] ? "Guardando…" : "Sin guardar"}</span>}
               </span>
             </li>
           );
@@ -362,7 +432,7 @@ function CargaNotas({
             try {
               await apiAcademia.reabrirNotas(grupoId, m.id, motivo);
               carga.recargar();
-              setGuardado("Notas reabiertas");
+              setMensaje("Notas reabiertas.");
             } catch (e) {
               setError(e instanceof Error ? e.message : "No se pudieron reabrir");
             }
@@ -371,5 +441,56 @@ function CargaNotas({
       )}
       {docente && <NavDocente />}
     </div>
+  );
+}
+
+/** El mismo registro sin esa clave (para sacar una casilla de "guardando" o de "falló"). */
+function sinClave<T>(x: Record<number, T>, clave: number): Record<number, T> {
+  const resto = { ...x };
+  delete resto[clave];
+  return resto;
+}
+
+/**
+ * Lo que dice el encabezado de la tabla: primero lo que falla, después lo
+ * que falta guardar, y "Guardado" sólo con todo guardado (QA ronda 2, B-18).
+ */
+function EstadoGuardado({
+  invalidas,
+  fallos,
+  sinGuardar,
+  guardando,
+  algoGuardado,
+}: {
+  invalidas: number;
+  fallos: number;
+  sinGuardar: number;
+  guardando: boolean;
+  algoGuardado: boolean;
+}) {
+  const clase = "flex items-center gap-1 pb-2 text-[13px]";
+  if (invalidas || fallos) {
+    const texto = invalidas
+      ? `Sin guardar: ${invalidas === 1 ? "1 nota no es válida" : `${invalidas} notas no son válidas`}`
+      : fallos === 1
+        ? "1 nota no se guardó"
+        : `${fallos} notas no se guardaron`;
+    return (
+      <span role="status" className={`${clase} font-semibold text-danger-text`}>
+        <Icon name="alert" size={14} /> {texto}
+      </span>
+    );
+  }
+  if (guardando || sinGuardar)
+    return (
+      <span role="status" className={`${clase} ${guardando ? "text-texto-3" : "text-warning-text"}`}>
+        {guardando ? "Guardando…" : "Sin guardar"}
+      </span>
+    );
+  if (!algoGuardado) return null;
+  return (
+    <span role="status" className={`${clase} text-texto-3`}>
+      <Icon name="check" size={14} /> Guardado
+    </span>
   );
 }

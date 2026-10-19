@@ -179,4 +179,18 @@ describe("E3 · detalle de grupo", () => {
     expect(screen.getByRole("status")).toHaveTextContent("Grupo cancelado");
     expect(screen.getByRole("button", { name: "Inscribir estudiante" })).toBeDisabled();
   });
+
+  it("recepción, que no carga notas, ve \"Ver notas\" en el menú y no \"Cargar notas\" (QA ronda 2, B-05)", async () => {
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Más acciones del grupo" }));
+    expect(screen.getByRole("menuitem", { name: "Ver notas" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Cargar notas" })).not.toBeInTheDocument();
+  });
+
+  it("quien carga notas ve \"Cargar notas\"", async () => {
+    sesion.permisos = ["academia.ver", "academia.grupos", "notas.registrar"];
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Más acciones del grupo" }));
+    expect(screen.getByRole("menuitem", { name: "Cargar notas" })).toBeInTheDocument();
+  });
 });

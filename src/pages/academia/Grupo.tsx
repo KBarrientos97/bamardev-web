@@ -108,7 +108,14 @@ export default function Grupo() {
 
   const acciones: AccionMenu[] = [
     { clave: "lista", etiqueta: "Pasar lista", icono: "lista", onClick: () => navigate(`/academia/grupos/${grupoId}/lista`) },
-    { clave: "notas", etiqueta: "Cargar notas", icono: "edit", onClick: () => navigate(`/academia/grupos/${grupoId}/notas`) },
+    // Quien no carga notas (recepción) las puede mirar, pero el menú no le
+    // promete cargarlas: el servidor se lo rechazaba (QA ronda 2, B-05).
+    {
+      clave: "notas",
+      etiqueta: tienePermiso(usuario, "notas.registrar") ? "Cargar notas" : "Ver notas",
+      icono: "edit",
+      onClick: () => navigate(`/academia/grupos/${grupoId}/notas`),
+    },
     ...(sinMontos
       ? []
       : [{ clave: "excel", etiqueta: "Exportar Excel", icono: "download" as const, detalle: "Pronto", deshabilitada: true, separar: true, onClick: () => {} }]),

@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
+import { ApiError } from "../../lib/api";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { NotasDelGrupo } from "../../lib/academia/tipos";
 
 /**
@@ -8,9 +9,11 @@ import type { NotasDelGrupo } from "../../lib/academia/tipos";
  * su resultado; cerrar pide que estén todas; la deuda no impide nada.
  */
 
+const sesion = vi.hoisted(() => ({ recepcion: false }));
+
 vi.mock("../../store/AuthContext", async () => {
-  const { SESION_DOCENTE: s } = await import("../../test/academiaFixtures");
-  return { useAuth: () => ({ ...s, puede: () => true }) };
+  const { SESION_DOCENTE, SESION_SECRETARIA } = await import("../../test/academiaFixtures");
+  return { useAuth: () => ({ ...(sesion.recepcion ? SESION_SECRETARIA : SESION_DOCENTE), puede: () => true }) };
 });
 
 vi.mock("../../lib/academia/apiAcademia", async (importOriginal) => {
@@ -42,6 +45,7 @@ const NOTAS: NotasDelGrupo = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  sesion.recepcion = false;
   vi.mocked(apiAcademia.notas).mockResolvedValue(NOTAS);
   vi.mocked(apiAcademia.grupo).mockResolvedValue(grupoDetalle());
   vi.mocked(apiAcademia.guardarNotas).mockResolvedValue(undefined);
@@ -96,5 +100,65 @@ describe("E13 · Notas", () => {
     // La nota que se tipeó sin soltar el campo se guarda antes de cerrar.
     expect(apiAcademia.guardarNotas).toHaveBeenCalledWith(7, 32, [{ inscripcionId: 102, nota: 60 }]);
     expect(apiAcademia.cerrarNotas).toHaveBeenCalledWith(7, 32);
+  });
+
+  it("recepción, sin notas.registrar, las ve en sólo lectura y sin cerrar (QA ronda 2, B-05)", async () => {
+    sesion.recepcion = true;
+    await montar();
+    expect(screen.getByLabelText("Nota de Andrade Villca, Mateo")).toBeDisabled();
+    expect(screen.getByLabelText("Nota de Bustillos Rek, Camila")).toBeDisabled();
+    expect(screen.queryByRole("button", { name: /Cerrar notas/ })).not.toBeInTheDocument();
+    expect(screen.getByText(/Sólo lectura/)).toBeInTheDocument();
+  });
+});
+
+describe("E13 · Notas: lo guardado de verdad (QA ronda 2, B-18)", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("una nota inválida no dice Guardado: dice cuántas no son válidas, y el decimal queda a la vista", async () => {
+    await montar();
+    const mateo = screen.getByLabelText("Nota de Andrade Villca, Mateo");
+    fireEvent.change(mateo, { target: { value: "80" } });
+    await act(async () => {
+      fireEvent.blur(mateo);
+    });
+    expect(screen.getByRole("status")).toHaveTextContent("Guardado");
+    const camila = screen.getByLabelText("Nota de Bustillos Rek, Camila");
+    fireEvent.change(camila, { target: { value: "75.5" } });
+    fireEvent.blur(camila);
+    expect(camila).toHaveValue("75.5");
+    expect(screen.getByText("Sin decimales")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("Sin guardar: 1 nota no es válida");
+    expect(screen.queryByText("Guardado")).not.toBeInTheDocument();
+    expect(apiAcademia.guardarNotas).toHaveBeenCalledTimes(1);
+  });
+
+  it("si el servidor rechaza la nota, la casilla dice que no se guardó", async () => {
+    vi.mocked(apiAcademia.guardarNotas).mockRejectedValue(new ApiError("Tu usuario no tiene permiso para esto", 403));
+    await montar();
+    const camila = screen.getByLabelText("Nota de Bustillos Rek, Camila");
+    fireEvent.change(camila, { target: { value: "55" } });
+    await act(async () => {
+      fireEvent.blur(camila);
+    });
+    expect(screen.getByText("No se guardó")).toBeInTheDocument();
+    expect(camila).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByRole("status")).toHaveTextContent("1 nota no se guardó");
+  });
+
+  it("tipeada y sin soltar el campo dice Sin guardar, y tras la pausa se guarda sola", async () => {
+    await montar();
+    vi.useFakeTimers();
+    const camila = screen.getByLabelText("Nota de Bustillos Rek, Camila");
+    fireEvent.change(camila, { target: { value: "62" } });
+    expect(screen.getByRole("status")).toHaveTextContent("Sin guardar");
+    expect(apiAcademia.guardarNotas).not.toHaveBeenCalled();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1500);
+    });
+    expect(apiAcademia.guardarNotas).toHaveBeenCalledWith(7, 32, [{ inscripcionId: 102, nota: 62 }]);
+    expect(screen.getByRole("status")).toHaveTextContent("Guardado");
   });
 });
