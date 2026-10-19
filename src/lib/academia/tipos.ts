@@ -707,6 +707,9 @@ export interface NotasDelGrupo {
 
 export type EstadoPlanilla = "EN_CURSO" | "CERRADA" | "PAGADA";
 
+/** Cómo se le paga al docente: lo que acepta `POST /academia/planilla/:id/pagar` (contrato, cambio 22). */
+export type MetodoPagoPlanilla = "EFECTIVO" | "TRANSFERENCIA" | "QR" | "TARJETA";
+
 export interface FilaPlanillaMes {
   personalId: number;
   nombre: string;

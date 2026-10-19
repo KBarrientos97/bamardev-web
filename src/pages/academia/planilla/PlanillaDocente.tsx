@@ -2,11 +2,12 @@ import { useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import MenuMas, { type AccionMenu } from "../../../components/MenuMas";
 import PanelLateral from "../../../components/PanelLateral";
-import { AvisoOk, Boton, Cargando, Confirmar, ErrorMsg, Select, Vacio, useAviso } from "../../../components/ui";
+import { Chips } from "../../../components/filtros";
+import { AvisoOk, Boton, Cargando, Confirmar, ErrorMsg, Modal, Select, Vacio, useAviso } from "../../../components/ui";
 import { apiAcademia, CODIGOS_ACADEMIA } from "../../../lib/academia/apiAcademia";
 import { mesDe, sumarMeses, tituloMes } from "../../../lib/academia/calendario";
 import { nombreDe } from "../../../lib/academia/formato";
-import type { LineaPlanilla } from "../../../lib/academia/tipos";
+import type { LineaPlanilla, MetodoPagoPlanilla } from "../../../lib/academia/tipos";
 import { usePalabras } from "../../../lib/academia/usePalabras";
 import { TEXTO_ESTADO_PLANILLA as TEXTO_ESTADO, textoFormaPago } from "../../../lib/academia/vista";
 import { ApiError } from "../../../lib/api";
@@ -17,6 +18,13 @@ import { useAuth } from "../../../store/AuthContext";
 import { Cifra } from "./PlanillaMes";
 
 type Lista = "cuentan" | "postergados" | "atrasados" | "sinPagar";
+
+/** Cómo se le paga al docente. La tarjeta (que el backend acepta) no es cómo se paga un sueldo. */
+const METODOS: readonly (readonly [MetodoPagoPlanilla, string])[] = [
+  ["EFECTIVO", "Efectivo"],
+  ["TRANSFERENCIA", "Transferencia"],
+  ["QR", "QR"],
+];
 
 /** Cada grupo muestra hasta acá; más, con "Ver los N restantes" (PLAN-ACADEMIAS §5). */
 const LIMITE = 20;
@@ -47,6 +55,9 @@ export default function PlanillaDocente() {
   const [verTodos, setVerTodos] = useState<Record<string, boolean>>({});
   const [ocupado, setOcupado] = useState(false);
   const [forzar, setForzar] = useState(false);
+  /** El diálogo de "Registrar pago": el pago no se deshace, así que se confirma con el monto (QA ronda 2, B-12). */
+  const [pagando, setPagando] = useState(false);
+  const [metodo, setMetodo] = useState<MetodoPagoPlanilla>("EFECTIVO");
   const [error, setError] = useState("");
   const [aviso, setAviso] = useAviso(6000);
 
@@ -85,10 +96,12 @@ export default function PlanillaDocente() {
     setOcupado(true);
     setError("");
     try {
-      await apiAcademia.pagarPlanilla(personalId, mes);
+      await apiAcademia.pagarPlanilla(personalId, mes, metodo);
       setAviso("Pago registrado como gasto de sueldos.");
+      setPagando(false);
       carga.recargar();
     } catch (e) {
+      setPagando(false);
       setError(e instanceof Error ? e.message : "No se pudo registrar el pago");
     } finally {
       setOcupado(false);
@@ -143,7 +156,7 @@ export default function PlanillaDocente() {
             </Boton>
           )}
           {liquida && d.estado === "CERRADA" && (
-            <Boton disabled={ocupado} onClick={() => void pagar()}>
+            <Boton disabled={ocupado} onClick={() => setPagando(true)}>
               Registrar pago {fmtMoney(r.liquido)}
             </Boton>
           )}
@@ -304,6 +317,34 @@ export default function PlanillaDocente() {
           </div>
         </PanelLateral>
       )}
+
+      <Modal
+        abierto={pagando}
+        titulo="Registrar el pago"
+        onClose={() => !ocupado && setPagando(false)}
+        ancho="max-w-sm"
+        acciones={
+          <>
+            <Boton variante="ghost" onClick={() => setPagando(false)} disabled={ocupado}>
+              Cancelar
+            </Boton>
+            <Boton onClick={() => void pagar()} disabled={ocupado}>
+              {ocupado ? "Un momento…" : `Pagar ${fmtMoney(r.liquido)}`}
+            </Boton>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-texto-2">
+            ¿Pagar <b className="tabular-nums">{fmtMoney(r.liquido)}</b> a {d.docente.nombre} por {tituloMes(d.mes).toLowerCase()}? Queda como gasto de
+            sueldos y la planilla pasa a pagada: no se deshace.
+          </p>
+          <div className="space-y-2">
+            <span className="block text-[13px] font-semibold text-texto-2">Cómo se le paga</span>
+            <Chips titulo="Método" valor={metodo} opciones={METODOS} onChange={setMetodo} />
+          </div>
+        </div>
+      </Modal>
 
       <Confirmar
         abierto={forzar}

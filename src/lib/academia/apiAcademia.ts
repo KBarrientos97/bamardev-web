@@ -30,6 +30,7 @@ import type {
   Materia,
   MateriaGrupoInput,
   MateriaInput,
+  MetodoPagoPlanilla,
   MisClases,
   NotasDelGrupo,
   Paginado,
@@ -230,8 +231,12 @@ export const apiAcademia = {
       method: "POST",
       body: json(forzar ? { mes, forzar } : { mes }),
     }),
-  pagarPlanilla: (personalId: number, mes: string) =>
-    request<unknown>(`/academia/planilla/${personalId}/pagar`, { method: "POST", body: json({ mes }) }),
+  /** `metodoPago`: EFECTIVO (por defecto en el backend), TRANSFERENCIA, QR o TARJETA. */
+  pagarPlanilla: (personalId: number, mes: string, metodoPago?: MetodoPagoPlanilla) =>
+    request<unknown>(`/academia/planilla/${personalId}/pagar`, {
+      method: "POST",
+      body: json(metodoPago ? { mes, metodoPago } : { mes }),
+    }),
 
   // ── Control y reportes ─────────────────────────────────────────────────────
   control: (mes: string, sede?: number | null) => request<PanelControl>(`/academia/control${qs({ mes, sede })}`),

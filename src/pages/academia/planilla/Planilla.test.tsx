@@ -134,13 +134,28 @@ describe("N8 · Planilla de un docente", () => {
     expect(apiAcademia.cerrarPlanilla).toHaveBeenLastCalledWith(9, "2026-10", true);
   });
 
-  it("cerrada, la acción es registrar el pago", async () => {
+  it("cerrada, registrar el pago pide confirmar el monto y el método antes de pagar (QA ronda 2, B-12)", async () => {
     vi.mocked(apiAcademia.planillaDocente).mockResolvedValue({ ...PLANILLA, estado: "CERRADA" });
     vi.mocked(apiAcademia.pagarPlanilla).mockResolvedValue({});
     await montar();
+    fireEvent.click(screen.getByRole("button", { name: /Registrar pago/ }));
+    // Un toque ya no paga: abre el diálogo.
+    expect(apiAcademia.pagarPlanilla).not.toHaveBeenCalled();
+    const dialogo = screen.getByRole("dialog", { name: "Registrar el pago" });
+    expect(dialogo).toHaveTextContent(/Pagar Bs\s?[\d.,]+ a Marco Rojas por octubre 2026/);
+    expect(within(dialogo).getByRole("button", { name: "Efectivo" })).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(within(dialogo).getByRole("button", { name: "Transferencia" }));
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: /Registrar pago/ }));
+      fireEvent.click(within(dialogo).getByRole("button", { name: /^Pagar/ }));
     });
-    expect(apiAcademia.pagarPlanilla).toHaveBeenCalledWith(9, "2026-10");
+    expect(apiAcademia.pagarPlanilla).toHaveBeenCalledWith(9, "2026-10", "TRANSFERENCIA");
+  });
+
+  it("cancelar el diálogo no paga", async () => {
+    vi.mocked(apiAcademia.planillaDocente).mockResolvedValue({ ...PLANILLA, estado: "CERRADA" });
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: /Registrar pago/ }));
+    fireEvent.click(within(screen.getByRole("dialog", { name: "Registrar el pago" })).getByRole("button", { name: "Cancelar" }));
+    expect(apiAcademia.pagarPlanilla).not.toHaveBeenCalled();
   });
 });
