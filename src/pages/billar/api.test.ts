@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { FormaPago } from "../../types";
-import { aMesa, aPagos, aVenta, type MesaApi, type VentaApi } from "./api";
+import { aMesa, aMesaAdmin, aPagos, aVenta, type MesaApi, type VentaApi } from "./api";
 
 const FORMAS = [
   { id: 7, nombre: "Efectivo" },
@@ -63,6 +63,23 @@ describe("aMesa: la mesa del backend con el número a la vista", () => {
 
   it("el pago dice qué fue (adelanto, tiempo fijo) y el recibido justo no se muestra", () => {
     expect(aMesa(api).sesion?.pagos[0]).toMatchObject({ metodo: "Efectivo", monto: 20, nota: "Adelanto", recibido: undefined });
+  });
+});
+
+describe("aMesaAdmin: la mesa de Mesas de billar", () => {
+  it("trae la reserva, para avisar que se cancela al dejarla fuera de servicio", () => {
+    // Prueba del 16-oct: sin la reserva, el formulario no avisaba y al guardar
+    // "Fuera de servicio" se borraba la de un cliente sin que nadie se enterara.
+    const m = aMesaAdmin({
+      id: 15,
+      numero: 3,
+      tipo: "pool",
+      estado: "reservada",
+      enJuego: false,
+      reserva: { hora: 1_000, nombre: "Carlos" },
+    });
+    expect(m.estado).toBe("reservada");
+    expect(m.reserva).toEqual({ hora: 1_000, nombre: "Carlos" });
   });
 });
 

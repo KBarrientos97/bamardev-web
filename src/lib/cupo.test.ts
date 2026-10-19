@@ -6,9 +6,9 @@ import {
   cupoDelError,
   esCupoAgotado,
   fmtCreditos,
-  marcarMostrado,
+  marcarCerrado,
   proyectar,
-  sinMostrar,
+  sinCerrar,
   textoChip,
   tituloAgotado,
 } from "./cupo";
@@ -129,12 +129,30 @@ describe("avisos del día", () => {
     expect(a.map((x) => x.texto)).toContain("Te quedan 10 créditos");
   });
 
-  it("cada aviso sale una sola vez por día; al día siguiente puede volver", () => {
+  it("un aviso sigue a la vista hasta que lo cierran; cerrado, vuelve al día siguiente", () => {
     const a = avisosDe(cupoEmprendedor({ ventas: 40, saldo: 100 }), "VENTA", HOY);
-    expect(sinMostrar(a, HOY)).toHaveLength(1);
-    marcarMostrado(a[0].clave, HOY);
-    expect(sinMostrar(a, HOY)).toHaveLength(0);
-    expect(sinMostrar(a, "2026-10-10")).toHaveLength(1);
+    // Mostrarlo no lo gasta: sólo cerrarlo.
+    expect(sinCerrar(a, HOY)).toHaveLength(1);
+    expect(sinCerrar(a, HOY)).toHaveLength(1);
+    marcarCerrado(a[0], HOY);
+    expect(sinCerrar(a, HOY)).toHaveLength(0);
+    expect(sinCerrar(a, "2026-10-10")).toHaveLength(1);
+  });
+
+  it("el del 80 % cerrado no vuelve con cada venta del día, aunque cambie el número", () => {
+    marcarCerrado(avisosDe(cupoEmprendedor({ ventas: 40, saldo: 100 }), "VENTA", HOY)[0], HOY);
+    expect(sinCerrar(avisosDe(cupoEmprendedor({ ventas: 43, saldo: 100 }), "VENTA", HOY), HOY)).toHaveLength(0);
+  });
+
+  it("el del saldo cerrado vuelve si el saldo sigue bajando, no si queda igual o sube", () => {
+    const saldo = (n: number) => avisosDe(cupoEmprendedor({ ventas: 50, saldo: n }), "VENTA", HOY).filter((x) => x.clave === "saldo");
+    marcarCerrado(saldo(10)[0], HOY);
+    expect(sinCerrar(saldo(10), HOY)).toHaveLength(0);
+    expect(sinCerrar(saldo(12), HOY)).toHaveLength(0);
+    expect(sinCerrar(saldo(8), HOY).map((x) => x.texto)).toEqual(["Te quedan 8 créditos"]);
+    // Cerrado otra vez con 8, el 8 ya no sale.
+    marcarCerrado(saldo(8)[0], HOY);
+    expect(sinCerrar(saldo(8), HOY)).toHaveLength(0);
   });
 });
 

@@ -351,3 +351,74 @@ describe("los pedidos por entregar según el plan", () => {
     expect(api.getPedidosPendientes).not.toHaveBeenCalled();
   });
 });
+
+describe("ventas a revisar (C1)", () => {
+  // El backend acepta la venta (ya se cobró, casi siempre sin señal) pero la
+  // marca: la marca tiene que verse en la lista y en el detalle, con el porqué.
+  const marcada = {
+    ...venta,
+    requiereRevision: true,
+    motivosRevision: ["PRECIO_NO_RECONOCIDO", "STOCK_NEGATIVO"],
+  } as unknown as Venta;
+  const limpia = { ...venta, id: 8, comprobante: "T-0008" } as unknown as Venta;
+
+  function montar() {
+    render(
+      <MemoryRouter>
+        <PantallaHistorial
+          caja={{ id: 1 } as Caja}
+          onAtras={() => {}}
+          onCierre={() => {}}
+          onVerComprobante={() => {}}
+        />
+      </MemoryRouter>,
+    );
+  }
+
+  it("la lista la marca con el motivo en palabras, y el detalle lo repite", async () => {
+    vi.mocked(api.getVentas).mockResolvedValue([marcada]);
+    vi.mocked(api.getVenta).mockResolvedValue(marcada);
+    await abrirDetalle();
+    const dialogo = screen.getByRole("dialog");
+    expect(within(dialogo).getByText("A revisar")).toBeInTheDocument();
+    expect(within(dialogo).getByText("Precio que nunca existió en el catálogo")).toBeInTheDocument();
+    expect(within(dialogo).getByText("Dejó stock negativo")).toBeInTheDocument();
+  });
+
+  it("en la fila: la marca y los motivos juntos", async () => {
+    vi.mocked(api.getVentas).mockResolvedValue([marcada]);
+    montar();
+    const fila = await screen.findByRole("button", { name: /T-0007/ });
+    expect(fila).toHaveTextContent("A revisar");
+    expect(fila).toHaveTextContent("Precio que nunca existió en el catálogo · Dejó stock negativo");
+  });
+
+  it("sin el campo (backend anterior) no se marca nada ni aparece el filtro", async () => {
+    montar();
+    const fila = await screen.findByRole("button", { name: /T-0007/ });
+    expect(fila).not.toHaveTextContent("A revisar");
+    expect(screen.queryByRole("button", { name: /Sólo a revisar/ })).not.toBeInTheDocument();
+  });
+
+  it("el filtro deja sólo las marcadas y el total del turno no cambia", async () => {
+    vi.mocked(api.getVentas).mockResolvedValue([marcada, limpia]);
+    montar();
+    await screen.findByRole("button", { name: /T-0008/ });
+    fireEvent.click(screen.getByRole("button", { name: "Sólo a revisar (1)" }));
+    expect(screen.getByRole("button", { name: /T-0007/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /T-0008/ })).not.toBeInTheDocument();
+    // El resumen de arriba es del turno entero, no de lo filtrado.
+    expect(screen.getByText(/2 ventas/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Todas" }));
+    expect(screen.getByRole("button", { name: /T-0008/ })).toBeInTheDocument();
+  });
+
+  it("un motivo que la web no conoce se muestra crudo, no se pierde", async () => {
+    const rara = { ...marcada, motivosRevision: ["OTRO_MOTIVO_NUEVO"] } as unknown as Venta;
+    vi.mocked(api.getVentas).mockResolvedValue([rara]);
+    montar();
+    expect(await screen.findByRole("button", { name: /T-0007/ })).toHaveTextContent(
+      "OTRO_MOTIVO_NUEVO",
+    );
+  });
+});

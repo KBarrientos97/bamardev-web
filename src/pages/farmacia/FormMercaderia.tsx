@@ -124,6 +124,7 @@ export default function FormMercaderia({
   // El extra "Aprobar movimientos" (doble control, se vende aparte): quien
   // carga sólo guarda y lo aprueba otra persona desde Movimientos, como antes.
   const dobleControl = incluye("aprobacion_inventario");
+  const conLotes = incluye("lotes");
 
   const [tipo, setTipo] = useState<TipoMercaderia>(tipoInicial);
   const [almacenId, setAlmacenId] = useState(
@@ -275,7 +276,13 @@ export default function FormMercaderia({
     // `|| !!l.loteCodigo`: un artículo que se deshabilitó después de entrar no
     // aparece en la lista del almacén, pero su línea ya cargada sigue teniendo
     // lote y no hay que esconderlo.
-    return (porId.get(l.articuloId)?.manejaLote ?? false) || !!l.loteCodigo;
+    //
+    // Sin `lotes` en el plan no se pide (16-oct): no hay Vencimientos ni FEFO
+    // que lo usen, y la ficha ya no muestra "Maneja lote" para apagarlo. Un
+    // medicamento que nació con lote cuando el alta lo prendía por defecto
+    // obligaba a teclear lote y fecha en cada compra, sin salida.
+    const pideLote = conLotes && (porId.get(l.articuloId)?.manejaLote ?? false);
+    return pideLote || !!l.loteCodigo;
   }
 
   function editarLinea(i: number, cambio: Partial<LineaForm>) {
@@ -352,7 +359,11 @@ export default function FormMercaderia({
         // para tapar, así que no se deja pasar.
         if (!l.loteCodigo.trim())
           return {
-            error: `Falta el lote de "${l.nombre}". Sin lote esa mercadería no aparece en Vencimientos.`,
+            // Vencimientos sólo existe con `lotes`: sin eso, nombrarla es
+            // mandar a una pantalla que el plan no tiene.
+            error: conLotes
+              ? `Falta el lote de "${l.nombre}". Sin lote esa mercadería no aparece en Vencimientos.`
+              : `Falta el lote de "${l.nombre}".`,
           };
         const iso = mesAIso(l.loteMes);
         if (!iso)

@@ -910,9 +910,15 @@ export default function Pos() {
         // delivery ya define quién y cuándo paga, y una mesa se fía desde el
         // salón — el flujo de crédito arma la venta desde el carrito, que
         // cobrando una mesa está vacío. Una venta en 0 (todo con paquete) no
-        // tiene nada que fiar.
+        // tiene nada que fiar. Y con el permiso de fiar, no sólo la feature:
+        // el dueño se lo puede sacar al cajero, y el backend responde 403
+        // desde el 18-oct (antes lo dejaba pasar igual).
         onCredito={
-          tieneFeature(negocio?.features, "fiado") && !datosEntrega && !mesaCobrando && totalCarrito > 0
+          tieneFeature(negocio?.features, "fiado") &&
+          tienePermiso(usuario, "credito.otorgar") &&
+          !datosEntrega &&
+          !mesaCobrando &&
+          totalCarrito > 0
             ? (extra) => {
                 // Las propinas que se anotaron en el cobro viajan con el fiado.
                 setPropinasCredito(extra?.propinas ?? []);

@@ -1,5 +1,5 @@
 import type { Feature, PerfilRubro, Rol, SesionUsuario } from "../types";
-import { RUBROS_BELLEZA, etiquetaRolDelRubro, type Rubro } from "./rubro";
+import { RUBROS_BELLEZA, esBelleza, etiquetaRolDelRubro, type Rubro } from "./rubro";
 
 /**
  * Qué ve y qué puede tocar cada quien (PLAN-ROLES-NEGOCIO). Hay dos
@@ -100,6 +100,8 @@ export type Seccion =
   | "transferencia_mercaderia"
   /** Gastos operativos: el libro del resultado, aparte de la caja. */
   | "gastos"
+  /** El QR de cobro del negocio, la cuenta a la que entra la plata (18-oct). */
+  | "qr_cobro"
   // ── Agenda de belleza: configuración ──
   /** Servicios con duración, profesionales y espacios, horarios y bloqueos (A8). */
   | "agenda_config"
@@ -168,8 +170,8 @@ export type Seccion =
  *
  * `feature: null` = la sección no se vende aparte; la decide el permiso. El
  * backend ya cruza los permisos con el plan, pero la feature se sigue mirando
- * porque la de la pantalla no siempre es la del permiso (Sucursales pide
- * `multi_almacen`, y su permiso es de `inventario`).
+ * porque la de la pantalla no siempre es la del permiso (Transferir mercadería
+ * pide `multi_almacen`, y su permiso es de `inventario`).
  */
 interface Requisito {
   permiso: string;
@@ -191,8 +193,13 @@ const REQUISITOS: Record<Seccion, Requisito> = {
   // tiene hasta el mesero, y no por eso administra los productos.
   productos: { permiso: "catalogo.editar", feature: "catalogo" },
   insumos: { permiso: "insumos.gestionar", feature: "insumos" },
-  // Sin el plan de varias sucursales no hay qué administrar.
-  almacenes: { permiso: "almacenes.administrar", feature: "multi_almacen" },
+  // Con `inventario`, como en el backend (`almacenes.administrar` es de esa
+  // feature) y como en la app desde el 15-oct: todo negocio tiene su almacén y
+  // lo tiene que poder ver. Con `multi_almacen` la pantalla desaparecía en los
+  // negocios de un local (Kevin: "¿dónde está almacén?"). Lo que vende
+  // `multi_almacen` es registrar OTRO: sin él Almacenes no ofrece "Nuevo".
+  // Belleza sigue pidiendo `multi_almacen` (ver `puedeVer`).
+  almacenes: { permiso: "almacenes.administrar", feature: "inventario" },
   movimientos: { permiso: "inventario.mover", feature: "inventario" },
   // Recibir y dar de baja mercadería SON movimientos de inventario, con
   // pantalla propia: la misma llave que `movimientos`.
@@ -229,6 +236,9 @@ const REQUISITOS: Record<Seccion, Requisito> = {
   controlados: { permiso: "controlados.libro", feature: null },
   proveedores: { permiso: "proveedores.gestionar", feature: "inventario" },
   gastos: { permiso: "gastos.gestionar", feature: "gastos" },
+  // El mismo permiso que pide el backend para cambiarlo (de fábrica, sólo el
+  // Administrador desde el 16-oct) y la feature de los cobros por QR.
+  qr_cobro: { permiso: "qr.configurar", feature: "pago_qr_mixto" },
   // ── Agenda de belleza ──
   agenda: { permiso: "agenda.ver", alcance: "GENERAL", feature: "agenda" },
   hoy: { permiso: "agenda.ver", alcance: "GENERAL", feature: "agenda" },
@@ -333,6 +343,9 @@ const FEATURES_ESTRICTAS: Feature[] = [
 const SOLO_EN_RUBRO: Partial<Record<Seccion, Rubro[]>> = {
   dashboard: ["FARMACIA"],
   busqueda: ["FARMACIA"],
+  // Nació en el billar (el dueño, 18-oct). Los demás rubros siguen cambiando
+  // el QR desde la apertura de caja; abrírselo es sumar el rubro acá.
+  qr_cobro: ["BILLAR"],
   vencimientos: ["FARMACIA"],
   encargos: ["FARMACIA"],
   controlados: ["FARMACIA"],
@@ -407,6 +420,23 @@ export function tienePermiso(usuario: ConPermisos, codigo: string): boolean {
   return !!usuario?.permisos?.includes(codigo);
 }
 
+/**
+ * ¿Se le ofrece "Aprobar" en un movimiento de inventario de este tipo?
+ *
+ * Una TRANSFERENCIA pide SIEMPRE `inventario.aprobar_transferencias` (16-oct):
+ * mueve mercadería entre locales, y si falta algo entre dos sucursales tiene
+ * que haber pocas personas que la hayan dado por buena. Viene de fábrica en
+ * Administrador y Encargado.
+ *
+ * Entradas, salidas y ajustes siguen como antes: el botón se ofrece y el
+ * servidor decide (con el doble control aprueba sólo `inventario.aprobar`,
+ * sin él alcanza con mover inventario; ver `puedeAprobar` en el backend).
+ */
+export function ofreceAprobarMovimiento(usuario: ConPermisos, tipo: string | undefined): boolean {
+  if (tipo === "TRANSFERENCIA") return tienePermiso(usuario, "inventario.aprobar_transferencias");
+  return true;
+}
+
 /** ¿Lo tiene sólo sobre lo suyo (alcance PROPIO)? */
 export function soloLoSuyo(usuario: ConPermisos, codigo: string): boolean {
   return tienePermiso(usuario, codigo) && !!usuario?.permisosPropios?.includes(codigo);
@@ -478,6 +508,11 @@ export function puedeVer(ctx: ContextoPermisos, seccion: Seccion): boolean {
   if (req.feature && FEATURES_ESTRICTAS.includes(req.feature) && !ctx.features?.includes(req.feature)) {
     return false;
   }
+  // Belleza carga sus sucursales desde la agenda y Almacenes nunca le apareció
+  // sin `multi_almacen`: ahí sigue como antes del 15-oct (ver `almacenes`).
+  if (seccion === "almacenes" && esBelleza(ctx.rubro) && !tieneFeature(ctx.features, "multi_almacen")) {
+    return false;
+  }
   return true;
 }
 
@@ -514,8 +549,10 @@ export type Capacidad =
   /**
    * Consultar las partidas: el lote que sale por FEFO en una salida y los
    * lotes de la ficha del medicamento. Es la misma feature que la sección
-   * Vencimientos, pero se usa DENTRO de pantallas que igual se ven. Cargar el
-   * lote al recibir no depende de esto: el backend lo guarda con cualquier plan.
+   * Vencimientos, pero se usa DENTRO de pantallas que igual se ven. El backend
+   * guarda el lote con cualquier plan, pero desde el 16-oct la web no lo pide
+   * al recibir sin esta feature, ni muestra "Maneja lote" ni el vencimiento en
+   * el mostrador: nada de eso tiene adónde llevar sin Vencimientos.
    */
   | "lotes";
 
@@ -611,6 +648,7 @@ const ORDEN_INICIO: [Seccion, string][] = [
   ["usuarios", "/usuarios"],
   ["creditos", "/creditos"],
   ["gastos", "/gastos"],
+  ["qr_cobro", "/configuracion/qr-cobro"],
   ["clientes", "/clientes"],
   ["busqueda", "/buscar"],
   ["gift_cards", "/gift-cards"],

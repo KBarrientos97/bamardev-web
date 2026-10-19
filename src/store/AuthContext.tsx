@@ -19,6 +19,7 @@ import {
 } from "../lib/api";
 import { apiMonedero } from "../lib/apiMonedero";
 import { identificar, olvidarUsuario } from "../lib/telemetria";
+import { olvidarDispositivoPush, sincronizarPushSilencioso } from "../lib/push/registroPush";
 import { fijarMoneda } from "../lib/format";
 import { aplicarTema } from "../lib/temas";
 import {
@@ -192,9 +193,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setLicencia(res.licencia ?? null);
     setAlias(alias);
     identificar(alias, res.usuario.username, res.usuario.rol);
+    // Push: si este navegador ya dio el permiso, registra su token con el
+    // usuario nuevo (sin permiso no hace nada ni baja Firebase).
+    void sincronizarPushSilencioso();
   }, [actualizarCupo]);
 
   const logout = useCallback(() => {
+    // Antes de limpiar: con el JWT todavía a mano, el backend borra este
+    // dispositivo para que no le lleguen avisos del usuario que se fue.
+    olvidarDispositivoPush(tokenStore.get());
     limpiarSesion();
     olvidarUsuario();
     // Vuelve al verde: el login no es de ningún negocio todavía, y quedarse
@@ -372,6 +379,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Reidentifica en PostHog tras un F5: el usuario se rehidrata de
   // localStorage sin pasar por `login`, y sin esto los errores de esa sesión
   // quedarían anónimos.
+  // Al abrir la app con sesión: el token de push puede haber cambiado (FCM lo
+  // rota). Sólo llama al API si cambió algo; sin permiso, ni eso.
+  useEffect(() => {
+    if (usuario) void sincronizarPushSilencioso();
+    // Una vez por usuario: cambiar de usuario es otro login.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [usuario?.id]);
+
   useEffect(() => {
     if (usuario && aliasRecordado) {
       identificar(aliasRecordado, usuario.username, usuario.rol);

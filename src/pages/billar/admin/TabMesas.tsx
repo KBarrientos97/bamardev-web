@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Icon } from "../../../components/Icon";
 import { Vacio } from "../../../components/ui";
 import { fmtMoney } from "../../../lib/format";
+import { contiene } from "../../../lib/texto";
 import { tarifaVigente, type EstadoBillar } from "../store";
 import type { Mesa } from "../tipos";
 import { ChipFiltro } from "../ui";
@@ -40,8 +41,10 @@ export function TabMesas({
     if (filtro === "fuera" && estado !== "fuera") return false;
     if (filtro === "inactiva" && estado !== "inactiva") return false;
     if (filtro.startsWith("tipo:") && m.tipo !== filtro.slice(5)) return false;
-    const q = busqueda.trim().toLowerCase();
-    return !q || `mesa ${m.id}`.includes(q) || String(m.id) === q || (m.alias ?? "").toLowerCase().includes(q);
+    // El apodo sin distinguir tildes, como en el tablero ("rincon" encuentra
+    // "Rincón"; prueba profunda, 18-oct).
+    const q = busqueda.trim();
+    return !q || contiene(`mesa ${m.id}`, q) || String(m.id) === q || contiene(m.alias, q);
   };
   const visibles = mesas.filter(pasa);
 
@@ -175,7 +178,8 @@ function TarjetaAdmin({ m, e, elegida, onClick }: { m: Mesa; e: EstadoBillar; el
       {m.estado === "abierta" && (
         <p className="mt-2 flex items-center gap-1.5 text-[12px] font-semibold text-primary-700">
           <span className="h-1.5 w-1.5 rounded-full bg-primary" aria-hidden />
-          En juego ahora
+          {/* Abierta, no "en juego": una pausada también cuenta (prueba profunda, 18-oct). */}
+          Abierta ahora
         </p>
       )}
     </button>

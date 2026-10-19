@@ -512,7 +512,8 @@ export function PedirPinCredito({
   const [error, setError] = useState("");
 
   function firmar() {
-    if (!/^\d{4,6}$/.test(pin)) return setError("El PIN son 4 a 6 dígitos.");
+    // El PIN es de 4 (18-oct); uno viejo de 5 o 6 sigue entrando.
+    if (!/^\d{4,6}$/.test(pin)) return setError("El PIN son 4 dígitos.");
     if (pideUsuario && autorizador.trim().length < 3)
       return setError("Poné el usuario del encargado que autoriza.");
     // Cuando el que está en la caja YA puede supervisar, el campo de usuario ni
@@ -556,9 +557,14 @@ export function PedirPinCredito({
             value={pin}
             onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 6))}
             autoFocus={!pideUsuario}
+            placeholder="4 dígitos"
             className="text-lg font-bold tracking-widest"
           />
         </Campo>
+        {/* Fuera del label: los tests buscan el campo por su etiqueta exacta. */}
+        <p className="-mt-2 text-xs text-texto-4">
+          Cada intento queda registrado con tu usuario y lo ve el administrador.
+        </p>
         <ErrorMsg>{error}</ErrorMsg>
       </div>
     </Modal>

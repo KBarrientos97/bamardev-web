@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { ErrorTv } from "./apiTv";
-import { clasificarFalla, esperaTrasFallo, llaveConForma, sucursalDeLaDireccion } from "./TvBillar.datos";
+import { ErrorTv, type SalonPublicoApi } from "./apiTv";
+import { clasificarFalla, esperaTrasFallo, llaveConForma, mesasDelSalon, sucursalDeLaDireccion } from "./TvBillar.datos";
 
 describe("TV pública del billar: qué hace con cada respuesta", () => {
   it("sólo el 404 apaga la TV; el tope de pedidos y el servidor caído se reintentan", () => {
@@ -26,5 +26,26 @@ describe("TV pública del billar: qué hace con cada respuesta", () => {
     expect(sucursalDeLaDireccion(null)).toBeUndefined();
     expect(sucursalDeLaDireccion("norte")).toBeUndefined();
     expect(sucursalDeLaDireccion("0")).toBeUndefined();
+  });
+});
+
+describe("TV pública del billar: la pausa", () => {
+  it("conserva desde cuándo está en pausa de verdad, no la hora del cambio de mesa", () => {
+    // Prueba profunda del 18-oct: tras pasar una cuenta pausada a otra mesa,
+    // `pausedAt` es la hora del cambio y la TV decía "hace 0 min" sin ámbar.
+    const r = {
+      negocio: "Billar",
+      tipos: [],
+      mesas: [
+        {
+          id: 3,
+          numero: 3,
+          tipo: "pool",
+          estado: "abierta",
+          sesion: { start: 1_000, pausedAt: 9_000, pausaDesde: 4_000, pausedTotal: 0, prepago: null, prev: null, consumos: [], pagos: [] },
+        },
+      ],
+    } as unknown as SalonPublicoApi;
+    expect(mesasDelSalon(r)[0].sesion?.pausaDesde).toBe(4_000);
   });
 });

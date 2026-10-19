@@ -14,15 +14,34 @@ import type { BillarReporteApi } from "../../api";
 export type Ajuste = BillarReporteApi["auditoria"][number];
 
 /** Los grupos de la pantalla. Se arman por el código, nunca por el texto: el texto se puede reescribir. */
-export type TipoAjuste = "anulaciones" | "pausas" | "cambios" | "horas" | "extensiones";
+export type TipoAjuste = "anulaciones" | "pausas" | "cambios" | "horas" | "extensiones" | "pagos" | "mesas" | "pin";
 
 const TIPO_POR_CODIGO: Record<string, TipoAjuste> = {
   ANULAR_MESA: "anulaciones",
   ANULAR_CONSUMO: "anulaciones",
+  // Desde el 16-oct: la venta de una mesa ya jugada que se anuló (la única
+  // forma de anularla pasados 5 minutos) y la mesa cobrada sin reanudar (el
+  // tiempo en pausa no se cobró). No dejaban rastro en esta pantalla.
+  ANULAR_VENTA: "anulaciones",
+  COBRADA_EN_PAUSA: "pausas",
   REANUDAR: "pausas",
   CAMBIAR_MESA: "cambios",
   EDITAR_INICIO: "horas",
   EXTENDER: "extensiones",
+  // Desde el 17-oct: el medio de pago corregido de una venta del turno (marcó
+  // efectivo y era QR). Es plata que cambió de cajón: el dueño la tiene que ver.
+  CORREGIR_PAGO: "pagos",
+  // Desde el 17-oct: una mesa reservada o fuera de servicio no se puede abrir
+  // (se podía esconder una jugada), y un PIN sacado deja al cajero sin firma.
+  RESERVAR: "mesas",
+  CANCELAR_RESERVA: "mesas",
+  FUERA_DE_SERVICIO: "mesas",
+  VOLVER_A_SERVICIO: "mesas",
+  // La mesa guardada como inactiva tampoco sale en el tablero: el backend lo
+  // manda desde el 17-oct y acá no tenía grupo, así que se veía sólo en
+  // "Todo" (prueba profunda, 18-oct).
+  INACTIVAR_MESA: "mesas",
+  AJUSTE_PIN: "pin",
 };
 
 export const NOMBRE_TIPO: Record<TipoAjuste, string> = {
@@ -31,10 +50,16 @@ export const NOMBRE_TIPO: Record<TipoAjuste, string> = {
   cambios: "Cambios de mesa",
   horas: "Hora corregida",
   extensiones: "Extensiones",
+  pagos: "Pagos corregidos",
+  mesas: "Reservas y fuera de servicio",
+  pin: "PIN cambiado",
 };
 
-/** El backend arma como mucho los últimos 200: con exactamente 200 puede haber más. */
-export const TOPE_AJUSTES = 200;
+/**
+ * El backend arma como mucho los últimos 500 (el take de la auditoría en
+ * billar-reportes.service.ts, que tiene que ser igual): con 500 o más puede haber más.
+ */
+export const TOPE_AJUSTES = 500;
 
 /** El grupo de un ajuste, o null si el backend no mandó el código (uno viejo) o es uno que no conocemos. */
 export function tipoDe(a: Ajuste): TipoAjuste | null {
@@ -55,7 +80,16 @@ export interface ResumenAjustes {
 export function resumenAjustes(lista: readonly Ajuste[]): ResumenAjustes {
   const conCodigo = lista.every((a) => a.codigo);
   if (!conCodigo) return { total: lista.length, porTipo: null, mesasAnuladas: null, consumosAnulados: null };
-  const porTipo: Record<TipoAjuste, number> = { anulaciones: 0, pausas: 0, cambios: 0, horas: 0, extensiones: 0 };
+  const porTipo: Record<TipoAjuste, number> = {
+    anulaciones: 0,
+    pausas: 0,
+    cambios: 0,
+    horas: 0,
+    extensiones: 0,
+    pagos: 0,
+    mesas: 0,
+    pin: 0,
+  };
   for (const a of lista) {
     const t = tipoDe(a);
     if (t) porTipo[t] += 1;
@@ -63,7 +97,13 @@ export function resumenAjustes(lista: readonly Ajuste[]): ResumenAjustes {
   return {
     total: lista.length,
     porTipo,
-    mesasAnuladas: lista.filter((a) => a.codigo === "ANULAR_MESA").length,
+    // Las abiertas por error y las ya jugadas cuya venta se anuló: las dos son
+    // tiempo de mesa que no entró. La venta rápida anulada viene con el mismo
+    // código y sin mesa (backend del 18-oct): cuenta como anulación, no como
+    // mesa; sumada acá, anular un maní decía "Mesas anuladas: 1".
+    mesasAnuladas: lista.filter(
+      (a) => a.codigo === "ANULAR_MESA" || (a.codigo === "ANULAR_VENTA" && a.mesaId != null),
+    ).length,
     consumosAnulados: lista.filter((a) => a.codigo === "ANULAR_CONSUMO").length,
   };
 }

@@ -1,6 +1,8 @@
 import { useState } from "react";
 import CorteDeCaja from "../../components/CorteDeCaja";
+import InputMonto from "../../components/InputMonto";
 import { esPositivo, parsearMontoO } from "../../lib/dinero";
+import { leerMonto, montoParaEditar } from "../../lib/montoTecleado";
 import { Icon } from "../../components/Icon";
 import {
   Badge,
@@ -24,6 +26,16 @@ import type { Caja, CitaParaRevisar, MotivoRevisarCita } from "../../types";
 
 /** Motivo libre: es el único que pide escribir la descripción y el sentido. */
 const OTRO = "__otro__";
+
+/**
+ * La fila del billar en el arqueo, con el signo en el valor. El número es un
+ * neto: lo que entró a este cajón de mesas que no son venta de esta caja,
+ * menos lo que otra caja cobró de ventas de ésta. El rótulo se elegía por el
+ * signo ("…cobrados en otra caja" si era negativo), así que con las dos cosas
+ * a la vez nombraba mal todo el monto (prueba profunda, 18-oct). Neutro, como
+ * en la app.
+ */
+const ETIQUETA_ADELANTOS_BILLAR = "Adelantos de billar";
 
 /**
  * Los movimientos de efectivo que de verdad pasan en un turno. El motivo decide
@@ -77,7 +89,7 @@ export default function PantallaCierre({
    * detectar.
    *
    * Peor: la precarga desactivaba el propio guard de abajo (`conteoHecho`
-   * mira `contado !== ""`, y el precargado ya lo dejaba lleno).
+   * mira que haya un monto escrito, y el precargado ya lo dejaba lleno).
    *
    * El esperado sigue estando a la vista en el resumen de arriba: sirve para
    * que el cajero verifique después de contar, no antes.
@@ -92,17 +104,27 @@ export default function PantallaCierre({
   const hayPropinas = propinasEfectivo > 0 || propinasSalidas > 0;
   const otrosIngresos = Math.round(((r?.ingresos ?? 0) - propinasEfectivo) * 100) / 100;
   const otrosEgresos = Math.round(((r?.egresos ?? 0) - propinasSalidas) * 100) / 100;
-  // Con parseo de coma: en Bolivia se teclea "150,50" y Number() da NaN, que
-  // caía a 0 sin avisar — el conteo del cierre quedaba en cero y la diferencia
-  // mostraba un faltante enorme que nadie había cometido.
-  const contadoNum = parsearMontoO(contado, NaN);
+  // Se lee como se escribe en Bolivia, "2.258,90" (ver `montoTecleado`). El
+  // campo de antes pasaba la coma a punto y leía con Number(): "2.258,90"
+  // llegaba como "2.258.90", que no es un número, y "1.000" valía Bs 1 (QA de
+  // Kevin, 17-oct). Y antes de eso "150,50" daba NaN, que caía a 0 sin avisar:
+  // el conteo quedaba en cero con un faltante enorme que nadie había cometido.
+  const contadoNum = leerMonto(contado);
 
   // La diferencia sólo tiene sentido una vez que se contó: mostrarla en 0
-  // antes de teclear haría parecer que la caja ya cuadra. Se valida igual
-  // que la apertura: el `min="0"` del input es sólo una pista del navegador
-  // y un monto negativo dejaba el arqueo del turno con un faltante falso.
-  const conteoHecho = contado !== "" && Number.isFinite(contadoNum) && contadoNum >= 0;
-  const diferencia = Math.round((contadoNum - esperado) * 100) / 100;
+  // antes de teclear haría parecer que la caja ya cuadra. Un monto negativo
+  // no se puede escribir: el campo no acepta el signo.
+  const conteoHecho = contadoNum !== null;
+  const diferencia = Math.round(((contadoNum ?? 0) - esperado) * 100) / 100;
+
+  function cambiarContado(texto: string) {
+    setContado(texto);
+    // El "Contá el efectivo" de un intento anterior seguía a la vista con el
+    // monto ya escrito (QA de Kevin, 17-oct) y se leía como que el número no
+    // se había tomado.
+    setError("");
+  }
+
   // Billar: con una mesa en juego la caja no cierra (decisión de Kevin,
   // 11-oct-2026). El backend lo rechaza igual (MESAS_ABIERTAS); acá se dice
   // antes de contar la plata, y cuáles son. En los demás rubros no viene.
@@ -114,12 +136,7 @@ export default function PantallaCierre({
       return setError(
         `No se puede cerrar caja: hay ${sinSubir} ${sinSubir === 1 ? "venta" : "ventas"} sin sincronizar. Esperá a que vuelva la conexión.`,
       );
-    if (!conteoHecho)
-      return setError(
-        contado !== ""
-          ? "El efectivo contado no puede ser negativo."
-          : "Contá el efectivo que hay en la caja.",
-      );
+    if (contadoNum === null) return setError("Contá el efectivo que hay en la caja.");
     setEnviando(true);
     try {
       // Se pasa la caja que devuelve el cierre: es la unica fuente con los
@@ -256,14 +273,7 @@ export default function PantallaCierre({
                         de abajo, en la otra rama): el adelanto de una mesa que
                         sigue abierta está en el cajón y todavía no es venta. */}
                     {(r.adelantosBillar ?? 0) !== 0 && (
-                      <Fila
-                        etiqueta={
-                          (r.adelantosBillar ?? 0) > 0
-                            ? "Adelantos de mesas de billar (efectivo)"
-                            : "Adelantos de billar cobrados en otra caja"
-                        }
-                        valor={r.adelantosBillar ?? 0}
-                      />
+                      <Fila etiqueta={ETIQUETA_ADELANTOS_BILLAR} valor={r.adelantosBillar ?? 0} />
                     )}
                     {/* La plata de las profesionales, en su fila: está en el cajón
                         pero no es del negocio. */}
@@ -368,14 +378,7 @@ export default function PantallaCierre({
                       venta está acá y el billete en el otro cajón. Sin la fila
                       el esperado no sale de sumar las de arriba. */}
                   {(r.adelantosBillar ?? 0) !== 0 && (
-                    <Fila
-                      etiqueta={
-                        (r.adelantosBillar ?? 0) > 0
-                          ? "Adelantos de mesas de billar (efectivo)"
-                          : "Adelantos de billar cobrados en otra caja"
-                      }
-                      valor={r.adelantosBillar ?? 0}
-                    />
+                    <Fila etiqueta={ETIQUETA_ADELANTOS_BILLAR} valor={r.adelantosBillar ?? 0} />
                   )}
                   {/* Un abono cobrado por QR entró al negocio pero NO al cajón:
                       sin esta fila el cajero veía el total de cobros del turno
@@ -459,16 +462,12 @@ export default function PantallaCierre({
                 <div className="mb-2">
                   <CorteDeCaja
                     titulo="Contar billete por billete"
-                    onTotal={(t) => setContado(t > 0 ? String(t) : "")}
+                    onTotal={(t) => cambiarContado(t > 0 ? montoParaEditar(t) : "")}
                   />
                 </div>
-                <Input
-                  type="number"
-                  inputMode="decimal"
-                  step="0.01"
-                  min="0"
+                <InputMonto
                   value={contado}
-                  onChange={(e) => setContado(e.target.value)}
+                  onChange={cambiarContado}
                   placeholder="0,00"
                   className="text-lg font-bold"
                 />
@@ -523,7 +522,7 @@ export default function PantallaCierre({
           {enviando
             ? "Cerrando…"
             : mesasBillar.length > 0
-              ? "Cobrá las mesas en juego para cerrar"
+              ? "Cobrá las mesas abiertas para cerrar"
               : sinSubir > 0
                 ? "Subí las ventas sin internet para cerrar"
                 : "Cerrar caja"}
@@ -747,7 +746,9 @@ function AvisoMesasBillar({ mesas }: { mesas: { numero: number; alias: string | 
       </span>
       <p>
         <b>
-          {mesas.length === 1 ? "Hay 1 mesa de billar en juego" : `Hay ${mesas.length} mesas de billar en juego`}
+          {/* "Abierta" y no "en juego": una pausada también frena el cierre, y el
+              tablero la cuenta en "Pausadas" (prueba profunda, 18-oct). */}
+          {mesas.length === 1 ? "Hay 1 mesa de billar abierta" : `Hay ${mesas.length} mesas de billar abiertas`}
         </b>
         : {nombres.join(", ")}. La caja no se cierra con mesas abiertas: cobralas (o anulá la que se abrió por error)
         desde el billar.

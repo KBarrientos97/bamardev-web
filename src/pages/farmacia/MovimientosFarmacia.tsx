@@ -17,7 +17,9 @@ import { api } from "../../lib/api";
 import { parsearMonto } from "../../lib/dinero";
 import { fmtFecha, fmtFechaHora, fmtMoney, fmtNum } from "../../lib/format";
 import { contiene } from "../../lib/texto";
+import { ofreceAprobarMovimiento } from "../../lib/permisos";
 import { useApi } from "../../lib/useApi";
+import { useAuth } from "../../store/AuthContext";
 import type {
   DetalleMovimiento,
   EstadoDocumento,
@@ -325,6 +327,7 @@ function DetalleMercaderia({
   onError: (mensaje: string) => void;
 }) {
   const navigate = useNavigate();
+  const { usuario } = useAuth();
   const mov = useApi(() => api.getMovimiento(id), [id]);
   const [confirmando, setConfirmando] = useState<"aprobar" | "anular" | "eliminar" | null>(
     null,
@@ -345,6 +348,9 @@ function DetalleMercaderia({
   const pendiente = m?.estado === "PENDIENTE";
   const entrada = m ? esEntrada(m.tipo) : true;
   const transferencia = m?.tipo === "TRANSFERENCIA";
+  // Una transferencia la aprueba sólo quien tiene el permiso propio: sin él
+  // el botón terminaba en un 403 (ver `ofreceAprobarMovimiento`).
+  const ofreceAprobar = ofreceAprobarMovimiento(usuario, m?.tipo);
   const total = detalles.reduce((acc, d) => acc + (d.subtotal ?? d.cantidad * d.costo), 0);
   const conLote = detalles.some((d) => d.loteCodigo);
 
@@ -412,13 +418,15 @@ function DetalleMercaderia({
               >
                 Eliminar
               </Boton>
-              <Boton
-                icono="check"
-                disabled={procesando}
-                onClick={() => setConfirmando("aprobar")}
-              >
-                Aprobar
-              </Boton>
+              {ofreceAprobar && (
+                <Boton
+                  icono="check"
+                  disabled={procesando}
+                  onClick={() => setConfirmando("aprobar")}
+                >
+                  Aprobar
+                </Boton>
+              )}
             </>
           ) : m?.estado === "APROBADO" ? (
             <Boton
@@ -591,6 +599,8 @@ function DetalleMercaderia({
                 <span>
                   Todavía no tocó el inventario: recién al aprobarlo se mueve el stock de
                   verdad.
+                  {!ofreceAprobar &&
+                    " La aprueba quien tiene el permiso «Aprobar transferencias» (de fábrica, el Administrador y el Encargado)."}
                 </span>
               </div>
             )}

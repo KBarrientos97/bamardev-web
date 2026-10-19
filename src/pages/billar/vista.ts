@@ -1,5 +1,16 @@
 import { fmtMoney } from "../../lib/format";
-import { cuentaDe, estadoVisual, fmtCrono, round2, type Cuenta } from "./calculo";
+import { contiene } from "../../lib/texto";
+import {
+  cuentaDe,
+  estadoVisual,
+  fmtCrono,
+  round2,
+  segundosDesdeQueSeAbrio,
+  segundosEnPausa,
+  sePuedeAnular,
+  tieneConsumos,
+  type Cuenta,
+} from "./calculo";
 import { tipoDe, type EstadoBillar } from "./store";
 import type { EstadoVisual, Mesa, Pago, TipoMesa, VentaBillar } from "./tipos";
 
@@ -10,15 +21,30 @@ export interface VistaMesa {
   estado: EstadoVisual;
   /** null si no está abierta. */
   cuenta: Cuenta | null;
+  /**
+   * Si todavía se puede anular: los 5 minutos de `sePuedeAnular` (con el plazo
+   * desde que se abrió) y sin consumos. Con consumos el link se ofrecía y el
+   * diálogo decía que no se podía (el dueño, 18-oct: "si ya consumieron, no es
+   * un error, se le tiene que cobrar").
+   */
+  anulable: boolean;
+  /** Segundos que lleva en pausa; null si no está pausada. */
+  pausaSeg?: number | null;
 }
 
 export function vistaDe(e: EstadoBillar, mesa: Mesa, ahora: number): VistaMesa {
   const tipo = tipoDe(e, mesa);
+  const cuenta = mesa.estado === "abierta" && mesa.sesion ? cuentaDe(mesa.sesion, tipo, ahora) : null;
   return {
     mesa,
     tipo,
     estado: estadoVisual(mesa, ahora, e.ajustes.avisos),
-    cuenta: mesa.estado === "abierta" && mesa.sesion ? cuentaDe(mesa.sesion, tipo, ahora) : null,
+    cuenta,
+    anulable:
+      !!mesa.sesion &&
+      !tieneConsumos(mesa.sesion) &&
+      sePuedeAnular(cuenta, segundosDesdeQueSeAbrio(mesa.sesion, ahora)),
+    pausaSeg: segundosEnPausa(mesa, ahora),
   };
 }
 
@@ -41,9 +67,14 @@ export function pasaFiltro(v: VistaMesa, f: Filtro): boolean {
   return v.estado === f;
 }
 
-/** Busca por número, apodo o cliente (§7.1). */
+/**
+ * Busca por número, apodo o cliente (§7.1), sin distinguir tildes ni
+ * mayúsculas: "perez" no encontraba a "Juan Pérez" y la pantalla decía
+ * "Ninguna mesa coincide" (prueba profunda, 18-oct). El cajero teclea sin
+ * tildes; para eso está `contiene`.
+ */
 export function pasaBusqueda(v: VistaMesa, texto: string): boolean {
-  const q = texto.trim().toLowerCase();
+  const q = texto.trim();
   if (!q) return true;
   const m = v.mesa;
   const campos = [
@@ -54,7 +85,7 @@ export function pasaBusqueda(v: VistaMesa, texto: string): boolean {
     m.reserva?.nombre ?? "",
     v.tipo.nombre,
   ];
-  return campos.some((c) => c.toLowerCase().includes(q));
+  return campos.some((c) => contiene(c, q));
 }
 
 /** "Mesa 5", y el apodo si tiene. */

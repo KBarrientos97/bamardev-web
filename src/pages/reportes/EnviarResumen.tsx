@@ -73,6 +73,7 @@ export default function EnviarResumen({ onCerrar }: { onCerrar: () => void }) {
         mermas: d.mermas,
         metodos: d.metodos,
         porCobrar: d.creditos?.resumen.totalPorCobrar ?? null,
+        pedidosPorCobrar: r.porCobrar ?? null,
       })
     : "";
 

@@ -1,6 +1,7 @@
 import { useEffect, useSyncExternalStore } from "react";
 import { api, ApiError } from "../../lib/api";
-import type { CreditoInput, FormaPago, PagoInput } from "../../types";
+import { fmtMoney } from "../../lib/format";
+import type { ConsumoVista, CreditoInput, FormaPago, PagoInput } from "../../types";
 import { olvidarAvisos, prepararAvisos, reestrenarAvisos } from "./alertas";
 import { tarifaDe } from "./calculo";
 import {
@@ -15,7 +16,7 @@ import {
   type TableroApi,
 } from "./api";
 import { ahoraServidor, fijarDesfase } from "./reloj";
-import type { AjustesBillar, Caja, ItemVenta, Mesa, MetodoCobro, ProductoBillar, TipoMesa, VentaBillar } from "./tipos";
+import type { AjustesBillar, Caja, Devolucion, ItemVenta, Mesa, MetodoCobro, ProductoBillar, TipoMesa, VentaBillar } from "./tipos";
 
 /**
  * El estado del billar y lo que se puede hacer con él.
@@ -39,7 +40,9 @@ export interface Toast {
   accion?:
     | { tipo: "extender"; mesaId: number }
     | { tipo: "ver"; mesaId: number }
-    | { tipo: "ticket"; codigo: string };
+    | { tipo: "ticket"; codigo: string }
+    /** El detalle de la venta (ahí está "Corregir pago"). */
+    | { tipo: "venta"; codigo: string };
 }
 
 export interface EstadoBillar {
@@ -123,7 +126,7 @@ let ajustesNegocio: AjustesApi = {
   avisos: [10, 5, 1],
   sonido: true,
   voz: true,
-  pin: { anularConsumo: true, anularMesa: true },
+  pin: { anularConsumo: true, anularMesa: true, pausar: true },
   tieneTokenSalon: false,
 };
 
@@ -243,6 +246,18 @@ function aplicarTablero(t: TableroApi) {
   }));
 }
 
+/** Cuándo llegó el último tablero, en la hora de este equipo (0: nunca). */
+let tableroEn = 0;
+
+/**
+ * Si el tablero en memoria es de hace más de `ms`. Con la pestaña escondida el
+ * sondeo no corre y la copia queda vieja: los avisos lo miran antes de sonar
+ * (ver `MotorAvisos`).
+ */
+export function tableroViejo(ms = 10_000): boolean {
+  return Date.now() - tableroEn > ms;
+}
+
 /** Trae el tablero. Sin `forzar`, no se superpone con otra vuelta en curso. */
 export async function recargar(forzar = false): Promise<void> {
   if (trayendo && !forzar) return;
@@ -259,6 +274,7 @@ export async function recargar(forzar = false): Promise<void> {
     if (marca !== acciones || pedida !== sucursalPedida) return;
     const primera = !estado.cargado;
     aplicarTablero(t);
+    tableroEn = Date.now();
     if (primera) prepararAvisos(estado.mesas, estado.ajustes.avisos, ahoraServidor());
   } catch (err) {
     // La sucursal recordada ya no sirve (la borraron, o pasó a depósito): el
@@ -481,7 +497,12 @@ export interface AbrirOpciones {
  * cerrada, mesa que cambió, PIN incorrecto…) sin perder lo que se cargó.
  */
 export const billar = {
-  async abrir(mesaId: number, o: AbrirOpciones): Promise<Mesa> {
+  /**
+   * Devuelve también el `consumo` del cupo (Plan Emprendedor, D29): el
+   * contador vive en la sesión y no en este store, así que lo guarda la
+   * pantalla, igual que después de una venta.
+   */
+  async abrir(mesaId: number, o: AbrirOpciones): Promise<{ mesa: Mesa; consumo?: ConsumoVista }> {
     const mesa = mesaDe(mesaId);
     const pagos = o.pago ? aPagos(o.pago, await formasPago()) : undefined;
     const r = await apiBillar.abrir(mesa.idInterno, {
@@ -494,7 +515,7 @@ export const billar = {
       nota: o.nota?.trim() || undefined,
       clienteRequestId: o.clienteRequestId,
     });
-    return ponerMesa(r);
+    return { mesa: ponerMesa(r), consumo: r.consumo };
   },
 
   /** Carga a la cuenta. El stock se descuenta al cobrar, pero ya no se ofrece a otra mesa. */
@@ -527,8 +548,9 @@ export const billar = {
     return ponerMesa(await apiBillar.pagar(sesionId, aPagos(pago, await formasPago()), clienteRequestId));
   },
 
-  async pausar(mesaId: number, motivo: string): Promise<Mesa> {
-    return ponerMesa(await apiBillar.pausar(sesionDe(mesaId).sesionId, motivo));
+  /** `cred`: el PIN del encargado si el negocio lo pide para pausar (`ajustes.pin.pausar`). */
+  async pausar(mesaId: number, motivo: string, cred: Credenciales = {}): Promise<Mesa> {
+    return ponerMesa(await apiBillar.pausar(sesionDe(mesaId).sesionId, motivo, cred));
   },
 
   async reanudar(mesaId: number): Promise<Mesa> {
@@ -564,13 +586,21 @@ export const billar = {
     return ponerMesa(await apiBillar.editarInicio(sesionId, inicio, motivo, cred));
   },
 
-  /** La mesa se abrió por error: no se cobra nada. Devuelve cuánto hay que devolverle al cliente. */
-  async anularMesa(mesaId: number, motivo: string, cred: Credenciales, clienteRequestId: string): Promise<number> {
+  /**
+   * La mesa se abrió por error: no se cobra nada. Devuelve cuánto hay que
+   * devolverle al cliente y en qué (el detalle, si el backend ya lo manda).
+   */
+  async anularMesa(
+    mesaId: number,
+    motivo: string,
+    cred: Credenciales,
+    clienteRequestId: string,
+  ): Promise<{ total: number; detalle?: Devolucion }> {
     const { sesionId } = sesionDe(mesaId);
     const r = await apiBillar.anular(sesionId, motivo, cred, clienteRequestId);
     ponerMesa(r.mesa);
     void cargarProductos();
-    return r.devolver;
+    return { total: r.devolver, detalle: r.devolverDetalle };
   },
 
   async reservar(mesaId: number, hora: number, nombre: string): Promise<Mesa> {
@@ -605,7 +635,7 @@ export const billar = {
       credito?: { credito: CreditoInput; pagos: PagoInput[] };
       clienteRequestId: string;
     },
-  ): Promise<string> {
+  ): Promise<{ codigo: string; ventaId: number; reintento: boolean }> {
     const { sesionId } = sesionDe(mesaId);
     const pagos = cobro.credito
       ? cobro.credito.pagos
@@ -624,17 +654,32 @@ export const billar = {
     else void recargar(true);
     await cargarVentas();
     void cargarProductos();
-    return r.venta.comprobante ?? `#${r.venta.id}`;
+    return { codigo: r.venta.comprobante ?? `#${r.venta.id}`, ventaId: r.venta.id, reintento: !r.mesa };
   },
 
   /** Venta sin mesa (§7.7): una venta normal del POS, por el mismo camino. */
+  /**
+   * La venta rápida. Devuelve el comprobante y, si la venta ya había entrado
+   * con OTROS pagos, cómo se cobró de verdad (`yaEntro`).
+   *
+   * Un reintento con la misma clave devuelve la venta que ya estaba, con sus
+   * pagos: si se cortó la respuesta y el cliente dijo "le pago por QR", la
+   * venta seguía en efectivo, el aviso decía "QR" y la caja esperaba un
+   * efectivo que no entró (revisión del 16-oct).
+   *
+   * Sin "Cliente": el backend no guarda el nombre en una venta de mostrador (y
+   * con una sola letra la rechazaba), así que la pantalla ya no lo pide.
+   *
+   * Devuelve también el `consumo` del cupo (Plan Emprendedor): como en
+   * `abrir`, el contador vive en la sesión y lo guarda la pantalla.
+   */
   async ventaRapida(
     items: { productoId: number; cant: number }[],
     pago: PagoNuevo,
-    cliente: string | undefined,
     clienteRequestId: string,
-  ): Promise<string> {
-    const pagos = aPagos(pago, await formasPago());
+  ): Promise<{ codigo: string; yaEntro: string | null; consumo?: ConsumoVista }> {
+    const formas = await formasPago();
+    const pagos = aPagos(pago, formas);
     const venta = await api.crearVenta({
       detalles: items
         .filter((i) => i.cant > 0)
@@ -644,13 +689,41 @@ export const billar = {
           precio: estado.productos.find((p) => p.id === i.productoId)?.precio,
         })),
       pagos,
-      ...(cliente?.trim() ? { clienteNombre: cliente.trim() } : {}),
       clienteRequestId,
     });
     acciones++;
     await cargarVentas();
     void cargarProductos();
-    return venta.comprobante ?? `#${venta.id}`;
+    const firma = (ps: { formaPagoId: number; monto: number }[]) =>
+      ps
+        .map((p) => `${p.formaPagoId}:${Math.round(p.monto * 100)}`)
+        .sort()
+        .join("|");
+    const reales = venta.pagos ?? [];
+    const yaEntro =
+      reales.length && firma(reales) !== firma(pagos)
+        ? reales
+            .map((p) => `${p.formaPago ?? formas.find((f) => f.id === p.formaPagoId)?.nombre ?? "otro medio"} ${fmtMoney(p.monto)}`)
+            .join(" + ")
+        : null;
+    return { codigo: venta.comprobante ?? `#${venta.id}`, yaEntro, consumo: venta.consumo };
+  },
+
+  /**
+   * Corregir por dónde entró la plata de una venta del turno, sin anularla:
+   * el total no cambia. Si baja el efectivo, con el PIN de un encargado y el
+   * número de operación del banco (`operacion`). false si ya estaba así.
+   */
+  async corregirPago(
+    ventaId: number,
+    pago: PagoNuevo,
+    motivo: string,
+    cred: Credenciales,
+    operacion?: string,
+  ): Promise<boolean> {
+    const r = await apiBillar.corregirPago(ventaId, aPagos(pago, await formasPago()), motivo, cred, operacion);
+    await cargarVentas();
+    return r.corregida;
   },
 
   /** Anular una venta (PIN siempre, como en todo el sistema): repone el stock y sale de la caja. */
@@ -815,6 +888,7 @@ export const billar = {
         voz: ajustes.voz,
         pinAnularConsumo: ajustes.pin.anularConsumo,
         pinAnularMesa: ajustes.pin.anularMesa,
+        ...(ajustes.pin.pausar != null ? { pinPausar: ajustes.pin.pausar } : {}),
         // La hora en que termina la jornada (reportes); sin ella no se toca.
         ...(ajustes.horaCorteMin != null ? { horaCorteMin: ajustes.horaCorteMin } : {}),
       });

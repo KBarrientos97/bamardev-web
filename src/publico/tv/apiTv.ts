@@ -26,6 +26,8 @@ export interface MesaTvApi {
   sesion?: {
     start: number;
     pausedAt: number | null;
+    /** Desde cuándo está en pausa de verdad (backend del 18-oct; sin él, `pausedAt`). */
+    pausaDesde?: number;
     pausedTotal: number;
     prepago: Prepago | null;
     prev: TiempoPrevio | null;

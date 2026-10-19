@@ -2,12 +2,13 @@ import { Icon } from "../../components/Icon";
 import { Modal } from "../../components/ui";
 import { fmtMoney } from "../../lib/format";
 import { useAuth } from "../../store/AuthContext";
-import { fechaDe, fmtCobrado, horaDe } from "./calculo";
+import { fechaDe, fmtCobrado, horaDe, textoDevolucion } from "./calculo";
 import { useDialogos } from "./dialogos";
 import { useAhora } from "./reloj";
 import { tipoDe, useBillar } from "./store";
 import { BotonB, Circulo } from "./ui";
 import { origenDe, textoMetodo, vistaDe } from "./vista";
+import { sePuedeCorregirPago } from "./Avisos.datos";
 
 /** El detalle de una venta (§7.9): con Ticket, Anular (PIN) y Listo. */
 export function ModalVenta({ codigo, onClose }: { codigo: string; onClose: () => void }) {
@@ -31,6 +32,12 @@ export function ModalVenta({ codigo, onClose }: { codigo: string; onClose: () =>
               Anular venta
             </BotonB>
           )}
+          {/* Marcó efectivo y era QR: se corrige sin anular (17-oct). */}
+          {sePuedeCorregirPago(v) && (
+            <BotonB icono="swap" onClick={() => abrir({ tipo: "corregirPago", codigo })}>
+              Corregir pago
+            </BotonB>
+          )}
           <BotonB icono="fileText" onClick={() => abrir({ tipo: "ticket", codigo })}>
             Ticket
           </BotonB>
@@ -50,8 +57,16 @@ export function ModalVenta({ codigo, onClose }: { codigo: string; onClose: () =>
       )}
       <div className="space-y-1.5 text-[13px]">
         {v.origen === "mesa" && (
-          <Linea izq={`Tiempo de mesa (${fmtCobrado(v.tiempoMin)})`} der={fmtMoney(v.tiempoBs + (v.promo?.descuento ?? 0))} />
+          <Linea
+            izq={`Tiempo de mesa (${fmtCobrado(v.tiempoMin)}${v.tiempoPrevioMin ? ` en total; ${fmtCobrado(v.tiempoPrevioMin)} en otra mesa, a su tarifa` : ""})`}
+            der={fmtMoney(v.tiempoBs + (v.promo?.descuento ?? 0))}
+          />
         )}
+        {/* La pausa a la vista: el cliente ve el tiempo que no se le cobró, y
+            el dueño, cuánto se pausó en cada mesa sin abrir otro reporte. */}
+        {v.origen === "mesa" && v.pausaMin ? (
+          <p className="text-[12px] text-texto-4">En pausa {fmtCobrado(v.pausaMin)} · no se cobra</p>
+        ) : null}
         {v.promo && <Linea izq={`${v.promo.nombre} −${v.promo.pct} %`} der={`−${fmtMoney(v.promo.descuento)}`} verde />}
         {v.items.map((i) => (
           <Linea key={`${i.productoId}-${i.precio}`} izq={`${i.cant}× ${i.nombre}`} der={fmtMoney(i.precio * i.cant)} />
@@ -73,6 +88,11 @@ export function ModalVenta({ codigo, onClose }: { codigo: string; onClose: () =>
             <span className="font-semibold tabular-nums text-texto">{fmtMoney(p.monto)}</span>
           </div>
         ))}
+        {v.devuelto && textoDevolucion(v.devuelto) && (
+          <p className="text-texto-3">Devuelto al cliente: {textoDevolucion(v.devuelto)}</p>
+        )}
+        {/* La corrección queda a la vista: quién y por qué, en Pausas y ajustes. */}
+        {v.pagoCorregido && <p className="text-[12px] text-texto-4">Medio de pago corregido después del cobro.</p>}
       </div>
     </Modal>
   );
@@ -141,6 +161,13 @@ export function ModalTicket({ codigo, onClose }: { codigo: string; onClose: () =
           {fila("Origen", origenDe(v, e.tipos))}
           {sep}
           {v.origen === "mesa" && fila(`Tiempo de mesa ${fmtCobrado(v.tiempoMin)}`, fmtMoney(v.tiempoBs + (v.promo?.descuento ?? 0)))}
+          {/* Lo traído de una mesa de otra tarifa: sin esto, 45 min de Pool
+              pasados a una Carambola salían "Carambola 0:45" por Bs 15 y se
+              leía como una Carambola más barata (prueba profunda, 18-oct). */}
+          {v.origen === "mesa" && v.tiempoPrevioMin
+            ? fila(`  En otra mesa ${fmtCobrado(v.tiempoPrevioMin)}`, "a su tarifa")
+            : null}
+          {v.origen === "mesa" && v.pausaMin ? fila(`  En pausa ${fmtCobrado(v.pausaMin)}`, "no se cobra") : null}
           {v.promo && fila(`  ${v.promo.nombre}`, `−${fmtMoney(v.promo.descuento)}`)}
           {v.items.map((i) => (
             <div key={`${i.productoId}-${i.precio}`}>{fila(`${i.cant} × ${i.nombre}`, fmtMoney(i.precio * i.cant))}</div>
@@ -155,11 +182,25 @@ export function ModalTicket({ codigo, onClose }: { codigo: string; onClose: () =
               )}
             </div>
           ))}
-          {v.recibido !== undefined && efectivoFinal && (
+          {v.pagoCorregido && <p className="text-[11px]">(medio de pago corregido)</p>}
+          {/* Con devolución no hubo cobro final: el único cambio es el que
+              sobró de los adelantos, y un adelanto que queda entero afuera no
+              es un pago de la venta. Decía "Cambio Bs 10" con Bs 60 devueltos. */}
+          {v.devuelto ? (
             <>
-              {fila("Recibido", fmtMoney(v.recibido))}
-              {fila("Cambio", fmtMoney(v.cambio ?? 0))}
+              {v.devuelto.efectivo > 0.005 && fila("Devuelto en efectivo", fmtMoney(v.devuelto.efectivo))}
+              {v.devuelto.otros.map((o) => (
+                <div key={o.metodo}>{fila(`Devuelto por ${o.metodo}`, fmtMoney(o.monto))}</div>
+              ))}
             </>
+          ) : (
+            v.recibido !== undefined &&
+            efectivoFinal && (
+              <>
+                {fila("Recibido", fmtMoney(v.recibido))}
+                {fila("Cambio", fmtMoney(v.cambio ?? 0))}
+              </>
+            )
           )}
           {sep}
           <p className="text-center">Comprobante interno · no válido como factura</p>

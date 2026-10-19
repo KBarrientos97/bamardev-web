@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Icon, type NombreIcono } from "../../components/Icon";
 import { fmtMoney } from "../../lib/format";
 import { useAccionesMesa } from "./acciones";
-import { etiquetaPagoFijo, fmtCobrado, fmtHace, horaDe, sePuedeAnular } from "./calculo";
+import { etiquetaPagoFijo, fmtCobrado, fmtHace, horaDe } from "./calculo";
 import { useDialogos } from "./dialogos";
 import { BotonB, Circulo, EstadoBadge, Fila, Nota, Rotulo } from "./ui";
 import type { VistaMesa } from "./vista";
@@ -64,7 +64,9 @@ export default function PanelMesa({ v, ahora, onCerrar }: { v: VistaMesa; ahora:
         ) : estado === "reservada" && mesa.reserva ? (
           <>
             <Nota tono="azul" icono="calendar">
-              Reservada para <b>{mesa.reserva.nombre}</b> a las {horaDe(mesa.reserva.hora)}.
+              {/* Sin punto después de la hora: ya termina en "p. m." y quedaba
+                  "p. m.." (prueba profunda, 18-oct; lo mismo que en Corregir inicio). */}
+              Reservada para <b>{mesa.reserva.nombre}</b> a las {horaDe(mesa.reserva.hora)}
             </Nota>
             <TarjetaTarifa v={v} />
           </>
@@ -240,28 +242,35 @@ function CuentaAbierta({ v, ahora }: { v: VistaMesa; ahora: number }) {
                 <Fila etiqueta="Excedente" valor={`${fmtCobrado(c.excedenteMin)} → ${fmtMoney(c.excedenteBs)}`} />
               )}
               {(c.restante ?? 1) <= 0 && c.nextSecs !== null && (
-                <Fila etiqueta="Siguiente tramo" valor={`a la ${fmtCobrado(c.nextSecs / 60)} → ${fmtMoney(c.nextBs ?? 0)}`} />
+                <Fila etiqueta="Siguiente tramo" valor={`a la ${fmtCobrado(Math.floor(c.nextSecs / 60))} → ${fmtMoney(c.nextBs ?? 0)}`} />
               )}
             </>
           ) : (
             <>
               <Fila etiqueta="Tiempo cobrado" valor={`${fmtCobrado(c.cobradoMin)} → ${fmtMoney(c.tiempoBs)}`} />
+              {/* El tiempo de arriba (y el del tramo siguiente) ya viene con la
+                  promo. Decía "−Bs 6" como si faltara restarlo: el cajero le
+                  decía 48 al cliente y el cierre cobraba 54. */}
               {c.promo && (
                 <Fila
                   etiqueta={<span className="font-semibold text-primary-700">{c.promo.nombre}</span>}
-                  valor={<span className="text-primary-700">−{c.promo.pct} % · −{fmtMoney(c.promo.descuento)}</span>}
+                  valor={
+                    <span className="text-primary-700">
+                      −{c.promo.pct} % · ya descontado {fmtMoney(c.promo.descuento)}
+                    </span>
+                  }
                 />
               )}
               {s.prev && (
                 <Fila etiqueta="Traído de otra mesa" valor={`${fmtCobrado(s.prev.min)} → ${fmtMoney(s.prev.bs)}`} />
               )}
               {c.nextSecs !== null && !s.pausedAt && (
-                <Fila etiqueta="Siguiente tramo" valor={`a la ${fmtCobrado(c.nextSecs / 60)} → ${fmtMoney(c.nextBs ?? 0)}`} />
+                <Fila etiqueta="Siguiente tramo" valor={`a la ${fmtCobrado(Math.floor(c.nextSecs / 60))} → ${fmtMoney(c.nextBs ?? 0)}`} />
               )}
             </>
           )}
           {s.pausedAt && (
-            <Fila etiqueta="En pausa" valor={`desde ${horaDe(s.pausedAt)} · ${s.pauseMotivo ?? ""}`} />
+            <Fila etiqueta="En pausa" valor={`desde ${horaDe(s.pausaDesde ?? s.pausedAt)} · ${s.pauseMotivo ?? ""}`} />
           )}
         </div>
       </section>
@@ -338,8 +347,9 @@ function CuentaAbierta({ v, ahora }: { v: VistaMesa; ahora: number }) {
         )}
       </section>
 
-      {/* Sólo en los primeros 5 minutos de juego: después ya no es un error (`sePuedeAnular`). */}
-      {sePuedeAnular(c) && (
+      {/* Sólo en los primeros 5 minutos desde que se abrió y sin consumos: después,
+          o si ya consumieron, no es un error y se cobra (`v.anulable`). */}
+      {v.anulable && (
         <button
           type="button"
           onClick={() => abrir({ tipo: "anularMesa", mesaId: mesa.id })}

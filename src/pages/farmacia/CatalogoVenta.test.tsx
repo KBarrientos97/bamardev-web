@@ -9,8 +9,11 @@ import type { Categoria, Producto } from "../../types";
  * recibe al lector de código de barras.
  */
 
+/** `lotes` es PRO: una farmacia BASICO no tiene Vencimientos. */
+const plan = vi.hoisted(() => ({ lotes: true }));
+
 vi.mock("../../store/AuthContext", () => ({
-  useAuth: () => ({ puede: () => true }),
+  useAuth: () => ({ puede: () => true, incluye: (c: string) => (c === "lotes" ? plan.lotes : true) }),
 }));
 
 vi.mock("../../lib/api", () => ({
@@ -73,6 +76,7 @@ function montar(enCarrito = new Map<number, number>()) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  plan.lotes = true;
   vi.mocked(api.buscarProductos).mockResolvedValue({
     items: [ibuprofeno, ranitidina],
     total: 2,
@@ -126,6 +130,14 @@ describe("la grilla", () => {
   it("el punto dice cuándo vence el lote que se vende primero", async () => {
     montar();
     expect(await screen.findByLabelText("Vencimiento: 13 días")).toHaveClass("bg-danger");
+  });
+
+  it("sin `lotes` en el plan no hay punto de vencimiento: no tiene adónde llevar", async () => {
+    // El bug del 16-oct: una farmacia sin Vencimientos veía "Vence hoy".
+    plan.lotes = false;
+    montar();
+    await screen.findByRole("button", { name: /Ibuprofeno 400 mg/ }, { timeout: 4000 });
+    expect(screen.queryByLabelText(/^Vencimiento:/)).not.toBeInTheDocument();
   });
 
   it("marca lo que ya está en la venta", async () => {

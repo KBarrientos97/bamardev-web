@@ -21,13 +21,20 @@ const sesion = vi.hoisted(() => ({
   lotes: true,
   dobleControl: false,
   sucursalId: null as number | null,
+  /** Quien carga puede aprobar transferencias (Administrador o Encargado). */
+  apruebaTransferencias: true,
 }));
 
 vi.mock("../../store/AuthContext", () => ({
   useAuth: () => ({
     incluye: (c: string) =>
       c === "lotes" ? sesion.lotes : c === "aprobacion_inventario" ? sesion.dobleControl : true,
-    usuario: { sucursalId: sesion.sucursalId },
+    usuario: {
+      sucursalId: sesion.sucursalId,
+      permisos: sesion.apruebaTransferencias
+        ? ["inventario.mover", "inventario.aprobar_transferencias"]
+        : ["inventario.mover"],
+    },
   }),
 }));
 
@@ -162,6 +169,7 @@ beforeEach(() => {
   sesion.lotes = true;
   sesion.dobleControl = false;
   sesion.sucursalId = null;
+  sesion.apruebaTransferencias = true;
   vi.mocked(api.getAlmacenes).mockResolvedValue([
     almacen(CENTRO, "Centro"),
     almacen(EQUIPETROL, "Equipetrol"),
@@ -373,6 +381,22 @@ describe("Guardar o aprobar", () => {
     await screen.findByRole("button", { name: /Buscar y agregar producto/ });
     expect(screen.queryByRole("button", { name: "Guardar y aprobar" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Guardar transferencia" })).toBeInTheDocument();
+  });
+
+  it("sin «Aprobar transferencias» sólo guarda, y dice quién la aprueba", async () => {
+    // Antes el botón guardaba y la aprobación volvía con un 403: quedaba
+    // pendiente con un aviso de error por algo que no lo era (16-oct).
+    sesion.apruebaTransferencias = false;
+    abrir();
+    await screen.findByRole("button", { name: /Buscar y agregar producto/ });
+    expect(screen.queryByRole("button", { name: "Guardar y aprobar" })).not.toBeInTheDocument();
+    expect(screen.getByText(/la aprueba alguien con el permiso «Aprobar transferencias»/)).toBeInTheDocument();
+
+    await agregarAmoxicilina("10");
+    await clickEn("Guardar transferencia");
+    await screen.findByText("registro de movimientos");
+    expect(api.crearMovimiento).toHaveBeenCalledTimes(1);
+    expect(api.aprobarMovimiento).not.toHaveBeenCalled();
   });
 });
 

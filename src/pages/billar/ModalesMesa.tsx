@@ -6,14 +6,15 @@ import { tienePermiso } from "../../lib/permisos";
 import { useAuth } from "../../store/AuthContext";
 import { useIntentoDeCobro } from "../pos/useIntentoDeCobro";
 import type { Credenciales } from "./api";
-import { FormCobro } from "./Cobro";
+import { CambioDelCobro, FormCobro } from "./Cobro";
 import { useCobro } from "./useCobro";
 import { useAccion } from "./useAccion";
 import { huellaAdelanto } from "./reintentos";
+import { MOTIVOS_PAUSA, conInicioCorregido, inicioCorregido } from "./ModalesMesa.datos";
 import { billar, mesasEnUso, tipoDe, useBillar } from "./store";
 import { ahoraServidor, useAhora } from "./reloj";
-import { cuentaDe, horaDe } from "./calculo";
-import type { Mesa } from "./tipos";
+import { cuentaDe, fmtCrono, horaDe, segundosEnMesa, segundosJugados } from "./calculo";
+import type { Mesa, TipoMesa } from "./tipos";
 import { BotonB, Circulo, ErrorAccion, Nota } from "./ui";
 
 /** Cambiar de mesa (§7.12): sólo a una libre. La cuenta entera se muda. */
@@ -26,8 +27,19 @@ export function ModalCambiar({ mesa, onClose }: { mesa: Mesa; onClose: () => voi
   const origen = tipoDe(e, mesa);
   const elegida = libres.find((m) => m.id === destino);
   const nuevo = elegida ? tipoDe(e, elegida) : null;
-  // La misma regla que `billar.cambiarMesa`: otro tipo u otra tarifa, y no en tiempo fijo.
-  const otroTipo = !!nuevo && (nuevo.id !== origen.id || nuevo.tarifa !== origen.tarifa) && !mesa.sesion?.prepago;
+  // La misma regla que el backend (`cambiar`): cobra distinto si cambia
+  // cualquier cosa de la tarifa (precio, fracción, tolerancia, mínimo,
+  // paquetes, promos), y en tiempo fijo la cuenta se muda tal cual.
+  const otroTipo = !!nuevo && !cobranIgual(origen, nuevo) && !mesa.sesion?.prepago;
+  // Antes del mínimo de la de origen (y sin cuenta traída), el backend pasa la
+  // cuenta ENTERA a la tarifa nueva. El aviso decía que lo jugado quedaba a la
+  // vieja: el cajero le explicaba al cliente lo contrario de lo que se cobraba.
+  const enteraALaNueva =
+    otroTipo && !!mesa.sesion && !mesa.sesion.prev && segundosJugados(mesa.sesion, ahoraServidor()) < origen.minimo * 60;
+  // La promo que ya ganaron viaja con lo jugado (`promoDeLaCuenta`): se dice,
+  // porque la mesa nueva puede no tener promociones y el cliente pregunta.
+  const promoGanada =
+    otroTipo && !enteraALaNueva && mesa.sesion ? cuentaDe(mesa.sesion, origen, ahoraServidor()).promo : null;
 
   return (
     <Modal
@@ -92,10 +104,16 @@ export function ModalCambiar({ mesa, onClose }: { mesa: Mesa; onClose: () => voi
               );
             })}
           </div>
-          {otroTipo ? (
+          {otroTipo && enteraALaNueva ? (
+            <Nota tono="ambar">
+              La Mesa {destino} es {nuevo.nombre} ({fmtMoney(nuevo.tarifa)}/h). Como todavía no cumplieron el mínimo de{" "}
+              {origen.minimo} min, toda la cuenta pasa a {fmtMoney(nuevo.tarifa)}/h, como si hubieran empezado ahí.
+            </Nota>
+          ) : otroTipo ? (
             <Nota tono="ambar">
               La Mesa {destino} es {nuevo.nombre} ({fmtMoney(nuevo.tarifa)}/h). Lo jugado hasta ahora queda a{" "}
               {fmtMoney(origen.tarifa)}/h y desde el cambio corre a {fmtMoney(nuevo.tarifa)}/h.
+              {promoGanada && <> Lo jugado conserva la «{promoGanada.nombre}» que ya tenía ganada.</>}
             </Nota>
           ) : (
             <Nota>El cronómetro, los consumos y los pagos se mueven con la cuenta.</Nota>
@@ -107,7 +125,13 @@ export function ModalCambiar({ mesa, onClose }: { mesa: Mesa; onClose: () => voi
   );
 }
 
-const MOTIVOS_PAUSA = ["Problema con la mesa", "Corte de luz", "Cliente salió", "Otro"];
+/** Si dos tarifas cobran lo mismo: todo menos el nombre (como `cobraIgual` del backend). */
+function cobranIgual(a: TipoMesa, b: TipoMesa): boolean {
+  const como = (t: TipoMesa) =>
+    JSON.stringify([t.tarifa, t.fraccion, t.tolerancia, t.minimo, t.paquetes, t.promos]);
+  return como(a) === como(b);
+}
+
 const MOTIVOS_FUERA = ["Cambio de paño", "Mantenimiento", "Otro"];
 
 /** Pausar (§7.12) o sacar de servicio: un motivo de los de siempre, u otro escrito. */
@@ -275,13 +299,16 @@ export function ModalPago({ mesa, onClose }: { mesa: Mesa; onClose: () => void }
   return (
     <Modal
       abierto
-      titulo={`Registrar pago · Mesa ${mesa.id}`}
+      // "Registrar pago" se leía como "el cliente me pagó la cuenta": es cobrar
+      // una parte, y el título lo dice (el dueño, 19-oct).
+      titulo={`Registrar cobro · Mesa ${mesa.id}`}
       subtitulo="Un adelanto o un pago parcial. Se descuenta del saldo al cerrar."
       onClose={onClose}
       cerrarAlClicAfuera={false}
       ancho="max-w-lg"
       acciones={
         <>
+          <CambioDelCobro cobro={cobro} />
           <BotonB onClick={onClose}>Cancelar</BotonB>
           <BotonB
             variante="verde"
@@ -294,7 +321,7 @@ export function ModalPago({ mesa, onClose }: { mesa: Mesa; onClose: () => void }
         </>
       }
     >
-      <FormCobro cobro={cobro} />
+      <FormCobro cobro={cobro} cambioEnElPie />
       <ErrorAccion texto={accion.error} />
     </Modal>
   );
@@ -443,9 +470,12 @@ export function ModalPin({
 }
 
 /**
- * Los casilleros del PIN (de 4 a 6 dígitos, como en todo el sistema): un
- * input escondido encima, para el teclado del celular. Arranca con cuatro y
- * crece si el PIN es más largo.
+ * Los casilleros del PIN: un input escondido encima, para el teclado del
+ * celular. El PIN es de 4 dígitos (el dueño, 18-oct: "dejémoslo en 4"), así
+ * que van 4. Un PIN viejo de 5 o 6 —se podían cargar hasta el 18-oct— sigue
+ * entrando: los casilleros crecen recién al teclear el quinto, cosa que con un
+ * PIN de 4 no pasa nunca. Seis casilleros fijos (17-oct) hacían pensar que
+ * había que llenarlos todos.
  */
 function CampoPin({
   campo,
@@ -482,13 +512,17 @@ function CampoPin({
           }}
           className="peer absolute inset-0 h-full w-full cursor-pointer opacity-0"
         />
-        <div className="flex gap-2" aria-hidden>
+        {/* Con un PIN viejo de 5 o 6, más angostos: seis de 48 px no entran en un
+            celular de 360 (seis de 40 sí). */}
+        <div className={`flex ${casilleros > 4 ? "gap-1.5 sm:gap-2" : "gap-2"}`} aria-hidden>
           {Array.from({ length: casilleros }, (_, i) => (
             <span
               key={i}
-              className={`flex h-14 w-12 items-center justify-center rounded-xl border-2 text-2xl font-bold ${
-                i === pin.length ? "border-primary peer-focus:border-primary" : "border-borde"
-              } ${error ? "border-rose-300" : ""}`}
+              className={`flex items-center justify-center rounded-xl border-2 text-2xl font-bold ${
+                casilleros > 4 ? "h-12 w-10 sm:h-14 sm:w-12" : "h-14 w-12"
+              } ${
+                error ? "border-rose-300" : i === pin.length ? "border-primary" : "border-borde"
+              }`}
             >
               {pin[i] ? "•" : ""}
             </span>
@@ -499,7 +533,9 @@ function CampoPin({
         role={error ? "alert" : undefined}
         className={`mt-1.5 text-xs ${error ? "font-semibold text-rose-700" : "text-texto-4"}`}
       >
-        {error || "De 4 a 6 dígitos. Escribilo con el teclado."}
+        {/* La leyenda disuade (18-oct): lo que más frena es saber que te ven.
+            Y es verdad: cada fallo queda en "Intentos de PIN" del dueño. */}
+        {error || "4 dígitos. Cada intento queda registrado y lo ve el administrador."}
       </p>
     </>
   );
@@ -514,8 +550,20 @@ export function ModalEditarInicio({ mesa, onClose }: { mesa: Mesa; onClose: () =
   const s = mesa.sesion;
   const [hora, setHora] = useState(() => (s ? horaInput(s.start) : ""));
   if (!s) return null;
-  const inicio = aHoraDelDia(hora);
+  const ahora = ahoraServidor();
+  // De ayer sólo si la mesa arrancó antes de la medianoche: a más de 12 h es
+  // un error de tipeo (ver `inicioCorregido`).
+  const r = inicioCorregido(hora, ahora);
+  const inicio = "inicio" in r ? r.inicio : null;
+  // Con la misma hora de inicio que ya tiene no hay nada que avisar: una mesa
+  // de anoche abría el diálogo diciendo que su propia hora "no llegó"
+  // (revisión del 18-oct). El botón igual queda apagado.
+  const sinCambio = hora === horaInput(s.start);
+  const descartada = "cuando" in r && !sinCambio ? r : null;
   const valida = inicio !== null && Math.abs(inicio - s.start) >= 60_000;
+  // Cómo queda la mesa con la hora nueva, antes de poner el PIN, con las
+  // pausas que la hora nueva deja afuera (ver `conInicioCorregido`).
+  const quedan = inicio !== null ? segundosEnMesa(conInicioCorregido(s, inicio), ahora) + (s.prev?.secs ?? 0) : null;
   return (
     <ModalPin
       accion={`Corregir el inicio de la Mesa ${mesa.id}`}
@@ -534,6 +582,20 @@ export function ModalEditarInicio({ mesa, onClose }: { mesa: Mesa; onClose: () =
         <span className="mb-1.5 block text-[13px] font-semibold text-texto-2">Empezaron a jugar a las</span>
         <Input type="time" value={hora} onChange={(ev) => setHora(ev.target.value)} className="w-40" />
       </label>
+      {/* La hora con a. m./p. m., como "Arrancó a las…" de arriba: la confusión
+          más probable es escribir 07:30 pensando en la noche (revisión del
+          18-oct). */}
+      {descartada ? (
+        <p className="mt-1.5 text-[12px] font-semibold text-rose-700">
+          {descartada.error === "noLlego"
+            ? `Las ${horaDe(descartada.cuando)} todavía no llegaron, y las de ayer fueron hace más de 12 horas: revisá la hora.`
+            : `Las ${horaDe(descartada.cuando)} fueron hace más de 12 horas: revisá la hora.`}
+        </p>
+      ) : quedan !== null && valida ? (
+        <p className="mt-1.5 text-[12px] text-texto-3">
+          La mesa queda con {fmtCrono(quedan)} jugadas{"deAyer" in r && r.deAyer ? " (arrancó ayer)" : ""}.
+        </p>
+      ) : null}
     </ModalPin>
   );
 }
@@ -542,15 +604,4 @@ export function ModalEditarInicio({ mesa, onClose }: { mesa: Mesa; onClose: () =
 function horaInput(ms: number): string {
   const d = new Date(ms);
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-}
-
-/** "21:05" → hoy a esa hora, o ayer si todavía no llegó. */
-function aHoraDelDia(hora: string): number | null {
-  const m = /^(\d{1,2}):(\d{2})$/.exec(hora);
-  if (!m) return null;
-  const ahora = ahoraServidor();
-  const d = new Date(ahora);
-  d.setHours(Number(m[1]), Number(m[2]), 0, 0);
-  if (d.getTime() > ahora) d.setDate(d.getDate() - 1);
-  return d.getTime();
 }

@@ -82,6 +82,9 @@ export interface Pago {
   recibido?: number;
   /** "Prepago 2 h", "Adelanto"… sale en el ticket. */
   nota?: string;
+  /** Pagos de una mesa abierta: la caja donde entró y quién lo cobró. */
+  cajaId?: number;
+  cobradoPor?: string;
 }
 
 /** Tiempo fijo: lo contratado, con las extensiones sumadas. */
@@ -93,18 +96,48 @@ export interface Prepago {
   pagado: boolean;
 }
 
+/** La promo que ya tenía ganada lo jugado en la otra mesa, congelada al cambiar. */
+export interface PromoPrevia {
+  nombre: string;
+  pct: number;
+  descuento: number;
+}
+
 /** Tiempo arrastrado al cambiar a una mesa de otro tipo: se cobra a la tarifa vieja. */
 export interface TiempoPrevio {
   secs: number;
   min: number;
+  /** Antes de la promo: la promo se mira al cerrar (ver `promoDeLaCuenta`). */
   bs: number;
+  /** Null o ausente: no había ganado ninguna (o el backend es de antes del 17-oct). */
+  promo?: PromoPrevia | null;
+  /**
+   * En qué segundo jugado la mesa anterior habría cobrado el bloque siguiente
+   * (ver `cobroTramo`). Null o ausente con un backend de antes del 18-oct.
+   */
+  hastaSecs?: number | null;
 }
 
 /** Desde que se abre hasta que se cierra. Al cerrar se convierte en una venta. */
 export interface Sesion {
   id: string;
   start: number;
+  /** Cuándo se abrió de verdad (el inicio se puede corregir). Para el plazo de anular. */
+  abierta?: number;
   pausedAt: number | null;
+  /**
+   * Desde cuándo está en pausa de verdad. `pausedAt` es lo que usa el cobro y un
+   * cambio de mesa de otra tarifa la corre a la hora del cambio; para MEDIR la
+   * pausa ("hace N min", el ámbar) vale ésta. Backend del 17-oct; sin ella,
+   * `pausedAt`.
+   */
+  pausaDesde?: number;
+  /**
+   * Los tramos pausados que ya terminaron, en ms: Corregir inicio los usa para
+   * decir cuánto queda jugado si la hora nueva deja pausas afuera (ver
+   * `pausadoAntesDe`). Backend del 18-oct; sin ellos, como antes.
+   */
+  pausas?: { desde: number; hasta: number }[];
   /** Segundos acumulados en pausa. */
   pausedTotal: number;
   pauseMotivo?: string;
@@ -164,6 +197,11 @@ export interface VentaBillar {
   mesaId?: number;
   tipoMesa?: string;
   tiempoMin: number;
+  /**
+   * De `tiempoMin`, los que vinieron de una mesa de otra tarifa (backend del
+   * 18-oct): sin separarlos, todo el tiempo salía con el tipo de la última mesa.
+   */
+  tiempoPrevioMin?: number;
   tiempoBs: number;
   promo?: { nombre: string; pct: number; descuento: number };
   items: ItemVenta[];
@@ -173,7 +211,33 @@ export interface VentaBillar {
   /** Del último cobro en efectivo, para el ticket. */
   recibido?: number;
   cambio?: number;
+  /**
+   * Lo devuelto porque la cuenta bajó después de pagar. Cuando lo hay no hubo
+   * cobro final: reemplaza al recibido y al cambio en el ticket.
+   */
+  devuelto?: Devolucion;
+  /**
+   * Efectivo de adelantos de esta mesa que cobró OTRA caja, por cajero: si se
+   * anula la venta, esa plata está en el cajón de ellos.
+   */
+  adelantosOtraCaja?: { cajero: string; monto: number }[];
+  /**
+   * Minutos que la mesa estuvo en pausa (no se cobran). El ticket los muestra
+   * para que el cliente vea el tiempo que no se le cobró. Desde el 17-oct.
+   */
+  pausaMin?: number;
+  /** Ya se le corrigió el medio de pago (una vez por venta). Desde el 17-oct. */
+  pagoCorregido?: boolean;
+  /** Algo de esta mesa se cobró en OTRA caja, en cualquier medio: no se corrige acá. */
+  cobradoEnOtraCaja?: boolean;
   anulada?: { hora: number; quien: string; motivo: string };
+}
+
+/** Lo que hay que devolverle al cliente cuando lo pagado pasa la cuenta. */
+export interface Devolucion {
+  efectivo: number;
+  /** Lo que se devuelve por el mismo medio en que entró (QR, tarjeta). */
+  otros: { metodo: string; monto: number }[];
 }
 
 /** Un producto del inventario, visto desde el billar. */
@@ -184,6 +248,8 @@ export interface ProductoBillar {
   categoria: string;
   /** Lo que queda para vender (lo cargado a mesas abiertas ya está restado); null = servicio, sin stock. */
   stock: number | null;
+  /** El código de barras, para buscarlo o escanearlo (backend del 18-oct). */
+  codBarra?: string | null;
 }
 
 /**
@@ -194,6 +260,11 @@ export interface ProductoBillar {
 export interface PinesBillar {
   anularConsumo: boolean;
   anularMesa: boolean;
+  /**
+   * Pausar congela el reloj: es tiempo que no se cobra. Llega desde el 17-oct;
+   * sin el campo (backend anterior) no se pide PIN, como antes.
+   */
+  pausar: boolean;
 }
 
 export interface AjustesBillar {

@@ -37,7 +37,8 @@ vi.mock("../../lib/useSucursales", () => ({
 
 vi.mock("../../store/AuthContext", () => ({
   useAuth: () => ({
-    usuario: { id: 1, sucursalId: null, sucursal: null, permisos: ["billar.operar"] },
+    // Un cajero: atiende el billar y vende (sin "Vender" no se ofrece la venta rápida).
+    usuario: { id: 1, sucursalId: null, sucursal: null, permisos: ["billar.operar", "ventas.vender"] },
     negocio: { alias: sesion.alias, nombre: "Billar de prueba" },
   }),
 }));
@@ -52,7 +53,7 @@ function responder(url: string) {
       ahora: Date.now(),
       sucursal: { id, nombre: NOMBRES[id] ?? "Principal" },
       caja: { abierta: true, id: 9, desde: Date.now() - 3_600_000, inicial: 100, sucursalId: servidor.cajaEn },
-      ajustes: { avisos: [10, 5, 1], sonido: false, voz: false, pin: { anularConsumo: true, anularMesa: true }, tieneTokenSalon: false },
+      ajustes: { avisos: [10, 5, 1], sonido: false, voz: false, pin: { anularConsumo: true, anularMesa: true, pausar: true }, tieneTokenSalon: false },
       tipos: [{ id: "pool", nombre: "Pool", tarifa: 20, fraccion: 15, tolerancia: 3, minimo: 30, paquetes: [], promos: [] }],
       mesas: [],
     };

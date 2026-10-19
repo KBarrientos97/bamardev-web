@@ -1139,7 +1139,21 @@ export interface Venta {
    * (PLAN-IOS F3). El ticket dice "pendiente" y no tiene número.
    */
   pendienteSync?: boolean;
+  /**
+   * El backend la aceptó, pero algo no cuadra y alguien tiene que mirarla:
+   * casi siempre una venta que llegó de un equipo offline con datos viejos.
+   * Opcionales: un backend anterior no los manda y la venta se ve como siempre.
+   */
+  requiereRevision?: boolean;
+  motivosRevision?: MotivoRevision[];
 }
+
+/** Por qué una venta quedó "a revisar" (ver `lib/revisionVenta.ts`). */
+export type MotivoRevision =
+  | "PRECIO_NO_RECONOCIDO"
+  | "CUPO_EXCEDIDO"
+  | "FIADO_SOBRE_LIMITE"
+  | "STOCK_NEGATIVO";
 
 export interface DetalleVentaInput {
   productoId: number;

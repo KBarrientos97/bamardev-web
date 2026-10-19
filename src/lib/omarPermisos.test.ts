@@ -118,6 +118,9 @@ const HOY = {
           "  Artículos /inventario/productos",
           "  Categorías /inventario/categorias",
           "  Insumos /inventario/insumos",
+          // Desde el 15-oct (pedido de Kevin): ve su almacén aunque no tenga
+          // varias sucursales; lo que no tiene es el botón de registrar otro.
+          "  Almacenes /inventario/almacenes",
           "  Movimientos /inventario/movimientos",
         ],
       },
@@ -192,7 +195,10 @@ describe("Omar ve lo mismo que hoy con las plantillas de restaurante", () => {
   });
 
   it("la división por tema (11-oct) cambia de lugar las pantallas, no cuáles ve", () => {
-    expect(pantallas("ADMIN", OMAR)).toEqual([...PANTALLAS_06_OCT.OMAR_ADMIN].sort());
+    // Lo único que se suma desde el 06-oct es Almacenes (15-oct, pedido de Kevin).
+    expect(pantallas("ADMIN", OMAR)).toEqual(
+      [...PANTALLAS_06_OCT.OMAR_ADMIN, "Almacenes /inventario/almacenes"].sort(),
+    );
     expect(pantallas("ADMIN", COMPLETO)).toEqual([...PANTALLAS_06_OCT.COMPLETO_ADMIN].sort());
   });
 

@@ -19,6 +19,7 @@ import { api } from "../../lib/api";
 import { fmtFecha, fmtFechaHora, fmtMoney, fmtNum, isoDia } from "../../lib/format";
 import { useApi } from "../../lib/useApi";
 import { useSucursales } from "../../lib/useSucursales";
+import { ofreceAprobarMovimiento } from "../../lib/permisos";
 import { useAuth } from "../../store/AuthContext";
 import ElegirArticulo from "./ElegirArticulo";
 import type {
@@ -351,6 +352,7 @@ function DetalleMovimiento({
   onCerrarYRecargar: () => void;
   onError: (mensaje: string) => void;
 }) {
+  const { usuario } = useAuth();
   const mov = useApi(() => api.getMovimiento(id), [id]);
   const [confirmando, setConfirmando] = useState<"aprobar" | "anular" | "eliminar" | null>(
     null,
@@ -377,6 +379,9 @@ function DetalleMovimiento({
    * y el documento otra.
    */
   const editable = m?.estado === "PENDIENTE";
+  // Una transferencia la aprueba sólo quien tiene el permiso propio: sin él
+  // el botón terminaba en un 403 (ver `ofreceAprobarMovimiento`).
+  const ofreceAprobar = ofreceAprobarMovimiento(usuario, m?.tipo);
 
   /** Artículos del almacén con su stock, para el tope de las salidas. */
   const articulosAlmacen = useApi(
@@ -442,9 +447,11 @@ function DetalleMovimiento({
               >
                 Eliminar
               </Boton>
-              <Boton icono="check" disabled={procesando} onClick={() => setConfirmando("aprobar")}>
-                Aprobar
-              </Boton>
+              {ofreceAprobar && (
+                <Boton icono="check" disabled={procesando} onClick={() => setConfirmando("aprobar")}>
+                  Aprobar
+                </Boton>
+              )}
             </>
           ) : m?.estado === "APROBADO" ? (
             <Boton
@@ -597,6 +604,8 @@ function DetalleMovimiento({
                 <span>
                   Todavía no tocó el inventario: recién al aprobarlo se mueve el stock de
                   verdad.
+                  {!ofreceAprobar &&
+                    " La aprueba quien tiene el permiso «Aprobar transferencias» (de fábrica, el Administrador y el Encargado)."}
                 </span>
               </div>
             )}
@@ -932,6 +941,8 @@ function FormMovimientoCuerpo({
 }) {
   const { incluye } = useAuth();
   const conAprobacion = incluye("aprobacion_inventario");
+  // Sin `lotes` el plan no tiene Vencimientos: el lote no se pide (16-oct).
+  const conLotes = incluye("lotes");
   const [tipo, setTipo] = useState<TipoMovimiento>("ENTRADA");
   const [almacenId, setAlmacenId] = useState(String(almacenes[0]?.id ?? ""));
   const [fecha, setFecha] = useState(isoDia(new Date()));
@@ -1017,7 +1028,7 @@ function FormMovimientoCuerpo({
         // Sólo en una ENTRADA: es lo que dice el papel de la compra. Una
         // salida no elige lote — sale el más próximo a vencer, que es la regla
         // del depósito y no una decisión de quien carga el formulario.
-        ...(tipo === "ENTRADA" && l.manejaLote && l.loteCodigo?.trim()
+        ...(tipo === "ENTRADA" && conLotes && l.manejaLote && l.loteCodigo?.trim()
           ? {
               loteCodigo: l.loteCodigo.trim(),
               ...(l.loteVencimiento ? { loteVencimiento: l.loteVencimiento } : {}),
@@ -1179,7 +1190,7 @@ function FormMovimientoCuerpo({
                       los artículos que los llevan. Una salida no elige lote
                       —sale el más próximo a vencer— y a un termómetro no se le
                       pide una fecha que no tiene. */}
-                  {tipo === "ENTRADA" && l.manejaLote && (
+                  {tipo === "ENTRADA" && conLotes && l.manejaLote && (
                     <div className="mt-2 grid grid-cols-2 gap-2">
                       <Campo label="Lote">
                         <Input

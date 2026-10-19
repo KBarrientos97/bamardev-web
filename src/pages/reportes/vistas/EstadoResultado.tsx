@@ -979,8 +979,22 @@ function hojasExcel(er: Er, fin: FinancieroApi, gastos: Gasto[], perfil: PerfilR
     ...(esPositivo(er.impuestos) ? ([["Impuestos", -er.impuestos]] as [string, number][]) : []),
     [er.enPerdida ? "Pérdida del período" : "Ganancia líquida del período (utilidad neta)", er.utilidadNeta],
   ];
+  // Las filas que restan (costo, mermas, gastos) van en negativo y su % es lo
+  // que se llevaron de las ventas: sin signo. Los subtotales van CON signo: un
+  // resultado del local de −Bs 1.260 salía "12,6 %", como si hubiera ganado
+  // (revisión del 16-oct).
+  const subtotales = new Set(["Ventas", `${perfil.gananciaTitulo} (utilidad bruta)`, "Resultado del local (utilidad operativa)"]);
+  const esSubtotal = (f: [string, number]) => subtotales.has(f[0]) || f === filas[filas.length - 1];
   return [
-    hoja("Estado de resultado", [["Concepto", (f: [string, number]) => f[0]], ["Monto (Bs)", (f) => f[1]], ["% de las ventas", (f) => pv(Math.abs(f[1]))]], filas),
+    hoja(
+      "Estado de resultado",
+      [
+        ["Concepto", (f: [string, number]) => f[0]],
+        ["Monto (Bs)", (f) => f[1]],
+        ["% de las ventas", (f) => pv(esSubtotal(f) ? f[1] : Math.abs(f[1]))],
+      ],
+      filas,
+    ),
     hoja(
       "Gastos",
       [

@@ -12,11 +12,13 @@ import type { Almacen, ArticuloMovimiento, Movimiento } from "../../types";
  *   · El artículo se busca escribiendo, no recorriendo un desplegable.
  */
 
+const sesion = vi.hoisted(() => ({ permisos: ["inventario.mover"] as string[] }));
+
 vi.mock("../../store/AuthContext", () => ({
   useAuth: () => ({
     // Sin el doble control: guardar aprueba de una, como en los planes de hoy.
     incluye: (c: string) => c !== "aprobacion_inventario",
-    usuario: { sucursalId: 1 },
+    usuario: { sucursalId: 1, permisos: sesion.permisos },
   }),
 }));
 
@@ -93,6 +95,7 @@ function movimiento(id: number, extra: Partial<Movimiento> = {}): Movimiento {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  sesion.permisos = ["inventario.mover"];
   vi.mocked(api.getMovimientos).mockResolvedValue([movimiento(1)]);
   vi.mocked(api.getAlmacenes).mockResolvedValue([PRINCIPAL]);
   vi.mocked(api.getArticulosMovimiento).mockResolvedValue(ARTICULOS);
@@ -392,5 +395,41 @@ describe("El detalle no se cierra mientras se cargan renglones", () => {
       fireEvent.click(confirmar);
     });
     expect(api.aprobarMovimiento).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("Aprobar una transferencia pide su permiso (16-oct)", () => {
+  // Una transferencia pendiente (de las de antes, o cargada en otra sucursal):
+  // aprobarla exige `inventario.aprobar_transferencias`, aunque el usuario
+  // apruebe entradas y salidas.
+  const transferencia = movimiento(8, {
+    tipo: "TRANSFERENCIA",
+    estado: "PENDIENTE",
+    comprobante: "TRF-8",
+    almacenDestino: { id: 2, nombre: "Norte" },
+    detalles: [],
+  });
+
+  async function abrirTransferencia() {
+    vi.mocked(api.getMovimientos).mockResolvedValue([transferencia]);
+    vi.mocked(api.getMovimiento).mockResolvedValue(transferencia);
+    render(<Movimientos />);
+    fireEvent.click(await screen.findByText("TRF-8"));
+    const detalle = await screen.findByRole("dialog", { name: "Detalle del movimiento" });
+    await within(detalle).findByRole("button", { name: "Eliminar" });
+    return detalle;
+  }
+
+  it("sin el permiso no se ofrece Aprobar, y se dice quién la aprueba", async () => {
+    sesion.permisos = ["inventario.mover", "inventario.aprobar"];
+    const detalle = await abrirTransferencia();
+    expect(within(detalle).queryByRole("button", { name: "Aprobar" })).not.toBeInTheDocument();
+    expect(within(detalle).getByText(/permiso «Aprobar transferencias»/)).toBeInTheDocument();
+  });
+
+  it("con el permiso, Aprobar está", async () => {
+    sesion.permisos = ["inventario.mover", "inventario.aprobar_transferencias"];
+    const detalle = await abrirTransferencia();
+    expect(within(detalle).getByRole("button", { name: "Aprobar" })).toBeInTheDocument();
   });
 });

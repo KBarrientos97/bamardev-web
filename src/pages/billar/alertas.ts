@@ -50,6 +50,21 @@ const disparados = leer() ?? new Set<string>();
 /** Primera vez en este navegador: lo que ya pasó no se avisa de golpe (ver `prepararAvisos`). */
 let estrenando = leer() === null;
 
+/**
+ * Suma lo que guardó otra pestaña del mismo navegador. Con el billar abierto
+ * en dos pestañas (el tablero y el POS), cada una avisaba por su cuenta: el
+ * zumbido y la voz salían dos veces, y al guardar una pisaba lo de la otra
+ * (revisión del 16-oct). Lo guardado se ve al instante en todas.
+ */
+function sumarLoGuardado() {
+  const guardados = leer();
+  if (guardados) for (const k of guardados) disparados.add(k);
+}
+
+/**
+ * Escribe lo de memoria. Quien borra (olvidar, preparar) suma lo guardado
+ * ANTES de borrar: sumarlo acá devolvía lo que se acababa de olvidar.
+ */
 function guardar() {
   try {
     localStorage.setItem(AVISADOS_KEY, JSON.stringify([...disparados]));
@@ -59,11 +74,13 @@ function guardar() {
 }
 
 export function yaAvisado(sesionId: string, nivel: Nivel, tramo: number): boolean {
+  sumarLoGuardado();
   return disparados.has(clave(sesionId, nivel, tramo));
 }
 
 /** Marca el nivel y los de arriba: después de avisar 5 min no se avisa 10. */
 export function marcarAvisado(sesionId: string, nivel: Nivel, avisos: number[], tramo: number) {
+  sumarLoGuardado();
   for (const n of [...avisos, 0]) if (n >= nivel) disparados.add(clave(sesionId, n, tramo));
   guardar();
 }
@@ -81,6 +98,7 @@ export function reestrenarAvisos() {
 
 /** Al extender, la sesión vuelve a avisar desde cero. */
 export function olvidarAvisos(sesionId: string) {
+  sumarLoGuardado();
   for (const k of [...disparados]) if (k.split(":")[0] === sesionId) disparados.delete(k);
   guardar();
 }
@@ -93,6 +111,7 @@ export function olvidarAvisos(sesionId: string) {
  * avisando sí avisa lo que se cruzó mientras estuvo cerrado.
  */
 export function prepararAvisos(mesas: Mesa[], avisos: number[], ahora: number) {
+  sumarLoGuardado();
   const vivas = new Set(mesas.flatMap((m) => (m.estado === "abierta" && m.sesion ? [m.sesion.id] : [])));
   for (const k of [...disparados]) if (!vivas.has(k.split(":")[0])) disparados.delete(k);
   if (estrenando) {

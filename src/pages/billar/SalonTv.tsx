@@ -41,6 +41,11 @@ export function MarcoSalon({
   children?: ReactNode;
 }) {
   const [hora, sufijo] = partirHora(horaDe(ahora));
+  // Sólo las tarifas de las mesas que hay en la pantalla: la Carambola que se
+  // siembra de arranque salía en el pie de un billar sin mesas de carambola, y
+  // un cliente la pedía en caja (revisión del 16-oct). Sin mesas todavía, todas.
+  const usados = new Set(vistas.map((v) => v.mesa.tipo));
+  const tarifas = vistas.length ? tipos.filter((t) => usados.has(t.id)) : tipos;
   return (
     <div className={`flex min-h-dvh flex-col px-5 py-5 sm:px-8 sm:py-6 2xl:px-12 2xl:py-7 ${FONDO}`}>
       <header className="flex flex-wrap items-start justify-between gap-4">
@@ -71,9 +76,9 @@ export function MarcoSalon({
         ))}
       </div>
 
-      {tipos.length > 0 && (
+      {tarifas.length > 0 && (
         <footer className="mt-6 flex flex-wrap gap-x-8 gap-y-2 border-t border-white/10 pt-4 text-[15px] text-white/80 2xl:mt-7 2xl:gap-x-12 2xl:pt-5 2xl:text-xl">
-          {tipos.map((t) => {
+          {tarifas.map((t) => {
             const linea = lineaTarifa(t);
             return (
               <p key={t.id}>

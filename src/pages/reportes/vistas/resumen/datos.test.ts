@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { BillarReporteApi, CreditosApi, SugerenciaApi } from "../../api";
-import { consejos, detalleFecha, numeroWhatsapp, esMensual, horasDeJornada, partesVenta, serie, textoResumen, tramoFlojo, tramoHoras } from "./datos";
+import type { BillarReporteApi, CreditosApi, ResumenApi, SugerenciaApi } from "../../api";
+import { consejos, detalleFecha, filasResumen, numeroWhatsapp, esMensual, horasDeJornada, partesVenta, pedidosPorCobrar, serie, textoResumen, tramoFlojo, tramoHoras } from "./datos";
 
 const billar = (p: Partial<BillarReporteApi> = {}): BillarReporteApi => ({
   desde: 0,
@@ -195,5 +195,57 @@ describe("el texto del resumen para WhatsApp", () => {
     expect(numeroWhatsapp("+591 70490686")).toBe("59170490686");
     expect(numeroWhatsapp("70490686")).toBe("59170490686");
     expect(numeroWhatsapp("")).toBe("");
+  });
+});
+
+describe("los pedidos por cobrar (C2)", () => {
+  // Desde el 16-oct los pedidos sin cobrar no suman en las ventas del
+  // período: van aparte, y en todas partes se aclara que no están incluidos.
+  const resumen = (p: Partial<ResumenApi> = {}): ResumenApi => ({
+    ventas: 1000,
+    ventasDeltaPct: null,
+    ventasPeriodoAnterior: 0,
+    finanzas: { ingresosBrutos: 1000, descuentos: 0, ingresosNetos: 1000, costoVenta: 400, utilidadBruta: 600, margenPct: 60, deltaUtilidadPct: null },
+    tickets: { valor: 10, deltaPct: null },
+    ticketPromedio: { valor: 100, deltaPct: null },
+    unidades: { valor: 20, deltaPct: null },
+    tendencia: [],
+    ...p,
+  });
+
+  it("sólo cuentan si hay alguno; sin el campo (backend anterior) no hay nada", () => {
+    expect(pedidosPorCobrar(resumen())).toBeNull();
+    expect(pedidosPorCobrar(resumen({ porCobrar: { cantidad: 0, total: 0 } }))).toBeNull();
+    expect(pedidosPorCobrar(resumen({ porCobrar: { cantidad: 2, total: 85 } }))).toEqual({ cantidad: 2, total: 85 });
+  });
+
+  it("el Excel los pone al lado de las ventas, diciendo que no suman", () => {
+    const filas = filasResumen(resumen({ porCobrar: { cantidad: 3, total: 120.5 } }), null);
+    expect(filas).toContainEqual(["Pedidos por cobrar (no suman en Ventas)", 3]);
+    expect(filas).toContainEqual(["Monto por cobrar de esos pedidos (Bs)", 120.5]);
+    // Las ventas siguen siendo las del backend, sin sumarles nada.
+    expect(filas).toContainEqual(["Ventas (Bs)", 1000]);
+  });
+
+  it("sin pedidos pendientes el Excel queda como siempre", () => {
+    const filas = filasResumen(resumen(), null);
+    expect(filas.map(([c]) => c).some((c) => /cobrar/i.test(c))).toBe(false);
+  });
+
+  it("el texto de WhatsApp los nombra aparte del fiado", () => {
+    const t = textoResumen({
+      negocio: "N",
+      sucursal: "",
+      cual: "del mes",
+      rango: "x",
+      ventas: 100,
+      ventasDelta: null,
+      contra: "x",
+      partes: [],
+      porCobrar: 50,
+      pedidosPorCobrar: { cantidad: 1, total: 40 },
+    });
+    expect(t).toContain("Fiado por cobrar: Bs 50");
+    expect(t).toContain("1 pedido por cobrar: Bs 40 (no suma en Ventas)");
   });
 });

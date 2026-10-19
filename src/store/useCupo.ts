@@ -1,5 +1,6 @@
 import { useCallback } from "react";
 import { aplicaCupo } from "../lib/cupo";
+import { esBelleza } from "../lib/rubro";
 import type { CupoEstado, EstadoLicencia } from "../types";
 import { useAuth } from "./AuthContext";
 
@@ -12,6 +13,13 @@ export interface CupoDelNegocio {
   /** Pide `GET /monedero`. Falla en silencio: es un refresco, no una acción. */
   refrescarCupo: () => void;
   licencia: EstadoLicencia | null;
+  /**
+   * ¿El negocio agenda citas? Con los dos candados del menú: la feature
+   * `agenda` (estricta: sin ella no existe) y un rubro de belleza. Sin agenda,
+   * hablarle de citas (la hoja de paquetes decía "20 ventas o 10 citas" en un
+   * billar) es ruido: las citas no le sirven de nada.
+   */
+  conAgenda: boolean;
 }
 
 const nada = () => undefined;
@@ -39,5 +47,6 @@ export function useCupo(): CupoDelNegocio {
     actualizarCupo,
     refrescarCupo,
     licencia: auth.licencia ?? null,
+    conAgenda: esBelleza(auth.negocio?.tipoNegocio) && !!auth.negocio?.features?.includes("agenda"),
   };
 }

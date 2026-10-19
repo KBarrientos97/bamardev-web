@@ -27,6 +27,9 @@ import { apiRoles, mensajeDeError, rolSinPermisos, rolTiene, tonoDeRol } from ".
 import { useApi } from "../lib/useApi";
 import { useAuth } from "../store/AuthContext";
 import type { ActualizarUsuarioInput, CrearUsuarioInput, RolNegocio, Usuario } from "../types";
+import { paraQueSirveElPin, queDejaDeAutorizar } from "./Usuarios.datos";
+import { ModalIntentosPin } from "../components/seguridad/ModalIntentosPin";
+import { MENSAJE_PIN_FACIL, pinAlAzar, pinFacil } from "../lib/seguridad/pinFacil";
 
 /**
  * Usuarios: las cuentas de acceso del negocio (PLAN-ROLES-NEGOCIO). Todo sale
@@ -68,7 +71,7 @@ function llevaPin(rol: RolNegocio | null, conPin: boolean): boolean {
 type FiltroRol = "todos" | "inactivos" | `rol:${number}`;
 
 export default function Usuarios() {
-  const { incluye, usuario: actor } = useAuth();
+  const { incluye, usuario: actor, negocio } = useAuth();
   // El PIN sólo existe si el plan incluye la autorización con PIN.
   const conPin = incluye("autorizacion_pin");
   const usuarios = useApi(() => api.getUsuarios(), []);
@@ -94,6 +97,8 @@ export default function Usuarios() {
   const [creando, setCreando] = useState(false);
   const [cambiandoPassword, setCambiandoPassword] = useState<Usuario | null>(null);
   const [cambiandoPin, setCambiandoPin] = useState<Usuario | null>(null);
+  // Quién escribió mal un PIN, para qué y cuándo (18-oct).
+  const [viendoIntentos, setViendoIntentos] = useState(false);
   const [quitandoPin, setQuitandoPin] = useState<Usuario | null>(null);
   const [quitandoPinEnCurso, setQuitandoPinEnCurso] = useState(false);
   const [cambiandoEstado, setCambiandoEstado] = useState<Usuario | null>(null);
@@ -188,11 +193,19 @@ export default function Usuarios() {
         titulo="Usuarios"
         subtitulo={`${lista.length} ${lista.length === 1 ? "cuenta" : "cuentas"} en el negocio`}
         accion={
-          <Boton icono="plus" onClick={() => setCreando(true)}>
-            Nuevo
-          </Boton>
+          <div className="flex flex-wrap gap-2">
+            {tienePermiso(actor, "usuarios.asignar_pin") && (
+              <Boton variante="ghost" icono="lock" onClick={() => setViendoIntentos(true)}>
+                Intentos de PIN
+              </Boton>
+            )}
+            <Boton icono="plus" onClick={() => setCreando(true)}>
+              Nuevo
+            </Boton>
+          </div>
         }
       />
+      {viendoIntentos && <ModalIntentosPin onClose={() => setViendoIntentos(false)} />}
 
       <div
         className={`grid grid-cols-2 gap-3 lg:grid-cols-3 ${tarjetas === 5 ? "xl:grid-cols-5" : ""}`}
@@ -327,7 +340,7 @@ export default function Usuarios() {
       <Confirmar
         abierto={!!quitandoPin}
         titulo="Quitar PIN"
-        texto={`¿Quitarle el PIN a "${quitandoPin?.nombre}"? No va a poder autorizar anulaciones ni fiar por encima del límite hasta que le asignes uno nuevo.`}
+        texto={`¿Quitarle el PIN a "${quitandoPin?.nombre}"? No va a poder autorizar ${queDejaDeAutorizar(negocio?.features)} hasta que le asignes uno nuevo.`}
         etiquetaOk="Quitar PIN"
         peligroso
         procesando={quitandoPinEnCurso}
@@ -963,15 +976,35 @@ function FormPinCuerpo({
   onClose: () => void;
   onGuardado: () => void;
 }) {
+  const { negocio } = useAuth();
   const [pin, setPin] = useState("");
+  // Se escribe dos veces: un PIN mal asignado ya no es sólo un error, son
+  // fallos anotados y alarmas falsas al dueño cuando el encargado lo usa.
+  const [repetido, setRepetido] = useState("");
+  // El generado se muestra una vez, para pasárselo en persona.
+  const [generado, setGenerado] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [guardando, setGuardando] = useState(false);
 
   const rolSinPin = !llevaPin;
 
+  function generar() {
+    const nuevo = pinAlAzar();
+    setPin(nuevo);
+    setRepetido(nuevo);
+    setGenerado(nuevo);
+    setError("");
+  }
+
   async function guardar() {
     setError("");
-    if (!/^\d{4,6}$/.test(pin)) return setError("El PIN son 4 a 6 dígitos, sin letras.");
+    // 4 dígitos, ni más ni menos (el dueño, 18-oct). Los de 5 o 6 cargados
+    // antes siguen sirviendo para autorizar; al cambiarlo, queda de 4.
+    if (!/^\d{4}$/.test(pin)) return setError("El PIN son 4 dígitos, sin letras.");
+    if (repetido !== pin) return setError("Los dos PIN no coinciden.");
+    // Los fáciles no (1234, años, fechas): el backend igual los rechaza.
+    const facil = pinFacil(pin);
+    if (facil) return setError(MENSAJE_PIN_FACIL[facil]);
 
     setGuardando(true);
     try {
@@ -1004,22 +1037,55 @@ function FormPinCuerpo({
     >
       <div className="space-y-4">
         <p className="rounded-xl bg-primary-50 px-3.5 py-2.5 text-[13px] text-primary-700">
-          El PIN autoriza anular ventas y fiar por encima del límite del cliente. Lo lleva
-          quien tiene un rol que autoriza con PIN.
+          El PIN autoriza {paraQueSirveElPin(negocio?.features)}. Lo lleva quien tiene un rol que
+          autoriza con PIN.
         </p>
 
-        <Campo label="PIN" hint="4 a 6 dígitos">
+        <Campo label="PIN" hint="4 dígitos">
           <Input
             type="password"
             inputMode="numeric"
             autoComplete="off"
-            maxLength={6}
+            maxLength={4}
             value={pin}
-            onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))}
+            onChange={(e) => {
+              setPin(e.target.value.replace(/\D/g, "").slice(0, 4));
+              setGenerado(null);
+            }}
             disabled={rolSinPin}
             autoFocus
           />
         </Campo>
+        <Campo label="Repetir PIN">
+          <Input
+            type="password"
+            inputMode="numeric"
+            autoComplete="off"
+            maxLength={4}
+            value={repetido}
+            onChange={(e) => {
+              setRepetido(e.target.value.replace(/\D/g, "").slice(0, 4));
+              setGenerado(null);
+            }}
+            disabled={rolSinPin}
+          />
+        </Campo>
+        {!rolSinPin && (
+          <Boton variante="ghost" icono="lock" onClick={generar} className="w-full">
+            Generar uno al azar
+          </Boton>
+        )}
+        {generado && (
+          <p className="rounded-xl bg-muted px-3.5 py-2.5 text-[13px] text-texto-2">
+            PIN nuevo: <b className="tracking-widest text-texto">{generado}</b>. Dáselo en persona a {usuario.nombre} y
+            que no lo diga en voz alta. Después de guardar no se vuelve a mostrar.
+          </p>
+        )}
+        {usuario.tienePin && !generado && (
+          <p className="text-xs text-texto-4">
+            El PIN nuevo es de 4 dígitos. Si el de ahora tiene 5 o 6, sigue sirviendo hasta que lo cambies.
+          </p>
+        )}
 
         <ErrorMsg>
           {error ||

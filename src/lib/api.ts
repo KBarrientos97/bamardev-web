@@ -111,6 +111,12 @@ export const CUPO_KEY = "bamardev_web_cupo";
  * cajero volvería a una pantalla de login limpia sin saber por qué lo echó.
  */
 export const BLOQUEO_KEY = "bamardev_web_bloqueo";
+/**
+ * La sesión se cortó con un 401 (el token dura 7 días y vence en pleno
+ * turno). Como el bloqueo, es lo único que sobrevive a la recarga: sin esto
+ * el login aparecía limpio, sin decir por qué (prueba profunda, 18-oct).
+ */
+export const SESION_VENCIDA_KEY = "bamardev_web_sesion_vencida";
 
 export const tokenStore = {
   get: () => localStorage.getItem(TOKEN_KEY),
@@ -161,8 +167,17 @@ function limpiarSesion() {
  * de verdad; sin este manejo cada acción mostraría "ocurrió un error" hasta
  * que el usuario adivinara que tiene que salir y entrar.
  */
-function cerrarSesionVencida() {
+function cerrarSesionVencida(huboToken: boolean) {
   limpiarSesion();
+  // Sólo si había sesión: un 401 sin token (cerró sesión en otra pestaña) no
+  // es una sesión que venció, como en la app.
+  if (huboToken) {
+    try {
+      localStorage.setItem(SESION_VENCIDA_KEY, "1");
+    } catch {
+      /* sin almacenamiento: el login sale como antes */
+    }
+  }
   window.location.assign("/");
 }
 
@@ -275,7 +290,7 @@ export async function request<T>(path: string, options: RequestInit = {}): Promi
   }
 
   if (res.status === 401 && !RUTAS_LOGIN.includes(path)) {
-    cerrarSesionVencida();
+    cerrarSesionVencida(token != null);
     throw new ApiError("La sesión venció, volvé a iniciar sesión", 401);
   }
 
@@ -288,6 +303,18 @@ export async function request<T>(path: string, options: RequestInit = {}): Promi
       mensaje = Array.isArray(m) ? m.join(", ") : ((m as string) ?? mensaje);
     } catch {
       /* respuesta sin cuerpo JSON */
+    }
+
+    // Un PIN mal escrito queda anotado para el dueño (18-oct): quien lo pidió
+    // lo lee en el mismo mensaje, en cualquier pantalla que pida PIN, y es
+    // SIEMPRE el mismo texto (no se aprende a partir de cuántos le avisan).
+    // El backend no cambia su `message`: la app lo muestra tal cual.
+    const sinPunto = (m: string) => m.replace(/\.\s*$/, "");
+    if (res.status === 403 && cuerpo.registrado === true) {
+      mensaje = `${sinPunto(mensaje)}. Quedó registrado y lo ve el administrador.`;
+    }
+    if (res.status === 429 && cuerpo.codigo === "PIN_BLOQUEADO" && cuerpo.frenado !== true) {
+      mensaje = `${sinPunto(mensaje)}. El administrador ya lo puede ver.`;
     }
 
     // Licencia vencida o suspendida: no es un error a mostrar en un cartelito,
@@ -1104,9 +1131,12 @@ export const api = {
   // Compartido por todos los equipos: lo sube quien abre la caja y lo bajan
   // la caja, los meseros y el reparto. Ver lib/qrPago.ts.
 
-  /** El QR vigente; `imagen` null si todavía nadie lo subió. */
+  /**
+   * El QR vigente; `imagen` null si todavía nadie lo subió. `actualizadoPor`
+   * es el nombre de quien lo puso (backend del 18-oct en adelante).
+   */
   qrCobro: () =>
-    request<{ imagen: string | null; actualizadoEn: string | null }>("/qr-cobro"),
+    request<{ imagen: string | null; actualizadoEn: string | null; actualizadoPor?: string | null }>("/qr-cobro"),
   /** Lo sube quien abre la caja. El backend rechaza al mesero y al repartidor. */
   subirQrCobro: (imagen: string) =>
     request<{ imagen: string | null }>("/qr-cobro", {

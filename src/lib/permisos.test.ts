@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { Feature } from "../types";
-import { ctxDe } from "../test/sesiones";
+import { ctxDe, permisosDe } from "../test/sesiones";
 import {
   RUTA_AGENDA_PRONTO,
   etiquetaRol,
+  ofreceAprobarMovimiento,
   permisoDeSeccion,
   puede,
   puedeVer,
@@ -140,11 +141,25 @@ describe("cada sección, con su permiso", () => {
   });
 
   it("el permiso no alcanza si el plan no incluye la feature de la pantalla", () => {
-    // Sucursales es de `multi_almacen`, aunque su permiso sea de `inventario`.
+    // Transferir es de `multi_almacen`, aunque su permiso sea de `inventario`.
     const unLocal = PLAN_FULL.filter((f) => f !== "multi_almacen");
-    expect(puedeVer(ctxCon(["almacenes.administrar"], "RESTAURANTE", unLocal), "almacenes")).toBe(false);
     expect(puedeVer(ctxCon(["inventario.mover"], "FARMACIA", unLocal), "transferencia_mercaderia")).toBe(false);
     expect(puedeVer(ctxCon(["inventario.mover"], "FARMACIA", unLocal), "ingreso_mercaderia")).toBe(true);
+    const sinInventario = PLAN_FULL.filter((f) => f !== "inventario");
+    expect(puedeVer(ctxCon(["almacenes.administrar"], "RESTAURANTE", sinInventario), "almacenes")).toBe(false);
+  });
+
+  it("un negocio de un local ve su almacén", () => {
+    // Kevin, 15-oct: "¿dónde está almacén?". La pantalla pedía `multi_almacen`
+    // y en un negocio de un local desaparecía, aunque el backend deja verla con
+    // `inventario`. Lo que vende `multi_almacen` es registrar otro (Almacenes).
+    const unLocal = PLAN_FULL.filter((f) => f !== "multi_almacen");
+    expect(puedeVer(ctxCon(["almacenes.administrar"], "RESTAURANTE", unLocal), "almacenes")).toBe(true);
+    expect(puedeVer(ctxCon(["almacenes.administrar"], "FARMACIA", unLocal), "almacenes")).toBe(true);
+    // Belleza no cambia: sus sucursales van por la agenda, y Almacenes sigue
+    // pidiendo varios almacenes como antes.
+    expect(puedeVer(ctxCon(["almacenes.administrar"], "BARBERIA", unLocal), "almacenes")).toBe(false);
+    expect(puedeVer(ctxCon(["almacenes.administrar"], "BARBERIA", PLAN_FULL), "almacenes")).toBe(true);
   });
 });
 
@@ -538,6 +553,17 @@ describe("billar: un extra estricto", () => {
     expect(rutaInicial(ctxDe("ADMIN", "RESTAURANTE", PLAN_FULL))).toBe("/inventario");
   });
 
+  it("la pantalla del QR de cobro es de quien lo puede cambiar, y por ahora sólo en un billar", () => {
+    // El dueño, 18-oct: cambiarlo desde la apertura de una caja "no es el
+    // lugar". La cajera no lo cambia (16-oct): con su QR, la plata iría a ella.
+    const conQr = [...conBillar, "pago_qr_mixto"];
+    expect(puedeVer(ctxCon(["qr.configurar"], "BILLAR", conQr), "qr_cobro")).toBe(true);
+    expect(puedeVer(ctxCon(["caja.operar", "ventas.vender"], "BILLAR", conQr), "qr_cobro")).toBe(false);
+    expect(puedeVer(ctxCon(["qr.configurar"], "BILLAR", conBillar), "qr_cobro")).toBe(false);
+    // Un restaurante sigue cambiándolo desde la apertura, como antes.
+    expect(puedeVer(ctxCon(["qr.configurar"], "RESTAURANTE", conQr), "qr_cobro")).toBe(false);
+  });
+
   it("quien administra el billar sin atenderlo entra a Mesas de billar; quien sólo atiende no la ve", () => {
     // 13-oct: el menú y la ruta ya lo dejaban pasar, pero la pantalla armaba
     // las tarifas con el tablero (que pide atender) y le daba error. Lo que
@@ -573,5 +599,25 @@ describe("la entrada a Reportes (13-oct-2026: todos los reportes en un lugar)", 
 
   it("quien sólo ve los de la agenda aterriza en Reportes, no en la dirección vieja", () => {
     expect(rutaInicial(ctxCon(["agenda.reportes"], "BARBERIA", SALON))).toBe("/reportes");
+  });
+});
+
+describe("aprobar un movimiento de inventario (16-oct)", () => {
+  it("una transferencia la aprueban de fábrica sólo el Administrador y el Encargado", () => {
+    expect(ofreceAprobarMovimiento(permisosDe("ADMIN"), "TRANSFERENCIA")).toBe(true);
+    expect(ofreceAprobarMovimiento(permisosDe("SUPERVISOR"), "TRANSFERENCIA")).toBe(true);
+    expect(ofreceAprobarMovimiento(permisosDe("CAJERO"), "TRANSFERENCIA")).toBe(false);
+  });
+
+  it("con `inventario.aprobar` solo no alcanza para una transferencia", () => {
+    const usuario = { permisos: ["inventario.mover", "inventario.aprobar"] };
+    expect(ofreceAprobarMovimiento(usuario, "TRANSFERENCIA")).toBe(false);
+  });
+
+  it("entradas, salidas y ajustes siguen como antes: el botón está y decide el servidor", () => {
+    const usuario = { permisos: ["inventario.mover"] };
+    for (const tipo of ["ENTRADA", "SALIDA", "AJUSTE"]) {
+      expect(ofreceAprobarMovimiento(usuario, tipo)).toBe(true);
+    }
   });
 });

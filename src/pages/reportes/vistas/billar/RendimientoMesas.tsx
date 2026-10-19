@@ -29,7 +29,9 @@ export default function RendimientoMesas() {
 
   useExportar(
     "rendimiento-por-mesa",
-    r && filas.length
+    // Sin mesas cobradas la pantalla dice "No se cobró ninguna mesa", y el
+    // Excel bajaba igual una planilla en ceros con las mesas paradas.
+    r && r.porMesa.length > 0 && filas.length
       ? () => [
           hoja<FilaMesa>(
             "Por mesa",
@@ -152,14 +154,16 @@ function TablaMesas({ filas, conAnterior }: { filas: FilaMesa[]; conAnterior: bo
   return (
     <Tarjeta cuerpo="">
       {/* Desde tablet, la tabla. El tipo va en su columna recién en pantallas
-          grandes: en una tablet diez columnas no entran sin correr la página,
-          y debajo del número de mesa se lee igual. */}
+          grandes (2xl): el breakpoint mira la ventana, no el lugar de la tabla, y con
+          los dos menús (513 px) a 1366 la tarjeta mide 796 px contra los 811 a 843 que
+          piden diez columnas: "vs. anterior" quedaba cortada (prueba profunda, 18-oct).
+          Debajo del número de mesa se lee igual. */}
       <div className="hidden overflow-x-auto md:block">
         <table className="w-full text-left text-[13px]">
           <thead className="bg-slate-50">
             <tr>
               <th className={th}>Mesa</th>
-              {hay.tipo && <th className={`${th} hidden xl:table-cell`}>Tipo</th>}
+              {hay.tipo && <th className={`${th} hidden 2xl:table-cell`}>Tipo</th>}
               <th className={`${th} text-right`}>Horas</th>
               {hay.ocupacion && <th className={th}>Ocupación</th>}
               {hay.sesiones && <th className={`${th} text-right`}>Sesiones</th>}
@@ -182,9 +186,9 @@ function TablaMesas({ filas, conAnterior }: { filas: FilaMesa[]; conAnterior: bo
                       <span className={`whitespace-nowrap font-bold ${f.parada ? "text-texto-3" : "text-texto"}`}>Mesa {f.mesaId}</span>
                       {f.parada && <Chip>Sin juego</Chip>}
                     </span>
-                    {f.tipo && <span className="block text-[11.5px] text-texto-3 xl:hidden">{f.tipo}</span>}
+                    {f.tipo && <span className="block text-[11.5px] text-texto-3 2xl:hidden">{f.tipo}</span>}
                   </td>
-                  {hay.tipo && <td className={`hidden px-3 py-3 xl:table-cell ${tenue}`}>{f.tipo ?? "—"}</td>}
+                  {hay.tipo && <td className={`hidden px-3 py-3 2xl:table-cell ${tenue}`}>{f.tipo ?? "—"}</td>}
                   <td className={`${td} whitespace-nowrap text-right ${tenue}`}>{horas(f.horas)}</td>
                   {hay.ocupacion && (
                     <td className={td}>

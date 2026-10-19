@@ -349,7 +349,10 @@ export interface EntradaTexto {
   agenda?: ReporteAgenda | null;
   mermas?: ReporteMermas | null;
   metodos?: MetodoPagoApi[] | null;
+  /** Lo fiado que sigue abierto (reporte de créditos). */
   porCobrar?: number | null;
+  /** Los pedidos sin cobrar del período (ver `pedidosPorCobrar`). */
+  pedidosPorCobrar?: ResumenApi["porCobrar"] | null;
 }
 
 /**
@@ -387,12 +390,65 @@ export function textoResumen(e: EntradaTexto): string {
   const metodos = [...(e.metodos ?? [])].filter((m) => esPositivo(m.monto)).sort((a, b) => b.monto - a.monto).slice(0, 3);
   if (metodos.length) caja.push(metodos.map((m) => `${m.nombre} ${bsEntero(m.monto)}`).join(" · "));
   if (e.porCobrar != null && esPositivo(e.porCobrar)) caja.push(`Fiado por cobrar: ${bsEntero(e.porCobrar)}`);
+  const pedidos = e.pedidosPorCobrar ? pedidosPorCobrar({ porCobrar: e.pedidosPorCobrar }) : null;
+  if (pedidos) caja.push(`${textoPedidos(pedidos.cantidad)} por cobrar: ${bsEntero(pedidos.total)} (${pedidos.cantidad === 1 ? "no suma" : "no suman"} en Ventas)`);
   bloques.push(caja);
 
   return bloques
     .filter((b) => b.length)
     .map((b) => b.join("\n"))
     .join("\n\n");
+}
+
+/**
+ * Los pedidos del período que todavía no se cobraron, o null si no hay. No
+ * suman en las ventas (entran el día que se cobran), pero son plata que el
+ * dueño espera: sin mostrarlos, un período con muchos delivery pendientes se
+ * leía como un mal período.
+ */
+export function pedidosPorCobrar(r: Pick<ResumenApi, "porCobrar">): { cantidad: number; total: number } | null {
+  const p = r.porCobrar;
+  return p && p.cantidad > 0 ? p : null;
+}
+
+/** "1 pedido", "3 pedidos". */
+export function textoPedidos(cantidad: number): string {
+  return `${fmtNum(cantidad)} ${cantidad === 1 ? "pedido" : "pedidos"}`;
+}
+
+/** Las filas de la hoja "Resumen" del Excel: lo mismo que se ve, en números. */
+export function filasResumen(
+  r: ResumenApi,
+  er: { gastosOperativos: number; gastosFinancieros: number; impuestos: number; utilidadNeta: number } | null,
+): [string, number | null][] {
+  const pc = pedidosPorCobrar(r);
+  return [
+    ["Ventas (Bs)", r.ventas],
+    ["Ventas del período anterior (Bs)", r.ventasPeriodoAnterior],
+    ["Variación de las ventas (%)", r.ventasDeltaPct],
+    ["Tickets", r.tickets.valor],
+    ["Ticket promedio (Bs)", r.ticketPromedio.valor],
+    ["Unidades", r.unidades.valor],
+    // Al lado de las ventas y dicho en la etiqueta: en el Excel no hay
+    // tarjeta que aclare, y sumarlo a mano daría un total que la caja no vio.
+    ...(pc
+      ? ([
+          ["Pedidos por cobrar (no suman en Ventas)", pc.cantidad],
+          ["Monto por cobrar de esos pedidos (Bs)", pc.total],
+        ] as [string, number][])
+      : []),
+    ["Ingresos brutos (Bs)", r.finanzas.ingresosBrutos],
+    ["Descuentos y promos (Bs)", r.finanzas.descuentos],
+    ["Costo de venta (Bs)", r.finanzas.costoVenta],
+    ["Utilidad bruta (Bs)", r.finanzas.utilidadBruta],
+    ...(er
+      ? ([
+          ["Gastos operativos (Bs)", er.gastosOperativos],
+          ["Banco e impuestos (Bs)", er.gastosFinancieros + er.impuestos],
+          ["Ganancia real (Bs)", er.utilidadNeta],
+        ] as [string, number][])
+      : []),
+  ];
 }
 
 /** Sólo los dígitos, con el 591 adelante si es un celular de Bolivia escrito sin código (8 dígitos que empiezan en 6 o 7). */

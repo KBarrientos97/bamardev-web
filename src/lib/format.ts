@@ -17,6 +17,20 @@ export function fmtMoney(n: number | null | undefined): string {
   })}`;
 }
 
+/**
+ * Plata para lo que lee el CLIENTE (el WhatsApp de su pedido): "Bs 40" si es
+ * entera y "Bs 40.50" con centavos, con punto y sin separador de miles.
+ * "Bs 40,00" se leía como cuarenta mil (Kevin, 15-oct). Igual que la app
+ * (`Moneda.formatCliente`). Se redondea a centavos antes de decidir, para que un
+ * 39.999999 de una suma salga "Bs 40". Las pantallas siguen con `fmtMoney`.
+ */
+export function fmtMontoCliente(n: number | null | undefined): string {
+  const centavos = Math.round(Number(n ?? 0) * 100);
+  return centavos % 100 === 0
+    ? `${simboloMoneda} ${centavos / 100}`
+    : `${simboloMoneda} ${(centavos / 100).toFixed(2)}`;
+}
+
 /** Sin decimales ni símbolo: para ejes de gráficos y celdas apretadas. */
 export function fmtNum(n: number | null | undefined, decimales = 0): string {
   return Number(n ?? 0).toLocaleString("es-BO", {

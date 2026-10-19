@@ -4,7 +4,7 @@ import { Modal } from "../../components/ui";
 import { fmtMoney } from "../../lib/format";
 import { useCoincideMedia } from "../../lib/useCoincideMedia";
 import { useAccionesMesa, type AccionMesa } from "./acciones";
-import { fmtCobrado, fmtHace, fmtTarifaCorta, horaDe } from "./calculo";
+import { fmtCobrado, fmtHace, fmtTarifaCorta, horaDe, PAUSA_LARGA_SEG } from "./calculo";
 import { ESTADOS } from "./estilos";
 import { altoMenu, ubicarMenu, type Ubicacion } from "./TarjetaMesa.datos";
 import { BotonB, EstadoBadge, Fila } from "./ui";
@@ -64,7 +64,9 @@ export default function TarjetaMesa({
           </button>
           {mesa.alias && <p className="truncate text-[12px] font-semibold text-texto-2">{mesa.alias}</p>}
           <p className={`text-[12px] ${apagada ? "text-slate-400" : "text-texto-3"}`}>
-            {tipo.nombre} · {fmtTarifaCorta(tipo.tarifa)}
+            {/* El precio entero en un renglón: a 375 px quedaba "Carambola · Bs"
+                arriba y "25/h" abajo (prueba profunda, 18-oct). */}
+            {tipo.nombre} · <span className="whitespace-nowrap">{fmtTarifaCorta(tipo.tarifa)}</span>
           </p>
         </div>
         <MenuMesa acciones={acciones} visible={seleccionada} nombre={`Mesa ${mesa.id}`} />
@@ -77,7 +79,7 @@ export default function TarjetaMesa({
           <p className={`mt-2 text-[26px] font-extrabold leading-none tracking-tight tabular-nums sm:text-[30px] ${estilo.crono}`}>
             {cronoDe(v)}
           </p>
-          <p className={`mt-1.5 flex items-center gap-1 text-[12px] ${subColor(estado)}`}>
+          <p className={`mt-1.5 flex items-center gap-1 text-[12px] ${subColor(estado, v.pausaSeg)}`}>
             {subLinea(v)}
           </p>
           <div className="my-3 border-t border-black/5" />
@@ -150,6 +152,7 @@ function subLinea(v: VistaMesa) {
         <>
           <Icon name="pausa" size={12} />
           {s.pauseMotivo || "En pausa"}
+          {v.pausaSeg != null && <> · hace {fmtHace(v.pausaSeg * 1000)}</>}
         </>
       );
     case "cumplido":
@@ -166,14 +169,19 @@ function subLinea(v: VistaMesa) {
       return (
         <>
           Cobrado {fmtCobrado(c.cobradoMin)}
-          {c.nextSecs !== null && <> · sube a la {fmtCobrado(c.nextSecs / 60)}</>}
+          {/* Para abajo y no redondeado: el fin de una gracia no cae en minuto
+              entero y "sube a la 0:38" subía a las 0:37:41 (revisión del
+              18-oct). Nunca promete un minuto de más. */}
+          {c.nextSecs !== null && <> · sube a la {fmtCobrado(Math.floor(c.nextSecs / 60))}</>}
         </>
       );
   }
 }
 
-function subColor(estado: VistaMesa["estado"]): string {
+function subColor(estado: VistaMesa["estado"], pausaSeg?: number | null): string {
   if (estado === "vence") return "font-semibold text-amber-800";
+  // La pausa larga, en ámbar: tiempo que no se cobra (ver PAUSA_LARGA_SEG).
+  if (estado === "pausada" && (pausaSeg ?? 0) >= PAUSA_LARGA_SEG) return "font-semibold text-amber-800";
   if (estado === "cumplido") return "font-semibold text-rose-700";
   return "text-texto-3";
 }

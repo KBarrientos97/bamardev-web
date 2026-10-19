@@ -281,3 +281,72 @@ describe("QA DIA-10: «Ver lo vendido» sólo para quien lo puede ver", () => {
     expect(screen.queryByText(/no se vendió nada/)).not.toBeInTheDocument();
   });
 });
+
+describe("el efectivo contado se escribe como en Bolivia (QA de Kevin, 17-oct)", () => {
+  const campo = () => screen.getByPlaceholderText("0,00") as HTMLInputElement;
+  /** De a una tecla, como el cajero. */
+  function teclear(teclas: string) {
+    for (const t of teclas) fireEvent.change(campo(), { target: { value: campo().value + t } });
+  }
+  const cerrarCaja = async () => {
+    fireEvent.click(screen.getByRole("button", { name: "Cerrar caja" }));
+    await act(async () => {});
+  };
+
+  beforeEach(() => {
+    vi.mocked(api.resumenCaja).mockResolvedValue(resumen({ saldoEsperado: 2258.9 }));
+    vi.mocked(api.cerrarCaja).mockResolvedValue({ id: 1 } as Caja);
+  });
+
+  it("2.258,90 con su punto de miles cuadra con lo esperado", async () => {
+    // El campo lo dejaba como "2.258.90", no se podía leer y el cierre decía
+    // "El efectivo contado no puede ser negativo".
+    await montar();
+    teclear("2.258,90");
+    expect(campo().value).toBe("2.258,90");
+    expect(screen.getByText("La caja cuadra")).toBeInTheDocument();
+  });
+
+  it("225890 sin la coma se ve como 225 mil mientras se teclea", async () => {
+    await montar();
+    teclear("225890");
+    expect(campo().value).toBe("225.890");
+    expect(screen.getByText("Sobrante")).toBeInTheDocument();
+    expect(screen.getByText(/223\.631,10/)).toBeInTheDocument();
+  });
+
+  it("con el punto en los centavos cierra por Bs 2.258,90 y queda escrito entero", async () => {
+    await montar();
+    teclear("2.258.90");
+    fireEvent.blur(campo());
+    expect(campo().value).toBe("2.258,90");
+    await cerrarCaja();
+    expect(api.cerrarCaja).toHaveBeenCalledWith(1, { montoCierre: 2258.9 });
+  });
+
+  it("1.000 cierra por mil, no por Bs 1", async () => {
+    // Number("1.000") da 1: el arqueo quedaba con un faltante de Bs 999 falso.
+    await montar();
+    teclear("1.000");
+    await cerrarCaja();
+    expect(api.cerrarCaja).toHaveBeenCalledWith(1, { montoCierre: 1000 });
+  });
+
+  it("el conteo billete por billete se escribe igual que lo tecleado", async () => {
+    await montar();
+    fireEvent.click(screen.getByText("Contar billete por billete"));
+    fireEvent.click(screen.getByRole("button", { name: "Agregar un Bs 200,00" }));
+    fireEvent.click(screen.getByRole("button", { name: "Agregar un Bs 0,50" }));
+    expect(campo().value).toBe("200,50");
+    await cerrarCaja();
+    expect(api.cerrarCaja).toHaveBeenCalledWith(1, { montoCierre: 200.5 });
+  });
+
+  it("el aviso de contar el efectivo se va al escribir el monto", async () => {
+    await montar();
+    await cerrarCaja();
+    expect(screen.getByText("Contá el efectivo que hay en la caja.")).toBeInTheDocument();
+    teclear("5");
+    expect(screen.queryByText("Contá el efectivo que hay en la caja.")).not.toBeInTheDocument();
+  });
+});

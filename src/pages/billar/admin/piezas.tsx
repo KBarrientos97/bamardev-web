@@ -82,12 +82,13 @@ export function ErrorCampo({ children }: { children?: string }) {
   return <p className="mt-1 text-xs font-semibold text-rose-700">{children}</p>;
 }
 
-/** El rótulo de un campo, con la parte opcional en gris. */
-export function Etiqueta({ children, opcional }: { children: ReactNode; opcional?: boolean }) {
+/** El rótulo de un campo, con la parte opcional en gris y el «?» de su ayuda (ver `ayudas.tsx`). */
+export function Etiqueta({ children, opcional, ayuda }: { children: ReactNode; opcional?: boolean; ayuda?: ReactNode }) {
   return (
     <p className="mb-1.5 text-[13px] font-semibold text-texto-2">
       {children}
       {opcional && <span className="font-normal text-texto-4"> (opcional)</span>}
+      {ayuda}
     </p>
   );
 }
@@ -110,7 +111,11 @@ export function Pestanas({
   sinGuardar: boolean;
 }) {
   return (
-    <div role="tablist" aria-label="Mesas de billar" className="flex gap-1 overflow-x-auto border-b border-borde">
+    // overflow-y-hidden: overflow-x-auto vuelve "auto" también el eje Y, el
+    // -mb-px de las pestañas lo desborda 1 px, y en Windows eso dibujaba una
+    // barra vertical de 10 px que además se comía la rueda del mouse (prueba
+    // profunda, 18-oct).
+    <div role="tablist" aria-label="Mesas de billar" className="flex gap-1 overflow-x-auto overflow-y-hidden border-b border-borde">
       {PESTANAS.map((p) => {
         const activa = p.valor === valor;
         return (

@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { Icon } from "../../components/Icon";
 import { Vacio } from "../../components/ui";
 import { fmtMoney } from "../../lib/format";
+import { tienePermiso } from "../../lib/permisos";
 import { useCoincideMedia } from "../../lib/useCoincideMedia";
 import { useSucursales } from "../../lib/useSucursales";
 import { round2 } from "./calculo";
@@ -13,6 +14,7 @@ import PanelMesa from "./PanelMesa";
 import { useAhora } from "./reloj";
 import { billar, mesasEnUso, useBillar } from "./store";
 import { atajoDelTablero, mirandoOtraSucursal } from "./Tablero.datos";
+import { useAuth } from "../../store/AuthContext";
 import TarjetaMesa from "./TarjetaMesa";
 import { BotonB, ChipFiltro, Circulo, Encabezado, Nota, SelectorSucursal } from "./ui";
 import { FILTROS, pasaBusqueda, pasaFiltro, vistaDe, type Filtro } from "./vista";
@@ -97,6 +99,9 @@ export default function Tablero() {
   // un solo local, o para el cajero, `elegir` es falso y no aparece nada.
   const suc = useSucursales();
   const otraSucursal = mirandoOtraSucursal(e);
+  // Sin "Vender" la venta rápida la rechaza el backend al confirmar: no se ofrece.
+  const { usuario } = useAuth();
+  const puedeVender = tienePermiso(usuario, "ventas.vender");
   const nombreCaja = suc.sucursales.find((s) => s.id === e.cajaSucursalId)?.nombre ?? "otra sucursal";
   const selector =
     suc.elegir && e.sucursalId != null ? (
@@ -175,7 +180,7 @@ export default function Tablero() {
           </button>
           {/* Mirando otro local no: la venta cae en la caja (la de otro local)
               con el catálogo y los precios de éste, y el cobro no cuadra. */}
-          {!otraSucursal && (
+          {!otraSucursal && puedeVender && (
             <BotonB variante="menta" icono="cart" onClick={() => navigate("/billar/venta-rapida")} aria-label="Venta rápida">
               <span className="hidden sm:inline">Venta rápida</span>
             </BotonB>

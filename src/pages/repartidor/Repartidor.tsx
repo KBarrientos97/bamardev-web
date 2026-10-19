@@ -19,6 +19,7 @@ import { restoEnEfectivo, vuelto } from "../../lib/dinero";
 import { fmtHora, fmtMoney, fmtNum } from "../../lib/format";
 import { tieneFeature } from "../../lib/permisos";
 import { useApi } from "../../lib/useApi";
+import { enlaceWhatsApp, mensajePedido, pedidoDeVenta } from "../../lib/mensajePedido";
 import { useAuth } from "../../store/AuthContext";
 import type { FormaPago, Venta } from "../../types";
 
@@ -280,6 +281,7 @@ function DetalleEntrega({
   onCambio: () => void;
 }) {
   const completo = useApi(() => api.getVenta(pedido.id), [pedido.id]);
+  const { negocio } = useAuth();
   const [cobrando, setCobrando] = useState(false);
   const [cancelando, setCancelando] = useState(false);
   const [error, setError] = useState("");
@@ -298,6 +300,12 @@ function DetalleEntrega({
   const soloConfirmar = pendiente && (p.prepagado || aCobrar <= 0);
 
   const telefono = (p.clienteTelefono ?? "").replace(/\D/g, "");
+  const numeroWhatsApp = telefono.length <= 8 ? `591${telefono}` : telefono;
+  // Pendiente: el chat abre con el aviso de llegada ya escrito, el mismo de la
+  // app (Kevin, 15-oct). Antes abría vacío y había que tipear todo en la puerta.
+  const hrefWhatsApp = pendiente
+    ? enlaceWhatsApp(numeroWhatsApp, mensajePedido(pedidoDeVenta(p), negocio?.nombre))
+    : `https://wa.me/${numeroWhatsApp}`;
 
   async function confirmarEntrega(pagos?: PagoEntrega[]) {
     setError("");
@@ -371,7 +379,7 @@ function DetalleEntrega({
                     <Icon name="phone" size={15} /> Llamar
                   </a>
                   <a
-                    href={`https://wa.me/${telefono.length <= 8 ? `591${telefono}` : telefono}`}
+                    href={hrefWhatsApp}
                     target="_blank"
                     rel="noreferrer"
                     className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-borde bg-white px-3 py-3 text-[13px] font-semibold text-texto-2 hover:bg-muted"

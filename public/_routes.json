@@ -10,6 +10,7 @@
     "/icons.svg",
     "/logo-marca.png",
     "/sw.js",
+    "/push-sw.js",
     "/workbox-*",
     "/manifest.webmanifest",
     "/manifest-qa.webmanifest",

@@ -10,6 +10,7 @@ import {
   FRACCIONES,
   decimal,
   ejemploPromo,
+  entero,
   errorPaquete,
   nombrePromo,
   nuevaPromo,
@@ -19,6 +20,16 @@ import {
   type BorradorTipo,
   type ErroresTipo,
 } from "./borrador";
+import {
+  AyudaFraccion,
+  AyudaMinimo,
+  AyudaPaquetes,
+  AyudaPrecio,
+  AyudaPromos,
+  AyudaSimulador,
+  AyudaTolerancia,
+} from "./ayudas";
+import { minimoEfectivo } from "./ayudas.datos";
 import { CampoSufijo, Casilla, ErrorCampo, Etiqueta } from "./piezas";
 
 /**
@@ -42,12 +53,16 @@ export function TarjetaTipo({
   const poner = (cambio: Partial<BorradorTipo>) => onCambiar({ ...b, ...cambio });
   const tarifa = decimal(b.tarifa);
   const valida = tarifa !== null && tarifa > 0 ? tarifa : null;
+  // null mientras el borrador tenga errores: las ayudas usan entonces una tarifa típica.
+  const tipo = tipoDeBorrador(b);
+  const minimo = entero(b.minimo);
+  const minimoReal = minimo !== null ? minimoEfectivo({ minimo, fraccion: b.fraccion }) : null;
 
   return (
     <Tarjeta icono="bola" titulo={b.nombre}>
       <div className="space-y-5">
         <div>
-          <Etiqueta>Precio por hora</Etiqueta>
+          <Etiqueta ayuda={<AyudaPrecio tipo={tipo} nombre={b.nombre} />}>Precio por hora</Etiqueta>
           <div className="max-w-[13rem]">
             <CampoBs etiqueta={`Precio por hora de ${b.nombre}`} valor={b.tarifa} onCambiar={(t) => poner({ tarifa: t })} />
           </div>
@@ -55,7 +70,7 @@ export function TarjetaTipo({
         </div>
 
         <div>
-          <Etiqueta>Cobro por fracción</Etiqueta>
+          <Etiqueta ayuda={<AyudaFraccion tipo={tipo} />}>Cobro por fracción</Etiqueta>
           <Fracciones
             etiqueta={`Cobro por fracción de ${b.nombre}`}
             valor={b.fraccion}
@@ -66,7 +81,7 @@ export function TarjetaTipo({
 
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <Etiqueta>Mínimo</Etiqueta>
+            <Etiqueta ayuda={<AyudaMinimo tipo={tipo} />}>Mínimo</Etiqueta>
             <CampoSufijo
               etiqueta={`Mínimo de ${b.nombre}`}
               sufijo="min"
@@ -75,9 +90,16 @@ export function TarjetaTipo({
               onCambiar={(t) => poner({ minimo: t.replace(/\D/g, "") })}
             />
             <ErrorCampo>{err("minimo")}</ErrorCampo>
+            {/* Un mínimo de 20 con fracción de 15 se cobra 30 (se completa el bloque): sin
+                esto, el dueño ponía 20 y la mesa cobraba media hora sin explicación. */}
+            {!err("minimo") && minimo !== null && minimoReal !== minimo && (
+              <p className="mt-1 text-xs text-amber-700">
+                De a {b.fraccion} min se cobra como {minimoReal} min.
+              </p>
+            )}
           </div>
           <div>
-            <Etiqueta>Tolerancia</Etiqueta>
+            <Etiqueta ayuda={<AyudaTolerancia tipo={tipo} />}>Tolerancia</Etiqueta>
             <CampoSufijo
               etiqueta={`Tolerancia de ${b.nombre}`}
               sufijo="min"
@@ -90,16 +112,17 @@ export function TarjetaTipo({
           </div>
         </div>
 
-        <Paquetes b={b} tarifa={valida} onCambiar={(paquetes) => poner({ paquetes })} />
+        <Paquetes b={b} tipo={tipo} tarifa={valida} onCambiar={(paquetes) => poner({ paquetes })} />
 
         <Promociones
           b={b}
+          tipo={tipo}
           tarifa={valida}
           err={err}
           onCambiar={(promos) => poner({ promos })}
         />
 
-        <Simulador tipo={tipoDeBorrador(b)} />
+        <Simulador tipo={tipo} />
       </div>
     </Tarjeta>
   );
@@ -107,7 +130,10 @@ export function TarjetaTipo({
 
 /**
  * Por minuto, 5, 10, 15 o 30 min. Como el `Segmentado` pero cada opción del
- * ancho de su texto: "Por minuto" no se parte en dos renglones.
+ * ancho de su texto: "Por minuto" no se parte en dos renglones. Si no entran,
+ * pasan a dos renglones en vez de correr de costado: con el scroll, "30 min"
+ * quedaba cortado a 375 px y en el celular la barra no se ve (prueba
+ * profunda, 18-oct).
  */
 function Fracciones({
   etiqueta,
@@ -119,7 +145,7 @@ function Fracciones({
   onCambiar: (v: number) => void;
 }) {
   return (
-    <div role="radiogroup" aria-label={etiqueta} className="flex overflow-x-auto rounded-full bg-slate-100 p-1">
+    <div role="radiogroup" aria-label={etiqueta} className="flex flex-wrap rounded-3xl bg-slate-100 p-1">
       {FRACCIONES.map((f) => (
         <button
           key={f}
@@ -127,7 +153,7 @@ function Fracciones({
           role="radio"
           aria-checked={valor === f}
           onClick={() => onCambiar(f)}
-          className={`min-h-9 flex-auto whitespace-nowrap rounded-full px-3 text-[13px] font-semibold transition-colors ${
+          className={`min-h-9 flex-auto whitespace-nowrap rounded-full px-2 text-[13px] font-semibold transition-colors ${
             valor === f ? "bg-white text-texto shadow-sm" : "text-texto-3 hover:text-texto"
           }`}
         >
@@ -140,10 +166,12 @@ function Fracciones({
 
 function Paquetes({
   b,
+  tipo,
   tarifa,
   onCambiar,
 }: {
   b: BorradorTipo;
+  tipo: TipoMesa | null;
   tarifa: number | null;
   onCambiar: (p: BorradorTipo["paquetes"]) => void;
 }) {
@@ -169,7 +197,7 @@ function Paquetes({
 
   return (
     <div>
-      <Etiqueta>Paquetes de tiempo fijo</Etiqueta>
+      <Etiqueta ayuda={<AyudaPaquetes tipo={tipo} />}>Paquetes de tiempo fijo</Etiqueta>
       {b.paquetes.length === 0 ? (
         <p className="text-[13px] text-texto-3">Sin paquetes: el tiempo fijo se cobra por hora suelta.</p>
       ) : (
@@ -242,11 +270,13 @@ let secuenciaPromo = 0;
 
 function Promociones({
   b,
+  tipo,
   tarifa,
   err,
   onCambiar,
 }: {
   b: BorradorTipo;
+  tipo: TipoMesa | null;
   tarifa: number | null;
   err: (clave: string) => string | undefined;
   onCambiar: (p: BorradorPromo[]) => void;
@@ -256,7 +286,7 @@ function Promociones({
 
   return (
     <div>
-      <Etiqueta>Promociones por tiempo</Etiqueta>
+      <Etiqueta ayuda={<AyudaPromos tipo={tipo} />}>Promociones por tiempo</Etiqueta>
       <p className="-mt-1 mb-2 text-xs text-texto-4">
         Descuento en el tiempo de mesa cuando juegan muchas horas. No toca los consumos. Si alcanzan dos, va la de mayor
         descuento.
@@ -365,6 +395,7 @@ function Simulador({ tipo }: { tipo: TipoMesa | null }) {
       <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-primary-700">
         <Icon name="cronometro" size={14} />
         Simulador
+        <AyudaSimulador />
       </p>
       <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-texto">
         <span className="font-semibold">Si juegan</span>

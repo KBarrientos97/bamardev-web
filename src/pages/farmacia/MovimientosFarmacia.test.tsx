@@ -9,6 +9,14 @@ import type { Movimiento } from "../../types";
  * salidas se ven y se editan como siempre.
  */
 
+const sesion = vi.hoisted(() => ({
+  permisos: ["inventario.mover", "inventario.aprobar_transferencias"] as string[],
+}));
+
+vi.mock("../../store/AuthContext", () => ({
+  useAuth: () => ({ usuario: { permisos: sesion.permisos } }),
+}));
+
 vi.mock("../../lib/api", () => ({
   api: {
     getMovimientos: vi.fn(),
@@ -53,6 +61,7 @@ const TRANSFERENCIA = movimiento(11, {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  sesion.permisos = ["inventario.mover", "inventario.aprobar_transferencias"];
   vi.mocked(api.getMovimientos).mockResolvedValue([ENTRADA, TRANSFERENCIA]);
   vi.mocked(api.getMovimiento).mockImplementation(async (id: number) =>
     id === TRANSFERENCIA.id ? TRANSFERENCIA : ENTRADA,
@@ -127,6 +136,33 @@ describe("Entradas y salidas, como siempre", () => {
     expect(within(detalle).getByText("Nº factura")).toBeInTheDocument();
     fireEvent.click(within(detalle).getByRole("button", { name: "Editar" }));
     expect(await screen.findByText("editar ingreso o salida")).toBeInTheDocument();
+  });
+});
+
+describe("Aprobar una transferencia pide su permiso (16-oct)", () => {
+  it("con «Aprobar transferencias», la pendiente se aprueba desde el detalle", async () => {
+    abrir();
+    fireEvent.click(await screen.findByText(/Centro → Equipetrol/));
+    const detalle = await screen.findByRole("dialog", { name: "Transferencia · #11" });
+    expect(await within(detalle).findByRole("button", { name: "Aprobar" })).toBeInTheDocument();
+  });
+
+  it("sin él no hay botón, y el aviso dice quién la aprueba", async () => {
+    sesion.permisos = ["inventario.mover", "inventario.aprobar"];
+    abrir();
+    fireEvent.click(await screen.findByText(/Centro → Equipetrol/));
+    const detalle = await screen.findByRole("dialog", { name: "Transferencia · #11" });
+    await within(detalle).findByText("Sale de");
+    expect(within(detalle).queryByRole("button", { name: "Aprobar" })).not.toBeInTheDocument();
+    expect(within(detalle).getByText(/permiso «Aprobar transferencias»/)).toBeInTheDocument();
+  });
+
+  it("una entrada sigue con la regla de siempre: el botón está", async () => {
+    sesion.permisos = ["inventario.mover"];
+    abrir();
+    fireEvent.click(await screen.findByText(/Droguería INTI/));
+    const detalle = await screen.findByRole("dialog", { name: "Entrada · #10" });
+    expect(await within(detalle).findByRole("button", { name: "Aprobar" })).toBeInTheDocument();
   });
 });
 

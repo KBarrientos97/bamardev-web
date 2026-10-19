@@ -35,7 +35,9 @@ export default defineConfig(({ mode }) => {
           // esté lenta. Cada deploy baja sólo los pedazos que cambiaron.
           globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2}'],
           // Los íconos de instalar los baja el celular una vez; no van guardados.
-          globIgnores: ['**/pwa-*', '**/apple-touch-icon*', '**/logo-marca.png'],
+          globIgnores: ['**/pwa-*', '**/apple-touch-icon*', '**/logo-marca.png', '**/push-sw.js'],
+          // Las notificaciones push (FCM): el mismo SW las recibe y las
+          // muestra; ver public/push-sw.js. Un solo SW para toda la app.
           // El pedazo grande de la app pasa los 2 MB del default de Workbox.
           maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
           // Las rutas de la app se abren con el index guardado; las públicas
@@ -44,6 +46,7 @@ export default defineConfig(({ mode }) => {
           // datos van SIEMPRE por internet, nunca de una copia vieja.
           navigateFallback: 'index.html',
           navigateFallbackDenylist: [/^\/p\//, /^\/r\//, /^\/api\//, /^\/chat\//],
+          importScripts: ['push-sw.js'],
           skipWaiting: true,
           clientsClaim: true,
           cleanupOutdatedCaches: true,

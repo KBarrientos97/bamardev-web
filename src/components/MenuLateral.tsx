@@ -444,6 +444,23 @@ export default function MenuLateral({
         </button>
       )}
 
+      {/* Sólo en QA y temporal: la prueba de push de la PWA. Instalada no
+          tiene barra de direcciones, así que /prueba-push necesita un link.
+          En el build de PROD esto ni se compila (MODE es constante). */}
+      {import.meta.env.MODE === "qa" && !compacta && (
+        <a
+          href="/prueba-push"
+          data-fila=""
+          className={[
+            "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-barra-texto-2 transition-colors hover:bg-white/10 hover:text-barra-texto",
+            foco,
+          ].join(" ")}
+        >
+          <Icon name="bell" size={19} />
+          <span>Probar notificaciones (QA)</span>
+        </a>
+      )}
+
       {onCambiarPassword && (
         <button
           type="button"

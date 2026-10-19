@@ -1,10 +1,13 @@
-import { fmtFecha, fmtHora } from "../../lib/format";
+import { fmtFecha, fmtHora, fmtMoney } from "../../lib/format";
 import type {
+  Devolucion,
   EstadoVisual,
   Mesa,
   Pago,
   Promo,
+  PromoPrevia,
   Sesion,
+  TiempoPrevio,
   TipoMesa,
 } from "./tipos";
 
@@ -52,9 +55,37 @@ export const ANULAR_HASTA_SEG = 5 * 60;
  * Si la mesa todavía se puede anular. Cuenta lo traído de otra mesa, como el
  * reloj. Sin nada que cobrar se puede siempre: con mínimo 0 y una tolerancia
  * de más de 5 min, la mesa no se podía finalizar ni anular.
+ *
+ * Los 5 minutos corren también desde que se abrió (`desdeQueSeAbrio`), como en
+ * el backend: pausada a los 2 minutos, o con el inicio corrido hacia adelante,
+ * una mesa jugada horas seguía ofreciendo "Anular" (revisión del 16-oct).
  */
-export function sePuedeAnular(c: Pick<Cuenta, "secs" | "total"> | null): boolean {
-  return c != null && (c.secs < ANULAR_HASTA_SEG || c.total <= 0.005);
+export function sePuedeAnular(c: Pick<Cuenta, "secs" | "total"> | null, desdeQueSeAbrio = 0): boolean {
+  return c != null && (c.total <= 0.005 || (c.secs < ANULAR_HASTA_SEG && desdeQueSeAbrio < ANULAR_HASTA_SEG));
+}
+
+/** Segundos desde que se abrió la mesa (sin `abierta`, un backend viejo: desde el inicio). */
+export function segundosDesdeQueSeAbrio(s: Pick<Sesion, "abierta" | "start">, ahora: number): number {
+  return Math.max(0, Math.floor((ahora - (s.abierta ?? s.start)) / 1000));
+}
+
+// La pausa a la vista vive acá y no en vista.ts: la TV pública la usa, y
+// vista.ts arrastra el store y la API con sesión (separacion.test.ts; pasó
+// el 17-oct con `1384ac3`).
+
+/**
+ * Desde cuántos segundos una pausa se marca en ámbar en la tarjeta y en la TV.
+ * Una pausa olvidada es tiempo que no se cobra; una pausa larga "para un
+ * conocido", también. A la vista protege a la cajera honesta que se olvidó de
+ * reanudar y deja ver la otra (revisión del 17-oct).
+ */
+export const PAUSA_LARGA_SEG = 10 * 60;
+
+/** Los segundos que lleva en pausa una mesa, o null si no está pausada. */
+export function segundosEnPausa(mesa: Mesa, ahora: number): number | null {
+  const s = mesa.estado === "abierta" ? mesa.sesion : undefined;
+  if (!s?.pausedAt) return null;
+  return Math.max(0, Math.floor((ahora - (s.pausaDesde ?? s.pausedAt)) / 1000));
 }
 
 // ── §5.2 Cobro por fracción (tiempo libre) ──────────────────────────────────
@@ -67,6 +98,8 @@ export interface Cobro {
   nextSecs: number;
   /** Cuánto pasa a valer el tiempo al subir. */
   nextBs: number;
+  /** Los minutos que se cobran al subir (para la promo del tramo siguiente). */
+  nextMin: number;
 }
 
 export function cobroTiempo(secs: number, t: TipoMesa, useMin = true): Cobro {
@@ -81,7 +114,89 @@ export function cobroTiempo(secs: number, t: TipoMesa, useMin = true): Cobro {
     min,
     bs: round2((t.tarifa * min) / 60),
     nextSecs: b * f + tol,
-    nextBs: round2((t.tarifa * (b + 1) * t.fraccion) / 60),
+    // En el mismo orden que `bs` (tarifa por minutos), como el backend: con una
+    // tarifa como 12,33 el anuncio "sube a Bs 34,94" cobraba después Bs 34,93.
+    nextBs: round2((t.tarifa * ((b + 1) * t.fraccion)) / 60),
+    nextMin: (b + 1) * t.fraccion,
+  };
+}
+
+/**
+ * Cuánto de lo pausado (`pausas`, tramos terminados en ms) queda antes de
+ * `nuevo` y después de `inicio`, en segundos: lo que deja de descontarse si
+ * el inicio se corre hasta `nuevo`. Igual que el backend, que lo saca de
+ * `pausadoSeg` al corregir el inicio hacia adelante (prueba profunda,
+ * 18-oct): abierta 20:00, pausada 20:10 a 20:40 y corrida a las 21:00, a las
+ * 22:00 cobraba 30 min de 60.
+ */
+export function pausadoAntesDe(pausas: { desde: number; hasta: number }[], inicio: number, nuevo: number): number {
+  let ms = 0;
+  for (const p of pausas) {
+    const a = Math.max(p.desde, inicio);
+    const b = Math.min(p.hasta, nuevo);
+    if (b > a) ms += b - a;
+  }
+  return Math.round(ms / 1000);
+}
+
+/**
+ * El tramo de ESTA mesa cuando la cuenta vino de una de otra tarifa. El tiempo
+ * se redondea una sola vez, sobre el total jugado y con la regla de esta mesa,
+ * y esta mesa cobra los minutos que ese total le suma a lo ya cobrado allá
+ * (`prev.min`). Lo de allá no se toca: queda a su tarifa, como dice el diálogo
+ * de Cambiar mesa. Sin mínimo: ya lo pagó allá. Igual que el backend.
+ *
+ * Redondear cada tramo por su cuenta aplicaba la fracción y la tolerancia dos
+ * veces (prueba profunda, 18-oct): 40 min de Pool (45) y 4 de Carambola (un
+ * bloque de 15) cobraban 1:00 por 44 min, más que todo en la mesa más cara; y
+ * 33 de Pool (30, dentro de la tolerancia) más 2:50 cobraban 0:30 por casi 36:
+ * cambiando de mesa a cada rato, el bloque que se empezaba no se cobraba nunca.
+ *
+ * `nextSecs` se cuenta desde que empezó esta mesa, como en `cobroTiempo`.
+ */
+export function cobroTramo(
+  secsMesa: number,
+  prev: Pick<TiempoPrevio, "secs" | "min" | "hastaSecs">,
+  t: TipoMesa,
+): Cobro {
+  const f = t.fraccion * 60;
+  const tol = t.tolerancia * 60;
+  // Si la regla de esta mesa es más estricta y a lo jugado allá ya le cobraría
+  // más que la otra (`deMas`), esa diferencia se cobra al terminar una gracia,
+  // como cualquier bloque: ni sube en el instante del cambio ni se regala. La
+  // gracia dura la tolerancia de acá o hasta que la mesa anterior habría
+  // cobrado el bloque siguiente (`prev.hastaSecs`), lo que llegue primero
+  // (revisión del arreglo, 18-oct). Igual que el backend.
+  const deMas = Math.max(0, cobroTiempo(prev.secs, t, false).min - prev.min);
+  const finGracia = deMas > 0 ? Math.min(tol, prev.hastaSecs != null ? prev.hastaSecs - prev.secs : tol) : -1;
+  const minEn = (x: number) =>
+    Math.max(0, cobroTiempo(prev.secs + x, t, false).min - prev.min - (x <= finGracia ? deMas : 0));
+  const min = minEn(secsMesa);
+  // Cuándo sube: en el fin de la gracia o cuando el total pasa un bloque, el
+  // primero de esos momentos que sume minutos.
+  const momentos: number[] = secsMesa <= finGracia ? [finGracia] : [];
+  const desde = Math.max(0, Math.floor((prev.secs + secsMesa - tol) / f));
+  for (let k = desde; k <= desde + 2 + Math.ceil(prev.min / t.fraccion); k++) {
+    const m = k * f + tol - prev.secs;
+    if (m >= secsMesa) momentos.push(m);
+  }
+  momentos.sort((a, b) => a - b);
+  let nextSecs = momentos[momentos.length - 1];
+  let nextMin = minEn(nextSecs + 1);
+  for (const m of momentos) {
+    const despues = minEn(m + 1);
+    if (despues > min) {
+      nextSecs = m;
+      nextMin = despues;
+      break;
+    }
+  }
+  return {
+    min,
+    bs: round2((t.tarifa * min) / 60),
+    nextSecs,
+    nextBs: round2((t.tarifa * nextMin) / 60),
+    nextMin,
   };
 }
 
@@ -134,6 +249,45 @@ export function promoPara(t: TipoMesa, horas: number, fijo = false): Promo | nul
   return mejor;
 }
 
+const MESA_ANTERIOR = "mesa anterior";
+
+/**
+ * La promo del tiempo libre, con lo traído de una mesa de otra tarifa. Copia
+ * EXACTA de `promoDeLaCuenta` del backend (calculo.ts): si una cambia,
+ * cambian las dos.
+ *
+ * Lo jugado allá conserva la promo que ya había ganado (`previa`, congelada
+ * al cambiar), salvo que la de esta mesa le dé más; lo jugado acá lleva la de
+ * acá, por el total de horas. Antes se miraba sólo la promo de la mesa nueva
+ * sobre todo: 3 h de Pool con 10 % pasadas a una Carambola sin promociones
+ * perdían el descuento que ya tenían ganado (revisión del 16-oct). Sin
+ * `previa`, o si la de acá cubre lo de allá, da lo mismo que antes.
+ */
+export function promoDeLaCuenta(
+  p: Promo | null,
+  previoBs: number,
+  bsMesa: number,
+  bruto: number,
+  previa: PromoPrevia | null | undefined,
+): Cuenta["promo"] {
+  const ganada = previa && previa.descuento > 0.005 ? previa : null;
+  if (!ganada || (p && round2((previoBs * p.pct) / 100) >= ganada.descuento)) {
+    return p ? { nombre: p.nombre, pct: p.pct, descuento: round2((bruto * p.pct) / 100) } : null;
+  }
+  const deAca = p ? round2((bsMesa * p.pct) / 100) : 0;
+  return {
+    // "+ mesa anterior": el % es el de acá y el descuento suma lo de allá.
+    // El nombre no se encadena si la cuenta pasa por una tercera mesa.
+    nombre: p
+      ? `${p.nombre} + ${MESA_ANTERIOR}`
+      : ganada.nombre.includes(MESA_ANTERIOR)
+        ? ganada.nombre
+        : `${ganada.nombre} (${MESA_ANTERIOR})`,
+    pct: p ? p.pct : ganada.pct,
+    descuento: round2(ganada.descuento + deAca),
+  };
+}
+
 /** El precio de N horas de tiempo fijo, con la promo si la tiene "también en tiempo fijo". */
 export function precioFijo(t: TipoMesa, h: number) {
   const base = precioHoras(t, h);
@@ -171,8 +325,67 @@ export function consumosDe(s: Pick<Sesion, "consumos">): number {
   return round2(s.consumos.filter((c) => !c.anulado).reduce((t, c) => t + c.precio * c.cant, 0));
 }
 
+/**
+ * Si la mesa tiene algo cargado sin anular, aunque valga Bs 0: es la misma
+ * regla con que el backend rechaza anularla (ANULAR_CON_CONSUMOS). Si ya
+ * consumieron, no se abrió por error: se cobra (el dueño, 18-oct).
+ */
+export function tieneConsumos(s: Pick<Sesion, "consumos">): boolean {
+  return s.consumos.some((c) => !c.anulado);
+}
+
 export function pagadoDe(pagos: Pago[]): number {
   return round2(pagos.reduce((t, p) => t + p.monto, 0));
+}
+
+// ── Lo pagado de más ────────────────────────────────────────────────────────
+
+/** El mismo criterio que `esEfectivo` del backend: el nombre lo dice. */
+const esDeEfectivo = (metodo: string) => metodo.toLowerCase().includes("efectivo");
+
+/**
+ * Qué parte de cada pago previo cubre la cuenta y cuánto sobra: lo que no es
+ * efectivo cubre primero, así lo que sobra es efectivo y sale del cajón. Es la
+ * misma regla con que el backend arma los pagos de la venta (`imputarPagos` de
+ * su calculo.ts): si una cambia, cambian las dos.
+ *
+ * En el orden en que se cobraron, el sobrante caía en el último pago fuera
+ * cual fuera: con Bs 40 en efectivo y Bs 30 por QR y la cuenta en Bs 10, la
+ * pantalla pedía devolver Bs 60 sin decir en qué, el cajero los sacaba del
+ * cajón y al cerrar faltaban Bs 30 (prueba del 16-oct).
+ */
+export function imputarPagos<P extends Pick<Pago, "metodo" | "monto">>(
+  pagos: P[],
+  total: number,
+): { pago: P; cubre: number; sobra: number }[] {
+  const orden = [...pagos.filter((p) => !esDeEfectivo(p.metodo)), ...pagos.filter((p) => esDeEfectivo(p.metodo))];
+  let resta = round2(Math.max(0, total));
+  return orden.map((pago) => {
+    const cubre = round2(Math.min(pago.monto, resta));
+    resta = round2(resta - cubre);
+    return { pago, cubre, sobra: round2(pago.monto - cubre) };
+  });
+}
+
+/** Cuánto devolver y en qué. Con `total` 0 (mesa anulada) se devuelve todo. */
+export function devolucionDe(pagos: Pick<Pago, "metodo" | "monto">[], total: number): Devolucion {
+  let efectivo = 0;
+  const otros = new Map<string, number>();
+  for (const { pago, sobra } of imputarPagos(pagos, total)) {
+    if (sobra <= 0.005) continue;
+    if (esDeEfectivo(pago.metodo)) efectivo = round2(efectivo + sobra);
+    else otros.set(pago.metodo, round2((otros.get(pago.metodo) ?? 0) + sobra));
+  }
+  return { efectivo, otros: [...otros].map(([metodo, monto]) => ({ metodo, monto })) };
+}
+
+/** "Bs 40,00 en efectivo y Bs 20,00 por QR". Vacío si no hay nada que devolver. */
+export function textoDevolucion(d: Devolucion): string {
+  const partes = [
+    ...(d.efectivo > 0.005 ? [`${fmtMoney(d.efectivo)} en efectivo`] : []),
+    ...d.otros.filter((o) => o.monto > 0.005).map((o) => `${fmtMoney(o.monto)} por ${o.metodo}`),
+  ];
+  return partes.length > 1 ? `${partes.slice(0, -1).join(", ")} y ${partes[partes.length - 1]}` : (partes[0] ?? "");
 }
 
 export function cuentaDe(s: Sesion, t: TipoMesa, ahora: number): Cuenta {
@@ -205,18 +418,20 @@ export function cuentaDe(s: Sesion, t: TipoMesa, ahora: number): Cuenta {
     nextSecs = lim + exc.nextSecs;
     nextBs = round2(s.prepago.precio + exc.nextBs);
   } else {
-    // Lo traído de otra mesa ya pagó el mínimo allá.
-    const c = cobroTiempo(secsMesa, t, !s.prev);
+    // Lo traído de otra mesa ya pagó el mínimo allá, y el tiempo se redondea
+    // sobre el total (`cobroTramo`), no tramo por tramo.
+    const c = s.prev ? cobroTramo(secsMesa, s.prev, t) : cobroTiempo(secsMesa, t, true);
     cobradoMin = previoMin + c.min;
     const bruto = round2(previoBs + c.bs);
     const p = promoPara(t, cobradoMin / 60);
-    const descuento = p ? round2((bruto * p.pct) / 100) : 0;
-    promo = p ? { nombre: p.nombre, pct: p.pct, descuento } : null;
-    tiempoBs = round2(bruto - descuento);
+    promo = promoDeLaCuenta(p, previoBs, c.bs, bruto, s.prev?.promo);
+    tiempoBs = round2(bruto - (promo?.descuento ?? 0));
     nextSecs = (s.prev?.secs ?? 0) + c.nextSecs;
     const brutoSig = round2(previoBs + c.nextBs);
-    const pSig = promoPara(t, (cobradoMin + t.fraccion) / 60);
-    nextBs = round2(brutoSig - (pSig ? round2((brutoSig * pSig.pct) / 100) : 0));
+    // Con los minutos del bloque siguiente de verdad (con lo traído de una mesa
+    // de otra fracción no siempre son `cobradoMin + fraccion`), como el backend.
+    const pSig = promoPara(t, (previoMin + c.nextMin) / 60);
+    nextBs = round2(brutoSig - (promoDeLaCuenta(pSig, previoBs, c.nextBs, brutoSig, s.prev?.promo)?.descuento ?? 0));
   }
 
   const total = round2(tiempoBs + consumosBs);

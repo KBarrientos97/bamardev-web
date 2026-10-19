@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CompraCreditosVista, CupoEstado, EstadoLicencia, PaqueteCreditosVista, PaquetesCreditos } from "../types";
 import { cupoEmprendedor } from "../test/cupoFixtures";
@@ -14,10 +14,13 @@ const sesion = vi.hoisted(() => ({
   licencia: null as EstadoLicencia | null,
   actualizarCupo: vi.fn(),
   refrescarCupo: vi.fn(async () => {}),
+  /** Una barbería con agenda: los paquetes hablan de ventas y de citas. */
+  negocio: { tipoNegocio: "BARBERIA", features: ["pos", "agenda"] } as { tipoNegocio: string; features: string[] },
 }));
 
 vi.mock("../store/AuthContext", () => ({
   useAuth: () => ({
+    negocio: sesion.negocio,
     cupo: sesion.cupo,
     licencia: sesion.licencia,
     actualizarCupo: sesion.actualizarCupo,
@@ -105,6 +108,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   sesion.cupo = cupoEmprendedor({ ventas: 50, saldo: 0 });
   sesion.licencia = LICENCIA;
+  sesion.negocio = { tipoNegocio: "BARBERIA", features: ["pos", "agenda"] };
   vi.mocked(apiMonedero.paquetesCreditos).mockResolvedValue(CATALOGO);
 });
 
@@ -126,6 +130,46 @@ describe("la hoja de comprar créditos", () => {
     expect(fila).toHaveTextContent("Bs 20");
     expect(fila).toHaveTextContent("50 ventas o 25 citas");
     expect(screen.getByRole("button", { name: "20 créditos por Bs 10" })).toHaveTextContent("De emergencia");
+  });
+
+  it("sin agenda (un billar) los paquetes hablan sólo de ventas", async () => {
+    sesion.negocio = { tipoNegocio: "BILLAR", features: ["pos", "billar"] };
+    await abrir();
+    const fila = screen.getByRole("button", { name: "20 créditos por Bs 10" });
+    expect(fila).toHaveTextContent("20 ventas");
+    expect(fila).not.toHaveTextContent(/citas/);
+    expect(screen.getByRole("dialog", { name: "Llegaste a tus 50 ventas de hoy" })).not.toHaveTextContent(/cita/);
+  });
+
+  it("con agenda, un paquete que no alcanza ni para una cita no la nombra, y 1 va en singular", async () => {
+    vi.mocked(apiMonedero.paquetesCreditos).mockResolvedValue({ ...CATALOGO, paquetes: [paquete(9, 1, 1)] });
+    await abrir();
+    const fila = screen.getByRole("button", { name: "1 crédito por Bs 1" });
+    expect(fila).toHaveTextContent("1 crédito");
+    expect(fila).toHaveTextContent("1 venta");
+    expect(fila).not.toHaveTextContent(/cita/);
+  });
+
+  it("una sesión sin features cuenta como sin agenda", async () => {
+    sesion.negocio = { tipoNegocio: "BARBERIA", features: [] };
+    await abrir();
+    expect(screen.getByRole("button", { name: "50 créditos por Bs 20" })).not.toHaveTextContent(/citas/);
+  });
+
+  it("la feature agenda prendida fuera de belleza tampoco trae las citas", async () => {
+    // El segundo candado del menú: un billar no ve la agenda aunque se la
+    // prendan en el panel (billarqa en QA la tiene), así que tampoco le
+    // hablamos de citas.
+    sesion.negocio = { tipoNegocio: "BILLAR", features: ["pos", "billar", "agenda"] };
+    await abrir();
+    expect(screen.getByRole("button", { name: "50 créditos por Bs 20" })).not.toHaveTextContent(/citas/);
+  });
+
+  it("cada cantidad va entera: «20 ventas» y «o 10 citas» no se parten por dentro", async () => {
+    await abrir();
+    const fila = screen.getByRole("button", { name: "20 créditos por Bs 10" });
+    expect(within(fila).getByText("20 ventas")).toHaveClass("whitespace-nowrap");
+    expect(within(fila).getByText("o 10 citas")).toHaveClass("whitespace-nowrap");
   });
 
   it("para citas, el texto dice que cada cita usa 2", async () => {

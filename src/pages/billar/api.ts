@@ -1,7 +1,8 @@
 import { request } from "../../lib/api";
-import type { CreditoInput, FormaPago, PagoInput } from "../../types";
+import type { ConsumoVista, CreditoInput, FormaPago, PagoInput } from "../../types";
 import type {
   AjustesBillar,
+  Devolucion,
   EstadoMesa,
   Mesa,
   Pago,
@@ -34,15 +35,24 @@ interface PagoApi {
   monto: number;
   recibido: number;
   concepto: "PREPAGO" | "EXTENSION" | "ADELANTO";
+  /** Desde el 16-oct: en qué caja entró y quién lo cobró. */
+  cajaId?: number;
+  cobradoPor?: string;
 }
 
 interface SesionApi {
   id: number;
   version: number;
   start: number;
+  /** Desde el 16-oct (backend del mismo día). */
+  abierta?: number;
   pausedAt: number | null;
   pausedTotal: number;
   pauseMotivo?: string;
+  /** Desde cuándo está en pausa de verdad (backend del 17-oct). */
+  pausaDesde?: number;
+  /** Los tramos pausados que ya terminaron, en ms (backend del 18-oct). */
+  pausas?: { desde: number; hasta: number }[];
   cliente?: string;
   garantia?: string;
   nota?: string;
@@ -102,6 +112,8 @@ export interface MesaAdminApi {
   fueraMotivo?: string;
   inactiva?: boolean;
   enJuego: boolean;
+  /** Si está reservada: el formulario avisa que dejarla fuera de servicio la cancela. */
+  reserva?: { hora: number; nombre: string };
 }
 
 export type VentaApi = Omit<VentaBillar, "pagos"> & {
@@ -175,7 +187,11 @@ export const apiBillar = {
       nota?: string;
       clienteRequestId: string;
     },
-  ) => enviar<MesaApi>(`/billar/mesas/${idInterno}/abrir`, cuerpo),
+  ) =>
+    // Plan Emprendedor (D29): abrir una mesa ocupa un lugar del cupo del día
+    // y viene con `consumo`, como una venta. Sin cupo ni créditos, 403
+    // `CUPO_AGOTADO`. Básico y Profesional no lo traen nunca.
+    enviar<MesaApi & { consumo?: ConsumoVista }>(`/billar/mesas/${idInterno}/abrir`, cuerpo),
   reservar: (idInterno: number, hora: number, nombre: string) =>
     enviar<MesaApi>(`/billar/mesas/${idInterno}/reservar`, { hora: new Date(hora).toISOString(), nombre }),
   cancelarReserva: (idInterno: number) => enviar<MesaApi>(`/billar/mesas/${idInterno}/reserva`, {}, "DELETE"),
@@ -192,8 +208,17 @@ export const apiBillar = {
     enviar<MesaApi>(`${sesion(sesionId)}/consumos/${consumoId}/anular`, { motivo, ...cred }),
   pagar: (sesionId: string, pagos: PagoInput[], clienteRequestId: string) =>
     enviar<MesaApi>(`${sesion(sesionId)}/pagos`, { pagos, clienteRequestId }),
-  pausar: (sesionId: string, motivo: string) => enviar<MesaApi>(`${sesion(sesionId)}/pausar`, { motivo }),
+  pausar: (sesionId: string, motivo: string, cred: Credenciales) =>
+    enviar<MesaApi>(`${sesion(sesionId)}/pausar`, { motivo, ...cred }),
   reanudar: (sesionId: string) => enviar<MesaApi>(`${sesion(sesionId)}/reanudar`),
+  /** Corregir el medio de pago de una venta del turno (backend del 17-oct). `corregida`: false si ya estaba así. */
+  corregirPago: (ventaId: number, pagos: PagoInput[], motivo: string, cred: Credenciales, operacion?: string) =>
+    enviar<{ corregida: boolean }>(`/billar/ventas/${ventaId}/pagos`, {
+      pagos,
+      motivo,
+      ...cred,
+      ...(operacion ? { operacion } : {}),
+    }),
   extender: (sesionId: string, horas: number, pagos: PagoInput[] | undefined, clienteRequestId: string) =>
     enviar<MesaApi>(`${sesion(sesionId)}/extender`, { horas, ...(pagos ? { pagos } : {}), clienteRequestId }),
   cambiar: (sesionId: string, destinoIdInterno: number) =>
@@ -201,7 +226,13 @@ export const apiBillar = {
   editarInicio: (sesionId: string, inicio: number, motivo: string, cred: Credenciales) =>
     enviar<MesaApi>(`${sesion(sesionId)}/inicio`, { inicio: new Date(inicio).toISOString(), motivo, ...cred }),
   anular: (sesionId: string, motivo: string, cred: Credenciales, clienteRequestId: string) =>
-    enviar<{ mesa: MesaApi; devolver: number }>(`${sesion(sesionId)}/anular`, { motivo, ...cred, clienteRequestId }),
+    // `devolverDetalle` llega desde el 16-oct (backend del mismo día): sin él,
+    // la pantalla lo calcula con los pagos de la mesa.
+    enviar<{ mesa: MesaApi; devolver: number; devolverDetalle?: Devolucion }>(`${sesion(sesionId)}/anular`, {
+      motivo,
+      ...cred,
+      clienteRequestId,
+    }),
   cerrar: (
     sesionId: string,
     cuerpo: {
@@ -236,6 +267,8 @@ export const apiBillar = {
     voz: boolean;
     pinAnularConsumo: boolean;
     pinAnularMesa: boolean;
+    /** Si pausar pide PIN. Sin él, el backend no lo toca. */
+    pinPausar?: boolean;
     /** A qué hora termina la jornada (minutos, 0 a 720). Sin él, el backend no lo toca. */
     horaCorteMin?: number;
   }) => enviar<AjustesApi>("/billar/admin/ajustes", cuerpo, "PUT"),
@@ -278,9 +311,12 @@ function aSesion(s: SesionApi): Sesion {
   return {
     id: String(s.id),
     start: s.start,
+    abierta: s.abierta,
     pausedAt: s.pausedAt,
     pausedTotal: s.pausedTotal,
     pauseMotivo: s.pauseMotivo,
+    pausaDesde: s.pausaDesde,
+    pausas: s.pausas,
     cliente: s.cliente,
     garantia: s.garantia,
     nota: s.nota,
@@ -304,6 +340,8 @@ function aSesion(s: SesionApi): Sesion {
         monto: p.monto,
         recibido: p.recibido > p.monto ? p.recibido : undefined,
         nota: NOTA_PAGO[p.concepto],
+        cajaId: p.cajaId,
+        cobradoPor: p.cobradoPor,
       }),
     ),
   };
@@ -343,6 +381,9 @@ export function aMesaAdmin(m: MesaAdminApi): Mesa {
     estado: m.enJuego ? "abierta" : m.estado,
     fueraMotivo: m.fueraMotivo,
     inactiva: m.inactiva,
+    // Sin esto el aviso de FormMesa ("se cancela al guardar") no salía nunca y
+    // la reserva se borraba en silencio al dejar la mesa fuera de servicio.
+    reserva: m.reserva,
   };
 }
 

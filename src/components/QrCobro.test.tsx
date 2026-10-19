@@ -9,7 +9,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const sesion = vi.hoisted(() => ({
   rubro: "RESTAURANTE" as string,
   features: [] as string[],
-  plantilla: "ADMIN" as "ADMIN" | "MESERO",
+  plantilla: "ADMIN" as "ADMIN" | "SUPERVISOR" | "CAJERO" | "MESERO",
 }));
 
 vi.mock("../store/AuthContext", async () => {
@@ -33,8 +33,8 @@ vi.mock("../lib/qrPago", () => ({
   subirQr: vi.fn(),
 }));
 
-import { sincronizarQr } from "../lib/qrPago";
-import { CargarQrCobro } from "./QrCobro";
+import { leerQr, sincronizarQr } from "../lib/qrPago";
+import { CargarQrCobro, QrParaCobrar } from "./QrCobro";
 
 async function montar() {
   render(<CargarQrCobro />);
@@ -76,11 +76,67 @@ describe("QR de cobro: a quién más le llega", () => {
     expect(screen.getByText("Lo reciben también el reparto.")).toBeInTheDocument();
   });
 
+  it("billar: no hay meseros ni reparto que nombrar", async () => {
+    // 18-oct: la apertura del billar decía "Lo reciben también los meseros y
+    // el reparto".
+    sesion.rubro = "BILLAR";
+    sesion.features = ["pos", "caja", "billar", "pago_qr_mixto"];
+    await montar();
+    expect(screen.queryByText(/Lo reciben también/)).not.toBeInTheDocument();
+  });
+
   it("sube el QR quien tiene `qr.configurar`; el mesero sólo lo recibe", async () => {
     await montar();
     expect(sincronizarQr).toHaveBeenLastCalledWith("prueba", true);
     sesion.plantilla = "MESERO";
     await montar();
     expect(sincronizarQr).toHaveBeenLastCalledWith("prueba", false);
+  });
+});
+
+describe("qr.configurar es sólo del Administrador (16-oct)", () => {
+  // El QR es la cuenta a la que entra la plata: el Encargado y el Cajero ya no
+  // lo cambian. Lo ven (para saber que está), pero sin los botones.
+  const QR = "data:image/png;base64,QR";
+  function conQr() {
+    vi.mocked(leerQr).mockReturnValue(QR);
+    vi.mocked(sincronizarQr).mockResolvedValue(QR);
+  }
+  beforeEach(() => {
+    vi.mocked(leerQr).mockReturnValue(null);
+    vi.mocked(sincronizarQr).mockResolvedValue(null);
+  });
+
+  it("el Administrador lo sube, lo cambia y lo quita", async () => {
+    conQr();
+    await montar();
+    expect(screen.getByRole("button", { name: "Cambiar" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Quitar" })).toBeInTheDocument();
+  });
+
+  it.each(["SUPERVISOR", "CAJERO"] as const)("el %s lo ve en la apertura, sin poder cambiarlo", async (rol) => {
+    sesion.plantilla = rol;
+    conQr();
+    await montar();
+    expect(screen.getByRole("img", { name: "QR de cobro del negocio" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Cambiar" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Quitar" })).not.toBeInTheDocument();
+    // Tampoco sube la copia vieja del equipo: el backend se la rechazaría.
+    expect(sincronizarQr).toHaveBeenLastCalledWith("prueba", false);
+  });
+
+  it("sin QR cargado, el cajero lee quién lo carga en vez de un botón", async () => {
+    sesion.plantilla = "CAJERO";
+    await montar();
+    expect(screen.queryByRole("button", { name: "Subir QR" })).not.toBeInTheDocument();
+    expect(screen.getByText("Todavía no hay QR del negocio. Lo carga el administrador.")).toBeInTheDocument();
+  });
+
+  it("al cobrar sin QR, el encargado no tiene «Cargar el QR»", async () => {
+    sesion.plantilla = "SUPERVISOR";
+    render(<QrParaCobrar confirmado={false} onConfirmar={() => {}} />);
+    await act(async () => {});
+    expect(screen.queryByRole("button", { name: "Cargar el QR" })).not.toBeInTheDocument();
+    expect(screen.getByText("Todavía no hay QR del negocio. Lo carga el administrador.")).toBeInTheDocument();
   });
 });

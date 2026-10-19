@@ -2,6 +2,7 @@ import { useMemo, useState, type ReactNode } from "react";
 import { Icon } from "../../components/Icon";
 import { inicialesDe } from "../../lib/iconosArticulo";
 import { fmtMoney } from "../../lib/format";
+import { contiene } from "../../lib/texto";
 import { useCoincideMedia } from "../../lib/useCoincideMedia";
 import type { Carrito } from "./carrito";
 import type { ProductoBillar } from "./tipos";
@@ -53,10 +54,16 @@ export function Catalogo({
       (a, b) => lugar(a) - lugar(b) || a.localeCompare(b, "es"),
     );
   }, [productos]);
+  // Como el Punto de venta: sin distinguir tildes ni mayúsculas ("mani" encuentra
+  // "Maní salado"), por la categoría y por el código de barras. Buscaba sólo
+  // con tilde y por el id interno, que ningún cajero conoce (prueba profunda,
+  // 18-oct). La ñ sigue siendo otra letra (ver lib/texto.ts).
   const visibles = useMemo(() => {
-    const q = busqueda.trim().toLowerCase();
+    const q = busqueda.trim();
     return productos.filter(
-      (p) => (!categoria || p.categoria === categoria) && (!q || p.nombre.toLowerCase().includes(q) || String(p.id) === q),
+      (p) =>
+        (!categoria || p.categoria === categoria) &&
+        (!q || contiene(p.nombre, q) || contiene(p.categoria, q) || contiene(p.codBarra, q)),
     );
   }, [productos, busqueda, categoria]);
 

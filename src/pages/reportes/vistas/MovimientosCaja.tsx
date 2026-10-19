@@ -5,7 +5,9 @@ import { Boton, Vacio } from "../../../components/ui";
 import { api } from "../../../lib/api";
 import { esCero, esPositivo } from "../../../lib/dinero";
 import { fmtFechaHora, fmtMoney, fmtNum } from "../../../lib/format";
+import { tieneFeature } from "../../../lib/permisos";
 import { useApi } from "../../../lib/useApi";
+import { useAuth } from "../../../store/AuthContext";
 import type { PaginaMeta } from "../../../types";
 import { useExportar, useReporte } from "../contexto";
 import { bsConSigno, bsResta, pct } from "../formato";
@@ -34,6 +36,8 @@ type Filtro = (typeof FILTROS)[number][0];
 
 export default function MovimientosCaja() {
   const { rango, veReporte } = useReporte();
+  const { negocio } = useAuth();
+  const conFiado = tieneFeature(negocio?.features, "fiado");
   const [tipo, setTipo] = useState<Filtro>("");
   // Al cambiar el período, el local o el filtro se vuelve a la página 1: la 7
   // de un resultado que ahora tiene 2 es un vacío que confunde. Derivado de la
@@ -65,13 +69,16 @@ export default function MovimientosCaja() {
     >
       {(x) => {
         const t = x.totales;
+        // Un negocio sin fiado (el billar, 17-oct) no ve un "Cobros de fiado"
+        // en cero que no le dice nada; si hubo cobros de antes, se ven igual.
+        const verFiado = conFiado || !esCero(t.cobrosCredito);
         const neto = netoDe(t.neto);
         return (
           <>
             {/* Los totales son del período entero y de los dos sentidos aunque
                 haya un filtro puesto: con "Salidas" escondiendo las entradas,
                 el neto diría cualquier cosa. */}
-            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <div className={`grid grid-cols-2 gap-3 ${verFiado ? "lg:grid-cols-4" : "lg:grid-cols-3"}`}>
               <KpiR etiqueta="Entradas" valor={<Apagado si={esCero(t.entradas)}>{fmtMoney(t.entradas)}</Apagado>} tono="marca" />
               {/* Lo que resta va con su signo y en rojo; en cero, gris. */}
               <KpiR etiqueta="Salidas" valor={<Apagado si={esCero(t.salidas)}>{bsResta(t.salidas)}</Apagado>} tono="alerta" />
@@ -80,27 +87,29 @@ export default function MovimientosCaja() {
                 valor={<Apagado si={neto.tono === "apagado"}>{bsConSigno(t.neto)}</Apagado>}
                 tono={neto.tono === "apagado" ? "normal" : neto.tono}
               />
-              <KpiR
-                etiqueta="Cobros de fiado"
-                valor={<Apagado si={esCero(t.cobrosCredito)}>{fmtMoney(t.cobrosCredito)}</Apagado>}
-                pie={
-                  esPositivo(t.cobrosCredito) ? (
-                    <>
-                      {esPositivo(t.entradas) && `${pct(t.cobrosCredito / t.entradas)} de las entradas`}
-                      {/* Quién pagó y cuánto debe todavía está en Créditos: el
-                          link sólo si ve ese reporte, si no lo devolvería al resumen. */}
-                      {veReporte("creditos") && (
-                        <>
-                          {" · "}
-                          <Link to="/reportes/creditos" className="font-semibold text-primary-700 hover:underline">
-                            Ver créditos
-                          </Link>
-                        </>
-                      )}
-                    </>
-                  ) : undefined
-                }
-              />
+              {verFiado && (
+                <KpiR
+                  etiqueta="Cobros de fiado"
+                  valor={<Apagado si={esCero(t.cobrosCredito)}>{fmtMoney(t.cobrosCredito)}</Apagado>}
+                  pie={
+                    esPositivo(t.cobrosCredito) ? (
+                      <>
+                        {esPositivo(t.entradas) && `${pct(t.cobrosCredito / t.entradas)} de las entradas`}
+                        {/* Quién pagó y cuánto debe todavía está en Créditos: el
+                            link sólo si ve ese reporte, si no lo devolvería al resumen. */}
+                        {veReporte("creditos") && (
+                          <>
+                            {" · "}
+                            <Link to="/reportes/creditos" className="font-semibold text-primary-700 hover:underline">
+                              Ver créditos
+                            </Link>
+                          </>
+                        )}
+                      </>
+                    ) : undefined
+                  }
+                />
+              )}
             </div>
             <div ref={arriba} className="flex scroll-mt-4 flex-wrap items-center justify-between gap-3">
               <Segmentos valor={tipo} opciones={FILTROS} onChange={setTipo} />
@@ -109,7 +118,9 @@ export default function MovimientosCaja() {
                     entradas lleno parecía un error. */}
                 {tipo
                   ? "Los totales de arriba son de los dos sentidos, aunque filtres."
-                  : "Sencillo, retiros, pagos en efectivo y cobros de fiado"}
+                  : verFiado
+                    ? "Sencillo, retiros, pagos en efectivo y cobros de fiado"
+                    : "Sencillo, retiros y pagos en efectivo"}
               </p>
             </div>
             {x.items.length === 0 ? (

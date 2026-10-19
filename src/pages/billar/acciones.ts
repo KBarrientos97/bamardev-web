@@ -1,7 +1,6 @@
 import { useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import type { NombreIcono } from "../../components/Icon";
-import { sePuedeAnular } from "./calculo";
 import { useDialogos } from "./dialogos";
 import { billar } from "./store";
 import type { VistaMesa } from "./vista";
@@ -70,9 +69,10 @@ export function useAccionesMesa() {
       // nada que cobrar, y con ella abierta la caja no cierra.
       const corregir: AccionMesa = { clave: "inicio", etiqueta: "Corregir inicio", icono: "edit", hacer: () => abrir({ tipo: "editarInicio", mesaId: id }) };
       const anular: AccionMesa = { clave: "anular", etiqueta: "Anular mesa", icono: "trash", hacer: () => abrir({ tipo: "anularMesa", mesaId: id }) };
-      // Anular, sólo mientras el reloj no pasa los 5 minutos (`sePuedeAnular`).
-      // Si se dieron cuenta tarde, se finaliza y se anula la venta con PIN.
-      const siAnulable = sePuedeAnular(v.cuenta) ? [anular] : [];
+      // Anular, sólo en los primeros 5 minutos desde que se abrió y sin consumos
+      // (`v.anulable`). Si se dieron cuenta tarde, se finaliza y se anula la
+      // venta con PIN; si ya consumieron, se cobra.
+      const siAnulable = v.anulable ? [anular] : [];
 
       switch (v.estado) {
         case "libre":

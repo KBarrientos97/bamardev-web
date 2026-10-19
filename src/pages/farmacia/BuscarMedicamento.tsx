@@ -53,7 +53,11 @@ export default function BuscarMedicamento() {
     activo: !caja.cargando,
   });
   const venta = useVentaFarmacia();
-  const { puede } = useAuth();
+  const { puede, incluye } = useAuth();
+  // Sin `lotes` el plan no tiene Vencimientos: la columna ("Vence hoy", "Sin
+  // fecha") no tiene de dónde salir y se saca entera.
+  const conLotes = incluye("lotes");
+  const columnas = conLotes ? COLUMNAS : COLUMNAS_SIN_VENCIMIENTO;
   // Quien no cobra (un supervisor de inventario) consulta, pero no vende.
   const vende = !!venta && puede("pos");
 
@@ -108,12 +112,12 @@ export default function BuscarMedicamento() {
 
           <div className="overflow-hidden rounded-2xl border border-borde bg-white">
             {/* La cabecera sólo tiene sentido cuando las filas son columnas. */}
-            <div className={`hidden ${COLUMNAS} border-b border-borde-soft bg-muted/60 px-5 py-3 text-[11px] font-bold uppercase tracking-wide text-texto-4 lg:grid`}>
+            <div className={`hidden ${columnas} border-b border-borde-soft bg-muted/60 px-5 py-3 text-[11px] font-bold uppercase tracking-wide text-texto-4 lg:grid`}>
               <span>Medicamento</span>
               <span>Laboratorio</span>
               <span>Forma</span>
               <span>Stock</span>
-              <span>Vencimiento</span>
+              {conLotes && <span>Vencimiento</span>}
               <span className="text-right">Precio · acciones</span>
             </div>
             <ul className="divide-y divide-borde-soft">
@@ -122,6 +126,8 @@ export default function BuscarMedicamento() {
                   key={p.id}
                   producto={p}
                   q={q}
+                  columnas={columnas}
+                  conVencimiento={conLotes}
                   onFicha={() => setFicha(p)}
                   onAgregar={agregar && (() => agregar(p))}
                 />
@@ -163,6 +169,9 @@ export default function BuscarMedicamento() {
 /** Las seis columnas de la tabla, las mismas en la cabecera y en cada fila. */
 const COLUMNAS =
   "lg:grid-cols-[minmax(0,2.4fr)_minmax(0,1fr)_minmax(0,0.9fr)_minmax(0,0.8fr)_minmax(0,1.1fr)_auto] lg:items-center lg:gap-4";
+/** Las mismas sin la de vencimiento, para un plan sin `lotes`. */
+const COLUMNAS_SIN_VENCIMIENTO =
+  "lg:grid-cols-[minmax(0,2.4fr)_minmax(0,1fr)_minmax(0,0.9fr)_minmax(0,0.8fr)_auto] lg:items-center lg:gap-4";
 
 /**
  * Un resultado. En pantalla grande es una fila de la tabla; en el teléfono,
@@ -172,11 +181,16 @@ const COLUMNAS =
 function Fila({
   producto: p,
   q,
+  columnas,
+  conVencimiento,
   onFicha,
   onAgregar,
 }: {
   producto: Producto;
   q: string;
+  columnas: string;
+  /** El plan tiene `lotes`: sin eso no hay vencimiento que mostrar. */
+  conVencimiento: boolean;
   onFicha: () => void;
   /** Sin esto no hay botón "Agregar": quien consulta no siempre vende. */
   onAgregar?: () => void;
@@ -197,7 +211,7 @@ function Fila({
   const colorStock = agotado ? "text-danger-text" : bajo ? "text-warning-text" : "text-texto";
 
   return (
-    <li className={`px-4 py-3 lg:grid lg:px-5 ${COLUMNAS} ${vendible ? "" : "bg-muted/40"}`}>
+    <li className={`px-4 py-3 lg:grid lg:px-5 ${columnas} ${vendible ? "" : "bg-muted/40"}`}>
       {/* Medicamento: nombre, droga y condición de venta. Tocarlo abre la
           ficha, igual que el botón. */}
       <button onClick={onFicha} className="block w-full min-w-0 text-left">
@@ -260,23 +274,30 @@ function Fila({
       <span className={`hidden text-[13px] font-bold lg:block ${colorStock}`}>
         {agotado ? sinStock : stock}
       </span>
-      <span className="hidden items-center gap-2 text-xs lg:flex">
-        <span aria-hidden className={`h-2.5 w-2.5 shrink-0 rounded-full ${punto.color}`} />
-        <span className={punto.urgente ? "font-semibold text-danger-text" : "text-texto-3"}>
-          {punto.texto}
+      {conVencimiento && (
+        <span className="hidden items-center gap-2 text-xs lg:flex">
+          <span aria-hidden className={`h-2.5 w-2.5 shrink-0 rounded-full ${punto.color}`} />
+          <span className={punto.urgente ? "font-semibold text-danger-text" : "text-texto-3"}>
+            {punto.texto}
+          </span>
         </span>
-      </span>
+      )}
 
       {/* Precio y acciones. En el teléfono, con el stock y el vencimiento a la
           izquierda para no perderlos. */}
       <div className="mt-2 flex items-center gap-2 lg:mt-0 lg:justify-end">
         <span className="flex min-w-0 flex-1 items-center gap-1.5 text-xs lg:hidden">
-          <span aria-hidden className={`h-2.5 w-2.5 shrink-0 rounded-full ${punto.color}`} />
-          <span className={`truncate ${punto.urgente ? "font-semibold text-danger-text" : "text-texto-3"}`}>
-            {punto.corto}
-          </span>
+          {conVencimiento && (
+            <>
+              <span aria-hidden className={`h-2.5 w-2.5 shrink-0 rounded-full ${punto.color}`} />
+              <span className={`truncate ${punto.urgente ? "font-semibold text-danger-text" : "text-texto-3"}`}>
+                {punto.corto}
+              </span>
+            </>
+          )}
           <span className={`shrink-0 font-semibold ${colorStock}`}>
-            · {agotado ? sinStock : stock}
+            {conVencimiento && "· "}
+            {agotado ? sinStock : stock}
           </span>
         </span>
         <span className={`shrink-0 text-[15px] font-extrabold ${vendible ? "text-primary-700" : "text-texto-3"}`}>

@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { Icon } from "../components/Icon";
 import { Boton, Campo, ErrorMsg, Input, InputPassword } from "../components/ui";
-import { BLOQUEO_KEY } from "../lib/api";
+import { BLOQUEO_KEY, SESION_VENCIDA_KEY } from "../lib/api";
 import { useAuth } from "../store/AuthContext";
 import PoweredByBamarDev from "../components/PoweredByBamarDev";
 import PagarLicencia from "./PagarLicencia";
@@ -28,6 +28,21 @@ function leerBloqueo(): Bloqueo | null {
   }
 }
 
+/**
+ * Si la sesión se cerró sola (un 401 con sesión: el token dura 7 días y vence
+ * en pleno turno). Se lee UNA vez y se borra, como el bloqueo. Sin esto el
+ * login aparecía limpio y no se sabía por qué (prueba profunda, 18-oct).
+ */
+function leerSesionVencida(): boolean {
+  try {
+    if (!localStorage.getItem(SESION_VENCIDA_KEY)) return false;
+    localStorage.removeItem(SESION_VENCIDA_KEY);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export default function Login() {
   const { login, aliasRecordado } = useAuth();
   // El alias identifica al negocio (multi-tenant): el mismo "admin" existe en
@@ -38,6 +53,7 @@ export default function Login() {
   const [error, setError] = useState("");
   const [enviando, setEnviando] = useState(false);
   const [bloqueo, setBloqueo] = useState<Bloqueo | null>(leerBloqueo);
+  const [vencida] = useState(leerSesionVencida);
   /** Cuando es true se muestra el pago por QR en lugar del formulario. */
   const [pagando, setPagando] = useState(false);
 
@@ -93,6 +109,15 @@ export default function Login() {
             </p>
           </div>
 
+          {/* La sesión se cerró sola. Neutro ("se cerró" y no "venció"): también
+              llega acá un usuario que desactivaron. Si además hay bloqueo por
+              licencia, gana el de licencia. */}
+          {vencida && !bloqueo && (
+            <div role="status" className="flex items-start gap-2.5 rounded-xl border border-borde bg-muted p-3.5 text-[13px] text-texto-2">
+              <Icon name="info" size={18} />
+              <p className="leading-snug">Tu sesión se cerró. Volvé a entrar para seguir.</p>
+            </div>
+          )}
           {/* Licencia vencida o suspendida. Va acá y no en el <ErrorMsg> de
               abajo porque no es un dato mal tipeado: reintentar no arregla
               nada, y el dueño necesita el link de pago, no otra chance. */}
