@@ -1,4 +1,4 @@
-import type { FotosInscripcion, TipoFoto } from "./tipos";
+import { TIPOS_FOTO, type FotosInscripcion, type TipoFoto } from "./tipos";
 
 /**
  * Las 3 fotos de la inscripción (D7): foto del estudiante y carnet por los
@@ -48,4 +48,9 @@ export const hayFotos = (fotos?: FotosInscripcion): fotos is FotosInscripcion =>
 /** "Faltan 2 fotos": el texto del botón principal hasta tener las 3. */
 export function textoFaltanFotos(faltan: number): string {
   return faltan === 1 ? "Falta 1 foto" : `Faltan ${faltan} fotos`;
+}
+
+/** Cuántas de las 3 faltan, contando las nuevas y las ya guardadas. */
+export function fotosQueFaltan(fotos: FotosInscripcion, yaTiene: TipoFoto[] = []): TipoFoto[] {
+  return TIPOS_FOTO.filter((t) => !fotos[t] && !yaTiene.includes(t));
 }

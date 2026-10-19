@@ -226,8 +226,3 @@ function BotonFoto({
     </button>
   );
 }
-
-/** Cuántas de las 3 faltan, contando las nuevas y las ya guardadas. */
-export function fotosQueFaltan(fotos: FotosInscripcion, yaTiene: TipoFoto[] = []): TipoFoto[] {
-  return TIPOS_FOTO.filter((t) => !fotos[t] && !yaTiene.includes(t));
-}

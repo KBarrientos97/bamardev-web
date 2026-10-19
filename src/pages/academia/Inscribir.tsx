@@ -17,7 +17,7 @@ import {
   textoCubre,
   textoVence,
 } from "../../lib/academia/formato";
-import { textoFaltanFotos } from "../../lib/academia/fotos";
+import { fotosQueFaltan, textoFaltanFotos } from "../../lib/academia/fotos";
 import type {
   AlumnoFila,
   DescuentoInput,
@@ -39,7 +39,7 @@ import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
 import { PedirPinCredito } from "../pos/PantallaCredito";
 import { abrirWhatsapp } from "../../lib/academia/vista";
-import CapturaFotos, { fotosQueFaltan } from "./CapturaFotos";
+import CapturaFotos from "./CapturaFotos";
 
 export interface ResultadoInscripcion {
   inscripcion: Pick<InscripcionDetalle, "id"> & Partial<InscripcionDetalle>;

@@ -5,25 +5,12 @@ import MenuMas, { type AccionMenu } from "../../../components/MenuMas";
 import { Cargando, ErrorMsg, Vacio } from "../../../components/ui";
 import { apiAcademia } from "../../../lib/academia/apiAcademia";
 import { mesDe, sumarMeses, tituloMes } from "../../../lib/academia/calendario";
-import type { EstadoPlanilla, PlanillaMes as TPlanillaMes } from "../../../lib/academia/tipos";
+import type { PlanillaMes as TPlanillaMes } from "../../../lib/academia/tipos";
 import { useFiltroSede } from "../../../lib/academia/useFiltroSede";
 import { usePalabras } from "../../../lib/academia/usePalabras";
+import { TEXTO_ESTADO_PLANILLA as TEXTO_ESTADO, textoRetencion } from "../../../lib/academia/vista";
 import { fmtMoney } from "../../../lib/format";
 import { useApi } from "../../../lib/useApi";
-
-export const TEXTO_ESTADO: Record<EstadoPlanilla, string> = {
-  EN_CURSO: "en curso",
-  CERRADA: "cerrada",
-  PAGADA: "pagada",
-};
-
-/**
- * Lo que se cuenta de una retención: el monto si el instituto la confirmó
- * (D9: hoy está apagada) o "por confirmar".
- */
-export function textoRetencion(activa: boolean, monto: number | null): string {
-  return activa && monto != null ? `− ${fmtMoney(monto)}` : "por confirmar";
-}
 
 /**
  * E14 · Planilla de docentes del mes (ronda 2, D2): cada docente con su %,

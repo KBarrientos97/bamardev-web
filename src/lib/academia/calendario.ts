@@ -124,3 +124,13 @@ export function franjaSiguiente(lista: Franja[], almacenId: number | null): Fran
   const inicio = ultima ? ultima.fin : "07:00";
   return { almacenId, inicio, fin: aHora(aMinutos(inicio) + 120) };
 }
+
+/** "en 12 min", "en curso", "terminó": cuándo es la clase, con la hora del equipo. */
+export function cuandoEs(c: { horaInicio: string; horaFin: string }, ahora = new Date()): string {
+  const min = ahora.getHours() * 60 + ahora.getMinutes();
+  const ini = aMinutos(c.horaInicio);
+  if (min >= aMinutos(c.horaFin)) return "terminó";
+  if (min >= ini) return "en curso";
+  const falta = ini - min;
+  return falta < 60 ? `en ${falta} min` : `a las ${c.horaInicio}`;
+}

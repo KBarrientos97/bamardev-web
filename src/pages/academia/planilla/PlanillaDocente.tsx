@@ -8,13 +8,13 @@ import { mesDe, sumarMeses, tituloMes } from "../../../lib/academia/calendario";
 import { nombreDe } from "../../../lib/academia/formato";
 import type { LineaPlanilla } from "../../../lib/academia/tipos";
 import { usePalabras } from "../../../lib/academia/usePalabras";
-import { textoFormaPago } from "../../../lib/academia/vista";
+import { TEXTO_ESTADO_PLANILLA as TEXTO_ESTADO, textoFormaPago } from "../../../lib/academia/vista";
 import { ApiError } from "../../../lib/api";
 import { fmtMoney } from "../../../lib/format";
 import { tienePermiso } from "../../../lib/permisos";
 import { useApi } from "../../../lib/useApi";
 import { useAuth } from "../../../store/AuthContext";
-import { Cifra, TEXTO_ESTADO } from "./PlanillaMes";
+import { Cifra } from "./PlanillaMes";
 
 type Lista = "cuentan" | "postergados" | "atrasados" | "sinPagar";
 

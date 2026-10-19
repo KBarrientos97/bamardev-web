@@ -2,7 +2,7 @@ import { Link } from "react-router-dom";
 import { Icon } from "../../../components/Icon";
 import { Cargando, ErrorMsg } from "../../../components/ui";
 import { apiAcademia } from "../../../lib/academia/apiAcademia";
-import { aMinutos } from "../../../lib/academia/calendario";
+import { cuandoEs } from "../../../lib/academia/calendario";
 import { nombreDe } from "../../../lib/academia/formato";
 import type { ClaseDelDia, ProximaClase } from "../../../lib/academia/tipos";
 import { usePalabras } from "../../../lib/academia/usePalabras";
@@ -10,16 +10,6 @@ import { capitalizar, fechaLarga } from "../../../lib/agenda/horaAgenda";
 import { useApi } from "../../../lib/useApi";
 import { useAuth } from "../../../store/AuthContext";
 import NavDocente from "./NavDocente";
-
-/** "en 12 min", "en curso", "terminó": cuándo es la clase, con la hora del equipo. */
-export function cuandoEs(c: Pick<ClaseDelDia, "horaInicio" | "horaFin">, ahora = new Date()): string {
-  const min = ahora.getHours() * 60 + ahora.getMinutes();
-  const ini = aMinutos(c.horaInicio);
-  if (min >= aMinutos(c.horaFin)) return "terminó";
-  if (min >= ini) return "en curso";
-  const falta = ini - min;
-  return falta < 60 ? `en ${falta} min` : `a las ${c.horaInicio}`;
-}
 
 /**
  * E11a · Mis clases (ronda 2, F1b): la pantalla del docente al entrar, en el

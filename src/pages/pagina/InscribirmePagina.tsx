@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useParams } from "react-router-dom";
 import Captcha from "../../publico/Captcha";
 import { apiAcademiaPublica, ErrorPublico } from "../../lib/academia/apiPublica";
-import { textoFaltanFotos } from "../../lib/academia/fotos";
+import { fotosQueFaltan, textoFaltanFotos } from "../../lib/academia/fotos";
 import { diasTexto, edadDe, EXPEDIDOS, fechaCorta, MAYORIA_DE_EDAD } from "../../lib/academia/formato";
 import type { CursoPublico, FotosInscripcion, GrupoPublico, PreinscripcionEnviada, TipoFoto } from "../../lib/academia/tipos";
 import { paleta } from "../../lib/pagina/aspecto";
@@ -10,7 +10,7 @@ import { enlaceWhatsapp } from "../../lib/pagina/catalogo";
 import { urlPaginaDe, urlPrivacidadDe } from "../../lib/pagina/rutas";
 import { usePaginaPublica } from "../../lib/pagina/usePaginaPublica";
 import { siteKeyTurnstile } from "../../lib/turnstile";
-import CapturaFotos, { fotosQueFaltan } from "../academia/CapturaFotos";
+import CapturaFotos from "../academia/CapturaFotos";
 import { NoDisponible } from "./PaginaPublica";
 import { MarcaBamarDev } from "./VistaPagina";
 

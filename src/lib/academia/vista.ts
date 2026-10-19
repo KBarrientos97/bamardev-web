@@ -1,4 +1,4 @@
-import type { Cuota, EstadoPagoModulo, FormaPago, Ref } from "./tipos";
+import type { Cuota, EstadoPagoModulo, EstadoPlanilla, FormaPago, Ref } from "./tipos";
 import { fechaCorta, textoCubre } from "./formato";
 import { fmtMoney } from "../format";
 
@@ -89,4 +89,19 @@ export function textoFormaPago(forma: FormaPago | null | undefined, plan?: strin
   if (forma === "MES_A_MES") return "Mes a mes";
   if (forma === "COMPLETO") return "Pago completo";
   return plan ?? "—";
+}
+
+/** Cómo se dice el estado de una planilla. */
+export const TEXTO_ESTADO_PLANILLA: Record<EstadoPlanilla, string> = {
+  EN_CURSO: "en curso",
+  CERRADA: "cerrada",
+  PAGADA: "pagada",
+};
+
+/**
+ * Lo que se cuenta de una retención: el monto si el instituto la confirmó
+ * (D9: hoy está apagada) o "por confirmar".
+ */
+export function textoRetencion(activa: boolean, monto: number | null): string {
+  return activa && monto != null ? `− ${fmtMoney(monto)}` : "por confirmar";
 }
