@@ -251,6 +251,54 @@ describe("E5 · inscribir", () => {
   });
 });
 
+describe("E5 · inscribir: los errores se ven y el adelanto se valida (QA ronda 2, B-15 y B-16)", () => {
+  const pie = () => panel().querySelector("footer")!;
+
+  it("lo que falta sale junto al botón y se va al corregirlo", async () => {
+    await montar();
+    cargarNuevo("2000-01-01");
+    fireEvent.click(within(panel()).getByRole("button", { name: /Inscribir y cobrar/ }));
+    expect(within(pie()).getByRole("alert")).toHaveTextContent("Elegí cómo paga.");
+    expect(apiAcademia.inscribir).not.toHaveBeenCalled();
+    fireEvent.click(within(panel()).getByRole("radio", { name: /Cuotas/ }));
+    expect(within(pie()).queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("un adelanto negativo se marca en el campo y no inscribe; uno válido viaja al cobro", async () => {
+    await montar();
+    cargarNuevo("2000-01-01");
+    fireEvent.click(within(panel()).getByRole("radio", { name: /Cuotas/ }));
+    fireEvent.click(within(panel()).getByRole("button", { name: "Otro monto" }));
+    const monto = within(panel()).getByLabelText("Monto del adelanto (Bs)");
+    fireEvent.change(monto, { target: { value: "-50" } });
+    expect(within(panel()).getByText("Tiene que ser más de Bs 0.")).toBeInTheDocument();
+    expect(monto).toHaveAttribute("aria-invalid", "true");
+    fireEvent.click(within(panel()).getByRole("button", { name: /Inscribir y cobrar/ }));
+    expect(apiAcademia.inscribir).not.toHaveBeenCalled();
+    expect(within(pie()).getByRole("alert")).toHaveTextContent("Lo que paga hoy: tiene que ser más de Bs 0.");
+    fireEvent.change(monto, { target: { value: "100" } });
+    expect(within(panel()).queryByText("Tiene que ser más de Bs 0.")).not.toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(within(panel()).getByRole("button", { name: /Inscribir y cobrar/ }));
+    });
+    expect(onInscrito).toHaveBeenCalledWith({ inscripcion: { id: 555 }, cobrar: true, montoHoy: 100 });
+  });
+
+  it("un descuento en Bs mayor que el curso se marca y no inscribe", async () => {
+    await montar();
+    cargarNuevo("2000-01-01");
+    fireEvent.click(within(panel()).getByRole("radio", { name: /Completo/ }));
+    fireEvent.click(within(panel()).getByRole("button", { name: "Aplicar otro descuento o beca" }));
+    fireEvent.click(within(panel()).getByRole("button", { name: "Beca" }));
+    fireEvent.click(within(panel()).getByRole("button", { name: "Bs" }));
+    fireEvent.change(within(panel()).getByLabelText("Descuento"), { target: { value: "99999" } });
+    fireEvent.change(within(panel()).getByLabelText("Motivo"), { target: { value: "Prueba" } });
+    expect(within(panel()).getByText(/No puede pasar el precio del curso/)).toBeInTheDocument();
+    fireEvent.click(within(panel()).getByRole("button", { name: "Inscribir sin cobrar" }));
+    expect(apiAcademia.inscribir).not.toHaveBeenCalled();
+  });
+});
+
 describe("N5 · las 3 fotos obligatorias", () => {
   beforeEach(() => {
     vi.mocked(apiAcademia.ajustes).mockResolvedValue(ajustesDePrueba({ fotosObligatorias: true }));

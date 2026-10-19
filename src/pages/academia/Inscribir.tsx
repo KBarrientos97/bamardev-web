@@ -167,6 +167,30 @@ export default function Inscribir({
     (!!preinscripcion?.alumno.menor && !preinscripcion.tutor);
 
   const vista = useMemo(() => calendarioConDescuento(plan, tipoDesc, enPct, Number(valorDesc) || 0), [plan, tipoDesc, enPct, valorDesc]);
+  // Un plan de una sola cuota (el pago completo) no tiene "la primera".
+  const unaCuota = vista.cuotas.length <= 1;
+  const elegidoHoy: PagaHoy = unaCuota && pagaHoy === "primera" ? "todo" : pagaHoy;
+
+  /**
+   * Lo que está mal en el adelanto, dicho en el campo mientras se escribe: un
+   * -50 dejaba "Paga hoy Bs 0,00" e inscribía igual (QA ronda 2, B-16).
+   */
+  const adelantoMal = (() => {
+    if (elegidoHoy !== "otro" || otroMonto.trim() === "") return "";
+    const n = Number(otroMonto);
+    if (!Number.isFinite(n) || n <= 0) return "Tiene que ser más de Bs 0.";
+    if (plan && n > vista.total) return `No puede pasar el total (${fmtMoney(vista.total)}).`;
+    return "";
+  })();
+  /** Lo mismo para la beca o promoción: ni 0, ni más del 100 %, ni más que el curso. */
+  const descuentoMal = (() => {
+    if (!tipoDesc || valorDesc.trim() === "") return "";
+    const n = Number(valorDesc);
+    if (!Number.isFinite(n) || n <= 0) return "Tiene que ser más de 0.";
+    if (enPct && n > 100) return "No puede pasar el 100 %.";
+    if (!enPct && plan && n > plan.total) return `No puede pasar el precio del ${p.carrera} (${fmtMoney(plan.total)}).`;
+    return "";
+  })();
   const sobreTope =
     !!tipoDesc && vista.pct > (ajustes.datos?.topePromoSinPinPct ?? Number.POSITIVE_INFINITY) && !puedeBecas;
 
@@ -174,7 +198,8 @@ export default function Inscribir({
     ? nombreAlumno(preinscripcion.alumno)
     : elegido?.nombre ?? (nuevo.apellidos || nuevo.nombres ? nombreAlumno(nuevo) : "");
 
-  function faltantes(): string | null {
+  /** Lo que falta para inscribir; con `cobrar`, también lo que se cobra hoy. */
+  function faltantes(cobrar: boolean): string | null {
     if (!preinscripcion && !elegido) {
       if (modo === "buscar") return `Elegí al ${p.alumno} o cargá uno nuevo.`;
       if (!nuevo.ci.trim()) return "Falta el carnet de identidad.";
@@ -184,14 +209,32 @@ export default function Inscribir({
     if (!grupoId) return "Elegí el grupo.";
     if (faltanFotos.length) return `${textoFaltanFotos(faltanFotos.length)}.`;
     if (!plan) return "Elegí cómo paga.";
-    if (tipoDesc && !(Number(valorDesc) > 0)) return "Poné el descuento, o elegí Ninguna.";
+    if (tipoDesc && valorDesc.trim() === "") return "Poné el descuento, o elegí Ninguna.";
+    if (descuentoMal) return `El descuento: ${descuentoMal.charAt(0).toLowerCase()}${descuentoMal.slice(1)}`;
     if (tipoDesc && motivo.trim().length < 3) return "Contá el motivo del descuento.";
+    if (cobrar && elegidoHoy === "otro" && otroMonto.trim() === "") return "Poné cuánto paga hoy.";
+    if (cobrar && adelantoMal) return `Lo que paga hoy: ${adelantoMal.charAt(0).toLowerCase()}${adelantoMal.slice(1)}`;
     return null;
   }
 
+  /**
+   * Después del primer intento, lo que falta se recalcula en vivo al lado del
+   * botón: se ve sin buscarlo al fondo del panel y se va solo al corregirlo
+   * (QA ronda 2, B-15: "Elegí cómo paga." quedaba pegado y fuera de la vista).
+   */
+  const [validar, setValidar] = useState<null | { cobrar: boolean }>(null);
+  // Un rechazo del backend vale para lo que se mandó: al cambiar algo, se va.
+  useEffect(() => {
+    setError("");
+  }, [planId, grupoId, tutor, nuevo, elegido, pagaHoy, otroMonto, tipoDesc, valorDesc, enPct, motivo, fotos]);
+
   async function enviar(cobrar: boolean, extra: { sobreCupo?: boolean; firma?: { username: string; pin: string } } = {}) {
-    const falta = faltantes();
-    if (falta) return setError(falta);
+    setValidar({ cobrar });
+    if (faltantes(cobrar)) {
+      setError("");
+      setSalida(null);
+      return;
+    }
     const autorizador = extra.firma ?? firma ?? undefined;
     // Sobre el tope y sin el permiso: el PIN se pide antes de mandar.
     if (sobreTope && !autorizador) {
@@ -326,9 +369,7 @@ export default function Inscribir({
   }
 
   const primera = vista.cuotas[0]?.monto ?? 0;
-  // Un plan de una sola cuota (el pago completo) no tiene "la primera".
-  const unaCuota = vista.cuotas.length <= 1;
-  const elegidoHoy: PagaHoy = unaCuota && pagaHoy === "primera" ? "todo" : pagaHoy;
+  const falta = validar ? faltantes(validar.cobrar) : null;
   const montoHoy =
     elegidoHoy === "primera"
       ? primera
@@ -554,8 +595,8 @@ export default function Inscribir({
               </div>
               {elegidoHoy === "otro" && (
                 <div className="max-w-[200px]">
-                  <Campo label="Monto del adelanto (Bs)">
-                    <Input type="number" value={otroMonto} onChange={(e) => setOtroMonto(e.target.value)} />
+                  <Campo label="Monto del adelanto (Bs)" error={adelantoMal || undefined}>
+                    <Input type="number" value={otroMonto} aria-invalid={!!adelantoMal || undefined} onChange={(e) => setOtroMonto(e.target.value)} />
                   </Campo>
                 </div>
               )}
@@ -600,8 +641,16 @@ export default function Inscribir({
             {tipoDesc && (
               <div className="mt-3 space-y-3">
                 <div className="flex items-end gap-2">
-                  <Campo label="Descuento">
-                    <Input type="number" value={valorDesc} onChange={(e) => { setValorDesc(e.target.value); setFirma(null); }} />
+                  <Campo label="Descuento" error={descuentoMal || undefined}>
+                    <Input
+                      type="number"
+                      value={valorDesc}
+                      aria-invalid={!!descuentoMal || undefined}
+                      onChange={(e) => {
+                        setValorDesc(e.target.value);
+                        setFirma(null);
+                      }}
+                    />
                   </Campo>
                   <div className="pb-0.5">
                     <Chips
@@ -628,13 +677,6 @@ export default function Inscribir({
             )}
           </section>
 
-          <ErrorMsg>{error}</ErrorMsg>
-          {salida && (
-            <div role="alert" className="space-y-1 rounded-xl bg-warning-bg px-3.5 py-2.5 text-sm text-warning-text">
-              <p>{salida.texto}</p>
-              {salida.accion}
-            </div>
-          )}
         </div>
 
           <aside aria-label="Resumen de la inscripción" className="mt-7 space-y-4 border-t border-borde-soft pt-5 lg:sticky lg:top-0 lg:mt-0 lg:rounded-xl lg:border lg:border-borde-soft lg:bg-muted/40 lg:p-4">
@@ -694,6 +736,18 @@ export default function Inscribir({
         </div>
 
         <footer className="space-y-2 border-t border-borde-soft px-5 py-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+          {/* Junto al botón y no al fondo de la zona con scroll: ahí no se veían (QA ronda 2, B-15). */}
+          {(falta || error) && (
+            <div role="alert">
+              <ErrorMsg>{falta || error}</ErrorMsg>
+            </div>
+          )}
+          {salida && (
+            <div role="alert" className="space-y-1 rounded-xl bg-warning-bg px-3.5 py-2.5 text-sm text-warning-text">
+              <p>{salida.texto}</p>
+              {salida.accion}
+            </div>
+          )}
           <label className="flex items-center gap-2 text-[13px] text-texto-2">
             <input type="checkbox" checked={bienvenida} onChange={(e) => setBienvenida(e.target.checked)} className="h-4 w-4 accent-[var(--color-primary-boton)]" />
             Enviar bienvenida por WhatsApp{esMenor ? " al tutor" : ""}
