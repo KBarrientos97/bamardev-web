@@ -22,6 +22,7 @@ import { cobraCuotas, soloLoSuyo, tienePermiso } from "../../lib/permisos";
 import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
 import PedirMotivo from "../agenda/PedirMotivo";
+import FotosAlumno from "./FotosAlumno";
 
 const MOTIVOS_RETIRO = ["Horario", "Económico", "Cambio de ciudad", "No le gustó el curso", "Otro"] as const;
 
@@ -33,11 +34,11 @@ function inscripcionActual(a: AlumnoDetalle): InscripcionDetalle | null {
 }
 
 /**
- * E6 · Ficha del alumno (PLAN-ACADEMIAS §5): quién es (con el tutor si es
- * menor), la inscripción actual con su estado de cuenta y sus pagos, y el
- * historial. La acción principal es Cobrar; cambiar de grupo o de plan y
- * retirar van en el "⋯" de la inscripción. La asistencia y las notas llegan
- * en F1b.
+ * E6 · Ficha del estudiante (PLAN-ACADEMIAS §5, ronda 2): quién es (con el
+ * tutor si es menor), la inscripción actual con su estado de cuenta y sus
+ * pagos, las 3 fotos (la imagen sólo con `academia.fotos`; los demás ven un
+ * candado) y el historial. La acción principal es Cobrar; el QR por WhatsApp
+ * (con el enlace de pago), cambiar de grupo o de plan y retirar van en "⋯".
  */
 export default function FichaAlumno() {
   const { id } = useParams();
@@ -82,8 +83,24 @@ export default function FichaAlumno() {
   const tutor = a.tutores.find((t) => t.principal) ?? a.tutores[0] ?? null;
   const estado = actual ? textoEstadoInscripcion(actual.estado) : null;
 
-  /** El estado de cuenta por WhatsApp: al tutor si lo hay (PA §8, menor = tutor). */
-  function enviarEstado() {
+  /**
+   * El QR por WhatsApp (ronda 2): con algo que se debe, el recordatorio de
+   * esa cuota, que trae el enlace de pago y queda anotado. Sin deuda, el
+   * estado de cuenta escrito, al tutor si lo hay (PA §8, menor = tutor).
+   */
+  async function enviarEstado() {
+    const pendiente = vivas.find((c) => c.saldo > 0 && c.vencida) ?? vivas.find((c) => c.saldo > 0);
+    if (pendiente) {
+      setError("");
+      try {
+        const r = await apiAcademia.recordatorio(pendiente.id);
+        abrirWhatsapp(r.url);
+        setAviso("Mensaje armado: queda anotado el recordatorio.");
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "No se pudo armar el mensaje");
+      }
+      return;
+    }
     const destino = a!.menor && tutor ? tutor : null;
     const telefono = destino?.telefono ?? a!.telefono;
     const nombre = (destino?.nombre ?? a!.nombres).split(" ")[0];
@@ -109,12 +126,16 @@ export default function FichaAlumno() {
   }
 
   const accionesFicha: AccionMenu[] = [
-    {
-      clave: "estado",
-      etiqueta: `Enviar estado de cuenta${a.menor && tutor ? " al tutor" : ""}`,
-      onClick: enviarEstado,
-    },
-    { clave: "kardex", etiqueta: "Imprimir kárdex · próximamente", onClick: () => {}, deshabilitada: true },
+    ...(sinMontos
+      ? []
+      : [
+          {
+            clave: "estado",
+            etiqueta: saldo > 0 ? `Enviar QR por WhatsApp${a.menor && tutor ? " al tutor" : ""}` : `Enviar estado de cuenta${a.menor && tutor ? " al tutor" : ""}`,
+            icono: "phone" as const,
+            onClick: () => void enviarEstado(),
+          },
+        ]),
     ...(inscribe
       ? [
           { clave: "editar", etiqueta: "Editar datos", onClick: () => setEditando(true), separar: true },
@@ -261,6 +282,16 @@ export default function FichaAlumno() {
             <p className="text-sm text-texto-3">No tiene inscripciones.</p>
           )}
 
+          {a.fotos && (
+            <FotosAlumno
+              alumnoId={a.id}
+              fotos={a.fotos}
+              veImagenes={tienePermiso(usuario, "academia.fotos")}
+              reemplaza={inscribe}
+              onCambio={ficha.recargar}
+            />
+          )}
+
           <Historial alumno={a} />
         </div>
 
@@ -309,10 +340,19 @@ export default function FichaAlumno() {
               <p className="text-[12px] text-texto-4">Los recordatorios van al tutor.</p>
             )}
           </section>
-          <section aria-label="Asistencia y notas" className="space-y-1">
-            <h2 className="text-sm font-bold text-texto">Asistencia y notas</h2>
-            <p className="text-sm text-texto-3">Próximamente.</p>
-          </section>
+          {actual && (
+            <section aria-label="Asistencia y notas" className="space-y-1">
+              <h2 className="text-sm font-bold text-texto">Asistencia y notas</h2>
+              <p className="flex gap-3 text-sm">
+                <Link to={`/academia/grupos/${actual.grupo.id}/lista`} className="font-semibold text-primary-700 hover:underline">
+                  Asistencia del grupo
+                </Link>
+                <Link to={`/academia/grupos/${actual.grupo.id}/notas`} className="font-semibold text-primary-700 hover:underline">
+                  Notas
+                </Link>
+              </p>
+            </section>
+          )}
           {a.observaciones && (
             <section className="space-y-1">
               <h2 className="text-sm font-bold text-texto">Observaciones</h2>
