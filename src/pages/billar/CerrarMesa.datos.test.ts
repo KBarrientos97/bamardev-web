@@ -86,7 +86,7 @@ describe("el aviso de la pausa no promete de más", () => {
 
 describe("la cuenta que cambió mientras se cobraba", () => {
   // Pool, 47 min: Bs 15 sin adelantos, cobrados en efectivo.
-  const antes = { hasta: 0, total: 15, saldo: 15, pagado: 0, aFavor: 0, qr: 0, efectivo: 15 };
+  const antes = { hasta: 0, total: 15, saldo: 15, pagado: 0, aFavor: 0, qr: 0, qrConfirmado: true, efectivo: 15 };
   const ahora = (total: number, pagado = 0) => ({ total, saldo: Math.max(0, total - pagado), pagado });
 
   it("con el mismo total y lo mismo pagado no avisa nada", () => {
@@ -136,24 +136,37 @@ describe("la cuenta que cambió mientras se cobraba", () => {
     const porQr = { ...antes, qr: 15, efectivo: 0 };
     expect(avisoCuentaRecalculada(porQr, ahora(10), "vieja")).toEqual({
       texto:
-        "Pasaron 5 minutos y la cuenta se recalculó a la hora de ahora: ahora el saldo es Bs 10,00 (era Bs 15,00). Si ya te pagaron Bs 15,00 por QR, eso cubre el saldo y sobran Bs 5,00: al aceptar queda todo por QR, y los Bs 5,00 se los devuelve el encargado.",
+        "Pasaron 5 minutos y la cuenta se recalculó a la hora de ahora: ahora el saldo es Bs 10,00 (era Bs 15,00). Si ya te pagaron Bs 15,00 por QR, eso cubre el saldo: al aceptar queda todo por QR, y los Bs 5,00 que sobran se los devuelve el encargado.",
       sugerido: { metodo: "QR" },
     });
   });
 
-  it("en el mixto dice qué hacer con el efectivo que ya dio", () => {
+  it("con el QR sin confirmar no decide por el cajero: ofrece «Ya pagó el QR» y «Todavía no pagó»", () => {
+    // Revisión del 18-oct: dejaba Mixto con Bs 5 en efectivo escritos aunque
+    // el cliente todavía no hubiera pagado el QR: en el arqueo faltaban Bs 5.
+    const sinConfirmar = { ...antes, qr: 15, qrConfirmado: false, efectivo: 0 };
+    expect(avisoCuentaRecalculada(sinConfirmar, ahora(20), "vieja")).toEqual({
+      texto:
+        "Pasaron 5 minutos y la cuenta se recalculó a la hora de ahora: ahora el saldo es Bs 20,00 (era Bs 15,00). Si ya te pagaron Bs 15,00 por QR, tocá «Ya pagó el QR»: queda en Mixto, con Bs 15,00 por QR y Bs 5,00 en efectivo. Si todavía no pagó, tocá «Todavía no pagó».",
+      sugerido: { metodo: "Mixto", efectivo: 5 },
+      qrSinConfirmar: true,
+    });
+  });
+
+  it("en el mixto dice qué hacer con el efectivo, si de verdad lo dio", () => {
     // Revisión del 18-oct: Bs 5 en efectivo + Bs 10 por QR. Con la cuenta en
-    // baja, el efectivo del cliente no se registraba ni se mandaba a devolver.
+    // baja, el efectivo del cliente no se registraba ni se mandaba a devolver;
+    // y escrito no prueba que se recibió: va en condicional.
     const mixto = { ...antes, qr: 10, efectivo: 5 };
     expect(avisoCuentaRecalculada(mixto, ahora(20), "vieja")?.texto).toMatch(
-      /con Bs 10,00 por QR y Bs 10,00 en efectivo\. De efectivo ya te dio Bs 5,00: pedile Bs 5,00 más\.$/,
+      /con Bs 10,00 por QR y Bs 10,00 en efectivo\. Si ya te dio Bs 5,00 en efectivo, pedile Bs 5,00 más\.$/,
     );
     expect(avisoCuentaRecalculada(mixto, ahora(14), "vieja")?.texto).toMatch(
-      /con Bs 10,00 por QR y Bs 4,00 en efectivo\. De efectivo ya te dio Bs 5,00: devolvele Bs 1,00\.$/,
+      /con Bs 10,00 por QR y Bs 4,00 en efectivo\. Si ya te dio Bs 5,00 en efectivo, devolvele Bs 1,00\.$/,
     );
     expect(avisoCuentaRecalculada(mixto, ahora(10), "vieja")).toEqual({
       texto:
-        "Pasaron 5 minutos y la cuenta se recalculó a la hora de ahora: ahora el saldo es Bs 10,00 (era Bs 15,00). Si ya te pagaron Bs 10,00 por QR, eso cubre el saldo: al aceptar queda todo por QR. De efectivo ya te dio Bs 5,00: devolvele Bs 5,00.",
+        "Pasaron 5 minutos y la cuenta se recalculó a la hora de ahora: ahora el saldo es Bs 10,00 (era Bs 15,00). Si ya te pagaron Bs 10,00 por QR, eso cubre el saldo: al aceptar queda todo por QR. Si ya te dio Bs 5,00 en efectivo, devolvele Bs 5,00.",
       sugerido: { metodo: "QR" },
     });
   });
@@ -164,6 +177,14 @@ describe("la cuenta que cambió mientras se cobraba", () => {
     const conAdelanto = { ...antes, total: 25, saldo: 5, pagado: 20, efectivo: 5 };
     expect(avisoCuentaRecalculada(conAdelanto, ahora(16, 20), "vieja")?.texto).toMatch(
       /ahora el saldo es Bs 0,00 \(era Bs 5,00\)\. Ya no queda saldo: si ya te dio Bs 5,00 en efectivo, devolvéselos y además Bs 4,00\.$/,
+    );
+  });
+
+  it("después de un corte, no se le cobra al cliente que ya se fue el tiempo sin conexión", () => {
+    // Revisión del 18-oct: el reintento llegó pasados los 5 minutos, el
+    // servidor ya no aceptó la cuenta y subió; el cliente ya se había ido.
+    expect(avisoCuentaRecalculada(antes, ahora(20), "trasCorte")?.texto).toBe(
+      "El cobro no había entrado y, mientras no hubo conexión, la cuenta se recalculó a la hora de ahora: ahora el saldo es Bs 20,00 (era Bs 15,00). Si ya diste el vuelto, en «Recibido» escribí Bs 15,00 (lo que te quedó): el cambio o lo que falta sale solo. Si el cliente ya se fue con lo que pagó, no le cobres el tiempo del corte: que el encargado corra el inicio con «Corregir inicio» hasta que la cuenta vuelva a Bs 15,00.",
     );
   });
 
@@ -181,7 +202,7 @@ describe("la cuenta que cambió mientras se cobraba", () => {
 });
 
 describe("lo que hay que devolver, con su medio", () => {
-  const pagado = { hasta: 0, total: 15, saldo: 0, pagado: 30, aFavor: 15, qr: 0, efectivo: 0 };
+  const pagado = { hasta: 0, total: 15, saldo: 0, pagado: 30, aFavor: 15, qr: 0, qrConfirmado: true, efectivo: 0 };
 
   it("lo de más de un adelanto por QR se devuelve por QR, no del cajón", () => {
     // Revisión del 18-oct: el aviso decía sólo el monto y el cajero lo sacaba

@@ -35,6 +35,8 @@ const caso = vi.hoisted(() => ({
   pausadaHace: null as number | null,
   /** Cuándo se reanudó (ms), o null. */
   reanudadaEn: null as number | null,
+  /** La mesa sin cuenta abierta. */
+  libre: false,
   cerrar: (_cuerpo: Record<string, unknown>, _vez: number): unknown => {
     throw new Error("sin caso");
   },
@@ -77,6 +79,7 @@ const T0 = Date.UTC(2026, 9, 19, 2, 0);
 const MIN = 60_000;
 
 function mesaApi() {
+  if (caso.libre) return { id: 50, numero: 5, tipo: "pool", estado: "libre", libreDesde: T0 - 60 * MIN };
   const pausa = caso.pausadaHace === null ? null : T0 - caso.pausadaHace * MIN;
   return {
     id: 50,
@@ -169,6 +172,7 @@ beforeEach(() => {
   caso.sesionId = 77;
   caso.pausadaHace = null;
   caso.reanudadaEn = null;
+  caso.libre = false;
   caso.cerrar = viejaYDespuesCobra;
   cobros.length = 0;
   vi.spyOn(Date, "now").mockImplementation(() => reloj.ahora);
@@ -394,7 +398,7 @@ describe("Cerrar mesa con la cuenta vieja", () => {
     await tocar(screen.getByRole("button", { name: /Confirmar pago recibido/ }), 0);
     await tocar(screen.getByRole("button", { name: /Cobrar Bs.15,00/ }));
     expect(screen.getByText(/Pasaron 5 minutos/)).toHaveTextContent(
-      /Si ya te pagaron Bs.15,00 por QR, eso cubre el saldo y sobran Bs.5,00: al aceptar queda todo por QR/,
+      /Si ya te pagaron Bs.15,00 por QR, eso cubre el saldo: al aceptar queda todo por QR, y los Bs.5,00 que sobran se los devuelve el encargado\./,
     );
     await tocar(screen.getByRole("button", { name: /Usar la cuenta nueva · Bs.10,00/ }), 0);
     expect(screen.getByRole("radio", { name: /QR/ })).toHaveAttribute("aria-checked", "true");
@@ -405,10 +409,10 @@ describe("Cerrar mesa con la cuenta vieja", () => {
   });
 
   it("un error que no es de la mesa queda a la vista aunque haya un aviso", async () => {
-    // Revisión del 18-oct: "Sin conexión" quedaba tapado por el aviso de otro
-    // equipo, y puede querer decir que el cobro entró.
+    // Revisión del 18-oct: quedaba tapado por el aviso de otro equipo, y
+    // "Usar la cuenta nueva" lo borraba.
     caso.cerrar = () => {
-      throw new ApiError("Sin conexión con el servidor.", 0);
+      throw new ApiError("La caja se cerró: abrí una caja nueva para cobrar.", 400, { codigo: "CAJA_CERRADA" });
     };
     await montar();
     fireEvent.change(screen.getByLabelText("Recibido"), { target: { value: "20" } });
@@ -418,9 +422,36 @@ describe("Cerrar mesa con la cuenta vieja", () => {
       await recargar(true);
     });
     expect(screen.getByText(/La cuenta cambió mientras cobrabas \(otro equipo/)).toBeInTheDocument();
-    expect(screen.getByText(/Sin conexión con el servidor\./)).toBeInTheDocument();
+    expect(screen.getByText(/La caja se cerró/)).toBeInTheDocument();
     await tocar(screen.getByRole("button", { name: /Usar la cuenta nueva · Bs.25,00/ }), 0);
-    expect(screen.getByText(/Sin conexión con el servidor\./)).toBeInTheDocument();
+    expect(screen.getByText(/La caja se cerró/)).toBeInTheDocument();
+  });
+
+  it("si la cuenta cambia después de un cobro sin respuesta, ese cobro no entró y la pantalla vuelve a cuidarse", async () => {
+    // Revisión del 18-oct: seguía el rojo "pudo haber entrado, no le pidas
+    // ni le devuelvas nada" junto al aviso que decía lo contrario, y la
+    // cuenta ya no se recalculaba sola. Con la mesa cobrada, nadie le podría
+    // haber cargado nada.
+    caso.cerrar = (_cuerpo, vez) => {
+      if (vez === 1) throw new ApiError("No se pudo conectar con el servidor.", 0);
+      return ventaHecha();
+    };
+    await montar();
+    fireEvent.change(screen.getByLabelText("Recibido"), { target: { value: "20" } });
+    await tocar(screen.getByRole("button", { name: /Cobrar Bs.15,00/ }));
+    expect(screen.getByText(/El cobro pudo haber entrado/)).toBeInTheDocument();
+    caso.consumoExtra = true;
+    await act(async () => {
+      await recargar(true);
+    });
+    expect(screen.queryByText(/El cobro pudo haber entrado/)).not.toBeInTheDocument();
+    await tocar(screen.getByRole("button", { name: /Usar la cuenta nueva · Bs.25,00/ }), 0);
+    // Y a los 4:46 se recalcula sola otra vez: 51:46 + la Paceña, Bs 30.
+    reloj.ahora = T0 + 4 * MIN + 46_000;
+    await act(async () => {
+      await esperar(1_200);
+    });
+    expect(screen.getByText(/Pasaron 5 minutos/)).toHaveTextContent(/ahora el saldo es Bs.30,00 \(era Bs.25,00\)/);
   });
 
   it("un QR a la vista sin confirmar también cuenta: el aviso lo nombra y la cuenta nueva queda en Mixto", async () => {
@@ -433,12 +464,29 @@ describe("Cerrar mesa con la cuenta vieja", () => {
     await act(async () => {
       await esperar(1_200);
     });
+    // Sin confirmar no se sabe si pagó: no decide por el cajero (revisión del
+    // 18-oct, cuarta ronda).
     expect(screen.getByText(/Pasaron 5 minutos/)).toHaveTextContent(
-      /Si ya te pagaron Bs.15,00 por QR, no lo cobres otra vez: al aceptar queda en Mixto, con Bs.15,00 por QR y Bs.5,00 en efectivo\./,
+      /Si ya te pagaron Bs.15,00 por QR, tocá «Ya pagó el QR»: queda en Mixto, con Bs.15,00 por QR y Bs.5,00 en efectivo\. Si todavía no pagó, tocá «Todavía no pagó»\./,
     );
-    await tocar(screen.getByRole("button", { name: /Usar la cuenta nueva · Bs.20,00/ }), 0);
+    await tocar(screen.getByRole("button", { name: "Ya pagó el QR" }), 0);
     expect(screen.getByRole("radio", { name: /Mixto/ })).toHaveAttribute("aria-checked", "true");
     expect((screen.getByLabelText("En efectivo") as HTMLInputElement).value).toBe("5");
+  });
+
+  it("si todavía no pagó el QR, la cuenta nueva queda para cobrar de cero", async () => {
+    // Revisión del 18-oct: dejaba Mixto con Bs 5 en efectivo escritos y, si
+    // el cliente pagaba Bs 20 por QR, en el arqueo faltaban Bs 5 de efectivo.
+    await montar();
+    fireEvent.click(screen.getByRole("radio", { name: /QR/ }));
+    reloj.ahora = T0 + 4 * MIN + 46_000;
+    await act(async () => {
+      await esperar(1_200);
+    });
+    await tocar(screen.getByRole("button", { name: "Todavía no pagó" }), 0);
+    expect(screen.getByRole("radio", { name: /Efectivo/ })).toHaveAttribute("aria-checked", "true");
+    expect(screen.queryByText(/Pasaron 5 minutos/)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Cobrar Bs.20,00/ })).toBeInTheDocument();
   });
 
   it("reanudar desde el cierre pasa la cuenta a la hora de ahora y no la baja", async () => {
@@ -490,5 +538,40 @@ describe("Cerrar mesa con la cuenta vieja", () => {
     });
     expect(screen.getByText("La Mesa 5 no está abierta")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Cobrar/ })).not.toBeInTheDocument();
+  });
+
+  it("si al tocar Cobrar la cuenta da lo mismo, se manda con la hora de ahora", async () => {
+    // Revisión del 18-oct: el servidor cobra hasta 5 min después de la hora de
+    // la cuenta, y contaba desde que se abrió el cierre: con 3 min contando el
+    // vuelto, alcanzaban 2 sin conexión para perder el reintento.
+    caso.jugadosMin = 34;
+    caso.cerrar = () => ventaHecha();
+    await montar();
+    fireEvent.change(screen.getByLabelText("Recibido"), { target: { value: "20" } });
+    reloj.ahora = T0 + 3 * MIN;
+    await tocar(screen.getByRole("button", { name: /Cobrar Bs.15,00/ }));
+    expect(cobros).toHaveLength(1);
+    expect(cobros[0].hasta).toBe(new Date(T0 + 3 * MIN).toISOString());
+  });
+
+  it("con la mesa libre al entrar, una cuenta que se abre después no se toma", async () => {
+    // Revisión del 18-oct: la adoptaba y la pantalla ofrecía cobrar una mesa
+    // recién abierta que nadie había venido a cerrar.
+    caso.libre = true;
+    render(
+      <MemoryRouter initialEntries={["/billar/cerrar/5"]}>
+        <Routes>
+          <Route path="/billar/*" element={<RutasBillar />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    await act(async () => {});
+    expect(await screen.findByText("La Mesa 5 no está abierta")).toBeInTheDocument();
+    caso.libre = false;
+    await act(async () => {
+      await recargar(true);
+    });
+    expect(screen.getByText("La Mesa 5 no está abierta")).toBeInTheDocument();
+    expect(screen.queryByText("Total a cobrar")).not.toBeInTheDocument();
   });
 });

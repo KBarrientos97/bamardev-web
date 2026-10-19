@@ -107,31 +107,43 @@ export interface CobroIntentado {
   pagado: number;
   /** Lo pagado de más que había que devolver. */
   aFavor: number;
-  /** Lo que ya entró por QR: el QR confirmado o la parte QR del mixto. */
+  /** Lo que pudo haber entrado por QR: el QR a la vista o la parte QR del mixto. */
   qr: number;
+  /** Si ese QR estaba confirmado: sin confirmar no se sabe si el cliente pagó. */
+  qrConfirmado: boolean;
   /** Lo que se cobraba en efectivo (el vuelto se dio sobre esto). */
   efectivo: number;
+  /** El reintento de un cobro que no tuvo respuesta (ver `MOTIVOS.trasCorte`). */
+  trasCorte?: boolean;
 }
+
+/** Hasta cuántos ms de vieja cobra el servidor una cuenta (`HASTA_MAX_ATRAS_MS` en billar.service.ts). */
+export const CUENTA_MAX_MS = 5 * 60_000;
 
 /**
  * Desde cuándo la cuenta es vieja: el servidor no cobra una de hace más de 5
- * minutos (`HASTA_MAX_ATRAS_MS` en billar.service.ts). Con 15 s de margen, la
- * pantalla la recalcula sola antes de que llegue el rechazo. Un rechazo que no
- * era por la hora y se toma por viejo pierde su mensaje esa vez; si sigue
- * pasando, el siguiente ya llega con la hora al día y queda a la vista.
+ * minutos. Con 15 s de margen, la pantalla la recalcula sola antes de que
+ * llegue el rechazo. Un rechazo que no era por la hora y se toma por viejo
+ * pierde su mensaje esa vez; si sigue pasando, el siguiente ya llega con la
+ * hora al día y queda a la vista.
  */
-export const CUENTA_VIEJA_MS = 5 * 60_000 - 15_000;
+export const CUENTA_VIEJA_MS = CUENTA_MAX_MS - 15_000;
 
 /** Cómo dejar el cobro al aceptar la cuenta nueva cuando ya entró un QR. */
 export type CobroSugerido = { metodo: "Mixto"; efectivo: number } | { metodo: "QR" } | null;
 
-/** Por qué cambió la cuenta: pasaron 5 minutos, otro rechazo que cruzó un tramo, u otro equipo. */
-export type MotivoRecalculo = "vieja" | "hora" | "otroEquipo";
+/**
+ * Por qué cambió la cuenta: pasaron 5 minutos, otro rechazo que cruzó un
+ * tramo, otro equipo, o el reintento de un cobro sin respuesta que el servidor
+ * ya no aceptó por la hora.
+ */
+export type MotivoRecalculo = "vieja" | "hora" | "otroEquipo" | "trasCorte";
 
 const MOTIVOS: Record<MotivoRecalculo, string> = {
   vieja: "Pasaron 5 minutos y la cuenta se recalculó a la hora de ahora",
   hora: "La cuenta se recalculó a la hora de ahora",
   otroEquipo: "La cuenta cambió mientras cobrabas (otro equipo cargó o cobró algo)",
+  trasCorte: "El cobro no había entrado y, mientras no hubo conexión, la cuenta se recalculó a la hora de ahora",
 };
 
 /**
@@ -149,6 +161,11 @@ const MOTIVOS: Record<MotivoRecalculo, string> = {
  * (se registraban Bs 5 que no llegaron). `sugerido` deja el cobro en Mixto con
  * lo que ya entró por QR, o todo por QR si eso ya lo cubre: con la cuenta
  * nueva en Efectivo, «Justo» registraba efectivo que nunca entró.
+ *
+ * Con el QR sin confirmar no se sabe si el cliente pagó: `qrSinConfirmar` pide
+ * dos botones, "ya pagó" (el sugerido) y "todavía no pagó" (el cobro de
+ * cero). Decidirlo por el cajero dejaba Mixto con efectivo que no entró
+ * cuando el cliente todavía no había pagado (revisión del 18-oct).
  */
 export function avisoCuentaRecalculada(
   antes: CobroIntentado,
@@ -160,7 +177,7 @@ export function avisoCuentaRecalculada(
     devolver?: string;
   },
   motivo: MotivoRecalculo,
-): { texto: string; sugerido: CobroSugerido } | null {
+): { texto: string; sugerido: CobroSugerido; qrSinConfirmar?: boolean } | null {
   if (aCentavos(antes.total) === aCentavos(ahora.total) && aCentavos(antes.pagado) === aCentavos(ahora.pagado)) {
     return null;
   }
@@ -196,65 +213,79 @@ export function avisoCuentaRecalculada(
     };
   }
   const texto = `${base}: ahora el saldo es ${fmtMoney(ahora.saldo)} (era ${fmtMoney(antes.saldo)}).`;
+  // El reintento de un cobro sin respuesta que el servidor ya no aceptó: el
+  // cliente pudo haberse ido con lo que pagó, y lo que subió es el tiempo del
+  // corte (revisión del 18-oct).
+  const delCorte =
+    motivo === "trasCorte" && ahora.saldo > antes.saldo + 0.005
+      ? ` Si el cliente ya se fue con lo que pagó, no le cobres el tiempo del corte: que el encargado corra el inicio con «Corregir inicio» hasta que la cuenta vuelva a ${fmtMoney(antes.total)}.`
+      : "";
+  const conCorte = (r: { texto: string; sugerido: CobroSugerido; qrSinConfirmar?: boolean }) => ({
+    ...r,
+    texto: r.texto + delCorte,
+  });
   if (hay(antes.qr)) {
     // Lo que falta aparte de lo que ya entró por QR (negativo: el QR ya pasa
     // el saldo).
     const resto = round2(ahora.saldo - antes.qr);
-    // En el mixto ya hay efectivo en la mano: cuánto más pedirle o devolverle.
-    // Sin esto, con la cuenta en baja el efectivo del cliente no se registraba
-    // ni se mandaba a devolver (revisión del 18-oct).
+    // En el mixto ya hay efectivo escrito: cuánto más pedirle o devolverle si
+    // de verdad lo dio. Sin esto, con la cuenta en baja el efectivo del
+    // cliente no se registraba ni se mandaba a devolver (revisión del 18-oct).
     const difEfectivo = round2(Math.max(0, resto) - antes.efectivo);
     const delEfectivo = !hay(antes.efectivo)
       ? ""
       : hay(difEfectivo)
-        ? ` De efectivo ya te dio ${fmtMoney(antes.efectivo)}: pedile ${fmtMoney(difEfectivo)} más.`
+        ? ` Si ya te dio ${fmtMoney(antes.efectivo)} en efectivo, pedile ${fmtMoney(difEfectivo)} más.`
         : hay(-difEfectivo)
-          ? ` De efectivo ya te dio ${fmtMoney(antes.efectivo)}: devolvele ${fmtMoney(-difEfectivo)}.`
+          ? ` Si ya te dio ${fmtMoney(antes.efectivo)} en efectivo, devolvele ${fmtMoney(-difEfectivo)}.`
           : "";
     const yaPagaron = `Si ya te pagaron ${fmtMoney(antes.qr)} por QR`;
-    if (hay(resto)) {
-      return {
-        texto: `${texto} ${yaPagaron}, no lo cobres otra vez: al aceptar queda en Mixto, con ${fmtMoney(antes.qr)} por QR y ${fmtMoney(resto)} en efectivo.${delEfectivo}`,
-        sugerido: { metodo: "Mixto", efectivo: resto },
-      };
-    }
     if (!hay(ahora.saldo)) {
       // Lo que ya estaba pagado cubre la cuenta: este QR sobra entero.
-      return {
+      return conCorte({
         texto: `${texto} ${yaPagaron}, ya no queda nada que cobrar: esos ${fmtMoney(antes.qr)} se los devuelve el encargado.${delEfectivo}`,
         sugerido: null,
-      };
+      });
     }
-    if (!hay(-resto)) {
-      return {
-        texto: `${texto} ${yaPagaron}, eso cubre el saldo: al aceptar queda todo por QR.${delEfectivo}`,
-        sugerido: { metodo: "QR" },
-      };
+    const sugerido: CobroSugerido = hay(resto) ? { metodo: "Mixto", efectivo: resto } : { metodo: "QR" };
+    const queda = hay(resto)
+      ? `queda en Mixto, con ${fmtMoney(antes.qr)} por QR y ${fmtMoney(resto)} en efectivo`
+      : hay(-resto)
+        ? `queda todo por QR, y los ${fmtMoney(-resto)} que sobran se los devuelve el encargado`
+        : "queda todo por QR";
+    if (!antes.qrConfirmado) {
+      return conCorte({
+        texto: `${texto} ${yaPagaron}, tocá «Ya pagó el QR»: ${queda}. Si todavía no pagó, tocá «Todavía no pagó».${delEfectivo}`,
+        sugerido,
+        qrSinConfirmar: true,
+      });
     }
-    return {
-      texto: `${texto} ${yaPagaron}, eso cubre el saldo y sobran ${fmtMoney(-resto)}: al aceptar queda todo por QR, y los ${fmtMoney(-resto)} se los devuelve el encargado.${delEfectivo}`,
-      sugerido: { metodo: "QR" },
-    };
+    return conCorte({
+      texto: hay(resto)
+        ? `${texto} ${yaPagaron}, no lo cobres otra vez: al aceptar ${queda}.${delEfectivo}`
+        : `${texto} ${yaPagaron}, eso cubre el saldo: al aceptar ${queda}.${delEfectivo}`,
+      sugerido,
+    });
   }
   if (hay(antes.efectivo)) {
     if (!hay(ahora.saldo)) {
-      return {
+      return conCorte({
         texto: `${texto} Ya no queda saldo: si ya te dio ${fmtMoney(antes.efectivo)} en efectivo, devolvéselos${hay(aFavor) ? ` y además ${aDevolver}` : ""}.`,
         sugerido: null,
-      };
+      });
     }
     // Con el vuelto ya dado, en la mano quedó justo lo que se cobraba: escrito
     // en "Recibido", el formulario dice el cambio o lo que falta.
-    return {
+    return conCorte({
       texto: `${texto} Si ya diste el vuelto, en «Recibido» escribí ${fmtMoney(antes.efectivo)} (lo que te quedó): el cambio o lo que falta sale solo.`,
       sugerido: null,
-    };
+    });
   }
   if (hay(antes.aFavor)) {
-    return {
+    return conCorte({
       texto: `${texto} Si ya le devolviste ${fmtMoney(antes.aFavor)}, cobrá el saldo y pedile aparte los ${fmtMoney(antes.aFavor)} que le devolviste.`,
       sugerido: null,
-    };
+    });
   }
-  return { texto, sugerido: null };
+  return conCorte({ texto, sugerido: null });
 }
