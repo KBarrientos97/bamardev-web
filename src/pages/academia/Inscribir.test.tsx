@@ -108,6 +108,11 @@ describe("E5 · inscribir", () => {
       planPagoId: 2,
     }, {});
     expect(onInscrito).toHaveBeenCalledWith({ inscripcion: { id: 555 }, cobrar: false });
+    // La bienvenida va al tutor y le habla del estudiante (QA ronda 2, B-19).
+    const url = vi.mocked(window.open).mock.calls[0][0] as string;
+    const texto = decodeURIComponent(url.split("text=")[1]);
+    expect(texto).toMatch(/^Hola Rosa Molina, Joaquín ya está inscrito\/a en .+\. Empieza el /);
+    expect(texto).not.toContain("Empezás");
   });
 
   it("una beca sobre el tope pide el PIN de quien autoriza y viaja con él", async () => {

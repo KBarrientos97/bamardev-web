@@ -362,8 +362,13 @@ export default function Inscribir({
   function mandarBienvenida() {
     const telefono = esMenor ? tutor.telefono : preinscripcion?.alumno.telefono ?? elegido?.telefono ?? nuevo.telefono;
     if (!telefono || !grupo) return;
-    const nombre = esMenor ? tutor.nombre.split(" ")[0] : nombreFinal.split(",").pop()?.trim().split(" ")[0] ?? "";
-    const texto = `Hola ${nombre}, ¡bienvenido/a a ${nombreDe(grupo.carrera)}! Empezás el ${fechaCorta(grupo.fechaInicio)}, ${horarioGrupo(grupo)}, en ${nombreDe(grupo.sede)}.`;
+    const delAlumno = nombreFinal.split(",").pop()?.trim().split(" ")[0] ?? "";
+    const cuando = `el ${fechaCorta(grupo.fechaInicio)}, ${horarioGrupo(grupo)}, en ${nombreDe(grupo.sede)}`;
+    // Al tutor se le habla del estudiante, no como si fuera él quien empieza
+    // ("Hola Madre, ¡bienvenido/a…! Empezás…", QA ronda 2, B-19).
+    const texto = esMenor
+      ? `Hola ${tutor.nombre.trim()}, ${delAlumno} ya está inscrito/a en ${nombreDe(grupo.carrera)}. Empieza ${cuando}.`
+      : `Hola ${delAlumno}, ¡bienvenido/a a ${nombreDe(grupo.carrera)}! Empezás ${cuando}.`;
     const url = enlaceWhatsApp(telefono, texto);
     if (url) abrirWhatsapp(url);
   }
