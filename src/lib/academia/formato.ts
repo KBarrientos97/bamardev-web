@@ -181,3 +181,15 @@ export function calendarioConDescuento(
   if (cuotas.length) cuotas[cuotas.length - 1].monto = Math.round((cuotas[cuotas.length - 1].monto + neto - suma) * 100) / 100;
   return { cuotas, total: neto, descuento: Math.round(descuento * 100) / 100, pct: bruto > 0 ? (descuento / bruto) * 100 : 0 };
 }
+
+/**
+ * Lo que cuesta un curso de las dos formas del modo simple (D4), con la misma
+ * cuenta que el servidor: el pago completo es `round(n × precio × (1 − desc))`.
+ * `porModuloCompleto` es lo que vale cada módulo pagado así (1.350 ÷ 3 = 450),
+ * la base del % del docente (D2).
+ */
+export function precioCurso(precioModulo: number, modulos: number, descuentoPct: number) {
+  const lista = precioModulo * modulos;
+  const completo = Math.round(lista * (1 - descuentoPct / 100));
+  return { lista, completo, ahorro: lista - completo, porModuloCompleto: modulos ? completo / modulos : 0 };
+}

@@ -1,39 +1,67 @@
 import { useEffect, useState } from "react";
 import { EncabezadoPagina } from "../../../components/filtros";
 import { Icon } from "../../../components/Icon";
+import PanelLateral from "../../../components/PanelLateral";
 import { AvisoOk, Boton, Campo, Cargando, ErrorMsg, Input, Modal, Select, Vacio, useAviso } from "../../../components/ui";
 import { apiAcademia, CODIGOS_ACADEMIA } from "../../../lib/academia/apiAcademia";
-import { problemasDelPlan, textoCubre, totalCalendario } from "../../../lib/academia/formato";
-import type { Carrera, CategoriaCctp, CuotaPlan, Materia, PlanPago, TipoVence } from "../../../lib/academia/tipos";
+import { precioCurso, problemasDelPlan, textoCubre, totalCalendario } from "../../../lib/academia/formato";
+import type { Carrera, CarreraSimpleInput, CategoriaCctp, CuotaPlan, Materia, PlanPago, TipoVence } from "../../../lib/academia/tipos";
 import { usePalabras } from "../../../lib/academia/usePalabras";
 import { ApiError } from "../../../lib/api";
 import { fmtMoney } from "../../../lib/format";
+import { conMayuscula } from "../../../lib/rubro";
 import { useApi } from "../../../lib/useApi";
+import { FiltrosConteo, Interruptor } from "../piezas";
 
 /**
- * E17 · Carreras y planes (PLAN-ACADEMIAS §5): la carrera (nombre, horas,
- * categoría y si sale en la página), sus materias en orden y sus planes de
- * pago, cada uno con su calendario de cuotas y la base del docente por
- * materia. El backend valida el plan (400 PLAN_INVALIDO); acá se avisa antes
- * de guardar con las mismas reglas.
+ * N2 · Cursos (ronda 2, modo simple D4): la lista de lo que ofrece el
+ * instituto y, al tocar uno, el panel con lo único que hace falta para
+ * ofrecerlo —nombre, módulos en orden, precio por módulo, descuento por pago
+ * completo, cupo y % del docente—. Con eso el servidor arma solo los dos
+ * planes ("Mes a mes" y "Pago completo"); el panel muestra cómo queda antes de
+ * guardar.
+ *
+ * Lo de antes (horas, categoría CCTP, planes a medida con cuotas que cubren
+ * varios módulos) sigue entero en "Opciones avanzadas": se usa poco y se
+ * aparta (requerimiento 7), no se borra.
  *
  * No se ofrece un cargo de "matrícula": el reglamento de CCTP lo prohíbe en
  * el contrato (art. 39.II), así que el calendario sólo tiene cuotas que
  * cubren materias.
  */
+
+type FiltroCursos = "todos" | "pagina" | "sinPublicar" | "retirados";
+
 export default function Carreras() {
   const p = usePalabras();
-  const [verInactivas, setVerInactivas] = useState(false);
-  const lista = useApi(() => apiAcademia.carreras(verInactivas), [verInactivas]);
-  const [elegidaId, setElegidaId] = useState<number | null>(null);
-  const [creando, setCreando] = useState(false);
+  const lista = useApi(() => apiAcademia.carreras(true), []);
+  const ajustes = useApi(() => apiAcademia.ajustes(), []);
+  const [filtro, setFiltro] = useState<FiltroCursos>("todos");
+  const [elegida, setElegida] = useState<number | "nueva" | null>(null);
+  const [avanzadas, setAvanzadas] = useState<number | null>(null);
   const [aviso, setAviso] = useAviso(5000);
 
   const carreras = lista.datos ?? [];
-  const elegida = carreras.find((c) => c.id === elegidaId) ?? carreras[0] ?? null;
+  const pctInstituto = ajustes.datos?.pctDocenteDefecto ?? 20;
+  const activas = carreras.filter((c) => c.activa);
+  const conteo: Record<FiltroCursos, number> = {
+    todos: activas.length,
+    pagina: activas.filter((c) => c.publicarEnPagina).length,
+    sinPublicar: activas.filter((c) => !c.publicarEnPagina).length,
+    retirados: carreras.length - activas.length,
+  };
+  const visibles = carreras.filter((c) =>
+    filtro === "retirados"
+      ? !c.activa
+      : c.activa && (filtro === "todos" || (filtro === "pagina" ? c.publicarEnPagina : !c.publicarEnPagina)),
+  );
+  const actual = typeof elegida === "number" ? (carreras.find((c) => c.id === elegida) ?? null) : null;
+  const panelAbierto = elegida === "nueva" || actual !== null;
+  const enAvanzadas = avanzadas != null ? (carreras.find((c) => c.id === avanzadas) ?? null) : null;
 
-  /** Reemplaza una carrera en la lista con lo que devolvió el backend. */
-  const actualizar = (c: Carrera) => lista.setDatos(carreras.map((x) => (x.id === c.id ? c : x)));
+  /** Reemplaza (o suma) una carrera en la lista con lo que devolvió el backend. */
+  const actualizar = (c: Carrera) =>
+    lista.setDatos(carreras.some((x) => x.id === c.id) ? carreras.map((x) => (x.id === c.id ? c : x)) : [...carreras, c]);
   const recargarUna = async (id: number) => {
     try {
       actualizar(await apiAcademia.carrera(id));
@@ -43,89 +71,368 @@ export default function Carreras() {
   };
 
   return (
-    <div className="mx-auto max-w-6xl space-y-5 p-4 sm:p-6 lg:p-8">
+    <div className={`mx-auto max-w-6xl space-y-4 p-4 sm:p-6 lg:p-8 ${panelAbierto ? "md:pr-[404px]" : ""}`}>
       <EncabezadoPagina
-        titulo={`${p.Carreras} y planes`}
-        subtitulo="Configuración"
-        accion={
-          <Boton icono="plus" onClick={() => setCreando(true)}>
-            Nueva {p.carrera}
-          </Boton>
+        titulo={p.Carreras}
+        subtitulo={
+          ajustes.datos
+            ? `Lo que ofrece el instituto. Los ${p.materias} empiezan el ${ajustes.datos.diaInicioModulo} de cada mes.`
+            : "Lo que ofrece el instituto."
         }
+        volver={{ a: "/configuracion/academia", etiqueta: "Volver a Ajustes" }}
+        accion={<Boton onClick={() => setElegida("nueva")}>Nuevo {p.carrera}</Boton>}
       />
       <AvisoOk>{aviso}</AvisoOk>
+
+      <FiltrosConteo<FiltroCursos>
+        etiqueta={`Filtrar ${p.carreras}`}
+        valor={filtro}
+        onChange={setFiltro}
+        opciones={[
+          { clave: "todos", label: "Todos", n: conteo.todos },
+          { clave: "pagina", label: "En la página", n: conteo.pagina },
+          { clave: "sinPublicar", label: "Sin publicar", n: conteo.sinPublicar },
+          ...(conteo.retirados ? [{ clave: "retirados" as const, label: "Retirados", n: conteo.retirados }] : []),
+        ]}
+      />
 
       {lista.error && !lista.datos ? (
         <ErrorMsg onReintentar={lista.recargar}>{lista.error}</ErrorMsg>
       ) : lista.cargando && !lista.datos ? (
         <Cargando />
-      ) : carreras.length === 0 ? (
+      ) : visibles.length === 0 ? (
         <Vacio
           icono="birrete"
-          titulo={`Todavía no hay ${p.carreras}`}
-          texto={`Cargá la primera con sus ${p.materias} y sus planes de pago.`}
-          accion={
-            <Boton icono="plus" onClick={() => setCreando(true)}>
-              Nueva {p.carrera}
-            </Boton>
-          }
+          titulo={filtro === "todos" ? `Todavía no hay ${p.carreras}` : `Ningún ${p.carrera} acá`}
+          texto={filtro === "todos" ? `Cargá el primero con sus ${p.materias} y su precio.` : undefined}
+          accion={filtro === "todos" ? <Boton onClick={() => setElegida("nueva")}>Nuevo {p.carrera}</Boton> : undefined}
         />
       ) : (
-        <div className="grid gap-6 lg:grid-cols-[260px_minmax(0,1fr)]">
-          <aside className="space-y-2">
-            <ul className="space-y-1">
-              {carreras.map((c) => (
-                <li key={c.id}>
-                  <button
-                    type="button"
-                    aria-current={elegida?.id === c.id ? "true" : undefined}
-                    onClick={() => setElegidaId(c.id)}
-                    className={`w-full rounded-xl border-l-4 px-3 py-2.5 text-left transition-colors ${
-                      elegida?.id === c.id
-                        ? "border-primary bg-primary-50"
-                        : "border-transparent hover:bg-muted"
-                    } ${c.activa ? "" : "opacity-60"}`}
-                  >
-                    <span className={`block text-sm font-semibold ${elegida?.id === c.id ? "text-primary-700" : "text-texto"}`}>
-                      {c.nombre}
-                    </span>
-                    <span className="block text-[12px] text-texto-3">
-                      {c.horasTotales} h · {c.materias.filter((m) => m.activa).length} {p.materias} · {c.planes.filter((x) => x.activo).length}{" "}
-                      planes · {c.gruposActivos} {c.gruposActivos === 1 ? "grupo" : "grupos"}
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-            <label className="flex items-center gap-2 px-3 text-[13px] text-texto-3">
-              <input type="checkbox" className="h-4 w-4 accent-[var(--color-primary-boton)]" checked={verInactivas} onChange={(e) => setVerInactivas(e.target.checked)} />
-              Ver las retiradas
-            </label>
-          </aside>
-          {elegida && (
-            <DetalleCarrera
-              key={elegida.id}
-              carrera={elegida}
-              onCambio={actualizar}
-              onRecargar={() => void recargarUna(elegida.id)}
-              onAviso={setAviso}
-            />
-          )}
+        <div>
+          <div className="hidden grid-cols-[minmax(0,2fr)_80px_110px_minmax(0,1fr)_minmax(0,1fr)_60px] gap-3 px-3 pb-2 text-xs text-texto-3 md:grid">
+            <span>{p.Carrera}</span>
+            <span>{p.Materias}</span>
+            <span>Por {p.materia}</span>
+            <span>Pago completo</span>
+            <span>{p.Docente}</span>
+            <span>Grupos</span>
+          </div>
+          <ul className="border-t border-borde-soft">
+            {visibles.map((c) => (
+              <FilaCurso key={c.id} curso={c} pctInstituto={pctInstituto} elegido={actual?.id === c.id} onAbrir={() => setElegida(c.id)} />
+            ))}
+          </ul>
+          <p className="px-3 pt-3 text-[13px] text-texto-3">
+            Cambiar un precio vale para las inscripciones nuevas; las ya hechas conservan el suyo.
+          </p>
         </div>
       )}
 
-      {creando && (
-        <NuevaCarrera
-          onCerrar={() => setCreando(false)}
-          onCreada={(c) => {
-            setCreando(false);
-            lista.setDatos([...carreras, c]);
-            setElegidaId(c.id);
-            setAviso(`${p.Carrera} creada. Ahora sus ${p.materias} y sus planes.`);
+      {panelAbierto && (
+        <PanelCurso
+          key={actual?.id ?? "nueva"}
+          curso={actual}
+          pctInstituto={pctInstituto}
+          onCerrar={() => setElegida(null)}
+          onGuardado={(c, nuevo) => {
+            actualizar(c);
+            setElegida(c.id);
+            setAviso(nuevo ? `${p.Carrera} creado.` : "Cambios guardados.");
           }}
+          onAvanzadas={actual ? () => setAvanzadas(actual.id) : undefined}
         />
       )}
+
+      {enAvanzadas && (
+        <Modal
+          abierto
+          titulo={`Opciones avanzadas · ${enAvanzadas.nombre}`}
+          subtitulo="Horas, categoría y planes a medida"
+          onClose={() => setAvanzadas(null)}
+          ancho="max-w-4xl"
+        >
+          <DetalleCarrera
+            carrera={enAvanzadas}
+            onCambio={actualizar}
+            onRecargar={() => void recargarUna(enAvanzadas.id)}
+            onAviso={setAviso}
+          />
+        </Modal>
+      )}
     </div>
+  );
+}
+
+function FilaCurso({
+  curso: c,
+  pctInstituto,
+  elegido,
+  onAbrir,
+}: {
+  curso: Carrera;
+  pctInstituto: number;
+  elegido: boolean;
+  onAbrir: () => void;
+}) {
+  const p = usePalabras();
+  const modulos = [...c.materias].filter((m) => m.activa).sort((a, b) => a.orden - b.orden);
+  const completo = c.planes.find((pl) => pl.activo && pl.generado === "COMPLETO")?.total ?? null;
+  const aMedida = c.planes.some((pl) => pl.activo && !pl.generado);
+  const pct = c.pctDocente ?? pctInstituto;
+  const sub = [modulos.map((m) => m.nombre).join(" · "), c.publicarEnPagina ? "" : "sin publicar", aMedida ? "con planes a medida" : ""]
+    .filter(Boolean)
+    .join(" · ");
+  return (
+    <li className="border-b border-borde-soft">
+      <button
+        type="button"
+        onClick={onAbrir}
+        aria-label={`Editar ${c.nombre}`}
+        aria-current={elegido ? "true" : undefined}
+        className={`grid w-full grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1 px-3 py-3 text-left transition-colors md:grid-cols-[minmax(0,2fr)_80px_110px_minmax(0,1fr)_minmax(0,1fr)_60px] md:items-center ${
+          elegido ? "bg-primary-50" : "hover:bg-muted"
+        }`}
+      >
+        <span className="min-w-0">
+          <span className="block truncate text-sm font-semibold text-texto">{c.nombre}</span>
+          <span className="block truncate text-[12px] text-texto-3">{sub || `Sin ${p.materias}`}</span>
+        </span>
+        <span className="text-right text-sm tabular-nums text-texto-2 md:text-left">
+          {modulos.length}
+          <span className="md:hidden"> {p.materias}</span>
+        </span>
+        <span className="text-sm tabular-nums text-texto-2">
+          {c.precioModulo != null ? fmtMoney(c.precioModulo) : "—"}
+          <span className="md:hidden"> por {p.materia}</span>
+        </span>
+        <span className="min-w-0 text-right md:text-left">
+          <span className="block text-sm tabular-nums text-texto-2">{completo != null ? fmtMoney(completo) : "—"}</span>
+          {c.descuentoCompletoPct != null && <span className="block text-[12px] text-texto-3">{c.descuentoCompletoPct} % menos</span>}
+        </span>
+        <span className="min-w-0">
+          <span className="block text-sm tabular-nums text-texto-2">{pct} %</span>
+          <span className="block text-[12px] text-texto-3">{c.pctDocente == null ? "del instituto" : `propio del ${p.carrera}`}</span>
+        </span>
+        <span className="text-right text-sm tabular-nums text-texto-2 md:text-left">
+          {c.gruposActivos}
+          <span className="md:hidden"> {c.gruposActivos === 1 ? "grupo" : "grupos"}</span>
+        </span>
+      </button>
+    </li>
+  );
+}
+
+/**
+ * El panel del curso en modo simple. Guarda todo junto (el PUT de modo
+ * simple): el servidor sincroniza los módulos (crea, renombra, reordena,
+ * desactiva) y los dos planes generados, sin tocar los planes a medida ni las
+ * inscripciones.
+ */
+function PanelCurso({
+  curso,
+  pctInstituto,
+  onCerrar,
+  onGuardado,
+  onAvanzadas,
+}: {
+  curso: Carrera | null;
+  pctInstituto: number;
+  onCerrar: () => void;
+  onGuardado: (c: Carrera, nuevo: boolean) => void;
+  onAvanzadas?: () => void;
+}) {
+  const p = usePalabras();
+  const nuevo = !curso;
+  const [nombre, setNombre] = useState(curso?.nombre ?? "");
+  const [modulos, setModulos] = useState<{ id?: number; nombre: string }[]>(() =>
+    curso
+      ? [...curso.materias].filter((m) => m.activa).sort((a, b) => a.orden - b.orden).map((m) => ({ id: m.id, nombre: m.nombre }))
+      : [{ nombre: `${conMayuscula(p.materia)} 1` }],
+  );
+  const [precio, setPrecio] = useState(curso?.precioModulo != null ? String(curso.precioModulo) : "");
+  const [desc, setDesc] = useState(curso?.descuentoCompletoPct != null ? String(curso.descuentoCompletoPct) : "10");
+  const [cupo, setCupo] = useState(curso?.cupoDefecto != null ? String(curso.cupoDefecto) : nuevo ? "20" : "");
+  const [pct, setPct] = useState(curso?.pctDocente != null ? String(curso.pctDocente) : "");
+  const [publicar, setPublicar] = useState(curso?.publicarEnPagina ?? false);
+  const [verAvanzadas, setVerAvanzadas] = useState(false);
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState("");
+
+  const n = modulos.length;
+  const nPrecio = Number(precio) || 0;
+  const nDesc = Number(desc) || 0;
+  const pctEf = pct.trim() === "" ? pctInstituto : Number(pct) || 0;
+  const cuenta = precioCurso(nPrecio, n, nDesc);
+
+  async function guardar() {
+    if (!nombre.trim()) return setError("Falta el nombre.");
+    if (!n || modulos.some((m) => !m.nombre.trim())) return setError(`Cada ${p.materia} necesita un nombre.`);
+    if (!(nPrecio > 0)) return setError(`Poné el precio por ${p.materia}.`);
+    if (nDesc < 0 || nDesc > 50) return setError("El descuento por pago completo va de 0 a 50 %.");
+    if (pct.trim() !== "" && (pctEf < 0 || pctEf > 100)) return setError(`El % del ${p.docente} va de 0 a 100.`);
+    setGuardando(true);
+    setError("");
+    const input: CarreraSimpleInput = {
+      nombre: nombre.trim(),
+      modulos: modulos.map((m) => (m.id ? { id: m.id, nombre: m.nombre.trim() } : { nombre: m.nombre.trim() })),
+      precioModulo: nPrecio,
+      descuentoCompletoPct: nDesc,
+      cupoDefecto: cupo.trim() === "" ? null : Number(cupo),
+      pctDocente: pct.trim() === "" ? null : pctEf,
+      publicarEnPagina: publicar,
+    };
+    try {
+      const c = curso ? await apiAcademia.editarCarreraSimple(curso.id, input) : await apiAcademia.crearCarreraSimple(input);
+      onGuardado(c, nuevo);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudo guardar");
+    } finally {
+      setGuardando(false);
+    }
+  }
+
+  return (
+    <PanelLateral
+      abierto
+      titulo={nuevo ? `Nuevo ${p.carrera}` : nombre || p.Carrera}
+      subtitulo={
+        curso
+          ? `${curso.gruposActivos} ${curso.gruposActivos === 1 ? "grupo activo" : "grupos activos"}`
+          : "Se configura una vez; los grupos se abren desde el calendario."
+      }
+      onClose={onCerrar}
+      acciones={
+        <>
+          <Boton onClick={() => void guardar()} disabled={guardando}>
+            {guardando ? "Guardando…" : nuevo ? `Crear ${p.carrera}` : "Guardar cambios"}
+          </Boton>
+          <Boton variante="ghost" onClick={onCerrar} disabled={guardando}>
+            Cancelar
+          </Boton>
+        </>
+      }
+    >
+      <div className="space-y-5">
+        <Campo label="Nombre">
+          <Input value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Ej.: Barbería" />
+        </Campo>
+
+        <fieldset>
+          <legend className="mb-1.5 text-[13px] font-semibold text-texto-2">{p.Materias}, en orden</legend>
+          <ol className="space-y-1.5">
+            {modulos.map((m, i) => (
+              <li key={m.id ?? `nuevo-${i}`} className="flex items-center gap-2">
+                <span aria-hidden="true" className="w-5 text-right text-sm tabular-nums text-texto-3">
+                  {i + 1}
+                </span>
+                <label className="min-w-0 flex-1">
+                  <span className="sr-only">
+                    Nombre del {p.materia} {i + 1}
+                  </span>
+                  <Input
+                    value={m.nombre}
+                    onChange={(e) => setModulos(modulos.map((x, j) => (j === i ? { ...x, nombre: e.target.value } : x)))}
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setModulos(modulos.filter((_, j) => j !== i))}
+                  disabled={modulos.length === 1}
+                  aria-label={`Quitar el ${p.materia} ${i + 1}`}
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-texto-3 hover:bg-muted disabled:opacity-30"
+                >
+                  <Icon name="trash" size={16} />
+                </button>
+              </li>
+            ))}
+          </ol>
+          <button
+            type="button"
+            onClick={() => setModulos([...modulos, { nombre: `${conMayuscula(p.materia)} ${modulos.length + 1}` }])}
+            className="mt-2 inline-flex items-center gap-1.5 text-sm font-semibold text-primary-700 hover:underline"
+          >
+            <Icon name="plus" size={15} /> Agregar {p.materia}
+          </button>
+        </fieldset>
+
+        <div className="grid grid-cols-2 gap-3">
+          <Campo label={`Precio por ${p.materia} (Bs)`}>
+            <Input type="number" value={precio} onChange={(e) => setPrecio(e.target.value)} placeholder="0" />
+          </Campo>
+          <Campo label="Descuento por pago completo (%)">
+            <Input type="number" value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="0" />
+          </Campo>
+          <Campo label="Cupo por grupo">
+            <Input type="number" inputMode="numeric" value={cupo} onChange={(e) => setCupo(e.target.value)} />
+          </Campo>
+          <Campo label={`% para el ${p.docente}`}>
+            <Input type="number" value={pct} onChange={(e) => setPct(e.target.value)} placeholder={String(pctInstituto)} />
+          </Campo>
+        </div>
+        <p className="-mt-3 text-xs text-texto-4">El instituto paga {pctInstituto} %; dejalo vacío para usar ese.</p>
+
+        <Interruptor
+          activo={publicar}
+          onCambiar={setPublicar}
+          etiqueta="Publicar en la página"
+          detalle={publicar ? "Se puede inscribir desde la página del instituto" : "Sólo se inscribe en el mostrador"}
+        />
+
+        <section aria-label="Así se ofrece" className="rounded-xl bg-muted p-4">
+          <p className="text-[11px] font-bold uppercase tracking-wider text-texto-3">Así se ofrece</p>
+          {nPrecio > 0 && n > 0 ? (
+            <>
+              <dl className="mt-2 space-y-1.5 text-sm">
+                <div className="flex justify-between gap-3">
+                  <dt className="text-texto-2">Mes a mes</dt>
+                  <dd className="text-right tabular-nums text-texto">
+                    {fmtMoney(nPrecio)} por {p.materia} ({n} {n === 1 ? "cuota" : "cuotas"})
+                  </dd>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <dt className="text-texto-2">Pago completo</dt>
+                  <dd className="text-right tabular-nums text-texto">
+                    {fmtMoney(cuenta.completo)} · {cuenta.ahorro > 0 ? `ahorra ${fmtMoney(cuenta.ahorro)}` : "sin descuento"}
+                  </dd>
+                </div>
+              </dl>
+              <p className="mt-3 border-t border-borde-soft pt-2 text-[13px] text-texto-3">
+                Al {p.docente}: {fmtMoney((nPrecio * pctEf) / 100)} por {p.alumno} y {p.materia} pagado ({pctEf} %); con pago
+                completo {fmtMoney((cuenta.porModuloCompleto * pctEf) / 100)} ({pctEf} % de {fmtMoney(cuenta.porModuloCompleto)})
+              </p>
+            </>
+          ) : (
+            <p className="mt-2 text-sm text-texto-3">Poné el precio por {p.materia} para ver cómo se ofrece.</p>
+          )}
+        </section>
+
+        {onAvanzadas && (
+          <div className="border-t border-borde-soft pt-3">
+            <button
+              type="button"
+              onClick={() => setVerAvanzadas((v) => !v)}
+              aria-expanded={verAvanzadas}
+              className="flex w-full items-center justify-between py-1 text-sm font-semibold text-texto-2"
+            >
+              Opciones avanzadas
+              <Icon name="chevronDown" size={16} className={verAvanzadas ? "rotate-180" : ""} />
+            </button>
+            {verAvanzadas && (
+              <div className="mt-2 space-y-2 text-[13px] text-texto-3">
+                <p>
+                  Para planes que no sean mes a mes ni pago completo: cuotas que cubren varios {p.materias}, vencimientos
+                  distintos o promociones. Los dos planes de arriba se arman solos con estos datos.
+                </p>
+                <button type="button" onClick={onAvanzadas} className="font-semibold text-primary-700 hover:underline">
+                  Editar planes a medida
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+        <ErrorMsg>{error}</ErrorMsg>
+      </div>
+    </PanelLateral>
   );
 }
 
@@ -679,30 +986,8 @@ function EditorPlan({
         </button>
       </div>
 
-      <div className="space-y-2">
-        <p className="text-[13px] font-semibold text-texto-2">Base del {p.docente} por {p.materia}</p>
-        <div className="flex flex-wrap gap-2">
-          {activas.map((m) => (
-            <label key={m.orden} className="flex items-center gap-1.5 text-sm text-texto-2">
-              M{m.orden}
-              <span className="w-24">
-                <Input
-                  aria-label={`Base del ${p.docente} en M${m.orden}`}
-                  type="number"
-                  value={base[String(m.orden)] != null ? String(base[String(m.orden)]) : ""}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    const copia = { ...base };
-                    if (v === "") delete copia[String(m.orden)];
-                    else copia[String(m.orden)] = Number(v) || 0;
-                    setBase(copia);
-                  }}
-                />
-              </span>
-            </label>
-          ))}
-        </div>
-      </div>
+      {/* La base fija del docente por materia ya no se carga (D2): lo que cobra
+          sale del % sobre lo pagado. Se manda la que el plan ya tenía. */}
 
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-borde-soft pt-3">
         <p className="text-sm text-texto-2">
@@ -751,69 +1036,3 @@ function EditorPlan({
   );
 }
 
-function NuevaCarrera({ onCerrar, onCreada }: { onCerrar: () => void; onCreada: (c: Carrera) => void }) {
-  const p = usePalabras();
-  const [nombre, setNombre] = useState("");
-  const [horas, setHoras] = useState("");
-  const [categoria, setCategoria] = useState<"" | CategoriaCctp>("");
-  const [guardando, setGuardando] = useState(false);
-  const [error, setError] = useState("");
-
-  async function crear() {
-    if (!nombre.trim()) return setError("Falta el nombre.");
-    if (!(Number(horas) > 0)) return setError("Las horas totales tienen que ser más que cero.");
-    setGuardando(true);
-    setError("");
-    try {
-      onCreada(
-        await apiAcademia.crearCarrera({
-          nombre: nombre.trim(),
-          horasTotales: Number(horas),
-          ...(categoria ? { categoriaCctp: categoria } : {}),
-        }),
-      );
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "No se pudo crear");
-    } finally {
-      setGuardando(false);
-    }
-  }
-
-  return (
-    <Modal
-      abierto
-      titulo={`Nueva ${p.carrera}`}
-      onClose={onCerrar}
-      cerrarAlClicAfuera={false}
-      acciones={
-        <>
-          <Boton variante="ghost" onClick={onCerrar} disabled={guardando}>
-            Cancelar
-          </Boton>
-          <Boton onClick={() => void crear()} disabled={guardando}>
-            {guardando ? "Creando…" : "Crear"}
-          </Boton>
-        </>
-      }
-    >
-      <div className="space-y-3">
-        <Campo label="Nombre">
-          <Input value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Barbería y Peluquería" autoFocus />
-        </Campo>
-        <div className="grid grid-cols-2 gap-3">
-          <Campo label="Horas totales">
-            <Input type="number" inputMode="numeric" value={horas} onChange={(e) => setHoras(e.target.value)} />
-          </Campo>
-          <Campo label="Categoría (CCTP)">
-            <Select value={categoria} onChange={(e) => setCategoria(e.target.value as "" | CategoriaCctp)}>
-              <option value="">Sin categoría</option>
-              <option value="A">A · 20 a 80 h</option>
-              <option value="B">B · 80 a 400 h</option>
-            </Select>
-          </Campo>
-        </div>
-        <ErrorMsg>{error}</ErrorMsg>
-      </div>
-    </Modal>
-  );
-}

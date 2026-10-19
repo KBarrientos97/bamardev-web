@@ -115,3 +115,12 @@ describe("el calendario de un plan", () => {
     expect(calendarioConDescuento(plan, "", true, 50).total).toBe(1500);
   });
 });
+
+describe("precio del curso en modo simple", () => {
+  it("3 módulos de Bs 500 con 10 %: 1.350, ahorra 150, cada módulo vale 450", async () => {
+    const { precioCurso } = await import("./formato");
+    expect(precioCurso(500, 3, 10)).toEqual({ lista: 1500, completo: 1350, ahorro: 150, porModuloCompleto: 450 });
+    expect(precioCurso(600, 3, 0).ahorro).toBe(0);
+    expect(precioCurso(500, 0, 10).porModuloCompleto).toBe(0);
+  });
+});
