@@ -90,7 +90,7 @@ export default function Hoy() {
           onInscrito={(r) => {
             setInscribiendo(false);
             hoy.recargar();
-            if (r.cobrar) navigate(rutaCobroInscripcion(r.inscripcion.id, r.inscripcion.grupo?.sede));
+            if (r.cobrar) navigate(rutaCobroInscripcion(r.inscripcion.id, r.inscripcion.grupo?.sede, r.montoHoy));
           }}
         />
       )}

@@ -55,8 +55,9 @@ export function textoEstadoInscripcion(estado: string): { texto: string; tono: "
  * sede del grupo va en la dirección para avisar si se cobra en otra caja (el
  * carrito de la inscripción no la trae).
  */
-export function rutaCobroInscripcion(inscripcionId: number, sede?: string | Ref | null): string {
+export function rutaCobroInscripcion(inscripcionId: number, sede?: string | Ref | null, monto?: number): string {
   const params = new URLSearchParams({ inscripcion: String(inscripcionId) });
+  if (monto != null && monto > 0) params.set("monto", String(monto));
   if (sede && typeof sede !== "string") {
     params.set("sede", String(sede.id));
     params.set("sedeNombre", sede.nombre);

@@ -262,7 +262,7 @@ export default function Grupo() {
             grupo.recargar();
             alumnos.recargar();
             conteos.recargar();
-            if (r.cobrar) navigate(rutaCobroInscripcion(r.inscripcion.id, g.sede));
+            if (r.cobrar) navigate(rutaCobroInscripcion(r.inscripcion.id, g.sede, r.montoHoy));
           }}
         />
       )}

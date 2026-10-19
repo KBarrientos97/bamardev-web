@@ -252,7 +252,7 @@ export default function Calendario() {
           onInscrito={(r) => {
             setInscribir(null);
             cal.recargar();
-            if (r.cobrar) navigate(rutaCobroInscripcion(r.inscripcion.id));
+            if (r.cobrar) navigate(rutaCobroInscripcion(r.inscripcion.id, undefined, r.montoHoy));
           }}
         />
       )}

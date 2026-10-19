@@ -16,11 +16,15 @@ function esOtraSede(sede: string | Ref | null | undefined, caja: { id: number; n
 }
 
 /**
- * E9 · Cuotas por cobrar (PLAN-ACADEMIAS §5), dentro del POS, con el mismo
- * patrón que "Citas por cobrar" de belleza: se busca al alumno por nombre, CI
- * o código, se eligen sus cuotas pendientes (las vencidas arriba y marcadas)
- * con el monto editable para un abono, y van al carrito. Después se suman
- * poleras o materiales y se cobra con lo de siempre.
+ * E9 · Módulos por cobrar (PLAN-ACADEMIAS §5, ronda 2), dentro del POS, con
+ * el mismo patrón que "Citas por cobrar" de belleza: se busca al estudiante
+ * por nombre, CI o código, se eligen sus cuotas pendientes (las vencidas
+ * arriba y marcadas) y de cada una "Todo" o "Una parte" (el adelanto, que
+ * deja el resto de saldo), y van al carrito. Después se suman poleras o
+ * materiales y se cobra con lo de siempre.
+ *
+ * Desde "Inscribir y cobrar" llega lo que se acordó que paga hoy, ya
+ * repartido entre sus cuotas.
  *
  * Cobrar una cuota de otra sede está permitido (PA §10.2): se avisa.
  */
@@ -33,7 +37,7 @@ export default function CuotasPorCobrar({
   /** La sede de la caja abierta, para el aviso de otra sede. */
   caja: { id: number; nombre: string | null } | null;
   /** Entrar ya con un alumno: desde el grupo, la ficha, Cobranza o la inscripción. */
-  inicial?: { inscripcionId?: number; alumnoId?: number; q?: string; sede?: Ref };
+  inicial?: { inscripcionId?: number; alumnoId?: number; q?: string; sede?: Ref; monto?: number };
   onAtras: () => void;
   onAgregar: (cobro: CobroCuotas) => void;
 }) {
@@ -45,7 +49,7 @@ export default function CuotasPorCobrar({
   const [error, setError] = useState("");
   const [elegido, setElegido] = useState<{ fila: Pick<AlumnoPorCobrar, "inscripcionId" | "nombre" | "codigo" | "grupo" | "sede">; carrito: CarritoInscripcion } | null>(null);
   const [cargando, setCargando] = useState(false);
-  const [filas, setFilas] = useState<{ linea: LineaCuota; elegida: boolean; texto: string }[]>([]);
+  const [filas, setFilas] = useState<{ linea: LineaCuota; elegida: boolean; texto: string; parte: boolean }[]>([]);
   const [pagadorId, setPagadorId] = useState<number | null>(null);
 
   useEffect(() => {
@@ -93,7 +97,11 @@ export default function CuotasPorCobrar({
     try {
       const carrito = await apiAcademia.carrito(fila.inscripcionId);
       setElegido({ fila, carrito });
-      setFilas(cuotasIniciales(carrito).map((x) => ({ ...x, texto: String(x.linea.monto) })));
+      // Lo acordado al inscribir vale sólo para la inscripción con la que se entró.
+      const monto = fila.inscripcionId === inicial?.inscripcionId ? inicial?.monto : undefined;
+      setFilas(
+        cuotasIniciales(carrito, monto).map((x) => ({ ...x, texto: String(x.linea.monto), parte: x.linea.monto < x.linea.saldo })),
+      );
       setPagadorId(pagadorPorDefecto(carrito.pagadores));
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudieron traer sus cuotas");
@@ -132,7 +140,7 @@ export default function CuotasPorCobrar({
           <Icon name="arrowLeft" size={20} />
         </button>
         <div className="min-w-0 flex-1">
-          <h1 className="text-[15px] font-bold text-texto">Cuotas por cobrar</h1>
+          <h1 className="text-[15px] font-bold text-texto">{p.Materias} por cobrar</h1>
           <p className="truncate text-xs text-texto-3">
             {elegido ? elegido.carrito.alumno.nombre : `Buscá al ${p.alumno} por nombre, CI o código.`}
           </p>
@@ -174,18 +182,50 @@ export default function CuotasPorCobrar({
                         </span>
                       </label>
                       {f.elegida && (
-                        <div className="pl-7">
-                          <label className="block text-xs text-texto-3" htmlFor={`monto-${f.linea.cuotaId}`}>
-                            Monto a cobrar (máx. {fmtMoney(f.linea.saldo)})
-                          </label>
-                          <Input
-                            id={`monto-${f.linea.cuotaId}`}
-                            type="number"
-                            value={f.texto}
-                            onChange={(e) => setFilas(filas.map((x, j) => (j === i ? { ...x, texto: e.target.value } : x)))}
-                            className={mal ? "border-danger" : ""}
-                          />
-                          {mal && <p className="mt-1 text-xs text-danger-text">Más que cero y nunca por encima del saldo.</p>}
+                        <div className="space-y-2 pl-7">
+                          <div role="radiogroup" aria-label={`Cuánto cobrar de ${f.linea.descripcion}`} className="flex gap-2">
+                            {([false, true] as const).map((parte) => (
+                              <button
+                                key={String(parte)}
+                                type="button"
+                                role="radio"
+                                aria-checked={f.parte === parte}
+                                onClick={() =>
+                                  setFilas(
+                                    filas.map((x, j) =>
+                                      j === i ? { ...x, parte, texto: parte ? x.texto : String(x.linea.saldo) } : x,
+                                    ),
+                                  )
+                                }
+                                className={`rounded-full px-3 py-1 text-[13px] font-semibold ${
+                                  f.parte === parte ? "bg-primary-boton text-white" : "border border-borde bg-white text-texto-2"
+                                }`}
+                              >
+                                {parte ? "Una parte" : "Todo"}
+                              </button>
+                            ))}
+                          </div>
+                          {f.parte && (
+                            <>
+                              <label className="block text-xs text-texto-3" htmlFor={`monto-${f.linea.cuotaId}`}>
+                                Monto del adelanto (máx. {fmtMoney(f.linea.saldo)})
+                              </label>
+                              <Input
+                                id={`monto-${f.linea.cuotaId}`}
+                                type="number"
+                                value={f.texto}
+                                onChange={(e) => setFilas(filas.map((x, j) => (j === i ? { ...x, texto: e.target.value } : x)))}
+                                className={mal ? "border-danger" : ""}
+                              />
+                              {mal ? (
+                                <p className="mt-1 text-xs text-danger-text">Más que cero y nunca por encima del saldo.</p>
+                              ) : (
+                                Number(f.texto) < f.linea.saldo && (
+                                  <p className="mt-1 text-xs text-texto-3">Quedan {fmtMoney(f.linea.saldo - Number(f.texto))} de saldo.</p>
+                                )
+                              )}
+                            </>
+                          )}
                         </div>
                       )}
                     </li>

@@ -1036,7 +1036,7 @@ describe("E9: cuotas del instituto en el POS", () => {
   it("sin la feature academia no hay botón ni pedido: el POS de siempre", async () => {
     sesion.features = ["pos", "caja"];
     await montar();
-    expect(screen.queryByRole("button", { name: /Cuotas por cobrar/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Módulos por cobrar/ })).not.toBeInTheDocument();
   });
 
   it("desde el grupo: la cuota va al carrito y la venta lleva cuotaId, montoCuota y quien paga", async () => {

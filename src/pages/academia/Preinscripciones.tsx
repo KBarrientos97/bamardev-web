@@ -160,7 +160,7 @@ export default function Preinscripciones() {
             setAviso(`${nombreAlumno(inscribiendo.alumno)} quedó inscrito.`);
             lista.recargar();
             avisarCambio();
-            if (r.cobrar) navigate(rutaCobroInscripcion(r.inscripcion.id, r.inscripcion.grupo?.sede));
+            if (r.cobrar) navigate(rutaCobroInscripcion(r.inscripcion.id, r.inscripcion.grupo?.sede, r.montoHoy));
           }}
         />
       )}

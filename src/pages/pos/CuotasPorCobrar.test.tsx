@@ -73,7 +73,8 @@ describe("E9 · cuotas por cobrar", () => {
     const cajas = screen.getAllByRole("checkbox");
     expect(cajas[0]).toBeChecked();
     expect(cajas[1]).not.toBeChecked();
-    fireEvent.change(screen.getByLabelText(/Monto a cobrar/), { target: { value: "200" } });
+    fireEvent.click(screen.getAllByRole("radio", { name: "Una parte" })[0]);
+    fireEvent.change(screen.getByLabelText(/Monto del adelanto/), { target: { value: "200" } });
     expect(within(screen.getByRole("radiogroup", { name: "Quién paga" })).getByRole("radio", { name: /Rosa Molina/ })).toHaveAttribute(
       "aria-checked",
       "true",
@@ -92,7 +93,8 @@ describe("E9 · cuotas por cobrar", () => {
 
   it("no deja cobrar más que el saldo", async () => {
     await buscarYElegir();
-    fireEvent.change(screen.getByLabelText(/Monto a cobrar/), { target: { value: "400" } });
+    fireEvent.click(screen.getAllByRole("radio", { name: "Una parte" })[0]);
+    fireEvent.change(screen.getByLabelText(/Monto del adelanto/), { target: { value: "400" } });
     expect(screen.getByText("Más que cero y nunca por encima del saldo.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Agregar al carrito/ })).toBeDisabled();
   });

@@ -103,6 +103,25 @@ describe("las cuotas en la venta", () => {
     expect(ninguna.map((l) => l.elegida)).toEqual([true, false]);
   });
 
+  it("lo acordado al inscribir se reparte en orden: enteras las que alcanza, el resto como abono", () => {
+    const carrito = {
+      alumno: { id: 1, nombre: "A" },
+      pagadores: [],
+      lineas: [
+        { productoId: 7, cuotaId: 1, descripcion: "M1", saldo: 500, vence: "2026-10-10", vencida: false },
+        { productoId: 7, cuotaId: 2, descripcion: "M2", saldo: 500, vence: "2026-11-10", vencida: false },
+        { productoId: 7, cuotaId: 3, descripcion: "M3", saldo: 500, vence: "2026-12-10", vencida: false },
+      ],
+    };
+    const r = cuotasIniciales(carrito, 700);
+    expect(r.map((l) => [l.linea.cuotaId, l.elegida, l.linea.monto])).toEqual([
+      [1, true, 500],
+      [2, true, 200],
+      [3, false, 500],
+    ]);
+    expect(cuotasIniciales(carrito, 300).map((l) => l.elegida)).toEqual([true, false, false]);
+  });
+
   it("paga por defecto el principal, en el orden del backend", () => {
     expect(
       pagadorPorDefecto([

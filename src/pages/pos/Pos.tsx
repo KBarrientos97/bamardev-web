@@ -305,7 +305,7 @@ export default function Pos() {
   }, []);
   /** Con qué alumno se abre la vista de cuotas (desde el grupo, la ficha o Cobranza). */
   const [inicialCuotas, setInicialCuotas] = useState<
-    { inscripcionId?: number; alumnoId?: number; q?: string; sede?: Ref } | undefined
+    { inscripcionId?: number; alumnoId?: number; q?: string; sede?: Ref; monto?: number } | undefined
   >(undefined);
 
   const [mesaCobrando, setMesaCobrando] = useState<MesaSalon | null>(null);
@@ -552,9 +552,12 @@ export default function Pos() {
     const alumnoId = Number(params.get("alumno")) || undefined;
     const sedeId = Number(params.get("sede")) || 0;
     const sedeNombre = params.get("sedeNombre");
+    // Lo que se acordó que paga hoy al inscribir (la primera cuota, todo o un adelanto).
+    const monto = Number(params.get("monto")) || undefined;
     setInicialCuotas({
       inscripcionId,
       alumnoId,
+      monto,
       q: params.get("q") ?? undefined,
       ...(sedeNombre ? { sede: { id: sedeId, nombre: sedeNombre } } : {}),
     });
@@ -1162,8 +1165,8 @@ export default function Pos() {
             {conCuotas && (
               <BotonTipo
                 icono="birrete"
-                etiqueta="Cuotas por cobrar"
-                titulo="Buscar al alumno y cobrar sus cuotas"
+                etiqueta="Módulos por cobrar"
+                titulo="Buscar al estudiante y cobrar sus módulos"
                 onClick={() => {
                   setInicialCuotas(undefined);
                   setPantalla("cuotasPorCobrar");

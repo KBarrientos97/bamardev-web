@@ -161,7 +161,7 @@ export default function Alumnos() {
           onInscrito={(r) => {
             setInscribiendo(false);
             lista.recargar();
-            if (r.cobrar) navigate(rutaCobroInscripcion(r.inscripcion.id, r.inscripcion.grupo?.sede));
+            if (r.cobrar) navigate(rutaCobroInscripcion(r.inscripcion.id, r.inscripcion.grupo?.sede, r.montoHoy));
           }}
         />
       )}

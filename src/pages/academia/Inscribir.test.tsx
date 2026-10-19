@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ajustesDePrueba, grupoDetalle } from "../../test/academiaFixtures";
+import { ajustesDePrueba, fichaCamila, grupoDetalle } from "../../test/academiaFixtures";
 
 /**
  * E5 · Inscribir: alumno nuevo con tutor si es menor, el plan con su
@@ -25,8 +25,15 @@ vi.mock("../../lib/academia/apiAcademia", async (importOriginal) => {
       alumnos: vi.fn(),
       inscribir: vi.fn(),
       convertir: vi.fn(),
+      alumno: vi.fn(),
     },
   };
+});
+
+// El canvas no existe en jsdom: la foto "achicada" es el mismo archivo.
+vi.mock("../../lib/academia/fotos", async (importOriginal) => {
+  const real = await importOriginal<typeof import("../../lib/academia/fotos")>();
+  return { ...real, prepararFoto: vi.fn(async (f: File) => new Blob([f], { type: "image/webp" })) };
 });
 
 import { apiAcademia } from "../../lib/academia/apiAcademia";
@@ -63,6 +70,7 @@ beforeEach(() => {
   vi.mocked(apiAcademia.ajustes).mockResolvedValue(ajustesDePrueba({ fotosObligatorias: false }));
   vi.mocked(apiAcademia.alumnos).mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 6 });
   vi.mocked(apiAcademia.inscribir).mockResolvedValue({ id: 555 } as never);
+  vi.mocked(apiAcademia.alumno).mockResolvedValue({ ...fichaCamila(), fotos: [] });
 });
 
 afterEach(() => {
@@ -77,7 +85,7 @@ describe("E5 · inscribir", () => {
     expect(within(panel()).getByText(/Tutor · obligatorio/)).toBeInTheDocument();
     fireEvent.click(within(panel()).getByRole("radio", { name: /Cuotas/ }));
     // El calendario del plan a la vista, sin renglón de matrícula.
-    expect(within(panel()).getByText(/Cuota 2 · M2–M3 · al empezar M2/)).toBeInTheDocument();
+    expect(within(panel()).getAllByText(/M2–M3 · al empezar M2/).length).toBeGreaterThan(0);
     fireEvent.click(within(panel()).getByRole("button", { name: "Inscribir sin cobrar" }));
     expect(within(panel()).getByText(/Es menor: falta el tutor/)).toBeInTheDocument();
     expect(apiAcademia.inscribir).not.toHaveBeenCalled();
@@ -98,7 +106,7 @@ describe("E5 · inscribir", () => {
       tutor: { nombre: "Rosa Molina", telefono: "71234567", parentesco: "Madre" },
       grupoId: 7,
       planPagoId: 2,
-    });
+    }, {});
     expect(onInscrito).toHaveBeenCalledWith({ inscripcion: { id: 555 }, cobrar: false });
   });
 
@@ -106,6 +114,7 @@ describe("E5 · inscribir", () => {
     await montar();
     cargarNuevo("2000-01-01");
     fireEvent.click(within(panel()).getByRole("radio", { name: /Completo/ }));
+    fireEvent.click(within(panel()).getByRole("button", { name: "Aplicar otro descuento o beca" }));
     fireEvent.click(within(panel()).getByRole("button", { name: "Beca" }));
     fireEvent.change(within(panel()).getByLabelText("Descuento"), { target: { value: "50" } });
     fireEvent.change(within(panel()).getByLabelText("Motivo"), { target: { value: "Situación económica" } });
@@ -122,8 +131,10 @@ describe("E5 · inscribir", () => {
         planPagoId: 1,
         descuento: { tipo: "BECA", pct: 50, motivo: "Situación económica", autorizador: { username: "rosa", pin: "1234" } },
       }),
+      {},
     );
-    expect(onInscrito).toHaveBeenCalledWith({ inscripcion: { id: 555 }, cobrar: true });
+    // Paga hoy todo lo que queda del pago completo con la beca.
+    expect(onInscrito).toHaveBeenCalledWith({ inscripcion: { id: 555 }, cobrar: true, montoHoy: 680 });
   });
 
   it("el grupo lleno se confirma y se reintenta con confirmarSobreCupo", async () => {
@@ -141,7 +152,7 @@ describe("E5 · inscribir", () => {
     await act(async () => {
       fireEvent.click(within(confirmar).getByRole("button", { name: "Inscribir igual" }));
     });
-    expect(apiAcademia.inscribir).toHaveBeenLastCalledWith(expect.objectContaining({ confirmarSobreCupo: true }));
+    expect(apiAcademia.inscribir).toHaveBeenLastCalledWith(expect.objectContaining({ confirmarSobreCupo: true }), {});
     expect(onInscrito).toHaveBeenCalledWith({ inscripcion: { id: 556 }, cobrar: false });
   });
 
@@ -166,7 +177,7 @@ describe("E5 · inscribir", () => {
     await act(async () => {
       fireEvent.click(within(panel()).getByRole("button", { name: "Inscribir sin cobrar" }));
     });
-    expect(apiAcademia.inscribir).toHaveBeenCalledWith(expect.objectContaining({ alumnoId: 60 }));
+    expect(apiAcademia.inscribir).toHaveBeenCalledWith(expect.objectContaining({ alumnoId: 60 }), {});
     expect(within(panel()).getByText(/Tutor · obligatorio/)).toBeInTheDocument();
   });
 
@@ -221,7 +232,78 @@ describe("E5 · inscribir", () => {
       planPagoId: 1,
       tutor: { nombre: "Ana Lima", telefono: "77788991", parentesco: "Madre" },
       confirmarSobreCupo: true,
-    });
+    }, {});
     expect(onInscrito).toHaveBeenCalledWith({ inscripcion: { id: 600 }, cobrar: false });
+  });
+
+  it("paga hoy: la primera cuota por defecto, o un adelanto que llega al POS", async () => {
+    await montar();
+    cargarNuevo("2000-01-01");
+    fireEvent.click(within(panel()).getByRole("radio", { name: /Cuotas/ }));
+    expect(within(panel()).getByRole("button", { name: /Inscribir y cobrar Bs\s?750/ })).toBeInTheDocument();
+    fireEvent.click(within(panel()).getByRole("button", { name: "Otro monto" }));
+    fireEvent.change(within(panel()).getByLabelText(/Monto del adelanto/), { target: { value: "300" } });
+    expect(within(panel()).getByRole("region", { name: "Resumen" })).toHaveTextContent(/Queda de saldo\s*Bs\s?1\.200/);
+    await act(async () => {
+      fireEvent.click(within(panel()).getByRole("button", { name: /Inscribir y cobrar Bs\s?300/ }));
+    });
+    expect(onInscrito).toHaveBeenCalledWith({ inscripcion: { id: 555 }, cobrar: true, montoHoy: 300 });
+  });
+});
+
+describe("N5 · las 3 fotos obligatorias", () => {
+  beforeEach(() => {
+    vi.mocked(apiAcademia.ajustes).mockResolvedValue(ajustesDePrueba({ fotosObligatorias: true }));
+  });
+
+  const subir = (tipo: string) =>
+    fireEvent.change(screen.getByTestId("subir-" + tipo), { target: { files: [new File(["x"], tipo + ".jpg", { type: "image/jpeg" })] } });
+
+  it("sin las 3 el botón dice cuántas faltan y no inscribe; con las 3 viajan en el pedido", async () => {
+    await montar();
+    cargarNuevo("2000-01-01");
+    fireEvent.click(within(panel()).getByRole("radio", { name: /Completo/ }));
+    expect(within(panel()).getByRole("button", { name: "Faltan 3 fotos" })).toBeDisabled();
+    expect(within(panel()).getByText("Fotos: 0 de 3")).toBeInTheDocument();
+    await act(async () => subir("FOTO"));
+    await act(async () => subir("CI_ANVERSO"));
+    expect(within(panel()).getByRole("button", { name: "Falta 1 foto" })).toBeDisabled();
+    await act(async () => subir("CI_REVERSO"));
+    expect(within(panel()).getByText("Las 3 fotos")).toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(within(panel()).getByRole("button", { name: "Inscribir sin cobrar" }));
+    });
+    const fotos = vi.mocked(apiAcademia.inscribir).mock.calls[0][1]!;
+    expect(Object.keys(fotos).sort()).toEqual(["CI_ANVERSO", "CI_REVERSO", "FOTO"]);
+  });
+
+  it("un estudiante ya cargado con sus fotos no tiene que sacarlas otra vez", async () => {
+    vi.mocked(apiAcademia.alumno).mockResolvedValue({
+      ...fichaCamila(),
+      fotos: (["FOTO", "CI_ANVERSO", "CI_REVERSO"] as const).map((tipo) => ({ tipo, subidaEn: "2026-08-17", revisadaEn: null, revisadaPor: null, observacion: null })),
+    });
+    render(
+      <MemoryRouter>
+        <Inscribir grupoInicial={{ id: 7, nombre: "Barbería" }} alumnoInicial={{ id: 52, nombre: "Bustillos Rek, Camila" }} onCerrar={vi.fn()} onInscrito={onInscrito} />
+      </MemoryRouter>,
+    );
+    await act(async () => {});
+    expect(within(panel()).getAllByText("Ya cargada")).toHaveLength(3);
+    fireEvent.click(within(panel()).getByRole("radio", { name: /Completo/ }));
+    expect(within(panel()).getByRole("button", { name: "Inscribir sin cobrar" })).toBeEnabled();
+  });
+
+  it("el 400 FOTOS_REQUERIDAS marca las que faltan", async () => {
+    vi.mocked(apiAcademia.inscribir).mockRejectedValueOnce(
+      new ApiError("Faltan fotos", 400, { codigo: "FOTOS_REQUERIDAS", faltan: ["CI_REVERSO"] }),
+    );
+    await montar();
+    cargarNuevo("2000-01-01");
+    fireEvent.click(within(panel()).getByRole("radio", { name: /Completo/ }));
+    for (const t of ["FOTO", "CI_ANVERSO", "CI_REVERSO"]) await act(async () => subir(t));
+    await act(async () => {
+      fireEvent.click(within(panel()).getByRole("button", { name: "Inscribir sin cobrar" }));
+    });
+    expect(within(panel()).getByText(/Falta 1 foto: sacalas/)).toBeInTheDocument();
   });
 });

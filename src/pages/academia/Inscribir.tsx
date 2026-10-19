@@ -17,14 +17,18 @@ import {
   textoCubre,
   textoVence,
 } from "../../lib/academia/formato";
+import { textoFaltanFotos } from "../../lib/academia/fotos";
 import type {
   AlumnoFila,
   DescuentoInput,
+  FotosInscripcion,
+  GrupoDetalle,
   GrupoResumen,
   InscripcionDetalle,
   PlanPago,
   Preinscripcion,
   TipoDescuento,
+  TipoFoto,
 } from "../../lib/academia/tipos";
 import { usePalabras } from "../../lib/academia/usePalabras";
 import { enlaceWhatsApp } from "../../lib/agenda/recordatorio";
@@ -35,19 +39,28 @@ import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
 import { PedirPinCredito } from "../pos/PantallaCredito";
 import { abrirWhatsapp } from "../../lib/academia/vista";
+import CapturaFotos, { fotosQueFaltan } from "./CapturaFotos";
 
 export interface ResultadoInscripcion {
   inscripcion: Pick<InscripcionDetalle, "id"> & Partial<InscripcionDetalle>;
   /** "Inscribir y cobrar ahora": quien abrió el panel lleva al POS. */
   cobrar: boolean;
+  /** Lo que paga hoy (la primera cuota, todo o un adelanto): el POS lo propone. */
+  montoHoy?: number;
 }
+
+type PagaHoy = "primera" | "todo" | "otro";
 
 type Modo = "buscar" | "nuevo";
 
 /**
- * E5 · Inscribir alumno (PLAN-ACADEMIAS §5): ¿quién?, ¿a qué grupo?, ¿cómo
- * paga? y, si hace falta, la beca o la promoción. Panel de 440 px sobre la
- * pantalla en escritorio; pantalla completa en el celular.
+ * N5 · Inscribir estudiante (ronda 2): el grupo, los datos, las 3 fotos
+ * obligatorias (D7), la forma de pago (mes a mes o pago completo) y cuánto
+ * paga hoy; a la derecha, el resumen con lo que falta. Sin las 3 fotos el
+ * botón dice cuántas faltan y no inscribe. Cualquier descuento que no sea el
+ * del pago completo va escondido en "Aplicar otro descuento o beca" y pide el
+ * PIN (S4). Panel ancho sobre la pantalla en escritorio; pantalla completa en
+ * el celular.
  *
  * Desde una preinscripción (E20) el alumno y el grupo ya vienen: sólo se
  * elige el plan, y "convertir" la deja inscrita.
@@ -112,6 +125,25 @@ export default function Inscribir({
   const [motivo, setMotivo] = useState("");
   const [firma, setFirma] = useState<{ username: string; pin: string } | null>(null);
   const ajustes = useApi(() => apiAcademia.ajustes().catch(() => null), []);
+  const [otroDescuento, setOtroDescuento] = useState(false);
+
+  // ── Fotos (D7) ──
+  const [fotos, setFotos] = useState<FotosInscripcion>({});
+  const [marcadas, setMarcadas] = useState<TipoFoto[]>([]);
+  // Un estudiante que ya está cargado puede tener alguna: no se le piden de nuevo.
+  const idConFotos = elegido?.id ?? preinscripcion?.alumno.id ?? null;
+  const fichaFotos = useApi(
+    () => (idConFotos ? apiAcademia.alumno(idConFotos).catch(() => null) : Promise.resolve(null)),
+    [idConFotos],
+  );
+  const yaTiene = (fichaFotos.datos?.fotos ?? []).map((f) => f.tipo);
+  // Ante la duda (ajustes sin cargar), se piden: es lo que exige el backend por defecto.
+  const pideFotos = ajustes.datos?.fotosObligatorias ?? true;
+  const faltanFotos = pideFotos ? fotosQueFaltan(fotos, yaTiene) : [];
+
+  // ── Paga hoy ──
+  const [pagaHoy, setPagaHoy] = useState<PagaHoy>("primera");
+  const [otroMonto, setOtroMonto] = useState("");
 
   const [bienvenida, setBienvenida] = useState(true);
   const [enviando, setEnviando] = useState(false);
@@ -149,6 +181,7 @@ export default function Inscribir({
     }
     if (esMenor && (!tutor.nombre.trim() || !tutor.telefono.trim())) return `Es menor: falta el tutor (nombre y WhatsApp).`;
     if (!grupoId) return "Elegí el grupo.";
+    if (faltanFotos.length) return `${textoFaltanFotos(faltanFotos.length)}.`;
     if (!plan) return "Elegí cómo paga.";
     if (tipoDesc && !(Number(valorDesc) > 0)) return "Poné el descuento, o elegí Ninguna.";
     if (tipoDesc && motivo.trim().length < 3) return "Contá el motivo del descuento.";
@@ -180,14 +213,18 @@ export default function Inscribir({
     setEnviando(true);
     try {
       const inscripcion = preinscripcion
-        ? await apiAcademia.convertir(preinscripcion.id, {
-            planPagoId: plan!.id,
-            ...(descuento ? { descuento } : {}),
-            ...(esMenor && tutor.nombre.trim()
-              ? { tutor: { nombre: tutor.nombre.trim(), telefono: tutor.telefono.trim(), parentesco: tutor.parentesco } }
-              : {}),
-            ...(extra.sobreCupo ? { confirmarSobreCupo: true } : {}),
-          })
+        ? await apiAcademia.convertir(
+            preinscripcion.id,
+            {
+              planPagoId: plan!.id,
+              ...(descuento ? { descuento } : {}),
+              ...(esMenor && tutor.nombre.trim()
+                ? { tutor: { nombre: tutor.nombre.trim(), telefono: tutor.telefono.trim(), parentesco: tutor.parentesco } }
+                : {}),
+              ...(extra.sobreCupo ? { confirmarSobreCupo: true } : {}),
+            },
+            fotos,
+          )
         : await apiAcademia.inscribir({
             ...(elegido ? { alumnoId: elegido.id } : {
               alumno: {
@@ -206,12 +243,17 @@ export default function Inscribir({
             planPagoId: plan!.id,
             ...(descuento ? { descuento } : {}),
             ...(extra.sobreCupo ? { confirmarSobreCupo: true } : {}),
-          });
+          }, fotos);
       if (bienvenida) mandarBienvenida();
-      onInscrito({ inscripcion, cobrar });
+      onInscrito({ inscripcion, cobrar, ...(cobrar && montoHoy > 0 ? { montoHoy } : {}) });
     } catch (e) {
       const codigo = e instanceof ApiError ? e.codigo : undefined;
-      if (codigo === CODIGOS_ACADEMIA.GRUPO_LLENO && e instanceof ApiError) {
+      if (codigo === CODIGOS_ACADEMIA.FOTOS_REQUERIDAS && e instanceof ApiError) {
+        // El backend cuenta las que tiene guardadas: marca las que siguen faltando.
+        const faltan = Array.isArray(e.detalle.faltan) ? (e.detalle.faltan as TipoFoto[]) : [];
+        setMarcadas(faltan);
+        setError(faltan.length ? `${textoFaltanFotos(faltan.length)}: sacalas y probá de nuevo.` : e.message);
+      } else if (codigo === CODIGOS_ACADEMIA.GRUPO_LLENO && e instanceof ApiError) {
         setLleno({
           inscritos: Number(e.detalle.inscritos ?? 0),
           cupo: Number(e.detalle.cupo ?? 0),
@@ -283,6 +325,19 @@ export default function Inscribir({
   }
 
   const primera = vista.cuotas[0]?.monto ?? 0;
+  // Un plan de una sola cuota (el pago completo) no tiene "la primera".
+  const unaCuota = vista.cuotas.length <= 1;
+  const elegidoHoy: PagaHoy = unaCuota && pagaHoy === "primera" ? "todo" : pagaHoy;
+  const montoHoy =
+    elegidoHoy === "primera"
+      ? primera
+      : elegidoHoy === "todo"
+        ? vista.total
+        : Math.max(0, Math.min(vista.total, Number(otroMonto) || 0));
+  const saldoQueda = Math.max(0, vista.total - montoHoy);
+  const proxima = vista.cuotas.find((_, i) => vista.cuotas.slice(0, i + 1).reduce((s, c) => s + c.monto, 0) > montoHoy);
+  const tutorListo = !esMenor || (!!tutor.nombre.trim() && !!tutor.telefono.trim()) || !!preinscripcion?.tutor;
+  const datosListos = !!preinscripcion || !!elegido || (!!nuevo.ci.trim() && !!nuevo.apellidos.trim() && !!nuevo.nombres.trim());
 
   return (
     <div
@@ -293,7 +348,7 @@ export default function Inscribir({
         role="dialog"
         aria-modal="true"
         aria-label={`Inscribir ${p.alumno}`}
-        className="flex h-full w-full flex-col bg-white shadow-2xl sm:max-w-[440px] sm:border-l sm:border-borde"
+        className="flex h-full w-full flex-col bg-white shadow-2xl sm:max-w-[440px] sm:border-l sm:border-borde lg:max-w-[920px]"
       >
         <header className="flex items-start justify-between gap-3 border-b border-borde-soft px-5 py-4">
           <div className="min-w-0">
@@ -305,8 +360,41 @@ export default function Inscribir({
           </button>
         </header>
 
-        <div className="min-h-0 flex-1 space-y-7 overflow-y-auto px-5 py-5">
-          <Paso n={1} titulo="¿Quién?">
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 lg:grid lg:grid-cols-[minmax(0,1fr)_300px] lg:items-start lg:gap-8">
+        <div className="space-y-7">
+          <Paso n={1} titulo="Grupo">
+            {fijoGrupo ? (
+              grupo ? (
+                <TarjetaGrupo g={grupo} />
+              ) : (
+                <p className="text-sm text-texto-2">{preinscripcion?.grupo.nombre ?? grupoInicial?.nombre}</p>
+              )
+            ) : grupos.cargando ? (
+              <Cargando />
+            ) : abiertos.length === 0 ? (
+              <p className="text-sm text-texto-3">No hay grupos con la inscripción abierta.</p>
+            ) : (
+              <Select
+                aria-label="Grupo"
+                value={grupoId ?? ""}
+                onChange={(e) => {
+                  setGrupoId(e.target.value ? Number(e.target.value) : null);
+                  setPlanId(null);
+                }}
+              >
+                <option value="">Elegí el grupo…</option>
+                {abiertos.map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {nombreDe(g.carrera)} · {horarioGrupo(g)} · {nombreDe(g.sede)}
+                    {g.cupo ? ` · ${g.inscritos}/${g.cupo}` : ""}
+                  </option>
+                ))}
+              </Select>
+            )}
+            {!fijoGrupo && grupo && <div className="mt-3"><TarjetaGrupo g={grupo} /></div>}
+          </Paso>
+
+          <Paso n={2} titulo={`Datos del ${p.alumno}`}>
             {preinscripcion ? (
               <p className="text-sm">
                 <span className="font-semibold text-texto">{nombreFinal}</span>
@@ -394,39 +482,24 @@ export default function Inscribir({
             )}
           </Paso>
 
-          <Paso n={2} titulo="¿A qué grupo?">
-            {fijoGrupo ? (
-              grupo ? (
-                <TarjetaGrupo g={grupo} />
-              ) : (
-                <p className="text-sm text-texto-2">{preinscripcion?.grupo.nombre ?? grupoInicial?.nombre}</p>
-              )
-            ) : grupos.cargando ? (
-              <Cargando />
-            ) : abiertos.length === 0 ? (
-              <p className="text-sm text-texto-3">No hay grupos con la inscripción abierta.</p>
-            ) : (
-              <Select
-                aria-label="Grupo"
-                value={grupoId ?? ""}
-                onChange={(e) => {
-                  setGrupoId(e.target.value ? Number(e.target.value) : null);
-                  setPlanId(null);
+          {pideFotos && (
+            <Paso n={3} titulo="Fotos obligatorias">
+              <p className="-mt-1 flex items-center gap-1.5 text-[13px] text-texto-3">
+                <Icon name="lock" size={13} /> Las fotos sólo las ve el administrador
+              </p>
+              <CapturaFotos
+                fotos={fotos}
+                onCambiar={(f) => {
+                  setFotos(f);
+                  setMarcadas((m) => m.filter((t) => !f[t]));
                 }}
-              >
-                <option value="">Elegí el grupo…</option>
-                {abiertos.map((g) => (
-                  <option key={g.id} value={g.id}>
-                    {nombreDe(g.carrera)} · {horarioGrupo(g)} · {nombreDe(g.sede)}
-                    {g.cupo ? ` · ${g.inscritos}/${g.cupo}` : ""}
-                  </option>
-                ))}
-              </Select>
-            )}
-            {!fijoGrupo && grupo && <div className="mt-3"><TarjetaGrupo g={grupo} /></div>}
-          </Paso>
+                yaTiene={yaTiene}
+                marcadas={marcadas}
+              />
+            </Paso>
+          )}
 
-          <Paso n={3} titulo="¿Cómo paga?">
+          <Paso n={pideFotos ? 4 : 3} titulo="Forma de pago">
             {!grupoId ? (
               <p className="text-sm text-texto-3">Primero el grupo.</p>
             ) : detalle.cargando ? (
@@ -436,13 +509,81 @@ export default function Inscribir({
             ) : (
               <div className="space-y-2" role="radiogroup" aria-label="Plan de pago">
                 {planes.map((pl) => (
-                  <TarjetaPlan key={pl.id} plan={pl} elegido={pl.id === planId} onElegir={() => setPlanId(pl.id)} />
+                  <TarjetaPlan
+                    key={pl.id}
+                    plan={pl}
+                    planes={planes}
+                    grupo={grupo}
+                    elegido={pl.id === planId}
+                    onElegir={() => {
+                      setPlanId(pl.id);
+                      setPagaHoy(pl.calendario.length > 1 ? "primera" : "todo");
+                    }}
+                  />
                 ))}
               </div>
             )}
           </Paso>
 
-          <Paso n={4} titulo="Beca o promoción">
+          {plan && (
+            <section aria-labelledby="t-paga-hoy" className="space-y-2">
+              <h3 id="t-paga-hoy" className="text-sm font-bold text-texto">
+                Paga hoy
+              </h3>
+              <div role="group" aria-labelledby="t-paga-hoy" className="flex flex-wrap gap-2">
+                {(
+                  [
+                    ...(unaCuota ? [] : [["primera", `La primera cuota · ${fmtMoney(primera)}`] as const]),
+                    ["todo", unaCuota ? `Todo · ${fmtMoney(vista.total)}` : `Todo el curso · ${fmtMoney(vista.total)}`] as const,
+                    ["otro", "Otro monto"] as const,
+                  ] as const
+                ).map(([k, label]) => (
+                  <button
+                    key={k}
+                    type="button"
+                    aria-pressed={elegidoHoy === k}
+                    onClick={() => setPagaHoy(k)}
+                    className={`rounded-xl border px-3 py-2 text-[13px] transition-colors ${
+                      elegidoHoy === k ? "border-primary bg-primary-50 font-semibold text-primary-700" : "border-borde bg-white text-texto-2 hover:bg-muted"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              {elegidoHoy === "otro" && (
+                <div className="max-w-[200px]">
+                  <Campo label="Monto del adelanto (Bs)">
+                    <Input type="number" value={otroMonto} onChange={(e) => setOtroMonto(e.target.value)} />
+                  </Campo>
+                </div>
+              )}
+              <p className="text-xs text-texto-4">Si deja un adelanto, el resto queda como saldo.</p>
+            </section>
+          )}
+
+          <section aria-label="Otro descuento o beca" className="space-y-3">
+            <button
+              type="button"
+              onClick={() => {
+                setOtroDescuento((v) => !v);
+                if (otroDescuento) {
+                  setTipoDesc("");
+                  setFirma(null);
+                }
+              }}
+              aria-expanded={otroDescuento || !!tipoDesc}
+              className="text-[13px] font-semibold text-primary-700 hover:underline"
+            >
+              Aplicar otro descuento o beca
+            </button>
+            {(otroDescuento || !!tipoDesc) && (
+            <>
+            {!puedeBecas && (
+              <p className="flex items-center gap-1.5 text-[13px] text-texto-3">
+                <Icon name="lock" size={13} /> Necesita el PIN del administrador; queda registrado quién lo autorizó.
+              </p>
+            )}
             <Chips
               valor={tipoDesc}
               opciones={[
@@ -478,15 +619,41 @@ export default function Inscribir({
                 {firma ? (
                   <p className="text-[13px] text-texto-3">Autorizó {firma.username} con su PIN.</p>
                 ) : sobreTope ? (
-                  <p className="text-[13px] text-warning-text">Pasa el tope sin autorización: al inscribir se pide el PIN.</p>
+                  <p className="text-[13px] text-warning-text">Al inscribir se pide el PIN.</p>
                 ) : null}
               </div>
             )}
-          </Paso>
+            </>
+            )}
+          </section>
 
+          <ErrorMsg>{error}</ErrorMsg>
+          {salida && (
+            <div role="alert" className="space-y-1 rounded-xl bg-warning-bg px-3.5 py-2.5 text-sm text-warning-text">
+              <p>{salida.texto}</p>
+              {salida.accion}
+            </div>
+          )}
+        </div>
+
+          <aside aria-label="Resumen de la inscripción" className="mt-7 space-y-4 border-t border-borde-soft pt-5 lg:sticky lg:top-0 lg:mt-0 lg:rounded-xl lg:border lg:border-borde-soft lg:bg-muted/40 lg:p-4">
+            <div>
+              <p className="text-sm font-bold text-texto">{nombreFinal || `${p.Alumno} nuevo`}</p>
+              {grupo && (
+                <p className="text-[13px] text-texto-3">
+                  {nombreDe(grupo.carrera)} · {horarioGrupo(grupo)} · {nombreDe(grupo.sede)}
+                </p>
+              )}
+            </div>
+            <ul aria-label="Requisitos" className="space-y-1.5 text-[13px]">
+              <Requisito ok={datosListos} texto="Datos completos" />
+              {esMenor && <Requisito ok={tutorListo} texto={tutor.nombre.trim() ? `Tutor: ${tutor.nombre.trim()} (${tutor.parentesco.toLowerCase()})` : "Tutor"} />}
+              {pideFotos && (
+                <Requisito ok={faltanFotos.length === 0} texto={faltanFotos.length === 0 ? "Las 3 fotos" : `Fotos: ${3 - faltanFotos.length} de 3`} />
+              )}
+            </ul>
           {plan && (
-            <section aria-label="Resumen" className="space-y-2 border-t border-borde-soft pt-4">
-              <h3 className="text-sm font-bold text-texto">Resumen</h3>
+            <section aria-label="Resumen" className="space-y-2 border-t border-borde-soft pt-3">
               <dl className="space-y-1 text-sm">
                 <div className="flex justify-between text-texto-2">
                   <dt>
@@ -506,27 +673,23 @@ export default function Inscribir({
                   <dt>Total del curso</dt>
                   <dd className="tabular-nums">{fmtMoney(vista.total)}</dd>
                 </div>
+                <div className="flex justify-between text-texto-2">
+                  <dt>Paga hoy</dt>
+                  <dd className="tabular-nums">{fmtMoney(montoHoy)}</dd>
+                </div>
+                <div className="flex justify-between text-texto-2">
+                  <dt>Queda de saldo</dt>
+                  <dd className="tabular-nums">{fmtMoney(saldoQueda)}</dd>
+                </div>
               </dl>
-              <ul className="space-y-1 pt-1 text-[13px] text-texto-3">
-                {vista.cuotas.map((c) => (
-                  <li key={c.n} className="flex justify-between gap-2">
-                    <span>
-                      Cuota {c.n} · {textoCubre(c.cubre)} · {textoVence(c.vence)}
-                    </span>
-                    <span className="tabular-nums text-texto-2">{fmtMoney(c.monto)}</span>
-                  </li>
-                ))}
-              </ul>
+              {proxima && saldoQueda > 0 && (
+                <p className="text-[13px] text-texto-3">
+                  Después: cuota {proxima.n} · {textoCubre(proxima.cubre)} · {textoVence(proxima.vence)}
+                </p>
+              )}
             </section>
           )}
-
-          <ErrorMsg>{error}</ErrorMsg>
-          {salida && (
-            <div role="alert" className="space-y-1 rounded-xl bg-warning-bg px-3.5 py-2.5 text-sm text-warning-text">
-              <p>{salida.texto}</p>
-              {salida.accion}
-            </div>
-          )}
+          </aside>
         </div>
 
         <footer className="space-y-2 border-t border-borde-soft px-5 py-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
@@ -534,10 +697,17 @@ export default function Inscribir({
             <input type="checkbox" checked={bienvenida} onChange={(e) => setBienvenida(e.target.checked)} className="h-4 w-4 accent-[var(--color-primary-boton)]" />
             Enviar bienvenida por WhatsApp{esMenor ? " al tutor" : ""}
           </label>
-          <Boton className="w-full" disabled={enviando} onClick={() => void enviar(true)}>
-            {enviando ? "Inscribiendo…" : plan ? `Inscribir y cobrar ${fmtMoney(primera)}` : "Inscribir y cobrar"}
+          {/* Sin las 3 fotos el botón dice cuántas faltan y no inscribe (D7). */}
+          <Boton className="w-full" disabled={enviando || faltanFotos.length > 0} onClick={() => void enviar(true)}>
+            {enviando
+              ? "Inscribiendo…"
+              : faltanFotos.length
+                ? textoFaltanFotos(faltanFotos.length)
+                : plan && montoHoy > 0
+                  ? `Inscribir y cobrar ${fmtMoney(montoHoy)}`
+                  : "Inscribir y cobrar"}
           </Boton>
-          <Boton variante="ghost" className="w-full" disabled={enviando} onClick={() => void enviar(false)}>
+          <Boton variante="ghost" className="w-full" disabled={enviando || faltanFotos.length > 0} onClick={() => void enviar(false)}>
             Inscribir sin cobrar
           </Boton>
         </footer>
@@ -582,7 +752,19 @@ function Paso({ n, titulo, children }: { n: number; titulo: string; children: Re
   );
 }
 
+function Requisito({ ok, texto }: { ok: boolean; texto: string }) {
+  return (
+    <li className={`flex items-center gap-2 ${ok ? "text-texto-2" : "text-warning-text"}`}>
+      <Icon name={ok ? "check" : "info"} size={15} />
+      <span>{texto}</span>
+    </li>
+  );
+}
+
 function TarjetaGrupo({ g }: { g: GrupoResumen }) {
+  const p = usePalabras();
+  const actual = g.materiaActual;
+  const total = g.materias.length;
   return (
     <div className="flex items-start justify-between gap-3 rounded-xl border border-borde px-3.5 py-2.5">
       <span className="min-w-0">
@@ -590,8 +772,16 @@ function TarjetaGrupo({ g }: { g: GrupoResumen }) {
           {nombreDe(g.carrera)} · {horarioGrupo(g)}
         </span>
         <span className="block text-[13px] text-texto-3">
-          {nombreDe(g.sede)} · empieza {fechaCorta(g.fechaInicio)}
-          {g.materiaActual?.docente ? ` · ${g.materiaActual.docente}` : ""}
+          {nombreDe(g.sede)}
+          {actual?.docente ? ` · Prof. ${actual.docente}` : ""}
+          {g.cupo != null ? ` · ${g.inscritos} de ${g.cupo} inscritos` : ""}
+        </span>
+        <span className="block text-[13px] text-texto-3">
+          {actual && total
+            ? `Va en el M${actual.orden} de ${total} · ${actual.nombre}`
+            : g.estado === "POR_EMPEZAR"
+              ? `Empieza el ${fechaCorta(g.fechaInicio)}`
+              : `${p.Materias}: ${total}`}
         </span>
       </span>
       {g.cupo != null && (
@@ -603,14 +793,49 @@ function TarjetaGrupo({ g }: { g: GrupoResumen }) {
   );
 }
 
-function TarjetaPlan({ plan, elegido, onElegir }: { plan: PlanPago; elegido: boolean; onElegir: () => void }) {
+/**
+ * Una forma de pago. Los dos planes del modo simple se dicen como los dice la
+ * recepción: "Mes a mes · Bs 500 por módulo · M1 hoy · M2 10-nov…" y "Pago
+ * completo · Bs 1.350 · ahorra Bs 150". Un plan a medida, con su calendario.
+ */
+function TarjetaPlan({
+  plan,
+  planes,
+  grupo,
+  elegido,
+  onElegir,
+}: {
+  plan: PlanPago;
+  planes: PlanPago[];
+  grupo: GrupoDetalle | null;
+  elegido: boolean;
+  onElegir: () => void;
+}) {
+  const p = usePalabras();
   const cuotas = plan.calendario;
-  const resumen =
+  const mesAMes = planes.find((x) => x.generado === "MES_A_MES");
+  const desdeDe = (orden: number) => grupo?.materiasGrupo.find((m) => m.materia.orden === orden)?.desde;
+  let titulo = plan.nombre;
+  let precio = fmtMoney(plan.total);
+  let resumen =
     cuotas.length === 1
       ? "1 pago al inscribirse"
       : cuotas.every((c) => c.monto === cuotas[0].monto)
         ? `${cuotas.length} × ${fmtMoney(cuotas[0].monto)}`
         : `${cuotas.length} cuotas`;
+  if (plan.generado === "MES_A_MES") {
+    titulo = "Mes a mes";
+    precio = `${fmtMoney(cuotas[0]?.monto ?? 0)} por ${p.materia}`;
+    resumen = cuotas
+      .map((c, i) => `${textoCubre(c.cubre)} ${i === 0 ? "hoy" : fechaCorta(desdeDe(c.cubre[0]) ?? null)}`)
+      .join(" · ");
+  } else if (plan.generado === "COMPLETO") {
+    const ahorro = mesAMes ? mesAMes.total - plan.total : 0;
+    titulo = "Pago completo";
+    precio = `${fmtMoney(plan.total)}${ahorro > 0 ? ` · ahorra ${fmtMoney(ahorro)}` : ""}`;
+    resumen = `Una sola cuota, cubre ${cuotas[0]?.cubre.length === 1 ? `el ${p.materia}` : `los ${cuotas[0]?.cubre.length ?? 0} ${p.materias}`}`;
+  }
+  const generado = !!plan.generado;
   return (
     <button
       type="button"
@@ -622,11 +847,11 @@ function TarjetaPlan({ plan, elegido, onElegir }: { plan: PlanPago; elegido: boo
       }`}
     >
       <span className="flex items-baseline justify-between gap-2">
-        <span className="text-sm font-bold text-texto">{plan.nombre}</span>
-        <span className="text-sm font-bold tabular-nums text-texto">{fmtMoney(plan.total)}</span>
+        <span className="text-sm font-bold text-texto">{titulo}</span>
+        <span className="text-sm font-bold tabular-nums text-texto">{precio}</span>
       </span>
       <span className="block text-[13px] text-texto-3">{resumen}</span>
-      {elegido && cuotas.length > 1 && (
+      {elegido && cuotas.length > 1 && !generado && (
         <span className="mt-1.5 block space-y-0.5 text-[12px] text-texto-3">
           {cuotas.map((c) => (
             <span key={c.n} className="flex justify-between">

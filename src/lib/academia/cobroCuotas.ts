@@ -80,21 +80,30 @@ export function carritoConCuotas(carrito: Carrito, cobro: CobroCuotas | null, so
  * Las cuotas elegidas en la vista "Cuotas por cobrar": las vencidas
  * arriba y marcadas; si ninguna venció, la primera. El monto arranca en el
  * saldo.
+ *
+ * Con `montoHoy` (lo que se acordó al inscribir: la primera cuota, todo o un
+ * adelanto, N5) ese monto se reparte en orden de vencimiento: las cuotas que
+ * alcanza a cubrir van enteras y la que queda a medias lleva el resto como
+ * abono.
  */
-export function cuotasIniciales(carrito: CarritoInscripcion): { linea: LineaCuota; elegida: boolean }[] {
+export function cuotasIniciales(carrito: CarritoInscripcion, montoHoy?: number): { linea: LineaCuota; elegida: boolean }[] {
   const ordenadas = [...carrito.lineas].sort((a, b) => Number(b.vencida) - Number(a.vencida) || (a.vence < b.vence ? -1 : 1));
   const hayVencidas = ordenadas.some((l) => l.vencida);
-  return ordenadas.map((l, i) => ({
-    linea: {
-      cuotaId: l.cuotaId,
-      productoId: l.productoId,
-      descripcion: l.descripcion,
-      monto: l.saldo,
-      saldo: l.saldo,
-      vencida: l.vencida,
-    },
-    elegida: hayVencidas ? l.vencida : i === 0,
-  }));
+  let resto = montoHoy != null && montoHoy > 0 ? Math.round(montoHoy * 100) / 100 : null;
+  return ordenadas.map((l, i) => {
+    let monto = l.saldo;
+    let elegida = hayVencidas ? l.vencida : i === 0;
+    if (resto != null) {
+      monto = Math.min(l.saldo, resto);
+      elegida = monto > 0;
+      resto = Math.round((resto - monto) * 100) / 100;
+      if (!elegida) monto = l.saldo;
+    }
+    return {
+      linea: { cuotaId: l.cuotaId, productoId: l.productoId, descripcion: l.descripcion, monto, saldo: l.saldo, vencida: l.vencida },
+      elegida,
+    };
+  });
 }
 
 /** Un monto de abono válido: más que cero y nunca por encima del saldo. */
