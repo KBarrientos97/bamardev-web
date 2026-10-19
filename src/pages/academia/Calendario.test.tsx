@@ -169,7 +169,8 @@ describe("N1 · Calendario", () => {
     const panel = screen.getByRole("complementary", { name: "Abrir grupo" });
     const empieza = within(panel).getByLabelText("Empieza el");
     expect(empieza).toHaveValue("2026-11");
-    expect(within(empieza).queryByRole("option", { name: /10 de octubre/ })).not.toBeInTheDocument();
+    // El admin (configura) lo tiene sólo aparte, para un grupo que ya venía en clases (N-5).
+    expect(within(within(empieza).getByRole("group", { name: /Ya empezó/ })).getByRole("option", { name: /10 de octubre/ })).toBeInTheDocument();
     expect(within(panel).getByText(/El 10 de octubre ya pasó: el primer inicio posible es el 10 de noviembre/)).toBeInTheDocument();
   });
 });

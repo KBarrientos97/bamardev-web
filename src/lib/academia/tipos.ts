@@ -274,6 +274,11 @@ export interface GrupoInput {
   materias?: MateriaGrupoInput[];
   /** Sólo en el PATCH: cancelar el grupo o reactivarlo. */
   cancelado?: boolean;
+  /**
+   * Contrato #31: un inicio anterior al del módulo en curso es un grupo que
+   * ya venía en clases; sólo vale con `academia.configurar`.
+   */
+  confirmarInicioPasado?: boolean;
 }
 
 export interface Docente {

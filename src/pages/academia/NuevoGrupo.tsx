@@ -2,11 +2,13 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import PanelLateral from "../../components/PanelLateral";
 import { Boton, Campo, ErrorMsg, Input, Select } from "../../components/ui";
-import { apiAcademia } from "../../lib/academia/apiAcademia";
+import { ApiError } from "../../lib/api";
+import { apiAcademia, CODIGOS_ACADEMIA } from "../../lib/academia/apiAcademia";
 import { franjasDe, inicioDelMes, mesDe, nombreMes, proximoInicio, sumarMeses } from "../../lib/academia/calendario";
 import { diasTexto, horasEntre, SEMANA } from "../../lib/academia/formato";
 import type { GrupoDetalle } from "../../lib/academia/tipos";
 import { usePalabras } from "../../lib/academia/usePalabras";
+import { tienePermiso } from "../../lib/permisos";
 import { useApi } from "../../lib/useApi";
 import { useSucursales } from "../../lib/useSucursales";
 import { useAuth } from "../../store/AuthContext";
@@ -54,6 +56,10 @@ export default function NuevoGrupo({
 }) {
   const p = usePalabras();
   const { usuario } = useAuth();
+  // Cargar un grupo que ya venía en clases (al empezar a usar el sistema) es
+  // cosa de quien configura el instituto (contrato #31); el backend lo vuelve
+  // a mirar y dice `puedeConfirmar`.
+  const configura = tienePermiso(usuario, "academia.configurar");
   const sedes = useSucursales();
   const carreras = useApi(() => apiAcademia.carreras(), []);
   const ajustes = useApi(() => apiAcademia.ajustes(), []);
@@ -71,6 +77,10 @@ export default function NuevoGrupo({
   const [horaFin, setHoraFin] = useState(hueco.fin ?? "21:00");
   const [dias, setDias] = useState<number[]>([1, 3, 5]);
   const [mesInicio, setMesInicio] = useState<string | null>(hueco.mes ?? null);
+  // Un inicio pasado sólo cuenta si se eligió a mano: el hueco de un mes que
+  // ya pasó sigue proponiendo el próximo (B-03).
+  const [pasadoAMano, setPasadoAMano] = useState(false);
+  const [fechaPasada, setFechaPasada] = useState<{ minimo: string | null; puedeConfirmar: boolean } | null>(null);
   const [cupo, setCupo] = useState("");
   const [aula, setAula] = useState("");
   const [docentePor, setDocentePor] = useState<Record<number, number | null>>({});
@@ -121,10 +131,15 @@ export default function NuevoGrupo({
   // el 10 de noviembre y no el 10 de octubre (QA ronda 2, B-03).
   const primero = mesDe(new Date(`${proximoInicio(dia)}T12:00:00`));
   const inicios = Array.from({ length: 6 }, (_, i) => sumarMeses(primero, i));
-  const mesValido = mesInicio && mesInicio >= primero ? mesInicio : null;
-  if (mesValido && !inicios.includes(mesValido)) inicios.push(mesValido);
+  // Quien configura ve también los doce inicios anteriores, aparte, para
+  // cargar un grupo que ya arrancó (QA ronda 2, N-5). Los demás, sólo futuros.
+  const anteriores = configura ? Array.from({ length: 12 }, (_, i) => sumarMeses(primero, -(i + 1))) : [];
+  const mesValido = mesInicio && (mesInicio >= primero || (configura && pasadoAMano)) ? mesInicio : null;
+  if (mesValido && mesValido >= primero && !inicios.includes(mesValido)) inicios.push(mesValido);
+  if (mesValido && mesValido < primero && !anteriores.includes(mesValido)) anteriores.push(mesValido);
   const mes = mesValido ?? primero;
-  const yaPaso = !!hueco.mes && hueco.mes < primero;
+  const pasado = mes < primero;
+  const yaPaso = !!hueco.mes && hueco.mes < primero && !pasado;
 
   const nombreSede = sedes.sucursales.find((s) => s.id === almacenId)?.nombre ?? usuario?.sucursal ?? "";
   const pctDocente = carrera?.pctDocente ?? a?.pctDocenteDefecto ?? null;
@@ -138,13 +153,20 @@ export default function NuevoGrupo({
     setHoraFin(f);
   }
 
-  async function crear() {
+  function elegirInicio(m: string) {
+    setMesInicio(m);
+    setPasadoAMano(m < primero);
+    setFechaPasada(null);
+  }
+
+  async function crear(confirmarInicioPasado = false) {
     if (!carrera) return setError(`Elegí el ${p.carrera}.`);
     if (almacenId == null) return setError(`Elegí la ${p.sede}.`);
-    if (inicioDelMes(mes, dia) < proximoInicio(dia)) return setError("Esa fecha de inicio ya pasó: elegí otra.");
+    if (!configura && inicioDelMes(mes, dia) < proximoInicio(dia)) return setError("Esa fecha de inicio ya pasó: elegí otra.");
     if (!dias.length) return setError("Elegí al menos un día.");
     if (horasEntre(horaInicio, horaFin) <= 0) return setError("La hora de fin tiene que ser después de la de inicio.");
     setError("");
+    setFechaPasada(null);
     setGuardando(true);
     try {
       const g = await apiAcademia.crearGrupo({
@@ -163,9 +185,15 @@ export default function NuevoGrupo({
           materiaId: m.id,
           ...(docentePor[m.id] ? { personalId: docentePor[m.id] } : {}),
         })),
+        ...(confirmarInicioPasado ? { confirmarInicioPasado: true } : {}),
       });
       onCreado(g);
     } catch (e) {
+      if (e instanceof ApiError && e.codigo === CODIGOS_ACADEMIA.FECHA_PASADA) {
+        const minimo = typeof e.detalle.minimo === "string" ? e.detalle.minimo : null;
+        setFechaPasada({ minimo, puedeConfirmar: e.detalle.puedeConfirmar === true });
+        return;
+      }
       setError(e instanceof Error ? e.message : "No se pudo abrir el grupo");
     } finally {
       setGuardando(false);
@@ -186,7 +214,7 @@ export default function NuevoGrupo({
       onClose={onCerrar}
       acciones={
         <>
-          <Boton onClick={() => void crear()} disabled={guardando || !dias.length}>
+          <Boton onClick={() => void crear()} disabled={guardando || !dias.length || !!fechaPasada?.puedeConfirmar}>
             {guardando ? "Abriendo…" : "Abrir grupo"}
           </Boton>
           <Boton variante="ghost" onClick={onCerrar} disabled={guardando}>
@@ -278,14 +306,28 @@ export default function NuevoGrupo({
 
         <div>
           <Campo label="Empieza el">
-            <Select value={mes} onChange={(e) => setMesInicio(e.target.value)}>
+            <Select value={mes} onChange={(e) => elegirInicio(e.target.value)}>
               {inicios.map((m) => (
                 <option key={m} value={m}>
                   {dia} de {nombreMes(m)} de {m.slice(0, 4)}
                 </option>
               ))}
+              {anteriores.length > 0 && (
+                <optgroup label="Ya empezó (un grupo que venía en clases)">
+                  {anteriores.map((m) => (
+                    <option key={m} value={m}>
+                      {dia} de {nombreMes(m)} de {m.slice(0, 4)}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
             </Select>
           </Campo>
+          {pasado && !fechaPasada && (
+            <p className="mt-1 text-xs text-warning-text">
+              Esa fecha ya pasó: elegila sólo para cargar un grupo que ya estaba en clases.
+            </p>
+          )}
           {yaPaso && (
             <p className="mt-1 text-xs text-texto-3">
               El {dia} de {nombreMes(hueco.mes!)} ya pasó: el primer inicio posible es el {dia} de {nombreMes(primero)}.
@@ -390,8 +432,68 @@ export default function NuevoGrupo({
           </section>
         )}
 
+        {fechaPasada && (
+          <AvisoFechaPasada
+            fecha={inicioDelMes(mes, dia)}
+            {...fechaPasada}
+            guardando={guardando}
+            onConfirmar={() => void crear(true)}
+            onOtraFecha={() => setFechaPasada(null)}
+          />
+        )}
         <ErrorMsg>{error}</ErrorMsg>
       </div>
     </PanelLateral>
+  );
+}
+
+/**
+ * El 400 FECHA_PASADA (contrato #31): el inicio es anterior al del módulo en
+ * curso. Quien configura el instituto puede decir que es un grupo que ya
+ * venía en clases y se reenvía con `confirmarInicioPasado`; los demás sólo
+ * ven desde cuándo se puede.
+ */
+function AvisoFechaPasada({
+  fecha,
+  minimo,
+  puedeConfirmar,
+  guardando,
+  onConfirmar,
+  onOtraFecha,
+}: {
+  fecha: string;
+  minimo: string | null;
+  puedeConfirmar: boolean;
+  guardando: boolean;
+  onConfirmar: () => void;
+  onOtraFecha: () => void;
+}) {
+  // "10 de agosto" (o "10 de diciembre 2025" si es de otro año).
+  const larga = (iso: string) => `${Number(iso.slice(8, 10))} de ${nombreMes(iso.slice(0, 7), mesDe(new Date()))}`;
+  const desde = minimo ? ` El primer inicio posible es el ${larga(minimo)}.` : "";
+  return (
+    <div role="alert" className="space-y-2 rounded-xl border border-warning/40 bg-warning-bg px-3.5 py-3 text-sm text-warning-text">
+      {puedeConfirmar ? (
+        <>
+          <p>
+            <b>El {larga(fecha)} ya pasó.</b>
+            {desde} ¿Es un grupo que ya estaba en clases? Se carga con esa fecha para seguirlo desde acá.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <Boton onClick={onConfirmar} disabled={guardando}>
+              {guardando ? "Abriendo…" : "El grupo ya venía andando"}
+            </Boton>
+            <Boton variante="ghost" onClick={onOtraFecha} disabled={guardando}>
+              Elegir otra fecha
+            </Boton>
+          </div>
+        </>
+      ) : (
+        <p>
+          <b>El {larga(fecha)} ya pasó.</b>
+          {desde} Elegí otra fecha: un grupo que ya estaba en clases lo carga quien configura el instituto.
+        </p>
+      )}
+    </div>
   );
 }
