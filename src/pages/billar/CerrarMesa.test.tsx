@@ -574,4 +574,23 @@ describe("Cerrar mesa con la cuenta vieja", () => {
     expect(screen.getByText("La Mesa 5 no está abierta")).toBeInTheDocument();
     expect(screen.queryByText("Total a cobrar")).not.toBeInTheDocument();
   });
+
+  it("si al reanudar la cuenta trae un adelanto que cobró otro equipo, avisa y no deja cobrar con el vuelto viejo", async () => {
+    // Revisión del 18-oct (quinta ronda): con el mismo total el aviso se
+    // borraba solo y Cobrar quedaba prendido con el Recibido de antes; el
+    // cambio pasaba de Bs 30 a Bs 40 sin decir nada.
+    caso.jugadosMin = 60;
+    caso.pausadaHace = 11;
+    await montar();
+    fireEvent.change(screen.getByLabelText("Recibido"), { target: { value: "50" } });
+    reloj.ahora = T0 + 3 * MIN;
+    caso.pagos = [
+      { id: 1, hora: T0 + 2 * MIN, formaPagoId: 1, metodo: "Efectivo", monto: 10, recibido: 10, concepto: "ADELANTO" },
+    ];
+    await tocar(screen.getByRole("button", { name: /Reanudar la mesa/ }));
+    expect(screen.getByText(/La cuenta se recalculó a la hora de ahora/)).toHaveTextContent(
+      /ahora el saldo es Bs.10,00 \(era Bs.20,00\)/,
+    );
+    expect(screen.getByRole("button", { name: /Cobrar Bs.10,00/ })).toBeDisabled();
+  });
 });

@@ -314,7 +314,12 @@ export default function CerrarMesa() {
   const cambioPorLaHora = aviso !== null;
   useEffect(() => {
     if (recalculada === null || cTotal === null || cambioLaCuenta) return;
-    if (aCentavos(cTotal) !== aCentavos(recalculada.total)) return;
+    // Y lo mismo pagado: tras Reanudar la foto es la reanudada, que puede traer
+    // un adelanto que cobró otro equipo; con el mismo total el aviso se borraba
+    // solo y Cobrar quedaba prendido con el vuelto viejo (revisión del 18-oct).
+    if (aCentavos(cTotal) !== aCentavos(recalculada.total) || aCentavos(cPagado) !== aCentavos(recalculada.pagado)) {
+      return;
+    }
     // Recalculada y con el mismo total. Si el rechazo fue por la hora, el
     // "volvé a abrir el cierre" del servidor ya no aplica: se cobra de nuevo
     // con la cuenta de ahora. Si la hora estaba al día, el "no" fue por otra
@@ -331,7 +336,7 @@ export default function CerrarMesa() {
       }
     }
     setRecalculada(null);
-  }, [recalculada, cTotal, cambioLaCuenta, setError]);
+  }, [recalculada, cTotal, cPagado, cambioLaCuenta, setError]);
   /** `pago`: "Todavía no pagó" (con el QR sin confirmar) deja el cobro de cero, sin la sugerencia. */
   const usarCuentaRecalculada = (pago = true) => {
     const sugerido = pago ? (aviso?.sugerido ?? null) : null;
@@ -478,7 +483,9 @@ export default function CerrarMesa() {
    */
   const horaDelEnvio = () => {
     if (sinRespuesta) return hasta;
-    const ahoraMs = ahoraServidor();
+    // Nunca antes de la reanudación, como en `vencida`: con el reloj de la
+    // pantalla un poco atrasado el servidor la rechazaba (revisión del 18-oct).
+    const ahoraMs = Math.max(ahoraServidor(), ultimaReanudacion + 1);
     const cAhora = cuentaDe(s, tipo, ahoraMs);
     if (aCentavos(cAhora.total) !== aCentavos(c.total) || aCentavos(cAhora.saldo) !== aCentavos(c.saldo)) return hasta;
     setHasta(ahoraMs);
