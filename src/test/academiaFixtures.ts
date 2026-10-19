@@ -189,7 +189,7 @@ export const SESION_SECRETARIA = {
     rol: "CAJERO",
     sucursalId: 1,
     sucursal: "Central",
-    permisos: ["academia.ver", "academia.inscribir", "academia.cobranza", "ventas.vender", "caja.operar"],
+    permisos: ["academia.ver", "academia.inscribir", "academia.cobranza", "asistencia.registrar", "asistencia.llegadas", "ventas.vender", "caja.operar"],
     permisosPropios: [] as string[],
   },
   negocio: {

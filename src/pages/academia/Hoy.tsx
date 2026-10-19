@@ -3,7 +3,9 @@ import { Link, useNavigate } from "react-router-dom";
 import { Icon } from "../../components/Icon";
 import { Boton, Cargando, ErrorMsg } from "../../components/ui";
 import { apiAcademia } from "../../lib/academia/apiAcademia";
-import type { HoyAcademia } from "../../lib/academia/tipos";
+import { aMinutos } from "../../lib/academia/calendario";
+import { nombreDe } from "../../lib/academia/formato";
+import type { ClaseDelDia, HoyAcademia } from "../../lib/academia/tipos";
 import { useFiltroSede } from "../../lib/academia/useFiltroSede";
 import { usePalabras } from "../../lib/academia/usePalabras";
 import { rutaCobroInscripcion } from "../../lib/academia/vista";
@@ -16,10 +18,12 @@ import { useAuth } from "../../store/AuthContext";
 import Inscribir from "./Inscribir";
 
 /**
- * E1 · Hoy (PLAN-ACADEMIAS §5): el tablero de la secretaría y de la
- * dirección. Qué hay para cobrar hoy en la sede y los avisos (preinscripciones
- * nuevas, el SIE, cupos libres, notas por cerrar). Las clases del día y las
- * llegadas de los docentes llegan con la asistencia (F1b).
+ * E1 · Hoy (PLAN-ACADEMIAS §5, ronda 2): el tablero de la recepción y de la
+ * dirección. Las clases del día de la sede, con la llegada del docente (se
+ * marca acá, con la hora del servidor, sin descontar nada: D9) y si ya pasó
+ * la lista; al costado, qué hay para cobrar y los avisos (inscripciones
+ * online, grupos que empiezan con cupos libres). En el celular, Inscribir y
+ * Cobrar quedan abajo, a un toque.
  */
 export default function Hoy() {
   const { usuario, puede } = useAuth();
@@ -32,12 +36,28 @@ export default function Hoy() {
   const conCaja = puede("caja");
   const caja = useApi(() => (conCaja ? api.cajaActual().catch(() => null) : Promise.resolve(null)), [conCaja]);
   const inscribe = tienePermiso(usuario, "academia.inscribir");
+  const marcaLlegadas = tienePermiso(usuario, "asistencia.llegadas");
+  const [marcando, setMarcando] = useState<number | null>(null);
+  const [errorLlegada, setErrorLlegada] = useState("");
+
+  async function marcarLlegada(sesionId: number) {
+    setMarcando(sesionId);
+    setErrorLlegada("");
+    try {
+      await apiAcademia.llegada(sesionId);
+      hoy.recargar();
+    } catch (e) {
+      setErrorLlegada(e instanceof Error ? e.message : "No se pudo marcar la llegada");
+    } finally {
+      setMarcando(null);
+    }
+  }
 
   const nombreSede = sede.nombre || usuario?.sucursal || "";
   const d = hoy.datos;
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6 p-4 sm:p-6 lg:p-8">
+    <div className="mx-auto max-w-6xl space-y-6 p-4 pb-24 sm:p-6 md:pb-6 lg:p-8">
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0 space-y-1">
           <p className="text-[13px] text-texto-3">
@@ -59,7 +79,7 @@ export default function Hoy() {
           )}
         </div>
         {inscribe && (
-          <Boton icono="plus" onClick={() => setInscribiendo(true)}>
+          <Boton icono="plus" className="hidden md:inline-flex" onClick={() => setInscribiendo(true)}>
             Inscribir {p.alumno}
           </Boton>
         )}
@@ -73,14 +93,38 @@ export default function Hoy() {
         <Cargando />
       ) : (
         <div className="grid gap-8 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+          <div className="space-y-3">
+            <ErrorMsg>{errorLlegada}</ErrorMsg>
+            <ClasesDeHoy
+              clases={d.clases ?? []}
+              verCalendario={puede("academia_calendario")}
+              marcaLlegadas={marcaLlegadas}
+              marcando={marcando}
+              onMarcar={(id) => void marcarLlegada(id)}
+            />
+          </div>
           <div className="space-y-8">
             <ParaCobrar datos={d} puedeCobranza={puede("academia_cobranza")} onIr={(tipo) => navigate(`/academia/cobranza?tipo=${tipo}`)} />
-            <section aria-label="Clases de hoy" className="space-y-2">
-              <h2 className="text-base font-bold text-texto">Clases de hoy</h2>
-              <p className="text-sm text-texto-3">Próximamente: las clases del día, las llegadas y las listas.</p>
-            </section>
+            <Avisos datos={d} />
           </div>
-          <Avisos datos={d} />
+        </div>
+      )}
+
+      {(inscribe || puede("pos")) && (
+        <div className="fixed inset-x-0 bottom-0 z-20 flex gap-2 border-t border-borde-soft bg-white p-3 md:hidden">
+          {inscribe && (
+            <Boton className="flex-1" onClick={() => setInscribiendo(true)}>
+              Inscribir
+            </Boton>
+          )}
+          {puede("pos") && (
+            <Link
+              to="/pos"
+              className="inline-flex flex-1 items-center justify-center rounded-xl border border-borde bg-white px-4 py-2.5 text-sm font-semibold text-texto-2"
+            >
+              Cobrar
+            </Link>
+          )}
         </div>
       )}
 
@@ -98,6 +142,99 @@ export default function Hoy() {
   );
 }
 
+/** "terminó", "en curso" o "por empezar", con la hora del equipo. */
+function momentoClase(c: ClaseDelDia, ahora: Date): "terminó" | "en curso" | "por empezar" {
+  const min = ahora.getHours() * 60 + ahora.getMinutes();
+  if (min >= aMinutos(c.horaFin)) return "terminó";
+  if (min >= aMinutos(c.horaInicio)) return "en curso";
+  return "por empezar";
+}
+
+/** "Llegó 07:12 · 12 min tarde": la llegada del docente, sin descontar nada (D9). */
+function textoLlegada(c: ClaseDelDia): { texto: string; tarde: boolean } {
+  if (!c.llegadaEn) return { texto: "Todavía no", tarde: false };
+  const tarde = (c.atrasoMin ?? 0) > 0;
+  return { texto: `Llegó ${fmtHora(c.llegadaEn)}${tarde ? ` · ${c.atrasoMin} min tarde` : ""}`, tarde };
+}
+
+function ClasesDeHoy({
+  clases,
+  verCalendario,
+  marcaLlegadas,
+  marcando,
+  onMarcar,
+}: {
+  clases: ClaseDelDia[];
+  verCalendario: boolean;
+  marcaLlegadas: boolean;
+  marcando: number | null;
+  onMarcar: (sesionId: number) => void;
+}) {
+  const p = usePalabras();
+  const ahora = new Date();
+  const orden = [...clases].sort((a, b) => aMinutos(a.horaInicio) - aMinutos(b.horaInicio));
+  return (
+    <section aria-labelledby="t-clases" className="space-y-3">
+      <div className="flex items-center justify-between gap-3">
+        <h2 id="t-clases" className="text-base font-bold text-texto">
+          Clases de hoy <span className="tabular-nums text-texto-4">{clases.length}</span>
+        </h2>
+        {verCalendario && (
+          <Link to="/academia/calendario" className="text-sm font-semibold text-primary-700 hover:underline">
+            Ver calendario
+          </Link>
+        )}
+      </div>
+      {orden.length === 0 ? (
+        <p className="text-sm text-texto-3">Hoy no hay clases en esta {p.sede}.</p>
+      ) : (
+        <ul className="divide-y divide-borde-soft border-y border-borde-soft">
+          {orden.map((c) => {
+            const momento = momentoClase(c, ahora);
+            const llegada = textoLlegada(c);
+            const docente = typeof c.docente === "string" ? c.docente : c.docente?.nombre;
+            return (
+              <li
+                key={c.sesionId}
+                className={`grid gap-x-4 gap-y-1 py-3 sm:grid-cols-[64px_minmax(0,1fr)_auto] sm:items-center ${momento === "terminó" ? "opacity-65" : ""}`}
+              >
+                <span className="flex items-baseline gap-2 sm:block">
+                  <span className="block text-sm font-semibold tabular-nums text-texto">{c.horaInicio}</span>
+                  <span className={`block text-xs ${momento === "en curso" ? "font-semibold text-primary-700" : "text-texto-4"}`}>{momento}</span>
+                </span>
+                <span className="min-w-0">
+                  <Link to={`/academia/grupos/${c.grupoId}`} className="block truncate text-sm font-semibold text-texto hover:underline">
+                    {nombreDe(c.carrera)} · {c.nombre}
+                  </Link>
+                  <span className="block truncate text-[13px] text-texto-3">
+                    M{c.materia.orden} {c.materia.nombre}
+                    {c.aula ? ` · ${c.aula}` : ""} · {c.inscritos} {c.inscritos === 1 ? p.alumno : p.alumnos}
+                  </span>
+                  <span className="block truncate text-[13px] text-texto-3">
+                    {docente ? `Prof. ${docente} · ` : ""}
+                    <span className={llegada.tarde ? "font-semibold text-warning-text" : c.llegadaEn ? "text-texto-2" : "text-texto-4"}>
+                      {llegada.texto}
+                    </span>
+                    {" · Lista "}
+                    {c.lista.pasada ? `${c.lista.presentes} de ${c.lista.total}` : "—"}
+                  </span>
+                </span>
+                <span className="sm:text-right">
+                  {marcaLlegadas && !c.llegadaEn && momento !== "terminó" && (
+                    <Boton variante="ghost" disabled={marcando === c.sesionId} onClick={() => onMarcar(c.sesionId)}>
+                      {marcando === c.sesionId ? "Marcando…" : "Marcar llegada"}
+                    </Boton>
+                  )}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
+  );
+}
+
 function ParaCobrar({
   datos,
   puedeCobranza,
@@ -112,7 +249,7 @@ function ParaCobrar({
   return (
     <section aria-label="Para cobrar hoy" className="space-y-3">
       <div className="flex items-center justify-between gap-3">
-        <h2 className="text-base font-bold text-texto">Para cobrar hoy</h2>
+        <h2 className="text-base font-bold text-texto">Para cobrar</h2>
         {puedeCobranza && (
           <Link to="/academia/cobranza" className="text-sm font-semibold text-primary-700 hover:underline">
             Ir a Cobranza
@@ -147,7 +284,14 @@ function ParaCobrar({
                     <span className="block truncate text-sm font-semibold text-texto">{it.alumno.nombre}</span>
                     <span className="block truncate text-xs text-texto-3">{it.detalle}</span>
                   </span>
-                  <span className="shrink-0 text-sm font-semibold tabular-nums text-texto">{fmtMoney(it.monto)}</span>
+                  <span className="flex shrink-0 items-center gap-3">
+                    <span className="text-sm font-semibold tabular-nums text-texto">{fmtMoney(it.monto)}</span>
+                    {puedeCobranza && (
+                      <Link to="/academia/cobranza" className="text-[13px] font-semibold text-primary-700 hover:underline">
+                        Enviar QR
+                      </Link>
+                    )}
+                  </span>
                 </li>
               ))}
             </ul>
@@ -193,7 +337,8 @@ function Indicador({
 
 const PUNTO: Record<string, string> = {
   PREINSCRIPCIONES: "bg-primary",
-  SIE: "bg-warning",
+  INSCRIPCIONES_ONLINE: "bg-primary",
+  EMPIEZA: "bg-slate-300",
   CUPO: "bg-slate-400",
   NOTAS: "bg-slate-400",
 };
@@ -207,13 +352,16 @@ function Avisos({ datos }: { datos: HoyAcademia }) {
         <p className="text-sm text-texto-3">Nada que revisar por ahora.</p>
       ) : (
         <ul className="space-y-1">
-          {avisos.map((a, i) => {
+          {/* El SIE salió de la lista en la ronda 2: si un backend viejo lo manda, no se muestra. */}
+          {avisos.filter((a) => a.tipo !== "SIE").map((a, i) => {
             const destino =
-              a.tipo === "PREINSCRIPCIONES"
+              a.tipo === "PREINSCRIPCIONES" || a.tipo === "INSCRIPCIONES_ONLINE"
                 ? "/academia/preinscripciones"
                 : a.grupoId != null
                   ? `/academia/grupos/${a.grupoId}`
-                  : null;
+                  : a.tipo === "EMPIEZA"
+                    ? "/academia/calendario"
+                    : null;
             const cuerpo = (
               <>
                 <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${PUNTO[a.tipo] ?? "bg-slate-400"}`} />
