@@ -1,7 +1,9 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Icon } from "../../components/Icon";
+import { quedoEnDuda } from "../../lib/cupo";
 import { fmtMoney } from "../../lib/format";
+import { useBloqueoCupo } from "../../lib/useBloqueoCupo";
 import { totalCarrito, useCarritoBillar } from "./carrito";
 import { Catalogo, LineasPedido, PantallaPedido } from "./Catalogo";
 import { FormCobro } from "./Cobro";
@@ -33,6 +35,24 @@ export default function VentaRapida() {
   const accion = useAccion();
   const intento = useIntentoDeCobro();
   const intentoMesa = useIntentoDeCobro();
+  /**
+   * Plan Emprendedor: es una venta del POS y consume del cupo del día igual
+   * (cargarla a una mesa no: la mesa ya consumió al abrirse). Sin lugar ni
+   * créditos se abre la hoja de comprar créditos, como en el POS, en vez del
+   * "Llegaste a tus N ventas de hoy" en rojo sin salida (QA del 19-oct). Sin
+   * cupo (Básico, Profesional) deja pasar todo y no pide nada.
+   */
+  const {
+    verificar: hayLugarParaVender,
+    manejarError: rechazoPorCupo,
+    registrar: registrarConsumo,
+  } = useBloqueoCupo("VENTA", { refrescarAlMontar: true });
+  // El cobro anterior quedó sin respuesta (corte, 5xx): pudo haber entrado con
+  // el último lugar del día. El reintento va con el mismo `clienteRequestId`
+  // y el backend devuelve la venta sin consumir de nuevo, así que va al
+  // servidor aunque el contador diga lleno (como en el POS).
+  const cobroEnDuda = useRef(false);
+  const hayLugar = () => cobroEnDuda.current || hayLugarParaVender();
 
   const volver = (
     <BotonB icono="arrowLeft" onClick={() => navigate("/billar")} aria-label="Volver al billar">
@@ -52,16 +72,29 @@ export default function VentaRapida() {
   const confirmar = async () => {
     const pago = cobro.pago;
     if (!pago) return;
+    if (!hayLugar()) return;
     const cambio = cobro.cambio;
     let r: { codigo: string; yaEntro: string | null } = { codigo: "", yaEntro: null };
-    const ok = await accion.ejecutar(async () => {
-      // El mismo id mientras el pedido sea el mismo: un reintento no vende dos veces.
-      r = await billar.ventaRapida(items, pago, intento.actual(huellaDeCobro(items)));
-    });
+    const ok = await accion.ejecutar(
+      async () => {
+        // El mismo id mientras el pedido sea el mismo: un reintento no vende dos veces.
+        const venta = await billar.ventaRapida(items, pago, intento.actual(huellaDeCobro(items)));
+        registrarConsumo(venta);
+        r = venta;
+      },
+      (err) => {
+        cobroEnDuda.current = quedoEnDuda(err);
+        // Otro equipo usó el último lugar del día (403 CUPO_AGOTADO): la hoja
+        // de compra y no el cartel rojo. El cobro queda armado para
+        // reintentar después de comprar.
+        return rechazoPorCupo(err);
+      },
+    );
     if (!ok) {
       void cargarProductos();
       return;
     }
+    cobroEnDuda.current = false;
     intento.registrado();
     billar.avisar(
       r.yaEntro
@@ -161,7 +194,16 @@ export default function VentaRapida() {
           <span className="text-2xl font-extrabold tabular-nums text-texto">{fmtMoney(total)}</span>
         </div>
         {!cobrando && <ErrorAccion texto={accion.error} />}
-        <BotonB variante="verde" grande icono="billetera" className="w-full" disabled={cantidad === 0} onClick={() => setCobrando(true)}>
+        {/* Sin lugar en el cupo, la hoja de compra antes de pasar al cobro:
+            no hacerle cargar el pago al cajero para rebotar al final. */}
+        <BotonB
+          variante="verde"
+          grande
+          icono="billetera"
+          className="w-full"
+          disabled={cantidad === 0}
+          onClick={() => hayLugar() && setCobrando(true)}
+        >
           Cobrar {fmtMoney(total)}
         </BotonB>
         <div className="relative">

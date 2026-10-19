@@ -220,7 +220,17 @@ export function ModalAbrir({ mesa, onClose }: { mesa: Mesa; onClose: () => void 
   // `clienteRequestId` y el backend devuelve la mesa ya abierta sin consumir
   // de nuevo, así que va al servidor aunque el contador diga lleno (como en el POS).
   const abrirEnDuda = useRef(false);
-  const hayLugar = () => abrirEnDuda.current || hayLugarParaAbrir();
+  /**
+   * Bloqueado por el cupo, este diálogo se cierra y queda sólo la hoja de
+   * compra: una sola capa. Con "Abrir Mesa N" abierto detrás, al cerrar la
+   * hoja el cajero volvía a un diálogo sin saber por qué (QA del 19-oct).
+   * Después de comprar, vuelve a tocar "Abrir mesa".
+   */
+  const hayLugar = () => {
+    if (abrirEnDuda.current || hayLugarParaAbrir()) return true;
+    onClose();
+    return false;
+  };
 
   const abrirMesa = async (conPago: boolean) => {
     if (!hayLugar()) return;
@@ -241,9 +251,12 @@ export function ModalAbrir({ mesa, onClose }: { mesa: Mesa; onClose: () => void 
       (err) => {
         abrirEnDuda.current = quedoEnDuda(err);
         // Otro equipo usó el último lugar del día (403 CUPO_AGOTADO): la hoja
-        // de compra en vez del cartel rojo, y el diálogo queda como estaba
-        // para reintentar después de comprar.
-        return rechazoPorCupo(err);
+        // de compra en vez del cartel rojo y, como en el chequeo local, el
+        // diálogo se cierra (ver `hayLugar`). No se abrió nada: no hay intento
+        // que conservar.
+        if (!rechazoPorCupo(err)) return false;
+        onClose();
+        return true;
       },
     );
     if (!ok) return;
@@ -310,8 +323,9 @@ export function ModalAbrir({ mesa, onClose }: { mesa: Mesa; onClose: () => void 
             <BotonB icono="clock" disabled={accion.enviando} onClick={() => abrirMesa(false)}>
               {accion.enviando ? "Abriendo…" : "Abrir · cobrar al final"}
             </BotonB>
-            {/* Sin lugar en el cupo, la hoja de compra antes de pasar al cobro:
-                no hacerle cargar el pago al cajero para rebotar al final. */}
+            {/* Sin lugar en el cupo, la hoja de compra (y el diálogo se cierra)
+                antes de pasar al cobro: no hacerle cargar el pago al cajero
+                para rebotar al final. */}
             <BotonB variante="verde" icono="billetera" onClick={() => hayLugar() && setCobrando(true)}>
               Cobrar {fmtMoney(precio.precio)} y abrir
             </BotonB>

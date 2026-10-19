@@ -17,7 +17,12 @@ const sesion = vi.hoisted(() => ({
   rol: "ADMIN" as string,
   /** Plan Emprendedor: sin cupo (lo de siempre) salvo en sus casos. */
   cupo: null as import("../types").CupoEstado | null,
+  /** Permisos que se le sacan a la plantilla del rol. */
+  sin: [] as string[],
 }));
+
+// Lo del billar que corre de fondo sondea el tablero: acá no hace falta.
+vi.mock("../pages/billar/DeFondo", () => ({ default: () => null }));
 
 vi.mock("../store/AuthContext", async () => {
   const { puedeVer } = await import("../lib/permisos");
@@ -34,7 +39,7 @@ vi.mock("../store/AuthContext", async () => {
       puede: (s: Parameters<typeof puedeVer>[1]) =>
         puedeVer(
           {
-            ...permisosDe(sesion.rol as Parameters<typeof permisosDe>[0]),
+            ...permisosDe(sesion.rol as Parameters<typeof permisosDe>[0], { sin: sesion.sin }),
             features: sesion.features,
             rubro: sesion.rubro,
           },
@@ -71,6 +76,7 @@ beforeEach(() => {
   sesion.features = [];
   sesion.rol = "ADMIN";
   sesion.cupo = null;
+  sesion.sin = [];
   localStorage.clear();
 });
 
@@ -437,5 +443,30 @@ describe("Plan Emprendedor: el chip de ventas junto al aviso de licencia", () =>
     sesion.cupo = cupoEmprendedor({ fecha: fechaNegocio(), ventas: 32, saldo: 240 });
     abrir("/pos");
     expect(screen.getByRole("button", { name: /Créditos 240/ })).toHaveTextContent("Hoy 32/50 · Créditos 240");
+  });
+
+  describe("el aviso amarillo se ve donde opera el cajero (QA del 19-oct)", () => {
+    beforeEach(() => {
+      sesion.rubro = "BILLAR";
+      sesion.rol = "CAJERO";
+      sesion.features = ["pos", "billar", "caja"];
+      sesion.cupo = cupoEmprendedor({ fecha: fechaNegocio(), limiteVentas: 8, ventas: 8, saldo: 0 });
+    });
+
+    it("en el POS y en el billar, no sólo en la primera pantalla", () => {
+      const { unmount } = render(arbol("/pos"));
+      expect(screen.getByRole("status")).toHaveTextContent("Te quedan 0 créditos");
+      unmount();
+      // Otra pantalla (o una recarga): mostrarlo en el POS no lo gastó.
+      render(arbol("/billar"));
+      expect(screen.getByRole("status")).toHaveTextContent("Te quedan 0 créditos");
+      expect(screen.getByRole("button", { name: /Créditos 0/ })).toHaveTextContent("Hoy 8/8 · Créditos 0");
+    });
+
+    it("quien sólo atiende el billar (sin el POS) también lo ve: abrir una mesa consume del cupo", () => {
+      sesion.sin = ["ventas.vender"];
+      render(arbol("/billar"));
+      expect(screen.getByRole("status")).toHaveTextContent("Te quedan 0 créditos");
+    });
   });
 });

@@ -669,12 +669,15 @@ export const billar = {
    *
    * Sin "Cliente": el backend no guarda el nombre en una venta de mostrador (y
    * con una sola letra la rechazaba), así que la pantalla ya no lo pide.
+   *
+   * Devuelve también el `consumo` del cupo (Plan Emprendedor): como en
+   * `abrir`, el contador vive en la sesión y lo guarda la pantalla.
    */
   async ventaRapida(
     items: { productoId: number; cant: number }[],
     pago: PagoNuevo,
     clienteRequestId: string,
-  ): Promise<{ codigo: string; yaEntro: string | null }> {
+  ): Promise<{ codigo: string; yaEntro: string | null; consumo?: ConsumoVista }> {
     const formas = await formasPago();
     const pagos = aPagos(pago, formas);
     const venta = await api.crearVenta({
@@ -703,7 +706,7 @@ export const billar = {
             .map((p) => `${p.formaPago ?? formas.find((f) => f.id === p.formaPagoId)?.nombre ?? "otro medio"} ${fmtMoney(p.monto)}`)
             .join(" + ")
         : null;
-    return { codigo: venta.comprobante ?? `#${venta.id}`, yaEntro };
+    return { codigo: venta.comprobante ?? `#${venta.id}`, yaEntro, consumo: venta.consumo };
   },
 
   /**

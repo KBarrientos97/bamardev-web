@@ -56,6 +56,7 @@ export default function Layout() {
     setCambiandoPassword(true);
   };
   const menu = useMenu();
+  const vende = puede("pos") || puede("billar");
   // La cola de ventas cobradas sin internet sube desde acá, con cualquier
   // pantalla abierta (sólo en la app instalada del iPhone, PLAN-IOS F3).
   useMotorOffline();
@@ -219,12 +220,14 @@ export default function Layout() {
         {/* Los PIN mal escritos, para quien administra los PIN (18-oct). La
             TV del salón va fuera del Layout: ahí no sale. */}
         <FranjaIntentosPin />
-        {/* Plan Emprendedor: el chip de ventas y los avisos del cupo. Sin
-            cupo (Básico, Profesional) no dibuja nada. */}
+        {/* Plan Emprendedor: el chip de ventas y los avisos del cupo, en
+            todas las pantallas. Sin cupo (Básico, Profesional) no dibuja
+            nada. Quien atiende el billar también vende: abrir una mesa y la
+            venta rápida consumen del mismo cupo. */}
         <BarraCupo
-          chip={puede("pos") ? "VENTA" : undefined}
+          chip={vende ? "VENTA" : undefined}
           avisos={[
-            ...(puede("pos") ? (["VENTA"] as const) : []),
+            ...(vende ? (["VENTA"] as const) : []),
             ...(puede("hoy") || puede("agenda") ? (["CITA"] as const) : []),
           ]}
         />

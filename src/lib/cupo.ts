@@ -125,14 +125,20 @@ export function tituloAgotado(cupo: CupoEstado | null | undefined, unidad: Unida
 export const SALDO_BAJO = 20;
 
 export interface AvisoCupo {
-  /** Identifica el aviso dentro del día: se muestra una sola vez. */
+  /** Identifica el aviso dentro del día: cerrado, no vuelve hasta mañana. */
   clave: string;
   texto: string;
+  /**
+   * Para los que siguen empeorando (el saldo): el valor de hoy. Si se cerró
+   * con 10 créditos y ahora quedan 8, vuelve a salir (ver `sinCerrar`).
+   */
+  nivel?: number;
 }
 
 /**
- * Los avisos que corresponden con este snapshot (§5.1). Cada uno se muestra
- * una sola vez por día: de eso se encarga quien los muestra, con las marcas.
+ * Los avisos que corresponden con este snapshot (§5.1). Quedan a la vista
+ * hasta que alguien los cierra: de eso se encarga quien los muestra, con las
+ * marcas (ver `sinCerrar`).
  *
  *   • al 80 % del cupo (40/50): "Te quedan 10 ventas en el cupo de hoy";
  *   • con el cupo lleno y créditos para seguir: desde ahora cada una usa
@@ -168,17 +174,29 @@ export function avisosDe(cupo: CupoEstado | null | undefined, unidad: UnidadCupo
       // Una sola clave para ventas y citas: es el mismo monedero.
       clave: "saldo",
       texto: p.saldo === 1 ? "Te queda 1 crédito" : `Te quedan ${fmtCreditos(p.saldo)} créditos`,
+      nivel: p.saldo,
     });
   }
   return avisos;
 }
 
-/** Marcas de "ya se mostró hoy". Viven en el navegador: son una comodidad. */
-const AVISOS_KEY = "bamardev_web_cupo_avisos";
+/**
+ * Marcas de "lo cerró hoy". Viven en el navegador: son una comodidad.
+ *
+ * Hasta el 19-oct eran de "ya se mostró" y se ponían al mostrarlo: el aviso
+ * salía en la primera pantalla después del login (el Dashboard del dueño) y
+ * ahí se gastaba. Una recarga, otro usuario en la misma caja o cerrarlo una
+ * vez, y el cajero no lo veía nunca en el POS ni en el billar (QA del 19-oct).
+ * La clave es otra para que las marcas viejas de "ya se mostró" no escondan
+ * nada.
+ */
+const AVISOS_KEY = "bamardev_web_cupo_avisos_cerrados";
 
 interface Marcas {
   fecha: string;
   claves: string[];
+  /** El `nivel` con que se cerró cada aviso que lo tiene (el saldo). */
+  niveles?: Record<string, number>;
 }
 
 function leerMarcas(): Marcas | null {
@@ -191,23 +209,39 @@ function leerMarcas(): Marcas | null {
 }
 
 /**
- * Los avisos que todavía no se mostraron hoy. Las marcas de otro día no
- * cuentan: al día siguiente cada aviso vuelve a poder salir una vez.
+ * Los avisos que nadie cerró hoy: ésos se ven, en cualquier pantalla, hasta
+ * que los cierren. Uno cerrado vuelve:
+ *   • al día siguiente (las marcas de otro día no cuentan);
+ *   • si tiene `nivel` y bajó desde que se cerró: "Te quedan 10 créditos"
+ *     cerrado no esconde un "Te quedan 8" de más tarde.
  */
-export function sinMostrar(avisos: AvisoCupo[], fecha: string, marcas: Marcas | null = leerMarcas()): AvisoCupo[] {
-  const vistas = marcas?.fecha === fecha ? marcas.claves : [];
-  return avisos.filter((a) => !vistas.includes(a.clave));
+export function sinCerrar(avisos: AvisoCupo[], fecha: string, marcas: Marcas | null = leerMarcas()): AvisoCupo[] {
+  if (!marcas || marcas.fecha !== fecha) return avisos;
+  return avisos.filter((a) => {
+    if (!marcas.claves.includes(a.clave)) return true;
+    const cerradoCon = marcas.niveles?.[a.clave];
+    return a.nivel != null && cerradoCon != null && a.nivel < cerradoCon;
+  });
 }
 
-/** Anota que el aviso ya salió hoy. Sin almacenamiento, se pierde y listo. */
-export function marcarMostrado(clave: string, fecha: string): void {
+/** Anota que el aviso se cerró hoy. Sin almacenamiento, se pierde y listo. */
+export function marcarCerrado(aviso: AvisoCupo, fecha: string): void {
   const previas = leerMarcas();
-  const claves = previas?.fecha === fecha ? previas.claves : [];
-  if (claves.includes(clave)) return;
+  const deHoy = previas?.fecha === fecha ? previas : null;
+  const claves = deHoy?.claves ?? [];
+  const niveles = { ...(deHoy?.niveles ?? {}) };
+  if (aviso.nivel != null) niveles[aviso.clave] = aviso.nivel;
   try {
-    localStorage.setItem(AVISOS_KEY, JSON.stringify({ fecha, claves: [...claves, clave] }));
+    localStorage.setItem(
+      AVISOS_KEY,
+      JSON.stringify({
+        fecha,
+        claves: claves.includes(aviso.clave) ? claves : [...claves, aviso.clave],
+        niveles,
+      }),
+    );
   } catch {
-    /* modo privado: el aviso puede repetirse, no es grave */
+    /* modo privado: el aviso puede volver a salir, no es grave */
   }
 }
 

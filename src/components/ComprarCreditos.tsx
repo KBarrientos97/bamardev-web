@@ -50,7 +50,7 @@ export default function ComprarCreditos({
   agotado?: boolean;
   onClose: () => void;
 }) {
-  const { cupo, actualizarCupo, refrescarCupo, licencia } = useCupo();
+  const { cupo, actualizarCupo, refrescarCupo, licencia, conAgenda } = useCupo();
   const bloqueada = !!licencia && SIN_COMPRA.includes(licencia.situacion);
 
   const [catalogo, setCatalogo] = useState<PaquetesCreditos | null>(null);
@@ -272,7 +272,12 @@ export default function ComprarCreditos({
                 {catalogo.motivo ?? "Por ahora no se pueden comprar créditos."}
               </p>
             ) : catalogo ? (
-              <ListaPaquetes paquetes={catalogo.paquetes} generando={generando ? paquete?.id ?? null : null} onElegir={generar} />
+              <ListaPaquetes
+                paquetes={catalogo.paquetes}
+                conCitas={conAgenda}
+                generando={generando ? paquete?.id ?? null : null}
+                onElegir={generar}
+              />
             ) : (
               <Boton variante="ghost" className="w-full" onClick={() => void cargar()}>
                 Reintentar
@@ -290,13 +295,19 @@ export default function ComprarCreditos({
  * Los paquetes en tres columnas (§5): cuántos créditos, cuánto cuestan y
  * cuántas ventas o citas pagan. La tercera es la que se entiende: "50
  * créditos" no le dice nada a quien vende; "50 ventas o 25 citas", sí.
+ *
+ * Las citas, sólo si el negocio tiene agenda (`conCitas`): en un billar o un
+ * restaurante "o 25 citas" no le dice nada a nadie. Tampoco si el paquete no
+ * alcanza ni para una ("o 0 citas"). Es la misma regla que Android (19-oct).
  */
 function ListaPaquetes({
   paquetes,
+  conCitas,
   generando,
   onElegir,
 }: {
   paquetes: PaqueteCreditosVista[];
+  conCitas: boolean;
   generando: number | null;
   onElegir: (p: PaqueteCreditosVista) => void;
 }) {
@@ -312,19 +323,33 @@ function ListaPaquetes({
               type="button"
               disabled={generando !== null}
               onClick={() => onElegir(p)}
-              aria-label={`${p.creditos} créditos por ${bs(p.precio)}`}
+              aria-label={`${p.creditos} ${p.creditos === 1 ? "crédito" : "créditos"} por ${bs(p.precio)}`}
               className="grid w-full grid-cols-3 items-center gap-2 rounded-xl border border-borde bg-white px-3.5 py-3 text-left transition-colors enabled:hover:border-primary enabled:hover:bg-primary-50 disabled:opacity-60"
             >
               <span className="min-w-0">
-                <span className="block text-sm font-bold text-texto">{p.creditos} créditos</span>
+                <span className="block text-sm font-bold text-texto">
+                  {p.creditos} {p.creditos === 1 ? "crédito" : "créditos"}
+                </span>
                 {p.nombre && <span className="block truncate text-[11px] font-semibold text-primary-700">{p.nombre}</span>}
               </span>
               <span className="text-center text-sm font-extrabold tracking-tight text-texto">
                 {generando === p.id ? "Generando…" : bs(p.precio)}
               </span>
+              {/* Si no entra en un renglón se corta entre "20 ventas" y "o 10
+                  citas", nunca entre el número y lo que cuenta: a 390 px salía
+                  "20 ventas o 10 / citas" (QA del 19-oct). */}
               <span className="text-right text-[12px] leading-tight text-texto-3">
-                {p.alcanzaVentas} {palabraUnidad("VENTA", p.alcanzaVentas)} o {p.alcanzaCitas}{" "}
-                {palabraUnidad("CITA", p.alcanzaCitas)}
+                <span className="whitespace-nowrap">
+                  {p.alcanzaVentas} {palabraUnidad("VENTA", p.alcanzaVentas)}
+                </span>
+                {conCitas && p.alcanzaCitas > 0 && (
+                  <>
+                    {" "}
+                    <span className="whitespace-nowrap">
+                      o {p.alcanzaCitas} {palabraUnidad("CITA", p.alcanzaCitas)}
+                    </span>
+                  </>
+                )}
               </span>
             </button>
           </li>

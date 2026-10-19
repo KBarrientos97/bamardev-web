@@ -148,13 +148,13 @@ describe("Billar: abrir una mesa con el cupo del Plan Emprendedor", () => {
     expect(abrirPedidos()).toHaveLength(1);
     expect(sesion.actualizarCupo).toHaveBeenCalledWith(delServidor);
     expect(hoja()).toBeInTheDocument();
-    // No es una falla: el mensaje del servidor no queda en rojo en el diálogo.
-    expect(within(dialogo).queryByText(/no te quedan créditos/)).not.toBeInTheDocument();
-    // El diálogo sigue con lo cargado, para reintentar después de comprar.
-    expect(screen.getByRole("dialog", { name: /Abrir Mesa 7/ })).toBeInTheDocument();
+    // No es una falla: el mensaje del servidor no queda en rojo en ningún lado.
+    expect(screen.queryByText(/no te quedan créditos\./)).not.toBeInTheDocument();
+    // Una sola capa: "Abrir Mesa 7" se cerró y queda sólo la hoja (QA del 19-oct).
+    expect(screen.queryByRole("dialog", { name: /Abrir Mesa 7/ })).not.toBeInTheDocument();
   });
 
-  it("si ya se sabe que no hay lugar ni créditos, abre la hoja sin ir al servidor", async () => {
+  it("si ya se sabe que no hay lugar ni créditos, abre la hoja sin ir al servidor y cierra el diálogo", async () => {
     sesion.cupo = cupoEmprendedor({ fecha: fechaNegocio(), ventas: 50, saldo: 0 });
     const dialogo = await montarYAbrir();
     await act(async () => {
@@ -162,6 +162,35 @@ describe("Billar: abrir una mesa con el cupo del Plan Emprendedor", () => {
     });
     expect(hoja()).toBeInTheDocument();
     expect(abrirPedidos()).toHaveLength(0);
+    expect(screen.queryByRole("dialog", { name: /Abrir Mesa 7/ })).not.toBeInTheDocument();
+  });
+
+  it("«Cobrar Bs X y abrir» sin lugar: la hoja, sin pasar al cobro, y el diálogo se cierra", async () => {
+    sesion.cupo = cupoEmprendedor({ fecha: fechaNegocio(), ventas: 50, saldo: 0 });
+    const dialogo = await montarYAbrir();
+    await act(async () => {
+      fireEvent.click(within(dialogo).getByRole("radio", { name: /Tiempo fijo/ }));
+    });
+    await act(async () => {
+      fireEvent.click(within(dialogo).getByRole("button", { name: /^Cobrar Bs.* y abrir$/ }));
+    });
+    expect(hoja()).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: /Cobrar tiempo fijo/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: /Abrir Mesa 7/ })).not.toBeInTheDocument();
+    expect(abrirPedidos()).toHaveLength(0);
+  });
+
+  it("con lugar, «Cobrar Bs X y abrir» pasa al cobro como siempre", async () => {
+    sesion.cupo = cupoEmprendedor({ fecha: fechaNegocio(), ventas: 10, saldo: 0 });
+    const dialogo = await montarYAbrir();
+    await act(async () => {
+      fireEvent.click(within(dialogo).getByRole("radio", { name: /Tiempo fijo/ }));
+    });
+    await act(async () => {
+      fireEvent.click(within(dialogo).getByRole("button", { name: /^Cobrar Bs.* y abrir$/ }));
+    });
+    expect(screen.getByRole("dialog", { name: /Cobrar tiempo fijo · Mesa 7/ })).toBeInTheDocument();
+    expect(hoja()).not.toBeInTheDocument();
   });
 
   it("al abrir guarda el consumo.cupo que trae la respuesta, como una venta", async () => {

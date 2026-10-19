@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { fechaNegocio } from "../lib/agenda/horaAgenda";
-import { avisosDe, marcarMostrado, proyectar, sinMostrar, textoChip, type AvisoCupo } from "../lib/cupo";
+import { avisosDe, marcarCerrado, proyectar, sinCerrar, textoChip } from "../lib/cupo";
 import { abrirHojaCupo } from "../lib/hojaCupo";
 import { pendientesDeHoy, useColaOffline } from "../lib/offline/cola";
 import { useAuth } from "../store/AuthContext";
@@ -49,36 +49,44 @@ export default function ChipCupo({ unidad, className = "" }: { unidad: UnidadCup
 
 /**
  * La franja del Layout, junto al aviso de licencia: el chip de ventas para
- * quien vende y, debajo, los avisos del día (§5.1), cada uno una sola vez.
- * Va arriba del contenido y no adentro del POS por lo mismo que el aviso de
- * licencia: queda a la vista en el celular y con la pantalla scrolleada.
+ * quien vende y, debajo, los avisos del día (§5.1). Va arriba del contenido y
+ * no adentro del POS por lo mismo que el aviso de licencia: queda a la vista
+ * en el celular, con la pantalla scrolleada y en TODAS las pantallas (el POS,
+ * el billar, el Dashboard).
+ *
+ * Cada aviso queda a la vista hasta que lo cierran; cerrado, vuelve al día
+ * siguiente o, el del saldo, si el saldo sigue bajando (ver `sinCerrar`).
+ * Antes se gastaba al mostrarse, en la primera pantalla después del login, y
+ * el cajero del POS o del billar no lo veía nunca (QA del 19-oct).
  *
  * Sin cupo no dibuja nada, ni siquiera el borde.
  */
 export function BarraCupo({ chip, avisos }: { chip?: UnidadCupo; avisos: UnidadCupo[] }) {
   const { cupo, aplica } = useCupo();
-  // Las marcas de "ya se mostró" viven en el navegador: sin el negocio en la
-  // clave, si en la misma máquina entraba otro negocio Emprendedor el mismo
-  // día, no veía ninguno de los avisos que ya había visto el anterior.
-  const negocioId = (useAuth() as Partial<ReturnType<typeof useAuth>>).negocio?.id ?? "";
-  const [visible, setVisible] = useState<AvisoCupo | null>(null);
-  const clave = avisos.join(",");
+  const auth = useAuth() as Partial<ReturnType<typeof useAuth>>;
+  // Las marcas de "lo cerró" viven en el navegador. Con el negocio en la
+  // clave, otro negocio Emprendedor en la misma máquina ve los suyos; con el
+  // usuario, que el dueño cierre el aviso no se lo esconde al cajero que se
+  // sienta después en la misma caja.
+  const dueno = `${auth.negocio?.id ?? ""}:${auth.usuario?.id ?? ""}`;
+  // Sólo para volver a mirar las marcas al cerrar uno: el aviso se calcula de
+  // nuevo en cada render con el contador de ahora (una venta, el chequeo de
+  // 15 min), así que el texto nunca queda viejo.
+  const [, setCerrados] = useState(0);
 
-  // Cuando cambia el contador (una venta, el chequeo de 15 min) se mira si
-  // hay un aviso nuevo. Se marca al mostrarlo: "una vez por día" es que salga
-  // una vez, no que el cajero tenga que cerrarlo para que cuente.
-  useEffect(() => {
-    if (!aplica || visible) return;
-    const hoy = fechaNegocio();
-    const unidades = clave ? (clave.split(",") as UnidadCupo[]) : [];
-    const pendientes = sinMostrar(
-      unidades.flatMap((u) => avisosDe(cupo, u, hoy)).map((a) => ({ ...a, clave: `${negocioId}:${a.clave}` })),
-      hoy,
-    );
-    if (!pendientes.length) return;
-    marcarMostrado(pendientes[0].clave, hoy);
-    setVisible(pendientes[0]);
-  }, [cupo, aplica, visible, clave, negocioId]);
+  const hoy = fechaNegocio();
+  const visible = aplica
+    ? (sinCerrar(
+        avisos.flatMap((u) => avisosDe(cupo, u, hoy)).map((a) => ({ ...a, clave: `${dueno}:${a.clave}` })),
+        hoy,
+      )[0] ?? null)
+    : null;
+
+  const cerrar = () => {
+    if (!visible) return;
+    marcarCerrado(visible, hoy);
+    setCerrados((n) => n + 1);
+  };
 
   if (!aplica || (!chip && !visible)) return null;
   return (
@@ -92,7 +100,7 @@ export function BarraCupo({ chip, avisos }: { chip?: UnidadCupo; avisos: UnidadC
           <span className="min-w-0 flex-1">{visible.texto}</span>
           <button
             type="button"
-            onClick={() => setVisible(null)}
+            onClick={cerrar}
             aria-label="Cerrar aviso"
             className="shrink-0 rounded-md p-1 hover:bg-warning-text/10"
           >
