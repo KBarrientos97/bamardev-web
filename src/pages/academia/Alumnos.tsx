@@ -35,6 +35,13 @@ const FOTOS: Record<EstadoFotos, { texto: string; tono: string; ok: boolean }> =
   FALTAN: { texto: "Faltan fotos", tono: "font-semibold text-danger-text", ok: false },
 };
 
+/** El filtro por fotos (`?fotos=`, contrato #47): lo que pide que alguien haga algo. */
+const FILTRO_FOTOS: [EstadoFotos, string][] = [
+  ["FALTAN", "Faltan"],
+  ["POR_REVISAR", "Por revisar"],
+  ["OBSERVADAS", "Observadas"],
+];
+
 /**
  * E7 · Estudiantes (PLAN-ACADEMIAS §5, ronda 2): la lista con búsqueda por
  * nombre, CI, código o teléfono y los filtros de curso y grupo. Las pestañas
@@ -52,6 +59,7 @@ export default function Alumnos() {
   const [vista, setVista] = useState<Vista>("todos");
   const [carreraId, setCarreraId] = useState<number | null>(null);
   const [grupoId, setGrupoId] = useState<number | null>(null);
+  const [fotos, setFotos] = useState<EstadoFotos | null>(null);
   const [inscribiendo, setInscribiendo] = useState(false);
   useEffect(() => {
     const t = setTimeout(() => setBuscado(q.trim()), 300);
@@ -63,10 +71,10 @@ export default function Alumnos() {
     () => apiAcademia.grupos({ pageSize: 100, sede: sede.sucursalId, carreraId }).then((r) => r.items).catch(() => []),
     [sede.sucursalId, carreraId],
   );
-  const base = { q: buscado || undefined, sede: sede.sucursalId, carreraId, grupoId };
+  const base = { q: buscado || undefined, sede: sede.sucursalId, carreraId, grupoId, fotos: fotos ?? undefined };
   const lista = usePaginado(
     (pg) => apiAcademia.alumnos({ ...pg, ...base, ...FILTRO_VISTA[vista] }),
-    [buscado, sede.sucursalId, carreraId, grupoId, vista],
+    [buscado, sede.sucursalId, carreraId, grupoId, fotos, vista],
   );
   // Los números de cada pestaña, con los mismos filtros (una página de 1 fila).
   const conteos = useApi(
@@ -79,7 +87,7 @@ export default function Alumnos() {
             .catch(() => [v, null] as const),
         ),
       ).then((pares) => Object.fromEntries(pares) as Record<Vista, number | null>),
-    [buscado, sede.sucursalId, carreraId, grupoId],
+    [buscado, sede.sucursalId, carreraId, grupoId, fotos],
   );
   const preinscripciones = useApi(
     () =>
@@ -89,7 +97,7 @@ export default function Alumnos() {
     [],
   );
   const inscribe = tienePermiso(usuario, "academia.inscribir");
-  const hayFiltros = !!buscado || carreraId != null || grupoId != null || vista !== "todos";
+  const hayFiltros = !!buscado || carreraId != null || grupoId != null || fotos != null || vista !== "todos";
   const nombreSede = sede.nombre || usuario?.sucursal || "";
   const n = (v: Vista) => conteos.datos?.[v] ?? null;
 
@@ -169,6 +177,16 @@ export default function Alumnos() {
             </Select>
           </div>
         )}
+        <div className="w-full sm:w-44">
+          <Select aria-label="Fotos" value={fotos ?? ""} onChange={(e) => setFotos((e.target.value || null) as EstadoFotos | null)}>
+            <option value="">Fotos: todas</option>
+            {FILTRO_FOTOS.map(([k, label]) => (
+              <option key={k} value={k}>
+                {label}
+              </option>
+            ))}
+          </Select>
+        </div>
       </div>
 
       {lista.error && !lista.items.length ? (

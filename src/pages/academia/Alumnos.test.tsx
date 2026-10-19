@@ -100,4 +100,23 @@ describe("E7 · Estudiantes", () => {
     await act(async () => {});
     expect(apiAcademia.alumnos).toHaveBeenLastCalledWith(expect.objectContaining({ grupoId: 8 }));
   });
+
+  it("el filtro de fotos pide ?fotos= al backend, también para los números de las pestañas (contrato #47)", async () => {
+    render(
+      <MemoryRouter>
+        <Alumnos />
+      </MemoryRouter>,
+    );
+    await act(async () => {});
+    const fotos = screen.getByRole("combobox", { name: "Fotos" });
+    expect(Array.from((fotos as HTMLSelectElement).options).map((o) => o.value)).toEqual(["", "FALTAN", "POR_REVISAR", "OBSERVADAS"]);
+    vi.mocked(apiAcademia.alumnos).mockClear();
+    fireEvent.change(fotos, { target: { value: "OBSERVADAS" } });
+    await act(async () => {});
+    expect(apiAcademia.alumnos).toHaveBeenCalledWith(expect.objectContaining({ fotos: "OBSERVADAS", page: 1, pageSize: 20 }));
+    expect(apiAcademia.alumnos).toHaveBeenCalledWith(expect.objectContaining({ fotos: "OBSERVADAS", debe: true, pageSize: 1 }));
+    fireEvent.change(fotos, { target: { value: "" } });
+    await act(async () => {});
+    expect(apiAcademia.alumnos).toHaveBeenLastCalledWith(expect.objectContaining({ fotos: undefined }));
+  });
 });
