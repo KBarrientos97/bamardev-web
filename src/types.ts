@@ -1147,6 +1147,13 @@ export interface Venta {
     saldoCurso: number;
     /** La próxima cuota con saldo, o null si ya no debe nada. */
     proximaCuota: { vence: string; monto: number } | null;
+    /**
+     * Contrato #39 (QA ronda 2, B-14): la inscripción y el enlace de su estado
+     * de cuenta, aunque la cuota se haya cobrado en otra sede (null si el
+     * negocio no tiene subdominio). Un backend anterior no los manda.
+     */
+    inscripcionId?: number;
+    enlacePago?: string | null;
   }[];
   /**
    * Sólo en el equipo, recién cobrada: quién pagó las cuotas cuando no fue el

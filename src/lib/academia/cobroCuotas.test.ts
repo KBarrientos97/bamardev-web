@@ -4,6 +4,7 @@ import {
   carritoConCuotas,
   cuotasIniciales,
   detallesDeCuotas,
+  enlaceDeCuotas,
   montoValido,
   pagadorPorDefecto,
   totalCuotas,
@@ -160,5 +161,14 @@ describe("la venta recién cobrada, para el recibo", () => {
     expect(r.pagadorCuotas).toEqual({ nombre: "Patricia Suárez", rol: "TUTOR" });
     expect(ventaConCuotas(venta, { ...conTutor, pagadorId: 30 }).pagadorCuotas).toBeNull();
     expect(ventaConCuotas(venta, null)).toBe(venta);
+  });
+});
+
+describe("enlaceDeCuotas (contrato #39, B-14)", () => {
+  const base = { cuotaId: 1, concepto: "M1", alumno: "A", cobrado: 1, pagado: 1, saldo: 0, estado: "PAGADA", saldoCurso: 0, proximaCuota: null };
+  it("toma el enlace de la venta, null si dijo que no hay, undefined si no lo mandó", () => {
+    expect(enlaceDeCuotas([{ ...base, enlacePago: null }, { ...base, enlacePago: "https://x/p/a/pagar/t" }])).toBe("https://x/p/a/pagar/t");
+    expect(enlaceDeCuotas([{ ...base, enlacePago: null }])).toBeNull();
+    expect(enlaceDeCuotas([base])).toBeUndefined();
   });
 });

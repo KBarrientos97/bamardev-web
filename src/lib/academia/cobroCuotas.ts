@@ -168,3 +168,14 @@ export function ventaConCuotas(venta: Venta, cobro: CobroCuotas | null): Venta {
     inscripcionCuotas: cobro.inscripcionId,
   };
 }
+
+/**
+ * El enlace del estado de cuenta que trajo la venta (contrato #39): todas las
+ * cuotas de una venta son de la misma inscripción, así que sirve el primero
+ * que venga. `null` si el backend dijo que no hay (sin subdominio);
+ * `undefined` si no lo mandó en ninguna (un backend anterior al #39).
+ */
+export function enlaceDeCuotas(cuotas: NonNullable<Venta["cuotas"]>): string | null | undefined {
+  if (cuotas.every((q) => q.enlacePago === undefined)) return undefined;
+  return cuotas.find((q) => q.enlacePago)?.enlacePago ?? null;
+}

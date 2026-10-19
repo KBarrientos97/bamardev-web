@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { Icon } from "../../components/Icon";
 import { Boton } from "../../components/ui";
+import { enlaceDeCuotas } from "../../lib/academia/cobroCuotas";
 import { compartirComoImagen } from "../../lib/compartirTicket";
 import { fmtFecha, fmtFechaHora, fmtMoney, fmtNum } from "../../lib/format";
 import { marcaConsumo } from "../../lib/rubro";
@@ -269,8 +270,8 @@ export default function PantallaRecibo({
           {venta.cuotas && venta.cuotas.length > 0 && (
             <CuotasRecibo cuotas={venta.cuotas} pagador={venta.pagadorCuotas ?? null} />
           )}
-          {venta.cuotas && venta.cuotas.length > 0 && venta.inscripcionCuotas != null && (
-            <EnlaceEstadoCuenta inscripcionId={venta.inscripcionCuotas} />
+          {venta.cuotas && venta.cuotas.length > 0 && (
+            <EnlaceEstadoCuenta enlacePago={enlaceDeCuotas(venta.cuotas)} inscripcionId={venta.inscripcionCuotas} />
           )}
 
           {venta.credito && (

@@ -36,6 +36,7 @@ vi.mock("../../lib/academia/apiAcademia", () => ({
 }));
 
 import { act } from "@testing-library/react";
+import { apiAcademia } from "../../lib/academia/apiAcademia";
 import PantallaRecibo from "./PantallaRecibo";
 
 function venta(datos: Partial<Venta> = {}): Venta {
@@ -365,5 +366,49 @@ describe("E10: el recibo de las cuotas de un instituto", () => {
     );
     await act(async () => {});
     expect(screen.getByLabelText("Estado de cuenta")).toHaveTextContent("app.bamardev.com/p/horizonte/pagar/K7Q2abcdef");
+  });
+
+  it("cuota de otra sede: el enlace sale de la venta, sin pedirlo al endpoint que da OTRA_SEDE (B-14)", async () => {
+    sesion.rubro = "ACADEMIA";
+    vi.mocked(apiAcademia.enlacePago).mockClear();
+    dibujar(
+      venta({
+        cuotas: [
+          {
+            cuotaId: 1,
+            concepto: "M2",
+            alumno: "Quiñones Vega",
+            cobrado: 300,
+            pagado: 300,
+            saldo: 200,
+            estado: "PARCIAL",
+            saldoCurso: 500,
+            proximaCuota: null,
+            inscripcionId: 220,
+            enlacePago: "https://app-qa.bamardev.com/p/academiaqa/pagar/AbCdEfGh12345678",
+          },
+        ],
+        inscripcionCuotas: 220,
+      }),
+    );
+    await act(async () => {});
+    expect(screen.getByLabelText("Estado de cuenta")).toHaveTextContent("app-qa.bamardev.com/p/academiaqa/pagar/AbCdEfGh12345678");
+    expect(apiAcademia.enlacePago).not.toHaveBeenCalled();
+  });
+
+  it("si la venta dice que no hay enlace (sin subdominio), no hay pie ni pedido", async () => {
+    sesion.rubro = "ACADEMIA";
+    vi.mocked(apiAcademia.enlacePago).mockClear();
+    dibujar(
+      venta({
+        cuotas: [
+          { cuotaId: 1, concepto: "M2", alumno: "Camila", cobrado: 300, pagado: 300, saldo: 200, estado: "PARCIAL", saldoCurso: 700, proximaCuota: null, inscripcionId: 102, enlacePago: null },
+        ],
+        inscripcionCuotas: 102,
+      }),
+    );
+    await act(async () => {});
+    expect(screen.queryByLabelText("Estado de cuenta")).not.toBeInTheDocument();
+    expect(apiAcademia.enlacePago).not.toHaveBeenCalled();
   });
 });
