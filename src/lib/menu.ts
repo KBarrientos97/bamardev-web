@@ -630,8 +630,21 @@ function nodoDeRuta(planos: NodoMenu[], pathname: string): NodoMenu | null {
   return mejor;
 }
 
+/**
+ * Pantallas que no están en el menú (se llega desde otra) y que en el
+ * celular quedaban con "BamarDev" arriba (QA ronda 2, B-28). Ganan a la ruta
+ * del menú que las contenga: el grupo 43 no es "Calendario" ni "Grupos".
+ */
+const TITULOS_FUERA_DEL_MENU: [RegExp, string][] = [
+  [/^\/academia\/grupos\/\d+\/notas\/?$/, "Notas"],
+  [/^\/academia\/grupos\/\d+\/lista\/?$/, "Pasar lista"],
+  [/^\/academia\/grupos\/\d+\/?$/, "Grupo"],
+];
+
 /** Título de la barra móvil. */
 export function tituloDe(planos: NodoMenu[], pathname: string): string {
+  const suelto = TITULOS_FUERA_DEL_MENU.find(([ruta]) => ruta.test(pathname));
+  if (suelto) return suelto[1];
   const n = nodoDeRuta(planos, pathname)?.item;
   return n ? (n.titulo ?? n.label) : "BamarDev";
 }

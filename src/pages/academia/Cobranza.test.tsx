@@ -130,6 +130,8 @@ describe("N7 · cobranza", () => {
     expect(apiAcademia.recordatorio).toHaveBeenCalledWith(905);
     expect(abrir).toHaveBeenCalledWith("https://wa.me/59171234567?text=Hola", "_blank", "noopener,noreferrer");
     expect(within(panel).getByText(/pagar\/K7Q2/)).toBeInTheDocument();
+    // La URL larga se corta dentro del globo en vez de salirse (QA ronda 2, B-20).
+    expect(within(panel).getByText(/pagar\/K7Q2/).className).toContain("break-all");
     expect(within(panel).getByRole("status")).toHaveTextContent("Anotado: recordado hoy");
     abrir.mockRestore();
   });

@@ -64,3 +64,14 @@ export function posicionDe(
   // carácter que entra en la coincidencia.
   return [origen[desde], origen[hasta] + 1];
 }
+
+/**
+ * "Falta tu carnet" / "Faltan tu carnet y tu WhatsApp" / "Faltan los datos de
+ * tu tutor": el verbo concuerda con lo que falta (QA ronda 2, B-29).
+ */
+export function faltaTexto(cosas: string[]): string {
+  if (!cosas.length) return "";
+  const plural = cosas.length > 1 || /^(los|las|tus) /.test(cosas[0]) || / y /.test(cosas[0]);
+  const lista = cosas.length > 1 ? `${cosas.slice(0, -1).join(", ")} y ${cosas[cosas.length - 1]}` : cosas[0];
+  return `${plural ? "Faltan" : "Falta"} ${lista}`;
+}

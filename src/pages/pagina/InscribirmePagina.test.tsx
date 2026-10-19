@@ -101,7 +101,8 @@ describe("P2 · Inscribirme en 4 pasos", () => {
     fireEvent.change(screen.getByLabelText("Fecha de nacimiento"), { target: { value: "2011-03-12" } });
     fireEvent.change(screen.getByLabelText("WhatsApp"), { target: { value: "77788990" } });
     expect(screen.getByText(/datos de tu madre, padre o tutor/)).toBeInTheDocument();
-    expect(screen.getByText(/Falta los datos de tu tutor/)).toBeInTheDocument();
+    // "Faltan", no "Falta los datos" (QA ronda 2, B-29).
+    expect(screen.getByText(/Faltan los datos de tu tutor/)).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Nombre del tutor"), { target: { value: "Ana Lima" } });
     fireEvent.change(screen.getByLabelText("Su WhatsApp"), { target: { value: "77788991" } });
     fireEvent.click(screen.getByRole("button", { name: "Siguiente" }));

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ctxDe, PERMISOS_NUEVOS, type Plantilla } from "../test/sesiones";
-import { aplanar, construirMenu, type Bloque, type BloqueMenu } from "./menu";
+import { aplanar, construirMenu, tituloDe, type Bloque, type BloqueMenu } from "./menu";
 import { puedeVer } from "./permisos";
 import { RUBROS } from "./rubro";
 
@@ -150,6 +150,18 @@ describe("menú de ACADEMIA", () => {
     const m = menuDe("PROFESIONAL");
     expect(m.map((b) => b.bloque)).toEqual(["clases"]);
     expect(bloque(m, "clases")).toEqual(["Mis clases de hoy", "Pasar lista", "Notas", "Mi planilla"]);
+  });
+
+  it("la barra del celular lleva siempre el título de la pantalla, también las que no están en el menú (QA ronda 2, B-28)", () => {
+    for (const rol of ["PROFESIONAL", "CAJERO", "ADMIN"] as Plantilla[]) {
+      const planos = aplanar(menuDe(rol).flatMap((b) => b.nodos));
+      expect(tituloDe(planos, "/academia/grupos/43")).toBe("Grupo");
+      expect(tituloDe(planos, "/academia/grupos/43/notas")).toBe("Notas");
+      expect(tituloDe(planos, "/academia/grupos/43/lista")).toBe("Pasar lista");
+    }
+    const docente = aplanar(menuDe("PROFESIONAL").flatMap((b) => b.nodos));
+    expect(tituloDe(docente, "/academia/notas")).toBe("Notas");
+    expect(tituloDe(docente, "/academia/mis-clases")).toBe("Mis clases");
   });
 
   it("el vocabulario del perfil nombra las cosas", () => {

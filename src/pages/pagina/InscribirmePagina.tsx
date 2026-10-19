@@ -9,6 +9,7 @@ import { paleta } from "../../lib/pagina/aspecto";
 import { enlaceWhatsapp } from "../../lib/pagina/catalogo";
 import { urlPaginaDe, urlPrivacidadDe } from "../../lib/pagina/rutas";
 import { usePaginaPublica } from "../../lib/pagina/usePaginaPublica";
+import { faltaTexto } from "../../lib/texto";
 import { siteKeyTurnstile } from "../../lib/turnstile";
 import CapturaFotos from "../academia/CapturaFotos";
 import { NoDisponible } from "./PaginaPublica";
@@ -178,7 +179,7 @@ function Formulario({
       if (!datos.fechaNacimiento) f.push("tu fecha de nacimiento");
       if (datos.telefono.replace(/\D/g, "").length < 7) f.push("tu WhatsApp");
       if (esMenor && (!tutor.nombre.trim() || tutor.telefono.replace(/\D/g, "").length < 7)) f.push("los datos de tu tutor");
-      return f.length ? `Falta ${f.join(", ")}` : "";
+      return faltaTexto(f);
     }
     if (p === 3) return faltanFotos.length ? textoFaltanFotos(faltanFotos.length) : "";
     const f: string[] = [];

@@ -503,7 +503,8 @@ function PanelEnvio({
         {enviado ? (
           <section aria-label="El mensaje" className="space-y-2">
             <p className="text-[12px] text-texto-3">El mensaje</p>
-            <p className="whitespace-pre-wrap rounded-xl bg-primary-50 p-3 text-[13px] text-texto">{enviado.texto}</p>
+            {/* El enlace de pago es una sola "palabra" larga: sin cortarla se salía del globo (QA ronda 2, B-20). */}
+            <p className="whitespace-pre-wrap break-all rounded-xl bg-primary-50 p-3 text-[13px] text-texto">{enviado.texto}</p>
             <p role="status" className="flex items-center gap-1.5 text-[13px] text-texto-3">
               <Icon name="check" size={15} /> Anotado: recordado hoy a las {fmtHora(enviado.en)}
             </p>
