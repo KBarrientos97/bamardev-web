@@ -18,6 +18,20 @@ import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
 import Inscribir from "./Inscribir";
 import NuevoGrupo, { type HuecoCalendario } from "./NuevoGrupo";
+import { BotonFila, BotonIcono, Chip, ChipsFiltro, EncabezadoPagina, PaginaAcademia, ResumenPanel, SeccionPanel, Tarjeta } from "./piezas";
+
+/**
+ * La tarjetita de un grupo en el calendario (punto 8 del rediseño): blanca y
+ * con borde para que se despegue de la grilla, con la franja de color a la
+ * izquierda y el módulo resaltado. El último módulo del grupo lleva la franja
+ * más clara: el grupo se termina ahí.
+ */
+const claseTarjetita = (ultimo: boolean) =>
+  `border border-borde bg-white shadow-[0_1px_2px_rgba(15,23,42,0.05)] border-l-[3px] ${ultimo ? "border-l-primary-200" : "border-l-primary"}`;
+
+/** El hueco libre: punteado y gris, que no se confunda con un grupo. */
+const CLASE_HUECO =
+  "border-[1.5px] border-dashed border-slate-300 bg-muted/60 text-texto-4 transition-colors hover:border-primary hover:bg-primary-50 hover:text-primary-700";
 
 /**
  * N1 · Calendario de módulos (ronda 2, requerimiento 2): la pantalla de
@@ -114,123 +128,131 @@ export default function Calendario() {
   const ultimoVisible = sumarMeses(desde, cant - 1);
   const rango = `${nombreMes(desde)} ${desde.slice(0, 4)} – ${nombreMes(ultimoVisible)} ${ultimoVisible.slice(0, 4)}`;
 
+  const nuevoGrupo = () => setHueco({ sede: sede.sucursalId ?? usuario?.sucursalId ?? null });
+  const hayGrilla = !!datos && datos.filas.length > 0;
+
   return (
-    <div className={`mx-auto max-w-[1400px] space-y-4 p-4 pb-24 sm:p-6 md:pb-6 lg:p-8 ${elegido && !celular ? "md:pr-[404px]" : ""}`}>
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h1 className="text-xl font-bold text-texto">Calendario</h1>
-          <p className="mt-0.5 text-[13px] text-texto-3">
+    <PaginaAcademia ancho="max-w-[1400px]" conBarraAbajo={celular && abre} className={elegido && !celular ? "md:!pr-[404px]" : ""}>
+      <EncabezadoPagina
+        titulo="Calendario"
+        bajada={
+          <>
             {nombreSede ? `${p.Sede} ${nombreSede} · ` : ""}los {p.materias} empiezan el {dia} de cada mes
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          {abre && !celular && (
-            <Boton icono="plus" onClick={() => setHueco({ sede: sede.sucursalId ?? usuario?.sucursalId ?? null })}>
-              Nuevo grupo
-            </Boton>
-          )}
-          <MenuMas etiqueta="Más acciones del calendario" titulo="Calendario" acciones={acciones} />
-        </div>
-      </header>
+          </>
+        }
+        acciones={
+          <>
+            {abre && !celular && (
+              <Boton icono="plus" onClick={nuevoGrupo}>
+                Nuevo grupo
+              </Boton>
+            )}
+            <MenuMas etiqueta="Más acciones del calendario" titulo="Calendario" acciones={acciones} />
+          </>
+        }
+      />
 
       {sede.selector}
-
-      {celular ? (
-        <PestanasMes meses={datos?.meses ?? []} valor={mesCel} hoy={hoy} onChange={setMesCel} />
-      ) : (
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div role="group" aria-label={`Filtrar por ${p.carrera}`} className="flex flex-wrap gap-2">
-            <ChipCurso activo={curso == null} onClick={() => setCurso(null)} label="Todos" n={totalGrupos} />
-            {cursos.map((c) => (
-              <ChipCurso key={c.id} activo={curso === c.id} onClick={() => setCurso(c.id)} label={c.nombre} n={c.n} />
-            ))}
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            {desde !== hoy && (
-              <button type="button" onClick={() => setDesde(hoy)} className="text-[13px] font-semibold text-primary-700 hover:underline">
-                Volver a {nombreMes(hoy)}
-              </button>
-            )}
-            <div className="flex items-center gap-1 rounded-xl border border-borde bg-white px-1">
-              <button type="button" aria-label="Mes anterior" onClick={() => setDesde(sumarMeses(desde, -1))} className="flex h-9 w-9 items-center justify-center rounded-lg text-texto-2 hover:bg-muted">
-                <Icon name="chevronLeft" size={16} />
-              </button>
-              <span aria-live="polite" className="min-w-[13rem] text-center text-[13px] capitalize text-texto-2">
-                {rango}
-              </span>
-              <button type="button" aria-label="Mes siguiente" onClick={() => setDesde(sumarMeses(desde, 1))} className="flex h-9 w-9 items-center justify-center rounded-lg text-texto-2 hover:bg-muted">
-                <Icon name="chevronRight" size={16} />
-              </button>
-            </div>
-            <div role="group" aria-label="Cuántos meses mostrar" className="flex rounded-xl border border-borde bg-white p-0.5">
-              {[3, 6].map((n) => (
-                <button
-                  key={n}
-                  type="button"
-                  aria-pressed={cant === n}
-                  onClick={() => setCant(n)}
-                  className={`rounded-lg px-3 py-1.5 text-[13px] ${cant === n ? "bg-primary-50 font-semibold text-primary-700" : "text-texto-3"}`}
-                >
-                  {n} meses
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
 
       {cal.error && !datos ? (
         <ErrorMsg onReintentar={cal.recargar}>{cal.error}</ErrorMsg>
       ) : !datos ? (
         <Cargando />
-      ) : datos.filas.length === 0 ? (
-        <Vacio
-          icono="calendar"
-          titulo="El calendario está vacío"
-          texto={configura ? "Cargá las franjas horarias en Ajustes, o abrí el primer grupo." : "Todavía no hay grupos abiertos."}
-          accion={abre ? <Boton onClick={() => setHueco({ sede: sede.sucursalId ?? null })}>Nuevo grupo</Boton> : undefined}
-        />
+      ) : !hayGrilla ? (
+        <Tarjeta etiqueta="Calendario de grupos">
+          <Vacio
+            icono="calendar"
+            titulo="El calendario está vacío"
+            texto={configura ? "Cargá las franjas horarias en Ajustes, o abrí el primer grupo." : "Todavía no hay grupos abiertos."}
+            accion={abre ? <Boton onClick={() => setHueco({ sede: sede.sucursalId ?? null })}>Nuevo grupo</Boton> : undefined}
+          />
+        </Tarjeta>
       ) : celular ? (
-        <VistaCelular
-          filas={datos.filas}
-          mes={mesCel}
-          hoy={hoy}
-          pasa={pasa}
-          abre={abre}
-          onElegir={(grupo, fila) => setElegido({ grupo, inicio: fila.inicio, fin: fila.fin, mes: mesCel })}
-          onHueco={(fila) => abrirHueco(fila, mesCel)}
-        />
+        <Tarjeta etiqueta="Calendario de grupos" sinRelleno barra={<PestanasMes meses={datos.meses} valor={mesCel} hoy={hoy} onChange={setMesCel} />}>
+          <VistaCelular
+            filas={datos.filas}
+            mes={mesCel}
+            hoy={hoy}
+            pasa={pasa}
+            abre={abre}
+            onElegir={(grupo, fila) => setElegido({ grupo, inicio: fila.inicio, fin: fila.fin, mes: mesCel })}
+            onHueco={(fila) => abrirHueco(fila, mesCel)}
+          />
+        </Tarjeta>
       ) : (
-        <Grilla
-          meses={datos.meses}
-          filas={datos.filas}
-          hoy={hoy}
-          pasa={pasa}
-          abre={abre}
-          elegidoId={elegido?.grupo.grupoId ?? null}
-          onElegir={(grupo, fila, mes) => setElegido({ grupo, inicio: fila.inicio, fin: fila.fin, mes })}
-          onHueco={abrirHueco}
-        />
-      )}
-
-      {!celular && datos && datos.filas.length > 0 && (
-        <div className="flex flex-wrap gap-x-5 gap-y-1 text-xs text-texto-3">
-          <span className="flex items-center gap-1.5">
-            <span className="h-3 w-3 rounded bg-primary-50" /> {p.Materia} en curso o por venir
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="h-3 w-3 rounded border border-primary-100 bg-white" /> Último {p.materia} del grupo
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="h-3 w-3 rounded border border-dashed border-borde" /> Hueco libre
-          </span>
-          <span>Cada columna es el mes en que empieza el {p.materia}</span>
-        </div>
+        <Tarjeta
+          etiqueta="Calendario de grupos"
+          sinRelleno
+          barra={
+            <div className="flex flex-wrap items-center justify-between gap-3 py-3">
+              <ChipsFiltro
+                etiqueta={`Filtrar por ${p.carrera}`}
+                valor={curso == null ? "todos" : String(curso)}
+                onChange={(v) => setCurso(v === "todos" ? null : Number(v))}
+                opciones={[{ clave: "todos", label: "Todos", n: totalGrupos }, ...cursos.map((c) => ({ clave: String(c.id), label: c.nombre, n: c.n }))]}
+              />
+              <div className="flex flex-wrap items-center gap-2">
+                {desde !== hoy && (
+                  <BotonFila icono="calendar" onClick={() => setDesde(hoy)}>
+                    Volver a {nombreMes(hoy)}
+                  </BotonFila>
+                )}
+                <div className="flex items-center gap-1.5">
+                  <BotonIcono icono="chevronLeft" etiqueta="Mes anterior" onClick={() => setDesde(sumarMeses(desde, -1))} />
+                  <span aria-live="polite" className="min-w-[13rem] text-center text-[13px] font-semibold capitalize text-texto-2">
+                    {rango}
+                  </span>
+                  <BotonIcono icono="chevronRight" etiqueta="Mes siguiente" onClick={() => setDesde(sumarMeses(desde, 1))} />
+                </div>
+                <div role="group" aria-label="Cuántos meses mostrar" className="flex rounded-lg border border-borde bg-white p-0.5">
+                  {[3, 6].map((n) => (
+                    <button
+                      key={n}
+                      type="button"
+                      aria-pressed={cant === n}
+                      onClick={() => setCant(n)}
+                      className={`min-h-8 rounded-md px-3 text-[13px] font-semibold transition-colors ${
+                        cant === n ? "bg-primary-50 text-primary-700" : "text-texto-3 hover:bg-muted"
+                      }`}
+                    >
+                      {n} meses
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          }
+          pie={
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 text-xs text-texto-3">
+              <span className="flex items-center gap-1.5">
+                <span className={`h-3.5 w-5 rounded ${claseTarjetita(false)}`} /> {p.Materia} en curso o por venir
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className={`h-3.5 w-5 rounded ${claseTarjetita(true)}`} /> Último {p.materia} del grupo
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className={`h-3.5 w-5 rounded ${CLASE_HUECO}`} /> Hueco libre
+              </span>
+              <span>Cada columna es el mes en que empieza el {p.materia}</span>
+            </div>
+          }
+        >
+          <Grilla
+            meses={datos.meses}
+            filas={datos.filas}
+            hoy={hoy}
+            pasa={pasa}
+            abre={abre}
+            elegidoId={elegido?.grupo.grupoId ?? null}
+            onElegir={(grupo, fila, mes) => setElegido({ grupo, inicio: fila.inicio, fin: fila.fin, mes })}
+            onHueco={abrirHueco}
+          />
+        </Tarjeta>
       )}
 
       {celular && abre && (
-        <div className="fixed inset-x-0 bottom-0 z-20 border-t border-borde-soft bg-white p-3 md:hidden">
-          <Boton className="w-full" onClick={() => setHueco({ sede: sede.sucursalId ?? usuario?.sucursalId ?? null })}>
+        <div className="fixed inset-x-0 bottom-0 z-20 border-t border-borde-soft bg-white p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(15,23,42,0.06)] md:hidden">
+          <Boton icono="plus" className="min-h-11 w-full" onClick={nuevoGrupo}>
             Nuevo grupo
           </Boton>
         </div>
@@ -270,43 +292,31 @@ export default function Calendario() {
           }}
         />
       )}
-    </div>
-  );
-}
-
-function ChipCurso({ activo, onClick, label, n }: { activo: boolean; onClick: () => void; label: string; n: number }) {
-  return (
-    <button
-      type="button"
-      aria-pressed={activo}
-      onClick={onClick}
-      className={`rounded-full border px-3.5 py-1.5 text-[13px] transition-colors ${
-        activo ? "border-primary bg-primary-50 font-semibold text-primary-700" : "border-borde bg-white text-texto-2 hover:bg-muted"
-      }`}
-    >
-      {label} <span className="tabular-nums text-texto-4">{n}</span>
-    </button>
+    </PaginaAcademia>
   );
 }
 
 /** "18/20" con su barrita; se llena en el color del negocio, nunca en rojo. */
-function Ocupacion({ inscritos, cupo, fondo = "bg-primary-100" }: { inscritos: number; cupo: number | null; fondo?: string }) {
+function Ocupacion({ inscritos, cupo }: { inscritos: number; cupo: number | null }) {
   const pct = cupo ? Math.min(100, Math.round((inscritos / cupo) * 100)) : 0;
   return (
     <span className="flex items-center gap-2">
       {cupo != null && (
-        <span className={`h-1.5 flex-1 overflow-hidden rounded-full ${fondo}`}>
+        <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-primary-50">
           <span className="block h-full rounded-full bg-primary" style={{ width: `${pct}%` }} />
         </span>
       )}
-      <span className="text-xs tabular-nums text-texto-3">
+      <span className="text-xs font-semibold tabular-nums text-texto-2">
         {inscritos}/{cupo ?? "—"}
       </span>
     </span>
   );
 }
 
-function Tarjeta({
+/** "M2 de 3 · Degradados": el módulo, resaltado en el color del negocio. */
+const CLASE_MODULO = "truncate rounded-md bg-primary-50 px-1.5 py-0.5 font-semibold text-primary-700";
+
+function TarjetaGrupo({
   g,
   pasado,
   elegido,
@@ -323,26 +333,28 @@ function Tarjeta({
       type="button"
       onClick={onClick}
       aria-label={`${g.carrera.nombre} ${diasTexto(g.dias)}, ${p.materia} ${g.modulo.orden} de ${g.modulo.total}`}
-      className={`block w-full rounded-lg border p-2 text-left text-xs transition-colors hover:border-primary ${
-        g.ultimo ? "border-primary-100 bg-white" : "border-primary-50 bg-primary-50"
-      } ${elegido ? "ring-1 ring-primary border-primary" : ""} ${pasado ? "opacity-55" : ""}`}
+      className={`block w-full rounded-lg p-2.5 text-left text-xs transition-[border-color,box-shadow] hover:border-primary-200 hover:shadow-md ${claseTarjetita(g.ultimo)} ${
+        elegido ? "!border-primary ring-2 ring-primary-100" : ""
+      } ${pasado ? "opacity-60" : ""}`}
     >
       <span className="flex items-baseline justify-between gap-1">
         <b className="truncate text-[13px] text-texto">{g.carrera.nombre}</b>
-        <span className="shrink-0 text-texto-3">{diasTexto(g.dias)}</span>
+        <span className="shrink-0 font-semibold text-texto-3">{diasTexto(g.dias)}</span>
       </span>
-      <span className="mt-0.5 flex items-center gap-1">
-        <span className="truncate text-texto-2">
+      <span className="mt-1 flex min-w-0 items-center gap-1">
+        <span className={CLASE_MODULO}>
           M{g.modulo.orden} de {g.modulo.total} · {g.modulo.nombre}
         </span>
-        {g.ultimo && <span className="shrink-0 rounded bg-primary-50 px-1 text-[10px] font-semibold text-primary-700">último</span>}
+        {g.ultimo && <span className="shrink-0 rounded border border-primary-200 px-1 text-[10px] font-semibold text-primary-700">último</span>}
       </span>
-      <span className="block truncate text-texto-3">{g.docente ? `Prof. ${g.docente.nombre}` : `${p.Docente} por elegir`}</span>
-      <span className="mt-1 block">
-        <Ocupacion inscritos={g.inscritos} cupo={g.cupo} fondo={g.ultimo ? "bg-primary-50" : "bg-primary-100"} />
+      <span className="mt-1 block truncate text-texto-3">{g.docente ? `Prof. ${g.docente.nombre}` : `${p.Docente} por elegir`}</span>
+      <span className="mt-1.5 block">
+        <Ocupacion inscritos={g.inscritos} cupo={g.cupo} />
       </span>
       {g.inscripcionAbierta && g.modulo.orden === 1 && !pasado && (
-        <span className="mt-1 block font-semibold text-primary-700">Inscripción abierta</span>
+        <span className="mt-1.5 block">
+          <Chip tono="verde">Inscripción abierta</Chip>
+        </span>
       )}
     </button>
   );
@@ -367,18 +379,20 @@ function Grilla({
   onElegir: (g: GrupoEnCalendario, fila: FilaCalendario, mes: string) => void;
   onHueco: (fila: FilaCalendario, mes: string) => void;
 }) {
-  const columnas = `96px repeat(${meses.length}, minmax(${meses.length > 3 ? 160 : 220}px, 1fr))`;
+  const columnas = `96px repeat(${meses.length}, minmax(${meses.length > 3 ? 168 : 220}px, 1fr))`;
+  // El fondo de cada columna: el mes actual con un tinte, los que pasaron en gris.
+  const fondoMes = (m: string) => (m === hoy ? "bg-primary-50/50" : m < hoy ? "bg-muted/50" : "");
   return (
-    // scroll-lateral-ok: la grilla del calendario, 6 columnas de meses.
-    <div className="overflow-x-auto rounded-xl border border-borde-soft">
+    // scroll-lateral-ok: la grilla del calendario, 6 columnas de meses; el scroll queda dentro de la tarjeta.
+    <div className="overflow-x-auto">
       <div role="table" aria-label="Calendario de módulos" className="min-w-max">
-        <div role="row" className="grid border-b border-borde-soft" style={{ gridTemplateColumns: columnas }}>
-          <span role="columnheader" className="px-3 py-2.5 text-xs text-texto-3">
+        <div role="row" className="grid border-b border-borde-soft bg-muted" style={{ gridTemplateColumns: columnas }}>
+          <span role="columnheader" className="sticky left-0 z-10 bg-muted px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-texto-4 sm:pl-5">
             Horario
           </span>
           {meses.map((m) => (
-            <div key={m} role="columnheader" className={`px-3 py-2.5 ${m === hoy ? "bg-primary-50/40" : ""}`}>
-              <span className={`block text-sm capitalize ${m === hoy ? "font-bold text-primary-700" : m < hoy ? "text-texto-3" : "font-medium text-texto"}`}>
+            <div key={m} role="columnheader" className={`border-l border-borde-soft px-3 py-2.5 ${m === hoy ? "bg-primary-50" : ""}`}>
+              <span className={`block text-sm capitalize ${m === hoy ? "font-bold text-primary-700" : m < hoy ? "text-texto-3" : "font-semibold text-texto"}`}>
                 {nombreMes(m)}
               </span>
               <span className="text-xs text-texto-4">
@@ -390,8 +404,8 @@ function Grilla({
         </div>
         {filas.map((fila) => (
           <div key={`${fila.inicio}-${fila.fin}-${fila.esFranja}`} role="row" className="grid border-b border-borde-soft last:border-b-0" style={{ gridTemplateColumns: columnas }}>
-            <div role="rowheader" className="px-3 py-3">
-              <span className="block text-sm font-semibold tabular-nums text-texto">{fila.inicio}</span>
+            <div role="rowheader" className="sticky left-0 z-10 bg-white px-4 py-3 sm:pl-5">
+              <span className="block text-sm font-bold tabular-nums text-texto">{fila.inicio}</span>
               <span className="block text-xs tabular-nums text-texto-3">a {fila.fin}</span>
               {!fila.esFranja && <span className="text-[10px] text-texto-4">fuera de franja</span>}
             </div>
@@ -401,9 +415,9 @@ function Grilla({
               const visibles = todos.filter(pasa);
               const pasado = mes < hoy;
               return (
-                <div key={mes} role="cell" className={`space-y-1.5 border-l border-borde-soft p-1.5 ${mes === hoy ? "bg-primary-50/40" : ""}`}>
+                <div key={mes} role="cell" className={`space-y-2 border-l border-borde-soft p-2 ${fondoMes(mes)}`}>
                   {visibles.map((g) => (
-                    <Tarjeta key={g.grupoId} g={g} pasado={pasado} elegido={elegidoId === g.grupoId} onClick={() => onElegir(g, fila, mes)} />
+                    <TarjetaGrupo key={g.grupoId} g={g} pasado={pasado} elegido={elegidoId === g.grupoId} onClick={() => onElegir(g, fila, mes)} />
                   ))}
                   {todos.length === 0 && !pasado && abre && (
                     <button
@@ -411,9 +425,10 @@ function Grilla({
                       title="Abrir grupo aquí"
                       aria-label={`Abrir grupo aquí: ${fila.inicio} a ${fila.fin}, ${nombreMes(mes)}`}
                       onClick={() => onHueco(fila, mes)}
-                      className="group flex min-h-[72px] w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-borde text-xs text-texto-4 transition-colors hover:border-primary hover:bg-primary-50 hover:text-primary-700"
+                      className={`group flex min-h-[72px] w-full items-center justify-center gap-1.5 rounded-lg text-xs font-semibold ${CLASE_HUECO}`}
                     >
-                      <Icon name="plus" size={16} />
+                      <Icon name="plus" size={15} />
+                      <span className="group-hover:hidden group-focus-visible:hidden">Libre</span>
                       <span className="hidden group-hover:inline group-focus-visible:inline">Abrir grupo aquí</span>
                     </button>
                   )}
@@ -430,7 +445,7 @@ function Grilla({
 function PestanasMes({ meses, valor, hoy, onChange }: { meses: string[]; valor: string; hoy: string; onChange: (m: string) => void }) {
   return (
     // scroll-lateral-ok: pestañas de mes, el patrón aceptado (PLAN-TABLAS-MOVIL §2.6).
-    <div role="tablist" aria-label="Mes" className="-mx-4 flex gap-1 overflow-x-auto border-b border-borde-soft px-4 [scrollbar-width:none]">
+    <div role="tablist" aria-label="Mes" className="-mx-4 -mb-px flex gap-1 overflow-x-auto px-2 [scrollbar-width:none]">
       {meses.map((m) => {
         const sel = m === valor;
         return (
@@ -440,10 +455,10 @@ function PestanasMes({ meses, valor, hoy, onChange }: { meses: string[]; valor: 
             role="tab"
             aria-selected={sel}
             onClick={() => onChange(m)}
-            className={`shrink-0 border-b-2 px-3 pb-2 pt-1.5 text-left ${sel ? "border-primary" : "border-transparent"}`}
+            className={`min-h-11 shrink-0 border-b-2 px-3 pb-2 pt-2 text-left ${sel ? "border-primary" : "border-transparent"}`}
           >
             <span className={`block text-sm capitalize ${sel ? "font-semibold text-texto" : "text-texto-3"}`}>{mesCorto(m)}</span>
-            <span className="block text-[11px] text-texto-4">{m === hoy ? "actual" : m.slice(0, 4)}</span>
+            <span className={`block text-[11px] ${m === hoy ? "font-semibold text-primary-700" : "text-texto-4"}`}>{m === hoy ? "actual" : m.slice(0, 4)}</span>
           </button>
         );
       })}
@@ -470,32 +485,36 @@ function VistaCelular({
 }) {
   const p = usePalabras();
   return (
-    <div className="space-y-4">
+    <div className="divide-y divide-borde-soft">
       {filas.map((fila) => {
         const grupos = (fila.celdas.find((c) => c.mes === mes)?.grupos ?? []).filter(pasa);
         const rango = `${fila.inicio} a ${fila.fin}`;
         return (
-          <section key={`${fila.inicio}-${fila.fin}-${fila.esFranja}`} aria-label={rango}>
-            <h2 className="mb-1.5 text-[13px] font-semibold tabular-nums text-texto-3">{rango}</h2>
+          <section key={`${fila.inicio}-${fila.fin}-${fila.esFranja}`} aria-label={rango} className="px-4 py-3">
+            <h2 className="mb-2 text-[13px] font-bold tabular-nums text-texto">{rango}</h2>
             <div className="space-y-2">
               {grupos.map((g) => (
                 <button
                   key={g.grupoId}
                   type="button"
                   onClick={() => onElegir(g, fila)}
-                  className={`flex w-full items-center gap-3 rounded-xl border p-3 text-left ${g.ultimo ? "border-primary-100 bg-white" : "border-primary-50 bg-primary-50"}`}
+                  className={`flex w-full min-w-0 items-center gap-3 rounded-xl p-3 text-left ${claseTarjetita(g.ultimo)}`}
                 >
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-semibold text-texto">
                       {g.carrera.nombre} · {diasTexto(g.dias)}
                     </span>
-                    <span className="block truncate text-[13px] text-texto-2">
-                      M{g.modulo.orden} de {g.modulo.total} · {g.modulo.nombre}
-                      {g.ultimo ? " · último" : ""}
+                    <span className="mt-1 flex min-w-0">
+                      <span className={`${CLASE_MODULO} text-[13px]`}>
+                        M{g.modulo.orden} de {g.modulo.total} · {g.modulo.nombre}
+                        {g.ultimo ? " · último" : ""}
+                      </span>
                     </span>
-                    <span className="block truncate text-xs text-texto-3">{g.docente ? `Prof. ${g.docente.nombre}` : `${p.Docente} por elegir`}</span>
+                    <span className="mt-1 block truncate text-xs text-texto-3">{g.docente ? `Prof. ${g.docente.nombre}` : `${p.Docente} por elegir`}</span>
                     {g.inscripcionAbierta && g.modulo.orden === 1 && mes >= hoy && (
-                      <span className="text-xs font-semibold text-primary-700">Inscripción abierta</span>
+                      <span className="mt-1.5 block">
+                        <Chip tono="verde">Inscripción abierta</Chip>
+                      </span>
                     )}
                   </span>
                   <span className="w-16 shrink-0">
@@ -507,7 +526,7 @@ function VistaCelular({
                 <button
                   type="button"
                   onClick={() => onHueco(fila)}
-                  className="flex w-full items-center gap-2 rounded-xl border border-dashed border-borde px-3 py-3 text-sm text-texto-3"
+                  className={`flex min-h-11 w-full items-center gap-2 rounded-xl px-3 py-3 text-sm font-semibold ${CLASE_HUECO}`}
                 >
                   <Icon name="plus" size={16} /> Libre · Abrir grupo aquí
                 </button>
@@ -565,7 +584,7 @@ function ResumenGrupo({
   const ver = (
     <Link
       to={`/academia/grupos/${g.grupoId}`}
-      className={`inline-flex flex-1 items-center justify-center rounded-xl px-4 py-2.5 text-sm font-semibold ${
+      className={`inline-flex min-h-11 flex-1 items-center justify-center rounded-xl px-4 py-2.5 text-sm font-semibold transition-colors ${
         inscribirPrimero ? "border border-borde bg-white text-texto-2 hover:bg-muted" : "bg-primary-boton text-white hover:bg-primary-boton-hover"
       }`}
     >
@@ -583,7 +602,7 @@ function ResumenGrupo({
         <div className="flex w-full items-center gap-2">
           {inscribirPrimero ? (
             <>
-              <Boton className="flex-1" onClick={onInscribir}>
+              <Boton className="min-h-11 flex-1" onClick={onInscribir}>
                 Inscribir {p.alumno}
               </Boton>
               {ver}
@@ -592,7 +611,7 @@ function ResumenGrupo({
             <>
               {ver}
               {inscribe && (
-                <Boton variante="ghost" onClick={onInscribir}>
+                <Boton variante="ghost" className="min-h-11" onClick={onInscribir}>
                   Inscribir
                 </Boton>
               )}
@@ -602,72 +621,83 @@ function ResumenGrupo({
         </div>
       }
     >
-      <div className="space-y-5">
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <span className="block text-xs text-texto-3">Inscritos</span>
-            <span className="block text-lg font-bold tabular-nums text-texto">
-              {g.inscritos}
-              {g.cupo != null && <span className="text-sm font-normal text-texto-3"> de {g.cupo}</span>}
+      <ResumenPanel className="mb-4 grid grid-cols-2 gap-4">
+        <div className="min-w-0">
+          <span className="block text-[11px] font-semibold uppercase tracking-wide text-texto-4">Inscritos</span>
+          <span className="mt-0.5 block text-xl font-bold tabular-nums text-texto">
+            {g.inscritos}
+            {g.cupo != null && <span className="text-sm font-normal text-texto-3"> de {g.cupo}</span>}
+          </span>
+          {g.cupo != null && (
+            <span className="mt-1.5 block h-1.5 overflow-hidden rounded-full bg-white">
+              <span className="block h-full rounded-full bg-primary" style={{ width: `${pct}%` }} />
             </span>
-            {g.cupo != null && (
-              <span className="mt-1 block h-1.5 overflow-hidden rounded-full bg-primary-100">
-                <span className="block h-full rounded-full bg-primary" style={{ width: `${pct}%` }} />
-              </span>
-            )}
+          )}
+        </div>
+        {g.pagaronModulo != null && (
+          <div className="min-w-0">
+            <span className="block text-[11px] font-semibold uppercase tracking-wide text-texto-4">
+              {empezo ? `Pagaron el M${g.modulo.orden}${mes === hoy ? " (actual)" : ""}` : `Pagaron el M${g.modulo.orden} por adelantado`}
+            </span>
+            <span className="mt-0.5 block text-xl font-bold tabular-nums text-texto">
+              {g.pagaronModulo}
+              <span className="text-sm font-normal text-texto-3"> de {g.inscritos}</span>
+            </span>
+            <span className={`text-xs ${faltan && empezo ? "font-semibold text-danger-text" : "text-texto-3"}`}>
+              {faltan === 0 ? "todos al día" : empezo ? `${faltan} sin pagar` : `${faltan} todavía no`}
+            </span>
           </div>
-          {g.pagaronModulo != null && (
-            <div>
-              <span className="block text-xs text-texto-3">
-                {empezo ? `Pagaron el M${g.modulo.orden}${mes === hoy ? " (actual)" : ""}` : `Pagaron el M${g.modulo.orden} por adelantado`}
-              </span>
-              <span className="block text-lg font-bold tabular-nums text-texto">
-                {g.pagaronModulo}
-                <span className="text-sm font-normal text-texto-3"> de {g.inscritos}</span>
-              </span>
-              <span className={`text-xs ${faltan && empezo ? "font-semibold text-danger-text" : "text-texto-3"}`}>
-                {faltan === 0 ? "todos al día" : empezo ? `${faltan} sin pagar` : `${faltan} todavía no`}
-              </span>
-            </div>
-          )}
-        </div>
+        )}
+      </ResumenPanel>
 
-        <div>
-          <span className="text-xs font-semibold uppercase tracking-wide text-texto-4">{p.Materias}</span>
-          {!d ? (
-            <p className="mt-2 text-sm text-texto-3">{detalle.error || "Cargando…"}</p>
-          ) : (
-            <ul className="mt-1 divide-y divide-borde-soft">
-              {[...d.materiasGrupo]
-                .sort((x, y) => x.materia.orden - y.materia.orden)
-                .map((mg) => {
-                  const enCurso = mg.desde <= hoyIso && hoyIso <= mg.hasta;
-                  const estado = mg.hasta < hoyIso ? "terminado" : enCurso ? "en curso" : `empieza el ${fechaCorta(mg.desde)}`;
-                  return (
-                    <li key={mg.id} className="flex items-start gap-3 py-2.5">
-                      <span className={`w-7 text-sm font-semibold ${enCurso ? "text-primary-700" : "text-texto-4"}`}>M{mg.materia.orden}</span>
-                      <span className="min-w-0 flex-1">
-                        <span className={`block truncate text-sm ${enCurso ? "font-semibold text-texto" : "text-texto-2"}`}>{mg.materia.nombre}</span>
-                        <span className="block truncate text-xs text-texto-3">{mg.docente ? `Prof. ${mg.docente.nombre}` : `${p.Docente} por elegir`}</span>
-                      </span>
-                      <span className="text-right">
-                        <span className="block text-xs capitalize text-texto-2">{nombreMes(mg.mesLiquidacion, hoy)}</span>
-                        <span className={`block text-xs ${enCurso ? "font-semibold text-primary-700" : "text-texto-3"}`}>{estado}</span>
-                      </span>
-                    </li>
-                  );
-                })}
-            </ul>
-          )}
-        </div>
+      <SeccionPanel titulo={p.Materias}>
+        {!d ? (
+          <p className="text-sm text-texto-3">{detalle.error || "Cargando…"}</p>
+        ) : (
+          <ul className="divide-y divide-borde-soft">
+            {[...d.materiasGrupo]
+              .sort((x, y) => x.materia.orden - y.materia.orden)
+              .map((mg) => {
+                const enCurso = mg.desde <= hoyIso && hoyIso <= mg.hasta;
+                const terminado = mg.hasta < hoyIso;
+                return (
+                  <li key={mg.id} className="flex items-start gap-3 py-2.5">
+                    <span
+                      className={`flex h-7 w-8 shrink-0 items-center justify-center rounded-md text-xs font-bold ${
+                        enCurso ? "bg-primary-50 text-primary-700" : "bg-muted text-texto-4"
+                      }`}
+                    >
+                      M{mg.materia.orden}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className={`block truncate text-sm ${enCurso ? "font-semibold text-texto" : "text-texto-2"}`}>{mg.materia.nombre}</span>
+                      <span className="block truncate text-xs text-texto-3">{mg.docente ? `Prof. ${mg.docente.nombre}` : `${p.Docente} por elegir`}</span>
+                    </span>
+                    <span className="shrink-0 text-right">
+                      <span className="block text-xs capitalize text-texto-2">{nombreMes(mg.mesLiquidacion, hoy)}</span>
+                      {terminado ? (
+                        <Chip tono="gris">terminado</Chip>
+                      ) : enCurso ? (
+                        <Chip tono="marca">en curso</Chip>
+                      ) : (
+                        <span className="block text-xs text-texto-3">empieza el {fechaCorta(mg.desde)}</span>
+                      )}
+                    </span>
+                  </li>
+                );
+              })}
+          </ul>
+        )}
+      </SeccionPanel>
 
-        {carrera?.precioModulo != null && (
-          <p className="text-[13px] text-texto-3">
-            {fmtMoney(carrera.precioModulo)} por {p.materia}
+      {carrera?.precioModulo != null && (
+        <SeccionPanel titulo="Precio">
+          <p className="text-sm text-texto-2">
+            <b className="tabular-nums text-texto">{fmtMoney(carrera.precioModulo)}</b> por {p.materia}
             {completo != null && ` · pago completo ${fmtMoney(completo)}`}
           </p>
-        )}
-      </div>
+        </SeccionPanel>
+      )}
     </PanelLateral>
   );
 }

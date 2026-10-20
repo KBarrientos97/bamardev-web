@@ -12,6 +12,7 @@ import { tienePermiso } from "../../lib/permisos";
 import { useApi } from "../../lib/useApi";
 import { useSucursales } from "../../lib/useSucursales";
 import { useAuth } from "../../store/AuthContext";
+import { ResumenPanel, SeccionPanel } from "./piezas";
 
 /** Lo que el calendario ya sabe del hueco que se tocó. */
 export interface HuecoCalendario {
@@ -223,226 +224,244 @@ export default function NuevoGrupo({
         </>
       }
     >
-      <div className="space-y-4">
-        <div className={`grid gap-3 ${sedes.elegir ? "grid-cols-2" : ""}`}>
-          <Campo label={p.Carrera}>
-            <Select value={carreraId ?? ""} onChange={(e) => setCarreraId(e.target.value ? Number(e.target.value) : null)}>
-              <option value="">Elegí…</option>
-              {activas.map((c) => {
-                const n = c.materias.filter((m) => m.activa).length;
-                return (
-                  <option key={c.id} value={c.id}>
-                    {c.nombre} · {n} {n === 1 ? p.materia : p.materias}
-                  </option>
-                );
-              })}
-            </Select>
-          </Campo>
-          {sedes.elegir && (
-            <Campo label={p.Sede}>
-              <Select value={almacenId ?? ""} onChange={(e) => setAlmacenId(e.target.value ? Number(e.target.value) : null)}>
-                {almacenId == null && <option value="">Elegí…</option>}
-                {opcionesSede.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.nombre}
-                  </option>
-                ))}
+      <SeccionPanel titulo="Grupo">
+        <div className="space-y-3">
+          <div className={`grid gap-3 ${sedes.elegir ? "grid-cols-2" : ""}`}>
+            <Campo label={p.Carrera}>
+              <Select value={carreraId ?? ""} onChange={(e) => setCarreraId(e.target.value ? Number(e.target.value) : null)}>
+                <option value="">Elegí…</option>
+                {activas.map((c) => {
+                  const n = c.materias.filter((m) => m.activa).length;
+                  return (
+                    <option key={c.id} value={c.id}>
+                      {c.nombre} · {n} {n === 1 ? p.materia : p.materias}
+                    </option>
+                  );
+                })}
               </Select>
             </Campo>
-          )}
-        </div>
-
-        <Campo label="Franja horaria">
-          <Select value={franja} onChange={(e) => elegirFranja(e.target.value)}>
-            {franjas.map((f) => (
-              <option key={`${f.inicio}-${f.fin}`} value={`${f.inicio}-${f.fin}`}>
-                {f.inicio}–{f.fin}
-              </option>
-            ))}
-            {franja && franja !== OTRO && !franjas.some((f) => `${f.inicio}-${f.fin}` === franja) && (
-              <option value={franja}>{franja.replace("-", "–")}</option>
-            )}
-            <option value={OTRO}>Otro horario</option>
-          </Select>
-        </Campo>
-        {franja === OTRO && (
-          <div className="grid grid-cols-2 gap-3">
-            <Campo label="Desde">
-              <Input type="time" value={horaInicio} onChange={(e) => setHoraInicio(e.target.value)} />
-            </Campo>
-            <Campo label="Hasta">
-              <Input type="time" value={horaFin} onChange={(e) => setHoraFin(e.target.value)} />
-            </Campo>
-          </div>
-        )}
-
-        <div>
-          <span id="et-dias" className="mb-1.5 block text-[13px] font-semibold text-texto-2">
-            Días de clase
-          </span>
-          <div role="group" aria-labelledby="et-dias" className="flex gap-1.5">
-            {DIAS_CLASE.map((d) => {
-              const on = dias.includes(d);
-              return (
-                <button
-                  key={d}
-                  type="button"
-                  aria-pressed={on}
-                  aria-label={NOMBRE_DIA[d]}
-                  onClick={() => alternarDia(d)}
-                  className={`h-10 w-10 rounded-xl border text-sm font-semibold transition-colors ${
-                    on ? "border-primary bg-primary-50 text-primary-700" : "border-borde bg-white text-texto-3 hover:bg-muted"
-                  }`}
-                >
-                  {LETRA[d]}
-                </button>
-              );
-            })}
-          </div>
-          <p className={`mt-1 text-xs ${dias.length ? "text-texto-3" : "text-warning-text"}`}>
-            {dias.length ? `${diasTexto(dias)} · ${horasSemana.toLocaleString("es-BO")} h por semana` : "Elegí al menos un día"}
-          </p>
-        </div>
-
-        <div>
-          <Campo label="Empieza el">
-            <Select value={mes} onChange={(e) => elegirInicio(e.target.value)}>
-              {inicios.map((m) => (
-                <option key={m} value={m}>
-                  {dia} de {nombreMes(m)} de {m.slice(0, 4)}
-                </option>
-              ))}
-              {anteriores.length > 0 && (
-                <optgroup label="Ya empezó (un grupo que venía en clases)">
-                  {anteriores.map((m) => (
-                    <option key={m} value={m}>
-                      {dia} de {nombreMes(m)} de {m.slice(0, 4)}
+            {sedes.elegir && (
+              <Campo label={p.Sede}>
+                <Select value={almacenId ?? ""} onChange={(e) => setAlmacenId(e.target.value ? Number(e.target.value) : null)}>
+                  {almacenId == null && <option value="">Elegí…</option>}
+                  {opcionesSede.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.nombre}
                     </option>
                   ))}
-                </optgroup>
+                </Select>
+              </Campo>
+            )}
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Campo label="Cupo" hint={carrera?.cupoDefecto != null ? `Viene del ${p.carrera}` : undefined}>
+              <Input type="number" inputMode="numeric" value={cupo} onChange={(e) => setCupo(e.target.value)} />
+            </Campo>
+            <Campo label="Aula">
+              <Input value={aula} onChange={(e) => setAula(e.target.value)} placeholder="Aula 1" />
+            </Campo>
+          </div>
+        </div>
+      </SeccionPanel>
+
+      <SeccionPanel titulo="Horario">
+        <div className="space-y-4">
+          <Campo label="Franja horaria">
+            <Select value={franja} onChange={(e) => elegirFranja(e.target.value)}>
+              {franjas.map((f) => (
+                <option key={`${f.inicio}-${f.fin}`} value={`${f.inicio}-${f.fin}`}>
+                  {f.inicio}–{f.fin}
+                </option>
+              ))}
+              {franja && franja !== OTRO && !franjas.some((f) => `${f.inicio}-${f.fin}` === franja) && (
+                <option value={franja}>{franja.replace("-", "–")}</option>
               )}
+              <option value={OTRO}>Otro horario</option>
             </Select>
           </Campo>
-          {pasado && !fechaPasada && (
-            <p className="mt-1 text-xs text-warning-text">
-              Esa fecha ya pasó: elegila sólo para cargar un grupo que ya estaba en clases.
-            </p>
-          )}
-          {yaPaso && (
-            <p className="mt-1 text-xs text-texto-3">
-              El {dia} de {nombreMes(hueco.mes!)} ya pasó: el primer inicio posible es el {dia} de {nombreMes(primero)}.
-            </p>
-          )}
-          <p className="mt-1 text-xs text-texto-4">
-            Los {p.materias} empiezan el {dia} de cada mes. Se cambia en{" "}
-            <Link to="/configuracion/academia" className="font-semibold text-primary-700 hover:underline">
-              Ajustes
-            </Link>
-            .
-          </p>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
-          <Campo label="Cupo" hint={carrera?.cupoDefecto != null ? `Viene del ${p.carrera}` : undefined}>
-            <Input type="number" inputMode="numeric" value={cupo} onChange={(e) => setCupo(e.target.value)} />
-          </Campo>
-          <Campo label="Aula">
-            <Input value={aula} onChange={(e) => setAula(e.target.value)} placeholder="Aula 1" />
-          </Campo>
-        </div>
-
-        {materias.length > 0 && (
-          <div className="border-t border-borde-soft pt-3">
-            <div className="flex items-baseline justify-between gap-2">
-              <span className="text-[13px] font-semibold text-texto-2">{p.Docente} por {p.materia}</span>
-              {pctDocente != null && <span className="text-xs text-texto-3">Cobra el {pctDocente} %</span>}
+          {franja === OTRO && (
+            <div className="grid grid-cols-2 gap-3">
+              <Campo label="Desde">
+                <Input type="time" value={horaInicio} onChange={(e) => setHoraInicio(e.target.value)} />
+              </Campo>
+              <Campo label="Hasta">
+                <Input type="time" value={horaFin} onChange={(e) => setHoraFin(e.target.value)} />
+              </Campo>
             </div>
-            <ul className="mt-2 space-y-2">
-              {materias.map((m, i) => (
-                <li key={m.id} className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] items-center gap-2">
+          )}
+
+          <div>
+            <span id="et-dias" className="mb-1.5 block text-[13px] font-semibold text-texto-2">
+              Días de clase
+            </span>
+            <div role="group" aria-labelledby="et-dias" className="flex flex-wrap gap-1.5">
+              {DIAS_CLASE.map((d) => {
+                const on = dias.includes(d);
+                return (
+                  <button
+                    key={d}
+                    type="button"
+                    aria-pressed={on}
+                    aria-label={NOMBRE_DIA[d]}
+                    onClick={() => alternarDia(d)}
+                    className={`h-11 w-11 rounded-xl border text-sm font-semibold transition-colors sm:h-10 sm:w-10 ${
+                      on ? "border-primary bg-primary-boton text-white" : "border-borde bg-white text-texto-3 hover:border-primary-200 hover:bg-muted"
+                    }`}
+                  >
+                    {LETRA[d]}
+                  </button>
+                );
+              })}
+            </div>
+            <p className={`mt-1.5 text-xs ${dias.length ? "text-texto-3" : "text-warning-text"}`}>
+              {dias.length ? `${diasTexto(dias)} · ${horasSemana.toLocaleString("es-BO")} h por semana` : "Elegí al menos un día"}
+            </p>
+          </div>
+
+          <div>
+            <Campo label="Empieza el">
+              <Select value={mes} onChange={(e) => elegirInicio(e.target.value)}>
+                {inicios.map((m) => (
+                  <option key={m} value={m}>
+                    {dia} de {nombreMes(m)} de {m.slice(0, 4)}
+                  </option>
+                ))}
+                {anteriores.length > 0 && (
+                  <optgroup label="Ya empezó (un grupo que venía en clases)">
+                    {anteriores.map((m) => (
+                      <option key={m} value={m}>
+                        {dia} de {nombreMes(m)} de {m.slice(0, 4)}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+              </Select>
+            </Campo>
+            {pasado && !fechaPasada && (
+              <p className="mt-1 text-xs text-warning-text">
+                Esa fecha ya pasó: elegila sólo para cargar un grupo que ya estaba en clases.
+              </p>
+            )}
+            {yaPaso && (
+              <p className="mt-1 text-xs text-texto-3">
+                El {dia} de {nombreMes(hueco.mes!)} ya pasó: el primer inicio posible es el {dia} de {nombreMes(primero)}.
+              </p>
+            )}
+            <p className="mt-1 text-xs text-texto-4">
+              Los {p.materias} empiezan el {dia} de cada mes. Se cambia en{" "}
+              <Link to="/configuracion/academia" className="font-semibold text-primary-700 hover:underline">
+                Ajustes
+              </Link>
+              .
+            </p>
+          </div>
+        </div>
+      </SeccionPanel>
+
+      {materias.length > 0 && (
+        <SeccionPanel
+          titulo={`${p.Docente} por ${p.materia}`}
+          acciones={pctDocente != null && <span className="text-xs text-texto-3">Cobra el {pctDocente} %</span>}
+        >
+          <ul className="space-y-2">
+            {materias.map((m, i) => (
+              <li key={m.id} className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] items-center gap-2">
+                <span className="flex min-w-0 items-center gap-2">
+                  <span className="flex h-7 w-8 shrink-0 items-center justify-center rounded-md bg-primary-50 text-xs font-bold text-primary-700">
+                    M{i + 1}
+                  </span>
                   <span className="min-w-0">
-                    <span className="block truncate text-sm text-texto">
-                      M{i + 1} · {m.nombre}
-                    </span>
+                    <span className="block truncate text-sm text-texto">{m.nombre}</span>
                     <span className="block text-xs text-texto-3">
                       Empieza el {dia} · {nombreMes(sumarMeses(mes, i * duracion))}
                     </span>
                   </span>
-                  <label>
-                    <span className="sr-only">
-                      {p.Docente} de M{i + 1}
-                    </span>
-                    <Select
-                      value={docentePor[m.id] ?? ""}
-                      onChange={(e) => setDocentePor({ ...docentePor, [m.id]: e.target.value ? Number(e.target.value) : null })}
-                    >
-                      <option value="">{docentes.cargando && !docentes.datos ? "Cargando…" : "Elegir después"}</option>
-                      {libres.map((d) => (
-                        <option key={d.personalId} value={d.personalId}>
-                          {d.nombre}
-                        </option>
-                      ))}
-                    </Select>
-                  </label>
-                </li>
-              ))}
-            </ul>
-            {docentes.error && (
-              <p className="mt-2 text-xs text-danger-text">
-                No se pudo traer la lista de {p.docente}s.{" "}
-                <button type="button" onClick={docentes.recargar} className="font-semibold underline">
-                  Reintentar
-                </button>
-              </p>
-            )}
-          </div>
-        )}
+                </span>
+                <label>
+                  <span className="sr-only">
+                    {p.Docente} de M{i + 1}
+                  </span>
+                  <Select
+                    value={docentePor[m.id] ?? ""}
+                    onChange={(e) => setDocentePor({ ...docentePor, [m.id]: e.target.value ? Number(e.target.value) : null })}
+                  >
+                    <option value="">{docentes.cargando && !docentes.datos ? "Cargando…" : "Elegir después"}</option>
+                    {libres.map((d) => (
+                      <option key={d.personalId} value={d.personalId}>
+                        {d.nombre}
+                      </option>
+                    ))}
+                  </Select>
+                </label>
+              </li>
+            ))}
+          </ul>
+          {docentes.error && (
+            <p className="mt-2 text-xs text-danger-text">
+              No se pudo traer la lista de {p.docente}s.{" "}
+              <button type="button" onClick={docentes.recargar} className="font-semibold underline">
+                Reintentar
+              </button>
+            </p>
+          )}
+        </SeccionPanel>
+      )}
 
-        {carrera && materias.length > 0 && (
-          <section aria-label="Así queda en el calendario" className="rounded-xl bg-muted p-3">
-            <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-texto-3">Así queda en el calendario</p>
-            <div className="flex gap-2 overflow-x-auto">
-              <span className="w-10 shrink-0 text-xs tabular-nums text-texto-3">
+      {carrera && materias.length > 0 && (
+        <SeccionPanel titulo="Así queda en el calendario">
+          <ResumenPanel className="px-3 py-3">
+            <section aria-label="Así queda en el calendario" className="flex gap-2 overflow-x-auto">
+              <span className="w-10 shrink-0 pt-5 text-xs font-semibold tabular-nums text-texto-2">
                 {horaInicio}
                 <br />
-                {horaFin}
+                <span className="font-normal text-texto-3">{horaFin}</span>
               </span>
               {materias.map((m, i) => {
                 const ultimo = i === materias.length - 1;
                 const docente = libres.find((d) => d.personalId === docentePor[m.id])?.nombre;
                 return (
-                  <div key={m.id} className="w-36 shrink-0">
-                    <span className="block text-xs capitalize text-texto-3">{nombreMes(sumarMeses(mes, i * duracion))}</span>
-                    <span className={`mt-1 block rounded-lg border p-2 text-xs ${ultimo ? "border-primary-100 bg-white" : "border-primary-50 bg-primary-50"}`}>
+                  <div key={m.id} className="w-40 shrink-0">
+                    <span className="block text-xs font-semibold capitalize text-texto-3">{nombreMes(sumarMeses(mes, i * duracion))}</span>
+                    <span
+                      className={`mt-1 block rounded-lg border border-borde bg-white p-2 text-xs shadow-[0_1px_2px_rgba(15,23,42,0.05)] border-l-[3px] ${
+                        ultimo ? "border-l-primary-200" : "border-l-primary"
+                      }`}
+                    >
                       <span className="flex justify-between gap-1">
                         <b className="truncate text-texto">{carrera.nombre}</b>
-                        <span className="text-texto-3">{diasTexto(dias)}</span>
+                        <span className="shrink-0 text-texto-3">{diasTexto(dias)}</span>
                       </span>
-                      <span className="block truncate text-texto-2">
-                        M{i + 1} de {materias.length} · {m.nombre}
+                      <span className="mt-1 flex min-w-0">
+                        <span className="truncate rounded-md bg-primary-50 px-1.5 py-0.5 font-semibold text-primary-700">
+                          M{i + 1} de {materias.length} · {m.nombre}
+                        </span>
                       </span>
-                      <span className="block truncate text-texto-3">{docente ?? `${p.Docente} por elegir`}</span>
-                      <span className="block text-right tabular-nums text-texto-3">0/{Number(cupo) || "—"}</span>
+                      <span className="mt-1 block truncate text-texto-3">{docente ?? `${p.Docente} por elegir`}</span>
+                      <span className="block text-right font-semibold tabular-nums text-texto-2">0/{Number(cupo) || "—"}</span>
                     </span>
                   </div>
                 );
               })}
-            </div>
+            </section>
             {nombreSede && <p className="mt-2 text-xs text-texto-3">{p.Sede} {nombreSede}</p>}
-          </section>
-        )}
+          </ResumenPanel>
+        </SeccionPanel>
+      )}
 
-        {fechaPasada && (
-          <AvisoFechaPasada
-            fecha={inicioDelMes(mes, dia)}
-            {...fechaPasada}
-            guardando={guardando}
-            onConfirmar={() => void crear(true)}
-            onOtraFecha={() => setFechaPasada(null)}
-          />
-        )}
-        <ErrorMsg>{error}</ErrorMsg>
-      </div>
+      {(fechaPasada || error) && (
+        <div className="space-y-3 pt-1">
+          {fechaPasada && (
+            <AvisoFechaPasada
+              fecha={inicioDelMes(mes, dia)}
+              {...fechaPasada}
+              guardando={guardando}
+              onConfirmar={() => void crear(true)}
+              onOtraFecha={() => setFechaPasada(null)}
+            />
+          )}
+          <ErrorMsg>{error}</ErrorMsg>
+        </div>
+      )}
     </PanelLateral>
   );
 }
