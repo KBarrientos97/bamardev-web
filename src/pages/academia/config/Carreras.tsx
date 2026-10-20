@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { EncabezadoPagina } from "../../../components/filtros";
 import { Icon } from "../../../components/Icon";
 import PanelLateral from "../../../components/PanelLateral";
 import { AvisoOk, Boton, Campo, Cargando, ErrorMsg, Input, Modal, Select, Vacio, useAviso } from "../../../components/ui";
@@ -11,7 +10,20 @@ import { ApiError } from "../../../lib/api";
 import { fmtMoney } from "../../../lib/format";
 import { conMayuscula } from "../../../lib/rubro";
 import { useApi } from "../../../lib/useApi";
-import { FiltrosConteo, Interruptor } from "../piezas";
+import {
+  BotonFila,
+  BotonIcono,
+  Chip,
+  EncabezadoPagina,
+  FiltrosConteo,
+  Interruptor,
+  LISTA,
+  PaginaAcademia,
+  ResumenPanel,
+  SeccionPanel,
+  TABLA,
+  Tarjeta,
+} from "../piezas";
 
 /**
  * N2 · Cursos (ronda 2, modo simple D4): la lista de lo que ofrece el
@@ -71,62 +83,80 @@ export default function Carreras() {
   };
 
   return (
-    <div className={`mx-auto max-w-6xl space-y-4 p-4 sm:p-6 lg:p-8 ${panelAbierto ? "md:pr-[404px]" : ""}`}>
+    // Con el panel abierto se corre la página para que el panel no tape la
+    // lista (el `!` le gana al `lg:p-8` del marco, que si no lo pisaba).
+    <PaginaAcademia className={panelAbierto ? "md:!pr-[404px]" : ""}>
       <EncabezadoPagina
         titulo={p.Carreras}
-        subtitulo={
+        volver={{ a: "/configuracion/academia", texto: "Ajustes" }}
+        bajada={
           ajustes.datos
             ? `Lo que ofrece el instituto. Los ${p.materias} empiezan el ${ajustes.datos.diaInicioModulo} de cada mes.`
             : "Lo que ofrece el instituto."
         }
-        volver={{ a: "/configuracion/academia", etiqueta: "Volver a Ajustes" }}
-        accion={<Boton onClick={() => setElegida("nueva")}>Nuevo {p.carrera}</Boton>}
+        acciones={
+          <Boton icono="plus" onClick={() => setElegida("nueva")}>
+            Nuevo {p.carrera}
+          </Boton>
+        }
       />
       <AvisoOk>{aviso}</AvisoOk>
 
-      <FiltrosConteo<FiltroCursos>
-        etiqueta={`Filtrar ${p.carreras}`}
-        valor={filtro}
-        onChange={setFiltro}
-        opciones={[
-          { clave: "todos", label: "Todos", n: conteo.todos },
-          { clave: "pagina", label: "En la página", n: conteo.pagina },
-          { clave: "sinPublicar", label: "Sin publicar", n: conteo.sinPublicar },
-          ...(conteo.retirados ? [{ clave: "retirados" as const, label: "Retirados", n: conteo.retirados }] : []),
-        ]}
-      />
-
-      {lista.error && !lista.datos ? (
-        <ErrorMsg onReintentar={lista.recargar}>{lista.error}</ErrorMsg>
-      ) : lista.cargando && !lista.datos ? (
-        <Cargando />
-      ) : visibles.length === 0 ? (
-        <Vacio
-          icono="birrete"
-          titulo={filtro === "todos" ? `Todavía no hay ${p.carreras}` : `Ningún ${p.carrera} acá`}
-          texto={filtro === "todos" ? `Cargá el primero con sus ${p.materias} y su precio.` : undefined}
-          accion={filtro === "todos" ? <Boton onClick={() => setElegida("nueva")}>Nuevo {p.carrera}</Boton> : undefined}
-        />
-      ) : (
-        <div>
-          <div className="hidden grid-cols-[minmax(0,2fr)_80px_110px_minmax(0,1fr)_minmax(0,1fr)_60px] gap-3 px-3 pb-2 text-xs text-texto-3 md:grid">
-            <span>{p.Carrera}</span>
-            <span>{p.Materias}</span>
-            <span>Por {p.materia}</span>
-            <span>Pago completo</span>
-            <span>{p.Docente}</span>
-            <span>Grupos</span>
+      <Tarjeta
+        etiqueta={p.Carreras}
+        sinRelleno
+        barra={
+          <FiltrosConteo<FiltroCursos>
+            etiqueta={`Filtrar ${p.carreras}`}
+            valor={filtro}
+            onChange={setFiltro}
+            enTarjeta
+            opciones={[
+              { clave: "todos", label: "Todos", n: conteo.todos },
+              { clave: "pagina", label: "En la página", n: conteo.pagina },
+              { clave: "sinPublicar", label: "Sin publicar", n: conteo.sinPublicar },
+              ...(conteo.retirados ? [{ clave: "retirados" as const, label: "Retirados", n: conteo.retirados }] : []),
+            ]}
+          />
+        }
+        pie={
+          visibles.length > 0 && (
+            <p className="text-[13px] text-texto-3">Cambiar un precio vale para las inscripciones nuevas; las ya hechas conservan el suyo.</p>
+          )
+        }
+      >
+        {lista.error && !lista.datos ? (
+          <div className="p-4 sm:p-5">
+            <ErrorMsg onReintentar={lista.recargar}>{lista.error}</ErrorMsg>
           </div>
-          <ul className="border-t border-borde-soft">
-            {visibles.map((c) => (
-              <FilaCurso key={c.id} curso={c} pctInstituto={pctInstituto} elegido={actual?.id === c.id} onAbrir={() => setElegida(c.id)} />
-            ))}
-          </ul>
-          <p className="px-3 pt-3 text-[13px] text-texto-3">
-            Cambiar un precio vale para las inscripciones nuevas; las ya hechas conservan el suyo.
-          </p>
-        </div>
-      )}
+        ) : lista.cargando && !lista.datos ? (
+          <Cargando />
+        ) : visibles.length === 0 ? (
+          <Vacio
+            icono="birrete"
+            titulo={filtro === "todos" ? `Todavía no hay ${p.carreras}` : `Ningún ${p.carrera} acá`}
+            texto={filtro === "todos" ? `Cargá el primero con sus ${p.materias} y su precio.` : undefined}
+            accion={filtro === "todos" ? <Boton onClick={() => setElegida("nueva")}>Nuevo {p.carrera}</Boton> : undefined}
+          />
+        ) : (
+          <>
+            <div className={`hidden ${COLUMNAS} gap-3 py-2.5 pl-5 pr-5 md:grid ${TABLA.encabezado}`}>
+              <span>{p.Carrera}</span>
+              <span className="text-right">{p.Materias}</span>
+              <span className="text-right">Por {p.materia}</span>
+              <span className="text-right">Pago completo</span>
+              <span className="text-right">{p.Docente}</span>
+              <span className="text-right">Grupos</span>
+              <span />
+            </div>
+            <ul className={`${LISTA.lista} border-t border-borde-soft md:border-t-0`}>
+              {visibles.map((c) => (
+                <FilaCurso key={c.id} curso={c} pctInstituto={pctInstituto} elegido={actual?.id === c.id} onAbrir={() => setElegida(c.id)} />
+              ))}
+            </ul>
+          </>
+        )}
+      </Tarjeta>
 
       {panelAbierto && (
         <PanelCurso
@@ -159,9 +189,12 @@ export default function Carreras() {
           />
         </Modal>
       )}
-    </div>
+    </PaginaAcademia>
   );
 }
+
+/** Las columnas de la lista en escritorio: el encabezado y cada fila las comparten. */
+const COLUMNAS = "md:grid-cols-[minmax(0,2fr)_72px_100px_minmax(0,1fr)_minmax(0,1fr)_56px_36px]";
 
 function FilaCurso({
   curso: c,
@@ -179,43 +212,57 @@ function FilaCurso({
   const completo = c.planes.find((pl) => pl.activo && pl.generado === "COMPLETO")?.total ?? c.precioCompleto ?? null;
   const aMedida = c.planes.some((pl) => pl.activo && !pl.generado);
   const pct = c.pctDocente ?? pctInstituto;
-  const sub = [modulos.map((m) => m.nombre).join(" · "), c.publicarEnPagina ? "" : "sin publicar", aMedida ? "con planes a medida" : ""]
-    .filter(Boolean)
-    .join(" · ");
+  const sub = [modulos.map((m) => m.nombre).join(" · "), aMedida ? "con planes a medida" : ""].filter(Boolean).join(" · ");
   return (
-    <li className="border-b border-borde-soft">
+    <li>
       <button
         type="button"
         onClick={onAbrir}
         aria-label={`Editar ${c.nombre}`}
         aria-current={elegido ? "true" : undefined}
-        className={`grid w-full grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1 px-3 py-3 text-left transition-colors md:grid-cols-[minmax(0,2fr)_80px_110px_minmax(0,1fr)_minmax(0,1fr)_60px] md:items-center ${
+        className={`grid w-full grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1.5 px-4 py-3.5 text-left transition-colors sm:px-5 ${COLUMNAS} md:items-center ${
           elegido ? "bg-primary-50" : "hover:bg-muted"
         }`}
       >
         <span className="min-w-0">
-          <span className="block truncate text-sm font-semibold text-texto">{c.nombre}</span>
-          <span className="block truncate text-[12px] text-texto-3">{sub || `Sin ${p.materias}`}</span>
+          <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+            <span className="truncate text-sm font-semibold text-texto">{c.nombre}</span>
+            {!c.activa ? (
+              <Chip tono="gris">Retirado</Chip>
+            ) : c.publicarEnPagina ? (
+              <Chip tono="verde">En la página</Chip>
+            ) : (
+              <Chip tono="ambar">Sin publicar</Chip>
+            )}
+          </span>
+          <span className="mt-0.5 block truncate text-[12px] text-texto-3">{sub || `Sin ${p.materias}`}</span>
         </span>
-        <span className="text-right text-sm tabular-nums text-texto-2 md:text-left">
+        <span className={`text-right text-sm text-texto-2 ${TABLA.numero}`}>
           {modulos.length}
           <span className="md:hidden"> {p.materias}</span>
         </span>
-        <span className="text-sm tabular-nums text-texto-2">
+        <span className="text-sm tabular-nums text-texto-2 md:text-right">
           {c.precioModulo != null ? fmtMoney(c.precioModulo) : "—"}
           <span className="md:hidden"> por {p.materia}</span>
         </span>
-        <span className="min-w-0 text-right md:text-left">
-          <span className="block text-sm tabular-nums text-texto-2">{completo != null ? fmtMoney(completo) : "—"}</span>
+        <span className="min-w-0 text-right">
+          <span className="block text-sm font-semibold tabular-nums text-texto">{completo != null ? fmtMoney(completo) : "—"}</span>
           {c.descuentoCompletoPct != null && <span className="block text-[12px] text-texto-3">{c.descuentoCompletoPct} % menos</span>}
         </span>
-        <span className="min-w-0">
+        <span className="min-w-0 md:text-right">
           <span className="block text-sm tabular-nums text-texto-2">{pct} %</span>
           <span className="block text-[12px] text-texto-3">{c.pctDocente == null ? "del instituto" : `propio del ${p.carrera}`}</span>
         </span>
-        <span className="text-right text-sm tabular-nums text-texto-2 md:text-left">
+        <span className={`text-right text-sm text-texto-2 ${TABLA.numero}`}>
           {c.gruposActivos}
           <span className="md:hidden"> {c.gruposActivos === 1 ? "grupo" : "grupos"}</span>
+        </span>
+        {/* El renglón entero abre el panel; el chevron lo dice a la vista. */}
+        <span
+          aria-hidden="true"
+          className="hidden h-8 w-8 items-center justify-center justify-self-end rounded-lg border border-borde bg-white text-texto-3 md:flex"
+        >
+          <Icon name="chevronRight" size={16} />
         </span>
       </button>
     </li>
@@ -312,17 +359,21 @@ function PanelCurso({
         </>
       }
     >
-      <div className="space-y-5">
-        <Campo label="Nombre">
-          <Input value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Ej.: Barbería" />
-        </Campo>
+      <div>
+        <SeccionPanel titulo={p.Carrera}>
+          <Campo label="Nombre">
+            <Input value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Ej.: Barbería" />
+          </Campo>
+        </SeccionPanel>
 
-        <fieldset>
-          <legend className="mb-1.5 text-[13px] font-semibold text-texto-2">{p.Materias}, en orden</legend>
-          <ol className="space-y-1.5">
+        <SeccionPanel titulo={`${p.Materias}, en orden`}>
+          <ol className="space-y-2">
             {modulos.map((m, i) => (
               <li key={m.id ?? `nuevo-${i}`} className="flex items-center gap-2">
-                <span aria-hidden="true" className="w-5 text-right text-sm tabular-nums text-texto-3">
+                <span
+                  aria-hidden="true"
+                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary-50 text-xs font-bold tabular-nums text-primary-700"
+                >
                   {i + 1}
                 </span>
                 <label className="min-w-0 flex-1">
@@ -334,76 +385,86 @@ function PanelCurso({
                     onChange={(e) => setModulos(modulos.map((x, j) => (j === i ? { ...x, nombre: e.target.value } : x)))}
                   />
                 </label>
-                <button
-                  type="button"
+                <BotonIcono
+                  icono="trash"
+                  etiqueta={`Quitar el ${p.materia} ${i + 1}`}
                   onClick={() => setModulos(modulos.filter((_, j) => j !== i))}
                   disabled={modulos.length === 1}
-                  aria-label={`Quitar el ${p.materia} ${i + 1}`}
-                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-texto-3 hover:bg-muted disabled:opacity-30"
-                >
-                  <Icon name="trash" size={16} />
-                </button>
+                />
               </li>
             ))}
           </ol>
-          <button
-            type="button"
+          <BotonFila
+            icono="plus"
+            className="mt-3"
             onClick={() => setModulos([...modulos, { nombre: `${conMayuscula(p.materia)} ${modulos.length + 1}` }])}
-            className="mt-2 inline-flex items-center gap-1.5 text-sm font-semibold text-primary-700 hover:underline"
           >
-            <Icon name="plus" size={15} /> Agregar {p.materia}
-          </button>
-        </fieldset>
+            Agregar {p.materia}
+          </BotonFila>
+        </SeccionPanel>
 
-        <div className="grid grid-cols-2 gap-3">
-          <Campo label={`Precio por ${p.materia} (Bs)`}>
-            <Input type="number" value={precio} onChange={(e) => setPrecio(e.target.value)} placeholder="0" />
-          </Campo>
-          <Campo label="Descuento por pago completo (%)">
-            <Input type="number" value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="0" />
-          </Campo>
-          <Campo label="Cupo por grupo">
-            <Input type="number" inputMode="numeric" value={cupo} onChange={(e) => setCupo(e.target.value)} />
-          </Campo>
-          <Campo label={`% para el ${p.docente}`}>
-            <Input type="number" value={pct} onChange={(e) => setPct(e.target.value)} placeholder={String(pctInstituto)} />
-          </Campo>
-        </div>
-        <p className="-mt-3 text-xs text-texto-4">El instituto paga {pctInstituto} %; dejalo vacío para usar ese.</p>
+        <SeccionPanel titulo="Precio y cupo">
+          <div className="grid grid-cols-2 gap-3">
+            <Campo label={`Precio por ${p.materia} (Bs)`}>
+              <Input type="number" value={precio} onChange={(e) => setPrecio(e.target.value)} placeholder="0" />
+            </Campo>
+            <Campo label="Descuento por pago completo (%)">
+              <Input type="number" value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="0" />
+            </Campo>
+            <Campo label="Cupo por grupo">
+              <Input type="number" inputMode="numeric" value={cupo} onChange={(e) => setCupo(e.target.value)} />
+            </Campo>
+            <Campo label={`% para el ${p.docente}`}>
+              <Input type="number" value={pct} onChange={(e) => setPct(e.target.value)} placeholder={String(pctInstituto)} />
+            </Campo>
+          </div>
+          <p className="mt-2 text-xs text-texto-4">El instituto paga {pctInstituto} %; dejalo vacío para usar ese.</p>
+        </SeccionPanel>
 
-        <Interruptor
-          activo={publicar}
-          onCambiar={setPublicar}
-          etiqueta="Publicar en la página"
-          detalle={publicar ? "Se puede inscribir desde la página del instituto" : "Sólo se inscribe en el mostrador"}
-        />
+        <SeccionPanel titulo="Página">
+          <div className="-my-3">
+            <Interruptor
+              activo={publicar}
+              onCambiar={setPublicar}
+              etiqueta="Publicar en la página"
+              detalle={publicar ? "Se puede inscribir desde la página del instituto" : "Sólo se inscribe en el mostrador"}
+            />
+          </div>
+        </SeccionPanel>
 
-        <section aria-label="Así se ofrece" className="rounded-xl bg-muted p-4">
-          <p className="text-[11px] font-bold uppercase tracking-wider text-texto-3">Así se ofrece</p>
-          {nPrecio > 0 && n > 0 ? (
-            <>
-              <dl className="mt-2 space-y-1.5 text-sm">
-                <div className="flex justify-between gap-3">
-                  <dt className="text-texto-2">Mes a mes</dt>
-                  <dd className="text-right tabular-nums text-texto">
-                    {fmtMoney(nPrecio)} por {p.materia} ({n} {n === 1 ? "cuota" : "cuotas"})
-                  </dd>
-                </div>
-                <div className="flex justify-between gap-3">
-                  <dt className="text-texto-2">Pago completo</dt>
-                  <dd className="text-right tabular-nums text-texto">
-                    {fmtMoney(cuenta.completo)} · {cuenta.ahorro > 0 ? `ahorra ${fmtMoney(cuenta.ahorro)}` : "sin descuento"}
-                  </dd>
-                </div>
-              </dl>
-              <p className="mt-3 border-t border-borde-soft pt-2 text-[13px] text-texto-3">
-                Al {p.docente}: {fmtMoney((nPrecio * pctEf) / 100)} por {p.alumno} y {p.materia} pagado ({pctEf} %); con pago
-                completo {fmtMoney((cuenta.porModuloCompleto * pctEf) / 100)} ({pctEf} % de {fmtMoney(cuenta.porModuloCompleto)})
-              </p>
-            </>
-          ) : (
-            <p className="mt-2 text-sm text-texto-3">Poné el precio por {p.materia} para ver cómo se ofrece.</p>
-          )}
+        <section aria-label="Así se ofrece" className="border-t border-borde-soft py-4">
+          <ResumenPanel>
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-texto-4">Así se ofrece</p>
+            {nPrecio > 0 && n > 0 ? (
+              <>
+                <dl className="mt-2.5 space-y-2 text-sm">
+                  <div className="flex items-baseline justify-between gap-3">
+                    <dt className="shrink-0 text-texto-2">Mes a mes</dt>
+                    <dd className="text-right tabular-nums text-texto">
+                      <span className="font-semibold">{fmtMoney(nPrecio)}</span> por {p.materia} ({n} {n === 1 ? "cuota" : "cuotas"})
+                    </dd>
+                  </div>
+                  <div className="flex items-baseline justify-between gap-3">
+                    <dt className="shrink-0 text-texto-2">Pago completo</dt>
+                    <dd className="text-right tabular-nums text-texto">
+                      <span className="font-semibold">{fmtMoney(cuenta.completo)}</span> ·{" "}
+                      {cuenta.ahorro > 0 ? (
+                        <span className="text-primary-700">ahorra {fmtMoney(cuenta.ahorro)}</span>
+                      ) : (
+                        "sin descuento"
+                      )}
+                    </dd>
+                  </div>
+                </dl>
+                <p className="mt-3 border-t border-borde pt-2.5 text-[13px] text-texto-3">
+                  Al {p.docente}: {fmtMoney((nPrecio * pctEf) / 100)} por {p.alumno} y {p.materia} pagado ({pctEf} %); con pago
+                  completo {fmtMoney((cuenta.porModuloCompleto * pctEf) / 100)} ({pctEf} % de {fmtMoney(cuenta.porModuloCompleto)})
+                </p>
+              </>
+            ) : (
+              <p className="mt-2 text-sm text-texto-3">Poné el precio por {p.materia} para ver cómo se ofrece.</p>
+            )}
+          </ResumenPanel>
         </section>
 
         {onAvanzadas && (
@@ -412,20 +473,20 @@ function PanelCurso({
               type="button"
               onClick={() => setVerAvanzadas((v) => !v)}
               aria-expanded={verAvanzadas}
-              className="flex w-full items-center justify-between py-1 text-sm font-semibold text-texto-2"
+              className="flex min-h-11 w-full items-center justify-between rounded-lg text-sm font-semibold text-texto-2 hover:text-texto sm:min-h-9"
             >
               Opciones avanzadas
               <Icon name="chevronDown" size={16} className={verAvanzadas ? "rotate-180" : ""} />
             </button>
             {verAvanzadas && (
-              <div className="mt-2 space-y-2 text-[13px] text-texto-3">
+              <div className="mt-2 space-y-3 text-[13px] text-texto-3">
                 <p>
                   Para planes que no sean mes a mes ni pago completo: cuotas que cubren varios {p.materias}, vencimientos
                   distintos o promociones. Los dos planes de arriba se arman solos con estos datos.
                 </p>
-                <button type="button" onClick={onAvanzadas} className="font-semibold text-primary-700 hover:underline">
+                <BotonFila variante="ghost" icono="edit" onClick={onAvanzadas}>
                   Editar planes a medida
-                </button>
+                </BotonFila>
               </div>
             )}
           </div>
@@ -491,10 +552,10 @@ function DetalleCarrera({
   }
 
   return (
-    <div className="min-w-0 space-y-8">
-      <section className="space-y-3" aria-label={`Datos de la ${p.carrera}`}>
+    <div className="min-w-0 space-y-6 [&>section+section]:border-t [&>section+section]:border-borde-soft [&>section+section]:pt-6">
+      <section className="space-y-3" aria-label={`Datos ${deLa(p.carrera)}`}>
         <div className="grid gap-3 sm:grid-cols-[minmax(0,2fr)_120px_minmax(0,1fr)]">
-          <Campo label={`Nombre de la ${p.carrera}`}>
+          <Campo label={`Nombre ${deLa(p.carrera)}`}>
             <Input value={datos.nombre} onChange={(e) => setDatos({ ...datos, nombre: e.target.value })} />
           </Campo>
           <Campo label="Horas totales">
@@ -660,7 +721,7 @@ function Materias({ carrera, materias, onCambio }: { carrera: Carrera; materias:
               <>
                 <span className="min-w-0 flex-1 truncate text-sm text-texto">{m.nombre}</span>
                 <span className="text-sm tabular-nums text-texto-3">{m.horas} h</span>
-                <span className="flex items-center">
+                <span className="flex items-center gap-1.5">
                   <BotonIcono etiqueta={`Subir M${m.orden}`} icono="arrowUp" disabled={ocupado || i === 0} onClick={() => mover(i, -1)} />
                   <BotonIcono etiqueta={`Bajar M${m.orden}`} icono="arrowDown" disabled={ocupado || i === materias.length - 1} onClick={() => mover(i, 1)} />
                   <BotonIcono
@@ -671,14 +732,13 @@ function Materias({ carrera, materias, onCambio }: { carrera: Carrera; materias:
                       setBorrador({ nombre: m.nombre, horas: String(m.horas) });
                     }}
                   />
-                  <button
-                    type="button"
+                  <BotonFila
+                    variante="ghost"
                     disabled={ocupado}
                     onClick={() => void hacer(() => apiAcademia.editarMateria(m.id, { activa: !m.activa }))}
-                    className="ml-1 rounded-lg px-2 py-1 text-[12px] font-semibold text-texto-3 hover:bg-muted"
                   >
                     {m.activa ? "Retirar" : "Reactivar"}
-                  </button>
+                  </BotonFila>
                 </span>
               </>
             )}
@@ -712,31 +772,6 @@ function Materias({ carrera, materias, onCambio }: { carrera: Carrera; materias:
       </form>
       <ErrorMsg>{error}</ErrorMsg>
     </section>
-  );
-}
-
-function BotonIcono({
-  etiqueta,
-  icono,
-  onClick,
-  disabled,
-}: {
-  etiqueta: string;
-  icono: "arrowUp" | "arrowDown" | "edit" | "trash";
-  onClick: () => void;
-  disabled?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      aria-label={etiqueta}
-      title={etiqueta}
-      disabled={disabled}
-      onClick={onClick}
-      className="flex h-8 w-8 items-center justify-center rounded-lg text-texto-3 hover:bg-muted disabled:opacity-30"
-    >
-      <Icon name={icono} size={16} />
-    </button>
   );
 }
 
@@ -837,7 +872,11 @@ function EditorPlan({
           <div className="min-w-0">
             <p className="text-[15px] font-bold text-texto">
               {plan.nombre}
-              {!plan.activo && <span className="ml-2 text-[12px] font-normal text-texto-3">retirado</span>}
+              {!plan.activo && (
+                <Chip tono="gris" className="ml-2 align-middle">
+                  retirado
+                </Chip>
+              )}
             </p>
             <p className="text-[13px] text-texto-3">
               {plan.calendario.length === 1 ? "Un pago" : `${plan.calendario.length} cuotas`} · total {fmtMoney(plan.total)}
@@ -880,14 +919,9 @@ function EditorPlan({
                 ["materia", `Por ${p.materia}`],
               ] as const
             ).map(([k, label]) => (
-              <button
-                key={k}
-                type="button"
-                onClick={() => setCuotas(calendarioBase(k, materias))}
-                className="rounded-full border border-borde px-3 py-1.5 text-[13px] font-semibold text-texto-2 hover:bg-muted"
-              >
+              <BotonFila key={k} variante="ghost" onClick={() => setCuotas(calendarioBase(k, materias))}>
                 {label}
-              </button>
+              </BotonFila>
             ))}
           </div>
         )}
@@ -977,13 +1011,12 @@ function EditorPlan({
             </li>
           ))}
         </ul>
-        <button
-          type="button"
+        <BotonFila
+          icono="plus"
           onClick={() => setCuotas([...cuotas, { n: cuotas.length + 1, monto: 0, vence: { tipo: "DIAS", dias: 30 }, cubre: [] }])}
-          className="text-[13px] font-semibold text-primary-700 hover:underline"
         >
-          + Agregar cuota
-        </button>
+          Agregar cuota
+        </BotonFila>
       </div>
 
       {/* La base fija del docente por materia ya no se carga (D2): lo que cobra
@@ -1036,3 +1069,7 @@ function EditorPlan({
   );
 }
 
+/** "de la carrera" / "del curso": la palabra cambia con el rubro y con ella el artículo. */
+function deLa(palabra: string) {
+  return /a$/i.test(palabra) ? `de la ${palabra}` : `del ${palabra}`;
+}

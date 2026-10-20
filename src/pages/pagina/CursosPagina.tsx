@@ -14,6 +14,17 @@ import type { CursoPublico } from "../../lib/academia/tipos";
  * Va con los tonos del estilo de la página (estilos en línea, como el resto
  * de la vista): no es la app, es la vitrina del negocio.
  */
+/**
+ * Un velo del color del texto de la tarjeta: el recuadro del precio y las
+ * líneas de los horarios salen del mismo tono en una tarjeta clara o en una
+ * oscura (Noche, Mosaico), sin depender de los tonos de la página.
+ */
+function velo(color: string, alfa: number): string {
+  const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(color);
+  if (!m) return `color-mix(in srgb, ${color} ${Math.round(alfa * 100)}%, transparent)`;
+  return `rgba(${parseInt(m[1], 16)}, ${parseInt(m[2], 16)}, ${parseInt(m[3], 16)}, ${alfa})`;
+}
+
 export default function CursosPagina({
   cursos,
   t,
@@ -82,6 +93,7 @@ function TarjetaCurso({
     padding: "12px 0",
     borderRadius: 12,
     textDecoration: "none",
+    boxShadow: "0 2px 6px rgba(15, 23, 42, 0.18)",
   };
   return (
     <article
@@ -108,17 +120,42 @@ function TarjetaCurso({
         {c.descripcion && <p style={{ margin: 0, fontSize: 14, color: t.texto2Tarjeta }}>{c.descripcion}</p>}
         {c.grupos.length > 0 && (
           <div>
-            <p style={{ margin: "0 0 4px", fontSize: 11, fontWeight: 700, letterSpacing: 0.6, color: t.texto3Tarjeta }}>
+            <p style={{ margin: "0 0 6px", fontSize: 11, fontWeight: 700, letterSpacing: 0.6, color: t.texto3Tarjeta }}>
               PRÓXIMOS INICIOS
             </p>
-            <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 4 }}>
-              {c.grupos.map((g) => (
-                <li key={g.id} style={{ fontSize: 14, color: t.textoTarjeta }}>
-                  {fechaCorta(g.fechaInicio)} · {horarioGrupo(g)} · {g.sede.nombre}
+            {/* Cada horario en su renglón enmarcado, con los lugares en una pastilla: se lee de un vistazo. */}
+            <ul style={{ margin: 0, padding: 0, listStyle: "none", border: `1px solid ${velo(t.textoTarjeta, 0.14)}`, borderRadius: 12, overflow: "hidden" }}>
+              {c.grupos.map((g, i) => (
+                <li
+                  key={g.id}
+                  style={{
+                    fontSize: 14,
+                    color: t.textoTarjeta,
+                    padding: "9px 12px",
+                    borderTop: i ? `1px solid ${velo(t.textoTarjeta, 0.14)}` : undefined,
+                    display: "flex",
+                    flexWrap: "wrap",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: "4px 8px",
+                  }}
+                >
+                  <span>
+                    <strong style={{ fontWeight: 600 }}>{fechaCorta(g.fechaInicio)}</strong> · {horarioGrupo(g)} · {g.sede.nombre}
+                  </span>
                   {g.cuposLibres != null && g.cuposLibres <= 10 && (
-                    <span style={{ color: t.texto3Tarjeta }}>
-                      {" "}
-                      · {g.cuposLibres > 0 ? `quedan ${g.cuposLibres}` : "lleno"}
+                    <span
+                      style={{
+                        fontSize: 12,
+                        fontWeight: 600,
+                        color: t.textoTarjeta,
+                        background: velo(t.textoTarjeta, 0.08),
+                        borderRadius: 999,
+                        padding: "2px 9px",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {g.cuposLibres > 0 ? `quedan ${g.cuposLibres}` : "lleno"}
                     </span>
                   )}
                 </li>
@@ -126,22 +163,38 @@ function TarjetaCurso({
             </ul>
           </div>
         )}
-        <div style={{ marginTop: "auto", display: "flex", flexDirection: "column", gap: 8 }}>
+        <div style={{ marginTop: "auto", display: "flex", flexDirection: "column", gap: 10 }}>
           {c.precioModulo != null ? (
-            <div>
+            // El precio en su recuadro: lo primero que se busca en un curso.
+            <div style={{ background: velo(t.textoTarjeta, 0.05), borderRadius: 12, padding: "12px 14px" }}>
               <p style={{ margin: 0, fontSize: 14, color: t.texto2Tarjeta }}>
-                <strong style={{ color: t.precio }}>{bs(c.precioModulo)}</strong> por módulo
+                <strong style={{ color: t.precio, fontSize: 18 }}>{bs(c.precioModulo)}</strong> por módulo
                 {c.precioCompleto != null && <> · o {bs(c.precioCompleto)} todo junto</>}
               </p>
               {c.ahorro != null && c.ahorro > 0 && (
-                <p style={{ margin: "2px 0 0", fontSize: 13, color: t.texto3Tarjeta }}>Pagando todo junto ahorrás {bs(c.ahorro)}</p>
+                <p
+                  style={{
+                    margin: "6px 0 0",
+                    display: "inline-block",
+                    fontSize: 12,
+                    fontWeight: 600,
+                    color: "#047857",
+                    background: "#ECFDF5",
+                    borderRadius: 999,
+                    padding: "2px 10px",
+                  }}
+                >
+                  Pagando todo junto ahorrás {bs(c.ahorro)}
+                </p>
               )}
             </div>
           ) : (
             c.desde != null && (
-              <p style={{ margin: 0, fontSize: 14, color: t.texto2Tarjeta }}>
-                Desde <strong style={{ color: t.precio }}>{bs(c.desde)}</strong>
-              </p>
+              <div style={{ background: velo(t.textoTarjeta, 0.05), borderRadius: 12, padding: "12px 14px" }}>
+                <p style={{ margin: 0, fontSize: 14, color: t.texto2Tarjeta }}>
+                  Desde <strong style={{ color: t.precio, fontSize: 18 }}>{bs(c.desde)}</strong>
+                </p>
+              </div>
             )
           )}
           {!primero && (

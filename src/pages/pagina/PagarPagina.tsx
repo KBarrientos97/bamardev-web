@@ -6,6 +6,8 @@ import type { EstadoCuentaPublico } from "../../lib/academia/tipos";
 import { paleta } from "../../lib/pagina/aspecto";
 import { urlDeImagen } from "../../lib/pagina/apiPagina";
 import { usePaginaPublica } from "../../lib/pagina/usePaginaPublica";
+import { Icon } from "../../components/Icon";
+import { Chip } from "../academia/piezas";
 import { NoDisponible } from "./PaginaPublica";
 import { MarcaBamarDev } from "./VistaPagina";
 
@@ -87,7 +89,7 @@ export default function PagarPagina() {
           <span className="text-[15px] font-bold text-[#111827]">{d.instituto.nombre}</span>
         </header>
 
-        <section aria-labelledby="t-hola" className="space-y-1 rounded-2xl border border-[#E5E7EB] bg-white p-5">
+        <section aria-labelledby="t-hola" className="space-y-1 rounded-2xl border border-[#E5E7EB] bg-white p-5 shadow-sm">
           <h1 id="t-hola" className="text-xl font-bold text-[#111827]">
             Hola, {d.alumno.nombres.split(" ")[0]}
           </h1>
@@ -95,20 +97,30 @@ export default function PagarPagina() {
             {d.curso} · {d.grupo.nombre} · Sede {d.grupo.sede}
           </p>
           {p ? (
-            <div className="pt-2">
-              <p className="text-[13px] text-[#4B5563]">{p.concepto}</p>
-              <p className="text-3xl font-bold text-[#111827]">{bs(p.saldo)}</p>
-              <p className={`text-[13px] ${p.vencida ? "font-semibold text-[#B91C1C]" : "text-[#6B7280]"}`}>
+            // Lo que tiene que pagar, en su recuadro: el monto es lo primero que se busca.
+            <div
+              className={`mt-3 rounded-xl border p-4 ${p.vencida ? "border-[#FECACA] bg-[#FEF2F2]" : "border-[#E5E7EB] bg-[#F9FAFB]"}`}
+            >
+              <p className="text-[13px] font-semibold text-[#4B5563]">{p.concepto}</p>
+              <p className="mt-0.5 text-3xl font-bold tabular-nums text-[#111827]">{bs(p.saldo)}</p>
+              <p
+                className={`mt-1.5 inline-block rounded-full px-2.5 py-0.5 text-[12px] font-semibold ${
+                  p.vencida ? "bg-[#FEE2E2] text-[#B91C1C]" : "bg-white text-[#4B5563] ring-1 ring-inset ring-[#E5E7EB]"
+                }`}
+              >
                 {p.vencida ? `Venció el ${fechaCorta(p.vence)}` : `Vence el ${fechaCorta(p.vence)}`}
               </p>
             </div>
           ) : (
-            <p className="pt-2 text-sm font-semibold text-[#111827]">Estás al día: no debés nada.</p>
+            <p className="mt-3 flex items-center gap-2 rounded-xl border border-[#A7F3D0] bg-[#ECFDF5] p-4 text-sm font-semibold text-[#047857]">
+              <Icon name="checkCirculo" size={18} />
+              Estás al día: no debés nada.
+            </p>
           )}
         </section>
 
         {p && (
-          <section aria-label="Cómo pagar" className="space-y-3 rounded-2xl border border-[#E5E7EB] bg-white p-5">
+          <section aria-label="Cómo pagar" className="space-y-3 rounded-2xl border border-[#E5E7EB] bg-white p-5 shadow-sm">
             {qr ? (
               <>
                 <img src={qr} alt={`QR de ${d.instituto.nombre} para pagar`} className="mx-auto w-full max-w-[240px] rounded-xl border border-[#E5E7EB]" />
@@ -116,27 +128,43 @@ export default function PagarPagina() {
                 <p className="text-center text-[13px] text-[#4B5563]">
                   Pagá {bs(p.saldo)} (o una parte: lo que falte queda de saldo) y mandá el comprobante al instituto para que lo registren.
                 </p>
-                <a href={qr} download className="block rounded-xl border border-[#E5E7EB] py-2.5 text-center text-sm font-semibold text-[#374151]">
+                <a
+                  href={qr}
+                  download
+                  className="flex min-h-11 items-center justify-center gap-2 rounded-xl py-2.5 text-center text-sm font-semibold text-white"
+                  style={{ background: color, boxShadow: "0 2px 6px rgba(15, 23, 42, 0.18)" }}
+                >
+                  <Icon name="download" size={16} />
                   Descargar el QR
                 </a>
                 <p className="text-center text-[12px] text-[#6B7280]">Si pagás desde este mismo celular, descargalo y subilo en tu app del banco.</p>
               </>
             ) : (
-              <>
-                <p className="text-sm font-semibold text-[#111827]">Pagá en el instituto</p>
-                <p className="text-[13px] text-[#4B5563]">En la sede {d.grupo.sede}, en efectivo o con QR. Llevá tu carnet.</p>
-              </>
+              <div className="flex items-start gap-3">
+                <span
+                  aria-hidden="true"
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#F3F4F6] text-[#374151]"
+                >
+                  <Icon name="home" size={18} />
+                </span>
+                <div className="space-y-0.5">
+                  <p className="text-sm font-semibold text-[#111827]">Pagá en el instituto</p>
+                  <p className="text-[13px] text-[#4B5563]">En la sede {d.grupo.sede}, en efectivo o con QR. Llevá tu carnet.</p>
+                </div>
+              </div>
             )}
           </section>
         )}
 
-        <section aria-labelledby="t-cuenta" className="space-y-2 rounded-2xl border border-[#E5E7EB] bg-white p-5">
-          <h2 id="t-cuenta" className="text-sm font-bold text-[#111827]">
+        <section aria-labelledby="t-cuenta" className="overflow-hidden rounded-2xl border border-[#E5E7EB] bg-white shadow-sm">
+          <h2 id="t-cuenta" className="border-b border-[#E5E7EB] px-5 py-3.5 text-sm font-bold text-[#111827]">
             Tu estado de cuenta
           </h2>
-          <ul className="divide-y divide-[#F1F5F9]">
+          <ul className="divide-y divide-[#F1F5F9] px-5">
             {d.cuotas.map((c, i) => {
               const urgente = c.vencida && c.saldo > 0;
+              // El estado en chip de color: verde pagado, ámbar abonado, rojo vencido.
+              const tono = c.estado === "PAGADA" ? "verde" : c.estado === "ANULADA" ? "gris" : c.pagado > 0 ? "ambar" : c.vencida ? "rojo" : null;
               const estado =
                 c.estado === "PAGADA"
                   ? "Pagado"
@@ -148,32 +176,51 @@ export default function PagarPagina() {
                         ? `Por pagar · venció el ${fechaCorta(c.vence)}`
                         : `Vence el ${fechaCorta(c.vence)}`;
               return (
-                <li key={`${c.concepto}-${i}`} className="flex items-start justify-between gap-3 py-2.5">
-                  <span>
-                    <span className="block text-sm text-[#111827]">{c.concepto}</span>
-                    <span className={`block text-[12px] ${urgente ? "font-semibold text-[#B91C1C]" : "text-[#6B7280]"}`}>{estado}</span>
+                <li key={`${c.concepto}-${i}`} className="flex items-start justify-between gap-3 py-3">
+                  <span className="min-w-0">
+                    <span className="block text-sm font-semibold text-[#111827]">{c.concepto}</span>
+                    {tono ? (
+                      <Chip tono={tono} className="mt-1 !whitespace-normal">
+                        {estado}
+                      </Chip>
+                    ) : (
+                      <span className="mt-0.5 block text-[12px] text-[#6B7280]">{estado}</span>
+                    )}
                   </span>
-                  <span className={`text-sm ${urgente ? "font-semibold text-[#B91C1C]" : "text-[#374151]"}`}>{bs(c.monto)}</span>
+                  <span className={`shrink-0 text-sm tabular-nums ${urgente ? "font-semibold text-[#B91C1C]" : "text-[#374151]"}`}>{bs(c.monto)}</span>
                 </li>
               );
             })}
           </ul>
-          <p className="flex justify-between border-t border-[#E5E7EB] pt-2 text-sm font-bold text-[#111827]">
+          <p className="flex justify-between border-t border-[#E5E7EB] bg-[#F9FAFB] px-5 py-3.5 text-sm font-bold text-[#111827]">
             <span>Saldo del curso</span>
-            <span>{bs(d.saldoTotal)}</span>
+            <span className="tabular-nums">{bs(d.saldoTotal)}</span>
           </p>
         </section>
 
-        <section className="space-y-2 rounded-2xl border border-[#E5E7EB] bg-white p-5 text-center">
+        <section className="space-y-3 rounded-2xl border border-[#E5E7EB] bg-white p-5 text-center shadow-sm">
           <p className="text-[13px] text-[#4B5563]">Guardá este enlace: siempre muestra tu estado de cuenta.</p>
-          <button type="button" onClick={() => void copiar()} className="text-sm font-semibold" style={{ color }}>
+          <button
+            type="button"
+            onClick={() => void copiar()}
+            className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border bg-white text-sm font-semibold hover:bg-[#F9FAFB]"
+            style={{ color, borderColor: color }}
+          >
+            <Icon name={copiado ? "check" : "compartir"} size={16} />
             {copiado ? "Enlace copiado" : "Copiar enlace"}
           </button>
         </section>
 
-        <footer className="space-y-1 text-center text-[12px] text-[#6B7280]">
+        <footer className="space-y-3 text-center text-[12px] text-[#6B7280]">
           {wa && (
-            <a href={wa} target="_blank" rel="noreferrer" className="block font-semibold" style={{ color }}>
+            <a
+              href={wa}
+              target="_blank"
+              rel="noreferrer"
+              className="flex min-h-11 items-center justify-center gap-2 rounded-xl border border-[#E5E7EB] bg-white text-sm font-semibold shadow-sm hover:bg-[#F9FAFB]"
+              style={{ color }}
+            >
+              <Icon name="phone" size={16} />
               ¿Dudas? Escribile al instituto por WhatsApp
             </a>
           )}
