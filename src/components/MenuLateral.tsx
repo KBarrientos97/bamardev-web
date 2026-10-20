@@ -18,6 +18,7 @@ import {
 } from "../lib/menu";
 import { useContadorSolicitudes } from "../lib/agenda/contadorSolicitudes";
 import { useContadorBillar } from "../lib/billar/contador";
+import { useContadorPreinscripciones } from "../lib/academia/contadorPreinscripciones";
 import { useAuth } from "../store/AuthContext";
 import { Icon } from "./Icon";
 
@@ -72,8 +73,18 @@ export default function MenuLateral({
   const solicitudes = useContadorSolicitudes(menu.planos.some((n) => n.item.seccion === "solicitudes"));
   // Billar: las mesas abiertas, en ámbar si alguna está por vencer (§2).
   const billar = useContadorBillar(menu.planos.some((n) => n.item.seccion === "billar"));
+  // Educación: las preinscripciones que llegaron por la página (E20).
+  const preinscripciones = useContadorPreinscripciones(
+    menu.planos.some((n) => n.item.seccion === "academia_preinscripciones"),
+  );
   const contadorDe = (n: NodoMenu) =>
-    n.item.seccion === "solicitudes" ? solicitudes : n.item.seccion === "billar" ? billar.abiertas : 0;
+    n.item.seccion === "solicitudes"
+      ? solicitudes
+      : n.item.seccion === "academia_preinscripciones"
+        ? preinscripciones
+        : n.item.seccion === "billar"
+          ? billar.abiertas
+          : 0;
   const queCuenta = (n: NodoMenu) => (n.item.seccion === "billar" ? "mesas abiertas" : "por atender");
   const enAlerta = (n: NodoMenu) => n.item.seccion === "billar" && billar.alerta;
   // Las solicitudes viven dentro del grupo Agenda: cerrado, el grupo muestra

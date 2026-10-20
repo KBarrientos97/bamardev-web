@@ -187,3 +187,20 @@ describe("cartel de abierto/cerrado en los estilos de la fase 2", () => {
     expect(carteles()[0].style.color).toBe("rgb(134, 239, 172)");
   });
 });
+
+describe("el título de las sucursales habla como el rubro", () => {
+  it("un instituto dice «Nuestras sedes», el restaurante lo de siempre", () => {
+    vi.setSystemTime(new Date("2026-10-12T14:00:00Z"));
+    const { unmount } = montar({ rubroClave: "ACADEMIA" });
+    expect(screen.getByText("NUESTRAS SEDES")).toBeInTheDocument();
+    unmount();
+    montar({ rubroClave: "ACADEMIA", estilo: "VIVO" });
+    expect(screen.getByText("Nuestras sedes")).toBeInTheDocument();
+  });
+
+  it("sin rubro (o un restaurante), «Nuestras sucursales»", () => {
+    vi.setSystemTime(new Date("2026-10-12T14:00:00Z"));
+    montar();
+    expect(screen.getByText("NUESTRAS SUCURSALES")).toBeInTheDocument();
+  });
+});

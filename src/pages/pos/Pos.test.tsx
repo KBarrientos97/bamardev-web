@@ -189,6 +189,23 @@ vi.mock("./PantallaCredito", () => ({
 
 vi.mock("./PantallaRecibo", () => ({ default: () => <p>recibo</p> }));
 
+// Educación (E9): el carrito de la inscripción que abre "Cuotas por cobrar".
+vi.mock("../../lib/academia/apiAcademia", () => ({
+  apiAcademia: {
+    cuotasPorCobrar: vi.fn(async () => ({ alumnos: [] })),
+    carrito: vi.fn(async () => ({
+      alumno: { id: 53, nombre: "Céspedes Molina, Joaquín" },
+      pagadores: [
+        { clienteId: 70, nombre: "Rosa Molina", rol: "TUTOR", principal: true },
+        { clienteId: 53, nombre: "Joaquín", rol: "ALUMNO", principal: false },
+      ],
+      lineas: [
+        { productoId: 77, cuotaId: 905, descripcion: "Barbería · M2", saldo: 333, vence: "2026-09-17", vencida: true },
+      ],
+    })),
+  },
+}));
+
 import { api } from "../../lib/api";
 import { apiAgenda } from "../../lib/agenda/apiAgenda";
 import { apiConfigAgenda } from "../../lib/agenda/apiConfigAgenda";
@@ -1027,5 +1044,31 @@ describe("pase oct: el clienteRequestId es el de ESE cobro", () => {
     });
     const [primero, segundo] = vi.mocked(api.crearVenta).mock.calls;
     expect(segundo[0].clienteRequestId).toBe(primero[0].clienteRequestId);
+  });
+});
+
+describe("E9: cuotas del instituto en el POS", () => {
+  it("sin la feature academia no hay botón ni pedido: el POS de siempre", async () => {
+    sesion.features = ["pos", "caja"];
+    await montar();
+    expect(screen.queryByRole("button", { name: /Módulos por cobrar/ })).not.toBeInTheDocument();
+  });
+
+  it("desde el grupo: la cuota va al carrito y la venta lleva cuotaId, montoCuota y quien paga", async () => {
+    sesion.features = ["pos", "caja", "academia"];
+    vi.mocked(api.crearVenta).mockResolvedValue({ id: 60 } as never);
+    await montar("/pos?inscripcion=103&sede=2&sedeNombre=Norte");
+    // Se abre la vista de cuotas con la vencida marcada.
+    expect(screen.getByText("Grupo de Norte · se cobra en esta caja")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Agregar al carrito/ }));
+    expect(screen.getByText(/Cuotas de Céspedes Molina, Joaquín/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "ir a cobrar" }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "pagar 333" }));
+    });
+    const cuerpo = vi.mocked(api.crearVenta).mock.calls[0][0];
+    expect(cuerpo.detalles).toEqual([{ productoId: 77, cantidad: 1, precio: 333, cuotaId: 905, montoCuota: 333 }]);
+    expect(cuerpo.clienteId).toBe(70);
+    expect(cuerpo.pagos).toEqual([{ formaPagoId: 1, monto: 333 }]);
   });
 });

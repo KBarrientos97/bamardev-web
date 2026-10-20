@@ -1032,6 +1032,8 @@ export interface DetalleVenta {
   recurso?: string | null;
   /** Belleza (paquetes): la sesión que pagó la línea, o el paquete que vendió. */
   paquete?: PaqueteRecibo;
+  /** Educación: la cuota que cobró la línea (su concepto viene en `Venta.cuotas`). */
+  cuotaId?: number | null;
 }
 
 /**
@@ -1129,6 +1131,39 @@ export interface Venta {
   giftCards?: { codigo: string; usado: number; saldo: number }[];
   propinas?: { recursoId: number; recurso: string; monto: number; formaPago: string }[];
   /**
+   * Educación (E10): cómo quedó cada cuota que cobró la venta (lo que se
+   * cobró, lo pagado y el saldo). Sólo en la respuesta de una venta con
+   * cuotas; ausente en cualquier otra, y el ticket queda como siempre.
+   */
+  cuotas?: {
+    cuotaId: number;
+    concepto: string;
+    alumno: string;
+    cobrado: number;
+    pagado: number;
+    saldo: number;
+    estado: string;
+    /** Lo que le queda a la inscripción entera después de esta venta. */
+    saldoCurso: number;
+    /** La próxima cuota con saldo, o null si ya no debe nada. */
+    proximaCuota: { vence: string; monto: number } | null;
+    /**
+     * Contrato #39 (QA ronda 2, B-14): la inscripción y el enlace de su estado
+     * de cuenta, aunque la cuota se haya cobrado en otra sede (null si el
+     * negocio no tiene subdominio). Un backend anterior no los manda.
+     */
+    inscripcionId?: number;
+    enlacePago?: string | null;
+  }[];
+  /**
+   * Sólo en el equipo, recién cobrada: quién pagó las cuotas cuando no fue el
+   * alumno (su tutor). El backend no lo devuelve; lo pone el POS, que sabe a
+   * quién eligió, para que el recibo lo diga.
+   */
+  pagadorCuotas?: { nombre: string; rol: "ALUMNO" | "TUTOR" } | null;
+  /** Sólo en el equipo, recién cobrada: la inscripción de las cuotas, para el enlace del estado de cuenta (E10). */
+  inscripcionCuotas?: number | null;
+  /**
    * Plan Emprendedor: qué consumió esta venta (cupo o créditos) y el contador
    * como quedó. Sólo en un negocio con cupo; un reintento idempotente tampoco
    * lo trae.
@@ -1171,6 +1206,13 @@ export interface DetalleVentaInput {
   recursoId?: number;
   /** Agenda fase 3: se paga con una sesión de paquete del cliente (precio 0). */
   usarPaquete?: boolean;
+  /**
+   * Educación (E9): la cuota que cobra esta línea. Con ella, `productoId` es
+   * el de la carrera, `cantidad` 1 y el precio lo impone el servidor
+   * (= `montoCuota`, que es lo que se cobra: el saldo o un abono).
+   */
+  cuotaId?: number;
+  montoCuota?: number;
 }
 
 /**

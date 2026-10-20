@@ -31,6 +31,12 @@ vi.mock("../../store/AuthContext", async () => {
   };
 });
 
+vi.mock("../../lib/academia/apiAcademia", () => ({
+  apiAcademia: { enlacePago: vi.fn(async () => ({ enlacePago: "https://app.bamardev.com/p/horizonte/pagar/K7Q2abcdef" })) },
+}));
+
+import { act } from "@testing-library/react";
+import { apiAcademia } from "../../lib/academia/apiAcademia";
 import PantallaRecibo from "./PantallaRecibo";
 
 function venta(datos: Partial<Venta> = {}): Venta {
@@ -287,5 +293,122 @@ describe("QA PER-01: el efectivo recibido incluye la propina en efectivo", () =>
     dibujar(venta({ pagos: [{ formaPagoId: 10, formaPago: "Efectivo", monto: 80, recibido: 100, entregado: 20 }], cambio: 20 }));
     expect(screen.getByText("Efectivo recibido").nextElementSibling).toHaveTextContent(/100,00/);
     expect(screen.queryByText("(incluye la propina)")).not.toBeInTheDocument();
+  });
+});
+
+describe("E10: el recibo de las cuotas de un instituto", () => {
+  it("cada cuota con lo que queda, el saldo del curso y la próxima cuota", () => {
+    sesion.rubro = "ACADEMIA";
+    dibujar(
+      venta({
+        total: 750,
+        cuotas: [
+          {
+            cuotaId: 902,
+            concepto: "Barbería · Cuota 2",
+            alumno: "Bustillos Rek, Camila",
+            cobrado: 500,
+            pagado: 500,
+            saldo: 250,
+            estado: "PARCIAL",
+            saldoCurso: 783,
+            proximaCuota: { vence: "2026-10-17", monto: 250 },
+          },
+        ],
+      }),
+    );
+    const bloque = screen.getByLabelText("Cuotas");
+    expect(bloque).toHaveTextContent("CUOTAS · BUSTILLOS REK, CAMILA");
+    expect(bloque).toHaveTextContent(/Queda Bs\s?250,00/);
+    expect(screen.getByText("SALDO DEL CURSO").nextElementSibling).toHaveTextContent(/783,00/);
+    expect(bloque).toHaveTextContent(/Próxima cuota: Bs\s?250,00 el 17\/10\/2026/);
+  });
+
+  it("con todo pagado lo dice, y sin cuotas el ticket es el de siempre", () => {
+    sesion.rubro = "ACADEMIA";
+    dibujar(
+      venta({
+        cuotas: [
+          { cuotaId: 1, concepto: "Cuota única", alumno: "Mateo", cobrado: 1360, pagado: 1360, saldo: 0, estado: "PAGADA", saldoCurso: 0, proximaCuota: null },
+        ],
+      }),
+    );
+    expect(screen.getByText("Curso pagado por completo.")).toBeInTheDocument();
+  });
+
+  it("el renglón dice qué cuota cobró y el bloque quién pagó, si fue el tutor", () => {
+    sesion.rubro = "ACADEMIA";
+    dibujar(
+      venta({
+        total: 750,
+        detalles: [
+          { productoId: 77, producto: "Barbería y Peluquería", cantidad: 1, precio: 750, subtotal: 750, nota: null, consumo: "LLEVAR", cuotaId: 902 },
+        ],
+        cuotas: [
+          { cuotaId: 902, concepto: "Cuota 2/2", alumno: "Céspedes Molina, Joaquín", cobrado: 750, pagado: 750, saldo: 0, estado: "PAGADA", saldoCurso: 0, proximaCuota: null },
+        ],
+        pagadorCuotas: { nombre: "Patricia Suárez", rol: "TUTOR" },
+      }),
+    );
+    expect(screen.getByText("Cuota 2/2 · Barbería y Peluquería")).toBeInTheDocument();
+    expect(screen.getByText("Pagó: Patricia Suárez (tutor)")).toBeInTheDocument();
+  });
+
+  it("al pie, el enlace del estado de cuenta de la inscripción (S3)", async () => {
+    sesion.rubro = "ACADEMIA";
+    dibujar(
+      venta({
+        cuotas: [
+          { cuotaId: 1, concepto: "M2", alumno: "Camila", cobrado: 300, pagado: 300, saldo: 200, estado: "PARCIAL", saldoCurso: 700, proximaCuota: null },
+        ],
+        inscripcionCuotas: 102,
+      }),
+    );
+    await act(async () => {});
+    expect(screen.getByLabelText("Estado de cuenta")).toHaveTextContent("app.bamardev.com/p/horizonte/pagar/K7Q2abcdef");
+  });
+
+  it("cuota de otra sede: el enlace sale de la venta, sin pedirlo al endpoint que da OTRA_SEDE (B-14)", async () => {
+    sesion.rubro = "ACADEMIA";
+    vi.mocked(apiAcademia.enlacePago).mockClear();
+    dibujar(
+      venta({
+        cuotas: [
+          {
+            cuotaId: 1,
+            concepto: "M2",
+            alumno: "Quiñones Vega",
+            cobrado: 300,
+            pagado: 300,
+            saldo: 200,
+            estado: "PARCIAL",
+            saldoCurso: 500,
+            proximaCuota: null,
+            inscripcionId: 220,
+            enlacePago: "https://app-qa.bamardev.com/p/academiaqa/pagar/AbCdEfGh12345678",
+          },
+        ],
+        inscripcionCuotas: 220,
+      }),
+    );
+    await act(async () => {});
+    expect(screen.getByLabelText("Estado de cuenta")).toHaveTextContent("app-qa.bamardev.com/p/academiaqa/pagar/AbCdEfGh12345678");
+    expect(apiAcademia.enlacePago).not.toHaveBeenCalled();
+  });
+
+  it("si la venta dice que no hay enlace (sin subdominio), no hay pie ni pedido", async () => {
+    sesion.rubro = "ACADEMIA";
+    vi.mocked(apiAcademia.enlacePago).mockClear();
+    dibujar(
+      venta({
+        cuotas: [
+          { cuotaId: 1, concepto: "M2", alumno: "Camila", cobrado: 300, pagado: 300, saldo: 200, estado: "PARCIAL", saldoCurso: 700, proximaCuota: null, inscripcionId: 102, enlacePago: null },
+        ],
+        inscripcionCuotas: 102,
+      }),
+    );
+    await act(async () => {});
+    expect(screen.queryByLabelText("Estado de cuenta")).not.toBeInTheDocument();
+    expect(apiAcademia.enlacePago).not.toHaveBeenCalled();
   });
 });

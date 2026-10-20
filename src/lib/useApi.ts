@@ -4,6 +4,11 @@ interface EstadoCarga<T> {
   datos: T | null;
   cargando: boolean;
   error: string;
+  /**
+   * El error tal cual llegó (un `ApiError` con su status y su código), para
+   * la pantalla que tiene que distinguir un "no existe" de un corte de red.
+   */
+  falla: unknown;
 }
 
 /**
@@ -19,6 +24,7 @@ export function useApi<T>(
     datos: null,
     cargando: true,
     error: "",
+    falla: null,
   });
   const peticion = useRef(0);
   const fnRef = useRef(fn);
@@ -26,16 +32,16 @@ export function useApi<T>(
 
   const cargar = useCallback(() => {
     const mia = ++peticion.current;
-    setEstado((e) => ({ ...e, cargando: true, error: "" }));
+    setEstado((e) => ({ ...e, cargando: true, error: "", falla: null }));
     fnRef
       .current()
       .then((datos) => {
-        if (mia === peticion.current) setEstado({ datos, cargando: false, error: "" });
+        if (mia === peticion.current) setEstado({ datos, cargando: false, error: "", falla: null });
       })
       .catch((err: unknown) => {
         if (mia !== peticion.current) return;
         const mensaje = err instanceof Error ? err.message : "No se pudo cargar";
-        setEstado({ datos: null, cargando: false, error: mensaje });
+        setEstado({ datos: null, cargando: false, error: mensaje, falla: err });
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
@@ -49,7 +55,7 @@ export function useApi<T>(
   }, [cargar]);
 
   const setDatos = useCallback((datos: T) => {
-    setEstado({ datos, cargando: false, error: "" });
+    setEstado({ datos, cargando: false, error: "", falla: null });
   }, []);
 
   return { ...estado, recargar: cargar, setDatos };

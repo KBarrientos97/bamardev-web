@@ -1,11 +1,13 @@
 import { useRef, useState } from "react";
 import { Icon } from "../../components/Icon";
 import { Boton } from "../../components/ui";
+import { enlaceDeCuotas } from "../../lib/academia/cobroCuotas";
 import { compartirComoImagen } from "../../lib/compartirTicket";
 import { fmtFecha, fmtFechaHora, fmtMoney, fmtNum } from "../../lib/format";
 import { marcaConsumo } from "../../lib/rubro";
 import { useAuth } from "../../store/AuthContext";
 import type { Venta } from "../../types";
+import EnlaceEstadoCuenta from "../academia/EnlaceEstadoCuenta";
 
 /**
  * Comprobante de la venta recién cobrada.
@@ -164,7 +166,12 @@ export default function PantallaRecibo({
 
           <div className="mt-2 border-t border-dashed border-borde pt-1">
             {detalles.map((d, i) => (
-              <LineaTicket key={i} linea={d} mostrarConsumo={mostrarConsumo} />
+              <LineaTicket
+                key={i}
+                linea={d}
+                mostrarConsumo={mostrarConsumo}
+                cuota={d.cuotaId != null ? venta.cuotas?.find((q) => q.cuotaId === d.cuotaId)?.concepto : undefined}
+              />
             ))}
           </div>
 
@@ -257,6 +264,16 @@ export default function PantallaRecibo({
             </dl>
           )}
 
+          {/* Educación (E10): cada cuota cobrada con lo que queda y, al pie, el
+              saldo del curso después de este pago y la próxima cuota. Sólo si
+              la venta cobró cuotas: el ticket de siempre no cambia. */}
+          {venta.cuotas && venta.cuotas.length > 0 && (
+            <CuotasRecibo cuotas={venta.cuotas} pagador={venta.pagadorCuotas ?? null} />
+          )}
+          {venta.cuotas && venta.cuotas.length > 0 && (
+            <EnlaceEstadoCuenta enlacePago={enlaceDeCuotas(venta.cuotas)} inscripcionId={venta.inscripcionCuotas} />
+          )}
+
           {venta.credito && (
             <div className="mt-2 border-t border-dashed border-borde pt-2 text-sm">
               <p className="text-center text-xs font-bold tracking-wide text-texto">
@@ -347,15 +364,18 @@ function FilaDato({ etiqueta, valor }: { etiqueta: string; valor: string }) {
 function LineaTicket({
   linea,
   mostrarConsumo,
+  cuota,
 }: {
   linea: NonNullable<Venta["detalles"]>[number];
   mostrarConsumo: boolean;
+  /** Educación: el concepto de la cuota que cobró ("Cuota 2/2"), delante del producto. */
+  cuota?: string;
 }) {
   const enMesa = linea.consumo === "MESA";
   return (
     <div className="py-1 text-[13px]">
       <div className="flex items-start gap-2">
-        <p className="min-w-0 flex-1 font-semibold text-texto">{linea.producto}</p>
+        <p className="min-w-0 flex-1 font-semibold text-texto">{cuota ? `${cuota} · ${linea.producto}` : linea.producto}</p>
         {mostrarConsumo && (
           <span
             className={`shrink-0 font-bold ${enMesa ? "text-primary-700" : "text-texto-3"}`}
@@ -387,6 +407,52 @@ function LineaTicket({
           {linea.paquete.texto}
         </p>
       )}
+    </div>
+  );
+}
+
+/**
+ * Las cuotas del recibo. Todas las de una venta son de una inscripción (el
+ * POS cobra las de un alumno por vez): el saldo del curso y la próxima cuota
+ * son los de la última, que es como quedó la inscripción después de la venta.
+ */
+function CuotasRecibo({
+  cuotas,
+  pagador,
+}: {
+  cuotas: NonNullable<Venta["cuotas"]>;
+  /** Quién pagó, cuando no fue el alumno. */
+  pagador: Venta["pagadorCuotas"] | null;
+}) {
+  const ultima = cuotas[cuotas.length - 1];
+  return (
+    <div className="mt-2 border-t border-dashed border-borde pt-2 text-sm" aria-label="Cuotas">
+      <p className="text-xs font-bold tracking-wide text-texto">CUOTAS · {cuotas[0].alumno.toUpperCase()}</p>
+      {pagador && <p className="text-xs text-texto-2">Pagó: {pagador.nombre} (tutor)</p>}
+      <dl className="mt-1 space-y-1">
+        {cuotas.map((q) => (
+          <div key={q.cuotaId} className="text-texto-2">
+            <div className="flex justify-between gap-2">
+              <dt>{q.concepto}</dt>
+              <dd className="shrink-0 font-bold text-texto">{fmtMoney(q.cobrado)}</dd>
+            </div>
+            <p className="text-right text-xs">{q.saldo > 0 ? `Queda ${fmtMoney(q.saldo)}` : "Pagada"}</p>
+          </div>
+        ))}
+        {ultima.saldoCurso != null && (
+          <div className="flex justify-between font-bold text-texto">
+            <dt>SALDO DEL CURSO</dt>
+            <dd>{fmtMoney(ultima.saldoCurso)}</dd>
+          </div>
+        )}
+        <p className="text-xs text-texto-3">
+          {ultima.saldoCurso === 0
+            ? "Curso pagado por completo."
+            : ultima.proximaCuota
+              ? `Próxima cuota: ${fmtMoney(ultima.proximaCuota.monto)} el ${fmtFecha(ultima.proximaCuota.vence)}`
+              : ""}
+        </p>
+      </dl>
     </div>
   );
 }

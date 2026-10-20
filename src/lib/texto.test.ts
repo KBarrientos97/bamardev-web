@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { contiene, normalizar, posicionDe } from "./texto";
+import { contiene, faltaTexto, normalizar, posicionDe } from "./texto";
 
 /**
  * Los catálogos están llenos de tildes ("Café", "Limón", "Piña") y el cajero
@@ -65,5 +65,15 @@ describe("posicionDe", () => {
     expect(posicionDe("Omeprazol", "   ")).toBeNull();
     expect(posicionDe(null, "ome")).toBeNull();
     expect(posicionDe("", "ome")).toBeNull();
+  });
+});
+
+describe("faltaTexto (QA ronda 2, B-29)", () => {
+  it("el verbo concuerda con lo que falta", () => {
+    expect(faltaTexto([])).toBe("");
+    expect(faltaTexto(["tu carnet"])).toBe("Falta tu carnet");
+    expect(faltaTexto(["los datos de tu tutor"])).toBe("Faltan los datos de tu tutor");
+    expect(faltaTexto(["tu nombre y apellidos"])).toBe("Faltan tu nombre y apellidos");
+    expect(faltaTexto(["tu carnet", "tu WhatsApp", "los datos de tu tutor"])).toBe("Faltan tu carnet, tu WhatsApp y los datos de tu tutor");
   });
 });

@@ -275,7 +275,10 @@ export async function request<T>(path: string, options: RequestInit = {}): Promi
       ...options,
       signal: corte.signal,
       headers: {
-        "Content-Type": "application/json",
+        // Un multipart (las fotos de la inscripción) necesita que el
+        // navegador ponga su propio Content-Type, con el separador: fijar el
+        // JSON acá lo rompe. Así pasa igual por las tres reglas de abajo.
+        ...(options.body instanceof FormData ? {} : { "Content-Type": "application/json" }),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...options.headers,
       },

@@ -8,7 +8,7 @@ import type { EnlacePublico } from "../../lib/pagina/tipos";
 import PedidoPagina from "./PedidoPagina";
 import { usePedido } from "../../lib/pagina/usePedido";
 import RegalarPagina from "./RegalarPagina";
-import { urlPrivacidadDe, urlReservaDe } from "../../lib/pagina/rutas";
+import { urlInscribirmeDe, urlPrivacidadDe, urlReservaDe } from "../../lib/pagina/rutas";
 import { usePaginaPublica } from "../../lib/pagina/usePaginaPublica";
 import { cargarFuentesPagina } from "../../lib/pagina/estilos";
 import { tonosPagina } from "../../lib/pagina/estilosPagina";
@@ -207,6 +207,7 @@ export default function PaginaPublica() {
         pagina={vista}
         urlReservar={urlReservaDe(pagina.subdominio)}
         urlPrivacidad={urlPrivacidadDe(pagina.subdominio)}
+        urlInscribirme={(grupoId) => urlInscribirmeDe(pagina.subdominio, grupoId)}
         alClic={(e) => (e.id === BOTON_REGALO.id ? setRegalando(true) : avisarClic(pagina.subdominio, e.id))}
         alAgregarAlPedido={conPedidos ? pedido.agregar : undefined}
         sucursalCatalogo={sucursal}

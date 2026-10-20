@@ -74,6 +74,34 @@ const PantallaSalonBillar = lazy(() => import("./pages/billar/PantallaSalon"));
 const MesasBillar = lazy(() => import("./pages/billar/admin/MesasBillar"));
 // Reportes: veintipico de pantallas con sus gráficos; se bajan al entrar.
 const Reportes = lazy(() => import("./pages/reportes/Reportes"));
+// Educación (PLAN-ACADEMIAS-TECNICO §8): sólo se bajan en un instituto.
+const HoyAcademia = lazy(() => import("./pages/academia/Hoy"));
+const GruposAcademia = lazy(() => import("./pages/academia/Grupos"));
+const CalendarioAcademia = lazy(() => import("./pages/academia/Calendario"));
+const MisClases = lazy(() => import("./pages/academia/docente/MisClases"));
+const PasarLista = lazy(() => import("./pages/academia/docente/PasarLista"));
+const NotasAcademia = lazy(() => import("./pages/academia/Notas"));
+const MiPlanilla = lazy(() => import("./pages/academia/docente/MiPlanilla"));
+const PlanillaMes = lazy(() => import("./pages/academia/planilla/PlanillaMes"));
+const PlanillaDocente = lazy(() => import("./pages/academia/planilla/PlanillaDocente"));
+const ControlAcademia = lazy(() => import("./pages/academia/control/Control"));
+const ReportesAcademia = lazy(() => import("./pages/academia/control/Reportes"));
+const GrupoAcademia = lazy(() => import("./pages/academia/Grupo"));
+const AlumnosAcademia = lazy(() => import("./pages/academia/Alumnos"));
+const FichaAlumno = lazy(() => import("./pages/academia/FichaAlumno"));
+const Preinscripciones = lazy(() => import("./pages/academia/Preinscripciones"));
+const CobranzaAcademia = lazy(() => import("./pages/academia/Cobranza"));
+const CarrerasAcademia = lazy(() => import("./pages/academia/config/Carreras"));
+const AjustesAcademia = lazy(() => import("./pages/academia/config/AjustesAcademia"));
+
+/** Una pantalla de la academia: con su sección y bajada aparte. */
+function Academia({ seccion, children }: { seccion: Seccion; children: React.ReactNode }) {
+  return (
+    <Protegida seccion={seccion}>
+      <Suspense fallback={null}>{children}</Suspense>
+    </Protegida>
+  );
+}
 
 /**
  * Reportes es la única pantalla de reportes (13-oct-2026) y entra quien ve al
@@ -736,6 +764,38 @@ function Rutas() {
             </Protegida>
           }
         />
+
+        {/* Educación, ronda 1 (PLAN-ACADEMIAS-TECNICO §8): sólo con la
+            feature `academia` (y `preinscripcion_online` para la bandeja). */}
+        <Route path="/academia/hoy" element={<Academia seccion="academia_hoy"><HoyAcademia /></Academia>} />
+        {/* Ronda 2: el calendario reemplaza a la lista de grupos (que queda
+            como "Ver como lista"); la ruta vieja lleva al calendario. */}
+        <Route path="/academia/calendario" element={<Academia seccion="academia_calendario"><CalendarioAcademia /></Academia>} />
+        <Route path="/academia/calendario/lista" element={<Academia seccion="academia_calendario"><GruposAcademia /></Academia>} />
+        <Route path="/academia/grupos" element={<Navigate to="/academia/calendario" replace />} />
+        <Route path="/academia/grupos/:id" element={<Academia seccion="academia_grupos"><GrupoAcademia /></Academia>} />
+        {/* La lista y las notas desde el grupo (administración y recepción). */}
+        <Route path="/academia/grupos/:id/lista" element={<Academia seccion="academia_grupos"><PasarLista /></Academia>} />
+        <Route path="/academia/grupos/:id/notas" element={<Academia seccion="academia_grupos"><NotasAcademia /></Academia>} />
+        {/* Lo del docente (alcance PROPIO). */}
+        <Route path="/academia/mis-clases" element={<Academia seccion="academia_mis_clases"><MisClases /></Academia>} />
+        <Route path="/academia/lista" element={<Academia seccion="academia_lista"><PasarLista /></Academia>} />
+        <Route path="/academia/notas" element={<Academia seccion="academia_notas"><NotasAcademia /></Academia>} />
+        <Route path="/academia/mi-planilla" element={<Academia seccion="academia_mi_planilla"><MiPlanilla /></Academia>} />
+        {/* Control (el dueño). */}
+        <Route path="/academia/planilla" element={<Academia seccion="academia_planilla"><PlanillaMes /></Academia>} />
+        <Route path="/academia/planilla/:id" element={<Academia seccion="academia_planilla"><PlanillaDocente /></Academia>} />
+        <Route path="/academia/control" element={<Academia seccion="academia_control"><ControlAcademia /></Academia>} />
+        <Route path="/academia/reportes" element={<Academia seccion="academia_reportes"><ReportesAcademia /></Academia>} />
+        <Route path="/academia/alumnos" element={<Academia seccion="academia_alumnos"><AlumnosAcademia /></Academia>} />
+        <Route path="/academia/alumnos/:id" element={<Academia seccion="academia_alumnos"><FichaAlumno /></Academia>} />
+        <Route
+          path="/academia/preinscripciones"
+          element={<Academia seccion="academia_preinscripciones"><Preinscripciones /></Academia>}
+        />
+        <Route path="/academia/cobranza" element={<Academia seccion="academia_cobranza"><CobranzaAcademia /></Academia>} />
+        <Route path="/configuracion/carreras" element={<Academia seccion="academia_carreras"><CarrerasAcademia /></Academia>} />
+        <Route path="/configuracion/academia" element={<Academia seccion="academia_ajustes"><AjustesAcademia /></Academia>} />
 
         {/* Cualquier ruta desconocida vuelve al inicio del rol. */}
         <Route path="*" element={<Inicio />} />
