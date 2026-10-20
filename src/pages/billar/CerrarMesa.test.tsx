@@ -593,4 +593,15 @@ describe("Cerrar mesa con la cuenta vieja", () => {
     );
     expect(screen.getByRole("button", { name: /Cobrar Bs.10,00/ })).toBeDisabled();
   });
+
+  it("en mixto, antes del efectivo dice dónde va a salir el QR; con el efectivo sale por el resto", async () => {
+    // QA del dueño, 19-oct: eligió Mixto y no salía ningún QR ni decía por qué.
+    await montar();
+    await tocar(screen.getByRole("radio", { name: /Mixto/ }), 0);
+    expect(screen.getByText("Escribí cuánto paga en efectivo y acá sale el QR por el resto.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Confirmar pago recibido/ })).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("En efectivo"), { target: { value: "5" } });
+    expect(screen.queryByText(/acá sale el QR por el resto/)).not.toBeInTheDocument();
+    expect(screen.getByText(/Revisá que el pago de Bs.10,00 haya llegado/)).toBeInTheDocument();
+  });
 });
