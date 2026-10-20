@@ -142,9 +142,9 @@ function Foto({
     <div className={compacto ? "flex items-center gap-3" : ""}>
       {inputs}
       <div
-        className={`flex items-center justify-center overflow-hidden rounded-xl border ${
+        className={`flex items-center justify-center overflow-hidden rounded-xl ${
           compacto ? "h-20 w-24 shrink-0" : "aspect-[4/3] w-full"
-        } ${lista ? "border-primary-100 bg-primary-50" : marcada ? "border-dashed border-danger bg-danger-bg/40" : "border-dashed border-borde bg-muted"}`}
+        } ${lista ? "border border-primary-100 bg-primary-50" : marcada ? "border-2 border-dashed border-danger bg-danger-bg/40" : "border-2 border-dashed border-borde bg-muted"}`}
       >
         {url ? (
           <img src={url} alt={titulo} className="h-full w-full object-cover" />
@@ -178,7 +178,7 @@ function Foto({
             type="button"
             onClick={() => (archivo ? onQuitar() : camara.current?.click())}
             aria-label={`Repetir: ${titulo}`}
-            className="text-xs font-semibold text-primary-700 hover:underline"
+            className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-lg border border-borde bg-white px-3 text-xs font-semibold text-texto-2 transition-colors hover:bg-muted sm:min-h-8"
           >
             Repetir
           </button>
@@ -218,7 +218,7 @@ function BotonFoto({
       onClick={onClick}
       aria-label={etiqueta}
       style={!suave && color ? { background: color } : undefined}
-      className={`rounded-lg px-2.5 py-1.5 text-xs font-semibold ${
+      className={`inline-flex min-h-11 items-center justify-center rounded-lg px-3 text-xs font-semibold transition-colors sm:min-h-8 ${
         suave ? "border border-borde bg-white text-texto-2 hover:bg-muted" : color ? "text-white" : "bg-primary-boton text-white hover:bg-primary-boton-hover"
       }`}
     >

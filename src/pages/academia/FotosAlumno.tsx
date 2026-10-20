@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "../../components/Icon";
-import { Boton, ErrorMsg } from "../../components/ui";
+import { ErrorMsg } from "../../components/ui";
 import { apiAcademia } from "../../lib/academia/apiAcademia";
 import { NOMBRE_FOTO, prepararFoto } from "../../lib/academia/fotos";
 import { fechaCorta } from "../../lib/academia/formato";
 import { TIPOS_FOTO, type FotoAlumno, type TipoFoto } from "../../lib/academia/tipos";
 import PedirMotivo from "../agenda/PedirMotivo";
+import { BotonFila, Chip, claseBotonFila, Tarjeta } from "./piezas";
 
 const MOTIVOS_OBSERVACION = ["La foto no se ve bien", "El carnet no coincide", "Falta un lado del carnet", "Otro"] as const;
 
@@ -84,38 +85,69 @@ export default function FotosAlumno({
     }
   }
 
-  return (
-    <section aria-labelledby="t-fotos" className="space-y-3">
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 id="t-fotos" className="text-base font-bold text-texto">
-          Fotos y carnet
-        </h2>
-        <span className="flex items-center gap-1.5 text-[13px] text-texto-3">
-          {!completas ? (
-            <span className="font-semibold text-danger-text">Faltan {3 - TIPOS_FOTO.filter((t) => porTipo.has(t)).length}</span>
-          ) : revisada ? (
-            <>
-              <Icon name="check" size={14} /> Revisadas{revisada.revisadaPor ? ` por ${revisada.revisadaPor}` : ""}
-              {revisada.revisadaEn ? ` el ${fechaCorta(revisada.revisadaEn)}` : ""}
-            </>
-          ) : observadas.length ? (
-            <span className="font-semibold text-danger-text">
-              {observadas.length === 1 ? "Observada" : "Observadas"}: {motivo}
-            </span>
-          ) : (
-            <span className="text-warning-text">Por revisar</span>
-          )}
-        </span>
-      </div>
+  // El estado de las fotos va en chip, a la derecha del título de la tarjeta.
+  // El motivo de la observación puede ser largo: el chip baja de renglón.
+  const estado = !completas ? (
+    <Chip tono="rojo">Faltan {3 - TIPOS_FOTO.filter((t) => porTipo.has(t)).length}</Chip>
+  ) : revisada ? (
+    <Chip tono="verde" className="!whitespace-normal">
+      Revisadas{revisada.revisadaPor ? ` por ${revisada.revisadaPor}` : ""}
+      {revisada.revisadaEn ? ` el ${fechaCorta(revisada.revisadaEn)}` : ""}
+    </Chip>
+  ) : observadas.length ? (
+    <Chip tono="rojo" className="!whitespace-normal">
+      {observadas.length === 1 ? "Observada" : "Observadas"}: {motivo}
+    </Chip>
+  ) : (
+    <Chip tono="ambar">Por revisar</Chip>
+  );
 
+  return (
+    <Tarjeta
+      id="t-fotos"
+      titulo="Fotos y carnet"
+      acciones={estado}
+      pie={
+        !veImagenes ? (
+          <p className="flex items-center gap-1.5 text-[13px] text-texto-3">
+            <Icon name="lock" size={13} /> Sólo el administrador ve las fotos
+          </p>
+        ) : (
+          <div className="flex flex-wrap items-center gap-2">
+            {completas && !revisada && (
+              <BotonFila variante="primary" icono="check" disabled={ocupado} onClick={() => void hacer(() => apiAcademia.revisarFotos(alumnoId, { ok: true }))}>
+                Marcar revisadas
+              </BotonFila>
+            )}
+            {fotos.length > 0 && (
+              <BotonFila
+                variante="ghost"
+                icono="alert"
+                disabled={ocupado}
+                onClick={() => {
+                  // Empieza sin ninguna marcada, como el motivo: se elige leyendo.
+                  setAObservar(fotos.length === 1 ? [fotos[0].tipo] : []);
+                  setObservando(true);
+                }}
+              >
+                Observar
+              </BotonFila>
+            )}
+            <span className="min-w-0 basis-full text-[12px] text-texto-4 sm:basis-auto">
+              Tocá una foto para verla completa. Se guardan privadas, sin enlace público.
+            </span>
+          </div>
+        )
+      }
+    >
       {observadas.length > 0 && reemplaza && (
-        <p role="alert" className="rounded-xl bg-warning-bg px-3.5 py-2.5 text-sm text-warning-text">
+        <p role="alert" className="mb-4 rounded-xl bg-warning-bg px-3.5 py-2.5 text-sm text-warning-text">
           <b>Falta corregir:</b> {motivo}. Tocá <b>Cambiar</b> en {observadas.length === 1 ? "la foto marcada" : "las fotos marcadas"} y
           sacala de nuevo.
         </p>
       )}
 
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-3 gap-2.5 sm:gap-4">
         {TIPOS_FOTO.map((tipo) => (
           <Figura
             key={tipo}
@@ -134,35 +166,11 @@ export default function FotosAlumno({
           />
         ))}
       </div>
-
-      {!veImagenes ? (
-        <p className="flex items-center gap-1.5 text-[13px] text-texto-3">
-          <Icon name="lock" size={13} /> Sólo el administrador ve las fotos
-        </p>
-      ) : (
-        <div className="flex flex-wrap items-center gap-2">
-          {completas && !revisada && (
-            <Boton variante="soft" disabled={ocupado} onClick={() => void hacer(() => apiAcademia.revisarFotos(alumnoId, { ok: true }))}>
-              Marcar revisadas
-            </Boton>
-          )}
-          {fotos.length > 0 && (
-            <Boton
-              variante="ghost"
-              disabled={ocupado}
-              onClick={() => {
-                // Empieza sin ninguna marcada, como el motivo: se elige leyendo.
-                setAObservar(fotos.length === 1 ? [fotos[0].tipo] : []);
-                setObservando(true);
-              }}
-            >
-              Observar
-            </Boton>
-          )}
-          <span className="text-[12px] text-texto-4">Tocá una foto para verla completa. Se guardan privadas, sin enlace público.</span>
+      {error && (
+        <div className="mt-3">
+          <ErrorMsg>{error}</ErrorMsg>
         </div>
       )}
-      <ErrorMsg>{error}</ErrorMsg>
 
       {ampliada && urls[ampliada] && (
         <div
@@ -210,7 +218,7 @@ export default function FotosAlumno({
           </fieldset>
         </PedirMotivo>
       )}
-    </section>
+    </Tarjeta>
   );
 }
 
@@ -254,9 +262,10 @@ function Figura({
           <span className="text-xs font-semibold text-danger-text">Falta</span>
         )}
       </div>
-      <figcaption className="mt-1 flex items-center justify-between gap-1 text-[12px] text-texto-3">
-        <span className="min-w-0 truncate">
-          {titulo}
+      {/* En el celular entran 3 por fila: el botón baja debajo del nombre, a lo ancho. */}
+      <figcaption className="mt-2 flex flex-col items-stretch gap-1.5 text-[12px] text-texto-3 lg:flex-row lg:items-center lg:justify-between">
+        <span className="min-w-0">
+          <span className="block truncate font-medium text-texto-2">{titulo}</span>
           {observada && <span className="block font-semibold text-warning-text">Observada</span>}
         </span>
         {reemplaza && (
@@ -280,9 +289,8 @@ function Figura({
               type="button"
               onClick={() => input.current?.click()}
               aria-label={`${foto ? "Cambiar" : "Cargar"} ${titulo.toLowerCase()}`}
-              className={`shrink-0 font-semibold ${
-                observada ? "rounded-full bg-primary-boton px-2.5 py-1 text-white hover:bg-primary-boton-hover" : "text-primary-700 hover:underline"
-              }`}
+              // La observada lleva el botón lleno: es la que recepción tiene que cambiar.
+              className={claseBotonFila(observada ? "primary" : "soft")}
             >
               {foto ? "Cambiar" : "Cargar"}
             </button>

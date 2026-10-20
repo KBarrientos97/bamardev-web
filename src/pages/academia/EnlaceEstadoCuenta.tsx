@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
+import { Icon } from "../../components/Icon";
 import { apiAcademia } from "../../lib/academia/apiAcademia";
 import { abrirWhatsapp } from "../../lib/academia/vista";
+import { claseBotonFila } from "./piezas";
 
 /**
  * El pie del recibo de cuotas (E10, ronda 2): el enlace al estado de cuenta
@@ -70,8 +72,9 @@ export default function EnlaceEstadoCuenta({
       <button
         type="button"
         onClick={() => abrirWhatsapp(`https://wa.me/?text=${encodeURIComponent(`Tu estado de cuenta: ${enlace}`)}`)}
-        className="mt-1.5 font-semibold text-primary-700 hover:underline print:hidden"
+        className={`mt-2 ${claseBotonFila("soft")} print:hidden`}
       >
+        <Icon name="phone" size={15} />
         Mandar por WhatsApp
       </button>
     </div>

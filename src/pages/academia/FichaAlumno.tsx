@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { Icon } from "../../components/Icon";
 import MenuMas, { type AccionMenu } from "../../components/MenuMas";
 import { AvisoOk, Boton, Campo, Cargando, Confirmar, ErrorMsg, Input, Modal, Select, useAviso } from "../../components/ui";
 import { apiAcademia, CODIGOS_ACADEMIA } from "../../lib/academia/apiAcademia";
@@ -13,7 +14,7 @@ import {
   PARENTESCOS,
   textoCubre,
 } from "../../lib/academia/formato";
-import type { AlumnoDetalle, InscripcionDetalle } from "../../lib/academia/tipos";
+import type { AlumnoDetalle, Cuota, InscripcionDetalle } from "../../lib/academia/tipos";
 import { usePalabras } from "../../lib/academia/usePalabras";
 import { abrirWhatsapp, nombreCuota, rutaCobroInscripcion, textoCuota, textoEstadoInscripcion, textoEvento } from "../../lib/academia/vista";
 import { enlaceWhatsApp } from "../../lib/agenda/recordatorio";
@@ -23,7 +24,19 @@ import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
 import PedirMotivo from "../agenda/PedirMotivo";
 import FotosAlumno from "./FotosAlumno";
-import { ErrorDeCarga } from "./piezas";
+import {
+  BotonFila,
+  Chip,
+  EncabezadoPagina,
+  ErrorDeCarga,
+  KpiTarjeta,
+  LISTA,
+  PaginaAcademia,
+  SeccionPanel,
+  TABLA,
+  Tarjeta,
+  type TonoChip,
+} from "./piezas";
 
 const MOTIVOS_RETIRO = ["Horario", "Económico", "Cambio de ciudad", "No le gustó el curso", "Otro"] as const;
 
@@ -67,18 +80,24 @@ export default function FichaAlumno() {
   const a = ficha.datos;
   if (ficha.error && !a) {
     return (
-      <div className="mx-auto max-w-5xl space-y-4 p-4 sm:p-6 lg:p-8">
-        <Link to="/academia/alumnos" className="text-[13px] text-texto-3 hover:underline">
-          ← {p.Alumnos}
+      <PaginaAcademia>
+        <Link
+          to="/academia/alumnos"
+          className="inline-flex items-center gap-1 text-[13px] font-semibold text-texto-3 hover:text-primary-700"
+        >
+          <Icon name="chevronLeft" size={15} />
+          {p.Alumnos}
         </Link>
-        <ErrorDeCarga
-          falla={ficha.falla}
-          mensaje={ficha.error}
-          onReintentar={ficha.recargar}
-          que={`este ${p.alumno}`}
-          volver={{ a: "/academia/alumnos", texto: `Volver a ${p.alumnos}` }}
-        />
-      </div>
+        <Tarjeta etiqueta={`Ficha del ${p.alumno}`}>
+          <ErrorDeCarga
+            falla={ficha.falla}
+            mensaje={ficha.error}
+            onReintentar={ficha.recargar}
+            que={`este ${p.alumno}`}
+            volver={{ a: "/academia/alumnos", texto: `Volver a ${p.alumnos}` }}
+          />
+        </Tarjeta>
+      </PaginaAcademia>
     );
   }
   if (!a) return <Cargando />;
@@ -87,6 +106,7 @@ export default function FichaAlumno() {
   const vivas = (actual?.cuotas ?? []).filter((c) => c.estado !== "ANULADA");
   const saldo = Math.round(vivas.reduce((s, c) => s + c.saldo, 0) * 100) / 100;
   const vencido = Math.round(vivas.filter((c) => c.vencida).reduce((s, c) => s + c.saldo, 0) * 100) / 100;
+  const pagado = Math.round(vivas.reduce((s, c) => s + c.pagado, 0) * 100) / 100;
   const tutor = a.tutores.find((t) => t.principal) ?? a.tutores[0] ?? null;
   const estado = actual ? textoEstadoInscripcion(actual.estado) : null;
 
@@ -183,110 +203,112 @@ export default function FichaAlumno() {
       : [];
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6 p-4 sm:p-6 lg:p-8">
-      <nav className="text-[13px] text-texto-3">
-        <Link to="/academia/alumnos" className="hover:underline">
-          {p.Alumnos}
-        </Link>{" "}
-        / {nombreAlumno(a)}
-      </nav>
-
-      <header className="flex flex-wrap items-start justify-between gap-4">
-        <div className="flex min-w-0 items-start gap-3">
-          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-primary-50 text-base font-bold text-primary-700">
-            {iniciales(`${a.nombres} ${a.apellidos}`)}
+    <PaginaAcademia>
+      <EncabezadoPagina
+        volver={{ a: "/academia/alumnos", texto: p.Alumnos }}
+        titulo={
+          <span className="flex items-center gap-3">
+            <span
+              aria-hidden="true"
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary-100 text-base font-bold text-primary-700"
+            >
+              {iniciales(`${a.nombres} ${a.apellidos}`)}
+            </span>
+            <span className="min-w-0">{nombreAlumno(a)}</span>
           </span>
-          <div className="min-w-0 space-y-1">
-            <h1 className="text-2xl font-bold text-texto">{nombreAlumno(a)}</h1>
-            <p className="flex flex-wrap items-center gap-2 text-[13px] text-texto-3">
-              {a.menor && (
-                <span className="rounded-lg border border-borde px-2 py-0.5 text-[12px] font-semibold text-texto-2">
-                  Menor{a.edad != null ? ` · ${a.edad} años` : ""}
-                </span>
-              )}
-              {estado && estado.tono !== "normal" && (
-                <span className={estado.tono === "ambar" ? "font-semibold text-warning-text" : ""}>{estado.texto}</span>
-              )}
-              <span>
-                {[a.codigo, a.ci && `CI ${a.ci}${a.ciExpedido ? ` ${a.ciExpedido}` : ""}`, a.fechaNacimiento && `nació ${fmtFecha(a.fechaNacimiento)}`, a.telefono]
-                  .filter(Boolean)
-                  .join(" · ")}
-              </span>
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          {cobra && !sinMontos && saldo > 0 && actual && (
-            <Boton onClick={() => navigate(rutaCobroInscripcion(actual.id, actual.grupo.sede))}>Cobrar {fmtMoney(vencido > 0 ? vencido : saldo)}</Boton>
-          )}
-          <MenuMas etiqueta={`Más acciones del ${p.alumno}`} acciones={accionesFicha} />
-        </div>
-      </header>
+        }
+        acciones={
+          <>
+            {cobra && !sinMontos && saldo > 0 && actual && (
+              <Boton onClick={() => navigate(rutaCobroInscripcion(actual.id, actual.grupo.sede))}>Cobrar {fmtMoney(vencido > 0 ? vencido : saldo)}</Boton>
+            )}
+            <MenuMas etiqueta={`Más acciones del ${p.alumno}`} acciones={accionesFicha} />
+          </>
+        }
+      >
+        <p className="flex flex-wrap items-center gap-2 pt-0.5 text-[13px] text-texto-3 sm:pl-14">
+          {a.menor && <Chip tono="azul">Menor{a.edad != null ? ` · ${a.edad} años` : ""}</Chip>}
+          {estado && estado.tono !== "normal" && <Chip tono={estado.tono}>{estado.texto}</Chip>}
+          <span>
+            {[a.codigo, a.ci && `CI ${a.ci}${a.ciExpedido ? ` ${a.ciExpedido}` : ""}`, a.fechaNacimiento && `nació ${fmtFecha(a.fechaNacimiento)}`, a.telefono]
+              .filter(Boolean)
+              .join(" · ")}
+          </span>
+        </p>
+      </EncabezadoPagina>
 
       <AvisoOk>{aviso}</AvisoOk>
       <ErrorMsg>{error}</ErrorMsg>
 
-      <div className="grid gap-8 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-        <div className="space-y-8">
+      <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] lg:gap-6">
+        <div className="min-w-0 space-y-5 lg:space-y-6">
           {actual ? (
-            <section aria-label="Inscripción actual" className="space-y-4">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="text-[12px] font-semibold uppercase tracking-wide text-texto-4">Inscripción actual</p>
-                  <h2 className="text-base font-bold text-texto">
-                    <Link to={`/academia/grupos/${actual.grupo.id}`} className="hover:underline">
-                      {actual.grupo.nombre}
-                    </Link>
-                  </h2>
+            <Tarjeta
+              id="t-inscripcion"
+              titulo="Inscripción actual"
+              sinRelleno
+              acciones={<MenuMas etiqueta="Acciones de la inscripción" acciones={accionesInscripcion} />}
+            >
+              <div className="space-y-0.5 px-4 py-4 sm:px-5">
+                <p className="text-base font-bold text-texto">
+                  <Link to={`/academia/grupos/${actual.grupo.id}`} className="hover:text-primary-700 hover:underline">
+                    {actual.grupo.nombre}
+                  </Link>
+                </p>
+                <p className="text-[13px] text-texto-3">
+                  {[
+                    `${p.Sede} ${nombreDe(actual.grupo.sede)}`,
+                    actual.plan ? `plan ${actual.plan.nombre}` : null,
+                    actual.descuento
+                      ? `${actual.descuento.tipo === "BECA" ? "beca" : "promoción"}${actual.descuento.pct != null ? ` ${actual.descuento.pct} %` : ""}`
+                      : null,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </p>
+                {actual.estado === "RETIRADA" && (actual.retiradaEn || actual.retiroMotivo) && (
                   <p className="text-[13px] text-texto-3">
-                    {[
-                      `${p.Sede} ${nombreDe(actual.grupo.sede)}`,
-                      actual.plan ? `plan ${actual.plan.nombre}` : null,
-                      actual.descuento
-                        ? `${actual.descuento.tipo === "BECA" ? "beca" : "promoción"}${actual.descuento.pct != null ? ` ${actual.descuento.pct} %` : ""}`
-                        : null,
-                    ]
-                      .filter(Boolean)
-                      .join(" · ")}
+                    Retirado{actual.retiradaEn ? ` el ${fmtFecha(actual.retiradaEn)}` : ""}
+                    {actual.retiroMotivo ? ` · ${actual.retiroMotivo}` : ""}
                   </p>
-                  {actual.estado === "RETIRADA" && (actual.retiradaEn || actual.retiroMotivo) && (
-                    <p className="text-[13px] text-texto-3">
-                      Retirado{actual.retiradaEn ? ` el ${fmtFecha(actual.retiradaEn)}` : ""}
-                      {actual.retiroMotivo ? ` · ${actual.retiroMotivo}` : ""}
-                    </p>
-                  )}
-                </div>
-                <MenuMas etiqueta="Acciones de la inscripción" acciones={accionesInscripcion} />
+                )}
               </div>
 
               {!sinMontos && (
                 <>
-                  <EstadoCuenta inscripcion={actual} />
-                  <p className="text-sm text-texto-2">
-                    Saldo del curso <span className="font-bold tabular-nums text-texto">{fmtMoney(saldo)}</span>
-                    {vencido > 0 && <span className="font-semibold text-danger-text"> · {fmtMoney(vencido)} vencido</span>}
-                  </p>
-                  {actual.pagos.length > 0 && (
-                    <div className="space-y-2">
-                      <h3 className="text-sm font-bold text-texto">Pagos</h3>
-                      <ul className="divide-y divide-borde-soft border-y border-borde-soft">
-                        {actual.pagos.map((x, i) => (
-                          <li key={`${x.ventaId}-${x.cuotaId}-${i}`} className="flex items-center justify-between gap-3 py-2 text-sm">
-                            <span className="min-w-0 truncate text-texto-2">
-                              {fmtFecha(x.fecha)} · {nombreDe(x.sede)}
-                              {x.comprobante ? ` · recibo ${x.comprobante}` : ""}
-                            </span>
-                            <span className="shrink-0 tabular-nums text-texto">{fmtMoney(x.monto)}</span>
-                          </li>
-                        ))}
-                      </ul>
+                  {/* El saldo, lo vencido y lo pagado del curso: lo primero que se pregunta en el mostrador. */}
+                  {/* En el celular el saldo va solo arriba: tres montos en una fila no entran. */}
+                  <div className="grid grid-cols-2 gap-2.5 border-t border-borde-soft bg-muted/60 p-3 sm:grid-cols-3 sm:gap-3 sm:p-4">
+                    <div className="col-span-2 min-w-0 sm:col-span-1">
+                      <KpiTarjeta etiqueta="Saldo del curso" valor={fmtMoney(saldo)} />
                     </div>
-                  )}
+                    <KpiTarjeta etiqueta="Vencido" valor={fmtMoney(vencido)} tono={vencido > 0 ? "urgente" : "normal"} />
+                    <KpiTarjeta etiqueta="Pagado" valor={fmtMoney(pagado)} />
+                  </div>
+                  <EstadoCuenta inscripcion={actual} />
                 </>
               )}
-            </section>
+            </Tarjeta>
           ) : (
-            <p className="text-sm text-texto-3">No tiene inscripciones.</p>
+            <Tarjeta id="t-inscripcion" titulo="Inscripción actual">
+              <p className="text-sm text-texto-3">No tiene inscripciones.</p>
+            </Tarjeta>
+          )}
+
+          {actual && !sinMontos && actual.pagos.length > 0 && (
+            <Tarjeta id="t-pagos" titulo="Pagos" contador={actual.pagos.length} sinRelleno>
+              <ul className={LISTA.lista}>
+                {actual.pagos.map((x, i) => (
+                  <li key={`${x.ventaId}-${x.cuotaId}-${i}`} className={`flex items-center justify-between gap-3 text-sm ${LISTA.itemHover}`}>
+                    <span className="min-w-0 truncate text-texto-2">
+                      {fmtFecha(x.fecha)} · {nombreDe(x.sede)}
+                      {x.comprobante ? ` · recibo ${x.comprobante}` : ""}
+                    </span>
+                    <span className="shrink-0 font-semibold tabular-nums text-texto">{fmtMoney(x.monto)}</span>
+                  </li>
+                ))}
+              </ul>
+            </Tarjeta>
           )}
 
           {a.fotos && (
@@ -302,69 +324,66 @@ export default function FichaAlumno() {
           <Historial alumno={a} />
         </div>
 
-        <aside className="space-y-6">
-          <section aria-label="Tutores" className="space-y-2">
-            <h2 className="text-sm font-bold text-texto">{a.tutores.length > 1 ? "Tutores" : "Tutor"}</h2>
+        <aside className="min-w-0 space-y-5 lg:space-y-6">
+          <Tarjeta id="t-tutores" titulo={a.tutores.length > 1 ? "Tutores" : "Tutor"} sinRelleno>
             {a.tutores.length === 0 ? (
-              <p className="text-sm text-texto-3">{a.menor ? "Es menor y no tiene tutor cargado." : "Sin tutor."}</p>
+              <p className="px-4 py-4 text-sm text-texto-3 sm:px-5">{a.menor ? "Es menor y no tiene tutor cargado." : "Sin tutor."}</p>
             ) : (
-              <ul className="space-y-3">
+              <ul className={LISTA.lista}>
                 {a.tutores.map((t) => {
                   const url = enlaceWhatsApp(t.telefono, `Hola ${t.nombre.split(" ")[0]}`);
                   return (
-                    <li key={t.id} className="space-y-1">
-                      <p className="text-sm font-semibold text-texto">
-                        {t.nombre}
-                        {t.principal && a.tutores.length > 1 && <span className="font-normal text-texto-3"> · principal</span>}
-                      </p>
-                      <p className="text-[13px] text-texto-3">
-                        {t.parentesco}
-                        {t.telefono ? ` · ${t.telefono}` : ""}
-                        {t.ci ? ` · CI ${t.ci}` : ""}
-                      </p>
-                      <div className="flex gap-3 text-[13px]">
-                        {url && (
-                          <button type="button" onClick={() => abrirWhatsapp(url)} className="font-semibold text-primary-700 hover:underline">
-                            WhatsApp
-                          </button>
-                        )}
-                        {inscribe && (
-                          <button
-                            type="button"
-                            onClick={() => void hacer(() => apiAcademia.quitarTutor(a.id, t.id), "Tutor quitado.")}
-                            className="text-texto-3 hover:underline"
-                          >
-                            Quitar
-                          </button>
-                        )}
+                    <li key={t.id} className={`space-y-2 ${LISTA.item}`}>
+                      <div className="min-w-0">
+                        <p className="flex flex-wrap items-center gap-2 text-sm font-semibold text-texto">
+                          {t.nombre}
+                          {t.principal && a.tutores.length > 1 && <Chip tono="marca">principal</Chip>}
+                        </p>
+                        <p className="text-[13px] text-texto-3">
+                          {t.parentesco}
+                          {t.telefono ? ` · ${t.telefono}` : ""}
+                          {t.ci ? ` · CI ${t.ci}` : ""}
+                        </p>
                       </div>
+                      {(url || inscribe) && (
+                        <div className="flex flex-wrap gap-2">
+                          {url && (
+                            <BotonFila icono="phone" onClick={() => abrirWhatsapp(url)}>
+                              WhatsApp
+                            </BotonFila>
+                          )}
+                          {inscribe && (
+                            <BotonFila variante="ghost" onClick={() => void hacer(() => apiAcademia.quitarTutor(a.id, t.id), "Tutor quitado.")}>
+                              Quitar
+                            </BotonFila>
+                          )}
+                        </div>
+                      )}
                     </li>
                   );
                 })}
               </ul>
             )}
             {a.menor && a.tutores.length > 0 && (
-              <p className="text-[12px] text-texto-4">Los recordatorios van al tutor.</p>
+              <p className="border-t border-borde-soft bg-muted px-4 py-2.5 text-[12px] text-texto-3 sm:px-5">Los recordatorios van al tutor.</p>
             )}
-          </section>
+          </Tarjeta>
           {actual && (
-            <section aria-label="Asistencia y notas" className="space-y-1">
-              <h2 className="text-sm font-bold text-texto">Asistencia y notas</h2>
-              <p className="flex gap-3 text-sm">
-                <Link to={`/academia/grupos/${actual.grupo.id}/lista`} className="font-semibold text-primary-700 hover:underline">
+            <Tarjeta id="t-asistencia" titulo="Asistencia y notas">
+              <div className="flex flex-wrap gap-2">
+                <BotonFila variante="ghost" icono="check" a={`/academia/grupos/${actual.grupo.id}/lista`}>
                   Asistencia del grupo
-                </Link>
-                <Link to={`/academia/grupos/${actual.grupo.id}/notas`} className="font-semibold text-primary-700 hover:underline">
+                </BotonFila>
+                <BotonFila variante="ghost" icono="fileText" a={`/academia/grupos/${actual.grupo.id}/notas`}>
                   Notas
-                </Link>
-              </p>
-            </section>
+                </BotonFila>
+              </div>
+            </Tarjeta>
           )}
           {a.observaciones && (
-            <section className="space-y-1">
-              <h2 className="text-sm font-bold text-texto">Observaciones</h2>
+            <Tarjeta id="t-observaciones" titulo="Observaciones">
               <p className="whitespace-pre-line text-sm text-texto-2">{a.observaciones}</p>
-            </section>
+            </Tarjeta>
           )}
         </aside>
       </div>
@@ -438,65 +457,78 @@ export default function FichaAlumno() {
           }}
         />
       )}
-    </div>
+    </PaginaAcademia>
   );
 }
 
-/** El estado de cuenta: tabla en escritorio, renglones en el celular. */
+/** El estado de una cuota en chip: "pagada", "vencida 10 d", "abono"… */
+function chipCuota(c: Cuota): { texto: string; tono: TonoChip } {
+  if (c.estado === "ANULADA") return { texto: "anulada", tono: "gris" };
+  if (c.estado === "PAGADA") return { texto: "pagada", tono: "verde" };
+  if (c.vencida) return { texto: `vencida ${c.diasAtraso} d`, tono: "rojo" };
+  if (c.estado === "PARCIAL") return { texto: "abono", tono: "ambar" };
+  return { texto: "pendiente", tono: "gris" };
+}
+
+/** El estado de cuenta: tabla en escritorio, renglones en el celular (nada de scroll lateral). */
 function EstadoCuenta({ inscripcion }: { inscripcion: InscripcionDetalle }) {
   const cuotas = inscripcion.cuotas;
-  if (!cuotas.length) return <p className="text-sm text-texto-3">Sin cuotas.</p>;
   return (
-    <div className="space-y-2">
-      <h3 className="text-sm font-bold text-texto">Estado de cuenta</h3>
-      <table className="hidden w-full text-sm md:table">
-        <thead>
-          <tr className="text-left text-[12px] text-texto-3">
-            <th className="py-1.5 font-normal">Cuota</th>
-            <th className="py-1.5 font-normal">Cubre</th>
-            <th className="py-1.5 font-normal">Vence</th>
-            <th className="py-1.5 text-right font-normal">Monto</th>
-            <th className="py-1.5 text-right font-normal">Pagado</th>
-            <th className="py-1.5 text-right font-normal">Estado</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-borde-soft border-t border-borde-soft">
-          {cuotas.map((c) => {
-            const anulada = c.estado === "ANULADA";
-            return (
-              <tr key={c.id} className={anulada ? "text-texto-4 line-through" : "text-texto-2"}>
-                <td className="py-2 text-texto">{c.concepto || `Cuota ${c.numero}`}</td>
-                <td className="py-2">{textoCubre(c.materiaOrdenes)}</td>
-                <td className="py-2">{fechaCorta(c.vence)}</td>
-                <td className="py-2 text-right tabular-nums">{fmtMoney(c.monto)}</td>
-                <td className="py-2 text-right tabular-nums">{fmtMoney(c.pagado)}</td>
-                <td className={`py-2 text-right ${c.vencida && !anulada ? "font-semibold text-danger-text" : ""}`}>
-                  {anulada
-                    ? "anulada"
-                    : c.estado === "PAGADA"
-                      ? "pagada"
-                      : c.vencida
-                        ? `vencida ${c.diasAtraso} d`
-                        : c.estado === "PARCIAL"
-                          ? "abono"
-                          : "pendiente"}
-                </td>
+    <div className="border-t border-borde-soft">
+      <h3 className="px-4 pb-2 pt-3.5 text-sm font-bold text-texto sm:px-5">Estado de cuenta</h3>
+      {!cuotas.length ? (
+        <p className="px-4 pb-4 text-sm text-texto-3 sm:px-5">Sin cuotas.</p>
+      ) : (
+        <>
+          <table className={`${TABLA.tabla} hidden md:table`}>
+            <thead>
+              <tr className={TABLA.encabezado}>
+                <th className={TABLA.th}>Cuota</th>
+                <th className={TABLA.th}>Cubre</th>
+                <th className={TABLA.th}>Vence</th>
+                <th className={`${TABLA.th} ${TABLA.numero}`}>Monto</th>
+                <th className={`${TABLA.th} ${TABLA.numero}`}>Pagado</th>
+                <th className={`${TABLA.th} text-right`}>Estado</th>
               </tr>
-            );
-          })}
-        </tbody>
-      </table>
-      <ul className="space-y-2 md:hidden">
-        {cuotas.map((c) => {
-          const t = textoCuota(c);
-          return (
-            <li key={c.id} className="flex items-baseline justify-between gap-3 text-sm">
-              <span className={c.estado === "ANULADA" ? "text-texto-4 line-through" : "text-texto"}>{nombreCuota(c)}</span>
-              <span className={`text-right tabular-nums ${t.urgente ? "font-semibold text-danger-text" : "text-texto-3"}`}>{t.texto}</span>
-            </li>
-          );
-        })}
-      </ul>
+            </thead>
+            <tbody>
+              {cuotas.map((c) => {
+                const anulada = c.estado === "ANULADA";
+                const chip = chipCuota(c);
+                return (
+                  <tr key={c.id} className={`${TABLA.fila} ${anulada ? "text-texto-4 line-through" : "text-texto-2"}`}>
+                    <td className={`${TABLA.td} font-semibold ${anulada ? "" : "text-texto"}`}>{c.concepto || `Cuota ${c.numero}`}</td>
+                    <td className={TABLA.td}>{textoCubre(c.materiaOrdenes)}</td>
+                    <td className={TABLA.td}>{fechaCorta(c.vence)}</td>
+                    <td className={`${TABLA.td} ${TABLA.numero}`}>{fmtMoney(c.monto)}</td>
+                    <td className={`${TABLA.td} ${TABLA.numero}`}>{fmtMoney(c.pagado)}</td>
+                    <td className={`${TABLA.td} text-right`}>
+                      <Chip tono={chip.tono}>{chip.texto}</Chip>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          <ul className={`${LISTA.lista} border-t border-borde-soft md:hidden`}>
+            {cuotas.map((c) => {
+              const t = textoCuota(c);
+              const chip = chipCuota(c);
+              return (
+                <li key={c.id} className={`flex items-center justify-between gap-3 text-sm ${LISTA.item}`}>
+                  <span className="min-w-0">
+                    <span className={`block ${c.estado === "ANULADA" ? "text-texto-4 line-through" : "font-semibold text-texto"}`}>{nombreCuota(c)}</span>
+                    <span className={`block tabular-nums text-[13px] ${t.urgente ? "font-semibold text-danger-text" : "text-texto-3"}`}>{t.texto}</span>
+                  </span>
+                  <Chip tono={chip.tono} className="shrink-0">
+                    {chip.texto}
+                  </Chip>
+                </li>
+              );
+            })}
+          </ul>
+        </>
+      )}
     </div>
   );
 }
@@ -508,26 +540,32 @@ function Historial({ alumno }: { alumno: AlumnoDetalle }) {
   const anteriores = alumno.inscripciones.slice(1);
   if (!eventos.length && !anteriores.length) return null;
   return (
-    <section aria-label="Historial" className="space-y-2">
-      <h2 className="text-sm font-bold text-texto">Historial</h2>
-      <ul className="space-y-2">
-        {eventos.map((e, i) => {
-          const t = textoEvento(e);
-          return (
-            <li key={i} className="text-[13px]">
-              <span className="text-texto-2">
-                {t.titulo}
-                {t.detalle ? ` · ${t.detalle}` : ""}
-              </span>
-              <span className="block text-[12px] text-texto-4">
-                {fmtFecha(e.en)}
-                {e.usuario ? ` · ${e.usuario}` : ""} · {e.grupo}
-              </span>
-            </li>
-          );
-        })}
-      </ul>
-    </section>
+    <Tarjeta id="t-historial" titulo="Historial" sinRelleno>
+      {eventos.length === 0 ? (
+        <p className="px-4 py-4 text-sm text-texto-3 sm:px-5">Sin movimientos.</p>
+      ) : (
+        <ul className={LISTA.lista}>
+          {eventos.map((e, i) => {
+            const t = textoEvento(e);
+            return (
+              <li key={i} className={`flex gap-3 text-[13px] ${LISTA.item}`}>
+                <span aria-hidden="true" className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-primary-200" />
+                <span className="min-w-0">
+                  <span className="block text-texto-2">
+                    {t.titulo}
+                    {t.detalle ? ` · ${t.detalle}` : ""}
+                  </span>
+                  <span className="block text-[12px] text-texto-4">
+                    {fmtFecha(e.en)}
+                    {e.usuario ? ` · ${e.usuario}` : ""} · {e.grupo}
+                  </span>
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </Tarjeta>
   );
 }
 
@@ -711,47 +749,55 @@ function EditarAlumno({
         </>
       }
     >
-      <div className="space-y-3">
-        <Campo label="Apellidos">
-          <Input value={f.apellidos} onChange={(e) => setF({ ...f, apellidos: e.target.value })} />
-        </Campo>
-        <Campo label="Nombres">
-          <Input value={f.nombres} onChange={(e) => setF({ ...f, nombres: e.target.value })} />
-        </Campo>
-        {veCi && (
-          <>
-            <div className="grid grid-cols-[1fr_90px] gap-2">
-              <Campo label="Carnet de identidad">
-                <Input value={f.ci} inputMode="numeric" onChange={(e) => setF({ ...f, ci: e.target.value })} />
-              </Campo>
-              <Campo label="Expedido">
-                <Select value={f.ciExpedido} onChange={(e) => setF({ ...f, ciExpedido: e.target.value })}>
-                  <option value="">—</option>
-                  {EXPEDIDOS.map((x) => (
-                    <option key={x}>{x}</option>
-                  ))}
-                </Select>
-              </Campo>
-            </div>
-            <Campo label="Fecha de nacimiento">
-              <Input type="date" value={f.fechaNacimiento} onChange={(e) => setF({ ...f, fechaNacimiento: e.target.value })} />
+      <div>
+        <SeccionPanel titulo="Datos personales">
+          <div className="space-y-3">
+            <Campo label="Apellidos">
+              <Input value={f.apellidos} onChange={(e) => setF({ ...f, apellidos: e.target.value })} />
             </Campo>
-          </>
-        )}
-        <Campo label="Teléfono">
-          <Input inputMode="tel" value={f.telefono} onChange={(e) => setF({ ...f, telefono: e.target.value })} />
-        </Campo>
-        <Campo label="Dirección">
-          <Input value={f.direccion} onChange={(e) => setF({ ...f, direccion: e.target.value })} />
-        </Campo>
-        <Campo label="Observaciones">
-          <textarea
-            rows={3}
-            value={f.observaciones}
-            onChange={(e) => setF({ ...f, observaciones: e.target.value })}
-            className="w-full resize-y rounded-xl border border-borde bg-white px-3.5 py-2.5 text-sm text-texto outline-none focus:border-primary focus:ring-2 focus:ring-primary-100"
-          />
-        </Campo>
+            <Campo label="Nombres">
+              <Input value={f.nombres} onChange={(e) => setF({ ...f, nombres: e.target.value })} />
+            </Campo>
+            {veCi && (
+              <>
+                <div className="grid grid-cols-[1fr_90px] gap-2">
+                  <Campo label="Carnet de identidad">
+                    <Input value={f.ci} inputMode="numeric" onChange={(e) => setF({ ...f, ci: e.target.value })} />
+                  </Campo>
+                  <Campo label="Expedido">
+                    <Select value={f.ciExpedido} onChange={(e) => setF({ ...f, ciExpedido: e.target.value })}>
+                      <option value="">—</option>
+                      {EXPEDIDOS.map((x) => (
+                        <option key={x}>{x}</option>
+                      ))}
+                    </Select>
+                  </Campo>
+                </div>
+                <Campo label="Fecha de nacimiento">
+                  <Input type="date" value={f.fechaNacimiento} onChange={(e) => setF({ ...f, fechaNacimiento: e.target.value })} />
+                </Campo>
+              </>
+            )}
+          </div>
+        </SeccionPanel>
+        <SeccionPanel titulo="Contacto">
+          <div className="space-y-3">
+            <Campo label="Teléfono">
+              <Input inputMode="tel" value={f.telefono} onChange={(e) => setF({ ...f, telefono: e.target.value })} />
+            </Campo>
+            <Campo label="Dirección">
+              <Input value={f.direccion} onChange={(e) => setF({ ...f, direccion: e.target.value })} />
+            </Campo>
+            <Campo label="Observaciones">
+              <textarea
+                rows={3}
+                value={f.observaciones}
+                onChange={(e) => setF({ ...f, observaciones: e.target.value })}
+                className="w-full resize-y rounded-xl border border-borde bg-white px-3.5 py-2.5 text-sm text-texto outline-none focus:border-primary focus:ring-2 focus:ring-primary-100"
+              />
+            </Campo>
+          </div>
+        </SeccionPanel>
         <ErrorMsg>{error}</ErrorMsg>
       </div>
     </Modal>
