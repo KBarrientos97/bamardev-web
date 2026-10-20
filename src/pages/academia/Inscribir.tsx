@@ -40,6 +40,7 @@ import { useAuth } from "../../store/AuthContext";
 import { PedirPinCredito } from "../pos/PantallaCredito";
 import { abrirWhatsapp } from "../../lib/academia/vista";
 import CapturaFotos from "./CapturaFotos";
+import { BotonFila, BotonIcono, ResumenPanel } from "./piezas";
 
 export interface ResultadoInscripcion {
   inscripcion: Pick<InscripcionDetalle, "id"> & Partial<InscripcionDetalle>;
@@ -412,19 +413,17 @@ export default function Inscribir({
         aria-label={`Inscribir ${p.alumno}`}
         className="flex h-full w-full flex-col bg-white shadow-2xl sm:max-w-[440px] sm:border-l sm:border-borde lg:max-w-[920px]"
       >
-        <header className="flex items-start justify-between gap-3 border-b border-borde-soft px-5 py-4">
+        <header className="flex items-center justify-between gap-3 border-b border-borde-soft px-4 py-3.5 sm:px-5">
           <div className="min-w-0">
             <h2 className="text-lg font-bold text-texto">Inscribir {p.alumno}</h2>
             {grupo && <p className="text-[13px] text-texto-3">{p.Sede} {nombreDe(grupo.sede)}</p>}
           </div>
-          <button type="button" onClick={onCerrar} aria-label="Cerrar" className="rounded-lg p-2 text-texto-3 hover:bg-muted">
-            <Icon name="close" size={19} />
-          </button>
+          <BotonIcono icono="close" etiqueta="Cerrar" onClick={onCerrar} />
         </header>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 lg:grid lg:grid-cols-[minmax(0,1fr)_300px] lg:items-start lg:gap-8">
-        <div className="space-y-7">
-          <Paso n={1} titulo="Grupo">
+        <div className="min-h-0 flex-1 overflow-y-auto bg-muted/40 px-4 py-4 sm:px-5 sm:py-5 lg:grid lg:grid-cols-[minmax(0,1fr)_300px] lg:items-start lg:gap-6">
+        <div className="min-w-0 space-y-4">
+          <Paso n={1} titulo="Grupo" listo={!!grupo}>
             {fijoGrupo ? (
               grupo ? (
                 <TarjetaGrupo g={grupo} />
@@ -453,10 +452,10 @@ export default function Inscribir({
                 ))}
               </Select>
             )}
-            {!fijoGrupo && grupo && <div className="mt-3"><TarjetaGrupo g={grupo} /></div>}
+            {!fijoGrupo && grupo && <TarjetaGrupo g={grupo} />}
           </Paso>
 
-          <Paso n={2} titulo={`Datos del ${p.alumno}`}>
+          <Paso n={2} titulo={`Datos del ${p.alumno}`} listo={datosListos && tutorListo}>
             {preinscripcion ? (
               <p className="text-sm">
                 <span className="font-semibold text-texto">{nombreFinal}</span>
@@ -466,12 +465,15 @@ export default function Inscribir({
                 )}
               </p>
             ) : elegido ? (
-              <div className="flex items-center justify-between gap-3 rounded-xl border border-borde px-3.5 py-2.5">
-                <span className="text-sm font-semibold text-texto">{elegido.nombre}</span>
+              <div className="flex items-center justify-between gap-3 rounded-xl border border-borde bg-muted/50 px-3.5 py-2.5">
+                <span className="flex min-w-0 items-center gap-2 text-sm font-semibold text-texto">
+                  <Icon name="user" size={16} />
+                  <span className="truncate">{elegido.nombre}</span>
+                </span>
                 {!alumnoInicial && (
-                  <button type="button" onClick={() => setElegido(null)} className="text-xs font-semibold text-texto-2 underline">
+                  <BotonFila variante="ghost" onClick={() => setElegido(null)}>
                     Cambiar
-                  </button>
+                  </BotonFila>
                 )}
               </div>
             ) : modo === "buscar" ? (
@@ -514,9 +516,9 @@ export default function Inscribir({
                     <Input inputMode="tel" value={nuevo.telefono} onChange={(e) => setNuevo({ ...nuevo, telefono: e.target.value })} />
                   </Campo>
                 </div>
-                <button type="button" onClick={() => setModo("buscar")} className="text-xs font-semibold text-texto-2 underline">
+                <BotonFila variante="ghost" icono="search" onClick={() => setModo("buscar")}>
                   Buscar uno que ya está cargado
-                </button>
+                </BotonFila>
               </div>
             )}
 
@@ -545,8 +547,8 @@ export default function Inscribir({
           </Paso>
 
           {pideFotos && (
-            <Paso n={3} titulo="Fotos obligatorias">
-              <p className="-mt-1 flex items-center gap-1.5 text-[13px] text-texto-3">
+            <Paso n={3} titulo="Fotos obligatorias" listo={faltanFotos.length === 0}>
+              <p className="flex items-center gap-1.5 text-[13px] text-texto-3">
                 <Icon name="lock" size={13} /> Las fotos sólo las ve el administrador
               </p>
               <CapturaFotos
@@ -561,7 +563,7 @@ export default function Inscribir({
             </Paso>
           )}
 
-          <Paso n={pideFotos ? 4 : 3} titulo="Forma de pago">
+          <Paso n={pideFotos ? 4 : 3} titulo="Forma de pago" listo={!!plan}>
             {!grupoId ? (
               <p className="text-sm text-texto-3">Primero el grupo.</p>
             ) : detalle.cargando ? (
@@ -585,13 +587,13 @@ export default function Inscribir({
                 ))}
               </div>
             )}
-          </Paso>
 
+          {/* Cuánto paga hoy va en la misma tarjeta que la forma de pago: es la otra mitad de la misma cuenta. */}
           {plan && (
-            <section aria-labelledby="t-paga-hoy" className="space-y-2">
-              <h3 id="t-paga-hoy" className="text-sm font-bold text-texto">
+            <section aria-labelledby="t-paga-hoy" className="space-y-2 border-t border-borde-soft pt-4">
+              <h4 id="t-paga-hoy" className="text-[11px] font-semibold uppercase tracking-wide text-texto-4">
                 Paga hoy
-              </h3>
+              </h4>
               <div role="group" aria-labelledby="t-paga-hoy" className="flex flex-wrap gap-2">
                 {(
                   [
@@ -605,8 +607,10 @@ export default function Inscribir({
                     type="button"
                     aria-pressed={elegidoHoy === k}
                     onClick={() => setPagaHoy(k)}
-                    className={`rounded-xl border px-3 py-2 text-[13px] transition-colors ${
-                      elegidoHoy === k ? "border-primary bg-primary-50 font-semibold text-primary-700" : "border-borde bg-white text-texto-2 hover:bg-muted"
+                    className={`min-h-11 rounded-xl border px-3.5 text-[13px] tabular-nums transition-colors sm:min-h-10 ${
+                      elegidoHoy === k
+                        ? "border-primary bg-primary-50 font-semibold text-primary-700 ring-2 ring-primary-100"
+                        : "border-borde bg-white text-texto-2 hover:border-primary-200 hover:bg-muted"
                     }`}
                   >
                     {label}
@@ -623,10 +627,12 @@ export default function Inscribir({
               <p className="text-xs text-texto-4">Si deja un adelanto, el resto queda como saldo.</p>
             </section>
           )}
+          </Paso>
 
-          <section aria-label="Otro descuento o beca" className="space-y-3">
-            <button
-              type="button"
+          <section aria-label="Otro descuento o beca" className="space-y-3 rounded-xl border border-borde-soft bg-white p-4">
+            <BotonFila
+              variante="ghost"
+              icono="percent"
               onClick={() => {
                 setOtroDescuento((v) => !v);
                 if (otroDescuento) {
@@ -635,10 +641,9 @@ export default function Inscribir({
                 }
               }}
               aria-expanded={otroDescuento || !!tipoDesc}
-              className="text-[13px] font-semibold text-primary-700 hover:underline"
             >
               Aplicar otro descuento o beca
-            </button>
+            </BotonFila>
             {(otroDescuento || !!tipoDesc) && (
             <>
             {!puedeBecas && (
@@ -699,8 +704,10 @@ export default function Inscribir({
 
         </div>
 
-          <aside aria-label="Resumen de la inscripción" className="mt-7 space-y-4 border-t border-borde-soft pt-5 lg:sticky lg:top-0 lg:mt-0 lg:rounded-xl lg:border lg:border-borde-soft lg:bg-muted/40 lg:p-4">
+          <aside aria-label="Resumen de la inscripción" className="mt-4 lg:sticky lg:top-0 lg:mt-0">
+          <ResumenPanel className="space-y-4 border border-borde-soft">
             <div>
+              <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-texto-4">Resumen</p>
               <p className="text-sm font-bold text-texto">{nombreFinal || `${p.Alumno} nuevo`}</p>
               {grupo && (
                 <p className="text-[13px] text-texto-3">
@@ -716,46 +723,48 @@ export default function Inscribir({
               )}
             </ul>
           {plan && (
-            <section aria-label="Resumen" className="space-y-2 border-t border-borde-soft pt-3">
-              <dl className="space-y-1 text-sm">
-                <div className="flex justify-between text-texto-2">
+            // Los montos en su propio recuadro blanco: lo que se cobra hoy no se pierde entre los requisitos.
+            <section aria-label="Resumen" className="space-y-2 rounded-lg border border-borde-soft bg-white p-3.5">
+              <dl className="space-y-1.5 text-sm">
+                <div className="flex justify-between gap-3 text-texto-2">
                   <dt>
                     {p.Carrera} ({plan.nombre})
                   </dt>
                   <dd className="tabular-nums">{fmtMoney(plan.total)}</dd>
                 </div>
                 {vista.descuento > 0 && (
-                  <div className="flex justify-between text-texto-2">
+                  <div className="flex justify-between gap-3 text-texto-2">
                     <dt>
                       {tipoDesc === "BECA" ? "Beca" : "Promoción"} {Math.round(vista.pct * 10) / 10} %
                     </dt>
                     <dd className="tabular-nums">− {fmtMoney(vista.descuento)}</dd>
                   </div>
                 )}
-                <div className="flex justify-between border-t border-borde-soft pt-1 font-bold text-texto">
+                <div className="flex justify-between gap-3 border-t border-borde-soft pt-1.5 font-bold text-texto">
                   <dt>Total del curso</dt>
                   <dd className="tabular-nums">{fmtMoney(vista.total)}</dd>
                 </div>
-                <div className="flex justify-between text-texto-2">
+                <div className="-mx-2 flex justify-between gap-3 rounded-md bg-primary-50 px-2 py-1 font-semibold text-primary-700">
                   <dt>Paga hoy</dt>
                   <dd className="tabular-nums">{fmtMoney(montoHoy)}</dd>
                 </div>
-                <div className="flex justify-between text-texto-2">
+                <div className="flex justify-between gap-3 text-texto-2">
                   <dt>Queda de saldo</dt>
                   <dd className="tabular-nums">{fmtMoney(saldoQueda)}</dd>
                 </div>
               </dl>
               {proxima && saldoQueda > 0 && (
-                <p className="text-[13px] text-texto-3">
+                <p className="border-t border-borde-soft pt-2 text-[13px] text-texto-3">
                   Después: cuota {proxima.n} · {textoCubre(proxima.cubre)} · {textoVence(proxima.vence)}
                 </p>
               )}
             </section>
           )}
+          </ResumenPanel>
           </aside>
         </div>
 
-        <footer className="space-y-2 border-t border-borde-soft px-5 py-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+        <footer className="space-y-2.5 border-t border-borde-soft bg-muted px-4 py-3.5 pb-[max(0.875rem,env(safe-area-inset-bottom))] sm:px-5">
           {/* Junto al botón y no al fondo de la zona con scroll: ahí no se veían (QA ronda 2, B-15). */}
           {(falta || error) && (
             <div role="alert">
@@ -768,23 +777,28 @@ export default function Inscribir({
               {salida.accion}
             </div>
           )}
-          <label className="flex items-center gap-2 text-[13px] text-texto-2">
-            <input type="checkbox" checked={bienvenida} onChange={(e) => setBienvenida(e.target.checked)} className="h-4 w-4 accent-[var(--color-primary-boton)]" />
-            Enviar bienvenida por WhatsApp{alTutor ? " al tutor" : ""}
-          </label>
-          {/* Sin las 3 fotos el botón dice cuántas faltan y no inscribe (D7). */}
-          <Boton className="w-full" disabled={enviando || faltanFotos.length > 0} onClick={() => void enviar(true)}>
-            {enviando
-              ? "Inscribiendo…"
-              : faltanFotos.length
-                ? textoFaltanFotos(faltanFotos.length)
-                : plan && montoHoy > 0
-                  ? `Inscribir y cobrar ${fmtMoney(montoHoy)}`
-                  : "Inscribir y cobrar"}
-          </Boton>
-          <Boton variante="ghost" className="w-full" disabled={enviando || faltanFotos.length > 0} onClick={() => void enviar(false)}>
-            Inscribir sin cobrar
-          </Boton>
+          {/* En escritorio, la bienvenida a la izquierda y los botones a la derecha (el principal al final); en el celular, uno debajo del otro. */}
+          <div className="flex flex-col gap-2.5 lg:flex-row lg:items-center lg:justify-between lg:gap-4">
+            <label className="flex min-h-11 items-center gap-2 text-[13px] text-texto-2 lg:min-h-0">
+              <input type="checkbox" checked={bienvenida} onChange={(e) => setBienvenida(e.target.checked)} className="h-4 w-4 accent-[var(--color-primary-boton)]" />
+              Enviar bienvenida por WhatsApp{alTutor ? " al tutor" : ""}
+            </label>
+            <div className="flex flex-col gap-2 lg:flex-row-reverse lg:items-center">
+              {/* Sin las 3 fotos el botón dice cuántas faltan y no inscribe (D7). */}
+              <Boton className="min-h-11 w-full lg:w-auto lg:min-w-[240px]" disabled={enviando || faltanFotos.length > 0} onClick={() => void enviar(true)}>
+                {enviando
+                  ? "Inscribiendo…"
+                  : faltanFotos.length
+                    ? textoFaltanFotos(faltanFotos.length)
+                    : plan && montoHoy > 0
+                      ? `Inscribir y cobrar ${fmtMoney(montoHoy)}`
+                      : "Inscribir y cobrar"}
+              </Boton>
+              <Boton variante="ghost" className="min-h-11 w-full bg-white lg:w-auto" disabled={enviando || faltanFotos.length > 0} onClick={() => void enviar(false)}>
+                Inscribir sin cobrar
+              </Boton>
+            </div>
+          </div>
         </footer>
       </aside>
 
@@ -815,14 +829,25 @@ export default function Inscribir({
   );
 }
 
-function Paso({ n, titulo, children }: { n: number; titulo: string; children: ReactNode }) {
+/**
+ * Un paso del alta en su recuadro: el número (o el visto cuando ya está) y el
+ * título arriba, una línea suave y lo que se carga. Así los pasos no quedan
+ * sueltos sobre el blanco del panel.
+ */
+function Paso({ n, titulo, listo = false, children }: { n: number; titulo: string; listo?: boolean; children: ReactNode }) {
   return (
-    <section aria-label={titulo} className="space-y-3">
-      <h3 className="flex items-center gap-2 text-sm font-bold text-texto">
-        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary-50 text-xs text-primary-700">{n}</span>
+    <section aria-label={titulo} className="rounded-xl border border-borde-soft bg-white">
+      <h3 className="flex items-center gap-2.5 border-b border-borde-soft px-4 py-3 text-sm font-bold text-texto">
+        <span
+          className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs ${
+            listo ? "bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-600/20" : "bg-primary-50 text-primary-700"
+          }`}
+        >
+          {listo ? <Icon name="check" size={14} /> : n}
+        </span>
         {titulo}
       </h3>
-      {children}
+      <div className="space-y-3 p-4">{children}</div>
     </section>
   );
 }
@@ -841,7 +866,7 @@ function TarjetaGrupo({ g }: { g: GrupoResumen }) {
   const actual = g.materiaActual;
   const total = g.materias.length;
   return (
-    <div className="flex items-start justify-between gap-3 rounded-xl border border-borde px-3.5 py-2.5">
+    <div className="flex items-start justify-between gap-3 rounded-xl border border-borde bg-muted/50 px-3.5 py-2.5">
       <span className="min-w-0">
         <span className="block text-sm font-semibold text-texto">
           {nombreDe(g.carrera)} · {horarioGrupo(g)}
@@ -917,11 +942,19 @@ function TarjetaPlan({
       role="radio"
       aria-checked={elegido}
       onClick={onElegir}
-      className={`w-full rounded-xl border px-3.5 py-3 text-left transition-colors ${
-        elegido ? "border-primary bg-primary-50" : "border-borde hover:bg-muted"
+      className={`flex w-full items-start gap-3 rounded-xl border px-3.5 py-3 text-left transition-colors ${
+        elegido ? "border-primary bg-primary-50 ring-2 ring-primary-100" : "border-borde bg-white hover:border-primary-200 hover:bg-muted"
       }`}
     >
-      <span className="flex items-baseline justify-between gap-2">
+      {/* El puntito de radio: que se vea cuál está elegida sin depender sólo del color de fondo. */}
+      <span
+        aria-hidden="true"
+        className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2 ${elegido ? "border-primary" : "border-slate-300"}`}
+      >
+        {elegido && <span className="h-2 w-2 rounded-full bg-primary" />}
+      </span>
+      <span className="min-w-0 flex-1">
+      <span className="flex flex-wrap items-baseline justify-between gap-x-2">
         <span className="text-sm font-bold text-texto">{titulo}</span>
         <span className="text-sm font-bold tabular-nums text-texto">{precio}</span>
       </span>
@@ -938,6 +971,7 @@ function TarjetaPlan({
           ))}
         </span>
       )}
+      </span>
     </button>
   );
 }

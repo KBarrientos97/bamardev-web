@@ -16,7 +16,18 @@ import { tienePermiso } from "../../lib/permisos";
 import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
 import Inscribir from "./Inscribir";
-import { FiltrosConteo } from "./piezas";
+import {
+  BotonFila,
+  Chip,
+  claseBotonFila,
+  EncabezadoPagina,
+  FiltrosConteo,
+  LISTA,
+  PaginaAcademia,
+  TABLA,
+  Tarjeta,
+  type TonoChip,
+} from "./piezas";
 
 type Vista = "todos" | "deben" | "retirados";
 
@@ -27,12 +38,12 @@ const FILTRO_VISTA: Record<Vista, Pick<FiltroAlumnos, "estado" | "debe">> = {
   retirados: { estado: "RETIRADA" },
 };
 
-/** Cómo se lee el estado de las fotos: gris si están bien, ámbar o rojo si piden algo. */
-const FOTOS: Record<EstadoFotos, { texto: string; tono: string; ok: boolean }> = {
-  COMPLETAS: { texto: "Fotos", tono: "text-texto-4", ok: true },
-  POR_REVISAR: { texto: "Fotos por revisar", tono: "text-warning-text", ok: false },
-  OBSERVADAS: { texto: "Fotos observadas", tono: "font-semibold text-danger-text", ok: false },
-  FALTAN: { texto: "Faltan fotos", tono: "font-semibold text-danger-text", ok: false },
+/** Cómo se lee el estado de las fotos: gris si están bien, chip ámbar o rojo si piden algo. */
+const FOTOS: Record<EstadoFotos, { texto: string; tono: TonoChip; ok: boolean }> = {
+  COMPLETAS: { texto: "Fotos", tono: "gris", ok: true },
+  POR_REVISAR: { texto: "Fotos por revisar", tono: "ambar", ok: false },
+  OBSERVADAS: { texto: "Fotos observadas", tono: "rojo", ok: false },
+  FALTAN: { texto: "Faltan fotos", tono: "rojo", ok: false },
 };
 
 /** El filtro por fotos (`?fotos=`, contrato #47): lo que pide que alguien haga algo. */
@@ -102,109 +113,121 @@ export default function Alumnos() {
   const n = (v: Vista) => conteos.datos?.[v] ?? null;
 
   return (
-    <div className="mx-auto max-w-6xl space-y-5 p-4 sm:p-6 lg:p-8">
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h1 className="text-xl font-bold text-texto">{p.Alumnos}</h1>
-          <p className="mt-0.5 text-[13px] text-texto-3">
-            {[nombreSede, n("todos") != null ? `${n("todos")} ${n("todos") === 1 ? p.alumno : p.alumnos}` : null].filter(Boolean).join(" · ")}
-          </p>
-        </div>
-        {inscribe && (
-          <Boton icono="plus" onClick={() => setInscribiendo(true)}>
-            Inscribir {p.alumno}
-          </Boton>
-        )}
-      </header>
-
-      <FiltrosConteo<Vista>
-        etiqueta={`Filtrar ${p.alumnos}`}
-        valor={vista}
-        onChange={setVista}
-        opciones={[
-          { clave: "todos", label: "Todos", n: n("todos") },
-          { clave: "deben", label: "Deben", n: n("deben"), urgente: true },
-          { clave: "retirados", label: "Retirados", n: n("retirados") },
-        ]}
-        derecha={
-          puede("academia_preinscripciones") ? (
-            <Link to="/academia/preinscripciones" className="flex items-center gap-1.5 pb-2 text-sm font-semibold text-primary-700 hover:underline">
-              Inscripciones online
-              {(preinscripciones.datos ?? 0) > 0 && (
-                <span className="rounded-full bg-primary-50 px-1.5 text-[12px] tabular-nums">{preinscripciones.datos}</span>
-              )}
-            </Link>
-          ) : undefined
+    <PaginaAcademia>
+      <EncabezadoPagina
+        titulo={p.Alumnos}
+        bajada={[nombreSede, n("todos") != null ? `${n("todos")} ${n("todos") === 1 ? p.alumno : p.alumnos}` : null].filter(Boolean).join(" · ")}
+        acciones={
+          <>
+            {puede("academia_preinscripciones") && (
+              <Link to="/academia/preinscripciones" className={claseBotonFila("ghost")}>
+                <Icon name="bell" size={15} />
+                Inscripciones online
+                {(preinscripciones.datos ?? 0) > 0 && (
+                  <span className="rounded-full bg-primary-50 px-1.5 text-[12px] tabular-nums text-primary-700">{preinscripciones.datos}</span>
+                )}
+              </Link>
+            )}
+            {inscribe && (
+              <Boton icono="plus" onClick={() => setInscribiendo(true)}>
+                Inscribir {p.alumno}
+              </Boton>
+            )}
+          </>
         }
       />
 
-      {/* La sede va en chips; el buscador y los desplegables, en su propia
-          fila. Antes iban todos dentro de `FilaFiltros`, que sólo sabe de
-          chips: con 2 cursos y 2 grupos la pantalla se caía (QA ronda 2, B-01). */}
       {sede.selector}
-      <div className="flex flex-wrap gap-2">
-        <div className="min-w-0 flex-1 basis-56">
-          <Buscador valor={q} onChange={setQ} placeholder="Nombre, CI, código o teléfono" />
-        </div>
-        {(carreras.datos?.length ?? 0) > 1 && (
-          <div className="w-full sm:w-48">
-            <Select
-              aria-label={p.Carrera}
-              value={carreraId ?? ""}
-              onChange={(e) => {
-                setCarreraId(e.target.value ? Number(e.target.value) : null);
-                setGrupoId(null);
-              }}
-            >
-              <option value="">{p.Carrera}: todos</option>
-              {carreras.datos?.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.nombre}
-                </option>
-              ))}
-            </Select>
-          </div>
-        )}
-        {(grupos.datos?.length ?? 0) > 1 && (
-          <div className="w-full sm:w-56">
-            <Select aria-label="Grupo" value={grupoId ?? ""} onChange={(e) => setGrupoId(e.target.value ? Number(e.target.value) : null)}>
-              <option value="">Grupo: todos</option>
-              {grupos.datos?.map((g) => (
-                <option key={g.id} value={g.id}>
-                  {nombreDe(g.carrera)} · {horarioGrupo(g)}
-                </option>
-              ))}
-            </Select>
-          </div>
-        )}
-        <div className="w-full sm:w-44">
-          <Select aria-label="Fotos" value={fotos ?? ""} onChange={(e) => setFotos((e.target.value || null) as EstadoFotos | null)}>
-            <option value="">Fotos: todas</option>
-            {FILTRO_FOTOS.map(([k, label]) => (
-              <option key={k} value={k}>
-                {label}
-              </option>
-            ))}
-          </Select>
-        </div>
-      </div>
 
-      {lista.error && !lista.items.length ? (
-        <ErrorMsg onReintentar={lista.recargar}>{lista.error}</ErrorMsg>
-      ) : lista.cargando && !lista.items.length ? (
-        <Cargando />
-      ) : lista.items.length === 0 ? (
-        <Vacio
-          icono="users"
-          titulo={hayFiltros ? `Ningún ${p.alumno} con estos filtros` : `Todavía no hay ${p.alumnos}`}
-          texto={hayFiltros ? "Probá con otra búsqueda." : undefined}
-        />
-      ) : (
-        <>
-          <ListaAlumnos filas={lista.items} onAbrir={(a) => navigate(`/academia/alumnos/${a.id}`)} />
-          <Paginacion {...lista.paginacion} />
-        </>
-      )}
+      <Tarjeta
+        etiqueta={`Lista de ${p.alumnos}`}
+        sinRelleno
+        barra={
+          <FiltrosConteo<Vista>
+            enTarjeta
+            etiqueta={`Filtrar ${p.alumnos}`}
+            valor={vista}
+            onChange={setVista}
+            opciones={[
+              { clave: "todos", label: "Todos", n: n("todos") },
+              { clave: "deben", label: "Deben", n: n("deben"), urgente: true },
+              { clave: "retirados", label: "Retirados", n: n("retirados") },
+            ]}
+          />
+        }
+      >
+        {/* El buscador y los desplegables, en su propia fila de la tarjeta.
+            Antes iban todos dentro de `FilaFiltros`, que sólo sabe de chips:
+            con 2 cursos y 2 grupos la pantalla se caía (QA ronda 2, B-01). */}
+        <div className="flex flex-wrap gap-2 border-b border-borde-soft bg-muted/50 px-4 py-3 sm:px-5">
+          <div className="min-w-0 flex-1 basis-56">
+            <Buscador valor={q} onChange={setQ} placeholder="Nombre, CI, código o teléfono" />
+          </div>
+          {(carreras.datos?.length ?? 0) > 1 && (
+            <div className="w-[calc(50%-0.25rem)] sm:w-48">
+              <Select
+                aria-label={p.Carrera}
+                value={carreraId ?? ""}
+                onChange={(e) => {
+                  setCarreraId(e.target.value ? Number(e.target.value) : null);
+                  setGrupoId(null);
+                }}
+              >
+                <option value="">{p.Carrera}: todos</option>
+                {carreras.datos?.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.nombre}
+                  </option>
+                ))}
+              </Select>
+            </div>
+          )}
+          {(grupos.datos?.length ?? 0) > 1 && (
+            <div className="w-[calc(50%-0.25rem)] sm:w-56">
+              <Select aria-label="Grupo" value={grupoId ?? ""} onChange={(e) => setGrupoId(e.target.value ? Number(e.target.value) : null)}>
+                <option value="">Grupo: todos</option>
+                {grupos.datos?.map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {nombreDe(g.carrera)} · {horarioGrupo(g)}
+                  </option>
+                ))}
+              </Select>
+            </div>
+          )}
+          <div className="w-[calc(50%-0.25rem)] sm:w-44">
+            <Select aria-label="Fotos" value={fotos ?? ""} onChange={(e) => setFotos((e.target.value || null) as EstadoFotos | null)}>
+              <option value="">Fotos: todas</option>
+              {FILTRO_FOTOS.map(([k, label]) => (
+                <option key={k} value={k}>
+                  {label}
+                </option>
+              ))}
+            </Select>
+          </div>
+        </div>
+
+        {lista.error && !lista.items.length ? (
+          <div className="p-4 sm:p-5">
+            <ErrorMsg onReintentar={lista.recargar}>{lista.error}</ErrorMsg>
+          </div>
+        ) : lista.cargando && !lista.items.length ? (
+          <Cargando />
+        ) : lista.items.length === 0 ? (
+          <Vacio
+            icono="users"
+            titulo={hayFiltros ? `Ningún ${p.alumno} con estos filtros` : `Todavía no hay ${p.alumnos}`}
+            texto={hayFiltros ? "Probá con otra búsqueda." : undefined}
+          />
+        ) : (
+          <>
+            <ListaAlumnos filas={lista.items} onAbrir={(a) => navigate(`/academia/alumnos/${a.id}`)} />
+            {/* `empty:hidden`: con pocas filas la paginación no dibuja nada y no queda una franja vacía. */}
+            <div className="border-t border-borde-soft px-4 py-3 empty:hidden sm:px-5">
+              <Paginacion {...lista.paginacion} />
+            </div>
+          </>
+        )}
+      </Tarjeta>
 
       {inscribiendo && (
         <Inscribir
@@ -216,80 +239,118 @@ export default function Alumnos() {
           }}
         />
       )}
-    </div>
+    </PaginaAcademia>
   );
 }
 
-/** "Al día" en gris o "Debe Bs 500" (rojo si venció). */
+/** "Al día" en verde o "Debe Bs 500" (rojo si venció, ámbar si todavía no). */
 function EstadoCuenta({ a }: { a: AlumnoFila }) {
   const debe = (a.saldo ?? 0) > 0;
+  if (!debe) return <Chip tono="verde">Al día</Chip>;
   return (
-    <span className={`text-sm tabular-nums ${debe ? (a.vencido ? "font-semibold text-danger-text" : "font-semibold text-texto-2") : "text-texto-3"}`}>
-      {debe ? `Debe ${fmtMoney(a.saldo)}` : "Al día"}
-    </span>
+    <Chip tono={a.vencido ? "rojo" : "ambar"} className="tabular-nums">
+      Debe {fmtMoney(a.saldo)}
+    </Chip>
   );
 }
 
+/** Las fotos completas no piden nada y van en gris; las que piden algo, en chip de color. */
 function Fotos({ estado }: { estado?: EstadoFotos }) {
   if (!estado) return <span className="text-sm text-texto-4">—</span>;
   const f = FOTOS[estado];
-  return (
-    <span className={`inline-flex items-center gap-1 text-[13px] ${f.tono}`}>
-      {f.ok && <Icon name="check" size={14} />}
-      {f.texto}
-    </span>
-  );
+  if (f.ok) {
+    return (
+      <span className="inline-flex items-center gap-1 text-[13px] text-texto-4">
+        <Icon name="check" size={14} />
+        {f.texto}
+      </span>
+    );
+  }
+  return <Chip tono={f.tono}>{f.texto}</Chip>;
+}
+
+/** El estado de la inscripción, sólo cuando no es el de siempre (activo). */
+function EstadoInscripcion({ estado }: { estado: string }) {
+  const e = textoEstadoInscripcion(estado);
+  if (e.tono === "normal") return null;
+  return <Chip tono={e.tono}>{e.texto}</Chip>;
 }
 
 function ListaAlumnos({ filas, onAbrir }: { filas: AlumnoFila[]; onAbrir: (a: AlumnoFila) => void }) {
   const p = usePalabras();
-  const columnas = "grid-cols-[minmax(200px,2fr)_minmax(160px,1.5fr)_120px_140px_140px]";
   const grupo = (a: AlumnoFila) => (a.grupoActual ? a.grupoActual.nombre : "—");
   return (
     <>
-      <div className="hidden md:block">
-        <div className={`grid ${columnas} gap-3 px-3 pb-2 text-[12px] text-texto-3`}>
-          <span>{p.Alumno}</span>
-          <span>{p.Carrera} y grupo</span>
-          <span>Forma de pago</span>
-          <span>Estado</span>
-          <span>Fotos</span>
-        </div>
-        <ul>
-          {filas.map((a) => {
-            const e = textoEstadoInscripcion(a.estado);
-            return (
-              <li key={a.id}>
-                <button
-                  type="button"
-                  onClick={() => onAbrir(a)}
-                  className={`grid w-full ${columnas} items-center gap-3 rounded-xl px-3 py-3 text-left transition-colors hover:bg-muted ${
-                    e.tono === "gris" ? "opacity-60" : ""
-                  }`}
+      <div className={`hidden md:block ${TABLA.envoltura}`}>
+        <table className={TABLA.tabla}>
+          <thead>
+            <tr className={TABLA.encabezado}>
+              <th scope="col" className={TABLA.th}>
+                {p.Alumno}
+              </th>
+              <th scope="col" className={TABLA.th}>
+                {p.Carrera} y grupo
+              </th>
+              <th scope="col" className={TABLA.th}>
+                Forma de pago
+              </th>
+              <th scope="col" className={TABLA.th}>
+                Estado
+              </th>
+              <th scope="col" className={TABLA.th}>
+                Fotos
+              </th>
+              <th scope="col" className={TABLA.th}>
+                <span className="sr-only">Acciones</span>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {filas.map((a) => {
+              const e = textoEstadoInscripcion(a.estado);
+              return (
+                <tr
+                  key={a.id}
+                  // Toda la fila abre la ficha; "Ver ficha" es el camino del teclado.
+                  onClick={(ev) => {
+                    if ((ev.target as HTMLElement).closest("a,button")) return;
+                    onAbrir(a);
+                  }}
+                  className={`${TABLA.fila} cursor-pointer ${e.tono === "gris" ? "opacity-60" : ""}`}
                 >
-                  <span className="min-w-0">
-                    <span className="block truncate text-sm font-semibold text-texto">{nombreAlumno(a)}</span>
-                    <span className="block truncate text-[12px] text-texto-3">
-                      {[a.codigo, a.ci && `CI ${a.ci}`, e.tono === "ambar" || e.tono === "gris" ? e.texto.toLowerCase() : null]
-                        .filter(Boolean)
-                        .join(" · ")}
+                  <td className={`${TABLA.td} max-w-[280px]`}>
+                    <span className="flex min-w-0 items-center gap-2">
+                      <span className="truncate font-semibold text-texto">{nombreAlumno(a)}</span>
+                      <EstadoInscripcion estado={a.estado} />
                     </span>
-                  </span>
-                  <span className="min-w-0">
-                    <span className="block truncate text-sm text-texto-2">{grupo(a)}</span>
-                    {a.grupoActual && <span className="block truncate text-[12px] text-texto-3">{nombreDe(a.grupoActual.sede)}</span>}
-                  </span>
-                  <span className="truncate text-sm text-texto-2">{nombreDe(a.plan) || "—"}</span>
-                  <EstadoCuenta a={a} />
-                  <Fotos estado={a.fotos} />
-                </button>
-              </li>
-            );
-          })}
-        </ul>
+                    <span className="block truncate text-[12px] text-texto-3">
+                      {[a.codigo, a.ci && `CI ${a.ci}`].filter(Boolean).join(" · ") || "—"}
+                    </span>
+                  </td>
+                  <td className={TABLA.td}>
+                    <span className="block whitespace-nowrap text-texto-2">{grupo(a)}</span>
+                    {a.grupoActual && <span className="block text-[12px] text-texto-3">{nombreDe(a.grupoActual.sede)}</span>}
+                  </td>
+                  <td className={`${TABLA.td} whitespace-nowrap text-texto-2`}>{nombreDe(a.plan) || "—"}</td>
+                  <td className={TABLA.td}>
+                    <EstadoCuenta a={a} />
+                  </td>
+                  <td className={TABLA.td}>
+                    <Fotos estado={a.fotos} />
+                  </td>
+                  <td className={`${TABLA.td} text-right`}>
+                    <BotonFila variante="ghost" a={`/academia/alumnos/${a.id}`} aria-label={`Ver ficha de ${nombreAlumno(a)}`}>
+                      Ver ficha
+                    </BotonFila>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
 
-      <ul className="divide-y divide-borde-soft md:hidden">
+      <ul className={`${LISTA.lista} md:hidden`}>
         {filas.map((a) => {
           const e = textoEstadoInscripcion(a.estado);
           return (
@@ -297,16 +358,20 @@ function ListaAlumnos({ filas, onAbrir }: { filas: AlumnoFila[]; onAbrir: (a: Al
               <button
                 type="button"
                 onClick={() => onAbrir(a)}
-                className={`flex w-full items-start justify-between gap-3 py-3 text-left ${e.tono === "gris" ? "opacity-60" : ""}`}
+                className={`flex w-full items-center gap-3 text-left ${LISTA.itemHover} ${e.tono === "gris" ? "opacity-60" : ""}`}
               >
-                <span className="min-w-0">
+                <span className="min-w-0 flex-1 space-y-1.5">
                   <span className="block truncate text-[15px] font-semibold text-texto">{nombreAlumno(a)}</span>
-                  <span className="block truncate text-[13px] text-texto-3">
-                    {[grupo(a), nombreDe(a.plan), e.tono !== "normal" ? e.texto : null].filter(Boolean).join(" · ")}
+                  <span className="block truncate text-[13px] text-texto-3">{[grupo(a), nombreDe(a.plan)].filter(Boolean).join(" · ")}</span>
+                  <span className="flex flex-wrap gap-1.5">
+                    <EstadoCuenta a={a} />
+                    <EstadoInscripcion estado={a.estado} />
+                    {a.fotos && a.fotos !== "COMPLETAS" && <Fotos estado={a.fotos} />}
                   </span>
-                  {a.fotos && a.fotos !== "COMPLETAS" && <Fotos estado={a.fotos} />}
                 </span>
-                <EstadoCuenta a={a} />
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-borde bg-white text-texto-3">
+                  <Icon name="chevronRight" size={16} />
+                </span>
               </button>
             </li>
           );
