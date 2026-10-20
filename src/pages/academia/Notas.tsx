@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { Icon } from "../../components/Icon";
 import MenuMas, { type AccionMenu } from "../../components/MenuMas";
 import { Boton, Cargando, ErrorMsg, Select, Vacio } from "../../components/ui";
@@ -13,7 +13,20 @@ import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
 import PedirMotivo from "../agenda/PedirMotivo";
 import NavDocente from "./docente/NavDocente";
-import { ErrorDeCarga, EstadoPagoTexto } from "./piezas";
+import {
+  BotonFila,
+  Chip,
+  EncabezadoPagina,
+  ErrorDeCarga,
+  EstadoPagoTexto,
+  FiltrosConteo,
+  GrillaKpi,
+  KpiTarjeta,
+  PaginaAcademia,
+  TABLA,
+  Tarjeta,
+  type TonoChip,
+} from "./piezas";
 
 type Filtro = "todos" | "sin" | "reprobados";
 
@@ -58,26 +71,28 @@ export default function Notas() {
   if (!grupoId) {
     const lista = (grupos.datos ?? []).filter((g) => g.estado !== "TERMINADO");
     return (
-      <div className="mx-auto max-w-xl space-y-4 p-4 pb-24 sm:p-6">
-        <h1 className="text-xl font-bold text-texto">Notas</h1>
-        {grupos.error ? (
-          <ErrorMsg onReintentar={grupos.recargar}>{grupos.error}</ErrorMsg>
-        ) : !grupos.datos ? (
-          <Cargando />
-        ) : lista.length === 0 ? (
-          <Vacio icono="edit" titulo="No hay grupos en curso" />
-        ) : (
-          <Select aria-label="Grupo" value="" onChange={(e) => setParams({ grupo: e.target.value })}>
-            <option value="">Elegí el grupo…</option>
-            {lista.map((g) => (
-              <option key={g.id} value={g.id}>
-                {nombreDe(g.carrera)} · {horarioGrupo(g)}
-              </option>
-            ))}
-          </Select>
-        )}
+      <PaginaAcademia ancho="max-w-xl" conBarraAbajo={docente}>
+        <EncabezadoPagina titulo="Notas" />
+        <Tarjeta etiqueta="Grupos">
+          {grupos.error ? (
+            <ErrorMsg onReintentar={grupos.recargar}>{grupos.error}</ErrorMsg>
+          ) : !grupos.datos ? (
+            <Cargando />
+          ) : lista.length === 0 ? (
+            <Vacio icono="edit" titulo="No hay grupos en curso" />
+          ) : (
+            <Select aria-label="Grupo" value="" onChange={(e) => setParams({ grupo: e.target.value })}>
+              <option value="">Elegí el grupo…</option>
+              {lista.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {nombreDe(g.carrera)} · {horarioGrupo(g)}
+                </option>
+              ))}
+            </Select>
+          )}
+        </Tarjeta>
         {docente && <NavDocente />}
-      </div>
+      </PaginaAcademia>
     );
   }
   return (
@@ -156,15 +171,18 @@ function CargaNotas({
 
   if (carga.error && !d) {
     return (
-      <div className="mx-auto max-w-5xl space-y-4 p-4 sm:p-6 lg:p-8">
-        <ErrorDeCarga
-          falla={carga.falla}
-          mensaje={carga.error}
-          onReintentar={carga.recargar}
-          que="este grupo"
-          volver={docente ? { a: "/academia/mis-clases", texto: "Ir a mis clases" } : { a: "/academia/calendario", texto: "Volver al calendario" }}
-        />
-      </div>
+      <PaginaAcademia>
+        <EncabezadoPagina titulo="Notas" />
+        <Tarjeta etiqueta="Notas">
+          <ErrorDeCarga
+            falla={carga.falla}
+            mensaje={carga.error}
+            onReintentar={carga.recargar}
+            que="este grupo"
+            volver={docente ? { a: "/academia/mis-clases", texto: "Ir a mis clases" } : { a: "/academia/calendario", texto: "Volver al calendario" }}
+          />
+        </Tarjeta>
+      </PaginaAcademia>
     );
   }
   if (!d) return <Cargando />;
@@ -263,54 +281,47 @@ function CargaNotas({
   ];
 
   const estadoModulo = (e: string) => (e === "CERRADA" ? "cerrado" : e === "ACTUAL" ? "abierto" : "por venir");
+  const columnas = "md:grid-cols-[minmax(180px,2fr)_120px_96px_minmax(120px,1fr)_120px]";
 
   return (
-    <div className="mx-auto max-w-5xl space-y-4 p-4 pb-24 sm:p-6 lg:p-8">
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0 space-y-0.5">
-          <Link to={docente ? "/academia/mis-clases" : `/academia/grupos/${grupoId}`} className="text-[13px] text-texto-3 hover:underline">
-            ← {docente ? "Mis clases" : "Grupo"}
-          </Link>
-          <h1 className="text-xl font-bold text-texto">
+    <PaginaAcademia conBarraAbajo={docente}>
+      <EncabezadoPagina
+        volver={docente ? { a: "/academia/mis-clases", texto: "Mis clases" } : { a: `/academia/grupos/${grupoId}`, texto: "Grupo" }}
+        titulo={
+          <>
             Notas · M{m.orden} {m.nombre}
-          </h1>
-          <p className="text-[13px] text-texto-3">
-            {[g ? `${nombreDe(g.carrera)} · ${horarioGrupo(g)}` : null, g ? nombreDe(g.sede) : null, `${d.items.length} ${d.items.length === 1 ? p.alumno : p.alumnos}`, `del ${fechaCorta(m.desde)} al ${fechaCorta(m.hasta)}`]
-              .filter(Boolean)
-              .join(" · ")}
-          </p>
-          <p className="text-[13px] text-texto-3">
-            Nota de 1 a {d.escalaMax} · aprueba con {d.notaMinima}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-end gap-2">
-          {d.materias.length > 1 && (
-            <label className="block text-[12px] text-texto-3">
-              {p.Materia}
-              <Select value={m.id} onChange={(e) => onModulo(Number(e.target.value))}>
-                {d.materias.map((x) => (
-                  <option key={x.id} value={x.id}>
-                    M{x.orden} {x.nombre} · {estadoModulo(x.estado)}
-                  </option>
-                ))}
-              </Select>
-            </label>
-          )}
-          {registra && (
-            <Boton icono="lock" disabled={d.cerrada || cerrando} onClick={() => void cerrar()}>
-              {d.cerrada ? "Notas cerradas" : cerrando ? "Cerrando…" : `Cerrar notas del ${p.materia}`}
-            </Boton>
-          )}
-          <MenuMas etiqueta="Más acciones de las notas" acciones={acciones} />
-        </div>
-      </header>
+          </>
+        }
+        bajada={
+          <>
+            <span className="block">
+              {[g ? `${nombreDe(g.carrera)} · ${horarioGrupo(g)}` : null, g ? nombreDe(g.sede) : null, `${d.items.length} ${d.items.length === 1 ? p.alumno : p.alumnos}`, `del ${fechaCorta(m.desde)} al ${fechaCorta(m.hasta)}`]
+                .filter(Boolean)
+                .join(" · ")}
+            </span>
+            <span className="block">
+              Nota de 1 a {d.escalaMax} · aprueba con {d.notaMinima}
+            </span>
+          </>
+        }
+        acciones={
+          <>
+            {registra && (
+              <Boton icono="lock" disabled={d.cerrada || cerrando} onClick={() => void cerrar()}>
+                {d.cerrada ? "Notas cerradas" : cerrando ? "Cerrando…" : `Cerrar notas del ${p.materia}`}
+              </Boton>
+            )}
+            <MenuMas etiqueta="Más acciones de las notas" acciones={acciones} />
+          </>
+        }
+      />
 
       {d.cerrada ? (
-        <p role="status" className="rounded-xl bg-muted px-3.5 py-2.5 text-sm text-texto-2">
-          Notas del M{m.orden} cerradas.{reabre ? "" : " Para corregir una, pedíselo al administrador."}
+        <p role="status" className="flex items-center gap-1.5 rounded-xl border border-borde bg-white px-3.5 py-2.5 text-sm text-texto-2">
+          <Icon name="lock" size={14} /> Notas del M{m.orden} cerradas.{reabre ? "" : " Para corregir una, pedíselo al administrador."}
         </p>
       ) : !registra ? (
-        <p role="status" className="flex items-center gap-1.5 rounded-xl bg-muted px-3.5 py-2.5 text-sm text-texto-2">
+        <p role="status" className="flex items-center gap-1.5 rounded-xl border border-borde bg-white px-3.5 py-2.5 text-sm text-texto-2">
           <Icon name="lock" size={14} /> Sólo lectura: las notas las carga el {p.docente} del {p.materia}.
         </p>
       ) : null}
@@ -326,105 +337,149 @@ function CargaNotas({
       )}
       <ErrorMsg>{error}</ErrorMsg>
 
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-borde-soft">
-        <div role="tablist" aria-label={`Filtrar ${p.alumnos}`} className="-mb-px flex gap-5">
-          {(
-            [
-              ["todos", "Todos", filas.length],
-              ["sin", "Sin nota", sinNota.length],
-              ["reprobados", "Reprobados", reprobados.length],
-            ] as const
-          ).map(([k, label, n]) => (
-            <button
-              key={k}
-              type="button"
-              role="tab"
-              aria-selected={filtro === k}
-              onClick={() => setFiltro(k)}
-              className={`border-b-2 pb-2.5 pt-1 text-sm ${filtro === k ? "border-primary font-semibold text-texto" : "border-transparent text-texto-3"}`}
-            >
-              {label} <span className={`tabular-nums ${k !== "todos" && n > 0 ? "text-warning-text" : "text-texto-4"}`}>{n}</span>
-            </button>
-          ))}
-        </div>
-        {!soloLectura && (
-          <EstadoGuardado
-            invalidas={invalidas}
-            fallos={Object.keys(fallos).length}
-            sinGuardar={nSinGuardar}
-            guardando={enVuelo}
-            algoGuardado={algoGuardado}
-          />
-        )}
-      </div>
+      {/* El resumen del módulo: lo que antes era la línea de abajo. */}
+      <GrillaKpi>
+        <KpiTarjeta
+          etiqueta="Cargadas"
+          icono="edit"
+          valor={`${filas.length - sinNota.length} de ${filas.length}`}
+          tono={filas.length > 0 && sinNota.length === 0 ? "ok" : "normal"}
+          pie={sinNota.length ? `${sinNota.length} sin nota` : "están todas"}
+        />
+        <KpiTarjeta etiqueta="Aprobados" icono="checkCirculo" valor={validas.length - reprobados.length} pie={`con ${d.notaMinima} o más`} />
+        <KpiTarjeta
+          etiqueta="Reprobados"
+          icono="alert"
+          valor={reprobados.length}
+          tono={reprobados.length > 0 ? "urgente" : "normal"}
+          pie={`menos de ${d.notaMinima}`}
+        />
+        <KpiTarjeta
+          etiqueta="Promedio"
+          icono="chart"
+          valor={promedio != null ? promedio.toFixed(1).replace(".", ",") : "—"}
+          pie={`de 1 a ${d.escalaMax}`}
+        />
+      </GrillaKpi>
 
-      <div className="hidden grid-cols-[minmax(180px,2fr)_120px_90px_minmax(120px,1fr)_100px] gap-3 px-3 text-[12px] text-texto-3 md:grid">
-        <span>{p.Alumno}</span>
-        <span>Pago del M{m.orden}</span>
-        <span>Nota</span>
-        <span>En letras</span>
-        <span>Resultado</span>
-      </div>
-      <ul className="divide-y divide-borde-soft">
-        {visibles.map((f) => {
-          const t = f.e.tipo;
-          const fallo = fallos[f.inscripcionId];
-          const pendiente = !soloLectura && !fallo && sinGuardar(f);
-          return (
-            <li key={f.inscripcionId} className="grid grid-cols-[minmax(0,1fr)_80px] items-center gap-x-3 gap-y-1 px-3 py-2.5 md:grid-cols-[minmax(180px,2fr)_120px_90px_minmax(120px,1fr)_100px]">
-              <span className="min-w-0 truncate text-sm text-texto">{f.nombre}</span>
-              <span className="row-start-2 md:row-start-auto">
-                <EstadoPagoTexto estado={f.estadoPago} />
-              </span>
-              <input
-                inputMode="numeric"
-                aria-label={`Nota de ${f.nombre}`}
-                value={f.valor}
-                disabled={soloLectura}
-                aria-invalid={t === "error" || !!fallo || undefined}
-                onChange={(e) => {
-                  const valor = e.target.value.replace(/[^0-9.,]/g, "");
-                  setNotas({ ...notas, [f.inscripcionId]: valor });
-                  setAviso("");
-                  setMensaje("");
-                  clearTimeout(pausas.current[f.inscripcionId]);
-                  pausas.current[f.inscripcionId] = setTimeout(() => void guardarUna(f.inscripcionId, valor), PAUSA_GUARDADO_MS);
-                }}
-                onBlur={() => void guardarUna(f.inscripcionId, f.valor)}
-                className={`row-span-2 w-full rounded-xl border px-3 py-2 text-right text-sm tabular-nums outline-none focus:border-primary focus:ring-2 focus:ring-primary-100 disabled:bg-muted md:row-span-1 ${
-                  t === "error" || fallo
-                    ? "border-danger bg-danger-bg"
-                    : t === "vacia" && !soloLectura
-                      ? "border-warning-text/50 bg-warning-bg/40"
-                      : "border-borde bg-white"
-                }`}
-              />
-              <span className="hidden text-sm text-texto-3 md:block">{"n" in f.e && f.e.n != null ? numeroEnLetras(f.e.n) : "—"}</span>
-              <span
-                className={`text-[13px] md:text-sm ${
-                  t === "reprueba" || t === "error" ? "font-semibold text-danger-text" : t === "vacia" ? "font-semibold text-warning-text" : "text-texto-2"
-                }`}
-              >
-                {f.e.tipo === "vacia" ? "Sin nota" : f.e.tipo === "error" ? f.e.motivo : f.e.tipo === "aprueba" ? "Aprobado" : "Reprobado"}
-                {fallo && <span className="block text-[12px] font-semibold text-danger-text">No se guardó</span>}
-                {pendiente && <span className="block text-[12px] font-normal text-texto-4">{guardando[f.inscripcionId] ? "Guardando…" : "Sin guardar"}</span>}
-              </span>
-            </li>
-          );
-        })}
-      </ul>
-      {filtro === "todos" && filas.length > LIMITE && (
-        <button type="button" onClick={() => setVerTodos((v) => !v)} className="text-sm font-semibold text-primary-700 hover:underline">
-          {verTodos ? "Ver menos" : `Ver los ${filas.length - LIMITE} restantes`}
-        </button>
-      )}
-      <div className="flex flex-wrap justify-between gap-2 border-t border-borde-soft pt-3 text-[13px] text-texto-3">
-        <span>
-          Cargadas {filas.length - sinNota.length} de {filas.length} · aprobados {validas.length - reprobados.length} · reprobados {reprobados.length}
-        </span>
-        {promedio != null && <span>Promedio del grupo {promedio.toFixed(1).replace(".", ",")}</span>}
-      </div>
-      <p className="text-[12px] text-texto-4">La deuda no impide cargar la nota ni aprobar el {p.materia} (RM 0008/2016, art. 41).</p>
+      <Tarjeta
+        id="t-notas"
+        titulo={p.Alumnos}
+        sinRelleno
+        acciones={
+          d.materias.length > 1 && (
+            <label className="flex items-center gap-2 text-[13px] text-texto-3">
+              {p.Materia}
+              <Select value={m.id} onChange={(e) => onModulo(Number(e.target.value))}>
+                {d.materias.map((x) => (
+                  <option key={x.id} value={x.id}>
+                    M{x.orden} {x.nombre} · {estadoModulo(x.estado)}
+                  </option>
+                ))}
+              </Select>
+            </label>
+          )
+        }
+        barra={
+          <FiltrosConteo<Filtro>
+            enTarjeta
+            etiqueta={`Filtrar ${p.alumnos}`}
+            opciones={[
+              { clave: "todos", label: "Todos", n: filas.length },
+              { clave: "sin", label: "Sin nota", n: sinNota.length, urgente: true },
+              { clave: "reprobados", label: "Reprobados", n: reprobados.length, urgente: true },
+            ]}
+            valor={filtro}
+            onChange={setFiltro}
+            derecha={
+              !soloLectura && (
+                <EstadoGuardado
+                  invalidas={invalidas}
+                  fallos={Object.keys(fallos).length}
+                  sinGuardar={nSinGuardar}
+                  guardando={enVuelo}
+                  algoGuardado={algoGuardado}
+                />
+              )
+            }
+          />
+        }
+        pie={<p className="text-[12px] text-texto-3">La deuda no impide cargar la nota ni aprobar el {p.materia} (RM 0008/2016, art. 41).</p>}
+      >
+        <div className={`hidden gap-3 px-5 py-2.5 md:grid ${columnas} ${TABLA.encabezado}`}>
+          <span>{p.Alumno}</span>
+          <span>Pago del M{m.orden}</span>
+          <span className="text-right">Nota</span>
+          <span>En letras</span>
+          <span>Resultado</span>
+        </div>
+        {visibles.length === 0 ? (
+          <p className="border-t border-borde-soft p-5 text-sm text-texto-3">
+            {filtro === "sin" ? "Todas las notas están cargadas." : "Nadie en esta lista."}
+          </p>
+        ) : (
+          <ul>
+            {visibles.map((f) => {
+              const t = f.e.tipo;
+              const fallo = fallos[f.inscripcionId];
+              const pendiente = !soloLectura && !fallo && sinGuardar(f);
+              return (
+                <li
+                  key={f.inscripcionId}
+                  className={`grid grid-cols-[minmax(0,1fr)_88px] items-center gap-x-3 gap-y-1.5 border-t border-borde-soft px-4 py-3 transition-colors hover:bg-muted sm:px-5 ${columnas}`}
+                >
+                  <span className="min-w-0 truncate text-sm font-semibold text-texto md:col-start-1 md:row-start-1">{f.nombre}</span>
+                  {/* En el celular el pago y el resultado van juntos debajo del
+                      nombre; en escritorio (`contents`) cada uno en su columna. */}
+                  <span className="col-start-1 row-start-2 flex min-w-0 flex-wrap items-center gap-1.5 md:contents">
+                    <span className="md:col-start-2 md:row-start-1">
+                      <EstadoPagoTexto estado={f.estadoPago} />
+                    </span>
+                    <span className="md:col-start-5 md:row-start-1">
+                      <Chip tono={TONO_RESULTADO[t]}>{t === "vacia" ? "Sin nota" : t === "error" ? f.e.motivo : t === "aprueba" ? "Aprobado" : "Reprobado"}</Chip>
+                      {fallo && <span className="mt-0.5 block text-[12px] font-semibold text-danger-text">No se guardó</span>}
+                      {pendiente && <span className="mt-0.5 block text-[12px] font-normal text-texto-4">{guardando[f.inscripcionId] ? "Guardando…" : "Sin guardar"}</span>}
+                    </span>
+                  </span>
+                  <input
+                    inputMode="numeric"
+                    aria-label={`Nota de ${f.nombre}`}
+                    value={f.valor}
+                    disabled={soloLectura}
+                    aria-invalid={t === "error" || !!fallo || undefined}
+                    onChange={(e) => {
+                      const valor = e.target.value.replace(/[^0-9.,]/g, "");
+                      setNotas({ ...notas, [f.inscripcionId]: valor });
+                      setAviso("");
+                      setMensaje("");
+                      clearTimeout(pausas.current[f.inscripcionId]);
+                      pausas.current[f.inscripcionId] = setTimeout(() => void guardarUna(f.inscripcionId, valor), PAUSA_GUARDADO_MS);
+                    }}
+                    onBlur={() => void guardarUna(f.inscripcionId, f.valor)}
+                    className={`col-start-2 row-span-2 row-start-1 min-h-11 w-full rounded-xl border px-3 py-2 text-right text-base font-semibold tabular-nums outline-none focus:border-primary focus:ring-2 focus:ring-primary-100 disabled:bg-muted md:col-start-3 md:row-span-1 md:min-h-10 md:text-sm ${
+                      t === "error" || fallo
+                        ? "border-danger bg-danger-bg"
+                        : t === "vacia" && !soloLectura
+                          ? "border-warning-text/50 bg-warning-bg/40"
+                          : "border-borde bg-white"
+                    }`}
+                  />
+                  <span className="hidden text-sm text-texto-3 md:col-start-4 md:row-start-1 md:block">
+                    {"n" in f.e && f.e.n != null ? numeroEnLetras(f.e.n) : "—"}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+        {filtro === "todos" && filas.length > LIMITE && (
+          <div className="flex justify-center border-t border-borde-soft p-3">
+            <BotonFila variante="ghost" icono={verTodos ? "arrowUp" : "chevronDown"} onClick={() => setVerTodos((v) => !v)}>
+              {verTodos ? "Ver menos" : `Ver los ${filas.length - LIMITE} restantes`}
+            </BotonFila>
+          </div>
+        )}
+      </Tarjeta>
 
       {reabriendo && (
         <PedirMotivo
@@ -447,9 +502,17 @@ function CargaNotas({
         />
       )}
       {docente && <NavDocente />}
-    </div>
+    </PaginaAcademia>
   );
 }
+
+/** El color del resultado: aprobado en verde, lo que falta en ámbar, lo que reprueba o no vale en rojo. */
+const TONO_RESULTADO: Record<"vacia" | "error" | "aprueba" | "reprueba", TonoChip> = {
+  vacia: "ambar",
+  error: "rojo",
+  aprueba: "verde",
+  reprueba: "rojo",
+};
 
 /** El mismo registro sin esa clave (para sacar una casilla de "guardando" o de "falló"). */
 function sinClave<T>(x: Record<number, T>, clave: number): Record<number, T> {

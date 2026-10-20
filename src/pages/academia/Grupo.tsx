@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import MenuMas, { type AccionMenu } from "../../components/MenuMas";
 import { Paginacion } from "../../components/Paginacion";
 import PanelLateral from "../../components/PanelLateral";
@@ -17,7 +17,23 @@ import { cobraCuotas, soloLoSuyo, tienePermiso } from "../../lib/permisos";
 import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
 import Inscribir from "./Inscribir";
-import { ErrorDeCarga, EstadoDeCuenta, EstadoPagoTexto, FiltrosConteo, PuntosPago } from "./piezas";
+import {
+  BotonFila,
+  EncabezadoPagina,
+  ErrorDeCarga,
+  EstadoDeCuenta,
+  EstadoPagoTexto,
+  FiltrosConteo,
+  GrillaKpi,
+  KpiTarjeta,
+  LISTA,
+  PaginaAcademia,
+  PuntosPago,
+  ResumenPanel,
+  SeccionPanel,
+  TABLA,
+  Tarjeta,
+} from "./piezas";
 
 /**
  * E3 · Detalle de grupo, versión limpia (lienzo E3 v2): el centralizador,
@@ -81,18 +97,18 @@ export default function Grupo() {
   const g = grupo.datos;
   if (grupo.error && !g) {
     return (
-      <div className="mx-auto max-w-6xl space-y-4 p-4 sm:p-6 lg:p-8">
-        <Link to={volverA} className="text-[13px] text-texto-3 hover:underline">
-          ← {sinMontos ? "Mis clases" : "Calendario"}
-        </Link>
-        <ErrorDeCarga
-          falla={grupo.falla}
-          mensaje={grupo.error}
-          onReintentar={grupo.recargar}
-          que="este grupo"
-          volver={sinMontos ? { a: "/academia/mis-clases", texto: "Ir a mis clases" } : { a: "/academia/calendario", texto: "Volver al calendario" }}
-        />
-      </div>
+      <PaginaAcademia>
+        <EncabezadoPagina titulo="Grupo" volver={{ a: volverA, texto: sinMontos ? "Mis clases" : "Calendario" }} />
+        <Tarjeta etiqueta="Grupo">
+          <ErrorDeCarga
+            falla={grupo.falla}
+            mensaje={grupo.error}
+            onReintentar={grupo.recargar}
+            que="este grupo"
+            volver={sinMontos ? { a: "/academia/mis-clases", texto: "Ir a mis clases" } : { a: "/academia/calendario", texto: "Volver al calendario" }}
+          />
+        </Tarjeta>
+      </PaginaAcademia>
     );
   }
   if (!g) return <Cargando />;
@@ -152,86 +168,148 @@ export default function Grupo() {
     }
   }
 
+  const conPie = alumnos.items.length > 0 && (!!cobroActual || alumnos.paginacion.total > 20);
+  const faltanPagar = cobroActual ? cobroActual.total - cobroActual.pagaron : null;
+
   return (
-    <div className={`mx-auto max-w-6xl space-y-5 p-4 pb-24 sm:p-6 md:pb-6 lg:p-8 ${elegido ? "md:mr-[380px]" : ""}`}>
-      <header className="flex flex-wrap items-start justify-between gap-4">
-        <div className="min-w-0 space-y-1.5">
-          <Link to={volverA} className="text-[13px] text-texto-3 hover:underline">
-            ← {sinMontos ? "Mis clases" : "Calendario"}
-          </Link>
-          <h1 className="text-2xl font-bold text-texto">
-            {nombreDe(g.carrera)} · {horarioGrupo(g)}
-          </h1>
-          <p className="text-sm text-texto-3">{subtitulo}</p>
-        </div>
-        <div className="flex items-center gap-2">
-          {inscribe && (
-            <Boton className="hidden md:inline-flex" onClick={() => setInscribiendo(true)} disabled={g.estado === "TERMINADO" || !!g.cancelado}>
-              Inscribir {p.alumno}
-            </Boton>
-          )}
-          <MenuMas etiqueta="Más acciones del grupo" titulo={`${nombreDe(g.carrera)} · ${horarioGrupo(g)}`} acciones={acciones} />
-        </div>
-      </header>
+    <PaginaAcademia conBarraAbajo className={elegido ? "md:mr-[380px] md:w-auto" : ""}>
+      {/* En el celular Inscribir va en la barra de abajo y el "⋯" sube a la
+          esquina, a la altura de "Calendario": solo debajo del título quedaba
+          suelto. */}
+      <div className="relative max-md:pr-12">
+        <EncabezadoPagina
+          titulo={`${nombreDe(g.carrera)} · ${horarioGrupo(g)}`}
+          volver={{ a: volverA, texto: sinMontos ? "Mis clases" : "Calendario" }}
+          bajada={subtitulo}
+          acciones={
+            <>
+              {inscribe && (
+                <Boton icono="plus" className="max-md:!hidden" onClick={() => setInscribiendo(true)} disabled={g.estado === "TERMINADO" || !!g.cancelado}>
+                  Inscribir {p.alumno}
+                </Boton>
+              )}
+              <span className="max-md:absolute max-md:right-0 max-md:top-0">
+                <MenuMas etiqueta="Más acciones del grupo" titulo={`${nombreDe(g.carrera)} · ${horarioGrupo(g)}`} acciones={acciones} />
+              </span>
+            </>
+          }
+        />
+      </div>
 
       {state?.avisos?.length ? <AvisoOk>{`Grupo creado. ${state.avisos.join(" · ")}`}</AvisoOk> : null}
       {g.cancelado && (
-        <p role="status" className="rounded-xl bg-muted px-3.5 py-2.5 text-sm font-semibold text-texto-2">
+        <p role="status" className="rounded-xl border border-borde bg-white px-3.5 py-2.5 text-sm font-semibold text-texto-2">
           Grupo cancelado: no aparece en la lista ni recibe inscripciones.
         </p>
       )}
       <AvisoOk>{aviso}</AvisoOk>
       <ErrorMsg>{errorAccion}</ErrorMsg>
 
+      {/* Los números del grupo de un vistazo: el docente, sin montos (D6). */}
+      <GrillaKpi columnas={sinMontos ? 3 : 4}>
+        <KpiTarjeta
+          etiqueta="Inscritos"
+          icono="users"
+          valor={g.inscritos}
+          pie={g.cupo != null ? `de ${g.cupo} lugares` : "sin tope de cupo"}
+        />
+        <KpiTarjeta
+          etiqueta={cobroActual ? `Pagaron el M${cobroActual.materiaOrden}` : `Pago del ${p.materia}`}
+          icono="coins"
+          valor={cobroActual ? `${cobroActual.pagaron} de ${cobroActual.total}` : "—"}
+          tono={cobroActual && cobroActual.total > 0 && cobroActual.pagaron === cobroActual.total ? "ok" : "normal"}
+          pie={actual ? actual.nombre : "todavía no empezó"}
+        />
+        {sinMontos ? (
+          // La tercera del docente va a lo ancho en el celular (2 por fila): sola quedaba media fila vacía.
+          <div className="col-span-2 grid lg:col-span-1">
+            <KpiTarjeta
+              etiqueta="Falta pagar"
+              icono="clock"
+              valor={faltanPagar ?? "—"}
+              tono={faltanPagar ? "ambar" : "normal"}
+              pie="sin pagar o abonó"
+            />
+          </div>
+        ) : (
+          <>
+            <KpiTarjeta
+              etiqueta="Deben"
+              icono="alert"
+              valor={g.deben}
+              tono={g.deben > 0 ? "urgente" : "normal"}
+              pie={g.deben > 0 && g.montoDebe != null ? fmtMoney(g.montoDebe) : "nadie debe"}
+            />
+            <KpiTarjeta etiqueta="Al día" icono="checkCirculo" valor={g.alDia} tono={g.alDia > 0 ? "ok" : "normal"} pie={`de ${g.inscritos} inscritos`} />
+          </>
+        )}
+      </GrillaKpi>
+
       <MateriasDelGrupo g={g} />
 
-      <FiltrosConteo<FiltroAlumnosGrupo>
-        etiqueta={`Filtrar ${p.alumnos}`}
-        opciones={[
-          { clave: "todos", label: "Todos", n: n("todos") },
-          ...(sinMontos
-            ? []
-            : [
-                { clave: "deben" as const, label: "Deben", n: n("deben"), urgente: true },
-                { clave: "aldia" as const, label: "Al día", n: n("aldia") },
-              ]),
-          { clave: "retirados", label: "Retirados", n: n("retirados") },
-        ]}
-        valor={filtro}
-        onChange={(v) => {
-          setFiltro(v);
-          setElegido(null);
-        }}
-        derecha={
-          <nav aria-label="Más del grupo" className="flex gap-4 pb-2 text-sm">
-            <Link to={`/academia/grupos/${grupoId}/lista`} className="text-texto-3 hover:text-texto-2">
+      <Tarjeta
+        id="t-alumnos"
+        titulo={p.Alumnos}
+        sinRelleno
+        acciones={
+          <nav aria-label="Más del grupo" className="flex flex-wrap gap-2">
+            <BotonFila variante="ghost" icono="lista" a={`/academia/grupos/${grupoId}/lista`}>
               Asistencia
-            </Link>
-            <Link to={`/academia/grupos/${grupoId}/notas`} className="text-texto-3 hover:text-texto-2">
+            </BotonFila>
+            <BotonFila variante="ghost" icono="edit" a={`/academia/grupos/${grupoId}/notas`}>
               Notas
-            </Link>
+            </BotonFila>
           </nav>
         }
-      />
-
-      {alumnos.error && !alumnos.items.length ? (
-        <ErrorMsg onReintentar={alumnos.recargar}>{alumnos.error}</ErrorMsg>
-      ) : alumnos.cargando && !alumnos.items.length ? (
-        <Cargando />
-      ) : alumnos.items.length === 0 ? (
-        <Vacio
-          icono="users"
-          titulo={filtro === "todos" ? `Todavía no hay ${p.alumnos} en este grupo` : `Ningún ${p.alumno} en esta lista`}
-          accion={
-            filtro === "todos" && inscribe ? (
-              <Boton icono="plus" onClick={() => setInscribiendo(true)}>
-                Inscribir {p.alumno}
-              </Boton>
-            ) : undefined
-          }
-        />
-      ) : (
-        <>
+        barra={
+          <FiltrosConteo<FiltroAlumnosGrupo>
+            enTarjeta
+            etiqueta={`Filtrar ${p.alumnos}`}
+            opciones={[
+              { clave: "todos", label: "Todos", n: n("todos") },
+              ...(sinMontos
+                ? []
+                : [
+                    { clave: "deben" as const, label: "Deben", n: n("deben"), urgente: true },
+                    { clave: "aldia" as const, label: "Al día", n: n("aldia") },
+                  ]),
+              { clave: "retirados", label: "Retirados", n: n("retirados") },
+            ]}
+            valor={filtro}
+            onChange={(v) => {
+              setFiltro(v);
+              setElegido(null);
+            }}
+          />
+        }
+        pie={
+          conPie ? (
+            <Paginacion
+              {...alumnos.paginacion}
+              extra={cobroActual ? `M${cobroActual.materiaOrden} pagado por ${cobroActual.pagaron} de ${cobroActual.total}` : undefined}
+            />
+          ) : undefined
+        }
+      >
+        {alumnos.error && !alumnos.items.length ? (
+          <div className="p-4 sm:p-5">
+            <ErrorMsg onReintentar={alumnos.recargar}>{alumnos.error}</ErrorMsg>
+          </div>
+        ) : alumnos.cargando && !alumnos.items.length ? (
+          <Cargando />
+        ) : alumnos.items.length === 0 ? (
+          <Vacio
+            icono="users"
+            titulo={filtro === "todos" ? `Todavía no hay ${p.alumnos} en este grupo` : `Ningún ${p.alumno} en esta lista`}
+            accion={
+              filtro === "todos" && inscribe ? (
+                <Boton icono="plus" onClick={() => setInscribiendo(true)}>
+                  Inscribir {p.alumno}
+                </Boton>
+              ) : undefined
+            }
+          />
+        ) : (
           <TablaAlumnos
             filas={alumnos.items}
             elegido={elegido?.inscripcionId ?? null}
@@ -243,16 +321,12 @@ export default function Grupo() {
             onElegir={setElegido}
             onCobrar={(a) => navigate(rutaCobroInscripcion(a.inscripcionId, g.sede))}
           />
-          <Paginacion
-            {...alumnos.paginacion}
-            extra={cobroActual ? `M${cobroActual.materiaOrden} pagado por ${cobroActual.pagaron} de ${cobroActual.total}` : undefined}
-          />
-        </>
-      )}
+        )}
+      </Tarjeta>
 
       {inscribe && !g.cancelado && g.estado !== "TERMINADO" && (
-        <div className="fixed inset-x-0 bottom-0 z-20 border-t border-borde-soft bg-white p-3 md:hidden">
-          <Boton className="w-full" onClick={() => setInscribiendo(true)}>
+        <div className="fixed inset-x-0 bottom-0 z-20 border-t border-borde-soft bg-white p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(15,23,42,0.06)] md:hidden">
+          <Boton icono="plus" className="min-h-11 w-full" onClick={() => setInscribiendo(true)}>
             Inscribir {p.alumno}
           </Boton>
         </div>
@@ -300,39 +374,42 @@ export default function Grupo() {
         onCancel={() => setCancelando(false)}
         onOk={() => void cambiarCancelado(true)}
       />
-    </div>
+    </PaginaAcademia>
   );
 }
 
 /** La barra de materias con su nombre: la actual resaltada, las cerradas con ✓. */
 function MateriasDelGrupo({ g }: { g: GrupoDetalle }) {
+  const p = usePalabras();
   const filas = [...g.materiasGrupo].sort((a, b) => a.materia.orden - b.materia.orden);
   if (!filas.length) return null;
   const estado = (orden: number) => g.materias.find((m) => m.orden === orden)?.estado ?? "FUTURA";
   const hoy = mesDe(new Date());
   const cols = { gridTemplateColumns: `repeat(${filas.length}, minmax(0, 1fr))` };
   return (
-    <div className="space-y-2">
-      <div className="grid gap-1" style={cols}>
-        {filas.map((m) => (
-          <span
-            key={m.id}
-            className={`h-1 rounded-full ${estado(m.materia.orden) === "FUTURA" ? "bg-primary-100" : "bg-primary"}`}
-          />
-        ))}
+    <Tarjeta id="t-modulos" titulo={`${p.Materias} del grupo`}>
+      <div className="space-y-2">
+        <div className="grid gap-1.5" style={cols}>
+          {filas.map((m) => (
+            <span
+              key={m.id}
+              className={`h-1.5 rounded-full ${estado(m.materia.orden) === "FUTURA" ? "bg-primary-100" : "bg-primary"}`}
+            />
+          ))}
+        </div>
+        <div className="grid gap-1.5 text-[12px] sm:text-[13px]" style={cols}>
+          {filas.map((m) => {
+            const e = estado(m.materia.orden);
+            return (
+              <span key={m.id} className={`truncate ${e === "ACTUAL" ? "font-semibold text-primary-700" : "text-texto-3"}`}>
+                M{m.materia.orden} <span className="hidden sm:inline">{m.materia.nombre} </span>· {mesCorto(m.mesLiquidacion)}
+                {e === "CERRADA" ? " ✓" : e === "ACTUAL" ? " · actual" : m.mesLiquidacion.slice(0, 4) !== hoy.slice(0, 4) ? ` ${m.mesLiquidacion.slice(0, 4)}` : ""}
+              </span>
+            );
+          })}
+        </div>
       </div>
-      <div className="grid gap-1 text-[12px]" style={cols}>
-        {filas.map((m) => {
-          const e = estado(m.materia.orden);
-          return (
-            <span key={m.id} className={`truncate ${e === "ACTUAL" ? "font-semibold text-primary-700" : "text-texto-3"}`}>
-              M{m.materia.orden} <span className="hidden sm:inline">{m.materia.nombre} </span>· {mesCorto(m.mesLiquidacion)}
-              {e === "CERRADA" ? " ✓" : e === "ACTUAL" ? " · actual" : m.mesLiquidacion.slice(0, 4) !== hoy.slice(0, 4) ? ` ${m.mesLiquidacion.slice(0, 4)}` : ""}
-            </span>
-          );
-        })}
-      </div>
-    </div>
+    </Tarjeta>
   );
 }
 
@@ -375,12 +452,12 @@ function TablaAlumnos({
   const columnas = sinMontos
     ? "grid-cols-[minmax(200px,2fr)_140px_90px]"
     : conCobrar
-      ? "grid-cols-[minmax(200px,2fr)_110px_120px_90px_110px_70px]"
+      ? "grid-cols-[minmax(200px,2fr)_110px_120px_90px_110px_96px]"
       : "grid-cols-[minmax(180px,2fr)_100px_110px_80px_100px]";
   return (
     <>
       <div className="hidden md:block">
-        <div className={`grid ${columnas} gap-3 px-3 pb-2 text-[12px] text-texto-3`}>
+        <div className={`grid ${columnas} gap-3 px-5 py-2.5 ${TABLA.encabezado}`}>
           <span>{p.Alumno}</span>
           {sinMontos ? <span>Pago del {p.materia}</span> : <span>Forma de pago</span>}
           {!sinMontos && <span>Pagos</span>}
@@ -398,7 +475,7 @@ function TablaAlumnos({
                     "Cobrar" es otro botón aparte, encima. Un botón dentro de
                     otro es HTML inválido y los lectores de pantalla lo pierden. */}
                 <div
-                  className={`relative grid ${columnas} items-center gap-3 rounded-xl px-3 py-3 transition-colors ${
+                  className={`relative grid ${columnas} items-center gap-3 border-t border-borde-soft px-5 py-3 transition-colors ${
                     elegido === a.inscripcionId ? "bg-primary-50" : "hover:bg-muted"
                   } ${retirado ? "opacity-50" : ""}`}
                 >
@@ -408,7 +485,7 @@ function TablaAlumnos({
                       aria-label={`Ver a ${nombreAlumno(a.alumno)}`}
                       aria-expanded={elegido === a.inscripcionId}
                       onClick={() => onElegir(a)}
-                      className="block max-w-full truncate text-left text-sm font-semibold text-texto after:absolute after:inset-0 after:rounded-xl after:content-[''] focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-primary"
+                      className="block max-w-full truncate text-left text-sm font-semibold text-texto after:absolute after:inset-0 after:content-[''] focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-inset focus-visible:after:ring-primary"
                     >
                       {nombreAlumno(a.alumno)}
                     </button>
@@ -431,14 +508,14 @@ function TablaAlumnos({
                   {conCobrar && (
                     <span className="text-right">
                       {cobra && (a.saldo ?? 0) > 0 && !retirado && (
-                        <button
-                          type="button"
+                        <BotonFila
+                          icono="dollar"
                           aria-label={`Cobrar a ${nombreAlumno(a.alumno)}`}
                           onClick={() => onCobrar(a)}
-                          className="relative z-10 text-[13px] font-semibold text-primary-700 hover:underline"
+                          className="relative z-10"
                         >
                           Cobrar
-                        </button>
+                        </BotonFila>
                       )}
                     </span>
                   )}
@@ -449,18 +526,18 @@ function TablaAlumnos({
         </ul>
       </div>
 
-      <ul className="divide-y divide-borde-soft md:hidden">
+      <ul className={`${LISTA.lista} md:hidden`}>
         {filas.map((a) => (
           <li key={a.inscripcionId}>
             <button
               type="button"
               onClick={() => onElegir(a)}
-              className={`flex w-full items-start justify-between gap-3 py-3 text-left ${a.estado === "RETIRADA" ? "opacity-50" : ""}`}
+              className={`flex w-full items-start justify-between gap-3 text-left ${LISTA.itemHover} ${a.estado === "RETIRADA" ? "opacity-50" : ""}`}
             >
               <span className="min-w-0 space-y-1">
                 <span className="block truncate text-[15px] font-semibold text-texto">{nombreAlumno(a.alumno)}</span>
-                <span className="flex items-center gap-2 text-[13px] text-texto-3">
-                  {sinMontos ? <EstadoPagoTexto estado={a.estadoPago} /> : <PuntosPago pagos={a.pagos} />}
+                <span className="flex min-w-0 items-center gap-2 text-[13px] text-texto-3">
+                  <span className="shrink-0">{sinMontos ? <EstadoPagoTexto estado={a.estadoPago} /> : <PuntosPago pagos={a.pagos} />}</span>
                   <span className="truncate">
                     {[sinMontos ? null : textoFormaPago(a.formaPago, a.plan?.nombre), a.asistenciaPct != null ? `${Math.round(a.asistenciaPct)} %` : null, subtituloFila(a, sinMontos)]
                       .filter(Boolean)
@@ -561,11 +638,12 @@ function PanelAlumno({
           {/* El docente no escribe a los estudiantes ni ve su ficha: lo dice
               en clase y el recordatorio lo manda la recepción. */}
           {!sinMontos && (
-            <div className="flex gap-2">
-              <Boton variante="ghost" className="flex-1" onClick={() => void whatsapp()} disabled={avisando}>
+            // Lado a lado si entran; si el texto es largo, uno debajo del otro (sin partir el texto).
+            <div className="flex flex-wrap gap-2">
+              <Boton variante="ghost" className="flex-auto whitespace-nowrap" onClick={() => void whatsapp()} disabled={avisando}>
                 {pendiente ? (destinoWhats ? "Enviar QR al tutor" : "Enviar QR por WhatsApp") : destinoWhats ? "WhatsApp al tutor" : "WhatsApp"}
               </Boton>
-              <Boton variante="ghost" className="flex-1" onClick={() => navigate(`/academia/alumnos/${fila.alumno.id}`)}>
+              <Boton variante="ghost" className="flex-auto whitespace-nowrap" onClick={() => navigate(`/academia/alumnos/${fila.alumno.id}`)}>
                 Ficha completa
               </Boton>
             </div>
@@ -573,51 +651,74 @@ function PanelAlumno({
         </>
       }
     >
-      <div className="space-y-5">
-        {sinMontos && (
-          <div className="text-sm">
-            <span className="block text-[12px] text-texto-3">Pago del {p.materia} actual</span>
-            <EstadoPagoTexto estado={fila.estadoPago} />
-          </div>
-        )}
-        {!sinMontos && (
-          <section className="space-y-2.5">
-            <h3 className="text-[12px] text-texto-3">
-              Estado de cuenta{fila.formaPago || fila.plan ? ` · ${textoFormaPago(fila.formaPago, fila.plan?.nombre)}` : ""}
-            </h3>
-            {ficha.cargando && !datos ? (
-              <Cargando />
-            ) : inscripcion ? (
-              <EstadoDeCuenta cuotas={inscripcion.cuotas} />
-            ) : (
-              <ul className="space-y-1 text-sm">
-                {fila.pagos.map((x) => (
-                  <li key={x.materiaOrden} className="flex justify-between gap-3">
-                    <span>M{x.materiaOrden}</span>
-                    <span className={x.estado === "VENCIDA" ? "font-semibold text-danger-text" : "text-texto-3"}>{x.detalle}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-        )}
-        <dl className="grid grid-cols-2 gap-3 text-sm">
-          <div>
-            <dt className="text-[12px] text-texto-3">Asistencia</dt>
-            <dd className="text-texto">{fila.asistenciaPct != null ? `${Math.round(fila.asistenciaPct)} %` : "—"}</dd>
-          </div>
-          {datos?.telefono && !sinMontos && (
-            <div>
-              <dt className="text-[12px] text-texto-3">Teléfono</dt>
-              <dd className="text-texto">{datos.telefono}</dd>
+      <div className="space-y-4">
+        {/* Lo que importa de un vistazo: cuánto debe (o si pagó el módulo, para
+            el docente) y cómo viene de asistencia. */}
+        <ResumenPanel className="grid grid-cols-2 gap-3">
+          {sinMontos ? (
+            <div className="min-w-0 text-sm">
+              <span className="block text-[11px] font-semibold uppercase tracking-wide text-texto-4">Pago del {p.materia} actual</span>
+              <span className="mt-1 block">
+                <EstadoPagoTexto estado={fila.estadoPago} />
+              </span>
+            </div>
+          ) : (
+            <div className="min-w-0">
+              <span className="block text-[11px] font-semibold uppercase tracking-wide text-texto-4">Por pagar</span>
+              <span
+                className={`mt-0.5 block text-lg font-bold tabular-nums ${(fila.saldo ?? 0) > 0 && fila.vencido ? "text-danger-text" : "text-texto"}`}
+              >
+                {(fila.saldo ?? 0) > 0 ? fmtMoney(fila.saldo) : "Nada"}
+              </span>
             </div>
           )}
-        </dl>
-        {fila.alumno.menor && tutor && !sinMontos && (
-          <p className="text-[13px] text-texto-3">
-            Tutor: {tutor.nombre} ({tutor.parentesco}){tutor.telefono ? ` · ${tutor.telefono}` : ""}
-          </p>
-        )}
+          <div className="min-w-0">
+            <span className="block text-[11px] font-semibold uppercase tracking-wide text-texto-4">Asistencia</span>
+            <span className="mt-0.5 block text-lg font-bold tabular-nums text-texto">
+              {fila.asistenciaPct != null ? `${Math.round(fila.asistenciaPct)} %` : "—"}
+            </span>
+          </div>
+        </ResumenPanel>
+        <div>
+          {!sinMontos && (
+            <SeccionPanel titulo={`Estado de cuenta${fila.formaPago || fila.plan ? ` · ${textoFormaPago(fila.formaPago, fila.plan?.nombre)}` : ""}`}>
+              {ficha.cargando && !datos ? (
+                <Cargando />
+              ) : inscripcion ? (
+                <EstadoDeCuenta cuotas={inscripcion.cuotas} />
+              ) : (
+                <ul className="space-y-1 text-sm">
+                  {fila.pagos.map((x) => (
+                    <li key={x.materiaOrden} className="flex justify-between gap-3">
+                      <span>M{x.materiaOrden}</span>
+                      <span className={x.estado === "VENCIDA" ? "font-semibold text-danger-text" : "text-texto-3"}>{x.detalle}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </SeccionPanel>
+          )}
+          {!sinMontos && (datos?.telefono || (fila.alumno.menor && tutor)) && (
+            <SeccionPanel titulo="Contacto">
+              <dl className="space-y-2 text-sm">
+                {datos?.telefono && (
+                  <div className="flex justify-between gap-3">
+                    <dt className="text-texto-3">Teléfono</dt>
+                    <dd className="tabular-nums text-texto">{datos.telefono}</dd>
+                  </div>
+                )}
+                {fila.alumno.menor && tutor && (
+                  <div className="flex justify-between gap-3">
+                    <dt className="text-texto-3">Tutor</dt>
+                    <dd className="min-w-0 text-right text-texto">
+                      {tutor.nombre} ({tutor.parentesco}){tutor.telefono ? ` · ${tutor.telefono}` : ""}
+                    </dd>
+                  </div>
+                )}
+              </dl>
+            </SeccionPanel>
+          )}
+        </div>
         <ErrorMsg>{error}</ErrorMsg>
         {!datos && ficha.error && <ErrorMsg>{`No se pudo cargar la ficha del ${p.alumno}.`}</ErrorMsg>}
       </div>

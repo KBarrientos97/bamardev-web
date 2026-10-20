@@ -115,7 +115,9 @@ describe("N6 · Pasar lista", () => {
 
   it("cada uno con su estado de pago, sin montos; los no marcados arrancan presentes y se guarda todo junto", async () => {
     await montar();
-    expect(screen.getByText("1 de 3 ya pagaron el M2")).toBeInTheDocument();
+    // "Pagaron el M2 · 1 de 3": el indicador en su tarjeta.
+    expect(screen.getByText("Pagaron el M2")).toBeInTheDocument();
+    expect(screen.getByText("1 de 3")).toBeInTheDocument();
     expect(screen.getByText("Sin pagar")).toBeInTheDocument();
     expect(screen.getByText("Abonó")).toBeInTheDocument();
     expect(screen.queryByText(/Bs/)).not.toBeInTheDocument();
