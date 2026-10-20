@@ -11,6 +11,7 @@ import { usePalabras } from "../../../lib/academia/usePalabras";
 import { TEXTO_ESTADO_PLANILLA as TEXTO_ESTADO, textoRetencion } from "../../../lib/academia/vista";
 import { fmtMoney } from "../../../lib/format";
 import { useApi } from "../../../lib/useApi";
+import { Chip, claseBotonFila, EncabezadoPagina, GrillaKpi, KpiTarjeta, LISTA, PaginaAcademia, TABLA, Tarjeta, type TonoChip } from "../piezas";
 
 /**
  * E14 · Planilla de docentes del mes (ronda 2, D2): cada docente con su %,
@@ -32,32 +33,40 @@ export default function PlanillaMes() {
     { clave: "pct", etiqueta: `Cambiar el % de un ${p.carrera}`, icono: "percent", separar: true, onClick: () => navigate("/configuracion/carreras") },
   ];
 
+  // Las mismas columnas para el encabezado, las filas y el total (en escritorio).
+  const columnas = "lg:grid-cols-[minmax(200px,2fr)_150px_110px_110px_110px_116px_72px]";
+
   return (
-    <div className="mx-auto max-w-6xl space-y-5 p-4 sm:p-6 lg:p-8">
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h1 className="text-xl font-bold text-texto">Planilla {p.docente}s · {tituloMes(mes)}</h1>
-          {d && <p className="mt-0.5 text-[13px] text-texto-3">{subtitulo(d, mes === hoy, sede.nombre)}</p>}
-        </div>
-        <div className="flex items-center gap-2">
-          <div role="group" aria-label="Mes" className="flex items-center gap-1 rounded-xl border border-borde bg-white px-1">
-            <button type="button" aria-label="Mes anterior" onClick={() => setMes(sumarMeses(mes, -1))} className="flex h-9 w-9 items-center justify-center rounded-lg text-texto-2 hover:bg-muted">
-              <Icon name="chevronLeft" size={16} />
-            </button>
-            <span className="min-w-[7.5rem] text-center text-[13px] text-texto-2">{tituloMes(mes)}</span>
-            <button
-              type="button"
-              aria-label="Mes siguiente"
-              disabled={mes >= hoy}
-              onClick={() => setMes(sumarMeses(mes, 1))}
-              className="flex h-9 w-9 items-center justify-center rounded-lg text-texto-2 hover:bg-muted disabled:opacity-30"
-            >
-              <Icon name="chevronRight" size={16} />
-            </button>
-          </div>
-          <MenuMas etiqueta="Más acciones de la planilla" acciones={acciones} />
-        </div>
-      </header>
+    <PaginaAcademia>
+      <EncabezadoPagina
+        titulo={`Planilla ${p.docente}s · ${tituloMes(mes)}`}
+        bajada={d ? subtitulo(d, mes === hoy, sede.nombre) : undefined}
+        acciones={
+          <>
+            <div role="group" aria-label="Mes" className="flex h-11 items-center gap-0.5 rounded-xl border border-borde bg-white px-1 sm:h-[42px]">
+              <button
+                type="button"
+                aria-label="Mes anterior"
+                onClick={() => setMes(sumarMeses(mes, -1))}
+                className="flex h-9 w-9 items-center justify-center rounded-lg text-texto-2 hover:bg-muted"
+              >
+                <Icon name="chevronLeft" size={16} />
+              </button>
+              <span className="min-w-[7.5rem] text-center text-[13px] font-semibold text-texto">{tituloMes(mes)}</span>
+              <button
+                type="button"
+                aria-label="Mes siguiente"
+                disabled={mes >= hoy}
+                onClick={() => setMes(sumarMeses(mes, 1))}
+                className="flex h-9 w-9 items-center justify-center rounded-lg text-texto-2 hover:bg-muted disabled:opacity-30 disabled:hover:bg-transparent"
+              >
+                <Icon name="chevronRight" size={16} />
+              </button>
+            </div>
+            <MenuMas etiqueta="Más acciones de la planilla" acciones={acciones} />
+          </>
+        }
+      />
 
       {sede.selector}
 
@@ -66,76 +75,113 @@ export default function PlanillaMes() {
       ) : !d ? (
         <Cargando />
       ) : d.docentes.length === 0 ? (
-        <Vacio icono="fileText" titulo={`Ningún ${p.docente} tiene ${p.materias} este mes`} />
+        <Tarjeta etiqueta="Sin planilla">
+          <Vacio icono="fileText" titulo={`Ningún ${p.docente} tiene ${p.materias} este mes`} />
+        </Tarjeta>
       ) : (
         <>
-          <section aria-label="Resumen del mes" className="grid gap-4 border-y border-borde-soft py-4 sm:grid-cols-4">
-            <Cifra etiqueta="Bruto del mes" valor={fmtMoney(d.totales.bruto)} nota={`${d.docentes.length} ${d.docentes.length === 1 ? p.docente : `${p.docente}s`}`} />
-            <Cifra
-              etiqueta="Retención"
-              valor={d.retencionActiva ? fmtMoney(d.docentes.reduce((s, x) => s + (x.retencion ?? 0), 0)) : "—"}
-              nota={d.retencionActiva ? undefined : "Por confirmar con el instituto"}
-            />
-            <Cifra etiqueta={mes === hoy ? "Líquido provisorio" : "Líquido"} valor={fmtMoney(d.totales.liquido)} nota={d.retencionActiva ? undefined : "sin retención ni atrasos"} />
-            <Cifra
-              etiqueta="Estado"
-              valor={`${d.docentes.filter((x) => x.estado !== "EN_CURSO").length} de ${d.docentes.length} cerradas`}
-              nota={mes === hoy ? "se cierran a fin de mes" : `${d.docentes.filter((x) => x.estado === "PAGADA").length} pagadas`}
-            />
+          <section aria-label="Resumen del mes">
+            <GrillaKpi>
+              <KpiTarjeta
+                icono="billetera"
+                etiqueta="Bruto del mes"
+                valor={fmtMoney(d.totales.bruto)}
+                pie={`${d.docentes.length} ${d.docentes.length === 1 ? p.docente : `${p.docente}s`}`}
+              />
+              <KpiTarjeta
+                icono="percent"
+                etiqueta="Retención"
+                valor={d.retencionActiva ? fmtMoney(d.docentes.reduce((s, x) => s + (x.retencion ?? 0), 0)) : "—"}
+                pie={d.retencionActiva ? undefined : "Por confirmar con el instituto"}
+              />
+              <KpiTarjeta
+                icono="coins"
+                tono="ok"
+                etiqueta={mes === hoy ? "Líquido provisorio" : "Líquido"}
+                valor={fmtMoney(d.totales.liquido)}
+                pie={d.retencionActiva ? undefined : "sin retención ni atrasos"}
+              />
+              <KpiTarjeta
+                icono="check"
+                etiqueta="Estado"
+                valor={`${d.docentes.filter((x) => x.estado !== "EN_CURSO").length} de ${d.docentes.length} cerradas`}
+                pie={mes === hoy ? "se cierran a fin de mes" : `${d.docentes.filter((x) => x.estado === "PAGADA").length} pagadas`}
+              />
+            </GrillaKpi>
           </section>
 
-          <div className="hidden grid-cols-[minmax(200px,2fr)_120px_110px_110px_110px_100px_20px] gap-3 px-3 text-[12px] text-texto-3 md:grid">
-            <span>{p.Docente}</span>
-            <span>Cuentan / {p.alumnos}</span>
-            <span className="text-right">Bruto</span>
-            <span className="text-right">Retención</span>
-            <span className="text-right">Líquido</span>
-            <span>Estado</span>
-            <span />
-          </div>
-          <ul className="divide-y divide-borde-soft border-b border-borde-soft">
-            {d.docentes.map((x) => (
-              <li key={x.personalId}>
-                <Link
-                  to={`/academia/planilla/${x.personalId}?mes=${mes}`}
-                  aria-label={`Ver la planilla de ${x.nombre}`}
-                  className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-0.5 rounded-xl px-3 py-3 hover:bg-muted md:grid-cols-[minmax(200px,2fr)_120px_110px_110px_110px_100px_20px] md:items-center"
-                >
-                  <span className="min-w-0">
-                    <span className="block truncate text-sm font-semibold text-texto">Prof. {x.nombre}</span>
-                    <span className="block text-[12px] text-texto-3">
-                      {x.grupos} {x.grupos === 1 ? "grupo" : "grupos"}
+          <Tarjeta
+            id="t-docentes"
+            titulo={`${p.Docente}s`}
+            contador={d.docentes.length}
+            sinRelleno
+            pie={
+              <div className={`flex flex-wrap items-baseline gap-x-3 text-sm font-bold text-texto lg:grid lg:gap-3 ${columnas}`}>
+                <span>Total</span>
+                <span className="tabular-nums max-lg:font-normal max-lg:text-texto-3">
+                  {d.docentes.reduce((s, x) => s + x.cuentan, 0)} de {d.docentes.reduce((s, x) => s + x.total, 0)}
+                </span>
+                <span className="text-right tabular-nums max-lg:ml-auto">{fmtMoney(d.totales.bruto)}</span>
+                <span className="hidden text-right text-[13px] font-normal text-texto-3 lg:block">{d.retencionActiva ? "" : "por confirmar"}</span>
+                <span className="hidden text-right tabular-nums lg:block">{fmtMoney(d.totales.liquido)}</span>
+              </div>
+            }
+          >
+            <div className={`hidden gap-3 px-4 py-2.5 sm:px-5 lg:grid ${TABLA.encabezado} ${columnas}`}>
+              <span>{p.Docente}</span>
+              <span>Cuentan / {p.alumnos}</span>
+              <span className="text-right">Bruto</span>
+              <span className="text-right">Retención</span>
+              <span className="text-right">Líquido</span>
+              <span className="lg:pl-4">Estado</span>
+              <span />
+            </div>
+            <ul className={`${LISTA.lista} lg:border-t lg:border-borde-soft`}>
+              {d.docentes.map((x) => (
+                <li key={x.personalId}>
+                  <Link
+                    to={`/academia/planilla/${x.personalId}?mes=${mes}`}
+                    aria-label={`Ver la planilla de ${x.nombre}`}
+                    className={`group grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1.5 ${LISTA.itemHover} ${columnas}`}
+                  >
+                    <span className="min-w-0 max-lg:order-1">
+                      <span className="block truncate text-sm font-semibold text-texto group-hover:text-primary-700">Prof. {x.nombre}</span>
+                      <span className="block text-[12px] text-texto-3">
+                        {x.grupos} {x.grupos === 1 ? "grupo" : "grupos"}
+                      </span>
                     </span>
-                  </span>
-                  <span className="min-w-0 text-sm tabular-nums text-texto-2">
-                    {x.cuentan} de {x.total}
-                    {extraDocente(x) && <span className="block truncate text-[12px] text-texto-3">{extraDocente(x)}</span>}
-                  </span>
-                  <span className="text-right text-sm font-semibold tabular-nums text-texto">{fmtMoney(x.bruto)}</span>
-                  <span className="hidden text-right text-[13px] text-texto-3 md:block">{textoRetencion(d.retencionActiva, x.retencion)}</span>
-                  <span className="hidden text-right text-sm tabular-nums text-texto-2 md:block">{fmtMoney(x.liquido)}</span>
-                  <span className={`text-[13px] ${x.estado === "EN_CURSO" ? "text-texto-3" : "text-texto-2"}`}>{TEXTO_ESTADO[x.estado]}</span>
-                  <Icon name="chevronRight" size={16} className="hidden text-texto-4 md:block" />
-                </Link>
-              </li>
-            ))}
-          </ul>
-          <div className="hidden grid-cols-[minmax(200px,2fr)_120px_110px_110px_110px_100px_20px] gap-3 px-3 text-sm font-bold text-texto md:grid">
-            <span>Total</span>
-            <span className="tabular-nums">
-              {d.docentes.reduce((s, x) => s + x.cuentan, 0)} de {d.docentes.reduce((s, x) => s + x.total, 0)}
-            </span>
-            <span className="text-right tabular-nums">{fmtMoney(d.totales.bruto)}</span>
-            <span className="text-right text-[13px] font-normal text-texto-3">{d.retencionActiva ? "" : "por confirmar"}</span>
-            <span className="text-right tabular-nums">{fmtMoney(d.totales.liquido)}</span>
-            <span />
-            <span />
-          </div>
+                    <span className="min-w-0 text-sm tabular-nums text-texto-2 max-lg:order-3">
+                      {x.cuentan} de {x.total}
+                      {extraDocente(x) && <span className="block truncate text-[12px] text-texto-3">{extraDocente(x)}</span>}
+                    </span>
+                    <span className="text-right text-sm font-semibold tabular-nums text-texto max-lg:order-2">{fmtMoney(x.bruto)}</span>
+                    <span className="hidden text-right text-[13px] text-texto-3 lg:block">{textoRetencion(d.retencionActiva, x.retencion)}</span>
+                    <span className="hidden text-right text-sm tabular-nums text-texto-2 lg:block">{fmtMoney(x.liquido)}</span>
+                    <span className="max-lg:order-4 max-lg:justify-self-end lg:pl-4">
+                      <Chip tono={CHIP_ESTADO[x.estado]}>{TEXTO_ESTADO[x.estado]}</Chip>
+                    </span>
+                    {/* La fila entera es el enlace: esto sólo dice que se toca. */}
+                    <span aria-hidden="true" className={`${claseBotonFila("ghost")} justify-self-end group-hover:border-primary-200 max-lg:!hidden`}>
+                      Ver
+                      <Icon name="chevronRight" size={15} />
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </Tarjeta>
         </>
       )}
-    </div>
+    </PaginaAcademia>
   );
 }
+
+/** En curso en gris, cerrada (falta pagarla) en ámbar, pagada en verde. */
+const CHIP_ESTADO: Record<TPlanillaMes["docentes"][number]["estado"], TonoChip> = {
+  EN_CURSO: "gris",
+  CERRADA: "ambar",
+  PAGADA: "verde",
+};
 
 /** "+ 2 de meses anteriores", "3 postergados", "todos pagaron". */
 function extraDocente(x: TPlanillaMes["docentes"][number]): string {
@@ -148,14 +194,4 @@ function extraDocente(x: TPlanillaMes["docentes"][number]): string {
 function subtitulo(d: TPlanillaMes, enCurso: boolean, sede: string): string {
   const n = d.docentes.length;
   return [`${n} ${n === 1 ? "docente" : "docentes"}`, sede || null, enCurso ? "en curso, se cierra a fin de mes" : null].filter(Boolean).join(" · ");
-}
-
-export function Cifra({ etiqueta, valor, nota }: { etiqueta: string; valor: string; nota?: string }) {
-  return (
-    <div>
-      <span className="block text-[12px] text-texto-3">{etiqueta}</span>
-      <span className="block text-lg font-bold tabular-nums text-texto">{valor}</span>
-      {nota && <span className="block text-[12px] text-texto-3">{nota}</span>}
-    </div>
-  );
 }

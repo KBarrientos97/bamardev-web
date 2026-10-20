@@ -9,6 +9,7 @@ import { usePalabras } from "../../../lib/academia/usePalabras";
 import { capitalizar, fechaLarga } from "../../../lib/agenda/horaAgenda";
 import { useApi } from "../../../lib/useApi";
 import { useAuth } from "../../../store/AuthContext";
+import { Chip, claseBotonFila, EncabezadoPagina, LISTA, PaginaAcademia, Tarjeta } from "../piezas";
 import NavDocente from "./NavDocente";
 
 /**
@@ -24,16 +25,14 @@ export default function MisClases() {
   const nombre = (usuario?.nombre ?? usuario?.username ?? "").split(" ")[0];
 
   return (
-    <div className="mx-auto max-w-xl space-y-5 p-4 pb-24 sm:p-6">
-      <header className="space-y-0.5">
-        <p className="text-[13px] text-texto-3">{d ? capitalizar(fechaLarga(d.fecha)) : "Hoy"}</p>
-        <h1 className="text-2xl font-bold text-texto">{nombre ? `Hola, ${nombre}` : "Mis clases"}</h1>
-        {d && (
-          <p className="text-sm text-texto-3">
-            {d.clases.length === 0 ? "Hoy no tenés clases" : d.clases.length === 1 ? "Hoy das 1 clase" : `Hoy das ${d.clases.length} clases`}
-          </p>
-        )}
-      </header>
+    <PaginaAcademia ancho="max-w-3xl" conBarraAbajo>
+      <EncabezadoPagina
+        sobre={d ? capitalizar(fechaLarga(d.fecha)) : "Hoy"}
+        titulo={nombre ? `Hola, ${nombre}` : "Mis clases"}
+        bajada={
+          d && (d.clases.length === 0 ? "Hoy no tenés clases" : d.clases.length === 1 ? "Hoy das 1 clase" : `Hoy das ${d.clases.length} clases`)
+        }
+      />
 
       {datos.error && !d ? (
         <ErrorMsg onReintentar={datos.recargar}>{datos.error}</ErrorMsg>
@@ -41,30 +40,33 @@ export default function MisClases() {
         <Cargando />
       ) : (
         <>
-          <div className="space-y-3">
-            {d.clases.map((c) => (
-              <Clase key={c.sesionId} c={c} />
-            ))}
-          </div>
+          {d.clases.length > 0 && (
+            <Tarjeta id="t-hoy" titulo="Clases de hoy" contador={d.clases.length} sinRelleno>
+              <ul className={LISTA.lista}>
+                {d.clases.map((c) => (
+                  <Clase key={c.sesionId} c={c} />
+                ))}
+              </ul>
+            </Tarjeta>
+          )}
           {d.proximas.length > 0 && (
-            <section aria-labelledby="t-prox" className="space-y-2">
-              <h2 id="t-prox" className="text-sm font-bold text-texto">
-                Próximas clases
-              </h2>
-              <ul className="divide-y divide-borde-soft border-y border-borde-soft">
+            <Tarjeta id="t-prox" titulo="Próximas clases" sinRelleno>
+              <ul className={LISTA.lista}>
                 {d.proximas.map((x, i) => (
                   <Proxima key={`${x.grupoId}-${x.fecha}-${i}`} x={x} />
                 ))}
               </ul>
-            </section>
+            </Tarjeta>
           )}
           {d.clases.length === 0 && d.proximas.length === 0 && (
-            <p className="text-sm text-texto-3">No hay clases tuyas en el calendario. Si es un error, avisale a la recepción.</p>
+            <Tarjeta etiqueta="Sin clases">
+              <p className="text-sm text-texto-3">No hay clases tuyas en el calendario. Si es un error, avisale a la recepción.</p>
+            </Tarjeta>
           )}
         </>
       )}
       <NavDocente />
-    </div>
+    </PaginaAcademia>
   );
 }
 
@@ -73,7 +75,7 @@ function Clase({ c }: { c: ClaseDelDia }) {
   const cuando = cuandoEs(c);
   const pct = c.inscritos ? Math.round(((c.pagaronModulo ?? 0) / c.inscritos) * 100) : 0;
   return (
-    <article className="space-y-3 rounded-2xl border border-borde bg-white p-4">
+    <li className={`space-y-3 ${LISTA.item} sm:py-4`}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-[13px] font-semibold tabular-nums text-texto-3">
@@ -87,10 +89,12 @@ function Clase({ c }: { c: ClaseDelDia }) {
             {c.aula ? ` · ${c.aula}` : ""} · {c.inscritos} {c.inscritos === 1 ? p.alumno : p.alumnos}
           </p>
         </div>
-        <span className={`shrink-0 text-xs ${cuando === "en curso" ? "font-semibold text-primary-700" : "text-texto-3"}`}>{cuando}</span>
+        <Chip tono={cuando === "en curso" ? "marca" : "gris"} className="shrink-0">
+          {cuando}
+        </Chip>
       </div>
       {c.pagaronModulo != null && (
-        <div className="space-y-1">
+        <div className="space-y-1.5 rounded-xl bg-muted px-3.5 py-3">
           <span className="block h-1.5 overflow-hidden rounded-full bg-primary-100">
             <span className="block h-full rounded-full bg-primary" style={{ width: `${pct}%` }} />
           </span>
@@ -102,34 +106,32 @@ function Clase({ c }: { c: ClaseDelDia }) {
       <div className="flex gap-2">
         <Link
           to={`/academia/lista?grupo=${c.grupoId}`}
-          className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-primary-boton px-4 py-2.5 text-sm font-semibold text-white hover:bg-primary-boton-hover"
+          className="inline-flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-xl bg-primary-boton px-4 py-2.5 text-sm font-semibold text-white hover:bg-primary-boton-hover"
         >
           <Icon name="lista" size={17} />
           {c.lista.pasada ? `Lista: ${c.lista.presentes} de ${c.lista.total}` : "Pasar lista"}
         </Link>
-        <Link
-          to={`/academia/notas?grupo=${c.grupoId}`}
-          className="inline-flex flex-1 items-center justify-center rounded-xl border border-borde bg-white px-4 py-2.5 text-sm font-semibold text-texto-2 hover:bg-muted"
-        >
+        <Link to={`/academia/notas?grupo=${c.grupoId}`} className={`${claseBotonFila("ghost")} flex-1 rounded-xl text-sm`}>
+          <Icon name="edit" size={16} />
           Notas del {p.materia}
         </Link>
       </div>
-    </article>
+    </li>
   );
 }
 
 function Proxima({ x }: { x: ProximaClase }) {
   const materia = typeof x.materia === "string" ? x.materia : `M${x.materia.orden} ${x.materia.nombre}`;
   return (
-    <li className="flex items-center justify-between gap-3 py-2.5">
+    <li className={`flex items-center justify-between gap-3 ${LISTA.itemHover}`}>
       <span className="min-w-0">
         <span className="block text-sm font-semibold text-texto">{capitalizar(fechaLarga(x.fecha))}</span>
-        <span className="block truncate text-[13px] text-texto-3">
+        <span className="block text-[13px] text-texto-3 sm:truncate">
           {x.nombre} · {materia}
           {x.aula ? ` · ${x.aula}` : ""}
         </span>
       </span>
-      <span className="shrink-0 text-[13px] tabular-nums text-texto-2">
+      <span className="shrink-0 rounded-lg bg-muted px-2.5 py-1 text-[13px] font-semibold tabular-nums text-texto-2">
         {x.horaInicio} – {x.horaFin}
       </span>
     </li>

@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState, type FocusEvent } from "react";
-import { Link } from "react-router-dom";
 import { Chips } from "../../../components/filtros";
 import { Icon } from "../../../components/Icon";
 import { Campo, Cargando, ErrorMsg, Input, Select } from "../../../components/ui";
@@ -15,7 +14,7 @@ import { usePalabras } from "../../../lib/academia/usePalabras";
 import { fmtMoney } from "../../../lib/format";
 import { useApi } from "../../../lib/useApi";
 import { useSucursales } from "../../../lib/useSucursales";
-import { Interruptor, SeccionAjuste } from "../piezas";
+import { BotonFila, BotonIcono, claseBotonFila, Interruptor, LISTA, PaginaAcademia, SeccionAjuste, TABLA } from "../piezas";
 
 /**
  * Ajustes del instituto (N4, `/configuracion/academia`): lo que se configura
@@ -25,7 +24,9 @@ import { Interruptor, SeccionAjuste } from "../piezas";
  *
  * No hay botón Guardar: cada cambio se guarda solo al soltar el campo, y la
  * cabecera dice "Cambios guardados". Es lo que muestra el lienzo, y un ajuste
- * que se toca una vez por año no merece un paso más.
+ * que se toca una vez por año no merece un paso más. Para que no se extrañe
+ * el botón, la cabecera queda fija arriba con el estado en una píldora (y el
+ * error al lado, aunque el campo que falló esté abajo de todo).
  */
 
 type Estado = "listo" | "guardando" | "guardado" | "error";
@@ -65,9 +66,9 @@ export default function AjustesAcademia() {
 
   if (carga.error && !carga.datos) {
     return (
-      <div className="mx-auto max-w-5xl p-4 sm:p-6">
+      <PaginaAcademia ancho="max-w-5xl">
         <ErrorMsg onReintentar={carga.recargar}>{carga.error}</ErrorMsg>
-      </div>
+      </PaginaAcademia>
     );
   }
   if (!a) return <Cargando />;
@@ -135,31 +136,45 @@ export default function AjustesAcademia() {
     setBorrador(borrador.map((f, j) => (j === i ? { ...f, [campo]: valor } : f)));
 
   return (
-    <div className="mx-auto max-w-5xl px-4 pb-12 pt-4 sm:px-6 lg:px-10 lg:pt-7">
-      <header className="flex flex-wrap items-end justify-between gap-3 pb-3">
-        <div>
-          <h1 className="text-xl font-bold text-texto">Ajustes</h1>
-          <p className="mt-0.5 text-[13px] text-texto-3">Lo que se configura una vez</p>
-        </div>
-        <span role="status" className="flex items-center gap-1.5 text-[13px] text-texto-3">
-          {estado === "guardando" && "Guardando…"}
-          {estado === "guardado" && (
-            <>
-              <Icon name="check" size={15} /> Cambios guardados
-            </>
-          )}
-        </span>
-      </header>
-      <ErrorMsg>{error}</ErrorMsg>
+    <PaginaAcademia ancho="max-w-5xl">
+      {/* Fija arriba: el estado del guardado (y el error) siempre a la vista. */}
+      <div className="sticky top-0 z-10 -mx-4 -mt-4 space-y-3 border-b border-borde-soft bg-fondo/95 px-4 pb-3 pt-4 backdrop-blur sm:-mx-6 sm:-mt-6 sm:px-6 sm:pt-6 lg:-mx-8 lg:-mt-8 lg:px-8 lg:pt-8">
+        <header className="flex items-start justify-between gap-3 sm:items-center sm:gap-6">
+          <div className="min-w-0 space-y-1">
+            <h1 className="text-2xl font-bold tracking-tight text-texto">Ajustes</h1>
+            <p className="text-sm text-texto-3">Lo que se configura una vez</p>
+          </div>
+          <span
+            role="status"
+            className={`inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-full border px-3.5 text-[13px] font-semibold shadow-sm transition-colors ${
+              estado === "guardado"
+                ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                : "border-borde bg-white text-texto-3"
+            }`}
+          >
+            {estado === "guardando" ? (
+              <>
+                <Icon name="clock" size={15} /> Guardando…
+              </>
+            ) : estado === "guardado" ? (
+              <>
+                <Icon name="check" size={15} /> Cambios guardados
+              </>
+            ) : (
+              <>
+                <Icon name="save" size={15} /> Cada cambio se guarda solo
+              </>
+            )}
+          </span>
+        </header>
+        <ErrorMsg>{error}</ErrorMsg>
+      </div>
 
       <SeccionAjuste id="s-cursos" titulo={p.Carreras} bajada={`${p.Materias}, precio, cupo y porcentaje del ${p.docente} de cada ${p.carrera}.`}>
         <ResumenCursos cursos={cursos.datos} pctDefecto={a.pctDocenteDefecto} />
-        <Link
-          to="/configuracion/carreras"
-          className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-primary-700 hover:underline"
-        >
+        <BotonFila variante="ghost" a="/configuracion/carreras" className="mt-3">
           Administrar {p.carreras} <Icon name="chevronRight" size={15} />
-        </Link>
+        </BotonFila>
       </SeccionAjuste>
 
       <SeccionAjuste id="s-cal" titulo="Calendario" bajada="Cada grupo nuevo toma estos valores. Los grupos abiertos no cambian.">
@@ -197,14 +212,16 @@ export default function AjustesAcademia() {
             />
           </div>
         )}
-        {lista.length === 0 && <p className="py-2 text-sm text-texto-3">Sin franjas: el calendario arma una fila por cada horario de grupo.</p>}
-        <ul>
+        {lista.length === 0 && (
+          <p className="rounded-xl bg-muted px-4 py-3 text-sm text-texto-3">Sin franjas: el calendario arma una fila por cada horario de grupo.</p>
+        )}
+        <ul className={lista.length ? `${LISTA.lista} rounded-xl border border-borde-soft` : ""}>
           {lista.map((f, i) => {
             const grupos = uso.get(`${f.inicio}-${f.fin}`) ?? 0;
             return (
               <li
                 key={`${i}-${f.almacenId}`}
-                className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto] items-center gap-2 border-t border-borde-soft py-2 sm:grid-cols-[120px_20px_120px_60px_minmax(0,1fr)_40px] sm:gap-2.5"
+                className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto] items-center gap-2 px-3 py-2.5 sm:grid-cols-[120px_20px_120px_60px_minmax(0,1fr)_40px] sm:gap-2.5"
               >
                 <label>
                   <span className="sr-only">Desde, franja {i + 1}</span>
@@ -232,35 +249,33 @@ export default function AjustesAcademia() {
                   <span className="sm:hidden">{duracionFranja(f)} · </span>
                   {usoListo ? (grupos === 0 ? "libre" : grupos === 1 ? "1 grupo" : `${grupos} grupos`) : ""}
                 </span>
-                <button
-                  type="button"
+                <BotonIcono
+                  icono="trash"
+                  etiqueta={`Quitar franja ${f.inicio}–${f.fin}`}
                   disabled={grupos > 0}
                   title={grupos > 0 ? "Tiene grupos: no se puede quitar" : "Quitar franja"}
-                  aria-label={`Quitar franja ${f.inicio}–${f.fin}`}
                   onClick={() => {
                     const nuevas = borrador.filter((_, j) => j !== i);
                     setBorrador(nuevas);
                     guardarFranjas(nuevas);
                   }}
-                  className="flex h-9 w-9 items-center justify-center justify-self-end rounded-lg text-texto-3 hover:bg-muted disabled:cursor-not-allowed disabled:text-slate-300 disabled:hover:bg-transparent"
-                >
-                  <Icon name="trash" size={16} />
-                </button>
+                  className="justify-self-end hover:border-danger/40 hover:text-danger-text disabled:hover:border-borde disabled:hover:bg-white disabled:hover:text-texto-2"
+                />
               </li>
             );
           })}
         </ul>
-        <button
-          type="button"
+        <BotonFila
+          icono="plus"
+          className="mt-3"
           onClick={() => {
             const nuevas = [...borrador, franjaSiguiente(borrador, sedeId)];
             setBorrador(nuevas);
             guardarFranjas(nuevas);
           }}
-          className="mt-2 inline-flex items-center gap-1.5 rounded-xl px-2 py-2 text-sm font-semibold text-primary-700 hover:bg-primary-50"
         >
-          <Icon name="plus" size={16} /> Agregar franja
-        </button>
+          Agregar franja
+        </BotonFila>
       </SeccionAjuste>
 
       <SeccionAjuste id="s-docentes" titulo={`Pago a ${p.docente}s`} bajada={`Sobre lo que pagó cada ${p.alumno} por el ${p.materia}, mes a mes.`}>
@@ -272,7 +287,7 @@ export default function AjustesAcademia() {
             <span className="text-[13px] text-texto-3">Cada {p.carrera} lo puede cambiar</span>
           </span>
           <span className="flex items-center gap-2 text-sm text-texto-2">
-            <Input id="pct-defecto" type="number" className="w-20 text-right" {...numero("pctDocenteDefecto", 0, 100)} />%
+            <Input id="pct-defecto" type="number" className="!w-20 text-right" {...numero("pctDocenteDefecto", 0, 100)} />%
           </span>
         </div>
         <div className="divide-y divide-borde-soft border-t border-borde-soft">
@@ -340,16 +355,12 @@ export default function AjustesAcademia() {
               <span className="text-[13px] text-texto-3">Sin configurar</span>
             </span>
           </span>
-          <button
-            type="button"
-            disabled
-            className="rounded-xl border border-borde px-4 py-2.5 text-sm font-semibold text-texto-3 disabled:cursor-not-allowed"
-          >
+          <button type="button" disabled className={claseBotonFila("ghost")}>
             Configurar QR de BISA · Pronto
           </button>
         </div>
       </SeccionAjuste>
-    </div>
+    </PaginaAcademia>
   );
 }
 
@@ -359,16 +370,16 @@ function ResumenCursos({ cursos, pctDefecto }: { cursos: Carrera[] | null; pctDe
   if (!cursos) return <p className="text-sm text-texto-3">Cargando…</p>;
   if (!cursos.length) return <p className="text-sm text-texto-3">Todavía no hay {p.carreras}.</p>;
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full min-w-[520px] text-sm tabular-nums">
+    <div className={`${TABLA.envoltura} rounded-xl border border-borde-soft`}>
+      <table className={`${TABLA.tabla} min-w-[520px] whitespace-nowrap tabular-nums`}>
         <thead>
-          <tr className="text-left text-xs text-texto-3">
-            <th className="pb-2 font-normal">{p.Carrera}</th>
-            <th className="pb-2 font-normal">{p.Materias}</th>
-            <th className="pb-2 font-normal">Por {p.materia}</th>
-            <th className="pb-2 font-normal">Completo</th>
-            <th className="pb-2 font-normal">Cupo</th>
-            <th className="pb-2 font-normal">{p.Docente}</th>
+          <tr className={TABLA.encabezado}>
+            <th className={TABLA.th}>{p.Carrera}</th>
+            <th className={`${TABLA.th} ${TABLA.numero}`}>{p.Materias}</th>
+            <th className={`${TABLA.th} ${TABLA.numero}`}>Por {p.materia}</th>
+            <th className={`${TABLA.th} ${TABLA.numero}`}>Completo</th>
+            <th className={`${TABLA.th} ${TABLA.numero}`}>Cupo</th>
+            <th className={`${TABLA.th} ${TABLA.numero}`}>{p.Docente}</th>
           </tr>
         </thead>
         <tbody>
@@ -377,13 +388,13 @@ function ResumenCursos({ cursos, pctDefecto }: { cursos: Carrera[] | null; pctDe
             const completo = c.planes.find((pl) => pl.activo && pl.generado === "COMPLETO")?.total ?? c.precioCompleto;
             const pct = c.pctDocente ?? pctDefecto;
             return (
-              <tr key={c.id} className="border-t border-borde-soft">
-                <td className="py-2.5 font-medium text-texto">{c.nombre}</td>
-                <td className="py-2.5 text-texto-2">{mods}</td>
-                <td className="py-2.5 text-texto-2">{c.precioModulo != null ? fmtMoney(c.precioModulo) : "—"}</td>
-                <td className="py-2.5 text-texto-2">{completo != null ? fmtMoney(completo) : "—"}</td>
-                <td className="py-2.5 text-texto-2">{c.cupoDefecto ?? "—"}</td>
-                <td className={`py-2.5 ${c.pctDocente == null ? "text-texto-3" : "font-medium text-texto"}`}>{pct} %</td>
+              <tr key={c.id} className={TABLA.fila}>
+                <td className={`${TABLA.td} font-semibold text-texto`}>{c.nombre}</td>
+                <td className={`${TABLA.td} ${TABLA.numero} text-texto-2`}>{mods}</td>
+                <td className={`${TABLA.td} ${TABLA.numero} text-texto-2`}>{c.precioModulo != null ? fmtMoney(c.precioModulo) : "—"}</td>
+                <td className={`${TABLA.td} ${TABLA.numero} text-texto-2`}>{completo != null ? fmtMoney(completo) : "—"}</td>
+                <td className={`${TABLA.td} ${TABLA.numero} text-texto-2`}>{c.cupoDefecto ?? "—"}</td>
+                <td className={`${TABLA.td} ${TABLA.numero} ${c.pctDocente == null ? "text-texto-3" : "font-semibold text-texto"}`}>{pct} %</td>
               </tr>
             );
           })}

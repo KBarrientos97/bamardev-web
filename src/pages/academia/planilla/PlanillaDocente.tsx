@@ -7,7 +7,7 @@ import { AvisoOk, Boton, Cargando, Confirmar, ErrorMsg, Modal, Select, Vacio, us
 import { apiAcademia, CODIGOS_ACADEMIA } from "../../../lib/academia/apiAcademia";
 import { mesDe, sumarMeses, tituloMes } from "../../../lib/academia/calendario";
 import { nombreDe } from "../../../lib/academia/formato";
-import type { LineaPlanilla, MetodoPagoPlanilla } from "../../../lib/academia/tipos";
+import type { EstadoPlanilla, LineaPlanilla, MetodoPagoPlanilla } from "../../../lib/academia/tipos";
 import { usePalabras } from "../../../lib/academia/usePalabras";
 import { TEXTO_ESTADO_PLANILLA as TEXTO_ESTADO, textoFormaPago } from "../../../lib/academia/vista";
 import { ApiError } from "../../../lib/api";
@@ -15,7 +15,20 @@ import { fmtMoney } from "../../../lib/format";
 import { tienePermiso } from "../../../lib/permisos";
 import { useApi } from "../../../lib/useApi";
 import { useAuth } from "../../../store/AuthContext";
-import { Cifra } from "./PlanillaMes";
+import {
+  BotonFila,
+  Chip,
+  EncabezadoPagina,
+  FiltrosConteo,
+  KpiTarjeta,
+  LISTA,
+  PaginaAcademia,
+  ResumenPanel,
+  SeccionPanel,
+  TABLA,
+  Tarjeta,
+  type TonoChip,
+} from "../piezas";
 
 type Lista = "cuentan" | "postergados" | "atrasados" | "sinPagar";
 
@@ -26,8 +39,21 @@ const METODOS: readonly (readonly [MetodoPagoPlanilla, string])[] = [
   ["QR", "QR"],
 ];
 
+/** En curso en gris, cerrada (falta pagarla) en ámbar, pagada en verde. */
+const CHIP_ESTADO: Record<EstadoPlanilla, TonoChip> = {
+  EN_CURSO: "gris",
+  CERRADA: "ambar",
+  PAGADA: "verde",
+};
+
 /** Cada grupo muestra hasta acá; más, con "Ver los N restantes" (PLAN-ACADEMIAS §5). */
 const LIMITE = 20;
+
+/**
+ * Las columnas de la tabla de un grupo en escritorio. Caben con el panel
+ * lateral abierto (la página se angosta 380 px).
+ */
+const COLUMNAS = "lg:grid-cols-[minmax(140px,2fr)_minmax(100px,1fr)_104px_140px_44px_104px]";
 
 /**
  * N8 · Planilla de un docente (ronda 2, D2): el mes de un docente, con lo que
@@ -61,15 +87,14 @@ export default function PlanillaDocente() {
   const [error, setError] = useState("");
   const [aviso, setAviso] = useAviso(6000);
 
+  const volver = { a: "/academia/planilla", texto: `Planilla ${p.docente}s` };
   const d = carga.datos;
   if (carga.error && !d) {
     return (
-      <div className="mx-auto max-w-6xl space-y-4 p-4 sm:p-6 lg:p-8">
-        <Link to="/academia/planilla" className="text-[13px] text-texto-3 hover:underline">
-          ← Planilla {p.docente}s
-        </Link>
+      <PaginaAcademia>
+        <EncabezadoPagina titulo={`Planilla ${p.docente}s`} volver={volver} />
         <ErrorMsg onReintentar={carga.recargar}>{carga.error}</ErrorMsg>
-      </div>
+      </PaginaAcademia>
     );
   }
   if (!d) return <Cargando />;
@@ -117,169 +142,184 @@ export default function PlanillaDocente() {
     ? `${d.pct.defecto} % (${d.pct.porCurso.map((x) => `${nombreDe(x.carrera)} ${x.pct} %`).join(", ")})`
     : `${d.pct.defecto} %`;
   const columnaCobrado = lista === "postergados" ? "Abonó" : lista === "sinPagar" ? "Precio" : "Cobrado del módulo";
+  const cuenta = lista === "cuentan" || lista === "atrasados";
 
   const acciones: AccionMenu[] = [
     { clave: "excel", etiqueta: "Exportar Excel con el formato del instituto", icono: "download", detalle: "Pronto", deshabilitada: true, onClick: () => {} },
   ];
 
   return (
-    <div className={`mx-auto max-w-6xl space-y-5 p-4 sm:p-6 lg:p-8 ${elegida ? "md:mr-[380px]" : ""}`}>
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0 space-y-0.5">
-          <Link to="/academia/planilla" className="text-[13px] text-texto-3 hover:underline">
-            ← Planilla {p.docente}s
-          </Link>
-          <h1 className="text-xl font-bold text-texto">
-            Prof. {d.docente.nombre} · {tituloMes(d.mes)}
-          </h1>
-          <p className="text-[13px] text-texto-3">
+    // Con el panel abierto la página se corre a la izquierda; `w-auto` porque
+    // PaginaAcademia trae `w-full` y con el margen se saldría de la pantalla.
+    <PaginaAcademia className={elegida ? "md:mr-[380px] md:w-auto" : ""}>
+      <EncabezadoPagina
+        volver={volver}
+        titulo={`Prof. ${d.docente.nombre} · ${tituloMes(d.mes)}`}
+        bajada={
+          <>
             {d.grupos?.length
               ? `${[...new Set(d.grupos.map((g) => g.carrera.nombre))].join(", ")} · ${d.grupos.length} ${d.grupos.length === 1 ? "grupo" : "grupos"} · `
               : ""}
-            Cobra el {pcts} de lo cobrado · {TEXTO_ESTADO[d.estado]}
-          </p>
+            Cobra el {pcts} de lo cobrado
+          </>
+        }
+        acciones={
+          <>
+            <label className="flex items-center gap-2 text-[13px] text-texto-3">
+              Mes
+              <Select value={mes} onChange={(e) => setParams({ mes: e.target.value })}>
+                {meses.map((m) => (
+                  <option key={m} value={m}>
+                    {tituloMes(m)}
+                  </option>
+                ))}
+              </Select>
+            </label>
+            {liquida && d.estado === "EN_CURSO" && (
+              <Boton icono="lock" disabled={ocupado} onClick={() => void cerrar()}>
+                Cerrar planilla
+              </Boton>
+            )}
+            {liquida && d.estado === "CERRADA" && (
+              <Boton icono="billetera" disabled={ocupado} onClick={() => setPagando(true)}>
+                Registrar pago {fmtMoney(r.liquido)}
+              </Boton>
+            )}
+            <MenuMas etiqueta="Más acciones de la planilla" acciones={acciones} />
+          </>
+        }
+      >
+        <div className="pt-1">
+          <Chip tono={CHIP_ESTADO[d.estado]}>{TEXTO_ESTADO[d.estado]}</Chip>
         </div>
-        <div className="flex flex-wrap items-end gap-2">
-          <label className="block text-[12px] text-texto-3">
-            Mes
-            <Select value={mes} onChange={(e) => setParams({ mes: e.target.value })}>
-              {meses.map((m) => (
-                <option key={m} value={m}>
-                  {tituloMes(m)}
-                </option>
-              ))}
-            </Select>
-          </label>
-          {liquida && d.estado === "EN_CURSO" && (
-            <Boton disabled={ocupado} onClick={() => void cerrar()}>
-              Cerrar planilla
-            </Boton>
-          )}
-          {liquida && d.estado === "CERRADA" && (
-            <Boton disabled={ocupado} onClick={() => setPagando(true)}>
-              Registrar pago {fmtMoney(r.liquido)}
-            </Boton>
-          )}
-          <MenuMas etiqueta="Más acciones de la planilla" acciones={acciones} />
-        </div>
-      </header>
+      </EncabezadoPagina>
 
       <AvisoOk>{aviso}</AvisoOk>
       <ErrorMsg>{error}</ErrorMsg>
       {d.estado !== "EN_CURSO" && (
-        <p role="status" className="rounded-xl bg-muted px-3.5 py-2.5 text-sm text-texto-2">
-          Planilla {TEXTO_ESTADO[d.estado]} · líquido {fmtMoney(r.liquido)}
-          {!r.retencionActiva ? " · retención y atrasos siguen por confirmar" : ""}
+        <p role="status" className="card flex flex-wrap items-center gap-2 px-4 py-3 text-sm text-texto-2">
+          <Chip tono={CHIP_ESTADO[d.estado]}>Planilla {TEXTO_ESTADO[d.estado]}</Chip>
+          <span>
+            líquido <b className="tabular-nums text-texto">{fmtMoney(r.liquido)}</b>
+            {!r.retencionActiva ? " · retención y atrasos siguen por confirmar" : ""}
+          </span>
         </p>
       )}
 
-      <section aria-label="Resumen de la planilla" className="grid gap-4 border-y border-borde-soft py-4 sm:grid-cols-5">
-        <Cifra
+      {/* Con el panel abierto no entran cinco por fila: van de a tres. */}
+      <section aria-label="Resumen de la planilla" className={`grid grid-cols-2 gap-3 sm:gap-4 ${elegida ? "lg:grid-cols-3" : "lg:grid-cols-5"}`}>
+        <KpiTarjeta
+          icono="users"
           etiqueta="Cuentan"
           valor={`${r.cuentan} ${r.cuentan === 1 ? p.alumno : p.alumnos}`}
-          nota={r.atrasados ? `+ ${r.atrasados} de meses anteriores` : undefined}
+          pie={r.atrasados ? `+ ${r.atrasados} de meses anteriores` : undefined}
         />
-        <Cifra
+        <KpiTarjeta
+          icono="billetera"
           etiqueta="Bruto"
           valor={fmtMoney(r.bruto)}
-          nota={r.brutoAtrasados ? `${fmtMoney(r.brutoCuentan ?? 0)} del mes + ${fmtMoney(r.brutoAtrasados)} atrasados` : undefined}
+          pie={r.brutoAtrasados ? `${fmtMoney(r.brutoCuentan ?? 0)} del mes + ${fmtMoney(r.brutoAtrasados)} atrasados` : undefined}
         />
-        <Cifra
+        <KpiTarjeta
+          icono="percent"
           etiqueta="Retención"
           valor={r.retencionActiva && r.retencion != null ? `− ${fmtMoney(r.retencion)}` : "—"}
-          nota={r.retencionActiva ? undefined : "Por confirmar con el instituto"}
+          pie={r.retencionActiva ? undefined : "Por confirmar con el instituto"}
         />
-        <Cifra etiqueta="Atrasos" valor={r.atrasos != null ? `− ${fmtMoney(r.atrasos)}` : "—"} nota={r.atrasos != null ? undefined : "Por confirmar con el instituto"} />
-        <Cifra etiqueta={d.estado === "EN_CURSO" ? "Líquido provisorio" : "Líquido"} valor={fmtMoney(r.liquido)} />
+        <KpiTarjeta
+          icono="clock"
+          etiqueta="Atrasos"
+          valor={r.atrasos != null ? `− ${fmtMoney(r.atrasos)}` : "—"}
+          pie={r.atrasos != null ? undefined : "Por confirmar con el instituto"}
+        />
+        <div className={`col-span-2 grid ${elegida ? "lg:col-span-2" : "lg:col-span-1"}`}>
+          <KpiTarjeta icono="coins" tono="ok" etiqueta={d.estado === "EN_CURSO" ? "Líquido provisorio" : "Líquido"} valor={fmtMoney(r.liquido)} />
+        </div>
       </section>
 
-      <div role="tablist" aria-label="Secciones de la planilla" className="flex gap-5 overflow-x-auto border-b border-borde-soft [scrollbar-width:none]">
-        {(
-          [
-            ["cuentan", "Cuentan", r.cuentan],
-            ["postergados", "Postergados", r.postergados],
-            ["atrasados", "Atrasados", r.atrasados],
-            ["sinPagar", "Sin pagar", r.sinPagar],
-          ] as const
-        ).map(([k, label, n]) => (
-          <button
-            key={k}
-            type="button"
-            role="tab"
-            aria-selected={lista === k}
-            onClick={() => {
+      <Tarjeta
+        etiqueta={`${p.Alumnos} de la planilla`}
+        sinRelleno
+        barra={
+          <FiltrosConteo<Lista>
+            enTarjeta
+            etiqueta="Secciones de la planilla"
+            valor={lista}
+            onChange={(k) => {
               setLista(k);
               setElegida(null);
             }}
-            className={`-mb-px shrink-0 border-b-2 pb-2.5 pt-1 text-sm ${lista === k ? "border-primary font-semibold text-texto" : "border-transparent text-texto-3"}`}
-          >
-            {label} <span className="tabular-nums text-texto-4">{n}</span>
-          </button>
-        ))}
-      </div>
-
-      {elegidas.length === 0 ? (
-        <Vacio icono="fileText" titulo="Nada en esta lista" />
-      ) : (
-        porGrupo.map(([grupo, lineas]) => {
-          const todos = verTodos[grupo] ?? false;
-          const visibles = todos ? lineas : lineas.slice(0, LIMITE);
-          const cuenta = lista === "cuentan" || lista === "atrasados";
-          const total = lineas.reduce((s, l) => s + (cuenta ? l.monto : (l.montoPotencial ?? l.monto)), 0);
-          return (
-            <section key={grupo} aria-label={grupo} className="space-y-2">
-              <h2 className="text-sm font-bold text-texto">{grupo}</h2>
-              <div className="hidden grid-cols-[minmax(180px,2fr)_minmax(120px,1fr)_110px_120px_60px_100px] gap-3 px-3 text-[12px] text-texto-3 md:grid">
-                <span>{p.Alumno}</span>
-                <span>{p.Materia}</span>
-                <span>Forma de pago</span>
-                <span className="text-right">{columnaCobrado}</span>
-                <span className="text-right">%</span>
-                <span className="text-right">{lista === "cuentan" || lista === "atrasados" ? "Para el docente" : "Quedaría"}</span>
-              </div>
-              <ul className="divide-y divide-borde-soft border-y border-borde-soft">
-                {visibles.map((l) => (
-                  <li key={`${l.inscripcionId}-${l.materia.orden}`}>
-                    <button
-                      type="button"
-                      onClick={() => setElegida(l)}
-                      aria-label={`Ver el detalle de ${l.alumno.nombre}`}
-                      className={`grid w-full grid-cols-[minmax(0,1fr)_auto] gap-x-3 px-3 py-2.5 text-left md:grid-cols-[minmax(180px,2fr)_minmax(120px,1fr)_110px_120px_60px_100px] md:items-center ${
-                        elegida === l ? "bg-primary-50" : "hover:bg-muted"
-                      }`}
-                    >
-                      <span className="truncate text-sm text-texto">{l.alumno.nombre}</span>
-                      <span className="hidden truncate text-sm text-texto-2 md:block">
-                        M{l.materia.orden} {l.materia.nombre}
-                      </span>
-                      <span className="hidden text-sm text-texto-2 md:block">{textoFormaPago(l.formaPago)}</span>
-                      <span className="hidden text-right text-sm tabular-nums text-texto-2 md:block">
-                        {fmtMoney(lista === "postergados" ? l.abonado : lista === "sinPagar" ? l.montoModulo : l.cobradoModulo)}
-                      </span>
-                      <span className="hidden text-right text-sm tabular-nums text-texto-3 md:block">{l.pct} %</span>
-                      <span className={`text-right text-sm font-semibold tabular-nums ${lista === "cuentan" || lista === "atrasados" ? "text-texto" : "text-texto-3"}`}>
-                        {fmtMoney(lista === "cuentan" || lista === "atrasados" ? l.monto : (l.montoPotencial ?? l.monto))}
-                      </span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-              <div className="flex flex-wrap items-center justify-between gap-2 px-3 text-[13px]">
-                {lineas.length > LIMITE ? (
-                  <button type="button" onClick={() => setVerTodos({ ...verTodos, [grupo]: !todos })} className="font-semibold text-primary-700 hover:underline">
-                    {todos ? "Ver menos" : `Ver los ${lineas.length - LIMITE} ${p.alumnos} restantes`}
-                  </button>
-                ) : (
-                  <span />
+            opciones={[
+              { clave: "cuentan", label: "Cuentan", n: r.cuentan },
+              { clave: "postergados", label: "Postergados", n: r.postergados },
+              { clave: "atrasados", label: "Atrasados", n: r.atrasados },
+              { clave: "sinPagar", label: "Sin pagar", n: r.sinPagar },
+            ]}
+          />
+        }
+      >
+        {elegidas.length === 0 ? (
+          <Vacio icono="fileText" titulo="Nada en esta lista" />
+        ) : (
+          porGrupo.map(([grupo, lineas]) => {
+            const todos = verTodos[grupo] ?? false;
+            const visibles = todos ? lineas : lineas.slice(0, LIMITE);
+            const total = lineas.reduce((s, l) => s + (cuenta ? l.monto : (l.montoPotencial ?? l.monto)), 0);
+            return (
+              <section key={grupo} aria-label={grupo} className="border-t border-borde-soft first:border-t-0">
+                <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 px-4 py-3 sm:px-5">
+                  <h2 className="text-sm font-bold text-texto">{grupo}</h2>
+                  <span className="text-[13px] font-semibold tabular-nums text-texto-2">
+                    {lineas.length} {lineas.length === 1 ? p.alumno : p.alumnos} · {fmtMoney(total)}
+                  </span>
+                </div>
+                <div className={`hidden gap-3 px-4 py-2.5 sm:px-5 lg:grid ${TABLA.encabezado} ${COLUMNAS}`}>
+                  <span>{p.Alumno}</span>
+                  <span>{p.Materia}</span>
+                  <span>Forma de pago</span>
+                  <span className="text-right">{columnaCobrado}</span>
+                  <span className="text-right">%</span>
+                  <span className="text-right">{cuenta ? "Para el docente" : "Quedaría"}</span>
+                </div>
+                <ul className={`${LISTA.lista} border-t border-borde-soft`}>
+                  {visibles.map((l) => (
+                    <li key={`${l.inscripcionId}-${l.materia.orden}`}>
+                      <button
+                        type="button"
+                        onClick={() => setElegida(l)}
+                        aria-label={`Ver el detalle de ${l.alumno.nombre}`}
+                        className={`grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-0.5 px-4 py-3 text-left transition-colors sm:px-5 ${COLUMNAS} ${
+                          elegida === l ? "bg-primary-50" : "hover:bg-muted"
+                        }`}
+                      >
+                        <span className="truncate text-sm font-medium text-texto max-lg:order-1">{l.alumno.nombre}</span>
+                        <span className="hidden truncate text-sm text-texto-2 lg:block">
+                          M{l.materia.orden} {l.materia.nombre}
+                        </span>
+                        <span className="truncate text-sm text-texto-2 max-lg:order-3 max-lg:text-[12px] max-lg:text-texto-3">{textoFormaPago(l.formaPago)}</span>
+                        <span className="hidden text-right text-sm tabular-nums text-texto-2 lg:block">
+                          {fmtMoney(lista === "postergados" ? l.abonado : lista === "sinPagar" ? l.montoModulo : l.cobradoModulo)}
+                        </span>
+                        <span className="hidden text-right text-sm tabular-nums text-texto-3 lg:block">{l.pct} %</span>
+                        <span className={`text-right text-sm font-semibold tabular-nums max-lg:order-2 ${cuenta ? "text-texto" : "text-texto-3"}`}>
+                          {fmtMoney(cuenta ? l.monto : (l.montoPotencial ?? l.monto))}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+                {lineas.length > LIMITE && (
+                  <div className="border-t border-borde-soft bg-muted px-4 py-2.5 sm:px-5">
+                    <BotonFila variante="ghost" onClick={() => setVerTodos({ ...verTodos, [grupo]: !todos })}>
+                      {todos ? "Ver menos" : `Ver los ${lineas.length - LIMITE} ${p.alumnos} restantes`}
+                    </BotonFila>
+                  </div>
                 )}
-                <span className="font-semibold text-texto">
-                  {lineas.length} {lineas.length === 1 ? p.alumno : p.alumnos} · {fmtMoney(total)}
-                </span>
-              </div>
-            </section>
-          );
-        })
-      )}
+              </section>
+            );
+          })
+        )}
+      </Tarjeta>
 
       {elegida && (
         <PanelLateral
@@ -296,11 +336,12 @@ export default function PlanillaDocente() {
             </Link>
           }
         >
-          <div className="space-y-5">
-            <div>
-              <span className="block text-[12px] text-texto-3">Para el {p.docente} este mes</span>
-              <span className="block text-2xl font-bold tabular-nums text-texto">{fmtMoney(lista === "cuentan" || lista === "atrasados" ? elegida.monto : 0)}</span>
-              <span className="text-[13px] text-texto-3">
+          <SeccionPanel titulo={`Para el ${p.docente} este mes`}>
+            <ResumenPanel>
+              <span className={`block text-2xl font-bold tabular-nums ${cuenta ? "text-primary-700" : "text-texto-3"}`}>
+                {fmtMoney(cuenta ? elegida.monto : 0)}
+              </span>
+              <span className="mt-0.5 block text-[13px] text-texto-3">
                 {lista === "cuentan"
                   ? "Pagó el módulo completo"
                   : lista === "atrasados"
@@ -309,12 +350,11 @@ export default function PlanillaDocente() {
                       ? `Abonó ${fmtMoney(elegida.abonado)} de ${fmtMoney(elegida.montoModulo)}: suma ${fmtMoney(elegida.montoPotencial ?? 0)} cuando complete`
                       : "No pagó el módulo: no suma"}
               </span>
-            </div>
-            <div className="space-y-1">
-              <span className="block text-[12px] text-texto-3">De dónde sale el monto</span>
-              <p className="rounded-xl bg-muted p-3 text-[13px] text-texto-2">{elegida.explicacion}</p>
-            </div>
-          </div>
+            </ResumenPanel>
+          </SeccionPanel>
+          <SeccionPanel titulo="De dónde sale el monto">
+            <p className="rounded-xl border border-borde-soft bg-white p-3 text-[13px] text-texto-2">{elegida.explicacion}</p>
+          </SeccionPanel>
         </PanelLateral>
       )}
 
@@ -357,7 +397,7 @@ export default function PlanillaDocente() {
           void cerrar(true);
         }}
       />
-    </div>
+    </PaginaAcademia>
   );
 }
 
@@ -367,4 +407,3 @@ function agrupar(lineas: LineaPlanilla[]): [string, LineaPlanilla[]][] {
   for (const l of lineas) m.set(l.grupo.nombre, [...(m.get(l.grupo.nombre) ?? []), l]);
   return [...m.entries()];
 }
-
