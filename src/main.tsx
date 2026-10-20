@@ -8,13 +8,6 @@ import { iniciarTelemetria, reportarError } from "./lib/telemetria";
 import { instalarRecargaPorVersion } from "./lib/recargaPorVersion";
 import { iniciarPwa } from "./lib/pwa/pwa";
 import { ventaSinInternet } from "./lib/offline/modo";
-import { tomarCodigoDeEntrada } from "./lib/alta/entrada";
-
-// Lo primero de todo: el código con el que entra una cuenta recién creada
-// (`/entrar#c=…`, PLAN-ALTA-LANDING) sale de la barra de direcciones antes de
-// que la telemetría o cualquier otra cosa lea la URL. Queda en memoria hasta
-// que la pantalla de `/entrar` lo canjea.
-tomarCodigoDeEntrada();
 
 // La página del negocio pide sus letras a Google Fonts apenas monta (ver
 // `cargarFuentesPagina`), y eso son dos dominios más con su DNS y su TLS.

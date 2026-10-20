@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Icon } from "../components/Icon";
 import { Boton, Campo, ErrorMsg, Input, InputPassword } from "../components/ui";
-import { aliasDeLaDireccion, direccionSinAlias } from "../lib/alta/entrada";
+import { aliasDeLaDireccion, direccionSinAlias } from "../lib/aliasDeLaUrl";
 import { BLOQUEO_KEY, SESION_VENCIDA_KEY } from "../lib/api";
 import { useAuth } from "../store/AuthContext";
 import PoweredByBamarDev from "../components/PoweredByBamarDev";
@@ -45,13 +45,7 @@ function leerSesionVencida(): boolean {
   }
 }
 
-export default function Login({ aliasInicial }: {
-  /**
-   * El alias con el que llega desde `/entrar` cuando el código de la landing
-   * ya no sirve. Gana sobre el recordado: es el de la cuenta recién creada.
-   */
-  aliasInicial?: string;
-} = {}) {
+export default function Login() {
   const { login, aliasRecordado } = useAuth();
   const { pathname, search, hash, state } = useLocation();
   const navigate = useNavigate();
@@ -61,7 +55,7 @@ export default function Login({ aliasInicial }: {
   // que le pasaron recién, así que gana sobre el recordado en este equipo,
   // que puede ser de otro negocio. Se lee una vez: abajo se saca de la URL.
   const [negocio, setNegocio] = useState(
-    () => aliasDeLaDireccion(search) || aliasInicial || aliasRecordado,
+    () => aliasDeLaDireccion(search) || aliasRecordado,
   );
 
   // Ya usado, el alias sale de la dirección: si quedara, un F5 o el enlace
