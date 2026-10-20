@@ -1,6 +1,8 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { Icon } from "../components/Icon";
 import { Boton, Campo, ErrorMsg, Input, InputPassword } from "../components/ui";
+import { aliasDeLaDireccion, direccionSinAlias } from "../lib/alta/entrada";
 import { BLOQUEO_KEY, SESION_VENCIDA_KEY } from "../lib/api";
 import { useAuth } from "../store/AuthContext";
 import PoweredByBamarDev from "../components/PoweredByBamarDev";
@@ -51,9 +53,27 @@ export default function Login({ aliasInicial }: {
   aliasInicial?: string;
 } = {}) {
   const { login, aliasRecordado } = useAuth();
+  const { pathname, search, hash, state } = useLocation();
+  const navigate = useNavigate();
   // El alias identifica al negocio (multi-tenant): el mismo "admin" existe en
   // varios negocios, así que sin alias el backend no sabe a cuál entrar.
-  const [negocio, setNegocio] = useState(aliasInicial || aliasRecordado);
+  // El de la dirección (`?negocio=…`, PLAN-ALTA-LANDING B5) es el del enlace
+  // que le pasaron recién, así que gana sobre el recordado en este equipo,
+  // que puede ser de otro negocio. Se lee una vez: abajo se saca de la URL.
+  const [negocio, setNegocio] = useState(
+    () => aliasDeLaDireccion(search) || aliasInicial || aliasRecordado,
+  );
+
+  // Ya usado, el alias sale de la dirección: si quedara, un F5 o el enlace
+  // copiado de la barra pisarían lo que el usuario corrigió a mano. Con
+  // replace y conservando el resto (ruta, otros parámetros, fragmento y el
+  // estado), para que después del login siga yendo a donde apuntaba. El
+  // login sólo se muestra sin sesión: con una abierta nada de esto corre.
+  useEffect(() => {
+    const limpia = direccionSinAlias(search);
+    if (limpia === null) return;
+    navigate({ pathname, search: limpia, hash }, { replace: true, state });
+  }, [pathname, search, hash, state, navigate]);
   const [usuario, setUsuario] = useState("");
   const [clave, setClave] = useState("");
   const [error, setError] = useState("");

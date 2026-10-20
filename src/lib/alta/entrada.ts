@@ -14,10 +14,15 @@ export const RUTA_ENTRAR = "/entrar";
 
 /**
  * Copia en la pestaña: si la carga de la app falla y el usuario toca
- * "Reintentar", la recarga ya no tiene el fragmento. El código vence a los
- * 60 segundos, así que guardarlo un rato más no abre nada nuevo.
+ * "Reintentar", la recarga ya no tiene el fragmento. Va con su vencimiento:
+ * desde B4 el código vale 10 minutos (antes 60 s, cuando daba igual guardarlo
+ * sin fecha), y una pestaña que queda abierta no tiene por qué seguir
+ * mandando uno que el backend ya no acepta.
  */
 const CODIGO_KEY = "bamardev_web_codigo_entrada";
+
+/** Lo que dura el código en el backend (PLAN-ALTA-LANDING B4). */
+export const VIGENCIA_CODIGO_MS = 10 * 60_000;
 
 let codigoEnMemoria: string | null = null;
 
@@ -40,7 +45,8 @@ export function tomarCodigoDeEntrada(win: Window = window): string | null {
   if (delFragmento) {
     codigoEnMemoria = delFragmento;
     try {
-      win.sessionStorage.setItem(CODIGO_KEY, delFragmento);
+      const guardado: CodigoGuardado = { codigo: delFragmento, hasta: Date.now() + VIGENCIA_CODIGO_MS };
+      win.sessionStorage.setItem(CODIGO_KEY, JSON.stringify(guardado));
     } catch {
       /* sin almacenamiento: alcanza con la memoria */
     }
@@ -52,8 +58,27 @@ export function tomarCodigoDeEntrada(win: Window = window): string | null {
     win.history.replaceState(win.history.state, "", win.location.pathname + win.location.search);
   }
   if (codigoEnMemoria) return codigoEnMemoria;
+  return codigoGuardado(win);
+}
+
+interface CodigoGuardado {
+  codigo: string;
+  /** Epoch en ms: pasado esto el backend ya no lo acepta. */
+  hasta: number;
+}
+
+/** La copia de la pestaña, si sigue vigente. La vencida se borra. */
+function codigoGuardado(win: Window): string | null {
   try {
-    return win.sessionStorage.getItem(CODIGO_KEY);
+    const raw = win.sessionStorage.getItem(CODIGO_KEY);
+    if (!raw) return null;
+    const guardado = JSON.parse(raw) as Partial<CodigoGuardado>;
+    if (typeof guardado.codigo === "string" && typeof guardado.hasta === "number" && Date.now() < guardado.hasta) {
+      return guardado.codigo;
+    }
+    // Vencida, o con otra forma (la de antes de B4 era el código pelado).
+    win.sessionStorage.removeItem(CODIGO_KEY);
+    return null;
   } catch {
     return null;
   }
@@ -69,14 +94,44 @@ export function olvidarCodigoDeEntrada(win: Window = window) {
   }
 }
 
+// ── El alias en la dirección ───────────────────────────────────────────────
+
+/** Los parámetros que traen el código del negocio: `negocio` el de la landing. */
+const PARAMS_ALIAS = ["negocio", "alias"] as const;
+
 /**
- * El alias para el login de respaldo, si la dirección lo trae
- * (`/entrar?negocio=…` o `?alias=…`). La landing de hoy no lo manda: sin él el
- * login queda como siempre.
+ * Forma de un alias: lo que deja el `slug` del backend (minúsculas, dígitos y
+ * guiones, sin guion en las puntas). El tope es más holgado que sus 30
+ * caracteres porque al alias tomado se le suma un número.
+ */
+const ALIAS_VALIDO = /^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$/;
+
+/**
+ * El alias que trae la dirección (`?negocio=…` o `?alias=…`), para prellenar
+ * el login (B5) y el de respaldo de `/entrar`. Se normaliza como lo escribiría
+ * a mano (minúsculas, sin espacios) y lo que no tiene forma de alias se
+ * descarta: es un enlace que cualquiera puede armar, y un campo prellenado
+ * con basura es peor que uno vacío.
  */
 export function aliasDeLaDireccion(search: string): string {
   const params = new URLSearchParams(search);
-  return (params.get("negocio") ?? params.get("alias") ?? "").trim().toLowerCase();
+  for (const nombre of PARAMS_ALIAS) {
+    const alias = (params.get(nombre) ?? "").toLowerCase().replace(/\s+/g, "");
+    if (alias) return ALIAS_VALIDO.test(alias) ? alias : "";
+  }
+  return "";
+}
+
+/**
+ * La misma búsqueda sin los parámetros del alias (con su `?` si queda algo),
+ * o null si no traía ninguno y no hay nada que limpiar.
+ */
+export function direccionSinAlias(search: string): string | null {
+  const params = new URLSearchParams(search);
+  if (!PARAMS_ALIAS.some((nombre) => params.has(nombre))) return null;
+  for (const nombre of PARAMS_ALIAS) params.delete(nombre);
+  const resto = params.toString();
+  return resto ? `?${resto}` : "";
 }
 
 // ── La bienvenida ──────────────────────────────────────────────────────────

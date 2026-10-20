@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 
 /**
@@ -24,9 +25,16 @@ vi.mock("../lib/api", () => ({
 import { api } from "../lib/api";
 import Login from "./Login";
 
+// El login lee la dirección (el alias de `?negocio=`): necesita un router.
+const conRouter = () => (
+  <MemoryRouter>
+    <Login />
+  </MemoryRouter>
+);
+
 describe("login → pagar la licencia", () => {
   it("el pago arranca con el alias vacío aunque el login lo recuerde", async () => {
-    render(<Login />);
+    render(conRouter());
     // El login sí lo recuerda: es para entrar, no para pagar.
     expect(screen.getByPlaceholderText("cafeteriakevin")).toHaveValue("pollosdonomar");
 
@@ -44,11 +52,11 @@ describe("login después de que se cortó la sesión", () => {
     // Prueba profunda del 18-oct: el token dura 7 días y vence en pleno
     // turno; el login aparecía limpio, sin decir por qué.
     localStorage.setItem("bamardev_web_sesion_vencida", "1");
-    const { unmount } = render(<Login />);
+    const { unmount } = render(conRouter());
     expect(screen.getByRole("status")).toHaveTextContent("Tu sesión se cerró. Volvé a entrar para seguir.");
     expect(localStorage.getItem("bamardev_web_sesion_vencida")).toBeNull();
     unmount();
-    render(<Login />);
+    render(conRouter());
     expect(screen.queryByText(/Tu sesión se cerró/)).not.toBeInTheDocument();
   });
 });

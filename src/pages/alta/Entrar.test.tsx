@@ -186,6 +186,18 @@ describe("cuando el código no sirve", () => {
     expect(window.location.pathname).toBe("/");
   });
 
+  it("con ?negocio= y un código inválido, el login queda con ese alias y no con el recordado", async () => {
+    // La compu ya tenía otro negocio recordado: gana el de la cuenta nueva.
+    localStorage.setItem("bamardev_web_alias", "pollosdonomar");
+    vi.mocked(api.entrarConCodigo).mockRejectedValue(new ApiError("Código inválido", 400));
+    await abrir("/entrar?negocio=x#c=inv%C3%A1lido");
+
+    expect(api.entrarConCodigo).toHaveBeenCalledWith("inválido");
+    fireEvent.click(screen.getByRole("button", { name: "Ir a iniciar sesión" }));
+    expect(screen.getByPlaceholderText("cafeteriakevin")).toHaveValue("x");
+    expect(window.location.pathname + window.location.search).toBe("/");
+  });
+
   it("sin alias en la dirección, el login queda sin prellenar", async () => {
     vi.mocked(api.entrarConCodigo).mockRejectedValue(new ApiError("Código inválido", 400));
     await abrir("/entrar#c=viejo");
@@ -213,5 +225,56 @@ describe("cuando el código no sirve", () => {
     expect(api.entrarConCodigo).toHaveBeenCalledTimes(2);
     expect(api.entrarConCodigo).toHaveBeenLastCalledWith("abc123");
     expect(screen.getByText("Inicio del administrador")).toBeInTheDocument();
+  });
+});
+
+/**
+ * B5: el login de siempre toma el alias del enlace (`?negocio=…` o
+ * `?alias=…`), en cualquier ruta en la que aparezca sin sesión. Va acá y no
+ * en Login.test porque lo que importa es la dirección real del navegador.
+ */
+describe("el login con el alias en la dirección", () => {
+  const campoNegocio = () => screen.getByPlaceholderText("cafeteriakevin");
+
+  it("lo rellena, gana sobre el recordado y lo saca de la dirección", async () => {
+    localStorage.setItem("bamardev_web_alias", "pollosdonomar");
+    await abrir("/?negocio=BillarLosPinos&modo=1#arriba");
+
+    expect(campoNegocio()).toHaveValue("billarlospinos");
+    // Sin recargar: lo demás de la dirección queda como estaba.
+    expect(window.location.pathname).toBe("/");
+    expect(window.location.search).toBe("?modo=1");
+    expect(window.location.hash).toBe("#arriba");
+    // El recordado no se toca hasta que entre.
+    expect(localStorage.getItem("bamardev_web_alias")).toBe("pollosdonomar");
+  });
+
+  it("acepta ?alias= y conserva la ruta a la que apuntaba el enlace", async () => {
+    await abrir("/inventario?alias=billarlospinos");
+
+    expect(campoNegocio()).toHaveValue("billarlospinos");
+    expect(window.location.pathname + window.location.search).toBe("/inventario");
+  });
+
+  it("lo que no tiene forma de alias no pisa el recordado, pero igual se limpia", async () => {
+    localStorage.setItem("bamardev_web_alias", "pollosdonomar");
+    await abrir("/?negocio=%3Cscript%3E");
+
+    expect(campoNegocio()).toHaveValue("pollosdonomar");
+    expect(window.location.search).toBe("");
+  });
+
+  it("con la sesión abierta no toca nada", async () => {
+    tokenStore.set("token-alta");
+    localStorage.setItem(USER_KEY, JSON.stringify(ADMIN));
+    localStorage.setItem(NEGOCIO_KEY, JSON.stringify(BILLAR));
+    localStorage.setItem("bamardev_web_alias", "billarlospinos");
+    await abrir("/inventario?negocio=otronegocio");
+
+    expect(screen.getByText("Inicio del administrador")).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText("cafeteriakevin")).not.toBeInTheDocument();
+    expect(window.location.pathname + window.location.search).toBe("/inventario?negocio=otronegocio");
+    expect(tokenStore.get()).toBe("token-alta");
+    expect(localStorage.getItem("bamardev_web_alias")).toBe("billarlospinos");
   });
 });
