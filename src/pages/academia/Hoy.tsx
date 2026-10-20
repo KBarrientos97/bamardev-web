@@ -16,6 +16,7 @@ import { tienePermiso } from "../../lib/permisos";
 import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
 import Inscribir from "./Inscribir";
+import { BotonFila, EncabezadoPagina, KpiTarjeta, LISTA, PaginaAcademia, Tarjeta } from "./piezas";
 
 /**
  * E1 · Hoy (PLAN-ACADEMIAS §5, ronda 2): el tablero de la recepción y de la
@@ -57,33 +58,36 @@ export default function Hoy() {
   const d = hoy.datos;
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6 p-4 pb-24 sm:p-6 md:pb-6 lg:p-8">
-      <header className="flex flex-wrap items-start justify-between gap-4">
-        <div className="min-w-0 space-y-1">
-          <p className="text-[13px] text-texto-3">
+    <PaginaAcademia conBarraAbajo>
+      <EncabezadoPagina
+        titulo="Hoy"
+        sobre={
+          <>
             {d ? capitalizar(fechaLarga(d.fecha)) : "Hoy"}
             {nombreSede ? ` · ${p.Sede} ${nombreSede}` : ""}
+          </>
+        }
+        acciones={
+          inscribe && (
+            <Boton icono="plus" className="max-md:!hidden" onClick={() => setInscribiendo(true)}>
+              Inscribir {p.alumno}
+            </Boton>
+          )
+        }
+      >
+        {conCaja && !caja.cargando && (
+          <p className="flex items-center gap-1.5 pt-1 text-[13px] text-texto-3">
+            <span className={`h-2 w-2 rounded-full ${caja.datos?.caja ? "bg-primary" : "bg-slate-300"}`} />
+            {caja.datos?.caja ? (
+              `Caja abierta · desde ${fmtHora(caja.datos.caja.fechaApertura)}`
+            ) : (
+              <Link to="/pos" className="font-semibold text-primary-700 hover:underline">
+                Caja cerrada
+              </Link>
+            )}
           </p>
-          <h1 className="text-2xl font-bold text-texto">Hoy</h1>
-          {conCaja && !caja.cargando && (
-            <p className="flex items-center gap-1.5 text-[13px] text-texto-3">
-              <span className={`h-1.5 w-1.5 rounded-full ${caja.datos?.caja ? "bg-primary" : "bg-slate-300"}`} />
-              {caja.datos?.caja ? (
-                `Caja abierta · desde ${fmtHora(caja.datos.caja.fechaApertura)}`
-              ) : (
-                <Link to="/pos" className="underline">
-                  Caja cerrada
-                </Link>
-              )}
-            </p>
-          )}
-        </div>
-        {inscribe && (
-          <Boton icono="plus" className="hidden md:inline-flex" onClick={() => setInscribiendo(true)}>
-            Inscribir {p.alumno}
-          </Boton>
         )}
-      </header>
+      </EncabezadoPagina>
 
       {sede.selector}
 
@@ -92,8 +96,8 @@ export default function Hoy() {
       ) : !d ? (
         <Cargando />
       ) : (
-        <div className="grid gap-8 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
-          <div className="space-y-3">
+        <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] lg:gap-6">
+          <div className="min-w-0 space-y-3">
             <ErrorMsg>{errorLlegada}</ErrorMsg>
             <ClasesDeHoy
               clases={d.clases ?? []}
@@ -103,7 +107,7 @@ export default function Hoy() {
               onMarcar={(id) => void marcarLlegada(id)}
             />
           </div>
-          <div className="space-y-8">
+          <div className="min-w-0 space-y-5 lg:space-y-6">
             <ParaCobrar datos={d} puedeCobranza={puede("academia_cobranza")} onIr={(tipo) => navigate(`/academia/cobranza?tipo=${tipo}`)} />
             <Avisos datos={d} />
           </div>
@@ -111,16 +115,16 @@ export default function Hoy() {
       )}
 
       {(inscribe || puede("pos")) && (
-        <div className="fixed inset-x-0 bottom-0 z-20 flex gap-2 border-t border-borde-soft bg-white p-3 md:hidden">
+        <div className="fixed inset-x-0 bottom-0 z-20 flex gap-2 border-t border-borde-soft bg-white p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(15,23,42,0.06)] md:hidden">
           {inscribe && (
-            <Boton className="flex-1" onClick={() => setInscribiendo(true)}>
+            <Boton className="min-h-11 flex-1" onClick={() => setInscribiendo(true)}>
               Inscribir
             </Boton>
           )}
           {puede("pos") && (
             <Link
               to="/pos"
-              className="inline-flex flex-1 items-center justify-center rounded-xl border border-borde bg-white px-4 py-2.5 text-sm font-semibold text-texto-2"
+              className="inline-flex min-h-11 flex-1 items-center justify-center rounded-xl border border-borde bg-white px-4 py-2.5 text-sm font-semibold text-texto-2 hover:bg-muted"
             >
               Cobrar
             </Link>
@@ -138,7 +142,7 @@ export default function Hoy() {
           }}
         />
       )}
-    </div>
+    </PaginaAcademia>
   );
 }
 
@@ -174,21 +178,23 @@ function ClasesDeHoy({
   const ahora = new Date();
   const orden = [...clases].sort((a, b) => aMinutos(a.horaInicio) - aMinutos(b.horaInicio));
   return (
-    <section aria-labelledby="t-clases" className="space-y-3">
-      <div className="flex items-center justify-between gap-3">
-        <h2 id="t-clases" className="text-base font-bold text-texto">
-          Clases de hoy <span className="tabular-nums text-texto-4">{clases.length}</span>
-        </h2>
-        {verCalendario && (
-          <Link to="/academia/calendario" className="text-sm font-semibold text-primary-700 hover:underline">
+    <Tarjeta
+      id="t-clases"
+      titulo="Clases de hoy"
+      contador={clases.length}
+      sinRelleno
+      acciones={
+        verCalendario && (
+          <BotonFila variante="ghost" icono="calendar" a="/academia/calendario">
             Ver calendario
-          </Link>
-        )}
-      </div>
+          </BotonFila>
+        )
+      }
+    >
       {orden.length === 0 ? (
-        <p className="text-sm text-texto-3">Hoy no hay clases en esta {p.sede}.</p>
+        <p className="p-5 text-sm text-texto-3">Hoy no hay clases en esta {p.sede}.</p>
       ) : (
-        <ul className="divide-y divide-borde-soft border-y border-borde-soft">
+        <ul className={LISTA.lista}>
           {orden.map((c) => {
             const momento = momentoClase(c, ahora);
             const llegada = textoLlegada(c);
@@ -196,14 +202,20 @@ function ClasesDeHoy({
             return (
               <li
                 key={c.sesionId}
-                className={`grid gap-x-4 gap-y-1 py-3 sm:grid-cols-[64px_minmax(0,1fr)_auto] sm:items-center ${momento === "terminó" ? "opacity-65" : ""}`}
+                className={`grid gap-x-4 gap-y-2 ${LISTA.itemHover} sm:grid-cols-[76px_minmax(0,1fr)_auto] sm:items-center ${momento === "terminó" ? "opacity-65" : ""}`}
               >
-                <span className="flex items-baseline gap-2 sm:block">
-                  <span className="block text-sm font-semibold tabular-nums text-texto">{c.horaInicio}</span>
-                  <span className={`block text-xs ${momento === "en curso" ? "font-semibold text-primary-700" : "text-texto-4"}`}>{momento}</span>
+                <span className="flex items-center gap-2 sm:block">
+                  <span className="block text-base font-bold tabular-nums text-texto">{c.horaInicio}</span>
+                  <span
+                    className={`inline-block whitespace-nowrap rounded-full px-2 py-px text-[11px] font-semibold sm:mt-0.5 ${
+                      momento === "en curso" ? "bg-primary-50 text-primary-700" : "bg-slate-100 text-texto-3"
+                    }`}
+                  >
+                    {momento}
+                  </span>
                 </span>
                 <span className="min-w-0">
-                  <Link to={`/academia/grupos/${c.grupoId}`} className="block truncate text-sm font-semibold text-texto hover:underline">
+                  <Link to={`/academia/grupos/${c.grupoId}`} className="block truncate text-sm font-semibold text-texto hover:text-primary-700 hover:underline">
                     {nombreDe(c.carrera)} · {c.nombre}
                   </Link>
                   <span className="block truncate text-[13px] text-texto-3">
@@ -221,9 +233,9 @@ function ClasesDeHoy({
                 </span>
                 <span className="sm:text-right">
                   {marcaLlegadas && !c.llegadaEn && momento !== "terminó" && (
-                    <Boton variante="ghost" disabled={marcando === c.sesionId} onClick={() => onMarcar(c.sesionId)}>
+                    <BotonFila icono="check" disabled={marcando === c.sesionId} onClick={() => onMarcar(c.sesionId)}>
                       {marcando === c.sesionId ? "Marcando…" : "Marcar llegada"}
-                    </Boton>
+                    </BotonFila>
                   )}
                 </span>
               </li>
@@ -231,7 +243,7 @@ function ClasesDeHoy({
           })}
         </ul>
       )}
-    </section>
+    </Tarjeta>
   );
 }
 
@@ -247,21 +259,25 @@ function ParaCobrar({
   const c = datos.cobrar;
   const nada = c.venceHoyCuotas === 0 && c.vencidoCuotas === 0;
   return (
-    <section aria-label="Para cobrar hoy" className="space-y-3">
-      <div className="flex items-center justify-between gap-3">
-        <h2 className="text-base font-bold text-texto">Para cobrar</h2>
-        {puedeCobranza && (
-          <Link to="/academia/cobranza" className="text-sm font-semibold text-primary-700 hover:underline">
+    <Tarjeta
+      id="t-cobrar"
+      titulo="Para cobrar"
+      sinRelleno
+      acciones={
+        puedeCobranza && (
+          <BotonFila variante="ghost" a="/academia/cobranza">
             Ir a Cobranza
-          </Link>
-        )}
-      </div>
+            <Icon name="chevronRight" size={15} />
+          </BotonFila>
+        )
+      }
+    >
       {nada ? (
-        <p className="text-sm text-texto-3">No vence nada hoy y no hay cuotas vencidas.</p>
+        <p className="p-5 text-sm text-texto-3">No vence nada hoy y no hay cuotas vencidas.</p>
       ) : (
         <>
           {/* Los dos totales son filtros: llevan a Cobranza con esa pestaña. */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-3 bg-muted/60 p-4 sm:p-5">
             <Indicador
               etiqueta="Vencen hoy"
               monto={c.venceHoy}
@@ -277,9 +293,9 @@ function ParaCobrar({
             />
           </div>
           {c.items.length > 0 && (
-            <ul className="divide-y divide-borde-soft border-y border-borde-soft">
+            <ul className={`${LISTA.lista} border-t border-borde-soft`}>
               {c.items.map((it, i) => (
-                <li key={`${it.alumno.id}-${i}`} className="flex items-center justify-between gap-3 py-2.5">
+                <li key={`${it.alumno.id}-${i}`} className={`flex items-center justify-between gap-3 ${LISTA.itemHover}`}>
                   <span className="min-w-0">
                     <span className="block truncate text-sm font-semibold text-texto">{it.alumno.nombre}</span>
                     <span className="block truncate text-xs text-texto-3">{it.detalle}</span>
@@ -287,9 +303,9 @@ function ParaCobrar({
                   <span className="flex shrink-0 items-center gap-3">
                     <span className="text-sm font-semibold tabular-nums text-texto">{fmtMoney(it.monto)}</span>
                     {puedeCobranza && (
-                      <Link to="/academia/cobranza" className="text-[13px] font-semibold text-primary-700 hover:underline">
+                      <BotonFila icono="qr" a="/academia/cobranza">
                         Enviar QR
-                      </Link>
+                      </BotonFila>
                     )}
                   </span>
                 </li>
@@ -298,7 +314,7 @@ function ParaCobrar({
           )}
         </>
       )}
-    </section>
+    </Tarjeta>
   );
 }
 
@@ -315,23 +331,14 @@ function Indicador({
   urgente?: boolean;
   onClick?: () => void;
 }) {
-  const contenido = (
-    <>
-      <span className="block text-[12px] text-texto-3">{etiqueta}</span>
-      <span className={`block text-lg font-bold tabular-nums ${urgente && cuotas > 0 ? "text-danger-text" : "text-texto"}`}>
-        {fmtMoney(monto)}
-      </span>
-      <span className="block text-xs text-texto-3">
-        {cuotas} {cuotas === 1 ? "cuota" : "cuotas"}
-      </span>
-    </>
-  );
-  return onClick ? (
-    <button type="button" onClick={onClick} className="rounded-xl border border-borde px-4 py-3 text-left hover:bg-muted">
-      {contenido}
-    </button>
-  ) : (
-    <div className="rounded-xl border border-borde px-4 py-3">{contenido}</div>
+  return (
+    <KpiTarjeta
+      etiqueta={etiqueta}
+      valor={fmtMoney(monto)}
+      tono={urgente && cuotas > 0 ? "urgente" : "normal"}
+      pie={`${cuotas} ${cuotas === 1 ? "cuota" : "cuotas"}`}
+      onClick={onClick}
+    />
   );
 }
 
@@ -346,12 +353,11 @@ const PUNTO: Record<string, string> = {
 function Avisos({ datos }: { datos: HoyAcademia }) {
   const avisos = datos.avisos;
   return (
-    <section aria-label="Avisos" className="space-y-3">
-      <h2 className="text-base font-bold text-texto">Avisos</h2>
+    <Tarjeta id="t-avisos" titulo="Avisos" sinRelleno>
       {avisos.length === 0 ? (
-        <p className="text-sm text-texto-3">Nada que revisar por ahora.</p>
+        <p className="p-5 text-sm text-texto-3">Nada que revisar por ahora.</p>
       ) : (
-        <ul className="space-y-1">
+        <ul className={LISTA.lista}>
           {/* El SIE salió de la lista en la ronda 2: si un backend viejo lo manda, no se muestra. */}
           {avisos.filter((a) => a.tipo !== "SIE").map((a, i) => {
             const destino =
@@ -364,28 +370,32 @@ function Avisos({ datos }: { datos: HoyAcademia }) {
                     : null;
             const cuerpo = (
               <>
-                <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${PUNTO[a.tipo] ?? "bg-slate-400"}`} />
+                <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${PUNTO[a.tipo] ?? "bg-slate-400"}`} />
                 <span className="min-w-0 flex-1">
                   <span className="block text-sm font-semibold text-texto">{a.titulo}</span>
                   <span className="block text-[13px] text-texto-3">{a.texto}</span>
                 </span>
-                {destino && <Icon name="chevronRight" size={16} />}
+                {destino && (
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-borde bg-white text-texto-3">
+                    <Icon name="chevronRight" size={16} />
+                  </span>
+                )}
               </>
             );
             return (
               <li key={i}>
                 {destino ? (
-                  <Link to={destino} className="flex items-start gap-3 rounded-xl px-3 py-2.5 text-texto-3 hover:bg-muted">
+                  <Link to={destino} className={`flex items-center gap-3 text-texto-3 ${LISTA.itemHover}`}>
                     {cuerpo}
                   </Link>
                 ) : (
-                  <div className="flex items-start gap-3 px-3 py-2.5">{cuerpo}</div>
+                  <div className={`flex items-center gap-3 ${LISTA.item}`}>{cuerpo}</div>
                 )}
               </li>
             );
           })}
         </ul>
       )}
-    </section>
+    </Tarjeta>
   );
 }

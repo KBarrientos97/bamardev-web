@@ -64,7 +64,7 @@ export default function PanelLateral({
       aria-label={titulo}
       className="fixed inset-y-0 right-0 z-30 flex w-[380px] flex-col border-l border-borde bg-white shadow-[-12px_0_32px_rgba(15,23,42,0.06)]"
     >
-      <header className="flex items-start justify-between gap-3 px-6 pb-4 pt-6">
+      <header className="flex items-start justify-between gap-3 border-b border-borde-soft px-6 pb-4 pt-6">
         <div className="min-w-0">
           <h2 className="text-lg font-bold text-texto">{titulo}</h2>
           {subtitulo && <p className="mt-0.5 text-[13px] text-texto-3">{subtitulo}</p>}
@@ -73,13 +73,13 @@ export default function PanelLateral({
           type="button"
           onClick={onClose}
           aria-label="Cerrar"
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-muted text-texto-2 hover:bg-borde-soft"
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-borde bg-white text-texto-2 transition-colors hover:border-primary-200 hover:bg-muted"
         >
           <Icon name="close" size={18} />
         </button>
       </header>
-      <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-4">{children}</div>
-      {acciones && <div className="flex flex-col gap-2 border-t border-borde-soft px-6 py-4">{acciones}</div>}
+      <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">{children}</div>
+      {acciones && <div className="flex flex-col gap-2 border-t border-borde-soft bg-muted px-6 py-4">{acciones}</div>}
     </aside>
   );
 }
