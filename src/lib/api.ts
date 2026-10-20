@@ -401,6 +401,17 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ username, password, negocio }),
     }),
+  /**
+   * Canjea el código de un solo uso con el que la landing manda a una cuenta
+   * recién creada (PLAN-ALTA-LANDING). Responde lo mismo que el login. Va por
+   * `publico`: un código vencido no es una sesión vencida, y por `request` su
+   * 401 cerraría "la sesión" y recargaría encima del aviso.
+   */
+  entrarConCodigo: (codigo: string) =>
+    publico<LoginResponse>("/publico/alta/entrar", {
+      method: "POST",
+      body: JSON.stringify({ codigo }),
+    }),
   me: () => request<Me>("/auth/me"),
   licencia: () => request<EstadoLicencia>("/licencia/estado"),
 

@@ -7,6 +7,7 @@ import {
   useNavigate,
 } from "react-router-dom";
 import AtajaErrores from "./components/AtajaErrores";
+import BienvenidaAlta from "./components/BienvenidaAlta";
 import Layout from "./components/Layout";
 import { RUTA_AGENDA_PRONTO, rutaInicial, veReportes, veSoloSuAgenda, type Seccion } from "./lib/permisos";
 import { esBelleza, esFarmacia } from "./lib/rubro";
@@ -15,6 +16,8 @@ import Creditos from "./pages/Creditos";
 import Gastos from "./pages/Gastos";
 import GastosFijos from "./pages/GastosFijos";
 import Login from "./pages/Login";
+import Entrar from "./pages/alta/Entrar";
+import { RUTA_ENTRAR } from "./lib/alta/entrada";
 import PagarLicencia from "./pages/PagarLicencia";
 import Usuarios from "./pages/Usuarios";
 import Roles from "./pages/roles/Roles";
@@ -262,6 +265,7 @@ function PagarConSesion() {
 function Rutas() {
   const { token, permisosListos } = useAuth();
   const navigate = useNavigate();
+  const { pathname, state } = useLocation();
   const teniaSesion = useRef(token !== null);
 
   // Al cerrar sesión la dirección vuelve a "/". Antes quedaba la del que
@@ -275,9 +279,14 @@ function Rutas() {
     teniaSesion.current = token !== null;
   }, [token, navigate]);
 
+  // La entrada de una cuenta recién creada en la landing (PLAN-ALTA-LANDING):
+  // antes que el login, porque llega sin sesión y es ella la que la abre.
+  if (pathname === RUTA_ENTRAR) return <Entrar />;
+
   // La página pública del negocio (`/p/…`) no llega acá: la atiende App.tsx
   // antes de cargar la app, sin sesión y sin login.
-  if (!token) return <Login />;
+  // El alias del estado lo deja `/entrar` cuando el código ya no sirve.
+  if (!token) return <Login aliasInicial={(state as { alias?: string } | null)?.alias} />;
   // Una sesión vieja sin permisos los está trayendo de /auth/me: sin esperar,
   // el inicio la mandaría a "sin acceso" un segundo antes de tener su menú.
   if (!permisosListos) return <div className="min-h-dvh bg-fondo" aria-busy="true" />;
@@ -819,6 +828,10 @@ export default function AppConSesion() {
     <AuthProvider>
       <SinPantallaEnBlanco>
         <Rutas />
+        {/* La primera vez de una cuenta creada en la landing: su código de
+            negocio y su usuario. Fuera de las rutas, así sale sobre cualquier
+            pantalla de inicio (la del mesero y la agenda no tienen Layout). */}
+        <BienvenidaAlta />
       </SinPantallaEnBlanco>
     </AuthProvider>
   );

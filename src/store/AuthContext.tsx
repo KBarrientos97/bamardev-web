@@ -31,7 +31,13 @@ import {
 } from "../lib/permisos";
 import { conPerfilDelEstado } from "../lib/perfilNegocio";
 import type { Vocabulario } from "../lib/rubro";
-import type { CupoEstado, EstadoLicencia, SesionNegocio, SesionUsuario } from "../types";
+import type {
+  CupoEstado,
+  EstadoLicencia,
+  LoginResponse,
+  SesionNegocio,
+  SesionUsuario,
+} from "../types";
 
 /** Alias del negocio: se recuerda para no re-tipearlo en cada login. */
 const ALIAS_KEY = "bamardev_web_alias";
@@ -55,6 +61,11 @@ interface AuthValue {
    */
   vocabulario: Vocabulario | undefined;
   login: (username: string, password: string, negocio: string) => Promise<void>;
+  /**
+   * Entra con el código de un solo uso de la landing (`/entrar`). Deja la
+   * sesión igual que `login` y devuelve la respuesta, para la bienvenida.
+   */
+  entrarConCodigo: (codigo: string) => Promise<LoginResponse>;
   logout: () => void;
   /** ¿Se muestra esta sección? Permisos ∩ plan ∩ rubro. */
   puede: (seccion: Seccion) => boolean;
@@ -170,8 +181,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // también repinta cuando `refrescarNegocio` trae un perfil nuevo.
   aplicarTema(negocio);
 
-  const login = useCallback(async (username: string, password: string, alias: string) => {
-    const res = await api.login(username, password, alias);
+  /**
+   * Deja abierta la sesión que devolvió el backend. Es lo único que hacen
+   * tanto el login como el canje del código de la landing (`entrarConCodigo`):
+   * las dos respuestas son la misma, y así ninguna de las dos se olvida de
+   * guardar algo que la otra sí guarda.
+   */
+  const abrirSesion = useCallback((res: LoginResponse, alias: string) => {
     // `perfilVersion` viaja en el estado de la licencia y no en el negocio:
     // si el login trae la licencia, se toma de ahí, y así el primer chequeo
     // del poller no repinta lo mismo que se acaba de pintar.
@@ -197,6 +213,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // usuario nuevo (sin permiso no hace nada ni baja Firebase).
     void sincronizarPushSilencioso();
   }, [actualizarCupo]);
+
+  const login = useCallback(
+    async (username: string, password: string, alias: string) => {
+      abrirSesion(await api.login(username, password, alias), alias);
+    },
+    [abrirSesion],
+  );
+
+  const entrarConCodigo = useCallback(
+    async (codigo: string) => {
+      const res = await api.entrarConCodigo(codigo);
+      // El alias lo eligió el backend a partir del nombre (puede llevar un
+      // número si estaba tomado): el que vale es el de la respuesta.
+      abrirSesion(res, (res.negocio?.alias ?? "").toLowerCase());
+      return res;
+    },
+    [abrirSesion],
+  );
 
   const logout = useCallback(() => {
     // Antes de limpiar: con el JWT todavía a mano, el backend borra este
@@ -429,6 +463,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       rubro: negocio?.tipoNegocio,
       vocabulario: negocio?.perfil?.vocabulario,
       login,
+      entrarConCodigo,
       logout,
       puede,
       incluye,
@@ -444,6 +479,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       licencia,
       aliasRecordado,
       login,
+      entrarConCodigo,
       logout,
       puede,
       incluye,

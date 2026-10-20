@@ -43,11 +43,17 @@ function leerSesionVencida(): boolean {
   }
 }
 
-export default function Login() {
+export default function Login({ aliasInicial }: {
+  /**
+   * El alias con el que llega desde `/entrar` cuando el código de la landing
+   * ya no sirve. Gana sobre el recordado: es el de la cuenta recién creada.
+   */
+  aliasInicial?: string;
+} = {}) {
   const { login, aliasRecordado } = useAuth();
   // El alias identifica al negocio (multi-tenant): el mismo "admin" existe en
   // varios negocios, así que sin alias el backend no sabe a cuál entrar.
-  const [negocio, setNegocio] = useState(aliasRecordado);
+  const [negocio, setNegocio] = useState(aliasInicial || aliasRecordado);
   const [usuario, setUsuario] = useState("");
   const [clave, setClave] = useState("");
   const [error, setError] = useState("");
