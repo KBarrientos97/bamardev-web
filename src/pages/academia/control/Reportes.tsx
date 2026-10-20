@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
+import { Icon } from "../../../components/Icon";
 import MenuMas, { type AccionMenu } from "../../../components/MenuMas";
 import { Cargando, ErrorMsg, Select } from "../../../components/ui";
 import { apiAcademia } from "../../../lib/academia/apiAcademia";
@@ -11,6 +12,7 @@ import { usePalabras } from "../../../lib/academia/usePalabras";
 import { fmtMoney, isoDia } from "../../../lib/format";
 import { useApi } from "../../../lib/useApi";
 import { useAuth } from "../../../store/AuthContext";
+import { BotonFila, EncabezadoPagina, GrillaKpi, KpiTarjeta, LISTA, PaginaAcademia, TABLA, Tarjeta } from "../piezas";
 
 type Concepto = keyof Omit<ReportesAcademia["porSede"][number], "sede">;
 
@@ -44,29 +46,30 @@ export default function Reportes() {
   ];
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6 p-4 sm:p-6 lg:p-8">
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h1 className="text-xl font-bold text-texto">Reportes · {tituloMes(mes)}</h1>
-          <p className="mt-0.5 text-[13px] text-texto-3">
+    <PaginaAcademia>
+      <EncabezadoPagina
+        titulo={`Reportes · ${tituloMes(mes)}`}
+        bajada={
+          <>
             {mes === hoy ? `Al ${fechaCorta(isoDia(new Date()))}` : "Mes cerrado"}
             {sede.nombre ? ` · ${sede.nombre}` : sede.variasSedes ? ` · todas las ${p.sedes}` : ""}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-end gap-2">
-          <label className="block text-[12px] text-texto-3">
-            Mes
-            <Select value={mes} onChange={(e) => setMes(e.target.value)}>
-              {meses.map((m) => (
-                <option key={m} value={m}>
-                  {tituloMes(m)}
-                </option>
-              ))}
-            </Select>
-          </label>
-          <MenuMas etiqueta="Más acciones de los reportes" acciones={acciones} />
-        </div>
-      </header>
+          </>
+        }
+        acciones={
+          <>
+            <div className="w-40 sm:w-44">
+              <Select aria-label="Mes" value={mes} onChange={(e) => setMes(e.target.value)}>
+                {meses.map((m) => (
+                  <option key={m} value={m}>
+                    {tituloMes(m)}
+                  </option>
+                ))}
+              </Select>
+            </div>
+            <MenuMas etiqueta="Más acciones de los reportes" acciones={acciones} />
+          </>
+        }
+      />
 
       {sede.selector}
 
@@ -76,25 +79,38 @@ export default function Reportes() {
         <Cargando />
       ) : (
         <>
+          <Resumen d={d} />
           <ResultadoPorSede d={d} />
-          <div className="grid gap-8 lg:grid-cols-2">
-            <section aria-labelledby="t-cursos" className="space-y-2">
-              <h2 id="t-cursos" className="text-base font-bold text-texto">
-                Por {p.carrera}
-              </h2>
+          <div className="grid items-start gap-5 lg:grid-cols-2 lg:gap-6">
+            <Tarjeta
+              id="t-cursos"
+              titulo={`Por ${p.carrera}`}
+              sinRelleno
+              pie={
+                d.activosPorCurso.length > 0 && (
+                  <p className="flex justify-between text-sm font-bold text-texto">
+                    <span>Total</span>
+                    <span className="tabular-nums">{d.activosPorCurso.reduce((s, c) => s + c.activos, 0)} activos</span>
+                  </p>
+                )
+              }
+            >
               {d.activosPorCurso.length === 0 ? (
-                <p className="text-sm text-texto-3">Sin {p.alumnos} activos este mes.</p>
+                <p className="p-4 text-sm text-texto-3 sm:p-5">Sin {p.alumnos} activos este mes.</p>
               ) : (
-                <ul className="divide-y divide-borde-soft border-y border-borde-soft">
+                <ul className={LISTA.lista}>
                   {d.activosPorCurso.map((c) => {
                     const pct = c.cupo ? Math.min(100, Math.round((c.activos / c.cupo) * 100)) : null;
                     return (
-                      <li key={nombreDe(c.curso)} className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] items-center gap-3 py-2.5">
+                      <li
+                        key={nombreDe(c.curso)}
+                        className={`grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_15rem] ${LISTA.itemHover}`}
+                      >
                         <span className="truncate text-sm font-semibold text-texto">{nombreDe(c.curso)}</span>
-                        <span aria-hidden="true" className="h-1.5 overflow-hidden rounded-full bg-primary-100">
+                        <span aria-hidden="true" className="h-2 overflow-hidden rounded-full bg-primary-100 max-sm:col-span-2 max-sm:row-start-2">
                           {pct != null && <span className="block h-full rounded-full bg-primary" style={{ width: `${pct}%` }} />}
                         </span>
-                        <span className="text-right text-sm tabular-nums text-texto-2">
+                        <span className="text-right text-sm tabular-nums text-texto-2 max-sm:col-start-2 max-sm:row-start-1">
                           {c.activos}
                           {c.cupo != null ? ` de ${c.cupo}` : ""} activos
                           {(c.cobrado != null || c.vencido) && (
@@ -108,82 +124,85 @@ export default function Reportes() {
                       </li>
                     );
                   })}
-                  <li className="flex justify-between py-2.5 text-sm font-bold text-texto">
-                    <span>Total</span>
-                    <span className="tabular-nums">{d.activosPorCurso.reduce((s, c) => s + c.activos, 0)} activos</span>
-                  </li>
                 </ul>
               )}
-            </section>
+            </Tarjeta>
 
-            <div className="space-y-8">
-              <section aria-labelledby="t-asis" className="space-y-2">
-                <h2 id="t-asis" className="text-base font-bold text-texto">
-                  Asistencia promedio
-                </h2>
+            <div className="min-w-0 space-y-5 lg:space-y-6">
+              <Tarjeta id="t-asis" titulo="Asistencia promedio" sinRelleno={!!d.asistenciaPorGrupo?.length}>
                 {d.asistenciaPorGrupo?.length ? (
-                  <ul className="space-y-2">
+                  <ul className={LISTA.lista}>
                     {d.asistenciaPorGrupo.map((a) => (
-                      <li key={nombreDe(a.grupo)} className="grid grid-cols-[minmax(0,1fr)_80px_44px] items-center gap-3">
+                      <li key={nombreDe(a.grupo)} className={`grid grid-cols-[minmax(0,1fr)_80px_48px] items-center gap-3 ${LISTA.itemHover}`}>
                         <span className="min-w-0">
                           <span className="block truncate text-sm text-texto">{nombreDe(a.grupo)}</span>
                           {a.docente && <span className="block truncate text-[12px] text-texto-3">Prof. {nombreDe(a.docente)}</span>}
                         </span>
-                        <span aria-hidden="true" className="h-1.5 overflow-hidden rounded-full bg-primary-100">
-                          <span className={`block h-full rounded-full ${a.pct != null && a.pct < 80 ? "bg-warning-text" : "bg-primary"}`} style={{ width: `${Math.min(100, a.pct ?? 0)}%` }} />
+                        <span aria-hidden="true" className="h-2 overflow-hidden rounded-full bg-primary-100">
+                          <span
+                            className={`block h-full rounded-full ${a.pct != null && a.pct < 80 ? "bg-warning-text" : "bg-primary"}`}
+                            style={{ width: `${Math.min(100, a.pct ?? 0)}%` }}
+                          />
                         </span>
-                        <span className={`text-right text-sm tabular-nums ${a.pct != null && a.pct < 80 ? "font-semibold text-warning-text" : "text-texto"}`}>
+                        <span
+                          className={`text-right text-sm tabular-nums ${a.pct != null && a.pct < 80 ? "font-semibold text-warning-text" : "text-texto"}`}
+                        >
                           {a.pct != null ? `${Math.round(a.pct)} %` : "—"}
                         </span>
                       </li>
                     ))}
                     {d.asistenciaPromedioPct != null && (
-                      <li className="text-[13px] text-texto-3">Promedio del instituto {Math.round(d.asistenciaPromedioPct)} %</li>
+                      <li className="bg-muted px-4 py-3 text-[13px] font-semibold text-texto-2 sm:px-5">
+                        Promedio del instituto {Math.round(d.asistenciaPromedioPct)} %
+                      </li>
                     )}
                   </ul>
                 ) : d.asistenciaPromedioPct == null ? (
                   <p className="text-sm text-texto-3">Todavía no hay listas pasadas este mes.</p>
                 ) : (
-                  <div className="space-y-1">
-                    <span className={`block text-2xl font-bold tabular-nums ${d.asistenciaPromedioPct < 80 ? "text-warning-text" : "text-texto"}`}>
-                      {Math.round(d.asistenciaPromedioPct)} %
-                    </span>
-                    <span aria-hidden="true" className="block h-1.5 overflow-hidden rounded-full bg-primary-100">
-                      <span className="block h-full rounded-full bg-primary" style={{ width: `${Math.min(100, d.asistenciaPromedioPct)}%` }} />
+                  // El número grande ya está en el indicador de arriba: acá, la barra.
+                  <div className="space-y-2">
+                    <span className="block text-[13px] text-texto-3">Promedio del instituto {Math.round(d.asistenciaPromedioPct)} %</span>
+                    <span aria-hidden="true" className="block h-2 overflow-hidden rounded-full bg-primary-100">
+                      <span
+                        className={`block h-full rounded-full ${d.asistenciaPromedioPct < 80 ? "bg-warning-text" : "bg-primary"}`}
+                        style={{ width: `${Math.min(100, d.asistenciaPromedioPct)}%` }}
+                      />
                     </span>
                   </div>
                 )}
-              </section>
+              </Tarjeta>
 
-              <section aria-labelledby="t-mora" className="space-y-2">
-                <div className="flex items-baseline justify-between gap-2">
-                  <h2 id="t-mora" className="text-base font-bold text-texto">
-                    Morosidad
-                  </h2>
-                  {puede("academia_cobranza") && (
-                    <Link to="/academia/cobranza" className="text-sm font-semibold text-primary-700 hover:underline">
+              <Tarjeta
+                id="t-mora"
+                titulo="Morosidad"
+                acciones={
+                  puede("academia_cobranza") && (
+                    <BotonFila variante="ghost" a="/academia/cobranza">
                       Ir a Cobranza
-                    </Link>
-                  )}
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <span className="block text-[12px] text-texto-3">Vencido</span>
-                    <span className={`block text-lg font-bold tabular-nums ${d.morosidad.vencido > 0 ? "text-danger-text" : "text-texto"}`}>
+                      <Icon name="chevronRight" size={15} />
+                    </BotonFila>
+                  )
+                }
+              >
+                <dl className="grid grid-cols-2 gap-4">
+                  <div className="rounded-xl bg-muted px-4 py-3">
+                    <dt className="text-[11px] font-semibold uppercase tracking-wide text-texto-4">Vencido</dt>
+                    <dd className={`mt-1 text-lg font-bold tabular-nums ${d.morosidad.vencido > 0 ? "text-danger-text" : "text-texto"}`}>
                       {fmtMoney(d.morosidad.vencido)}
-                    </span>
+                    </dd>
                   </div>
-                  <div>
-                    <span className="block text-[12px] text-texto-3">{p.Alumnos} que deben</span>
-                    <span className="block text-lg font-bold tabular-nums text-texto">
+                  <div className="rounded-xl bg-muted px-4 py-3">
+                    <dt className="text-[11px] font-semibold uppercase tracking-wide text-texto-4">{p.Alumnos} que deben</dt>
+                    <dd className="mt-1 text-lg font-bold tabular-nums text-texto">
                       {d.morosidad.estudiantes}{" "}
                       <span className="text-sm font-normal text-texto-3">
                         {d.morosidad.activos != null ? `de ${d.morosidad.activos} ` : ""}· {Math.round(d.morosidad.pctEstudiantes)} %
                       </span>
-                    </span>
+                    </dd>
                   </div>
-                </div>
-              </section>
+                </dl>
+              </Tarjeta>
             </div>
           </div>
           <p className="text-[13px] text-texto-3">
@@ -195,7 +214,45 @@ export default function Reportes() {
           </p>
         </>
       )}
-    </div>
+    </PaginaAcademia>
+  );
+}
+
+/**
+ * El mes de un vistazo: lo que entró, lo que quedó, lo vencido y la
+ * asistencia. Son la suma de lo que detallan las tarjetas de abajo.
+ */
+function Resumen({ d }: { d: ReportesAcademia }) {
+  const p = usePalabras();
+  const suma = (c: Concepto) => d.porSede.reduce((s, x) => s + x[c], 0);
+  const cobrado = suma("cobradoModulos") + suma("ventasProductos");
+  const resultado = suma("resultado");
+  const asis = d.asistenciaPromedioPct;
+  return (
+    <GrillaKpi>
+      <KpiTarjeta etiqueta="Cobrado" valor={fmtMoney(cobrado)} pie="cursos y productos" icono="coins" />
+      <KpiTarjeta
+        etiqueta="Resultado"
+        valor={fmtMoney(resultado)}
+        pie="lo cobrado menos los gastos"
+        tono={resultado < 0 ? "urgente" : "ok"}
+        icono="trendingUp"
+      />
+      <KpiTarjeta
+        etiqueta="Vencido"
+        valor={fmtMoney(d.morosidad.vencido)}
+        pie={`${d.morosidad.estudiantes} ${p.alumnos} que deben`}
+        tono={d.morosidad.vencido > 0 ? "urgente" : "normal"}
+        icono="alert"
+      />
+      <KpiTarjeta
+        etiqueta="Asistencia promedio"
+        valor={asis != null ? `${Math.round(asis)} %` : "—"}
+        pie="del instituto"
+        tono={asis != null && asis < 80 ? "ambar" : "normal"}
+        icono="users"
+      />
+    </GrillaKpi>
   );
 }
 
@@ -206,42 +263,49 @@ function ResultadoPorSede({ d }: { d: ReportesAcademia }) {
   const valor = (n: number, signo: 1 | -1) => (n === 0 ? "—" : signo === -1 ? `− ${fmtMoney(Math.abs(n))}` : fmtMoney(n));
   const conTotal = sedes.length > 1;
   return (
-    <section aria-labelledby="t-res" className="space-y-2">
-      <h2 id="t-res" className="text-base font-bold text-texto">
-        Resultado por {p.sede}
-      </h2>
-      {/* scroll-lateral-ok: una columna por sede, a lo sumo tres o cuatro. */}
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[520px] text-sm tabular-nums">
+    <Tarjeta id="t-res" titulo={`Resultado por ${p.sede}`} sinRelleno>
+      {/* scroll-lateral-ok: una columna por sede, a lo sumo tres o cuatro; el scroll queda dentro de la tarjeta. */}
+      <div className={TABLA.envoltura}>
+        <table className={`${TABLA.tabla} min-w-[520px] tabular-nums`}>
           <thead>
-            <tr className="text-left text-xs text-texto-3">
-              <th className="pb-2 font-normal">Concepto</th>
+            <tr className={TABLA.encabezado}>
+              <th className={TABLA.th}>Concepto</th>
               {sedes.map((s) => (
-                <th key={nombreDe(s.sede)} className="pb-2 text-right font-normal">
+                <th key={nombreDe(s.sede)} className={`${TABLA.th} text-right`}>
                   {nombreDe(s.sede)}
                 </th>
               ))}
-              {conTotal && <th className="pb-2 text-right font-normal">Total</th>}
+              {conTotal && <th className={`${TABLA.th} text-right`}>Total</th>}
             </tr>
           </thead>
           <tbody>
             {CONCEPTOS.map((c) => (
-              <tr key={c.clave} className={`border-t ${c.fuerte ? "border-borde font-bold text-primary-700" : "border-borde-soft text-texto"}`}>
-                <td className="py-2.5">
+              <tr
+                key={c.clave}
+                className={c.fuerte ? "border-t border-borde bg-primary-50/60 font-bold text-primary-700" : `${TABLA.fila} text-texto`}
+              >
+                <td className={TABLA.td}>
                   {c.titulo}
                   {c.nota && <span className="block text-[12px] font-normal text-texto-3">{c.nota}</span>}
                 </td>
                 {sedes.map((s) => (
-                  <td key={nombreDe(s.sede)} className="py-2.5 text-right">
+                  <td
+                    key={nombreDe(s.sede)}
+                    className={`${TABLA.td} ${TABLA.numero} whitespace-nowrap ${c.signo === -1 && s[c.clave] ? "text-texto-2" : ""}`}
+                  >
                     {valor(s[c.clave], c.signo)}
                   </td>
                 ))}
-                {conTotal && <td className="py-2.5 text-right">{valor(total(c.clave), c.signo)}</td>}
+                {conTotal && (
+                  <td className={`${TABLA.td} ${TABLA.numero} whitespace-nowrap ${c.fuerte ? "" : "font-semibold"}`}>
+                    {valor(total(c.clave), c.signo)}
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-    </section>
+    </Tarjeta>
   );
 }

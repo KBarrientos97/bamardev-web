@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Chips, FilaFiltros } from "../../components/filtros";
+import { Chips } from "../../components/filtros";
 import { Icon } from "../../components/Icon";
 import MenuMas, { type AccionMenu } from "../../components/MenuMas";
 import { Paginacion } from "../../components/Paginacion";
@@ -17,9 +17,28 @@ import { usePaginado } from "../../lib/paginado";
 import { cobraCuotas } from "../../lib/permisos";
 import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
-import { FiltrosConteo } from "./piezas";
+import {
+  BotonFila,
+  Chip,
+  EncabezadoPagina,
+  GrillaKpi,
+  KpiTarjeta,
+  LISTA,
+  PaginaAcademia,
+  ResumenPanel,
+  SeccionPanel,
+  TABLA,
+  Tarjeta,
+} from "./piezas";
 
 const TIPOS: TipoCobranza[] = ["vencidas", "por-vencer", "parciales"];
+
+/** El título de la tarjeta de la lista: el indicador elegido arriba. */
+const TITULO_TIPO: Record<TipoCobranza, string> = {
+  vencidas: "Vencidas",
+  "por-vencer": "Por vencer",
+  parciales: "Abonos a medias",
+};
 
 /** "recordado hace 3 días", "sin recordar". */
 function textoRecordatorio(f: Pick<FilaCobranza, "ultimoRecordatorioEn" | "recordatorios">): string {
@@ -82,7 +101,12 @@ export default function Cobranza() {
     },
     [tipo, sede.sucursalId, carreraId, antiguedad],
   );
-  const cobra = cobraCuotas({ features: negocio?.features, rubro, permisos: usuario?.permisos, permisosPropios: usuario?.permisosPropios });
+  const cobra = cobraCuotas({
+    features: negocio?.features,
+    rubro,
+    permisos: usuario?.permisos,
+    permisosPropios: usuario?.permisosPropios,
+  });
 
   const actual = cola[pos] ?? null;
   const t = totales;
@@ -122,14 +146,36 @@ export default function Cobranza() {
     const ahora = new Date().toISOString();
     setEnviados((e) => ({ ...e, [claveDe(f)]: { ...r, en: ahora } }));
     const marcar = (x: FilaCobranza) =>
-      claveDe(x) === claveDe(f) ? { ...x, ultimoRecordatorioEn: ahora, recordatorios: x.recordatorios + 1, enlacePago: r.enlacePago ?? x.enlacePago } : x;
+      claveDe(x) === claveDe(f)
+        ? {
+            ...x,
+            ultimoRecordatorioEn: ahora,
+            recordatorios: x.recordatorios + 1,
+            enlacePago: r.enlacePago ?? x.enlacePago,
+          }
+        : x;
     lista.setItems(lista.items.map(marcar));
     setCola((c) => c.map(marcar));
   }
 
   const acciones: AccionMenu[] = [
-    { clave: "texto", etiqueta: "Editar el texto del mensaje", icono: "edit", detalle: "Pronto", deshabilitada: true, onClick: () => {} },
-    { clave: "excel", etiqueta: "Exportar Excel", icono: "download", detalle: "Pronto", deshabilitada: true, separar: true, onClick: () => {} },
+    {
+      clave: "texto",
+      etiqueta: "Editar el texto del mensaje",
+      icono: "edit",
+      detalle: "Pronto",
+      deshabilitada: true,
+      onClick: () => {},
+    },
+    {
+      clave: "excel",
+      etiqueta: "Exportar Excel",
+      icono: "download",
+      detalle: "Pronto",
+      deshabilitada: true,
+      separar: true,
+      onClick: () => {},
+    },
   ];
 
   const dia = ajustes.datos?.diaInicioModulo;
@@ -137,86 +183,126 @@ export default function Cobranza() {
     .filter(Boolean)
     .join(" · ");
 
+  const elegirTipo = (v: TipoCobranza) => {
+    setTipo(v);
+    setCola([]);
+  };
+  const cuotas = (n: number | null | undefined) => (n == null ? undefined : `${n} ${n === 1 ? "cuota" : "cuotas"}`);
+  const conCarreras = (carreras.datos?.length ?? 0) > 1;
+
   return (
-    <div className={`mx-auto max-w-6xl space-y-5 p-4 sm:p-6 lg:p-8 ${actual ? "md:mr-[380px]" : ""}`}>
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h1 className="text-xl font-bold text-texto">Cobranza</h1>
-          <p className="mt-0.5 text-[13px] text-texto-3">{subtitulo}</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Boton
-            disabled={nMarcados === 0}
-            onClick={() => {
-              setCola([...marcados.values()]);
-              setPos(0);
-            }}
-          >
-            {nMarcados === 0 ? "Enviar QR a los marcados" : `Enviar QR a ${nMarcados} ${nMarcados === 1 ? "marcado" : "marcados"}`}
-          </Boton>
-          <MenuMas etiqueta="Más acciones de cobranza" titulo="Cobranza" acciones={acciones} />
-        </div>
-      </header>
-
-      <FilaFiltros>
-        {sede.selector}
-        {tipo === "vencidas" ? (
-          <Chips
-            titulo="Antigüedad"
-            valor={antiguedad}
-            opciones={[
-              ["", "Todas"],
-              ["1-7", "1–7 días"],
-              ["8-30", "8–30 días"],
-              ["30+", "Más de 30"],
-            ]}
-            onChange={setAntiguedad}
-          />
-        ) : null}
-        {(carreras.datos?.length ?? 0) > 1 && (
-          <div className="w-full sm:w-56">
-            <Select aria-label={p.Carrera} value={carreraId ?? ""} onChange={(e) => setCarreraId(e.target.value ? Number(e.target.value) : null)}>
-              <option value="">{p.Carrera}: todos</option>
-              {carreras.datos?.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.nombre}
-                </option>
-              ))}
-            </Select>
-          </div>
-        )}
-      </FilaFiltros>
-
-      <FiltrosConteo<TipoCobranza>
-        etiqueta="Filtrar deudas"
-        opciones={[
-          { clave: "vencidas", label: t ? `Vencidas ${fmtMoney(t.vencido)} ·` : "Vencidas", n: t?.vencidoCuotas ?? null, urgente: true },
-          { clave: "por-vencer", label: t ? `Por vencer ${fmtMoney(t.venceMes)} ·` : "Por vencer", n: t?.venceMesCuotas ?? null },
-          {
-            clave: "parciales",
-            label: t?.parciales != null ? `Abonos a medias ${fmtMoney(t.parciales)} ·` : "Abonos a medias",
-            n: t?.parcialesCuotas ?? null,
-          },
-        ]}
-        valor={tipo}
-        onChange={(v) => {
-          setTipo(v);
-          setCola([]);
-        }}
+    // Con el panel abierto se corre a la izquierda; `w-auto` porque el `w-full` del marco más el margen se salía de la pantalla.
+    <PaginaAcademia className={actual ? "md:mr-[380px] md:w-auto" : ""}>
+      <EncabezadoPagina
+        titulo="Cobranza"
+        bajada={subtitulo}
+        acciones={
+          <>
+            <Boton
+              disabled={nMarcados === 0}
+              onClick={() => {
+                setCola([...marcados.values()]);
+                setPos(0);
+              }}
+            >
+              {nMarcados === 0 ? "Enviar QR a los marcados" : `Enviar QR a ${nMarcados} ${nMarcados === 1 ? "marcado" : "marcados"}`}
+            </Boton>
+            <MenuMas etiqueta="Más acciones de cobranza" titulo="Cobranza" acciones={acciones} />
+          </>
+        }
       />
-      {t && <p className="text-[13px] text-texto-3">Cobrado este mes {fmtMoney(t.cobradoMes)}</p>}
 
-      {lista.error && !lista.items.length ? (
-        <ErrorMsg onReintentar={lista.recargar}>{lista.error}</ErrorMsg>
-      ) : lista.cargando && !lista.items.length ? (
-        <Cargando />
-      ) : lista.items.length === 0 ? (
-        <Vacio
-          icono="coins"
-          titulo={tipo === "vencidas" ? "No hay cuotas vencidas" : tipo === "por-vencer" ? "Nada por vencer" : "No hay abonos a medias"}
-        />
-      ) : (
-        <>
+      {sede.selector}
+
+      {/* Los indicadores SON los filtros: tocar uno cambia la lista de abajo. */}
+      <div role="group" aria-label="Filtrar deudas">
+        <GrillaKpi>
+          <KpiTarjeta
+            etiqueta="Vencidas"
+            valor={t ? fmtMoney(t.vencido) : "—"}
+            pie={cuotas(t?.vencidoCuotas)}
+            tono={t && t.vencidoCuotas > 0 ? "urgente" : "normal"}
+            etiquetaAria={t ? `Vencidas ${fmtMoney(t.vencido)} · ${t.vencidoCuotas}` : "Vencidas"}
+            seleccionado={tipo === "vencidas"}
+            onClick={() => elegirTipo("vencidas")}
+          />
+          <KpiTarjeta
+            etiqueta="Por vencer"
+            valor={t ? fmtMoney(t.venceMes) : "—"}
+            pie={cuotas(t?.venceMesCuotas)}
+            etiquetaAria={t ? `Por vencer ${fmtMoney(t.venceMes)} · ${t.venceMesCuotas}` : "Por vencer"}
+            seleccionado={tipo === "por-vencer"}
+            onClick={() => elegirTipo("por-vencer")}
+          />
+          <KpiTarjeta
+            etiqueta="Abonos a medias"
+            valor={t?.parciales != null ? fmtMoney(t.parciales) : "—"}
+            pie={cuotas(t?.parcialesCuotas)}
+            tono={t?.parcialesCuotas ? "ambar" : "normal"}
+            etiquetaAria={t?.parciales != null ? `Abonos a medias ${fmtMoney(t.parciales)} · ${t.parcialesCuotas ?? 0}` : "Abonos a medias"}
+            seleccionado={tipo === "parciales"}
+            onClick={() => elegirTipo("parciales")}
+          />
+          <KpiTarjeta etiqueta="Cobrado este mes" valor={t ? fmtMoney(t.cobradoMes) : "—"} tono="ok" />
+        </GrillaKpi>
+      </div>
+
+      <Tarjeta
+        id="t-cobranza"
+        titulo={TITULO_TIPO[tipo]}
+        contador={lista.items.length ? lista.total : undefined}
+        sinRelleno
+        barra={
+          tipo === "vencidas" || conCarreras ? (
+            <div className="flex flex-wrap items-center justify-between gap-3 py-3">
+              {tipo === "vencidas" ? (
+                <div className="min-w-0 max-w-full">
+                  <Chips
+                    titulo="Antigüedad"
+                    valor={antiguedad}
+                    opciones={[
+                      ["", "Todas"],
+                      ["1-7", "1–7 días"],
+                      ["8-30", "8–30 días"],
+                      ["30+", "Más de 30"],
+                    ]}
+                    onChange={setAntiguedad}
+                  />
+                </div>
+              ) : null}
+              {conCarreras && (
+                <div className="w-full sm:w-56">
+                  <Select
+                    aria-label={p.Carrera}
+                    value={carreraId ?? ""}
+                    onChange={(e) => setCarreraId(e.target.value ? Number(e.target.value) : null)}
+                  >
+                    <option value="">{p.Carrera}: todos</option>
+                    {carreras.datos?.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.nombre}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+              )}
+            </div>
+          ) : undefined
+        }
+        pie={lista.items.length > 0 && lista.total > 20 ? <Paginacion {...lista.paginacion} /> : undefined}
+      >
+        {lista.error && !lista.items.length ? (
+          <div className="p-4 sm:p-5">
+            <ErrorMsg onReintentar={lista.recargar}>{lista.error}</ErrorMsg>
+          </div>
+        ) : lista.cargando && !lista.items.length ? (
+          <Cargando />
+        ) : lista.items.length === 0 ? (
+          <Vacio
+            icono="coins"
+            titulo={tipo === "vencidas" ? "No hay cuotas vencidas" : tipo === "por-vencer" ? "Nada por vencer" : "No hay abonos a medias"}
+          />
+        ) : (
           <ListaCobranza
             filas={lista.items}
             conSede={sede.variasSedes}
@@ -230,9 +316,8 @@ export default function Cobranza() {
               setPos(0);
             }}
           />
-          <Paginacion {...lista.paginacion} />
-        </>
-      )}
+        )}
+      </Tarjeta>
 
       {actual && (
         <PanelEnvio
@@ -254,7 +339,7 @@ export default function Cobranza() {
           onCerrar={() => setCola([])}
         />
       )}
-    </div>
+    </PaginaAcademia>
   );
 }
 
@@ -291,87 +376,115 @@ function ListaCobranza({
     if (!c) return { texto: "—", urgente: false };
     return c.vencida ? { texto: `vencida hace ${c.diasAtraso} d`, urgente: true } : { texto: `vence el ${fechaCorta(c.vence)}`, urgente: false };
   };
-  const col = "grid-cols-[32px_minmax(200px,2fr)_100px_130px_150px_90px]";
   const chequeo = "h-4 w-4 accent-[var(--color-primary-boton)]";
+  /** El vencimiento en chip: rojo si ya venció, gris si todavía no. */
+  const chipVence = (v: { texto: string; urgente: boolean }) =>
+    v.texto === "—" ? <span className="text-texto-4">—</span> : <Chip tono={v.urgente ? "rojo" : "gris"}>{v.texto}</Chip>;
+  /** "sin recordar" con algo vencido es lo que hay que mirar: en ámbar. */
+  const recordatorio = (f: FilaCobranza, urgente: boolean) =>
+    !f.ultimoRecordatorioEn && urgente ? (
+      <Chip tono="ambar">{textoRecordatorio(f)}</Chip>
+    ) : (
+      <span className="text-[13px] text-texto-3">{textoRecordatorio(f)}</span>
+    );
 
   return (
     <>
-      <div className="hidden md:block">
-        <div className={`grid ${col} items-center gap-3 px-3 pb-2 text-[12px] text-texto-3`}>
-          <label className="flex">
-            <input type="checkbox" className={chequeo} checked={todos} onChange={onAlternarTodos} aria-label="Marcar todos los de esta página" />
-          </label>
-          <span>{p.Alumno}</span>
-          <span className="text-right">Debe</span>
-          <span>Vencimiento</span>
-          <span>Recordatorio</span>
-          <span />
-        </div>
-        <ul>
-          {filas.map((f) => {
-            const v = vencimiento(f);
-            const sinRecordar = !f.ultimoRecordatorioEn && v.urgente;
-            return (
-              <li key={claveDe(f)}>
-                <div
-                  className={`grid ${col} items-center gap-3 rounded-xl px-3 py-3 transition-colors ${
-                    abierta && claveDe(abierta) === claveDe(f) ? "bg-primary-50" : "hover:bg-muted"
-                  }`}
-                >
-                  <label className="flex">
+      {/* scroll-lateral-ok: la tabla de escritorio, con scroll dentro de su tarjeta. Con el panel abierto se
+          esconde la columna de "Enviar QR" (el nombre también lo abre) para que los nombres no queden cortados. */}
+      <div className={`hidden md:block ${TABLA.envoltura}`}>
+        <table className={TABLA.tabla}>
+          <thead>
+            <tr className={TABLA.encabezado}>
+              <th className={`${TABLA.th} w-10`}>
+                <input
+                  type="checkbox"
+                  className={`${chequeo} align-middle`}
+                  checked={todos}
+                  onChange={onAlternarTodos}
+                  aria-label="Marcar todos los de esta página"
+                />
+              </th>
+              <th className={TABLA.th}>{p.Alumno}</th>
+              <th className={`${TABLA.th} text-right`}>Debe</th>
+              <th className={TABLA.th}>Vencimiento</th>
+              <th className={TABLA.th}>Recordatorio</th>
+              <th className={`${TABLA.th} ${abierta ? "hidden" : ""}`}>
+                <span className="sr-only">Acciones</span>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {filas.map((f) => {
+              const v = vencimiento(f);
+              const abiertaEsta = abierta && claveDe(abierta) === claveDe(f);
+              return (
+                <tr key={claveDe(f)} className={`${TABLA.fila} ${abiertaEsta ? "bg-primary-50 hover:bg-primary-50" : ""}`}>
+                  <td className={`${TABLA.td} w-10`}>
                     <input
                       type="checkbox"
-                      className={chequeo}
+                      className={`${chequeo} align-middle`}
                       checked={marcados.has(claveDe(f))}
                       onChange={() => onAlternar(f)}
                       aria-label={`Marcar a ${f.alumno.nombre}`}
                     />
-                  </label>
-                  <button type="button" onClick={() => onAbrir(f)} className="min-w-0 text-left">
-                    <span className="block truncate text-sm font-semibold text-texto">{f.alumno.nombre}</span>
-                    <span className="block truncate text-[12px] text-texto-3">{sub(f)}</span>
-                  </button>
-                  <span className={`text-right text-sm font-semibold tabular-nums ${v.urgente ? "text-danger-text" : "text-texto-2"}`}>
-                    {fmtMoney(f.saldo)}
-                  </span>
-                  <span className={`text-[13px] ${v.urgente ? "text-danger-text" : "text-texto-3"}`}>{v.texto}</span>
-                  <span className={`text-[13px] ${sinRecordar ? "font-semibold text-warning-text" : "text-texto-3"}`}>{textoRecordatorio(f)}</span>
-                  <span className="text-right">
-                    <button type="button" onClick={() => onAbrir(f)} className="text-[13px] font-semibold text-primary-700 hover:underline">
-                      Enviar QR
+                  </td>
+                  <td className={`${TABLA.td} w-full max-w-0`}>
+                    <button type="button" onClick={() => onAbrir(f)} className="block w-full min-w-0 text-left">
+                      <span className="block truncate text-sm font-semibold text-texto hover:text-primary-700">{f.alumno.nombre}</span>
+                      <span className="block truncate text-[12px] text-texto-3">{sub(f)}</span>
                     </button>
-                  </span>
-                </div>
-              </li>
-            );
-          })}
-        </ul>
+                  </td>
+                  <td className={`${TABLA.td} ${TABLA.numero} whitespace-nowrap font-semibold ${v.urgente ? "text-danger-text" : "text-texto"}`}>
+                    {fmtMoney(f.saldo)}
+                  </td>
+                  <td className={`${TABLA.td} whitespace-nowrap`}>{chipVence(v)}</td>
+                  <td className={`${TABLA.td} whitespace-nowrap`}>{recordatorio(f, v.urgente)}</td>
+                  <td className={`${TABLA.td} text-right whitespace-nowrap ${abierta ? "hidden" : ""}`}>
+                    <BotonFila icono="qr" onClick={() => onAbrir(f)}>
+                      Enviar QR
+                    </BotonFila>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
 
-      <ul className="space-y-2 md:hidden">
+      <ul className={`${LISTA.lista} md:hidden`}>
         {filas.map((f) => {
           const v = vencimiento(f);
+          const abiertaEsta = abierta && claveDe(abierta) === claveDe(f);
           return (
-            <li key={claveDe(f)} className="flex items-start gap-3 rounded-xl border border-borde bg-white p-3.5">
+            <li key={claveDe(f)} className={`flex items-start gap-3 ${LISTA.item} ${abiertaEsta ? "bg-primary-50" : ""}`}>
               <input
                 type="checkbox"
-                className={`${chequeo} mt-1`}
+                className={`${chequeo} mt-1 shrink-0`}
                 checked={marcados.has(claveDe(f))}
                 onChange={() => onAlternar(f)}
                 aria-label={`Marcar a ${f.alumno.nombre}`}
               />
-              <button type="button" onClick={() => onAbrir(f)} className="min-w-0 flex-1 text-left">
-                <span className="flex items-start justify-between gap-3">
-                  <span className="min-w-0 truncate text-[15px] font-semibold text-texto">{f.alumno.nombre}</span>
-                  <span className={`shrink-0 text-[15px] font-bold tabular-nums ${v.urgente ? "text-danger-text" : "text-texto"}`}>
-                    {fmtMoney(f.saldo)}
+              <div className="min-w-0 flex-1 space-y-2">
+                <button type="button" onClick={() => onAbrir(f)} className="block w-full min-w-0 text-left">
+                  <span className="flex items-start justify-between gap-3">
+                    <span className="min-w-0 truncate text-[15px] font-semibold text-texto">{f.alumno.nombre}</span>
+                    <span className={`shrink-0 text-[15px] font-bold tabular-nums ${v.urgente ? "text-danger-text" : "text-texto"}`}>
+                      {fmtMoney(f.saldo)}
+                    </span>
                   </span>
-                </span>
-                <span className="mt-0.5 block truncate text-[13px] text-texto-3">{sub(f)}</span>
-                <span className="block truncate text-[12px] text-texto-4">
-                  {v.texto} · {textoRecordatorio(f)}
-                </span>
-              </button>
+                  <span className="mt-0.5 block truncate text-[13px] text-texto-3">{sub(f)}</span>
+                </button>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="flex min-w-0 flex-wrap items-center gap-1.5">
+                    {chipVence(v)}
+                    {recordatorio(f, v.urgente)}
+                  </span>
+                  <BotonFila icono="qr" className="ml-auto" onClick={() => onAbrir(f)}>
+                    Enviar QR
+                  </BotonFila>
+                </div>
+              </div>
             </li>
           );
         })}
@@ -466,9 +579,9 @@ function PanelEnvio({
         </>
       }
     >
-      <div className="space-y-5">
+      <div>
         {posicion && (
-          <div className="space-y-2 rounded-xl bg-muted p-3">
+          <ResumenPanel className="mb-4 space-y-2.5">
             <div className="flex items-baseline justify-between gap-2 text-[13px]">
               <span className="text-texto-2">Enviando a los {posicion.total} marcados</span>
               <span className="font-semibold tabular-nums text-texto">
@@ -477,40 +590,52 @@ function PanelEnvio({
             </div>
             <div aria-hidden="true" className="flex gap-1">
               {Array.from({ length: posicion.total }, (_, i) => (
-                <span key={i} className={`h-1 flex-1 rounded-full ${i <= posicion.actual ? "bg-primary" : "bg-primary-100"}`} />
+                <span key={i} className={`h-1.5 flex-1 rounded-full ${i <= posicion.actual ? "bg-primary" : "bg-primary-100"}`} />
               ))}
             </div>
             <div className="flex justify-between gap-2">
-              <button type="button" disabled={posicion.actual === 0} onClick={onAnterior} className="text-[13px] font-semibold text-texto-2 disabled:opacity-40">
+              <BotonFila variante="ghost" disabled={posicion.actual === 0} onClick={onAnterior}>
                 ‹ Anterior
-              </button>
-              <button type="button" onClick={onSiguiente} className="text-[13px] font-semibold text-primary-700">
+              </BotonFila>
+              <BotonFila variante={ultimo ? "ghost" : "soft"} onClick={onSiguiente}>
                 {ultimo ? "Terminar" : "Siguiente ›"}
-              </button>
+              </BotonFila>
             </div>
-          </div>
+          </ResumenPanel>
         )}
 
-        <dl className="space-y-1 text-sm">
-          <dt className="text-[12px] text-texto-3">Se envía a</dt>
-          <dd className="font-semibold text-texto">
-            {fila.contacto.nombre}
-            {fila.contacto.esTutor ? " (tutor)" : ""}
-          </dd>
-          <dd className="text-texto-2">{fila.contacto.telefono ? `WhatsApp ${fila.contacto.telefono}` : "No tiene un celular cargado"}</dd>
-        </dl>
+        <SeccionPanel titulo="Se envía a">
+          <div className="flex items-center gap-3 text-sm">
+            <span aria-hidden="true" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary-50 text-primary-700">
+              <Icon name={fila.contacto.esTutor ? "users" : "user"} size={18} />
+            </span>
+            <dl className="min-w-0">
+              <dt className="sr-only">Se envía a</dt>
+              <dd className="font-semibold text-texto">
+                {fila.contacto.nombre}
+                {fila.contacto.esTutor ? " (tutor)" : ""}
+              </dd>
+              <dd className={fila.contacto.telefono ? "text-texto-2" : "font-semibold text-danger-text"}>
+                {fila.contacto.telefono ? `WhatsApp ${fila.contacto.telefono}` : "No tiene un celular cargado"}
+              </dd>
+            </dl>
+          </div>
+        </SeccionPanel>
 
         {enviado ? (
-          <section aria-label="El mensaje" className="space-y-2">
-            <p className="text-[12px] text-texto-3">El mensaje</p>
-            {/* El enlace de pago es una sola "palabra" larga: sin cortarla se salía del globo (QA ronda 2, B-20). */}
-            <p className="whitespace-pre-wrap break-all rounded-xl bg-primary-50 p-3 text-[13px] text-texto">{enviado.texto}</p>
-            <p role="status" className="flex items-center gap-1.5 text-[13px] text-texto-3">
-              <Icon name="check" size={15} /> Anotado: recordado hoy a las {fmtHora(enviado.en)}
-            </p>
-          </section>
+          <SeccionPanel titulo="El mensaje">
+            <div className="space-y-2">
+              {/* El enlace de pago es una sola "palabra" larga: sin cortarla se salía del globo (QA ronda 2, B-20). */}
+              <p className="whitespace-pre-wrap break-all rounded-xl rounded-tl-sm border border-primary-100 bg-primary-50 p-3 text-[13px] text-texto">
+                {enviado.texto}
+              </p>
+              <p role="status" className="flex items-center gap-1.5 text-[13px] font-semibold text-primary-700">
+                <Icon name="check" size={15} /> Anotado: recordado hoy a las {fmtHora(enviado.en)}
+              </p>
+            </div>
+          </SeccionPanel>
         ) : (
-          <p className="text-[13px] text-texto-3">
+          <p className="border-t border-borde-soft pt-4 text-[13px] text-texto-3">
             WhatsApp se abre con el mensaje y el enlace de pago listos; vos sólo tocás enviar. Queda anotado "recordado hoy".
           </p>
         )}

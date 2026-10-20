@@ -100,8 +100,10 @@ describe("N7 · cobranza", () => {
   it("arranca en Vencidas: las pestañas dicen cuánto y cuántos, y la fila del tutor", async () => {
     await montar();
     expect(apiAcademia.cobranza).toHaveBeenCalledWith(expect.objectContaining({ tipo: "vencidas", page: 1, pageSize: 20 }));
-    expect(screen.getByRole("tab", { name: /Vencidas Bs\s?4\.320,00 · 9/ })).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByRole("tab", { name: /Abonos a medias Bs\s?333,00 · 1/ })).toBeInTheDocument();
+    // Los indicadores son los filtros: tarjetas-botón, la elegida con aria-pressed.
+    const filtros = screen.getByRole("group", { name: "Filtrar deudas" });
+    expect(within(filtros).getByRole("button", { name: /Vencidas Bs\s?4\.320,00 · 9/ })).toHaveAttribute("aria-pressed", "true");
+    expect(within(filtros).getByRole("button", { name: /Abonos a medias Bs\s?333,00 · 1/ })).toHaveAttribute("aria-pressed", "false");
     expect(screen.getAllByText(/tutor Rosa Molina/).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/abonó Bs\s?200,00 de Bs\s?533,00/).length).toBeGreaterThan(0);
     expect(screen.getAllByText("sin recordar").length).toBeGreaterThan(0);

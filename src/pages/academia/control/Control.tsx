@@ -1,5 +1,4 @@
-import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useState, type ReactNode } from "react";
 import { Icon } from "../../../components/Icon";
 import MenuMas, { type AccionMenu } from "../../../components/MenuMas";
 import PanelLateral from "../../../components/PanelLateral";
@@ -11,9 +10,22 @@ import { fechaCorta, nombreDe } from "../../../lib/academia/formato";
 import { TIPOS_FOTO, type PanelControl, type TipoFoto } from "../../../lib/academia/tipos";
 import { useFiltroSede } from "../../../lib/academia/useFiltroSede";
 import { usePalabras } from "../../../lib/academia/usePalabras";
-import { textoEstadoPago } from "../../../lib/academia/vista";
 import { fmtFecha, fmtMoney, tiempoRelativo } from "../../../lib/format";
 import { useApi } from "../../../lib/useApi";
+import {
+  BotonFila,
+  Chip,
+  EncabezadoPagina,
+  EstadoPagoTexto,
+  GrillaKpi,
+  KpiTarjeta,
+  LISTA,
+  PaginaAcademia,
+  ResumenPanel,
+  SeccionPanel,
+  TABLA,
+  Tarjeta,
+} from "../piezas";
 
 type Mirar = "asistenSinPagar" | "pagaronNoVienen" | "descuentosConPin" | "ventasAnuladas";
 type FotoPendiente = PanelControl["fotosPorRevisar"][number];
@@ -43,29 +55,29 @@ export default function Control() {
   ];
 
   return (
-    <div className={`mx-auto max-w-6xl space-y-6 p-4 sm:p-6 lg:p-8 ${revisando ? "md:mr-[380px]" : ""}`}>
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h1 className="text-xl font-bold text-texto">Panel de control</h1>
-          <p className="mt-0.5 text-[13px] text-texto-3">Lo que conviene mirar este mes</p>
-        </div>
-        <div className="flex flex-wrap items-end gap-2">
-          <label className="block text-[12px] text-texto-3">
-            Mes
-            <Select value={mes} onChange={(e) => setMes(e.target.value)}>
-              {meses.map((m) => (
-                <option key={m} value={m}>
-                  {tituloMes(m)}
-                </option>
-              ))}
-            </Select>
-          </label>
-          <Boton disabled={!pendientes.length} onClick={() => setRevisando(pendientes[0])}>
-            {pendientes.length ? `Revisar ${pendientes.length} ${pendientes.length === 1 ? "foto" : "fotos"}` : "Fotos al día"}
-          </Boton>
-          <MenuMas etiqueta="Más acciones del panel" acciones={acciones} />
-        </div>
-      </header>
+    // Con el panel abierto se corre a la izquierda; `w-auto` porque el `w-full` del marco más el margen se salía de la pantalla.
+    <PaginaAcademia className={revisando ? "md:mr-[380px] md:w-auto" : ""}>
+      <EncabezadoPagina
+        titulo="Panel de control"
+        bajada="Lo que conviene mirar este mes"
+        acciones={
+          <>
+            <div className="w-36 sm:w-44">
+              <Select aria-label="Mes" value={mes} onChange={(e) => setMes(e.target.value)}>
+                {meses.map((m) => (
+                  <option key={m} value={m}>
+                    {tituloMes(m)}
+                  </option>
+                ))}
+              </Select>
+            </div>
+            <Boton disabled={!pendientes.length} onClick={() => setRevisando(pendientes[0])}>
+              {pendientes.length ? `Revisar ${pendientes.length} ${pendientes.length === 1 ? "foto" : "fotos"}` : "Fotos al día"}
+            </Boton>
+            <MenuMas etiqueta="Más acciones del panel" acciones={acciones} />
+          </>
+        }
+      />
 
       {sede.selector}
 
@@ -75,48 +87,54 @@ export default function Control() {
         <Cargando />
       ) : (
         <>
-          <section aria-labelledby="t-fotos" className="space-y-3">
-            <div className="flex flex-wrap items-baseline justify-between gap-2">
-              <h2 id="t-fotos" className="text-base font-bold text-texto">
-                Fotos por revisar{" "}
-                <span className={`tabular-nums ${pendientes.length ? "text-warning-text" : "text-texto-4"}`}>{pendientes.length}</span>
-              </h2>
-              <span className="text-[13px] text-texto-3">Inscripciones nuevas · foto y carnet por los dos lados</span>
-            </div>
+          <Tarjeta
+            id="t-fotos"
+            titulo="Fotos por revisar"
+            contador={pendientes.length}
+            bajada="Inscripciones nuevas · foto y carnet por los dos lados"
+            sinRelleno
+          >
             {d.fotosPorRevisar.length === 0 ? (
-              <p className="text-sm text-texto-3">No hay fotos por revisar.</p>
+              <p className="p-4 text-sm text-texto-3 sm:p-5">No hay fotos por revisar.</p>
             ) : (
-              <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              // En el celular, una lista con divisores; desde sm, una grilla de tarjetitas (de a dos con el panel abierto).
+              <ul className={`divide-y divide-borde-soft sm:grid sm:grid-cols-2 sm:gap-3 sm:divide-y-0 sm:p-5 ${revisando ? "" : "lg:grid-cols-3"}`}>
                 {d.fotosPorRevisar.map((f) => {
                   const hecho = revisadas[f.alumnoId];
                   return (
-                    <li key={f.alumnoId} className={`flex items-center justify-between gap-3 rounded-xl border border-borde p-3 ${hecho ? "opacity-60" : ""}`}>
-                      <span className="min-w-0">
-                        <span className="block truncate text-sm font-semibold text-texto">{f.nombre}</span>
-                        <span className="block truncate text-[12px] text-texto-3">
-                          {f.inscritoPor} · {tiempoRelativo(f.inscritaEn).toLowerCase()}
+                    <li
+                      key={f.alumnoId}
+                      className={`flex min-w-0 items-center justify-between gap-3 px-4 py-3 transition-colors sm:rounded-xl sm:border sm:border-borde-soft sm:p-3 sm:hover:border-primary-200 ${
+                        hecho ? "bg-muted opacity-70" : "bg-white"
+                      }`}
+                    >
+                      <span className="flex min-w-0 items-center gap-3">
+                        <span
+                          aria-hidden="true"
+                          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary-50 text-primary-700"
+                        >
+                          <Icon name="camara" size={16} />
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block truncate text-sm font-semibold text-texto">{f.nombre}</span>
+                          <span className="block truncate text-[12px] text-texto-3">
+                            {f.inscritoPor} · {tiempoRelativo(f.inscritaEn).toLowerCase()}
+                          </span>
                         </span>
                       </span>
                       {hecho ? (
-                        <span className={`text-[13px] ${hecho === "ok" ? "text-texto-3" : "font-semibold text-danger-text"}`}>
-                          {hecho === "ok" ? "Revisada" : "Observada"}
-                        </span>
+                        <Chip tono={hecho === "ok" ? "verde" : "rojo"}>{hecho === "ok" ? "Revisada" : "Observada"}</Chip>
                       ) : (
-                        <button
-                          type="button"
-                          onClick={() => setRevisando(f)}
-                          aria-label={`Revisar la inscripción de ${f.nombre}`}
-                          className="text-[13px] font-semibold text-primary-700 hover:underline"
-                        >
+                        <BotonFila onClick={() => setRevisando(f)} aria-label={`Revisar la inscripción de ${f.nombre}`}>
                           Revisar
-                        </button>
+                        </BotonFila>
                       )}
                     </li>
                   );
                 })}
               </ul>
             )}
-          </section>
+          </Tarjeta>
 
           <FotosObservadas filas={d.fotosObservadas ?? []} />
 
@@ -124,16 +142,13 @@ export default function Control() {
 
           <ParaMirar d={d} mirar={mirar} onMirar={setMirar} />
 
-          <section aria-labelledby="t-personas" className="space-y-2">
-            <h2 id="t-personas" className="text-base font-bold text-texto">
-              Inscripciones por persona
-            </h2>
+          <Tarjeta id="t-personas" titulo="Inscripciones por persona" sinRelleno>
             {d.inscripcionesPorUsuario.length === 0 ? (
-              <p className="text-sm text-texto-3">Nadie inscribió este mes.</p>
+              <p className="p-4 text-sm text-texto-3 sm:p-5">Nadie inscribió este mes.</p>
             ) : (
               <PorPersona filas={d.inscripcionesPorUsuario} variasSedes={sede.variasSedes} />
             )}
-          </section>
+          </Tarjeta>
         </>
       )}
 
@@ -150,7 +165,7 @@ export default function Control() {
           }}
         />
       )}
-    </div>
+    </PaginaAcademia>
   );
 }
 
@@ -163,43 +178,41 @@ export default function Control() {
 function FotosObservadas({ filas }: { filas: NonNullable<PanelControl["fotosObservadas"]> }) {
   if (!filas.length) return null;
   return (
-    <section aria-labelledby="t-observadas" className="space-y-3">
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 id="t-observadas" className="text-base font-bold text-texto">
-          Fotos observadas <span className="tabular-nums text-danger-text">{filas.length}</span>
-        </h2>
-        <span className="text-[13px] text-texto-3">Esperan que la recepción cambie la foto</span>
-      </div>
-      <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+    <Tarjeta id="t-observadas" titulo="Fotos observadas" contador={filas.length} bajada="Esperan que la recepción cambie la foto" sinRelleno>
+      <ul className={LISTA.lista}>
         {filas.map((f) => {
           const cuales = listaDeFotos(f.observadas);
           const quien = [f.observadaPor, f.observadaEn ? tiempoRelativo(f.observadaEn).toLowerCase() : null].filter(Boolean).join(" · ");
           return (
-            <li key={f.alumnoId} className="flex items-start justify-between gap-3 rounded-xl border border-danger-text/30 p-3">
-              <span className="min-w-0">
-                <span className="block truncate text-sm font-semibold text-texto">{f.nombre}</span>
-                <span className="block text-[13px] text-danger-text">
-                  {f.observacion ?? "Observada"}
-                  {cuales && <span className="text-texto-3"> · {cuales}</span>}
+            <li key={f.alumnoId} className={`flex flex-wrap items-center justify-between gap-3 ${LISTA.itemHover}`}>
+              <span className="flex min-w-0 flex-1 items-start gap-3">
+                <span
+                  aria-hidden="true"
+                  className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-danger-bg text-danger-text"
+                >
+                  <Icon name="alert" size={16} />
                 </span>
-                {(quien || f.grupo) && (
-                  <span className="block truncate text-[12px] text-texto-3">
-                    {[f.grupo ? nombreDe(f.grupo) : null, quien ? `observó ${quien}` : null].filter(Boolean).join(" · ")}
+                <span className="min-w-0">
+                  <span className="block truncate text-sm font-semibold text-texto">{f.nombre}</span>
+                  <span className="block text-[13px] text-danger-text">
+                    {f.observacion ?? "Observada"}
+                    {cuales && <span className="text-texto-3"> · {cuales}</span>}
                   </span>
-                )}
+                  {(quien || f.grupo) && (
+                    <span className="block truncate text-[12px] text-texto-3">
+                      {[f.grupo ? nombreDe(f.grupo) : null, quien ? `observó ${quien}` : null].filter(Boolean).join(" · ")}
+                    </span>
+                  )}
+                </span>
               </span>
-              <Link
-                to={`/academia/alumnos/${f.alumnoId}`}
-                aria-label={`Ver la ficha de ${f.nombre}`}
-                className="shrink-0 text-[13px] font-semibold text-primary-700 hover:underline"
-              >
+              <BotonFila variante="ghost" icono="user" a={`/academia/alumnos/${f.alumnoId}`} aria-label={`Ver la ficha de ${f.nombre}`}>
                 Ver ficha
-              </Link>
+              </BotonFila>
             </li>
           );
         })}
       </ul>
-    </section>
+    </Tarjeta>
   );
 }
 
@@ -211,33 +224,30 @@ function FotosObservadas({ filas }: { filas: NonNullable<PanelControl["fotosObse
 function Sobrecupos({ filas, variasSedes }: { filas: NonNullable<PanelControl["sobrecupos"]>; variasSedes: boolean }) {
   if (!filas.length) return null;
   return (
-    <section aria-labelledby="t-sobrecupos" className="space-y-3">
-      <h2 id="t-sobrecupos" className="text-base font-bold text-texto">
-        Grupos con sobrecupo <span className="tabular-nums text-warning-text">{filas.length}</span>
-      </h2>
-      <ul className="divide-y divide-borde-soft border-y border-borde-soft">
+    <Tarjeta id="t-sobrecupos" titulo="Grupos con sobrecupo" contador={filas.length} sinRelleno>
+      <ul className={LISTA.lista}>
         {filas.map((g) => (
-          <li key={g.grupoId} className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 px-3 py-2.5">
+          <li
+            key={g.grupoId}
+            className={`grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 sm:grid-cols-[minmax(0,1fr)_auto_auto] ${LISTA.itemHover}`}
+          >
             <span className="min-w-0">
               <span className="block truncate text-sm font-semibold text-texto">{g.nombre}</span>
               <span className="block truncate text-[12px] text-texto-3">
                 {[g.carrera ? nombreDe(g.carrera) : null, variasSedes && g.sede ? nombreDe(g.sede) : null].filter(Boolean).join(" · ")}
               </span>
             </span>
-            <span className="text-sm font-semibold tabular-nums text-warning-text">
+            <Chip tono="ambar" className="tabular-nums max-sm:col-start-1 max-sm:row-start-2 max-sm:justify-self-start">
               {g.inscritos}/{g.cupo} inscritos
-            </span>
-            <Link
-              to={`/academia/grupos/${g.grupoId}`}
-              aria-label={`Ver el grupo ${g.nombre}`}
-              className="text-[13px] font-semibold text-primary-700 hover:underline"
-            >
+            </Chip>
+            <BotonFila variante="ghost" a={`/academia/grupos/${g.grupoId}`} aria-label={`Ver el grupo ${g.nombre}`} className="max-sm:row-span-2">
               Ver
-            </Link>
+              <Icon name="chevronRight" size={15} />
+            </BotonFila>
           </li>
         ))}
       </ul>
-    </section>
+    </Tarjeta>
   );
 }
 
@@ -246,13 +256,13 @@ function ParaMirar({ d, mirar, onMirar }: { d: PanelControl; mirar: Mirar; onMir
   // El backend manda todas las becas y promociones del mes (cambio #28): acá,
   // las que autorizó otra persona con su PIN.
   const conPin = d.descuentosConPin.filter((x) => x.conPin !== false);
-  const pestanas: { clave: Mirar; label: string; n: number }[] = [
-    { clave: "asistenSinPagar", label: "Vienen a clase pero no pagaron", n: d.asistenSinPagar.length },
+  const pestanas: { clave: Mirar; label: string; n: number; urgente?: boolean }[] = [
+    { clave: "asistenSinPagar", label: "Vienen a clase pero no pagaron", n: d.asistenSinPagar.length, urgente: true },
     { clave: "pagaronNoVienen", label: "Pagaron pero nunca vinieron", n: d.pagaronNoVienen.length },
     { clave: "descuentosConPin", label: "Descuentos con PIN", n: conPin.length },
     { clave: "ventasAnuladas", label: "Ventas anuladas", n: d.ventasAnuladas.length },
   ];
-  type Fila = { clave: string; titulo: string; sub?: string; b: string; c: string; d: string; urgente?: boolean; a?: string };
+  type Fila = { clave: string; titulo: string; sub?: string; b: string; c: ReactNode; d: string; a?: string };
   const tablas: Record<Mirar, { cab: [string, string, string, string]; filas: Fila[] }> = {
     asistenSinPagar: {
       cab: [p.Alumno, "Asistencias del mes", "Estado de pago", "Lo inscribió"],
@@ -261,9 +271,8 @@ function ParaMirar({ d, mirar, onMirar }: { d: PanelControl; mirar: Mirar; onMir
         titulo: nombreDe(x.alumno),
         sub: nombreDe(x.grupo),
         b: String(x.asistencias),
-        c: textoEstadoPago(x.estadoPago).texto,
+        c: <EstadoPagoTexto estado={x.estadoPago} />,
         d: x.inscritoPor,
-        urgente: true,
         a: typeof x.alumno === "string" ? undefined : `/academia/alumnos/${x.alumno.id}`,
       })),
     },
@@ -304,60 +313,74 @@ function ParaMirar({ d, mirar, onMirar }: { d: PanelControl; mirar: Mirar; onMir
     },
   };
   const t = tablas[mirar];
+  const elegida = pestanas.find((x) => x.clave === mirar);
+  // Una sola estructura para escritorio y celular: en escritorio es una
+  // grilla de columnas; en el celular los tres datos bajan a un renglón
+  // (`md:contents` los devuelve a sus columnas desde md).
+  const col = "md:grid-cols-[minmax(180px,2fr)_minmax(100px,1fr)_minmax(110px,1fr)_minmax(100px,1fr)_88px]";
   return (
-    <section aria-labelledby="t-mirar" className="space-y-3">
-      <h2 id="t-mirar" className="text-base font-bold text-texto">
-        Para mirar
-      </h2>
-      {/* scroll-lateral-ok: pestañas de filtro, el patrón aceptado (PLAN-TABLAS-MOVIL §2.6). */}
-      <div role="tablist" aria-label="Qué mirar" className="flex gap-2 overflow-x-auto [scrollbar-width:none]">
-        {pestanas.map((x) => (
-          <button
-            key={x.clave}
-            type="button"
-            role="tab"
-            aria-selected={mirar === x.clave}
-            onClick={() => onMirar(x.clave)}
-            className={`shrink-0 rounded-xl border px-3 py-2 text-left ${mirar === x.clave ? "border-primary bg-primary-50" : "border-borde bg-white hover:bg-muted"}`}
-          >
-            <span className="block text-lg font-bold tabular-nums text-texto">{x.n}</span>
-            <span className="block text-[12px] text-texto-3">{x.label}</span>
-          </button>
-        ))}
+    <div className="space-y-3 sm:space-y-4">
+      {/* Los indicadores SON las pestañas de "Para mirar": tocar uno cambia la tabla de abajo. */}
+      <div role="group" aria-label="Qué mirar">
+        <GrillaKpi>
+          {pestanas.map((x) => (
+            <KpiTarjeta
+              key={x.clave}
+              etiqueta={x.label}
+              valor={x.n}
+              tono={x.n > 0 ? (x.urgente ? "urgente" : "ambar") : "normal"}
+              seleccionado={mirar === x.clave}
+              onClick={() => onMirar(x.clave)}
+            />
+          ))}
+        </GrillaKpi>
       </div>
-      {t.filas.length === 0 ? (
-        <p className="text-sm text-texto-3">Nada en esta {p.sede} este mes.</p>
-      ) : (
-        <>
-          <div className="hidden grid-cols-[minmax(180px,2fr)_minmax(100px,1fr)_minmax(100px,1fr)_minmax(100px,1fr)_60px] gap-3 px-3 text-[12px] text-texto-3 md:grid">
-            {t.cab.map((c) => (
-              <span key={c}>{c}</span>
-            ))}
-            <span />
-          </div>
-          <ul className="divide-y divide-borde-soft border-y border-borde-soft">
-            {t.filas.map((f) => (
-              <li key={f.clave} className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 px-3 py-2.5 md:grid-cols-[minmax(180px,2fr)_minmax(100px,1fr)_minmax(100px,1fr)_minmax(100px,1fr)_60px] md:items-center">
-                <span className="min-w-0">
-                  <span className="block truncate text-sm font-semibold text-texto">{f.titulo}</span>
-                  {f.sub && <span className="block truncate text-[12px] text-texto-3">{f.sub}</span>}
-                </span>
-                <span className="text-sm tabular-nums text-texto-2">{f.b}</span>
-                <span className={`text-sm ${f.urgente ? "font-semibold text-danger-text" : "text-texto-2"}`}>{f.c}</span>
-                <span className="text-sm text-texto-3">{f.d}</span>
-                <span className="text-right">
-                  {f.a && (
-                    <Link to={f.a} className="text-[13px] font-semibold text-primary-700 hover:underline">
-                      Ver
-                    </Link>
-                  )}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
-    </section>
+      <Tarjeta id="t-mirar" titulo="Para mirar" contador={t.filas.length} bajada={elegida?.label} sinRelleno>
+        {t.filas.length === 0 ? (
+          <p className="p-4 text-sm text-texto-3 sm:p-5">Nada en esta {p.sede} este mes.</p>
+        ) : (
+          <>
+            <div className={`hidden gap-3 px-4 py-2.5 sm:px-5 md:grid ${col} ${TABLA.encabezado}`}>
+              {t.cab.map((c) => (
+                <span key={c}>{c}</span>
+              ))}
+              <span />
+            </div>
+            <ul className={`${LISTA.lista} border-t border-borde-soft md:border-t-0`}>
+              {t.filas.map((f) => (
+                <li key={f.clave} className={`grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1.5 ${col} ${LISTA.itemHover}`}>
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm font-semibold text-texto">{f.titulo}</span>
+                    {f.sub && <span className="block truncate text-[12px] text-texto-3">{f.sub}</span>}
+                  </span>
+                  <span className="col-span-2 flex flex-wrap items-center gap-x-4 gap-y-1 md:contents">
+                    <span className="text-sm tabular-nums text-texto-2">
+                      <span className="text-texto-4 md:hidden">{t.cab[1]}: </span>
+                      {f.b}
+                    </span>
+                    <span className="text-sm text-texto-2">
+                      <span className="text-texto-4 md:hidden">{t.cab[2]}: </span>
+                      {f.c}
+                    </span>
+                    <span className="text-sm text-texto-3">
+                      <span className="text-texto-4 md:hidden">{t.cab[3]}: </span>
+                      {f.d}
+                    </span>
+                  </span>
+                  <span className="max-md:col-start-2 max-md:row-start-1 md:text-right">
+                    {f.a && (
+                      <BotonFila variante="ghost" a={f.a}>
+                        Ver
+                      </BotonFila>
+                    )}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+      </Tarjeta>
+    </div>
   );
 }
 
@@ -365,22 +388,25 @@ function PorPersona({ filas, variasSedes }: { filas: PanelControl["inscripciones
   const max = Math.max(1, ...filas.map((f) => f.cantidad));
   return (
     <>
-      <ul className="divide-y divide-borde-soft border-y border-borde-soft">
+      <ul className={LISTA.lista}>
         {filas.map((f) => (
-          <li key={`${f.usuario}-${nombreDe(f.sede)}`} className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] items-center gap-3 px-3 py-2.5">
+          <li
+            key={`${f.usuario}-${nombreDe(f.sede)}`}
+            className={`grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] ${LISTA.itemHover}`}
+          >
             <span className="min-w-0">
               <span className="block truncate text-sm font-semibold text-texto">{f.usuario}</span>
               {variasSedes && <span className="block truncate text-[12px] text-texto-3">{nombreDe(f.sede)}</span>}
             </span>
-            <span className="flex items-center gap-2">
-              <span aria-hidden="true" className="h-1.5 flex-1 overflow-hidden rounded-full bg-primary-100">
+            <span className="flex items-center gap-2 max-sm:col-span-2 max-sm:row-start-2">
+              <span aria-hidden="true" className="h-2 flex-1 overflow-hidden rounded-full bg-primary-100">
                 <span className="block h-full rounded-full bg-primary" style={{ width: `${Math.round((f.cantidad / max) * 100)}%` }} />
               </span>
-              <span className="w-8 text-right text-sm tabular-nums text-texto-2">{f.cantidad}</span>
+              <span className="w-8 text-right text-sm font-semibold tabular-nums text-texto-2">{f.cantidad}</span>
             </span>
-            <span className="w-28 text-right text-sm tabular-nums text-texto">
+            <span className="w-28 text-right text-sm font-semibold tabular-nums text-texto max-sm:col-start-2 max-sm:row-start-1">
               {fmtMoney(f.cobrado)}
-              {(f.descuentos || f.anulaciones) ? (
+              {f.descuentos || f.anulaciones ? (
                 <span className="block text-[12px] font-normal text-texto-3">
                   {[f.descuentos ? `${f.descuentos} desc.` : null, f.anulaciones ? `${f.anulaciones} anul.` : null].filter(Boolean).join(" · ")}
                 </span>
@@ -389,7 +415,7 @@ function PorPersona({ filas, variasSedes }: { filas: PanelControl["inscripciones
           </li>
         ))}
       </ul>
-      <p className="flex justify-between px-3 text-sm font-bold text-texto">
+      <p className="flex justify-between border-t border-borde-soft bg-muted px-4 py-3 text-sm font-bold text-texto sm:px-5">
         <span>Total {filas.reduce((s, f) => s + f.cantidad, 0)} inscripciones</span>
         <span className="tabular-nums">{fmtMoney(filas.reduce((s, f) => s + f.cobrado, 0))}</span>
       </p>
@@ -473,7 +499,7 @@ function PanelRevision({
             </div>
           ) : (
             <div className="flex gap-2">
-              <Boton className="flex-1" disabled={ocupado} onClick={() => void revisar(true)}>
+              <Boton className="flex-1" icono="check" disabled={ocupado} onClick={() => void revisar(true)}>
                 Está bien
               </Boton>
               <Boton variante="ghost" className="flex-1" onClick={() => setObservando(true)}>
@@ -485,37 +511,47 @@ function PanelRevision({
         </>
       }
     >
-      <div className="space-y-4">
-        <div className="grid grid-cols-[96px_minmax(0,1fr)] gap-3">
-          <Foto url={urls.FOTO} titulo={NOMBRE_FOTO.FOTO} alto />
-          <dl className="space-y-1.5 text-sm">
-            <div>
-              <dt className="text-[12px] text-texto-3">Nombre tipeado</dt>
-              <dd className="text-texto">{f.nombre}</dd>
-            </div>
-            <div>
-              <dt className="text-[12px] text-texto-3">CI</dt>
-              <dd className="text-texto">{f.ci ?? "—"}</dd>
-            </div>
-            <div>
-              <dt className="text-[12px] text-texto-3">Fecha de nacimiento</dt>
-              <dd className="text-texto">{f.fechaNacimiento ? fmtFecha(f.fechaNacimiento) : "—"}</dd>
-            </div>
-          </dl>
-        </div>
-        <Foto url={urls.CI_ANVERSO} titulo={NOMBRE_FOTO.CI_ANVERSO} />
-        <Foto url={urls.CI_REVERSO} titulo={NOMBRE_FOTO.CI_REVERSO} />
+      <div>
+        <SeccionPanel titulo="Lo que se tipeó">
+          <div className="grid grid-cols-[96px_minmax(0,1fr)] gap-3">
+            <Foto url={urls.FOTO} titulo={NOMBRE_FOTO.FOTO} alto />
+            <ResumenPanel className="self-start">
+              <dl className="space-y-2 text-sm">
+                <div>
+                  <dt className="text-[11px] font-semibold uppercase tracking-wide text-texto-4">Nombre tipeado</dt>
+                  <dd className="font-semibold text-texto">{f.nombre}</dd>
+                </div>
+                <div>
+                  <dt className="text-[11px] font-semibold uppercase tracking-wide text-texto-4">CI</dt>
+                  <dd className="tabular-nums text-texto">{f.ci ?? "—"}</dd>
+                </div>
+                <div>
+                  <dt className="text-[11px] font-semibold uppercase tracking-wide text-texto-4">Fecha de nacimiento</dt>
+                  <dd className="tabular-nums text-texto">{f.fechaNacimiento ? fmtFecha(f.fechaNacimiento) : "—"}</dd>
+                </div>
+              </dl>
+            </ResumenPanel>
+          </div>
+        </SeccionPanel>
+        <SeccionPanel titulo="Carnet">
+          <div className="space-y-3">
+            <Foto url={urls.CI_ANVERSO} titulo={NOMBRE_FOTO.CI_ANVERSO} />
+            <Foto url={urls.CI_REVERSO} titulo={NOMBRE_FOTO.CI_REVERSO} />
+          </div>
+        </SeccionPanel>
         {observando && (
-          <label className="block">
-            <span className="mb-1 block text-[13px] font-semibold text-texto-2">¿Qué no cuadra?</span>
-            <textarea
-              rows={3}
-              value={motivo}
-              onChange={(e) => setMotivo(e.target.value)}
-              placeholder="Por ejemplo: la foto no coincide con la del carnet"
-              className="w-full rounded-xl border border-borde bg-white px-3.5 py-2.5 text-sm text-texto outline-none focus:border-primary focus:ring-2 focus:ring-primary-100"
-            />
-          </label>
+          <SeccionPanel titulo="Motivo">
+            <label className="block">
+              <span className="mb-1 block text-[13px] font-semibold text-texto-2">¿Qué no cuadra?</span>
+              <textarea
+                rows={3}
+                value={motivo}
+                onChange={(e) => setMotivo(e.target.value)}
+                placeholder="Por ejemplo: la foto no coincide con la del carnet"
+                className="w-full rounded-xl border border-borde bg-white px-3.5 py-2.5 text-sm text-texto outline-none focus:border-primary focus:ring-2 focus:ring-primary-100"
+              />
+            </label>
+          </SeccionPanel>
         )}
         <ErrorMsg>{error}</ErrorMsg>
       </div>
@@ -526,7 +562,9 @@ function PanelRevision({
 function Foto({ url, titulo, alto = false }: { url?: string; titulo: string; alto?: boolean }) {
   return (
     <figure>
-      <div className={`flex items-center justify-center overflow-hidden rounded-xl bg-muted ${alto ? "aspect-[3/4]" : "aspect-[16/10]"}`}>
+      <div
+        className={`flex items-center justify-center overflow-hidden rounded-xl border border-borde-soft bg-muted ${alto ? "aspect-[3/4]" : "aspect-[16/10]"}`}
+      >
         {url ? <img src={url} alt={titulo} className="h-full w-full object-cover" /> : <Icon name="camara" size={20} className="text-texto-4" />}
       </div>
       <figcaption className="mt-1 text-[12px] text-texto-3">{titulo}</figcaption>

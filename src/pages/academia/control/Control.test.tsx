@@ -82,7 +82,11 @@ describe("N9 · Panel de control", () => {
     await act(async () => {});
     expect(screen.getByText("Bustillos Rek, Camila")).toBeInTheDocument();
     expect(screen.getByText("Sin pagar")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("tab", { name: /Descuentos con PIN/ }));
+    // Los indicadores son las pestañas de "Para mirar": tarjetas-botón con aria-pressed.
+    const queMirar = screen.getByRole("group", { name: "Qué mirar" });
+    expect(within(queMirar).getByRole("button", { name: /Vienen a clase pero no pagaron/ })).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(within(queMirar).getByRole("button", { name: /Descuentos con PIN/ }));
+    expect(within(queMirar).getByRole("button", { name: /Descuentos con PIN/ })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByText("Beca 50 %")).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Inscripciones por persona" })).toHaveTextContent("Lucía Vargas");
   });

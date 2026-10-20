@@ -7,6 +7,7 @@ import { fechaCorta, nombreDe } from "../../lib/academia/formato";
 import type { AlumnoPorCobrar, CarritoInscripcion, Ref } from "../../lib/academia/tipos";
 import { usePalabras } from "../../lib/academia/usePalabras";
 import { fmtMoney } from "../../lib/format";
+import { BotonIcono, Chip, LISTA, Tarjeta } from "../academia/piezas";
 
 /** ¿La sede del grupo es otra que la de la caja? Por id si vino, si no por nombre. */
 function esOtraSede(sede: string | Ref | null | undefined, caja: { id: number; nombre: string | null } | null): boolean {
@@ -131,14 +132,8 @@ export default function CuotasPorCobrar({
 
   return (
     <div className="mx-auto flex h-full min-h-0 w-full max-w-lg flex-col">
-      <div className="flex items-center gap-2 border-b border-borde bg-white px-4 py-3">
-        <button
-          onClick={elegido && inicial?.inscripcionId == null ? () => setElegido(null) : onAtras}
-          aria-label="Volver"
-          className="rounded-lg p-1.5 text-texto-2 hover:bg-muted"
-        >
-          <Icon name="arrowLeft" size={20} />
-        </button>
+      <div className="flex items-center gap-3 border-b border-borde bg-white px-4 py-3">
+        <BotonIcono icono="arrowLeft" etiqueta="Volver" onClick={elegido && inicial?.inscripcionId == null ? () => setElegido(null) : onAtras} />
         <div className="min-w-0 flex-1">
           <h1 className="text-[15px] font-bold text-texto">{p.Materias} por cobrar</h1>
           <p className="truncate text-xs text-texto-3">
@@ -154,7 +149,11 @@ export default function CuotasPorCobrar({
         ) : elegido ? (
           <>
             {otraSede && sedeGrupo && (
-              <p role="status" className="rounded-xl bg-warning-bg px-3.5 py-2.5 text-[13px] font-semibold text-warning-text">
+              <p
+                role="status"
+                className="flex items-center gap-2 rounded-xl border border-warning-text/20 bg-warning-bg px-3.5 py-2.5 text-[13px] font-semibold text-warning-text"
+              >
+                <Icon name="alert" size={16} />
                 Grupo de {sedeGrupo} · se cobra en {caja?.nombre ?? "esta caja"}
               </p>
             )}
@@ -165,7 +164,7 @@ export default function CuotasPorCobrar({
                 {filas.map((f, i) => {
                   const mal = f.elegida && !montoValido(Number(f.texto), f.linea.saldo);
                   return (
-                    <li key={f.linea.cuotaId} className={`card space-y-2 p-3.5 ${f.elegida ? "border-primary/50" : ""}`}>
+                    <li key={f.linea.cuotaId} className={`card space-y-3 p-4 transition-[box-shadow,border-color] ${f.elegida ? "border-primary ring-2 ring-primary-100" : ""}`}>
                       <label className="flex items-start gap-3">
                         <input
                           type="checkbox"
@@ -197,8 +196,8 @@ export default function CuotasPorCobrar({
                                     ),
                                   )
                                 }
-                                className={`rounded-full px-3 py-1 text-[13px] font-semibold ${
-                                  f.parte === parte ? "bg-primary-boton text-white" : "border border-borde bg-white text-texto-2"
+                                className={`inline-flex min-h-11 items-center rounded-full px-4 text-[13px] font-semibold transition-colors sm:min-h-9 ${
+                                  f.parte === parte ? "bg-primary-boton text-white" : "border border-borde bg-white text-texto-2 hover:bg-muted"
                                 }`}
                               >
                                 {parte ? "Una parte" : "Todo"}
@@ -234,8 +233,8 @@ export default function CuotasPorCobrar({
               </ul>
             )}
             {elegido.carrito.pagadores.length > 1 && (
-              <div className="space-y-1.5">
-                <p className="text-[13px] font-semibold text-texto-2">Quién paga</p>
+              <div className="card space-y-2.5 p-4">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-texto-4">Quién paga</p>
                 <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Quién paga">
                   {elegido.carrito.pagadores.map((x) => (
                     <button
@@ -244,8 +243,8 @@ export default function CuotasPorCobrar({
                       role="radio"
                       aria-checked={pagadorId === x.clienteId}
                       onClick={() => setPagadorId(x.clienteId)}
-                      className={`rounded-full px-3.5 py-1.5 text-[13px] font-semibold ${
-                        pagadorId === x.clienteId ? "bg-primary-boton text-white" : "border border-borde bg-white text-texto-2"
+                      className={`inline-flex min-h-11 items-center rounded-full px-4 text-[13px] font-semibold transition-colors sm:min-h-9 ${
+                        pagadorId === x.clienteId ? "bg-primary-boton text-white" : "border border-borde bg-white text-texto-2 hover:bg-muted"
                       }`}
                     >
                       {x.nombre} · {x.rol === "TUTOR" ? "tutor" : p.alumno}
@@ -268,25 +267,34 @@ export default function CuotasPorCobrar({
             {resultados && !buscando && resultados.length === 0 && (
               <p className="text-sm text-texto-3">Nadie con cuotas pendientes con «{buscado}».</p>
             )}
-            {resultados?.map((a) => (
-              <button
-                key={a.inscripcionId}
-                type="button"
-                onClick={() => void elegir(a)}
-                className="card flex w-full items-center gap-3 p-3.5 text-left hover:border-primary/40"
-              >
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[15px] font-bold text-texto">{a.nombre}</span>
-                  <span className="block truncate text-[13px] text-texto-3">
-                    {[a.codigo, nombreDe(a.grupo), nombreDe(a.sede)].filter(Boolean).join(" · ")}
-                  </span>
-                  {esOtraSede(a.sede, caja) && <span className="text-[12px] font-semibold text-warning-text">Otra {p.sede}</span>}
-                </span>
-                <span className={`shrink-0 text-sm font-bold tabular-nums ${a.vencido ? "text-danger-text" : "text-texto"}`}>
-                  {fmtMoney(a.saldo)}
-                </span>
-              </button>
-            ))}
+            {!!resultados?.length && (
+              // Los resultados en una tarjeta con divisores, como las listas de academia.
+              <Tarjeta etiqueta="Resultados" sinRelleno>
+                <ul className={LISTA.lista}>
+                  {resultados.map((a) => (
+                    <li key={a.inscripcionId}>
+                      <button type="button" onClick={() => void elegir(a)} className={`flex w-full items-center gap-3 text-left ${LISTA.itemHover}`}>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-[15px] font-bold text-texto">{a.nombre}</span>
+                          <span className="block truncate text-[13px] text-texto-3">
+                            {[a.codigo, nombreDe(a.grupo), nombreDe(a.sede)].filter(Boolean).join(" · ")}
+                          </span>
+                          {esOtraSede(a.sede, caja) && (
+                            <Chip tono="ambar" className="mt-1">
+                              Otra {p.sede}
+                            </Chip>
+                          )}
+                        </span>
+                        <span className={`shrink-0 text-sm font-bold tabular-nums ${a.vencido ? "text-danger-text" : "text-texto"}`}>
+                          {fmtMoney(a.saldo)}
+                        </span>
+                        <Icon name="chevronRight" size={16} className="shrink-0 text-texto-4" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </Tarjeta>
+            )}
           </>
         )}
       </div>
