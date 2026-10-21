@@ -41,7 +41,7 @@ interface PagoApi {
   cobradoPor?: string;
 }
 
-interface SesionApi {
+export interface SesionApi {
   id: number;
   version: number;
   start: number;
@@ -112,6 +112,62 @@ export interface TableroApi {
   mesas: MesaApi[];
   /** Las cuentas abiertas del local. Un backend anterior al 21-oct no las manda. */
   cuentas?: CuentaApi[];
+}
+
+// ── Supervisión del administrador (backend del 21-oct) ─────────────────────
+
+/** Una sesión con quién la abrió y quién cargó cada consumo: sólo la manda `/billar/supervision`. */
+export type SesionSupervisionApi = Omit<SesionApi, "consumos"> & {
+  abiertaPor: string;
+  /** Si está en pausa: quién la pausó, quién autorizó y si fue desde Supervisión, sin PIN. */
+  pausadaPor?: { quien: string; autorizo?: string; sinPin?: boolean };
+  consumos: (SesionApi["consumos"][number] & { por: string; anuladoPor?: string })[];
+};
+
+/** Una caja de la jornada: quién la abrió, cuándo, cuándo se cerró y lo vendido. */
+export interface CajaSupervisionApi {
+  id: number;
+  abierta: boolean;
+  cajero: string;
+  desde: number;
+  hasta: number | null;
+  inicial: number;
+  /** Cerrada: lo que contó el cajero y la diferencia contra lo esperado. */
+  contado?: number;
+  diferencia?: number;
+  nota?: string;
+  ventas: number;
+  vendido: number;
+  anuladas: number;
+}
+
+/** Un renglón de la actividad de la jornada: quién hizo qué, cuándo y dónde. */
+export interface ActividadApi {
+  id: string;
+  hora: number;
+  quien: string;
+  texto: string;
+  /** "Mesa 3", "Cuenta «Juan»" o "Venta rápida"; sin lugar, algo de la caja. */
+  lugar?: string;
+  autorizo?: string;
+  motivo?: string;
+  /** La acción cruda (PAUSAR, VENTA, CAJA_ABIERTA…). */
+  codigo: string;
+}
+
+export interface SupervisionApi {
+  ahora: number;
+  sucursal: { id: number; nombre: string };
+  /** Cuándo empezó la jornada de hoy (la hora de corte del billar). */
+  desde: number;
+  /** Lo vendido en la jornada, de todas las cajas del local (sin lo de días atrás). */
+  hoy: { ventas: number; vendido: number };
+  ajustes: AjustesApi;
+  tipos: TipoMesa[];
+  mesas: (Omit<MesaApi, "sesion"> & { sesion?: SesionSupervisionApi })[];
+  cuentas: (Omit<CuentaApi, "sesion"> & { sesion: SesionSupervisionApi })[];
+  cajas: CajaSupervisionApi[];
+  actividad: ActividadApi[];
 }
 
 /** Una mesa como la lista el administrador (también las guardadas sin usar). */
@@ -187,6 +243,12 @@ export const apiBillar = {
   productos: (sucursalId?: number | null) =>
     request<ProductoBillar[]>(`/billar/productos${deSucursal(sucursalId)}`),
   ventas: () => request<VentaApi[]>("/billar/ventas"),
+  /** Lo que hace la cajera, en vivo (sólo el administrador del billar, `billar.admin`). */
+  supervision: (sucursalId?: number | null) =>
+    request<SupervisionApi>(`/billar/supervision${deSucursal(sucursalId)}`),
+  /** Pausar desde Supervisión: sin PIN ni caja propia, a nombre del administrador. */
+  pausarSupervision: (sesionId: number, motivo: string) =>
+    enviar<MesaApi>(`/billar/supervision/sesiones/${sesionId}/pausar`, { motivo }),
   mesa: (idInterno: number) => request<MesaApi>(`/billar/mesas/${idInterno}`),
   reporte: (desde: string, hasta: string, sucursalId?: number) =>
     request<ReporteApi>(

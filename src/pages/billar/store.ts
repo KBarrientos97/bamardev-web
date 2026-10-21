@@ -417,12 +417,12 @@ export function useSondeoBillar(negocio: string | undefined) {
 // ── Ayudas ──────────────────────────────────────────────────────────────────
 
 /** La tarifa que se le cobra a la mesa: con la que se abrió si está en juego, si no la de hoy. */
-export function tipoDe(e: EstadoBillar, mesa: Mesa): TipoMesa {
+export function tipoDe(e: Pick<EstadoBillar, "tipos">, mesa: Mesa): TipoMesa {
   return mesa.sesion?.tarifa ?? tarifaVigente(e, mesa);
 }
 
 /** La tarifa de hoy: la propia de la mesa o la de su tipo. */
-export function tarifaVigente(e: EstadoBillar, mesa: Pick<Mesa, "tipo" | "tarifaPropia">): TipoMesa {
+export function tarifaVigente(e: Pick<EstadoBillar, "tipos">, mesa: Pick<Mesa, "tipo" | "tarifaPropia">): TipoMesa {
   return tarifaDe(mesa, e.tipos[mesa.tipo] ?? Object.values(e.tipos)[0] ?? TIPO_VACIO);
 }
 

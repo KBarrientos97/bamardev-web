@@ -543,6 +543,22 @@ describe("billar: un extra estricto", () => {
     }
   });
 
+  it("Supervisión es de quien administra el billar: la ve sin tener que atender, y la cajera no", () => {
+    // 21-oct: el administrador mira lo que hace la cajera sin abrir caja.
+    const administra = ctxCon(["billar.admin"], "BILLAR", conBillar);
+    expect(puedeVer(administra, "supervision_billar")).toBe(true);
+    const atiende = ctxCon(["billar.operar", "ventas.vender", "caja.operar"], "BILLAR", conBillar);
+    expect(puedeVer(atiende, "supervision_billar")).toBe(false);
+    // Sin la feature, ni el dueño; y fuera de un billar (farmacia, belleza) tampoco.
+    expect(puedeVer(ctxCon(["billar.admin"], "BILLAR", PLAN_FULL), "supervision_billar")).toBe(false);
+    for (const rubro of ["FARMACIA", "BARBERIA"]) {
+      expect(puedeVer(ctxCon(["billar.admin"], rubro, conBillar), "supervision_billar")).toBe(false);
+    }
+    // No cambia a dónde aterriza cada uno.
+    expect(rutaInicial(administra)).toBe("/mesas-billar");
+    expect(rutaInicial(atiende)).toBe("/billar");
+  });
+
   it("quien atiende el billar entra al tablero; el dueño, a lo de siempre", () => {
     expect(rutaInicial(ctxCon(["billar.operar", "ventas.vender"], "RESTAURANTE", conBillar))).toBe("/billar");
     expect(rutaInicial(ctxCon(["dashboard.ver", "billar.operar"], "RESTAURANTE", conBillar))).toBe("/inventario");
