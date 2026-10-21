@@ -2,6 +2,7 @@ import { request } from "../../lib/api";
 import type { ConsumoVista, CreditoInput, FormaPago, PagoInput } from "../../types";
 import type {
   AjustesBillar,
+  CuentaSinMesa,
   Devolucion,
   EstadoMesa,
   Mesa,
@@ -89,6 +90,16 @@ export interface MesaApi {
 /** Los ajustes del negocio: el silencio no viaja, es de cada equipo. */
 export type AjustesApi = Omit<AjustesBillar, "silencio"> & { tieneTokenSalon: boolean };
 
+/** Una cuenta abierta (sesión sin mesa, backend del 21-oct). */
+export interface CuentaApi {
+  id: number;
+  nombre: string;
+  sucursalId: number;
+  /** Cobrada o anulada: la pantalla la saca del tablero. */
+  estado: "abierta" | "cerrada" | "anulada";
+  sesion: SesionApi;
+}
+
 export interface TableroApi {
   /** La hora del servidor: el cronómetro corre en el equipo, pero contado desde acá. */
   ahora: number;
@@ -99,6 +110,8 @@ export interface TableroApi {
   ajustes: AjustesApi;
   tipos: TipoMesa[];
   mesas: MesaApi[];
+  /** Las cuentas abiertas del local. Un backend anterior al 21-oct no las manda. */
+  cuentas?: CuentaApi[];
 }
 
 /** Una mesa como la lista el administrador (también las guardadas sin usar). */
@@ -133,11 +146,15 @@ export interface ReporteApi {
   porHora: { hora: number; ocupacion: number }[];
   fijos: { vendidos: number; monto: number; conExcedente: number; excedenteBs: number };
   rapidas: { cantidad: number; bs: number };
+  /** Las cuentas abiertas cobradas (backend del 21-oct). */
+  cuentas?: { cantidad: number; bs: number };
   productos: { nombre: string; cant: number; bs: number }[];
   auditoria: {
     id: number;
     hora: number;
     mesaId?: number;
+    /** De una cuenta abierta: su nombre va donde iría la mesa. */
+    cuenta?: string;
     accion: string;
     quien: string;
     motivo?: string;
@@ -248,6 +265,39 @@ export const apiBillar = {
       ...cuerpo,
       hasta: new Date(cuerpo.hasta).toISOString(),
     }),
+
+  // ── Cuentas abiertas (sin mesa ni tiempo, 21-oct) ──
+  // Las mismas acciones que la cuenta de una mesa, por `/billar/cuentas/:id`
+  // (el id de la sesión). Cada una devuelve la cuenta entera.
+  cuenta: (id: number) => request<CuentaApi>(`/billar/cuentas/${id}`),
+  abrirCuenta: (nombre: string, sucursalId: number | null, clienteRequestId: string) =>
+    // Plan Emprendedor: como abrir una mesa, ocupa un lugar del cupo (`consumo`).
+    enviar<CuentaApi & { consumo?: ConsumoVista }>("/billar/cuentas", {
+      nombre,
+      ...(sucursalId != null ? { sucursalId } : {}),
+      clienteRequestId,
+    }),
+  consumosCuenta: (id: number, items: { productoId: number; cantidad: number }[], clienteRequestId: string) =>
+    enviar<CuentaApi>(`/billar/cuentas/${id}/consumos`, { items, clienteRequestId }),
+  anularConsumoCuenta: (id: number, consumoId: string, motivo: string, cred: Credenciales) =>
+    enviar<CuentaApi>(`/billar/cuentas/${id}/consumos/${consumoId}/anular`, { motivo, ...cred }),
+  pagarCuenta: (id: number, pagos: PagoInput[], clienteRequestId: string) =>
+    enviar<CuentaApi>(`/billar/cuentas/${id}/pagos`, { pagos, clienteRequestId }),
+  anularCuenta: (id: number, motivo: string, cred: Credenciales, clienteRequestId: string) =>
+    enviar<{ cuenta: CuentaApi; devolver: number; devolverDetalle?: Devolucion }>(`/billar/cuentas/${id}/anular`, {
+      motivo,
+      ...cred,
+      clienteRequestId,
+    }),
+  cerrarCuenta: (
+    id: number,
+    cuerpo: { totalEsperado: number; pagos?: PagoInput[]; clienteRequestId: string },
+  ) =>
+    // Sin `cuenta` cuando es el reintento de un cobro que ya había entrado.
+    enviar<{ venta: { id: number; comprobante: string | null }; cuenta?: CuentaApi }>(
+      `/billar/cuentas/${id}/cerrar`,
+      cuerpo,
+    ),
 
   // ── Administración (Mesas de billar) ──
   adminMesas: (sucursalId?: number | null) => request<MesaAdminApi[]>(`/billar/admin/mesas${deSucursal(sucursalId)}`),
@@ -367,6 +417,19 @@ export function aMesa(m: MesaApi): Mesa {
     reserva: m.reserva,
     inactiva: m.inactiva,
     sesion: m.sesion ? aSesion(m.sesion) : undefined,
+  };
+}
+
+/**
+ * Una cuenta abierta. Sus pagos son cobros parciales (para el backend son
+ * "adelantos", como los de una mesa): se nombran así.
+ */
+export function aCuenta(c: CuentaApi): CuentaSinMesa {
+  const sesion = aSesion(c.sesion);
+  return {
+    id: c.id,
+    nombre: c.nombre,
+    sesion: { ...sesion, pagos: sesion.pagos.map((p) => ({ ...p, nota: "Cobro parcial" })) },
   };
 }
 

@@ -1,5 +1,5 @@
 import type { NombreIcono } from "../../../../components/Icon";
-import { esPositivo } from "../../../../lib/dinero";
+import { aCentavos, esPositivo } from "../../../../lib/dinero";
 import { fmtNum } from "../../../../lib/format";
 import { esBelleza, esBillar, esFarmacia } from "../../../../lib/rubro";
 import type { ReporteAgenda } from "../../../../lib/agenda/tiposComisiones";
@@ -78,10 +78,16 @@ export function partesVenta(
   d: { billar?: BillarReporteApi | null; composicion?: ResumenApi["composicion"]; metodos?: MetodoPagoApi[] | null },
 ): Parte[] {
   if (esBillar(rubro) && d.billar) {
+    // Las cuentas abiertas (sin mesa ni tiempo, 21-oct) van con la venta
+    // rápida: las dos son lo vendido sin mesa, y la tarjeta muestra tres cifras
+    // (una cuarta no se veía). Sin cuentas, como siempre.
+    const cuentas = d.billar.cuentas?.bs ?? 0;
     return [
       { etiqueta: "Tiempo de mesa", valor: d.billar.tiempoBs },
       { etiqueta: "Consumos en mesa", valor: d.billar.consumosBs },
-      { etiqueta: "Venta rápida", valor: d.billar.rapidas.bs },
+      esPositivo(cuentas)
+        ? { etiqueta: "Cuentas y venta rápida", valor: aCentavos(d.billar.rapidas.bs + cuentas) }
+        : { etiqueta: "Venta rápida", valor: d.billar.rapidas.bs },
     ];
   }
   const c = d.composicion;

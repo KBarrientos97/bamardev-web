@@ -46,6 +46,14 @@ describe("de dónde vinieron las ventas, según el rubro", () => {
     expect(partesVenta("BILLAR", { billar: billar() }).map((p) => p.etiqueta)).toEqual(["Tiempo de mesa", "Consumos en mesa", "Venta rápida"]);
   });
 
+  it("con cuentas abiertas cobradas, van con la venta rápida: la tarjeta tiene tres cifras", () => {
+    const partes = partesVenta("BILLAR", {
+      billar: billar({ rapidas: { cantidad: 2, bs: 30.1 }, cuentas: { cantidad: 1, bs: 60.2 } }),
+    });
+    expect(partes.map((p) => p.etiqueta)).toEqual(["Tiempo de mesa", "Consumos en mesa", "Cuentas y venta rápida"]);
+    expect(partes[2].valor).toBe(90.3);
+  });
+
   it("el restaurante separa el salón del delivery y deja afuera lo que está en cero", () => {
     const partes = partesVenta("RESTAURANTE", {
       composicion: { salon: 500, billar: 0, delivery: 200, recoger: 0, mostrador: 100, servicios: 0, productos: 800 },

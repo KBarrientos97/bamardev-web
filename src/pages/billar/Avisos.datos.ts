@@ -25,7 +25,15 @@ export function dondeEntro(partes: { cajero: string; monto: number }[]): string 
 export function detalleAnularVenta(
   v: Pick<
     VentaBillar,
-    "origen" | "mesaId" | "pagos" | "adelantosOtraCaja" | "anulada" | "devuelto" | "pagoCorregido" | "cobradoEnOtraCaja"
+    | "origen"
+    | "mesaId"
+    | "cuenta"
+    | "pagos"
+    | "adelantosOtraCaja"
+    | "anulada"
+    | "devuelto"
+    | "pagoCorregido"
+    | "cobradoEnOtraCaja"
   >,
 ): string {
   const reales = v.pagos.filter((p) => p.metodo !== "Fiado");
@@ -39,8 +47,11 @@ export function detalleAnularVenta(
   const devolver = textoDevolucion({ efectivo, otros: [...otros].map(([metodo, monto]) => ({ metodo, monto })) });
   const deOtra = (v.adelantosOtraCaja ?? []).filter((x) => x.monto > 0.005);
 
+  const origen =
+    v.origen === "rapida" ? "Venta rápida" : v.origen === "cuenta" ? `Cuenta «${v.cuenta ?? ""}»` : `Mesa ${v.mesaId}`;
+
   return [
-    `${v.origen === "rapida" ? "Venta rápida" : `Mesa ${v.mesaId}`}. Los productos vuelven al stock.`,
+    `${origen}. Los productos vuelven al stock.`,
     devolver ? `Devolvé al cliente ${devolver}.` : "",
     fiado > 0.005 ? `${fmtMoney(fiado)} eran fiado: salen de Cuentas por cobrar.` : "",
     deOtra.length ? `De ese efectivo, ${dondeEntro(deOtra)}: pedíselos, porque su arqueo deja de esperarlos.` : "",
@@ -48,6 +59,9 @@ export function detalleAnularVenta(
     // poder cobrarse de nuevo: el tiempo de mesa no se vende fuera del cierre
     // (revisión del 16-oct). Que se sepa antes de poner el PIN.
     v.origen === "mesa" ? `Ojo: anular deja SIN COBRAR el tiempo de la Mesa ${v.mesaId}: no se puede volver a cobrar.` : "",
+    // La cuenta abierta tampoco se vuelve a abrir: lo tomado se cobra de nuevo
+    // como una venta rápida.
+    v.origen === "cuenta" ? "La cuenta no se vuelve a abrir: si hay que cobrarla de nuevo, hacelo con una venta rápida." : "",
     // Desde el 17-oct el medio se corrige sin anular: si fue eso, que no se
     // pierda la venta (ni el tiempo de la mesa) por un medio mal marcado.
     sePuedeCorregirPago(v) ? "Si sólo se marcó mal el medio de pago, no la anules: usá «Corregir pago»." : "",

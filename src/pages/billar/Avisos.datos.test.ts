@@ -42,6 +42,16 @@ describe("detalleAnularVenta: qué devolver y de dónde sale", () => {
       "Venta rápida. Los productos vuelven al stock. Devolvé al cliente Bs 8,00 por QR. Si sólo se marcó mal el medio de pago, no la anules: usá «Corregir pago».",
     );
   });
+
+  it("la de una cuenta abierta la nombra y avisa que no se vuelve a abrir", () => {
+    // 21-oct: sin mesa no hay tiempo que se pierda, pero lo tomado se cobra de
+    // nuevo con una venta rápida (la cuenta queda cobrada).
+    expect(
+      detalleAnularVenta({ origen: "cuenta", cuenta: "Mesa de afuera", pagos: [pago("Efectivo", 40), pago("QR", 20)] }),
+    ).toBe(
+      "Cuenta «Mesa de afuera». Los productos vuelven al stock. Devolvé al cliente Bs 40,00 en efectivo y Bs 20,00 por QR. La cuenta no se vuelve a abrir: si hay que cobrarla de nuevo, hacelo con una venta rápida. Si sólo se marcó mal el medio de pago, no la anules: usá «Corregir pago».",
+    );
+  });
 });
 
 describe("sePuedeCorregirPago: corregir el medio sin anular", () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { porPersona, resumenAjustes, tipoDe, type Ajuste } from "./PausasAjustes.datos";
+import { lugarDe, porPersona, resumenAjustes, tipoDe, type Ajuste } from "./PausasAjustes.datos";
 
 const ajuste = (id: number, codigo: string | undefined, quien = "Ana", accion = "x"): Ajuste => ({
   id,
@@ -85,5 +85,19 @@ describe("pausas y ajustes del billar", () => {
       { quien: "Ana", ajustes: 3, anulaciones: 2 },
       { quien: "Beto", ajustes: 1, anulaciones: 0 },
     ]);
+  });
+});
+
+describe("las cuentas abiertas del billar (21-oct)", () => {
+  it("anular una cuenta es una anulación, pero no una mesa anulada", () => {
+    const anulada: Ajuste = { ...ajuste(1, "ANULAR_CUENTA"), mesaId: undefined, cuenta: "Barra" };
+    expect(tipoDe(anulada)).toBe("anulaciones");
+    expect(resumenAjustes([anulada]).mesasAnuladas).toBe(0);
+  });
+
+  it("donde iría la mesa va el nombre de la cuenta; lo del negocio entero queda vacío", () => {
+    expect(lugarDe({ mesaId: 3 })).toBe("Mesa 3");
+    expect(lugarDe({ cuenta: "Mesa de afuera" })).toBe("Cuenta «Mesa de afuera»");
+    expect(lugarDe({})).toBe("");
   });
 });
