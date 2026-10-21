@@ -70,6 +70,7 @@ const Propinas = lazy(() => import("./pages/belleza/Propinas"));
 const RecetasServicio = lazy(() => import("./pages/belleza/RecetasServicio"));
 // Billar: sólo se baja en un negocio con el extra.
 const RutasBillar = lazy(() => import("./pages/billar/RutasBillar"));
+const SupervisionBillar = lazy(() => import("./pages/billar/supervision/Supervision"));
 const PantallaSalonBillar = lazy(() => import("./pages/billar/PantallaSalon"));
 const MesasBillar = lazy(() => import("./pages/billar/admin/MesasBillar"));
 // Reportes: veintipico de pantallas con sus gráficos; se bajan al entrar.
@@ -579,6 +580,18 @@ function Rutas() {
           element={
             <Protegida seccion="mesas">
               <Mesas />
+            </Protegida>
+          }
+        />
+
+        {/* Billar: lo que hace la cajera, en vivo y sólo para mirar (del administrador). */}
+        <Route
+          path="/supervision-billar"
+          element={
+            <Protegida seccion="supervision_billar">
+              <Suspense fallback={null}>
+                <SupervisionBillar />
+              </Suspense>
             </Protegida>
           }
         />

@@ -108,6 +108,37 @@ describe.each([...RUBROS.filter((r) => r !== "ACADEMIA"), "RUBRO_NUEVO"])("menú
 });
 
 /**
+ * Supervisión del billar (21-oct): va en Vender, justo debajo de Billar, y la
+ * ve quien administra el billar —no la cajera—, en los mismos rubros donde
+ * existe Billar. No es un grupo ni queda suelta en Administración.
+ */
+describe("menú: Supervisión del billar", () => {
+  const vender = (m: BloqueMenu[]) => m.find((b) => b.bloque === "vender")?.nodos.map((n) => n.item.label) ?? [];
+  const SIN_BILLAR = ["FARMACIA", "PELUQUERIA", "BARBERIA", "SPA", "UNAS"];
+
+  it.each(RUBROS.filter((r) => r !== "ACADEMIA" && !SIN_BILLAR.includes(r)))("%s: el administrador la ve debajo de Billar", (rubro) => {
+    const v = vender(menu("ADMIN", rubro));
+    expect(v).toContain("Billar");
+    expect(v[v.indexOf("Billar") + 1]).toBe("Supervisión");
+  });
+
+  it.each(RUBROS.filter((r) => r !== "ACADEMIA" && !SIN_BILLAR.includes(r)))("%s: la cajera no la ve", (rubro) => {
+    expect(vender(menu("CAJERO", rubro))).not.toContain("Supervisión");
+  });
+
+  it.each(SIN_BILLAR.filter((r) => RUBROS.includes(r as never)))("%s: sin billar, sin Supervisión", (rubro) => {
+    for (const rol of ["ADMIN", "SUPERVISOR", "CAJERO"] as Plantilla[]) {
+      const todos = aplanar(menu(rol, rubro).flatMap((b) => b.nodos)).map((n) => n.item.label);
+      expect(todos).not.toContain("Supervisión");
+    }
+  });
+
+  it("el encargado (billar.admin) también la ve, sin pedir caja", () => {
+    expect(vender(menu("SUPERVISOR", "BILLAR"))).toContain("Supervisión");
+  });
+});
+
+/**
  * El instituto (ronda 2, lienzo MenuV2): un menú por rol. La recepción ve lo
  * del día y vender; el dueño suma Control y, abajo, Ajustes y un "Más"
  * plegado con los módulos generales (no se le quita ninguno); el docente,

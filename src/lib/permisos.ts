@@ -61,6 +61,11 @@ export type Seccion =
   | "billar"
   /** Mesas de billar: las mesas, las tarifas, los avisos y el PIN. Del administrador. */
   | "mesas_billar"
+  /**
+   * Supervisión del billar: lo que hace la cajera, en vivo y sin tocar nada
+   * (cajas, mesas, ventas, con quién hizo cada cosa). Del administrador.
+   */
+  | "supervision_billar"
   /** La pestaña Billar de Reportes. */
   | "reportes_billar"
   /**
@@ -262,6 +267,9 @@ const REQUISITOS: Record<Seccion, Requisito> = {
   // Las mesas de billar y sus tarifas son del administrador; la pestaña de
   // Reportes, de quien ve los reportes. Las dos con el mismo extra.
   mesas_billar: { permiso: "billar.admin", feature: "billar" },
+  // Supervisión: lo mismo que Mesas de billar. Quien administra el billar mira
+  // cómo atienden, sin tener que atender él (no pide caja propia).
+  supervision_billar: { permiso: "billar.admin", feature: "billar" },
   reportes_billar: { permiso: "reportes.ver", feature: "billar" },
   // Buscar un medicamento es consultar el catálogo y dónde hay: parte de
   // atender el mostrador. No se vende aparte.
@@ -473,6 +481,7 @@ const FUERA_DE_RUBRO: Partial<Record<Seccion, Rubro[]>> = {
   // les prenda el extra en el panel por error.
   billar: ["FARMACIA", ...RUBROS_BELLEZA, "ACADEMIA"],
   mesas_billar: ["FARMACIA", ...RUBROS_BELLEZA, "ACADEMIA"],
+  supervision_billar: ["FARMACIA", ...RUBROS_BELLEZA, "ACADEMIA"],
   reportes_billar: ["FARMACIA", ...RUBROS_BELLEZA, "ACADEMIA"],
   // En un instituto lo que se debe son cuotas, y eso es Cobranza
   // (PLAN-ACADEMIAS §4): "Cuentas por cobrar" no aparece.

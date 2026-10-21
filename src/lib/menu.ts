@@ -181,6 +181,16 @@ const ITEMS: (ItemNav & { bloque: Bloque })[] = [
   // vende. Las pantallas que cuelgan (consumo, cierre, ventas) lo dejan
   // encendido: no lleva `exacto`.
   { a: "/billar", label: "Billar", icono: "bola", seccion: "billar", bloque: "vender" },
+  // Supervisión (21-oct): lo mismo que el tablero pero sólo para mirar, del
+  // administrador. Justo debajo de Billar: es lo que se mira todos los días, y
+  // el cajero no lo ve (pide `billar.admin`).
+  {
+    a: "/supervision-billar",
+    label: "Supervisión",
+    icono: "ojo",
+    seccion: "supervision_billar",
+    bloque: "vender",
+  },
   // Va segundo y no dentro de Inventario: en una farmacia no es una consulta
   // de catálogo, es parte de atender. Se usa más que ninguna otra pantalla.
   {
