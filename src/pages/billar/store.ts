@@ -5,6 +5,7 @@ import type { ConsumoVista, CreditoInput, FormaPago, PagoInput } from "../../typ
 import { olvidarAvisos, prepararAvisos, reestrenarAvisos } from "./alertas";
 import { tarifaDe } from "./calculo";
 import {
+  aCuenta,
   aMesa,
   aMesaAdmin,
   aPagos,
@@ -12,11 +13,23 @@ import {
   apiBillar,
   type AjustesApi,
   type Credenciales,
+  type CuentaApi,
   type MesaApi,
   type TableroApi,
 } from "./api";
 import { ahoraServidor, fijarDesfase } from "./reloj";
-import type { AjustesBillar, Caja, Devolucion, ItemVenta, Mesa, MetodoCobro, ProductoBillar, TipoMesa, VentaBillar } from "./tipos";
+import type {
+  AjustesBillar,
+  Caja,
+  CuentaSinMesa,
+  Devolucion,
+  ItemVenta,
+  Mesa,
+  MetodoCobro,
+  ProductoBillar,
+  TipoMesa,
+  VentaBillar,
+} from "./tipos";
 
 /**
  * El estado del billar y lo que se puede hacer con él.
@@ -69,6 +82,8 @@ export interface EstadoBillar {
   ajustesNegocio: AjustesBillar;
   caja: Caja;
   mesas: Mesa[];
+  /** Las cuentas abiertas del local (sin mesa ni tiempo), por orden de apertura. */
+  cuentas: CuentaSinMesa[];
   /** Las ventas del turno (la caja de quien opera), la más nueva primero. */
   ventas: VentaBillar[];
   toasts: Toast[];
@@ -186,6 +201,7 @@ function inicial(): EstadoBillar {
     ajustesNegocio: { silencio: false, ...ajustesNegocio },
     caja: { abierta: false, desde: 0, inicial: 0 },
     mesas: [],
+    cuentas: [],
     ventas: [],
     toasts: [],
     admin: { mesas: [], cargado: false, error: null },
@@ -243,6 +259,7 @@ function aplicarTablero(t: TableroApi) {
       ? { abierta: true, id: t.caja.id, desde: t.caja.desde, inicial: t.caja.inicial }
       : { abierta: false, desde: 0, inicial: 0 },
     mesas: t.mesas.map(aMesa),
+    cuentas: (t.cuentas ?? []).map(aCuenta),
   }));
 }
 
@@ -477,6 +494,27 @@ function ponerMesa(m: MesaApi): Mesa {
   return nueva;
 }
 
+function cuentaPorId(id: number): CuentaSinMesa {
+  const c = estado.cuentas.find((x) => x.id === id);
+  if (!c) throw new Error("Esa cuenta ya no está abierta. Volvé a cargar el tablero.");
+  return c;
+}
+
+/**
+ * Pone la cuenta que devolvió una acción. Cobrada o anulada sale del tablero,
+ * como una mesa que queda libre.
+ */
+function ponerCuenta(c: CuentaApi): CuentaSinMesa {
+  const nueva = aCuenta(c);
+  acciones++;
+  cambiar((e) => {
+    const sin = e.cuentas.filter((x) => x.id !== nueva.id);
+    const cuentas = c.estado === "abierta" ? [...sin, nueva].sort((a, b) => a.sesion.start - b.sesion.start) : sin;
+    return { ...e, cuentas };
+  });
+  return nueva;
+}
+
 // ── Acciones (una por endpoint) ─────────────────────────────────────────────
 
 export interface AbrirOpciones {
@@ -657,6 +695,82 @@ export const billar = {
     return { codigo: r.venta.comprobante ?? `#${r.venta.id}`, ventaId: r.venta.id, reintento: !r.mesa };
   },
 
+  // ── Cuentas abiertas (sin mesa ni tiempo, 21-oct) ──
+
+  /**
+   * Abre una cuenta con su nombre en el local del tablero. Devuelve también el
+   * `consumo` del cupo (Plan Emprendedor), como `abrir`.
+   */
+  async abrirCuenta(nombre: string, clienteRequestId: string): Promise<{ cuenta: CuentaSinMesa; consumo?: ConsumoVista }> {
+    const r = await apiBillar.abrirCuenta(nombre.trim(), estado.sucursalId, clienteRequestId);
+    return { cuenta: ponerCuenta(r), consumo: r.consumo };
+  },
+
+  /** Como en una mesa: el stock se descuenta al cobrar, pero ya no se ofrece a nadie más. */
+  async agregarConsumosCuenta(
+    id: number,
+    items: { productoId: number; cant: number }[],
+    clienteRequestId: string,
+  ): Promise<CuentaSinMesa> {
+    cuentaPorId(id);
+    const r = await apiBillar.consumosCuenta(
+      id,
+      items.filter((i) => i.cant > 0).map((i) => ({ productoId: i.productoId, cantidad: i.cant })),
+      clienteRequestId,
+    );
+    void cargarProductos();
+    return ponerCuenta(r);
+  },
+
+  async anularConsumoCuenta(id: number, itemId: string, motivo: string, cred: Credenciales): Promise<CuentaSinMesa> {
+    cuentaPorId(id);
+    const r = await apiBillar.anularConsumoCuenta(id, itemId, motivo, cred);
+    void cargarProductos();
+    return ponerCuenta(r);
+  },
+
+  /** Un cobro parcial: entra a la caja ahora y se descuenta del saldo. */
+  async pagarCuenta(id: number, pago: PagoNuevo, clienteRequestId: string): Promise<CuentaSinMesa> {
+    cuentaPorId(id);
+    return ponerCuenta(await apiBillar.pagarCuenta(id, aPagos(pago, await formasPago()), clienteRequestId));
+  },
+
+  /** Sin consumos: se abrió por error o se fueron sin pedir. Devuelve cuánto devolver, si cobraron algo. */
+  async anularCuenta(
+    id: number,
+    motivo: string,
+    cred: Credenciales,
+    clienteRequestId: string,
+  ): Promise<{ total: number; detalle?: Devolucion }> {
+    cuentaPorId(id);
+    const r = await apiBillar.anularCuenta(id, motivo, cred, clienteRequestId);
+    ponerCuenta(r.cuenta);
+    return { total: r.devolver, detalle: r.devolverDetalle };
+  },
+
+  /**
+   * Cobra el saldo y cierra: una venta normal, sin el renglón del tiempo. Si la
+   * cuenta no llega al total que vio el cajero (alguien cargó o cobró algo
+   * mientras tanto), no cobra.
+   */
+  async cerrarCuenta(
+    id: number,
+    cobro: { totalEsperado: number; pago?: PagoNuevo; clienteRequestId: string },
+  ): Promise<{ codigo: string; ventaId: number; reintento: boolean }> {
+    cuentaPorId(id);
+    const pagos = cobro.pago ? aPagos(cobro.pago, await formasPago()) : undefined;
+    const r = await apiBillar.cerrarCuenta(id, {
+      totalEsperado: cobro.totalEsperado,
+      ...(pagos?.length ? { pagos } : {}),
+      clienteRequestId: cobro.clienteRequestId,
+    });
+    if (r.cuenta) ponerCuenta(r.cuenta);
+    else void recargar(true);
+    await cargarVentas();
+    void cargarProductos();
+    return { codigo: r.venta.comprobante ?? `#${r.venta.id}`, ventaId: r.venta.id, reintento: !r.cuenta };
+  },
+
   /** Venta sin mesa (§7.7): una venta normal del POS, por el mismo camino. */
   /**
    * La venta rápida. Devuelve el comprobante y, si la venta ya había entrado
@@ -757,7 +871,7 @@ export const billar = {
     sucursalPedida = id;
     guardarSucursal(negocioCargado, id);
     reestrenarAvisos();
-    cambiar((e) => ({ ...e, cargado: false, error: null, mesas: [], productos: [] }));
+    cambiar((e) => ({ ...e, cargado: false, error: null, mesas: [], cuentas: [], productos: [] }));
     // Sin nadie mirando el tablero (Mesas de billar de quien sólo administra)
     // no se pide: le daría 403, y el 400 de una sucursal vieja la olvidaría.
     if (usuarios === 0) return;

@@ -20,6 +20,12 @@ export type Dialogo =
   | { tipo: "editarInicio"; mesaId: number }
   | { tipo: "historial"; mesaId: number }
   | { tipo: "anularConsumo"; mesaId: number; itemId: string }
+  // Las cuentas abiertas (sin mesa ni tiempo, 21-oct), por el id de la sesión.
+  | { tipo: "nuevaCuenta" }
+  | { tipo: "pagoCuenta"; cuentaId: number }
+  | { tipo: "cobrarCuenta"; cuentaId: number }
+  | { tipo: "anularConsumoCuenta"; cuentaId: number; itemId: string }
+  | { tipo: "anularCuenta"; cuentaId: number }
   | { tipo: "venta"; codigo: string }
   | { tipo: "ticket"; codigo: string }
   | { tipo: "anularVenta"; codigo: string }

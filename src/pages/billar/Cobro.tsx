@@ -83,8 +83,17 @@ export function CampoBs({
 /**
  * @param cambioEnElPie el cambio (o lo que falta) lo muestra la barra de abajo
  *   del modal (`CambioDelCobro`): acá no se repite.
+ * @param de de qué es el saldo del pago parcial: "la mesa" o "la cuenta".
  */
-export function FormCobro({ cobro, cambioEnElPie = false }: { cobro: EstadoCobro; cambioEnElPie?: boolean }) {
+export function FormCobro({
+  cobro,
+  cambioEnElPie = false,
+  de = "la mesa",
+}: {
+  cobro: EstadoCobro;
+  cambioEnElPie?: boolean;
+  de?: string;
+}) {
   const c = cobro;
   const fmt = (n: number) => fmtMoney(n);
   return (
@@ -96,7 +105,7 @@ export function FormCobro({ cobro, cambioEnElPie = false }: { cobro: EstadoCobro
           <p className="mb-1.5 text-[13px] font-semibold text-texto-2">Monto a pagar ahora</p>
           <CampoBs etiqueta="Monto a pagar ahora" valor={c.montoTexto} onCambiar={c.setMontoTexto} autoFocus />
           <p className="mt-1 text-xs text-texto-4">
-            {c.monto > c.tope ? `No puede pasar el saldo de ${fmt(c.tope)}.` : `Saldo de la mesa: ${fmt(c.tope)}.`}
+            {c.monto > c.tope ? `No puede pasar el saldo de ${fmt(c.tope)}.` : `Saldo de ${de}: ${fmt(c.tope)}.`}
           </p>
         </div>
       )}
@@ -196,10 +205,20 @@ export function FormCobro({ cobro, cambioEnElPie = false }: { cobro: EstadoCobro
               {fmt(Math.min(c.monto, Math.max(0, round2(c.monto - (parsearMonto(c.efectivoTexto) ?? 0)))))}
             </span>
           </div>
-          {c.montoQr > 0 && c.montoQr < c.monto && (
+          {c.montoQr > 0 && c.montoQr < c.monto ? (
             <div className="mt-3">
               <QrParaCobrar confirmado={c.qrConfirmado} onConfirmar={c.confirmarQr} monto={fmt(c.montoQr)} />
             </div>
+          ) : (
+            c.efectivoTexto.trim() === "" && (
+              // Sin el efectivo no se sabe por cuánto es el QR, y mostrarlo por el
+              // total invitaba a pagar todo por QR. No salía nada y parecía que el
+              // mixto no tenía QR (QA del dueño, 19-oct): se dice dónde va a salir.
+              <div className="mt-3 flex items-center gap-3 rounded-xl border border-dashed border-borde bg-muted px-4 py-3 text-[13px] text-texto-3">
+                <Icon name="qr" size={22} className="shrink-0 text-texto-4" />
+                <span>Escribí cuánto paga en efectivo y acá sale el QR por el resto.</span>
+              </div>
+            )
           )}
           {/* Las dos partes van con algo: con 0 en efectivo decía "tiene que
               ser menos que el total", que ya lo es (prueba profunda, 18-oct). */}

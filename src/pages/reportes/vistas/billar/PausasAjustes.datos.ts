@@ -19,6 +19,8 @@ export type TipoAjuste = "anulaciones" | "pausas" | "cambios" | "horas" | "exten
 const TIPO_POR_CODIGO: Record<string, TipoAjuste> = {
   ANULAR_MESA: "anulaciones",
   ANULAR_CONSUMO: "anulaciones",
+  // Desde el 21-oct: una cuenta abierta (sin mesa) que se anuló.
+  ANULAR_CUENTA: "anulaciones",
   // Desde el 16-oct: la venta de una mesa ya jugada que se anuló (la única
   // forma de anularla pasados 5 minutos) y la mesa cobrada sin reanudar (el
   // tiempo en pausa no se cobró). No dejaban rastro en esta pantalla.
@@ -129,6 +131,15 @@ export function porPersona(lista: readonly Ajuste[]): FilaPersona[] {
     mapa.set(a.quien, fila);
   }
   return [...mapa.values()].sort((a, b) => b.ajustes - a.ajustes || a.quien.localeCompare(b.quien, "es"));
+}
+
+/**
+ * Dónde pasó: "Mesa 3" o, en una cuenta abierta (sin mesa, backend del
+ * 21-oct), "Cuenta «Juan»". Vacío en lo del negocio entero (un PIN).
+ */
+export function lugarDe(a: Pick<Ajuste, "mesaId" | "cuenta">): string {
+  if (a.mesaId) return `Mesa ${a.mesaId}`;
+  return a.cuenta ? `Cuenta «${a.cuenta}»` : "";
 }
 
 /** "06/10 · 11:12 p. m.": la hora como la escriben las pantallas del billar. */

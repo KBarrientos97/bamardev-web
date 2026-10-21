@@ -127,8 +127,11 @@ export default function PantallaCierre({
 
   // Billar: con una mesa en juego la caja no cierra (decisión de Kevin,
   // 11-oct-2026). El backend lo rechaza igual (MESAS_ABIERTAS); acá se dice
-  // antes de contar la plata, y cuáles son. En los demás rubros no viene.
+  // antes de contar la plata, y cuáles son. En los demás rubros no viene. Lo
+  // mismo con una cuenta abierta del billar (21-oct).
   const mesasBillar = r?.mesasBillarAbiertas ?? [];
+  const cuentasBillar = r?.cuentasBillarAbiertas ?? [];
+  const billarAbierto = mesasBillar.length + cuentasBillar.length > 0;
 
   async function cerrar() {
     setError("");
@@ -184,7 +187,7 @@ export default function PantallaCierre({
               revisar={r.citasCobroRevisar ?? 0}
               cuales={r.citasRevisar}
             />
-            {mesasBillar.length > 0 && <AvisoMesasBillar mesas={mesasBillar} />}
+            {billarAbierto && <AvisoMesasBillar mesas={mesasBillar} cuentas={cuentasBillar} />}
             <section className="card p-4">
               <h2 className="mb-3 text-[13px] font-bold uppercase tracking-wide text-texto-4">
                 Movimiento del turno
@@ -516,13 +519,13 @@ export default function PantallaCierre({
       <div className="border-t border-borde bg-white p-4">
         <Boton
           onClick={cerrar}
-          disabled={enviando || resumen.cargando || mesasBillar.length > 0 || sinSubir > 0}
+          disabled={enviando || resumen.cargando || billarAbierto || sinSubir > 0}
           className="w-full py-3 text-base"
         >
           {enviando
             ? "Cerrando…"
-            : mesasBillar.length > 0
-              ? "Cobrá las mesas abiertas para cerrar"
+            : billarAbierto
+              ? `Cobrá las ${!cuentasBillar.length ? "mesas" : !mesasBillar.length ? "cuentas" : "mesas y cuentas"} abiertas para cerrar`
               : sinSubir > 0
                 ? "Subí las ventas sin internet para cerrar"
                 : "Cerrar caja"}
@@ -737,21 +740,39 @@ const MOTIVO_REVISAR: Record<MotivoRevisarCita, string> = {
  * ellas (decisión de Kevin, 11-oct-2026). Se cobran o se anulan desde el
  * billar, y recién ahí se cierra.
  */
-function AvisoMesasBillar({ mesas }: { mesas: { numero: number; alias: string | null }[] }) {
-  const nombres = mesas.map((m) => (m.alias ? `Mesa ${m.numero} (${m.alias})` : `Mesa ${m.numero}`));
+function AvisoMesasBillar({
+  mesas,
+  cuentas,
+}: {
+  mesas: { numero: number; alias: string | null }[];
+  /** Las cuentas abiertas del billar (sin mesa, 21-oct). */
+  cuentas: { nombre: string }[];
+}) {
+  const nombres = [
+    ...mesas.map((m) => (m.alias ? `Mesa ${m.numero} (${m.alias})` : `Mesa ${m.numero}`)),
+    ...cuentas.map((c) => `cuenta «${c.nombre}»`),
+  ];
+  const titulo = !cuentas.length
+    ? // "Abierta" y no "en juego": una pausada también frena el cierre, y el
+      // tablero la cuenta en "Pausadas" (prueba profunda, 18-oct).
+      mesas.length === 1
+      ? "Hay 1 mesa de billar abierta"
+      : `Hay ${mesas.length} mesas de billar abiertas`
+    : !mesas.length
+      ? cuentas.length === 1
+        ? "Hay 1 cuenta abierta en el billar"
+        : `Hay ${cuentas.length} cuentas abiertas en el billar`
+      : "Hay mesas y cuentas abiertas en el billar";
   return (
     <div role="alert" className="flex items-start gap-2.5 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-[13px] text-amber-800">
       <span className="mt-px shrink-0">
         <Icon name="alert" size={17} />
       </span>
       <p>
-        <b>
-          {/* "Abierta" y no "en juego": una pausada también frena el cierre, y el
-              tablero la cuenta en "Pausadas" (prueba profunda, 18-oct). */}
-          {mesas.length === 1 ? "Hay 1 mesa de billar abierta" : `Hay ${mesas.length} mesas de billar abiertas`}
-        </b>
-        : {nombres.join(", ")}. La caja no se cierra con mesas abiertas: cobralas (o anulá la que se abrió por error)
-        desde el billar.
+        <b>{titulo}</b>: {nombres.join(", ")}.{" "}
+        {cuentas.length
+          ? "La caja no se cierra con mesas ni cuentas abiertas: cobralas (o anulá la que se abrió por error) desde el billar."
+          : "La caja no se cierra con mesas abiertas: cobralas (o anulá la que se abrió por error) desde el billar."}
       </p>
     </div>
   );

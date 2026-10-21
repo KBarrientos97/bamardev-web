@@ -178,6 +178,20 @@ export interface Mesa {
   inactiva?: boolean;
 }
 
+/**
+ * Una cuenta abierta (21-oct): gente que se sienta a tomar sin jugar. Para el
+ * backend es una sesión SIN mesa ni tiempo (su tarifa es de Bs 0): se le
+ * cargan consumos, se le cobra de a poco y al final el saldo, con la misma
+ * plata que una mesa (arqueo, stock comprometido, PIN).
+ */
+export interface CuentaSinMesa {
+  /** El id de la sesión en el backend: el de las rutas y el de la pantalla. */
+  id: number;
+  /** "Mesa de afuera", "Juan", "Barra": como la nombró el cajero. */
+  nombre: string;
+  sesion: Sesion;
+}
+
 export interface ItemVenta {
   productoId: number;
   nombre: string;
@@ -185,7 +199,7 @@ export interface ItemVenta {
   cant: number;
 }
 
-/** Una venta del turno: de una mesa cerrada o una venta rápida (§4.5). */
+/** Una venta del turno: de una mesa cerrada, de una cuenta abierta o una venta rápida (§4.5). */
 export interface VentaBillar {
   /** El id de la venta en el backend: con él se anula. */
   id: number;
@@ -193,8 +207,11 @@ export interface VentaBillar {
   hora: number;
   cajero: string;
   cliente?: string;
-  origen: "mesa" | "rapida";
+  /** "cuenta": una cuenta abierta cobrada (sin mesa ni tiempo, backend del 21-oct). */
+  origen: "mesa" | "rapida" | "cuenta";
   mesaId?: number;
+  /** El nombre de la cuenta abierta, si es de una. */
+  cuenta?: string;
   tipoMesa?: string;
   tiempoMin: number;
   /**

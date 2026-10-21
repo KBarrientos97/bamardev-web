@@ -21,6 +21,7 @@ import { ModalCorregirPago } from "./CorregirPago";
 import { useDialogos, type Dialogo } from "./dialogos";
 import { ModalAbrir, ModalExtender } from "./ModalTiempo";
 import { ModalAvisos } from "./ModalesCaja";
+import { ModalCobrarCuenta, ModalNuevaCuenta, ModalPagoCuenta } from "./ModalesCuenta";
 import { MOTIVOS_PAUSA } from "./ModalesMesa.datos";
 import {
   ModalCambiar,
@@ -231,7 +232,71 @@ function claveDe(d: Dialogo): number {
 function dibujar(actual: Dialogo, e: EstadoBillar, cerrar: () => void): ReactNode {
   const mesa = "mesaId" in actual ? e.mesas.find((m) => m.id === actual.mesaId) : undefined;
   const enJuego = mesa?.estado === "abierta" && mesa.sesion ? mesa : undefined;
+  // Una cuenta abierta: si ya se cobró o se anuló (en otro equipo), no está.
+  const cuenta = "cuentaId" in actual ? e.cuentas.find((c) => c.id === actual.cuentaId) : undefined;
   switch (actual.tipo) {
+    case "nuevaCuenta":
+      return <ModalNuevaCuenta onClose={cerrar} />;
+    case "pagoCuenta":
+      return cuenta ? <ModalPagoCuenta cuenta={cuenta} onClose={cerrar} /> : null;
+    case "cobrarCuenta":
+      return cuenta ? <ModalCobrarCuenta cuenta={cuenta} onClose={cerrar} /> : null;
+    case "anularConsumoCuenta": {
+      const it = cuenta?.sesion.consumos.find((c) => c.id === actual.itemId);
+      if (!cuenta || !it || it.anulado) return null;
+      return (
+        <ModalPin
+          accion={`Anular ${it.cant}× ${it.nombre} · ${fmtMoney(it.precio * it.cant)}`}
+          detalle={`Cuenta «${cuenta.nombre}». Sale de la cuenta. Si no se puede volver a vender (en mal estado o abierto), avisale al encargado para darlo de baja en Inventario.`}
+          motivos={["Error de carga", "Cliente devolvió", "Producto en mal estado"]}
+          pedirPin={e.ajustes.pin.anularConsumo}
+          permiso="billar.admin"
+          onClose={cerrar}
+          onAutorizar={async (motivo, cred) => {
+            await billar.anularConsumoCuenta(cuenta.id, it.id, motivo, cred);
+            cerrar();
+          }}
+        />
+      );
+    }
+    case "anularCuenta": {
+      if (!cuenta) return null;
+      const pagos = cuenta.sesion.pagos;
+      const pagado = pagadoDe(pagos);
+      // Con consumos el backend no la anula (ANULAR_CON_CONSUMOS): el link ya
+      // no se ofrece, esto queda por si entra un consumo con el diálogo abierto.
+      const conConsumos = tieneConsumos(cuenta.sesion);
+      const enOtraCaja = efectivoEnOtraCaja(pagos, e.caja.id);
+      return (
+        <ModalPin
+          accion={`Anular la cuenta «${cuenta.nombre}»`}
+          detalle={
+            conConsumos
+              ? "Ya consumieron: se cobra. Si algo se cargó por error, anulá ese consumo."
+              : `No tomaron nada: no se cobra y sale del tablero.${
+                  pagado > 0 ? ` Ya pagó ${fmtMoney(pagado)}: hay que devolverle ${textoDevolucion(devolucionDe(pagos, 0))}.` : ""
+                }${enOtraCaja ? ` ${enOtraCaja}: pedíselos, o que los devuelva quien los cobró.` : ""}`
+          }
+          bloqueado={conConsumos}
+          motivos={["Se abrió por error", "Se fueron sin pedir"]}
+          // Sin plata cobrada no hay nada que perder; con plata, el PIN siempre
+          // (como la mesa): anular la devuelve y el arqueo deja de esperarla.
+          pedirPin={pagado > 0.005}
+          permiso="billar.admin"
+          onClose={cerrar}
+          onAutorizar={async (motivo, cred, clave) => {
+            const devolver = await billar.anularCuenta(cuenta.id, motivo, cred, clave);
+            cerrar();
+            const detalle = devolver.detalle ?? devolucionDe(pagos, 0);
+            billar.avisar({
+              tono: devolver.total > 0 ? "ambar" : "verde",
+              titulo: `Cuenta «${cuenta.nombre}» anulada`,
+              texto: devolver.total > 0 ? `Devolvé ${textoDevolucion(detalle) || fmtMoney(devolver.total)} al cliente.` : "No se cobró nada.",
+            });
+          }}
+        />
+      );
+    }
     case "abrir":
       return mesa && (mesa.estado === "libre" || mesa.estado === "reservada") ? (
         <ModalAbrir mesa={mesa} onClose={cerrar} />

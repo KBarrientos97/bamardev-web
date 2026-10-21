@@ -5,6 +5,7 @@ import { fmtMoney } from "../../lib/format";
 import { useAccionesMesa } from "./acciones";
 import { etiquetaPagoFijo, fmtCobrado, fmtHace, horaDe } from "./calculo";
 import { useDialogos } from "./dialogos";
+import type { ItemConsumo, Pago } from "./tipos";
 import { BotonB, Circulo, EstadoBadge, Fila, Nota, Rotulo } from "./ui";
 import type { VistaMesa } from "./vista";
 import { cronoDe, textoMetodo } from "./vista";
@@ -283,69 +284,13 @@ function CuentaAbierta({ v, ahora }: { v: VistaMesa; ahora: number }) {
         </section>
       )}
 
-      <section>
-        <Rotulo icono="cart" extra={fmtMoney(c.consumosBs)}>
-          Consumos
-        </Rotulo>
-        {s.consumos.length === 0 ? (
-          <p className="mt-2 text-[13px] text-texto-3">Sin consumos todavía.</p>
-        ) : (
-          <ul className="mt-2 divide-y divide-borde-soft">
-            {s.consumos.map((it) => (
-              <li key={it.id} className={`group flex items-center gap-3 py-2.5 ${it.anulado ? "opacity-50" : ""}`}>
-                <span className="flex h-7 min-w-7 items-center justify-center rounded-lg bg-slate-100 px-1 text-[12px] font-bold text-texto-2">
-                  {it.cant}×
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className={`truncate text-[13px] font-semibold text-texto ${it.anulado ? "line-through" : ""}`}>
-                    {it.nombre}
-                  </p>
-                  <p className="text-[11px] text-texto-3">
-                    {fmtMoney(it.precio)} c/u · {horaDe(it.hora)}
-                    {it.anulado && " · anulado"}
-                  </p>
-                </div>
-                <span className="text-[13px] font-bold tabular-nums text-texto">{fmtMoney(it.precio * it.cant)}</span>
-                {!it.anulado && (
-                  <button
-                    type="button"
-                    onClick={() => abrir({ tipo: "anularConsumo", mesaId: mesa.id, itemId: it.id })}
-                    aria-label={`Anular ${it.nombre}`}
-                    title="Anular (pide PIN)"
-                    className="flex h-8 w-8 items-center justify-center rounded-full text-texto-4 hover:bg-rose-50 hover:text-rose-700"
-                  >
-                    <Icon name="trash" size={15} />
-                  </button>
-                )}
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+      <ListaConsumos
+        consumos={s.consumos}
+        total={c.consumosBs}
+        onAnular={(itemId) => abrir({ tipo: "anularConsumo", mesaId: mesa.id, itemId })}
+      />
 
-      <section>
-        <Rotulo icono="billetera" extra={fmtMoney(c.pagado)}>
-          Pagos
-        </Rotulo>
-        {s.pagos.length === 0 ? (
-          <p className="mt-2 text-[13px] text-texto-3">Sin pagos todavía.</p>
-        ) : (
-          <ul className="mt-2 divide-y divide-borde-soft">
-            {s.pagos.map((p) => (
-              <li key={p.id} className="flex items-center gap-3 py-2.5">
-                <IconoPago metodo={p.metodo} />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-[13px] font-semibold text-texto">{p.nota ?? "Pago"}</p>
-                  <p className="text-[11px] text-texto-3">
-                    {textoMetodo(p)} · {horaDe(p.hora)}
-                  </p>
-                </div>
-                <span className="text-[13px] font-bold tabular-nums text-texto">{fmtMoney(p.monto)}</span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+      <ListaPagos pagos={s.pagos} total={c.pagado} />
 
       {/* Sólo en los primeros 5 minutos desde que se abrió y sin consumos: después,
           o si ya consumieron, no es un error y se cobra (`v.anulable`). */}
@@ -360,6 +305,88 @@ function CuentaAbierta({ v, ahora }: { v: VistaMesa; ahora: number }) {
         </button>
       )}
     </>
+  );
+}
+
+/** Lo cargado a la cuenta, con el tacho para anular (pide PIN). La usan la mesa y la cuenta abierta. */
+export function ListaConsumos({
+  consumos,
+  total,
+  onAnular,
+}: {
+  consumos: ItemConsumo[];
+  total: number;
+  onAnular: (itemId: string) => void;
+}) {
+  return (
+    <section>
+      <Rotulo icono="cart" extra={fmtMoney(total)}>
+        Consumos
+      </Rotulo>
+      {consumos.length === 0 ? (
+        <p className="mt-2 text-[13px] text-texto-3">Sin consumos todavía.</p>
+      ) : (
+        <ul className="mt-2 divide-y divide-borde-soft">
+          {consumos.map((it) => (
+            <li key={it.id} className={`group flex items-center gap-3 py-2.5 ${it.anulado ? "opacity-50" : ""}`}>
+              <span className="flex h-7 min-w-7 items-center justify-center rounded-lg bg-slate-100 px-1 text-[12px] font-bold text-texto-2">
+                {it.cant}×
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className={`truncate text-[13px] font-semibold text-texto ${it.anulado ? "line-through" : ""}`}>
+                  {it.nombre}
+                </p>
+                <p className="text-[11px] text-texto-3">
+                  {fmtMoney(it.precio)} c/u · {horaDe(it.hora)}
+                  {it.anulado && " · anulado"}
+                </p>
+              </div>
+              <span className="text-[13px] font-bold tabular-nums text-texto">{fmtMoney(it.precio * it.cant)}</span>
+              {!it.anulado && (
+                <button
+                  type="button"
+                  onClick={() => onAnular(it.id)}
+                  aria-label={`Anular ${it.nombre}`}
+                  title="Anular (pide PIN)"
+                  className="flex h-8 w-8 items-center justify-center rounded-full text-texto-4 hover:bg-rose-50 hover:text-rose-700"
+                >
+                  <Icon name="trash" size={15} />
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+/** Lo cobrado antes de cerrar (tiempo fijo, adelantos, cobros parciales). */
+export function ListaPagos({ pagos, total }: { pagos: Pago[]; total: number }) {
+  return (
+    <section>
+      <Rotulo icono="billetera" extra={fmtMoney(total)}>
+        Pagos
+      </Rotulo>
+      {pagos.length === 0 ? (
+        <p className="mt-2 text-[13px] text-texto-3">Sin pagos todavía.</p>
+      ) : (
+        <ul className="mt-2 divide-y divide-borde-soft">
+          {pagos.map((p) => (
+            <li key={p.id} className="flex items-center gap-3 py-2.5">
+              <IconoPago metodo={p.metodo} />
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-[13px] font-semibold text-texto">{p.nota ?? "Pago"}</p>
+                <p className="text-[11px] text-texto-3">
+                  {textoMetodo(p)} · {horaDe(p.hora)}
+                </p>
+              </div>
+              <span className="text-[13px] font-bold tabular-nums text-texto">{fmtMoney(p.monto)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }
 
