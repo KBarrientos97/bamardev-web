@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { contenidoTarjeta, vistaSalon } from "./SalonTv.datos";
 import type { EstadoBillar } from "./store";
-import type { ItemConsumo, Mesa, Sesion, TipoMesa } from "./tipos";
+import type { CuentaSinMesa, ItemConsumo, Mesa, Sesion, TipoMesa } from "./tipos";
 import { PAUSA_LARGA_SEG, segundosEnPausa } from "./calculo";
-import { pasaBusqueda, vistaDe } from "./vista";
+import { etiquetaOrigen, pasaBusqueda, pasaBusquedaCuenta, resumenTurno, vistaCuenta, vistaDe } from "./vista";
 
 const POOL: TipoMesa = {
   id: "pool",
@@ -104,5 +104,73 @@ describe("buscar en el tablero", () => {
       expect(pasaBusqueda(v, q)).toBe(true);
     }
     expect(pasaBusqueda(v, "gonzalez")).toBe(false);
+  });
+});
+
+describe("las cuentas abiertas (sin mesa ni tiempo, 21-oct)", () => {
+  const cerveza: ItemConsumo = { id: "c1", productoId: 7, nombre: "Cerveza", precio: 15, cant: 4, hora: AHORA };
+  const juan = (consumos: ItemConsumo[], pagos: Sesion["pagos"] = []): CuentaSinMesa => ({
+    id: 77,
+    nombre: "Juan Pérez",
+    sesion: {
+      id: "77",
+      start: AHORA - 3 * 3_600_000,
+      pausedAt: null,
+      pausedTotal: 0,
+      prepago: null,
+      prev: null,
+      // Aunque llegara una tarifa con precio, una cuenta no cobra tiempo.
+      tarifa: POOL,
+      consumos,
+      pagos,
+    },
+  });
+
+  it("la cuenta son los consumos menos lo cobrado, sin tiempo aunque pasen horas", () => {
+    const v = vistaCuenta(juan([cerveza], [{ id: "p", hora: AHORA, metodo: "Efectivo", monto: 40 }]), AHORA);
+    expect(v.calc).toMatchObject({ tiempoBs: 0, consumosBs: 60, total: 60, pagado: 40, saldo: 20 });
+    expect(v.anulable).toBe(false);
+  });
+
+  it("sin consumos (o con todos anulados) se puede anular, sin plazo", () => {
+    expect(vistaCuenta(juan([]), AHORA).anulable).toBe(true);
+    expect(vistaCuenta(juan([{ ...cerveza, anulado: true }]), AHORA).anulable).toBe(true);
+  });
+
+  it("se busca por el nombre sin tildes ni mayúsculas", () => {
+    for (const q of ["perez", "JUAN", "", "  "]) expect(pasaBusquedaCuenta(juan([]), q)).toBe(true);
+    expect(pasaBusquedaCuenta(juan([]), "barra")).toBe(false);
+  });
+
+  it("una venta de cuenta se nombra con la cuenta", () => {
+    expect(etiquetaOrigen({ origen: "cuenta", cuenta: "Barra" })).toBe("Cuenta «Barra»");
+    expect(etiquetaOrigen({ origen: "mesa", mesaId: 4 })).toBe("Mesa 4");
+    expect(etiquetaOrigen({ origen: "rapida" })).toBe("Venta rápida");
+  });
+
+  it("el turno cuenta lo cobrado de a poco a una cuenta que sigue abierta, y las cuentas cobradas", () => {
+    const e = {
+      caja: { abierta: true, desde: AHORA - 3_600_000, inicial: 0 },
+      mesas: [],
+      cuentas: [juan([cerveza], [{ id: "p", hora: AHORA - 60_000, metodo: "Efectivo", monto: 40 }])],
+      ventas: [
+        {
+          id: 1,
+          codigo: "V-1",
+          hora: AHORA - 120_000,
+          cajero: "Ana",
+          origen: "cuenta",
+          cuenta: "Barra",
+          tiempoMin: 0,
+          tiempoBs: 0,
+          items: [],
+          consumosBs: 30,
+          total: 30,
+          pagos: [{ id: "x", hora: AHORA - 120_000, metodo: "QR", monto: 30 }],
+        },
+      ],
+    } as unknown as EstadoBillar;
+    const r = resumenTurno(e);
+    expect(r).toMatchObject({ adelantos: 40, efectivo: 40, qr: 30, cuentasCobradas: 1, cuentasBs: 30, mesasCerradas: 0, rapidas: 0 });
   });
 });

@@ -83,8 +83,17 @@ export function CampoBs({
 /**
  * @param cambioEnElPie el cambio (o lo que falta) lo muestra la barra de abajo
  *   del modal (`CambioDelCobro`): acá no se repite.
+ * @param de de qué es el saldo del pago parcial: "la mesa" o "la cuenta".
  */
-export function FormCobro({ cobro, cambioEnElPie = false }: { cobro: EstadoCobro; cambioEnElPie?: boolean }) {
+export function FormCobro({
+  cobro,
+  cambioEnElPie = false,
+  de = "la mesa",
+}: {
+  cobro: EstadoCobro;
+  cambioEnElPie?: boolean;
+  de?: string;
+}) {
   const c = cobro;
   const fmt = (n: number) => fmtMoney(n);
   return (
@@ -96,7 +105,7 @@ export function FormCobro({ cobro, cambioEnElPie = false }: { cobro: EstadoCobro
           <p className="mb-1.5 text-[13px] font-semibold text-texto-2">Monto a pagar ahora</p>
           <CampoBs etiqueta="Monto a pagar ahora" valor={c.montoTexto} onCambiar={c.setMontoTexto} autoFocus />
           <p className="mt-1 text-xs text-texto-4">
-            {c.monto > c.tope ? `No puede pasar el saldo de ${fmt(c.tope)}.` : `Saldo de la mesa: ${fmt(c.tope)}.`}
+            {c.monto > c.tope ? `No puede pasar el saldo de ${fmt(c.tope)}.` : `Saldo de ${de}: ${fmt(c.tope)}.`}
           </p>
         </div>
       )}

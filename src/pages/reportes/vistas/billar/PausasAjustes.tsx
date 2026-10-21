@@ -7,6 +7,7 @@ import {
   NOMBRE_TIPO,
   TOPE_AJUSTES,
   cuando,
+  lugarDe,
   porPersona,
   resumenAjustes,
   tipoDe,
@@ -32,7 +33,7 @@ export default function PausasAjustes() {
             "Pausas y ajustes",
             [
               ["Fecha y hora", (a) => fmtFechaHora(new Date(a.hora))],
-              ["Mesa", (a) => (a.mesaId ? `Mesa ${a.mesaId}` : "")],
+              ["Mesa", (a) => lugarDe(a)],
               ["Acción", (a) => a.accion],
               ["Quién", (a) => a.quien],
               ["Autorizó", (a) => a.autorizo ?? ""],
@@ -175,7 +176,7 @@ function Detalle({ lista }: { lista: Ajuste[] }) {
             {lista.map((a) => (
               <tr key={a.id} className="align-top">
                 <td className="whitespace-nowrap px-3 py-3 tabular-nums text-texto-2">{cuando(a.hora)}</td>
-                <td className="whitespace-nowrap px-3 py-3 font-bold text-texto">{a.mesaId ? `Mesa ${a.mesaId}` : "—"}</td>
+                <td className="whitespace-nowrap px-3 py-3 font-bold text-texto">{lugarDe(a) || "—"}</td>
                 <td className="px-3 py-3 text-texto">
                   <span className="flex flex-wrap items-center gap-1.5">
                     {a.accion}
@@ -197,7 +198,7 @@ function Detalle({ lista }: { lista: Ajuste[] }) {
           <li key={a.id} className="px-4 py-3 text-[13px]">
             <div className="flex items-baseline justify-between gap-3">
               <span className="flex items-center gap-1.5 font-bold text-texto">
-                {a.mesaId ? `Mesa ${a.mesaId}` : "—"}
+                {lugarDe(a) || "—"}
                 {tipoDe(a) === "anulaciones" && <Chip tono="rojo">Anulación</Chip>}
               </span>
               <span className="shrink-0 text-[12px] tabular-nums text-texto-3">{cuando(a.hora)}</span>

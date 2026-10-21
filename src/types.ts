@@ -987,6 +987,8 @@ export interface ResumenCaja {
    */
   adelantosBillar?: number;
   mesasBillarAbiertas?: { numero: number; alias: string | null }[];
+  /** Billar: las cuentas abiertas (sin mesa, 21-oct). También frenan el cierre. */
+  cuentasBillarAbiertas?: { nombre: string }[];
 }
 
 /** Por qué un cobro de cita quedó para revisar en el cierre. */

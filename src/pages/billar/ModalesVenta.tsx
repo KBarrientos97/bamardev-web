@@ -7,7 +7,7 @@ import { useDialogos } from "./dialogos";
 import { useAhora } from "./reloj";
 import { tipoDe, useBillar } from "./store";
 import { BotonB, Circulo } from "./ui";
-import { origenDe, textoMetodo, vistaDe } from "./vista";
+import { etiquetaOrigen, origenDe, textoMetodo, vistaDe } from "./vista";
 import { sePuedeCorregirPago } from "./Avisos.datos";
 
 /** El detalle de una venta (§7.9): con Ticket, Anular (PIN) y Listo. */
@@ -16,7 +16,7 @@ export function ModalVenta({ codigo, onClose }: { codigo: string; onClose: () =>
   const { abrir } = useDialogos();
   const v = e.ventas.find((x) => x.codigo === codigo);
   if (!v) return null;
-  const sub = v.origen === "rapida" ? "Venta rápida" : `Mesa ${v.mesaId}`;
+  const sub = etiquetaOrigen(v);
 
   return (
     <Modal

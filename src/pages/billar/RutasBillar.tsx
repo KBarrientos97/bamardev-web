@@ -5,7 +5,7 @@ import { useAuth } from "../../store/AuthContext";
 import { DialogoActual } from "./Avisos";
 import CerrarCaja from "./CerrarCaja";
 import CerrarMesa from "./CerrarMesa";
-import ConsumoMesa from "./ConsumoMesa";
+import ConsumoMesa, { ConsumoCuenta } from "./ConsumoMesa";
 import { DialogosProvider, useDialogos } from "./dialogos";
 import { recargar, useBillar, useSondeoBillar } from "./store";
 import Tablero from "./Tablero";
@@ -48,6 +48,7 @@ export default function RutasBillar() {
           <Routes>
             <Route index element={<Tablero />} />
             <Route path="consumo/:mesaId" element={<ConsumoMesa />} />
+            <Route path="cuenta/:cuentaId/consumo" element={<ConsumoCuenta />} />
             <Route path="cerrar/:mesaId" element={<CerrarMesa />} />
             <Route path="ventas" element={<VentasTurno />} />
             <Route path="venta-rapida" element={<VentaRapida />} />

@@ -322,11 +322,15 @@ export interface BillarReporteApi {
   porHora: { hora: number; ocupacion: number }[];
   fijos: { vendidos: number; monto: number; conExcedente: number; excedenteBs: number };
   rapidas: { cantidad: number; bs: number };
+  /** Las cuentas abiertas cobradas (sin mesa ni tiempo). Backend del 21-oct. */
+  cuentas?: { cantidad: number; bs: number };
   productos: { nombre: string; cant: number; bs: number }[];
   auditoria: {
     id: number;
     hora: number;
     mesaId?: number;
+    /** De una cuenta abierta (sin mesa): su nombre. Backend del 21-oct. */
+    cuenta?: string;
     /** El texto ya armado ("Pausó 12 min", "Anuló la mesa · devolver Bs 20"). */
     accion: string;
     /** El código crudo (ANULAR_MESA, REANUDAR…): para agrupar sin leer el texto. Nuevo. */

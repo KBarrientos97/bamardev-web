@@ -8,13 +8,15 @@ import { useDialogos } from "./dialogos";
 import { cargarVentas, useBillar } from "./store";
 import type { VentaBillar } from "./tipos";
 import { BotonB, ChipFiltro, Circulo, Encabezado } from "./ui";
-import { resumenTurno } from "./vista";
+import { etiquetaOrigen, resumenTurno } from "./vista";
 
-type Filtro = "todas" | "billar" | "pos" | "anuladas";
+type Filtro = "todas" | "billar" | "cuentas" | "pos" | "anuladas";
 
 const FILTROS: { clave: Filtro; etiqueta: string }[] = [
   { clave: "todas", etiqueta: "Todas" },
   { clave: "billar", etiqueta: "Billar" },
+  // Las cuentas abiertas cobradas (sin mesa ni tiempo, 21-oct).
+  { clave: "cuentas", etiqueta: "Cuentas" },
   // "Venta rápida", como la llaman el botón, el detalle y el ticket (prueba
   // profunda, 18-oct): "Punto de venta" es también el POS del menú.
   { clave: "pos", etiqueta: "Venta rápida" },
@@ -23,12 +25,15 @@ const FILTROS: { clave: Filtro; etiqueta: string }[] = [
 
 function pasa(v: VentaBillar, f: Filtro): boolean {
   if (f === "billar") return v.origen === "mesa" && !v.anulada;
+  if (f === "cuentas") return v.origen === "cuenta" && !v.anulada;
   if (f === "pos") return v.origen === "rapida" && !v.anulada;
   if (f === "anuladas") return !!v.anulada;
   return true;
 }
 
 const unidades = (v: VentaBillar) => v.items.reduce((t, i) => t + i.cant, 0);
+
+const iconoOrigen = (v: VentaBillar) => (v.origen === "mesa" ? "bola" : v.origen === "cuenta" ? "users" : "cart");
 
 function detalle(v: VentaBillar): string {
   const n = unidades(v);
@@ -111,10 +116,10 @@ export default function VentasTurno() {
                       onClick={() => abrir({ tipo: "venta", codigo: v.codigo })}
                       className={`card flex w-full items-center gap-3 px-4 py-3 text-left ${v.anulada ? "opacity-60" : ""}`}
                     >
-                      <Circulo icono={v.origen === "mesa" ? "bola" : "cart"} tono={v.anulada ? "gris" : "verde"} size={36} />
+                      <Circulo icono={iconoOrigen(v)} tono={v.anulada ? "gris" : "verde"} size={36} />
                       <div className="min-w-0 flex-1">
                         <p className="text-[13px] font-bold text-texto">
-                          {v.codigo} · {v.origen === "mesa" ? `Mesa ${v.mesaId}` : "Venta rápida"}
+                          {v.codigo} · {etiquetaOrigen(v)}
                         </p>
                         <p className="truncate text-[12px] text-texto-3">
                           {horaDe(v.hora)} · {detalle(v)} · {metodo(v)}
@@ -152,8 +157,8 @@ export default function VentasTurno() {
                         <td className="px-3 tabular-nums">{horaDe(v.hora)}</td>
                         <td className="px-3">
                           <span className="inline-flex items-center gap-1.5">
-                            <Icon name={v.origen === "mesa" ? "bola" : "cart"} size={15} />
-                            {v.origen === "mesa" ? `Mesa ${v.mesaId}` : "Venta rápida"}
+                            <Icon name={iconoOrigen(v)} size={15} />
+                            {etiquetaOrigen(v)}
                           </span>
                         </td>
                         <td className="px-3 text-texto-3">{detalle(v)}</td>

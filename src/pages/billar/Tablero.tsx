@@ -10,14 +10,16 @@ import { round2 } from "./calculo";
 import { useDialogos } from "./dialogos";
 import ListaMesas from "./ListaMesas";
 import { CajaCerradaAviso } from "./ModalesCaja";
+import PanelCuenta from "./PanelCuenta";
 import PanelMesa from "./PanelMesa";
 import { useAhora } from "./reloj";
 import { billar, mesasEnUso, useBillar } from "./store";
 import { atajoDelTablero, mirandoOtraSucursal } from "./Tablero.datos";
 import { useAuth } from "../../store/AuthContext";
+import TarjetaCuenta from "./TarjetaCuenta";
 import TarjetaMesa from "./TarjetaMesa";
-import { BotonB, ChipFiltro, Circulo, Encabezado, Nota, SelectorSucursal } from "./ui";
-import { FILTROS, pasaBusqueda, pasaFiltro, vistaDe, type Filtro } from "./vista";
+import { BotonB, ChipFiltro, Circulo, Encabezado, Nota, Segmentado, SelectorSucursal } from "./ui";
+import { FILTROS, pasaBusqueda, pasaBusquedaCuenta, pasaFiltro, vistaCuenta, vistaDe, type Filtro } from "./vista";
 
 /** Tarjetas o lista: preferencia del dispositivo, como la barra colapsada. */
 const VISTA_KEY = "bamardev.billar.vista";
@@ -49,13 +51,49 @@ export default function Tablero() {
   const [vista, setVista] = useState(leerVista);
   const buscador = useRef<HTMLInputElement>(null);
 
+  // Mesas de billar o cuentas abiertas (sin mesa, 21-oct). Va en la dirección:
+  // al volver del consumo o del cobro la pestaña sigue donde estaba.
+  const verCuentas = params.get("ver") === "cuentas";
   const elegida = Number(params.get("mesa")) || null;
+  const cuentaElegida = Number(params.get("cuenta")) || null;
   const elegir = (id: number | null) =>
     setParams(
       (p) => {
         const n = new URLSearchParams(p);
         if (id === null || id === elegida) n.delete("mesa");
         else n.set("mesa", String(id));
+        return n;
+      },
+      { replace: true },
+    );
+  const elegirCuenta = (id: number) =>
+    setParams(
+      (p) => {
+        const n = new URLSearchParams(p);
+        if (id === cuentaElegida) n.delete("cuenta");
+        else n.set("cuenta", String(id));
+        return n;
+      },
+      { replace: true },
+    );
+  const cerrarPanel = () =>
+    setParams(
+      (p) => {
+        const n = new URLSearchParams(p);
+        n.delete("mesa");
+        n.delete("cuenta");
+        return n;
+      },
+      { replace: true },
+    );
+  const cambiarVista = (cuentas: boolean) =>
+    setParams(
+      (p) => {
+        const n = new URLSearchParams(p);
+        n.delete("mesa");
+        n.delete("cuenta");
+        if (cuentas) n.set("ver", "cuentas");
+        else n.delete("ver");
         return n;
       },
       { replace: true },
@@ -74,7 +112,7 @@ export default function Tablero() {
   // (`actual`): el menú "…" de la mesa en el celular es un Modal suelto, así
   // que también cuenta cualquier `aria-modal` que esté en pantalla.
   const hayDialogo = actual !== null;
-  const hojaPanel = !!elegida && !ancha;
+  const hojaPanel = !!(verCuentas ? cuentaElegida : elegida) && !ancha;
   useEffect(() => {
     const tecla = (ev: KeyboardEvent) => {
       const t = ev.target as HTMLElement | null;
@@ -88,7 +126,7 @@ export default function Tablero() {
         ev.preventDefault();
         buscador.current?.focus();
       } else if (atajo === "cerrar") {
-        elegir(null);
+        cerrarPanel();
       }
     };
     document.addEventListener("keydown", tecla);
@@ -109,11 +147,19 @@ export default function Tablero() {
     ) : undefined;
 
   const vistas = useMemo(() => mesasEnUso(e).map((m) => vistaDe(e, m, ahora)), [e, ahora]);
+  const cuentas = useMemo(() => e.cuentas.map((c) => vistaCuenta(c, ahora)), [e.cuentas, ahora]);
   const abiertas = vistas.filter((v) => v.cuenta);
-  const totalAbierto = round2(abiertas.reduce((t, v) => t + v.cuenta!.total, 0));
-  const porCobrar = round2(abiertas.reduce((t, v) => t + v.cuenta!.saldo, 0));
+  // Lo de arriba suma las mesas y las cuentas abiertas: es todo lo que falta cobrar.
+  const totalAbierto = round2(
+    abiertas.reduce((t, v) => t + v.cuenta!.total, 0) + cuentas.reduce((t, v) => t + v.calc.total, 0),
+  );
+  const porCobrar = round2(
+    abiertas.reduce((t, v) => t + v.cuenta!.saldo, 0) + cuentas.reduce((t, v) => t + v.calc.saldo, 0),
+  );
   const visibles = vistas.filter((v) => pasaFiltro(v, filtro) && pasaBusqueda(v, busqueda));
-  const seleccion = vistas.find((v) => v.mesa.id === elegida) ?? null;
+  const cuentasVisibles = cuentas.filter((v) => pasaBusquedaCuenta(v.cuenta, busqueda));
+  const seleccion = verCuentas ? null : (vistas.find((v) => v.mesa.id === elegida) ?? null);
+  const seleccionCuenta = verCuentas ? (cuentas.find((v) => v.cuenta.id === cuentaElegida) ?? null) : null;
   const enLista = muyAncha && vista === "lista";
 
   if (!e.caja.abierta) {
@@ -125,14 +171,20 @@ export default function Tablero() {
     );
   }
 
-  const panel = seleccion && <PanelMesa v={seleccion} ahora={ahora} onCerrar={() => elegir(null)} />;
+  const panel = seleccion ? (
+    <PanelMesa v={seleccion} ahora={ahora} onCerrar={cerrarPanel} />
+  ) : seleccionCuenta ? (
+    <PanelCuenta v={seleccionCuenta} ahora={ahora} onCerrar={cerrarPanel} />
+  ) : null;
+  const nombrePanel = seleccion ? `Mesa ${seleccion.mesa.id}` : seleccionCuenta ? `Cuenta ${seleccionCuenta.cuenta.nombre}` : "";
+  const pieAbiertas = `${abiertas.length} ${abiertas.length === 1 ? "mesa" : "mesas"}`;
 
   return (
     <div className="flex h-full min-h-0 flex-col">
       <Encabezado titulo="Billar" sucursal={selector}>
         <div className="flex w-full flex-wrap items-center gap-2 xl:w-auto">
           <label className="relative order-last w-full sm:order-none sm:w-56">
-            <span className="sr-only">Buscar mesa o cliente</span>
+            <span className="sr-only">{verCuentas ? "Buscar cuenta" : "Buscar mesa o cliente"}</span>
             <span className="pointer-events-none absolute inset-y-0 left-3.5 flex items-center text-texto-4">
               <Icon name="search" size={17} />
             </span>
@@ -140,14 +192,14 @@ export default function Tablero() {
               ref={buscador}
               value={busqueda}
               onChange={(ev) => setBusqueda(ev.target.value)}
-              placeholder="Buscar mesa o cliente"
+              placeholder={verCuentas ? "Buscar cuenta" : "Buscar mesa o cliente"}
               className="h-10 w-full rounded-full border border-borde bg-white pl-10 pr-9 text-sm outline-none placeholder:text-texto-4 focus:border-primary focus:ring-2 focus:ring-primary-100"
             />
             <kbd className="pointer-events-none absolute inset-y-0 right-3 my-auto hidden h-5 items-center rounded border border-borde px-1.5 text-[11px] text-texto-4 sm:flex">
               /
             </kbd>
           </label>
-          {muyAncha && (
+          {muyAncha && !verCuentas && (
             <div role="radiogroup" aria-label="Vista" className="flex rounded-full bg-slate-100 p-1">
               {(["tarjetas", "lista"] as const).map((v) => (
                 <button
@@ -224,56 +276,106 @@ export default function Tablero() {
               tono="verde"
               etiqueta="Cuentas abiertas"
               valor={fmtMoney(totalAbierto)}
-              pie={`${abiertas.length} ${abiertas.length === 1 ? "mesa" : "mesas"} en juego o pausadas`}
+              pie={
+                cuentas.length
+                  ? `${pieAbiertas} y ${cuentas.length} ${cuentas.length === 1 ? "cuenta" : "cuentas"}`
+                  : `${pieAbiertas} en juego o pausadas`
+              }
             />
             <Resumen
               icono="billetera"
               tono="ambar"
               etiqueta="Por cobrar"
               valor={fmtMoney(porCobrar)}
-              pie="Saldo pendiente de todas las mesas"
+              pie={cuentas.length ? "Saldo de mesas y cuentas" : "Saldo pendiente de todas las mesas"}
             />
           </div>
 
-          <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0">
-            {FILTROS.map((f) => (
-              <ChipFiltro
-                key={f.clave}
-                activo={filtro === f.clave}
-                etiqueta={f.etiqueta}
-                cuenta={vistas.filter((v) => pasaFiltro(v, f.clave)).length}
-                onClick={() => setFiltro(f.clave)}
-              />
-            ))}
+          <div className="sm:max-w-md">
+            <Segmentado
+              etiqueta="Qué mirar"
+              valor={verCuentas ? "cuentas" : "mesas"}
+              onCambiar={(v) => cambiarVista(v === "cuentas")}
+              opciones={[
+                { valor: "mesas", texto: `Mesas de billar · ${vistas.length}` },
+                { valor: "cuentas", texto: `Cuentas · ${cuentas.length}` },
+              ]}
+            />
           </div>
 
-          {visibles.length === 0 ? (
-            <Vacio
-              icono="bola"
-              titulo="No hay mesas acá"
-              texto={busqueda ? `Ninguna mesa coincide con "${busqueda}".` : "Probá con otro filtro."}
-            />
-          ) : enLista ? (
-            <ListaMesas vistas={visibles} seleccionada={elegida} onSeleccionar={(id) => elegir(id)} />
+          {verCuentas ? (
+            busqueda && cuentasVisibles.length === 0 ? (
+              <Vacio icono="users" titulo="No hay cuentas acá" texto={`Ninguna cuenta coincide con "${busqueda}".`} />
+            ) : (
+              <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(158px,1fr))] sm:gap-4 sm:[grid-template-columns:repeat(auto-fill,minmax(228px,1fr))]">
+                {/* Mirando otro local no: la cuenta se abre y se cobra con una caja de ese local. */}
+                {!otraSucursal && (
+                  <button
+                    type="button"
+                    onClick={() => abrir({ tipo: "nuevaCuenta" })}
+                    className="flex min-h-[190px] flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-borde px-4 text-center text-texto-2 hover:border-primary/60 hover:bg-primary-50/40"
+                  >
+                    <span className="flex h-11 w-11 items-center justify-center rounded-full bg-primary-50 text-primary-700">
+                      <Icon name="plus" size={20} />
+                    </span>
+                    <span className="text-[15px] font-bold text-texto">Nueva cuenta</span>
+                    <span className="text-[12px] text-texto-3">Para los que se sientan a tomar sin jugar</span>
+                  </button>
+                )}
+                {cuentasVisibles.map((v) => (
+                  <TarjetaCuenta
+                    key={v.cuenta.id}
+                    v={v}
+                    ahora={ahora}
+                    seleccionada={v.cuenta.id === cuentaElegida}
+                    onSeleccionar={() => elegirCuenta(v.cuenta.id)}
+                  />
+                ))}
+              </div>
+            )
           ) : (
-            <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(158px,1fr))] sm:gap-4 sm:[grid-template-columns:repeat(auto-fill,minmax(228px,1fr))]">
-              {visibles.map((v) => (
-                <TarjetaMesa
-                  key={v.mesa.id}
-                  v={v}
-                  ahora={ahora}
-                  seleccionada={v.mesa.id === elegida}
-                  onSeleccionar={() => elegir(v.mesa.id)}
+            <>
+              <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0">
+                {FILTROS.map((f) => (
+                  <ChipFiltro
+                    key={f.clave}
+                    activo={filtro === f.clave}
+                    etiqueta={f.etiqueta}
+                    cuenta={vistas.filter((v) => pasaFiltro(v, f.clave)).length}
+                    onClick={() => setFiltro(f.clave)}
+                  />
+                ))}
+              </div>
+
+              {visibles.length === 0 ? (
+                <Vacio
+                  icono="bola"
+                  titulo="No hay mesas acá"
+                  texto={busqueda ? `Ninguna mesa coincide con "${busqueda}".` : "Probá con otro filtro."}
                 />
-              ))}
-            </div>
+              ) : enLista ? (
+                <ListaMesas vistas={visibles} seleccionada={elegida} onSeleccionar={(id) => elegir(id)} />
+              ) : (
+                <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(158px,1fr))] sm:gap-4 sm:[grid-template-columns:repeat(auto-fill,minmax(228px,1fr))]">
+                  {visibles.map((v) => (
+                    <TarjetaMesa
+                      key={v.mesa.id}
+                      v={v}
+                      ahora={ahora}
+                      seleccionada={v.mesa.id === elegida}
+                      onSeleccionar={() => elegir(v.mesa.id)}
+                    />
+                  ))}
+                </div>
+              )}
+            </>
           )}
         </div>
 
         {/* En pantalla ancha el panel va al costado; si no, es una hoja que
             sube desde abajo (§7.16). */}
         {panel && ancha && (
-          <aside aria-label={`Mesa ${seleccion.mesa.id}`} className="flex w-[400px] shrink-0 flex-col border-l border-borde bg-white xl:w-[420px]">
+          <aside aria-label={nombrePanel} className="flex w-[400px] shrink-0 flex-col border-l border-borde bg-white xl:w-[420px]">
             {panel}
           </aside>
         )}
@@ -281,9 +383,9 @@ export default function Tablero() {
 
       {panel && !ancha && (
         <div className="fixed inset-0 z-40" role="presentation">
-          <div className="absolute inset-0 bg-slate-900/40" onClick={() => elegir(null)} />
+          <div className="absolute inset-0 bg-slate-900/40" onClick={cerrarPanel} />
           <aside
-            aria-label={`Mesa ${seleccion.mesa.id}`}
+            aria-label={nombrePanel}
             className="absolute inset-x-0 bottom-0 flex max-h-[85dvh] flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl"
           >
             <span aria-hidden className="mx-auto mt-2 h-1.5 w-10 shrink-0 rounded-full bg-slate-200" />
