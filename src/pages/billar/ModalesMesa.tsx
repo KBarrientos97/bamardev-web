@@ -196,7 +196,7 @@ export function ModalMotivo({
   );
 }
 
-function ChipsMotivo({ motivos, valor, onCambiar }: { motivos: string[]; valor: string; onCambiar: (m: string) => void }) {
+export function ChipsMotivo({ motivos, valor, onCambiar }: { motivos: string[]; valor: string; onCambiar: (m: string) => void }) {
   return (
     <div role="radiogroup" aria-label="Motivo" className="flex flex-wrap gap-2">
       {motivos.map((m) => (

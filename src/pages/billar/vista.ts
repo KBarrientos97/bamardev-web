@@ -32,7 +32,17 @@ export interface VistaMesa {
   pausaSeg?: number | null;
 }
 
-export function vistaDe(e: EstadoBillar, mesa: Mesa, ahora: number): VistaMesa {
+/**
+ * Lo que `vistaDe` lee del estado: las tarifas y los minutos de aviso. Con
+ * esto alcanza para dibujar una mesa fuera del tablero (la pantalla de
+ * Supervisión del administrador arma el suyo con lo que trae su ruta).
+ */
+export interface ContextoVista {
+  tipos: EstadoBillar["tipos"];
+  ajustes: Pick<EstadoBillar["ajustes"], "avisos">;
+}
+
+export function vistaDe(e: ContextoVista, mesa: Mesa, ahora: number): VistaMesa {
   const tipo = tipoDe(e, mesa);
   const cuenta = mesa.estado === "abierta" && mesa.sesion ? cuentaDe(mesa.sesion, tipo, ahora) : null;
   return {
