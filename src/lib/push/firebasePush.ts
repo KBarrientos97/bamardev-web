@@ -3,9 +3,9 @@ import { registrarTokenSiCambio } from "./registroPush";
 
 /**
  * Push en la PWA (FCM). Se baja aparte (import dinámico) y sólo cuando hace
- * falta: la página de prueba (QA) o un navegador que ya dio el permiso. Lo que
- * llega lo muestra el service worker (public/push-sw.js), con la app abierta
- * o cerrada.
+ * falta: la pantalla Notificaciones, la página de prueba (QA) o un navegador
+ * que ya dio el permiso. Lo que llega lo muestra el service worker
+ * (public/push-sw.js), con la app abierta o cerrada.
  *
  * Un solo proyecto de Firebase (bamardev-tech) para QA y PROD: decisión del
  * dueño (16-oct), para no duplicar la configuración. Nada de esto es secreto:
@@ -50,23 +50,26 @@ export async function tokenFcm(): Promise<string | null> {
 
 /**
  * Pide el permiso (tiene que salir de un toque: iOS no lo deja pedir solo),
- * trae el token y, si hay sesión, lo registra en el backend.
+ * trae el token y, si hay sesión, lo registra en el backend. Lo usan la
+ * pantalla Notificaciones y /prueba-push (QA): `registrado` false con `ok`
+ * true es "este navegador ya puede recibir, pero el servidor todavía no lo
+ * sabe" (sin red, 5xx); el próximo arranque lo reintenta solo.
  */
-export async function activarPushPrueba(): Promise<ResultadoPush> {
+export async function activarPush(): Promise<ResultadoPush> {
   if (!("serviceWorker" in navigator) || !("Notification" in window)) {
     return { ok: false, motivo: "Este navegador no tiene notificaciones push. En el iPhone: iOS 16.4 o más y la app instalada en la pantalla de inicio." };
   }
   const { isSupported } = await import("firebase/messaging");
   if (!(await isSupported())) {
-    return { ok: false, motivo: "Firebase dice que este navegador no soporta push. En el iPhone tiene que estar abierta desde el ícono de inicio, no desde Safari." };
+    return { ok: false, motivo: "Este navegador no puede recibir notificaciones. En el iPhone tiene que estar abierta desde el ícono de inicio, no desde Safari." };
   }
   const permiso = await Notification.requestPermission();
   if (permiso !== "granted") {
-    return { ok: false, motivo: `Permiso de notificaciones: ${permiso}. Hay que permitirlo en los ajustes del navegador o del teléfono.` };
+    return { ok: false, motivo: "No se dio el permiso de notificaciones. Hay que permitirlo en los ajustes del navegador o del teléfono." };
   }
   try {
     const token = await tokenFcm();
-    if (!token) return { ok: false, motivo: "Firebase no devolvió token." };
+    if (!token) return { ok: false, motivo: "No se pudo obtener el código de este equipo. Probá de nuevo en un rato." };
     return { ok: true, token, registrado: await registrarTokenSiCambio(token) };
   } catch (e) {
     return { ok: false, motivo: e instanceof Error ? e.message : String(e) };

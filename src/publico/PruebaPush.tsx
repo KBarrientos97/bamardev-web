@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { activarPushPrueba, type ResultadoPush } from "../lib/push/pushPrueba";
+import { activarPush, type ResultadoPush } from "../lib/push/firebasePush";
 
 /**
  * /prueba-push (sólo QA, temporal): pide el permiso de notificaciones y
@@ -17,7 +17,7 @@ export default function PruebaPush() {
   async function activar() {
     setEstado("pidiendo");
     setCopiado(false);
-    setResultado(await activarPushPrueba());
+    setResultado(await activarPush());
     setEstado("quieto");
   }
 

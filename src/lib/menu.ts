@@ -652,6 +652,8 @@ const TITULOS_FUERA_DEL_MENU: [RegExp, string][] = [
   [/^\/academia\/grupos\/\d+\/notas\/?$/, "Notas"],
   [/^\/academia\/grupos\/\d+\/lista\/?$/, "Pasar lista"],
   [/^\/academia\/grupos\/\d+\/?$/, "Grupo"],
+  // Es de la cuenta y no del negocio: va abajo, con "Cambiar mi contraseña".
+  [/^\/notificaciones\/?$/, "Notificaciones"],
 ];
 
 /** Título de la barra móvil. */

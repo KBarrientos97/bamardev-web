@@ -50,6 +50,7 @@ import PanelMesero from "./pages/salon/PanelMesero";
 import ConfigAgenda from "./pages/agenda/config/ConfigAgenda";
 import ConfigNegocio from "./pages/agenda/config/ConfigNegocio";
 import { AuthProvider, useAuth } from "./store/AuthContext";
+import { useNavegarDesdePush } from "./lib/push/useNavegarDesdePush";
 
 /*
  * La app del negocio: sesión, login, menú y todas sus pantallas. Se baja
@@ -59,6 +60,8 @@ import { AuthProvider, useAuth } from "./store/AuthContext";
 
 // Página del negocio: el editor y los enlaces cortos se bajan sólo si se usan.
 const QrDeCobro = lazy(() => import("./pages/QrDeCobro"));
+// De la cuenta, para cualquiera: trae Firebase sólo cuando se activa.
+const Notificaciones = lazy(() => import("./pages/Notificaciones"));
 const MiPagina = lazy(() => import("./pages/pagina/MiPagina"));
 const MisEnlaces = lazy(() => import("./pages/pagina/MisEnlaces"));
 const MiAsistente = lazy(() => import("./pages/pagina/MiAsistente"));
@@ -264,6 +267,8 @@ function Rutas() {
   const { token, permisosListos } = useAuth();
   const navigate = useNavigate();
   const teniaSesion = useRef(token !== null);
+  // Tocar una notificación con la app abierta la lleva a la pantalla del aviso.
+  useNavegarDesdePush();
 
   // Al cerrar sesión la dirección vuelve a "/". Antes quedaba la del que
   // salió: el mesero cerraba sesión en /salon, entraba el administrador y
@@ -322,6 +327,16 @@ function Rutas() {
       <Route element={<LayoutSegunRubro />}>
         <Route path="/" element={<Inicio />} />
         <Route path="/sin-acceso" element={<SinAcceso />} />
+        {/* Sin `Protegida`: son los avisos de quien está sentado, y la lista
+            ya viene filtrada por el backend según su rol (PLAN-PUSH §10.2). */}
+        <Route
+          path="/notificaciones"
+          element={
+            <Suspense fallback={null}>
+              <Notificaciones />
+            </Suspense>
+          }
+        />
 
         <Route
           path="/pos"

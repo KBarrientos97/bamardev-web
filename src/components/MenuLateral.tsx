@@ -472,6 +472,32 @@ export default function MenuLateral({
         </a>
       )}
 
+      {/* Los avisos de cada uno (PLAN-PUSH §10.2): para cualquier rol, como
+          la contraseña. Es un link y no un botón: es una pantalla. */}
+      <Link
+        to="/notificaciones"
+        onClick={() => {
+          setTip(null);
+          onNavegar();
+        }}
+        aria-label={compacta ? "Notificaciones" : undefined}
+        aria-current={pathname === "/notificaciones" ? "page" : undefined}
+        data-fila=""
+        data-nav-id="notificaciones"
+        {...mostrarTip("Notificaciones")}
+        className={[
+          "flex items-center gap-3 rounded-xl py-2.5 text-sm font-semibold transition-colors",
+          foco,
+          compacta ? "justify-center px-0" : "px-3",
+          pathname === "/notificaciones"
+            ? "bg-barra-activo text-barra-texto"
+            : "text-barra-texto-2 hover:bg-white/10 hover:text-barra-texto",
+        ].join(" ")}
+      >
+        <Icon name="bell" size={19} />
+        {!compacta && <span>Notificaciones</span>}
+      </Link>
+
       {onCambiarPassword && (
         <button
           type="button"

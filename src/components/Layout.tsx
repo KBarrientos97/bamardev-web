@@ -15,6 +15,7 @@ import { esIOS } from "../lib/pwa/entorno";
 import { useInstalarDisponible, useOfrecerInstalarUnaVez } from "../lib/pwa/guia";
 import { usePwa } from "../lib/pwa/pwa";
 import { useMotorOffline } from "../lib/offline/motor";
+import { useCreditosDesdeUrl } from "../lib/useCreditosDesdeUrl";
 import { AvisoVersionNueva, HojaInstalar } from "./InstalarApp";
 import MenuLateral from "./MenuLateral";
 
@@ -60,6 +61,9 @@ export default function Layout() {
   // La cola de ventas cobradas sin internet sube desde acá, con cualquier
   // pantalla abierta (sólo en la app instalada del iPhone, PLAN-IOS F3).
   useMotorOffline();
+  // `?creditos=comprar` (la push del cupo) abre la hoja de comprar créditos.
+  // Acá y no en una pantalla: llega a cualquiera, y la hoja vive en el Layout.
+  useCreditosDesdeUrl();
   // "Instalar en el celular" (PLAN-IOS): desde el menú, y una vez sola al
   // entrar desde un celular o tablet que todavía no la tiene instalada.
   const instalarDisponible = useInstalarDisponible();
