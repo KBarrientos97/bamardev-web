@@ -1,10 +1,11 @@
 /**
- * Los PIN que no se dejan asignar (copia de src/seguridad/pin-facil.ts del
- * backend, con los mismos mensajes: si cambia allá, cambia acá). Son los
- * primeros que prueba quien quiere adivinar el PIN de un encargado: 887 de
- * 10.000 (repetidos, escaleras, líneas del teclado, pares, años y fechas).
+ * Un PIN al azar para "Generar uno al azar" (Usuarios).
  *
- * La web avisa antes de mandar; el backend igual lo rechaza (400 PIN_FACIL).
+ * El PIN que pone el administrador es LIBRE: 1234, una fecha o lo que quiera
+ * cada negocio (21-oct, el dueño: "es decisión de cada cliente"). Se probó
+ * rechazar los fáciles (18-oct, 887 de 10.000) y se sacó, en la web y en el
+ * backend. `pinFacil` queda sólo para que el generado no sea uno de esos:
+ * un "al azar" que sale 1111 parece un error.
  */
 export type MotivoPinFacil = "REPETIDO" | "ESCALERA" | "TECLADO" | "PARES" | "ANIO" | "FECHA";
 
@@ -36,20 +37,7 @@ export function pinFacil(pin: string): MotivoPinFacil | null {
   return null;
 }
 
-export const MENSAJE_PIN_FACIL: Record<MotivoPinFacil, string> = {
-  REPETIDO: "Ese PIN repite el mismo número (como 0000): es de los primeros que alguien prueba. Elegí otro.",
-  ESCALERA: "Ese PIN es una escalera (como 1234 o 4321): es de los primeros que alguien prueba. Elegí otro.",
-  TECLADO: "Ese PIN es una línea del teclado (como 2580): es de los primeros que alguien prueba. Elegí otro.",
-  PARES: "Ese PIN repite un par (como 1212 o 1122): es de los primeros que alguien prueba. Elegí otro.",
-  ANIO: "Ese PIN parece un año: quien conoce a la persona lo prueba enseguida. Elegí otro.",
-  FECHA: "Ese PIN parece una fecha (día y mes): quien sabe un cumpleaños lo prueba enseguida. Elegí otro.",
-};
-
-/**
- * Un PIN al azar que no sea fácil. Es lo único que frena a quien conoce al
- * encargado (su cumpleaños, su carnet, su teléfono): uno elegido por una
- * persona cae mucho antes (Markert et al., 2020).
- */
+/** Un PIN de 4 dígitos al azar, sin los de siempre (1111, 1234, una fecha…). */
 export function pinAlAzar(azar: () => number = () => crypto.getRandomValues(new Uint32Array(1))[0]): string {
   for (;;) {
     const pin = String(azar() % 10_000).padStart(4, "0");

@@ -11,6 +11,7 @@ import type {
   ImportarMedicamentosInput,
   RespuestaImportacion,
   ActualizarUsuarioInput,
+  CupoUsuarios,
   Caja,
   Categoria,
   ClienteCredito,
@@ -989,6 +990,10 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify({ pin }),
     }),
+  /** El límite de usuarios del plan, para avisar antes de abrir el alta. */
+  getCupoUsuarios: () => request<CupoUsuarios>("/usuarios/cupo"),
+  /** Sólo una cuenta sin historial; con historial es 409 USUARIO_CON_HISTORIAL (se desactiva). */
+  eliminarUsuario: (id: number) => request<{ mensaje: string }>(`/usuarios/${id}`, { method: "DELETE" }),
   cambiarEstadoUsuario: (id: number, activo: boolean) =>
     request<Usuario>(`/usuarios/${id}/estado`, {
       method: "PATCH",
