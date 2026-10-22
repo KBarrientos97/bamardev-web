@@ -63,6 +63,8 @@ function supervision() {
     sucursal: { id: 1, nombre: "Principal" },
     desde: AHORA - 6 * 60 * MIN,
     hoy: { ventas: 4, vendido: 180.5 },
+    // El turno que se mira: el de la caja de Pepe, la que trabaja ahora.
+    turno: { cajaId: 1, defectoId: 1, desde: AHORA - 4 * 60 * MIN, hasta: null as number | null, ventas: 3, vendido: 120.5 },
     ajustes: { avisos: [10, 5, 1], sonido: false, voz: false, pin: { anularConsumo: true, anularMesa: true, pausar: true }, tieneTokenSalon: false },
     tipos: [POOL],
     mesas: [
@@ -158,6 +160,19 @@ describe("Billar: la supervisión del administrador", () => {
     expect(within(kevin).getByText(/1 anulada/)).toBeInTheDocument();
   });
 
+  it.each([
+    ["otro (el administrador destraba la de la cajera): lo dice", "Pepe Mamani", /la cerró Pepe Mamani/],
+    ["quien la abrió: no se repite", "Kevin Dueño", /^(?!.*la cerró)/],
+  ])("la caja la cerró %s", async (_caso, cerroPor, esperado) => {
+    request.mockImplementation(async () => {
+      const s = supervision();
+      return { ...s, cajas: [s.cajas[0], { ...s.cajas[1], cerroPor }] };
+    });
+    await montar();
+    const cajas = screen.getByRole("heading", { name: "Cajas" }).closest("section")!;
+    expect(within(cajas).getByText("Kevin Dueño").closest("li")!.textContent).toMatch(esperado);
+  });
+
   it("las mesas dicen quién las abrió y quién pausó la que está en pausa", async () => {
     await montar();
     const mesa1 = screen.getByRole("button", { name: "Mesa 1" }).closest("article")!;
@@ -185,7 +200,7 @@ describe("Billar: la supervisión del administrador", () => {
 
   it("la actividad lleva el nombre de cada usuario y se filtra", async () => {
     await montar();
-    const actividad = screen.getByRole("complementary", { name: "Actividad de hoy" });
+    const actividad = screen.getByRole("complementary", { name: "Actividad del turno" });
     expect(within(actividad).getByText("Pausó la mesa (Se fue a comer) desde Supervisión, sin PIN", { exact: false })).toBeInTheDocument();
     expect(within(actividad).getAllByText("Kevin Dueño").length).toBeGreaterThan(0);
     expect(within(actividad).getByText("Abrió la caja con Bs 100,00", { exact: false })).toBeInTheDocument();
@@ -264,6 +279,124 @@ describe("Billar: la supervisión del administrador", () => {
       fireEvent.click(within(dialogo).getByRole("button", { name: "Pausar" }));
     });
     expect(within(screen.getByRole("dialog")).getByRole("alert")).toHaveTextContent("La mesa ya está pausada");
+  });
+
+  describe("el turno: lo de cada caja no se mezcla con lo de la anterior", () => {
+    /** Las llamadas a `/billar/supervision` (no a pausar), con su query. */
+    const pedidos = () => request.mock.calls.map((c) => String(c[0])).filter((u) => u.startsWith("/billar/supervision") && !u.includes("/sesiones/"));
+    const selector = () => screen.getByRole("combobox", { name: "Turno que estás viendo" });
+
+    it("lo vendido y la actividad son del turno de la caja que trabaja; el día entero va aparte", async () => {
+      await montar();
+      // El selector dice cuál es: la de Pepe, en curso.
+      expect(selector()).toHaveValue("1");
+      expect(within(selector()).getByRole("option", { name: /^Turno en curso · Pepe Mamani · desde / })).toBeInTheDocument();
+      expect(within(selector()).getByRole("option", { name: /^Kevin Dueño · .* – / })).toBeInTheDocument();
+      // Lo vendido de arriba es lo del turno (Bs 120,50), no lo del día (Bs 180,50).
+      const kpi = screen.getByText("Vendido en el turno").closest("div")!;
+      expect(within(kpi).getByText(/120,50/)).toBeInTheDocument();
+      expect(within(kpi).getByText("3 ventas")).toBeInTheDocument();
+      // El día entero, en la lista de cajas.
+      const cajas = screen.getByRole("heading", { name: "Cajas" }).closest("section")!;
+      expect(within(cajas).getByText(/Vendido hoy en todas las cajas/).textContent).toMatch(/180,50.*4 ventas/);
+      // La caja que se está mirando se marca en la lista.
+      expect(within(cajas).getByText("Pepe Mamani").closest("li")).toHaveAttribute("aria-current", "true");
+      expect(within(cajas).getByText("Kevin Dueño").closest("li")).not.toHaveAttribute("aria-current");
+      // Y la actividad se llama del turno; con la caja en curso no hay avisos.
+      expect(screen.getByRole("complementary", { name: "Actividad del turno" })).toBeInTheDocument();
+      expect(screen.queryByText(/Volver al turno actual/)).toBeNull();
+      expect(screen.queryByText(/No hay caja abierta/)).toBeNull();
+    });
+
+    it("elegir un turno anterior lo pide al servidor, avisa que no es el de ahora y se vuelve con un toque", async () => {
+      request.mockImplementation(async (url: string) => {
+        if (url.includes("/sesiones/")) return { id: 12, numero: 1 };
+        if (url.includes("turno=2")) {
+          return {
+            ...supervision(),
+            turno: { cajaId: 2, defectoId: 1, desde: AHORA - 5 * 60 * MIN, hasta: AHORA - 4.5 * 60 * MIN, ventas: 1, vendido: 60 },
+            actividad: [{ id: "ve1", hora: AHORA - 4.6 * 60 * MIN, quien: "Kevin Dueño", texto: "Cobró V-000001 · Bs 60,00", codigo: "VENTA" }],
+          };
+        }
+        return supervision();
+      });
+      await montar();
+      await act(async () => {
+        fireEvent.change(selector(), { target: { value: "2" } });
+      });
+      expect(pedidos().at(-1)).toBe("/billar/supervision?turno=2");
+      expect(selector()).toHaveValue("2");
+      expect(screen.getByText(/Estás viendo un turno anterior/)).toBeInTheDocument();
+      // Lo del turno elegido, y nada de lo del otro.
+      const kpi = screen.getByText("Vendido en el turno").closest("div")!;
+      expect(within(kpi).getByText(/60,00/)).toBeInTheDocument();
+      const actividad = screen.getByRole("complementary", { name: "Actividad del turno" });
+      expect(within(actividad).getByText(/Cobró V-000001/)).toBeInTheDocument();
+      expect(within(actividad).queryByText(/Cargó 2×/)).toBeNull();
+      // Volver: otra vez el turno de ahora, sin pedir uno en particular.
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: "Volver al turno actual" }));
+      });
+      expect(pedidos().at(-1)).toBe("/billar/supervision");
+      expect(selector()).toHaveValue("1");
+      expect(screen.queryByText(/Estás viendo un turno anterior/)).toBeNull();
+    });
+
+    it("elegir en el selector el turno que ya es el de ahora lo vuelve a seguir solo", async () => {
+      request.mockImplementation(async (url: string) => {
+        if (url.includes("turno=2")) {
+          return { ...supervision(), turno: { cajaId: 2, defectoId: 1, desde: AHORA - 5 * 60 * MIN, hasta: AHORA - 4.5 * 60 * MIN, ventas: 1, vendido: 60 } };
+        }
+        return supervision();
+      });
+      await montar();
+      await act(async () => {
+        fireEvent.change(selector(), { target: { value: "2" } });
+      });
+      await act(async () => {
+        fireEvent.change(selector(), { target: { value: "1" } });
+      });
+      // Sin `turno=`: así cuando abran otra caja, la pantalla pasa sola a la nueva.
+      expect(pedidos().at(-1)).toBe("/billar/supervision");
+    });
+
+    it("con todas las cajas cerradas muestra cómo terminó la última y avisa que empieza de cero cuando abran otra", async () => {
+      request.mockImplementation(async () => {
+        const s = supervision();
+        return {
+          ...s,
+          cajas: [s.cajas[1]],
+          turno: { cajaId: 2, defectoId: 2, desde: AHORA - 5 * 60 * MIN, hasta: AHORA - 4.5 * 60 * MIN, ventas: 1, vendido: 60 },
+        };
+      });
+      await montar();
+      expect(screen.getByText(/No hay caja abierta/)).toBeInTheDocument();
+      expect(screen.getByText(/empieza de cero/)).toBeInTheDocument();
+      expect(within(selector()).getByRole("option", { name: /^Último turno · Kevin Dueño/ })).toBeInTheDocument();
+    });
+
+    it("una caja que sigue abierta de antes de la jornada avisa que quizás se olvidaron de cerrarla", async () => {
+      request.mockImplementation(async () => {
+        const s = supervision();
+        const vieja = { ...s.cajas[0], desde: AHORA - 30 * 60 * MIN * 60 };
+        return { ...s, cajas: [vieja], turno: { cajaId: 1, defectoId: 1, desde: vieja.desde, hasta: null, ventas: 0, vendido: 0 } };
+      });
+      await montar();
+      expect(screen.getByText(/¿Se olvidaron de cerrarla\?/)).toBeInTheDocument();
+      expect(within(selector()).getByRole("option", { name: /^Quedó abierta · Pepe Mamani/ })).toBeInTheDocument();
+    });
+
+    it("un servidor anterior, que no manda el turno, sigue mostrando lo de hoy", async () => {
+      request.mockImplementation(async () => {
+        const { turno: _sin, ...anterior } = supervision();
+        void _sin;
+        return anterior;
+      });
+      await montar();
+      expect(screen.queryByRole("combobox", { name: "Turno que estás viendo" })).toBeNull();
+      expect(screen.getByText("Vendido hoy")).toBeInTheDocument();
+      expect(screen.getByRole("complementary", { name: "Actividad de hoy" })).toBeInTheDocument();
+    });
   });
 
   it("sin conexión desde el principio ofrece reintentar", async () => {

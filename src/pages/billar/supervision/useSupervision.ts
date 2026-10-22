@@ -18,6 +18,11 @@ const CADA_MS = 5_000;
  * el administrador acá no tiene por qué mover lo de una caja. Lo único
  * compartido es el local elegido (el dueño con varios locales) y la hora del
  * servidor.
+ *
+ * El turno que se mira (la caja, de que abre a que cierra) lo decide el
+ * servidor: la que trabaja ahora. `turno` sólo es una caja elegida a mano
+ * para ver un turno anterior; `null` sigue al de ahora (cuando abren otra
+ * caja, la pantalla pasa sola a la nueva).
  */
 export function useSupervision() {
   const { negocio } = useAuth();
@@ -25,6 +30,8 @@ export function useSupervision() {
   usarNegocio(negocio?.alias);
   const [sucursal, setSucursal] = useState<number | null>(() => billar.sucursalElegida());
   const pedida = useRef(sucursal);
+  const [turno, setTurno] = useState<number | null>(null);
+  const turnoPedido = useRef<number | null>(null);
   const trayendo = useRef(false);
   const [datos, setDatos] = useState<SupervisionApi | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -35,11 +42,17 @@ export function useSupervision() {
     if (trayendo.current && !forzar) return;
     trayendo.current = true;
     const delLocal = pedida.current;
+    const delTurno = turnoPedido.current;
     const pedido = Date.now();
     try {
-      const d = await apiBillar.supervision(delLocal);
-      // Si mientras viajaba el dueño cambió de local, es lo de otro salón.
-      if (delLocal !== pedida.current) return;
+      const d = await apiBillar.supervision(delLocal, delTurno);
+      // Si mientras viajaba el dueño cambió de local o de turno, es lo de otro.
+      if (delLocal !== pedida.current || delTurno !== turnoPedido.current) return;
+      // La caja elegida ya no está (el servidor mostró otra): se vuelve al turno de ahora.
+      if (delTurno != null && d.turno && d.turno.cajaId !== delTurno) {
+        turnoPedido.current = null;
+        setTurno(null);
+      }
       fijarDesfase(d.ahora - (pedido + Date.now()) / 2);
       setDatos(d);
       setError(null);
@@ -81,6 +94,9 @@ export function useSupervision() {
       if (id === pedida.current) return;
       pedida.current = id;
       setSucursal(id);
+      // Las cajas de un local no son las de otro: se vuelve al turno de ahora.
+      turnoPedido.current = null;
+      setTurno(null);
       setDatos(null);
       billar.elegirSucursal(id);
       void traer(true);
@@ -88,5 +104,16 @@ export function useSupervision() {
     [traer],
   );
 
-  return { datos, error, llegoEn, sucursal, elegirSucursal, recargar: () => traer(true) };
+  /** Mirar el turno de una caja (`null`: el de ahora, que sigue solo a la caja que abra). */
+  const elegirTurno = useCallback(
+    (id: number | null) => {
+      if (id === turnoPedido.current) return;
+      turnoPedido.current = id;
+      setTurno(id);
+      void traer(true);
+    },
+    [traer],
+  );
+
+  return { datos, error, llegoEn, sucursal, elegirSucursal, turno, elegirTurno, recargar: () => traer(true) };
 }
