@@ -135,13 +135,32 @@ export interface CajaSupervisionApi {
   /** Cerrada: lo que contó el cajero y la diferencia contra lo esperado. */
   contado?: number;
   diferencia?: number;
+  /** Quién la cerró, si no se sabe (cajas viejas) fue quien la abrió. Otro puede cerrar la caja de la cajera. */
+  cerroPor?: string;
   nota?: string;
   ventas: number;
   vendido: number;
   anuladas: number;
 }
 
-/** Un renglón de la actividad de la jornada: quién hizo qué, cuándo y dónde. */
+/**
+ * El turno que se mira (backend del 22-oct): lo que pasó desde que se abrió una
+ * caja hasta que se cerró. La actividad y lo vendido de la pantalla son de él.
+ */
+export interface TurnoSupervisionApi {
+  /** La caja del turno; null si nadie abrió caja (entonces se muestra la jornada de hoy). */
+  cajaId: number | null;
+  /** La caja que corresponde por defecto: la que trabaja ahora o, si todas cerraron, la última. */
+  defectoId: number | null;
+  desde: number;
+  /** Cuándo se cerró; null si sigue abierta. */
+  hasta: number | null;
+  /** Lo vendido en el turno, de todas las cajas del local. */
+  ventas: number;
+  vendido: number;
+}
+
+/** Un renglón de la actividad del turno: quién hizo qué, cuándo y dónde. */
 export interface ActividadApi {
   id: string;
   hora: number;
@@ -162,10 +181,13 @@ export interface SupervisionApi {
   desde: number;
   /** Lo vendido en la jornada, de todas las cajas del local (sin lo de días atrás). */
   hoy: { ventas: number; vendido: number };
+  /** El turno que se mira. Un backend anterior al 22-oct no lo manda: ahí todo es "hoy". */
+  turno?: TurnoSupervisionApi;
   ajustes: AjustesApi;
   tipos: TipoMesa[];
   mesas: (Omit<MesaApi, "sesion"> & { sesion?: SesionSupervisionApi })[];
   cuentas: (Omit<CuentaApi, "sesion"> & { sesion: SesionSupervisionApi })[];
+  /** Las cajas abiertas y las de hoy y ayer (cada una es un turno que se puede mirar). */
   cajas: CajaSupervisionApi[];
   actividad: ActividadApi[];
 }
@@ -243,9 +265,15 @@ export const apiBillar = {
   productos: (sucursalId?: number | null) =>
     request<ProductoBillar[]>(`/billar/productos${deSucursal(sucursalId)}`),
   ventas: () => request<VentaApi[]>("/billar/ventas"),
-  /** Lo que hace la cajera, en vivo (sólo el administrador del billar, `billar.admin`). */
-  supervision: (sucursalId?: number | null) =>
-    request<SupervisionApi>(`/billar/supervision${deSucursal(sucursalId)}`),
+  /**
+   * Lo que hace la cajera, en vivo (sólo el administrador del billar,
+   * `billar.admin`). `turno` es la caja que se quiere mirar; sin él, la que
+   * trabaja ahora.
+   */
+  supervision: (sucursalId?: number | null, turno?: number | null) => {
+    const q = [sucursalId != null && `sucursalId=${sucursalId}`, turno != null && `turno=${turno}`].filter(Boolean);
+    return request<SupervisionApi>(`/billar/supervision${q.length ? `?${q.join("&")}` : ""}`);
+  },
   /** Pausar desde Supervisión: sin PIN ni caja propia, a nombre del administrador. */
   pausarSupervision: (sesionId: number, motivo: string) =>
     enviar<MesaApi>(`/billar/supervision/sesiones/${sesionId}/pausar`, { motivo }),

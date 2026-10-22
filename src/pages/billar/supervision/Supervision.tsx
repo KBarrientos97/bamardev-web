@@ -3,7 +3,7 @@ import { Icon, type NombreIcono } from "../../../components/Icon";
 import { Cargando, ErrorMsg, Modal, Vacio } from "../../../components/ui";
 import { fmtMoney } from "../../../lib/format";
 import { useSucursales } from "../../../lib/useSucursales";
-import type { ActividadApi, CajaSupervisionApi } from "../api";
+import type { ActividadApi, CajaSupervisionApi, SupervisionApi } from "../api";
 import { fmtHace, horaDe } from "../calculo";
 import { ESTADOS } from "../estilos";
 import { ChipsMotivo } from "../ModalesMesa";
@@ -21,7 +21,10 @@ import {
   filtrarActividad,
   FILTROS_ACTIVIDAD,
   iniciales,
+  opcionesDeTurno,
+  rangoDeTurno,
   resumenSupervision,
+  situacionDelTurno,
   textoDiferencia,
   tonoDeActividad,
   type CuentaSup,
@@ -29,6 +32,7 @@ import {
   type FiltroActividad,
   type MesaSup,
   type QuienSesion,
+  type SituacionTurno,
   type TonoActividad,
 } from "./Supervision.datos";
 import { useSupervision } from "./useSupervision";
@@ -39,16 +43,21 @@ const DE_A = 30;
 
 /**
  * Supervisión (21-oct): lo que hace la cajera, en vivo y sin poder tocar
- * nada. Las cajas de la jornada (quién abrió y a qué hora, quién cerró y a
- * qué hora), las mesas y cuentas abiertas con quién las abrió y cargó, y la
- * actividad con el nombre de cada usuario. Lo único que se puede hacer desde
- * acá es pausar una mesa, sin PIN, cuando la cajera lo pide por teléfono.
+ * nada. Las cajas (quién abrió y a qué hora, quién cerró y a qué hora), las
+ * mesas y cuentas abiertas con quién las abrió y cargó, y la actividad con el
+ * nombre de cada usuario. Lo único que se puede hacer desde acá es pausar una
+ * mesa, sin PIN, cuando la cajera lo pide por teléfono.
+ *
+ * Lo vendido y la actividad son del TURNO (22-oct): lo que pasó desde que se
+ * abrió una caja hasta que se cerró. Un billar abre a la tarde y cierra de
+ * madrugada, y cuando abren otra caja la pantalla empieza de cero en vez de
+ * mezclar con la anterior. El turno de antes se elige arriba.
  *
  * Es del administrador (`billar.admin`). No pide caja propia: es justo la
  * pantalla para quien no atiende.
  */
 export default function Supervision() {
-  const { datos, error, llegoEn, sucursal, elegirSucursal, recargar } = useSupervision();
+  const { datos, error, llegoEn, sucursal, elegirSucursal, elegirTurno, recargar } = useSupervision();
   const ahora = useAhora();
   const suc = useSucursales();
   const [filtro, setFiltro] = useState<FiltroActividad>("todo");
@@ -73,8 +82,9 @@ export default function Supervision() {
     () => (datos ? resumenSupervision(datos, mesas.map((m) => m.vista), cuentas.map((c) => c.vista)) : null),
     [datos, mesas, cuentas],
   );
+  const turno = useMemo(() => (datos ? situacionDelTurno(datos) : null), [datos]);
 
-  if (!datos || !resumen) {
+  if (!datos || !resumen || !turno) {
     return (
       <div className="flex h-full min-h-0 flex-col">
         <Cabecera titulo="Supervisión" />
@@ -92,6 +102,7 @@ export default function Supervision() {
   const selector =
     suc.elegir ? <SelectorSucursal valor={sucursal ?? datos.sucursal.id} sucursales={suc.sucursales} onElegir={elegirSucursal} /> : undefined;
   const actividad = filtrarActividad(datos.actividad, filtro);
+  const tituloActividad = turno.situacion === "hoy" ? "Actividad de hoy" : "Actividad del turno";
   const mesaViendo = viendo?.tipo === "mesa" ? mesas.find((m) => m.mesa.id === viendo.numero) : undefined;
   const cuentaViendo = viendo?.tipo === "cuenta" ? cuentas.find((c) => c.cuenta.id === viendo.id) : undefined;
 
@@ -107,14 +118,15 @@ export default function Supervision() {
               className={`h-2 w-2 shrink-0 rounded-full ${error ? "bg-amber-500" : "animate-pulse bg-primary"}`}
             />
             {error ? "Sin conexión: lo que ves puede estar atrasado" : `En vivo · actualizado ${horaDe(llegoEn)}`}
-            <span className="hidden sm:inline"> · hoy desde las {horaDe(datos.desde)}</span>
+            {turno.situacion === "hoy" && <span className="hidden sm:inline"> · hoy desde las {horaDe(datos.desde)}</span>}
           </>
         }
       />
 
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6 sm:py-5">
         <div className="mx-auto grid max-w-[1400px] gap-5 xl:grid-cols-[minmax(0,1fr)_400px]">
-          <div className="min-w-0 space-y-5">
+          {/* @container: los números de arriba se acomodan al ancho de ESTA columna, no al de la pantalla (con el menú y la actividad al costado, una compu de 1280 deja ~580 px). */}
+          <div className="@container min-w-0 space-y-5">
             {error && (
               <Nota tono="ambar" icono="wifiOff">
                 <b>Sin conexión con el servidor.</b> {error}{" "}
@@ -124,7 +136,17 @@ export default function Supervision() {
               </Nota>
             )}
 
-            <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+            {turno.caja && (
+              <SelectorDeTurno
+                datos={datos}
+                situacion={turno.situacion}
+                caja={turno.caja}
+                ahora={ahora}
+                onElegir={elegirTurno}
+              />
+            )}
+
+            <div className="grid grid-cols-2 gap-3 sm:gap-4 @4xl:grid-cols-4">
               <Kpi
                 icono="lock"
                 tono={resumen.cajasAbiertas ? "verde" : "gris"}
@@ -141,7 +163,7 @@ export default function Supervision() {
               <Kpi
                 icono="billetera"
                 tono="verde"
-                etiqueta="Vendido hoy"
+                etiqueta={turno.situacion === "hoy" ? "Vendido hoy" : "Vendido en el turno"}
                 valor={fmtMoney(resumen.vendido)}
                 pie={`${resumen.ventas} ${resumen.ventas === 1 ? "venta" : "ventas"}`}
               />
@@ -163,13 +185,27 @@ export default function Supervision() {
 
             <Tarjeta icono="clock" titulo="Cajas" extra="Llegada y salida del personal" cuerpo="p-0">
               {datos.cajas.length === 0 ? (
-                <p className="px-5 py-8 text-center text-[13px] text-texto-3">Nadie abrió caja en esta jornada todavía.</p>
+                <p className="px-5 py-8 text-center text-[13px] text-texto-3">Nadie abrió caja todavía.</p>
               ) : (
-                <ul className="divide-y divide-borde-soft">
-                  {datos.cajas.map((c) => (
-                    <FilaCaja key={c.id} c={c} estado={estadoDeCaja(c, datos.desde)} ahora={ahora} />
-                  ))}
-                </ul>
+                <>
+                  <ul className="divide-y divide-borde-soft">
+                    {datos.cajas.map((c) => (
+                      <FilaCaja
+                        key={c.id}
+                        c={c}
+                        estado={estadoDeCaja(c, datos.desde)}
+                        ahora={ahora}
+                        viendo={turno.caja?.id === c.id}
+                      />
+                    ))}
+                  </ul>
+                  {turno.situacion !== "hoy" && (
+                    <p className="border-t border-borde-soft bg-slate-50/70 px-4 py-2.5 text-[12px] text-texto-2 sm:px-5">
+                      Vendido hoy en todas las cajas: <b className="tabular-nums text-texto">{fmtMoney(resumen.vendidoHoy)}</b> ·{" "}
+                      {resumen.ventasHoy} {resumen.ventasHoy === 1 ? "venta" : "ventas"}
+                    </p>
+                  )}
+                </>
               )}
             </Tarjeta>
 
@@ -208,9 +244,9 @@ export default function Supervision() {
             )}
           </div>
 
-          <aside aria-label="Actividad de hoy" className="min-w-0 xl:sticky xl:top-0 xl:self-start">
-            <Tarjeta icono="lista" titulo="Actividad de hoy" extra={`${datos.actividad.length} renglones`} cuerpo="p-0">
-              <div className="-mx-0 flex gap-2 overflow-x-auto border-b border-borde-soft px-4 py-3">
+          <aside aria-label={tituloActividad} className="min-w-0 xl:sticky xl:top-0 xl:self-start">
+            <Tarjeta icono="lista" titulo={tituloActividad} extra={`${datos.actividad.length} renglones`} cuerpo="p-0">
+              <div className="flex flex-wrap gap-2 border-b border-borde-soft px-4 py-3">
                 {FILTROS_ACTIVIDAD.map((f) => (
                   <ChipFiltro
                     key={f.clave}
@@ -346,6 +382,85 @@ function Kpi({
   );
 }
 
+// ── El turno ────────────────────────────────────────────────────────────────
+
+/**
+ * Qué turno se está mirando y por qué: lo de abajo (vendido y actividad) es de
+ * esa caja, de que se abrió a que se cerró. Por defecto es el de la caja que
+ * trabaja ahora; con todas cerradas, cómo terminó la última (hasta que abran
+ * otra, y ahí la pantalla empieza de cero); y se puede elegir uno anterior.
+ */
+function SelectorDeTurno({
+  datos,
+  situacion,
+  caja,
+  ahora,
+  onElegir,
+}: {
+  datos: SupervisionApi;
+  situacion: SituacionTurno;
+  caja: CajaSupervisionApi;
+  ahora: number;
+  onElegir: (cajaId: number | null) => void;
+}) {
+  const defectoId = datos.turno?.defectoId ?? null;
+  const opciones = opcionesDeTurno(datos, ahora);
+  return (
+    <section aria-label="Turno" className="space-y-2.5">
+      <div>
+        <p className="mb-1 text-[11px] font-bold uppercase tracking-wider text-texto-3">Turno que estás viendo</p>
+        {/* El selector de verdad va transparente encima de lo que se ve: así el
+            texto (quién, desde cuándo) se parte en renglones en el celular en
+            vez de cortarse con "…". */}
+        <div className="relative rounded-xl border border-borde bg-white focus-within:ring-2 focus-within:ring-primary-100 hover:bg-muted">
+          <div aria-hidden className="flex min-h-11 items-center gap-2 py-2 pl-3.5 pr-3 text-[14px] font-semibold leading-snug text-texto">
+            <span className="min-w-0 flex-1">{opciones.find((o) => o.id === caja.id)?.etiqueta}</span>
+            <span className="shrink-0 text-slate-500">
+              <Icon name="chevronDown" size={16} />
+            </span>
+          </div>
+          <select
+            aria-label="Turno que estás viendo"
+            value={caja.id}
+            onChange={(ev) => {
+              const id = Number(ev.target.value);
+              // Elegir el que corresponde ahora es volver a seguirlo solo.
+              onElegir(id === defectoId ? null : id);
+            }}
+            className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+          >
+            {opciones.map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.etiqueta}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+      {situacion === "cerrado" && (
+        <Nota tono="azul" icono="lock">
+          <b>No hay caja abierta.</b> {caja.cajero} cerró {caja.hasta != null ? cuando(caja.hasta, ahora) : ""} ({rangoDeTurno(caja, ahora)}). Cuando
+          abran la siguiente, esta pantalla empieza de cero.
+        </Nota>
+      )}
+      {situacion === "olvidada" && (
+        <Nota tono="ambar" icono="alert">
+          <b>La caja de {caja.cajero} sigue abierta desde {cuando(caja.desde, ahora)}.</b> ¿Se olvidaron de cerrarla? Lo de abajo cuenta desde
+          que la abrió.
+        </Nota>
+      )}
+      {situacion === "elegido" && (
+        <Nota tono="gris" icono="info">
+          Estás viendo {caja.abierta ? "otra caja" : "un turno anterior"}, no lo que pasa ahora. Las mesas y cuentas de abajo sí son de ahora.{" "}
+          <button type="button" onClick={() => onElegir(null)} className="font-bold underline">
+            Volver al turno actual
+          </button>
+        </Nota>
+      )}
+    </section>
+  );
+}
+
 // ── Las cajas ───────────────────────────────────────────────────────────────
 
 const BADGE_CAJA: Record<EstadoCaja, { texto: string; clase: string }> = {
@@ -354,10 +469,13 @@ const BADGE_CAJA: Record<EstadoCaja, { texto: string; clase: string }> = {
   cerrada: { texto: "Cerrada", clase: "bg-slate-100 text-slate-600" },
 };
 
-function FilaCaja({ c, estado, ahora }: { c: CajaSupervisionApi; estado: EstadoCaja; ahora: number }) {
+function FilaCaja({ c, estado, ahora, viendo }: { c: CajaSupervisionApi; estado: EstadoCaja; ahora: number; viendo: boolean }) {
   const badge = BADGE_CAJA[estado];
   return (
-    <li className="px-4 py-3.5 sm:px-5">
+    <li
+      aria-current={viendo ? "true" : undefined}
+      className={`border-l-4 px-3 py-3.5 sm:px-4 ${viendo ? "border-l-primary-boton bg-primary-50/40" : "border-l-transparent"}`}
+    >
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <span
           aria-hidden
@@ -373,6 +491,12 @@ function FilaCaja({ c, estado, ahora }: { c: CajaSupervisionApi; estado: EstadoC
               <>
                 {" "}
                 · cerró <b className="font-semibold text-texto-2">{cuando(c.hasta, ahora)}</b> ({duracion(c.hasta - c.desde)})
+                {c.cerroPor && c.cerroPor !== c.cajero && (
+                  <>
+                    {" "}
+                    · la cerró <b className="font-semibold text-texto-2">{c.cerroPor}</b>
+                  </>
+                )}
               </>
             ) : (
               <> · lleva {duracion(ahora - c.desde)}</>
@@ -393,6 +517,7 @@ function FilaCaja({ c, estado, ahora }: { c: CajaSupervisionApi; estado: EstadoC
         {c.contado != null ? (
           <Dato
             etiqueta="Contó al cerrar"
+            corta="Contó"
             valor={fmtMoney(c.contado)}
             pie={textoDiferencia(c.diferencia ?? 0)}
             alerta={Math.abs(c.diferencia ?? 0) >= 0.005}
@@ -406,10 +531,32 @@ function FilaCaja({ c, estado, ahora }: { c: CajaSupervisionApi; estado: EstadoC
   );
 }
 
-function Dato({ etiqueta, valor, pie, alerta = false }: { etiqueta: string; valor: string; pie?: string; alerta?: boolean }) {
+function Dato({
+  etiqueta,
+  corta,
+  valor,
+  pie,
+  alerta = false,
+}: {
+  etiqueta: string;
+  /** La etiqueta en el celular, donde la larga no entra. */
+  corta?: string;
+  valor: string;
+  pie?: string;
+  alerta?: boolean;
+}) {
   return (
     <div className="min-w-0 rounded-lg bg-slate-50 px-2.5 py-2">
-      <dt className="truncate text-[10px] font-bold uppercase tracking-wide text-texto-3">{etiqueta}</dt>
+      <dt className="truncate text-[10px] font-bold uppercase tracking-wide text-texto-3">
+        {corta ? (
+          <>
+            <span className="sm:hidden">{corta}</span>
+            <span className="hidden sm:inline">{etiqueta}</span>
+          </>
+        ) : (
+          etiqueta
+        )}
+      </dt>
       <dd className="break-words text-[14px] font-bold leading-tight tabular-nums text-texto">{valor}</dd>
       {pie && <dd className={`break-words text-[11px] leading-tight ${alerta ? "font-semibold text-rose-700" : "text-texto-3"}`}>{pie}</dd>}
     </div>
@@ -496,12 +643,19 @@ function TarjetaMesaSup({
           {estado === "pausada" && m.quien?.pausadaPor && (
             <p className="mt-1 text-[12px] font-semibold text-amber-800">{textoPausa(m.quien.pausadaPor)}</p>
           )}
-          <div className="mt-auto flex gap-2 pt-3">
-            <BotonB className="flex-1" onClick={onVer}>
+          {/* En cards angostas (celular) cada botón toma su renglón; con lugar van lado a lado. */}
+          <div className="mt-auto flex flex-wrap gap-2 pt-3">
+            <BotonB className="min-w-[7rem] flex-1" onClick={onVer}>
               Detalle
             </BotonB>
             {estado !== "pausada" && (
-              <BotonB variante="ambar" icono="pausa" className="flex-1" onClick={onPausar} aria-label={`Pausar Mesa ${mesa.id}`}>
+              <BotonB
+                variante="ambar"
+                icono="pausa"
+                className="min-w-[7rem] flex-1"
+                onClick={onPausar}
+                aria-label={`Pausar Mesa ${mesa.id}`}
+              >
                 Pausar
               </BotonB>
             )}
