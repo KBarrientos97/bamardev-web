@@ -22,6 +22,7 @@ import { useContadorPreinscripciones } from "../lib/academia/contadorPreinscripc
 import { useAuth } from "../store/AuthContext";
 import { Icon } from "./Icon";
 import { textoInstalar } from "../lib/pwa/guia";
+import { VERSION_APP, versionLegible } from "../lib/pwa/version";
 
 /**
  * La navegación de la barra lateral: bloques con rótulo, grupos que se
@@ -520,6 +521,14 @@ export default function MenuLateral({
         <Icon name="logout" size={19} />
         {!compacta && <span>Cerrar sesión</span>}
       </button>
+
+      {/* Qué versión tiene este equipo: para comparar con la publicada cuando
+          alguien dice "a mí no me aparece" (21-oct). */}
+      {!compacta && (
+        <p className="px-3 pt-1 text-[11px] text-barra-texto-2 opacity-70" title={VERSION_APP}>
+          Versión {versionLegible()}
+        </p>
+      )}
 
       {compacta && tip && (
         <div

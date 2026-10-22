@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 import { reportarError } from "../telemetria";
 import { abiertaComoApp, esIOS, esLaApp } from "./entorno";
+import { VERSION_APP, versionDelServidor } from "./version";
 
 /**
  * La web como app instalable (PWA, PLAN-IOS §8): el manifest, el service
@@ -26,9 +27,21 @@ export interface EstadoPwa {
   versionNueva: boolean;
   /** Desde cuándo (ms) espera esa versión: el aviso sale sólo si pasan horas. */
   versionNuevaDesde: number | null;
+  /**
+   * El servidor publica otra versión y el service worker no la trajo ni
+   * pidiéndosela: se sale limpiando lo guardado (ver `useActualizarAlNavegar`).
+   */
+  atascada: boolean;
 }
 
-let estado: EstadoPwa = { instalable: null, instalada: false, versionNueva: false, versionNuevaDesde: null };
+const INICIAL: EstadoPwa = {
+  instalable: null,
+  instalada: false,
+  versionNueva: false,
+  versionNuevaDesde: null,
+  atascada: false,
+};
+let estado: EstadoPwa = INICIAL;
 const oyentes = new Set<() => void>();
 
 function cambiar(parcial: Partial<EstadoPwa>) {
@@ -49,7 +62,7 @@ export function usePwa(): EstadoPwa {
 
 /** Para los tests: arrancar de cero. */
 export function reiniciarEstadoPwa(inicial: Partial<EstadoPwa> = {}) {
-  estado = { instalable: null, instalada: false, versionNueva: false, versionNuevaDesde: null, ...inicial };
+  estado = { ...INICIAL, ...inicial };
   for (const avisar of oyentes) avisar();
 }
 
@@ -116,7 +129,30 @@ function ponerCabecera(doc: Document, ios: boolean) {
 }
 
 /** Cada cuánto, como mucho, se pregunta por una versión nueva al volver a la app. */
-const BUSCAR_VERSION_MS = 30 * 60_000;
+const BUSCAR_VERSION_MS = 2 * 60_000;
+/** Y cada cuánto mientras la pantalla está a la vista (la caja abierta todo el día). */
+const REVISAR_CADA_MS = 15 * 60_000;
+/** Lo que se le da al service worker para traer la versión antes de darlo por atascado. */
+const ESPERA_SW_MS = 60_000;
+
+/**
+ * ¿Hay otra versión publicada? Si sí, se le pide al service worker que la
+ * traiga (eso termina en `controlling` → `versionNueva`); si en un minuto no
+ * la trajo, queda `atascada` y el próximo cambio de pantalla limpia y recarga.
+ */
+export async function revisarVersion(
+  registro: Pick<ServiceWorkerRegistration, "update"> | undefined,
+  deps: { servidor?: () => Promise<string | null>; esperar?: (ms: number) => Promise<void> } = {},
+): Promise<void> {
+  if (estado.versionNueva || estado.atascada) return;
+  const publicada = await (deps.servidor ?? versionDelServidor)();
+  if (!publicada || publicada === VERSION_APP) return;
+  await registro?.update().catch(() => {
+    // Sin red: se reintenta en la próxima revisión.
+  });
+  await (deps.esperar ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms))))(ESPERA_SW_MS);
+  if (!estado.versionNueva) cambiar({ atascada: true });
+}
 
 /**
  * Registra el service worker. Lo genera vite-plugin-pwa (ver vite.config.ts):
@@ -134,21 +170,29 @@ const BUSCAR_VERSION_MS = 30 * 60_000;
 async function registrar(doc: Document) {
   try {
     const { Workbox } = await import("workbox-window");
-    const wb = new Workbox("/sw.js");
+    // `updateViaCache: "none"`: al buscar una versión nueva el navegador no
+    // usa ninguna copia guardada de sw.js (Cloudflare le pone 4 horas).
+    const wb = new Workbox("/sw.js", { updateViaCache: "none" });
     wb.addEventListener("controlling", (e) => {
       if (e.isUpdate) cambiar({ versionNueva: true, versionNuevaDesde: Date.now() });
     });
     const registro = await wb.register();
-    // Instalada en el iPhone, la app puede quedar días en memoria sin una
-    // navegación que dispare la búsqueda: se pregunta al volver a ella.
+    // Se pregunta por la versión al abrir, al volver a la app (instalada en
+    // el iPhone puede quedar días en memoria) y cada tanto con la pantalla a
+    // la vista. Es un JSON chiquito: preguntar seguido no cuesta nada.
     let ultima = Date.now();
+    const revisar = () => {
+      ultima = Date.now();
+      void revisarVersion(registro);
+    };
+    revisar();
     doc.addEventListener("visibilitychange", () => {
       if (doc.visibilityState !== "visible" || Date.now() - ultima < BUSCAR_VERSION_MS) return;
-      ultima = Date.now();
-      registro?.update().catch(() => {
-        // Sin red no hay versión que buscar: se reintenta la próxima vez.
-      });
+      revisar();
     });
+    setInterval(() => {
+      if (doc.visibilityState === "visible") revisar();
+    }, REVISAR_CADA_MS);
   } catch (e) {
     // Sin SW la web anda igual que antes; sólo se pierde lo de instalarla.
     reportarError("pwa.registrar", e, { tipo: "js" });

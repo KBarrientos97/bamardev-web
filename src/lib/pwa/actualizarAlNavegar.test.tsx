@@ -53,4 +53,14 @@ describe("useActualizarAlNavegar", () => {
     act(() => ir("/pos?creditos=comprar"));
     expect(recargo).not.toHaveBeenCalled();
   });
+
+  it("atascada (el SW no trajo la versión): al cambiar de pantalla limpia lo guardado y recarga", () => {
+    const limpia = vi.spyOn(recarga, "limpiandoTodo").mockImplementation(async () => {});
+    montar();
+    act(() => reiniciarEstadoPwa({ atascada: true }));
+    expect(limpia).not.toHaveBeenCalled();
+    act(() => ir("/reportes"));
+    expect(limpia).toHaveBeenCalledOnce();
+    expect(recargo).not.toHaveBeenCalled();
+  });
 });

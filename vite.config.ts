@@ -2,6 +2,16 @@ import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
+import { execSync } from 'node:child_process'
+
+/** El commit de la copia local, para los builds que no corren en Actions. */
+function commitLocal(): string {
+  try {
+    return execSync('git rev-parse HEAD').toString().trim()
+  } catch {
+    return 'local'
+  }
+}
 
 export default defineConfig(({ mode }) => {
   // A dónde manda el proxy de desarrollo. Por defecto QA, que es lo que sirve
@@ -14,10 +24,26 @@ export default defineConfig(({ mode }) => {
   // `/chat`. Con `CHAT_PROXY=http://localhost:3100` se prueba el de acá.
   const destinoChat = env.CHAT_PROXY || destino
 
+  // La versión de este build (ver src/lib/pwa/version.ts): la hora y el
+  // commit. Va adentro del JS y en /version.json; si un equipo tiene otra, la
+  // app sabe que quedó vieja aunque el service worker no se haya enterado.
+  const commit = (process.env.GITHUB_SHA || commitLocal()).slice(0, 7)
+  const version = `${new Date().toISOString().slice(0, 19)}Z+${commit}`
+
   return {
+    define: {
+      'import.meta.env.VITE_VERSION_APP': JSON.stringify(version),
+    },
     plugins: [
       react(),
       tailwindcss(),
+      {
+        name: 'version-json',
+        apply: 'build',
+        generateBundle() {
+          this.emitFile({ type: 'asset', fileName: 'version.json', source: JSON.stringify({ version }) })
+        },
+      },
       // La app instalable (PLAN-IOS §8). Sólo el service worker: el manifest
       // está en public/ y lo pone `lib/pwa/pwa.ts` únicamente en la app (el
       // mismo index sirve las páginas públicas, que no se instalan), y el
