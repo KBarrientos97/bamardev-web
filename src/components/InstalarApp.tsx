@@ -1,6 +1,6 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import type { NavegadorIOS } from "../lib/pwa/entorno";
-import { equipoActual, guiaPara } from "../lib/pwa/guia";
+import { equipoActual, esComputadora, guiaPara } from "../lib/pwa/guia";
 import { instalar, usePwa } from "../lib/pwa/pwa";
 import { Icon, type NombreIcono } from "./Icon";
 import { AvisoOk, Boton, Modal } from "./ui";
@@ -74,6 +74,8 @@ function PasosIOS({ navegador }: { navegador: NavegadorIOS }) {
 export function HojaInstalar({ onClose }: { onClose: () => void }) {
   const estado = usePwa();
   const guia = guiaPara(estado, equipoActual());
+  // En la computadora Chrome/Edge también instalan: misma acción, otras palabras.
+  const compu = esComputadora();
   const [instalando, setInstalando] = useState(false);
 
   async function alInstalar() {
@@ -102,18 +104,28 @@ export function HojaInstalar({ onClose }: { onClose: () => void }) {
   return (
     <Modal
       abierto
-      titulo="Instalá BamarDev en tu celular"
-      subtitulo="Queda con su ícono, abre más rápido y sin la barra del navegador."
+      titulo={compu ? "Instalá BamarDev en esta computadora" : "Instalá BamarDev en tu celular"}
+      subtitulo={
+        compu
+          ? "Abre en su propia ventana, con su ícono, y sin las pestañas del navegador."
+          : "Queda con su ícono, abre más rápido y sin la barra del navegador."
+      }
       onClose={onClose}
       ancho="max-w-sm"
       acciones={acciones}
     >
       {guia.tipo === "instalada" && <AvisoOk>Ya estás usando BamarDev como app.</AvisoOk>}
-      {guia.tipo === "boton" && (
-        <p className="text-sm leading-relaxed text-texto">
-          Tocá <strong>Instalar</strong> y el ícono de BamarDev aparece junto a tus otras apps.
-        </p>
-      )}
+      {guia.tipo === "boton" &&
+        (compu ? (
+          <p className="text-sm leading-relaxed text-texto">
+            Hacé clic en <strong>Instalar</strong> y BamarDev queda en el escritorio y en el menú de inicio, como un
+            programa más.
+          </p>
+        ) : (
+          <p className="text-sm leading-relaxed text-texto">
+            Tocá <strong>Instalar</strong> y el ícono de BamarDev aparece junto a tus otras apps.
+          </p>
+        ))}
       {guia.tipo === "ios" && <PasosIOS navegador={guia.navegador} />}
       {guia.tipo === "android" && (
         <ol className="space-y-4">
@@ -134,15 +146,32 @@ export function HojaInstalar({ onClose }: { onClose: () => void }) {
   );
 }
 
+/** Cuánto tiene que pasar en la misma pantalla para que se ofrezca a mano. */
+export const AVISAR_VERSION_TRAS_MS = 2 * 60 * 60_000;
+
 /**
- * "Hay una versión nueva": el deploy ya está en el celular pero la pantalla
- * sigue con la de antes. No se recarga sola (un cobro a medias se perdería);
- * se ofrece y el cajero elige el momento.
+ * "Hay una versión nueva": el deploy ya está en el equipo pero la pantalla
+ * sigue con la de antes. Casi nunca hace falta: se aplica sola al pasar a otra
+ * pantalla (`useActualizarAlNavegar`). Queda sólo para la app INSTALADA que
+ * pasa horas en la misma pantalla (la caja abierta todo el día); en una
+ * pestaña del navegador no sale nunca (dueño, 21-oct). No se recarga sola ahí:
+ * un cobro a medias se perdería.
  */
 export function AvisoVersionNueva() {
-  const { versionNueva } = usePwa();
+  const { versionNueva, versionNuevaDesde, instalada } = usePwa();
   const [cerrado, setCerrado] = useState(false);
-  if (!versionNueva || cerrado) return null;
+  const [vencido, setVencido] = useState(false);
+  useEffect(() => {
+    if (!versionNueva || !instalada || versionNuevaDesde == null) return;
+    const falta = versionNuevaDesde + AVISAR_VERSION_TRAS_MS - Date.now();
+    if (falta <= 0) {
+      setVencido(true);
+      return;
+    }
+    const t = setTimeout(() => setVencido(true), falta);
+    return () => clearTimeout(t);
+  }, [versionNueva, instalada, versionNuevaDesde]);
+  if (!versionNueva || !instalada || !vencido || cerrado) return null;
   return (
     <div
       role="status"

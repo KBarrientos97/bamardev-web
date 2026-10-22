@@ -15,8 +15,8 @@ import { sincronizarPushSilencioso } from "../lib/push/registroPush";
  * negocio, así que no depende de permisos: la lista la filtra el backend (a la
  * cajera no le aparece "Venta anulada") y acá sólo se muestra.
  *
- * Es también el único lugar donde se pide el permiso del navegador en PROD:
- * hasta ahora sólo existía /prueba-push en QA y nadie podía activarlas.
+ * Es también el único lugar donde se pide el permiso del navegador (la
+ * página /prueba-push de QA se sacó el 21-oct: esta pantalla tiene su prueba).
  */
 
 export default function Notificaciones() {

@@ -25,8 +25,6 @@ const ReservaPublica = lazy(() => import("./publico/ReservaPublica"));
 const RutasLink = lazy(() => import("./pages/pagina/RutasLink"));
 /** La TV del salón del billar con su llave (`/tv/billar/<llave>`), sin sesión. */
 const RutasTv = lazy(() => import("./publico/tv/TvBillar"));
-/** Prueba de push de la PWA (sólo QA, temporal): no entra al build de PROD. */
-const PruebaPush = import.meta.env.MODE === "qa" ? lazy(() => import("./publico/PruebaPush")) : null;
 
 /** El gris de la página pública mientras llega su pantalla. */
 const ESPERA_PAGINA = <div style={{ minHeight: "100dvh", background: "#F6F7F9" }} />;
@@ -70,16 +68,6 @@ export default function App() {
               </Suspense>
             }
           />
-          {PruebaPush && (
-            <Route
-              path="/prueba-push"
-              element={
-                <Suspense fallback={<div className="min-h-dvh bg-white" />}>
-                  <PruebaPush />
-                </Suspense>
-              }
-            />
-          )}
           <Route path="*" element={<PaginaOApp />} />
         </Routes>
       </FalloDeCarga>

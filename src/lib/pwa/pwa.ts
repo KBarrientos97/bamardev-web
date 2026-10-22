@@ -24,9 +24,11 @@ export interface EstadoPwa {
   instalada: boolean;
   /** Un deploy nuevo ya está en el celular: falta recargar para usarlo. */
   versionNueva: boolean;
+  /** Desde cuándo (ms) espera esa versión: el aviso sale sólo si pasan horas. */
+  versionNuevaDesde: number | null;
 }
 
-let estado: EstadoPwa = { instalable: null, instalada: false, versionNueva: false };
+let estado: EstadoPwa = { instalable: null, instalada: false, versionNueva: false, versionNuevaDesde: null };
 const oyentes = new Set<() => void>();
 
 function cambiar(parcial: Partial<EstadoPwa>) {
@@ -47,7 +49,7 @@ export function usePwa(): EstadoPwa {
 
 /** Para los tests: arrancar de cero. */
 export function reiniciarEstadoPwa(inicial: Partial<EstadoPwa> = {}) {
-  estado = { instalable: null, instalada: false, versionNueva: false, ...inicial };
+  estado = { instalable: null, instalada: false, versionNueva: false, versionNuevaDesde: null, ...inicial };
   for (const avisar of oyentes) avisar();
 }
 
@@ -123,16 +125,18 @@ const BUSCAR_VERSION_MS = 30 * 60_000;
  *
  * El SW nuevo de un deploy toma el control solo (skipWaiting) y NO recarga
  * la página: un cajero a mitad de un cobro no puede ver la pantalla
- * reiniciarse. Se le avisa ("hay una versión nueva") y recarga cuando quiere;
- * si antes la app pide un pedazo que ya no existe, `recargaPorVersion` hace lo
- * mismo que hacía sin SW.
+ * reiniciarse. La versión nueva se aplica sola cuando pasa a otra pantalla
+ * (`useActualizarAlNavegar`); el aviso de "hay una versión nueva" queda sólo
+ * para la app instalada que pasa horas en la misma pantalla. Si antes la app
+ * pide un pedazo que ya no existe, `recargaPorVersion` hace lo mismo que
+ * hacía sin SW.
  */
 async function registrar(doc: Document) {
   try {
     const { Workbox } = await import("workbox-window");
     const wb = new Workbox("/sw.js");
     wb.addEventListener("controlling", (e) => {
-      if (e.isUpdate) cambiar({ versionNueva: true });
+      if (e.isUpdate) cambiar({ versionNueva: true, versionNuevaDesde: Date.now() });
     });
     const registro = await wb.register();
     // Instalada en el iPhone, la app puede quedar días en memoria sin una

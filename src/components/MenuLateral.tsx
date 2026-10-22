@@ -21,6 +21,7 @@ import { useContadorBillar } from "../lib/billar/contador";
 import { useContadorPreinscripciones } from "../lib/academia/contadorPreinscripciones";
 import { useAuth } from "../store/AuthContext";
 import { Icon } from "./Icon";
+import { textoInstalar } from "../lib/pwa/guia";
 
 /**
  * La navegación de la barra lateral: bloques con rótulo, grupos que se
@@ -57,8 +58,8 @@ export default function MenuLateral({
   /** "Cambiar mi contraseña": el formulario vive en el Layout (ver ahí). */
   onCambiarPassword?: () => void;
   /**
-   * "Instalar en el celular" (PLAN-IOS). Sin ella no se dibuja: ya está
-   * instalada o es una computadora, donde no hay nada que instalar.
+   * "Instalar en el celular" o "en esta computadora" (PLAN-IOS). Sin ella no
+   * se dibuja: ya está instalada o el navegador no deja instalarla.
    */
   onInstalar?: () => void;
 }) {
@@ -440,10 +441,10 @@ export default function MenuLateral({
             setTip(null);
             onInstalar();
           }}
-          aria-label={compacta ? "Instalar en el celular" : undefined}
+          aria-label={compacta ? textoInstalar() : undefined}
           data-fila=""
           data-nav-id="instalar"
-          {...mostrarTip("Instalar en el celular")}
+          {...mostrarTip(textoInstalar())}
           className={[
             "flex items-center gap-3 rounded-xl py-2.5 text-sm font-semibold text-barra-texto-2 transition-colors hover:bg-white/10 hover:text-barra-texto",
             foco,
@@ -451,25 +452,8 @@ export default function MenuLateral({
           ].join(" ")}
         >
           <Icon name="download" size={19} />
-          {!compacta && <span>Instalar en el celular</span>}
+          {!compacta && <span>{textoInstalar()}</span>}
         </button>
-      )}
-
-      {/* Sólo en QA y temporal: la prueba de push de la PWA. Instalada no
-          tiene barra de direcciones, así que /prueba-push necesita un link.
-          En el build de PROD esto ni se compila (MODE es constante). */}
-      {import.meta.env.MODE === "qa" && !compacta && (
-        <a
-          href="/prueba-push"
-          data-fila=""
-          className={[
-            "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-barra-texto-2 transition-colors hover:bg-white/10 hover:text-barra-texto",
-            foco,
-          ].join(" ")}
-        >
-          <Icon name="bell" size={19} />
-          <span>Probar notificaciones (QA)</span>
-        </a>
       )}
 
       {/* Los avisos de cada uno (PLAN-PUSH §10.2): para cualquier rol, como

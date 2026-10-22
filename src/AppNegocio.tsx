@@ -51,6 +51,7 @@ import ConfigAgenda from "./pages/agenda/config/ConfigAgenda";
 import ConfigNegocio from "./pages/agenda/config/ConfigNegocio";
 import { AuthProvider, useAuth } from "./store/AuthContext";
 import { useNavegarDesdePush } from "./lib/push/useNavegarDesdePush";
+import { ActualizarAlNavegar } from "./lib/pwa/actualizarAlNavegar";
 
 /*
  * La app del negocio: sesión, login, menú y todas sus pantallas. Se baja
@@ -845,6 +846,9 @@ function SinPantallaEnBlanco({ children }: { children: React.ReactNode }) {
 export default function AppConSesion() {
   return (
     <AuthProvider>
+      {/* La versión nueva de un deploy, al pasar a otra pantalla (todas: también
+          las que no tienen el menú, como el salón del mesero). */}
+      <ActualizarAlNavegar />
       <SinPantallaEnBlanco>
         <Rutas />
       </SinPantallaEnBlanco>

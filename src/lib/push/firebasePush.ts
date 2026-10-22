@@ -51,7 +51,7 @@ export async function tokenFcm(): Promise<string | null> {
 /**
  * Pide el permiso (tiene que salir de un toque: iOS no lo deja pedir solo),
  * trae el token y, si hay sesión, lo registra en el backend. Lo usan la
- * pantalla Notificaciones y /prueba-push (QA): `registrado` false con `ok`
+ * pantalla Notificaciones: `registrado` false con `ok`
  * true es "este navegador ya puede recibir, pero el servidor todavía no lo
  * sabe" (sin red, 5xx); el próximo arranque lo reintenta solo.
  */
