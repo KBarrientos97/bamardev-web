@@ -22,7 +22,8 @@ import {
 } from "../../components/ui";
 import { api } from "../../lib/api";
 import { fmtMoney, fmtNum } from "../../lib/format";
-import { ICONOS_ARTICULO, iconoPorLlave } from "../../lib/iconosArticulo";
+import { iconoPorLlave } from "../../lib/iconosArticulo";
+import SelectorIcono from "../../components/SelectorIcono";
 import { esBelleza, esFarmacia, termino } from "../../lib/rubro";
 import { FichaMedicamento, TarjetaMedicamento } from "../farmacia/FichaMedicamento";
 import { useBusquedaProductos } from "../farmacia/useBusquedaProductos";
@@ -1508,6 +1509,7 @@ function FormProductoCuerpo({
         {eligiendoIcono && (
           <SelectorIcono
             actual={icono}
+            rubro={rubro}
             onElegir={(llave) => {
               setIcono(llave);
               setEligiendoIcono(false);
@@ -1591,81 +1593,6 @@ function FormProductoCuerpo({
         </label>
 
         <ErrorMsg>{error}</ErrorMsg>
-      </div>
-    </Modal>
-  );
-}
-
-/**
- * Grilla para elegir el ícono del artículo. Port de `SeleccionarIconoDialog`
- * (Android): las mismas imágenes y las mismas llaves, para que el catálogo se
- * vea igual en la tablet y en la web.
- *
- * "Sin ícono" es una opción explícita y no un botón de borrar escondido: es la
- * forma de volver al monograma, y el cajero tiene que poder encontrarla.
- */
-function SelectorIcono({
-  actual,
-  onElegir,
-  onCerrar,
-}: {
-  actual: string | null;
-  onElegir: (llave: string | null) => void;
-  onCerrar: () => void;
-}) {
-  return (
-    <Modal abierto titulo="Elegí un ícono" onClose={onCerrar} ancho="max-w-lg">
-      <div className="space-y-3 p-4">
-        <button
-          type="button"
-          onClick={() => onElegir(null)}
-          className={[
-            "flex w-full items-center gap-3 rounded-xl border p-2.5 text-left transition-colors",
-            actual === null
-              ? "border-primary bg-primary-50"
-              : "border-borde hover:bg-muted",
-          ].join(" ")}
-        >
-          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-muted text-texto-3">
-            <Icon name="close" size={18} />
-          </span>
-          <span className="text-[13px] font-semibold text-texto">
-            Sin ícono
-            <span className="block text-xs font-normal text-texto-3">
-              Se muestran las iniciales del nombre
-            </span>
-          </span>
-        </button>
-
-        <ul className="grid grid-cols-3 gap-2 sm:grid-cols-4">
-          {ICONOS_ARTICULO.map((ic) => (
-            <li key={ic.llave}>
-              <button
-                type="button"
-                onClick={() => onElegir(ic.llave)}
-                title={ic.etiqueta}
-                className={[
-                  "flex w-full flex-col items-center gap-1.5 rounded-xl border p-2.5 transition-colors",
-                  actual === ic.llave
-                    ? "border-primary bg-primary-50"
-                    : "border-borde hover:bg-muted",
-                ].join(" ")}
-              >
-                <img
-                  src={ic.src}
-                  alt=""
-                  width={52}
-                  height={52}
-                  loading="lazy"
-                  className="h-[52px] w-[52px] object-contain"
-                />
-                <span className="line-clamp-2 text-center text-[11px] font-semibold leading-tight text-texto-2">
-                  {ic.etiqueta}
-                </span>
-              </button>
-            </li>
-          ))}
-        </ul>
       </div>
     </Modal>
   );
