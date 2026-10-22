@@ -20,16 +20,16 @@ import {
   useAviso,
   Vacio,
 } from "../components/ui";
-import { api } from "../lib/api";
+import { ApiError, api } from "../lib/api";
 import { fmtFechaHora, iniciales, tiempoRelativo } from "../lib/format";
 import { tienePermiso } from "../lib/permisos";
 import { apiRoles, mensajeDeError, rolSinPermisos, rolTiene, tonoDeRol } from "../lib/roles";
 import { useApi } from "../lib/useApi";
 import { useAuth } from "../store/AuthContext";
-import type { ActualizarUsuarioInput, CrearUsuarioInput, RolNegocio, Usuario } from "../types";
+import type { ActualizarUsuarioInput, CrearUsuarioInput, CupoUsuarios, RolNegocio, Usuario } from "../types";
 import { paraQueSirveElPin, queDejaDeAutorizar } from "./Usuarios.datos";
 import { ModalIntentosPin } from "../components/seguridad/ModalIntentosPin";
-import { MENSAJE_PIN_FACIL, pinAlAzar, pinFacil } from "../lib/seguridad/pinFacil";
+import { pinAlAzar } from "../lib/seguridad/pinFacil";
 
 /**
  * Usuarios: las cuentas de acceso del negocio (PLAN-ROLES-NEGOCIO). Todo sale
@@ -76,6 +76,9 @@ export default function Usuarios() {
   const conPin = incluye("autorizacion_pin");
   const usuarios = useApi(() => api.getUsuarios(), []);
   const roles = useApi(() => apiRoles.listar(), []);
+  // El límite del plan, para avisar al apretar "Nuevo" y no después de llenar el
+  // formulario. Si no llega (un servidor viejo), se abre el alta como siempre.
+  const cupo = useApi(() => api.getCupoUsuarios(), []);
   // Los permisos de cada rol llegan con su nombre y su dominio en `/roles`:
   // "qué puede hacer" no necesita el catálogo.
   const listaRoles = useMemo(() => roles.datos ?? [], [roles.datos]);
@@ -103,6 +106,11 @@ export default function Usuarios() {
   const [quitandoPinEnCurso, setQuitandoPinEnCurso] = useState(false);
   const [cambiandoEstado, setCambiandoEstado] = useState<Usuario | null>(null);
   const [cambiandoEstadoEnCurso, setCambiandoEstadoEnCurso] = useState(false);
+  const [eliminando, setEliminando] = useState<Usuario | null>(null);
+  const [eliminandoEnCurso, setEliminandoEnCurso] = useState(false);
+  // Una cuenta con historial no se elimina: el servidor lo dice y se ofrece desactivarla.
+  const [conHistorial, setConHistorial] = useState<{ usuario: Usuario; mensaje: string } | null>(null);
+  const [alLimite, setAlLimite] = useState(false);
   const [errorAccion, setErrorAccion] = useState("");
   const [aviso, setAviso] = useAviso();
 
@@ -147,6 +155,43 @@ export default function Usuarios() {
     setDetalle(actualizado);
     usuarios.recargar();
     roles.recargar();
+    cupo.recargar();
+  }
+
+  /** "Nuevo": si el plan ya no deja agregar a nadie, se avisa en vez de abrir el formulario. */
+  function abrirAlta() {
+    if (cupo.datos?.alLimite) setAlLimite(true);
+    else setCreando(true);
+  }
+
+  /**
+   * Elimina una cuenta sin historial (21-oct, pedido del dueño). Con registros
+   * a su nombre (ventas, cajas…) el servidor responde 409 y se ofrece
+   * desactivarla, que es lo que corresponde: no entra más y libera el lugar.
+   */
+  async function eliminar() {
+    if (!eliminando || eliminandoEnCurso) return;
+    const quien = eliminando;
+    setErrorAccion("");
+    setEliminandoEnCurso(true);
+    try {
+      await api.eliminarUsuario(quien.id);
+      setEliminando(null);
+      setDetalle(null);
+      usuarios.recargar();
+      roles.recargar();
+      cupo.recargar();
+      setAviso(`"${quien.nombre}" eliminado.`);
+    } catch (err) {
+      setEliminando(null);
+      if (err instanceof ApiError && err.codigo === "USUARIO_CON_HISTORIAL") {
+        setConHistorial({ usuario: quien, mensaje: err.message });
+      } else {
+        setErrorAccion(err instanceof Error ? err.message : "No se pudo eliminar el usuario");
+      }
+    } finally {
+      setEliminandoEnCurso(false);
+    }
   }
 
   /**
@@ -199,7 +244,7 @@ export default function Usuarios() {
                 Intentos de PIN
               </Boton>
             )}
-            <Boton icono="plus" onClick={() => setCreando(true)}>
+            <Boton icono="plus" onClick={abrirAlta}>
               Nuevo
             </Boton>
           </div>
@@ -247,7 +292,7 @@ export default function Usuarios() {
             }
             accion={
               !lista.length && (
-                <Boton icono="plus" onClick={() => setCreando(true)}>
+                <Boton icono="plus" onClick={abrirAlta}>
                   Nuevo usuario
                 </Boton>
               )
@@ -280,6 +325,7 @@ export default function Usuarios() {
         onPin={(u) => setCambiandoPin(u)}
         onQuitarPin={(u) => setQuitandoPin(u)}
         onEstado={(u) => setCambiandoEstado(u)}
+        onEliminar={(u) => setEliminando(u)}
         conPin={conPin}
       />
 
@@ -347,7 +393,74 @@ export default function Usuarios() {
         onCancel={() => setQuitandoPin(null)}
         onOk={quitarPin}
       />
+
+      <Confirmar
+        abierto={!!eliminando}
+        titulo="Eliminar usuario"
+        texto={`¿Eliminar a "${eliminando?.nombre}"? Se borra la cuenta y no se puede deshacer. Sólo se puede si nunca operó: con ventas, cajas u otros registros a su nombre, tenés que desactivarlo.`}
+        etiquetaOk="Eliminar"
+        peligroso
+        procesando={eliminandoEnCurso}
+        onCancel={() => setEliminando(null)}
+        onOk={eliminar}
+      />
+
+      <Confirmar
+        abierto={!!conHistorial}
+        titulo="No se puede eliminar"
+        texto={conHistorial?.mensaje ?? ""}
+        etiquetaOk={conHistorial?.usuario.activo ? "Desactivarlo" : "Entendido"}
+        onCancel={() => setConHistorial(null)}
+        onOk={() => {
+          const u = conHistorial?.usuario;
+          setConHistorial(null);
+          if (u?.activo) setCambiandoEstado(u);
+        }}
+      />
+
+      <LimiteDeUsuarios abierto={alLimite} cupo={cupo.datos} onClose={() => setAlLimite(false)} />
     </div>
+  );
+}
+
+/**
+ * El plan ya no deja agregar a nadie (21-oct, pedido del dueño): se avisa al
+ * apretar "Nuevo", con lo que se puede hacer. El servidor lo rechaza igual.
+ */
+function LimiteDeUsuarios({
+  abierto,
+  cupo,
+  onClose,
+}: {
+  abierto: boolean;
+  cupo: CupoUsuarios | null;
+  onClose: () => void;
+}) {
+  const maximo = cupo?.maximo ?? 0;
+  return (
+    <Modal
+      abierto={abierto}
+      titulo="Llegaste al límite de usuarios"
+      onClose={onClose}
+      ancho="max-w-sm"
+      acciones={<Boton onClick={onClose}>Entendido</Boton>}
+    >
+      <div className="flex gap-3 rounded-xl bg-amber-50 p-3.5 text-sm text-amber-900">
+        <span className="mt-0.5 shrink-0">
+          <Icon name="alert" size={18} />
+        </span>
+        <div className="space-y-2">
+          <p>
+            Tu cuenta solo puede tener <b>{maximo}</b> {maximo === 1 ? "usuario activo" : "usuarios activos"} y ya tenés{" "}
+            <b>{cupo?.ocupados ?? maximo}</b>.
+          </p>
+          <p>
+            Para agregar a alguien más, desactivá o eliminá a una persona que ya no use el sistema, o pedile a BamarDev que
+            amplíe tu plan con usuarios extra.
+          </p>
+        </div>
+      </div>
+    </Modal>
   );
 }
 
@@ -409,6 +522,7 @@ function DetalleUsuario({
   onPin,
   onQuitarPin,
   onEstado,
+  onEliminar,
 }: {
   usuario: Usuario | null;
   roles: RolNegocio[];
@@ -418,6 +532,7 @@ function DetalleUsuario({
   onPin: (u: Usuario) => void;
   onQuitarPin: (u: Usuario) => void;
   onEstado: (u: Usuario) => void;
+  onEliminar: (u: Usuario) => void;
   conPin: boolean;
 }) {
   const { usuario: actual } = useAuth();
@@ -446,6 +561,12 @@ function DetalleUsuario({
               onClick={() => onEstado(u)}
             >
               {u.activo ? "Desactivar" : "Activar"}
+            </Boton>
+          )}
+          {/* Eliminar, por lo mismo que Desactivar: a uno mismo no. */}
+          {!esYo && (
+            <Boton variante="ghost" icono="trash" onClick={() => onEliminar(u)}>
+              Eliminar
             </Boton>
           )}
           <Boton icono="edit" onClick={() => onEditar(u)}>
@@ -554,6 +675,11 @@ function Dato({ label, valor }: { label: string; valor: string }) {
   );
 }
 
+/** Lo que acepta el backend como usuario (create/update-usuario.dto): minúsculas, números, punto, guion y guion bajo. */
+const USUARIO_VALIDO = /^[a-z0-9._-]{3,30}$/;
+const MENSAJE_USUARIO_INVALIDO =
+  "El usuario necesita entre 3 y 30 caracteres: letras sin tilde ni espacios, números, punto, guion o guion bajo.";
+
 function FormUsuario({
   abierto,
   usuario,
@@ -594,9 +720,18 @@ function FormUsuarioCuerpo({
 }) {
   const esEdicion = !!usuario;
   const [nombre, setNombre] = useState(usuario?.nombre ?? "");
-  const [username, setUsername] = useState("");
+  const [username, setUsername] = useState(usuario?.usuario ?? "");
   const [password, setPassword] = useState("");
   const { usuario: actual } = useAuth();
+  // Al editar, el usuario se puede cambiar (21-oct, pedido del dueño). Se manda
+  // sólo si cambió, y se mira como lo guarda el backend: sin espacios y en
+  // minúsculas.
+  const usernameNuevo = username.trim().toLowerCase();
+  // Se compara sin pasarlo a minúsculas: uno viejo guardado con mayúsculas
+  // ("Rosa M.") que no se toca no es un cambio, y no se le exige el formato nuevo.
+  const cambiaUsername = esEdicion && username.trim() !== (usuario?.usuario ?? "");
+  const usernameInvalido = cambiaUsername && !USUARIO_VALIDO.test(usernameNuevo);
+  const esMiCuenta = !!usuario && usuario.id === actual?.id;
   /**
    * Los roles que quien mira puede asignar: el backend no ofrece uno con un
    * permiso que él no tenga, ni el Administrador si él no lo es.
@@ -656,6 +791,7 @@ function FormUsuarioCuerpo({
   async function guardar() {
     setError("");
     if (!nombre.trim()) return setError("Poné el nombre completo.");
+    if (usernameInvalido) return setError(MENSAJE_USUARIO_INVALIDO);
     if (!esEdicion) {
       if (!username.trim()) return setError("Poné un nombre de usuario.");
       if (password.length < 6) return setError("La contraseña necesita al menos 6 caracteres.");
@@ -678,6 +814,7 @@ function FormUsuarioCuerpo({
         // viejo quedaría pegado para siempre.
         const input: ActualizarUsuarioInput = {
           nombre: nombre.trim(),
+          ...(cambiaUsername ? { username: usernameNuevo } : {}),
           // El rol sólo si cambió: mandarlo igual le pediría al backend
           // asignar uno que quien edita quizás no puede dar.
           ...(rolId !== usuario.rolId ? { rolId } : {}),
@@ -743,6 +880,29 @@ function FormUsuarioCuerpo({
         <Campo label="Nombre completo">
           <Input value={nombre} onChange={(e) => setNombre(e.target.value)} autoFocus />
         </Campo>
+
+        {esEdicion && (
+          <Campo
+            label="Usuario"
+            hint={
+              cambiaUsername
+                ? esMiCuenta
+                  ? `Es tu cuenta: la próxima vez que entres, usá «${usernameNuevo}».`
+                  : `Desde ahora entra con «${usernameNuevo}»: avisale. Si ya tiene el sistema abierto, sigue adentro hasta que salga.`
+                : "Con esto entra al sistema"
+            }
+            error={usernameInvalido ? MENSAJE_USUARIO_INVALIDO : undefined}
+          >
+            <Input
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              autoCapitalize="none"
+              autoComplete="off"
+              spellCheck={false}
+              maxLength={30}
+            />
+          </Campo>
+        )}
 
         {!esEdicion && (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -1002,9 +1162,6 @@ function FormPinCuerpo({
     // antes siguen sirviendo para autorizar; al cambiarlo, queda de 4.
     if (!/^\d{4}$/.test(pin)) return setError("El PIN son 4 dígitos, sin letras.");
     if (repetido !== pin) return setError("Los dos PIN no coinciden.");
-    // Los fáciles no (1234, años, fechas): el backend igual los rechaza.
-    const facil = pinFacil(pin);
-    if (facil) return setError(MENSAJE_PIN_FACIL[facil]);
 
     setGuardando(true);
     try {
@@ -1051,6 +1208,7 @@ function FormPinCuerpo({
             onChange={(e) => {
               setPin(e.target.value.replace(/\D/g, "").slice(0, 4));
               setGenerado(null);
+              setError("");
             }}
             disabled={rolSinPin}
             autoFocus
@@ -1066,6 +1224,7 @@ function FormPinCuerpo({
             onChange={(e) => {
               setRepetido(e.target.value.replace(/\D/g, "").slice(0, 4));
               setGenerado(null);
+              setError("");
             }}
             disabled={rolSinPin}
           />

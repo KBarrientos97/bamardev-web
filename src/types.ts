@@ -1506,8 +1506,17 @@ export interface CrearUsuarioInput {
  * null sería indistinguible de "no tocar este campo" y el dato quedaría
  * pegado para siempre (misma convención que la app Android).
  */
+/** Cuántos usuarios activos hay y cuántos permite el plan (`maximo: null` = sin tope). */
+export interface CupoUsuarios {
+  maximo: number | null;
+  ocupados: number;
+  alLimite: boolean;
+}
+
 export interface ActualizarUsuarioInput {
   nombre?: string;
+  /** Con el que entra al sistema. Sólo si cambia: el backend lo pasa a minúsculas y revisa que esté libre. */
+  username?: string;
   /** Sólo si cambia: el backend no deja asignar lo que el actor no puede dar. */
   rolId?: number;
   email?: string;
