@@ -56,7 +56,9 @@ export default function PlanillaMes() {
               <button
                 type="button"
                 aria-label="Mes siguiente"
-                disabled={mes >= hoy}
+                // Hasta un mes después del actual (QA 23-oct): las líneas de los
+                // módulos que empiezan el mes que viene ya se pueden mirar.
+                disabled={mes >= sumarMeses(hoy, 1)}
                 onClick={() => setMes(sumarMeses(mes, 1))}
                 className="flex h-9 w-9 items-center justify-center rounded-lg text-texto-2 hover:bg-muted disabled:opacity-30 disabled:hover:bg-transparent"
               >

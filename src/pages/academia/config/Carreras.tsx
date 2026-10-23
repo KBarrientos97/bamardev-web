@@ -213,6 +213,15 @@ export default function Carreras() {
   );
 }
 
+/**
+ * Cómo se le paga al docente en el curso. Con el modo, ése; si un backend no
+ * lo manda pero sí el monto, es monto fijo (QA 23-oct: la lista decía "20 %"
+ * en un curso de Bs 90 fijos).
+ */
+function modoDocenteDe(c: Carrera): PagoDocenteModo {
+  return c.pagoDocenteModo ?? (c.montoDocente != null ? "MONTO" : "PORCENTAJE");
+}
+
 /** Cuántos módulos activos tiene el curso: el precio mes a mes es eso por el precio de cada uno. */
 function modulosActivos(c: Carrera): number {
   return c.materias.filter((m) => m.activa).length;
@@ -277,7 +286,7 @@ function FilaCurso({
     c.precioCompletoFijo != null
       ? (c.descuentoCompletoEquivalentePct ?? descuentoEquivalente((c.precioModulo ?? 0) * modulosActivos(c), c.precioCompletoFijo))
       : c.descuentoCompletoPct;
-  const montoFijo = c.pagoDocenteModo === "MONTO";
+  const montoFijo = modoDocenteDe(c) === "MONTO";
   const aMedida = c.planes.some((pl) => pl.activo && !pl.generado);
   const pct = c.pctDocente ?? pctInstituto;
   const sub = [modulos.map((m) => m.nombre).join(" · "), aMedida ? "con planes a medida" : ""].filter(Boolean).join(" · ");
@@ -324,8 +333,8 @@ function FilaCurso({
         <span className="min-w-0 md:text-right">
           {montoFijo ? (
             <>
-              <span className="block text-sm tabular-nums text-texto-2">{fmtMoney(c.montoDocente ?? 0)}</span>
-              <span className="block text-[12px] text-texto-3">fijo por {p.materia}</span>
+              <span className="block text-sm tabular-nums text-texto-2">{fmtMoney(c.montoDocente ?? 0)} fijo</span>
+              <span className="block text-[12px] text-texto-3">por {p.alumno} y {p.materia}</span>
             </>
           ) : (
             <>
@@ -386,7 +395,7 @@ function PanelCurso({
   const [modoCompleto, setModoCompleto] = useState<"PCT" | "PRECIO">(curso?.precioCompletoFijo != null ? "PRECIO" : "PCT");
   const [precioFinal, setPrecioFinal] = useState(curso?.precioCompletoFijo != null ? String(curso.precioCompletoFijo) : "");
   // A5: al docente, un % de lo que paga cada estudiante o un monto fijo por módulo pagado.
-  const [modoDocente, setModoDocente] = useState<PagoDocenteModo>(curso?.pagoDocenteModo ?? "PORCENTAJE");
+  const [modoDocente, setModoDocente] = useState<PagoDocenteModo>(curso ? modoDocenteDe(curso) : "PORCENTAJE");
   const [montoDoc, setMontoDoc] = useState(curso?.montoDocente != null ? String(curso.montoDocente) : "");
   const [publicar, setPublicar] = useState(curso?.publicarEnPagina ?? false);
   const [verAvanzadas, setVerAvanzadas] = useState(false);
@@ -404,6 +413,16 @@ function PanelCurso({
   const precioFinalOk = nFinal > 0 && nFinal <= lista + 0.005;
   const equivalente = descuentoEquivalente(lista, nFinal);
   const cuenta = precioCurso(nPrecio, n, nDesc, conPrecioFinal && precioFinalOk ? nFinal : null);
+  /**
+   * Con "Precio final" y el campo vacío (o mal) el pago completo todavía no
+   * tiene precio: "—", no el del % anterior (QA 23-oct).
+   */
+  const completoPendiente = conPrecioFinal && !precioFinalOk;
+  // El error de guardar era de lo que se mandó: al corregir cualquier campo se
+  // va, no queda pegado en rojo (QA 23-oct).
+  useEffect(() => {
+    setError("");
+  }, [nombre, modulos, precio, desc, cupo, pct, modoCompleto, precioFinal, modoDocente, montoDoc, publicar]);
 
   async function guardar() {
     if (!nombre.trim()) return setError("Falta el nombre.");
@@ -436,7 +455,7 @@ function PanelCurso({
           : {}),
       ...(modoDocente === "MONTO"
         ? { pagoDocenteModo: "MONTO" as const, montoDocente: nMontoDoc }
-        : curso?.pagoDocenteModo === "MONTO"
+        : curso && modoDocenteDe(curso) === "MONTO"
           ? { pagoDocenteModo: "PORCENTAJE" as const, montoDocente: null }
           : {}),
     };
@@ -621,11 +640,17 @@ function PanelCurso({
                   <div className="flex items-baseline justify-between gap-3">
                     <dt className="shrink-0 text-texto-2">Pago completo</dt>
                     <dd className="text-right tabular-nums text-texto">
+                      {completoPendiente ? (
+                        <span className="text-texto-4">—</span>
+                      ) : (
+                        <>
                       <span className="font-semibold">{fmtMoney(cuenta.completo)}</span> ·{" "}
                       {cuenta.ahorro > 0 ? (
                         <span className="text-primary-700">ahorra {fmtMoney(cuenta.ahorro)}</span>
                       ) : (
                         "sin descuento"
+                      )}
+                        </>
                       )}
                     </dd>
                   </div>
@@ -638,7 +663,10 @@ function PanelCurso({
                   ) : (
                     <>
                       Al {p.docente}: {fmtMoney((nPrecio * pctEf) / 100)} por {p.alumno} y {p.materia} pagado ({pctEf} %); con pago
-                      completo {fmtMoney((cuenta.porModuloCompleto * pctEf) / 100)} ({pctEf} % de {fmtMoney(cuenta.porModuloCompleto)})
+                      completo{" "}
+                      {completoPendiente
+                        ? "—"
+                        : `${fmtMoney((cuenta.porModuloCompleto * pctEf) / 100)} (${pctEf} % de ${fmtMoney(cuenta.porModuloCompleto)})`}
                     </>
                   )}
                 </p>

@@ -1,5 +1,5 @@
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Venta } from "../../types";
 
@@ -90,10 +90,17 @@ beforeEach(() => {
   });
 });
 
+/** La dirección actual, para ver que queda el estudiante (QA 23-oct). */
+function Direccion() {
+  const l = useLocation();
+  return <p data-testid="direccion">{l.search}</p>;
+}
+
 async function montar(ruta: string) {
   render(
     <MemoryRouter initialEntries={[ruta]}>
       <Cobrar />
+      <Direccion />
     </MemoryRouter>,
   );
   await act(async () => {});
@@ -242,3 +249,57 @@ describe("lo que se lee de la dirección y el monto sugerido", () => {
     expect(montoSugerido(CARRITO)).toBe(333);
   });
 });
+
+describe("QA 23-oct · cobrar a estudiante", () => {
+  it("la dirección queda con el estudiante elegido (un F5 no lo pierde) y sin el monto después de cobrar", async () => {
+    vi.mocked(api.crearVenta).mockResolvedValue({ id: 70 } as unknown as Venta);
+    await montar("/academia/cobrar?alumno=53&q=2026-0103");
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 350));
+    });
+    expect(screen.getByTestId("direccion")).toHaveTextContent("?inscripcion=103&sede=2&sedeNombre=Norte");
+
+    await montarDeNuevo("/academia/cobrar?inscripcion=103&monto=400");
+    expect(screen.getByTestId("direccion")).toHaveTextContent("?inscripcion=103&monto=400");
+    await pagarEnEfectivo("400");
+    expect(screen.getByTestId("direccion")).toHaveTextContent("?inscripcion=103");
+    expect(screen.getByTestId("direccion")).not.toHaveTextContent("monto");
+  });
+
+  it("efectivo recibido vacío: se toma el monto exacto, sin «no alcanza»", async () => {
+    vi.mocked(api.crearVenta).mockResolvedValue({ id: 71 } as unknown as Venta);
+    await montar("/academia/cobrar?inscripcion=103&monto=333");
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /Confirmar cobro/ }));
+    });
+    expect(screen.queryByText(/no alcanza/)).not.toBeInTheDocument();
+    expect(vi.mocked(api.crearVenta).mock.calls[0][0].pagos).toEqual([{ formaPagoId: 1, monto: 333, recibido: 333 }]);
+  });
+
+  it("con dos cursos con deuda deja elegir cuál cobrar", async () => {
+    vi.mocked(apiAcademia.cuotasPorCobrar).mockResolvedValue({
+      alumnos: [
+        { alumnoId: 53, inscripcionId: 103, nombre: "Céspedes Molina, Joaquín", codigo: "2026-0103", grupo: "Barbería · Sáb 08:00", sede: { id: 1, nombre: "Central" }, saldo: 866, vencido: true },
+        { alumnoId: 53, inscripcionId: 118, nombre: "Céspedes Molina, Joaquín", codigo: "2026-0103", grupo: "Uñas · L-V 15:00", sede: { id: 1, nombre: "Central" }, saldo: 450, vencido: false },
+      ],
+    });
+    await montar("/academia/cobrar?alumno=53&q=2026-0103");
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 350));
+    });
+    const selector = screen.getByRole("combobox", { name: "Inscripción a cobrar" });
+    expect(selector.querySelectorAll("option")).toHaveLength(2);
+    expect(apiAcademia.carrito).toHaveBeenLastCalledWith(103);
+    await act(async () => {
+      fireEvent.change(selector, { target: { value: "118" } });
+    });
+    expect(apiAcademia.carrito).toHaveBeenLastCalledWith(118);
+    expect(screen.getByTestId("direccion")).toHaveTextContent("?inscripcion=118");
+  });
+});
+
+/** Vuelve a montar la pantalla en otra dirección (lo que hace un F5 con la nueva). */
+async function montarDeNuevo(ruta: string) {
+  cleanup();
+  await montar(ruta);
+}

@@ -10,9 +10,12 @@ import type { CursoPublico } from "../../lib/academia/tipos";
  * la site key).
  */
 
+/** La página sin publicar: `GET /publico/pagina/<sub>` da 404 (QA 23-oct). */
+const paginaMock = vi.hoisted(() => ({ error: null as string | null }));
+
 vi.mock("../../lib/pagina/usePaginaPublica", () => ({
   usePaginaPublica: () => ({
-    pagina: {
+    pagina: paginaMock.error ? null : {
       subdominio: "horizonte",
       nombre: "CCTP Horizonte",
       color: { clave: "INDIGO", hex: "#3B42A9" },
@@ -20,7 +23,7 @@ vi.mock("../../lib/pagina/usePaginaPublica", () => ({
       botones: [{ id: 1, tipo: "WHATSAPP", etiqueta: "WhatsApp", url: "https://wa.me/59170000000", icono: null }],
       redes: [],
     },
-    error: null,
+    error: paginaMock.error,
   }),
 }));
 
@@ -73,6 +76,7 @@ async function montar(grupo = 22) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  paginaMock.error = null;
   vi.mocked(apiAcademiaPublica.cursos).mockResolvedValue([CURSO]);
   vi.mocked(apiAcademiaPublica.preinscribir).mockResolvedValue({
     ok: true,
@@ -166,5 +170,13 @@ describe("P2 · Inscribirme en 4 pasos", () => {
     });
     expect(screen.getByRole("heading", { name: "Tus fotos" })).toBeInTheDocument();
     expect(screen.getByRole("alert")).toHaveTextContent("Falta 1 foto");
+  });
+});
+
+describe("la página sin publicar (QA 23-oct)", () => {
+  it("dice lo mismo que /p/<sub> en vez de quedar en blanco, aunque los cursos carguen", async () => {
+    paginaMock.error = "Esta página no está disponible";
+    await montar();
+    expect(screen.getByRole("heading", { name: "Esta página no está disponible" })).toBeInTheDocument();
   });
 });

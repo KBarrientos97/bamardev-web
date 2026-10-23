@@ -70,7 +70,8 @@ describe("E13 · Notas", () => {
     expect(screen.getByText("setenta y seis")).toBeInTheDocument();
     expect(screen.getByText("Aprobado")).toBeInTheDocument();
     expect(screen.getAllByText("Sin nota").length).toBeGreaterThan(0);
-    expect(screen.getByText("Sin pagar")).toBeInTheDocument();
+    // El docente ve sólo el semáforo (QA 23-oct): nada de "Sin pagar".
+    expect(screen.queryByText("Sin pagar")).not.toBeInTheDocument();
   });
 
   it("la nota se guarda sola al soltar el campo; fuera de escala no se manda", async () => {
@@ -109,6 +110,8 @@ describe("E13 · Notas", () => {
     expect(screen.getByLabelText("Nota de Bustillos Rek, Camila")).toBeDisabled();
     expect(screen.queryByRole("button", { name: /Cerrar notas/ })).not.toBeInTheDocument();
     expect(screen.getByText(/Sólo lectura/)).toBeInTheDocument();
+    // La recepción sigue con "Pagado / Sin pagar".
+    expect(screen.getByText("Sin pagar")).toBeInTheDocument();
   });
 });
 

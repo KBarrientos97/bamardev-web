@@ -110,4 +110,26 @@ describe("B9 · compartir enlace de inscripción", () => {
     expect(screen.queryByLabelText("Enlace de inscripción")).not.toBeInTheDocument();
     expect(screen.getByText(/todavía no tiene página propia/)).toBeInTheDocument();
   });
+
+  it("con la página sin publicar avisa antes de compartir; el dueño tiene el enlace a Mi página", async () => {
+    sesion.conPagina = true;
+    vi.mocked(apiAcademia.ajustes).mockResolvedValue(ajustesDePrueba({ subdominio: "horizonte", paginaPublicada: false }));
+    await abrir({ grupo: GRUPO });
+    const aviso = screen.getByRole("alert");
+    expect(aviso).toHaveTextContent("Tu página no está publicada: quien abra el enlace no va a poder inscribirse.");
+    expect(screen.getByRole("link", { name: "Publicarla en Mi página" })).toHaveAttribute("href", "/mi-pagina");
+  });
+
+  it("la recepción ve el aviso sin el enlace a Mi página; publicada, no hay aviso", async () => {
+    vi.mocked(apiAcademia.ajustes).mockResolvedValue(ajustesDePrueba({ subdominio: "horizonte", paginaPublicada: false }));
+    await abrir({ grupo: GRUPO });
+    expect(screen.getByRole("alert")).toHaveTextContent("Tu página no está publicada");
+    expect(screen.queryByRole("link", { name: /Mi página/ })).not.toBeInTheDocument();
+  });
+
+  it("publicada (o un backend que no lo dice), sin aviso", async () => {
+    vi.mocked(apiAcademia.ajustes).mockResolvedValue(ajustesDePrueba({ subdominio: "horizonte", paginaPublicada: true }));
+    await abrir({ grupo: GRUPO });
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
 });

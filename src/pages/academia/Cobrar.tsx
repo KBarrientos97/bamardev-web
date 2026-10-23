@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Icon } from "../../components/Icon";
-import { Cargando, ErrorMsg, Input } from "../../components/ui";
+import { Cargando, ErrorMsg, Input, Select } from "../../components/ui";
 import { apiAcademia, CODIGOS_ACADEMIA } from "../../lib/academia/apiAcademia";
 import {
   cuotasIniciales,
@@ -59,14 +59,14 @@ export default function Cobrar() {
   const p = usePalabras();
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
-  // Se lee una vez y se saca de la dirección: un F5 después de cobrar no
-  // tiene que volver a proponer lo acordado al inscribir, que ya se pagó.
+  // Se lee al entrar. La dirección queda con el estudiante elegido (QA
+  // 23-oct: un F5 lo perdía); lo acordado al inscribir (`monto`) se saca
+  // apenas se cobra, para que un F5 no lo vuelva a proponer.
   const [inicial] = useState(() => inicialDeLaUrl(params));
-  useEffect(() => {
-    if ([...params.keys()].length) setParams({}, { replace: true });
-    // Sólo al entrar.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // `setParams` cambia con cada dirección: por ref, para que `elegir` no
+  // cambie al tocar la dirección y no vuelva a disparar la carga inicial.
+  const setParamsRef = useRef(setParams);
+  setParamsRef.current = setParams;
 
   const caja = useApi(() => api.cajaActual(), []);
   const formasPago = useApi(() => api.getFormasPago(), []);
@@ -74,6 +74,11 @@ export default function Cobrar() {
   const sedeCaja = abierta ? { id: abierta.almacenId ?? null, nombre: abierta.almacen ?? null } : null;
 
   const [elegido, setElegido] = useState<{ fila: Fila; carrito: CarritoInscripcion } | null>(null);
+  /**
+   * Las inscripciones con deuda del mismo estudiante (QA 23-oct): con dos
+   * cursos, un selector arriba deja elegir cuál se cobra.
+   */
+  const [hermanas, setHermanas] = useState<Fila[]>([]);
   const [cargando, setCargando] = useState(false);
   const [monto, setMonto] = useState("");
   const [pagadorId, setPagadorId] = useState<number | null>(null);
@@ -88,7 +93,7 @@ export default function Cobrar() {
   const { verificar, manejarError, registrar } = useBloqueoCupo("VENTA", { refrescarAlMontar: true });
 
   const elegir = useCallback(
-    async (fila: Fila) => {
+    async (fila: Fila, otras?: Fila[]) => {
       setError("");
       setCargando(true);
       try {
@@ -96,6 +101,17 @@ export default function Cobrar() {
         // Lo acordado al inscribir vale sólo para la inscripción con la que se entró.
         const acordado = fila.inscripcionId === inicial.inscripcionId ? inicial.monto : undefined;
         setElegido({ fila, carrito });
+        if (otras) setHermanas(otras);
+        // replaceState: un F5 vuelve a este estudiante sin volver a buscarlo.
+        const sede = typeof fila.sede === "string" ? null : fila.sede;
+        setParamsRef.current(
+          {
+            inscripcion: String(fila.inscripcionId),
+            ...(acordado != null ? { monto: String(acordado) } : {}),
+            ...(sede?.id ? { sede: String(sede.id), sedeNombre: sede.nombre } : {}),
+          },
+          { replace: true },
+        );
         setMonto(String(montoSugerido(carrito, acordado)));
         setPagadorId(pagadorPorDefecto(carrito.pagadores));
       } catch (e) {
@@ -107,7 +123,7 @@ export default function Cobrar() {
     [inicial],
   );
 
-  // Con la inscripción en la mano, directo a sus cuotas.
+  // Con la inscripción en la mano, directo a sus cuotas (una vez).
   useEffect(() => {
     if (inicial.inscripcionId == null) return;
     void elegir({ inscripcionId: inicial.inscripcionId, nombre: "", codigo: null, grupo: "", sede: inicial.sede ?? "" });
@@ -154,6 +170,8 @@ export default function Cobrar() {
       enDuda.current = false;
       registrar(creada);
       setVenta(ventaConCuotas(creada, cobro));
+      // Lo acordado ya se cobró: un F5 abre el mismo estudiante con lo que debe hoy.
+      setParams({ inscripcion: String(elegido.fila.inscripcionId) }, { replace: true });
     } catch (err) {
       enDuda.current = quedoEnDuda(err);
       if (manejarError(err)) return;
@@ -173,8 +191,10 @@ export default function Cobrar() {
   function otroCobro() {
     setVenta(null);
     setElegido(null);
+    setHermanas([]);
     setMonto("");
     setError("");
+    setParams({}, { replace: true });
   }
 
   if (caja.cargando) return <Cargando texto="Buscando tu caja…" />;
@@ -217,7 +237,7 @@ export default function Cobrar() {
         inicial={inicial}
         caja={sedeCaja}
         error={error}
-        onElegir={(f) => void elegir(f)}
+        onElegir={(f, otras) => void elegir(f, otras)}
       />
     );
 
@@ -233,6 +253,8 @@ export default function Cobrar() {
       onConfirmar={(pagos) => void confirmar(pagos)}
       enviando={enviando}
       bloqueado={!montoOk || sinCuotas}
+      // Cobrando cuotas lo común es el monto justo: vacío, se toma exacto.
+      recibidoVacioEsExacto
       error={error}
       encabezado={
         <div className="space-y-3">
@@ -245,6 +267,28 @@ export default function Cobrar() {
               <p className="truncate text-[13px] text-texto-3">
                 {[elegido.fila.codigo, nombreDe(elegido.fila.grupo)].filter(Boolean).join(" · ")}
               </p>
+            )}
+            {hermanas.length > 1 && (
+              <label className="block pt-2">
+                <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-texto-4">
+                  Tiene {hermanas.length} cursos con deuda: ¿cuál cobrás?
+                </span>
+                <Select
+                  aria-label="Inscripción a cobrar"
+                  value={elegido.fila.inscripcionId}
+                  onChange={(e) => {
+                    const otra = hermanas.find((h) => h.inscripcionId === Number(e.target.value));
+                    if (otra) void elegir(otra);
+                  }}
+                >
+                  {hermanas.map((h) => (
+                    <option key={h.inscripcionId} value={h.inscripcionId}>
+                      {[nombreDe(h.grupo), nombreDe(h.sede)].filter(Boolean).join(" · ")}
+                      {"saldo" in h && typeof h.saldo === "number" ? ` · debe ${fmtMoney(h.saldo)}` : ""}
+                    </option>
+                  ))}
+                </Select>
+              </label>
             )}
             {otraSede && sedeGrupo && (
               <p role="status" className="flex items-center gap-1.5 pt-1 text-[13px] font-semibold text-warning-text">
@@ -353,7 +397,8 @@ function BuscarEstudiante({
   inicial: InicialCobro;
   caja: { id: number | null; nombre: string | null } | null;
   error: string;
-  onElegir: (f: Fila) => void;
+  /** `otras`: las inscripciones con deuda del mismo estudiante, para elegir entre ellas. */
+  onElegir: (f: Fila, otras: Fila[]) => void;
 }) {
   const p = usePalabras();
   const [q, setQ] = useState(inicial.q ?? "");
@@ -382,13 +427,11 @@ function BuscarEstudiante({
       .then((r) => {
         if (!vigente) return;
         setResultados(r.alumnos);
-        const directo =
-          !directoUsado.current && inicial.alumnoId != null
-            ? r.alumnos.find((a) => a.alumnoId === inicial.alumnoId)
-            : undefined;
-        if (directo) {
+        const suyas =
+          !directoUsado.current && inicial.alumnoId != null ? r.alumnos.filter((a) => a.alumnoId === inicial.alumnoId) : [];
+        if (suyas.length) {
           directoUsado.current = true;
-          onElegir(directo);
+          onElegir(suyas[0], suyas);
         }
       })
       .catch((e: unknown) => vigente && setError(e instanceof Error ? e.message : "No se pudo buscar"))
@@ -426,7 +469,7 @@ function BuscarEstudiante({
                 <li key={a.inscripcionId}>
                   <button
                     type="button"
-                    onClick={() => onElegir(a)}
+                    onClick={() => onElegir(a, resultados.filter((x) => x.alumnoId === a.alumnoId))}
                     className={`flex min-h-11 w-full items-center gap-3 text-left ${LISTA.itemHover}`}
                   >
                     <span className="min-w-0 flex-1">

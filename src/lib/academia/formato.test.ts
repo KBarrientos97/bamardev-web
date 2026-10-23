@@ -164,3 +164,16 @@ describe("A5 · la frase del pago al docente", () => {
     expect(textoPagoDocente("MONTO", 20, 90, p)).toBe("El docente cobra Bs 90,00 por cada estudiante que pagó el módulo completo.");
   });
 });
+
+describe("venceCuota (regla del backend, QA 23-oct)", () => {
+  it("INICIO_MATERIA: el día que empieza el módulo o hoy si ya empezó; INSCRIPCION hoy; DIAS hoy + días", async () => {
+    const { venceCuota } = await import("./formato");
+    const desde = (o: number) => ({ 1: "2026-11-10", 2: "2026-12-10" })[o as 1 | 2];
+    expect(venceCuota({ tipo: "INICIO_MATERIA", materiaOrden: 1 }, desde, "2026-10-23")).toBe("2026-11-10");
+    expect(venceCuota({ tipo: "INICIO_MATERIA", materiaOrden: 1 }, desde, "2026-11-15")).toBe("hoy");
+    expect(venceCuota({ tipo: "INICIO_MATERIA" }, desde, "2026-10-23", 2)).toBe("2026-12-10");
+    expect(venceCuota({ tipo: "INICIO_MATERIA", materiaOrden: 5 }, desde, "2026-10-23")).toBeNull();
+    expect(venceCuota({ tipo: "INSCRIPCION" }, desde, "2026-10-23")).toBe("hoy");
+    expect(venceCuota({ tipo: "DIAS", dias: 30 }, desde, "2026-10-23")).toBe("2026-11-22");
+  });
+});

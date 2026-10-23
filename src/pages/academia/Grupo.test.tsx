@@ -136,7 +136,7 @@ describe("E3 · detalle de grupo", () => {
     expect(screen.getByRole("link", { name: "Notas" })).toHaveAttribute("href", "/academia/grupos/7/notas");
   });
 
-  it("el docente ve a sus estudiantes sin montos ni Cobrar: sólo si pagaron el módulo", async () => {
+  it("el docente ve a sus estudiantes sin montos, sin Cobrar y sin «pagaron» (sólo el semáforo, QA 23-oct)", async () => {
     sesion.permisos = ["academia.ver"];
     sesion.propios = ["academia.ver"];
     vi.mocked(apiAcademia.alumnosDelGrupo).mockImplementation(async (_id, _f, p = {}) =>
@@ -153,8 +153,11 @@ describe("E3 · detalle de grupo", () => {
           },
     );
     await montar();
-    expect(screen.getAllByText("Sin pagar").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Pagado").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Sin pagar")).not.toBeInTheDocument();
+    expect(screen.queryByText("Pagado")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Pagaron el M/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Falta pagar/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/pagado por/)).not.toBeInTheDocument();
     expect(screen.queryByText(/Bs/)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Ver a Bustillos Rek, Camila" }));
     await act(async () => {});
@@ -186,6 +189,18 @@ describe("E3 · detalle de grupo", () => {
     expect(screen.queryByText("Sin pagar")).not.toBeInTheDocument();
     expect(screen.queryByText("Pagado")).not.toBeInTheDocument();
     expect(screen.queryByText(/Bs/)).not.toBeInTheDocument();
+  });
+
+  it("QA 23-oct: al docente le llega el grupo sin deben, alDia ni resumenCobro; «Con deuda» cuenta por semáforo", async () => {
+    sesion.permisos = ["academia.ver"];
+    sesion.propios = ["academia.ver"];
+    const { deben: _d, alDia: _a, resumenCobro: _r, montoDebe: _m, ...sinCobro } = grupoDetalle();
+    vi.mocked(apiAcademia.grupo).mockResolvedValue(sinCobro as never);
+    await montar();
+    expect(document.body).not.toHaveTextContent("undefined");
+    expect(document.body).not.toHaveTextContent("NaN");
+    expect(screen.getByRole("tab", { name: /Con deuda/ })).toBeInTheDocument();
+    expect(apiAcademia.alumnosDelGrupo).toHaveBeenCalledWith(7, "deben", expect.anything());
   });
 
   it("cancelar el grupo pide confirmación, lo marca y deja de inscribir", async () => {

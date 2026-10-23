@@ -95,7 +95,10 @@ export default function InscribirmePagina() {
     if (curso && pagina) document.title = `Inscribirme · ${curso.nombre} · ${pagina.nombre}`;
   }, [curso, pagina]);
 
-  if (errorPagina && !cursos) return <NoDisponible mensaje={errorPagina} />;
+  // Con la página sin publicar (404) los cursos igual cargan: sin esto la
+  // pantalla quedaba en blanco esperando una página que no iba a llegar. Se
+  // dice lo mismo que en `/p/<sub>` (QA 23-oct).
+  if (errorPagina) return <NoDisponible mensaje={errorPagina} />;
   if (errorCursos) return <NoDisponible mensaje="Esta inscripción no está disponible" />;
   if (!cursos || !pagina) return <div style={{ minHeight: "100dvh", background: "#F6F7F9" }} aria-busy="true" />;
   if (!curso || cerrada) return <NoDisponible mensaje="Este grupo ya no recibe inscripciones" />;

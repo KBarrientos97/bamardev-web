@@ -116,6 +116,34 @@ export function textoVence(v: CuotaPlan["vence"]): string {
   return `a los ${v.dias ?? 0} días`;
 }
 
+/**
+ * Cuándo vence una cuota del plan si se inscribe hoy, con la regla del
+ * backend (`venceDe` en reglas.ts, QA 23-oct):
+ *   - INICIO_MATERIA: el día que empieza ese módulo en el grupo, o hoy si ya
+ *     empezó (max de los dos);
+ *   - INSCRIPCION: hoy;
+ *   - DIAS: hoy + días.
+ * "Paga hoy" es un cobro y no mueve el vencimiento. Devuelve "hoy" o la fecha
+ * `AAAA-MM-DD`; null si no se sabe cuándo empieza el módulo.
+ */
+export function venceCuota(
+  v: CuotaPlan["vence"],
+  desdeModulo: (orden: number) => string | null | undefined,
+  hoy: string,
+  ordenCubre?: number,
+): string | null {
+  if (v.tipo === "INSCRIPCION") return "hoy";
+  if (v.tipo === "DIAS") {
+    const [a, m, d] = hoy.split("-").map(Number);
+    const f = new Date(Date.UTC(a, m - 1, d + (v.dias ?? 0)));
+    return v.dias ? f.toISOString().slice(0, 10) : "hoy";
+  }
+  const orden = v.materiaOrden ?? ordenCubre;
+  const desde = orden != null ? desdeModulo(orden)?.slice(0, 10) : null;
+  if (!desde) return null;
+  return desde > hoy ? desde : "hoy";
+}
+
 /** El total de un calendario, redondeado a centavos. */
 export function totalCalendario(cuotas: CuotaPlan[]): number {
   return Math.round(cuotas.reduce((s, c) => s + (Number(c.monto) || 0), 0) * 100) / 100;

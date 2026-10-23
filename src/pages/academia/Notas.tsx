@@ -7,7 +7,6 @@ import { apiAcademia, CODIGOS_ACADEMIA } from "../../lib/academia/apiAcademia";
 import { fechaCorta, horarioGrupo, nombreDe, numeroEnLetras } from "../../lib/academia/formato";
 import type { NotasDelGrupo } from "../../lib/academia/tipos";
 import { usePalabras } from "../../lib/academia/usePalabras";
-import { traeSemaforo } from "../../lib/academia/vista";
 import { ApiError } from "../../lib/api";
 import { soloLoSuyo, tienePermiso } from "../../lib/permisos";
 import { useApi } from "../../lib/useApi";
@@ -164,8 +163,8 @@ function CargaNotas({
     return { tipo: num >= n.notaMinima ? ("aprueba" as const) : ("reprueba" as const), n: num };
   };
 
-  // B7: el docente ve el semáforo en vez de "Pagado / Abonó / Sin pagar".
-  const conSemaforo = docente && traeSemaforo(d?.items ?? []);
+  // B7: el docente ve sólo el semáforo; el backend ya no le manda `estadoPago`.
+  const conSemaforo = docente;
   const filas = useMemo(() => {
     if (!d) return [];
     return d.items.map((i) => ({ ...i, valor: notas[i.inscripcionId] ?? "", e: evaluar(notas[i.inscripcionId] ?? "", d) }));
@@ -411,7 +410,7 @@ function CargaNotas({
       >
         <div className={`hidden gap-3 px-5 py-2.5 md:grid ${columnas} ${TABLA.encabezado}`}>
           <span>{p.Alumno}</span>
-          <span>Pago del M{m.orden}</span>
+          <span>{conSemaforo ? "Cuotas" : `Pago del M${m.orden}`}</span>
           <span className="text-right">Nota</span>
           <span>En letras</span>
           <span>Resultado</span>

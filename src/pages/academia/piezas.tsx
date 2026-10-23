@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes, ReactNode } from "react";
+import { useEffect, useRef, type ButtonHTMLAttributes, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { Icon, type NombreIcono } from "../../components/Icon";
 import { ErrorMsg, Vacio } from "../../components/ui";
@@ -432,10 +432,29 @@ export function FiltrosConteo<T extends string>({
    */
   enTarjeta?: boolean;
 }) {
+  // En el celular las pestañas no entran: el carril se corre hasta la activa
+  // para que no quede cortada ("Sin p…", QA 23-oct). Sólo se mueve el carril,
+  // nunca la página.
+  const carril = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const c = carril.current;
+    const t = c?.querySelector<HTMLElement>('[aria-selected="true"]');
+    if (!c || !t) return;
+    const margen = 16;
+    if (t.offsetLeft < c.scrollLeft) c.scrollLeft = Math.max(0, t.offsetLeft - margen);
+    else if (t.offsetLeft + t.offsetWidth > c.scrollLeft + c.clientWidth) {
+      c.scrollLeft = t.offsetLeft + t.offsetWidth - c.clientWidth + margen;
+    }
+  }, [valor]);
   return (
     <div className={`flex flex-wrap items-center justify-between gap-x-4 gap-y-1 ${enTarjeta ? "" : "border-b border-borde-soft"}`}>
       {/* scroll-lateral-ok: pestañas de filtro, el patrón aceptado (PLAN-TABLAS-MOVIL §2.6). */}
-      <div role="tablist" aria-label={etiqueta} className="-mb-px flex gap-5 overflow-x-auto [scrollbar-width:none]">
+      <div
+        ref={carril}
+        role="tablist"
+        aria-label={etiqueta}
+        className="relative -mb-px flex max-w-full gap-5 overflow-x-auto scroll-px-4 [scrollbar-width:none]"
+      >
         {opciones.map((o) => {
           const activo = o.clave === valor;
           return (

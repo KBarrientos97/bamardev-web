@@ -215,7 +215,7 @@ describe("A5 · pago al docente por % o por monto fijo", () => {
     vi.mocked(apiAcademia.carreras).mockResolvedValue([{ ...BARBERIA, pagoDocenteModo: "MONTO", montoDocente: 90 }]);
     await montar();
     const fila = screen.getByRole("button", { name: "Editar Barbería" });
-    expect(fila).toHaveTextContent("fijo por módulo");
+    expect(fila).toHaveTextContent("Bs 90,00 fijo");
     fireEvent.click(fila);
     const panel = screen.getByRole("complementary", { name: "Barbería" });
     fireEvent.click(within(panel).getByRole("radio", { name: /% de lo que paga/ }));
@@ -225,5 +225,39 @@ describe("A5 · pago al docente por % o por monto fijo", () => {
       3,
       expect.objectContaining({ pagoDocenteModo: "PORCENTAJE", montoDocente: null }),
     );
+  });
+});
+
+describe("QA 23-oct · Cursos", () => {
+  it("la columna Docente dice el monto fijo aunque el backend no mande el modo", async () => {
+    vi.mocked(apiAcademia.carreras).mockResolvedValue([{ ...BARBERIA, pagoDocenteModo: undefined, montoDocente: 90 }]);
+    await montar();
+    const fila = screen.getByRole("button", { name: "Editar Barbería" });
+    expect(fila).toHaveTextContent("Bs 90,00 fijo");
+    expect(fila).not.toHaveTextContent("20 %");
+  });
+
+  it("con «Precio final» vacío, «Así se ofrece» espera el valor en vez de mostrar el del %", async () => {
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Editar Barbería" }));
+    const panel = screen.getByRole("complementary", { name: "Barbería" });
+    const oferta = within(panel).getByRole("region", { name: "Así se ofrece" });
+    expect(oferta).toHaveTextContent(/Bs 1\.350/);
+    fireEvent.click(within(panel).getByRole("radio", { name: "Precio final" }));
+    expect(oferta).not.toHaveTextContent(/Bs 1\.350/);
+    expect(oferta).toHaveTextContent("—");
+  });
+
+  it("el error de guardar un precio final inválido se va al corregirlo", async () => {
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Editar Barbería" }));
+    const panel = screen.getByRole("complementary", { name: "Barbería" });
+    fireEvent.click(within(panel).getByRole("radio", { name: "Precio final" }));
+    const campo = within(panel).getByLabelText("Precio final del pago completo (Bs)");
+    fireEvent.change(campo, { target: { value: "1600" } });
+    fireEvent.click(within(panel).getByRole("button", { name: "Guardar cambios" }));
+    expect(within(panel).getByText(/que es lo que cuesta mes a mes/)).toBeInTheDocument();
+    fireEvent.change(campo, { target: { value: "1300" } });
+    expect(within(panel).queryByText(/que es lo que cuesta mes a mes/)).not.toBeInTheDocument();
   });
 });

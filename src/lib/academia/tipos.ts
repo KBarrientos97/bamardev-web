@@ -56,6 +56,12 @@ export interface AjustesAcademia {
    * lo manda: ahí se intenta con "Mi página".
    */
   subdominio?: string | null;
+  /**
+   * QA 23-oct: si la página está publicada. Sin publicar, el enlace de
+   * preinscripción abre "Esta página no está disponible". Ausente en un
+   * backend anterior: no se avisa nada.
+   */
+  paginaPublicada?: boolean;
 }
 
 export interface Franja {
@@ -144,6 +150,15 @@ export interface Carrera {
 
 /** Cómo se le paga al docente (A5): un % de lo que paga cada estudiante, o un monto fijo. */
 export type PagoDocenteModo = "PORCENTAJE" | "MONTO";
+
+/** Un curso de la planilla con su forma de pago al docente (QA 23-oct). */
+export interface PagoDocenteCurso {
+  id?: number;
+  nombre: string;
+  modo: PagoDocenteModo;
+  pct: number | null;
+  monto: number | null;
+}
 
 /** `POST /academia/carreras/simple` y `PUT /academia/carreras/:id/simple`. */
 export interface CarreraSimpleInput {
@@ -239,9 +254,10 @@ export interface MateriaDelGrupo {
 export interface GrupoDetalle extends GrupoResumen {
   planesOfrecidos: PlanPago[];
   materiasGrupo: MateriaDelGrupo[];
-  resumenCobro: {
+  /** Al docente le llega sin `pagaron` (QA 23-oct): se trata como ausente. */
+  resumenCobro?: {
     /** `pendiente` y `baseDocente` van null para el docente. */
-    porMateria: { materiaOrden: number; pagaron: number; total: number; pendiente: number | null; baseDocente: number | null }[];
+    porMateria: { materiaOrden: number; pagaron?: number; total: number; pendiente: number | null; baseDocente: number | null }[];
   };
   /** Al crear: "más de 4 h por día" y parecidos. */
   avisos?: string[];
@@ -706,7 +722,10 @@ export interface ClaseDelDia {
   sede: string | Ref;
   docente: string | { personalId: number; nombre: string } | null;
   inscritos: number;
-  pagaronModulo: number | null;
+  /** Al docente ya no le llega (QA 23-oct): ausente = no se muestra. */
+  pagaronModulo?: number | null;
+  /** B7: al docente, cuántos de la clase tienen el semáforo en rojo y en amarillo. */
+  semaforos?: { rojo: number; amarillo: number };
   llegadaEn: string | null;
   atrasoMin: number | null;
   lista: { pasada: boolean; presentes: number; total: number };
@@ -752,7 +771,11 @@ export interface ListaDeClase {
   grupo?: { id: number; nombre: string; carrera: string | Ref; sede: string | Ref; aula: string | null };
   guardada: boolean;
   editable: boolean;
-  resumen: { pagaron: number; total: number };
+  /**
+   * Al docente no le llegan `pagaron` (QA 23-oct) y sí `semaforos` (cuántos
+   * en rojo y en amarillo). Admin y recepción, como siempre.
+   */
+  resumen: { pagaron?: number; total: number; semaforos?: { rojo: number; amarillo: number } };
   /** `semaforo` (B7) sólo para el docente. */
   alumnos: {
     inscripcionId: number;
@@ -845,7 +868,10 @@ export interface PlanillaDocente {
   docente: { personalId: number; nombre: string };
   mes: string;
   estado: EstadoPlanilla;
-  pct: { defecto: number; porCurso: { carrera: string | Ref; pct: number }[] };
+  /** QA 23-oct: `modo` y `monto` (A5) en cada curso; un backend anterior no los manda. */
+  pct: { defecto: number; porCurso: { carrera: string | Ref; pct: number; modo?: PagoDocenteModo; monto?: number | null }[] };
+  /** QA 23-oct: cómo se le paga en cada curso de la planilla (A5). `monto` es null con PORCENTAJE. */
+  carreras?: PagoDocenteCurso[];
   /** Cambio #19: los módulos del mes, también para el docente. */
   cerradaEn?: string | null;
   pagadaEn?: string | null;

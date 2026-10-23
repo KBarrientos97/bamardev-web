@@ -1,4 +1,17 @@
-import type { Cuota, EstadoPagoModulo, EstadoPlanilla, EventoInscripcion, FormaPago, GrupoResumen, MotivoNoPago, Ref, SemaforoPago } from "./tipos";
+import type {
+  Carrera,
+  Cuota,
+  EstadoPagoModulo,
+  EstadoPlanilla,
+  EventoInscripcion,
+  FormaPago,
+  GrupoResumen,
+  MotivoNoPago,
+  PagoDocenteCurso,
+  PlanillaDocente,
+  Ref,
+  SemaforoPago,
+} from "./tipos";
 import { fechaCorta, horarioGrupo, nombreDe, textoCubre } from "./formato";
 import { urlInscribirmeDe } from "../pagina/rutas";
 import { ApiError } from "../api";
@@ -128,11 +141,53 @@ export function textoSemaforo(s: SemaforoPago): { corto: string; largo: string; 
 }
 
 /**
- * ¿La respuesta trae el semáforo? Un backend anterior no lo manda: ahí el
- * docente sigue viendo "Pagado / Abonó / Sin pagar" como hasta ahora.
+ * Cómo cobra el docente en su planilla, curso por curso: "Barbería Bs 90 fijo
+ * por módulo · Uñas 20 %" (A5, QA 23-oct). Con todos por % sigue el texto de
+ * siempre: "el 20 % (Barbería 25 %) de lo cobrado". Sin cursos, el % del
+ * instituto.
  */
-export function traeSemaforo(filas: readonly { semaforo?: SemaforoPago }[]): boolean {
-  return filas.some((f) => f.semaforo !== undefined);
+export function textoCobroPlanilla(defecto: number, cursos: readonly PagoDocenteCurso[]): string {
+  if (cursos.some((c) => c.modo === "MONTO")) {
+    const partes = cursos.map((c) =>
+      c.modo === "MONTO" ? `${c.nombre} ${fmtMoney(c.monto ?? 0)} fijo por módulo` : `${c.nombre} ${c.pct ?? defecto} %`,
+    );
+    return `Cobra: ${partes.join(" · ")}`;
+  }
+  return cursos.length
+    ? `Cobra el ${defecto} % (${cursos.map((c) => `${c.nombre} ${c.pct ?? defecto} %`).join(", ")}) de lo cobrado`
+    : `Cobra el ${defecto} % de lo cobrado`;
+}
+
+/**
+ * Los cursos de la planilla con su forma de pago. Primero lo que manda el
+ * backend (`carreras`, o `modo` en `pct.porCurso`); con uno anterior, de las
+ * carreras (`GET /academia/carreras`), sólo si alguno de sus cursos es monto
+ * fijo: si todos van por %, el texto queda como siempre.
+ */
+export function cursosDePlanilla(
+  d: Pick<PlanillaDocente, "pct" | "carreras" | "grupos">,
+  carreras: readonly Carrera[] | null,
+): PagoDocenteCurso[] {
+  if (d.carreras?.length) return d.carreras;
+  const porCurso = d.pct.porCurso.map((x) => ({
+    nombre: nombreDe(x.carrera),
+    modo: x.modo ?? ("PORCENTAJE" as const),
+    pct: x.pct,
+    monto: x.monto ?? null,
+  }));
+  if (d.pct.porCurso.some((x) => x.modo)) return porCurso;
+  const ids = [...new Set((d.grupos ?? []).map((g) => g.carrera.id))];
+  const deCarreras = ids
+    .map((id) => carreras?.find((c) => c.id === id))
+    .filter((c): c is Carrera => !!c)
+    .map((c) => ({
+      id: c.id,
+      nombre: c.nombre,
+      modo: c.pagoDocenteModo ?? (c.montoDocente != null ? ("MONTO" as const) : ("PORCENTAJE" as const)),
+      pct: c.pctDocente ?? d.pct.porCurso.find((x) => nombreDe(x.carrera) === c.nombre)?.pct ?? d.pct.defecto,
+      monto: c.montoDocente ?? null,
+    }));
+  return deCarreras.some((c) => c.modo === "MONTO") ? deCarreras : porCurso;
 }
 
 /** "Mes a mes", "Pago completo", o el nombre del plan a medida. */

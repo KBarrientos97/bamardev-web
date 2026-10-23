@@ -505,3 +505,44 @@ describe("A3 · las fotos que revisa quien las aprueba", () => {
     expect(apiAcademia.revisarFotos).not.toHaveBeenCalled();
   });
 });
+
+describe("QA 23-oct · vencimientos de «Mes a mes» como los calcula el backend", () => {
+  it("con el grupo que empieza el 10-nov, la primera vence el 10-nov y no «hoy»", async () => {
+    const base = grupoDetalle();
+    vi.mocked(apiAcademia.grupo).mockResolvedValue(
+      grupoDetalle({
+        fechaInicio: "2026-11-10",
+        materiasGrupo: base.materiasGrupo.map((m, i) => ({ ...m, desde: ["2026-11-10", "2026-12-10", "2027-01-10"][i] })),
+        planesOfrecidos: [
+          {
+            ...PLAN_CUOTAS,
+            nombre: "Mes a mes",
+            generado: "MES_A_MES",
+            calendario: [1, 2, 3].map((o) => ({ n: o, monto: 500, vence: { tipo: "INICIO_MATERIA" as const, materiaOrden: o }, cubre: [o] })),
+          },
+        ],
+      }),
+    );
+    await montar();
+    const plan = within(panel()).getByRole("radio", { name: /Mes a mes/ });
+    expect(plan).toHaveTextContent("M1 10-nov · M2 10-dic · M3 10-ene");
+    expect(plan).not.toHaveTextContent("M1 hoy");
+  });
+
+  it("con el módulo ya empezado, «hoy»", async () => {
+    vi.mocked(apiAcademia.grupo).mockResolvedValue(
+      grupoDetalle({
+        planesOfrecidos: [
+          {
+            ...PLAN_CUOTAS,
+            nombre: "Mes a mes",
+            generado: "MES_A_MES",
+            calendario: [2, 3].map((o) => ({ n: o - 1, monto: 500, vence: { tipo: "INICIO_MATERIA" as const, materiaOrden: o }, cubre: [o] })),
+          },
+        ],
+      }),
+    );
+    await montar();
+    expect(within(panel()).getByRole("radio", { name: /Mes a mes/ })).toHaveTextContent("M2 hoy · M3 17-oct");
+  });
+});

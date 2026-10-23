@@ -73,7 +73,6 @@ export default function MisClases() {
 function Clase({ c }: { c: ClaseDelDia }) {
   const p = usePalabras();
   const cuando = cuandoEs(c);
-  const pct = c.inscritos ? Math.round(((c.pagaronModulo ?? 0) / c.inscritos) * 100) : 0;
   return (
     <li className={`space-y-3 ${LISTA.item} sm:py-4`}>
       <div className="flex items-start justify-between gap-3">
@@ -93,15 +92,13 @@ function Clase({ c }: { c: ClaseDelDia }) {
           {cuando}
         </Chip>
       </div>
-      {c.pagaronModulo != null && (
-        <div className="space-y-1.5 rounded-xl bg-muted px-3.5 py-3">
-          <span className="block h-1.5 overflow-hidden rounded-full bg-primary-100">
-            <span className="block h-full rounded-full bg-primary" style={{ width: `${pct}%` }} />
-          </span>
-          <p className="text-[13px] text-texto-2">
-            {c.pagaronModulo} de {c.inscritos} pagaron el M{c.materia.orden}
-          </p>
-        </div>
+      {/* Sin "17 de 22 pagaron": el docente ve sólo el semáforo (QA 23-oct), acá
+          como cuántos tienen deuda, con su color. Si el backend no lo manda, nada. */}
+      {c.semaforos && c.semaforos.rojo + c.semaforos.amarillo > 0 && (
+        <p className="flex flex-wrap items-center gap-1.5 text-[13px] text-texto-2">
+          {c.semaforos.rojo > 0 && <Chip tono="rojo">{c.semaforos.rojo} {c.semaforos.rojo === 1 ? "pasó" : "pasaron"} la espera</Chip>}
+          {c.semaforos.amarillo > 0 && <Chip tono="ambar">{c.semaforos.amarillo} en semana de espera</Chip>}
+        </p>
       )}
       <div className="flex gap-2">
         <Link

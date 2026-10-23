@@ -82,7 +82,7 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers());
 
 describe("E11a · Mis clases", () => {
-  it("saluda, dice cuántas clases da, cuándo empieza y cuántos pagaron el módulo", async () => {
+  it("saluda, dice cuántas clases da y cuándo empieza; sin «pagaron el módulo» (sólo el semáforo, QA 23-oct)", async () => {
     render(
       <MemoryRouter>
         <MisClases />
@@ -92,7 +92,7 @@ describe("E11a · Mis clases", () => {
     expect(screen.getByRole("heading", { name: "Hola, Marco" })).toBeInTheDocument();
     expect(screen.getByText("Hoy das 1 clase")).toBeInTheDocument();
     expect(screen.getByText("en 12 min")).toBeInTheDocument();
-    expect(screen.getByText("17 de 22 pagaron el M2")).toBeInTheDocument();
+    expect(screen.queryByText(/pagaron el M2/)).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Pasar lista/ })).toHaveAttribute("href", "/academia/lista?grupo=7");
     expect(screen.getByRole("region", { name: "Próximas clases" })).toBeInTheDocument();
     // Su barra de abajo en el celular: Mis clases y Notas (sin "Mi planilla" desde D1, 22-oct).
@@ -113,13 +113,12 @@ describe("N6 · Pasar lista", () => {
     await act(async () => {});
   }
 
-  it("cada uno con su estado de pago, sin montos; los no marcados arrancan presentes y se guarda todo junto", async () => {
+  it("sin montos ni «pagaron»; los no marcados arrancan presentes y se guarda todo junto", async () => {
     await montar();
-    // "Pagaron el M2 · 1 de 3": el indicador en su tarjeta.
-    expect(screen.getByText("Pagaron el M2")).toBeInTheDocument();
-    expect(screen.getByText("1 de 3")).toBeInTheDocument();
-    expect(screen.getByText("Sin pagar")).toBeInTheDocument();
-    expect(screen.getByText("Abonó")).toBeInTheDocument();
+    // El docente ve sólo el semáforo (QA 23-oct): ni "Pagaron el M2" ni "Sin pagar".
+    expect(screen.queryByText("Pagaron el M2")).not.toBeInTheDocument();
+    expect(screen.queryByText("Sin pagar")).not.toBeInTheDocument();
+    expect(screen.queryByText("Abonó")).not.toBeInTheDocument();
     expect(screen.queryByText(/Bs/)).not.toBeInTheDocument();
     const camila = screen.getByRole("group", { name: "Asistencia de Bustillos Rek, Camila" });
     expect(within(camila).getByRole("button", { name: "Presente" })).toHaveAttribute("aria-pressed", "true");
@@ -135,9 +134,9 @@ describe("N6 · Pasar lista", () => {
     expect(screen.getByRole("status")).toHaveTextContent(/podés corregirla hasta el final del día/);
   });
 
-  it("el filtro deja a los que no pagaron completo", async () => {
+  it("sin semáforo prendido, «Con deuda» queda vacío", async () => {
     await montar();
-    fireEvent.click(screen.getByRole("tab", { name: /Sin pagar o abonó/ }));
+    fireEvent.click(screen.getByRole("tab", { name: /Con deuda/ }));
     expect(screen.queryByText("Andrade Villca, Mateo")).not.toBeInTheDocument();
   });
 
@@ -185,7 +184,7 @@ describe("B7 · semáforo y B8 · Tarde y Justificado en Pasar lista", () => {
     await act(async () => {});
   }
 
-  it("el docente ve rojo o amarillo, sin «Pagado / Abonó / Sin pagar» ni montos; «Deben» filtra por el semáforo", async () => {
+  it("el docente ve rojo o amarillo, sin «Pagado / Abonó / Sin pagar» ni montos; «Con deuda» filtra por el semáforo", async () => {
     vi.mocked(apiAcademia.lista).mockResolvedValue(CON_SEMAFORO);
     await montar();
     expect(screen.getByLabelText("Debe, pasó la semana de espera")).toHaveTextContent("Debe, pasó la espera");
@@ -196,7 +195,11 @@ describe("B7 · semáforo y B8 · Tarde y Justificado en Pasar lista", () => {
     // Nunca bloquea: el que debe se marca igual.
     const camila = screen.getByRole("group", { name: "Asistencia de Bustillos Rek, Camila" });
     expect(within(camila).getByRole("button", { name: "Ausente" })).toBeEnabled();
-    fireEvent.click(screen.getByRole("tab", { name: /Deben/ }));
+    // El indicador cuenta los que tienen deuda, con el color del peor.
+    expect(screen.getByText("Con deuda", { selector: "p, span, dt, div" })).toBeInTheDocument();
+    expect(screen.getByText("1 pasó la espera")).toBeInTheDocument();
+    expect(screen.queryByText(/Pagaron el M/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: /Con deuda/ }));
     expect(screen.queryByText("Andrade Villca, Mateo")).not.toBeInTheDocument();
     expect(screen.getByText("Bustillos Rek, Camila")).toBeInTheDocument();
     expect(screen.getByText("Céspedes Molina, Joaquín")).toBeInTheDocument();
@@ -230,9 +233,62 @@ describe("B7 · semáforo y B8 · Tarde y Justificado en Pasar lista", () => {
     ]);
   });
 
-  it("sin semáforo en la respuesta (un backend anterior) sigue «Pagado / Abonó / Sin pagar»", async () => {
+  it("sin semáforo en la respuesta el docente ve la raya, nunca «Pagado / Sin pagar»", async () => {
     await montar();
-    expect(screen.getByText("Sin pagar")).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: /Sin pagar o abonó/ })).toBeInTheDocument();
+    expect(screen.queryByText("Sin pagar")).not.toBeInTheDocument();
+    expect(screen.getAllByLabelText("Sin deudas vencidas").length).toBe(3);
+  });
+});
+
+describe("QA 23-oct · el docente sin los campos de cobro", () => {
+  async function montarLista(ruta = "/academia/lista?grupo=7") {
+    render(
+      <MemoryRouter initialEntries={[ruta]}>
+        <Routes>
+          <Route path="/academia/lista" element={<PasarLista />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    await act(async () => {});
+  }
+
+  it("Pasar lista sin `resumen.pagaron` ni `estadoPago`: nada de undefined", async () => {
+    vi.mocked(apiAcademia.lista).mockResolvedValue({
+      ...LISTA,
+      resumen: { total: 3, semaforos: { rojo: 0, amarillo: 1 } },
+      alumnos: LISTA.alumnos.map((a, i) => ({ ...a, estadoPago: undefined as never, semaforo: i === 1 ? "AMARILLO" : null })),
+    });
+    await montarLista();
+    expect(document.body).not.toHaveTextContent("undefined");
+    expect(screen.getByText("1 de 3")).toBeInTheDocument();
+    expect(screen.getByText("en semana de espera")).toBeInTheDocument();
+  });
+
+  it("una lista de un día pasado no dice «hasta el final del día»", async () => {
+    vi.mocked(apiAcademia.lista).mockResolvedValue({ ...LISTA, sesion: { ...LISTA.sesion, fecha: "2026-10-14" } });
+    await montarLista("/academia/lista?grupo=7&fecha=2026-10-14");
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /Guardar lista/ }));
+    });
+    const estado = screen.getByRole("status");
+    expect(estado).toHaveTextContent(/lista del 14-oct/);
+    expect(estado).not.toHaveTextContent(/hasta el final del día/);
+  });
+
+  it("Mis clases sin `pagaronModulo`, con los semáforos de la clase", async () => {
+    vi.mocked(apiAcademia.misClases).mockResolvedValue({
+      fecha: "2026-10-16",
+      clases: [{ ...CLASE, pagaronModulo: undefined, semaforos: { rojo: 1, amarillo: 2 } }],
+      proximas: [],
+    });
+    render(
+      <MemoryRouter>
+        <MisClases />
+      </MemoryRouter>,
+    );
+    await act(async () => {});
+    expect(document.body).not.toHaveTextContent("undefined");
+    expect(screen.getByText("1 pasó la espera")).toBeInTheDocument();
+    expect(screen.getByText("2 en semana de espera")).toBeInTheDocument();
   });
 });

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { Boton, Cargando, ErrorMsg, Input, Modal, Select, useAviso, AvisoOk } from "../../components/ui";
 import { apiAcademia } from "../../lib/academia/apiAcademia";
 import { fechaCorta, horarioGrupo, nombreDe } from "../../lib/academia/formato";
@@ -15,19 +16,21 @@ import { BotonFila } from "./piezas";
 type GrupoCompartible = GrupoParaCompartir & Partial<Pick<GrupoResumen, "inscripcionAbierta" | "publicarEnPagina" | "estado" | "cancelado">>;
 
 /**
- * El subdominio del negocio, que arma la dirección. Lo da `GET /academia/ajustes`
- * (que también lee la recepción) si el backend lo manda; si no, "Mi página",
- * que es sólo del dueño. Sin ninguno de los dos, null: no hay enlace que dar.
+ * El subdominio del negocio, que arma la dirección, y si la página está
+ * publicada. Lo da `GET /academia/ajustes` (que también lee la recepción) si
+ * el backend lo manda; si no, "Mi página", que es sólo del dueño. Sin ninguno
+ * de los dos, null: no hay enlace que dar. `publicada` undefined = no se sabe.
  */
-function useSubdominio() {
-  const { puede } = useAuth();
-  const conPagina = puede("mi_pagina");
-  return useApi(async () => {
+function useSubdominio(conPagina: boolean) {
+  return useApi(async (): Promise<{ subdominio: string | null; publicada?: boolean }> => {
     const ajustes = await apiAcademia.ajustes().catch(() => null);
-    if (ajustes?.subdominio !== undefined) return ajustes.subdominio;
-    if (!conPagina) return null;
+    if (ajustes?.subdominio !== undefined) return { subdominio: ajustes.subdominio, publicada: ajustes.paginaPublicada };
+    if (!conPagina) return { subdominio: null };
     const pagina = await apiPagina.estado().catch(() => null);
-    return pagina?.subdominio ?? null;
+    return {
+      subdominio: pagina?.subdominio ?? null,
+      ...(pagina?.pagina ? { publicada: pagina.pagina.publicada && !pagina.pagina.bloqueada } : {}),
+    };
   }, [conPagina]);
 }
 
@@ -71,7 +74,9 @@ export function DialogoCompartir({
   onCerrar: () => void;
 }) {
   const p = usePalabras();
-  const sub = useSubdominio();
+  const { puede } = useAuth();
+  const conPagina = puede("mi_pagina");
+  const sub = useSubdominio(conPagina);
   const grupos = useApi(
     () => (fijo ? Promise.resolve(null) : apiAcademia.grupos({ pageSize: 100, ...(carreraId ? { carreraId } : {}) })),
     [fijo, carreraId],
@@ -81,7 +86,8 @@ export function DialogoCompartir({
   const grupo = fijo ?? abiertos.find((g) => g.id === elegidoId) ?? (abiertos.length === 1 ? abiertos[0] : null);
   const [aviso, setAviso] = useAviso(4000);
 
-  const subdominio = sub.datos ?? null;
+  const subdominio = sub.datos?.subdominio ?? null;
+  const sinPublicar = sub.datos?.publicada === false;
   const enlace = grupo && subdominio ? enlaceInscripcion(subdominio, grupo.id) : null;
   const texto = grupo && enlace ? textoInscripcion(grupo, enlace) : "";
 
@@ -136,6 +142,20 @@ export function DialogoCompartir({
           </p>
         ) : enlace ? (
           <>
+            {/* QA 23-oct: sin publicar, el enlace abre "Esta página no está disponible". */}
+            {sinPublicar && (
+              <p role="alert" className="rounded-xl bg-warning-bg px-3.5 py-2.5 text-[13px] font-semibold text-warning-text">
+                Tu página no está publicada: quien abra el enlace no va a poder inscribirse.
+                {conPagina && (
+                  <>
+                    {" "}
+                    <Link to="/mi-pagina" className="underline" onClick={onCerrar}>
+                      Publicarla en Mi página
+                    </Link>
+                  </>
+                )}
+              </p>
+            )}
             <Input readOnly value={enlace} aria-label="Enlace de inscripción" className="font-mono text-[13px]" onFocus={(e) => e.target.select()} />
             <div className="flex flex-col gap-2 sm:flex-row">
               <Boton

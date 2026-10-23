@@ -58,6 +58,7 @@ export default function PantallaCobro({
   titulo = "Cobrar",
   encabezado,
   bloqueado = false,
+  recibidoVacioEsExacto = false,
 }: {
   total: number;
   /** Qué se está cobrando ("Mesa 4 · Juan"), para no cobrar la mesa equivocada. */
@@ -85,6 +86,11 @@ export default function PantallaCobro({
   encabezado?: ReactNode;
   /** Confirmar apagado sin decir "Registrando…": falta algo de arriba (el monto). */
   bloqueado?: boolean;
+  /**
+   * "Efectivo recibido" vacío = el monto justo, sin "no alcanza" (Cobrar a
+   * estudiante, QA 23-oct). El POS no lo pasa: ahí se sigue pidiendo.
+   */
+  recibidoVacioEsExacto?: boolean;
 }) {
   const { incluye, negocio, usuario } = useAuth();
   const formaEfectivo = buscarForma(formasPago, "Efectivo");
@@ -136,7 +142,7 @@ export default function PantallaCobro({
 
   // En centavos, como los guarda el backend: un "33.335" tecleado viajaba
   // tal cual y el QR más el efectivo dejaban de sumar el total (400).
-  const recibidoNum = aCentavos(parsearMontoO(recibido));
+  const recibidoTecleado = aCentavos(parsearMontoO(recibido));
   const qrNum = aCentavos(parsearMontoO(montoQr));
 
   /** Cambiar de método o el monto del QR obliga a confirmar de nuevo. */
@@ -151,6 +157,8 @@ export default function PantallaCobro({
   // Lo que hay que recibir en mano: la parte en efectivo y la propina en
   // efectivo (sin propinas, es exactamente lo de siempre).
   const enMano = Math.round((aCubrirEnEfectivo + extraEfectivo) * 100) / 100;
+  // Vacío y con `recibidoVacioEsExacto`: lo recibido es justo lo que hay que recibir.
+  const recibidoNum = recibidoVacioEsExacto && recibido.trim() === "" ? enMano : recibidoTecleado;
   const cambio = metodo === "QR" ? 0 : vuelto(recibidoNum, enMano);
   const falta =
     metodo === "QR" ? 0 : Math.max(0, Math.round((enMano - recibidoNum) * 100) / 100);

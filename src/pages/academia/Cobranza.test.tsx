@@ -159,4 +159,10 @@ describe("N7 · cobranza", () => {
     fireEvent.click(screen.getByRole("button", { name: "Cobrar" }));
     expect(screen.getByTestId("destino")).toHaveTextContent("/academia/cobrar?inscripcion=103&sede=2&sedeNombre=Norte");
   });
+
+  it("QA 23-oct: Cobrar también en la fila, sin abrir el panel", async () => {
+    await montar();
+    fireEvent.click(screen.getAllByRole("button", { name: "Cobrar a Céspedes Molina, Joaquín" })[0]);
+    expect(screen.getByTestId("destino")).toHaveTextContent("/academia/cobrar?inscripcion=103&sede=2&sedeNombre=Norte");
+  });
 });

@@ -313,6 +313,7 @@ export default function Cobranza() {
               setCola([f]);
               setPos(0);
             }}
+            onCobrar={cobra ? cobrar : undefined}
           />
         )}
       </Tarjeta>
@@ -350,6 +351,7 @@ function ListaCobranza({
   onAlternar,
   onAlternarTodos,
   onAbrir,
+  onCobrar,
 }: {
   filas: FilaCobranza[];
   conSede: boolean;
@@ -359,6 +361,8 @@ function ListaCobranza({
   onAlternar: (f: FilaCobranza) => void;
   onAlternarTodos: () => void;
   onAbrir: (f: FilaCobranza) => void;
+  /** QA 23-oct: "Cobrar" en la fila, sin pasar por el panel. Sin el permiso, no está. */
+  onCobrar?: (f: FilaCobranza) => void;
 }) {
   const p = usePalabras();
   const sub = (f: FilaCobranza) => {
@@ -439,9 +443,16 @@ function ListaCobranza({
                   <td className={`${TABLA.td} whitespace-nowrap`}>{chipVence(v)}</td>
                   <td className={`${TABLA.td} whitespace-nowrap`}>{recordatorio(f, v.urgente)}</td>
                   <td className={`${TABLA.td} text-right whitespace-nowrap ${abierta ? "hidden" : ""}`}>
-                    <BotonFila icono="qr" onClick={() => onAbrir(f)}>
-                      Enviar QR
-                    </BotonFila>
+                    <span className="inline-flex gap-2">
+                      {onCobrar && (
+                        <BotonFila icono="dollar" onClick={() => onCobrar(f)} aria-label={`Cobrar a ${f.alumno.nombre}`}>
+                          Cobrar
+                        </BotonFila>
+                      )}
+                      <BotonFila variante={onCobrar ? "ghost" : "soft"} icono="qr" onClick={() => onAbrir(f)}>
+                        Enviar QR
+                      </BotonFila>
+                    </span>
                   </td>
                 </tr>
               );
@@ -478,9 +489,16 @@ function ListaCobranza({
                     {chipVence(v)}
                     {recordatorio(f, v.urgente)}
                   </span>
-                  <BotonFila icono="qr" className="ml-auto" onClick={() => onAbrir(f)}>
-                    Enviar QR
-                  </BotonFila>
+                  <span className="ml-auto flex gap-2">
+                    {onCobrar && (
+                      <BotonFila icono="dollar" onClick={() => onCobrar(f)} aria-label={`Cobrar a ${f.alumno.nombre}`}>
+                        Cobrar
+                      </BotonFila>
+                    )}
+                    <BotonFila variante={onCobrar ? "ghost" : "soft"} icono="qr" onClick={() => onAbrir(f)}>
+                      Enviar QR
+                    </BotonFila>
+                  </span>
                 </div>
               </div>
             </li>

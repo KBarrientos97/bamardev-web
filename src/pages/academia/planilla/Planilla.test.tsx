@@ -263,3 +263,70 @@ describe("A6 · planilla sólo del admin: abre en Cuentan y el motivo de no pago
     expect(screen.queryByRole("button", { name: /motivo/ })).not.toBeInTheDocument();
   });
 });
+
+describe("QA 23-oct · planilla", () => {
+  async function montarCon(extra: Partial<TPlanillaDocente>) {
+    vi.mocked(apiAcademia.planillaDocente).mockResolvedValue({ ...PLANILLA, ...extra });
+    render(
+      <MemoryRouter initialEntries={["/academia/planilla/9?mes=2026-10"]}>
+        <Routes>
+          <Route path="/academia/planilla/:id" element={<PlanillaDocente />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    await act(async () => {});
+  }
+
+  it("el encabezado dice el monto fijo del curso que paga así", async () => {
+    await montarCon({
+      carreras: [
+        { id: 3, nombre: "Barbería", modo: "MONTO", pct: null, monto: 90 },
+        { id: 4, nombre: "Uñas", modo: "PORCENTAJE", pct: 20, monto: null },
+      ],
+    });
+    expect(screen.getByText(/Cobra: Barbería Bs 90,00 fijo por módulo · Uñas 20 %/)).toBeInTheDocument();
+  });
+
+  it("todo por %, el texto de siempre", async () => {
+    await montarCon({});
+    expect(screen.getByText(/Cobra el 20 % de lo cobrado/)).toBeInTheDocument();
+  });
+
+  it("en «Sin pagar» la fila y el subtotal valen 0; lo que sumaría va aparte en gris", async () => {
+    await montarCon({
+      resumen: { ...PLANILLA.resumen, sinPagar: 2 },
+      sinPagar: [
+        linea({ inscripcionId: 105, alumno: { id: 55, nombre: "Rivero Gil, Matías" }, monto: 0, montoPotencial: 90 }),
+        linea({ inscripcionId: 106, alumno: { id: 56, nombre: "Soria Paz, Ana" }, monto: 0, montoPotencial: 90 }),
+      ],
+    });
+    fireEvent.click(screen.getByRole("tab", { name: /Sin pagar/ }));
+    const grupo = screen.getByRole("region", { name: "Barbería · L-M-V 09–11" });
+    expect(grupo).toHaveTextContent(/2 estudiantes · Bs 0,00/);
+    expect(grupo).not.toHaveTextContent(/Bs 180/);
+    expect(within(grupo).getAllByText("Bs 90,00 si paga")).toHaveLength(2);
+  });
+
+  it("deja ir al mes que viene", async () => {
+    await montarCon({});
+    const mes = screen.getByRole("combobox");
+    expect(Array.from(mes.querySelectorAll("option")).map((o) => o.getAttribute("value"))).toContain("2026-11");
+  });
+});
+
+describe("QA 23-oct · planilla del mes", () => {
+  it("«Mes siguiente» anda desde el mes actual (uno más)", async () => {
+    render(
+      <MemoryRouter>
+        <PlanillaMes />
+      </MemoryRouter>,
+    );
+    await act(async () => {});
+    const siguiente = screen.getByRole("button", { name: "Mes siguiente" });
+    expect(siguiente).toBeEnabled();
+    fireEvent.click(siguiente);
+    await act(async () => {});
+    expect(apiAcademia.planilla).toHaveBeenLastCalledWith("2026-11", null);
+    expect(screen.getByRole("button", { name: "Mes siguiente" })).toBeDisabled();
+  });
+});

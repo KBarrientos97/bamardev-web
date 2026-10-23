@@ -4,7 +4,6 @@ import { Boton, Cargando, ErrorMsg, Select, Vacio } from "../../../components/ui
 import { apiAcademia, CODIGOS_ACADEMIA } from "../../../lib/academia/apiAcademia";
 import { fechaCorta, horarioGrupo, nombreDe } from "../../../lib/academia/formato";
 import type { EstadoAsistencia, ListaDeClase } from "../../../lib/academia/tipos";
-import { traeSemaforo } from "../../../lib/academia/vista";
 import { usePalabras } from "../../../lib/academia/usePalabras";
 import { ApiError } from "../../../lib/api";
 import { capitalizar, fechaLarga } from "../../../lib/agenda/horaAgenda";
@@ -179,10 +178,11 @@ function Lista({
     : d?.grupo
       ? `${nombreDe(d.grupo.carrera)} · ${d.grupo.nombre}`
       : "Pasar lista";
-  // B7: el docente ve el semáforo (rojo o amarillo) en vez de "Pagado / Abonó
-  // / Sin pagar"; "Deben" son los que tienen alguno. Sin semáforo en la
-  // respuesta (un backend anterior, o el admin), como siempre.
-  const conSemaforo = docente && traeSemaforo(d?.alumnos ?? []);
+  // B7: el docente ve sólo el semáforo (rojo o amarillo); "Con deuda" son los
+  // que tienen alguno. El backend ya no le manda `estadoPago` (QA 23-oct). La
+  // administración y la recepción, como siempre.
+  const conSemaforo = docente;
+  const rojos = (d?.alumnos ?? []).filter((a) => a.semaforo === "ROJO").length;
   const debe = (a: ListaDeClase["alumnos"][number]) =>
     conSemaforo ? a.semaforo != null : !!a.estadoPago && a.estadoPago !== "PAGADO";
   const alumnos = (d?.alumnos ?? []).filter((a) => filtro === "todos" || debe(a));
@@ -242,13 +242,24 @@ function Lista({
           {/* Lo que el docente mira antes de empezar: cuántos pagaron el
               módulo (sin montos, D6) y cómo va quedando la lista. */}
           <GrillaKpi columnas={2}>
-            <KpiTarjeta
-              etiqueta={`Pagaron el M${d.sesion.materia.orden}`}
-              icono="coins"
-              valor={`${d.resumen.pagaron} de ${d.resumen.total}`}
-              tono={d.resumen.total > 0 && d.resumen.pagaron === d.resumen.total ? "ok" : "normal"}
-              pie={d.sesion.materia.nombre}
-            />
+            {conSemaforo ? (
+              // El docente: cuántos tienen el semáforo prendido, con el color del peor.
+              <KpiTarjeta
+                etiqueta="Con deuda"
+                icono="alert"
+                valor={`${deben} de ${d.alumnos.length}`}
+                tono={rojos > 0 ? "urgente" : deben > 0 ? "ambar" : "normal"}
+                pie={rojos > 0 ? `${rojos} ${rojos === 1 ? "pasó" : "pasaron"} la espera` : deben > 0 ? "en semana de espera" : "nadie debe"}
+              />
+            ) : (
+              <KpiTarjeta
+                etiqueta={`Pagaron el M${d.sesion.materia.orden}`}
+                icono="coins"
+                valor={`${d.resumen.pagaron} de ${d.resumen.total}`}
+                tono={d.resumen.total > 0 && d.resumen.pagaron === d.resumen.total ? "ok" : "normal"}
+                pie={d.sesion.materia.nombre}
+              />
+            )}
             <KpiTarjeta
               etiqueta="Presentes"
               icono="users"
@@ -274,7 +285,7 @@ function Lista({
                 etiqueta={`Filtrar ${p.alumnos}`}
                 opciones={[
                   { clave: "todos", label: "Todos", n: d.alumnos.length },
-                  { clave: "debe", label: conSemaforo ? "Deben" : "Sin pagar o abonó", n: deben, urgente: true },
+                  { clave: "debe", label: conSemaforo ? "Con deuda" : "Sin pagar o abonó", n: deben, urgente: true },
                 ]}
                 valor={filtro}
                 onChange={setFiltro}
@@ -354,7 +365,12 @@ function Lista({
             )}
             {(guardadaEn || (d.guardada && !guardadaEn && d.editable)) && (
               <p role="status" className="text-center text-[13px] text-texto-3">
-                {guardadaEn ? `Guardada a las ${fmtHora(guardadaEn)} · podés corregirla hasta el final del día` : `Ya guardada el ${fechaCorta(d.sesion.fecha)} · podés corregirla`}
+                {/* Que diga lo de ESA lista (QA 23-oct): de un día pasado no es "hasta el final del día". */}
+                {guardadaEn
+                  ? esHoy
+                    ? `Guardada a las ${fmtHora(guardadaEn)} · podés corregirla hasta el final del día`
+                    : `Guardada a las ${fmtHora(guardadaEn)} · lista del ${fechaCorta(d.sesion.fecha)}`
+                  : `Ya guardada el ${fechaCorta(d.sesion.fecha)} · podés corregirla`}
               </p>
             )}
           </div>

@@ -120,7 +120,8 @@ export default function Grupo() {
   if (!g) return <Cargando />;
 
   const actual = g.materiaActual;
-  const cobroActual = actual ? g.resumenCobro.porMateria.find((m) => m.materiaOrden === actual.orden) : null;
+  // Al docente no le llega `resumenCobro…pagaron` (QA 23-oct): se trata como ausente.
+  const cobroActual = actual ? (g.resumenCobro?.porMateria?.find((m) => m.materiaOrden === actual.orden) ?? null) : null;
   const mgActual = actual ? g.materiasGrupo.find((m) => m.materia.orden === actual.orden) : null;
   const docenteActual = actual?.docente ?? g.materiasGrupo.find((m) => m.docente)?.docente?.nombre ?? null;
   const subtitulo = [
@@ -177,8 +178,8 @@ export default function Grupo() {
     }
   }
 
-  const conPie = alumnos.items.length > 0 && (!!cobroActual || alumnos.paginacion.total > 20);
-  const faltanPagar = cobroActual ? cobroActual.total - cobroActual.pagaron : null;
+  // QA 23-oct: el docente ve sólo el semáforo; ni "pagaron" ni "falta pagar".
+  const conPie = alumnos.items.length > 0 && ((!sinMontos && !!cobroActual) || alumnos.paginacion.total > 20);
 
   return (
     <PaginaAcademia conBarraAbajo className={elegido ? "md:mr-[380px] md:w-auto" : ""}>
@@ -215,33 +216,32 @@ export default function Grupo() {
       <AvisoOk>{aviso}</AvisoOk>
       <ErrorMsg>{errorAccion}</ErrorMsg>
 
-      {/* Los números del grupo de un vistazo: el docente, sin montos (D6). */}
-      <GrillaKpi columnas={sinMontos ? 3 : 4}>
+      {/* Los números del grupo de un vistazo. El docente ve sólo cuántos son y
+          en qué módulo van: lo de pagos es el semáforo de cada uno (B7, QA 23-oct). */}
+      <GrillaKpi columnas={sinMontos ? 2 : 4}>
         <KpiTarjeta
           etiqueta="Inscritos"
           icono="users"
           valor={g.inscritos}
           pie={g.cupo != null ? `de ${g.cupo} lugares` : "sin tope de cupo"}
         />
-        <KpiTarjeta
-          etiqueta={cobroActual ? `Pagaron el M${cobroActual.materiaOrden}` : `Pago del ${p.materia}`}
-          icono="coins"
-          valor={cobroActual ? `${cobroActual.pagaron} de ${cobroActual.total}` : "—"}
-          tono={cobroActual && cobroActual.total > 0 && cobroActual.pagaron === cobroActual.total ? "ok" : "normal"}
-          pie={actual ? actual.nombre : "todavía no empezó"}
-        />
         {sinMontos ? (
-          // La tercera del docente va a lo ancho en el celular (2 por fila): sola quedaba media fila vacía.
-          <div className="col-span-2 grid lg:col-span-1">
-            <KpiTarjeta
-              etiqueta="Falta pagar"
-              icono="clock"
-              valor={faltanPagar ?? "—"}
-              tono={faltanPagar ? "ambar" : "normal"}
-              pie="sin pagar o abonó"
-            />
-          </div>
+          <KpiTarjeta
+            etiqueta={`${p.Materia} actual`}
+            icono="birrete"
+            valor={actual ? `M${actual.orden}` : "—"}
+            pie={actual ? actual.nombre : "todavía no empezó"}
+          />
         ) : (
+          <KpiTarjeta
+            etiqueta={cobroActual ? `Pagaron el M${cobroActual.materiaOrden}` : `Pago del ${p.materia}`}
+            icono="coins"
+            valor={cobroActual ? `${cobroActual.pagaron} de ${cobroActual.total}` : "—"}
+            tono={cobroActual && cobroActual.total > 0 && cobroActual.pagaron === cobroActual.total ? "ok" : "normal"}
+            pie={actual ? actual.nombre : "todavía no empezó"}
+          />
+        )}
+        {sinMontos ? null : (
           <>
             <KpiTarjeta
               etiqueta="Deben"
@@ -278,7 +278,9 @@ export default function Grupo() {
             opciones={[
               { clave: "todos", label: "Todos", n: n("todos") },
               ...(sinMontos
-                ? []
+                ? // El docente: los que tienen el semáforo prendido (el backend
+                  // cuenta `deben` por semáforo para él, QA 23-oct).
+                  [{ clave: "deben" as const, label: "Con deuda", n: n("deben"), urgente: true }]
                 : [
                     { clave: "deben" as const, label: "Deben", n: n("deben"), urgente: true },
                     { clave: "aldia" as const, label: "Al día", n: n("aldia") },
@@ -296,7 +298,7 @@ export default function Grupo() {
           conPie ? (
             <Paginacion
               {...alumnos.paginacion}
-              extra={cobroActual ? `M${cobroActual.materiaOrden} pagado por ${cobroActual.pagaron} de ${cobroActual.total}` : undefined}
+              extra={cobroActual && !sinMontos ? `M${cobroActual.materiaOrden} pagado por ${cobroActual.pagaron} de ${cobroActual.total}` : undefined}
             />
           ) : undefined
         }
@@ -469,7 +471,7 @@ function TablaAlumnos({
       <div className="hidden md:block">
         <div className={`grid ${columnas} gap-3 px-5 py-2.5 ${TABLA.encabezado}`}>
           <span>{p.Alumno}</span>
-          {sinMontos ? <span>Pago del {p.materia}</span> : <span>Forma de pago</span>}
+          {sinMontos ? <span>Cuotas</span> : <span>Forma de pago</span>}
           {!sinMontos && <span>Pagos</span>}
           <span>Asistencia</span>
           {!sinMontos && <span className="text-right">Debe</span>}
@@ -502,7 +504,7 @@ function TablaAlumnos({
                     <span className="block truncate text-[12px] text-texto-3">{subtituloFila(a, sinMontos)}</span>
                   </span>
                   {sinMontos ? (
-                    <PagoDelModulo estado={a.estadoPago} semaforo={a.semaforo} conSemaforo={a.semaforo !== undefined} />
+                    <PagoDelModulo estado={a.estadoPago} semaforo={a.semaforo} conSemaforo />
                   ) : (
                     <>
                       <span className="truncate text-sm text-texto-2">{textoFormaPago(a.formaPago, a.plan?.nombre)}</span>
@@ -549,7 +551,7 @@ function TablaAlumnos({
                 <span className="flex min-w-0 items-center gap-2 text-[13px] text-texto-3">
                   <span className="shrink-0">
                     {sinMontos ? (
-                      <PagoDelModulo estado={a.estadoPago} semaforo={a.semaforo} conSemaforo={a.semaforo !== undefined} />
+                      <PagoDelModulo estado={a.estadoPago} semaforo={a.semaforo} conSemaforo />
                     ) : (
                       <PuntosPago pagos={a.pagos} />
                     )}
@@ -673,9 +675,9 @@ function PanelAlumno({
         <ResumenPanel className="grid grid-cols-2 gap-3">
           {sinMontos ? (
             <div className="min-w-0 text-sm">
-              <span className="block text-[11px] font-semibold uppercase tracking-wide text-texto-4">Pago del {p.materia} actual</span>
+              <span className="block text-[11px] font-semibold uppercase tracking-wide text-texto-4">Cuotas</span>
               <span className="mt-1 block">
-                <PagoDelModulo estado={fila.estadoPago} semaforo={fila.semaforo} conSemaforo={fila.semaforo !== undefined} />
+                <PagoDelModulo estado={fila.estadoPago} semaforo={fila.semaforo} conSemaforo />
               </span>
             </div>
           ) : (

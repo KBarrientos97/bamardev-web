@@ -10,7 +10,9 @@ import { fechaCorta, nombreDe } from "../../../lib/academia/formato";
 import type { EstadoPlanilla, LineaPlanilla, MetodoPagoPlanilla, MotivoNoPago, MotivoNoPagoLinea } from "../../../lib/academia/tipos";
 import { usePalabras } from "../../../lib/academia/usePalabras";
 import {
+  cursosDePlanilla,
   MOTIVOS_NO_PAGO,
+  textoCobroPlanilla,
   TEXTO_ESTADO_PLANILLA as TEXTO_ESTADO,
   textoFormaPago,
   textoMotivoNoPago,
@@ -85,6 +87,10 @@ export default function PlanillaDocente() {
   const mes = params.get("mes") ?? hoy;
   const liquida = tienePermiso(usuario, "planilla.liquidar");
   const carga = useApi(() => apiAcademia.planillaDocente(personalId, mes), [personalId, mes]);
+  // Un backend que no dice cómo se paga cada curso: se mira en las carreras
+  // (para el monto fijo, A5). El de hoy lo manda y no se pide nada más.
+  const sinModo = !!carga.datos && !carga.datos.carreras && !carga.datos.pct.porCurso.some((x) => x.modo);
+  const carreras = useApi(async () => (sinModo ? apiAcademia.carreras().catch(() => null) : null), [sinModo]);
   const [lista, setLista] = useState<Lista>("cuentan");
   const [elegida, setElegida] = useState<LineaPlanilla | null>(null);
   const [verTodos, setVerTodos] = useState<Record<string, boolean>>({});
@@ -148,10 +154,13 @@ export default function PlanillaDocente() {
   const listas: Record<Lista, LineaPlanilla[]> = { cuentan: d.cuentan, postergados: d.postergados, atrasados: d.atrasados, sinPagar: d.sinPagar };
   const elegidas = listas[lista];
   const porGrupo = agrupar(elegidas);
-  const meses = [...new Set([hoy, mes, ...d.meses.map((x) => x.mes), ...Array.from({ length: 5 }, (_, i) => sumarMeses(hoy, -(i + 1)))])].sort().reverse();
-  const pcts = d.pct.porCurso.length
-    ? `${d.pct.defecto} % (${d.pct.porCurso.map((x) => `${nombreDe(x.carrera)} ${x.pct} %`).join(", ")})`
-    : `${d.pct.defecto} %`;
+  // También el mes que viene (QA 23-oct): sus líneas sólo se veían escribiendo `?mes=`.
+  const meses = [
+    ...new Set([sumarMeses(hoy, 1), hoy, mes, ...d.meses.map((x) => x.mes), ...Array.from({ length: 5 }, (_, i) => sumarMeses(hoy, -(i + 1)))]),
+  ]
+    .sort()
+    .reverse();
+  const cobro = textoCobroPlanilla(d.pct.defecto, cursosDePlanilla(d, carreras.datos ?? null));
   const columnaCobrado = lista === "postergados" ? "Abonó" : lista === "sinPagar" ? "Precio" : "Cobrado del módulo";
   const cuenta = lista === "cuentan" || lista === "atrasados";
   /** Las listas que no le suman al docente llevan el motivo (A6). */
@@ -181,7 +190,7 @@ export default function PlanillaDocente() {
             {d.grupos?.length
               ? `${[...new Set(d.grupos.map((g) => g.carrera.nombre))].join(", ")} · ${d.grupos.length} ${d.grupos.length === 1 ? "grupo" : "grupos"} · `
               : ""}
-            Cobra el {pcts} de lo cobrado
+            {cobro}
           </>
         }
         acciones={
@@ -285,7 +294,9 @@ export default function PlanillaDocente() {
           porGrupo.map(([grupo, lineas]) => {
             const todos = verTodos[grupo] ?? false;
             const visibles = todos ? lineas : lineas.slice(0, LIMITE);
-            const total = lineas.reduce((s, l) => s + (cuenta ? l.monto : (l.montoPotencial ?? l.monto)), 0);
+            // Lo que no cuenta suma 0, como dice su detalle; lo que sumaría va
+            // aparte en gris (QA 23-oct: el subtotal decía Bs 180 en "Sin pagar").
+            const total = cuenta ? lineas.reduce((s, l) => s + l.monto, 0) : 0;
             return (
               <section key={grupo} aria-label={grupo} className="border-t border-borde-soft first:border-t-0">
                 <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 px-4 py-3 sm:px-5">
@@ -300,7 +311,7 @@ export default function PlanillaDocente() {
                   <span>Forma de pago</span>
                   <span className="text-right">{columnaCobrado}</span>
                   <span className="text-right">%</span>
-                  <span className="text-right">{cuenta ? "Para el docente" : "Quedaría"}</span>
+                  <span className="text-right">Para el docente</span>
                 </div>
                 <ul className={`${LISTA.lista} border-t border-borde-soft`}>
                   {visibles.map((l) => (
@@ -325,7 +336,12 @@ export default function PlanillaDocente() {
                         </span>
                         <span className="hidden text-right text-sm tabular-nums text-texto-3 lg:block">{l.pct} %</span>
                         <span className={`text-right text-sm font-semibold tabular-nums max-lg:order-2 ${cuenta ? "text-texto" : "text-texto-3"}`}>
-                          {fmtMoney(cuenta ? l.monto : (l.montoPotencial ?? l.monto))}
+                          {fmtMoney(cuenta ? l.monto : 0)}
+                          {!cuenta && (l.montoPotencial ?? 0) > 0 && (
+                            <span className="block text-[11px] font-normal text-texto-4">
+                              {fmtMoney(l.montoPotencial ?? 0)} {lista === "postergados" ? "si completa" : "si paga"}
+                            </span>
+                          )}
                         </span>
                       </button>
                       {conMotivo && (l.motivoNoPago || (liquida && materiaDe(l) != null)) && (

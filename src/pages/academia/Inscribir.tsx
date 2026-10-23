@@ -16,6 +16,7 @@ import {
   PARENTESCOS,
   textoCubre,
   textoVence,
+  venceCuota,
 } from "../../lib/academia/formato";
 import { fotosQueFaltan, textoFaltanFotos } from "../../lib/academia/fotos";
 import type {
@@ -33,7 +34,7 @@ import type {
 import { usePalabras } from "../../lib/academia/usePalabras";
 import { enlaceWhatsApp } from "../../lib/agenda/recordatorio";
 import { ApiError } from "../../lib/api";
-import { fmtMoney } from "../../lib/format";
+import { fmtMoney, isoDia } from "../../lib/format";
 import { tienePermiso } from "../../lib/permisos";
 import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
@@ -954,8 +955,15 @@ function TarjetaPlan({
   if (plan.generado === "MES_A_MES") {
     titulo = "Mes a mes";
     precio = `${fmtMoney(cuotas[0]?.monto ?? 0)} por ${p.materia}`;
+    // Cada cuota con su vencimiento como lo calcula el backend: con un grupo
+    // que todavía no empezó, la primera vence el día que empieza el M1, no
+    // hoy (QA 23-oct). "Paga hoy" es otra cosa: un cobro.
+    const hoy = isoDia(new Date());
     resumen = cuotas
-      .map((c, i) => `${textoCubre(c.cubre)} ${i === 0 ? "hoy" : fechaCorta(desdeDe(c.cubre[0]) ?? null)}`)
+      .map((c) => {
+        const vence = venceCuota(c.vence, desdeDe, hoy, c.cubre[0]);
+        return `${textoCubre(c.cubre)} ${vence === "hoy" ? "hoy" : fechaCorta(vence)}`;
+      })
       .join(" · ");
   } else if (plan.generado === "COMPLETO") {
     const ahorro = mesAMes ? mesAMes.total - plan.total : 0;
