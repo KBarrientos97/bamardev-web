@@ -341,6 +341,15 @@ export default function AjustesAcademia() {
           <Campo label={`El atraso del ${p.docente} cuenta desde (min)`}>
             <Input type="number" {...numero("toleranciaAtrasoMin", 0, 240)} />
           </Campo>
+          {/* B7: el semáforo del docente. Sólo si el backend ya lo conoce. */}
+          {a.diasEspera !== undefined && (
+            <Campo
+              label="Días de espera antes de marcar en rojo"
+              hint={`Desde que vence la cuota, el ${p.docente} ve en amarillo a quien debe; después, en rojo. No bloquea nada.`}
+            >
+              <Input type="number" inputMode="numeric" {...numero("diasEspera", 0, 60)} />
+            </Campo>
+          )}
         </div>
       </SeccionAjuste>
 

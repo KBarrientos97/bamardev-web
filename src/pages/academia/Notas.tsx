@@ -7,6 +7,7 @@ import { apiAcademia, CODIGOS_ACADEMIA } from "../../lib/academia/apiAcademia";
 import { fechaCorta, horarioGrupo, nombreDe, numeroEnLetras } from "../../lib/academia/formato";
 import type { NotasDelGrupo } from "../../lib/academia/tipos";
 import { usePalabras } from "../../lib/academia/usePalabras";
+import { traeSemaforo } from "../../lib/academia/vista";
 import { ApiError } from "../../lib/api";
 import { soloLoSuyo, tienePermiso } from "../../lib/permisos";
 import { useApi } from "../../lib/useApi";
@@ -18,7 +19,7 @@ import {
   Chip,
   EncabezadoPagina,
   ErrorDeCarga,
-  EstadoPagoTexto,
+  PagoDelModulo,
   FiltrosConteo,
   GrillaKpi,
   KpiTarjeta,
@@ -163,6 +164,8 @@ function CargaNotas({
     return { tipo: num >= n.notaMinima ? ("aprueba" as const) : ("reprueba" as const), n: num };
   };
 
+  // B7: el docente ve el semáforo en vez de "Pagado / Abonó / Sin pagar".
+  const conSemaforo = docente && traeSemaforo(d?.items ?? []);
   const filas = useMemo(() => {
     if (!d) return [];
     return d.items.map((i) => ({ ...i, valor: notas[i.inscripcionId] ?? "", e: evaluar(notas[i.inscripcionId] ?? "", d) }));
@@ -433,7 +436,7 @@ function CargaNotas({
                       nombre; en escritorio (`contents`) cada uno en su columna. */}
                   <span className="col-start-1 row-start-2 flex min-w-0 flex-wrap items-center gap-1.5 md:contents">
                     <span className="md:col-start-2 md:row-start-1">
-                      <EstadoPagoTexto estado={f.estadoPago} />
+                      <PagoDelModulo estado={f.estadoPago} semaforo={f.semaforo} conSemaforo={conSemaforo} />
                     </span>
                     <span className="md:col-start-5 md:row-start-1">
                       <Chip tono={TONO_RESULTADO[t]}>{t === "vacia" ? "Sin nota" : t === "error" ? f.e.motivo : t === "aprueba" ? "Aprobado" : "Reprobado"}</Chip>

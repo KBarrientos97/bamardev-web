@@ -2,9 +2,9 @@ import type { ButtonHTMLAttributes, ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { Icon, type NombreIcono } from "../../components/Icon";
 import { ErrorMsg, Vacio } from "../../components/ui";
-import type { Cuota, EstadoPagoMateria, EstadoPagoModulo } from "../../lib/academia/tipos";
+import type { Cuota, EstadoPagoMateria, EstadoPagoModulo, SemaforoPago } from "../../lib/academia/tipos";
 import { usePalabras } from "../../lib/academia/usePalabras";
-import { fueraDeAlcance, nombreCuota, textoCuota, textoEstadoPago } from "../../lib/academia/vista";
+import { fueraDeAlcance, nombreCuota, textoCuota, textoEstadoPago, textoSemaforo } from "../../lib/academia/vista";
 
 /**
  * Piezas de las pantallas del instituto. Primero eran la versión limpia de
@@ -608,6 +608,45 @@ export function EstadoPagoTexto({ estado }: { estado: EstadoPagoModulo | null | 
   const t = textoEstadoPago(estado);
   if (t.tono === "gris") return <span className={`text-sm ${TONO_PAGO.gris}`}>{t.texto}</span>;
   return <Chip tono={CHIP_PAGO[t.tono]}>{t.texto}</Chip>;
+}
+
+/**
+ * B7: el semáforo del docente. Rojo o amarillo con su frase y nada más: ni
+ * montos ni "pagado". Sin deuda vencida, una raya. Es sólo para mirar: no
+ * bloquea la lista ni las notas (RM 0008/2016 art. 41).
+ */
+export function SemaforoTexto({ semaforo }: { semaforo: SemaforoPago | undefined }) {
+  const t = textoSemaforo(semaforo ?? null);
+  if (t.tono === "gris") {
+    return (
+      <span className={`text-sm ${TONO_PAGO.gris}`} title={t.largo} aria-label={t.largo}>
+        {t.corto}
+      </span>
+    );
+  }
+  return (
+    <span title={t.largo} aria-label={t.largo}>
+      <Chip tono={t.tono}>{t.corto}</Chip>
+    </span>
+  );
+}
+
+/**
+ * Lo de pago de un estudiante en una vista que también ve el docente: con el
+ * semáforo (B7) si el que mira es el docente y la respuesta lo trae; si no,
+ * "Pagado / Abonó / Sin pagar" como siempre (el admin y la recepción no
+ * cambian).
+ */
+export function PagoDelModulo({
+  estado,
+  semaforo,
+  conSemaforo,
+}: {
+  estado: EstadoPagoModulo | null | undefined;
+  semaforo?: SemaforoPago;
+  conSemaforo: boolean;
+}) {
+  return conSemaforo ? <SemaforoTexto semaforo={semaforo} /> : <EstadoPagoTexto estado={estado} />;
 }
 
 /**

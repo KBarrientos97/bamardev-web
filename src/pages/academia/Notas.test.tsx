@@ -162,3 +162,20 @@ describe("E13 · Notas: lo guardado de verdad (QA ronda 2, B-18)", () => {
     expect(screen.getByRole("status")).toHaveTextContent("Guardado");
   });
 });
+
+describe("B7 · el semáforo en las notas del docente", () => {
+  it("con semáforo, rojo o amarillo en vez de «Pagado / Sin pagar»; la recepción sigue como siempre", async () => {
+    vi.mocked(apiAcademia.notas).mockResolvedValue({
+      ...NOTAS,
+      items: [
+        { inscripcionId: 101, nombre: "Andrade Villca, Mateo", estadoPago: null, nota: 76, semaforo: "AMARILLO" },
+        { inscripcionId: 102, nombre: "Bustillos Rek, Camila", estadoPago: null, nota: null, semaforo: null },
+      ],
+    });
+    await montar();
+    expect(screen.getByLabelText("Debe, en semana de espera")).toBeInTheDocument();
+    expect(screen.queryByText("Pagado")).not.toBeInTheDocument();
+    // Nunca bloquea: la nota se carga igual.
+    expect(screen.getByText("setenta y seis")).toBeInTheDocument();
+  });
+});

@@ -44,6 +44,12 @@ export interface AjustesAcademia {
   fotosObligatorias: boolean;
   /** La retención del 16 %: por confirmar con el cliente (D9), apagada. */
   retencionActiva: boolean;
+  /**
+   * B7 (D2, 22-oct): días después del vencimiento en que el docente ve en
+   * amarillo a quien debe; después, en rojo. 7 por defecto. Un backend
+   * anterior no lo manda y el campo no se muestra.
+   */
+  diasEspera?: number;
 }
 
 export interface Franja {
@@ -253,6 +259,14 @@ export interface DescuentoInscripcion {
 
 /** El pago del módulo actual, lo único de plata que ve el docente (D6). */
 export type EstadoPagoModulo = "PAGADO" | "ABONO" | "SIN_PAGAR";
+
+/**
+ * B7 (22-oct): lo único de plata que ve el docente. ROJO = debe y pasó la
+ * semana de espera (`diasEspera`), AMARILLO = debe dentro de la espera, null
+ * = al día o todavía no venció. Lo calcula el backend; ausente en uno anterior.
+ * Nunca bloquea nada (RM 0008/2016 art. 41).
+ */
+export type SemaforoPago = "ROJO" | "AMARILLO" | null;
 export type FormaPago = "MES_A_MES" | "COMPLETO" | "OTRO";
 
 export interface AlumnoDelGrupo {
@@ -270,6 +284,8 @@ export interface AlumnoDelGrupo {
   /** Del módulo actual; null si el grupo no empezó o el módulo no tiene cuota. */
   estadoPago?: EstadoPagoModulo | null;
   formaPago?: FormaPago | null;
+  /** B7: sólo para el docente. */
+  semaforo?: SemaforoPago;
 }
 
 export type FiltroAlumnosGrupo = "todos" | "deben" | "aldia" | "retirados";
@@ -731,7 +747,14 @@ export interface ListaDeClase {
   guardada: boolean;
   editable: boolean;
   resumen: { pagaron: number; total: number };
-  alumnos: { inscripcionId: number; nombre: string; estadoPago: EstadoPagoModulo | null; estado: EstadoAsistencia | null }[];
+  /** `semaforo` (B7) sólo para el docente. */
+  alumnos: {
+    inscripcionId: number;
+    nombre: string;
+    estadoPago: EstadoPagoModulo | null;
+    estado: EstadoAsistencia | null;
+    semaforo?: SemaforoPago;
+  }[];
 }
 
 // ── Notas (F1b) ─────────────────────────────────────────────────────────────
@@ -744,7 +767,8 @@ export interface NotasDelGrupo {
   cerradaEn?: string | null;
   notaMinima: number;
   escalaMax: number;
-  items: { inscripcionId: number; nombre: string; estadoPago: EstadoPagoModulo | null; nota: number | null }[];
+  /** `semaforo` (B7) sólo para el docente. */
+  items: { inscripcionId: number; nombre: string; estadoPago: EstadoPagoModulo | null; nota: number | null; semaforo?: SemaforoPago }[];
 }
 
 // ── Planilla del docente (F1b, D2) ──────────────────────────────────────────

@@ -165,6 +165,29 @@ describe("E3 · detalle de grupo", () => {
     expect(screen.queryByRole("button", { name: /Inscribir/ })).not.toBeInTheDocument();
   });
 
+  it("B7: con el semáforo, el docente ve rojo o amarillo en vez de «Pagado / Sin pagar»", async () => {
+    sesion.permisos = ["academia.ver"];
+    sesion.propios = ["academia.ver"];
+    vi.mocked(apiAcademia.alumnosDelGrupo).mockImplementation(async (_id, _f, p = {}) =>
+      p.pageSize === 1
+        ? { items: [], total: 2, page: 1, pageSize: 1 }
+        : {
+            items: [
+              { ...MATEO, saldo: null, estadoPago: null, semaforo: null },
+              { ...CAMILA, saldo: null, estadoPago: null, semaforo: "ROJO", pagos: CAMILA.pagos.map((x) => ({ ...x, detalle: null })) },
+            ],
+            total: 2,
+            page: 1,
+            pageSize: 20,
+          },
+    );
+    await montar();
+    expect(screen.getAllByLabelText("Debe, pasó la semana de espera").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Sin pagar")).not.toBeInTheDocument();
+    expect(screen.queryByText("Pagado")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Bs/)).not.toBeInTheDocument();
+  });
+
   it("cancelar el grupo pide confirmación, lo marca y deja de inscribir", async () => {
     // La coordinación: arma los grupos.
     sesion.permisos = ["academia.ver", "academia.grupos", "academia.inscribir", "academia.cobranza"];

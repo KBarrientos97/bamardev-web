@@ -131,3 +131,21 @@ describe("N4 · Ajustes del instituto", () => {
     expect(apiAcademia.guardarAjustes).toHaveBeenCalledWith({ topePromoSinPinPct: 100 });
   });
 });
+
+describe("B7 · días de espera del semáforo", () => {
+  it("se edita y se guarda al soltar el campo", async () => {
+    vi.mocked(apiAcademia.ajustes).mockResolvedValue(ajustesDePrueba({ diasEspera: 7 }));
+    await montar();
+    const dias = screen.getByLabelText(/Días de espera antes de marcar en rojo/);
+    expect(dias).toHaveValue("7");
+    fireEvent.change(dias, { target: { value: "10" } });
+    fireEvent.blur(dias);
+    await act(async () => {});
+    expect(apiAcademia.guardarAjustes).toHaveBeenCalledWith({ diasEspera: 10 });
+  });
+
+  it("con un backend que no lo conoce no aparece", async () => {
+    await montar();
+    expect(screen.queryByLabelText(/Días de espera antes de marcar en rojo/)).not.toBeInTheDocument();
+  });
+});

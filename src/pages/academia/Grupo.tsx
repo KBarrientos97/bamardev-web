@@ -22,7 +22,7 @@ import {
   EncabezadoPagina,
   ErrorDeCarga,
   EstadoDeCuenta,
-  EstadoPagoTexto,
+  PagoDelModulo,
   FiltrosConteo,
   GrillaKpi,
   KpiTarjeta,
@@ -492,7 +492,7 @@ function TablaAlumnos({
                     <span className="block truncate text-[12px] text-texto-3">{subtituloFila(a, sinMontos)}</span>
                   </span>
                   {sinMontos ? (
-                    <EstadoPagoTexto estado={a.estadoPago} />
+                    <PagoDelModulo estado={a.estadoPago} semaforo={a.semaforo} conSemaforo={a.semaforo !== undefined} />
                   ) : (
                     <>
                       <span className="truncate text-sm text-texto-2">{textoFormaPago(a.formaPago, a.plan?.nombre)}</span>
@@ -537,7 +537,13 @@ function TablaAlumnos({
               <span className="min-w-0 space-y-1">
                 <span className="block truncate text-[15px] font-semibold text-texto">{nombreAlumno(a.alumno)}</span>
                 <span className="flex min-w-0 items-center gap-2 text-[13px] text-texto-3">
-                  <span className="shrink-0">{sinMontos ? <EstadoPagoTexto estado={a.estadoPago} /> : <PuntosPago pagos={a.pagos} />}</span>
+                  <span className="shrink-0">
+                    {sinMontos ? (
+                      <PagoDelModulo estado={a.estadoPago} semaforo={a.semaforo} conSemaforo={a.semaforo !== undefined} />
+                    ) : (
+                      <PuntosPago pagos={a.pagos} />
+                    )}
+                  </span>
                   <span className="truncate">
                     {[sinMontos ? null : textoFormaPago(a.formaPago, a.plan?.nombre), a.asistenciaPct != null ? `${Math.round(a.asistenciaPct)} %` : null, subtituloFila(a, sinMontos)]
                       .filter(Boolean)
@@ -659,7 +665,7 @@ function PanelAlumno({
             <div className="min-w-0 text-sm">
               <span className="block text-[11px] font-semibold uppercase tracking-wide text-texto-4">Pago del {p.materia} actual</span>
               <span className="mt-1 block">
-                <EstadoPagoTexto estado={fila.estadoPago} />
+                <PagoDelModulo estado={fila.estadoPago} semaforo={fila.semaforo} conSemaforo={fila.semaforo !== undefined} />
               </span>
             </div>
           ) : (

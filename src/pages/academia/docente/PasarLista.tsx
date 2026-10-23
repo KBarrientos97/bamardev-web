@@ -4,6 +4,7 @@ import { Boton, Cargando, ErrorMsg, Select, Vacio } from "../../../components/ui
 import { apiAcademia, CODIGOS_ACADEMIA } from "../../../lib/academia/apiAcademia";
 import { fechaCorta, horarioGrupo, nombreDe } from "../../../lib/academia/formato";
 import type { EstadoAsistencia, ListaDeClase } from "../../../lib/academia/tipos";
+import { traeSemaforo } from "../../../lib/academia/vista";
 import { usePalabras } from "../../../lib/academia/usePalabras";
 import { ApiError } from "../../../lib/api";
 import { capitalizar, fechaLarga } from "../../../lib/agenda/horaAgenda";
@@ -15,12 +16,12 @@ import {
   BotonFila,
   EncabezadoPagina,
   ErrorDeCarga,
-  EstadoPagoTexto,
   FiltrosConteo,
   GrillaKpi,
   KpiTarjeta,
   LISTA,
   PaginaAcademia,
+  PagoDelModulo,
   Tarjeta,
 } from "../piezas";
 import NavDocente from "./NavDocente";
@@ -28,10 +29,23 @@ import NavDocente from "./NavDocente";
 type Filtro = "todos" | "debe";
 
 /**
+ * B8 (UX 6): los cuatro estados que el backend ya acepta, también en el
+ * celular. Van en una tira de cuatro botones del ancho de la pantalla, debajo
+ * del nombre: cada uno de alto de pulgar, sin menú que abrir.
+ */
+const ESTADOS: readonly (readonly [EstadoAsistencia, string, string])[] = [
+  ["PRESENTE", "Presente", "bg-primary-boton text-white"],
+  ["TARDE", "Tarde", "bg-warning-bg text-warning-text"],
+  ["AUSENTE", "Ausente", "bg-danger-bg text-danger-text"],
+  ["JUSTIFICADO", "Justificado", "bg-info-bg text-info-text"],
+];
+
+/**
  * N6 · Pasar lista (ronda 2, F1b): en el celular, en la clase. Cada
  * estudiante con su estado de pago del módulo (el docente nunca ve montos ni
- * teléfonos, D6) y Presente / Ausente; arranca con todos presentes, que es lo
- * común, y se guarda todo junto. Se corrige hasta el final del día (después
+ * teléfonos, D6; desde B7, el semáforo) y Presente / Tarde / Ausente /
+ * Justificado (B8); arranca con todos presentes, que es lo común, y se guarda
+ * todo junto. Se corrige hasta el final del día (después
  * sólo la administración: 403 LISTA_CERRADA).
  *
  * El docente entra desde Mis clases (`/academia/lista?grupo=`); la
@@ -120,10 +134,15 @@ function Lista({
     setEstados(Object.fromEntries(d.alumnos.map((a) => [a.inscripcionId, a.estado ?? "PRESENTE"])));
   }, [d]);
 
+  // Tarde cuenta como presente y Justificado como ausente: así suman el
+  // "Guardar lista" y los indicadores; el detalle va al pie del indicador.
   const conteo = useMemo(() => {
     const vals = Object.values(estados);
-    const ausentes = vals.filter((e) => e === "AUSENTE").length;
-    return { presentes: vals.length - ausentes, ausentes };
+    const de = (e: EstadoAsistencia) => vals.filter((x) => x === e).length;
+    const tarde = de("TARDE");
+    const justificados = de("JUSTIFICADO");
+    const ausentes = de("AUSENTE") + justificados;
+    return { presentes: vals.length - ausentes, ausentes, tarde, justificados };
   }, [estados]);
 
   const volver = docente ? "/academia/mis-clases" : `/academia/grupos/${grupoId}`;
@@ -160,8 +179,14 @@ function Lista({
     : d?.grupo
       ? `${nombreDe(d.grupo.carrera)} · ${d.grupo.nombre}`
       : "Pasar lista";
-  const alumnos = (d?.alumnos ?? []).filter((a) => filtro === "todos" || a.estadoPago !== "PAGADO");
-  const deben = (d?.alumnos ?? []).filter((a) => a.estadoPago && a.estadoPago !== "PAGADO").length;
+  // B7: el docente ve el semáforo (rojo o amarillo) en vez de "Pagado / Abonó
+  // / Sin pagar"; "Deben" son los que tienen alguno. Sin semáforo en la
+  // respuesta (un backend anterior, o el admin), como siempre.
+  const conSemaforo = docente && traeSemaforo(d?.alumnos ?? []);
+  const debe = (a: ListaDeClase["alumnos"][number]) =>
+    conSemaforo ? a.semaforo != null : !!a.estadoPago && a.estadoPago !== "PAGADO";
+  const alumnos = (d?.alumnos ?? []).filter((a) => filtro === "todos" || debe(a));
+  const deben = (d?.alumnos ?? []).filter(debe).length;
   const esHoy = d ? d.sesion.fecha === isoDia(new Date()) : true;
 
   const notasA = docente ? `/academia/notas?grupo=${grupoId}` : `/academia/grupos/${grupoId}/notas`;
@@ -229,7 +254,13 @@ function Lista({
               icono="users"
               valor={`${conteo.presentes} de ${d.alumnos.length}`}
               tono={conteo.ausentes > 0 ? "ambar" : "normal"}
-              pie={`${conteo.ausentes} ${conteo.ausentes === 1 ? "ausente" : "ausentes"}`}
+              pie={[
+                `${conteo.ausentes} ${conteo.ausentes === 1 ? "ausente" : "ausentes"}`,
+                conteo.tarde ? `${conteo.tarde} tarde` : "",
+                conteo.justificados ? `${conteo.justificados} ${conteo.justificados === 1 ? "justificado" : "justificados"}` : "",
+              ]
+                .filter(Boolean)
+                .join(" · ")}
             />
           </GrillaKpi>
 
@@ -243,7 +274,7 @@ function Lista({
                 etiqueta={`Filtrar ${p.alumnos}`}
                 opciones={[
                   { clave: "todos", label: "Todos", n: d.alumnos.length },
-                  { clave: "debe", label: "Sin pagar o abonó", n: deben, urgente: true },
+                  { clave: "debe", label: conSemaforo ? "Deben" : "Sin pagar o abonó", n: deben, urgente: true },
                 ]}
                 valor={filtro}
                 onChange={setFiltro}
@@ -254,38 +285,46 @@ function Lista({
             <ul className={LISTA.lista}>
               {alumnos.map((a) => {
                 const estado = estados[a.inscripcionId] ?? "PRESENTE";
-                const ausente = estado === "AUSENTE";
+                const ausente = estado === "AUSENTE" || estado === "JUSTIFICADO";
                 return (
-                  <li key={a.inscripcionId} className={`flex items-center justify-between gap-3 ${LISTA.item}`}>
+                  <li key={a.inscripcionId} className={`flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3 ${LISTA.item}`}>
                     <span className="min-w-0 space-y-1">
                       <span className={`block truncate text-[15px] font-semibold ${ausente ? "text-texto-3" : "text-texto"}`}>{a.nombre}</span>
                       <span className="block">
-                        <EstadoPagoTexto estado={a.estadoPago} />
+                        <PagoDelModulo estado={a.estadoPago} semaforo={a.semaforo} conSemaforo={conSemaforo} />
                       </span>
                     </span>
-                    <div role="group" aria-label={`Asistencia de ${a.nombre}`} className="flex shrink-0 overflow-hidden rounded-xl border border-borde bg-white">
-                      {(
-                        [
-                          ["PRESENTE", "Presente"],
-                          ["AUSENTE", "Ausente"],
-                        ] as const
-                      ).map(([e, label]) => {
-                        const on = e === "AUSENTE" ? ausente : !ausente;
+                    <div
+                      role="group"
+                      aria-label={`Asistencia de ${a.nombre}`}
+                      className="grid shrink-0 grid-cols-4 overflow-hidden rounded-xl border border-borde bg-white sm:flex"
+                    >
+                      {ESTADOS.map(([e, label, colorOn]) => {
+                        const on = estado === e;
                         return (
                           <button
                             key={e}
                             type="button"
                             aria-pressed={on}
+                            aria-label={label}
                             disabled={!d.editable}
                             onClick={() => {
                               setEstados({ ...estados, [a.inscripcionId]: e });
                               setGuardadaEn(null);
                             }}
-                            className={`min-h-11 px-3 text-[13px] font-semibold transition-colors disabled:opacity-60 ${
-                              on ? (e === "AUSENTE" ? "bg-danger-bg text-danger-text" : "bg-primary-boton text-white") : "bg-white text-texto-3 hover:bg-muted"
+                            className={`min-h-11 border-l border-borde px-1.5 text-[12px] font-semibold transition-colors first:border-l-0 disabled:opacity-60 sm:px-3 sm:text-[13px] ${
+                              on ? colorOn : "bg-white text-texto-3 hover:bg-muted"
                             }`}
                           >
-                            {label}
+                            {/* En el celular "Justificado" no entra en un cuarto de pantalla. */}
+                            {e === "JUSTIFICADO" ? (
+                              <>
+                                <span className="sm:hidden">Justif.</span>
+                                <span className="hidden sm:inline">{label}</span>
+                              </>
+                            ) : (
+                              label
+                            )}
                           </button>
                         );
                       })}

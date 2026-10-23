@@ -1,4 +1,4 @@
-import type { Cuota, EstadoPagoModulo, EstadoPlanilla, EventoInscripcion, FormaPago, MotivoNoPago, Ref } from "./tipos";
+import type { Cuota, EstadoPagoModulo, EstadoPlanilla, EventoInscripcion, FormaPago, MotivoNoPago, Ref, SemaforoPago } from "./tipos";
 import { fechaCorta, textoCubre } from "./formato";
 import { ApiError } from "../api";
 import { fmtMoney } from "../format";
@@ -114,6 +114,24 @@ export function textoEstadoPago(estado: EstadoPagoModulo | null | undefined): { 
     default:
       return { texto: "—", tono: "gris" };
   }
+}
+
+/**
+ * B7: cómo se lee el semáforo en las vistas del docente, sin montos. `corto`
+ * va en el chip; `largo`, en el title y para el lector de pantalla.
+ */
+export function textoSemaforo(s: SemaforoPago): { corto: string; largo: string; tono: "rojo" | "ambar" | "gris" } {
+  if (s === "ROJO") return { corto: "Debe, pasó la espera", largo: "Debe, pasó la semana de espera", tono: "rojo" };
+  if (s === "AMARILLO") return { corto: "Debe, en espera", largo: "Debe, en semana de espera", tono: "ambar" };
+  return { corto: "—", largo: "Sin deudas vencidas", tono: "gris" };
+}
+
+/**
+ * ¿La respuesta trae el semáforo? Un backend anterior no lo manda: ahí el
+ * docente sigue viendo "Pagado / Abonó / Sin pagar" como hasta ahora.
+ */
+export function traeSemaforo(filas: readonly { semaforo?: SemaforoPago }[]): boolean {
+  return filas.some((f) => f.semaforo !== undefined);
 }
 
 /** "Mes a mes", "Pago completo", o el nombre del plan a medida. */

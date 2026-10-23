@@ -163,3 +163,76 @@ describe("N6 · Pasar lista", () => {
   });
 });
 
+
+describe("B7 · semáforo y B8 · Tarde y Justificado en Pasar lista", () => {
+  const CON_SEMAFORO: ListaDeClase = {
+    ...LISTA,
+    alumnos: [
+      { inscripcionId: 101, nombre: "Andrade Villca, Mateo", estadoPago: null, estado: null, semaforo: null },
+      { inscripcionId: 102, nombre: "Bustillos Rek, Camila", estadoPago: null, estado: null, semaforo: "ROJO" },
+      { inscripcionId: 103, nombre: "Céspedes Molina, Joaquín", estadoPago: null, estado: "TARDE", semaforo: "AMARILLO" },
+    ],
+  };
+
+  async function montar() {
+    render(
+      <MemoryRouter initialEntries={["/academia/lista?grupo=7"]}>
+        <Routes>
+          <Route path="/academia/lista" element={<PasarLista />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    await act(async () => {});
+  }
+
+  it("el docente ve rojo o amarillo, sin «Pagado / Abonó / Sin pagar» ni montos; «Deben» filtra por el semáforo", async () => {
+    vi.mocked(apiAcademia.lista).mockResolvedValue(CON_SEMAFORO);
+    await montar();
+    expect(screen.getByLabelText("Debe, pasó la semana de espera")).toHaveTextContent("Debe, pasó la espera");
+    expect(screen.getByLabelText("Debe, en semana de espera")).toHaveTextContent("Debe, en espera");
+    expect(screen.getByLabelText("Sin deudas vencidas")).toBeInTheDocument();
+    for (const viejo of ["Pagado", "Abonó", "Sin pagar"]) expect(screen.queryByText(viejo)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Bs/)).not.toBeInTheDocument();
+    // Nunca bloquea: el que debe se marca igual.
+    const camila = screen.getByRole("group", { name: "Asistencia de Bustillos Rek, Camila" });
+    expect(within(camila).getByRole("button", { name: "Ausente" })).toBeEnabled();
+    fireEvent.click(screen.getByRole("tab", { name: /Deben/ }));
+    expect(screen.queryByText("Andrade Villca, Mateo")).not.toBeInTheDocument();
+    expect(screen.getByText("Bustillos Rek, Camila")).toBeInTheDocument();
+    expect(screen.getByText("Céspedes Molina, Joaquín")).toBeInTheDocument();
+  });
+
+  it("cuatro estados por estudiante: Tarde y Justificado se guardan con el resto", async () => {
+    vi.mocked(apiAcademia.lista).mockResolvedValue(CON_SEMAFORO);
+    await montar();
+    const joaquin = screen.getByRole("group", { name: "Asistencia de Céspedes Molina, Joaquín" });
+    expect(within(joaquin).getAllByRole("button").map((b) => b.getAttribute("aria-label"))).toEqual([
+      "Presente",
+      "Tarde",
+      "Ausente",
+      "Justificado",
+    ]);
+    // Lo guardado manda: venía Tarde.
+    expect(within(joaquin).getByRole("button", { name: "Tarde" })).toHaveAttribute("aria-pressed", "true");
+    const camila = screen.getByRole("group", { name: "Asistencia de Bustillos Rek, Camila" });
+    fireEvent.click(within(camila).getByRole("button", { name: "Justificado" }));
+    expect(within(camila).getByRole("button", { name: "Justificado" })).toHaveAttribute("aria-pressed", "true");
+    expect(within(camila).getByRole("button", { name: "Presente" })).toHaveAttribute("aria-pressed", "false");
+    // Tarde cuenta como presente; Justificado, como ausente.
+    expect(screen.getByText(/1 ausente · 1 tarde · 1 justificado/)).toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Guardar lista (2 presentes, 1 ausente)" }));
+    });
+    expect(apiAcademia.guardarLista).toHaveBeenCalledWith(7, "2026-10-16", [
+      { inscripcionId: 101, estado: "PRESENTE" },
+      { inscripcionId: 102, estado: "JUSTIFICADO" },
+      { inscripcionId: 103, estado: "TARDE" },
+    ]);
+  });
+
+  it("sin semáforo en la respuesta (un backend anterior) sigue «Pagado / Abonó / Sin pagar»", async () => {
+    await montar();
+    expect(screen.getByText("Sin pagar")).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /Sin pagar o abonó/ })).toBeInTheDocument();
+  });
+});
