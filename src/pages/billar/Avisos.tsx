@@ -199,14 +199,14 @@ function UnToast({ t, onAccion }: { t: Toast; onAccion: () => void }) {
  * cerrar el panel y reaparecía solo al abrir esa mesa más tarde.
  */
 export function DialogoActual() {
-  const { actual, quitar } = useDialogos();
+  const { actual, quitar, abrir } = useDialogos();
   const e = useBillar();
   // Cada diálogo se cierra a sí mismo (`quitar`), no "el de arriba": si ya se
   // había ido solo, cerrarlo otra vez no se lleva el de abajo.
   const cerrarEste = useCallback(() => {
     if (actual) quitar(actual);
   }, [actual, quitar]);
-  const contenido = actual ? dibujar(actual, e, cerrarEste) : null;
+  const contenido = actual ? dibujar(actual, e, cerrarEste, abrir) : null;
   const huerfano = actual !== null && contenido === null && e.cargado;
   useEffect(() => {
     if (huerfano && actual) quitar(actual);
@@ -229,7 +229,7 @@ function claveDe(d: Dialogo): number {
   return k;
 }
 
-function dibujar(actual: Dialogo, e: EstadoBillar, cerrar: () => void): ReactNode {
+function dibujar(actual: Dialogo, e: EstadoBillar, cerrar: () => void, abrir: (d: Dialogo) => void): ReactNode {
   const mesa = "mesaId" in actual ? e.mesas.find((m) => m.id === actual.mesaId) : undefined;
   const enJuego = mesa?.estado === "abierta" && mesa.sesion ? mesa : undefined;
   // Una cuenta abierta: si ya se cobró o se anuló (en otro equipo), no está.
@@ -240,7 +240,10 @@ function dibujar(actual: Dialogo, e: EstadoBillar, cerrar: () => void): ReactNod
     case "pagoCuenta":
       return cuenta ? <ModalPagoCuenta cuenta={cuenta} onClose={cerrar} /> : null;
     case "cobrarCuenta":
-      return cuenta ? <ModalCobrarCuenta cuenta={cuenta} onClose={cerrar} /> : null;
+      // Aunque la cuenta ya no esté: el modal dice que se cobró o se anuló
+      // (pudo ser este mismo cobro, con la respuesta perdida) en vez de
+      // desaparecer sin una palabra (revisión del 23-oct).
+      return <ModalCobrarCuenta cuenta={cuenta} onClose={cerrar} />;
     case "anularConsumoCuenta": {
       const it = cuenta?.sesion.consumos.find((c) => c.id === actual.itemId);
       if (!cuenta || !it || it.anulado) return null;
@@ -443,8 +446,10 @@ function dibujar(actual: Dialogo, e: EstadoBillar, cerrar: () => void): ReactNod
           onClose={cerrar}
           onAutorizar={async (motivo, cred) => {
             await billar.anularVenta(v.id, motivo, cred);
-            // Vuelve al detalle, que ahora dice "Anulada".
+            // Vuelve al detalle, que ahora dice "Anulada". Desde la lista no
+            // estaba abajo: se abre recién ahora.
             cerrar();
+            if (actual.desdeLista) abrir({ tipo: "venta", codigo: v.codigo });
           }}
         />
       );

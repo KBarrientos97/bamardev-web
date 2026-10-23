@@ -1,6 +1,7 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { Icon } from "../../components/Icon";
-import { inicialesDe } from "../../lib/iconosArticulo";
+import IconoProducto from "../../components/IconoProducto";
+import { iconoPorLlave, inicialesDe } from "../../lib/iconosArticulo";
 import { fmtMoney } from "../../lib/format";
 import { contiene } from "../../lib/texto";
 import { useCoincideMedia } from "../../lib/useCoincideMedia";
@@ -123,13 +124,23 @@ export function Catalogo({
                     {enCarrito}
                   </span>
                 )}
-                <span
-                  aria-hidden
-                  className="flex h-[68px] items-center justify-center rounded-xl text-[22px] font-extrabold"
-                  style={{ background: color.bg, color: color.fg }}
-                >
-                  {inicialesDe(p.nombre)}
-                </span>
+                {/* Con ícono, el mismo del Punto de venta: antes acá salían
+                    siempre las iniciales y el cajero no reconocía en el consumo
+                    los artículos que en el POS veía con su foto (QA del 23-oct).
+                    El fondo neutro y la misma altura dejan la grilla pareja. */}
+                {iconoPorLlave(p.icono) ? (
+                  <span aria-hidden className="flex h-[68px] items-center justify-center rounded-xl bg-muted">
+                    <IconoProducto nombre={p.nombre} icono={p.icono} size={56} />
+                  </span>
+                ) : (
+                  <span
+                    aria-hidden
+                    className="flex h-[68px] items-center justify-center rounded-xl text-[22px] font-extrabold"
+                    style={{ background: color.bg, color: color.fg }}
+                  >
+                    {inicialesDe(p.nombre)}
+                  </span>
+                )}
                 <span className="mt-2.5 line-clamp-2 min-h-[2.5em] text-[13px] font-semibold leading-tight text-texto">
                   {p.nombre}
                 </span>

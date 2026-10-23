@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Input, Modal } from "../../components/ui";
 import { quedoEnDuda } from "../../lib/cupo";
@@ -6,11 +6,12 @@ import { fmtMoney } from "../../lib/format";
 import { useBloqueoCupo } from "../../lib/useBloqueoCupo";
 import { useIntentoDeCobro } from "../pos/useIntentoDeCobro";
 import { devolucionDe, round2, textoDevolucion } from "./calculo";
+import { avisoCuentaRecalculada, etiquetaCuenta, type CobroIntentado, type CobroSugerido } from "./CerrarMesa.datos";
 import { CambioDelCobro, FormCobro } from "./Cobro";
 import { huellaAdelanto } from "./reintentos";
 import { agruparItems, billar } from "./store";
 import type { CuentaSinMesa } from "./tipos";
-import { BotonB, ErrorAccion, Fila, Nota } from "./ui";
+import { BotonB, BotonesCuentaNueva, ErrorAccion, Fila, Nota } from "./ui";
 import { useAccion } from "./useAccion";
 import { useCobro } from "./useCobro";
 import { textoMetodo, vistaCuenta } from "./vista";
@@ -152,20 +153,112 @@ export function ModalPagoCuenta({ cuenta, onClose }: { cuenta: CuentaSinMesa; on
 /**
  * Cobrar el saldo y cerrar la cuenta: una venta normal con lo que tomaron, y
  * los cobros parciales como pagos de esa venta. Sin reloj, el monto sólo
- * cambia si otro equipo carga, anula o cobra algo: ahí el servidor no cobra
- * (MESA_CAMBIO), el tablero se recarga y el cajero ve la cuenta nueva.
+ * cambia si otro equipo carga, anula o cobra algo.
+ *
+ * Se cobra la cuenta como estaba al abrir el cobro (la "foto", como el cierre
+ * de una mesa). Con la cuenta en vivo, el sondeo de cada 5 s cambiaba el monto
+ * del botón y el cambio mientras el cajero cobraba, y el servidor lo aceptaba
+ * porque se le mandaba el total nuevo: con el vuelto de la cuenta vieja ya
+ * dado, el cajón quedaba corto (revisión del 23-oct). Ahora, si la cuenta
+ * cambia, se avisa con el mismo aviso del cierre de una mesa y no se cobra
+ * hasta tomar la cuenta nueva; la vieja, si igual llega, el servidor no la
+ * cobra (MESA_CAMBIO).
+ *
+ * `cuenta` es la del tablero: undefined si ya se cobró o se anuló. El modal se
+ * queda con la de cuando se abrió y, si la del tablero se va, lo dice (ver
+ * `seFue`) en vez de desaparecer.
  */
-export function ModalCobrarCuenta({ cuenta, onClose }: { cuenta: CuentaSinMesa; onClose: () => void }) {
+export function ModalCobrarCuenta({ cuenta, onClose }: { cuenta?: CuentaSinMesa; onClose: () => void }) {
+  const [alAbrir] = useState(cuenta);
+  // Abierto para una cuenta que ya no estaba (un aviso viejo): no hay qué cobrar.
+  return alAbrir ? <CobrarCuenta alAbrir={alAbrir} viva={cuenta} onClose={onClose} /> : <SinCuenta onClose={onClose} />;
+}
+
+function SinCuenta({ onClose }: { onClose: () => void }) {
+  useEffect(onClose, [onClose]);
+  return null;
+}
+
+function CobrarCuenta({
+  alAbrir,
+  viva,
+  onClose,
+}: {
+  alAbrir: CuentaSinMesa;
+  viva?: CuentaSinMesa;
+  onClose: () => void;
+}) {
   const navigate = useNavigate();
+  const [cuenta, setCuenta] = useState(alAbrir);
   const { calc } = vistaCuenta(cuenta, Date.now());
   const cobro = useCobro(calc.saldo);
   const accion = useAccion();
   const intento = useIntentoDeCobro();
+  /** Ya se cobró desde acá: lo que pase con la cuenta después no es un aviso. */
+  const cobrada = useRef(false);
   const items = agruparItems(cuenta.sesion.consumos);
   /** Lo pagado de más (se anuló un consumo después de un cobro parcial): hay que devolverlo. */
   const aFavor = round2(calc.pagado - calc.total);
   const devolver = textoDevolucion(devolucionDe(cuenta.sesion.pagos, calc.total));
-  const listo = calc.saldo > 0 ? !!cobro.pago : true;
+  /**
+   * La cuenta ya no está abierta: se cobró o se anuló en otro equipo, o este
+   * mismo cobro entró y se perdió la respuesta. El modal desaparecía solo, sin
+   * el aviso ni el ticket, y el cajero no sabía si había cobrado (revisión del
+   * 23-oct; el cierre de una mesa ya lo decía).
+   */
+  const seFue = !viva && !accion.enviando && !cobrada.current;
+
+  // Lo que el cobro ya tenía encaminado, para decir qué hacer con lo entregado
+  // si la cuenta cambió (lo mismo que arma el cierre de una mesa).
+  const qrALaVista =
+    cobro.metodo === "QR" || (cobro.metodo === "Mixto" && cobro.montoQr > 0 && cobro.montoQr < cobro.monto);
+  const enCurso: CobroIntentado = {
+    hasta: 0,
+    total: calc.total,
+    saldo: calc.saldo,
+    pagado: calc.pagado,
+    aFavor: Math.max(0, aFavor),
+    qr: qrALaVista ? cobro.montoQr : 0,
+    qrConfirmado: cobro.qrConfirmado,
+    efectivo:
+      cobro.metodo === "Efectivo"
+        ? cobro.sinRecibido
+          ? 0
+          : Math.min(cobro.recibido, calc.saldo)
+        : cobro.metodo === "Mixto" && qrALaVista
+          ? Math.max(0, round2(cobro.monto - cobro.montoQr))
+          : 0,
+  };
+  const nueva = viva ? vistaCuenta(viva, Date.now()).calc : null;
+  const avisoOtro =
+    viva && nueva
+      ? avisoCuentaRecalculada(
+          enCurso,
+          {
+            total: nueva.total,
+            saldo: nueva.saldo,
+            pagado: nueva.pagado,
+            devolver: textoDevolucion(devolucionDe(viva.sesion.pagos, nueva.total)),
+          },
+          "otroEquipo",
+        )
+      : null;
+  /** `pago`: "Todavía no pagó" (con el QR sin confirmar) deja el cobro de cero, sin la sugerencia. */
+  const usarCuentaNueva = (pago = true) => {
+    if (!viva) return;
+    const sugerido: CobroSugerido = pago ? (avisoOtro?.sugerido ?? null) : null;
+    setCuenta(viva);
+    cobro.reiniciar();
+    if (sugerido) {
+      cobro.setMetodo(sugerido.metodo);
+      if (sugerido.metodo === "Mixto") cobro.setEfectivoTexto(String(sugerido.efectivo));
+    }
+    // El "no" del servidor por la cuenta vieja ya está explicado; otros (sin
+    // conexión, caja cerrada) quedan: pueden decir que el cobro entró.
+    const codigo = accion.codigo ?? "";
+    if (codigo.startsWith("MESA_") || codigo === "MONTO_DISTINTO") accion.setError("");
+  };
+  const listo = !seFue && !avisoOtro && (calc.saldo > 0 ? !!cobro.pago : true);
 
   const cobrar = async () => {
     const pago = calc.saldo > 0 ? cobro.pago : null;
@@ -179,6 +272,7 @@ export function ModalCobrarCuenta({ cuenta, onClose }: { cuenta: CuentaSinMesa; 
         // la respuesta, el backend devuelve esa venta en vez de cobrar dos veces.
         clienteRequestId: intento.actual(`cerrar-cuenta:${cuenta.id}:${calc.total}:${calc.pagado}`),
       });
+      cobrada.current = true;
     });
     const r = hecho as Awaited<ReturnType<typeof billar.cerrarCuenta>> | null;
     if (!ok || !r) return;
@@ -220,13 +314,29 @@ export function ModalCobrarCuenta({ cuenta, onClose }: { cuenta: CuentaSinMesa; 
       cerrarAlClicAfuera={false}
       ancho="max-w-lg"
       acciones={
-        <>
-          {calc.saldo > 0 && <CambioDelCobro cobro={cobro} />}
-          <BotonB onClick={onClose}>Cancelar</BotonB>
-          <BotonB variante="verde" icono="check" disabled={!listo || accion.enviando} onClick={() => void cobrar()}>
-            {accion.enviando ? "Cobrando…" : calc.saldo > 0 ? `Cobrar ${fmtMoney(calc.saldo)} y cerrar` : "Cerrar cuenta"}
-          </BotonB>
-        </>
+        seFue ? (
+          <>
+            <BotonB onClick={onClose}>Cerrar</BotonB>
+            <BotonB
+              variante="verde"
+              icono="fileText"
+              onClick={() => {
+                onClose();
+                navigate("/billar/ventas");
+              }}
+            >
+              Ver las ventas
+            </BotonB>
+          </>
+        ) : (
+          <>
+            {calc.saldo > 0 && <CambioDelCobro cobro={cobro} />}
+            <BotonB onClick={onClose}>Cancelar</BotonB>
+            <BotonB variante="verde" icono="check" disabled={!listo || accion.enviando} onClick={() => void cobrar()}>
+              {accion.enviando ? "Cobrando…" : calc.saldo > 0 ? `Cobrar ${fmtMoney(calc.saldo)} y cerrar` : "Cerrar cuenta"}
+            </BotonB>
+          </>
+        )
       }
     >
       <div className="mb-4 space-y-1 rounded-xl border border-borde bg-muted px-4 py-3 text-[13px]">
@@ -242,14 +352,36 @@ export function ModalCobrarCuenta({ cuenta, onClose }: { cuenta: CuentaSinMesa; 
           />
         </div>
       </div>
-      {calc.saldo > 0 ? (
-        <FormCobro cobro={cobro} cambioEnElPie />
-      ) : aFavor > 0.005 ? (
+      {seFue ? (
         <Nota tono="ambar" icono="alert">
-          Pagó de más: al cerrar, devolvele <b>{devolver}</b>.
+          <b>La cuenta «{cuenta.nombre}» ya no está abierta:</b> se cobró o se anuló, quizás desde otro equipo. Si la estabas
+          cobrando y no viste el aviso, el cobro pudo haber entrado: mirá en Ventas antes de cobrarla de nuevo.
         </Nota>
       ) : (
-        <Nota icono="checkCirculo">Ya está todo pagado: se cierra sin cobrar nada más.</Nota>
+        <>
+          {avisoOtro && nueva && (
+            <div className="mb-4 space-y-2">
+              <Nota tono="ambar" icono="alert">
+                {avisoOtro.texto}
+              </Nota>
+              <BotonesCuentaNueva
+                qrSinConfirmar={!!avisoOtro.qrSinConfirmar}
+                etiqueta={`Usar la cuenta nueva${etiquetaCuenta(nueva)}`}
+                enviando={accion.enviando}
+                usar={usarCuentaNueva}
+              />
+            </div>
+          )}
+          {calc.saldo > 0 ? (
+            <FormCobro cobro={cobro} cambioEnElPie />
+          ) : aFavor > 0.005 ? (
+            <Nota tono="ambar" icono="alert">
+              Pagó de más: al cerrar, devolvele <b>{devolver}</b>.
+            </Nota>
+          ) : (
+            <Nota icono="checkCirculo">Ya está todo pagado: se cierra sin cobrar nada más.</Nota>
+          )}
+        </>
       )}
       <ErrorAccion texto={accion.error} />
     </Modal>

@@ -306,6 +306,43 @@ export function Nota({
   );
 }
 
+/**
+ * Aceptar la cuenta nueva. Con un QR a la vista sin confirmar no se sabe si el
+ * cliente pagó, así que son dos botones: "ya pagó" deja la sugerencia del aviso
+ * (Mixto con lo que entró) y "todavía no" deja el cobro de cero (ver
+ * `avisoCuentaRecalculada`). Lo usan el cierre de una mesa y el cobro de una
+ * cuenta abierta.
+ */
+export function BotonesCuentaNueva({
+  qrSinConfirmar,
+  etiqueta,
+  enviando,
+  usar,
+}: {
+  qrSinConfirmar: boolean;
+  etiqueta: string;
+  enviando: boolean;
+  usar: (pago?: boolean) => void;
+}) {
+  if (!qrSinConfirmar) {
+    return (
+      <BotonB variante="verde" className="w-full" disabled={enviando} onClick={() => usar()}>
+        {etiqueta}
+      </BotonB>
+    );
+  }
+  return (
+    <div className="grid gap-2 sm:grid-cols-2">
+      <BotonB variante="verde" className="w-full" disabled={enviando} onClick={() => usar(true)}>
+        Ya pagó el QR
+      </BotonB>
+      <BotonB className="w-full" disabled={enviando} onClick={() => usar(false)}>
+        Todavía no pagó
+      </BotonB>
+    </div>
+  );
+}
+
 /** El rótulo chiquito en mayúsculas de las secciones ("CONSUMOS"). */
 export function Rotulo({ icono, children, extra }: { icono?: NombreIcono; children: ReactNode; extra?: ReactNode }) {
   return (

@@ -28,7 +28,9 @@ export type Dialogo =
   | { tipo: "anularCuenta"; cuentaId: number }
   | { tipo: "venta"; codigo: string }
   | { tipo: "ticket"; codigo: string }
-  | { tipo: "anularVenta"; codigo: string }
+  // `desdeLista`: lo abrió la fila de "Ventas", sin el detalle debajo. Al
+  // anular se muestra el detalle (que dice "Anulada"); al cancelar, la lista.
+  | { tipo: "anularVenta"; codigo: string; desdeLista?: boolean }
   | { tipo: "corregirPago"; codigo: string }
   | { tipo: "avisos" };
 

@@ -297,6 +297,10 @@ describe("Supervisión: mesas, cuentas y los números de arriba", () => {
     expect(juan.total).toBe(30);
     expect(r.porCobrar).toBeGreaterThanOrEqual(30);
     expect(r.totalAbierto).toBeGreaterThanOrEqual(r.porCobrar);
+    // El rótulo de "Cuentas abiertas" suma sólo las cuentas, no las mesas en
+    // juego (revisión del 23-oct: decía el total de todo).
+    expect(r.totalCuentas).toBe(30);
+    expect(r.totalAbierto).toBeGreaterThan(r.totalCuentas);
   });
 
   it("lo vendido es del turno que se mira y el día entero va aparte; las cajas de ayer no son de hoy", () => {
@@ -325,6 +329,7 @@ describe("Supervisión: mesas, cuentas y los números de arriba", () => {
       cuentas: 0,
       totalAbierto: 0,
       porCobrar: 0,
+      totalCuentas: 0,
     });
   });
 });

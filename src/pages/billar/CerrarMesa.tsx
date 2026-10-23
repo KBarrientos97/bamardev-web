@@ -32,57 +32,15 @@ import {
   cobroQueFigura,
   CUENTA_MAX_MS,
   CUENTA_VIEJA_MS,
+  etiquetaCuenta,
   inicioParaCobrarLaPausa,
   medioDelBoton,
   pagosFinales,
   type CobroIntentado,
   type CobroSugerido,
 } from "./CerrarMesa.datos";
-import { BotonB, Circulo, Encabezado, ErrorAccion, Nota, Rotulo } from "./ui";
+import { BotonB, BotonesCuentaNueva, Circulo, Encabezado, ErrorAccion, Nota, Rotulo } from "./ui";
 import { textoMetodo } from "./vista";
-
-/**
- * Aceptar la cuenta nueva. Con un QR a la vista sin confirmar no se sabe si el
- * cliente pagó, así que son dos botones: "ya pagó" deja la sugerencia del aviso
- * (Mixto con lo que entró) y "todavía no" deja el cobro de cero (ver
- * `avisoCuentaRecalculada`).
- */
-function BotonesCuentaNueva({
-  qrSinConfirmar,
-  etiqueta,
-  enviando,
-  usar,
-}: {
-  qrSinConfirmar: boolean;
-  etiqueta: string;
-  enviando: boolean;
-  usar: (pago?: boolean) => void;
-}) {
-  if (!qrSinConfirmar) {
-    return (
-      <BotonB variante="verde" className="w-full" disabled={enviando} onClick={() => usar()}>
-        {etiqueta}
-      </BotonB>
-    );
-  }
-  return (
-    <div className="grid gap-2 sm:grid-cols-2">
-      <BotonB variante="verde" className="w-full" disabled={enviando} onClick={() => usar(true)}>
-        Ya pagó el QR
-      </BotonB>
-      <BotonB className="w-full" disabled={enviando} onClick={() => usar(false)}>
-        Todavía no pagó
-      </BotonB>
-    </div>
-  );
-}
-
-/** Lo que dice el botón de la cuenta nueva: el saldo, o lo que hay que devolver si ya se pagó de más. */
-function etiquetaCuenta(x: { total: number; saldo: number; pagado: number }): string {
-  if (x.saldo > 0.005) return ` · ${fmtMoney(x.saldo)}`;
-  const aFavor = round2(x.pagado - x.total);
-  return aFavor > 0.005 ? ` · devolver ${fmtMoney(aFavor)}` : "";
-}
 
 /**
  * Un "no" del servidor que el aviso de la cuenta nueva ya explica: la mesa

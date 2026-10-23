@@ -281,6 +281,71 @@ describe("Billar: la supervisión del administrador", () => {
     expect(within(screen.getByRole("dialog")).getByRole("alert")).toHaveTextContent("La mesa ya está pausada");
   });
 
+  it("una respuesta vieja que llega tarde no tapa la pausa recién hecha", async () => {
+    // Revisión del 23-oct: el sondeo que ya iba en camino cuando se pausó
+    // llegaba después del `recargar()` y la mesa volvía a verse en juego.
+    let pausada = false;
+    let llegaLaVieja: (() => void) | null = null;
+    let pedidos = 0;
+    request.mockImplementation(async (url: string) => {
+      if (url.startsWith("/billar/supervision/sesiones/")) {
+        pausada = true;
+        return { id: 11, numero: 1 };
+      }
+      if (!url.startsWith("/billar/supervision")) return [];
+      pedidos++;
+      const s = supervision();
+      if (pedidos === 2) return new Promise((r) => (llegaLaVieja = () => r(s)));
+      if (!pausada) return s;
+      const [m1, ...resto] = s.mesas;
+      const enPausa = { ...m1.sesion!, pausedAt: Date.now(), pauseMotivo: "Corte de luz", pausadaPor: { quien: "Kevin Dueño", sinPin: true } };
+      return { ...s, mesas: [{ ...m1, sesion: enPausa }, ...resto] };
+    });
+    await montar();
+    // Un sondeo sale (al volver a la pestaña) y se queda en el camino.
+    await act(async () => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Pausar Mesa 1" }));
+    });
+    const dialogo = screen.getByRole("dialog");
+    fireEvent.click(within(dialogo).getByRole("radio", { name: "Corte de luz" }));
+    await act(async () => {
+      fireEvent.click(within(dialogo).getByRole("button", { name: "Pausar" }));
+    });
+    expect(screen.queryByRole("button", { name: "Pausar Mesa 1" })).toBeNull();
+    await act(async () => {
+      llegaLaVieja!();
+    });
+    expect(screen.queryByRole("button", { name: "Pausar Mesa 1" })).toBeNull();
+  });
+
+  it("con todas las cajas cerradas, el aviso dice quién cerró la última, no quién la abrió", async () => {
+    // Revisión del 23-oct: el administrador cerró la caja que la cajera dejó
+    // abierta y el aviso decía "Pepe Mamani cerró…".
+    request.mockImplementation(async () => {
+      const s = supervision();
+      const cerrada = { ...s.cajas[0], abierta: false, hasta: AHORA - 10 * MIN, contado: 100, diferencia: 0, cerroPor: "Kevin Dueño" };
+      return { ...s, cajas: [cerrada], turno: { ...s.turno, hasta: cerrada.hasta } };
+    });
+    await montar();
+    expect(screen.getByText("No hay caja abierta.").parentElement!.textContent).toMatch(/Kevin Dueño cerró/);
+  });
+
+  it("el rótulo de las cuentas abiertas suma sólo las cuentas, no las mesas", async () => {
+    // Revisión del 23-oct: decía lo abierto de mesas y cuentas juntas.
+    request.mockImplementation(async () => {
+      const s = supervision();
+      const consumo = { id: 9, productoId: 1, nombre: "Paceña 620 ml", precio: 15, cant: 2, hora: AHORA - 10 * MIN, anulado: false, por: "Pepe Mamani" };
+      const juan = { ...s.cuentas[0], sesion: { ...s.cuentas[0].sesion, consumos: [consumo] } };
+      return { ...s, cuentas: [juan] };
+    });
+    await montar();
+    const seccion = screen.getByRole("region", { name: "Cuentas abiertas" });
+    expect(within(seccion).getByText("Cuentas abiertas").closest("div")!.textContent).toMatch(/Bs\s30,00$/);
+  });
+
   describe("el turno: lo de cada caja no se mezcla con lo de la anterior", () => {
     /** Las llamadas a `/billar/supervision` (no a pausar), con su query. */
     const pedidos = () => request.mock.calls.map((c) => String(c[0])).filter((u) => u.startsWith("/billar/supervision") && !u.includes("/sesiones/"));
