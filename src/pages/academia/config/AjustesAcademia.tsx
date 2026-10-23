@@ -396,6 +396,8 @@ function ResumenCursos({ cursos, pctDefecto }: { cursos: Carrera[] | null; pctDe
             const mods = c.materias.filter((m) => m.activa).length;
             const completo = c.planes.find((pl) => pl.activo && pl.generado === "COMPLETO")?.total ?? c.precioCompleto;
             const pct = c.pctDocente ?? pctDefecto;
+            // A5: un curso con monto fijo no cobra el % por defecto (QA 23-oct).
+            const montoFijo = c.pagoDocenteModo === "MONTO" || (c.pagoDocenteModo == null && c.montoDocente != null);
             return (
               <tr key={c.id} className={TABLA.fila}>
                 <td className={`${TABLA.td} font-semibold text-texto`}>{c.nombre}</td>
@@ -403,7 +405,11 @@ function ResumenCursos({ cursos, pctDefecto }: { cursos: Carrera[] | null; pctDe
                 <td className={`${TABLA.td} ${TABLA.numero} text-texto-2`}>{c.precioModulo != null ? fmtMoney(c.precioModulo) : "—"}</td>
                 <td className={`${TABLA.td} ${TABLA.numero} text-texto-2`}>{completo != null ? fmtMoney(completo) : "—"}</td>
                 <td className={`${TABLA.td} ${TABLA.numero} text-texto-2`}>{c.cupoDefecto ?? "—"}</td>
-                <td className={`${TABLA.td} ${TABLA.numero} ${c.pctDocente == null ? "text-texto-3" : "font-semibold text-texto"}`}>{pct} %</td>
+                {montoFijo ? (
+                  <td className={`${TABLA.td} ${TABLA.numero} font-semibold text-texto`}>{fmtMoney(c.montoDocente ?? 0)} fijo</td>
+                ) : (
+                  <td className={`${TABLA.td} ${TABLA.numero} ${c.pctDocente == null ? "text-texto-3" : "font-semibold text-texto"}`}>{pct} %</td>
+                )}
               </tr>
             );
           })}

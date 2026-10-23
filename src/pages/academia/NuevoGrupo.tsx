@@ -6,6 +6,7 @@ import { ApiError } from "../../lib/api";
 import { apiAcademia, CODIGOS_ACADEMIA } from "../../lib/academia/apiAcademia";
 import { franjasDe, inicioDelMes, mesDe, nombreMes, proximoInicio, sumarMeses } from "../../lib/academia/calendario";
 import { diasTexto, horasEntre, SEMANA } from "../../lib/academia/formato";
+import { fmtMoney } from "../../lib/format";
 import type { GrupoDetalle } from "../../lib/academia/tipos";
 import { usePalabras } from "../../lib/academia/usePalabras";
 import { tienePermiso } from "../../lib/permisos";
@@ -144,6 +145,8 @@ export default function NuevoGrupo({
 
   const nombreSede = sedes.sucursales.find((s) => s.id === almacenId)?.nombre ?? usuario?.sucursal ?? "";
   const pctDocente = carrera?.pctDocente ?? a?.pctDocenteDefecto ?? null;
+  // A5: con monto fijo el docente no cobra un % (QA 23-oct).
+  const montoDocente = carrera?.pagoDocenteModo === "MONTO" ? (carrera.montoDocente ?? null) : null;
   const horasSemana = horasEntre(horaInicio, horaFin) * dias.length;
 
   function elegirFranja(v: string) {
@@ -361,7 +364,13 @@ export default function NuevoGrupo({
       {materias.length > 0 && (
         <SeccionPanel
           titulo={`${p.Docente} por ${p.materia}`}
-          acciones={pctDocente != null && <span className="text-xs text-texto-3">Cobra el {pctDocente} %</span>}
+          acciones={
+            montoDocente != null ? (
+              <span className="text-xs text-texto-3">Cobra {fmtMoney(montoDocente)} fijo por {p.materia}</span>
+            ) : (
+              pctDocente != null && <span className="text-xs text-texto-3">Cobra el {pctDocente} %</span>
+            )
+          }
         >
           <ul className="space-y-2">
             {materias.map((m, i) => (

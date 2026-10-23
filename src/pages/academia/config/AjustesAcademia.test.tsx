@@ -149,3 +149,24 @@ describe("B7 · días de espera del semáforo", () => {
     expect(screen.queryByLabelText(/Días de espera antes de marcar en rojo/)).not.toBeInTheDocument();
   });
 });
+
+describe("A5 · la tabla de cursos con el pago al docente (QA 23-oct)", () => {
+  const curso = (id: number, nombre: string, extra: Record<string, unknown>) =>
+    ({
+      id, nombre, descripcion: null, horasTotales: 120, categoriaCctp: null, publicarEnPagina: false, activa: true, orden: id,
+      fotoUrl: null, materias: [], planes: [], gruposActivos: 0, precioModulo: 500, descuentoCompletoPct: null, cupoDefecto: 25,
+      pctDocente: null, modoSimple: true, ...extra,
+    }) as never;
+
+  it("un curso con monto fijo dice «Bs 90 fijo», no el % por defecto", async () => {
+    vi.mocked(apiAcademia.carreras).mockResolvedValue([
+      curso(1, "Barbería", { pagoDocenteModo: "MONTO", montoDocente: 90 }),
+      curso(2, "Tatuaje", { pagoDocenteModo: "PORCENTAJE", pctDocente: 10 }),
+    ]);
+    await montar();
+    const fila = (n: string) => screen.getByText(n).closest("tr")!;
+    expect(fila("Barbería").textContent).toMatch(/90,00 fijo/);
+    expect(fila("Barbería").textContent).not.toMatch(/%/);
+    expect(fila("Tatuaje").textContent).toMatch(/10 %/);
+  });
+});
