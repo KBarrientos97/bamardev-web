@@ -3,8 +3,25 @@ import { Icon } from "../../../components/Icon";
 import PanelLateral from "../../../components/PanelLateral";
 import { AvisoOk, Boton, Campo, Cargando, ErrorMsg, Input, Modal, Select, Vacio, useAviso } from "../../../components/ui";
 import { apiAcademia, CODIGOS_ACADEMIA } from "../../../lib/academia/apiAcademia";
-import { precioCurso, problemasDelPlan, textoCubre, totalCalendario } from "../../../lib/academia/formato";
-import type { Carrera, CarreraSimpleInput, CategoriaCctp, CuotaPlan, Materia, PlanPago, TipoVence } from "../../../lib/academia/tipos";
+import {
+  descuentoEquivalente,
+  precioCurso,
+  problemasDelPlan,
+  textoCubre,
+  textoPagoDocente,
+  textoPct,
+  totalCalendario,
+} from "../../../lib/academia/formato";
+import type {
+  Carrera,
+  CarreraSimpleInput,
+  CategoriaCctp,
+  CuotaPlan,
+  Materia,
+  PagoDocenteModo,
+  PlanPago,
+  TipoVence,
+} from "../../../lib/academia/tipos";
 import { usePalabras } from "../../../lib/academia/usePalabras";
 import { ApiError } from "../../../lib/api";
 import { fmtMoney } from "../../../lib/format";
@@ -193,6 +210,47 @@ export default function Carreras() {
   );
 }
 
+/** Cuántos módulos activos tiene el curso: el precio mes a mes es eso por el precio de cada uno. */
+function modulosActivos(c: Carrera): number {
+  return c.materias.filter((m) => m.activa).length;
+}
+
+/**
+ * Dos opciones excluyentes como un control segmentado: el pago completo por %
+ * o por precio final (A4) y el pago al docente (A5). Alto de pulgar en el
+ * celular, y el texto parte en dos renglones si no entra.
+ */
+function Segmentos<T extends string>({
+  etiqueta,
+  valor,
+  opciones,
+  onChange,
+}: {
+  etiqueta: string;
+  valor: T;
+  opciones: [T, string][];
+  onChange: (v: T) => void;
+}) {
+  return (
+    <div role="radiogroup" aria-label={etiqueta} className="grid grid-cols-2 gap-1 rounded-xl bg-muted p-1">
+      {opciones.map(([k, label]) => (
+        <button
+          key={k}
+          type="button"
+          role="radio"
+          aria-checked={valor === k}
+          onClick={() => onChange(k)}
+          className={`min-h-11 rounded-lg px-2.5 py-1.5 text-center text-[13px] font-semibold leading-tight transition-colors sm:min-h-9 ${
+            valor === k ? "bg-white text-texto shadow-sm ring-1 ring-borde" : "text-texto-3 hover:text-texto"
+          }`}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 /** Las columnas de la lista en escritorio: el encabezado y cada fila las comparten. */
 const COLUMNAS = "md:grid-cols-[minmax(0,2fr)_72px_100px_minmax(0,1fr)_minmax(0,1fr)_56px_36px]";
 
@@ -209,7 +267,14 @@ function FilaCurso({
 }) {
   const p = usePalabras();
   const modulos = [...c.materias].filter((m) => m.activa).sort((a, b) => a.orden - b.orden);
-  const completo = c.planes.find((pl) => pl.activo && pl.generado === "COMPLETO")?.total ?? c.precioCompleto ?? null;
+  const completo =
+    c.precioCompletoEfectivo ?? c.planes.find((pl) => pl.activo && pl.generado === "COMPLETO")?.total ?? c.precioCompleto ?? null;
+  // A4: con precio final, el % es el que equivale (lo calcula el backend; si no vino, acá).
+  const pctCompleto =
+    c.precioCompletoFijo != null
+      ? (c.descuentoCompletoEquivalentePct ?? descuentoEquivalente((c.precioModulo ?? 0) * modulosActivos(c), c.precioCompletoFijo))
+      : c.descuentoCompletoPct;
+  const montoFijo = c.pagoDocenteModo === "MONTO";
   const aMedida = c.planes.some((pl) => pl.activo && !pl.generado);
   const pct = c.pctDocente ?? pctInstituto;
   const sub = [modulos.map((m) => m.nombre).join(" · "), aMedida ? "con planes a medida" : ""].filter(Boolean).join(" · ");
@@ -247,11 +312,24 @@ function FilaCurso({
         </span>
         <span className="min-w-0 text-right">
           <span className="block text-sm font-semibold tabular-nums text-texto">{completo != null ? fmtMoney(completo) : "—"}</span>
-          {c.descuentoCompletoPct != null && <span className="block text-[12px] text-texto-3">{c.descuentoCompletoPct} % menos</span>}
+          {pctCompleto != null && (
+            <span className="block text-[12px] text-texto-3">
+              {textoPct(pctCompleto)} % menos{c.precioCompletoFijo != null ? " · precio final" : ""}
+            </span>
+          )}
         </span>
         <span className="min-w-0 md:text-right">
-          <span className="block text-sm tabular-nums text-texto-2">{pct} %</span>
-          <span className="block text-[12px] text-texto-3">{c.pctDocente == null ? "del instituto" : `propio del ${p.carrera}`}</span>
+          {montoFijo ? (
+            <>
+              <span className="block text-sm tabular-nums text-texto-2">{fmtMoney(c.montoDocente ?? 0)}</span>
+              <span className="block text-[12px] text-texto-3">fijo por {p.materia}</span>
+            </>
+          ) : (
+            <>
+              <span className="block text-sm tabular-nums text-texto-2">{pct} %</span>
+              <span className="block text-[12px] text-texto-3">{c.pctDocente == null ? "del instituto" : `propio del ${p.carrera}`}</span>
+            </>
+          )}
         </span>
         <span className={`text-right text-sm text-texto-2 ${TABLA.numero}`}>
           {c.gruposActivos}
@@ -300,6 +378,12 @@ function PanelCurso({
   const [desc, setDesc] = useState(curso?.descuentoCompletoPct != null ? String(curso.descuentoCompletoPct) : "10");
   const [cupo, setCupo] = useState(curso?.cupoDefecto != null ? String(curso.cupoDefecto) : nuevo ? "20" : "");
   const [pct, setPct] = useState(curso?.pctDocente != null ? String(curso.pctDocente) : "");
+  // A4: el pago completo por % (como siempre) o por precio final.
+  const [modoCompleto, setModoCompleto] = useState<"PCT" | "PRECIO">(curso?.precioCompletoFijo != null ? "PRECIO" : "PCT");
+  const [precioFinal, setPrecioFinal] = useState(curso?.precioCompletoFijo != null ? String(curso.precioCompletoFijo) : "");
+  // A5: al docente, un % de lo que paga cada estudiante o un monto fijo por módulo pagado.
+  const [modoDocente, setModoDocente] = useState<PagoDocenteModo>(curso?.pagoDocenteModo ?? "PORCENTAJE");
+  const [montoDoc, setMontoDoc] = useState(curso?.montoDocente != null ? String(curso.montoDocente) : "");
   const [publicar, setPublicar] = useState(curso?.publicarEnPagina ?? false);
   const [verAvanzadas, setVerAvanzadas] = useState(false);
   const [guardando, setGuardando] = useState(false);
@@ -309,24 +393,48 @@ function PanelCurso({
   const nPrecio = Number(precio) || 0;
   const nDesc = Number(desc) || 0;
   const pctEf = pct.trim() === "" ? pctInstituto : Number(pct) || 0;
-  const cuenta = precioCurso(nPrecio, n, nDesc);
+  const conPrecioFinal = modoCompleto === "PRECIO";
+  const nFinal = Number(precioFinal) || 0;
+  const nMontoDoc = Number(montoDoc) || 0;
+  const lista = nPrecio * n;
+  const precioFinalOk = nFinal > 0 && nFinal <= lista + 0.005;
+  const equivalente = descuentoEquivalente(lista, nFinal);
+  const cuenta = precioCurso(nPrecio, n, nDesc, conPrecioFinal && precioFinalOk ? nFinal : null);
 
   async function guardar() {
     if (!nombre.trim()) return setError("Falta el nombre.");
     if (!n || modulos.some((m) => !m.nombre.trim())) return setError(`Cada ${p.materia} necesita un nombre.`);
     if (!(nPrecio > 0)) return setError(`Poné el precio por ${p.materia}.`);
-    if (nDesc < 0 || nDesc > 50) return setError("El descuento por pago completo va de 0 a 50 %.");
+    if (!conPrecioFinal && (nDesc < 0 || nDesc > 50)) return setError("El descuento por pago completo va de 0 a 50 %.");
+    if (conPrecioFinal && !precioFinalOk)
+      return setError(`El precio final va de más de Bs 0 hasta ${fmtMoney(lista)}, que es lo que cuesta mes a mes.`);
     if (pct.trim() !== "" && (pctEf < 0 || pctEf > 100)) return setError(`El % del ${p.docente} va de 0 a 100.`);
+    if (modoDocente === "MONTO" && !(nMontoDoc > 0)) return setError(`Poné cuánto cobra el ${p.docente} por ${p.alumno} y ${p.materia}.`);
     setGuardando(true);
     setError("");
     const input: CarreraSimpleInput = {
       nombre: nombre.trim(),
       modulos: modulos.map((m) => (m.id ? { id: m.id, nombre: m.nombre.trim() } : { nombre: m.nombre.trim() })),
       precioModulo: nPrecio,
-      descuentoCompletoPct: nDesc,
+      // Con precio final va también el % que equivale (dentro del rango de
+      // siempre): el backend lo pone en null, y uno anterior sin el campo
+      // nuevo cobra al menos algo parecido.
+      descuentoCompletoPct: conPrecioFinal ? Math.min(50, Math.max(0, equivalente)) : nDesc,
       cupoDefecto: cupo.trim() === "" ? null : Number(cupo),
       pctDocente: pct.trim() === "" ? null : pctEf,
       publicarEnPagina: publicar,
+      // Los campos nuevos viajan sólo cuando dicen algo (o hay que limpiarlos):
+      // un curso que sigue con el % no le manda nada nuevo al backend.
+      ...(conPrecioFinal
+        ? { precioCompletoFijo: nFinal }
+        : curso?.precioCompletoFijo != null
+          ? { precioCompletoFijo: null }
+          : {}),
+      ...(modoDocente === "MONTO"
+        ? { pagoDocenteModo: "MONTO" as const, montoDocente: nMontoDoc }
+        : curso?.pagoDocenteModo === "MONTO"
+          ? { pagoDocenteModo: "PORCENTAJE" as const, montoDocente: null }
+          : {}),
     };
     try {
       const c = curso ? await apiAcademia.editarCarreraSimple(curso.id, input) : await apiAcademia.crearCarreraSimple(input);
@@ -408,17 +516,73 @@ function PanelCurso({
             <Campo label={`Precio por ${p.materia} (Bs)`}>
               <Input type="number" value={precio} onChange={(e) => setPrecio(e.target.value)} placeholder="0" />
             </Campo>
-            <Campo label="Descuento por pago completo (%)">
-              <Input type="number" value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="0" />
-            </Campo>
             <Campo label="Cupo por grupo">
               <Input type="number" inputMode="numeric" value={cupo} onChange={(e) => setCupo(e.target.value)} />
             </Campo>
-            <Campo label={`% para el ${p.docente}`}>
-              <Input type="number" value={pct} onChange={(e) => setPct(e.target.value)} placeholder={String(pctInstituto)} />
-            </Campo>
           </div>
-          <p className="mt-2 text-xs text-texto-4">El instituto paga {pctInstituto} %; dejalo vacío para usar ese.</p>
+        </SeccionPanel>
+
+        {/* A4: Derick cobra "Bs 1.300 al contado": con el % hacía falta un 13,33. */}
+        <SeccionPanel titulo="Descuento por pago completo">
+          <Segmentos<"PCT" | "PRECIO">
+            etiqueta="Descuento por pago completo"
+            valor={modoCompleto}
+            onChange={setModoCompleto}
+            opciones={[
+              ["PCT", "Porcentaje"],
+              ["PRECIO", "Precio final"],
+            ]}
+          />
+          <div className="mt-3">
+            {conPrecioFinal ? (
+              <Campo label="Precio final del pago completo (Bs)">
+                <Input type="number" value={precioFinal} onChange={(e) => setPrecioFinal(e.target.value)} placeholder={lista > 0 ? String(lista) : "0"} />
+              </Campo>
+            ) : (
+              <Campo label="Descuento (%)">
+                <Input type="number" value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="0" />
+              </Campo>
+            )}
+          </div>
+          {conPrecioFinal && lista > 0 && (
+            <p className={`mt-2 text-xs ${precioFinal.trim() === "" || precioFinalOk ? "text-texto-3" : "text-danger-text"}`}>
+              {precioFinal.trim() === ""
+                ? `Mes a mes cuesta ${fmtMoney(lista)}.`
+                : precioFinalOk
+                  ? `Equivale a ${textoPct(equivalente)} % de descuento (regular ${fmtMoney(lista)}).`
+                  : `Tiene que ser más de Bs 0 y hasta ${fmtMoney(lista)}.`}
+            </p>
+          )}
+        </SeccionPanel>
+
+        {/* A5: el % del docente no se entendía; ahora también un monto fijo, con la frase de cómo se paga. */}
+        <SeccionPanel titulo={`Pago al ${p.docente}`}>
+          <Segmentos<PagoDocenteModo>
+            etiqueta={`Pago al ${p.docente}`}
+            valor={modoDocente}
+            onChange={setModoDocente}
+            opciones={[
+              ["PORCENTAJE", `% de lo que paga cada ${p.alumno}`],
+              ["MONTO", `Monto fijo por ${p.alumno} y ${p.materia}`],
+            ]}
+          />
+          <div className="mt-3">
+            {modoDocente === "MONTO" ? (
+              <Campo label={`Bs por ${p.alumno} y ${p.materia} pagado`}>
+                <Input type="number" value={montoDoc} onChange={(e) => setMontoDoc(e.target.value)} placeholder="0" />
+              </Campo>
+            ) : (
+              <>
+                <Campo label={`% para el ${p.docente}`}>
+                  <Input type="number" value={pct} onChange={(e) => setPct(e.target.value)} placeholder={String(pctInstituto)} />
+                </Campo>
+                <p className="mt-2 text-xs text-texto-4">El instituto paga {pctInstituto} %; dejalo vacío para usar ese.</p>
+              </>
+            )}
+          </div>
+          <p className="mt-2 text-[13px] text-texto-2" data-testid="frase-docente">
+            {textoPagoDocente(modoDocente, pctEf, nMontoDoc, p)}
+          </p>
         </SeccionPanel>
 
         <SeccionPanel titulo="Página">
@@ -457,8 +621,16 @@ function PanelCurso({
                   </div>
                 </dl>
                 <p className="mt-3 border-t border-borde pt-2.5 text-[13px] text-texto-3">
-                  Al {p.docente}: {fmtMoney((nPrecio * pctEf) / 100)} por {p.alumno} y {p.materia} pagado ({pctEf} %); con pago
-                  completo {fmtMoney((cuenta.porModuloCompleto * pctEf) / 100)} ({pctEf} % de {fmtMoney(cuenta.porModuloCompleto)})
+                  {modoDocente === "MONTO" ? (
+                    <>
+                      Al {p.docente}: {fmtMoney(nMontoDoc)} por {p.alumno} y {p.materia} pagado, pague mes a mes o completo
+                    </>
+                  ) : (
+                    <>
+                      Al {p.docente}: {fmtMoney((nPrecio * pctEf) / 100)} por {p.alumno} y {p.materia} pagado ({pctEf} %); con pago
+                      completo {fmtMoney((cuenta.porModuloCompleto * pctEf) / 100)} ({pctEf} % de {fmtMoney(cuenta.porModuloCompleto)})
+                    </>
+                  )}
                 </p>
               </>
             ) : (

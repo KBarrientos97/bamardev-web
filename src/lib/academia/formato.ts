@@ -1,3 +1,4 @@
+import { fmtMoney } from "../format";
 import type { CuotaPlan, Materia, PlanPago, Ref, TipoDescuento } from "./tipos";
 
 /**
@@ -193,11 +194,50 @@ export function calendarioConDescuento(
  * cuenta que el servidor: el pago completo es `round(n × precio × (1 − desc))`.
  * `porModuloCompleto` es lo que vale cada módulo pagado así (1.350 ÷ 3 = 450),
  * la base del % del docente (D2).
+ *
+ * Con `precioFijo` (A4, el precio final que pidió Derick) el pago completo es
+ * ese monto y el % no cuenta: es lo que hace `reglas.ts` en el backend.
  */
-export function precioCurso(precioModulo: number, modulos: number, descuentoPct: number) {
+export function precioCurso(precioModulo: number, modulos: number, descuentoPct: number, precioFijo?: number | null) {
   const lista = precioModulo * modulos;
-  const completo = Math.round(lista * (1 - descuentoPct / 100));
-  return { lista, completo, ahorro: lista - completo, porModuloCompleto: modulos ? completo / modulos : 0 };
+  const completo = precioFijo != null && precioFijo > 0 ? Math.round(precioFijo * 100) / 100 : Math.round(lista * (1 - descuentoPct / 100));
+  return {
+    lista,
+    completo,
+    ahorro: Math.round((lista - completo) * 100) / 100,
+    porModuloCompleto: modulos ? completo / modulos : 0,
+  };
+}
+
+/**
+ * A4: a cuánto % de descuento equivale un precio final (Bs 1.300 sobre
+ * 1.500 = 13,33 %), a dos decimales como lo devuelve el backend.
+ */
+export function descuentoEquivalente(lista: number, precioFinal: number): number {
+  if (!(lista > 0) || !(precioFinal > 0)) return 0;
+  return Math.round((1 - precioFinal / lista) * 10000) / 100;
+}
+
+/** "13,33" o "10": el % con coma y hasta dos decimales. */
+export function textoPct(n: number): string {
+  return (Math.round(n * 100) / 100).toLocaleString("es-BO", { maximumFractionDigits: 2 });
+}
+
+/**
+ * A5: cómo se le paga al docente, en una frase para quien configura el curso
+ * (el % se entendía mal, punto 6 de la reunión con Derick).
+ */
+export function textoPagoDocente(
+  modo: "PORCENTAJE" | "MONTO" | undefined | null,
+  pct: number,
+  monto: number | null | undefined,
+  palabras: { docente: string; alumno: string; materia: string },
+): string {
+  const { docente, alumno, materia } = palabras;
+  if (modo === "MONTO") {
+    return `El ${docente} cobra ${fmtMoney(monto ?? 0)} por cada ${alumno} que pagó el ${materia} completo.`;
+  }
+  return `El ${docente} cobra el ${textoPct(pct)} % de lo que paga cada ${alumno} por el ${materia}.`;
 }
 
 const UNIDADES = [

@@ -116,7 +116,22 @@ export interface Carrera {
   modoSimple?: boolean;
   /** Cambio #5: `round(n × precioModulo × (1 − desc))`, null sin precio. */
   precioCompleto?: number | null;
+  // ── A4 (22-oct): el pago completo por precio final ──
+  /** Si tiene valor, manda sobre `descuentoCompletoPct` (Bs 1.300 en vez de 13,33 %). */
+  precioCompletoFijo?: number | null;
+  /** Lo que se cobra por el pago completo, venga del % o del precio final. */
+  precioCompletoEfectivo?: number | null;
+  /** El % que equivale al precio final (13.33). */
+  descuentoCompletoEquivalentePct?: number | null;
+  // ── A5 (22-oct): el pago al docente, por % o por monto fijo ──
+  /** Un backend anterior no lo manda: es PORCENTAJE. */
+  pagoDocenteModo?: PagoDocenteModo;
+  /** Bs por estudiante y por módulo pagado, con el modo MONTO. */
+  montoDocente?: number | null;
 }
+
+/** Cómo se le paga al docente (A5): un % de lo que paga cada estudiante, o un monto fijo. */
+export type PagoDocenteModo = "PORCENTAJE" | "MONTO";
 
 /** `POST /academia/carreras/simple` y `PUT /academia/carreras/:id/simple`. */
 export interface CarreraSimpleInput {
@@ -125,9 +140,19 @@ export interface CarreraSimpleInput {
   /** En orden; con `id` se renombra o reordena, sin `id` se crea. */
   modulos: { id?: number; nombre: string }[];
   precioModulo: number;
+  /**
+   * Con `precioCompletoFijo` el backend lo pone en null (A4: mandar uno limpia
+   * el otro); igual se manda, con el % equivalente, por si el backend todavía
+   * no conoce el precio final.
+   */
   descuentoCompletoPct: number;
+  /** A4: el precio final del pago completo; `null` lo saca y vuelve a mandar el %. */
+  precioCompletoFijo?: number | null;
   cupoDefecto?: number | null;
   pctDocente?: number | null;
+  /** A5: PORCENTAJE (como siempre) o MONTO, con `montoDocente` > 0. */
+  pagoDocenteModo?: PagoDocenteModo;
+  montoDocente?: number | null;
   publicarEnPagina?: boolean;
 }
 

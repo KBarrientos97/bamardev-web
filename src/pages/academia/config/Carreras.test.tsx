@@ -134,3 +134,96 @@ describe("N2 · Cursos", () => {
     );
   });
 });
+
+describe("A4 · pago completo por porcentaje o precio final", () => {
+  it("con precio final dice a cuánto equivale y lo manda (el % va con el equivalente)", async () => {
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Editar Barbería" }));
+    const panel = screen.getByRole("complementary", { name: "Barbería" });
+    const selector = within(panel).getByRole("radiogroup", { name: "Descuento por pago completo" });
+    expect(within(selector).getByRole("radio", { name: "Porcentaje" })).toHaveAttribute("aria-checked", "true");
+    fireEvent.click(within(selector).getByRole("radio", { name: "Precio final" }));
+    fireEvent.change(within(panel).getByLabelText("Precio final del pago completo (Bs)"), { target: { value: "1300" } });
+    expect(panel).toHaveTextContent("Equivale a 13,33 % de descuento (regular Bs 1.500");
+    const oferta = within(panel).getByRole("region", { name: "Así se ofrece" });
+    expect(oferta).toHaveTextContent(/ahorra Bs 200/);
+
+    fireEvent.click(within(panel).getByRole("button", { name: "Guardar cambios" }));
+    await act(async () => {});
+    expect(apiAcademia.editarCarreraSimple).toHaveBeenCalledWith(
+      3,
+      expect.objectContaining({ precioCompletoFijo: 1300, descuentoCompletoPct: 13.33 }),
+    );
+  });
+
+  it("no deja un precio final por encima de lo que cuesta mes a mes", async () => {
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Editar Barbería" }));
+    const panel = screen.getByRole("complementary", { name: "Barbería" });
+    fireEvent.click(within(panel).getByRole("radio", { name: "Precio final" }));
+    fireEvent.change(within(panel).getByLabelText("Precio final del pago completo (Bs)"), { target: { value: "1600" } });
+    fireEvent.click(within(panel).getByRole("button", { name: "Guardar cambios" }));
+    await act(async () => {});
+    expect(apiAcademia.editarCarreraSimple).not.toHaveBeenCalled();
+    expect(within(panel).getAllByText(/hasta Bs 1\.500/).length).toBeGreaterThan(0);
+  });
+
+  it("un curso con precio final abre en ese modo, la lista lo dice, y volver al % lo limpia", async () => {
+    vi.mocked(apiAcademia.carreras).mockResolvedValue([
+      { ...BARBERIA, precioCompletoFijo: 1300, precioCompletoEfectivo: 1300, descuentoCompletoEquivalentePct: 13.33, descuentoCompletoPct: null },
+    ]);
+    await montar();
+    const fila = screen.getByRole("button", { name: "Editar Barbería" });
+    expect(fila).toHaveTextContent("13,33 % menos · precio final");
+    fireEvent.click(fila);
+    const panel = screen.getByRole("complementary", { name: "Barbería" });
+    expect(within(panel).getByRole("radio", { name: "Precio final" })).toHaveAttribute("aria-checked", "true");
+    expect(within(panel).getByLabelText("Precio final del pago completo (Bs)")).toHaveValue("1300");
+    fireEvent.click(within(panel).getByRole("radio", { name: "Porcentaje" }));
+    fireEvent.click(within(panel).getByRole("button", { name: "Guardar cambios" }));
+    await act(async () => {});
+    expect(apiAcademia.editarCarreraSimple).toHaveBeenCalledWith(3, expect.objectContaining({ precioCompletoFijo: null }));
+  });
+});
+
+describe("A5 · pago al docente por % o por monto fijo", () => {
+  it("la frase explica el %; con monto fijo pide el monto y lo manda", async () => {
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Editar Barbería" }));
+    const panel = screen.getByRole("complementary", { name: "Barbería" });
+    expect(within(panel).getByTestId("frase-docente")).toHaveTextContent(
+      "El docente cobra el 20 % de lo que paga cada estudiante por el módulo.",
+    );
+    fireEvent.click(within(panel).getByRole("radio", { name: /Monto fijo por estudiante y módulo/ }));
+    fireEvent.click(within(panel).getByRole("button", { name: "Guardar cambios" }));
+    expect(apiAcademia.editarCarreraSimple).not.toHaveBeenCalled();
+    expect(within(panel).getByText(/Poné cuánto cobra el docente/)).toBeInTheDocument();
+
+    fireEvent.change(within(panel).getByLabelText("Bs por estudiante y módulo pagado"), { target: { value: "90" } });
+    expect(within(panel).getByTestId("frase-docente")).toHaveTextContent(
+      "El docente cobra Bs 90,00 por cada estudiante que pagó el módulo completo.",
+    );
+    fireEvent.click(within(panel).getByRole("button", { name: "Guardar cambios" }));
+    await act(async () => {});
+    expect(apiAcademia.editarCarreraSimple).toHaveBeenCalledWith(
+      3,
+      expect.objectContaining({ pagoDocenteModo: "MONTO", montoDocente: 90 }),
+    );
+  });
+
+  it("un curso con monto fijo lo muestra en la lista y volver al % lo limpia", async () => {
+    vi.mocked(apiAcademia.carreras).mockResolvedValue([{ ...BARBERIA, pagoDocenteModo: "MONTO", montoDocente: 90 }]);
+    await montar();
+    const fila = screen.getByRole("button", { name: "Editar Barbería" });
+    expect(fila).toHaveTextContent("fijo por módulo");
+    fireEvent.click(fila);
+    const panel = screen.getByRole("complementary", { name: "Barbería" });
+    fireEvent.click(within(panel).getByRole("radio", { name: /% de lo que paga/ }));
+    fireEvent.click(within(panel).getByRole("button", { name: "Guardar cambios" }));
+    await act(async () => {});
+    expect(apiAcademia.editarCarreraSimple).toHaveBeenCalledWith(
+      3,
+      expect.objectContaining({ pagoDocenteModo: "PORCENTAJE", montoDocente: null }),
+    );
+  });
+});

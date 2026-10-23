@@ -142,3 +142,25 @@ describe("nota en letras", () => {
     expect(numeroEnLetras(101)).toBe("");
   });
 });
+
+describe("A4 · precio final del pago completo", () => {
+  it("manda sobre el %: 1.300 de 1.500 equivale a 13,33 %", async () => {
+    const { descuentoEquivalente, precioCurso, textoPct } = await import("./formato");
+    expect(precioCurso(500, 3, 10, 1300)).toEqual({ lista: 1500, completo: 1300, ahorro: 200, porModuloCompleto: 1300 / 3 });
+    expect(precioCurso(500, 3, 10, null).completo).toBe(1350);
+    expect(descuentoEquivalente(1500, 1300)).toBe(13.33);
+    expect(descuentoEquivalente(0, 1300)).toBe(0);
+    expect(textoPct(13.33)).toBe("13,33");
+    expect(textoPct(20)).toBe("20");
+  });
+});
+
+describe("A5 · la frase del pago al docente", () => {
+  it("por % o por monto fijo", async () => {
+    const { textoPagoDocente } = await import("./formato");
+    const p = { docente: "docente", alumno: "estudiante", materia: "módulo" };
+    expect(textoPagoDocente("PORCENTAJE", 20, null, p)).toBe("El docente cobra el 20 % de lo que paga cada estudiante por el módulo.");
+    expect(textoPagoDocente(undefined, 20, null, p)).toMatch(/el 20 %/);
+    expect(textoPagoDocente("MONTO", 20, 90, p)).toBe("El docente cobra Bs 90,00 por cada estudiante que pagó el módulo completo.");
+  });
+});
