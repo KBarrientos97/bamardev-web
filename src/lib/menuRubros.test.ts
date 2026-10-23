@@ -179,10 +179,10 @@ describe("menú de ACADEMIA", () => {
     }
   });
 
-  it("el docente ve sólo sus clases", () => {
+  it("el docente ve sólo sus clases (sin «Mi planilla»: la planilla es del admin, D1 del 22-oct)", () => {
     const m = menuDe("PROFESIONAL");
     expect(m.map((b) => b.bloque)).toEqual(["clases"]);
-    expect(bloque(m, "clases")).toEqual(["Mis clases de hoy", "Pasar lista", "Notas", "Mi planilla"]);
+    expect(bloque(m, "clases")).toEqual(["Mis clases de hoy", "Pasar lista", "Notas"]);
   });
 
   it("la barra del celular lleva siempre el título de la pantalla, también las que no están en el menú (QA ronda 2, B-28)", () => {

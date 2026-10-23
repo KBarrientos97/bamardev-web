@@ -777,11 +777,27 @@ export interface PlanillaMes {
   totales: { bruto: number; liquido: number };
 }
 
+/** A6 (22-oct): por qué no se le paga al docente una línea postergada o sin pagar. */
+export type MotivoNoPago = "NO_PAGO" | "RETIRO" | "BECA" | "ACUERDO" | "OTRO";
+
+export interface MotivoNoPagoLinea {
+  motivo: MotivoNoPago;
+  /** Obligatorio con OTRO. */
+  detalle: string | null;
+  /** Quién lo anotó. */
+  usuario: string | Ref | null;
+  fecha: string;
+}
+
 export interface LineaPlanilla {
   inscripcionId: number;
   alumno: Ref;
   grupo: Ref;
-  materia: { orden: number; nombre: string };
+  /** `id` (o `materiaId` en la línea) identifica la línea para el motivo (A6); uno anterior no lo manda. */
+  materia: { id?: number; orden: number; nombre: string };
+  materiaId?: number;
+  /** A6: sólo en postergados y sin pagar; `null` si nadie lo anotó, ausente en un backend anterior. */
+  motivoNoPago?: MotivoNoPagoLinea | null;
   formaPago: FormaPago;
   cobradoModulo: number;
   abonado: number;

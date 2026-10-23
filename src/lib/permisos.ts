@@ -189,8 +189,6 @@ export type Seccion =
   | "academia_notas"
   /** E14/N8: la planilla de los docentes del mes. */
   | "academia_planilla"
-  /** E16: la planilla en curso del docente que entró. */
-  | "academia_mi_planilla"
   /** N9: el panel de control del dueño. */
   | "academia_control"
   /** E18: los reportes del instituto. */
@@ -353,7 +351,6 @@ const REQUISITOS: Record<Seccion, Requisito> = {
   academia_lista: { permiso: "asistencia.registrar", alcance: "PROPIO", feature: "asistencia" },
   academia_notas: { permiso: "notas.registrar", alcance: "PROPIO", feature: "notas" },
   academia_planilla: { permiso: "planilla.ver", alcance: "GENERAL", feature: "planilla_docente" },
-  academia_mi_planilla: { permiso: "planilla.ver", alcance: "PROPIO", feature: "planilla_docente" },
   academia_control: { permiso: "academia.control", feature: "academia" },
   // Los del instituto, con el permiso de siempre de los reportes.
   academia_reportes: { permiso: "reportes.ver", feature: "academia" },
@@ -802,7 +799,6 @@ const ORDEN_INICIO: [Seccion, string][] = [
   ["academia_calendario", "/academia/calendario"],
   ["academia_lista", "/academia/lista"],
   ["academia_notas", "/academia/notas"],
-  ["academia_mi_planilla", "/academia/mi-planilla"],
   ["academia_planilla", "/academia/planilla"],
   ["academia_control", "/academia/control"],
   ["academia_reportes", "/academia/reportes"],

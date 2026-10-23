@@ -86,7 +86,6 @@ const CalendarioAcademia = lazy(() => import("./pages/academia/Calendario"));
 const MisClases = lazy(() => import("./pages/academia/docente/MisClases"));
 const PasarLista = lazy(() => import("./pages/academia/docente/PasarLista"));
 const NotasAcademia = lazy(() => import("./pages/academia/Notas"));
-const MiPlanilla = lazy(() => import("./pages/academia/docente/MiPlanilla"));
 const PlanillaMes = lazy(() => import("./pages/academia/planilla/PlanillaMes"));
 const PlanillaDocente = lazy(() => import("./pages/academia/planilla/PlanillaDocente"));
 const ControlAcademia = lazy(() => import("./pages/academia/control/Control"));
@@ -811,7 +810,6 @@ function Rutas() {
         <Route path="/academia/mis-clases" element={<Academia seccion="academia_mis_clases"><MisClases /></Academia>} />
         <Route path="/academia/lista" element={<Academia seccion="academia_lista"><PasarLista /></Academia>} />
         <Route path="/academia/notas" element={<Academia seccion="academia_notas"><NotasAcademia /></Academia>} />
-        <Route path="/academia/mi-planilla" element={<Academia seccion="academia_mi_planilla"><MiPlanilla /></Academia>} />
         {/* Control (el dueño). */}
         <Route path="/academia/planilla" element={<Academia seccion="academia_planilla"><PlanillaMes /></Academia>} />
         <Route path="/academia/planilla/:id" element={<Academia seccion="academia_planilla"><PlanillaDocente /></Academia>} />

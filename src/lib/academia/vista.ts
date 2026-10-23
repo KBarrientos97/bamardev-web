@@ -1,4 +1,4 @@
-import type { Cuota, EstadoPagoModulo, EstadoPlanilla, EventoInscripcion, FormaPago, Ref } from "./tipos";
+import type { Cuota, EstadoPagoModulo, EstadoPlanilla, EventoInscripcion, FormaPago, MotivoNoPago, Ref } from "./tipos";
 import { fechaCorta, textoCubre } from "./formato";
 import { ApiError } from "../api";
 import { fmtMoney } from "../format";
@@ -80,6 +80,23 @@ export const RUTA_COBRAR = "/academia/cobrar";
 export function rutaCobroAlumno(alumno: { id: number; nombre: string; codigo?: string | null }): string {
   const params = new URLSearchParams({ alumno: String(alumno.id), q: alumno.codigo || alumno.nombre });
   return `${RUTA_COBRAR}?${params.toString()}`;
+}
+
+/** A6: los motivos para no pagarle al docente una línea, como los lee el admin. */
+export const MOTIVOS_NO_PAGO: readonly (readonly [MotivoNoPago, string])[] = [
+  ["NO_PAGO", "El estudiante no pagó"],
+  ["RETIRO", "Se retiró"],
+  ["BECA", "Tiene beca"],
+  ["ACUERDO", "Acuerdo con el estudiante"],
+  ["OTRO", "Otro"],
+];
+
+/** "Se retiró" o, con OTRO, lo que se escribió. Con el detalle si hay. */
+export function textoMotivoNoPago(m: { motivo: MotivoNoPago; detalle?: string | null }): string {
+  const base = MOTIVOS_NO_PAGO.find(([k]) => k === m.motivo)?.[1] ?? m.motivo;
+  const detalle = m.detalle?.trim();
+  if (m.motivo === "OTRO") return detalle || base;
+  return detalle ? `${base}: ${detalle}` : base;
 }
 
 /**

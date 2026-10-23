@@ -248,7 +248,8 @@ export const PLANTILLAS = {
     "fichatecnica.editar",
     "billar.operar",
     "billar.admin",
-    // Coordinación (§5.3): academia.* salvo configurar, asistencia, notas y planilla.ver.
+    // Coordinación (§5.3): academia.* salvo configurar, asistencia y notas.
+    // Sin planilla.ver desde el 22-oct: la planilla es sólo del admin (D1).
     "academia.ver",
     "academia.grupos",
     "academia.inscribir",
@@ -259,7 +260,6 @@ export const PLANTILLAS = {
     "asistencia.justificar",
     "notas.registrar",
     "notas.reabrir",
-    "planilla.ver",
   ],
   CAJERO: [
     "ventas.vender",
@@ -319,10 +319,9 @@ export const PLANTILLAS = {
     "consumo.ajustar:PROPIO",
     "fichatecnica.ver:PROPIO",
     "fichatecnica.editar:PROPIO",
-    // Docente (§5.3): lo suyo.
+    // Docente (§5.3): lo suyo. Su planilla ya no (D1, 22-oct).
     "academia.ver:PROPIO",
     "asistencia.registrar:PROPIO",
     "notas.registrar:PROPIO",
-    "planilla.ver:PROPIO",
   ],
 } as const;

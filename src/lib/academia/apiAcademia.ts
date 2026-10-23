@@ -32,6 +32,7 @@ import type {
   MateriaInput,
   MetodoPagoPlanilla,
   MisClases,
+  MotivoNoPago,
   NotasDelGrupo,
   Paginado,
   PanelControl,
@@ -232,6 +233,11 @@ export const apiAcademia = {
       method: "POST",
       body: json(forzar ? { mes, forzar } : { mes }),
     }),
+  /** A6: el motivo por el que una línea no le suma al docente (pide `planilla.liquidar`). */
+  guardarMotivoNoPago: (input: { inscripcionId: number; materiaId: number; motivo: MotivoNoPago; detalle?: string }) =>
+    request<unknown>("/academia/planilla/motivos", { method: "PUT", body: json(input) }),
+  quitarMotivoNoPago: (inscripcionId: number, materiaId: number) =>
+    request<unknown>(`/academia/planilla/motivos/${inscripcionId}/${materiaId}`, { method: "DELETE" }),
   /** `metodoPago`: EFECTIVO (por defecto en el backend), TRANSFERENCIA, QR o TARJETA. */
   pagarPlanilla: (personalId: number, mes: string, metodoPago?: MetodoPagoPlanilla) =>
     request<unknown>(`/academia/planilla/${personalId}/pagar`, {

@@ -3,8 +3,9 @@ import { Icon, type NombreIcono } from "../../../components/Icon";
 import { useAuth } from "../../../store/AuthContext";
 
 /**
- * La barra de abajo del docente en el celular (E11a, E16): sus tres lugares a
- * un toque, como en el lienzo. En escritorio no hace falta: está el menú. Cada
+ * La barra de abajo del docente en el celular (E11a): sus lugares a un toque,
+ * como en el lienzo. "Mi planilla" ya no está: la planilla es sólo del
+ * administrador (D1, reunión con Derick del 22-oct). En escritorio no hace falta: está el menú. Cada
  * entrada aparece sólo si su sección existe (permiso y feature).
  *
  * Mide 57 px de alto (1 de borde + 2 × 4 de relleno + 48 del botón): la barra
@@ -15,7 +16,6 @@ export default function NavDocente() {
   const items: { a: string; label: string; icono: NombreIcono; visible: boolean }[] = [
     { a: "/academia/mis-clases", label: "Mis clases", icono: "calendar", visible: puede("academia_mis_clases") },
     { a: "/academia/notas", label: "Notas", icono: "edit", visible: puede("academia_notas") },
-    { a: "/academia/mi-planilla", label: "Mi planilla", icono: "billetera", visible: puede("academia_mi_planilla") },
   ];
   const visibles = items.filter((i) => i.visible);
   if (visibles.length < 2) return null;

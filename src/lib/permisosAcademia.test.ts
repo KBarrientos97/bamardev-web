@@ -122,7 +122,6 @@ describe("secciones de la ronda 2", () => {
     "academia_lista",
     "academia_notas",
     "academia_planilla",
-    "academia_mi_planilla",
     "academia_control",
     "academia_reportes",
   ];
@@ -140,18 +139,17 @@ describe("secciones de la ronda 2", () => {
     expect(veNuevas("CAJERO")).toEqual(["academia_calendario"]);
   });
 
-  it("el docente: sus clases, la lista, las notas y su planilla", () => {
-    expect(veNuevas("PROFESIONAL")).toEqual([
-      "academia_mis_clases",
-      "academia_lista",
-      "academia_notas",
-      "academia_mi_planilla",
-    ]);
+  it("el docente: sus clases, la lista y las notas (su planilla ya no: D1, 22-oct)", () => {
+    expect(veNuevas("PROFESIONAL")).toEqual(["academia_mis_clases", "academia_lista", "academia_notas"]);
+  });
+
+  it("la planilla es sólo del administrador: la coordinación tampoco la ve (D1)", () => {
+    expect(puedeVer(ctxDe("SUPERVISOR", "ACADEMIA", TODAS), "academia_planilla")).toBe(false);
+    expect(puedeVer(ctxDe("ADMIN", "ACADEMIA", TODAS), "academia_planilla")).toBe(true);
   });
 
   it("sin la feature de la planilla, nadie ve planillas", () => {
     const c = ctxDe("ADMIN", "ACADEMIA", FEATURES);
     expect(puedeVer(c, "academia_planilla")).toBe(false);
-    expect(puedeVer(ctxDe("PROFESIONAL", "ACADEMIA", FEATURES), "academia_mi_planilla")).toBe(false);
   });
 });

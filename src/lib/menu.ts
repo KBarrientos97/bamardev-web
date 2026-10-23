@@ -436,7 +436,8 @@ function general(a: string, cambios: Partial<ItemNav> = {}): ItemNav {
  *   DÍA A DÍA       Hoy · Calendario · Estudiantes · Cobranza (recepción)
  *   VENDER          Cobrar (a estudiante) · Punto de venta · Caja
  *   CONTROL         Panel de control · Planilla docentes · Reportes (el dueño)
- *   MIS CLASES      Mis clases · Pasar lista · Notas · Mi planilla (el docente)
+ *   MIS CLASES      Mis clases · Pasar lista · Notas (el docente; su planilla
+ *                   ya no: sólo el admin la ve, D1 del 22-oct)
  *   ADMINISTRACIÓN  Ajustes (cursos, sedes) y un grupo "Más" plegado con los
  *                   módulos generales que el dueño ya tenía: inventario,
  *                   personal, usuarios, gastos, Mi página… No se quita nada,
@@ -501,7 +502,6 @@ const ITEMS_ACADEMIA: (ItemNav & { bloque: Bloque })[] = [
   },
   { a: "/academia/lista", label: "Pasar lista", icono: "lista", seccion: "academia_lista", bloque: "clases" },
   { a: "/academia/notas", label: "Notas", icono: "edit", seccion: "academia_notas", bloque: "clases" },
-  { a: "/academia/mi-planilla", label: "Mi planilla", icono: "billetera", seccion: "academia_mi_planilla", bloque: "clases" },
   {
     a: "/configuracion/academia",
     label: "Ajustes",

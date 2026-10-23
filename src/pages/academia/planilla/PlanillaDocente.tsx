@@ -3,13 +3,18 @@ import { Link, useParams, useSearchParams } from "react-router-dom";
 import MenuMas, { type AccionMenu } from "../../../components/MenuMas";
 import PanelLateral from "../../../components/PanelLateral";
 import { Chips } from "../../../components/filtros";
-import { AvisoOk, Boton, Cargando, Confirmar, ErrorMsg, Modal, Select, Vacio, useAviso } from "../../../components/ui";
+import { AvisoOk, Boton, Campo, Cargando, Confirmar, ErrorMsg, Input, Modal, Select, Vacio, useAviso } from "../../../components/ui";
 import { apiAcademia, CODIGOS_ACADEMIA } from "../../../lib/academia/apiAcademia";
 import { mesDe, sumarMeses, tituloMes } from "../../../lib/academia/calendario";
-import { nombreDe } from "../../../lib/academia/formato";
-import type { EstadoPlanilla, LineaPlanilla, MetodoPagoPlanilla } from "../../../lib/academia/tipos";
+import { fechaCorta, nombreDe } from "../../../lib/academia/formato";
+import type { EstadoPlanilla, LineaPlanilla, MetodoPagoPlanilla, MotivoNoPago, MotivoNoPagoLinea } from "../../../lib/academia/tipos";
 import { usePalabras } from "../../../lib/academia/usePalabras";
-import { TEXTO_ESTADO_PLANILLA as TEXTO_ESTADO, textoFormaPago } from "../../../lib/academia/vista";
+import {
+  MOTIVOS_NO_PAGO,
+  TEXTO_ESTADO_PLANILLA as TEXTO_ESTADO,
+  textoFormaPago,
+  textoMotivoNoPago,
+} from "../../../lib/academia/vista";
 import { ApiError } from "../../../lib/api";
 import { fmtMoney } from "../../../lib/format";
 import { tienePermiso } from "../../../lib/permisos";
@@ -65,6 +70,10 @@ const COLUMNAS = "lg:grid-cols-[minmax(140px,2fr)_minmax(100px,1fr)_104px_140px_
  * "Cerrar planilla" la deja inmutable (un mes en curso pide confirmar) y
  * "Registrar pago" la vuelve un gasto de sueldos. La retención y los atrasos
  * quedan por confirmar (D9).
+ *
+ * A6 (reunión con Derick, 22-oct): es sólo del admin, abre en "Cuentan", y en
+ * las líneas que no le suman al docente (postergados y sin pagar) quien
+ * liquida anota por qué: no pagó, se retiró, beca, un acuerdo u otro motivo.
  */
 export default function PlanillaDocente() {
   const p = usePalabras();
@@ -86,6 +95,8 @@ export default function PlanillaDocente() {
   const [metodo, setMetodo] = useState<MetodoPagoPlanilla>("EFECTIVO");
   const [error, setError] = useState("");
   const [aviso, setAviso] = useAviso(6000);
+  /** La línea a la que se le está anotando el motivo (A6). */
+  const [motivoDe, setMotivoDe] = useState<LineaPlanilla | null>(null);
 
   const volver = { a: "/academia/planilla", texto: `Planilla ${p.docente}s` };
   const d = carga.datos;
@@ -143,6 +154,16 @@ export default function PlanillaDocente() {
     : `${d.pct.defecto} %`;
   const columnaCobrado = lista === "postergados" ? "Abonó" : lista === "sinPagar" ? "Precio" : "Cobrado del módulo";
   const cuenta = lista === "cuentan" || lista === "atrasados";
+  /** Las listas que no le suman al docente llevan el motivo (A6). */
+  const conMotivo = lista === "postergados" || lista === "sinPagar";
+
+  /** El motivo nuevo (o null) en la línea de la lista y en el panel, sin recargar todo. */
+  function ponerMotivo(l: LineaPlanilla, motivo: MotivoNoPagoLinea | null) {
+    const igual = (x: LineaPlanilla) => x.inscripcionId === l.inscripcionId && materiaDe(x) === materiaDe(l);
+    const cambiar = (xs: LineaPlanilla[]) => xs.map((x) => (igual(x) ? { ...x, motivoNoPago: motivo } : x));
+    if (d) carga.setDatos({ ...d, postergados: cambiar(d.postergados), sinPagar: cambiar(d.sinPagar) });
+    if (elegida && igual(elegida)) setElegida({ ...elegida, motivoNoPago: motivo });
+  }
 
   const acciones: AccionMenu[] = [
     { clave: "excel", etiqueta: "Exportar Excel con el formato del instituto", icono: "download", detalle: "Pronto", deshabilitada: true, onClick: () => {} },
@@ -288,6 +309,8 @@ export default function PlanillaDocente() {
                         type="button"
                         onClick={() => setElegida(l)}
                         aria-label={`Ver el detalle de ${l.alumno.nombre}`}
+                        // UX 8: de dónde sale el monto, también al pasar el mouse.
+                        title={l.explicacion}
                         className={`grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-0.5 px-4 py-3 text-left transition-colors sm:px-5 ${COLUMNAS} ${
                           elegida === l ? "bg-primary-50" : "hover:bg-muted"
                         }`}
@@ -305,6 +328,25 @@ export default function PlanillaDocente() {
                           {fmtMoney(cuenta ? l.monto : (l.montoPotencial ?? l.monto))}
                         </span>
                       </button>
+                      {conMotivo && (l.motivoNoPago || (liquida && materiaDe(l) != null)) && (
+                        <div className="-mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 px-4 pb-3 sm:px-5">
+                          {l.motivoNoPago && (
+                            <span className="min-w-0 text-[12px] text-texto-2">
+                              <span className="font-semibold">Motivo:</span> {textoMotivoNoPago(l.motivoNoPago)}
+                            </span>
+                          )}
+                          {liquida && materiaDe(l) != null && (
+                            <BotonFila
+                              variante="ghost"
+                              icono="edit"
+                              onClick={() => setMotivoDe(l)}
+                              aria-label={`${l.motivoNoPago ? "Cambiar el motivo" : "Agregar motivo"} de ${l.alumno.nombre}`}
+                            >
+                              {l.motivoNoPago ? "Cambiar motivo" : "Agregar motivo"}
+                            </BotonFila>
+                          )}
+                        </div>
+                      )}
                     </li>
                   ))}
                 </ul>
@@ -355,7 +397,38 @@ export default function PlanillaDocente() {
           <SeccionPanel titulo="De dónde sale el monto">
             <p className="rounded-xl border border-borde-soft bg-white p-3 text-[13px] text-texto-2">{elegida.explicacion}</p>
           </SeccionPanel>
+          {conMotivo && (elegida.motivoNoPago || (liquida && materiaDe(elegida) != null)) && (
+            <SeccionPanel titulo={`Por qué no se le paga al ${p.docente}`}>
+              {elegida.motivoNoPago ? (
+                <p className="text-[13px] text-texto-2">
+                  {textoMotivoNoPago(elegida.motivoNoPago)}
+                  <span className="block text-[12px] text-texto-3">
+                    {[nombreDe(elegida.motivoNoPago.usuario ?? ""), fechaCorta(elegida.motivoNoPago.fecha)].filter(Boolean).join(" · ")}
+                  </span>
+                </p>
+              ) : (
+                <p className="text-[13px] text-texto-3">Sin motivo anotado.</p>
+              )}
+              {liquida && materiaDe(elegida) != null && (
+                <BotonFila variante="ghost" icono="edit" className="mt-2" onClick={() => setMotivoDe(elegida)}>
+                  {elegida.motivoNoPago ? "Cambiar motivo" : "Agregar motivo"}
+                </BotonFila>
+              )}
+            </SeccionPanel>
+          )}
         </PanelLateral>
+      )}
+
+      {motivoDe && (
+        <DialogoMotivo
+          linea={motivoDe}
+          onCerrar={() => setMotivoDe(null)}
+          onGuardado={(m) => {
+            ponerMotivo(motivoDe, m);
+            setMotivoDe(null);
+            setAviso(m ? "Motivo anotado." : "Motivo quitado.");
+          }}
+        />
       )}
 
       <Modal
@@ -398,6 +471,113 @@ export default function PlanillaDocente() {
         }}
       />
     </PaginaAcademia>
+  );
+}
+
+/** El módulo de la línea, como lo pide el endpoint del motivo; un backend anterior no lo manda. */
+function materiaDe(l: LineaPlanilla): number | undefined {
+  return l.materiaId ?? l.materia.id;
+}
+
+/**
+ * A6: anotar por qué una línea no le suma al docente. Cinco opciones y, con
+ * "Otro", el texto es obligatorio. Si ya tenía uno, se cambia o se quita.
+ */
+function DialogoMotivo({
+  linea,
+  onCerrar,
+  onGuardado,
+}: {
+  linea: LineaPlanilla;
+  onCerrar: () => void;
+  onGuardado: (m: MotivoNoPagoLinea | null) => void;
+}) {
+  const { usuario } = useAuth();
+  const actual = linea.motivoNoPago ?? null;
+  const [motivo, setMotivo] = useState<MotivoNoPago>(actual?.motivo ?? "NO_PAGO");
+  const [detalle, setDetalle] = useState(actual?.detalle ?? "");
+  const [ocupado, setOcupado] = useState(false);
+  const [error, setError] = useState("");
+  const materiaId = materiaDe(linea)!;
+  const falta = motivo === "OTRO" && detalle.trim().length < 3;
+
+  async function guardar() {
+    if (falta) return setError("Contá cuál es el motivo.");
+    setOcupado(true);
+    setError("");
+    try {
+      const det = detalle.trim();
+      await apiAcademia.guardarMotivoNoPago({ inscripcionId: linea.inscripcionId, materiaId, motivo, ...(det ? { detalle: det } : {}) });
+      onGuardado({ motivo, detalle: det || null, usuario: usuario?.nombre ?? usuario?.username ?? null, fecha: new Date().toISOString() });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudo guardar el motivo");
+    } finally {
+      setOcupado(false);
+    }
+  }
+
+  async function quitar() {
+    setOcupado(true);
+    setError("");
+    try {
+      await apiAcademia.quitarMotivoNoPago(linea.inscripcionId, materiaId);
+      onGuardado(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudo quitar el motivo");
+    } finally {
+      setOcupado(false);
+    }
+  }
+
+  return (
+    <Modal
+      abierto
+      titulo="Motivo de no pago"
+      subtitulo={`${linea.alumno.nombre} · M${linea.materia.orden} ${linea.materia.nombre}`}
+      onClose={() => !ocupado && onCerrar()}
+      ancho="max-w-sm"
+      acciones={
+        <>
+          {actual && (
+            <Boton variante="ghost" onClick={() => void quitar()} disabled={ocupado} className="mr-auto">
+              Quitar motivo
+            </Boton>
+          )}
+          <Boton variante="ghost" onClick={onCerrar} disabled={ocupado}>
+            Cancelar
+          </Boton>
+          <Boton onClick={() => void guardar()} disabled={ocupado}>
+            {ocupado ? "Guardando…" : "Guardar motivo"}
+          </Boton>
+        </>
+      }
+    >
+      <div className="space-y-3">
+        <div role="radiogroup" aria-label="Motivo" className="space-y-1.5">
+          {MOTIVOS_NO_PAGO.map(([k, label]) => (
+            <label
+              key={k}
+              className={`flex min-h-11 cursor-pointer items-center gap-3 rounded-xl border px-3.5 text-sm transition-colors sm:min-h-10 ${
+                motivo === k ? "border-primary bg-primary-50 font-semibold text-primary-700" : "border-borde bg-white text-texto-2 hover:bg-muted"
+              }`}
+            >
+              <input
+                type="radio"
+                name="motivo-no-pago"
+                checked={motivo === k}
+                onChange={() => setMotivo(k)}
+                className="h-4 w-4 accent-[var(--color-primary-boton)]"
+              />
+              {label}
+            </label>
+          ))}
+        </div>
+        <Campo label={motivo === "OTRO" ? "¿Cuál?" : "Detalle (opcional)"}>
+          <Input value={detalle} onChange={(e) => setDetalle(e.target.value)} placeholder={motivo === "OTRO" ? "Contá el motivo" : ""} />
+        </Campo>
+        <ErrorMsg>{error}</ErrorMsg>
+      </div>
+    </Modal>
   );
 }
 

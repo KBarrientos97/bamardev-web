@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ClaseDelDia, ListaDeClase, PlanillaDocente } from "../../../lib/academia/tipos";
+import type { ClaseDelDia, ListaDeClase } from "../../../lib/academia/tipos";
 
 /**
  * Las pantallas del docente (E11a, N6, E16): sus clases con cuántos pagaron,
@@ -32,7 +32,6 @@ vi.mock("../../../lib/academia/apiAcademia", async (importOriginal) => {
 import { apiAcademia } from "../../../lib/academia/apiAcademia";
 import { ApiError } from "../../../lib/api";
 import { grupoDetalle } from "../../../test/academiaFixtures";
-import MiPlanilla from "./MiPlanilla";
 import MisClases from "./MisClases";
 import PasarLista from "./PasarLista";
 
@@ -96,8 +95,9 @@ describe("E11a · Mis clases", () => {
     expect(screen.getByText("17 de 22 pagaron el M2")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Pasar lista/ })).toHaveAttribute("href", "/academia/lista?grupo=7");
     expect(screen.getByRole("region", { name: "Próximas clases" })).toBeInTheDocument();
-    // Su barra de abajo en el celular: sus tres lugares.
-    expect(within(screen.getByRole("navigation", { name: "Secciones del docente" })).getAllByRole("link")).toHaveLength(3);
+    // Su barra de abajo en el celular: Mis clases y Notas (sin "Mi planilla" desde D1, 22-oct).
+    const barra = within(screen.getByRole("navigation", { name: "Secciones del docente" }));
+    expect(barra.getAllByRole("link").map((l) => l.textContent)).toEqual(["Mis clases", "Notas"]);
   });
 });
 
@@ -163,57 +163,3 @@ describe("N6 · Pasar lista", () => {
   });
 });
 
-describe("E16 · Mi planilla", () => {
-  const PLANILLA: PlanillaDocente = {
-    docente: { personalId: 9, nombre: "Marco Rojas" },
-    mes: "2026-10",
-    estado: "EN_CURSO",
-    pct: { defecto: 20, porCurso: [] },
-    resumen: {
-      cuentan: 17,
-      postergados: 4,
-      sinPagar: 1,
-      atrasados: 2,
-      bruto: 1850,
-      retencion: null,
-      retencionActiva: false,
-      atrasos: null,
-      liquido: 1850,
-      cuentanPorForma: { MES_A_MES: 12, COMPLETO: 5, OTRO: 0 },
-      brutoCuentan: 1650,
-      brutoAtrasados: 200,
-      postergadoHasta: 390,
-    },
-    grupos: [{ grupoId: 7, nombre: "L-M-V 09–11", carrera: { id: 3, nombre: "Barbería" }, materia: { orden: 2, nombre: "Degradados" }, sede: { id: 1, nombre: "Central" }, estudiantes: 22, pct: 20 }],
-    cuentan: [],
-    postergados: [],
-    atrasados: [],
-    sinPagar: [],
-    meses: [{ mes: "2026-09", estado: "PAGADA", liquido: 1850 }],
-  };
-
-  it("lo que va ganando, con cantidades y sin nombres; retención y atrasos por confirmar", async () => {
-    vi.mocked(apiAcademia.planilla).mockResolvedValue({
-      mes: "2026-10",
-      retencionActiva: false,
-      docentes: [{ personalId: 9, nombre: "Marco Rojas", grupos: 1, cuentan: 17, total: 22, bruto: 1850, retencion: null, liquido: 1850, estado: "EN_CURSO" }],
-      totales: { bruto: 1850, liquido: 1850 },
-    });
-    vi.mocked(apiAcademia.planillaDocente).mockResolvedValue(PLANILLA);
-    render(
-      <MemoryRouter>
-        <MiPlanilla />
-      </MemoryRouter>,
-    );
-    await act(async () => {});
-    expect(apiAcademia.planillaDocente).toHaveBeenCalledWith(9, "2026-10");
-    expect(screen.getByText("Cuentan 17 estudiantes")).toBeInTheDocument();
-    expect(screen.getByText("4 postergados")).toBeInTheDocument();
-    expect(screen.getByText(/12 mes a mes y 5 con el curso completo/)).toBeInTheDocument();
-    expect(screen.getByText("hasta Bs 390,00")).toBeInTheDocument();
-    expect(screen.getByText(/M2 Degradados · Central · 22 estudiantes/)).toBeInTheDocument();
-    expect(screen.getByText("1 sin pagar")).toBeInTheDocument();
-    expect(screen.getAllByText("Por confirmar con el instituto")).toHaveLength(2);
-    expect(screen.getByText("Septiembre 2026")).toBeInTheDocument();
-  });
-});

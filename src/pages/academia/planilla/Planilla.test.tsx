@@ -23,7 +23,14 @@ vi.mock("../../../lib/academia/apiAcademia", async (importOriginal) => {
   const real = await importOriginal<typeof import("../../../lib/academia/apiAcademia")>();
   return {
     ...real,
-    apiAcademia: { planilla: vi.fn(), planillaDocente: vi.fn(), cerrarPlanilla: vi.fn(), pagarPlanilla: vi.fn() },
+    apiAcademia: {
+      planilla: vi.fn(),
+      planillaDocente: vi.fn(),
+      cerrarPlanilla: vi.fn(),
+      pagarPlanilla: vi.fn(),
+      guardarMotivoNoPago: vi.fn(),
+      quitarMotivoNoPago: vi.fn(),
+    },
   };
 });
 
@@ -157,5 +164,102 @@ describe("N8 · Planilla de un docente", () => {
     fireEvent.click(screen.getByRole("button", { name: /Registrar pago/ }));
     fireEvent.click(within(screen.getByRole("dialog", { name: "Registrar el pago" })).getByRole("button", { name: "Cancelar" }));
     expect(apiAcademia.pagarPlanilla).not.toHaveBeenCalled();
+  });
+});
+
+describe("A6 · planilla sólo del admin: abre en Cuentan y el motivo de no pago", () => {
+  const SIN_PAGAR = linea({
+    inscripcionId: 105,
+    alumno: { id: 55, nombre: "Rivero Gil, Matías" },
+    materia: { id: 32, orden: 2, nombre: "Degradados" },
+    formaPago: "MES_A_MES",
+    cobradoModulo: 0,
+    abonado: 0,
+    montoModulo: 500,
+    monto: 0,
+    montoPotencial: 100,
+    explicacion: "No pagó el M2 · quedaría 20 % de 500 = Bs 100",
+    motivoNoPago: null,
+  });
+
+  async function montarCon(extra: Partial<TPlanillaDocente>) {
+    vi.mocked(apiAcademia.planillaDocente).mockResolvedValue({
+      ...PLANILLA,
+      resumen: { ...PLANILLA.resumen, sinPagar: 1 },
+      sinPagar: [SIN_PAGAR],
+      ...extra,
+    });
+    render(
+      <MemoryRouter initialEntries={["/academia/planilla/9?mes=2026-10"]}>
+        <Routes>
+          <Route path="/academia/planilla/:id" element={<PlanillaDocente />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    await act(async () => {});
+  }
+
+  it("abre en «Cuentan» y cada línea dice de dónde sale el monto", async () => {
+    await montarCon({});
+    expect(screen.getByRole("tab", { name: /Cuentan/ })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("button", { name: "Ver el detalle de Andrade Villca, Mateo" })).toHaveAttribute(
+      "title",
+      "Pagó Bs 1.350 el 8-sep · 1.350 ÷ 3 = 450 · 20 % = Bs 90",
+    );
+    // En lo que cuenta no hay motivo que anotar.
+    expect(screen.queryByRole("button", { name: /Agregar motivo/ })).not.toBeInTheDocument();
+  });
+
+  it("en «Sin pagar» se anota el motivo; con «Otro» pide el texto", async () => {
+    vi.mocked(apiAcademia.guardarMotivoNoPago).mockResolvedValue({});
+    await montarCon({});
+    fireEvent.click(screen.getByRole("tab", { name: /Sin pagar/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Agregar motivo de Rivero Gil, Matías" }));
+    const dialogo = screen.getByRole("dialog", { name: "Motivo de no pago" });
+    const opciones = within(dialogo).getAllByRole("radio");
+    expect(opciones).toHaveLength(5);
+    fireEvent.click(within(dialogo).getByRole("radio", { name: "Otro" }));
+    await act(async () => {
+      fireEvent.click(within(dialogo).getByRole("button", { name: "Guardar motivo" }));
+    });
+    expect(apiAcademia.guardarMotivoNoPago).not.toHaveBeenCalled();
+    expect(within(dialogo).getByText("Contá cuál es el motivo.")).toBeInTheDocument();
+
+    fireEvent.click(within(dialogo).getByRole("radio", { name: "Se retiró" }));
+    fireEvent.change(within(dialogo).getByLabelText("Detalle (opcional)"), { target: { value: "se mudó" } });
+    await act(async () => {
+      fireEvent.click(within(dialogo).getByRole("button", { name: "Guardar motivo" }));
+    });
+    expect(apiAcademia.guardarMotivoNoPago).toHaveBeenCalledWith({
+      inscripcionId: 105,
+      materiaId: 32,
+      motivo: "RETIRO",
+      detalle: "se mudó",
+    });
+    // El motivo queda en la fila.
+    expect(screen.getByText(/Se retiró: se mudó/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Cambiar el motivo de Rivero Gil, Matías" })).toBeInTheDocument();
+  });
+
+  it("el que ya tiene motivo lo muestra y se puede quitar", async () => {
+    vi.mocked(apiAcademia.quitarMotivoNoPago).mockResolvedValue({});
+    await montarCon({
+      sinPagar: [{ ...SIN_PAGAR, motivoNoPago: { motivo: "BECA", detalle: null, usuario: "Hugo Salinas", fecha: "2026-10-12T12:00:00.000Z" } }],
+    });
+    fireEvent.click(screen.getByRole("tab", { name: /Sin pagar/ }));
+    expect(screen.getByText("Tiene beca")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Cambiar el motivo de Rivero Gil, Matías" }));
+    await act(async () => {
+      fireEvent.click(within(screen.getByRole("dialog", { name: "Motivo de no pago" })).getByRole("button", { name: "Quitar motivo" }));
+    });
+    expect(apiAcademia.quitarMotivoNoPago).toHaveBeenCalledWith(105, 32);
+    expect(screen.queryByText("Tiene beca")).not.toBeInTheDocument();
+  });
+
+  it("con un backend anterior (sin el módulo de la línea) no ofrece anotar nada", async () => {
+    await montarCon({ sinPagar: [{ ...SIN_PAGAR, materia: { orden: 2, nombre: "Degradados" }, motivoNoPago: undefined }] });
+    fireEvent.click(screen.getByRole("tab", { name: /Sin pagar/ }));
+    expect(screen.getByText("Rivero Gil, Matías")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /motivo/ })).not.toBeInTheDocument();
   });
 });
