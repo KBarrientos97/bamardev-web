@@ -291,7 +291,7 @@ describe("Billar: la supervisión del administrador", () => {
       // El selector dice cuál es: la de Pepe, en curso.
       expect(selector()).toHaveValue("1");
       expect(within(selector()).getByRole("option", { name: /^Turno en curso · Pepe Mamani · desde / })).toBeInTheDocument();
-      expect(within(selector()).getByRole("option", { name: /^Kevin Dueño · .* – / })).toBeInTheDocument();
+      expect(within(selector()).getByRole("option", { name: /^Kevin Dueño · .* → / })).toBeInTheDocument();
       // Lo vendido de arriba es lo del turno (Bs 120,50), no lo del día (Bs 180,50).
       const kpi = screen.getByText("Vendido en el turno").closest("div")!;
       expect(within(kpi).getByText(/120,50/)).toBeInTheDocument();
@@ -384,6 +384,76 @@ describe("Billar: la supervisión del administrador", () => {
       await montar();
       expect(screen.getByText(/¿Se olvidaron de cerrarla\?/)).toBeInTheDocument();
       expect(within(selector()).getByRole("option", { name: /^Quedó abierta · Pepe Mamani/ })).toBeInTheDocument();
+    });
+
+    describe("la semana: de lunes a domingo, se reinicia el lunes a las 13:00", () => {
+      // La semana del lunes 19 al domingo 25-oct; se reinicia el lunes 26 a las 13:00.
+      const semana = { desde: new Date(2026, 9, 19, 13).getTime(), hasta: new Date(2026, 9, 26, 13).getTime() };
+      const DIA = 24 * 60 * MIN;
+      const conSemana = (cerradas: number) => {
+        const s = supervision();
+        const cajas = [
+          s.cajas[0],
+          ...Array.from({ length: cerradas }, (_, i) => ({
+            ...s.cajas[1],
+            id: 10 + i,
+            cajero: "pepe",
+            desde: AHORA - (i + 1) * DIA,
+            hasta: AHORA - (i + 1) * DIA + 11 * 60 * MIN,
+          })),
+        ];
+        return { ...s, semana, cajas };
+      };
+      const filas = () => within(screen.getByRole("heading", { name: "Cajas" }).closest("section")!).queryAllByRole("listitem");
+
+      it("dice qué semana es y cuándo empieza la nueva", async () => {
+        request.mockImplementation(async () => conSemana(2));
+        await montar();
+        // En el selector y en el encabezado de las cajas.
+        expect(screen.getAllByText(/Semana del lun 19\/10 al dom 25\/10/)).toHaveLength(2);
+        expect(screen.getByText(/La semana nueva empieza el lunes 26\/10 a las 13:00/)).toBeInTheDocument();
+        // Cada turno con el día de la semana: quién, de cuándo a cuándo.
+        expect(within(selector()).getAllByRole("option")).toHaveLength(3);
+        expect(within(selector()).getAllByRole("option")[1].textContent).toMatch(/^pepe · (Lunes|Martes|Miércoles|Jueves|Viernes|Sábado|Domingo) \d\d\/\d\d \d\d:\d\d → /);
+      });
+
+      it("con la semana entera la lista de cajas se pliega: las últimas y un botón para el resto", async () => {
+        request.mockImplementation(async () => conSemana(5));
+        await montar();
+        // El selector sí lista los 6 turnos; la lista de cajas, 3 de entrada.
+        expect(within(selector()).getAllByRole("option")).toHaveLength(6);
+        expect(filas()).toHaveLength(3);
+        fireEvent.click(screen.getByRole("button", { name: "Ver 3 más de la semana" }));
+        expect(filas()).toHaveLength(6);
+        fireEvent.click(screen.getByRole("button", { name: "Mostrar menos" }));
+        expect(filas()).toHaveLength(3);
+      });
+
+      it("con pocas cajas no hay botón", async () => {
+        request.mockImplementation(async () => conSemana(2));
+        await montar();
+        expect(filas()).toHaveLength(3);
+        expect(screen.queryByRole("button", { name: /más de la semana/ })).toBeNull();
+      });
+
+      it("el lunes después de las 13:00, sin cajas nuevas, no hay selector y avisa que se reinicia la semana", async () => {
+        request.mockImplementation(async () => ({
+          ...supervision(),
+          semana,
+          cajas: [],
+          turno: { cajaId: null, defectoId: null, desde: AHORA - 6 * 60 * MIN, hasta: null, ventas: 0, vendido: 0 },
+        }));
+        await montar();
+        expect(screen.queryByRole("combobox", { name: "Turno que estás viendo" })).toBeNull();
+        expect(screen.getByText(/Nadie abrió caja esta semana todavía/)).toBeInTheDocument();
+      });
+
+      it("un servidor anterior, sin semana, sigue como antes", async () => {
+        request.mockImplementation(async () => supervision());
+        await montar();
+        expect(screen.queryByText(/Semana del/)).toBeNull();
+        expect(screen.getByText("Llegada y salida del personal")).toBeInTheDocument();
+      });
     });
 
     it("un servidor anterior, que no manda el turno, sigue mostrando lo de hoy", async () => {
