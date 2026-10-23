@@ -3,7 +3,7 @@ import { normalizar } from "./texto";
 
 /**
  * Las URLs de las imágenes, sacadas de la carpeta en vez de un `import` por
- * archivo: con 175 íconos la lista a mano era imposible de mantener.
+ * archivo: con casi 200 íconos la lista a mano era imposible de mantener.
  *
  * `eager` trae sólo las URLs (strings cortos) al chunk que importa este
  * módulo; las imágenes quedan como archivos aparte y el navegador baja cada
@@ -37,6 +37,7 @@ export const CATEGORIAS_ICONO = [
   { clave: "vehiculos", nombre: "Repuestos", tab: "llanta" },
   { clave: "belleza", nombre: "Belleza y spa", tab: "esmalte" },
   { clave: "juegos", nombre: "Billar y juegos", tab: "bola8" },
+  { clave: "licoreria", nombre: "Licorería y kiosco", tab: "cerveza_pacena_botella" },
   { clave: "educacion", nombre: "Educación", tab: "libros" },
 ] as const;
 
@@ -58,7 +59,9 @@ export const CATEGORIA_DEL_RUBRO: Record<Rubro, ClaveCategoriaIcono> = {
   BARBERIA: "belleza",
   SPA: "belleza",
   UNAS: "belleza",
-  BILLAR: "juegos",
+  // Lo que se carga como artículo en un billar es lo que se vende en el bar
+  // (cervezas, energizantes, cigarros), no el juego: abre en esa sección.
+  BILLAR: "licoreria",
   ACADEMIA: "educacion",
 };
 
@@ -96,6 +99,11 @@ export interface IconoArticulo {
  * el resto es Fluent Emoji "Flat" de Microsoft (licencia MIT), rasterizado a
  * WebP de 192 px. Vienen en WebP y no en PNG como en Android: son las mismas
  * imágenes, pero los PNG originales pesaban 3.7 MB y acá se descargan por red.
+ *
+ * Licorería y kiosco (18): fotos de productos reales (a las que se les quitó
+ * el fondo) y 4 íconos planos con contorno. Todos al mismo formato que los
+ * Fluent — 192 px transparente, 12 px de margen, centrados — y con el tamaño
+ * parejo: ninguno más grande que los demás.
  */
 const DATOS: Omit<IconoArticulo, "src">[] = [
   // Pollería
@@ -264,6 +272,25 @@ const DATOS: Omit<IconoArticulo, "src">[] = [
   { llave: "cartas", etiqueta: "Cartas", categoria: "juegos" },
   { llave: "dados", etiqueta: "Dados", categoria: "juegos" },
   { llave: "trofeo", etiqueta: "Trofeo", categoria: "juegos" },
+  // Licorería y kiosco
+  { llave: "cerveza_pacena_botella", etiqueta: "Cerveza Paceña botella", categoria: "licoreria" },
+  { llave: "cerveza_pacena_lata", etiqueta: "Cerveza Paceña lata", categoria: "licoreria" },
+  { llave: "cerveza_huari", etiqueta: "Cerveza Huari", categoria: "licoreria" },
+  { llave: "cerveza_corona", etiqueta: "Cerveza Corona", categoria: "licoreria" },
+  { llave: "cerveza_conti", etiqueta: "Cerveza Conti Zero", categoria: "licoreria" },
+  { llave: "cerveza_jarra", etiqueta: "Cerveza y jarra", categoria: "licoreria" },
+  { llave: "vino_tinto", etiqueta: "Vino tinto", categoria: "licoreria" },
+  { llave: "cuba_libre", etiqueta: "Cuba Libre", categoria: "licoreria" },
+  { llave: "red_bull", etiqueta: "Red Bull", categoria: "licoreria" },
+  { llave: "monster", etiqueta: "Monster", categoria: "licoreria" },
+  { llave: "black_energy", etiqueta: "Black Energy", categoria: "licoreria" },
+  { llave: "sirius", etiqueta: "Sirius", categoria: "licoreria" },
+  { llave: "powerade", etiqueta: "Powerade", categoria: "licoreria" },
+  { llave: "urbano_blue", etiqueta: "Urbano Blue", categoria: "licoreria" },
+  { llave: "agua_botella", etiqueta: "Agua en botella", categoria: "licoreria" },
+  { llave: "cigarrillos", etiqueta: "Cigarrillos", categoria: "licoreria" },
+  { llave: "encendedor", etiqueta: "Encendedor", categoria: "licoreria" },
+  { llave: "hoja_coca", etiqueta: "Hoja de coca", categoria: "licoreria" },
   // Educación
   { llave: "libros", etiqueta: "Libros", categoria: "educacion" },
   { llave: "cuaderno", etiqueta: "Cuaderno", categoria: "educacion" },

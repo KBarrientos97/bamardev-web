@@ -74,7 +74,20 @@ describe("iconosArticulo", () => {
     for (const llave of viejos) {
       expect(iconoPorLlave(llave)?.categoria, llave).toBe("polleria");
     }
-    expect(ICONOS_ARTICULO).toHaveLength(175);
+    expect(ICONOS_ARTICULO).toHaveLength(193);
+  });
+
+  it("la licorería (para el billar) tiene sus 18 íconos y abre ahí", () => {
+    const llaves = iconosDeCategoria("licoreria").map((i) => i.llave);
+    expect(llaves).toHaveLength(18);
+    expect(llaves).toEqual(expect.arrayContaining(["cerveza_pacena_botella", "red_bull", "cigarrillos", "encendedor"]));
+    // Una llave nunca se renombra: la guardan los productos (y la app).
+    expect(iconoPorLlave("hoja_coca")?.categoria).toBe("licoreria");
+    expect(categoriaDelRubro("BILLAR")).toBe("licoreria");
+    // Buscar "cerveza" encuentra también las marcas, no sólo las genéricas.
+    expect(buscarIconos("cerveza").map((i) => i.llave)).toEqual(
+      expect.arrayContaining(["cerveza", "brindis", "cerveza_huari", "cerveza_corona"]),
+    );
   });
 
   it("cada rubro abre en una sección que existe", () => {
@@ -94,7 +107,9 @@ describe("iconosArticulo", () => {
     expect(categoriaInicial("martillo", "RESTAURANTE")).toBe("ferreteria");
     expect(categoriaInicial("medio_pollo_broaster", "FARMACIA")).toBe("polleria");
     expect(categoriaInicial(null, "FARMACIA")).toBe("farmacia");
-    expect(categoriaInicial("", "BILLAR")).toBe("juegos");
+    expect(categoriaInicial("", "BILLAR")).toBe("licoreria");
+    // Un billar que ya eligió un dado ve la sección de ese ícono.
+    expect(categoriaInicial("dados", "BILLAR")).toBe("juegos");
     // Llave desconocida (de una versión más nueva) cuenta como sin ícono.
     expect(categoriaInicial("no_existe", "ACADEMIA")).toBe("educacion");
     expect(categoriaInicial(null, undefined)).toBe("polleria");
