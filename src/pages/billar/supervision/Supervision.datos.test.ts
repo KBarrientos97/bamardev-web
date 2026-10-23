@@ -5,13 +5,17 @@ import { vistaCuenta, vistaDe } from "../vista";
 import {
   armarSupervision,
   cuando,
+  diaYHora,
   duracion,
   estadoDeCaja,
   filtrarActividad,
   grupoDeActividad,
   iniciales,
   opcionesDeTurno,
+  rangoDeSemana,
   rangoDeTurno,
+  rangoDeTurnoCompleto,
+  reinicioDeSemana,
   resumenSupervision,
   situacionDelTurno,
   textoDiferencia,
@@ -33,11 +37,11 @@ const caja = (extra: Partial<CajaSupervisionApi> = {}): CajaSupervisionApi => ({
 });
 
 describe("Supervisión: cómo se lee cada cosa", () => {
-  it("cuándo pasó: la hora si es de hoy, ayer con la hora y la fecha si es más viejo", () => {
+  it("cuándo pasó: la hora si es de hoy, ayer con la hora, y el día de la semana con la fecha si es más viejo", () => {
     const ahora = new Date(2026, 9, 21, 15, 30).getTime();
     expect(cuando(new Date(2026, 9, 21, 14, 2).getTime(), ahora)).toBe("14:02");
     expect(cuando(new Date(2026, 9, 20, 22, 10).getTime(), ahora)).toBe("ayer 22:10");
-    expect(cuando(new Date(2026, 9, 18, 9, 5).getTime(), ahora)).toBe("18/10 09:05");
+    expect(cuando(new Date(2026, 9, 18, 9, 5).getTime(), ahora)).toBe("Dom 18/10 09:05");
     // Pasada la medianoche, lo de la tarde anterior es de ayer.
     const unaAM = new Date(2026, 9, 22, 1, 0).getTime();
     expect(cuando(new Date(2026, 9, 21, 23, 30).getTime(), unaAM)).toBe("ayer 23:30");
@@ -126,20 +130,43 @@ describe("Supervisión: el turno", () => {
     expect(rangoDeTurno({ desde: hora(21, 21, 9), hasta: null }, ahora)).toBe("desde ayer 21:09");
   });
 
-  it("las opciones del selector: la más nueva primero y cada una dice qué es", () => {
+  it("las opciones del selector: la más nueva primero, con el día de la semana, y cada una dice qué es", () => {
     const api = { cajas: [anoche, hoy], desde: jornada, turno: turno(2, 2) };
-    expect(opcionesDeTurno(api, ahora)).toEqual([
-      { id: 2, etiqueta: "Turno en curso · Ana Rojas · desde 16:02" },
-      { id: 1, etiqueta: "Pepe Mamani · ayer 16:00 – 02:41" },
+    expect(opcionesDeTurno(api)).toEqual([
+      { id: 2, etiqueta: "Turno en curso · Ana Rojas · desde Jueves 22/10 16:02" },
+      { id: 1, etiqueta: "Pepe Mamani · Miércoles 21/10 16:00 → Jueves 22/10 02:41" },
     ]);
     // Con todas cerradas, la última se marca; una abierta de antes, olvidada.
-    expect(opcionesDeTurno({ cajas: [anoche], desde: jornada, turno: turno(1, 1) }, ahora)[0].etiqueta).toBe(
-      "Último turno · Pepe Mamani · ayer 16:00 – 02:41",
+    expect(opcionesDeTurno({ cajas: [anoche], desde: jornada, turno: turno(1, 1) })[0].etiqueta).toBe(
+      "Último turno · Pepe Mamani · Miércoles 21/10 16:00 → Jueves 22/10 02:41",
     );
     const olvidada = caja({ id: 3, cajero: "Luis", desde: hora(21, 21, 9) });
-    expect(opcionesDeTurno({ cajas: [olvidada], desde: jornada, turno: turno(3, 3) }, ahora)[0].etiqueta).toBe(
-      "Quedó abierta · Luis · desde ayer 21:09",
+    expect(opcionesDeTurno({ cajas: [olvidada], desde: jornada, turno: turno(3, 3) })[0].etiqueta).toBe(
+      "Quedó abierta · Luis · desde Miércoles 21/10 21:09",
     );
+  });
+
+  it("toda la semana en el selector, del lunes al domingo, con el día de cada hora", () => {
+    // La semana del lunes 19 al domingo 25-oct, vista el lunes 26 de mañana: el turno del domingo cerró de madrugada.
+    const semana = { desde: hora(19, 13), hasta: hora(26, 13) };
+    const dom = caja({ id: 7, cajero: "pepe", abierta: false, desde: hora(25, 16), hasta: hora(26, 3, 30) });
+    const mar = caja({ id: 2, cajero: "pepe", abierta: false, desde: hora(20, 16), hasta: hora(21, 3) });
+    const lun = caja({ id: 1, cajero: "pepe", abierta: false, desde: hora(19, 16), hasta: hora(20, 2, 15) });
+    const api = { cajas: [lun, dom, mar], desde: new Date(2026, 9, 26, 6, 0).getTime(), turno: turno(7, 7) };
+    expect(opcionesDeTurno(api).map((o) => o.etiqueta)).toEqual([
+      "Último turno · pepe · Domingo 25/10 16:00 → Lunes 26/10 03:30",
+      "pepe · Martes 20/10 16:00 → Miércoles 21/10 03:00",
+      "pepe · Lunes 19/10 16:00 → Martes 20/10 02:15",
+    ]);
+    expect(rangoDeSemana(semana)).toBe("lun 19/10 al dom 25/10");
+    expect(reinicioDeSemana(semana)).toBe("lunes 26/10 a las 13:00");
+  });
+
+  it("el turno de punta a punta: con el día de cada hora, o sólo la hora de cierre si es el mismo día", () => {
+    expect(diaYHora(hora(25, 16))).toBe("Domingo 25/10 16:00");
+    expect(rangoDeTurnoCompleto({ desde: hora(25, 16), hasta: hora(26, 3, 30) })).toBe("Domingo 25/10 16:00 → Lunes 26/10 03:30");
+    expect(rangoDeTurnoCompleto({ desde: hora(22, 9), hasta: hora(22, 15, 30) })).toBe("Jueves 22/10 09:00 → 15:30");
+    expect(rangoDeTurnoCompleto({ desde: hora(22, 16, 2), hasta: null })).toBe("desde Jueves 22/10 16:02");
   });
 });
 
