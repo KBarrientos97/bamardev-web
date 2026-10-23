@@ -61,9 +61,11 @@ export default function VentasTurno() {
   const ventas = [...e.ventas].sort((a, b) => b.hora - a.hora);
   const visibles = ventas.filter((v) => pasa(v, filtro));
   const anular = (codigo: string) => {
-    // Después de autorizar se ve el detalle, que ahora dice "Anulada".
-    abrir({ tipo: "venta", codigo });
-    abrir({ tipo: "anularVenta", codigo });
+    // Después de autorizar se ve el detalle, que ahora dice "Anulada"; si se
+    // cancela, se vuelve a la lista. El detalle se abría de entrada debajo del
+    // PIN, y al cancelar quedaba a la vista una venta que nadie había pedido
+    // ver (QA del 23-oct).
+    abrir({ tipo: "anularVenta", codigo, desdeLista: true });
   };
 
   const th = "px-3 py-3 text-[11px] font-bold uppercase tracking-wider text-texto-3";

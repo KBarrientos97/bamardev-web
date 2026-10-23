@@ -77,6 +77,12 @@ export interface ResumenSup {
   /** Lo que suman las mesas y cuentas abiertas, y cuánto falta cobrar. */
   totalAbierto: number;
   porCobrar: number;
+  /**
+   * Lo que suman sólo las cuentas abiertas, para su rótulo: con
+   * `totalAbierto` ahí, una cuenta de Bs 30 con mesas por Bs 420 decía
+   * "Cuentas abiertas · Bs 450" (revisión del 23-oct).
+   */
+  totalCuentas: number;
 }
 
 export function resumenSupervision(
@@ -102,6 +108,7 @@ export function resumenSupervision(
     cuentas: cuentas.length,
     totalAbierto: round2(enUso.reduce((t, v) => t + v.cuenta!.total, 0) + cuentas.reduce((t, v) => t + v.calc.total, 0)),
     porCobrar: round2(enUso.reduce((t, v) => t + v.cuenta!.saldo, 0) + cuentas.reduce((t, v) => t + v.calc.saldo, 0)),
+    totalCuentas: round2(cuentas.reduce((t, v) => t + v.calc.total, 0)),
   };
 }
 
@@ -109,11 +116,15 @@ export function resumenSupervision(
 
 const dos = (n: number) => String(n).padStart(2, "0");
 const hhmm = (d: Date) => `${dos(d.getHours())}:${dos(d.getMinutes())}`;
+const DIAS = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
+/** "25/10" */
+const diaMes = (d: Date) => `${dos(d.getDate())}/${dos(d.getMonth() + 1)}`;
 
 /**
  * Cuándo pasó algo, dicho corto: la hora si es de hoy, "ayer 22:10" si fue
- * ayer y "20/10 22:10" si es más viejo. Una caja que quedó abierta de antes
- * tiene que leerse como lo que es.
+ * ayer y "Mar 20/10 22:10" si es más viejo (con el día de la semana: se
+ * revisa la semana entera). Una caja que quedó abierta de antes tiene que
+ * leerse como lo que es.
  */
 export function cuando(ms: number, ahora: number): string {
   const d = new Date(ms);
@@ -123,7 +134,7 @@ export function cuando(ms: number, ahora: number): string {
   const mismoDia = (a: Date, b: Date) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
   if (mismoDia(d, hoy)) return hhmm(d);
   if (mismoDia(d, ayer)) return `ayer ${hhmm(d)}`;
-  return `${dos(d.getDate())}/${dos(d.getMonth() + 1)} ${hhmm(d)}`;
+  return `${DIAS[d.getDay()].slice(0, 3)} ${diaMes(d)} ${hhmm(d)}`;
 }
 
 /** "3 h 12 min", "45 min", "menos de 1 min": cuánto lleva abierta o cuánto duró. */
@@ -184,23 +195,50 @@ export function rangoDeTurno(c: Pick<CajaSupervisionApi, "desde" | "hasta">, aho
   return `${cuando(c.desde, ahora)} – ${fin}`;
 }
 
+/** "Domingo 25/10 16:00": el día de la semana, la fecha y la hora, sin "hoy" ni "ayer" (se revisa la semana entera). */
+export function diaYHora(ms: number): string {
+  const d = new Date(ms);
+  return `${DIAS[d.getDay()]} ${diaMes(d)} ${hhmm(d)}`;
+}
+
+/**
+ * El turno de punta a punta, con el día de cada hora: "Domingo 25/10 16:00 →
+ * Lunes 26/10 03:30". Si abrió y cerró el mismo día, el cierre va sin día; si
+ * sigue abierta, "desde …".
+ */
+export function rangoDeTurnoCompleto(c: Pick<CajaSupervisionApi, "desde" | "hasta">): string {
+  if (c.hasta == null) return `desde ${diaYHora(c.desde)}`;
+  const fin = mismoDia(c.desde, c.hasta) ? hhmm(new Date(c.hasta)) : diaYHora(c.hasta);
+  return `${diaYHora(c.desde)} → ${fin}`;
+}
+
+/** "lun 19/10 al dom 25/10": los días de la semana de los turnos (se reinicia el lunes, pero termina el domingo). */
+export function rangoDeSemana(semana: { desde: number }): string {
+  const ini = new Date(semana.desde);
+  const fin = new Date(semana.desde);
+  fin.setDate(fin.getDate() + 6);
+  const corto = (d: Date) => `${DIAS[d.getDay()].slice(0, 3).toLowerCase()} ${diaMes(d)}`;
+  return `${corto(ini)} al ${corto(fin)}`;
+}
+
+/** "lunes 26/10 a las 13:00": cuándo empieza la semana nueva y los turnos de ésta dejan de verse. */
+export function reinicioDeSemana(semana: { hasta: number }): string {
+  const d = new Date(semana.hasta);
+  return `${DIAS[d.getDay()].toLowerCase()} ${diaMes(d)} a las ${hhmm(d)}`;
+}
+
 /** Cómo se nombra un turno en el selector: quién, cuándo y, si es el que corresponde, qué es. */
-function etiquetaDeTurno(c: CajaSupervisionApi, api: Pick<SupervisionApi, "desde" | "turno">, ahora: number): string {
+function etiquetaDeTurno(c: CajaSupervisionApi, api: Pick<SupervisionApi, "desde" | "turno">): string {
   const defecto = api.turno?.defectoId === c.id;
   let marca = "";
   if (c.abierta) marca = estadoDeCaja(c, api.desde) === "vieja" ? "Quedó abierta · " : defecto ? "Turno en curso · " : "Caja abierta · ";
   else if (defecto) marca = "Último turno · ";
-  return `${marca}${c.cajero} · ${rangoDeTurno(c, ahora)}`;
+  return `${marca}${c.cajero} · ${rangoDeTurnoCompleto(c)}`;
 }
 
-/** Los turnos que se pueden mirar: las cajas de hoy y ayer, la más nueva primero. */
-export function opcionesDeTurno(
-  api: Pick<SupervisionApi, "cajas" | "desde" | "turno">,
-  ahora: number,
-): { id: number; etiqueta: string }[] {
-  return [...api.cajas]
-    .sort((a, b) => b.desde - a.desde)
-    .map((c) => ({ id: c.id, etiqueta: etiquetaDeTurno(c, api, ahora) }));
+/** Los turnos que se pueden mirar: las cajas abiertas y las de la semana, la más nueva primero. */
+export function opcionesDeTurno(api: Pick<SupervisionApi, "cajas" | "desde" | "turno">): { id: number; etiqueta: string }[] {
+  return [...api.cajas].sort((a, b) => b.desde - a.desde).map((c) => ({ id: c.id, etiqueta: etiquetaDeTurno(c, api) }));
 }
 
 /** "cuadra", "sobran Bs 5,00" o "faltan Bs 5,00": cómo quedó el arqueo. */

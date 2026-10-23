@@ -64,6 +64,7 @@ export default function ConsumoMesa() {
       consumos={mesa.sesion.consumos}
       consumosBs={c.consumosBs}
       saldo={c.saldo}
+      aFavor={Math.max(0, round2(c.pagado - c.total))}
       cargar={(items, clave) => billar.agregarConsumos(mesa.id, items, clave)}
       avisoCargado={(nuevos) => ({
         titulo: `Se cargó ${fmtMoney(nuevos)} a la Mesa ${mesa.id}`,
@@ -119,6 +120,7 @@ export function ConsumoCuenta() {
       consumos={cuenta.sesion.consumos}
       consumosBs={calc.consumosBs}
       saldo={calc.saldo}
+      aFavor={Math.max(0, round2(calc.pagado - calc.total))}
       cargar={(items, clave) => billar.agregarConsumosCuenta(cuenta.id, items, clave)}
       avisoCargado={(nuevos) => ({
         titulo: `Se cargó ${fmtMoney(nuevos)} a la cuenta «${cuenta.nombre}»`,
@@ -150,6 +152,7 @@ function PantallaConsumo({
   consumos,
   consumosBs,
   saldo,
+  aFavor,
   cargar,
   avisoCargado,
   paraVacio,
@@ -165,6 +168,12 @@ function PantallaConsumo({
   consumos: ItemConsumo[];
   consumosBs: number;
   saldo: number;
+  /**
+   * Lo pagado de más (se anuló un consumo después de un adelanto): lo nuevo lo
+   * va cubriendo. Sin restarlo, "Saldo después" decía que el cliente debía lo
+   * que cargaba aunque todavía le quedara plata a favor (revisión del 23-oct).
+   */
+  aFavor: number;
   cargar: (items: { productoId: number; cant: number }[], clave: string) => Promise<unknown>;
   avisoCargado: (nuevos: number) => { titulo: string; texto: string };
   paraVacio: string;
@@ -252,10 +261,13 @@ function PantallaConsumo({
       <div className="shrink-0 space-y-3 border-t border-borde px-5 py-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
         <div className="space-y-1 text-[13px]">
           <Fila etiqueta="Saldo actual" valor={fmtMoney(saldo)} />
+          {aFavor > 0.005 && <Fila etiqueta="A favor del cliente" valor={`− ${fmtMoney(aFavor)}`} />}
           <Fila etiqueta="Nuevos consumos" valor={fmtMoney(nuevos)} />
           <div className="flex items-baseline justify-between pt-1">
             <span className="text-[15px] font-semibold text-texto">Saldo después</span>
-            <span className="text-xl font-extrabold tabular-nums text-texto">{fmtMoney(round2(saldo + nuevos))}</span>
+            <span className="text-xl font-extrabold tabular-nums text-texto">
+              {fmtMoney(Math.max(0, round2(saldo + nuevos - aFavor)))}
+            </span>
           </div>
         </div>
         <ErrorAccion texto={accion.error} />

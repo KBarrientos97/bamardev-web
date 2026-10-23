@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import RutasBillar from "./RutasBillar";
-import { leerBillar } from "./store";
+import { leerBillar, recargar } from "./store";
 
 // La primera vez se transforma todo el billar: en una máquina cargada pasa los 5 s.
 vi.setConfig({ testTimeout: 60_000 });
@@ -205,5 +205,55 @@ describe("Billar: las cuentas abiertas", () => {
       accion: { tipo: "ticket", codigo: "V-000500" },
     });
     expect(screen.queryByRole("heading", { name: "Mesa de afuera" })).toBeNull();
+  });
+
+  it("si otro equipo le carga algo mientras se cobra, el monto no cambia solo: avisa y no cobra hasta tomar la cuenta nueva", async () => {
+    // Revisión del 23-oct: el sondeo traía la cuenta nueva y el botón pasaba a
+    // cobrar Bs 35 con el cambio de los Bs 20 ya dado: el cajón quedaba corto.
+    servidor.cuentas = [cuentaJuan()];
+    await montar("/billar?ver=cuentas&cuenta=77");
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Cobrar Bs 20,00 y cerrar" }));
+    });
+    fireEvent.change(within(screen.getByRole("dialog")).getByLabelText("Efectivo entregado por el cliente"), {
+      target: { value: "50" },
+    });
+    // Otro equipo le carga una Paceña más (Bs 15): llega con el sondeo.
+    const otra = { id: 2, productoId: 5, nombre: "Paceña 620 ml", precio: 15, cant: 1, hora: AHORA, anulado: false };
+    servidor.cuentas = [cuentaJuan({ consumos: [...cuentaJuan().sesion.consumos, otra] })];
+    await act(async () => {
+      await recargar(true);
+    });
+    let dialogo = screen.getByRole("dialog");
+    // El botón sigue con el monto que vio el cajero, y no cobra.
+    expect(within(dialogo).getByRole("button", { name: "Cobrar Bs 20,00 y cerrar" })).toBeDisabled();
+    expect(within(dialogo).getByText(/La cuenta cambió mientras cobrabas/)).toHaveTextContent(/ahora el saldo es Bs 35,00 \(era Bs 20,00\)/);
+    await act(async () => {
+      fireEvent.click(within(dialogo).getByRole("button", { name: /^Usar la cuenta nueva/ }));
+    });
+    // La cuenta nueva, con lo recibido de cero: hay que volver a contarlo.
+    dialogo = screen.getByRole("dialog");
+    expect(within(dialogo).queryByText(/La cuenta cambió mientras cobrabas/)).toBeNull();
+    expect(within(dialogo).getByRole("button", { name: "Cobrar Bs 35,00 y cerrar" })).toBeDisabled();
+    fireEvent.click(within(dialogo).getByRole("button", { name: /^Justo/ }));
+    expect(within(dialogo).getByRole("button", { name: "Cobrar Bs 35,00 y cerrar" })).toBeEnabled();
+  });
+
+  it("si la cuenta se cobra o se anula en otro equipo con el cobro abierto, el diálogo lo dice en vez de desaparecer", async () => {
+    // Revisión del 23-oct: se iba solo, sin aviso, y si era este mismo cobro
+    // con la respuesta perdida el cajero no sabía si había cobrado.
+    servidor.cuentas = [cuentaJuan()];
+    await montar("/billar?ver=cuentas&cuenta=77");
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Cobrar Bs 20,00 y cerrar" }));
+    });
+    servidor.cuentas = [];
+    await act(async () => {
+      await recargar(true);
+    });
+    const dialogo = screen.getByRole("dialog");
+    expect(within(dialogo).getByText(/ya no está abierta/)).toBeInTheDocument();
+    expect(within(dialogo).queryByRole("button", { name: /^Cobrar/ })).toBeNull();
+    expect(within(dialogo).getByRole("button", { name: "Ver las ventas" })).toBeInTheDocument();
   });
 });

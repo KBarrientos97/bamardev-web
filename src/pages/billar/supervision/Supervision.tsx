@@ -22,7 +22,9 @@ import {
   FILTROS_ACTIVIDAD,
   iniciales,
   opcionesDeTurno,
+  rangoDeSemana,
   rangoDeTurno,
+  reinicioDeSemana,
   resumenSupervision,
   situacionDelTurno,
   textoDiferencia,
@@ -40,6 +42,8 @@ import { apiBillar } from "../api";
 
 /** Cuántos renglones de actividad se ven de entrada, y cuántos suma "Ver más". */
 const DE_A = 30;
+/** Cuántas cajas se ven de entrada en la lista; el resto de la semana, con "Ver más". */
+const CAJAS_DE_ENTRADA = 3;
 
 /**
  * Supervisión (21-oct): lo que hace la cajera, en vivo y sin poder tocar
@@ -53,6 +57,11 @@ const DE_A = 30;
  * madrugada, y cuando abren otra caja la pantalla empieza de cero en vez de
  * mezclar con la anterior. El turno de antes se elige arriba.
  *
+ * Los turnos que se pueden elegir son los de la SEMANA (23-oct), de lunes a
+ * domingo: la semana se reinicia el lunes a las 13:00 (así el administrador
+ * tiene la mañana del lunes para revisar la que cerró) y la nueva no muestra
+ * turnos hasta que abren la primera caja.
+ *
  * Es del administrador (`billar.admin`). No pide caja propia: es justo la
  * pantalla para quien no atiende.
  */
@@ -62,6 +71,7 @@ export default function Supervision() {
   const suc = useSucursales();
   const [filtro, setFiltro] = useState<FiltroActividad>("todo");
   const [cuantos, setCuantos] = useState(DE_A);
+  const [todasLasCajas, setTodasLasCajas] = useState(false);
   const [viendo, setViendo] = useState<{ tipo: "mesa"; numero: number } | { tipo: "cuenta"; id: number } | null>(null);
   const [pausando, setPausando] = useState<{ numero: number; sesionId: number } | null>(null);
 
@@ -102,6 +112,9 @@ export default function Supervision() {
   const selector =
     suc.elegir ? <SelectorSucursal valor={sucursal ?? datos.sucursal.id} sucursales={suc.sucursales} onElegir={elegirSucursal} /> : undefined;
   const actividad = filtrarActividad(datos.actividad, filtro);
+  // Con la semana entera la lista es larga: se ven las últimas y, siempre, la que se está mirando.
+  const cajasVisibles = datos.cajas.filter((c, i) => todasLasCajas || i < CAJAS_DE_ENTRADA || c.id === turno.caja?.id);
+  const cajasOcultas = datos.cajas.length - cajasVisibles.length;
   const tituloActividad = turno.situacion === "hoy" ? "Actividad de hoy" : "Actividad del turno";
   const mesaViendo = viendo?.tipo === "mesa" ? mesas.find((m) => m.mesa.id === viendo.numero) : undefined;
   const cuentaViendo = viendo?.tipo === "cuenta" ? cuentas.find((c) => c.cuenta.id === viendo.id) : undefined;
@@ -183,13 +196,20 @@ export default function Supervision() {
               />
             </div>
 
-            <Tarjeta icono="clock" titulo="Cajas" extra="Llegada y salida del personal" cuerpo="p-0">
+            <Tarjeta
+              icono="clock"
+              titulo="Cajas"
+              extra={datos.semana ? `Semana del ${rangoDeSemana(datos.semana)}` : "Llegada y salida del personal"}
+              cuerpo="p-0"
+            >
               {datos.cajas.length === 0 ? (
-                <p className="px-5 py-8 text-center text-[13px] text-texto-3">Nadie abrió caja todavía.</p>
+                <p className="px-5 py-8 text-center text-[13px] text-texto-3">
+                  {datos.semana ? "Nadie abrió caja esta semana todavía. Aparecen acá desde que abran la primera." : "Nadie abrió caja todavía."}
+                </p>
               ) : (
                 <>
                   <ul className="divide-y divide-borde-soft">
-                    {datos.cajas.map((c) => (
+                    {cajasVisibles.map((c) => (
                       <FilaCaja
                         key={c.id}
                         c={c}
@@ -199,6 +219,13 @@ export default function Supervision() {
                       />
                     ))}
                   </ul>
+                  {datos.cajas.length > CAJAS_DE_ENTRADA && (cajasOcultas > 0 || todasLasCajas) && (
+                    <div className="border-t border-borde-soft p-3 text-center">
+                      <BotonB onClick={() => setTodasLasCajas((v) => !v)}>
+                        {todasLasCajas ? "Mostrar menos" : `Ver ${cajasOcultas} más de la semana`}
+                      </BotonB>
+                    </div>
+                  )}
                   {turno.situacion !== "hoy" && (
                     <p className="border-t border-borde-soft bg-slate-50/70 px-4 py-2.5 text-[12px] text-texto-2 sm:px-5">
                       Vendido hoy en todas las cajas: <b className="tabular-nums text-texto">{fmtMoney(resumen.vendidoHoy)}</b> ·{" "}
@@ -232,7 +259,7 @@ export default function Supervision() {
 
             {cuentas.length > 0 && (
               <section aria-label="Cuentas abiertas" className="space-y-3">
-                <Rotulo icono="users" extra={fmtMoney(resumen.totalAbierto)}>
+                <Rotulo icono="users" extra={fmtMoney(resumen.totalCuentas)}>
                   Cuentas abiertas
                 </Rotulo>
                 <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(158px,1fr))] sm:gap-4 sm:[grid-template-columns:repeat(auto-fill,minmax(228px,1fr))]">
@@ -404,11 +431,14 @@ function SelectorDeTurno({
   onElegir: (cajaId: number | null) => void;
 }) {
   const defectoId = datos.turno?.defectoId ?? null;
-  const opciones = opcionesDeTurno(datos, ahora);
+  const opciones = opcionesDeTurno(datos);
   return (
     <section aria-label="Turno" className="space-y-2.5">
       <div>
-        <p className="mb-1 text-[11px] font-bold uppercase tracking-wider text-texto-3">Turno que estás viendo</p>
+        <div className="mb-1 flex flex-wrap items-baseline justify-between gap-x-3">
+          <p className="text-[11px] font-bold uppercase tracking-wider text-texto-3">Turno que estás viendo</p>
+          {datos.semana && <p className="text-[11px] font-semibold text-texto-3">Semana del {rangoDeSemana(datos.semana)}</p>}
+        </div>
         {/* El selector de verdad va transparente encima de lo que se ve: así el
             texto (quién, desde cuándo) se parte en renglones en el celular en
             vez de cortarse con "…". */}
@@ -436,10 +466,17 @@ function SelectorDeTurno({
             ))}
           </select>
         </div>
+        {datos.semana && (
+          <p className="mt-1.5 text-[12px] text-texto-3">
+            Los turnos de la semana, de lunes a domingo. La semana nueva empieza el {reinicioDeSemana(datos.semana)}.
+          </p>
+        )}
       </div>
       {situacion === "cerrado" && (
         <Nota tono="azul" icono="lock">
-          <b>No hay caja abierta.</b> {caja.cajero} cerró {caja.hasta != null ? cuando(caja.hasta, ahora) : ""} ({rangoDeTurno(caja, ahora)}). Cuando
+          {/* Quien la cerró, que no siempre es quien la abrió: el administrador
+              cierra la caja que la cajera dejó abierta (revisión del 23-oct). */}
+          <b>No hay caja abierta.</b> {caja.cerroPor ?? caja.cajero} cerró {caja.hasta != null ? cuando(caja.hasta, ahora) : ""} ({rangoDeTurno(caja, ahora)}). Cuando
           abran la siguiente, esta pantalla empieza de cero.
         </Nota>
       )}

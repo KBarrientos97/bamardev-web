@@ -16,6 +16,13 @@ export function medioDelBoton(metodo: PagoNuevo["metodo"]): string {
   return "mixto (efectivo + QR)";
 }
 
+/** Lo que dice el botón de la cuenta nueva: el saldo, o lo que hay que devolver si ya se pagó de más. */
+export function etiquetaCuenta(x: { total: number; saldo: number; pagado: number }): string {
+  if (x.saldo > 0.005) return ` · ${fmtMoney(x.saldo)}`;
+  const aFavor = round2(x.pagado - x.total);
+  return aFavor > 0.005 ? ` · devolver ${fmtMoney(aFavor)}` : "";
+}
+
 /** Los pagos finales de un cobro, como los guarda la venta (el mixto, en dos). */
 export function pagosFinales(p: PagoNuevo): { metodo: string; monto: number }[] {
   if (p.metodo === "Mixto") {

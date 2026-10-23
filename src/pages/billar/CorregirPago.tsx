@@ -38,15 +38,18 @@ function motivosPara(pagos: VentaBillar["pagos"]): string[] {
  *
  * Antes la única salida era anular, y en una venta de mesa el tiempo no se
  * puede volver a cobrar (pedido del dueño, 17-oct). Es el mismo cobro de
- * siempre —por QR hay que confirmar que entró, como al cobrar—. Si la
- * corrección baja el efectivo que espera la caja (de efectivo a QR), que es
- * por donde se roba, pide el PIN de un encargado y el número de operación del
- * banco; si lo sube, alcanza con el motivo, para que la cajera sola lo
- * arregle antes de cerrar. Una vez por venta. Ver `CorreccionPagoBillarService`.
+ * siempre —por QR hay que confirmar que entró, como al cobrar—. Lo firma
+ * siempre un encargado, como anular: hasta el 23-oct lo que subía el efectivo
+ * (de QR a efectivo) pasaba sólo con el motivo y la cajera cambiaba sola cómo
+ * figuraba un cobro (QA del dueño: "se queda tal cual"). Si baja el efectivo
+ * que espera la caja (de efectivo a QR), que es por donde se roba, pide además
+ * el número de operación del banco. Una vez por venta. Ver
+ * `CorreccionPagoBillarService`.
  *
  * El medio hay que elegirlo a mano (`elegido`): el cobro arranca en Efectivo,
  * y con eso un toque en "Confirmar" corregía una venta QR a efectivo sin que
- * nadie lo hubiera pedido, y se gastaba la única corrección.
+ * nadie lo hubiera pedido, y se gastaba la única corrección. Elegir el medio
+ * con que ya figura no habilita el botón: no hay nada que firmar.
  */
 export function ModalCorregirPago({ venta: v, onClose }: { venta: VentaBillar; onClose: () => void }) {
   const base = useCobro(v.total);
@@ -63,14 +66,16 @@ export function ModalCorregirPago({ venta: v, onClose }: { venta: VentaBillar; o
   const efectivoAntes = round2(v.pagos.filter((p) => p.metodo === "Efectivo").reduce((t, p) => t + p.monto, 0));
   const baja = cobro.pago ? round2(efectivoAntes - efectivoDe(cobro.pago)) : 0;
   const pideFirma = baja > 0.005;
+  // Con el efectivo igual, el resto también (el total no cambia), salvo que la
+  // venta tenga otro medio que no es efectivo ni QR: ése cambia seguro.
+  const cambia = Math.abs(baja) > 0.005 || v.pagos.some((p) => p.metodo !== "Efectivo" && p.metodo !== "QR");
   return (
     <ModalPin
       accion={`Corregir el pago de ${v.codigo} · ${fmtMoney(v.total)}`}
-      detalle={`Figura: ${actual}. El total no cambia, sólo por dónde entró la plata. Se corrige una sola vez y mientras la caja siga abierta, y queda registrado quién lo pidió y por qué.`}
+      detalle={`Figura: ${actual}. El total no cambia, sólo por dónde entró la plata. Se corrige una sola vez y mientras la caja siga abierta, y queda registrado quién lo pidió, quién lo autorizó y por qué.`}
       motivos={motivosPara(v.pagos)}
-      pedirPin={pideFirma}
       permiso="ventas.anular"
-      bloqueado={!elegido || !cobro.pago || (pideFirma && operacion.length < 3)}
+      bloqueado={!elegido || !cobro.pago || !cambia || (pideFirma && operacion.length < 3)}
       onClose={onClose}
       onAutorizar={async (motivo, cred) => {
         if (!cobro.pago) return;
@@ -92,11 +97,14 @@ export function ModalCorregirPago({ venta: v, onClose }: { venta: VentaBillar; o
         <p className="mb-2 text-[13px] font-semibold text-texto-2">Cómo pagó en realidad</p>
         {!elegido && <p className="-mt-1 mb-2 text-[12px] text-texto-4">Tocá el medio con que pagó de verdad.</p>}
         <FormCobro cobro={cobro} />
+        {elegido && cobro.pago && !cambia && (
+          <p className="mt-3 text-[12px] text-texto-4">Así ya figura la venta: no hay nada que corregir.</p>
+        )}
         {pideFirma && (
           <div className="mt-4 space-y-3">
             <Nota tono="ambar" icono="alert">
-              Esto saca {fmtMoney(baja)} del efectivo que espera la caja: necesita el PIN de un encargado y el número de
-              operación que figura en el banco.
+              Esto saca {fmtMoney(baja)} del efectivo que espera la caja: además del PIN, va el número de operación que
+              figura en el banco.
             </Nota>
             <label className="block">
               <span className="mb-1.5 block text-[13px] font-semibold text-texto-2">

@@ -179,6 +179,12 @@ export interface SupervisionApi {
   sucursal: { id: number; nombre: string };
   /** Cuándo empezó la jornada de hoy (la hora de corte del billar). */
   desde: number;
+  /**
+   * La semana de los turnos que se pueden elegir (backend del 23-oct): del lunes a las
+   * 13:00 al lunes siguiente a la misma hora (`hasta`, cuando se reinicia). Un backend
+   * anterior no la manda: ahí los turnos son los de hoy y ayer.
+   */
+  semana?: { desde: number; hasta: number };
   /** Lo vendido en la jornada, de todas las cajas del local (sin lo de días atrás). */
   hoy: { ventas: number; vendido: number };
   /** El turno que se mira. Un backend anterior al 22-oct no lo manda: ahí todo es "hoy". */
@@ -187,7 +193,7 @@ export interface SupervisionApi {
   tipos: TipoMesa[];
   mesas: (Omit<MesaApi, "sesion"> & { sesion?: SesionSupervisionApi })[];
   cuentas: (Omit<CuentaApi, "sesion"> & { sesion: SesionSupervisionApi })[];
-  /** Las cajas abiertas y las de hoy y ayer (cada una es un turno que se puede mirar). */
+  /** Las cajas abiertas y las de la semana (cada una es un turno que se puede mirar). */
   cajas: CajaSupervisionApi[];
   actividad: ActividadApi[];
 }
