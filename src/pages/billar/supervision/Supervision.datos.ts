@@ -77,6 +77,12 @@ export interface ResumenSup {
   /** Lo que suman las mesas y cuentas abiertas, y cuánto falta cobrar. */
   totalAbierto: number;
   porCobrar: number;
+  /**
+   * Lo que suman sólo las cuentas abiertas, para su rótulo: con
+   * `totalAbierto` ahí, una cuenta de Bs 30 con mesas por Bs 420 decía
+   * "Cuentas abiertas · Bs 450" (revisión del 23-oct).
+   */
+  totalCuentas: number;
 }
 
 export function resumenSupervision(
@@ -102,6 +108,7 @@ export function resumenSupervision(
     cuentas: cuentas.length,
     totalAbierto: round2(enUso.reduce((t, v) => t + v.cuenta!.total, 0) + cuentas.reduce((t, v) => t + v.calc.total, 0)),
     porCobrar: round2(enUso.reduce((t, v) => t + v.cuenta!.saldo, 0) + cuentas.reduce((t, v) => t + v.calc.saldo, 0)),
+    totalCuentas: round2(cuentas.reduce((t, v) => t + v.calc.total, 0)),
   };
 }
 

@@ -259,7 +259,7 @@ export default function Supervision() {
 
             {cuentas.length > 0 && (
               <section aria-label="Cuentas abiertas" className="space-y-3">
-                <Rotulo icono="users" extra={fmtMoney(resumen.totalAbierto)}>
+                <Rotulo icono="users" extra={fmtMoney(resumen.totalCuentas)}>
                   Cuentas abiertas
                 </Rotulo>
                 <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(158px,1fr))] sm:gap-4 sm:[grid-template-columns:repeat(auto-fill,minmax(228px,1fr))]">
@@ -474,7 +474,9 @@ function SelectorDeTurno({
       </div>
       {situacion === "cerrado" && (
         <Nota tono="azul" icono="lock">
-          <b>No hay caja abierta.</b> {caja.cajero} cerró {caja.hasta != null ? cuando(caja.hasta, ahora) : ""} ({rangoDeTurno(caja, ahora)}). Cuando
+          {/* Quien la cerró, que no siempre es quien la abrió: el administrador
+              cierra la caja que la cajera dejó abierta (revisión del 23-oct). */}
+          <b>No hay caja abierta.</b> {caja.cerroPor ?? caja.cajero} cerró {caja.hasta != null ? cuando(caja.hasta, ahora) : ""} ({rangoDeTurno(caja, ahora)}). Cuando
           abran la siguiente, esta pantalla empieza de cero.
         </Nota>
       )}

@@ -267,6 +267,8 @@ export interface ProductoBillar {
   stock: number | null;
   /** El código de barras, para buscarlo o escanearlo (backend del 18-oct). */
   codBarra?: string | null;
+  /** La llave del ícono del artículo, la del Punto de venta (backend del 23-oct). */
+  icono?: string | null;
 }
 
 /**

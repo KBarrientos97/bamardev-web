@@ -33,6 +33,13 @@ export function useSupervision() {
   const [turno, setTurno] = useState<number | null>(null);
   const turnoPedido = useRef<number | null>(null);
   const trayendo = useRef(false);
+  /**
+   * El número del último pedido: sólo vale la respuesta del más nuevo. Un
+   * `recargar()` (después de pausar) no espera al sondeo que ya iba en camino,
+   * y si ése llegaba después pisaba lo nuevo con lo de antes: la mesa recién
+   * pausada volvía a verse en juego hasta 5 s (revisión del 23-oct).
+   */
+  const ultimo = useRef(0);
   const [datos, setDatos] = useState<SupervisionApi | null>(null);
   const [error, setError] = useState<string | null>(null);
   /** Cuándo llegó lo último, en la hora de este equipo (0: nunca). */
@@ -41,13 +48,15 @@ export function useSupervision() {
   const traer = useCallback(async (forzar = false) => {
     if (trayendo.current && !forzar) return;
     trayendo.current = true;
+    const numero = ++ultimo.current;
     const delLocal = pedida.current;
     const delTurno = turnoPedido.current;
     const pedido = Date.now();
     try {
       const d = await apiBillar.supervision(delLocal, delTurno);
-      // Si mientras viajaba el dueño cambió de local o de turno, es lo de otro.
-      if (delLocal !== pedida.current || delTurno !== turnoPedido.current) return;
+      // Si mientras viajaba el dueño cambió de local o de turno, es lo de otro;
+      // si salió otro pedido después, lo de éste ya es viejo.
+      if (delLocal !== pedida.current || delTurno !== turnoPedido.current || numero !== ultimo.current) return;
       // La caja elegida ya no está (el servidor mostró otra): se vuelve al turno de ahora.
       if (delTurno != null && d.turno && d.turno.cajaId !== delTurno) {
         turnoPedido.current = null;
@@ -58,6 +67,8 @@ export function useSupervision() {
       setError(null);
       setLlegoEn(Date.now());
     } catch (err) {
+      // El error de un pedido que ya no es el último tampoco se muestra.
+      if (numero !== ultimo.current) return;
       // El local recordado ya no sirve (lo borraron): se pide el que decide el backend.
       if (delLocal != null && delLocal === pedida.current && err instanceof ApiError && err.status === 400) {
         pedida.current = null;
