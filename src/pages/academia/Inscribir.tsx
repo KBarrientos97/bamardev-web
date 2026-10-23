@@ -44,9 +44,9 @@ import { BotonFila, BotonIcono, ResumenPanel } from "./piezas";
 
 export interface ResultadoInscripcion {
   inscripcion: Pick<InscripcionDetalle, "id"> & Partial<InscripcionDetalle>;
-  /** "Inscribir y cobrar ahora": quien abrió el panel lleva al POS. */
+  /** "Inscribir y cobrar ahora": quien abrió el panel lleva a "Cobrar a estudiante" (A1). */
   cobrar: boolean;
-  /** Lo que paga hoy (la primera cuota, todo o un adelanto): el POS lo propone. */
+  /** Lo que paga hoy (la primera cuota, todo o un adelanto): el cobro lo trae cargado (A2). */
   montoHoy?: number;
 }
 
@@ -87,6 +87,13 @@ export default function Inscribir({
   const p = usePalabras();
   const { usuario } = useAuth();
   const puedeBecas = tienePermiso(usuario, "academia.becas");
+  /**
+   * A3 (22-oct): quien aprueba fotos (el admin) las está viendo al inscribir:
+   * el paso 3 trae marcado "Revisé las 3 fotos" y quedan aprobadas. Sin el
+   * permiso (la recepción) no hay check y siguen el camino de siempre.
+   */
+  const apruebaFotos = tienePermiso(usuario, "academia.fotos");
+  const [fotosRevisadas, setFotosRevisadas] = useState(true);
 
   // ── ¿Quién? ──
   const [modo, setModo] = useState<Modo>("buscar");
@@ -115,8 +122,11 @@ export default function Inscribir({
   // La forma de pago que eligió en la página viene marcada.
   const [planId, setPlanId] = useState<number | null>(preinscripcion?.planElegido?.id ?? null);
   useEffect(() => {
-    // Un solo plan: viene elegido. Con varios, la secretaría elige.
-    if (planes.length === 1 && planId == null) setPlanId(planes[0].id);
+    // Un solo plan: viene elegido. Con varios, "Mes a mes" (UX 2a, A2): es el
+    // que más se usa, y así "Inscribir y cobrar" nunca queda sin plan.
+    if (planId != null || planes.length === 0) return;
+    const porDefecto = planes.length === 1 ? planes[0] : planes.find((x) => x.generado === "MES_A_MES");
+    if (porDefecto) setPlanId(porDefecto.id);
   }, [planes, planId]);
   const plan = planes.find((x) => x.id === planId) ?? null;
 
@@ -295,6 +305,12 @@ export default function Inscribir({
             ...(extra.sobreCupo ? { confirmarSobreCupo: true } : {}),
           }, fotos);
       if (bienvenida) mandarBienvenida(inscripcion.bienvenida);
+      // A3: con el check, las fotos quedan aprobadas. Si falla, la inscripción
+      // ya está hecha: las fotos siguen "por revisar" y se aprueban después.
+      const alumnoId = elegido?.id ?? preinscripcion?.alumno.id ?? inscripcion.alumnoId;
+      if (apruebaFotos && pideFotos && fotosRevisadas && alumnoId != null) {
+        await apiAcademia.revisarFotos(alumnoId, { ok: true }).catch(() => undefined);
+      }
       onInscrito({ inscripcion, cobrar, ...(cobrar && montoHoy > 0 ? { montoHoy } : {}) });
     } catch (e) {
       const codigo = e instanceof ApiError ? e.codigo : undefined;
@@ -560,10 +576,21 @@ export default function Inscribir({
                 yaTiene={yaTiene}
                 marcadas={marcadas}
               />
+              {apruebaFotos && (
+                <label className="flex min-h-11 items-center gap-2 text-[13px] text-texto-2">
+                  <input
+                    type="checkbox"
+                    checked={fotosRevisadas}
+                    onChange={(e) => setFotosRevisadas(e.target.checked)}
+                    className="h-4 w-4 accent-[var(--color-primary-boton)]"
+                  />
+                  Revisé las 3 fotos (quedan aprobadas al inscribir)
+                </label>
+              )}
             </Paso>
           )}
 
-          <Paso n={pideFotos ? 4 : 3} titulo="Forma de pago" listo={!!plan}>
+          <Paso n={pideFotos ? 4 : 3} titulo="Plan de pago" listo={!!plan}>
             {!grupoId ? (
               <p className="text-sm text-texto-3">Primero el grupo.</p>
             ) : detalle.cargando ? (
@@ -716,7 +743,8 @@ export default function Inscribir({
               )}
             </div>
             <ul aria-label="Requisitos" className="space-y-1.5 text-[13px]">
-              <Requisito ok={datosListos} texto="Datos completos" />
+              {/* UX 2b: hasta que estén, dice que faltan (decía "Datos completos" en naranja). */}
+              <Requisito ok={datosListos} texto={datosListos ? "Datos completos" : "Faltan los datos"} />
               {esMenor && <Requisito ok={tutorListo} texto={tutor.nombre.trim() ? `Tutor: ${tutor.nombre.trim()} (${tutor.parentesco.toLowerCase()})` : "Tutor"} />}
               {pideFotos && (
                 <Requisito ok={faltanFotos.length === 0} texto={faltanFotos.length === 0 ? "Las 3 fotos" : `Fotos: ${3 - faltanFotos.length} de 3`} />

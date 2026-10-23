@@ -52,9 +52,11 @@ export function textoEstadoInscripcion(estado: string): { texto: string; tono: "
 }
 
 /**
- * A dónde lleva "Cobrar": el POS, que abre las cuotas de esa inscripción. La
- * sede del grupo va en la dirección para avisar si se cobra en otra caja (el
- * carrito de la inscripción no la trae).
+ * A dónde lleva "Cobrar": "Cobrar a estudiante" (A1, 22-oct), que abre las
+ * cuotas de esa inscripción. Antes era el POS; desde que el POS quedó sólo
+ * para productos, todo cobro de cuotas pasa por ahí. La sede del grupo va en
+ * la dirección para avisar si se cobra en otra caja (el carrito de la
+ * inscripción no la trae), y `monto` es lo acordado al inscribir.
  */
 export function rutaCobroInscripcion(inscripcionId: number, sede?: string | Ref | null, monto?: number): string {
   const params = new URLSearchParams({ inscripcion: String(inscripcionId) });
@@ -65,7 +67,19 @@ export function rutaCobroInscripcion(inscripcionId: number, sede?: string | Ref 
   } else if (typeof sede === "string" && sede) {
     params.set("sedeNombre", sede);
   }
-  return `/pos?${params.toString()}`;
+  return `${RUTA_COBRAR}?${params.toString()}`;
+}
+
+/** La pantalla "Cobrar a estudiante" (A1). */
+export const RUTA_COBRAR = "/academia/cobrar";
+
+/**
+ * "Cobrar" sin la inscripción (Cobranza, Hoy → Para cobrar): se busca al
+ * estudiante por su código o su nombre y, si aparece, se abre solo.
+ */
+export function rutaCobroAlumno(alumno: { id: number; nombre: string; codigo?: string | null }): string {
+  const params = new URLSearchParams({ alumno: String(alumno.id), q: alumno.codigo || alumno.nombre });
+  return `${RUTA_COBRAR}?${params.toString()}`;
 }
 
 /**

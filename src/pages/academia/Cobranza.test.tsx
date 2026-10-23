@@ -7,7 +7,7 @@ import type { RespuestaCobranza } from "../../lib/academia/tipos";
  * N7 · Cobranza: las pestañas son los indicadores (con cuánto y cuántos),
  * "Enviar QR" abre el panel y "Abrir WhatsApp" pide al backend el mensaje con
  * el enlace de pago (que deja anotado el recordatorio) y abre wa.me. Para
- * varios, "1 de N · Siguiente". Cobrar lleva al POS con la inscripción.
+ * varios, "1 de N · Siguiente". Cobrar lleva a "Cobrar a estudiante" (A1) con la inscripción.
  */
 
 vi.mock("../../store/AuthContext", async () => {
@@ -153,10 +153,10 @@ describe("N7 · cobranza", () => {
     expect(screen.queryByRole("complementary")).not.toBeInTheDocument();
   });
 
-  it("Cobrar, desde el panel, lleva al POS con la inscripción y la sede del grupo", async () => {
+  it("Cobrar, desde el panel, lleva a Cobrar a estudiante con la inscripción y la sede del grupo", async () => {
     await montar();
     fireEvent.click(screen.getAllByRole("button", { name: "Enviar QR" })[0]);
     fireEvent.click(screen.getByRole("button", { name: "Cobrar" }));
-    expect(screen.getByTestId("destino")).toHaveTextContent("/pos?inscripcion=103&sede=2&sedeNombre=Norte");
+    expect(screen.getByTestId("destino")).toHaveTextContent("/academia/cobrar?inscripcion=103&sede=2&sedeNombre=Norte");
   });
 });

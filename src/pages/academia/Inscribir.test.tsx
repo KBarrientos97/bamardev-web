@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ajustesDePrueba, fichaCamila, grupoDetalle } from "../../test/academiaFixtures";
+import { ajustesDePrueba, fichaCamila, grupoDetalle, PLAN_COMPLETO, PLAN_CUOTAS } from "../../test/academiaFixtures";
 
 /**
  * E5 · Inscribir: alumno nuevo con tutor si es menor, el plan con su
@@ -9,9 +9,12 @@ import { ajustesDePrueba, fichaCamila, grupoDetalle } from "../../test/academiaF
  * se confirma y se reintenta.
  */
 
+/** Quién inscribe: la secretaría (por defecto) o el admin, que aprueba fotos (A3). */
+const quien = vi.hoisted(() => ({ admin: false }));
+
 vi.mock("../../store/AuthContext", async () => {
-  const { SESION_SECRETARIA: s } = await import("../../test/academiaFixtures");
-  return { useAuth: () => ({ ...s, puede: () => true }) };
+  const { SESION_SECRETARIA, SESION_ADMIN } = await import("../../test/academiaFixtures");
+  return { useAuth: () => ({ ...(quien.admin ? SESION_ADMIN : SESION_SECRETARIA), puede: () => true }) };
 });
 
 vi.mock("../../lib/academia/apiAcademia", async (importOriginal) => {
@@ -26,6 +29,7 @@ vi.mock("../../lib/academia/apiAcademia", async (importOriginal) => {
       inscribir: vi.fn(),
       convertir: vi.fn(),
       alumno: vi.fn(),
+      revisarFotos: vi.fn(),
     },
   };
 });
@@ -63,6 +67,7 @@ function cargarNuevo(fechaNacimiento: string) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  quien.admin = false;
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(new Date("2026-10-15T14:00:00.000Z"));
   vi.spyOn(window, "open").mockImplementation(() => null);
@@ -414,5 +419,89 @@ describe("N5 · las 3 fotos obligatorias", () => {
       fireEvent.click(within(panel()).getByRole("button", { name: "Inscribir sin cobrar" }));
     });
     expect(within(panel()).getByText(/Falta 1 foto: sacalas/)).toBeInTheDocument();
+  });
+});
+
+describe("A2 · inscribir en menos pasos", () => {
+  it("el paso 4 es «Plan de pago» con «Mes a mes» ya elegido, y el resumen dice que faltan los datos", async () => {
+    vi.mocked(apiAcademia.grupo).mockResolvedValue(
+      grupoDetalle({
+        planesOfrecidos: [
+          { ...PLAN_COMPLETO, generado: "COMPLETO" },
+          { ...PLAN_CUOTAS, nombre: "Mes a mes", generado: "MES_A_MES" },
+        ],
+      }),
+    );
+    await montar();
+    expect(within(panel()).getByRole("heading", { name: /Plan de pago/ })).toBeInTheDocument();
+    expect(within(panel()).queryByText(/Forma de pago/)).not.toBeInTheDocument();
+    expect(within(panel()).getByRole("radio", { name: /Mes a mes/ })).toHaveAttribute("aria-checked", "true");
+    // Sin nada escrito no dice "Datos completos" (UX 2b).
+    const requisitos = within(panel()).getByRole("list", { name: "Requisitos" });
+    expect(requisitos).toHaveTextContent("Faltan los datos");
+    cargarNuevo("2000-01-01");
+    expect(requisitos).toHaveTextContent("Datos completos");
+    // "Paga hoy" es la única pregunta por el monto: va tal cual al cobro.
+    await act(async () => {
+      fireEvent.click(within(panel()).getByRole("button", { name: /Inscribir y cobrar Bs\s?750/ }));
+    });
+    expect(onInscrito).toHaveBeenCalledWith({ inscripcion: { id: 555 }, cobrar: true, montoHoy: 750 });
+  });
+});
+
+describe("A3 · las fotos que revisa quien las aprueba", () => {
+  beforeEach(() => {
+    vi.mocked(apiAcademia.ajustes).mockResolvedValue(ajustesDePrueba({ fotosObligatorias: true }));
+    vi.mocked(apiAcademia.inscribir).mockResolvedValue({ id: 555, alumnoId: 61 } as never);
+    vi.mocked(apiAcademia.revisarFotos).mockResolvedValue({});
+  });
+
+  const subirLas3 = async () => {
+    for (const tipo of ["FOTO", "CI_ANVERSO", "CI_REVERSO"]) {
+      await act(async () =>
+        fireEvent.change(screen.getByTestId("subir-" + tipo), {
+          target: { files: [new File(["x"], tipo + ".jpg", { type: "image/jpeg" })] },
+        }),
+      );
+    }
+  };
+
+  it("con academia.fotos el check viene marcado y al inscribir quedan aprobadas", async () => {
+    quien.admin = true;
+    await montar();
+    cargarNuevo("2000-01-01");
+    fireEvent.click(within(panel()).getByRole("radio", { name: /Completo/ }));
+    await subirLas3();
+    expect(within(panel()).getByRole("checkbox", { name: /Revisé las 3 fotos/ })).toBeChecked();
+    await act(async () => {
+      fireEvent.click(within(panel()).getByRole("button", { name: "Inscribir sin cobrar" }));
+    });
+    expect(apiAcademia.revisarFotos).toHaveBeenCalledWith(61, { ok: true });
+    expect(onInscrito).toHaveBeenCalled();
+  });
+
+  it("si lo desmarca, siguen por revisar", async () => {
+    quien.admin = true;
+    await montar();
+    cargarNuevo("2000-01-01");
+    fireEvent.click(within(panel()).getByRole("radio", { name: /Completo/ }));
+    await subirLas3();
+    fireEvent.click(within(panel()).getByRole("checkbox", { name: /Revisé las 3 fotos/ }));
+    await act(async () => {
+      fireEvent.click(within(panel()).getByRole("button", { name: "Inscribir sin cobrar" }));
+    });
+    expect(apiAcademia.revisarFotos).not.toHaveBeenCalled();
+  });
+
+  it("la recepción (sin academia.fotos) no ve el check: el camino de siempre", async () => {
+    await montar();
+    cargarNuevo("2000-01-01");
+    fireEvent.click(within(panel()).getByRole("radio", { name: /Completo/ }));
+    await subirLas3();
+    expect(within(panel()).queryByRole("checkbox", { name: /Revisé las 3 fotos/ })).not.toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(within(panel()).getByRole("button", { name: "Inscribir sin cobrar" }));
+    });
+    expect(apiAcademia.revisarFotos).not.toHaveBeenCalled();
   });
 });

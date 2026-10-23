@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ApiError } from "../api";
-import { fueraDeAlcance, textoEvento } from "./vista";
+import { fueraDeAlcance, rutaCobroAlumno, rutaCobroInscripcion, textoEvento } from "./vista";
 
 /**
  * El historial de la ficha: el `detalle` de cada evento es el JSON que guardó
@@ -62,5 +62,21 @@ describe("fueraDeAlcance (QA ronda 2, N-3)", () => {
     expect(fueraDeAlcance(new ApiError("Ese día el grupo no tiene clase.", 404, { codigo: "SIN_CLASE" }))).toBeNull();
     expect(fueraDeAlcance(new ApiError("Sin permiso", 403))).toBeNull();
     expect(fueraDeAlcance(new Error("Sin conexión"))).toBeNull();
+  });
+});
+
+describe("A1: Cobrar lleva a «Cobrar a estudiante», no al POS", () => {
+  it("con la inscripción, lo acordado y la sede del grupo", () => {
+    expect(rutaCobroInscripcion(103, { id: 2, nombre: "Norte" }, 350)).toBe(
+      "/academia/cobrar?inscripcion=103&monto=350&sede=2&sedeNombre=Norte",
+    );
+    expect(rutaCobroInscripcion(103)).toBe("/academia/cobrar?inscripcion=103");
+  });
+
+  it("sin la inscripción, busca al estudiante por su código (o su nombre)", () => {
+    expect(rutaCobroAlumno({ id: 53, nombre: "Céspedes", codigo: "2026-0103" })).toBe(
+      "/academia/cobrar?alumno=53&q=2026-0103",
+    );
+    expect(rutaCobroAlumno({ id: 53, nombre: "Céspedes" })).toBe("/academia/cobrar?alumno=53&q=C%C3%A9spedes");
   });
 });

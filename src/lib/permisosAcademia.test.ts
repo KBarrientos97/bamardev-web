@@ -86,10 +86,21 @@ describe("secciones de la academia", () => {
   });
 });
 
-describe("cobrar cuotas en el POS", () => {
+describe("cobrar cuotas (desde A1, en «Cobrar a estudiante»)", () => {
   it("con la feature y con inscribir o cobranza", () => {
     expect(cobraCuotas(ctxDe("CAJERO", "ACADEMIA", FEATURES))).toBe(true);
     expect(cobraCuotas(ctxDe("ADMIN", "ACADEMIA", FEATURES))).toBe(true);
+  });
+
+  it("la pantalla pide lo mismo: cobranza o inscribir, nunca el docente", () => {
+    for (const rol of ["CAJERO", "ADMIN", "SUPERVISOR"] as const) {
+      expect(puedeVer(ctxDe(rol, "ACADEMIA", FEATURES), "academia_cobrar"), rol).toBe(true);
+    }
+    // Con sólo uno de los dos permisos alcanza.
+    expect(puedeVer(ctxDe("CAJERO", "ACADEMIA", FEATURES, { sin: ["academia.cobranza"] }), "academia_cobrar")).toBe(true);
+    expect(puedeVer(ctxDe("CAJERO", "ACADEMIA", FEATURES, { sin: ["academia.inscribir"] }), "academia_cobrar")).toBe(true);
+    expect(puedeVer(ctxDe("PROFESIONAL", "ACADEMIA", FEATURES), "academia_cobrar")).toBe(false);
+    expect(puedeVer(ctxDe("ADMIN", "ACADEMIA", []), "academia_cobrar")).toBe(false);
   });
 
   it("el docente no cobra, y sin la feature nadie", () => {

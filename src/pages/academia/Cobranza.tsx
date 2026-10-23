@@ -11,7 +11,7 @@ import { fechaCorta } from "../../lib/academia/formato";
 import type { Antiguedad, FilaCobranza, Recordatorio, RespuestaCobranza, TipoCobranza } from "../../lib/academia/tipos";
 import { useFiltroSede } from "../../lib/academia/useFiltroSede";
 import { usePalabras } from "../../lib/academia/usePalabras";
-import { abrirWhatsapp, nombreCuota, rutaCobroInscripcion } from "../../lib/academia/vista";
+import { abrirWhatsapp, nombreCuota, rutaCobroAlumno, rutaCobroInscripcion } from "../../lib/academia/vista";
 import { fmtHora, fmtMoney, tiempoRelativo } from "../../lib/format";
 import { usePaginado } from "../../lib/paginado";
 import { cobraCuotas } from "../../lib/permisos";
@@ -134,10 +134,8 @@ export default function Cobranza() {
   }
 
   function cobrar(f: FilaCobranza) {
-    // Con la inscripción, su carrito; si no vino, el POS busca al estudiante.
-    const destino = f.inscripcionId
-      ? rutaCobroInscripcion(f.inscripcionId, f.sede)
-      : `/pos?alumno=${f.alumno.id}&q=${encodeURIComponent(f.alumno.codigo ?? f.alumno.nombre)}`;
+    // Con la inscripción, su carrito; si no vino, "Cobrar a estudiante" lo busca.
+    const destino = f.inscripcionId ? rutaCobroInscripcion(f.inscripcionId, f.sede) : rutaCobroAlumno(f.alumno);
     navigate(destino);
   }
 

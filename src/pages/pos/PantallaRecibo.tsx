@@ -24,10 +24,13 @@ export default function PantallaRecibo({
   venta,
   onNuevaVenta,
   onHistorial,
+  etiquetaNueva = "Nueva venta",
 }: {
   venta: Venta;
   onNuevaVenta: () => void;
   onHistorial: () => void;
+  /** El botón principal: "Nueva venta" en el POS, "Cobrar a otro" en el instituto (A1). */
+  etiquetaNueva?: string;
 }) {
   const { negocio, incluye, rubro } = useAuth();
 
@@ -334,7 +337,7 @@ export default function PantallaRecibo({
           Historial
         </Boton>
         <Boton icono="plus" onClick={onNuevaVenta} className="flex-1">
-          Nueva venta
+          {etiquetaNueva}
         </Boton>
       </div>
     </div>

@@ -96,6 +96,7 @@ const AlumnosAcademia = lazy(() => import("./pages/academia/Alumnos"));
 const FichaAlumno = lazy(() => import("./pages/academia/FichaAlumno"));
 const Preinscripciones = lazy(() => import("./pages/academia/Preinscripciones"));
 const CobranzaAcademia = lazy(() => import("./pages/academia/Cobranza"));
+const CobrarAcademia = lazy(() => import("./pages/academia/Cobrar"));
 const CarrerasAcademia = lazy(() => import("./pages/academia/config/Carreras"));
 const AjustesAcademia = lazy(() => import("./pages/academia/config/AjustesAcademia"));
 
@@ -823,6 +824,7 @@ function Rutas() {
           element={<Academia seccion="academia_preinscripciones"><Preinscripciones /></Academia>}
         />
         <Route path="/academia/cobranza" element={<Academia seccion="academia_cobranza"><CobranzaAcademia /></Academia>} />
+        <Route path="/academia/cobrar" element={<Academia seccion="academia_cobrar"><CobrarAcademia /></Academia>} />
         <Route path="/configuracion/carreras" element={<Academia seccion="academia_carreras"><CarrerasAcademia /></Academia>} />
         <Route path="/configuracion/academia" element={<Academia seccion="academia_ajustes"><AjustesAcademia /></Academia>} />
 

@@ -104,6 +104,15 @@ describe("E1 · Hoy", () => {
     expect(screen.getByText("Rojas Lima, Thiago")).toBeInTheDocument();
   });
 
+  it("A1: cada cobro del día lleva a «Cobrar a estudiante» con ese estudiante, y abajo «Cobrar» también", async () => {
+    await montar();
+    const fila = screen.getByText("Bustillos Rek, Camila").closest("li")!;
+    const enlace = within(fila).getByRole("link", { name: /Cobrar/ });
+    expect(enlace.getAttribute("href")).toMatch(/^\/academia\/cobrar\?alumno=\d+&q=/);
+    const abajo = screen.getAllByRole("link", { name: "Cobrar" }).find((l) => l.getAttribute("href") === "/academia/cobrar");
+    expect(abajo).toBeDefined();
+  });
+
   it("las clases de hoy: terminó, en curso o por empezar, con la llegada y la lista", async () => {
     await montar();
     const clases = screen.getByRole("region", { name: /Clases de hoy/ });

@@ -8,7 +8,7 @@ import { nombreDe } from "../../lib/academia/formato";
 import type { ClaseDelDia, HoyAcademia } from "../../lib/academia/tipos";
 import { useFiltroSede } from "../../lib/academia/useFiltroSede";
 import { usePalabras } from "../../lib/academia/usePalabras";
-import { rutaCobroInscripcion } from "../../lib/academia/vista";
+import { RUTA_COBRAR, rutaCobroAlumno, rutaCobroInscripcion } from "../../lib/academia/vista";
 import { api } from "../../lib/api";
 import { capitalizar, fechaLarga } from "../../lib/agenda/horaAgenda";
 import { fmtHora, fmtMoney } from "../../lib/format";
@@ -108,22 +108,28 @@ export default function Hoy() {
             />
           </div>
           <div className="min-w-0 space-y-5 lg:space-y-6">
-            <ParaCobrar datos={d} puedeCobranza={puede("academia_cobranza")} onIr={(tipo) => navigate(`/academia/cobranza?tipo=${tipo}`)} />
+            <ParaCobrar
+              datos={d}
+              puedeCobranza={puede("academia_cobranza")}
+              puedeCobrar={puede("academia_cobrar")}
+              onIr={(tipo) => navigate(`/academia/cobranza?tipo=${tipo}`)}
+            />
             <Avisos datos={d} />
           </div>
         </div>
       )}
 
-      {(inscribe || puede("pos")) && (
+      {(inscribe || puede("academia_cobrar")) && (
         <div className="fixed inset-x-0 bottom-0 z-20 flex gap-2 border-t border-borde-soft bg-white p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(15,23,42,0.06)] md:hidden">
           {inscribe && (
             <Boton className="min-h-11 flex-1" onClick={() => setInscribiendo(true)}>
               Inscribir
             </Boton>
           )}
-          {puede("pos") && (
+          {/* A1: cobrar es "Cobrar a estudiante", no el POS (que quedó para productos). */}
+          {puede("academia_cobrar") && (
             <Link
-              to="/pos"
+              to={RUTA_COBRAR}
               className="inline-flex min-h-11 flex-1 items-center justify-center rounded-xl border border-borde bg-white px-4 py-2.5 text-sm font-semibold text-texto-2 hover:bg-muted"
             >
               Cobrar
@@ -250,10 +256,13 @@ function ClasesDeHoy({
 function ParaCobrar({
   datos,
   puedeCobranza,
+  puedeCobrar,
   onIr,
 }: {
   datos: HoyAcademia;
   puedeCobranza: boolean;
+  /** A1: cada fila lleva a "Cobrar a estudiante" con ese estudiante. */
+  puedeCobrar: boolean;
   onIr: (tipo: "vencidas" | "por-vencer") => void;
 }) {
   const c = datos.cobrar;
@@ -295,15 +304,22 @@ function ParaCobrar({
           {c.items.length > 0 && (
             <ul className={`${LISTA.lista} border-t border-borde-soft`}>
               {c.items.map((it, i) => (
-                <li key={`${it.alumno.id}-${i}`} className={`flex items-center justify-between gap-3 ${LISTA.itemHover}`}>
-                  <span className="min-w-0">
+                // Con dos acciones la fila se parte en el celular: el nombre arriba y
+                // el monto con los botones abajo, sin empujar nada fuera de la pantalla.
+                <li key={`${it.alumno.id}-${i}`} className={`flex flex-wrap items-center justify-between gap-x-3 gap-y-2 ${LISTA.itemHover}`}>
+                  <span className="min-w-0 flex-1 basis-40">
                     <span className="block truncate text-sm font-semibold text-texto">{it.alumno.nombre}</span>
                     <span className="block truncate text-xs text-texto-3">{it.detalle}</span>
                   </span>
-                  <span className="flex shrink-0 items-center gap-3">
-                    <span className="text-sm font-semibold tabular-nums text-texto">{fmtMoney(it.monto)}</span>
+                  <span className="flex shrink-0 items-center gap-2">
+                    <span className="mr-1 text-sm font-semibold tabular-nums text-texto">{fmtMoney(it.monto)}</span>
+                    {puedeCobrar && (
+                      <BotonFila icono="dollar" a={rutaCobroAlumno(it.alumno)}>
+                        Cobrar
+                      </BotonFila>
+                    )}
                     {puedeCobranza && (
-                      <BotonFila icono="qr" a="/academia/cobranza">
+                      <BotonFila variante="ghost" icono="qr" a="/academia/cobranza">
                         Enviar QR
                       </BotonFila>
                     )}

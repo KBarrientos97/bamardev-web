@@ -31,6 +31,12 @@ type Mirar = "asistenSinPagar" | "pagaronNoVienen" | "descuentosConPin" | "venta
 type FotoPendiente = PanelControl["fotosPorRevisar"][number];
 
 /**
+ * Fotos por revisar de a 10 (UX 13): con 150 inscripciones de marzo la lista
+ * era una pared. El backend las manda todas; se pagina acá.
+ */
+const FOTOS_POR_PAGINA = 10;
+
+/**
  * N9 · Panel de control del dueño (ronda 2, S7): lo que conviene mirar en el
  * mes para que nadie infle los cursos ni se quede con plata. Arriba, las
  * fotos por revisar de las inscripciones nuevas (se revisan una tras otra en
@@ -45,10 +51,34 @@ export default function Control() {
   const [mirar, setMirar] = useState<Mirar>("asistenSinPagar");
   const [revisando, setRevisando] = useState<FotoPendiente | null>(null);
   const [revisadas, setRevisadas] = useState<Record<number, "ok" | "observada">>({});
+  const [paginaFotos, setPaginaFotos] = useState(1);
+  const [aprobando, setAprobando] = useState<number | null>(null);
+  const [errorFotos, setErrorFotos] = useState("");
   const datos = useApi(() => apiAcademia.control(mes, sede.sucursalId), [mes, sede.sucursalId]);
   const d = datos.datos;
 
   const pendientes = (d?.fotosPorRevisar ?? []).filter((f) => !revisadas[f.alumnoId]);
+  const todasFotos = d?.fotosPorRevisar ?? [];
+  const paginasFotos = Math.max(1, Math.ceil(todasFotos.length / FOTOS_POR_PAGINA));
+  const paginaVista = Math.min(paginaFotos, paginasFotos);
+  const fotosDeLaPagina = todasFotos.slice((paginaVista - 1) * FOTOS_POR_PAGINA, paginaVista * FOTOS_POR_PAGINA);
+
+  /**
+   * A3: "Está bien" sin entrar al panel, para el que ya las vio (o confía en
+   * quien inscribió). Lo que no cuadra se sigue marcando desde "Revisar".
+   */
+  async function aprobar(f: FotoPendiente) {
+    setErrorFotos("");
+    setAprobando(f.alumnoId);
+    try {
+      await apiAcademia.revisarFotos(f.alumnoId, { ok: true });
+      setRevisadas((r) => ({ ...r, [f.alumnoId]: "ok" }));
+    } catch (e) {
+      setErrorFotos(e instanceof Error ? e.message : "No se pudieron aprobar las fotos");
+    } finally {
+      setAprobando(null);
+    }
+  }
   const meses = Array.from({ length: 6 }, (_, i) => sumarMeses(hoy, -i));
   const acciones: AccionMenu[] = [
     { clave: "excel", etiqueta: "Exportar Excel", icono: "download", detalle: "Pronto", deshabilitada: true, onClick: () => {} },
@@ -94,21 +124,26 @@ export default function Control() {
             bajada="Inscripciones nuevas · foto y carnet por los dos lados"
             sinRelleno
           >
+            {errorFotos && (
+              <div className="px-4 pt-3 sm:px-5">
+                <ErrorMsg>{errorFotos}</ErrorMsg>
+              </div>
+            )}
             {d.fotosPorRevisar.length === 0 ? (
               <p className="p-4 text-sm text-texto-3 sm:p-5">No hay fotos por revisar.</p>
             ) : (
               // En el celular, una lista con divisores; desde sm, una grilla de tarjetitas (de a dos con el panel abierto).
               <ul className={`divide-y divide-borde-soft sm:grid sm:grid-cols-2 sm:gap-3 sm:divide-y-0 sm:p-5 ${revisando ? "" : "lg:grid-cols-3"}`}>
-                {d.fotosPorRevisar.map((f) => {
+                {fotosDeLaPagina.map((f) => {
                   const hecho = revisadas[f.alumnoId];
                   return (
                     <li
                       key={f.alumnoId}
-                      className={`flex min-w-0 items-center justify-between gap-3 px-4 py-3 transition-colors sm:rounded-xl sm:border sm:border-borde-soft sm:p-3 sm:hover:border-primary-200 ${
+                      className={`flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-2 px-4 py-3 transition-colors sm:rounded-xl sm:border sm:border-borde-soft sm:p-3 sm:hover:border-primary-200 ${
                         hecho ? "bg-muted opacity-70" : "bg-white"
                       }`}
                     >
-                      <span className="flex min-w-0 items-center gap-3">
+                      <span className="flex min-w-0 flex-1 basis-44 items-center gap-3">
                         <span
                           aria-hidden="true"
                           className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary-50 text-primary-700"
@@ -125,14 +160,47 @@ export default function Control() {
                       {hecho ? (
                         <Chip tono={hecho === "ok" ? "verde" : "rojo"}>{hecho === "ok" ? "Revisada" : "Observada"}</Chip>
                       ) : (
-                        <BotonFila onClick={() => setRevisando(f)} aria-label={`Revisar la inscripción de ${f.nombre}`}>
-                          Revisar
-                        </BotonFila>
+                        <span className="flex shrink-0 items-center gap-2">
+                          <BotonFila
+                            variante="ghost"
+                            onClick={() => setRevisando(f)}
+                            aria-label={`Revisar la inscripción de ${f.nombre}`}
+                          >
+                            Revisar
+                          </BotonFila>
+                          <BotonFila
+                            icono="check"
+                            disabled={aprobando != null}
+                            onClick={() => void aprobar(f)}
+                            aria-label={`Aprobar las fotos de ${f.nombre}`}
+                          >
+                            {aprobando === f.alumnoId ? "Guardando…" : "Está bien"}
+                          </BotonFila>
+                        </span>
                       )}
                     </li>
                   );
                 })}
               </ul>
+            )}
+            {paginasFotos > 1 && (
+              <nav
+                aria-label="Páginas de fotos por revisar"
+                className="flex items-center justify-between gap-3 border-t border-borde-soft px-4 py-2.5 text-[13px] text-texto-2 sm:px-5"
+              >
+                <span className="tabular-nums">
+                  {(paginaVista - 1) * FOTOS_POR_PAGINA + 1}–{Math.min(todasFotos.length, paginaVista * FOTOS_POR_PAGINA)} de{" "}
+                  {todasFotos.length}
+                </span>
+                <span className="flex gap-2">
+                  <BotonFila variante="ghost" disabled={paginaVista <= 1} onClick={() => setPaginaFotos(paginaVista - 1)}>
+                    Anteriores
+                  </BotonFila>
+                  <BotonFila variante="ghost" disabled={paginaVista >= paginasFotos} onClick={() => setPaginaFotos(paginaVista + 1)}>
+                    Siguientes
+                  </BotonFila>
+                </span>
+              </nav>
             )}
           </Tarjeta>
 

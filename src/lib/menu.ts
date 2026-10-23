@@ -434,7 +434,7 @@ function general(a: string, cambios: Partial<ItemNav> = {}): ItemNav {
  * bloques que usa el instituto en vez de los de un comercio:
  *
  *   DÍA A DÍA       Hoy · Calendario · Estudiantes · Cobranza (recepción)
- *   VENDER          Punto de venta · Caja
+ *   VENDER          Cobrar (a estudiante) · Punto de venta · Caja
  *   CONTROL         Panel de control · Planilla docentes · Reportes (el dueño)
  *   MIS CLASES      Mis clases · Pasar lista · Notas · Mi planilla (el docente)
  *   ADMINISTRACIÓN  Ajustes (cursos, sedes) y un grupo "Más" plegado con los
@@ -468,6 +468,16 @@ const ITEMS_ACADEMIA: (ItemNav & { bloque: Bloque })[] = [
     ],
   },
   { a: "/academia/cobranza", label: "Cobranza", icono: "coins", seccion: "academia_cobranza", bloque: "dia" },
+  // Cobrar a estudiante (A1, 22-oct): las cuotas ya no se cobran en el POS,
+  // que queda para los productos. Primero en Vender: es lo de todos los días.
+  {
+    a: "/academia/cobrar",
+    label: "Cobrar",
+    titulo: "Cobrar a estudiante",
+    icono: "dollar",
+    seccion: "academia_cobrar",
+    bloque: "vender",
+  },
   { a: "/pos", label: "Punto de venta", icono: "cart", seccion: "pos", bloque: "vender", exacto: true },
   // La caja del turno: el historial del POS, con el cierre. Lleva a la misma
   // pantalla con `?vista=caja` (ver Pos.tsx).

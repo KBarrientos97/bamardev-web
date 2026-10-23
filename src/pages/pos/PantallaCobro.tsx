@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { Icon } from "../../components/Icon";
 import { QrParaCobrar } from "../../components/QrCobro";
 import { Boton, Campo, ErrorMsg, Input } from "../../components/ui";
@@ -55,6 +55,9 @@ export default function PantallaCobro({
   onCredito,
   enviando,
   error,
+  titulo = "Cobrar",
+  encabezado,
+  bloqueado = false,
 }: {
   total: number;
   /** Qué se está cobrando ("Mesa 4 · Juan"), para no cobrar la mesa equivocada. */
@@ -71,6 +74,17 @@ export default function PantallaCobro({
   onCredito?: (extra?: { propinas?: PropinaInput[] }) => void;
   enviando: boolean;
   error: string;
+  /** El título de la cabecera. El POS dice "Cobrar"; el instituto, "Cobrar a estudiante". */
+  titulo?: string;
+  /**
+   * Lo que va arriba del total, dentro del área que scrollea. Academia (A1)
+   * pone ahí al estudiante, sus cuotas y el monto editable: así elegir cuánto
+   * y con qué se paga es UNA pantalla y se confirma una sola vez. El POS no
+   * lo pasa y se ve como siempre.
+   */
+  encabezado?: ReactNode;
+  /** Confirmar apagado sin decir "Registrando…": falta algo de arriba (el monto). */
+  bloqueado?: boolean;
 }) {
   const { incluye, negocio, usuario } = useAuth();
   const formaEfectivo = buscarForma(formasPago, "Efectivo");
@@ -215,7 +229,7 @@ export default function PantallaCobro({
           <Icon name="arrowLeft" size={20} />
         </button>
         <div className="min-w-0">
-          <h1 className="text-[15px] font-bold text-texto">Cobrar</h1>
+          <h1 className="text-[15px] font-bold text-texto">{titulo}</h1>
           {/* Qué se está cobrando. Sin esto la cabecera decía sólo "Cobrar", y
               la cajera que atiende mostrador y salón a la vez —con dos mesas
               esperando— no tenía cómo verificar que estaba cobrando la
@@ -227,6 +241,7 @@ export default function PantallaCobro({
       </div>
 
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
+        {encabezado}
         <div className="rounded-2xl bg-marca p-5 text-center text-white">
           <p className="text-xs font-semibold uppercase tracking-wide opacity-90">
             Total a cobrar
@@ -340,7 +355,9 @@ export default function PantallaCobro({
                 placeholder="0,00"
                 // Con un vale aplicado no se roba el foco: el campo aparece mientras
                 // la cajera todavía está tecleando cuánto usar del vale.
-                autoFocus={extras.montoVale === 0}
+                // Con encabezado (el cobro del instituto) tampoco: en el celular
+                // el teclado tapaba de quién es el cobro y cuánto se reparte.
+                autoFocus={extras.montoVale === 0 && !encabezado}
                 className="text-lg font-bold"
               />
             </Campo>
@@ -431,7 +448,7 @@ export default function PantallaCobro({
             mensaje se escribía arriba, fuera de la vista. El cajero tocaba
             "Confirmar", no veía pasar nada y volvía a tocar. */}
         <ErrorMsg>{errorLocal || error}</ErrorMsg>
-        <Boton onClick={confirmar} disabled={enviando} className="w-full py-3 text-base">
+        <Boton onClick={confirmar} disabled={enviando || bloqueado} className="w-full py-3 text-base">
           {enviando
             ? "Registrando…"
             : `Confirmar cobro · ${fmtMoney(total)}${propinasTotal > 0 ? ` + ${fmtMoney(propinasTotal)} de propina` : ""}`}

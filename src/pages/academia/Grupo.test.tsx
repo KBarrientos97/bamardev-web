@@ -6,7 +6,7 @@ import { CAMILA, fichaCamila, grupoDetalle, MATEO } from "../../test/academiaFix
 /**
  * E3 · Detalle de grupo, versión limpia: los indicadores son los filtros,
  * tocar una fila abre el panel del estudiante con su estado de cuenta y "Cobrar"
- * lleva al POS con la inscripción. Asistencia y Notas son sus pantallas; el
+ * lleva a "Cobrar a estudiante" con la inscripción. Asistencia y Notas son sus pantallas; el
  * docente ve sólo si pagaron el módulo actual (ronda 2, D6).
  */
 
@@ -104,7 +104,7 @@ describe("E3 · detalle de grupo", () => {
     expect(screen.getByText("Debe")).toBeInTheDocument();
   });
 
-  it("tocar la fila abre el panel con el estado de cuenta, y Cobrar lleva al POS", async () => {
+  it("tocar la fila abre el panel con el estado de cuenta, y Cobrar lleva a Cobrar a estudiante", async () => {
     await montar();
     fireEvent.click(screen.getByRole("button", { name: "Ver a Bustillos Rek, Camila" }));
     await act(async () => {});
@@ -113,7 +113,7 @@ describe("E3 · detalle de grupo", () => {
     expect(within(panel).getByText("Cuota 2 · M2–M3")).toBeInTheDocument();
     expect(within(panel).getByText(/vencida 12 d/)).toBeInTheDocument();
     fireEvent.click(within(panel).getByRole("button", { name: /Cobrar Bs\s?750/ }));
-    expect(screen.getByTestId("destino")).toHaveTextContent("/pos?inscripcion=102&sede=1&sedeNombre=Central");
+    expect(screen.getByTestId("destino")).toHaveTextContent("/academia/cobrar?inscripcion=102&sede=1&sedeNombre=Central");
   });
 
   it("WhatsApp desde el panel pide el recordatorio de la cuota vencida y abre wa.me", async () => {

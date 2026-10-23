@@ -1,16 +1,15 @@
-import type { Carrito } from "../../pages/pos/useCarrito";
 import type { DetalleVentaInput, Venta } from "../../types";
-import type { CarritoInscripcion } from "./tipos";
+import type { CarritoInscripcion, Ref } from "./tipos";
 
 /**
- * El cobro de cuotas en el POS (E9, PLAN-ACADEMIAS-TECNICO §4.4), del lado de
- * la web. Una cuota no es un producto del catálogo: todas las de una carrera
- * comparten el mismo `productoId` (el SERVICIO de la carrera, deshabilitado),
- * y el carrito junta por producto. Por eso las cuotas viajan aparte del
- * carrito y se suman recién al armar la venta: cada una es un detalle con
- * `cuotaId`, `montoCuota` y cantidad 1, y el precio lo impone el servidor.
+ * El cobro de cuotas (E9, PLAN-ACADEMIAS-TECNICO §4.4), del lado de la web.
+ * Una cuota no es un producto del catálogo: todas las de una carrera
+ * comparten el mismo `productoId` (el SERVICIO de la carrera, deshabilitado).
+ * Cada una viaja como un detalle de la venta con `cuotaId`, `montoCuota` y
+ * cantidad 1, y el precio lo impone el servidor.
  *
- * Una venta sin cuotas no pasa por acá y sale EXACTAMENTE como siempre.
+ * Desde el 22-oct (A1) se cobran en "Cobrar a estudiante" y no en el POS:
+ * la venta es la misma, pero sólo con cuotas.
  */
 
 export interface LineaCuota {
@@ -51,29 +50,6 @@ export function detallesDeCuotas(cobro: CobroCuotas | null): DetalleVentaInput[]
     cuotaId: l.cuotaId,
     montoCuota: l.monto,
   }));
-}
-
-/**
- * El carrito como lo ve la pantalla de venta: los mismos renglones de
- * productos, con las cuotas sumadas al total, a las unidades y a los
- * detalles. Vaciar la venta suelta también las cuotas. Sin cuotas, el MISMO
- * carrito.
- */
-export function carritoConCuotas(carrito: Carrito, cobro: CobroCuotas | null, soltar: () => void): Carrito {
-  if (!cobro || cobro.lineas.length === 0) return carrito;
-  const suma = totalCuotas(cobro);
-  const subtotal = Math.round((carrito.subtotal + suma) * 100) / 100;
-  return {
-    ...carrito,
-    unidades: carrito.unidades + cobro.lineas.length,
-    subtotal,
-    total: Math.round((carrito.total + suma) * 100) / 100,
-    vaciar: () => {
-      carrito.vaciar();
-      soltar();
-    },
-    aDetalles: () => [...carrito.aDetalles(), ...detallesDeCuotas(cobro)],
-  };
 }
 
 /**
@@ -120,29 +96,6 @@ export function pagadorPorDefecto(pagadores: CarritoInscripcion["pagadores"]): n
   return (pagadores.find((x) => x.principal) ?? pagadores[0])?.clienteId ?? null;
 }
 
-const CLAVE = "bamar.cobroCuotas";
-
-/** Sobrevive a un F5, como el carrito (sessionStorage: es de esta sesión). */
-export function guardarCobroCuotas(cobro: CobroCuotas | null): void {
-  try {
-    if (cobro) sessionStorage.setItem(CLAVE, JSON.stringify(cobro));
-    else sessionStorage.removeItem(CLAVE);
-  } catch {
-    /* sin storage se sigue igual */
-  }
-}
-
-export function leerCobroCuotas(): CobroCuotas | null {
-  try {
-    const crudo = sessionStorage.getItem(CLAVE);
-    if (!crudo) return null;
-    const c = JSON.parse(crudo) as CobroCuotas;
-    return c && Array.isArray(c.lineas) && typeof c.inscripcionId === "number" ? c : null;
-  } catch {
-    return null;
-  }
-}
-
 /**
  * La venta recién cobrada, lista para el recibo (E10). Los renglones del
  * recibo no traen `cuotaId` y todas las cuotas comparten el producto de su
@@ -178,4 +131,49 @@ export function ventaConCuotas(venta: Venta, cobro: CobroCuotas | null): Venta {
 export function enlaceDeCuotas(cuotas: NonNullable<Venta["cuotas"]>): string | null | undefined {
   if (cuotas.every((q) => q.enlacePago === undefined)) return undefined;
   return cuotas.find((q) => q.enlacePago)?.enlacePago ?? null;
+}
+
+// ── "Cobrar a estudiante" (A1, 22-oct) ─────────────────────────────────────
+
+/** Con qué se entra: desde el grupo, la ficha, Cobranza, Hoy o "Inscribir y cobrar". */
+export interface InicialCobro {
+  inscripcionId?: number;
+  alumnoId?: number;
+  q?: string;
+  sede?: Ref;
+  /** Lo que se acordó que paga hoy al inscribir (A2): ya no se vuelve a pedir. */
+  monto?: number;
+}
+
+/** Lo que trae la dirección (`?inscripcion=&monto=&sede=&sedeNombre=` o `?alumno=&q=`). */
+export function inicialDeLaUrl(params: URLSearchParams): InicialCobro {
+  const num = (k: string) => {
+    const n = Number(params.get(k));
+    return Number.isFinite(n) && n > 0 ? n : undefined;
+  };
+  const sedeId = num("sede");
+  const sedeNombre = params.get("sedeNombre");
+  return {
+    inscripcionId: num("inscripcion"),
+    alumnoId: num("alumno"),
+    monto: num("monto"),
+    q: params.get("q") ?? undefined,
+    ...(sedeId != null || sedeNombre ? { sede: { id: sedeId ?? 0, nombre: sedeNombre ?? "" } } : {}),
+  };
+}
+
+/** Lo que suman los saldos: el tope de lo que se puede cobrar hoy. */
+export function saldoTotal(carrito: CarritoInscripcion): number {
+  return Math.round(carrito.lineas.reduce((s, l) => s + l.saldo, 0) * 100) / 100;
+}
+
+/**
+ * El monto que se propone: lo acordado al inscribir (sin pasar el saldo) o,
+ * si no hay, lo vencido; si nada venció, la primera cuota. Es lo mismo que
+ * marcaba "Módulos por cobrar" en el POS.
+ */
+export function montoSugerido(carrito: CarritoInscripcion, acordado?: number): number {
+  if (acordado != null && acordado > 0) return Math.min(Math.round(acordado * 100) / 100, saldoTotal(carrito));
+  const elegidas = cuotasIniciales(carrito).filter((x) => x.elegida);
+  return Math.round(elegidas.reduce((s, x) => s + x.linea.saldo, 0) * 100) / 100;
 }

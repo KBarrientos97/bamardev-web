@@ -155,16 +155,18 @@ describe("menú de ACADEMIA", () => {
   const bloque = (m: BloqueMenu[], b: Bloque) => m.find((x) => x.bloque === b)?.nodos.map((n) => n.item.label);
   const todos = (m: BloqueMenu[]) => aplanar(m.flatMap((b) => b.nodos)).map((n) => n.item.label);
 
-  it("la recepción: Hoy, Calendario, Estudiantes, Cobranza, Punto de venta y Caja", () => {
+  it("la recepción: Hoy, Calendario, Estudiantes, Cobranza, Cobrar, Punto de venta y Caja", () => {
     const m = menuDe("CAJERO");
     expect(m.map((b) => b.bloque)).toEqual(["dia", "vender"]);
     expect(bloque(m, "dia")).toEqual(["Hoy", "Calendario", "Estudiantes", "Inscripciones online", "Cobranza"]);
-    expect(bloque(m, "vender")).toEqual(["Punto de venta", "Caja"]);
+    // A1 (22-oct): cobrar a un estudiante es aparte del POS, que queda para productos.
+    expect(bloque(m, "vender")).toEqual(["Cobrar", "Punto de venta", "Caja"]);
   });
 
   it("el administrador suma Control y abajo Ajustes y Más, con los módulos generales adentro", () => {
     const m = menuDe("ADMIN");
     expect(m.map((b) => b.bloque)).toEqual(["dia", "vender", "control", "administracion"]);
+    expect(bloque(m, "vender")).toEqual(["Cobrar", "Punto de venta", "Caja"]);
     expect(bloque(m, "control")).toEqual(["Panel de control", "Planilla docentes", "Reportes"]);
     expect(bloque(m, "administracion")).toEqual(["Ajustes", "Más"]);
     const nombres = todos(m);

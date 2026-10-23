@@ -172,6 +172,8 @@ export type Seccion =
   | "academia_preinscripciones"
   /** E8: las cuotas que se deben, con el recordatorio por WhatsApp. */
   | "academia_cobranza"
+  /** A1 (22-oct): cobrar las cuotas de un estudiante, fuera del POS. */
+  | "academia_cobrar"
   /** E17: carreras, materias y planes de pago. */
   | "academia_carreras"
   /** Ajustes académicos: nota mínima, tolerancia, topes de promoción. */
@@ -334,6 +336,10 @@ const REQUISITOS: Record<Seccion, Requisito> = {
   // llega nada (igual que las solicitudes con `reserva_online`).
   academia_preinscripciones: { permiso: "academia.inscribir", feature: "preinscripcion_online" },
   academia_cobranza: { permiso: "academia.cobranza", feature: "academia" },
+  // Cobrar a estudiante (A1): lo mismo que el backend pide para buscar al
+  // alumno y traer su carrito (inscribir o gestionar la cobranza). El docente
+  // no lo tiene.
+  academia_cobrar: { permiso: "academia.cobranza", tambien: ["academia.inscribir"], feature: "academia" },
   academia_carreras: { permiso: "academia.configurar", feature: "academia" },
   academia_ajustes: { permiso: "academia.configurar", feature: "academia" },
   // ── Educación, ronda 2 ──
@@ -610,11 +616,11 @@ function cumpleFeature(ctx: ContextoPermisos, feature: Feature): boolean {
 }
 
 /**
- * ¿Cobra cuotas en el POS (E9)? Con la feature `academia` y con lo mismo que
- * el backend pide para buscar al alumno y traer su carrito: inscribir o
- * gestionar la cobranza (la secretaría y la coordinación; el docente, no). No
- * es una sección: es el botón "Cuotas por cobrar" dentro del POS, que sin
- * esto ni se pide.
+ * ¿Cobra cuotas (E9)? Con la feature `academia` y con lo mismo que el backend
+ * pide para buscar al alumno y traer su carrito: inscribir o gestionar la
+ * cobranza (la secretaría y la coordinación; el docente, no). Decide si el
+ * grupo, la ficha y Cobranza muestran "Cobrar", que desde el 22-oct (A1)
+ * lleva a "Cobrar a estudiante" (`academia_cobrar`, con la misma regla).
  */
 export function cobraCuotas(ctx: ContextoPermisos): boolean {
   if (!cumpleFeature(ctx, "academia")) return false;
@@ -790,6 +796,7 @@ const ORDEN_INICIO: [Seccion, string][] = [
   ["academia_alumnos", "/academia/alumnos"],
   ["academia_preinscripciones", "/academia/preinscripciones"],
   ["academia_cobranza", "/academia/cobranza"],
+  ["academia_cobrar", "/academia/cobrar"],
   ["academia_carreras", "/configuracion/carreras"],
   ["academia_ajustes", "/configuracion/academia"],
   ["academia_calendario", "/academia/calendario"],

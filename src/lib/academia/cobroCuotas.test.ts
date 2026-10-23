@@ -1,7 +1,5 @@
-import { describe, expect, it, vi } from "vitest";
-import type { Carrito } from "../../pages/pos/useCarrito";
+import { describe, expect, it } from "vitest";
 import {
-  carritoConCuotas,
   cuotasIniciales,
   detallesDeCuotas,
   enlaceDeCuotas,
@@ -13,25 +11,7 @@ import {
 } from "./cobroCuotas";
 import type { Venta } from "../../types";
 
-/** El cobro de cuotas en el POS (E9): viajan aparte del carrito de productos. */
-
-function carrito(): Carrito {
-  return {
-    lineas: [],
-    unidades: 1,
-    subtotal: 60,
-    total: 60,
-    agregar: vi.fn(),
-    setCantidad: vi.fn(),
-    setNota: vi.fn(),
-    setEnMesa: vi.fn(),
-    setConsumo: vi.fn(),
-    setConsumoTodo: vi.fn(),
-    quitar: vi.fn(),
-    vaciar: vi.fn(),
-    aDetalles: () => [{ productoId: 9, cantidad: 1, precio: 60, consumo: "LLEVAR" }],
-  };
-}
+/** El cobro de cuotas (E9; desde A1, en "Cobrar a estudiante"). */
 
 const COBRO: CobroCuotas = {
   inscripcionId: 5,
@@ -47,10 +27,9 @@ const COBRO: CobroCuotas = {
 };
 
 describe("las cuotas en la venta", () => {
-  it("sin cuotas el carrito es el MISMO: la venta sale como siempre", () => {
-    const c = carrito();
-    expect(carritoConCuotas(c, null, vi.fn())).toBe(c);
+  it("sin cobro no hay detalles ni total", () => {
     expect(detallesDeCuotas(null)).toEqual([]);
+    expect(totalCuotas(null)).toBe(0);
   });
 
   it("cada cuota es un detalle con cuotaId, montoCuota y cantidad 1, aunque compartan producto", () => {
@@ -60,17 +39,8 @@ describe("las cuotas en la venta", () => {
     ]);
   });
 
-  it("el carrito de la pantalla suma las cuotas y vaciarlo las suelta", () => {
-    const c = carrito();
-    const soltar = vi.fn();
-    const conCuotas = carritoConCuotas(c, COBRO, soltar);
+  it("las cuotas suman a centavos", () => {
     expect(totalCuotas(COBRO)).toBe(950);
-    expect(conCuotas.total).toBe(1010);
-    expect(conCuotas.unidades).toBe(3);
-    expect(conCuotas.aDetalles()).toHaveLength(3);
-    conCuotas.vaciar();
-    expect(c.vaciar).toHaveBeenCalled();
-    expect(soltar).toHaveBeenCalled();
   });
 
   it("el abono va de más que cero hasta el saldo", () => {

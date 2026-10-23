@@ -169,3 +169,50 @@ describe("E18 · Reportes", () => {
     expect(screen.getByRole("region", { name: "Morosidad" })).toHaveTextContent(/5\.400/);
   });
 });
+
+describe("A3 · fotos por revisar con un toque y de a 10 (UX 13)", () => {
+  const muchas = (n: number): PanelControl["fotosPorRevisar"] =>
+    Array.from({ length: n }, (_, i) => ({
+      alumnoId: 100 + i,
+      nombre: `Alumno ${i + 1}`,
+      ci: null,
+      fechaNacimiento: null,
+      grupo: "Barbería",
+      inscritoPor: "Lucía Vargas",
+      inscritaEn: "2026-10-16T12:00:00.000Z",
+    }));
+
+  it("«Está bien» aprueba sin abrir el panel", async () => {
+    render(
+      <MemoryRouter>
+        <Control />
+      </MemoryRouter>,
+    );
+    await act(async () => {});
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Aprobar las fotos de Suárez Peña, Daniela" }));
+    });
+    expect(apiAcademia.revisarFotos).toHaveBeenCalledWith(61, { ok: true });
+    expect(screen.queryByRole("complementary")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Revisar 1 foto" })).toBeInTheDocument();
+  });
+
+  it("con 23 pendientes muestra 10 y pasa de página", async () => {
+    vi.mocked(apiAcademia.control).mockResolvedValue({ ...PANEL, fotosPorRevisar: muchas(23) });
+    render(
+      <MemoryRouter>
+        <Control />
+      </MemoryRouter>,
+    );
+    await act(async () => {});
+    const fotos = screen.getByRole("region", { name: /Fotos por revisar/ });
+    expect(within(fotos).getAllByRole("button", { name: /^Aprobar las fotos/ })).toHaveLength(10);
+    const nav = within(fotos).getByRole("navigation", { name: "Páginas de fotos por revisar" });
+    expect(nav).toHaveTextContent("1–10 de 23");
+    fireEvent.click(within(nav).getByRole("button", { name: "Siguientes" }));
+    fireEvent.click(within(nav).getByRole("button", { name: "Siguientes" }));
+    expect(nav).toHaveTextContent("21–23 de 23");
+    expect(within(fotos).getAllByRole("button", { name: /^Aprobar las fotos/ })).toHaveLength(3);
+    expect(within(nav).getByRole("button", { name: "Siguientes" })).toBeDisabled();
+  });
+});
