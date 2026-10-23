@@ -60,12 +60,16 @@ export function armarSupervision(api: SupervisionApi): { mesas: MesaSup[]; cuent
 
 export interface ResumenSup {
   cajasAbiertas: number;
+  /** Las de hoy: las abiertas y las que se abrieron o cerraron en la jornada (la lista trae también las de ayer). */
   cajasTotal: number;
   /** Las abiertas que vienen de antes de la jornada: cajas que se olvidaron de cerrar. */
   cajasViejas: number;
-  /** Lo vendido en la jornada (ventas aprobadas, sin las anuladas ni las de días atrás). */
+  /** Lo vendido en el turno que se mira (ventas aprobadas, sin las anuladas); sin turno, lo de la jornada. */
   vendido: number;
   ventas: number;
+  /** Lo vendido en toda la jornada, de todas las cajas (sin las de días atrás). */
+  vendidoHoy: number;
+  ventasHoy: number;
   mesasEnJuego: number;
   mesasTotal: number;
   pausadas: number;
@@ -76,18 +80,22 @@ export interface ResumenSup {
 }
 
 export function resumenSupervision(
-  api: Pick<SupervisionApi, "cajas" | "hoy" | "desde">,
+  api: Pick<SupervisionApi, "cajas" | "hoy" | "desde" | "turno">,
   mesas: VistaMesa[],
   cuentas: VistaCuenta[],
 ): ResumenSup {
   const enUso = mesas.filter((v) => v.cuenta);
+  // Lo del turno que se mira; un backend anterior no lo manda y todo es de hoy.
+  const delTurno = api.turno ?? api.hoy;
   return {
     cajasAbiertas: api.cajas.filter((c) => c.abierta).length,
-    cajasTotal: api.cajas.length,
+    cajasTotal: api.cajas.filter((c) => c.abierta || c.desde >= api.desde || (c.hasta ?? 0) >= api.desde).length,
     cajasViejas: api.cajas.filter((c) => estadoDeCaja(c, api.desde) === "vieja").length,
     // No es la suma de las cajas: una caja abierta de ayer trae sus ventas de ayer.
-    vendido: round2(api.hoy.vendido),
-    ventas: api.hoy.ventas,
+    vendido: round2(delTurno.vendido),
+    ventas: delTurno.ventas,
+    vendidoHoy: round2(api.hoy.vendido),
+    ventasHoy: api.hoy.ventas,
     mesasEnJuego: enUso.length,
     mesasTotal: mesas.length,
     pausadas: enUso.filter((v) => v.estado === "pausada").length,
@@ -133,6 +141,66 @@ export type EstadoCaja = "abierta" | "vieja" | "cerrada";
 export function estadoDeCaja(c: CajaSupervisionApi, desdeJornada: number): EstadoCaja {
   if (!c.abierta) return "cerrada";
   return c.desde < desdeJornada ? "vieja" : "abierta";
+}
+
+// ── El turno ────────────────────────────────────────────────────────────────
+
+/**
+ * Un turno es una caja: de que se abre a que se cierra. Un billar abre a la
+ * tarde y cierra de madrugada, y lo de la caja anterior no se mezcla con lo de
+ * la nueva: la pantalla empieza de cero cuando abren otra y el turno de antes
+ * se elige aparte.
+ */
+export type SituacionTurno =
+  /** Sin turno que mirar (nadie abrió caja, o un backend anterior): se ve lo de hoy. */
+  | "hoy"
+  /** La caja que trabaja ahora. */
+  | "enCurso"
+  /** La única abierta es de antes de la jornada: se olvidaron de cerrarla. */
+  | "olvidada"
+  /** Todas cerradas: se ve cómo terminó la última, hasta que abran otra. */
+  | "cerrado"
+  /** Una caja elegida a mano, no la que corresponde ahora. */
+  | "elegido";
+
+export function situacionDelTurno(api: Pick<SupervisionApi, "cajas" | "desde" | "turno">): {
+  situacion: SituacionTurno;
+  caja?: CajaSupervisionApi;
+} {
+  const t = api.turno;
+  const caja = t?.cajaId != null ? api.cajas.find((c) => c.id === t.cajaId) : undefined;
+  if (!t || !caja) return { situacion: "hoy" };
+  if (t.cajaId !== t.defectoId) return { situacion: "elegido", caja };
+  if (!caja.abierta) return { situacion: "cerrado", caja };
+  return { situacion: estadoDeCaja(caja, api.desde) === "vieja" ? "olvidada" : "enCurso", caja };
+}
+
+const mismoDia = (a: number, b: number) => new Date(a).toDateString() === new Date(b).toDateString();
+
+/** "desde 16:02" si sigue abierta; "ayer 16:02 – 02:41" si ya cerró (sin repetir el día si es el mismo). */
+export function rangoDeTurno(c: Pick<CajaSupervisionApi, "desde" | "hasta">, ahora: number): string {
+  if (c.hasta == null) return `desde ${cuando(c.desde, ahora)}`;
+  const fin = mismoDia(c.desde, c.hasta) ? hhmm(new Date(c.hasta)) : cuando(c.hasta, ahora);
+  return `${cuando(c.desde, ahora)} – ${fin}`;
+}
+
+/** Cómo se nombra un turno en el selector: quién, cuándo y, si es el que corresponde, qué es. */
+function etiquetaDeTurno(c: CajaSupervisionApi, api: Pick<SupervisionApi, "desde" | "turno">, ahora: number): string {
+  const defecto = api.turno?.defectoId === c.id;
+  let marca = "";
+  if (c.abierta) marca = estadoDeCaja(c, api.desde) === "vieja" ? "Quedó abierta · " : defecto ? "Turno en curso · " : "Caja abierta · ";
+  else if (defecto) marca = "Último turno · ";
+  return `${marca}${c.cajero} · ${rangoDeTurno(c, ahora)}`;
+}
+
+/** Los turnos que se pueden mirar: las cajas de hoy y ayer, la más nueva primero. */
+export function opcionesDeTurno(
+  api: Pick<SupervisionApi, "cajas" | "desde" | "turno">,
+  ahora: number,
+): { id: number; etiqueta: string }[] {
+  return [...api.cajas]
+    .sort((a, b) => b.desde - a.desde)
+    .map((c) => ({ id: c.id, etiqueta: etiquetaDeTurno(c, api, ahora) }));
 }
 
 /** "cuadra", "sobran Bs 5,00" o "faltan Bs 5,00": cómo quedó el arqueo. */

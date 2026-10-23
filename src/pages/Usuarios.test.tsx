@@ -26,12 +26,25 @@ vi.mock("../store/AuthContext", () => ({
 }));
 
 vi.mock("../lib/api", () => ({
+  // `mensajeDeError` (lib/roles) pregunta `instanceof ApiError` al mostrar un "no" del servidor.
+  ApiError: class ApiError extends Error {
+    status: number;
+    codigo?: string;
+    constructor(mensaje: string, status = 0, extra?: { codigo?: string }) {
+      super(mensaje);
+      this.status = status;
+      this.codigo = extra?.codigo;
+    }
+  },
   api: {
     getUsuarios: vi.fn(),
     getAlmacenes: vi.fn(async () => []),
     actualizarUsuario: vi.fn(),
     crearUsuario: vi.fn(),
     quitarPin: vi.fn(async () => ({ mensaje: "PIN quitado" })),
+    cambiarPin: vi.fn(async () => ({ mensaje: "PIN actualizado" })),
+    getCupoUsuarios: vi.fn(async () => ({ maximo: null, ocupados: 3, alLimite: false })),
+    eliminarUsuario: vi.fn(async () => ({ mensaje: "Usuario eliminado" })),
     cambiarEstadoUsuario: vi.fn(),
   },
 }));
@@ -41,7 +54,7 @@ vi.mock("../lib/roles", async (importOriginal) => {
   return { ...real, apiRoles: { listar: vi.fn(), asignables: vi.fn(), catalogo: vi.fn() } };
 });
 
-import { api } from "../lib/api";
+import { ApiError, api } from "../lib/api";
 import { apiRoles } from "../lib/roles";
 import { usuarioDe } from "../test/sesiones";
 import Usuarios from "./Usuarios";
@@ -251,6 +264,73 @@ describe("crear y editar con los roles asignables", () => {
     expect(vi.mocked(api.actualizarUsuario).mock.calls[0][1]).not.toHaveProperty("rolId");
   });
 
+  describe("el usuario con el que entra", () => {
+    async function editar(lista: Usuario[], quien: string) {
+      await montar(lista);
+      abrir(quien);
+      fireEvent.click(screen.getByRole("button", { name: "Editar" }));
+      await act(async () => {});
+    }
+    const guardar = async () => {
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
+      });
+    };
+
+    it("al editar se ve el usuario que tiene, y guardar sin tocarlo no lo manda", async () => {
+      await editar([OMAR, ANA], "ana");
+      expect(screen.getByLabelText(/^Usuario/)).toHaveValue("ana");
+      expect(screen.getByText("Con esto entra al sistema")).toBeInTheDocument();
+      vi.mocked(api.actualizarUsuario).mockResolvedValue(ANA);
+      await guardar();
+      expect(vi.mocked(api.actualizarUsuario).mock.calls[0][1]).not.toHaveProperty("username");
+    });
+
+    it("cambiarlo manda el nuevo limpio y en minúsculas, y avisa que hay que decírselo", async () => {
+      await editar([OMAR, ANA], "ana");
+      fireEvent.change(screen.getByLabelText(/^Usuario/), { target: { value: "  Ana.Noche " } });
+      expect(screen.getByText(/Desde ahora entra con «ana\.noche»/)).toBeInTheDocument();
+      vi.mocked(api.actualizarUsuario).mockResolvedValue(cuenta({ ...ANA, usuario: "ana.noche" }));
+      await guardar();
+      expect(api.actualizarUsuario).toHaveBeenCalledWith(2, expect.objectContaining({ username: "ana.noche" }));
+    });
+
+    it("en la propia cuenta avisa que la próxima vez que entre use el nuevo", async () => {
+      await editar([OMAR, ANA], "omar");
+      fireEvent.change(screen.getByLabelText(/^Usuario/), { target: { value: "dueno" } });
+      expect(screen.getByText(/Es tu cuenta: la próxima vez que entres, usá «dueno»/)).toBeInTheDocument();
+    });
+
+    it("uno inválido se frena antes de mandarlo y dice qué se acepta", async () => {
+      await editar([OMAR, ANA], "ana");
+      const campo = screen.getByLabelText(/^Usuario/);
+      for (const malo of ["ab", "ana noche", "aná"]) {
+        fireEvent.change(campo, { target: { value: malo } });
+        expect(screen.getAllByText(/necesita entre 3 y 30 caracteres/).length).toBeGreaterThan(0);
+        await guardar();
+      }
+      expect(api.actualizarUsuario).not.toHaveBeenCalled();
+    });
+
+    it("uno viejo con caracteres raros, si no se toca, no impide editar lo demás", async () => {
+      const viejo = de(CAJERO, { id: 8, nombre: "Rosa", usuario: "Rosa M." });
+      await editar([OMAR, viejo], "Rosa M\\.");
+      vi.mocked(api.actualizarUsuario).mockResolvedValue(viejo);
+      await guardar();
+      expect(api.actualizarUsuario).toHaveBeenCalledTimes(1);
+      expect(vi.mocked(api.actualizarUsuario).mock.calls[0][1]).not.toHaveProperty("username");
+    });
+
+    it("si el nombre ya lo tiene otro, se ve lo que dice el servidor y el diálogo sigue abierto", async () => {
+      await editar([OMAR, ANA], "ana");
+      fireEvent.change(screen.getByLabelText(/^Usuario/), { target: { value: "omar" } });
+      vi.mocked(api.actualizarUsuario).mockRejectedValue(new Error("Ese nombre de usuario ya está en uso"));
+      await guardar();
+      expect(await screen.findByText("Ese nombre de usuario ya está en uso")).toBeInTheDocument();
+      expect(screen.getByText("Editar usuario")).toBeInTheDocument();
+    });
+  });
+
   it("cambiarle el rol manda el rolId nuevo", async () => {
     await montar([OMAR, ANA]);
     abrir("ana");
@@ -376,6 +456,57 @@ describe("el PIN de autorización", () => {
     expect(screen.getByRole("button", { name: "Asignar PIN" })).toBeInTheDocument();
   });
 
+  describe("elegir el PIN", () => {
+    async function abrirCambiarPin() {
+      await montar([OMAR, ELSA]);
+      abrir("elsa");
+      fireEvent.click(screen.getByRole("button", { name: "Cambiar PIN" }));
+      await act(async () => {});
+    }
+    const escribir = (pin: string) => {
+      fireEvent.change(screen.getByLabelText(/^PIN/), { target: { value: pin } });
+      fireEvent.change(screen.getByLabelText(/^Repetir PIN/), { target: { value: pin } });
+    };
+    const guardar = async () => {
+      const botones = screen.getAllByRole("button", { name: "Guardar" });
+      await act(async () => {
+        fireEvent.click(botones[botones.length - 1]);
+      });
+    };
+
+    // 21-oct, el dueño: "es decisión de cada cliente". Uno sencillo, una fecha o
+    // un año se guardan sin avisos.
+    it.each(["1234", "1507", "0000", "2024"])("el PIN es libre: %s se guarda", async (pin) => {
+      await abrirCambiarPin();
+      expect(screen.getByText("4 dígitos")).toBeInTheDocument();
+      escribir(pin);
+      expect(screen.queryByText(/Elegí otro/)).not.toBeInTheDocument();
+      await guardar();
+      expect(api.cambiarPin).toHaveBeenCalledWith(5, pin);
+    });
+
+    it("sigue siendo de 4 dígitos y hay que repetirlo igual", async () => {
+      await abrirCambiarPin();
+      escribir("123");
+      await guardar();
+      expect(screen.getAllByText("El PIN son 4 dígitos, sin letras.").length).toBeGreaterThan(0);
+      fireEvent.change(screen.getByLabelText(/^PIN/), { target: { value: "4821" } });
+      fireEvent.change(screen.getByLabelText(/^Repetir PIN/), { target: { value: "4822" } });
+      await guardar();
+      expect(screen.getAllByText("Los dos PIN no coinciden.").length).toBeGreaterThan(0);
+      expect(api.cambiarPin).not.toHaveBeenCalled();
+    });
+
+    it("el aviso de un intento anterior se va al teclear otro PIN", async () => {
+      await abrirCambiarPin();
+      escribir("123");
+      await guardar();
+      expect(screen.getAllByText("El PIN son 4 dígitos, sin letras.").length).toBeGreaterThan(0);
+      fireEvent.change(screen.getByLabelText(/^PIN/), { target: { value: "4821" } });
+      expect(screen.queryByText("El PIN son 4 dígitos, sin letras.")).not.toBeInTheDocument();
+    });
+  });
+
   it("al Administrador se le cambia, pero no se le quita", async () => {
     await montar([cuenta({ tienePin: true }), ELSA]);
     abrir("omar");
@@ -422,5 +553,139 @@ describe("la sucursal", () => {
     expect(screen.queryByText("Sucursal")).not.toBeInTheDocument();
     fireEvent.change(screen.getByRole("combobox"), { target: { value: "3" } });
     expect(screen.getByText("Sucursal")).toBeInTheDocument();
+  });
+});
+
+describe("eliminar un usuario", () => {
+  const eliminarDelDetalle = () => screen.getByRole("button", { name: "Eliminar" });
+  /** El botón del diálogo de confirmar (el último: el del detalle queda atrás). */
+  const confirmar = async () => {
+    const botones = screen.getAllByRole("button", { name: "Eliminar" });
+    await act(async () => {
+      fireEvent.click(botones[botones.length - 1]);
+    });
+  };
+
+  it("el detalle de otra cuenta ofrece Eliminar; el de la propia, no", async () => {
+    await montar([OMAR, ANA]);
+    abrir("ana");
+    expect(eliminarDelDetalle()).toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole("button", { name: "Cerrar" })[0]);
+    abrir("omar");
+    expect(screen.queryByRole("button", { name: "Eliminar" })).not.toBeInTheDocument();
+  });
+
+  it("pide confirmar, elimina la cuenta, la saca de la lista y avisa", async () => {
+    await montar([OMAR, ANA]);
+    abrir("ana");
+    fireEvent.click(eliminarDelDetalle());
+    expect(screen.getByText(/Se borra la cuenta y no se puede deshacer/)).toBeInTheDocument();
+    // Todavía no se mandó nada.
+    expect(api.eliminarUsuario).not.toHaveBeenCalled();
+    vi.mocked(api.getUsuarios).mockResolvedValue([OMAR]);
+    await confirmar();
+    expect(api.eliminarUsuario).toHaveBeenCalledWith(2);
+    expect(await screen.findByText('"Ana" eliminado.')).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /@ana(?![a-z0-9])/ })).not.toBeInTheDocument();
+    // Cambió el cupo: lo vuelve a pedir.
+    expect(vi.mocked(api.getCupoUsuarios).mock.calls.length).toBeGreaterThan(1);
+  });
+
+  it("con historial no se elimina: se muestra lo que dice el servidor y se ofrece desactivarla", async () => {
+    vi.mocked(api.eliminarUsuario).mockRejectedValue(
+      new ApiError("Ana ya tiene registros a su nombre (ventas, cajas, movimientos u otros).", 409, {
+        codigo: "USUARIO_CON_HISTORIAL",
+      }),
+    );
+    vi.mocked(api.cambiarEstadoUsuario).mockResolvedValue({ ...ANA, activo: false });
+    await montar([OMAR, ANA]);
+    abrir("ana");
+    fireEvent.click(eliminarDelDetalle());
+    await confirmar();
+    expect(await screen.findByText(/Ana ya tiene registros a su nombre/)).toBeInTheDocument();
+    expect(screen.getByText("No se puede eliminar")).toBeInTheDocument();
+    // Desactivarla es lo que corresponde: abre la confirmación de siempre.
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Desactivarlo" }));
+    });
+    expect(screen.getByText("Desactivar usuario")).toBeInTheDocument();
+    const botones = screen.getAllByRole("button", { name: "Desactivar" });
+    await act(async () => {
+      fireEvent.click(botones[botones.length - 1]);
+    });
+    expect(api.cambiarEstadoUsuario).toHaveBeenCalledWith(2, false);
+  });
+
+  it("si ya estaba inactiva no se ofrece desactivarla otra vez", async () => {
+    vi.mocked(api.eliminarUsuario).mockRejectedValue(
+      new ApiError("Beto ya tiene registros a su nombre.", 409, { codigo: "USUARIO_CON_HISTORIAL" }),
+    );
+    await montar([OMAR, BETO]);
+    abrir("beto");
+    fireEvent.click(eliminarDelDetalle());
+    await confirmar();
+    expect(await screen.findByText(/Beto ya tiene registros/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Desactivarlo" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Entendido" })).toBeInTheDocument();
+  });
+
+  it("cualquier otro rechazo del servidor se ve en la pantalla", async () => {
+    vi.mocked(api.eliminarUsuario).mockRejectedValue(new Error("No podés eliminar tu propia cuenta"));
+    await montar([OMAR, ANA]);
+    abrir("ana");
+    fireEvent.click(eliminarDelDetalle());
+    await confirmar();
+    expect(await screen.findByText("No podés eliminar tu propia cuenta")).toBeInTheDocument();
+    expect(screen.queryByText("No se puede eliminar")).not.toBeInTheDocument();
+  });
+});
+
+describe("el límite de usuarios del plan", () => {
+  const nuevo = () => screen.getByRole("button", { name: "Nuevo" });
+
+  it("con el plan lleno, Nuevo avisa con un diálogo y no abre el formulario", async () => {
+    vi.mocked(api.getCupoUsuarios).mockResolvedValue({ maximo: 2, ocupados: 2, alLimite: true });
+    await montar([OMAR, ANA]);
+    await act(async () => {
+      fireEvent.click(nuevo());
+    });
+    expect(screen.getByText("Llegaste al límite de usuarios")).toBeInTheDocument();
+    expect(screen.getByText(/Tu cuenta solo puede tener/)).toHaveTextContent("Tu cuenta solo puede tener 2 usuarios activos y ya tenés 2.");
+    expect(screen.getByText(/desactivá o eliminá a una persona/)).toBeInTheDocument();
+    // No se abrió el alta.
+    expect(screen.queryByText("Nuevo usuario")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/^Contraseña/)).not.toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Entendido" }));
+    });
+    expect(screen.queryByText("Llegaste al límite de usuarios")).not.toBeInTheDocument();
+  });
+
+  it("con un solo usuario permitido lo dice en singular", async () => {
+    vi.mocked(api.getCupoUsuarios).mockResolvedValue({ maximo: 1, ocupados: 1, alLimite: true });
+    await montar([OMAR]);
+    await act(async () => {
+      fireEvent.click(nuevo());
+    });
+    expect(screen.getByText(/Tu cuenta solo puede tener/)).toHaveTextContent("Tu cuenta solo puede tener 1 usuario activo y ya tenés 1.");
+  });
+
+  it("con lugar, Nuevo abre el formulario", async () => {
+    vi.mocked(api.getCupoUsuarios).mockResolvedValue({ maximo: 4, ocupados: 2, alLimite: false });
+    await montar([OMAR, ANA]);
+    await act(async () => {
+      fireEvent.click(nuevo());
+    });
+    expect(screen.getByText("Nuevo usuario")).toBeInTheDocument();
+    expect(screen.queryByText("Llegaste al límite de usuarios")).not.toBeInTheDocument();
+  });
+
+  it("si el servidor no informa el límite, Nuevo abre el formulario igual", async () => {
+    vi.mocked(api.getCupoUsuarios).mockRejectedValue(new Error("no existe"));
+    await montar([OMAR, ANA]);
+    await act(async () => {
+      fireEvent.click(nuevo());
+    });
+    expect(screen.getByText("Nuevo usuario")).toBeInTheDocument();
   });
 });

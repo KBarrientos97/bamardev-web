@@ -10,7 +10,10 @@ import {
   filtrarActividad,
   grupoDeActividad,
   iniciales,
+  opcionesDeTurno,
+  rangoDeTurno,
   resumenSupervision,
+  situacionDelTurno,
   textoDiferencia,
   tonoDeActividad,
 } from "./Supervision.datos";
@@ -65,6 +68,78 @@ describe("Supervisión: cómo se lee cada cosa", () => {
     expect(iniciales("Pepe Mamani")).toBe("PM");
     expect(iniciales("  kevin  ")).toBe("K");
     expect(iniciales("")).toBe("?");
+  });
+});
+
+describe("Supervisión: el turno", () => {
+  // Hoy 22-oct 18:00; la jornada empezó a las 06:00. Anoche hubo un turno de 16:00 a 02:41.
+  const ahora = new Date(2026, 9, 22, 18, 0).getTime();
+  const jornada = new Date(2026, 9, 22, 6, 0).getTime();
+  const hora = (d: number, h: number, m = 0) => new Date(2026, 9, d, h, m).getTime();
+  const anoche = caja({ id: 1, cajero: "Pepe Mamani", abierta: false, desde: hora(21, 16), hasta: hora(22, 2, 41) });
+  const hoy = caja({ id: 2, cajero: "Ana Rojas", desde: hora(22, 16, 2) });
+  const turno = (cajaId: number | null, defectoId: number | null) => ({
+    cajaId,
+    defectoId,
+    desde: 0,
+    hasta: null,
+    ventas: 0,
+    vendido: 0,
+  });
+
+  it("por defecto es el de la caja que trabaja ahora", () => {
+    const api = { cajas: [hoy, anoche], desde: jornada, turno: turno(2, 2) };
+    expect(situacionDelTurno(api)).toEqual({ situacion: "enCurso", caja: hoy });
+  });
+
+  it("con todas cerradas, sigue mostrando cómo terminó la última hasta que abran otra", () => {
+    const api = { cajas: [anoche], desde: jornada, turno: turno(1, 1) };
+    expect(situacionDelTurno(api)).toEqual({ situacion: "cerrado", caja: anoche });
+  });
+
+  it("una caja que sigue abierta de antes de la jornada es una olvidada", () => {
+    const olvidada = caja({ id: 3, desde: hora(21, 21, 9) });
+    expect(situacionDelTurno({ cajas: [olvidada], desde: jornada, turno: turno(3, 3) })).toEqual({
+      situacion: "olvidada",
+      caja: olvidada,
+    });
+  });
+
+  it("elegir otra caja es mirar un turno que no es el de ahora", () => {
+    const api = { cajas: [hoy, anoche], desde: jornada, turno: turno(1, 2) };
+    expect(situacionDelTurno(api)).toEqual({ situacion: "elegido", caja: anoche });
+  });
+
+  it("sin turno (nadie abrió caja, o un servidor anterior) se ve lo de hoy", () => {
+    expect(situacionDelTurno({ cajas: [], desde: jornada, turno: turno(null, null) }).situacion).toBe("hoy");
+    expect(situacionDelTurno({ cajas: [hoy], desde: jornada }).situacion).toBe("hoy");
+    // Una caja que ya no está en la lista tampoco da turno.
+    expect(situacionDelTurno({ cajas: [hoy], desde: jornada, turno: turno(99, 2) }).situacion).toBe("hoy");
+  });
+
+  it("cuándo fue el turno: desde la apertura, o de la apertura al cierre sin repetir el día", () => {
+    expect(rangoDeTurno(hoy, ahora)).toBe("desde 16:02");
+    expect(rangoDeTurno(anoche, ahora)).toBe("ayer 16:00 – 02:41");
+    // Si abrió y cerró el mismo día, la hora de cierre va sola.
+    expect(rangoDeTurno({ desde: hora(22, 9), hasta: hora(22, 15, 30) }, ahora)).toBe("09:00 – 15:30");
+    // Una caja olvidada: desde cuándo.
+    expect(rangoDeTurno({ desde: hora(21, 21, 9), hasta: null }, ahora)).toBe("desde ayer 21:09");
+  });
+
+  it("las opciones del selector: la más nueva primero y cada una dice qué es", () => {
+    const api = { cajas: [anoche, hoy], desde: jornada, turno: turno(2, 2) };
+    expect(opcionesDeTurno(api, ahora)).toEqual([
+      { id: 2, etiqueta: "Turno en curso · Ana Rojas · desde 16:02" },
+      { id: 1, etiqueta: "Pepe Mamani · ayer 16:00 – 02:41" },
+    ]);
+    // Con todas cerradas, la última se marca; una abierta de antes, olvidada.
+    expect(opcionesDeTurno({ cajas: [anoche], desde: jornada, turno: turno(1, 1) }, ahora)[0].etiqueta).toBe(
+      "Último turno · Pepe Mamani · ayer 16:00 – 02:41",
+    );
+    const olvidada = caja({ id: 3, cajero: "Luis", desde: hora(21, 21, 9) });
+    expect(opcionesDeTurno({ cajas: [olvidada], desde: jornada, turno: turno(3, 3) }, ahora)[0].etiqueta).toBe(
+      "Quedó abierta · Luis · desde ayer 21:09",
+    );
   });
 });
 
@@ -197,6 +272,17 @@ describe("Supervisión: mesas, cuentas y los números de arriba", () => {
     expect(r.totalAbierto).toBeGreaterThanOrEqual(r.porCobrar);
   });
 
+  it("lo vendido es del turno que se mira y el día entero va aparte; las cajas de ayer no son de hoy", () => {
+    const delTurno = { cajaId: 1, defectoId: 1, desde: AHORA - 3 * H, hasta: null, ventas: 3, vendido: 120.5 };
+    const ayer = caja({ id: 4, abierta: false, desde: AHORA - 20 * H, hasta: AHORA - 12 * H });
+    const r = resumenSupervision({ ...api, cajas: [...api.cajas, ayer], turno: delTurno }, [], []);
+    expect(r).toMatchObject({ vendido: 120.5, ventas: 3, vendidoHoy: 150, ventasHoy: 4 });
+    // Las 3 de antes (una abierta, otra cerrada hoy, la olvidada) y no la cerrada ayer.
+    expect(r.cajasTotal).toBe(3);
+    // Un servidor anterior no manda el turno: lo vendido es lo de hoy.
+    expect(resumenSupervision(api, [], [])).toMatchObject({ vendido: 150, ventas: 4, vendidoHoy: 150 });
+  });
+
   it("sin cajas ni mesas, todo en cero", () => {
     expect(resumenSupervision({ cajas: [], hoy: { ventas: 0, vendido: 0 }, desde: 0 }, [], [])).toEqual({
       cajasAbiertas: 0,
@@ -204,6 +290,8 @@ describe("Supervisión: mesas, cuentas y los números de arriba", () => {
       cajasViejas: 0,
       vendido: 0,
       ventas: 0,
+      vendidoHoy: 0,
+      ventasHoy: 0,
       mesasEnJuego: 0,
       mesasTotal: 0,
       pausadas: 0,
