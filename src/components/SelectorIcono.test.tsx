@@ -54,7 +54,8 @@ describe("SelectorIcono", () => {
     ["FARMACIA", "Farmacia", 5],
     ["FERRETERIA", "Ferretería", 6],
     ["BARBERIA", "Belleza y spa", 8],
-    ["ACADEMIA", "Educación", 10],
+    ["BILLAR", "Licorería y kiosco", 10],
+    ["ACADEMIA", "Educación", 11],
   ])("con rubro %s abre en la sección %s", (rubro, nombre, indice) => {
     const { lista } = abrir({ rubro });
     expect(pestana(nombre)).toHaveAttribute("aria-current", "true");
@@ -92,7 +93,7 @@ describe("SelectorIcono", () => {
   it("al desplazar a mano se marca sola la pestaña de la sección visible", () => {
     const { lista } = abrir();
     Object.defineProperty(lista, "clientHeight", { configurable: true, value: 400 });
-    Object.defineProperty(lista, "scrollHeight", { configurable: true, value: 11 * ALTO_SECCION });
+    Object.defineProperty(lista, "scrollHeight", { configurable: true, value: 12 * ALTO_SECCION });
     // Pasada la pausa que sigue al salto inicial.
     vi.spyOn(Date, "now").mockReturnValue(Date.now() + 5000);
 
@@ -101,7 +102,7 @@ describe("SelectorIcono", () => {
     expect(pestana("Almacén")).toHaveAttribute("aria-current", "true");
 
     // Al fondo se marca la última aunque no llegue arriba de todo.
-    lista.scrollTop = 11 * ALTO_SECCION - 400;
+    lista.scrollTop = 12 * ALTO_SECCION - 400;
     fireEvent.scroll(lista);
     expect(pestana("Educación")).toHaveAttribute("aria-current", "true");
   });
