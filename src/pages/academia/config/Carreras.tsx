@@ -26,7 +26,10 @@ import { usePalabras } from "../../../lib/academia/usePalabras";
 import { ApiError } from "../../../lib/api";
 import { fmtMoney } from "../../../lib/format";
 import { conMayuscula } from "../../../lib/rubro";
+import { tieneFeature } from "../../../lib/permisos";
 import { useApi } from "../../../lib/useApi";
+import { useAuth } from "../../../store/AuthContext";
+import { BotonCompartirInscripcion } from "../CompartirInscripcion";
 import {
   BotonFila,
   BotonIcono,
@@ -367,6 +370,7 @@ function PanelCurso({
   onAvanzadas?: () => void;
 }) {
   const p = usePalabras();
+  const { negocio } = useAuth();
   const nuevo = !curso;
   const [nombre, setNombre] = useState(curso?.nombre ?? "");
   const [modulos, setModulos] = useState<{ id?: number; nombre: string }[]>(() =>
@@ -594,6 +598,12 @@ function PanelCurso({
               detalle={publicar ? "Se puede inscribir desde la página del instituto" : "Sólo se inscribe en el mostrador"}
             />
           </div>
+          {/* B9: el enlace de cada grupo de este curso, para WhatsApp y redes. */}
+          {curso && tieneFeature(negocio?.features, "preinscripcion_online") && (
+            <div className="mt-3">
+              <BotonCompartirInscripcion carreraId={curso.id} />
+            </div>
+          )}
         </SeccionPanel>
 
         <section aria-label="Así se ofrece" className="border-t border-borde-soft py-4">

@@ -1,5 +1,6 @@
-import type { Cuota, EstadoPagoModulo, EstadoPlanilla, EventoInscripcion, FormaPago, MotivoNoPago, Ref, SemaforoPago } from "./tipos";
-import { fechaCorta, textoCubre } from "./formato";
+import type { Cuota, EstadoPagoModulo, EstadoPlanilla, EventoInscripcion, FormaPago, GrupoResumen, MotivoNoPago, Ref, SemaforoPago } from "./tipos";
+import { fechaCorta, horarioGrupo, nombreDe, textoCubre } from "./formato";
+import { urlInscribirmeDe } from "../pagina/rutas";
 import { ApiError } from "../api";
 import { fmtMoney } from "../format";
 
@@ -264,4 +265,22 @@ export function fueraDeAlcance(e: unknown): FueraDeAlcance | null {
   if (e.status === 403 && e.codigo === "OTRA_SEDE") return "OTRA_SEDE";
   if (e.status === 404 && e.codigo !== "SIN_CLASE") return "NO_EXISTE";
   return null;
+}
+
+// ── B9: el enlace de preinscripción de un grupo ─────────────────────────────
+
+/** Lo que hace falta de un grupo para armar el mensaje del enlace. */
+export type GrupoParaCompartir = Pick<GrupoResumen, "id" | "carrera" | "sede" | "dias" | "horaInicio" | "horaFin" | "fechaInicio">;
+
+/**
+ * La dirección pública de la preinscripción de un grupo, absoluta para
+ * mandarla fuera de la app (`<origen>/p/<sub>/inscribirme/<grupo>`).
+ */
+export function enlaceInscripcion(subdominio: string, grupoId: number, origen = window.location.origin): string {
+  return `${origen}${urlInscribirmeDe(subdominio, grupoId)}`;
+}
+
+/** El mensaje para WhatsApp y redes: qué, cuándo, dónde y el enlace. */
+export function textoInscripcion(g: GrupoParaCompartir, enlace: string): string {
+  return `¡Inscribite en ${nombreDe(g.carrera)}! Empieza el ${fechaCorta(g.fechaInicio)}, ${horarioGrupo(g)}, en ${nombreDe(g.sede)}. Dejá tus datos acá: ${enlace}`;
 }

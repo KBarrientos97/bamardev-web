@@ -13,9 +13,10 @@ import { abrirWhatsapp, rutaCobroInscripcion, textoFormaPago } from "../../lib/a
 import { enlaceWhatsApp } from "../../lib/agenda/recordatorio";
 import { fmtMoney } from "../../lib/format";
 import { usePaginado } from "../../lib/paginado";
-import { cobraCuotas, soloLoSuyo, tienePermiso } from "../../lib/permisos";
+import { cobraCuotas, soloLoSuyo, tieneFeature, tienePermiso } from "../../lib/permisos";
 import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
+import { DialogoCompartir } from "./CompartirInscripcion";
 import Inscribir from "./Inscribir";
 import {
   BotonFila,
@@ -56,6 +57,8 @@ export default function Grupo() {
   const p = usePalabras();
   const [filtro, setFiltro] = useState<FiltroAlumnosGrupo>("todos");
   const [elegido, setElegido] = useState<AlumnoDelGrupo | null>(null);
+  /** B9: el diálogo del enlace de preinscripción de este grupo. */
+  const [compartiendo, setCompartiendo] = useState(false);
   const [inscribiendo, setInscribiendo] = useState(false);
   const [editando, setEditando] = useState(false);
   const [cancelando, setCancelando] = useState(false);
@@ -93,6 +96,9 @@ export default function Grupo() {
   const cobra = cobraCuotas({ features: negocio?.features, rubro, permisos: usuario?.permisos, permisosPropios: usuario?.permisosPropios });
   const inscribe = tienePermiso(usuario, "academia.inscribir");
   const arma = tienePermiso(usuario, "academia.grupos");
+  // B9: el enlace de la página para preinscribirse. Sólo con la feature y
+  // para quien maneja inscripciones (el docente no).
+  const comparte = !sinMontos && inscribe && tieneFeature(negocio?.features, "preinscripcion_online");
 
   const g = grupo.datos;
   if (grupo.error && !g) {
@@ -138,6 +144,9 @@ export default function Grupo() {
       icono: "edit",
       onClick: () => navigate(`/academia/grupos/${grupoId}/notas`),
     },
+    ...(comparte && g.inscripcionAbierta && g.estado !== "TERMINADO" && !g.cancelado
+      ? [{ clave: "compartir", etiqueta: "Compartir enlace de inscripción", icono: "compartir" as const, onClick: () => setCompartiendo(true) }]
+      : []),
     ...(sinMontos
       ? []
       : [{ clave: "excel", etiqueta: "Exportar Excel", icono: "download" as const, detalle: "Pronto", deshabilitada: true, separar: true, onClick: () => {} }]),
@@ -197,6 +206,7 @@ export default function Grupo() {
       </div>
 
       {state?.avisos?.length ? <AvisoOk>{`Grupo creado. ${state.avisos.join(" · ")}`}</AvisoOk> : null}
+      {compartiendo && <DialogoCompartir grupo={g} onCerrar={() => setCompartiendo(false)} />}
       {g.cancelado && (
         <p role="status" className="rounded-xl border border-borde bg-white px-3.5 py-2.5 text-sm font-semibold text-texto-2">
           Grupo cancelado: no aparece en la lista ni recibe inscripciones.

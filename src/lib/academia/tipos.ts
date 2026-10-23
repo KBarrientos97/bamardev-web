@@ -50,6 +50,12 @@ export interface AjustesAcademia {
    * anterior no lo manda y el campo no se muestra.
    */
   diasEspera?: number;
+  /**
+   * B9: el subdominio del negocio, para armar el enlace de preinscripción
+   * desde la recepción (que no ve "Mi página"). Ausente en un backend que no
+   * lo manda: ahí se intenta con "Mi página".
+   */
+  subdominio?: string | null;
 }
 
 export interface Franja {

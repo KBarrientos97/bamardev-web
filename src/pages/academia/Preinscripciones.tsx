@@ -18,6 +18,7 @@ import { usePaginado } from "../../lib/paginado";
 import { useAuth } from "../../store/AuthContext";
 import PedirMotivo from "../agenda/PedirMotivo";
 import Inscribir from "./Inscribir";
+import { BotonCompartirInscripcion } from "./CompartirInscripcion";
 import { BotonFila, Chip, ChipsFiltro, EncabezadoPagina, LISTA, PaginaAcademia, Tarjeta } from "./piezas";
 
 const MOTIVOS_DESCARTE = ["No contestó", "Eligió otro instituto", "Ya no le interesa", "Otro"] as const;
@@ -97,6 +98,8 @@ export default function Preinscripciones() {
         volver={{ a: "/academia/alumnos", texto: p.Alumnos }}
         titulo="Inscripciones online"
         bajada={descartadas ? `${lista.total} descartadas` : "Llegan desde la página del instituto, con las 3 fotos subidas"}
+        // B9: el enlace de un grupo, para que lleguen más por acá.
+        acciones={<BotonCompartirInscripcion />}
       />
       <AvisoOk>{aviso}</AvisoOk>
       <ErrorMsg>{error}</ErrorMsg>
