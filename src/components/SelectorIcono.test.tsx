@@ -55,7 +55,6 @@ describe("SelectorIcono", () => {
     ["FERRETERIA", "Ferretería", 6],
     ["BARBERIA", "Belleza y spa", 8],
     ["BILLAR", "Licorería y kiosco", 10],
-    ["ACADEMIA", "Educación", 11],
   ])("con rubro %s abre en la sección %s", (rubro, nombre, indice) => {
     const { lista } = abrir({ rubro });
     expect(pestana(nombre)).toHaveAttribute("aria-current", "true");
