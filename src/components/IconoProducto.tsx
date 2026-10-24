@@ -1,8 +1,11 @@
+import { useState } from "react";
 import { colorDeCategoria, iconoPorLlave, inicialesDe } from "../lib/iconosArticulo";
 
 /**
  * La cara de un producto: su ícono elegido o, si no tiene, un monograma con las
- * iniciales sobre el color de su categoría.
+ * iniciales sobre el color de su categoría. Si el ícono no carga, también el
+ * monograma: los íconos no quedan guardados en el celular, y vendiendo sin
+ * internet el POS mostraría la imagen rota (24-oct).
  *
  * Vive en un solo lugar porque lo usan el POS, el listado de Artículos y el
  * detalle: si cada pantalla lo resolviera por su cuenta, el mismo producto se
@@ -26,8 +29,11 @@ export default function IconoProducto({
 }) {
   const elegido = iconoPorLlave(icono);
   const lado = { width: size, height: size };
+  // Se recuerda QUÉ imagen falló: si el producto cambia de ícono, el nuevo se
+  // vuelve a intentar sin reiniciar nada.
+  const [fallo, setFallo] = useState<string | null>(null);
 
-  if (elegido) {
+  if (elegido && fallo !== elegido.src) {
     return (
       <img
         src={elegido.src}
@@ -35,6 +41,7 @@ export default function IconoProducto({
         width={size}
         height={size}
         loading="lazy"
+        onError={() => setFallo(elegido.src)}
         // `contain` y no `cover`: son fotos de producto con fondo transparente,
         // recortarlas les come el borde.
         className={`shrink-0 rounded-xl object-contain ${className}`}
