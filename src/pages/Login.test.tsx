@@ -36,7 +36,7 @@ describe("login → pagar la licencia", () => {
   it("el pago arranca con el alias vacío aunque el login lo recuerde", async () => {
     render(conRouter());
     // El login sí lo recuerda: es para entrar, no para pagar.
-    expect(screen.getByPlaceholderText("cafeteriakevin")).toHaveValue("pollosdonomar");
+    expect(screen.getByPlaceholderText("alias del negocio")).toHaveValue("pollosdonomar");
 
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Pagar la licencia con QR" }));
