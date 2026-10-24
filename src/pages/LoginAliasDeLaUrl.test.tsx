@@ -60,7 +60,7 @@ beforeEach(() => {
 });
 
 describe("el login con el alias en la dirección", () => {
-  const campoNegocio = () => screen.getByPlaceholderText("cafeteriakevin");
+  const campoNegocio = () => screen.getByPlaceholderText("alias del negocio");
 
   it("lo rellena, gana sobre el recordado y lo saca de la dirección", async () => {
     localStorage.setItem("bamardev_web_alias", "pollosdonomar");
@@ -98,7 +98,7 @@ describe("el login con el alias en la dirección", () => {
     await abrir("/inventario?negocio=otronegocio");
 
     expect(screen.getByText("Inicio del administrador")).toBeInTheDocument();
-    expect(screen.queryByPlaceholderText("cafeteriakevin")).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText("alias del negocio")).not.toBeInTheDocument();
     expect(window.location.pathname + window.location.search).toBe("/inventario?negocio=otronegocio");
     expect(tokenStore.get()).toBe("token-alta");
     expect(localStorage.getItem("bamardev_web_alias")).toBe("billarlospinos");
