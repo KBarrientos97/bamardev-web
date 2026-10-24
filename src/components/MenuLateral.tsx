@@ -302,30 +302,19 @@ export default function MenuLateral({
           >
             {icono(n, esHijo)}
             <span className="min-w-0 leading-snug">{n.item.label}</span>
-            {/* Cerrado, el grupo dice cuántas pantallas guarda. Lo que hay
-                por atender va en la píldora blanca; el número de pantallas,
-                en cambio, es un dato tenue y sin fondo: con el mismo estilo,
-                un "Agenda 6" se leía como seis solicitudes (QA PER-09). Si
-                la pantalla abierta es una de ellas, el número se aclara: es
-                el "estás acá adentro" cuando el hijo no se ve. */}
+            {/* Cerrado, el grupo sólo dice cuántas cosas tiene POR ATENDER (la
+                píldora blanca). Antes, sin nada pendiente, mostraba además
+                cuántas pantallas guardaba ("Equipo 2"): un número suelto, sin
+                rótulo a la vista, que nadie sabía qué contaba y que se leía
+                como una alerta (video tutorial, 24-oct). La flecha de la
+                derecha ya dice que el grupo se abre, así que ese dato no
+                aportaba nada. */}
             {!abierto && pendientesEn(n) > 0 && (
               <span
                 className="ml-auto rounded-full bg-barra-texto px-1.5 text-[11px] font-bold leading-[18px] text-barra tabular-nums"
                 aria-label={`${pendientesEn(n)} por atender`}
               >
                 {pendientesEn(n)}
-              </span>
-            )}
-            {!abierto && pendientesEn(n) === 0 && (
-              <span
-                aria-hidden="true"
-                title={`${n.hijos.length} pantallas`}
-                className={[
-                  "ml-auto px-1 text-[10px] font-medium leading-[18px] tabular-nums",
-                  dentro ? "text-barra-texto" : "text-barra-texto-2 opacity-70",
-                ].join(" ")}
-              >
-                {n.hijos.length}
               </span>
             )}
           </Link>

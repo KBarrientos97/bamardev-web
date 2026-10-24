@@ -196,6 +196,19 @@ describe("grupos colapsables", () => {
     expect(panel).toHaveAttribute("inert");
   });
 
+  it("un grupo cerrado y sin pendientes no lleva ningún número suelto", () => {
+    // Antes mostraba cuántas pantallas guardaba ("Equipo 2", "Finanzas 2"): un
+    // número sin rótulo que nadie sabía qué contaba.
+    const nav = abrir("/pos");
+    for (const grupo of ["Inventario", "Equipo", "Finanzas"]) {
+      const fila = nav.queryByRole("link", { name: grupo });
+      if (!fila) continue;
+      expect(fila.textContent, grupo).toBe(grupo);
+      expect(fila.querySelector("[title]"), grupo).toBeNull();
+    }
+    expect(nav.getByRole("link", { name: "Inventario" })).toBeInTheDocument();
+  });
+
   it("la flecha despliega y vuelve a plegar, sin navegar", () => {
     const nav = abrir("/pos");
     fireEvent.click(flecha(nav, "Inventario"));
