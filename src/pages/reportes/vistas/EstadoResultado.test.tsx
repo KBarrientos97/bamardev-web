@@ -125,6 +125,37 @@ describe("estado de resultado por rubro", () => {
     expect(screen.getByText(/Ganancia líquida del período/i)).toBeInTheDocument();
   });
 
+  it("las cenas del personal restan en su propia línea del billar, y se cuentan en la ganancia", async () => {
+    respuestas();
+    getGastos.mockResolvedValue(GASTOS);
+    request.mockImplementation((url: string) =>
+      Promise.resolve(url.includes("/reportes/cenas") ? { total: 40 } : { horas: 12.7, porMesa: [{ horas: 5 }] }),
+    );
+    mostrar();
+
+    expect(await screen.findByText("Cenas del personal")).toBeInTheDocument();
+    expect(screen.getByText("Efectivo que salió de la caja para la cena")).toBeInTheDocument();
+    // 380 − 250 (gastos del local) − 40 (cenas) = 90; las cenas no se mezclan con los gastos del local.
+    expect(
+      screen.getByText(
+        `Las mesas dejaron ${fmtMoney(280)} y los productos ${fmtMoney(100)}. Restando los gastos del local (${fmtMoney(250)}) y las cenas del personal (${fmtMoney(40)}), te quedan ${fmtMoney(90)}: es tu ganancia líquida.`,
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("sin cenas registradas la línea no se dibuja (ni en cero)", async () => {
+    respuestas();
+    getGastos.mockResolvedValue(GASTOS);
+    request.mockImplementation((url: string) =>
+      Promise.resolve(url.includes("/reportes/cenas") ? { total: 0 } : { horas: 12.7, porMesa: [{ horas: 5 }] }),
+    );
+    mostrar();
+
+    expect(await screen.findByText("Ganancia de mesas y productos")).toBeInTheDocument();
+    expect(screen.queryByText("Cenas del personal")).not.toBeInTheDocument();
+    expect(screen.queryByText(/cenas del personal/i)).not.toBeInTheDocument();
+  });
+
   it("el restaurante va con una sola línea de ventas y habla de la comida, como en la app", async () => {
     rubro = "RESTAURANTE";
     respuestas();

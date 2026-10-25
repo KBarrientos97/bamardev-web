@@ -338,3 +338,43 @@ describe("punto de equilibrio", () => {
     expect(pe.gastosFijos).toBeCloseTo(0, 2);
   });
 });
+
+describe("cenas del personal del billar (24-oct)", () => {
+  it("restan en su propia línea, sin mezclarse con los gastos del local", () => {
+    const er = estadoResultado(financiero(520, 140), [gasto(250, "ALQUILER")], 40);
+    expect(er.cenasPersonal).toBe(40);
+    // Los gastos del local siguen siendo los cargados.
+    expect(er.gastosOperativos).toBe(250);
+    // 380 − 250 − 40.
+    expect(er.utilidadOperativa).toBe(90);
+    expect(er.utilidadNeta).toBe(90);
+  });
+
+  it("sin cenas la cuenta es exactamente la de siempre", () => {
+    const er = estadoResultado(financiero(520, 140), [gasto(250, "ALQUILER")]);
+    expect(er.cenasPersonal).toBe(0);
+    expect(er.utilidadOperativa).toBe(130);
+    expect(er.utilidadNeta).toBe(130);
+    expect(estadoResultado(financiero(520, 140), [gasto(250, "ALQUILER")], 0)).toEqual(er);
+  });
+
+  it("van antes del banco y los impuestos, que siguen restando debajo", () => {
+    const er = estadoResultado(
+      financiero(1000, 200),
+      [gasto(300, "ALQUILER"), gasto(50, "GASTOS_FINANCIEROS"), gasto(20, "IMPUESTOS")],
+      60,
+    );
+    expect(er.utilidadOperativa).toBe(440);
+    expect(er.utilidadAntesImpuestos).toBe(390);
+    expect(er.utilidadNeta).toBe(370);
+  });
+
+  it("un monto negativo no suma plata a la ganancia", () => {
+    expect(estadoResultado(financiero(520, 140), [], -10).cenasPersonal).toBe(0);
+  });
+
+  it("con sólo cenas el período no está vacío", () => {
+    expect(estadoResultado(financiero(0, 0), [], 40).vacio).toBe(false);
+    expect(estadoResultado(financiero(0, 0), [], 0).vacio).toBe(true);
+  });
+});

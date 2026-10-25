@@ -111,6 +111,13 @@ export interface EstadoResultado {
   utilidadBruta: number;
   /** Mercadería perdida: resta debajo de la bruta. Cero si no hubo. */
   mermas: number;
+  /**
+   * Billar (24-oct): lo que salió de la caja en cenas del personal. Es un gasto
+   * del local con su propia línea (no se mezcla con los sueldos ni con los
+   * gastos cargados) y resta de la utilidad operativa. Cero si no hubo: la
+   * pantalla no dibuja una línea en cero.
+   */
+  cenasPersonal: number;
   gastosOperativos: number;
   lineas: LineaGasto[];
   utilidadOperativa: number;
@@ -152,8 +159,13 @@ export interface EstadoResultado {
  * deja cada venta, y lo perdido se ve con su nombre. Antes no restaban en
  * ningún lado: una farmacia que tiraba Bs 2.000 de vencidos veía la misma
  * utilidad que si esa mercadería siguiera en el estante.
+ *
+ * Las cenas del personal del billar (`cenas`, 24-oct) restan igual que los
+ * gastos del local, pero se cuentan aparte: salen del movimiento de efectivo
+ * de la caja, no de un gasto cargado, y no hay que cargarlas dos veces. Sin
+ * cenas (todos los demás rubros) la cuenta es exactamente la de siempre.
  */
-export function estadoResultado(fin: FinancieroBase, gastos: Gasto[]): EstadoResultado {
+export function estadoResultado(fin: FinancieroBase, gastos: Gasto[], cenas = 0): EstadoResultado {
   const bajo = gastos.filter((g) => BAJO_LA_LINEA.has(g.categoria));
   const operativos = gastos.filter((g) => !BAJO_LA_LINEA.has(g.categoria));
 
@@ -164,7 +176,8 @@ export function estadoResultado(fin: FinancieroBase, gastos: Gasto[]): EstadoRes
   const ventas = fin.ventas ?? 0;
   const utilidadBruta = fin.utilidadBruta ?? 0;
   const mermas = aCentavos(fin.mermas ?? 0);
-  const utilidadOperativa = aCentavos(utilidadBruta - mermas - gastosOperativos);
+  const cenasPersonal = aCentavos(Math.max(0, cenas));
+  const utilidadOperativa = aCentavos(utilidadBruta - mermas - gastosOperativos - cenasPersonal);
   const antesDeImpuestos = aCentavos(utilidadOperativa - financieros);
   const utilidadNeta = aCentavos(antesDeImpuestos - impuestos);
   const ventasSinCosto = fin.ventasSinCosto ?? 0;
@@ -178,6 +191,7 @@ export function estadoResultado(fin: FinancieroBase, gastos: Gasto[]): EstadoRes
     ventasSinCosto,
     utilidadBruta,
     mermas,
+    cenasPersonal,
     gastosOperativos,
     lineas: lineasDe(operativos, ventas, gastosOperativos),
     utilidadOperativa,
@@ -198,6 +212,7 @@ export function estadoResultado(fin: FinancieroBase, gastos: Gasto[]): EstadoRes
       esCero(ventas) &&
       esCero(fin.costoVentas ?? 0) &&
       esCero(mermas) &&
+      esCero(cenasPersonal) &&
       esCero(comprasTotal) &&
       esCero(gastosOperativos) &&
       esCero(financieros) &&

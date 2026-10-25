@@ -66,6 +66,10 @@ export default function EstadoResultado() {
   const { rubro, negocio } = useAuth();
   const perfil = perfilResultado(rubro);
   const suc = useSucursales();
+  // Billar (24-oct): las cenas del personal son un gasto que sale de la caja y
+  // no está entre los gastos cargados. Sólo un billar las pide: los demás
+  // rubros no hacen ninguna consulta más ni ven ninguna línea nueva.
+  const pideCenas = perfil.partir === "billar";
 
   const datos = useApi(() => {
     // Los gastos de los MISMOS días que las ventas: medianoche local del
@@ -80,8 +84,11 @@ export default function EstadoResultado() {
       // resta. Si no llega, la línea de ventas va entera, como antes, y el
       // reporte sigue (no es una mitad de la cuenta).
       apiReportes.resumen(rango, rangoAnterior).catch(() => null),
+      // Sí es una mitad de la cuenta: sin las cenas la ganancia sale inflada, así
+      // que si falla, falla el reporte entero (como los gastos).
+      pideCenas ? apiReportes.cenas(rango).then((c) => c?.total ?? 0) : Promise.resolve(0),
     ]);
-  }, [rango.desde, rango.hasta, rango.sucursalId, rangoAnterior.desde, rangoAnterior.hasta]);
+  }, [rango.desde, rango.hasta, rango.sucursalId, rangoAnterior.desde, rangoAnterior.hasta, pideCenas]);
 
   // Las horas jugadas, para el renglón del tiempo de mesa. El reporte del
   // billar no tiene consolidado (ver NotaSucursal): con "Todas las sucursales"
@@ -99,8 +106,8 @@ export default function EstadoResultado() {
     [conFiado, rango.desde, rango.hasta, rango.sucursalId],
   );
 
-  const [fin, gastos, resumen] = datos.datos ?? [null, null, null];
-  const er = fin && gastos ? estadoResultado(fin, gastos) : null;
+  const [fin, gastos, resumen, cenas] = datos.datos ?? [null, null, null, 0];
+  const er = fin && gastos ? estadoResultado(fin, gastos, cenas) : null;
   const partes = er && perfil.partir ? partirVentas(er.ventas, resumen?.composicion) : null;
 
   useExportar(
@@ -111,11 +118,11 @@ export default function EstadoResultado() {
   return (
     <Cargador
       estado={datos}
-      vacio={([f, g]) => (estadoResultado(f, g).vacio ? { titulo: "Sin movimiento", texto: "No hay ventas ni gastos en este período.", icono: "billetera" } : null)}
+      vacio={([f, g, , c]) => (estadoResultado(f, g, c).vacio ? { titulo: "Sin movimiento", texto: "No hay ventas ni gastos en este período.", icono: "billetera" } : null)}
     >
-      {([f, g, r]) => (
+      {([f, g, r, c]) => (
         <Contenido
-          er={estadoResultado(f, g)}
+          er={estadoResultado(f, g, c)}
           fin={f}
           gastos={g}
           resumen={r}
@@ -187,7 +194,7 @@ function Contenido({
         diasDelMes: diasDelMes(periodo),
         ventas: er.ventas,
         utilidadBruta: er.utilidadBruta,
-        gastosDelMes: desglose.total + er.mermas,
+        gastosDelMes: desglose.total + er.mermas + er.cenasPersonal,
       })
     : null;
   // Once días de ventas contra el alquiler del mes entero: se dice, para que la
@@ -208,7 +215,7 @@ function Contenido({
 
   return (
     <>
-      {mes && <TarjetaMes mes={mes} nombreMes={mesDe(periodo)} cosas={perfil.cosas} gastos={desglose.total + er.mermas} />}
+      {mes && <TarjetaMes mes={mes} nombreMes={mesDe(periodo)} cosas={perfil.cosas} gastos={desglose.total + er.mermas + er.cenasPersonal} />}
 
       <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
         <div className="min-w-0 space-y-4">
@@ -291,6 +298,19 @@ function Contenido({
               cero={esCero(er.gastosOperativos)}
               onClick={() => setDetalle({ tipo: "grupo", grupo: "LOCAL" })}
             />
+            {/* Billar (24-oct): sólo si en el período se dio al menos una cena;
+                sin cenas la línea no se dibuja (un "Bs 0,00" sobra). Toca y va al
+                reporte, si lo ve. */}
+            {esPositivo(er.cenasPersonal) && (
+              <Paso
+                signo="−"
+                titulo="Cenas del personal"
+                detalle="Efectivo que salió de la caja para la cena"
+                valor={bsResta(er.cenasPersonal)}
+                resta
+                onClick={ir("cenas")}
+              />
+            )}
             <Paso
               signo="="
               titulo="Resultado del local"
@@ -974,6 +994,7 @@ function hojasExcel(er: Er, fin: FinancieroApi, gastos: Gasto[], perfil: PerfilR
     [`${perfil.gananciaTitulo} (utilidad bruta)`, er.utilidadBruta],
     ...(esPositivo(er.mermas) ? ([["Mermas", -er.mermas]] as [string, number][]) : []),
     ["Gastos del local", -er.gastosOperativos],
+    ...(esPositivo(er.cenasPersonal) ? ([["Cenas del personal", -er.cenasPersonal]] as [string, number][]) : []),
     ["Resultado del local (utilidad operativa)", er.utilidadOperativa],
     ...(esPositivo(er.gastosFinancieros) ? ([["Banco y deudas", -er.gastosFinancieros]] as [string, number][]) : []),
     ...(esPositivo(er.impuestos) ? ([["Impuestos", -er.impuestos]] as [string, number][]) : []),

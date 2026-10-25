@@ -213,6 +213,7 @@ export function explicarResultado(er: EstadoResultado, perfil: PerfilResultado, 
     [
       [er.mermas, "las mermas"],
       [er.gastosOperativos, "los gastos del local"],
+      [er.cenasPersonal, "las cenas del personal"],
       [er.gastosFinancieros, "el banco"],
       [er.impuestos, "los impuestos"],
     ] as [number, string][]

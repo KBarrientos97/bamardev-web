@@ -138,9 +138,39 @@ export interface CajaSupervisionApi {
   /** Quién la cerró, si no se sabe (cajas viejas) fue quien la abrió. Otro puede cerrar la caja de la cajera. */
   cerroPor?: string;
   nota?: string;
+  /** La cena del personal de este turno y quién la dio (backend del 24-oct); sin las anuladas. */
+  cena?: { monto: number; por: string };
   ventas: number;
   vendido: number;
   anuladas: number;
+}
+
+/** Un movimiento de efectivo de la caja que se mira (backend del 24-oct). */
+export interface MovimientoSupervisionApi {
+  id: number;
+  tipo: "INGRESO" | "EGRESO";
+  monto: number;
+  /** Lo que dice el movimiento: "Cena", "Retiro", "Cena anulada · #12"… */
+  texto: string | null;
+  /** Es la cena del personal (o la anulación de una). */
+  cena: boolean;
+  /** Una cena que ya se anuló (sigue en la lista, tachada). */
+  anulada?: boolean;
+  /** El ingreso que anula la cena con este id. */
+  anulaA?: number;
+  quien: string;
+  hora: number;
+}
+
+/**
+ * El efectivo de la caja del turno que se mira (backend del 24-oct): lo que
+ * debería haber ahora (sólo si sigue abierta) y lo registrado, con quién.
+ */
+export interface EfectivoSupervisionApi {
+  cajaId: number;
+  abierta: boolean;
+  esperado: number | null;
+  movimientos: MovimientoSupervisionApi[];
 }
 
 /**
@@ -195,6 +225,8 @@ export interface SupervisionApi {
   cuentas: (Omit<CuentaApi, "sesion"> & { sesion: SesionSupervisionApi })[];
   /** Las cajas abiertas y las de la semana (cada una es un turno que se puede mirar). */
   cajas: CajaSupervisionApi[];
+  /** Los movimientos de efectivo de la caja del turno. Un backend anterior al 24-oct no lo manda. */
+  efectivo?: EfectivoSupervisionApi | null;
   actividad: ActividadApi[];
 }
 

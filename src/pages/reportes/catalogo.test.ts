@@ -23,7 +23,7 @@ describe("cada rubro ve sus reportes", () => {
     const g = gruposVisibles(dueno("BILLAR"));
     const rubro = g.find((x) => x.id === "rubro");
     expect(rubro).toMatchObject({ titulo: "Billar", nuevo: true });
-    expect(rubro?.fichas.map((f) => f.id)).toEqual(["mesas", "ocupacion", "tiempo-fijo", "pausas-ajustes"]);
+    expect(rubro?.fichas.map((f) => f.id)).toEqual(["mesas", "ocupacion", "tiempo-fijo", "pausas-ajustes", "cenas"]);
   });
 
   it("el restaurante ve los meseros y los insumos, y nada del billar ni de la farmacia", () => {
