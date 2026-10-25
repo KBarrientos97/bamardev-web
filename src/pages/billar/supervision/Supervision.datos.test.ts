@@ -333,3 +333,20 @@ describe("Supervisión: mesas, cuentas y los números de arriba", () => {
     });
   });
 });
+
+describe("el efectivo en la actividad (24-oct)", () => {
+  const a = (codigo: string): ActividadApi => ({ id: codigo, hora: 1, quien: "Kevin", texto: "x", codigo });
+
+  it("los movimientos de efectivo van en su propio filtro, y no en el de las mesas", () => {
+    expect(grupoDeActividad("EFECTIVO")).toBe("efectivo");
+    expect(grupoDeActividad("EFECTIVO_CENA")).toBe("efectivo");
+    const lista = [a("EFECTIVO_CENA"), a("EFECTIVO"), a("PAUSAR"), a("VENTA")];
+    expect(filtrarActividad(lista, "efectivo").map((x) => x.codigo)).toEqual(["EFECTIVO_CENA", "EFECTIVO"]);
+    expect(filtrarActividad(lista, "mesas").map((x) => x.codigo)).toEqual(["PAUSAR"]);
+  });
+
+  it("la cena va en violeta y el resto de los movimientos, sin color", () => {
+    expect(tonoDeActividad("EFECTIVO_CENA")).toBe("violeta");
+    expect(tonoDeActividad("EFECTIVO")).toBe("normal");
+  });
+});

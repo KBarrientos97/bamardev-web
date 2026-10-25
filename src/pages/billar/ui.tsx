@@ -25,7 +25,7 @@ export function EstadoBadge({ estado, className = "" }: { estado: EstadoVisual; 
   );
 }
 
-type VarianteB = "verde" | "menta" | "blanco" | "ambar" | "rosa" | "azul";
+type VarianteB = "verde" | "menta" | "blanco" | "ambar" | "rosa" | "azul" | "violeta";
 
 const VARIANTES_B: Record<VarianteB, string> = {
   verde: "bg-primary-boton text-white hover:bg-primary-boton-hover active:bg-primary-boton-activo disabled:bg-primary-200",
@@ -34,6 +34,8 @@ const VARIANTES_B: Record<VarianteB, string> = {
   ambar: "bg-amber-100 text-amber-800 ring-1 ring-inset ring-amber-300 hover:bg-amber-200/70",
   rosa: "bg-white text-rose-700 ring-1 ring-inset ring-rose-200 hover:bg-rose-50",
   azul: "bg-white text-blue-800 ring-1 ring-inset ring-blue-200 hover:bg-blue-50",
+  /** La cena del personal (24-oct): lo nuevo de la cena va en violeta en todas las pantallas. */
+  violeta: "bg-violet-50 text-violet-800 ring-1 ring-inset ring-violet-200 hover:bg-violet-100",
 };
 
 /** El botón redondeado de la maqueta. Mínimo 40 px de alto: se toca en tablet. */
@@ -91,7 +93,7 @@ export function Circulo({
   size = 40,
 }: {
   icono: NombreIcono;
-  tono?: "verde" | "ambar" | "rosa" | "azul" | "gris";
+  tono?: "verde" | "ambar" | "rosa" | "azul" | "gris" | "violeta";
   size?: number;
 }) {
   const color = {
@@ -100,6 +102,7 @@ export function Circulo({
     rosa: "bg-rose-100 text-rose-700",
     azul: "bg-blue-100 text-blue-700",
     gris: "bg-slate-100 text-slate-500",
+    violeta: "bg-violet-100 text-violet-700",
   }[tono];
   return (
     <span

@@ -1,9 +1,20 @@
 import { useMemo, useState } from "react";
 import { Icon, type NombreIcono } from "../../../components/Icon";
 import { Cargando, ErrorMsg, Modal, Vacio } from "../../../components/ui";
+import { api } from "../../../lib/api";
 import { fmtMoney } from "../../../lib/format";
 import { useSucursales } from "../../../lib/useSucursales";
-import type { ActividadApi, CajaSupervisionApi, SupervisionApi } from "../api";
+import { useAuth } from "../../../store/AuthContext";
+import DialogoMovimiento from "../../pos/DialogoMovimiento";
+import { MOTIVO_CENA } from "../../pos/motivosMovimiento";
+import { bsResta } from "../../reportes/formato";
+import type {
+  ActividadApi,
+  CajaSupervisionApi,
+  EfectivoSupervisionApi,
+  MovimientoSupervisionApi,
+  SupervisionApi,
+} from "../api";
 import { fmtHace, horaDe } from "../calculo";
 import { ESTADOS } from "../estilos";
 import { ChipsMotivo } from "../ModalesMesa";
@@ -74,6 +85,10 @@ export default function Supervision() {
   const [todasLasCajas, setTodasLasCajas] = useState(false);
   const [viendo, setViendo] = useState<{ tipo: "mesa"; numero: number } | { tipo: "cuenta"; id: number } | null>(null);
   const [pausando, setPausando] = useState<{ numero: number; sesionId: number } | null>(null);
+  // Movimientos de efectivo (24-oct): el cuadro abierto (con el motivo que arranca elegido) y la cena que se va a anular.
+  const { incluye } = useAuth();
+  const [registrando, setRegistrando] = useState<{ motivo?: string } | null>(null);
+  const [anulando, setAnulando] = useState<MovimientoSupervisionApi | null>(null);
 
   const armado = useMemo(() => (datos ? armarSupervision(datos) : null), [datos]);
   const contexto = useMemo(
@@ -195,6 +210,17 @@ export default function Supervision() {
                 pie={`${resumen.mesasEnJuego} ${resumen.mesasEnJuego === 1 ? "mesa" : "mesas"} y ${resumen.cuentas} ${resumen.cuentas === 1 ? "cuenta" : "cuentas"} abiertas`}
               />
             </div>
+
+            {datos.efectivo && turno.caja && (
+              <TarjetaEfectivo
+                efectivo={datos.efectivo}
+                caja={turno.caja}
+                puedeRegistrar={incluye("movimientos_caja")}
+                ahora={ahora}
+                onRegistrar={(motivo) => setRegistrando({ motivo })}
+                onAnular={setAnulando}
+              />
+            )}
 
             <Tarjeta
               icono="clock"
@@ -333,6 +359,32 @@ export default function Supervision() {
           quien={cuentaViendo.quien}
           ahora={ahora}
           onClose={() => setViendo(null)}
+        />
+      )}
+      {registrando && datos.efectivo && turno.caja && (
+        <DialogoMovimiento
+          cajaId={datos.efectivo.cajaId}
+          motivosExtra={[MOTIVO_CENA]}
+          motivoInicial={registrando.motivo}
+          deQuien={{ nombre: turno.caja.cajero, desde: turno.caja.desde }}
+          esperado={datos.efectivo.esperado}
+          onClose={() => setRegistrando(null)}
+          onGuardado={() => {
+            setRegistrando(null);
+            void recargar();
+          }}
+        />
+      )}
+      {anulando && datos.efectivo && turno.caja && (
+        <AnularCena
+          cajaId={datos.efectivo.cajaId}
+          cajera={turno.caja.cajero}
+          movimiento={anulando}
+          onClose={() => setAnulando(null)}
+          onHecho={() => {
+            setAnulando(null);
+            void recargar();
+          }}
         />
       )}
       {pausando && (
@@ -498,6 +550,191 @@ function SelectorDeTurno({
   );
 }
 
+// ── El efectivo de la caja ──────────────────────────────────────────────────
+
+/**
+ * Los movimientos de efectivo de la caja del turno (24-oct): el administrador
+ * registra acá lo que sale o entra de la caja de la cajera sin ser una venta,
+ * como la cena que se le da cada noche. Es el mismo "Movimiento de efectivo"
+ * del cierre de caja, pero hecho por el administrador y reflejado en el cierre
+ * de ella: la cajera no puede registrarlos. Una cena se anula con la caja
+ * abierta; la cerrada ya tiene su arqueo hecho.
+ */
+function TarjetaEfectivo({
+  efectivo,
+  caja,
+  puedeRegistrar,
+  ahora,
+  onRegistrar,
+  onAnular,
+}: {
+  efectivo: EfectivoSupervisionApi;
+  caja: CajaSupervisionApi;
+  puedeRegistrar: boolean;
+  ahora: number;
+  onRegistrar: (motivo?: string) => void;
+  onAnular: (m: MovimientoSupervisionApi) => void;
+}) {
+  const puedeTocar = puedeRegistrar && efectivo.abierta;
+  return (
+    <section aria-label="Movimientos de efectivo" className="card overflow-hidden">
+      <header className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-borde-soft px-4 py-3.5 sm:px-5">
+        <Circulo icono="swap" tono="gris" size={36} />
+        <h2 className="min-w-[11rem] flex-1 text-[15px] font-bold text-texto">Movimientos de efectivo</h2>
+        <span className="text-[12px] text-texto-3">
+          Caja de {caja.cajero} · {efectivo.abierta ? "abierta" : "cerrada"}
+        </span>
+      </header>
+
+      <div className="space-y-3.5 px-4 py-4 sm:px-5">
+        {puedeTocar ? (
+          <>
+            <p className="text-[13px] leading-relaxed text-texto-2">
+              Lo que registrés acá aparece en el cierre de caja de {caja.cajero}. Ella no puede registrar movimientos: sólo vos.
+            </p>
+            <div className="flex flex-wrap gap-2.5">
+              <BotonB icono="swap" onClick={() => onRegistrar()}>
+                Registrar movimiento de efectivo
+              </BotonB>
+              <BotonB variante="violeta" icono="cubiertos" onClick={() => onRegistrar(MOTIVO_CENA.etiqueta)}>
+                Cena
+              </BotonB>
+            </div>
+          </>
+        ) : !efectivo.abierta ? (
+          <Nota tono="gris" icono="lock">
+            La caja está cerrada: ya no se pueden registrar ni anular movimientos.
+          </Nota>
+        ) : null}
+
+        <div>
+          <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wider text-texto-3">Registrados en este turno</p>
+          {efectivo.movimientos.length === 0 ? (
+            <p className="rounded-xl border border-dashed border-borde px-4 py-5 text-center text-[13px] text-texto-3">
+              Todavía no se registró ningún movimiento en este turno.
+            </p>
+          ) : (
+            <ul className="divide-y divide-borde-soft border-t border-borde-soft">
+              {efectivo.movimientos.map((m) => (
+                <FilaMovimiento key={m.id} m={m} ahora={ahora} puedeAnular={puedeTocar} onAnular={() => onAnular(m)} />
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+
+      {efectivo.esperado != null && (
+        <footer className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t border-borde-soft bg-slate-50/80 px-4 py-3.5 sm:px-5">
+          <div className="min-w-0 flex-1 basis-56">
+            <p className="text-[13px] font-bold text-texto">Efectivo que debería haber en la caja</p>
+            <p className="text-[12px] text-texto-3">Es lo que {caja.cajero} te tiene que entregar al cerrar.</p>
+          </div>
+          <span className="text-[22px] font-extrabold tabular-nums text-texto">{fmtMoney(efectivo.esperado)}</span>
+        </footer>
+      )}
+    </section>
+  );
+}
+
+function FilaMovimiento({
+  m,
+  ahora,
+  puedeAnular,
+  onAnular,
+}: {
+  m: MovimientoSupervisionApi;
+  ahora: number;
+  puedeAnular: boolean;
+  onAnular: () => void;
+}) {
+  const esAnulacion = m.cena && m.tipo === "INGRESO";
+  const titulo = m.cena ? (esAnulacion ? "Cena anulada" : "Cena") : (m.texto ?? (m.tipo === "INGRESO" ? "Entrada de efectivo" : "Salida de efectivo"));
+  const verbo = esAnulacion ? "La anuló" : "Registró";
+  return (
+    <li className="flex items-center gap-3 py-3">
+      <Circulo icono={m.cena ? "cubiertos" : "swap"} tono={m.cena ? "violeta" : "gris"} size={36} />
+      <div className="min-w-0 flex-1">
+        <p className={`text-[14px] font-bold text-texto ${m.anulada ? "text-texto-3 line-through" : ""}`}>
+          {titulo}
+          {m.anulada && (
+            <span className="ml-2 rounded-md bg-slate-100 px-1.5 py-px text-[11px] font-bold uppercase text-texto-2 no-underline">
+              Anulada
+            </span>
+          )}
+        </p>
+        <p className="text-[12px] text-texto-3">
+          {verbo} {m.quien} · {cuando(m.hora, ahora)} · {m.tipo === "INGRESO" ? "entra plata a la caja" : "sale plata de la caja"}
+        </p>
+      </div>
+      <span
+        className={`shrink-0 text-[15px] font-extrabold tabular-nums ${m.anulada ? "text-texto-3 line-through" : m.tipo === "INGRESO" ? "text-emerald-700" : "text-rose-700"}`}
+      >
+        {m.tipo === "INGRESO" ? `+${fmtMoney(m.monto)}` : bsResta(m.monto)}
+      </span>
+      {m.cena && m.tipo === "EGRESO" && !m.anulada && puedeAnular && (
+        <BotonB aria-label={`Anular la cena de ${fmtMoney(m.monto)}`} onClick={onAnular}>
+          Anular
+        </BotonB>
+      )}
+    </li>
+  );
+}
+
+/** Anular una cena: pide confirmar, porque el efectivo esperado de la cajera sube otra vez. */
+function AnularCena({
+  cajaId,
+  cajera,
+  movimiento,
+  onClose,
+  onHecho,
+}: {
+  cajaId: number;
+  cajera: string;
+  movimiento: MovimientoSupervisionApi;
+  onClose: () => void;
+  onHecho: () => void;
+}) {
+  const [enviando, setEnviando] = useState(false);
+  const [error, setError] = useState("");
+
+  const anular = async () => {
+    if (enviando) return;
+    setEnviando(true);
+    setError("");
+    try {
+      await api.anularCenaCaja(cajaId, movimiento.id);
+      onHecho();
+    } catch (err) {
+      setError(err instanceof Error && err.message ? err.message : "No se pudo anular. Probá de nuevo.");
+      setEnviando(false);
+    }
+  };
+
+  return (
+    <Modal
+      abierto
+      titulo="Anular la cena"
+      subtitulo={`Bs ${movimiento.monto.toFixed(2).replace(".", ",")} de la caja de ${cajera}`}
+      onClose={onClose}
+      ancho="max-w-md"
+      acciones={
+        <>
+          <BotonB onClick={onClose}>No anular</BotonB>
+          <BotonB variante="rosa" disabled={enviando} onClick={() => void anular()}>
+            {enviando ? "Anulando…" : "Anular la cena"}
+          </BotonB>
+        </>
+      }
+    >
+      <p className="text-[13px] leading-relaxed text-texto-2">
+        El efectivo que debería haber en la caja de {cajera} vuelve a subir {fmtMoney(movimiento.monto)}. La cena no se borra: queda anulada
+        y a tu nombre en la actividad.
+      </p>
+      <ErrorAccion texto={error} />
+    </Modal>
+  );
+}
+
 // ── Las cajas ───────────────────────────────────────────────────────────────
 
 const BADGE_CAJA: Record<EstadoCaja, { texto: string; clase: string }> = {
@@ -544,13 +781,14 @@ function FilaCaja({ c, estado, ahora, viendo }: { c: CajaSupervisionApi; estado:
           {badge.texto}
         </span>
       </div>
-      <dl className="mt-3 grid grid-cols-3 gap-2 text-[12px]">
+      <dl className={`mt-3 grid gap-2 text-[12px] ${c.cena ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-3"}`}>
         <Dato etiqueta="Abrió con" valor={fmtMoney(c.inicial)} />
         <Dato
           etiqueta="Vendió"
           valor={fmtMoney(c.vendido)}
           pie={`${c.ventas} ${c.ventas === 1 ? "venta" : "ventas"}${c.anuladas ? ` · ${c.anuladas} anulada${c.anuladas === 1 ? "" : "s"}` : ""}`}
         />
+        {c.cena && <Dato etiqueta="Cena" valor={bsResta(c.cena.monto)} pie={c.cena.por ? `Registró ${c.cena.por}` : undefined} violeta />}
         {c.contado != null ? (
           <Dato
             etiqueta="Contó al cerrar"
@@ -574,6 +812,7 @@ function Dato({
   valor,
   pie,
   alerta = false,
+  violeta = false,
 }: {
   etiqueta: string;
   /** La etiqueta en el celular, donde la larga no entra. */
@@ -581,10 +820,12 @@ function Dato({
   valor: string;
   pie?: string;
   alerta?: boolean;
+  /** La cena del personal va en violeta, como en el resto de las pantallas. */
+  violeta?: boolean;
 }) {
   return (
-    <div className="min-w-0 rounded-lg bg-slate-50 px-2.5 py-2">
-      <dt className="truncate text-[10px] font-bold uppercase tracking-wide text-texto-3">
+    <div className={`min-w-0 rounded-lg px-2.5 py-2 ${violeta ? "bg-violet-50 text-violet-800" : "bg-slate-50"}`}>
+      <dt className={`truncate text-[10px] font-bold uppercase tracking-wide ${violeta ? "text-violet-800" : "text-texto-3"}`}>
         {corta ? (
           <>
             <span className="sm:hidden">{corta}</span>
@@ -594,8 +835,10 @@ function Dato({
           etiqueta
         )}
       </dt>
-      <dd className="break-words text-[14px] font-bold leading-tight tabular-nums text-texto">{valor}</dd>
-      {pie && <dd className={`break-words text-[11px] leading-tight ${alerta ? "font-semibold text-rose-700" : "text-texto-3"}`}>{pie}</dd>}
+      <dd className={`break-words text-[14px] font-bold leading-tight tabular-nums ${violeta ? "text-violet-800" : "text-texto"}`}>{valor}</dd>
+      {pie && (
+        <dd className={`break-words text-[11px] leading-tight ${alerta ? "font-semibold text-rose-700" : violeta ? "text-violet-800" : "text-texto-3"}`}>{pie}</dd>
+      )}
     </div>
   );
 }
@@ -977,6 +1220,8 @@ const ICONO_ACTIVIDAD: Record<string, NombreIcono> = {
   REANUDAR: "play",
   ABRIR: "bola",
   ABRIR_CUENTA: "users",
+  EFECTIVO: "swap",
+  EFECTIVO_CENA: "cubiertos",
 };
 
 const TONO_ICONO: Record<TonoActividad, string> = {
@@ -985,6 +1230,7 @@ const TONO_ICONO: Record<TonoActividad, string> = {
   rosa: "bg-rose-100 text-rose-700",
   verde: "bg-primary-50 text-primary-700",
   azul: "bg-blue-100 text-blue-700",
+  violeta: "bg-violet-100 text-violet-700",
 };
 
 function RenglonActividad({ a, ahora }: { a: ActividadApi; ahora: number }) {

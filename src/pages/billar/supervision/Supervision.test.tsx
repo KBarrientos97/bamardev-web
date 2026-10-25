@@ -14,12 +14,18 @@ vi.setConfig({ testTimeout: 60_000 });
  */
 
 const request = vi.hoisted(() => vi.fn());
-const sesion = vi.hoisted(() => ({ alias: "billar-sup-0" }));
+const caja = vi.hoisted(() => ({ crear: vi.fn(), anular: vi.fn() }));
+const sesion = vi.hoisted(() => ({ alias: "billar-sup-0", movimientos: true }));
 
-vi.mock("../../../lib/api", async (original) => ({
-  ...(await original<typeof import("../../../lib/api")>()),
-  request,
-}));
+vi.mock("../../../lib/api", async (original) => {
+  const real = await original<typeof import("../../../lib/api")>();
+  return {
+    ...real,
+    request,
+    // Lo de la caja del POS: `api` llama a su propio `request`, no al de arriba.
+    api: { ...real.api, crearMovimientoCaja: caja.crear, anularCenaCaja: caja.anular },
+  };
+});
 
 vi.mock("../../../lib/useSucursales", () => ({
   useSucursales: () => ({ elegir: false, sucursales: [], sugerida: null }),
@@ -29,6 +35,8 @@ vi.mock("../../../store/AuthContext", () => ({
   useAuth: () => ({
     usuario: { id: 1, sucursalId: null, sucursal: null, permisos: ["billar.admin"] },
     negocio: { alias: sesion.alias, nombre: "Billar de prueba" },
+    // Mover efectivo de la caja pide el permiso caja.movimientos y el plan: el administrador lo tiene.
+    incluye: (capacidad: string) => capacidad !== "movimientos_caja" || sesion.movimientos,
   }),
 }));
 
@@ -136,6 +144,9 @@ async function montar() {
 let vuelta = 0;
 beforeEach(() => {
   sesion.alias = `billar-sup-${++vuelta}`;
+  sesion.movimientos = true;
+  caja.crear.mockReset().mockResolvedValue({ id: 8 });
+  caja.anular.mockReset().mockResolvedValue({ id: 9 });
   request.mockReset();
   request.mockImplementation(async (url: string) => {
     if (url.startsWith("/billar/supervision/sesiones/")) return { id: 12, numero: 1 };
@@ -546,5 +557,158 @@ describe("Billar: la supervisión del administrador", () => {
     await act(async () => {});
     expect(await screen.findByText(/Failed to fetch/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Reintentar/ })).toBeInTheDocument();
+  });
+});
+
+describe("Billar (24-oct): los movimientos de efectivo y la cena de la cajera", () => {
+  /** La caja de Pepe, abierta, con la cena de Bs 20 que registró el administrador. */
+  const efectivo = (extra: object = {}) => ({
+    cajaId: 1,
+    abierta: true,
+    esperado: 145,
+    movimientos: [{ id: 7, tipo: "EGRESO", monto: 20, texto: "Cena", cena: true, quien: "Kevin Dueño", hora: AHORA - 10 * MIN }],
+    ...extra,
+  });
+  const conEfectivo = (e: object | null, cena = true) => {
+    request.mockImplementation(async (url: string) => {
+      if (url.startsWith("/billar/supervision")) {
+        const s = supervision();
+        return {
+          ...s,
+          cajas: [{ ...s.cajas[0], ...(cena ? { cena: { monto: 20, por: "Kevin Dueño" } } : {}) }, s.cajas[1]],
+          efectivo: e,
+          actividad: [
+            {
+              id: "mo7",
+              hora: AHORA - 10 * MIN,
+              quien: "Kevin Dueño",
+              texto: "Registró una salida de efectivo de Bs 20,00: Cena",
+              lugar: "Caja de Pepe Mamani",
+              codigo: "EFECTIVO_CENA",
+            },
+            ...s.actividad,
+          ],
+        };
+      }
+      if (url.startsWith("/caja/")) return { id: 8 };
+      return [];
+    });
+  };
+  const tarjeta = () => screen.getByRole("region", { name: "Movimientos de efectivo" });
+
+  it("muestra lo registrado con quién lo hizo y el efectivo que debería haber en la caja", async () => {
+    conEfectivo(efectivo());
+    await montar();
+    const t = tarjeta();
+    expect(within(t).getByText("Caja de Pepe Mamani · abierta")).toBeInTheDocument();
+    // La fila de lo registrado y el botón de registrar otra.
+    expect(within(t).getAllByText("Cena")).toHaveLength(2);
+    expect(within(t).getByText(/Registró Kevin Dueño/)).toBeInTheDocument();
+    expect(within(t).getByText("Efectivo que debería haber en la caja")).toBeInTheDocument();
+    expect(within(t).getByText(/145,00/)).toBeInTheDocument();
+    // Cada caja trae su dato "Cena" y la actividad tiene su renglón.
+    const cajas = screen.getByRole("heading", { name: "Cajas" }).closest("section")!;
+    expect(within(cajas).getByText(/Registró Kevin Dueño/)).toBeInTheDocument();
+    const actividad = screen.getByRole("complementary", { name: "Actividad del turno" });
+    expect(within(actividad).getByText(/Registró una salida de efectivo de Bs 20,00: Cena/)).toBeInTheDocument();
+  });
+
+  it("el filtro Efectivo deja sólo los movimientos de efectivo", async () => {
+    conEfectivo(efectivo());
+    await montar();
+    const actividad = screen.getByRole("complementary", { name: "Actividad del turno" });
+    await act(async () => {
+      fireEvent.click(within(actividad).getByRole("button", { name: "Efectivo" }));
+    });
+    expect(within(actividad).getByText(/Registró una salida de efectivo/)).toBeInTheDocument();
+    expect(within(actividad).queryByText(/Cargó 2×/)).toBeNull();
+  });
+
+  it("«Cena» abre el cuadro de movimiento con la cena elegida y a qué caja va", async () => {
+    conEfectivo(efectivo());
+    await montar();
+    await act(async () => {
+      fireEvent.click(within(tarjeta()).getByRole("button", { name: "Cena" }));
+    });
+    const cuadro = await screen.findByRole("dialog");
+    expect(within(cuadro).getByText("Movimiento de efectivo")).toBeInTheDocument();
+    expect(within(cuadro).getByText("Pepe Mamani")).toBeInTheDocument();
+    expect(within(cuadro).getByText("Sale plata de la caja")).toBeInTheDocument();
+    // Montos para tocar, y cómo cambia el cierre de ella.
+    fireEvent.click(within(cuadro).getByRole("button", { name: "20" }));
+    expect(within(cuadro).getByText(/el efectivo esperado pasa de/)).toHaveTextContent(/145,00.*125,00/);
+  });
+
+  it("registra la cena en la caja de la cajera, marcada como cena", async () => {
+    conEfectivo(efectivo());
+    await montar();
+    await act(async () => {
+      fireEvent.click(within(tarjeta()).getByRole("button", { name: "Cena" }));
+    });
+    const cuadro = await screen.findByRole("dialog");
+    fireEvent.click(within(cuadro).getByRole("button", { name: "30" }));
+    await act(async () => {
+      fireEvent.click(within(cuadro).getByRole("button", { name: "Registrar" }));
+    });
+    expect(caja.crear).toHaveBeenCalledWith(1, { tipo: "EGRESO", monto: 30, descripcion: "Cena", origen: "CENA" });
+  });
+
+  it("anular una cena pide confirmar y la anula en esa caja", async () => {
+    conEfectivo(efectivo());
+    await montar();
+    await act(async () => {
+      fireEvent.click(within(tarjeta()).getByRole("button", { name: /Anular la cena de/ }));
+    });
+    const confirmar = await screen.findByRole("dialog");
+    expect(within(confirmar).getByText(/no se borra/)).toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(within(confirmar).getByRole("button", { name: "Anular la cena" }));
+    });
+    expect(caja.anular).toHaveBeenCalledWith(1, 7);
+  });
+
+  it("una cena anulada se ve tachada y ya no se puede anular otra vez", async () => {
+    conEfectivo(
+      efectivo({
+        esperado: 165,
+        movimientos: [
+          { id: 7, tipo: "EGRESO", monto: 20, texto: "Cena", cena: true, anulada: true, quien: "Kevin Dueño", hora: AHORA - 10 * MIN },
+          { id: 8, tipo: "INGRESO", monto: 20, texto: "Cena anulada · #7", cena: true, anulaA: 7, quien: "Kevin Dueño", hora: AHORA - 5 * MIN },
+        ],
+      }),
+      false,
+    );
+    await montar();
+    const t = tarjeta();
+    expect(within(t).getByText("Anulada")).toBeInTheDocument();
+    expect(within(t).getByText("Cena anulada")).toBeInTheDocument();
+    expect(within(t).queryByRole("button", { name: /Anular la cena de/ })).toBeNull();
+  });
+
+  it("con la caja cerrada se ve lo registrado pero no se puede registrar ni anular", async () => {
+    conEfectivo(efectivo({ abierta: false, esperado: null }));
+    await montar();
+    const t = tarjeta();
+    expect(within(t).getByText(/La caja está cerrada/)).toBeInTheDocument();
+    expect(within(t).queryByRole("button", { name: "Cena" })).toBeNull();
+    expect(within(t).queryByRole("button", { name: /Registrar movimiento de efectivo/ })).toBeNull();
+    expect(within(t).queryByRole("button", { name: /Anular la cena de/ })).toBeNull();
+    expect(within(t).queryByText("Efectivo que debería haber en la caja")).toBeNull();
+  });
+
+  it("sin el permiso de mover efectivo, se mira pero no se registra", async () => {
+    sesion.movimientos = false;
+    conEfectivo(efectivo());
+    await montar();
+    const t = tarjeta();
+    expect(within(t).getByText("Cena")).toBeInTheDocument();
+    expect(within(t).queryByRole("button", { name: "Cena" })).toBeNull();
+    expect(within(t).queryByRole("button", { name: /Anular la cena de/ })).toBeNull();
+  });
+
+  it("un servidor anterior, sin efectivo, no dibuja la tarjeta", async () => {
+    conEfectivo(null);
+    await montar();
+    expect(screen.queryByRole("region", { name: "Movimientos de efectivo" })).toBeNull();
   });
 });

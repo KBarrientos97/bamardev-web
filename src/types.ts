@@ -929,6 +929,17 @@ export interface MovimientoCaja {
   descripcion: string | null;
   usuarioId?: number | null;
   fecha: string;
+  /** Si lo generó el sistema: 'PROPINA' (belleza) o 'CENA' (billar). Ausente en un movimiento manual. */
+  origen?: string;
+}
+
+/** Billar: una cena del personal registrada en una caja, con quién la dio y si se anuló. */
+export interface RegistroDeCena {
+  id: number;
+  monto: number;
+  fecha: string;
+  quien: string | null;
+  anulada: boolean;
 }
 
 export interface ResumenCaja {
@@ -966,6 +977,14 @@ export interface ResumenCaja {
   propinasEfectivo?: number;
   propinasSalidas?: number;
   propinasOtras?: number;
+  /**
+   * Billar (24-oct): la cena del personal que el administrador registró. Está
+   * dentro de `egresos` (las salidas) e `ingresos` (lo devuelto al anular).
+   * Sólo vienen si la caja tiene alguna; un backend anterior no los manda.
+   */
+  cenasSalidas?: number;
+  cenasDevueltas?: number;
+  cenasRegistros?: RegistroDeCena[];
   saldoEsperado: number;
   /**
    * Agenda (belleza): citas de la sucursal que terminaron y nadie cobró, y

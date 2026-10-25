@@ -256,22 +256,26 @@ export function iniciales(nombre: string): string {
 
 // ── La actividad ────────────────────────────────────────────────────────────
 
-export type FiltroActividad = "todo" | "caja" | "mesas" | "ventas";
+export type FiltroActividad = "todo" | "caja" | "mesas" | "ventas" | "efectivo";
 
 export const FILTROS_ACTIVIDAD: { clave: FiltroActividad; etiqueta: string }[] = [
   { clave: "todo", etiqueta: "Todo" },
   { clave: "caja", etiqueta: "Caja" },
   { clave: "mesas", etiqueta: "Mesas y consumos" },
   { clave: "ventas", etiqueta: "Ventas" },
+  { clave: "efectivo", etiqueta: "Efectivo" },
 ];
 
 const DE_CAJA = new Set(["CAJA_ABIERTA", "CAJA_CERRADA"]);
 const DE_VENTAS = new Set(["VENTA", "VENTA_ANULADA", "CORREGIR_PAGO"]);
+/** El efectivo que se movió sin una venta: la cena del personal y los movimientos de siempre (24-oct). */
+const DE_EFECTIVO = new Set(["EFECTIVO", "EFECTIVO_CENA"]);
 
-/** A qué filtro pertenece un renglón: lo que no es de la caja ni de las ventas es de las mesas. */
+/** A qué filtro pertenece un renglón: lo que no es de la caja, las ventas ni el efectivo es de las mesas. */
 export function grupoDeActividad(codigo: string): Exclude<FiltroActividad, "todo"> {
   if (DE_CAJA.has(codigo)) return "caja";
   if (DE_VENTAS.has(codigo)) return "ventas";
+  if (DE_EFECTIVO.has(codigo)) return "efectivo";
   return "mesas";
 }
 
@@ -280,10 +284,12 @@ export function filtrarActividad(lista: ActividadApi[], filtro: FiltroActividad)
 }
 
 /** Cómo se pinta un renglón: lo que resta o frena (pausas, anulaciones) llama la atención. */
-export type TonoActividad = "normal" | "ambar" | "rosa" | "verde" | "azul";
+export type TonoActividad = "normal" | "ambar" | "rosa" | "verde" | "azul" | "violeta";
 
 export function tonoDeActividad(codigo: string): TonoActividad {
   switch (codigo) {
+    case "EFECTIVO_CENA":
+      return "violeta";
     case "PAUSAR":
       return "ambar";
     case "ANULAR_CONSUMO":

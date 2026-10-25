@@ -793,11 +793,22 @@ export const api = {
   /** Sólo ADMIN y SUPERVISOR: el backend lo exige con RolesGuard. */
   crearMovimientoCaja: (
     id: number,
-    input: { tipo: "INGRESO" | "EGRESO"; monto: number; descripcion: string },
+    input: {
+      tipo: "INGRESO" | "EGRESO";
+      monto: number;
+      descripcion: string;
+      /** Billar: 'CENA' marca la salida como la cena del personal. */
+      origen?: "CENA";
+    },
   ) =>
     request<MovimientoCaja>(`/caja/${id}/movimientos`, {
       method: "POST",
       body: JSON.stringify(input),
+    }),
+  /** Billar: anula una cena con la caja abierta (deja el ingreso que la devuelve, no borra). */
+  anularCenaCaja: (cajaId: number, movimientoId: number) =>
+    request<MovimientoCaja>(`/caja/${cajaId}/movimientos/${movimientoId}/anular`, {
+      method: "POST",
     }),
 
   // ── Ventas ────────────────────────────────────────────────────────────────

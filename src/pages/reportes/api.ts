@@ -363,6 +363,36 @@ export interface BillarReporteApi {
   } | null;
 }
 
+/**
+ * Las cenas del personal del billar (`GET /billar/reportes/cenas`, backend del
+ * 24-oct): lo que salió de la caja para la cena de la cajera. Una "noche" es una
+ * caja, de que se abre a que se cierra, y cuenta en el día de la jornada en que
+ * se abrió. El Estado de resultado lee sólo el `total`.
+ */
+export interface CenasReporteApi {
+  /** Los días del período, AAAA-MM-DD, y cuántos son. */
+  desde: string;
+  hasta: string;
+  dias: number;
+  /** Lo que costaron las cenas (sin las anuladas). */
+  total: number;
+  /** Días de jornada en que se abrió alguna caja, y de esos los que tuvieron cena. */
+  nochesAbiertas: number;
+  nochesConCena: number;
+  /** Promedio por noche CON cena. */
+  promedio: number;
+  /** La noche más cara. */
+  maxima: number;
+  /** Una por caja, de la más nueva a la más vieja. */
+  porNoche: { cajaId: number; dia: string; cajera: string; monto: number; registro: string; abierta: boolean }[];
+  /** Una por día de jornada con caja, de la más vieja a la más nueva: el gráfico. */
+  porDia: { dia: string; monto: number }[];
+  /** Quién cobró cuánto en cenas, de más a menos. */
+  porCajera: { nombre: string; monto: number; noches: number }[];
+  /** El período de comparación; null si no se pidió. */
+  anterior: { total: number; nochesAbiertas: number; nochesConCena: number; promedio: number } | null;
+}
+
 export const apiReportes = {
   /**
    * A qué hora termina la jornada del negocio (minutos). Un billar cierra a
@@ -392,6 +422,16 @@ export const apiReportes = {
   billar: (r: RangoReporte, ant?: RangoReporte) =>
     request<BillarReporteApi>(
       `/billar/reportes${qs({
+        desde: r.desde,
+        hasta: r.hasta,
+        sucursalId: r.sucursalId,
+        ...(ant?.desde && ant.hasta ? { antDesde: ant.desde, antHasta: ant.hasta } : {}),
+      })}`,
+    ),
+  /** Las cenas del personal del billar: por días, como `billar`. Un negocio que no es billar no lo pide. */
+  cenas: (r: RangoReporte, ant?: RangoReporte) =>
+    request<CenasReporteApi>(
+      `/billar/reportes/cenas${qs({
         desde: r.desde,
         hasta: r.hasta,
         sucursalId: r.sucursalId,

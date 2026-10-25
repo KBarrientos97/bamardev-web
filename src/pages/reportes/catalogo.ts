@@ -66,6 +66,7 @@ const v = {
   ocupacion: lazy(() => import("./vistas/billar/Ocupacion")),
   tiempoFijo: lazy(() => import("./vistas/billar/TiempoFijo")),
   pausas: lazy(() => import("./vistas/billar/PausasAjustes")),
+  cenas: lazy(() => import("./vistas/billar/Cenas")),
   meseros: lazy(() => import("./vistas/Meseros")),
   mermas: lazy(() => import("./vistas/farmacia/MermasVista")),
   sugerencia: lazy(() => import("./vistas/farmacia/SugerenciaVista")),
@@ -141,6 +142,8 @@ export function catalogo(rubro: string | undefined): FichaReporte[] {
     { id: "tiempo-fijo", titulo: "Tiempo fijo y promos", descripcion: "Paquetes, excedentes y descuentos", icono: "cronometro", tono: "morado", grupo: "rubro", seccion: "reportes_billar", vista: v.tiempoFijo },
     // Venía en la pestaña Billar de los reportes viejos: el dueño ve quién anuló o corrió la hora de una mesa.
     { id: "pausas-ajustes", titulo: "Pausas y ajustes", descripcion: "Quién pausó, anuló o movió una cuenta", icono: "pausa", tono: "rosa", grupo: "rubro", seccion: "reportes_billar", vista: v.pausas },
+    // Lo que sale de la caja para la cena de la cajera (24-oct): lo registra el administrador en Supervisión.
+    { id: "cenas", titulo: "Cenas del personal", descripcion: "Lo que sale de la caja para la cena", icono: "cubiertos", tono: "morado", grupo: "rubro", seccion: "reportes_billar", vista: v.cenas },
 
     // ── Restaurante (salón) ──
     {

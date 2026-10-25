@@ -194,6 +194,79 @@ describe("QA VER-01 / DIA-11: las filas del cajón suman el esperado", () => {
   });
 });
 
+describe("billar (24-oct): la cena del personal que registró el administrador", () => {
+  it("sale en su fila con quién la registró, y las filas siguen sumando el esperado", async () => {
+    sesion.rubro = "BILLAR";
+    // Fondo 50 + efectivo 115 − cena 20 = 145 (en vez de los 165 de antes).
+    vi.mocked(api.resumenCaja).mockResolvedValue(
+      resumen({
+        montoApertura: 50,
+        efectivo: 115,
+        egresos: 20,
+        cenasSalidas: 20,
+        cenasDevueltas: 0,
+        cenasRegistros: [{ id: 5, monto: 20, fecha: "2026-10-23T21:32:00.000Z", quien: "Miguel", anulada: false }],
+        saldoEsperado: 145,
+      }),
+    );
+    await montar();
+    const filas = filasDeCaja();
+    expect(filas.map(([e]) => e)).toEqual(["Fondo de apertura", "Ventas en efectivo", "Cena"]);
+    expect(Math.round(filas.reduce((s, [, m]) => s + m, 0) * 100) / 100).toBe(145);
+    expect(screen.getByText(/Lo registró Miguel/)).toBeInTheDocument();
+    // La cena no se cuenta dos veces: ni como "egresos de efectivo".
+    expect(screen.queryByText("Egresos de efectivo")).not.toBeInTheDocument();
+    expect(screen.queryByText("Otros egresos de efectivo")).not.toBeInTheDocument();
+  });
+
+  it("un retiro común va aparte de la cena, como «egresos»", async () => {
+    sesion.rubro = "BILLAR";
+    vi.mocked(api.resumenCaja).mockResolvedValue(
+      resumen({
+        montoApertura: 50,
+        efectivo: 115,
+        egresos: 25,
+        cenasSalidas: 20,
+        cenasRegistros: [{ id: 5, monto: 20, fecha: "2026-10-23T21:32:00.000Z", quien: "Miguel", anulada: false }],
+        saldoEsperado: 140,
+      }),
+    );
+    await montar();
+    const filas = filasDeCaja();
+    expect(filas).toContainEqual(["Egresos de efectivo", -5]);
+    expect(filas).toContainEqual(["Cena", -20]);
+    expect(filas.reduce((s, [, m]) => s + m, 0)).toBe(140);
+  });
+
+  it("una cena anulada vuelve al esperado y no deja ninguna fila", async () => {
+    sesion.rubro = "BILLAR";
+    vi.mocked(api.resumenCaja).mockResolvedValue(
+      resumen({
+        montoApertura: 50,
+        efectivo: 115,
+        egresos: 20,
+        ingresos: 20,
+        cenasSalidas: 20,
+        cenasDevueltas: 20,
+        cenasRegistros: [{ id: 5, monto: 20, fecha: "2026-10-23T21:32:00.000Z", quien: "Miguel", anulada: true }],
+        saldoEsperado: 165,
+      }),
+    );
+    await montar();
+    const filas = filasDeCaja();
+    expect(filas.map(([e]) => e)).toEqual(["Fondo de apertura", "Ventas en efectivo"]);
+    expect(filas.reduce((s, [, m]) => s + m, 0)).toBe(165);
+  });
+
+  it("un cierre sin cenas sale como siempre", async () => {
+    sesion.rubro = "BILLAR";
+    vi.mocked(api.resumenCaja).mockResolvedValue(resumen({ montoApertura: 50, efectivo: 115, saldoEsperado: 165 }));
+    await montar();
+    expect(filasDeCaja().map(([e]) => e)).toEqual(["Fondo de apertura", "Ventas en efectivo"]);
+    expect(screen.queryByText("Cena")).not.toBeInTheDocument();
+  });
+});
+
 describe("fuera del salón (Omar) el cierre se dibuja como antes", () => {
   /** Todas las filas del bloque "Movimiento del turno", como [etiqueta, texto del monto]. */
   function filasDelTurno(): [string, string][] {
