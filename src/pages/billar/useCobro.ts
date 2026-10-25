@@ -1,32 +1,22 @@
 import { useMemo, useState } from "react";
 import { aCentavos, parsearMonto } from "../../lib/dinero";
+import { atajosDeEfectivo } from "../../lib/billetes";
 import { round2 } from "./calculo";
 import type { PagoNuevo } from "./store";
 
 export type Metodo = PagoNuevo["metodo"];
 
-/** Los billetes de Bolivia (el corte de billetes de la caja). */
-export const BILLETES_BOLIVIA = [10, 20, 50, 100, 200];
-
 /**
- * Lo que el cliente suele entregar para pagar `total`: los billetes que lo
- * cubren solos y, si no alcanzan tres (un monto de más de Bs 200, o uno como
- * Bs 120), los montos redondos que se arman con billetes: el próximo de a 50
- * y los próximos de a 100. Siempre por encima del total (el justo es aparte).
+ * Lo que el cliente suele entregar para pagar `total`: los billetes y monedas
+ * que existen en Bolivia y lo cubren solos, por encima del total (el justo es
+ * aparte). Bs 30 → Bs 50, 100 y 200; Bs 80 → Bs 100 y 200.
  *
- * Bs 30 → Bs 50, 100 y 200 (el dueño, 19-oct: antes salía Bs 40, que no es un
- * billete). Bs 120 → Bs 150, 200 y 300. Bs 260 → Bs 300, 400 y 500.
+ * Antes se completaba con montos redondos (Bs 150, 300, 400…) y salía "Bs 300",
+ * que no es un billete (QA de Kevin, 25-oct): ahora sólo lo que existe, y de
+ * Bs 200 para arriba, ninguno (ver `atajosDeEfectivo`).
  */
 export function sugerencias(total: number): number[] {
-  if (!(total > 0)) return [];
-  const candidatos = new Set<number>(BILLETES_BOLIVIA);
-  candidatos.add(Math.floor(total / 50) * 50 + 50);
-  const cien = Math.floor(total / 100) * 100;
-  for (let k = 1; k <= 3; k++) candidatos.add(cien + k * 100);
-  return [...candidatos]
-    .filter((x) => x > total + 0.005)
-    .sort((a, b) => a - b)
-    .slice(0, 3);
+  return atajosDeEfectivo(total);
 }
 
 /** "Bs 30" sin decimales cuando no hacen falta, "Bs 30,50" si los tiene: el botón «Justo» dice cuánto. */

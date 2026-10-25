@@ -987,6 +987,12 @@ export interface ResumenCaja {
   cenasRegistros?: RegistroDeCena[];
   saldoEsperado: number;
   /**
+   * Lo vendido en el turno, por categoría y producto (el mismo número del
+   * reporte del cierre). El backend lo manda con el arqueo a quien opera la
+   * caja, sin pasar por los reportes. Opcional: un backend anterior no lo manda.
+   */
+  productos?: ReporteCierreProductos;
+  /**
    * Agenda (belleza): citas de la sucursal que terminaron y nadie cobró, y
    * citas que esta caja cobró y quedaron para revisar (cobro repetido o cita
    * ya cerrada). Opcionales: un backend anterior no los manda.

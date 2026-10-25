@@ -14,15 +14,17 @@ import {
   Modal,
 } from "../../components/ui";
 import { api } from "../../lib/api";
-import { fmtHora, fmtMoney, fmtNum } from "../../lib/format";
+import { fmtHora, fmtMoney } from "../../lib/format";
 import { useApi } from "../../lib/useApi";
 import { porSubir, useColaOffline } from "../../lib/offline/cola";
 import AvisoSinSubir from "../../components/offline/AvisoSinSubir";
 import { useAuth } from "../../store/AuthContext";
 import { esBelleza, esBillar } from "../../lib/rubro";
 import { cuandoCita } from "../../lib/agenda/horaAgenda";
-import type { Caja, CitaParaRevisar, MotivoRevisarCita, RegistroDeCena } from "../../types";
+import type { Caja, CitaParaRevisar, MotivoRevisarCita, RegistroDeCena, ReporteCierreProductos } from "../../types";
+import { bsResta } from "../reportes/formato";
 import DialogoMovimiento from "./DialogoMovimiento";
+import ListaProductosVendidos from "./ListaProductosVendidos";
 
 /**
  * La fila del billar en el arqueo, con el signo en el valor. El número es un
@@ -256,7 +258,10 @@ export default function PantallaCierre({
                       <Fila etiqueta="Ventas en efectivo" valor={r.efectivo} />
                       {/* El cambio ya está descontado de las ventas: se cuenta
                           cómo se llegó, sin restarlo otra vez. */}
-                      {r.cambioEntregado > 0 && (
+                      {/* En el billar no: la cajera cuenta el cajón, y "recibido 200 · cambio
+                          70" sólo la hacía dudar de por qué las ventas en efectivo (130) son
+                          menos que los billetes que tocó (QA de Kevin, 25-oct). */}
+                      {r.cambioEntregado > 0 && !esBillar(rubro) && (
                         <p className="pl-3 text-[12px] text-texto-4">
                           Recibido {fmtMoney(r.efectivo + r.cambioEntregado)} · cambio entregado{" "}
                           {fmtMoney(r.cambioEntregado)}
@@ -440,8 +445,10 @@ export default function PantallaCierre({
               >
                 {/* Lo vendido sale de Reportes (encargado o dueño): a quien no
                     lo puede ver (recepción) el botón le daba "no tenés
-                    permiso" y "no se vendió nada" a la vez (QA DIA-10). */}
-                {puede("reportes") && (
+                    permiso" y "no se vendió nada" a la vez (QA DIA-10). En el
+                    billar lo ve también la cajera: sale del arqueo, que ya lo
+                    trae (QA de Kevin, 25-oct). */}
+                {(puede("reportes") || (esBillar(rubro) && r.productos != null)) && (
                   <button
                     type="button"
                     onClick={() => setViendoProductos(true)}
@@ -451,7 +458,7 @@ export default function PantallaCierre({
                     {/* "Mostrador" es palabra de restaurante: en un salón se
                         venden servicios (QA B-21). */}
                     <span className="flex-1">
-                      {esBelleza(rubro) ? "Ver lo vendido" : "Ver qué salió del mostrador"}
+                      {esBelleza(rubro) || esBillar(rubro) ? "Ver lo vendido" : "Ver qué salió del mostrador"}
                     </span>
                     <Icon name="chevronRight" size={16} />
                   </button>
@@ -528,7 +535,11 @@ export default function PantallaCierre({
       </div>
 
       {viendoProductos && (
-        <ProductosDelTurno cajaId={caja.id} onClose={() => setViendoProductos(false)} />
+        <ProductosDelTurno
+          cajaId={caja.id}
+          productos={esBillar(rubro) ? r?.productos : undefined}
+          onClose={() => setViendoProductos(false)}
+        />
       )}
 
       {movimientoAbierto && (
@@ -568,7 +579,7 @@ function FilaCena({ neta, registros }: { neta: number; registros: RegistroDeCena
           <Icon name="cubiertos" size={15} />
           Cena
         </dt>
-        <dd>{fmtMoney(-neta)}</dd>
+        <dd>{bsResta(neta)}</dd>
       </div>
       {detalle && <p className="ml-[23px] text-[12px] text-violet-700">{detalle}</p>}
     </div>
@@ -763,13 +774,24 @@ export function CierreOk({ caja, onSalir }: { caja: Caja; onSalir: () => void })
  */
 export function ProductosDelTurno({
   cajaId,
+  productos,
   onClose,
 }: {
   cajaId: number;
+  /**
+   * Lo vendido ya cargado (viene con el arqueo, y lo puede ver quien opera la
+   * caja aunque no tenga reportes). Sin esto se pide a los reportes.
+   */
+  productos?: ReporteCierreProductos;
   onClose: () => void;
 }) {
-  const datos = useApi(() => api.reporteCierreProductos(cajaId), [cajaId]);
-  const d = datos.datos;
+  const remoto = useApi(
+    () => (productos ? Promise.resolve(null) : api.reporteCierreProductos(cajaId)),
+    [cajaId, productos != null],
+  );
+  const d = productos ?? remoto.datos;
+  const cargando = !productos && remoto.cargando;
+  const error = productos ? null : remoto.error;
 
   /** Una fila por producto, con su categoría, para que la planilla se pueda ordenar. */
   function exportar() {
@@ -827,48 +849,16 @@ export function ProductosDelTurno({
       }
     >
       <div className="space-y-3">
-        <ErrorMsg>{datos.error}</ErrorMsg>
+        <ErrorMsg>{error}</ErrorMsg>
         {/* Con error, sólo el error: "no se vendió nada" sería falso. */}
-        {datos.cargando ? (
+        {cargando ? (
           <Cargando />
-        ) : datos.error ? null : !d || d.lineas === 0 ? (
+        ) : error ? null : !d || d.lineas === 0 ? (
           <p className="py-6 text-center text-[13px] text-texto-3">
             En este turno todavía no se vendió nada.
           </p>
         ) : (
-          <>
-            <div className="flex justify-between rounded-xl bg-muted px-3.5 py-2.5 text-[13px]">
-              <span className="text-texto-2">
-                {fmtNum(d.unidades, 2)} unidades · {fmtNum(d.lineas)}{" "}
-                {d.lineas === 1 ? "producto" : "productos"}
-              </span>
-              <span className="font-bold text-texto">{fmtMoney(d.total)}</span>
-            </div>
-
-            {d.categorias.map((c) => (
-              <div key={c.nombre}>
-                <div className="flex items-baseline justify-between">
-                  <h4 className="text-[13px] font-bold text-texto">{c.nombre}</h4>
-                  <span className="text-xs text-texto-3">
-                    {fmtNum(c.unidades, 2)} u · {fmtMoney(c.total)}
-                  </span>
-                </div>
-                <ul className="mt-1 divide-y divide-borde-soft">
-                  {c.items.map((i) => (
-                    <li key={i.nombre} className="flex items-center gap-2 py-1.5 text-[13px]">
-                      <span className="min-w-0 flex-1 truncate text-texto-2">{i.nombre}</span>
-                      <span className="shrink-0 text-texto-3">
-                        {fmtNum(i.cantidad, 2)} × {fmtMoney(i.precio)}
-                      </span>
-                      <span className="w-20 shrink-0 text-right font-bold text-texto">
-                        {fmtMoney(i.total)}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ))}
-          </>
+          <ListaProductosVendidos d={d} />
         )}
       </div>
     </Modal>

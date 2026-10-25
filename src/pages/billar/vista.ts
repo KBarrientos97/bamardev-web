@@ -153,7 +153,10 @@ export function cronoDe(v: VistaMesa): string {
 }
 
 /** "Mesa 5 · Pool", "Cuenta «Juan»" o "Venta rápida": de dónde salió la venta. */
-export function origenDe(v: VentaBillar, tipos: Record<string, { nombre: string }>): string {
+export function origenDe(
+  v: Pick<VentaBillar, "origen" | "mesaId" | "cuenta" | "tipoMesa">,
+  tipos: Record<string, { nombre: string }>,
+): string {
   if (v.origen !== "mesa") return etiquetaOrigen(v);
   return `Mesa ${v.mesaId}${v.tipoMesa ? ` · ${tipos[v.tipoMesa]?.nombre ?? v.tipoMesa}` : ""}`;
 }

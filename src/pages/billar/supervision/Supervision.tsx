@@ -3,9 +3,11 @@ import { Icon, type NombreIcono } from "../../../components/Icon";
 import { Cargando, ErrorMsg, Modal, Vacio } from "../../../components/ui";
 import { api } from "../../../lib/api";
 import { fmtMoney } from "../../../lib/format";
+import { useApi } from "../../../lib/useApi";
 import { useSucursales } from "../../../lib/useSucursales";
 import { useAuth } from "../../../store/AuthContext";
 import DialogoMovimiento from "../../pos/DialogoMovimiento";
+import ListaProductosVendidos from "../../pos/ListaProductosVendidos";
 import { MOTIVO_CENA } from "../../pos/motivosMovimiento";
 import { bsResta } from "../../reportes/formato";
 import type {
@@ -14,18 +16,21 @@ import type {
   EfectivoSupervisionApi,
   MovimientoSupervisionApi,
   SupervisionApi,
+  VentaApi,
 } from "../api";
-import { fmtHace, horaDe } from "../calculo";
+import { fmtCobrado, fmtHace, horaDe } from "../calculo";
 import { ESTADOS } from "../estilos";
 import { ChipsMotivo } from "../ModalesMesa";
 import { MOTIVOS_PAUSA } from "../ModalesMesa.datos";
 import { useAhora } from "../reloj";
 import { subColor, subLinea } from "../TarjetaMesaTextos";
+import type { ReporteCierreProductos } from "../../../types";
 import type { Pago } from "../tipos";
 import { BotonB, ChipFiltro, Circulo, ErrorAccion, EstadoBadge, Fila, Nota, Rotulo, SelectorSucursal, Tarjeta } from "../ui";
-import { cronoDe, nombreMesa, vistaCuenta, vistaDe, type VistaCuenta, type VistaMesa } from "../vista";
+import { cronoDe, nombreMesa, origenDe, textoMetodo, vistaCuenta, vistaDe, type VistaCuenta, type VistaMesa } from "../vista";
 import {
   armarSupervision,
+  consumosEnCurso,
   cuando,
   duracion,
   estadoDeCaja,
@@ -89,6 +94,9 @@ export default function Supervision() {
   const { incluye } = useAuth();
   const [registrando, setRegistrando] = useState<{ motivo?: string } | null>(null);
   const [anulando, setAnulando] = useState<MovimientoSupervisionApi | null>(null);
+  // El detalle de un renglón de la actividad (25-oct): la mesa, cuenta o venta, o la caja.
+  const [verDetalle, setVerDetalle] = useState<Consulta | null>(null);
+  const [verCaja, setVerCaja] = useState<number | null>(null);
 
   const armado = useMemo(() => (datos ? armarSupervision(datos) : null), [datos]);
   const contexto = useMemo(
@@ -127,6 +135,14 @@ export default function Supervision() {
   const selector =
     suc.elegir ? <SelectorSucursal valor={sucursal ?? datos.sucursal.id} sucursales={suc.sucursales} onElegir={elegirSucursal} /> : undefined;
   const actividad = filtrarActividad(datos.actividad, filtro);
+  /** Abre el detalle de un renglón: su mesa o cuenta, su venta o su caja. Sin ref no hay nada que abrir. */
+  const verDe = (a: ActividadApi): (() => void) | undefined => {
+    const ref = a.ref;
+    if (!ref) return undefined;
+    if (ref.caja != null) return () => setVerCaja(ref.caja!);
+    if (ref.sesion != null || ref.venta != null) return () => setVerDetalle({ sesion: ref.sesion, venta: ref.venta });
+    return undefined;
+  };
   // Con la semana entera la lista es larga: se ven las últimas y, siempre, la que se está mirando.
   const cajasVisibles = datos.cajas.filter((c, i) => todasLasCajas || i < CAJAS_DE_ENTRADA || c.id === turno.caja?.id);
   const cajasOcultas = datos.cajas.length - cajasVisibles.length;
@@ -210,6 +226,14 @@ export default function Supervision() {
                 pie={`${resumen.mesasEnJuego} ${resumen.mesasEnJuego === 1 ? "mesa" : "mesas"} y ${resumen.cuentas} ${resumen.cuentas === 1 ? "cuenta" : "cuentas"} abiertas`}
               />
             </div>
+
+            {datos.productos && (
+              <TarjetaLoQueSalio
+                productos={datos.productos}
+                enCurso={consumosEnCurso(datos)}
+                verEnCurso={turno.situacion !== "elegido"}
+              />
+            )}
 
             {datos.efectivo && turno.caja && (
               <TarjetaEfectivo
@@ -317,7 +341,7 @@ export default function Supervision() {
               ) : (
                 <ul className="divide-y divide-borde-soft">
                   {actividad.slice(0, cuantos).map((a) => (
-                    <RenglonActividad key={a.id} a={a} ahora={ahora} />
+                    <RenglonActividad key={a.id} a={a} ahora={ahora} onVer={verDe(a)} />
                   ))}
                 </ul>
               )}
@@ -340,6 +364,7 @@ export default function Supervision() {
           calc={mesaViendo.vista.cuenta}
           quien={mesaViendo.quien}
           ahora={ahora}
+          historial={{ sesion: Number(mesaViendo.mesa.sesion!.id) }}
           onClose={() => setViendo(null)}
           onPausar={
             mesaViendo.vista.estado !== "pausada" && mesaViendo.sesionId != null
@@ -358,8 +383,22 @@ export default function Supervision() {
           calc={cuentaViendo.vista.calc}
           quien={cuentaViendo.quien}
           ahora={ahora}
+          historial={{ sesion: Number(cuentaViendo.cuenta.sesion.id) }}
           onClose={() => setViendo(null)}
         />
+      )}
+      {verDetalle && (
+        <DetalleDeActividad
+          consulta={verDetalle}
+          mesas={mesas}
+          cuentas={cuentas}
+          tipos={contexto?.tipos ?? {}}
+          ahora={ahora}
+          onClose={() => setVerDetalle(null)}
+        />
+      )}
+      {verCaja != null && datos.cajas.some((c) => c.id === verCaja) && (
+        <DetalleCaja c={datos.cajas.find((c) => c.id === verCaja)!} ahora={ahora} onClose={() => setVerCaja(null)} />
       )}
       {registrando && datos.efectivo && turno.caja && (
         <DialogoMovimiento
@@ -1025,6 +1064,7 @@ function DetalleSesion({
   ahora,
   onClose,
   onPausar,
+  historial,
 }: {
   titulo: string;
   subtitulo?: string;
@@ -1035,6 +1075,8 @@ function DetalleSesion({
   ahora: number;
   onClose: () => void;
   onPausar?: () => void;
+  /** Con esto, abajo va todo lo que se hizo con esta mesa o cuenta (se pide al abrir). */
+  historial?: Consulta;
 }) {
   const consumos = sesion.consumos;
   return (
@@ -1117,6 +1159,8 @@ function DetalleSesion({
             </ul>
           </div>
         )}
+
+        {historial && <Historial consulta={historial} ahora={ahora} />}
       </div>
     </Modal>
   );
@@ -1210,6 +1254,313 @@ function PausarDesdeSupervision({
 
 // ── La actividad ────────────────────────────────────────────────────────────
 
+// ── Lo que salió en el turno ────────────────────────────────────────────────
+
+/**
+ * Lo que salió en el turno (25-oct): lo ya cobrado, por categoría y producto
+ * (el mismo número del cierre de la cajera), y lo que van pidiendo las mesas y
+ * cuentas que siguen abiertas, que todavía no se cobró. Es para ver, sin abrir
+ * cada mesa, qué pedidos salieron y cuáles van saliendo.
+ */
+function TarjetaLoQueSalio({
+  productos,
+  enCurso,
+  verEnCurso,
+}: {
+  productos: ReporteCierreProductos;
+  enCurso: { nombre: string; cant: number; total: number }[];
+  /** Con un turno viejo no: las mesas abiertas son de ahora, no de ese turno. */
+  verEnCurso: boolean;
+}) {
+  const porCobrar = enCurso.reduce((t, i) => t + i.total, 0);
+  return (
+    <section aria-label="Lo que salió en el turno" className="card overflow-hidden">
+      <header className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-borde-soft px-4 py-3.5 sm:px-5">
+        <Circulo icono="box" tono="gris" size={36} />
+        <h2 className="min-w-[11rem] flex-1 text-[15px] font-bold text-texto">Lo que salió en el turno</h2>
+        <span className="text-[12px] text-texto-3">{fmtMoney(productos.total)} cobrado</span>
+      </header>
+      <div className={`grid gap-x-6 gap-y-5 px-4 py-4 sm:px-5 ${verEnCurso ? "lg:grid-cols-2" : ""}`}>
+        <div className="min-w-0 space-y-3">
+          <p className="text-[11px] font-bold uppercase tracking-wider text-texto-3">Ya cobrado</p>
+          {productos.lineas === 0 ? (
+            <p className="rounded-xl border border-dashed border-borde px-4 py-5 text-center text-[13px] text-texto-3">
+              Todavía no se cobró nada en este turno.
+            </p>
+          ) : (
+            <div className="space-y-3">
+              <ListaProductosVendidos d={productos} />
+            </div>
+          )}
+        </div>
+        {verEnCurso && (
+          <div className="min-w-0 space-y-3">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-texto-3">En mesas y cuentas abiertas · sin cobrar</p>
+            {enCurso.length === 0 ? (
+              <p className="rounded-xl border border-dashed border-borde px-4 py-5 text-center text-[13px] text-texto-3">
+                Ninguna mesa ni cuenta tiene consumos por ahora.
+              </p>
+            ) : (
+              <>
+                <div className="flex justify-between rounded-xl bg-amber-50 px-3.5 py-2.5 text-[13px] text-amber-900">
+                  <span>
+                    {enCurso.reduce((t, i) => t + i.cant, 0)} unidades · {enCurso.length} {enCurso.length === 1 ? "producto" : "productos"}
+                  </span>
+                  <span className="font-bold">{fmtMoney(porCobrar)}</span>
+                </div>
+                <ul className="divide-y divide-borde-soft">
+                  {enCurso.map((i) => (
+                    <li key={i.nombre} className="flex items-center gap-2 py-1.5 text-[13px]">
+                      <span className="min-w-0 flex-1 truncate text-texto-2">{i.nombre}</span>
+                      <span className="shrink-0 text-texto-3">{i.cant} u</span>
+                      <span className="w-20 shrink-0 text-right font-bold text-texto">{fmtMoney(i.total)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+// ── El detalle de un renglón de la actividad ────────────────────────────────
+
+type Consulta = { sesion?: number; venta?: number };
+
+/**
+ * Lo que se hizo con una mesa, cuenta o venta, de lo más viejo a lo más nuevo:
+ * quién la abrió, qué consumos cargó y a qué hora, las pausas, los cobros y las
+ * anulaciones. Es la lista sola: la pide quien la muestra.
+ */
+function ListaHistorial({ historial, ahora }: { historial: ActividadApi[]; ahora: number }) {
+  if (historial.length === 0) return <p className="text-texto-3">Todavía no hay nada más que contar.</p>;
+  return (
+    <ol className="space-y-3">
+      {historial.map((h) => (
+        <li key={h.id} className="flex gap-3">
+          <span className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${TONO_ICONO[tonoDeActividad(h.codigo)]}`}>
+            <Icon name={ICONO_ACTIVIDAD[h.codigo] ?? "info"} size={13} />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="leading-snug text-texto">
+              <b className="font-bold">{h.quien || "Alguien"}</b> · {h.texto}
+            </p>
+            <p className="flex flex-wrap items-center gap-x-2 text-[12px] text-texto-3">
+              <span className="tabular-nums">{cuando(h.hora, ahora)}</span>
+              {h.autorizo && <span>Autorizó {h.autorizo}</span>}
+              {h.motivo && <span className="min-w-0">«{h.motivo}»</span>}
+            </p>
+          </div>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+/** El historial de una mesa o cuenta que sigue abierta, al pie de su detalle en vivo. */
+function Historial({ consulta, ahora }: { consulta: Consulta; ahora: number }) {
+  const d = useApi(() => apiBillar.detalleSupervision(consulta), [consulta.sesion, consulta.venta]);
+  return (
+    <div className="space-y-2 border-t border-borde-soft pt-3">
+      <Rotulo icono="lista">Lo que se hizo</Rotulo>
+      {d.cargando ? (
+        <p className="text-texto-3">Cargando…</p>
+      ) : d.error ? (
+        <ErrorMsg onReintentar={d.recargar}>{d.error}</ErrorMsg>
+      ) : (
+        <ListaHistorial historial={d.datos?.historial ?? []} ahora={ahora} />
+      )}
+    </div>
+  );
+}
+
+/**
+ * El detalle de lo que se tocó en la actividad: una mesa o cuenta que sigue
+ * abierta abre su detalle en vivo (con el historial abajo); una ya cobrada, o
+ * una venta, abre el ticket con todo lo que se hizo.
+ */
+function DetalleDeActividad({
+  consulta,
+  mesas,
+  cuentas,
+  tipos,
+  ahora,
+  onClose,
+}: {
+  consulta: Consulta;
+  mesas: (MesaSup & { vista: VistaMesa })[];
+  cuentas: (CuentaSup & { vista: VistaCuenta })[];
+  tipos: Record<string, { nombre: string }>;
+  ahora: number;
+  onClose: () => void;
+}) {
+  const sid = consulta.sesion != null ? Number(consulta.sesion) : null;
+  const mesa = sid != null ? mesas.find((m) => m.mesa.sesion != null && Number(m.mesa.sesion.id) === sid) : undefined;
+  const cuenta = sid != null ? cuentas.find((c) => Number(c.cuenta.sesion.id) === sid) : undefined;
+  if (sid != null && mesa?.quien && mesa.vista.cuenta) {
+    return (
+      <DetalleSesion
+        titulo={nombreMesa(mesa.mesa)}
+        subtitulo={mesa.vista.tipo.nombre}
+        vista={mesa.vista}
+        sesion={mesa.mesa.sesion!}
+        calc={mesa.vista.cuenta}
+        quien={mesa.quien}
+        ahora={ahora}
+        onClose={onClose}
+        historial={{ sesion: sid }}
+      />
+    );
+  }
+  if (sid != null && cuenta) {
+    return (
+      <DetalleSesion
+        titulo={`Cuenta ${cuenta.cuenta.nombre}`}
+        sesion={cuenta.cuenta.sesion}
+        calc={cuenta.vista.calc}
+        quien={cuenta.quien}
+        ahora={ahora}
+        onClose={onClose}
+        historial={{ sesion: sid }}
+      />
+    );
+  }
+  return <DetalleCobrado consulta={consulta} tipos={tipos} ahora={ahora} onClose={onClose} />;
+}
+
+/** Una venta ya cobrada (o anulada): el ticket y todo lo que se hizo hasta cobrarla. */
+function DetalleCobrado({
+  consulta,
+  tipos,
+  ahora,
+  onClose,
+}: {
+  consulta: Consulta;
+  tipos: Record<string, { nombre: string }>;
+  ahora: number;
+  onClose: () => void;
+}) {
+  const d = useApi(() => apiBillar.detalleSupervision(consulta), [consulta.sesion, consulta.venta]);
+  const v = d.datos?.venta ?? null;
+  return (
+    <Modal
+      abierto
+      titulo={v ? `Venta ${v.codigo}` : "Detalle"}
+      subtitulo={v ? origenDe(v, tipos) : undefined}
+      onClose={onClose}
+      ancho="max-w-md"
+      acciones={<BotonB onClick={onClose}>Cerrar</BotonB>}
+    >
+      <div className="space-y-4 text-[13px]">
+        {d.cargando ? (
+          <Cargando texto="Cargando el detalle…" />
+        ) : d.error ? (
+          <ErrorMsg onReintentar={d.recargar}>{d.error}</ErrorMsg>
+        ) : (
+          <>
+            {v && <TicketDeVenta v={v} ahora={ahora} />}
+            <div className={`space-y-2 ${v ? "border-t border-borde-soft pt-3" : ""}`}>
+              <Rotulo icono="lista">Lo que se hizo</Rotulo>
+              <ListaHistorial historial={d.datos?.historial ?? []} ahora={ahora} />
+            </div>
+          </>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+/** Lo cobrado en una venta del billar: quién, cuánto tiempo, qué consumos y cómo se pagó. */
+function TicketDeVenta({ v, ahora }: { v: VentaApi; ahora: number }) {
+  const mesa = v.origen === "mesa";
+  return (
+    <div className="space-y-4">
+      {v.anulada && (
+        <Nota tono="rosa" icono="alert">
+          <b>Venta anulada</b> por {v.anulada.quien} · {cuando(v.anulada.hora, ahora)}
+          {v.anulada.motivo ? `: «${v.anulada.motivo}»` : ""}
+        </Nota>
+      )}
+      <div className="space-y-1">
+        <Fila etiqueta="Cobró" valor={`${v.cajero} · ${cuando(v.hora, ahora)}`} />
+        {v.cliente && <Fila etiqueta="Cliente" valor={v.cliente} />}
+        {mesa && <Fila etiqueta="Tiempo cobrado" valor={`${fmtCobrado(v.tiempoMin)} · ${fmtMoney(v.tiempoBs + (v.promo?.descuento ?? 0))}`} />}
+        {mesa && v.tiempoPrevioMin ? <Fila etiqueta="En otra mesa" valor={`${fmtCobrado(v.tiempoPrevioMin)} a su tarifa`} /> : null}
+        {mesa && v.pausaMin ? <Fila etiqueta="En pausa (no se cobra)" valor={fmtCobrado(v.pausaMin)} /> : null}
+        {v.promo && <Fila etiqueta={v.promo.nombre} valor={`−${fmtMoney(v.promo.descuento)}`} />}
+      </div>
+
+      {v.items.length > 0 && (
+        <div className="space-y-1 border-t border-borde-soft pt-3">
+          <Rotulo icono="cart">Consumos</Rotulo>
+          {v.items.map((i) => (
+            <Fila key={`${i.productoId}-${i.precio}`} etiqueta={`${i.cant}× ${i.nombre}`} valor={fmtMoney(i.precio * i.cant)} />
+          ))}
+        </div>
+      )}
+
+      <div className="space-y-1 border-t border-borde-soft pt-3">
+        <Fila etiqueta="Total" valor={fmtMoney(v.total)} fuerte />
+        {v.pagos.map((p) => (
+          <Fila key={p.id} etiqueta={`Pagó con ${textoMetodo(p)}${p.nota ? ` · ${p.nota}` : ""}`} valor={fmtMoney(p.monto)} />
+        ))}
+        {v.devuelto ? (
+          <>
+            {v.devuelto.efectivo > 0.005 && <Fila etiqueta="Devuelto en efectivo" valor={fmtMoney(v.devuelto.efectivo)} />}
+            {v.devuelto.otros.map((o) => (
+              <Fila key={o.metodo} etiqueta={`Devuelto por ${o.metodo}`} valor={fmtMoney(o.monto)} />
+            ))}
+          </>
+        ) : (
+          v.recibido !== undefined && (
+            <>
+              <Fila etiqueta="Le dieron" valor={fmtMoney(v.recibido)} />
+              <Fila etiqueta="Cambio" valor={fmtMoney(v.cambio ?? 0)} />
+            </>
+          )
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Una caja de la semana: quién la abrió y cuándo, con cuánto, cómo la cerró. */
+function DetalleCaja({ c, ahora, onClose }: { c: CajaSupervisionApi; ahora: number; onClose: () => void }) {
+  return (
+    <Modal
+      abierto
+      titulo={`Caja de ${c.cajero}`}
+      subtitulo={c.abierta ? "Abierta" : "Cerrada"}
+      onClose={onClose}
+      ancho="max-w-md"
+      acciones={<BotonB onClick={onClose}>Cerrar</BotonB>}
+    >
+      <div className="space-y-4 text-[13px]">
+        <div className="space-y-1">
+          <Fila etiqueta="Abrió" valor={`${c.cajero} · ${cuando(c.desde, ahora)}`} />
+          <Fila etiqueta="Abrió con" valor={fmtMoney(c.inicial)} />
+          {c.hasta != null ? (
+            <Fila etiqueta="Cerró" valor={`${c.cerroPor ?? c.cajero} · ${cuando(c.hasta, ahora)} (${duracion(c.hasta - c.desde)})`} />
+          ) : (
+            <Fila etiqueta="Lleva" valor={duracion(ahora - c.desde)} />
+          )}
+        </div>
+        <div className="space-y-1 border-t border-borde-soft pt-3">
+          <Fila etiqueta="Vendió" valor={`${fmtMoney(c.vendido)} · ${c.ventas} ${c.ventas === 1 ? "venta" : "ventas"}`} />
+          {c.anuladas > 0 && <Fila etiqueta="Ventas anuladas" valor={String(c.anuladas)} />}
+          {c.cena && <Fila etiqueta="Cena" valor={`${bsResta(c.cena.monto)}${c.cena.por ? ` · ${c.cena.por}` : ""}`} />}
+          {c.contado != null && <Fila etiqueta="Contó al cerrar" valor={fmtMoney(c.contado)} />}
+          {c.contado != null && <Fila etiqueta="Diferencia" valor={textoDiferencia(c.diferencia ?? 0)} />}
+        </div>
+        {c.nota && <p className="border-t border-borde-soft pt-3 text-texto-2">Nota al cerrar: {c.nota}</p>}
+      </div>
+    </Modal>
+  );
+}
+
 const ICONO_ACTIVIDAD: Record<string, NombreIcono> = {
   CAJA_ABIERTA: "lock",
   CAJA_CERRADA: "lock",
@@ -1233,10 +1584,14 @@ const TONO_ICONO: Record<TonoActividad, string> = {
   violeta: "bg-violet-100 text-violet-700",
 };
 
-function RenglonActividad({ a, ahora }: { a: ActividadApi; ahora: number }) {
+/**
+ * Un renglón de la actividad. Si tiene de qué ser (`onVer`: una mesa, una cuenta,
+ * una venta o una caja), se toca y abre su detalle completo (25-oct).
+ */
+function RenglonActividad({ a, ahora, onVer }: { a: ActividadApi; ahora: number; onVer?: () => void }) {
   const tono = tonoDeActividad(a.codigo);
-  return (
-    <li className="flex gap-3 px-4 py-3 sm:px-5">
+  const cuerpo = (
+    <>
       <span className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${TONO_ICONO[tono]}`}>
         <Icon name={ICONO_ACTIVIDAD[a.codigo] ?? "info"} size={15} />
       </span>
@@ -1251,6 +1606,27 @@ function RenglonActividad({ a, ahora }: { a: ActividadApi; ahora: number }) {
           {a.motivo && <span className="min-w-0 truncate">«{a.motivo}»</span>}
         </p>
       </div>
+      {onVer && (
+        <span className="mt-2 shrink-0 text-texto-4">
+          <Icon name="chevronRight" size={16} />
+        </span>
+      )}
+    </>
+  );
+  return (
+    <li>
+      {onVer ? (
+        <button
+          type="button"
+          onClick={onVer}
+          aria-label={`Ver el detalle: ${a.quien} · ${a.texto}`}
+          className="flex w-full gap-3 px-4 py-3 text-left transition-colors hover:bg-muted focus-visible:bg-muted focus-visible:outline-none sm:px-5"
+        >
+          {cuerpo}
+        </button>
+      ) : (
+        <div className="flex gap-3 px-4 py-3 sm:px-5">{cuerpo}</div>
+      )}
     </li>
   );
 }

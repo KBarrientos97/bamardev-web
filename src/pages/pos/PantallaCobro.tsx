@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Icon } from "../../components/Icon";
 import { QrParaCobrar } from "../../components/QrCobro";
 import { Boton, Campo, ErrorMsg, Input } from "../../components/ui";
+import { atajosDeEfectivo } from "../../lib/billetes";
 import { formaPagoFaltante } from "../../lib/formaPagoFaltante";
 import {
   aCentavos,
@@ -29,19 +30,16 @@ function buscarForma(formas: FormaPago[], nombre: string): FormaPago | undefined
   return formas.find((f) => f.nombre.toLowerCase() === nombre.toLowerCase());
 }
 
-/** Montos redondos que el cliente suele entregar, por encima del total. */
+/**
+ * Lo que el cliente suele entregar: el total justo y los billetes o monedas de
+ * Bolivia que lo cubren solos. Antes se redondeaba a múltiplos (Bs 40, Bs 150…)
+ * y salían montos que no son un billete (QA de Kevin, 25-oct).
+ */
 function sugerenciasEfectivo(total: number): number[] {
-  const base = [10, 20, 50, 100, 200];
-  const out = new Set<number>();
   // El total exacto siempre sirve: es el caso de "justo".
   // `aCentavos` y no `Math.ceil(total * 100)`: en punto flotante 35.2 * 100
   // da 3520.0000000000005 y el chip "justo" decía un centavo de más.
-  out.add(aCentavos(total));
-  for (const b of base) {
-    const redondeado = Math.ceil(total / b) * b;
-    if (redondeado > total) out.add(redondeado);
-  }
-  return [...out].sort((a, b) => a - b).slice(0, 4);
+  return [aCentavos(total), ...atajosDeEfectivo(total)];
 }
 
 export default function PantallaCobro({

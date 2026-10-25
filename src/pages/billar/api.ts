@@ -1,5 +1,5 @@
 import { request } from "../../lib/api";
-import type { ConsumoVista, CreditoInput, FormaPago, PagoInput } from "../../types";
+import type { ConsumoVista, CreditoInput, FormaPago, PagoInput, ReporteCierreProductos } from "../../types";
 import type {
   AjustesBillar,
   CuentaSinMesa,
@@ -202,6 +202,11 @@ export interface ActividadApi {
   motivo?: string;
   /** La acción cruda (PAUSAR, VENTA, CAJA_ABIERTA…). */
   codigo: string;
+  /**
+   * De qué es el renglón, para abrir su detalle (backend del 25-oct): la mesa o
+   * cuenta, la venta o la caja. Sin ref (el efectivo, un PIN) no hay más que contar.
+   */
+  ref?: { sesion?: number; venta?: number; caja?: number };
 }
 
 export interface SupervisionApi {
@@ -227,7 +232,22 @@ export interface SupervisionApi {
   cajas: CajaSupervisionApi[];
   /** Los movimientos de efectivo de la caja del turno. Un backend anterior al 24-oct no lo manda. */
   efectivo?: EfectivoSupervisionApi | null;
+  /** Lo cobrado en la caja del turno, por categoría y producto (backend del 25-oct). */
+  productos?: ReporteCierreProductos | null;
   actividad: ActividadApi[];
+}
+
+/**
+ * El detalle de una mesa, cuenta o venta (`GET /billar/supervision/detalle`,
+ * backend del 25-oct): todo lo que se hizo, de lo más viejo a lo más nuevo, y la
+ * venta con la vista del ticket si ya se cobró.
+ */
+export interface DetalleSupervisionApi {
+  /** La mesa o cuenta sigue abierta. */
+  abierta: boolean;
+  sesionId: number | null;
+  venta: VentaApi | null;
+  historial: ActividadApi[];
 }
 
 /** Una mesa como la lista el administrador (también las guardadas sin usar). */
@@ -312,6 +332,11 @@ export const apiBillar = {
     const q = [sucursalId != null && `sucursalId=${sucursalId}`, turno != null && `turno=${turno}`].filter(Boolean);
     return request<SupervisionApi>(`/billar/supervision${q.length ? `?${q.join("&")}` : ""}`);
   },
+  /** Todo lo que se hizo con una mesa, cuenta o venta (sólo el administrador del billar). */
+  detalleSupervision: (q: { sesion?: number; venta?: number }) =>
+    request<DetalleSupervisionApi>(
+      `/billar/supervision/detalle?${[q.sesion != null && `sesion=${q.sesion}`, q.venta != null && `venta=${q.venta}`].filter(Boolean).join("&")}`,
+    ),
   /** Pausar desde Supervisión: sin PIN ni caja propia, a nombre del administrador. */
   pausarSupervision: (sesionId: number, motivo: string) =>
     enviar<MesaApi>(`/billar/supervision/sesiones/${sesionId}/pausar`, { motivo }),

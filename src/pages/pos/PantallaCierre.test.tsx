@@ -141,7 +141,8 @@ function filasDeCaja(): [string, number][] {
   const titulo = screen.getByText("Efectivo en caja");
   const dl = titulo.nextElementSibling as HTMLElement;
   return Array.from(dl.querySelectorAll("dt")).map((dt) => {
-    const txt = (dt.nextElementSibling?.textContent ?? "").replace(/[^\d,-]/g, "").replace(",", ".");
+    // El signo menos puede venir como "−" (la fila de la cena: «−Bs 20,00») o como "-".
+    const txt = (dt.nextElementSibling?.textContent ?? "").replace(/−/g, "-").replace(/[^\d,-]/g, "").replace(",", ".");
     return [dt.textContent ?? "", Number(txt)];
   });
 }
@@ -217,6 +218,55 @@ describe("billar (24-oct): la cena del personal que registró el administrador",
     // La cena no se cuenta dos veces: ni como "egresos de efectivo".
     expect(screen.queryByText("Egresos de efectivo")).not.toBeInTheDocument();
     expect(screen.queryByText("Otros egresos de efectivo")).not.toBeInTheDocument();
+  });
+
+  it("billar: no dice «Recibido… cambio entregado» bajo las ventas en efectivo (la cajera cuenta el cajón)", async () => {
+    sesion.rubro = "BILLAR";
+    vi.mocked(api.resumenCaja).mockResolvedValue(
+      resumen({ montoApertura: 50, efectivo: 130, cambioEntregado: 70, saldoEsperado: 180 }),
+    );
+    await montar();
+    expect(filasDeCaja().map(([e]) => e)).toEqual(["Fondo de apertura", "Ventas en efectivo"]);
+    expect(screen.queryByText(/cambio entregado/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Recibido/)).not.toBeInTheDocument();
+  });
+
+  it("billar: la cajera (sin reportes) ve lo vendido del turno, que ya viene con el arqueo", async () => {
+    sesion.rubro = "BILLAR";
+    sesion.reportes = false;
+    vi.mocked(api.resumenCaja).mockResolvedValue(
+      resumen({
+        productos: {
+          unidades: 4,
+          total: 60,
+          lineas: 1,
+          categorias: [
+            {
+              nombre: "Cervezas",
+              unidades: 4,
+              total: 60,
+              items: [{ nombre: "Paceña 620 ml", cantidad: 4, precio: 15, total: 60 }],
+            },
+          ],
+        },
+      }),
+    );
+    await montar();
+    // Con el rótulo del billar: «mostrador» es palabra de restaurante.
+    fireEvent.click(screen.getByText("Ver lo vendido"));
+    expect(await screen.findByText("Productos vendidos")).toBeInTheDocument();
+    expect(screen.getByText("Paceña 620 ml")).toBeInTheDocument();
+    expect(screen.getByText("Cervezas")).toBeInTheDocument();
+    // Sin pedirlo a los reportes, que la cajera no puede ver.
+    expect(api.reporteCierreProductos).not.toHaveBeenCalled();
+  });
+
+  it("billar: sin lo vendido en el arqueo (un servidor anterior) la cajera no ve el botón", async () => {
+    sesion.rubro = "BILLAR";
+    sesion.reportes = false;
+    vi.mocked(api.resumenCaja).mockResolvedValue(resumen());
+    await montar();
+    expect(screen.queryByText("Ver lo vendido")).not.toBeInTheDocument();
   });
 
   it("un retiro común va aparte de la cena, como «egresos»", async () => {

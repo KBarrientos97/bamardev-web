@@ -308,3 +308,27 @@ export function tonoDeActividad(codigo: string): TonoActividad {
       return "normal";
   }
 }
+
+// ── Lo que salió ────────────────────────────────────────────────────────────
+
+/**
+ * Lo que piden las mesas y cuentas que siguen abiertas y todavía no se cobró,
+ * sumado por producto (sin lo anulado): lo que "va saliendo" del turno. Del más
+ * caro al más barato.
+ */
+export function consumosEnCurso(api: Pick<SupervisionApi, "mesas" | "cuentas">): { nombre: string; cant: number; total: number }[] {
+  const por = new Map<string, { nombre: string; cant: number; total: number }>();
+  const sesiones = [...api.mesas.flatMap((m) => (m.sesion ? [m.sesion] : [])), ...api.cuentas.map((c) => c.sesion)];
+  for (const s of sesiones) {
+    for (const c of s.consumos) {
+      if (c.anulado) continue;
+      const ya = por.get(c.nombre) ?? { nombre: c.nombre, cant: 0, total: 0 };
+      ya.cant += c.cant;
+      ya.total += c.precio * c.cant;
+      por.set(c.nombre, ya);
+    }
+  }
+  return [...por.values()]
+    .map((i) => ({ ...i, total: round2(i.total) }))
+    .sort((a, b) => b.total - a.total || a.nombre.localeCompare(b.nombre));
+}
