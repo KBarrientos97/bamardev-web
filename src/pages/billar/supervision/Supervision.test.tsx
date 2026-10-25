@@ -712,3 +712,173 @@ describe("Billar (24-oct): los movimientos de efectivo y la cena de la cajera", 
     expect(screen.queryByRole("region", { name: "Movimientos de efectivo" })).toBeNull();
   });
 });
+
+describe("Billar (25-oct): lo que salió en el turno y el detalle de cada renglón de la actividad", () => {
+  const PRODUCTOS = {
+    unidades: 4,
+    total: 60,
+    lineas: 1,
+    categorias: [{ nombre: "Cervezas", unidades: 4, total: 60, items: [{ nombre: "Paceña 620 ml", cantidad: 4, precio: 15, total: 60 }] }],
+  };
+  const HISTORIAL = [
+    { id: "ev1", hora: AHORA - 60 * MIN, quien: "Pepe Mamani", texto: "Abrió la mesa en tiempo libre", codigo: "ABRIR" },
+    { id: "co5", hora: AHORA - 30 * MIN, quien: "Pepe Mamani", texto: "Cargó 2× Paceña 620 ml · Bs 30,00", codigo: "CONSUMO" },
+    { id: "ve77", hora: AHORA - 10 * MIN, quien: "Pepe Mamani", texto: "Cobró V-000077 · Bs 45,00", codigo: "VENTA" },
+  ];
+  const VENTA = {
+    id: 77,
+    codigo: "V-000077",
+    hora: AHORA - 10 * MIN,
+    cajero: "Pepe Mamani",
+    cliente: "Don Raúl",
+    origen: "mesa",
+    mesaId: 1,
+    tipoMesa: "pool",
+    tiempoMin: 45,
+    tiempoBs: 15,
+    items: [{ productoId: 1, nombre: "Paceña 620 ml", precio: 15, cant: 2 }],
+    consumosBs: 30,
+    total: 45,
+    pagos: [{ id: "9", hora: AHORA - 10 * MIN, metodo: "Efectivo", monto: 45 }],
+    recibido: 50,
+    cambio: 5,
+  };
+
+  /** Servidor con renglones que se pueden abrir y el detalle de cada uno. */
+  const conRefs = (extra: object = {}) => {
+    request.mockImplementation(async (url: string) => {
+      if (url.startsWith("/billar/supervision/detalle")) {
+        return url.includes("venta=77") || url.includes("sesion=900")
+          ? { abierta: false, sesionId: 900, venta: VENTA, historial: HISTORIAL }
+          : { abierta: true, sesionId: 101, venta: null, historial: HISTORIAL.slice(0, 2) };
+      }
+      if (url.startsWith("/billar/supervision")) {
+        const s = supervision();
+        return {
+          ...s,
+          productos: PRODUCTOS,
+          actividad: [
+            { id: "ve77", hora: AHORA - 10 * MIN, quien: "Pepe Mamani", texto: "Cobró V-000077 · Bs 45,00", lugar: "Mesa 5", codigo: "VENTA", ref: { venta: 77 } },
+            { id: "co5", hora: AHORA - 30 * MIN, quien: "Pepe Mamani", texto: "Cargó 2× Paceña 620 ml · Bs 30,00", lugar: "Mesa 1", codigo: "CONSUMO", ref: { sesion: 101 } },
+            { id: "ca1", hora: AHORA - 4 * 60 * MIN, quien: "Pepe Mamani", texto: "Abrió la caja con Bs 100,00", codigo: "CAJA_ABIERTA", ref: { caja: 1 } },
+            { id: "ev9", hora: AHORA - 5 * 60 * MIN, quien: "Kevin Dueño", texto: "Cambió qué pide PIN", codigo: "AJUSTE_PIN" },
+          ],
+          ...extra,
+        };
+      }
+      return [];
+    });
+  };
+  const actividadDe = () => screen.getByRole("complementary", { name: "Actividad del turno" });
+
+  it("lo que salió: lo cobrado por producto, y lo que piden las mesas abiertas todavía sin cobrar", async () => {
+    conRefs();
+    await montar();
+    const t = screen.getByRole("region", { name: "Lo que salió en el turno" });
+    expect(within(t).getByText(/Bs\s60,00 cobrado/)).toBeInTheDocument();
+    expect(within(t).getByText("Cervezas")).toBeInTheDocument();
+    // La Paceña ya cobrada, y las 2 que lleva la Mesa 1 sin cobrar (la Coca-Cola anulada no cuenta).
+    expect(within(t).getAllByText("Paceña 620 ml")).toHaveLength(2);
+    expect(within(t).getByText(/sin cobrar/)).toBeInTheDocument();
+    expect(within(t).getByText("2 u")).toBeInTheDocument();
+    expect(within(t).queryByText("Coca-Cola")).toBeNull();
+  });
+
+  it("sin nada cobrado ni nada pedido lo dice, y un servidor anterior no dibuja la tarjeta", async () => {
+    conRefs({ productos: { unidades: 0, total: 0, lineas: 0, categorias: [] }, mesas: [], cuentas: [] });
+    await montar();
+    const t = screen.getByRole("region", { name: "Lo que salió en el turno" });
+    expect(within(t).getByText("Todavía no se cobró nada en este turno.")).toBeInTheDocument();
+    expect(within(t).getByText("Ninguna mesa ni cuenta tiene consumos por ahora.")).toBeInTheDocument();
+  });
+
+  it("un servidor anterior, sin lo vendido, no dibuja la tarjeta", async () => {
+    conRefs({ productos: undefined });
+    await montar();
+    expect(screen.queryByRole("region", { name: "Lo que salió en el turno" })).toBeNull();
+  });
+
+  it("tocar una venta abre el ticket con todo lo que se hizo", async () => {
+    conRefs();
+    await montar();
+    await act(async () => {
+      fireEvent.click(within(actividadDe()).getByRole("button", { name: /Cobró V-000077/ }));
+    });
+    const d = await screen.findByRole("dialog");
+    expect(await within(d).findByText("Venta V-000077")).toBeInTheDocument();
+    expect(request.mock.calls.map((c) => c[0] as string)).toContain("/billar/supervision/detalle?venta=77");
+    // El ticket: quién cobró, el tiempo, los consumos, el total y con qué se pagó.
+    expect(within(d).getByText(/Pepe Mamani · /)).toBeInTheDocument();
+    expect(within(d).getByText("Don Raúl")).toBeInTheDocument();
+    expect(within(d).getByText("2× Paceña 620 ml")).toBeInTheDocument();
+    expect(within(d).getByText("Pagó con Efectivo")).toBeInTheDocument();
+    expect(within(d).getByText("Le dieron")).toBeInTheDocument();
+    // Y la historia de la mesa, en orden.
+    const pasos = within(d).getAllByRole("listitem").map((li) => li.textContent ?? "");
+    expect(pasos[0]).toMatch(/Abrió la mesa en tiempo libre/);
+    expect(pasos[1]).toMatch(/Cargó 2× Paceña 620 ml/);
+    expect(pasos[2]).toMatch(/Cobró V-000077/);
+  });
+
+  it("tocar un consumo de una mesa abierta abre su detalle en vivo, con lo que se hizo abajo", async () => {
+    conRefs();
+    await montar();
+    await act(async () => {
+      fireEvent.click(within(actividadDe()).getByRole("button", { name: /Cargó 2× Paceña/ }));
+    });
+    const d = await screen.findByRole("dialog");
+    // El detalle de siempre de la Mesa 1 (consumos con quién y a qué hora)…
+    expect(within(d).getAllByText("Consumos").length).toBeGreaterThan(0);
+    // …y lo que se hizo, que se pide por la mesa.
+    expect(await within(d).findByText("Lo que se hizo")).toBeInTheDocument();
+    expect(request.mock.calls.map((c) => c[0] as string)).toContain("/billar/supervision/detalle?sesion=101");
+    expect(await within(d).findByText(/Abrió la mesa en tiempo libre/)).toBeInTheDocument();
+  });
+
+  it("el detalle de una mesa desde su tarjeta también cuenta lo que se hizo", async () => {
+    conRefs();
+    await montar();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Mesa 1" }));
+    });
+    const d = await screen.findByRole("dialog");
+    expect(await within(d).findByText("Lo que se hizo")).toBeInTheDocument();
+    expect(request.mock.calls.map((c) => c[0] as string)).toContain("/billar/supervision/detalle?sesion=101");
+  });
+
+  it("tocar la caja abre su resumen sin pedir nada más", async () => {
+    conRefs();
+    await montar();
+    request.mockClear();
+    await act(async () => {
+      fireEvent.click(within(actividadDe()).getByRole("button", { name: /Abrió la caja con/ }));
+    });
+    const d = await screen.findByRole("dialog");
+    expect(within(d).getByText("Caja de Pepe Mamani")).toBeInTheDocument();
+    expect(within(d).getByText("Lleva")).toBeInTheDocument();
+    expect(request).not.toHaveBeenCalled();
+  });
+
+  it("un renglón sin nada más que contar no es un botón", async () => {
+    conRefs();
+    await montar();
+    expect(within(actividadDe()).queryByRole("button", { name: /Cambió qué pide PIN/ })).toBeNull();
+    expect(within(actividadDe()).getByText(/Cambió qué pide PIN/)).toBeInTheDocument();
+  });
+
+  it("si el servidor no puede dar el detalle lo dice y deja reintentar", async () => {
+    conRefs();
+    const original = request.getMockImplementation()!;
+    request.mockImplementation(async (url: string, ...resto: unknown[]) => {
+      if (url.startsWith("/billar/supervision/detalle")) throw new Error("Esa venta no existe");
+      return original(url, ...resto);
+    });
+    await montar();
+    await act(async () => {
+      fireEvent.click(within(actividadDe()).getByRole("button", { name: /Cobró V-000077/ }));
+    });
+    const d = await screen.findByRole("dialog");
+    expect(await within(d).findByText(/Esa venta no existe/)).toBeInTheDocument();
+    expect(within(d).getByRole("button", { name: /Reintentar/ })).toBeInTheDocument();
+  });
+});

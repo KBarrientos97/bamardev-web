@@ -11,8 +11,8 @@ import { useSucursales } from "../../lib/useSucursales";
 import { conMayuscula, termino } from "../../lib/rubro";
 import type { Caja } from "../../types";
 
-/** Montos típicos de fondo de caja: ahorran teclear lo de siempre. */
-const SUGERENCIAS = [50, 100, 200, 500];
+/** Montos típicos de fondo de caja: ahorran teclear lo de siempre. Billetes que existen (no hay uno de 500). */
+const SUGERENCIAS = [50, 100, 200];
 
 export default function AperturaCaja({
   onAbierta,

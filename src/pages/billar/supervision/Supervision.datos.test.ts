@@ -4,6 +4,7 @@ import { cuentaDe } from "../calculo";
 import { vistaCuenta, vistaDe } from "../vista";
 import {
   armarSupervision,
+  consumosEnCurso,
   cuando,
   diaYHora,
   duracion,
@@ -348,5 +349,25 @@ describe("el efectivo en la actividad (24-oct)", () => {
   it("la cena va en violeta y el resto de los movimientos, sin color", () => {
     expect(tonoDeActividad("EFECTIVO_CENA")).toBe("violeta");
     expect(tonoDeActividad("EFECTIVO")).toBe("normal");
+  });
+});
+
+describe("lo que va saliendo (25-oct)", () => {
+  const consumo = (nombre: string, precio: number, cant: number, anulado = false) => ({ id: 1, productoId: 1, nombre, precio, cant, hora: 1, anulado });
+  const mesa = (consumos: ReturnType<typeof consumo>[]) => ({ sesion: { consumos } });
+
+  it("suma por producto lo que piden las mesas y cuentas abiertas, sin lo anulado, del más caro al más barato", () => {
+    const r = consumosEnCurso({
+      mesas: [mesa([consumo("Paceña", 15, 2), consumo("Coca-Cola", 12, 1, true)]), mesa([consumo("Paceña", 15, 1), consumo("Maní", 5, 2)])] as never,
+      cuentas: [{ sesion: { consumos: [consumo("Paceña", 15, 1)] } }] as never,
+    });
+    expect(r).toEqual([
+      { nombre: "Paceña", cant: 4, total: 60 },
+      { nombre: "Maní", cant: 2, total: 10 },
+    ]);
+  });
+
+  it("una mesa libre y una cuenta sin consumos no suman nada", () => {
+    expect(consumosEnCurso({ mesas: [{}] as never, cuentas: [{ sesion: { consumos: [] } }] as never })).toEqual([]);
   });
 });
