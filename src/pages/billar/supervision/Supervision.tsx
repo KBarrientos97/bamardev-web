@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Icon, type NombreIcono } from "../../../components/Icon";
 import { Cargando, ErrorMsg, Modal, Vacio } from "../../../components/ui";
 import { api } from "../../../lib/api";
-import { fmtMoney } from "../../../lib/format";
+import { fmtMoney, fmtMoneySinCeros } from "../../../lib/format";
 import { useApi } from "../../../lib/useApi";
 import { useSucursales } from "../../../lib/useSucursales";
 import { useAuth } from "../../../store/AuthContext";
@@ -1278,7 +1278,7 @@ function TarjetaLoQueSalio({
       <header className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-borde-soft px-4 py-3.5 sm:px-5">
         <Circulo icono="box" tono="gris" size={36} />
         <h2 className="min-w-[11rem] flex-1 text-[15px] font-bold text-texto">Lo que salió en el turno</h2>
-        <span className="text-[12px] text-texto-3">{fmtMoney(productos.total)} cobrado</span>
+        <span className="text-[12px] text-texto-3">{fmtMoneySinCeros(productos.total)} cobrado</span>
       </header>
       <div className={`grid gap-x-6 gap-y-5 px-4 py-4 sm:px-5 ${verEnCurso ? "lg:grid-cols-2" : ""}`}>
         <div className="min-w-0 space-y-3">
@@ -1289,7 +1289,7 @@ function TarjetaLoQueSalio({
             </p>
           ) : (
             <div className="space-y-3">
-              <ListaProductosVendidos d={productos} />
+              <ListaProductosVendidos d={productos} sinCeros />
             </div>
           )}
         </div>
@@ -1306,14 +1306,14 @@ function TarjetaLoQueSalio({
                   <span>
                     {enCurso.reduce((t, i) => t + i.cant, 0)} unidades · {enCurso.length} {enCurso.length === 1 ? "producto" : "productos"}
                   </span>
-                  <span className="font-bold">{fmtMoney(porCobrar)}</span>
+                  <span className="font-bold">{fmtMoneySinCeros(porCobrar)}</span>
                 </div>
                 <ul className="divide-y divide-borde-soft">
                   {enCurso.map((i) => (
                     <li key={i.nombre} className="flex items-center gap-2 py-1.5 text-[13px]">
                       <span className="min-w-0 flex-1 truncate text-texto-2">{i.nombre}</span>
                       <span className="shrink-0 text-texto-3">{i.cant} u</span>
-                      <span className="w-20 shrink-0 text-right font-bold text-texto">{fmtMoney(i.total)}</span>
+                      <span className="w-20 shrink-0 text-right font-bold text-texto">{fmtMoneySinCeros(i.total)}</span>
                     </li>
                   ))}
                 </ul>

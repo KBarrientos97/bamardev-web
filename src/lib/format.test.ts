@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fijarMoneda, fmtFecha, fmtMoney, fmtNum, isoDia, iniciales } from "./format";
+import { fijarMoneda, fmtCantidad, fmtFecha, fmtMoney, fmtMoneySinCeros, fmtNum, isoDia, iniciales } from "./format";
 
 describe("fmtFecha", () => {
   it("no corre el día con una fecha suelta yyyy-MM-dd", () => {
@@ -47,6 +47,42 @@ describe("fmtMoney", () => {
     fijarMoneda("BOB");
     expect(fmtMoney(null)).toBe("Bs 0,00");
     expect(fmtMoney(undefined)).toBe("Bs 0,00");
+  });
+});
+
+describe("fmtMoneySinCeros", () => {
+  it("la plata entera va sin ,00 y con centavos se queda como siempre", () => {
+    fijarMoneda("BOB");
+    expect(fmtMoneySinCeros(30)).toBe("Bs 30");
+    expect(fmtMoneySinCeros(10.5)).toBe("Bs 10,50");
+    expect(fmtMoneySinCeros(0)).toBe("Bs 0");
+    expect(fmtMoneySinCeros(1200)).toBe("Bs 1.200");
+    expect(fmtMoneySinCeros(1234.5)).toBe("Bs 1.234,50");
+  });
+
+  it("redondea a centavos antes de decidir: una suma con resto de punto flotante sigue siendo entera", () => {
+    fijarMoneda("BOB");
+    expect(fmtMoneySinCeros(29.999999)).toBe("Bs 30");
+    expect(fmtMoneySinCeros(0.1 + 0.2 + 29.7)).toBe("Bs 30");
+  });
+
+  it("trata null y undefined como cero y respeta la moneda del negocio", () => {
+    fijarMoneda("BOB");
+    expect(fmtMoneySinCeros(null)).toBe("Bs 0");
+    expect(fmtMoneySinCeros(undefined)).toBe("Bs 0");
+    fijarMoneda("USD");
+    expect(fmtMoneySinCeros(15)).toBe("$ 15");
+    fijarMoneda("BOB");
+  });
+});
+
+describe("fmtCantidad", () => {
+  it("la cantidad entera va sin ,00 y la que tiene fracción, con lo que necesita", () => {
+    expect(fmtCantidad(9)).toBe("9");
+    expect(fmtCantidad(0.5)).toBe("0,5");
+    expect(fmtCantidad(2.25)).toBe("2,25");
+    expect(fmtCantidad(1500)).toBe("1.500");
+    expect(fmtCantidad(null)).toBe("0");
   });
 });
 

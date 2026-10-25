@@ -785,6 +785,7 @@ export function ProductosDelTurno({
   productos?: ReporteCierreProductos;
   onClose: () => void;
 }) {
+  const { rubro } = useAuth();
   const remoto = useApi(
     () => (productos ? Promise.resolve(null) : api.reporteCierreProductos(cajaId)),
     [cajaId, productos != null],
@@ -858,7 +859,7 @@ export function ProductosDelTurno({
             En este turno todavía no se vendió nada.
           </p>
         ) : (
-          <ListaProductosVendidos d={d} />
+          <ListaProductosVendidos d={d} sinCeros={esBillar(rubro)} />
         )}
       </div>
     </Modal>
