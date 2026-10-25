@@ -257,8 +257,28 @@ describe("billar (24-oct): la cena del personal que registró el administrador",
     expect(await screen.findByText("Productos vendidos")).toBeInTheDocument();
     expect(screen.getByText("Paceña 620 ml")).toBeInTheDocument();
     expect(screen.getByText("Cervezas")).toBeInTheDocument();
+    // Lo entero va sin ceros (Kevin, 25-oct): "4 × Bs 15" y no "4,00 × Bs 15,00".
+    expect(screen.getByText("4 × Bs 15")).toBeInTheDocument();
+    expect(screen.getByText("4 unidades · 1 producto")).toBeInTheDocument();
     // Sin pedirlo a los reportes, que la cajera no puede ver.
     expect(api.reporteCierreProductos).not.toHaveBeenCalled();
+  });
+
+  it("restaurante: el modal de lo vendido sigue con dos decimales", async () => {
+    sesion.rubro = "RESTAURANTE";
+    vi.mocked(api.resumenCaja).mockResolvedValue(resumen());
+    vi.mocked(api.reporteCierreProductos).mockResolvedValue({
+      unidades: 4,
+      total: 60,
+      lineas: 1,
+      categorias: [
+        { nombre: "Cervezas", unidades: 4, total: 60, items: [{ nombre: "Paceña 620 ml", cantidad: 4, precio: 15, total: 60 }] },
+      ],
+    });
+    await montar();
+    fireEvent.click(screen.getByText("Ver qué salió del mostrador"));
+    expect(await screen.findByText("Productos vendidos")).toBeInTheDocument();
+    expect(await screen.findByText("4,00 × Bs 15,00")).toBeInTheDocument();
   });
 
   it("billar: sin lo vendido en el arqueo (un servidor anterior) la cajera no ve el botón", async () => {

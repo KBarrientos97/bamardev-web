@@ -775,7 +775,11 @@ describe("Billar (25-oct): lo que salió en el turno y el detalle de cada rengl�
     conRefs();
     await montar();
     const t = screen.getByRole("region", { name: "Lo que salió en el turno" });
-    expect(within(t).getByText(/Bs\s60,00 cobrado/)).toBeInTheDocument();
+    expect(within(t).getByText(/Bs\s60 cobrado/)).toBeInTheDocument();
+    // Lo entero va sin ceros: "4 unidades", "4 × Bs 15", "Bs 60" (Kevin, 25-oct).
+    expect(within(t).getByText("4 unidades · 1 producto")).toBeInTheDocument();
+    expect(within(t).getByText("4 × Bs 15")).toBeInTheDocument();
+    expect(within(t).queryByText(/,00/)).toBeNull();
     expect(within(t).getByText("Cervezas")).toBeInTheDocument();
     // La Paceña ya cobrada, y las 2 que lleva la Mesa 1 sin cobrar (la Coca-Cola anulada no cuenta).
     expect(within(t).getAllByText("Paceña 620 ml")).toHaveLength(2);

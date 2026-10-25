@@ -18,6 +18,24 @@ export function fmtMoney(n: number | null | undefined): string {
 }
 
 /**
+ * Plata sin los ceros que sobran: "Bs 30" si es entera y "Bs 10,50" con centavos.
+ * En Bolivia "10,50" son diez bolivianos con cincuenta centavos, y a "30,00" le sobran
+ * los ceros (Kevin, 25-oct). Se redondea a centavos antes de decidir, para que un
+ * 29.999999 de una suma salga "Bs 30". Las pantallas siguen con `fmtMoney` salvo donde
+ * se pide expresamente esto (las listas de lo vendido del billar).
+ */
+export function fmtMoneySinCeros(n: number | null | undefined): string {
+  const centavos = Math.round(Number(n ?? 0) * 100);
+  if (centavos % 100 !== 0) return fmtMoney(centavos / 100);
+  return `${simboloMoneda} ${(centavos / 100).toLocaleString("es-BO", { maximumFractionDigits: 0 })}`;
+}
+
+/** Una cantidad sin ceros de más: "9", "0,5", "2,25". */
+export function fmtCantidad(n: number | null | undefined): string {
+  return Number(n ?? 0).toLocaleString("es-BO", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+}
+
+/**
  * Plata para lo que lee el CLIENTE (el WhatsApp de su pedido): "Bs 40" si es
  * entera y "Bs 40.50" con centavos, con punto y sin separador de miles.
  * "Bs 40,00" se leía como cuarenta mil (Kevin, 15-oct). Igual que la app
