@@ -1538,21 +1538,24 @@ function FormProductoCuerpo({
                     <span className="min-w-0 flex-1 truncate text-[13px] text-texto">
                       {c.nombre}
                     </span>
-                    <Input
-                      type="number"
-                      inputMode="decimal"
-                      step="0.001"
-                      min="0.001"
-                      value={String(c.cantidad)}
-                      onChange={(e) =>
-                        setComponentes((cs) =>
-                          cs.map((x, j) =>
-                            j === i ? { ...x, cantidad: Number(e.target.value) } : x,
-                          ),
-                        )
-                      }
-                      className="w-24"
-                    />
+                    {/* El ancho va en el contenedor: el Input trae w-full y, a 360 px, le
+                        ganaba al w-24 y se comía el nombre del ingrediente. */}
+                    <div className="w-24 shrink-0">
+                      <Input
+                        type="number"
+                        inputMode="decimal"
+                        step="0.001"
+                        min="0.001"
+                        value={String(c.cantidad)}
+                        onChange={(e) =>
+                          setComponentes((cs) =>
+                            cs.map((x, j) =>
+                              j === i ? { ...x, cantidad: Number(e.target.value) } : x,
+                            ),
+                          )
+                        }
+                      />
+                    </div>
                     <button
                       onClick={() => setComponentes((cs) => cs.filter((_, j) => j !== i))}
                       aria-label={`Quitar ${c.nombre}`}
