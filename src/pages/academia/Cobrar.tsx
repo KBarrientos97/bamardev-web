@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Icon } from "../../components/Icon";
-import { Cargando, ErrorMsg, Input, Select } from "../../components/ui";
+import { Boton, Cargando, ErrorMsg, Input, Select, Vacio } from "../../components/ui";
 import { apiAcademia, CODIGOS_ACADEMIA } from "../../lib/academia/apiAcademia";
 import {
   cuotasIniciales,
@@ -24,14 +24,36 @@ import { parsearMontoO } from "../../lib/dinero";
 import { fmtMoney } from "../../lib/format";
 import { useApi } from "../../lib/useApi";
 import { useBloqueoCupo } from "../../lib/useBloqueoCupo";
+import { useCoincideMedia } from "../../lib/useCoincideMedia";
 import type { PagoInput, Venta } from "../../types";
 import AperturaCaja from "../pos/AperturaCaja";
 import PantallaCobro from "../pos/PantallaCobro";
 import PantallaRecibo from "../pos/PantallaRecibo";
 import { huellaDeCobro, useIntentoDeCobro } from "../pos/useIntentoDeCobro";
-import { Chip, LISTA, Tarjeta } from "./piezas";
+import {
+  Chip,
+  claseBotonFila,
+  EncabezadoPagina,
+  GrillaKpi,
+  KpiTarjeta,
+  LISTA,
+  PaginaAcademia,
+  TABLA,
+  Tarjeta,
+} from "./piezas";
 
 type Fila = Pick<AlumnoPorCobrar, "inscripcionId" | "nombre" | "codigo" | "grupo" | "sede">;
+
+/** "Cobrar a estudiante" cuelga de Cobranza (26-oct): a ella vuelve la pantalla. */
+const VOLVER_COBRANZA = { a: "/academia/cobranza", texto: "Cobranza" };
+
+/**
+ * El marco de `PaginaAcademia` en escritorio. Va como clases y no como la
+ * pieza porque el cobro tiene que ser el MISMO árbol en las dos medidas (ver
+ * abajo); sólo se usa con la pantalla ancha (lg), así que no lleva los
+ * rellenos del celular.
+ */
+const PAGINA_ANCHA = "mx-auto w-full max-w-6xl space-y-6 p-8";
 
 /** ¿La sede del grupo es otra que la de la caja? Por id si vino, si no por nombre. */
 function esOtraSede(sede: string | Ref | null | undefined, caja: { id: number | null; nombre: string | null } | null): boolean {
@@ -91,6 +113,10 @@ export default function Cobrar() {
   const intento = useIntentoDeCobro();
   const enDuda = useRef(false);
   const { verificar, manejarError, registrar } = useBloqueoCupo("VENTA", { refrescarAlMontar: true });
+  // En la computadora (desde lg, donde aparece el menú lateral) el detalle va
+  // a la izquierda y el cobro fijo a la derecha; en el celular, todo apilado
+  // como siempre. Sin `matchMedia` (los tests) responde celular.
+  const ancha = useCoincideMedia("(min-width: 1024px)");
 
   const elegir = useCallback(
     async (fila: Fila, otras?: Fila[]) => {
@@ -243,143 +269,292 @@ export default function Cobrar() {
 
   const carrito = elegido.carrito;
   const sinCuotas = carrito.lineas.length === 0;
-  return (
-    <PantallaCobro
-      titulo={`Cobrar a ${p.alumno}`}
-      subtitulo={carrito.alumno.nombre}
-      total={montoOk ? montoNum : 0}
-      formasPago={formasPago.datos ?? []}
-      onAtras={otroCobro}
-      onConfirmar={(pagos) => void confirmar(pagos)}
-      enviando={enviando}
-      bloqueado={!montoOk || sinCuotas}
-      // Cobrando cuotas lo común es el monto justo: vacío, se toma exacto.
-      recibidoVacioEsExacto
-      error={error}
-      encabezado={
-        <div className="space-y-3">
-          <div className="card space-y-1 p-4">
-            <p className="flex items-center gap-2 text-[15px] font-bold text-texto">
-              <Icon name="birrete" size={18} className="shrink-0 text-primary-700" />
-              <span className="min-w-0 truncate">{carrito.alumno.nombre}</span>
-            </p>
-            {(elegido.fila.codigo || nombreDe(elegido.fila.grupo)) && (
-              <p className="truncate text-[13px] text-texto-3">
-                {[elegido.fila.codigo, nombreDe(elegido.fila.grupo)].filter(Boolean).join(" · ")}
-              </p>
-            )}
-            {hermanas.length > 1 && (
-              <label className="block pt-2">
-                <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-texto-4">
-                  Tiene {hermanas.length} cursos con deuda: ¿cuál cobrás?
-                </span>
-                <Select
-                  aria-label="Inscripción a cobrar"
-                  value={elegido.fila.inscripcionId}
-                  onChange={(e) => {
-                    const otra = hermanas.find((h) => h.inscripcionId === Number(e.target.value));
-                    if (otra) void elegir(otra);
-                  }}
-                >
-                  {hermanas.map((h) => (
-                    <option key={h.inscripcionId} value={h.inscripcionId}>
-                      {[nombreDe(h.grupo), nombreDe(h.sede)].filter(Boolean).join(" · ")}
-                      {"saldo" in h && typeof h.saldo === "number" ? ` · debe ${fmtMoney(h.saldo)}` : ""}
-                    </option>
-                  ))}
-                </Select>
-              </label>
-            )}
-            {otraSede && sedeGrupo && (
-              <p role="status" className="flex items-center gap-1.5 pt-1 text-[13px] font-semibold text-warning-text">
-                <Icon name="alert" size={15} />
-                Grupo de {sedeGrupo} · se cobra en {abierta.almacen ?? "esta caja"}
-              </p>
-            )}
+  const subtituloFila = [elegido.fila.codigo, nombreDe(elegido.fila.grupo)].filter(Boolean).join(" · ");
+  const restaHoy = montoOk ? Math.round((tope - montoNum) * 100) / 100 : null;
+
+  // Las piezas del detalle van en variables porque se arman distinto según la
+  // medida: apiladas dentro del cobro en el celular, en tarjetas a la
+  // izquierda en la computadora. Lo que se toca (monto, quién paga, el curso)
+  // es lo mismo en las dos.
+  const selectorHermanas = hermanas.length > 1 && (
+    <label className="block">
+      <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-texto-4">
+        Tiene {hermanas.length} cursos con deuda: ¿cuál cobrás?
+      </span>
+      <Select
+        aria-label="Inscripción a cobrar"
+        value={elegido.fila.inscripcionId}
+        onChange={(e) => {
+          const otra = hermanas.find((h) => h.inscripcionId === Number(e.target.value));
+          if (otra) void elegir(otra);
+        }}
+      >
+        {hermanas.map((h) => (
+          <option key={h.inscripcionId} value={h.inscripcionId}>
+            {[nombreDe(h.grupo), nombreDe(h.sede)].filter(Boolean).join(" · ")}
+            {"saldo" in h && typeof h.saldo === "number" ? ` · debe ${fmtMoney(h.saldo)}` : ""}
+          </option>
+        ))}
+      </Select>
+    </label>
+  );
+
+  const avisoOtraSede = otraSede && sedeGrupo && (
+    <p role="status" className="flex items-center gap-1.5 text-[13px] font-semibold text-warning-text">
+      <Icon name="alert" size={15} />
+      Grupo de {sedeGrupo} · se cobra en {abierta.almacen ?? "esta caja"}
+    </p>
+  );
+
+  const campoMonto = (
+    <>
+      <label htmlFor="monto-hoy" className="block text-[11px] font-semibold uppercase tracking-wide text-texto-4">
+        Paga hoy
+      </label>
+      <Input
+        id="monto-hoy"
+        type="number"
+        inputMode="decimal"
+        step="0.01"
+        min="0"
+        value={monto}
+        onChange={(e) => setMonto(e.target.value)}
+        className={`text-lg font-bold ${montoOk || monto === "" ? "" : "border-danger"}`}
+      />
+      {montoOk ? (
+        <p className="text-xs text-texto-3">
+          Debe {fmtMoney(tope)} en total
+          {montoNum < tope ? ` · quedan ${fmtMoney(Math.round((tope - montoNum) * 100) / 100)} de saldo` : " · queda al día"}
+        </p>
+      ) : (
+        <p className="text-xs text-danger-text">Más que cero y hasta {fmtMoney(tope)}, que es todo lo que debe.</p>
+      )}
+    </>
+  );
+
+  const botonesPagador = (
+    <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Quién paga">
+      {carrito.pagadores.map((x) => (
+        <button
+          key={x.clienteId}
+          type="button"
+          role="radio"
+          aria-checked={pagadorId === x.clienteId}
+          onClick={() => setPagadorId(x.clienteId)}
+          className={`inline-flex min-h-11 items-center rounded-full px-4 text-[13px] font-semibold transition-colors sm:min-h-9 ${
+            pagadorId === x.clienteId ? "bg-primary-boton text-white" : "border border-borde bg-white text-texto-2 hover:bg-muted"
+          }`}
+        >
+          {x.nombre} · {x.rol === "TUTOR" ? "tutor" : p.alumno}
+        </button>
+      ))}
+    </div>
+  );
+
+  /** Lo que se cobra hoy de una cuota, o una raya si el monto no llega a ella. */
+  const hoyDe = (linea: (typeof reparto)[number]["linea"], elegida: boolean) =>
+    montoOk && elegida ? (
+      <span className="shrink-0 text-right">
+        <span className="block text-sm font-bold tabular-nums text-texto">{fmtMoney(linea.monto)}</span>
+        {linea.monto < linea.saldo && <span className="block text-[11px] text-texto-3">abono</span>}
+      </span>
+    ) : (
+      <span className="shrink-0 text-xs text-texto-4">—</span>
+    );
+  const venceDe = (cuotaId: number) => carrito.lineas.find((l) => l.cuotaId === cuotaId)?.vence;
+
+  // Celular: lo de siempre, arriba del total y adentro del área que scrollea
+  // del cobro (QA 23-oct lo dejó así y anda).
+  const detalleCelular = (
+    <div className="space-y-3">
+      <div className="card space-y-1 p-4">
+        <p className="flex items-center gap-2 text-[15px] font-bold text-texto">
+          <Icon name="birrete" size={18} className="shrink-0 text-primary-700" />
+          <span className="min-w-0 truncate">{carrito.alumno.nombre}</span>
+        </p>
+        {subtituloFila && <p className="truncate text-[13px] text-texto-3">{subtituloFila}</p>}
+        {selectorHermanas && <div className="pt-2">{selectorHermanas}</div>}
+        {avisoOtraSede && <div className="pt-1">{avisoOtraSede}</div>}
+      </div>
+
+      {sinCuotas ? (
+        <p className="card p-4 text-sm text-texto-3">No tiene cuotas pendientes.</p>
+      ) : (
+        <>
+          <div className="card space-y-2 p-4">{campoMonto}</div>
+
+          <Tarjeta id="t-reparto" titulo="Cómo se reparte" sinRelleno>
+            <ul className={LISTA.lista}>
+              {reparto.map(({ linea, elegida }) => (
+                <li key={linea.cuotaId} className={`flex items-center gap-3 ${LISTA.item}`}>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-semibold text-texto">{linea.descripcion}</span>
+                    <span className={`block text-xs ${linea.vencida ? "font-semibold text-danger-text" : "text-texto-3"}`}>
+                      {linea.vencida ? "Vencida" : "Vence"} {fechaCorta(venceDe(linea.cuotaId))} · saldo {fmtMoney(linea.saldo)}
+                    </span>
+                  </span>
+                  {hoyDe(linea, elegida)}
+                </li>
+              ))}
+            </ul>
+          </Tarjeta>
+
+          {carrito.pagadores.length > 1 && (
+            <div className="card space-y-2.5 p-4">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-texto-4">Quién paga</p>
+              {botonesPagador}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+
+  // Computadora: el detalle en las tarjetas de academia (las mismas de
+  // Cobranza o la ficha), con lo que debe en indicadores y el reparto en tabla.
+  const vencidas = carrito.lineas.filter((l) => l.vencida);
+  const vencido = Math.round(vencidas.reduce((s, l) => s + l.saldo, 0) * 100) / 100;
+  const detalleAncho = (
+    <div className="min-w-0 space-y-6">
+      <Tarjeta etiqueta={p.Alumno}>
+        <div className="flex items-start gap-4">
+          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary-50 text-primary-700">
+            <Icon name="birrete" size={24} />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-lg font-bold text-texto">{carrito.alumno.nombre}</p>
+            {subtituloFila && <p className="truncate text-[13px] text-texto-3">{subtituloFila}</p>}
+            {sedeGrupo && !subtituloFila && <p className="truncate text-[13px] text-texto-3">{sedeGrupo}</p>}
           </div>
+          {otraSede && <Chip tono="ambar">Otra {p.sede}</Chip>}
+        </div>
+        {(selectorHermanas || avisoOtraSede) && (
+          <div className="mt-4 space-y-3 border-t border-borde-soft pt-4">
+            {selectorHermanas && <div className="max-w-md">{selectorHermanas}</div>}
+            {avisoOtraSede}
+          </div>
+        )}
+      </Tarjeta>
 
-          {sinCuotas ? (
-            <p className="card p-4 text-sm text-texto-3">No tiene cuotas pendientes.</p>
-          ) : (
-            <>
-              <div className="card space-y-2 p-4">
-                <label htmlFor="monto-hoy" className="block text-[11px] font-semibold uppercase tracking-wide text-texto-4">
-                  Paga hoy
-                </label>
-                <Input
-                  id="monto-hoy"
-                  type="number"
-                  inputMode="decimal"
-                  step="0.01"
-                  min="0"
-                  value={monto}
-                  onChange={(e) => setMonto(e.target.value)}
-                  className={`text-lg font-bold ${montoOk || monto === "" ? "" : "border-danger"}`}
-                />
-                {montoOk ? (
-                  <p className="text-xs text-texto-3">
-                    Debe {fmtMoney(tope)} en total
-                    {montoNum < tope ? ` · quedan ${fmtMoney(Math.round((tope - montoNum) * 100) / 100)} de saldo` : " · queda al día"}
-                  </p>
-                ) : (
-                  <p className="text-xs text-danger-text">Más que cero y hasta {fmtMoney(tope)}, que es todo lo que debe.</p>
-                )}
-              </div>
+      {sinCuotas ? (
+        <Tarjeta>
+          <Vacio icono="coins" titulo="No tiene cuotas pendientes" texto="Está al día: no hay nada que cobrarle." />
+        </Tarjeta>
+      ) : (
+        <>
+          <GrillaKpi columnas={3}>
+            <KpiTarjeta
+              etiqueta="Debe en total"
+              valor={fmtMoney(tope)}
+              pie={carrito.lineas.length === 1 ? "1 cuota pendiente" : `${carrito.lineas.length} cuotas pendientes`}
+            />
+            <KpiTarjeta
+              etiqueta="Vencido"
+              valor={fmtMoney(vencido)}
+              pie={vencidas.length === 0 ? "nada vencido" : vencidas.length === 1 ? "1 cuota vencida" : `${vencidas.length} cuotas vencidas`}
+              tono={vencido > 0 ? "urgente" : "normal"}
+            />
+            <KpiTarjeta
+              etiqueta="Después de hoy"
+              valor={restaHoy == null ? "—" : fmtMoney(restaHoy)}
+              pie={restaHoy == null ? "falta el monto" : restaHoy <= 0 ? "queda al día" : "de saldo"}
+              tono={restaHoy != null && restaHoy <= 0 ? "ok" : "normal"}
+            />
+          </GrillaKpi>
 
-              <Tarjeta id="t-reparto" titulo="Cómo se reparte" sinRelleno>
-                <ul className={LISTA.lista}>
-                  {reparto.map(({ linea, elegida }) => {
-                    const vence = carrito.lineas.find((l) => l.cuotaId === linea.cuotaId)?.vence;
-                    return (
-                      <li key={linea.cuotaId} className={`flex items-center gap-3 ${LISTA.item}`}>
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate text-sm font-semibold text-texto">{linea.descripcion}</span>
-                          <span className={`block text-xs ${linea.vencida ? "font-semibold text-danger-text" : "text-texto-3"}`}>
-                            {linea.vencida ? "Vencida" : "Vence"} {fechaCorta(vence)} · saldo {fmtMoney(linea.saldo)}
-                          </span>
-                        </span>
-                        {montoOk && elegida ? (
-                          <span className="shrink-0 text-right">
-                            <span className="block text-sm font-bold tabular-nums text-texto">{fmtMoney(linea.monto)}</span>
-                            {linea.monto < linea.saldo && <span className="block text-[11px] text-texto-3">abono</span>}
-                          </span>
-                        ) : (
-                          <span className="shrink-0 text-xs text-texto-4">—</span>
-                        )}
-                      </li>
-                    );
-                  })}
-                </ul>
-              </Tarjeta>
-
+          <Tarjeta id="t-monto" titulo="Cuánto paga hoy" bajada="Se reparte por vencimiento: primero lo vencido.">
+            <div className={`grid gap-x-8 gap-y-5 ${carrito.pagadores.length > 1 ? "md:grid-cols-2" : ""}`}>
+              <div className="max-w-sm space-y-2">{campoMonto}</div>
               {carrito.pagadores.length > 1 && (
-                <div className="card space-y-2.5 p-4">
+                <div className="space-y-2">
                   <p className="text-[11px] font-semibold uppercase tracking-wide text-texto-4">Quién paga</p>
-                  <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Quién paga">
-                    {carrito.pagadores.map((x) => (
-                      <button
-                        key={x.clienteId}
-                        type="button"
-                        role="radio"
-                        aria-checked={pagadorId === x.clienteId}
-                        onClick={() => setPagadorId(x.clienteId)}
-                        className={`inline-flex min-h-11 items-center rounded-full px-4 text-[13px] font-semibold transition-colors sm:min-h-9 ${
-                          pagadorId === x.clienteId
-                            ? "bg-primary-boton text-white"
-                            : "border border-borde bg-white text-texto-2 hover:bg-muted"
-                        }`}
-                      >
-                        {x.nombre} · {x.rol === "TUTOR" ? "tutor" : p.alumno}
-                      </button>
-                    ))}
-                  </div>
+                  {botonesPagador}
                 </div>
               )}
-            </>
-          )}
-        </div>
-      }
-    />
+            </div>
+          </Tarjeta>
+
+          <Tarjeta id="t-reparto" titulo="Cómo se reparte" contador={reparto.length} sinRelleno>
+            <div className={TABLA.envoltura}>
+              <table className={TABLA.tabla}>
+                <thead>
+                  <tr className={TABLA.encabezado}>
+                    <th className={TABLA.th}>Cuota</th>
+                    <th className={TABLA.th}>Vencimiento</th>
+                    <th className={`${TABLA.th} text-right`}>Saldo</th>
+                    <th className={`${TABLA.th} text-right`}>Hoy</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {reparto.map(({ linea, elegida }) => (
+                    <tr key={linea.cuotaId} className={TABLA.fila}>
+                      <td className={`${TABLA.td} font-semibold text-texto`}>{linea.descripcion}</td>
+                      <td className={`${TABLA.td} whitespace-nowrap`}>
+                        {linea.vencida ? (
+                          <Chip tono="rojo">Vencida {fechaCorta(venceDe(linea.cuotaId))}</Chip>
+                        ) : (
+                          <span className="text-[13px] text-texto-3">Vence {fechaCorta(venceDe(linea.cuotaId))}</span>
+                        )}
+                      </td>
+                      <td className={`${TABLA.td} ${TABLA.numero} whitespace-nowrap text-texto-2`}>{fmtMoney(linea.saldo)}</td>
+                      <td className={`${TABLA.td} ${TABLA.numero} whitespace-nowrap`}>{hoyDe(linea, elegida)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Tarjeta>
+        </>
+      )}
+    </div>
+  );
+
+  // El cobro (`PantallaCobro`, la del POS) queda SIEMPRE en el mismo lugar
+  // del árbol: lo que cambia con la medida son las clases de los contenedores
+  // y lo que se suma al lado. Así, achicar la ventana a la mitad en medio de
+  // un cobro no borra el medio de pago ni el efectivo ya tecleados.
+  return (
+    <div className={ancha ? PAGINA_ANCHA : "h-full"}>
+      {ancha && (
+        <EncabezadoPagina
+          volver={VOLVER_COBRANZA}
+          titulo={`Cobrar a ${p.alumno}`}
+          bajada={`Lo que se cobra entra a la caja abierta${abierta.almacen ? ` de ${abierta.almacen}` : ""}.`}
+          acciones={
+            <Boton variante="ghost" icono="search" onClick={otroCobro}>
+              Buscar otro {p.alumno}
+            </Boton>
+          }
+        />
+      )}
+      <div className={ancha ? "grid grid-cols-[minmax(0,1fr)_400px] items-start gap-6" : "h-full"}>
+        {ancha && detalleAncho}
+        {/* En la computadora el cobro es un panel fijo que nunca pasa del alto
+            de la pantalla: lo que no entra (el QR) scrollea adentro y
+            "Confirmar cobro" queda siempre a la vista. El alto descuenta el
+            encabezado de la página: así el botón se ve apenas se abre, sin
+            tener que bajar. */}
+        <aside
+          aria-label={ancha ? "Cobro" : undefined}
+          className={ancha ? "card sticky top-8 flex max-h-[calc(100dvh-11rem)] flex-col overflow-hidden" : "h-full"}
+        >
+          <PantallaCobro
+            titulo={ancha ? "Cobro" : `Cobrar a ${p.alumno}`}
+            subtitulo={carrito.alumno.nombre}
+            total={montoOk ? montoNum : 0}
+            formasPago={formasPago.datos ?? []}
+            onAtras={otroCobro}
+            onConfirmar={(pagos) => void confirmar(pagos)}
+            enviando={enviando}
+            bloqueado={!montoOk || sinCuotas}
+            // Cobrando cuotas lo común es el monto justo: vacío, se toma exacto.
+            recibidoVacioEsExacto
+            error={error}
+            encabezado={ancha ? undefined : detalleCelular}
+          />
+        </aside>
+      </div>
+    </div>
   );
 }
 
@@ -387,6 +562,10 @@ export default function Cobrar() {
  * El buscador: nombre, CI o código, contra las cuotas pendientes (sin sede: el
  * de otra sede también se cobra acá, con el aviso). Desde Cobranza llega con
  * `?alumno=&q=`: si el buscado aparece, se abre solo.
+ *
+ * Con el marco de las demás pantallas de academia (26-oct): encabezado con
+ * "← Cobranza", el buscador en su tarjeta y los resultados debajo, en filas
+ * que en la computadora muestran también lo que debe y la acción.
  */
 function BuscarEstudiante({
   inicial,
@@ -444,56 +623,92 @@ function BuscarEstudiante({
   }, [buscado]);
 
   return (
-    <div className="mx-auto flex h-full min-h-0 w-full max-w-lg flex-col">
-      <div className="border-b border-borde bg-white px-4 py-3">
-        <h1 className="text-[15px] font-bold text-texto">Cobrar a {p.alumno}</h1>
-        <p className="truncate text-xs text-texto-3">Buscá al {p.alumno} por nombre, CI o código.</p>
-      </div>
-      <div className="flex-1 space-y-3 overflow-y-auto p-4">
-        <ErrorMsg>{errorAfuera || error}</ErrorMsg>
-        <Input
-          aria-label={`Buscar ${p.alumno}`}
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="Nombre, CI o código"
-          autoFocus
-        />
-        {buscando && <Cargando texto="Buscando…" />}
-        {resultados && !buscando && resultados.length === 0 && (
-          <p className="text-sm text-texto-3">Nadie con cuotas pendientes con «{buscado}».</p>
-        )}
-        {!!resultados?.length && (
-          <Tarjeta etiqueta="Resultados" sinRelleno>
-            <ul className={LISTA.lista}>
-              {resultados.map((a) => (
+    <PaginaAcademia>
+      <EncabezadoPagina
+        volver={VOLVER_COBRANZA}
+        titulo={`Cobrar a ${p.alumno}`}
+        bajada={`Buscá al ${p.alumno} por nombre, CI o código.`}
+      />
+      <ErrorMsg>{errorAfuera || error}</ErrorMsg>
+      <Tarjeta
+        etiqueta="Resultados"
+        sinRelleno
+        barra={
+          <div className="py-3">
+            <div className="relative max-w-xl">
+              <Icon
+                name="search"
+                size={17}
+                className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-texto-4"
+              />
+              <Input
+                aria-label={`Buscar ${p.alumno}`}
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="Nombre, CI o código"
+                autoFocus
+                className="pl-10"
+              />
+            </div>
+          </div>
+        }
+      >
+        {buscando ? (
+          <Cargando texto="Buscando…" />
+        ) : resultados && resultados.length === 0 ? (
+          <Vacio icono="search" titulo={`Nadie con cuotas pendientes con «${buscado}».`} texto="Probá con otra parte del nombre, el CI o el código." />
+        ) : resultados?.length ? (
+          <ul className={LISTA.lista}>
+            {resultados.map((a) => {
+              const otra = esOtraSede(a.sede, caja);
+              return (
                 <li key={a.inscripcionId}>
                   <button
                     type="button"
                     onClick={() => onElegir(a, resultados.filter((x) => x.alumnoId === a.alumnoId))}
-                    className={`flex min-h-11 w-full items-center gap-3 text-left ${LISTA.itemHover}`}
+                    className={`group flex min-h-11 w-full items-center gap-3 text-left sm:gap-4 ${LISTA.itemHover}`}
                   >
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[15px] font-bold text-texto">{a.nombre}</span>
+                      <span className="block truncate text-[15px] font-bold text-texto group-hover:text-primary-700">{a.nombre}</span>
                       <span className="block truncate text-[13px] text-texto-3">
                         {[a.codigo, nombreDe(a.grupo), nombreDe(a.sede)].filter(Boolean).join(" · ")}
                       </span>
-                      {esOtraSede(a.sede, caja) && (
+                      {otra && (
                         <Chip tono="ambar" className="mt-1">
                           Otra {p.sede}
                         </Chip>
                       )}
                     </span>
-                    <span className={`shrink-0 text-sm font-bold tabular-nums ${a.vencido ? "text-danger-text" : "text-texto"}`}>
-                      {fmtMoney(a.saldo)}
+                    <span className="shrink-0 text-right">
+                      <span className="hidden text-[11px] font-semibold uppercase tracking-wide text-texto-4 md:block">
+                        {a.vencido ? "Debe · vencido" : "Debe"}
+                      </span>
+                      <span className={`block text-sm font-bold tabular-nums md:text-base ${a.vencido ? "text-danger-text" : "text-texto"}`}>
+                        {fmtMoney(a.saldo)}
+                      </span>
                     </span>
-                    <Icon name="chevronRight" size={16} className="shrink-0 text-texto-4" />
+                    {/* En la computadora la fila dice qué hace; en el celular alcanza la flecha.
+                        Envuelto: el `inline-flex` del botón le ganaba al `hidden`. */}
+                    <span aria-hidden="true" className="hidden md:block">
+                      <span className={claseBotonFila("soft")}>
+                        <Icon name="dollar" size={15} />
+                        Cobrar
+                      </span>
+                    </span>
+                    <Icon name="chevronRight" size={16} className="shrink-0 text-texto-4 md:hidden" />
                   </button>
                 </li>
-              ))}
-            </ul>
-          </Tarjeta>
+              );
+            })}
+          </ul>
+        ) : (
+          <Vacio
+            icono="search"
+            titulo={`¿A quién le cobrás?`}
+            texto={`Escribí al menos dos letras: salen los ${p.alumnos} con cuotas pendientes.`}
+          />
         )}
-      </div>
-    </div>
+      </Tarjeta>
+    </PaginaAcademia>
   );
 }
