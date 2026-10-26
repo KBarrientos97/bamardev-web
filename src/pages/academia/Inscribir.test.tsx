@@ -152,7 +152,9 @@ describe("E5 · inscribir", () => {
     fireEvent.change(within(panel()).getByLabelText("Motivo"), { target: { value: "Situación económica" } });
     expect(within(panel()).getByText(/Total del curso/).parentElement).toHaveTextContent(/680/);
     fireEvent.click(within(panel()).getByRole("button", { name: /Inscribir y cobrar/ }));
-    const pin = screen.getByRole("dialog", { name: "Autorización del encargado" });
+    // El PIN se pide en el pie del alta, no en un diálogo encima.
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
+    const pin = within(panel()).getByRole("region", { name: "Autorización del encargado" });
     fireEvent.change(within(pin).getByLabelText("Usuario del encargado"), { target: { value: "rosa" } });
     fireEvent.change(within(pin).getByLabelText("PIN"), { target: { value: "1234" } });
     await act(async () => {
@@ -179,13 +181,91 @@ describe("E5 · inscribir", () => {
     await act(async () => {
       fireEvent.click(within(panel()).getByRole("button", { name: "Inscribir sin cobrar" }));
     });
-    const confirmar = screen.getByRole("dialog", { name: "El grupo está lleno" });
+    // Junto al botón, dentro del alta: sin un diálogo encima.
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
+    const confirmar = within(panel()).getByRole("region", { name: "El grupo está lleno" });
     expect(confirmar).toHaveTextContent("Tiene 30 inscritos y el cupo es de 30");
     await act(async () => {
       fireEvent.click(within(confirmar).getByRole("button", { name: "Inscribir igual" }));
     });
     expect(apiAcademia.inscribir).toHaveBeenLastCalledWith(expect.objectContaining({ confirmarSobreCupo: true }), {});
     expect(onInscrito).toHaveBeenCalledWith({ inscripcion: { id: 556 }, cobrar: false });
+  });
+
+  it("el PIN en el pie valida antes de mandar, y cancelarlo vuelve a los botones sin inscribir", async () => {
+    await montar();
+    cargarNuevo("2000-01-01");
+    fireEvent.click(within(panel()).getByRole("radio", { name: /Completo/ }));
+    fireEvent.click(within(panel()).getByRole("button", { name: "Aplicar otro descuento o beca" }));
+    fireEvent.click(within(panel()).getByRole("button", { name: "Beca" }));
+    fireEvent.change(within(panel()).getByLabelText("Descuento"), { target: { value: "50" } });
+    fireEvent.change(within(panel()).getByLabelText("Motivo"), { target: { value: "Situación económica" } });
+    fireEvent.click(within(panel()).getByRole("button", { name: /Inscribir y cobrar/ }));
+    const pin = within(panel()).getByRole("region", { name: "Autorización del encargado" });
+    // Mientras se pide, los botones de inscribir no están: un solo camino.
+    expect(within(panel()).queryByRole("button", { name: "Inscribir sin cobrar" })).not.toBeInTheDocument();
+    fireEvent.change(within(pin).getByLabelText("PIN"), { target: { value: "12" } });
+    fireEvent.click(within(pin).getByRole("button", { name: "Autorizar" }));
+    expect(within(pin).getByText("El PIN son 4 dígitos.")).toBeInTheDocument();
+    fireEvent.change(within(pin).getByLabelText("PIN"), { target: { value: "1234" } });
+    fireEvent.click(within(pin).getByRole("button", { name: "Autorizar" }));
+    expect(within(pin).getByText("Poné el usuario del encargado que autoriza.")).toBeInTheDocument();
+    fireEvent.click(within(pin).getByRole("button", { name: "Cancelar" }));
+    expect(within(panel()).queryByRole("region", { name: "Autorización del encargado" })).not.toBeInTheDocument();
+    expect(within(panel()).getByRole("button", { name: "Inscribir sin cobrar" })).toBeInTheDocument();
+    expect(apiAcademia.inscribir).not.toHaveBeenCalled();
+  });
+
+  it("el 403 DESCUENTO_REQUIERE_AUTORIZACION pide el PIN en el pie y reintenta con quien autorizó", async () => {
+    vi.mocked(apiAcademia.inscribir)
+      .mockRejectedValueOnce(new ApiError("Hace falta autorización", 403, { codigo: "DESCUENTO_REQUIERE_AUTORIZACION" }))
+      .mockResolvedValueOnce({ id: 557 } as never);
+    vi.mocked(apiAcademia.ajustes).mockResolvedValue(ajustesDePrueba({ fotosObligatorias: false, topePromoSinPinPct: 100 }));
+    await montar();
+    cargarNuevo("2000-01-01");
+    fireEvent.click(within(panel()).getByRole("radio", { name: /Completo/ }));
+    fireEvent.click(within(panel()).getByRole("button", { name: "Aplicar otro descuento o beca" }));
+    fireEvent.click(within(panel()).getByRole("button", { name: "Promoción" }));
+    fireEvent.change(within(panel()).getByLabelText("Descuento"), { target: { value: "10" } });
+    fireEvent.change(within(panel()).getByLabelText("Motivo"), { target: { value: "Promo de inicio" } });
+    await act(async () => {
+      fireEvent.click(within(panel()).getByRole("button", { name: "Inscribir sin cobrar" }));
+    });
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
+    const pin = within(panel()).getByRole("region", { name: "Autorización del encargado" });
+    fireEvent.change(within(pin).getByLabelText("Usuario del encargado"), { target: { value: "rosa" } });
+    fireEvent.change(within(pin).getByLabelText("PIN"), { target: { value: "4826" } });
+    await act(async () => {
+      fireEvent.click(within(pin).getByRole("button", { name: "Autorizar" }));
+    });
+    expect(apiAcademia.inscribir).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        descuento: { tipo: "PROMOCION", pct: 10, motivo: "Promo de inicio", autorizador: { username: "rosa", pin: "4826" } },
+      }),
+      {},
+    );
+    expect(onInscrito).toHaveBeenCalledWith({ inscripcion: { id: 557 }, cobrar: false });
+  });
+
+  it("el grupo lleno se puede cancelar y cambiar algo lo saca", async () => {
+    vi.mocked(apiAcademia.inscribir).mockRejectedValue(new ApiError("Grupo lleno", 409, { codigo: "GRUPO_LLENO", inscritos: 30, cupo: 30 }));
+    await montar();
+    cargarNuevo("2000-01-01");
+    fireEvent.click(within(panel()).getByRole("radio", { name: /Completo/ }));
+    await act(async () => {
+      fireEvent.click(within(panel()).getByRole("button", { name: "Inscribir sin cobrar" }));
+    });
+    const lleno = within(panel()).getByRole("region", { name: "El grupo está lleno" });
+    fireEvent.click(within(lleno).getByRole("button", { name: "Cancelar" }));
+    expect(within(panel()).queryByRole("region", { name: "El grupo está lleno" })).not.toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(within(panel()).getByRole("button", { name: "Inscribir sin cobrar" }));
+    });
+    expect(within(panel()).getByRole("region", { name: "El grupo está lleno" })).toBeInTheDocument();
+    // Otro plan: lo de "lleno" era del pedido anterior.
+    fireEvent.click(within(panel()).getByRole("radio", { name: /Cuotas/ }));
+    expect(within(panel()).queryByRole("region", { name: "El grupo está lleno" })).not.toBeInTheDocument();
+    expect(apiAcademia.inscribir).toHaveBeenCalledTimes(2);
   });
 
   it("un alumno ya cargado sin tutor: el 400 TUTOR_REQUERIDO muestra el bloque del tutor", async () => {
@@ -258,7 +338,7 @@ describe("E5 · inscribir", () => {
       fireEvent.click(within(panel()).getByRole("button", { name: "Inscribir sin cobrar" }));
     });
     await act(async () => {
-      fireEvent.click(within(screen.getByRole("dialog", { name: "El grupo está lleno" })).getByRole("button", { name: "Inscribir igual" }));
+      fireEvent.click(within(within(panel()).getByRole("region", { name: "El grupo está lleno" })).getByRole("button", { name: "Inscribir igual" }));
     });
     expect(apiAcademia.convertir).toHaveBeenLastCalledWith(44, {
       planPagoId: 1,

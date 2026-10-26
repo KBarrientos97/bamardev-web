@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { Chips } from "../../components/filtros";
 import { Icon } from "../../components/Icon";
-import { Boton, Campo, Cargando, Confirmar, ErrorMsg, Input, Select } from "../../components/ui";
+import { Boton, Campo, Cargando, ErrorMsg, Input, Select } from "../../components/ui";
 import { apiAcademia, CODIGOS_ACADEMIA } from "../../lib/academia/apiAcademia";
 import {
   calendarioConDescuento,
@@ -38,7 +38,6 @@ import { fmtMoney, isoDia } from "../../lib/format";
 import { tienePermiso } from "../../lib/permisos";
 import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
-import { PedirPinCredito } from "../pos/PantallaCredito";
 import { abrirWhatsapp } from "../../lib/academia/vista";
 import CapturaFotos from "./CapturaFotos";
 import { BotonFila, BotonIcono, ResumenPanel } from "./piezas";
@@ -71,6 +70,10 @@ type Modo = "buscar" | "nuevo";
  * grupo lleno (409 GRUPO_LLENO, se confirma y se reintenta) y el descuento
  * sobre el tope (403 DESCUENTO_REQUIERE_AUTORIZACION, se pide el PIN como en
  * el fiado). Acá se recalcula el calendario a la vista, nada más.
+ *
+ * El PIN y la confirmación del grupo lleno se piden en el pie, junto al
+ * botón, y no en un diálogo encima: en el celular el alta ya ocupa la
+ * pantalla entera y un diálogo sobre ella era una hoja sobre otra.
  */
 export default function Inscribir({
   grupoInicial,
@@ -166,8 +169,13 @@ export default function Inscribir({
    * backend y lo que se puede hacer, decidido por el `codigo`.
    */
   const [salida, setSalida] = useState<{ texto: string; accion: ReactNode } | null>(null);
-  const [pidiendoPin, setPidiendoPin] = useState<null | ((f: { username: string; pin: string }) => void)>(null);
-  const [lleno, setLleno] = useState<{ inscritos: number; cupo: number; seguir: () => void } | null>(null);
+  /**
+   * El paso que falta antes de mandar, en el pie: el PIN del encargado o
+   * confirmar el grupo lleno. Guarda con qué se estaba mandando (no una
+   * función): al seguir se manda con lo que está en pantalla en ese momento.
+   */
+  const [pidiendoPin, setPidiendoPin] = useState<null | { cobrar: boolean; extra: ExtraEnvio }>(null);
+  const [lleno, setLleno] = useState<{ inscritos: number; cupo: number; cobrar: boolean; extra: ExtraEnvio } | null>(null);
 
   const edad = edadDe(nuevo.fechaNacimiento);
   // Menor por la fecha de nacimiento que se está cargando, o porque el
@@ -241,11 +249,15 @@ export default function Inscribir({
    */
   const [validar, setValidar] = useState<null | { cobrar: boolean }>(null);
   // Un rechazo del backend vale para lo que se mandó: al cambiar algo, se va.
+  // Lo mismo el paso pendiente del pie (PIN, grupo lleno): era de otro grupo,
+  // otro descuento u otro estudiante.
   useEffect(() => {
     setError("");
+    setPidiendoPin(null);
+    setLleno(null);
   }, [planId, grupoId, tutor, nuevo, elegido, pagaHoy, otroMonto, tipoDesc, valorDesc, enPct, motivo, fotos]);
 
-  async function enviar(cobrar: boolean, extra: { sobreCupo?: boolean; firma?: { username: string; pin: string } } = {}) {
+  async function enviar(cobrar: boolean, extra: ExtraEnvio = {}) {
     setValidar({ cobrar });
     if (faltantes(cobrar)) {
       setError("");
@@ -255,10 +267,7 @@ export default function Inscribir({
     const autorizador = extra.firma ?? firma ?? undefined;
     // Sobre el tope y sin el permiso: el PIN se pide antes de mandar.
     if (sobreTope && !autorizador) {
-      setPidiendoPin(() => (f: { username: string; pin: string }) => {
-        setFirma(f);
-        void enviar(cobrar, { ...extra, firma: f });
-      });
+      setPidiendoPin({ cobrar, extra });
       return;
     }
     const descuento: DescuentoInput | undefined = tipoDesc
@@ -271,6 +280,8 @@ export default function Inscribir({
       : undefined;
     setError("");
     setSalida(null);
+    setPidiendoPin(null);
+    setLleno(null);
     setEnviando(true);
     try {
       const inscripcion = preinscripcion
@@ -321,20 +332,13 @@ export default function Inscribir({
         setMarcadas(faltan);
         setError(faltan.length ? `${textoFaltanFotos(faltan.length)}: sacalas y probá de nuevo.` : e.message);
       } else if (codigo === CODIGOS_ACADEMIA.GRUPO_LLENO && e instanceof ApiError) {
-        setLleno({
-          inscritos: Number(e.detalle.inscritos ?? 0),
-          cupo: Number(e.detalle.cupo ?? 0),
-          seguir: () => void enviar(cobrar, { ...extra, sobreCupo: true }),
-        });
+        setLleno({ inscritos: Number(e.detalle.inscritos ?? 0), cupo: Number(e.detalle.cupo ?? 0), cobrar, extra });
       } else if (codigo === CODIGOS_ACADEMIA.TUTOR_REQUERIDO) {
         setPideTutor(true);
         setError(`Es menor de edad: cargá al tutor para inscribirlo.`);
       } else if (codigo === CODIGOS_ACADEMIA.DESCUENTO_REQUIERE_AUTORIZACION) {
         setFirma(null);
-        setPidiendoPin(() => (f: { username: string; pin: string }) => {
-          setFirma(f);
-          void enviar(cobrar, { ...extra, firma: f });
-        });
+        setPidiendoPin({ cobrar, extra: { ...extra, firma: undefined } });
       } else if (codigo === CODIGOS_ACADEMIA.YA_INSCRIPTO && e instanceof ApiError) {
         // Ya está en el grupo: si es una preinscripción, se convierte desde la
         // bandeja; si no, su ficha dice cómo está.
@@ -806,7 +810,35 @@ export default function Inscribir({
               {salida.accion}
             </div>
           )}
-          {/* En escritorio, la bienvenida a la izquierda y los botones a la derecha (el principal al final); en el celular, uno debajo del otro. */}
+          {pidiendoPin ? (
+            <PinEnLinea
+              onCancelar={() => setPidiendoPin(null)}
+              onFirmar={(f) => {
+                const { cobrar, extra } = pidiendoPin;
+                setFirma(f);
+                void enviar(cobrar, { ...extra, firma: f });
+              }}
+            />
+          ) : lleno ? (
+            <section aria-label="El grupo está lleno" className="space-y-2.5 rounded-xl border border-warning-text/30 bg-warning-bg px-3.5 py-3">
+              <p className="text-sm text-warning-text">
+                <b>El grupo está lleno.</b> Tiene {lleno.inscritos} inscritos y el cupo es de {lleno.cupo}. ¿Lo inscribís igual?
+              </p>
+              <div className="flex flex-col gap-2 lg:flex-row-reverse">
+                <Boton
+                  className="min-h-11 w-full lg:w-auto"
+                  disabled={enviando}
+                  onClick={() => void enviar(lleno.cobrar, { ...lleno.extra, sobreCupo: true })}
+                >
+                  Inscribir igual
+                </Boton>
+                <Boton variante="ghost" className="min-h-11 w-full bg-white lg:w-auto" disabled={enviando} onClick={() => setLleno(null)}>
+                  Cancelar
+                </Boton>
+              </div>
+            </section>
+          ) : (
+          /* En escritorio, la bienvenida a la izquierda y los botones a la derecha (el principal al final); en el celular, uno debajo del otro. */
           <div className="flex flex-col gap-2.5 lg:flex-row lg:items-center lg:justify-between lg:gap-4">
             <label className="flex min-h-11 items-center gap-2 text-[13px] text-texto-2 lg:min-h-0">
               <input type="checkbox" checked={bienvenida} onChange={(e) => setBienvenida(e.target.checked)} className="h-4 w-4 accent-[var(--color-primary-boton)]" />
@@ -828,33 +860,82 @@ export default function Inscribir({
               </Boton>
             </div>
           </div>
+          )}
         </footer>
       </aside>
 
-      {pidiendoPin && (
-        <PedirPinCredito
-          subtitulo="El descuento pasa el tope que se da sin autorización"
-          onCancelar={() => setPidiendoPin(null)}
-          onFirmar={(username, pin) => {
-            const seguir = pidiendoPin;
-            setPidiendoPin(null);
-            seguir({ username, pin });
-          }}
-        />
-      )}
-      <Confirmar
-        abierto={!!lleno}
-        titulo="El grupo está lleno"
-        texto={lleno ? `Tiene ${lleno.inscritos} inscritos y el cupo es de ${lleno.cupo}. ¿Lo inscribís igual?` : ""}
-        etiquetaOk="Inscribir igual"
-        onCancel={() => setLleno(null)}
-        onOk={() => {
-          const seguir = lleno?.seguir;
-          setLleno(null);
-          seguir?.();
-        }}
-      />
     </div>
+  );
+}
+
+type ExtraEnvio = { sobreCupo?: boolean; firma?: { username: string; pin: string } };
+
+/**
+ * El PIN del encargado para un descuento sobre el tope, en el pie del alta.
+ * Lo mismo que pide `PedirPinCredito` del fiado (usuario de quien autoriza,
+ * salvo que el que inscribe ya autorice con PIN; 4 a 6 dígitos), pero en
+ * línea: ése es un diálogo y acá quedaba encima de la pantalla del alta.
+ */
+function PinEnLinea({ onCancelar, onFirmar }: { onCancelar: () => void; onFirmar: (f: { username: string; pin: string }) => void }) {
+  const { usuario: actual } = useAuth();
+  const pideUsuario = !tienePermiso(actual, "autorizar.pin");
+  const [autorizador, setAutorizador] = useState("");
+  const [pin, setPin] = useState("");
+  const [error, setError] = useState("");
+
+  function firmar() {
+    if (!/^\d{4,6}$/.test(pin)) return setError("El PIN son 4 dígitos.");
+    if (pideUsuario && autorizador.trim().length < 3) return setError("Poné el usuario del encargado que autoriza.");
+    onFirmar({ username: pideUsuario ? autorizador.trim() : (actual?.username ?? ""), pin });
+  }
+
+  return (
+    <section aria-labelledby="t-autoriza" className="space-y-3 rounded-xl border border-borde bg-white px-3.5 py-3">
+      <div>
+        <h3 id="t-autoriza" className="text-sm font-bold text-texto">
+          Autorización del encargado
+        </h3>
+        <p className="text-[13px] text-texto-3">El descuento pasa el tope que se da sin autorización</p>
+      </div>
+      <form
+        className="space-y-3"
+        onSubmit={(e) => {
+          e.preventDefault();
+          firmar();
+        }}
+      >
+        <div className={pideUsuario ? "grid grid-cols-2 gap-2" : ""}>
+          {pideUsuario && (
+            <Campo label="Usuario del encargado">
+              <Input value={autorizador} onChange={(e) => setAutorizador(e.target.value)} autoFocus autoComplete="off" />
+            </Campo>
+          )}
+          <Campo label="PIN">
+            <Input
+              type="password"
+              inputMode="numeric"
+              value={pin}
+              onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 6))}
+              autoFocus={!pideUsuario}
+              autoComplete="off"
+              placeholder="4 dígitos"
+              className="text-lg font-bold tracking-widest"
+            />
+          </Campo>
+        </div>
+        <p className="-mt-2 text-xs text-texto-4">Cada intento queda registrado con tu usuario y lo ve el administrador.</p>
+        <ErrorMsg>{error}</ErrorMsg>
+        <div className="flex flex-col gap-2 lg:flex-row-reverse">
+          <Boton type="submit" className="min-h-11 w-full lg:w-auto">
+            Autorizar
+          </Boton>
+          {/* Sin type, un botón dentro del form lo manda: Cancelar autorizaría. */}
+          <Boton type="button" variante="ghost" className="min-h-11 w-full bg-white lg:w-auto" onClick={onCancelar}>
+            Cancelar
+          </Boton>
+        </div>
+      </form>
+    </section>
   );
 }
 
