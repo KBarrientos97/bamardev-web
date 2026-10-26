@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Chips, EncabezadoPagina, FilaFiltros } from "../../components/filtros";
 import { Badge, Boton, Cargando, ErrorMsg, Kpi, Vacio } from "../../components/ui";
 import { api } from "../../lib/api";
-import { fmtFecha, fmtMoney, fmtNum } from "../../lib/format";
+import { fmtCantidad, fmtFecha, fmtMoney } from "../../lib/format";
 import { useApi } from "../../lib/useApi";
 import { useSucursales } from "../../lib/useSucursales";
 import { useAuth } from "../../store/AuthContext";
@@ -134,14 +134,14 @@ export default function MermasPagina({ embebido }: { embebido?: { desde: string;
             <Kpi
               etiqueta="Perdido"
               valor={fmtMoney(r.resumen.perdido)}
-              pie={`${fmtNum(r.resumen.unidadesPerdidas)} unidades dadas de baja`}
+              pie={`${fmtCantidad(r.resumen.unidadesPerdidas)} unidades dadas de baja`}
               icono="trendingDown"
               tono="rojo"
             />
             <Kpi
               etiqueta="Devuelto al proveedor"
               valor={fmtMoney(r.resumen.devuelto)}
-              pie={`${fmtNum(r.resumen.unidadesDevueltas)} unidades · no es pérdida`}
+              pie={`${fmtCantidad(r.resumen.unidadesDevueltas)} unidades · no es pérdida`}
               icono="truck"
               tono="azul"
             />
@@ -223,7 +223,7 @@ function EnRiesgo({
               <span className="block text-[11px] text-texto-3">
                 {d.lotes === 0
                   ? "Nada"
-                  : `${fmtNum(d.unidades)} u. · ${d.lotes} ${d.lotes === 1 ? "lote" : "lotes"}`}
+                  : `${fmtCantidad(d.unidades)} u. · ${d.lotes} ${d.lotes === 1 ? "lote" : "lotes"}`}
               </span>
             </>
           );
@@ -271,7 +271,7 @@ function PorMotivo({ reporte: r }: { reporte: ReporteMermas }) {
     <Tarjeta titulo="Por motivo">
       <ul className="space-y-3">
         {r.porMotivo.map((m) => (
-          <li key={m.motivo} title={`${m.motivo}: ${fmtMoney(m.valor)} · ${fmtNum(m.unidades)} u.`}>
+          <li key={m.motivo} title={`${m.motivo}: ${fmtMoney(m.valor)} · ${fmtCantidad(m.unidades)} u.`}>
             <div className="mb-1 flex items-baseline justify-between gap-2 text-[13px]">
               <span className="font-semibold text-texto">
                 {m.motivo}
@@ -281,7 +281,7 @@ function PorMotivo({ reporte: r }: { reporte: ReporteMermas }) {
               </span>
               <span className="shrink-0 font-bold text-texto">
                 {fmtMoney(m.valor)}
-                <span className="ml-1.5 font-normal text-texto-4">{fmtNum(m.unidades)} u.</span>
+                <span className="ml-1.5 font-normal text-texto-4">{fmtCantidad(m.unidades)} u.</span>
               </span>
             </div>
             <Barra valor={m.valor} maximo={maximo} gris={!esPerdida(m)} />
@@ -312,7 +312,7 @@ function MasPerdido({ reporte: r }: { reporte: ReporteMermas }) {
               <span className="shrink-0 text-right text-[13px] font-bold text-texto">
                 {fmtMoney(p.valor)}
                 <span className="block text-[11px] font-normal text-texto-4">
-                  {fmtNum(p.unidades)} u.
+                  {fmtCantidad(p.unidades)} u.
                 </span>
               </span>
             </li>
@@ -367,7 +367,7 @@ function Detalle({ filas }: { filas: BajaMerma[] }) {
               <span className="shrink-0 text-right text-sm font-bold text-texto">
                 {fmtMoney(f.valor)}
                 <span className="block text-[11px] font-normal text-texto-4">
-                  {fmtNum(f.cantidad)} u.
+                  {fmtCantidad(f.cantidad)} u.
                 </span>
               </span>
             </div>
@@ -405,7 +405,7 @@ function Detalle({ filas }: { filas: BajaMerma[] }) {
                   {f.motivo}
                   {f.nota && <span className="block text-xs text-texto-4">{f.nota}</span>}
                 </td>
-                <td className="py-2 pr-3 text-right align-top">{fmtNum(f.cantidad)}</td>
+                <td className="py-2 pr-3 text-right align-top">{fmtCantidad(f.cantidad)}</td>
                 <td className="py-2 pr-3 text-right align-top font-bold text-texto">
                   {fmtMoney(f.valor)}
                 </td>

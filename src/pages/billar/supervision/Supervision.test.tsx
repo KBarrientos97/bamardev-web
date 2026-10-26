@@ -14,7 +14,7 @@ vi.setConfig({ testTimeout: 60_000 });
  */
 
 const request = vi.hoisted(() => vi.fn());
-const caja = vi.hoisted(() => ({ crear: vi.fn(), anular: vi.fn() }));
+const caja = vi.hoisted(() => ({ crear: vi.fn(), anular: vi.fn(), resumen: vi.fn() }));
 const sesion = vi.hoisted(() => ({ alias: "billar-sup-0", movimientos: true }));
 
 vi.mock("../../../lib/api", async (original) => {
@@ -23,7 +23,7 @@ vi.mock("../../../lib/api", async (original) => {
     ...real,
     request,
     // Lo de la caja del POS: `api` llama a su propio `request`, no al de arriba.
-    api: { ...real.api, crearMovimientoCaja: caja.crear, anularCenaCaja: caja.anular },
+    api: { ...real.api, crearMovimientoCaja: caja.crear, anularMovimientoCaja: caja.anular, resumenCaja: caja.resumen },
   };
 });
 
@@ -653,6 +653,49 @@ describe("Billar (24-oct): los movimientos de efectivo y la cena de la cajera", 
     expect(caja.crear).toHaveBeenCalledWith(1, { tipo: "EGRESO", monto: 30, descripcion: "Cena", origen: "CENA" });
   });
 
+  it("con la caja del administrador a la vista, la tarjeta dice que va a la de la cajera, y al registrar pasa a su turno", async () => {
+    // El turno por defecto es la caja abierta más vieja: la del propio
+    // administrador. La tarjeta decía "aparece en el cierre de tu caja", el
+    // cuadro lo mandaba a la de Pepe y no se veía en ningún lado: se cargaba dos veces.
+    caja.crear.mockResolvedValue({ id: 9 });
+    caja.resumen.mockResolvedValue({ cajaId: 1, saldoEsperado: 300 });
+    request.mockImplementation(async (url: string) => {
+      if (url.startsWith("/billar/supervision")) {
+        const s = supervision();
+        const dePepe = url.includes("turno=1");
+        return {
+          ...s,
+          turno: { ...s.turno, cajaId: dePepe ? 1 : 3, defectoId: 3 },
+          cajas: [
+            { id: 3, abierta: true, cajero: "Kevin Dueño", cajeroId: 1, desde: AHORA - 5 * 60 * MIN, hasta: null, inicial: 50, ventas: 0, vendido: 0, anuladas: 0 },
+            { ...s.cajas[0], cajeroId: 20 },
+          ],
+          efectivo: dePepe
+            ? { cajaId: 1, abierta: true, esperado: 280, movimientos: [{ id: 9, tipo: "EGRESO", monto: 20, texto: "Cena", cena: true, codigo: "CENA", quien: "Kevin Dueño", hora: AHORA }] }
+            : { cajaId: 3, abierta: true, esperado: 50, movimientos: [] },
+        };
+      }
+      return [];
+    });
+    await montar();
+    expect(within(tarjeta()).getByText(/va a la caja de Pepe Mamani y aparece en su cierre, no en esta lista/)).toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(within(tarjeta()).getByRole("button", { name: "Cena" }));
+    });
+    const cuadro = await screen.findByRole("dialog");
+    expect(within(cuadro).getByRole("combobox")).toHaveValue("1");
+    fireEvent.click(within(cuadro).getByRole("button", { name: "20" }));
+    // El esperado del aviso es el de Pepe (lo pidió el cuadro), no el de la caja a la vista.
+    expect(await within(cuadro).findByText(/el efectivo esperado pasa de/)).toHaveTextContent(/300,00.*280,00/);
+    await act(async () => {
+      fireEvent.click(within(cuadro).getByRole("button", { name: "Registrar" }));
+    });
+    expect(caja.crear).toHaveBeenCalledWith(1, { tipo: "EGRESO", monto: 20, descripcion: "Cena", origen: "CENA" });
+    expect(await screen.findByText(/Registrado en la caja de Pepe Mamani/)).toBeInTheDocument();
+    expect(request.mock.calls.some((c) => String(c[0]).includes("turno=1"))).toBe(true);
+    expect(await within(tarjeta()).findByText("Caja de Pepe Mamani · abierta")).toBeInTheDocument();
+  });
+
   it("anular una cena pide confirmar y la anula en esa caja", async () => {
     conEfectivo(efectivo());
     await montar();
@@ -660,20 +703,32 @@ describe("Billar (24-oct): los movimientos de efectivo y la cena de la cajera", 
       fireEvent.click(within(tarjeta()).getByRole("button", { name: /Anular la cena de/ }));
     });
     const confirmar = await screen.findByRole("dialog");
-    expect(within(confirmar).getByText(/no se borra/)).toBeInTheDocument();
+    expect(within(confirmar).getByText(/no se borra/i)).toBeInTheDocument();
     await act(async () => {
       fireEvent.click(within(confirmar).getByRole("button", { name: "Anular la cena" }));
     });
     expect(caja.anular).toHaveBeenCalledWith(1, 7);
   });
 
-  it("una cena anulada se ve tachada y ya no se puede anular otra vez", async () => {
+  it("una cena anulada se ve tachada, con quién la anuló, y ya no se puede anular otra vez", async () => {
     conEfectivo(
       efectivo({
         esperado: 165,
         movimientos: [
-          { id: 7, tipo: "EGRESO", monto: 20, texto: "Cena", cena: true, anulada: true, quien: "Kevin Dueño", hora: AHORA - 10 * MIN },
-          { id: 8, tipo: "INGRESO", monto: 20, texto: "Cena anulada · #7", cena: true, anulaA: 7, quien: "Kevin Dueño", hora: AHORA - 5 * MIN },
+          {
+            id: 7,
+            tipo: "EGRESO",
+            monto: 20,
+            texto: "Cena",
+            cena: true,
+            codigo: "CENA",
+            anulada: true,
+            anuladoPor: "Ana Encargada",
+            anuladoHora: AHORA - 5 * MIN,
+            quien: "Kevin Dueño",
+            hora: AHORA - 10 * MIN,
+          },
+          { id: 8, tipo: "INGRESO", monto: 20, texto: "Cena anulada · #7", cena: true, codigo: "CENA", anulaA: 7, quien: "Ana Encargada", hora: AHORA - 5 * MIN },
         ],
       }),
       false,
@@ -681,8 +736,41 @@ describe("Billar (24-oct): los movimientos de efectivo y la cena de la cajera", 
     await montar();
     const t = tarjeta();
     expect(within(t).getByText("Anulada")).toBeInTheDocument();
-    expect(within(t).getByText("Cena anulada")).toBeInTheDocument();
+    expect(within(t).getByText(/Lo anuló Ana Encargada/)).toBeInTheDocument();
+    // La anulación no es un renglón más: antes "Cena anulada +Bs 20,00 · entra
+    // plata a la caja" se leía como plata que entró de verdad.
+    expect(within(t).queryByText("Cena anulada")).toBeNull();
+    expect(within(t).queryByText(/\+Bs 20,00/)).toBeNull();
     expect(within(t).queryByRole("button", { name: /Anular la cena de/ })).toBeNull();
+  });
+
+  it("cualquier movimiento con motivo se anula, no sólo la cena", async () => {
+    conEfectivo(
+      efectivo({
+        esperado: 165,
+        movimientos: [
+          { id: 9, tipo: "EGRESO", monto: 300, texto: "Retiro", cena: false, codigo: "RETIRO", quien: "Kevin Dueño", hora: AHORA - 10 * MIN },
+          { id: 10, tipo: "EGRESO", monto: 30, texto: "Hielo", cena: false, codigo: "GASTO", quien: "Kevin Dueño", hora: AHORA - 8 * MIN },
+          // Sin motivo (el cierre de caja, o un backend anterior): no se anula desde acá.
+          { id: 11, tipo: "INGRESO", monto: 5, texto: "Vuelto", cena: false, quien: "Pepe Mamani", hora: AHORA - 6 * MIN },
+        ],
+      }),
+    );
+    await montar();
+    const t = tarjeta();
+    expect(within(t).getByText("Gasto · Hielo")).toBeInTheDocument();
+    expect(within(t).getByRole("button", { name: "Anular «Retiro» de Bs 300,00" })).toBeInTheDocument();
+    expect(within(t).getByRole("button", { name: "Anular «Gasto · Hielo» de Bs 30,00" })).toBeInTheDocument();
+    expect(within(t).getAllByRole("button", { name: /^Anular/ })).toHaveLength(2);
+    await act(async () => {
+      fireEvent.click(within(t).getByRole("button", { name: "Anular «Retiro» de Bs 300,00" }));
+    });
+    const confirmar = screen.getByRole("dialog");
+    expect(within(confirmar).getByText(/vuelve a subir/)).toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(within(confirmar).getByRole("button", { name: "Anular" }));
+    });
+    expect(caja.anular).toHaveBeenCalledWith(1, 9);
   });
 
   it("con la caja cerrada se ve lo registrado pero no se puede registrar ni anular", async () => {
@@ -771,29 +859,69 @@ describe("Billar (25-oct): lo que salió en el turno y el detalle de cada rengl�
   };
   const actividadDe = () => screen.getByRole("complementary", { name: "Actividad del turno" });
 
-  it("lo que salió: lo cobrado por producto, y lo que piden las mesas abiertas todavía sin cobrar", async () => {
+  it("lo que salió: lo cobrado por producto, lo pedido en las mesas abiertas y la cuenta hasta el «Por cobrar»", async () => {
     conRefs();
     await montar();
     const t = screen.getByRole("region", { name: "Lo que salió en el turno" });
-    expect(within(t).getByText(/Bs\s60 cobrado/)).toBeInTheDocument();
-    // Lo entero va sin ceros: "4 unidades", "4 × Bs 15", "Bs 60" (Kevin, 25-oct).
+    // La plata con centavos y la cantidad sin ceros: "4 u × Bs 15,00" (Kevin, 25-oct).
+    expect(within(t).getByText("Bs 60,00 cobrado")).toBeInTheDocument();
     expect(within(t).getByText("4 unidades · 1 producto")).toBeInTheDocument();
-    expect(within(t).getByText("4 × Bs 15")).toBeInTheDocument();
-    expect(within(t).queryByText(/,00/)).toBeNull();
+    expect(within(t).getByText("4 u × Bs 15,00")).toBeInTheDocument();
+    expect(within(t).queryByText(/4,00/)).toBeNull();
     expect(within(t).getByText("Cervezas")).toBeInTheDocument();
-    // La Paceña ya cobrada, y las 2 que lleva la Mesa 1 sin cobrar (la Coca-Cola anulada no cuenta).
+    // La Paceña ya cobrada, y las 2 que lleva la Mesa 1 (la Coca-Cola anulada no cuenta).
     expect(within(t).getAllByText("Paceña 620 ml")).toHaveLength(2);
-    expect(within(t).getByText(/sin cobrar/)).toBeInTheDocument();
-    expect(within(t).getByText("2 u")).toBeInTheDocument();
+    expect(within(t).getByText("Pedido en mesas y cuentas abiertas")).toBeInTheDocument();
+    expect(within(t).getByText("2 u × Bs 15,00")).toBeInTheDocument();
     expect(within(t).queryByText("Coca-Cola")).toBeNull();
+    // El pie llega al mismo número que el KPI "Por cobrar" de arriba.
+    const kpi = screen.getByText("Por cobrar").closest("div")!;
+    const porCobrar = kpi.querySelectorAll("p")[1].textContent!;
+    expect(within(t.querySelector("footer")!).getByText(porCobrar)).toBeInTheDocument();
   });
 
-  it("sin nada cobrado ni nada pedido lo dice, y un servidor anterior no dibuja la tarjeta", async () => {
+  it("sin nada cobrado ni nada pedido lo dice", async () => {
     conRefs({ productos: { unidades: 0, total: 0, lineas: 0, categorias: [] }, mesas: [], cuentas: [] });
     await montar();
     const t = screen.getByRole("region", { name: "Lo que salió en el turno" });
     expect(within(t).getByText("Todavía no se cobró nada en este turno.")).toBeInTheDocument();
-    expect(within(t).getByText("Ninguna mesa ni cuenta tiene consumos por ahora.")).toBeInTheDocument();
+    expect(within(t).getByText("Nada pedido en mesas y cuentas abiertas.")).toBeInTheDocument();
+  });
+
+  it("sin un turno que mirar no se dibuja, aunque el servidor mande lo vendido de la jornada", async () => {
+    // Desde el 25-oct el servidor manda `productos` también sin caja: la
+    // tarjeta diría "En este turno no se cobró nada" sin que haya turno.
+    conRefs({
+      cajas: [],
+      turno: { cajaId: null, defectoId: null, desde: AHORA - 6 * 60 * MIN, hasta: null, ventas: 0, vendido: 0 },
+      productos: { unidades: 0, total: 0, lineas: 0, categorias: [] },
+    });
+    await montar();
+    expect(screen.getByText("Vendido hoy")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Lo que salió en el turno" })).toBeNull();
+  });
+
+  it("lo que pasó el tope de la actividad va después de un corte en «Todo», y no en «Caja»", async () => {
+    // Noche movida: el servidor corta en 150 pero manda igual la apertura de la
+    // caja. Sin el corte, la apertura de las 16:00 quedaba pegada al último
+    // renglón del tope como si en el medio no hubiera pasado nada.
+    conRefs({
+      actividad: [
+        { id: "co9", hora: AHORA - 10 * MIN, quien: "Pepe Mamani", texto: "Cargó 1× Paceña 620 ml · Bs 15,00", lugar: "Mesa 1", codigo: "CONSUMO" },
+        { id: "co8", hora: AHORA - 20 * MIN, quien: "Pepe Mamani", texto: "Cargó 1× Coca-Cola · Bs 8,00", lugar: "Mesa 1", codigo: "CONSUMO" },
+        { id: "ca1", hora: AHORA - 4 * 60 * MIN, quien: "Pepe Mamani", texto: "Abrió la caja con Bs 100,00", codigo: "CAJA_ABIERTA", fueraDelTope: true },
+      ],
+    });
+    await montar();
+    const corte = /sólo se ven la caja y el efectivo/;
+    const lista = actividadDe();
+    expect(within(lista).getByText(corte)).toBeInTheDocument();
+    expect(within(lista).getByText("Abrió la caja con Bs 100,00", { exact: false })).toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(within(lista).getByRole("button", { name: "Caja" }));
+    });
+    expect(within(lista).getByText("Abrió la caja con Bs 100,00", { exact: false })).toBeInTheDocument();
+    expect(within(lista).queryByText(corte)).toBeNull();
   });
 
   it("un servidor anterior, sin lo vendido, no dibuja la tarjeta", async () => {

@@ -1,7 +1,7 @@
 import { Icon } from "../../components/Icon";
 import IconoProducto from "../../components/IconoProducto";
 import { Badge } from "../../components/ui";
-import { fmtMoney, fmtNum } from "../../lib/format";
+import { fmtCantidad, fmtMoney, fmtNum } from "../../lib/format";
 import type { Producto } from "../../types";
 
 /**
@@ -62,7 +62,7 @@ export default function TarjetaCarta({
             />
             {agotado && <Badge tono="rojo">Sin stock</Badge>}
             {!agotado && controlaStock && producto.stockTotal <= producto.stockMinimo && (
-              <Badge tono="amarillo">{fmtNum(producto.stockTotal)} disp.</Badge>
+              <Badge tono="amarillo">{fmtCantidad(producto.stockTotal)} disp.</Badge>
             )}
           </div>
           <h3 className="mt-2 line-clamp-2 min-h-[34px] text-[13px] font-bold leading-snug text-texto">

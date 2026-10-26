@@ -50,11 +50,41 @@ describe("noches", () => {
     expect(nochesConCenaTexto({ nochesConCena: 20, nochesAbiertas: 23 })).toBe("20 de 23");
     expect(
       nochesSinCena({
-        porNoche: [
-          { cajaId: 1, dia: "2026-10-22", cajera: "A", monto: 20, registro: "M", abierta: false },
-          { cajaId: 2, dia: "2026-10-23", cajera: "A", monto: 0, registro: "", abierta: false },
+        porDia: [
+          { dia: "2026-10-22", monto: 20 },
+          { dia: "2026-10-23", monto: 0 },
         ],
       }),
     ).toBe(1);
+  });
+
+  it("dos cajas la misma noche son una noche: si en una hubo cena, no es una noche sin cena", () => {
+    // La cajera con su cena y el dueño con su propia caja, sin cena: el reporte
+    // decía a la vez "Noches con cena 1 de 1" y "1 noche sin cena".
+    const r = {
+      nochesConCena: 1,
+      nochesAbiertas: 1,
+      porNoche: [
+        { cajaId: 7, dia: "2026-10-24", cajera: "Pepe", monto: 20, registro: "Kevin", abierta: false },
+        { cajaId: 8, dia: "2026-10-24", cajera: "Kevin", monto: 0, registro: "", abierta: false },
+      ],
+      porDia: [{ dia: "2026-10-24", monto: 20 }],
+    };
+    expect(nochesConCenaTexto(r)).toBe("1 de 1");
+    expect(nochesSinCena(r)).toBe(0);
+  });
+
+  it("las noches sin cena son las abiertas menos las con cena", () => {
+    const r = {
+      nochesConCena: 2,
+      nochesAbiertas: 4,
+      porDia: [
+        { dia: "2026-10-21", monto: 30 },
+        { dia: "2026-10-22", monto: 0 },
+        { dia: "2026-10-23", monto: 0 },
+        { dia: "2026-10-24", monto: 15 },
+      ],
+    };
+    expect(nochesSinCena(r)).toBe(r.nochesAbiertas - r.nochesConCena);
   });
 });

@@ -4,7 +4,7 @@ import { Icon } from "../../../components/Icon";
 import { Boton, Select, Vacio } from "../../../components/ui";
 import { api, qs, request } from "../../../lib/api";
 import { esPositivo } from "../../../lib/dinero";
-import { fmtFechaHora, fmtMoney, fmtNum } from "../../../lib/format";
+import { fmtCantidad, fmtFechaHora, fmtMoney, fmtNum } from "../../../lib/format";
 import { tzOffsetMin } from "../../../lib/rangoApi";
 import { esBillar } from "../../../lib/rubro";
 import { useApi } from "../../../lib/useApi";
@@ -233,8 +233,9 @@ function Detallado({ cajero, onCajero }: { cajero: Cajero | null; onCajero: (c: 
             <div className="grid gap-3 sm:grid-cols-3">
               <KpiR
                 etiqueta="Productos vendidos"
-                // Lo vendido por peso trae decimales: 12,5 kg no es "13".
-                valor={fmtNum(unidades, Number.isInteger(unidades) ? 0 : 2)}
+                // Lo vendido por peso trae decimales: 12,5 kg no es "13", y
+                // tampoco "12,50" (Kevin, 25-oct: sin ",00" en las cantidades).
+                valor={fmtCantidad(unidades)}
                 pie={`en ${plural(x.totales.lineas, "línea", "líneas")}`}
               />
               <KpiR etiqueta="Total recaudado" valor={fmtMoney(x.totales.recaudado)} tono="marca" />

@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { EncabezadoPagina } from "../../components/filtros";
 import { Icon } from "../../components/Icon";
 import { Boton, Cargando, ErrorMsg, Modal, Vacio } from "../../components/ui";
-import { fmtFecha, fmtMoney, fmtNum } from "../../lib/format";
+import { fmtCantidad, fmtFecha, fmtMoney } from "../../lib/format";
 import { api } from "../../lib/api";
 import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
@@ -240,7 +240,7 @@ function Fila({ lote: l, onClick }: { lote: LotePorVencer; onClick: () => void }
 
         <div className="hidden shrink-0 text-right sm:block">
           <p className="text-[13px] font-bold text-texto">{fmtMoney(l.valor)}</p>
-          <p className="text-xs text-texto-3">{fmtNum(l.cantidad)} u.</p>
+          <p className="text-xs text-texto-3">{fmtCantidad(l.cantidad)} u.</p>
         </div>
 
         <Icon name="chevronRight" size={16} className="shrink-0 text-texto-4" />
@@ -308,7 +308,7 @@ function DetalleLote({
         <dl className="grid grid-cols-2 gap-x-4 gap-y-3.5">
           <Dato titulo="Vence" valor={fmtFecha(l.vencimiento ?? "")} />
           <Dato titulo="Dónde está" valor={l.almacen.nombre} />
-          <Dato titulo="Queda" valor={`${fmtNum(l.cantidad)} u.`} />
+          <Dato titulo="Queda" valor={`${fmtCantidad(l.cantidad)} u.`} />
           <Dato
             titulo="Costo unitario"
             valor={l.costoUnitario === null ? "—" : fmtMoney(l.costoUnitario)}

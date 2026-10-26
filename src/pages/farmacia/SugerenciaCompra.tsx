@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Chips, EncabezadoPagina } from "../../components/filtros";
 import { Badge, Boton, Cargando, ErrorMsg, Kpi, Vacio } from "../../components/ui";
 import { api } from "../../lib/api";
-import { fmtMoney, fmtNum, isoDia } from "../../lib/format";
+import { fmtCantidad, fmtMoney, fmtNum, isoDia } from "../../lib/format";
 import { useApi } from "../../lib/useApi";
 import { useSucursales } from "../../lib/useSucursales";
 import type { ItemSugerencia } from "../../types";
@@ -298,7 +298,7 @@ function Hay({ item: i, enLinea = false }: { item: ItemSugerencia; enLinea?: boo
         <span
           className={`${enLinea ? "ml-1" : "block"} text-[11px] font-semibold text-danger-text`}
         >
-          {enLinea ? `(+ ${fmtNum(i.vencido)} vencidos)` : `+ ${fmtNum(i.vencido)} vencidos`}
+          {enLinea ? `(+ ${fmtCantidad(i.vencido)} vencidos)` : `+ ${fmtCantidad(i.vencido)} vencidos`}
         </span>
       )}
     </>
@@ -322,9 +322,10 @@ function FilaSugerencia({ item: i, dias, pedir, conLaboratorio, onPedir }: Props
       </td>
       <td className="whitespace-nowrap px-3 py-2.5 text-right align-top">
         {fmtNum(i.vendidas)} en {dias} d
-        {/* Con una venta al mes, "0,0 por día" confunde: el total ya lo dice. */}
+        {/* Con una venta al mes, "0,0 por día" confunde: el total ya lo dice. Y
+            sin ceros de más: "2 por día", no "2,0" (Kevin, 25-oct). */}
         {i.porDia >= 0.1 && (
-          <span className="block text-[11px] text-texto-4">{fmtNum(i.porDia, 1)} por día</span>
+          <span className="block text-[11px] text-texto-4">{fmtCantidad(i.porDia, 1)} por día</span>
         )}
       </td>
       <td className="px-3 py-2.5 text-right align-top">{i.encargos > 0 ? fmtNum(i.encargos) : "—"}</td>
@@ -445,7 +446,9 @@ function bajarCsv(items: ItemSugerencia[], ajustes: ReadonlyMap<number, number>,
           g.laboratorio === SIN_LABORATORIO ? "" : g.laboratorio,
           i.nombre,
           [i.principioActivo, i.concentracion].filter(Boolean).join(" "),
-          Math.max(0, i.stock - i.vencido),
+          // Redondeado a los 3 decimales del stock: la resta 2,3 − 0,1 dejaba
+          // "2,1999999999999997" en la planilla. Sigue siendo un número.
+          Math.round(Math.max(0, i.stock - i.vencido) * 1000) / 1000,
           i.vencido,
           i.vendidas,
           i.porDia,

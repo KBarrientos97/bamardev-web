@@ -72,6 +72,13 @@ describe("stock con su unidad", () => {
     expect(conUnidad(7, null)).toBe("7 u.");
     expect(conUnidad(7, "")).toBe("7 u.");
   });
+
+  it("una fracción no se redondea: medio frasco no es un frasco", () => {
+    // El ingreso acepta decimales y salía "1 frasco" para 0,5.
+    expect(conUnidad(0.5, "Frasco")).toBe("0,5 frascos");
+    expect(conUnidad(2.5, "Unidad")).toBe("2,5 u.");
+    expect(conUnidad(1500, "Unidad")).toBe("1.500 u.");
+  });
 });
 
 describe("la barra se escribe sola", () => {

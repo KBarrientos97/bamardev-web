@@ -1,6 +1,6 @@
 import type { NombreIcono } from "../../../components/Icon";
 import { esPositivo } from "../../../lib/dinero";
-import { fmtFechaHora } from "../../../lib/format";
+import { fmtCantidad, fmtFechaHora } from "../../../lib/format";
 import type { HojaNueva } from "../../../lib/planilla";
 import type {
   EstadoDocumento,
@@ -154,7 +154,7 @@ export function tituloLinea(l: Pick<LineaVenta, "producto" | "mesa">): string {
 
 /** "×2", "×1,5": la cantidad del cuadradito. Lo vendido por peso trae decimales. */
 export function cantidadCorta(n: number): string {
-  return `×${n.toLocaleString("es-BO", { maximumFractionDigits: 3 })}`;
+  return `×${fmtCantidad(n)}`;
 }
 
 // ── Mensual ─────────────────────────────────────────────────────────────────

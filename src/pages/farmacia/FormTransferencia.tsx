@@ -4,7 +4,7 @@ import { Icon } from "../../components/Icon";
 import { Boton, Campo, Cargando, Confirmar, ErrorMsg, Input, Select } from "../../components/ui";
 import { api } from "../../lib/api";
 import { parsearMonto } from "../../lib/dinero";
-import { fmtFecha, fmtNum, isoDia } from "../../lib/format";
+import { fmtCantidad, fmtFecha, isoDia } from "../../lib/format";
 import { ofreceAprobarMovimiento } from "../../lib/permisos";
 import { contiene } from "../../lib/texto";
 import { useApi } from "../../lib/useApi";
@@ -518,7 +518,8 @@ export default function FormTransferencia() {
           </p>
           <p className="text-lg font-bold text-texto">
             {lineas.length} {lineas.length === 1 ? "producto" : "productos"} ·{" "}
-            {fmtNum(unidades)} u.
+            {/* Es la suma de lo tecleado, que acepta decimales: con fmtNum, 2,5 salía "3 u.". */}
+            {fmtCantidad(unidades)} u.
           </p>
           <p className="mt-0.5 text-[12px] text-texto-3">
             {dobleControl
@@ -763,7 +764,7 @@ function LoteQueViaja({
       </span>
       {vencidas > 0 && (
         <p className="mt-1.5 rounded-lg bg-danger-bg px-2.5 py-1.5 text-xs text-danger-text">
-          Ojo: viajan {fmtNum(vencidas)} u. vencidas. Si no las querés mandar, dalas de baja
+          Ojo: viajan {fmtCantidad(vencidas)} u. vencidas. Si no las querés mandar, dalas de baja
           antes desde Vencimientos.
         </p>
       )}

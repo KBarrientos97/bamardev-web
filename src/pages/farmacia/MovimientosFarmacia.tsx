@@ -15,7 +15,7 @@ import {
 } from "../../components/ui";
 import { api } from "../../lib/api";
 import { parsearMonto } from "../../lib/dinero";
-import { fmtFecha, fmtFechaHora, fmtMoney, fmtNum } from "../../lib/format";
+import { fmtCantidad, fmtFecha, fmtFechaHora, fmtMoney } from "../../lib/format";
 import { contiene } from "../../lib/texto";
 import { ofreceAprobarMovimiento } from "../../lib/permisos";
 import { useApi } from "../../lib/useApi";
@@ -540,7 +540,8 @@ function DetalleMercaderia({
                             </td>
                           )}
                           <td className="px-3 py-2.5 text-right text-texto">
-                            {fmtNum(d.cantidad, 2)}
+                            {/* "30", no "30,00" (Kevin, 25-oct: sin ",00" en las unidades). */}
+                            {fmtCantidad(d.cantidad)}
                           </td>
                           <td className="px-3 py-2.5 text-right text-texto">
                             {fmtMoney(d.costo)}

@@ -1,5 +1,5 @@
 import { api } from "../lib/api";
-import { fmtFecha, fmtMoney, fmtNum } from "../lib/format";
+import { fmtCantidad, fmtFecha, fmtMoney } from "../lib/format";
 import { useApi } from "../lib/useApi";
 import { Icon } from "./Icon";
 import { Cargando, ErrorMsg, Modal, Vacio } from "./ui";
@@ -84,7 +84,8 @@ export default function HistorialCostos({
                         {c.almacen ? ` · ${c.almacen}` : ""}
                       </p>
                       <p className="mt-0.5 text-xs text-texto-4">
-                        {fmtNum(c.cantidad)} {h.unidad ?? "u"} · {fmtMoney(c.total)}
+                        {/* Con fmtNum, 2,5 kg de una compra salía "3 kg" y 0,4 kg, "0 kg". */}
+                        {fmtCantidad(c.cantidad)} {h.unidad ?? "u"} · {fmtMoney(c.total)}
                       </p>
                     </div>
 

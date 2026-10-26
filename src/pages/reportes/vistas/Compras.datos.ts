@@ -1,5 +1,5 @@
 import { esPositivo } from "../../../lib/dinero";
-import { fmtMoney, fmtNum } from "../../../lib/format";
+import { fmtCantidad, fmtMoney } from "../../../lib/format";
 import { tieneFeature } from "../../../lib/permisos";
 import { esBelleza, esFarmacia } from "../../../lib/rubro";
 import type { HojaNueva } from "../../../lib/planilla";
@@ -57,22 +57,26 @@ function pluralDe(palabra: string): string {
 }
 
 /**
- * "16 cajas", "1 caja", "2,50 kilogramos", "46 unidades".
+ * "16 cajas", "1 caja", "2,5 kilogramos", "0,125 kilogramos", "46 unidades".
  *
  * Las unidades de medida son nombres que carga el negocio ("Caja", "Kilogramo",
  * "Quintal") y vienen en singular y con mayúscula: "16 Caja" se leía como un
  * error. Una abreviatura ("kg", "QQ", "@") no se toca: "16 kgs" está mal.
+ *
+ * La cantidad va sin ceros de más (`fmtCantidad`): salía "2,50 kilogramos"
+ * (Kevin, 25-oct). El singular se decide por lo que se ve, igual que `plural`.
  */
 export function cantidadConUnidad(cantidad: number, unidad: string | null | undefined): string {
-  const n = fmtNum(cantidad, Number.isInteger(cantidad) ? 0 : 2);
+  const n = fmtCantidad(cantidad);
+  const esUno = n === "1";
   const nombre = (unidad ?? "").trim();
-  if (!nombre) return `${n} ${cantidad === 1 ? "unidad" : "unidades"}`;
+  if (!nombre) return `${n} ${esUno ? "unidad" : "unidades"}`;
   // Se mira la primera palabra: en "Bolsa de 1kg" se pluraliza "bolsa" y lo
   // demás queda como lo escribieron.
   const [primera, ...resto] = nombre.split(/\s+/);
   const esAbreviatura = primera.length <= 3 || /[^a-záéíóúüñ]/i.test(primera) || primera === primera.toUpperCase();
   if (esAbreviatura) return `${n} ${nombre}`;
-  const cabeza = cantidad === 1 ? primera.toLowerCase() : pluralDe(primera.toLowerCase());
+  const cabeza = esUno ? primera.toLowerCase() : pluralDe(primera.toLowerCase());
   return `${n} ${[cabeza, ...resto].join(" ")}`;
 }
 

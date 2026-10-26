@@ -27,7 +27,14 @@ describe("la cantidad con su unidad", () => {
     expect(cantidadConUnidad(3, "Galón")).toBe("3 galones");
     expect(cantidadConUnidad(2, "Blíster")).toBe("2 blísteres");
     expect(cantidadConUnidad(4, "Pack")).toBe("4 packs");
-    expect(cantidadConUnidad(2.5, "Kilogramo")).toBe("2,50 kilogramos");
+    expect(cantidadConUnidad(2.5, "Kilogramo")).toBe("2,5 kilogramos");
+  });
+
+  it("la fracción va con lo que necesita, sin ceros de más", () => {
+    // Salía "2,50 kilogramos" y 0,125 kg, "0,13" (Kevin, 25-oct: sin ",00" en las cantidades).
+    expect(cantidadConUnidad(0.125, "Kilogramo")).toBe("0,125 kilogramos");
+    expect(cantidadConUnidad(1.5, "kg")).toBe("1,5 kg");
+    expect(cantidadConUnidad(2.3 - 0.3, "Caja")).toBe("2 cajas");
   });
 
   it("una abreviatura queda como está: 16 kgs está mal", () => {

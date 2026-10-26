@@ -1,5 +1,6 @@
+import { esCero, esPositivo } from "../../../lib/dinero";
 import { fmtMoney } from "../../../lib/format";
-import { round2 } from "../calculo";
+import { round2, type Cuenta } from "../calculo";
 import type { ActividadApi, CajaSupervisionApi, SesionSupervisionApi, SupervisionApi } from "../api";
 import { aCuenta, aMesa } from "../api";
 import type { CuentaSinMesa, Mesa } from "../tipos";
@@ -311,24 +312,124 @@ export function tonoDeActividad(codigo: string): TonoActividad {
 
 // ── Lo que salió ────────────────────────────────────────────────────────────
 
+/** Un producto de lo que van pidiendo las mesas y cuentas abiertas. */
+export interface PedidoEnCurso {
+  productoId: number;
+  /** El del último que se cargó: si lo renombraron a mitad del turno, el de ahora. */
+  nombre: string;
+  cantidad: number;
+  /** El precio por unidad si todos se cargaron al mismo; null si cambió en el turno. */
+  precio: number | null;
+  total: number;
+}
+
 /**
- * Lo que piden las mesas y cuentas que siguen abiertas y todavía no se cobró,
- * sumado por producto (sin lo anulado): lo que "va saliendo" del turno. Del más
- * caro al más barato.
+ * Lo que piden las mesas y cuentas que siguen abiertas, sumado por producto
+ * (sin lo anulado): lo que "va saliendo" del turno. Del más caro al más barato.
+ *
+ * Por artículo y no por nombre (25-oct): dos "Cerveza" distintas (una en
+ * Cervezas y otra sin categoría) salían sumadas en una fila, y un producto
+ * renombrado a mitad del turno salía partido en dos, porque cada consumo guarda
+ * el nombre que tenía al cargarse. Lo ya cobrado (el backend) agrupa igual.
+ *
+ * Las mismas mesas que cuenta el "Por cobrar" (`vistaDe`: abierta y con
+ * sesión), así los consumos de acá son los de su desglose.
  */
-export function consumosEnCurso(api: Pick<SupervisionApi, "mesas" | "cuentas">): { nombre: string; cant: number; total: number }[] {
-  const por = new Map<string, { nombre: string; cant: number; total: number }>();
-  const sesiones = [...api.mesas.flatMap((m) => (m.sesion ? [m.sesion] : [])), ...api.cuentas.map((c) => c.sesion)];
+export function consumosEnCurso(api: Pick<SupervisionApi, "mesas" | "cuentas">): PedidoEnCurso[] {
+  const por = new Map<number, PedidoEnCurso & { hora: number }>();
+  const sesiones = [
+    ...api.mesas.flatMap((m) => (m.estado === "abierta" && m.sesion ? [m.sesion] : [])),
+    ...api.cuentas.map((c) => c.sesion),
+  ];
   for (const s of sesiones) {
     for (const c of s.consumos) {
       if (c.anulado) continue;
-      const ya = por.get(c.nombre) ?? { nombre: c.nombre, cant: 0, total: 0 };
-      ya.cant += c.cant;
+      const ya = por.get(c.productoId);
+      if (!ya) {
+        por.set(c.productoId, { productoId: c.productoId, nombre: c.nombre, cantidad: c.cant, precio: c.precio, total: c.precio * c.cant, hora: c.hora });
+        continue;
+      }
+      ya.cantidad += c.cant;
       ya.total += c.precio * c.cant;
-      por.set(c.nombre, ya);
+      // Cada consumo congela su precio: si el administrador lo cambió en el
+      // turno no hay un precio por unidad que mostrar (uno a Bs 10 y otro a
+      // Bs 8 no son "2 u × Bs 9,00", aunque la cuenta dé).
+      if (ya.precio != null && !esCero(ya.precio - c.precio)) ya.precio = null;
+      if (c.hora >= ya.hora) {
+        ya.nombre = c.nombre;
+        ya.hora = c.hora;
+      }
     }
   }
   return [...por.values()]
-    .map((i) => ({ ...i, total: round2(i.total) }))
+    .map(({ hora: _hora, ...i }) => ({ ...i, total: round2(i.total) }))
     .sort((a, b) => b.total - a.total || a.nombre.localeCompare(b.nombre));
+}
+
+/**
+ * Cómo se llega al "Por cobrar" de arriba desde lo que se ve en "Lo que salió"
+ * (25-oct). La lista de lo pedido mostraba Bs 34 de consumos y el KPI decía Bs
+ * 68: el KPI suma también el tiempo de las mesas y resta lo que ya pagaron
+ * (los adelantos, el tiempo fijo cobrado al abrir), y en la pantalla no había
+ * forma de ver la cuenta. Con esto: tiempo 50 + consumos 34 − adelantado 16 = 68.
+ */
+export interface DesglosePorCobrar {
+  /** El tiempo de las mesas en juego hasta ahora, con el tiempo fijo aunque ya esté pagado. */
+  tiempo: number;
+  /** Lo pedido en mesas y cuentas abiertas, sin lo anulado. */
+  consumos: number;
+  /** Lo que ya pagaron y cubre lo que deben: tiempo + consumos − adelantado = porCobrar. */
+  adelantado: number;
+  /** Lo pagado de más en alguna (se le devuelve al cerrar): no baja lo que deben las otras. */
+  deMas: number;
+  /** Todo lo que ya entró por mesas y cuentas abiertas (adelantado + deMas). */
+  pagado: number;
+  /** El mismo número que el KPI "Por cobrar" (`resumenSupervision`). */
+  porCobrar: number;
+}
+
+/** Con las mismas vistas de mesas y cuentas que lee `resumenSupervision`, para que dé su número. */
+export function desglosePorCobrar(mesas: VistaMesa[], cuentas: VistaCuenta[]): DesglosePorCobrar {
+  const deMesas = mesas.flatMap((v) => (v.cuenta ? [v.cuenta] : []));
+  const todas: Cuenta[] = [...deMesas, ...cuentas.map((v) => v.calc)];
+  const suma = (de: (c: Cuenta) => number) => round2(todas.reduce((t, c) => t + de(c), 0));
+  const tiempo = suma((c) => c.tiempoBs);
+  const consumos = suma((c) => c.consumosBs);
+  const pagado = suma((c) => c.pagado);
+  // La misma cuenta, en el mismo orden, que `resumenSupervision`: cada mesa
+  // debe su saldo y nunca menos de cero. Si se sumara "tiempo + consumos −
+  // pagado", lo pagado de más en una mesa bajaba lo que debe otra y el pie no
+  // daba el número del KPI.
+  const porCobrar = round2(deMesas.reduce((t, c) => t + c.saldo, 0) + cuentas.reduce((t, v) => t + v.calc.saldo, 0));
+  const adelantado = Math.max(0, round2(tiempo + consumos - porCobrar));
+  return { tiempo, consumos, adelantado, deMas: Math.max(0, round2(pagado - adelantado)), pagado, porCobrar };
+}
+
+/**
+ * La cuenta del pie de "Lo que salió", de a términos: ["Tiempo Bs 50,00", "+
+ * consumos Bs 34,00", "− ya adelantado Bs 16,00"]. Sin los que están en cero
+ * (una noche sin adelantos no dice "− Bs 0,00"). De a términos para que la
+ * pantalla no los parta al bajar de renglón: en el celular quedaba "Bs" en un
+ * renglón y "16,00" en el otro.
+ */
+export function cuentaDelPorCobrar(d: Pick<DesglosePorCobrar, "tiempo" | "consumos" | "adelantado">): string[] {
+  const partes: string[] = [];
+  if (esPositivo(d.tiempo)) partes.push(`tiempo ${fmtMoney(d.tiempo)}`);
+  if (esPositivo(d.consumos)) partes.push(`${partes.length ? "+ " : ""}consumos ${fmtMoney(d.consumos)}`);
+  if (esPositivo(d.adelantado)) partes.push(`− ya adelantado ${fmtMoney(d.adelantado)}`);
+  if (partes.length === 0) return ["Sin tiempo ni consumos todavía"];
+  partes[0] = partes[0][0].toUpperCase() + partes[0].slice(1);
+  return partes;
+}
+
+/**
+ * Si "Lo que salió" muestra lo pedido en mesas y cuentas abiertas: sólo con la
+ * caja del turno abierta (el turno en curso, una que quedó abierta de antes o
+ * una abierta elegida a mano, que llega hasta ahora). Las mesas abiertas son de
+ * AHORA: con un turno ya cerrado no hay ninguna de ese turno (la caja no
+ * cierra con mesas en juego), y la mitad de la tarjeta decía "Ninguna mesa
+ * tiene consumos" bajo un rótulo de "sin cobrar".
+ */
+export function seVeLoPedido(t: { situacion: SituacionTurno; caja?: Pick<CajaSupervisionApi, "abierta"> }): boolean {
+  return t.situacion !== "hoy" && t.caja?.abierta === true;
 }

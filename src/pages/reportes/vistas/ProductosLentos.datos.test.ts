@@ -40,6 +40,12 @@ describe("productos lentos", () => {
     expect(lineaLento({ vendidas: 0, stock: 4 })).toBe("Sin ventas en el período · stock 4");
   });
 
+  it("un stock con fracción no se redondea", () => {
+    // Con fmtNum, 2,5 kg salía "stock 3".
+    expect(lineaLento({ vendidas: 0, stock: 2.5 })).toBe("Sin ventas en el período · stock 2,5");
+    expect(lineaLento({ vendidas: 1.5, stock: 0.125 })).toBe("1,5 vendidos en el período · stock 0,125");
+  });
+
   it("el consejo habla el idioma del rubro", () => {
     expect(consejoLentos("BILLAR")).toContain("tiempo de mesa");
     expect(consejoLentos("FARMACIA")).not.toContain("combo");

@@ -3,7 +3,7 @@ import { Icon } from "../../components/Icon";
 import { Badge, Cargando, ErrorMsg, Kpi, Vacio } from "../../components/ui";
 import { Chips } from "../../components/filtros";
 import { api } from "../../lib/api";
-import { fmtFecha, fmtMoney, fmtNum } from "../../lib/format";
+import { fmtCantidad, fmtFecha, fmtMoney, fmtNum } from "../../lib/format";
 import { useApi } from "../../lib/useApi";
 import { useSucursales } from "../../lib/useSucursales";
 import type { EstadoDocumento } from "../../types";
@@ -94,11 +94,12 @@ export default function Dashboard() {
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-bold text-texto">{a.nombre}</p>
                   <p className="mt-0.5 text-xs text-texto-3">
-                    Mínimo: {fmtNum(a.stockMinimo)}
+                    Mínimo: {fmtCantidad(a.stockMinimo)}
                   </p>
                 </div>
                 <Badge tono={a.stock <= 0 ? "rojo" : "amarillo"}>
-                  {a.stock <= 0 ? "Sin stock" : `${fmtNum(a.stock)} restantes`}
+                  {/* Con fmtNum, 0,4 kg de un insumo salía "0 restantes": parecía agotado y no lo estaba. */}
+                  {a.stock <= 0 ? "Sin stock" : `${fmtCantidad(a.stock)} restantes`}
                 </Badge>
               </li>
             ))}

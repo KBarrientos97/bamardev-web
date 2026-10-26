@@ -140,6 +140,26 @@ describe("bamardev-restaurant: el catálogo se ve como siempre", () => {
     expect(screen.getByText("Gaseosa 2L")).toBeInTheDocument();
   });
 
+  it("la receta del combo va sin ceros de más", async () => {
+    // Kevin, 25-oct: la receta decía "1,000" y "0,250".
+    getProductos.mockResolvedValue([
+      producto({
+        nombre: "Combo familiar",
+        tipoProducto: "COMPUESTO",
+        stockTotal: 4,
+        componentes: [
+          { ingredienteId: 2, nombre: "Pollo entero", cantidad: 1 },
+          { ingredienteId: 3, nombre: "Papas fritas", cantidad: 0.25 },
+        ],
+      }),
+    ]);
+    render(<Productos />);
+    fireEvent.click(await screen.findByText("Combo familiar"));
+
+    expect(screen.getByText("Pollo entero").closest("li")).toHaveTextContent(/^Pollo entero1$/);
+    expect(screen.getByText("Papas fritas").closest("li")).toHaveTextContent(/^Papas fritas0,25$/);
+  });
+
   it("no ofrece cargar desde Excel, aunque el usuario pueda cargar mercadería", async () => {
     // La carga desde Excel es de farmacia: el encabezado del restaurante queda
     // con su "Nuevo" y nada más.

@@ -1,4 +1,4 @@
-import { fmtNum } from "../../lib/format";
+import { fmtCantidad } from "../../lib/format";
 import { normalizar } from "../../lib/texto";
 import type { CondicionVenta, Producto, TramoVencimiento } from "../../types";
 
@@ -184,12 +184,15 @@ export function textoVida(dias: number | null): string {
  *
  * "Unidad" se abrevia porque es la que más se repite y ocupa lugar en una
  * tabla; las demás van enteras, que se leen mejor que una abreviatura inventada.
+ *
+ * La cantidad va con `fmtCantidad`: con `fmtNum` medio frasco de un ingreso salía
+ * "1 frasco" (redondeaba). Los enteros se ven igual que antes.
  */
 export function conUnidad(cantidad: number, unidad?: string | null): string {
-  const n = fmtNum(cantidad);
+  const n = fmtCantidad(cantidad);
   const u = (unidad ?? "").trim().toLowerCase();
   if (!u || u === "unidad" || u === "unidades") return `${n} u.`;
-  if (cantidad === 1) return `${n} ${u}`;
+  if (n === "1") return `${n} ${u}`;
   // Plural de andar por casa, que es todo lo que hace falta para frasco, caja,
   // tubo, blíster y sobre.
   return `${n} ${/[aeiouáéíóú]$/.test(u) ? `${u}s` : `${u}es`}`;

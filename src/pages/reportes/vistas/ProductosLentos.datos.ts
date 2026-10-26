@@ -1,5 +1,5 @@
 import { aCentavos, esCero } from "../../../lib/dinero";
-import { fmtNum } from "../../../lib/format";
+import { fmtCantidad } from "../../../lib/format";
 import { esBillar, esFarmacia } from "../../../lib/rubro";
 import type { FilaLentoApi, LentosApi } from "../api";
 import { plural } from "../formato";
@@ -52,10 +52,13 @@ export function armarLentos(d: LentosApi): Lentos {
   };
 }
 
-/** "11 vendidos en el período · stock 18", o "Sin ventas en el período · stock 4". */
+/**
+ * "11 vendidos en el período · stock 18", o "Sin ventas en el período · stock 4".
+ * El stock va con `fmtCantidad`: con `fmtNum` un stock de 2,5 kg salía "stock 3".
+ */
 export function lineaLento(f: Pick<FilaLentoApi, "vendidas" | "stock">): string {
   const ventas = f.vendidas === 0 ? "Sin ventas en el período" : `${plural(f.vendidas, "vendido", "vendidos")} en el período`;
-  return `${ventas} · stock ${fmtNum(f.stock)}`;
+  return `${ventas} · stock ${fmtCantidad(f.stock)}`;
 }
 
 /** Qué hacer con ellos, en el idioma del rubro: a una farmacia no se le dice "armá un combo". */

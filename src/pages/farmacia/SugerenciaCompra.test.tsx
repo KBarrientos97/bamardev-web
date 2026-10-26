@@ -145,6 +145,41 @@ describe("la sugerencia", () => {
     expect(api.sugerenciaCompra).toHaveBeenLastCalledWith({ dias: 60, cobertura: 30, sucursalId: null });
   });
 
+  it("el ritmo de venta va sin ceros de más", async () => {
+    // Salía "1,0 por día" (Kevin, 25-oct: sin ceros de más en las cantidades).
+    vi.mocked(api.sugerenciaCompra).mockResolvedValue(
+      respuesta([item({}), item({ productoId: 3, nombre: "Paracetamol 500 mg", porDia: 1.5, vendidas: 45 })]),
+    );
+    await montar();
+    expect(within(fila("Ibuprofeno 400 mg")).getByText("1 por día")).toBeInTheDocument();
+    expect(within(fila("Paracetamol 500 mg")).getByText("1,5 por día")).toBeInTheDocument();
+  });
+
+  it("el Excel lleva lo que hay redondeado a los decimales del stock, y sigue siendo número", async () => {
+    // La resta 2,3 − 0,1 dejaba "2,1999999999999997" en la planilla.
+    vi.mocked(api.sugerenciaCompra).mockResolvedValue(respuesta([item({ stock: 2.3, vencido: 0.1 })]));
+    const bajado: { planilla?: Blob } = {};
+    const original = { crear: URL.createObjectURL, revocar: URL.revokeObjectURL };
+    URL.createObjectURL = vi.fn((b: Blob | MediaSource) => {
+      bajado.planilla = b as Blob;
+      return "blob:planilla";
+    });
+    URL.revokeObjectURL = vi.fn();
+    // jsdom no navega: sin esto, el clic del enlace de descarga ensucia la salida.
+    const clic = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    try {
+      await montar();
+      fireEvent.click(screen.getByRole("button", { name: /Exportar a Excel/ }));
+      const texto = await bajado.planilla!.text();
+      expect(texto).toContain('"Ibuprofeno 400 mg";"2,2";"0,1"');
+      expect(texto).not.toContain("2,1999");
+    } finally {
+      URL.createObjectURL = original.crear;
+      URL.revokeObjectURL = original.revocar;
+      clic.mockRestore();
+    }
+  });
+
   it("si no hace falta nada, lo dice", async () => {
     vi.mocked(api.sugerenciaCompra).mockResolvedValue(respuesta([]));
     await montar();

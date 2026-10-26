@@ -10,7 +10,7 @@ import { useVentaFarmacia, type VentaFarmacia } from "../farmacia/ventaFarmacia"
 import { Icon } from "../../components/Icon";
 import IconoProducto from "../../components/IconoProducto";
 import { Badge, Boton, Confirmar, Input, Modal, Vacio } from "../../components/ui";
-import { fmtMoney, fmtNum } from "../../lib/format";
+import { fmtCantidad, fmtMoney, fmtNum } from "../../lib/format";
 import { useAuth } from "../../store/AuthContext";
 import type { Categoria, Consumo, LotesDelArticulo, Producto } from "../../types";
 import { aplicarOrden, guardarOrden, leerOrden, reordenarVisibles } from "./ordenPos";
@@ -377,7 +377,7 @@ function TarjetaVenta({
                     : "bg-primary-50 text-primary-700"
                 }`}
               >
-                {fmtNum(p.stockTotal)} disp.
+                {fmtCantidad(p.stockTotal)} disp.
               </span>
             )}
           </div>
