@@ -1,5 +1,5 @@
 import { request } from "../../lib/api";
-import type { ConsumoVista, CreditoInput, FormaPago, PagoInput, ReporteCierreProductos } from "../../types";
+import type { CodigoMotivoEfectivo, ConsumoVista, CreditoInput, FormaPago, PagoInput, ReporteCierreProductos } from "../../types";
 import type {
   AjustesBillar,
   CuentaSinMesa,
@@ -129,6 +129,11 @@ export interface CajaSupervisionApi {
   id: number;
   abierta: boolean;
   cajero: string;
+  /**
+   * Quién la abrió (backend del 25-oct): con dos cajas abiertas, el cuadro de
+   * movimientos propone la que NO es de quien registra. Un backend anterior no lo manda.
+   */
+  cajeroId?: number;
   desde: number;
   hasta: number | null;
   inicial: number;
@@ -150,13 +155,22 @@ export interface MovimientoSupervisionApi {
   id: number;
   tipo: "INGRESO" | "EGRESO";
   monto: number;
-  /** Lo que dice el movimiento: "Cena", "Retiro", "Cena anulada · #12"… */
+  /** Lo que dice el movimiento: "Cena", "Hielo", "Retiro", "Cena anulada · #12"… */
   texto: string | null;
   /** Es la cena del personal (o la anulación de una). */
   cena: boolean;
-  /** Una cena que ya se anuló (sigue en la lista, tachada). */
+  /**
+   * El motivo con que se registró (backend del 25-oct; también lo lleva su
+   * anulación). Sin él es un movimiento común (el de un backend anterior, o uno
+   * del cierre de caja).
+   */
+  codigo?: CodigoMotivoEfectivo;
+  /** Uno que ya se anuló (sigue en la lista, tachado). */
   anulada?: boolean;
-  /** El ingreso que anula la cena con este id. */
+  /** Quién lo anuló y a qué hora (backend del 25-oct). */
+  anuladoPor?: string;
+  anuladoHora?: number;
+  /** El movimiento que anula éste: es la otra mitad de un anulado, no un movimiento más. */
   anulaA?: number;
   quien: string;
   hora: number;
@@ -207,6 +221,11 @@ export interface ActividadApi {
    * cuenta, la venta o la caja. Sin ref (el efectivo, un PIN) no hay más que contar.
    */
   ref?: { sesion?: number; venta?: number; caja?: number };
+  /**
+   * Quedó afuera del tope de renglones y vino sólo por ser de la caja o del
+   * efectivo (backend del 25-oct): antes de él, la lista no está completa.
+   */
+  fueraDelTope?: true;
 }
 
 export interface SupervisionApi {
@@ -232,7 +251,11 @@ export interface SupervisionApi {
   cajas: CajaSupervisionApi[];
   /** Los movimientos de efectivo de la caja del turno. Un backend anterior al 24-oct no lo manda. */
   efectivo?: EfectivoSupervisionApi | null;
-  /** Lo cobrado en la caja del turno, por categoría y producto (backend del 25-oct). */
+  /**
+   * Lo que salió en el turno, por categoría y producto, de TODAS las cajas del
+   * local (backend del 25-oct): su total es `turno.vendido`. Sin turno es la
+   * jornada, como el KPI. El tiempo de las mesas viene con `tiempoMesa: true`.
+   */
   productos?: ReporteCierreProductos | null;
   actividad: ActividadApi[];
 }

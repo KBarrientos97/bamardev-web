@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fijarMoneda, fmtCantidad, fmtFecha, fmtMoney, fmtMoneySinCeros, fmtNum, isoDia, iniciales } from "./format";
+import { fijarMoneda, fmtCantidad, fmtFecha, fmtMoney, fmtNum, isoDia, iniciales } from "./format";
 
 describe("fmtFecha", () => {
   it("no corre el día con una fecha suelta yyyy-MM-dd", () => {
@@ -50,39 +50,53 @@ describe("fmtMoney", () => {
   });
 });
 
-describe("fmtMoneySinCeros", () => {
-  it("la plata entera va sin ,00 y con centavos se queda como siempre", () => {
-    fijarMoneda("BOB");
-    expect(fmtMoneySinCeros(30)).toBe("Bs 30");
-    expect(fmtMoneySinCeros(10.5)).toBe("Bs 10,50");
-    expect(fmtMoneySinCeros(0)).toBe("Bs 0");
-    expect(fmtMoneySinCeros(1200)).toBe("Bs 1.200");
-    expect(fmtMoneySinCeros(1234.5)).toBe("Bs 1.234,50");
-  });
-
-  it("redondea a centavos antes de decidir: una suma con resto de punto flotante sigue siendo entera", () => {
-    fijarMoneda("BOB");
-    expect(fmtMoneySinCeros(29.999999)).toBe("Bs 30");
-    expect(fmtMoneySinCeros(0.1 + 0.2 + 29.7)).toBe("Bs 30");
-  });
-
-  it("trata null y undefined como cero y respeta la moneda del negocio", () => {
-    fijarMoneda("BOB");
-    expect(fmtMoneySinCeros(null)).toBe("Bs 0");
-    expect(fmtMoneySinCeros(undefined)).toBe("Bs 0");
-    fijarMoneda("USD");
-    expect(fmtMoneySinCeros(15)).toBe("$ 15");
-    fijarMoneda("BOB");
-  });
-});
-
 describe("fmtCantidad", () => {
   it("la cantidad entera va sin ,00 y la que tiene fracción, con lo que necesita", () => {
+    // Kevin, 25-oct: "3,00 en unidad no da". Antes el stock salía "48,00 Unidad".
     expect(fmtCantidad(9)).toBe("9");
+    expect(fmtCantidad(48)).toBe("48");
     expect(fmtCantidad(0.5)).toBe("0,5");
     expect(fmtCantidad(2.25)).toBe("2,25");
+  });
+
+  it("llega a los 3 decimales con los que se guarda el stock", () => {
+    // Con 2 decimales, 0,125 kg de un insumo salía "0,13": cinco gramos que no
+    // están en ningún lado.
+    expect(fmtCantidad(0.125)).toBe("0,125");
+    expect(fmtCantidad(2.5)).toBe("2,5");
+    expect(fmtCantidad(1.23456)).toBe("1,235");
+  });
+
+  it("redondea antes de formatear: el resto de punto flotante de una cuenta no se ve", () => {
+    // Lo útil de Stock crítico es stock − vencido: 2,3 − 0,3 da 1,9999999999999998
+    // y salía "2,00".
+    expect(fmtCantidad(2.3 - 0.3)).toBe("2");
+    expect(fmtCantidad(0.1 + 0.2)).toBe("0,3");
+  });
+
+  it("un saldo que redondea a cero no lleva signo", () => {
+    // Un −0,0004 del kardex salía "-0" con fmtNum.
+    expect(fmtCantidad(-0.0004)).toBe("0");
+    expect(fmtCantidad(-0.0001)).toBe("0");
+    expect(fmtCantidad(-2.5)).toBe("-2,5");
+  });
+
+  it("separa los miles como la plata", () => {
     expect(fmtCantidad(1500)).toBe("1.500");
+    expect(fmtCantidad(1234.5)).toBe("1.234,5");
+  });
+
+  it("trata null y undefined como cero", () => {
     expect(fmtCantidad(null)).toBe("0");
+    expect(fmtCantidad(undefined)).toBe("0");
+  });
+
+  it("acepta menos decimales para un promedio", () => {
+    // "2 por día" y "1,5 por día" en el pedido sugerido; antes "2,0 por día".
+    expect(fmtCantidad(2, 1)).toBe("2");
+    expect(fmtCantidad(1.5, 1)).toBe("1,5");
+    expect(fmtCantidad(2.25, 1)).toBe("2,3");
+    expect(fmtCantidad(1.96, 1)).toBe("2");
   });
 });
 
@@ -90,6 +104,11 @@ describe("fmtNum", () => {
   it("respeta los decimales pedidos", () => {
     expect(fmtNum(1500)).toBe("1.500");
     expect(fmtNum(2.5, 2)).toBe("2,50");
+  });
+
+  it("fuerza o redondea los decimales: por eso las cantidades van con fmtCantidad", () => {
+    expect(fmtNum(48, 2)).toBe("48,00");
+    expect(fmtNum(2.5)).toBe("3");
   });
 });
 

@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Almacen } from "../../types";
+import type { Almacen, ApunteStock } from "../../types";
 
 /**
  * Cómo se llama esta pantalla según el rubro.
@@ -172,4 +172,47 @@ describe("restaurante: los textos de siempre", () => {
     expect(screen.getByText("Creá la primera ubicación donde guardás el stock.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Nuevo almacén" })).toBeInTheDocument();
   });
+
+  it("las cantidades van sin ,00 y la fracción del insumo no se redondea", async () => {
+    // Kevin, 25-oct: "12,00 Unidad" no. Y la bitácora redondeaba: 2,5 kg salía
+    // "+3", y un saldo de −0,0004, "queda -0".
+    vi.mocked(api.getAlmacenes).mockResolvedValue([
+      {
+        ...almacen(1, "Almacén principal", "SUCURSAL"),
+        totalArticulos: 2,
+        totalUnidades: 14.5,
+        articulos: [
+          { id: 1, nombre: "Coca Cola 2L", unidad: "Unidad", stock: 12, costo: 9 },
+          { id: 2, nombre: "Harina", unidad: "kg", stock: 2.5, costo: 6 },
+        ],
+      },
+    ]);
+    vi.mocked(api.getBitacoraStock).mockResolvedValue([apunte(1, "Harina", 2.5, 2.5), apunte(2, "Aceite", -0.5, -0.0004)]);
+    render(<Almacenes />);
+    await screen.findByText("Almacén principal");
+    const detalle = abrirDetalle("Almacén principal");
+
+    expect(within(detalle).getByText("12 Unidad")).toBeInTheDocument();
+    expect(within(detalle).getByText("2,5 kg")).toBeInTheDocument();
+    expect(within(detalle).getByText("14,5")).toBeInTheDocument();
+    expect(await within(detalle).findByText("+2,5")).toBeInTheDocument();
+    expect(within(detalle).getByText("queda 2,5")).toBeInTheDocument();
+    expect(within(detalle).getByText("-0,5")).toBeInTheDocument();
+    expect(within(detalle).getByText("queda 0")).toBeInTheDocument();
+  });
 });
+
+function apunte(id: number, producto: string, cantidad: number, saldoDespues: number): ApunteStock {
+  return {
+    id,
+    cantidad,
+    saldoDespues,
+    motivo: cantidad > 0 ? "ENTRADA" : "SALIDA",
+    fecha: "2026-10-25T12:00:00.000Z",
+    producto: { id, nombre: producto },
+    almacen: { id: 1, nombre: "Almacén principal" },
+    usuario: null,
+    referenciaTipo: null,
+    referenciaId: null,
+  };
+}

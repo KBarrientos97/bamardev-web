@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
 import { ErrorMsg } from "../../../components/ui";
 import { esCero, esPositivo } from "../../../lib/dinero";
-import { fmtMoney, fmtNum } from "../../../lib/format";
+import { fmtCantidad, fmtMoney, fmtNum } from "../../../lib/format";
 import { esBelleza, esBillar, esFarmacia } from "../../../lib/rubro";
 import type { EstadoResultado } from "../../../lib/resultado";
 import { useAuth } from "../../../store/AuthContext";
@@ -95,7 +95,7 @@ export default function Resumen() {
             <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
               <KpiR etiqueta="Tickets" valor={fmtNum(res.tickets.valor)} delta={<Delta fraccion={fraccion(res.tickets.deltaPct)} />} />
               <KpiR etiqueta="Ticket prom." valor={bsEntero(res.ticketPromedio.valor)} delta={<Delta fraccion={fraccion(res.ticketPromedio.deltaPct)} />} />
-              <KpiR etiqueta="Unidades" valor={fmtNum(res.unidades.valor, Number.isInteger(res.unidades.valor) ? 0 : 1)} delta={<Delta fraccion={fraccion(res.unidades.deltaPct)} />} />
+              <KpiR etiqueta="Unidades" valor={fmtCantidad(res.unidades.valor)} delta={<Delta fraccion={fraccion(res.unidades.deltaPct)} />} />
               <CuartoKpi d={d} res={res} rubro={rubro} />
             </div>
 
@@ -150,8 +150,8 @@ type Datos = ReturnType<typeof useDatosResumen>;
 /**
  * La ganancia real: lo que queda después del costo de lo vendido y de los
  * gastos. Es el mismo número que el final del Estado de resultado (mismas
- * cuentas, `lib/resultado.ts`): si acá dijera una cosa y allá otra, ninguno
- * de los dos se creería.
+ * cuentas, `lib/resultado.ts`, y en un billar lo mismo que se pagó de la caja):
+ * si acá dijera una cosa y allá otra, ninguno de los dos se creería.
  */
 function ResumenFinanciero({ d, res }: { d: Datos; res: ResumenApi }) {
   const f = res.finanzas;
@@ -178,6 +178,10 @@ function ResumenFinanciero({ d, res }: { d: Datos; res: ResumenApi }) {
         <>
           {esPositivo(er.mermas) && <Renglon etiqueta="− Mermas" valor={bsResta(er.mermas)} resta />}
           <Renglon etiqueta="− Gastos operativos" valor={bsResta(er.gastosOperativos)} resta apagado={esCero(er.gastosOperativos)} />
+          {/* Billar: lo que se pagó de la caja, sólo si hubo. Ya está restado en
+              la ganancia de abajo; sin el renglón, la cuenta no cerraba a la vista. */}
+          {esPositivo(er.cenasPersonal) && <Renglon etiqueta="− Cenas del personal" valor={bsResta(er.cenasPersonal)} resta />}
+          {esPositivo(er.gastosCaja) && <Renglon etiqueta="− Gastos pagados de la caja" valor={bsResta(er.gastosCaja)} resta />}
           {esPositivo(bancoEImpuestos) && <Renglon etiqueta="− Banco e impuestos" valor={bsResta(bancoEImpuestos)} resta />}
           <Renglon
             etiqueta={er.enPerdida ? "Pérdida real" : "Ganancia real"}

@@ -21,7 +21,7 @@ import {
   useAviso,
 } from "../../components/ui";
 import { api } from "../../lib/api";
-import { fmtMoney, fmtNum } from "../../lib/format";
+import { fmtCantidad, fmtMoney } from "../../lib/format";
 import { iconoPorLlave } from "../../lib/iconosArticulo";
 import SelectorIcono from "../../components/SelectorIcono";
 import { esBelleza, esFarmacia, termino } from "../../lib/rubro";
@@ -627,7 +627,7 @@ function TarjetaProducto({ producto: p, onClick }: { producto: Producto; onClick
             <div>
               <p className="text-[11px] font-semibold uppercase text-texto-4">Stock</p>
               <p className="text-sm font-bold text-texto">
-                {fmtNum(p.stockTotal)} {p.unidadMedida?.nombre ?? ""}
+                {fmtCantidad(p.stockTotal)} {p.unidadMedida?.nombre ?? ""}
               </p>
             </div>
           )}
@@ -738,9 +738,9 @@ function DetalleProducto({
             <>
               <Dato
                 label="Stock actual"
-                valor={`${fmtNum(p.stockTotal)} ${p.unidadMedida?.nombre ?? ""}`}
+                valor={`${fmtCantidad(p.stockTotal)} ${p.unidadMedida?.nombre ?? ""}`}
               />
-              <Dato label="Stock mínimo" valor={fmtNum(p.stockMinimo)} />
+              <Dato label="Stock mínimo" valor={fmtCantidad(p.stockMinimo)} />
             </>
           )}
           <Dato label="Unidad" valor={p.unidadMedida?.nombre ?? "—"} />
@@ -793,7 +793,8 @@ function DetalleProducto({
                   >
                     <span className="text-[13px] text-texto">{c.nombre ?? `#${c.ingredienteId}`}</span>
                     <span className="text-[13px] font-bold text-texto">
-                      {fmtNum(c.cantidad, 3)}
+                      {/* "1", "0,25": salía "1,000" y "0,250" (Kevin, 25-oct: sin ceros de más). */}
+                      {fmtCantidad(c.cantidad)}
                     </span>
                   </li>
                 ))}

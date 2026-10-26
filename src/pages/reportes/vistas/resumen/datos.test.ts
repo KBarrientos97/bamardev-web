@@ -132,6 +132,14 @@ describe("para tener en cuenta", () => {
     const c = consejos({ ve: todoVisible, ventasDelta: null, contra: "la semana anterior", sugerencia: sugerencia(85) });
     expect(c).toHaveLength(1);
     expect(c[0]).toMatchObject({ id: "agotado", a: "stock-critico" });
+    expect(c[0].partes.join("")).toContain("se vendieron 85 en");
+  });
+
+  it("lo vendido del agotado va sin ceros de más, y con la fracción que hay", () => {
+    // Kevin, 25-oct: las cantidades sin ",00". Con un decimal fijo, 2,25 kg salía "2,3".
+    const texto = (vendidas: number) => consejos({ ve: todoVisible, ventasDelta: null, contra: "x", sugerencia: sugerencia(vendidas) })[0].partes.join("");
+    expect(texto(2.25)).toContain("se vendieron 2,25 en");
+    expect(texto(3)).toContain("se vendieron 3 en");
   });
 
   it("no avisa de lo que quien mira no puede abrir", () => {
@@ -238,6 +246,22 @@ describe("los pedidos por cobrar (C2)", () => {
   it("sin pedidos pendientes el Excel queda como siempre", () => {
     const filas = filasResumen(resumen(), null);
     expect(filas.map(([c]) => c).some((c) => /cobrar/i.test(c))).toBe(false);
+  });
+
+  it("el Excel de un billar lleva lo pagado de la caja al lado de los gastos; sin eso, las filas de siempre", () => {
+    const base = { gastosOperativos: 250, gastosFinancieros: 0, impuestos: 0, utilidadNeta: 60 };
+    const billar = filasResumen(resumen(), { ...base, cenasPersonal: 40, gastosCaja: 30 }).map(([c]) => c);
+    expect(billar.slice(billar.indexOf("Gastos operativos (Bs)"))).toEqual([
+      "Gastos operativos (Bs)",
+      "Cenas del personal (Bs)",
+      "Gastos pagados de la caja (Bs)",
+      "Banco e impuestos (Bs)",
+      "Ganancia real (Bs)",
+    ]);
+    // Restaurante, farmacia, belleza: las cenas y los gastos de la caja en cero no agregan filas.
+    const otros = filasResumen(resumen(), { ...base, cenasPersonal: 0, gastosCaja: 0 }).map(([c]) => c);
+    expect(otros).toEqual(filasResumen(resumen(), base).map(([c]) => c));
+    expect(otros).not.toContain("Cenas del personal (Bs)");
   });
 
   it("el texto de WhatsApp los nombra aparte del fiado", () => {

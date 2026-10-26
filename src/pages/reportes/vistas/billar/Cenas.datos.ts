@@ -1,3 +1,4 @@
+import { esPositivo } from "../../../../lib/dinero";
 import type { CenasReporteApi } from "../../api";
 import { diasDelPeriodo } from "../../periodo";
 
@@ -46,7 +47,12 @@ export function nochesConCenaTexto(r: Pick<CenasReporteApi, "nochesConCena" | "n
   return `${r.nochesConCena} de ${r.nochesAbiertas}`;
 }
 
-/** Las noches que se abrió y no hubo cena (el administrador no dio nada). */
-export function nochesSinCena(r: Pick<CenasReporteApi, "porNoche">): number {
-  return r.porNoche.filter((n) => n.monto <= 0).length;
+/**
+ * Las noches que se abrió y no hubo cena (el administrador no dio nada). Por
+ * DÍA, como `nochesConCena`: contadas por caja, una noche con dos cajas (la de
+ * la cajera con cena y la del dueño sin) decía a la vez "Noches con cena 1 de
+ * 1" y "1 noche sin cena".
+ */
+export function nochesSinCena(r: Pick<CenasReporteApi, "porDia">): number {
+  return r.porDia.filter((d) => !esPositivo(d.monto)).length;
 }

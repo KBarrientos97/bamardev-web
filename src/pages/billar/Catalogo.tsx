@@ -2,7 +2,7 @@ import { useMemo, useState, type ReactNode } from "react";
 import { Icon } from "../../components/Icon";
 import IconoProducto from "../../components/IconoProducto";
 import { iconoPorLlave, inicialesDe } from "../../lib/iconosArticulo";
-import { fmtMoney } from "../../lib/format";
+import { fmtCantidad, fmtMoney } from "../../lib/format";
 import { contiene } from "../../lib/texto";
 import { useCoincideMedia } from "../../lib/useCoincideMedia";
 import type { Carrito } from "./carrito";
@@ -152,7 +152,9 @@ export function Catalogo({
                     </span>
                   ) : disponible !== null ? (
                     <span className="rounded-full bg-primary-50 px-2 py-0.5 text-[10px] font-bold tabular-nums text-primary-700">
-                      {disponible} disp.
+                      {/* Crudo, un stock cargado con decimales en Movimientos salía
+                          "2.5 disp." (con punto) o con el resto de la resta. */}
+                      {fmtCantidad(disponible)} disp.
                     </span>
                   ) : null}
                 </span>

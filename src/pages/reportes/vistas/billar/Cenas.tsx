@@ -169,7 +169,9 @@ function Contenido({ r }: { r: CenasReporteApi }) {
               tono={n.monto > 0 ? "morado" : "gris"}
               titulo={`${etiquetaDia(n.dia)} · ${n.cajera}`}
               chip={n.abierta ? <Chip tono="morado">Caja abierta</Chip> : undefined}
-              linea={n.monto > 0 ? `Lo registró ${n.registro}` : "Sin cena"}
+              // Es una fila por CAJA: con dos cajas la misma noche, la del dueño
+              // decía "Sin cena" y se leía como otra noche sin cena.
+              linea={n.monto > 0 ? `Lo registró ${n.registro}` : "Sin cena en esta caja"}
               valor={n.monto > 0 ? fmtMoney(n.monto) : "—"}
               tonoValor={n.monto > 0 ? "normal" : "apagado"}
             />

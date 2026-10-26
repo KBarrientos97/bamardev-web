@@ -13,7 +13,7 @@ import {
   Input,
   Modal,
 } from "../../components/ui";
-import { api } from "../../lib/api";
+import { api, type ApiError } from "../../lib/api";
 import { fmtHora, fmtMoney } from "../../lib/format";
 import { useApi } from "../../lib/useApi";
 import { porSubir, useColaOffline } from "../../lib/offline/cola";
@@ -24,6 +24,7 @@ import { cuandoCita } from "../../lib/agenda/horaAgenda";
 import type { Caja, CitaParaRevisar, MotivoRevisarCita, RegistroDeCena, ReporteCierreProductos } from "../../types";
 import { bsResta } from "../reportes/formato";
 import DialogoMovimiento from "./DialogoMovimiento";
+import { efectivoDelCierre, type FilaEfectivoCierre } from "./efectivoDelCierre";
 import ListaProductosVendidos from "./ListaProductosVendidos";
 
 /**
@@ -90,16 +91,14 @@ export default function PantallaCierre({
   const propinasSalidas = r?.propinasSalidas ?? 0;
   const propinasOtras = r?.propinasOtras ?? 0;
   const hayPropinas = propinasEfectivo > 0 || propinasSalidas > 0;
-  // Billar (24-oct): la cena del personal que el administrador registró. Ya
-  // está dentro de `egresos` (y su anulación en `ingresos`), como las propinas:
-  // sale en su propia fila y el resto sigue siendo "otros". Fuera del billar
-  // no hay ninguna y las cuentas son las de siempre.
-  const cenasSalidas = r?.cenasSalidas ?? 0;
-  const cenasDevueltas = r?.cenasDevueltas ?? 0;
-  const cenaNeta = Math.round((cenasSalidas - cenasDevueltas) * 100) / 100;
-  const otrosIngresos =
-    Math.round(((r?.ingresos ?? 0) - propinasEfectivo - cenasDevueltas) * 100) / 100;
-  const otrosEgresos = Math.round(((r?.egresos ?? 0) - propinasSalidas - cenasSalidas) * 100) / 100;
+  // Billar: lo que el administrador registró desde Supervisión (la cena desde
+  // el 24-oct; un gasto, un retiro, el sencillo… desde el 25-oct). Ya está
+  // dentro de `ingresos`/`egresos`, como las propinas: cada uno sale en su
+  // renglón con quién lo registró, y "otros" queda para lo que no tiene
+  // motivo. Fuera del billar no hay ninguno y las cuentas son las de siempre.
+  const { cenaNeta, otrosIngresos, otrosEgresos, filas: conMotivo } = efectivoDelCierre(
+    r ?? { ingresos: 0, egresos: 0 },
+  );
   // Se lee como se escribe en Bolivia, "2.258,90" (ver `montoTecleado`). El
   // campo de antes pasaba la coma a punto y leía con Number(): "2.258,90"
   // llegaba como "2.258.90", que no es un número, y "1.000" valía Bs 1 (QA de
@@ -144,9 +143,21 @@ export default function PantallaCierre({
       const cerrada = await api.cerrarCaja(caja.id, {
         montoCierre: contadoNum,
         ...(nota.trim() ? { notaCierre: nota.trim() } : {}),
+        // Billar (25-oct): el administrador puede registrar o anular algo en
+        // esta caja desde Supervisión mientras la cajera cuenta. Sin esto se
+        // guardaba otra diferencia de la que ella vio (anulaban una cena, ella
+        // contaba 165 contra el 165 de su pantalla y quedaba "faltan Bs 20").
+        // Con el esperado que se le mostró, el backend frena el cierre si
+        // cambió. Los demás rubros cierran como siempre.
+        ...(esBillar(rubro) ? { esperadoVisto: esperado } : {}),
       });
       onCerrada(cerrada);
     } catch (err) {
+      if ((err as ApiError | null)?.codigo === "ESPERADO_CAMBIO") {
+        // Se trae el arqueo nuevo: el esperado y la diferencia de abajo pasan
+        // al número de ahora, y el mensaje dice por qué cambió.
+        resumen.recargar();
+      }
       setError(err instanceof Error ? err.message : "No se pudo cerrar la caja");
     } finally {
       setEnviando(false);
@@ -298,6 +309,9 @@ export default function PantallaCierre({
                       />
                     )}
                     {cenaNeta > 0 && <FilaCena neta={cenaNeta} registros={r.cenasRegistros ?? []} />}
+                    {conMotivo.map((f) => (
+                      <FilaConMotivo key={f.id} f={f} />
+                    ))}
                     {/* La fila que hace cerrar el arqueo cuando el mesero cobra.
                         Esa plata ya está en las ventas en efectivo, pero en el
                         delantal: el backend la resta del esperado. Sin mostrar la
@@ -586,6 +600,32 @@ function FilaCena({ neta, registros }: { neta: number; registros: RegistroDeCena
   );
 }
 
+/**
+ * Un movimiento que el administrador registró con motivo en la caja de la
+ * cajera (billar, 25-oct): qué fue, quién y a qué hora. Gris y no violeta: el
+ * violeta es de la cena, que tiene su reporte.
+ */
+function FilaConMotivo({ f }: { f: FilaEfectivoCierre }) {
+  return (
+    <div className="-mx-1 rounded-xl bg-slate-50 px-3 py-2 text-texto-2">
+      {/* Sin cortar con "…": en el celular "Pago a proveedor · Distribui…"
+          escondía justo a quién se le pagó. */}
+      <div className="flex items-start justify-between gap-2 font-semibold">
+        <dt className="flex min-w-0 items-start gap-2">
+          <Icon name="swap" size={15} className="mt-[3px] shrink-0" />
+          <span className="min-w-0 break-words">{f.etiqueta}</span>
+        </dt>
+        <dd className="shrink-0">{f.valor < 0 ? bsResta(-f.valor) : fmtMoney(f.valor)}</dd>
+      </div>
+      {f.quien && (
+        <p className="ml-[23px] text-[12px] text-texto-3">
+          Lo registró {f.quien} · {fmtHora(f.fecha)}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function Fila({
   etiqueta,
   valor,
@@ -785,7 +825,6 @@ export function ProductosDelTurno({
   productos?: ReporteCierreProductos;
   onClose: () => void;
 }) {
-  const { rubro } = useAuth();
   const remoto = useApi(
     () => (productos ? Promise.resolve(null) : api.reporteCierreProductos(cajaId)),
     [cajaId, productos != null],
@@ -859,7 +898,7 @@ export function ProductosDelTurno({
             En este turno todavía no se vendió nada.
           </p>
         ) : (
-          <ListaProductosVendidos d={d} sinCeros={esBillar(rubro)} />
+          <ListaProductosVendidos d={d} />
         )}
       </div>
     </Modal>

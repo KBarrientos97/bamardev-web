@@ -1,4 +1,4 @@
-import { fmtNum } from "../../../lib/format";
+import { fmtCantidad } from "../../../lib/format";
 import type { SugerenciaApi } from "../api";
 import { plural } from "../formato";
 
@@ -21,10 +21,6 @@ export const DIAS_COBERTURA = 14;
 /** Lo que hay para vender: el stock sin lo vencido, que está en el estante pero no se puede vender. */
 export function utilDe(i: Pick<ItemStock, "stock" | "vencido">): number {
   return Math.max(0, i.stock - Math.max(0, i.vencido));
-}
-
-function numero(n: number): string {
-  return fmtNum(n, Number.isInteger(n) ? 0 : 2);
 }
 
 /**
@@ -52,24 +48,27 @@ export function ritmoVenta(porDia: number): string {
   const [valor, cada] = porDia >= 1 ? [porDia, "día"] : porDia * 7 >= 1 ? [porDia * 7, "semana"] : [porDia * 30, "mes"];
   const redondo = Math.round(valor * 10) / 10;
   if (redondo === 1) return `se vende 1 por ${cada}`;
-  return `se venden unos ${fmtNum(redondo, Number.isInteger(redondo) ? 0 : 1)} por ${cada}`;
+  return `se venden unos ${fmtCantidad(redondo, 1)} por ${cada}`;
 }
 
 /**
  * "Quedan 4 · se venden unos 2,7 por día". El ritmo sale de lo vendido en los
  * días de historia y no del `porDia` del backend, que viene redondeado a dos
  * decimales: una venta en 30 días daba 0,03 por día y "0,9 por mes".
+ *
+ * Lo que queda va con `fmtCantidad`: es una resta (stock − vencido) y 2,3 − 0,3
+ * deja 1,9999999999999998, que salía "Quedan 2,00".
  */
 export function lineaStock(i: Pick<ItemStock, "stock" | "vencido" | "vendidas">, dias: number): string {
   const ritmo = i.vendidas > 0 && dias > 0 ? ritmoVenta(i.vendidas / dias) : `sin ventas en los últimos ${dias} días`;
-  return `Quedan ${numero(utilDe(i))} · ${ritmo}`;
+  return `Quedan ${fmtCantidad(utilDe(i))} · ${ritmo}`;
 }
 
 /** Lo que además explica el pedido: lo vencido, el mínimo que no se cumple y lo encargado. Null si no hay nada. */
 export function detalleStock(i: Pick<ItemStock, "stock" | "vencido" | "stockMinimo" | "encargos">): string | null {
   const partes: string[] = [];
   if (i.vencido > 0) partes.push(`${plural(i.vencido, "vencido", "vencidos")} en el estante`);
-  if (i.stockMinimo > 0 && utilDe(i) < i.stockMinimo) partes.push(`el mínimo es ${numero(i.stockMinimo)}`);
+  if (i.stockMinimo > 0 && utilDe(i) < i.stockMinimo) partes.push(`el mínimo es ${fmtCantidad(i.stockMinimo)}`);
   if (i.encargos > 0) partes.push(`${plural(i.encargos, "encargado", "encargados")} por clientes`);
   return partes.length ? partes.join(" · ") : null;
 }

@@ -1,6 +1,6 @@
 import { api, qs, request } from "../../lib/api";
 import { rangoParaApi } from "../../lib/rangoApi";
-import type { RangoReporte } from "../../types";
+import type { CodigoMotivoEfectivo, RangoReporte } from "../../types";
 
 /**
  * Lo que devuelve cada endpoint de reportes, con lo que significa cada número.
@@ -367,7 +367,8 @@ export interface BillarReporteApi {
  * Las cenas del personal del billar (`GET /billar/reportes/cenas`, backend del
  * 24-oct): lo que salió de la caja para la cena de la cajera. Una "noche" es una
  * caja, de que se abre a que se cierra, y cuenta en el día de la jornada en que
- * se abrió. El Estado de resultado lee sólo el `total`.
+ * se abrió. Desde el 25-oct el Estado de resultado ya no lo lee: resta las
+ * cenas de `efectivoBillar`, que cuenta igual pero consolida las sucursales.
  */
 export interface CenasReporteApi {
   /** Los días del período, AAAA-MM-DD, y cuántos son. */
@@ -391,6 +392,25 @@ export interface CenasReporteApi {
   porCajera: { nombre: string; monto: number; noches: number }[];
   /** El período de comparación; null si no se pidió. */
   anterior: { total: number; nochesAbiertas: number; nochesConCena: number; promedio: number } | null;
+}
+
+/**
+ * Lo que movió la caja del billar en el período, por motivo (`GET
+ * /billar/reportes/efectivo`, backend del 25-oct): lo que el administrador
+ * registró desde Supervisión, sin lo anulado. Cuenta como las cenas: cada caja
+ * en el día de la jornada en que se abrió, así el Estado de resultado y el
+ * reporte de cenas dicen lo mismo. Sin sucursal es el consolidado de las que ve
+ * quien pregunta, como el financiero (las cenas, en cambio, van por local).
+ *
+ * El Estado de resultado resta `porMotivo.CENA` y `porMotivo.GASTO`; el resto
+ * es efectivo que cambió de lugar (`motivosMovimiento.ts`) y va como informativo.
+ */
+export interface EfectivoBillarApi {
+  desde: string;
+  hasta: string;
+  porMotivo: Record<CodigoMotivoEfectivo, { monto: number; cantidad: number }>;
+  /** Cada gasto pagado de la caja que quedó en pie, del más viejo al más nuevo: el detalle y el Excel. */
+  gastos: { id: number; fecha: string; descripcion: string; monto: number; quien: string | null; cajera: string }[];
 }
 
 export const apiReportes = {
@@ -438,6 +458,13 @@ export const apiReportes = {
         ...(ant?.desde && ant.hasta ? { antDesde: ant.desde, antHasta: ant.hasta } : {}),
       })}`,
     ),
+  /**
+   * El efectivo del billar por motivo (cenas, gastos, pagos a proveedor…): por
+   * días, como `cenas`. Lo piden el Estado de resultado y el Resumen de un
+   * billar; los demás rubros no.
+   */
+  efectivoBillar: (r: RangoReporte) =>
+    request<EfectivoBillarApi>(`/billar/reportes/efectivo${qs({ desde: r.desde, hasta: r.hasta, sucursalId: r.sucursalId })}`),
 };
 
 /** Un número que viene en 0..100 → fracción. Null sigue null. */

@@ -1,19 +1,16 @@
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { Icon, type NombreIcono } from "../../../components/Icon";
-import { Cargando, ErrorMsg, Modal, Vacio } from "../../../components/ui";
-import { api } from "../../../lib/api";
-import { fmtMoney, fmtMoneySinCeros } from "../../../lib/format";
+import { AvisoOk, Cargando, ErrorMsg, Modal, useAviso, Vacio } from "../../../components/ui";
+import { fmtMoney } from "../../../lib/format";
 import { useApi } from "../../../lib/useApi";
 import { useSucursales } from "../../../lib/useSucursales";
 import { useAuth } from "../../../store/AuthContext";
 import DialogoMovimiento from "../../pos/DialogoMovimiento";
-import ListaProductosVendidos from "../../pos/ListaProductosVendidos";
-import { MOTIVO_CENA } from "../../pos/motivosMovimiento";
+import { MOTIVOS_BILLAR } from "../../pos/motivosMovimiento";
 import { bsResta } from "../../reportes/formato";
 import type {
   ActividadApi,
   CajaSupervisionApi,
-  EfectivoSupervisionApi,
   MovimientoSupervisionApi,
   SupervisionApi,
   VentaApi,
@@ -24,7 +21,6 @@ import { ChipsMotivo } from "../ModalesMesa";
 import { MOTIVOS_PAUSA } from "../ModalesMesa.datos";
 import { useAhora } from "../reloj";
 import { subColor, subLinea } from "../TarjetaMesaTextos";
-import type { ReporteCierreProductos } from "../../../types";
 import type { Pago } from "../tipos";
 import { BotonB, ChipFiltro, Circulo, ErrorAccion, EstadoBadge, Fila, Nota, Rotulo, SelectorSucursal, Tarjeta } from "../ui";
 import { cronoDe, nombreMesa, origenDe, textoMetodo, vistaCuenta, vistaDe, type VistaCuenta, type VistaMesa } from "../vista";
@@ -32,6 +28,7 @@ import {
   armarSupervision,
   consumosEnCurso,
   cuando,
+  desglosePorCobrar,
   duracion,
   estadoDeCaja,
   filtrarActividad,
@@ -42,6 +39,7 @@ import {
   rangoDeTurno,
   reinicioDeSemana,
   resumenSupervision,
+  seVeLoPedido,
   situacionDelTurno,
   textoDiferencia,
   tonoDeActividad,
@@ -54,6 +52,9 @@ import {
   type TonoActividad,
 } from "./Supervision.datos";
 import { useSupervision } from "./useSupervision";
+import { AnularMovimiento, TarjetaEfectivo } from "./EfectivoSupervision";
+import { destinoDelMovimiento, type DestinoDelMovimiento } from "./EfectivoSupervision.datos";
+import { TarjetaLoQueSalio } from "./LoQueSalio";
 import { apiBillar } from "../api";
 
 /** Cuántos renglones de actividad se ven de entrada, y cuántos suma "Ver más". */
@@ -91,12 +92,17 @@ export default function Supervision() {
   const [viendo, setViendo] = useState<{ tipo: "mesa"; numero: number } | { tipo: "cuenta"; id: number } | null>(null);
   const [pausando, setPausando] = useState<{ numero: number; sesionId: number } | null>(null);
   // Movimientos de efectivo (24-oct): el cuadro abierto (con el motivo que arranca elegido) y la cena que se va a anular.
-  const { incluye } = useAuth();
-  const [registrando, setRegistrando] = useState<{ motivo?: string } | null>(null);
-  const [anulando, setAnulando] = useState<MovimientoSupervisionApi | null>(null);
+  const { incluye, usuario } = useAuth();
+  // La caja a la que va (y su cajero y su esperado) se fija al ABRIR el cuadro
+  // (25-oct). Antes se releía del sondeo de 5 s: si en el cambio de turno una
+  // caja cerraba y otra abría con el cuadro abierto, la cena de una cajera
+  // entraba en la caja de la otra (una cerraba con faltante y la otra con sobrante).
+  const [registrando, setRegistrando] = useState<(DestinoDelMovimiento & { motivo?: string }) | null>(null);
+  const [anulando, setAnulando] = useState<{ movimiento: MovimientoSupervisionApi; cajaId: number; cajero: string } | null>(null);
   // El detalle de un renglón de la actividad (25-oct): la mesa, cuenta o venta, o la caja.
   const [verDetalle, setVerDetalle] = useState<Consulta | null>(null);
   const [verCaja, setVerCaja] = useState<number | null>(null);
+  const [aviso, setAviso] = useAviso();
 
   const armado = useMemo(() => (datos ? armarSupervision(datos) : null), [datos]);
   const contexto = useMemo(
@@ -116,6 +122,13 @@ export default function Supervision() {
     [datos, mesas, cuentas],
   );
   const turno = useMemo(() => (datos ? situacionDelTurno(datos) : null), [datos]);
+  // Lo que salió: lo pedido sólo cambia con el sondeo; la cuenta del "Por
+  // cobrar" lleva el tiempo de las mesas, así que sigue al reloj como el KPI.
+  const enCurso = useMemo(() => (datos ? consumosEnCurso(datos) : []), [datos]);
+  const porCobrar = useMemo(
+    () => desglosePorCobrar(mesas.map((m) => m.vista), cuentas.map((c) => c.vista)),
+    [mesas, cuentas],
+  );
 
   if (!datos || !resumen || !turno) {
     return (
@@ -147,6 +160,18 @@ export default function Supervision() {
   const cajasVisibles = datos.cajas.filter((c, i) => todasLasCajas || i < CAJAS_DE_ENTRADA || c.id === turno.caja?.id);
   const cajasOcultas = datos.cajas.length - cajasVisibles.length;
   const tituloActividad = turno.situacion === "hoy" ? "Actividad de hoy" : "Actividad del turno";
+  // A qué caja iría un movimiento si se abre el cuadro ahora. La tarjeta lo
+  // dice: con la caja del administrador a la vista, el cuadro propone la de la
+  // cajera, y lo registrado allá no aparece en esta lista.
+  const destino =
+    datos.efectivo && turno.caja
+      ? destinoDelMovimiento(
+          { cajaId: datos.efectivo.cajaId, cajero: turno.caja.cajero, desde: turno.caja.desde, esperado: datos.efectivo.esperado },
+          datos.cajas,
+          usuario?.id,
+          datos.desde,
+        )
+      : null;
   const mesaViendo = viendo?.tipo === "mesa" ? mesas.find((m) => m.mesa.id === viendo.numero) : undefined;
   const cuentaViendo = viendo?.tipo === "cuenta" ? cuentas.find((c) => c.cuenta.id === viendo.id) : undefined;
 
@@ -227,22 +252,30 @@ export default function Supervision() {
               />
             </div>
 
-            {datos.productos && (
+            {/* Desde el 25-oct el servidor manda lo vendido también sin caja (la
+                jornada, como el KPI); sin un turno que mirar la tarjeta no dice
+                nada que no diga el "Vendido hoy", y sigue escondida como antes. */}
+            {datos.productos && turno.caja && (
               <TarjetaLoQueSalio
                 productos={datos.productos}
-                enCurso={consumosEnCurso(datos)}
-                verEnCurso={turno.situacion !== "elegido"}
+                enCurso={enCurso}
+                porCobrar={porCobrar}
+                verEnCurso={seVeLoPedido(turno)}
               />
             )}
 
-            {datos.efectivo && turno.caja && (
+            <AvisoOk>{aviso}</AvisoOk>
+            {datos.efectivo && turno.caja && destino && (
               <TarjetaEfectivo
                 efectivo={datos.efectivo}
                 caja={turno.caja}
                 puedeRegistrar={incluye("movimientos_caja")}
+                esMia={turno.caja.cajeroId != null && turno.caja.cajeroId === usuario?.id}
+                vaA={destino.cajaId !== datos.efectivo.cajaId ? destino.deQuien.nombre : null}
+                variasAbiertas={(destino.cajas?.length ?? 0) > 1}
                 ahora={ahora}
-                onRegistrar={(motivo) => setRegistrando({ motivo })}
-                onAnular={setAnulando}
+                onRegistrar={(motivo) => setRegistrando({ motivo, ...destino })}
+                onAnular={(movimiento) => setAnulando({ movimiento, cajaId: datos.efectivo!.cajaId, cajero: turno.caja!.cajero })}
               />
             )}
 
@@ -340,8 +373,19 @@ export default function Supervision() {
                 <p className="px-5 py-8 text-center text-[13px] text-texto-3">Todavía no hay movimientos de este tipo.</p>
               ) : (
                 <ul className="divide-y divide-borde-soft">
-                  {actividad.slice(0, cuantos).map((a) => (
-                    <RenglonActividad key={a.id} a={a} ahora={ahora} onVer={verDe(a)} />
+                  {actividad.slice(0, cuantos).map((a, i, lista) => (
+                    <Fragment key={a.id}>
+                      {/* En una noche movida la lista tiene tope, pero la caja y el
+                          efectivo vienen siempre: sin este corte, la apertura de las
+                          16:00 quedaba pegada a lo de las 21:00 como si en el medio
+                          no hubiera pasado nada. En "Caja" y "Efectivo" están todos. */}
+                      {filtro === "todo" && a.fueraDelTope && i > 0 && !lista[i - 1].fueraDelTope && (
+                        <li className="bg-slate-50 px-4 py-2.5 text-[12px] leading-snug text-texto-3">
+                          Antes de las {horaDe(lista[i - 1].hora)} sólo se ven la caja y el efectivo: lo demás no entra en la lista.
+                        </li>
+                      )}
+                      <RenglonActividad a={a} ahora={ahora} onVer={verDe(a)} />
+                    </Fragment>
                   ))}
                 </ul>
               )}
@@ -400,25 +444,39 @@ export default function Supervision() {
       {verCaja != null && datos.cajas.some((c) => c.id === verCaja) && (
         <DetalleCaja c={datos.cajas.find((c) => c.id === verCaja)!} ahora={ahora} onClose={() => setVerCaja(null)} />
       )}
-      {registrando && datos.efectivo && turno.caja && (
+      {registrando && (
         <DialogoMovimiento
-          cajaId={datos.efectivo.cajaId}
-          motivosExtra={[MOTIVO_CENA]}
+          cajaId={registrando.cajaId}
+          deQuien={registrando.deQuien}
+          // La caja queda fija desde que se abrió el cuadro, pero su esperado
+          // sigue al sondeo: una mesa cobrada mientras se escribe lo cambia.
+          esperado={datos.efectivo?.cajaId === registrando.cajaId ? datos.efectivo.esperado : registrando.esperado}
+          cajas={registrando.cajas}
+          motivos={MOTIVOS_BILLAR}
           motivoInicial={registrando.motivo}
-          deQuien={{ nombre: turno.caja.cajero, desde: turno.caja.desde }}
-          esperado={datos.efectivo.esperado}
           onClose={() => setRegistrando(null)}
-          onGuardado={() => {
+          onGuardado={(cajaId) => {
             setRegistrando(null);
-            void recargar();
+            if (cajaId === datos.efectivo?.cajaId) {
+              void recargar();
+              return;
+            }
+            // Fue a otra caja que la de la tarjeta (con la caja del
+            // administrador a la vista, el cuadro propone la de la cajera): se
+            // pasa a su turno, donde se ve y se puede anular. Antes la tarjeta
+            // seguía en "Todavía no se registró ningún movimiento" y se volvía
+            // a cargar.
+            const caja = datos.cajas.find((c) => c.id === cajaId);
+            setAviso(`Registrado en la caja de ${caja?.cajero ?? "la otra caja"}: estás viendo su turno.`);
+            elegirTurno(cajaId);
           }}
         />
       )}
-      {anulando && datos.efectivo && turno.caja && (
-        <AnularCena
-          cajaId={datos.efectivo.cajaId}
-          cajera={turno.caja.cajero}
-          movimiento={anulando}
+      {anulando && (
+        <AnularMovimiento
+          cajaId={anulando.cajaId}
+          cajera={anulando.cajero}
+          movimiento={anulando.movimiento}
           onClose={() => setAnulando(null)}
           onHecho={() => {
             setAnulando(null);
@@ -589,192 +647,6 @@ function SelectorDeTurno({
   );
 }
 
-// ── El efectivo de la caja ──────────────────────────────────────────────────
-
-/**
- * Los movimientos de efectivo de la caja del turno (24-oct): el administrador
- * registra acá lo que sale o entra de la caja de la cajera sin ser una venta,
- * como la cena que se le da cada noche. Es el mismo "Movimiento de efectivo"
- * del cierre de caja, pero hecho por el administrador y reflejado en el cierre
- * de ella: la cajera no puede registrarlos. Una cena se anula con la caja
- * abierta; la cerrada ya tiene su arqueo hecho.
- */
-function TarjetaEfectivo({
-  efectivo,
-  caja,
-  puedeRegistrar,
-  ahora,
-  onRegistrar,
-  onAnular,
-}: {
-  efectivo: EfectivoSupervisionApi;
-  caja: CajaSupervisionApi;
-  puedeRegistrar: boolean;
-  ahora: number;
-  onRegistrar: (motivo?: string) => void;
-  onAnular: (m: MovimientoSupervisionApi) => void;
-}) {
-  const puedeTocar = puedeRegistrar && efectivo.abierta;
-  return (
-    <section aria-label="Movimientos de efectivo" className="card overflow-hidden">
-      <header className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-borde-soft px-4 py-3.5 sm:px-5">
-        <Circulo icono="swap" tono="gris" size={36} />
-        <h2 className="min-w-[11rem] flex-1 text-[15px] font-bold text-texto">Movimientos de efectivo</h2>
-        <span className="text-[12px] text-texto-3">
-          Caja de {caja.cajero} · {efectivo.abierta ? "abierta" : "cerrada"}
-        </span>
-      </header>
-
-      <div className="space-y-3.5 px-4 py-4 sm:px-5">
-        {puedeTocar ? (
-          <>
-            <p className="text-[13px] leading-relaxed text-texto-2">
-              Lo que registrés acá aparece en el cierre de caja de {caja.cajero}. Ella no puede registrar movimientos: sólo vos.
-            </p>
-            <div className="flex flex-wrap gap-2.5">
-              <BotonB icono="swap" onClick={() => onRegistrar()}>
-                Registrar movimiento de efectivo
-              </BotonB>
-              <BotonB variante="violeta" icono="cubiertos" onClick={() => onRegistrar(MOTIVO_CENA.etiqueta)}>
-                Cena
-              </BotonB>
-            </div>
-          </>
-        ) : !efectivo.abierta ? (
-          <Nota tono="gris" icono="lock">
-            La caja está cerrada: ya no se pueden registrar ni anular movimientos.
-          </Nota>
-        ) : null}
-
-        <div>
-          <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wider text-texto-3">Registrados en este turno</p>
-          {efectivo.movimientos.length === 0 ? (
-            <p className="rounded-xl border border-dashed border-borde px-4 py-5 text-center text-[13px] text-texto-3">
-              Todavía no se registró ningún movimiento en este turno.
-            </p>
-          ) : (
-            <ul className="divide-y divide-borde-soft border-t border-borde-soft">
-              {efectivo.movimientos.map((m) => (
-                <FilaMovimiento key={m.id} m={m} ahora={ahora} puedeAnular={puedeTocar} onAnular={() => onAnular(m)} />
-              ))}
-            </ul>
-          )}
-        </div>
-      </div>
-
-      {efectivo.esperado != null && (
-        <footer className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t border-borde-soft bg-slate-50/80 px-4 py-3.5 sm:px-5">
-          <div className="min-w-0 flex-1 basis-56">
-            <p className="text-[13px] font-bold text-texto">Efectivo que debería haber en la caja</p>
-            <p className="text-[12px] text-texto-3">Es lo que {caja.cajero} te tiene que entregar al cerrar.</p>
-          </div>
-          <span className="text-[22px] font-extrabold tabular-nums text-texto">{fmtMoney(efectivo.esperado)}</span>
-        </footer>
-      )}
-    </section>
-  );
-}
-
-function FilaMovimiento({
-  m,
-  ahora,
-  puedeAnular,
-  onAnular,
-}: {
-  m: MovimientoSupervisionApi;
-  ahora: number;
-  puedeAnular: boolean;
-  onAnular: () => void;
-}) {
-  const esAnulacion = m.cena && m.tipo === "INGRESO";
-  const titulo = m.cena ? (esAnulacion ? "Cena anulada" : "Cena") : (m.texto ?? (m.tipo === "INGRESO" ? "Entrada de efectivo" : "Salida de efectivo"));
-  const verbo = esAnulacion ? "La anuló" : "Registró";
-  return (
-    <li className="flex items-center gap-3 py-3">
-      <Circulo icono={m.cena ? "cubiertos" : "swap"} tono={m.cena ? "violeta" : "gris"} size={36} />
-      <div className="min-w-0 flex-1">
-        <p className={`text-[14px] font-bold text-texto ${m.anulada ? "text-texto-3 line-through" : ""}`}>
-          {titulo}
-          {m.anulada && (
-            <span className="ml-2 rounded-md bg-slate-100 px-1.5 py-px text-[11px] font-bold uppercase text-texto-2 no-underline">
-              Anulada
-            </span>
-          )}
-        </p>
-        <p className="text-[12px] text-texto-3">
-          {verbo} {m.quien} · {cuando(m.hora, ahora)} · {m.tipo === "INGRESO" ? "entra plata a la caja" : "sale plata de la caja"}
-        </p>
-      </div>
-      <span
-        className={`shrink-0 text-[15px] font-extrabold tabular-nums ${m.anulada ? "text-texto-3 line-through" : m.tipo === "INGRESO" ? "text-emerald-700" : "text-rose-700"}`}
-      >
-        {m.tipo === "INGRESO" ? `+${fmtMoney(m.monto)}` : bsResta(m.monto)}
-      </span>
-      {m.cena && m.tipo === "EGRESO" && !m.anulada && puedeAnular && (
-        <BotonB aria-label={`Anular la cena de ${fmtMoney(m.monto)}`} onClick={onAnular}>
-          Anular
-        </BotonB>
-      )}
-    </li>
-  );
-}
-
-/** Anular una cena: pide confirmar, porque el efectivo esperado de la cajera sube otra vez. */
-function AnularCena({
-  cajaId,
-  cajera,
-  movimiento,
-  onClose,
-  onHecho,
-}: {
-  cajaId: number;
-  cajera: string;
-  movimiento: MovimientoSupervisionApi;
-  onClose: () => void;
-  onHecho: () => void;
-}) {
-  const [enviando, setEnviando] = useState(false);
-  const [error, setError] = useState("");
-
-  const anular = async () => {
-    if (enviando) return;
-    setEnviando(true);
-    setError("");
-    try {
-      await api.anularCenaCaja(cajaId, movimiento.id);
-      onHecho();
-    } catch (err) {
-      setError(err instanceof Error && err.message ? err.message : "No se pudo anular. Probá de nuevo.");
-      setEnviando(false);
-    }
-  };
-
-  return (
-    <Modal
-      abierto
-      titulo="Anular la cena"
-      subtitulo={`Bs ${movimiento.monto.toFixed(2).replace(".", ",")} de la caja de ${cajera}`}
-      onClose={onClose}
-      ancho="max-w-md"
-      acciones={
-        <>
-          <BotonB onClick={onClose}>No anular</BotonB>
-          <BotonB variante="rosa" disabled={enviando} onClick={() => void anular()}>
-            {enviando ? "Anulando…" : "Anular la cena"}
-          </BotonB>
-        </>
-      }
-    >
-      <p className="text-[13px] leading-relaxed text-texto-2">
-        El efectivo que debería haber en la caja de {cajera} vuelve a subir {fmtMoney(movimiento.monto)}. La cena no se borra: queda anulada
-        y a tu nombre en la actividad.
-      </p>
-      <ErrorAccion texto={error} />
-    </Modal>
-  );
-}
-
-// ── Las cajas ───────────────────────────────────────────────────────────────
 
 const BADGE_CAJA: Record<EstadoCaja, { texto: string; clase: string }> = {
   abierta: { texto: "Abierta", clase: "bg-primary-boton text-white" },
@@ -1254,79 +1126,6 @@ function PausarDesdeSupervision({
 
 // ── La actividad ────────────────────────────────────────────────────────────
 
-// ── Lo que salió en el turno ────────────────────────────────────────────────
-
-/**
- * Lo que salió en el turno (25-oct): lo ya cobrado, por categoría y producto
- * (el mismo número del cierre de la cajera), y lo que van pidiendo las mesas y
- * cuentas que siguen abiertas, que todavía no se cobró. Es para ver, sin abrir
- * cada mesa, qué pedidos salieron y cuáles van saliendo.
- */
-function TarjetaLoQueSalio({
-  productos,
-  enCurso,
-  verEnCurso,
-}: {
-  productos: ReporteCierreProductos;
-  enCurso: { nombre: string; cant: number; total: number }[];
-  /** Con un turno viejo no: las mesas abiertas son de ahora, no de ese turno. */
-  verEnCurso: boolean;
-}) {
-  const porCobrar = enCurso.reduce((t, i) => t + i.total, 0);
-  return (
-    <section aria-label="Lo que salió en el turno" className="card overflow-hidden">
-      <header className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-borde-soft px-4 py-3.5 sm:px-5">
-        <Circulo icono="box" tono="gris" size={36} />
-        <h2 className="min-w-[11rem] flex-1 text-[15px] font-bold text-texto">Lo que salió en el turno</h2>
-        <span className="text-[12px] text-texto-3">{fmtMoneySinCeros(productos.total)} cobrado</span>
-      </header>
-      <div className={`grid gap-x-6 gap-y-5 px-4 py-4 sm:px-5 ${verEnCurso ? "lg:grid-cols-2" : ""}`}>
-        <div className="min-w-0 space-y-3">
-          <p className="text-[11px] font-bold uppercase tracking-wider text-texto-3">Ya cobrado</p>
-          {productos.lineas === 0 ? (
-            <p className="rounded-xl border border-dashed border-borde px-4 py-5 text-center text-[13px] text-texto-3">
-              Todavía no se cobró nada en este turno.
-            </p>
-          ) : (
-            <div className="space-y-3">
-              <ListaProductosVendidos d={productos} sinCeros />
-            </div>
-          )}
-        </div>
-        {verEnCurso && (
-          <div className="min-w-0 space-y-3">
-            <p className="text-[11px] font-bold uppercase tracking-wider text-texto-3">En mesas y cuentas abiertas · sin cobrar</p>
-            {enCurso.length === 0 ? (
-              <p className="rounded-xl border border-dashed border-borde px-4 py-5 text-center text-[13px] text-texto-3">
-                Ninguna mesa ni cuenta tiene consumos por ahora.
-              </p>
-            ) : (
-              <>
-                <div className="flex justify-between rounded-xl bg-amber-50 px-3.5 py-2.5 text-[13px] text-amber-900">
-                  <span>
-                    {enCurso.reduce((t, i) => t + i.cant, 0)} unidades · {enCurso.length} {enCurso.length === 1 ? "producto" : "productos"}
-                  </span>
-                  <span className="font-bold">{fmtMoneySinCeros(porCobrar)}</span>
-                </div>
-                <ul className="divide-y divide-borde-soft">
-                  {enCurso.map((i) => (
-                    <li key={i.nombre} className="flex items-center gap-2 py-1.5 text-[13px]">
-                      <span className="min-w-0 flex-1 truncate text-texto-2">{i.nombre}</span>
-                      <span className="shrink-0 text-texto-3">{i.cant} u</span>
-                      <span className="w-20 shrink-0 text-right font-bold text-texto">{fmtMoneySinCeros(i.total)}</span>
-                    </li>
-                  ))}
-                </ul>
-              </>
-            )}
-          </div>
-        )}
-      </div>
-    </section>
-  );
-}
-
-// ── El detalle de un renglón de la actividad ────────────────────────────────
 
 type Consulta = { sesion?: number; venta?: number };
 

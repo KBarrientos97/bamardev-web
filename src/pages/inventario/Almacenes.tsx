@@ -15,7 +15,7 @@ import {
   Select,
 } from "../../components/ui";
 import { api } from "../../lib/api";
-import { fmtMoney, fmtNum } from "../../lib/format";
+import { fmtCantidad, fmtMoney, fmtNum } from "../../lib/format";
 import { tieneFeature } from "../../lib/permisos";
 import { esFarmacia, termino } from "../../lib/rubro";
 import { useApi } from "../../lib/useApi";
@@ -275,7 +275,7 @@ function TarjetaAlmacen({ almacen: a, onClick }: { almacen: Almacen; onClick: ()
           </div>
           <div>
             <p className="text-[11px] font-semibold uppercase text-texto-4">Unidades</p>
-            <p className="text-sm font-bold text-texto">{fmtNum(a.totalUnidades ?? 0)}</p>
+            <p className="text-sm font-bold text-texto">{fmtCantidad(a.totalUnidades ?? 0)}</p>
           </div>
         </div>
 
@@ -362,7 +362,7 @@ function DetalleAlmacen({
 
         <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3">
           <Dato label="Artículos" valor={fmtNum(a.totalArticulos ?? 0)} />
-          <Dato label="Unidades" valor={fmtNum(a.totalUnidades ?? 0)} />
+          <Dato label="Unidades" valor={fmtCantidad(a.totalUnidades ?? 0)} />
           <Dato label="Valor" valor={fmtMoney(a.valorTotal ?? 0)} />
         </dl>
 
@@ -398,7 +398,7 @@ function DetalleAlmacen({
                   </span>
                   <span className="shrink-0 text-right">
                     <span className="block text-[13px] font-bold text-texto">
-                      {fmtNum(art.stock, 2)} {art.unidad}
+                      {fmtCantidad(art.stock)} {art.unidad}
                     </span>
                     <span className="text-xs text-texto-4">
                       {fmtMoney(art.stock * art.costo)}
@@ -708,10 +708,12 @@ function BitacoraDelAlmacen({ almacenId }: { almacenId: number }) {
                 }
               >
                 {m.cantidad > 0 ? "+" : ""}
-                {fmtNum(m.cantidad)}
+                {/* El kardex guarda 3 decimales: con fmtNum, 2,5 kg salía "+3"
+                    y un saldo de −0,0004, "queda -0". */}
+                {fmtCantidad(m.cantidad)}
               </p>
               <p className="text-[11px] text-texto-4">
-                queda {fmtNum(m.saldoDespues)}
+                queda {fmtCantidad(m.saldoDespues)}
               </p>
             </div>
           </li>

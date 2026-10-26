@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { ActividadApi, CajaSupervisionApi, SupervisionApi } from "../api";
-import { cuentaDe } from "../calculo";
+import { cuentaDe, round2 } from "../calculo";
 import { vistaCuenta, vistaDe } from "../vista";
 import {
   armarSupervision,
   consumosEnCurso,
   cuando,
+  cuentaDelPorCobrar,
+  desglosePorCobrar,
   diaYHora,
   duracion,
   estadoDeCaja,
@@ -18,6 +20,7 @@ import {
   rangoDeTurnoCompleto,
   reinicioDeSemana,
   resumenSupervision,
+  seVeLoPedido,
   situacionDelTurno,
   textoDiferencia,
   tonoDeActividad,
@@ -353,21 +356,183 @@ describe("el efectivo en la actividad (24-oct)", () => {
 });
 
 describe("lo que va saliendo (25-oct)", () => {
-  const consumo = (nombre: string, precio: number, cant: number, anulado = false) => ({ id: 1, productoId: 1, nombre, precio, cant, hora: 1, anulado });
-  const mesa = (consumos: ReturnType<typeof consumo>[]) => ({ sesion: { consumos } });
+  const consumo = (productoId: number, nombre: string, precio: number, cant: number, extra: { anulado?: boolean; hora?: number } = {}) => ({
+    id: 1,
+    productoId,
+    nombre,
+    precio,
+    cant,
+    hora: 1,
+    anulado: false,
+    ...extra,
+  });
+  const mesa = (consumos: ReturnType<typeof consumo>[], estado = "abierta") => ({ estado, sesion: { consumos } });
 
   it("suma por producto lo que piden las mesas y cuentas abiertas, sin lo anulado, del más caro al más barato", () => {
     const r = consumosEnCurso({
-      mesas: [mesa([consumo("Paceña", 15, 2), consumo("Coca-Cola", 12, 1, true)]), mesa([consumo("Paceña", 15, 1), consumo("Maní", 5, 2)])] as never,
-      cuentas: [{ sesion: { consumos: [consumo("Paceña", 15, 1)] } }] as never,
-    });
+      mesas: [
+        mesa([consumo(1, "Paceña", 15, 2), consumo(2, "Coca-Cola", 12, 1, { anulado: true })]),
+        mesa([consumo(1, "Paceña", 15, 1), consumo(3, "Maní", 5, 2)]),
+      ],
+      cuentas: [{ sesion: { consumos: [consumo(1, "Paceña", 15, 1)] } }],
+    } as never);
     expect(r).toEqual([
-      { nombre: "Paceña", cant: 4, total: 60 },
-      { nombre: "Maní", cant: 2, total: 10 },
+      { productoId: 1, nombre: "Paceña", cantidad: 4, precio: 15, total: 60 },
+      { productoId: 3, nombre: "Maní", cantidad: 2, precio: 5, total: 10 },
     ]);
   });
 
-  it("una mesa libre y una cuenta sin consumos no suman nada", () => {
-    expect(consumosEnCurso({ mesas: [{}] as never, cuentas: [{ sesion: { consumos: [] } }] as never })).toEqual([]);
+  it("agrupa por artículo y no por nombre: dos «Cerveza» distintas no se suman, y un renombre no parte la fila", () => {
+    // Cada consumo guarda el nombre que tenía al cargarse: un producto
+    // renombrado a mitad del turno salía en dos filas, y dos artículos con el
+    // mismo nombre, sumados en una. Queda el nombre del último que se cargó.
+    const r = consumosEnCurso({
+      mesas: [mesa([consumo(5, "Cerveza", 15, 1), consumo(6, "Cerveza", 12, 2), consumo(7, "PALITO PACEÑA", 10, 1, { hora: 100 })])],
+      cuentas: [{ sesion: { consumos: [consumo(7, "PALITO PACEÑA 350", 10, 2, { hora: 200 })] } }],
+    } as never);
+    expect(r).toEqual([
+      { productoId: 7, nombre: "PALITO PACEÑA 350", cantidad: 3, precio: 10, total: 30 },
+      { productoId: 6, nombre: "Cerveza", cantidad: 2, precio: 12, total: 24 },
+      { productoId: 5, nombre: "Cerveza", cantidad: 1, precio: 15, total: 15 },
+    ]);
+  });
+
+  it("si el precio cambió en el turno no hay un precio por unidad que mostrar", () => {
+    // 2 a Bs 10 y 1 a Bs 8: "3 u × Bs 9,33" no daría los Bs 28.
+    const r = consumosEnCurso({ mesas: [mesa([consumo(7, "PALITO PACEÑA", 10, 2), consumo(7, "PALITO PACEÑA", 8, 1)])], cuentas: [] } as never);
+    expect(r).toEqual([{ productoId: 7, nombre: "PALITO PACEÑA", cantidad: 3, precio: null, total: 28 }]);
+  });
+
+  it("una mesa libre, una que no está abierta y una cuenta sin consumos no suman nada", () => {
+    // La misma regla que el "Por cobrar" (`vistaDe`): sólo las mesas abiertas con sesión.
+    expect(
+      consumosEnCurso({ mesas: [{}, mesa([consumo(1, "Paceña", 15, 1)], "fuera")], cuentas: [{ sesion: { consumos: [] } }] } as never),
+    ).toEqual([]);
+  });
+});
+
+describe("lo que salió: el pie llega al «Por cobrar» de arriba (25-oct)", () => {
+  // La captura de Kevin: la Mesa 2 con 2 h de tiempo fijo (Bs 40, se cobra al
+  // final), 2 CONTI PALITO y Bs 16 adelantados; la Mesa 1 con Bs 10 de tiempo;
+  // y la cuenta «mesa» con un CONTI y un PALITO PACEÑA. El KPI decía Bs 68 y la
+  // lista de lo pedido Bs 34, sin forma de ver cómo se pasaba de uno al otro.
+  const AHORA = new Date(2026, 9, 25, 22, 0).getTime();
+  const MIN = 60_000;
+  const POOL = { id: "pool", nombre: "Pool", tarifa: 20, fraccion: 15, tolerancia: 3, minimo: 30, paquetes: [], promos: [] };
+  const consumo = (id: number, productoId: number, nombre: string, precio: number, cant: number) => ({
+    id,
+    productoId,
+    nombre,
+    precio,
+    cant,
+    hora: AHORA - 20 * MIN,
+    anulado: false,
+    por: "Pepe Mamani",
+  });
+  const adelanto = (monto: number) => ({ id: 1, hora: AHORA - 10 * MIN, formaPagoId: 1, metodo: "Efectivo", monto, recibido: monto, concepto: "ADELANTO" });
+  const sesion = (id: number, extra: object) => ({
+    id,
+    version: 1,
+    start: AHORA - 60 * MIN,
+    abierta: AHORA - 60 * MIN,
+    pausedAt: null,
+    pausedTotal: 0,
+    prepago: null,
+    prev: null,
+    tarifa: POOL,
+    abiertaPor: "Pepe Mamani",
+    consumos: [],
+    pagos: [],
+    ...extra,
+  });
+  const API = {
+    ahora: AHORA,
+    sucursal: { id: 1, nombre: "Principal" },
+    desde: AHORA - 8 * H,
+    hoy: { ventas: 1, vendido: 50 },
+    ajustes: { avisos: [10, 5, 1], sonido: false, voz: false, pin: { anularConsumo: true, anularMesa: true, pausar: true }, tieneTokenSalon: false },
+    tipos: [POOL],
+    mesas: [
+      { id: 11, numero: 1, tipo: "pool", estado: "abierta", sesion: sesion(101, { start: AHORA - 30 * MIN, prepago: { min: 60, precio: 10, pagado: false } }) },
+      {
+        id: 12,
+        numero: 2,
+        tipo: "pool",
+        estado: "abierta",
+        sesion: sesion(102, { prepago: { min: 120, precio: 40, pagado: false }, consumos: [consumo(1, 7, "CONTI PALITO", 8, 2)], pagos: [adelanto(16)] }),
+      },
+      { id: 13, numero: 3, tipo: "pool", estado: "libre" },
+    ],
+    cuentas: [
+      {
+        id: 201,
+        nombre: "mesa",
+        sucursalId: 1,
+        estado: "abierta",
+        sesion: sesion(201, {
+          tarifa: { ...POOL, id: "cuenta", tarifa: 0, minimo: 0 },
+          consumos: [consumo(2, 9, "CONTI", 8, 1), consumo(3, 8, "PALITO PACEÑA", 10, 1)],
+        }),
+      },
+    ],
+    cajas: [],
+    actividad: [],
+  } as unknown as SupervisionApi;
+
+  /** Las vistas como las arma la pantalla: las mismas que lee el KPI. */
+  const vistas = (api: SupervisionApi) => {
+    const { mesas, cuentas } = armarSupervision(api);
+    const contexto = { tipos: { pool: POOL }, ajustes: { avisos: [10, 5, 1] } };
+    return { mesas: mesas.map((m) => vistaDe(contexto, m.mesa, AHORA)), cuentas: cuentas.map((c) => vistaCuenta(c.cuenta, AHORA)) };
+  };
+
+  it("tiempo + consumos − adelantado da exacto el «Por cobrar» del KPI", () => {
+    const { mesas, cuentas } = vistas(API);
+    const d = desglosePorCobrar(mesas, cuentas);
+    expect(d).toEqual({ tiempo: 50, consumos: 34, adelantado: 16, deMas: 0, pagado: 16, porCobrar: 68 });
+    expect(d.porCobrar).toBe(resumenSupervision(API, mesas, cuentas).porCobrar);
+    // Los consumos del pie son los de la lista de lo pedido.
+    expect(consumosEnCurso(API).reduce((t, p) => t + p.total, 0)).toBe(d.consumos);
+  });
+
+  it("lo pagado de más en una mesa no baja lo que deben las otras, y el pie sigue dando el KPI", () => {
+    // La Mesa 1 adelantó Bs 15 por Bs 10 de tiempo: se le devuelven Bs 5 al
+    // cerrar, pero la Mesa 2 sigue debiendo sus Bs 40. Restar todo lo pagado
+    // daba Bs 53 contra los Bs 58 del KPI.
+    const api = {
+      ...API,
+      mesas: API.mesas.map((m) => (m.id === 11 ? { ...m, sesion: { ...m.sesion!, pagos: [adelanto(15)] } } : m)),
+    } as SupervisionApi;
+    const { mesas, cuentas } = vistas(api);
+    const d = desglosePorCobrar(mesas, cuentas);
+    expect(d).toEqual({ tiempo: 50, consumos: 34, adelantado: 26, deMas: 5, pagado: 31, porCobrar: 58 });
+    expect(d.porCobrar).toBe(resumenSupervision(api, mesas, cuentas).porCobrar);
+    expect(round2(d.tiempo + d.consumos - d.adelantado)).toBe(d.porCobrar);
+  });
+
+  it("sin mesas ni cuentas abiertas, todo en cero", () => {
+    expect(desglosePorCobrar([], [])).toEqual({ tiempo: 0, consumos: 0, adelantado: 0, deMas: 0, pagado: 0, porCobrar: 0 });
+  });
+
+  it("la cuenta del pie va de a términos y no dice los que están en cero", () => {
+    expect(cuentaDelPorCobrar({ tiempo: 50, consumos: 34, adelantado: 16 })).toEqual([
+      "Tiempo Bs 50,00",
+      "+ consumos Bs 34,00",
+      "− ya adelantado Bs 16,00",
+    ]);
+    expect(cuentaDelPorCobrar({ tiempo: 0, consumos: 18, adelantado: 0 })).toEqual(["Consumos Bs 18,00"]);
+    expect(cuentaDelPorCobrar({ tiempo: 50, consumos: 0, adelantado: 0 })).toEqual(["Tiempo Bs 50,00"]);
+    expect(cuentaDelPorCobrar({ tiempo: 0, consumos: 0, adelantado: 0 })).toEqual(["Sin tiempo ni consumos todavía"]);
+  });
+
+  it("lo pedido en las mesas abiertas se ve sólo con la caja del turno abierta", () => {
+    expect(seVeLoPedido({ situacion: "enCurso", caja: caja() })).toBe(true);
+    expect(seVeLoPedido({ situacion: "olvidada", caja: caja() })).toBe(true);
+    // Una abierta elegida a mano llega hasta ahora: las mesas de ahora son de ella.
+    expect(seVeLoPedido({ situacion: "elegido", caja: caja({ id: 2 }) })).toBe(true);
+    // Un turno cerrado no tiene mesas en juego: la caja no cierra con mesas abiertas.
+    expect(seVeLoPedido({ situacion: "cerrado", caja: caja({ abierta: false, hasta: 9_000 }) })).toBe(false);
+    expect(seVeLoPedido({ situacion: "elegido", caja: caja({ abierta: false, hasta: 9_000 }) })).toBe(false);
+    expect(seVeLoPedido({ situacion: "hoy" })).toBe(false);
   });
 });

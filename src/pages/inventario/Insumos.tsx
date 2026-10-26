@@ -17,7 +17,7 @@ import {
   Vacio,
 } from "../../components/ui";
 import { api } from "../../lib/api";
-import { fmtFecha, fmtMoney, fmtNum } from "../../lib/format";
+import { fmtCantidad, fmtFecha, fmtMoney } from "../../lib/format";
 import { useApi } from "../../lib/useApi";
 import { useSucursales } from "../../lib/useSucursales";
 import type { Almacen, Categoria, Insumo, InsumoInput, UnidadMedida } from "../../types";
@@ -248,7 +248,8 @@ function TarjetaInsumo({ insumo: i, onClick }: { insumo: Insumo; onClick: () => 
           <div>
             <p className="text-[11px] font-semibold uppercase text-texto-4">Stock</p>
             <p className="text-sm font-bold text-texto">
-              {fmtNum(i.stock, 2)} {unidad}
+              {/* "25 kg", "2,5 kg", "0,125 kg": salía "25,00 kg" (Kevin, 25-oct). */}
+              {fmtCantidad(i.stock)} {unidad}
             </p>
           </div>
           <div>
@@ -354,8 +355,9 @@ function DetalleInsumo({
         </div>
 
         <dl className="grid grid-cols-2 gap-3">
-          <Dato label="Stock actual" valor={`${fmtNum(i.stock, 2)} ${unidad}`} />
-          <Dato label="Punto de reorden" valor={fmtNum(i.puntoReorden, 2)} />
+          <Dato label="Stock actual" valor={`${fmtCantidad(i.stock)} ${unidad}`} />
+          {/* Con la unidad, como el stock de al lado: un "10" suelto no dice si son kilos o bolsas. */}
+          <Dato label="Punto de reorden" valor={`${fmtCantidad(i.puntoReorden)} ${unidad}`} />
           <Dato label="Costo de compra" valor={fmtMoney(i.costoCompra)} />
           <Dato label="Valor en stock" valor={fmtMoney(i.stock * i.costoCompra)} />
           <Dato label="Categoría" valor={i.categoria?.nombre ?? "—"} />

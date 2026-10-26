@@ -36,6 +36,7 @@ import type {
   Me,
   Movimiento,
   MovimientoCaja,
+  CodigoMotivoEfectivo,
   MovimientoInput,
   ListaEncargos,
   LoteConSaldo,
@@ -787,7 +788,12 @@ export const api = {
   }) =>
     request<Caja>("/caja/abrir", { method: "POST", body: JSON.stringify(input) }),
   resumenCaja: (id: number) => request<ResumenCaja>(`/caja/${id}/resumen`),
-  cerrarCaja: (id: number, input: { montoCierre: number; notaCierre?: string }) =>
+  /**
+   * `esperadoVisto` (billar, 25-oct): el esperado que mostró la pantalla. Si el
+   * administrador movió la caja mientras se contaba, el backend contesta 409
+   * ESPERADO_CAMBIO con el número nuevo en vez de guardar otra diferencia.
+   */
+  cerrarCaja: (id: number, input: { montoCierre: number; notaCierre?: string; esperadoVisto?: number }) =>
     request<Caja>(`/caja/${id}/cerrar`, { method: "POST", body: JSON.stringify(input) }),
   getMovimientosCaja: (id: number) => request<MovimientoCaja[]>(`/caja/${id}/movimientos`),
   /** Sólo ADMIN y SUPERVISOR: el backend lo exige con RolesGuard. */
@@ -797,16 +803,19 @@ export const api = {
       tipo: "INGRESO" | "EGRESO";
       monto: number;
       descripcion: string;
-      /** Billar: 'CENA' marca la salida como la cena del personal. */
-      origen?: "CENA";
+      /** Billar: el motivo (la cena, un gasto, un retiro…), que le dice al Estado de resultado qué es la plata. */
+      origen?: CodigoMotivoEfectivo;
     },
   ) =>
     request<MovimientoCaja>(`/caja/${id}/movimientos`, {
       method: "POST",
       body: JSON.stringify(input),
     }),
-  /** Billar: anula una cena con la caja abierta (deja el ingreso que la devuelve, no borra). */
-  anularCenaCaja: (cajaId: number, movimientoId: number) =>
+  /**
+   * Billar: anula un movimiento con motivo con la caja abierta (deja el
+   * contrario, no borra). Hasta el 25-oct sólo la cena.
+   */
+  anularMovimientoCaja: (cajaId: number, movimientoId: number) =>
     request<MovimientoCaja>(`/caja/${cajaId}/movimientos/${movimientoId}/anular`, {
       method: "POST",
     }),

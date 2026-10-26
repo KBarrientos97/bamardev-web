@@ -1,6 +1,6 @@
 import { useEffect, useId, useMemo, useState } from "react";
 import { Icon } from "../../components/Icon";
-import { fmtNum } from "../../lib/format";
+import { fmtCantidad } from "../../lib/format";
 import { contiene } from "../../lib/texto";
 import type { ArticuloMovimiento } from "../../types";
 
@@ -166,7 +166,7 @@ export default function ElegirArticulo({
                     </span>
                   )}
                   <span className="ml-auto shrink-0 text-xs text-texto-3">
-                    {fmtNum(a.stock, 2)} {a.unidad}
+                    {fmtCantidad(a.stock)} {a.unidad}
                   </span>
                 </button>
               </li>

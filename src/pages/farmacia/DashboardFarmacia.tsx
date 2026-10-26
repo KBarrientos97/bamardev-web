@@ -4,7 +4,7 @@ import { Chips } from "../../components/filtros";
 import { Icon, type NombreIcono } from "../../components/Icon";
 import { Badge, Cargando, ErrorMsg } from "../../components/ui";
 import { api } from "../../lib/api";
-import { fmtFecha, fmtMoney, fmtNum, isoDia } from "../../lib/format";
+import { fmtCantidad, fmtFecha, fmtMoney, fmtNum, isoDia } from "../../lib/format";
 import { useApi } from "../../lib/useApi";
 import { useSucursales } from "../../lib/useSucursales";
 import { useAuth } from "../../store/AuthContext";
@@ -430,12 +430,12 @@ function StockCritico({ lista }: { lista: Dashboard["stockCritico"] }) {
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-bold text-texto">{a.nombre}</p>
                   <p className="mt-0.5 truncate text-xs text-texto-3">
-                    Mínimo: {fmtNum(a.stockMinimo)}
+                    Mínimo: {fmtCantidad(a.stockMinimo)}
                     {a.laboratorio ? ` · ${a.laboratorio}` : ""}
                   </p>
                 </div>
                 <Badge tono={a.stock <= 0 ? "rojo" : "amarillo"} className="shrink-0">
-                  {a.stock <= 0 ? "Sin stock" : `${fmtNum(a.stock)} restantes`}
+                  {a.stock <= 0 ? "Sin stock" : `${fmtCantidad(a.stock)} restantes`}
                 </Badge>
               </li>
             ))}
