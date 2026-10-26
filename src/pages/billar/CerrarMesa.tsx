@@ -5,6 +5,7 @@ import { Vacio } from "../../components/ui";
 import { ApiError } from "../../lib/api";
 import { aCentavos } from "../../lib/dinero";
 import { fmtMoney } from "../../lib/format";
+import { montoParaEditar } from "../../lib/montoTecleado";
 import { tieneFeature, tienePermiso } from "../../lib/permisos";
 import { useAuth } from "../../store/AuthContext";
 import type { CreditoInput, PagoInput } from "../../types";
@@ -249,7 +250,7 @@ export default function CerrarMesa() {
   const aplicarSugerido = (sugerido: CobroSugerido) => {
     if (!sugerido) return;
     cobro.setMetodo(sugerido.metodo);
-    if (sugerido.metodo === "Mixto") cobro.setEfectivoTexto(String(sugerido.efectivo));
+    if (sugerido.metodo === "Mixto") cobro.setEfectivoTexto(montoParaEditar(sugerido.efectivo));
   };
 
   // Recalculada y con otro total: se avisa y no se cobra hasta que el cajero
