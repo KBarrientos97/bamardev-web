@@ -242,10 +242,55 @@ export function opcionesDeTurno(api: Pick<SupervisionApi, "cajas" | "desde" | "t
   return [...api.cajas].sort((a, b) => b.desde - a.desde).map((c) => ({ id: c.id, etiqueta: etiquetaDeTurno(c, api) }));
 }
 
+/**
+ * "Bs 50,00" con espacio duro: en una columna angosta (la tarjeta de la caja
+ * en el celular o el iPad) el "Bs" quedaba al final de un renglón y el número
+ * en el siguiente. Es el criterio de `PieDelPorCobrar` (Lo que salió).
+ */
+const bsPegado = (n: number) => fmtMoney(n).replace(" ", " ");
+
+/** "+ Bs 20,00" o "− Bs 20,00", sin cortarse entre el signo y el número. */
+const conSigno = (n: number) => `${n < 0 ? "−" : "+"} ${bsPegado(Math.abs(n))}`;
+
 /** "cuadra", "sobran Bs 5,00" o "faltan Bs 5,00": cómo quedó el arqueo. */
 export function textoDiferencia(dif: number): string {
   if (Math.abs(dif) < 0.005) return "cuadra";
-  return `${dif > 0 ? "sobran" : "faltan"} ${fmtMoney(Math.abs(dif))}`;
+  return `${dif > 0 ? "sobran" : "faltan"} ${bsPegado(Math.abs(dif))}`;
+}
+
+/**
+ * De dónde sale el "DEBÍA HABER" de una caja (26-oct), para leerlo sin abrir el
+ * detalle. Miguel sumaba "Abrió con Bs 50 + Vendió Bs 676" y no le daba lo
+ * contado (Bs 616): lo vendido incluye Bs 120 de QR, que va a la cuenta y no
+ * entra al cajón. Lo que debía haber es el cambio más lo cobrado en efectivo:
+ * "Bs 50,00 + Bs 556,00", y "− Bs 20,00 de cena" si la hubo.
+ *
+ * Lo demás va con su nombre y su número, así la suma cierra a la vista: los
+ * adelantos de mesas de una caja abierta (el tiempo fijo cobrado de una mesa
+ * que sigue en juego, lo más común de una noche) y los otros movimientos de
+ * efectivo. Antes todo eso iba junto como "de otros movimientos", y con una
+ * mesa de tiempo fijo la tarjeta de movimientos decía que no había ninguno.
+ * Lo que no se puede nombrar desde la lista (una venta anulada después del
+ * cierre, un adelanto que cruzó con otra caja en una ya cerrada) va como "de
+ * otros ajustes", y el detalle de la caja lo tiene renglón por renglón. Con un
+ * backend que no manda los movimientos, el resto sigue siendo "de otros
+ * movimientos". Sin los datos del 26-oct, null.
+ */
+export function pieDelEsperado(
+  c: Pick<CajaSupervisionApi, "inicial" | "esperado" | "cobrado" | "cena" | "movimientos" | "adelantos">,
+): string | null {
+  if (c.esperado == null || !c.cobrado) return null;
+  const efectivo = c.cobrado.efectivo.monto;
+  const cena = c.cena?.monto ?? 0;
+  const adelantos = c.adelantos ?? 0;
+  const movimientos = c.movimientos ?? 0;
+  const resto = round2(c.esperado - c.inicial - efectivo + cena - adelantos - movimientos);
+  const partes = [bsPegado(c.inicial), conSigno(efectivo)];
+  if (esPositivo(cena)) partes.push(`${conSigno(-cena)} de cena`);
+  if (!esCero(adelantos)) partes.push(`${conSigno(adelantos)} ${adelantos > 0 ? "de adelantos de mesas" : "de adelantos que cobró otra caja"}`);
+  if (!esCero(movimientos)) partes.push(`${conSigno(movimientos)} de otros movimientos`);
+  if (!esCero(resto)) partes.push(`${conSigno(resto)} ${c.movimientos == null ? "de otros movimientos" : "de otros ajustes"}`);
+  return partes.join(" ");
 }
 
 /** Las dos letras del avatar: "Pepe Mamani" → "PM". */

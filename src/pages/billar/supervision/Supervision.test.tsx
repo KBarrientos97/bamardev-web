@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { CajaSupervisionApi, CobroApi } from "../api";
 import Supervision from "./Supervision";
 
 vi.setConfig({ testTimeout: 60_000 });
@@ -122,6 +123,34 @@ function supervision() {
       { id: "ve1", hora: AHORA - 60 * MIN, quien: "Kevin Dueño", texto: "Cobró V-000001 · Bs 60,00", lugar: "Cuenta «Barra»", codigo: "VENTA" },
       { id: "ca1", hora: AHORA - 4 * 60 * MIN, quien: "Pepe Mamani", texto: "Abrió la caja con Bs 100,00", codigo: "CAJA_ABIERTA" },
     ],
+  };
+}
+
+/**
+ * El detalle de una caja como lo manda `/billar/supervision/caja/:id` (backend
+ * del 26-oct): por defecto sin cobros, con el arqueo de la fila.
+ */
+function detalleDeCaja(caja: CajaSupervisionApi, extra: object = {}) {
+  return {
+    caja,
+    arqueo: {
+      inicial: caja.inicial,
+      efectivoVentas: 0,
+      adelantosBillar: 0,
+      abonosEfectivo: 0,
+      ingresos: 0,
+      egresos: 0,
+      enPoderDeMeseros: 0,
+      esperado: caja.inicial,
+      esperadoAlCerrar: caja.abierta ? null : caja.inicial,
+      contado: caja.contado ?? null,
+      diferencia: caja.diferencia ?? null,
+    },
+    movimientos: [],
+    cobros: [],
+    enCurso: [],
+    anuladas: [],
+    ...extra,
   };
 }
 
@@ -835,6 +864,7 @@ describe("Billar (25-oct): lo que salió en el turno y el detalle de cada rengl�
   /** Servidor con renglones que se pueden abrir y el detalle de cada uno. */
   const conRefs = (extra: object = {}) => {
     request.mockImplementation(async (url: string) => {
+      if (url.startsWith("/billar/supervision/caja/")) return detalleDeCaja(supervision().cajas[0]);
       if (url.startsWith("/billar/supervision/detalle")) {
         return url.includes("venta=77") || url.includes("sesion=900")
           ? { abierta: false, sesionId: 900, venta: VENTA, historial: HISTORIAL }
@@ -936,14 +966,16 @@ describe("Billar (25-oct): lo que salió en el turno y el detalle de cada rengl�
     await act(async () => {
       fireEvent.click(within(actividadDe()).getByRole("button", { name: /Cobró V-000077/ }));
     });
-    const d = await screen.findByRole("dialog");
-    expect(await within(d).findByText("Venta V-000077")).toBeInTheDocument();
+    const d = await screen.findByRole("dialog", { name: "Detalle de venta" });
+    // El "Detalle de venta" (26-oct): el comprobante, la mesa y su tipo abajo del título.
+    expect(await within(d).findByText("V-000077 · Mesa 1 · Pool")).toBeInTheDocument();
     expect(request.mock.calls.map((c) => c[0] as string)).toContain("/billar/supervision/detalle?venta=77");
     // El ticket: quién cobró, el tiempo, los consumos, el total y con qué se pagó.
     expect(within(d).getByText(/Pepe Mamani · /)).toBeInTheDocument();
     expect(within(d).getByText("Don Raúl")).toBeInTheDocument();
-    expect(within(d).getByText("2× Paceña 620 ml")).toBeInTheDocument();
-    expect(within(d).getByText("Pagó con Efectivo")).toBeInTheDocument();
+    expect(within(d).getByText("2 × Paceña 620 ml")).toBeInTheDocument();
+    expect(within(d).getByText("Cómo se pagó")).toBeInTheDocument();
+    expect(within(d).getByText(/^Al cobrar · /)).toBeInTheDocument();
     expect(within(d).getByText("Le dieron")).toBeInTheDocument();
     // Y la historia de la mesa, en orden.
     const pasos = within(d).getAllByRole("listitem").map((li) => li.textContent ?? "");
@@ -978,7 +1010,9 @@ describe("Billar (25-oct): lo que salió en el turno y el detalle de cada rengl�
     expect(request.mock.calls.map((c) => c[0] as string)).toContain("/billar/supervision/detalle?sesion=101");
   });
 
-  it("tocar la caja abre su resumen sin pedir nada más", async () => {
+  it("tocar la caja abre su detalle, que pide lo cobrado al servidor", async () => {
+    // Hasta el 25-oct el resumen no pedía nada; desde el 26 trae lo cobrado por
+    // QR y en efectivo, venta por venta (ver el describe del 26-oct).
     conRefs();
     await montar();
     request.mockClear();
@@ -988,7 +1022,7 @@ describe("Billar (25-oct): lo que salió en el turno y el detalle de cada rengl�
     const d = await screen.findByRole("dialog");
     expect(within(d).getByText("Caja de Pepe Mamani")).toBeInTheDocument();
     expect(within(d).getByText("Lleva")).toBeInTheDocument();
-    expect(request).not.toHaveBeenCalled();
+    expect(request.mock.calls.map((c) => c[0] as string)).toContain("/billar/supervision/caja/1");
   });
 
   it("un renglón sin nada más que contar no es un botón", async () => {
@@ -1012,5 +1046,207 @@ describe("Billar (25-oct): lo que salió en el turno y el detalle de cada rengl�
     const d = await screen.findByRole("dialog");
     expect(await within(d).findByText(/Esa venta no existe/)).toBeInTheDocument();
     expect(within(d).getByRole("button", { name: /Reintentar/ })).toBeInTheDocument();
+  });
+});
+
+describe("Billar (26-oct): qué se cobró por QR y qué en efectivo", () => {
+  // La caja de la captura de Miguel, el administrador: abrió con 50, vendió 676
+  // (556 en efectivo y 120 por QR, que van a la cuenta y no al cajón) y contó
+  // 616. Sumaba 50 + 676 y no le daba: debía haber 50 + 556 = 606, sobran 10.
+  const MIGUEL: CajaSupervisionApi = {
+    id: 2,
+    abierta: false,
+    cajero: "Kevin Dueño",
+    desde: AHORA - 5 * 60 * MIN,
+    hasta: AHORA - 4.5 * 60 * MIN,
+    inicial: 50,
+    contado: 616,
+    diferencia: 10,
+    ventas: 14,
+    vendido: 676,
+    anuladas: 0,
+    cobrado: { efectivo: { monto: 556, cobros: 12 }, qr: { monto: 120, cobros: 3 }, otros: [], mixtas: 1 },
+    esperado: 606,
+  };
+  const MESA_2 = {
+    id: 77,
+    codigo: "V-000077",
+    total: 160,
+    origen: "mesa" as const,
+    mesaId: 2,
+    tiempoMin: 90,
+    items: [{ nombre: "Paceña 620 ml", cant: 2 }],
+    medios: ["Efectivo", "QR"],
+  };
+  const COBROS: CobroApi[] = [
+    { id: "vp30", hora: AHORA - 4.6 * 60 * MIN, medio: "QR", monto: 80, por: "Kevin Dueño", venta: MESA_2 },
+    {
+      id: "vp29",
+      hora: AHORA - 4.7 * 60 * MIN,
+      medio: "QR",
+      monto: 40,
+      concepto: "ADELANTO",
+      por: "Pepe Mamani",
+      venta: { id: 76, codigo: "V-000076", total: 40, origen: "cuenta", cuenta: "Juan", tiempoMin: 0, items: [{ nombre: "Coca-Cola", cant: 1 }], medios: ["QR"] },
+    },
+    { id: "vp28", hora: AHORA - 4.6 * 60 * MIN, medio: "Efectivo", monto: 80, por: "Kevin Dueño", venta: MESA_2 },
+    {
+      id: "vp27",
+      hora: AHORA - 4.8 * 60 * MIN,
+      medio: "Efectivo",
+      monto: 476,
+      por: "Kevin Dueño",
+      venta: { id: 75, codigo: "V-000075", total: 476, origen: "rapida", tiempoMin: 0, items: [{ nombre: "Paceña 620 ml", cant: 30 }], medios: ["Efectivo"] },
+    },
+  ];
+  const VENTA_77 = {
+    id: 77,
+    codigo: "V-000077",
+    hora: AHORA - 4.6 * 60 * MIN,
+    cajero: "Kevin Dueño",
+    origen: "mesa",
+    mesaId: 2,
+    tipoMesa: "pool",
+    tiempoMin: 90,
+    tiempoBs: 130,
+    items: [{ productoId: 1, nombre: "Paceña 620 ml", precio: 15, cant: 2 }],
+    consumosBs: 30,
+    total: 160,
+    pagos: [
+      { id: "30", hora: AHORA - 4.6 * 60 * MIN, metodo: "QR", monto: 80 },
+      { id: "28", hora: AHORA - 4.6 * 60 * MIN, metodo: "Efectivo", monto: 80 },
+    ],
+  };
+
+  /** El servidor con estas cajas; `caja` responde el detalle de una. */
+  const servidor = (cajas: CajaSupervisionApi[], caja: (url: string) => unknown) => {
+    request.mockImplementation(async (url: string) => {
+      if (url.startsWith("/billar/supervision/caja/")) return caja(url);
+      if (url.startsWith("/billar/supervision/detalle")) return { abierta: false, sesionId: 900, venta: VENTA_77, historial: [] };
+      if (url.startsWith("/billar/supervision")) return { ...supervision(), cajas };
+      return [];
+    });
+  };
+  /** La caja de Pepe sigue abierta, también con lo cobrado y lo que debería haber ahora. */
+  const pepe = (): CajaSupervisionApi => ({
+    ...supervision().cajas[0],
+    cobrado: { efectivo: { monto: 100.5, cobros: 2 }, qr: { monto: 20, cobros: 1 }, otros: [], mixtas: 0 },
+    esperado: 200.5,
+  });
+  const deMiguel = () =>
+    servidor([pepe(), MIGUEL], () =>
+      detalleDeCaja(MIGUEL, {
+        arqueo: { ...detalleDeCaja(MIGUEL).arqueo, efectivoVentas: 556, esperado: 606, esperadoAlCerrar: 606 },
+        cobros: COBROS,
+      }),
+    );
+  const cajaDe = (quien: string) => within(screen.getByRole("heading", { name: "Cajas" }).closest("section")!).getByText(quien).closest("li")!;
+  /** Un dato de la tarjeta (rótulo, monto y pie), por su rótulo. */
+  const dato = (li: HTMLElement, etiqueta: string) => within(li).getByText(etiqueta).closest("div")!;
+  const abrirCaja = async (quien: string) => {
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: new RegExp(`^Ver el detalle de la caja de ${quien}, abrió `) }));
+    });
+    return screen.findByRole("dialog", { name: `Caja de ${quien}` });
+  };
+
+  it("la tarjeta dice cuánto fue en efectivo y cuánto por QR, cuánto debía haber y cuánto se contó", async () => {
+    deMiguel();
+    await montar();
+    const kevin = cajaDe("Kevin Dueño");
+    // El nombre dice cuál caja es (la misma cajera tiene una por noche) y los
+    // montos se leen como descripción: un lector de pantalla no los perdía.
+    const boton = within(kevin).getByRole("button", { name: /^Ver el detalle de la caja de Kevin Dueño, abrió .+/ });
+    expect(boton).toHaveAccessibleDescription(/En efectivo.*Bs\s556,00.*Por QR.*Bs\s120,00/);
+    expect(dato(kevin, "Vendió").textContent).toMatch(/Bs\s676,00.*14 ventas/);
+    expect(dato(kevin, "En efectivo").textContent).toMatch(/Bs\s556,00.*12 cobros/);
+    expect(dato(kevin, "Por QR").textContent).toMatch(/Bs\s120,00.*3 cobros/);
+    expect(dato(kevin, "Cambio inicial").textContent).toMatch(/Bs\s50,00$/);
+    // De dónde sale lo que debía haber: el cambio más el efectivo, sin el QR.
+    expect(dato(kevin, "Debía haber").textContent).toMatch(/Bs\s606,00Bs\s50,00 \+\sBs\s556,00$/);
+    expect(dato(kevin, "Efectivo contado").textContent).toMatch(/Bs\s616,00sobran Bs\s10,00$/);
+    // Los rótulos que no se entendían ya no están.
+    expect(within(kevin).queryByText("Abrió con")).toBeNull();
+    expect(within(kevin).queryByText("Contó al cerrar")).toBeNull();
+    expect(within(kevin).getByText("Ver el detalle: qué se cobró por QR y qué en efectivo")).toBeInTheDocument();
+    // La que sigue abierta: lo que debería haber AHORA, y todavía no se contó.
+    const pepeLi = cajaDe("Pepe Mamani");
+    expect(dato(pepeLi, "Debería haber ahora").textContent).toMatch(/Bs\s200,50Bs\s100,00 \+\sBs\s100,50$/);
+    expect(within(pepeLi).getByText("Sigue abierta")).toBeInTheDocument();
+    // Sigue siendo sólo para mirar: la tarjeta es un botón con nombre propio.
+    for (const no of [/Abrir mesa/, /^Consumo/, /Cobrar/, /Cerrar caja/, /Venta rápida/, /Anular/, /Nueva cuenta/]) {
+      expect(screen.queryByRole("button", { name: no })).toBeNull();
+    }
+  });
+
+  it("tocar la tarjeta abre el detalle de la caja: la cuenta del efectivo y cada QR con su venta", async () => {
+    deMiguel();
+    await montar();
+    const d = await abrirCaja("Kevin Dueño");
+    const cuenta = await within(d).findByRole("region", { name: "El efectivo de la caja" });
+    expect(request.mock.calls.map((c) => c[0] as string)).toContain("/billar/supervision/caja/2");
+    // La cuenta que Miguel hacía a mano y no le cerraba.
+    expect(within(cuenta).getByText("Cambio inicial").closest("li")!.textContent).toMatch(/Bs\s50,00$/);
+    expect(within(cuenta).getByText("Cobrado en efectivo").closest("li")!.textContent).toMatch(/\+ Bs\s556,00$/);
+    expect(within(cuenta).getByText("= Debía haber").parentElement!.textContent).toMatch(/Bs\s606,00$/);
+    expect(within(cuenta).getByText("Efectivo contado").closest("div")!.textContent).toMatch(/Bs\s616,00$/);
+    expect(within(cuenta).getByText("Sobran").parentElement!.textContent).toMatch(/^Sobran\s*Bs\s10,00$/);
+    // Lo cobrado por QR: cada cobro con su venta, lo que se vendió y de cuánto es parte.
+    const qr = within(d).getByRole("region", { name: /^Cobrado por QR · Bs\s120,00$/ });
+    const cobros = within(qr).getAllByRole("button");
+    expect(cobros).toHaveLength(2);
+    expect(cobros[0].textContent).toMatch(/V-000077 · Mesa 2/);
+    expect(cobros[0].textContent).toMatch(/Tiempo 1 h 30 min · 2 × Paceña 620 ml/);
+    expect(cobros[0].textContent).toMatch(/parte de Bs\s160,00/);
+    expect(cobros[1].textContent).toMatch(/V-000076 · Cuenta «Juan»/);
+    expect(within(cobros[1]).getByText("Adelanto")).toBeInTheDocument();
+    // Lo cobró otro que la cajera de la caja: se nombra.
+    expect(cobros[1].textContent).toMatch(/cobró Pepe Mamani/);
+    expect(cobros[0].textContent).not.toMatch(/cobró Kevin/);
+    expect(within(d).getByRole("region", { name: /^Cobrado en efectivo · Bs\s556,00$/ })).toBeInTheDocument();
+    // Lo vendido abajo de las fichas, con lo pagado parte y parte.
+    expect(within(d).getByText(/^Vendió Bs\s676,00 en 14 ventas · 1 pagada parte en efectivo y parte por QR$/)).toBeInTheDocument();
+  });
+
+  it("tocar un cobro muestra su venta dentro del mismo diálogo, y «Volver a la caja» vuelve", async () => {
+    deMiguel();
+    await montar();
+    const d = await abrirCaja("Kevin Dueño");
+    const qr = await within(d).findByRole("region", { name: /^Cobrado por QR/ });
+    await act(async () => {
+      fireEvent.click(within(qr).getAllByRole("button")[0]);
+    });
+    expect(await within(d).findByText("Cómo se pagó")).toBeInTheDocument();
+    expect(request.mock.calls.map((c) => c[0] as string)).toContain("/billar/supervision/detalle?venta=77");
+    // Un solo diálogo: con dos, Escape cerraba los dos.
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
+    expect(within(d).getByRole("heading", { name: "Detalle de venta" })).toBeInTheDocument();
+    expect(within(d).getByText("V-000077 · Mesa 2 · Pool")).toBeInTheDocument();
+    expect(within(d).queryByRole("region", { name: "El efectivo de la caja" })).toBeNull();
+    await act(async () => {
+      fireEvent.click(within(d).getByRole("button", { name: "Volver a la caja" }));
+    });
+    expect(within(d).getByRole("region", { name: "El efectivo de la caja" })).toBeInTheDocument();
+    expect(within(d).queryByRole("heading", { name: "Detalle de venta" })).toBeNull();
+  });
+
+  it("con un servidor anterior la tarjeta se ve como antes con los rótulos nuevos, y el detalle no queda en blanco", async () => {
+    // Sin `cobrado` ni `esperado`, y sin la ruta del detalle.
+    servidor(supervision().cajas, (url) => {
+      throw new Error(`Cannot GET ${url}`);
+    });
+    await montar();
+    const kevin = cajaDe("Kevin Dueño");
+    expect(dato(kevin, "Cambio inicial").textContent).toMatch(/Bs\s50,00$/);
+    expect(dato(kevin, "Efectivo contado").textContent).toMatch(/Bs\s110,00faltan Bs\s2,00$/);
+    expect(within(kevin).queryByText("En efectivo")).toBeNull();
+    expect(within(kevin).queryByText("Por QR")).toBeNull();
+    expect(within(kevin).queryByText("Debía haber")).toBeNull();
+    const d = await abrirCaja("Kevin Dueño");
+    expect(await within(d).findByText(/Cannot GET \/billar\/supervision\/caja\/2/)).toBeInTheDocument();
+    expect(within(d).getByRole("button", { name: /Reintentar/ })).toBeInTheDocument();
+    // Lo que ya trae la lista, en vez de una caja en blanco.
+    expect(within(d).getByText("Vendió").parentElement!.textContent).toMatch(/Bs\s60,00 · 1 venta/);
+    expect(within(d).getByText("Diferencia").parentElement!.textContent).toMatch(/faltan Bs\s2,00/);
   });
 });

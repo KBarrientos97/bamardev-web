@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { fmtFechaHora } from "../../../lib/format";
 import {
   aniosDelSelector,
   aspectoMetodo,
@@ -7,6 +8,8 @@ import {
   esTiempoDeMesa,
   filasMensual,
   hojaVentas,
+  lineaVenta,
+  metodoDeVenta,
   nombreHojaPagina,
   quienVendio,
   textoMesa,
@@ -89,6 +92,46 @@ describe("ventas: cómo se ve cada fila", () => {
   it("varias sucursales es más de un local distinto a la vista", () => {
     expect(variasSucursales([{ sucursal: "Centro" }, { sucursal: "Centro" }, { sucursal: null }])).toBe(false);
     expect(variasSucursales([{ sucursal: "Centro" }, { sucursal: "Sur" }])).toBe(true);
+  });
+});
+
+describe("ventas (26-oct): una venta pagada parte y parte dice cuánto fue por cada medio", () => {
+  const mixta = venta({
+    metodoPago: "Mixto",
+    origen: "Mesa 1",
+    billar: true,
+    total: 160,
+    partes: [
+      { medio: "Efectivo", monto: 80 },
+      { medio: "QR", monto: 80 },
+    ],
+  });
+
+  it("en un billar, con las partes, la línea dice el efectivo y el QR", () => {
+    // Con "Mixto" solo, Miguel no sabía cuánto de esa venta buscar en el banco.
+    expect(metodoDeVenta(mixta, true)).toMatch(/^Mixto \(Efectivo Bs\s80,00 \+ QR Bs\s80,00\)$/);
+    expect(lineaVenta(mixta, true)).toBe(`${fmtFechaHora(mixta.fecha)} · ${metodoDeVenta(mixta, true)} · Mesa 1`);
+  });
+
+  it("sin las partes (un backend anterior) se lee como antes", () => {
+    const vieja = { ...mixta, partes: undefined };
+    expect(lineaVenta(vieja, true)).toBe(`${fmtFechaHora(mixta.fecha)} · Mixto · Mesa 1`);
+  });
+
+  it("con una sola parte no es mixta: el método como siempre", () => {
+    expect(metodoDeVenta(venta({ metodoPago: "QR", partes: [{ medio: "QR", monto: 89.35 }] }), true)).toBe("QR");
+  });
+
+  it("fuera del billar la línea queda exactamente igual, aunque el backend mande las partes", () => {
+    expect(lineaVenta({ ...mixta, origen: "Mostrador", billar: undefined }, false)).toBe(`${fmtFechaHora(mixta.fecha)} · Mixto · Mostrador`);
+  });
+
+  it("el Excel de un billar lleva las mismas partes", () => {
+    const h = hojaVentas([mixta], { page: 1, limite: 50, total: 1, totalPaginas: 1 }, true);
+    const [titulos, fila] = h.filas;
+    expect(fila[titulos.indexOf("Método de pago")]).toBe(metodoDeVenta(mixta, true));
+    const fuera = hojaVentas([mixta], { page: 1, limite: 50, total: 1, totalPaginas: 1 }, false);
+    expect(fuera.filas[1][titulos.indexOf("Método de pago")]).toBe("Mixto");
   });
 });
 

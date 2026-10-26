@@ -1,6 +1,6 @@
 import type { NombreIcono } from "../../../components/Icon";
 import { esPositivo } from "../../../lib/dinero";
-import { fmtCantidad, fmtFechaHora } from "../../../lib/format";
+import { fmtCantidad, fmtFechaHora, fmtMoney } from "../../../lib/format";
 import type { HojaNueva } from "../../../lib/planilla";
 import type {
   EstadoDocumento,
@@ -32,6 +32,12 @@ export type VentaFila = ReporteVentasGeneral["items"][number] & {
   mesero?: string | null;
   /** Salió de una mesa de billar, no de la venta rápida. */
   billar?: boolean;
+  /**
+   * Lo que entró por cada medio, sólo si la venta se pagó con dos o más
+   * (backend del 26-oct; el efectivo ya viene como "Efectivo"). Con "Mixto"
+   * solo, Miguel no sabía cuánto de esa venta tenía que buscar en el banco.
+   */
+  partes?: { medio: string; monto: number }[];
 };
 
 export type ReporteVentas = Omit<ReporteVentasGeneral, "items"> & { items: VentaFila[] };
@@ -101,7 +107,17 @@ export function textoOrigen(v: Pick<VentaFila, "origen" | "billar">, enBillar: b
 
 /** "08/10/2026 12:18 a. m. · QR · Mesa 6": cuándo, cómo se pagó y de dónde salió. */
 export function lineaVenta(v: VentaFila, enBillar: boolean): string {
-  return [fmtFechaHora(v.fecha), v.metodoPago, textoOrigen(v, enBillar)].filter(Boolean).join(" · ");
+  return [fmtFechaHora(v.fecha), metodoDeVenta(v, enBillar), textoOrigen(v, enBillar)].filter(Boolean).join(" · ");
+}
+
+/**
+ * Cómo se pagó. En un billar, una venta pagada parte y parte dice cuánto fue
+ * por cada medio (26-oct): "Mixto (Efectivo Bs 80,00 + QR Bs 80,00)". Sin las
+ * partes (un backend anterior) o fuera del billar, el método como siempre.
+ */
+export function metodoDeVenta(v: Pick<VentaFila, "metodoPago" | "partes">, enBillar: boolean): string {
+  if (!enBillar || !v.partes || v.partes.length < 2) return v.metodoPago;
+  return `Mixto (${v.partes.map((p) => `${p.medio} ${fmtMoney(p.monto)}`).join(" + ")})`;
 }
 
 const SIN_CLIENTE = "Consumidor final";
@@ -214,7 +230,7 @@ export function hojaVentas(items: VentaFila[], pagina: PaginaMeta, enBillar: boo
       ["Comprobante", (v) => v.comprobante],
       ["Fecha", (v) => fmtFechaHora(v.fecha)],
       ["Estado", (v) => chipEstado(v.estado).texto],
-      ["Método de pago", (v) => v.metodoPago],
+      ["Método de pago", (v) => metodoDeVenta(v, enBillar)],
       ["Origen", (v) => textoOrigen(v, enBillar)],
       ["Vendedor", (v) => v.vendedor],
       ["Atendió", (v) => v.mesero ?? null],

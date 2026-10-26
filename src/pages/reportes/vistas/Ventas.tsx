@@ -5,11 +5,13 @@ import { Boton, Select, Vacio } from "../../../components/ui";
 import { api, qs, request } from "../../../lib/api";
 import { esPositivo } from "../../../lib/dinero";
 import { fmtCantidad, fmtFechaHora, fmtMoney, fmtNum } from "../../../lib/format";
+import { tienePermiso } from "../../../lib/permisos";
 import { tzOffsetMin } from "../../../lib/rangoApi";
 import { esBillar } from "../../../lib/rubro";
 import { useApi } from "../../../lib/useApi";
 import { useAuth } from "../../../store/AuthContext";
 import type { PaginaMeta, ReporteVentasMensual } from "../../../types";
+import { ModalDetalleVenta } from "../../billar/supervision/DetalleVenta";
 import { useExportar, useReporte } from "../contexto";
 import { bsEntero, plural } from "../formato";
 import { Cargador, Chip, FichaIcono, FilaLista, KpiR, Lista, Nota, Segmentos, Sigla } from "../ui";
@@ -95,8 +97,13 @@ function usePagina(clave: string): [number, (p: number) => void] {
 
 function General({ cajero, onCajero }: { cajero: Cajero | null; onCajero: (c: Cajero | null) => void }) {
   const { rango } = useReporte();
-  const { rubro } = useAuth();
+  const { rubro, usuario } = useAuth();
   const enBillar = esBillar(rubro);
+  // El detalle de una venta del billar (26-oct): el tiempo de mesa, los
+  // productos y cómo se pagó, pago por pago. Lo da la ruta de Supervisión, que
+  // es del administrador del billar: sin ese permiso la fila no se toca.
+  const conDetalle = enBillar && tienePermiso(usuario, "billar.admin");
+  const [abierta, setAbierta] = useState<number | null>(null);
   const [page, irA] = usePagina(`${rango.desde}|${rango.hasta}|${rango.sucursalId ?? ""}|${cajero?.id ?? ""}`);
   const arriba = useRef<HTMLDivElement>(null);
 
@@ -114,76 +121,84 @@ function General({ cajero, onCajero }: { cajero: Cajero | null; onCajero: (c: Ca
   useExportar("ventas-general", d && d.items.length > 0 ? () => [hojaVentas(d.items, d.pagina, enBillar)] : null);
 
   return (
-    <Cargador
-      estado={datos}
-      vacio={(x) =>
-        x.pagina.total === 0 && !cajero
-          ? { titulo: "Sin ventas en este período", texto: "Probá con otro período.", icono: "fileText" }
-          : null
-      }
-    >
-      {(x) => {
-        const varias = variasSucursales(x.items);
-        const aparte = [
-          x.totales.anuladas > 0 ? plural(x.totales.anuladas, "anulada", "anuladas") : null,
-          x.totales.pendientes > 0 ? plural(x.totales.pendientes, "pendiente de cobro", "pendientes de cobro") : null,
-        ]
-          .filter(Boolean)
-          .join(" · ");
-        return (
-          <>
-            <div className="grid gap-3 sm:grid-cols-3">
-              <KpiR etiqueta="Ventas" valor={fmtNum(x.totales.ventas)} />
-              <KpiR etiqueta="Ingresos totales" valor={fmtMoney(x.totales.ingresos)} tono="marca" />
-              {/* Sin ventas el promedio no existe: "—", no Bs 0. */}
-              <KpiR etiqueta="Ticket promedio" valor={x.totales.ventas > 0 ? fmtMoney(x.totales.ticketPromedio) : "—"} />
-            </div>
-            <div ref={arriba} className="flex scroll-mt-4 flex-wrap items-center justify-between gap-3">
-              <FiltroCajero cajero={cajero} vendedores={x.vendedores} onCajero={onCajero} />
-              {aparte && <p className="ml-auto text-[12px] text-texto-3">{aparte}</p>}
-            </div>
-            {x.items.length === 0 ? (
-              <div className="card">
-                <Vacio
-                  icono="search"
-                  titulo="Sin ventas"
-                  texto={cajero ? `${cajero.nombre} no vendió en este período.` : "No hay ventas en esta página."}
-                />
+    <>
+      <Cargador
+        estado={datos}
+        vacio={(x) =>
+          x.pagina.total === 0 && !cajero
+            ? { titulo: "Sin ventas en este período", texto: "Probá con otro período.", icono: "fileText" }
+            : null
+        }
+      >
+        {(x) => {
+          const varias = variasSucursales(x.items);
+          const aparte = [
+            x.totales.anuladas > 0 ? plural(x.totales.anuladas, "anulada", "anuladas") : null,
+            x.totales.pendientes > 0 ? plural(x.totales.pendientes, "pendiente de cobro", "pendientes de cobro") : null,
+          ]
+            .filter(Boolean)
+            .join(" · ");
+          return (
+            <>
+              <div className="grid gap-3 sm:grid-cols-3">
+                <KpiR etiqueta="Ventas" valor={fmtNum(x.totales.ventas)} />
+                <KpiR etiqueta="Ingresos totales" valor={fmtMoney(x.totales.ingresos)} tono="marca" />
+                {/* Sin ventas el promedio no existe: "—", no Bs 0. */}
+                <KpiR etiqueta="Ticket promedio" valor={x.totales.ventas > 0 ? fmtMoney(x.totales.ticketPromedio) : "—"} />
               </div>
-            ) : (
-              <Lista>
-                {x.items.map((v) => {
-                  const aspecto = aspectoMetodo(v.metodoPago, v.estado);
-                  const estado = chipEstado(v.estado);
-                  return (
-                    <FilaLista
-                      key={v.id}
-                      icono={aspecto.icono}
-                      tono={aspecto.tono}
-                      titulo={v.comprobante}
-                      chip={<Chip tono={estado.tono}>{estado.texto}</Chip>}
-                      linea={lineaVenta(v, enBillar)}
-                      linea2={quienVendio(v, varias)}
-                      valor={fmtMoney(v.total)}
-                      // `articulos` son las líneas de la venta, no las unidades.
-                      valorPie={plural(v.articulos, "artículo", "artículos")}
-                      tachado={v.estado === "ANULADO"}
-                    />
-                  );
-                })}
-              </Lista>
-            )}
-            <Paginador
-              pagina={x.pagina}
-              onPagina={(p) => {
-                irA(p);
-                arriba.current?.scrollIntoView?.({ block: "start", behavior: "smooth" });
-              }}
-            />
-          </>
-        );
-      }}
-    </Cargador>
+              <div ref={arriba} className="flex scroll-mt-4 flex-wrap items-center justify-between gap-3">
+                <FiltroCajero cajero={cajero} vendedores={x.vendedores} onCajero={onCajero} />
+                {aparte && <p className="ml-auto text-[12px] text-texto-3">{aparte}</p>}
+              </div>
+              {x.items.length === 0 ? (
+                <div className="card">
+                  <Vacio
+                    icono="search"
+                    titulo="Sin ventas"
+                    texto={cajero ? `${cajero.nombre} no vendió en este período.` : "No hay ventas en esta página."}
+                  />
+                </div>
+              ) : (
+                <Lista>
+                  {x.items.map((v) => {
+                    const aspecto = aspectoMetodo(v.metodoPago, v.estado);
+                    const estado = chipEstado(v.estado);
+                    return (
+                      <FilaLista
+                        key={v.id}
+                        icono={aspecto.icono}
+                        tono={aspecto.tono}
+                        titulo={v.comprobante}
+                        chip={<Chip tono={estado.tono}>{estado.texto}</Chip>}
+                        linea={lineaVenta(v, enBillar)}
+                        linea2={quienVendio(v, varias)}
+                        valor={fmtMoney(v.total)}
+                        // `articulos` son las líneas de la venta, no las unidades.
+                        valorPie={plural(v.articulos, "artículo", "artículos")}
+                        tachado={v.estado === "ANULADO"}
+                        onClick={conDetalle ? () => setAbierta(v.id) : undefined}
+                        // "Mixto (Efectivo Bs 80,00 + QR Bs 80,00)" es el dato: baja de
+                        // renglón en vez de cortarse en el celular.
+                        ajustar={enBillar && (v.partes?.length ?? 0) >= 2}
+                      />
+                    );
+                  })}
+                </Lista>
+              )}
+              <Paginador
+                pagina={x.pagina}
+                onPagina={(p) => {
+                  irA(p);
+                  arriba.current?.scrollIntoView?.({ block: "start", behavior: "smooth" });
+                }}
+              />
+            </>
+          );
+        }}
+      </Cargador>
+      {/* Con clave: otra venta abierta con el diálogo a la vista arranca de cero. */}
+      {abierta != null && <ModalDetalleVenta key={abierta} consulta={{ venta: abierta }} ahora={Date.now()} onClose={() => setAbierta(null)} />}
+    </>
   );
 }
 
