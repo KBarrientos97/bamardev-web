@@ -189,7 +189,17 @@ export default function Carreras() {
             setElegida(c.id);
             setAviso(nuevo ? `${p.Carrera} creado.` : "Cambios guardados.");
           }}
-          onAvanzadas={actual ? () => setAvanzadas(actual.id) : undefined}
+          // El editor de planes a medida es grande (cuotas, vencimientos): no
+          // entra en el panel. Se pasa de uno al otro, nunca los dos a la vez
+          // (en el celular eran dos hojas, una encima de la otra).
+          onAvanzadas={
+            actual
+              ? () => {
+                  setElegida(null);
+                  setAvanzadas(actual.id);
+                }
+              : undefined
+          }
         />
       )}
 
@@ -198,7 +208,11 @@ export default function Carreras() {
           abierto
           titulo={`Opciones avanzadas · ${enAvanzadas.nombre}`}
           subtitulo="Horas, categoría y planes a medida"
-          onClose={() => setAvanzadas(null)}
+          // Al cerrar se vuelve al panel del curso, de donde se vino.
+          onClose={() => {
+            setAvanzadas(null);
+            setElegida(enAvanzadas.id);
+          }}
           ancho="max-w-4xl"
         >
           <DetalleCarrera
@@ -401,6 +415,13 @@ function PanelCurso({
   const [verAvanzadas, setVerAvanzadas] = useState(false);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState("");
+  /**
+   * Hay algo tecleado sin guardar. Las opciones avanzadas reemplazan a este
+   * panel (no se abren encima): ir con cambios pendientes los perdería.
+   */
+  const firma = JSON.stringify([nombre, modulos, precio, desc, cupo, pct, modoCompleto, precioFinal, modoDocente, montoDoc, publicar]);
+  const [firmaInicial, setFirmaInicial] = useState(firma);
+  const sucio = firma !== firmaInicial;
 
   const n = modulos.length;
   const nPrecio = Number(precio) || 0;
@@ -461,6 +482,8 @@ function PanelCurso({
     };
     try {
       const c = curso ? await apiAcademia.editarCarreraSimple(curso.id, input) : await apiAcademia.crearCarreraSimple(input);
+      // Lo guardado ya no está pendiente (el panel sigue abierto con lo mismo).
+      setFirmaInicial(firma);
       onGuardado(c, nuevo);
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudo guardar");
@@ -620,7 +643,7 @@ function PanelCurso({
           {/* B9: el enlace de cada grupo de este curso, para WhatsApp y redes. */}
           {curso && tieneFeature(negocio?.features, "preinscripcion_online") && (
             <div className="mt-3">
-              <BotonCompartirInscripcion carreraId={curso.id} />
+              <BotonCompartirInscripcion carreraId={curso.id} enLinea />
             </div>
           )}
         </SeccionPanel>
@@ -694,9 +717,10 @@ function PanelCurso({
                   Para planes que no sean mes a mes ni pago completo: cuotas que cubren varios {p.materias}, vencimientos
                   distintos o promociones. Los dos planes de arriba se arman solos con estos datos.
                 </p>
-                <BotonFila variante="ghost" icono="edit" onClick={onAvanzadas}>
+                <BotonFila variante="ghost" icono="edit" onClick={onAvanzadas} disabled={sucio}>
                   Editar planes a medida
                 </BotonFila>
+                {sucio && <p className="text-warning-text">Guardá los cambios de arriba antes: los planes a medida se editan aparte.</p>}
               </div>
             )}
           </div>

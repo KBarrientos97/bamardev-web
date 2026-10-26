@@ -25,6 +25,7 @@ vi.mock("../../../lib/academia/apiAcademia", async (importOriginal) => {
       ajustes: vi.fn(),
       crearCarreraSimple: vi.fn(),
       editarCarreraSimple: vi.fn(),
+      grupos: vi.fn(),
     },
   };
 });
@@ -259,5 +260,53 @@ describe("QA 23-oct · Cursos", () => {
     expect(within(panel).getByText(/que es lo que cuesta mes a mes/)).toBeInTheDocument();
     fireEvent.change(campo, { target: { value: "1300" } });
     expect(within(panel).queryByText(/que es lo que cuesta mes a mes/)).not.toBeInTheDocument();
+  });
+});
+
+describe("Sin popups encimados · el panel del curso", () => {
+  it("«Editar planes a medida» cierra el panel y abre las opciones avanzadas; al cerrarlas se vuelve al curso", async () => {
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Editar Barbería" }));
+    const panel = screen.getByRole("complementary", { name: "Barbería" });
+    fireEvent.click(within(panel).getByRole("button", { name: "Opciones avanzadas" }));
+    fireEvent.click(within(panel).getByRole("button", { name: "Editar planes a medida" }));
+    // Nunca los dos a la vez: el panel se va y queda sólo el editor.
+    expect(screen.queryByRole("complementary", { name: "Barbería" })).not.toBeInTheDocument();
+    const avanzadas = screen.getByRole("dialog", { name: "Opciones avanzadas · Barbería" });
+    fireEvent.click(within(avanzadas).getByRole("button", { name: "Cerrar" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByRole("complementary", { name: "Barbería" })).toBeInTheDocument();
+  });
+
+  it("con cambios sin guardar no deja ir a los planes a medida (se perderían)", async () => {
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Editar Barbería" }));
+    const panel = screen.getByRole("complementary", { name: "Barbería" });
+    fireEvent.change(within(panel).getByLabelText("Nombre del módulo 2"), { target: { value: "Fade" } });
+    fireEvent.click(within(panel).getByRole("button", { name: "Opciones avanzadas" }));
+    expect(within(panel).getByRole("button", { name: "Editar planes a medida" })).toBeDisabled();
+    expect(within(panel).getByText(/Guardá los cambios de arriba antes/)).toBeInTheDocument();
+    // Guardados, ya se puede.
+    fireEvent.click(within(panel).getByRole("button", { name: "Guardar cambios" }));
+    await act(async () => {});
+    expect(within(screen.getByRole("complementary", { name: "Barbería" })).getByRole("button", { name: "Editar planes a medida" })).toBeEnabled();
+  });
+
+  it("compartir el enlace de inscripción se despliega dentro del panel, sin un diálogo encima", async () => {
+    vi.mocked(apiAcademia.ajustes).mockResolvedValue(ajustesDePrueba({ subdominio: "horizonte" }));
+    vi.mocked(apiAcademia.grupos).mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 100 });
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Editar Barbería" }));
+    const panel = screen.getByRole("complementary", { name: "Barbería" });
+    const boton = within(panel).getByRole("button", { name: "Compartir enlace de inscripción" });
+    expect(boton).toHaveAttribute("aria-expanded", "false");
+    await act(async () => {
+      fireEvent.click(boton);
+    });
+    expect(boton).toHaveAttribute("aria-expanded", "true");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    const compartir = within(panel).getByRole("region", { name: "Compartir enlace de inscripción" });
+    expect(apiAcademia.grupos).toHaveBeenCalledWith({ pageSize: 100, carreraId: 3 });
+    expect(compartir).toHaveTextContent("No hay grupos con la inscripción abierta.");
   });
 });

@@ -15,6 +15,9 @@ import { BotonFila } from "./piezas";
 
 type GrupoCompartible = GrupoParaCompartir & Partial<Pick<GrupoResumen, "inscripcionAbierta" | "publicarEnPagina" | "estado" | "cancelado">>;
 
+/** Para qué es el enlace: la bajada del diálogo y del despliegue en el panel. */
+const BAJADA = "Para que se preinscriban desde el celular, con sus datos y las 3 fotos";
+
 /**
  * El subdominio del negocio, que arma la dirección, y si la página está
  * publicada. Lo da `GET /academia/ajustes` (que también lee la recepción) si
@@ -43,17 +46,38 @@ function useSubdominio(conPagina: boolean) {
  * El acortador (`go`) existe, pero sus enlaces son del dueño y se arman a
  * mano en "Mis enlaces": acá va la dirección directa, que ya es la de la
  * página.
+ *
+ * `enLinea`: dentro de un panel (el del curso) el enlace se despliega ahí
+ * mismo, debajo del botón, en vez de abrir un diálogo encima del panel (en
+ * el celular eran dos hojas, una sobre otra).
  */
 export function BotonCompartirInscripcion({
   grupo,
   carreraId,
   variante = "ghost",
+  enLinea = false,
 }: {
   grupo?: GrupoCompartible;
   carreraId?: number;
   variante?: "ghost" | "soft";
+  enLinea?: boolean;
 }) {
   const [abierto, setAbierto] = useState(false);
+  if (enLinea) {
+    return (
+      <div>
+        <BotonFila variante={variante} icono="compartir" aria-expanded={abierto} onClick={() => setAbierto((v) => !v)}>
+          Compartir enlace de inscripción
+        </BotonFila>
+        {abierto && (
+          <section aria-label="Compartir enlace de inscripción" className="mt-3 space-y-3 rounded-xl border border-borde-soft bg-white p-3.5">
+            <p className="text-[13px] text-texto-3">{BAJADA}</p>
+            <ContenidoCompartir grupo={grupo} carreraId={carreraId} />
+          </section>
+        )}
+      </div>
+    );
+  }
   return (
     <>
       <BotonFila variante={variante} icono="compartir" onClick={() => setAbierto(true)}>
@@ -65,13 +89,45 @@ export function BotonCompartirInscripcion({
 }
 
 export function DialogoCompartir({
-  grupo: fijo,
+  grupo,
   carreraId,
   onCerrar,
 }: {
   grupo?: GrupoCompartible;
   carreraId?: number;
   onCerrar: () => void;
+}) {
+  return (
+    <Modal
+      abierto
+      titulo="Compartir enlace de inscripción"
+      subtitulo={BAJADA}
+      onClose={onCerrar}
+      ancho="max-w-md"
+      acciones={
+        <Boton variante="ghost" onClick={onCerrar}>
+          Cerrar
+        </Boton>
+      }
+    >
+      <ContenidoCompartir grupo={grupo} carreraId={carreraId} onSalir={onCerrar} />
+    </Modal>
+  );
+}
+
+/**
+ * Lo de compartir, sin marco: el diálogo (Preinscripciones, el grupo) y el
+ * despliegue dentro del panel del curso lo comparten. `onSalir`, si el
+ * enlace a "Mi página" tiene que cerrar el diálogo al irse.
+ */
+function ContenidoCompartir({
+  grupo: fijo,
+  carreraId,
+  onSalir,
+}: {
+  grupo?: GrupoCompartible;
+  carreraId?: number;
+  onSalir?: () => void;
 }) {
   const p = usePalabras();
   const { puede } = useAuth();
@@ -92,87 +148,74 @@ export function DialogoCompartir({
   const texto = grupo && enlace ? textoInscripcion(grupo, enlace) : "";
 
   return (
-    <Modal
-      abierto
-      titulo="Compartir enlace de inscripción"
-      subtitulo={`Para que se preinscriban desde el celular, con sus datos y las 3 fotos`}
-      onClose={onCerrar}
-      ancho="max-w-md"
-      acciones={
-        <Boton variante="ghost" onClick={onCerrar}>
-          Cerrar
-        </Boton>
-      }
-    >
-      <div className="space-y-3">
-        {!fijo &&
-          (grupos.cargando ? (
-            <Cargando />
-          ) : grupos.error ? (
-            <ErrorMsg onReintentar={grupos.recargar}>{grupos.error}</ErrorMsg>
-          ) : abiertos.length === 0 ? (
-            <p className="text-sm text-texto-3">No hay grupos con la inscripción abierta.</p>
-          ) : abiertos.length > 1 ? (
-            <Select aria-label="Grupo" value={grupo?.id ?? ""} onChange={(e) => setElegidoId(e.target.value ? Number(e.target.value) : null)}>
-              <option value="">Elegí el grupo…</option>
-              {abiertos.map((g) => (
-                <option key={g.id} value={g.id}>
-                  {nombreDe(g.carrera)} · {horarioGrupo(g)} · {nombreDe(g.sede)}
-                </option>
-              ))}
-            </Select>
-          ) : null)}
-
-        {grupo && (
-          <p className="text-sm text-texto-2">
-            {nombreDe(grupo.carrera)} · {horarioGrupo(grupo)} · {p.Sede} {nombreDe(grupo.sede)} · empieza el {fechaCorta(grupo.fechaInicio)}
-          </p>
-        )}
-        {grupo && grupo.publicarEnPagina === false && (
-          <p role="note" className="rounded-xl bg-warning-bg px-3.5 py-2.5 text-[13px] font-semibold text-warning-text">
-            Este grupo no está publicado en la página: el enlace funciona, pero no aparece en la lista de cursos.
-          </p>
-        )}
-
-        {sub.cargando ? (
+    <div className="space-y-3">
+      {!fijo &&
+        (grupos.cargando ? (
           <Cargando />
-        ) : !subdominio ? (
-          <p className="text-sm text-texto-3">
-            El instituto todavía no tiene página propia (o no la podés ver con tu usuario). Pedile al administrador el enlace.
-          </p>
-        ) : enlace ? (
-          <>
-            {/* QA 23-oct: sin publicar, el enlace abre "Esta página no está disponible". */}
-            {sinPublicar && (
-              <p role="alert" className="rounded-xl bg-warning-bg px-3.5 py-2.5 text-[13px] font-semibold text-warning-text">
-                Tu página no está publicada: quien abra el enlace no va a poder inscribirse.
-                {conPagina && (
-                  <>
-                    {" "}
-                    <Link to="/mi-pagina" className="underline" onClick={onCerrar}>
-                      Publicarla en Mi página
-                    </Link>
-                  </>
-                )}
-              </p>
-            )}
-            <Input readOnly value={enlace} aria-label="Enlace de inscripción" className="font-mono text-[13px]" onFocus={(e) => e.target.select()} />
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <Boton
-                variante="ghost"
-                className="min-h-11 flex-1"
-                onClick={async () => setAviso((await copiarTexto(enlace)) ? "Enlace copiado." : "No se pudo copiar: seleccionalo a mano.")}
-              >
-                Copiar enlace
-              </Boton>
-              <Boton className="min-h-11 flex-1" onClick={() => abrirWhatsapp(`https://wa.me/?text=${encodeURIComponent(texto)}`)}>
-                Mandar por WhatsApp
-              </Boton>
-            </div>
-            <AvisoOk>{aviso}</AvisoOk>
-          </>
-        ) : null}
-      </div>
-    </Modal>
+        ) : grupos.error ? (
+          <ErrorMsg onReintentar={grupos.recargar}>{grupos.error}</ErrorMsg>
+        ) : abiertos.length === 0 ? (
+          <p className="text-sm text-texto-3">No hay grupos con la inscripción abierta.</p>
+        ) : abiertos.length > 1 ? (
+          <Select aria-label="Grupo" value={grupo?.id ?? ""} onChange={(e) => setElegidoId(e.target.value ? Number(e.target.value) : null)}>
+            <option value="">Elegí el grupo…</option>
+            {abiertos.map((g) => (
+              <option key={g.id} value={g.id}>
+                {nombreDe(g.carrera)} · {horarioGrupo(g)} · {nombreDe(g.sede)}
+              </option>
+            ))}
+          </Select>
+        ) : null)}
+
+      {grupo && (
+        <p className="text-sm text-texto-2">
+          {nombreDe(grupo.carrera)} · {horarioGrupo(grupo)} · {p.Sede} {nombreDe(grupo.sede)} · empieza el {fechaCorta(grupo.fechaInicio)}
+        </p>
+      )}
+      {grupo && grupo.publicarEnPagina === false && (
+        <p role="note" className="rounded-xl bg-warning-bg px-3.5 py-2.5 text-[13px] font-semibold text-warning-text">
+          Este grupo no está publicado en la página: el enlace funciona, pero no aparece en la lista de cursos.
+        </p>
+      )}
+
+      {sub.cargando ? (
+        <Cargando />
+      ) : !subdominio ? (
+        <p className="text-sm text-texto-3">
+          El instituto todavía no tiene página propia (o no la podés ver con tu usuario). Pedile al administrador el enlace.
+        </p>
+      ) : enlace ? (
+        <>
+          {/* QA 23-oct: sin publicar, el enlace abre "Esta página no está disponible". */}
+          {sinPublicar && (
+            <p role="alert" className="rounded-xl bg-warning-bg px-3.5 py-2.5 text-[13px] font-semibold text-warning-text">
+              Tu página no está publicada: quien abra el enlace no va a poder inscribirse.
+              {conPagina && (
+                <>
+                  {" "}
+                  <Link to="/mi-pagina" className="underline" onClick={onSalir}>
+                    Publicarla en Mi página
+                  </Link>
+                </>
+              )}
+            </p>
+          )}
+          <Input readOnly value={enlace} aria-label="Enlace de inscripción" className="font-mono text-[13px]" onFocus={(e) => e.target.select()} />
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <Boton
+              variante="ghost"
+              className="min-h-11 flex-1"
+              onClick={async () => setAviso((await copiarTexto(enlace)) ? "Enlace copiado." : "No se pudo copiar: seleccionalo a mano.")}
+            >
+              Copiar enlace
+            </Boton>
+            <Boton className="min-h-11 flex-1" onClick={() => abrirWhatsapp(`https://wa.me/?text=${encodeURIComponent(texto)}`)}>
+              Mandar por WhatsApp
+            </Boton>
+          </div>
+          <AvisoOk>{aviso}</AvisoOk>
+        </>
+      ) : null}
+    </div>
   );
 }
