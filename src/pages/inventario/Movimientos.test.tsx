@@ -163,6 +163,13 @@ describe("La lista arranca en hoy", () => {
     expect(await screen.findByText("MOV-1")).toBeInTheDocument();
   });
 
+  it("con un solo movimiento la cabecera dice «1 registrado», no «1 registrados»", async () => {
+    render(<Movimientos />);
+    await screen.findByText("MOV-1");
+    expect(screen.getByText("1 registrado")).toBeInTheDocument();
+    expect(screen.queryByText("1 registrados")).not.toBeInTheDocument();
+  });
+
   it("con un texto escrito, sigue diciendo «Sin resultados»", async () => {
     render(<Movimientos />);
     await screen.findByText("MOV-1");

@@ -185,7 +185,7 @@ export default function Movimientos() {
             ? "Cargando…"
             : pendientes
               ? `${lista.length} registrados · ${pendientes} sin aprobar`
-              : `${lista.length} registrados`
+              : `${lista.length} ${lista.length === 1 ? "registrado" : "registrados"}`
         }
         accion={
           <Boton icono="plus" onClick={() => setCreando(true)}>
