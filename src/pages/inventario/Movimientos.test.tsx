@@ -150,6 +150,29 @@ describe("Nuevo movimiento: sólo entrada y salida", () => {
   });
 });
 
+describe("La lista arranca en hoy", () => {
+  it("si hoy no hubo nada, lo dice y ofrece ver todo en vez de «probá con otro texto»", async () => {
+    vi.mocked(api.getMovimientos).mockResolvedValue([
+      movimiento(1, { fecha: "2026-10-12T15:00:00.000Z" }),
+    ]);
+    render(<Movimientos />);
+    expect(await screen.findByText("Hoy no hay movimientos")).toBeInTheDocument();
+    expect(screen.queryByText("Probá con otro texto o quitá los filtros.")).not.toBeInTheDocument();
+    const verTodo = screen.getAllByRole("button", { name: "Ver todo" });
+    fireEvent.click(verTodo[verTodo.length - 1]);
+    expect(await screen.findByText("MOV-1")).toBeInTheDocument();
+  });
+
+  it("con un texto escrito, sigue diciendo «Sin resultados»", async () => {
+    render(<Movimientos />);
+    await screen.findByText("MOV-1");
+    fireEvent.change(screen.getByPlaceholderText("Buscar por comprobante o descripción"), {
+      target: { value: "no existe" },
+    });
+    expect(await screen.findByText("Sin resultados")).toBeInTheDocument();
+  });
+});
+
 describe("Agregar artículo buscando", () => {
   it("cada palabra filtra por separado y sin tildes", async () => {
     const buscador = await abrirNuevo();

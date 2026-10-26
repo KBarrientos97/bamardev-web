@@ -140,6 +140,16 @@ export default function Movimientos() {
 
   const pendientes = lista.filter((m) => m.estado === "PENDIENTE").length;
 
+  // Lo único que esconde todo es que hoy no se movió nada: decir "probá con
+  // otro texto" cuando nadie escribió nada no explica por qué la lista está
+  // vacía con movimientos en la cabecera.
+  const soloFaltaHoy =
+    !!fecha &&
+    !q.trim() &&
+    filtroTipo === "todos" &&
+    filtroEstado === "todos" &&
+    filtroOrigen === "todos";
+
   // Sin el circuito de aprobación los movimientos se aprueban al crearse, así
   // que filtrar por "pendientes" no devolvería nada. Se deja el chip si hay
   // pendientes viejos, para poder encontrarlos.
@@ -229,17 +239,31 @@ export default function Movimientos() {
         <div className="card">
           <Vacio
             icono="swap"
-            titulo={lista.length ? "Sin resultados" : "Todavía no hay movimientos"}
+            titulo={
+              !lista.length
+                ? "Todavía no hay movimientos"
+                : soloFaltaHoy
+                  ? "Hoy no hay movimientos"
+                  : "Sin resultados"
+            }
             texto={
-              lista.length
-                ? "Probá con otro texto o quitá los filtros."
-                : "Registrá la primera entrada o salida de stock."
+              !lista.length
+                ? "Registrá la primera entrada o salida de stock."
+                : soloFaltaHoy
+                  ? "Los de otros días están en «Ver todo»."
+                  : "Probá con otro texto o quitá los filtros."
             }
             accion={
-              !lista.length && (
+              !lista.length ? (
                 <Boton icono="plus" onClick={() => setCreando(true)}>
                   Nuevo movimiento
                 </Boton>
+              ) : (
+                soloFaltaHoy && (
+                  <Boton variante="soft" onClick={() => setFecha("")}>
+                    Ver todo
+                  </Boton>
+                )
               )
             }
           />
