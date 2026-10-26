@@ -219,6 +219,32 @@ describe("E3 · detalle de grupo", () => {
     expect(screen.getByRole("button", { name: "Inscribir estudiante" })).toBeDisabled();
   });
 
+  it("con el panel del estudiante abierto, editar o cancelar el grupo lo cierran antes (sin dos cosas abiertas a la vez)", async () => {
+    sesion.permisos = ["academia.ver", "academia.grupos", "academia.inscribir", "academia.cobranza"];
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Ver a Bustillos Rek, Camila" }));
+    await act(async () => {});
+    expect(screen.getByRole("complementary", { name: "Bustillos Rek, Camila" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Más acciones del grupo" }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("menuitem", { name: "Editar grupo" }));
+    });
+    expect(screen.getByRole("dialog", { name: "Editar grupo" })).toBeInTheDocument();
+    expect(screen.queryByRole("complementary", { name: "Bustillos Rek, Camila" })).not.toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(within(screen.getByRole("dialog", { name: "Editar grupo" })).getByRole("button", { name: "Cancelar" }));
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Ver a Bustillos Rek, Camila" }));
+    await act(async () => {});
+    fireEvent.click(screen.getByRole("button", { name: "Más acciones del grupo" }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("menuitem", { name: "Cancelar grupo" }));
+    });
+    expect(screen.getByRole("dialog", { name: "Cancelar el grupo" })).toBeInTheDocument();
+    expect(screen.queryByRole("complementary", { name: "Bustillos Rek, Camila" })).not.toBeInTheDocument();
+  });
+
   it("recepción, que no carga notas, ve \"Ver notas\" en el menú y no \"Cargar notas\" (QA ronda 2, B-05)", async () => {
     await montar();
     fireEvent.click(screen.getByRole("button", { name: "Más acciones del grupo" }));

@@ -90,6 +90,17 @@ export default function Grupo() {
   );
   const n = (f: FiltroAlumnosGrupo) => conteos.datos?.[f] ?? null;
 
+  /**
+   * Lo que se abre sobre toda la página (inscribir, editar, cancelar,
+   * compartir) cierra antes el panel del estudiante: en escritorio el panel
+   * no tiene velo y el diálogo quedaba encima de él, dos cosas abiertas a la
+   * vez. En el celular el panel ya tapa estos botones.
+   */
+  const sobreLaPagina = (abrir: () => void) => () => {
+    setElegido(null);
+    abrir();
+  };
+
   // El docente ve a sus alumnos sin montos (PLAN-ACADEMIAS §4).
   const sinMontos = soloLoSuyo(usuario, "academia.ver");
   const volverA = sinMontos ? "/academia/mis-clases" : "/academia/calendario";
@@ -146,17 +157,17 @@ export default function Grupo() {
       onClick: () => navigate(`/academia/grupos/${grupoId}/notas`),
     },
     ...(comparte && g.inscripcionAbierta && g.estado !== "TERMINADO" && !g.cancelado
-      ? [{ clave: "compartir", etiqueta: "Compartir enlace de inscripción", icono: "compartir" as const, onClick: () => setCompartiendo(true) }]
+      ? [{ clave: "compartir", etiqueta: "Compartir enlace de inscripción", icono: "compartir" as const, onClick: sobreLaPagina(() => setCompartiendo(true)) }]
       : []),
     ...(sinMontos
       ? []
       : [{ clave: "excel", etiqueta: "Exportar Excel", icono: "download" as const, detalle: "Pronto", deshabilitada: true, separar: true, onClick: () => {} }]),
     ...(arma
       ? [
-          { clave: "editar", etiqueta: "Editar grupo", onClick: () => setEditando(true), separar: true },
+          { clave: "editar", etiqueta: "Editar grupo", onClick: sobreLaPagina(() => setEditando(true)), separar: true },
           g.cancelado
             ? { clave: "reactivar", etiqueta: "Reactivar grupo", onClick: () => void cambiarCancelado(false) }
-            : { clave: "cancelar", etiqueta: "Cancelar grupo", onClick: () => setCancelando(true), peligrosa: true },
+            : { clave: "cancelar", etiqueta: "Cancelar grupo", onClick: sobreLaPagina(() => setCancelando(true)), peligrosa: true },
         ]
       : []),
   ];
@@ -194,7 +205,12 @@ export default function Grupo() {
           acciones={
             <>
               {inscribe && (
-                <Boton icono="plus" className="max-md:!hidden" onClick={() => setInscribiendo(true)} disabled={g.estado === "TERMINADO" || !!g.cancelado}>
+                <Boton
+                  icono="plus"
+                  className="max-md:!hidden"
+                  onClick={sobreLaPagina(() => setInscribiendo(true))}
+                  disabled={g.estado === "TERMINADO" || !!g.cancelado}
+                >
                   Inscribir {p.alumno}
                 </Boton>
               )}
