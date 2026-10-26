@@ -449,7 +449,7 @@ function ListaProblemas({ problemas }: { problemas: ProblemaFila[] }) {
       <ul className="max-h-72 divide-y divide-borde-soft overflow-y-auto rounded-xl border border-borde-soft">
         {problemas.slice(0, PROBLEMAS_A_LA_VISTA).map((p, i) => (
           <li key={`${p.fila}-${i}`} className="flex items-start gap-2 px-3 py-2 text-[13px]">
-            <Badge tono="amarillo">Fila {p.fila}</Badge>
+            <Badge tono="amarillo" className="shrink-0 whitespace-nowrap">Fila {p.fila}</Badge>
             <span className="min-w-0 text-texto-2">{p.mensaje}</span>
           </li>
         ))}
