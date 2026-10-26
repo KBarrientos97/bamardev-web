@@ -1,3 +1,4 @@
+import type { Seccion } from "../permisos";
 import type {
   Carrera,
   Cuota,
@@ -83,6 +84,18 @@ export function rutaCobroInscripcion(inscripcionId: number, sede?: string | Ref 
   }
   return `${RUTA_COBRAR}?${params.toString()}`;
 }
+
+/**
+ * Las pestañas de la Configuración del instituto (26-oct), en orden: cada una
+ * es una pantalla de siempre, en su ruta, con la sección que pide. El menú
+ * tiene UNA entrada que se enciende en cualquiera (ver `ConfigAcademia`).
+ */
+export const PESTANAS_CONFIG_ACADEMIA: readonly { seccion: Seccion; a: string }[] = [
+  { seccion: "academia_carreras", a: "/configuracion/carreras" },
+  { seccion: "almacenes", a: "/inventario/almacenes" },
+  { seccion: "academia_planilla", a: "/academia/planilla" },
+  { seccion: "academia_ajustes", a: "/configuracion/academia" },
+];
 
 /**
  * La pantalla "Cobrar a estudiante" (A1). Cuelga de Cobranza (26-oct): en el

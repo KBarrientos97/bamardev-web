@@ -9,6 +9,7 @@ import {
 import AtajaErrores from "./components/AtajaErrores";
 import Layout from "./components/Layout";
 import { RUTA_COBRAR } from "./lib/academia/vista";
+import { ConPestanasConfig, InicioConfig } from "./pages/academia/config/ConfigAcademia";
 import { RUTA_AGENDA_PRONTO, rutaInicial, veReportes, veSoloSuAgenda, type Seccion } from "./lib/permisos";
 import { esBelleza, esFarmacia } from "./lib/rubro";
 import AgendaPronto from "./pages/AgendaPronto";
@@ -81,7 +82,6 @@ const MesasBillar = lazy(() => import("./pages/billar/admin/MesasBillar"));
 // Reportes: veintipico de pantallas con sus gráficos; se bajan al entrar.
 const Reportes = lazy(() => import("./pages/reportes/Reportes"));
 // Educación (PLAN-ACADEMIAS-TECNICO §8): sólo se bajan en un instituto.
-const HoyAcademia = lazy(() => import("./pages/academia/Hoy"));
 const GruposAcademia = lazy(() => import("./pages/academia/Grupos"));
 const CalendarioAcademia = lazy(() => import("./pages/academia/Calendario"));
 const MisClases = lazy(() => import("./pages/academia/docente/MisClases"));
@@ -525,7 +525,9 @@ function Rutas() {
           path="/inventario/almacenes"
           element={
             <Protegida seccion="almacenes">
-              <Almacenes />
+              <ConPestanasConfig>
+                <Almacenes />
+              </ConPestanasConfig>
             </Protegida>
           }
         />
@@ -803,7 +805,8 @@ function Rutas() {
 
         {/* Educación, ronda 1 (PLAN-ACADEMIAS-TECNICO §8): sólo con la
             feature `academia` (y `preinscripcion_online` para la bandeja). */}
-        <Route path="/academia/hoy" element={<Academia seccion="academia_hoy"><HoyAcademia /></Academia>} />
+        {/* "Hoy" salió (26-oct): sus clases del día viven arriba del Calendario. */}
+        <Route path="/academia/hoy" element={<Navigate to="/academia/calendario" replace />} />
         {/* Ronda 2: el calendario reemplaza a la lista de grupos (que queda
             como "Ver como lista"); la ruta vieja lleva al calendario. */}
         <Route path="/academia/calendario" element={<Academia seccion="academia_calendario"><CalendarioAcademia /></Academia>} />
@@ -818,7 +821,7 @@ function Rutas() {
         <Route path="/academia/lista" element={<Academia seccion="academia_lista"><PasarLista /></Academia>} />
         <Route path="/academia/notas" element={<Academia seccion="academia_notas"><NotasAcademia /></Academia>} />
         {/* Control (el dueño). */}
-        <Route path="/academia/planilla" element={<Academia seccion="academia_planilla"><PlanillaMes /></Academia>} />
+        <Route path="/academia/planilla" element={<Academia seccion="academia_planilla"><ConPestanasConfig><PlanillaMes /></ConPestanasConfig></Academia>} />
         <Route path="/academia/planilla/:id" element={<Academia seccion="academia_planilla"><PlanillaDocente /></Academia>} />
         <Route path="/academia/control" element={<Academia seccion="academia_control"><ControlAcademia /></Academia>} />
         <Route path="/academia/reportes" element={<Academia seccion="academia_reportes"><ReportesAcademia /></Academia>} />
@@ -832,8 +835,10 @@ function Rutas() {
         <Route path={RUTA_COBRAR} element={<Academia seccion="academia_cobrar"><CobrarAcademia /></Academia>} />
         {/* La ruta de antes de unir Cobrar con Cobranza (26-oct): un enlace guardado sigue andando. */}
         <Route path="/academia/cobrar" element={<RedirigeConBusqueda a={RUTA_COBRAR} />} />
-        <Route path="/configuracion/carreras" element={<Academia seccion="academia_carreras"><CarrerasAcademia /></Academia>} />
-        <Route path="/configuracion/academia" element={<Academia seccion="academia_ajustes"><AjustesAcademia /></Academia>} />
+        <Route path="/configuracion/carreras" element={<Academia seccion="academia_carreras"><ConPestanasConfig><CarrerasAcademia /></ConPestanasConfig></Academia>} />
+        <Route path="/configuracion/academia" element={<Academia seccion="academia_ajustes"><ConPestanasConfig><AjustesAcademia /></ConPestanasConfig></Academia>} />
+        {/* Configuración (26-oct): una entrada en el menú, con una pestaña por pantalla. */}
+        <Route path="/academia/configuracion" element={<InicioConfig />} />
 
         {/* Cualquier ruta desconocida vuelve al inicio del rol. */}
         <Route path="*" element={<Inicio />} />

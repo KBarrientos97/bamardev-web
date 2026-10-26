@@ -31,6 +31,8 @@ vi.mock("../../lib/academia/apiAcademia", async (importOriginal) => {
       grupo: vi.fn(),
       docentes: vi.fn(),
       crearGrupo: vi.fn(),
+      // Las clases de hoy, arriba (26-oct): sin clases no se dibujan.
+      hoy: vi.fn().mockResolvedValue({ fecha: "2026-10-18", sede: null, cobrar: { venceHoy: 0, venceHoyCuotas: 0, vencido: 0, vencidoCuotas: 0, items: [] }, preinscripcionesNuevas: 0, avisos: [], clases: [] }),
     },
   };
 });
@@ -134,6 +136,21 @@ describe("N1 · Calendario", () => {
     expect(within(panel).getByText("Degradados")).toBeInTheDocument();
     // Ya va por el módulo 2: la acción principal es ver el grupo.
     expect(within(panel).getByRole("link", { name: "Ver grupo" })).toHaveAttribute("href", "/academia/grupos/7");
+  });
+
+  it("26-oct: nunca dos paneles a la vez; el resumen no abre otra hoja encima", async () => {
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: /Barbería L Mi V, módulo 2 de 3/ }));
+    await act(async () => {});
+    const panel = screen.getByRole("complementary");
+    // Sin "⋯": en el celular abría una segunda hoja. Pasar lista va a la vista.
+    expect(within(panel).queryByRole("button", { name: "Más acciones del grupo" })).not.toBeInTheDocument();
+    expect(within(panel).getByRole("button", { name: "Pasar lista" })).toBeInTheDocument();
+    // Abrir un hueco con el resumen abierto lo cierra: queda sólo "Abrir grupo".
+    fireEvent.click(screen.getByRole("button", { name: "Abrir grupo aquí: 11:00 a 13:00, diciembre" }));
+    await act(async () => {});
+    expect(screen.getAllByRole("complementary")).toHaveLength(1);
+    expect(screen.getByRole("complementary", { name: "Abrir grupo" })).toBeInTheDocument();
   });
 
   it("un hueco libre abre Abrir grupo con esa franja y ese mes", async () => {

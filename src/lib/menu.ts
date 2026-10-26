@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "react-router-dom";
 import type { NombreIcono } from "../components/Icon";
 import { useAuth } from "../store/AuthContext";
+import { PESTANAS_CONFIG_ACADEMIA } from "./academia/vista";
 import { SECCIONES_REPORTES, type Seccion } from "./permisos";
 import { conMayuscula, termino, type Termino, type Vocabulario } from "./rubro";
 
@@ -43,6 +44,12 @@ export interface ItemNav {
    * que "Ingreso de mercadería" y la barra muestra dos lugares a la vez.
    */
   exacto?: boolean;
+  /**
+   * Otras rutas en las que el ítem también se enciende. Lo usa la
+   * Configuración del instituto: una entrada en el menú para pantallas que
+   * viven en rutas distintas (cursos, sedes, planilla), cada una una pestaña.
+   */
+  rutas?: readonly string[];
   /**
    * El ítem se llama distinto según el rubro: `label` es el nombre de siempre
    * y esto es la palabra que lo reemplaza donde corresponda (ver `rubro.ts`).
@@ -455,7 +462,8 @@ const ITEMS_ACADEMIA: (ItemNav & { bloque: Bloque })[] = [
     icono: "birrete",
     bloque: "instituto",
     hijos: [
-      { a: "/academia/hoy", label: "Hoy", titulo: "Hoy en el instituto", icono: "clock", seccion: "academia_hoy" },
+      // Primero el Calendario: es la pantalla del instituto y arriba trae las
+      // clases de hoy ("Hoy" salió del menú el 26-oct, lo más sencillo posible).
       { a: "/academia/calendario", label: "Calendario", icono: "calendar", seccion: "academia_calendario" },
       {
         a: "/academia/alumnos",
@@ -489,23 +497,17 @@ const ITEMS_ACADEMIA: (ItemNav & { bloque: Bloque })[] = [
       { a: "/academia/notas", label: "Notas", icono: "edit", seccion: "academia_notas" },
       // El control del dueño.
       { a: "/academia/control", label: "Panel de control", icono: "tablero", seccion: "academia_control" },
-      { a: "/academia/planilla", label: "Planilla docentes", icono: "fileText", seccion: "academia_planilla" },
       { a: "/academia/reportes", label: "Reportes", icono: "chart", seccion: "academia_reportes" },
-      // Lo que se configura una vez, al final.
+      // Lo que no se usa todos los días, en UNA entrada con pestañas (dueño,
+      // 26-oct): cursos, sedes, la planilla de los docentes y los ajustes. Se
+      // ve con cualquiera de esas secciones; adentro, cada pestaña pide la suya.
       {
-        a: "/configuracion/carreras",
-        label: "Cursos",
-        etiqueta: (palabra) => conMayuscula(palabra("carreras")),
-        icono: "birrete",
-        seccion: "academia_carreras",
-      },
-      general("/inventario/almacenes", { label: "Sedes", icono: "home" }),
-      {
-        a: "/configuracion/academia",
-        label: "Ajustes",
-        titulo: "Ajustes del instituto",
+        a: "/academia/configuracion",
+        label: "Configuración",
         icono: "settings",
         seccion: "academia_ajustes",
+        tambien: ["academia_carreras", "academia_planilla"],
+        rutas: PESTANAS_CONFIG_ACADEMIA.map((t) => t.a),
       },
     ],
   },
@@ -520,7 +522,10 @@ const ITEMS_ACADEMIA: (ItemNav & { bloque: Bloque })[] = [
     bloque: "administracion",
     hijos: [
       general("/personal"),
-      general("/inventario"),
+      // Sin Almacenes: en el instituto son las sedes, y están en Configuración.
+      general("/inventario", {
+        hijos: general("/inventario").hijos?.filter((h) => h.a !== "/inventario/almacenes"),
+      }),
       general("/gastos"),
       // El de ventas y productos de siempre: "Reportes" es el del instituto.
       general("/reportes", { label: "Más reportes", titulo: "Reportes de ventas" }),
@@ -623,6 +628,7 @@ export function aplanar(nodos: NodoMenu[]): NodoMenu[] {
 /** ¿Este ítem es la pantalla en la que se está? */
 export function esActivo(item: ItemNav, pathname: string): boolean {
   if (pathname === item.a) return true;
+  if (item.rutas?.some((r) => pathname === r || pathname.startsWith(`${r}/`))) return true;
   return !item.exacto && pathname.startsWith(`${item.a}/`);
 }
 
@@ -635,12 +641,17 @@ export function esActivo(item: ItemNav, pathname: string): boolean {
  */
 function nodoDeRuta(planos: NodoMenu[], pathname: string): NodoMenu | null {
   let mejor: NodoMenu | null = null;
+  let largo = -1;
   for (const n of planos) {
-    const a = n.item.a;
-    if (pathname === a || pathname.startsWith(`${a}/`)) {
-      // `>=`: con dos ítems en la misma ruta gana el de abajo, que es el
-      // sub-ítem ("Dashboard") y no el título del grupo ("Inventario").
-      if (!mejor || a.length >= mejor.item.a.length) mejor = n;
+    for (const a of [n.item.a, ...(n.item.rutas ?? [])]) {
+      if (pathname === a || pathname.startsWith(`${a}/`)) {
+        // `>=`: con dos ítems en la misma ruta gana el de abajo, que es el
+        // sub-ítem ("Dashboard") y no el título del grupo ("Inventario").
+        if (a.length >= largo) {
+          mejor = n;
+          largo = a.length;
+        }
+      }
     }
   }
   return mejor;

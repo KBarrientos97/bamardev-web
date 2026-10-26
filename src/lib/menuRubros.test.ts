@@ -166,7 +166,8 @@ describe("menú de ACADEMIA", () => {
     expect(m.map((b) => b.bloque)).toEqual(["instituto", "vender"]);
     // A1 (22-oct): cobrar a un estudiante es aparte del POS, que queda para
     // productos; desde el 26-oct se entra por Cobranza, sin un "Cobrar" suelto.
-    expect(academia(m)).toEqual(["Hoy", "Calendario", "Estudiantes", "Inscripciones online", "Cobranza"]);
+    // 26-oct: sin "Hoy" (sus clases del día están arriba del Calendario).
+    expect(academia(m)).toEqual(["Calendario", "Estudiantes", "Inscripciones online", "Cobranza"]);
     expect(bloque(m, "vender")).toEqual(["Punto de venta", "Caja"]);
   });
 
@@ -178,12 +179,11 @@ describe("menú de ACADEMIA", () => {
     expect(tituloDe(planos, "/academia/cobranza/cobrar")).toBe("Cobrar a estudiante");
   });
 
-  it("el administrador: TODO lo del instituto en Academia, y abajo Más con los módulos generales", () => {
+  it("el administrador: TODO lo del instituto en Academia, lo que no es del día en Configuración, y abajo Más", () => {
     const m = menuDe("ADMIN");
     expect(m.map((b) => b.bloque)).toEqual(["instituto", "vender", "administracion"]);
     expect(academia(m)).toEqual([
-      "Hoy", "Calendario", "Estudiantes", "Inscripciones online", "Cobranza",
-      "Panel de control", "Planilla docentes", "Reportes", "Cursos", "Sedes", "Ajustes",
+      "Calendario", "Estudiantes", "Inscripciones online", "Cobranza", "Panel de control", "Reportes", "Configuración",
     ]);
     expect(bloque(m, "vender")).toEqual(["Punto de venta", "Caja"]);
     expect(bloque(m, "administracion")).toEqual(["Más"]);
@@ -192,7 +192,10 @@ describe("menú de ACADEMIA", () => {
     for (const si of ["Personal", "Usuarios", "Inventario", "Gastos operativos", "Mi página", "Más reportes"]) {
       expect(nombres).toContain(si);
     }
-    for (const no of ["Cuentas por cobrar", "Mesas del salón", "Insumos", "Billar", "Grupos", "Mis clases de hoy"]) {
+    // Cursos, sedes, planilla y ajustes son pestañas de Configuración, no
+    // renglones del menú (26-oct); las sedes tampoco se repiten en Inventario.
+    for (const no of ["Cuentas por cobrar", "Mesas del salón", "Insumos", "Billar", "Grupos", "Mis clases de hoy",
+      "Hoy", "Cursos", "Sedes", "Almacenes", "Planilla docentes", "Ajustes"]) {
       expect(nombres).not.toContain(no);
     }
   });
@@ -200,9 +203,21 @@ describe("menú de ACADEMIA", () => {
   it("el grupo Academia lleva a su primera pantalla y se abre estando en cualquiera de las suyas", () => {
     const m = menuDe("ADMIN");
     const grupo = m[0].nodos[0];
-    expect(grupo.item.a).toBe("/academia/hoy");
+    expect(grupo.item.a).toBe("/academia/calendario");
     expect(caminoA(m.flatMap((b) => b.nodos), "/academia/planilla")).toEqual([grupo.id]);
     expect(caminoA(m.flatMap((b) => b.nodos), "/configuracion/carreras")).toEqual([grupo.id]);
+  });
+
+  it("Configuración se enciende en cualquiera de sus pestañas, también en las sedes", () => {
+    const planos = aplanar(menuDe("ADMIN").flatMap((b) => b.nodos));
+    const config = planos.find((n) => n.item.label === "Configuración")!;
+    expect(config.item.a).toBe("/academia/configuracion");
+    for (const ruta of ["/configuracion/carreras", "/inventario/almacenes", "/academia/planilla", "/configuracion/academia"]) {
+      expect(esActivo(config.item, ruta), ruta).toBe(true);
+      expect(tituloDe(planos, ruta), ruta).toBe("Configuración");
+    }
+    // El detalle de un docente también es de la planilla.
+    expect(esActivo(config.item, "/academia/planilla/195")).toBe(true);
   });
 
   it("el docente ve sólo sus clases, dentro de Academia (sin «Mi planilla»: es del admin, D1 del 22-oct)", () => {
@@ -226,7 +241,7 @@ describe("menú de ACADEMIA", () => {
 
   it("el vocabulario del perfil nombra las cosas", () => {
     const nombres = todos(menuDe("ADMIN", { carrera: "carrera", clientes: "alumnos" }));
-    expect(nombres).toContain("Carreras");
+    // "Carreras" ya no es un renglón: es la pestaña de Configuración (26-oct).
     expect(nombres).toContain("Alumnos");
   });
 

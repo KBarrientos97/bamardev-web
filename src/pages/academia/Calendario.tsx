@@ -16,6 +16,7 @@ import { fmtMoney, isoDia } from "../../lib/format";
 import { tienePermiso } from "../../lib/permisos";
 import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
+import ClasesDeHoy from "./ClasesDeHoy";
 import Inscribir from "./Inscribir";
 import NuevoGrupo, { type HuecoCalendario } from "./NuevoGrupo";
 import { BotonFila, BotonIcono, Chip, ChipsFiltro, EncabezadoPagina, PaginaAcademia, ResumenPanel, SeccionPanel, Tarjeta } from "./piezas";
@@ -55,7 +56,7 @@ interface Elegido {
 export default function Calendario() {
   const p = usePalabras();
   const navigate = useNavigate();
-  const { usuario } = useAuth();
+  const { usuario, puede } = useAuth();
   const celular = useConsultaMedia("(max-width: 767px)");
   const sede = useFiltroSede();
   const hoy = mesDe(new Date());
@@ -128,7 +129,20 @@ export default function Calendario() {
   const ultimoVisible = sumarMeses(desde, cant - 1);
   const rango = `${nombreMes(desde)} ${desde.slice(0, 4)} – ${nombreMes(ultimoVisible)} ${ultimoVisible.slice(0, 4)}`;
 
-  const nuevoGrupo = () => setHueco({ sede: sede.sucursalId ?? usuario?.sucursalId ?? null });
+  // Un solo panel a la vez (26-oct): en el celular el resumen del grupo es una
+  // hoja, y abrir "Nuevo grupo" o Inscribir con ella abierta los encimaba.
+  const elegir = (e: Elegido) => {
+    setHueco(null);
+    setElegido(e);
+  };
+  const enHueco = (fila: FilaCalendario, mes: string) => {
+    setElegido(null);
+    abrirHueco(fila, mes);
+  };
+  const nuevoGrupo = () => {
+    setElegido(null);
+    setHueco({ sede: sede.sucursalId ?? usuario?.sucursalId ?? null });
+  };
   const hayGrilla = !!datos && datos.filas.length > 0;
 
   return (
@@ -154,6 +168,9 @@ export default function Calendario() {
 
       {sede.selector}
 
+      {/* Lo del día que vivía en "Hoy" (26-oct): la llegada del docente. */}
+      {puede("academia_hoy") && <ClasesDeHoy sucursalId={sede.sucursalId} />}
+
       {cal.error && !datos ? (
         <ErrorMsg onReintentar={cal.recargar}>{cal.error}</ErrorMsg>
       ) : !datos ? (
@@ -175,8 +192,8 @@ export default function Calendario() {
             hoy={hoy}
             pasa={pasa}
             abre={abre}
-            onElegir={(grupo, fila) => setElegido({ grupo, inicio: fila.inicio, fin: fila.fin, mes: mesCel })}
-            onHueco={(fila) => abrirHueco(fila, mesCel)}
+            onElegir={(grupo, fila) => elegir({ grupo, inicio: fila.inicio, fin: fila.fin, mes: mesCel })}
+            onHueco={(fila) => enHueco(fila, mesCel)}
           />
         </Tarjeta>
       ) : (
@@ -244,8 +261,8 @@ export default function Calendario() {
             pasa={pasa}
             abre={abre}
             elegidoId={elegido?.grupo.grupoId ?? null}
-            onElegir={(grupo, fila, mes) => setElegido({ grupo, inicio: fila.inicio, fin: fila.fin, mes })}
-            onHueco={abrirHueco}
+            onElegir={(grupo, fila, mes) => elegir({ grupo, inicio: fila.inicio, fin: fila.fin, mes })}
+            onHueco={enHueco}
           />
         </Tarjeta>
       )}
@@ -265,7 +282,12 @@ export default function Calendario() {
           carreras={carreras.datos ?? []}
           inscribe={inscribe}
           onCerrar={() => setElegido(null)}
-          onInscribir={() => setInscribir({ id: elegido.grupo.grupoId, nombre: elegido.grupo.nombre })}
+          onInscribir={() => {
+            // Se cierra el resumen: Inscribir es de pantalla completa y quedaba
+            // debajo de la hoja del celular.
+            setInscribir({ id: elegido.grupo.grupoId, nombre: elegido.grupo.nombre });
+            setElegido(null);
+          }}
         />
       )}
 
@@ -575,12 +597,6 @@ function ResumenGrupo({
   const pct = g.cupo ? Math.min(100, Math.round((g.inscritos / g.cupo) * 100)) : 0;
   const inscribirPrimero = inscribe && (primerModulo || !empezo);
 
-  const acciones: AccionMenu[] = [
-    { clave: "lista", etiqueta: "Pasar lista", icono: "lista", onClick: () => navigate(`/academia/grupos/${g.grupoId}/lista`) },
-    { clave: "excel", etiqueta: "Exportar a Excel", icono: "download", detalle: "Pronto", deshabilitada: true, onClick: () => {} },
-    { clave: "editar", etiqueta: "Editar grupo", icono: "edit", separar: true, onClick: () => navigate(`/academia/grupos/${g.grupoId}`) },
-  ];
-
   const ver = (
     <Link
       to={`/academia/grupos/${g.grupoId}`}
@@ -617,7 +633,6 @@ function ResumenGrupo({
               )}
             </>
           )}
-          <MenuMas etiqueta="Más acciones del grupo" acciones={acciones} />
         </div>
       }
     >
@@ -698,6 +713,13 @@ function ResumenGrupo({
           </p>
         </SeccionPanel>
       )}
+
+      {/* Antes era un "⋯" al pie, que en el celular abría una segunda hoja
+          encima de ésta (26-oct). Editar el grupo es "Ver grupo", y exportar
+          todavía no existía: queda pasar lista, a la vista. */}
+      <BotonFila variante="ghost" icono="lista" onClick={() => navigate(`/academia/grupos/${g.grupoId}/lista`)}>
+        Pasar lista
+      </BotonFila>
     </PanelLateral>
   );
 }

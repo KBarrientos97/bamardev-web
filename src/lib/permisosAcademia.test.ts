@@ -54,9 +54,9 @@ describe("secciones de la academia", () => {
     expect(rutaInicial(ctxDe("PROFESIONAL", "ACADEMIA", FEATURES))).toBe("/academia/mis-clases");
   });
 
-  it("la secretaría y la dirección empiezan el día en Hoy", () => {
-    expect(rutaInicial(ctxDe("CAJERO", "ACADEMIA", FEATURES))).toBe("/academia/hoy");
-    expect(rutaInicial(ctxDe("ADMIN", "ACADEMIA", FEATURES))).toBe("/academia/hoy");
+  it("la secretaría y la dirección empiezan el día en el Calendario (Hoy salió del menú el 26-oct)", () => {
+    expect(rutaInicial(ctxDe("CAJERO", "ACADEMIA", FEATURES))).toBe("/academia/calendario");
+    expect(rutaInicial(ctxDe("ADMIN", "ACADEMIA", FEATURES))).toBe("/academia/calendario");
   });
 
   it("sin la preinscripción online no hay bandeja de preinscripciones", () => {

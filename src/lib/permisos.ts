@@ -747,10 +747,11 @@ export function rutaInicial(ctx: ContextoPermisos): string {
  * "/sin-acceso" con esa misma sección dibujada en la barra de al lado.
  */
 const ORDEN_INICIO: [Seccion, string][] = [
-  // El instituto empieza el día en Hoy (la recepción y la dirección) o en
-  // sus clases de hoy (el docente, ronda 2). Sin la feature `academia` no
-  // existen y la lista sigue como siempre.
-  ["academia_hoy", "/academia/hoy"],
+  // El instituto empieza el día en el Calendario (la recepción y la
+  // dirección; desde el 26-oct, con las clases de hoy arriba: "Hoy" salió del
+  // menú) o en sus clases de hoy (el docente, ronda 2). Sin la feature
+  // `academia` no existen y la lista sigue como siempre.
+  ["academia_calendario", "/academia/calendario"],
   ["academia_mis_clases", "/academia/mis-clases"],
   ["academia_grupos", "/academia/grupos"],
   ["inventario", "/inventario"],

@@ -4,15 +4,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ClaseDelDia, HoyAcademia } from "../../lib/academia/tipos";
 
 /**
- * E1 · Hoy, con la respuesta como la manda el backend: el alumno de cada
- * cobro llega como `{ id, nombre }` (pintarlo como texto tiraba la pantalla).
- * Ronda 2: las clases del día con la llegada del docente y la lista, y los
- * avisos nuevos (inscripciones online, grupos que empiezan).
+ * Las clases de hoy, arriba del Calendario (26-oct): las de la pantalla "Hoy",
+ * que salió del menú, con la llegada del docente y la lista.
  */
 
 vi.mock("../../store/AuthContext", async () => {
   const { SESION_SECRETARIA: s } = await import("../../test/academiaFixtures");
-  return { useAuth: () => ({ ...s, puede: (sec: string) => sec !== "caja" }) };
+  return { useAuth: () => ({ ...s, puede: () => true }) };
 });
 
 vi.mock("../../lib/academia/apiAcademia", async (importOriginal) => {
@@ -21,7 +19,7 @@ vi.mock("../../lib/academia/apiAcademia", async (importOriginal) => {
 });
 
 import { apiAcademia } from "../../lib/academia/apiAcademia";
-import Hoy from "./Hoy";
+import ClasesDeHoy from "./ClasesDeHoy";
 
 const clase = (extra: Partial<ClaseDelDia>): ClaseDelDia => ({
   sesionId: 1,
@@ -45,22 +43,9 @@ const clase = (extra: Partial<ClaseDelDia>): ClaseDelDia => ({
 const HOY: HoyAcademia = {
   fecha: "2026-10-16",
   sede: null,
-  cobrar: {
-    venceHoy: 1283,
-    venceHoyCuotas: 2,
-    vencido: 750,
-    vencidoCuotas: 1,
-    items: [
-      { alumno: { id: 52, nombre: "Bustillos Rek, Camila" }, detalle: "Cuota 2 · Barbería · venció 17-sep", monto: 750 },
-      { alumno: { id: 60, nombre: "Rojas Lima, Thiago" }, detalle: "M2 · Barbería · vence hoy", monto: 533 },
-    ],
-  },
-  preinscripcionesNuevas: 3,
-  avisos: [
-    { tipo: "INSCRIPCIONES_ONLINE", titulo: "3 inscripciones online nuevas", texto: "Pagan en el instituto." },
-    { tipo: "EMPIEZA", titulo: "Uñas · L-V 15:00–17:00 empieza el 10-nov", texto: "Quedan 11 cupos", grupoId: 9 },
-    { tipo: "SIE", titulo: "Lista para el SIE", texto: "Ya no se muestra" },
-  ],
+  cobrar: { venceHoy: 0, venceHoyCuotas: 0, vencido: 0, vencidoCuotas: 0, items: [] },
+  preinscripcionesNuevas: 0,
+  avisos: [],
   clases: [
     clase({
       sesionId: 1,
@@ -89,34 +74,20 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers());
 
 async function montar() {
-  render(
+  const r = render(
     <MemoryRouter>
-      <Hoy />
+      <ClasesDeHoy sucursalId={1} />
     </MemoryRouter>,
   );
   await act(async () => {});
+  return r;
 }
 
-describe("E1 · Hoy", () => {
-  it("pinta los cobros del día con el nombre del alumno", async () => {
+describe("Clases de hoy (arriba del Calendario)", () => {
+  it("terminó, en curso o por empezar, con la llegada y la lista", async () => {
     await montar();
-    expect(screen.getByText("Bustillos Rek, Camila")).toBeInTheDocument();
-    expect(screen.getByText("Rojas Lima, Thiago")).toBeInTheDocument();
-  });
-
-  it("A1: cada cobro del día lleva a «Cobrar a estudiante» con ese estudiante, y abajo «Cobrar» también", async () => {
-    await montar();
-    const fila = screen.getByText("Bustillos Rek, Camila").closest("li")!;
-    const enlace = within(fila).getByRole("link", { name: /Cobrar/ });
-    expect(enlace.getAttribute("href")).toMatch(/^\/academia\/cobranza\/cobrar\?alumno=\d+&q=/);
-    const abajo = screen.getAllByRole("link", { name: "Cobrar" }).find((l) => l.getAttribute("href") === "/academia/cobranza/cobrar");
-    expect(abajo).toBeDefined();
-  });
-
-  it("las clases de hoy: terminó, en curso o por empezar, con la llegada y la lista", async () => {
-    await montar();
-    const clases = screen.getByRole("region", { name: /Clases de hoy/ });
-    const filas = within(clases).getAllByRole("listitem");
+    expect(apiAcademia.hoy).toHaveBeenCalledWith(1);
+    const filas = within(screen.getByRole("region", { name: /Clases de hoy/ })).getAllByRole("listitem");
     expect(filas[0]).toHaveTextContent("terminó");
     expect(filas[0]).toHaveTextContent(/12 min tarde/);
     expect(filas[0]).toHaveTextContent("Lista 17 de 18");
@@ -137,10 +108,9 @@ describe("E1 · Hoy", () => {
     expect(apiAcademia.hoy).toHaveBeenCalledTimes(2);
   });
 
-  it("los avisos nuevos llevan a su pantalla y el del SIE ya no aparece", async () => {
-    await montar();
-    expect(screen.getByRole("link", { name: /3 inscripciones online nuevas/ })).toHaveAttribute("href", "/academia/preinscripciones");
-    expect(screen.getByRole("link", { name: /empieza el 10-nov/ })).toHaveAttribute("href", "/academia/grupos/9");
-    expect(screen.queryByText("Lista para el SIE")).not.toBeInTheDocument();
+  it("sin clases hoy no se dibuja nada", async () => {
+    vi.mocked(apiAcademia.hoy).mockResolvedValue({ ...HOY, clases: [] });
+    const { container } = await montar();
+    expect(container).toBeEmptyDOMElement();
   });
 });
