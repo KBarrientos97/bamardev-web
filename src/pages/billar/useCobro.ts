@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
-import { aCentavos, parsearMonto } from "../../lib/dinero";
+import { aCentavos } from "../../lib/dinero";
+import { leerMonto, montoParaEditar } from "../../lib/montoTecleado";
 import { atajosDeEfectivo } from "../../lib/billetes";
 import { round2 } from "./calculo";
 import type { PagoNuevo } from "./store";
@@ -32,7 +33,7 @@ export function montoCorto(n: number): string {
  */
 export function efectivoDelCobro(monto: number, recibidoTexto: string) {
   const escrito = recibidoTexto.trim() !== "";
-  const recibido = escrito ? round2(parsearMonto(recibidoTexto) ?? 0) : 0;
+  const recibido = escrito ? round2(leerMonto(recibidoTexto) ?? 0) : 0;
   return {
     escrito,
     recibido,
@@ -82,7 +83,7 @@ export interface EstadoCobro {
  */
 export function useCobro(total: number, editable = false): EstadoCobro {
   const [metodo, setMetodo] = useState<Metodo>("Efectivo");
-  const [montoTexto, setMontoTexto] = useState(editable ? String(total) : "");
+  const [montoTexto, setMontoTexto] = useState(editable ? montoParaEditar(total) : "");
   const [recibidoTexto, setRecibidoTexto] = useState("");
   const [efectivoTexto, setEfectivoTexto] = useState("");
   // Como en el POS (`QrParaCobrar`): elegir QR no es cobrar. Hasta que el
@@ -91,13 +92,13 @@ export function useCobro(total: number, editable = false): EstadoCobro {
   const [qrVisto, setQrVisto] = useState<string | null>(null);
 
   return useMemo(() => {
-    const monto = editable ? round2(parsearMonto(montoTexto) ?? 0) : round2(total);
+    const monto = editable ? round2(leerMonto(montoTexto) ?? 0) : round2(total);
     const montoOk = monto > 0 && aCentavos(monto) <= aCentavos(total);
     const efectivo = efectivoDelCobro(monto, recibidoTexto);
     let falta = 0;
     let cambio = 0;
     let pago: PagoNuevo | null = null;
-    const efectivoMixto = round2(parsearMonto(efectivoTexto) ?? 0);
+    const efectivoMixto = round2(leerMonto(efectivoTexto) ?? 0);
     const montoQr = metodo === "QR" ? monto : metodo === "Mixto" ? Math.max(0, round2(monto - efectivoMixto)) : 0;
     const huellaQr = `${metodo}|${montoQr}`;
     const qrConfirmado = qrVisto === huellaQr;
@@ -133,7 +134,7 @@ export function useCobro(total: number, editable = false): EstadoCobro {
       confirmarQr: () => setQrVisto(huellaQr),
       reiniciar: () => {
         setMetodo("Efectivo");
-        setMontoTexto(editable ? String(total) : "");
+        setMontoTexto(editable ? montoParaEditar(total) : "");
         setRecibidoTexto("");
         setEfectivoTexto("");
         setQrVisto(null);

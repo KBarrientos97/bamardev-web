@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Icon } from "../components/Icon";
+import InputMonto from "../components/InputMonto";
 import { Buscador, Chips, EncabezadoPagina } from "../components/filtros";
 import { AvisoGastosAtrasados } from "../components/AvisoGastosAtrasados";
 import { ProximosAutomaticos } from "../components/ProximosAutomaticos";
@@ -19,7 +20,8 @@ import {
   Vacio,
 } from "../components/ui";
 import { api } from "../lib/api";
-import { cubre, esPositivo, excede, parsearMonto } from "../lib/dinero";
+import { cubre, esPositivo, excede } from "../lib/dinero";
+import { leerMonto, montoParaEditar } from "../lib/montoTecleado";
 import {
   badgeEstado,
   contar,
@@ -361,7 +363,7 @@ export function FormGasto({
 }) {
   const [concepto, setConcepto] = useState(gasto?.concepto ?? "");
   const [categoria, setCategoria] = useState(gasto?.categoria ?? "");
-  const [monto, setMonto] = useState(gasto ? String(gasto.monto) : "");
+  const [monto, setMonto] = useState(gasto ? montoParaEditar(gasto.monto) : "");
   const [fecha, setFecha] = useState(gasto?.fecha ?? hoyIso());
   const [vence, setVence] = useState(gasto?.fechaVencimiento ?? "");
   const [beneficiario, setBeneficiario] = useState(gasto?.beneficiario ?? "");
@@ -376,7 +378,7 @@ export function FormGasto({
 
   const guardar = async () => {
     if (enVuelo.current) return;
-    const m = parsearMonto(monto);
+    const m = leerMonto(monto);
     if (!concepto.trim()) return setError("Ponele un concepto al gasto.");
     if (!categoria) return setError("Elegí una categoría.");
     if (m == null || !esPositivo(m)) return setError("El monto tiene que ser mayor a cero.");
@@ -455,12 +457,7 @@ export function FormGasto({
         </Campo>
         <div className="grid gap-3 sm:grid-cols-2">
           <Campo label="Monto (Bs)">
-            <Input
-              inputMode="decimal"
-              value={monto}
-              onChange={(e) => setMonto(e.target.value)}
-              placeholder="0.00"
-            />
+            <InputMonto value={monto} onChange={setMonto} placeholder="0,00" />
           </Campo>
           <Campo label="Fecha del gasto">
             <Input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} />
@@ -531,7 +528,7 @@ export function PanelPago({
   onCerrar: () => void;
   onPagado: (texto: string) => void;
 }) {
-  const [monto, setMonto] = useState(String(gasto.saldo));
+  const [monto, setMonto] = useState(montoParaEditar(gasto.saldo));
   const [fechaPago, setFechaPago] = useState(hoyIso());
   const [metodo, setMetodo] = useState<MetodoPagoGasto>(gasto.metodoPago ?? "EFECTIVO");
   const [error, setError] = useState("");
@@ -549,7 +546,7 @@ export function PanelPago({
 
   const confirmar = async () => {
     if (enVuelo.current) return;
-    const m = parsearMonto(monto);
+    const m = leerMonto(monto);
     if (m == null || !esPositivo(m) || excede(m, gasto.saldo)) {
       return setError("El pago tiene que ser mayor a cero y no puede superar el saldo.");
     }
@@ -610,12 +607,7 @@ export function PanelPago({
           {gasto.concepto} · saldo <strong>{fmtMoney(gasto.saldo)}</strong>
         </p>
         <Campo label="Cuánto pagaste (Bs)">
-          <Input
-            inputMode="decimal"
-            value={monto}
-            onChange={(e) => setMonto(e.target.value)}
-            autoFocus
-          />
+          <InputMonto value={monto} onChange={setMonto} autoFocus />
         </Campo>
         <div className="grid gap-3 sm:grid-cols-2">
           <Campo label="Cuándo se pagó">

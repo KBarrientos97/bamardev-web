@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Input, Modal } from "../../components/ui";
 import { quedoEnDuda } from "../../lib/cupo";
 import { fmtMoney } from "../../lib/format";
+import { montoParaEditar } from "../../lib/montoTecleado";
 import { useBloqueoCupo } from "../../lib/useBloqueoCupo";
 import { useIntentoDeCobro } from "../pos/useIntentoDeCobro";
 import { devolucionDe, round2, textoDevolucion } from "./calculo";
@@ -251,7 +252,7 @@ function CobrarCuenta({
     cobro.reiniciar();
     if (sugerido) {
       cobro.setMetodo(sugerido.metodo);
-      if (sugerido.metodo === "Mixto") cobro.setEfectivoTexto(String(sugerido.efectivo));
+      if (sugerido.metodo === "Mixto") cobro.setEfectivoTexto(montoParaEditar(sugerido.efectivo));
     }
     // El "no" del servidor por la cuenta vieja ya está explicado; otros (sin
     // conexión, caja cerrada) quedan: pueden decir que el cobro entró.

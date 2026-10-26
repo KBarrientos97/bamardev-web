@@ -289,7 +289,7 @@ describe("Cerrar mesa con la cuenta vieja", () => {
 
     await tocar(screen.getByRole("button", { name: /Usar la cuenta nueva · Bs.20,00/ }), 0);
     expect(screen.getByRole("radio", { name: /Mixto/ })).toHaveAttribute("aria-checked", "true");
-    expect((screen.getByLabelText("En efectivo") as HTMLInputElement).value).toBe("5");
+    expect((screen.getByLabelText("En efectivo") as HTMLInputElement).value).toBe("5,00");
     // El QR se vuelve a confirmar: es por los Bs 15 que ya están en el banco.
     await tocar(screen.getByRole("button", { name: /Confirmar pago recibido/ }), 0);
     await tocar(screen.getByRole("button", { name: /Cobrar Bs.20,00/ }));
@@ -385,7 +385,7 @@ describe("Cerrar mesa con la cuenta vieja", () => {
     );
     await tocar(screen.getByRole("button", { name: /Usar la cuenta nueva · Bs.25,00/ }), 0);
     expect(screen.getByRole("radio", { name: /Mixto/ })).toHaveAttribute("aria-checked", "true");
-    expect((screen.getByLabelText("En efectivo") as HTMLInputElement).value).toBe("10");
+    expect((screen.getByLabelText("En efectivo") as HTMLInputElement).value).toBe("10,00");
   });
 
   it("si la cuenta baja por debajo del QR que ya entró, queda todo por QR", async () => {
@@ -471,7 +471,7 @@ describe("Cerrar mesa con la cuenta vieja", () => {
     );
     await tocar(screen.getByRole("button", { name: "Ya pagó el QR" }), 0);
     expect(screen.getByRole("radio", { name: /Mixto/ })).toHaveAttribute("aria-checked", "true");
-    expect((screen.getByLabelText("En efectivo") as HTMLInputElement).value).toBe("5");
+    expect((screen.getByLabelText("En efectivo") as HTMLInputElement).value).toBe("5,00");
   });
 
   it("si todavía no pagó el QR, la cuenta nueva queda para cobrar de cero", async () => {

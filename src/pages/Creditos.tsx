@@ -1,15 +1,16 @@
 import { useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import ComprobanteCredito, { type TipoComprobante } from "../components/ComprobanteCredito";
+import InputMonto from "../components/InputMonto";
 import { QrParaCobrar } from "../components/QrCobro";
 import {
   aCentavos,
   esCero,
   esPositivo,
   excede,
-  parsearMonto,
   restoEnEfectivo,
 } from "../lib/dinero";
+import { leerMonto, montoParaEditar } from "../lib/montoTecleado";
 import { tienePermiso } from "../lib/permisos";
 import { useAuth } from "../store/AuthContext";
 import { Icon } from "../components/Icon";
@@ -21,7 +22,6 @@ import {
   Campo,
   Cargando,
   ErrorMsg,
-  Input,
   Kpi,
   Modal,
   Select,
@@ -693,8 +693,8 @@ function FormAbono({
   /** El monto por QR que se dio por recibido. Si el monto cambia, deja de valer. */
   const [qrConfirmadoPor, setQrConfirmadoPor] = useState<number | null>(null);
 
-  const montoNum = parsearMonto(monto) ?? 0;
-  const qrMixtoNum = parsearMonto(montoQr) ?? 0;
+  const montoNum = leerMonto(monto) ?? 0;
+  const qrMixtoNum = leerMonto(montoQr) ?? 0;
   const esQr = !esMixto && formaNombre.toLowerCase() === "qr";
   /** Cuánto de este cobro entra por QR: todo, la parte del mixto, o nada. */
   const qrDelCobro = esQr ? montoNum : esMixto ? qrMixtoNum : 0;
@@ -718,7 +718,7 @@ function FormAbono({
   async function guardar() {
     if (enVuelo.current) return;
     setError("");
-    // parsearMonto y no Number(): "150,50" es como se teclea en Bolivia.
+    // leerMonto y no Number(): "1.500,50" es como se teclea en Bolivia.
     if (!esPositivo(montoNum)) return setError("Poné un monto mayor a cero.");
     if (excede(montoNum, c.saldo))
       return setError(`El abono no puede pasar el saldo (${fmtMoney(c.saldo)}).`);
@@ -790,19 +790,14 @@ function FormAbono({
         </div>
 
         <Campo label="Monto del abono">
-          <Input
-            type="number"
-            inputMode="decimal"
-            step="0.01"
-            min="0"
-            max={c.saldo}
+          <InputMonto
             value={monto}
-            onChange={(e) => setMonto(e.target.value)}
+            onChange={setMonto}
             autoFocus
           />
         </Campo>
 
-        <Boton variante="soft" className="w-full" onClick={() => setMonto(String(c.saldo))}>
+        <Boton variante="soft" className="w-full" onClick={() => setMonto(montoParaEditar(c.saldo))}>
           Pagar todo ({fmtMoney(c.saldo)})
         </Boton>
 
@@ -833,10 +828,9 @@ function FormAbono({
         {esMixto && (
           <div className="space-y-2">
             <Campo label="Cuánto paga por QR">
-              <Input
-                inputMode="decimal"
+              <InputMonto
                 value={montoQr}
-                onChange={(e) => setMontoQr(e.target.value)}
+                onChange={setMontoQr}
                 placeholder="0,00"
               />
             </Campo>
@@ -878,7 +872,7 @@ function FormLimiteCredito({
   onGuardado: () => void;
 }) {
   const [valor, setValor] = useState(
-    cliente.limiteCredito === null ? "" : String(cliente.limiteCredito),
+    cliente.limiteCredito === null ? "" : montoParaEditar(cliente.limiteCredito),
   );
   const [error, setError] = useState("");
   const [guardando, setGuardando] = useState(false);
@@ -887,7 +881,7 @@ function FormLimiteCredito({
     if (guardando) return;
     setError("");
 
-    const limite = valor.trim() === "" ? null : parsearMonto(valor);
+    const limite = valor.trim() === "" ? null : leerMonto(valor);
     if (valor.trim() !== "" && (limite === null || limite < 0))
       return setError("El límite tiene que ser un monto válido.");
 
@@ -940,9 +934,9 @@ function FormLimiteCredito({
           {[100, 200, 500].map((v) => (
             <button
               key={v}
-              onClick={() => setValor(String(v))}
+              onClick={() => setValor(montoParaEditar(v))}
               className={`rounded-xl px-3.5 py-2 text-[13px] font-semibold transition-colors ${
-                valor === String(v)
+                leerMonto(valor) === v
                   ? "bg-primary-boton text-white"
                   : "border border-borde bg-white text-texto-2 hover:bg-muted"
               }`}
@@ -953,12 +947,9 @@ function FormLimiteCredito({
         </div>
 
         <Campo label="Otro monto">
-          <Input
-            type="number"
-            inputMode="decimal"
-            min="0"
+          <InputMonto
             value={valor}
-            onChange={(e) => setValor(e.target.value)}
+            onChange={setValor}
             placeholder="Vacío = sin límite"
             className="font-bold"
           />

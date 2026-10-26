@@ -291,7 +291,11 @@ describe("pase oct: centavos en el cobro de Omar", () => {
   it("mixto con un QR de tres decimales: los pagos van en centavos y suman el total", () => {
     const onConfirmar = montar(vi.fn(), undefined, { total: 100 });
     fireEvent.click(screen.getByRole("button", { name: "Mixto" }));
-    escribir(/Monto pagado por QR/, "33.335");
+    escribir(/Monto pagado por QR/, "33,33");
+    // La tercera cifra de centavos ya no entra al campo (26-oct): antes viajaba
+    // tal cual y el QR más el efectivo dejaban de sumar el total.
+    escribir(/Monto pagado por QR/, "33,335");
+    expect((screen.getByLabelText(/Monto pagado por QR/) as HTMLInputElement).value).toBe("33,33");
     fireEvent.click(screen.getByText("Ya llegó el QR"));
     escribir(/Efectivo recibido/, "70");
     fireEvent.click(screen.getByText(/Confirmar cobro/));
@@ -299,5 +303,16 @@ describe("pase oct: centavos en el cobro de Omar", () => {
     for (const p of pagos) expect(Math.round(p.monto * 100) / 100).toBe(p.monto);
     // El backend exige que la suma dé el total (al centavo).
     expect(Math.round(pagos.reduce((s, p) => s + p.monto, 0) * 100)).toBe(10000);
+  });
+
+  it("'1.500' recibido son mil quinientos, no Bs 1,50", () => {
+    // Como en el cierre (26-oct): con el campo de antes "1.500" era Bs 1,50 y
+    // el cobro decía que no alcanzaba, o al revés, un cambio que no era.
+    const onConfirmar = montar(vi.fn(), undefined, { total: 1200 });
+    escribir("Efectivo recibido", "1.500");
+    expect(screen.getByText(/Bs.300,00/)).toBeInTheDocument();
+    fireEvent.click(screen.getByText(/Confirmar cobro/));
+    const pagos = onConfirmar.mock.calls[0][0] as { monto: number; recibido?: number }[];
+    expect(pagos).toEqual([expect.objectContaining({ monto: 1200, recibido: 1500 })]);
   });
 });

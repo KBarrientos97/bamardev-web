@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { Icon } from "../../components/Icon";
+import InputMonto from "../../components/InputMonto";
 import { Boton, Campo, ErrorMsg, Input, Modal, Select } from "../../components/ui";
 import { api } from "../../lib/api";
-import { parsearMontoO } from "../../lib/dinero";
 import { fmtHora, fmtMoney } from "../../lib/format";
+import { leerMonto, montoParaEditar } from "../../lib/montoTecleado";
 import { useApi } from "../../lib/useApi";
 
 import { MOTIVOS, type MotivoMovimiento } from "./motivosMovimiento";
@@ -75,7 +76,9 @@ export default function DialogoMovimiento({
   const [error, setError] = useState("");
   const [enviando, setEnviando] = useState(false);
   const elegido = lista.find((m) => m.etiqueta === motivo);
-  const montoNum = parsearMontoO(monto, NaN);
+  // Como en el cierre: "1.500" son mil quinientos. Con el campo de antes eran
+  // Bs 1,50, y un pago a proveedor quedaba registrado por mil veces menos (26-oct).
+  const montoNum = leerMonto(monto) ?? NaN;
   const montoValido = Number.isFinite(montoNum) && montoNum > 0;
 
   // La caja elegida y lo que debería tener: la que llega con su esperado no
@@ -105,8 +108,8 @@ export default function DialogoMovimiento({
   async function guardar() {
     setError("");
     if (conCodigo && !elegido) return setError("Elegí el motivo.");
-    const m = parsearMontoO(monto, NaN);
-    if (!Number.isFinite(m) || m <= 0) return setError("Poné un monto mayor a cero.");
+    const m = montoNum;
+    if (!montoValido) return setError("Poné un monto mayor a cero.");
     const texto = descripcion.trim();
     if (elegido?.detalle?.obligatorio && !texto) return setError(`Falta el detalle: ${elegido.detalle.label}`);
     const final = elegido?.detalle ? texto || elegido.etiqueta : texto;
@@ -255,16 +258,7 @@ export default function DialogoMovimiento({
         )}
 
         <Campo label="Monto">
-          <Input
-            type="number"
-            inputMode="decimal"
-            step="0.01"
-            min="0"
-            value={monto}
-            onChange={(e) => setMonto(e.target.value)}
-            autoFocus
-            className="font-bold"
-          />
+          <InputMonto value={monto} onChange={setMonto} placeholder="0,00" autoFocus className="font-bold" />
           {/* La cena casi siempre es de unos pocos montos: se toca en vez de escribir. */}
           {elegido?.montosRapidos && (
             <div className="mt-2 flex gap-2">
@@ -272,7 +266,7 @@ export default function DialogoMovimiento({
                 <button
                   key={n}
                   type="button"
-                  onClick={() => setMonto(String(n))}
+                  onClick={() => setMonto(montoParaEditar(n))}
                   className={`min-h-11 flex-1 rounded-xl text-[14px] font-bold transition-colors ${
                     montoValido && montoNum === n
                       ? "bg-primary-boton text-white"
