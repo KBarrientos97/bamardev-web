@@ -8,6 +8,7 @@ import {
 } from "react-router-dom";
 import AtajaErrores from "./components/AtajaErrores";
 import Layout from "./components/Layout";
+import { RUTA_COBRAR } from "./lib/academia/vista";
 import { RUTA_AGENDA_PRONTO, rutaInicial, veReportes, veSoloSuAgenda, type Seccion } from "./lib/permisos";
 import { esBelleza, esFarmacia } from "./lib/rubro";
 import AgendaPronto from "./pages/AgendaPronto";
@@ -106,6 +107,12 @@ function Academia({ seccion, children }: { seccion: Seccion; children: React.Rea
       <Suspense fallback={null}>{children}</Suspense>
     </Protegida>
   );
+}
+
+/** Una ruta que se mudó: lleva a la nueva con lo que traía (`?inscripcion=…`). */
+function RedirigeConBusqueda({ a }: { a: string }) {
+  const { search } = useLocation();
+  return <Navigate to={`${a}${search}`} replace />;
 }
 
 /**
@@ -822,7 +829,9 @@ function Rutas() {
           element={<Academia seccion="academia_preinscripciones"><Preinscripciones /></Academia>}
         />
         <Route path="/academia/cobranza" element={<Academia seccion="academia_cobranza"><CobranzaAcademia /></Academia>} />
-        <Route path="/academia/cobrar" element={<Academia seccion="academia_cobrar"><CobrarAcademia /></Academia>} />
+        <Route path={RUTA_COBRAR} element={<Academia seccion="academia_cobrar"><CobrarAcademia /></Academia>} />
+        {/* La ruta de antes de unir Cobrar con Cobranza (26-oct): un enlace guardado sigue andando. */}
+        <Route path="/academia/cobrar" element={<RedirigeConBusqueda a={RUTA_COBRAR} />} />
         <Route path="/configuracion/carreras" element={<Academia seccion="academia_carreras"><CarrerasAcademia /></Academia>} />
         <Route path="/configuracion/academia" element={<Academia seccion="academia_ajustes"><AjustesAcademia /></Academia>} />
 

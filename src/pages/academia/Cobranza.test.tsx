@@ -157,12 +157,18 @@ describe("N7 · cobranza", () => {
     await montar();
     fireEvent.click(screen.getAllByRole("button", { name: "Enviar QR" })[0]);
     fireEvent.click(screen.getByRole("button", { name: "Cobrar" }));
-    expect(screen.getByTestId("destino")).toHaveTextContent("/academia/cobrar?inscripcion=103&sede=2&sedeNombre=Norte");
+    expect(screen.getByTestId("destino")).toHaveTextContent("/academia/cobranza/cobrar?inscripcion=103&sede=2&sedeNombre=Norte");
   });
 
   it("QA 23-oct: Cobrar también en la fila, sin abrir el panel", async () => {
     await montar();
     fireEvent.click(screen.getAllByRole("button", { name: "Cobrar a Céspedes Molina, Joaquín" })[0]);
-    expect(screen.getByTestId("destino")).toHaveTextContent("/academia/cobrar?inscripcion=103&sede=2&sedeNombre=Norte");
+    expect(screen.getByTestId("destino")).toHaveTextContent("/academia/cobranza/cobrar?inscripcion=103&sede=2&sedeNombre=Norte");
+  });
+
+  it("26-oct: Cobrar ya no está aparte en el menú; arriba se cobra a cualquiera, esté o no en la lista", async () => {
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Cobrar a un estudiante" }));
+    expect(screen.getByTestId("destino")).toHaveTextContent(/^\/academia\/cobranza\/cobrar$/);
   });
 });

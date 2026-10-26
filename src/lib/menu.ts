@@ -472,9 +472,10 @@ const ITEMS_ACADEMIA: (ItemNav & { bloque: Bloque })[] = [
         icono: "bell",
         seccion: "academia_preinscripciones",
       },
-      // Cobrar a estudiante (A1, 22-oct): las cuotas ya no se cobran en el
-      // POS, que queda para los productos.
-      { a: "/academia/cobrar", label: "Cobrar", titulo: "Cobrar a estudiante", icono: "dollar", seccion: "academia_cobrar" },
+      // Una sola entrada para la plata de los estudiantes (dueño, 26-oct):
+      // Cobranza es quién debe y desde ahí se cobra. "Cobrar a estudiante"
+      // (A1: las cuotas ya no se cobran en el POS) cuelga de su ruta, así que
+      // estando ahí Cobranza queda encendida.
       { a: "/academia/cobranza", label: "Cobranza", icono: "coins", seccion: "academia_cobranza" },
       // Las del docente (su planilla ya no: sólo el admin la ve, D1 del 22-oct).
       {
@@ -654,6 +655,7 @@ const TITULOS_FUERA_DEL_MENU: [RegExp, string][] = [
   [/^\/academia\/grupos\/\d+\/notas\/?$/, "Notas"],
   [/^\/academia\/grupos\/\d+\/lista\/?$/, "Pasar lista"],
   [/^\/academia\/grupos\/\d+\/?$/, "Grupo"],
+  [/^\/academia\/cobranza\/cobrar\/?$/, "Cobrar a estudiante"],
   // Es de la cuenta y no del negocio: va abajo, con "Cambiar mi contraseña".
   [/^\/notificaciones\/?$/, "Notificaciones"],
 ];

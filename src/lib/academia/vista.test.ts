@@ -68,15 +68,15 @@ describe("fueraDeAlcance (QA ronda 2, N-3)", () => {
 describe("A1: Cobrar lleva a «Cobrar a estudiante», no al POS", () => {
   it("con la inscripción, lo acordado y la sede del grupo", () => {
     expect(rutaCobroInscripcion(103, { id: 2, nombre: "Norte" }, 350)).toBe(
-      "/academia/cobrar?inscripcion=103&monto=350&sede=2&sedeNombre=Norte",
+      "/academia/cobranza/cobrar?inscripcion=103&monto=350&sede=2&sedeNombre=Norte",
     );
-    expect(rutaCobroInscripcion(103)).toBe("/academia/cobrar?inscripcion=103");
+    expect(rutaCobroInscripcion(103)).toBe("/academia/cobranza/cobrar?inscripcion=103");
   });
 
   it("sin la inscripción, busca al estudiante por su código (o su nombre)", () => {
     expect(rutaCobroAlumno({ id: 53, nombre: "Céspedes", codigo: "2026-0103" })).toBe(
-      "/academia/cobrar?alumno=53&q=2026-0103",
+      "/academia/cobranza/cobrar?alumno=53&q=2026-0103",
     );
-    expect(rutaCobroAlumno({ id: 53, nombre: "Céspedes" })).toBe("/academia/cobrar?alumno=53&q=C%C3%A9spedes");
+    expect(rutaCobroAlumno({ id: 53, nombre: "Céspedes" })).toBe("/academia/cobranza/cobrar?alumno=53&q=C%C3%A9spedes");
   });
 });

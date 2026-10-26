@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ctxDe, PERMISOS_NUEVOS, type Plantilla } from "../test/sesiones";
-import { aplanar, caminoA, construirMenu, tituloDe, type Bloque, type BloqueMenu } from "./menu";
+import { aplanar, caminoA, construirMenu, esActivo, tituloDe, type Bloque, type BloqueMenu } from "./menu";
 import { puedeVer } from "./permisos";
 import { RUBROS } from "./rubro";
 
@@ -161,19 +161,28 @@ describe("menú de ACADEMIA", () => {
     return grupo![0].hijos.map((n) => n.item.label);
   };
 
-  it("la recepción: el grupo Academia con lo del día y cobrar, y aparte Punto de venta y Caja", () => {
+  it("la recepción: el grupo Academia con lo del día y Cobranza, y aparte Punto de venta y Caja", () => {
     const m = menuDe("CAJERO");
     expect(m.map((b) => b.bloque)).toEqual(["instituto", "vender"]);
-    // A1 (22-oct): cobrar a un estudiante es aparte del POS, que queda para productos.
-    expect(academia(m)).toEqual(["Hoy", "Calendario", "Estudiantes", "Inscripciones online", "Cobrar", "Cobranza"]);
+    // A1 (22-oct): cobrar a un estudiante es aparte del POS, que queda para
+    // productos; desde el 26-oct se entra por Cobranza, sin un "Cobrar" suelto.
+    expect(academia(m)).toEqual(["Hoy", "Calendario", "Estudiantes", "Inscripciones online", "Cobranza"]);
     expect(bloque(m, "vender")).toEqual(["Punto de venta", "Caja"]);
+  });
+
+  it("estando en Cobrar a estudiante se enciende Cobranza y la barra del celular dice dónde está", () => {
+    const m = menuDe("CAJERO");
+    const planos = aplanar(m.flatMap((b) => b.nodos));
+    const cobranza = planos.find((n) => n.item.label === "Cobranza")!;
+    expect(esActivo(cobranza.item, "/academia/cobranza/cobrar")).toBe(true);
+    expect(tituloDe(planos, "/academia/cobranza/cobrar")).toBe("Cobrar a estudiante");
   });
 
   it("el administrador: TODO lo del instituto en Academia, y abajo Más con los módulos generales", () => {
     const m = menuDe("ADMIN");
     expect(m.map((b) => b.bloque)).toEqual(["instituto", "vender", "administracion"]);
     expect(academia(m)).toEqual([
-      "Hoy", "Calendario", "Estudiantes", "Inscripciones online", "Cobrar", "Cobranza",
+      "Hoy", "Calendario", "Estudiantes", "Inscripciones online", "Cobranza",
       "Panel de control", "Planilla docentes", "Reportes", "Cursos", "Sedes", "Ajustes",
     ]);
     expect(bloque(m, "vender")).toEqual(["Punto de venta", "Caja"]);

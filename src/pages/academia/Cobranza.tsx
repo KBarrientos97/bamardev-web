@@ -11,7 +11,7 @@ import { fechaCorta } from "../../lib/academia/formato";
 import type { Antiguedad, FilaCobranza, Recordatorio, RespuestaCobranza, TipoCobranza } from "../../lib/academia/tipos";
 import { useFiltroSede } from "../../lib/academia/useFiltroSede";
 import { usePalabras } from "../../lib/academia/usePalabras";
-import { abrirWhatsapp, nombreCuota, rutaCobroAlumno, rutaCobroInscripcion } from "../../lib/academia/vista";
+import { abrirWhatsapp, nombreCuota, RUTA_COBRAR, rutaCobroAlumno, rutaCobroInscripcion } from "../../lib/academia/vista";
 import { fmtHora, fmtMoney, tiempoRelativo } from "../../lib/format";
 import { usePaginado } from "../../lib/paginado";
 import { cobraCuotas } from "../../lib/permisos";
@@ -65,7 +65,11 @@ const claveDe = (f: FilaCobranza) => String(f.inscripcionId ?? `${f.alumno.id}-$
  * toca enviar. No hay envío automático.
  *
  * Para varios, se marcan y la acción principal los recorre de a uno: "1 de N
- * · Siguiente". Cobrar sigue pasando por el POS.
+ * · Siguiente".
+ *
+ * Es también la entrada a cobrar (26-oct): "Cobrar a un estudiante" arriba y
+ * "Cobrar" en cada fila llevan a "Cobrar a estudiante", que cuelga de esta
+ * ruta. En el menú queda una sola entrada para la plata de los estudiantes.
  */
 export default function Cobranza() {
   const { usuario, negocio, rubro } = useAuth();
@@ -196,7 +200,15 @@ export default function Cobranza() {
         bajada={subtitulo}
         acciones={
           <>
+            {/* La entrada para cobrarle a quien viene a pagar, esté o no en la
+                lista de abajo: Cobrar ya no está aparte en el menú (26-oct). */}
+            {cobra && (
+              <Boton icono="dollar" onClick={() => navigate(RUTA_COBRAR)}>
+                Cobrar a un estudiante
+              </Boton>
+            )}
             <Boton
+              variante={cobra ? "ghost" : "primary"}
               disabled={nMarcados === 0}
               onClick={() => {
                 setCola([...marcados.values()]);

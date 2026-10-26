@@ -108,8 +108,8 @@ describe("E1 · Hoy", () => {
     await montar();
     const fila = screen.getByText("Bustillos Rek, Camila").closest("li")!;
     const enlace = within(fila).getByRole("link", { name: /Cobrar/ });
-    expect(enlace.getAttribute("href")).toMatch(/^\/academia\/cobrar\?alumno=\d+&q=/);
-    const abajo = screen.getAllByRole("link", { name: "Cobrar" }).find((l) => l.getAttribute("href") === "/academia/cobrar");
+    expect(enlace.getAttribute("href")).toMatch(/^\/academia\/cobranza\/cobrar\?alumno=\d+&q=/);
+    const abajo = screen.getAllByRole("link", { name: "Cobrar" }).find((l) => l.getAttribute("href") === "/academia/cobranza/cobrar");
     expect(abajo).toBeDefined();
   });
 

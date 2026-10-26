@@ -793,7 +793,7 @@ const ORDEN_INICIO: [Seccion, string][] = [
   ["academia_alumnos", "/academia/alumnos"],
   ["academia_preinscripciones", "/academia/preinscripciones"],
   ["academia_cobranza", "/academia/cobranza"],
-  ["academia_cobrar", "/academia/cobrar"],
+  ["academia_cobrar", "/academia/cobranza/cobrar"],
   ["academia_carreras", "/configuracion/carreras"],
   ["academia_ajustes", "/configuracion/academia"],
   ["academia_calendario", "/academia/calendario"],

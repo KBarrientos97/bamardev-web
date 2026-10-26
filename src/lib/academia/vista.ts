@@ -84,8 +84,12 @@ export function rutaCobroInscripcion(inscripcionId: number, sede?: string | Ref 
   return `${RUTA_COBRAR}?${params.toString()}`;
 }
 
-/** La pantalla "Cobrar a estudiante" (A1). */
-export const RUTA_COBRAR = "/academia/cobrar";
+/**
+ * La pantalla "Cobrar a estudiante" (A1). Cuelga de Cobranza (26-oct): en el
+ * menú hay una sola entrada para la plata de los estudiantes, y estando acá
+ * Cobranza queda encendida. La ruta vieja, `/academia/cobrar`, redirige.
+ */
+export const RUTA_COBRAR = "/academia/cobranza/cobrar";
 
 /**
  * "Cobrar" sin la inscripción (Cobranza, Hoy → Para cobrar): se busca al

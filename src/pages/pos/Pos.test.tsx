@@ -1049,13 +1049,13 @@ describe("A1: el POS ya no cobra cuotas", () => {
       <MemoryRouter initialEntries={["/pos?inscripcion=103&monto=350&sede=2&sedeNombre=Norte"]}>
         <Routes>
           <Route path="/pos" element={<Pos />} />
-          <Route path="/academia/cobrar" element={<Destino />} />
+          <Route path="/academia/cobranza/cobrar" element={<Destino />} />
         </Routes>
       </MemoryRouter>,
     );
     await act(async () => {});
     expect(screen.getByTestId("destino")).toHaveTextContent(
-      "/academia/cobrar?inscripcion=103&monto=350&sede=2&sedeNombre=Norte",
+      "/academia/cobranza/cobrar?inscripcion=103&monto=350&sede=2&sedeNombre=Norte",
     );
     expect(api.cajaActual).not.toHaveBeenCalled();
   });
@@ -1065,11 +1065,11 @@ describe("A1: el POS ya no cobra cuotas", () => {
       <MemoryRouter initialEntries={["/pos?alumno=53&q=2026-0103"]}>
         <Routes>
           <Route path="/pos" element={<Pos />} />
-          <Route path="/academia/cobrar" element={<Destino />} />
+          <Route path="/academia/cobranza/cobrar" element={<Destino />} />
         </Routes>
       </MemoryRouter>,
     );
     await act(async () => {});
-    expect(screen.getByTestId("destino")).toHaveTextContent("/academia/cobrar?alumno=53&q=2026-0103");
+    expect(screen.getByTestId("destino")).toHaveTextContent("/academia/cobranza/cobrar?alumno=53&q=2026-0103");
   });
 });
