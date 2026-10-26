@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ctxDe, PERMISOS_NUEVOS, type Plantilla } from "../test/sesiones";
-import { aplanar, construirMenu, tituloDe, type Bloque, type BloqueMenu } from "./menu";
+import { aplanar, caminoA, construirMenu, tituloDe, type Bloque, type BloqueMenu } from "./menu";
 import { puedeVer } from "./permisos";
 import { RUBROS } from "./rubro";
 
@@ -139,10 +139,10 @@ describe("menú: Supervisión del billar", () => {
 });
 
 /**
- * El instituto (ronda 2, lienzo MenuV2): un menú por rol. La recepción ve lo
- * del día y vender; el dueño suma Control y, abajo, Ajustes y un "Más"
- * plegado con los módulos generales (no se le quita ninguno); el docente,
- * sólo sus clases. Nada de lo que no existe en el rubro.
+ * El instituto: un menú por rol. Todo lo que es sólo del instituto vive en UN
+ * grupo "Academia" (dueño, 26-oct); afuera quedan vender y, para el dueño, un
+ * "Más" plegado con los módulos generales (no se le quita ninguno). Nada de
+ * lo que no existe en el rubro.
  */
 describe("menú de ACADEMIA", () => {
   const SOLO_ACADEMIA = ["pos", "caja", "catalogo", "usuarios", "inventario", "multi_almacen", "reportes",
@@ -154,24 +154,33 @@ describe("menú de ACADEMIA", () => {
   };
   const bloque = (m: BloqueMenu[], b: Bloque) => m.find((x) => x.bloque === b)?.nodos.map((n) => n.item.label);
   const todos = (m: BloqueMenu[]) => aplanar(m.flatMap((b) => b.nodos)).map((n) => n.item.label);
+  /** Lo que hay dentro del grupo Academia. */
+  const academia = (m: BloqueMenu[]) => {
+    const grupo = m.find((x) => x.bloque === "instituto")?.nodos;
+    expect(grupo?.map((n) => n.item.label)).toEqual(["Academia"]);
+    return grupo![0].hijos.map((n) => n.item.label);
+  };
 
-  it("la recepción: Hoy, Calendario, Estudiantes, Cobranza, Cobrar, Punto de venta y Caja", () => {
+  it("la recepción: el grupo Academia con lo del día y cobrar, y aparte Punto de venta y Caja", () => {
     const m = menuDe("CAJERO");
-    expect(m.map((b) => b.bloque)).toEqual(["dia", "vender"]);
-    expect(bloque(m, "dia")).toEqual(["Hoy", "Calendario", "Estudiantes", "Inscripciones online", "Cobranza"]);
+    expect(m.map((b) => b.bloque)).toEqual(["instituto", "vender"]);
     // A1 (22-oct): cobrar a un estudiante es aparte del POS, que queda para productos.
-    expect(bloque(m, "vender")).toEqual(["Cobrar", "Punto de venta", "Caja"]);
+    expect(academia(m)).toEqual(["Hoy", "Calendario", "Estudiantes", "Inscripciones online", "Cobrar", "Cobranza"]);
+    expect(bloque(m, "vender")).toEqual(["Punto de venta", "Caja"]);
   });
 
-  it("el administrador suma Control y abajo Ajustes y Más, con los módulos generales adentro", () => {
+  it("el administrador: TODO lo del instituto en Academia, y abajo Más con los módulos generales", () => {
     const m = menuDe("ADMIN");
-    expect(m.map((b) => b.bloque)).toEqual(["dia", "vender", "control", "administracion"]);
-    expect(bloque(m, "vender")).toEqual(["Cobrar", "Punto de venta", "Caja"]);
-    expect(bloque(m, "control")).toEqual(["Panel de control", "Planilla docentes", "Reportes"]);
-    expect(bloque(m, "administracion")).toEqual(["Ajustes", "Más"]);
+    expect(m.map((b) => b.bloque)).toEqual(["instituto", "vender", "administracion"]);
+    expect(academia(m)).toEqual([
+      "Hoy", "Calendario", "Estudiantes", "Inscripciones online", "Cobrar", "Cobranza",
+      "Panel de control", "Planilla docentes", "Reportes", "Cursos", "Sedes", "Ajustes",
+    ]);
+    expect(bloque(m, "vender")).toEqual(["Punto de venta", "Caja"]);
+    expect(bloque(m, "administracion")).toEqual(["Más"]);
     const nombres = todos(m);
     // Lo que el dueño ya tenía sigue estando, dentro de "Más".
-    for (const si of ["Personal", "Usuarios", "Inventario", "Gastos operativos", "Mi página", "Más reportes", "Sedes", "Cursos"]) {
+    for (const si of ["Personal", "Usuarios", "Inventario", "Gastos operativos", "Mi página", "Más reportes"]) {
       expect(nombres).toContain(si);
     }
     for (const no of ["Cuentas por cobrar", "Mesas del salón", "Insumos", "Billar", "Grupos", "Mis clases de hoy"]) {
@@ -179,10 +188,19 @@ describe("menú de ACADEMIA", () => {
     }
   });
 
-  it("el docente ve sólo sus clases (sin «Mi planilla»: la planilla es del admin, D1 del 22-oct)", () => {
+  it("el grupo Academia lleva a su primera pantalla y se abre estando en cualquiera de las suyas", () => {
+    const m = menuDe("ADMIN");
+    const grupo = m[0].nodos[0];
+    expect(grupo.item.a).toBe("/academia/hoy");
+    expect(caminoA(m.flatMap((b) => b.nodos), "/academia/planilla")).toEqual([grupo.id]);
+    expect(caminoA(m.flatMap((b) => b.nodos), "/configuracion/carreras")).toEqual([grupo.id]);
+  });
+
+  it("el docente ve sólo sus clases, dentro de Academia (sin «Mi planilla»: es del admin, D1 del 22-oct)", () => {
     const m = menuDe("PROFESIONAL");
-    expect(m.map((b) => b.bloque)).toEqual(["clases"]);
-    expect(bloque(m, "clases")).toEqual(["Mis clases de hoy", "Pasar lista", "Notas"]);
+    expect(m.map((b) => b.bloque)).toEqual(["instituto"]);
+    expect(academia(m)).toEqual(["Mis clases de hoy", "Pasar lista", "Notas"]);
+    expect(m[0].nodos[0].item.a).toBe("/academia/mis-clases");
   });
 
   it("la barra del celular lleva siempre el título de la pantalla, también las que no están en el menú (QA ronda 2, B-28)", () => {
@@ -214,6 +232,7 @@ describe("menú de ACADEMIA", () => {
   it("los demás rubros no cambian: un restaurante no ve bloques del instituto", () => {
     const c = ctxDe("ADMIN", "RESTAURANTE", SOLO_ACADEMIA);
     const m = construirMenu((s) => puedeVer(c, s), "RESTAURANTE");
-    for (const b of m) expect(["dia", "control", "clases"]).not.toContain(b.bloque);
+    for (const b of m) expect(b.bloque).not.toBe("instituto");
+    expect(todos(m)).not.toContain("Academia");
   });
 });

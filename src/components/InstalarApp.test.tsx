@@ -91,12 +91,11 @@ describe("HojaInstalar", () => {
 });
 
 describe("textoInstalar", () => {
-  const equipo = (userAgent: string, maxTouchPoints = 0) => ({ userAgent, maxTouchPoints });
-
-  it("celular y tablet: en el celular; computadora: en esta computadora", () => {
-    expect(textoInstalar(equipo(CHROME_ANDROID))).toBe("Instalar en el celular");
-    expect(textoInstalar(equipo(SAFARI_IPHONE))).toBe("Instalar en el celular");
-    expect(textoInstalar(equipo(CHROME_WINDOWS))).toBe("Instalar en esta computadora");
+  it("una sola palabra en todos los equipos (26-oct): el renglón no se parte en dos", () => {
+    for (const ua of [CHROME_ANDROID, SAFARI_IPHONE, CHROME_WINDOWS]) {
+      conUserAgent(ua);
+      expect(textoInstalar()).toBe("Instalar");
+    }
   });
 });
 

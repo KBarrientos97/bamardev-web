@@ -70,13 +70,12 @@ export interface ItemNav {
  * El del medio se llama "Stock" y no "Inventario" porque adentro vive el grupo
  * Inventario: el rótulo y el ítem se leían como un renglón repetido.
  */
-export type Bloque = "agenda" | "vender" | "stock" | "administracion" | "dia" | "control" | "clases";
+export type Bloque = "agenda" | "vender" | "stock" | "administracion" | "instituto";
 
 export const TITULO_BLOQUE: Record<Bloque, string> = {
-  // Los del instituto (ver `ITEMS_ACADEMIA`): ningún otro rubro los usa.
-  dia: "Día a día",
-  control: "Control",
-  clases: "Mis clases",
+  // El del instituto (ver `ITEMS_ACADEMIA`): ningún otro rubro lo usa. No se
+  // llama "Academia" por lo mismo que Stock: adentro vive el grupo Academia.
+  instituto: "Instituto",
   // Sólo belleza con la feature `agenda`: en los demás rubros no hay ningún
   // ítem en este bloque y el rótulo no se dibuja. No se llama "Agenda" por lo
   // mismo que Stock: adentro vive el grupo Agenda.
@@ -429,87 +428,69 @@ function general(a: string, cambios: Partial<ItemNav> = {}): ItemNav {
 }
 
 /**
- * El menú del instituto (ronda 2, lienzo `MenuV2`): uno por rol, armado con
- * las mismas reglas de siempre (cada ítem pide su sección), pero con los
- * bloques que usa el instituto en vez de los de un comercio:
+ * El menú del instituto: uno por rol, armado con las mismas reglas de siempre
+ * (cada ítem pide su sección).
  *
- *   DÍA A DÍA       Hoy · Calendario · Estudiantes · Cobranza (recepción)
- *   VENDER          Cobrar (a estudiante) · Punto de venta · Caja
- *   CONTROL         Panel de control · Planilla docentes · Reportes (el dueño)
- *   MIS CLASES      Mis clases · Pasar lista · Notas (el docente; su planilla
- *                   ya no: sólo el admin la ve, D1 del 22-oct)
- *   ADMINISTRACIÓN  Ajustes (cursos, sedes) y un grupo "Más" plegado con los
- *                   módulos generales que el dueño ya tenía: inventario,
- *                   personal, usuarios, gastos, Mi página… No se quita nada,
- *                   se aparta de lo de todos los días.
+ *   INSTITUTO       un solo grupo "Academia" con TODO lo que es sólo del
+ *                   instituto (dueño, 26-oct: ningún otro rubro lo tiene, y
+ *                   repartido en cuatro bloques se mezclaba con lo general):
+ *                   lo del día, cobrar, las clases del docente, el control
+ *                   del dueño y lo que se configura una vez.
+ *   VENDER          Punto de venta · Caja
+ *   ADMINISTRACIÓN  un grupo "Más" plegado con los módulos generales que el
+ *                   dueño ya tenía: inventario, personal, usuarios, gastos,
+ *                   Mi página… No se quita nada, se aparta.
  *
- * El docente ve sólo su bloque porque lo suyo pide el alcance PROPIO, y la
- * recepción no ve Control porque no tiene esos permisos: nada se decide por
- * el nombre del rol. Sólo existe en ACADEMIA; los demás rubros siguen con
+ * El docente ve sólo sus clases porque lo suyo pide el alcance PROPIO, y la
+ * recepción no ve el control porque no tiene esos permisos: nada se decide
+ * por el nombre del rol. Sólo existe en ACADEMIA; los demás rubros siguen con
  * `ITEMS`, sin enterarse.
  */
 const ITEMS_ACADEMIA: (ItemNav & { bloque: Bloque })[] = [
-  { a: "/academia/hoy", label: "Hoy", titulo: "Hoy en el instituto", icono: "clock", seccion: "academia_hoy", bloque: "dia" },
-  { a: "/academia/calendario", label: "Calendario", icono: "calendar", seccion: "academia_calendario", bloque: "dia" },
   {
-    a: "/academia/alumnos",
-    label: "Estudiantes",
-    etiqueta: (palabra) => conMayuscula(palabra("clientes")),
-    icono: "users",
-    seccion: "academia_alumnos",
-    bloque: "dia",
-    // E20, con su contador (ver MenuLateral). Sin el formulario de la página no existe.
+    // Sin sección: el nombre lleva al primer hijo que se ve (Hoy para la
+    // recepción y el dueño, Mis clases para el docente).
+    a: "/academia/hoy",
+    label: "Academia",
+    icono: "birrete",
+    bloque: "instituto",
     hijos: [
+      { a: "/academia/hoy", label: "Hoy", titulo: "Hoy en el instituto", icono: "clock", seccion: "academia_hoy" },
+      { a: "/academia/calendario", label: "Calendario", icono: "calendar", seccion: "academia_calendario" },
+      {
+        a: "/academia/alumnos",
+        label: "Estudiantes",
+        etiqueta: (palabra) => conMayuscula(palabra("clientes")),
+        icono: "users",
+        seccion: "academia_alumnos",
+      },
+      // E20, con su contador (ver MenuLateral). Al lado de Estudiantes y no
+      // dentro: un tercer nivel en un grupo tan largo no se encontraba.
       {
         a: "/academia/preinscripciones",
         label: "Inscripciones online",
         icono: "bell",
         seccion: "academia_preinscripciones",
       },
-    ],
-  },
-  { a: "/academia/cobranza", label: "Cobranza", icono: "coins", seccion: "academia_cobranza", bloque: "dia" },
-  // Cobrar a estudiante (A1, 22-oct): las cuotas ya no se cobran en el POS,
-  // que queda para los productos. Primero en Vender: es lo de todos los días.
-  {
-    a: "/academia/cobrar",
-    label: "Cobrar",
-    titulo: "Cobrar a estudiante",
-    icono: "dollar",
-    seccion: "academia_cobrar",
-    bloque: "vender",
-  },
-  { a: "/pos", label: "Punto de venta", icono: "cart", seccion: "pos", bloque: "vender", exacto: true },
-  // La caja del turno: el historial del POS, con el cierre. Lleva a la misma
-  // pantalla con `?vista=caja` (ver Pos.tsx).
-  { a: "/pos?vista=caja", label: "Caja", icono: "billetera", seccion: "caja", bloque: "vender" },
-  { a: "/academia/control", label: "Panel de control", icono: "tablero", seccion: "academia_control", bloque: "control" },
-  {
-    a: "/academia/planilla",
-    label: "Planilla docentes",
-    icono: "fileText",
-    seccion: "academia_planilla",
-    bloque: "control",
-  },
-  { a: "/academia/reportes", label: "Reportes", icono: "chart", seccion: "academia_reportes", bloque: "control" },
-  {
-    a: "/academia/mis-clases",
-    label: "Mis clases de hoy",
-    titulo: "Mis clases",
-    icono: "birrete",
-    seccion: "academia_mis_clases",
-    bloque: "clases",
-  },
-  { a: "/academia/lista", label: "Pasar lista", icono: "lista", seccion: "academia_lista", bloque: "clases" },
-  { a: "/academia/notas", label: "Notas", icono: "edit", seccion: "academia_notas", bloque: "clases" },
-  {
-    a: "/configuracion/academia",
-    label: "Ajustes",
-    titulo: "Ajustes del instituto",
-    icono: "settings",
-    seccion: "academia_ajustes",
-    bloque: "administracion",
-    hijos: [
+      // Cobrar a estudiante (A1, 22-oct): las cuotas ya no se cobran en el
+      // POS, que queda para los productos.
+      { a: "/academia/cobrar", label: "Cobrar", titulo: "Cobrar a estudiante", icono: "dollar", seccion: "academia_cobrar" },
+      { a: "/academia/cobranza", label: "Cobranza", icono: "coins", seccion: "academia_cobranza" },
+      // Las del docente (su planilla ya no: sólo el admin la ve, D1 del 22-oct).
+      {
+        a: "/academia/mis-clases",
+        label: "Mis clases de hoy",
+        titulo: "Mis clases",
+        icono: "birrete",
+        seccion: "academia_mis_clases",
+      },
+      { a: "/academia/lista", label: "Pasar lista", icono: "lista", seccion: "academia_lista" },
+      { a: "/academia/notas", label: "Notas", icono: "edit", seccion: "academia_notas" },
+      // El control del dueño.
+      { a: "/academia/control", label: "Panel de control", icono: "tablero", seccion: "academia_control" },
+      { a: "/academia/planilla", label: "Planilla docentes", icono: "fileText", seccion: "academia_planilla" },
+      { a: "/academia/reportes", label: "Reportes", icono: "chart", seccion: "academia_reportes" },
+      // Lo que se configura una vez, al final.
       {
         a: "/configuracion/carreras",
         label: "Cursos",
@@ -518,8 +499,19 @@ const ITEMS_ACADEMIA: (ItemNav & { bloque: Bloque })[] = [
         seccion: "academia_carreras",
       },
       general("/inventario/almacenes", { label: "Sedes", icono: "home" }),
+      {
+        a: "/configuracion/academia",
+        label: "Ajustes",
+        titulo: "Ajustes del instituto",
+        icono: "settings",
+        seccion: "academia_ajustes",
+      },
     ],
   },
+  { a: "/pos", label: "Punto de venta", icono: "cart", seccion: "pos", bloque: "vender", exacto: true },
+  // La caja del turno: el historial del POS, con el cierre. Lleva a la misma
+  // pantalla con `?vista=caja` (ver Pos.tsx).
+  { a: "/pos?vista=caja", label: "Caja", icono: "billetera", seccion: "caja", bloque: "vender" },
   {
     a: "/personal",
     label: "Más",

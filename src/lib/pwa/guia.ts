@@ -26,9 +26,13 @@ export function esComputadora(equipo: Equipo = equipoActual()): boolean {
   return !esIOS(equipo.userAgent, equipo.maxTouchPoints) && !esAndroid(equipo.userAgent);
 }
 
-/** Cómo se llama la opción del menú en este equipo. */
-export function textoInstalar(equipo: Equipo = equipoActual()): string {
-  return esComputadora(equipo) ? "Instalar en esta computadora" : "Instalar en el celular";
+/**
+ * Cómo se llama la opción del menú. Una sola palabra en todos los equipos
+ * (dueño, 26-oct): "Instalar en esta computadora" partía el renglón en dos.
+ * Dónde se instala lo dice la guía que abre (`InstalarApp`).
+ */
+export function textoInstalar(): string {
+  return "Instalar";
 }
 
 /** Qué guía mostrar en este equipo. */

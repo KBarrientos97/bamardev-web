@@ -59,7 +59,7 @@ export default function MenuLateral({
   /** "Cambiar mi contraseña": el formulario vive en el Layout (ver ahí). */
   onCambiarPassword?: () => void;
   /**
-   * "Instalar en el celular" o "en esta computadora" (PLAN-IOS). Sin ella no
+   * "Instalar" (PLAN-IOS). Sin ella no
    * se dibuja: ya está instalada o el navegador no deja instalarla.
    */
   onInstalar?: () => void;

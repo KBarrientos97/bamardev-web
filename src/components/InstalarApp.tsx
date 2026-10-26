@@ -42,7 +42,7 @@ function PasosIOS({ navegador }: { navegador: NavegadorIOS }) {
       <div className="space-y-3 text-sm leading-relaxed text-texto">
         <p>Este navegador no deja agregar la app a la pantalla de inicio.</p>
         <p>
-          Abrí <strong>{location.host}</strong> en <strong>Safari</strong> y tocá de nuevo “Instalar en el celular”
+          Abrí <strong>{location.host}</strong> en <strong>Safari</strong> y tocá de nuevo “Instalar”
           desde el menú.
         </p>
       </div>
