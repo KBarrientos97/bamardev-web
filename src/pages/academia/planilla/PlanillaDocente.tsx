@@ -101,8 +101,18 @@ export default function PlanillaDocente() {
   const [metodo, setMetodo] = useState<MetodoPagoPlanilla>("EFECTIVO");
   const [error, setError] = useState("");
   const [aviso, setAviso] = useAviso(6000);
-  /** La línea a la que se le está anotando el motivo (A6). */
-  const [motivoDe, setMotivoDe] = useState<LineaPlanilla | null>(null);
+  /**
+   * Si en el panel de la línea se está anotando el motivo (A6). Va dentro del
+   * mismo panel y no en un diálogo encima: en el celular el panel ya es una
+   * hoja, y una hoja sobre otra tapaba de qué línea era el motivo.
+   */
+  const [editandoMotivo, setEditandoMotivo] = useState(false);
+
+  /** Abre el panel de una línea; con `motivo`, ya con el motivo para anotar. */
+  function elegir(l: LineaPlanilla | null, motivo = false) {
+    setElegida(l);
+    setEditandoMotivo(motivo);
+  }
 
   const volver = { a: "/academia/planilla", texto: `Planilla ${p.docente}s` };
   const d = carga.datos;
@@ -205,13 +215,29 @@ export default function PlanillaDocente() {
                 ))}
               </Select>
             </label>
+            {/* Cerrar y pagar cierran el panel de la línea: en escritorio el
+                panel no tiene velo y la confirmación quedaba encima de él. */}
             {liquida && d.estado === "EN_CURSO" && (
-              <Boton icono="lock" disabled={ocupado} onClick={() => void cerrar()}>
+              <Boton
+                icono="lock"
+                disabled={ocupado}
+                onClick={() => {
+                  elegir(null);
+                  void cerrar();
+                }}
+              >
                 Cerrar planilla
               </Boton>
             )}
             {liquida && d.estado === "CERRADA" && (
-              <Boton icono="billetera" disabled={ocupado} onClick={() => setPagando(true)}>
+              <Boton
+                icono="billetera"
+                disabled={ocupado}
+                onClick={() => {
+                  elegir(null);
+                  setPagando(true);
+                }}
+              >
                 Registrar pago {fmtMoney(r.liquido)}
               </Boton>
             )}
@@ -277,7 +303,7 @@ export default function PlanillaDocente() {
             valor={lista}
             onChange={(k) => {
               setLista(k);
-              setElegida(null);
+              elegir(null);
             }}
             opciones={[
               { clave: "cuentan", label: "Cuentan", n: r.cuentan },
@@ -318,7 +344,7 @@ export default function PlanillaDocente() {
                     <li key={`${l.inscripcionId}-${l.materia.orden}`}>
                       <button
                         type="button"
-                        onClick={() => setElegida(l)}
+                        onClick={() => elegir(l)}
                         aria-label={`Ver el detalle de ${l.alumno.nombre}`}
                         // UX 8: de dónde sale el monto, también al pasar el mouse.
                         title={l.explicacion}
@@ -355,7 +381,9 @@ export default function PlanillaDocente() {
                             <BotonFila
                               variante="ghost"
                               icono="edit"
-                              onClick={() => setMotivoDe(l)}
+                              // Abre el panel de la línea con el motivo a la vista:
+                              // un solo lugar para anotarlo, sin diálogo aparte.
+                              onClick={() => elegir(l, true)}
                               aria-label={`${l.motivoNoPago ? "Cambiar el motivo" : "Agregar motivo"} de ${l.alumno.nombre}`}
                             >
                               {l.motivoNoPago ? "Cambiar motivo" : "Agregar motivo"}
@@ -384,7 +412,7 @@ export default function PlanillaDocente() {
           abierto
           titulo={elegida.alumno.nombre}
           subtitulo={`${elegida.grupo.nombre} · M${elegida.materia.orden} ${elegida.materia.nombre} · ${textoFormaPago(elegida.formaPago)}`}
-          onClose={() => setElegida(null)}
+          onClose={() => elegir(null)}
           acciones={
             <Link
               to={`/academia/alumnos/${elegida.alumno.id}`}
@@ -415,7 +443,18 @@ export default function PlanillaDocente() {
           </SeccionPanel>
           {conMotivo && (elegida.motivoNoPago || (liquida && materiaDe(elegida) != null)) && (
             <SeccionPanel titulo={`Por qué no se le paga al ${p.docente}`}>
-              {elegida.motivoNoPago ? (
+              {editandoMotivo && liquida && materiaDe(elegida) != null ? (
+                <EditorMotivo
+                  key={`${elegida.inscripcionId}-${materiaDe(elegida)}`}
+                  linea={elegida}
+                  onCerrar={() => setEditandoMotivo(false)}
+                  onGuardado={(m) => {
+                    ponerMotivo(elegida, m);
+                    setEditandoMotivo(false);
+                    setAviso(m ? "Motivo anotado." : "Motivo quitado.");
+                  }}
+                />
+              ) : elegida.motivoNoPago ? (
                 <p className="text-[13px] text-texto-2">
                   {textoMotivoNoPago(elegida.motivoNoPago)}
                   <span className="block text-[12px] text-texto-3">
@@ -425,26 +464,14 @@ export default function PlanillaDocente() {
               ) : (
                 <p className="text-[13px] text-texto-3">Sin motivo anotado.</p>
               )}
-              {liquida && materiaDe(elegida) != null && (
-                <BotonFila variante="ghost" icono="edit" className="mt-2" onClick={() => setMotivoDe(elegida)}>
+              {!editandoMotivo && liquida && materiaDe(elegida) != null && (
+                <BotonFila variante="ghost" icono="edit" className="mt-2" onClick={() => setEditandoMotivo(true)}>
                   {elegida.motivoNoPago ? "Cambiar motivo" : "Agregar motivo"}
                 </BotonFila>
               )}
             </SeccionPanel>
           )}
         </PanelLateral>
-      )}
-
-      {motivoDe && (
-        <DialogoMotivo
-          linea={motivoDe}
-          onCerrar={() => setMotivoDe(null)}
-          onGuardado={(m) => {
-            ponerMotivo(motivoDe, m);
-            setMotivoDe(null);
-            setAviso(m ? "Motivo anotado." : "Motivo quitado.");
-          }}
-        />
       )}
 
       <Modal
@@ -498,8 +525,10 @@ function materiaDe(l: LineaPlanilla): number | undefined {
 /**
  * A6: anotar por qué una línea no le suma al docente. Cinco opciones y, con
  * "Otro", el texto es obligatorio. Si ya tenía uno, se cambia o se quita.
+ * Vive dentro del panel de la línea (como el motivo de Control): sin un
+ * diálogo encima del panel.
  */
-function DialogoMotivo({
+function EditorMotivo({
   linea,
   onCerrar,
   onGuardado,
@@ -546,54 +575,44 @@ function DialogoMotivo({
   }
 
   return (
-    <Modal
-      abierto
-      titulo="Motivo de no pago"
-      subtitulo={`${linea.alumno.nombre} · M${linea.materia.orden} ${linea.materia.nombre}`}
-      onClose={() => !ocupado && onCerrar()}
-      ancho="max-w-sm"
-      acciones={
-        <>
-          {actual && (
-            <Boton variante="ghost" onClick={() => void quitar()} disabled={ocupado} className="mr-auto">
-              Quitar motivo
-            </Boton>
-          )}
-          <Boton variante="ghost" onClick={onCerrar} disabled={ocupado}>
-            Cancelar
-          </Boton>
-          <Boton onClick={() => void guardar()} disabled={ocupado}>
-            {ocupado ? "Guardando…" : "Guardar motivo"}
-          </Boton>
-        </>
-      }
-    >
-      <div className="space-y-3">
-        <div role="radiogroup" aria-label="Motivo" className="space-y-1.5">
-          {MOTIVOS_NO_PAGO.map(([k, label]) => (
-            <label
-              key={k}
-              className={`flex min-h-11 cursor-pointer items-center gap-3 rounded-xl border px-3.5 text-sm transition-colors sm:min-h-10 ${
-                motivo === k ? "border-primary bg-primary-50 font-semibold text-primary-700" : "border-borde bg-white text-texto-2 hover:bg-muted"
-              }`}
-            >
-              <input
-                type="radio"
-                name="motivo-no-pago"
-                checked={motivo === k}
-                onChange={() => setMotivo(k)}
-                className="h-4 w-4 accent-[var(--color-primary-boton)]"
-              />
-              {label}
-            </label>
-          ))}
-        </div>
-        <Campo label={motivo === "OTRO" ? "¿Cuál?" : "Detalle (opcional)"}>
-          <Input value={detalle} onChange={(e) => setDetalle(e.target.value)} placeholder={motivo === "OTRO" ? "Contá el motivo" : ""} />
-        </Campo>
-        <ErrorMsg>{error}</ErrorMsg>
+    <div role="group" aria-label="Motivo de no pago" className="space-y-3">
+      <div role="radiogroup" aria-label="Motivo" className="space-y-1.5">
+        {MOTIVOS_NO_PAGO.map(([k, label]) => (
+          <label
+            key={k}
+            className={`flex min-h-11 cursor-pointer items-center gap-3 rounded-xl border px-3.5 text-sm transition-colors sm:min-h-10 ${
+              motivo === k ? "border-primary bg-primary-50 font-semibold text-primary-700" : "border-borde bg-white text-texto-2 hover:bg-muted"
+            }`}
+          >
+            <input
+              type="radio"
+              name="motivo-no-pago"
+              checked={motivo === k}
+              onChange={() => setMotivo(k)}
+              className="h-4 w-4 accent-[var(--color-primary-boton)]"
+            />
+            {label}
+          </label>
+        ))}
       </div>
-    </Modal>
+      <Campo label={motivo === "OTRO" ? "¿Cuál?" : "Detalle (opcional)"}>
+        <Input value={detalle} onChange={(e) => setDetalle(e.target.value)} placeholder={motivo === "OTRO" ? "Contá el motivo" : ""} />
+      </Campo>
+      <ErrorMsg>{error}</ErrorMsg>
+      <div className="flex flex-wrap gap-2">
+        <Boton className="min-h-11 flex-1 sm:min-h-0" onClick={() => void guardar()} disabled={ocupado}>
+          {ocupado ? "Guardando…" : "Guardar motivo"}
+        </Boton>
+        <Boton variante="ghost" className="min-h-11 sm:min-h-0" onClick={onCerrar} disabled={ocupado}>
+          Cancelar
+        </Boton>
+        {actual && (
+          <Boton variante="ghost" className="min-h-11 w-full sm:min-h-0" onClick={() => void quitar()} disabled={ocupado}>
+            Quitar motivo
+          </Boton>
+        )}
+      </div>
+    </div>
   );
 }
 

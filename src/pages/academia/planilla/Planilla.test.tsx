@@ -161,7 +161,10 @@ describe("N8 · Planilla de un docente", () => {
   it("cancelar el diálogo no paga", async () => {
     vi.mocked(apiAcademia.planillaDocente).mockResolvedValue({ ...PLANILLA, estado: "CERRADA" });
     await montar();
+    // Con el panel de una línea abierto: el diálogo no queda encima de él.
+    fireEvent.click(screen.getByRole("button", { name: "Ver el detalle de Andrade Villca, Mateo" }));
     fireEvent.click(screen.getByRole("button", { name: /Registrar pago/ }));
+    expect(screen.queryByRole("complementary", { name: "Andrade Villca, Mateo" })).not.toBeInTheDocument();
     fireEvent.click(within(screen.getByRole("dialog", { name: "Registrar el pago" })).getByRole("button", { name: "Cancelar" }));
     expect(apiAcademia.pagarPlanilla).not.toHaveBeenCalled();
   });
@@ -210,12 +213,15 @@ describe("A6 · planilla sólo del admin: abre en Cuentan y el motivo de no pago
     expect(screen.queryByRole("button", { name: /Agregar motivo/ })).not.toBeInTheDocument();
   });
 
-  it("en «Sin pagar» se anota el motivo; con «Otro» pide el texto", async () => {
+  it("en «Sin pagar» se anota el motivo dentro del panel de la línea, sin un diálogo encima; con «Otro» pide el texto", async () => {
     vi.mocked(apiAcademia.guardarMotivoNoPago).mockResolvedValue({});
     await montarCon({});
     fireEvent.click(screen.getByRole("tab", { name: /Sin pagar/ }));
     fireEvent.click(screen.getByRole("button", { name: "Agregar motivo de Rivero Gil, Matías" }));
-    const dialogo = screen.getByRole("dialog", { name: "Motivo de no pago" });
+    // El botón de la fila abre el panel de esa línea con el motivo a la vista.
+    const panel = screen.getByRole("complementary", { name: "Rivero Gil, Matías" });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    const dialogo = within(panel).getByRole("group", { name: "Motivo de no pago" });
     const opciones = within(dialogo).getAllByRole("radio");
     expect(opciones).toHaveLength(5);
     fireEvent.click(within(dialogo).getByRole("radio", { name: "Otro" }));
@@ -236,8 +242,10 @@ describe("A6 · planilla sólo del admin: abre en Cuentan y el motivo de no pago
       motivo: "RETIRO",
       detalle: "se mudó",
     });
-    // El motivo queda en la fila.
-    expect(screen.getByText(/Se retiró: se mudó/)).toBeInTheDocument();
+    // El motivo queda en la fila y en el panel, que sigue abierto sin el editor.
+    expect(screen.getAllByText(/Se retiró: se mudó/)).toHaveLength(2);
+    expect(within(panel).queryByRole("group", { name: "Motivo de no pago" })).not.toBeInTheDocument();
+    expect(within(panel).getByRole("button", { name: "Cambiar motivo" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Cambiar el motivo de Rivero Gil, Matías" })).toBeInTheDocument();
   });
 
@@ -248,12 +256,46 @@ describe("A6 · planilla sólo del admin: abre en Cuentan y el motivo de no pago
     });
     fireEvent.click(screen.getByRole("tab", { name: /Sin pagar/ }));
     expect(screen.getByText("Tiene beca")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Cambiar el motivo de Rivero Gil, Matías" }));
+    // Desde el panel: «Cambiar motivo» abre el editor ahí mismo.
+    fireEvent.click(screen.getByRole("button", { name: "Ver el detalle de Rivero Gil, Matías" }));
+    const panel = screen.getByRole("complementary", { name: "Rivero Gil, Matías" });
+    fireEvent.click(within(panel).getByRole("button", { name: "Cambiar motivo" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     await act(async () => {
-      fireEvent.click(within(screen.getByRole("dialog", { name: "Motivo de no pago" })).getByRole("button", { name: "Quitar motivo" }));
+      fireEvent.click(within(within(panel).getByRole("group", { name: "Motivo de no pago" })).getByRole("button", { name: "Quitar motivo" }));
     });
     expect(apiAcademia.quitarMotivoNoPago).toHaveBeenCalledWith(105, 32);
     expect(screen.queryByText("Tiene beca")).not.toBeInTheDocument();
+  });
+
+  it("cancelar el motivo vuelve al panel sin guardar; otra línea abre sin el editor", async () => {
+    await montarCon({
+      sinPagar: [SIN_PAGAR, { ...SIN_PAGAR, inscripcionId: 106, alumno: { id: 56, nombre: "Soria Paz, Ana" } }],
+    });
+    fireEvent.click(screen.getByRole("tab", { name: /Sin pagar/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Agregar motivo de Rivero Gil, Matías" }));
+    const panel = screen.getByRole("complementary", { name: "Rivero Gil, Matías" });
+    fireEvent.click(within(within(panel).getByRole("group", { name: "Motivo de no pago" })).getByRole("button", { name: "Cancelar" }));
+    expect(within(panel).queryByRole("group", { name: "Motivo de no pago" })).not.toBeInTheDocument();
+    expect(within(panel).getByText("Sin motivo anotado.")).toBeInTheDocument();
+    expect(apiAcademia.guardarMotivoNoPago).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Agregar motivo de Rivero Gil, Matías" }));
+    fireEvent.click(screen.getByRole("button", { name: "Ver el detalle de Soria Paz, Ana" }));
+    const otro = screen.getByRole("complementary", { name: "Soria Paz, Ana" });
+    expect(within(otro).queryByRole("group", { name: "Motivo de no pago" })).not.toBeInTheDocument();
+  });
+
+  it("cerrar la planilla o registrar el pago cierran antes el panel de la línea", async () => {
+    vi.mocked(apiAcademia.cerrarPlanilla).mockRejectedValueOnce(new ApiError("El mes no terminó", 400, { codigo: "MES_EN_CURSO" }));
+    await montarCon({});
+    fireEvent.click(screen.getByRole("button", { name: "Ver el detalle de Andrade Villca, Mateo" }));
+    expect(screen.getByRole("complementary", { name: "Andrade Villca, Mateo" })).toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Cerrar planilla" }));
+    });
+    expect(screen.getByRole("dialog", { name: "El mes no terminó" })).toBeInTheDocument();
+    expect(screen.queryByRole("complementary", { name: "Andrade Villca, Mateo" })).not.toBeInTheDocument();
   });
 
   it("con un backend anterior (sin el módulo de la línea) no ofrece anotar nada", async () => {
