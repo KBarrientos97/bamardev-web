@@ -15,6 +15,7 @@ import {
   grupoDeActividad,
   iniciales,
   opcionesDeTurno,
+  pieDelEsperado,
   rangoDeSemana,
   rangoDeTurno,
   rangoDeTurnoCompleto,
@@ -76,6 +77,78 @@ describe("Supervisión: cómo se lee cada cosa", () => {
     expect(iniciales("Pepe Mamani")).toBe("PM");
     expect(iniciales("  kevin  ")).toBe("K");
     expect(iniciales("")).toBe("?");
+  });
+});
+
+describe("Supervisión (26-oct): de dónde sale el «Debía haber» de una caja", () => {
+  // La captura de Miguel: abrió con 50, vendió 676 (556 en efectivo y 120 por
+  // QR), contó 616. Sumaba 50 + 676 y no le daba: el QR no entra al cajón.
+  const cobrado = (efectivo: number, qr = 0) => ({
+    efectivo: { monto: efectivo, cobros: 12 },
+    qr: { monto: qr, cobros: 3 },
+    otros: [],
+    mixtas: 0,
+  });
+
+  // "_" es el espacio duro: ahí el renglón no se corta ("Bs" / "556,00" se leía
+  // mal en la columna angosta del celular). Sólo se corta entre las partes.
+  const pegado = (s: string) => s.replace(/_/g, " ");
+
+  it("si es el cambio más lo cobrado en efectivo, lo dice con los dos números", () => {
+    const pie = pieDelEsperado({ inicial: 50, esperado: 606, cobrado: cobrado(556, 120), movimientos: 0 });
+    expect(pie).toBe(pegado("Bs_50,00 +_Bs_556,00"));
+  });
+
+  it("con la cena, la resta y dice que es la cena", () => {
+    const pie = pieDelEsperado({ inicial: 50, esperado: 586, cobrado: cobrado(556, 120), cena: { monto: 20, por: "Kevin" }, movimientos: 0 });
+    expect(pie).toBe(pegado("Bs_50,00 +_Bs_556,00 −_Bs_20,00 de cena"));
+  });
+
+  it("un residuo de centavos de la suma igual cuadra", () => {
+    expect(pieDelEsperado({ inicial: 0.1, esperado: 0.3, cobrado: cobrado(0.2), movimientos: 0 })).toBe(pegado("Bs_0,10 +_Bs_0,20"));
+  });
+
+  it("con cena y otro gasto, cada uno con su nombre y su número", () => {
+    // Antes decía "con otros movimientos: tocá para ver" sin número: con la cena y
+    // otro gasto juntos la cuenta no se podía seguir. 50 + 65 − 15 − 5 = 95.
+    const pie = pieDelEsperado({ inicial: 50, esperado: 95, cobrado: cobrado(65, 73), cena: { monto: 15, por: "Kevin" }, movimientos: -5 });
+    expect(pie).toBe(pegado("Bs_50,00 +_Bs_65,00 −_Bs_15,00 de cena −_Bs_5,00 de otros movimientos"));
+  });
+
+  it("una mesa de tiempo fijo en juego son adelantos de mesas, no «otros movimientos»", () => {
+    // Caja abierta de Carla: 50 + 332,50 cobrados + 60 de tiempo fijo en
+    // efectivo de la Mesa 3, que sigue en juego. Antes salía "de otros
+    // movimientos" y la tarjeta de movimientos decía que no había ninguno.
+    const pie = pieDelEsperado({ inicial: 50, esperado: 442.5, cobrado: cobrado(332.5), movimientos: 0, adelantos: 60 });
+    expect(pie).toBe(pegado("Bs_50,00 +_Bs_332,50 +_Bs_60,00 de adelantos de mesas"));
+    // Al revés: una venta de esta caja cuenta un adelanto que entró en otra.
+    expect(pieDelEsperado({ inicial: 50, esperado: 312.5, cobrado: cobrado(332.5), movimientos: 0, adelantos: -70 })).toBe(
+      pegado("Bs_50,00 +_Bs_332,50 −_Bs_70,00 de adelantos que cobró otra caja"),
+    );
+  });
+
+  it("lo que no se puede nombrar desde la lista va como «otros ajustes», con su número", () => {
+    // Cerrada con 606 esperados; al otro día anularon una venta de Bs 45 en
+    // efectivo: lo cobrado ya no la cuenta y el esperado del cierre sí.
+    const pie = pieDelEsperado({ inicial: 50, esperado: 606, cobrado: cobrado(511), movimientos: 0 });
+    expect(pie).toBe(pegado("Bs_50,00 +_Bs_511,00 +_Bs_45,00 de otros ajustes"));
+  });
+
+  it("con un backend que no manda los movimientos, el resto sigue siendo «de otros movimientos»", () => {
+    // 50 + 556 = 606, pero un retiro de 300 lo bajó a 306.
+    expect(pieDelEsperado({ inicial: 50, esperado: 306, cobrado: cobrado(556, 120) })).toBe(pegado("Bs_50,00 +_Bs_556,00 −_Bs_300,00 de otros movimientos"));
+  });
+
+  it("la diferencia no se corta entre el «Bs» y el número", () => {
+    expect(textoDiferencia(-120)).toBe(pegado("faltan Bs_120,00"));
+    expect(textoDiferencia(10)).toBe(pegado("sobran Bs_10,00"));
+    expect(textoDiferencia(0.001)).toBe("cuadra");
+  });
+
+  it("sin los datos nuevos (un backend anterior) no hay pie", () => {
+    expect(pieDelEsperado({ inicial: 50 })).toBeNull();
+    expect(pieDelEsperado({ inicial: 50, esperado: 606 })).toBeNull();
+    expect(pieDelEsperado({ inicial: 50, cobrado: cobrado(556) })).toBeNull();
   });
 });
 

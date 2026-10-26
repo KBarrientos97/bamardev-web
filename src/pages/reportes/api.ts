@@ -1,6 +1,7 @@
 import { api, qs, request } from "../../lib/api";
 import { rangoParaApi } from "../../lib/rangoApi";
-import type { CodigoMotivoEfectivo, RangoReporte } from "../../types";
+import type { CodigoMotivoEfectivo, RangoReporte, ReporteCierreProductos } from "../../types";
+import type { CobroApi } from "../billar/api";
 
 /**
  * Lo que devuelve cada endpoint de reportes, con lo que significa cada número.
@@ -160,6 +161,43 @@ export interface MetodoPagoApi {
   porcentaje: number;
   /** Nuevo: cuántos cobros. */
   cantidad?: number;
+}
+
+/**
+ * Lo cobrado con UN medio en el período, venta por venta
+ * (`GET /reportes/metodos-pago/cobros`, backend del 26-oct). Es para conciliar:
+ * Miguel, el administrador del billar, compara cada QR contra su banco, y con
+ * "QR · 3 cobros · Bs 120" no sabía cuáles eran ni de qué producto.
+ */
+export interface CobrosDelMedioApi {
+  medio: string;
+  /** Los mismos números de la fila del reporte. `mixtas`: ventas pagadas con este medio y otro. */
+  totales: { monto: number; cobros: number; ventas: number; mixtas: number };
+  /** Sólo en la primera tanda; las de "Ver más" lo traen en null. */
+  productos: {
+    /**
+     * Lo de las ventas pagadas SÓLO con este medio: estos productos se pagaron
+     * enteros con él. El tiempo de mesa viene marcado. Null si no hay ninguna.
+     */
+    solo: ReporteCierreProductos | null;
+    /**
+     * Lo de las ventas pagadas con este medio Y otro. No se puede decir qué
+     * producto pagó cada medio (un pago no apunta a un renglón de la venta):
+     * va aparte y nunca se reparte. Null si no hay ninguna.
+     */
+    mixtas: ReporteCierreProductos | null;
+    /** De esas ventas mixtas, lo que entró por este medio. */
+    mixtasMonto: number;
+  } | null;
+  /** La tanda, del más nuevo al más viejo. */
+  cobros: CobroApi[];
+  /**
+   * `total`: los cobros del período; `quedan`: los que siguen después de esta
+   * tanda; `siguiente`: la marca para pedirlos con "Ver más" (null si no hay
+   * más). Por marca y no por número de página: un cobro que entra mientras se
+   * mira no corre la lista ni repite el último que se vio.
+   */
+  tanda: { limite: number; total: number; quedan: number; siguiente: string | null };
 }
 
 export interface DescuentosApi {
@@ -428,6 +466,13 @@ export const apiReportes = {
   horas: (r: RangoReporte) => api.reporte<HorasApi>("horas", r),
   lentos: (r: RangoReporte) => api.reporte<LentosApi>("productos-lentos", r),
   metodosPago: (r: RangoReporte) => api.reporte<MetodoPagoApi[]>("metodos-pago", r),
+  /**
+   * Lo cobrado con un medio (`medio`: el nombre tal como lo devuelve
+   * `metodos-pago`), de a tandas: sin `antesDe` la primera; con la marca
+   * `siguiente` de una tanda, la que le sigue.
+   */
+  cobrosDelMedio: (r: RangoReporte, medio: string, antesDe?: string, limite = 100) =>
+    api.reporte<CobrosDelMedioApi>("metodos-pago/cobros", r, { medio, antesDe, limite }),
   descuentos: (r: RangoReporte) => api.reporte<DescuentosApi>("descuentos", r),
   meseros: (r: RangoReporte) => api.reporte<MeserosApi>("meseros", r),
   cierres: (r: RangoReporte) => api.reporte<CierresApi>("cierres", r),
