@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Producto } from "../../types";
-import { puntoVencimiento } from "./medicamento";
+import { concentracionAparte, puntoVencimiento } from "./medicamento";
 
 function med(over: Partial<Producto>): Producto {
   return {
@@ -29,6 +29,26 @@ function med(over: Partial<Producto>): Producto {
     ...over,
   };
 }
+
+describe("la concentración al lado del nombre", () => {
+  it("no se repite si el nombre ya la trae, con o sin espacio", () => {
+    expect(concentracionAparte({ nombre: "Paracetamol 500 mg x20", concentracion: "500 mg" })).toBeNull();
+    expect(concentracionAparte({ nombre: "Amoxidal 500mg x12 cápsulas", concentracion: "500 mg" })).toBeNull();
+    expect(concentracionAparte({ nombre: "Alcohol medicinal 70% 250ml", concentracion: "70 %" })).toBeNull();
+    expect(concentracionAparte({ nombre: "Loratadina Inti 10MG x10", concentracion: "10 mg" })).toBeNull();
+  });
+
+  it("se muestra si el nombre no la trae", () => {
+    expect(concentracionAparte({ nombre: "Suero fisiológico 500ml", concentracion: "0,9 %" })).toBe("0,9 %");
+    expect(concentracionAparte({ nombre: "Diclofenaco gel 30 g", concentracion: "1 %" })).toBe("1 %");
+    expect(concentracionAparte({ nombre: "Ácido fólico", concentracion: null })).toBeNull();
+  });
+
+  it("un número que es la cola de otro no cuenta: 5 mg no está en 15mg", () => {
+    expect(concentracionAparte({ nombre: "Meloxicam 15mg", concentracion: "5 mg" })).toBe("5 mg");
+    expect(concentracionAparte({ nombre: "Suero 10,9%", concentracion: "0,9 %" })).toBe("0,9 %");
+  });
+});
 
 describe("el punto de vencimiento del mostrador", () => {
   it("rojo a 30 días o menos, y vencido también", () => {

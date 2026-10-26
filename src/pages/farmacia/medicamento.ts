@@ -1,5 +1,5 @@
 import { fmtNum } from "../../lib/format";
-import { contiene } from "../../lib/texto";
+import { normalizar } from "../../lib/texto";
 import type { CondicionVenta, Producto, TramoVencimiento } from "../../types";
 
 /**
@@ -64,11 +64,22 @@ export function detalleDe(p: Producto): string {
  * La concentración, sólo si el nombre no la trae ya. Casi todos los nombres
  * comerciales la incluyen ("Paracetamol 500 mg") y repetirla al lado quedaba
  * como un error de dedo.
+ *
+ * Se compara sin espacios porque el nombre casi siempre la trae pegada
+ * ("Amoxidal 500mg", "Alcohol 70%") y la ficha la guarda separada ("500 mg").
+ * El número tiene que empezar ahí: "5 mg" no está en "15mg".
  */
 export function concentracionAparte(
   p: Pick<Producto, "nombre"> & { concentracion?: string | null },
 ): string | null {
-  if (!p.concentracion || contiene(p.nombre, p.concentracion)) return null;
+  if (!p.concentracion) return null;
+  const nombre = normalizar(p.nombre).replace(/\s+/g, "");
+  const conc = normalizar(p.concentracion).replace(/\s+/g, "");
+  let i = nombre.indexOf(conc);
+  while (i !== -1) {
+    if (i === 0 || !/[\d.,]/.test(nombre[i - 1])) return null;
+    i = nombre.indexOf(conc, i + 1);
+  }
   return p.concentracion;
 }
 
