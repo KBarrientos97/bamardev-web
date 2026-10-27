@@ -267,8 +267,9 @@ describe("N1 · Calendario con todas las sedes (QA ronda 2, B-07)", () => {
     const fila = (grupos: GrupoEnCalendario[]): TCalendario["filas"] => [
       { inicio: "09:00", fin: "11:00", esFranja: true, celdas: [{ mes: "2026-10", grupos }] },
     ];
-    const deCentral = tarjeta({ grupoId: 7 });
-    const deNorte = tarjeta({ grupoId: 8, carrera: { id: 4, nombre: "Tatuaje" } });
+    // Cada tarjeta trae su sede: un solo pedido alcanza (ya no uno por sede).
+    const deCentral = tarjeta({ grupoId: 7, sede: { id: 1, nombre: "Central" } });
+    const deNorte = tarjeta({ grupoId: 8, carrera: { id: 4, nombre: "Tatuaje" }, sede: { id: 2, nombre: "Norte" } });
     vi.mocked(apiAcademia.calendario).mockImplementation(async (f) => {
       const grupos = f?.sede === 1 ? [deCentral] : f?.sede === 2 ? [deNorte] : [deCentral, deNorte];
       return { sede: null, meses: CAL.meses, filas: fila(grupos) };
@@ -276,11 +277,13 @@ describe("N1 · Calendario con todas las sedes (QA ronda 2, B-07)", () => {
     await montar();
     expect(screen.getByRole("button", { name: /^Barbería .+ 2 de 3$/ })).toHaveTextContent("Sede Central");
     expect(screen.getByRole("button", { name: /^Tatuaje .+ 2 de 3$/ })).toHaveTextContent("Sede Norte");
+    expect(vi.mocked(apiAcademia.calendario).mock.calls.filter(([f]) => f?.sede != null)).toHaveLength(0);
 
     // Elegida una sede, el calendario ya es de esa sede y las tarjetas no la repiten.
     fireEvent.click(screen.getByRole("button", { name: "Norte" }));
     await act(async () => {});
     expect(screen.getByRole("button", { name: /^Tatuaje .+ 2 de 3$/ })).not.toHaveTextContent("Sede Norte");
+    expect(screen.queryByRole("button", { name: /^Barbería .+ 2 de 3$/ })).not.toBeInTheDocument();
   });
 
   it("si la lista de docentes no se pudo traer, lo dice y deja reintentar", async () => {

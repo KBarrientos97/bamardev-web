@@ -92,29 +92,11 @@ export default function Calendario() {
   const ajustes = useApi(() => apiAcademia.ajustes(), []);
   const carreras = useApi(() => apiAcademia.carreras(), []);
 
-  // Con "Todas las sedes" las tarjetas se mezclan y ninguna dice de qué sede es
-  // (auditoría 26-oct, U3). La tarjeta del calendario no trae la sede, así que
-  // se pide el mismo rango por cada sede y se anota a cuál pertenece cada grupo.
-  // Con una sola sede a la vista no hace falta: se ve en el selector y el título.
+  // Con "Todas las sedes" las tarjetas se mezclan y ninguna diría de qué sede
+  // es (auditoría 26-oct, U3): cada tarjeta trae su `sede` y se la rotula. Con
+  // una sola sede a la vista no hace falta: se ve en el selector y el título.
   const verVariasSedes = sede.elegir && sede.sucursalId == null;
-  const idsSedes = sede.sucursales.map((s) => s.id).join(",");
-  const sedesDeGrupos = useApi(async () => {
-    const porSede = new Map<number, string>();
-    if (!verVariasSedes) return porSede;
-    const respuestas = await Promise.all(
-      sede.sucursales.map((s) =>
-        apiAcademia
-          .calendario({ sede: s.id, desde: pedirDesde, meses: pedirMeses })
-          .then((c) => ({ nombre: s.nombre, c }))
-          // Si una sede falla, sus tarjetas salen sin rótulo: el calendario sigue.
-          .catch(() => null),
-      ),
-    );
-    for (const r of respuestas)
-      for (const f of r?.c.filas ?? []) for (const celda of f.celdas) for (const g of celda.grupos) porSede.set(g.grupoId, r!.nombre);
-    return porSede;
-  }, [verVariasSedes, idsSedes, pedirDesde, pedirMeses]);
-  const sedeDe = (g: GrupoEnCalendario) => (verVariasSedes ? sedesDeGrupos.datos?.get(g.grupoId) : undefined);
+  const sedeDe = (g: GrupoEnCalendario) => (verVariasSedes ? g.sede?.nombre : undefined);
 
   const datos = cal.datos;
   const dia = datos?.diaInicioModulo ?? ajustes.datos?.diaInicioModulo ?? 10;

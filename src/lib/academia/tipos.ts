@@ -700,6 +700,8 @@ export interface GrupoEnCalendario {
   grupoId: number;
   nombre: string;
   carrera: Ref;
+  /** U3: la sede del grupo, para rotular la tarjeta con «Todas las sedes». Un backend anterior no la manda. */
+  sede?: Ref | null;
   modulo: { orden: number; nombre: string; total: number };
   ultimo: boolean;
   dias: number[];
