@@ -251,8 +251,9 @@ export const SESION_DOCENTE = {
     rol: "PROFESIONAL",
     sucursalId: 1,
     sucursal: "Central",
-    permisos: ["academia.ver", "asistencia.registrar", "notas.registrar"],
-    permisosPropios: ["academia.ver", "asistencia.registrar", "notas.registrar"],
+    // D7: desde el 27-oct el Docente de fábrica trae su «Llegué» (asistencia.llegadas PROPIO).
+    permisos: ["academia.ver", "asistencia.registrar", "asistencia.llegadas", "notas.registrar"],
+    permisosPropios: ["academia.ver", "asistencia.registrar", "asistencia.llegadas", "notas.registrar"],
   },
   negocio: SESION_ADMIN.negocio,
   rubro: "ACADEMIA",

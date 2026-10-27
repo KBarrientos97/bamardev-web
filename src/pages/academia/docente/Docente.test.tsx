@@ -1,7 +1,8 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ClaseDelDia, ListaDeClase } from "../../../lib/academia/tipos";
+import type { ClaseDelDia, ListaDeClase, LlegadaRegistrada } from "../../../lib/academia/tipos";
+import { fmtHora } from "../../../lib/format";
 
 /**
  * Las pantallas del docente (E11a, N6, E16): sus clases con cuántos pagaron,
@@ -9,15 +10,23 @@ import type { ClaseDelDia, ListaDeClase } from "../../../lib/academia/tipos";
  * cantidades, sin nombres ni montos por estudiante.
  */
 
+/** Los permisos del docente en cada prueba: `null` = los de fábrica. */
+const quien = vi.hoisted(() => ({ permisos: null as string[] | null }));
+
 vi.mock("../../../store/AuthContext", async () => {
-  const { SESION_DOCENTE: s } = await import("../../../test/academiaFixtures");
+  const { SESION_DOCENTE: base } = await import("../../../test/academiaFixtures");
   const { puedeVer } = await import("../../../lib/permisos");
   return {
-    useAuth: () => ({
+    useAuth: () => {
+      const s = quien.permisos
+        ? { ...base, usuario: { ...base.usuario, permisos: quien.permisos, permisosPropios: quien.permisos } }
+        : base;
+      return {
       ...s,
       puede: (sec: Parameters<typeof puedeVer>[1]) =>
         puedeVer({ features: s.negocio.features, rubro: "ACADEMIA", permisos: s.usuario.permisos, permisosPropios: s.usuario.permisosPropios }, sec),
-    }),
+      };
+    },
   };
 });
 
@@ -25,7 +34,7 @@ vi.mock("../../../lib/academia/apiAcademia", async (importOriginal) => {
   const real = await importOriginal<typeof import("../../../lib/academia/apiAcademia")>();
   return {
     ...real,
-    apiAcademia: { misClases: vi.fn(), lista: vi.fn(), guardarLista: vi.fn(), grupo: vi.fn(), planilla: vi.fn(), planillaDocente: vi.fn() },
+    apiAcademia: { misClases: vi.fn(), llegada: vi.fn(), lista: vi.fn(), guardarLista: vi.fn(), grupo: vi.fn(), planilla: vi.fn(), planillaDocente: vi.fn() },
   };
 });
 
@@ -67,6 +76,7 @@ const LISTA: ListaDeClase = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  quien.permisos = null;
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(new Date(2026, 9, 16, 8, 48));
   vi.mocked(apiAcademia.misClases).mockResolvedValue({
@@ -98,6 +108,127 @@ describe("E11a · Mis clases", () => {
     // Su barra de abajo en el celular: Mis clases y Notas (sin "Mi planilla" desde D1, 22-oct).
     const barra = within(screen.getByRole("navigation", { name: "Secciones del docente" }));
     expect(barra.getAllByRole("link").map((l) => l.textContent)).toEqual(["Mis clases", "Notas"]);
+  });
+});
+
+describe("D7 · el «Llegué» del docente en Mis clases", () => {
+  const LLEGADA_8_48 = new Date(2026, 9, 16, 8, 48).toISOString();
+  const REGISTRADA: LlegadaRegistrada = {
+    sesionId: 11,
+    llegadaEn: LLEGADA_8_48,
+    atrasoMin: 0,
+    toleranciaMin: 10,
+    conAtraso: false,
+    minutosAntes: 12,
+    muyTemprano: false,
+    descuento: 0,
+  };
+
+  async function montar() {
+    render(
+      <MemoryRouter>
+        <MisClases />
+      </MemoryRouter>,
+    );
+    await act(async () => {});
+  }
+
+  it("marca la llegada con la hora del servidor y muestra la hora, sin montos ni descuentos", async () => {
+    // El backend manda el descuento; el docente no lo ve jamás (RM 0008/2016, semáforo).
+    vi.mocked(apiAcademia.llegada).mockResolvedValue({ ...REGISTRADA, descuento: { monto: 150, porMinuto: 5 } });
+    await montar();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Llegué" }));
+    });
+    expect(apiAcademia.llegada).toHaveBeenCalledWith(11, false);
+    expect(screen.getByText(`Llegaste a las ${fmtHora(LLEGADA_8_48)}`)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Llegué" })).not.toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent(/Bs|150|descuento|atraso/i);
+    // Vuelve a pedir las clases: el estado viene del servidor.
+    expect(apiAcademia.misClases).toHaveBeenCalledTimes(2);
+  });
+
+  it("si llegó con atraso, dice los minutos con tono neutro (sin monto)", async () => {
+    vi.mocked(apiAcademia.llegada).mockResolvedValue({ ...REGISTRADA, atrasoMin: 6, conAtraso: true, descuento: { monto: 30 } });
+    await montar();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Llegué" }));
+    });
+    const linea = screen.getByText(/Llegaste a las/).closest("p")!;
+    expect(linea).toHaveTextContent("6 min de atraso");
+    expect(linea.innerHTML).not.toMatch(/warning|danger/);
+    expect(document.body).not.toHaveTextContent(/Bs|descuento/i);
+  });
+
+  it("más de una hora antes: pregunta y, si confirma, reenvía con confirmarTemprano", async () => {
+    vi.mocked(apiAcademia.llegada)
+      .mockRejectedValueOnce(
+        new ApiError("Faltan 120 minutos para la clase.", 409, { codigo: "LLEGADA_MUY_TEMPRANO", minutosAntes: 120, horaInicio: "09:00" }),
+      )
+      .mockResolvedValueOnce({ ...REGISTRADA, muyTemprano: true, minutosAntes: 120 });
+    await montar();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Llegué" }));
+    });
+    const dialogo = screen.getByRole("dialog", { name: "Todavía falta para la clase" });
+    expect(dialogo).toHaveTextContent("Faltan 2 h para que empiece la clase (09:00). ¿Marcás tu llegada igual?");
+    // Todavía no se registró nada.
+    expect(screen.queryByText(/Llegaste a las/)).not.toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(within(dialogo).getByRole("button", { name: "Sí, marcar mi llegada" }));
+    });
+    expect(apiAcademia.llegada).toHaveBeenLastCalledWith(11, true);
+    expect(screen.getByText(/Llegaste a las/)).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "Todavía falta para la clase" })).not.toBeInTheDocument();
+  });
+
+  it("«Cancelar» deja todo como estaba", async () => {
+    vi.mocked(apiAcademia.llegada).mockRejectedValue(
+      new ApiError("Faltan 90 minutos.", 409, { codigo: "LLEGADA_MUY_TEMPRANO", minutosAntes: 90, horaInicio: "09:00" }),
+    );
+    await montar();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Llegué" }));
+    });
+    expect(screen.getByRole("dialog")).toHaveTextContent("Faltan 1 h 30 min para que empiece la clase");
+    fireEvent.click(screen.getByRole("button", { name: "Cancelar" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Llegué" })).toBeEnabled();
+    expect(apiAcademia.llegada).toHaveBeenCalledTimes(1);
+  });
+
+  it("otro error del servidor (otro día, clase de un compañero) se muestra tal cual", async () => {
+    vi.mocked(apiAcademia.llegada).mockRejectedValue(new ApiError("La llegada se marca el día de la clase.", 400, { codigo: "LLEGADA_OTRO_DIA" }));
+    await montar();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Llegué" }));
+    });
+    expect(screen.getByText("La llegada se marca el día de la clase.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Llegué" })).toBeEnabled();
+  });
+
+  it("si ya marcó su llegada (la recepción o él antes), muestra la hora y no ofrece el botón", async () => {
+    vi.mocked(apiAcademia.misClases).mockResolvedValue({
+      fecha: "2026-10-16",
+      clases: [{ ...CLASE, llegadaEn: LLEGADA_8_48, atrasoMin: 4 }],
+      proximas: [],
+    });
+    await montar();
+    expect(screen.getByText(`Llegaste a las ${fmtHora(LLEGADA_8_48)}`)).toBeInTheDocument();
+    expect(screen.getByText(/4 min de atraso/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Llegué" })).not.toBeInTheDocument();
+  });
+
+  it("sin el permiso asistencia.llegadas no hay botón", async () => {
+    quien.permisos = ["academia.ver", "asistencia.registrar", "notas.registrar"];
+    await montar();
+    expect(screen.queryByRole("button", { name: "Llegué" })).not.toBeInTheDocument();
+  });
+
+  it("una clase que ya terminó no ofrece el botón", async () => {
+    vi.setSystemTime(new Date(2026, 9, 16, 11, 30));
+    await montar();
+    expect(screen.queryByRole("button", { name: "Llegué" })).not.toBeInTheDocument();
   });
 });
 

@@ -1,15 +1,19 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Icon } from "../../../components/Icon";
-import { Cargando, ErrorMsg } from "../../../components/ui";
-import { apiAcademia } from "../../../lib/academia/apiAcademia";
+import { Cargando, Confirmar, ErrorMsg } from "../../../components/ui";
+import { apiAcademia, CODIGOS_ACADEMIA } from "../../../lib/academia/apiAcademia";
 import { cuandoEs } from "../../../lib/academia/calendario";
 import { nombreDe } from "../../../lib/academia/formato";
-import type { ClaseDelDia, ProximaClase } from "../../../lib/academia/tipos";
+import type { ClaseDelDia, LlegadaRegistrada, ProximaClase } from "../../../lib/academia/tipos";
 import { usePalabras } from "../../../lib/academia/usePalabras";
 import { capitalizar, fechaLarga } from "../../../lib/agenda/horaAgenda";
+import { ApiError } from "../../../lib/api";
+import { fmtHora } from "../../../lib/format";
+import { tienePermiso } from "../../../lib/permisos";
 import { useApi } from "../../../lib/useApi";
 import { useAuth } from "../../../store/AuthContext";
-import { Chip, claseBotonFila, EncabezadoPagina, LISTA, PaginaAcademia, Tarjeta } from "../piezas";
+import { BotonFila, Chip, claseBotonFila, EncabezadoPagina, LISTA, PaginaAcademia, Tarjeta } from "../piezas";
 import NavDocente from "./NavDocente";
 
 /**
@@ -44,7 +48,7 @@ export default function MisClases() {
             <Tarjeta id="t-hoy" titulo="Clases de hoy" contador={d.clases.length} sinRelleno>
               <ul className={LISTA.lista}>
                 {d.clases.map((c) => (
-                  <Clase key={c.sesionId} c={c} />
+                  <Clase key={c.sesionId} c={c} onLlegada={datos.recargar} />
                 ))}
               </ul>
             </Tarjeta>
@@ -70,9 +74,47 @@ export default function MisClases() {
   );
 }
 
-function Clase({ c }: { c: ClaseDelDia }) {
+/** «2 h», «1 h 30 min», «45 min»: cuánto falta para la clase, como se lo dice el docente. */
+function duracionTexto(min: number): string {
+  if (min < 60) return `${min} min`;
+  const h = Math.floor(min / 60);
+  const resto = min % 60;
+  return resto ? `${h} h ${resto} min` : `${h} h`;
+}
+
+function Clase({ c, onLlegada }: { c: ClaseDelDia; onLlegada: () => void }) {
   const p = usePalabras();
+  const { usuario } = useAuth();
   const cuando = cuandoEs(c);
+  // D7: el «Llegué» del docente. La hora la pone el servidor; acá no se calcula nada.
+  const puedeMarcar = tienePermiso(usuario, "asistencia.llegadas");
+  const [marcando, setMarcando] = useState(false);
+  const [registrada, setRegistrada] = useState<LlegadaRegistrada | null>(null);
+  const [temprano, setTemprano] = useState<{ minutosAntes: number | null } | null>(null);
+  const [errorLlegada, setErrorLlegada] = useState("");
+  const llegadaEn = c.llegadaEn ?? registrada?.llegadaEn ?? null;
+  const atraso = (c.llegadaEn ? c.atrasoMin : registrada?.atrasoMin) ?? 0;
+
+  async function marcarLlegada(confirmarTemprano = false) {
+    setMarcando(true);
+    setErrorLlegada("");
+    try {
+      setRegistrada(await apiAcademia.llegada(c.sesionId, confirmarTemprano));
+      setTemprano(null);
+      onLlegada();
+    } catch (e) {
+      if (e instanceof ApiError && e.codigo === CODIGOS_ACADEMIA.LLEGADA_MUY_TEMPRANO) {
+        // No se registró nada: se pregunta y, si confirma, se reenvía.
+        setTemprano({ minutosAntes: typeof e.detalle.minutosAntes === "number" ? e.detalle.minutosAntes : null });
+      } else {
+        setTemprano(null);
+        setErrorLlegada(e instanceof Error ? e.message : "No se pudo marcar la llegada");
+      }
+    } finally {
+      setMarcando(false);
+    }
+  }
+
   return (
     <li className={`space-y-3 ${LISTA.item} sm:py-4`}>
       <div className="flex items-start justify-between gap-3">
@@ -100,6 +142,33 @@ function Clase({ c }: { c: ClaseDelDia }) {
           {c.semaforos.amarillo > 0 && <Chip tono="ambar">{c.semaforos.amarillo} en semana de espera</Chip>}
         </p>
       )}
+      {/* Sin montos ni descuentos: el docente ve sólo la hora y, si hubo, los minutos de atraso. */}
+      {llegadaEn ? (
+        <p className="flex items-center gap-1.5 text-[13px] font-semibold text-texto-2">
+          <Icon name="check" size={15} />
+          Llegaste a las {fmtHora(llegadaEn)}
+          {atraso > 0 && <span className="font-normal text-texto-3">· {atraso} min de atraso</span>}
+        </p>
+      ) : (
+        puedeMarcar &&
+        cuando !== "terminó" && (
+          <BotonFila icono="check" variante="primary" className="w-full rounded-xl text-sm" disabled={marcando} onClick={() => void marcarLlegada()}>
+            {marcando ? "Marcando…" : "Llegué"}
+          </BotonFila>
+        )
+      )}
+      <ErrorMsg>{errorLlegada}</ErrorMsg>
+      <Confirmar
+        abierto={!!temprano}
+        titulo="Todavía falta para la clase"
+        texto={`${
+          temprano?.minutosAntes != null ? `Faltan ${duracionTexto(temprano.minutosAntes)} para que empiece la clase` : "Todavía falta para que empiece la clase"
+        } (${c.horaInicio}). ¿Marcás tu llegada igual?`}
+        etiquetaOk="Sí, marcar mi llegada"
+        procesando={marcando}
+        onCancel={() => setTemprano(null)}
+        onOk={() => void marcarLlegada(true)}
+      />
       <div className="flex gap-2">
         <Link
           to={`/academia/lista?grupo=${c.grupoId}`}

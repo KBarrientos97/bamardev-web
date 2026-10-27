@@ -322,6 +322,8 @@ export const PLANTILLAS = {
     // Docente (§5.3): lo suyo. Su planilla ya no (D1, 22-oct).
     "academia.ver:PROPIO",
     "asistencia.registrar:PROPIO",
+    // D7: su «Llegué» en Mis clases, sólo en las clases que dicta él.
+    "asistencia.llegadas:PROPIO",
     "notas.registrar:PROPIO",
   ],
 } as const;
