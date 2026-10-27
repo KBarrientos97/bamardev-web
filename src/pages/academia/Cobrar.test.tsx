@@ -221,6 +221,23 @@ describe("A1 · cobrar a estudiante", () => {
     expect(cuerpo.detalles).toHaveLength(1);
   });
 
+  it("ronda 1 · D4: al borrar el texto con una búsqueda en vuelo, «Buscando…» se apaga", async () => {
+    // La búsqueda no contesta nunca: el pedido queda en vuelo.
+    vi.mocked(apiAcademia.cuotasPorCobrar).mockReturnValue(new Promise(() => undefined));
+    await montar("/academia/cobrar");
+    const buscador = screen.getByLabelText("Buscar estudiante");
+    fireEvent.change(buscador, { target: { value: "cesp" } });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 350));
+    });
+    expect(screen.getByText("Buscando…")).toBeInTheDocument();
+    fireEvent.change(buscador, { target: { value: "" } });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 350));
+    });
+    expect(screen.queryByText("Buscando…")).not.toBeInTheDocument();
+  });
+
   it("desde Cobranza sin la inscripción (?alumno=&q=): lo busca y lo abre solo", async () => {
     await montar("/academia/cobrar?alumno=53&q=2026-0103");
     await act(async () => {

@@ -601,6 +601,10 @@ function BuscarEstudiante({
   useEffect(() => {
     if (buscado.length < MINIMO_BUSQUEDA) {
       setResultados(null);
+      // Un pedido en vuelo ya no cuenta (su `finally` no corre: `vigente` quedó
+      // falso), así que «Buscando…» se apaga acá (ronda 1, D4).
+      setBuscando(false);
+      setError("");
       return;
     }
     let vigente = true;
