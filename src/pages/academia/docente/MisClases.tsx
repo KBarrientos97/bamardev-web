@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { Icon } from "../../../components/Icon";
 import { Cargando, Confirmar, ErrorMsg } from "../../../components/ui";
 import { apiAcademia, CODIGOS_ACADEMIA } from "../../../lib/academia/apiAcademia";
-import { cuandoEs } from "../../../lib/academia/calendario";
+import { cuandoEs, ventanaLlegada } from "../../../lib/academia/calendario";
 import { nombreDe } from "../../../lib/academia/formato";
 import type { ClaseDelDia, LlegadaRegistrada, ProximaClase } from "../../../lib/academia/tipos";
 import { usePalabras } from "../../../lib/academia/usePalabras";
@@ -86,6 +86,7 @@ function Clase({ c, onLlegada }: { c: ClaseDelDia; onLlegada: () => void }) {
   const p = usePalabras();
   const { usuario } = useAuth();
   const cuando = cuandoEs(c);
+  const ventana = ventanaLlegada(c);
   // D7: el «Llegué» del docente. La hora la pone el servidor; acá no se calcula nada.
   const puedeMarcar = tienePermiso(usuario, "asistencia.llegadas");
   const [marcando, setMarcando] = useState(false);
@@ -106,6 +107,11 @@ function Clase({ c, onLlegada }: { c: ClaseDelDia; onLlegada: () => void }) {
       if (e instanceof ApiError && e.codigo === CODIGOS_ACADEMIA.LLEGADA_MUY_TEMPRANO) {
         // No se registró nada: se pregunta y, si confirma, se reenvía.
         setTemprano({ minutosAntes: typeof e.detalle.minutosAntes === "number" ? e.detalle.minutosAntes : null });
+      } else if (e instanceof ApiError && e.codigo === CODIGOS_ACADEMIA.LLEGADA_FUERA_DE_HORARIO) {
+        // La hora del celular y la del servidor no coinciden, o la clase terminó
+        // mientras tanto: el mensaje del servidor ya dice cuándo se puede.
+        setTemprano(null);
+        setErrorLlegada(e.message || "Todavía no se puede marcar la llegada de esta clase.");
       } else {
         setTemprano(null);
         setErrorLlegada(e instanceof Error ? e.message : "No se pudo marcar la llegada");
@@ -151,11 +157,14 @@ function Clase({ c, onLlegada }: { c: ClaseDelDia; onLlegada: () => void }) {
         </p>
       ) : (
         puedeMarcar &&
-        cuando !== "terminó" && (
+        (ventana.estado === "dentro" ? (
           <BotonFila icono="check" variante="primary" className="w-full rounded-xl text-sm" disabled={marcando} onClick={() => void marcarLlegada()}>
             {marcando ? "Marcando…" : "Llegué"}
           </BotonFila>
-        )
+        ) : ventana.estado === "antes" ? (
+          // Antes de la ventana el servidor la rechaza: se dice cuándo se habilita, con texto a la vista.
+          <p className="text-[13px] text-texto-3">Tu llegada se marca desde las {ventana.desde}.</p>
+        ) : null)
       )}
       <ErrorMsg>{errorLlegada}</ErrorMsg>
       <Confirmar

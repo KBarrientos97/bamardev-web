@@ -341,6 +341,8 @@ export const CODIGOS_ACADEMIA = {
   AULA_EN_USO: "AULA_EN_USO",
   /** 409 (D7): el docente marca su llegada mucho antes de la clase; se confirma y se reenvía. */
   LLEGADA_MUY_TEMPRANO: "LLEGADA_MUY_TEMPRANO",
+  /** 400 (ronda 1, P4): la llegada propia sólo se marca desde 3 horas antes y hasta que termina la clase. */
+  LLEGADA_FUERA_DE_HORARIO: "LLEGADA_FUERA_DE_HORARIO",
   // ── Sedes y franjas (BACK-6) ──
   /** 409: el plan no incluye más sedes; el mensaje ya dice cómo ampliarlo. */
   CUPO_SEDES: "CUPO_SEDES",

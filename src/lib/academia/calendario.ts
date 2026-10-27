@@ -132,6 +132,29 @@ export function franjaSiguiente(lista: Franja[], almacenId: number | null): Fran
   return { almacenId, inicio, fin: aHora(aMinutos(inicio) + 120) };
 }
 
+/**
+ * Cuántos minutos antes de la clase deja marcar su llegada el servidor al
+ * docente (`LLEGADA_VENTANA_ANTES_MIN`, ronda 1 P4). Más temprano responde
+ * `LLEGADA_FUERA_DE_HORARIO`.
+ */
+export const LLEGADA_VENTANA_ANTES_MIN = 180;
+
+/**
+ * Dónde está ahora el docente respecto de la ventana para marcar su llegada
+ * (ronda 2): "antes" (todavía no se puede; `desde` es la hora a partir de la
+ * cual sí), "dentro" o "despues" (la clase terminó). Con la hora del equipo:
+ * el servidor decide igual, esto sólo evita ofrecer un botón que va a fallar.
+ */
+export function ventanaLlegada(
+  c: { horaInicio: string; horaFin: string },
+  ahora = new Date(),
+): { estado: "antes" | "dentro" | "despues"; desde: string } {
+  const min = ahora.getHours() * 60 + ahora.getMinutes();
+  const desde = Math.max(0, aMinutos(c.horaInicio) - LLEGADA_VENTANA_ANTES_MIN);
+  const estado = min >= aMinutos(c.horaFin) ? "despues" : min < desde ? "antes" : "dentro";
+  return { estado, desde: aHora(desde) };
+}
+
 /** "en 12 min", "en curso", "terminó": cuándo es la clase, con la hora del equipo. */
 export function cuandoEs(c: { horaInicio: string; horaFin: string }, ahora = new Date()): string {
   const min = ahora.getHours() * 60 + ahora.getMinutes();

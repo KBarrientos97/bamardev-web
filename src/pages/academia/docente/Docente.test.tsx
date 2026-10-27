@@ -121,7 +121,8 @@ describe("D7 · el «Llegué» del docente en Mis clases", () => {
     conAtraso: false,
     minutosAntes: 12,
     muyTemprano: false,
-    descuento: 0,
+    // Como lo manda el backend real cuando no hay descuento: null (ronda 2, T6).
+    descuento: null,
   };
 
   async function montar() {
@@ -223,6 +224,34 @@ describe("D7 · el «Llegué» del docente en Mis clases", () => {
     quien.permisos = ["academia.ver", "asistencia.registrar", "notas.registrar"];
     await montar();
     expect(screen.queryByRole("button", { name: "Llegué" })).not.toBeInTheDocument();
+  });
+
+  it("ronda 2 · más de 3 h antes: no hay botón, y dice desde qué hora se marca (texto a la vista)", async () => {
+    // 05:30 para una clase de las 09:00: la ventana abre a las 06:00.
+    vi.setSystemTime(new Date(2026, 9, 16, 5, 30));
+    await montar();
+    expect(screen.queryByRole("button", { name: "Llegué" })).not.toBeInTheDocument();
+    expect(screen.getByText("Tu llegada se marca desde las 06:00.")).toBeInTheDocument();
+  });
+
+  it("ronda 2 · justo a las 3 h antes ya hay botón", async () => {
+    vi.setSystemTime(new Date(2026, 9, 16, 6, 0));
+    await montar();
+    expect(screen.getByRole("button", { name: "Llegué" })).toBeEnabled();
+    expect(screen.queryByText(/Tu llegada se marca desde/)).not.toBeInTheDocument();
+  });
+
+  it("ronda 2: si el servidor dice LLEGADA_FUERA_DE_HORARIO (reloj distinto), muestra su mensaje sin dejar nada a medias", async () => {
+    vi.mocked(apiAcademia.llegada).mockRejectedValue(
+      new ApiError("Tu clase es a las 09:00: la llegada se marca desde 3 horas antes.", 400, { codigo: "LLEGADA_FUERA_DE_HORARIO", horaInicio: "09:00" }),
+    );
+    await montar();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Llegué" }));
+    });
+    expect(screen.getByText("Tu clase es a las 09:00: la llegada se marca desde 3 horas antes.")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Llegué" })).toBeEnabled();
   });
 
   it("una clase que ya terminó no ofrece el botón", async () => {
