@@ -117,10 +117,11 @@ describe("apiBillar: la clave viaja en las acciones que mueven plata", () => {
   });
 
   it("la extensión, cobrada o al final", async () => {
-    await apiBillar.extender("88", 1, undefined, "clave-2");
-    expect(cuerpoEnviado()).toEqual({ horas: 1, clienteRequestId: "clave-2" });
-    await apiBillar.extender("88", 1, [{ formaPagoId: 9, monto: 20 }], "clave-3");
-    expect(cuerpoEnviado()).toEqual({ horas: 1, pagos: [{ formaPagoId: 9, monto: 20 }], clienteRequestId: "clave-3" });
+    // En minutos desde el 27-oct (la web vende media hora).
+    await apiBillar.extender("88", 30, undefined, "clave-2");
+    expect(cuerpoEnviado()).toEqual({ minutos: 30, clienteRequestId: "clave-2" });
+    await apiBillar.extender("88", 60, [{ formaPagoId: 9, monto: 20 }], "clave-3");
+    expect(cuerpoEnviado()).toEqual({ minutos: 60, pagos: [{ formaPagoId: 9, monto: 20 }], clienteRequestId: "clave-3" });
   });
 
   it("la carga de consumos", async () => {

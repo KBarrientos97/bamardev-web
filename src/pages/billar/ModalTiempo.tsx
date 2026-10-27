@@ -5,8 +5,8 @@ import { Input, Modal } from "../../components/ui";
 import { quedoEnDuda } from "../../lib/cupo";
 import { fmtMoney } from "../../lib/format";
 import { useBloqueoCupo } from "../../lib/useBloqueoCupo";
-import { precioFijo, precioHoras, promoPara } from "./calculo";
-import { opcionesHoras } from "./ModalTiempo.datos";
+import { fmtTiempoFijo, MAX_FIJO_MIN, PASO_FIJO_MIN, precioDelTiempo, precioTiempoFijo, promoPara } from "./calculo";
+import { opcionesTiempo } from "./ModalTiempo.datos";
 import { useIntentoDeCobro } from "../pos/useIntentoDeCobro";
 import { CambioDelCobro, FormCobro } from "./Cobro";
 import { useCobro } from "./useCobro";
@@ -18,11 +18,13 @@ import { BotonB, ErrorAccion, Nota, Segmentado } from "./ui";
 
 /**
  * Abrir una mesa (§7.2) y extender su tiempo fijo (§7.3). Comparten el
- * selector de horas: 1, 2 y 3 h siempre, más los paquetes (`opcionesHoras`),
- * y "Otra cantidad" de 1 a 24 h con la combinación más barata.
+ * selector de tiempo: 30 min, 1, 2 y 3 h siempre, más los paquetes
+ * (`opcionesTiempo`), y "Otra cantidad" de 30 min a 24 h, de media en media
+ * hora, con la combinación más barata.
  */
 
-const MAX_HORAS = 24;
+/** "Otra cantidad" arranca después de las opciones de siempre: 4 h. */
+const OTRA_DESDE_MIN = 4 * 60;
 
 /**
  * "Cobrar Bs X y abrir" cambia el diálogo por el cobro, y el botón de
@@ -43,23 +45,23 @@ function useCobroSinDobleToque() {
   return { cobrando, setCobrando, recienAbierto };
 }
 
-function SelectorHoras({
+function SelectorTiempo({
   tipo,
-  horas,
+  minutos,
   otra,
   onElegir,
   prefijo = "",
 }: {
   tipo: TipoMesa;
-  horas: number;
+  minutos: number;
   otra: boolean;
-  onElegir: (horas: number, otra: boolean) => void;
+  onElegir: (minutos: number, otra: boolean) => void;
   /** "+" al extender: "+1 h · Bs 20,00". */
   prefijo?: string;
 }) {
-  const precio = precioFijo(tipo, horas);
-  const opciones = opcionesHoras(tipo);
-  const elegida = otra ? null : opciones.find((o) => o.h === horas);
+  const precio = precioTiempoFijo(tipo, minutos);
+  const opciones = opcionesTiempo(tipo);
+  const elegida = otra ? null : opciones.find((o) => o.min === minutos);
   const chip = (activo: boolean) =>
     `inline-flex min-h-10 items-center gap-1.5 rounded-full px-3.5 text-[13px] font-semibold tabular-nums transition-colors ${
       activo ? "bg-primary-boton text-white" : "bg-white text-texto-2 ring-1 ring-inset ring-borde hover:bg-muted"
@@ -68,11 +70,11 @@ function SelectorHoras({
     <div className="space-y-3">
       <div className="flex flex-wrap gap-2">
         {opciones.map((o) => {
-          const activo = !otra && horas === o.h;
+          const activo = !otra && minutos === o.min;
           return (
-            <button key={o.h} type="button" aria-pressed={activo} onClick={() => onElegir(o.h, false)} className={chip(activo)}>
+            <button key={o.min} type="button" aria-pressed={activo} onClick={() => onElegir(o.min, false)} className={chip(activo)}>
               {prefijo}
-              {o.h} h · {fmtMoney(o.precio)}
+              {fmtTiempoFijo(o.min)} · {fmtMoney(o.precio)}
               {/* El paquete con precio especial se marca: es la oferta que armó el negocio. */}
               {o.especial && (
                 <span
@@ -86,14 +88,16 @@ function SelectorHoras({
             </button>
           );
         })}
-        <button type="button" aria-pressed={otra} onClick={() => onElegir(Math.max(horas, 4), true)} className={chip(otra)}>
+        <button type="button" aria-pressed={otra} onClick={() => onElegir(Math.max(minutos, OTRA_DESDE_MIN), true)} className={chip(otra)}>
           <Icon name="edit" size={14} />
           Otra cantidad
         </button>
       </div>
       {elegida && elegida.ahorro > 0 && (
         <p className="text-[12px] text-texto-3">
-          {elegida.paquete ? `Paquete de ${elegida.h} h` : `Con paquetes (${precioHoras(tipo, elegida.h).partes.join(" + ")})`}:
+          {elegida.paquete
+            ? `Paquete de ${fmtTiempoFijo(elegida.min)}: `
+            : `Con paquetes (${precioDelTiempo(tipo, elegida.min).partes.join(" + ")}): `}
           ahorran {fmtMoney(elegida.ahorro)} contra la tarifa por hora.
         </p>
       )}
@@ -102,27 +106,27 @@ function SelectorHoras({
           <div className="flex items-center rounded-full bg-white ring-1 ring-inset ring-borde">
             <button
               type="button"
-              aria-label="Una hora menos"
-              disabled={horas <= 1}
-              onClick={() => onElegir(horas - 1, true)}
+              aria-label="Media hora menos"
+              disabled={minutos <= PASO_FIJO_MIN}
+              onClick={() => onElegir(minutos - PASO_FIJO_MIN, true)}
               className="flex h-10 w-10 items-center justify-center rounded-full text-texto-2 hover:bg-muted disabled:opacity-40"
             >
               <Icon name="minus" size={16} />
             </button>
-            <span className="w-8 text-center text-base font-bold tabular-nums" aria-live="polite">
-              {horas}
+            {/* De media en media hora: "1 h 30 min", no "1,5 horas". */}
+            <span className="min-w-[6rem] px-1 text-center text-base font-bold tabular-nums" aria-live="polite">
+              {fmtTiempoFijo(minutos)}
             </span>
             <button
               type="button"
-              aria-label="Una hora más"
-              disabled={horas >= MAX_HORAS}
-              onClick={() => onElegir(horas + 1, true)}
+              aria-label="Media hora más"
+              disabled={minutos >= MAX_FIJO_MIN}
+              onClick={() => onElegir(minutos + PASO_FIJO_MIN, true)}
               className="flex h-10 w-10 items-center justify-center rounded-full text-texto-2 hover:bg-muted disabled:opacity-40"
             >
               <Icon name="plus" size={16} />
             </button>
           </div>
-          <span className="text-sm font-semibold text-texto-2">horas</span>
           <span className="ml-auto text-lg font-extrabold tabular-nums text-primary-700">
             {precio.promo && <s className="mr-2 text-sm font-semibold text-texto-4">{fmtMoney(precio.bruto)}</s>}
             {fmtMoney(precio.precio)}
@@ -188,14 +192,14 @@ export function ModalAbrir({ mesa, onClose }: { mesa: Mesa; onClose: () => void 
   const navigate = useNavigate();
   const tipo = tipoDe(e, mesa);
   const [modo, setModo] = useState<"libre" | "fijo">("libre");
-  const [horas, setHoras] = useState(2);
+  const [minutos, setMinutos] = useState(120);
   const [otra, setOtra] = useState(false);
   const [cliente, setCliente] = useState(mesa.reserva?.nombre ?? "");
   const [garantia, setGarantia] = useState<Garantia>("Ninguna");
   const [queDeja, setQueDeja] = useState("");
   const [nota, setNota] = useState("");
   const { cobrando, setCobrando, recienAbierto } = useCobroSinDobleToque();
-  const precio = precioFijo(tipo, horas);
+  const precio = precioTiempoFijo(tipo, minutos);
   const cobro = useCobro(precio.precio);
   const promoLibre = promoPara(tipo, Number.POSITIVE_INFINITY);
   const accion = useAccion();
@@ -239,12 +243,12 @@ export function ModalAbrir({ mesa, onClose }: { mesa: Mesa; onClose: () => void 
       async () => {
         const r = await billar.abrir(mesa.id, {
           modo,
-          horas: modo === "fijo" ? horas : undefined,
+          minutos: modo === "fijo" ? minutos : undefined,
           pago,
           cliente,
           garantia: garantia === "Otro" ? queDeja.trim() || "Otro" : garantia,
           nota,
-          clienteRequestId: intento.actual(`abrir:${mesa.idInterno}:${modo}:${modo === "fijo" ? horas : 0}:${!!pago}`),
+          clienteRequestId: intento.actual(`abrir:${mesa.idInterno}:${modo}:${modo === "fijo" ? minutos : 0}:${!!pago}`),
         });
         registrarConsumo(r);
       },
@@ -273,7 +277,7 @@ export function ModalAbrir({ mesa, onClose }: { mesa: Mesa; onClose: () => void 
       <Modal
         abierto
         titulo={`Cobrar tiempo fijo · Mesa ${mesa.id}`}
-        subtitulo={`${horas} h · ${tipo.nombre}. Al confirmar, la mesa arranca.`}
+        subtitulo={`${fmtTiempoFijo(minutos)} · ${tipo.nombre}. Al confirmar, la mesa arranca.`}
         onClose={onClose}
         cerrarAlClicAfuera={false}
         ancho="max-w-lg"
@@ -293,7 +297,8 @@ export function ModalAbrir({ mesa, onClose }: { mesa: Mesa; onClose: () => void 
           <p className="text-[11px] font-bold uppercase tracking-wider text-white/80">Tiempo fijo Mesa {mesa.id}</p>
           <p className="text-3xl font-extrabold tabular-nums">{fmtMoney(precio.precio)}</p>
           <p className="text-[13px] text-white/85">
-            {horas} h{precio.partes.length > 1 ? ` (${precio.partes.join(" + ")})` : ""}
+            {fmtTiempoFijo(minutos)}
+            {precio.partes.length > 1 ? ` (${precio.partes.join(" + ")})` : ""}
           </p>
         </div>
         <FormCobro cobro={cobro} cambioEnElPie />
@@ -345,15 +350,15 @@ export function ModalAbrir({ mesa, onClose }: { mesa: Mesa; onClose: () => void 
           <TarjetaRadio
             activo={modo === "fijo"}
             titulo="Tiempo fijo"
-            texto="Eligen cuántas horas. Corre la cuenta regresiva y avisa antes de terminar. Pueden pagar ahora o al final."
+            texto="Eligen cuánto tiempo, desde 30 min. Corre la cuenta regresiva y avisa antes de terminar. Pueden pagar ahora o al final."
             onClick={() => setModo("fijo")}
           >
-            <SelectorHoras
+            <SelectorTiempo
               tipo={tipo}
-              horas={horas}
+              minutos={minutos}
               otra={otra}
-              onElegir={(h, o) => {
-                setHoras(h);
+              onElegir={(m, o) => {
+                setMinutos(m);
                 setOtra(o);
               }}
             />
@@ -416,23 +421,23 @@ export function ModalAbrir({ mesa, onClose }: { mesa: Mesa; onClose: () => void 
 export function ModalExtender({ mesa, onClose }: { mesa: Mesa; onClose: () => void }) {
   const e = useBillar();
   const tipo = tipoDe(e, mesa);
-  const [horas, setHoras] = useState(1);
+  const [minutos, setMinutos] = useState(60);
   const [otra, setOtra] = useState(false);
   const { cobrando, setCobrando, recienAbierto } = useCobroSinDobleToque();
-  const precio = precioFijo(tipo, horas);
+  const precio = precioTiempoFijo(tipo, minutos);
   const cobro = useCobro(precio.precio);
   const s = mesa.sesion;
   const accion = useAccion();
   // El mismo id si se reintenta la MISMA extensión: con wifi malo la
-  // respuesta se perdía, el cajero volvía a tocar y se sumaban las horas (y
+  // respuesta se perdía, el cajero volvía a tocar y se sumaba el tiempo (y
   // su cobro) dos veces.
   const intento = useIntentoDeCobro();
 
   const extender = async (conPago: boolean) => {
     if (!s) return;
     const pago = conPago && cobro.pago ? cobro.pago : undefined;
-    const clave = intento.actual(huellaExtension(s.id, horas, pago));
-    if (!(await accion.ejecutar(() => billar.extender(mesa.id, horas, pago, clave)))) return;
+    const clave = intento.actual(huellaExtension(s.id, minutos, pago));
+    if (!(await accion.ejecutar(() => billar.extender(mesa.id, minutos, pago, clave)))) return;
     intento.registrado();
     onClose();
   };
@@ -443,7 +448,7 @@ export function ModalExtender({ mesa, onClose }: { mesa: Mesa; onClose: () => vo
     <Modal
       abierto
       titulo={`Extender Mesa ${mesa.id}`}
-      subtitulo={`Tiene ${s.prepago.min / 60} h de tiempo fijo. Se suman las horas y los avisos vuelven a empezar.`}
+      subtitulo={`Tiene ${fmtTiempoFijo(s.prepago.min)} de tiempo fijo. Se suma el tiempo y los avisos vuelven a empezar.`}
       onClose={onClose}
       cerrarAlClicAfuera={false}
       ancho="max-w-lg"
@@ -475,13 +480,13 @@ export function ModalExtender({ mesa, onClose }: { mesa: Mesa; onClose: () => vo
         <FormCobro cobro={cobro} cambioEnElPie />
       ) : (
         <div className="space-y-4">
-          <SelectorHoras
+          <SelectorTiempo
             tipo={tipo}
-            horas={horas}
+            minutos={minutos}
             otra={otra}
             prefijo="+"
-            onElegir={(h, o) => {
-              setHoras(h);
+            onElegir={(m, o) => {
+              setMinutos(m);
               setOtra(o);
             }}
           />

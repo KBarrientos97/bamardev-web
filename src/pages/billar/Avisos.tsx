@@ -80,7 +80,7 @@ export function MotorAvisos() {
       const nivel = nivelAlcanzado(restante, e.ajustes.avisos);
       if (nivel === null || yaAvisado(s.id, nivel, s.prepago.min)) continue;
       marcarAvisado(s.id, nivel, e.ajustes.avisos, s.prepago.min);
-      const t = textosAviso(m.id, restante, s.prepago.min / 60, fmtTarifaCorta(tipoDe(e, m).tarifa));
+      const t = textosAviso(m.id, restante, s.prepago.min, fmtTarifaCorta(tipoDe(e, m).tarifa));
       billar.avisar({
         tono: nivel > 1 ? "ambar" : "rojo",
         titulo: t.titulo,

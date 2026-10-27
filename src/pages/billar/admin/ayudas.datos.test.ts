@@ -21,9 +21,9 @@ const POOL: TipoMesa = {
   tolerancia: 3,
   minimo: 30,
   paquetes: [
-    { h: 1, precio: 20 },
-    { h: 2, precio: 40 },
-    { h: 3, precio: 55 },
+    { min: 60, precio: 20 },
+    { min: 120, precio: 40 },
+    { min: 180, precio: 55 },
   ],
   promos: [],
 };
@@ -95,8 +95,8 @@ describe("ayudas de Tarifas y paquetes", () => {
   });
 
   it("los paquetes se explican con una cantidad que arma la combinación más barata", () => {
-    expect(ejemploPaquete(POOL)).toEqual({ horas: 4, partes: "3 h + 1 h", bs: "Bs 75,00", promo: null });
-    expect(ejemploPaquete({ ...POOL, paquetes: [] })).toEqual({ horas: 2, partes: "2 h sueltas", bs: "Bs 40,00", promo: null });
+    expect(ejemploPaquete(POOL)).toEqual({ tiempo: "4 h", partes: "3 h + 1 h", bs: "Bs 75,00", promo: null });
+    expect(ejemploPaquete({ ...POOL, paquetes: [] })).toEqual({ tiempo: "2 h", partes: "2 h sueltas", bs: "Bs 40,00", promo: null });
   });
 
   it("lo que se pasa del tiempo fijo se cobra por fracción y sin mínimo", () => {

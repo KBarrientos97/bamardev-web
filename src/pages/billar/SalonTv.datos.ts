@@ -4,6 +4,7 @@ import {
   estadoVisual,
   fmtCrono,
   fmtHace,
+  fmtTiempoFijo,
   horaDe,
   PAUSA_LARGA_SEG,
   promoPara,
@@ -60,10 +61,10 @@ export function contenidoTarjeta(v: VistaMesa): ContenidoTarjeta {
     let progreso: number | null = null;
     let color = "text-white";
     if (s.prepago && c.restante !== null) {
-      const horas = s.prepago.min / 60;
+      const fijo = fmtTiempoFijo(s.prepago.min);
       if (c.restante > 0) {
         grande = fmtCrono(c.restante);
-        chico = `Le quedan · tiempo fijo ${horas} h`;
+        chico = `Le quedan · tiempo fijo ${fijo}`;
         progreso = Math.max(0, Math.min(1, c.restante / (s.prepago.min * 60)));
       } else {
         grande = `+${fmtCrono(-c.restante)}`;
@@ -112,7 +113,7 @@ export function textoLibres(cargado: boolean, vistas: VistaMesa[]): string {
 export function lineaTarifa(t: TipoMesa): { precios: string; promo: string | null } {
   const promo = promoPara(t, Number.POSITIVE_INFINITY);
   return {
-    precios: `${fmtMoney(t.tarifa)}/h${t.paquetes.map((p) => ` · ${p.h} h ${fmtMoney(p.precio)}`).join("")}`,
+    precios: `${fmtMoney(t.tarifa)}/h${t.paquetes.map((p) => ` · ${fmtTiempoFijo(p.min)} ${fmtMoney(p.precio)}`).join("")}`,
     promo: promo ? `${promo.nombre} −${promo.pct} %` : null,
   };
 }

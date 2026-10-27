@@ -2,7 +2,7 @@ import { useState, type KeyboardEvent } from "react";
 import { Icon } from "../../../components/Icon";
 import { Input } from "../../../components/ui";
 import { fmtMoney } from "../../../lib/format";
-import { fmtCobrado, parsearDuracion, simularLibre } from "../calculo";
+import { fmtCobrado, fmtTiempoFijo, parsearDuracion, simularLibre } from "../calculo";
 import { CampoBs } from "../Cobro";
 import type { TipoMesa } from "../tipos";
 import { BotonB, Tarjeta } from "../ui";
@@ -12,6 +12,7 @@ import {
   ejemploPromo,
   entero,
   errorPaquete,
+  leerTiempoPaquete,
   nombrePromo,
   nuevaPromo,
   paquetesQueNoConvienen,
@@ -175,16 +176,20 @@ function Paquetes({
   tarifa: number | null;
   onCambiar: (p: BorradorTipo["paquetes"]) => void;
 }) {
-  const [horas, setHoras] = useState("");
+  const [tiempo, setTiempo] = useState("");
   const [precio, setPrecio] = useState("");
   const [error, setError] = useState("");
   const noConvienen = tarifa ? paquetesQueNoConvienen(tarifa, b.paquetes) : [];
+  // Cómo se entiende lo escrito, mientras se escribe: "30" son minutos y "2"
+  // son horas, y el campo lo dice antes de agregar (27-oct).
+  const leido = leerTiempoPaquete(tiempo);
+  const entendido = leido && !("error" in leido) ? leido : null;
 
   const agregar = () => {
-    const e = errorPaquete(horas, precio, b.paquetes);
-    if (e) return setError(e);
-    onCambiar([...b.paquetes, { h: Number(horas), precio: decimal(precio)! }].sort((x, y) => x.h - y.h));
-    setHoras("");
+    const e = errorPaquete(tiempo, precio, b.paquetes);
+    if (e || !entendido) return setError(e ?? "Poné cuánto tiempo es.");
+    onCambiar([...b.paquetes, { min: entendido.min, precio: decimal(precio)! }].sort((x, y) => x.min - y.min));
+    setTiempo("");
     setPrecio("");
     setError("");
   };
@@ -199,21 +204,21 @@ function Paquetes({
     <div>
       <Etiqueta ayuda={<AyudaPaquetes tipo={tipo} />}>Paquetes de tiempo fijo</Etiqueta>
       {b.paquetes.length === 0 ? (
-        <p className="text-[13px] text-texto-3">Sin paquetes: el tiempo fijo se cobra por hora suelta.</p>
+        <p className="text-[13px] text-texto-3">Sin paquetes: el tiempo fijo se cobra a la tarifa por hora.</p>
       ) : (
         <ul className="flex flex-wrap gap-2">
           {b.paquetes.map((p) => (
             <li
-              key={p.h}
+              key={p.min}
               className="inline-flex min-h-10 items-center gap-2 rounded-full bg-white pl-3.5 pr-1 text-[13px] font-semibold text-texto ring-1 ring-inset ring-borde"
             >
               <span className="tabular-nums">
-                {p.h} h · {fmtMoney(p.precio)}
+                {fmtTiempoFijo(p.min)} · {fmtMoney(p.precio)}
               </span>
               <button
                 type="button"
                 onClick={() => onCambiar(b.paquetes.filter((x) => x !== p))}
-                aria-label={`Quitar el paquete de ${p.h} h`}
+                aria-label={`Quitar el paquete de ${fmtTiempoFijo(p.min)}`}
                 className="flex h-8 w-8 items-center justify-center rounded-full text-texto-4 hover:bg-muted hover:text-texto"
               >
                 <Icon name="close" size={14} />
@@ -223,19 +228,22 @@ function Paquetes({
         </ul>
       )}
       {noConvienen.map((n) => (
-        <p key={n.h} className="mt-1.5 text-xs text-amber-700">
-          El de {n.h} h nunca se usa: se cobra la combinación más barata, y {n.h} h salen {fmtMoney(n.mejor)}.
+        <p key={n.min} className="mt-1.5 text-xs text-amber-700">
+          El de {fmtTiempoFijo(n.min)} nunca se usa: se cobra la combinación más barata, y{" "}
+          {fmtTiempoFijo(n.min)} salen {fmtMoney(n.mejor)}.
         </p>
       ))}
       <div className="mt-3 flex flex-wrap items-start gap-2" onKeyDown={alEnter}>
-        <div className="w-24">
+        <div className="w-28">
           <CampoSufijo
-            etiqueta={`Horas del paquete nuevo de ${b.nombre}`}
-            sufijo="h"
-            valor={horas}
+            etiqueta={`Tiempo del paquete nuevo de ${b.nombre}`}
+            // La unidad que se entendió: "30" → min, "2" → h.
+            sufijo={entendido ? (entendido.unidad === "min" ? "min" : entendido.unidad === "h" ? "h" : "") : "h/min"}
+            inputMode="decimal"
+            valor={tiempo}
             onCambiar={(t) => {
               setError("");
-              setHoras(t.replace(/\D/g, "").slice(0, 2));
+              setTiempo(t.slice(0, 12));
             }}
           />
         </div>
@@ -257,11 +265,19 @@ function Paquetes({
             />
           </div>
         </div>
-        <BotonB icono="plus" onClick={agregar} disabled={!horas || !precio}>
+        <BotonB icono="plus" onClick={agregar} disabled={!tiempo || !precio}>
           Agregar
         </BotonB>
       </div>
-      <ErrorCampo>{error}</ErrorCampo>
+      {error ? (
+        <ErrorCampo>{error}</ErrorCampo>
+      ) : (
+        <p className="mt-1.5 text-xs text-texto-3" aria-live="polite">
+          {entendido
+            ? `Paquete de ${fmtTiempoFijo(entendido.min)}.`
+            : "Escribí 30 para media hora, 1 para una hora o 1,5 para una hora y media."}
+        </p>
+      )}
     </div>
   );
 }

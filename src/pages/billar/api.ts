@@ -531,7 +531,8 @@ export const apiBillar = {
     idInterno: number,
     cuerpo: {
       modo: "libre" | "fijo";
-      horas?: number;
+      /** Desde el 27-oct en minutos (de 30 en 30); el backend sigue aceptando `horas` enteras de la app. */
+      minutos?: number;
       pagos?: PagoInput[];
       cliente?: string;
       garantia?: string;
@@ -570,8 +571,8 @@ export const apiBillar = {
       ...cred,
       ...(operacion ? { operacion } : {}),
     }),
-  extender: (sesionId: string, horas: number, pagos: PagoInput[] | undefined, clienteRequestId: string) =>
-    enviar<MesaApi>(`${sesion(sesionId)}/extender`, { horas, ...(pagos ? { pagos } : {}), clienteRequestId }),
+  extender: (sesionId: string, minutos: number, pagos: PagoInput[] | undefined, clienteRequestId: string) =>
+    enviar<MesaApi>(`${sesion(sesionId)}/extender`, { minutos, ...(pagos ? { pagos } : {}), clienteRequestId }),
   cambiar: (sesionId: string, destinoIdInterno: number) =>
     enviar<MesaApi>(`${sesion(sesionId)}/cambiar`, { mesaId: destinoIdInterno }),
   editarInicio: (sesionId: string, inicio: number, motivo: string, cred: Credenciales) =>
@@ -679,7 +680,13 @@ export interface TipoMesaApi {
   fraccion: number;
   tolerancia: number;
   minimo: number;
-  paquetes: { h: number; precio: number }[];
+  paquetes: { min: number; precio: number }[];
+  /**
+   * La web ve los paquetes de media hora (27-oct). Sin esto (la app Android,
+   * una pestaña vieja) el backend conserva los paquetes que no son de horas
+   * enteras: ese cliente no los vio, así que no los pudo querer borrar.
+   */
+  paquetesEnMinutos: true;
   promos: TipoMesa["promos"];
 }
 

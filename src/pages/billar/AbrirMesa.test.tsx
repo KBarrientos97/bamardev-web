@@ -206,6 +206,42 @@ describe("Billar: abrir una mesa con el cupo del Plan Emprendedor", () => {
     expect(hoja()).not.toBeInTheDocument();
   });
 
+  it("tiempo fijo de 30 min: se ofrece a media tarifa y viaja en minutos", async () => {
+    // Miguel, el administrador del billar, vende media hora (27-oct). Antes lo
+    // mínimo era 1 h y el backend sólo aceptaba horas enteras.
+    const dialogo = await montarYAbrir();
+    await act(async () => {
+      fireEvent.click(within(dialogo).getByRole("radio", { name: /Tiempo fijo/ }));
+    });
+    await act(async () => {
+      fireEvent.click(within(dialogo).getByRole("button", { name: /^30 min · Bs\s10,00$/ }));
+    });
+    expect(within(dialogo).getByRole("button", { name: /^Cobrar Bs\s10,00 y abrir$/ })).toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(within(dialogo).getByRole("button", { name: "Abrir · cobrar al final" }));
+    });
+    expect(abrirPedidos()).toHaveLength(1);
+    const cuerpo = JSON.parse(String(abrirPedidos()[0][1]?.body));
+    expect(cuerpo).toMatchObject({ modo: "fijo", minutos: 30 });
+    expect(cuerpo).not.toHaveProperty("horas");
+  });
+
+  it("«Otra cantidad» sube de media en media hora", async () => {
+    const dialogo = await montarYAbrir();
+    await act(async () => {
+      fireEvent.click(within(dialogo).getByRole("radio", { name: /Tiempo fijo/ }));
+    });
+    await act(async () => {
+      fireEvent.click(within(dialogo).getByRole("button", { name: /Otra cantidad/ }));
+    });
+    // Arranca en 4 h; media hora más son 4 h 30 min a Bs 20/h.
+    await act(async () => {
+      fireEvent.click(within(dialogo).getByRole("button", { name: "Media hora más" }));
+    });
+    expect(within(dialogo).getByText("4 h 30 min")).toBeInTheDocument();
+    expect(within(dialogo).getByRole("button", { name: /^Cobrar Bs\s90,00 y abrir$/ })).toBeInTheDocument();
+  });
+
   it("sin cupo (Básico, Profesional) abre como siempre y no pide el contador", async () => {
     const dialogo = await montarYAbrir();
     await act(async () => {

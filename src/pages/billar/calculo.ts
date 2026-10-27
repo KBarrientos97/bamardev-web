@@ -200,40 +200,79 @@ export function cobroTramo(
   };
 }
 
-// ── §5.3 Tiempo fijo: el precio de N horas ──────────────────────────────────
+// ── §5.3 Tiempo fijo: el precio de N minutos ────────────────────────────────
 
-export interface PrecioHoras {
+/**
+ * El paso del tiempo fijo y de sus paquetes: media hora (27-oct). Antes eran
+ * horas enteras y Miguel, el administrador del billar, necesitaba vender 30 min.
+ */
+export const PASO_FIJO_MIN = 30;
+/** Lo más largo que se vende de una vez: 24 h. */
+export const MAX_FIJO_MIN = 24 * 60;
+
+/** Un tiempo fijo que se puede vender: de media en media hora, de 30 min a 24 h. */
+export function esTiempoFijoValido(min: number): boolean {
+  return Number.isInteger(min / PASO_FIJO_MIN) && min >= PASO_FIJO_MIN && min <= MAX_FIJO_MIN;
+}
+
+/** "30 min", "1 h", "1 h 30 min": un tiempo fijo o un paquete. */
+export function fmtTiempoFijo(min: number): string {
+  const m = Math.max(0, Math.round(min));
+  if (m < 60) return `${m} min`;
+  const h = Math.floor(m / 60);
+  const resto = m % 60;
+  return resto ? `${h} h ${resto} min` : `${h} h`;
+}
+
+export interface PrecioTiempo {
   precio: number;
-  /** Las partes de la combinación, de mayor a menor: ["3 h", "2 h"]. */
+  /** Las partes de la combinación, de mayor a menor: ["3 h", "30 min"]. */
   partes: string[];
 }
 
 /**
- * La combinación más barata de paquetes (se pueden repetir) completada con
- * horas sueltas. En empate gana el paquete. Programación dinámica: para 24 h
- * con tres paquetes son 72 comparaciones.
+ * Los minutos sueltos (los que no cubre un paquete) como se dicen: "1 h
+ * suelta", "2 h sueltas", "30 min sueltos", "1 h 30 min sueltos".
  */
-export function precioHoras(t: TipoMesa, h: number): PrecioHoras {
-  const n = Math.max(0, Math.floor(h));
+function textoSuelto(min: number): string {
+  if (min % 60 === 0) return min === 60 ? "1 h suelta" : `${min / 60} h sueltas`;
+  return `${fmtTiempoFijo(min)} sueltos`;
+}
+
+/**
+ * La combinación más barata de paquetes (se pueden repetir) completada con
+ * tiempo suelto a la tarifa por hora. En empate gana el paquete.
+ * Programación dinámica de media en media hora: para 24 h con doce paquetes
+ * son 576 comparaciones. Con paquetes de horas enteras da lo mismo que cuando
+ * se armaba de hora en hora.
+ */
+export function precioDelTiempo(t: TipoMesa, min: number): PrecioTiempo {
+  const n = Math.max(0, Math.floor(min / PASO_FIJO_MIN));
+  const mediaHora = (t.tarifa * PASO_FIJO_MIN) / 60;
   const best: number[] = [0];
-  // 0 = hora suelta; otro número = un paquete de esas horas.
+  // 0 = media hora suelta; otro número = los minutos de un paquete.
   const como: number[][] = [[]];
   for (let i = 1; i <= n; i++) {
-    best[i] = best[i - 1] + t.tarifa;
+    best[i] = best[i - 1] + mediaHora;
     como[i] = [...como[i - 1], 0];
     for (const p of t.paquetes) {
-      if (p.h <= i && best[i - p.h] + p.precio <= best[i]) {
-        best[i] = best[i - p.h] + p.precio;
-        como[i] = [...como[i - p.h], p.h];
+      const pasos = p.min / PASO_FIJO_MIN;
+      // Un paquete fuera de paso no se puede combinar (no debería haber).
+      if (!Number.isInteger(pasos) || pasos < 1 || pasos > i) continue;
+      // Con tolerancia: media hora de una tarifa con centavos (Bs 20,10/h)
+      // suma con resto de punto flotante, y el empate tiene que ir al paquete.
+      if (best[i - pasos] + p.precio <= best[i] + 1e-9) {
+        best[i] = best[i - pasos] + p.precio;
+        como[i] = [...como[i - pasos], p.min];
       }
     }
   }
-  const fraccion = h - n;
-  const precio = round2(best[n] + fraccion * t.tarifa);
+  const resto = min - n * PASO_FIJO_MIN;
+  const precio = round2(best[n] + (resto / 60) * t.tarifa);
   const paquetes = como[n].filter((x) => x > 0).sort((a, b) => b - a);
-  const sueltas = como[n].filter((x) => x === 0).length;
-  const partes = paquetes.map((x) => `${x} h`);
-  if (sueltas) partes.push(sueltas === 1 ? "1 h suelta" : `${sueltas} h sueltas`);
+  const sueltos = como[n].filter((x) => x === 0).length * PASO_FIJO_MIN;
+  const partes = paquetes.map(fmtTiempoFijo);
+  if (sueltos) partes.push(textoSuelto(sueltos));
   return { precio, partes };
 }
 
@@ -288,10 +327,11 @@ export function promoDeLaCuenta(
   };
 }
 
-/** El precio de N horas de tiempo fijo, con la promo si la tiene "también en tiempo fijo". */
-export function precioFijo(t: TipoMesa, h: number) {
-  const base = precioHoras(t, h);
-  const promo = promoPara(t, h, true);
+/** El precio de N minutos de tiempo fijo, con la promo si la tiene "también en tiempo fijo". */
+export function precioTiempoFijo(t: TipoMesa, min: number) {
+  const base = precioDelTiempo(t, min);
+  // Las promos se cuentan en horas ("desde 3 h"): 2 h 30 min no llegan a 3.
+  const promo = promoPara(t, min / 60, true);
   const descuento = promo ? round2((base.precio * promo.pct) / 100) : 0;
   return { ...base, bruto: base.precio, precio: round2(base.precio - descuento), promo, descuento };
 }
