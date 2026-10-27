@@ -4,17 +4,20 @@ import PanelLateral from "../../components/PanelLateral";
 import { Boton, Campo, ErrorMsg, Input, Select } from "../../components/ui";
 import { ApiError } from "../../lib/api";
 import { apiAcademia, CODIGOS_ACADEMIA } from "../../lib/academia/apiAcademia";
-import { franjasDe, inicioDelMes, mesDe, nombreMes, proximoInicio, sumarMeses } from "../../lib/academia/calendario";
+import { diaAnterior, franjasDe, inicioDelMes, mesDe, nombreMes, proximoInicio, sumarMeses } from "../../lib/academia/calendario";
+import { useChoques } from "../../lib/academia/choques";
 import { diasTexto, horasEntre, SEMANA } from "../../lib/academia/formato";
 import { fmtMoney } from "../../lib/format";
-import type { Docente, GrupoDetalle } from "../../lib/academia/tipos";
+import type { ConsultaChoques, Docente, GrupoDetalle } from "../../lib/academia/tipos";
 import { usePalabras } from "../../lib/academia/usePalabras";
 import { tienePermiso } from "../../lib/permisos";
 import { useApi } from "../../lib/useApi";
 import { useSucursales } from "../../lib/useSucursales";
 import { useAuth } from "../../store/AuthContext";
+import { AvisoChoques } from "./AvisoChoques";
 import { NuevoDocenteRapido } from "./NuevoDocenteRapido";
 import { BotonFila, ResumenPanel, SeccionPanel } from "./piezas";
+import SelectorAula, { type ValorAula } from "./SelectorAula";
 
 /** Lo que el calendario ya sabe del hueco que se tocó. */
 export interface HuecoCalendario {
@@ -89,7 +92,10 @@ export default function NuevoGrupo({
   const [pasadoAMano, setPasadoAMano] = useState(false);
   const [fechaPasada, setFechaPasada] = useState<{ minimo: string | null; puedeConfirmar: boolean } | null>(null);
   const [cupo, setCupo] = useState("");
-  const [aula, setAula] = useState("");
+  // El aula se elige de la lista de la sede (BACK-5); null = sin aula.
+  const [aulaId, setAulaId] = useState<ValorAula>(null);
+  // Su nombre, para decir «el aula X ya está ocupada» (lo informa el selector, que tiene la lista).
+  const [nombreAula, setNombreAula] = useState<string | null>(null);
   const [docentePor, setDocentePor] = useState<Record<number, number | null>>({});
   // C9: los docentes dados de alta desde acá (la lista del backend ya estaba cargada)
   // y el módulo para el que se está abriendo el formulario de alta.
@@ -159,12 +165,36 @@ export default function NuevoGrupo({
   const montoDocente = carrera?.pagoDocenteModo === "MONTO" ? (carrera.montoDocente ?? null) : null;
   const horasSemana = horasEntre(horaInicio, horaFin) * dias.length;
 
+  // C10: el aviso se pide sólo si ya hay algo que chocar (aula o docente) y el horario es válido.
+  const docentesElegidos = [...new Set(Object.values(docentePor).filter((x): x is number => x != null))];
+  const consulta: ConsultaChoques | null =
+    almacenId != null && dias.length > 0 && horasEntre(horaInicio, horaFin) > 0 && (typeof aulaId === "number" || docentesElegidos.length > 0)
+      ? {
+          almacenId,
+          dias: [...dias].sort((x, y) => x - y),
+          horaInicio,
+          horaFin,
+          fechaInicio: inicioDelMes(mes, dia),
+          // El último módulo termina el día antes de que empiece el siguiente.
+          ...(materias.length ? { fechaFin: diaAnterior(inicioDelMes(sumarMeses(mes, materias.length * duracion), dia)) } : {}),
+          ...(typeof aulaId === "number" ? { aulaId } : {}),
+          ...(docentesElegidos.length ? { docentes: docentesElegidos } : {}),
+        }
+      : null;
+  const avisoChoques = useChoques(consulta);
+
   function elegirFranja(v: string) {
     setFranja(v);
     if (v === OTRO) return;
     const [i, f] = v.split("-");
     setHoraInicio(i);
     setHoraFin(f);
+  }
+
+  // Las aulas son de cada sede: al cambiarla, la elegida ya no vale.
+  function cambiarSede(id: number | null) {
+    setAlmacenId(id);
+    setAulaId(null);
   }
 
   function elegirInicio(m: string) {
@@ -186,7 +216,7 @@ export default function NuevoGrupo({
       const g = await apiAcademia.crearGrupo({
         carreraId: carrera.id,
         almacenId,
-        ...(aula.trim() ? { aula: aula.trim() } : {}),
+        ...(typeof aulaId === "number" ? { aulaId } : {}),
         dias,
         horaInicio,
         horaFin,
@@ -240,8 +270,9 @@ export default function NuevoGrupo({
       onClose={onCerrar}
       acciones={
         <>
+          <AvisoChoques estado={avisoChoques} aula={nombreAula} />
           <Boton onClick={() => void crear()} disabled={guardando || !dias.length || !!fechaPasada?.puedeConfirmar}>
-            {guardando ? "Abriendo…" : "Abrir grupo"}
+            {guardando ? "Abriendo…" : avisoChoques.choques ? "Guardar igual" : "Abrir grupo"}
           </Boton>
           <Boton variante="ghost" onClick={onCerrar} disabled={guardando}>
             Cancelar
@@ -267,7 +298,7 @@ export default function NuevoGrupo({
             </Campo>
             {sedes.elegir && (
               <Campo label={p.Sede}>
-                <Select value={almacenId ?? ""} onChange={(e) => setAlmacenId(e.target.value ? Number(e.target.value) : null)}>
+                <Select value={almacenId ?? ""} onChange={(e) => cambiarSede(e.target.value ? Number(e.target.value) : null)}>
                   {almacenId == null && <option value="">Elegí…</option>}
                   {opcionesSede.map((s) => (
                     <option key={s.id} value={s.id}>
@@ -282,9 +313,7 @@ export default function NuevoGrupo({
             <Campo label="Cupo" hint={carrera?.cupoDefecto != null ? `Viene del ${p.carrera}` : undefined}>
               <Input type="number" inputMode="numeric" value={cupo} onChange={(e) => setCupo(e.target.value)} />
             </Campo>
-            <Campo label="Aula">
-              <Input value={aula} onChange={(e) => setAula(e.target.value)} placeholder="Aula 1" />
-            </Campo>
+            <SelectorAula sedeId={almacenId} valor={aulaId} onChange={setAulaId} onNombre={setNombreAula} />
           </div>
         </div>
       </SeccionPanel>

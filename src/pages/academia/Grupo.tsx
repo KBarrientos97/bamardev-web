@@ -9,7 +9,8 @@ import { mesCorto, mesDe } from "../../lib/academia/calendario";
 import { esDatoViejo, mensajeDelBackend } from "../../lib/academia/errores";
 import { avisoFotosPendientes } from "../../lib/academia/fotos";
 import { fechaCorta, horarioGrupo, nombreAlumno, nombreDe } from "../../lib/academia/formato";
-import type { AlumnoDelGrupo, FiltroAlumnosGrupo, GrupoDetalle } from "../../lib/academia/tipos";
+import { useChoques } from "../../lib/academia/choques";
+import type { AlumnoDelGrupo, ConsultaChoques, FiltroAlumnosGrupo, GrupoDetalle } from "../../lib/academia/tipos";
 import { usePalabras } from "../../lib/academia/usePalabras";
 import { abrirWhatsapp, rutaCobroInscripcion, textoFormaPago } from "../../lib/academia/vista";
 import { enlaceWhatsApp } from "../../lib/agenda/recordatorio";
@@ -19,6 +20,7 @@ import { cobraCuotas, tieneFeature, tienePermiso } from "../../lib/permisos";
 import { veMontosAcademia } from "../../lib/permisosAcademia";
 import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
+import { AvisoChoques } from "./AvisoChoques";
 import { DialogoCompartir } from "./CompartirInscripcion";
 import Inscribir from "./Inscribir";
 import {
@@ -38,6 +40,7 @@ import {
   TABLA,
   Tarjeta,
 } from "./piezas";
+import SelectorAula, { AULA_TEXTO_ANTERIOR, type ValorAula } from "./SelectorAula";
 
 /**
  * E3 · Detalle de grupo, versión limpia (lienzo E3 v2): el centralizador,
@@ -774,7 +777,11 @@ function EditarGrupo({
 }) {
   const p = usePalabras();
   const docentes = useApi(() => apiAcademia.docentes().catch(() => []), []);
-  const [aula, setAula] = useState(g.aula ?? "");
+  // El aula se elige de la lista de la sede (BACK-5). Un grupo viejo con el texto
+  // sin enlazar lo conserva mientras no se toque el selector.
+  const aulaInicial: ValorAula = g.aulaId ?? (g.aula ? AULA_TEXTO_ANTERIOR : null);
+  const [aulaId, setAulaId] = useState<ValorAula>(aulaInicial);
+  const [nombreAula, setNombreAula] = useState<string | null>(null);
   const [cupo, setCupo] = useState(g.cupo != null ? String(g.cupo) : "");
   const [abierta, setAbierta] = useState(g.inscripcionAbierta);
   const [publicar, setPublicar] = useState(g.publicarEnPagina);
@@ -784,12 +791,40 @@ function EditarGrupo({
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState("");
 
+  // C10: se pregunta por lo que cambió (el aula nueva, los docentes nuevos); lo que el grupo
+  // ya tenía no se avisa como choque otra vez.
+  const docentesNuevos = [
+    ...new Set(
+      g.materiasGrupo
+        .filter((m) => (docentePor[m.materia.id] ?? null) !== (m.docente?.personalId ?? null))
+        .map((m) => docentePor[m.materia.id])
+        .filter((x): x is number => x != null),
+    ),
+  ];
+  const aulaNueva = typeof aulaId === "number" && aulaId !== aulaInicial ? aulaId : null;
+  const consulta: ConsultaChoques | null =
+    aulaNueva != null || docentesNuevos.length
+      ? {
+          almacenId: g.sede.id,
+          dias: g.dias,
+          horaInicio: g.horaInicio,
+          horaFin: g.horaFin,
+          fechaInicio: g.fechaInicio,
+          fechaFin: g.fechaFin,
+          excluirGrupoId: g.id,
+          ...(aulaNueva != null ? { aulaId: aulaNueva } : {}),
+          ...(docentesNuevos.length ? { docentes: docentesNuevos } : {}),
+        }
+      : null;
+  const avisoChoques = useChoques(consulta);
+
   async function guardar() {
     setGuardando(true);
     setError("");
     try {
       let nuevo = await apiAcademia.editarGrupo(g.id, {
-        aula: aula.trim() || null,
+        // Sólo si se tocó: así editar el cupo no pisa un aula que no se ve en la lista.
+        ...(aulaId !== aulaInicial ? { aulaId: typeof aulaId === "number" ? aulaId : null } : {}),
         cupo: Number(cupo) > 0 ? Number(cupo) : null,
         inscripcionAbierta: abierta,
         publicarEnPagina: publicar,
@@ -816,20 +851,25 @@ function EditarGrupo({
       cerrarAlClicAfuera={false}
       acciones={
         <>
+          <AvisoChoques estado={avisoChoques} aula={nombreAula} />
           <Boton variante="ghost" onClick={onCerrar} disabled={guardando}>
             Cancelar
           </Boton>
           <Boton onClick={() => void guardar()} disabled={guardando}>
-            {guardando ? "Guardando…" : "Guardar"}
+            {guardando ? "Guardando…" : avisoChoques.choques ? "Guardar igual" : "Guardar"}
           </Boton>
         </>
       }
     >
       <div className="space-y-4">
         <div className="grid grid-cols-2 gap-3">
-          <Campo label="Aula">
-            <Input value={aula} onChange={(e) => setAula(e.target.value)} />
-          </Campo>
+          <SelectorAula
+            sedeId={g.sede.id}
+            valor={aulaId}
+            onChange={setAulaId}
+            onNombre={setNombreAula}
+            actual={{ id: g.aulaId ?? null, nombre: g.aula }}
+          />
           <Campo label="Cupo" hint="Vacío = sin tope.">
             <Input type="number" inputMode="numeric" value={cupo} onChange={(e) => setCupo(e.target.value)} />
           </Campo>

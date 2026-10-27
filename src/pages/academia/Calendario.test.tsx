@@ -34,6 +34,8 @@ vi.mock("../../lib/academia/apiAcademia", async (importOriginal) => {
     ...real,
     apiAcademia: {
       calendario: vi.fn(),
+      aulas: vi.fn(async () => []),
+      choques: vi.fn(async () => ({ hayChoques: false, aula: [], docentes: [] })),
       ajustes: vi.fn(),
       carreras: vi.fn(),
       grupo: vi.fn(),

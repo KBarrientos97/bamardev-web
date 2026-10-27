@@ -62,6 +62,13 @@ export function inicioDelMes(mes: string, dia: number): string {
   return `${mes}-${String(dia).padStart(2, "0")}`;
 }
 
+/** El día anterior a una fecha `AAAA-MM-DD` (el fin de un módulo es el día antes del inicio del siguiente). */
+export function diaAnterior(iso: string): string {
+  const [a, m, d] = iso.split("-").map(Number);
+  const f = new Date(Date.UTC(a, m - 1, d - 1));
+  return f.toISOString().slice(0, 10);
+}
+
 /** El próximo día de inicio de módulos desde hoy (hoy incluido). */
 export function proximoInicio(dia: number, hoy = new Date()): string {
   const mes = mesDe(hoy);

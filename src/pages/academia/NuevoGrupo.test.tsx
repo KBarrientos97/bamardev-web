@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ESPERA_CHOQUES_MS } from "../../lib/academia/choques";
 import { ApiError } from "../../lib/api";
 import { ajustesDePrueba, grupoDetalle } from "../../test/academiaFixtures";
 
@@ -43,7 +44,7 @@ vi.mock("../../lib/api", async (importOriginal) => {
 
 vi.mock("../../lib/academia/apiAcademia", async (importOriginal) => {
   const real = await importOriginal<typeof import("../../lib/academia/apiAcademia")>();
-  return { ...real, apiAcademia: { ajustes: vi.fn(), carreras: vi.fn(), docentes: vi.fn(), crearGrupo: vi.fn() } };
+  return { ...real, apiAcademia: { ajustes: vi.fn(), carreras: vi.fn(), docentes: vi.fn(), crearGrupo: vi.fn(), aulas: vi.fn(), choques: vi.fn() } };
 });
 
 vi.mock("../../lib/personal", () => ({
@@ -76,6 +77,8 @@ beforeEach(() => {
     { id: 3, nombre: "Barbería", activa: true, materias: [{ id: 31, orden: 1, nombre: "Corte", activa: true }], planes: [], cupoDefecto: 20, pctDocente: null, publicarEnPagina: false },
   ] as never);
   vi.mocked(apiAcademia.docentes).mockResolvedValue([]);
+  vi.mocked(apiAcademia.aulas).mockResolvedValue([]);
+  vi.mocked(apiAcademia.choques).mockResolvedValue({ hayChoques: false, aula: [], docentes: [] });
 });
 
 afterEach(() => {
@@ -314,5 +317,171 @@ describe("C9 · el docente por módulo sin salir de «Abrir grupo»", () => {
     fireEvent.click(within(panel).getByRole("button", { name: "Guardar docente" }));
     expect(within(panel).getByText(/No hay un cargo «Docente» en Roles/)).toBeInTheDocument();
     expect(apiPersonal.crear).not.toHaveBeenCalled();
+  });
+});
+
+/** Deja pasar la espera del aviso de choques (el temporizador de verdad: sólo `Date` está falseado). */
+const esperarAviso = () =>
+  act(async () => {
+    await new Promise((r) => setTimeout(r, ESPERA_CHOQUES_MS + 80));
+  });
+
+const aulaDe = (id: number, nombre: string, extra = {}) => ({
+  id,
+  almacenId: 1,
+  sede: { id: 1, nombre: "Central" },
+  nombre,
+  capacidad: null,
+  activa: true,
+  enUso: 0,
+  ...extra,
+});
+
+describe("BACK-5 · el aula se elige de la lista de la sede", () => {
+  it("ofrece las aulas activas de la sede del grupo y manda aulaId, no el texto", async () => {
+    vi.mocked(apiAcademia.aulas).mockResolvedValue([aulaDe(11, "Aula 1", { capacidad: 25 }), aulaDe(12, "Taller")]);
+    vi.mocked(apiAcademia.crearGrupo).mockResolvedValue(grupoDetalle());
+    const { panel } = await montar();
+    expect(apiAcademia.aulas).toHaveBeenCalledWith({ sede: 1, soloActivas: true });
+    const aula = within(panel).getByLabelText("Aula") as HTMLSelectElement;
+    expect(Array.from(aula.options, (o) => o.textContent)).toEqual(["Sin aula", "Aula 1 · 25 lugares", "Taller"]);
+    fireEvent.change(aula, { target: { value: "12" } });
+    await act(async () => {
+      fireEvent.click(within(panel).getByRole("button", { name: "Abrir grupo" }));
+    });
+    const mandado = vi.mocked(apiAcademia.crearGrupo).mock.calls[0][0];
+    expect(mandado.aulaId).toBe(12);
+    expect(mandado).not.toHaveProperty("aula");
+  });
+
+  it("«Sin aula» no manda ninguna", async () => {
+    vi.mocked(apiAcademia.aulas).mockResolvedValue([aulaDe(11, "Aula 1")]);
+    vi.mocked(apiAcademia.crearGrupo).mockResolvedValue(grupoDetalle());
+    const { panel } = await montar();
+    await act(async () => {
+      fireEvent.click(within(panel).getByRole("button", { name: "Abrir grupo" }));
+    });
+    const mandado = vi.mocked(apiAcademia.crearGrupo).mock.calls[0][0];
+    expect(mandado).not.toHaveProperty("aulaId");
+    expect(mandado).not.toHaveProperty("aula");
+  });
+
+  it("sin aulas cargadas: selector vacío, enlace «Cargar aulas» para quien configura, y se guarda igual", async () => {
+    vi.mocked(apiAcademia.crearGrupo).mockResolvedValue(grupoDetalle());
+    const { panel } = await montar();
+    expect(within(panel).getByText(/Esta sede todavía no tiene aulas cargadas/)).toBeInTheDocument();
+    expect(within(panel).getByRole("link", { name: "Cargar aulas" })).toHaveAttribute("href", "/configuracion/aulas");
+    await act(async () => {
+      fireEvent.click(within(panel).getByRole("button", { name: "Abrir grupo" }));
+    });
+    expect(apiAcademia.crearGrupo).toHaveBeenCalledTimes(1);
+  });
+
+  it("quien no configura no ve el enlace", async () => {
+    sesion.configura = false;
+    const { panel } = await montar();
+    expect(within(panel).getByText(/Esta sede todavía no tiene aulas cargadas/)).toBeInTheDocument();
+    expect(within(panel).queryByRole("link", { name: "Cargar aulas" })).not.toBeInTheDocument();
+  });
+});
+
+describe("C10 · aviso de choques al abrir un grupo", () => {
+  const CHOQUE_AULA = {
+    grupoId: 40,
+    nombre: "Base",
+    carrera: { id: 3, nombre: "Barbería" },
+    sede: { id: 1, nombre: "Central" },
+    horario: "Lu Mi Vi 08:00–10:00",
+    dias: [1, 3, 5],
+    horaInicio: "08:00",
+    horaFin: "10:00",
+    fechaInicio: "2026-10-10",
+    fechaFin: "2027-01-09",
+  };
+  const MARCO = { personalId: 7, nombre: "Juan Pérez", sedes: [{ id: 1, nombre: "Central" }], pctDocente: null, retencionPct: null, tieneLogin: true };
+
+  it("sin aula ni docente elegidos no pregunta nada", async () => {
+    await montar();
+    await esperarAviso();
+    expect(apiAcademia.choques).not.toHaveBeenCalled();
+  });
+
+  it("con choque de aula: lo dice, no bloquea y el botón pasa a «Guardar igual»", async () => {
+    vi.mocked(apiAcademia.aulas).mockResolvedValue([aulaDe(11, "Aula 1")]);
+    vi.mocked(apiAcademia.choques).mockResolvedValue({ hayChoques: true, aula: [CHOQUE_AULA], docentes: [] });
+    vi.mocked(apiAcademia.crearGrupo).mockResolvedValue(grupoDetalle());
+    const { panel } = await montar();
+    fireEvent.change(within(panel).getByLabelText("Aula"), { target: { value: "11" } });
+    await esperarAviso();
+    expect(vi.mocked(apiAcademia.choques).mock.calls.at(-1)![0]).toMatchObject({
+      almacenId: 1,
+      dias: [1, 3, 5],
+      aulaId: 11,
+      fechaInicio: "2026-11-10",
+      // Un módulo de un mes: termina el día antes del siguiente inicio.
+      fechaFin: "2026-12-09",
+    });
+    const aviso = within(panel).getByRole("alert");
+    expect(aviso).toHaveTextContent("El aula «Aula 1» ya está ocupada de Lu Mi Vi 08:00–10:00 por Barbería (Base).");
+    const guardar = within(panel).getByRole("button", { name: "Guardar igual" });
+    expect(guardar).toBeEnabled();
+    await act(async () => {
+      fireEvent.click(guardar);
+    });
+    expect(apiAcademia.crearGrupo).toHaveBeenCalledTimes(1);
+  });
+
+  it("con choque de docente: dice dónde ya dicta", async () => {
+    vi.mocked(apiAcademia.docentes).mockResolvedValue([MARCO]);
+    vi.mocked(apiAcademia.choques).mockResolvedValue({
+      hayChoques: true,
+      aula: [],
+      docentes: [{ ...CHOQUE_AULA, personalId: 7, docente: "Juan Pérez", sede: { id: 2, nombre: "Base" }, desde: "2026-10-10", hasta: "2026-11-09" }],
+    });
+    const { panel } = await montar();
+    fireEvent.change(within(panel).getByLabelText("Docente de M1"), { target: { value: "7" } });
+    await esperarAviso();
+    expect(vi.mocked(apiAcademia.choques).mock.calls.at(-1)![0]).toMatchObject({ docentes: [7] });
+    expect(within(panel).getByRole("alert")).toHaveTextContent("El docente Juan Pérez ya dicta Barbería (Base) Lu Mi Vi 08:00–10:00 en Base.");
+  });
+
+  it("sin choque: ni aviso ni «Guardar igual»", async () => {
+    vi.mocked(apiAcademia.aulas).mockResolvedValue([aulaDe(11, "Aula 1")]);
+    vi.mocked(apiAcademia.choques).mockResolvedValue({ hayChoques: false, aula: [], docentes: [] });
+    const { panel } = await montar();
+    fireEvent.change(within(panel).getByLabelText("Aula"), { target: { value: "11" } });
+    await esperarAviso();
+    expect(apiAcademia.choques).toHaveBeenCalled();
+    expect(within(panel).queryByRole("alert")).not.toBeInTheDocument();
+    expect(within(panel).getByRole("button", { name: "Abrir grupo" })).toBeEnabled();
+  });
+
+  it("si el aviso falla (red), lo dice en gris y guardar sigue andando", async () => {
+    vi.mocked(apiAcademia.aulas).mockResolvedValue([aulaDe(11, "Aula 1")]);
+    vi.mocked(apiAcademia.choques).mockRejectedValue(new Error("Failed to fetch"));
+    vi.mocked(apiAcademia.crearGrupo).mockResolvedValue(grupoDetalle());
+    const { panel } = await montar();
+    fireEvent.change(within(panel).getByLabelText("Aula"), { target: { value: "11" } });
+    await esperarAviso();
+    expect(within(panel).getByText(/No pudimos revisar si el aula o el docente ya están ocupados/)).toBeInTheDocument();
+    expect(within(panel).queryByRole("alert")).not.toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(within(panel).getByRole("button", { name: "Abrir grupo" }));
+    });
+    expect(apiAcademia.crearGrupo).toHaveBeenCalledTimes(1);
+  });
+
+  it("al cambiar de día vuelve a preguntar una sola vez (con espera)", async () => {
+    vi.mocked(apiAcademia.aulas).mockResolvedValue([aulaDe(11, "Aula 1")]);
+    const { panel } = await montar();
+    fireEvent.change(within(panel).getByLabelText("Aula"), { target: { value: "11" } });
+    await esperarAviso();
+    vi.mocked(apiAcademia.choques).mockClear();
+    fireEvent.click(within(panel).getByRole("button", { name: "Martes" }));
+    fireEvent.click(within(panel).getByRole("button", { name: "Jueves" }));
+    expect(apiAcademia.choques).not.toHaveBeenCalled();
+    await esperarAviso();
+    expect(apiAcademia.choques).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(apiAcademia.choques).mock.calls[0][0].dias).toEqual([1, 2, 3, 4, 5]);
   });
 });

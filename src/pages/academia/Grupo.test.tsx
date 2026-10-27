@@ -29,6 +29,8 @@ vi.mock("../../lib/academia/apiAcademia", async (importOriginal) => {
     ...real,
     apiAcademia: {
       grupo: vi.fn(),
+      aulas: vi.fn(async () => []),
+      choques: vi.fn(async () => ({ hayChoques: false, aula: [], docentes: [] })),
       alumnosDelGrupo: vi.fn(),
       alumno: vi.fn(),
       recordatorio: vi.fn(),
@@ -39,6 +41,7 @@ vi.mock("../../lib/academia/apiAcademia", async (importOriginal) => {
 });
 
 import { apiAcademia } from "../../lib/academia/apiAcademia";
+import { ESPERA_CHOQUES_MS } from "../../lib/academia/choques";
 import { ApiError } from "../../lib/api";
 import Grupo from "./Grupo";
 
@@ -335,5 +338,170 @@ describe("Errores del backend con código (auditoría de octubre): el mensaje se
     });
     expect(screen.getByText(mensaje)).toBeInTheDocument();
     expect(vi.mocked(apiAcademia.alumno).mock.calls.length).toBeGreaterThan(antes);
+  });
+});
+
+describe("BACK-5 y C10 · editar el aula y los docentes del grupo", () => {
+  const COORDINACION = ["academia.ver", "academia.grupos", "academia.inscribir", "academia.cobranza"];
+  const aula = (id: number, nombre: string) => ({ id, almacenId: 1, sede: { id: 1, nombre: "Central" }, nombre, capacidad: null, activa: true, enUso: 0 });
+  const LUCIA = { personalId: 10, nombre: "Lucía Paz", sedes: [{ id: 1, nombre: "Central" }], pctDocente: null, retencionPct: null, tieneLogin: false };
+  const esperarAviso = () =>
+    act(async () => {
+      await new Promise((r) => setTimeout(r, ESPERA_CHOQUES_MS + 80));
+    });
+
+  async function abrirEdicion() {
+    sesion.permisos = COORDINACION;
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Más acciones del grupo" }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("menuitem", { name: "Editar grupo" }));
+    });
+    return screen.getByRole("dialog", { name: "Editar grupo" });
+  }
+
+  it("elige el aula de la lista de la sede del grupo y manda aulaId", async () => {
+    vi.mocked(apiAcademia.grupo).mockResolvedValue(grupoDetalle({ aulaId: 22, aula: "Aula 2" }));
+    vi.mocked(apiAcademia.aulas).mockResolvedValue([aula(21, "Aula 1"), aula(22, "Aula 2")]);
+    vi.mocked(apiAcademia.editarGrupo).mockResolvedValue(grupoDetalle({ aulaId: 21, aula: "Aula 1" }));
+    const dialogo = await abrirEdicion();
+    expect(apiAcademia.aulas).toHaveBeenCalledWith({ sede: 1, soloActivas: true });
+    const select = within(dialogo).getByLabelText("Aula") as HTMLSelectElement;
+    expect(select).toHaveValue("22");
+    fireEvent.change(select, { target: { value: "21" } });
+    await act(async () => {
+      fireEvent.click(within(dialogo).getByRole("button", { name: "Guardar" }));
+    });
+    const cambios = vi.mocked(apiAcademia.editarGrupo).mock.calls[0][1];
+    expect(cambios.aulaId).toBe(21);
+    expect(cambios).not.toHaveProperty("aula");
+  });
+
+  it("«Sin aula» manda aulaId null", async () => {
+    vi.mocked(apiAcademia.grupo).mockResolvedValue(grupoDetalle({ aulaId: 22, aula: "Aula 2" }));
+    vi.mocked(apiAcademia.aulas).mockResolvedValue([aula(22, "Aula 2")]);
+    vi.mocked(apiAcademia.editarGrupo).mockResolvedValue(grupoDetalle({ aulaId: null, aula: null }));
+    const dialogo = await abrirEdicion();
+    fireEvent.change(within(dialogo).getByLabelText("Aula"), { target: { value: "" } });
+    await act(async () => {
+      fireEvent.click(within(dialogo).getByRole("button", { name: "Guardar" }));
+    });
+    expect(vi.mocked(apiAcademia.editarGrupo).mock.calls[0][1].aulaId).toBeNull();
+  });
+
+  it("un aula de baja que el grupo ya tenía se conserva en el selector, marcada, y no se pierde al editar el cupo", async () => {
+    vi.mocked(apiAcademia.grupo).mockResolvedValue(grupoDetalle({ aulaId: 22, aula: "Aula 2" }));
+    // La lista de activas ya no la trae.
+    vi.mocked(apiAcademia.aulas).mockResolvedValue([aula(21, "Aula 1")]);
+    vi.mocked(apiAcademia.editarGrupo).mockResolvedValue(grupoDetalle());
+    const dialogo = await abrirEdicion();
+    const select = within(dialogo).getByLabelText("Aula") as HTMLSelectElement;
+    expect(select).toHaveValue("22");
+    expect(within(select).getByRole("option", { name: "Aula 2 (de baja)" })).toBeInTheDocument();
+    fireEvent.change(within(dialogo).getByLabelText(/^Cupo/), { target: { value: "25" } });
+    await act(async () => {
+      fireEvent.click(within(dialogo).getByRole("button", { name: "Guardar" }));
+    });
+    const cambios = vi.mocked(apiAcademia.editarGrupo).mock.calls[0][1];
+    expect(cambios.cupo).toBe(25);
+    expect(cambios).not.toHaveProperty("aulaId");
+    expect(cambios).not.toHaveProperty("aula");
+  });
+
+  it("un grupo viejo con el aula en texto sin enlazar la conserva hasta que se elija otra", async () => {
+    vi.mocked(apiAcademia.grupo).mockResolvedValue(grupoDetalle({ aulaId: null, aula: "Sala B" }));
+    vi.mocked(apiAcademia.aulas).mockResolvedValue([aula(21, "Aula 1")]);
+    vi.mocked(apiAcademia.editarGrupo).mockResolvedValue(grupoDetalle());
+    const dialogo = await abrirEdicion();
+    expect(within(dialogo).getByRole("option", { name: "Sala B (sin enlazar)" })).toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(within(dialogo).getByRole("button", { name: "Guardar" }));
+    });
+    expect(vi.mocked(apiAcademia.editarGrupo).mock.calls[0][1]).not.toHaveProperty("aulaId");
+  });
+
+  it("al cambiar el aula avisa el choque (sin contarse a sí mismo), y guarda igual", async () => {
+    vi.mocked(apiAcademia.grupo).mockResolvedValue(grupoDetalle({ aulaId: 22, aula: "Aula 2" }));
+    vi.mocked(apiAcademia.aulas).mockResolvedValue([aula(21, "Aula 1"), aula(22, "Aula 2")]);
+    vi.mocked(apiAcademia.choques).mockResolvedValue({
+      hayChoques: true,
+      aula: [
+        {
+          grupoId: 40,
+          nombre: "Base",
+          carrera: { id: 4, nombre: "Uñas" },
+          sede: { id: 1, nombre: "Central" },
+          horario: "Lu Ma Mi Ju Vi 10:00–12:00",
+          dias: [1, 2, 3, 4, 5],
+          horaInicio: "10:00",
+          horaFin: "12:00",
+          fechaInicio: "2026-08-17",
+          fechaFin: "2026-11-13",
+        },
+      ],
+      docentes: [],
+    });
+    vi.mocked(apiAcademia.editarGrupo).mockResolvedValue(grupoDetalle());
+    const dialogo = await abrirEdicion();
+    // Sin tocar nada no hay nada que avisar.
+    await esperarAviso();
+    expect(apiAcademia.choques).not.toHaveBeenCalled();
+    fireEvent.change(within(dialogo).getByLabelText("Aula"), { target: { value: "21" } });
+    await esperarAviso();
+    expect(apiAcademia.choques).toHaveBeenCalledWith(
+      expect.objectContaining({ almacenId: 1, aulaId: 21, excluirGrupoId: 7, horaInicio: "10:00", horaFin: "12:00", fechaInicio: "2026-08-17", fechaFin: "2026-11-13" }),
+    );
+    expect(within(dialogo).getByRole("alert")).toHaveTextContent("El aula «Aula 1» ya está ocupada de Lu Ma Mi Ju Vi 10:00–12:00 por Uñas (Base).");
+    await act(async () => {
+      fireEvent.click(within(dialogo).getByRole("button", { name: "Guardar igual" }));
+    });
+    expect(apiAcademia.editarGrupo).toHaveBeenCalledTimes(1);
+  });
+
+  it("al cambiar el docente de un módulo, pregunta sólo por el nuevo", async () => {
+    vi.mocked(apiAcademia.docentes).mockResolvedValue([
+      { personalId: 9, nombre: "Marco Rojas", sedes: [{ id: 1, nombre: "Central" }], pctDocente: null, retencionPct: null, tieneLogin: true },
+      LUCIA,
+    ]);
+    vi.mocked(apiAcademia.choques).mockResolvedValue({
+      hayChoques: true,
+      aula: [],
+      docentes: [
+        {
+          personalId: 10,
+          docente: "Lucía Paz",
+          grupoId: 41,
+          nombre: "Base",
+          carrera: { id: 3, nombre: "Barbería" },
+          sede: { id: 2, nombre: "Base" },
+          horario: "Lu Ma Mi Ju Vi 10:00–12:00",
+          dias: [1, 2, 3, 4, 5],
+          horaInicio: "10:00",
+          horaFin: "12:00",
+          desde: "2026-10-17",
+          hasta: "2026-11-13",
+        },
+      ],
+    });
+    const dialogo = await abrirEdicion();
+    fireEvent.change(within(dialogo).getByLabelText("Docente de M3"), { target: { value: "10" } });
+    await esperarAviso();
+    expect(vi.mocked(apiAcademia.choques).mock.calls.at(-1)![0]).toMatchObject({ docentes: [10], excluirGrupoId: 7 });
+    expect(within(dialogo).getByRole("alert")).toHaveTextContent("El docente Lucía Paz ya dicta Barbería (Base) Lu Ma Mi Ju Vi 10:00–12:00 en Base.");
+  });
+
+  it("si el aviso falla, se puede guardar igual", async () => {
+    vi.mocked(apiAcademia.grupo).mockResolvedValue(grupoDetalle({ aulaId: 22, aula: "Aula 2" }));
+    vi.mocked(apiAcademia.aulas).mockResolvedValue([aula(21, "Aula 1"), aula(22, "Aula 2")]);
+    vi.mocked(apiAcademia.choques).mockRejectedValue(new Error("Failed to fetch"));
+    vi.mocked(apiAcademia.editarGrupo).mockResolvedValue(grupoDetalle());
+    const dialogo = await abrirEdicion();
+    fireEvent.change(within(dialogo).getByLabelText("Aula"), { target: { value: "21" } });
+    await esperarAviso();
+    expect(within(dialogo).getByText(/No pudimos revisar/)).toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(within(dialogo).getByRole("button", { name: "Guardar" }));
+    });
+    expect(apiAcademia.editarGrupo).toHaveBeenCalledTimes(1);
   });
 });

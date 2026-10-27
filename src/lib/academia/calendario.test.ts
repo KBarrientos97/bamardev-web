@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  diaAnterior,
   duracionFranja,
   franjaSiguiente,
   franjasDe,
@@ -71,5 +72,13 @@ describe("franjas horarias", () => {
   it("la siguiente arranca donde termina la última y dura 2 horas", () => {
     expect(franjaSiguiente(franjasDe(central, 1), 1)).toEqual({ almacenId: 1, inicio: "11:00", fin: "13:00" });
     expect(franjaSiguiente([], null)).toEqual({ almacenId: null, inicio: "07:00", fin: "09:00" });
+  });
+});
+
+describe("diaAnterior", () => {
+  it("el fin de un módulo es el día antes del inicio del siguiente, también entre meses y años", () => {
+    expect(diaAnterior("2026-12-10")).toBe("2026-12-09");
+    expect(diaAnterior("2027-01-01")).toBe("2026-12-31");
+    expect(diaAnterior("2026-03-01")).toBe("2026-02-28");
   });
 });
