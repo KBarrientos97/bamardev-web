@@ -197,23 +197,33 @@ export const PARENTESCOS = ["Madre", "Padre", "Tutor/a", "Abuelo/a", "Hermano/a"
 
 /**
  * El calendario del plan con el descuento repartido entre las cuotas, a la
- * vista (el backend arma el de verdad). Lo que no cierra por redondeo va a la
- * última cuota, así la suma da el total.
+ * vista (el backend arma el de verdad con `generarCuotas`). Lo que no cierra
+ * por redondeo va a la última cuota, así la suma da el total.
+ *
+ * Como el backend: una cuota que queda en Bs 0 (beca completa) no existe, no
+ * hay nada que cobrar; la numeración sigue sobre las que quedan. Con
+ * `vencimiento` (ISO por cuota) la lista sale en orden de vencimiento, que es
+ * el orden en que se cobra: «la primera» es la que vence antes, no la que
+ * figura primero en el plan (auditoría 26-oct, bug 19). A igual fecha manda el
+ * orden del plan.
  */
 export function calendarioConDescuento(
   plan: PlanPago | null,
   tipo: "" | TipoDescuento,
   enPct: boolean,
   valor: number,
+  vencimiento?: (c: CuotaPlan) => string,
 ): { cuotas: CuotaPlan[]; total: number; descuento: number; pct: number } {
   if (!plan) return { cuotas: [], total: 0, descuento: 0, pct: 0 };
   const bruto = plan.total;
   const descuento = !tipo || valor <= 0 ? 0 : Math.min(bruto, enPct ? (bruto * Math.min(valor, 100)) / 100 : valor);
   const neto = Math.round((bruto - descuento) * 100) / 100;
   const factor = bruto > 0 ? neto / bruto : 1;
-  const cuotas = plan.calendario.map((c) => ({ ...c, monto: Math.round(c.monto * factor * 100) / 100 }));
-  const suma = cuotas.reduce((s, c) => s + c.monto, 0);
-  if (cuotas.length) cuotas[cuotas.length - 1].monto = Math.round((cuotas[cuotas.length - 1].monto + neto - suma) * 100) / 100;
+  const repartidas = plan.calendario.map((c) => ({ ...c, monto: Math.round(c.monto * factor * 100) / 100 }));
+  const suma = repartidas.reduce((s, c) => s + c.monto, 0);
+  if (repartidas.length) repartidas[repartidas.length - 1].monto = Math.round((repartidas[repartidas.length - 1].monto + neto - suma) * 100) / 100;
+  const vivas = repartidas.filter((c) => c.monto > 0).map((c, i) => ({ ...c, n: i + 1 }));
+  const cuotas = vencimiento ? vivas.map((c) => ({ c, v: vencimiento(c) })).sort((a, b) => (a.v < b.v ? -1 : a.v > b.v ? 1 : a.c.n - b.c.n)).map((x) => x.c) : vivas;
   return { cuotas, total: neto, descuento: Math.round(descuento * 100) / 100, pct: bruto > 0 ? (descuento / bruto) * 100 : 0 };
 }
 

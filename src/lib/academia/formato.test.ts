@@ -120,6 +120,43 @@ describe("el calendario de un plan", () => {
     expect(Math.round(promo.pct * 100) / 100).toBe(6.67);
     expect(calendarioConDescuento(plan, "", true, 50).total).toBe(1500);
   });
+
+  const plan2: PlanPago = {
+    id: 2,
+    nombre: "Cuotas",
+    orden: 1,
+    activo: true,
+    total: 1500,
+    baseDocente: {},
+    calendario: [
+      { n: 1, monto: 750, vence: { tipo: "INICIO_MATERIA", materiaOrden: 2 }, cubre: [2] },
+      { n: 2, monto: 750, vence: { tipo: "INSCRIPCION" }, cubre: [1] },
+    ],
+  };
+
+  it("bug 19: con beca del 100 % no hay cuotas (el backend no crea ninguna de Bs 0)", () => {
+    const r = calendarioConDescuento(plan2, "BECA", true, 100);
+    expect(r.total).toBe(0);
+    expect(r.cuotas).toEqual([]);
+  });
+
+  it("bug 19: sin vencimiento conserva el orden del plan y renumera las vivas", () => {
+    const r = calendarioConDescuento(plan2, "", true, 0);
+    expect(r.cuotas.map((c) => [c.n, c.monto])).toEqual([[1, 750], [2, 750]]);
+  });
+
+  it("bug 19: con vencimiento, la primera es la que vence antes y no la que figura primero en el plan", () => {
+    const vence = (c: { n: number }) => (c.n === 1 ? "2026-12-10" : "2026-10-27");
+    const r = calendarioConDescuento(plan2, "", true, 0, vence);
+    expect(r.cuotas.map((c) => c.cubre)).toEqual([[1], [2]]);
+    // El número es el de la cuota que crea el backend (orden del plan), no la posición.
+    expect(r.cuotas.map((c) => c.n)).toEqual([2, 1]);
+  });
+
+  it("bug 19: a igual vencimiento manda el orden del plan", () => {
+    const r = calendarioConDescuento(plan2, "", true, 0, () => "2026-10-27");
+    expect(r.cuotas.map((c) => c.n)).toEqual([1, 2]);
+  });
 });
 
 describe("precio del curso en modo simple", () => {

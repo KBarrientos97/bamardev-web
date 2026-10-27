@@ -200,7 +200,16 @@ export default function Inscribir({
     return "";
   })();
   const valorDescValido = descuentoMal ? 0 : Number(valorDesc) || 0;
-  const vista = useMemo(() => calendarioConDescuento(plan, tipoDesc, enPct, valorDescValido), [plan, tipoDesc, enPct, valorDescValido]);
+  // Sin cuotas en Bs 0 y en orden de vencimiento, como las crea y las cobra el
+  // backend: «la primera» es la que vence antes (auditoría 26-oct, bug 19).
+  const vista = useMemo(() => {
+    const hoy = isoDia(new Date());
+    const desde = (orden: number) => grupo?.materiasGrupo.find((m) => m.materia.orden === orden)?.desde;
+    return calendarioConDescuento(plan, tipoDesc, enPct, valorDescValido, (c) => {
+      const v = venceCuota(c.vence, desde, hoy, c.cubre[0]);
+      return !v || v === "hoy" ? hoy : v;
+    });
+  }, [plan, tipoDesc, enPct, valorDescValido, grupo]);
   // Un plan de una sola cuota (el pago completo) no tiene "la primera".
   const unaCuota = vista.cuotas.length <= 1;
   const elegidoHoy: PagaHoy = unaCuota && pagaHoy === "primera" ? "todo" : pagaHoy;
