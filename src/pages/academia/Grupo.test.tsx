@@ -86,7 +86,10 @@ describe("E3 · detalle de grupo", () => {
     expect(screen.getByText(/Mostrando 1–20 de 28/)).toHaveTextContent(/M2 pagado por 22 de 28/);
     // Los números son los de cada lista: "Todos" incluye al retirado.
     expect(within(filtros).getByRole("tab", { name: "Retirados 1" })).toBeInTheDocument();
-    expect(within(filtros).getByRole("tab", { name: "Al día 23" })).toBeInTheDocument();
+    // U4: «Al día» es el complemento de «Deben»; ya no es un filtro ni se cuenta aparte.
+    expect(within(filtros).queryByRole("tab", { name: /Al día/ })).not.toBeInTheDocument();
+    expect(apiAcademia.alumnosDelGrupo).not.toHaveBeenCalledWith(7, "aldia", expect.anything());
+    expect(within(filtros).getAllByRole("tab").map((t) => t.textContent)).toEqual(["Todos 28", "Deben 5", "Retirados 1"]);
     fireEvent.click(within(filtros).getByRole("tab", { name: "Deben 5" }));
     await act(async () => {});
     expect(apiAcademia.alumnosDelGrupo).toHaveBeenLastCalledWith(7, "deben", { page: 1, pageSize: 20 });

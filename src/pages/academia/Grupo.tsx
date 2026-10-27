@@ -40,7 +40,7 @@ import {
  * E3 · Detalle de grupo, versión limpia (lienzo E3 v2): el centralizador,
  * pero vivo. Arriba el curso, el horario y la barra de módulos con su mes;
  * una acción principal (Inscribir) y el resto en "⋯". La lista lleva los
- * filtros como indicadores (Todos · Deben · Al día · Retirados) y tocar una
+ * filtros como indicadores (Todos · Deben · Retirados; «Al día» salió el 26-oct, U4: era el complemento de «Deben») y tocar una
  * fila abre el panel del estudiante con su estado de cuenta, Cobrar y el
  * enlace de pago por WhatsApp. Asistencia y Notas son sus propias pantallas
  * (N6, E13): cada cosa en su lugar, no las dos en la misma celda.
@@ -79,7 +79,7 @@ export default function Grupo() {
   const conteos = useApi(
     () =>
       Promise.all(
-        (["todos", "deben", "aldia", "retirados"] as const).map((f) =>
+        (["todos", "deben", "retirados"] as const).map((f) =>
           apiAcademia
             .alumnosDelGrupo(grupoId, f, { page: 1, pageSize: 1 })
             .then((r) => [f, r.total] as const)
@@ -294,10 +294,7 @@ export default function Grupo() {
                 ? // El docente: los que tienen el semáforo prendido (el backend
                   // cuenta `deben` por semáforo para él, QA 23-oct).
                   [{ clave: "deben" as const, label: "Con deuda", n: n("deben"), urgente: true }]
-                : [
-                    { clave: "deben" as const, label: "Deben", n: n("deben"), urgente: true },
-                    { clave: "aldia" as const, label: "Al día", n: n("aldia") },
-                  ]),
+                : [{ clave: "deben" as const, label: "Deben", n: n("deben"), urgente: true }]),
               { clave: "retirados", label: "Retirados", n: n("retirados") },
             ]}
             valor={filtro}
