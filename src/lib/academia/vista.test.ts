@@ -118,14 +118,16 @@ describe("D6 · las cuotas con el nombre del módulo", () => {
 
   it("la cuota: «Cuota 2/3 · M2 Degradados», y sin nombres como antes", () => {
     const c = { concepto: "Cuota 2/3", numero: 2, materiaOrdenes: [2] };
-    expect(nombreCuota(c, NOMBRES)).toBe("Cuota 2/3 · M2 Degradados");
+    expect(nombreCuota({ ...c, materias: [{ orden: 2, nombre: "Degradados" }] })).toBe("Cuota 2/3 · M2 Degradados");
     expect(nombreCuota(c)).toBe("Cuota 2/3 · M2");
-    expect(nombreCuota({ concepto: "", numero: 2, materiaOrdenes: [] }, NOMBRES)).toBe("Cuota 2");
+    expect(nombreCuota({ concepto: "", numero: 2, materiaOrdenes: [], materias: [] })).toBe("Cuota 2");
   });
 
   it("con el curso: «Barbería · M2 Degradados»; sin módulos, el concepto", () => {
-    expect(nombreCuotaDeCurso("Barbería", { concepto: "Cuota 2/3", numero: 2, materiaOrdenes: [2] }, NOMBRES)).toBe("Barbería · M2 Degradados");
-    expect(nombreCuotaDeCurso("Barbería", { concepto: "Pago único", numero: 1, materiaOrdenes: [] }, NOMBRES)).toBe("Barbería · Pago único");
+    expect(nombreCuotaDeCurso("Barbería", { concepto: "Cuota 2/3", numero: 2, materiaOrdenes: [2], materias: [{ orden: 2, nombre: "Degradados" }] })).toBe(
+      "Barbería · M2 Degradados",
+    );
+    expect(nombreCuotaDeCurso("Barbería", { concepto: "Pago único", numero: 1, materiaOrdenes: [], materias: [] })).toBe("Barbería · Pago único");
   });
 });
 

@@ -1,5 +1,5 @@
 import { fmtMoney } from "../format";
-import type { CuotaPlan, Materia, PlanPago, Ref, TipoDescuento } from "./tipos";
+import type { CuotaPlan, Materia, MateriaDelGrupo, PlanPago, Ref, TipoDescuento } from "./tipos";
 
 /**
  * Cómo se cuentan las cosas de un instituto en pantalla: el horario de un
@@ -127,6 +127,26 @@ export function textoModulos(ordenes: number[], nombres?: Record<number, string>
   if (lista.length <= LARGO_MAX_MODULOS || con.length === 1) return lista;
   const seguidos = o.every((x, i) => i === 0 || x === o[i - 1] + 1);
   return seguidos ? `M${o[0]} a M${o[o.length - 1]}` : o.map((x) => `M${x}`).join(", ");
+}
+
+/** Los nombres de los módulos por orden ({1: "Cortes", 2: "Degradados"}). */
+export type NombresModulos = Record<number, string>;
+
+/** Los nombres de los módulos de un grupo (`materiasGrupo` de su detalle), por orden. */
+export function nombresDe(materias: Pick<MateriaDelGrupo, "materia">[] | undefined | null): NombresModulos {
+  const r: NombresModulos = {};
+  for (const m of materias ?? []) if (m.materia?.nombre) r[m.materia.orden] = m.materia.nombre;
+  return r;
+}
+
+/**
+ * Los módulos que cubre una cuota con su nombre («M2 Degradados»), de las
+ * `materias` que manda el backend (D6): sin pedir el detalle del grupo. Una
+ * respuesta sin ellas dice los códigos («M2–M3»).
+ */
+export function textoModulosDeCuota(c: { materiaOrdenes: number[]; materias?: { orden: number; nombre: string }[] | null }): string {
+  const nombres = Object.fromEntries((c.materias ?? []).map((m) => [m.orden, m.nombre]));
+  return textoModulos(c.materias?.length ? c.materias.map((m) => m.orden) : c.materiaOrdenes, nombres);
 }
 
 /** "al inscribirse", "día 1 de M2", "a los 30 días". */

@@ -14,7 +14,7 @@ import type {
   Ref,
   SemaforoPago,
 } from "./tipos";
-import { fechaCorta, horarioGrupo, nombreDe, textoModulos, textoPct } from "./formato";
+import { fechaCorta, horarioGrupo, nombreDe, textoModulosDeCuota, textoPct } from "./formato";
 import { urlInscribirmeDe } from "../pagina/rutas";
 import { ApiError } from "../api";
 import { fmtMoney } from "../format";
@@ -38,13 +38,15 @@ export function textoCuota(c: Cuota): { texto: string; urgente: boolean; apagado
   return { texto: `${fmtMoney(c.saldo)} · vence ${fechaCorta(c.vence)}`, urgente: false, apagado: true };
 }
 
+type CuotaConModulos = Pick<Cuota, "concepto" | "numero" | "materiaOrdenes" | "materias">;
+
 /**
- * "Cuota 2/3 · M2 Degradados": cómo se nombra una cuota en las listas. Con los
- * nombres de los módulos del grupo (D6) dice el módulo como el instituto; sin
- * ellos, el código «M2–M3» de siempre.
+ * "Cuota 2/3 · M2 Degradados": cómo se nombra una cuota en las listas. Dice el
+ * módulo como el instituto con las `materias` que manda el backend (D6); sin
+ * ellas, el código «M2–M3» de siempre.
  */
-export function nombreCuota(c: Pick<Cuota, "concepto" | "numero" | "materiaOrdenes">, nombres?: Record<number, string> | null): string {
-  const cubre = c.materiaOrdenes.length ? ` · ${textoModulos(c.materiaOrdenes, nombres)}` : "";
+export function nombreCuota(c: CuotaConModulos): string {
+  const cubre = c.materiaOrdenes.length ? ` · ${textoModulosDeCuota(c)}` : "";
   return `${c.concepto || `Cuota ${c.numero}`}${cubre}`;
 }
 
@@ -53,13 +55,9 @@ export function nombreCuota(c: Pick<Cuota, "concepto" | "numero" | "materiaOrden
  * cobra y el curso hace falta (la línea de «Cobrar», el recibo). Sin módulos
  * que decir, el concepto de la cuota («Barbería · Cuota 2/3»).
  */
-export function nombreCuotaDeCurso(
-  curso: string,
-  c: Pick<Cuota, "concepto" | "numero" | "materiaOrdenes">,
-  nombres?: Record<number, string> | null,
-): string {
+export function nombreCuotaDeCurso(curso: string, c: CuotaConModulos): string {
   if (!c.materiaOrdenes.length) return `${curso} · ${c.concepto || `Cuota ${c.numero}`}`;
-  return `${curso} · ${textoModulos(c.materiaOrdenes, nombres)}`;
+  return `${curso} · ${textoModulosDeCuota(c)}`;
 }
 
 /** Abre un `wa.me` en otra pestaña. */

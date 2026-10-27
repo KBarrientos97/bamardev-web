@@ -1,5 +1,5 @@
 import type { DetalleVentaInput, Venta } from "../../types";
-import { textoModulos } from "./formato";
+import { textoModulos, textoModulosDeCuota } from "./formato";
 import type { CarritoInscripcion, Ref } from "./tipos";
 
 /**
@@ -54,6 +54,16 @@ export function detallesDeCuotas(cobro: CobroCuotas | null): DetalleVentaInput[]
 }
 
 /**
+ * «Barbería · M2 Degradados»: lo que dice la línea de la cuota (D6). El
+ * carrito trae los módulos con su nombre; sin ellos (un backend anterior) vale
+ * el «Barbería · Cuota 2/3» que mandó.
+ */
+function descripcionDeLinea(carrito: CarritoInscripcion, l: CarritoInscripcion["lineas"][number]): string {
+  if (!carrito.carrera?.nombre || !l.materias?.length) return l.descripcion;
+  return `${carrito.carrera.nombre} · ${textoModulosDeCuota({ materiaOrdenes: l.materias.map((m) => m.orden), materias: l.materias })}`;
+}
+
+/**
  * Las cuotas elegidas en la vista "Cuotas por cobrar": las vencidas
  * arriba y marcadas; si ninguna venció, la primera. El monto arranca en el
  * saldo.
@@ -77,7 +87,7 @@ export function cuotasIniciales(carrito: CarritoInscripcion, montoHoy?: number):
       if (!elegida) monto = l.saldo;
     }
     return {
-      linea: { cuotaId: l.cuotaId, productoId: l.productoId, descripcion: l.descripcion, monto, saldo: l.saldo, vencida: l.vencida },
+      linea: { cuotaId: l.cuotaId, productoId: l.productoId, descripcion: descripcionDeLinea(carrito, l), monto, saldo: l.saldo, vencida: l.vencida },
       elegida,
     };
   });
@@ -109,10 +119,9 @@ export function pagadorPorDefecto(pagadores: CarritoInscripcion["pagadores"]): n
  * MISMA venta.
  *
  * Los módulos de cada cuota con su nombre salen de `venta.cuotas[].materias`
- * (D6); `modulos` (lo que sabe la pantalla de «Cobrar») queda de respaldo para
- * un backend que no los manda.
+ * (D6), que el backend manda en la respuesta de cobrar.
  */
-export function ventaConCuotas(venta: Venta, cobro: CobroCuotas | null, modulos?: Record<number, string>): Venta {
+export function ventaConCuotas(venta: Venta, cobro: CobroCuotas | null): Venta {
   if (!cobro?.lineas.length) return venta;
   const productos = new Set(cobro.lineas.map((l) => l.productoId));
   const conRenglon = new Set((venta.detalles ?? []).flatMap((d) => (d.cuotaId != null ? [d.cuotaId] : [])));
@@ -127,10 +136,6 @@ export function ventaConCuotas(venta: Venta, cobro: CobroCuotas | null, modulos?
   return {
     ...venta,
     ...(detalles ? { detalles } : {}),
-    // Sin `materias` en la cuota (un backend anterior), el módulo con su nombre lo pone «Cobrar» (D6).
-    ...(modulos && venta.cuotas
-      ? { cuotas: venta.cuotas.map((q) => (!q.materias?.length && modulos[q.cuotaId] ? { ...q, modulos: modulos[q.cuotaId] } : q)) }
-      : {}),
     pagadorCuotas: pagador && pagador.rol === "TUTOR" ? { nombre: pagador.nombre, rol: pagador.rol } : null,
     inscripcionCuotas: cobro.inscripcionId,
   };
@@ -139,12 +144,12 @@ export function ventaConCuotas(venta: Venta, cobro: CobroCuotas | null, modulos?
 /**
  * Los módulos que cubre una cuota de la venta, como habla el instituto
  * («M2 Degradados», «M2 Degradados y M3 Cortes»): de `materias`, que el
- * backend ya manda con el nombre (D6). Sin ellas, el texto que puso «Cobrar»
- * (`modulos`); sin nada, `undefined` y el recibo dice el concepto a secas.
+ * backend ya manda con el nombre (D6). Sin ellas, `undefined` y el recibo dice
+ * el concepto a secas.
  */
 export function modulosDeCuotaVenta(q: NonNullable<Venta["cuotas"]>[number]): string | undefined {
-  if (q.materias?.length) return textoModulos(q.materias.map((m) => m.orden), Object.fromEntries(q.materias.map((m) => [m.orden, m.nombre])));
-  return q.modulos;
+  if (!q.materias?.length) return undefined;
+  return textoModulos(q.materias.map((m) => m.orden), Object.fromEntries(q.materias.map((m) => [m.orden, m.nombre])));
 }
 
 /**

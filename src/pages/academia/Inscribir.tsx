@@ -13,6 +13,7 @@ import {
   MAYORIA_DE_EDAD,
   nombreAlumno,
   nombreDe,
+  nombresDe,
   PARENTESCOS,
   textoCubre,
   textoModulos,
@@ -40,7 +41,6 @@ import { fmtMoney, isoDia } from "../../lib/format";
 import { tienePermiso } from "../../lib/permisos";
 import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
-import { nombresDe } from "../../lib/academia/modulos";
 import { abrirWhatsapp } from "../../lib/academia/vista";
 import BuscadorEstudiante from "./BuscadorEstudiante";
 import CapturaFotos from "./CapturaFotos";

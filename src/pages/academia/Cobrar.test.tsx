@@ -20,7 +20,7 @@ vi.mock("../../store/AuthContext", async () => {
 
 vi.mock("../../lib/academia/apiAcademia", async (importOriginal) => {
   const real = await importOriginal<typeof import("../../lib/academia/apiAcademia")>();
-  return { ...real, apiAcademia: { cuotasPorCobrar: vi.fn(), carrito: vi.fn(), alumno: vi.fn(), grupo: vi.fn() } };
+  return { ...real, apiAcademia: { cuotasPorCobrar: vi.fn(), carrito: vi.fn() } };
 });
 
 vi.mock("../../lib/api", async (importOriginal) => {
@@ -47,7 +47,6 @@ vi.mock("../pos/PantallaRecibo", () => ({
 
 import { ApiError, api } from "../../lib/api";
 import { apiAcademia } from "../../lib/academia/apiAcademia";
-import { olvidarModulos } from "../../lib/academia/modulos";
 import { inicialDeLaUrl, montoSugerido } from "../../lib/academia/cobroCuotas";
 import Cobrar from "./Cobrar";
 
@@ -61,15 +60,32 @@ const CARRITO = {
     { clienteId: 70, nombre: "Rosa Molina", rol: "TUTOR" as const, principal: true },
     { clienteId: 53, nombre: "Joaquín", rol: "ALUMNO" as const, principal: false },
   ],
+  carrera: { id: 1, nombre: "Barbería" },
+  // Como los manda el backend: el concepto de la cuota y, aparte, los módulos con su nombre (D6).
   lineas: [
-    { productoId: 77, cuotaId: 906, descripcion: "Barbería · M3", saldo: 533, vence: "2026-10-17", vencida: false },
-    { productoId: 77, cuotaId: 905, descripcion: "Barbería · M2", saldo: 333, vence: "2026-09-17", vencida: true },
+    {
+      productoId: 77,
+      cuotaId: 906,
+      descripcion: "Barbería · Cuota 3/3",
+      saldo: 533,
+      vence: "2026-10-17",
+      vencida: false,
+      materias: [{ id: 33, orden: 3, nombre: "Barba y color" }],
+    },
+    {
+      productoId: 77,
+      cuotaId: 905,
+      descripcion: "Barbería · Cuota 2/3",
+      saldo: 333,
+      vence: "2026-09-17",
+      vencida: true,
+      materias: [{ id: 32, orden: 2, nombre: "Degradados" }],
+    },
   ],
 };
 
 beforeEach(() => {
   vi.clearAllMocks();
-  olvidarModulos();
   vi.mocked(api.cajaActual).mockResolvedValue(CAJA as never);
   vi.mocked(api.getFormasPago).mockResolvedValue([
     { id: 1, nombre: "Efectivo" },
@@ -128,9 +144,9 @@ describe("A1 · cobrar a estudiante", () => {
     // Primero la vencida entera (333), el resto (67) como abono de la siguiente.
     const reparto = within(screen.getByRole("region", { name: "Cómo se reparte" }));
     const filas = reparto.getAllByRole("listitem");
-    expect(filas[0]).toHaveTextContent("Barbería · M2");
+    expect(filas[0]).toHaveTextContent("Barbería · M2 Degradados");
     expect(filas[0]).toHaveTextContent("Bs 333");
-    expect(filas[1]).toHaveTextContent("Barbería · M3");
+    expect(filas[1]).toHaveTextContent("Barbería · M3 Barba y color");
     expect(filas[1]).toHaveTextContent("abono");
 
     await pagarEnEfectivo("500");
@@ -150,30 +166,15 @@ describe("A1 · cobrar a estudiante", () => {
     expect(screen.getByText("Cobrar a otro estudiante")).toBeInTheDocument();
   });
 
-  it("D6: las cuotas dicen «Barbería · M2 Degradados» cuando se saben los módulos; si no, lo del backend", async () => {
-    vi.mocked(apiAcademia.alumno).mockResolvedValue({
-      inscripciones: [
-        {
-          id: 103,
-          grupo: { id: 7, nombre: "Barbería · Sáb", carrera: { id: 1, nombre: "Barbería" }, sede: { id: 2, nombre: "Norte" } },
-          cuotas: [
-            { id: 905, materiaOrdenes: [2] },
-            { id: 906, materiaOrdenes: [3] },
-          ],
-        },
-      ],
-    } as never);
-    vi.mocked(apiAcademia.grupo).mockResolvedValue({
-      materiasGrupo: [
-        { materia: { id: 32, orden: 2, nombre: "Degradados" } },
-        { materia: { id: 33, orden: 3, nombre: "Barba y color" } },
-      ],
-    } as never);
+  it("D6: un carrito sin materias (backend anterior) deja el «Barbería · Cuota 2/3» del backend", async () => {
+    vi.mocked(apiAcademia.carrito).mockResolvedValue({
+      ...CARRITO,
+      lineas: CARRITO.lineas.map(({ materias: _materias, ...l }) => l),
+    });
     await montar("/academia/cobrar?inscripcion=103&monto=400");
-    await act(async () => {});
     const filas = within(screen.getByRole("region", { name: "Cómo se reparte" })).getAllByRole("listitem");
-    expect(filas[0]).toHaveTextContent("Barbería · M2 Degradados");
-    expect(filas[1]).toHaveTextContent("Barbería · M3 Barba y color");
+    expect(filas[0]).toHaveTextContent("Barbería · Cuota 2/3");
+    expect(filas[1]).toHaveTextContent("Barbería · Cuota 3/3");
   });
 
   it("el monto se cambia ahí: más que el saldo no deja confirmar, y lo nuevo se reparte otra vez", async () => {

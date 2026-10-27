@@ -16,7 +16,6 @@ import {
   type InicialCobro,
 } from "../../lib/academia/cobroCuotas";
 import { fechaCorta, nombreDe } from "../../lib/academia/formato";
-import { descripcionDeCuota, modulosDeCuotas, useModulosDeCuotas } from "../../lib/academia/modulos";
 import type { AlumnoPorCobrar, CarritoInscripcion, Ref } from "../../lib/academia/tipos";
 import { MINIMO_BUSQUEDA, useBusquedaEstudiante } from "../../lib/academia/useBusquedaEstudiante";
 import { usePalabras } from "../../lib/academia/usePalabras";
@@ -160,9 +159,6 @@ export default function Cobrar() {
   }, [inicial, elegir]);
 
   const montoNum = Math.round(parsearMontoO(monto, NaN) * 100) / 100;
-  // Qué módulo cubre cada cuota (D6): el carrito trae «Barbería · Cuota 2/3» y
-  // el instituto habla de «Barbería · M2 Degradados». Sin eso, el del backend.
-  const infoCuotas = useModulosDeCuotas(elegido?.carrito.alumno.id, elegido?.fila.inscripcionId);
   const tope = elegido ? saldoTotal(elegido.carrito) : 0;
   const montoOk = montoValido(montoNum, tope);
   const reparto = useMemo(
@@ -202,7 +198,7 @@ export default function Cobrar() {
       intento.registrado();
       enDuda.current = false;
       registrar(creada);
-      setVenta(ventaConCuotas(creada, cobro, modulosDeCuotas(infoCuotas)));
+      setVenta(ventaConCuotas(creada, cobro));
       // Lo acordado ya se cobró: un F5 abre el mismo estudiante con lo que debe hoy.
       setParams({ inscripcion: String(elegido.fila.inscripcionId) }, { replace: true });
     } catch (err) {
@@ -395,7 +391,7 @@ export default function Cobrar() {
               {reparto.map(({ linea, elegida }) => (
                 <li key={linea.cuotaId} className={`flex items-center gap-3 ${LISTA.item}`}>
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-semibold text-texto">{descripcionDeCuota(infoCuotas, linea.cuotaId, linea.descripcion)}</span>
+                    <span className="block truncate text-sm font-semibold text-texto">{linea.descripcion}</span>
                     <span className={`block text-xs ${linea.vencida ? "font-semibold text-danger-text" : "text-texto-3"}`}>
                       {linea.vencida ? "Vencida" : "Vence"} {fechaCorta(venceDe(linea.cuotaId))} · saldo {fmtMoney(linea.saldo)}
                     </span>
@@ -495,7 +491,7 @@ export default function Cobrar() {
                 <tbody>
                   {reparto.map(({ linea, elegida }) => (
                     <tr key={linea.cuotaId} className={TABLA.fila}>
-                      <td className={`${TABLA.td} font-semibold text-texto`}>{descripcionDeCuota(infoCuotas, linea.cuotaId, linea.descripcion)}</td>
+                      <td className={`${TABLA.td} font-semibold text-texto`}>{linea.descripcion}</td>
                       <td className={`${TABLA.td} whitespace-nowrap`}>
                         {linea.vencida ? (
                           <Chip tono="rojo">Vencida {fechaCorta(venceDe(linea.cuotaId))}</Chip>

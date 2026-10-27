@@ -8,8 +8,10 @@ import {
   horarioGrupo,
   nombreAlumno,
   nombreDe,
+  nombresDe,
   problemasDelPlan,
   textoCubre,
+  textoModulosDeCuota,
   textoVence,
   totalCalendario,
 } from "./formato";
@@ -212,5 +214,19 @@ describe("venceCuota (regla del backend, QA 23-oct)", () => {
     expect(venceCuota({ tipo: "INICIO_MATERIA", materiaOrden: 5 }, desde, "2026-10-23")).toBeNull();
     expect(venceCuota({ tipo: "INSCRIPCION" }, desde, "2026-10-23")).toBe("hoy");
     expect(venceCuota({ tipo: "DIAS", dias: 30 }, desde, "2026-10-23")).toBe("2026-11-22");
+  });
+});
+
+describe("D6 · los módulos de una cuota con su nombre", () => {
+  it("nombresDe arma {orden: nombre} con el detalle del grupo", () => {
+    const m = (orden: number, nombre: string) => ({ materia: { id: orden, orden, nombre } }) as never;
+    expect(nombresDe([m(1, "Corte clásico"), m(2, "Degradados")])).toEqual({ 1: "Corte clásico", 2: "Degradados" });
+    expect(nombresDe(undefined)).toEqual({});
+  });
+
+  it("la cuota dice «M2 Degradados» con sus materias y «M2–M3» sin ellas", () => {
+    expect(textoModulosDeCuota({ materiaOrdenes: [2], materias: [{ orden: 2, nombre: "Degradados" }] })).toBe("M2 Degradados");
+    expect(textoModulosDeCuota({ materiaOrdenes: [2, 3] })).toBe("M2–M3");
+    expect(textoModulosDeCuota({ materiaOrdenes: [2, 3], materias: [] })).toBe("M2–M3");
   });
 });

@@ -363,7 +363,7 @@ describe("E10: el recibo de las cuotas de un instituto", () => {
           {
             cuotaId: 902,
             concepto: "Cuota 2/3",
-            modulos: "M2 Degradados",
+            materias: [{ id: 5, orden: 2, nombre: "Degradados" }],
             alumno: "Bustillos Rek, Camila",
             cobrado: 500,
             pagado: 500,

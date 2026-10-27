@@ -19,13 +19,12 @@ vi.mock("../../lib/academia/apiAcademia", async (importOriginal) => {
   const real = await importOriginal<typeof import("../../lib/academia/apiAcademia")>();
   return {
     ...real,
-    apiAcademia: { cobranza: vi.fn(), grupo: vi.fn(), recordatorio: vi.fn(), carreras: vi.fn(async () => []), ajustes: vi.fn(async () => null) },
+    apiAcademia: { cobranza: vi.fn(), recordatorio: vi.fn(), carreras: vi.fn(async () => []), ajustes: vi.fn(async () => null) },
   };
 });
 
 import { apiAcademia } from "../../lib/academia/apiAcademia";
 import { ApiError } from "../../lib/api";
-import { olvidarModulos } from "../../lib/academia/modulos";
 import Cobranza from "./Cobranza";
 
 const RESPUESTA: RespuestaCobranza = {
@@ -49,7 +48,7 @@ const RESPUESTA: RespuestaCobranza = {
       grupo: { id: 7, nombre: "Barbería · L-V 10:00" },
       sede: { id: 2, nombre: "Norte" },
       cuotas: [
-        { id: 905, numero: 2, concepto: "M2", materiaOrdenes: [2], monto: 533, pagado: 200, saldo: 333, vence: "2026-09-17", estado: "PARCIAL", vencida: true, diasAtraso: 12, ultimoRecordatorioEn: null, recordatorios: 0 },
+        { id: 905, numero: 2, concepto: "Cuota 2/3", materiaOrdenes: [2], materias: [{ orden: 2, nombre: "Degradados" }], monto: 533, pagado: 200, saldo: 333, vence: "2026-09-17", estado: "PARCIAL", vencida: true, diasAtraso: 12, ultimoRecordatorioEn: null, recordatorios: 0 },
       ],
       saldo: 333,
       diasAtraso: 12,
@@ -63,7 +62,7 @@ const RESPUESTA: RespuestaCobranza = {
       grupo: { id: 7, nombre: "Barbería · L-V 10:00" },
       sede: { id: 1, nombre: "Central" },
       cuotas: [
-        { id: 902, numero: 2, concepto: "M2", materiaOrdenes: [2], monto: 500, pagado: 0, saldo: 500, vence: "2026-10-10", estado: "PENDIENTE", vencida: true, diasAtraso: 6, ultimoRecordatorioEn: "2026-10-13T12:00:00.000Z", recordatorios: 1 },
+        { id: 902, numero: 2, concepto: "Cuota 2/3", materiaOrdenes: [2], materias: [{ orden: 2, nombre: "Degradados" }], monto: 500, pagado: 0, saldo: 500, vence: "2026-10-10", estado: "PENDIENTE", vencida: true, diasAtraso: 6, ultimoRecordatorioEn: "2026-10-13T12:00:00.000Z", recordatorios: 1 },
       ],
       saldo: 500,
       diasAtraso: 6,
@@ -95,25 +94,22 @@ async function montar(ruta = "/academia/cobranza") {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  olvidarModulos();
   vi.mocked(apiAcademia.cobranza).mockResolvedValue(RESPUESTA);
 });
 
 describe("D6 · la cuota con el nombre del módulo", () => {
-  it("con el detalle del grupo, la fila dice «M2 Degradados»; sin él, el código de siempre", async () => {
+  it("la fila dice «Cuota 2/3 · M2 Degradados» con las materias de la cuota, sin pedir el grupo", async () => {
     await montar();
-    expect(screen.getAllByText(/Cuota 2 · M2$|^M2 · M2$|· M2 ·/).length).toBeGreaterThan(0);
-    expect(screen.queryByText(/M2 Degradados/)).not.toBeInTheDocument();
+    expect(screen.getAllByText(/Cuota 2\/3 · M2 Degradados/).length).toBeGreaterThan(0);
   });
 
-  it("llegando los nombres del grupo, los usa", async () => {
-    olvidarModulos();
-    vi.mocked(apiAcademia.grupo).mockResolvedValue({ materiasGrupo: [{ materia: { id: 32, orden: 2, nombre: "Degradados" } }] } as never);
+  it("una respuesta sin materias (backend anterior) deja el código «M2»", async () => {
+    const sinMaterias = structuredClone(RESPUESTA);
+    for (const f of sinMaterias.items) for (const c of f.cuotas) delete c.materias;
+    vi.mocked(apiAcademia.cobranza).mockResolvedValue(sinMaterias);
     await montar();
-    await act(async () => {});
-    expect(apiAcademia.grupo).toHaveBeenCalledTimes(1);
-    expect(apiAcademia.grupo).toHaveBeenCalledWith(7);
-    expect(screen.getAllByText(/M2 Degradados/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Cuota 2\/3 · M2(?! Degradados)/).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/M2 Degradados/)).not.toBeInTheDocument();
   });
 });
 

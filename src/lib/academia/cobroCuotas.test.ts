@@ -30,6 +30,37 @@ const COBRO: CobroCuotas = {
   ],
 };
 
+describe("D6 · la línea de la cuota con el módulo", () => {
+  const carrito = (extra: object) => ({
+    alumno: { id: 1, nombre: "A" },
+    pagadores: [],
+    carrera: { id: 4, nombre: "Barbería" },
+    lineas: [{ productoId: 77, cuotaId: 11, descripcion: "Barbería · Cuota 2/3", saldo: 500, vence: "2026-11-10", vencida: false, ...extra }],
+  });
+
+  it("con las materias del carrito dice «Barbería · M2 Degradados»", () => {
+    const r = cuotasIniciales(carrito({ materias: [{ id: 5, orden: 2, nombre: "Degradados" }] }));
+    expect(r[0].linea.descripcion).toBe("Barbería · M2 Degradados");
+  });
+
+  it("con dos módulos los junta: «Barbería · M2 Degradados y M3 Cortes»", () => {
+    const r = cuotasIniciales(
+      carrito({
+        materias: [
+          { id: 5, orden: 2, nombre: "Degradados" },
+          { id: 6, orden: 3, nombre: "Cortes" },
+        ],
+      }),
+    );
+    expect(r[0].linea.descripcion).toBe("Barbería · M2 Degradados y M3 Cortes");
+  });
+
+  it("sin materias (un backend anterior) queda lo que mandó: «Barbería · Cuota 2/3»", () => {
+    expect(cuotasIniciales(carrito({}))[0].linea.descripcion).toBe("Barbería · Cuota 2/3");
+    expect(cuotasIniciales(carrito({ materias: [] }))[0].linea.descripcion).toBe("Barbería · Cuota 2/3");
+  });
+});
+
 describe("las cuotas en la venta", () => {
   it("sin cobro no hay detalles ni total", () => {
     expect(detallesDeCuotas(null)).toEqual([]);
@@ -228,7 +259,7 @@ describe("bug 13 · la venta de cuotas se empareja por cuotaId, no por posición
     expect(ventaConCuotas(venta, COBRO).detalles?.map((d) => d.cuotaId)).toEqual([11, 12]);
   });
 
-  it("los módulos de la cuota salen de sus materias; «Cobrar» sólo respalda a un backend que no las manda", () => {
+  it("los módulos de la cuota salen de sus materias; sin ellas, ninguno", () => {
     const conMaterias = { ...cuota(11), materias: [{ id: 5, orden: 2, nombre: "Degradados" }] };
     expect(modulosDeCuotaVenta(conMaterias)).toBe("M2 Degradados");
     expect(
@@ -240,12 +271,6 @@ describe("bug 13 · la venta de cuotas se empareja por cuotaId, no por posición
         ],
       }),
     ).toBe("M2 Degradados y M3 Cortes");
-    expect(modulosDeCuotaVenta({ ...cuota(11), modulos: "M2 Degradados" })).toBe("M2 Degradados");
     expect(modulosDeCuotaVenta(cuota(11))).toBeUndefined();
-    // Con materias, el respaldo de «Cobrar» no pisa nada.
-    const venta = { id: 1, detalles: [renglon(11)], cuotas: [conMaterias] } as unknown as Venta;
-    expect(ventaConCuotas(venta, COBRO, { 11: "otro texto" }).cuotas?.[0].modulos).toBeUndefined();
-    const vieja = { id: 1, detalles: [renglon(11)], cuotas: [cuota(11)] } as unknown as Venta;
-    expect(ventaConCuotas(vieja, COBRO, { 11: "M2 Degradados" }).cuotas?.[0].modulos).toBe("M2 Degradados");
   });
 });

@@ -8,7 +8,6 @@ import { apiAcademia } from "../../lib/academia/apiAcademia";
 import { mesCorto, mesDe } from "../../lib/academia/calendario";
 import { esDatoViejo, mensajeDelBackend } from "../../lib/academia/errores";
 import { fechaCorta, horarioGrupo, nombreAlumno, nombreDe } from "../../lib/academia/formato";
-import { nombresDe } from "../../lib/academia/modulos";
 import type { AlumnoDelGrupo, FiltroAlumnosGrupo, GrupoDetalle } from "../../lib/academia/tipos";
 import { usePalabras } from "../../lib/academia/usePalabras";
 import { abrirWhatsapp, rutaCobroInscripcion, textoFormaPago } from "../../lib/academia/vista";
@@ -361,7 +360,6 @@ export default function Grupo() {
         fila={elegido}
         sinMontos={sinMontos}
         cobra={cobra}
-        nombresModulos={nombresDe(g.materiasGrupo)}
         onCerrar={() => setElegido(null)}
         onCobrar={(a) => navigate(rutaCobroInscripcion(a.inscripcionId, g.sede))}
       />
@@ -598,7 +596,6 @@ function PanelAlumno({
   fila,
   sinMontos,
   cobra,
-  nombresModulos,
   onCerrar,
   onCobrar,
 }: {
@@ -606,7 +603,6 @@ function PanelAlumno({
   sinMontos: boolean;
   cobra: boolean;
   /** Los módulos del grupo por orden: las cuotas dicen «M2 Degradados» (D6). */
-  nombresModulos: Record<number, string>;
   onCerrar: () => void;
   onCobrar: (a: AlumnoDelGrupo) => void;
 }) {
@@ -722,7 +718,7 @@ function PanelAlumno({
               {ficha.cargando && !datos ? (
                 <Cargando />
               ) : inscripcion ? (
-                <EstadoDeCuenta cuotas={inscripcion.cuotas} nombres={nombresModulos} />
+                <EstadoDeCuenta cuotas={inscripcion.cuotas} />
               ) : (
                 <ul className="space-y-1 text-sm">
                   {fila.pagos.map((x) => (

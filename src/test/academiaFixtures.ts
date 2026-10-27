@@ -170,8 +170,8 @@ export function fichaCamila(): AlumnoDetalle {
         descuento: null,
         total: 1500,
         cuotas: [
-          { id: 901, numero: 1, concepto: "Cuota 1", materiaOrdenes: [1], monto: 750, pagado: 750, saldo: 0, vence: "2026-08-17", estado: "PAGADA", vencida: false, diasAtraso: 0, ultimoRecordatorioEn: null, recordatorios: 0 },
-          { id: 902, numero: 2, concepto: "Cuota 2", materiaOrdenes: [2, 3], monto: 750, pagado: 0, saldo: 750, vence: "2026-09-17", estado: "PENDIENTE", vencida: true, diasAtraso: 12, ultimoRecordatorioEn: null, recordatorios: 0 },
+          { id: 901, numero: 1, concepto: "Cuota 1", materiaOrdenes: [1], materias: [{ orden: 1, nombre: "Corte clásico" }], monto: 750, pagado: 750, saldo: 0, vence: "2026-08-17", estado: "PAGADA", vencida: false, diasAtraso: 0, ultimoRecordatorioEn: null, recordatorios: 0 },
+          { id: 902, numero: 2, concepto: "Cuota 2", materiaOrdenes: [2, 3], materias: [{ orden: 2, nombre: "Degradados" }, { orden: 3, nombre: "Barba y color" }], monto: 750, pagado: 0, saldo: 750, vence: "2026-09-17", estado: "PENDIENTE", vencida: true, diasAtraso: 12, ultimoRecordatorioEn: null, recordatorios: 0 },
         ],
         pagos: [{ ventaId: 300, comprobante: "000300", fecha: "2026-08-17T14:00:00.000Z", sede: { id: 1, nombre: "Central" }, monto: 750, cuotaId: 901 }],
         eventos: [{ accion: "Inscripción", detalle: "plan Cuotas", usuario: "lucia", en: "2026-08-17T14:00:00.000Z" }],

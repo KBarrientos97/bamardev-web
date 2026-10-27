@@ -424,6 +424,11 @@ export interface Cuota {
   numero: number;
   concepto: string;
   materiaOrdenes: number[];
+  /**
+   * D6: los módulos que cubre con su nombre, ordenados. Opcional sólo para una
+   * respuesta de un backend anterior: sin esto se dicen los códigos «M2».
+   */
+  materias?: { orden: number; nombre: string }[];
   monto: number;
   pagado: number;
   saldo: number;
@@ -583,7 +588,18 @@ export interface Preinscripcion {
 export interface CarritoInscripcion {
   alumno: { id: number; nombre: string };
   pagadores: { clienteId: number; nombre: string; rol: "ALUMNO" | "TUTOR"; principal: boolean }[];
-  lineas: { productoId: number; cuotaId: number; descripcion: string; saldo: number; vence: string; vencida: boolean }[];
+  /** El curso, para decir «Barbería · M2 Degradados» (D6). */
+  carrera?: { id: number; nombre: string };
+  lineas: {
+    productoId: number;
+    cuotaId: number;
+    descripcion: string;
+    saldo: number;
+    vence: string;
+    vencida: boolean;
+    /** Lo que cubre la cuota, con su nombre y ordenado (D6). Un backend anterior no lo manda. */
+    materias?: { id?: number; orden: number; nombre: string }[];
+  }[];
 }
 
 /** Un resultado de la búsqueda del POS (`GET /academia/cuotas-por-cobrar`). */
