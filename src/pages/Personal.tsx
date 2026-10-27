@@ -53,6 +53,9 @@ const FILTROS = [
 const mensaje = (e: unknown, generico = "No se pudo guardar") => mensajeDeError(e, { generico });
 
 export default function Personal() {
+  const { negocio: negocioActual } = useAuth();
+  // En el instituto la gente son docentes: nada de agenda, comisión ni propinas.
+  const enInstituto = esInstituto(negocioActual);
   const [filtro, setFiltro] = useState<Filtro>("activos");
   const [buscar, setBuscar] = useState("");
   const [cargo, setCargo] = useState("");
@@ -150,7 +153,11 @@ export default function Personal() {
           <Vacio
             icono="users"
             titulo="No hay nadie con ese filtro"
-            texto="Cargá a quien trabaja con vos, entre o no al sistema: un barbero sin usuario igual tiene su agenda, su comisión y sus propinas."
+            texto={
+              enInstituto
+                ? "Cargá a tus docentes y a quien trabaja con vos, entren o no al sistema."
+                : "Cargá a quien trabaja con vos, entre o no al sistema: un barbero sin usuario igual tiene su agenda, su comisión y sus propinas."
+            }
           />
         </div>
       ) : (
@@ -245,7 +252,7 @@ function FichaPersona({
   const pestanaProfesionales = `${plural(etiquetaRol("PROFESIONAL", negocio))} y espacios`;
   // En un instituto la gente son los docentes (contrato de la ronda 1): su %
   // se llama "% docente" y suman la retención y el NIT.
-  const conDocentes = negocio?.tipoNegocio === "ACADEMIA" || !!negocio?.features?.includes("academia");
+  const conDocentes = esInstituto(negocio);
   // El % es plata del profesional: lo cambia quien liquida (el backend lo
   // exige). En el instituto, quien liquida la planilla del docente o
   // configura la academia (lo mismo que pide el backend).
@@ -421,12 +428,13 @@ function FichaPersona({
           <Campo label="Fecha de ingreso">
             <Input type="date" value={fechaIngreso} onChange={(e) => setFechaIngreso(e.target.value)} />
           </Campo>
-          <ColorAgenda valor={color} nombre={nombre} onChange={setColor} />
-          {cambiaComision && (
-            <Campo
-              label={conDocentes ? "% docente" : "Comisión base (%)"}
-              hint={conDocentes ? "De lo cobrado de sus materias. Vacío = el de los ajustes." : "Si es profesional, la de sus servicios."}
-            >
+          {/* El color es de la agenda de belleza. En el instituto no hay agenda de
+              personas, y el % del docente se fija en el curso o en los ajustes
+              (C3, auditoría 26-oct): la persona no lo usa, así que no se muestra.
+              El valor que ya tuviera se conserva: no se manda si no cambió. */}
+          {!conDocentes && <ColorAgenda valor={color} nombre={nombre} onChange={setColor} />}
+          {cambiaComision && !conDocentes && (
+            <Campo label="Comisión base (%)" hint="Si es profesional, la de sus servicios.">
               <Input type="number" value={comision} onChange={(e) => setComision(e.target.value)} placeholder="Opcional" />
             </Campo>
           )}
@@ -644,6 +652,11 @@ function ElegirCargo({
  * Color en la agenda, con el selector de color de todo el sistema. Lo que se
  * ve es lo que se guarda (QA PER-04): "Sin color" guarda null.
  */
+/** Un instituto: tipo ACADEMIA o con la feature `academia`. */
+function esInstituto(negocio: { tipoNegocio?: string; features?: string[] } | null | undefined) {
+  return negocio?.tipoNegocio === "ACADEMIA" || !!negocio?.features?.includes("academia");
+}
+
 function ColorAgenda({ valor, nombre, onChange }: { valor: string; nombre: string; onChange: (c: string) => void }) {
   return (
     <div className="sm:col-span-2">

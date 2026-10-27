@@ -622,7 +622,7 @@ function PanelCurso({
                 <Campo label={`% para el ${p.docente}`}>
                   <Input type="number" value={pct} onChange={(e) => setPct(e.target.value)} placeholder={String(pctInstituto)} />
                 </Campo>
-                <p className="mt-2 text-xs text-texto-4">El instituto paga {pctInstituto} %; dejalo vacío para usar ese.</p>
+                <p className="mt-2 text-xs text-texto-4">El instituto paga {pctInstituto} %; dejalo vacío para usar ese. Este porcentaje manda sobre el de Ajustes.</p>
               </>
             )}
           </div>

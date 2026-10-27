@@ -75,8 +75,8 @@ beforeEach(() => {
 });
 
 describe("Personal en un instituto", () => {
-  it("muestra % docente, retención y NIT, y manda sólo lo que cambió", async () => {
-    vi.mocked(apiPersonal.editar).mockResolvedValue({ ...MARCO, comisionPct: 25, nit: "123456" });
+  it("muestra retención y NIT, sin % docente ni color de agenda, y manda sólo lo que cambió", async () => {
+    vi.mocked(apiPersonal.editar).mockResolvedValue({ ...MARCO, nit: "123456" });
     render(
       <MemoryRouter>
         <Personal />
@@ -86,16 +86,30 @@ describe("Personal en un instituto", () => {
     fireEvent.click(screen.getByRole("button", { name: "Ver Marco Rojas" }));
     const dialogo = screen.getByRole("dialog", { name: "Marco Rojas" });
     expect(within(dialogo).queryByLabelText(/Comisión base/)).not.toBeInTheDocument();
-    expect(within(dialogo).getByLabelText(/^% docente/)).toHaveValue("20");
+    // C3: el % lo manda el curso (o Ajustes), no la persona; el color es de la agenda de belleza (U2).
+    expect(within(dialogo).queryByLabelText(/% docente/)).not.toBeInTheDocument();
+    expect(within(dialogo).queryByRole("button", { name: /^Color en la agenda/ })).not.toBeInTheDocument();
     expect(within(dialogo).getByLabelText(/^Retención %/)).toHaveValue("16");
-    fireEvent.change(within(dialogo).getByLabelText(/^% docente/), { target: { value: "25" } });
     fireEvent.change(within(dialogo).getByLabelText(/^NIT/), { target: { value: "123456" } });
     await act(async () => {
       fireEvent.click(within(dialogo).getByRole("button", { name: "Guardar" }));
     });
     const cuerpo = vi.mocked(apiPersonal.editar).mock.calls[0][1];
-    expect(cuerpo).toMatchObject({ comisionPct: 25, nit: "123456" });
-    // La retención no cambió: no viaja.
+    expect(cuerpo).toMatchObject({ nit: "123456" });
+    // Ni el % ni la retención cambiaron: no viajan.
+    expect(cuerpo).not.toHaveProperty("comisionPct");
     expect(cuerpo).not.toHaveProperty("retencionPct");
+  });
+
+  it("sin nadie cargado, el vacío no habla de barberos ni de agenda", async () => {
+    vi.mocked(apiPersonal.listar).mockResolvedValue([]);
+    render(
+      <MemoryRouter>
+        <Personal />
+      </MemoryRouter>,
+    );
+    await act(async () => {});
+    expect(screen.getByText(/Cargá a tus docentes/)).toBeInTheDocument();
+    expect(screen.queryByText(/barbero/)).not.toBeInTheDocument();
   });
 });
