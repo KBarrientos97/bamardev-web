@@ -99,6 +99,24 @@ describe("N4 · Ajustes del instituto", () => {
     expect(screen.getByText(/entre 1 y 28/)).toBeInTheDocument();
   });
 
+  it("ronda 1 · W11: con #s-insc en la dirección baja a la sección Inscripción al terminar de cargar", async () => {
+    const bajar = vi.fn();
+    const original = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = bajar;
+    try {
+      render(
+        <MemoryRouter initialEntries={["/configuracion/academia#s-insc"]}>
+          <AjustesAcademia />
+        </MemoryRouter>,
+      );
+      await act(async () => {});
+      expect(bajar).toHaveBeenCalledTimes(1);
+      expect(bajar.mock.instances[0]).toBe(document.getElementById("s-insc"));
+    } finally {
+      Element.prototype.scrollIntoView = original;
+    }
+  });
+
   it("ronda 1 · W9: si fallan los cursos, Ajustes lo dice con «Reintentar» y no queda en «Cargando…»", async () => {
     vi.mocked(apiAcademia.carreras).mockRejectedValueOnce(new Error("Sin conexión"));
     await montar();

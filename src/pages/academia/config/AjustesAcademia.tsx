@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FocusEvent } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { Icon } from "../../../components/Icon";
 import { Campo, Cargando, ErrorMsg, Input, Select } from "../../../components/ui";
 import { apiAcademia } from "../../../lib/academia/apiAcademia";
@@ -42,6 +42,16 @@ export default function AjustesAcademia() {
   useEffect(() => {
     if (carga.datos) setA(carga.datos);
   }, [carga.datos]);
+
+  // `/configuracion/academia#s-insc` (el aviso de Cursos «Activarlo en Ajustes»):
+  // la página arma las secciones recién cuando cargan los ajustes, así que el
+  // navegador no encuentra el ancla solo; se baja a ella al terminar de cargar (ronda 1, W11).
+  const { hash } = useLocation();
+  const listo = !!a;
+  useEffect(() => {
+    if (!listo || !hash) return;
+    document.getElementById(decodeURIComponent(hash.slice(1)))?.scrollIntoView?.({ block: "start" });
+  }, [listo, hash]);
 
   if (carga.error && !carga.datos) {
     return (

@@ -581,7 +581,8 @@ export function SeccionAjuste({ id, titulo, bajada, children }: { id: string; ti
       className="card grid gap-4 p-4 sm:p-6 md:grid-cols-[minmax(200px,260px)_minmax(0,1fr)] md:gap-8"
     >
       <div>
-        <h2 id={id} className="text-base font-bold text-texto">
+        {/* scroll-mt: al llegar con `#id` la cabecera fija de Ajustes no tapa el título. */}
+        <h2 id={id} className="scroll-mt-28 text-base font-bold text-texto">
           {titulo}
         </h2>
         {bajada && <p className="mt-1 text-[13px] text-texto-3">{bajada}</p>}
