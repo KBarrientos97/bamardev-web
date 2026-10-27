@@ -592,7 +592,7 @@ export function SeccionAjuste({ id, titulo, bajada, children }: { id: string; ti
 }
 
 /** El estado de cuenta corto del panel: un renglón por cuota. */
-export function EstadoDeCuenta({ cuotas }: { cuotas: Cuota[] }) {
+export function EstadoDeCuenta({ cuotas, nombres }: { cuotas: Cuota[]; nombres?: Record<number, string> | null }) {
   if (!cuotas.length) return <p className="text-sm text-texto-3">Sin cuotas.</p>;
   return (
     <ul className="space-y-2.5">
@@ -600,7 +600,7 @@ export function EstadoDeCuenta({ cuotas }: { cuotas: Cuota[] }) {
         const t = textoCuota(c);
         return (
           <li key={c.id} className="flex items-baseline justify-between gap-3 text-sm">
-            <span className={c.estado === "ANULADA" ? "text-texto-4 line-through" : "text-texto"}>{nombreCuota(c)}</span>
+            <span className={c.estado === "ANULADA" ? "text-texto-4 line-through" : "text-texto"}>{nombreCuota(c, nombres)}</span>
             <span
               className={`text-right tabular-nums ${t.urgente ? "font-semibold text-danger-text" : t.apagado ? "text-texto-3" : "text-texto-2"}`}
             >

@@ -109,6 +109,26 @@ export function textoCubre(ordenes: number[]): string {
   return seguidos ? `M${o[0]}–M${o[o.length - 1]}` : o.map((x) => `M${x}`).join(", ");
 }
 
+/** Hasta cuántos caracteres entra la lista con nombres antes de resumirla como «M2 a M4». */
+const LARGO_MAX_MODULOS = 38;
+
+/**
+ * Qué módulos cubre una cuota, como habla el instituto (D6): «M2 Degradados»,
+ * «M2 Degradados y M3 Cortes». Si con los nombres no entra en un renglón y
+ * son consecutivos, «M2 a M4»; si no, los códigos «M2, M4». Sin los nombres
+ * (el backend de la cuota trae sólo el orden) queda como `textoCubre`.
+ */
+export function textoModulos(ordenes: number[], nombres?: Record<number, string> | null): string {
+  if (!nombres || !Object.keys(nombres).length) return textoCubre(ordenes);
+  const o = [...ordenes].sort((a, b) => a - b);
+  if (!o.length) return "—";
+  const con = o.map((x) => (nombres[x] ? `M${x} ${nombres[x]}` : `M${x}`));
+  const lista = con.length === 1 ? con[0] : `${con.slice(0, -1).join(", ")} y ${con[con.length - 1]}`;
+  if (lista.length <= LARGO_MAX_MODULOS || con.length === 1) return lista;
+  const seguidos = o.every((x, i) => i === 0 || x === o[i - 1] + 1);
+  return seguidos ? `M${o[0]} a M${o[o.length - 1]}` : o.map((x) => `M${x}`).join(", ");
+}
+
 /** "al inscribirse", "día 1 de M2", "a los 30 días". */
 export function textoVence(v: CuotaPlan["vence"]): string {
   if (v.tipo === "INSCRIPCION") return "al inscribirse";

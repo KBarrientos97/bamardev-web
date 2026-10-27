@@ -20,7 +20,7 @@ vi.mock("../../store/AuthContext", async () => {
 
 vi.mock("../../lib/academia/apiAcademia", async (importOriginal) => {
   const real = await importOriginal<typeof import("../../lib/academia/apiAcademia")>();
-  return { ...real, apiAcademia: { cuotasPorCobrar: vi.fn(), carrito: vi.fn() } };
+  return { ...real, apiAcademia: { cuotasPorCobrar: vi.fn(), carrito: vi.fn(), alumno: vi.fn(), grupo: vi.fn() } };
 });
 
 vi.mock("../../lib/api", async (importOriginal) => {
@@ -47,6 +47,7 @@ vi.mock("../pos/PantallaRecibo", () => ({
 
 import { ApiError, api } from "../../lib/api";
 import { apiAcademia } from "../../lib/academia/apiAcademia";
+import { olvidarModulos } from "../../lib/academia/modulos";
 import { inicialDeLaUrl, montoSugerido } from "../../lib/academia/cobroCuotas";
 import Cobrar from "./Cobrar";
 
@@ -68,6 +69,7 @@ const CARRITO = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  olvidarModulos();
   vi.mocked(api.cajaActual).mockResolvedValue(CAJA as never);
   vi.mocked(api.getFormasPago).mockResolvedValue([
     { id: 1, nombre: "Efectivo" },
@@ -146,6 +148,32 @@ describe("A1 · cobrar a estudiante", () => {
     expect(screen.getByText("recibo 61")).toBeInTheDocument();
     expect(screen.getByText("pagó Rosa Molina")).toBeInTheDocument();
     expect(screen.getByText("Cobrar a otro estudiante")).toBeInTheDocument();
+  });
+
+  it("D6: las cuotas dicen «Barbería · M2 Degradados» cuando se saben los módulos; si no, lo del backend", async () => {
+    vi.mocked(apiAcademia.alumno).mockResolvedValue({
+      inscripciones: [
+        {
+          id: 103,
+          grupo: { id: 7, nombre: "Barbería · Sáb", carrera: { id: 1, nombre: "Barbería" }, sede: { id: 2, nombre: "Norte" } },
+          cuotas: [
+            { id: 905, materiaOrdenes: [2] },
+            { id: 906, materiaOrdenes: [3] },
+          ],
+        },
+      ],
+    } as never);
+    vi.mocked(apiAcademia.grupo).mockResolvedValue({
+      materiasGrupo: [
+        { materia: { id: 32, orden: 2, nombre: "Degradados" } },
+        { materia: { id: 33, orden: 3, nombre: "Barba y color" } },
+      ],
+    } as never);
+    await montar("/academia/cobrar?inscripcion=103&monto=400");
+    await act(async () => {});
+    const filas = within(screen.getByRole("region", { name: "Cómo se reparte" })).getAllByRole("listitem");
+    expect(filas[0]).toHaveTextContent("Barbería · M2 Degradados");
+    expect(filas[1]).toHaveTextContent("Barbería · M3 Barba y color");
   });
 
   it("el monto se cambia ahí: más que el saldo no deja confirmar, y lo nuevo se reparte otra vez", async () => {

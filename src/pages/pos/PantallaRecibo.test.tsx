@@ -324,6 +324,32 @@ describe("E10: el recibo de las cuotas de un instituto", () => {
     expect(bloque).toHaveTextContent(/Próxima cuota: Bs\s?250,00 el 17\/10\/2026/);
   });
 
+  it("D6: con los módulos, el renglón dice «Barbería · M2 Degradados» y la cuota su módulo", () => {
+    sesion.rubro = "ACADEMIA";
+    dibujar(
+      venta({
+        total: 500,
+        detalles: [{ productoId: 77, producto: "Barbería", cantidad: 1, precio: 500, subtotal: 500, nota: null, consumo: "LLEVAR", cuotaId: 902 }],
+        cuotas: [
+          {
+            cuotaId: 902,
+            concepto: "Cuota 2/3",
+            modulos: "M2 Degradados",
+            alumno: "Bustillos Rek, Camila",
+            cobrado: 500,
+            pagado: 500,
+            saldo: 0,
+            estado: "PAGADA",
+            saldoCurso: 250,
+            proximaCuota: null,
+          },
+        ],
+      }),
+    );
+    expect(screen.getByText("Barbería · M2 Degradados")).toBeInTheDocument();
+    expect(screen.getByLabelText("Cuotas")).toHaveTextContent("Cuota 2/3 · M2 Degradados");
+  });
+
   it("con todo pagado lo dice, y sin cuotas el ticket es el de siempre", () => {
     sesion.rubro = "ACADEMIA";
     dibujar(

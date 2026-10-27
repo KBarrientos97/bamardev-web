@@ -103,7 +103,7 @@ export function pagadorPorDefecto(pagadores: CarritoInscripcion["pagadores"]): n
  * el orden en que se mandaron (el mismo de `venta.cuotas`). Y si pagó el
  * tutor, se dice quién. Sin cuotas, la MISMA venta.
  */
-export function ventaConCuotas(venta: Venta, cobro: CobroCuotas | null): Venta {
+export function ventaConCuotas(venta: Venta, cobro: CobroCuotas | null, modulos?: Record<number, string>): Venta {
   if (!cobro?.lineas.length) return venta;
   const productos = new Set(cobro.lineas.map((l) => l.productoId));
   let k = 0;
@@ -117,6 +117,8 @@ export function ventaConCuotas(venta: Venta, cobro: CobroCuotas | null): Venta {
   return {
     ...venta,
     ...(detalles ? { detalles } : {}),
+    // El módulo de cada cuota con su nombre, para que el recibo lo diga (D6).
+    ...(modulos && venta.cuotas ? { cuotas: venta.cuotas.map((q) => (modulos[q.cuotaId] ? { ...q, modulos: modulos[q.cuotaId] } : q)) } : {}),
     pagadorCuotas: pagador && pagador.rol === "TUTOR" ? { nombre: pagador.nombre, rol: pagador.rol } : null,
     inscripcionCuotas: cobro.inscripcionId,
   };

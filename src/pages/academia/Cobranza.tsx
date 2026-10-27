@@ -6,6 +6,7 @@ import PanelLateral from "../../components/PanelLateral";
 import { Boton, Cargando, ErrorMsg, Vacio } from "../../components/ui";
 import { apiAcademia } from "../../lib/academia/apiAcademia";
 import { fechaCorta } from "../../lib/academia/formato";
+import { useModulosDeGrupos } from "../../lib/academia/modulos";
 import type { FilaCobranza, Recordatorio, RespuestaCobranza, TipoCobranza } from "../../lib/academia/tipos";
 import { useFiltroSede } from "../../lib/academia/useFiltroSede";
 import { usePalabras } from "../../lib/academia/usePalabras";
@@ -98,6 +99,9 @@ export default function Cobranza() {
     },
     [tipo, sede.sucursalId],
   );
+  // Los módulos de los grupos de la página, para decir «M2 Degradados» y no
+  // «M2» (D6). Llegan después de la lista; mientras, quedan los códigos.
+  const modulos = useModulosDeGrupos([...lista.items.map((f) => f.grupo.id), ...cola.map((f) => f.grupo.id)]);
   const cobra = cobraCuotas({
     features: negocio?.features,
     rubro,
@@ -253,6 +257,7 @@ export default function Cobranza() {
             marcados={marcados}
             todos={visiblesMarcados}
             abierta={actual}
+            modulos={modulos}
             onAlternar={alternar}
             onAlternarTodos={alternarPagina}
             onAbrir={(f) => {
@@ -270,6 +275,7 @@ export default function Cobranza() {
           fila={actual}
           posicion={cola.length > 1 ? { actual: pos, total: cola.length } : null}
           enviado={enviados[claveDe(actual)] ?? null}
+          nombresModulos={modulos[actual.grupo.id]}
           cobra={cobra}
           onEnviado={(r) => anotar(actual, r)}
           onCobrar={() => cobrar(actual)}
@@ -294,6 +300,7 @@ function ListaCobranza({
   marcados,
   todos,
   abierta,
+  modulos,
   onAlternar,
   onAlternarTodos,
   onAbrir,
@@ -304,6 +311,8 @@ function ListaCobranza({
   marcados: Map<string, FilaCobranza>;
   todos: boolean;
   abierta: FilaCobranza | null;
+  /** Los módulos por grupo (D6): la cuota dice «M2 Degradados». */
+  modulos: Record<number, Record<number, string>>;
   onAlternar: (f: FilaCobranza) => void;
   onAlternarTodos: () => void;
   onAbrir: (f: FilaCobranza) => void;
@@ -313,7 +322,7 @@ function ListaCobranza({
   const p = usePalabras();
   const sub = (f: FilaCobranza) => {
     const c = cuotaARecordar(f);
-    const cuota = f.cuotas.length === 1 && c ? nombreCuota(c) : `${f.cuotas.length} cuotas`;
+    const cuota = f.cuotas.length === 1 && c ? nombreCuota(c, modulos[f.grupo.id]) : `${f.cuotas.length} cuotas`;
     const abono = f.cuotas.length === 1 && c && c.pagado > 0 ? ` · abonó ${fmtMoney(c.pagado)} de ${fmtMoney(c.monto)}` : "";
     return [f.grupo.nombre, conSede ? f.sede.nombre : null, `${cuota}${abono}`, f.contacto.esTutor ? `tutor ${f.contacto.nombre}` : null]
       .filter(Boolean)
@@ -465,6 +474,7 @@ function PanelEnvio({
   fila,
   posicion,
   enviado,
+  nombresModulos,
   cobra,
   onEnviado,
   onCobrar,
@@ -475,6 +485,7 @@ function PanelEnvio({
   fila: FilaCobranza;
   posicion: { actual: number; total: number } | null;
   enviado: (Recordatorio & { en: string }) | null;
+  nombresModulos?: Record<number, string>;
   cobra: boolean;
   onEnviado: (r: Recordatorio) => void;
   onCobrar: () => void;
@@ -519,7 +530,7 @@ function PanelEnvio({
     <PanelLateral
       abierto
       titulo={fila.alumno.nombre}
-      subtitulo={`Debe ${fmtMoney(fila.saldo)}${cuota ? ` · ${nombreCuota(cuota)}` : ""}`}
+      subtitulo={`Debe ${fmtMoney(fila.saldo)}${cuota ? ` · ${nombreCuota(cuota, nombresModulos)}` : ""}`}
       onClose={onCerrar}
       acciones={
         <>

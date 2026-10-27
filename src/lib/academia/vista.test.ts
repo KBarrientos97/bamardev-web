@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ApiError } from "../api";
-import { fueraDeAlcance, rutaCobroAlumno, rutaCobroInscripcion, textoEvento } from "./vista";
+import { fueraDeAlcance, nombreCuota, nombreCuotaDeCurso, rutaCobroAlumno, rutaCobroInscripcion, textoEvento } from "./vista";
+import { textoModulos } from "./formato";
 
 /**
  * El historial de la ficha: el `detalle` de cada evento es el JSON que guardó
@@ -78,5 +79,39 @@ describe("A1: Cobrar lleva a «Cobrar a estudiante», no al POS", () => {
       "/academia/cobranza/cobrar?alumno=53&q=2026-0103",
     );
     expect(rutaCobroAlumno({ id: 53, nombre: "Céspedes" })).toBe("/academia/cobranza/cobrar?alumno=53&q=C%C3%A9spedes");
+  });
+});
+
+describe("D6 · las cuotas con el nombre del módulo", () => {
+  const NOMBRES = { 1: "Corte clásico", 2: "Degradados", 3: "Barba y color", 4: "Colorimetría avanzada" };
+
+  it("un módulo: «M2 Degradados»; sin el nombre, el código de siempre", () => {
+    expect(textoModulos([2], NOMBRES)).toBe("M2 Degradados");
+    expect(textoModulos([2], undefined)).toBe("M2");
+    expect(textoModulos([2], {})).toBe("M2");
+    // Un módulo cuyo nombre no llegó queda con su código.
+    expect(textoModulos([9], NOMBRES)).toBe("M9");
+  });
+
+  it("varios: «M2 Degradados y M3 Barba y color»; sin nombres, el rango M2–M3", () => {
+    expect(textoModulos([3, 2], NOMBRES)).toBe("M2 Degradados y M3 Barba y color");
+    expect(textoModulos([2, 3], undefined)).toBe("M2–M3");
+  });
+
+  it("si es largo y son consecutivos, «M1 a M4»; si no son consecutivos, los códigos", () => {
+    expect(textoModulos([1, 2, 3, 4], NOMBRES)).toBe("M1 a M4");
+    expect(textoModulos([1, 3, 4], NOMBRES)).toBe("M1, M3, M4");
+  });
+
+  it("la cuota: «Cuota 2/3 · M2 Degradados», y sin nombres como antes", () => {
+    const c = { concepto: "Cuota 2/3", numero: 2, materiaOrdenes: [2] };
+    expect(nombreCuota(c, NOMBRES)).toBe("Cuota 2/3 · M2 Degradados");
+    expect(nombreCuota(c)).toBe("Cuota 2/3 · M2");
+    expect(nombreCuota({ concepto: "", numero: 2, materiaOrdenes: [] }, NOMBRES)).toBe("Cuota 2");
+  });
+
+  it("con el curso: «Barbería · M2 Degradados»; sin módulos, el concepto", () => {
+    expect(nombreCuotaDeCurso("Barbería", { concepto: "Cuota 2/3", numero: 2, materiaOrdenes: [2] }, NOMBRES)).toBe("Barbería · M2 Degradados");
+    expect(nombreCuotaDeCurso("Barbería", { concepto: "Pago único", numero: 1, materiaOrdenes: [] }, NOMBRES)).toBe("Barbería · Pago único");
   });
 });

@@ -12,9 +12,10 @@ import {
   nombreAlumno,
   nombreDe,
   PARENTESCOS,
-  textoCubre,
+  textoModulos,
 } from "../../lib/academia/formato";
 import type { AlumnoDetalle, Cuota, InscripcionDetalle } from "../../lib/academia/tipos";
+import { useModulosDeGrupo } from "../../lib/academia/modulos";
 import { usePalabras } from "../../lib/academia/usePalabras";
 import { abrirWhatsapp, nombreCuota, rutaCobroInscripcion, textoCuota, textoEstadoInscripcion, textoEvento } from "../../lib/academia/vista";
 import { enlaceWhatsApp } from "../../lib/agenda/recordatorio";
@@ -79,6 +80,9 @@ export default function FichaAlumno() {
   const [grupoLleno, setGrupoLleno] = useState<{ texto: string; seguir: () => void } | null>(null);
 
   const a = ficha.datos;
+  // Los módulos del grupo, para decir «M2 Degradados» y no «M2» (D6). Mientras
+  // cargan, o si no se pueden traer, quedan los códigos.
+  const modulos = useModulosDeGrupo(a ? inscripcionActual(a)?.grupo.id : undefined);
   if (ficha.error && !a) {
     return (
       <PaginaAcademia>
@@ -134,7 +138,7 @@ export default function FichaAlumno() {
     const nombre = (destino?.nombre ?? a!.nombres).split(" ")[0];
     const detalle = vivas
       .filter((c) => c.saldo > 0)
-      .map((c) => `${nombreCuota(c)}: ${fmtMoney(c.saldo)} (vence ${fechaCorta(c.vence)})`)
+      .map((c) => `${nombreCuota(c, modulos)}: ${fmtMoney(c.saldo)} (vence ${fechaCorta(c.vence)})`)
       .join("\n");
     const texto = `Hola ${nombre}, el estado de cuenta de ${a!.nombres} en ${actual ? nombreDe(actual.grupo.carrera) : negocio?.nombre ?? ""}: saldo ${fmtMoney(saldo)}.${detalle ? `\n${detalle}` : ""}`;
     const url = enlaceWhatsApp(telefono, texto);
@@ -286,7 +290,7 @@ export default function FichaAlumno() {
                     <KpiTarjeta etiqueta="Vencido" valor={fmtMoney(vencido)} tono={vencido > 0 ? "urgente" : "normal"} />
                     <KpiTarjeta etiqueta="Pagado" valor={fmtMoney(pagado)} />
                   </div>
-                  <EstadoCuenta inscripcion={actual} />
+                  <EstadoCuenta inscripcion={actual} nombres={modulos} />
                 </>
               )}
             </Tarjeta>
@@ -472,7 +476,7 @@ function chipCuota(c: Cuota): { texto: string; tono: TonoChip } {
 }
 
 /** El estado de cuenta: tabla en escritorio, renglones en el celular (nada de scroll lateral). */
-function EstadoCuenta({ inscripcion }: { inscripcion: InscripcionDetalle }) {
+function EstadoCuenta({ inscripcion, nombres }: { inscripcion: InscripcionDetalle; nombres?: Record<number, string> }) {
   const cuotas = inscripcion.cuotas;
   return (
     <div className="border-t border-borde-soft">
@@ -499,7 +503,7 @@ function EstadoCuenta({ inscripcion }: { inscripcion: InscripcionDetalle }) {
                 return (
                   <tr key={c.id} className={`${TABLA.fila} ${anulada ? "text-texto-4 line-through" : "text-texto-2"}`}>
                     <td className={`${TABLA.td} font-semibold ${anulada ? "" : "text-texto"}`}>{c.concepto || `Cuota ${c.numero}`}</td>
-                    <td className={TABLA.td}>{textoCubre(c.materiaOrdenes)}</td>
+                    <td className={TABLA.td}>{textoModulos(c.materiaOrdenes, nombres)}</td>
                     <td className={TABLA.td}>{fechaCorta(c.vence)}</td>
                     <td className={`${TABLA.td} ${TABLA.numero}`}>{fmtMoney(c.monto)}</td>
                     <td className={`${TABLA.td} ${TABLA.numero}`}>{fmtMoney(c.pagado)}</td>
@@ -518,7 +522,7 @@ function EstadoCuenta({ inscripcion }: { inscripcion: InscripcionDetalle }) {
               return (
                 <li key={c.id} className={`flex items-center justify-between gap-3 text-sm ${LISTA.item}`}>
                   <span className="min-w-0">
-                    <span className={`block ${c.estado === "ANULADA" ? "text-texto-4 line-through" : "font-semibold text-texto"}`}>{nombreCuota(c)}</span>
+                    <span className={`block ${c.estado === "ANULADA" ? "text-texto-4 line-through" : "font-semibold text-texto"}`}>{nombreCuota(c, nombres)}</span>
                     <span className={`block tabular-nums text-[13px] ${t.urgente ? "font-semibold text-danger-text" : "text-texto-3"}`}>{t.texto}</span>
                   </span>
                   <Chip tono={chip.tono} className="shrink-0">

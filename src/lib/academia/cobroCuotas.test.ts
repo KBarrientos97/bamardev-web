@@ -147,7 +147,7 @@ describe("enlaceDeCuotas (contrato #39, B-14)", () => {
 });
 
 describe("D5 · la venta de cuotas en la caja", () => {
-  const linea = { productoId: 77, producto: "Barbería", cantidad: 1, precio: 750, subtotal: 750, consumo: "LLEVAR" as const, cuotaId: 11 };
+  const linea = { productoId: 77, producto: "Barbería", cantidad: 1, precio: 750, subtotal: 750, nota: null, consumo: "LLEVAR" as const, cuotaId: 11 };
   const cuota = { cuotaId: 11, concepto: "Cuota 1/3", alumno: "Camila", cobrado: 750, pagado: 750, saldo: 0, estado: "PAGADA", saldoCurso: 0, proximaCuota: null };
   const v = (extra: object) => ({ detalles: [linea], ...extra }) as unknown as Venta;
 

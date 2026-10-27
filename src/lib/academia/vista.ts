@@ -13,7 +13,7 @@ import type {
   Ref,
   SemaforoPago,
 } from "./tipos";
-import { fechaCorta, horarioGrupo, nombreDe, textoCubre } from "./formato";
+import { fechaCorta, horarioGrupo, nombreDe, textoModulos } from "./formato";
 import { urlInscribirmeDe } from "../pagina/rutas";
 import { ApiError } from "../api";
 import { fmtMoney } from "../format";
@@ -36,10 +36,28 @@ export function textoCuota(c: Cuota): { texto: string; urgente: boolean; apagado
   return { texto: `${fmtMoney(c.saldo)} · vence ${fechaCorta(c.vence)}`, urgente: false, apagado: true };
 }
 
-/** "Cuota 2 · M2–M3": cómo se nombra una cuota en las listas. */
-export function nombreCuota(c: Pick<Cuota, "concepto" | "numero" | "materiaOrdenes">): string {
-  const cubre = c.materiaOrdenes.length ? ` · ${textoCubre(c.materiaOrdenes)}` : "";
+/**
+ * "Cuota 2/3 · M2 Degradados": cómo se nombra una cuota en las listas. Con los
+ * nombres de los módulos del grupo (D6) dice el módulo como el instituto; sin
+ * ellos, el código «M2–M3» de siempre.
+ */
+export function nombreCuota(c: Pick<Cuota, "concepto" | "numero" | "materiaOrdenes">, nombres?: Record<number, string> | null): string {
+  const cubre = c.materiaOrdenes.length ? ` · ${textoModulos(c.materiaOrdenes, nombres)}` : "";
   return `${c.concepto || `Cuota ${c.numero}`}${cubre}`;
+}
+
+/**
+ * «Barbería · M2 Degradados»: la cuota con el curso por delante, para donde se
+ * cobra y el curso hace falta (la línea de «Cobrar», el recibo). Sin módulos
+ * que decir, el concepto de la cuota («Barbería · Cuota 2/3»).
+ */
+export function nombreCuotaDeCurso(
+  curso: string,
+  c: Pick<Cuota, "concepto" | "numero" | "materiaOrdenes">,
+  nombres?: Record<number, string> | null,
+): string {
+  if (!c.materiaOrdenes.length) return `${curso} · ${c.concepto || `Cuota ${c.numero}`}`;
+  return `${curso} · ${textoModulos(c.materiaOrdenes, nombres)}`;
 }
 
 /** Abre un `wa.me` en otra pestaña. */

@@ -176,7 +176,7 @@ export default function PantallaRecibo({
                 key={i}
                 linea={d}
                 mostrarConsumo={mostrarConsumo}
-                cuota={d.cuotaId != null ? venta.cuotas?.find((q) => q.cuotaId === d.cuotaId)?.concepto : undefined}
+                cuota={d.cuotaId != null ? venta.cuotas?.find((q) => q.cuotaId === d.cuotaId) : undefined}
               />
             ))}
           </div>
@@ -374,14 +374,18 @@ function LineaTicket({
 }: {
   linea: NonNullable<Venta["detalles"]>[number];
   mostrarConsumo: boolean;
-  /** Educación: el concepto de la cuota que cobró ("Cuota 2/2"), delante del producto. */
-  cuota?: string;
+  /**
+   * Educación: la cuota que cobró. Con los módulos que cubre, el renglón dice
+   * «Barbería · M2 Degradados» (D6); si no, el concepto delante del producto
+   * («Cuota 2/2 · Barbería»).
+   */
+  cuota?: { concepto: string; modulos?: string };
 }) {
   const enMesa = linea.consumo === "MESA";
   return (
     <div className="py-1 text-[13px]">
       <div className="flex items-start gap-2">
-        <p className="min-w-0 flex-1 font-semibold text-texto">{cuota ? `${cuota} · ${linea.producto}` : linea.producto}</p>
+        <p className="min-w-0 flex-1 font-semibold text-texto">{cuota ? (cuota.modulos ? `${linea.producto} · ${cuota.modulos}` : `${cuota.concepto} · ${linea.producto}`) : linea.producto}</p>
         {mostrarConsumo && (
           <span
             className={`shrink-0 font-bold ${enMesa ? "text-primary-700" : "text-texto-3"}`}
@@ -439,7 +443,7 @@ function CuotasRecibo({
         {cuotas.map((q) => (
           <div key={q.cuotaId} className="text-texto-2">
             <div className="flex justify-between gap-2">
-              <dt>{q.concepto}</dt>
+              <dt>{q.modulos ? `${q.concepto} · ${q.modulos}` : q.concepto}</dt>
               <dd className="shrink-0 font-bold text-texto">{fmtMoney(q.cobrado)}</dd>
             </div>
             <p className="text-right text-xs">{q.saldo > 0 ? `Queda ${fmtMoney(q.saldo)}` : "Pagada"}</p>

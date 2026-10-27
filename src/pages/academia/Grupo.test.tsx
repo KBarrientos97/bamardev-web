@@ -113,7 +113,8 @@ describe("E3 · detalle de grupo", () => {
     await act(async () => {});
     const panel = screen.getByRole("complementary", { name: "Bustillos Rek, Camila" });
     expect(apiAcademia.alumno).toHaveBeenCalledWith(52);
-    expect(within(panel).getByText("Cuota 2 · M2–M3")).toBeInTheDocument();
+    // D6: el módulo con su nombre, como habla el instituto (los nombres vienen del grupo).
+    expect(within(panel).getByText("Cuota 2 · M2 Degradados y M3 Barba y color")).toBeInTheDocument();
     expect(within(panel).getByText(/vencida 12 d/)).toBeInTheDocument();
     fireEvent.click(within(panel).getByRole("button", { name: /Cobrar Bs\s?750/ }));
     expect(screen.getByTestId("destino")).toHaveTextContent("/academia/cobranza/cobrar?inscripcion=102&sede=1&sedeNombre=Central");

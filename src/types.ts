@@ -1213,6 +1213,11 @@ export interface Venta {
      */
     inscripcionId?: number;
     enlacePago?: string | null;
+    /**
+     * Sólo en el equipo, recién cobrada: qué módulos cubre la cuota con su
+     * nombre («M2 Degradados»). El backend no lo manda; lo pone «Cobrar».
+     */
+    modulos?: string;
   }[];
   /**
    * Sólo en el equipo, recién cobrada: quién pagó las cuotas cuando no fue el

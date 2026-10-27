@@ -15,6 +15,7 @@ import {
   nombreDe,
   PARENTESCOS,
   textoCubre,
+  textoModulos,
   textoVence,
   venceCuota,
 } from "../../lib/academia/formato";
@@ -38,6 +39,7 @@ import { fmtMoney, isoDia } from "../../lib/format";
 import { tienePermiso } from "../../lib/permisos";
 import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
+import { nombresDe } from "../../lib/academia/modulos";
 import { abrirWhatsapp } from "../../lib/academia/vista";
 import CapturaFotos from "./CapturaFotos";
 import { BotonFila, BotonIcono, ResumenPanel } from "./piezas";
@@ -797,7 +799,7 @@ export default function Inscribir({
               </dl>
               {proxima && saldoQueda > 0 && (
                 <p className="border-t border-borde-soft pt-2 text-[13px] text-texto-3">
-                  Después: cuota {proxima.n} · {textoCubre(proxima.cubre)} · {textoVence(proxima.vence)}
+                  Después: cuota {proxima.n} · {textoModulos(proxima.cubre, nombresDe(grupo?.materiasGrupo))} · {textoVence(proxima.vence)}
                 </p>
               )}
             </section>
@@ -1090,7 +1092,7 @@ function TarjetaPlan({
           {cuotas.map((c) => (
             <span key={c.n} className="flex justify-between">
               <span>
-                {textoCubre(c.cubre)} · {textoVence(c.vence)}
+                {textoModulos(c.cubre, nombresDe(grupo?.materiasGrupo))} · {textoVence(c.vence)}
               </span>
               <span className="tabular-nums">{fmtMoney(c.monto)}</span>
             </span>

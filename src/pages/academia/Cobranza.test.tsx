@@ -19,11 +19,12 @@ vi.mock("../../lib/academia/apiAcademia", async (importOriginal) => {
   const real = await importOriginal<typeof import("../../lib/academia/apiAcademia")>();
   return {
     ...real,
-    apiAcademia: { cobranza: vi.fn(), recordatorio: vi.fn(), carreras: vi.fn(async () => []), ajustes: vi.fn(async () => null) },
+    apiAcademia: { cobranza: vi.fn(), grupo: vi.fn(), recordatorio: vi.fn(), carreras: vi.fn(async () => []), ajustes: vi.fn(async () => null) },
   };
 });
 
 import { apiAcademia } from "../../lib/academia/apiAcademia";
+import { olvidarModulos } from "../../lib/academia/modulos";
 import Cobranza from "./Cobranza";
 
 const RESPUESTA: RespuestaCobranza = {
@@ -93,7 +94,26 @@ async function montar(ruta = "/academia/cobranza") {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  olvidarModulos();
   vi.mocked(apiAcademia.cobranza).mockResolvedValue(RESPUESTA);
+});
+
+describe("D6 · la cuota con el nombre del módulo", () => {
+  it("con el detalle del grupo, la fila dice «M2 Degradados»; sin él, el código de siempre", async () => {
+    await montar();
+    expect(screen.getAllByText(/Cuota 2 · M2$|^M2 · M2$|· M2 ·/).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/M2 Degradados/)).not.toBeInTheDocument();
+  });
+
+  it("llegando los nombres del grupo, los usa", async () => {
+    olvidarModulos();
+    vi.mocked(apiAcademia.grupo).mockResolvedValue({ materiasGrupo: [{ materia: { id: 32, orden: 2, nombre: "Degradados" } }] } as never);
+    await montar();
+    await act(async () => {});
+    expect(apiAcademia.grupo).toHaveBeenCalledTimes(1);
+    expect(apiAcademia.grupo).toHaveBeenCalledWith(7);
+    expect(screen.getAllByText(/M2 Degradados/).length).toBeGreaterThan(0);
+  });
 });
 
 describe("N7 · cobranza", () => {
