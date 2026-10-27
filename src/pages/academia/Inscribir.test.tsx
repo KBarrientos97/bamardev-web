@@ -359,12 +359,108 @@ describe("E5 · inscribir", () => {
     fireEvent.change(buscador, { target: { value: "Thiago" } });
     await esperar();
     expect(await within(panel()).findByRole("button", { name: /Rojas Lima, Thiago/ })).toBeInTheDocument();
+    // El botón grande no (D2), pero sí un enlace discreto: ronda 1, D3.
     expect(within(panel()).queryByRole("button", { name: "Nuevo estudiante" })).not.toBeInTheDocument();
+    expect(within(panel()).getByRole("button", { name: "Crear ficha nueva" })).toBeInTheDocument();
     // Sin resultados (el mock por defecto devuelve vacío), aparece.
     fireEvent.change(buscador, { target: { value: "Nadie Conocido" } });
     await esperar();
     expect(await within(panel()).findByRole("button", { name: "Nuevo estudiante" })).toBeInTheDocument();
     expect(within(panel()).getByText(/No hay nadie con «Nadie Conocido»/)).toBeInTheDocument();
+  });
+
+  const THIAGO = { id: 60, codigo: "2026-0140", apellidos: "Rojas Lima", nombres: "Thiago", ci: "1", telefono: null, grupoActual: null, plan: null, saldo: 0, vencido: false, ultimaAsistencia: null, estado: "ACTIVA" } as const;
+  const esperarBusqueda = () =>
+    act(async () => {
+      await new Promise((r) => setTimeout(r, 350));
+    });
+
+  it("ronda 1 · D3: aunque la búsqueda devuelva a alguien (un hermano, un homónimo) se puede crear la ficha nueva", async () => {
+    vi.mocked(apiAcademia.alumnos).mockResolvedValue({ items: [THIAGO], total: 1, page: 1, pageSize: 6 });
+    vi.useRealTimers();
+    await montar();
+    fireEvent.change(within(panel()).getByLabelText("Buscar estudiante"), { target: { value: "Rojas" } });
+    await esperarBusqueda();
+    fireEvent.click(await within(panel()).findByRole("button", { name: "Crear ficha nueva" }));
+    expect(within(panel()).getByLabelText("Carnet de identidad")).toBeInTheDocument();
+  });
+
+  it("ronda 1 · D3: si la búsqueda falla se ve el error con «Reintentar» (no queda muda)", async () => {
+    vi.mocked(apiAcademia.alumnos).mockRejectedValueOnce(new Error("Sin conexión")).mockResolvedValue({ items: [THIAGO], total: 1, page: 1, pageSize: 6 });
+    vi.useRealTimers();
+    await montar();
+    fireEvent.change(within(panel()).getByLabelText("Buscar estudiante"), { target: { value: "Rojas" } });
+    await esperarBusqueda();
+    expect(await within(panel()).findByText("Sin conexión")).toBeInTheDocument();
+    // Con el error no se afirma que «no hay nadie».
+    expect(within(panel()).queryByText(/No hay nadie con/)).not.toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(within(panel()).getByRole("button", { name: "Reintentar" }));
+    });
+    expect(await within(panel()).findByRole("button", { name: /Rojas Lima, Thiago/ })).toBeInTheDocument();
+  });
+
+  it("ronda 1 · D14: al cambiar la búsqueda no hay ni un cuadro con «No hay nadie con…» de más", async () => {
+    // La primera búsqueda no encuentra a nadie; la segunda tarda. En el cuadro en que
+    // cambia el texto, `cargando` todavía es falso y el cartel saldría un instante.
+    let resolver: (v: never) => void = () => undefined;
+    vi.mocked(apiAcademia.alumnos)
+      .mockResolvedValueOnce({ items: [], total: 0, page: 1, pageSize: 6 })
+      .mockReturnValueOnce(new Promise((r) => { resolver = r as never; }));
+    vi.useRealTimers();
+    await montar();
+    const buscador = within(panel()).getByLabelText("Buscar estudiante");
+    fireEvent.change(buscador, { target: { value: "Nadie" } });
+    await esperarBusqueda();
+    expect(await within(panel()).findByText(/No hay nadie con «Nadie»/)).toBeInTheDocument();
+    const vistos: string[] = [];
+    const obs = new MutationObserver((rs) => {
+      for (const r of rs) r.addedNodes.forEach((n) => vistos.push(n.textContent ?? ""));
+    });
+    obs.observe(panel(), { childList: true, subtree: true, characterData: true });
+    fireEvent.change(buscador, { target: { value: "Otro nombre" } });
+    await esperarBusqueda();
+    await Promise.resolve();
+    obs.disconnect();
+    expect(vistos.some((t) => t.includes("No hay nadie con «Otro nombre»"))).toBe(false);
+    expect(within(panel()).queryByRole("button", { name: "Nuevo estudiante" })).not.toBeInTheDocument();
+    resolver({ items: [], total: 0, page: 1, pageSize: 6 } as never);
+  });
+
+  it("ronda 1 · D7 y D8: al «Cambiar» de estudiante se van el rechazo y el bloque del tutor del anterior", async () => {
+    vi.mocked(apiAcademia.alumnos).mockResolvedValue({ items: [THIAGO], total: 1, page: 1, pageSize: 6 });
+    vi.mocked(apiAcademia.inscribir).mockRejectedValueOnce(new ApiError("Falta el tutor", 400, { codigo: "TUTOR_REQUERIDO" }));
+    vi.useRealTimers();
+    await montar();
+    // A: el backend dice que es menor y pide tutor.
+    fireEvent.change(within(panel()).getByLabelText("Buscar estudiante"), { target: { value: "Rojas" } });
+    await esperarBusqueda();
+    fireEvent.click(await within(panel()).findByRole("button", { name: /Rojas Lima, Thiago/ }));
+    fireEvent.click(within(panel()).getByRole("radio", { name: /Completo/ }));
+    await act(async () => {
+      fireEvent.click(within(panel()).getByRole("button", { name: "Inscribir sin cobrar" }));
+    });
+    expect(within(panel()).getByText(/Tutor · obligatorio/)).toBeInTheDocument();
+    // B: otro estudiante (adulto). Nada del tutor de A.
+    fireEvent.click(within(panel()).getByRole("button", { name: "Cambiar" }));
+    expect(within(panel()).queryByText(/Tutor · obligatorio/)).not.toBeInTheDocument();
+  });
+
+  it("ronda 1 · D7: el «ya está inscripto» de un estudiante no sobrevive al «Cambiar»", async () => {
+    vi.mocked(apiAcademia.alumnos).mockResolvedValue({ items: [THIAGO], total: 1, page: 1, pageSize: 6 });
+    vi.mocked(apiAcademia.inscribir).mockRejectedValueOnce(new ApiError("Thiago ya está en este grupo.", 409, { codigo: "YA_INSCRIPTO" }));
+    vi.useRealTimers();
+    await montar();
+    fireEvent.change(within(panel()).getByLabelText("Buscar estudiante"), { target: { value: "Rojas" } });
+    await esperarBusqueda();
+    fireEvent.click(await within(panel()).findByRole("button", { name: /Rojas Lima, Thiago/ }));
+    fireEvent.click(within(panel()).getByRole("radio", { name: /Completo/ }));
+    await act(async () => {
+      fireEvent.click(within(panel()).getByRole("button", { name: "Inscribir sin cobrar" }));
+    });
+    expect(within(panel()).getByText("Thiago ya está en este grupo.")).toBeInTheDocument();
+    fireEvent.click(within(panel()).getByRole("button", { name: "Cambiar" }));
+    expect(within(panel()).queryByText("Thiago ya está en este grupo.")).not.toBeInTheDocument();
   });
 
   it("un CI que ya es de otro ofrece buscarlo en vez de crearlo otra vez", async () => {

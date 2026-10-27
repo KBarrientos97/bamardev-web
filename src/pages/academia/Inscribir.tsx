@@ -270,7 +270,18 @@ export default function Inscribir({
     setPidiendoPin(null);
     setLleno(null);
     setSinFotos(null);
+    // También la salida (YA_INSCRIPTO, CI_DUPLICADO…): decía «ya está en el grupo»
+    // de quien se acaba de cambiar (ronda 1, D7).
+    setSalida(null);
   }, [planId, grupoId, tutor, nuevo, elegido, pagaHoy, otroMonto, tipoDesc, valorDesc, enPct, motivo, fotos]);
+
+  // Que un estudiante sea menor lo dijo el backend de ÉL: al cambiar a otro, el
+  // bloque del tutor y lo que se cargó vuelven a cero (ronda 1, D8). Si no, un
+  // adulto quedaba con «Tutor · obligatorio» y se mandaba un tutor que no tiene.
+  useEffect(() => {
+    setPideTutor(false);
+    setTutor({ nombre: "", parentesco: "Madre", telefono: "" });
+  }, [elegido]);
 
   async function enviar(cobrar: boolean, extra: ExtraEnvio = {}) {
     setValidar({ cobrar });
@@ -1151,19 +1162,28 @@ function BuscarAlumno({
   palabra: string;
 }) {
   const buscado = useTextoDemorado(q);
+  // La respuesta lleva la búsqueda a la que pertenece: `cargando` se enciende en
+  // un efecto, y en el cuadro que sigue a un cambio todavía está la lista de la
+  // búsqueda anterior (ronda 1, D14: destello de «No hay nadie con…»).
   const r = useApi(
-    () => (buscado.length >= MINIMO_BUSQUEDA ? apiAcademia.alumnos({ q: buscado, pageSize: 6 }) : Promise.resolve(null)),
+    () =>
+      buscado.length >= MINIMO_BUSQUEDA
+        ? apiAcademia.alumnos({ q: buscado, pageSize: 6 }).then((x) => ({ de: buscado, items: x.items }))
+        : Promise.resolve(null),
     [buscado],
   );
-  const lista = r.datos?.items ?? [];
+  const vigente = r.datos?.de === buscado;
+  const lista = vigente ? (r.datos?.items ?? []) : [];
   // Sólo con la búsqueda ya asentada (`buscado` alcanzó lo escrito) y sin error
   // de red: si falló no se sabe si el estudiante existe.
-  const sinResultados = buscado.length >= MINIMO_BUSQUEDA && buscado === q.trim() && !r.cargando && !r.error && lista.length === 0;
+  const sinResultados = buscado.length >= MINIMO_BUSQUEDA && buscado === q.trim() && vigente && !r.cargando && !r.error && lista.length === 0;
   return (
     <div className="space-y-2">
       <BuscadorEstudiante valor={q} onChange={onQ} autoFocus />
-      {/* "Nuevo" sólo cuando la búsqueda no encuentra a nadie (D2): antes salía
-          siempre y se cargaban fichas repetidas de quien ya estaba. */}
+      {/* Si la búsqueda falla la pantalla no puede quedar muda (ronda 1, D3). */}
+      {r.error && buscado.length >= MINIMO_BUSQUEDA && <ErrorMsg onReintentar={r.recargar}>{r.error}</ErrorMsg>}
+      {/* "Nuevo" como botón sólo cuando la búsqueda no encuentra a nadie (D2): antes
+          salía siempre y se cargaban fichas repetidas de quien ya estaba. */}
       {sinResultados && (
         <p className="text-[13px] text-texto-3">No hay nadie con «{buscado}»: se crea la ficha.</p>
       )}
@@ -1188,6 +1208,16 @@ function BuscarAlumno({
         <Boton variante="ghost" icono="plus" onClick={() => onNuevo(q)}>
           Nuevo {palabra}
         </Boton>
+      )}
+      {/* Con resultados no se oculta del todo (ronda 1, D3): un hermano o un homónimo
+          aparece en la lista y no es la misma persona. Va discreto, como enlace. */}
+      {lista.length > 0 && (
+        <p className="text-[13px] text-texto-3">
+          ¿No está en la lista?{" "}
+          <button type="button" className="font-semibold text-primary underline" onClick={() => onNuevo(q)}>
+            Crear ficha nueva
+          </button>
+        </p>
       )}
     </div>
   );
