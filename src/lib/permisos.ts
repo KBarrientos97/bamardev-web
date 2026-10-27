@@ -734,6 +734,10 @@ export function rutaInicial(ctx: ContextoPermisos): string {
         ["agenda", "/agenda"],
       ];
   for (const [seccion, ruta] of [...agenda, ...ORDEN_INICIO]) {
+    // En el instituto /inventario/almacenes redirige a Sedes (`AlmacenesORedirige`), que
+    // pide otro permiso: un rol armado a mano con sólo `almacenes.administrar` entraba
+    // en un ciclo Inicio → Almacenes → Sedes → Inicio (ronda 2, B1).
+    if (seccion === "almacenes" && ctx.rubro === "ACADEMIA") continue;
     if (puedeVer(ctx, seccion)) return ruta;
   }
   // Sin ninguna sección habilitada no hay a dónde ir: la pantalla de sin

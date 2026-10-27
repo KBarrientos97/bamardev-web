@@ -205,6 +205,12 @@ describe("rutaInicial", () => {
     expect(rutaInicial(ctxDe("MESERO", "RESTAURANTE", PLAN_FULL))).toBe("/salon");
   });
 
+  it("ronda 2 · B1: en el instituto, `almacenes.administrar` solo no manda a Almacenes (redirige a Sedes y volvía al inicio)", () => {
+    expect(rutaInicial(ctxCon(["almacenes.administrar"], "ACADEMIA"))).toBe("/sin-acceso");
+    // Los demás rubros siguen como siempre.
+    expect(rutaInicial(ctxCon(["almacenes.administrar"], "RESTAURANTE"))).toBe("/inventario/almacenes");
+  });
+
   it("quien reparte o atiende mesas Y vende entra al POS", () => {
     expect(rutaInicial(ctxCon(["entregas.realizar", "ventas.vender"], "RESTAURANTE"))).toBe("/pos");
     expect(rutaInicial(ctxCon(["salon.atender", "ventas.vender"], "RESTAURANTE"))).toBe("/pos");

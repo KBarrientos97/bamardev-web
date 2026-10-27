@@ -37,6 +37,42 @@ describe("PanelLateral · Escape en escritorio (W5)", () => {
     expect(a).not.toHaveBeenCalled();
   });
 
+  it("ronda 2 · B2: si el de abajo se vuelve a dibujar con un callback en línea, Escape sigue cerrando el de arriba", () => {
+    const a = vi.fn();
+    const b = vi.fn();
+    // La sede tiene su propio estado (un aviso que vence, una respuesta que llega) y se redibuja
+    // sola, con una función nueva en cada vuelta; el aula, que está encima, no se entera.
+    function Sede({ alAbrirAula }: { alAbrirAula: () => void }) {
+      const [vuelta, setVuelta] = useState(0);
+      return (
+        <PanelLateral abierto titulo="Sede" onClose={() => a(vuelta)}>
+          <button onClick={alAbrirAula}>abrir aula</button>
+          <button onClick={() => setVuelta((v) => v + 1)}>re-render sede</button>
+        </PanelLateral>
+      );
+    }
+    function Pantalla() {
+      const [aula, setAula] = useState(false);
+      return (
+        <>
+          <Sede alAbrirAula={() => setAula(true)} />
+          {aula && (
+            <PanelLateral abierto titulo="Aula" onClose={b}>
+              <p>formulario</p>
+            </PanelLateral>
+          )}
+        </>
+      );
+    }
+    render(<Pantalla />);
+    fireEvent.click(screen.getByRole("button", { name: "abrir aula" }));
+    fireEvent.click(screen.getByRole("button", { name: "re-render sede" }));
+    fireEvent.keyDown(document, { key: "Escape" });
+    // Cierra el aula (la de arriba), y la sede sigue abierta con lo tipeado.
+    expect(b).toHaveBeenCalledTimes(1);
+    expect(a).not.toHaveBeenCalled();
+  });
+
   it("un panel solo se sigue cerrando con Escape", () => {
     const a = vi.fn();
     render(<Dos alCerrarA={a} alCerrarB={vi.fn()} />);

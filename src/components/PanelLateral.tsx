@@ -1,4 +1,4 @@
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { useConsultaMedia } from "../lib/agenda/useEsCelular";
 import { Icon } from "./Icon";
 import { Modal } from "./ui";
@@ -43,6 +43,13 @@ export default function PanelLateral({
   cerrarAlClicAfuera?: boolean;
 }) {
   const celular = useConsultaMedia("(max-width: 767px)");
+  // El `onClose` de quien lo usa suele ser una función en línea, nueva en cada
+  // render: si el efecto dependiera de ella se volvería a registrar a cada
+  // vuelta (cuando vence un aviso, por ejemplo) y el panel de abajo pasaría a ser
+  // el "de arriba" de la pila, cerrándose con Escape en lugar del aula que está
+  // encima (ronda 2, B2). Se lee de una ref y el registro es uno solo.
+  const alCerrar = useRef(onClose);
+  alCerrar.current = onClose;
 
   useEffect(() => {
     if (!abierto || celular) return;
@@ -51,7 +58,7 @@ export default function PanelLateral({
     const alTecla = (e: KeyboardEvent) => {
       // Con un diálogo encima (un motivo, un PIN), Escape es de él. Y entre
       // paneles, del que está arriba.
-      if (e.key === "Escape" && pilaDePaneles[pilaDePaneles.length - 1] === mio && !document.querySelector('[role="dialog"][aria-modal="true"]')) onClose();
+      if (e.key === "Escape" && pilaDePaneles[pilaDePaneles.length - 1] === mio && !document.querySelector('[role="dialog"][aria-modal="true"]')) alCerrar.current();
     };
     document.addEventListener("keydown", alTecla);
     return () => {
@@ -59,7 +66,7 @@ export default function PanelLateral({
       const i = pilaDePaneles.indexOf(mio);
       if (i >= 0) pilaDePaneles.splice(i, 1);
     };
-  }, [abierto, celular, onClose]);
+  }, [abierto, celular]);
 
   if (!abierto) return null;
 
