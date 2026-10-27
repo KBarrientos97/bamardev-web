@@ -170,17 +170,21 @@ export default function Personal() {
                 className="flex w-full flex-wrap items-start gap-3 px-4 py-3 text-left hover:bg-fondo-2"
                 aria-label={`Ver ${p.nombre}`}
               >
-                <span
-                  className="mt-1 h-3 w-3 shrink-0 rounded-full border border-black/10"
-                  style={{ backgroundColor: p.color ?? "#CBD5E1" }}
-                />
+                {/* El punto es el color de la agenda de belleza: en el instituto no hay agenda (U2). */}
+                {!enInstituto && (
+                  <span
+                    className="mt-1 h-3 w-3 shrink-0 rounded-full border border-black/10"
+                    style={{ backgroundColor: p.color ?? "#CBD5E1" }}
+                  />
+                )}
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="font-semibold text-texto">{p.nombre}</span>
                     {p.cargo && <span className="text-[13px] text-texto-3">{p.cargo}</span>}
                     {!p.activo && <Badge>De baja</Badge>}
                     {/* Con la columna apagada no está en la agenda de hoy (QA VER-02). */}
-                    {p.profesional &&
+                    {!enInstituto &&
+                      p.profesional &&
                       (p.profesional.activo ? (
                         <Badge tono="morado">En la agenda</Badge>
                       ) : (
@@ -370,13 +374,15 @@ function FichaPersona({
                 ? `Entra como @${persona.acceso?.username} (${persona.acceso?.rolNombre ?? persona.acceso?.rol ?? "sin rol"}). Ocupa un lugar del cupo de usuarios.`
                 : persona.acceso
                   ? `Se le quitó el acceso (@${persona.acceso.username}). No ocupa cupo.`
-                  : "No entra al sistema. Igual puede tener agenda, comisión y propinas."}
-              {persona.profesional
+                  : conDocentes
+                    ? "No entra al sistema."
+                    : "No entra al sistema. Igual puede tener agenda, comisión y propinas."}
+              {!conDocentes && persona.profesional
                 ? ` En la agenda es "${persona.profesional.nombre}"${persona.profesional.activo ? "" : " (columna inactiva)"}.`
                 : ""}
             </p>
             {/* QA DIA-16: decía que puede tener agenda y no decía dónde. */}
-            {!persona.profesional && persona.activo && puede("agenda_config") && (
+            {!conDocentes && !persona.profesional && persona.activo && puede("agenda_config") && (
               <p className="mt-1 text-[13px] text-texto-3">
                 Para darle agenda:{" "}
                 <Link
@@ -538,7 +544,7 @@ function FichaPersona({
         <Confirmar
           abierto={modo === "quitar"}
           titulo="Quitar acceso"
-          texto={`${persona.nombre} no va a poder entrar al sistema y libera un lugar del cupo. Sigue en Personal con su agenda, su comisión y sus propinas.`}
+          texto={`${persona.nombre} no va a poder entrar al sistema y libera un lugar del cupo. ${conDocentes ? "Sigue en Personal." : "Sigue en Personal con su agenda, su comisión y sus propinas."}`}
           etiquetaOk="Quitar acceso"
           peligroso
           procesando={guardando}
@@ -552,7 +558,9 @@ function FichaPersona({
         <Confirmar
           abierto={modo === "baja"}
           titulo="Dar de baja"
-          texto={`${persona.nombre} deja de trabajar acá: sale de la agenda y pierde el acceso. Lo que ya hizo (citas, comisiones) queda.`}
+          texto={`${persona.nombre} deja de trabajar acá: ${
+            conDocentes ? "pierde el acceso. Lo que ya hizo queda." : "sale de la agenda y pierde el acceso. Lo que ya hizo (citas, comisiones) queda."
+          }`}
           etiquetaOk="Dar de baja"
           peligroso
           procesando={guardando}
@@ -806,13 +814,14 @@ function DarAcceso({
 }
 
 /** Lo que una ficha de Personal tiene cargado (lo que se fundiría al vincular). */
-function datosDeFicha(p: Persona | undefined): string[] {
+function datosDeFicha(p: Persona | undefined, instituto = false): string[] {
   if (!p) return [];
   return [
     p.cargo,
     p.ci ? `CI ${p.ci}` : null,
     p.telefono ? `tel. ${p.telefono}` : null,
-    p.comisionPct != null ? `${p.comisionPct} % de comisión` : null,
+    // En el instituto la persona no usa comisión: el % lo manda el curso (U2).
+    !instituto && p.comisionPct != null ? `${p.comisionPct} % de comisión` : null,
     p.notas ? "notas" : null,
   ].filter((x): x is string => !!x);
 }
@@ -836,6 +845,8 @@ function Vincular({
   onClose: () => void;
   onListo: (p: Persona) => void;
 }) {
+  const { negocio } = useAuth();
+  const instituto = esInstituto(negocio);
   const usuarios = useApi(() => api.getUsuarios(), []);
   // Sólo cuentas cuyo rol quien mira podría asignar: con las demás (las de
   // un rol con más permisos que el suyo) el backend da 403.
@@ -853,7 +864,7 @@ function Vincular({
   const [enviando, setEnviando] = useState(false);
   const elegido = opciones.find((u) => String(u.id) === usuarioId);
   const ficha = elegido ? fichaDe.get(elegido.id) : undefined;
-  const datos = datosDeFicha(ficha);
+  const datos = datosDeFicha(ficha, instituto);
 
   const enviar = async () => {
     if (!usuarioId) return setError("Elegí el usuario.");
@@ -891,7 +902,7 @@ function Vincular({
             <option value="">Elegí…</option>
             {opciones.map((u) => (
               <option key={u.id} value={u.id}>
-                {u.nombre} (@{u.usuario}){datosDeFicha(fichaDe.get(u.id)).length ? " · tiene ficha propia" : ""}
+                {u.nombre} (@{u.usuario}){datosDeFicha(fichaDe.get(u.id), instituto).length ? " · tiene ficha propia" : ""}
               </option>
             ))}
           </Select>

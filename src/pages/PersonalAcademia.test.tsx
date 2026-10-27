@@ -42,7 +42,9 @@ vi.mock("../lib/personal", () => ({
   },
 }));
 
+import { api } from "../lib/api";
 import { apiPersonal } from "../lib/personal";
+import { apiRoles } from "../lib/roles";
 import Personal from "./Personal";
 
 const MARCO: Persona = {
@@ -111,5 +113,64 @@ describe("Personal en un instituto", () => {
     await act(async () => {});
     expect(screen.getByText(/Cargá a tus docentes/)).toBeInTheDocument();
     expect(screen.queryByText(/barbero/)).not.toBeInTheDocument();
+  });
+});
+
+describe("ronda 1 · U2 cosmético · el instituto no ve restos de la agenda de belleza", () => {
+  /** Un docente que quedó con columna de agenda (de cuando el negocio era otro) y color. */
+  const CON_AGENDA: Persona = {
+    ...MARCO,
+    color: "#E11D48",
+    profesional: { recursoId: 30, nombre: "Marco", activo: true },
+  };
+
+  async function montar() {
+    render(
+      <MemoryRouter>
+        <Personal />
+      </MemoryRouter>,
+    );
+    await act(async () => {});
+  }
+
+  it("la lista no tiene el punto de color ni «En la agenda» / «Agenda inactiva»", async () => {
+    vi.mocked(apiPersonal.listar).mockResolvedValue([CON_AGENDA, { ...MARCO, id: 8, nombre: "Lucía Paz", profesional: { recursoId: 31, nombre: "Lucía", activo: false } }]);
+    await montar();
+    const lista = screen.getByRole("list", { name: "Personal" });
+    expect(lista).not.toHaveTextContent("En la agenda");
+    expect(lista).not.toHaveTextContent("Agenda inactiva");
+    expect(lista.querySelector("[style*='background-color']")).toBeNull();
+  });
+
+  it("dar de baja y quitar acceso no hablan de agenda, citas ni comisiones", async () => {
+    vi.mocked(apiPersonal.listar).mockResolvedValue([{ ...CON_AGENDA, conAcceso: true, acceso: { usuarioId: 40, username: "marco", rol: "DOCENTE", rolId: 5, rolNombre: "Docente", activo: true, ultimoLogin: null } }]);
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Ver Marco Rojas" }));
+    const dialogo = screen.getByRole("dialog", { name: "Marco Rojas" });
+    // La ficha tampoco ofrece agenda.
+    expect(dialogo).not.toHaveTextContent(/agenda/i);
+    fireEvent.click(within(dialogo).getByRole("button", { name: "Dar de baja" }));
+    const baja = screen.getByRole("dialog", { name: "Dar de baja" });
+    expect(baja).toHaveTextContent("deja de trabajar acá");
+    expect(baja).not.toHaveTextContent(/agenda|citas|comisiones/i);
+  });
+
+  it("al vincular, el aviso de la ficha propia no cuenta «% de comisión»", async () => {
+    const SIN_LOGIN: Persona = { ...MARCO, id: 9, nombre: "Nueva Docente", comisionPct: null, telefono: null };
+    const DE_PABLO: Persona = { ...MARCO, id: 10, nombre: "Pablo Ríos", usuarioId: 20, comisionPct: 30 };
+    vi.mocked(apiPersonal.listar).mockResolvedValue([SIN_LOGIN, DE_PABLO]);
+    vi.mocked(api.getUsuarios).mockResolvedValue([{ id: 20, nombre: "Pablo Ríos", usuario: "pablo", rol: "DOCENTE", rolId: 5, activo: true }] as never);
+    vi.mocked(apiRoles.asignables).mockResolvedValue(null as never);
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Ver Nueva Docente" }));
+    await act(async () => {});
+    fireEvent.click(screen.getByRole("button", { name: "Vincular a un usuario existente" }));
+    await act(async () => {});
+    const dialogo = screen.getByRole("dialog", { name: "Vincular a un usuario" });
+    fireEvent.change(within(dialogo).getByLabelText("Usuario"), { target: { value: "20" } });
+    const aviso = within(dialogo).getByRole("alert");
+    expect(aviso).toHaveTextContent("@pablo ya tiene su ficha");
+    expect(aviso).toHaveTextContent("tel. 70000001");
+    expect(aviso).not.toHaveTextContent(/comisión/);
   });
 });
