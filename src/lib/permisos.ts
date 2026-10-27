@@ -747,10 +747,15 @@ export function rutaInicial(ctx: ContextoPermisos): string {
  * "/sin-acceso" con esa misma sección dibujada en la barra de al lado.
  */
 const ORDEN_INICIO: [Seccion, string][] = [
-  // El instituto empieza el día en el Calendario (la recepción y la
-  // dirección; desde el 26-oct, con las clases de hoy arriba: "Hoy" salió del
-  // menú) o en sus clases de hoy (el docente, ronda 2). Sin la feature
-  // `academia` no existen y la lista sigue como siempre.
+  // El instituto empieza el día donde está la tarea de cada rol (D8, 27-oct):
+  // el administrador, en el Panel de control (lo que pide su atención: sobrecupos,
+  // descuentos, quién asiste sin pagar); la recepción y la coordinación, en el
+  // Calendario (desde el 26-oct, con las clases de hoy arriba: "Hoy" salió del
+  // menú); el docente, en sus clases de hoy (ronda 2). Es por PERMISO, no por
+  // el nombre del rol: quien tiene `academia.control` va primero al Panel, y un
+  // rol armado a mano sin él sigue de largo hasta una pantalla que sí puede ver.
+  // Sin la feature `academia` no existen y la lista sigue como siempre.
+  ["academia_control", "/academia/control"],
   ["academia_calendario", "/academia/calendario"],
   ["academia_mis_clases", "/academia/mis-clases"],
   // Sin entrada para `academia_grupos`: "/academia/grupos" redirige al

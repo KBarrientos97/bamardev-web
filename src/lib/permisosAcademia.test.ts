@@ -66,9 +66,33 @@ describe("secciones de la academia", () => {
     expect(ruta).not.toBe("/academia/calendario");
   });
 
-  it("la secretaría y la dirección empiezan el día en el Calendario (Hoy salió del menú el 26-oct)", () => {
+  it("cada rol entra a lo suyo (D8): administrador al Panel de control, recepción y coordinación al Calendario, docente a Mis clases", () => {
+    expect(rutaInicial(ctxDe("ADMIN", "ACADEMIA", FEATURES))).toBe("/academia/control");
     expect(rutaInicial(ctxDe("CAJERO", "ACADEMIA", FEATURES))).toBe("/academia/calendario");
-    expect(rutaInicial(ctxDe("ADMIN", "ACADEMIA", FEATURES))).toBe("/academia/calendario");
+    expect(rutaInicial(ctxDe("SUPERVISOR", "ACADEMIA", FEATURES))).toBe("/academia/calendario");
+    expect(rutaInicial(ctxDe("PROFESIONAL", "ACADEMIA", FEATURES))).toBe("/academia/mis-clases");
+  });
+
+  it("el destino sale de los permisos, no del rol: sin academia.control el administrador cae en el Calendario", () => {
+    const c = ctxDe("ADMIN", "ACADEMIA", FEATURES, { sin: ["academia.control"] });
+    expect(puedeVer(c, "academia_control")).toBe(false);
+    expect(rutaInicial(c)).toBe("/academia/calendario");
+  });
+
+  it("un rol armado a mano cae siempre en una pantalla que sí puede ver, sin bucles", () => {
+    const a_mano = (permisos: string[]) => ({ permisos, permisosPropios: [], rubro: "ACADEMIA", features: FEATURES });
+    // Sólo el Panel de control: entra ahí.
+    expect(rutaInicial(a_mano(["academia.control"]))).toBe("/academia/control");
+    // Cobranza sin calendario ni panel: no lo manda al Calendario, que no puede ver.
+    const cobranza = a_mano(["academia.cobranza"]);
+    expect(puedeVer(cobranza, "academia_calendario")).toBe(false);
+    expect(rutaInicial(cobranza)).toBe("/academia/cobranza");
+    // Sin nada: la pantalla de sin acceso, no un destino prohibido.
+    expect(rutaInicial(a_mano([]))).toBe("/sin-acceso");
+  });
+
+  it("sin la feature academia nadie aterriza en el Panel de control", () => {
+    expect(rutaInicial(ctxDe("ADMIN", "ACADEMIA", FEATURES.filter((f) => f !== "academia")))).not.toBe("/academia/control");
   });
 
   it("sin la preinscripción online no hay bandeja de preinscripciones", () => {
