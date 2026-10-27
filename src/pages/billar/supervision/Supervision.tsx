@@ -1,9 +1,18 @@
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { Icon, type NombreIcono } from "../../../components/Icon";
-import { Cargando, ErrorMsg, Modal, Vacio } from "../../../components/ui";
+import { AvisoOk, Cargando, ErrorMsg, Modal, useAviso, Vacio } from "../../../components/ui";
 import { fmtMoney } from "../../../lib/format";
 import { useSucursales } from "../../../lib/useSucursales";
-import type { ActividadApi, CajaSupervisionApi, SupervisionApi } from "../api";
+import { useAuth } from "../../../store/AuthContext";
+import DialogoMovimiento from "../../pos/DialogoMovimiento";
+import { MOTIVOS_BILLAR } from "../../pos/motivosMovimiento";
+import { bsResta } from "../../reportes/formato";
+import type {
+  ActividadApi,
+  CajaSupervisionApi,
+  MovimientoSupervisionApi,
+  SupervisionApi,
+} from "../api";
 import { fmtHace, horaDe } from "../calculo";
 import { ESTADOS } from "../estilos";
 import { ChipsMotivo } from "../ModalesMesa";
@@ -15,29 +24,38 @@ import { BotonB, ChipFiltro, Circulo, ErrorAccion, EstadoBadge, Fila, Nota, Rotu
 import { cronoDe, nombreMesa, vistaCuenta, vistaDe, type VistaCuenta, type VistaMesa } from "../vista";
 import {
   armarSupervision,
+  consumosEnCurso,
   cuando,
+  desglosePorCobrar,
   duracion,
   estadoDeCaja,
   filtrarActividad,
   FILTROS_ACTIVIDAD,
   iniciales,
   opcionesDeTurno,
+  pieDelEsperado,
   rangoDeSemana,
   rangoDeTurno,
   reinicioDeSemana,
   resumenSupervision,
+  seVeLoPedido,
   situacionDelTurno,
   textoDiferencia,
-  tonoDeActividad,
   type CuentaSup,
   type EstadoCaja,
   type FiltroActividad,
   type MesaSup,
   type QuienSesion,
   type SituacionTurno,
-  type TonoActividad,
 } from "./Supervision.datos";
 import { useSupervision } from "./useSupervision";
+import { AnularMovimiento, TarjetaEfectivo } from "./EfectivoSupervision";
+import { destinoDelMovimiento, type DestinoDelMovimiento } from "./EfectivoSupervision.datos";
+import { TarjetaLoQueSalio } from "./LoQueSalio";
+import { MarcaMedio } from "./Cobros";
+import { DetalleCaja } from "./DetalleCaja";
+import { COLOR_DIFERENCIA, tonoDiferencia, type TonoDiferencia } from "./DetalleCaja.datos";
+import { Historial, IconoDeActividad, ModalDetalleVenta, type Consulta } from "./DetalleVenta";
 import { apiBillar } from "../api";
 
 /** Cuántos renglones de actividad se ven de entrada, y cuántos suma "Ver más". */
@@ -62,6 +80,10 @@ const CAJAS_DE_ENTRADA = 3;
  * tiene la mañana del lunes para revisar la que cerró) y la nueva no muestra
  * turnos hasta que abren la primera caja.
  *
+ * Cada caja dice cuánto se cobró en efectivo y cuánto por QR, y se toca para
+ * ver cada cobro con su venta y la cuenta del efectivo del cajón (26-oct; ver
+ * `FilaCaja` y `DetalleCaja`).
+ *
  * Es del administrador (`billar.admin`). No pide caja propia: es justo la
  * pantalla para quien no atiende.
  */
@@ -74,6 +96,18 @@ export default function Supervision() {
   const [todasLasCajas, setTodasLasCajas] = useState(false);
   const [viendo, setViendo] = useState<{ tipo: "mesa"; numero: number } | { tipo: "cuenta"; id: number } | null>(null);
   const [pausando, setPausando] = useState<{ numero: number; sesionId: number } | null>(null);
+  // Movimientos de efectivo (24-oct): el cuadro abierto (con el motivo que arranca elegido) y la cena que se va a anular.
+  const { incluye, usuario } = useAuth();
+  // La caja a la que va (y su cajero y su esperado) se fija al ABRIR el cuadro
+  // (25-oct). Antes se releía del sondeo de 5 s: si en el cambio de turno una
+  // caja cerraba y otra abría con el cuadro abierto, la cena de una cajera
+  // entraba en la caja de la otra (una cerraba con faltante y la otra con sobrante).
+  const [registrando, setRegistrando] = useState<(DestinoDelMovimiento & { motivo?: string }) | null>(null);
+  const [anulando, setAnulando] = useState<{ movimiento: MovimientoSupervisionApi; cajaId: number; cajero: string } | null>(null);
+  // El detalle de un renglón de la actividad (25-oct): la mesa, cuenta o venta, o la caja.
+  const [verDetalle, setVerDetalle] = useState<Consulta | null>(null);
+  const [verCaja, setVerCaja] = useState<number | null>(null);
+  const [aviso, setAviso] = useAviso();
 
   const armado = useMemo(() => (datos ? armarSupervision(datos) : null), [datos]);
   const contexto = useMemo(
@@ -93,6 +127,13 @@ export default function Supervision() {
     [datos, mesas, cuentas],
   );
   const turno = useMemo(() => (datos ? situacionDelTurno(datos) : null), [datos]);
+  // Lo que salió: lo pedido sólo cambia con el sondeo; la cuenta del "Por
+  // cobrar" lleva el tiempo de las mesas, así que sigue al reloj como el KPI.
+  const enCurso = useMemo(() => (datos ? consumosEnCurso(datos) : []), [datos]);
+  const porCobrar = useMemo(
+    () => desglosePorCobrar(mesas.map((m) => m.vista), cuentas.map((c) => c.vista)),
+    [mesas, cuentas],
+  );
 
   if (!datos || !resumen || !turno) {
     return (
@@ -112,10 +153,30 @@ export default function Supervision() {
   const selector =
     suc.elegir ? <SelectorSucursal valor={sucursal ?? datos.sucursal.id} sucursales={suc.sucursales} onElegir={elegirSucursal} /> : undefined;
   const actividad = filtrarActividad(datos.actividad, filtro);
+  /** Abre el detalle de un renglón: su mesa o cuenta, su venta o su caja. Sin ref no hay nada que abrir. */
+  const verDe = (a: ActividadApi): (() => void) | undefined => {
+    const ref = a.ref;
+    if (!ref) return undefined;
+    if (ref.caja != null) return () => setVerCaja(ref.caja!);
+    if (ref.sesion != null || ref.venta != null) return () => setVerDetalle({ sesion: ref.sesion, venta: ref.venta });
+    return undefined;
+  };
   // Con la semana entera la lista es larga: se ven las últimas y, siempre, la que se está mirando.
   const cajasVisibles = datos.cajas.filter((c, i) => todasLasCajas || i < CAJAS_DE_ENTRADA || c.id === turno.caja?.id);
   const cajasOcultas = datos.cajas.length - cajasVisibles.length;
   const tituloActividad = turno.situacion === "hoy" ? "Actividad de hoy" : "Actividad del turno";
+  // A qué caja iría un movimiento si se abre el cuadro ahora. La tarjeta lo
+  // dice: con la caja del administrador a la vista, el cuadro propone la de la
+  // cajera, y lo registrado allá no aparece en esta lista.
+  const destino =
+    datos.efectivo && turno.caja
+      ? destinoDelMovimiento(
+          { cajaId: datos.efectivo.cajaId, cajero: turno.caja.cajero, desde: turno.caja.desde, esperado: datos.efectivo.esperado },
+          datos.cajas,
+          usuario?.id,
+          datos.desde,
+        )
+      : null;
   const mesaViendo = viendo?.tipo === "mesa" ? mesas.find((m) => m.mesa.id === viendo.numero) : undefined;
   const cuentaViendo = viendo?.tipo === "cuenta" ? cuentas.find((c) => c.cuenta.id === viendo.id) : undefined;
 
@@ -196,6 +257,33 @@ export default function Supervision() {
               />
             </div>
 
+            {/* Desde el 25-oct el servidor manda lo vendido también sin caja (la
+                jornada, como el KPI); sin un turno que mirar la tarjeta no dice
+                nada que no diga el "Vendido hoy", y sigue escondida como antes. */}
+            {datos.productos && turno.caja && (
+              <TarjetaLoQueSalio
+                productos={datos.productos}
+                enCurso={enCurso}
+                porCobrar={porCobrar}
+                verEnCurso={seVeLoPedido(turno)}
+              />
+            )}
+
+            <AvisoOk>{aviso}</AvisoOk>
+            {datos.efectivo && turno.caja && destino && (
+              <TarjetaEfectivo
+                efectivo={datos.efectivo}
+                caja={turno.caja}
+                puedeRegistrar={incluye("movimientos_caja")}
+                esMia={turno.caja.cajeroId != null && turno.caja.cajeroId === usuario?.id}
+                vaA={destino.cajaId !== datos.efectivo.cajaId ? destino.deQuien.nombre : null}
+                variasAbiertas={(destino.cajas?.length ?? 0) > 1}
+                ahora={ahora}
+                onRegistrar={(motivo) => setRegistrando({ motivo, ...destino })}
+                onAnular={(movimiento) => setAnulando({ movimiento, cajaId: datos.efectivo!.cajaId, cajero: turno.caja!.cajero })}
+              />
+            )}
+
             <Tarjeta
               icono="clock"
               titulo="Cajas"
@@ -216,6 +304,7 @@ export default function Supervision() {
                         estado={estadoDeCaja(c, datos.desde)}
                         ahora={ahora}
                         viendo={turno.caja?.id === c.id}
+                        onVer={() => setVerCaja(c.id)}
                       />
                     ))}
                   </ul>
@@ -290,8 +379,19 @@ export default function Supervision() {
                 <p className="px-5 py-8 text-center text-[13px] text-texto-3">Todavía no hay movimientos de este tipo.</p>
               ) : (
                 <ul className="divide-y divide-borde-soft">
-                  {actividad.slice(0, cuantos).map((a) => (
-                    <RenglonActividad key={a.id} a={a} ahora={ahora} />
+                  {actividad.slice(0, cuantos).map((a, i, lista) => (
+                    <Fragment key={a.id}>
+                      {/* En una noche movida la lista tiene tope, pero la caja y el
+                          efectivo vienen siempre: sin este corte, la apertura de las
+                          16:00 quedaba pegada a lo de las 21:00 como si en el medio
+                          no hubiera pasado nada. En "Caja" y "Efectivo" están todos. */}
+                      {filtro === "todo" && a.fueraDelTope && i > 0 && !lista[i - 1].fueraDelTope && (
+                        <li className="bg-slate-50 px-4 py-2.5 text-[12px] leading-snug text-texto-3">
+                          Antes de las {horaDe(lista[i - 1].hora)} sólo se ven la caja y el efectivo: lo demás no entra en la lista.
+                        </li>
+                      )}
+                      <RenglonActividad a={a} ahora={ahora} onVer={verDe(a)} />
+                    </Fragment>
                   ))}
                 </ul>
               )}
@@ -314,6 +414,7 @@ export default function Supervision() {
           calc={mesaViendo.vista.cuenta}
           quien={mesaViendo.quien}
           ahora={ahora}
+          historial={{ sesion: Number(mesaViendo.mesa.sesion!.id) }}
           onClose={() => setViendo(null)}
           onPausar={
             mesaViendo.vista.estado !== "pausada" && mesaViendo.sesionId != null
@@ -332,7 +433,72 @@ export default function Supervision() {
           calc={cuentaViendo.vista.calc}
           quien={cuentaViendo.quien}
           ahora={ahora}
+          historial={{ sesion: Number(cuentaViendo.cuenta.sesion.id) }}
           onClose={() => setViendo(null)}
+        />
+      )}
+      {/* Con clave, como el detalle de la caja: otro renglón arranca de cero. */}
+      {verDetalle && (
+        <DetalleDeActividad
+          key={JSON.stringify(verDetalle)}
+          consulta={verDetalle}
+          mesas={mesas}
+          cuentas={cuentas}
+          tipos={contexto?.tipos ?? {}}
+          ahora={ahora}
+          onClose={() => setVerDetalle(null)}
+        />
+      )}
+      {/* Con clave: el foco puede quedar en la tarjeta de atrás y abrir otra caja
+          con el diálogo abierto. Sin ella seguían la venta que se estaba
+          mirando y los datos de la caja anterior bajo el título de la nueva. */}
+      {verCaja != null && datos.cajas.some((c) => c.id === verCaja) && (
+        <DetalleCaja
+          key={verCaja}
+          c={datos.cajas.find((c) => c.id === verCaja)!}
+          tipos={contexto?.tipos ?? {}}
+          ahora={ahora}
+          onClose={() => setVerCaja(null)}
+        />
+      )}
+      {registrando && (
+        <DialogoMovimiento
+          cajaId={registrando.cajaId}
+          deQuien={registrando.deQuien}
+          // La caja queda fija desde que se abrió el cuadro, pero su esperado
+          // sigue al sondeo: una mesa cobrada mientras se escribe lo cambia.
+          esperado={datos.efectivo?.cajaId === registrando.cajaId ? datos.efectivo.esperado : registrando.esperado}
+          cajas={registrando.cajas}
+          motivos={MOTIVOS_BILLAR}
+          motivoInicial={registrando.motivo}
+          onClose={() => setRegistrando(null)}
+          onGuardado={(cajaId) => {
+            setRegistrando(null);
+            if (cajaId === datos.efectivo?.cajaId) {
+              void recargar();
+              return;
+            }
+            // Fue a otra caja que la de la tarjeta (con la caja del
+            // administrador a la vista, el cuadro propone la de la cajera): se
+            // pasa a su turno, donde se ve y se puede anular. Antes la tarjeta
+            // seguía en "Todavía no se registró ningún movimiento" y se volvía
+            // a cargar.
+            const caja = datos.cajas.find((c) => c.id === cajaId);
+            setAviso(`Registrado en la caja de ${caja?.cajero ?? "la otra caja"}: estás viendo su turno.`);
+            elegirTurno(cajaId);
+          }}
+        />
+      )}
+      {anulando && (
+        <AnularMovimiento
+          cajaId={anulando.cajaId}
+          cajera={anulando.cajero}
+          movimiento={anulando.movimiento}
+          onClose={() => setAnulando(null)}
+          onHecho={() => {
+            setAnulando(null);
+            void recargar();
+          }}
         />
       )}
       {pausando && (
@@ -498,7 +664,6 @@ function SelectorDeTurno({
   );
 }
 
-// ── Las cajas ───────────────────────────────────────────────────────────────
 
 const BADGE_CAJA: Record<EstadoCaja, { texto: string; clase: string }> = {
   abierta: { texto: "Abierta", clase: "bg-primary-boton text-white" },
@@ -506,64 +671,163 @@ const BADGE_CAJA: Record<EstadoCaja, { texto: string; clase: string }> = {
   cerrada: { texto: "Cerrada", clase: "bg-slate-100 text-slate-600" },
 };
 
-function FilaCaja({ c, estado, ahora, viendo }: { c: CajaSupervisionApi; estado: EstadoCaja; ahora: number; viendo: boolean }) {
+/** Las columnas de una fila de datos de la caja: 4 bajan a 2 × 2 en el celular. */
+function columnas(n: number): string {
+  if (n >= 4) return "grid-cols-2 sm:grid-cols-4";
+  return n === 3 ? "grid-cols-3" : "grid-cols-2";
+}
+
+/**
+ * Una caja de la lista (26-oct): lo que vendió y cómo entró, y el efectivo del
+ * cajón. Toda la tarjeta se toca y abre el detalle, con cada QR y cada cobro
+ * en efectivo.
+ *
+ * Antes decía "Abrió con Bs 50 · Vendió Bs 676 · Contó al cerrar Bs 616 ·
+ * sobran Bs 10", y Miguel, el administrador, sumaba 50 + 676 y no le daba 616:
+ * Bs 120 se cobraron por QR, que va a la cuenta y no entra al cajón. Ahora lo
+ * vendido se parte por medio y el "Debía haber" dice de dónde sale ("Bs 50,00 +
+ * Bs 556,00"). "Abrió con" era el cambio para dar vuelto (Cambio inicial) y
+ * "Contó al cerrar", el efectivo que había (Efectivo contado).
+ *
+ * Contra un backend anterior (sin `cobrado` ni `esperado`) se ve lo de antes
+ * con los rótulos nuevos.
+ */
+function FilaCaja({
+  c,
+  estado,
+  ahora,
+  viendo,
+  onVer,
+}: {
+  c: CajaSupervisionApi;
+  estado: EstadoCaja;
+  ahora: number;
+  viendo: boolean;
+  onVer: () => void;
+}) {
   const badge = BADGE_CAJA[estado];
+  const co = c.cobrado;
+  const otros = co?.otros ?? [];
+  const cobros = (n: number) => `${n} ${n === 1 ? "cobro" : "cobros"}`;
+  const vendio = (
+    <Dato
+      etiqueta="Vendió"
+      valor={fmtMoney(c.vendido)}
+      pie={`${c.ventas} ${c.ventas === 1 ? "venta" : "ventas"}${c.anuladas ? ` · ${c.anuladas} anulada${c.anuladas === 1 ? "" : "s"}` : ""}`}
+    />
+  );
+  const cena = c.cena && <Dato etiqueta="Cena" valor={bsResta(c.cena.monto)} pie={c.cena.por ? `Registró ${c.cena.por}` : undefined} violeta />;
+  const esperado =
+    c.esperado != null ? (
+      <Dato
+        etiqueta={c.abierta ? "Debería haber ahora" : "Debía haber"}
+        corta={c.abierta ? "Debería haber" : undefined}
+        valor={fmtMoney(c.esperado)}
+        pie={pieDelEsperado(c) ?? undefined}
+      />
+    ) : null;
+  const cierre =
+    c.contado != null ? (
+      <Dato
+        etiqueta="Efectivo contado"
+        corta="Contado"
+        valor={fmtMoney(c.contado)}
+        pie={textoDiferencia(c.diferencia ?? 0)}
+        tono={tonoDiferencia(c.diferencia ?? 0)}
+      />
+    ) : (
+      <Dato etiqueta="Cierre" valor="Sigue abierta" />
+    );
+  const delCajon = 2 + (cena ? 1 : 0) + (esperado ? 1 : 0);
   return (
     <li
       aria-current={viendo ? "true" : undefined}
-      className={`border-l-4 px-3 py-3.5 sm:px-4 ${viendo ? "border-l-primary-boton bg-primary-50/40" : "border-l-transparent"}`}
+      className={`border-l-4 ${viendo ? "border-l-primary-boton bg-primary-50/40" : "border-l-transparent"}`}
     >
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-        <span
-          aria-hidden
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary-50 text-[13px] font-bold text-primary-700"
-        >
-          {iniciales(c.cajero)}
-        </span>
-        <div className="min-w-[10rem] flex-1">
-          <p className="truncate text-[15px] font-bold text-texto">{c.cajero}</p>
-          <p className="text-[12px] text-texto-3">
-            Abrió <b className="font-semibold text-texto-2">{cuando(c.desde, ahora)}</b>
-            {c.hasta ? (
-              <>
-                {" "}
-                · cerró <b className="font-semibold text-texto-2">{cuando(c.hasta, ahora)}</b> ({duracion(c.hasta - c.desde)})
-                {c.cerroPor && c.cerroPor !== c.cajero && (
-                  <>
-                    {" "}
-                    · la cerró <b className="font-semibold text-texto-2">{c.cerroPor}</b>
-                  </>
-                )}
-              </>
-            ) : (
-              <> · lleva {duracion(ahora - c.desde)}</>
-            )}
-          </p>
+      {/* Un botón con nombre propio: adentro hay montos y "cobros", y la prueba
+          de que la pantalla es sólo para mirar busca botones de cobrar. El
+          nombre dice cuándo abrió (la misma cajera tiene una caja por noche)
+          y los montos van como descripción: el nombre los tapaba. */}
+      <button
+        type="button"
+        onClick={onVer}
+        aria-label={`Ver el detalle de la caja de ${c.cajero}, abrió ${cuando(c.desde, ahora)}${c.abierta ? ", sigue abierta" : ""}`}
+        aria-describedby={`caja-${c.id}-datos`}
+        className="block w-full px-3 py-3.5 text-left transition-colors hover:bg-muted focus-visible:bg-muted focus-visible:outline-none sm:px-4"
+      >
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+          <span
+            aria-hidden
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary-50 text-[13px] font-bold text-primary-700"
+          >
+            {iniciales(c.cajero)}
+          </span>
+          <div className="min-w-[10rem] flex-1">
+            <p className="truncate text-[15px] font-bold text-texto">{c.cajero}</p>
+            <p className="text-[12px] text-texto-3">
+              Abrió <b className="font-semibold text-texto-2">{cuando(c.desde, ahora)}</b>
+              {c.hasta ? (
+                <>
+                  {" "}
+                  · cerró <b className="font-semibold text-texto-2">{cuando(c.hasta, ahora)}</b> ({duracion(c.hasta - c.desde)})
+                  {c.cerroPor && c.cerroPor !== c.cajero && (
+                    <>
+                      {" "}
+                      · la cerró <b className="font-semibold text-texto-2">{c.cerroPor}</b>
+                    </>
+                  )}
+                </>
+              ) : (
+                <> · lleva {duracion(ahora - c.desde)}</>
+              )}
+            </p>
+          </div>
+          <span className={`shrink-0 rounded-md px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide ${badge.clase}`}>
+            {badge.texto}
+          </span>
         </div>
-        <span className={`shrink-0 rounded-md px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide ${badge.clase}`}>
-          {badge.texto}
-        </span>
-      </div>
-      <dl className="mt-3 grid grid-cols-3 gap-2 text-[12px]">
-        <Dato etiqueta="Abrió con" valor={fmtMoney(c.inicial)} />
-        <Dato
-          etiqueta="Vendió"
-          valor={fmtMoney(c.vendido)}
-          pie={`${c.ventas} ${c.ventas === 1 ? "venta" : "ventas"}${c.anuladas ? ` · ${c.anuladas} anulada${c.anuladas === 1 ? "" : "s"}` : ""}`}
-        />
-        {c.contado != null ? (
-          <Dato
-            etiqueta="Contó al cerrar"
-            corta="Contó"
-            valor={fmtMoney(c.contado)}
-            pie={textoDiferencia(c.diferencia ?? 0)}
-            alerta={Math.abs(c.diferencia ?? 0) >= 0.005}
-          />
-        ) : (
-          <Dato etiqueta="Cierre" valor="Sigue abierta" />
-        )}
-      </dl>
-      {c.nota && <p className="mt-2 text-[12px] text-texto-3">Nota al cerrar: {c.nota}</p>}
+        <div id={`caja-${c.id}-datos`}>
+          {co ? (
+            <>
+              {/* Lo que vendió y cómo entró: el QR no pasa por el cajón. */}
+              <dl className={`mt-3 grid gap-2 text-[12px] ${columnas(otros.length ? 4 : 3)}`}>
+                {vendio}
+                <Dato etiqueta="En efectivo" corta="Efectivo" medio="Efectivo" valor={fmtMoney(co.efectivo.monto)} pie={cobros(co.efectivo.cobros)} />
+                <Dato etiqueta="Por QR" medio="QR" valor={fmtMoney(co.qr.monto)} pie={cobros(co.qr.cobros)} />
+                {otros.length > 0 && (
+                  <Dato
+                    etiqueta="Otros medios"
+                    corta="Otros"
+                    valor={fmtMoney(otros.reduce((t, o) => t + o.monto, 0))}
+                    pie={otros.map((o) => o.nombre).join(", ")}
+                  />
+                )}
+              </dl>
+              {/* El efectivo del cajón: con cuánto abrió, cuánto debía haber y cuánto contó. */}
+              <dl className={`mt-2 grid gap-2 text-[12px] ${columnas(delCajon)}`}>
+                <Dato etiqueta="Cambio inicial" corta="Cambio" valor={fmtMoney(c.inicial)} />
+                {cena}
+                {esperado}
+                {cierre}
+              </dl>
+            </>
+          ) : (
+            // Un backend anterior: los datos de siempre, con los rótulos nuevos.
+            <dl className={`mt-3 grid gap-2 text-[12px] ${columnas(3 + (cena ? 1 : 0) + (esperado ? 1 : 0))}`}>
+              <Dato etiqueta="Cambio inicial" corta="Cambio" valor={fmtMoney(c.inicial)} />
+              {vendio}
+              {cena}
+              {esperado}
+              {cierre}
+            </dl>
+          )}
+        </div>
+        {c.nota && <p className="mt-2 text-[12px] text-texto-3">Nota al cerrar: {c.nota}</p>}
+        <p className="mt-2.5 flex items-center gap-1 text-[12px] font-semibold text-primary-700">
+          <span className="min-w-0">{co ? "Ver el detalle: qué se cobró por QR y qué en efectivo" : "Ver el detalle"}</span>
+          <Icon name="chevronRight" size={14} />
+        </p>
+      </button>
     </li>
   );
 }
@@ -573,29 +837,45 @@ function Dato({
   corta,
   valor,
   pie,
-  alerta = false,
+  tono,
+  violeta = false,
+  medio,
 }: {
   etiqueta: string;
   /** La etiqueta en el celular, donde la larga no entra. */
   corta?: string;
   valor: string;
   pie?: string;
-  alerta?: boolean;
+  /** El pie de la diferencia del arqueo: cuadra verde, sobran azul, faltan rojo. */
+  tono?: TonoDiferencia;
+  /** La cena del personal va en violeta, como en el resto de las pantallas. */
+  violeta?: boolean;
+  /**
+   * Lo cobrado con un medio lleva su ícono en su color (efectivo verde, QR
+   * violeta): sólo el ícono, porque el fondo violeta es el de la cena.
+   */
+  medio?: string;
 }) {
   return (
-    <div className="min-w-0 rounded-lg bg-slate-50 px-2.5 py-2">
-      <dt className="truncate text-[10px] font-bold uppercase tracking-wide text-texto-3">
-        {corta ? (
-          <>
-            <span className="sm:hidden">{corta}</span>
-            <span className="hidden sm:inline">{etiqueta}</span>
-          </>
-        ) : (
-          etiqueta
-        )}
+    <div className={`min-w-0 rounded-lg px-2.5 py-2 ${violeta ? "bg-violet-50 text-violet-800" : "bg-slate-50"}`}>
+      {/* La etiqueta baja de renglón en vez de cortarse: "DEBÍA HAB…" no se entendía. */}
+      <dt className={`flex items-start gap-1 text-[10px] font-bold uppercase leading-tight tracking-wide ${violeta ? "text-violet-800" : "text-texto-3"}`}>
+        {medio && <MarcaMedio medio={medio} size={12} />}
+        <span className="min-w-0 break-words">
+          {corta ? (
+            <>
+              <span className="sm:hidden">{corta}</span>
+              <span className="hidden sm:inline">{etiqueta}</span>
+            </>
+          ) : (
+            etiqueta
+          )}
+        </span>
       </dt>
-      <dd className="break-words text-[14px] font-bold leading-tight tabular-nums text-texto">{valor}</dd>
-      {pie && <dd className={`break-words text-[11px] leading-tight ${alerta ? "font-semibold text-rose-700" : "text-texto-3"}`}>{pie}</dd>}
+      <dd className={`break-words text-[14px] font-bold leading-tight tabular-nums ${violeta ? "text-violet-800" : "text-texto"}`}>{valor}</dd>
+      {pie && (
+        <dd className={`break-words text-[11px] leading-tight ${tono ? `font-semibold ${COLOR_DIFERENCIA[tono]}` : violeta ? "text-violet-800" : "text-texto-3"}`}>{pie}</dd>
+      )}
     </div>
   );
 }
@@ -782,6 +1062,7 @@ function DetalleSesion({
   ahora,
   onClose,
   onPausar,
+  historial,
 }: {
   titulo: string;
   subtitulo?: string;
@@ -792,6 +1073,8 @@ function DetalleSesion({
   ahora: number;
   onClose: () => void;
   onPausar?: () => void;
+  /** Con esto, abajo va todo lo que se hizo con esta mesa o cuenta (se pide al abrir). */
+  historial?: Consulta;
 }) {
   const consumos = sesion.consumos;
   return (
@@ -874,6 +1157,8 @@ function DetalleSesion({
             </ul>
           </div>
         )}
+
+        {historial && <Historial consulta={historial} ahora={ahora} />}
       </div>
     </Modal>
   );
@@ -967,33 +1252,68 @@ function PausarDesdeSupervision({
 
 // ── La actividad ────────────────────────────────────────────────────────────
 
-const ICONO_ACTIVIDAD: Record<string, NombreIcono> = {
-  CAJA_ABIERTA: "lock",
-  CAJA_CERRADA: "lock",
-  VENTA: "billetera",
-  VENTA_ANULADA: "x",
-  CONSUMO: "cart",
-  PAUSAR: "pausa",
-  REANUDAR: "play",
-  ABRIR: "bola",
-  ABRIR_CUENTA: "users",
-};
+/**
+ * El detalle de lo que se tocó en la actividad: una mesa o cuenta que sigue
+ * abierta abre su detalle en vivo (con el historial abajo); una ya cobrada, o
+ * una venta, abre el ticket con todo lo que se hizo.
+ */
+function DetalleDeActividad({
+  consulta,
+  mesas,
+  cuentas,
+  tipos,
+  ahora,
+  onClose,
+}: {
+  consulta: Consulta;
+  mesas: (MesaSup & { vista: VistaMesa })[];
+  cuentas: (CuentaSup & { vista: VistaCuenta })[];
+  tipos: Record<string, { nombre: string }>;
+  ahora: number;
+  onClose: () => void;
+}) {
+  const sid = consulta.sesion != null ? Number(consulta.sesion) : null;
+  const mesa = sid != null ? mesas.find((m) => m.mesa.sesion != null && Number(m.mesa.sesion.id) === sid) : undefined;
+  const cuenta = sid != null ? cuentas.find((c) => Number(c.cuenta.sesion.id) === sid) : undefined;
+  if (sid != null && mesa?.quien && mesa.vista.cuenta) {
+    return (
+      <DetalleSesion
+        titulo={nombreMesa(mesa.mesa)}
+        subtitulo={mesa.vista.tipo.nombre}
+        vista={mesa.vista}
+        sesion={mesa.mesa.sesion!}
+        calc={mesa.vista.cuenta}
+        quien={mesa.quien}
+        ahora={ahora}
+        onClose={onClose}
+        historial={{ sesion: sid }}
+      />
+    );
+  }
+  if (sid != null && cuenta) {
+    return (
+      <DetalleSesion
+        titulo={`Cuenta ${cuenta.cuenta.nombre}`}
+        sesion={cuenta.cuenta.sesion}
+        calc={cuenta.vista.calc}
+        quien={cuenta.quien}
+        ahora={ahora}
+        onClose={onClose}
+        historial={{ sesion: sid }}
+      />
+    );
+  }
+  return <ModalDetalleVenta consulta={consulta} tipos={tipos} ahora={ahora} onClose={onClose} />;
+}
 
-const TONO_ICONO: Record<TonoActividad, string> = {
-  normal: "bg-slate-100 text-slate-600",
-  ambar: "bg-amber-100 text-amber-700",
-  rosa: "bg-rose-100 text-rose-700",
-  verde: "bg-primary-50 text-primary-700",
-  azul: "bg-blue-100 text-blue-700",
-};
-
-function RenglonActividad({ a, ahora }: { a: ActividadApi; ahora: number }) {
-  const tono = tonoDeActividad(a.codigo);
-  return (
-    <li className="flex gap-3 px-4 py-3 sm:px-5">
-      <span className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${TONO_ICONO[tono]}`}>
-        <Icon name={ICONO_ACTIVIDAD[a.codigo] ?? "info"} size={15} />
-      </span>
+/**
+ * Un renglón de la actividad. Si tiene de qué ser (`onVer`: una mesa, una cuenta,
+ * una venta o una caja), se toca y abre su detalle completo (25-oct).
+ */
+function RenglonActividad({ a, ahora, onVer }: { a: ActividadApi; ahora: number; onVer?: () => void }) {
+  const cuerpo = (
+    <>
+      <IconoDeActividad codigo={a.codigo} grande />
       <div className="min-w-0 flex-1">
         <p className="text-[13px] leading-snug text-texto">
           <b className="font-bold">{a.quien || "Alguien"}</b> · {a.texto}
@@ -1005,6 +1325,27 @@ function RenglonActividad({ a, ahora }: { a: ActividadApi; ahora: number }) {
           {a.motivo && <span className="min-w-0 truncate">«{a.motivo}»</span>}
         </p>
       </div>
+      {onVer && (
+        <span className="mt-2 shrink-0 text-texto-4">
+          <Icon name="chevronRight" size={16} />
+        </span>
+      )}
+    </>
+  );
+  return (
+    <li>
+      {onVer ? (
+        <button
+          type="button"
+          onClick={onVer}
+          aria-label={`Ver el detalle: ${a.quien} · ${a.texto}`}
+          className="flex w-full gap-3 px-4 py-3 text-left transition-colors hover:bg-muted focus-visible:bg-muted focus-visible:outline-none sm:px-5"
+        >
+          {cuerpo}
+        </button>
+      ) : (
+        <div className="flex gap-3 px-4 py-3 sm:px-5">{cuerpo}</div>
+      )}
     </li>
   );
 }

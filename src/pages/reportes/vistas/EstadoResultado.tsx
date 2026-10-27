@@ -4,7 +4,7 @@ import { Icon } from "../../../components/Icon";
 import { Badge, Boton, Modal } from "../../../components/ui";
 import { api } from "../../../lib/api";
 import { aCentavos, esCero, esPositivo } from "../../../lib/dinero";
-import { fmtFecha, fmtMoney, fmtNum } from "../../../lib/format";
+import { fmtFecha, fmtFechaHora, fmtMoney, fmtNum } from "../../../lib/format";
 import { badgeEstado } from "../../../lib/gastos";
 import { desgloseGastos, estadoLinea, grupoDe, listaNombres, pareceDeBanco, type EstadoLinea, type GrupoGasto } from "../../../lib/grupoGasto";
 import { mesEnCurso, type MesEnCurso } from "../../../lib/mesEnCurso";
@@ -15,18 +15,23 @@ import { useApi } from "../../../lib/useApi";
 import { useSucursales } from "../../../lib/useSucursales";
 import { useAuth } from "../../../store/AuthContext";
 import type { Gasto } from "../../../types";
-import { apiReportes, fraccion, type CreditosApi, type FinancieroApi, type ResumenApi } from "../api";
+import { apiReportes, fraccion, type CreditosApi, type EfectivoBillarApi, type FinancieroApi, type ResumenApi } from "../api";
 import { hoja, useExportar, useReporte } from "../contexto";
-import { bsEntero, bsResta, bsSubtotal } from "../formato";
+import { bsConSigno, bsEntero, bsResta, bsSubtotal } from "../formato";
 import { ProgresoMeta } from "../graficos";
 import { aDia, diasDelMes, esMesEnCurso, mesDe, prosaRango, type Periodo } from "../periodo";
 import { Cargador, Chip, Delta, Nota, Tarjeta } from "../ui";
 import {
+  conceptosDeCaja,
   explicarResultado,
   gananciaPorParte,
+  gastosDeCaja,
   horasJugadas,
+  movimientosSinEfecto,
+  notaMeta,
   partirVentas,
   perfilResultado,
+  type MovimientoSinEfecto,
   type PerfilResultado,
   type VentasPartidas,
 } from "./EstadoResultado.datos";
@@ -44,6 +49,8 @@ import {
  *     = Ganancia de lo vendido   (utilidad bruta, con el nombre del rubro)
  *     − Mermas                   (si hubo)
  *     − Gastos del local
+ *     − Cenas del personal       (billar, si hubo)
+ *     − Gastos pagados de la caja (billar, si hubo)
  *     = Resultado del local      (utilidad operativa)
  *     − Banco y deudas           (si hubo)
  *     − Impuestos                (si hubo)
@@ -56,16 +63,25 @@ import {
  *
  * Las compras NO restan (lo comprado y no vendido sigue en el stock: el costo
  * entra con cada venta) y el fiado ya está dentro de las ventas: van a la
- * derecha como "solo informativo", separados de la cuenta.
+ * derecha como "solo informativo", separados de la cuenta. Igual lo que la
+ * caja del billar movió sin ser un gasto (pagos a proveedores, retiros, el
+ * sencillo): el administrador lo registra en Supervisión con su motivo, y el
+ * motivo dice si resta (`motivosMovimiento.ts`).
  *
- * Si falla una mitad (el financiero o los gastos) falla el reporte entero: un
- * resultado sin los gastos mostraría una utilidad inflada como si fuera real.
+ * Si falla una mitad (el financiero, los gastos o el efectivo del billar)
+ * falla el reporte entero: un resultado sin los gastos mostraría una utilidad
+ * inflada como si fuera real.
  */
 export default function EstadoResultado() {
   const { rango, rangoAnterior, periodo, comparacion, veReporte, corteMin } = useReporte();
   const { rubro, negocio } = useAuth();
   const perfil = perfilResultado(rubro);
   const suc = useSucursales();
+  // Billar: lo que el administrador registró en la caja desde Supervisión, por
+  // motivo. Las cenas (24-oct) y los gastos pagados de la caja (25-oct) son
+  // gastos que no están entre los cargados. Sólo un billar lo pide: los demás
+  // rubros no hacen ninguna consulta más ni ven ninguna línea nueva.
+  const pideEfectivo = perfil.partir === "billar";
 
   const datos = useApi(() => {
     // Los gastos de los MISMOS días que las ventas: medianoche local del
@@ -80,8 +96,14 @@ export default function EstadoResultado() {
       // resta. Si no llega, la línea de ventas va entera, como antes, y el
       // reporte sigue (no es una mitad de la cuenta).
       apiReportes.resumen(rango, rangoAnterior).catch(() => null),
+      // Sí es una mitad de la cuenta: sin las cenas y los gastos de la caja la
+      // ganancia sale inflada, así que si falla, falla el reporte entero (como
+      // los gastos). Una sola llamada, y no la de las cenas: ésa va por local y
+      // con "Todas las sucursales" restaba sólo las de la principal contra las
+      // ventas de todos los locales.
+      pideEfectivo ? apiReportes.efectivoBillar(rango) : Promise.resolve(null),
     ]);
-  }, [rango.desde, rango.hasta, rango.sucursalId, rangoAnterior.desde, rangoAnterior.hasta]);
+  }, [rango.desde, rango.hasta, rango.sucursalId, rangoAnterior.desde, rangoAnterior.hasta, pideEfectivo]);
 
   // Las horas jugadas, para el renglón del tiempo de mesa. El reporte del
   // billar no tiene consolidado (ver NotaSucursal): con "Todas las sucursales"
@@ -99,25 +121,28 @@ export default function EstadoResultado() {
     [conFiado, rango.desde, rango.hasta, rango.sucursalId],
   );
 
-  const [fin, gastos, resumen] = datos.datos ?? [null, null, null];
-  const er = fin && gastos ? estadoResultado(fin, gastos) : null;
+  const [fin, gastos, resumen, efectivo] = datos.datos ?? [null, null, null, null];
+  const er = fin && gastos ? estadoResultado(fin, gastos, gastosDeCaja(efectivo)) : null;
   const partes = er && perfil.partir ? partirVentas(er.ventas, resumen?.composicion) : null;
 
   useExportar(
     "estado-de-resultado",
-    er && fin && gastos ? () => hojasExcel(er, fin, gastos, perfil, partes) : null,
+    er && fin && gastos ? () => hojasExcel(er, fin, gastos, perfil, partes, efectivo) : null,
   );
 
   return (
     <Cargador
       estado={datos}
-      vacio={([f, g]) => (estadoResultado(f, g).vacio ? { titulo: "Sin movimiento", texto: "No hay ventas ni gastos en este período.", icono: "billetera" } : null)}
+      vacio={([f, g, , e]) =>
+        estadoResultado(f, g, gastosDeCaja(e)).vacio ? { titulo: "Sin movimiento", texto: "No hay ventas ni gastos en este período.", icono: "billetera" } : null
+      }
     >
-      {([f, g, r]) => (
+      {([f, g, r, e]) => (
         <Contenido
-          er={estadoResultado(f, g)}
+          er={estadoResultado(f, g, gastosDeCaja(e))}
           fin={f}
           gastos={g}
+          efectivo={e}
           resumen={r}
           perfil={perfil}
           periodo={periodo}
@@ -139,16 +164,20 @@ export default function EstadoResultado() {
  */
 const DESDE_RESULTADO = { volverA: "Estado de resultado" };
 
-type Detalle =
+/** Las líneas que se explican con los gastos cargados (o con el costo y las mermas). */
+type DetalleGasto =
   | { tipo: "costo" }
   | { tipo: "mermas" }
   | { tipo: "grupo"; grupo: GrupoGasto }
   | { tipo: "categoria"; codigo: string; nombre: string };
 
+type Detalle = DetalleGasto | { tipo: "gastosCaja" };
+
 function Contenido({
   er,
   fin,
   gastos,
+  efectivo,
   resumen,
   perfil,
   periodo,
@@ -161,6 +190,8 @@ function Contenido({
   er: Er;
   fin: FinancieroApi;
   gastos: Gasto[];
+  /** Billar: lo que se registró en la caja por motivo. Null en los demás rubros. */
+  efectivo: EfectivoBillarApi | null;
   resumen: ResumenApi | null;
   perfil: PerfilResultado;
   periodo: Periodo;
@@ -181,6 +212,8 @@ function Contenido({
   const enCurso = esMesEnCurso(periodo, new Date(), corteMin);
   const hoy = aDia(periodo.hasta);
   // La meta cubre también las mermas: son plata que se fue, igual que un gasto.
+  // Del billar, las cenas salen cada noche y la meta las lleva al mes entero;
+  // lo pagado de la caja (un arreglo, hielo) cuenta una vez (ver `mesEnCurso`).
   const mes = enCurso
     ? mesEnCurso({
         diaActual: hoy.getDate(),
@@ -188,6 +221,8 @@ function Contenido({
         ventas: er.ventas,
         utilidadBruta: er.utilidadBruta,
         gastosDelMes: desglose.total + er.mermas,
+        gastosDiarios: er.cenasPersonal,
+        gastosDeCaja: er.gastosCaja,
       })
     : null;
   // Once días de ventas contra el alquiler del mes entero: se dice, para que la
@@ -205,10 +240,20 @@ function Contenido({
   const ventasDetalle = numVentas > 0 ? `${rangoTexto} · ${fmtNum(numVentas)} ${numVentas === 1 ? "venta" : "ventas"}` : rangoTexto;
   const nombres = er.lineas.map((l) => l.nombre);
   const deltaBruta = fraccion(fin.utilidadBrutaDeltaPct);
+  const gastosDeLaCaja = efectivo?.gastos ?? [];
+  const conceptosCaja = conceptosDeCaja(gastosDeLaCaja);
+  const sinEfecto = movimientosSinEfecto(efectivo?.porMotivo);
 
   return (
     <>
-      {mes && <TarjetaMes mes={mes} nombreMes={mesDe(periodo)} cosas={perfil.cosas} gastos={desglose.total + er.mermas} />}
+      {mes && (
+        <TarjetaMes
+          mes={mes}
+          nombreMes={mesDe(periodo)}
+          cosas={perfil.cosas}
+          nota={notaMeta({ cargados: desglose.total, mermas: er.mermas, cenas: er.cenasPersonal, gastosCaja: er.gastosCaja, mes })}
+        />
+      )}
 
       <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
         <div className="min-w-0 space-y-4">
@@ -291,6 +336,34 @@ function Contenido({
               cero={esCero(er.gastosOperativos)}
               onClick={() => setDetalle({ tipo: "grupo", grupo: "LOCAL" })}
             />
+            {/* Billar (24-oct): sólo si en el período se dio al menos una cena;
+                sin cenas la línea no se dibuja (un "Bs 0,00" sobra). Toca y va al
+                reporte, si lo ve. */}
+            {esPositivo(er.cenasPersonal) && (
+              <Paso
+                signo="−"
+                titulo="Cenas del personal"
+                detalle="Efectivo que salió de la caja para la cena"
+                valor={bsResta(er.cenasPersonal)}
+                resta
+                onClick={ir("cenas")}
+              />
+            )}
+            {/* Billar (25-oct): lo que el administrador pagó de la caja como
+                gasto del local (motivo Gasto en Supervisión). Como las cenas,
+                sólo si hubo. Toca y abre el detalle de cada uno: no hay un
+                reporte propio, y en Movimientos de caja están mezclados con
+                todo lo demás. */}
+            {esPositivo(er.gastosCaja) && (
+              <Paso
+                signo="−"
+                titulo="Gastos pagados de la caja"
+                detalle={conceptosCaja.length ? resumirNombres(conceptosCaja) : "Efectivo que salió de la caja para el local"}
+                valor={bsResta(er.gastosCaja)}
+                resta
+                onClick={() => setDetalle({ tipo: "gastosCaja" })}
+              />
+            )}
             <Paso
               signo="="
               titulo="Resultado del local"
@@ -412,6 +485,7 @@ function Contenido({
               accion="Ver compras"
             />
           )}
+          {sinEfecto.length > 0 && <CajaSinEfecto movimientos={sinEfecto} a={veReporte("caja") ? "/reportes/caja" : undefined} />}
           <Nota>
             {perfil.partir === "billar"
               ? "El costo sale del costo cargado en cada producto, no de las compras del período: comprar bebidas para tres meses no hunde el resultado de este mes. El tiempo de mesa no tiene costo. Los gastos cuentan por lo gastado, no por lo pagado."
@@ -420,18 +494,29 @@ function Contenido({
         </div>
       </div>
 
-      {detalle && (
-        <DetalleLinea
-          detalle={detalle}
-          er={er}
-          gastos={gastos}
+      {detalle?.tipo === "gastosCaja" ? (
+        <DetalleGastosCaja
+          gastos={gastosDeLaCaja}
+          total={er.gastosCaja}
+          ventas={er.ventas}
           periodo={periodo}
-          perfil={perfil}
-          partes={partes}
-          sospechosos={sospechosos}
           veReporte={veReporte}
           onCerrar={() => setDetalle(null)}
         />
+      ) : (
+        detalle && (
+          <DetalleLinea
+            detalle={detalle}
+            er={er}
+            gastos={gastos}
+            periodo={periodo}
+            perfil={perfil}
+            partes={partes}
+            sospechosos={sospechosos}
+            veReporte={veReporte}
+            onCerrar={() => setDetalle(null)}
+          />
+        )
       )}
     </>
   );
@@ -590,9 +675,8 @@ function CajaResultado({
   );
 }
 
-/** La tarjeta del mes que corre: cuánto falta vender para cubrir los gastos. */
-function TarjetaMes({ mes, nombreMes, cosas, gastos }: { mes: MesEnCurso; nombreMes: string; cosas: string; gastos: number }) {
-  const margenTxt = `${fmtNum(mes.margen * 100, 1)} %`;
+/** La tarjeta del mes que corre: cuánto falta vender para cubrir los gastos. `nota` es la fórmula de la meta (`notaMeta`). */
+function TarjetaMes({ mes, nombreMes, cosas, nota }: { mes: MesEnCurso; nombreMes: string; cosas: string; nota: string }) {
   const alerta = mes.sinMargen || (!mes.vaBien && !mes.cubierto);
   return (
     <section className="card p-4 sm:p-5">
@@ -668,9 +752,7 @@ function TarjetaMes({ mes, nombreMes, cosas, gastos }: { mes: MesEnCurso; nombre
               {mes.proyeccion < 0 ? "en contra" : "a favor"}. <span className="text-texto-4">(estimado)</span>
             </p>
           )}
-          <p className="mt-2 text-[12px] text-texto-3">
-            Meta = gastos cargados del mes ({bsEntero(gastos)}) ÷ lo que te deja cada venta ({margenTxt}).
-          </p>
+          <p className="mt-2 text-[12px] text-texto-3">{nota}</p>
         </>
       )}
     </section>
@@ -704,6 +786,36 @@ function Informativo({
         </Link>
       )}
     </section>
+  );
+}
+
+/**
+ * Billar (25-oct): lo que la caja movió sin cambiar la ganancia —pagos a
+ * proveedores, retiros, el sencillo—, al costado de la cuenta como las compras
+ * y con el porqué de cada uno. Sólo lo que hubo; sin nada, no se dibuja. Los
+ * montos van sin color: rojo y verde son de lo que resta y suma en la cuenta, y
+ * esto no la toca.
+ */
+function CajaSinEfecto({ movimientos, a }: { movimientos: MovimientoSinEfecto[]; a?: string }) {
+  return (
+    <Informativo
+      titulo="Lo que movió la caja sin cambiar tu ganancia"
+      texto="Lo registró el administrador en Supervisión. No es un gasto ni una venta: no resta ni suma en la cuenta."
+      a={a}
+      accion="Ver movimientos de caja"
+    >
+      <ul className="divide-y divide-borde-soft border-t border-borde-soft">
+        {movimientos.map((m) => (
+          <li key={m.codigo} className="flex items-start justify-between gap-3 py-2.5">
+            <div className="min-w-0">
+              <p className="text-[13.5px] font-semibold text-texto">{m.titulo}</p>
+              <p className="text-[12px] leading-snug text-texto-3">{m.porQue}</p>
+            </div>
+            <span className="shrink-0 text-[13.5px] font-bold tabular-nums text-texto-2">{bsConSigno(m.monto)}</span>
+          </li>
+        ))}
+      </ul>
+    </Informativo>
   );
 }
 
@@ -753,7 +865,7 @@ function DetalleLinea({
   veReporte,
   onCerrar,
 }: {
-  detalle: Detalle;
+  detalle: DetalleGasto;
   er: Er;
   gastos: Gasto[];
   periodo: Periodo;
@@ -918,6 +1030,90 @@ function DetalleLinea({
   );
 }
 
+/**
+ * El detalle de "Gastos pagados de la caja" (billar, 25-oct): cada gasto que el
+ * administrador pagó del cajón, quién lo registró y de qué caja salió. De sólo
+ * mirar, como el resto: un gasto mal cargado se anula en Supervisión mientras
+ * la caja siga abierta. La lista suma lo mismo que la línea: las dos salen del
+ * mismo pedido.
+ */
+function DetalleGastosCaja({
+  gastos,
+  total,
+  ventas,
+  periodo,
+  veReporte,
+  onCerrar,
+}: {
+  gastos: EfectivoBillarApi["gastos"];
+  total: number;
+  ventas: number;
+  periodo: Periodo;
+  veReporte: (id: string) => boolean;
+  onCerrar: () => void;
+}) {
+  const rango = prosaRango(periodo.desde, periodo.hasta);
+  const pctVentas = esPositivo(ventas) ? total / ventas : null;
+  return (
+    <Modal
+      abierto
+      titulo="Gastos pagados de la caja"
+      subtitulo={[rango, gastos.length ? `${gastos.length} ${gastos.length === 1 ? "gasto" : "gastos"}` : null].filter(Boolean).join(" · ")}
+      onClose={onCerrar}
+      acciones={
+        <>
+          {veReporte("caja") && (
+            <Link
+              to="/reportes/caja"
+              state={DESDE_RESULTADO}
+              className="inline-flex items-center gap-2 rounded-xl border border-borde bg-white px-4 py-2.5 text-sm font-semibold text-texto-2 hover:bg-muted"
+            >
+              Ver movimientos de caja
+            </Link>
+          )}
+          <Boton onClick={onCerrar}>Cerrar</Boton>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <div>
+          <p className="text-[28px] font-extrabold tabular-nums text-rose-700">{bsResta(total)}</p>
+          {pctVentas != null && (
+            <p className="text-[13px] text-texto-3">
+              {porcentaje(pctVentas)} de lo vendido {rango.replace(/^D/, "d").replace(/^E/, "e")}
+            </p>
+          )}
+        </div>
+        {gastos.length > 0 && (
+          <ul className="divide-y divide-borde-soft overflow-hidden rounded-xl border border-borde">
+            {gastos.map((g) => (
+              <li key={g.id} className="flex items-center gap-3 px-3.5 py-2.5 text-[13px]">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-semibold text-texto">{g.descripcion}</p>
+                  <p className="text-[12px] text-texto-3">
+                    {[fmtFechaHora(g.fecha), g.quien ? `Registró ${g.quien}` : null, g.cajera ? `caja de ${g.cajera}` : null].filter(Boolean).join(" · ")}
+                  </p>
+                </div>
+                <span className="shrink-0 text-right font-bold tabular-nums text-texto">{fmtMoney(g.monto)}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+        <div className="rounded-xl bg-muted px-3.5 py-3">
+          <p className="text-[11px] font-bold uppercase tracking-wider text-texto-4">Qué va acá</p>
+          <p className="mt-1 text-[13px] leading-relaxed text-texto-2">
+            Lo que el administrador pagó de la caja para el local (el hielo, la tiza, un arreglo), registrado en Supervisión con el motivo «Gasto».
+            Resta como cualquier gasto del local. No lo cargues también en Gastos operativos: se restaría dos veces.
+          </p>
+          <p className="mt-1.5 text-[13px] leading-relaxed text-texto-2">
+            Los pagos a proveedores, los retiros y el sencillo no van acá: no cambian tu ganancia.
+          </p>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 function FilaCuenta({ etiqueta, valor, rojo = false, fuerte = false }: { etiqueta: string; valor: string; rojo?: boolean; fuerte?: boolean }) {
   return (
     <div className={`flex items-center justify-between gap-3 px-3.5 py-2 ${fuerte ? "bg-muted font-bold" : ""} border-b border-borde-soft last:border-b-0`}>
@@ -959,7 +1155,14 @@ function agrupar(lista: Gasto[]): { codigo: string; nombre: string; monto: numbe
     .sort((a, b) => b.monto - a.monto);
 }
 
-function hojasExcel(er: Er, fin: FinancieroApi, gastos: Gasto[], perfil: PerfilResultado, partes: VentasPartidas | null) {
+function hojasExcel(
+  er: Er,
+  fin: FinancieroApi,
+  gastos: Gasto[],
+  perfil: PerfilResultado,
+  partes: VentasPartidas | null,
+  efectivo: EfectivoBillarApi | null,
+) {
   const pv = (m: number) => (esPositivo(er.ventas) ? Math.round((m / er.ventas) * 1000) / 10 : null);
   const billar = perfil.partir === "billar";
   const filas: [string, number][] = [
@@ -974,6 +1177,8 @@ function hojasExcel(er: Er, fin: FinancieroApi, gastos: Gasto[], perfil: PerfilR
     [`${perfil.gananciaTitulo} (utilidad bruta)`, er.utilidadBruta],
     ...(esPositivo(er.mermas) ? ([["Mermas", -er.mermas]] as [string, number][]) : []),
     ["Gastos del local", -er.gastosOperativos],
+    ...(esPositivo(er.cenasPersonal) ? ([["Cenas del personal", -er.cenasPersonal]] as [string, number][]) : []),
+    ...(esPositivo(er.gastosCaja) ? ([["Gastos pagados de la caja", -er.gastosCaja]] as [string, number][]) : []),
     ["Resultado del local (utilidad operativa)", er.utilidadOperativa],
     ...(esPositivo(er.gastosFinancieros) ? ([["Banco y deudas", -er.gastosFinancieros]] as [string, number][]) : []),
     ...(esPositivo(er.impuestos) ? ([["Impuestos", -er.impuestos]] as [string, number][]) : []),
@@ -1008,6 +1213,23 @@ function hojasExcel(er: Er, fin: FinancieroApi, gastos: Gasto[], perfil: PerfilR
       ],
       gastos,
     ),
+    // Billar: el detalle de la línea "Gastos pagados de la caja", que no está
+    // en la hoja de Gastos (no son gastos cargados). Sin ninguno, no va.
+    ...(esPositivo(er.gastosCaja) && efectivo?.gastos?.length
+      ? [
+          hoja(
+            "Gastos de la caja",
+            [
+              ["Fecha", (g: EfectivoBillarApi["gastos"][number]) => fmtFechaHora(g.fecha)],
+              ["Concepto", (g) => g.descripcion],
+              ["Registró", (g) => g.quien],
+              ["Caja de", (g) => g.cajera],
+              ["Monto (Bs)", (g) => g.monto],
+            ],
+            efectivo.gastos,
+          ),
+        ]
+      : []),
     hoja(
       "Compras (informativo)",
       [

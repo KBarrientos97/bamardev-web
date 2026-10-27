@@ -16,7 +16,7 @@ import {
   Vacio,
 } from "../../components/ui";
 import { api } from "../../lib/api";
-import { fmtFecha, fmtFechaHora, fmtMoney, fmtNum, isoDia } from "../../lib/format";
+import { fmtCantidad, fmtFecha, fmtFechaHora, fmtMoney, isoDia } from "../../lib/format";
 import { useApi } from "../../lib/useApi";
 import { useSucursales } from "../../lib/useSucursales";
 import { ofreceAprobarMovimiento } from "../../lib/permisos";
@@ -539,7 +539,9 @@ function DetalleMovimiento({
                             )}
                           </td>
                           <td className="px-3.5 py-2.5 text-right text-texto">
-                            {fmtNum(d.cantidad, 2)}
+                            {/* Sin ",00" (Kevin, 25-oct) y con los 3 decimales
+                                del insumo: 0,125 kg salía "0,13". */}
+                            {fmtCantidad(d.cantidad)}
                           </td>
                           <td className="px-3.5 py-2.5 text-right text-texto">
                             {fmtMoney(d.costo)}
@@ -728,7 +730,10 @@ function FormLineaMovimiento({
   const comprometido = otrasLineas
     .filter((d) => String(d.productoId) === productoId)
     .reduce((acc, d) => acc + d.cantidad, 0);
-  const disponible = elegido ? Math.max(0, elegido.stock - comprometido) : null;
+  // A los 3 decimales con que se guarda el stock (Decimal(12,3)): 2,3 − 0,3
+  // daba 1,9999999999999998, la ayuda decía "Disponible: 2" y sacar 2 se
+  // rechazaba por pasarse.
+  const disponible = elegido ? Math.max(0, Math.round((elegido.stock - comprometido) * 1000) / 1000) : null;
 
   async function guardar() {
     if (guardando) return;
@@ -745,8 +750,8 @@ function FormLineaMovimiento({
     if (esSalida && disponible !== null && cant > disponible) {
       return setError(
         comprometido > 0
-          ? `Sólo quedan ${fmtNum(disponible, 2)} disponibles (ya hay ${fmtNum(comprometido, 2)} en otra línea de este movimiento).`
-          : `No hay stock suficiente: quedan ${fmtNum(disponible, 2)}.`,
+          ? `Sólo quedan ${fmtCantidad(disponible)} disponibles (ya hay ${fmtCantidad(comprometido)} en otra línea de este movimiento).`
+          : `No hay stock suficiente: quedan ${fmtCantidad(disponible)}.`,
       );
     }
 
@@ -796,7 +801,7 @@ function FormLineaMovimiento({
               </span>
               {elegido && (
                 <span className="shrink-0 text-xs text-texto-3">
-                  {fmtNum(elegido.stock, 2)} {elegido.unidad} en stock
+                  {fmtCantidad(elegido.stock)} {elegido.unidad} en stock
                 </span>
               )}
               {/* Cambiar de artículo en una línea ya guardada obligaría a
@@ -832,7 +837,7 @@ function FormLineaMovimiento({
             label="Cantidad"
             hint={
               esSalida && disponible !== null
-                ? `Disponible: ${fmtNum(disponible, 2)}`
+                ? `Disponible: ${fmtCantidad(disponible)}`
                 : undefined
             }
           >
@@ -1016,7 +1021,7 @@ function FormMovimientoCuerpo({
         // no se bloquea: decide el backend.
         if (art && cantidad > art.stock) {
           return setError(
-            `No hay stock suficiente de "${l.nombre}": quedan ${fmtNum(art.stock, 2)}.`,
+            `No hay stock suficiente de "${l.nombre}": quedan ${fmtCantidad(art.stock)}.`,
           );
         }
       }

@@ -1,7 +1,11 @@
 import { aCentavos, esCero, esPositivo } from "../../../lib/dinero";
-import { fmtMoney } from "../../../lib/format";
-import type { EstadoResultado } from "../../../lib/resultado";
+import { fmtMoney, fmtNum } from "../../../lib/format";
+import type { MesEnCurso } from "../../../lib/mesEnCurso";
+import type { EstadoResultado, GastosDeCaja } from "../../../lib/resultado";
 import { esBelleza, esBillar, esFarmacia } from "../../../lib/rubro";
+import type { CodigoMotivoEfectivo } from "../../../types";
+import { motivoDeCodigo } from "../../pos/motivosMovimiento";
+import type { EfectivoBillarApi } from "../api";
 import { bsSubtotal, horas } from "../formato";
 
 /**
@@ -52,7 +56,7 @@ export function perfilResultado(rubro: string | undefined): PerfilResultado {
       costoDetalle: "Lo que te costaron · el tiempo de mesa no tiene costo",
       gananciaTitulo: "Ganancia de mesas y productos",
       queVaLocal:
-        "Lo que cuesta tener el billar abierto: alquiler, sueldos del personal, luz, agua, internet y el mantenimiento de las mesas (paños, tacos, bolas). Cuenta lo gastado aunque todavía no esté pagado. Las bebidas que comprás para vender no van acá: entran por el costo de los productos.",
+        "Lo que cuesta tener el billar abierto: alquiler, sueldos del personal, luz, agua, internet y el mantenimiento de las mesas (paños, tacos, bolas). Cuenta lo gastado aunque todavía no esté pagado. Las bebidas que comprás para vender no van acá: entran por el costo de los productos. La cena y lo que se paga de la caja desde Supervisión tampoco: tienen su propia línea, y cargarlos también acá los restaría dos veces.",
       queVaCosto: `Lo que te costaron las bebidas y productos que vendiste, según el costo cargado en cada uno. El tiempo de mesa no tiene costo de mercadería: lo que cobrás por las mesas queda entero para pagar los gastos. ${NO_SON_COMPRAS}`,
     };
   }
@@ -213,6 +217,8 @@ export function explicarResultado(er: EstadoResultado, perfil: PerfilResultado, 
     [
       [er.mermas, "las mermas"],
       [er.gastosOperativos, "los gastos del local"],
+      [er.cenasPersonal, "las cenas del personal"],
+      [er.gastosCaja, "los gastos pagados de la caja"],
       [er.gastosFinancieros, "el banco"],
       [er.impuestos, "los impuestos"],
     ] as [number, string][]
@@ -226,7 +232,124 @@ export function explicarResultado(er: EstadoResultado, perfil: PerfilResultado, 
     return `${origen} Todavía no cargaste gastos en este período: sin el alquiler, los sueldos y los servicios, este resultado está de más.`;
   }
   const lista = unirConY(restas);
-  if (esCero(er.utilidadNeta)) return `${origen} Restando ${lista}, quedás justo en cero.`;
-  if (er.utilidadNeta > 0) return `${origen} Restando ${lista}, te quedan ${fmtMoney(er.utilidadNeta)}: es tu ganancia líquida.`;
-  return `${origen} Restando ${lista}, quedás ${fmtMoney(-er.utilidadNeta)} en contra.`;
+  // Sin los gastos del local lo que queda no es la ganancia líquida, aunque
+  // algo haya restado. El aviso miraba si había ALGUNA resta: en un billar con
+  // cenas y nada cargado (25-oct) decía "es tu ganancia líquida" sobre un
+  // número al que le faltaban el alquiler y los sueldos.
+  const faltanGastos = esCero(er.gastosOperativos)
+    ? " Todavía no cargaste los gastos del local (alquiler, sueldos, servicios): cuando los cargués, este resultado va a bajar."
+    : "";
+  if (esCero(er.utilidadNeta)) return `${origen} Restando ${lista}, quedás justo en cero.${faltanGastos}`;
+  if (er.utilidadNeta > 0) {
+    return faltanGastos
+      ? `${origen} Restando ${lista}, te quedan ${fmtMoney(er.utilidadNeta)}.${faltanGastos}`
+      : `${origen} Restando ${lista}, te quedan ${fmtMoney(er.utilidadNeta)}: es tu ganancia líquida.`;
+  }
+  return `${origen} Restando ${lista}, quedás ${fmtMoney(-er.utilidadNeta)} en contra.${faltanGastos}`;
+}
+
+// ── Lo que el billar paga de la caja (25-oct) ───────────────────────────────
+
+/**
+ * Lo que resta de la ganancia del efectivo del billar: las cenas y los gastos
+ * pagados de la caja (`CODIGOS_GASTO` en `motivosMovimiento.ts`). Sin el
+ * reporte (cualquier otro rubro), undefined: la cuenta es la de siempre. El
+ * Estado de resultado y el Resumen lo arman igual, para dar el mismo número.
+ */
+export function gastosDeCaja(efectivo: Pick<EfectivoBillarApi, "porMotivo"> | null | undefined): GastosDeCaja | undefined {
+  if (!efectivo) return undefined;
+  return { cenas: efectivo.porMotivo?.CENA?.monto ?? 0, gastos: efectivo.porMotivo?.GASTO?.monto ?? 0 };
+}
+
+/**
+ * Qué se pagó de la caja, sin repetir y de lo que más costó a lo que menos: el
+ * detalle de la línea ("Hielo, tiza y un arreglo"). Cinco noches de hielo son
+ * un "Hielo", no cinco.
+ */
+export function conceptosDeCaja(gastos: { descripcion: string; monto: number }[]): string[] {
+  const porNombre = new Map<string, { nombre: string; monto: number }>();
+  for (const g of gastos) {
+    const nombre = g.descripcion.trim();
+    if (!nombre) continue;
+    const clave = nombre.toLocaleLowerCase("es");
+    const ya = porNombre.get(clave);
+    porNombre.set(clave, { nombre: ya?.nombre ?? nombre, monto: (ya?.monto ?? 0) + g.monto });
+  }
+  return [...porNombre.values()].sort((a, b) => b.monto - a.monto).map((c) => c.nombre);
+}
+
+/** Un renglón de "Lo que movió la caja sin cambiar tu ganancia". */
+export interface MovimientoSinEfecto {
+  codigo: CodigoMotivoEfectivo;
+  titulo: string;
+  /** Por qué no cambia la ganancia, en pocas palabras. */
+  porQue: string;
+  /** Con signo: lo que salió de la caja va en negativo. */
+  monto: number;
+}
+
+/**
+ * Los motivos que NO son gasto, en el orden de Supervisión. Tiene que cubrir
+ * todo lo que no está en `CODIGOS_GASTO` (lo controla un test): un motivo
+ * nuevo que no esté en ninguna de las dos listas no se vería en ningún lado.
+ */
+export const MOTIVOS_SIN_EFECTO: { codigo: CodigoMotivoEfectivo; titulo: string; porQue: string }[] = [
+  { codigo: "PROVEEDOR", titulo: "Pagos a proveedores", porQue: "Es mercadería: lo que costó resta cuando se vende, en el costo de los productos." },
+  { codigo: "RETIRO", titulo: "Retiros", porQue: "Sale del cajón, pero sigue siendo tu plata." },
+  { codigo: "OTRA_SALIDA", titulo: "Otras salidas", porQue: "No son gastos del local (un adelanto de sueldo, por ejemplo)." },
+  { codigo: "SENCILLO", titulo: "Sencillo", porQue: "Plata para dar cambio, no una venta." },
+  { codigo: "OTRA_ENTRADA", titulo: "Otras entradas", porQue: "No son ventas: lo que se vende se cobra como venta." },
+];
+
+/**
+ * Lo que la caja del billar movió sin cambiar la ganancia, para la tarjeta
+ * informativa del Estado de resultado: cada motivo sólo si hubo. Va aparte de
+ * la cuenta y lo dice, porque las dos salidas obvias están mal: restar un pago
+ * a proveedor contaría dos veces la mercadería (su costo ya entra con cada
+ * venta), y no mostrarlo en ningún lado hace que Bs 800 que salieron del
+ * cajón parezcan un olvido del reporte.
+ */
+export function movimientosSinEfecto(porMotivo: Partial<EfectivoBillarApi["porMotivo"]> | null | undefined): MovimientoSinEfecto[] {
+  if (!porMotivo) return [];
+  return MOTIVOS_SIN_EFECTO.flatMap(({ codigo, titulo, porQue }) => {
+    const monto = porMotivo[codigo]?.monto ?? 0;
+    if (!esPositivo(monto)) return [];
+    // El sentido es el del motivo: nadie ingresa un "pago a proveedor".
+    const sale = motivoDeCodigo(codigo)?.tipo === "EGRESO";
+    return [{ codigo, titulo, porQue, monto: sale ? -monto : monto }];
+  });
+}
+
+/**
+ * La fórmula de la meta del mes, dicha con lo que de verdad suma. Decía
+ * "gastos cargados del mes" y el número traía también las mermas y las cenas
+ * (las de hasta hoy, como si fueran las del mes): el dueño buscaba en Gastos un
+ * total que no estaba. Con sólo gastos cargados dice lo de siempre.
+ *
+ * La plata con centavos (Kevin, 25-oct): redondeada cada parte por su lado,
+ * 100,50 + 200,50 se leía "Bs 101 y Bs 201" bajo un total de "Bs 301".
+ */
+export function notaMeta(p: {
+  /** Los gastos cargados del mes: los del local, el banco y los impuestos. */
+  cargados: number;
+  mermas: number;
+  /** Las cenas del personal hasta hoy: la meta las lleva al mes entero. */
+  cenas: number;
+  /** Lo pagado de la caja en el mes: cuenta una vez, tal cual. */
+  gastosCaja: number;
+  mes: Pick<MesEnCurso, "margen" | "gastosMeta" | "diariosDelMes" | "diaActual">;
+}): string {
+  const margen = `${fmtNum(p.mes.margen * 100, 1)} %`;
+  const dias = p.mes.diaActual === 1 ? "1 día" : `${p.mes.diaActual} días`;
+  const partes = [
+    esPositivo(p.cargados) ? `los gastos cargados (${fmtMoney(p.cargados)})` : null,
+    esPositivo(p.mermas) ? `las mermas (${fmtMoney(p.mermas)})` : null,
+    esPositivo(p.gastosCaja) ? `los gastos pagados de la caja (${fmtMoney(p.gastosCaja)})` : null,
+    esPositivo(p.cenas)
+      ? `las cenas del personal del mes entero, al ritmo de hasta hoy (${fmtMoney(p.mes.diariosDelMes)}: van ${fmtMoney(p.cenas)} en ${dias})`
+      : null,
+  ].filter((x): x is string => x != null);
+  const soloCargados = partes.length === 1 && esPositivo(p.cargados);
+  const formula = `Meta = ${soloCargados ? "gastos cargados del mes" : "gastos del mes"} (${fmtMoney(p.mes.gastosMeta)}) ÷ lo que te deja cada venta (${margen}).`;
+  return soloCargados || partes.length === 0 ? formula : `${formula} Son ${unirConY(partes)}.`;
 }

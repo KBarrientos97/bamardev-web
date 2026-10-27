@@ -9,14 +9,19 @@ describe("los billetes que se ofrecen para lo recibido", () => {
     expect(sugerencias(15)).toEqual([20, 50, 100]);
   });
 
-  it("si un billete solo no alcanza, montos redondos que se arman con billetes", () => {
-    expect(sugerencias(120)).toEqual([150, 200, 300]);
-    expect(sugerencias(260)).toEqual([300, 400, 500]);
+  it("sólo billetes que existen: Bs 80 ofrece el de 100 y el de 200, nunca uno de 300", () => {
+    // QA de Kevin, 25-oct: "no tenemos billete de 300".
+    expect(sugerencias(80)).toEqual([100, 200]);
+    expect(sugerencias(120)).toEqual([200]);
+  });
+
+  it("de Bs 200 para arriba ningún billete alcanza solo: sin atajos, queda el justo", () => {
+    expect(sugerencias(260)).toEqual([]);
+    expect(sugerencias(200)).toEqual([]);
   });
 
   it("siempre por encima de lo que se paga: lo justo va aparte", () => {
-    expect(sugerencias(50)).toEqual([100, 200, 300]);
-    expect(sugerencias(200)).toEqual([250, 300, 400]);
+    expect(sugerencias(50)).toEqual([100, 200]);
     expect(sugerencias(0)).toEqual([]);
   });
 

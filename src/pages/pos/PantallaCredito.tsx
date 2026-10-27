@@ -1,10 +1,12 @@
 import { useMemo, useState } from "react";
 import { Icon } from "../../components/Icon";
+import InputMonto from "../../components/InputMonto";
 import { QrParaCobrar } from "../../components/QrCobro";
 import { Boton, Campo, ErrorMsg, Input, Modal, Select } from "../../components/ui";
 import { api } from "../../lib/api";
-import { aCentavos, esPositivo, excede, parsearMontoO } from "../../lib/dinero";
+import { aCentavos, esPositivo, excede } from "../../lib/dinero";
 import { fmtMoney, isoDia } from "../../lib/format";
+import { leerMonto, montoParaEditar } from "../../lib/montoTecleado";
 import { tienePermiso } from "../../lib/permisos";
 import { useApi } from "../../lib/useApi";
 import { conCopia } from "../../lib/offline/copias";
@@ -83,8 +85,9 @@ export default function PantallaCredito({
   const lista = clientes.datos ?? [];
   const elegido = lista.find((c) => String(c.id) === clienteId) ?? null;
 
-  const adelantoNum = parsearMontoO(adelanto);
-  const adelantoQrNum = parsearMontoO(adelantoQr);
+  // "1.500" son mil quinientos, como en el cierre (26-oct).
+  const adelantoNum = leerMonto(adelanto) ?? 0;
+  const adelantoQrNum = leerMonto(adelantoQr) ?? 0;
   /** En mixto, el QR cubre una parte del adelanto y el efectivo el resto. */
   const adelantoTotal =
     metodo === "QR" ? adelantoNum : metodo === "MIXTO" ? aCentavos(adelantoNum + adelantoQrNum) : adelantoNum;
@@ -162,7 +165,7 @@ export default function PantallaCredito({
             // El techo con el que nace su ficha. Vacío = sin límite, que no es
             // un estado aparte sino la ausencia del dato.
             ...(limiteNuevo.trim() !== ""
-              ? { limiteCredito: parsearMontoO(limiteNuevo) }
+              ? { limiteCredito: leerMonto(limiteNuevo) ?? 0 }
               : {}),
           }),
       ...(nota.trim() ? { nota: nota.trim() } : {}),
@@ -268,9 +271,9 @@ export default function PantallaCredito({
                 {[100, 200, 500].map((v) => (
                   <button
                     key={v}
-                    onClick={() => setLimiteNuevo(String(v))}
+                    onClick={() => setLimiteNuevo(montoParaEditar(v))}
                     className={`rounded-xl px-3.5 py-2 text-[13px] font-semibold transition-colors ${
-                      limiteNuevo === String(v)
+                      leerMonto(limiteNuevo) === v
                         ? "bg-primary-boton text-white"
                         : "border border-borde bg-white text-texto-2 hover:bg-muted"
                     }`}
@@ -289,12 +292,9 @@ export default function PantallaCredito({
                   Sin límite
                 </button>
               </div>
-              <Input
-                type="number"
-                inputMode="decimal"
-                min="0"
+              <InputMonto
                 value={limiteNuevo}
-                onChange={(e) => setLimiteNuevo(e.target.value)}
+                onChange={setLimiteNuevo}
                 placeholder="Otro monto"
                 className="mt-2"
               />
@@ -355,15 +355,12 @@ export default function PantallaCredito({
                 : "Lo que paga ahora en efectivo"
           }
         >
-          <Input
-            type="number"
-            inputMode="decimal"
-            step="0.01"
-            min="0"
+          <InputMonto
             value={adelanto}
-            onChange={(e) => {
-              setAdelanto(e.target.value);
-              if (metodo === "QR") setQrConfirmado(false);
+            onChange={(texto) => {
+              // Completar "50" a "50,00" al salir no cambia lo que entró al banco.
+              if (metodo === "QR" && (leerMonto(texto) ?? 0) !== adelantoNum) setQrConfirmado(false);
+              setAdelanto(texto);
             }}
             placeholder="0,00"
             className="font-bold"
@@ -372,15 +369,11 @@ export default function PantallaCredito({
 
         {metodo === "MIXTO" && (
           <Campo label="Parte pagada por QR">
-            <Input
-              type="number"
-              inputMode="decimal"
-              step="0.01"
-              min="0"
+            <InputMonto
               value={adelantoQr}
-              onChange={(e) => {
-                setAdelantoQr(e.target.value);
-                setQrConfirmado(false);
+              onChange={(texto) => {
+                if ((leerMonto(texto) ?? 0) !== adelantoQrNum) setQrConfirmado(false);
+                setAdelantoQr(texto);
               }}
               placeholder="0,00"
               className="font-bold"

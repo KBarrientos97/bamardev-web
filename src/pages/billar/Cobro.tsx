@@ -1,8 +1,10 @@
+import type { ReactNode } from "react";
 import { Icon, type NombreIcono } from "../../components/Icon";
 import { QrParaCobrar } from "../../components/QrCobro";
 import { Input } from "../../components/ui";
-import { parsearMonto } from "../../lib/dinero";
+import InputMonto from "../../components/InputMonto";
 import { fmtMoney } from "../../lib/format";
+import { leerMonto, montoParaEditar } from "../../lib/montoTecleado";
 import { round2 } from "./calculo";
 import { montoCorto, sugerencias, type EstadoCobro, type Metodo } from "./useCobro";
 
@@ -48,25 +50,31 @@ const METODOS: { metodo: Metodo; icono: NombreIcono }[] = [
   { metodo: "Mixto", icono: "billetera" },
 ];
 
-/** Prefijo "Bs" adentro del campo, como en la maqueta. */
-export function CampoBs({
-  valor,
-  onCambiar,
-  placeholder,
-  etiqueta,
-  autoFocus,
-}: {
+interface PropsCampoBs {
   valor: string;
   onCambiar: (t: string) => void;
   placeholder?: string;
   etiqueta: string;
   autoFocus?: boolean;
-}) {
+}
+
+const CLASE_CAMPO_BS = "h-12 pl-10 text-lg font-semibold tabular-nums";
+
+function PrefijoBs({ children }: { children: ReactNode }) {
   return (
     <div className="relative">
       <span className="pointer-events-none absolute inset-y-0 left-3.5 flex items-center text-sm font-semibold text-texto-4">
         Bs
       </span>
+      {children}
+    </div>
+  );
+}
+
+/** Prefijo "Bs" adentro del campo, como en la maqueta. Es el de las tarifas del admin. */
+export function CampoBs({ valor, onCambiar, placeholder, etiqueta, autoFocus }: PropsCampoBs) {
+  return (
+    <PrefijoBs>
       <Input
         type="number"
         aria-label={etiqueta}
@@ -74,9 +82,30 @@ export function CampoBs({
         placeholder={placeholder}
         autoFocus={autoFocus}
         onChange={(e) => onCambiar(e.target.value)}
-        className="h-12 pl-10 text-lg font-semibold tabular-nums"
+        className={CLASE_CAMPO_BS}
       />
-    </div>
+    </PrefijoBs>
+  );
+}
+
+/**
+ * Lo que se cobra, escrito como en el cierre: "1.500" son mil quinientos, no
+ * Bs 1,50 (26-oct, ver `InputMonto`). Las tarifas siguen en `CampoBs`: al
+ * salir del campo "20" pasa a "20,00", y una tarifa sin tocar quedaba como
+ * cambio sin guardar.
+ */
+function CampoCobro({ valor, onCambiar, placeholder, etiqueta, autoFocus }: PropsCampoBs) {
+  return (
+    <PrefijoBs>
+      <InputMonto
+        aria-label={etiqueta}
+        value={valor}
+        placeholder={placeholder}
+        autoFocus={autoFocus}
+        onChange={onCambiar}
+        className={CLASE_CAMPO_BS}
+      />
+    </PrefijoBs>
   );
 }
 
@@ -103,7 +132,7 @@ export function FormCobro({
           {/* Lo que se paga en ESTA vez, no la cuenta entera: "Monto a cobrar"
               se leía como el saldo de la mesa (el dueño, 19-oct). */}
           <p className="mb-1.5 text-[13px] font-semibold text-texto-2">Monto a pagar ahora</p>
-          <CampoBs etiqueta="Monto a pagar ahora" valor={c.montoTexto} onCambiar={c.setMontoTexto} autoFocus />
+          <CampoCobro etiqueta="Monto a pagar ahora" valor={c.montoTexto} onCambiar={c.setMontoTexto} autoFocus />
           <p className="mt-1 text-xs text-texto-4">
             {c.monto > c.tope ? `No puede pasar el saldo de ${fmt(c.tope)}.` : `Saldo de ${de}: ${fmt(c.tope)}.`}
           </p>
@@ -141,7 +170,7 @@ export function FormCobro({
           <p className="mb-1.5 text-[13px] font-semibold text-texto-2">{ETIQUETA_RECIBIDO}</p>
           {/* El total no va de placeholder: en gris parecía escrito y el
               cajero cobraba sin contar (QA del dueño, 17-oct). */}
-          <CampoBs
+          <CampoCobro
             etiqueta={ETIQUETA_RECIBIDO}
             valor={c.recibidoTexto}
             onCambiar={c.setRecibidoTexto}
@@ -152,7 +181,7 @@ export function FormCobro({
           <div className="mt-2 flex flex-wrap gap-1.5">
             <button
               type="button"
-              onClick={() => c.setRecibidoTexto(String(c.monto))}
+              onClick={() => c.setRecibidoTexto(montoParaEditar(c.monto))}
               disabled={c.monto <= 0}
               className="min-h-9 rounded-full px-3.5 text-[13px] font-semibold tabular-nums text-texto-2 ring-1 ring-inset ring-borde hover:bg-muted disabled:opacity-50"
             >
@@ -162,7 +191,7 @@ export function FormCobro({
               <button
                 key={s}
                 type="button"
-                onClick={() => c.setRecibidoTexto(String(s))}
+                onClick={() => c.setRecibidoTexto(montoParaEditar(s))}
                 className="min-h-9 rounded-full px-3.5 text-[13px] font-semibold tabular-nums text-texto-2 ring-1 ring-inset ring-borde hover:bg-muted"
               >
                 Bs {s}
@@ -197,12 +226,12 @@ export function FormCobro({
       {c.metodo === "Mixto" && (
         <div>
           <p className="mb-1.5 text-[13px] font-semibold text-texto-2">En efectivo</p>
-          <CampoBs etiqueta="En efectivo" valor={c.efectivoTexto} onCambiar={c.setEfectivoTexto} />
+          <CampoCobro etiqueta="En efectivo" valor={c.efectivoTexto} onCambiar={c.setEfectivoTexto} />
           <div className="mt-3 flex items-center justify-between rounded-xl border border-borde bg-muted px-4 py-3 text-sm">
             <span className="font-semibold text-texto-2">Por QR</span>
             <span className="font-bold tabular-nums text-texto">
               {/* Con un efectivo negativo mostraba un QR mayor que el total. */}
-              {fmt(Math.min(c.monto, Math.max(0, round2(c.monto - (parsearMonto(c.efectivoTexto) ?? 0)))))}
+              {fmt(Math.min(c.monto, Math.max(0, round2(c.monto - (leerMonto(c.efectivoTexto) ?? 0)))))}
             </span>
           </div>
           {c.montoQr > 0 && c.montoQr < c.monto ? (
@@ -224,7 +253,7 @@ export function FormCobro({
               ser menos que el total", que ya lo es (prueba profunda, 18-oct). */}
           {c.efectivoTexto.trim() !== "" && !(c.montoQr > 0 && c.montoQr < c.monto) && (
             <p className="mt-1.5 text-xs text-rose-700">
-              {(parsearMonto(c.efectivoTexto) ?? 0) > 0
+              {(leerMonto(c.efectivoTexto) ?? 0) > 0
                 ? `El efectivo tiene que ser menos que ${fmt(c.monto)}: lo demás va por QR.`
                 : "Escribí cuánto va en efectivo (más de Bs 0): lo demás va por QR. Si es todo por QR, elegí «QR»."}
             </p>

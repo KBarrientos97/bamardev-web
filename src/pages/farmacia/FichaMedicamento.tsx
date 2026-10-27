@@ -3,7 +3,7 @@ import HistorialCostos from "../../components/HistorialCostos";
 import { Icon } from "../../components/Icon";
 import { Badge, Boton, Cargando, Modal } from "../../components/ui";
 import { api } from "../../lib/api";
-import { fmtFecha, fmtMoney, fmtNum } from "../../lib/format";
+import { fmtCantidad, fmtFecha, fmtMoney } from "../../lib/format";
 import { useApi } from "../../lib/useApi";
 import { contiene } from "../../lib/texto";
 import { tienePermiso } from "../../lib/permisos";
@@ -415,7 +415,7 @@ function StockPorSucursal({
         </div>
       )}
       <p className="mt-2 text-xs text-texto-4">
-        Stock mínimo: {fmtNum(p.stockMinimo)} · avisa cuando baje de ahí
+        Stock mínimo: {fmtCantidad(p.stockMinimo)} · avisa cuando baje de ahí
       </p>
     </Seccion>
   );

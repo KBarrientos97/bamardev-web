@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Chips } from "../../components/filtros";
 import { Icon } from "../../components/Icon";
+import InputMonto from "../../components/InputMonto";
 import { QrParaCobrar } from "../../components/QrCobro";
 import CuentasPorCobrar from "./CuentasPorCobrar";
 import {
@@ -15,7 +16,7 @@ import {
   Vacio,
 } from "../../components/ui";
 import { api, type PagoEntrega } from "../../lib/api";
-import { parsearMontoO } from "../../lib/dinero";
+import { leerMonto } from "../../lib/montoTecleado";
 import { fmtFechaHora, fmtHora, fmtMoney, fmtNum } from "../../lib/format";
 import { Telefono } from "../../lib/telefono";
 import { tienePermiso, tieneFeature } from "../../lib/permisos";
@@ -801,8 +802,9 @@ function EntregarRecoger({
   // el `|| 0` convertía en CERO sin avisar. El cajero veía su número en
   // pantalla y el sistema le respondía "lo recibido no alcanza para cubrir el
   // total" — sin forma de entender por qué. Era el único punto del cobro que
-  // no usaba el helper (ver `dinero.ts`, que documenta este mismo bug).
-  const recibidoNum = parsearMontoO(recibido, 0);
+  // no usaba el helper (ver `dinero.ts`, que documenta este mismo bug). Y como
+  // en el cierre: "1.500" son mil quinientos, no Bs 1,50 (26-oct).
+  const recibidoNum = leerMonto(recibido) ?? 0;
   const cambio = metodo === "QR" ? 0 : Math.max(0, Math.round((recibidoNum - total) * 100) / 100);
 
   async function confirmar() {
@@ -891,13 +893,9 @@ function EntregarRecoger({
             {metodo === "EFECTIVO" ? (
               <>
                 <Campo label="Efectivo recibido">
-                  <Input
-                    type="number"
-                    inputMode="decimal"
-                    step="0.01"
-                    min="0"
+                  <InputMonto
                     value={recibido}
-                    onChange={(e) => setRecibido(e.target.value)}
+                    onChange={setRecibido}
                     autoFocus
                     className="text-lg font-bold"
                   />

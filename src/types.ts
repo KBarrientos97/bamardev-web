@@ -929,6 +929,42 @@ export interface MovimientoCaja {
   descripcion: string | null;
   usuarioId?: number | null;
   fecha: string;
+  /**
+   * El código del movimiento: 'PROPINA' (belleza) o el motivo del billar
+   * (`CodigoMotivoEfectivo`). Ausente en un movimiento común.
+   */
+  origen?: string;
+}
+
+/** Billar: una cena del personal registrada en una caja, con quién la dio y si se anuló. */
+export interface RegistroDeCena {
+  id: number;
+  monto: number;
+  fecha: string;
+  quien: string | null;
+  anulada: boolean;
+}
+
+/**
+ * Billar (25-oct): el motivo de un movimiento de efectivo que el administrador
+ * registra desde Supervisión. Le dice al Estado de resultado si la plata es un
+ * gasto del local (CENA, GASTO) o efectivo que sólo cambió de lugar (el resto).
+ * Es el `origen` del movimiento; ver `motivos-efectivo.ts` en el backend y
+ * `motivosMovimiento.ts` acá.
+ */
+export type CodigoMotivoEfectivo = "CENA" | "GASTO" | "PROVEEDOR" | "RETIRO" | "OTRA_SALIDA" | "SENCILLO" | "OTRA_ENTRADA";
+
+/** Billar (25-oct): un movimiento con motivo de una caja, con quién lo registró y quién lo anuló, si se anuló. */
+export interface RegistroDeEfectivo {
+  id: number;
+  codigo: CodigoMotivoEfectivo;
+  tipo: "INGRESO" | "EGRESO";
+  monto: number;
+  /** Lo que se escribió ("Hielo"); sin detalle, la etiqueta del motivo. */
+  descripcion: string;
+  fecha: string;
+  quien: string | null;
+  anulado: { id: number; quien: string | null; fecha: string } | null;
 }
 
 export interface ResumenCaja {
@@ -966,7 +1002,28 @@ export interface ResumenCaja {
   propinasEfectivo?: number;
   propinasSalidas?: number;
   propinasOtras?: number;
+  /**
+   * Billar (24-oct): la cena del personal que el administrador registró. Está
+   * dentro de `egresos` (las salidas) e `ingresos` (lo devuelto al anular).
+   * Sólo vienen si la caja tiene alguna; un backend anterior no los manda.
+   */
+  cenasSalidas?: number;
+  cenasDevueltas?: number;
+  cenasRegistros?: RegistroDeCena[];
+  /**
+   * Billar (25-oct): todo lo que el administrador registró con motivo en la
+   * caja (la cena, un gasto, un retiro, el sencillo…), con quién y si se anuló.
+   * Ya está dentro de `ingresos`/`egresos`: es sólo el detalle, para el cierre.
+   * Sólo viene si hay alguno; un backend anterior no lo manda.
+   */
+  efectivoRegistros?: RegistroDeEfectivo[];
   saldoEsperado: number;
+  /**
+   * Lo vendido en el turno, por categoría y producto (el mismo número del
+   * reporte del cierre). El backend lo manda con el arqueo a quien opera la
+   * caja, sin pasar por los reportes. Opcional: un backend anterior no lo manda.
+   */
+  productos?: ReporteCierreProductos;
   /**
    * Agenda (belleza): citas de la sucursal que terminaron y nadie cobró, y
    * citas que esta caja cobró y quedaron para revisar (cobro repetido o cita
@@ -1975,8 +2032,32 @@ export interface ReporteMovimientosCaja {
     turnoId: number;
     /** Siempre positivo: el signo lo da `clase`. */
     monto: number;
+    /** Billar (25-oct): el motivo, si se registró con uno. Un backend anterior no lo manda. */
+    origen?: string | null;
   }[];
   pagina: PaginaMeta;
+  /**
+   * Billar (25-oct): los movimientos anulados del período, con quién los anuló.
+   * Un anulado y su anulación no son plata que entró ni que salió: no están en
+   * `items` ni en los totales. Un backend anterior no lo manda.
+   */
+  anulados?: {
+    id: number;
+    clase: "INGRESO" | "EGRESO";
+    fecha: string;
+    concepto: string;
+    usuario: string | null;
+    turnoId: number;
+    monto: number;
+    origen: string | null;
+    anuladoPor: string | null;
+    anuladoEn: string;
+  }[];
+  /**
+   * Billar (25-oct): lo que quedó de cada motivo en el período (sólo los
+   * movimientos con motivo, sin lo anulado). Vacío o ausente fuera del billar.
+   */
+  porMotivo?: { codigo: CodigoMotivoEfectivo; monto: number; cantidad: number }[];
 }
 
 /** Lo que salió del mostrador en un turno, agrupado por categoría. */
@@ -1985,7 +2066,24 @@ export interface ReporteCierreProductos {
     nombre: string;
     unidades: number;
     total: number;
-    items: { nombre: string; cantidad: number; precio: number; total: number }[];
+    items: {
+      nombre: string;
+      cantidad: number;
+      precio: number;
+      total: number;
+      /** El artículo (backend del 25-oct): la key de la fila, que el nombre se repite. */
+      productoId?: number;
+      /**
+       * Billar (25-oct): es el "Tiempo de mesa", no un producto que salió. La
+       * pantalla lo muestra aparte y no lo cuenta como unidades.
+       */
+      tiempoMesa?: boolean;
+      /**
+       * Se vendió a más de un precio unitario (backend del 25-oct): `precio` es
+       * el promedio y no se muestra como precio, aunque multiplique justo.
+       */
+      variosPrecios?: boolean;
+    }[];
   }[];
   unidades: number;
   total: number;

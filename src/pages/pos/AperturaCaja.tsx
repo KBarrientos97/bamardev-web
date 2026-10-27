@@ -1,17 +1,18 @@
 import { useState } from "react";
-import { parsearMontoO } from "../../lib/dinero";
+import InputMonto from "../../components/InputMonto";
 import CorteDeCaja from "../../components/CorteDeCaja";
 import { CargarQrCobro } from "../../components/QrCobro";
 import { Icon } from "../../components/Icon";
 import { Boton, Campo, ErrorMsg, Input, Select } from "../../components/ui";
 import { api } from "../../lib/api";
 import { fmtMoney } from "../../lib/format";
+import { leerMonto, montoParaEditar } from "../../lib/montoTecleado";
 import { useAuth } from "../../store/AuthContext";
 import { useSucursales } from "../../lib/useSucursales";
 import type { Caja } from "../../types";
 
-/** Montos típicos de fondo de caja: ahorran teclear lo de siempre. */
-const SUGERENCIAS = [50, 100, 200, 500];
+/** Montos típicos de fondo de caja: ahorran teclear lo de siempre. Billetes que existen (no hay uno de 500). */
+const SUGERENCIAS = [50, 100, 200];
 
 export default function AperturaCaja({
   onAbierta,
@@ -58,8 +59,9 @@ export default function AperturaCaja({
   const propia = almacenId != null && sucursales.some((a) => a.id === almacenId) ? almacenId : null;
   const elegida = propia ?? suc.sugerida?.id ?? null;
 
-  const montoNum = parsearMontoO(monto, NaN);
-  const valido = monto !== "" && Number.isFinite(montoNum) && montoNum >= 0;
+  // "1.500" son mil quinientos, como en el cierre (26-oct).
+  const montoNum = leerMonto(monto) ?? NaN;
+  const valido = Number.isFinite(montoNum) && montoNum >= 0;
 
   async function abrir() {
     if (!valido) return setError("Poné el monto con el que arranca la caja.");
@@ -118,13 +120,9 @@ export default function AperturaCaja({
             label="Monto de apertura"
             hint="Es el fondo con el que empezás: se descuenta del arqueo al cerrar"
           >
-            <Input
-              type="number"
-              inputMode="decimal"
-              step="0.01"
-              min="0"
+            <InputMonto
               value={monto}
-              onChange={(e) => setMonto(e.target.value)}
+              onChange={setMonto}
               placeholder="0,00"
               autoFocus
               className="text-lg font-bold"
@@ -135,7 +133,7 @@ export default function AperturaCaja({
             {SUGERENCIAS.map((s) => (
               <button
                 key={s}
-                onClick={() => setMonto(String(s))}
+                onClick={() => setMonto(montoParaEditar(s))}
                 className="rounded-xl border border-borde bg-white px-3.5 py-2 text-[13px] font-semibold text-texto-2 transition-colors hover:border-primary hover:bg-primary-50 hover:text-primary-700"
               >
                 {fmtMoney(s)}
@@ -154,7 +152,7 @@ export default function AperturaCaja({
           {/* Contar por denominación y que el total se copie al monto: es lo
               que hace el cajero al abrir, y tecleando el total de cabeza es
               donde se cuelan los errores. */}
-          <CorteDeCaja onTotal={(t) => setMonto(t > 0 ? String(t) : "")} />
+          <CorteDeCaja onTotal={(t) => setMonto(t > 0 ? montoParaEditar(t) : "")} />
 
           <CargarQrCobro />
 

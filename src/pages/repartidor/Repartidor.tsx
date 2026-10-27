@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Icon } from "../../components/Icon";
+import InputMonto from "../../components/InputMonto";
 import { QrParaCobrar } from "../../components/QrCobro";
 import { Chips } from "../../components/filtros";
 import {
@@ -9,7 +10,6 @@ import {
   Cargando,
   Confirmar,
   ErrorMsg,
-  Input,
   Kpi,
   Modal,
   Vacio,
@@ -17,6 +17,7 @@ import {
 import { api, type PagoEntrega } from "../../lib/api";
 import { restoEnEfectivo, vuelto } from "../../lib/dinero";
 import { fmtHora, fmtMoney, fmtNum } from "../../lib/format";
+import { leerMonto } from "../../lib/montoTecleado";
 import { tieneFeature } from "../../lib/permisos";
 import { useApi } from "../../lib/useApi";
 import { enlaceWhatsApp, mensajePedido, pedidoDeVenta } from "../../lib/mensajePedido";
@@ -495,8 +496,9 @@ function DialogoCobroEntrega({
     setError("");
   }
 
-  const recibidoNum = Number(recibido) || 0;
-  const qrNum = Number(montoQr) || 0;
+  // Como en el cierre: "1.500" son mil quinientos, no Bs 1,50 (26-oct).
+  const recibidoNum = leerMonto(recibido) ?? 0;
+  const qrNum = leerMonto(montoQr) ?? 0;
   const enEfectivo = metodo === "MIXTO" ? restoEnEfectivo(total, qrNum) : total;
   // El vuelto se calcula sobre lo que el cliente entrega en mano, que incluye
   // el envío: si no, el repartidor le devolvería de más.
@@ -585,15 +587,12 @@ function DialogoCobroEntrega({
 
         {metodo === "MIXTO" && (
           <Campo label="Pagado por QR">
-            <Input
-              type="number"
-              inputMode="decimal"
-              step="0.01"
-              min="0"
+            <InputMonto
               value={montoQr}
-              onChange={(e) => {
-                setMontoQr(e.target.value);
-                setQrConfirmado(false);
+              onChange={(texto) => {
+                // Que al salir "50" pase a "50,00" no cambia lo que entró al banco.
+                if ((leerMonto(texto) ?? 0) !== qrNum) setQrConfirmado(false);
+                setMontoQr(texto);
               }}
             />
           </Campo>
@@ -612,13 +611,9 @@ function DialogoCobroEntrega({
         {metodo !== "QR" && (
           <>
             <Campo label="Efectivo recibido">
-              <Input
-                type="number"
-                inputMode="decimal"
-                step="0.01"
-                min="0"
+              <InputMonto
                 value={recibido}
-                onChange={(e) => setRecibido(e.target.value)}
+                onChange={setRecibido}
                 autoFocus
                 className="font-bold"
               />

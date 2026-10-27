@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import { Icon } from "../components/Icon";
+import InputMonto from "../components/InputMonto";
 import { EncabezadoPagina } from "../components/filtros";
 import {
   AvisoOk,
@@ -16,7 +17,8 @@ import {
   Vacio,
 } from "../components/ui";
 import { api } from "../lib/api";
-import { esPositivo, parsearMonto } from "../lib/dinero";
+import { esPositivo } from "../lib/dinero";
+import { leerMonto, montoParaEditar } from "../lib/montoTecleado";
 import { fmtFecha, fmtMoney } from "../lib/format";
 import { useApi } from "../lib/useApi";
 import { useSucursales } from "../lib/useSucursales";
@@ -252,7 +254,7 @@ function FormPlantilla({
   const [dia, setDia] = useState(String(plantilla?.diaDelMes ?? 1));
   /** Vacío = monto variable: lo pone la factura del mes. */
   const [monto, setMonto] = useState(
-    plantilla?.monto == null ? "" : String(plantilla.monto),
+    plantilla?.monto == null ? "" : montoParaEditar(plantilla.monto),
   );
   /**
    * En un ALTA arranca apagado: lo normal es saber cuánto es el alquiler, y el
@@ -285,7 +287,7 @@ function FormPlantilla({
     // cero pesos. Con el switch apagado el monto es obligatorio.
     let m: number | null = null;
     if (!variable) {
-      const parsed = parsearMonto(monto);
+      const parsed = leerMonto(monto);
       if (parsed == null || !esPositivo(parsed)) {
         return setError("El monto tiene que ser mayor a cero.");
       }
@@ -388,13 +390,7 @@ function FormPlantilla({
         </p>
 
         <Campo label="Monto (Bs)">
-          <Input
-            inputMode="decimal"
-            value={variable ? "" : monto}
-            onChange={(e) => setMonto(e.target.value)}
-            placeholder="0.00"
-            disabled={variable}
-          />
+          <InputMonto value={variable ? "" : monto} onChange={setMonto} placeholder="0,00" disabled={variable} />
         </Campo>
         <label className="flex items-start gap-2 rounded-xl border border-borde p-3 text-sm">
           <input

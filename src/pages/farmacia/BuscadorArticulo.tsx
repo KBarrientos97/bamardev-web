@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { Icon } from "../../components/Icon";
 import { Cargando, ErrorMsg, Modal, Vacio } from "../../components/ui";
-import { fmtNum } from "../../lib/format";
+import { fmtCantidad } from "../../lib/format";
 import type { ArticuloMovimiento, Producto } from "../../types";
 import { concentracionAparte, conUnidad, detalleDe } from "./medicamento";
 import { Resaltado } from "./piezas";
@@ -200,7 +200,7 @@ function Fila({
                 no coinciden hay que decirlo, o el "0" parece un error cuando en
                 realidad la mercadería está en el otro almacén. */}
             {p.stockTotal !== stock && (
-              <span className="block text-texto-4">de {fmtNum(p.stockTotal)} en total</span>
+              <span className="block text-texto-4">de {fmtCantidad(p.stockTotal)} en total</span>
             )}
           </span>
           <button

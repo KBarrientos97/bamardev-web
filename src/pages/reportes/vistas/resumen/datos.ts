@@ -1,6 +1,6 @@
 import type { NombreIcono } from "../../../../components/Icon";
 import { aCentavos, esPositivo } from "../../../../lib/dinero";
-import { fmtNum } from "../../../../lib/format";
+import { fmtCantidad, fmtNum } from "../../../../lib/format";
 import { esBelleza, esBillar, esFarmacia } from "../../../../lib/rubro";
 import type { ReporteAgenda } from "../../../../lib/agenda/tiposComisiones";
 import type { ReporteMermas } from "../../../../types";
@@ -253,7 +253,7 @@ export function consejos(e: EntradaConsejos): Consejo[] {
       tono: "rosa",
       partes: [
         { b: agotado.nombre },
-        ` está agotado y se vendieron ${fmtNum(agotado.vendidas, Number.isInteger(agotado.vendidas) ? 0 : 1)} en los últimos ${e.sugerencia?.dias ?? 30} días. Conviene reponer.`,
+        ` está agotado y se vendieron ${fmtCantidad(agotado.vendidas)} en los últimos ${e.sugerencia?.dias ?? 30} días. Conviene reponer.`,
       ],
       a: "stock-critico",
     });
@@ -425,7 +425,15 @@ export function textoPedidos(cantidad: number): string {
 /** Las filas de la hoja "Resumen" del Excel: lo mismo que se ve, en números. */
 export function filasResumen(
   r: ResumenApi,
-  er: { gastosOperativos: number; gastosFinancieros: number; impuestos: number; utilidadNeta: number } | null,
+  er: {
+    gastosOperativos: number;
+    gastosFinancieros: number;
+    impuestos: number;
+    utilidadNeta: number;
+    /** Billar: lo que se pagó de la caja. */
+    cenasPersonal?: number;
+    gastosCaja?: number;
+  } | null,
 ): [string, number | null][] {
   const pc = pedidosPorCobrar(r);
   return [
@@ -450,6 +458,10 @@ export function filasResumen(
     ...(er
       ? ([
           ["Gastos operativos (Bs)", er.gastosOperativos],
+          // Billar: lo que se pagó de la caja, sólo si hubo, como en la tarjeta.
+          // La ganancia real de abajo ya lo resta.
+          ...(esPositivo(er.cenasPersonal ?? 0) ? ([["Cenas del personal (Bs)", er.cenasPersonal ?? 0]] as [string, number][]) : []),
+          ...(esPositivo(er.gastosCaja ?? 0) ? ([["Gastos pagados de la caja (Bs)", er.gastosCaja ?? 0]] as [string, number][]) : []),
           ["Banco e impuestos (Bs)", er.gastosFinancieros + er.impuestos],
           ["Ganancia real (Bs)", er.utilidadNeta],
         ] as [string, number][])

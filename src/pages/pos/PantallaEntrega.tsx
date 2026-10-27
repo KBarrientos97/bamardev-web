@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { Icon } from "../../components/Icon";
+import InputMonto from "../../components/InputMonto";
 import { Boton, Campo, ErrorMsg, Input, Select } from "../../components/ui";
 import { fmtMoney } from "../../lib/format";
+import { leerMonto, montoParaEditar } from "../../lib/montoTecleado";
 import type { Repartidor, TipoPedido } from "../../types";
 
 /** Tiempos típicos de preparación para un pedido que pasan a recoger. */
@@ -54,12 +56,12 @@ export default function PantallaEntrega({
   const [repartidorId, setRepartidorId] = useState(
     repartidores.length === 1 ? String(repartidores[0].id) : "",
   );
-  const [tarifa, setTarifa] = useState(esDelivery ? "8" : "0");
+  const [tarifa, setTarifa] = useState(montoParaEditar(esDelivery ? 8 : 0));
   const [minutos, setMinutos] = useState(20);
   const [nota, setNota] = useState("");
   const [error, setError] = useState("");
 
-  const tarifaNum = Number(tarifa) || 0;
+  const tarifaNum = leerMonto(tarifa) ?? 0;
   const totalConEnvio = total + (esDelivery ? tarifaNum : 0);
 
   function validar(): DatosEntrega | null {
@@ -175,14 +177,7 @@ export default function PantallaEntrega({
               label="Tarifa de envío"
               hint="Se la cobra y se la queda el repartidor: no entra a la caja ni a su rendición"
             >
-              <Input
-                type="number"
-                inputMode="decimal"
-                step="0.01"
-                min="0"
-                value={tarifa}
-                onChange={(e) => setTarifa(e.target.value)}
-              />
+              <InputMonto value={tarifa} onChange={setTarifa} />
             </Campo>
           </>
         ) : (

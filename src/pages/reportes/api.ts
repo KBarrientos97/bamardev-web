@@ -1,6 +1,7 @@
 import { api, qs, request } from "../../lib/api";
 import { rangoParaApi } from "../../lib/rangoApi";
-import type { RangoReporte } from "../../types";
+import type { CodigoMotivoEfectivo, RangoReporte, ReporteCierreProductos } from "../../types";
+import type { CobroApi } from "../billar/api";
 
 /**
  * Lo que devuelve cada endpoint de reportes, con lo que significa cada número.
@@ -160,6 +161,43 @@ export interface MetodoPagoApi {
   porcentaje: number;
   /** Nuevo: cuántos cobros. */
   cantidad?: number;
+}
+
+/**
+ * Lo cobrado con UN medio en el período, venta por venta
+ * (`GET /reportes/metodos-pago/cobros`, backend del 26-oct). Es para conciliar:
+ * Miguel, el administrador del billar, compara cada QR contra su banco, y con
+ * "QR · 3 cobros · Bs 120" no sabía cuáles eran ni de qué producto.
+ */
+export interface CobrosDelMedioApi {
+  medio: string;
+  /** Los mismos números de la fila del reporte. `mixtas`: ventas pagadas con este medio y otro. */
+  totales: { monto: number; cobros: number; ventas: number; mixtas: number };
+  /** Sólo en la primera tanda; las de "Ver más" lo traen en null. */
+  productos: {
+    /**
+     * Lo de las ventas pagadas SÓLO con este medio: estos productos se pagaron
+     * enteros con él. El tiempo de mesa viene marcado. Null si no hay ninguna.
+     */
+    solo: ReporteCierreProductos | null;
+    /**
+     * Lo de las ventas pagadas con este medio Y otro. No se puede decir qué
+     * producto pagó cada medio (un pago no apunta a un renglón de la venta):
+     * va aparte y nunca se reparte. Null si no hay ninguna.
+     */
+    mixtas: ReporteCierreProductos | null;
+    /** De esas ventas mixtas, lo que entró por este medio. */
+    mixtasMonto: number;
+  } | null;
+  /** La tanda, del más nuevo al más viejo. */
+  cobros: CobroApi[];
+  /**
+   * `total`: los cobros del período; `quedan`: los que siguen después de esta
+   * tanda; `siguiente`: la marca para pedirlos con "Ver más" (null si no hay
+   * más). Por marca y no por número de página: un cobro que entra mientras se
+   * mira no corre la lista ni repite el último que se vio.
+   */
+  tanda: { limite: number; total: number; quedan: number; siguiente: string | null };
 }
 
 export interface DescuentosApi {
@@ -363,6 +401,56 @@ export interface BillarReporteApi {
   } | null;
 }
 
+/**
+ * Las cenas del personal del billar (`GET /billar/reportes/cenas`, backend del
+ * 24-oct): lo que salió de la caja para la cena de la cajera. Una "noche" es una
+ * caja, de que se abre a que se cierra, y cuenta en el día de la jornada en que
+ * se abrió. Desde el 25-oct el Estado de resultado ya no lo lee: resta las
+ * cenas de `efectivoBillar`, que cuenta igual pero consolida las sucursales.
+ */
+export interface CenasReporteApi {
+  /** Los días del período, AAAA-MM-DD, y cuántos son. */
+  desde: string;
+  hasta: string;
+  dias: number;
+  /** Lo que costaron las cenas (sin las anuladas). */
+  total: number;
+  /** Días de jornada en que se abrió alguna caja, y de esos los que tuvieron cena. */
+  nochesAbiertas: number;
+  nochesConCena: number;
+  /** Promedio por noche CON cena. */
+  promedio: number;
+  /** La noche más cara. */
+  maxima: number;
+  /** Una por caja, de la más nueva a la más vieja. */
+  porNoche: { cajaId: number; dia: string; cajera: string; monto: number; registro: string; abierta: boolean }[];
+  /** Una por día de jornada con caja, de la más vieja a la más nueva: el gráfico. */
+  porDia: { dia: string; monto: number }[];
+  /** Quién cobró cuánto en cenas, de más a menos. */
+  porCajera: { nombre: string; monto: number; noches: number }[];
+  /** El período de comparación; null si no se pidió. */
+  anterior: { total: number; nochesAbiertas: number; nochesConCena: number; promedio: number } | null;
+}
+
+/**
+ * Lo que movió la caja del billar en el período, por motivo (`GET
+ * /billar/reportes/efectivo`, backend del 25-oct): lo que el administrador
+ * registró desde Supervisión, sin lo anulado. Cuenta como las cenas: cada caja
+ * en el día de la jornada en que se abrió, así el Estado de resultado y el
+ * reporte de cenas dicen lo mismo. Sin sucursal es el consolidado de las que ve
+ * quien pregunta, como el financiero (las cenas, en cambio, van por local).
+ *
+ * El Estado de resultado resta `porMotivo.CENA` y `porMotivo.GASTO`; el resto
+ * es efectivo que cambió de lugar (`motivosMovimiento.ts`) y va como informativo.
+ */
+export interface EfectivoBillarApi {
+  desde: string;
+  hasta: string;
+  porMotivo: Record<CodigoMotivoEfectivo, { monto: number; cantidad: number }>;
+  /** Cada gasto pagado de la caja que quedó en pie, del más viejo al más nuevo: el detalle y el Excel. */
+  gastos: { id: number; fecha: string; descripcion: string; monto: number; quien: string | null; cajera: string }[];
+}
+
 export const apiReportes = {
   /**
    * A qué hora termina la jornada del negocio (minutos). Un billar cierra a
@@ -378,6 +466,13 @@ export const apiReportes = {
   horas: (r: RangoReporte) => api.reporte<HorasApi>("horas", r),
   lentos: (r: RangoReporte) => api.reporte<LentosApi>("productos-lentos", r),
   metodosPago: (r: RangoReporte) => api.reporte<MetodoPagoApi[]>("metodos-pago", r),
+  /**
+   * Lo cobrado con un medio (`medio`: el nombre tal como lo devuelve
+   * `metodos-pago`), de a tandas: sin `antesDe` la primera; con la marca
+   * `siguiente` de una tanda, la que le sigue.
+   */
+  cobrosDelMedio: (r: RangoReporte, medio: string, antesDe?: string, limite = 100) =>
+    api.reporte<CobrosDelMedioApi>("metodos-pago/cobros", r, { medio, antesDe, limite }),
   descuentos: (r: RangoReporte) => api.reporte<DescuentosApi>("descuentos", r),
   meseros: (r: RangoReporte) => api.reporte<MeserosApi>("meseros", r),
   cierres: (r: RangoReporte) => api.reporte<CierresApi>("cierres", r),
@@ -398,6 +493,23 @@ export const apiReportes = {
         ...(ant?.desde && ant.hasta ? { antDesde: ant.desde, antHasta: ant.hasta } : {}),
       })}`,
     ),
+  /** Las cenas del personal del billar: por días, como `billar`. Un negocio que no es billar no lo pide. */
+  cenas: (r: RangoReporte, ant?: RangoReporte) =>
+    request<CenasReporteApi>(
+      `/billar/reportes/cenas${qs({
+        desde: r.desde,
+        hasta: r.hasta,
+        sucursalId: r.sucursalId,
+        ...(ant?.desde && ant.hasta ? { antDesde: ant.desde, antHasta: ant.hasta } : {}),
+      })}`,
+    ),
+  /**
+   * El efectivo del billar por motivo (cenas, gastos, pagos a proveedor…): por
+   * días, como `cenas`. Lo piden el Estado de resultado y el Resumen de un
+   * billar; los demás rubros no.
+   */
+  efectivoBillar: (r: RangoReporte) =>
+    request<EfectivoBillarApi>(`/billar/reportes/efectivo${qs({ desde: r.desde, hasta: r.hasta, sucursalId: r.sucursalId })}`),
 };
 
 /** Un número que viene en 0..100 → fracción. Null sigue null. */

@@ -77,6 +77,17 @@ describe("lo que queda y a qué ritmo se vende", () => {
     );
     expect(detalleStock(item({}))).toBeNull();
   });
+
+  it("lo que queda de una resta con decimales sale sin ,00 ni resto de punto flotante", () => {
+    // 2,3 − 0,3 da 1,9999999999999998 y salía "Quedan 2,00" (Kevin, 25-oct: sin ",00").
+    expect(lineaStock(item({ stock: 2.3, vencido: 0.3, vendidas: 0 }), 30)).toBe("Quedan 2 · sin ventas en los últimos 30 días");
+    expect(lineaStock(item({ stock: 2.5, vendidas: 0 }), 30)).toBe("Quedan 2,5 · sin ventas en los últimos 30 días");
+  });
+
+  it("una cantidad con fracción va con lo que necesita, no con dos decimales fijos", () => {
+    // Antes: "1,50 vencidos" y "el mínimo es 2,50".
+    expect(detalleStock(item({ stock: 2, vencido: 1.5, stockMinimo: 2.5 }))).toBe("1,5 vencidos en el estante · el mínimo es 2,5");
+  });
 });
 
 describe("los números de arriba", () => {

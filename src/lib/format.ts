@@ -18,6 +18,23 @@ export function fmtMoney(n: number | null | undefined): string {
 }
 
 /**
+ * Una cantidad (unidades, stock, kg de un insumo, lo de un movimiento o un combo) sin
+ * ceros de más: "9", "0,5", "2,25", "0,125", "1.500". Kevin, 25-oct: "3,00 en unidad
+ * no da: tiene que decir 3, 2, 5". La plata sí lleva sus dos decimales (`fmtMoney`).
+ *
+ * Hasta 3 decimales porque es la precisión con la que se guardan el stock y los
+ * movimientos (Decimal(12,3)): con 2, 0,125 kg salía "0,13". Se redondea ANTES de
+ * formatear para que el resto de punto flotante de una resta (2,3 − 0,3 da
+ * 1,9999999999999998) salga "2", y un −0,0004 de un saldo del kardex quede en cero:
+ * el `|| 0` le saca el signo, que con `fmtNum` salía "-0".
+ */
+export function fmtCantidad(n: number | null | undefined, maxDecimales = 3): string {
+  const factor = 10 ** maxDecimales;
+  const v = Math.round(Number(n ?? 0) * factor) / factor || 0;
+  return v.toLocaleString("es-BO", { minimumFractionDigits: 0, maximumFractionDigits: maxDecimales });
+}
+
+/**
  * Plata para lo que lee el CLIENTE (el WhatsApp de su pedido): "Bs 40" si es
  * entera y "Bs 40.50" con centavos, con punto y sin separador de miles.
  * "Bs 40,00" se leía como cuarenta mil (Kevin, 15-oct). Igual que la app
@@ -31,7 +48,15 @@ export function fmtMontoCliente(n: number | null | undefined): string {
     : `${simboloMoneda} ${(centavos / 100).toFixed(2)}`;
 }
 
-/** Sin decimales ni símbolo: para ejes de gráficos y celdas apretadas. */
+/**
+ * Sin símbolo y con decimales FIJOS (ninguno, salvo que se pidan): para conteos
+ * (ventas, tickets, mesas), porcentajes, ejes de gráficos y celdas apretadas.
+ *
+ * NO es para cantidades de producto (stock, insumos, kardex, lo de un movimiento):
+ * con decimales fuerza los ceros ("48,00 Unidad en stock", que Kevin no quiere ver
+ * el 25-oct) y sin ellos redondea (2,5 kg salía "3 kg" y 0,4 kg, "0 kg"). Para eso
+ * está `fmtCantidad`.
+ */
 export function fmtNum(n: number | null | undefined, decimales = 0): string {
   return Number(n ?? 0).toLocaleString("es-BO", {
     minimumFractionDigits: decimales,

@@ -1,16 +1,19 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fmtMoney } from "../../../lib/format";
-import type { Gasto } from "../../../types";
-import { ContextoReporte, type DatosReporte } from "../contexto";
+import type { CodigoMotivoEfectivo, Gasto } from "../../../types";
+import type { EfectivoBillarApi } from "../api";
+import { ContextoReporte, type DatosReporte, type Exportacion } from "../contexto";
+import { periodoDe, type Periodo } from "../periodo";
 import EstadoResultado from "./EstadoResultado";
 
 /**
  * El estado de resultado adaptado a cada rubro (pedido de Kevin del 14-oct):
  * el billar parte la venta en mesas y productos, el restaurante sigue como en
  * la app, y lo que no es parte de la cuenta (el resumen, las horas) no tumba
- * el reporte si falla. Lo que sí es parte (los gastos) lo tumba entero.
+ * el reporte si falla. Lo que sí es parte (los gastos, el efectivo del billar)
+ * lo tumba entero.
  */
 
 const reporte = vi.fn();
@@ -70,19 +73,44 @@ function respuestas({ resumen = true }: { resumen?: boolean } = {}) {
   });
 }
 
+const CODIGOS: CodigoMotivoEfectivo[] = ["CENA", "GASTO", "PROVEEDOR", "RETIRO", "OTRA_SALIDA", "SENCILLO", "OTRA_ENTRADA"];
+
+/** Lo que movió la caja del billar por motivo, como lo manda `GET /billar/reportes/efectivo`. */
+function efectivo(montos: Partial<Record<CodigoMotivoEfectivo, number>> = {}, gastos: EfectivoBillarApi["gastos"] = []): EfectivoBillarApi {
+  return {
+    ...RANGO,
+    porMotivo: Object.fromEntries(CODIGOS.map((c) => [c, { monto: montos[c] ?? 0, cantidad: montos[c] ? 1 : 0 }])) as EfectivoBillarApi["porMotivo"],
+    gastos,
+  };
+}
+
+const HORAS = { horas: 12.7, porMesa: [{ horas: 5 }, { horas: 4.2 }, { horas: 3.5 }] };
+
+/** `request` responde según la ruta: el efectivo de la caja, o el reporte del billar (las horas). */
+function billar({ caja = efectivo(), horas = HORAS }: { caja?: EfectivoBillarApi | Error; horas?: unknown } = {}) {
+  request.mockImplementation((url: string) => {
+    if (url.includes("/efectivo")) return caja instanceof Error ? Promise.reject(caja) : Promise.resolve(caja);
+    return Promise.resolve(horas);
+  });
+}
+
 function Ubicacion() {
   const l = useLocation();
   return <p>ahora en {l.pathname} · {JSON.stringify(l.state)}</p>;
 }
 
-function mostrar() {
+let exportacion: Exportacion | null = null;
+
+function mostrar({ periodo = { preset: "rango", ...RANGO } }: { periodo?: Periodo } = {}) {
   const datos: DatosReporte = {
-    periodo: { preset: "rango", ...RANGO },
+    periodo,
     comparacion: { desde: "2026-08-02", hasta: "2026-08-31", contra: "del 02/08 al 31/08/2026", leyenda: "Período anterior" },
-    rango: RANGO,
+    rango: { desde: periodo.desde, hasta: periodo.hasta },
     rangoAnterior: { desde: "2026-08-02", hasta: "2026-08-31" },
     sucursalNombre: "",
-    registrarExportacion: () => {},
+    registrarExportacion: (e) => {
+      exportacion = e;
+    },
     veReporte: () => true,
   };
   return render(
@@ -103,12 +131,13 @@ describe("estado de resultado por rubro", () => {
     getGastos.mockReset();
     request.mockReset();
     rubro = "BILLAR";
+    exportacion = null;
   });
 
   it("el billar muestra el tiempo de mesa con sus horas, los productos y lo que dejó cada parte", async () => {
     respuestas();
     getGastos.mockResolvedValue(GASTOS);
-    request.mockResolvedValue({ horas: 12.7, porMesa: [{ horas: 5 }, { horas: 4.2 }, { horas: 3.5 }] });
+    billar();
     mostrar();
 
     expect(await screen.findByText("Tiempo de mesa")).toBeInTheDocument();
@@ -125,6 +154,133 @@ describe("estado de resultado por rubro", () => {
     expect(screen.getByText(/Ganancia líquida del período/i)).toBeInTheDocument();
   });
 
+  it("las cenas del personal restan en su propia línea del billar, y se cuentan en la ganancia", async () => {
+    respuestas();
+    getGastos.mockResolvedValue(GASTOS);
+    billar({ caja: efectivo({ CENA: 40 }) });
+    mostrar();
+
+    expect(await screen.findByText("Cenas del personal")).toBeInTheDocument();
+    expect(screen.getByText("Efectivo que salió de la caja para la cena")).toBeInTheDocument();
+    // 380 − 250 (gastos del local) − 40 (cenas) = 90; las cenas no se mezclan con los gastos del local.
+    expect(
+      screen.getByText(
+        `Las mesas dejaron ${fmtMoney(280)} y los productos ${fmtMoney(100)}. Restando los gastos del local (${fmtMoney(250)}) y las cenas del personal (${fmtMoney(40)}), te quedan ${fmtMoney(90)}: es tu ganancia líquida.`,
+      ),
+    ).toBeInTheDocument();
+    // Una sola llamada para lo de la caja: la de las cenas ya no se pide.
+    expect(request.mock.calls.some(([url]) => String(url).includes("/cenas"))).toBe(false);
+  });
+
+  it("sin cenas ni gastos de la caja las líneas no se dibujan (ni en cero)", async () => {
+    respuestas();
+    getGastos.mockResolvedValue(GASTOS);
+    billar();
+    mostrar();
+
+    expect(await screen.findByText("Ganancia de mesas y productos")).toBeInTheDocument();
+    expect(screen.queryByText("Cenas del personal")).not.toBeInTheDocument();
+    expect(screen.queryByText(/cenas del personal/i)).not.toBeInTheDocument();
+    expect(screen.queryByText("Gastos pagados de la caja")).not.toBeInTheDocument();
+    expect(screen.queryByText("Lo que movió la caja sin cambiar tu ganancia")).not.toBeInTheDocument();
+  });
+
+  it("los gastos pagados de la caja restan en su línea y abren su detalle: qué, quién y de qué caja", async () => {
+    respuestas();
+    getGastos.mockResolvedValue(GASTOS);
+    billar({
+      caja: efectivo({ CENA: 40, GASTO: 30 }, [
+        { id: 11, fecha: "2026-09-12T23:40:00.000Z", descripcion: "Hielo", monto: 18, quien: "Kevin", cajera: "Pepe" },
+        { id: 12, fecha: "2026-09-13T22:10:00.000Z", descripcion: "Tiza", monto: 12, quien: "Kevin", cajera: "Ana" },
+      ]),
+    });
+    mostrar();
+
+    const cascada = (await screen.findByText("Cómo se llega al resultado")).closest("section")!;
+    expect(within(cascada).getByText("Hielo y tiza")).toBeInTheDocument();
+    // 380 − 250 − 40 − 30 = 60.
+    expect(
+      screen.getByText(
+        `Las mesas dejaron ${fmtMoney(280)} y los productos ${fmtMoney(100)}. Restando los gastos del local (${fmtMoney(250)}), las cenas del personal (${fmtMoney(40)}) y los gastos pagados de la caja (${fmtMoney(30)}), te quedan ${fmtMoney(60)}: es tu ganancia líquida.`,
+      ),
+    ).toBeInTheDocument();
+
+    fireEvent.click(within(cascada).getByText("Gastos pagados de la caja"));
+    const detalle = await screen.findByRole("dialog");
+    expect(within(detalle).getByText("Hielo")).toBeInTheDocument();
+    expect(within(detalle).getByText(/Registró Kevin · caja de Pepe/)).toBeInTheDocument();
+    expect(within(detalle).getByText(/caja de Ana/)).toBeInTheDocument();
+    expect(within(detalle).getByText(/se restaría dos veces/)).toBeInTheDocument();
+    expect(within(detalle).getByText("Ver movimientos de caja")).toBeInTheDocument();
+  });
+
+  it("lo que movió la caja sin cambiar la ganancia va al costado, sólo lo que hubo, y no resta", async () => {
+    respuestas();
+    getGastos.mockResolvedValue(GASTOS);
+    billar({ caja: efectivo({ PROVEEDOR: 800, RETIRO: 300 }) });
+    mostrar();
+
+    const tarjeta = (await screen.findByText("Lo que movió la caja sin cambiar tu ganancia")).closest("section")!;
+    expect(within(tarjeta).getByText("Pagos a proveedores")).toBeInTheDocument();
+    expect(within(tarjeta).getByText(`−${fmtMoney(800)}`)).toBeInTheDocument();
+    expect(within(tarjeta).getByText("Retiros")).toBeInTheDocument();
+    expect(within(tarjeta).queryByText("Sencillo")).not.toBeInTheDocument();
+    // La ganancia es la de siempre: 380 − 250.
+    expect(screen.getByText(/te quedan Bs 130,00: es tu ganancia líquida/)).toBeInTheDocument();
+  });
+
+  it("el Excel lleva la línea de los gastos de la caja y su detalle en una hoja", async () => {
+    respuestas();
+    getGastos.mockResolvedValue(GASTOS);
+    billar({
+      caja: efectivo({ GASTO: 18 }, [{ id: 11, fecha: "2026-09-12T23:40:00.000Z", descripcion: "Hielo", monto: 18, quien: "Kevin", cajera: "Pepe" }]),
+    });
+    mostrar();
+
+    await screen.findByText("Gastos pagados de la caja");
+    await waitFor(() => expect(exportacion).not.toBeNull());
+    const hojas = exportacion!.hojas();
+    expect(hojas[0].filas).toContainEqual(["Gastos pagados de la caja", -18, 3.5]);
+    const caja = hojas.find((h) => h.nombre === "Gastos de la caja")!;
+    expect(caja.filas[0]).toEqual(["Fecha", "Concepto", "Registró", "Caja de", "Monto (Bs)"]);
+    expect(caja.filas[1].slice(1)).toEqual(["Hielo", "Kevin", "Pepe", 18]);
+  });
+
+  it("sin gastos de la caja el Excel no lleva ni la fila ni la hoja", async () => {
+    respuestas();
+    getGastos.mockResolvedValue(GASTOS);
+    billar({ caja: efectivo({ CENA: 40 }) });
+    mostrar();
+
+    await screen.findByText("Cenas del personal");
+    await waitFor(() => expect(exportacion).not.toBeNull());
+    const hojas = exportacion!.hojas();
+    expect(hojas.map((h) => h.nombre)).toEqual(["Estado de resultado", "Gastos", "Compras (informativo)"]);
+    expect(hojas[0].filas.map((f) => f[0])).not.toContain("Gastos pagados de la caja");
+  });
+
+  it("en el mes en curso las cenas solas no arman la tarjeta del mes", async () => {
+    // Con las cenas y nada cargado decía "Ya cubriste los gastos" del mes.
+    respuestas();
+    getGastos.mockResolvedValue([]);
+    billar({ caja: efectivo({ CENA: 40 }) });
+    mostrar({ periodo: periodoDe("mes") });
+
+    expect(await screen.findByText("Cenas del personal")).toBeInTheDocument();
+    expect(screen.queryByText("Mes en curso")).not.toBeInTheDocument();
+    expect(screen.getByText(/Todavía no cargaste los gastos del local/)).toBeInTheDocument();
+  });
+
+  it("en el mes en curso la meta suma las cenas llevadas al mes y lo dice", async () => {
+    respuestas();
+    getGastos.mockResolvedValue(GASTOS);
+    billar({ caja: efectivo({ CENA: 40 }) });
+    mostrar({ periodo: periodoDe("mes") });
+
+    expect(await screen.findByText("Mes en curso")).toBeInTheDocument();
+    expect(screen.getByText(/Son los gastos cargados \(Bs 250,00\) y las cenas del personal del mes entero/)).toBeInTheDocument();
+  });
+
   it("el restaurante va con una sola línea de ventas y habla de la comida, como en la app", async () => {
     rubro = "RESTAURANTE";
     respuestas();
@@ -134,15 +290,16 @@ describe("estado de resultado por rubro", () => {
     expect(await screen.findByText("Ganancia de la comida")).toBeInTheDocument();
     expect(screen.getByText("Costo cargado en cada plato")).toBeInTheDocument();
     expect(screen.queryByText("Tiempo de mesa")).not.toBeInTheDocument();
-    // El reporte del billar ni se pide fuera del billar.
+    // Ni el reporte del billar ni el efectivo de la caja se piden fuera del billar.
     expect(request).not.toHaveBeenCalled();
+    expect(screen.queryByText("Lo que movió la caja sin cambiar tu ganancia")).not.toBeInTheDocument();
   });
 
   it("si el resumen falla, el billar sigue con la venta en una sola línea", async () => {
     // El resumen sólo parte la primera línea: no es una mitad de la cuenta.
     respuestas({ resumen: false });
     getGastos.mockResolvedValue(GASTOS);
-    request.mockResolvedValue(null);
+    billar({ horas: null });
     mostrar();
 
     expect(await screen.findByText("Ganancia de mesas y productos")).toBeInTheDocument();
@@ -153,17 +310,30 @@ describe("estado de resultado por rubro", () => {
   it("si fallan los gastos, falla el reporte entero y no muestra una ganancia inflada", async () => {
     respuestas();
     getGastos.mockRejectedValue(new Error("No se pudieron cargar los gastos"));
-    request.mockResolvedValue(null);
+    billar({ horas: null });
     mostrar();
 
     expect(await screen.findByText("No se pudieron cargar los gastos")).toBeInTheDocument();
     expect(screen.queryByText(/ganancia líquida/i)).not.toBeInTheDocument();
   });
 
+  it("si falla el efectivo de la caja, falla el reporte entero: sin las cenas la ganancia sale inflada", async () => {
+    // Invariante 6: un reporte de plata que muestra un número incompleto en
+    // silencio miente peor que uno que no carga.
+    respuestas();
+    getGastos.mockResolvedValue(GASTOS);
+    billar({ caja: new Error("No se pudo cargar el efectivo de la caja") });
+    mostrar();
+
+    expect(await screen.findByText("No se pudo cargar el efectivo de la caja")).toBeInTheDocument();
+    expect(screen.queryByText(/ganancia líquida/i)).not.toBeInTheDocument();
+    expect(screen.queryByText("Cómo se llega al resultado")).not.toBeInTheDocument();
+  });
+
   it("los gastos del local abren su detalle: qué son, agrupados, con lo pagado y lo que falta", async () => {
     respuestas();
     getGastos.mockResolvedValue(GASTOS);
-    request.mockResolvedValue(null);
+    billar({ horas: null });
     mostrar();
 
     const cascada = (await screen.findByText("Cómo se llega al resultado")).closest("section")!;
@@ -178,7 +348,7 @@ describe("estado de resultado por rubro", () => {
   it("tocar Ventas lleva al historial y le avisa a dónde volver", async () => {
     respuestas();
     getGastos.mockResolvedValue(GASTOS);
-    request.mockResolvedValue(null);
+    billar({ horas: null });
     mostrar();
 
     const cascada = (await screen.findByText("Cómo se llega al resultado")).closest("section")!;

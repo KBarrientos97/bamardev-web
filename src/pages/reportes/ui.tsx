@@ -406,6 +406,7 @@ export function FilaLista({
   onClick,
   a,
   tachado = false,
+  ajustar = false,
 }: {
   icono?: NombreIcono;
   tono?: TonoR;
@@ -423,7 +424,14 @@ export function FilaLista({
   onClick?: () => void;
   a?: string;
   tachado?: boolean;
+  /**
+   * Los textos bajan de renglón en vez de cortarse con "…". Para cuando lo
+   * cortado es justo el dato: en el celular, "Pago a proveedor · Dist…"
+   * escondía a quién se le pagó.
+   */
+  ajustar?: boolean;
 }) {
+  const corte = ajustar ? "break-words" : "truncate";
   const colorValor = {
     normal: "text-texto",
     marca: "text-primary-700",
@@ -443,11 +451,11 @@ export function FilaLista({
       {inicio ?? (icono && <FichaIcono icono={icono} tono={tono} size={40} />)}
       <div className="min-w-0 flex-1">
         <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
-          <span className={`min-w-0 truncate text-[14px] font-bold ${tachado ? "text-texto-4" : "text-texto"}`}>{titulo}</span>
+          <span className={`min-w-0 ${corte} text-[14px] font-bold ${tachado ? "text-texto-4" : "text-texto"}`}>{titulo}</span>
           {chip}
         </div>
-        {linea && <p className="mt-0.5 truncate text-[12px] text-texto-3">{linea}</p>}
-        {linea2 && <p className="truncate text-[12px] text-texto-3">{linea2}</p>}
+        {linea && <p className={`mt-0.5 ${corte} text-[12px] text-texto-3`}>{linea}</p>}
+        {linea2 && <p className={`${corte} text-[12px] text-texto-3`}>{linea2}</p>}
         {barra && (
           <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-slate-100" aria-hidden>
             <div className={`h-full rounded-full ${colorBarra}`} style={{ width: `${Math.max(1, Math.min(1, barra.fraccion) * 100)}%` }} />

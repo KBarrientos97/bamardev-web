@@ -1,8 +1,22 @@
 import { describe, expect, it } from "vitest";
 import { fmtMoney } from "../../../lib/format";
+import { mesEnCurso } from "../../../lib/mesEnCurso";
 import { estadoResultado } from "../../../lib/resultado";
-import type { Gasto } from "../../../types";
-import { explicarResultado, gananciaPorParte, horasJugadas, partirVentas, perfilResultado } from "./EstadoResultado.datos";
+import type { CodigoMotivoEfectivo, Gasto } from "../../../types";
+import { CODIGOS_GASTO, MOTIVOS_BILLAR } from "../../pos/motivosMovimiento";
+import type { EfectivoBillarApi } from "../api";
+import {
+  conceptosDeCaja,
+  explicarResultado,
+  gananciaPorParte,
+  gastosDeCaja,
+  horasJugadas,
+  MOTIVOS_SIN_EFECTO,
+  movimientosSinEfecto,
+  notaMeta,
+  partirVentas,
+  perfilResultado,
+} from "./EstadoResultado.datos";
 
 function gasto(monto: number, categoria = "ALQUILER"): Gasto {
   return { id: monto, concepto: categoria, categoria, categoriaNombre: categoria, monto, pagado: 0 } as Gasto;
@@ -142,5 +156,121 @@ describe("el resultado en palabras", () => {
   it("un período sin nada no se explica", () => {
     const er = estadoResultado({ ventas: 0, costoVentas: 0, utilidadBruta: 0 }, []);
     expect(explicarResultado(er, billar, null)).toBeNull();
+  });
+
+  it("nombra los gastos pagados de la caja entre lo que restó, después de las cenas", () => {
+    const er = estadoResultado(FIN_BILLAR, [gasto(200), gasto(50, "LUZ")], { cenas: 40, gastos: 30 });
+    expect(explicarResultado(er, billar, PARTES_BILLAR)).toBe(
+      `Las mesas dejaron ${fmtMoney(280)} y los productos ${fmtMoney(100)}. Restando los gastos del local (${fmtMoney(250)}), las cenas del personal (${fmtMoney(40)}) y los gastos pagados de la caja (${fmtMoney(30)}), te quedan ${fmtMoney(60)}: es tu ganancia líquida.`,
+    );
+  });
+
+  it("con cenas y sin gastos cargados no lo llama ganancia líquida, y avisa sin negar las cenas", () => {
+    // El bug del 25-oct: el aviso miraba si había alguna resta, y con las
+    // cenas decía "es tu ganancia líquida" sin el alquiler ni los sueldos.
+    const er = estadoResultado(FIN_BILLAR, [], { cenas: 40, gastos: 0 });
+    const texto = explicarResultado(er, billar, PARTES_BILLAR)!;
+    expect(texto).toBe(
+      `Las mesas dejaron ${fmtMoney(280)} y los productos ${fmtMoney(100)}. Restando las cenas del personal (${fmtMoney(40)}), te quedan ${fmtMoney(340)}. Todavía no cargaste los gastos del local (alquiler, sueldos, servicios): cuando los cargués, este resultado va a bajar.`,
+    );
+    expect(texto).not.toMatch(/ganancia líquida/);
+  });
+
+  it("el aviso de los gastos del local mira los gastos del local, también con una pérdida", () => {
+    const er = estadoResultado({ ventas: 100, costoVentas: 90, utilidadBruta: 10 }, [], { cenas: 0, gastos: 30 });
+    expect(explicarResultado(er, billar, null)).toContain(`quedás ${fmtMoney(20)} en contra. Todavía no cargaste los gastos del local`);
+  });
+
+  it("sin nada que reste dice lo de siempre", () => {
+    const er = estadoResultado(FIN_BILLAR, [], { cenas: 0, gastos: 0 });
+    expect(explicarResultado(er, billar, PARTES_BILLAR)).toMatch(/Todavía no cargaste gastos en este período: sin el alquiler/);
+  });
+});
+
+/** El efectivo del billar como lo manda `GET /billar/reportes/efectivo`. */
+function efectivo(montos: Partial<Record<CodigoMotivoEfectivo, number>>, gastos: EfectivoBillarApi["gastos"] = []): EfectivoBillarApi {
+  const porMotivo = Object.fromEntries(
+    MOTIVOS_BILLAR.map((m) => [m.origen, { monto: montos[m.origen!] ?? 0, cantidad: montos[m.origen!] ? 1 : 0 }]),
+  ) as EfectivoBillarApi["porMotivo"];
+  return { desde: "2026-10-01", hasta: "2026-10-31", porMotivo, gastos };
+}
+
+describe("lo que el billar paga de la caja (25-oct)", () => {
+  it("resta las cenas y los gastos; sin el reporte la cuenta es la de siempre", () => {
+    expect(gastosDeCaja(efectivo({ CENA: 40, GASTO: 30, PROVEEDOR: 800, RETIRO: 300, SENCILLO: 200 }))).toEqual({ cenas: 40, gastos: 30 });
+    expect(gastosDeCaja(null)).toBeUndefined();
+    // Un pago a proveedor, un retiro o el sencillo no tocan la ganancia.
+    const er = estadoResultado(FIN_BILLAR, [gasto(250)], gastosDeCaja(efectivo({ PROVEEDOR: 800, RETIRO: 300, SENCILLO: 200 })));
+    expect(er.utilidadNeta).toBe(130);
+  });
+
+  it("cada motivo del billar o resta de la ganancia o va en lo informativo", () => {
+    // Un motivo nuevo que no esté en ninguna de las dos listas no se vería en
+    // ningún lado del Estado de resultado.
+    const informativos = MOTIVOS_SIN_EFECTO.map((m) => m.codigo);
+    for (const m of MOTIVOS_BILLAR) {
+      const codigo = m.origen!;
+      expect(CODIGOS_GASTO.has(codigo) !== informativos.includes(codigo)).toBe(true);
+    }
+  });
+
+  it("lo que no cambia la ganancia sale sólo si hubo, con su signo y su porqué", () => {
+    const filas = movimientosSinEfecto(efectivo({ CENA: 40, GASTO: 30, PROVEEDOR: 800, SENCILLO: 200 }).porMotivo);
+    expect(filas.map((f) => [f.titulo, f.monto])).toEqual([
+      ["Pagos a proveedores", -800],
+      ["Sencillo", 200],
+    ]);
+    // El pago a proveedor dice por qué no resta: su costo ya entra con cada venta.
+    expect(filas[0].porQue).toMatch(/costo de los productos/);
+    expect(movimientosSinEfecto(efectivo({ CENA: 40 }).porMotivo)).toEqual([]);
+    expect(movimientosSinEfecto(null)).toEqual([]);
+  });
+
+  it("los conceptos de la línea van sin repetir, de lo que más costó a lo que menos", () => {
+    const g = (descripcion: string, monto: number) => ({ id: monto, fecha: "2026-10-20T23:00:00Z", descripcion, monto, quien: "Kevin", cajera: "Pepe" });
+    expect(conceptosDeCaja([g("Tiza", 10), g("Hielo", 15), g("hielo ", 15), g("Arreglo de la mesa 3", 25)])).toEqual(["Hielo", "Arreglo de la mesa 3", "Tiza"]);
+  });
+});
+
+describe("la fórmula de la meta del mes", () => {
+  const base = { diaActual: 11, diasDelMes: 31, ventas: 9906, utilidadBruta: 3082.08 };
+
+  it("con sólo gastos cargados dice lo de siempre", () => {
+    const mes = mesEnCurso({ ...base, gastosDelMes: 7978 })!;
+    expect(notaMeta({ cargados: 7978, mermas: 0, cenas: 0, gastosCaja: 0, mes })).toBe(
+      "Meta = gastos cargados del mes (Bs 7.978,00) ÷ lo que te deja cada venta (31,1 %).",
+    );
+  });
+
+  it("con cenas dice qué suma: lo cargado y las cenas del mes entero, con lo que va", () => {
+    // Antes decía "gastos cargados del mes" con un número que traía las cenas
+    // de hasta hoy: el dueño buscaba ese total en Gastos y no estaba.
+    const mes = mesEnCurso({ ...base, gastosDelMes: 7978, gastosDiarios: 220 })!;
+    expect(notaMeta({ cargados: 7978, mermas: 0, cenas: 220, gastosCaja: 0, mes })).toBe(
+      "Meta = gastos del mes (Bs 8.598,00) ÷ lo que te deja cada venta (31,1 %). Son los gastos cargados (Bs 7.978,00) y las cenas del personal del mes entero, al ritmo de hasta hoy (Bs 620,00: van Bs 220,00 en 11 días).",
+    );
+  });
+
+  it("nombra las mermas y lo pagado de la caja, que cuenta una vez", () => {
+    const mes = mesEnCurso({ ...base, gastosDelMes: 7978 + 300, gastosDeCaja: 110 })!;
+    const nota = notaMeta({ cargados: 7978, mermas: 300, cenas: 0, gastosCaja: 110, mes });
+    expect(nota).toBe(
+      "Meta = gastos del mes (Bs 8.388,00) ÷ lo que te deja cada venta (31,1 %). Son los gastos cargados (Bs 7.978,00), las mermas (Bs 300,00) y los gastos pagados de la caja (Bs 110,00).",
+    );
+  });
+
+  it("las partes suman el total al centavo", () => {
+    // Redondeadas cada una por su lado decían "Bs 101 y Bs 201" bajo "Bs 301".
+    const mes = mesEnCurso({ ...base, gastosDelMes: 100.5 + 200.5 })!;
+    const nota = notaMeta({ cargados: 100.5, mermas: 200.5, cenas: 0, gastosCaja: 0, mes });
+    expect(nota).toMatch(/\(Bs 301,00\)/);
+    expect(nota).toMatch(/los gastos cargados \(Bs 100,50\) y las mermas \(Bs 200,50\)/);
+  });
+});
+
+describe("qué son los gastos del local en el billar", () => {
+  it("avisa que la cena y lo pagado de la caja no se cargan también ahí", () => {
+    expect(perfilResultado("BILLAR").queVaLocal).toMatch(/restaría dos veces/);
+    expect(perfilResultado("RESTAURANTE").queVaLocal).not.toMatch(/Supervisión/);
   });
 });

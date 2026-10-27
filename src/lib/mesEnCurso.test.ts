@@ -53,6 +53,63 @@ describe("la tarjeta del mes en curso", () => {
     expect(mesEnCurso({ ...OCTUBRE, ventas: 0, utilidadBruta: 0 })).toBeNull();
   });
 
+  it("sin diarios da exactamente lo de siempre", () => {
+    // Restaurante, farmacia y belleza no los mandan.
+    expect(mesEnCurso({ ...OCTUBRE, gastosDiarios: 0 })).toEqual(mesEnCurso(OCTUBRE));
+    expect(mesEnCurso(OCTUBRE)!.diariosDelMes).toBe(0);
+    expect(mesEnCurso(OCTUBRE)!.gastosMeta).toBe(7978);
+  });
+
+  it("las cenas solas no habilitan la tarjeta", () => {
+    // Un billar con cenas y sin el alquiler ni los sueldos cargados leía "Ya
+    // cubriste los gastos de octubre" y "Llevás Bs 8.800 a favor".
+    expect(mesEnCurso({ ...OCTUBRE, gastosDelMes: 0, gastosDiarios: 200 })).toBeNull();
+  });
+
+  it("los diarios se llevan al mes entero en la meta y en la proyección", () => {
+    // Al día 11 van Bs 220 de cenas: Bs 20 por noche, unos Bs 620 en el mes.
+    // Antes la meta los tomaba como el gasto del mes entero (220), quedaba
+    // corta y la proyección inflada en las cenas de las noches que faltan.
+    const m = mesEnCurso({ ...OCTUBRE, gastosDiarios: 220 })!;
+    expect(m.diariosDelMes).toBe(620);
+    expect(m.gastosMeta).toBe(8598);
+    // Pesan en la meta igual que un gasto del mes de Bs 620 más.
+    const comoFijo = mesEnCurso({ ...OCTUBRE, gastosDelMes: 7978 + 620 })!;
+    expect(m.meta).toBe(comoFijo.meta);
+    expect(m.faltaVender).toBe(comoFijo.faltaVender);
+    expect(m.proyeccion).toBe(comoFijo.proyeccion);
+    expect(m.meta).toBeGreaterThan(mesEnCurso(OCTUBRE)!.meta!);
+  });
+
+  it("la ganancia a la fecha resta lo que salió de verdad, no lo proyectado", () => {
+    const m = mesEnCurso({ ...OCTUBRE, ventas: 30000, utilidadBruta: 9334, gastosDiarios: 220 })!;
+    // 9.334 − 7.978 − 220: las cenas de las noches que faltan todavía no salieron.
+    expect(m.gananciaALaFecha).toBe(1136);
+  });
+
+  it("un monto de diarios negativo no baja la meta", () => {
+    expect(mesEnCurso({ ...OCTUBRE, gastosDiarios: -50 })).toEqual(mesEnCurso(OCTUBRE));
+    expect(mesEnCurso({ ...OCTUBRE, gastosDeCaja: -50 })).toEqual(mesEnCurso(OCTUBRE));
+  });
+
+  it("lo pagado de la caja cuenta una vez: no se lleva al mes entero", () => {
+    // Un arreglo de Bs 900 pagado de la caja no se repite cada noche. Llevado
+    // al mes (÷ 11 × 31) eran Bs 2.536 de meta en vez de 900.
+    const m = mesEnCurso({ ...OCTUBRE, gastosDeCaja: 900 })!;
+    expect(m.diariosDelMes).toBe(0);
+    expect(m.gastosMeta).toBe(8878);
+    const comoCargado = mesEnCurso({ ...OCTUBRE, gastosDelMes: 7978 + 900 })!;
+    expect(m.meta).toBe(comoCargado.meta);
+    expect(m.proyeccion).toBe(comoCargado.proyeccion);
+    // La ganancia a la fecha también lo resta.
+    expect(mesEnCurso({ ...OCTUBRE, ventas: 30000, utilidadBruta: 9334, gastosDeCaja: 100 })!.gananciaALaFecha).toBe(1256);
+  });
+
+  it("lo de la caja solo no habilita la tarjeta", () => {
+    // Sin el alquiler ni los sueldos cargados diría "Ya cubriste los gastos".
+    expect(mesEnCurso({ ...OCTUBRE, gastosDelMes: 0, gastosDeCaja: 900 })).toBeNull();
+  });
+
   it("el estimado se redondea a la centena, y a la decena si es chico", () => {
     expect(redondearEstimado(707.93)).toBe(700);
     expect(redondearEstimado(-1234)).toBe(-1200);

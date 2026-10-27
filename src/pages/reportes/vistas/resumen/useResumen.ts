@@ -2,11 +2,13 @@ import { api } from "../../../../lib/api";
 import { apiComisiones } from "../../../../lib/agenda/apiComisiones";
 import { rangoParaApi, sinJornada } from "../../../../lib/rangoApi";
 import { estadoResultado } from "../../../../lib/resultado";
+import { esBillar } from "../../../../lib/rubro";
 import { useApi } from "../../../../lib/useApi";
 import { useAuth } from "../../../../store/AuthContext";
 import type { RangoReporte } from "../../../../types";
 import { apiReportes } from "../../api";
 import { useReporte } from "../../contexto";
+import { gastosDeCaja } from "../EstadoResultado.datos";
 
 /**
  * Los gastos de los mismos días que las ventas, de medianoche local a
@@ -29,11 +31,16 @@ function gastosDe(r: RangoReporte) {
  */
 export function useDatosResumen({ paraTexto = false } = {}) {
   const { rango, rangoAnterior, periodo, veReporte } = useReporte();
-  const { usuario, puede, incluye } = useAuth();
+  const { usuario, puede, incluye, rubro } = useAuth();
   const permisos = usuario?.permisos ?? [];
   const rentabilidad = incluye("reportes_rentabilidad") && permisos.includes("reportes.rentabilidad");
   const operacion = incluye("reportes_operacion") && permisos.includes("reportes.operacion");
   const conGastos = rentabilidad && puede("gastos");
+  // Billar (25-oct): lo que se pagó de la caja (las cenas, los gastos de la
+  // caja) resta de la ganancia real como en el Estado de resultado. Sin esto,
+  // un billar con cenas veía acá más ganancia que allá, y la tarjeta dice que
+  // es el mismo número. Sólo con los gastos: sin ellos no hay ganancia real.
+  const conEfectivo = conGastos && esBillar(rubro);
   const conBillar = puede("reportes_billar");
   const verMeseros = veReporte("meseros");
   const verAgenda = veReporte("profesionales");
@@ -45,21 +52,32 @@ export function useDatosResumen({ paraTexto = false } = {}) {
   const ant = [rangoAnterior.desde, rangoAnterior.hasta];
 
   const resumen = useApi(() => apiReportes.resumen(rango, rangoAnterior), [...r, ...ant]);
-  // El financiero y los gastos van juntos: sin los gastos, la "ganancia real"
-  // sería la utilidad bruta disfrazada.
+  // El financiero, los gastos y el efectivo del billar van juntos: sin los
+  // gastos, la "ganancia real" sería la utilidad bruta disfrazada, y sin el
+  // efectivo, una ganancia sin las cenas. Si falla uno, falla la tarjeta (con
+  // su Reintentar) y el "Enviar resumen" va sin ganancia: nunca un número
+  // incompleto como si fuera el real.
   const plata = useApi(
     () =>
       rentabilidad
-        ? Promise.all([apiReportes.financiero(rango, rangoAnterior), conGastos ? gastosDe(rango) : Promise.resolve(null)])
+        ? Promise.all([
+            apiReportes.financiero(rango, rangoAnterior),
+            conGastos ? gastosDe(rango) : Promise.resolve(null),
+            conEfectivo ? apiReportes.efectivoBillar(rango) : Promise.resolve(null),
+          ])
         : Promise.resolve(null),
-    [rentabilidad, conGastos, ...r, ...ant],
+    [rentabilidad, conGastos, conEfectivo, ...r, ...ant],
   );
   const plataAnterior = useApi(
     () =>
       rentabilidad && conGastos && !paraTexto
-        ? Promise.all([apiReportes.financiero(rangoAnterior), gastosDe(rangoAnterior)])
+        ? Promise.all([
+            apiReportes.financiero(rangoAnterior),
+            gastosDe(rangoAnterior),
+            conEfectivo ? apiReportes.efectivoBillar(rangoAnterior) : Promise.resolve(null),
+          ])
         : Promise.resolve(null),
-    [rentabilidad, conGastos, paraTexto, ...ant, rango.sucursalId],
+    [rentabilidad, conGastos, conEfectivo, paraTexto, ...ant, rango.sucursalId],
   );
   const billar = useApi(() => (conBillar ? apiReportes.billar(rango, rangoAnterior) : Promise.resolve(null)), [conBillar, ...r, ...ant]);
   const meseros = useApi(() => (verMeseros ? apiReportes.meseros(rango) : Promise.resolve(null)), [verMeseros, ...r]);
@@ -89,10 +107,11 @@ export function useDatosResumen({ paraTexto = false } = {}) {
     [operacion, unDia, paraTexto, ...r],
   );
 
-  const [fin, gastos] = plata.datos ?? [null, null];
-  const er = fin && gastos ? estadoResultado(fin, gastos) : null;
-  const [finAnt, gastosAnt] = plataAnterior.datos ?? [null, null];
-  const erAnterior = finAnt && gastosAnt ? estadoResultado(finAnt, gastosAnt) : null;
+  // La misma cuenta que el Estado de resultado, con lo mismo que él resta.
+  const [fin, gastos, efectivo] = plata.datos ?? [null, null, null];
+  const er = fin && gastos ? estadoResultado(fin, gastos, gastosDeCaja(efectivo)) : null;
+  const [finAnt, gastosAnt, efectivoAnt] = plataAnterior.datos ?? [null, null, null];
+  const erAnterior = finAnt && gastosAnt ? estadoResultado(finAnt, gastosAnt, gastosDeCaja(efectivoAnt)) : null;
 
   return {
     resumen,

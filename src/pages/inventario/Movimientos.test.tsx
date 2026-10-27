@@ -278,7 +278,8 @@ describe("Agregar artículo a un movimiento pendiente", () => {
 
     // Elegido: el buscador se va y queda el artículo, con su stock.
     expect(within(dialogo).queryByRole("combobox", { name: "Buscar artículo" })).toBeNull();
-    expect(within(dialogo).getByText(/^48[.,]00 Unidad en stock$/)).toBeInTheDocument();
+    // Sin ",00": las unidades son "48", no "48,00" (Kevin, 25-oct).
+    expect(within(dialogo).getByText("48 Unidad en stock")).toBeInTheDocument();
 
     fireEvent.change(within(dialogo).getByLabelText("Cantidad"), { target: { value: "4" } });
     fireEvent.click(within(dialogo).getByRole("button", { name: "Guardar" }));
@@ -395,6 +396,30 @@ describe("El detalle no se cierra mientras se cargan renglones", () => {
       fireEvent.click(confirmar);
     });
     expect(api.aprobarMovimiento).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("Las cantidades del detalle van sin ,00 (Kevin, 25-oct)", () => {
+  it("la unidad entera se ve entera y el insumo, con sus tres decimales", async () => {
+    // Con dos decimales fijos salían "3,00" y "0,13": el 0,125 de un insumo
+    // redondeado, como si hubieran entrado cinco mililitros de más.
+    const entrada = movimiento(9, {
+      comprobante: "ENT-9",
+      detalles: [
+        { id: 90, productoId: 2, producto: "Coca Cola 2L", cantidad: 3, costo: 9, descripcion: null },
+        { id: 91, productoId: 1, producto: "Aceite Vegetal", cantidad: 0.125, costo: 16, descripcion: null },
+      ],
+    });
+    vi.mocked(api.getMovimientos).mockResolvedValue([entrada]);
+    vi.mocked(api.getMovimiento).mockResolvedValue(entrada);
+    render(<Movimientos />);
+    fireEvent.click(await screen.findByText("ENT-9"));
+    const detalle = await screen.findByRole("dialog", { name: "Detalle del movimiento" });
+
+    const coca = await within(detalle).findByRole("row", { name: /Coca Cola 2L/ });
+    expect(within(coca).getAllByRole("cell")[1]).toHaveTextContent(/^3$/);
+    const aceite = within(detalle).getByRole("row", { name: /Aceite Vegetal/ });
+    expect(within(aceite).getAllByRole("cell")[1]).toHaveTextContent(/^0,125$/);
   });
 });
 

@@ -104,6 +104,21 @@ function lineasDe(gastos: Gasto[], ventas: number, total: number): LineaGasto[] 
 
 // ── Estado de resultado ─────────────────────────────────────────────────────
 
+/**
+ * Billar (25-oct): lo que el administrador pagó de la caja de la cajera y SÍ es
+ * un gasto del local (`CODIGOS_GASTO` en `motivosMovimiento.ts`). Sale de `GET
+ * /billar/reportes/efectivo`: `porMotivo.CENA` y `porMotivo.GASTO`, sin lo
+ * anulado. Lo demás que movió la caja no viene a propósito: un pago a
+ * proveedor ya resta en el costo de lo vendido cada vez que se vende, y un
+ * retiro o el sencillo no son ni gasto ni venta.
+ */
+export interface GastosDeCaja {
+  /** Las cenas del personal. */
+  cenas: number;
+  /** Los gastos pagados de la caja: el hielo, la tiza, un arreglo. */
+  gastos: number;
+}
+
 export interface EstadoResultado {
   ventas: number;
   costoVentas: number;
@@ -111,6 +126,21 @@ export interface EstadoResultado {
   utilidadBruta: number;
   /** Mercadería perdida: resta debajo de la bruta. Cero si no hubo. */
   mermas: number;
+  /**
+   * Billar (24-oct): lo que salió de la caja en cenas del personal. Es un gasto
+   * del local con su propia línea (no se mezcla con los sueldos ni con los
+   * gastos cargados) y resta de la utilidad operativa. Cero si no hubo: la
+   * pantalla no dibuja una línea en cero.
+   */
+  cenasPersonal: number;
+  /**
+   * Billar (25-oct): lo que el administrador pagó de la caja como gasto del
+   * local, registrado en Supervisión con el motivo Gasto. Resta como las cenas
+   * y en su propia línea, separado de los gastos cargados en Gastos operativos:
+   * es la misma plata, y cargarla en los dos lados la restaría dos veces. Cero
+   * si no hubo.
+   */
+  gastosCaja: number;
   gastosOperativos: number;
   lineas: LineaGasto[];
   utilidadOperativa: number;
@@ -152,8 +182,16 @@ export interface EstadoResultado {
  * deja cada venta, y lo perdido se ve con su nombre. Antes no restaban en
  * ningún lado: una farmacia que tiraba Bs 2.000 de vencidos veía la misma
  * utilidad que si esa mercadería siguiera en el estante.
+ *
+ * Lo que el billar paga de la caja (`caja`: las cenas del personal desde el
+ * 24-oct, los gastos pagados de la caja desde el 25-oct) resta igual que los
+ * gastos del local, pero cada uno en su línea: sale de un movimiento de
+ * efectivo, no de un gasto cargado, y no hay que cargarlo dos veces. Lo que la
+ * caja movió sin ser un gasto (pagos a proveedores, retiros, el sencillo) no
+ * llega acá. Sin `caja` (todos los demás rubros) la cuenta es exactamente la
+ * de siempre.
  */
-export function estadoResultado(fin: FinancieroBase, gastos: Gasto[]): EstadoResultado {
+export function estadoResultado(fin: FinancieroBase, gastos: Gasto[], caja?: GastosDeCaja): EstadoResultado {
   const bajo = gastos.filter((g) => BAJO_LA_LINEA.has(g.categoria));
   const operativos = gastos.filter((g) => !BAJO_LA_LINEA.has(g.categoria));
 
@@ -164,7 +202,11 @@ export function estadoResultado(fin: FinancieroBase, gastos: Gasto[]): EstadoRes
   const ventas = fin.ventas ?? 0;
   const utilidadBruta = fin.utilidadBruta ?? 0;
   const mermas = aCentavos(fin.mermas ?? 0);
-  const utilidadOperativa = aCentavos(utilidadBruta - mermas - gastosOperativos);
+  // Nunca por debajo de cero: lo anulado ya viene descontado del backend, y un
+  // monto negativo restado le sumaría a la ganancia plata que no entró.
+  const cenasPersonal = aCentavos(Math.max(0, caja?.cenas ?? 0));
+  const gastosCaja = aCentavos(Math.max(0, caja?.gastos ?? 0));
+  const utilidadOperativa = aCentavos(utilidadBruta - mermas - gastosOperativos - cenasPersonal - gastosCaja);
   const antesDeImpuestos = aCentavos(utilidadOperativa - financieros);
   const utilidadNeta = aCentavos(antesDeImpuestos - impuestos);
   const ventasSinCosto = fin.ventasSinCosto ?? 0;
@@ -178,6 +220,8 @@ export function estadoResultado(fin: FinancieroBase, gastos: Gasto[]): EstadoRes
     ventasSinCosto,
     utilidadBruta,
     mermas,
+    cenasPersonal,
+    gastosCaja,
     gastosOperativos,
     lineas: lineasDe(operativos, ventas, gastosOperativos),
     utilidadOperativa,
@@ -198,6 +242,8 @@ export function estadoResultado(fin: FinancieroBase, gastos: Gasto[]): EstadoRes
       esCero(ventas) &&
       esCero(fin.costoVentas ?? 0) &&
       esCero(mermas) &&
+      esCero(cenasPersonal) &&
+      esCero(gastosCaja) &&
       esCero(comprasTotal) &&
       esCero(gastosOperativos) &&
       esCero(financieros) &&

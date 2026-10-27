@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { EncabezadoPagina } from "../../components/filtros";
 import { Badge, Boton, Campo, ErrorMsg, Kpi, Select } from "../../components/ui";
 import { api } from "../../lib/api";
-import { fmtNum, isoDia } from "../../lib/format";
+import { fmtCantidad, fmtNum, isoDia } from "../../lib/format";
 import { leerPlanilla } from "../../lib/planilla";
 import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
@@ -276,12 +276,14 @@ export default function ImportarMedicamentos() {
             Todavía no se cargó nada.
           </p>
           <div className="grid gap-3 sm:grid-cols-3">
+            {/* "con stock" cuenta filas (fmtNum); las unidades suman las cantidades del
+                Excel, que aceptan decimales: con fmtNum, 2,5 salía "3 unidades". */}
             <Kpi
               etiqueta="Para cargar"
               valor={fmtNum(revision.nuevos.length)}
               pie={
                 resumen.conStock > 0
-                  ? `${fmtNum(resumen.conStock)} con stock · ${fmtNum(resumen.unidades)} unidades`
+                  ? `${fmtNum(resumen.conStock)} con stock · ${fmtCantidad(resumen.unidades)} unidades`
                   : "Sólo al catálogo, sin stock"
               }
               icono="plus"
@@ -380,7 +382,7 @@ export default function ImportarMedicamentos() {
             </p>
             <p className="mt-0.5 text-sm">
               {final.unidades > 0
-                ? `Entraron ${fmtNum(final.unidades)} unidades al stock, con un ingreso "Inventario inicial" que se ve en Movimientos.`
+                ? `Entraron ${fmtCantidad(final.unidades)} unidades al stock, con un ingreso "Inventario inicial" que se ve en Movimientos.`
                 : "Sin stock: entraron sólo al catálogo."}
             </p>
             {final.existian > 0 && (

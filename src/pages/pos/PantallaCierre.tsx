@@ -1,7 +1,7 @@
 import { useState } from "react";
 import CorteDeCaja from "../../components/CorteDeCaja";
 import InputMonto from "../../components/InputMonto";
-import { esPositivo, parsearMontoO } from "../../lib/dinero";
+import { esPositivo } from "../../lib/dinero";
 import { leerMonto, montoParaEditar } from "../../lib/montoTecleado";
 import { Icon } from "../../components/Icon";
 import {
@@ -12,20 +12,20 @@ import {
   ErrorMsg,
   Input,
   Modal,
-  Select,
 } from "../../components/ui";
-import { api } from "../../lib/api";
-import { fmtHora, fmtMoney, fmtNum } from "../../lib/format";
+import { api, type ApiError } from "../../lib/api";
+import { fmtHora, fmtMoney } from "../../lib/format";
 import { useApi } from "../../lib/useApi";
 import { porSubir, useColaOffline } from "../../lib/offline/cola";
 import AvisoSinSubir from "../../components/offline/AvisoSinSubir";
 import { useAuth } from "../../store/AuthContext";
 import { esBelleza, esBillar } from "../../lib/rubro";
 import { cuandoCita } from "../../lib/agenda/horaAgenda";
-import type { Caja, CitaParaRevisar, MotivoRevisarCita } from "../../types";
-
-/** Motivo libre: es el único que pide escribir la descripción y el sentido. */
-const OTRO = "__otro__";
+import type { Caja, CitaParaRevisar, MotivoRevisarCita, RegistroDeCena, ReporteCierreProductos } from "../../types";
+import { bsResta } from "../reportes/formato";
+import DialogoMovimiento from "./DialogoMovimiento";
+import { efectivoDelCierre, type FilaEfectivoCierre } from "./efectivoDelCierre";
+import ListaProductosVendidos from "./ListaProductosVendidos";
 
 /**
  * La fila del billar en el arqueo, con el signo en el valor. El número es un
@@ -36,17 +36,6 @@ const OTRO = "__otro__";
  * en la app.
  */
 const ETIQUETA_ADELANTOS_BILLAR = "Adelantos de billar";
-
-/**
- * Los movimientos de efectivo que de verdad pasan en un turno. El motivo decide
- * el sentido: nadie ingresa un "pago a proveedor".
- */
-const MOTIVOS: { etiqueta: string; tipo: "INGRESO" | "EGRESO" }[] = [
-  { etiqueta: "Sencillo", tipo: "INGRESO" },
-  { etiqueta: "Devolución", tipo: "EGRESO" },
-  { etiqueta: "Pago a proveedor", tipo: "EGRESO" },
-  { etiqueta: "Retiro", tipo: "EGRESO" },
-];
 
 export default function PantallaCierre({
   caja,
@@ -102,8 +91,14 @@ export default function PantallaCierre({
   const propinasSalidas = r?.propinasSalidas ?? 0;
   const propinasOtras = r?.propinasOtras ?? 0;
   const hayPropinas = propinasEfectivo > 0 || propinasSalidas > 0;
-  const otrosIngresos = Math.round(((r?.ingresos ?? 0) - propinasEfectivo) * 100) / 100;
-  const otrosEgresos = Math.round(((r?.egresos ?? 0) - propinasSalidas) * 100) / 100;
+  // Billar: lo que el administrador registró desde Supervisión (la cena desde
+  // el 24-oct; un gasto, un retiro, el sencillo… desde el 25-oct). Ya está
+  // dentro de `ingresos`/`egresos`, como las propinas: cada uno sale en su
+  // renglón con quién lo registró, y "otros" queda para lo que no tiene
+  // motivo. Fuera del billar no hay ninguno y las cuentas son las de siempre.
+  const { cenaNeta, otrosIngresos, otrosEgresos, filas: conMotivo } = efectivoDelCierre(
+    r ?? { ingresos: 0, egresos: 0 },
+  );
   // Se lee como se escribe en Bolivia, "2.258,90" (ver `montoTecleado`). El
   // campo de antes pasaba la coma a punto y leía con Number(): "2.258,90"
   // llegaba como "2.258.90", que no es un número, y "1.000" valía Bs 1 (QA de
@@ -148,9 +143,21 @@ export default function PantallaCierre({
       const cerrada = await api.cerrarCaja(caja.id, {
         montoCierre: contadoNum,
         ...(nota.trim() ? { notaCierre: nota.trim() } : {}),
+        // Billar (25-oct): el administrador puede registrar o anular algo en
+        // esta caja desde Supervisión mientras la cajera cuenta. Sin esto se
+        // guardaba otra diferencia de la que ella vio (anulaban una cena, ella
+        // contaba 165 contra el 165 de su pantalla y quedaba "faltan Bs 20").
+        // Con el esperado que se le mostró, el backend frena el cierre si
+        // cambió. Los demás rubros cierran como siempre.
+        ...(esBillar(rubro) ? { esperadoVisto: esperado } : {}),
       });
       onCerrada(cerrada);
     } catch (err) {
+      if ((err as ApiError | null)?.codigo === "ESPERADO_CAMBIO") {
+        // Se trae el arqueo nuevo: el esperado y la diferencia de abajo pasan
+        // al número de ahora, y el mensaje dice por qué cambió.
+        resumen.recargar();
+      }
       setError(err instanceof Error ? err.message : "No se pudo cerrar la caja");
     } finally {
       setEnviando(false);
@@ -262,7 +269,10 @@ export default function PantallaCierre({
                       <Fila etiqueta="Ventas en efectivo" valor={r.efectivo} />
                       {/* El cambio ya está descontado de las ventas: se cuenta
                           cómo se llegó, sin restarlo otra vez. */}
-                      {r.cambioEntregado > 0 && (
+                      {/* En el billar no: la cajera cuenta el cajón, y "recibido 200 · cambio
+                          70" sólo la hacía dudar de por qué las ventas en efectivo (130) son
+                          menos que los billetes que tocó (QA de Kevin, 25-oct). */}
+                      {r.cambioEntregado > 0 && !esBillar(rubro) && (
                         <p className="pl-3 text-[12px] text-texto-4">
                           Recibido {fmtMoney(r.efectivo + r.cambioEntregado)} · cambio entregado{" "}
                           {fmtMoney(r.cambioEntregado)}
@@ -298,6 +308,10 @@ export default function PantallaCierre({
                         valor={-otrosEgresos}
                       />
                     )}
+                    {cenaNeta > 0 && <FilaCena neta={cenaNeta} registros={r.cenasRegistros ?? []} />}
+                    {conMotivo.map((f) => (
+                      <FilaConMotivo key={f.id} f={f} />
+                    ))}
                     {/* La fila que hace cerrar el arqueo cuando el mesero cobra.
                         Esa plata ya está en las ventas en efectivo, pero en el
                         delantal: el backend la resta del esperado. Sin mostrar la
@@ -445,8 +459,10 @@ export default function PantallaCierre({
               >
                 {/* Lo vendido sale de Reportes (encargado o dueño): a quien no
                     lo puede ver (recepción) el botón le daba "no tenés
-                    permiso" y "no se vendió nada" a la vez (QA DIA-10). */}
-                {puede("reportes") && (
+                    permiso" y "no se vendió nada" a la vez (QA DIA-10). En el
+                    billar lo ve también la cajera: sale del arqueo, que ya lo
+                    trae (QA de Kevin, 25-oct). */}
+                {(puede("reportes") || (esBillar(rubro) && r.productos != null)) && (
                   <button
                     type="button"
                     onClick={() => setViendoProductos(true)}
@@ -456,7 +472,7 @@ export default function PantallaCierre({
                     {/* "Mostrador" es palabra de restaurante: en un salón se
                         venden servicios (QA B-21). */}
                     <span className="flex-1">
-                      {esBelleza(rubro) ? "Ver lo vendido" : "Ver qué salió del mostrador"}
+                      {esBelleza(rubro) || esBillar(rubro) ? "Ver lo vendido" : "Ver qué salió del mostrador"}
                     </span>
                     <Icon name="chevronRight" size={16} />
                   </button>
@@ -533,7 +549,11 @@ export default function PantallaCierre({
       </div>
 
       {viendoProductos && (
-        <ProductosDelTurno cajaId={caja.id} onClose={() => setViendoProductos(false)} />
+        <ProductosDelTurno
+          cajaId={caja.id}
+          productos={esBillar(rubro) ? r?.productos : undefined}
+          onClose={() => setViendoProductos(false)}
+        />
       )}
 
       {movimientoAbierto && (
@@ -546,6 +566,61 @@ export default function PantallaCierre({
             resumen.recargar();
           }}
         />
+      )}
+    </div>
+  );
+}
+
+/**
+ * La cena del personal en el arqueo del billar: lo que salió del cajón para la
+ * cena de la cajera, con quién lo registró. En violeta, como en Supervisión,
+ * para que se vea de dónde sale la diferencia con el efectivo de antes.
+ */
+function FilaCena({ neta, registros }: { neta: number; registros: RegistroDeCena[] }) {
+  const vivas = registros.filter((x) => !x.anulada);
+  const ultima = vivas[vivas.length - 1];
+  const quien = ultima?.quien ? `${ultima.quien} · ${fmtHora(ultima.fecha)}` : "";
+  const detalle =
+    vivas.length > 1
+      ? `${vivas.length} registros · el último, ${quien}`
+      : quien
+        ? `Lo registró ${quien}`
+        : "";
+  return (
+    <div className="-mx-1 rounded-xl bg-violet-50 px-3 py-2 text-violet-800">
+      <div className="flex items-center justify-between gap-2 font-bold">
+        <dt className="flex items-center gap-2">
+          <Icon name="cubiertos" size={15} />
+          Cena
+        </dt>
+        <dd>{bsResta(neta)}</dd>
+      </div>
+      {detalle && <p className="ml-[23px] text-[12px] text-violet-700">{detalle}</p>}
+    </div>
+  );
+}
+
+/**
+ * Un movimiento que el administrador registró con motivo en la caja de la
+ * cajera (billar, 25-oct): qué fue, quién y a qué hora. Gris y no violeta: el
+ * violeta es de la cena, que tiene su reporte.
+ */
+function FilaConMotivo({ f }: { f: FilaEfectivoCierre }) {
+  return (
+    <div className="-mx-1 rounded-xl bg-slate-50 px-3 py-2 text-texto-2">
+      {/* Sin cortar con "…": en el celular "Pago a proveedor · Distribui…"
+          escondía justo a quién se le pagó. */}
+      <div className="flex items-start justify-between gap-2 font-semibold">
+        <dt className="flex min-w-0 items-start gap-2">
+          <Icon name="swap" size={15} className="mt-[3px] shrink-0" />
+          <span className="min-w-0 break-words">{f.etiqueta}</span>
+        </dt>
+        <dd className="shrink-0">{f.valor < 0 ? bsResta(-f.valor) : fmtMoney(f.valor)}</dd>
+      </div>
+      {f.quien && (
+        <p className="ml-[23px] text-[12px] text-texto-3">
+          Lo registró {f.quien} · {fmtHora(f.fecha)}
+        </p>
       )}
     </div>
   );
@@ -571,154 +646,6 @@ function Fila({
       <dt className={sangria ? "text-[13px]" : ""}>{etiqueta}</dt>
       <dd className={sangria ? "text-[13px]" : ""}>{fmtMoney(valor)}</dd>
     </div>
-  );
-}
-
-function DialogoMovimiento({
-  cajaId,
-  onClose,
-  onGuardado,
-}: {
-  cajaId: number;
-  onClose: () => void;
-  onGuardado: () => void;
-}) {
-  const [tipo, setTipo] = useState<"INGRESO" | "EGRESO">("EGRESO");
-  const [motivo, setMotivo] = useState<string>(OTRO);
-  const [monto, setMonto] = useState("");
-  const [descripcion, setDescripcion] = useState("");
-  const [error, setError] = useState("");
-  const [enviando, setEnviando] = useState(false);
-
-  async function guardar() {
-    setError("");
-    const m = parsearMontoO(monto, NaN);
-    if (!Number.isFinite(m) || m <= 0) return setError("Poné un monto mayor a cero.");
-    if (!descripcion.trim()) return setError("Contá para qué fue el movimiento.");
-
-    setEnviando(true);
-    try {
-      await api.crearMovimientoCaja(cajaId, {
-        tipo,
-        monto: m,
-        descripcion: descripcion.trim(),
-      });
-      onGuardado();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo registrar");
-    } finally {
-      setEnviando(false);
-    }
-  }
-
-  return (
-    <Modal
-      abierto
-      titulo="Movimiento de efectivo"
-      subtitulo="Entradas y salidas que no son ventas"
-      onClose={onClose}
-      ancho="max-w-sm"
-      acciones={
-        <>
-          <Boton variante="ghost" onClick={onClose}>
-            Cancelar
-          </Boton>
-          <Boton onClick={guardar} disabled={enviando}>
-            {enviando ? "Guardando…" : "Registrar"}
-          </Boton>
-        </>
-      }
-    >
-      <div className="space-y-3">
-        {/* Los motivos de siempre, que además deciden el sentido: elegir
-            "Sencillo" y tener que marcar aparte que es un ingreso es pedirle al
-            cajero que traduzca algo que el motivo ya dice. */}
-        <Campo label="Motivo">
-          <div className="flex flex-wrap gap-2">
-            {MOTIVOS.map((m) => (
-              <button
-                key={m.etiqueta}
-                type="button"
-                onClick={() => {
-                  setMotivo(m.etiqueta);
-                  setTipo(m.tipo);
-                  // Con un motivo de la lista la descripción es la etiqueta:
-                  // no hay nada más que escribir.
-                  setDescripcion(m.etiqueta);
-                }}
-                className={`rounded-xl px-3 py-2 text-[13px] font-semibold transition-colors ${
-                  motivo === m.etiqueta
-                    ? "bg-primary-boton text-white"
-                    : "border border-borde bg-white text-texto-2 hover:bg-muted"
-                }`}
-              >
-                {m.etiqueta}
-              </button>
-            ))}
-            <button
-              type="button"
-              onClick={() => {
-                setMotivo(OTRO);
-                setDescripcion("");
-              }}
-              className={`rounded-xl px-3 py-2 text-[13px] font-semibold transition-colors ${
-                motivo === OTRO
-                  ? "bg-primary-boton text-white"
-                  : "border border-borde bg-white text-texto-2 hover:bg-muted"
-              }`}
-            >
-              Otro
-            </button>
-          </div>
-          <p
-            className={`mt-1.5 text-xs font-semibold ${
-              tipo === "INGRESO" ? "text-primary-700" : "text-danger-text"
-            }`}
-          >
-            {tipo === "INGRESO" ? "Entra plata a la caja" : "Sale plata de la caja"}
-          </p>
-        </Campo>
-
-        {motivo === OTRO && (
-          <Campo label="Tipo">
-            <Select
-              value={tipo}
-              onChange={(e) => setTipo(e.target.value as "INGRESO" | "EGRESO")}
-            >
-              <option value="EGRESO">Egreso — sale plata de la caja</option>
-              <option value="INGRESO">Ingreso — entra plata a la caja</option>
-            </Select>
-          </Campo>
-        )}
-
-        <Campo label="Monto">
-          <Input
-            type="number"
-            inputMode="decimal"
-            step="0.01"
-            min="0"
-            value={monto}
-            onChange={(e) => setMonto(e.target.value)}
-            autoFocus
-            className="font-bold"
-          />
-        </Campo>
-
-        {/* Con un motivo de la lista la descripción ya está resuelta; sólo
-            "Otro" obliga a escribirla. */}
-        {motivo === OTRO && (
-          <Campo label="Descripción">
-            <Input
-              value={descripcion}
-              onChange={(e) => setDescripcion(e.target.value)}
-              placeholder={tipo === "EGRESO" ? "Ej. compra de hielo" : "Ej. vuelto del dueño"}
-            />
-          </Campo>
-        )}
-
-        <ErrorMsg>{error}</ErrorMsg>
-      </div>
-    </Modal>
   );
 }
 
@@ -887,13 +814,24 @@ export function CierreOk({ caja, onSalir }: { caja: Caja; onSalir: () => void })
  */
 export function ProductosDelTurno({
   cajaId,
+  productos,
   onClose,
 }: {
   cajaId: number;
+  /**
+   * Lo vendido ya cargado (viene con el arqueo, y lo puede ver quien opera la
+   * caja aunque no tenga reportes). Sin esto se pide a los reportes.
+   */
+  productos?: ReporteCierreProductos;
   onClose: () => void;
 }) {
-  const datos = useApi(() => api.reporteCierreProductos(cajaId), [cajaId]);
-  const d = datos.datos;
+  const remoto = useApi(
+    () => (productos ? Promise.resolve(null) : api.reporteCierreProductos(cajaId)),
+    [cajaId, productos != null],
+  );
+  const d = productos ?? remoto.datos;
+  const cargando = !productos && remoto.cargando;
+  const error = productos ? null : remoto.error;
 
   /** Una fila por producto, con su categoría, para que la planilla se pueda ordenar. */
   function exportar() {
@@ -951,48 +889,16 @@ export function ProductosDelTurno({
       }
     >
       <div className="space-y-3">
-        <ErrorMsg>{datos.error}</ErrorMsg>
+        <ErrorMsg>{error}</ErrorMsg>
         {/* Con error, sólo el error: "no se vendió nada" sería falso. */}
-        {datos.cargando ? (
+        {cargando ? (
           <Cargando />
-        ) : datos.error ? null : !d || d.lineas === 0 ? (
+        ) : error ? null : !d || d.lineas === 0 ? (
           <p className="py-6 text-center text-[13px] text-texto-3">
             En este turno todavía no se vendió nada.
           </p>
         ) : (
-          <>
-            <div className="flex justify-between rounded-xl bg-muted px-3.5 py-2.5 text-[13px]">
-              <span className="text-texto-2">
-                {fmtNum(d.unidades, 2)} unidades · {fmtNum(d.lineas)}{" "}
-                {d.lineas === 1 ? "producto" : "productos"}
-              </span>
-              <span className="font-bold text-texto">{fmtMoney(d.total)}</span>
-            </div>
-
-            {d.categorias.map((c) => (
-              <div key={c.nombre}>
-                <div className="flex items-baseline justify-between">
-                  <h4 className="text-[13px] font-bold text-texto">{c.nombre}</h4>
-                  <span className="text-xs text-texto-3">
-                    {fmtNum(c.unidades, 2)} u · {fmtMoney(c.total)}
-                  </span>
-                </div>
-                <ul className="mt-1 divide-y divide-borde-soft">
-                  {c.items.map((i) => (
-                    <li key={i.nombre} className="flex items-center gap-2 py-1.5 text-[13px]">
-                      <span className="min-w-0 flex-1 truncate text-texto-2">{i.nombre}</span>
-                      <span className="shrink-0 text-texto-3">
-                        {fmtNum(i.cantidad, 2)} × {fmtMoney(i.precio)}
-                      </span>
-                      <span className="w-20 shrink-0 text-right font-bold text-texto">
-                        {fmtMoney(i.total)}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ))}
-          </>
+          <ListaProductosVendidos d={d} />
         )}
       </div>
     </Modal>

@@ -141,7 +141,8 @@ function filasDeCaja(): [string, number][] {
   const titulo = screen.getByText("Efectivo en caja");
   const dl = titulo.nextElementSibling as HTMLElement;
   return Array.from(dl.querySelectorAll("dt")).map((dt) => {
-    const txt = (dt.nextElementSibling?.textContent ?? "").replace(/[^\d,-]/g, "").replace(",", ".");
+    // El signo menos puede venir como "−" (la fila de la cena: «−Bs 20,00») o como "-".
+    const txt = (dt.nextElementSibling?.textContent ?? "").replace(/−/g, "-").replace(/[^\d,-]/g, "").replace(",", ".");
     return [dt.textContent ?? "", Number(txt)];
   });
 }
@@ -191,6 +192,231 @@ describe("QA VER-01 / DIA-11: las filas del cajón suman el esperado", () => {
     const filas = filasDeCaja();
     expect(filas).toContainEqual(["Otros ingresos de efectivo", 10]);
     expect(filas.reduce((s, [, m]) => s + m, 0)).toBe(463);
+  });
+});
+
+describe("billar (24-oct): la cena del personal que registró el administrador", () => {
+  it("sale en su fila con quién la registró, y las filas siguen sumando el esperado", async () => {
+    sesion.rubro = "BILLAR";
+    // Fondo 50 + efectivo 115 − cena 20 = 145 (en vez de los 165 de antes).
+    vi.mocked(api.resumenCaja).mockResolvedValue(
+      resumen({
+        montoApertura: 50,
+        efectivo: 115,
+        egresos: 20,
+        cenasSalidas: 20,
+        cenasDevueltas: 0,
+        cenasRegistros: [{ id: 5, monto: 20, fecha: "2026-10-23T21:32:00.000Z", quien: "Miguel", anulada: false }],
+        saldoEsperado: 145,
+      }),
+    );
+    await montar();
+    const filas = filasDeCaja();
+    expect(filas.map(([e]) => e)).toEqual(["Fondo de apertura", "Ventas en efectivo", "Cena"]);
+    expect(Math.round(filas.reduce((s, [, m]) => s + m, 0) * 100) / 100).toBe(145);
+    expect(screen.getByText(/Lo registró Miguel/)).toBeInTheDocument();
+    // La cena no se cuenta dos veces: ni como "egresos de efectivo".
+    expect(screen.queryByText("Egresos de efectivo")).not.toBeInTheDocument();
+    expect(screen.queryByText("Otros egresos de efectivo")).not.toBeInTheDocument();
+  });
+
+  it("billar: no dice «Recibido… cambio entregado» bajo las ventas en efectivo (la cajera cuenta el cajón)", async () => {
+    sesion.rubro = "BILLAR";
+    vi.mocked(api.resumenCaja).mockResolvedValue(
+      resumen({ montoApertura: 50, efectivo: 130, cambioEntregado: 70, saldoEsperado: 180 }),
+    );
+    await montar();
+    expect(filasDeCaja().map(([e]) => e)).toEqual(["Fondo de apertura", "Ventas en efectivo"]);
+    expect(screen.queryByText(/cambio entregado/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Recibido/)).not.toBeInTheDocument();
+  });
+
+  it("billar: la cajera (sin reportes) ve lo vendido del turno, que ya viene con el arqueo", async () => {
+    sesion.rubro = "BILLAR";
+    sesion.reportes = false;
+    vi.mocked(api.resumenCaja).mockResolvedValue(
+      resumen({
+        productos: {
+          unidades: 4,
+          total: 60,
+          lineas: 1,
+          categorias: [
+            {
+              nombre: "Cervezas",
+              unidades: 4,
+              total: 60,
+              items: [{ nombre: "Paceña 620 ml", cantidad: 4, precio: 15, total: 60 }],
+            },
+          ],
+        },
+      }),
+    );
+    await montar();
+    // Con el rótulo del billar: «mostrador» es palabra de restaurante.
+    fireEvent.click(screen.getByText("Ver lo vendido"));
+    expect(await screen.findByText("Productos vendidos")).toBeInTheDocument();
+    expect(screen.getByText("Paceña 620 ml")).toBeInTheDocument();
+    expect(screen.getByText("Cervezas")).toBeInTheDocument();
+    // La cantidad sin ceros y la plata con centavos (Kevin, 25-oct): "4 u × Bs 15,00".
+    expect(screen.getByText("4 u × Bs 15,00")).toBeInTheDocument();
+    expect(screen.getByText("4 unidades · 1 producto")).toBeInTheDocument();
+    // Sin pedirlo a los reportes, que la cajera no puede ver.
+    expect(api.reporteCierreProductos).not.toHaveBeenCalled();
+  });
+
+  it("restaurante: el modal de lo vendido, con la cantidad sin ceros y la plata con centavos", async () => {
+    sesion.rubro = "RESTAURANTE";
+    vi.mocked(api.resumenCaja).mockResolvedValue(resumen());
+    vi.mocked(api.reporteCierreProductos).mockResolvedValue({
+      unidades: 4,
+      total: 60,
+      lineas: 1,
+      categorias: [
+        { nombre: "Cervezas", unidades: 4, total: 60, items: [{ nombre: "Paceña 620 ml", cantidad: 4, precio: 15, total: 60 }] },
+      ],
+    });
+    await montar();
+    fireEvent.click(screen.getByText("Ver qué salió del mostrador"));
+    expect(await screen.findByText("Productos vendidos")).toBeInTheDocument();
+    // Toda la web (Kevin, 25-oct): "4,00" se leía como plata.
+    expect(await screen.findByText("4 u × Bs 15,00")).toBeInTheDocument();
+  });
+
+  it("billar: sin lo vendido en el arqueo (un servidor anterior) la cajera no ve el botón", async () => {
+    sesion.rubro = "BILLAR";
+    sesion.reportes = false;
+    vi.mocked(api.resumenCaja).mockResolvedValue(resumen());
+    await montar();
+    expect(screen.queryByText("Ver lo vendido")).not.toBeInTheDocument();
+  });
+
+  it("un retiro común va aparte de la cena, como «egresos»", async () => {
+    sesion.rubro = "BILLAR";
+    vi.mocked(api.resumenCaja).mockResolvedValue(
+      resumen({
+        montoApertura: 50,
+        efectivo: 115,
+        egresos: 25,
+        cenasSalidas: 20,
+        cenasRegistros: [{ id: 5, monto: 20, fecha: "2026-10-23T21:32:00.000Z", quien: "Miguel", anulada: false }],
+        saldoEsperado: 140,
+      }),
+    );
+    await montar();
+    const filas = filasDeCaja();
+    expect(filas).toContainEqual(["Egresos de efectivo", -5]);
+    expect(filas).toContainEqual(["Cena", -20]);
+    expect(filas.reduce((s, [, m]) => s + m, 0)).toBe(140);
+  });
+
+  it("una cena anulada vuelve al esperado y no deja ninguna fila", async () => {
+    sesion.rubro = "BILLAR";
+    vi.mocked(api.resumenCaja).mockResolvedValue(
+      resumen({
+        montoApertura: 50,
+        efectivo: 115,
+        egresos: 20,
+        ingresos: 20,
+        cenasSalidas: 20,
+        cenasDevueltas: 20,
+        cenasRegistros: [{ id: 5, monto: 20, fecha: "2026-10-23T21:32:00.000Z", quien: "Miguel", anulada: true }],
+        saldoEsperado: 165,
+      }),
+    );
+    await montar();
+    const filas = filasDeCaja();
+    expect(filas.map(([e]) => e)).toEqual(["Fondo de apertura", "Ventas en efectivo"]);
+    expect(filas.reduce((s, [, m]) => s + m, 0)).toBe(165);
+  });
+
+  it("un cierre sin cenas sale como siempre", async () => {
+    sesion.rubro = "BILLAR";
+    vi.mocked(api.resumenCaja).mockResolvedValue(resumen({ montoApertura: 50, efectivo: 115, saldoEsperado: 165 }));
+    await montar();
+    expect(filasDeCaja().map(([e]) => e)).toEqual(["Fondo de apertura", "Ventas en efectivo"]);
+    expect(screen.queryByText("Cena")).not.toBeInTheDocument();
+  });
+});
+
+describe("billar (25-oct): lo que el administrador registró con motivo en la caja de la cajera", () => {
+  const registro = (id: number, codigo: "GASTO" | "RETIRO" | "SENCILLO", tipo: "INGRESO" | "EGRESO", monto: number, descripcion: string) => ({
+    id,
+    codigo,
+    tipo,
+    monto,
+    descripcion,
+    fecha: "2026-10-25T23:00:00.000Z",
+    quien: "Miguel",
+    anulado: null,
+  });
+
+  it("cada movimiento sale en su renglón con quién lo registró, y las filas suman el esperado", async () => {
+    sesion.rubro = "BILLAR";
+    // Fondo 50 + efectivo 500 − hielo 30 − retiro 300 + sencillo 100 = 320.
+    // Antes la cajera veía un "Egresos de efectivo −330" suelto, sin saber qué fue.
+    vi.mocked(api.resumenCaja).mockResolvedValue(
+      resumen({
+        montoApertura: 50,
+        efectivo: 500,
+        egresos: 330,
+        ingresos: 100,
+        efectivoRegistros: [
+          registro(3, "GASTO", "EGRESO", 30, "Hielo"),
+          registro(4, "RETIRO", "EGRESO", 300, "Retiro"),
+          registro(5, "SENCILLO", "INGRESO", 100, "Sencillo"),
+        ],
+        saldoEsperado: 320,
+      }),
+    );
+    await montar();
+    const filas = filasDeCaja();
+    expect(filas.map(([e]) => e)).toEqual(["Fondo de apertura", "Ventas en efectivo", "Gasto · Hielo", "Retiro", "Sencillo"]);
+    expect(Math.round(filas.reduce((s, [, m]) => s + m, 0) * 100) / 100).toBe(320);
+    expect(screen.getAllByText(/Lo registró Miguel/)).toHaveLength(3);
+    expect(screen.queryByText("Egresos de efectivo")).not.toBeInTheDocument();
+  });
+
+  it("al cerrar manda el esperado que vio; si el administrador lo cambió, no cierra: trae el nuevo y lo dice", async () => {
+    sesion.rubro = "BILLAR";
+    vi.mocked(api.resumenCaja)
+      .mockResolvedValueOnce(resumen({ montoApertura: 50, efectivo: 115, saldoEsperado: 165 }))
+      .mockResolvedValueOnce(resumen({ montoApertura: 50, efectivo: 115, egresos: 20, saldoEsperado: 145 }));
+    vi.mocked(api.cerrarCaja).mockRejectedValue(
+      Object.assign(new Error("El efectivo que debería haber en la caja cambió mientras contabas: ahora es Bs 145,00."), {
+        codigo: "ESPERADO_CAMBIO",
+      }),
+    );
+    const alCerrar = vi.fn();
+    render(
+      <PantallaCierre
+        caja={{ id: 1, fechaApertura: "2026-10-25T20:00:00.000Z", montoApertura: 50 } as Caja}
+        onAtras={() => {}}
+        onCerrada={alCerrar}
+      />,
+    );
+    await act(async () => {});
+    fireEvent.change(screen.getByPlaceholderText("0,00"), { target: { value: "165" } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Cerrar caja" }));
+    });
+    expect(api.cerrarCaja).toHaveBeenCalledWith(1, { montoCierre: 165, esperadoVisto: 165 });
+    expect(alCerrar).not.toHaveBeenCalled();
+    expect(screen.getByText(/cambió mientras contabas/)).toBeInTheDocument();
+    // Se volvió a pedir el arqueo: ahora la diferencia es contra el esperado nuevo.
+    expect(api.resumenCaja).toHaveBeenCalledTimes(2);
+    expect(await screen.findByText("Sobrante")).toBeInTheDocument();
+  });
+
+  it("restaurante: cierra como siempre, sin mandar el esperado", async () => {
+    sesion.rubro = "RESTAURANTE";
+    vi.mocked(api.resumenCaja).mockResolvedValue(resumen());
+    vi.mocked(api.cerrarCaja).mockResolvedValue({ id: 1 } as Caja);
+    await montar();
+    fireEvent.change(screen.getByPlaceholderText("0,00"), { target: { value: "430" } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Cerrar caja" }));
+    });
+    expect(api.cerrarCaja).toHaveBeenCalledWith(1, { montoCierre: 430 });
   });
 });
 

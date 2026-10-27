@@ -1,5 +1,5 @@
 import { request } from "../../lib/api";
-import type { ConsumoVista, CreditoInput, FormaPago, PagoInput } from "../../types";
+import type { CodigoMotivoEfectivo, ConsumoVista, CreditoInput, FormaPago, PagoInput, ReporteCierreProductos } from "../../types";
 import type {
   AjustesBillar,
   CuentaSinMesa,
@@ -129,6 +129,11 @@ export interface CajaSupervisionApi {
   id: number;
   abierta: boolean;
   cajero: string;
+  /**
+   * Quién la abrió (backend del 25-oct): con dos cajas abiertas, el cuadro de
+   * movimientos propone la que NO es de quien registra. Un backend anterior no lo manda.
+   */
+  cajeroId?: number;
   desde: number;
   hasta: number | null;
   inicial: number;
@@ -138,9 +143,179 @@ export interface CajaSupervisionApi {
   /** Quién la cerró, si no se sabe (cajas viejas) fue quien la abrió. Otro puede cerrar la caja de la cajera. */
   cerroPor?: string;
   nota?: string;
+  /** La cena del personal de este turno y quién la dio (backend del 24-oct); sin las anuladas. */
+  cena?: { monto: number; por: string };
   ventas: number;
   vendido: number;
   anuladas: number;
+  /**
+   * Lo cobrado por medio (backend del 26-oct): los pagos de las ventas
+   * aprobadas de esta caja. Miguel veía "Abrió con Bs 50 · Vendió Bs 676 ·
+   * Contó Bs 616 · sobran Bs 10" y no le cerraba la cuenta: Bs 120 se cobraron
+   * por QR, que va a la cuenta del negocio y no al cajón. Un backend anterior
+   * no lo manda y la caja se ve como antes.
+   */
+  cobrado?: CobradoPorMedioApi;
+  /**
+   * El efectivo que debía haber en la caja (backend del 26-oct). Cerrada: el
+   * que calculó el sistema al cerrarla (lo contado menos la diferencia, el
+   * mismo número que vio la cajera). Abierta: el de ahora.
+   */
+  esperado?: number;
+  /**
+   * Lo que entró y salió del cajón por movimientos que no son la cena
+   * (ingresos − egresos; los anulados se cancelan). Para que el pie de
+   * "Debía haber" lo nombre con su número.
+   */
+  movimientos?: number;
+  /** Abierta: el efectivo de adelantos de mesas del arqueo de ahora (puede ser negativo). */
+  adelantos?: number;
+}
+
+/** Lo cobrado por cada medio en una caja. `cobros` son renglones de pago, como los de Métodos de pago. */
+export interface CobradoPorMedioApi {
+  efectivo: { monto: number; cobros: number };
+  qr: { monto: number; cobros: number };
+  otros: { nombre: string; monto: number; cobros: number }[];
+  /** Ventas pagadas con más de un medio: cuentan en los dos. */
+  mixtas: number;
+}
+
+/**
+ * Un cobro: un pago de una venta, con la hora en que entró de verdad (backend
+ * del 26-oct). Lo mismo para el detalle de una caja y para "Cobrado por QR" de
+ * Métodos de pago: es lo que el administrador compara contra su banco, renglón
+ * por renglón (hora y monto).
+ */
+export interface CobroApi {
+  /** "vp12" (un pago de una venta) o "pb7" (un adelanto de una mesa que sigue abierta). */
+  id: string;
+  /** La hora real: la del adelanto si se cobró antes de cerrar; si no, la de la venta. */
+  hora: number;
+  /** "Efectivo", "QR" o el nombre de la forma de pago. */
+  medio: string;
+  monto: number;
+  /** PREPAGO, EXTENSION o ADELANTO: se cobró antes de cerrar la mesa. Sin él, al cobrar. */
+  concepto?: string;
+  /** Quién lo cobró. */
+  por: string;
+  venta?: {
+    id: number;
+    codigo: string;
+    total: number;
+    origen: "mesa" | "cuenta" | "rapida";
+    mesaId?: number;
+    cuenta?: string;
+    /** 0 si no es una mesa. */
+    tiempoMin: number;
+    /** Lo consumido, sin el renglón del tiempo de mesa. */
+    items: { nombre: string; cant: number }[];
+    /** Los medios distintos de la venta: con dos o más se pagó parte y parte. */
+    medios: string[];
+  };
+  /** Sólo en los de mesas o cuentas que siguen abiertas (todavía no hay venta). */
+  sesion?: { id: number; mesaId?: number; cuenta?: string };
+}
+
+/** El arqueo de una caja, con los mismos números que vio la cajera al cerrar (`calcularResumen`). */
+export interface ArqueoCajaApi {
+  /** El cambio con que se abrió. */
+  inicial: number;
+  /** Lo cobrado en efectivo en las ventas de esta caja. */
+  efectivoVentas: number;
+  /**
+   * Efectivo de adelantos y tiempo fijo de mesas: lo que entró a este cajón y
+   * ninguna venta de esta caja cuenta todavía, menos lo que una venta de esta
+   * caja cuenta y entró en otro cajón. Puede ser negativo.
+   */
+  adelantosBillar: number;
+  /**
+   * Los dos lados de `adelantosBillar` (= `adelantosAca − adelantosDeOtraCaja`):
+   * lo que entró a este cajón sin una venta de esta caja que lo cuente, y lo
+   * que una venta de esta caja cuenta y entró en otro cajón. Un servidor
+   * anterior no los manda.
+   */
+  adelantosAca?: number;
+  adelantosDeOtraCaja?: number;
+  /** Cobros de fiado en efectivo. */
+  abonosEfectivo: number;
+  /** Todos los ingresos y egresos de efectivo de la caja (con los anulados y sus anulaciones). */
+  ingresos: number;
+  egresos: number;
+  enPoderDeMeseros: number;
+  /** El esperado de AHORA. */
+  esperado: number;
+  /** Cerrada: el esperado que quedó al cerrarla. Puede no ser el de ahora si después se anuló una venta. */
+  esperadoAlCerrar: number | null;
+  contado: number | null;
+  diferencia: number | null;
+}
+
+/** Una venta de la caja que se anuló: no cuenta en nada de lo de arriba. */
+export interface AnuladaCajaApi {
+  id: number;
+  codigo: string;
+  total: number;
+  hora: number;
+  quien: string;
+  motivo?: string;
+  /** Se anuló con la caja ya cerrada: el arqueo de la cajera todavía la contaba. */
+  despuesDelCierre?: boolean;
+}
+
+/**
+ * El detalle de una caja (`GET /billar/supervision/caja/:id`, backend del
+ * 26-oct): qué se cobró por QR y qué en efectivo, venta por venta, y la cuenta
+ * del efectivo que debía haber en el cajón.
+ */
+export interface DetalleCajaApi {
+  /** La misma fila de la lista de cajas. */
+  caja: CajaSupervisionApi;
+  arqueo: ArqueoCajaApi;
+  /** Todos los movimientos de efectivo de la caja (los anulados, tachados). */
+  movimientos: MovimientoSupervisionApi[];
+  /** Los cobros de las ventas aprobadas de esta caja, del más nuevo al más viejo. */
+  cobros: CobroApi[];
+  /** Lo que entró a esta caja de mesas o cuentas que siguen abiertas. */
+  enCurso: CobroApi[];
+  anuladas: AnuladaCajaApi[];
+}
+
+/** Un movimiento de efectivo de la caja que se mira (backend del 24-oct). */
+export interface MovimientoSupervisionApi {
+  id: number;
+  tipo: "INGRESO" | "EGRESO";
+  monto: number;
+  /** Lo que dice el movimiento: "Cena", "Hielo", "Retiro", "Cena anulada · #12"… */
+  texto: string | null;
+  /** Es la cena del personal (o la anulación de una). */
+  cena: boolean;
+  /**
+   * El motivo con que se registró (backend del 25-oct; también lo lleva su
+   * anulación). Sin él es un movimiento común (el de un backend anterior, o uno
+   * del cierre de caja).
+   */
+  codigo?: CodigoMotivoEfectivo;
+  /** Uno que ya se anuló (sigue en la lista, tachado). */
+  anulada?: boolean;
+  /** Quién lo anuló y a qué hora (backend del 25-oct). */
+  anuladoPor?: string;
+  anuladoHora?: number;
+  /** El movimiento que anula éste: es la otra mitad de un anulado, no un movimiento más. */
+  anulaA?: number;
+  quien: string;
+  hora: number;
+}
+
+/**
+ * El efectivo de la caja del turno que se mira (backend del 24-oct): lo que
+ * debería haber ahora (sólo si sigue abierta) y lo registrado, con quién.
+ */
+export interface EfectivoSupervisionApi {
+  cajaId: number;
+  abierta: boolean;
+  esperado: number | null;
+  movimientos: MovimientoSupervisionApi[];
 }
 
 /**
@@ -172,6 +347,16 @@ export interface ActividadApi {
   motivo?: string;
   /** La acción cruda (PAUSAR, VENTA, CAJA_ABIERTA…). */
   codigo: string;
+  /**
+   * De qué es el renglón, para abrir su detalle (backend del 25-oct): la mesa o
+   * cuenta, la venta o la caja. Sin ref (el efectivo, un PIN) no hay más que contar.
+   */
+  ref?: { sesion?: number; venta?: number; caja?: number };
+  /**
+   * Quedó afuera del tope de renglones y vino sólo por ser de la caja o del
+   * efectivo (backend del 25-oct): antes de él, la lista no está completa.
+   */
+  fueraDelTope?: true;
 }
 
 export interface SupervisionApi {
@@ -195,7 +380,28 @@ export interface SupervisionApi {
   cuentas: (Omit<CuentaApi, "sesion"> & { sesion: SesionSupervisionApi })[];
   /** Las cajas abiertas y las de la semana (cada una es un turno que se puede mirar). */
   cajas: CajaSupervisionApi[];
+  /** Los movimientos de efectivo de la caja del turno. Un backend anterior al 24-oct no lo manda. */
+  efectivo?: EfectivoSupervisionApi | null;
+  /**
+   * Lo que salió en el turno, por categoría y producto, de TODAS las cajas del
+   * local (backend del 25-oct): su total es `turno.vendido`. Sin turno es la
+   * jornada, como el KPI. El tiempo de las mesas viene con `tiempoMesa: true`.
+   */
+  productos?: ReporteCierreProductos | null;
   actividad: ActividadApi[];
+}
+
+/**
+ * El detalle de una mesa, cuenta o venta (`GET /billar/supervision/detalle`,
+ * backend del 25-oct): todo lo que se hizo, de lo más viejo a lo más nuevo, y la
+ * venta con la vista del ticket si ya se cobró.
+ */
+export interface DetalleSupervisionApi {
+  /** La mesa o cuenta sigue abierta. */
+  abierta: boolean;
+  sesionId: number | null;
+  venta: VentaApi | null;
+  historial: ActividadApi[];
 }
 
 /** Una mesa como la lista el administrador (también las guardadas sin usar). */
@@ -213,8 +419,30 @@ export interface MesaAdminApi {
   reserva?: { hora: number; nombre: string };
 }
 
+/** Un pago de una venta del billar como lo manda el backend. */
+export interface PagoVentaApi {
+  id: string;
+  /** La hora de la venta: con ella cuenta el resumen del turno de la cajera. La del cobro de verdad va en `previo`. */
+  hora: number;
+  metodo: string;
+  monto: number;
+  nota?: string;
+  /**
+   * Se cobró ANTES de cerrar la mesa (backend del 26-oct): el adelanto, el
+   * tiempo fijo o una extensión, con su hora real y quién lo cobró. Un adelanto
+   * por QR de las 21:30 figuraba a las 23:10, la hora de la venta, y contra el
+   * banco no aparecía. Sin él se cobró al cerrar (o no se puede saber: los
+   * pagos se corrigieron después).
+   */
+  previo?: { hora: number; concepto: string; por?: string };
+}
+
 export type VentaApi = Omit<VentaBillar, "pagos"> & {
-  pagos: { id: string; hora: number; metodo: string; monto: number; nota?: string }[];
+  pagos: PagoVentaApi[];
+  /** De qué hora a qué hora se jugó en ESTA mesa (backend del 26-oct). Sólo en una venta de mesa. */
+  juego?: { desde: number; hasta: number };
+  /** El nombre del tipo de mesa ("Pool"): Reportes no tiene la lista de tipos para traducir `tipoMesa`. */
+  tipoNombre?: string;
 };
 
 /** El reporte del billar (`GET /billar/reportes`). */
@@ -280,6 +508,16 @@ export const apiBillar = {
     const q = [sucursalId != null && `sucursalId=${sucursalId}`, turno != null && `turno=${turno}`].filter(Boolean);
     return request<SupervisionApi>(`/billar/supervision${q.length ? `?${q.join("&")}` : ""}`);
   },
+  /** Todo lo que se hizo con una mesa, cuenta o venta (sólo el administrador del billar). */
+  detalleSupervision: (q: { sesion?: number; venta?: number }) =>
+    request<DetalleSupervisionApi>(
+      `/billar/supervision/detalle?${[q.sesion != null && `sesion=${q.sesion}`, q.venta != null && `venta=${q.venta}`].filter(Boolean).join("&")}`,
+    ),
+  /**
+   * Una caja de la semana con lo cobrado venta por venta, por medio, y la
+   * cuenta de su efectivo (sólo el administrador del billar, backend del 26-oct).
+   */
+  detalleCaja: (cajaId: number) => request<DetalleCajaApi>(`/billar/supervision/caja/${cajaId}`),
   /** Pausar desde Supervisión: sin PIN ni caja propia, a nombre del administrador. */
   pausarSupervision: (sesionId: number, motivo: string) =>
     enviar<MesaApi>(`/billar/supervision/sesiones/${sesionId}/pausar`, { motivo }),

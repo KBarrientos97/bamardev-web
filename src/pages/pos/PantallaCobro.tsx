@@ -1,18 +1,20 @@
 import { useMemo, useState } from "react";
 import { Icon } from "../../components/Icon";
 import { QrParaCobrar } from "../../components/QrCobro";
-import { Boton, Campo, ErrorMsg, Input } from "../../components/ui";
+import InputMonto from "../../components/InputMonto";
+import { Boton, Campo, ErrorMsg } from "../../components/ui";
+import { atajosDeEfectivo } from "../../lib/billetes";
 import { formaPagoFaltante } from "../../lib/formaPagoFaltante";
 import {
   aCentavos,
   cubre,
   esPositivo,
   excede,
-  parsearMontoO,
   restoEnEfectivo,
   vuelto,
 } from "../../lib/dinero";
 import { fmtMoney } from "../../lib/format";
+import { leerMonto, montoParaEditar } from "../../lib/montoTecleado";
 import { useAuth } from "../../store/AuthContext";
 import type { FormaPago, PagoInput } from "../../types";
 import type { PropinaInput } from "../../lib/belleza/apiExtras";
@@ -29,19 +31,16 @@ function buscarForma(formas: FormaPago[], nombre: string): FormaPago | undefined
   return formas.find((f) => f.nombre.toLowerCase() === nombre.toLowerCase());
 }
 
-/** Montos redondos que el cliente suele entregar, por encima del total. */
+/**
+ * Lo que el cliente suele entregar: el total justo y los billetes o monedas de
+ * Bolivia que lo cubren solos. Antes se redondeaba a múltiplos (Bs 40, Bs 150…)
+ * y salían montos que no son un billete (QA de Kevin, 25-oct).
+ */
 function sugerenciasEfectivo(total: number): number[] {
-  const base = [10, 20, 50, 100, 200];
-  const out = new Set<number>();
   // El total exacto siempre sirve: es el caso de "justo".
   // `aCentavos` y no `Math.ceil(total * 100)`: en punto flotante 35.2 * 100
   // da 3520.0000000000005 y el chip "justo" decía un centavo de más.
-  out.add(aCentavos(total));
-  for (const b of base) {
-    const redondeado = Math.ceil(total / b) * b;
-    if (redondeado > total) out.add(redondeado);
-  }
-  return [...out].sort((a, b) => a - b).slice(0, 4);
+  return [aCentavos(total), ...atajosDeEfectivo(total)];
 }
 
 export default function PantallaCobro({
@@ -120,10 +119,11 @@ export default function PantallaCobro({
    */
   const [qrConfirmado, setQrConfirmado] = useState(false);
 
-  // En centavos, como los guarda el backend: un "33.335" tecleado viajaba
-  // tal cual y el QR más el efectivo dejaban de sumar el total (400).
-  const recibidoNum = aCentavos(parsearMontoO(recibido));
-  const qrNum = aCentavos(parsearMontoO(montoQr));
+  // En centavos, como los guarda el backend: con tres decimales el QR más el
+  // efectivo dejaban de sumar el total (400). Y se lee como en el cierre:
+  // "1.500" son mil quinientos, no Bs 1,50 (26-oct).
+  const recibidoNum = aCentavos(leerMonto(recibido) ?? 0);
+  const qrNum = aCentavos(leerMonto(montoQr) ?? 0);
 
   /** Cambiar de método o el monto del QR obliga a confirmar de nuevo. */
   function elegirMetodo(m: Metodo) {
@@ -279,17 +279,14 @@ export default function PantallaCobro({
                   : "El resto se cobra en efectivo"
               }
             >
-              <Input
-                type="number"
-                inputMode="decimal"
-                step="0.01"
-                min="0"
+              <InputMonto
                 value={montoQr}
-                onChange={(e) => {
-                  setMontoQr(e.target.value);
+                onChange={(texto) => {
                   // Cambiar el monto invalida lo confirmado: lo que entró al
-                  // banco ya no es lo que dice la pantalla.
-                  setQrConfirmado(false);
+                  // banco ya no es lo que dice la pantalla. Que al salir del
+                  // campo "50" pase a "50,00" no lo cambia.
+                  if (leerMonto(texto) !== leerMonto(montoQr)) setQrConfirmado(false);
+                  setMontoQr(texto);
                 }}
                 placeholder="0,00"
                 className="text-lg font-bold"
@@ -330,13 +327,9 @@ export default function PantallaCobro({
                     : undefined
               }
             >
-              <Input
-                type="number"
-                inputMode="decimal"
-                step="0.01"
-                min="0"
+              <InputMonto
                 value={recibido}
-                onChange={(e) => setRecibido(e.target.value)}
+                onChange={setRecibido}
                 placeholder="0,00"
                 // Con un vale aplicado no se roba el foco: el campo aparece mientras
                 // la cajera todavía está tecleando cuánto usar del vale.
@@ -349,7 +342,7 @@ export default function PantallaCobro({
               {sugerencias.map((s) => (
                 <button
                   key={s}
-                  onClick={() => setRecibido(String(s))}
+                  onClick={() => setRecibido(montoParaEditar(s))}
                   className="rounded-xl border border-borde bg-white px-3.5 py-2 text-[13px] font-semibold text-texto-2 transition-colors hover:border-primary hover:bg-primary-50 hover:text-primary-700"
                 >
                   {fmtMoney(s)}

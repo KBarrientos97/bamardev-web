@@ -1,4 +1,4 @@
-import { fmtMoney, fmtNum } from "../../lib/format";
+import { fmtCantidad, fmtMoney, fmtNum } from "../../lib/format";
 import { esCero } from "../../lib/dinero";
 
 /**
@@ -77,9 +77,15 @@ export function duracion(min: number): string {
   return `${Math.floor(m / 60)}:${String(m % 60).padStart(2, "0")} h`;
 }
 
-/** "unidad" / "unidades" según la cantidad. */
+/**
+ * "1 unidad", "164 uds", "2,5 uds": la cantidad sin ceros de más y la palabra
+ * según la cantidad. Con fracción salía "2,50 uds" (Kevin, 25-oct: sin ",00" en
+ * las unidades). La palabra se elige por lo que se ve: un 0,9999999 de una suma
+ * se muestra "1" y tiene que decir "1 unidad", no "1 unidades".
+ */
 export function plural(n: number, uno: string, varios: string): string {
-  return `${fmtNum(n, Number.isInteger(n) ? 0 : 2)} ${n === 1 ? uno : varios}`;
+  const texto = fmtCantidad(n);
+  return `${texto} ${texto === "1" ? uno : varios}`;
 }
 
 /**
