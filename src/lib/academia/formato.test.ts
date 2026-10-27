@@ -11,6 +11,7 @@ import {
   nombresDe,
   problemasDelPlan,
   textoCubre,
+  textoModulos,
   textoModulosDeCuota,
   textoVence,
   totalCalendario,
@@ -214,6 +215,19 @@ describe("venceCuota (regla del backend, QA 23-oct)", () => {
     expect(venceCuota({ tipo: "INICIO_MATERIA", materiaOrden: 5 }, desde, "2026-10-23")).toBeNull();
     expect(venceCuota({ tipo: "INSCRIPCION" }, desde, "2026-10-23")).toBe("hoy");
     expect(venceCuota({ tipo: "DIAS", dias: 30 }, desde, "2026-10-23")).toBe("2026-11-22");
+  });
+});
+
+describe("ronda 1 · F7 · un módulo sin nombre propio no sale como «M1 Módulo 1»", () => {
+  it("omite el nombre cuando es el genérico «Módulo N» y lo deja cuando es propio", () => {
+    const nombres = { 1: "Módulo 1", 2: "Degradados", 3: "módulo 3", 4: "Modulo 4" };
+    expect(textoModulos([1], nombres)).toBe("M1");
+    expect(textoModulos([1, 2], nombres)).toBe("M1 y M2 Degradados");
+    expect(textoModulos([3], nombres)).toBe("M3");
+    expect(textoModulos([4], nombres)).toBe("M4");
+    expect(textoModulosDeCuota({ materiaOrdenes: [1], materias: [{ orden: 1, nombre: "Módulo 1" }] })).toBe("M1");
+    // La regla es por la palabra «Módulo» entera: «Modulado fino» es un nombre propio.
+    expect(textoModulos([5], { 5: "Modulado fino" })).toBe("M5 Modulado fino");
   });
 });
 

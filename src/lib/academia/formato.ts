@@ -122,7 +122,9 @@ export function textoModulos(ordenes: number[], nombres?: Record<number, string>
   if (!nombres || !Object.keys(nombres).length) return textoCubre(ordenes);
   const o = [...ordenes].sort((a, b) => a - b);
   if (!o.length) return "—";
-  const con = o.map((x) => (nombres[x] ? `M${x} ${nombres[x]}` : `M${x}`));
+  // Un módulo sin nombre propio se llama «Módulo 1»: «M1 Módulo 1» repetía lo mismo (ronda 1, F7).
+  const conNombre = (x: number) => !!nombres[x] && !/^m[óo]dulo\b/i.test(nombres[x].trim());
+  const con = o.map((x) => (conNombre(x) ? `M${x} ${nombres[x]}` : `M${x}`));
   const lista = con.length === 1 ? con[0] : `${con.slice(0, -1).join(", ")} y ${con[con.length - 1]}`;
   if (lista.length <= LARGO_MAX_MODULOS || con.length === 1) return lista;
   const seguidos = o.every((x, i) => i === 0 || x === o[i - 1] + 1);
