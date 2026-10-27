@@ -96,6 +96,10 @@ export default function Alumnos() {
   const hayFiltros = !!buscado || vista !== "todos";
   const nombreSede = sede.nombre || usuario?.sucursal || "";
   const n = (v: Vista) => conteos.datos?.[v] ?? null;
+  // Al docente el backend no le manda saldo ni vencido (`null`): no ve montos,
+  // así que no hay estado de deuda que mostrar ni pestaña «Deben» que ofrecer.
+  // «null» no es «al día»: sin dato, no se dice nada.
+  const sinMontos = lista.items.length > 0 && lista.items.every((a) => a.saldo == null);
 
   return (
     <PaginaAcademia>
@@ -135,7 +139,7 @@ export default function Alumnos() {
             onChange={setVista}
             opciones={[
               { clave: "todos", label: "Todos", n: n("todos") },
-              { clave: "deben", label: "Deben", n: n("deben"), urgente: true },
+              ...(sinMontos && vista !== "deben" ? [] : [{ clave: "deben" as const, label: "Deben", n: n("deben"), urgente: true }]),
               { clave: "retirados", label: "Retirados", n: n("retirados") },
               // Sólo si hay alguno (o si ya está elegido, para que no se esfume al arreglar el último).
               ...(n("faltanFotos") || vista === "faltanFotos"
@@ -164,7 +168,7 @@ export default function Alumnos() {
           />
         ) : (
           <>
-            <ListaAlumnos filas={lista.items} onAbrir={(a) => navigate(`/academia/alumnos/${a.id}`)} />
+            <ListaAlumnos filas={lista.items} sinMontos={sinMontos} onAbrir={(a) => navigate(`/academia/alumnos/${a.id}`)} />
             {/* `empty:hidden`: con pocas filas la paginación no dibuja nada y no queda una franja vacía. */}
             <div className="border-t border-borde-soft px-4 py-3 empty:hidden sm:px-5">
               <Paginacion {...lista.paginacion} />
@@ -187,12 +191,17 @@ export default function Alumnos() {
   );
 }
 
-/** "Al día" en verde o "Debe Bs 500" (rojo si venció, ámbar si todavía no). */
+/**
+ * "Al día" en verde o "Debe Bs 500" (rojo si venció, ámbar si todavía no).
+ * Sin saldo (el docente no ve montos) no se dibuja nada: ni «Bs 0» ni un «Al
+ * día» que no se sabe.
+ */
 function EstadoCuenta({ a }: { a: AlumnoFila }) {
-  const debe = (a.saldo ?? 0) > 0;
+  if (a.saldo == null) return null;
+  const debe = a.saldo > 0;
   if (!debe) return <Chip tono="verde">Al día</Chip>;
   return (
-    <Chip tono={a.vencido ? "rojo" : "ambar"} className="tabular-nums">
+    <Chip tono={a.vencido === true ? "rojo" : "ambar"} className="tabular-nums">
       Debe {fmtMoney(a.saldo)}
     </Chip>
   );
@@ -220,7 +229,7 @@ function EstadoInscripcion({ estado }: { estado: string }) {
   return <Chip tono={e.tono}>{e.texto}</Chip>;
 }
 
-function ListaAlumnos({ filas, onAbrir }: { filas: AlumnoFila[]; onAbrir: (a: AlumnoFila) => void }) {
+function ListaAlumnos({ filas, sinMontos, onAbrir }: { filas: AlumnoFila[]; sinMontos: boolean; onAbrir: (a: AlumnoFila) => void }) {
   const p = usePalabras();
   const grupo = (a: AlumnoFila) => (a.grupoActual ? a.grupoActual.nombre : "—");
   return (
@@ -235,12 +244,16 @@ function ListaAlumnos({ filas, onAbrir }: { filas: AlumnoFila[]; onAbrir: (a: Al
               <th scope="col" className={TABLA.th}>
                 {p.Carrera} y grupo
               </th>
-              <th scope="col" className={TABLA.th}>
-                Forma de pago
-              </th>
-              <th scope="col" className={TABLA.th}>
-                Estado
-              </th>
+              {!sinMontos && (
+                <>
+                  <th scope="col" className={TABLA.th}>
+                    Forma de pago
+                  </th>
+                  <th scope="col" className={TABLA.th}>
+                    Estado
+                  </th>
+                </>
+              )}
               <th scope="col" className={TABLA.th}>
                 Fotos
               </th>
@@ -275,10 +288,14 @@ function ListaAlumnos({ filas, onAbrir }: { filas: AlumnoFila[]; onAbrir: (a: Al
                     <span className="block whitespace-nowrap text-texto-2">{grupo(a)}</span>
                     {a.grupoActual && <span className="block text-[12px] text-texto-3">{nombreDe(a.grupoActual.sede)}</span>}
                   </td>
-                  <td className={`${TABLA.td} whitespace-nowrap text-texto-2`}>{nombreDe(a.plan) || "—"}</td>
-                  <td className={TABLA.td}>
-                    <EstadoCuenta a={a} />
-                  </td>
+                  {!sinMontos && (
+                    <>
+                      <td className={`${TABLA.td} whitespace-nowrap text-texto-2`}>{nombreDe(a.plan) || "—"}</td>
+                      <td className={TABLA.td}>
+                        <EstadoCuenta a={a} />
+                      </td>
+                    </>
+                  )}
                   <td className={TABLA.td}>
                     <Fotos estado={a.fotos} />
                   </td>
@@ -306,7 +323,7 @@ function ListaAlumnos({ filas, onAbrir }: { filas: AlumnoFila[]; onAbrir: (a: Al
               >
                 <span className="min-w-0 flex-1 space-y-1.5">
                   <span className="block truncate text-[15px] font-semibold text-texto">{nombreAlumno(a)}</span>
-                  <span className="block truncate text-[13px] text-texto-3">{[grupo(a), nombreDe(a.plan)].filter(Boolean).join(" · ")}</span>
+                  <span className="block truncate text-[13px] text-texto-3">{[grupo(a), sinMontos ? null : nombreDe(a.plan)].filter(Boolean).join(" · ")}</span>
                   <span className="flex flex-wrap gap-1.5">
                     <EstadoCuenta a={a} />
                     <EstadoInscripcion estado={a.estado} />

@@ -373,10 +373,15 @@ export interface AlumnoFila {
   ci: string | null;
   telefono: string | null;
   grupoActual: { id: number; nombre: string; sede: string | Ref } | null;
+  /** null para el docente (no ve cómo paga cada estudiante). */
   plan: string | Ref | null;
   /** null para el docente. */
   saldo: number | null;
-  vencido: boolean;
+  /**
+   * null para el docente: quien no ve montos tampoco ve si hay deuda vencida
+   * (el semáforo lo ve en el grupo). `null` NO es «al día».
+   */
+  vencido: boolean | null;
   ultimaAsistencia: string | null;
   estado: EstadoInscripcion;
   /** Ronda 2 (D7): cómo están sus 3 fotos. */

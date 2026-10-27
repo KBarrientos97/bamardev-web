@@ -119,4 +119,36 @@ describe("E7 · Estudiantes", () => {
     await act(async () => {});
     expect(apiAcademia.alumnos).toHaveBeenLastCalledWith(expect.objectContaining({ fotos: "FALTAN", page: 1, pageSize: 20 }));
   });
+  it("sin montos (el docente: plan, saldo y vencido en null) no hay estado de deuda ni «Bs 0» ni «Al día» falso ni pestaña «Deben»", async () => {
+    vi.mocked(apiAcademia.alumnos).mockImplementation(async (f = {}) => ({
+      items: f.pageSize === 1 ? [] : [fila({ plan: null, saldo: null, vencido: null })],
+      total: 1,
+      page: 1,
+      pageSize: f.pageSize ?? 20,
+    }));
+    render(
+      <MemoryRouter>
+        <Alumnos />
+      </MemoryRouter>,
+    );
+    await act(async () => {});
+    expect(screen.getAllByText("Bustillos Rek, Camila").length).toBeGreaterThan(0);
+    expect(screen.queryByText(/Bs\s?0/)).not.toBeInTheDocument();
+    expect(screen.queryByText("Al día")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Debe /)).not.toBeInTheDocument();
+    expect(screen.queryByRole("columnheader", { name: "Estado" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("columnheader", { name: "Forma de pago" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: /Deben/ })).not.toBeInTheDocument();
+  });
+
+  it("con montos se sigue viendo la columna Estado y la pestaña «Deben»", async () => {
+    render(
+      <MemoryRouter>
+        <Alumnos />
+      </MemoryRouter>,
+    );
+    await act(async () => {});
+    expect(screen.getByRole("columnheader", { name: "Estado" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Deben 7" })).toBeInTheDocument();
+  });
 });
