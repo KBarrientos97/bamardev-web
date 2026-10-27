@@ -206,10 +206,17 @@ export function QrParaCobrar({
   onConfirmar,
   /** Monto a cobrar, para que el cajero contraste contra lo que le entró. */
   monto,
+  sinBoton = false,
 }: {
   confirmado: boolean;
   onConfirmar: () => void;
   monto?: string;
+  /**
+   * Sin el botón «Confirmar pago recibido»: quien la usa confirma al cobrar
+   * con un solo botón («Llegó el QR · Confirmar cobro», Cobrar a estudiante).
+   * Queda el aviso de revisar el banco antes.
+   */
+  sinBoton?: boolean;
 }) {
   const { negocio, usuario } = useAuth();
   const alias = negocio?.alias;
@@ -298,20 +305,22 @@ export function QrParaCobrar({
       )}
       {errorCarga && <ErrorMsg>{errorCarga}</ErrorMsg>}
 
-      <button
-        type="button"
-        onClick={onConfirmar}
-        disabled={confirmado}
-        className={[
-          "flex w-full items-center justify-center gap-2 rounded-xl border py-2.5 text-sm font-bold transition-colors",
-          confirmado
-            ? "border-primary bg-primary-50 text-primary-700"
-            : "border-borde bg-white text-texto hover:bg-muted",
-        ].join(" ")}
-      >
-        {confirmado && <Icon name="check" size={17} />}
-        {confirmado ? "Pago confirmado" : "Confirmar pago recibido"}
-      </button>
+      {!sinBoton && (
+        <button
+          type="button"
+          onClick={onConfirmar}
+          disabled={confirmado}
+          className={[
+            "flex w-full items-center justify-center gap-2 rounded-xl border py-2.5 text-sm font-bold transition-colors",
+            confirmado
+              ? "border-primary bg-primary-50 text-primary-700"
+              : "border-borde bg-white text-texto hover:bg-muted",
+          ].join(" ")}
+        >
+          {confirmado && <Icon name="check" size={17} />}
+          {confirmado ? "Pago confirmado" : "Confirmar pago recibido"}
+        </button>
+      )}
 
       {!confirmado && (
         <p className="text-center text-xs text-texto-3">

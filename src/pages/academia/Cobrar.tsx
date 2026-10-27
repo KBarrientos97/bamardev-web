@@ -550,6 +550,8 @@ export default function Cobrar() {
             bloqueado={!montoOk || sinCuotas}
             // Cobrando cuotas lo común es el monto justo: vacío, se toma exacto.
             recibidoVacioEsExacto
+            // Un solo botón: «Llegó el QR · Confirmar cobro» (D4).
+            qrEnUnPaso
             error={error}
             encabezado={ancha ? undefined : detalleCelular}
           />
