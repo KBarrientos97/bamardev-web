@@ -1,13 +1,12 @@
 import { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Chips } from "../../components/filtros";
 import { Icon } from "../../components/Icon";
 import { Paginacion } from "../../components/Paginacion";
 import PanelLateral from "../../components/PanelLateral";
-import { Boton, Cargando, ErrorMsg, Select, Vacio } from "../../components/ui";
+import { Boton, Cargando, ErrorMsg, Vacio } from "../../components/ui";
 import { apiAcademia } from "../../lib/academia/apiAcademia";
 import { fechaCorta } from "../../lib/academia/formato";
-import type { Antiguedad, FilaCobranza, Recordatorio, RespuestaCobranza, TipoCobranza } from "../../lib/academia/tipos";
+import type { FilaCobranza, Recordatorio, RespuestaCobranza, TipoCobranza } from "../../lib/academia/tipos";
 import { useFiltroSede } from "../../lib/academia/useFiltroSede";
 import { usePalabras } from "../../lib/academia/usePalabras";
 import { abrirWhatsapp, nombreCuota, RUTA_COBRAR, rutaCobroAlumno, rutaCobroInscripcion } from "../../lib/academia/vista";
@@ -78,8 +77,6 @@ export default function Cobranza() {
   const inicial = TIPOS.includes(params.get("tipo") as TipoCobranza) ? (params.get("tipo") as TipoCobranza) : "vencidas";
   const sede = useFiltroSede();
   const [tipo, setTipo] = useState<TipoCobranza>(inicial);
-  const [carreraId, setCarreraId] = useState<number | null>(null);
-  const [antiguedad, setAntiguedad] = useState<"" | Antiguedad>("");
   const [totales, setTotales] = useState<RespuestaCobranza["totales"] | null>(null);
   // Los marcados, con su fila: sobreviven al cambio de página.
   const [marcados, setMarcados] = useState<Map<string, FilaCobranza>>(new Map());
@@ -88,7 +85,6 @@ export default function Cobranza() {
   const [pos, setPos] = useState(0);
   const [enviados, setEnviados] = useState<Record<string, Recordatorio & { en: string }>>({});
 
-  const carreras = useApi(() => apiAcademia.carreras().catch(() => []), []);
   const ajustes = useApi(() => apiAcademia.ajustes().catch(() => null), []);
   const lista = usePaginado(
     async (pg) => {
@@ -96,13 +92,11 @@ export default function Cobranza() {
         ...pg,
         tipo,
         sede: sede.sucursalId,
-        carreraId,
-        antiguedad: tipo === "vencidas" ? antiguedad : "",
       });
       setTotales(r.totales);
       return r;
     },
-    [tipo, sede.sucursalId, carreraId, antiguedad],
+    [tipo, sede.sucursalId],
   );
   const cobra = cobraCuotas({
     features: negocio?.features,
@@ -169,7 +163,6 @@ export default function Cobranza() {
     setCola([]);
   };
   const cuotas = (n: number | null | undefined) => (n == null ? undefined : `${n} ${n === 1 ? "cuota" : "cuotas"}`);
-  const conCarreras = (carreras.datos?.length ?? 0) > 1;
 
   return (
     // Con el panel abierto se corre a la izquierda; `w-auto` porque el `w-full` del marco más el margen se salía de la pantalla.
@@ -240,43 +233,6 @@ export default function Cobranza() {
         titulo={TITULO_TIPO[tipo]}
         contador={lista.items.length ? lista.total : undefined}
         sinRelleno
-        barra={
-          tipo === "vencidas" || conCarreras ? (
-            <div className="flex flex-wrap items-center justify-between gap-3 py-3">
-              {tipo === "vencidas" ? (
-                <div className="min-w-0 max-w-full">
-                  <Chips
-                    titulo="Antigüedad"
-                    valor={antiguedad}
-                    opciones={[
-                      ["", "Todas"],
-                      ["1-7", "1–7 días"],
-                      ["8-30", "8–30 días"],
-                      ["30+", "Más de 30"],
-                    ]}
-                    onChange={setAntiguedad}
-                  />
-                </div>
-              ) : null}
-              {conCarreras && (
-                <div className="w-full sm:w-56">
-                  <Select
-                    aria-label={p.Carrera}
-                    value={carreraId ?? ""}
-                    onChange={(e) => setCarreraId(e.target.value ? Number(e.target.value) : null)}
-                  >
-                    <option value="">{p.Carrera}: todos</option>
-                    {carreras.datos?.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.nombre}
-                      </option>
-                    ))}
-                  </Select>
-                </div>
-              )}
-            </div>
-          ) : undefined
-        }
         pie={lista.items.length > 0 && lista.total > 20 ? <Paginacion {...lista.paginacion} /> : undefined}
       >
         {lista.error && !lista.items.length ? (

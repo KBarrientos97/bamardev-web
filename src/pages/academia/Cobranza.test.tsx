@@ -109,6 +109,25 @@ describe("N7 · cobranza", () => {
     expect(screen.getAllByText("sin recordar").length).toBeGreaterThan(0);
   });
 
+  it("U4: sin chips de antigüedad ni selector de curso, y la lista va de la deuda más vieja a la más nueva", async () => {
+    // Con 2 cursos antes aparecía el selector; ahora no se pide ni la lista de cursos.
+    vi.mocked(apiAcademia.carreras).mockResolvedValue([
+      { id: 1, nombre: "Barbería" },
+      { id: 2, nombre: "Tatuaje" },
+    ] as never);
+    await montar();
+    expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
+    // U1: el "⋯" tenía sólo opciones "Pronto"; vacío, desaparece.
+    expect(screen.queryByRole("button", { name: /Más acciones de cobranza/ })).not.toBeInTheDocument();
+    expect(screen.queryByText("1–7 días")).not.toBeInTheDocument();
+    expect(screen.queryByText("Más de 30")).not.toBeInTheDocument();
+    expect(apiAcademia.cobranza).toHaveBeenCalledWith(expect.not.objectContaining({ antiguedad: expect.anything() }));
+    expect(apiAcademia.cobranza).toHaveBeenCalledWith(expect.not.objectContaining({ carreraId: expect.anything() }));
+    // El backend ordena por días de atraso (la más vieja arriba) y la pantalla respeta ese orden.
+    const nombres = screen.getAllByText(/Céspedes Molina|Bustillos Rek/).map((n) => n.textContent ?? "");
+    expect(nombres.findIndex((n) => /Céspedes/.test(n))).toBeLessThan(nombres.findIndex((n) => /Bustillos/.test(n)));
+  });
+
   it("la pestaña viene de la dirección (desde Hoy)", async () => {
     await montar("/academia/cobranza?tipo=por-vencer");
     expect(apiAcademia.cobranza).toHaveBeenCalledWith(expect.objectContaining({ tipo: "por-vencer" }));
