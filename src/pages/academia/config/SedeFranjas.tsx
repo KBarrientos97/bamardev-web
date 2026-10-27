@@ -204,6 +204,7 @@ export default function SedeFranjas({
             <div className="space-y-3 px-4 py-5 sm:px-5">
               <p className="rounded-xl bg-muted px-4 py-3 text-sm text-texto-3">
                 Esta {p.sede} todavía no tiene franjas: el calendario arma una fila por cada horario de grupo.
+                {sinGuardar && ` Quitaste todas: al guardar, queda sin ninguna.`}
                 {puedeEditar && " Con las típicas arrancás de una y después las ajustás."}
               </p>
               {puedeEditar && (
@@ -286,7 +287,9 @@ export default function SedeFranjas({
             <AvisoOk>{aviso}</AvisoOk>
             <ErrorMsg>{error}</ErrorMsg>
             {resumen && <ResumenTipicas r={resumen} />}
-            {puedeEditar && filas.length > 0 && (
+            {/* Sin filas pero con cambios (se quitaron todas) también: si no, no había
+                cómo guardar ni descartar (ronda 1, W1). Agregar y las típicas ya están arriba. */}
+            {puedeEditar && (filas.length > 0 || sinGuardar) && (
               <div className="flex flex-wrap items-center gap-2">
                 <Boton onClick={() => void guardar()} disabled={guardando || !sinGuardar}>
                   {guardando ? "Guardando…" : "Guardar franjas"}
@@ -296,10 +299,14 @@ export default function SedeFranjas({
                     Descartar cambios
                   </Boton>
                 )}
-                <BotonFila icono="plus" variante="ghost" onClick={agregar} disabled={guardando || filas.length >= MAX_FRANJAS}>
-                  Agregar franja
-                </BotonFila>
-                {botonTipicas}
+                {filas.length > 0 && (
+                  <>
+                    <BotonFila icono="plus" variante="ghost" onClick={agregar} disabled={guardando || filas.length >= MAX_FRANJAS}>
+                      Agregar franja
+                    </BotonFila>
+                    {botonTipicas}
+                  </>
+                )}
               </div>
             )}
             {sinGuardar && <p className="text-[13px] text-texto-3">Tenés cambios sin guardar.</p>}

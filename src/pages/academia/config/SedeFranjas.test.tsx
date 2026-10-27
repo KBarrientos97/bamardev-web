@@ -126,6 +126,23 @@ describe("C5 · editar las franjas de la sede", () => {
     expect(screen.getByText(/todavía no tiene franjas/)).toBeInTheDocument();
   });
 
+  it("ronda 1 · W1: quitar todas las franjas se puede guardar (PUT []) o descartar", async () => {
+    vi.mocked(apiAcademia.franjasSede).mockResolvedValue(vista(["08:00", "10:00"], ["10:00", "12:00"]));
+    vi.mocked(apiAcademia.guardarFranjasSede).mockResolvedValue(vista());
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Quitar franja 08:00–10:00" }));
+    fireEvent.click(screen.getByRole("button", { name: "Quitar franja 10:00–12:00" }));
+    // Sin filas pero con el cambio pendiente: Guardar y Descartar siguen ahí.
+    expect(screen.getByText(/Quitaste todas: al guardar, queda sin ninguna/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Descartar cambios" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Descartar cambios" }));
+    expect(screen.getByLabelText("Desde, franja 2")).toHaveValue("10:00");
+    fireEvent.click(screen.getByRole("button", { name: "Quitar franja 08:00–10:00" }));
+    fireEvent.click(screen.getByRole("button", { name: "Quitar franja 10:00–12:00" }));
+    await guardar();
+    expect(apiAcademia.guardarFranjasSede).toHaveBeenCalledWith(1, []);
+  });
+
   it("una franja al revés o que se pisa no se manda: se marca la fila y se dice por qué", async () => {
     await montar();
     cambiar("Desde, franja 2", "09:00");
