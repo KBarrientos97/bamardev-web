@@ -142,7 +142,7 @@ export default function AjustesAcademia() {
       </div>
 
       <SeccionAjuste id="s-cursos" titulo={p.Carreras} bajada={`${p.Materias}, precio, cupo y porcentaje del ${p.docente} de cada ${p.carrera}.`}>
-        <ResumenCursos cursos={cursos.datos} pctDefecto={a.pctDocenteDefecto} />
+        <ResumenCursos cursos={cursos.datos} error={cursos.error} onReintentar={cursos.recargar} pctDefecto={a.pctDocenteDefecto} />
         <BotonFila variante="ghost" a="/configuracion/carreras" className="mt-3">
           Administrar {p.carreras} <Icon name="chevronRight" size={15} />
         </BotonFila>
@@ -199,7 +199,7 @@ export default function AjustesAcademia() {
           />
         </div>
         {/* C7: lo que tiene que estar prendido, en cinco lugares, para que la página reciba inscripciones. */}
-        <InscripcionEnLinea ajustes={a} cursos={cursos.datos} onActivarRecibir={() => void guardar({ preinscripcionActiva: true })} />
+        <InscripcionEnLinea ajustes={a} cursos={cursos.error ? "error" : cursos.datos} onActivarRecibir={() => void guardar({ preinscripcionActiva: true })} />
       </SeccionAjuste>
 
       <SeccionAjuste id="s-cobro" titulo="Cobro" bajada="Los descuentos y cuándo una cuota vencida se marca en rojo.">
@@ -263,8 +263,20 @@ export default function AjustesAcademia() {
 }
 
 /** Los cursos en una tabla corta: se editan en su pantalla. */
-function ResumenCursos({ cursos, pctDefecto }: { cursos: Carrera[] | null; pctDefecto: number }) {
+function ResumenCursos({
+  cursos,
+  error,
+  onReintentar,
+  pctDefecto,
+}: {
+  cursos: Carrera[] | null;
+  error: string;
+  onReintentar: () => void;
+  pctDefecto: number;
+}) {
   const p = usePalabras();
+  // Si la carga falla no se queda en «Cargando…» para siempre (ronda 1, W9).
+  if (!cursos && error) return <ErrorMsg onReintentar={onReintentar}>{error}</ErrorMsg>;
   if (!cursos) return <p className="text-sm text-texto-3">Cargando…</p>;
   if (!cursos.length) return <p className="text-sm text-texto-3">Todavía no hay {p.carreras}.</p>;
   return (

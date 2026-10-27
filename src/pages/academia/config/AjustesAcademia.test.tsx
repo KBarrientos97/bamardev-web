@@ -99,6 +99,19 @@ describe("N4 · Ajustes del instituto", () => {
     expect(screen.getByText(/entre 1 y 28/)).toBeInTheDocument();
   });
 
+  it("ronda 1 · W9: si fallan los cursos, Ajustes lo dice con «Reintentar» y no queda en «Cargando…»", async () => {
+    vi.mocked(apiAcademia.carreras).mockRejectedValueOnce(new Error("Sin conexión"));
+    await montar();
+    expect(screen.getAllByText("Sin conexión").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Cargando…")).not.toBeInTheDocument();
+    expect(screen.queryByText("Comprobando…", { exact: false })).not.toBeInTheDocument();
+    vi.mocked(apiAcademia.carreras).mockResolvedValue([]);
+    await act(async () => {
+      fireEvent.click(screen.getAllByRole("button", { name: "Reintentar" })[0]);
+    });
+    expect(screen.queryByText("Sin conexión")).not.toBeInTheDocument();
+  });
+
   it("ronda 1 · W6: si el guardado falla, el campo y la pantalla vuelven a lo anterior", async () => {
     vi.mocked(apiAcademia.guardarAjustes).mockRejectedValueOnce(new Error("No se pudo guardar"));
     await montar();

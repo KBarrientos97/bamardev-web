@@ -76,5 +76,10 @@ describe("C7 · condiciones de la inscripción en línea", () => {
     expect(faltantes(c)).toHaveLength(0);
     c = condicionesInscripcionEnLinea({ ...TODO_BIEN, grupos: "error" });
     expect(c.find((x) => x.clave === "grupo")).toMatchObject({ ok: null, detalle: "No se pudieron comprobar los grupos." });
+    // Ronda 1, W9: si fallan los cursos tampoco se queda en «Comprobando…» ni se da por faltante.
+    c = condicionesInscripcionEnLinea({ ...TODO_BIEN, cursos: "error" });
+    expect(c.find((x) => x.clave === "cursos")).toMatchObject({ ok: null });
+    expect(c.find((x) => x.clave === "cursos")?.detalle).toMatch(/No se pudieron comprobar/);
+    expect(faltantes(c)).toHaveLength(0);
   });
 });

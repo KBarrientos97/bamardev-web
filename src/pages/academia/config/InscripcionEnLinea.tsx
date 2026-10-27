@@ -16,13 +16,16 @@ import { claseBotonFila } from "../piezas";
  * botón a la pantalla que la corrige. No pide nada nuevo al backend: junta lo
  * que Ajustes y Cursos ya cargan, más la lista de grupos.
  */
+/** «las cinco», pero «las cuatro» cuando el backend no manda si la página está publicada (ronda 1, W12). */
+const NUMEROS: Record<number, string> = { 3: "las tres", 4: "las cuatro", 5: "las cinco" };
+
 export function InscripcionEnLinea({
   ajustes,
   cursos,
   onActivarRecibir,
 }: {
   ajustes: AjustesAcademia | null;
-  cursos: Carrera[] | null;
+  cursos: Carrera[] | null | "error";
   /** El mismo interruptor «Recibir inscripciones desde la página» de arriba. */
   onActivarRecibir: () => void;
 }) {
@@ -54,7 +57,7 @@ export function InscripcionEnLinea({
         )}
       </div>
       <p className="mb-3 mt-1 text-[13px] text-texto-3">
-        Para que la página reciba inscripciones tienen que estar las cinco. Si una falla, la página no anda.
+        Para que la página reciba inscripciones tienen que estar {NUMEROS[condiciones.length] ?? `las ${condiciones.length}`}. Si una falla, la página no anda.
       </p>
       <ul className="divide-y divide-borde-soft">
         {condiciones.map((c) => (

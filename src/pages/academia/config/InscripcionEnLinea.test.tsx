@@ -61,6 +61,13 @@ describe("C7 · tarjeta «Inscripción en línea»", () => {
     expect(within(tarjeta).queryByRole("button")).not.toBeInTheDocument();
   });
 
+  it("ronda 1 · W12: si el backend no dice si la página está publicada, son cuatro y el texto no dice «las cinco»", async () => {
+    const { tarjeta } = await montar({ ajustes: ajustesDePrueba({ preinscripcionActiva: true, paginaPublicada: undefined }) });
+    expect(within(tarjeta).getAllByRole("listitem")).toHaveLength(4);
+    expect(tarjeta).toHaveTextContent("tienen que estar las cuatro");
+    expect(tarjeta).not.toHaveTextContent("las cinco");
+  });
+
   it("cada condición que falta lleva a su pantalla: Cursos, Mi página y Calendario", async () => {
     vi.mocked(apiAcademia.grupos).mockResolvedValue({ items: [grupo({ inscripcionAbierta: false })], total: 1, page: 1, pageSize: 100 });
     const { tarjeta } = await montar({

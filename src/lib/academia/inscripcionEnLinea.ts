@@ -30,7 +30,8 @@ export interface EntradaEnLinea {
   /** Las features del plan (`negocio.features`). Vacío o ausente: la sesión no las conoce. */
   features: string[] | undefined;
   ajustes: AjustesAcademia | null;
-  cursos: Carrera[] | null;
+  /** Los cursos; `null` mientras cargan, `"error"` si no se pudieron pedir (W9). */
+  cursos: Carrera[] | null | "error";
   /** Los grupos; `null` mientras cargan, `"error"` si no se pudieron pedir. */
   grupos: GrupoResumen[] | null | "error";
   palabras: { carreras: string; Carreras: string };
@@ -69,20 +70,23 @@ export function condicionesInscripcionEnLinea(e: EntradaEnLinea): CondicionEnLin
   });
 
   // (c) «Publicar en la página» de cada curso, que nace apagado.
-  const vivos = (cursos ?? []).filter((c) => c.activa);
+  const hayCursos = Array.isArray(cursos);
+  const vivos = (hayCursos ? cursos : []).filter((c) => c.activa);
   const publicados = vivos.filter((c) => c.publicarEnPagina);
   out.push({
     clave: "cursos",
-    ok: cursos ? publicados.length > 0 : null,
+    ok: hayCursos ? publicados.length > 0 : null,
     titulo: `${palabras.Carreras} publicados en la página`,
-    detalle: !cursos
+    detalle: cursos === "error"
+      ? `No se pudieron comprobar los ${palabras.carreras}.`
+      : !hayCursos
       ? "Comprobando…"
       : publicados.length > 0
         ? `${publicados.length} de ${vivos.length} publicados.`
         : vivos.length === 0
           ? `Todavía no hay ${palabras.carreras}.`
           : `Ninguno está publicado: en cada uno hay que prender «Publicar en la página» (nace apagado).`,
-    arreglo: cursos && publicados.length === 0 ? { texto: `Ir a ${palabras.Carreras}`, a: RUTA_CURSOS } : undefined,
+    arreglo: hayCursos && publicados.length === 0 ? { texto: `Ir a ${palabras.Carreras}`, a: RUTA_CURSOS } : undefined,
   });
 
   // (d) «Mi página» publicada. Un backend anterior no lo manda: no se opina.
