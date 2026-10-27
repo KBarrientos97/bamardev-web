@@ -184,8 +184,10 @@ const CHIP_ESTADO: Record<TPlanillaMes["docentes"][number]["estado"], TonoChip> 
   PAGADA: "verde",
 };
 
-/** "+ 2 de meses anteriores", "3 postergados", "todos pagaron". */
+/** "+ 2 de meses anteriores", "1 ajuste", "3 postergados", "todos pagaron". */
 function extraDocente(x: TPlanillaMes["docentes"][number]): string {
+  // Bug 4: un cobro anulado o repuesto de un módulo ya liquidado cambia el bruto; se avisa desde la lista.
+  if (x.ajustes) return `${x.ajustes} ${x.ajustes === 1 ? "ajuste" : "ajustes"} de cobros anulados o repuestos`;
   if (x.atrasados) return `+ ${x.atrasados} de meses anteriores`;
   if (x.postergados) return `${x.postergados} ${x.postergados === 1 ? "postergado" : "postergados"}`;
   if (x.total && x.cuentan === x.total) return "todos pagaron";

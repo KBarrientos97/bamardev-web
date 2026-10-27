@@ -1,6 +1,19 @@
 import { describe, expect, it } from "vitest";
 import { ApiError } from "../api";
-import { filaCoincideConBusqueda, fueraDeAlcance, nombreCuota, nombreCuotaDeCurso, rutaCobroAlumno, rutaCobroInscripcion, textoEvento } from "./vista";
+import {
+  filaCoincideConBusqueda,
+  fueraDeAlcance,
+  montoConSigno,
+  nombreCuota,
+  nombreCuotaDeCurso,
+  pieBrutoPlanilla,
+  rutaCobroAlumno,
+  rutaCobroInscripcion,
+  textoEvento,
+  textoMotivoAjuste,
+  textoPagoLinea,
+  textoPagoLineaLargo,
+} from "./vista";
 import { textoModulos } from "./formato";
 
 /**
@@ -139,5 +152,46 @@ describe("filaCoincideConBusqueda (el buscador de Cobranza, D10)", () => {
 
   it("tolera filas sin código ni teléfono", () => {
     expect(filaCoincideConBusqueda({ alumno: { nombre: "Rojas, Ana", codigo: null }, contacto: { telefono: null } }, "ana")).toBe(true);
+  });
+});
+
+describe("Bug 17 · cómo se le paga al docente cada línea de la planilla", () => {
+  it("por %: «20 %»; con decimales, con coma", () => {
+    expect(textoPagoLinea({ modalidad: "PORCENTAJE", pct: 20, montoFijo: null })).toBe("20 %");
+    expect(textoPagoLinea({ modalidad: "PORCENTAJE", pct: 12.5, montoFijo: null })).toBe("12,5 %");
+  });
+
+  it("por monto fijo: «Bs 90 fijo», sin el % que no existe", () => {
+    expect(textoPagoLinea({ modalidad: "MONTO", pct: null, montoFijo: 90 })).toBe("Bs 90 fijo");
+    expect(textoPagoLinea({ modalidad: "MONTO", pct: null, montoFijo: 92.5 })).toBe("Bs 92,50 fijo");
+    expect(textoPagoLineaLargo({ modalidad: "MONTO", pct: null, montoFijo: 90 })).toBe("Monto fijo Bs 90 por estudiante y módulo");
+  });
+
+  it("un backend anterior (sin modalidad) sigue siendo por %", () => {
+    expect(textoPagoLinea({ pct: 20 })).toBe("20 %");
+    expect(textoPagoLineaLargo({ pct: 20 })).toBe("20 % de lo cobrado del módulo");
+  });
+
+  it("sin nada que mostrar, un guion y no « %»", () => {
+    expect(textoPagoLinea({ modalidad: "PORCENTAJE", pct: null, montoFijo: null })).toBe("—");
+  });
+});
+
+describe("Bug 4 · ajustes de la planilla", () => {
+  it("el signo dice el motivo y el monto lleva su signo", () => {
+    expect(textoMotivoAjuste({ monto: -90 })).toBe("Cobro anulado");
+    expect(textoMotivoAjuste({ monto: 40 })).toBe("Cobro repuesto");
+    expect(montoConSigno(-90)).toBe("− Bs 90,00");
+    expect(montoConSigno(40)).toBe("+ Bs 40,00");
+  });
+
+  it("el pie del bruto compone mes, atrasados y ajustes", () => {
+    const base = { cuentan: 1, postergados: 0, sinPagar: 0, atrasados: 0, bruto: 0, retencion: null, retencionActiva: false, atrasos: null, liquido: 0 };
+    expect(pieBrutoPlanilla(base)).toBeUndefined();
+    expect(pieBrutoPlanilla({ ...base, brutoCuentan: 100, brutoAtrasados: 50 })).toBe("Bs 100,00 del mes + Bs 50,00 atrasados");
+    expect(pieBrutoPlanilla({ ...base, brutoCuentan: 100, ajustes: 1, brutoAjustes: -30 })).toBe("Bs 100,00 del mes − Bs 30,00 de ajustes");
+    expect(pieBrutoPlanilla({ ...base, brutoCuentan: 100, brutoAtrasados: 50, ajustes: 1, brutoAjustes: 20 })).toBe(
+      "Bs 100,00 del mes + Bs 50,00 atrasados + Bs 20,00 de ajustes",
+    );
   });
 });

@@ -7,13 +7,14 @@ import type {
   EventoInscripcion,
   FormaPago,
   GrupoResumen,
+  LineaPlanilla,
   MotivoNoPago,
   PagoDocenteCurso,
   PlanillaDocente,
   Ref,
   SemaforoPago,
 } from "./tipos";
-import { fechaCorta, horarioGrupo, nombreDe, textoModulos } from "./formato";
+import { fechaCorta, horarioGrupo, nombreDe, textoModulos, textoPct } from "./formato";
 import { urlInscribirmeDe } from "../pagina/rutas";
 import { ApiError } from "../api";
 import { fmtMoney } from "../format";
@@ -220,6 +221,63 @@ export function textoCobroPlanilla(defecto: number, cursos: readonly PagoDocente
   return cursos.length
     ? `Cobra el ${defecto} % (${cursos.map((c) => `${c.nombre} ${c.pct ?? defecto} %`).join(", ")}) de lo cobrado`
     : `Cobra el ${defecto} % de lo cobrado`;
+}
+
+/** "Bs 90" (sin ",00" si es entera) para las celdas apretadas de la planilla. */
+function bsCorto(n: number): string {
+  return fmtMoney(n).replace(/,00$/, "");
+}
+
+/** Bug 17: la línea se paga por monto fijo (con un backend anterior, todo era por %). */
+export function lineaEsMontoFijo(l: Pick<LineaPlanilla, "modalidad" | "pct" | "montoFijo">): boolean {
+  return l.modalidad ? l.modalidad === "MONTO" : l.pct == null && l.montoFijo != null;
+}
+
+/**
+ * Bug 17: lo que va en la columna del pago de la línea: "20 %" o "Bs 90 fijo".
+ * Antes salía `{pct} %` y con monto fijo quedaba " %".
+ */
+export function textoPagoLinea(l: Pick<LineaPlanilla, "modalidad" | "pct" | "montoFijo">): string {
+  if (lineaEsMontoFijo(l)) return l.montoFijo != null ? `${bsCorto(l.montoFijo)} fijo` : "Monto fijo";
+  return l.pct != null ? `${textoPct(l.pct)} %` : "—";
+}
+
+/** Bug 17: la frase larga para el panel de la línea: "20 % de lo cobrado" o "Monto fijo Bs 90 por estudiante y módulo". */
+export function textoPagoLineaLargo(l: Pick<LineaPlanilla, "modalidad" | "pct" | "montoFijo">, alumno = "estudiante"): string {
+  if (lineaEsMontoFijo(l)) return `Monto fijo ${l.montoFijo != null ? `${bsCorto(l.montoFijo)} ` : ""}por ${alumno} y módulo`;
+  return l.pct != null ? `${textoPct(l.pct)} % de lo cobrado del módulo` : "—";
+}
+
+/** Bug 4: "− Bs 90,00" (rojo en pantalla) o "+ Bs 90,00" para un ajuste; 0 queda sin signo. */
+export function montoConSigno(n: number): string {
+  if (n < 0) return `− ${fmtMoney(-n)}`;
+  if (n > 0) return `+ ${fmtMoney(n)}`;
+  return fmtMoney(0);
+}
+
+/**
+ * Bug 4: por qué existe un ajuste, en dos palabras. El backend sólo manda un
+ * ajuste cuando un módulo ya liquidado dejó de estar pagado (negativo: se
+ * anuló el cobro) o volvió a estarlo (positivo: se repuso), así que el signo
+ * dice el motivo; la explicación larga de la línea da el detalle.
+ */
+export function textoMotivoAjuste(l: Pick<LineaPlanilla, "monto">): string {
+  return l.monto < 0 ? "Cobro anulado" : "Cobro repuesto";
+}
+
+/**
+ * El pie del Bruto en la planilla: de qué se compone cuando hay atrasados o
+ * ajustes ("Bs 450,00 del mes + Bs 100,00 atrasados − Bs 90,00 de ajustes").
+ */
+export function pieBrutoPlanilla(r: PlanillaDocente["resumen"]): string | undefined {
+  const partes: string[] = [];
+  if (r.brutoAtrasados) partes.push(`${fmtMoney(r.brutoCuentan ?? 0)} del mes + ${fmtMoney(r.brutoAtrasados)} atrasados`);
+  if (r.ajustes && r.brutoAjustes) {
+    const base = partes[0] ?? `${fmtMoney(r.brutoCuentan ?? 0)} del mes`;
+    const ajuste = `${r.brutoAjustes < 0 ? "−" : "+"} ${fmtMoney(Math.abs(r.brutoAjustes))} de ajustes`;
+    return `${base} ${ajuste}`;
+  }
+  return partes[0];
 }
 
 /**

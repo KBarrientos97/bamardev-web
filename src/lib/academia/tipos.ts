@@ -826,6 +826,8 @@ export interface FilaPlanillaMes {
   atrasados?: number;
   postergados?: number;
   sinPagar?: number;
+  /** Bug 4: cuántos ajustes trae el mes. */
+  ajustes?: number;
 }
 
 export interface PlanillaMes {
@@ -860,7 +862,15 @@ export interface LineaPlanilla {
   cobradoModulo: number;
   abonado: number;
   montoModulo: number;
-  pct: number;
+  /**
+   * Cómo se le paga al docente esta línea (bug 17). Un backend anterior no lo
+   * manda y todo era por %.
+   */
+  modalidad?: PagoDocenteModo;
+  /** El % de lo cobrado; `null` con `modalidad` MONTO (no hay % que mostrar). */
+  pct: number | null;
+  /** Bs por módulo pagado con `modalidad` MONTO; `null` por %. */
+  montoFijo?: number | null;
   /** 0 en postergados y sin pagar (cambio #19): lo que sumaría es `montoPotencial`. */
   monto: number;
   montoPotencial?: number;
@@ -896,6 +906,9 @@ export interface PlanillaDocente {
     cuentanPorForma?: { MES_A_MES: number; COMPLETO: number; OTRO: number };
     brutoCuentan?: number;
     brutoAtrasados?: number;
+    /** Bug 4: cuántos ajustes (cobros anulados o repuestos después de liquidar) y lo que suman, con signo. */
+    ajustes?: number;
+    brutoAjustes?: number;
     postergadoHasta?: number;
     retencionPct?: number | null;
   };
@@ -904,6 +917,11 @@ export interface PlanillaDocente {
   postergados: LineaPlanilla[];
   atrasados: LineaPlanilla[];
   sinPagar: LineaPlanilla[];
+  /**
+   * Bug 4: correcciones por cobros anulados o vueltos a cobrar de módulos ya
+   * liquidados. Pueden ser negativas y ya están sumadas en el bruto.
+   */
+  ajustes?: LineaPlanilla[];
   meses: { mes: string; estado: EstadoPlanilla; liquido: number }[];
 }
 

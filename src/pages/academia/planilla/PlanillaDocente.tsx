@@ -10,11 +10,16 @@ import type { EstadoPlanilla, LineaPlanilla, MetodoPagoPlanilla, MotivoNoPago, M
 import { usePalabras } from "../../../lib/academia/usePalabras";
 import {
   cursosDePlanilla,
+  montoConSigno,
   MOTIVOS_NO_PAGO,
+  pieBrutoPlanilla,
   textoCobroPlanilla,
   TEXTO_ESTADO_PLANILLA as TEXTO_ESTADO,
   textoFormaPago,
+  textoMotivoAjuste,
   textoMotivoNoPago,
+  textoPagoLinea,
+  textoPagoLineaLargo,
 } from "../../../lib/academia/vista";
 import { ApiError } from "../../../lib/api";
 import { fmtMoney } from "../../../lib/format";
@@ -36,7 +41,7 @@ import {
   type TonoChip,
 } from "../piezas";
 
-type Lista = "cuentan" | "postergados" | "atrasados" | "sinPagar";
+type Lista = "cuentan" | "postergados" | "atrasados" | "sinPagar" | "ajustes";
 
 /** Cómo se le paga al docente. La tarjeta (que el backend acepta) no es cómo se paga un sueldo. */
 const METODOS: readonly (readonly [MetodoPagoPlanilla, string])[] = [
@@ -59,7 +64,7 @@ const LIMITE = 20;
  * Las columnas de la tabla de un grupo en escritorio. Caben con el panel
  * lateral abierto (la página se angosta 380 px).
  */
-const COLUMNAS = "lg:grid-cols-[minmax(140px,2fr)_minmax(100px,1fr)_104px_140px_44px_104px]";
+const COLUMNAS = "lg:grid-cols-[minmax(140px,2fr)_minmax(100px,1fr)_104px_140px_84px_104px]";
 
 /**
  * N8 · Planilla de un docente (ronda 2, D2): el mes de un docente, con lo que
@@ -160,7 +165,9 @@ export default function PlanillaDocente() {
   }
 
   const r = d.resumen;
-  const listas: Record<Lista, LineaPlanilla[]> = { cuentan: d.cuentan, postergados: d.postergados, atrasados: d.atrasados, sinPagar: d.sinPagar };
+  // Bug 4: los ajustes (cobros anulados o repuestos de módulos ya liquidados) son una lista más, sólo si los hay.
+  const ajustes = d.ajustes ?? [];
+  const listas: Record<Lista, LineaPlanilla[]> = { cuentan: d.cuentan, postergados: d.postergados, atrasados: d.atrasados, sinPagar: d.sinPagar, ajustes };
   const elegidas = listas[lista];
   const porGrupo = agrupar(elegidas);
   // También el mes que viene (QA 23-oct): sus líneas sólo se veían escribiendo `?mes=`.
@@ -171,7 +178,8 @@ export default function PlanillaDocente() {
     .reverse();
   const cobro = textoCobroPlanilla(d.pct.defecto, cursosDePlanilla(d, carreras.datos ?? null));
   const columnaCobrado = lista === "postergados" ? "Abonó" : lista === "sinPagar" ? "Precio" : "Cobrado del módulo";
-  const cuenta = lista === "cuentan" || lista === "atrasados";
+  const cuenta = lista === "cuentan" || lista === "atrasados" || lista === "ajustes";
+  const esAjustes = lista === "ajustes";
   /** Las listas que no le suman al docente llevan el motivo (A6). */
   const conMotivo = lista === "postergados" || lista === "sinPagar";
 
@@ -268,7 +276,7 @@ export default function PlanillaDocente() {
           icono="billetera"
           etiqueta="Bruto"
           valor={fmtMoney(r.bruto)}
-          pie={r.brutoAtrasados ? `${fmtMoney(r.brutoCuentan ?? 0)} del mes + ${fmtMoney(r.brutoAtrasados)} atrasados` : undefined}
+          pie={pieBrutoPlanilla(r)}
         />
         <KpiTarjeta
           icono="percent"
@@ -283,7 +291,14 @@ export default function PlanillaDocente() {
           pie={r.atrasos != null ? undefined : "Por confirmar con el instituto"}
         />
         <div className={`col-span-2 grid ${elegida ? "lg:col-span-2" : "lg:col-span-1"}`}>
-          <KpiTarjeta icono="coins" tono="ok" etiqueta={d.estado === "EN_CURSO" ? "Líquido provisorio" : "Líquido"} valor={fmtMoney(r.liquido)} />
+          <KpiTarjeta
+            icono="coins"
+            tono={r.liquido < 0 ? "urgente" : "ok"}
+            etiqueta={d.estado === "EN_CURSO" ? "Líquido provisorio" : "Líquido"}
+            valor={fmtMoney(r.liquido)}
+            // Sólo se dice el hecho: qué se hace con un líquido negativo lo decide el instituto.
+            pie={r.liquido < 0 ? "El líquido es negativo por ajustes de cobros anulados" : undefined}
+          />
         </div>
       </section>
 
@@ -304,6 +319,7 @@ export default function PlanillaDocente() {
               { clave: "postergados", label: "Postergados", n: r.postergados },
               { clave: "atrasados", label: "Atrasados", n: r.atrasados },
               { clave: "sinPagar", label: "Sin pagar", n: r.sinPagar },
+              ...(ajustes.length ? [{ clave: "ajustes" as const, label: "Ajustes", n: ajustes.length }] : []),
             ]}
           />
         }
@@ -318,11 +334,11 @@ export default function PlanillaDocente() {
             // aparte en gris (QA 23-oct: el subtotal decía Bs 180 en "Sin pagar").
             const total = cuenta ? lineas.reduce((s, l) => s + l.monto, 0) : 0;
             return (
-              <section key={grupo} aria-label={grupo} className="border-t border-borde-soft first:border-t-0">
+              <section key={grupo} aria-label={grupo || "Sin grupo"} className="border-t border-borde-soft first:border-t-0">
                 <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 px-4 py-3 sm:px-5">
-                  <h2 className="text-sm font-bold text-texto">{grupo}</h2>
+                  <h2 className="text-sm font-bold text-texto">{grupo || "Sin grupo"}</h2>
                   <span className="text-[13px] font-semibold tabular-nums text-texto-2">
-                    {lineas.length} {lineas.length === 1 ? p.alumno : p.alumnos} · {fmtMoney(total)}
+                    {lineas.length} {lineas.length === 1 ? p.alumno : p.alumnos} · {esAjustes ? montoConSigno(total) : fmtMoney(total)}
                   </span>
                 </div>
                 <div className={`hidden gap-3 px-4 py-2.5 sm:px-5 lg:grid ${TABLA.encabezado} ${COLUMNAS}`}>
@@ -330,7 +346,7 @@ export default function PlanillaDocente() {
                   <span>{p.Materia}</span>
                   <span>Forma de pago</span>
                   <span className="text-right">{columnaCobrado}</span>
-                  <span className="text-right">%</span>
+                  <span className="text-right">{esAjustes ? "Pago" : "% o fijo"}</span>
                   <span className="text-right">Para el docente</span>
                 </div>
                 <ul className={`${LISTA.lista} border-t border-borde-soft`}>
@@ -346,7 +362,10 @@ export default function PlanillaDocente() {
                           elegida === l ? "bg-primary-50" : "hover:bg-muted"
                         }`}
                       >
-                        <span className="truncate text-sm font-medium text-texto max-lg:order-1">{l.alumno.nombre}</span>
+                        <span className="min-w-0 max-lg:order-1">
+                          <span className="block truncate text-sm font-medium text-texto">{l.alumno.nombre}</span>
+                          {esAjustes && <span className="block truncate text-[12px] text-texto-3">{textoMotivoAjuste(l)}</span>}
+                        </span>
                         <span className="hidden truncate text-sm text-texto-2 lg:block">
                           M{l.materia.orden} {l.materia.nombre}
                         </span>
@@ -354,9 +373,13 @@ export default function PlanillaDocente() {
                         <span className="hidden text-right text-sm tabular-nums text-texto-2 lg:block">
                           {fmtMoney(lista === "postergados" ? l.abonado : lista === "sinPagar" ? l.montoModulo : l.cobradoModulo)}
                         </span>
-                        <span className="hidden text-right text-sm tabular-nums text-texto-3 lg:block">{l.pct} %</span>
-                        <span className={`text-right text-sm font-semibold tabular-nums max-lg:order-2 ${cuenta ? "text-texto" : "text-texto-3"}`}>
-                          {fmtMoney(cuenta ? l.monto : 0)}
+                        <span className="hidden text-right text-sm tabular-nums text-texto-3 lg:block">{textoPagoLinea(l)}</span>
+                        <span
+                          className={`text-right text-sm font-semibold tabular-nums max-lg:order-2 ${
+                            esAjustes && l.monto < 0 ? "text-danger-text" : cuenta ? "text-texto" : "text-texto-3"
+                          }`}
+                        >
+                          {esAjustes ? montoConSigno(l.monto) : fmtMoney(cuenta ? l.monto : 0)}
                           {!cuenta && (l.montoPotencial ?? 0) > 0 && (
                             <span className="block text-[11px] font-normal text-texto-4">
                               {fmtMoney(l.montoPotencial ?? 0)} {lista === "postergados" ? "si completa" : "si paga"}
@@ -418,11 +441,17 @@ export default function PlanillaDocente() {
         >
           <SeccionPanel titulo={`Para el ${p.docente} este mes`}>
             <ResumenPanel>
-              <span className={`block text-2xl font-bold tabular-nums ${cuenta ? "text-primary-700" : "text-texto-3"}`}>
-                {fmtMoney(cuenta ? elegida.monto : 0)}
+              <span
+                className={`block text-2xl font-bold tabular-nums ${
+                  esAjustes && elegida.monto < 0 ? "text-danger-text" : cuenta ? "text-primary-700" : "text-texto-3"
+                }`}
+              >
+                {esAjustes ? montoConSigno(elegida.monto) : fmtMoney(cuenta ? elegida.monto : 0)}
               </span>
               <span className="mt-0.5 block text-[13px] text-texto-3">
-                {lista === "cuentan"
+                {lista === "ajustes"
+                  ? textoMotivoAjuste(elegida)
+                  : lista === "cuentan"
                   ? "Pagó el módulo completo"
                   : lista === "atrasados"
                     ? "Completó un módulo de un mes anterior"
@@ -434,6 +463,12 @@ export default function PlanillaDocente() {
           </SeccionPanel>
           <SeccionPanel titulo="De dónde sale el monto">
             <p className="rounded-xl border border-borde-soft bg-white p-3 text-[13px] text-texto-2">{elegida.explicacion}</p>
+            {/* Bug 17: con monto fijo no hay % que contar; se dice cómo se le paga. */}
+            {!esAjustes && (
+              <p className="mt-2 text-[12px] text-texto-3">
+                {textoPagoLineaLargo(elegida, p.alumno)}
+              </p>
+            )}
           </SeccionPanel>
           {conMotivo && (elegida.motivoNoPago || (liquida && materiaDe(elegida) != null)) && (
             <SeccionPanel titulo={`Por qué no se le paga al ${p.docente}`}>

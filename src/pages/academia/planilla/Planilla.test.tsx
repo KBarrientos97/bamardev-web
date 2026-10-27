@@ -48,7 +48,9 @@ const linea = (extra: Partial<LineaPlanilla>): LineaPlanilla => ({
   cobradoModulo: 450,
   abonado: 450,
   montoModulo: 450,
+  modalidad: "PORCENTAJE",
   pct: 20,
+  montoFijo: null,
   monto: 90,
   explicacion: "Pagó Bs 1.350 el 8-sep · 1.350 ÷ 3 = 450 · 20 % = Bs 90",
   ...extra,
@@ -370,5 +372,135 @@ describe("QA 23-oct · planilla del mes", () => {
     await act(async () => {});
     expect(apiAcademia.planilla).toHaveBeenLastCalledWith("2026-11", null);
     expect(screen.getByRole("button", { name: "Mes siguiente" })).toBeDisabled();
+  });
+});
+
+describe("Bug 17 · una línea con monto fijo no muestra « %»", () => {
+  async function montar(extra: Partial<TPlanillaDocente>) {
+    vi.mocked(apiAcademia.planillaDocente).mockResolvedValue({ ...PLANILLA, ...extra });
+    render(
+      <MemoryRouter initialEntries={["/academia/planilla/9?mes=2026-10"]}>
+        <Routes>
+          <Route path="/academia/planilla/:id" element={<PlanillaDocente />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    await act(async () => {});
+  }
+
+  const FIJA = (extra: Partial<LineaPlanilla> = {}) =>
+    linea({
+      modalidad: "MONTO",
+      pct: null,
+      montoFijo: 90,
+      explicacion: "Monto fijo de Bs 90 por módulo pagado",
+      ...extra,
+    });
+
+  it("con MONTO la columna dice «Bs 90 fijo» y por % sigue «20 %»", async () => {
+    await montar({
+      cuentan: [FIJA({ alumno: { id: 51, nombre: "Andrade Villca, Mateo" } }), linea({ inscripcionId: 104, alumno: { id: 54, nombre: "Durán Aguilar, Luciana" } })],
+    });
+    const grupo = screen.getByRole("region", { name: "Barbería · L-M-V 09–11" });
+    expect(within(grupo).getByText("Bs 90 fijo")).toBeInTheDocument();
+    expect(within(grupo).getByText("20 %")).toBeInTheDocument();
+    expect(grupo).not.toHaveTextContent(/null|NaN/);
+  });
+
+  it("el panel de la línea con MONTO dice cómo se le paga, sin porcentaje", async () => {
+    await montar({ cuentan: [FIJA()] });
+    fireEvent.click(screen.getByRole("button", { name: "Ver el detalle de Andrade Villca, Mateo" }));
+    const panel = screen.getByRole("complementary", { name: "Andrade Villca, Mateo" });
+    expect(within(panel).getByText("Monto fijo Bs 90 por estudiante y módulo")).toBeInTheDocument();
+    expect(panel).not.toHaveTextContent(/ %/);
+  });
+});
+
+describe("Bug 4 · los ajustes de cobros anulados o repuestos", () => {
+  const ANULADO = linea({
+    inscripcionId: 120,
+    alumno: { id: 60, nombre: "Vargas Cruz, Lidia" },
+    monto: -90,
+    montoPotencial: -90,
+    explicacion: "Se anuló el cobro del módulo liquidado en 2026-09: se descuenta Bs 90",
+  });
+  const REPUESTO = linea({
+    inscripcionId: 121,
+    alumno: { id: 61, nombre: "Quiroga Peña, Saúl" },
+    monto: 40,
+    montoPotencial: 40,
+    explicacion: "Se volvió a cobrar el módulo descontado: se devuelve Bs 40",
+  });
+
+  async function montar(extra: Partial<TPlanillaDocente>) {
+    vi.mocked(apiAcademia.planillaDocente).mockResolvedValue({ ...PLANILLA, ...extra });
+    render(
+      <MemoryRouter initialEntries={["/academia/planilla/9?mes=2026-10"]}>
+        <Routes>
+          <Route path="/academia/planilla/:id" element={<PlanillaDocente />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    await act(async () => {});
+  }
+
+  it("sin ajustes no hay pestaña «Ajustes»", async () => {
+    await montar({});
+    expect(screen.queryByRole("tab", { name: /Ajustes/ })).not.toBeInTheDocument();
+  });
+
+  it("la pestaña lista cada ajuste con su motivo y el monto con signo (negativo en rojo)", async () => {
+    await montar({
+      resumen: { ...PLANILLA.resumen, ajustes: 2, brutoAjustes: -50, bruto: 140, liquido: 140, brutoCuentan: 190 },
+      ajustes: [ANULADO, REPUESTO],
+    });
+    fireEvent.click(screen.getByRole("tab", { name: /Ajustes/ }));
+    const grupo = screen.getByRole("region", { name: "Barbería · L-M-V 09–11" });
+    expect(within(grupo).getByText("Cobro anulado")).toBeInTheDocument();
+    expect(within(grupo).getByText("Cobro repuesto")).toBeInTheDocument();
+    const rojo = within(grupo).getByText("− Bs 90,00");
+    expect(rojo).toHaveClass("text-danger-text");
+    expect(within(grupo).getByText("+ Bs 40,00")).not.toHaveClass("text-danger-text");
+    // El subtotal del grupo también lleva signo.
+    expect(grupo).toHaveTextContent(/2 estudiantes · − Bs 50,00/);
+    fireEvent.click(within(grupo).getByRole("button", { name: "Ver el detalle de Vargas Cruz, Lidia" }));
+    const panel = screen.getByRole("complementary", { name: "Vargas Cruz, Lidia" });
+    expect(within(panel).getByText("Se anuló el cobro del módulo liquidado en 2026-09: se descuenta Bs 90")).toBeInTheDocument();
+  });
+
+  it("el resumen dice los ajustes que componen el bruto", async () => {
+    await montar({
+      resumen: { ...PLANILLA.resumen, ajustes: 1, brutoAjustes: -90, brutoCuentan: 190, bruto: 100, liquido: 100 },
+      ajustes: [ANULADO],
+    });
+    expect(screen.getByRole("region", { name: "Resumen de la planilla" })).toHaveTextContent(/Bs 190,00 del mes − Bs 90,00 de ajustes/);
+  });
+
+  it("un líquido negativo se muestra con el número y una nota neutra", async () => {
+    await montar({
+      resumen: { ...PLANILLA.resumen, ajustes: 1, brutoAjustes: -90, brutoCuentan: 0, cuentan: 0, postergados: 0, bruto: -90, liquido: -90 },
+      cuentan: [],
+      postergados: [],
+      ajustes: [ANULADO],
+    });
+    const resumen = screen.getByRole("region", { name: "Resumen de la planilla" });
+    expect(resumen).toHaveTextContent(/-90,00/);
+    expect(resumen).toHaveTextContent("El líquido es negativo por ajustes de cobros anulados");
+  });
+
+  it("la lista del mes avisa del docente con ajustes", async () => {
+    vi.mocked(apiAcademia.planilla).mockResolvedValue({
+      mes: "2026-10",
+      retencionActiva: false,
+      docentes: [{ personalId: 9, nombre: "Marco Rojas", grupos: 1, cuentan: 0, total: 0, bruto: -90, retencion: null, liquido: -90, estado: "EN_CURSO", ajustes: 2 }],
+      totales: { bruto: -90, liquido: -90 },
+    });
+    render(
+      <MemoryRouter>
+        <PlanillaMes />
+      </MemoryRouter>,
+    );
+    await act(async () => {});
+    expect(screen.getByRole("link", { name: "Ver la planilla de Marco Rojas" })).toHaveTextContent("2 ajustes");
   });
 });
