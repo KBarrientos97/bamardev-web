@@ -193,6 +193,33 @@ describe("C2 · «Abrir el primer grupo» al crear un curso", () => {
     expect(screen.getByTestId("destino")).toHaveTextContent("/academia/calendario?nuevoGrupo=9");
   });
 
+  it("en el celular la hoja del curso se cierra al crearlo y el aviso con el botón queda a la vista", async () => {
+    vi.stubGlobal("matchMedia", (q: string) => ({ matches: q.includes("767"), addEventListener: () => {}, removeEventListener: () => {} }));
+    try {
+      render(
+        <MemoryRouter initialEntries={["/configuracion/carreras"]}>
+          <Routes>
+            <Route path="/configuracion/carreras" element={<Carreras />} />
+            <Route path="*" element={<Destino />} />
+          </Routes>
+        </MemoryRouter>,
+      );
+      await act(async () => {});
+      fireEvent.click(screen.getByRole("button", { name: "Nuevo curso" }));
+      const hoja = screen.getByRole("dialog", { name: "Nuevo curso" });
+      fireEvent.change(within(hoja).getByLabelText("Nombre"), { target: { value: "Tatuaje" } });
+      fireEvent.change(within(hoja).getByLabelText(/Precio por módulo/), { target: { value: "600" } });
+      fireEvent.click(within(hoja).getByRole("button", { name: "Crear curso" }));
+      await act(async () => {});
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      expect(screen.getByText(/Curso creado/)).toHaveTextContent("Tatuaje");
+      fireEvent.click(screen.getByRole("button", { name: "Abrir el primer grupo" }));
+      expect(screen.getByTestId("destino")).toHaveTextContent("/academia/calendario?nuevoGrupo=9");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("sin academia.grupos sólo sale «Curso creado.», sin el botón", async () => {
     quien.sinGrupos = true;
     await crearCurso();

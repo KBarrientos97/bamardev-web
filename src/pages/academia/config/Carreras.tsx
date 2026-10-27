@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Icon } from "../../../components/Icon";
+import { useConsultaMedia } from "../../../lib/agenda/useEsCelular";
 import PanelLateral from "../../../components/PanelLateral";
 import { AvisoOk, Boton, Campo, Cargando, ErrorMsg, Input, Modal, Select, Vacio, useAviso } from "../../../components/ui";
 import { apiAcademia, CODIGOS_ACADEMIA } from "../../../lib/academia/apiAcademia";
@@ -80,6 +81,8 @@ export default function Carreras() {
   const [aviso, setAviso] = useAviso(5000);
   const navigate = useNavigate();
   const { usuario } = useAuth();
+  // En el celular el panel es una hoja que tapa la pantalla (y los avisos).
+  const celular = useConsultaMedia("(max-width: 767px)");
   // C2: al crear un curso, el aviso ofrece abrir su primer grupo (sólo a quien
   // puede abrir grupos). Dura más que un aviso común: hay que alcanzar a tocarlo.
   const abreGrupos = tienePermiso(usuario, "academia.grupos");
@@ -215,7 +218,10 @@ export default function Carreras() {
           onCerrar={() => setElegida(null)}
           onGuardado={(c, nuevo) => {
             actualizar(c);
-            setElegida(c.id);
+            // En el celular la hoja se cierra al guardar: el aviso («Curso creado»
+            // con «Abrir el primer grupo») quedaba detrás de ella. En escritorio el
+            // panel no tapa nada y el curso sigue a la vista.
+            setElegida(celular ? null : c.id);
             // Con permiso para abrir grupos, el aviso del curso nuevo lleva su botón.
             if (nuevo && abreGrupos) {
               setAviso("");
