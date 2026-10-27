@@ -326,6 +326,7 @@ function PanelAula({
       titulo={aula ? "Editar aula" : "Nueva aula"}
       subtitulo={aula ? aula.sede.nombre : undefined}
       onClose={onCerrar}
+      cerrarAlClicAfuera={false}
       acciones={
         <>
           <Boton onClick={() => void guardar()} disabled={guardando}>

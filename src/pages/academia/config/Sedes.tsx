@@ -194,6 +194,8 @@ export default function Sedes() {
           abierto
           titulo={detalle.nombre}
           subtitulo={`Datos, franjas y aulas de esta ${p.sede}`}
+          // Adentro se editan las franjas y se abre el aula: un toque afuera no tiene que tirar lo tipeado (ronda 1, W4).
+          cerrarAlClicAfuera={false}
           onClose={() => {
             setAbierta(null);
             setVer(null);
@@ -388,6 +390,7 @@ function PanelSede({
       titulo={sede ? `Editar ${p.sede}` : `Nueva ${p.sede}`}
       subtitulo={sede?.nombre}
       onClose={onCerrar}
+      cerrarAlClicAfuera={false}
       acciones={
         <>
           <Boton onClick={() => void guardar()} disabled={guardando}>

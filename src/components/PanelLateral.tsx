@@ -4,6 +4,13 @@ import { Icon } from "./Icon";
 import { Modal } from "./ui";
 
 /**
+ * Los paneles de escritorio abiertos, el último arriba. Escape cierra sólo el
+ * de arriba: con uno encima de otro (el aula dentro de la sede) cerraba los dos
+ * y se perdía lo tipeado (ronda 1, W5).
+ */
+const pilaDePaneles: symbol[] = [];
+
+/**
  * El detalle de una fila (PLAN-ACADEMIAS §5, versión limpia): tocar la fila
  * abre un panel lateral de 380 px en escritorio, o una hoja inferior en el
  * celular, con el detalle y las acciones. La fila no dibuja todas sus
@@ -20,6 +27,7 @@ export default function PanelLateral({
   onClose,
   children,
   acciones,
+  cerrarAlClicAfuera,
 }: {
   abierto: boolean;
   titulo: string;
@@ -28,17 +36,29 @@ export default function PanelLateral({
   children: ReactNode;
   /** Abajo, fijas: la acción principal primero y a lo ancho. */
   acciones?: ReactNode;
+  /**
+   * `false` en los paneles con formulario: en el celular son una hoja y un
+   * toque afuera borraba lo tipeado (ver `Modal`). Se cierra con la X o Cancelar.
+   */
+  cerrarAlClicAfuera?: boolean;
 }) {
   const celular = useConsultaMedia("(max-width: 767px)");
 
   useEffect(() => {
     if (!abierto || celular) return;
+    const mio = Symbol("panel");
+    pilaDePaneles.push(mio);
     const alTecla = (e: KeyboardEvent) => {
-      // Con un diálogo encima (un motivo, un PIN), Escape es de él.
-      if (e.key === "Escape" && !document.querySelector('[role="dialog"][aria-modal="true"]')) onClose();
+      // Con un diálogo encima (un motivo, un PIN), Escape es de él. Y entre
+      // paneles, del que está arriba.
+      if (e.key === "Escape" && pilaDePaneles[pilaDePaneles.length - 1] === mio && !document.querySelector('[role="dialog"][aria-modal="true"]')) onClose();
     };
     document.addEventListener("keydown", alTecla);
-    return () => document.removeEventListener("keydown", alTecla);
+    return () => {
+      document.removeEventListener("keydown", alTecla);
+      const i = pilaDePaneles.indexOf(mio);
+      if (i >= 0) pilaDePaneles.splice(i, 1);
+    };
   }, [abierto, celular, onClose]);
 
   if (!abierto) return null;
@@ -51,6 +71,7 @@ export default function PanelLateral({
         subtitulo={subtitulo}
         onClose={onClose}
         ancho="max-w-md"
+        cerrarAlClicAfuera={cerrarAlClicAfuera}
         acciones={acciones ? <div className="flex w-full flex-col gap-2">{acciones}</div> : undefined}
       >
         {children}
