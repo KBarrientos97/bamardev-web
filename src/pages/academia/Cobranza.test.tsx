@@ -233,48 +233,72 @@ describe("N7 · cobranza", () => {
     fireEvent.click(screen.getByRole("button", { name: "Cobrar a un estudiante" }));
     expect(screen.getByTestId("destino")).toHaveTextContent(/^\/academia\/cobranza\/cobrar$/);
   });
-  it("D2/D10: el buscador de estudiante (el mismo de Estudiantes) filtra la lista por nombre, código o teléfono", async () => {
+  it("D10: el buscador manda `q` al servidor (con demora) y la lista, el contador y los totales son los de la respuesta", async () => {
     await montar();
     const buscador = screen.getByPlaceholderText("Nombre, CI, código o teléfono");
     expect(buscador).toHaveAccessibleName("Buscar estudiante");
-    const buscar = async (texto: string) => {
-      fireEvent.change(buscador, { target: { value: texto } });
-      await act(async () => {
-        await new Promise((r) => setTimeout(r, 350));
-      });
+    // Sin buscar, no se manda `q`.
+    expect(vi.mocked(apiAcademia.cobranza).mock.calls[0][0].q).toBeUndefined();
+    const soloCamila = {
+      ...RESPUESTA,
+      items: [RESPUESTA.items[1]],
+      total: 1,
+      totales: { ...RESPUESTA.totales, vencido: 500, vencidoCuotas: 1 },
     };
-    await buscar("bustillos");
-    expect(screen.queryAllByText("Bustillos Rek, Camila").length).toBeGreaterThan(0);
-    expect(screen.queryAllByText("Céspedes Molina, Joaquín")).toHaveLength(0);
-    // Sin tildes ni mayúsculas, y por código.
-    await buscar("CESPEDES");
-    expect(screen.queryAllByText("Céspedes Molina, Joaquín").length).toBeGreaterThan(0);
-    expect(screen.queryAllByText("Bustillos Rek, Camila")).toHaveLength(0);
-    await buscar("2026-0102");
-    expect(screen.queryAllByText("Bustillos Rek, Camila").length).toBeGreaterThan(0);
-    // Por teléfono (4 o más dígitos).
-    await buscar("7123");
-    expect(screen.queryAllByText("Céspedes Molina, Joaquín").length).toBeGreaterThan(0);
-    expect(screen.queryAllByText("Bustillos Rek, Camila")).toHaveLength(0);
-    // Nadie: lo dice, y limpiar vuelve a la lista.
-    await buscar("zzz");
-    expect(screen.getByText(/Nadie con «zzz»/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Limpiar búsqueda" }));
+    vi.mocked(apiAcademia.cobranza).mockResolvedValue(soloCamila);
+    fireEvent.change(buscador, { target: { value: "camila" } });
+    // Antes de la demora no se pregunta (una tecla no es un pedido).
+    expect(vi.mocked(apiAcademia.cobranza)).toHaveBeenCalledTimes(1);
     await act(async () => {
       await new Promise((r) => setTimeout(r, 350));
     });
+    expect(apiAcademia.cobranza).toHaveBeenLastCalledWith(expect.objectContaining({ tipo: "vencidas", q: "camila", page: 1 }));
     expect(screen.queryAllByText("Bustillos Rek, Camila").length).toBeGreaterThan(0);
-    expect(screen.queryAllByText("Céspedes Molina, Joaquín").length).toBeGreaterThan(0);
+    expect(screen.queryAllByText("Céspedes Molina, Joaquín")).toHaveLength(0);
+    // Las tarjetas-filtro cuentan lo encontrado, no el total del negocio.
+    expect(within(screen.getByRole("group", { name: "Filtrar deudas" })).getByRole("button", { name: /Vencidas Bs\s?500,00 · 1/ })).toBeInTheDocument();
   });
 
-  it("con varias páginas, avisa que el buscador mira sólo la página que se ve", async () => {
+  it("D10: ya no hay aviso de «busca sólo en esta página», aunque haya varias páginas", async () => {
     vi.mocked(apiAcademia.cobranza).mockResolvedValue({ ...RESPUESTA, total: 45 });
     await montar();
-    expect(screen.queryByText(/Busca entre las/)).not.toBeInTheDocument();
     fireEvent.change(screen.getByPlaceholderText("Nombre, CI, código o teléfono"), { target: { value: "camila" } });
     await act(async () => {
       await new Promise((r) => setTimeout(r, 350));
     });
-    expect(screen.getByText(/Busca entre las 2 de esta página; hay 45 en total/)).toBeInTheDocument();
+    expect(screen.queryByText(/Busca entre las/)).not.toBeInTheDocument();
+  });
+
+  it("D10: sin resultados lo dice y el buscador sigue ahí; limpiar vuelve a la lista", async () => {
+    await montar();
+    vi.mocked(apiAcademia.cobranza).mockResolvedValue({ ...RESPUESTA, items: [], total: 0 });
+    fireEvent.change(screen.getByPlaceholderText("Nombre, CI, código o teléfono"), { target: { value: "zzz" } });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 350));
+    });
+    expect(screen.getByText(/Nadie con «zzz»/)).toBeInTheDocument();
+    vi.mocked(apiAcademia.cobranza).mockResolvedValue(RESPUESTA);
+    fireEvent.click(screen.getByRole("button", { name: "Limpiar búsqueda" }));
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 350));
+    });
+    expect(apiAcademia.cobranza).toHaveBeenLastCalledWith(expect.objectContaining({ q: undefined }));
+    expect(screen.queryAllByText("Céspedes Molina, Joaquín").length).toBeGreaterThan(0);
+  });
+
+  it("D10: el CI del estudiante sale en la fila y en el panel cuando viene; si no viene, no se dibuja", async () => {
+    vi.mocked(apiAcademia.cobranza).mockResolvedValue({
+      ...RESPUESTA,
+      items: [
+        { ...RESPUESTA.items[0], alumno: { ...RESPUESTA.items[0].alumno, ci: "8123456" } },
+        { ...RESPUESTA.items[1], alumno: { ...RESPUESTA.items[1].alumno, ci: null } },
+      ],
+    });
+    await montar();
+    expect(screen.getAllByText(/CI 8123456/).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/CI null/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole("button", { name: "Enviar QR" })[0]);
+    const panel = screen.getByRole("complementary", { name: "Céspedes Molina, Joaquín" });
+    expect(within(panel).getByText(/CI 8123456 · código 2026-0103/)).toBeInTheDocument();
   });
 });

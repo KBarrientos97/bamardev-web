@@ -11,7 +11,7 @@ import type { FilaCobranza, Recordatorio, RespuestaCobranza, TipoCobranza } from
 import { useFiltroSede } from "../../lib/academia/useFiltroSede";
 import { useBusquedaEstudiante } from "../../lib/academia/useBusquedaEstudiante";
 import { usePalabras } from "../../lib/academia/usePalabras";
-import { abrirWhatsapp, filaCoincideConBusqueda, nombreCuota, RUTA_COBRAR, rutaCobroAlumno, rutaCobroInscripcion } from "../../lib/academia/vista";
+import { abrirWhatsapp, nombreCuota, RUTA_COBRAR, rutaCobroAlumno, rutaCobroInscripcion } from "../../lib/academia/vista";
 import { fmtHora, fmtMoney, tiempoRelativo } from "../../lib/format";
 import { usePaginado } from "../../lib/paginado";
 import { cobraCuotas } from "../../lib/permisos";
@@ -96,16 +96,16 @@ export default function Cobranza() {
         ...pg,
         tipo,
         sede: sede.sucursalId,
+        q: buscado || undefined,
       });
       setTotales(r.totales);
       return r;
     },
-    [tipo, sede.sucursalId],
+    [tipo, sede.sucursalId, buscado],
   );
-  // El buscador de Estudiantes (D2/D10). El backend de Cobranza todavía no
-  // recibe `q`: se filtra sobre las filas ya cargadas (la página que se ve).
-  const visibles = buscado ? lista.items.filter((f) => filaCoincideConBusqueda(f, buscado)) : lista.items;
-  const buscaSoloEnPagina = !!buscado && lista.total > lista.items.length;
+  // El buscador de Estudiantes (D2/D10): lo busca el servidor en todas las páginas,
+  // y las tarjetas de arriba y la paginación cuentan sólo lo encontrado.
+  const visibles = lista.items;
   const cobra = cobraCuotas({
     features: negocio?.features,
     rubro,
@@ -239,19 +239,15 @@ export default function Cobranza() {
       <Tarjeta
         id="t-cobranza"
         titulo={TITULO_TIPO[tipo]}
-        contador={lista.items.length ? (buscado ? visibles.length : lista.total) : undefined}
+        contador={lista.items.length ? lista.total : undefined}
         sinRelleno
         pie={lista.items.length > 0 && lista.total > 20 ? <Paginacion {...lista.paginacion} /> : undefined}
       >
         {/* El mismo buscador que Estudiantes, Cobrar e Inscribir (D2), en su propia fila de la tarjeta. */}
-        {lista.items.length > 0 && (
+        {/* Con la búsqueda escrita se queda aunque no haya nadie, para poder borrarla. */}
+        {(lista.items.length > 0 || q.trim() !== "") && (
           <div className="border-b border-borde-soft bg-muted/50 px-4 py-3 sm:px-5">
             <BuscadorEstudiante valor={q} onChange={setQ} />
-            {buscaSoloEnPagina && (
-              <p className="mt-2 text-xs text-texto-3">
-                Busca entre las {lista.items.length} de esta página; hay {lista.total} en total. Cambiá de página para ver el resto.
-              </p>
-            )}
           </div>
         )}
         {lista.error && !lista.items.length ? (
@@ -260,13 +256,13 @@ export default function Cobranza() {
           </div>
         ) : lista.cargando && !lista.items.length ? (
           <Cargando />
+        ) : lista.items.length === 0 && buscado ? (
+          <Vacio icono="search" titulo={`Nadie con «${buscado}» en esta lista`} texto="Probá con otra parte del nombre, el CI, el código o el teléfono." />
         ) : lista.items.length === 0 ? (
           <Vacio
             icono="coins"
             titulo={tipo === "vencidas" ? "No hay cuotas vencidas" : tipo === "por-vencer" ? "Nada por vencer" : "No hay abonos a medias"}
           />
-        ) : visibles.length === 0 ? (
-          <Vacio icono="search" titulo={`Nadie con «${buscado}» en esta lista`} texto="Probá con otra parte del nombre, el código o el teléfono." />
         ) : (
           <ListaCobranza
             filas={visibles}
@@ -337,7 +333,7 @@ function ListaCobranza({
     const c = cuotaARecordar(f);
     const cuota = f.cuotas.length === 1 && c ? nombreCuota(c) : `${f.cuotas.length} cuotas`;
     const abono = f.cuotas.length === 1 && c && c.pagado > 0 ? ` · abonó ${fmtMoney(c.pagado)} de ${fmtMoney(c.monto)}` : "";
-    return [f.grupo.nombre, conSede ? f.sede.nombre : null, `${cuota}${abono}`, f.contacto.esTutor ? `tutor ${f.contacto.nombre}` : null]
+    return [f.grupo.nombre, conSede ? f.sede.nombre : null, f.alumno.ci ? `CI ${f.alumno.ci}` : null, `${cuota}${abono}`, f.contacto.esTutor ? `tutor ${f.contacto.nombre}` : null]
       .filter(Boolean)
       .join(" · ");
   };
@@ -591,6 +587,12 @@ function PanelEnvio({
               </BotonFila>
             </div>
           </ResumenPanel>
+        )}
+
+        {(fila.alumno.ci || fila.alumno.codigo) && (
+          <p className="mb-4 text-[13px] text-texto-3">
+            {[fila.alumno.ci ? `CI ${fila.alumno.ci}` : null, fila.alumno.codigo ? `código ${fila.alumno.codigo}` : null].filter(Boolean).join(" · ")}
+          </p>
         )}
 
         <SeccionPanel titulo="Se envía a">

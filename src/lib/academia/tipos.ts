@@ -639,9 +639,12 @@ export interface FilaCobranza {
    * la inscripción para pedir su carrito. Si no viene, el POS busca al alumno.
    */
   inscripcionId?: number;
-  alumno: { id: number; nombre: string; codigo: string | null };
+  /** `ci` (D10): null si quien mira no ve datos personales. */
+  alumno: { id: number; nombre: string; codigo: string | null; ci?: string | null };
   contacto: { nombre: string; telefono: string | null; esTutor: boolean };
   grupo: Ref;
+  /** El curso del grupo (D6). */
+  carrera?: Ref;
   sede: Ref;
   cuotas: Cuota[];
   saldo: number;
@@ -658,6 +661,8 @@ export interface RespuestaCobranza extends Paginado<FilaCobranza> {
 
 export interface FiltroCobranza extends PedidoPagina {
   tipo: TipoCobranza;
+  /** D10: nombre (cualquier orden, sin tildes), código, CI o teléfono (4 o más dígitos). */
+  q?: string;
   sede?: number | null;
   carreraId?: number | null;
   antiguedad?: Antiguedad | "";

@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ApiError } from "../api";
 import {
-  filaCoincideConBusqueda,
   fueraDeAlcance,
   montoConSigno,
   nombreCuota,
@@ -128,32 +127,6 @@ describe("D6 · las cuotas con el nombre del módulo", () => {
       "Barbería · M2 Degradados",
     );
     expect(nombreCuotaDeCurso("Barbería", { concepto: "Pago único", numero: 1, materiaOrdenes: [], materias: [] })).toBe("Barbería · Pago único");
-  });
-});
-
-describe("filaCoincideConBusqueda (el buscador de Cobranza, D10)", () => {
-  const fila = { alumno: { nombre: "Céspedes Molina, Joaquín", codigo: "2026-0103" }, contacto: { telefono: "+591 712-34567" } };
-
-  it("sin texto deja pasar todo", () => {
-    expect(filaCoincideConBusqueda(fila, "  ")).toBe(true);
-  });
-
-  it("encuentra por nombre sin tildes ni mayúsculas, en cualquier orden de palabras", () => {
-    expect(filaCoincideConBusqueda(fila, "cespedes")).toBe(true);
-    expect(filaCoincideConBusqueda(fila, "JOAQUIN molina")).toBe(true);
-    expect(filaCoincideConBusqueda(fila, "Molina, Joaquín")).toBe(true);
-    expect(filaCoincideConBusqueda(fila, "cespedes lima")).toBe(false);
-  });
-
-  it("encuentra por código y por teléfono (4 o más dígitos, ignorando espacios y guiones)", () => {
-    expect(filaCoincideConBusqueda(fila, "2026-0103")).toBe(true);
-    expect(filaCoincideConBusqueda(fila, "71234567")).toBe(true);
-    expect(filaCoincideConBusqueda(fila, "712 345")).toBe(true);
-    expect(filaCoincideConBusqueda(fila, "9999")).toBe(false);
-  });
-
-  it("tolera filas sin código ni teléfono", () => {
-    expect(filaCoincideConBusqueda({ alumno: { nombre: "Rojas, Ana", codigo: null }, contacto: { telefono: null } }, "ana")).toBe(true);
   });
 });
 
