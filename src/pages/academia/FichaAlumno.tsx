@@ -19,7 +19,8 @@ import { usePalabras } from "../../lib/academia/usePalabras";
 import { abrirWhatsapp, nombreCuota, rutaCobroInscripcion, textoCuota, textoEstadoInscripcion, textoEvento } from "../../lib/academia/vista";
 import { enlaceWhatsApp } from "../../lib/agenda/recordatorio";
 import { fmtFecha, fmtMoney, iniciales } from "../../lib/format";
-import { cobraCuotas, soloLoSuyo, tienePermiso } from "../../lib/permisos";
+import { cobraCuotas, tienePermiso } from "../../lib/permisos";
+import { veMontosAcademia } from "../../lib/permisosAcademia";
 import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
 import PedirMotivo from "../agenda/PedirMotivo";
@@ -69,7 +70,7 @@ export default function FichaAlumno() {
   const [editando, setEditando] = useState(false);
   const [agregandoTutor, setAgregandoTutor] = useState(false);
 
-  const sinMontos = soloLoSuyo(usuario, "academia.ver");
+  const sinMontos = !veMontosAcademia(usuario);
   const cobra = cobraCuotas({ features: negocio?.features, rubro, permisos: usuario?.permisos, permisosPropios: usuario?.permisosPropios });
   const inscribe = tienePermiso(usuario, "academia.inscribir");
   // Editar los datos y los tutores pide inscribir (#4 del contrato); el CI y

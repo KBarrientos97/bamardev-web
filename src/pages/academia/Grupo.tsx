@@ -13,7 +13,8 @@ import { abrirWhatsapp, rutaCobroInscripcion, textoFormaPago } from "../../lib/a
 import { enlaceWhatsApp } from "../../lib/agenda/recordatorio";
 import { fmtMoney } from "../../lib/format";
 import { usePaginado } from "../../lib/paginado";
-import { cobraCuotas, soloLoSuyo, tieneFeature, tienePermiso } from "../../lib/permisos";
+import { cobraCuotas, tieneFeature, tienePermiso } from "../../lib/permisos";
+import { veMontosAcademia } from "../../lib/permisosAcademia";
 import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
 import { DialogoCompartir } from "./CompartirInscripcion";
@@ -102,7 +103,7 @@ export default function Grupo() {
   };
 
   // El docente ve a sus alumnos sin montos (PLAN-ACADEMIAS §4).
-  const sinMontos = soloLoSuyo(usuario, "academia.ver");
+  const sinMontos = !veMontosAcademia(usuario);
   const volverA = sinMontos ? "/academia/mis-clases" : "/academia/calendario";
   const cobra = cobraCuotas({ features: negocio?.features, rubro, permisos: usuario?.permisos, permisosPropios: usuario?.permisosPropios });
   const inscribe = tienePermiso(usuario, "academia.inscribir");

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ctxDe } from "../test/sesiones";
 import { cobraCuotas, puedeVer, rutaInicial, type Seccion } from "./permisos";
+import { veMontosAcademia } from "./permisosAcademia";
 
 /**
  * La vertical Educación (PLAN-ACADEMIAS-TECNICO §5 y §8): cada sección pide
@@ -162,5 +163,27 @@ describe("secciones de la ronda 2", () => {
   it("sin la feature de la planilla, nadie ve planillas", () => {
     const c = ctxDe("ADMIN", "ACADEMIA", FEATURES);
     expect(puedeVer(c, "academia_planilla")).toBe(false);
+  });
+});
+
+describe("veMontosAcademia (la misma regla que veMontos del backend)", () => {
+  const con = (permisos: string[], propios: string[] = []) => ({ permisos, permisosPropios: propios });
+
+  it("el docente (academia.ver propio) no ve montos", () => {
+    expect(veMontosAcademia(con(["academia.ver", "asistencia.registrar"], ["academia.ver"]))).toBe(false);
+  });
+
+  it("con academia.ver general sí", () => {
+    expect(veMontosAcademia(con(["academia.ver"]))).toBe(true);
+  });
+
+  it("propio pero con inscribir o cobranza, también: el backend se los manda", () => {
+    expect(veMontosAcademia(con(["academia.ver", "academia.cobranza"], ["academia.ver"]))).toBe(true);
+    expect(veMontosAcademia(con(["academia.ver", "academia.inscribir"], ["academia.ver"]))).toBe(true);
+  });
+
+  it("sin sesión o sin academia.ver no esconde nada (no es docente)", () => {
+    expect(veMontosAcademia(null)).toBe(true);
+    expect(veMontosAcademia(con([]))).toBe(true);
   });
 });
