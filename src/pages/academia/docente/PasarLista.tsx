@@ -24,7 +24,8 @@ import {
   PagoDelModulo,
   Tarjeta,
 } from "../piezas";
-import NavDocente, { useHayNavDocente } from "./NavDocente";
+import NavDocente from "./NavDocente";
+import { useHayNavDocente } from "./useNavDocente";
 
 type Filtro = "todos" | "debe";
 

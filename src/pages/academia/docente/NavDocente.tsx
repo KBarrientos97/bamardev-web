@@ -1,6 +1,6 @@
 import { NavLink } from "react-router-dom";
-import { Icon, type NombreIcono } from "../../../components/Icon";
-import { useAuth } from "../../../store/AuthContext";
+import { Icon } from "../../../components/Icon";
+import { useItemsDocente } from "./useNavDocente";
 
 /**
  * La barra de abajo del docente en el celular (E11a): sus lugares a un toque,
@@ -13,20 +13,6 @@ import { useAuth } from "../../../store/AuthContext";
  * si la barra se dibuja (`useHayNavDocente`): con una sola sección no hay barra
  * y ese hueco de 57 px dejaba "Guardar lista" flotando (ronda 2, R13).
  */
-function useItemsDocente() {
-  const { puede } = useAuth();
-  const items: { a: string; label: string; icono: NombreIcono; visible: boolean }[] = [
-    { a: "/academia/mis-clases", label: "Mis clases", icono: "calendar", visible: puede("academia_mis_clases") },
-    { a: "/academia/notas", label: "Notas", icono: "edit", visible: puede("academia_notas") },
-  ];
-  return items.filter((i) => i.visible);
-}
-
-/** ¿Se dibuja la barra de abajo del docente? (con menos de dos lugares, no). */
-export function useHayNavDocente() {
-  return useItemsDocente().length >= 2;
-}
-
 export default function NavDocente() {
   const visibles = useItemsDocente();
   if (visibles.length < 2) return null;
