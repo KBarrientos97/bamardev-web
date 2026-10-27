@@ -67,6 +67,12 @@ export default function FichaAlumno() {
   const [error, setError] = useState("");
   // CUOTAS_CAMBIARON: lo que se intentaba hacer, para ofrecer «Reintentar».
   const [reintento, setReintento] = useState<(() => void) | null>(null);
+  // El «Reintentar» es de UN error: cada mensaje nuevo lo borra, o un error ajeno
+  // heredaba el botón de un retiro anterior y lo volvía a ejecutar (ronda 1, D9).
+  const fallo = (mensaje: string) => {
+    setError(mensaje);
+    setReintento(null);
+  };
   const [retirando, setRetirando] = useState<InscripcionDetalle | null>(null);
   const [cambiandoGrupo, setCambiandoGrupo] = useState<InscripcionDetalle | null>(null);
   const [cambiandoPlan, setCambiandoPlan] = useState<InscripcionDetalle | null>(null);
@@ -122,13 +128,13 @@ export default function FichaAlumno() {
   async function enviarEstado() {
     const pendiente = vivas.find((c) => c.saldo > 0 && c.vencida) ?? vivas.find((c) => c.saldo > 0);
     if (pendiente) {
-      setError("");
+      fallo("");
       try {
         const r = await apiAcademia.recordatorio(pendiente.id);
         abrirWhatsapp(r.url);
         setAviso("Mensaje armado: queda anotado el recordatorio.");
       } catch (e) {
-        setError(mensajeDelBackend(e, "No se pudo armar el mensaje"));
+        fallo(mensajeDelBackend(e, "No se pudo armar el mensaje"));
         // La cuota ya no debe nada o el grupo se canceló: la ficha estaba vieja.
         if (esDatoViejo(e)) ficha.recargar();
       }
@@ -144,18 +150,17 @@ export default function FichaAlumno() {
     const texto = `Hola ${nombre}, el estado de cuenta de ${a!.nombres} en ${actual ? nombreDe(actual.grupo.carrera) : negocio?.nombre ?? ""}: saldo ${fmtMoney(saldo)}.${detalle ? `\n${detalle}` : ""}`;
     const url = enlaceWhatsApp(telefono, texto);
     if (url) abrirWhatsapp(url);
-    else setError("No hay un teléfono cargado para mandarlo.");
+    else fallo("No hay un teléfono cargado para mandarlo.");
   }
 
   async function hacer(fn: () => Promise<unknown>, ok: string) {
-    setError("");
-    setReintento(null);
+    fallo("");
     try {
       await fn();
       setAviso(ok);
       ficha.recargar();
     } catch (e) {
-      setError(mensajeDelBackend(e, "No se pudo completar"));
+      fallo(mensajeDelBackend(e, "No se pudo completar"));
       // Entró o se anuló un pago mientras se guardaba (409 CUOTAS_CAMBIARON): no
       // se hizo nada. Se recarga la ficha para ver las cuotas de ahora y se
       // ofrece volver a intentar; el mensaje del backend se muestra tal cual.
@@ -190,7 +195,7 @@ export default function FichaAlumno() {
    * `confirmarSobreCupo`; a otra sede (403 CAMBIO_DE_SEDE) lo dice el backend.
    */
   async function cambiarGrupo(inscripcionId: number, grupoId: number, sobreCupo = false) {
-    setError("");
+    fallo("");
     try {
       await apiAcademia.cambiarGrupo(inscripcionId, grupoId, sobreCupo);
       setAviso("Cambiado de grupo.");
@@ -202,7 +207,7 @@ export default function FichaAlumno() {
           seguir: () => void cambiarGrupo(inscripcionId, grupoId, true),
         });
       } else {
-        setError(e instanceof Error ? e.message : "No se pudo cambiar de grupo");
+        fallo(e instanceof Error ? e.message : "No se pudo cambiar de grupo");
       }
     }
   }

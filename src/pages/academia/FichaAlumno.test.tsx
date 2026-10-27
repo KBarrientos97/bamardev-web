@@ -176,6 +176,23 @@ describe("E6 · rechazos con código (auditoría de octubre)", () => {
     expect(screen.queryByRole("button", { name: "Reintentar" })).not.toBeInTheDocument();
   });
 
+  it("ronda 1 · D9: el «Reintentar» de un retiro no queda colgado de un error ajeno", async () => {
+    vi.mocked(apiAcademia.retirar).mockRejectedValue(new ApiError("Las cuotas cambiaron mientras guardabas.", 409, { codigo: "CUOTAS_CAMBIARON" }));
+    const ajeno = "Esa cuota ya no tiene saldo: no hay nada que recordar.";
+    vi.mocked(apiAcademia.recordatorio).mockRejectedValue(new ApiError(ajeno, 400, { codigo: "CUOTA_SIN_SALDO" }));
+    await montar();
+    await retirar();
+    expect(screen.getByRole("button", { name: "Reintentar" })).toBeInTheDocument();
+    // Sin reintentar, otra acción falla por su lado: el botón viejo no puede seguir.
+    fireEvent.click(screen.getByRole("button", { name: /Más acciones del estudiante/ }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("menuitem", { name: /Enviar QR por WhatsApp/ }));
+    });
+    expect(screen.getByText(ajeno)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Reintentar" })).not.toBeInTheDocument();
+    expect(apiAcademia.retirar).toHaveBeenCalledTimes(1);
+  });
+
   it("CUOTA_SIN_SALDO (400) en el QR por WhatsApp: el mensaje tal cual y la ficha se recarga", async () => {
     const mensaje = "Esa cuota ya no tiene saldo: no hay nada que recordar.";
     vi.mocked(apiAcademia.recordatorio).mockRejectedValue(new ApiError(mensaje, 400, { codigo: "CUOTA_SIN_SALDO" }));
