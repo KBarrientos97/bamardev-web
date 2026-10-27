@@ -1130,6 +1130,15 @@ export interface PanelControl {
     observadaEn: string | null;
     observadaPor: string | null;
   }[];
+  /**
+   * Ronda 1 (F1): los arreglos de arriba llegan cortados (50 estudiantes, 100
+   * grupos); estos totales dicen cuántos son de verdad, para avisar «y N más»
+   * en vez de mostrar el corte como si fuera todo. Un backend anterior no los manda.
+   */
+  fotosPorRevisarTotal?: number;
+  fotosObservadasTotal?: number;
+  fotosFaltanTotal?: number;
+  gruposSinDocenteTotal?: number;
   /** Cambio #49 (B-31): grupos vivos con más inscritos que su cupo, el más pasado primero. */
   sobrecupos?: { grupoId: number; nombre: string; carrera: Ref | null; sede: Ref | null; inscritos: number; cupo: number }[];
   /**

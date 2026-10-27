@@ -54,6 +54,34 @@ beforeEach(() => {
 });
 
 describe("N9 · Panel de control", () => {
+  it("M2: las listas cortadas por el backend dicen cuántas hay de verdad y «y N más»", async () => {
+    vi.mocked(apiAcademia.control).mockResolvedValue({
+      ...PANEL,
+      fotosPorRevisarTotal: 80,
+      fotosObservadasTotal: 0,
+      fotosFaltan: [{ alumnoId: 70, nombre: "Gómez Paz, Rita", ci: null, fechaNacimiento: null, grupo: "Uñas · L-V", inscritoPor: "Online", inscritaEn: "2026-10-16T12:00:00.000Z", faltan: ["FOTO"] }],
+      fotosFaltanTotal: 80,
+      gruposSinDocente: [
+        { grupoId: 5, nombre: "Barbería · L-V", carrera: { id: 1, nombre: "Barbería" }, sede: { id: 1, nombre: "Central" }, horario: { dias: [1], horaInicio: "09:00", horaFin: "11:00" }, modulos: [{ orden: 1, nombre: "Corte", desde: "2026-11-10" }], inicio: "2026-11-10" },
+      ],
+      gruposSinDocenteTotal: 130,
+    } as never);
+    render(
+      <MemoryRouter>
+        <Control />
+      </MemoryRouter>,
+    );
+    await act(async () => {});
+    // 2 cargadas de 80: el botón y el contador hablan del total; faltan 78.
+    expect(screen.getByRole("button", { name: "Revisar 2 de 80 fotos" })).toBeInTheDocument();
+    expect(screen.getByText(/Se muestran las primeras 2, y 78 más/)).toBeInTheDocument();
+    expect(screen.getByText("y 79 más")).toBeInTheDocument();
+    expect(screen.getByText("y 129 más")).toBeInTheDocument();
+    // Los contadores de los títulos cuentan el total, no el corte.
+    expect(document.getElementById("t-faltan-fotos")!.parentElement).toHaveTextContent("80");
+    expect(document.getElementById("t-sin-docente")!.parentElement).toHaveTextContent("130");
+  });
+
   it("R2: el administrador aterriza acá y ve «Primeros pasos» mientras falte armar el instituto", async () => {
     localStorage.clear();
     render(

@@ -59,6 +59,10 @@ export default function Control() {
 
   const pendientes = (d?.fotosPorRevisar ?? []).filter((f) => !revisadas[f.alumnoId]);
   const todasFotos = d?.fotosPorRevisar ?? [];
+  // La lista llega cortada (50): el total dice cuántas hay de verdad (ronda 2, M2).
+  const totalFotos = Math.max(d?.fotosPorRevisarTotal ?? todasFotos.length, todasFotos.length);
+  const faltanVer = totalFotos - todasFotos.length;
+  const pendientesTotal = pendientes.length + faltanVer;
   const paginasFotos = Math.max(1, Math.ceil(todasFotos.length / FOTOS_POR_PAGINA));
   const paginaVista = Math.min(paginaFotos, paginasFotos);
   const fotosDeLaPagina = todasFotos.slice((paginaVista - 1) * FOTOS_POR_PAGINA, paginaVista * FOTOS_POR_PAGINA);
@@ -99,7 +103,11 @@ export default function Control() {
               </Select>
             </div>
             <Boton disabled={!pendientes.length} onClick={() => setRevisando(pendientes[0])}>
-              {pendientes.length ? `Revisar ${pendientes.length} ${pendientes.length === 1 ? "foto" : "fotos"}` : "Fotos al día"}
+              {pendientes.length
+                ? faltanVer > 0
+                  ? `Revisar ${pendientes.length} de ${pendientesTotal} fotos`
+                  : `Revisar ${pendientes.length} ${pendientes.length === 1 ? "foto" : "fotos"}`
+                : "Fotos al día"}
             </Boton>
           </>
         }
@@ -119,7 +127,7 @@ export default function Control() {
           <Tarjeta
             id="t-fotos"
             titulo="Fotos por revisar"
-            contador={pendientes.length}
+            contador={pendientesTotal}
             bajada="Inscripciones nuevas · foto y carnet por los dos lados"
             sinRelleno
           >
@@ -182,6 +190,16 @@ export default function Control() {
                 })}
               </ul>
             )}
+            {faltanVer > 0 && (
+              <div className="flex flex-wrap items-center justify-between gap-2 border-t border-borde-soft px-4 py-2.5 text-[13px] text-texto-2 sm:px-5">
+                <span>
+                  Se muestran las primeras {todasFotos.length}, y {faltanVer} más. Al revisarlas, actualizá para ver las que siguen.
+                </span>
+                <BotonFila variante="ghost" onClick={datos.recargar}>
+                  Actualizar
+                </BotonFila>
+              </div>
+            )}
             {paginasFotos > 1 && (
               <nav
                 aria-label="Páginas de fotos por revisar"
@@ -203,13 +221,13 @@ export default function Control() {
             )}
           </Tarjeta>
 
-          <FotosObservadas filas={d.fotosObservadas ?? []} />
+          <FotosObservadas filas={d.fotosObservadas ?? []} total={d.fotosObservadasTotal} />
 
-          <FotosFaltan filas={d.fotosFaltan ?? []} />
+          <FotosFaltan filas={d.fotosFaltan ?? []} total={d.fotosFaltanTotal} />
 
           <Sobrecupos filas={d.sobrecupos ?? []} variasSedes={sede.variasSedes} />
 
-          <GruposSinDocente filas={d.gruposSinDocente ?? []} />
+          <GruposSinDocente filas={d.gruposSinDocente ?? []} total={d.gruposSinDocenteTotal} />
 
           <ParaMirar d={d} mirar={mirar} onMirar={setMirar} />
 
@@ -240,16 +258,22 @@ export default function Control() {
   );
 }
 
+/** «y 30 más»: la lista llega cortada y el total dice cuántas hay de verdad (ronda 2, M2). */
+function YNMas({ mostradas, total }: { mostradas: number; total?: number }) {
+  if (total == null || total <= mostradas) return null;
+  return <p className="border-t border-borde-soft px-4 py-2.5 text-[13px] text-texto-3 sm:px-5">y {total - mostradas} más</p>;
+}
+
 /**
  * Las observadas (QA ronda 2, B-06): el dueño marcó que algo no cuadra y ya
  * no esperan su revisión sino que la recepción cambie la foto. Antes se
  * caían de todas las listas; acá quedan a la vista, con el motivo, hasta que
  * alguien sube la foto nueva (y vuelven a "por revisar").
  */
-function FotosObservadas({ filas }: { filas: NonNullable<PanelControl["fotosObservadas"]> }) {
+function FotosObservadas({ filas, total }: { filas: NonNullable<PanelControl["fotosObservadas"]>; total?: number }) {
   if (!filas.length) return null;
   return (
-    <Tarjeta id="t-observadas" titulo="Fotos observadas" contador={filas.length} bajada="Esperan que la recepción cambie la foto" sinRelleno>
+    <Tarjeta id="t-observadas" titulo="Fotos observadas" contador={Math.max(total ?? 0, filas.length)} bajada="Esperan que la recepción cambie la foto" sinRelleno>
       <ul className={LISTA.lista}>
         {filas.map((f) => {
           const cuales = listaDeFotos(f.observadas);
@@ -283,6 +307,7 @@ function FotosObservadas({ filas }: { filas: NonNullable<PanelControl["fotosObse
           );
         })}
       </ul>
+      <YNMas mostradas={filas.length} total={total} />
     </Tarjeta>
   );
 }
@@ -293,10 +318,10 @@ function FotosObservadas({ filas }: { filas: NonNullable<PanelControl["fotosObse
  * que las tiene que cargar en la ficha. Si el instituto no las pide, el backend
  * manda la lista vacía y el bloque no se dibuja.
  */
-function FotosFaltan({ filas }: { filas: NonNullable<PanelControl["fotosFaltan"]> }) {
+function FotosFaltan({ filas, total }: { filas: NonNullable<PanelControl["fotosFaltan"]>; total?: number }) {
   if (!filas.length) return null;
   return (
-    <Tarjeta id="t-faltan-fotos" titulo="Faltan fotos" contador={filas.length} bajada="Se inscribieron sin las fotos: hay que cargarlas" sinRelleno>
+    <Tarjeta id="t-faltan-fotos" titulo="Faltan fotos" contador={Math.max(total ?? 0, filas.length)} bajada="Se inscribieron sin las fotos: hay que cargarlas" sinRelleno>
       <ul className={LISTA.lista}>
         {filas.map((f) => {
           const cuales = listaDeFotos(f.faltan ?? []);
@@ -323,6 +348,7 @@ function FotosFaltan({ filas }: { filas: NonNullable<PanelControl["fotosFaltan"]
           );
         })}
       </ul>
+      <YNMas mostradas={filas.length} total={total} />
     </Tarjeta>
   );
 }
@@ -368,11 +394,11 @@ function Sobrecupos({ filas, variasSedes }: { filas: NonNullable<PanelControl["s
  * queda sin dueño. El que empieza antes, primero; el botón abre el grupo, que
  * es donde se asigna. Sin ninguno, el bloque no se dibuja.
  */
-function GruposSinDocente({ filas }: { filas: NonNullable<PanelControl["gruposSinDocente"]> }) {
+function GruposSinDocente({ filas, total }: { filas: NonNullable<PanelControl["gruposSinDocente"]>; total?: number }) {
   const p = usePalabras();
   if (!filas.length) return null;
   return (
-    <Tarjeta id="t-sin-docente" titulo="Grupos sin docente" contador={filas.length} bajada={`Hay ${p.materias} que empiezan sin quién los dicte`} sinRelleno>
+    <Tarjeta id="t-sin-docente" titulo="Grupos sin docente" contador={Math.max(total ?? 0, filas.length)} bajada={`Hay ${p.materias} que empiezan sin quién los dicte`} sinRelleno>
       <ul className={LISTA.lista}>
         {filas.map((g) => (
           <li
@@ -400,6 +426,7 @@ function GruposSinDocente({ filas }: { filas: NonNullable<PanelControl["gruposSi
           </li>
         ))}
       </ul>
+      <YNMas mostradas={filas.length} total={total} />
     </Tarjeta>
   );
 }
