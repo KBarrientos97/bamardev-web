@@ -984,6 +984,8 @@ export const api = {
 
   // ── Usuarios ──────────────────────────────────────────────────────────────
   getUsuarios: () => request<Usuario[]>("/usuarios"),
+  /** Uno solo (`usuarios.administrar`): «Primeros pasos» mira si el administrador ya tiene PIN. */
+  getUsuario: (id: number) => request<Usuario>(`/usuarios/${id}`),
   crearUsuario: (input: CrearUsuarioInput) =>
     request<Usuario>("/usuarios", { method: "POST", body: JSON.stringify(input) }),
   actualizarUsuario: (id: number, input: ActualizarUsuarioInput) =>

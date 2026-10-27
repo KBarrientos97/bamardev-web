@@ -21,7 +21,7 @@ vi.mock("../../../lib/api", async (importOriginal) => {
 
 vi.mock("../../../lib/academia/apiAcademia", async (importOriginal) => {
   const real = await importOriginal<typeof import("../../../lib/academia/apiAcademia")>();
-  return { ...real, apiAcademia: { control: vi.fn(), reportes: vi.fn(), fotoComoUrl: vi.fn(), revisarFotos: vi.fn() } };
+  return { ...real, apiAcademia: { control: vi.fn(), reportes: vi.fn(), fotoComoUrl: vi.fn(), revisarFotos: vi.fn(), sedes: vi.fn(), ajustes: vi.fn(), carreras: vi.fn(), docentes: vi.fn(), grupos: vi.fn() } };
 });
 
 import { apiAcademia } from "../../../lib/academia/apiAcademia";
@@ -45,9 +45,26 @@ beforeEach(() => {
   vi.mocked(apiAcademia.control).mockResolvedValue(PANEL);
   vi.mocked(apiAcademia.fotoComoUrl).mockResolvedValue("blob:x");
   vi.mocked(apiAcademia.revisarFotos).mockResolvedValue({});
+  // Un instituto recién dado de alta: nada cargado todavía.
+  vi.mocked(apiAcademia.sedes).mockResolvedValue([]);
+  vi.mocked(apiAcademia.ajustes).mockResolvedValue({ paginaPublicada: false } as never);
+  vi.mocked(apiAcademia.carreras).mockResolvedValue([]);
+  vi.mocked(apiAcademia.docentes).mockResolvedValue([]);
+  vi.mocked(apiAcademia.grupos).mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 10 });
 });
 
 describe("N9 · Panel de control", () => {
+  it("R2: el administrador aterriza acá y ve «Primeros pasos» mientras falte armar el instituto", async () => {
+    localStorage.clear();
+    render(
+      <MemoryRouter>
+        <Control />
+      </MemoryRouter>,
+    );
+    await act(async () => {});
+    expect(screen.getByRole("region", { name: "Primeros pasos" })).toBeInTheDocument();
+  });
+
   it("revisa las fotos una tras otra: está bien, y la siguiente con lo que no cuadra", async () => {
     render(
       <MemoryRouter>

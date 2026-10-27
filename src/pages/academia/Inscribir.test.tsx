@@ -119,7 +119,7 @@ describe("E5 · inscribir", () => {
       grupoId: 7,
       planPagoId: 2,
     }, {});
-    expect(onInscrito).toHaveBeenCalledWith({ inscripcion: { id: 555 }, cobrar: false });
+    expect(onInscrito).toHaveBeenCalledWith(expect.objectContaining({ inscripcion: { id: 555 }, cobrar: false }));
     // La bienvenida va al tutor y le habla del estudiante (QA ronda 2, B-19).
     const url = vi.mocked(window.open).mock.calls[0][0] as string;
     const texto = decodeURIComponent(url.split("text=")[1]);
@@ -175,7 +175,7 @@ describe("E5 · inscribir", () => {
       {},
     );
     // Paga hoy todo lo que queda del pago completo con la beca.
-    expect(onInscrito).toHaveBeenCalledWith({ inscripcion: { id: 555 }, cobrar: true, montoHoy: 680 });
+    expect(onInscrito).toHaveBeenCalledWith(expect.objectContaining({ inscripcion: { id: 555 }, cobrar: true, montoHoy: 680 }));
   });
 
   it("el grupo lleno se confirma y se reintenta con confirmarSobreCupo", async () => {
@@ -196,7 +196,7 @@ describe("E5 · inscribir", () => {
       fireEvent.click(within(confirmar).getByRole("button", { name: "Inscribir igual" }));
     });
     expect(apiAcademia.inscribir).toHaveBeenLastCalledWith(expect.objectContaining({ confirmarSobreCupo: true }), {});
-    expect(onInscrito).toHaveBeenCalledWith({ inscripcion: { id: 556 }, cobrar: false });
+    expect(onInscrito).toHaveBeenCalledWith(expect.objectContaining({ inscripcion: { id: 556 }, cobrar: false }));
   });
 
   it("el PIN en el pie valida antes de mandar, y cancelarlo vuelve a los botones sin inscribir", async () => {
@@ -251,7 +251,7 @@ describe("E5 · inscribir", () => {
       }),
       {},
     );
-    expect(onInscrito).toHaveBeenCalledWith({ inscripcion: { id: 557 }, cobrar: false });
+    expect(onInscrito).toHaveBeenCalledWith(expect.objectContaining({ inscripcion: { id: 557 }, cobrar: false }));
   });
 
   it("ronda 1 · D1: un PIN equivocado no queda guardado ni se reenvía solo: se vuelve a pedir", async () => {
@@ -548,7 +548,7 @@ describe("E5 · inscribir", () => {
       tutor: { nombre: "Ana Lima", telefono: "77788991", parentesco: "Madre" },
       confirmarSobreCupo: true,
     }, {});
-    expect(onInscrito).toHaveBeenCalledWith({ inscripcion: { id: 600 }, cobrar: false });
+    expect(onInscrito).toHaveBeenCalledWith(expect.objectContaining({ inscripcion: { id: 600 }, cobrar: false }));
   });
 
   it("la preinscripción online de un menor que ya trajo tutor: la bienvenida dice \"al tutor\" (QA ronda 2, N-9)", async () => {
@@ -585,7 +585,7 @@ describe("E5 · inscribir", () => {
     await act(async () => {
       fireEvent.click(within(panel()).getByRole("button", { name: /Inscribir y cobrar Bs\s?300/ }));
     });
-    expect(onInscrito).toHaveBeenCalledWith({ inscripcion: { id: 555 }, cobrar: true, montoHoy: 300 });
+    expect(onInscrito).toHaveBeenCalledWith(expect.objectContaining({ inscripcion: { id: 555 }, cobrar: true, montoHoy: 300 }));
   });
 });
 
@@ -619,7 +619,7 @@ describe("E5 · inscribir: los errores se ven y el adelanto se valida (QA ronda 
     await act(async () => {
       fireEvent.click(within(panel()).getByRole("button", { name: /Inscribir y cobrar/ }));
     });
-    expect(onInscrito).toHaveBeenCalledWith({ inscripcion: { id: 555 }, cobrar: true, montoHoy: 100 });
+    expect(onInscrito).toHaveBeenCalledWith(expect.objectContaining({ inscripcion: { id: 555 }, cobrar: true, montoHoy: 100 }));
   });
 
   it("un descuento en Bs mayor que el curso se marca y no inscribe", async () => {
@@ -712,6 +712,7 @@ describe("N5 · las 3 fotos obligatorias", () => {
     expect(Object.keys(fotos!)).toEqual(["FOTO"]);
     expect(onInscrito).toHaveBeenCalledWith({
       inscripcion: { id: 555, fotosPendientes: true, fotosFaltan: ["CI_ANVERSO", "CI_REVERSO"] },
+      nombre: "Céspedes Molina, Joaquín",
       cobrar: true,
       montoHoy: 750,
     });
@@ -785,7 +786,7 @@ describe("A2 · inscribir en menos pasos", () => {
     await act(async () => {
       fireEvent.click(within(panel()).getByRole("button", { name: /Inscribir y cobrar Bs\s?750/ }));
     });
-    expect(onInscrito).toHaveBeenCalledWith({ inscripcion: { id: 555 }, cobrar: true, montoHoy: 750 });
+    expect(onInscrito).toHaveBeenCalledWith(expect.objectContaining({ inscripcion: { id: 555 }, cobrar: true, montoHoy: 750 }));
   });
 });
 

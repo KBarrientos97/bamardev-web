@@ -1,5 +1,5 @@
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useNavigate } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ajustesDePrueba } from "../../test/academiaFixtures";
 
@@ -8,15 +8,25 @@ import { ajustesDePrueba } from "../../test/academiaFixtures";
  * con «Ya lo sé» (en este navegador) y sólo la ve quien configura el instituto.
  */
 
-const sesion = vi.hoisted(() => ({ rol: "admin" as "admin" | "secretaria" | "docente" }));
+const sesion = vi.hoisted(() => ({ rol: "admin" as "admin" | "secretaria" | "docente", mostrador: false }));
 
 vi.mock("../../store/AuthContext", async () => {
   const { SESION_ADMIN, SESION_SECRETARIA, SESION_DOCENTE } = await import("../../test/academiaFixtures");
   return {
-    useAuth: () => ({
-      ...(sesion.rol === "secretaria" ? SESION_SECRETARIA : sesion.rol === "docente" ? SESION_DOCENTE : SESION_ADMIN),
-      puede: () => true,
-    }),
+    useAuth: () => {
+      const base = sesion.rol === "secretaria" ? SESION_SECRETARIA : sesion.rol === "docente" ? SESION_DOCENTE : SESION_ADMIN;
+      // Un plan con QR y PIN, y un administrador que puede cargar el uno y asignar el otro (R5).
+      return {
+        ...base,
+        ...(sesion.mostrador
+          ? {
+              usuario: { ...base.usuario, permisos: [...base.usuario.permisos, "qr.configurar", "usuarios.administrar", "usuarios.asignar_pin"] },
+              negocio: { ...base.negocio, features: [...base.negocio.features, "pago_qr_mixto", "autorizacion_pin", "usuarios"] },
+            }
+          : {}),
+        puede: () => true,
+      };
+    },
   };
 });
 
@@ -24,7 +34,7 @@ vi.mock("../../store/AuthContext", async () => {
 // volviera a pedir los almacenes, este mock lo delata (los tests miran que no se llame).
 vi.mock("../../lib/api", async (importOriginal) => {
   const real = await importOriginal<typeof import("../../lib/api")>();
-  return { ...real, api: { ...real.api, getAlmacenes: vi.fn() } };
+  return { ...real, api: { ...real.api, getAlmacenes: vi.fn(), qrCobro: vi.fn(), getUsuario: vi.fn() } };
 });
 
 vi.mock("../../lib/academia/apiAcademia", async (importOriginal) => {
@@ -34,6 +44,8 @@ vi.mock("../../lib/academia/apiAcademia", async (importOriginal) => {
 
 import { apiAcademia } from "../../lib/academia/apiAcademia";
 import { api } from "../../lib/api";
+import { avisarPrimerosPasos } from "../../lib/academia/primerosPasos";
+import { ApiError } from "../../lib/api";
 import PrimerosPasos from "./PrimerosPasos";
 
 const CLAVE = "bamardev_primeros_pasos_20";
@@ -84,6 +96,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   localStorage.clear();
   sesion.rol = "admin";
+  sesion.mostrador = false;
 });
 
 afterEach(() => {
@@ -214,5 +227,106 @@ describe("C1 · Primeros pasos", () => {
     await montar();
     expect(screen.queryByRole("region", { name: "Primeros pasos" })).not.toBeInTheDocument();
     expect(localStorage.getItem(CLAVE)).toBeNull();
+  });
+
+  it("R3: cuando una pantalla avisa que guardó, la lista se vuelve a leer y marca sola lo que ya está", async () => {
+    cargarVacio();
+    await montar();
+    expect(screen.getByText(/0 de 6 listos/)).toBeInTheDocument();
+    // El administrador cargó la dirección y las franjas de la sede sin salir de la pantalla.
+    vi.mocked(apiAcademia.sedes).mockResolvedValue([sede()] as never);
+    await act(async () => {
+      avisarPrimerosPasos();
+    });
+    expect(screen.getByText(/2 de 6 listos/)).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Cargar franjas/ })).not.toBeInTheDocument();
+  });
+
+  it("R3: al pasar de una pestaña a otra de la Configuración (misma lista, otra ruta) se vuelve a leer", async () => {
+    cargarVacio();
+    let ir: (a: string) => void = () => {};
+    function Nav() {
+      const n = useNavigate();
+      ir = n;
+      return null;
+    }
+    render(
+      <MemoryRouter initialEntries={["/configuracion/sedes"]}>
+        <Nav />
+        <PrimerosPasos />
+      </MemoryRouter>,
+    );
+    await act(async () => {});
+    expect(apiAcademia.sedes).toHaveBeenCalledTimes(1);
+    vi.mocked(apiAcademia.carreras).mockResolvedValue([curso] as never);
+    await act(async () => {
+      ir("/configuracion/carreras");
+    });
+    expect(apiAcademia.sedes).toHaveBeenCalledTimes(2);
+    expect(screen.getByText(/1 de 6 listos/)).toBeInTheDocument();
+  });
+
+  it("M4: lo que la pantalla ya cargó (ajustes y cursos) no se pide de nuevo, y los grupos se piden de a pocos", async () => {
+    cargarVacio();
+    render(
+      <MemoryRouter>
+        <PrimerosPasos ajustes={ajustesDePrueba({ paginaPublicada: false })} cursos={[curso] as never} />
+      </MemoryRouter>,
+    );
+    await act(async () => {});
+    expect(apiAcademia.ajustes).not.toHaveBeenCalled();
+    expect(apiAcademia.carreras).not.toHaveBeenCalled();
+    // El curso que le pasó la pantalla cuenta.
+    expect(screen.getByText(/1 de 6 listos/)).toBeInTheDocument();
+    expect(apiAcademia.grupos).toHaveBeenCalledWith({ pageSize: 10 });
+  });
+
+  it("M4: un rol al que le falta el permiso de un dato (403) la completa igual con lo que sí ve, y lo recuerda", async () => {
+    cargarTodoHecho();
+    vi.mocked(apiAcademia.docentes).mockRejectedValue(new ApiError("Sin permiso", 403));
+    await montar();
+    expect(screen.queryByRole("region", { name: "Primeros pasos" })).not.toBeInTheDocument();
+    expect(localStorage.getItem(CLAVE)).toBe("completo");
+  });
+
+  it("R5: con QR y PIN en el plan, suma «El QR de cobro cargado» y «Tu PIN de autorización» con su estado real", async () => {
+    sesion.mostrador = true;
+    cargarTodoHecho();
+    vi.mocked(api.qrCobro).mockResolvedValue({ imagen: null, actualizadoEn: null });
+    vi.mocked(api.getUsuario).mockResolvedValue({ id: 1, tienePin: false } as never);
+    await montar();
+    const tarjeta = screen.getByRole("region", { name: "Primeros pasos" });
+    expect(within(tarjeta).getByText(/6 de 8 listos/)).toBeInTheDocument();
+    expect(within(tarjeta).getByRole("link", { name: /Cargar el QR/ })).toHaveAttribute("href", "/configuracion/qr-cobro");
+    expect(within(tarjeta).getByRole("link", { name: /Poner mi PIN/ })).toHaveAttribute("href", "/usuarios");
+    expect(api.getUsuario).toHaveBeenCalledWith(1);
+    // Con la lista a medias no se la da por completa.
+    expect(localStorage.getItem(CLAVE)).toBeNull();
+  });
+
+  it("R5: con el QR y el PIN ya puestos, esos pasos salen hechos y la lista se completa", async () => {
+    sesion.mostrador = true;
+    cargarTodoHecho();
+    vi.mocked(api.qrCobro).mockResolvedValue({ imagen: "data:image/png;base64,xx", actualizadoEn: null });
+    vi.mocked(api.getUsuario).mockResolvedValue({ id: 1, tienePin: true } as never);
+    await montar();
+    expect(screen.queryByRole("region", { name: "Primeros pasos" })).not.toBeInTheDocument();
+    expect(localStorage.getItem(CLAVE)).toBe("completo");
+  });
+
+  it("R5: si no se pudo saber el QR ni el PIN (un permiso, un corte), esos pasos no se muestran ni traban la lista", async () => {
+    sesion.mostrador = true;
+    cargarVacio();
+    vi.mocked(api.qrCobro).mockRejectedValue(new Error("corte"));
+    vi.mocked(api.getUsuario).mockRejectedValue(new ApiError("Sin permiso", 403));
+    await montar();
+    expect(within(screen.getByRole("region", { name: "Primeros pasos" })).getAllByRole("listitem")).toHaveLength(6);
+  });
+
+  it("R5: sin QR ni PIN en el plan no se pregunta nada", async () => {
+    cargarVacio();
+    await montar();
+    expect(api.qrCobro).not.toHaveBeenCalled();
+    expect(api.getUsuario).not.toHaveBeenCalled();
   });
 });

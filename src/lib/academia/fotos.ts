@@ -74,6 +74,15 @@ export function avisoFotosPendientes(i: { fotosPendientes?: boolean; fotosFaltan
   return `Quedó con las fotos pendientes${cuales}: queda marcado «Faltan fotos» en su ficha.`;
 }
 
+/**
+ * El aviso de una inscripción hecha SIN cobrar en el momento (ronda 2, R8): el
+ * panel se cierra y, sin esto, no quedaba ninguna señal de que se hizo (y se
+ * reintentaba, con YA_INSCRIPTO). Lleva el aviso de las fotos si quedaron pendientes.
+ */
+export function avisoInscripcionHecha(nombre: string | undefined, sinFotos: string | null): string {
+  return [nombre ? `${nombre} quedó inscrito.` : "La inscripción quedó registrada.", sinFotos].filter(Boolean).join(" ");
+}
+
 /** Cuántas de las 3 faltan, contando las nuevas y las ya guardadas. */
 export function fotosQueFaltan(fotos: FotosInscripcion, yaTiene: TipoFoto[] = []): TipoFoto[] {
   return TIPOS_FOTO.filter((t) => !fotos[t] && !yaTiene.includes(t));

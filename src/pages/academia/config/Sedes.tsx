@@ -11,6 +11,7 @@ import { usePalabras } from "../../../lib/academia/usePalabras";
 import { useConsultaMedia } from "../../../lib/agenda/useEsCelular";
 import { ApiError } from "../../../lib/api";
 import { tienePermiso } from "../../../lib/permisos";
+import { avisarPrimerosPasos } from "../../../lib/academia/primerosPasos";
 import { useApi } from "../../../lib/useApi";
 import { useAuth } from "../../../store/AuthContext";
 import { BotonFila, Chip, EncabezadoPagina, PaginaAcademia, TABLA, Tarjeta } from "../piezas";
@@ -365,6 +366,8 @@ function PanelSede({
             ...(horario.trim() ? { horarioAtencion: horario.trim() } : {}),
           });
       onGuardada(r, !sede);
+      // «Primeros pasos» (la sede con sus datos) se marca sola sin salir de acá (ronda 2, R3).
+      avisarPrimerosPasos();
     } catch (e) {
       const codigo = e instanceof ApiError ? e.codigo : undefined;
       if (codigo === CODIGOS_ACADEMIA.SEDE_REPETIDA) {

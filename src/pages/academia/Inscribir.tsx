@@ -48,6 +48,8 @@ import { BotonFila, BotonIcono, ResumenPanel } from "./piezas";
 
 export interface ResultadoInscripcion {
   inscripcion: Pick<InscripcionDetalle, "id"> & Partial<InscripcionDetalle>;
+  /** Quién quedó inscrito, para el aviso de las pantallas que se quedan sin cobrar. */
+  nombre?: string;
   /** "Inscribir y cobrar ahora": quien abrió el panel lleva a "Cobrar a estudiante" (A1). */
   cobrar: boolean;
   /** Lo que paga hoy (la primera cuota, todo o un adelanto): el cobro lo trae cargado (A2). */
@@ -358,7 +360,7 @@ export default function Inscribir({
       if (apruebaFotos && pideFotos && fotosRevisadas && faltanFotos.length === 0 && alumnoId != null) {
         await apiAcademia.revisarFotos(alumnoId, { ok: true }).catch(() => undefined);
       }
-      onInscrito({ inscripcion, cobrar, ...(cobrar && montoHoy > 0 ? { montoHoy } : {}) });
+      onInscrito({ inscripcion, ...(nombreFinal ? { nombre: nombreFinal } : {}), cobrar, ...(cobrar && montoHoy > 0 ? { montoHoy } : {}) });
     } catch (e) {
       const codigo = e instanceof ApiError ? e.codigo : undefined;
       if (codigo === CODIGOS_ACADEMIA.FOTOS_REQUERIDAS && e instanceof ApiError) {

@@ -13,6 +13,7 @@ import {
 import type { FranjasDeSede, ResultadoTipicas } from "../../../lib/academia/tipos";
 import { usePalabras } from "../../../lib/academia/usePalabras";
 import { ApiError } from "../../../lib/api";
+import { avisarPrimerosPasos } from "../../../lib/academia/primerosPasos";
 import { useApi } from "../../../lib/useApi";
 import { BotonFila, BotonIcono, Chip, LISTA, Tarjeta } from "../piezas";
 
@@ -132,6 +133,7 @@ export default function SedeFranjas({
       setMalas(new Set());
       setAviso("Franjas guardadas.");
       onCambio?.();
+      avisarPrimerosPasos();
     } catch (e) {
       if (e instanceof ApiError && e.codigo === CODIGOS_ACADEMIA.FRANJAS_INVALIDAS) {
         const detalles = Array.isArray(e.detalle.detalles) ? (e.detalle.detalles as string[]) : [];

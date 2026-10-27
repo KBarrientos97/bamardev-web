@@ -9,7 +9,15 @@ import { RUTA_SEDES } from "./vista";
  * de las seis casillas están hechas. Es pura para probarla sin pantalla.
  */
 
-export type ClavePaso = "sede" | "franjas" | "curso" | "docente" | "grupo" | "pagina";
+export type ClavePaso = "sede" | "franjas" | "curso" | "docente" | "grupo" | "pagina" | "qr" | "pin";
+
+/**
+ * Los dos requisitos del mostrador (ronda 2, R5): sin el QR cargado el cobro por
+ * QR no tiene qué mostrar, y sin el PIN del administrador la recepción no puede
+ * dar un descuento ni anular. Se suman si el plan los trae y se pudo saber su
+ * estado; no cuentan para dar la lista por «completa para siempre».
+ */
+export const PASOS_DEL_MOSTRADOR: ClavePaso[] = ["qr", "pin"];
 
 export interface PasoInicial {
   clave: ClavePaso;
@@ -37,11 +45,27 @@ export interface DatosPrimerosPasos {
   grupos: GrupoResumen[] | null;
   /** Las features del plan: la página en línea es un paso sólo si el plan la trae. */
   features: string[] | undefined;
+  /** ¿Hay un QR de cobro cargado? `null`/ausente: no se pudo saber o no le toca cargarlo. */
+  qrCargado?: boolean | null;
+  /** ¿El administrador tiene PIN de autorización? `null`/ausente: no se pudo saber o no le toca. */
+  pinPuesto?: boolean | null;
   palabras: { carrera: string; docente: string; sede: string; Sede: string; Sedes: string };
 }
 
 export { RUTA_SEDES };
 export const RUTA_PERSONAL = "/personal";
+export const RUTA_QR_COBRO = "/configuracion/qr-cobro";
+export const RUTA_USUARIOS = "/usuarios";
+
+/**
+ * Los datos de «Primeros pasos» se piden al entrar; cuando una pantalla guarda
+ * algo que cambia un paso (una sede, un curso, un grupo) avisa con este evento
+ * y la lista se vuelve a leer sin salir de la pantalla (ronda 2, R3).
+ */
+export const EVENTO_PRIMEROS_PASOS = "primeros-pasos-cambiaron";
+export const avisarPrimerosPasos = () => {
+  if (typeof window !== "undefined") window.dispatchEvent(new Event(EVENTO_PRIMEROS_PASOS));
+};
 
 /**
  * A dónde lleva un paso de sedes. Con una sola sede, la pantalla ya la muestra
@@ -128,6 +152,26 @@ export function pasosPrimeros(d: DatosPrimerosPasos): PasoInicial[] {
       accion: "Ir a Mi página",
     });
   }
+  if (d.qrCargado != null && d.features?.includes("pago_qr_mixto")) {
+    pasos.push({
+      clave: "qr",
+      titulo: "El QR de cobro cargado",
+      detalle: "Es el que ve el estudiante al pagar por QR. Lo subís una vez y lo reciben todas las cajas.",
+      hecho: d.qrCargado,
+      a: RUTA_QR_COBRO,
+      accion: "Cargar el QR",
+    });
+  }
+  if (d.pinPuesto != null && d.features?.includes("autorizacion_pin")) {
+    pasos.push({
+      clave: "pin",
+      titulo: "Tu PIN de autorización",
+      detalle: "Con tu PIN autorizás los descuentos y las anulaciones de la recepción. Abrí tu usuario y tocá «Asignar PIN».",
+      hecho: d.pinPuesto,
+      a: RUTA_USUARIOS,
+      accion: "Poner mi PIN",
+    });
+  }
   return pasos;
 }
 
@@ -137,6 +181,9 @@ export function pasosPrimeros(d: DatosPrimerosPasos): PasoInicial[] {
  * que algo no se pudo saber (un permiso, un corte).
  */
 export const pasosEsperados = (features: string[] | undefined) => 5 + (features?.includes("preinscripcion_online") ? 1 : 0);
+
+/** Los pasos de siempre, sin el QR ni el PIN (los que dicen si algo "no se pudo saber"). */
+export const pasosBase = (pasos: PasoInicial[]) => pasos.filter((x) => !PASOS_DEL_MOSTRADOR.includes(x.clave));
 
 /** ¿Están todas las casillas? (y hay alguna: sin datos no se declara «completo»). */
 export const completo = (pasos: PasoInicial[]) => pasos.length > 0 && pasos.every((x) => x.hecho);

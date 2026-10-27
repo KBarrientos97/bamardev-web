@@ -187,4 +187,18 @@ describe("ronda 1 · D12 · al inscribir se recargan también los conteos", () =
     expect(screen.getByRole("tab", { name: "Faltan fotos 1" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Todos 149" })).toBeInTheDocument();
   });
+
+  it("R8: sin cobrar y sin fotos pendientes igual queda un aviso de que se inscribió", async () => {
+    render(
+      <MemoryRouter>
+        <Alumnos />
+      </MemoryRouter>,
+    );
+    await act(async () => {});
+    fireEvent.click(screen.getAllByRole("button", { name: /^Inscribir/ })[0]);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Terminar alta" }));
+    });
+    expect(screen.getByText("La inscripción quedó registrada.")).toBeInTheDocument();
+  });
 });

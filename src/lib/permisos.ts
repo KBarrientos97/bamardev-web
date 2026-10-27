@@ -429,8 +429,10 @@ const SOLO_EN_RUBRO: Partial<Record<Seccion, Rubro[]>> = {
   dashboard: ["FARMACIA"],
   busqueda: ["FARMACIA"],
   // Nació en el billar (el dueño, 18-oct). Los demás rubros siguen cambiando
-  // el QR desde la apertura de caja; abrírselo es sumar el rubro acá.
-  qr_cobro: ["BILLAR"],
+  // el QR desde la apertura de caja; abrírselo es sumar el rubro acá. El
+  // instituto lo suma (ronda 2, R5): no abre una caja a propósito sólo para
+  // cargar el QR, y «Primeros pasos» necesita adónde llevar al administrador.
+  qr_cobro: ["BILLAR", "ACADEMIA"],
   vencimientos: ["FARMACIA"],
   encargos: ["FARMACIA"],
   controlados: ["FARMACIA"],

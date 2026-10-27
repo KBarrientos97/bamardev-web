@@ -461,3 +461,24 @@ describe("ronda 1 · D13 · el cobro desde el resumen del grupo lleva la sede de
     expect(destino).toContain("sedeNombre=Norte");
   });
 });
+
+describe("ronda 2 · R8 · «Inscribir sin cobrar» avisa que quedó inscrito", () => {
+  it("sin cobrar y sin fotos pendientes, el panel se cierra con un mensaje de éxito", async () => {
+    render(
+      <MemoryRouter initialEntries={["/academia/calendario"]}>
+        <Routes>
+          <Route path="/academia/calendario" element={<Calendario />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    await act(async () => {});
+    fireEvent.click(screen.getByRole("button", { name: "Inscribir" }));
+    await act(async () => {});
+    await act(async () => {
+      inscribirProps.ultimas?.onInscrito({ inscripcion: { id: 55 }, nombre: "Suárez Peña, Daniela", cobrar: false });
+    });
+    expect(screen.queryByRole("dialog", { name: "Inscribir estudiante" })).not.toBeInTheDocument();
+    expect(screen.getByText("Suárez Peña, Daniela quedó inscrito.")).toBeInTheDocument();
+  });
+});
+

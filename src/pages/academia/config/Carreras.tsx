@@ -30,6 +30,7 @@ import { fmtMoney } from "../../../lib/format";
 import { conMayuscula } from "../../../lib/rubro";
 import { tieneFeature, tienePermiso } from "../../../lib/permisos";
 import { useApi } from "../../../lib/useApi";
+import { avisarPrimerosPasos } from "../../../lib/academia/primerosPasos";
 import { useAuth } from "../../../store/AuthContext";
 import { BotonCompartirInscripcion } from "../CompartirInscripcion";
 import {
@@ -218,6 +219,8 @@ export default function Carreras() {
           onCerrar={() => setElegida(null)}
           onGuardado={(c, nuevo) => {
             actualizar(c);
+            // «Primeros pasos» (el curso con módulos y precio) se marca sola sin salir de acá (ronda 2, R3).
+            avisarPrimerosPasos();
             // En el celular la hoja se cierra al guardar: el aviso («Curso creado»
             // con «Abrir el primer grupo») quedaba detrás de ella. En escritorio el
             // panel no tapa nada y el curso sigue a la vista.

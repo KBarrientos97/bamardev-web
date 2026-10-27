@@ -4,7 +4,7 @@ import { Icon } from "../../components/Icon";
 import { Paginacion } from "../../components/Paginacion";
 import { AvisoOk, Boton, Cargando, ErrorMsg, Vacio, useAviso } from "../../components/ui";
 import { apiAcademia } from "../../lib/academia/apiAcademia";
-import { avisoFotosPendientes } from "../../lib/academia/fotos";
+import { avisoFotosPendientes, avisoInscripcionHecha } from "../../lib/academia/fotos";
 import { nombreAlumno, nombreDe } from "../../lib/academia/formato";
 import type { AlumnoFila, EstadoFotos, FiltroAlumnos } from "../../lib/academia/tipos";
 import { useFiltroSede } from "../../lib/academia/useFiltroSede";
@@ -192,7 +192,7 @@ export default function Alumnos() {
             // D3: sin las fotos, el aviso va a Cobrar si se sigue de largo.
             const sinFotos = avisoFotosPendientes(r.inscripcion);
             if (r.cobrar) navigate(rutaCobroInscripcion(r.inscripcion.id, r.inscripcion.grupo?.sede, r.montoHoy), sinFotos ? { state: { aviso: sinFotos } } : undefined);
-            else if (sinFotos) setAviso(sinFotos);
+            else setAviso(avisoInscripcionHecha(r.nombre, sinFotos));
           }}
         />
       )}

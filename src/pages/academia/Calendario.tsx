@@ -7,7 +7,7 @@ import { AvisoOk, Boton, Cargando, ErrorMsg, Vacio, useAviso } from "../../compo
 import { useConsultaMedia } from "../../lib/agenda/useEsCelular";
 import { apiAcademia } from "../../lib/academia/apiAcademia";
 import { mesCorto, mesDe, nombreMes, sumarMeses } from "../../lib/academia/calendario";
-import { avisoFotosPendientes } from "../../lib/academia/fotos";
+import { avisoFotosPendientes, avisoInscripcionHecha } from "../../lib/academia/fotos";
 import { diasTexto, fechaCorta, nombreDe } from "../../lib/academia/formato";
 import type { Carrera, FilaCalendario, GrupoEnCalendario } from "../../lib/academia/tipos";
 import { useFiltroSede } from "../../lib/academia/useFiltroSede";
@@ -20,6 +20,7 @@ import { useAuth } from "../../store/AuthContext";
 import ClasesDeHoy from "./ClasesDeHoy";
 import Inscribir from "./Inscribir";
 import NuevoGrupo, { type HuecoCalendario } from "./NuevoGrupo";
+import { avisarPrimerosPasos } from "../../lib/academia/primerosPasos";
 import PrimerosPasos from "./PrimerosPasos";
 import { BotonFila, BotonIcono, Chip, ChipsFiltro, EncabezadoPagina, PaginaAcademia, ResumenPanel, SeccionPanel, Tarjeta } from "./piezas";
 
@@ -229,7 +230,8 @@ export default function Calendario() {
       <AvisoOk>{aviso}</AvisoOk>
 
       {/* C1: la lista de primeros pasos de un instituto nuevo; se va sola al completarse. */}
-      <PrimerosPasos />
+      {/* Se espera a que el calendario traiga los ajustes y los cursos para no pedirlos dos veces (ronda 2, M4). */}
+      {!ajustes.cargando && !carreras.cargando && <PrimerosPasos ajustes={ajustes.datos} cursos={carreras.datos} />}
 
       {sede.selector}
 
@@ -365,6 +367,7 @@ export default function Calendario() {
           onCreado={(g) => {
             setHueco(null);
             cal.recargar();
+            avisarPrimerosPasos();
             navigate(`/academia/grupos/${g.id}`);
           }}
         />
@@ -378,7 +381,7 @@ export default function Calendario() {
             cal.recargar();
             const sinFotos = avisoFotosPendientes(r.inscripcion);
             if (r.cobrar) navigate(rutaCobroInscripcion(r.inscripcion.id, r.inscripcion.grupo?.sede, r.montoHoy), sinFotos ? { state: { aviso: sinFotos } } : undefined);
-            else if (sinFotos) setAviso(sinFotos);
+            else setAviso(avisoInscripcionHecha(r.nombre, sinFotos));
           }}
         />
       )}
@@ -392,7 +395,7 @@ export default function Calendario() {
             cal.recargar();
             const sinFotos = avisoFotosPendientes(r.inscripcion);
             if (r.cobrar) navigate(rutaCobroInscripcion(r.inscripcion.id, r.inscripcion.grupo?.sede, r.montoHoy), sinFotos ? { state: { aviso: sinFotos } } : undefined);
-            else if (sinFotos) setAviso(sinFotos);
+            else setAviso(avisoInscripcionHecha(r.nombre, sinFotos));
           }}
         />
       )}
