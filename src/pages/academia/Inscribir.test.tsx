@@ -687,7 +687,7 @@ describe("N5 · las 3 fotos obligatorias", () => {
     });
     const pregunta = within(panel()).getByRole("region", { name: "Faltan fotos" });
     expect(pregunta).toHaveTextContent("Faltan 2 fotos.");
-    expect(pregunta).toHaveTextContent("el estudiante queda con «Faltan fotos» y aparece en el Panel de control");
+    expect(pregunta).toHaveTextContent("el estudiante queda marcado «Faltan fotos» en su ficha");
     expect(apiAcademia.inscribir).not.toHaveBeenCalled();
     fireEvent.click(within(pregunta).getByRole("button", { name: "Cargar las fotos" }));
     expect(within(panel()).queryByRole("region", { name: "Faltan fotos" })).not.toBeInTheDocument();

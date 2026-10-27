@@ -865,7 +865,7 @@ export default function Inscribir({
           ) : sinFotos ? (
             <section aria-label="Faltan fotos" className="space-y-2.5 rounded-xl border border-warning-text/30 bg-warning-bg px-3.5 py-3">
               <p className="text-sm text-warning-text">
-                <b>{textoFaltanFotos(faltanFotos.length)}.</b> Podés inscribir igual: el {p.alumno} queda con «Faltan fotos» y aparece en el Panel de control. ¿Inscribir sin las fotos?
+                <b>{textoFaltanFotos(faltanFotos.length)}.</b> Podés inscribir igual: el {p.alumno} queda marcado «Faltan fotos» en su ficha. ¿Inscribir sin las fotos?
               </p>
               <div className="flex flex-col gap-2 lg:flex-row-reverse">
                 <Boton

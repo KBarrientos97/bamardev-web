@@ -71,7 +71,7 @@ export function textoFaltanFotos(faltan: number): string {
 export function avisoFotosPendientes(i: { fotosPendientes?: boolean; fotosFaltan?: TipoFoto[] } | null | undefined): string | null {
   if (!i?.fotosPendientes) return null;
   const cuales = i.fotosFaltan?.length ? ` (${listaDeFotos(i.fotosFaltan)})` : "";
-  return `Quedó con las fotos pendientes${cuales}: aparece en «Faltan fotos» del Panel de control.`;
+  return `Quedó con las fotos pendientes${cuales}: queda marcado «Faltan fotos» en su ficha.`;
 }
 
 /** Cuántas de las 3 faltan, contando las nuevas y las ya guardadas. */

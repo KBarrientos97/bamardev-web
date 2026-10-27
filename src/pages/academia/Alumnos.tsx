@@ -187,6 +187,8 @@ export default function Alumnos() {
           onInscrito={(r) => {
             setInscribiendo(false);
             lista.recargar();
+            // Los conteos (N estudiantes, «Faltan fotos») cambian con la inscripción (ronda 1, D12).
+            conteos.recargar();
             // D3: sin las fotos, el aviso va a Cobrar si se sigue de largo.
             const sinFotos = avisoFotosPendientes(r.inscripcion);
             if (r.cobrar) navigate(rutaCobroInscripcion(r.inscripcion.id, r.inscripcion.grupo?.sede, r.montoHoy), sinFotos ? { state: { aviso: sinFotos } } : undefined);

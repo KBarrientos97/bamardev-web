@@ -21,6 +21,13 @@ vi.mock("../../lib/academia/apiAcademia", async (importOriginal) => {
   };
 });
 
+// El alta tiene su propio test: acá sólo importa qué hace la lista cuando termina.
+vi.mock("./Inscribir", () => ({
+  default: ({ onInscrito }: { onInscrito: (r: unknown) => void }) => (
+    <button onClick={() => onInscrito({ inscripcion: { id: 900, fotosPendientes: false }, cobrar: false })}>Terminar alta</button>
+  ),
+}));
+
 import { apiAcademia } from "../../lib/academia/apiAcademia";
 import Alumnos from "./Alumnos";
 
@@ -150,5 +157,34 @@ describe("E7 · Estudiantes", () => {
     await act(async () => {});
     expect(screen.getByRole("columnheader", { name: "Estado" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Deben 7" })).toBeInTheDocument();
+  });
+});
+
+describe("ronda 1 · D12 · al inscribir se recargan también los conteos", () => {
+  it("quien se inscribió sin fotos hace aparecer la pestaña «Faltan fotos» y sube el total", async () => {
+    let faltan = 0;
+    let todos = 148;
+    vi.mocked(apiAcademia.alumnos).mockImplementation(async (f = {}) => ({
+      items: f.pageSize === 1 ? [] : [fila({})],
+      total: f.fotos === "FALTAN" ? faltan : f.debe ? 7 : f.estado === "RETIRADA" ? 3 : todos,
+      page: 1,
+      pageSize: f.pageSize ?? 20,
+    }));
+    render(
+      <MemoryRouter>
+        <Alumnos />
+      </MemoryRouter>,
+    );
+    await act(async () => {});
+    expect(screen.queryByRole("tab", { name: /Faltan fotos/ })).not.toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole("button", { name: /^Inscribir/ })[0]);
+    // Mientras está abierta el alta, el backend suma al nuevo con sus fotos pendientes.
+    faltan = 1;
+    todos = 149;
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Terminar alta" }));
+    });
+    expect(screen.getByRole("tab", { name: "Faltan fotos 1" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Todos 149" })).toBeInTheDocument();
   });
 });

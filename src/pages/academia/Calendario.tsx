@@ -391,7 +391,7 @@ export default function Calendario() {
             setInscribir(null);
             cal.recargar();
             const sinFotos = avisoFotosPendientes(r.inscripcion);
-            if (r.cobrar) navigate(rutaCobroInscripcion(r.inscripcion.id, undefined, r.montoHoy), sinFotos ? { state: { aviso: sinFotos } } : undefined);
+            if (r.cobrar) navigate(rutaCobroInscripcion(r.inscripcion.id, r.inscripcion.grupo?.sede, r.montoHoy), sinFotos ? { state: { aviso: sinFotos } } : undefined);
             else if (sinFotos) setAviso(sinFotos);
           }}
         />

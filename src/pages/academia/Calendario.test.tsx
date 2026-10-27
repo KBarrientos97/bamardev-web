@@ -50,6 +50,21 @@ vi.mock("../../lib/academia/apiAcademia", async (importOriginal) => {
   };
 });
 
+// Inscribir de verdad, pero con las propiedades a mano: así un test puede disparar
+// `onInscrito` sin recorrer los cuatro pasos del alta.
+const inscribirProps = vi.hoisted(() => ({ ultimas: null as null | { onInscrito: (r: unknown) => void } }));
+vi.mock("./Inscribir", async (importOriginal) => {
+  const real = await importOriginal<typeof import("./Inscribir")>();
+  const Real = real.default;
+  return {
+    ...real,
+    default: (props: React.ComponentProps<typeof Real>) => {
+      inscribirProps.ultimas = props as never;
+      return <Real {...props} />;
+    },
+  };
+});
+
 import { apiAcademia } from "../../lib/academia/apiAcademia";
 import { api } from "../../lib/api";
 import Calendario from "./Calendario";
@@ -409,5 +424,40 @@ describe("N1 · Calendario con todas las sedes (QA ronda 2, B-07)", () => {
       await montarEn("/academia/calendario");
       expect(screen.queryByRole("complementary", { name: "Abrir grupo" })).not.toBeInTheDocument();
     });
+  });
+});
+
+describe("ronda 1 · D13 · el cobro desde el resumen del grupo lleva la sede del grupo", () => {
+  function Destino() {
+    const l = useLocation();
+    return <p data-testid="destino">{l.pathname + l.search}</p>;
+  }
+
+  it("«Inscribir» del resumen pasa la sede del grupo, como la cabecera", async () => {
+    render(
+      <MemoryRouter initialEntries={["/academia/calendario"]}>
+        <Routes>
+          <Route path="/academia/calendario" element={<Calendario />} />
+          <Route path="*" element={<Destino />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    await act(async () => {});
+    fireEvent.click(screen.getByRole("button", { name: /Barbería L Mi V, módulo 2 de 3/ }));
+    await act(async () => {});
+    fireEvent.click(within(screen.getByRole("complementary")).getByRole("button", { name: "Inscribir" }));
+    await act(async () => {});
+    expect(screen.getByRole("dialog", { name: "Inscribir estudiante" })).toBeInTheDocument();
+    await act(async () => {
+      inscribirProps.ultimas?.onInscrito({
+        inscripcion: { id: 55, grupo: { sede: { id: 2, nombre: "Norte" } } },
+        cobrar: true,
+        montoHoy: 100,
+      });
+    });
+    const destino = screen.getByTestId("destino").textContent ?? "";
+    expect(destino).toContain("inscripcion=55");
+    expect(destino).toContain("sede=2");
+    expect(destino).toContain("sedeNombre=Norte");
   });
 });

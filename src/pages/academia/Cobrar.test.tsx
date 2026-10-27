@@ -167,7 +167,7 @@ describe("A1 · cobrar a estudiante", () => {
   });
 
   it("D3: si se inscribió sin las fotos y se siguió a cobrar, el aviso queda a la vista", async () => {
-    await montar("/academia/cobrar?inscripcion=103&monto=400", { aviso: "Quedó con las fotos pendientes: aparece en «Faltan fotos» del Panel de control." });
+    await montar("/academia/cobrar?inscripcion=103&monto=400", { aviso: "Quedó con las fotos pendientes: queda marcado «Faltan fotos» en su ficha." });
     expect(screen.getByText(/Quedó con las fotos pendientes/)).toBeInTheDocument();
   });
 
