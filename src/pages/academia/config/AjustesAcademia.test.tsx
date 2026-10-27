@@ -22,7 +22,7 @@ vi.mock("../../../lib/academia/apiAcademia", async (importOriginal) => {
   const real = await importOriginal<typeof import("../../../lib/academia/apiAcademia")>();
   return {
     ...real,
-    apiAcademia: { ajustes: vi.fn(), guardarAjustes: vi.fn(), carreras: vi.fn(), calendario: vi.fn() },
+    apiAcademia: { ajustes: vi.fn(), guardarAjustes: vi.fn(), carreras: vi.fn(), calendario: vi.fn(), grupos: vi.fn() },
   };
 });
 
@@ -34,6 +34,7 @@ beforeEach(() => {
   vi.mocked(apiAcademia.ajustes).mockResolvedValue(ajustesDePrueba({ topePromoSinPinPct: 0 }));
   vi.mocked(apiAcademia.guardarAjustes).mockImplementation(async (c) => ajustesDePrueba({ topePromoSinPinPct: 0, ...c }));
   vi.mocked(apiAcademia.carreras).mockResolvedValue([]);
+  vi.mocked(apiAcademia.grupos).mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 100 });
   vi.mocked(apiAcademia.calendario).mockResolvedValue({
     sede: null,
     meses: ["2026-10"],
@@ -229,5 +230,28 @@ describe("A5 · la tabla de cursos con el pago al docente (QA 23-oct)", () => {
     expect(fila("Barbería").textContent).toMatch(/90,00 fijo/);
     expect(fila("Barbería").textContent).not.toMatch(/%/);
     expect(fila("Tatuaje").textContent).toMatch(/10 %/);
+  });
+});
+
+describe("C7 · la tarjeta «Inscripción en línea» en Ajustes", () => {
+  it("está en la sección Inscripción, debajo de «Recibir inscripciones», y dice qué falta", async () => {
+    vi.mocked(apiAcademia.ajustes).mockResolvedValue(ajustesDePrueba({ preinscripcionActiva: true, paginaPublicada: false }));
+    await montar();
+    const insc = within(screen.getByRole("region", { name: "Inscripción" }));
+    const tarjeta = within(insc.getByRole("group", { name: "Inscripción en línea" }));
+    // Sin cursos publicados, sin página publicada y sin grupos abiertos.
+    expect(tarjeta.getByRole("link", { name: /Ir a Mi página/ })).toHaveAttribute("href", "/mi-pagina");
+    expect(tarjeta.getByRole("link", { name: /Ir al Calendario/ })).toBeInTheDocument();
+  });
+
+  it("«Activar» enciende «Recibir inscripciones desde la página» con el mismo guardado de siempre", async () => {
+    vi.mocked(apiAcademia.ajustes).mockResolvedValue(ajustesDePrueba({ preinscripcionActiva: false, paginaPublicada: true }));
+    await montar();
+    expect(screen.getByRole("switch", { name: "Recibir inscripciones desde la página" })).toHaveAttribute("aria-checked", "false");
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Activar" }));
+    });
+    expect(apiAcademia.guardarAjustes).toHaveBeenCalledWith({ preinscripcionActiva: true });
+    expect(screen.getByRole("switch", { name: "Recibir inscripciones desde la página" })).toHaveAttribute("aria-checked", "true");
   });
 });

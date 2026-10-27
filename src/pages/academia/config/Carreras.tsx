@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Icon } from "../../../components/Icon";
 import PanelLateral from "../../../components/PanelLateral";
 import { AvisoOk, Boton, Campo, Cargando, ErrorMsg, Input, Modal, Select, Vacio, useAviso } from "../../../components/ui";
@@ -211,6 +211,7 @@ export default function Carreras() {
           key={actual?.id ?? "nueva"}
           curso={actual}
           pctInstituto={pctInstituto}
+          pagina={ajustes.datos ? { publicada: ajustes.datos.paginaPublicada, recibe: ajustes.datos.preinscripcionActiva } : null}
           onCerrar={() => setElegida(null)}
           onGuardado={(c, nuevo) => {
             actualizar(c);
@@ -417,12 +418,15 @@ function FilaCurso({
 function PanelCurso({
   curso,
   pctInstituto,
+  pagina,
   onCerrar,
   onGuardado,
   onAvanzadas,
 }: {
   curso: Carrera | null;
   pctInstituto: number;
+  /** C7: si la página está publicada y si recibe inscripciones; `null` = Ajustes no cargó. */
+  pagina: { publicada?: boolean; recibe: boolean } | null;
   onCerrar: () => void;
   onGuardado: (c: Carrera, nuevo: boolean) => void;
   onAvanzadas?: () => void;
@@ -675,6 +679,17 @@ function PanelCurso({
               detalle={publicar ? "Se puede inscribir desde la página del instituto" : "Sólo se inscribe en el mostrador"}
             />
           </div>
+          {/* C7: publicar el curso no alcanza si la página no está publicada o no recibe inscripciones. */}
+          {publicar && tieneFeature(negocio?.features, "preinscripcion_online") && pagina && (pagina.publicada === false || !pagina.recibe) && (
+            <p role="note" className="mt-3 rounded-xl bg-warning-bg px-3.5 py-2.5 text-[13px] text-warning-text">
+              {pagina.publicada === false
+                ? "Tu página todavía no está publicada: nadie va a ver este curso. "
+                : "La página no está recibiendo inscripciones: este curso no se va a poder pedir. "}
+              <Link to={pagina.publicada === false ? "/mi-pagina" : "/configuracion/academia#s-insc"} className="font-semibold underline">
+                {pagina.publicada === false ? "Publicar Mi página" : "Activarlo en Ajustes"}
+              </Link>
+            </p>
+          )}
           {/* B9: el enlace de cada grupo de este curso, para WhatsApp y redes. */}
           {curso && tieneFeature(negocio?.features, "preinscripcion_online") && (
             <div className="mt-3">

@@ -391,3 +391,42 @@ describe("Sin popups encimados · el panel del curso", () => {
     expect(compartir).toHaveTextContent("No hay grupos con la inscripción abierta.");
   });
 });
+
+describe("C7 · aviso en el panel del curso cuando la página no lo va a mostrar", () => {
+  async function abrirBarberia() {
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Editar Barbería" }));
+    return screen.getByRole("complementary", { name: "Barbería" });
+  }
+
+  it("curso publicado y página sin publicar: avisa y lleva a Mi página", async () => {
+    vi.mocked(apiAcademia.ajustes).mockResolvedValue(ajustesDePrueba({ paginaPublicada: false, preinscripcionActiva: true }));
+    const panel = await abrirBarberia();
+    expect(within(panel).getByRole("note")).toHaveTextContent("Tu página todavía no está publicada");
+    expect(within(panel).getByRole("link", { name: "Publicar Mi página" })).toHaveAttribute("href", "/mi-pagina");
+  });
+
+  it("página publicada pero sin recibir inscripciones: lleva a Ajustes", async () => {
+    vi.mocked(apiAcademia.ajustes).mockResolvedValue(ajustesDePrueba({ paginaPublicada: true, preinscripcionActiva: false }));
+    const panel = await abrirBarberia();
+    expect(within(panel).getByRole("note")).toHaveTextContent("no está recibiendo inscripciones");
+    expect(within(panel).getByRole("link", { name: "Activarlo en Ajustes" })).toHaveAttribute("href", "/configuracion/academia#s-insc");
+  });
+
+  it("todo en orden, o un backend que no dice si la página está publicada: sin aviso", async () => {
+    vi.mocked(apiAcademia.ajustes).mockResolvedValue(ajustesDePrueba({ paginaPublicada: true, preinscripcionActiva: true }));
+    let panel = await abrirBarberia();
+    expect(within(panel).queryByRole("note")).not.toBeInTheDocument();
+    cleanup();
+    vi.mocked(apiAcademia.ajustes).mockResolvedValue(ajustesDePrueba({ preinscripcionActiva: true }));
+    panel = await abrirBarberia();
+    expect(within(panel).queryByRole("note")).not.toBeInTheDocument();
+  });
+
+  it("un curso sin publicar en la página no avisa nada (no se pretende mostrarlo)", async () => {
+    vi.mocked(apiAcademia.ajustes).mockResolvedValue(ajustesDePrueba({ paginaPublicada: false, preinscripcionActiva: true }));
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Editar Maquillaje" }));
+    expect(within(screen.getByRole("complementary", { name: "Maquillaje" })).queryByRole("note")).not.toBeInTheDocument();
+  });
+});

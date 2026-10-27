@@ -15,6 +15,7 @@ import { fmtMoney } from "../../../lib/format";
 import { useApi } from "../../../lib/useApi";
 import { useSucursales } from "../../../lib/useSucursales";
 import { BotonFila, BotonIcono, Interruptor, LISTA, PaginaAcademia, SeccionAjuste, TABLA } from "../piezas";
+import { InscripcionEnLinea } from "./InscripcionEnLinea";
 
 /**
  * Ajustes del instituto (N4, `/configuracion/academia`): lo que se configura
@@ -297,6 +298,8 @@ export default function AjustesAcademia() {
             etiqueta="Recibir inscripciones desde la página"
           />
         </div>
+        {/* C7: lo que tiene que estar prendido, en cinco lugares, para que la página reciba inscripciones. */}
+        <InscripcionEnLinea ajustes={a} cursos={cursos.datos} onActivarRecibir={() => void guardar({ preinscripcionActiva: true })} />
       </SeccionAjuste>
 
       <SeccionAjuste id="s-cobro" titulo="Cobro" bajada="Los descuentos y cuándo una cuota vencida se marca en rojo.">
