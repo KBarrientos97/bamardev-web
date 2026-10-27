@@ -731,6 +731,57 @@ export interface AulaInput {
   capacidad?: number | null;
 }
 
+// ── Sedes del instituto (BACK-6, C4) ────────────────────────────────────────
+
+/** Una sede con lo que le importa al instituto: sin stock ni precios. */
+export interface Sede {
+  id: number;
+  nombre: string;
+  direccion: string | null;
+  telefono: string | null;
+  /** Texto libre ("Lun a Vie 8:00–20:00"); es el mismo que muestra Mi página. */
+  horarioAtencion: string | null;
+  esPrincipal: boolean;
+  /** Aulas activas. */
+  aulas: number;
+  /** Franjas de la sede más las "de todas las sedes". */
+  franjas: number;
+  gruposVigentes: number;
+}
+
+export interface SedeInput {
+  nombre?: string;
+  direccion?: string | null;
+  telefono?: string | null;
+  horarioAtencion?: string | null;
+}
+
+/** Una franja tal como la ve una sede (C5). */
+export interface FranjaDeSede {
+  inicio: string;
+  fin: string;
+  /** Cargada antes "para todas las sedes": al guardar queda copiada a esta sede. */
+  todasLasSedes: boolean;
+}
+
+export interface FranjasDeSede {
+  sede: Ref;
+  franjas: FranjaDeSede[];
+}
+
+export interface OmitidaTipica {
+  inicio: string;
+  fin: string;
+  motivo: "YA_ESTA" | "SE_PISA";
+  /** Con qué franja de la sede se pisa (o la que ya estaba). */
+  con: { inicio: string; fin: string };
+}
+
+export interface ResultadoTipicas extends FranjasDeSede {
+  agregadas: { inicio: string; fin: string }[];
+  omitidas: OmitidaTipica[];
+}
+
 // ── Choques de horario (C10) ────────────────────────────────────────────────
 
 export interface ConsultaChoques {

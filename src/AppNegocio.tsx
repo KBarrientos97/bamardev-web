@@ -8,7 +8,7 @@ import {
 } from "react-router-dom";
 import AtajaErrores from "./components/AtajaErrores";
 import Layout from "./components/Layout";
-import { RUTA_CAJA, RUTA_COBRAR } from "./lib/academia/vista";
+import { RUTA_CAJA, RUTA_COBRAR, RUTA_SEDES } from "./lib/academia/vista";
 import { ConPestanasConfig, InicioConfig } from "./pages/academia/config/ConfigAcademia";
 import { RUTA_AGENDA_PRONTO, rutaInicial, veReportes, veSoloSuAgenda, type Seccion } from "./lib/permisos";
 import { esBelleza, esFarmacia } from "./lib/rubro";
@@ -99,13 +99,27 @@ const CobranzaAcademia = lazy(() => import("./pages/academia/Cobranza"));
 const CobrarAcademia = lazy(() => import("./pages/academia/Cobrar"));
 const CarrerasAcademia = lazy(() => import("./pages/academia/config/Carreras"));
 const AjustesAcademia = lazy(() => import("./pages/academia/config/AjustesAcademia"));
-const AulasAcademia = lazy(() => import("./pages/academia/config/Aulas").then((m) => ({ default: m.AulasConfig })));
+const SedesAcademia = lazy(() => import("./pages/academia/config/Sedes").then((m) => ({ default: m.SedesConfig })));
 
 /** Una pantalla de la academia: con su sección y bajada aparte. */
 function Academia({ seccion, children }: { seccion: Seccion; children: React.ReactNode }) {
   return (
     <Protegida seccion={seccion}>
       <Suspense fallback={null}>{children}</Suspense>
+    </Protegida>
+  );
+}
+
+/**
+ * Almacenes es la pantalla de stock de los demás rubros. En el instituto las
+ * sedes tienen la suya, en Configuración: un enlace viejo a Almacenes lleva ahí.
+ */
+function AlmacenesORedirige() {
+  const { rubro } = useAuth();
+  if (rubro === "ACADEMIA") return <Navigate to={RUTA_SEDES} replace />;
+  return (
+    <Protegida seccion="almacenes">
+      <Almacenes />
     </Protegida>
   );
 }
@@ -533,16 +547,7 @@ function Rutas() {
             </Protegida>
           }
         />
-        <Route
-          path="/inventario/almacenes"
-          element={
-            <Protegida seccion="almacenes">
-              <ConPestanasConfig>
-                <Almacenes />
-              </ConPestanasConfig>
-            </Protegida>
-          }
-        />
+        <Route path="/inventario/almacenes" element={<AlmacenesORedirige />} />
         <Route
           path="/inventario/proveedores"
           element={
@@ -849,7 +854,9 @@ function Rutas() {
         <Route path="/academia/cobrar" element={<RedirigeConBusqueda a={RUTA_COBRAR} />} />
         <Route path="/configuracion/carreras" element={<Academia seccion="academia_carreras"><ConPestanasConfig><CarrerasAcademia /></ConPestanasConfig></Academia>} />
         <Route path="/configuracion/academia" element={<Academia seccion="academia_ajustes"><ConPestanasConfig><AjustesAcademia /></ConPestanasConfig></Academia>} />
-        <Route path="/configuracion/aulas" element={<Academia seccion="academia_ajustes"><ConPestanasConfig><AulasAcademia /></ConPestanasConfig></Academia>} />
+        <Route path={RUTA_SEDES} element={<Academia seccion="academia_ajustes"><ConPestanasConfig><SedesAcademia /></ConPestanasConfig></Academia>} />
+        {/* Las aulas dejaron de ser una pestaña (viven en cada sede): el enlace ya compartido sigue andando. */}
+        <Route path="/configuracion/aulas" element={<RedirigeConBusqueda a={RUTA_SEDES} />} />
         {/* Configuración (26-oct): una entrada en el menú, con una pestaña por pantalla. */}
         <Route path="/academia/configuracion" element={<InicioConfig />} />
 

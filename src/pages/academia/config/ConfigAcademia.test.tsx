@@ -23,6 +23,7 @@ vi.mock("../../../lib/academia/apiAcademia", async (importOriginal) => {
   return {
     ...real,
     apiAcademia: {
+      sedes: vi.fn().mockResolvedValue([]),
       ajustes: vi.fn().mockResolvedValue({ franjas: [] }),
       carreras: vi.fn().mockResolvedValue([]),
       docentes: vi.fn().mockResolvedValue([]),
@@ -64,18 +65,20 @@ beforeEach(() => {
 
 describe("Configuración del instituto", () => {
   it("una pestaña por pantalla, encendida la de la ruta", () => {
-    montar("/inventario/almacenes");
+    montar("/configuracion/sedes");
     const nav = screen.getByRole("navigation", { name: "Configuración del instituto" });
-    expect(Array.from(nav.querySelectorAll("a"), (a) => a.textContent)).toEqual(["Cursos", "Sedes", "Aulas", "Planilla docentes", "Ajustes"]);
+    // Sin pestaña «Aulas» suelta: las aulas viven dentro de cada sede (WEB-8).
+    expect(Array.from(nav.querySelectorAll("a"), (a) => a.textContent)).toEqual(["Cursos", "Sedes", "Planilla docentes", "Ajustes"]);
     expect(screen.getByRole("link", { name: "Sedes" })).toHaveAttribute("aria-current", "page");
   });
 
   it("cada quien ve sólo las pestañas de lo que puede, y la entrada lleva a la primera", () => {
     sesion.puede = (s: string) => s === "academia_planilla" || s === "academia_ajustes";
     montar("/academia/configuracion");
-    // Aulas comparte la sección de Ajustes (academia.configurar) y va antes que la planilla.
-    expect(screen.getByTestId("donde")).toHaveTextContent("/configuracion/aulas");
-    expect(screen.getByRole("link", { name: "Aulas" })).toBeInTheDocument();
+    // Sedes comparte la sección de Ajustes (academia.configurar) y va antes que la planilla.
+    expect(screen.getByTestId("donde")).toHaveTextContent("/configuracion/sedes");
+    expect(screen.getByRole("link", { name: "Sedes" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Aulas" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Cursos" })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Ajustes" })).toBeInTheDocument();
   });

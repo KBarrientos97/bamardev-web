@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { Navigate, NavLink } from "react-router-dom";
 import { usePalabras } from "../../../lib/academia/usePalabras";
-import { PESTANAS_CONFIG_ACADEMIA } from "../../../lib/academia/vista";
+import { PESTANAS_CONFIG_ACADEMIA, RUTA_SEDES } from "../../../lib/academia/vista";
 import type { Seccion } from "../../../lib/permisos";
 import { useAuth } from "../../../store/AuthContext";
 import PrimerosPasos from "../PrimerosPasos";
@@ -18,13 +18,12 @@ import PrimerosPasos from "../PrimerosPasos";
  */
 const NOMBRE: Partial<Record<Seccion, (p: ReturnType<typeof usePalabras>) => string>> = {
   academia_carreras: (p) => p.Carreras,
-  almacenes: (p) => p.Sedes,
   academia_planilla: (p) => `Planilla ${p.docente}s`,
   academia_ajustes: () => "Ajustes",
 };
 
-/** Las pestañas que comparten sección con otra se nombran por su ruta. */
-const NOMBRE_POR_RUTA: Record<string, string> = { "/configuracion/aulas": "Aulas" };
+/** Las pestañas que comparten sección con otra (Sedes y Ajustes) se nombran por su ruta. */
+const NOMBRE_POR_RUTA: Record<string, (p: ReturnType<typeof usePalabras>) => string> = { [RUTA_SEDES]: (p) => p.Sedes };
 
 /** La barra de pestañas, arriba de la pantalla. Con una sola no se dibuja. */
 function Pestanas() {
@@ -46,7 +45,7 @@ function Pestanas() {
               }`
             }
           >
-            {NOMBRE_POR_RUTA[t.a] ?? NOMBRE[t.seccion]?.(p) ?? t.a}
+            {NOMBRE_POR_RUTA[t.a]?.(p) ?? NOMBRE[t.seccion]?.(p) ?? t.a}
           </NavLink>
         ))}
       </div>
@@ -56,8 +55,7 @@ function Pestanas() {
 
 /**
  * Envuelve una pantalla de la configuración con sus pestañas. Sólo en el
- * instituto: Almacenes es la misma pantalla para todos los rubros, y fuera de
- * la academia se ve exactamente como siempre.
+ * instituto: fuera de la academia no hay pestañas ni «Primeros pasos».
  */
 export function ConPestanasConfig({ children }: { children: ReactNode }) {
   const { rubro } = useAuth();

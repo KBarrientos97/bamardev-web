@@ -23,6 +23,7 @@ import type {
   ConsultaChoques,
   FiltroGrupos,
   FotosInscripcion,
+  FranjasDeSede,
   GrupoDetalle,
   GrupoInput,
   GrupoResumen,
@@ -53,6 +54,9 @@ import type {
   TipoFoto,
   Tutor,
   TutorInput,
+  ResultadoTipicas,
+  Sede,
+  SedeInput,
 } from "./tipos";
 
 /**
@@ -72,6 +76,18 @@ export const apiAcademia = {
   ajustes: () => request<AjustesAcademia>("/academia/ajustes"),
   guardarAjustes: (cambios: Partial<AjustesAcademia>) =>
     request<AjustesAcademia>("/academia/ajustes", { method: "PATCH", body: json(cambios) }),
+
+  // ── Sedes del instituto (C4) y sus franjas (C5) ────────────────────────────
+  sedes: () => request<Sede[]>("/academia/sedes"),
+  crearSede: (input: SedeInput) => request<Sede>("/academia/sedes", { method: "POST", body: json(input) }),
+  editarSede: (id: number, cambios: SedeInput) =>
+    request<Sede>(`/academia/sedes/${id}`, { method: "PATCH", body: json(cambios) }),
+  franjasSede: (id: number) => request<FranjasDeSede>(`/academia/sedes/${id}/franjas`),
+  /** Reemplaza la lista completa de la sede (`[]` la deja sin franjas). */
+  guardarFranjasSede: (id: number, franjas: { inicio: string; fin: string }[]) =>
+    request<FranjasDeSede>(`/academia/sedes/${id}/franjas`, { method: "PUT", body: json({ franjas }) }),
+  /** 08–10, 10–12, 14–16, 16–18 y 19–21, sin duplicar ni pisar lo que la sede ya tiene. */
+  franjasTipicas: (id: number) => request<ResultadoTipicas>(`/academia/sedes/${id}/franjas/tipicas`, { method: "POST" }),
 
   // ── Aulas por sede ─────────────────────────────────────────────────────────
   aulas: (f: { sede?: number | null; soloActivas?: boolean } = {}) =>
@@ -325,4 +341,16 @@ export const CODIGOS_ACADEMIA = {
   AULA_EN_USO: "AULA_EN_USO",
   /** 409 (D7): el docente marca su llegada mucho antes de la clase; se confirma y se reenvía. */
   LLEGADA_MUY_TEMPRANO: "LLEGADA_MUY_TEMPRANO",
+  // ── Sedes y franjas (BACK-6) ──
+  /** 409: el plan no incluye más sedes; el mensaje ya dice cómo ampliarlo. */
+  CUPO_SEDES: "CUPO_SEDES",
+  /** 409: ya hay una sede con ese nombre. */
+  SEDE_REPETIDA: "SEDE_REPETIDA",
+  /** 403: abrir una sede nueva es de quien administra todas, no de quien está atado a una. */
+  SEDE_SOLO_ORGANIZACION: "SEDE_SOLO_ORGANIZACION",
+  SEDE_NO_EXISTE: "SEDE_NO_EXISTE",
+  /** 400: una franja al revés o que se pisa; trae `detalles`. */
+  FRANJAS_INVALIDAS: "FRANJAS_INVALIDAS",
+  /** 409: otro guardó las franjas a la vez; se reintenta. */
+  FRANJAS_CAMBIARON: "FRANJAS_CAMBIARON",
 } as const;

@@ -231,7 +231,7 @@ describe("menú de ACADEMIA", () => {
     const planos = aplanar(menuDe("ADMIN").flatMap((b) => b.nodos));
     const config = planos.find((n) => n.item.label === "Configuración")!;
     expect(config.item.a).toBe("/academia/configuracion");
-    for (const ruta of ["/configuracion/carreras", "/inventario/almacenes", "/academia/planilla", "/configuracion/academia"]) {
+    for (const ruta of ["/configuracion/carreras", "/configuracion/sedes", "/academia/planilla", "/configuracion/academia"]) {
       expect(esActivo(config.item, ruta), ruta).toBe(true);
       expect(tituloDe(planos, ruta), ruta).toBe("Configuración");
     }

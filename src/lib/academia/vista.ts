@@ -103,15 +103,22 @@ export function rutaCobroInscripcion(inscripcionId: number, sede?: string | Ref 
 }
 
 /**
+ * Las sedes del instituto, con sus franjas y aulas (C4): una pestaña de la
+ * Configuración. `?sede=ID&ver=franjas|aulas|editar` lleva a una sede.
+ */
+export const RUTA_SEDES = "/configuracion/sedes";
+
+/**
  * Las pestañas de la Configuración del instituto (26-oct), en orden: cada una
  * es una pantalla de siempre, en su ruta, con la sección que pide. El menú
  * tiene UNA entrada que se enciende en cualquiera (ver `ConfigAcademia`).
  */
 export const PESTANAS_CONFIG_ACADEMIA: readonly { seccion: Seccion; a: string }[] = [
   { seccion: "academia_carreras", a: "/configuracion/carreras" },
-  { seccion: "almacenes", a: "/inventario/almacenes" },
-  // Las aulas de cada sede (BACK-5): misma sección que Ajustes (`academia.configurar`).
-  { seccion: "academia_ajustes", a: "/configuracion/aulas" },
+  // Las sedes con sus franjas y aulas (BACK-6): ya no es la pantalla de Almacenes
+  // del inventario, así que no pide `almacenes.administrar` sino lo mismo que
+  // Ajustes (`academia.configurar`).
+  { seccion: "academia_ajustes", a: RUTA_SEDES },
   { seccion: "academia_planilla", a: "/academia/planilla" },
   { seccion: "academia_ajustes", a: "/configuracion/academia" },
 ];
