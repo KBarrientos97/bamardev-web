@@ -87,9 +87,12 @@ export default function PantallaHistorial({
    */
   const creditos = useApi(() => api.getCreditos().catch(() => []), []);
 
+  // En la PC (26-oct): la barra de lado a lado y dos columnas, las ventas a
+  // la izquierda y el turno a la derecha. Antes era la columna del celular en
+  // el medio, con la barra blanca cortada. En el celular queda igual.
   return (
-    <div className="mx-auto flex h-full min-h-0 w-full max-w-3xl flex-col">
-      <div className="flex items-center justify-between gap-2 border-b border-borde bg-white px-4 py-3">
+    <div className="flex h-full min-h-0 w-full flex-col">
+      <div className="flex items-center justify-between gap-2 border-b border-borde bg-white py-3 px-[max(1rem,calc(50%-24rem+1rem))] lg:px-[max(1.5rem,calc(50%-36rem+1.5rem))]">
         <div className="flex items-center gap-2">
           <button
             onClick={onAtras}
@@ -111,86 +114,90 @@ export default function PantallaHistorial({
         </Boton>
       </div>
 
-      <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-4">
-        {/* Antes que las ventas: es la plata que NO está en el cajón, y es lo
-            que la cajera necesita ver antes de cerrar. */}
-        {puede("creditos") && (
-          <CuentasPorCobrar
-            creditos={creditos.datos ?? []}
-            onVerTodos={() => navigate("/creditos")}
-          />
-        )}
+      <div className="min-h-0 flex-1 space-y-5 overflow-y-auto py-4 px-[max(1rem,calc(50%-24rem+1rem))] lg:px-[max(1.5rem,calc(50%-36rem+1.5rem))] lg:grid lg:grid-cols-[minmax(0,1fr)_360px] lg:content-start lg:items-start lg:gap-6 lg:space-y-0 lg:py-6">
+        {/* En el celular va arriba de las ventas; en la PC, a la derecha. */}
+        <aside className="space-y-5 lg:sticky lg:top-0 lg:col-start-2 lg:row-start-1">
+          <ResumenTurno caja={caja} ventas={aprobadas.length} total={totalVendido} />
+          {/* Antes que las ventas: es la plata que NO está en el cajón, y es lo
+              que la cajera necesita ver antes de cerrar. */}
+          {puede("creditos") && (
+            <CuentasPorCobrar
+              creditos={creditos.datos ?? []}
+              onVerTodos={() => navigate("/creditos")}
+            />
+          )}
 
-        <AvisoSinSubir />
-        {/* Lo cobrado sin internet va primero, como en la app: es lo que
-            todavía no está en el servidor (ni en el arqueo). */}
-        <VentasSinSubir onVerTicket={(v) => onVerComprobante(v)} />
+          <AvisoSinSubir />
+          {/* Lo cobrado sin internet va primero, como en la app: es lo que
+              todavía no está en el servidor (ni en el arqueo). */}
+          <VentasSinSubir onVerTicket={(v) => onVerComprobante(v)} />
 
-        {porEntregar.length > 0 && (
-          <section>
-            <h2 className="mb-2 text-[13px] font-bold uppercase tracking-wide text-texto-4">
-              Pedidos pendientes ({porEntregar.length})
-            </h2>
-            <ul className="space-y-2">
-              {porEntregar.map((p) => (
-                // Toda la fila abre el detalle, igual que en la app desde
-                // `eab8574`: antes acá no pasaba nada al tocarla, y el cajero no
-                // tenía forma de ver el teléfono o la nota del pedido sin ir a
-                // buscar la venta.
-                <li
-                  key={p.id}
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => setDetalle(p)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      setDetalle(p);
-                    }
-                  }}
-                  className="card flex cursor-pointer items-center gap-3 p-3.5 transition-shadow hover:shadow-md"
-                >
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-warning-bg text-warning-text">
-                    <Icon name={p.tipoPedido === "DELIVERY" ? "truck" : "clock"} size={19} />
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-[13px] font-bold text-texto">
-                      {p.clienteNombre ?? "Sin nombre"}
-                    </p>
-                    <p className="truncate text-xs text-texto-3">
-                      {p.tipoPedido === "DELIVERY" ? p.clienteDireccion : "Pasa a recoger"}
-                      {p.repartidor ? ` · ${p.repartidor.nombre}` : ""}
-                    </p>
-                  </div>
-                  <div className="shrink-0 text-right">
-                    <p className="text-[13px] font-bold text-texto">{fmtMoney(p.total)}</p>
-                    <Badge tono={p.prepagado ? "verde" : "amarillo"}>
-                      {p.prepagado ? "Pagado" : "Cobra al entregar"}
-                    </Badge>
-                    {/* Un DELIVERY lo cierra el repartidor desde su pantalla.
-                        Un RECOGER lo cierra quien está en la caja: el cliente
-                        pasa por el mostrador y no hay nadie más que lo haga —
-                        sin esto el pedido quedaba pendiente para siempre. */}
-                    {p.tipoPedido === "RECOGER" && (
-                      <button
-                        onClick={(e) => {
-                          // Que el botón no abra además el detalle de la fila.
-                          e.stopPropagation();
-                          setEntregando(p);
-                        }}
-                        className="mt-1.5 block w-full rounded-lg bg-primary px-2.5 py-1 text-xs font-bold text-white"
-                      >
-                        {p.prepagado ? "Entregar" : "Cobrar y entregar"}
-                      </button>
-                    )}
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </section>
-        )}
+          {porEntregar.length > 0 && (
+            <section>
+              <h2 className="mb-2 text-[13px] font-bold uppercase tracking-wide text-texto-4">
+                Pedidos pendientes ({porEntregar.length})
+              </h2>
+              <ul className="space-y-2">
+                {porEntregar.map((p) => (
+                  // Toda la fila abre el detalle, igual que en la app desde
+                  // `eab8574`: antes acá no pasaba nada al tocarla, y el cajero no
+                  // tenía forma de ver el teléfono o la nota del pedido sin ir a
+                  // buscar la venta.
+                  <li
+                    key={p.id}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => setDetalle(p)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        setDetalle(p);
+                      }
+                    }}
+                    className="card flex cursor-pointer items-center gap-3 p-3.5 transition-shadow hover:shadow-md"
+                  >
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-warning-bg text-warning-text">
+                      <Icon name={p.tipoPedido === "DELIVERY" ? "truck" : "clock"} size={19} />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-[13px] font-bold text-texto">
+                        {p.clienteNombre ?? "Sin nombre"}
+                      </p>
+                      <p className="truncate text-xs text-texto-3">
+                        {p.tipoPedido === "DELIVERY" ? p.clienteDireccion : "Pasa a recoger"}
+                        {p.repartidor ? ` · ${p.repartidor.nombre}` : ""}
+                      </p>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <p className="text-[13px] font-bold text-texto">{fmtMoney(p.total)}</p>
+                      <Badge tono={p.prepagado ? "verde" : "amarillo"}>
+                        {p.prepagado ? "Pagado" : "Cobra al entregar"}
+                      </Badge>
+                      {/* Un DELIVERY lo cierra el repartidor desde su pantalla.
+                          Un RECOGER lo cierra quien está en la caja: el cliente
+                          pasa por el mostrador y no hay nadie más que lo haga —
+                          sin esto el pedido quedaba pendiente para siempre. */}
+                      {p.tipoPedido === "RECOGER" && (
+                        <button
+                          onClick={(e) => {
+                            // Que el botón no abra además el detalle de la fila.
+                            e.stopPropagation();
+                            setEntregando(p);
+                          }}
+                          className="mt-1.5 block w-full rounded-lg bg-primary px-2.5 py-1 text-xs font-bold text-white"
+                        >
+                          {p.prepagado ? "Entregar" : "Cobrar y entregar"}
+                        </button>
+                      )}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+        </aside>
 
-        <section>
+        <section className="lg:col-start-1 lg:row-start-1">
           <h2 className="mb-2 text-[13px] font-bold uppercase tracking-wide text-texto-4">
             Ventas
           </h2>
@@ -218,12 +225,14 @@ export default function PantallaHistorial({
               />
             </div>
           ) : (
-            <ul className="space-y-2">
+            // En la PC, una sola tarjeta con renglones: diez tarjetas sueltas a
+            // lo ancho se leen como el celular estirado.
+            <ul className="space-y-2 lg:card lg:space-y-0 lg:divide-y lg:divide-borde-soft lg:overflow-hidden">
               {lista.map((v) => (
                 <li key={v.id}>
                   <button
                     onClick={() => setDetalle(v)}
-                    className="card flex w-full items-center gap-3 p-3.5 text-left transition-shadow hover:shadow-md"
+                    className="card flex w-full items-center gap-3 p-3.5 text-left transition-shadow hover:shadow-md lg:rounded-none lg:border-0 lg:px-5 lg:shadow-none lg:hover:bg-muted lg:hover:shadow-none"
                   >
                     <span
                       className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
@@ -310,6 +319,34 @@ export default function PantallaHistorial({
         />
       )}
     </div>
+  );
+}
+
+/**
+ * El turno de un vistazo, sólo en la PC: en el celular ya lo dice la barra de
+ * arriba y no hay lugar para repetirlo.
+ */
+function ResumenTurno({ caja, ventas, total }: { caja: Caja; ventas: number; total: number }) {
+  return (
+    <section aria-label="Resumen del turno" className="card hidden p-5 lg:block">
+      <p className="text-[12px] font-bold uppercase tracking-wide text-texto-4">Turno</p>
+      <p className="mt-1 text-sm text-texto-3">
+        Abierta desde {fmtHora(caja.fechaApertura)}
+        {caja.almacen ? ` · ${caja.almacen}` : ""}
+      </p>
+      <p className="mt-4 text-[12px] font-semibold text-texto-3">Vendido</p>
+      <p className="text-3xl font-extrabold tabular-nums text-texto">{fmtMoney(total)}</p>
+      <dl className="mt-4 space-y-1.5 border-t border-borde-soft pt-3 text-sm">
+        <div className="flex justify-between">
+          <dt className="text-texto-3">Ventas</dt>
+          <dd className="font-semibold tabular-nums text-texto">{ventas}</dd>
+        </div>
+        <div className="flex justify-between">
+          <dt className="text-texto-3">Fondo de apertura</dt>
+          <dd className="font-semibold tabular-nums text-texto">{fmtMoney(caja.montoApertura)}</dd>
+        </div>
+      </dl>
+    </section>
   );
 }
 
