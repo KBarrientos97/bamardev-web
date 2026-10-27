@@ -170,7 +170,9 @@ describe("D9 · Grupos sin docente", () => {
     expect(bloque).toHaveTextContent("Barbería · L-Mi 18:00");
     expect(bloque).toHaveTextContent("Barbería · Central · L Mi 18:00–20:00");
     expect(bloque).toHaveTextContent("Sin docente: M2 Degradados, M3 Barba y color");
-    expect(bloque).toHaveTextContent("Inicio 20-oct");
+    // Ronda 1, D11: la fecha es la del primer módulo sin docente (M2), no la del grupo (20-oct).
+    expect(bloque).toHaveTextContent("Empieza el M2 el 17-nov");
+    expect(bloque).not.toHaveTextContent("Inicio 20-oct");
     expect(within(bloque).getByRole("link", { name: "Abrir el grupo Barbería · L-Mi 18:00 para asignar docente" })).toHaveAttribute(
       "href",
       "/academia/grupos/91",

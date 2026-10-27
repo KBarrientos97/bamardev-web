@@ -384,8 +384,10 @@ function GruposSinDocente({ filas }: { filas: NonNullable<PanelControl["gruposSi
                 Sin docente: {g.modulos.map((m) => `M${m.orden} ${m.nombre}`).join(", ")}
               </span>
             </span>
+            {/* La fecha es la del primer módulo sin docente, no la del grupo: la lista
+                habla de ese módulo (ronda 1, D11). Sin módulos, la del grupo. */}
             <Chip tono="ambar" className="max-sm:col-start-1 max-sm:row-start-2 max-sm:justify-self-start">
-              Inicio {fechaCorta(g.inicio)}
+              {g.modulos.length ? `Empieza el M${g.modulos[0].orden} el ${fechaCorta(g.modulos[0].desde)}` : `Inicio ${fechaCorta(g.inicio)}`}
             </Chip>
             <BotonFila variante="ghost" a={`/academia/grupos/${g.grupoId}`} aria-label={`Abrir el grupo ${g.nombre} para asignar docente`} className="max-sm:row-span-2">
               Abrir grupo
