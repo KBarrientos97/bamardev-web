@@ -47,6 +47,7 @@ vi.mock("../../../lib/academia/apiAcademia", async (importOriginal) => {
 });
 
 import { apiAcademia } from "../../../lib/academia/apiAcademia";
+import { pulsarEnter } from "../../../test/enter";
 import Aulas from "./Aulas";
 
 const aula = (id: number, nombre: string, extra: Partial<Aula> = {}): Aula => ({
@@ -179,12 +180,34 @@ describe("Aulas · alta y edición", () => {
     fireEvent.click(screen.getByRole("button", { name: "Nueva aula" }));
     const panel = screen.getByRole("complementary", { name: "Nueva aula" });
     fireEvent.change(within(panel).getByLabelText("Nombre"), { target: { value: "Aula 9" } });
-    const envio = panel.querySelector('form button[type="submit"]') as HTMLButtonElement;
-    expect(envio).not.toBeNull();
+    expect(panel.querySelector('form button[type="submit"]')).not.toBeNull();
+    // Enter de verdad en el campo (ronda 2, T2).
     await act(async () => {
-      fireEvent.click(envio);
+      pulsarEnter(within(panel).getByLabelText("Nombre"));
     });
     expect(apiAcademia.crearAula).toHaveBeenCalledWith({ almacenId: 1, nombre: "Aula 9" });
+  });
+
+  it("ronda 2 · B4: un segundo Enter mientras se guarda no manda otro POST", async () => {
+    let terminar: (a: Aula) => void = () => {};
+    vi.mocked(apiAcademia.crearAula).mockReturnValue(new Promise<Aula>((r) => (terminar = r)));
+    await montar(1);
+    vi.mocked(apiAcademia.aulas).mockResolvedValue([]);
+    fireEvent.click(screen.getByRole("button", { name: "Nueva aula" }));
+    const panel = screen.getByRole("complementary", { name: "Nueva aula" });
+    const nombre = within(panel).getByLabelText("Nombre");
+    fireEvent.change(nombre, { target: { value: "Aula 9" } });
+    await act(async () => {
+      pulsarEnter(nombre);
+    });
+    await act(async () => {
+      pulsarEnter(nombre);
+      pulsarEnter(nombre);
+    });
+    expect(apiAcademia.crearAula).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      terminar(aula(9, "Aula 9"));
+    });
   });
 
   it("viendo todas las sedes, el alta pregunta en cuál va", async () => {

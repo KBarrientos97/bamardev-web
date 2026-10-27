@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter, useNavigate } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "../../../lib/api";
+import { pulsarEnter } from "../../../test/enter";
 import type { Sede } from "../../../lib/academia/tipos";
 
 /**
@@ -430,12 +431,86 @@ describe("ronda 1 · W7 y W8 · conteos de la sede y Enter en el formulario", ()
     fireEvent.click(screen.getByRole("button", { name: "Nueva sede" }));
     const panel = screen.getByRole("complementary", { name: "Nueva sede" });
     fireEvent.change(within(panel).getByLabelText("Nombre"), { target: { value: "Norte" } });
-    // Enter en un campo dispara el botón de envío del formulario: acá, ese clic.
-    const envio = panel.querySelector('form button[type="submit"]') as HTMLButtonElement;
-    expect(envio).not.toBeNull();
+    // Enter de verdad en el campo (ronda 2, T2): el navegador envía el formulario por su botón de envío.
+    expect(panel.querySelector('form button[type="submit"]')).not.toBeNull();
     await act(async () => {
-      fireEvent.click(envio);
+      pulsarEnter(within(panel).getByLabelText("Nombre"));
     });
     expect(apiAcademia.crearSede).toHaveBeenCalledWith({ nombre: "Norte" });
+  });
+});
+
+describe("ronda 2 · B3, B4 y T3", () => {
+  it("B4: un segundo Enter mientras se guarda no manda otro POST", async () => {
+    let terminar: (s: Sede) => void = () => {};
+    vi.mocked(apiAcademia.crearSede).mockReturnValue(new Promise<Sede>((r) => (terminar = r)));
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Nueva sede" }));
+    const panel = screen.getByRole("complementary", { name: "Nueva sede" });
+    const nombre = within(panel).getByLabelText("Nombre");
+    fireEvent.change(nombre, { target: { value: "Norte" } });
+    await act(async () => {
+      pulsarEnter(nombre);
+    });
+    await act(async () => {
+      pulsarEnter(nombre);
+      pulsarEnter(nombre);
+    });
+    expect(apiAcademia.crearSede).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      terminar(sede(3, "Norte"));
+    });
+  });
+
+  it("B3: al pasar de una sede a otra con franjas sin guardar, no quedan las filas de la primera bajo la segunda", async () => {
+    function IrA({ ruta }: { ruta: string }) {
+      const navigate = useNavigate();
+      return <button onClick={() => navigate(ruta)}>ir a {ruta}</button>;
+    }
+    render(
+      <MemoryRouter initialEntries={["/configuracion/sedes"]}>
+        <SedesConfig />
+        <IrA ruta="/configuracion/sedes?sede=2&ver=franjas" />
+      </MemoryRouter>,
+    );
+    await act(async () => {});
+    fireEvent.click(screen.getByRole("button", { name: "Abrir Central" }));
+    await act(async () => {});
+    fireEvent.change(screen.getByLabelText("Hasta, franja 1"), { target: { value: "11:00" } });
+    expect(screen.getByText(/cambios sin guardar/)).toBeInTheDocument();
+    // Las franjas de Base tardan: durante la espera no puede verse (ni guardarse) lo de Central.
+    vi.mocked(apiAcademia.franjasSede).mockImplementation((id) =>
+      id === 2 ? new Promise(() => {}) : Promise.resolve({ sede: { id, nombre: "Central" }, franjas: [{ inicio: "08:00", fin: "10:00", todasLasSedes: false }] }),
+    );
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /^ir a / }));
+    });
+    expect(screen.getByRole("complementary", { name: "Base" })).toBeInTheDocument();
+    expect(screen.queryByLabelText("Hasta, franja 1")).not.toBeInTheDocument();
+    expect(screen.queryByText(/cambios sin guardar/)).not.toBeInTheDocument();
+  });
+
+  it("T3: en el celular las sedes son tarjetas, «Franjas y aulas» sale del ⋯ y abre la hoja de la sede", async () => {
+    vi.stubGlobal("matchMedia", (q: string) => ({ matches: q.includes("767"), addEventListener: () => {}, removeEventListener: () => {} }));
+    try {
+      await montar();
+      const lista = screen.getByRole("list", { name: "Sedes" });
+      expect(within(lista).getAllByRole("listitem")).toHaveLength(2);
+      expect(screen.queryByRole("table")).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "Más acciones de Base" }));
+      const menu = screen.getByRole("dialog", { name: "Base" });
+      fireEvent.click(within(menu).getByRole("button", { name: "Franjas y aulas" }));
+      await act(async () => {});
+      // Una sola hoja a la vez: la del menú se fue y quedó la de la sede, con sus franjas.
+      const hojas = screen.getAllByRole("dialog", { name: "Base" });
+      expect(hojas).toHaveLength(1);
+      expect(apiAcademia.franjasSede).toHaveBeenCalledWith(2);
+      expect(within(hojas[0]).getByText("Franjas horarias")).toBeInTheDocument();
+      // Un toque afuera no la cierra (adentro se edita).
+      fireEvent.mouseDown(hojas[0].parentElement!);
+      expect(screen.getByRole("dialog", { name: "Base" })).toBeInTheDocument();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

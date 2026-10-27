@@ -81,7 +81,7 @@ export default function SelectorAula({
         ))}
       </Select>
       {sedeId == null ? (
-        <span className="mt-1 block text-xs text-texto-4">Elegí primero la sede.</span>
+        <span className="mt-1 block text-xs text-texto-3">Elegí primero la sede.</span>
       ) : lista.error ? (
         <span className="mt-1 block text-xs text-danger-text">
           No se pudieron traer las aulas; podés guardar sin aula.{" "}

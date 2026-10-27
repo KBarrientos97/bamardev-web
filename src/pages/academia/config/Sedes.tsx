@@ -115,6 +115,7 @@ export default function Sedes() {
         </Tarjeta>
       ) : unaSola ? (
         <ContenidoSede
+          key={sedes[0].id}
           sede={sedes[0]}
           configura={configura}
           ver={ver}
@@ -204,7 +205,7 @@ export default function Sedes() {
             lista.recargar();
           }}
         >
-          <ContenidoSede sede={detalle} configura={configura} ver={ver} senal={senal} onEditar={() => setEdicion({ sede: detalle })} onCambio={lista.recargar} />
+          <ContenidoSede key={detalle.id} sede={detalle} configura={configura} ver={ver} senal={senal} onEditar={() => setEdicion({ sede: detalle })} onCambio={lista.recargar} />
         </PanelLateral>
       )}
 
@@ -314,7 +315,7 @@ function Dato({ icono, etiqueta, valor }: { icono: "pin" | "phone" | "clock"; et
       </span>
       <div className="min-w-0">
         <dt className="text-[12px] font-semibold uppercase tracking-wide text-texto-4">{etiqueta}</dt>
-        <dd className={valor ? "text-texto" : "text-texto-4"}>{valor || "Sin cargar"}</dd>
+        <dd className={valor ? "text-texto" : "text-texto-3"}>{valor || "Sin cargar"}</dd>
       </div>
     </div>
   );
@@ -345,6 +346,8 @@ function PanelSede({
   const [guardando, setGuardando] = useState(false);
 
   async function guardar() {
+    // Enter vuelve a entrar acá mientras se guarda: sin esto salían dos POST (ronda 2, B4).
+    if (guardando) return;
     const limpio = nombre.trim();
     setError("");
     setCupo("");
@@ -433,7 +436,7 @@ function PanelSede({
         <ErrorMsg>{error}</ErrorMsg>
         {/* El botón de guardar está afuera del formulario (en el pie del panel): sin uno
             propio, Enter en un campo no enviaba nada (ronda 1, W8). */}
-        <button type="submit" hidden aria-hidden="true" tabIndex={-1} />
+        <button type="submit" hidden aria-hidden="true" tabIndex={-1} disabled={guardando} />
       </form>
     </PanelLateral>
   );

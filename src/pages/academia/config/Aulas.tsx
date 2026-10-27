@@ -301,6 +301,8 @@ function PanelAula({
   const [guardando, setGuardando] = useState(false);
 
   async function guardar() {
+    // Enter vuelve a entrar acá mientras se guarda: sin esto salían dos POST (ronda 2, B4).
+    if (guardando) return;
     const limpio = nombre.trim();
     if (!limpio) return setError("Ponele un nombre al aula.");
     if (limpio.length > 40) return setError("El nombre puede tener hasta 40 letras.");
@@ -370,7 +372,7 @@ function PanelAula({
         <ErrorMsg>{error}</ErrorMsg>
         {/* El botón de guardar está afuera del formulario (en el pie del panel): sin uno
             propio, Enter en un campo no enviaba nada (ronda 1, W8). */}
-        <button type="submit" hidden aria-hidden="true" tabIndex={-1} />
+        <button type="submit" hidden aria-hidden="true" tabIndex={-1} disabled={guardando} />
       </form>
     </PanelLateral>
   );

@@ -458,7 +458,7 @@ function TarjetaGrupo({
         {g.ultimo && <span className="shrink-0 rounded border border-primary-200 px-1 text-[10px] font-semibold text-primary-700">último</span>}
       </span>
       <span className="mt-1 block truncate text-texto-3">{g.docente ? `Prof. ${g.docente.nombre}` : `${p.Docente} por elegir`}</span>
-      {sede && <span className="mt-0.5 block truncate font-semibold text-texto-4">{`${p.Sede} ${sede}`}</span>}
+      {sede && <span className="mt-0.5 block truncate font-semibold text-texto-3">{`${p.Sede} ${sede}`}</span>}
       <span className="mt-1.5 block">
         <Ocupacion inscritos={g.inscritos} cupo={g.cupo} />
       </span>
@@ -626,7 +626,7 @@ function VistaCelular({
                       </span>
                     </span>
                     <span className="mt-1 block truncate text-xs text-texto-3">{g.docente ? `Prof. ${g.docente.nombre}` : `${p.Docente} por elegir`}</span>
-                    {sedeDe(g) && <span className="mt-0.5 block truncate text-xs font-semibold text-texto-4">{`${p.Sede} ${sedeDe(g)}`}</span>}
+                    {sedeDe(g) && <span className="mt-0.5 block truncate text-xs font-semibold text-texto-3">{`${p.Sede} ${sedeDe(g)}`}</span>}
                     {g.inscripcionAbierta && g.modulo.orden === 1 && mes >= hoy && (
                       <span className="mt-1.5 block">
                         <Chip tono="verde">Inscripción abierta</Chip>
