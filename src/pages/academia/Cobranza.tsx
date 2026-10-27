@@ -9,7 +9,7 @@ import { esDatoViejo, mensajeDelBackend } from "../../lib/academia/errores";
 import { fechaCorta } from "../../lib/academia/formato";
 import type { FilaCobranza, Recordatorio, RespuestaCobranza, TipoCobranza } from "../../lib/academia/tipos";
 import { useFiltroSede } from "../../lib/academia/useFiltroSede";
-import { useBusquedaEstudiante } from "../../lib/academia/useBusquedaEstudiante";
+import { busquedaValida, useBusquedaEstudiante } from "../../lib/academia/useBusquedaEstudiante";
 import { usePalabras } from "../../lib/academia/usePalabras";
 import { abrirWhatsapp, nombreCuota, RUTA_COBRAR, rutaCobroAlumno, rutaCobroInscripcion } from "../../lib/academia/vista";
 import { fmtHora, fmtMoney, tiempoRelativo } from "../../lib/format";
@@ -88,7 +88,8 @@ export default function Cobranza() {
   const [pos, setPos] = useState(0);
   const [enviados, setEnviados] = useState<Record<string, Recordatorio & { en: string }>>({});
 
-  const { q, setQ, buscado } = useBusquedaEstudiante();
+  const { q, setQ, buscado: buscadoCrudo } = useBusquedaEstudiante();
+  const buscado = busquedaValida(buscadoCrudo);
   const ajustes = useApi(() => apiAcademia.ajustes().catch(() => null), []);
   // Los totales viajan con cada respuesta pero `usePaginado` descarta las viejas
   // sólo para las filas: acá se descartan igual, o una búsqueda lenta pisaba las

@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter, useLocation } from "react-router-dom";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { esperarDemora, relojDeLaDemora } from "../../test/demora";
 import type { Venta } from "../../types";
 
 /**
@@ -84,7 +85,12 @@ const CARRITO = {
   ],
 };
 
+afterEach(() => {
+  vi.useRealTimers();
+});
+
 beforeEach(() => {
+  relojDeLaDemora();
   vi.clearAllMocks();
   vi.mocked(api.cajaActual).mockResolvedValue(CAJA as never);
   vi.mocked(api.getFormasPago).mockResolvedValue([
@@ -205,10 +211,8 @@ describe("A1 · cobrar a estudiante", () => {
     vi.mocked(api.crearVenta).mockResolvedValue({ id: 63 } as unknown as Venta);
     await montar("/academia/cobrar");
     fireEvent.change(screen.getByLabelText("Buscar estudiante"), { target: { value: "cesp" } });
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 350));
-    });
-    const fila = await screen.findByRole("button", { name: /Céspedes Molina, Joaquín/ });
+    await esperarDemora();
+    const fila = screen.getByRole("button", { name: /Céspedes Molina, Joaquín/ });
     expect(fila).toHaveTextContent("Otra sede");
     await act(async () => {
       fireEvent.click(fila);
@@ -227,22 +231,16 @@ describe("A1 · cobrar a estudiante", () => {
     await montar("/academia/cobrar");
     const buscador = screen.getByLabelText("Buscar estudiante");
     fireEvent.change(buscador, { target: { value: "cesp" } });
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 350));
-    });
+    await esperarDemora();
     expect(screen.getByText("Buscando…")).toBeInTheDocument();
     fireEvent.change(buscador, { target: { value: "" } });
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 350));
-    });
+    await esperarDemora();
     expect(screen.queryByText("Buscando…")).not.toBeInTheDocument();
   });
 
   it("desde Cobranza sin la inscripción (?alumno=&q=): lo busca y lo abre solo", async () => {
     await montar("/academia/cobrar?alumno=53&q=2026-0103");
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 350));
-    });
+    await esperarDemora();
     expect(apiAcademia.cuotasPorCobrar).toHaveBeenCalledWith("2026-0103");
     expect(apiAcademia.carrito).toHaveBeenCalledWith(103);
     expect(screen.getByLabelText("Paga hoy")).toBeInTheDocument();
@@ -310,9 +308,7 @@ describe("QA 23-oct · cobrar a estudiante", () => {
   it("la dirección queda con el estudiante elegido (un F5 no lo pierde) y sin el monto después de cobrar", async () => {
     vi.mocked(api.crearVenta).mockResolvedValue({ id: 70 } as unknown as Venta);
     await montar("/academia/cobrar?alumno=53&q=2026-0103");
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 350));
-    });
+    await esperarDemora();
     expect(screen.getByTestId("direccion")).toHaveTextContent("?inscripcion=103&sede=2&sedeNombre=Norte");
 
     await montarDeNuevo("/academia/cobrar?inscripcion=103&monto=400");
@@ -340,9 +336,7 @@ describe("QA 23-oct · cobrar a estudiante", () => {
       ],
     });
     await montar("/academia/cobrar?alumno=53&q=2026-0103");
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 350));
-    });
+    await esperarDemora();
     const selector = screen.getByRole("combobox", { name: "Inscripción a cobrar" });
     expect(selector.querySelectorAll("option")).toHaveLength(2);
     expect(apiAcademia.carrito).toHaveBeenLastCalledWith(103);

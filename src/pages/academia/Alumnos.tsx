@@ -8,7 +8,7 @@ import { avisoFotosPendientes, avisoInscripcionHecha } from "../../lib/academia/
 import { nombreAlumno, nombreDe } from "../../lib/academia/formato";
 import type { AlumnoFila, EstadoFotos, FiltroAlumnos } from "../../lib/academia/tipos";
 import { useFiltroSede } from "../../lib/academia/useFiltroSede";
-import { useBusquedaEstudiante } from "../../lib/academia/useBusquedaEstudiante";
+import { busquedaValida, useBusquedaEstudiante } from "../../lib/academia/useBusquedaEstudiante";
 import { usePalabras } from "../../lib/academia/usePalabras";
 import { rutaCobroInscripcion, textoEstadoInscripcion } from "../../lib/academia/vista";
 import { fmtMoney } from "../../lib/format";
@@ -64,7 +64,8 @@ export default function Alumnos() {
   const p = usePalabras();
   const navigate = useNavigate();
   const sede = useFiltroSede();
-  const { q, setQ, buscado } = useBusquedaEstudiante();
+  const { q, setQ, buscado: buscadoCrudo } = useBusquedaEstudiante();
+  const buscado = busquedaValida(buscadoCrudo);
   const [vista, setVista] = useState<Vista>("todos");
   const [inscribiendo, setInscribiendo] = useState(false);
   const [aviso, setAviso] = useAviso(8000);

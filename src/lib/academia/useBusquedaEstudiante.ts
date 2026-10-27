@@ -14,6 +14,13 @@ export const PLACEHOLDER_BUSCAR_ESTUDIANTE = "Nombre, CI, código o teléfono";
 /** Con menos letras que esto no se pregunta al backend: saldría media base. */
 export const MINIMO_BUSQUEDA = 2;
 
+/**
+ * Lo que de verdad se le pregunta al backend: con menos del mínimo, nada (la
+ * lista completa). Estudiantes y Cobranza mandaban `q=a` con una sola letra
+ * (ronda 2, B7), contra lo que dice este archivo.
+ */
+export const busquedaValida = (buscado: string) => (buscado.trim().length >= MINIMO_BUSQUEDA ? buscado : "");
+
 /** Lo que se espera después de la última tecla antes de buscar. */
 export const DEMORA_BUSQUEDA_MS = 300;
 

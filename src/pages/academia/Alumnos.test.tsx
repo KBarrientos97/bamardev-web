@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { esperarDemora, relojDeLaDemora } from "../../test/demora";
 import type { AlumnoFila } from "../../lib/academia/tipos";
 
 /**
@@ -157,6 +158,30 @@ describe("E7 · Estudiantes", () => {
     await act(async () => {});
     expect(screen.getByRole("columnheader", { name: "Estado" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Deben 7" })).toBeInTheDocument();
+  });
+});
+
+describe("ronda 2 · B7 · el mínimo de 2 letras del buscador", () => {
+  afterEach(() => vi.useRealTimers());
+
+  it("con una sola letra no se pregunta nada (ni la lista ni los 4 conteos); con dos, sí", async () => {
+    relojDeLaDemora();
+    render(
+      <MemoryRouter>
+        <Alumnos />
+      </MemoryRouter>,
+    );
+    await act(async () => {});
+    vi.mocked(apiAcademia.alumnos).mockClear();
+    const buscador = screen.getByPlaceholderText("Nombre, CI, código o teléfono");
+    fireEvent.change(buscador, { target: { value: "a" } });
+    await esperarDemora();
+    expect(apiAcademia.alumnos).not.toHaveBeenCalled();
+    fireEvent.change(buscador, { target: { value: "ca" } });
+    await esperarDemora();
+    expect(apiAcademia.alumnos).toHaveBeenCalledWith(expect.objectContaining({ q: "ca" }));
+    // Lista + 3 conteos de las pestañas (Todos, Deben, Retirados) con el mismo filtro.
+    expect(vi.mocked(apiAcademia.alumnos).mock.calls.every(([f]) => f?.q === "ca")).toBe(true);
   });
 });
 

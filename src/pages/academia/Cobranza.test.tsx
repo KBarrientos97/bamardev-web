@@ -1,6 +1,7 @@
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { esperarDemora, relojDeLaDemora } from "../../test/demora";
 import type { RespuestaCobranza } from "../../lib/academia/tipos";
 
 /**
@@ -92,7 +93,12 @@ async function montar(ruta = "/academia/cobranza") {
   await act(async () => {});
 }
 
+afterEach(() => {
+  vi.useRealTimers();
+});
+
 beforeEach(() => {
+  relojDeLaDemora();
   vi.clearAllMocks();
   vi.mocked(apiAcademia.cobranza).mockResolvedValue(RESPUESTA);
 });
@@ -126,7 +132,7 @@ describe("N7 · cobranza", () => {
     expect(screen.getAllByText("sin recordar").length).toBeGreaterThan(0);
   });
 
-  it("U4: sin chips de antigüedad ni selector de curso, y la lista va de la deuda más vieja a la más nueva", async () => {
+  it("U4: sin chips de antigüedad ni selector de curso", async () => {
     // Con 2 cursos antes aparecía el selector; ahora no se pide ni la lista de cursos.
     vi.mocked(apiAcademia.carreras).mockResolvedValue([
       { id: 1, nombre: "Barbería" },
@@ -140,9 +146,20 @@ describe("N7 · cobranza", () => {
     expect(screen.queryByText("Más de 30")).not.toBeInTheDocument();
     expect(apiAcademia.cobranza).toHaveBeenCalledWith(expect.not.objectContaining({ antiguedad: expect.anything() }));
     expect(apiAcademia.cobranza).toHaveBeenCalledWith(expect.not.objectContaining({ carreraId: expect.anything() }));
-    // El backend ordena por días de atraso (la más vieja arriba) y la pantalla respeta ese orden.
-    const nombres = screen.getAllByText(/Céspedes Molina|Bustillos Rek/).map((n) => n.textContent ?? "");
-    expect(nombres.findIndex((n) => /Céspedes/.test(n))).toBeLessThan(nombres.findIndex((n) => /Bustillos/.test(n)));
+  });
+
+  it("ronda 2 · T4: la pantalla muestra las filas en el orden que manda el backend (no reordena por su cuenta)", async () => {
+    // Quien ordena por días de atraso es el backend, y sólo en «Vencidas». Antes este test
+    // comprobaba que la pantalla respetara un orden que el propio mock traía hecho; acá se
+    // prueba con DOS órdenes distintos, así que un reordenamiento propio (alfabético, por
+    // atraso) haría fallar al menos uno.
+    const orden = () => screen.getAllByText(/Céspedes Molina|Bustillos Rek/).map((n) => (/Céspedes/.test(n.textContent ?? "") ? "C" : "B"));
+    await montar();
+    const primero = orden()[0];
+    cleanup();
+    vi.mocked(apiAcademia.cobranza).mockResolvedValue({ ...RESPUESTA, items: [...RESPUESTA.items].reverse() });
+    await montar();
+    expect(orden()[0]).not.toBe(primero);
   });
 
   it("la pestaña viene de la dirección (desde Hoy)", async () => {
@@ -249,9 +266,7 @@ describe("N7 · cobranza", () => {
     fireEvent.change(buscador, { target: { value: "camila" } });
     // Antes de la demora no se pregunta (una tecla no es un pedido).
     expect(vi.mocked(apiAcademia.cobranza)).toHaveBeenCalledTimes(1);
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 350));
-    });
+    await esperarDemora();
     expect(apiAcademia.cobranza).toHaveBeenLastCalledWith(expect.objectContaining({ tipo: "vencidas", q: "camila", page: 1 }));
     expect(screen.queryAllByText("Bustillos Rek, Camila").length).toBeGreaterThan(0);
     expect(screen.queryAllByText("Céspedes Molina, Joaquín")).toHaveLength(0);
@@ -259,13 +274,23 @@ describe("N7 · cobranza", () => {
     expect(within(screen.getByRole("group", { name: "Filtrar deudas" })).getByRole("button", { name: /Vencidas Bs\s?500,00 · 1/ })).toBeInTheDocument();
   });
 
+  it("ronda 2 · B7: con una sola letra no se manda `q`; con dos, sí", async () => {
+    await montar();
+    const buscador = screen.getByPlaceholderText("Nombre, CI, código o teléfono");
+    vi.mocked(apiAcademia.cobranza).mockClear();
+    fireEvent.change(buscador, { target: { value: "c" } });
+    await esperarDemora();
+    expect(apiAcademia.cobranza).not.toHaveBeenCalled();
+    fireEvent.change(buscador, { target: { value: "ca" } });
+    await esperarDemora();
+    expect(apiAcademia.cobranza).toHaveBeenLastCalledWith(expect.objectContaining({ q: "ca" }));
+  });
+
   it("D10: ya no hay aviso de «busca sólo en esta página», aunque haya varias páginas", async () => {
     vi.mocked(apiAcademia.cobranza).mockResolvedValue({ ...RESPUESTA, total: 45 });
     await montar();
     fireEvent.change(screen.getByPlaceholderText("Nombre, CI, código o teléfono"), { target: { value: "camila" } });
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 350));
-    });
+    await esperarDemora();
     expect(screen.queryByText(/Busca entre las/)).not.toBeInTheDocument();
   });
 
@@ -273,15 +298,11 @@ describe("N7 · cobranza", () => {
     await montar();
     vi.mocked(apiAcademia.cobranza).mockResolvedValue({ ...RESPUESTA, items: [], total: 0 });
     fireEvent.change(screen.getByPlaceholderText("Nombre, CI, código o teléfono"), { target: { value: "zzz" } });
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 350));
-    });
+    await esperarDemora();
     expect(screen.getByText(/Nadie con «zzz»/)).toBeInTheDocument();
     vi.mocked(apiAcademia.cobranza).mockResolvedValue(RESPUESTA);
     fireEvent.click(screen.getByRole("button", { name: "Limpiar búsqueda" }));
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 350));
-    });
+    await esperarDemora();
     expect(apiAcademia.cobranza).toHaveBeenLastCalledWith(expect.objectContaining({ q: undefined }));
     expect(screen.queryAllByText("Céspedes Molina, Joaquín").length).toBeGreaterThan(0);
   });
@@ -290,17 +311,13 @@ describe("N7 · cobranza", () => {
     await montar();
     vi.mocked(apiAcademia.cobranza).mockResolvedValue({ ...RESPUESTA, items: [], total: 0 });
     fireEvent.change(screen.getByPlaceholderText("Nombre, CI, código o teléfono"), { target: { value: "zzz" } });
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 350));
-    });
+    await esperarDemora();
     expect(screen.getByText(/Nadie con «zzz»/)).toBeInTheDocument();
     // La lista completa tarda: el pedido queda en vuelo.
     vi.mocked(apiAcademia.cobranza).mockReturnValue(new Promise(() => undefined));
     fireEvent.click(screen.getByRole("button", { name: "Limpiar búsqueda" }));
     expect(screen.getByPlaceholderText("Nombre, CI, código o teléfono")).toBeInTheDocument();
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 350));
-    });
+    await esperarDemora();
     expect(screen.getByPlaceholderText("Nombre, CI, código o teléfono")).toBeInTheDocument();
   });
 
@@ -313,13 +330,9 @@ describe("N7 · cobranza", () => {
       .mockResolvedValueOnce(conVencido(111));
     const buscador = screen.getByPlaceholderText("Nombre, CI, código o teléfono");
     fireEvent.change(buscador, { target: { value: "camila" } });
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 350));
-    });
+    await esperarDemora();
     fireEvent.change(buscador, { target: { value: "joaquin" } });
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 350));
-    });
+    await esperarDemora();
     const kpi = () => within(screen.getByRole("group", { name: "Filtrar deudas" }));
     expect(kpi().getByRole("button", { name: /Vencidas Bs\s?111,00/ })).toBeInTheDocument();
     // Ahora contesta la vieja, con otros totales: no deben verse.
