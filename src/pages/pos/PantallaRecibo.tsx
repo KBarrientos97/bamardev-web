@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { Icon } from "../../components/Icon";
 import { Boton } from "../../components/ui";
-import { enlaceDeCuotas } from "../../lib/academia/cobroCuotas";
+import { enlaceDeCuotas, modulosDeCuotaVenta } from "../../lib/academia/cobroCuotas";
 import { compartirComoImagen } from "../../lib/compartirTicket";
 import { fmtFecha, fmtFechaHora, fmtMoney, fmtNum } from "../../lib/format";
 import { marcaConsumo } from "../../lib/rubro";
@@ -176,7 +176,7 @@ export default function PantallaRecibo({
                 key={i}
                 linea={d}
                 mostrarConsumo={mostrarConsumo}
-                cuota={d.cuotaId != null ? venta.cuotas?.find((q) => q.cuotaId === d.cuotaId) : undefined}
+                cuota={cuotaDeLinea(venta, d.cuotaId)}
               />
             ))}
           </div>
@@ -421,6 +421,12 @@ function LineaTicket({
   );
 }
 
+/** La cuota que cobró un renglón, con los módulos que cubre (D6); `undefined` si no es de una cuota. */
+function cuotaDeLinea(venta: Venta, cuotaId: number | null | undefined): { concepto: string; modulos?: string } | undefined {
+  const q = cuotaId != null ? venta.cuotas?.find((x) => x.cuotaId === cuotaId) : undefined;
+  return q ? { concepto: q.concepto, modulos: modulosDeCuotaVenta(q) } : undefined;
+}
+
 /**
  * Las cuotas del recibo. Todas las de una venta son de una inscripción (el
  * POS cobra las de un alumno por vez): el saldo del curso y la próxima cuota
@@ -443,7 +449,7 @@ function CuotasRecibo({
         {cuotas.map((q) => (
           <div key={q.cuotaId} className="text-texto-2">
             <div className="flex justify-between gap-2">
-              <dt>{q.modulos ? `${q.concepto} · ${q.modulos}` : q.concepto}</dt>
+              <dt>{modulosDeCuotaVenta(q) ? `${q.concepto} · ${modulosDeCuotaVenta(q)}` : q.concepto}</dt>
               <dd className="shrink-0 font-bold text-texto">{fmtMoney(q.cobrado)}</dd>
             </div>
             <p className="text-right text-xs">{q.saldo > 0 ? `Queda ${fmtMoney(q.saldo)}` : "Pagada"}</p>

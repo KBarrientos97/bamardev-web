@@ -1197,6 +1197,16 @@ export interface Venta {
   cuotas?: {
     cuotaId: number;
     concepto: string;
+    /**
+     * Auditoría 26-oct (bug 13, D5, D6): el backend ya manda el número de la
+     * cuota, cuántas tiene la inscripción, el curso y los módulos que cubre
+     * (con su nombre) en la respuesta de cobrar y en `GET /ventas/:id`. Un
+     * backend anterior no los manda.
+     */
+    numero?: number;
+    totalCuotas?: number;
+    carrera?: string;
+    materias?: { id: number; orden: number; nombre: string }[];
     alumno: string;
     cobrado: number;
     pagado: number;

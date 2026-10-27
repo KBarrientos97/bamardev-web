@@ -167,7 +167,23 @@ describe("instituto (D5): la caja no trata la cuota como un producto", () => {
   const deCuotas = {
     ...venta,
     detalles: [{ productoId: 9, producto: "Barbería", cantidad: 1, precio: 750, subtotal: 750, nota: null, consumo: "LLEVAR", cuotaId: 11 }],
-    cuotas: [{ cuotaId: 11, concepto: "Cuota 1/3", alumno: "Camila", cobrado: 750, pagado: 750, saldo: 0, estado: "PAGADA", saldoCurso: 1500, proximaCuota: null }],
+    cuotas: [
+      {
+        cuotaId: 11,
+        concepto: "Cuota 1/3",
+        numero: 1,
+        totalCuotas: 3,
+        carrera: "Barbería",
+        materias: [{ id: 5, orden: 2, nombre: "Degradados" }],
+        alumno: "Camila",
+        cobrado: 750,
+        pagado: 750,
+        saldo: 0,
+        estado: "PAGADA",
+        saldoCurso: 1500,
+        proximaCuota: null,
+      },
+    ],
   } as unknown as Venta;
 
   async function anular() {
@@ -193,18 +209,36 @@ describe("instituto (D5): la caja no trata la cuota como un producto", () => {
     sesion.rubro = "ACADEMIA";
     fireEvent.click(await abrir(deCuotas));
     expect(await screen.findByText(/Cuota 1\/3 · Barbería/)).toBeInTheDocument();
+    // D6: los módulos con su nombre, de las materias de la cuota (sin pedir el grupo).
+    expect(screen.getByText("M2 Degradados")).toBeInTheDocument();
     const dialogo = await anular();
     expect(dialogo).toHaveTextContent("la cuota vuelve a quedar pendiente");
     expect(dialogo).not.toHaveTextContent("stock");
   });
 
-  it("si el detalle no dice qué cobró, en un instituto no promete devolver stock", async () => {
+  it("mientras el detalle no cargó, en un instituto no promete devolver stock", async () => {
+    sesion.rubro = "ACADEMIA";
+    vi.mocked(api.getVentas).mockResolvedValue([venta]);
+    // El detalle nunca llega: no se sabe qué cobró.
+    vi.mocked(api.getVenta).mockReturnValue(new Promise(() => {}));
+    render(
+      <MemoryRouter>
+        <PantallaHistorial caja={{ id: 1 } as Caja} onAtras={() => {}} onCierre={() => {}} onVerComprobante={() => {}} />
+      </MemoryRouter>,
+    );
+    fireEvent.click(await screen.findByRole("button", { name: /T-0007/ }));
+    const dialogo = await anular();
+    expect(dialogo).toHaveTextContent("si cobró cuotas, vuelven a quedar pendientes");
+    expect(dialogo).not.toHaveTextContent("stock");
+  });
+
+  it("con el detalle leído y sin cuotas, la venta es de productos y vale el texto de siempre", async () => {
     sesion.rubro = "ACADEMIA";
     fireEvent.click(await abrir(venta));
     await screen.findByText("Pollo entero");
     const dialogo = await anular();
-    expect(dialogo).toHaveTextContent("si cobró cuotas, vuelven a quedar pendientes");
-    expect(dialogo).not.toHaveTextContent("stock");
+    expect(dialogo).toHaveTextContent("el stock vuelve al inventario");
+    expect(dialogo).not.toHaveTextContent("si cobró cuotas");
   });
 });
 

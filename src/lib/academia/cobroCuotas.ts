@@ -1,4 +1,5 @@
 import type { DetalleVentaInput, Venta } from "../../types";
+import { textoModulos } from "./formato";
 import type { CarritoInscripcion, Ref } from "./tipos";
 
 /**
@@ -97,31 +98,53 @@ export function pagadorPorDefecto(pagadores: CarritoInscripcion["pagadores"]): n
 }
 
 /**
- * La venta recién cobrada, lista para el recibo (E10). Los renglones del
- * recibo no traen `cuotaId` y todas las cuotas comparten el producto de su
- * carrera: se le pone a cada renglón de ese producto la cuota que le toca, en
- * el orden en que se mandaron (el mismo de `venta.cuotas`). Y si pagó el
- * tutor, se dice quién. Sin cuotas, la MISMA venta.
+ * La venta recién cobrada, lista para el recibo (E10). Desde la auditoría del
+ * 26-oct (bug 13) cada renglón de una cuota trae su `cuotaId` y `cuotas` viene
+ * en el orden de los renglones: se empareja por `cuotaId`, no por posición.
+ *
+ * Respaldo para una respuesta anterior sin `cuotaId` en los renglones: todas
+ * las cuotas comparten el producto de su carrera, así que a cada renglón de
+ * ese producto sin cuota se le pone la primera que le queda sin renglón, en el
+ * orden en que se mandaron. Y si pagó el tutor, se dice quién. Sin cuotas, la
+ * MISMA venta.
+ *
+ * Los módulos de cada cuota con su nombre salen de `venta.cuotas[].materias`
+ * (D6); `modulos` (lo que sabe la pantalla de «Cobrar») queda de respaldo para
+ * un backend que no los manda.
  */
 export function ventaConCuotas(venta: Venta, cobro: CobroCuotas | null, modulos?: Record<number, string>): Venta {
   if (!cobro?.lineas.length) return venta;
   const productos = new Set(cobro.lineas.map((l) => l.productoId));
-  let k = 0;
+  const conRenglon = new Set((venta.detalles ?? []).flatMap((d) => (d.cuotaId != null ? [d.cuotaId] : [])));
+  // Las que mandó el backend (o, sin ellas, las que se cobraron), sin las que ya tienen renglón.
+  const libres = (venta.cuotas?.map((q) => q.cuotaId) ?? cobro.lineas.map((l) => l.cuotaId)).filter((id) => !conRenglon.has(id));
   const detalles = venta.detalles?.map((d) => {
     if (d.cuotaId != null || !productos.has(d.productoId)) return d;
-    const cuotaId = venta.cuotas?.[k]?.cuotaId ?? cobro.lineas[k]?.cuotaId;
-    k++;
+    const cuotaId = libres.shift();
     return cuotaId != null ? { ...d, cuotaId } : d;
   });
   const pagador = cobro.pagadores.find((x) => x.clienteId === cobro.pagadorId);
   return {
     ...venta,
     ...(detalles ? { detalles } : {}),
-    // El módulo de cada cuota con su nombre, para que el recibo lo diga (D6).
-    ...(modulos && venta.cuotas ? { cuotas: venta.cuotas.map((q) => (modulos[q.cuotaId] ? { ...q, modulos: modulos[q.cuotaId] } : q)) } : {}),
+    // Sin `materias` en la cuota (un backend anterior), el módulo con su nombre lo pone «Cobrar» (D6).
+    ...(modulos && venta.cuotas
+      ? { cuotas: venta.cuotas.map((q) => (!q.materias?.length && modulos[q.cuotaId] ? { ...q, modulos: modulos[q.cuotaId] } : q)) }
+      : {}),
     pagadorCuotas: pagador && pagador.rol === "TUTOR" ? { nombre: pagador.nombre, rol: pagador.rol } : null,
     inscripcionCuotas: cobro.inscripcionId,
   };
+}
+
+/**
+ * Los módulos que cubre una cuota de la venta, como habla el instituto
+ * («M2 Degradados», «M2 Degradados y M3 Cortes»): de `materias`, que el
+ * backend ya manda con el nombre (D6). Sin ellas, el texto que puso «Cobrar»
+ * (`modulos`); sin nada, `undefined` y el recibo dice el concepto a secas.
+ */
+export function modulosDeCuotaVenta(q: NonNullable<Venta["cuotas"]>[number]): string | undefined {
+  if (q.materias?.length) return textoModulos(q.materias.map((m) => m.orden), Object.fromEntries(q.materias.map((m) => [m.orden, m.nombre])));
+  return q.modulos;
 }
 
 /**
@@ -152,25 +175,32 @@ export function esVentaDeCuotas(venta: Pick<Venta, "cuotas" | "detalles">): bool
  * Si no se sabe qué cobró (el detalle del historial no lo trae) pero el
  * negocio es un instituto, se dice sin afirmar de más: "si cobró cuotas".
  */
-export function textoAnularCuotas(venta: Pick<Venta, "cuotas" | "detalles">, rubro: string | null | undefined): string | null {
+export function textoAnularCuotas(
+  venta: Pick<Venta, "cuotas" | "detalles">,
+  rubro: string | null | undefined,
+  detalleCompleto = false,
+): string | null {
   if (esVentaDeCuotas(venta)) {
     const n = venta.cuotas?.length ?? (venta.detalles ?? []).filter((d) => d.cuotaId != null).length;
     return n > 1
       ? "La venta queda anulada y las cuotas vuelven a quedar pendientes. No se puede deshacer."
       : "La venta queda anulada y la cuota vuelve a quedar pendiente. No se puede deshacer.";
   }
-  if (rubro === "ACADEMIA") return "La venta queda anulada y, si cobró cuotas, vuelven a quedar pendientes. No se puede deshacer.";
+  // Con el detalle ya leído (`GET /ventas/:id` trae las cuotas) una venta sin
+  // ellas es de productos y vale el texto de siempre: el rubro no alcanza para afirmar nada.
+  if (rubro === "ACADEMIA" && !detalleCompleto) return "La venta queda anulada y, si cobró cuotas, vuelven a quedar pendientes. No se puede deshacer.";
   return null;
 }
 
 /**
  * Cómo se nombra un renglón de la venta: el de una cuota dice cuál ("Cuota
- * 1/3 · Barbería"), como el recibo; el resto, su producto. Sin el concepto a
- * mano (el detalle del historial no lo trae todavía), el producto a secas.
+ * 1/3 · Barbería"), como el recibo; el resto, su producto. El curso sale de la
+ * propia cuota (`carrera`); sin él, el producto de la carrera. Sin el concepto
+ * a mano (un backend anterior), el producto a secas.
  */
 export function nombreDeLinea(d: NonNullable<Venta["detalles"]>[number], venta: Pick<Venta, "cuotas">): string {
-  const concepto = d.cuotaId != null ? venta.cuotas?.find((q) => q.cuotaId === d.cuotaId)?.concepto : undefined;
-  return concepto ? `${concepto} · ${d.producto}` : d.producto;
+  const cuota = d.cuotaId != null ? venta.cuotas?.find((q) => q.cuotaId === d.cuotaId) : undefined;
+  return cuota?.concepto ? `${cuota.concepto} · ${cuota.carrera ?? d.producto}` : d.producto;
 }
 
 // ── "Cobrar a estudiante" (A1, 22-oct) ─────────────────────────────────────

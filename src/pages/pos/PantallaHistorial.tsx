@@ -21,7 +21,7 @@ import { fmtFechaHora, fmtHora, fmtMoney, fmtNum } from "../../lib/format";
 import { Telefono } from "../../lib/telefono";
 import { tienePermiso, tieneFeature } from "../../lib/permisos";
 import { esBelleza, marcaConsumo } from "../../lib/rubro";
-import { nombreDeLinea, textoAnularCuotas } from "../../lib/academia/cobroCuotas";
+import { modulosDeCuotaVenta, nombreDeLinea, textoAnularCuotas } from "../../lib/academia/cobroCuotas";
 import { useApi } from "../../lib/useApi";
 import { enlaceWhatsApp, mensajePedido, pedidoDeVenta } from "../../lib/mensajePedido";
 import { conCopia } from "../../lib/offline/copias";
@@ -553,6 +553,8 @@ function DetalleVenta({
                     <p className="text-[13px] text-texto">
                       <span className="font-bold">{fmtNum(d.cantidad)}×</span> {nombreDeLinea(d, v)}
                     </p>
+                    {/* D6: qué módulos cubre la cuota, con su nombre. */}
+                    {textoModulosDeLinea(d, v) && <p className="text-xs text-texto-3">{textoModulosDeLinea(d, v)}</p>}
                     {(mostrarConsumo || d.nota) && (
                       <div className="mt-0.5 flex items-center gap-1.5">
                         {mostrarConsumo && (
@@ -601,6 +603,8 @@ function DetalleVenta({
       {anulando && (
         <DialogoAnular
           venta={v}
+          // Con el detalle leído (trae las cuotas) ya no hace falta adivinar por el rubro.
+          detalleCompleto={!!completa.datos}
           // El backend pide el PIN SIEMPRE, también al dueño. Quien autoriza
           // con PIN se autoriza a sí mismo; el resto necesita que alguien que
           // autoriza teclee su usuario y PIN en el momento, sin cerrar sesión.
@@ -636,11 +640,14 @@ function esPagoQr(p: { formaPago?: string }): boolean {
 
 function DialogoAnular({
   venta,
+  detalleCompleto,
   pideUsuario,
   onClose,
   onAnulada,
 }: {
   venta: Venta;
+  /** Ya se leyó `GET /ventas/:id`: si no trae cuotas, la venta no cobró cuotas. */
+  detalleCompleto: boolean;
   pideUsuario: boolean;
   onClose: () => void;
   onAnulada: () => void;
@@ -724,7 +731,7 @@ function DialogoAnular({
         <p className="text-[13px] text-texto-2">
           {/* En un salón lo que se vende es sobre todo servicios, que no tienen
               stock (QA B-21): se dice sólo lo que pasa de verdad. */}
-          {textoAnularCuotas(venta, rubro) ??
+          {textoAnularCuotas(venta, rubro, detalleCompleto) ??
             (esBelleza(rubro)
               ? "La venta queda anulada y, si tenía productos, vuelven al inventario. No se puede deshacer."
               : "La venta queda anulada y el stock vuelve al inventario. No se puede deshacer.")}
@@ -985,4 +992,10 @@ function comoSePago(v: Pick<Venta, "formasPago" | "credito">): string {
   const fiado = Math.round((c.montoTotal - c.adelanto) * 100) / 100;
   if (!(c.adelanto > 0) || !formas) return "Fiado/Crédito";
   return `${formas} ${fmtMoney(c.adelanto)} · Fiado ${fmtMoney(fiado)}`;
+}
+
+/** D6: los módulos de la cuota que cobró un renglón («M2 Degradados»); vacío si no es de una cuota. */
+function textoModulosDeLinea(d: NonNullable<Venta["detalles"]>[number], venta: Venta): string | undefined {
+  const q = d.cuotaId != null ? venta.cuotas?.find((x) => x.cuotaId === d.cuotaId) : undefined;
+  return q ? modulosDeCuotaVenta(q) : undefined;
 }

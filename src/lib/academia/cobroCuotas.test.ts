@@ -4,6 +4,7 @@ import {
   detallesDeCuotas,
   enlaceDeCuotas,
   esVentaDeCuotas,
+  modulosDeCuotaVenta,
   montoValido,
   nombreDeLinea,
   textoAnularCuotas,
@@ -168,9 +169,83 @@ describe("D5 · la venta de cuotas en la caja", () => {
     expect(textoAnularCuotas(sin, "RESTAURANTE")).toBeNull();
   });
 
+  it("con el detalle ya leído, una venta sin cuotas es de productos aunque el rubro sea instituto", () => {
+    const sin = v({ detalles: [{ ...linea, cuotaId: null }] });
+    expect(textoAnularCuotas(sin, "ACADEMIA", true)).toBeNull();
+    // Y si trae cuotas, el detalle completo no cambia lo que dice.
+    expect(textoAnularCuotas(v({ cuotas: [cuota] }), "ACADEMIA", true)).toContain("la cuota vuelve a quedar pendiente");
+  });
+
   it("el renglón de una cuota se nombra «Cuota 1/3 · Barbería»; el resto, por su producto", () => {
     expect(nombreDeLinea(linea, { cuotas: [cuota] })).toBe("Cuota 1/3 · Barbería");
     expect(nombreDeLinea(linea, {})).toBe("Barbería");
     expect(nombreDeLinea({ ...linea, cuotaId: null }, { cuotas: [cuota] })).toBe("Barbería");
+  });
+
+  it("el curso sale de la propia cuota cuando el backend lo manda", () => {
+    expect(nombreDeLinea(linea, { cuotas: [{ ...cuota, carrera: "Barbería Profesional" }] })).toBe("Cuota 1/3 · Barbería Profesional");
+  });
+});
+
+describe("bug 13 · la venta de cuotas se empareja por cuotaId, no por posición", () => {
+  const renglon = (cuotaId?: number, precio = 100) => ({
+    productoId: 77,
+    producto: "Barbería",
+    cantidad: 1,
+    precio,
+    subtotal: precio,
+    nota: null,
+    consumo: "LLEVAR" as const,
+    ...(cuotaId != null ? { cuotaId } : {}),
+  });
+  const cuota = (cuotaId: number) => ({
+    cuotaId,
+    concepto: `Cuota ${cuotaId}/3`,
+    alumno: "A",
+    cobrado: 100,
+    pagado: 100,
+    saldo: 0,
+    estado: "PAGADA",
+    saldoCurso: 0,
+    proximaCuota: null,
+  });
+
+  it("con cuotaId en los renglones (el backend actual) no se toca ninguno, aunque vengan en otro orden que COBRO", () => {
+    const venta = { id: 1, detalles: [renglon(12), renglon(11)], cuotas: [cuota(12), cuota(11)] } as unknown as Venta;
+    const r = ventaConCuotas(venta, COBRO);
+    expect(r.detalles?.map((d) => d.cuotaId)).toEqual([12, 11]);
+  });
+
+  it("un renglón sin cuotaId (respuesta anterior) toma la cuota que no tiene renglón, no la de su posición", () => {
+    const venta = { id: 1, detalles: [renglon(12), renglon()], cuotas: [cuota(12), cuota(11)] } as unknown as Venta;
+    const r = ventaConCuotas(venta, COBRO);
+    // Por posición habría quedado 12 (la primera de venta.cuotas): ya estaba usada.
+    expect(r.detalles?.map((d) => d.cuotaId)).toEqual([12, 11]);
+  });
+
+  it("sin cuotaId en ninguno, el respaldo las reparte en el orden en que llegaron", () => {
+    const venta = { id: 1, detalles: [renglon(), renglon()], cuotas: [cuota(11), cuota(12)] } as unknown as Venta;
+    expect(ventaConCuotas(venta, COBRO).detalles?.map((d) => d.cuotaId)).toEqual([11, 12]);
+  });
+
+  it("los módulos de la cuota salen de sus materias; «Cobrar» sólo respalda a un backend que no las manda", () => {
+    const conMaterias = { ...cuota(11), materias: [{ id: 5, orden: 2, nombre: "Degradados" }] };
+    expect(modulosDeCuotaVenta(conMaterias)).toBe("M2 Degradados");
+    expect(
+      modulosDeCuotaVenta({
+        ...conMaterias,
+        materias: [
+          { id: 5, orden: 2, nombre: "Degradados" },
+          { id: 6, orden: 3, nombre: "Cortes" },
+        ],
+      }),
+    ).toBe("M2 Degradados y M3 Cortes");
+    expect(modulosDeCuotaVenta({ ...cuota(11), modulos: "M2 Degradados" })).toBe("M2 Degradados");
+    expect(modulosDeCuotaVenta(cuota(11))).toBeUndefined();
+    // Con materias, el respaldo de «Cobrar» no pisa nada.
+    const venta = { id: 1, detalles: [renglon(11)], cuotas: [conMaterias] } as unknown as Venta;
+    expect(ventaConCuotas(venta, COBRO, { 11: "otro texto" }).cuotas?.[0].modulos).toBeUndefined();
+    const vieja = { id: 1, detalles: [renglon(11)], cuotas: [cuota(11)] } as unknown as Venta;
+    expect(ventaConCuotas(vieja, COBRO, { 11: "M2 Degradados" }).cuotas?.[0].modulos).toBe("M2 Degradados");
   });
 });
