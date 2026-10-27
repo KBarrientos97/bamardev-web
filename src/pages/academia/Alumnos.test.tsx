@@ -46,7 +46,7 @@ beforeEach(() => {
   const TOTAL = { todos: 148, deben: 7, retirados: 3 };
   vi.mocked(apiAcademia.alumnos).mockImplementation(async (f = {}) => ({
     items: f.pageSize === 1 ? [] : [fila({}), fila({ id: 51, apellidos: "Andrade Villca", nombres: "Mateo", saldo: 0, vencido: false, fotos: "POR_REVISAR" })],
-    total: f.debe ? TOTAL.deben : f.estado === "RETIRADA" ? TOTAL.retirados : TOTAL.todos,
+    total: f.fotos ? 0 : f.debe ? TOTAL.deben : f.estado === "RETIRADA" ? TOTAL.retirados : TOTAL.todos,
     page: 1,
     pageSize: f.pageSize ?? 20,
   }));
@@ -72,20 +72,11 @@ describe("E7 · Estudiantes", () => {
     expect(apiAcademia.alumnos).toHaveBeenLastCalledWith(expect.objectContaining({ debe: true, page: 1, pageSize: 20 }));
   });
 
-  it("con 2 cursos y 2 grupos no se cae: buscador y desplegables a la vista (QA ronda 2, B-01)", async () => {
+  it("U4: sólo el buscador y los chips; ya no hay selectores de curso, grupo ni fotos", async () => {
     vi.mocked(apiAcademia.carreras).mockResolvedValue([
       { id: 1, nombre: "Barbería" },
       { id: 2, nombre: "Tatuaje" },
     ] as never);
-    vi.mocked(apiAcademia.grupos).mockResolvedValue({
-      items: [
-        { id: 7, carrera: { id: 1, nombre: "Barbería" }, dias: [1, 3, 5], horaInicio: "09:00", horaFin: "11:00" },
-        { id: 8, carrera: { id: 2, nombre: "Tatuaje" }, dias: [2, 4], horaInicio: "19:00", horaFin: "21:00" },
-      ],
-      total: 2,
-      page: 1,
-      pageSize: 100,
-    } as never);
     render(
       <MemoryRouter>
         <Alumnos />
@@ -94,29 +85,38 @@ describe("E7 · Estudiantes", () => {
     await act(async () => {});
     expect(screen.queryByText(/tuvo un error/)).not.toBeInTheDocument();
     expect(screen.getByPlaceholderText("Nombre, CI, código o teléfono")).toBeInTheDocument();
-    const grupo = screen.getByRole("combobox", { name: "Grupo" });
-    expect(screen.getByRole("combobox", { name: /Curso|Carrera/ })).toBeInTheDocument();
-    fireEvent.change(grupo, { target: { value: "8" } });
-    await act(async () => {});
-    expect(apiAcademia.alumnos).toHaveBeenLastCalledWith(expect.objectContaining({ grupoId: 8 }));
+    // El único desplegable es el de las pestañas en el celular, no un filtro.
+    for (const nombre of [/Grupo/, /Fotos/, /Curso|Carrera/]) expect(screen.queryByRole("combobox", { name: nombre })).not.toBeInTheDocument();
+    expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual(["Todos 148", "Deben 7", "Retirados 3"]);
+    // Ni los grupos ni los cursos se piden ya para armar la lista.
+    expect(apiAcademia.grupos).not.toHaveBeenCalled();
+    expect(apiAcademia.alumnos).not.toHaveBeenCalledWith(expect.objectContaining({ grupoId: expect.anything() }));
   });
 
-  it("el filtro de fotos pide ?fotos= al backend, también para los números de las pestañas (contrato #47)", async () => {
+  it("U4: sin nadie con fotos faltantes no hay chip «Faltan fotos»", async () => {
+    // Sin ninguno: no hay chip.
     render(
       <MemoryRouter>
         <Alumnos />
       </MemoryRouter>,
     );
     await act(async () => {});
-    const fotos = screen.getByRole("combobox", { name: "Fotos" });
-    expect(Array.from((fotos as HTMLSelectElement).options).map((o) => o.value)).toEqual(["", "FALTAN", "POR_REVISAR", "OBSERVADAS"]);
-    vi.mocked(apiAcademia.alumnos).mockClear();
-    fireEvent.change(fotos, { target: { value: "OBSERVADAS" } });
+    expect(screen.queryByRole("tab", { name: /Faltan fotos/ })).not.toBeInTheDocument();
+  });
+
+  it("U4: con alumnos sin fotos aparece el chip con su número y filtra", async () => {
+    const base = vi.mocked(apiAcademia.alumnos).getMockImplementation()!;
+    vi.mocked(apiAcademia.alumnos).mockImplementation(async (f = {}) =>
+      f.fotos === "FALTAN" ? { items: f.pageSize === 1 ? [] : [fila({ fotos: "FALTAN" })], total: 4, page: 1, pageSize: f.pageSize ?? 20 } : base(f),
+    );
+    render(
+      <MemoryRouter>
+        <Alumnos />
+      </MemoryRouter>,
+    );
     await act(async () => {});
-    expect(apiAcademia.alumnos).toHaveBeenCalledWith(expect.objectContaining({ fotos: "OBSERVADAS", page: 1, pageSize: 20 }));
-    expect(apiAcademia.alumnos).toHaveBeenCalledWith(expect.objectContaining({ fotos: "OBSERVADAS", debe: true, pageSize: 1 }));
-    fireEvent.change(fotos, { target: { value: "" } });
+    fireEvent.click(screen.getByRole("tab", { name: "Faltan fotos 4" }));
     await act(async () => {});
-    expect(apiAcademia.alumnos).toHaveBeenLastCalledWith(expect.objectContaining({ fotos: undefined }));
+    expect(apiAcademia.alumnos).toHaveBeenLastCalledWith(expect.objectContaining({ fotos: "FALTAN", page: 1, pageSize: 20 }));
   });
 });
