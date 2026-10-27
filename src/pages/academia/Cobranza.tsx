@@ -9,13 +9,15 @@ import { fechaCorta } from "../../lib/academia/formato";
 import { useModulosDeGrupos } from "../../lib/academia/modulos";
 import type { FilaCobranza, Recordatorio, RespuestaCobranza, TipoCobranza } from "../../lib/academia/tipos";
 import { useFiltroSede } from "../../lib/academia/useFiltroSede";
+import { useBusquedaEstudiante } from "../../lib/academia/useBusquedaEstudiante";
 import { usePalabras } from "../../lib/academia/usePalabras";
-import { abrirWhatsapp, nombreCuota, RUTA_COBRAR, rutaCobroAlumno, rutaCobroInscripcion } from "../../lib/academia/vista";
+import { abrirWhatsapp, filaCoincideConBusqueda, nombreCuota, RUTA_COBRAR, rutaCobroAlumno, rutaCobroInscripcion } from "../../lib/academia/vista";
 import { fmtHora, fmtMoney, tiempoRelativo } from "../../lib/format";
 import { usePaginado } from "../../lib/paginado";
 import { cobraCuotas } from "../../lib/permisos";
 import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
+import BuscadorEstudiante from "./BuscadorEstudiante";
 import {
   BotonFila,
   Chip,
@@ -86,6 +88,7 @@ export default function Cobranza() {
   const [pos, setPos] = useState(0);
   const [enviados, setEnviados] = useState<Record<string, Recordatorio & { en: string }>>({});
 
+  const { q, setQ, buscado } = useBusquedaEstudiante();
   const ajustes = useApi(() => apiAcademia.ajustes().catch(() => null), []);
   const lista = usePaginado(
     async (pg) => {
@@ -101,7 +104,11 @@ export default function Cobranza() {
   );
   // Los módulos de los grupos de la página, para decir «M2 Degradados» y no
   // «M2» (D6). Llegan después de la lista; mientras, quedan los códigos.
-  const modulos = useModulosDeGrupos([...lista.items.map((f) => f.grupo.id), ...cola.map((f) => f.grupo.id)]);
+  // El buscador de Estudiantes (D2/D10). El backend de Cobranza todavía no
+  // recibe `q`: se filtra sobre las filas ya cargadas (la página que se ve).
+  const visibles = buscado ? lista.items.filter((f) => filaCoincideConBusqueda(f, buscado)) : lista.items;
+  const buscaSoloEnPagina = !!buscado && lista.total > lista.items.length;
+  const modulos = useModulosDeGrupos([...visibles.map((f) => f.grupo.id), ...cola.map((f) => f.grupo.id)]);
   const cobra = cobraCuotas({
     features: negocio?.features,
     rubro,
@@ -112,7 +119,7 @@ export default function Cobranza() {
   const actual = cola[pos] ?? null;
   const t = totales;
   const nMarcados = marcados.size;
-  const visiblesMarcados = lista.items.length > 0 && lista.items.every((f) => marcados.has(claveDe(f)));
+  const visiblesMarcados = visibles.length > 0 && visibles.every((f) => marcados.has(claveDe(f)));
 
   function alternar(f: FilaCobranza) {
     setMarcados((m) => {
@@ -126,7 +133,7 @@ export default function Cobranza() {
   function alternarPagina() {
     setMarcados((m) => {
       const n = new Map(m);
-      for (const f of lista.items) {
+      for (const f of visibles) {
         if (visiblesMarcados) n.delete(claveDe(f));
         else n.set(claveDe(f), f);
       }
@@ -235,10 +242,21 @@ export default function Cobranza() {
       <Tarjeta
         id="t-cobranza"
         titulo={TITULO_TIPO[tipo]}
-        contador={lista.items.length ? lista.total : undefined}
+        contador={lista.items.length ? (buscado ? visibles.length : lista.total) : undefined}
         sinRelleno
         pie={lista.items.length > 0 && lista.total > 20 ? <Paginacion {...lista.paginacion} /> : undefined}
       >
+        {/* El mismo buscador que Estudiantes, Cobrar e Inscribir (D2), en su propia fila de la tarjeta. */}
+        {lista.items.length > 0 && (
+          <div className="border-b border-borde-soft bg-muted/50 px-4 py-3 sm:px-5">
+            <BuscadorEstudiante valor={q} onChange={setQ} />
+            {buscaSoloEnPagina && (
+              <p className="mt-2 text-xs text-texto-3">
+                Busca entre las {lista.items.length} de esta página; hay {lista.total} en total. Cambiá de página para ver el resto.
+              </p>
+            )}
+          </div>
+        )}
         {lista.error && !lista.items.length ? (
           <div className="p-4 sm:p-5">
             <ErrorMsg onReintentar={lista.recargar}>{lista.error}</ErrorMsg>
@@ -250,9 +268,11 @@ export default function Cobranza() {
             icono="coins"
             titulo={tipo === "vencidas" ? "No hay cuotas vencidas" : tipo === "por-vencer" ? "Nada por vencer" : "No hay abonos a medias"}
           />
+        ) : visibles.length === 0 ? (
+          <Vacio icono="search" titulo={`Nadie con «${buscado}» en esta lista`} texto="Probá con otra parte del nombre, el código o el teléfono." />
         ) : (
           <ListaCobranza
-            filas={lista.items}
+            filas={visibles}
             conSede={sede.variasSedes}
             marcados={marcados}
             todos={visiblesMarcados}

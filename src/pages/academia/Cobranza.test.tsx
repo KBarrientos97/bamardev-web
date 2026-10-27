@@ -210,4 +210,48 @@ describe("N7 · cobranza", () => {
     fireEvent.click(screen.getByRole("button", { name: "Cobrar a un estudiante" }));
     expect(screen.getByTestId("destino")).toHaveTextContent(/^\/academia\/cobranza\/cobrar$/);
   });
+  it("D2/D10: el buscador de estudiante (el mismo de Estudiantes) filtra la lista por nombre, código o teléfono", async () => {
+    await montar();
+    const buscador = screen.getByPlaceholderText("Nombre, CI, código o teléfono");
+    expect(buscador).toHaveAccessibleName("Buscar estudiante");
+    const buscar = async (texto: string) => {
+      fireEvent.change(buscador, { target: { value: texto } });
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 350));
+      });
+    };
+    await buscar("bustillos");
+    expect(screen.queryAllByText("Bustillos Rek, Camila").length).toBeGreaterThan(0);
+    expect(screen.queryAllByText("Céspedes Molina, Joaquín")).toHaveLength(0);
+    // Sin tildes ni mayúsculas, y por código.
+    await buscar("CESPEDES");
+    expect(screen.queryAllByText("Céspedes Molina, Joaquín").length).toBeGreaterThan(0);
+    expect(screen.queryAllByText("Bustillos Rek, Camila")).toHaveLength(0);
+    await buscar("2026-0102");
+    expect(screen.queryAllByText("Bustillos Rek, Camila").length).toBeGreaterThan(0);
+    // Por teléfono (4 o más dígitos).
+    await buscar("7123");
+    expect(screen.queryAllByText("Céspedes Molina, Joaquín").length).toBeGreaterThan(0);
+    expect(screen.queryAllByText("Bustillos Rek, Camila")).toHaveLength(0);
+    // Nadie: lo dice, y limpiar vuelve a la lista.
+    await buscar("zzz");
+    expect(screen.getByText(/Nadie con «zzz»/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Limpiar búsqueda" }));
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 350));
+    });
+    expect(screen.queryAllByText("Bustillos Rek, Camila").length).toBeGreaterThan(0);
+    expect(screen.queryAllByText("Céspedes Molina, Joaquín").length).toBeGreaterThan(0);
+  });
+
+  it("con varias páginas, avisa que el buscador mira sólo la página que se ve", async () => {
+    vi.mocked(apiAcademia.cobranza).mockResolvedValue({ ...RESPUESTA, total: 45 });
+    await montar();
+    expect(screen.queryByText(/Busca entre las/)).not.toBeInTheDocument();
+    fireEvent.change(screen.getByPlaceholderText("Nombre, CI, código o teléfono"), { target: { value: "camila" } });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 350));
+    });
+    expect(screen.getByText(/Busca entre las 2 de esta página; hay 45 en total/)).toBeInTheDocument();
+  });
 });

@@ -57,8 +57,14 @@ async function montar() {
 
 const panel = () => screen.getByRole("dialog", { name: "Inscribir estudiante" });
 
-function cargarNuevo(fechaNacimiento: string) {
-  fireEvent.click(within(panel()).getByRole("button", { name: "Nuevo estudiante" }));
+/**
+ * "Nuevo estudiante" sólo aparece cuando la búsqueda no encuentra a nadie (D2):
+ * se busca primero (como en el mostrador, para no cargar a alguien repetido) y
+ * recién entonces se pide la ficha nueva.
+ */
+async function cargarNuevo(fechaNacimiento: string) {
+  fireEvent.change(within(panel()).getByLabelText("Buscar estudiante"), { target: { value: "14550221" } });
+  fireEvent.click(await within(panel()).findByRole("button", { name: "Nuevo estudiante" }));
   fireEvent.change(within(panel()).getByLabelText("Carnet de identidad"), { target: { value: "14550221" } });
   fireEvent.change(within(panel()).getByLabelText("Apellidos"), { target: { value: "Céspedes Molina" } });
   fireEvent.change(within(panel()).getByLabelText("Nombres"), { target: { value: "Joaquín" } });
@@ -86,7 +92,7 @@ afterEach(() => {
 describe("E5 · inscribir", () => {
   it("un menor pide el tutor; con él, inscribe con el plan elegido", async () => {
     await montar();
-    cargarNuevo("2011-03-12");
+    await cargarNuevo("2011-03-12");
     expect(within(panel()).getByText(/Tutor · obligatorio/)).toBeInTheDocument();
     fireEvent.click(within(panel()).getByRole("radio", { name: /Cuotas/ }));
     // El calendario del plan a la vista, sin renglón de matrícula.
@@ -127,7 +133,7 @@ describe("E5 · inscribir", () => {
       bienvenida: { telefono: "71234567", aTutor: true, texto: "Hola Rosa", url: "https://wa.me/59171234567?text=Hola%20Rosa" },
     } as never);
     await montar();
-    cargarNuevo("2000-01-01");
+    await cargarNuevo("2000-01-01");
     fireEvent.click(within(panel()).getByRole("radio", { name: /Completo/ }));
     await act(async () => {
       fireEvent.click(within(panel()).getByRole("button", { name: "Inscribir sin cobrar" }));
@@ -145,7 +151,7 @@ describe("E5 · inscribir", () => {
 
   it("una beca sobre el tope pide el PIN de quien autoriza y viaja con él", async () => {
     await montar();
-    cargarNuevo("2000-01-01");
+    await cargarNuevo("2000-01-01");
     fireEvent.click(within(panel()).getByRole("radio", { name: /Completo/ }));
     fireEvent.click(within(panel()).getByRole("button", { name: "Aplicar otro descuento o beca" }));
     fireEvent.click(within(panel()).getByRole("button", { name: "Beca" }));
@@ -177,7 +183,7 @@ describe("E5 · inscribir", () => {
       .mockRejectedValueOnce(new ApiError("Grupo lleno", 409, { codigo: "GRUPO_LLENO", inscritos: 30, cupo: 30 }))
       .mockResolvedValueOnce({ id: 556 } as never);
     await montar();
-    cargarNuevo("2000-01-01");
+    await cargarNuevo("2000-01-01");
     fireEvent.click(within(panel()).getByRole("radio", { name: /Completo/ }));
     await act(async () => {
       fireEvent.click(within(panel()).getByRole("button", { name: "Inscribir sin cobrar" }));
@@ -195,7 +201,7 @@ describe("E5 · inscribir", () => {
 
   it("el PIN en el pie valida antes de mandar, y cancelarlo vuelve a los botones sin inscribir", async () => {
     await montar();
-    cargarNuevo("2000-01-01");
+    await cargarNuevo("2000-01-01");
     fireEvent.click(within(panel()).getByRole("radio", { name: /Completo/ }));
     fireEvent.click(within(panel()).getByRole("button", { name: "Aplicar otro descuento o beca" }));
     fireEvent.click(within(panel()).getByRole("button", { name: "Beca" }));
@@ -223,7 +229,7 @@ describe("E5 · inscribir", () => {
       .mockResolvedValueOnce({ id: 557 } as never);
     vi.mocked(apiAcademia.ajustes).mockResolvedValue(ajustesDePrueba({ fotosObligatorias: false, topePromoSinPinPct: 100 }));
     await montar();
-    cargarNuevo("2000-01-01");
+    await cargarNuevo("2000-01-01");
     fireEvent.click(within(panel()).getByRole("radio", { name: /Completo/ }));
     fireEvent.click(within(panel()).getByRole("button", { name: "Aplicar otro descuento o beca" }));
     fireEvent.click(within(panel()).getByRole("button", { name: "Promoción" }));
@@ -251,7 +257,7 @@ describe("E5 · inscribir", () => {
   it("el grupo lleno se puede cancelar y cambiar algo lo saca", async () => {
     vi.mocked(apiAcademia.inscribir).mockRejectedValue(new ApiError("Grupo lleno", 409, { codigo: "GRUPO_LLENO", inscritos: 30, cupo: 30 }));
     await montar();
-    cargarNuevo("2000-01-01");
+    await cargarNuevo("2000-01-01");
     fireEvent.click(within(panel()).getByRole("radio", { name: /Completo/ }));
     await act(async () => {
       fireEvent.click(within(panel()).getByRole("button", { name: "Inscribir sin cobrar" }));
@@ -294,12 +300,43 @@ describe("E5 · inscribir", () => {
     expect(within(panel()).getByText(/Tutor · obligatorio/)).toBeInTheDocument();
   });
 
+  it("D2: «Nuevo estudiante» sale sólo cuando la búsqueda no encuentra a nadie", async () => {
+    vi.mocked(apiAcademia.alumnos).mockResolvedValueOnce({
+      items: [
+        { id: 60, codigo: "2026-0140", apellidos: "Rojas Lima", nombres: "Thiago", ci: "1", telefono: null, grupoActual: null, plan: null, saldo: 0, vencido: false, ultimaAsistencia: null, estado: "ACTIVA" },
+      ],
+      total: 1,
+      page: 1,
+      pageSize: 6,
+    });
+    vi.useRealTimers();
+    await montar();
+    const buscador = within(panel()).getByLabelText("Buscar estudiante");
+    expect(buscador).toHaveAttribute("placeholder", "Nombre, CI, código o teléfono");
+    // Sin haber buscado, no hay "Nuevo": primero se busca, para no repetir fichas.
+    expect(within(panel()).queryByRole("button", { name: "Nuevo estudiante" })).not.toBeInTheDocument();
+    const esperar = () =>
+      act(async () => {
+        await new Promise((r) => setTimeout(r, 350));
+      });
+    // Con resultados, tampoco.
+    fireEvent.change(buscador, { target: { value: "Thiago" } });
+    await esperar();
+    expect(await within(panel()).findByRole("button", { name: /Rojas Lima, Thiago/ })).toBeInTheDocument();
+    expect(within(panel()).queryByRole("button", { name: "Nuevo estudiante" })).not.toBeInTheDocument();
+    // Sin resultados (el mock por defecto devuelve vacío), aparece.
+    fireEvent.change(buscador, { target: { value: "Nadie Conocido" } });
+    await esperar();
+    expect(await within(panel()).findByRole("button", { name: "Nuevo estudiante" })).toBeInTheDocument();
+    expect(within(panel()).getByText(/No hay nadie con «Nadie Conocido»/)).toBeInTheDocument();
+  });
+
   it("un CI que ya es de otro ofrece buscarlo en vez de crearlo otra vez", async () => {
     vi.mocked(apiAcademia.inscribir).mockRejectedValueOnce(
       new ApiError("Ese carnet ya es de otra persona del negocio.", 409, { codigo: "CI_DUPLICADO" }),
     );
     await montar();
-    cargarNuevo("2000-01-01");
+    await cargarNuevo("2000-01-01");
     fireEvent.click(within(panel()).getByRole("radio", { name: /Completo/ }));
     await act(async () => {
       fireEvent.click(within(panel()).getByRole("button", { name: "Inscribir sin cobrar" }));
@@ -374,7 +411,7 @@ describe("E5 · inscribir", () => {
 
   it("paga hoy: la primera cuota por defecto, o un adelanto que llega al POS", async () => {
     await montar();
-    cargarNuevo("2000-01-01");
+    await cargarNuevo("2000-01-01");
     fireEvent.click(within(panel()).getByRole("radio", { name: /Cuotas/ }));
     expect(within(panel()).getByRole("button", { name: /Inscribir y cobrar Bs\s?750/ })).toBeInTheDocument();
     fireEvent.click(within(panel()).getByRole("button", { name: "Otro monto" }));
@@ -392,7 +429,7 @@ describe("E5 · inscribir: los errores se ven y el adelanto se valida (QA ronda 
 
   it("lo que falta sale junto al botón y se va al corregirlo", async () => {
     await montar();
-    cargarNuevo("2000-01-01");
+    await cargarNuevo("2000-01-01");
     fireEvent.click(within(panel()).getByRole("button", { name: /Inscribir y cobrar/ }));
     expect(within(pie()).getByRole("alert")).toHaveTextContent("Elegí cómo paga.");
     expect(apiAcademia.inscribir).not.toHaveBeenCalled();
@@ -402,7 +439,7 @@ describe("E5 · inscribir: los errores se ven y el adelanto se valida (QA ronda 
 
   it("un adelanto negativo se marca en el campo y no inscribe; uno válido viaja al cobro", async () => {
     await montar();
-    cargarNuevo("2000-01-01");
+    await cargarNuevo("2000-01-01");
     fireEvent.click(within(panel()).getByRole("radio", { name: /Cuotas/ }));
     fireEvent.click(within(panel()).getByRole("button", { name: "Otro monto" }));
     const monto = within(panel()).getByLabelText("Monto del adelanto (Bs)");
@@ -422,7 +459,7 @@ describe("E5 · inscribir: los errores se ven y el adelanto se valida (QA ronda 
 
   it("un descuento en Bs mayor que el curso se marca y no inscribe", async () => {
     await montar();
-    cargarNuevo("2000-01-01");
+    await cargarNuevo("2000-01-01");
     fireEvent.click(within(panel()).getByRole("radio", { name: /Completo/ }));
     fireEvent.click(within(panel()).getByRole("button", { name: "Aplicar otro descuento o beca" }));
     fireEvent.click(within(panel()).getByRole("button", { name: "Beca" }));
@@ -456,7 +493,7 @@ describe("N5 · las 3 fotos obligatorias", () => {
 
   it("sin las 3 el botón dice cuántas faltan y no inscribe; con las 3 viajan en el pedido", async () => {
     await montar();
-    cargarNuevo("2000-01-01");
+    await cargarNuevo("2000-01-01");
     fireEvent.click(within(panel()).getByRole("radio", { name: /Completo/ }));
     expect(within(panel()).getByRole("button", { name: "Faltan 3 fotos" })).toBeDisabled();
     expect(within(panel()).getByText("Fotos: 0 de 3")).toBeInTheDocument();
@@ -493,7 +530,7 @@ describe("N5 · las 3 fotos obligatorias", () => {
       new ApiError("Faltan fotos", 400, { codigo: "FOTOS_REQUERIDAS", faltan: ["CI_REVERSO"] }),
     );
     await montar();
-    cargarNuevo("2000-01-01");
+    await cargarNuevo("2000-01-01");
     fireEvent.click(within(panel()).getByRole("radio", { name: /Completo/ }));
     for (const t of ["FOTO", "CI_ANVERSO", "CI_REVERSO"]) await act(async () => subir(t));
     await act(async () => {
@@ -520,7 +557,7 @@ describe("A2 · inscribir en menos pasos", () => {
     // Sin nada escrito no dice "Datos completos" (UX 2b).
     const requisitos = within(panel()).getByRole("list", { name: "Requisitos" });
     expect(requisitos).toHaveTextContent("Faltan los datos");
-    cargarNuevo("2000-01-01");
+    await cargarNuevo("2000-01-01");
     expect(requisitos).toHaveTextContent("Datos completos");
     // "Paga hoy" es la única pregunta por el monto: va tal cual al cobro.
     await act(async () => {
@@ -550,7 +587,7 @@ describe("A3 · las fotos que revisa quien las aprueba", () => {
   it("con academia.fotos el check viene marcado y al inscribir quedan aprobadas", async () => {
     quien.admin = true;
     await montar();
-    cargarNuevo("2000-01-01");
+    await cargarNuevo("2000-01-01");
     fireEvent.click(within(panel()).getByRole("radio", { name: /Completo/ }));
     await subirLas3();
     expect(within(panel()).getByRole("checkbox", { name: /Revisé las 3 fotos/ })).toBeChecked();
@@ -564,7 +601,7 @@ describe("A3 · las fotos que revisa quien las aprueba", () => {
   it("si lo desmarca, siguen por revisar", async () => {
     quien.admin = true;
     await montar();
-    cargarNuevo("2000-01-01");
+    await cargarNuevo("2000-01-01");
     fireEvent.click(within(panel()).getByRole("radio", { name: /Completo/ }));
     await subirLas3();
     fireEvent.click(within(panel()).getByRole("checkbox", { name: /Revisé las 3 fotos/ }));
@@ -576,7 +613,7 @@ describe("A3 · las fotos que revisa quien las aprueba", () => {
 
   it("la recepción (sin academia.fotos) no ve el check: el camino de siempre", async () => {
     await montar();
-    cargarNuevo("2000-01-01");
+    await cargarNuevo("2000-01-01");
     fireEvent.click(within(panel()).getByRole("radio", { name: /Completo/ }));
     await subirLas3();
     expect(within(panel()).queryByRole("checkbox", { name: /Revisé las 3 fotos/ })).not.toBeInTheDocument();

@@ -190,6 +190,11 @@ describe("A1 · cobrar a estudiante", () => {
     ]);
   });
 
+  it("D2: el buscador es el de Estudiantes (mismo rótulo)", async () => {
+    await montar("/academia/cobrar");
+    expect(screen.getByLabelText("Buscar estudiante")).toHaveAttribute("placeholder", "Nombre, CI, código o teléfono");
+  });
+
   it("buscando: propone lo vencido, deja elegir quién paga y avisa la otra sede", async () => {
     vi.mocked(api.crearVenta).mockResolvedValue({ id: 63 } as unknown as Venta);
     await montar("/academia/cobrar");

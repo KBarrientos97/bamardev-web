@@ -240,10 +240,15 @@ export function Buscador({
   valor,
   onChange,
   placeholder = "Buscar…",
+  etiqueta,
+  autoFocus,
 }: {
   valor: string;
   onChange: (v: string) => void;
   placeholder?: string;
+  /** El nombre accesible del campo, si el placeholder solo no dice qué se busca. */
+  etiqueta?: string;
+  autoFocus?: boolean;
 }) {
   return (
     <div className="relative flex-1">
@@ -254,6 +259,8 @@ export function Buscador({
         value={valor}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
+        aria-label={etiqueta}
+        autoFocus={autoFocus}
         className="w-full rounded-xl border border-borde bg-white py-2.5 pl-10 pr-9 text-sm outline-none transition-colors placeholder:text-texto-4 focus:border-primary focus:ring-2 focus:ring-primary-100"
       />
       {valor && (

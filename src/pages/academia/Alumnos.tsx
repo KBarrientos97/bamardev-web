@@ -1,6 +1,5 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Buscador } from "../../components/filtros";
 import { Icon } from "../../components/Icon";
 import { Paginacion } from "../../components/Paginacion";
 import { Boton, Cargando, ErrorMsg, Vacio } from "../../components/ui";
@@ -8,6 +7,7 @@ import { apiAcademia } from "../../lib/academia/apiAcademia";
 import { nombreAlumno, nombreDe } from "../../lib/academia/formato";
 import type { AlumnoFila, EstadoFotos, FiltroAlumnos } from "../../lib/academia/tipos";
 import { useFiltroSede } from "../../lib/academia/useFiltroSede";
+import { useBusquedaEstudiante } from "../../lib/academia/useBusquedaEstudiante";
 import { usePalabras } from "../../lib/academia/usePalabras";
 import { rutaCobroInscripcion, textoEstadoInscripcion } from "../../lib/academia/vista";
 import { fmtMoney } from "../../lib/format";
@@ -15,6 +15,7 @@ import { usePaginado } from "../../lib/paginado";
 import { tienePermiso } from "../../lib/permisos";
 import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
+import BuscadorEstudiante from "./BuscadorEstudiante";
 import Inscribir from "./Inscribir";
 import {
   BotonFila,
@@ -62,14 +63,9 @@ export default function Alumnos() {
   const p = usePalabras();
   const navigate = useNavigate();
   const sede = useFiltroSede();
-  const [q, setQ] = useState("");
-  const [buscado, setBuscado] = useState("");
+  const { q, setQ, buscado } = useBusquedaEstudiante();
   const [vista, setVista] = useState<Vista>("todos");
   const [inscribiendo, setInscribiendo] = useState(false);
-  useEffect(() => {
-    const t = setTimeout(() => setBuscado(q.trim()), 300);
-    return () => clearTimeout(t);
-  }, [q]);
 
   const base = { q: buscado || undefined, sede: sede.sucursalId };
   const lista = usePaginado(
@@ -151,7 +147,7 @@ export default function Alumnos() {
       >
         {/* El buscador, en su propia fila de la tarjeta (`FilaFiltros` sólo sabe de chips). */}
         <div className="border-b border-borde-soft bg-muted/50 px-4 py-3 sm:px-5">
-          <Buscador valor={q} onChange={setQ} placeholder="Nombre, CI, código o teléfono" />
+          <BuscadorEstudiante valor={q} onChange={setQ} />
         </div>
 
         {lista.error && !lista.items.length ? (

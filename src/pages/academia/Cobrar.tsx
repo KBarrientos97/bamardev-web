@@ -18,6 +18,7 @@ import {
 import { fechaCorta, nombreDe } from "../../lib/academia/formato";
 import { descripcionDeCuota, modulosDeCuotas, useModulosDeCuotas } from "../../lib/academia/modulos";
 import type { AlumnoPorCobrar, CarritoInscripcion, Ref } from "../../lib/academia/tipos";
+import { MINIMO_BUSQUEDA, useBusquedaEstudiante } from "../../lib/academia/useBusquedaEstudiante";
 import { usePalabras } from "../../lib/academia/usePalabras";
 import { RUTA_CAJA } from "../../lib/academia/vista";
 import { ApiError, api } from "../../lib/api";
@@ -32,6 +33,7 @@ import AperturaCaja from "../pos/AperturaCaja";
 import PantallaCobro from "../pos/PantallaCobro";
 import PantallaRecibo from "../pos/PantallaRecibo";
 import { huellaDeCobro, useIntentoDeCobro } from "../pos/useIntentoDeCobro";
+import BuscadorEstudiante from "./BuscadorEstudiante";
 import {
   Chip,
   claseBotonFila,
@@ -566,7 +568,7 @@ export default function Cobrar() {
 }
 
 /**
- * El buscador: nombre, CI o código, contra las cuotas pendientes (sin sede: el
+ * El buscador: nombre, CI, código o teléfono, contra las cuotas pendientes (sin sede: el
  * de otra sede también se cobra acá, con el aviso). Desde Cobranza llega con
  * `?alumno=&q=`: si el buscado aparece, se abre solo.
  *
@@ -587,8 +589,7 @@ function BuscarEstudiante({
   onElegir: (f: Fila, otras: Fila[]) => void;
 }) {
   const p = usePalabras();
-  const [q, setQ] = useState(inicial.q ?? "");
-  const [buscado, setBuscado] = useState((inicial.q ?? "").trim());
+  const { q, setQ, buscado } = useBusquedaEstudiante(inicial.q ?? "");
   const [resultados, setResultados] = useState<AlumnoPorCobrar[] | null>(null);
   const [buscando, setBuscando] = useState(false);
   const [error, setError] = useState("");
@@ -596,12 +597,7 @@ function BuscarEstudiante({
   const directoUsado = useRef(inicial.inscripcionId != null);
 
   useEffect(() => {
-    const t = setTimeout(() => setBuscado(q.trim()), 300);
-    return () => clearTimeout(t);
-  }, [q]);
-
-  useEffect(() => {
-    if (buscado.length < 2) {
+    if (buscado.length < MINIMO_BUSQUEDA) {
       setResultados(null);
       return;
     }
@@ -634,7 +630,7 @@ function BuscarEstudiante({
       <EncabezadoPagina
         volver={VOLVER_COBRANZA}
         titulo={`Cobrar a ${p.alumno}`}
-        bajada={`Buscá al ${p.alumno} por nombre, CI o código.`}
+        bajada={`Buscá al ${p.alumno} por nombre, CI, código o teléfono.`}
       />
       <ErrorMsg>{errorAfuera || error}</ErrorMsg>
       <Tarjeta
@@ -642,20 +638,8 @@ function BuscarEstudiante({
         sinRelleno
         barra={
           <div className="py-3">
-            <div className="relative max-w-xl">
-              <Icon
-                name="search"
-                size={17}
-                className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-texto-4"
-              />
-              <Input
-                aria-label={`Buscar ${p.alumno}`}
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                placeholder="Nombre, CI o código"
-                autoFocus
-                className="pl-10"
-              />
+            <div className="flex max-w-xl">
+              <BuscadorEstudiante valor={q} onChange={setQ} autoFocus />
             </div>
           </div>
         }
@@ -663,7 +647,7 @@ function BuscarEstudiante({
         {buscando ? (
           <Cargando texto="Buscando…" />
         ) : resultados && resultados.length === 0 ? (
-          <Vacio icono="search" titulo={`Nadie con cuotas pendientes con «${buscado}».`} texto="Probá con otra parte del nombre, el CI o el código." />
+          <Vacio icono="search" titulo={`Nadie con cuotas pendientes con «${buscado}».`} texto="Probá con otra parte del nombre, el CI, el código o el teléfono." />
         ) : resultados?.length ? (
           <ul className={LISTA.lista}>
             {resultados.map((a) => {

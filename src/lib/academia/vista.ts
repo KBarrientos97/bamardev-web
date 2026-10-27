@@ -17,6 +17,7 @@ import { fechaCorta, horarioGrupo, nombreDe, textoModulos } from "./formato";
 import { urlInscribirmeDe } from "../pagina/rutas";
 import { ApiError } from "../api";
 import { fmtMoney } from "../format";
+import { normalizar } from "../texto";
 
 /**
  * Cómo se leen en pantalla las cuotas y las inscripciones, con las reglas de
@@ -121,6 +122,27 @@ export const PESTANAS_CONFIG_ACADEMIA: readonly { seccion: Seccion; a: string }[
  * Cobranza queda encendida. La ruta vieja, `/academia/cobrar`, redirige.
  */
 export const RUTA_COBRAR = "/academia/cobranza/cobrar";
+
+/**
+ * ¿La fila de Cobranza responde a lo que se escribió en el buscador? Cada
+ * palabra tiene que estar en el nombre, el código o el teléfono (sin importar
+ * mayúsculas ni tildes); una búsqueda de 4 o más dígitos también compara el
+ * teléfono sin espacios ni guiones. El CI no viaja en la fila de Cobranza, así
+ * que por CI no encuentra: hace falta `q` en `GET /academia/cobranza` para que
+ * la búsqueda sea la misma que en Estudiantes y alcance todas las páginas.
+ */
+export function filaCoincideConBusqueda(
+  f: { alumno: { nombre: string; codigo: string | null }; contacto: { telefono: string | null } },
+  busqueda: string,
+): boolean {
+  const texto = busqueda.trim();
+  if (!texto) return true;
+  const pajar = normalizar([f.alumno.nombre, f.alumno.codigo ?? "", f.contacto.telefono ?? ""].join(" ").replace(/[,;]+/g, " "));
+  const palabras = normalizar(texto.replace(/[,;]+/g, " ")).split(/\s+/).filter(Boolean);
+  if (palabras.every((w) => pajar.includes(w))) return true;
+  const digitos = texto.replace(/\D/g, "");
+  return digitos.length >= 4 && (f.contacto.telefono ?? "").replace(/\D/g, "").includes(digitos);
+}
 
 /**
  * "Caja" en el menú del instituto: la pantalla del turno del POS (lo vendido

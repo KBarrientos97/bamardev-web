@@ -32,6 +32,7 @@ import type {
   TipoDescuento,
   TipoFoto,
 } from "../../lib/academia/tipos";
+import { MINIMO_BUSQUEDA, useTextoDemorado } from "../../lib/academia/useBusquedaEstudiante";
 import { usePalabras } from "../../lib/academia/usePalabras";
 import { enlaceWhatsApp } from "../../lib/agenda/recordatorio";
 import { ApiError } from "../../lib/api";
@@ -41,6 +42,7 @@ import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
 import { nombresDe } from "../../lib/academia/modulos";
 import { abrirWhatsapp } from "../../lib/academia/vista";
+import BuscadorEstudiante from "./BuscadorEstudiante";
 import CapturaFotos from "./CapturaFotos";
 import { BotonFila, BotonIcono, ResumenPanel } from "./piezas";
 
@@ -1117,26 +1119,21 @@ function BuscarAlumno({
   onNuevo: (texto: string) => void;
   palabra: string;
 }) {
-  const [buscado, setBuscado] = useState("");
-  useEffect(() => {
-    const t = setTimeout(() => setBuscado(q.trim()), 300);
-    return () => clearTimeout(t);
-  }, [q]);
+  const buscado = useTextoDemorado(q);
   const r = useApi(
-    () => (buscado.length >= 2 ? apiAcademia.alumnos({ q: buscado, pageSize: 6 }) : Promise.resolve(null)),
+    () => (buscado.length >= MINIMO_BUSQUEDA ? apiAcademia.alumnos({ q: buscado, pageSize: 6 }) : Promise.resolve(null)),
     [buscado],
   );
   const lista = r.datos?.items ?? [];
+  // Sólo con la búsqueda ya asentada (`buscado` alcanzó lo escrito) y sin error
+  // de red: si falló no se sabe si el estudiante existe.
+  const sinResultados = buscado.length >= MINIMO_BUSQUEDA && buscado === q.trim() && !r.cargando && !r.error && lista.length === 0;
   return (
     <div className="space-y-2">
-      <Input
-        aria-label={`Buscar ${palabra}`}
-        value={q}
-        onChange={(e) => onQ(e.target.value)}
-        placeholder="CI, nombre o teléfono"
-        autoFocus
-      />
-      {buscado.length >= 2 && !r.cargando && lista.length === 0 && (
+      <BuscadorEstudiante valor={q} onChange={onQ} autoFocus />
+      {/* "Nuevo" sólo cuando la búsqueda no encuentra a nadie (D2): antes salía
+          siempre y se cargaban fichas repetidas de quien ya estaba. */}
+      {sinResultados && (
         <p className="text-[13px] text-texto-3">No hay nadie con «{buscado}»: se crea la ficha.</p>
       )}
       {lista.length > 0 && (
@@ -1156,9 +1153,11 @@ function BuscarAlumno({
           ))}
         </ul>
       )}
-      <Boton variante="ghost" icono="plus" onClick={() => onNuevo(q)}>
-        Nuevo {palabra}
-      </Boton>
+      {sinResultados && (
+        <Boton variante="ghost" icono="plus" onClick={() => onNuevo(q)}>
+          Nuevo {palabra}
+        </Boton>
+      )}
     </div>
   );
 }
