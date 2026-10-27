@@ -286,3 +286,54 @@ describe("E3 · errores por alcance (QA ronda 2, N-3)", () => {
     expect(apiAcademia.grupo).toHaveBeenCalledTimes(2);
   });
 });
+
+describe("Errores del backend con código (auditoría de octubre): el mensaje se muestra tal cual", () => {
+  const COORDINACION = ["academia.ver", "academia.grupos", "academia.inscribir", "academia.cobranza"];
+
+  it("GRUPO_CON_INSCRITOS (409) al cancelar: el mensaje del backend dice qué hacer y el grupo no queda cancelado", async () => {
+    sesion.permisos = COORDINACION;
+    const mensaje =
+      "El grupo tiene 3 estudiantes inscritos: pasalos a otro grupo (Cambiar de grupo) o retiralos antes de cancelarlo. Lo que pagaron no se toca.";
+    vi.mocked(apiAcademia.editarGrupo).mockRejectedValue(new ApiError(mensaje, 409, { codigo: "GRUPO_CON_INSCRITOS", inscritos: 3 }));
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Más acciones del grupo" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Cancelar grupo" }));
+    await act(async () => {
+      fireEvent.click(within(screen.getByRole("dialog", { name: "Cancelar el grupo" })).getByRole("button", { name: "Cancelar grupo" }));
+    });
+    expect(screen.getByText(mensaje)).toBeInTheDocument();
+    expect(screen.queryByText("No se pudo guardar")).not.toBeInTheDocument();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+
+  it("INICIO_NO_MOVIBLE (409) al editar el grupo: el mensaje queda dentro del formulario, sin taparlo", async () => {
+    sesion.permisos = COORDINACION;
+    const mensaje = "Ya hay clases dictadas: el inicio del grupo ya no se mueve. Cambiá las fechas de los módulos que faltan desde cada módulo.";
+    vi.mocked(apiAcademia.editarGrupo).mockRejectedValue(new ApiError(mensaje, 409, { codigo: "INICIO_NO_MOVIBLE" }));
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Más acciones del grupo" }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("menuitem", { name: "Editar grupo" }));
+    });
+    const dialogo = screen.getByRole("dialog", { name: "Editar grupo" });
+    await act(async () => {
+      fireEvent.click(within(dialogo).getByRole("button", { name: "Guardar" }));
+    });
+    expect(within(dialogo).getByText(mensaje)).toBeInTheDocument();
+    expect(dialogo).toBeInTheDocument();
+  });
+
+  it("GRUPO_CANCELADO (400) en el recordatorio: se muestra el mensaje y el panel vuelve a pedir la ficha", async () => {
+    const mensaje = "Esa cuota es de un grupo cancelado: no se le manda recordatorio.";
+    vi.mocked(apiAcademia.recordatorio).mockRejectedValue(new ApiError(mensaje, 400, { codigo: "GRUPO_CANCELADO" }));
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Ver a Bustillos Rek, Camila" }));
+    await act(async () => {});
+    const antes = vi.mocked(apiAcademia.alumno).mock.calls.length;
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Enviar QR por WhatsApp" }));
+    });
+    expect(screen.getByText(mensaje)).toBeInTheDocument();
+    expect(vi.mocked(apiAcademia.alumno).mock.calls.length).toBeGreaterThan(antes);
+  });
+});

@@ -5,6 +5,7 @@ import { Paginacion } from "../../components/Paginacion";
 import PanelLateral from "../../components/PanelLateral";
 import { Boton, Cargando, ErrorMsg, Vacio } from "../../components/ui";
 import { apiAcademia } from "../../lib/academia/apiAcademia";
+import { esDatoViejo, mensajeDelBackend } from "../../lib/academia/errores";
 import { fechaCorta } from "../../lib/academia/formato";
 import { useModulosDeGrupos } from "../../lib/academia/modulos";
 import type { FilaCobranza, Recordatorio, RespuestaCobranza, TipoCobranza } from "../../lib/academia/tipos";
@@ -298,6 +299,7 @@ export default function Cobranza() {
           nombresModulos={modulos[actual.grupo.id]}
           cobra={cobra}
           onEnviado={(r) => anotar(actual, r)}
+          onDesactualizada={lista.recargar}
           onCobrar={() => cobrar(actual)}
           onAnterior={() => setPos((x) => Math.max(0, x - 1))}
           onSiguiente={() => {
@@ -497,6 +499,7 @@ function PanelEnvio({
   nombresModulos,
   cobra,
   onEnviado,
+  onDesactualizada,
   onCobrar,
   onAnterior,
   onSiguiente,
@@ -508,6 +511,8 @@ function PanelEnvio({
   nombresModulos?: Record<number, string>;
   cobra: boolean;
   onEnviado: (r: Recordatorio) => void;
+  /** El rechazo dice que la cuota ya cambió (sin saldo, grupo cancelado): recargar la lista. */
+  onDesactualizada: () => void;
   onCobrar: () => void;
   onAnterior: () => void;
   onSiguiente: () => void;
@@ -529,7 +534,9 @@ function PanelEnvio({
       abrirWhatsapp(r.url);
       onEnviado(r);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "No se pudo armar el mensaje");
+      setError(mensajeDelBackend(e, "No se pudo armar el mensaje"));
+      // La cuota ya no debe nada o el grupo se canceló: la lista estaba vieja.
+      if (esDatoViejo(e)) onDesactualizada();
     } finally {
       setEnviando(false);
     }

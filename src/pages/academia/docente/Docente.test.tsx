@@ -292,3 +292,23 @@ describe("QA 23-oct · el docente sin los campos de cobro", () => {
     expect(screen.getByText("2 en semana de espera")).toBeInTheDocument();
   });
 });
+
+describe("Pasar lista: CLASE_DE_OTRO_DOCENTE (403)", () => {
+  it("muestra el mensaje del backend tal cual cuando la clase la dicta otro docente", async () => {
+    const mensaje = "Esa clase la dicta otro docente: la lista la pasa quien la dicta.";
+    vi.mocked(apiAcademia.guardarLista).mockRejectedValue(new ApiError(mensaje, 403, { codigo: "CLASE_DE_OTRO_DOCENTE" }));
+    render(
+      <MemoryRouter initialEntries={["/academia/lista?grupo=7"]}>
+        <Routes>
+          <Route path="/academia/lista" element={<PasarLista />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    await act(async () => {});
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /^Guardar lista/ }));
+    });
+    expect(screen.getByText(mensaje)).toBeInTheDocument();
+    expect(screen.queryByText("No se pudo guardar la lista")).not.toBeInTheDocument();
+  });
+});

@@ -5,6 +5,7 @@ import MenuMas, { type AccionMenu } from "../../components/MenuMas";
 import { AvisoOk, Boton, Campo, Cargando, Confirmar, ErrorMsg, Input, Modal, Select, useAviso } from "../../components/ui";
 import { apiAcademia, CODIGOS_ACADEMIA } from "../../lib/academia/apiAcademia";
 import { ApiError } from "../../lib/api";
+import { esDatoViejo, esReintentable, mensajeDelBackend } from "../../lib/academia/errores";
 import {
   EXPEDIDOS,
   fechaCorta,
@@ -65,6 +66,8 @@ export default function FichaAlumno() {
   const ficha = useApi(() => apiAcademia.alumno(alumnoId), [alumnoId]);
   const [aviso, setAviso] = useAviso(5000);
   const [error, setError] = useState("");
+  // CUOTAS_CAMBIARON: lo que se intentaba hacer, para ofrecer «Reintentar».
+  const [reintento, setReintento] = useState<(() => void) | null>(null);
   const [retirando, setRetirando] = useState<InscripcionDetalle | null>(null);
   const [cambiandoGrupo, setCambiandoGrupo] = useState<InscripcionDetalle | null>(null);
   const [cambiandoPlan, setCambiandoPlan] = useState<InscripcionDetalle | null>(null);
@@ -129,7 +132,9 @@ export default function FichaAlumno() {
         abrirWhatsapp(r.url);
         setAviso("Mensaje armado: queda anotado el recordatorio.");
       } catch (e) {
-        setError(e instanceof Error ? e.message : "No se pudo armar el mensaje");
+        setError(mensajeDelBackend(e, "No se pudo armar el mensaje"));
+        // La cuota ya no debe nada o el grupo se canceló: la ficha estaba vieja.
+        if (esDatoViejo(e)) ficha.recargar();
       }
       return;
     }
@@ -148,12 +153,20 @@ export default function FichaAlumno() {
 
   async function hacer(fn: () => Promise<unknown>, ok: string) {
     setError("");
+    setReintento(null);
     try {
       await fn();
       setAviso(ok);
       ficha.recargar();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "No se pudo completar");
+      setError(mensajeDelBackend(e, "No se pudo completar"));
+      // Entró o se anuló un pago mientras se guardaba (409 CUOTAS_CAMBIARON): no
+      // se hizo nada. Se recarga la ficha para ver las cuotas de ahora y se
+      // ofrece volver a intentar; el mensaje del backend se muestra tal cual.
+      if (esReintentable(e)) {
+        ficha.recargar();
+        setReintento(() => () => void hacer(fn, ok));
+      }
     }
   }
 
@@ -243,7 +256,7 @@ export default function FichaAlumno() {
       </EncabezadoPagina>
 
       <AvisoOk>{aviso}</AvisoOk>
-      <ErrorMsg>{error}</ErrorMsg>
+      <ErrorMsg onReintentar={reintento ? () => reintento() : undefined}>{error}</ErrorMsg>
 
       <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] lg:gap-6">
         <div className="min-w-0 space-y-5 lg:space-y-6">

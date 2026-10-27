@@ -5,6 +5,7 @@ import { apiAcademia, CODIGOS_ACADEMIA } from "../../../lib/academia/apiAcademia
 import { fechaCorta, horarioGrupo, nombreDe } from "../../../lib/academia/formato";
 import type { EstadoAsistencia, ListaDeClase } from "../../../lib/academia/tipos";
 import { usePalabras } from "../../../lib/academia/usePalabras";
+import { mensajeDelBackend } from "../../../lib/academia/errores";
 import { ApiError } from "../../../lib/api";
 import { capitalizar, fechaLarga } from "../../../lib/agenda/horaAgenda";
 import { fmtHora, isoDia } from "../../../lib/format";
@@ -163,9 +164,8 @@ function Lista({
           ? "La lista de ese día ya cerró: para corregirla, pedíselo a la administración."
           : e instanceof ApiError && e.codigo === "LISTA_FUTURA"
             ? "Todavía no es el día de esa clase."
-            : e instanceof Error
-            ? e.message
-            : "No se pudo guardar la lista",
+            : // CLASE_DE_OTRO_DOCENTE (403) y el resto: el mensaje del backend, tal cual.
+              mensajeDelBackend(e, "No se pudo guardar la lista"),
       );
     } finally {
       setGuardando(false);

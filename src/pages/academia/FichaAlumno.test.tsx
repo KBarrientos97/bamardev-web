@@ -20,7 +20,7 @@ vi.mock("../../lib/academia/apiAcademia", async (importOriginal) => {
   const real = await importOriginal<typeof import("../../lib/academia/apiAcademia")>();
   return {
     ...real,
-    apiAcademia: { alumno: vi.fn(), fotoComoUrl: vi.fn(), revisarFotos: vi.fn(), recordatorio: vi.fn(), subirFoto: vi.fn() },
+    apiAcademia: { alumno: vi.fn(), fotoComoUrl: vi.fn(), revisarFotos: vi.fn(), recordatorio: vi.fn(), subirFoto: vi.fn(), retirar: vi.fn(), cambiarPlan: vi.fn(), grupo: vi.fn() },
   };
 });
 
@@ -134,5 +134,58 @@ describe("E6 · ficha de otra sede (QA ronda 2, N-3)", () => {
     expect(screen.getByRole("heading", { name: "Es de otra sede" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Reintentar" })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: /^Volver a / })).toHaveAttribute("href", "/academia/alumnos");
+  });
+});
+
+describe("E6 · rechazos con código (auditoría de octubre)", () => {
+  async function retirar() {
+    fireEvent.click(screen.getByRole("button", { name: /Acciones de la inscripción/ }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Retirar" }));
+    const dialogo = screen.getByRole("dialog", { name: /Retirar a /i });
+    fireEvent.click(within(dialogo).getByRole("button", { name: "Horario" }));
+    await act(async () => {
+      fireEvent.click(within(dialogo).getByRole("button", { name: "Retirar" }));
+    });
+  }
+
+  it("CUOTAS_CAMBIARON (409) al retirar: el mensaje del backend tal cual, la ficha se recarga y «Reintentar» vuelve a mandar el retiro", async () => {
+    const mensaje = "Las cuotas de este estudiante cambiaron mientras guardabas (entró o se anuló un pago). Volvé a cargar y probá de nuevo.";
+    vi.mocked(apiAcademia.retirar)
+      .mockRejectedValueOnce(new ApiError(mensaje, 409, { codigo: "CUOTAS_CAMBIARON" }))
+      .mockResolvedValueOnce(undefined);
+    await montar();
+    const pedidas = vi.mocked(apiAcademia.alumno).mock.calls.length;
+    await retirar();
+    expect(screen.getByText(mensaje)).toBeInTheDocument();
+    expect(vi.mocked(apiAcademia.alumno).mock.calls.length).toBeGreaterThan(pedidas);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Reintentar" }));
+    });
+    expect(apiAcademia.retirar).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(apiAcademia.retirar).mock.calls[1]).toEqual(vi.mocked(apiAcademia.retirar).mock.calls[0]);
+    expect(screen.queryByText(mensaje)).not.toBeInTheDocument();
+    expect(screen.getByText("Retirado del grupo.")).toBeInTheDocument();
+  });
+
+  it("otro rechazo al retirar se muestra tal cual y NO ofrece «Reintentar»", async () => {
+    const mensaje = "Esa inscripción ya está retirada.";
+    vi.mocked(apiAcademia.retirar).mockRejectedValue(new ApiError(mensaje, 409, { codigo: "YA_RETIRADA" }));
+    await montar();
+    await retirar();
+    expect(screen.getByText(mensaje)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Reintentar" })).not.toBeInTheDocument();
+  });
+
+  it("CUOTA_SIN_SALDO (400) en el QR por WhatsApp: el mensaje tal cual y la ficha se recarga", async () => {
+    const mensaje = "Esa cuota ya no tiene saldo: no hay nada que recordar.";
+    vi.mocked(apiAcademia.recordatorio).mockRejectedValue(new ApiError(mensaje, 400, { codigo: "CUOTA_SIN_SALDO" }));
+    await montar();
+    const pedidas = vi.mocked(apiAcademia.alumno).mock.calls.length;
+    fireEvent.click(screen.getByRole("button", { name: /Más acciones del estudiante/ }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("menuitem", { name: /Enviar QR por WhatsApp/ }));
+    });
+    expect(screen.getByText(mensaje)).toBeInTheDocument();
+    expect(vi.mocked(apiAcademia.alumno).mock.calls.length).toBeGreaterThan(pedidas);
   });
 });

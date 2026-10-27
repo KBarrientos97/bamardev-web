@@ -281,4 +281,15 @@ export const CODIGOS_ACADEMIA = {
   // ── QA de la ronda 2 ──
   FECHA_PASADA: "FECHA_PASADA",
   OTRA_SEDE: "OTRA_SEDE",
+  // ── Auditoría de octubre ──
+  /** 409: entró o se anuló un pago mientras se cambiaba el plan o se retiraba (reintentable). */
+  CUOTAS_CAMBIARON: "CUOTAS_CAMBIARON",
+  /** 403: la lista de esa clase la pasa quien la dicta. */
+  CLASE_DE_OTRO_DOCENTE: "CLASE_DE_OTRO_DOCENTE",
+  /** 409: un grupo con estudiantes inscritos no se cancela. */
+  GRUPO_CON_INSCRITOS: "GRUPO_CON_INSCRITOS",
+  /** 409: el inicio del grupo ya no se mueve (hay clases dictadas o módulos liquidados). */
+  INICIO_NO_MOVIBLE: "INICIO_NO_MOVIBLE",
+  /** 400: la cuota ya no tiene saldo, no se manda recordatorio. */
+  CUOTA_SIN_SALDO: "CUOTA_SIN_SALDO",
 } as const;

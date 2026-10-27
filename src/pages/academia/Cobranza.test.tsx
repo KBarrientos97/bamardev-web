@@ -24,6 +24,7 @@ vi.mock("../../lib/academia/apiAcademia", async (importOriginal) => {
 });
 
 import { apiAcademia } from "../../lib/academia/apiAcademia";
+import { ApiError } from "../../lib/api";
 import { olvidarModulos } from "../../lib/academia/modulos";
 import Cobranza from "./Cobranza";
 
@@ -175,6 +176,32 @@ describe("N7 · cobranza", () => {
     expect(within(panel).getByText(/pagar\/K7Q2/).className).toContain("break-all");
     expect(within(panel).getByRole("status")).toHaveTextContent("Anotado: recordado hoy");
     abrir.mockRestore();
+  });
+
+  it("CUOTA_SIN_SALDO (400) al armar el recordatorio: el mensaje del backend tal cual y la lista se vuelve a pedir", async () => {
+    const mensaje = "Esa cuota ya no tiene saldo: no hay nada que recordar.";
+    vi.mocked(apiAcademia.recordatorio).mockRejectedValue(new ApiError(mensaje, 400, { codigo: "CUOTA_SIN_SALDO" }));
+    await montar();
+    fireEvent.click(screen.getAllByRole("button", { name: "Enviar QR" })[0]);
+    const panel = screen.getByRole("complementary", { name: "Céspedes Molina, Joaquín" });
+    const pedidas = vi.mocked(apiAcademia.cobranza).mock.calls.length;
+    await act(async () => {
+      fireEvent.click(within(panel).getByRole("button", { name: "Abrir WhatsApp" }));
+    });
+    expect(within(panel).getByText(mensaje)).toBeInTheDocument();
+    expect(vi.mocked(apiAcademia.cobranza).mock.calls.length).toBeGreaterThan(pedidas);
+  });
+
+  it("GRUPO_CANCELADO (400) al armar el recordatorio: el mensaje del backend tal cual", async () => {
+    const mensaje = "Esa cuota es de un grupo cancelado: no se le manda recordatorio.";
+    vi.mocked(apiAcademia.recordatorio).mockRejectedValue(new ApiError(mensaje, 400, { codigo: "GRUPO_CANCELADO" }));
+    await montar();
+    fireEvent.click(screen.getAllByRole("button", { name: "Enviar QR" })[0]);
+    const panel = screen.getByRole("complementary", { name: "Céspedes Molina, Joaquín" });
+    await act(async () => {
+      fireEvent.click(within(panel).getByRole("button", { name: "Abrir WhatsApp" }));
+    });
+    expect(within(panel).getByText(mensaje)).toBeInTheDocument();
   });
 
   it("varios marcados se recorren de a uno: 1 de 2 · Siguiente", async () => {

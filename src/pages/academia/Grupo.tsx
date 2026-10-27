@@ -6,6 +6,7 @@ import PanelLateral from "../../components/PanelLateral";
 import { AvisoOk, Boton, Campo, Cargando, Confirmar, ErrorMsg, Input, Modal, Select, Vacio, useAviso } from "../../components/ui";
 import { apiAcademia } from "../../lib/academia/apiAcademia";
 import { mesCorto, mesDe } from "../../lib/academia/calendario";
+import { esDatoViejo, mensajeDelBackend } from "../../lib/academia/errores";
 import { fechaCorta, horarioGrupo, nombreAlumno, nombreDe } from "../../lib/academia/formato";
 import { nombresDe } from "../../lib/academia/modulos";
 import type { AlumnoDelGrupo, FiltroAlumnosGrupo, GrupoDetalle } from "../../lib/academia/tipos";
@@ -181,7 +182,7 @@ export default function Grupo() {
       setCancelando(false);
       setAviso([cancelado ? "Grupo cancelado." : "Grupo reactivado.", ...(nuevo.avisos ?? [])].join(" "));
     } catch (e) {
-      setErrorAccion(e instanceof Error ? e.message : "No se pudo guardar");
+      setErrorAccion(mensajeDelBackend(e, "No se pudo guardar"));
       setCancelando(false);
     } finally {
       setProcesando(false);
@@ -636,7 +637,9 @@ function PanelAlumno({
         const r = await apiAcademia.recordatorio(pendiente.id);
         abrirWhatsapp(r.url);
       } catch (e) {
-        setError(e instanceof Error ? e.message : "No se pudo armar el mensaje");
+        setError(mensajeDelBackend(e, "No se pudo armar el mensaje"));
+        // La cuota ya no debe nada o el grupo se canceló: el panel mostraba datos viejos.
+        if (esDatoViejo(e)) ficha.recargar();
       } finally {
         setAvisando(false);
       }
@@ -799,7 +802,7 @@ function EditarGrupo({
       }
       onGuardado(nuevo);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "No se pudo guardar");
+      setError(mensajeDelBackend(e, "No se pudo guardar"));
     } finally {
       setGuardando(false);
     }
