@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Icon } from "../../components/Icon";
 import { Paginacion } from "../../components/Paginacion";
@@ -90,15 +90,20 @@ export default function Cobranza() {
 
   const { q, setQ, buscado } = useBusquedaEstudiante();
   const ajustes = useApi(() => apiAcademia.ajustes().catch(() => null), []);
+  // Los totales viajan con cada respuesta pero `usePaginado` descarta las viejas
+  // sólo para las filas: acá se descartan igual, o una búsqueda lenta pisaba las
+  // tarjetas de la siguiente (ronda 1, D5).
+  const vueltaTotales = useRef(0);
   const lista = usePaginado(
     async (pg) => {
+      const mia = ++vueltaTotales.current;
       const r = await apiAcademia.cobranza({
         ...pg,
         tipo,
         sede: sede.sucursalId,
         q: buscado || undefined,
       });
-      setTotales(r.totales);
+      if (mia === vueltaTotales.current) setTotales(r.totales);
       return r;
     },
     [tipo, sede.sucursalId, buscado],
@@ -106,6 +111,12 @@ export default function Cobranza() {
   // El buscador de Estudiantes (D2/D10): lo busca el servidor en todas las páginas,
   // y las tarjetas de arriba y la paginación cuentan sólo lo encontrado.
   const visibles = lista.items;
+  // El buscador se queda una vez que hubo filas o texto: si no, al limpiar una
+  // búsqueda sin resultados desaparecía hasta que llegara la respuesta (ronda 1, D6).
+  const [hayBuscador, setHayBuscador] = useState(false);
+  useEffect(() => {
+    if (lista.items.length > 0 || q.trim() !== "") setHayBuscador(true);
+  }, [lista.items.length, q]);
   const cobra = cobraCuotas({
     features: negocio?.features,
     rubro,
@@ -245,7 +256,7 @@ export default function Cobranza() {
       >
         {/* El mismo buscador que Estudiantes, Cobrar e Inscribir (D2), en su propia fila de la tarjeta. */}
         {/* Con la búsqueda escrita se queda aunque no haya nadie, para poder borrarla. */}
-        {(lista.items.length > 0 || q.trim() !== "") && (
+        {(lista.items.length > 0 || q.trim() !== "" || hayBuscador) && (
           <div className="border-b border-borde-soft bg-muted/50 px-4 py-3 sm:px-5">
             <BuscadorEstudiante valor={q} onChange={setQ} />
           </div>

@@ -286,6 +286,50 @@ describe("N7 · cobranza", () => {
     expect(screen.queryAllByText("Céspedes Molina, Joaquín").length).toBeGreaterThan(0);
   });
 
+  it("ronda 1 · D6: al limpiar una búsqueda sin resultados el buscador no desaparece mientras llega la lista", async () => {
+    await montar();
+    vi.mocked(apiAcademia.cobranza).mockResolvedValue({ ...RESPUESTA, items: [], total: 0 });
+    fireEvent.change(screen.getByPlaceholderText("Nombre, CI, código o teléfono"), { target: { value: "zzz" } });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 350));
+    });
+    expect(screen.getByText(/Nadie con «zzz»/)).toBeInTheDocument();
+    // La lista completa tarda: el pedido queda en vuelo.
+    vi.mocked(apiAcademia.cobranza).mockReturnValue(new Promise(() => undefined));
+    fireEvent.click(screen.getByRole("button", { name: "Limpiar búsqueda" }));
+    expect(screen.getByPlaceholderText("Nombre, CI, código o teléfono")).toBeInTheDocument();
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 350));
+    });
+    expect(screen.getByPlaceholderText("Nombre, CI, código o teléfono")).toBeInTheDocument();
+  });
+
+  it("ronda 1 · D5: la respuesta lenta de una búsqueda vieja no pisa los totales de la nueva", async () => {
+    await montar();
+    const conVencido = (vencido: number): RespuestaCobranza => ({ ...RESPUESTA, totales: { ...RESPUESTA.totales, vencido, vencidoCuotas: 1 } });
+    let soltarVieja: (r: RespuestaCobranza) => void = () => undefined;
+    vi.mocked(apiAcademia.cobranza)
+      .mockReturnValueOnce(new Promise((r) => { soltarVieja = r; }))
+      .mockResolvedValueOnce(conVencido(111));
+    const buscador = screen.getByPlaceholderText("Nombre, CI, código o teléfono");
+    fireEvent.change(buscador, { target: { value: "camila" } });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 350));
+    });
+    fireEvent.change(buscador, { target: { value: "joaquin" } });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 350));
+    });
+    const kpi = () => within(screen.getByRole("group", { name: "Filtrar deudas" }));
+    expect(kpi().getByRole("button", { name: /Vencidas Bs\s?111,00/ })).toBeInTheDocument();
+    // Ahora contesta la vieja, con otros totales: no deben verse.
+    await act(async () => {
+      soltarVieja(conVencido(999));
+    });
+    expect(kpi().getByRole("button", { name: /Vencidas Bs\s?111,00/ })).toBeInTheDocument();
+    expect(kpi().queryByRole("button", { name: /999/ })).not.toBeInTheDocument();
+  });
+
   it("D10: el CI del estudiante sale en la fila y en el panel cuando viene; si no viene, no se dibuja", async () => {
     vi.mocked(apiAcademia.cobranza).mockResolvedValue({
       ...RESPUESTA,
