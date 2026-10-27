@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { Link } from "react-router-dom";
 import { Campo, Select } from "../../components/ui";
 import { apiAcademia } from "../../lib/academia/apiAcademia";
+import { RUTA_SEDES } from "../../lib/academia/vista";
 import { tienePermiso } from "../../lib/permisos";
 import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
@@ -92,7 +93,7 @@ export default function SelectorAula({
         <span className="mt-1 block text-xs text-texto-3">
           Esta sede todavía no tiene aulas cargadas.{" "}
           {configura && (
-            <Link to="/configuracion/aulas" target="_blank" rel="noreferrer" className="font-semibold text-primary-700 hover:underline">
+            <Link to={`${RUTA_SEDES}?sede=${sedeId}&ver=aulas`} target="_blank" rel="noreferrer" className="font-semibold text-primary-700 hover:underline">
               Cargar aulas
             </Link>
           )}

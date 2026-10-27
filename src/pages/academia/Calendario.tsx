@@ -12,7 +12,7 @@ import { diasTexto, fechaCorta, nombreDe } from "../../lib/academia/formato";
 import type { Carrera, FilaCalendario, GrupoEnCalendario } from "../../lib/academia/tipos";
 import { useFiltroSede } from "../../lib/academia/useFiltroSede";
 import { usePalabras } from "../../lib/academia/usePalabras";
-import { RUTA_COBRAR, rutaCobroInscripcion } from "../../lib/academia/vista";
+import { RUTA_COBRAR, RUTA_SEDES, rutaCobroInscripcion } from "../../lib/academia/vista";
 import { fmtMoney, isoDia } from "../../lib/format";
 import { cobraCuotas, tienePermiso } from "../../lib/permisos";
 import { useApi } from "../../lib/useApi";
@@ -122,7 +122,7 @@ export default function Calendario() {
   const acciones: AccionMenu[] = [
     { clave: "lista", etiqueta: "Ver como lista", icono: "lista", onClick: () => navigate("/academia/calendario/lista") },
     ...(configura
-      ? [{ clave: "franjas", etiqueta: "Cambiar franjas horarias", icono: "clock" as const, onClick: () => navigate("/configuracion/academia") }]
+      ? [{ clave: "franjas", etiqueta: "Cambiar franjas horarias", icono: "clock" as const, onClick: () => navigate(RUTA_SEDES) }]
       : []),
     ...(!celular ? [{ clave: "imprimir", etiqueta: "Imprimir calendario", icono: "printer" as const, separar: true, onClick: () => window.print() }] : []),
   ];
@@ -245,7 +245,7 @@ export default function Calendario() {
           <Vacio
             icono="calendar"
             titulo="El calendario está vacío"
-            texto={configura ? "Cargá las franjas horarias en Ajustes, o abrí el primer grupo." : "Todavía no hay grupos abiertos."}
+            texto={configura ? "Cargá las franjas horarias en Sedes, o abrí el primer grupo." : "Todavía no hay grupos abiertos."}
             accion={abre ? <Boton onClick={() => setHueco({ sede: sede.sucursalId ?? null })}>Nuevo grupo</Boton> : undefined}
           />
         </Tarjeta>

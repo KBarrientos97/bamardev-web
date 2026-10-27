@@ -1,27 +1,25 @@
-import { useEffect, useMemo, useRef, useState, type FocusEvent } from "react";
-import { Chips } from "../../../components/filtros";
+import { useEffect, useRef, useState, type FocusEvent } from "react";
+import { Link } from "react-router-dom";
 import { Icon } from "../../../components/Icon";
 import { Campo, Cargando, ErrorMsg, Input, Select } from "../../../components/ui";
 import { apiAcademia } from "../../../lib/academia/apiAcademia";
 import { ApiError } from "../../../lib/api";
-import {
-  duracionFranja,
-  franjaSiguiente,
-  problemasFranjas,
-} from "../../../lib/academia/calendario";
-import type { AjustesAcademia as Ajustes, Carrera, Franja } from "../../../lib/academia/tipos";
+import { RUTA_SEDES } from "../../../lib/academia/vista";
+import type { AjustesAcademia as Ajustes, Carrera } from "../../../lib/academia/tipos";
 import { usePalabras } from "../../../lib/academia/usePalabras";
 import { fmtMoney } from "../../../lib/format";
 import { useApi } from "../../../lib/useApi";
-import { useSucursales } from "../../../lib/useSucursales";
-import { BotonFila, BotonIcono, Interruptor, LISTA, PaginaAcademia, SeccionAjuste, TABLA } from "../piezas";
+import { BotonFila, Interruptor, PaginaAcademia, SeccionAjuste, TABLA } from "../piezas";
 import { InscripcionEnLinea } from "./InscripcionEnLinea";
 
 /**
  * Ajustes del instituto (N4, `/configuracion/academia`): lo que se configura
  * una vez. Los cursos en resumen (se editan en su pantalla), el día en que
- * empiezan los módulos, las franjas de cada sede (las filas del calendario),
- * el % del docente y lo de la inscripción.
+ * empiezan los módulos, el % del docente y lo de la inscripción. Las franjas
+ * horarias (las filas del calendario) ya no se editan acá: se cargan en cada
+ * sede (WEB-8, C5), para tener un solo lugar. El backend sigue aceptándolas en
+ * `PATCH /ajustes`, pero esta pantalla nunca las manda: cada guardado lleva
+ * sólo el campo que se tocó, así que no pisa las que tiene cada sede.
  *
  * No hay botón Guardar: cada cambio se guarda solo al soltar el campo, y la
  * cabecera dice "Cambios guardados". Es lo que muestra el lienzo, y un ajuste
@@ -32,38 +30,18 @@ import { InscripcionEnLinea } from "./InscripcionEnLinea";
 
 type Estado = "listo" | "guardando" | "guardado" | "error";
 
-/** Cuántos grupos usa cada franja (`inicio-fin`), sacado del calendario de la sede. */
-function useGruposPorFranja(sede: number | null) {
-  const cal = useApi(() => apiAcademia.calendario({ sede, meses: 12 }), [sede]);
-  return useMemo(() => {
-    const uso = new Map<string, number>();
-    for (const fila of cal.datos?.filas ?? []) {
-      const ids = new Set(fila.celdas.flatMap((c) => c.grupos.map((g) => g.grupoId)));
-      uso.set(`${fila.inicio}-${fila.fin}`, ids.size);
-    }
-    return { uso, listo: !!cal.datos };
-  }, [cal.datos]);
-}
-
 export default function AjustesAcademia() {
   const p = usePalabras();
   const carga = useApi(() => apiAcademia.ajustes(), []);
   const cursos = useApi(() => apiAcademia.carreras(), []);
-  const { sucursales } = useSucursales();
   const [a, setA] = useState<Ajustes | null>(null);
   const [estado, setEstado] = useState<Estado>("listo");
   const [error, setError] = useState("");
-  // Con varias sedes cada una tiene sus franjas; "" = las que valen para todas.
-  const [sedeFranjas, setSedeFranjas] = useState("");
   const enVuelo = useRef(0);
 
   useEffect(() => {
     if (carga.datos) setA(carga.datos);
   }, [carga.datos]);
-
-  const variasSedes = sucursales.length > 1;
-  const sedeId = variasSedes && sedeFranjas ? Number(sedeFranjas) : null;
-  const { uso, listo: usoListo } = useGruposPorFranja(sedeId);
 
   if (carga.error && !carga.datos) {
     return (
@@ -112,29 +90,6 @@ export default function AjustesAcademia() {
       if (n !== a[k]) void guardar({ [k]: n } as Partial<Ajustes>);
     },
   });
-
-  const todas = a.franjas ?? [];
-  // En el orden en que se cargaron: ordenar mientras se tipea movería la fila.
-  const lista = todas.filter((f) => f.almacenId === sedeId);
-  const otras = todas.filter((f) => f.almacenId !== sedeId);
-  // Lo que se tipea queda en pantalla y se guarda al soltar el campo.
-  const borrador = lista;
-  const setBorrador = (nuevas: Franja[]) => setA({ ...a, franjas: [...otras, ...nuevas] });
-
-  /** Guarda las franjas si están bien; si no, avisa y espera a que se corrijan. */
-  function guardarFranjas(nuevas: Franja[]) {
-    const completas = [...otras, ...nuevas];
-    const problemas = problemasFranjas(completas);
-    if (problemas.length) {
-      setEstado("error");
-      setError(problemas[0]);
-      return;
-    }
-    void guardar({ franjas: completas });
-  }
-
-  const cambiarFranja = (i: number, campo: "inicio" | "fin", valor: string) =>
-    setBorrador(borrador.map((f, j) => (j === i ? { ...f, [campo]: valor } : f)));
 
   return (
     <PaginaAcademia ancho="max-w-5xl">
@@ -200,83 +155,13 @@ export default function AjustesAcademia() {
           <h3 id="s-franjas" className="text-sm font-bold text-texto">
             Franjas horarias
           </h3>
-          <p className="mb-3 mt-1 text-[13px] text-texto-3">
-            {`Las filas del calendario${variasSedes ? ` de cada ${p.sede}` : ""}. Pueden ser de 1, 2 o 3 horas.`}
+          <p className="mt-1 text-[13px] text-texto-3">
+            Las franjas horarias ahora se cargan en cada{" "}
+            <Link to={RUTA_SEDES} className="font-semibold text-primary-700 hover:underline">
+              {p.sede}
+            </Link>
+            , junto con sus aulas.
           </p>
-          {variasSedes && (
-            <div className="mb-3">
-              <Chips
-                titulo={p.Sede}
-                valor={sedeFranjas}
-                opciones={[["", `Todas las ${p.sedes}`] as const, ...sucursales.map((s) => [String(s.id), s.nombre] as const)]}
-                onChange={setSedeFranjas}
-              />
-            </div>
-          )}
-          {lista.length === 0 && (
-            <p className="rounded-xl bg-muted px-4 py-3 text-sm text-texto-3">Sin franjas: el calendario arma una fila por cada horario de grupo.</p>
-          )}
-          <ul className={lista.length ? `${LISTA.lista} rounded-xl border border-borde-soft` : ""}>
-            {lista.map((f, i) => {
-              const grupos = uso.get(`${f.inicio}-${f.fin}`) ?? 0;
-              return (
-                <li
-                  key={`${i}-${f.almacenId}`}
-                  className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto] items-center gap-2 px-3 py-2.5 sm:grid-cols-[120px_20px_120px_60px_minmax(0,1fr)_40px] sm:gap-2.5"
-                >
-                  <label>
-                    <span className="sr-only">Desde, franja {i + 1}</span>
-                    <Input
-                      type="time"
-                      step={1800}
-                      value={f.inicio}
-                      onChange={(e) => cambiarFranja(i, "inicio", e.target.value)}
-                      onBlur={() => guardarFranjas(borrador)}
-                    />
-                  </label>
-                  <span className="text-center text-sm text-texto-3">a</span>
-                  <label>
-                    <span className="sr-only">Hasta, franja {i + 1}</span>
-                    <Input
-                      type="time"
-                      step={1800}
-                      value={f.fin}
-                      onChange={(e) => cambiarFranja(i, "fin", e.target.value)}
-                      onBlur={() => guardarFranjas(borrador)}
-                    />
-                  </label>
-                  <span className="hidden text-sm tabular-nums text-texto-3 sm:block">{duracionFranja(f)}</span>
-                  <span className="col-span-3 text-[13px] text-texto-3 sm:col-span-1">
-                    <span className="sm:hidden">{duracionFranja(f)} · </span>
-                    {usoListo ? (grupos === 0 ? "libre" : grupos === 1 ? "1 grupo" : `${grupos} grupos`) : ""}
-                  </span>
-                  <BotonIcono
-                    icono="trash"
-                    etiqueta={`Quitar franja ${f.inicio}–${f.fin}`}
-                    disabled={grupos > 0}
-                    title={grupos > 0 ? "Tiene grupos: no se puede quitar" : "Quitar franja"}
-                    onClick={() => {
-                      const nuevas = borrador.filter((_, j) => j !== i);
-                      setBorrador(nuevas);
-                      guardarFranjas(nuevas);
-                    }}
-                    className="justify-self-end hover:border-danger/40 hover:text-danger-text disabled:hover:border-borde disabled:hover:bg-white disabled:hover:text-texto-2"
-                  />
-                </li>
-              );
-            })}
-          </ul>
-          <BotonFila
-            icono="plus"
-            className="mt-3"
-            onClick={() => {
-              const nuevas = [...borrador, franjaSiguiente(borrador, sedeId)];
-              setBorrador(nuevas);
-              guardarFranjas(nuevas);
-            }}
-          >
-            Agregar franja
-          </BotonFila>
         </div>
       </SeccionAjuste>
 

@@ -47,7 +47,7 @@ vi.mock("../../../lib/academia/apiAcademia", async (importOriginal) => {
 });
 
 import { apiAcademia } from "../../../lib/academia/apiAcademia";
-import Aulas, { AulasConfig } from "./Aulas";
+import Aulas from "./Aulas";
 
 const aula = (id: number, nombre: string, extra: Partial<Aula> = {}): Aula => ({
   id,
@@ -145,14 +145,10 @@ describe("Aulas · la lista", () => {
     expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
   });
 
-  it("la pantalla de la pestaña lleva su título", async () => {
-    render(
-      <MemoryRouter>
-        <AulasConfig />
-      </MemoryRouter>,
-    );
-    await act(async () => {});
-    expect(screen.getByRole("heading", { name: "Aulas" })).toBeInTheDocument();
+  it("con una sede, la tarjeta se llama «Aulas» (no repite el nombre de la sede)", async () => {
+    vi.mocked(apiAcademia.aulas).mockResolvedValue([AULAS[0]]);
+    await montar(1);
+    expect(screen.getByRole("region", { name: /^Aulas/ })).toBeInTheDocument();
   });
 });
 

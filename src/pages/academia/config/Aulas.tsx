@@ -11,7 +11,7 @@ import { tienePermiso } from "../../../lib/permisos";
 import { useApi } from "../../../lib/useApi";
 import { useSucursales } from "../../../lib/useSucursales";
 import { useAuth } from "../../../store/AuthContext";
-import { Chip, EncabezadoPagina, LISTA, PaginaAcademia, Tarjeta } from "../piezas";
+import { Chip, LISTA, Tarjeta } from "../piezas";
 
 /**
  * Las aulas de cada sede (BACK-5, pedido del dueño del 26-oct): hasta ahora el
@@ -19,10 +19,10 @@ import { Chip, EncabezadoPagina, LISTA, PaginaAcademia, Tarjeta } from "../pieza
  * ni validación. Ahora se cargan una vez acá y el grupo las elige de una lista
  * (NuevoGrupo y Grupo).
  *
- * Es un componente suelto —sin página ni pestaña a su alrededor— para poder
- * montarlo después dentro de la ficha de cada sede: con `sedeId` muestra sólo
- * esa sede y sin él, todas las que ve el usuario (con un selector si son
- * varias). Cargar y modificar pide `academia.configurar`.
+ * Es un componente suelto —sin página ni pestaña a su alrededor—: la
+ * pantalla de Sedes lo monta dentro de cada sede con `sedeId` (WEB-8); sin él
+ * muestra todas las que ve el usuario (con un selector si son varias). Ya no
+ * hay una pestaña «Aulas» aparte. Cargar y modificar pide `academia.configurar`.
  */
 export default function Aulas({ sedeId = null }: { sedeId?: number | null }) {
   const { usuario } = useAuth();
@@ -365,15 +365,5 @@ function PanelAula({
         <ErrorMsg>{error}</ErrorMsg>
       </form>
     </PanelLateral>
-  );
-}
-
-/** La pestaña «Aulas» de la Configuración del instituto. */
-export function AulasConfig() {
-  return (
-    <PaginaAcademia ancho="max-w-3xl">
-      <EncabezadoPagina titulo="Aulas" bajada="Las aulas de cada sede. Al abrir un grupo se elige una de esta lista." />
-      <Aulas />
-    </PaginaAcademia>
   );
 }

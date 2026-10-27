@@ -370,7 +370,7 @@ describe("BACK-5 · el aula se elige de la lista de la sede", () => {
     vi.mocked(apiAcademia.crearGrupo).mockResolvedValue(grupoDetalle());
     const { panel } = await montar();
     expect(within(panel).getByText(/Esta sede todavía no tiene aulas cargadas/)).toBeInTheDocument();
-    expect(within(panel).getByRole("link", { name: "Cargar aulas" })).toHaveAttribute("href", "/configuracion/aulas");
+    expect(within(panel).getByRole("link", { name: "Cargar aulas" })).toHaveAttribute("href", "/configuracion/sedes?sede=1&ver=aulas");
     await act(async () => {
       fireEvent.click(within(panel).getByRole("button", { name: "Abrir grupo" }));
     });

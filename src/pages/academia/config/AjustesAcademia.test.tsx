@@ -4,8 +4,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ajustesDePrueba } from "../../../test/academiaFixtures";
 
 /**
- * N4 · Ajustes: cada cambio se guarda solo, las franjas se validan antes de
- * mandarse, la retención y los atrasos quedan "por confirmar" sin tocarse.
+ * N4 · Ajustes: cada cambio se guarda solo, las franjas se cargan en cada sede
+ * (acá sólo hay un enlace y nunca se mandan), la retención y los atrasos
+ * quedan "por confirmar" sin tocarse.
  */
 
 vi.mock("../../../store/AuthContext", async () => {
@@ -98,28 +99,27 @@ describe("N4 · Ajustes del instituto", () => {
     expect(screen.getByText(/entre 1 y 28/)).toBeInTheDocument();
   });
 
-  it("la franja con grupos no se puede quitar; agregar una suma 2 horas después de la última", async () => {
+  it("las franjas ya no se editan acá: un texto lleva a Sedes, y guardar un ajuste NO manda ni borra las franjas (WEB-8, C5)", async () => {
     await montar();
-    expect(screen.getByRole("button", { name: "Quitar franja 07:00–09:00" })).toBeDisabled();
-    expect(screen.getByText("1 grupo")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /Agregar franja/ }));
-    await act(async () => {});
-    expect(apiAcademia.guardarAjustes).toHaveBeenCalledWith({
-      franjas: [
-        { almacenId: null, inicio: "07:00", fin: "09:00" },
-        { almacenId: null, inicio: "19:00", fin: "21:00" },
-        { almacenId: null, inicio: "21:00", fin: "23:00" },
-      ],
-    });
-  });
+    const cal = within(screen.getByRole("region", { name: "Calendario" }));
+    expect(cal.getByText("Franjas horarias")).toBeInTheDocument();
+    expect(cal.getByText(/ahora se cargan en cada/)).toBeInTheDocument();
+    expect(cal.getByRole("link", { name: "sede" })).toHaveAttribute("href", "/configuracion/sedes");
+    expect(cal.queryByRole("button", { name: /Agregar franja/ })).toBeNull();
+    expect(screen.queryByLabelText(/^Desde, franja/)).toBeNull();
+    // No pide el calendario para contar grupos por franja: eso era del editor.
+    expect(apiAcademia.calendario).not.toHaveBeenCalled();
 
-  it("una franja que pisa a otra no se guarda", async () => {
-    await montar();
-    const desde = screen.getByLabelText("Desde, franja 2");
-    fireEvent.change(desde, { target: { value: "08:00" } });
-    fireEvent.blur(desde);
-    expect(apiAcademia.guardarAjustes).not.toHaveBeenCalled();
-    expect(screen.getByText(/se pisan/)).toBeInTheDocument();
+    const dia = screen.getByLabelText(/empiezan el día/);
+    fireEvent.change(dia, { target: { value: "7" } });
+    fireEvent.blur(dia);
+    await act(async () => {});
+    fireEvent.click(screen.getByRole("switch", { name: /piden PIN/ }));
+    await act(async () => {});
+    for (const [cambios] of vi.mocked(apiAcademia.guardarAjustes).mock.calls) {
+      expect(cambios).not.toHaveProperty("franjas");
+    }
+    expect(apiAcademia.guardarAjustes).toHaveBeenCalledTimes(2);
   });
 
   it("retención, atrasos y el QR del banco no se muestran mientras no existan; el PIN de los descuentos sí se cambia", async () => {
@@ -153,7 +153,7 @@ describe("C6 · los ajustes agrupados por tema", () => {
     const cal = within(seccion("Calendario"));
     expect(cal.getByLabelText(/empiezan el día/)).toBeInTheDocument();
     expect(cal.getByText("Franjas horarias")).toBeInTheDocument();
-    expect(cal.getByRole("button", { name: /Agregar franja/ })).toBeInTheDocument();
+    expect(cal.getByRole("link", { name: "sede" })).toBeInTheDocument();
 
     // Cobro: el PIN de los descuentos y los días de espera del semáforo de pago.
     const cobro = within(seccion("Cobro"));
