@@ -6,6 +6,8 @@ import type {
   AlumnoDetalle,
   AlumnoFila,
   AlumnoPorCobrar,
+  Aula,
+  AulaInput,
   Calendario,
   Carrera,
   CarreraInput,
@@ -18,6 +20,7 @@ import type {
   FiltroAlumnos,
   FiltroAlumnosGrupo,
   FiltroCobranza,
+  ConsultaChoques,
   FiltroGrupos,
   FotosInscripcion,
   GrupoDetalle,
@@ -26,6 +29,7 @@ import type {
   HoyAcademia,
   InscripcionDetalle,
   InscripcionInput,
+  LlegadaRegistrada,
   ListaDeClase,
   Materia,
   MateriaGrupoInput,
@@ -44,6 +48,7 @@ import type {
   Preinscripcion,
   Recordatorio,
   ReportesAcademia,
+  RespuestaChoques,
   RespuestaCobranza,
   TipoFoto,
   Tutor,
@@ -67,6 +72,16 @@ export const apiAcademia = {
   ajustes: () => request<AjustesAcademia>("/academia/ajustes"),
   guardarAjustes: (cambios: Partial<AjustesAcademia>) =>
     request<AjustesAcademia>("/academia/ajustes", { method: "PATCH", body: json(cambios) }),
+
+  // ── Aulas por sede ─────────────────────────────────────────────────────────
+  aulas: (f: { sede?: number | null; soloActivas?: boolean } = {}) =>
+    request<Aula[]>(`/academia/aulas${qs({ sede: f.sede, soloActivas: f.soloActivas || undefined })}`),
+  crearAula: (input: AulaInput) => request<Aula>("/academia/aulas", { method: "POST", body: json(input) }),
+  editarAula: (id: number, cambios: { nombre?: string; capacidad?: number | null; activa?: boolean }) =>
+    request<Aula>(`/academia/aulas/${id}`, { method: "PATCH", body: json(cambios) }),
+  /** 409 AULA_EN_USO si la usan grupos vigentes: la pantalla ofrece darla de baja. */
+  borrarAula: (id: number) =>
+    request<{ id: number; borrada: true; gruposDesvinculados: number }>(`/academia/aulas/${id}`, { method: "DELETE" }),
 
   // ── Carreras, materias y planes ────────────────────────────────────────────
   carreras: (incluirInactivas = false) =>
@@ -109,6 +124,9 @@ export const apiAcademia = {
     request<GrupoDetalle>("/academia/grupos", { method: "POST", body: json(input) }),
   editarGrupo: (id: number, cambios: Partial<GrupoInput>) =>
     request<GrupoDetalle>(`/academia/grupos/${id}`, { method: "PATCH", body: json(cambios) }),
+  /** C10: un AVISO, no un bloqueo. Crear y editar no lo verifican: la pantalla lo pide antes de guardar. */
+  choques: (consulta: ConsultaChoques) =>
+    request<RespuestaChoques>("/academia/grupos/choques", { method: "POST", body: json(consulta) }),
   editarMateriaDelGrupo: (grupoId: number, materiaId: number, cambios: Omit<MateriaGrupoInput, "materiaId">) =>
     request<GrupoDetalle>(`/academia/grupos/${grupoId}/materias/${materiaId}`, {
       method: "PATCH",
@@ -213,8 +231,17 @@ export const apiAcademia = {
   lista: (grupoId: number, fecha?: string) => request<ListaDeClase>(`/academia/grupos/${grupoId}/lista${qs({ fecha })}`),
   guardarLista: (grupoId: number, fecha: string, items: { inscripcionId: number; estado: EstadoAsistencia }[]) =>
     request<ListaDeClase | void>(`/academia/grupos/${grupoId}/lista`, { method: "PUT", body: json({ fecha, items }) }),
-  /** La hora la pone el servidor: el atraso no se puede dibujar desde el celular. */
-  llegada: (sesionId: number) => request<unknown>(`/academia/sesiones/${sesionId}/llegada`, { method: "POST" }),
+  /**
+   * La hora la pone el servidor: el atraso no se puede dibujar desde el celular.
+   * Al docente, si falta mucho para la clase, el backend responde 409
+   * LLEGADA_MUY_TEMPRANO sin registrar nada: se pregunta y se reenvía con
+   * `confirmarTemprano` (D7).
+   */
+  llegada: (sesionId: number, confirmarTemprano = false) =>
+    request<LlegadaRegistrada>(`/academia/sesiones/${sesionId}/llegada`, {
+      method: "POST",
+      ...(confirmarTemprano ? { body: json({ confirmarTemprano: true }) } : {}),
+    }),
 
   // ── Notas (F1b) ────────────────────────────────────────────────────────────
   notas: (grupoId: number, materiaId?: number) =>
@@ -294,4 +321,8 @@ export const CODIGOS_ACADEMIA = {
   INICIO_NO_MOVIBLE: "INICIO_NO_MOVIBLE",
   /** 400: la cuota ya no tiene saldo, no se manda recordatorio. */
   CUOTA_SIN_SALDO: "CUOTA_SIN_SALDO",
+  /** 409: el aula la usan grupos vigentes; se ofrece darla de baja en vez de borrarla. */
+  AULA_EN_USO: "AULA_EN_USO",
+  /** 409 (D7): el docente marca su llegada mucho antes de la clase; se confirma y se reenvía. */
+  LLEGADA_MUY_TEMPRANO: "LLEGADA_MUY_TEMPRANO",
 } as const;

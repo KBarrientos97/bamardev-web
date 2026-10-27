@@ -110,6 +110,8 @@ export function rutaCobroInscripcion(inscripcionId: number, sede?: string | Ref 
 export const PESTANAS_CONFIG_ACADEMIA: readonly { seccion: Seccion; a: string }[] = [
   { seccion: "academia_carreras", a: "/configuracion/carreras" },
   { seccion: "almacenes", a: "/inventario/almacenes" },
+  // Las aulas de cada sede (BACK-5): misma sección que Ajustes (`academia.configurar`).
+  { seccion: "academia_ajustes", a: "/configuracion/aulas" },
   { seccion: "academia_planilla", a: "/academia/planilla" },
   { seccion: "academia_ajustes", a: "/configuracion/academia" },
 ];

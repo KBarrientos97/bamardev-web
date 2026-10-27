@@ -99,6 +99,7 @@ const CobranzaAcademia = lazy(() => import("./pages/academia/Cobranza"));
 const CobrarAcademia = lazy(() => import("./pages/academia/Cobrar"));
 const CarrerasAcademia = lazy(() => import("./pages/academia/config/Carreras"));
 const AjustesAcademia = lazy(() => import("./pages/academia/config/AjustesAcademia"));
+const AulasAcademia = lazy(() => import("./pages/academia/config/Aulas").then((m) => ({ default: m.AulasConfig })));
 
 /** Una pantalla de la academia: con su sección y bajada aparte. */
 function Academia({ seccion, children }: { seccion: Seccion; children: React.ReactNode }) {
@@ -848,6 +849,7 @@ function Rutas() {
         <Route path="/academia/cobrar" element={<RedirigeConBusqueda a={RUTA_COBRAR} />} />
         <Route path="/configuracion/carreras" element={<Academia seccion="academia_carreras"><ConPestanasConfig><CarrerasAcademia /></ConPestanasConfig></Academia>} />
         <Route path="/configuracion/academia" element={<Academia seccion="academia_ajustes"><ConPestanasConfig><AjustesAcademia /></ConPestanasConfig></Academia>} />
+        <Route path="/configuracion/aulas" element={<Academia seccion="academia_ajustes"><ConPestanasConfig><AulasAcademia /></ConPestanasConfig></Academia>} />
         {/* Configuración (26-oct): una entrada en el menú, con una pestaña por pantalla. */}
         <Route path="/academia/configuracion" element={<InicioConfig />} />
 

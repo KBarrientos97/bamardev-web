@@ -68,7 +68,7 @@ beforeEach(() => {
   // 09:40 en Bolivia.
   vi.setSystemTime(new Date(2026, 9, 16, 9, 40));
   vi.mocked(apiAcademia.hoy).mockResolvedValue(HOY);
-  vi.mocked(apiAcademia.llegada).mockResolvedValue({});
+  vi.mocked(apiAcademia.llegada).mockResolvedValue({} as never);
 });
 
 afterEach(() => vi.useRealTimers());

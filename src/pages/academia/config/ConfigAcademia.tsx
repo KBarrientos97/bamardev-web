@@ -23,6 +23,9 @@ const NOMBRE: Partial<Record<Seccion, (p: ReturnType<typeof usePalabras>) => str
   academia_ajustes: () => "Ajustes",
 };
 
+/** Las pestañas que comparten sección con otra se nombran por su ruta. */
+const NOMBRE_POR_RUTA: Record<string, string> = { "/configuracion/aulas": "Aulas" };
+
 /** La barra de pestañas, arriba de la pantalla. Con una sola no se dibuja. */
 function Pestanas() {
   const { puede } = useAuth();
@@ -43,7 +46,7 @@ function Pestanas() {
               }`
             }
           >
-            {NOMBRE[t.seccion]?.(p) ?? t.a}
+            {NOMBRE_POR_RUTA[t.a] ?? NOMBRE[t.seccion]?.(p) ?? t.a}
           </NavLink>
         ))}
       </div>

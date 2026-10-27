@@ -220,6 +220,8 @@ export interface GrupoResumen {
   carrera: Ref;
   sede: Ref;
   aula: string | null;
+  /** El aula de la lista de la sede (BACK-5); `aula` queda como su nombre. Un backend anterior no lo manda. */
+  aulaId?: number | null;
   /** 0 = domingo … 6 = sábado (Supuesto: como `Date.getDay()`). */
   dias: number[];
   horaInicio: string;
@@ -324,7 +326,10 @@ export interface GrupoInput {
   carreraId: number;
   almacenId: number;
   nombre?: string;
+  /** Texto libre, el de antes: lo preferido es `aulaId`. */
   aula?: string | null;
+  /** El aula de la lista de la sede del grupo; `null` = sin aula. Si se muda de sede hay que mandar la de la nueva o `null`. */
+  aulaId?: number | null;
   dias: number[];
   horaInicio: string;
   horaFin: string;
@@ -707,6 +712,70 @@ export interface HoyAcademia {
   clases: ClaseDelDia[];
 }
 
+// ── Aulas por sede (BACK-5) ─────────────────────────────────────────────────
+
+export interface Aula {
+  id: number;
+  almacenId: number;
+  sede: Ref;
+  nombre: string;
+  capacidad: number | null;
+  activa: boolean;
+  /** Cuántos grupos vigentes la usan. */
+  enUso: number;
+}
+
+export interface AulaInput {
+  almacenId: number;
+  nombre: string;
+  capacidad?: number | null;
+}
+
+// ── Choques de horario (C10) ────────────────────────────────────────────────
+
+export interface ConsultaChoques {
+  almacenId: number;
+  dias: number[];
+  horaInicio: string;
+  horaFin: string;
+  fechaInicio: string;
+  fechaFin?: string;
+  aulaId?: number | null;
+  docentes?: number[];
+  excluirGrupoId?: number;
+}
+
+/** Un grupo que ya ocupa el aula o al docente en ese horario. */
+interface GrupoQueChoca {
+  grupoId: number;
+  nombre: string;
+  carrera: Ref;
+  sede: Ref | string;
+  /** Ya armado por el backend: «Lu Mi Vi 08:00–10:00». */
+  horario: string;
+  dias: number[];
+  horaInicio: string;
+  horaFin: string;
+}
+
+export interface ChoqueAula extends GrupoQueChoca {
+  fechaInicio: string;
+  fechaFin: string | null;
+}
+
+export interface ChoqueDocente extends GrupoQueChoca {
+  personalId: number;
+  docente: string;
+  desde: string;
+  hasta: string;
+}
+
+export interface RespuestaChoques {
+  hayChoques: boolean;
+  aula: ChoqueAula[];
+  docentes: ChoqueDocente[];
+}
+
 // ── Calendario (ronda 2, N1) ────────────────────────────────────────────────
 
 export interface GrupoEnCalendario {
@@ -781,6 +850,18 @@ export interface ProximaClase {
   horaInicio: string;
   horaFin: string;
   aula: string | null;
+}
+
+/** Lo que responde `POST /academia/sesiones/:id/llegada` (D7). El docente nunca ve `descuento`: la UI no lo usa. */
+export interface LlegadaRegistrada {
+  sesionId: number;
+  llegadaEn: string;
+  atrasoMin: number;
+  toleranciaMin: number;
+  conAtraso: boolean;
+  minutosAntes?: number;
+  muyTemprano?: boolean;
+  descuento?: unknown;
 }
 
 export interface MisClases {
