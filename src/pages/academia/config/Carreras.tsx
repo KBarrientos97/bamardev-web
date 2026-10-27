@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Icon } from "../../../components/Icon";
 import PanelLateral from "../../../components/PanelLateral";
 import { AvisoOk, Boton, Campo, Cargando, ErrorMsg, Input, Modal, Select, Vacio, useAviso } from "../../../components/ui";
@@ -26,7 +27,7 @@ import { usePalabras } from "../../../lib/academia/usePalabras";
 import { ApiError } from "../../../lib/api";
 import { fmtMoney } from "../../../lib/format";
 import { conMayuscula } from "../../../lib/rubro";
-import { tieneFeature } from "../../../lib/permisos";
+import { tieneFeature, tienePermiso } from "../../../lib/permisos";
 import { useApi } from "../../../lib/useApi";
 import { useAuth } from "../../../store/AuthContext";
 import { BotonCompartirInscripcion } from "../CompartirInscripcion";
@@ -77,6 +78,17 @@ export default function Carreras() {
   const [elegida, setElegida] = useState<number | "nueva" | null>(null);
   const [avanzadas, setAvanzadas] = useState<number | null>(null);
   const [aviso, setAviso] = useAviso(5000);
+  const navigate = useNavigate();
+  const { usuario } = useAuth();
+  // C2: al crear un curso, el aviso ofrece abrir su primer grupo (sólo a quien
+  // puede abrir grupos). Dura más que un aviso común: hay que alcanzar a tocarlo.
+  const abreGrupos = tienePermiso(usuario, "academia.grupos");
+  const [recienCreado, setRecienCreado] = useState<Carrera | null>(null);
+  useEffect(() => {
+    if (!recienCreado) return;
+    const t = setTimeout(() => setRecienCreado(null), 20000);
+    return () => clearTimeout(t);
+  }, [recienCreado]);
 
   const carreras = lista.datos ?? [];
   const pctInstituto = ajustes.datos?.pctDocenteDefecto ?? 20;
@@ -120,6 +132,22 @@ export default function Carreras() {
         }
       />
       <AvisoOk>{aviso}</AvisoOk>
+      {recienCreado && (
+        <AvisoOk>
+          <span className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+            <span>
+              {p.Carrera} creado: <b>{recienCreado.nombre}</b>.
+            </span>
+            <BotonFila
+              variante="soft"
+              icono="calendar"
+              onClick={() => navigate(`/academia/calendario?nuevoGrupo=${recienCreado.id}`)}
+            >
+              Abrir el primer grupo
+            </BotonFila>
+          </span>
+        </AvisoOk>
+      )}
 
       <Tarjeta
         etiqueta={p.Carreras}
@@ -187,7 +215,14 @@ export default function Carreras() {
           onGuardado={(c, nuevo) => {
             actualizar(c);
             setElegida(c.id);
-            setAviso(nuevo ? `${p.Carrera} creado.` : "Cambios guardados.");
+            // Con permiso para abrir grupos, el aviso del curso nuevo lleva su botón.
+            if (nuevo && abreGrupos) {
+              setAviso("");
+              setRecienCreado(c);
+            } else {
+              setRecienCreado(null);
+              setAviso(nuevo ? `${p.Carrera} creado.` : "Cambios guardados.");
+            }
           }}
           // El editor de planes a medida es grande (cuotas, vencimientos): no
           // entra en el panel. Se pasa de uno al otro, nunca los dos a la vez

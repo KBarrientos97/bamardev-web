@@ -1,5 +1,5 @@
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Carrera } from "../../../lib/academia/tipos";
 import { ajustesDePrueba } from "../../../test/academiaFixtures";
@@ -10,9 +10,18 @@ import { ajustesDePrueba } from "../../../test/academiaFixtures";
  * módulos con su id para que el servidor los renombre y no los duplique.
  */
 
+/** `sinGrupos`: un rol que configura cursos pero no tiene `academia.grupos`. */
+const quien = vi.hoisted(() => ({ sinGrupos: false }));
+
 vi.mock("../../../store/AuthContext", async () => {
   const { SESION_ADMIN: s } = await import("../../../test/academiaFixtures");
-  return { useAuth: () => ({ ...s, puede: () => true }) };
+  return {
+    useAuth: () => ({
+      ...s,
+      usuario: quien.sinGrupos ? { ...s.usuario, permisos: s.usuario.permisos.filter((x: string) => x !== "academia.grupos") } : s.usuario,
+      puede: () => true,
+    }),
+  };
 });
 
 vi.mock("../../../lib/academia/apiAcademia", async (importOriginal) => {
@@ -60,6 +69,7 @@ const BARBERIA: Carrera = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  quien.sinGrupos = false;
   vi.mocked(apiAcademia.carreras).mockResolvedValue([BARBERIA, { ...BARBERIA, id: 4, nombre: "Maquillaje", publicarEnPagina: false, gruposActivos: 0 }]);
   vi.mocked(apiAcademia.ajustes).mockResolvedValue(ajustesDePrueba());
   vi.mocked(apiAcademia.editarCarreraSimple).mockImplementation(async (id, input) => ({ ...BARBERIA, id, nombre: input.nombre }));
@@ -150,6 +160,60 @@ describe("N2 · Cursos", () => {
     expect(apiAcademia.crearCarreraSimple).toHaveBeenCalledWith(
       expect.objectContaining({ nombre: "Tatuaje", precioModulo: 600, modulos: [{ nombre: "Módulo 1" }], descuentoCompletoPct: 10, cupoDefecto: 20 }),
     );
+  });
+});
+
+describe("C2 · «Abrir el primer grupo» al crear un curso", () => {
+  function Destino() {
+    const l = useLocation();
+    return <p data-testid="destino">{`${l.pathname}${l.search}`}</p>;
+  }
+  async function crearCurso() {
+    render(
+      <MemoryRouter initialEntries={["/configuracion/carreras"]}>
+        <Routes>
+          <Route path="/configuracion/carreras" element={<Carreras />} />
+          <Route path="*" element={<Destino />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    await act(async () => {});
+    fireEvent.click(screen.getByRole("button", { name: "Nuevo curso" }));
+    const panel = screen.getByRole("complementary", { name: "Nuevo curso" });
+    fireEvent.change(within(panel).getByLabelText("Nombre"), { target: { value: "Tatuaje" } });
+    fireEvent.change(within(panel).getByLabelText(/Precio por módulo/), { target: { value: "600" } });
+    fireEvent.click(within(panel).getByRole("button", { name: "Crear curso" }));
+    await act(async () => {});
+  }
+
+  it("quien abre grupos ve el botón y llega al calendario con el curso nuevo", async () => {
+    await crearCurso();
+    expect(screen.getByText(/Curso creado/)).toHaveTextContent("Tatuaje");
+    fireEvent.click(screen.getByRole("button", { name: "Abrir el primer grupo" }));
+    expect(screen.getByTestId("destino")).toHaveTextContent("/academia/calendario?nuevoGrupo=9");
+  });
+
+  it("sin academia.grupos sólo sale «Curso creado.», sin el botón", async () => {
+    quien.sinGrupos = true;
+    await crearCurso();
+    expect(screen.getByText("Curso creado.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Abrir el primer grupo" })).not.toBeInTheDocument();
+  });
+
+  it("editar un curso no ofrece abrir grupo: sólo el curso nuevo", async () => {
+    render(
+      <MemoryRouter>
+        <Carreras />
+      </MemoryRouter>,
+    );
+    await act(async () => {});
+    fireEvent.click(screen.getByRole("button", { name: "Editar Barbería" }));
+    const panel = screen.getByRole("complementary", { name: "Barbería" });
+    fireEvent.change(within(panel).getByLabelText("Nombre"), { target: { value: "Barbería pro" } });
+    fireEvent.click(within(panel).getByRole("button", { name: "Guardar cambios" }));
+    await act(async () => {});
+    expect(screen.getByText("Cambios guardados.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Abrir el primer grupo" })).not.toBeInTheDocument();
   });
 });
 

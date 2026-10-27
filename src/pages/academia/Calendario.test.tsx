@@ -355,4 +355,39 @@ describe("N1 · Calendario con todas las sedes (QA ronda 2, B-07)", () => {
       expect(within(dialogo).getByLabelText("Buscar estudiante")).toBeInTheDocument();
     });
   });
+  describe("C2 · «Abrir el primer grupo» llega con el curso ya elegido", () => {
+    const BARBERIA = { id: 3, nombre: "Barbería", activa: true, materias: [{ id: 31, orden: 1, nombre: "Corte", activa: true }], planes: [], cupoDefecto: 20, pctDocente: null, publicarEnPagina: false };
+
+    async function montarEn(ruta: string) {
+      vi.mocked(apiAcademia.carreras).mockResolvedValue([BARBERIA] as never);
+      render(
+        <MemoryRouter initialEntries={[ruta]}>
+          <Calendario />
+        </MemoryRouter>,
+      );
+      await act(async () => {});
+    }
+
+    it("?nuevoGrupo=3 abre «Abrir grupo» con el curso 3 elegido", async () => {
+      await montarEn("/academia/calendario?nuevoGrupo=3");
+      const panel = screen.getByRole("complementary", { name: "Abrir grupo" });
+      expect(within(panel).getByLabelText("Curso")).toHaveValue("3");
+    });
+
+    it("sin academia.grupos no abre nada (y el parámetro no queda dando vueltas)", async () => {
+      quien.sesion = "secretaria";
+      await montarEn("/academia/calendario?nuevoGrupo=3");
+      expect(screen.queryByRole("complementary", { name: "Abrir grupo" })).not.toBeInTheDocument();
+    });
+
+    it("un valor que no es un curso se ignora", async () => {
+      await montarEn("/academia/calendario?nuevoGrupo=abc");
+      expect(screen.queryByRole("complementary", { name: "Abrir grupo" })).not.toBeInTheDocument();
+    });
+
+    it("sin el parámetro, el calendario abre como siempre", async () => {
+      await montarEn("/academia/calendario");
+      expect(screen.queryByRole("complementary", { name: "Abrir grupo" })).not.toBeInTheDocument();
+    });
+  });
 });

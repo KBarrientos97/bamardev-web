@@ -31,6 +31,8 @@ export interface HuecoCalendario {
   elegirSede?: boolean;
   /** Las sedes que tienen esa franja, cuando son algunas y no todas. */
   sedesPosibles?: number[];
+  /** El curso ya elegido: lo manda «Abrir el primer grupo» al crear un curso nuevo (C2). */
+  carreraId?: number;
 }
 
 const NOMBRE_DIA = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
@@ -69,7 +71,7 @@ export default function NuevoGrupo({
   // el `.catch(() => [])` no había forma de saber si faltaban o no cargaron.
   const docentes = useApi(() => apiAcademia.docentes(), []);
 
-  const [carreraId, setCarreraId] = useState<number | null>(null);
+  const [carreraId, setCarreraId] = useState<number | null>(hueco.carreraId ?? null);
   // La recepción arma grupos en su sede; la dirección elige.
   const [almacenId, setAlmacenId] = useState<number | null>(hueco.sede ?? usuario?.sucursalId ?? null);
   const [franja, setFranja] = useState<string>(

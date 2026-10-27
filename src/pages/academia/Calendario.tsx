@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Icon } from "../../components/Icon";
 import MenuMas, { type AccionMenu } from "../../components/MenuMas";
 import PanelLateral from "../../components/PanelLateral";
@@ -172,6 +172,29 @@ export default function Calendario() {
     setElegido(null);
     abrirHueco(fila, mes);
   };
+  // C2: «Abrir el primer grupo», al crear un curso, llega con `?nuevoGrupo=<curso>`
+  // y abre «Nuevo grupo» con ese curso ya elegido. El parámetro se consume al
+  // abrirse: un F5 o el botón «atrás» no vuelven a abrir el panel.
+  const [params, setParams] = useSearchParams();
+  const cursoPedido = Number(params.get("nuevoGrupo"));
+  useEffect(() => {
+    if (!params.has("nuevoGrupo")) return;
+    if (abre && Number.isInteger(cursoPedido) && cursoPedido > 0) {
+      setElegido(null);
+      setHueco({ sede: sede.sucursalId ?? usuario?.sucursalId ?? null, carreraId: cursoPedido });
+    }
+    // Se limpia aunque no se pueda abrir (sin el permiso, o un valor que no es un curso).
+    setParams(
+      (p) => {
+        const n = new URLSearchParams(p);
+        n.delete("nuevoGrupo");
+        return n;
+      },
+      { replace: true },
+    );
+    // Sólo reacciona al parámetro; el resto se lee en el momento.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params]);
   const nuevoGrupo = () => {
     setElegido(null);
     setHueco({ sede: sede.sucursalId ?? usuario?.sucursalId ?? null });
