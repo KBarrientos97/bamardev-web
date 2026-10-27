@@ -11,9 +11,9 @@ import { diasTexto, fechaCorta, nombreDe } from "../../lib/academia/formato";
 import type { Carrera, FilaCalendario, GrupoEnCalendario } from "../../lib/academia/tipos";
 import { useFiltroSede } from "../../lib/academia/useFiltroSede";
 import { usePalabras } from "../../lib/academia/usePalabras";
-import { rutaCobroInscripcion } from "../../lib/academia/vista";
+import { RUTA_COBRAR, rutaCobroInscripcion } from "../../lib/academia/vista";
 import { fmtMoney, isoDia } from "../../lib/format";
-import { tienePermiso } from "../../lib/permisos";
+import { cobraCuotas, tienePermiso } from "../../lib/permisos";
 import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
 import ClasesDeHoy from "./ClasesDeHoy";
@@ -56,7 +56,7 @@ interface Elegido {
 export default function Calendario() {
   const p = usePalabras();
   const navigate = useNavigate();
-  const { usuario, puede } = useAuth();
+  const { usuario, puede, negocio, rubro } = useAuth();
   const celular = useConsultaMedia("(max-width: 767px)");
   const sede = useFiltroSede();
   const hoy = mesDe(new Date());
@@ -67,10 +67,19 @@ export default function Calendario() {
   const [elegido, setElegido] = useState<Elegido | null>(null);
   const [hueco, setHueco] = useState<HuecoCalendario | null>(null);
   const [inscribir, setInscribir] = useState<{ id: number; nombre: string } | null>(null);
+  /** "Inscribir" de la cabecera: sin grupo elegido, igual que desde Estudiantes. */
+  const [inscribiendo, setInscribiendo] = useState(false);
 
   const abre = tienePermiso(usuario, "academia.grupos");
   const configura = tienePermiso(usuario, "academia.configurar");
   const inscribe = tienePermiso(usuario, "academia.inscribir");
+  // Lo mismo que Cobranza: inscribir o gestionar la cobranza, con la feature.
+  const cobra = cobraCuotas({
+    features: negocio?.features,
+    rubro,
+    permisos: usuario?.permisos,
+    permisosPropios: usuario?.permisosPropios,
+  });
 
   // En el celular se piden siempre 6 meses desde el actual: las pestañas.
   const pedirDesde = celular ? hoy : desde;
@@ -167,6 +176,11 @@ export default function Calendario() {
     setElegido(null);
     setHueco({ sede: sede.sucursalId ?? usuario?.sucursalId ?? null });
   };
+  const abrirInscribir = () => {
+    setElegido(null);
+    setHueco(null);
+    setInscribiendo(true);
+  };
   const hayGrilla = !!datos && datos.filas.length > 0;
 
   return (
@@ -180,9 +194,23 @@ export default function Calendario() {
         }
         acciones={
           <>
+            {/* D1: la recepción no tiene `academia.grupos` y su primera pantalla era un
+                calendario sin una sola acción. La principal es la primera que tenga el
+                rol: "Nuevo grupo" (en el celular va en la barra de abajo), "Inscribir"
+                o "Cobrar a un estudiante"; las demás quedan en gris. */}
             {abre && !celular && (
               <Boton icono="plus" onClick={nuevoGrupo}>
                 Nuevo grupo
+              </Boton>
+            )}
+            {inscribe && (
+              <Boton icono={abre ? undefined : "plus"} variante={abre ? "ghost" : "primary"} onClick={abrirInscribir}>
+                Inscribir
+              </Boton>
+            )}
+            {cobra && (
+              <Boton icono="dollar" variante={abre || inscribe ? "ghost" : "primary"} onClick={() => navigate(RUTA_COBRAR)}>
+                Cobrar a un estudiante
               </Boton>
             )}
             <MenuMas etiqueta="Más acciones del calendario" titulo="Calendario" acciones={acciones} />
@@ -325,6 +353,17 @@ export default function Calendario() {
             setHueco(null);
             cal.recargar();
             navigate(`/academia/grupos/${g.id}`);
+          }}
+        />
+      )}
+
+      {inscribiendo && (
+        <Inscribir
+          onCerrar={() => setInscribiendo(false)}
+          onInscrito={(r) => {
+            setInscribiendo(false);
+            cal.recargar();
+            if (r.cobrar) navigate(rutaCobroInscripcion(r.inscripcion.id, r.inscripcion.grupo?.sede, r.montoHoy));
           }}
         />
       )}

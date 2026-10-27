@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Calendario as TCalendario, GrupoEnCalendario } from "../../lib/academia/tipos";
 import { ajustesDePrueba, grupoDetalle } from "../../test/academiaFixtures";
@@ -10,9 +10,17 @@ import { ajustesDePrueba, grupoDetalle } from "../../test/academiaFixtures";
  * en el panel, y en el celular (N1m) una pestaña por mes.
  */
 
+/** Quién mira el calendario: el administrador (por defecto), la recepción o el docente. */
+const quien = vi.hoisted(() => ({ sesion: "admin" as "admin" | "secretaria" | "docente" }));
+
 vi.mock("../../store/AuthContext", async () => {
-  const { SESION_ADMIN: s } = await import("../../test/academiaFixtures");
-  return { useAuth: () => ({ ...s, puede: () => true }) };
+  const { SESION_ADMIN, SESION_SECRETARIA, SESION_DOCENTE } = await import("../../test/academiaFixtures");
+  return {
+    useAuth: () => ({
+      ...(quien.sesion === "secretaria" ? SESION_SECRETARIA : quien.sesion === "docente" ? SESION_DOCENTE : SESION_ADMIN),
+      puede: () => true,
+    }),
+  };
 });
 
 vi.mock("../../lib/api", async (importOriginal) => {
@@ -31,6 +39,9 @@ vi.mock("../../lib/academia/apiAcademia", async (importOriginal) => {
       grupo: vi.fn(),
       docentes: vi.fn(),
       crearGrupo: vi.fn(),
+      // Inscribir, que se abre desde la cabecera (D1): el buscador y la lista de grupos.
+      alumnos: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 6 }),
+      grupos: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 100 }),
       // Las clases de hoy, arriba (26-oct): sin clases no se dibujan.
       hoy: vi.fn().mockResolvedValue({ fecha: "2026-10-18", sede: null, cobrar: { venceHoy: 0, venceHoyCuotas: 0, vencido: 0, vencidoCuotas: 0, items: [] }, preinscripcionesNuevas: 0, avisos: [], clases: [] }),
     },
@@ -81,6 +92,7 @@ const CAL: TCalendario = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  quien.sesion = "admin";
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(new Date("2026-10-18T14:00:00.000Z"));
   vi.mocked(apiAcademia.calendario).mockResolvedValue(CAL);
@@ -287,5 +299,60 @@ describe("N1 · Calendario con todas las sedes (QA ronda 2, B-07)", () => {
     });
     expect(apiAcademia.docentes).toHaveBeenCalledTimes(2);
     expect(within(panel).queryByText(/No se pudo traer/)).not.toBeInTheDocument();
+  });
+  describe("D1 · las acciones de la cabecera según el rol", () => {
+    function Destino() {
+      const l = useLocation();
+      return <p data-testid="destino">{l.pathname}</p>;
+    }
+    async function montarConRutas() {
+      render(
+        <MemoryRouter initialEntries={["/academia/calendario"]}>
+          <Routes>
+            <Route path="/academia/calendario" element={<Calendario />} />
+            <Route path="*" element={<Destino />} />
+          </Routes>
+        </MemoryRouter>,
+      );
+      await act(async () => {});
+    }
+
+    it("la dirección tiene Nuevo grupo, Inscribir y Cobrar a un estudiante", async () => {
+      await montar();
+      expect(screen.getByRole("button", { name: "Nuevo grupo" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Inscribir" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Cobrar a un estudiante" })).toBeInTheDocument();
+    });
+
+    it("la recepción (sin academia.grupos) ve Inscribir y Cobrar, y no Nuevo grupo", async () => {
+      quien.sesion = "secretaria";
+      await montar();
+      expect(screen.getByRole("button", { name: "Inscribir" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Cobrar a un estudiante" })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Nuevo grupo" })).not.toBeInTheDocument();
+    });
+
+    it("el docente no tiene ninguna de las tres", async () => {
+      quien.sesion = "docente";
+      await montar();
+      for (const nombre of ["Nuevo grupo", "Inscribir", "Cobrar a un estudiante"])
+        expect(screen.queryByRole("button", { name: nombre })).not.toBeInTheDocument();
+    });
+
+    it("Cobrar a un estudiante lleva a la pantalla de cobro", async () => {
+      quien.sesion = "secretaria";
+      await montarConRutas();
+      fireEvent.click(screen.getByRole("button", { name: "Cobrar a un estudiante" }));
+      expect(screen.getByTestId("destino")).toHaveTextContent("/academia/cobranza/cobrar");
+    });
+
+    it("Inscribir abre el formulario sin grupo elegido, con el buscador de estudiante", async () => {
+      quien.sesion = "secretaria";
+      await montar();
+      fireEvent.click(screen.getByRole("button", { name: "Inscribir" }));
+      await act(async () => {});
+      const dialogo = screen.getByRole("dialog", { name: "Inscribir estudiante" });
+      expect(within(dialogo).getByLabelText("Buscar estudiante")).toBeInTheDocument();
+    });
   });
 });
