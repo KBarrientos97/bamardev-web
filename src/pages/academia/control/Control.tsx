@@ -1,6 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Icon } from "../../../components/Icon";
-import MenuMas, { type AccionMenu } from "../../../components/MenuMas";
 import PanelLateral from "../../../components/PanelLateral";
 import { Boton, Cargando, ErrorMsg, Select } from "../../../components/ui";
 import { apiAcademia } from "../../../lib/academia/apiAcademia";
@@ -80,9 +79,6 @@ export default function Control() {
     }
   }
   const meses = Array.from({ length: 6 }, (_, i) => sumarMeses(hoy, -i));
-  const acciones: AccionMenu[] = [
-    { clave: "excel", etiqueta: "Exportar Excel", icono: "download", detalle: "Pronto", deshabilitada: true, onClick: () => {} },
-  ];
 
   return (
     // Con el panel abierto se corre a la izquierda; `w-auto` porque el `w-full` del marco más el margen se salía de la pantalla.
@@ -104,7 +100,6 @@ export default function Control() {
             <Boton disabled={!pendientes.length} onClick={() => setRevisando(pendientes[0])}>
               {pendientes.length ? `Revisar ${pendientes.length} ${pendientes.length === 1 ? "foto" : "fotos"}` : "Fotos al día"}
             </Boton>
-            <MenuMas etiqueta="Más acciones del panel" acciones={acciones} />
           </>
         }
       />

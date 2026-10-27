@@ -2,7 +2,6 @@ import { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Chips } from "../../components/filtros";
 import { Icon } from "../../components/Icon";
-import MenuMas, { type AccionMenu } from "../../components/MenuMas";
 import { Paginacion } from "../../components/Paginacion";
 import PanelLateral from "../../components/PanelLateral";
 import { Boton, Cargando, ErrorMsg, Select, Vacio } from "../../components/ui";
@@ -160,26 +159,6 @@ export default function Cobranza() {
     setCola((c) => c.map(marcar));
   }
 
-  const acciones: AccionMenu[] = [
-    {
-      clave: "texto",
-      etiqueta: "Editar el texto del mensaje",
-      icono: "edit",
-      detalle: "Pronto",
-      deshabilitada: true,
-      onClick: () => {},
-    },
-    {
-      clave: "excel",
-      etiqueta: "Exportar Excel",
-      icono: "download",
-      detalle: "Pronto",
-      deshabilitada: true,
-      separar: true,
-      onClick: () => {},
-    },
-  ];
-
   const dia = ajustes.datos?.diaInicioModulo;
   const subtitulo = [sede.nombre || usuario?.sucursal, dia ? `los ${p.materias} vencen el ${dia} de cada mes` : "lo que se debe"]
     .filter(Boolean)
@@ -217,7 +196,6 @@ export default function Cobranza() {
             >
               {nMarcados === 0 ? "Enviar QR a los marcados" : `Enviar QR a ${nMarcados} ${nMarcados === 1 ? "marcado" : "marcados"}`}
             </Boton>
-            <MenuMas etiqueta="Más acciones de cobranza" titulo="Cobranza" acciones={acciones} />
           </>
         }
       />

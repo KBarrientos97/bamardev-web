@@ -14,7 +14,7 @@ import { usePalabras } from "../../../lib/academia/usePalabras";
 import { fmtMoney } from "../../../lib/format";
 import { useApi } from "../../../lib/useApi";
 import { useSucursales } from "../../../lib/useSucursales";
-import { BotonFila, BotonIcono, claseBotonFila, Interruptor, LISTA, PaginaAcademia, SeccionAjuste, TABLA } from "../piezas";
+import { BotonFila, BotonIcono, Interruptor, LISTA, PaginaAcademia, SeccionAjuste, TABLA } from "../piezas";
 
 /**
  * Ajustes del instituto (N4, `/configuracion/academia`): lo que se configura
@@ -279,7 +279,7 @@ export default function AjustesAcademia() {
       </SeccionAjuste>
 
       <SeccionAjuste id="s-docentes" titulo={`Pago a ${p.docente}s`} bajada={`Sobre lo que pagó cada ${p.alumno} por el ${p.materia}, mes a mes.`}>
-        <div className="flex items-center justify-between gap-4 pb-2">
+        <div className="flex items-center justify-between gap-4">
           <span>
             <label htmlFor="pct-defecto" className="block text-sm text-texto">
               Porcentaje por defecto
@@ -289,15 +289,6 @@ export default function AjustesAcademia() {
           <span className="flex items-center gap-2 text-sm text-texto-2">
             <Input id="pct-defecto" type="number" className="!w-20 text-right" {...numero("pctDocenteDefecto", 0, 100)} />%
           </span>
-        </div>
-        <div className="divide-y divide-borde-soft border-t border-borde-soft">
-          <Interruptor
-            activo={a.retencionActiva}
-            bloqueado
-            etiqueta={`Retención por facturación · ${a.retencionPctDefecto} %`}
-            detalle="Pronto"
-          />
-          <Interruptor activo={false} bloqueado etiqueta={`Descuento por atrasos del ${p.docente}`} detalle="Pronto" />
         </div>
       </SeccionAjuste>
 
@@ -350,23 +341,6 @@ export default function AjustesAcademia() {
               <Input type="number" inputMode="numeric" {...numero("diasEspera", 0, 60)} />
             </Campo>
           )}
-        </div>
-      </SeccionAjuste>
-
-      <SeccionAjuste id="s-qr" titulo="Cobro por QR" bajada="El QR del banco por monto exacto: el pago se acredita solo.">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <span className="flex items-center gap-3">
-            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-muted text-texto-2">
-              <Icon name="qr" size={20} />
-            </span>
-            <span>
-              <span className="block text-sm font-semibold text-texto">Banco BISA</span>
-              <span className="text-[13px] text-texto-3">Sin configurar</span>
-            </span>
-          </span>
-          <button type="button" disabled className={claseBotonFila("ghost")}>
-            Configurar QR de BISA · Pronto
-          </button>
         </div>
       </SeccionAjuste>
     </PaginaAcademia>

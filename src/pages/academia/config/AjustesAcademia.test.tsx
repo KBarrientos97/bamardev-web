@@ -121,11 +121,12 @@ describe("N4 · Ajustes del instituto", () => {
     expect(screen.getByText(/se pisan/)).toBeInTheDocument();
   });
 
-  it("retención y atrasos, por confirmar y sin tocar; el PIN de los descuentos sí se cambia", async () => {
+  it("retención, atrasos y el QR del banco no se muestran mientras no existan; el PIN de los descuentos sí se cambia", async () => {
     await montar();
-    expect(screen.getByRole("switch", { name: /Retención por facturación/ })).toBeDisabled();
-    expect(screen.getByRole("switch", { name: /Descuento por atrasos/ })).toBeDisabled();
-    expect(screen.getAllByText("Pronto")).toHaveLength(2);
+    expect(screen.queryByRole("switch", { name: /Retención por facturación/ })).toBeNull();
+    expect(screen.queryByRole("switch", { name: /Descuento por atrasos/ })).toBeNull();
+    expect(screen.queryByText(/Configurar QR/)).toBeNull();
+    expect(screen.queryByText("Pronto")).toBeNull();
     fireEvent.click(screen.getByRole("switch", { name: /piden PIN/ }));
     await act(async () => {});
     expect(apiAcademia.guardarAjustes).toHaveBeenCalledWith({ topePromoSinPinPct: 100 });

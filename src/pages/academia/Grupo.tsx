@@ -159,9 +159,6 @@ export default function Grupo() {
     ...(comparte && g.inscripcionAbierta && g.estado !== "TERMINADO" && !g.cancelado
       ? [{ clave: "compartir", etiqueta: "Compartir enlace de inscripción", icono: "compartir" as const, onClick: sobreLaPagina(() => setCompartiendo(true)) }]
       : []),
-    ...(sinMontos
-      ? []
-      : [{ clave: "excel", etiqueta: "Exportar Excel", icono: "download" as const, detalle: "Pronto", deshabilitada: true, separar: true, onClick: () => {} }]),
     ...(arma
       ? [
           { clave: "editar", etiqueta: "Editar grupo", onClick: sobreLaPagina(() => setEditando(true)), separar: true },

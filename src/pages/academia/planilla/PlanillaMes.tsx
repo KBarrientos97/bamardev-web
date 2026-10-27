@@ -29,8 +29,7 @@ export default function PlanillaMes() {
   const d = datos.datos;
 
   const acciones: AccionMenu[] = [
-    { clave: "excel", etiqueta: "Exportar Excel con el formato del instituto", icono: "download", detalle: "Pronto", deshabilitada: true, onClick: () => {} },
-    { clave: "pct", etiqueta: `Cambiar el % de un ${p.carrera}`, icono: "percent", separar: true, onClick: () => navigate("/configuracion/carreras") },
+    { clave: "pct", etiqueta: `Cambiar el % de un ${p.carrera}`, icono: "percent", onClick: () => navigate("/configuracion/carreras") },
   ];
 
   // Las mismas columnas para el encabezado, las filas y el total (en escritorio).

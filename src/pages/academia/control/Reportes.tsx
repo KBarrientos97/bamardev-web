@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Icon } from "../../../components/Icon";
-import MenuMas, { type AccionMenu } from "../../../components/MenuMas";
 import { Cargando, ErrorMsg, Select } from "../../../components/ui";
 import { apiAcademia } from "../../../lib/academia/apiAcademia";
 import { mesDe, sumarMeses, tituloMes } from "../../../lib/academia/calendario";
@@ -41,9 +40,6 @@ export default function Reportes() {
   const datos = useApi(() => apiAcademia.reportes(mes, sede.sucursalId), [mes, sede.sucursalId]);
   const d = datos.datos;
   const meses = Array.from({ length: 6 }, (_, i) => sumarMeses(hoy, -i));
-  const acciones: AccionMenu[] = [
-    { clave: "excel", etiqueta: "Exportar Excel", icono: "download", detalle: "Pronto", deshabilitada: true, onClick: () => {} },
-  ];
 
   return (
     <PaginaAcademia>
@@ -66,7 +62,6 @@ export default function Reportes() {
                 ))}
               </Select>
             </div>
-            <MenuMas etiqueta="Más acciones de los reportes" acciones={acciones} />
           </>
         }
       />

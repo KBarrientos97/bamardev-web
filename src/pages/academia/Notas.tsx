@@ -276,7 +276,6 @@ function CargaNotas({
       icono: "lista",
       onClick: () => navigate(docente ? `/academia/lista?grupo=${grupoId}` : `/academia/grupos/${grupoId}/lista`),
     },
-    { clave: "boletin", etiqueta: `Descargar boletín del ${p.materia}`, icono: "download", detalle: "Pronto", deshabilitada: true, onClick: () => {} },
     ...(d.cerrada && reabre
       ? [{ clave: "reabrir", etiqueta: `Reabrir las notas del M${m.orden}`, icono: "lock" as const, separar: true, onClick: () => setReabriendo(true) }]
       : []),

@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
-import MenuMas, { type AccionMenu } from "../../../components/MenuMas";
 import PanelLateral from "../../../components/PanelLateral";
 import { Chips } from "../../../components/filtros";
 import { AvisoOk, Boton, Campo, Cargando, Confirmar, ErrorMsg, Input, Modal, Select, Vacio, useAviso } from "../../../components/ui";
@@ -184,10 +183,6 @@ export default function PlanillaDocente() {
     if (elegida && igual(elegida)) setElegida({ ...elegida, motivoNoPago: motivo });
   }
 
-  const acciones: AccionMenu[] = [
-    { clave: "excel", etiqueta: "Exportar Excel con el formato del instituto", icono: "download", detalle: "Pronto", deshabilitada: true, onClick: () => {} },
-  ];
-
   return (
     // Con el panel abierto la página se corre a la izquierda; `w-auto` porque
     // PaginaAcademia trae `w-full` y con el margen se saldría de la pantalla.
@@ -241,7 +236,6 @@ export default function PlanillaDocente() {
                 Registrar pago {fmtMoney(r.liquido)}
               </Boton>
             )}
-            <MenuMas etiqueta="Más acciones de la planilla" acciones={acciones} />
           </>
         }
       >
