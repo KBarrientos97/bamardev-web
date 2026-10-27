@@ -20,6 +20,8 @@ vi.mock("../../store/AuthContext", async () => {
   };
 });
 
+// `almacenes.administrar` ya no hace falta: las sedes salen de `GET /academia/sedes`. Si alguien
+// volviera a pedir los almacenes, este mock lo delata (los tests miran que no se llame).
 vi.mock("../../lib/api", async (importOriginal) => {
   const real = await importOriginal<typeof import("../../lib/api")>();
   return { ...real, api: { ...real.api, getAlmacenes: vi.fn() } };
@@ -27,7 +29,7 @@ vi.mock("../../lib/api", async (importOriginal) => {
 
 vi.mock("../../lib/academia/apiAcademia", async (importOriginal) => {
   const real = await importOriginal<typeof import("../../lib/academia/apiAcademia")>();
-  return { ...real, apiAcademia: { ajustes: vi.fn(), carreras: vi.fn(), docentes: vi.fn(), grupos: vi.fn() } };
+  return { ...real, apiAcademia: { sedes: vi.fn(), ajustes: vi.fn(), carreras: vi.fn(), docentes: vi.fn(), grupos: vi.fn() } };
 });
 
 import { apiAcademia } from "../../lib/academia/apiAcademia";
@@ -36,10 +38,23 @@ import PrimerosPasos from "./PrimerosPasos";
 
 const CLAVE = "bamardev_primeros_pasos_20";
 
+const sede = (extra: Record<string, unknown> = {}) => ({
+  id: 1,
+  nombre: "Central",
+  direccion: "Av. Blanco 123",
+  telefono: null,
+  horarioAtencion: null,
+  esPrincipal: true,
+  aulas: 1,
+  franjas: 5,
+  gruposVigentes: 0,
+  ...extra,
+});
+
 const curso = { id: 1, nombre: "Barbería", activa: true, precioModulo: 500, planes: [], materias: [{ id: 1, activa: true }] };
 
 function cargarTodoHecho() {
-  vi.mocked(api.getAlmacenes).mockResolvedValue([{ id: 1, nombre: "Central", activo: true, tipo: "SUCURSAL", direccion: "Av. Blanco 123" }] as never);
+  vi.mocked(apiAcademia.sedes).mockResolvedValue([sede()] as never);
   vi.mocked(apiAcademia.ajustes).mockResolvedValue(ajustesDePrueba({ paginaPublicada: true }));
   vi.mocked(apiAcademia.carreras).mockResolvedValue([curso] as never);
   vi.mocked(apiAcademia.docentes).mockResolvedValue([{ personalId: 1, nombre: "Marco", sedes: [], pctDocente: null, retencionPct: null, tieneLogin: true }]);
@@ -49,8 +64,8 @@ function cargarTodoHecho() {
 /** Un instituto recién dado de alta: la sede "Central" sin dirección y nada más. */
 function cargarVacio() {
   cargarTodoHecho();
-  vi.mocked(api.getAlmacenes).mockResolvedValue([{ id: 1, nombre: "Central", activo: true, tipo: "SUCURSAL", direccion: null }] as never);
-  vi.mocked(apiAcademia.ajustes).mockResolvedValue(ajustesDePrueba({ franjas: [], paginaPublicada: false }));
+  vi.mocked(apiAcademia.sedes).mockResolvedValue([sede({ direccion: null, franjas: 0, aulas: 0 })] as never);
+  vi.mocked(apiAcademia.ajustes).mockResolvedValue(ajustesDePrueba({ paginaPublicada: false }));
   vi.mocked(apiAcademia.carreras).mockResolvedValue([]);
   vi.mocked(apiAcademia.docentes).mockResolvedValue([]);
   vi.mocked(apiAcademia.grupos).mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 100 });
@@ -84,8 +99,8 @@ describe("C1 · Primeros pasos", () => {
     expect(within(tarjeta).getAllByRole("listitem")).toHaveLength(6);
     expect(within(tarjeta).getByText(/0 de 6 listos/)).toBeInTheDocument();
     expect(within(tarjeta).getByRole("progressbar", { name: "Primeros pasos" })).toHaveAttribute("aria-valuenow", "0");
-    expect(within(tarjeta).getByRole("link", { name: /Ir a Sedes/ })).toHaveAttribute("href", "/inventario/almacenes");
-    expect(within(tarjeta).getByRole("link", { name: /Cargar franjas/ })).toHaveAttribute("href", "/configuracion/academia#s-franjas");
+    expect(within(tarjeta).getByRole("link", { name: /Ir a Sedes/ })).toHaveAttribute("href", "/configuracion/sedes");
+    expect(within(tarjeta).getByRole("link", { name: /Cargar franjas/ })).toHaveAttribute("href", "/configuracion/sedes");
     expect(within(tarjeta).getByRole("link", { name: /Crear un curso/ })).toHaveAttribute("href", "/configuracion/carreras");
     expect(within(tarjeta).getByRole("link", { name: /Ir a Personal/ })).toHaveAttribute("href", "/personal");
     expect(within(tarjeta).getByRole("link", { name: /Abrir un grupo/ })).toHaveAttribute("href", "/academia/calendario");
@@ -150,16 +165,46 @@ describe("C1 · Primeros pasos", () => {
       cleanup();
     }
     expect(apiAcademia.ajustes).not.toHaveBeenCalled();
+    expect(apiAcademia.sedes).not.toHaveBeenCalled();
+  });
+
+  it("las sedes salen de /academia/sedes: no se piden los almacenes (no hace falta almacenes.administrar)", async () => {
+    cargarVacio();
+    await montar();
+    expect(apiAcademia.sedes).toHaveBeenCalledTimes(1);
     expect(api.getAlmacenes).not.toHaveBeenCalled();
+  });
+
+  it("con varias sedes, los pasos de sede y franjas abren la primera que falta", async () => {
+    cargarVacio();
+    // Ninguna tiene dirección ni franjas: cada paso abre la primera de la lista (la más a mano).
+    vi.mocked(apiAcademia.sedes).mockResolvedValue([
+      sede({ id: 4, nombre: "Base", direccion: null, franjas: 0 }),
+      sede({ direccion: null, franjas: 0 }),
+    ] as never);
+    await montar();
+    const tarjeta = screen.getByRole("region", { name: "Primeros pasos" });
+    expect(within(tarjeta).getByRole("link", { name: /Ir a Sedes/ })).toHaveAttribute("href", "/configuracion/sedes?sede=4&ver=editar");
+    expect(within(tarjeta).getByRole("link", { name: /Cargar franjas/ })).toHaveAttribute("href", "/configuracion/sedes?sede=4&ver=franjas");
+  });
+
+  it("la dirección de la sede se marca sola; las franjas, con el conteo de las sedes", async () => {
+    cargarVacio();
+    vi.mocked(apiAcademia.sedes).mockResolvedValue([sede({ franjas: 0 })] as never);
+    await montar();
+    const tarjeta = screen.getByRole("region", { name: "Primeros pasos" });
+    expect(within(tarjeta).queryByRole("link", { name: /Ir a Sedes/ })).not.toBeInTheDocument();
+    expect(within(tarjeta).getByRole("link", { name: /Cargar franjas/ })).toBeInTheDocument();
   });
 
   it("un paso que no se pudo saber (un permiso que falta) no se muestra ni se da por hecho", async () => {
     cargarVacio();
     vi.mocked(apiAcademia.docentes).mockRejectedValue(new Error("Sin permiso"));
-    vi.mocked(api.getAlmacenes).mockRejectedValue(new Error("Sin permiso"));
+    vi.mocked(apiAcademia.sedes).mockRejectedValue(new Error("Sin permiso"));
     await montar();
     const tarjeta = screen.getByRole("region", { name: "Primeros pasos" });
-    expect(within(tarjeta).getAllByRole("listitem")).toHaveLength(4);
+    // Sin las sedes caen los dos pasos que dependen de ellas (sede y franjas), y sin docentes el tercero.
+    expect(within(tarjeta).getAllByRole("listitem")).toHaveLength(3);
     expect(within(tarjeta).queryByText(/con acceso/)).not.toBeInTheDocument();
   });
 

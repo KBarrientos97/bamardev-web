@@ -1,6 +1,6 @@
-import type { Almacen } from "../../types";
 import { RUTA_CALENDARIO, RUTA_CURSOS, RUTA_MI_PAGINA } from "./inscripcionEnLinea";
-import type { AjustesAcademia, Carrera, Docente, GrupoResumen } from "./tipos";
+import type { AjustesAcademia, Carrera, Docente, GrupoResumen, Sede } from "./tipos";
+import { RUTA_SEDES } from "./vista";
 
 /**
  * C1 (auditoría 26-oct): «Primeros pasos» de un instituto nuevo. Con todo
@@ -29,7 +29,8 @@ export interface PasoInicial {
  * como pendiente (o hecho) sería inventar.
  */
 export interface DatosPrimerosPasos {
-  sedes: Almacen[] | null;
+  /** Las sedes de `GET /academia/sedes` (con sus conteos): ya no depende de `almacenes.administrar`. */
+  sedes: Sede[] | null;
   ajustes: AjustesAcademia | null;
   cursos: Carrera[] | null;
   docentes: Docente[] | null;
@@ -39,9 +40,16 @@ export interface DatosPrimerosPasos {
   palabras: { carrera: string; docente: string; sede: string; Sede: string; Sedes: string };
 }
 
-export const RUTA_SEDES = "/inventario/almacenes";
-export const RUTA_FRANJAS = "/configuracion/academia#s-franjas";
+export { RUTA_SEDES };
 export const RUTA_PERSONAL = "/personal";
+
+/**
+ * A dónde lleva un paso de sedes. Con una sola sede, la pantalla ya la muestra
+ * entera; con varias, el enlace abre la primera que falta (`?sede=ID&ver=…`).
+ */
+function rutaDeSedes(sedes: Sede[], falta: Sede | undefined, ver: "franjas" | "editar") {
+  return sedes.length > 1 && falta ? `${RUTA_SEDES}?sede=${falta.id}&ver=${ver}` : RUTA_SEDES;
+}
 
 const lleno = (t: string | null | undefined) => !!t?.trim();
 
@@ -57,22 +65,24 @@ export function pasosPrimeros(d: DatosPrimerosPasos): PasoInicial[] {
   const pasos: PasoInicial[] = [];
 
   if (d.sedes) {
+    // `GET /academia/sedes` ya trae sólo las sedes activas (no depósitos).
+    const sinDireccion = d.sedes.find((s) => !lleno(s.direccion));
     pasos.push({
       clave: "sede",
       titulo: `${p.Sede} con sus datos`,
       detalle: `Poné el nombre y la dirección de tu ${p.sede}.`,
-      hecho: d.sedes.some((s) => s.activo && s.tipo !== "DEPOSITO" && lleno(s.nombre) && lleno(s.direccion)),
-      a: RUTA_SEDES,
+      hecho: d.sedes.some((s) => lleno(s.nombre) && lleno(s.direccion)),
+      a: rutaDeSedes(d.sedes, sinDireccion, "editar"),
       accion: `Ir a ${p.Sedes}`,
     });
-  }
-  if (d.ajustes) {
+    // Las franjas son de cada sede (C5): alcanza con que una tenga (el conteo
+    // incluye las «de todas las sedes»), que es lo que hace andar el calendario.
     pasos.push({
       clave: "franjas",
       titulo: "Franjas horarias",
-      detalle: "Son las filas del calendario: en qué horarios das clase.",
-      hecho: (d.ajustes.franjas ?? []).length > 0,
-      a: RUTA_FRANJAS,
+      detalle: `Son las filas del calendario: en qué horarios das clase. Se cargan en cada ${p.sede}.`,
+      hecho: d.sedes.some((s) => s.franjas > 0),
+      a: rutaDeSedes(d.sedes, d.sedes.find((s) => s.franjas === 0), "franjas"),
       accion: "Cargar franjas",
     });
   }

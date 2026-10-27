@@ -1,10 +1,20 @@
 import { describe, expect, it } from "vitest";
 import { ajustesDePrueba } from "../../test/academiaFixtures";
 import { completo, cuantosHechos, cursoListo, pasosPrimeros, type DatosPrimerosPasos } from "./primerosPasos";
-import type { Almacen } from "../../types";
-import type { Carrera, Docente, GrupoResumen } from "./tipos";
+import type { Carrera, Docente, GrupoResumen, Sede } from "./tipos";
 
-const sede = (extra: Partial<Almacen> = {}) => ({ id: 1, nombre: "Central", activo: true, tipo: "SUCURSAL", direccion: "Av. Blanco 123", ...extra }) as Almacen;
+const sede = (extra: Partial<Sede> = {}): Sede => ({
+  id: 1,
+  nombre: "Central",
+  direccion: "Av. Blanco 123",
+  telefono: null,
+  horarioAtencion: null,
+  esPrincipal: true,
+  aulas: 2,
+  franjas: 5,
+  gruposVigentes: 1,
+  ...extra,
+});
 const curso = (extra: Partial<Carrera> = {}) =>
   ({ id: 1, nombre: "Barbería", activa: true, precioModulo: 500, planes: [], materias: [{ id: 1, activa: true }], ...extra }) as Carrera;
 const docente = (extra: Partial<Docente> = {}) => ({ personalId: 1, nombre: "Marco", sedes: [], pctDocente: null, retencionPct: null, tieneLogin: true, ...extra });
@@ -33,8 +43,8 @@ describe("C1 · pasos de «Primeros pasos»", () => {
   it("un instituto nuevo: nada hecho, y cada paso lleva a su pantalla", () => {
     const pasos = pasosPrimeros({
       ...TODO,
-      sedes: [sede({ direccion: null })],
-      ajustes: ajustesDePrueba({ franjas: [], paginaPublicada: false }),
+      sedes: [sede({ direccion: null, franjas: 0 })],
+      ajustes: ajustesDePrueba({ paginaPublicada: false }),
       cursos: [],
       docentes: [],
       grupos: [],
@@ -42,8 +52,9 @@ describe("C1 · pasos de «Primeros pasos»", () => {
     expect(completo(pasos)).toBe(false);
     expect(cuantosHechos(pasos)).toBe(0);
     expect(Object.fromEntries(pasos.map((x) => [x.clave, x.a]))).toEqual({
-      sede: "/inventario/almacenes",
-      franjas: "/configuracion/academia#s-franjas",
+      // Con una sola sede la pantalla ya la muestra entera: el enlace no necesita decir cuál.
+      sede: "/configuracion/sedes",
+      franjas: "/configuracion/sedes",
       curso: "/configuracion/carreras",
       docente: "/personal",
       grupo: "/academia/calendario",
@@ -51,11 +62,27 @@ describe("C1 · pasos de «Primeros pasos»", () => {
     });
   });
 
-  it("sede: hace falta la dirección; un depósito o una sede inactiva no cuentan", () => {
+  it("sede: hace falta la dirección en alguna; una dirección en blanco no cuenta", () => {
     expect(hechos({ ...TODO, sedes: [sede({ direccion: "  " })] }).sede).toBe(false);
-    expect(hechos({ ...TODO, sedes: [sede({ tipo: "DEPOSITO" })] }).sede).toBe(false);
-    expect(hechos({ ...TODO, sedes: [sede({ activo: false })] }).sede).toBe(false);
+    expect(hechos({ ...TODO, sedes: [sede({ direccion: null })] }).sede).toBe(false);
     expect(hechos({ ...TODO, sedes: [sede({ direccion: null }), sede({ id: 2 })] }).sede).toBe(true);
+  });
+
+  it("franjas (C5): alcanza con que una sede tenga; ya no se miran los Ajustes ni el inventario", () => {
+    expect(hechos({ ...TODO, sedes: [sede({ franjas: 0 })] }).franjas).toBe(false);
+    expect(hechos({ ...TODO, sedes: [sede({ franjas: 0 }), sede({ id: 2, franjas: 3 })] }).franjas).toBe(true);
+    // Aunque los Ajustes digan lo contrario (franjas viejas o ninguna), manda el conteo de las sedes.
+    expect(hechos({ ...TODO, sedes: [sede({ franjas: 0 })], ajustes: ajustesDePrueba() }).franjas).toBe(false);
+    expect(hechos({ ...TODO, ajustes: null }).franjas).toBe(true);
+  });
+
+  it("con varias sedes, el enlace abre la primera que falta; con una, la pantalla de Sedes a secas", () => {
+    const pasos = (sedes: Sede[]) => Object.fromEntries(pasosPrimeros({ ...TODO, sedes }).map((x) => [x.clave, x.a]));
+    expect(pasos([sede({ direccion: null, franjas: 0 })])).toMatchObject({ sede: "/configuracion/sedes", franjas: "/configuracion/sedes" });
+    expect(pasos([sede(), sede({ id: 7, direccion: null, franjas: 0 })])).toMatchObject({
+      sede: "/configuracion/sedes?sede=7&ver=editar",
+      franjas: "/configuracion/sedes?sede=7&ver=franjas",
+    });
   });
 
   it("curso: con módulos activos y precio (del módulo o de un plan); retirado o sin módulos no cuenta", () => {
@@ -84,7 +111,8 @@ describe("C1 · pasos de «Primeros pasos»", () => {
 
   it("lo que no se pudo saber no se inventa: ese paso no aparece, y sin nada no hay «completo»", () => {
     const pasos = pasosPrimeros({ ...TODO, docentes: null, sedes: null });
-    expect(pasos.map((x) => x.clave)).toEqual(["franjas", "curso", "grupo", "pagina"]);
+    // Sin sedes (un corte, un permiso) tampoco se inventa el paso de las franjas.
+    expect(pasos.map((x) => x.clave)).toEqual(["curso", "grupo", "pagina"]);
     expect(completo([])).toBe(false);
   });
 });

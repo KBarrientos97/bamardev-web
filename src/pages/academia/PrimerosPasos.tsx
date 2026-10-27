@@ -4,7 +4,6 @@ import { Icon } from "../../components/Icon";
 import { apiAcademia } from "../../lib/academia/apiAcademia";
 import { completo, cuantosHechos, pasosEsperados, pasosPrimeros } from "../../lib/academia/primerosPasos";
 import { usePalabras } from "../../lib/academia/usePalabras";
-import { api } from "../../lib/api";
 import { tienePermiso } from "../../lib/permisos";
 import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
@@ -69,7 +68,7 @@ export default function PrimerosPasos() {
 function ListaPrimerosPasos({ onOcultar, onCompleta }: { onOcultar: () => void; onCompleta: () => void }) {
   const p = usePalabras();
   const { negocio } = useAuth();
-  const sedes = useApi(() => segura(() => api.getAlmacenes()), []);
+  const sedes = useApi(() => segura(() => apiAcademia.sedes()), []);
   const ajustes = useApi(() => segura(() => apiAcademia.ajustes()), []);
   const cursos = useApi(() => segura(() => apiAcademia.carreras()), []);
   const docentes = useApi(() => segura(() => apiAcademia.docentes()), []);
