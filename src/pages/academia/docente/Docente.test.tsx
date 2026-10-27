@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ClaseDelDia, ListaDeClase, LlegadaRegistrada } from "../../../lib/academia/tipos";
@@ -243,6 +243,20 @@ describe("N6 · Pasar lista", () => {
     );
     await act(async () => {});
   }
+
+  it("R13: la barra de «Guardar lista» se apoya en la del docente sólo si esa se dibuja", async () => {
+    const barra = () => screen.getByRole("button", { name: /^Guardar lista/ }).closest(".fixed")!;
+    await montar();
+    expect(screen.getByRole("navigation", { name: "Secciones del docente" })).toBeInTheDocument();
+    expect(barra().className).toContain("bottom-[57px]");
+    cleanup();
+    // Sin Notas queda una sola sección: no hay barra de abajo y no se deja el hueco de 57 px.
+    quien.permisos = ["academia.ver", "asistencia.registrar"];
+    await montar();
+    expect(screen.queryByRole("navigation", { name: "Secciones del docente" })).not.toBeInTheDocument();
+    expect(barra().className).not.toContain("bottom-[57px]");
+    expect(barra().className).toContain("bottom-0");
+  });
 
   it("sin montos ni «pagaron»; los no marcados arrancan presentes y se guarda todo junto", async () => {
     await montar();

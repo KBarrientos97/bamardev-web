@@ -24,7 +24,7 @@ import {
   PagoDelModulo,
   Tarjeta,
 } from "../piezas";
-import NavDocente from "./NavDocente";
+import NavDocente, { useHayNavDocente } from "./NavDocente";
 
 type Filtro = "todos" | "debe";
 
@@ -109,6 +109,8 @@ function Lista({
   docente: boolean;
   palabras: ReturnType<typeof usePalabras>;
 }) {
+  // La barra de "Guardar lista" se apoya en la del docente sólo si esa se dibuja (R13).
+  const conNav = useHayNavDocente();
   // Sin clase ese día (404 SIN_CLASE) no es un error: es "hoy no toca". Otro
   // 404 es un grupo que no existe o, para el docente, que no es suyo
   // (GRUPO_NO_EXISTE): eso no es "ese día no hay clase" (QA ronda 2, N-3).
@@ -350,7 +352,7 @@ function Lista({
               escritorio, debajo de la lista. */}
           <div
             className={`fixed inset-x-0 z-20 space-y-1.5 border-t border-borde-soft bg-white p-3 shadow-[0_-8px_24px_rgba(15,23,42,0.06)] md:static md:border-0 md:bg-transparent md:p-0 md:shadow-none ${
-              docente ? "bottom-[57px] md:bottom-auto" : "bottom-0 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
+              docente && conNav ? "bottom-[57px] md:bottom-auto" : "bottom-0 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
             }`}
           >
             <ErrorMsg>{error}</ErrorMsg>

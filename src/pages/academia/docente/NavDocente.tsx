@@ -9,15 +9,26 @@ import { useAuth } from "../../../store/AuthContext";
  * entrada aparece sólo si su sección existe (permiso y feature).
  *
  * Mide 57 px de alto (1 de borde + 2 × 4 de relleno + 48 del botón): la barra
- * de "Guardar lista" de PasarLista se apoya justo encima (`bottom-[57px]`).
+ * de "Guardar lista" de PasarLista se apoya justo encima (`bottom-[57px]`) SÓLO
+ * si la barra se dibuja (`useHayNavDocente`): con una sola sección no hay barra
+ * y ese hueco de 57 px dejaba "Guardar lista" flotando (ronda 2, R13).
  */
-export default function NavDocente() {
+function useItemsDocente() {
   const { puede } = useAuth();
   const items: { a: string; label: string; icono: NombreIcono; visible: boolean }[] = [
     { a: "/academia/mis-clases", label: "Mis clases", icono: "calendar", visible: puede("academia_mis_clases") },
     { a: "/academia/notas", label: "Notas", icono: "edit", visible: puede("academia_notas") },
   ];
-  const visibles = items.filter((i) => i.visible);
+  return items.filter((i) => i.visible);
+}
+
+/** ¿Se dibuja la barra de abajo del docente? (con menos de dos lugares, no). */
+export function useHayNavDocente() {
+  return useItemsDocente().length >= 2;
+}
+
+export default function NavDocente() {
+  const visibles = useItemsDocente();
   if (visibles.length < 2) return null;
   return (
     <nav
