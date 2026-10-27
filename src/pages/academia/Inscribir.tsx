@@ -180,6 +180,8 @@ export default function Inscribir({
    */
   const [pidiendoPin, setPidiendoPin] = useState<null | { cobrar: boolean; extra: ExtraEnvio }>(null);
   const [lleno, setLleno] = useState<{ inscritos: number; cupo: number; cobrar: boolean; extra: ExtraEnvio } | null>(null);
+  /** D3: faltan fotos y se pregunta si se inscribe igual (el botón sigue activo). */
+  const [sinFotos, setSinFotos] = useState<{ cobrar: boolean; extra: ExtraEnvio } | null>(null);
 
   const edad = edadDe(nuevo.fechaNacimiento);
   // Menor por la fecha de nacimiento que se está cargando, o porque el
@@ -245,7 +247,6 @@ export default function Inscribir({
     }
     if (esMenor && (!tutor.nombre.trim() || !tutor.telefono.trim())) return `Es menor: falta el tutor (nombre y WhatsApp).`;
     if (!grupoId) return "Elegí el grupo.";
-    if (faltanFotos.length) return `${textoFaltanFotos(faltanFotos.length)}.`;
     if (!plan) return "Elegí cómo paga.";
     if (tipoDesc && valorDesc.trim() === "") return "Poné el descuento, o elegí Ninguna.";
     if (descuentoMal) return `El descuento: ${descuentoMal.charAt(0).toLowerCase()}${descuentoMal.slice(1)}`;
@@ -268,6 +269,7 @@ export default function Inscribir({
     setError("");
     setPidiendoPin(null);
     setLleno(null);
+    setSinFotos(null);
   }, [planId, grupoId, tutor, nuevo, elegido, pagaHoy, otroMonto, tipoDesc, valorDesc, enPct, motivo, fotos]);
 
   async function enviar(cobrar: boolean, extra: ExtraEnvio = {}) {
@@ -275,6 +277,12 @@ export default function Inscribir({
     if (faltantes(cobrar)) {
       setError("");
       setSalida(null);
+      return;
+    }
+    // D3: con fotos pendientes se pregunta antes de seguir (con el PIN, el grupo
+    // lleno y lo demás, la confirmación viaja en `extra` y no se vuelve a pedir).
+    if (faltanFotos.length && !extra.sinFotos) {
+      setSinFotos({ cobrar, extra });
       return;
     }
     const autorizador = extra.firma ?? firma ?? undefined;
@@ -295,6 +303,7 @@ export default function Inscribir({
     setSalida(null);
     setPidiendoPin(null);
     setLleno(null);
+    setSinFotos(null);
     setEnviando(true);
     try {
       const inscripcion = preinscripcion
@@ -307,6 +316,7 @@ export default function Inscribir({
                 ? { tutor: { nombre: tutor.nombre.trim(), telefono: tutor.telefono.trim(), parentesco: tutor.parentesco } }
                 : {}),
               ...(extra.sobreCupo ? { confirmarSobreCupo: true } : {}),
+              ...(faltanFotos.length ? { fotosPendientes: true } : {}),
             },
             fotos,
           )
@@ -328,12 +338,13 @@ export default function Inscribir({
             planPagoId: plan!.id,
             ...(descuento ? { descuento } : {}),
             ...(extra.sobreCupo ? { confirmarSobreCupo: true } : {}),
+            ...(faltanFotos.length ? { fotosPendientes: true } : {}),
           }, fotos);
       if (bienvenida) mandarBienvenida(inscripcion.bienvenida);
       // A3: con el check, las fotos quedan aprobadas. Si falla, la inscripción
       // ya está hecha: las fotos siguen "por revisar" y se aprueban después.
       const alumnoId = elegido?.id ?? preinscripcion?.alumno.id ?? inscripcion.alumnoId;
-      if (apruebaFotos && pideFotos && fotosRevisadas && alumnoId != null) {
+      if (apruebaFotos && pideFotos && fotosRevisadas && faltanFotos.length === 0 && alumnoId != null) {
         await apiAcademia.revisarFotos(alumnoId, { ok: true }).catch(() => undefined);
       }
       onInscrito({ inscripcion, cobrar, ...(cobrar && montoHoy > 0 ? { montoHoy } : {}) });
@@ -585,6 +596,7 @@ export default function Inscribir({
               <p className="flex items-center gap-1.5 text-[13px] text-texto-3">
                 <Icon name="lock" size={13} /> Las fotos sólo las ve el administrador
               </p>
+              <p className="text-[13px] text-texto-3">Si hoy no las tiene, podés inscribir igual: quedan pendientes en el Panel de control.</p>
               <CapturaFotos
                 fotos={fotos}
                 onCambiar={(f) => {
@@ -765,7 +777,7 @@ export default function Inscribir({
               <Requisito ok={datosListos} texto={datosListos ? "Datos completos" : "Faltan los datos"} />
               {esMenor && <Requisito ok={tutorListo} texto={tutor.nombre.trim() ? `Tutor: ${tutor.nombre.trim()} (${tutor.parentesco.toLowerCase()})` : "Tutor"} />}
               {pideFotos && (
-                <Requisito ok={faltanFotos.length === 0} texto={faltanFotos.length === 0 ? "Las 3 fotos" : `Fotos: ${3 - faltanFotos.length} de 3`} />
+                <Requisito ok={faltanFotos.length === 0} texto={faltanFotos.length === 0 ? "Las 3 fotos" : `Fotos: ${3 - faltanFotos.length} de 3 · quedan pendientes`} />
               )}
             </ul>
           {plan && (
@@ -832,6 +844,24 @@ export default function Inscribir({
                 void enviar(cobrar, { ...extra, firma: f });
               }}
             />
+          ) : sinFotos ? (
+            <section aria-label="Faltan fotos" className="space-y-2.5 rounded-xl border border-warning-text/30 bg-warning-bg px-3.5 py-3">
+              <p className="text-sm text-warning-text">
+                <b>{textoFaltanFotos(faltanFotos.length)}.</b> Podés inscribir igual: el {p.alumno} queda con «Faltan fotos» y aparece en el Panel de control. ¿Inscribir sin las fotos?
+              </p>
+              <div className="flex flex-col gap-2 lg:flex-row-reverse">
+                <Boton
+                  className="min-h-11 w-full lg:w-auto"
+                  disabled={enviando}
+                  onClick={() => void enviar(sinFotos.cobrar, { ...sinFotos.extra, sinFotos: true })}
+                >
+                  Inscribir sin fotos
+                </Boton>
+                <Boton variante="ghost" className="min-h-11 w-full bg-white lg:w-auto" disabled={enviando} onClick={() => setSinFotos(null)}>
+                  Cargar las fotos
+                </Boton>
+              </div>
+            </section>
           ) : lleno ? (
             <section aria-label="El grupo está lleno" className="space-y-2.5 rounded-xl border border-warning-text/30 bg-warning-bg px-3.5 py-3">
               <p className="text-sm text-warning-text">
@@ -858,17 +888,11 @@ export default function Inscribir({
               Enviar bienvenida por WhatsApp{alTutor ? " al tutor" : ""}
             </label>
             <div className="flex flex-col gap-2 lg:flex-row-reverse lg:items-center">
-              {/* Sin las 3 fotos el botón dice cuántas faltan y no inscribe (D7). */}
-              <Boton className="min-h-11 w-full lg:w-auto lg:min-w-[240px]" disabled={enviando || faltanFotos.length > 0} onClick={() => void enviar(true)}>
-                {enviando
-                  ? "Inscribiendo…"
-                  : faltanFotos.length
-                    ? textoFaltanFotos(faltanFotos.length)
-                    : plan && montoHoy > 0
-                      ? `Inscribir y cobrar ${fmtMoney(montoHoy)}`
-                      : "Inscribir y cobrar"}
+              {/* Sin las 3 fotos (D3) los botones siguen activos: al tocarlos se pregunta si se inscribe igual. */}
+              <Boton className="min-h-11 w-full lg:w-auto lg:min-w-[240px]" disabled={enviando} onClick={() => void enviar(true)}>
+                {enviando ? "Inscribiendo…" : plan && montoHoy > 0 ? `Inscribir y cobrar ${fmtMoney(montoHoy)}` : "Inscribir y cobrar"}
               </Boton>
-              <Boton variante="ghost" className="min-h-11 w-full bg-white lg:w-auto" disabled={enviando || faltanFotos.length > 0} onClick={() => void enviar(false)}>
+              <Boton variante="ghost" className="min-h-11 w-full bg-white lg:w-auto" disabled={enviando} onClick={() => void enviar(false)}>
                 Inscribir sin cobrar
               </Boton>
             </div>
@@ -881,7 +905,7 @@ export default function Inscribir({
   );
 }
 
-type ExtraEnvio = { sobreCupo?: boolean; firma?: { username: string; pin: string } };
+type ExtraEnvio = { sobreCupo?: boolean; sinFotos?: boolean; firma?: { username: string; pin: string } };
 
 /**
  * El PIN del encargado para un descuento sobre el tope, en el pie del alta.

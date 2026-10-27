@@ -3,10 +3,11 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Icon } from "../../components/Icon";
 import MenuMas, { type AccionMenu } from "../../components/MenuMas";
 import PanelLateral from "../../components/PanelLateral";
-import { Boton, Cargando, ErrorMsg, Vacio } from "../../components/ui";
+import { AvisoOk, Boton, Cargando, ErrorMsg, Vacio, useAviso } from "../../components/ui";
 import { useConsultaMedia } from "../../lib/agenda/useEsCelular";
 import { apiAcademia } from "../../lib/academia/apiAcademia";
 import { mesCorto, mesDe, nombreMes, sumarMeses } from "../../lib/academia/calendario";
+import { avisoFotosPendientes } from "../../lib/academia/fotos";
 import { diasTexto, fechaCorta, nombreDe } from "../../lib/academia/formato";
 import type { Carrera, FilaCalendario, GrupoEnCalendario } from "../../lib/academia/tipos";
 import { useFiltroSede } from "../../lib/academia/useFiltroSede";
@@ -85,6 +86,7 @@ export default function Calendario() {
   // En el celular se piden siempre 6 meses desde el actual: las pestañas.
   const pedirDesde = celular ? hoy : desde;
   const pedirMeses = celular ? 6 : cant;
+  const [aviso, setAviso] = useAviso(8000);
   const cal = useApi(
     () => apiAcademia.calendario({ sede: sede.sucursalId, desde: pedirDesde, meses: pedirMeses }),
     [sede.sucursalId, pedirDesde, pedirMeses],
@@ -223,6 +225,8 @@ export default function Calendario() {
           </>
         }
       />
+
+      <AvisoOk>{aviso}</AvisoOk>
 
       {/* C1: la lista de primeros pasos de un instituto nuevo; se va sola al completarse. */}
       <PrimerosPasos />
@@ -372,7 +376,9 @@ export default function Calendario() {
           onInscrito={(r) => {
             setInscribiendo(false);
             cal.recargar();
-            if (r.cobrar) navigate(rutaCobroInscripcion(r.inscripcion.id, r.inscripcion.grupo?.sede, r.montoHoy));
+            const sinFotos = avisoFotosPendientes(r.inscripcion);
+            if (r.cobrar) navigate(rutaCobroInscripcion(r.inscripcion.id, r.inscripcion.grupo?.sede, r.montoHoy), sinFotos ? { state: { aviso: sinFotos } } : undefined);
+            else if (sinFotos) setAviso(sinFotos);
           }}
         />
       )}
@@ -384,7 +390,9 @@ export default function Calendario() {
           onInscrito={(r) => {
             setInscribir(null);
             cal.recargar();
-            if (r.cobrar) navigate(rutaCobroInscripcion(r.inscripcion.id, undefined, r.montoHoy));
+            const sinFotos = avisoFotosPendientes(r.inscripcion);
+            if (r.cobrar) navigate(rutaCobroInscripcion(r.inscripcion.id, undefined, r.montoHoy), sinFotos ? { state: { aviso: sinFotos } } : undefined);
+            else if (sinFotos) setAviso(sinFotos);
           }}
         />
       )}

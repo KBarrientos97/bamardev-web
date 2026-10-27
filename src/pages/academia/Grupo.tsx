@@ -7,6 +7,7 @@ import { AvisoOk, Boton, Campo, Cargando, Confirmar, ErrorMsg, Input, Modal, Sel
 import { apiAcademia } from "../../lib/academia/apiAcademia";
 import { mesCorto, mesDe } from "../../lib/academia/calendario";
 import { esDatoViejo, mensajeDelBackend } from "../../lib/academia/errores";
+import { avisoFotosPendientes } from "../../lib/academia/fotos";
 import { fechaCorta, horarioGrupo, nombreAlumno, nombreDe } from "../../lib/academia/formato";
 import type { AlumnoDelGrupo, FiltroAlumnosGrupo, GrupoDetalle } from "../../lib/academia/tipos";
 import { usePalabras } from "../../lib/academia/usePalabras";
@@ -373,7 +374,9 @@ export default function Grupo() {
             grupo.recargar();
             alumnos.recargar();
             conteos.recargar();
-            if (r.cobrar) navigate(rutaCobroInscripcion(r.inscripcion.id, g.sede, r.montoHoy));
+            const sinFotos = avisoFotosPendientes(r.inscripcion);
+            if (r.cobrar) navigate(rutaCobroInscripcion(r.inscripcion.id, g.sede, r.montoHoy), sinFotos ? { state: { aviso: sinFotos } } : undefined);
+            else if (sinFotos) setAviso(sinFotos);
           }}
         />
       )}

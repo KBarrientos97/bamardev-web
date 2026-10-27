@@ -114,9 +114,9 @@ function Direccion() {
   return <p data-testid="direccion">{l.search}</p>;
 }
 
-async function montar(ruta: string) {
+async function montar(ruta: string, state?: unknown) {
   render(
-    <MemoryRouter initialEntries={[ruta]}>
+    <MemoryRouter initialEntries={[state ? { pathname: ruta.split("?")[0], search: `?${ruta.split("?")[1] ?? ""}`, state } : ruta]}>
       <Cobrar />
       <Direccion />
     </MemoryRouter>,
@@ -164,6 +164,11 @@ describe("A1 · cobrar a estudiante", () => {
     expect(screen.getByText("recibo 61")).toBeInTheDocument();
     expect(screen.getByText("pagó Rosa Molina")).toBeInTheDocument();
     expect(screen.getByText("Cobrar a otro estudiante")).toBeInTheDocument();
+  });
+
+  it("D3: si se inscribió sin las fotos y se siguió a cobrar, el aviso queda a la vista", async () => {
+    await montar("/academia/cobrar?inscripcion=103&monto=400", { aviso: "Quedó con las fotos pendientes: aparece en «Faltan fotos» del Panel de control." });
+    expect(screen.getByText(/Quedó con las fotos pendientes/)).toBeInTheDocument();
   });
 
   it("D6: un carrito sin materias (backend anterior) deja el «Barbería · Cuota 2/3» del backend", async () => {

@@ -484,6 +484,12 @@ export interface InscripcionDetalle {
    * y la web lo arma como antes.
    */
   bienvenida?: { telefono: string | null; aTutor: boolean; texto: string; url: string } | null;
+  /**
+   * D3: sólo en la respuesta de inscribir y convertir. `true` si se inscribió
+   * sin las fotos obligatorias; `fotosFaltan` dice cuáles. Un backend anterior no los manda.
+   */
+  fotosPendientes?: boolean;
+  fotosFaltan?: TipoFoto[];
 }
 
 export interface EventoInscripcion {
@@ -563,6 +569,8 @@ export interface InscripcionInput {
   planPagoId: number;
   descuento?: DescuentoInput;
   confirmarSobreCupo?: boolean;
+  /** D3: inscribir aunque falten las fotos (sólo con `fotosObligatorias` prendido); queda en «Faltan fotos». */
+  fotosPendientes?: boolean;
 }
 
 export interface Preinscripcion {

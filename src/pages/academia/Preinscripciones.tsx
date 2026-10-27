@@ -6,7 +6,7 @@ import { Paginacion } from "../../components/Paginacion";
 import { AvisoOk, Cargando, ErrorMsg, Vacio, useAviso } from "../../components/ui";
 import { apiAcademia } from "../../lib/academia/apiAcademia";
 import { EVENTO_PREINSCRIPCIONES } from "../../lib/academia/contadorPreinscripciones";
-import { textoFaltanFotos } from "../../lib/academia/fotos";
+import { avisoFotosPendientes, textoFaltanFotos } from "../../lib/academia/fotos";
 import { nombreAlumno, nombreDe } from "../../lib/academia/formato";
 import type { Preinscripcion } from "../../lib/academia/tipos";
 import { useFiltroSede } from "../../lib/academia/useFiltroSede";
@@ -161,10 +161,11 @@ export default function Preinscripciones() {
           onCerrar={() => setInscribiendo(null)}
           onInscrito={(r) => {
             setInscribiendo(null);
-            setAviso(`${nombreAlumno(inscribiendo.alumno)} quedó inscrito.`);
+            const sinFotos = avisoFotosPendientes(r.inscripcion);
+            setAviso([`${nombreAlumno(inscribiendo.alumno)} quedó inscrito.`, sinFotos].filter(Boolean).join(" "));
             lista.recargar();
             avisarCambio();
-            if (r.cobrar) navigate(rutaCobroInscripcion(r.inscripcion.id, r.inscripcion.grupo?.sede, r.montoHoy));
+            if (r.cobrar) navigate(rutaCobroInscripcion(r.inscripcion.id, r.inscripcion.grupo?.sede, r.montoHoy), sinFotos ? { state: { aviso: sinFotos } } : undefined);
           }}
         />
       )}

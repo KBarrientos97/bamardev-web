@@ -66,6 +66,26 @@ async function montar() {
   await act(async () => {});
 }
 
+describe("D3 · convertir sin las fotos", () => {
+  it("pregunta, convierte con fotosPendientes y el aviso dice que quedó con las fotos pendientes", async () => {
+    vi.mocked(apiAcademia.ajustes).mockResolvedValue(ajustesDePrueba({ fotosObligatorias: true }));
+    vi.mocked(apiAcademia.convertir).mockResolvedValue({ id: 700, fotosPendientes: true, fotosFaltan: ["CI_ANVERSO", "CI_REVERSO"] } as never);
+    await montar();
+    fireEvent.click(screen.getAllByRole("button", { name: "Cobrar e inscribir" })[0]);
+    await act(async () => {});
+    const dialogo = screen.getByRole("dialog", { name: "Inscribir estudiante" });
+    await act(async () => {
+      fireEvent.click(within(dialogo).getByRole("button", { name: "Inscribir sin cobrar" }));
+    });
+    expect(apiAcademia.convertir).not.toHaveBeenCalled();
+    await act(async () => {
+      fireEvent.click(within(within(dialogo).getByRole("region", { name: "Faltan fotos" })).getByRole("button", { name: "Inscribir sin fotos" }));
+    });
+    expect(apiAcademia.convertir).toHaveBeenCalledWith(44, expect.objectContaining({ fotosPendientes: true }), {});
+    expect(screen.getByText(/Ortiz Rocha, Thiago quedó inscrito\. Quedó con las fotos pendientes \(carnet de adelante y carnet de atrás\)/)).toBeInTheDocument();
+  });
+});
+
 describe("E20 · Inscripciones online", () => {
   it("sin QR del banco, todas pagan en el instituto, con sus fotos y la forma de pago", async () => {
     await montar();

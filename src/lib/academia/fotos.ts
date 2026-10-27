@@ -64,6 +64,16 @@ export function textoFaltanFotos(faltan: number): string {
   return faltan === 1 ? "Falta 1 foto" : `Faltan ${faltan} fotos`;
 }
 
+/**
+ * El aviso de éxito cuando se inscribió sin las fotos (D3): `null` si no
+ * quedó nada pendiente. Lo usan todas las pantallas desde donde se inscribe.
+ */
+export function avisoFotosPendientes(i: { fotosPendientes?: boolean; fotosFaltan?: TipoFoto[] } | null | undefined): string | null {
+  if (!i?.fotosPendientes) return null;
+  const cuales = i.fotosFaltan?.length ? ` (${listaDeFotos(i.fotosFaltan)})` : "";
+  return `Quedó con las fotos pendientes${cuales}: aparece en «Faltan fotos» del Panel de control.`;
+}
+
 /** Cuántas de las 3 faltan, contando las nuevas y las ya guardadas. */
 export function fotosQueFaltan(fotos: FotosInscripcion, yaTiene: TipoFoto[] = []): TipoFoto[] {
   return TIPOS_FOTO.filter((t) => !fotos[t] && !yaTiene.includes(t));

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { Icon } from "../../components/Icon";
-import { Boton, Cargando, ErrorMsg, Input, Select, Vacio } from "../../components/ui";
+import { AvisoOk, Boton, Cargando, ErrorMsg, Input, Select, Vacio } from "../../components/ui";
 import { apiAcademia, CODIGOS_ACADEMIA } from "../../lib/academia/apiAcademia";
 import {
   cuotasIniciales,
@@ -84,6 +84,10 @@ export default function Cobrar() {
   const p = usePalabras();
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
+  // D3: si se inscribió sin las fotos y se siguió a cobrar, el aviso viaja en la
+  // navegación. Se lee al entrar: reescribir la dirección (`replace`) la pierde.
+  const { state: estadoNav } = useLocation() as { state?: { aviso?: string } | null };
+  const [avisoInscripcion] = useState(() => estadoNav?.aviso ?? "");
   // Se lee al entrar. La dirección queda con el estudiante elegido (QA
   // 23-oct: un F5 lo perdía); lo acordado al inscribir (`monto`) se saca
   // apenas se cobra, para que un F5 no lo vuelva a proponer.
@@ -370,6 +374,7 @@ export default function Cobrar() {
   // del cobro (QA 23-oct lo dejó así y anda).
   const detalleCelular = (
     <div className="space-y-3">
+      <AvisoOk>{avisoInscripcion}</AvisoOk>
       <div className="card space-y-1 p-4">
         <p className="flex items-center gap-2 text-[15px] font-bold text-texto">
           <Icon name="birrete" size={18} className="shrink-0 text-primary-700" />
@@ -419,6 +424,7 @@ export default function Cobrar() {
   const vencido = Math.round(vencidas.reduce((s, l) => s + l.saldo, 0) * 100) / 100;
   const detalleAncho = (
     <div className="min-w-0 space-y-6">
+      <AvisoOk>{avisoInscripcion}</AvisoOk>
       <Tarjeta etiqueta={p.Alumno}>
         <div className="flex items-start gap-4">
           <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary-50 text-primary-700">

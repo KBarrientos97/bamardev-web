@@ -168,6 +168,8 @@ export const apiAcademia = {
       descuento?: DescuentoInput;
       tutor?: { nombre: string; telefono: string; parentesco: string; ci?: string };
       confirmarSobreCupo?: boolean;
+      /** D3: convertir aunque falten las fotos obligatorias. */
+      fotosPendientes?: boolean;
     },
     fotos?: FotosInscripcion,
   ) =>
