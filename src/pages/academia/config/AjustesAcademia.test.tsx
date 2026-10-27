@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ajustesDePrueba } from "../../../test/academiaFixtures";
@@ -130,6 +130,66 @@ describe("N4 · Ajustes del instituto", () => {
     fireEvent.click(screen.getByRole("switch", { name: /piden PIN/ }));
     await act(async () => {});
     expect(apiAcademia.guardarAjustes).toHaveBeenCalledWith({ topePromoSinPinPct: 100 });
+  });
+});
+
+describe("C6 · los ajustes agrupados por tema", () => {
+  const seccion = (nombre: string) => screen.getByRole("region", { name: nombre });
+
+  it("las secciones salen en este orden, cada una con lo suyo", async () => {
+    vi.mocked(apiAcademia.ajustes).mockResolvedValue(ajustesDePrueba({ diasEspera: 7 }));
+    await montar();
+    expect(screen.getAllByRole("region").map((r) => r.getAttribute("aria-labelledby"))).toEqual([
+      "s-cursos",
+      "s-cal",
+      "s-insc",
+      "s-cobro",
+      "s-docentes",
+      "s-notas",
+    ]);
+
+    // Calendario: el día de inicio, la duración y las franjas.
+    const cal = within(seccion("Calendario"));
+    expect(cal.getByLabelText(/empiezan el día/)).toBeInTheDocument();
+    expect(cal.getByText("Franjas horarias")).toBeInTheDocument();
+    expect(cal.getByRole("button", { name: /Agregar franja/ })).toBeInTheDocument();
+
+    // Cobro: el PIN de los descuentos y los días de espera del semáforo de pago.
+    const cobro = within(seccion("Cobro"));
+    expect(cobro.getByRole("switch", { name: /piden PIN/ })).toBeInTheDocument();
+    expect(cobro.getByLabelText(/Días de espera antes de marcar en rojo/)).toBeInTheDocument();
+
+    // Docentes: el pago por defecto y el atraso.
+    const docentes = within(seccion("Docentes"));
+    expect(docentes.getByLabelText(/Porcentaje de pago por defecto/)).toBeInTheDocument();
+    expect(docentes.getByLabelText(/El atraso del docente cuenta desde/)).toBeInTheDocument();
+
+    // Notas y asistencia: sólo lo de notas y asistencia (los días de espera ya no están acá).
+    const notas = within(seccion("Notas y asistencia"));
+    expect(notas.getByLabelText("Nota mínima para aprobar")).toBeInTheDocument();
+    expect(notas.getByLabelText("Nota máxima de la escala")).toBeInTheDocument();
+    expect(notas.getByLabelText(/Asistencia mínima/)).toBeInTheDocument();
+    expect(notas.queryByLabelText(/Días de espera/)).toBeNull();
+    expect(notas.queryByLabelText(/El atraso del docente/)).toBeNull();
+
+    // Inscripción: las fotos (bloqueadas) y la página; el PIN se fue a Cobro.
+    const insc = within(seccion("Inscripción"));
+    expect(insc.getByRole("switch", { name: /Recibir inscripciones desde la página/ })).toBeInTheDocument();
+    expect(insc.queryByRole("switch", { name: /piden PIN/ })).toBeNull();
+  });
+
+  it("mover un campo no cambia lo que se guarda: el atraso del docente sigue yendo como toleranciaAtrasoMin", async () => {
+    await montar();
+    const atraso = within(seccion("Docentes")).getByLabelText(/El atraso del docente cuenta desde/);
+    fireEvent.change(atraso, { target: { value: "15" } });
+    fireEvent.blur(atraso);
+    await act(async () => {});
+    expect(apiAcademia.guardarAjustes).toHaveBeenCalledWith({ toleranciaAtrasoMin: 15 });
+  });
+
+  it("sin los días de espera en el backend, Cobro queda con el PIN solo", async () => {
+    await montar();
+    expect(within(seccion("Cobro")).queryByLabelText(/Días de espera/)).toBeNull();
   });
 });
 

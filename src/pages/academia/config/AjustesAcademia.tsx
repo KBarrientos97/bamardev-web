@@ -177,7 +177,7 @@ export default function AjustesAcademia() {
         </BotonFila>
       </SeccionAjuste>
 
-      <SeccionAjuste id="s-cal" titulo="Calendario" bajada="Cada grupo nuevo toma estos valores. Los grupos abiertos no cambian.">
+      <SeccionAjuste id="s-cal" titulo="Calendario" bajada="Cuándo empiezan los módulos y las filas del calendario. Cada grupo nuevo toma estos valores; los abiertos no cambian.">
         <div className="grid gap-4 sm:grid-cols-2">
           <Campo label={`Los ${p.materias} empiezan el día`} hint="De cada mes (1 a 28).">
             <Input type="number" inputMode="numeric" {...numero("diaInicioModulo", 1, 28)} />
@@ -195,100 +195,87 @@ export default function AjustesAcademia() {
             </Select>
           </Campo>
         </div>
-      </SeccionAjuste>
-
-      <SeccionAjuste
-        id="s-franjas"
-        titulo="Franjas horarias"
-        bajada={`Las filas del calendario${variasSedes ? ` de cada ${p.sede}` : ""}. Pueden ser de 1, 2 o 3 horas.`}
-      >
-        {variasSedes && (
-          <div className="mb-3">
-            <Chips
-              titulo={p.Sede}
-              valor={sedeFranjas}
-              opciones={[["", `Todas las ${p.sedes}`] as const, ...sucursales.map((s) => [String(s.id), s.nombre] as const)]}
-              onChange={setSedeFranjas}
-            />
-          </div>
-        )}
-        {lista.length === 0 && (
-          <p className="rounded-xl bg-muted px-4 py-3 text-sm text-texto-3">Sin franjas: el calendario arma una fila por cada horario de grupo.</p>
-        )}
-        <ul className={lista.length ? `${LISTA.lista} rounded-xl border border-borde-soft` : ""}>
-          {lista.map((f, i) => {
-            const grupos = uso.get(`${f.inicio}-${f.fin}`) ?? 0;
-            return (
-              <li
-                key={`${i}-${f.almacenId}`}
-                className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto] items-center gap-2 px-3 py-2.5 sm:grid-cols-[120px_20px_120px_60px_minmax(0,1fr)_40px] sm:gap-2.5"
-              >
-                <label>
-                  <span className="sr-only">Desde, franja {i + 1}</span>
-                  <Input
-                    type="time"
-                    step={1800}
-                    value={f.inicio}
-                    onChange={(e) => cambiarFranja(i, "inicio", e.target.value)}
-                    onBlur={() => guardarFranjas(borrador)}
+        <div className="mt-6 border-t border-borde-soft pt-5">
+          <h3 id="s-franjas" className="text-sm font-bold text-texto">
+            Franjas horarias
+          </h3>
+          <p className="mb-3 mt-1 text-[13px] text-texto-3">
+            {`Las filas del calendario${variasSedes ? ` de cada ${p.sede}` : ""}. Pueden ser de 1, 2 o 3 horas.`}
+          </p>
+          {variasSedes && (
+            <div className="mb-3">
+              <Chips
+                titulo={p.Sede}
+                valor={sedeFranjas}
+                opciones={[["", `Todas las ${p.sedes}`] as const, ...sucursales.map((s) => [String(s.id), s.nombre] as const)]}
+                onChange={setSedeFranjas}
+              />
+            </div>
+          )}
+          {lista.length === 0 && (
+            <p className="rounded-xl bg-muted px-4 py-3 text-sm text-texto-3">Sin franjas: el calendario arma una fila por cada horario de grupo.</p>
+          )}
+          <ul className={lista.length ? `${LISTA.lista} rounded-xl border border-borde-soft` : ""}>
+            {lista.map((f, i) => {
+              const grupos = uso.get(`${f.inicio}-${f.fin}`) ?? 0;
+              return (
+                <li
+                  key={`${i}-${f.almacenId}`}
+                  className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto] items-center gap-2 px-3 py-2.5 sm:grid-cols-[120px_20px_120px_60px_minmax(0,1fr)_40px] sm:gap-2.5"
+                >
+                  <label>
+                    <span className="sr-only">Desde, franja {i + 1}</span>
+                    <Input
+                      type="time"
+                      step={1800}
+                      value={f.inicio}
+                      onChange={(e) => cambiarFranja(i, "inicio", e.target.value)}
+                      onBlur={() => guardarFranjas(borrador)}
+                    />
+                  </label>
+                  <span className="text-center text-sm text-texto-3">a</span>
+                  <label>
+                    <span className="sr-only">Hasta, franja {i + 1}</span>
+                    <Input
+                      type="time"
+                      step={1800}
+                      value={f.fin}
+                      onChange={(e) => cambiarFranja(i, "fin", e.target.value)}
+                      onBlur={() => guardarFranjas(borrador)}
+                    />
+                  </label>
+                  <span className="hidden text-sm tabular-nums text-texto-3 sm:block">{duracionFranja(f)}</span>
+                  <span className="col-span-3 text-[13px] text-texto-3 sm:col-span-1">
+                    <span className="sm:hidden">{duracionFranja(f)} · </span>
+                    {usoListo ? (grupos === 0 ? "libre" : grupos === 1 ? "1 grupo" : `${grupos} grupos`) : ""}
+                  </span>
+                  <BotonIcono
+                    icono="trash"
+                    etiqueta={`Quitar franja ${f.inicio}–${f.fin}`}
+                    disabled={grupos > 0}
+                    title={grupos > 0 ? "Tiene grupos: no se puede quitar" : "Quitar franja"}
+                    onClick={() => {
+                      const nuevas = borrador.filter((_, j) => j !== i);
+                      setBorrador(nuevas);
+                      guardarFranjas(nuevas);
+                    }}
+                    className="justify-self-end hover:border-danger/40 hover:text-danger-text disabled:hover:border-borde disabled:hover:bg-white disabled:hover:text-texto-2"
                   />
-                </label>
-                <span className="text-center text-sm text-texto-3">a</span>
-                <label>
-                  <span className="sr-only">Hasta, franja {i + 1}</span>
-                  <Input
-                    type="time"
-                    step={1800}
-                    value={f.fin}
-                    onChange={(e) => cambiarFranja(i, "fin", e.target.value)}
-                    onBlur={() => guardarFranjas(borrador)}
-                  />
-                </label>
-                <span className="hidden text-sm tabular-nums text-texto-3 sm:block">{duracionFranja(f)}</span>
-                <span className="col-span-3 text-[13px] text-texto-3 sm:col-span-1">
-                  <span className="sm:hidden">{duracionFranja(f)} · </span>
-                  {usoListo ? (grupos === 0 ? "libre" : grupos === 1 ? "1 grupo" : `${grupos} grupos`) : ""}
-                </span>
-                <BotonIcono
-                  icono="trash"
-                  etiqueta={`Quitar franja ${f.inicio}–${f.fin}`}
-                  disabled={grupos > 0}
-                  title={grupos > 0 ? "Tiene grupos: no se puede quitar" : "Quitar franja"}
-                  onClick={() => {
-                    const nuevas = borrador.filter((_, j) => j !== i);
-                    setBorrador(nuevas);
-                    guardarFranjas(nuevas);
-                  }}
-                  className="justify-self-end hover:border-danger/40 hover:text-danger-text disabled:hover:border-borde disabled:hover:bg-white disabled:hover:text-texto-2"
-                />
-              </li>
-            );
-          })}
-        </ul>
-        <BotonFila
-          icono="plus"
-          className="mt-3"
-          onClick={() => {
-            const nuevas = [...borrador, franjaSiguiente(borrador, sedeId)];
-            setBorrador(nuevas);
-            guardarFranjas(nuevas);
-          }}
-        >
-          Agregar franja
-        </BotonFila>
-      </SeccionAjuste>
-
-      <SeccionAjuste id="s-docentes" titulo={`Pago a ${p.docente}s`} bajada={`Sobre lo que pagó cada ${p.alumno} por el ${p.materia}, mes a mes.`}>
-        <div className="flex items-center justify-between gap-4">
-          <span>
-            <label htmlFor="pct-defecto" className="block text-sm text-texto">
-              Porcentaje por defecto
-            </label>
-            <span className="text-[13px] text-texto-3">Cada {p.carrera} lo puede cambiar</span>
-          </span>
-          <span className="flex items-center gap-2 text-sm text-texto-2">
-            <Input id="pct-defecto" type="number" className="!w-20 text-right" {...numero("pctDocenteDefecto", 0, 100)} />%
-          </span>
+                </li>
+              );
+            })}
+          </ul>
+          <BotonFila
+            icono="plus"
+            className="mt-3"
+            onClick={() => {
+              const nuevas = [...borrador, franjaSiguiente(borrador, sedeId)];
+              setBorrador(nuevas);
+              guardarFranjas(nuevas);
+            }}
+          >
+            Agregar franja
+          </BotonFila>
         </div>
       </SeccionAjuste>
 
@@ -305,16 +292,53 @@ export default function AjustesAcademia() {
             }
           />
           <Interruptor
-            activo={a.topePromoSinPinPct === 0}
-            onCambiar={(v) => void guardar({ topePromoSinPinPct: v ? 0 : 100 })}
-            etiqueta="Descuentos fuera del pago completo piden PIN del administrador"
-            detalle="El descuento del pago completo se aplica solo"
-          />
-          <Interruptor
             activo={a.preinscripcionActiva}
             onCambiar={(v) => void guardar({ preinscripcionActiva: v })}
             etiqueta="Recibir inscripciones desde la página"
           />
+        </div>
+      </SeccionAjuste>
+
+      <SeccionAjuste id="s-cobro" titulo="Cobro" bajada="Los descuentos y cuándo una cuota vencida se marca en rojo.">
+        <div className="space-y-4">
+          <div className="divide-y divide-borde-soft">
+            <Interruptor
+              activo={a.topePromoSinPinPct === 0}
+              onCambiar={(v) => void guardar({ topePromoSinPinPct: v ? 0 : 100 })}
+              etiqueta="Descuentos fuera del pago completo piden PIN del administrador"
+              detalle="El descuento del pago completo se aplica solo"
+            />
+          </div>
+          {/* B7: el semáforo del docente. Sólo si el backend ya lo conoce. */}
+          {a.diasEspera !== undefined && (
+            <Campo
+              label="Días de espera antes de marcar en rojo"
+              hint={`Desde que vence la cuota, el ${p.docente} ve en amarillo a quien debe; después, en rojo. No bloquea nada.`}
+            >
+              <Input type="number" inputMode="numeric" className="sm:max-w-[140px]" {...numero("diasEspera", 0, 60)} />
+            </Campo>
+          )}
+        </div>
+      </SeccionAjuste>
+
+      <SeccionAjuste id="s-docentes" titulo={`${p.Docente}s`} bajada="Cuánto se les paga y desde cuándo cuenta un atraso.">
+        <div className="space-y-4">
+          <div className="flex items-center justify-between gap-4">
+            <span>
+              <label htmlFor="pct-defecto" className="block text-sm text-texto">
+                Porcentaje de pago por defecto
+              </label>
+              <span className="text-[13px] text-texto-3">
+                {`Sobre lo que pagó cada ${p.alumno} por el ${p.materia}, mes a mes. Cada ${p.carrera} lo puede cambiar.`}
+              </span>
+            </span>
+            <span className="flex items-center gap-2 text-sm text-texto-2">
+              <Input id="pct-defecto" type="number" className="!w-20 text-right" {...numero("pctDocenteDefecto", 0, 100)} />%
+            </span>
+          </div>
+          <Campo label={`El atraso del ${p.docente} cuenta desde (min)`}>
+            <Input type="number" className="sm:max-w-[140px]" {...numero("toleranciaAtrasoMin", 0, 240)} />
+          </Campo>
         </div>
       </SeccionAjuste>
 
@@ -329,18 +353,6 @@ export default function AjustesAcademia() {
           <Campo label="Asistencia mínima (%)" hint="Vacío = no se exige.">
             <Input type="number" {...numero("asistenciaMinimaPct", 0, 100, true)} />
           </Campo>
-          <Campo label={`El atraso del ${p.docente} cuenta desde (min)`}>
-            <Input type="number" {...numero("toleranciaAtrasoMin", 0, 240)} />
-          </Campo>
-          {/* B7: el semáforo del docente. Sólo si el backend ya lo conoce. */}
-          {a.diasEspera !== undefined && (
-            <Campo
-              label="Días de espera antes de marcar en rojo"
-              hint={`Desde que vence la cuota, el ${p.docente} ve en amarillo a quien debe; después, en rojo. No bloquea nada.`}
-            >
-              <Input type="number" inputMode="numeric" {...numero("diasEspera", 0, 60)} />
-            </Campo>
-          )}
         </div>
       </SeccionAjuste>
     </PaginaAcademia>
