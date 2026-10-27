@@ -753,7 +753,10 @@ const ORDEN_INICIO: [Seccion, string][] = [
   // `academia` no existen y la lista sigue como siempre.
   ["academia_calendario", "/academia/calendario"],
   ["academia_mis_clases", "/academia/mis-clases"],
-  ["academia_grupos", "/academia/grupos"],
+  // Sin entrada para `academia_grupos`: "/academia/grupos" redirige al
+  // Calendario, que pide `academia.ver` GENERAL. Un rol armado a mano con
+  // `academia.ver` PROPIO y sin `asistencia.registrar` volvía al inicio y el
+  // ciclo no terminaba. Ese rol sigue por el resto de la lista (o "/sin-acceso").
   ["inventario", "/inventario"],
   ["productos", "/inventario/productos"],
   // En un billar, quien atiende entra al tablero de las mesas y no al POS.

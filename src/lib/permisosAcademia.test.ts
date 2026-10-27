@@ -54,6 +54,17 @@ describe("secciones de la academia", () => {
     expect(rutaInicial(ctxDe("PROFESIONAL", "ACADEMIA", FEATURES))).toBe("/academia/mis-clases");
   });
 
+  it("un rol a mano con academia.ver PROPIO y sin pasar lista no cae en un bucle (Bug 14)", () => {
+    // `/academia/grupos` redirige al Calendario, que pide `academia.ver`
+    // GENERAL: ese rol rebotaba entre el inicio y el Calendario para siempre.
+    const c = ctxDe("PROFESIONAL", "ACADEMIA", FEATURES, { sin: ["asistencia.registrar"] });
+    expect(puedeVer(c, "academia_calendario")).toBe(false);
+    expect(puedeVer(c, "academia_mis_clases")).toBe(false);
+    const ruta = rutaInicial(c);
+    expect(ruta).not.toBe("/academia/grupos");
+    expect(ruta).not.toBe("/academia/calendario");
+  });
+
   it("la secretaría y la dirección empiezan el día en el Calendario (Hoy salió del menú el 26-oct)", () => {
     expect(rutaInicial(ctxDe("CAJERO", "ACADEMIA", FEATURES))).toBe("/academia/calendario");
     expect(rutaInicial(ctxDe("ADMIN", "ACADEMIA", FEATURES))).toBe("/academia/calendario");
