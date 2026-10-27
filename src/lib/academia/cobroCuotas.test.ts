@@ -3,7 +3,10 @@ import {
   cuotasIniciales,
   detallesDeCuotas,
   enlaceDeCuotas,
+  esVentaDeCuotas,
   montoValido,
+  nombreDeLinea,
+  textoAnularCuotas,
   pagadorPorDefecto,
   totalCuotas,
   ventaConCuotas,
@@ -140,5 +143,34 @@ describe("enlaceDeCuotas (contrato #39, B-14)", () => {
     expect(enlaceDeCuotas([{ ...base, enlacePago: null }, { ...base, enlacePago: "https://x/p/a/pagar/t" }])).toBe("https://x/p/a/pagar/t");
     expect(enlaceDeCuotas([{ ...base, enlacePago: null }])).toBeNull();
     expect(enlaceDeCuotas([base])).toBeUndefined();
+  });
+});
+
+describe("D5 · la venta de cuotas en la caja", () => {
+  const linea = { productoId: 77, producto: "Barbería", cantidad: 1, precio: 750, subtotal: 750, consumo: "LLEVAR" as const, cuotaId: 11 };
+  const cuota = { cuotaId: 11, concepto: "Cuota 1/3", alumno: "Camila", cobrado: 750, pagado: 750, saldo: 0, estado: "PAGADA", saldoCurso: 0, proximaCuota: null };
+  const v = (extra: object) => ({ detalles: [linea], ...extra }) as unknown as Venta;
+
+  it("se sabe que es de cuotas por venta.cuotas o por un renglón con cuotaId", () => {
+    expect(esVentaDeCuotas(v({ cuotas: [cuota] }))).toBe(true);
+    expect(esVentaDeCuotas(v({}))).toBe(true);
+    expect(esVentaDeCuotas(v({ detalles: [{ ...linea, cuotaId: null }] }))).toBe(false);
+  });
+
+  it("al anular: la cuota (o las cuotas) vuelven a quedar pendientes", () => {
+    expect(textoAnularCuotas(v({ cuotas: [cuota] }), "ACADEMIA")).toContain("la cuota vuelve a quedar pendiente");
+    expect(textoAnularCuotas(v({ cuotas: [cuota, { ...cuota, cuotaId: 12 }] }), "ACADEMIA")).toContain("las cuotas vuelven a quedar pendientes");
+  });
+
+  it("sin saber qué cobró: en un instituto no afirma de más; en otro rubro, el texto de siempre", () => {
+    const sin = v({ detalles: [{ ...linea, cuotaId: null }] });
+    expect(textoAnularCuotas(sin, "ACADEMIA")).toContain("si cobró cuotas");
+    expect(textoAnularCuotas(sin, "RESTAURANTE")).toBeNull();
+  });
+
+  it("el renglón de una cuota se nombra «Cuota 1/3 · Barbería»; el resto, por su producto", () => {
+    expect(nombreDeLinea(linea, { cuotas: [cuota] })).toBe("Cuota 1/3 · Barbería");
+    expect(nombreDeLinea(linea, {})).toBe("Barbería");
+    expect(nombreDeLinea({ ...linea, cuotaId: null }, { cuotas: [cuota] })).toBe("Barbería");
   });
 });

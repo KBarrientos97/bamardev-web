@@ -133,6 +133,44 @@ export function enlaceDeCuotas(cuotas: NonNullable<Venta["cuotas"]>): string | n
   return cuotas.find((q) => q.enlacePago)?.enlacePago ?? null;
 }
 
+/**
+ * ¿La venta cobró cuotas? Lo dicen `venta.cuotas` (la respuesta del cobro) o
+ * algún renglón con `cuotaId`. La consulta del detalle (`GET /ventas/:id`)
+ * todavía no trae ninguna de las dos: ahí sólo se sabe por el rubro.
+ */
+export function esVentaDeCuotas(venta: Pick<Venta, "cuotas" | "detalles">): boolean {
+  return !!venta.cuotas?.length || (venta.detalles ?? []).some((d) => d.cuotaId != null);
+}
+
+/**
+ * Qué pasa al anular, dicho para una cuota y no para un producto (auditoría
+ * 26-oct, D5): la cuota vuelve a quedar pendiente, no hay stock que vuelva.
+ * `null` = no es una venta de cuotas y vale el texto de siempre del rubro.
+ *
+ * Si no se sabe qué cobró (el detalle del historial no lo trae) pero el
+ * negocio es un instituto, se dice sin afirmar de más: "si cobró cuotas".
+ */
+export function textoAnularCuotas(venta: Pick<Venta, "cuotas" | "detalles">, rubro: string | null | undefined): string | null {
+  if (esVentaDeCuotas(venta)) {
+    const n = venta.cuotas?.length ?? (venta.detalles ?? []).filter((d) => d.cuotaId != null).length;
+    return n > 1
+      ? "La venta queda anulada y las cuotas vuelven a quedar pendientes. No se puede deshacer."
+      : "La venta queda anulada y la cuota vuelve a quedar pendiente. No se puede deshacer.";
+  }
+  if (rubro === "ACADEMIA") return "La venta queda anulada y, si cobró cuotas, vuelven a quedar pendientes. No se puede deshacer.";
+  return null;
+}
+
+/**
+ * Cómo se nombra un renglón de la venta: el de una cuota dice cuál ("Cuota
+ * 1/3 · Barbería"), como el recibo; el resto, su producto. Sin el concepto a
+ * mano (el detalle del historial no lo trae todavía), el producto a secas.
+ */
+export function nombreDeLinea(d: NonNullable<Venta["detalles"]>[number], venta: Pick<Venta, "cuotas">): string {
+  const concepto = d.cuotaId != null ? venta.cuotas?.find((q) => q.cuotaId === d.cuotaId)?.concepto : undefined;
+  return concepto ? `${concepto} · ${d.producto}` : d.producto;
+}
+
 // ── "Cobrar a estudiante" (A1, 22-oct) ─────────────────────────────────────
 
 /** Con qué se entra: desde el grupo, la ficha, Cobranza, Hoy o "Inscribir y cobrar". */

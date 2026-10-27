@@ -21,6 +21,7 @@ import { fmtFechaHora, fmtHora, fmtMoney, fmtNum } from "../../lib/format";
 import { Telefono } from "../../lib/telefono";
 import { tienePermiso, tieneFeature } from "../../lib/permisos";
 import { esBelleza, marcaConsumo } from "../../lib/rubro";
+import { nombreDeLinea, textoAnularCuotas } from "../../lib/academia/cobroCuotas";
 import { useApi } from "../../lib/useApi";
 import { enlaceWhatsApp, mensajePedido, pedidoDeVenta } from "../../lib/mensajePedido";
 import { conCopia } from "../../lib/offline/copias";
@@ -550,7 +551,7 @@ function DetalleVenta({
                 <li key={i} className="flex items-start justify-between gap-3 py-2.5">
                   <div className="min-w-0">
                     <p className="text-[13px] text-texto">
-                      <span className="font-bold">{fmtNum(d.cantidad)}×</span> {d.producto}
+                      <span className="font-bold">{fmtNum(d.cantidad)}×</span> {nombreDeLinea(d, v)}
                     </p>
                     {(mostrarConsumo || d.nota) && (
                       <div className="mt-0.5 flex items-center gap-1.5">
@@ -723,9 +724,10 @@ function DialogoAnular({
         <p className="text-[13px] text-texto-2">
           {/* En un salón lo que se vende es sobre todo servicios, que no tienen
               stock (QA B-21): se dice sólo lo que pasa de verdad. */}
-          {esBelleza(rubro)
-            ? "La venta queda anulada y, si tenía productos, vuelven al inventario. No se puede deshacer."
-            : "La venta queda anulada y el stock vuelve al inventario. No se puede deshacer."}
+          {textoAnularCuotas(venta, rubro) ??
+            (esBelleza(rubro)
+              ? "La venta queda anulada y, si tenía productos, vuelven al inventario. No se puede deshacer."
+              : "La venta queda anulada y el stock vuelve al inventario. No se puede deshacer.")}
         </p>
 
         {(porQr > 0 || enEfectivo > 0) && (

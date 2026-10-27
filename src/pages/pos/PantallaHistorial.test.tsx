@@ -163,6 +163,51 @@ describe("peluquería (QA ronda 1)", () => {
   });
 });
 
+describe("instituto (D5): la caja no trata la cuota como un producto", () => {
+  const deCuotas = {
+    ...venta,
+    detalles: [{ productoId: 9, producto: "Barbería", cantidad: 1, precio: 750, subtotal: 750, nota: null, consumo: "LLEVAR", cuotaId: 11 }],
+    cuotas: [{ cuotaId: 11, concepto: "Cuota 1/3", alumno: "Camila", cobrado: 750, pagado: 750, saldo: 0, estado: "PAGADA", saldoCurso: 1500, proximaCuota: null }],
+  } as unknown as Venta;
+
+  async function anular() {
+    sesion.rubro = "ACADEMIA";
+    await act(async () => {
+      fireEvent.click(await screen.findByRole("button", { name: "Anular venta" }));
+    });
+    return screen.getByRole("dialog", { name: "Anular venta" });
+  }
+
+  function abrir(v: Venta) {
+    vi.mocked(api.getVentas).mockResolvedValue([v]);
+    vi.mocked(api.getVenta).mockResolvedValue(v);
+    render(
+      <MemoryRouter>
+        <PantallaHistorial caja={{ id: 1 } as Caja} onAtras={() => {}} onCierre={() => {}} onVerComprobante={() => {}} />
+      </MemoryRouter>,
+    );
+    return screen.findByRole("button", { name: /T-0007/ });
+  }
+
+  it("una venta con cuotas dice «Cuota 1/3 · Barbería» y que la cuota vuelve a quedar pendiente", async () => {
+    sesion.rubro = "ACADEMIA";
+    fireEvent.click(await abrir(deCuotas));
+    expect(await screen.findByText(/Cuota 1\/3 · Barbería/)).toBeInTheDocument();
+    const dialogo = await anular();
+    expect(dialogo).toHaveTextContent("la cuota vuelve a quedar pendiente");
+    expect(dialogo).not.toHaveTextContent("stock");
+  });
+
+  it("si el detalle no dice qué cobró, en un instituto no promete devolver stock", async () => {
+    sesion.rubro = "ACADEMIA";
+    fireEvent.click(await abrir(venta));
+    await screen.findByText("Pollo entero");
+    const dialogo = await anular();
+    expect(dialogo).toHaveTextContent("si cobró cuotas, vuelven a quedar pendientes");
+    expect(dialogo).not.toHaveTextContent("stock");
+  });
+});
+
 describe("anular una venta cobrada por QR (los dos rubros)", () => {
   // El bug: lo cobrado por QR no se podía anular. Anular no es devolver la
   // plata, es el asiento: bloquearlo dejaba el stock (y en farmacia el libro de
