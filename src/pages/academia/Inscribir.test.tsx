@@ -90,7 +90,8 @@ describe("E5 · inscribir", () => {
     expect(within(panel()).getByText(/Tutor · obligatorio/)).toBeInTheDocument();
     fireEvent.click(within(panel()).getByRole("radio", { name: /Cuotas/ }));
     // El calendario del plan a la vista, sin renglón de matrícula.
-    expect(within(panel()).getAllByText(/M2–M3 · al empezar M2/).length).toBeGreaterThan(0);
+    // D6: el módulo con su nombre, como habla el instituto.
+    expect(within(panel()).getAllByText(/M2 Degradados y M3 Barba y color · al empezar M2/).length).toBeGreaterThan(0);
     fireEvent.click(within(panel()).getByRole("button", { name: "Inscribir sin cobrar" }));
     expect(within(panel()).getByText(/Es menor: falta el tutor/)).toBeInTheDocument();
     expect(apiAcademia.inscribir).not.toHaveBeenCalled();
