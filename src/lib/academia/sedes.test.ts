@@ -63,6 +63,13 @@ describe("C5 · agregar franja y detectar cambios", () => {
     expect(f).toEqual({ inicio: "23:00", fin: "23:30" });
   });
 
+  it("ronda 2 · B9: si la última termina a las 23:30, la nueva no queda de cero minutos", () => {
+    const f = filaSiguiente([{ inicio: "21:30", fin: "23:30" }]);
+    expect(f).toEqual({ inicio: "08:00", fin: "10:00" });
+    // Y la lista resultante es válida salvo por lo que se pise: nunca "empezar antes de terminar".
+    expect(problemasDeLasFilas([{ inicio: "21:30", fin: "23:30" }, f]).mensajes.join(" ")).not.toMatch(/antes de terminar/);
+  });
+
   it("mismasFilas ignora la marca «de todas las sedes»", () => {
     expect(mismasFilas([{ inicio: "08:00", fin: "10:00", todasLasSedes: true }], [{ inicio: "08:00", fin: "10:00" }])).toBe(true);
     expect(mismasFilas([{ inicio: "08:00", fin: "10:00" }], [{ inicio: "08:00", fin: "11:00" }])).toBe(false);

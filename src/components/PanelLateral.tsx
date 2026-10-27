@@ -68,6 +68,21 @@ export default function PanelLateral({
     };
   }, [abierto, celular]);
 
+  // Foco (ronda 2, B8): al abrirse en escritorio el panel recibe el foco (si adentro
+  // no hay ya un campo con `autoFocus`) y al cerrarse se lo devuelve a lo que lo
+  // abrió. Sin esto, quien navega con teclado o lector de pantalla quedaba en la fila
+  // de atrás sin saber que apareció algo, y al cerrar perdía el lugar. En el celular es
+  // un `Modal`, que ya lo maneja.
+  const panel = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (!abierto || celular) return;
+    const anterior = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    if (panel.current && !panel.current.contains(document.activeElement)) panel.current.focus({ preventScroll: true });
+    return () => {
+      if (anterior && anterior.isConnected) anterior.focus({ preventScroll: true });
+    };
+  }, [abierto, celular]);
+
   if (!abierto) return null;
 
   if (celular) {
@@ -88,9 +103,11 @@ export default function PanelLateral({
 
   return (
     <aside
+      ref={panel}
       role="complementary"
       aria-label={titulo}
-      className="fixed inset-y-0 right-0 z-30 flex w-[380px] flex-col border-l border-borde bg-white shadow-[-12px_0_32px_rgba(15,23,42,0.06)]"
+      tabIndex={-1}
+      className="fixed inset-y-0 right-0 z-30 flex w-[380px] flex-col border-l border-borde bg-white shadow-[-12px_0_32px_rgba(15,23,42,0.06)] focus:outline-none"
     >
       <header className="flex items-start justify-between gap-3 border-b border-borde-soft px-6 pb-4 pt-6">
         <div className="min-w-0">

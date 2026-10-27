@@ -108,3 +108,34 @@ describe("PanelLateral · toque afuera en el celular (W4)", () => {
     expect(cerrar).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("PanelLateral · foco en escritorio (ronda 2, B8)", () => {
+  function ConFila({ conCampo = false }: { conCampo?: boolean }) {
+    const [abierto, setAbierto] = useState(false);
+    return (
+      <>
+        <button onClick={() => setAbierto(true)}>fila</button>
+        <PanelLateral abierto={abierto} titulo="Detalle" onClose={() => setAbierto(false)}>
+          {conCampo ? <input aria-label="Nombre" autoFocus /> : <p>algo</p>}
+        </PanelLateral>
+      </>
+    );
+  }
+
+  it("al abrirse recibe el foco y al cerrarse se lo devuelve a lo que lo abrió", () => {
+    render(<ConFila />);
+    const fila = screen.getByRole("button", { name: "fila" });
+    fila.focus();
+    fireEvent.click(fila);
+    expect(screen.getByRole("complementary", { name: "Detalle" })).toHaveFocus();
+    fireEvent.click(screen.getByRole("button", { name: "Cerrar" }));
+    expect(fila).toHaveFocus();
+  });
+
+  it("si adentro hay un campo con autoFocus, no se lo quita", () => {
+    render(<ConFila conCampo />);
+    fireEvent.click(screen.getByRole("button", { name: "fila" }));
+    expect(screen.getByLabelText("Nombre")).toHaveFocus();
+  });
+});
+

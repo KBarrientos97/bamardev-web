@@ -1216,12 +1216,12 @@ function BuscarAlumno({
       {/* Con resultados no se oculta del todo (ronda 1, D3): un hermano o un homónimo
           aparece en la lista y no es la misma persona. Va discreto, como enlace. */}
       {lista.length > 0 && (
-        <p className="text-[13px] text-texto-3">
-          ¿No está en la lista?{" "}
-          <button type="button" className="font-semibold text-primary underline" onClick={() => onNuevo(q)}>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-texto-3">
+          <span>¿No está en la lista?</span>
+          <BotonFila variante="ghost" icono="plus" onClick={() => onNuevo(q)}>
             Crear ficha nueva
-          </button>
-        </p>
+          </BotonFila>
+        </div>
       )}
     </div>
   );

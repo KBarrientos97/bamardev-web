@@ -11,7 +11,7 @@ import { tienePermiso } from "../../../lib/permisos";
 import { useApi } from "../../../lib/useApi";
 import { useSucursales } from "../../../lib/useSucursales";
 import { useAuth } from "../../../store/AuthContext";
-import { Chip, LISTA, Tarjeta } from "../piezas";
+import { BotonFila, Chip, LISTA, Tarjeta } from "../piezas";
 
 /**
  * Las aulas de cada sede (BACK-5, pedido del dueño del 26-oct): hasta ahora el
@@ -166,21 +166,15 @@ export default function Aulas({ sedeId = null, onCambio }: { sedeId?: number | n
               sinRelleno
             >
               {deLaSede.length === 0 ? (
-                <p className="px-4 py-4 text-sm text-texto-3 sm:px-5">
-                  Esta {p.sede} todavía no tiene aulas.
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-4 text-sm text-texto-3 sm:px-5">
+                  <p>Esta {p.sede} todavía no tiene aulas.</p>
+                  {/* Un botón con su alto de toque y no un enlace de 13 px en medio de la frase (ronda 2, B8). */}
                   {configura && (
-                    <>
-                      {" "}
-                      <button
-                        type="button"
-                        onClick={() => setPanel({ aula: null, sedePorDefecto: s.id })}
-                        className="font-semibold text-primary-700 hover:underline"
-                      >
-                        Agregar la primera
-                      </button>
-                    </>
+                    <BotonFila variante="ghost" icono="plus" onClick={() => setPanel({ aula: null, sedePorDefecto: s.id })}>
+                      Agregar la primera
+                    </BotonFila>
                   )}
-                </p>
+                </div>
               ) : (
                 <ul className={LISTA.lista}>
                   {deLaSede.map((a) => (

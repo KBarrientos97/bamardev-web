@@ -93,7 +93,7 @@ export default function SelectorAula({
         <span className="mt-1 block text-xs text-texto-3">
           Esta sede todavía no tiene aulas cargadas.{" "}
           {configura && (
-            <Link to={`${RUTA_SEDES}?sede=${sedeId}&ver=aulas`} target="_blank" rel="noreferrer" className="font-semibold text-primary-700 hover:underline">
+            <Link to={`${RUTA_SEDES}?sede=${sedeId}&ver=aulas`} target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center font-semibold text-primary-700 hover:underline">
               Cargar aulas
             </Link>
           )}

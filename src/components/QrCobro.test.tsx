@@ -147,3 +147,29 @@ describe("qr.configurar es sólo del Administrador (16-oct)", () => {
     expect(screen.getByText("Todavía no hay QR del negocio. Lo carga el administrador.")).toBeInTheDocument();
   });
 });
+
+describe("ronda 2 · T5 · QrParaCobrar de verdad, con y sin su botón", () => {
+  it("con el botón: «Confirmar pago recibido» confirma y queda «Pago confirmado»", async () => {
+    vi.mocked(leerQr).mockReturnValueOnce("data:image/png;base64,xx");
+    vi.mocked(sincronizarQr).mockResolvedValueOnce("data:image/png;base64,xx");
+    const confirmar = vi.fn();
+    const { rerender } = render(<QrParaCobrar confirmado={false} onConfirmar={confirmar} monto="Bs 750,00" />);
+    await act(async () => {});
+    screen.getByRole("button", { name: "Confirmar pago recibido" }).click();
+    expect(confirmar).toHaveBeenCalledTimes(1);
+    expect(screen.getByText(/Revisá que el pago de Bs 750,00 haya llegado antes de confirmar/)).toBeInTheDocument();
+    rerender(<QrParaCobrar confirmado onConfirmar={confirmar} monto="Bs 750,00" />);
+    expect(screen.getByRole("button", { name: "Pago confirmado" })).toBeDisabled();
+  });
+
+  it("sinBoton (Cobrar a estudiante): sigue el QR y el aviso de revisar el banco, pero no hay un segundo botón de confirmar", async () => {
+    vi.mocked(leerQr).mockReturnValueOnce("data:image/png;base64,xx");
+    vi.mocked(sincronizarQr).mockResolvedValueOnce("data:image/png;base64,xx");
+    render(<QrParaCobrar confirmado={false} onConfirmar={() => {}} monto="Bs 750,00" sinBoton />);
+    await act(async () => {});
+    expect(screen.getByRole("img", { name: "QR de cobro" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Confirmar pago recibido|Pago confirmado/ })).not.toBeInTheDocument();
+    expect(screen.getByText(/Revisá que el pago de Bs 750,00 haya llegado antes de confirmar/)).toBeInTheDocument();
+  });
+});
+

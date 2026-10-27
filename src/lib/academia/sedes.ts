@@ -92,7 +92,11 @@ export function filasDeLosDetalles(detalles: string[], filas: FilaFranja[]): Set
 /** La franja que sigue a la última, de 2 horas ("Agregar franja"). */
 export function filaSiguiente(filas: FilaFranja[]): FilaFranja {
   const ultima = [...filas].sort((x, y) => (aMin(x.fin) ?? 0) - (aMin(y.fin) ?? 0)).at(-1);
-  const inicio = ultima && aMin(ultima.fin) != null ? ultima.fin : "08:00";
+  let inicio = ultima && aMin(ultima.fin) != null ? ultima.fin : "08:00";
+  // Si la última ya termina a las 23:30 no queda lugar después: 23:30–23:30 no sirve (al
+  // guardar decía "tiene que empezar antes de terminar"). Se propone la franja de la
+  // mañana y quien agrega la ajusta; si se pisa con otra, la validación lo marca (ronda 2, B9).
+  if ((aMin(inicio) ?? 0) >= 23 * 60 + 30) inicio = "08:00";
   const fin = Math.min((aMin(inicio) ?? 480) + 120, 23 * 60 + 30);
   const hh = (n: number) => `${String(Math.floor(n / 60)).padStart(2, "0")}:${String(n % 60).padStart(2, "0")}`;
   return { inicio: hh(aMin(inicio) ?? 480), fin: hh(fin) };

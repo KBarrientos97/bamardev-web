@@ -300,7 +300,7 @@ function ContenidoSede({
       <div ref={franjasRef}>
         <SedeFranjas sedeId={sede.id} puedeEditar={configura} onCambio={onCambio} />
       </div>
-      <div ref={aulasRef} aria-label={`Aulas de esta ${p.sede}`}>
+      <div ref={aulasRef} role="group" aria-label={`Aulas de esta ${p.sede}`}>
         <Aulas sedeId={sede.id} onCambio={onCambio} />
       </div>
     </div>
