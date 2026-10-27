@@ -401,6 +401,13 @@ export default function Inscribir({
             </button>
           ),
         });
+      } else if (e instanceof ApiError && e.status === 403 && autorizador) {
+        // Se mandó un PIN y el backend lo rechazó (403 sin código: «Usuario o PIN
+        // incorrecto»). Ese PIN no se guarda ni se reenvía solo: cada reintento
+        // sumaría un fallo a la bitácora de PIN (alarma y tope). Se vuelve a pedir.
+        setFirma(null);
+        setPidiendoPin({ cobrar, extra: { ...extra, firma: undefined } });
+        setError(e.message);
       } else {
         setError(e instanceof Error ? e.message : "No se pudo inscribir");
       }

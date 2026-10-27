@@ -254,6 +254,42 @@ describe("E5 · inscribir", () => {
     expect(onInscrito).toHaveBeenCalledWith({ inscripcion: { id: 557 }, cobrar: false });
   });
 
+  it("ronda 1 · D1: un PIN equivocado no queda guardado ni se reenvía solo: se vuelve a pedir", async () => {
+    vi.mocked(apiAcademia.inscribir)
+      .mockRejectedValueOnce(new ApiError("Usuario o PIN incorrecto", 403))
+      .mockResolvedValueOnce({ id: 558 } as never);
+    await montar();
+    await cargarNuevo("2000-01-01");
+    fireEvent.click(within(panel()).getByRole("radio", { name: /Completo/ }));
+    fireEvent.click(within(panel()).getByRole("button", { name: "Aplicar otro descuento o beca" }));
+    fireEvent.click(within(panel()).getByRole("button", { name: "Beca" }));
+    fireEvent.change(within(panel()).getByLabelText("Descuento"), { target: { value: "50" } });
+    fireEvent.change(within(panel()).getByLabelText("Motivo"), { target: { value: "Situación económica" } });
+    fireEvent.click(within(panel()).getByRole("button", { name: /Inscribir y cobrar/ }));
+    let pin = within(panel()).getByRole("region", { name: "Autorización del encargado" });
+    fireEvent.change(within(pin).getByLabelText("Usuario del encargado"), { target: { value: "rosa" } });
+    fireEvent.change(within(pin).getByLabelText("PIN"), { target: { value: "0000" } });
+    await act(async () => {
+      fireEvent.click(within(pin).getByRole("button", { name: "Autorizar" }));
+    });
+    // El rechazo se ve, el panel NO dice que alguien autorizó y el PIN se pide de nuevo.
+    expect(within(panel()).getByText("Usuario o PIN incorrecto")).toBeInTheDocument();
+    expect(within(panel()).queryByText(/Autorizó/)).not.toBeInTheDocument();
+    pin = within(panel()).getByRole("region", { name: "Autorización del encargado" });
+    expect(apiAcademia.inscribir).toHaveBeenCalledTimes(1);
+    // Con el PIN bueno viaja el nuevo, no el malo.
+    fireEvent.change(within(pin).getByLabelText("Usuario del encargado"), { target: { value: "rosa" } });
+    fireEvent.change(within(pin).getByLabelText("PIN"), { target: { value: "4826" } });
+    await act(async () => {
+      fireEvent.click(within(pin).getByRole("button", { name: "Autorizar" }));
+    });
+    expect(apiAcademia.inscribir).toHaveBeenCalledTimes(2);
+    expect(apiAcademia.inscribir).toHaveBeenLastCalledWith(
+      expect.objectContaining({ descuento: expect.objectContaining({ autorizador: { username: "rosa", pin: "4826" } }) }),
+      {},
+    );
+  });
+
   it("el grupo lleno se puede cancelar y cambiar algo lo saca", async () => {
     vi.mocked(apiAcademia.inscribir).mockRejectedValue(new ApiError("Grupo lleno", 409, { codigo: "GRUPO_LLENO", inscritos: 30, cupo: 30 }));
     await montar();
