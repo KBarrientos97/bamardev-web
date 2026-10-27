@@ -72,7 +72,9 @@ export default function Notificaciones() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl space-y-4 p-4 sm:p-5">
+    // En la PC (26-oct) los grupos de avisos van de a dos: uno debajo del
+    // otro eran una tira angosta en el medio de la pantalla.
+    <div className="mx-auto max-w-3xl space-y-4 p-4 sm:p-5 lg:max-w-6xl lg:p-6">
       <EncabezadoPagina titulo="Notificaciones" subtitulo="Qué avisos te llegan al celular o a la computadora" />
 
       <EsteEquipo />
@@ -94,20 +96,22 @@ export default function Notificaciones() {
       ) : avisos ? (
         <>
           <ErrorMsg>{errorCambio}</ErrorMsg>
-          {agrupar(avisos).map((g) => (
-            <section key={g.grupo} aria-labelledby={`grupo-${g.grupo}`} className="card px-4 py-1 sm:px-5">
-              <h2 id={`grupo-${g.grupo}`} className="pb-1 pt-3 text-[11px] font-bold uppercase tracking-wider text-texto-3">
-                {g.titulo}
-              </h2>
-              <ul className="divide-y divide-borde-soft">
-                {g.avisos.map((p) => (
-                  <li key={p.tipo}>
-                    <FilaAviso aviso={p} guardando={guardando.includes(p.tipo)} onCambiar={(v) => void cambiar(p, v)} />
-                  </li>
-                ))}
-              </ul>
-            </section>
-          ))}
+          <div className="space-y-4 lg:grid lg:grid-cols-2 lg:items-start lg:gap-4 lg:space-y-0">
+            {agrupar(avisos).map((g) => (
+              <section key={g.grupo} aria-labelledby={`grupo-${g.grupo}`} className="card px-4 py-1 sm:px-5">
+                <h2 id={`grupo-${g.grupo}`} className="pb-1 pt-3 text-[11px] font-bold uppercase tracking-wider text-texto-3">
+                  {g.titulo}
+                </h2>
+                <ul className="divide-y divide-borde-soft">
+                  {g.avisos.map((p) => (
+                    <li key={p.tipo}>
+                      <FilaAviso aviso={p} guardando={guardando.includes(p.tipo)} onCambiar={(v) => void cambiar(p, v)} />
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ))}
+          </div>
         </>
       ) : null}
     </div>

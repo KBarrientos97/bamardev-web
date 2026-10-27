@@ -112,10 +112,13 @@ export default function PantallaRecibo({
       .join(" + ") ||
     "—";
 
+  // Con lugar (26-oct): "Venta registrada" a la izquierda y el ticket a la
+  // derecha, en vez de la columna del celular en el medio. Igual que el cobro,
+  // mide su lugar y no la ventana.
   return (
-    <div className="mx-auto flex h-full min-h-0 w-full max-w-lg flex-col">
-      <div className="min-h-0 flex-1 overflow-y-auto p-4">
-        <div className="mb-4 flex flex-col items-center text-center print:hidden">
+    <div className="@container flex h-full min-h-0 w-full flex-col">
+      <div className="min-h-0 flex-1 overflow-y-auto py-4 px-[max(1rem,calc(50%-16rem+1rem))] @3xl:px-[max(1.5rem,calc(50%-30rem+1.5rem))] @3xl:grid @3xl:grid-cols-2 @3xl:content-start @3xl:items-start @3xl:gap-8 @3xl:py-8">
+        <div className="mb-4 flex flex-col items-center text-center print:hidden @3xl:mb-0">
           <span
             className={`flex h-14 w-14 items-center justify-center rounded-2xl ${
               venta.pendienteSync ? "bg-warning-bg text-warning-text" : "bg-primary-50 text-primary-700"
@@ -315,7 +318,7 @@ export default function PantallaRecibo({
         </p>
       )}
 
-      <div className="flex gap-2 border-t border-borde bg-white p-4 print:hidden">
+      <div className="flex gap-2 border-t border-borde bg-white py-4 print:hidden px-[max(1rem,calc(50%-16rem+1rem))] @3xl:px-[max(1.5rem,calc(50%-30rem+1.5rem))]">
         {incluye("recibo_pdf") && (
           <>
             <Boton variante="ghost" icono="printer" onClick={() => window.print()}>

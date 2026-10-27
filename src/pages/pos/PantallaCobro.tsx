@@ -226,9 +226,64 @@ export default function PantallaCobro({
     );
   }
 
+  // El total y cómo paga. Con lugar va a la izquierda; si arriba hay un
+  // detalle (el del instituto), ése ocupa la izquierda y esto encabeza la
+  // derecha, donde se cobra: abajo del detalle el total quedaba fuera de la
+  // vista. En una columna el orden es el mismo de siempre.
+  const conDetalle = encabezado != null && encabezado !== false;
+  const totalYMetodo = (
+    <>
+      <div className="rounded-2xl bg-marca p-5 text-center text-white">
+        <p className="text-xs font-semibold uppercase tracking-wide opacity-90">
+          Total a cobrar
+        </p>
+        <p className="mt-1 text-4xl font-extrabold tracking-tight">{fmtMoney(total)}</p>
+        {avisoEnvio && (
+          <p className="mt-1.5 text-[13px] opacity-90">{avisoEnvio}</p>
+        )}
+        {extras.montoVale > 0 && (
+          <p className="mt-1.5 text-[13px] opacity-90">
+            Gift card −{fmtMoney(extras.montoVale)} · resta {fmtMoney(aCubrir)}
+          </p>
+        )}
+      </div>
+
+      {extras.ui}
+
+      {/* Sin la capacidad no se dibujan botones apagados: el cobro es en
+          efectivo y punto, como en un negocio que no cobra por QR. */}
+      {permiteQr && !nadaQueCobrar && (
+        <div className="grid grid-cols-3 gap-2">
+          <BotonMetodo
+            activo={metodo === "EFECTIVO"}
+            icono="dollar"
+            label="Efectivo"
+            onClick={() => elegirMetodo("EFECTIVO")}
+          />
+          <BotonMetodo
+            activo={metodo === "QR"}
+            icono="qr"
+            label="QR"
+            onClick={() => elegirMetodo("QR")}
+          />
+          <BotonMetodo
+            activo={metodo === "MIXTO"}
+            icono="swap"
+            label="Mixto"
+            onClick={() => elegirMetodo("MIXTO")}
+          />
+        </div>
+      )}
+    </>
+  );
+
+  // Con lugar (26-oct), en dos columnas: el total y cómo paga a la izquierda,
+  // lo que se recibe a la derecha, con "Confirmar" debajo. Se mide el lugar
+  // que tiene (`@container`) y no la ventana: también vive en el panel de
+  // "Cobrar a estudiante", que es angosto aun en la PC.
   return (
-    <div className="mx-auto flex h-full min-h-0 w-full max-w-lg flex-col">
-      <div className="flex items-center gap-2 border-b border-borde bg-white px-4 py-3">
+    <div className="@container flex h-full min-h-0 w-full flex-col">
+      <div className="flex items-center gap-2 border-b border-borde bg-white py-3 px-[max(1rem,calc(50%-16rem+1rem))] @3xl:px-[max(1.5rem,calc(50%-30rem+1.5rem))]">
         <button
           onClick={onAtras}
           aria-label="Volver"
@@ -248,217 +303,182 @@ export default function PantallaCobro({
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
-        {encabezado}
-        <div className="rounded-2xl bg-marca p-5 text-center text-white">
-          <p className="text-xs font-semibold uppercase tracking-wide opacity-90">
-            Total a cobrar
-          </p>
-          <p className="mt-1 text-4xl font-extrabold tracking-tight">{fmtMoney(total)}</p>
-          {avisoEnvio && (
-            <p className="mt-1.5 text-[13px] opacity-90">{avisoEnvio}</p>
-          )}
-          {extras.montoVale > 0 && (
-            <p className="mt-1.5 text-[13px] opacity-90">
-              Gift card −{fmtMoney(extras.montoVale)} · resta {fmtMoney(aCubrir)}
-            </p>
-          )}
+      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto py-4 px-[max(1rem,calc(50%-16rem+1rem))] @3xl:px-[max(1.5rem,calc(50%-30rem+1.5rem))] @3xl:grid @3xl:grid-cols-2 @3xl:content-start @3xl:items-start @3xl:gap-6 @3xl:space-y-0 @3xl:py-6">
+        <div className="space-y-4">
+          {conDetalle ? encabezado : totalYMetodo}
         </div>
 
-        {extras.ui}
-
-        {/* Sin la capacidad no se dibujan botones apagados: el cobro es en
-            efectivo y punto, como en un negocio que no cobra por QR. */}
-        {permiteQr && !nadaQueCobrar && (
-          <div className="grid grid-cols-3 gap-2">
-            <BotonMetodo
-              activo={metodo === "EFECTIVO"}
-              icono="dollar"
-              label="Efectivo"
-              onClick={() => elegirMetodo("EFECTIVO")}
-            />
-            <BotonMetodo
-              activo={metodo === "QR"}
-              icono="qr"
-              label="QR"
-              onClick={() => elegirMetodo("QR")}
-            />
-            <BotonMetodo
-              activo={metodo === "MIXTO"}
-              icono="swap"
-              label="Mixto"
-              onClick={() => elegirMetodo("MIXTO")}
-            />
-          </div>
-        )}
-
-        {metodo === "MIXTO" && (
-          <>
-            <Campo
-              label="Monto pagado por QR"
-              hint={
-                extraQr > 0
-                  ? `De la venta; el resto, en efectivo. La propina por QR (${fmtMoney(extraQr)}) se suma aparte`
-                  : "El resto se cobra en efectivo"
-              }
-            >
-              <InputMonto
-                value={montoQr}
-                onChange={(texto) => {
-                  // Cambiar el monto invalida lo confirmado: lo que entró al
-                  // banco ya no es lo que dice la pantalla. Que al salir del
-                  // campo "50" pase a "50,00" no lo cambia.
-                  if (leerMonto(texto) !== leerMonto(montoQr)) setQrConfirmado(false);
-                  setMontoQr(texto);
-                }}
-                placeholder="0,00"
-                className="text-lg font-bold"
-              />
-            </Campo>
-
-            {qrNum > 0 && (
-              <div className="rounded-2xl border border-borde bg-white p-5">
-                {extraQr > 0 && (
-                  <p className="mb-3 text-center text-sm font-semibold text-texto">
-                    Cobrá {fmtMoney(qrConPropina(qrNum))} por QR
-                    <span className="block text-xs font-normal text-texto-3">
-                      incluye {fmtMoney(extraQr)} de propina
-                    </span>
-                  </p>
-                )}
-                <QrParaCobrar
-                  confirmado={qrConfirmado}
-                  onConfirmar={() => setQrConfirmado(true)}
-                  monto={fmtMoney(qrConPropina(qrNum))}
-                />
-              </div>
-            )}
-          </>
-        )}
-
-        {metodo !== "QR" && !nadaQueCobrar && (
-          <>
-            <Campo
-              label="Efectivo recibido"
-              hint={
-                // En mixto, lo que falta en mano es el resto de la venta MÁS la
-                // propina en efectivo (QA DIA-02: decía sólo el resto).
-                metodo === "MIXTO"
-                  ? `Falta cubrir ${fmtMoney(enMano)}${extraEfectivo > 0 ? " (incluye la propina)" : ""}`
-                  : extraEfectivo > 0
-                    ? `Incluye la propina en efectivo (${fmtMoney(extraEfectivo)})`
-                    : undefined
-              }
-            >
-              <InputMonto
-                value={recibido}
-                onChange={setRecibido}
-                placeholder="0,00"
-                // Con un vale aplicado no se roba el foco: el campo aparece mientras
-                // la cajera todavía está tecleando cuánto usar del vale.
-                // Con encabezado (el cobro del instituto) tampoco: en el celular
-                // el teclado tapaba de quién es el cobro y cuánto se reparte.
-                autoFocus={extras.montoVale === 0 && !encabezado}
-                className="text-lg font-bold"
-              />
-            </Campo>
-
-            <div className="flex flex-wrap gap-2">
-              {sugerencias.map((s) => (
-                <button
-                  key={s}
-                  onClick={() => setRecibido(montoParaEditar(s))}
-                  className="rounded-xl border border-borde bg-white px-3.5 py-2 text-[13px] font-semibold text-texto-2 transition-colors hover:border-primary hover:bg-primary-50 hover:text-primary-700"
-                >
-                  {fmtMoney(s)}
-                </button>
-              ))}
-            </div>
-
-            {/* Pagando la venta en efectivo, la propina por QR es una
-                transferencia aparte: que no se olvide. */}
-            {metodo === "EFECTIVO" && extraQr > 0 && (
-              <p role="note" className="rounded-xl bg-primary-50 px-4 py-2.5 text-[13px] font-semibold text-primary-700">
-                Además, la propina de {fmtMoney(extraQr)} se cobra por QR, aparte.
-              </p>
-            )}
-
-            <div
-              className={`rounded-xl px-4 py-3 text-center ${
-                falta > 0 ? "bg-warning-bg text-warning-text" : "bg-primary-50 text-primary-700"
-              }`}
-            >
-              {falta > 0 ? (
-                <>
-                  <p className="text-xs font-semibold uppercase tracking-wide">Falta</p>
-                  <p className="text-2xl font-extrabold">{fmtMoney(falta)}</p>
-                </>
-              ) : (
-                <>
-                  <p className="text-xs font-semibold uppercase tracking-wide">Cambio</p>
-                  <p className="text-2xl font-extrabold">{fmtMoney(cambio)}</p>
-                </>
-              )}
-            </div>
-          </>
-        )}
-
-        {metodo === "QR" && !nadaQueCobrar && (
-          <div className="rounded-2xl border border-borde bg-white p-5">
-            <p className="mb-3 text-center text-sm font-semibold text-texto">
-              Cobrá {fmtMoney(qrConPropina(aCubrir))} por QR
-              {extraQr > 0 && (
-                <span className="block text-xs font-normal text-texto-3">
-                  incluye {fmtMoney(extraQr)} de propina
-                </span>
-              )}
-            </p>
-            <QrParaCobrar
-              confirmado={qrConfirmado}
-              onConfirmar={() => setQrConfirmado(true)}
-              monto={fmtMoney(qrConPropina(aCubrir))}
-            />
-            {/* QA DIA-02 (c): el QR no lleva la propina en efectivo, pero la
-                caja la espera. Sin el aviso, nadie la cobraba. */}
-            {extraEfectivo > 0 && (
-              <p
-                role="alert"
-                className="mt-3 rounded-xl bg-warning-bg px-4 py-2.5 text-center text-[13px] font-semibold text-warning-text"
+        <div className="space-y-4">
+          {conDetalle && totalYMetodo}
+          {metodo === "MIXTO" && (
+            <>
+              <Campo
+                label="Monto pagado por QR"
+                hint={
+                  extraQr > 0
+                    ? `De la venta; el resto, en efectivo. La propina por QR (${fmtMoney(extraQr)}) se suma aparte`
+                    : "El resto se cobra en efectivo"
+                }
               >
-                Además, recibí {fmtMoney(extraEfectivo)} de propina en efectivo: el QR no la incluye.
+                <InputMonto
+                  value={montoQr}
+                  onChange={(texto) => {
+                    // Cambiar el monto invalida lo confirmado: lo que entró al
+                    // banco ya no es lo que dice la pantalla. Que al salir del
+                    // campo "50" pase a "50,00" no lo cambia.
+                    if (leerMonto(texto) !== leerMonto(montoQr)) setQrConfirmado(false);
+                    setMontoQr(texto);
+                  }}
+                  placeholder="0,00"
+                  className="text-lg font-bold"
+                />
+              </Campo>
+
+              {qrNum > 0 && (
+                <div className="rounded-2xl border border-borde bg-white p-5">
+                  {extraQr > 0 && (
+                    <p className="mb-3 text-center text-sm font-semibold text-texto">
+                      Cobrá {fmtMoney(qrConPropina(qrNum))} por QR
+                      <span className="block text-xs font-normal text-texto-3">
+                        incluye {fmtMoney(extraQr)} de propina
+                      </span>
+                    </p>
+                  )}
+                  <QrParaCobrar
+                    confirmado={qrConfirmado}
+                    onConfirmar={() => setQrConfirmado(true)}
+                    monto={fmtMoney(qrConPropina(qrNum))}
+                  />
+                </div>
+              )}
+            </>
+          )}
+
+          {metodo !== "QR" && !nadaQueCobrar && (
+            <>
+              <Campo
+                label="Efectivo recibido"
+                hint={
+                  // En mixto, lo que falta en mano es el resto de la venta MÁS la
+                  // propina en efectivo (QA DIA-02: decía sólo el resto).
+                  metodo === "MIXTO"
+                    ? `Falta cubrir ${fmtMoney(enMano)}${extraEfectivo > 0 ? " (incluye la propina)" : ""}`
+                    : extraEfectivo > 0
+                      ? `Incluye la propina en efectivo (${fmtMoney(extraEfectivo)})`
+                      : undefined
+                }
+              >
+                <InputMonto
+                  value={recibido}
+                  onChange={setRecibido}
+                  placeholder="0,00"
+                  // Con un vale aplicado no se roba el foco: el campo aparece mientras
+                  // la cajera todavía está tecleando cuánto usar del vale.
+                  // Con encabezado (el cobro del instituto) tampoco: en el celular
+                  // el teclado tapaba de quién es el cobro y cuánto se reparte.
+                  autoFocus={extras.montoVale === 0 && !encabezado}
+                  className="text-lg font-bold"
+                />
+              </Campo>
+
+              <div className="flex flex-wrap gap-2">
+                {sugerencias.map((s) => (
+                  <button
+                    key={s}
+                    onClick={() => setRecibido(montoParaEditar(s))}
+                    className="rounded-xl border border-borde bg-white px-3.5 py-2 text-[13px] font-semibold text-texto-2 transition-colors hover:border-primary hover:bg-primary-50 hover:text-primary-700"
+                  >
+                    {fmtMoney(s)}
+                  </button>
+                ))}
+              </div>
+
+              {/* Pagando la venta en efectivo, la propina por QR es una
+                  transferencia aparte: que no se olvide. */}
+              {metodo === "EFECTIVO" && extraQr > 0 && (
+                <p role="note" className="rounded-xl bg-primary-50 px-4 py-2.5 text-[13px] font-semibold text-primary-700">
+                  Además, la propina de {fmtMoney(extraQr)} se cobra por QR, aparte.
+                </p>
+              )}
+
+              <div
+                className={`rounded-xl px-4 py-3 text-center ${
+                  falta > 0 ? "bg-warning-bg text-warning-text" : "bg-primary-50 text-primary-700"
+                }`}
+              >
+                {falta > 0 ? (
+                  <>
+                    <p className="text-xs font-semibold uppercase tracking-wide">Falta</p>
+                    <p className="text-2xl font-extrabold">{fmtMoney(falta)}</p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-xs font-semibold uppercase tracking-wide">Cambio</p>
+                    <p className="text-2xl font-extrabold">{fmtMoney(cambio)}</p>
+                  </>
+                )}
+              </div>
+            </>
+          )}
+
+          {metodo === "QR" && !nadaQueCobrar && (
+            <div className="rounded-2xl border border-borde bg-white p-5">
+              <p className="mb-3 text-center text-sm font-semibold text-texto">
+                Cobrá {fmtMoney(qrConPropina(aCubrir))} por QR
+                {extraQr > 0 && (
+                  <span className="block text-xs font-normal text-texto-3">
+                    incluye {fmtMoney(extraQr)} de propina
+                  </span>
+                )}
               </p>
-            )}
-          </div>
-        )}
+              <QrParaCobrar
+                confirmado={qrConfirmado}
+                onConfirmar={() => setQrConfirmado(true)}
+                monto={fmtMoney(qrConPropina(aCubrir))}
+              />
+              {/* QA DIA-02 (c): el QR no lleva la propina en efectivo, pero la
+                  caja la espera. Sin el aviso, nadie la cobraba. */}
+              {extraEfectivo > 0 && (
+                <p
+                  role="alert"
+                  className="mt-3 rounded-xl bg-warning-bg px-4 py-2.5 text-center text-[13px] font-semibold text-warning-text"
+                >
+                  Además, recibí {fmtMoney(extraEfectivo)} de propina en efectivo: el QR no la incluye.
+                </p>
+              )}
+            </div>
+          )}
 
-        {/* Nada que cobrar de la venta (vale o sesión de paquete) pero sí
-            propina: lo que se recibe es sólo eso (QA DIA-02 d). */}
-        {nadaQueCobrar && propinasTotal > 0 && (
-          <div className="space-y-1 rounded-2xl border border-borde bg-white p-4 text-center text-sm font-semibold text-texto">
-            {extraEfectivo > 0 && <p>Recibí {fmtMoney(extraEfectivo)} de propina en efectivo</p>}
-            {extraQr > 0 && <p>Cobrá {fmtMoney(extraQr)} de propina por QR</p>}
-          </div>
-        )}
-
+          {/* Nada que cobrar de la venta (vale o sesión de paquete) pero sí
+              propina: lo que se recibe es sólo eso (QA DIA-02 d). */}
+          {nadaQueCobrar && propinasTotal > 0 && (
+            <div className="space-y-1 rounded-2xl border border-borde bg-white p-4 text-center text-sm font-semibold text-texto">
+              {extraEfectivo > 0 && <p>Recibí {fmtMoney(extraEfectivo)} de propina en efectivo</p>}
+              {extraQr > 0 && <p>Cobrá {fmtMoney(extraQr)} de propina por QR</p>}
+            </div>
+          )}
+        </div>
       </div>
 
-      <div className="space-y-2 border-t border-borde bg-white p-4">
-        {/* El error va en el PIE, pegado al botón, y no al final del área que
-            scrollea: en un celular cobrando con método MIXTO la pantalla es
-            larga (total, métodos, QR, efectivo, sugerencias, vuelto) y el
-            mensaje se escribía arriba, fuera de la vista. El cajero tocaba
-            "Confirmar", no veía pasar nada y volvía a tocar. */}
-        <ErrorMsg>{errorLocal || error}</ErrorMsg>
-        <Boton onClick={confirmar} disabled={enviando || bloqueado} className="w-full py-3 text-base">
-          {enviando
-            ? "Registrando…"
-            : `Confirmar cobro · ${fmtMoney(total)}${propinasTotal > 0 ? ` + ${fmtMoney(propinasTotal)} de propina` : ""}`}
-        </Boton>
-        {onCredito && (
-          <Boton variante="ghost" onClick={() => onCredito(extra)} disabled={enviando} className="w-full">
-            Vender a crédito (fiado)
+      <div className="border-t border-borde bg-white py-4 px-[max(1rem,calc(50%-16rem+1rem))] @3xl:px-[max(1.5rem,calc(50%-30rem+1.5rem))]">
+        <div className="space-y-2 @3xl:ml-auto @3xl:w-[calc(50%-0.75rem)]">
+          {/* El error va en el PIE, pegado al botón, y no al final del área que
+              scrollea: en un celular cobrando con método MIXTO la pantalla es
+              larga (total, métodos, QR, efectivo, sugerencias, vuelto) y el
+              mensaje se escribía arriba, fuera de la vista. El cajero tocaba
+              "Confirmar", no veía pasar nada y volvía a tocar. */}
+          <ErrorMsg>{errorLocal || error}</ErrorMsg>
+          <Boton onClick={confirmar} disabled={enviando || bloqueado} className="w-full py-3 text-base">
+            {enviando
+              ? "Registrando…"
+              : `Confirmar cobro · ${fmtMoney(total)}${propinasTotal > 0 ? ` + ${fmtMoney(propinasTotal)} de propina` : ""}`}
           </Boton>
-        )}
+          {onCredito && (
+            <Boton variante="ghost" onClick={() => onCredito(extra)} disabled={enviando} className="w-full">
+              Vender a crédito (fiado)
+            </Boton>
+          )}
+        </div>
       </div>
     </div>
   );
