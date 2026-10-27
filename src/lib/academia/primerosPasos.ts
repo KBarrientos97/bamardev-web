@@ -142,7 +142,9 @@ export function pasosPrimeros(d: DatosPrimerosPasos): PasoInicial[] {
   }
   // La página en línea sólo es un paso si el plan la incluye; un backend que
   // no dice si está publicada no permite marcarla ni pedirla.
-  if (d.ajustes && d.features?.includes("preinscripcion_online") && d.ajustes.paginaPublicada !== undefined) {
+  // Y sólo si el plan trae también la página pública: el paso lleva a /mi-pagina, que la pide
+  // (`pagina_publica`); sin ella el enlace rebotaba (ronda 2).
+  if (d.ajustes && conPaginaEnLinea(d.features) && d.ajustes.paginaPublicada !== undefined) {
     pasos.push({
       clave: "pagina",
       titulo: "Página de inscripción en línea publicada",
@@ -180,7 +182,10 @@ export function pasosPrimeros(d: DatosPrimerosPasos): PasoInicial[] {
  * plan trae la inscripción en línea, el de la página. Menos que eso quiere decir
  * que algo no se pudo saber (un permiso, un corte).
  */
-export const pasosEsperados = (features: string[] | undefined) => 5 + (features?.includes("preinscripcion_online") ? 1 : 0);
+export const pasosEsperados = (features: string[] | undefined) => 5 + (conPaginaEnLinea(features) ? 1 : 0);
+
+/** La inscripción en línea necesita la página pública donde se publica (`/mi-pagina`). */
+const conPaginaEnLinea = (features: string[] | undefined) => !!features?.includes("preinscripcion_online") && !!features.includes("pagina_publica");
 
 /** Los pasos de siempre, sin el QR ni el PIN (los que dicen si algo "no se pudo saber"). */
 export const pasosBase = (pasos: PasoInicial[]) => pasos.filter((x) => !PASOS_DEL_MOSTRADOR.includes(x.clave));

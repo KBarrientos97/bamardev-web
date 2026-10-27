@@ -236,7 +236,7 @@ export const SESION_ADMIN = {
     id: 20,
     nombre: "CCTP Horizonte",
     tipoNegocio: "ACADEMIA",
-    features: ["academia", "asistencia", "notas", "planilla_docente", "preinscripcion_online", "pos", "caja", "reportes"],
+    features: ["academia", "asistencia", "notas", "planilla_docente", "preinscripcion_online", "pagina_publica", "pos", "caja", "reportes"],
   },
   rubro: "ACADEMIA",
   vocabulario: undefined,

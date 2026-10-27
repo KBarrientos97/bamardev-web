@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ajustesDePrueba } from "../../test/academiaFixtures";
-import { completo, cuantosHechos, cursoListo, pasosPrimeros, type DatosPrimerosPasos } from "./primerosPasos";
+import { completo, cuantosHechos, cursoListo, pasosEsperados, pasosPrimeros, type DatosPrimerosPasos } from "./primerosPasos";
 import type { Carrera, Docente, GrupoResumen, Sede } from "./tipos";
 
 const sede = (extra: Partial<Sede> = {}): Sede => ({
@@ -26,7 +26,7 @@ const TODO: DatosPrimerosPasos = {
   cursos: [curso()],
   docentes: [docente()],
   grupos: [grupo()],
-  features: ["academia", "preinscripcion_online"],
+  features: ["academia", "preinscripcion_online", "pagina_publica"],
   palabras: { carrera: "curso", docente: "docente", sede: "sede", Sede: "Sede", Sedes: "Sedes" },
 };
 
@@ -105,6 +105,10 @@ describe("C1 · pasos de «Primeros pasos»", () => {
 
   it("la página en línea sólo es un paso si el plan la trae y el backend dice si está publicada", () => {
     expect(pasosPrimeros({ ...TODO, features: ["academia"] }).map((x) => x.clave)).not.toContain("pagina");
+    // Con la inscripción en línea pero sin la página pública, el enlace a /mi-pagina rebotaría: no es un paso.
+    expect(pasosPrimeros({ ...TODO, features: ["academia", "preinscripcion_online"] }).map((x) => x.clave)).not.toContain("pagina");
+    expect(pasosEsperados(["academia", "preinscripcion_online"])).toBe(5);
+    expect(pasosEsperados(["academia", "preinscripcion_online", "pagina_publica"])).toBe(6);
     expect(pasosPrimeros({ ...TODO, ajustes: ajustesDePrueba() }).map((x) => x.clave)).not.toContain("pagina");
     expect(hechos({ ...TODO, ajustes: ajustesDePrueba({ paginaPublicada: false }) }).pagina).toBe(false);
   });
