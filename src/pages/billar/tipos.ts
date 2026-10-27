@@ -6,9 +6,15 @@
  * esta misma forma (ver `api.ts`).
  */
 
-/** Un paquete de tiempo fijo: N horas por un precio cerrado. */
+/**
+ * Un paquete de tiempo fijo: N minutos por un precio cerrado. En minutos y no
+ * en horas desde el 27-oct: Miguel pidió tiempo fijo de 30 min, y un paquete
+ * de "0,5 h" la app Android no lo puede leer (lee las horas como entero). El
+ * backend manda también `h` en los de horas enteras, para la app.
+ */
 export interface Paquete {
-  h: number;
+  /** De media en media hora: 30, 60, 90… hasta 24 h. */
+  min: number;
   precio: number;
 }
 

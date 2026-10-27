@@ -519,7 +519,8 @@ function ponerCuenta(c: CuentaApi): CuentaSinMesa {
 
 export interface AbrirOpciones {
   modo: "libre" | "fijo";
-  horas?: number;
+  /** Tiempo fijo, de media en media hora. */
+  minutos?: number;
   /** Tiempo fijo cobrado al instante. Sin esto, se cobra al final. */
   pago?: PagoNuevo;
   cliente?: string;
@@ -545,7 +546,7 @@ export const billar = {
     const pagos = o.pago ? aPagos(o.pago, await formasPago()) : undefined;
     const r = await apiBillar.abrir(mesa.idInterno, {
       modo: o.modo,
-      ...(o.modo === "fijo" ? { horas: o.horas } : {}),
+      ...(o.modo === "fijo" ? { minutos: o.minutos } : {}),
       ...(pagos ? { pagos } : {}),
       // Si venía reservada, el cliente es el de la reserva.
       cliente: o.cliente?.trim() || mesa.reserva?.nombre || undefined,
@@ -595,12 +596,12 @@ export const billar = {
     return ponerMesa(await apiBillar.reanudar(sesionDe(mesaId).sesionId));
   },
 
-  /** Suma horas al tiempo fijo; con `pago`, cobradas ahora. */
-  async extender(mesaId: number, horas: number, pago: PagoNuevo | undefined, clienteRequestId: string): Promise<Mesa> {
+  /** Suma minutos al tiempo fijo; con `pago`, cobrados ahora. */
+  async extender(mesaId: number, minutos: number, pago: PagoNuevo | undefined, clienteRequestId: string): Promise<Mesa> {
     const { sesionId } = sesionDe(mesaId);
     const pagos = pago ? aPagos(pago, await formasPago()) : undefined;
-    const r = await apiBillar.extender(sesionId, horas, pagos, clienteRequestId);
-    // Las horas nuevas vuelven a avisar desde cero.
+    const r = await apiBillar.extender(sesionId, minutos, pagos, clienteRequestId);
+    // El tiempo nuevo vuelve a avisar desde cero.
     olvidarAvisos(sesionId);
     return ponerMesa(r);
   },
@@ -992,7 +993,8 @@ export const billar = {
           fraccion: t.fraccion,
           tolerancia: t.tolerancia,
           minimo: t.minimo,
-          paquetes: t.paquetes,
+          paquetes: t.paquetes.map((p) => ({ min: p.min, precio: p.precio })),
+          paquetesEnMinutos: true,
           promos: t.promos,
         })),
       );

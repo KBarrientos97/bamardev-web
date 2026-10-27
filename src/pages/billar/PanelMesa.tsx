@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Icon, type NombreIcono } from "../../components/Icon";
 import { fmtMoney } from "../../lib/format";
 import { useAccionesMesa } from "./acciones";
-import { etiquetaPagoFijo, fmtCobrado, fmtHace, horaDe } from "./calculo";
+import { etiquetaPagoFijo, fmtCobrado, fmtHace, fmtTiempoFijo, horaDe } from "./calculo";
 import { useDialogos } from "./dialogos";
 import type { ItemConsumo, Pago } from "./tipos";
 import { BotonB, Circulo, EstadoBadge, Fila, Nota, Rotulo } from "./ui";
@@ -170,7 +170,7 @@ function TarjetaTarifa({ v }: { v: VistaMesa }) {
     <div className="space-y-1.5 rounded-xl border border-borde bg-muted px-4 py-3 text-[13px]">
       <Fila etiqueta="Tarifa" valor={`${fmtMoney(t.tarifa)}/h`} />
       <Fila etiqueta="Regla" valor={`cada ${t.fraccion} min · mín. ${t.minimo} min · ${t.tolerancia} min tolerancia`} />
-      <Fila etiqueta="Tiempo fijo" valor={t.paquetes.map((p) => `${p.h} h ${fmtMoney(p.precio)}`).join(" · ")} />
+      <Fila etiqueta="Tiempo fijo" valor={t.paquetes.map((p) => `${fmtTiempoFijo(p.min)} ${fmtMoney(p.precio)}`).join(" · ")} />
       {promos.map((p) => (
         <Fila key={p.id} etiqueta={<span className="text-primary-700">{p.nombre}</span>} valor={<span className="text-primary-700">−{p.pct} % en el tiempo</span>} />
       ))}
@@ -236,7 +236,7 @@ function CuentaAbierta({ v, ahora }: { v: VistaMesa; ahora: number }) {
             <>
               <Fila
                 etiqueta="Tiempo fijo"
-                valor={`${fijo.min / 60} h · ${fmtMoney(fijo.precio)} · ${etiquetaPagoFijo(s)}`}
+                valor={`${fmtTiempoFijo(fijo.min)} · ${fmtMoney(fijo.precio)} · ${etiquetaPagoFijo(s)}`}
               />
               {termina && <Fila etiqueta="Termina" valor={horaDe(termina)} />}
               {c.excedenteMin > 0 && (

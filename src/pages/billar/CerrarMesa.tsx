@@ -15,6 +15,7 @@ import {
   cuentaDe,
   devolucionDe,
   fmtCobrado,
+  fmtTiempoFijo,
   fmtCrono,
   fmtHace,
   horaDe,
@@ -566,7 +567,7 @@ export default function CerrarMesa() {
   const pausaRecuperable = sVivo ? inicioParaCobrarLaPausa(sVivo, ahora) : null;
   const items = agruparItems(s.consumos);
   const detalleTiempo = s.prepago
-    ? `cobrado ${fmtCobrado(c.cobradoMin)} (tiempo fijo ${s.prepago.min / 60} h${c.excedenteMin ? ` + ${fmtCobrado(c.excedenteMin)} de excedente` : ""})`
+    ? `cobrado ${fmtCobrado(c.cobradoMin)} (tiempo fijo ${fmtTiempoFijo(s.prepago.min)}${c.excedenteMin ? ` + ${fmtCobrado(c.excedenteMin)} de excedente` : ""})`
     : `cobrado ${fmtCobrado(c.cobradoMin)}`;
 
   return (

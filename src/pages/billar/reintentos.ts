@@ -40,11 +40,11 @@ export function huellaAdelanto(sesionId: string, pago: CobroHuella): string {
 }
 
 /**
- * Una extensión: la mesa, cuántas horas y si se cobra ahora (y cómo) o al
+ * Una extensión: la mesa, cuántos minutos y si se cobra ahora (y cómo) o al
  * final. Pasar de "cobrar al final" a "cobrar ahora" es otra acción.
  */
-export function huellaExtension(sesionId: string, horas: number, pago?: CobroHuella): string {
-  return JSON.stringify(["extender", sesionId, horas, pago ? deCobro(pago) : "al final"]);
+export function huellaExtension(sesionId: string, minutos: number, pago?: CobroHuella): string {
+  return JSON.stringify(["extender", sesionId, minutos, pago ? deCobro(pago) : "al final"]);
 }
 
 /**
