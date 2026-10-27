@@ -467,3 +467,55 @@ describe("E10: el recibo de las cuotas de un instituto", () => {
     expect(apiAcademia.enlacePago).not.toHaveBeenCalled();
   });
 });
+
+describe("con lugar: los botones al lado del ticket (27-oct)", () => {
+  /** Un `ResizeObserver` de mentira que informa un ancho fijo: jsdom no mide nada. */
+  function conAncho(ancho: number) {
+    const original = globalThis.ResizeObserver;
+    globalThis.ResizeObserver = class {
+      avisar: ResizeObserverCallback;
+      constructor(avisar: ResizeObserverCallback) {
+        this.avisar = avisar;
+      }
+      observe() {
+        this.avisar([{ contentRect: { width: ancho } } as ResizeObserverEntry], this as unknown as ResizeObserver);
+      }
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof ResizeObserver;
+    const rect = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({ width: ancho } as DOMRect);
+    return () => {
+      globalThis.ResizeObserver = original;
+      rect.mockRestore();
+    };
+  }
+
+  beforeEach(() => {
+    sesion.rubro = "RESTAURANTE";
+  });
+
+  it("en la computadora, «Nueva venta» va debajo de «Venta registrada» y no en la barra de abajo", () => {
+    // Kevin, cobrando en el Punto de venta del billar: la barra pegada al
+    // borde de abajo dejaba media pantalla vacía entre el aviso y los botones.
+    const restaurar = conAncho(1200);
+    try {
+      dibujar(venta());
+      const nueva = screen.getByRole("button", { name: "Nueva venta" });
+      const columna = screen.getByRole("heading", { name: "Venta registrada" }).parentElement!;
+      expect(columna).toContainElement(nueva);
+    } finally {
+      restaurar();
+    }
+  });
+
+  it("angosto (celular), la barra de abajo de siempre", () => {
+    const restaurar = conAncho(390);
+    try {
+      dibujar(venta());
+      const columna = screen.getByRole("heading", { name: "Venta registrada" }).parentElement!;
+      expect(columna).not.toContainElement(screen.getByRole("button", { name: "Nueva venta" }));
+    } finally {
+      restaurar();
+    }
+  });
+});

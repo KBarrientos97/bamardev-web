@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { Icon } from "../../components/Icon";
 import { Boton } from "../../components/ui";
 import { enlaceDeCuotas, modulosDeCuotaVenta } from "../../lib/academia/cobroCuotas";
@@ -41,6 +41,26 @@ export default function PantallaRecibo({
   const ticket = useRef<HTMLElement>(null);
   const [compartiendo, setCompartiendo] = useState(false);
   const [avisoCompartir, setAvisoCompartir] = useState("");
+
+  /**
+   * Con lugar (las dos columnas, desde 48rem como `@3xl`), los botones van
+   * debajo de "Venta registrada", al lado del ticket, y no en una barra
+   * pegada al borde de abajo con media pantalla vacía en el medio (Kevin,
+   * 27-oct, cobrando en el Punto de venta). Se mide el lugar y no la ventana,
+   * como las columnas; y antes de pintar, para que la barra no se vea un
+   * instante abajo. Sin `ResizeObserver` (los tests) queda la barra de siempre.
+   */
+  const raiz = useRef<HTMLDivElement>(null);
+  const [ancha, setAncha] = useState(false);
+  useLayoutEffect(() => {
+    const el = raiz.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const medir = (ancho: number) => setAncha(ancho >= 768);
+    medir(el.getBoundingClientRect().width);
+    const ro = new ResizeObserver(([e]) => medir(e.contentRect.width));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   async function compartir() {
     if (!ticket.current || compartiendo) return;
@@ -112,12 +132,36 @@ export default function PantallaRecibo({
       .join(" + ") ||
     "—";
 
+  const imprimirYCompartir = incluye("recibo_pdf") && (
+    <>
+      <Boton variante="ghost" icono="printer" onClick={() => window.print()}>
+        Imprimir
+      </Boton>
+      {/* Siempre visible: si el equipo no sabe compartir archivos, la
+          imagen se descarga, que en un escritorio es lo más parecido. */}
+      <Boton variante="ghost" icono="arrowUpRight" onClick={compartir} disabled={compartiendo}>
+        {compartiendo ? "Generando…" : "Compartir"}
+      </Boton>
+    </>
+  );
+  const historial = (
+    <Boton variante="ghost" onClick={onHistorial}>
+      Historial
+    </Boton>
+  );
+  const nueva = (clase: string) => (
+    <Boton icono="plus" onClick={onNuevaVenta} className={clase}>
+      {etiquetaNueva}
+    </Boton>
+  );
+
   // Con lugar (26-oct): "Venta registrada" a la izquierda y el ticket a la
   // derecha, en vez de la columna del celular en el medio. Igual que el cobro,
-  // mide su lugar y no la ventana.
+  // mide su lugar y no la ventana. Desde el 27-oct, en 52rem y no en 60rem:
+  // con 60 el aviso y el ticket quedaban cada uno en una punta.
   return (
-    <div className="@container flex h-full min-h-0 w-full flex-col">
-      <div className="min-h-0 flex-1 overflow-y-auto py-4 px-[max(1rem,calc(50%-16rem+1rem))] @3xl:px-[max(1.5rem,calc(50%-30rem+1.5rem))] @3xl:grid @3xl:grid-cols-2 @3xl:content-start @3xl:items-start @3xl:gap-8 @3xl:py-8">
+    <div ref={raiz} className="@container flex h-full min-h-0 w-full flex-col">
+      <div className="min-h-0 flex-1 overflow-y-auto py-4 px-[max(1rem,calc(50%-16rem+1rem))] @3xl:px-[max(1.5rem,calc(50%-26rem+1.5rem))] @3xl:grid @3xl:grid-cols-2 @3xl:content-start @3xl:items-start @3xl:gap-8 @3xl:py-8">
         <div className="mb-4 flex flex-col items-center text-center print:hidden @3xl:mb-0">
           <span
             className={`flex h-14 w-14 items-center justify-center rounded-2xl ${
@@ -137,6 +181,16 @@ export default function PantallaRecibo({
               ? "Se sube sola cuando vuelva la conexión. El número lo pone el sistema al subirla."
               : (venta.comprobante ?? `#${venta.id}`)}
           </p>
+          {ancha && (
+            <div className="mt-6 w-full max-w-sm space-y-3">
+              {nueva("w-full")}
+              <div className="flex flex-wrap justify-center gap-2">
+                {imprimirYCompartir}
+                {historial}
+              </div>
+              {avisoCompartir && <p className="text-[13px] text-texto-2">{avisoCompartir}</p>}
+            </div>
+          )}
         </div>
 
         {/* El ticket: el `id` lo hace lo ÚNICO visible al imprimir (index.css). */}
@@ -237,7 +291,8 @@ export default function PantallaRecibo({
               </div>
             )}
             {cambio > 0 && (
-              <div className="flex justify-between font-bold text-texto">
+              // Con `gap`: en el ticket de 320 px se leía "Cambio entregadoBs 27,00".
+              <div className="flex justify-between gap-2 font-bold text-texto">
                 <dt>Cambio entregado</dt>
                 <dd>{fmtMoney(cambio)}</dd>
               </div>
@@ -312,37 +367,21 @@ export default function PantallaRecibo({
         </article>
       </div>
 
-      {avisoCompartir && (
+      {!ancha && avisoCompartir && (
         <p className="border-t border-borde bg-muted px-4 py-2 text-center text-[13px] text-texto-2 print:hidden">
           {avisoCompartir}
         </p>
       )}
 
-      <div className="flex gap-2 border-t border-borde bg-white py-4 print:hidden px-[max(1rem,calc(50%-16rem+1rem))] @3xl:px-[max(1.5rem,calc(50%-30rem+1.5rem))]">
-        {incluye("recibo_pdf") && (
-          <>
-            <Boton variante="ghost" icono="printer" onClick={() => window.print()}>
-              Imprimir
-            </Boton>
-            {/* Siempre visible: si el equipo no sabe compartir archivos, la
-                imagen se descarga, que en un escritorio es lo más parecido. */}
-            <Boton
-              variante="ghost"
-              icono="arrowUpRight"
-              onClick={compartir}
-              disabled={compartiendo}
-            >
-              {compartiendo ? "Generando…" : "Compartir"}
-            </Boton>
-          </>
-        )}
-        <Boton variante="ghost" onClick={onHistorial}>
-          Historial
-        </Boton>
-        <Boton icono="plus" onClick={onNuevaVenta} className="flex-1">
-          {etiquetaNueva}
-        </Boton>
-      </div>
+      {!ancha && (
+        // Con `flex-wrap`: a 390 px, con Imprimir y Compartir, "Nueva venta"
+        // quedaba cortado afuera de la pantalla. Ahora baja a su renglón.
+        <div className="flex flex-wrap gap-2 border-t border-borde bg-white py-4 print:hidden px-[max(1rem,calc(50%-16rem+1rem))]">
+          {imprimirYCompartir}
+          {historial}
+          {nueva("min-w-[10rem] flex-1")}
+        </div>
+      )}
     </div>
   );
 }

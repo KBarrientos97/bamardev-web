@@ -44,11 +44,12 @@ import type {
 import AperturaCaja from "./AperturaCaja";
 import PantallaCierre, { CierreOk } from "./PantallaCierre";
 import PantallaCobro from "./PantallaCobro";
+import { CobroEnLaCompu, type LineaDelCobro } from "./CobroEnLaCompu";
 import PantallaCredito from "./PantallaCredito";
 import PantallaEntrega, { type DatosEntrega } from "./PantallaEntrega";
 import MesasPorCobrar from "./MesasPorCobrar";
 import Entregas from "../salon/Entregas";
-import { consumoDeMesa, etiquetaMesa } from "../salon/logicaSalon";
+import { consumoDeMesa, etiquetaMesa, itemsVivos } from "../salon/logicaSalon";
 import type { Mesa as MesaSalon } from "../../types/salon";
 import PantallaHistorial from "./PantallaHistorial";
 import PantallaRecibo from "./PantallaRecibo";
@@ -882,19 +883,34 @@ function PuntoDeVenta() {
       />
     );
 
-  if (pantalla === "cobro")
+  if (pantalla === "cobro") {
+    // Sólo los productos: el backend arma el total de la venta desde las
+    // líneas y exige que los pagos sumen exactamente eso. La tarifa de
+    // envío viaja aparte y se la cobra el repartidor, así que sumarla acá
+    // hacía que el backend rechazara la venta entera con un 400.
+    //
+    // Cobrando una mesa el total es el consumo que cargó el mesero, no el
+    // carrito: la cajera no retipea nada de lo que el cliente comió.
+    const totalCobro = mesaCobrando ? consumoDeMesa(mesaCobrando) : totalCarrito;
+    // Lo que se cobra, para el detalle de la computadora: de la mesa, lo que
+    // cargó el mesero; si no, el carrito como se cobra (con el precio de la
+    // cita o del profesional, el mismo que suma `totalCarrito`).
+    const lineasCobro: LineaDelCobro[] = mesaCobrando
+      ? (mesaCobrando.comandas ?? []).flatMap((c) =>
+          itemsVivos(c).map((i) => ({ clave: `${c.id}-${i.id}`, nombre: i.nombre, cantidad: i.cantidad, precio: i.precio })),
+        )
+      : carritoVenta.lineas.map((l) => ({
+          clave: l.producto.id,
+          nombre: l.producto.nombre,
+          cantidad: l.cantidad,
+          precio: l.producto.precio,
+        }));
     return (
       <>
       {dialogoCobroIncompleto}
+      <CobroEnLaCompu lineas={lineasCobro} total={totalCobro}>
       <PantallaCobro
-        // Sólo los productos: el backend arma el total de la venta desde las
-        // líneas y exige que los pagos sumen exactamente eso. La tarifa de
-        // envío viaja aparte y se la cobra el repartidor, así que sumarla acá
-        // hacía que el backend rechazara la venta entera con un 400.
-        //
-        // Cobrando una mesa el total es el consumo que cargó el mesero, no el
-        // carrito: la cajera no retipea nada de lo que el cliente comió.
-        total={mesaCobrando ? consumoDeMesa(mesaCobrando) : totalCarrito}
+        total={totalCobro}
         subtitulo={
           mesaCobrando
             ? etiquetaMesa(mesaCobrando)
@@ -958,8 +974,10 @@ function PuntoDeVenta() {
         enviando={enviando}
         error={error}
       />
+      </CobroEnLaCompu>
       </>
     );
+  }
 
   if (pantalla === "credito")
     return (
