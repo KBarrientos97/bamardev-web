@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Carrera } from "../../../lib/academia/tipos";
@@ -82,16 +82,33 @@ describe("N2 · Cursos", () => {
     const fila = screen.getByRole("button", { name: "Editar Barbería" });
     expect(within(fila).getByText(/1\.350/)).toBeInTheDocument();
     expect(within(fila).getByText("del instituto")).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: /En la página/ })).toHaveTextContent("1");
-    fireEvent.click(screen.getByRole("tab", { name: /Sin publicar/ }));
+    // U4: sin filtros de publicación; el estado va como marca en la fila.
+    expect(screen.queryByRole("tab", { name: /Sin publicar|En la página/ })).not.toBeInTheDocument();
+    expect(within(fila).getByText("En la página")).toBeInTheDocument();
+    expect(within(fila).queryByText(/Sin publicar/)).not.toBeInTheDocument();
+    expect(within(screen.getByRole("button", { name: "Editar Maquillaje" })).getByText("Sin publicar en la página")).toBeInTheDocument();
+  });
+
+  it("U4: los chips son Todos y Retirados, y sólo si hay algún retirado", async () => {
+    await montar();
+    // Sin retirados no hay nada que filtrar: la barra no aparece.
+    expect(screen.queryByRole("tab")).not.toBeInTheDocument();
+    vi.mocked(apiAcademia.carreras).mockResolvedValue([BARBERIA, { ...BARBERIA, id: 5, nombre: "Tatuaje", activa: false }]);
+    cleanup();
+    await montar();
+    expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual(["Todos 1", "Retirados 1"]);
+    expect(screen.queryByRole("button", { name: "Editar Tatuaje" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: /Retirados/ }));
+    expect(screen.getByRole("button", { name: "Editar Tatuaje" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Editar Barbería" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Editar Maquillaje" })).toBeInTheDocument();
   });
 
   it("el panel muestra cómo se ofrece y guarda los módulos con su id", async () => {
     await montar();
     fireEvent.click(screen.getByRole("button", { name: "Editar Barbería" }));
     const panel = screen.getByRole("complementary", { name: "Barbería" });
+    // C3: el % del curso manda sobre el de Ajustes y se dice en el formulario.
+    expect(within(panel).getByText(/Este porcentaje manda sobre el de Ajustes/)).toBeInTheDocument();
     const oferta = within(panel).getByRole("region", { name: "Así se ofrece" });
     expect(oferta).toHaveTextContent(/3 cuotas/);
     expect(oferta).toHaveTextContent(/ahorra Bs 150/);

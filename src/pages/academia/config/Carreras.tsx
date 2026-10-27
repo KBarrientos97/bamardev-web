@@ -62,7 +62,12 @@ import {
  * cubren materias.
  */
 
-type FiltroCursos = "todos" | "pagina" | "sinPublicar" | "retirados";
+/**
+ * Dos chips y nada más (U4, 26-oct): «En la página» y «Sin publicar» eran
+ * filtros que casi nadie usa; ahora el estado de publicación es una marca
+ * en la fila de cada curso.
+ */
+type FiltroCursos = "todos" | "retirados";
 
 export default function Carreras() {
   const p = usePalabras();
@@ -78,15 +83,9 @@ export default function Carreras() {
   const activas = carreras.filter((c) => c.activa);
   const conteo: Record<FiltroCursos, number> = {
     todos: activas.length,
-    pagina: activas.filter((c) => c.publicarEnPagina).length,
-    sinPublicar: activas.filter((c) => !c.publicarEnPagina).length,
     retirados: carreras.length - activas.length,
   };
-  const visibles = carreras.filter((c) =>
-    filtro === "retirados"
-      ? !c.activa
-      : c.activa && (filtro === "todos" || (filtro === "pagina" ? c.publicarEnPagina : !c.publicarEnPagina)),
-  );
+  const visibles = carreras.filter((c) => (filtro === "retirados" ? !c.activa : c.activa));
   const actual = typeof elegida === "number" ? (carreras.find((c) => c.id === elegida) ?? null) : null;
   const panelAbierto = elegida === "nueva" || actual !== null;
   const enAvanzadas = avanzadas != null ? (carreras.find((c) => c.id === avanzadas) ?? null) : null;
@@ -126,18 +125,19 @@ export default function Carreras() {
         etiqueta={p.Carreras}
         sinRelleno
         barra={
-          <FiltrosConteo<FiltroCursos>
-            etiqueta={`Filtrar ${p.carreras}`}
-            valor={filtro}
-            onChange={setFiltro}
-            enTarjeta
-            opciones={[
-              { clave: "todos", label: "Todos", n: conteo.todos },
-              { clave: "pagina", label: "En la página", n: conteo.pagina },
-              { clave: "sinPublicar", label: "Sin publicar", n: conteo.sinPublicar },
-              ...(conteo.retirados ? [{ clave: "retirados" as const, label: "Retirados", n: conteo.retirados }] : []),
-            ]}
-          />
+          // Sin retirados, «Todos» solo no filtra nada: la barra no se dibuja.
+          conteo.retirados || filtro === "retirados" ? (
+            <FiltrosConteo<FiltroCursos>
+              etiqueta={`Filtrar ${p.carreras}`}
+              valor={filtro}
+              onChange={setFiltro}
+              enTarjeta
+              opciones={[
+                { clave: "todos", label: "Todos", n: conteo.todos },
+                { clave: "retirados", label: "Retirados", n: conteo.retirados },
+              ]}
+            />
+          ) : undefined
         }
         pie={
           visibles.length > 0 && (
@@ -323,7 +323,7 @@ function FilaCurso({
             ) : c.publicarEnPagina ? (
               <Chip tono="verde">En la página</Chip>
             ) : (
-              <Chip tono="ambar">Sin publicar</Chip>
+              <Chip tono="ambar">Sin publicar en la página</Chip>
             )}
           </span>
           <span className="mt-0.5 block truncate text-[12px] text-texto-3">{sub || `Sin ${p.materias}`}</span>
