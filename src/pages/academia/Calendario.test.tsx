@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Calendario as TCalendario, GrupoEnCalendario } from "../../lib/academia/tipos";
@@ -25,7 +25,7 @@ vi.mock("../../store/AuthContext", async () => {
 
 vi.mock("../../lib/api", async (importOriginal) => {
   const real = await importOriginal<typeof import("../../lib/api")>();
-  return { ...real, api: { ...real.api, getSucursales: vi.fn().mockResolvedValue([]) } };
+  return { ...real, api: { ...real.api, getSucursales: vi.fn().mockResolvedValue([]), getAlmacenes: vi.fn().mockResolvedValue([]) } };
 });
 
 vi.mock("../../lib/academia/apiAcademia", async (importOriginal) => {
@@ -287,19 +287,34 @@ describe("N1 · Calendario con todas las sedes (QA ronda 2, B-07)", () => {
     vi.mocked(apiAcademia.carreras).mockResolvedValue([
       { id: 3, nombre: "Barbería", activa: true, materias: [{ id: 31, orden: 1, nombre: "Corte", activa: true }], planes: [], cupoDefecto: null, pctDocente: null, publicarEnPagina: false },
     ] as never);
-    vi.mocked(apiAcademia.docentes).mockRejectedValueOnce(new Error("Sin conexión")).mockResolvedValue([]);
+    // Falla toda la lista (también la que mira «Primeros pasos»); sólo el panel la muestra como error.
+    vi.mocked(apiAcademia.docentes).mockRejectedValue(new Error("Sin conexión"));
     await montar();
     fireEvent.click(screen.getByRole("button", { name: "Abrir grupo aquí: 10:00 a 12:00, diciembre" }));
     await act(async () => {});
     const panel = screen.getByRole("complementary", { name: "Abrir grupo" });
     fireEvent.change(within(panel).getByLabelText("Curso"), { target: { value: "3" } });
     expect(within(panel).getByText(/No se pudo traer la lista de docentes/)).toBeInTheDocument();
+    vi.mocked(apiAcademia.docentes).mockResolvedValue([]);
+    const pedidas = vi.mocked(apiAcademia.docentes).mock.calls.length;
     await act(async () => {
       fireEvent.click(within(panel).getByRole("button", { name: "Reintentar" }));
     });
-    expect(apiAcademia.docentes).toHaveBeenCalledTimes(2);
+    expect(apiAcademia.docentes).toHaveBeenCalledTimes(pedidas + 1);
     expect(within(panel).queryByText(/No se pudo traer/)).not.toBeInTheDocument();
   });
+  describe("C1 · Primeros pasos arriba del calendario", () => {
+    it("el administrador de un instituto sin terminar de armar la ve; la recepción no", async () => {
+      await montar();
+      const lista = screen.getByRole("region", { name: "Primeros pasos" });
+      expect(within(lista).getByRole("link", { name: /Crear un curso/ })).toHaveAttribute("href", "/configuracion/carreras");
+      cleanup();
+      quien.sesion = "secretaria";
+      await montar();
+      expect(screen.queryByRole("region", { name: "Primeros pasos" })).not.toBeInTheDocument();
+    });
+  });
+
   describe("D1 · las acciones de la cabecera según el rol", () => {
     function Destino() {
       const l = useLocation();

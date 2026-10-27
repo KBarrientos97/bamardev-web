@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -7,11 +7,29 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  * pestaña por pantalla. Fuera de la academia, Almacenes queda como siempre.
  */
 
-const sesion = { rubro: "ACADEMIA", puede: (_: string) => true };
+const sesion = { rubro: "ACADEMIA", puede: (_: string) => true, usuario: { permisos: [] as string[] }, negocio: { id: 20, features: ["academia"] } };
 vi.mock("../../../store/AuthContext", () => ({ useAuth: () => sesion }));
 vi.mock("../../../lib/academia/usePalabras", () => ({
   usePalabras: () => ({ Carreras: "Cursos", Sedes: "Sedes", docente: "docente" }),
 }));
+
+vi.mock("../../../lib/api", async (importOriginal) => {
+  const real = await importOriginal<typeof import("../../../lib/api")>();
+  return { ...real, api: { ...real.api, getAlmacenes: vi.fn().mockResolvedValue([]) } };
+});
+
+vi.mock("../../../lib/academia/apiAcademia", async (importOriginal) => {
+  const real = await importOriginal<typeof import("../../../lib/academia/apiAcademia")>();
+  return {
+    ...real,
+    apiAcademia: {
+      ajustes: vi.fn().mockResolvedValue({ franjas: [] }),
+      carreras: vi.fn().mockResolvedValue([]),
+      docentes: vi.fn().mockResolvedValue([]),
+      grupos: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 100 }),
+    },
+  };
+});
 
 import { ConPestanasConfig, InicioConfig } from "./ConfigAcademia";
 
@@ -38,8 +56,10 @@ function montar(ruta: string) {
 }
 
 beforeEach(() => {
+  localStorage.clear();
   sesion.rubro = "ACADEMIA";
   sesion.puede = () => true;
+  sesion.usuario.permisos = [];
 });
 
 describe("Configuración del instituto", () => {
@@ -63,5 +83,28 @@ describe("Configuración del instituto", () => {
     montar("/inventario/almacenes");
     expect(screen.queryByRole("navigation")).not.toBeInTheDocument();
     expect(screen.getByTestId("donde")).toHaveTextContent("/inventario/almacenes");
+  });
+});
+
+describe("C1 · Primeros pasos arriba de la Configuración", () => {
+  it("quien configura el instituto la ve en cada pestaña mientras falten pasos", async () => {
+    sesion.usuario.permisos = ["academia.configurar"];
+    montar("/configuracion/academia");
+    await act(async () => {});
+    expect(screen.getByRole("region", { name: "Primeros pasos" })).toBeInTheDocument();
+  });
+
+  it("quien no configura no la ve", async () => {
+    montar("/configuracion/academia");
+    await act(async () => {});
+    expect(screen.queryByRole("region", { name: "Primeros pasos" })).not.toBeInTheDocument();
+  });
+
+  it("fuera del instituto no existe", async () => {
+    sesion.rubro = "RESTAURANTE";
+    sesion.usuario.permisos = ["academia.configurar"];
+    montar("/inventario/almacenes");
+    await act(async () => {});
+    expect(screen.queryByRole("region", { name: "Primeros pasos" })).not.toBeInTheDocument();
   });
 });

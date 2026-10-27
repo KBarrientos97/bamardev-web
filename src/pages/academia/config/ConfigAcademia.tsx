@@ -4,6 +4,7 @@ import { usePalabras } from "../../../lib/academia/usePalabras";
 import { PESTANAS_CONFIG_ACADEMIA } from "../../../lib/academia/vista";
 import type { Seccion } from "../../../lib/permisos";
 import { useAuth } from "../../../store/AuthContext";
+import PrimerosPasos from "../PrimerosPasos";
 
 /**
  * La Configuración del instituto (dueño, 26-oct): lo que no se usa todos los
@@ -61,6 +62,10 @@ export function ConPestanasConfig({ children }: { children: ReactNode }) {
   return (
     <>
       <Pestanas />
+      {/* C1: arriba de cada pestaña mientras falten pasos; `empty:hidden` por si no se dibuja nada. */}
+      <div className="mx-auto w-full max-w-6xl px-4 pt-4 empty:hidden sm:px-6 lg:px-8">
+        <PrimerosPasos />
+      </div>
       {children}
     </>
   );

@@ -19,6 +19,7 @@ import { useAuth } from "../../store/AuthContext";
 import ClasesDeHoy from "./ClasesDeHoy";
 import Inscribir from "./Inscribir";
 import NuevoGrupo, { type HuecoCalendario } from "./NuevoGrupo";
+import PrimerosPasos from "./PrimerosPasos";
 import { BotonFila, BotonIcono, Chip, ChipsFiltro, EncabezadoPagina, PaginaAcademia, ResumenPanel, SeccionPanel, Tarjeta } from "./piezas";
 
 /**
@@ -240,6 +241,9 @@ export default function Calendario() {
           </>
         }
       />
+
+      {/* C1: la lista de primeros pasos de un instituto nuevo; se va sola al completarse. */}
+      <PrimerosPasos />
 
       {sede.selector}
 
