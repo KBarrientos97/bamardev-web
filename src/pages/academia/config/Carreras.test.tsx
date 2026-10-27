@@ -386,6 +386,24 @@ describe("Sin popups encimados · el panel del curso", () => {
     expect(screen.getByRole("complementary", { name: "Barbería" })).toBeInTheDocument();
   });
 
+  it("R7/M1: en el celular un toque afuera no cierra la hoja del curso ni las opciones avanzadas", async () => {
+    vi.stubGlobal("matchMedia", (q: string) => ({ matches: q.includes("767"), addEventListener: () => {}, removeEventListener: () => {} }));
+    try {
+      await montar();
+      fireEvent.click(screen.getByRole("button", { name: "Editar Barbería" }));
+      const hoja = screen.getByRole("dialog", { name: "Barbería" });
+      fireEvent.mouseDown(hoja.parentElement!);
+      expect(screen.getByRole("dialog", { name: "Barbería" })).toBeInTheDocument();
+      fireEvent.click(within(hoja).getByRole("button", { name: "Opciones avanzadas" }));
+      fireEvent.click(within(hoja).getByRole("button", { name: "Editar planes a medida" }));
+      const avanzadas = screen.getByRole("dialog", { name: "Opciones avanzadas · Barbería" });
+      fireEvent.mouseDown(avanzadas.parentElement!);
+      expect(screen.getByRole("dialog", { name: "Opciones avanzadas · Barbería" })).toBeInTheDocument();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("con cambios sin guardar no deja ir a los planes a medida (se perderían)", async () => {
     await montar();
     fireEvent.click(screen.getByRole("button", { name: "Editar Barbería" }));

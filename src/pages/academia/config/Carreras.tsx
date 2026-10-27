@@ -256,6 +256,7 @@ export default function Carreras() {
             setElegida(enAvanzadas.id);
           }}
           ancho="max-w-4xl"
+          cerrarAlClicAfuera={false}
         >
           <DetalleCarrera
             carrera={enAvanzadas}
@@ -547,6 +548,8 @@ function PanelCurso({
           : "Se configura una vez; los grupos se abren desde el calendario."
       }
       onClose={onCerrar}
+      // El formulario más largo del instituto (módulos, precios): un toque fuera no lo borra.
+      cerrarAlClicAfuera={false}
       acciones={
         <>
           <Boton onClick={() => void guardar()} disabled={guardando}>

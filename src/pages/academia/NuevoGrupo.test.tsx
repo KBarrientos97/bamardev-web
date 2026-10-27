@@ -541,3 +541,37 @@ describe("ronda 1 · W3 y W10 · cambiar de sede y de curso en «Abrir grupo»",
     expect(cupo.value).toBe("15");
   });
 });
+
+describe("ronda 2 · R1 y R7 · «Abrir grupo» en una sede sin franjas y en el celular", () => {
+  it("R1: sin ninguna franja cargada el selector queda en «Otro horario» de verdad y se ven Desde y Hasta", async () => {
+    vi.mocked(apiAcademia.ajustes).mockResolvedValue(ajustesDePrueba({ franjas: [] }));
+    const { panel } = await montar();
+    expect(within(panel).getByLabelText("Franja horaria")).toHaveValue("otro");
+    expect(within(panel).getByLabelText("Desde")).toHaveValue("19:00");
+    expect(within(panel).getByLabelText("Hasta")).toHaveValue("21:00");
+    // Lo que se ve es lo que se manda.
+    fireEvent.change(within(panel).getByLabelText("Desde"), { target: { value: "08:00" } });
+    vi.mocked(apiAcademia.crearGrupo).mockResolvedValue(grupoDetalle());
+    await act(async () => {
+      fireEvent.click(within(panel).getByRole("button", { name: "Abrir grupo" }));
+    });
+    expect(vi.mocked(apiAcademia.crearGrupo).mock.calls[0][0]).toMatchObject({ horaInicio: "08:00", horaFin: "21:00" });
+  });
+
+  it("R7: en el celular un toque afuera no cierra la hoja (se perdería el formulario)", async () => {
+    vi.stubGlobal("matchMedia", (q: string) => ({ matches: q.includes("767"), addEventListener: () => {}, removeEventListener: () => {} }));
+    try {
+      const cerrar = vi.fn();
+      render(
+        <MemoryRouter>
+          <NuevoGrupo onCerrar={cerrar} onCreado={vi.fn()} />
+        </MemoryRouter>,
+      );
+      await act(async () => {});
+      fireEvent.mouseDown(screen.getByRole("dialog", { name: "Abrir grupo" }).parentElement!);
+      expect(cerrar).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});

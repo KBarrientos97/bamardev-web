@@ -141,6 +141,13 @@ export default function NuevoGrupo({
   // sedes sirven en cualquiera.
   const deTodas = useMemo(() => franjasDe(a?.franjas, null), [a?.franjas]);
   useEffect(() => {
+    // Ni la sede ni "todas" tienen franjas: el selector sólo tendría «Otro
+    // horario», que el navegador muestra elegido sin estarlo y no deja ver
+    // Desde/Hasta. Se pasa a «Otro horario» de verdad (ronda 2, R1).
+    if (a && !franjas.length && !franja) {
+      setFranja(OTRO);
+      return;
+    }
     if (!franjas.length || franja === OTRO) return;
     const vale = (f: { inicio: string; fin: string }) => `${f.inicio}-${f.fin}` === franja;
     const ajena = !!franja && almacenId != null && !franjas.some(vale) && !deTodas.some(vale);
@@ -149,7 +156,7 @@ export default function NuevoGrupo({
       setHoraInicio(franjas[0].inicio);
       setHoraFin(franjas[0].fin);
     }
-  }, [franja, franjas, deTodas, almacenId]);
+  }, [a, franja, franjas, deTodas, almacenId]);
 
   // Los próximos seis días de inicio, desde el más cercano. El mes del hueco
   // vale si su día de inicio no pasó: el 19-oct, el hueco de octubre propone
@@ -285,6 +292,8 @@ export default function NuevoGrupo({
     <PanelLateral
       abierto
       titulo="Abrir grupo"
+      // Un toque fuera borraría el formulario entero (docentes por módulo, cupo, aula).
+      cerrarAlClicAfuera={false}
       subtitulo={hueco.inicio && hueco.mes ? `Hueco libre de ${hueco.inicio}–${hueco.fin} desde ${nombreMes(mes)}` : `Los ${p.materias} empiezan el ${dia} de cada mes`}
       onClose={onCerrar}
       acciones={
