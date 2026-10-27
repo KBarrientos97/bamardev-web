@@ -11,14 +11,23 @@ import { ajustesDePrueba, grupoDetalle } from "../../test/academiaFixtures";
  * ven inicios futuros y, si igual llega el rechazo, el mensaje sin opción.
  */
 
-const sesion = vi.hoisted(() => ({ configura: true }));
+const sesion = vi.hoisted(() => ({ configura: true, personal: false }));
 
 vi.mock("../../store/AuthContext", async () => {
   const { SESION_ADMIN, SESION_SECRETARIA } = await import("../../test/academiaFixtures");
   return {
     useAuth: () =>
       sesion.configura
-        ? { ...SESION_ADMIN, usuario: { ...SESION_ADMIN.usuario, sucursalId: 1, sucursal: "Central" }, puede: () => true }
+        ? {
+            ...SESION_ADMIN,
+            usuario: {
+              ...SESION_ADMIN.usuario,
+              sucursalId: 1,
+              sucursal: "Central",
+              permisos: [...SESION_ADMIN.usuario.permisos, ...(sesion.personal ? ["personal.gestionar"] : [])],
+            },
+            puede: () => true,
+          }
         : {
             ...SESION_SECRETARIA,
             usuario: { ...SESION_SECRETARIA.usuario, permisos: [...SESION_SECRETARIA.usuario.permisos, "academia.grupos"] },
@@ -37,7 +46,16 @@ vi.mock("../../lib/academia/apiAcademia", async (importOriginal) => {
   return { ...real, apiAcademia: { ajustes: vi.fn(), carreras: vi.fn(), docentes: vi.fn(), crearGrupo: vi.fn() } };
 });
 
+vi.mock("../../lib/personal", () => ({
+  apiPersonal: {
+    cargos: vi.fn(async () => [{ id: 5, nombre: "Docente", esAdministrador: false, permisos: [] }]),
+    crear: vi.fn(),
+    darAcceso: vi.fn(),
+  },
+}));
+
 import { apiAcademia } from "../../lib/academia/apiAcademia";
+import { apiPersonal } from "../../lib/personal";
 import NuevoGrupo from "./NuevoGrupo";
 
 const fechaPasada = (puedeConfirmar: boolean) =>
@@ -52,6 +70,7 @@ beforeEach(() => {
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(new Date("2026-10-19T14:00:00.000Z"));
   sesion.configura = true;
+  sesion.personal = false;
   vi.mocked(apiAcademia.ajustes).mockResolvedValue(ajustesDePrueba({ franjas: [{ almacenId: null, inicio: "18:00", fin: "20:00" }] }));
   vi.mocked(apiAcademia.carreras).mockResolvedValue([
     { id: 3, nombre: "Barbería", activa: true, materias: [{ id: 31, orden: 1, nombre: "Corte", activa: true }], planes: [], cupoDefecto: 20, pctDocente: null, publicarEnPagina: false },
@@ -128,5 +147,172 @@ describe("N3 · Abrir grupo con un inicio pasado", () => {
     expect(aviso).toHaveTextContent("El primer inicio posible es el 10 de octubre.");
     expect(within(aviso).queryByRole("button")).not.toBeInTheDocument();
     expect(within(panel).getByRole("button", { name: "Abrir grupo" })).toBeEnabled();
+  });
+});
+
+describe("C9 · el docente por módulo sin salir de «Abrir grupo»", () => {
+  const MARCO = { personalId: 7, nombre: "Marco Rojas", sedes: [{ id: 1, nombre: "Central" }], pctDocente: null, retencionPct: null, tieneLogin: true };
+  const LUCIA = { personalId: 8, nombre: "Lucía Paz", sedes: [{ id: 1, nombre: "Central" }], pctDocente: null, retencionPct: null, tieneLogin: false };
+
+  /** Un curso de tres módulos, para que «el mismo en todos» tenga a quién pasarlo. */
+  function cursoDeTres() {
+    vi.mocked(apiAcademia.carreras).mockResolvedValue([
+      {
+        id: 3,
+        nombre: "Barbería",
+        activa: true,
+        materias: [
+          { id: 31, orden: 1, nombre: "Corte", activa: true },
+          { id: 32, orden: 2, nombre: "Degradados", activa: true },
+          { id: 33, orden: 3, nombre: "Barba", activa: true },
+        ],
+        planes: [],
+        cupoDefecto: 20,
+        pctDocente: null,
+        publicarEnPagina: false,
+      },
+    ] as never);
+  }
+
+  const selectDe = (panel: HTMLElement, n: number) => within(panel).getByLabelText(`Docente de M${n}`) as HTMLSelectElement;
+
+  it("«El mismo docente en todos» pasa el elegido en un módulo a los demás, y el grupo se manda con él en cada uno", async () => {
+    cursoDeTres();
+    vi.mocked(apiAcademia.docentes).mockResolvedValue([MARCO, LUCIA]);
+    vi.mocked(apiAcademia.crearGrupo).mockResolvedValue(grupoDetalle());
+    const { panel } = await montar();
+    // Sin docente elegido no hay atajo que ofrecer.
+    expect(within(panel).queryByRole("button", { name: /El mismo docente en todos/ })).not.toBeInTheDocument();
+    fireEvent.change(selectDe(panel, 2), { target: { value: "7" } });
+    expect(selectDe(panel, 1)).toHaveValue("");
+    fireEvent.click(within(panel).getByRole("button", { name: "El mismo docente en todos" }));
+    for (const n of [1, 2, 3]) expect(selectDe(panel, n)).toHaveValue("7");
+    // Ya están todos iguales: el atajo desaparece.
+    expect(within(panel).queryByRole("button", { name: /El mismo docente en todos/ })).not.toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(within(panel).getByRole("button", { name: "Abrir grupo" }));
+    });
+    expect(vi.mocked(apiAcademia.crearGrupo).mock.calls[0][0].materias).toEqual([
+      { materiaId: 31, personalId: 7 },
+      { materiaId: 32, personalId: 7 },
+      { materiaId: 33, personalId: 7 },
+    ]);
+  });
+
+  it("sin permiso de Personal no se ofrece dar de alta un docente", async () => {
+    const { panel } = await montar();
+    expect(within(selectDe(panel, 1)).queryByRole("option", { name: /Nuevo docente/ })).not.toBeInTheDocument();
+    expect(within(panel).queryByRole("button", { name: "Nuevo docente" })).not.toBeInTheDocument();
+  });
+
+  it("con el instituto sin docentes se ofrece «Nuevo docente»; se crea con su sede, queda elegido en ese módulo y entra a la lista", async () => {
+    sesion.personal = true;
+    vi.mocked(apiPersonal.crear).mockResolvedValue({ id: 21, nombre: "Pedro Gil" } as never);
+    const { panel } = await montar();
+    expect(within(panel).getByText(/Todavía no hay docentes en esta sede/)).toBeInTheDocument();
+    fireEvent.click(within(panel).getByRole("button", { name: "Nuevo docente" }));
+    await act(async () => {}); // llegan los cargos
+    fireEvent.change(within(panel).getByLabelText("Nombre"), { target: { value: " Pedro Gil " } });
+    fireEvent.change(within(panel).getByLabelText(/Teléfono/), { target: { value: "70011223" } });
+    expect(within(panel).getByText("Central")).toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(within(panel).getByRole("button", { name: "Guardar docente" }));
+    });
+    expect(apiPersonal.crear).toHaveBeenCalledWith({ nombre: "Pedro Gil", telefono: "70011223", cargoRolId: 5, sucursalIds: [1] });
+    expect(apiPersonal.darAcceso).not.toHaveBeenCalled();
+    // Queda elegido en el módulo y en la lista de los demás.
+    expect(selectDe(panel, 1)).toHaveValue("21");
+    expect(within(selectDe(panel, 1)).getByRole("option", { name: "Pedro Gil" })).toBeInTheDocument();
+    expect(within(panel).queryByLabelText("Nombre")).not.toBeInTheDocument();
+    vi.mocked(apiAcademia.crearGrupo).mockResolvedValue(grupoDetalle());
+    await act(async () => {
+      fireEvent.click(within(panel).getByRole("button", { name: "Abrir grupo" }));
+    });
+    expect(vi.mocked(apiAcademia.crearGrupo).mock.calls[0][0].materias).toEqual([{ materiaId: 31, personalId: 21 }]);
+  });
+
+  it("«+ Nuevo docente…» en el desplegable de un módulo, con acceso: encadena el alta y el acceso en un gesto", async () => {
+    sesion.personal = true;
+    cursoDeTres();
+    vi.mocked(apiAcademia.docentes).mockResolvedValue([MARCO]);
+    vi.mocked(apiPersonal.crear).mockResolvedValue({ id: 22, nombre: "Rosa Luna" } as never);
+    vi.mocked(apiPersonal.darAcceso).mockResolvedValue({ id: 22 } as never);
+    const { panel } = await montar();
+    fireEvent.change(selectDe(panel, 3), { target: { value: "nuevo-docente" } });
+    // El módulo sigue sin docente hasta que se guarde.
+    expect(selectDe(panel, 3)).toHaveValue("");
+    expect(within(panel).getByText(/Nuevo docente · M3 Barba/)).toBeInTheDocument();
+    await act(async () => {}); // llegan los cargos
+    fireEvent.change(within(panel).getByLabelText("Nombre"), { target: { value: "Rosa Luna" } });
+    fireEvent.click(within(panel).getByRole("switch", { name: "Darle acceso al sistema" }));
+    fireEvent.change(within(panel).getByLabelText("Usuario"), { target: { value: "Rosa.Luna" } });
+    fireEvent.change(within(panel).getByLabelText("Contraseña"), { target: { value: "secreta1" } });
+    await act(async () => {
+      fireEvent.click(within(panel).getByRole("button", { name: "Guardar docente" }));
+    });
+    expect(apiPersonal.crear).toHaveBeenCalledWith({ nombre: "Rosa Luna", telefono: null, cargoRolId: 5, sucursalIds: [1] });
+    // La sesión de la prueba ya es de una sede: no manda sucursalId.
+    expect(apiPersonal.darAcceso).toHaveBeenCalledWith(22, { username: "rosa.luna", password: "secreta1", rolId: 5 });
+    expect(selectDe(panel, 3)).toHaveValue("22");
+    expect(within(panel).queryByRole("status")).not.toBeInTheDocument();
+  });
+
+  it("si el acceso falla, el docente igual queda guardado y elegido, y el aviso dice cómo darle el acceso", async () => {
+    sesion.personal = true;
+    vi.mocked(apiPersonal.crear).mockResolvedValue({ id: 23, nombre: "Ana Rios" } as never);
+    vi.mocked(apiPersonal.darAcceso).mockRejectedValue(new ApiError("Tu plan no tiene más lugares para usuarios.", 409, { codigo: "CUPO_USUARIOS" }));
+    const { panel } = await montar();
+    fireEvent.click(within(panel).getByRole("button", { name: "Nuevo docente" }));
+    await act(async () => {}); // llegan los cargos
+    fireEvent.change(within(panel).getByLabelText("Nombre"), { target: { value: "Ana Rios" } });
+    fireEvent.click(within(panel).getByRole("switch", { name: "Darle acceso al sistema" }));
+    fireEvent.change(within(panel).getByLabelText("Usuario"), { target: { value: "ana.rios" } });
+    fireEvent.change(within(panel).getByLabelText("Contraseña"), { target: { value: "secreta1" } });
+    await act(async () => {
+      fireEvent.click(within(panel).getByRole("button", { name: "Guardar docente" }));
+    });
+    expect(selectDe(panel, 1)).toHaveValue("23");
+    const aviso = within(panel).getByRole("status");
+    expect(aviso).toHaveTextContent("«Ana Rios» quedó guardado, pero sin acceso");
+    expect(aviso).toHaveTextContent("Tu plan no tiene más lugares para usuarios.");
+    expect(aviso).toHaveTextContent("Personal");
+  });
+
+  it("valida antes de llamar: nombre, usuario y clave; y si falla el alta, el error queda en el formulario", async () => {
+    sesion.personal = true;
+    const { panel } = await montar();
+    fireEvent.click(within(panel).getByRole("button", { name: "Nuevo docente" }));
+    await act(async () => {}); // llegan los cargos
+    fireEvent.click(within(panel).getByRole("button", { name: "Guardar docente" }));
+    expect(within(panel).getByText("Poné el nombre.")).toBeInTheDocument();
+    fireEvent.change(within(panel).getByLabelText("Nombre"), { target: { value: "Ana" } });
+    fireEvent.click(within(panel).getByRole("switch", { name: "Darle acceso al sistema" }));
+    fireEvent.change(within(panel).getByLabelText("Usuario"), { target: { value: "a" } });
+    fireEvent.click(within(panel).getByRole("button", { name: "Guardar docente" }));
+    expect(within(panel).getByText(/El usuario lleva 3 a 30/)).toBeInTheDocument();
+    fireEvent.change(within(panel).getByLabelText("Usuario"), { target: { value: "ana" } });
+    fireEvent.change(within(panel).getByLabelText("Contraseña"), { target: { value: "123" } });
+    fireEvent.click(within(panel).getByRole("button", { name: "Guardar docente" }));
+    expect(within(panel).getByText(/al menos 6 caracteres/)).toBeInTheDocument();
+    expect(apiPersonal.crear).not.toHaveBeenCalled();
+    vi.mocked(apiPersonal.crear).mockRejectedValue(new ApiError("Ese nombre ya existe.", 409));
+    fireEvent.change(within(panel).getByLabelText("Contraseña"), { target: { value: "secreta1" } });
+    await act(async () => {
+      fireEvent.click(within(panel).getByRole("button", { name: "Guardar docente" }));
+    });
+    expect(within(panel).getByText("Ese nombre ya existe.")).toBeInTheDocument();
+    expect(apiPersonal.darAcceso).not.toHaveBeenCalled();
+    expect(selectDe(panel, 1)).toHaveValue("");
+  });
+  it("sin un cargo «Docente» en Roles no inventa uno: lo dice y no crea nada", async () => {
+    sesion.personal = true;
+    vi.mocked(apiPersonal.cargos).mockResolvedValueOnce([{ id: 9, nombre: "Recepción", esAdministrador: false, permisos: [] }]);
+    const { panel } = await montar();
+    fireEvent.click(within(panel).getByRole("button", { name: "Nuevo docente" }));
+    await act(async () => {});
+    fireEvent.change(within(panel).getByLabelText("Nombre"), { target: { value: "Ana" } });
+    fireEvent.click(within(panel).getByRole("button", { name: "Guardar docente" }));
+    expect(within(panel).getByText(/No hay un cargo «Docente» en Roles/)).toBeInTheDocument();
+    expect(apiPersonal.crear).not.toHaveBeenCalled();
   });
 });

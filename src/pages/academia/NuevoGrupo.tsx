@@ -7,13 +7,14 @@ import { apiAcademia, CODIGOS_ACADEMIA } from "../../lib/academia/apiAcademia";
 import { franjasDe, inicioDelMes, mesDe, nombreMes, proximoInicio, sumarMeses } from "../../lib/academia/calendario";
 import { diasTexto, horasEntre, SEMANA } from "../../lib/academia/formato";
 import { fmtMoney } from "../../lib/format";
-import type { GrupoDetalle } from "../../lib/academia/tipos";
+import type { Docente, GrupoDetalle } from "../../lib/academia/tipos";
 import { usePalabras } from "../../lib/academia/usePalabras";
 import { tienePermiso } from "../../lib/permisos";
 import { useApi } from "../../lib/useApi";
 import { useSucursales } from "../../lib/useSucursales";
 import { useAuth } from "../../store/AuthContext";
-import { ResumenPanel, SeccionPanel } from "./piezas";
+import { NuevoDocenteRapido } from "./NuevoDocenteRapido";
+import { BotonFila, ResumenPanel, SeccionPanel } from "./piezas";
 
 /** Lo que el calendario ya sabe del hueco que se tocó. */
 export interface HuecoCalendario {
@@ -40,6 +41,8 @@ const LETRA = ["D", "L", "M", "X", "J", "V", "S"];
 /** De lunes a sábado: los domingos no se dicta (y si hace falta, "Otro horario" no lo cambia). */
 const DIAS_CLASE = SEMANA.filter((d) => d !== 0);
 const OTRO = "otro";
+/** El valor de la opción «+ Nuevo docente…» del desplegable: no es un id. */
+const NUEVO_DOCENTE = "nuevo-docente";
 
 /**
  * N3 · Abrir grupo (ronda 2): el panel lateral que se abre desde el
@@ -88,6 +91,11 @@ export default function NuevoGrupo({
   const [cupo, setCupo] = useState("");
   const [aula, setAula] = useState("");
   const [docentePor, setDocentePor] = useState<Record<number, number | null>>({});
+  // C9: los docentes dados de alta desde acá (la lista del backend ya estaba cargada)
+  // y el módulo para el que se está abriendo el formulario de alta.
+  const [docentesNuevos, setDocentesNuevos] = useState<Docente[]>([]);
+  const [altaDocentePara, setAltaDocentePara] = useState<number | null>(null);
+  const [avisoDocente, setAvisoDocente] = useState("");
   const [error, setError] = useState("");
   const [guardando, setGuardando] = useState(false);
 
@@ -210,7 +218,19 @@ export default function NuevoGrupo({
   const opcionesSede = hueco.sedesPosibles?.length
     ? sedes.sucursales.filter((s) => hueco.sedesPosibles!.includes(s.id))
     : sedes.sucursales;
-  const libres = (docentes.datos ?? []).filter((d) => almacenId == null || !d.sedes.length || d.sedes.some((s) => s.id === almacenId));
+  const delBackend = docentes.datos ?? [];
+  const libres = [...delBackend, ...docentesNuevos.filter((n) => !delBackend.some((d) => d.personalId === n.personalId))].filter(
+    (d) => almacenId == null || !d.sedes.length || d.sedes.some((s) => s.id === almacenId),
+  );
+  // Dar de alta pide lo mismo que Personal (`personal.gestionar`) y la sede del grupo ya elegida.
+  const puedeAltaDocente = tienePermiso(usuario, "personal.gestionar") && almacenId != null;
+  /** «El mismo docente en todos»: el elegido en un módulo pasa a los demás. */
+  const mismoEnTodos = (docenteId: number) =>
+    setDocentePor(Object.fromEntries(materias.map((m) => [m.id, docenteId])) as Record<number, number | null>);
+  const elegirDocente = (materiaId: number, valor: string) => {
+    if (valor === NUEVO_DOCENTE) return setAltaDocentePara(materiaId);
+    setDocentePor({ ...docentePor, [materiaId]: valor ? Number(valor) : null });
+  };
 
   return (
     <PanelLateral
@@ -392,21 +412,56 @@ export default function NuevoGrupo({
                   <span className="sr-only">
                     {p.Docente} de M{i + 1}
                   </span>
-                  <Select
-                    value={docentePor[m.id] ?? ""}
-                    onChange={(e) => setDocentePor({ ...docentePor, [m.id]: e.target.value ? Number(e.target.value) : null })}
-                  >
+                  <Select value={docentePor[m.id] ?? ""} onChange={(e) => elegirDocente(m.id, e.target.value)}>
                     <option value="">{docentes.cargando && !docentes.datos ? "Cargando…" : "Elegir después"}</option>
                     {libres.map((d) => (
                       <option key={d.personalId} value={d.personalId}>
                         {d.nombre}
                       </option>
                     ))}
+                    {puedeAltaDocente && <option value={NUEVO_DOCENTE}>+ Nuevo {p.docente}…</option>}
                   </Select>
                 </label>
+                {/* C9: el docente elegido en un módulo, en todos los demás. */}
+                {docentePor[m.id] != null && materias.some((x) => (docentePor[x.id] ?? null) !== docentePor[m.id]) && (
+                  <div className="col-span-2 flex justify-end">
+                    <BotonFila variante="ghost" onClick={() => mismoEnTodos(docentePor[m.id]!)}>
+                      El mismo {p.docente} en todos
+                    </BotonFila>
+                  </div>
+                )}
+                {altaDocentePara === m.id && almacenId != null && (
+                  <div className="col-span-2">
+                    <NuevoDocenteRapido
+                      modulo={`M${i + 1} ${m.nombre}`}
+                      sede={{ id: almacenId, nombre: nombreSede }}
+                      onCerrar={() => setAltaDocentePara(null)}
+                      onCreado={(nuevo, aviso) => {
+                        setDocentesNuevos((xs) => [...xs, nuevo]);
+                        setDocentePor((por) => ({ ...por, [m.id]: nuevo.personalId }));
+                        setAvisoDocente(aviso ?? "");
+                        setAltaDocentePara(null);
+                      }}
+                    />
+                  </div>
+                )}
               </li>
             ))}
           </ul>
+          {avisoDocente && (
+            <p role="status" className="mt-2 rounded-xl bg-warning-bg px-3.5 py-2.5 text-[13px] text-warning-text">
+              {avisoDocente}
+            </p>
+          )}
+          {/* Instituto vacío: antes sólo se podía «Elegir después», sin forma de crear uno. */}
+          {puedeAltaDocente && libres.length === 0 && !docentes.cargando && altaDocentePara == null && (
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-[13px] text-texto-3">
+              <span>Todavía no hay {p.docente}s en esta {p.sede}.</span>
+              <BotonFila variante="soft" icono="plus" onClick={() => setAltaDocentePara(materias[0].id)}>
+                Nuevo {p.docente}
+              </BotonFila>
+            </div>
+          )}
           {docentes.error && (
             <p className="mt-2 text-xs text-danger-text">
               No se pudo traer la lista de {p.docente}s.{" "}
