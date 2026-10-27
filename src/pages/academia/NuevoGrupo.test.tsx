@@ -12,7 +12,7 @@ import { ajustesDePrueba, grupoDetalle } from "../../test/academiaFixtures";
  * ven inicios futuros y, si igual llega el rechazo, el mensaje sin opción.
  */
 
-const sesion = vi.hoisted(() => ({ configura: true, personal: false }));
+const sesion = vi.hoisted(() => ({ configura: true, personal: false, organizacion: false }));
 
 vi.mock("../../store/AuthContext", async () => {
   const { SESION_ADMIN, SESION_SECRETARIA } = await import("../../test/academiaFixtures");
@@ -23,8 +23,8 @@ vi.mock("../../store/AuthContext", async () => {
             ...SESION_ADMIN,
             usuario: {
               ...SESION_ADMIN.usuario,
-              sucursalId: 1,
-              sucursal: "Central",
+              sucursalId: sesion.organizacion ? null : 1,
+              sucursal: sesion.organizacion ? null : "Central",
               permisos: [...SESION_ADMIN.usuario.permisos, ...(sesion.personal ? ["personal.gestionar"] : [])],
             },
             puede: () => true,
@@ -72,6 +72,7 @@ beforeEach(() => {
   vi.setSystemTime(new Date("2026-10-19T14:00:00.000Z"));
   sesion.configura = true;
   sesion.personal = false;
+  sesion.organizacion = false;
   vi.mocked(apiAcademia.ajustes).mockResolvedValue(ajustesDePrueba({ franjas: [{ almacenId: null, inicio: "18:00", fin: "20:00" }] }));
   vi.mocked(apiAcademia.carreras).mockResolvedValue([
     { id: 3, nombre: "Barbería", activa: true, materias: [{ id: 31, orden: 1, nombre: "Corte", activa: true }], planes: [], cupoDefecto: 20, pctDocente: null, publicarEnPagina: false },
@@ -483,5 +484,60 @@ describe("C10 · aviso de choques al abrir un grupo", () => {
     await esperarAviso();
     expect(apiAcademia.choques).toHaveBeenCalledTimes(1);
     expect(vi.mocked(apiAcademia.choques).mock.calls[0][0].dias).toEqual([1, 2, 3, 4, 5]);
+  });
+});
+
+describe("ronda 1 · W3 y W10 · cambiar de sede y de curso en «Abrir grupo»", () => {
+  const MARCO = { personalId: 7, nombre: "Marco Rojas", sedes: [{ id: 1, nombre: "Central" }], pctDocente: null, retencionPct: null, tieneLogin: true };
+  const LUCIA = { personalId: 8, nombre: "Lucía Paz", sedes: [{ id: 2, nombre: "Norte" }], pctDocente: null, retencionPct: null, tieneLogin: false };
+  const curso = (id: number, nombre: string, cupoDefecto: number | null) => ({
+    id,
+    nombre,
+    activa: true,
+    materias: [{ id: id * 10 + 1, orden: 1, nombre: "Módulo", activa: true }],
+    planes: [],
+    cupoDefecto,
+    pctDocente: null,
+    publicarEnPagina: false,
+  });
+
+  it("W3: al cambiar de sede se descarta el docente de la otra y no viaja", async () => {
+    sesion.organizacion = true;
+    const { api } = await import("../../lib/api");
+    vi.mocked(api.getSucursales).mockResolvedValue([
+      { id: 1, nombre: "Central", tipo: "SUCURSAL", activo: true, esPrincipal: true },
+      { id: 2, nombre: "Norte", tipo: "SUCURSAL", activo: true, esPrincipal: false },
+    ] as never);
+    vi.mocked(apiAcademia.docentes).mockResolvedValue([MARCO, LUCIA]);
+    vi.mocked(apiAcademia.crearGrupo).mockResolvedValue(grupoDetalle());
+    const { panel } = await montar();
+    await act(async () => {});
+    // Arma el grupo en Central con Marco.
+    fireEvent.change(within(panel).getByLabelText("Sede"), { target: { value: "1" } });
+    fireEvent.change(within(panel).getByLabelText("Docente de M1"), { target: { value: "7" } });
+    expect(within(panel).getByLabelText("Docente de M1")).toHaveValue("7");
+    // Cambia a Norte: Marco no es de Norte, ya no puede seguir elegido ni mandarse.
+    fireEvent.change(within(panel).getByLabelText("Sede"), { target: { value: "2" } });
+    expect(within(panel).getByLabelText("Docente de M1")).toHaveValue("");
+    await act(async () => {
+      fireEvent.click(within(panel).getByRole("button", { name: "Abrir grupo" }));
+    });
+    const materias = vi.mocked(apiAcademia.crearGrupo).mock.calls[0][0].materias;
+    expect(materias).toEqual([{ materiaId: 31 }]);
+  });
+
+  it("W10: al cambiar de curso el cupo sigue al del curso nuevo, salvo que se haya tocado", async () => {
+    vi.mocked(apiAcademia.carreras).mockResolvedValue([curso(3, "Barbería", 20), curso(4, "Tatuaje", 12)] as never);
+    const { panel } = await montar();
+    const cupo = within(panel).getByLabelText(/^Cupo/) as HTMLInputElement;
+    expect(cupo.value).toBe("20");
+    expect(within(panel).getByText("Viene del curso")).toBeInTheDocument();
+    fireEvent.change(within(panel).getByLabelText("Curso"), { target: { value: "4" } });
+    expect(cupo.value).toBe("12");
+    // Lo tocó a mano: el curso siguiente no lo pisa y el texto ya no dice que viene del curso.
+    fireEvent.change(cupo, { target: { value: "15" } });
+    expect(within(panel).queryByText("Viene del curso")).not.toBeInTheDocument();
+    fireEvent.change(within(panel).getByLabelText("Curso"), { target: { value: "3" } });
+    expect(cupo.value).toBe("15");
   });
 });

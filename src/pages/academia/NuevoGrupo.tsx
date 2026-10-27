@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import PanelLateral from "../../components/PanelLateral";
 import { Boton, Campo, ErrorMsg, Input, Select } from "../../components/ui";
@@ -119,9 +119,16 @@ export default function NuevoGrupo({
   const carrera = activas.find((c) => c.id === carreraId) ?? null;
   const materias = (carrera?.materias ?? []).filter((m) => m.activa).sort((x, y) => x.orden - y.orden);
 
-  // Al elegir el curso, su cupo por defecto (si nadie lo tocó).
+  // Al elegir el curso, su cupo por defecto (si nadie lo tocó). Al cambiar de curso,
+  // el que sigue valiendo es el del curso nuevo mientras el actual sea el que
+  // trajo el anterior: «Viene del curso» no puede mentir (ronda 1, W10).
+  const cupoDelCurso = useRef<string | null>(null);
   useEffect(() => {
-    if (carrera?.cupoDefecto != null) setCupo((c) => (c === "" ? String(carrera.cupoDefecto) : c));
+    const nuevoCupo = carrera?.cupoDefecto != null ? String(carrera.cupoDefecto) : null;
+    // Se lee antes: el actualizador corre después, cuando la ref ya cambió.
+    const anterior = cupoDelCurso.current;
+    setCupo((c) => (c === "" || c === anterior ? (nuevoCupo ?? "") : c));
+    cupoDelCurso.current = nuevoCupo;
   }, [carrera]);
 
   // Las franjas de la sede, o si no tiene propias, las de todas.
@@ -192,9 +199,21 @@ export default function NuevoGrupo({
   }
 
   // Las aulas son de cada sede: al cambiarla, la elegida ya no vale.
+  // Los docentes también: el de otra sede ya no está en la lista (`libres`) y
+  // quedaba elegido sin verse, y se mandaba igual (ronda 1, W3).
   function cambiarSede(id: number | null) {
     setAlmacenId(id);
     setAulaId(null);
+    const conocidos = [...(docentes.datos ?? []), ...docentesNuevos];
+    setDocentePor((prev) =>
+      Object.fromEntries(
+        Object.entries(prev).map(([materiaId, personalId]) => {
+          const d = conocidos.find((x) => x.personalId === personalId);
+          const ajeno = !!d && id != null && d.sedes.length > 0 && !d.sedes.some((x) => x.id === id);
+          return [materiaId, ajeno ? null : personalId];
+        }),
+      ),
+    );
   }
 
   function elegirInicio(m: string) {
@@ -310,7 +329,7 @@ export default function NuevoGrupo({
             )}
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <Campo label="Cupo" hint={carrera?.cupoDefecto != null ? `Viene del ${p.carrera}` : undefined}>
+            <Campo label="Cupo" hint={carrera?.cupoDefecto != null && cupo === String(carrera.cupoDefecto) ? `Viene del ${p.carrera}` : undefined}>
               <Input type="number" inputMode="numeric" value={cupo} onChange={(e) => setCupo(e.target.value)} />
             </Campo>
             <SelectorAula sedeId={almacenId} valor={aulaId} onChange={setAulaId} onNombre={setNombreAula} />
