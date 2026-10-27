@@ -299,7 +299,7 @@ function ContenidoSede({
         <SedeFranjas sedeId={sede.id} puedeEditar={configura} onCambio={onCambio} />
       </div>
       <div ref={aulasRef} aria-label={`Aulas de esta ${p.sede}`}>
-        <Aulas sedeId={sede.id} />
+        <Aulas sedeId={sede.id} onCambio={onCambio} />
       </div>
     </div>
   );
@@ -428,6 +428,9 @@ function PanelSede({
           </div>
         )}
         <ErrorMsg>{error}</ErrorMsg>
+        {/* El botón de guardar está afuera del formulario (en el pie del panel): sin uno
+            propio, Enter en un campo no enviaba nada (ronda 1, W8). */}
+        <button type="submit" hidden aria-hidden="true" tabIndex={-1} />
       </form>
     </PanelLateral>
   );

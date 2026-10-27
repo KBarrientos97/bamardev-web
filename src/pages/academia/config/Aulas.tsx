@@ -24,7 +24,7 @@ import { Chip, LISTA, Tarjeta } from "../piezas";
  * muestra todas las que ve el usuario (con un selector si son varias). Ya no
  * hay una pestaña «Aulas» aparte. Cargar y modificar pide `academia.configurar`.
  */
-export default function Aulas({ sedeId = null }: { sedeId?: number | null }) {
+export default function Aulas({ sedeId = null, onCambio }: { sedeId?: number | null; onCambio?: () => void }) {
   const { usuario } = useAuth();
   const p = usePalabras();
   const configura = tienePermiso(usuario, "academia.configurar");
@@ -67,6 +67,8 @@ export default function Aulas({ sedeId = null }: { sedeId?: number | null }) {
       await apiAcademia.editarAula(a.id, { activa });
       setAviso(activa ? `${a.nombre} volvió a estar disponible.` : `${a.nombre} quedó de baja: los grupos que ya la usan la conservan, pero no se ofrece para grupos nuevos.`);
       datos.recargar();
+      // La sede de arriba cuenta las aulas: su número también cambió (ronda 1, W7).
+      onCambio?.();
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudo cambiar el aula");
     } finally {
@@ -86,6 +88,7 @@ export default function Aulas({ sedeId = null }: { sedeId?: number | null }) {
           : `${a.nombre} eliminada.`,
       );
       datos.recargar();
+      onCambio?.();
     } catch (e) {
       setAEliminar(null);
       if (e instanceof ApiError && e.codigo === CODIGOS_ACADEMIA.AULA_EN_USO) {
@@ -217,6 +220,7 @@ export default function Aulas({ sedeId = null }: { sedeId?: number | null }) {
             setPanel(null);
             setAviso(nueva ? `${a.nombre} quedó cargada.` : `${a.nombre} se guardó.`);
             datos.recargar();
+            onCambio?.();
           }}
         />
       )}
@@ -364,6 +368,9 @@ function PanelAula({
           <Input type="number" inputMode="numeric" value={capacidad} onChange={(e) => setCapacidad(e.target.value)} placeholder="25" />
         </Campo>
         <ErrorMsg>{error}</ErrorMsg>
+        {/* El botón de guardar está afuera del formulario (en el pie del panel): sin uno
+            propio, Enter en un campo no enviaba nada (ronda 1, W8). */}
+        <button type="submit" hidden aria-hidden="true" tabIndex={-1} />
       </form>
     </PanelLateral>
   );

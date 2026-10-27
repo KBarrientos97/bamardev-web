@@ -399,3 +399,43 @@ describe("ronda 1 · W2 · los enlaces de «Primeros pasos» funcionan desde la 
     }
   });
 });
+
+describe("ronda 1 · W7 y W8 · conteos de la sede y Enter en el formulario", () => {
+  it("W7: con una sola sede, cargar un aula refresca los conteos de la sede", async () => {
+    vi.mocked(apiAcademia.sedes).mockResolvedValue([CENTRAL]);
+    vi.mocked(apiAcademia.crearAula).mockResolvedValue({
+      id: 9,
+      almacenId: 1,
+      sede: { id: 1, nombre: "Central" },
+      nombre: "Aula 9",
+      capacidad: null,
+      activa: true,
+      enUso: 0,
+    } as never);
+    await montar();
+    expect(apiAcademia.sedes).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: "Agregar la primera" }));
+    const panel = screen.getByRole("complementary", { name: "Nueva aula" });
+    fireEvent.change(within(panel).getByLabelText("Nombre"), { target: { value: "Aula 9" } });
+    await act(async () => {
+      fireEvent.click(within(panel).getByRole("button", { name: "Agregar aula" }));
+    });
+    expect(apiAcademia.crearAula).toHaveBeenCalled();
+    expect(apiAcademia.sedes).toHaveBeenCalledTimes(2);
+  });
+
+  it("W8: el formulario de Nueva sede tiene su propio botón de envío, para que Enter guarde", async () => {
+    vi.mocked(apiAcademia.crearSede).mockResolvedValue(sede(3, "Norte"));
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Nueva sede" }));
+    const panel = screen.getByRole("complementary", { name: "Nueva sede" });
+    fireEvent.change(within(panel).getByLabelText("Nombre"), { target: { value: "Norte" } });
+    // Enter en un campo dispara el botón de envío del formulario: acá, ese clic.
+    const envio = panel.querySelector('form button[type="submit"]') as HTMLButtonElement;
+    expect(envio).not.toBeNull();
+    await act(async () => {
+      fireEvent.click(envio);
+    });
+    expect(apiAcademia.crearSede).toHaveBeenCalledWith({ nombre: "Norte" });
+  });
+});

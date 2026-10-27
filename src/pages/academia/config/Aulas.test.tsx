@@ -172,6 +172,21 @@ describe("Aulas · alta y edición", () => {
     expect(screen.getByText("Aula 9 quedó cargada.")).toBeInTheDocument();
   });
 
+  it("ronda 1 · W8: el formulario tiene su propio botón de envío, para que Enter guarde", async () => {
+    vi.mocked(apiAcademia.crearAula).mockResolvedValue(aula(9, "Aula 9"));
+    await montar(1);
+    vi.mocked(apiAcademia.aulas).mockResolvedValue([]);
+    fireEvent.click(screen.getByRole("button", { name: "Nueva aula" }));
+    const panel = screen.getByRole("complementary", { name: "Nueva aula" });
+    fireEvent.change(within(panel).getByLabelText("Nombre"), { target: { value: "Aula 9" } });
+    const envio = panel.querySelector('form button[type="submit"]') as HTMLButtonElement;
+    expect(envio).not.toBeNull();
+    await act(async () => {
+      fireEvent.click(envio);
+    });
+    expect(apiAcademia.crearAula).toHaveBeenCalledWith({ almacenId: 1, nombre: "Aula 9" });
+  });
+
   it("viendo todas las sedes, el alta pregunta en cuál va", async () => {
     vi.mocked(apiAcademia.crearAula).mockResolvedValue(aula(9, "Aula 9"));
     await montar();
