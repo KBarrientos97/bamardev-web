@@ -1500,7 +1500,9 @@ function FormProductoCuerpo({
                 <span className="block truncate text-[13px] font-semibold text-texto">
                   {iconoPorLlave(icono)?.etiqueta ?? "Sin ícono"}
                 </span>
-                <span className="block text-xs text-texto-3">Tocá para elegir</span>
+                <span className="block text-xs text-texto-3">
+                  {icono ? "Tocá para cambiarlo" : "Tocá para elegir"}
+                </span>
               </span>
               <Icon name="chevronRight" size={18} />
             </button>
