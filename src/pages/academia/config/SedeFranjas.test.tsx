@@ -321,3 +321,43 @@ describe("C5 · quien no configura", () => {
     expect(screen.queryByRole("button", { name: /Quitar franja/ })).not.toBeInTheDocument();
   });
 });
+
+describe("ronda 2 · M5 · el uso de cada franja", () => {
+  it("si no se pudo cargar el calendario, no se deja quitar una franja guardada y se puede reintentar", async () => {
+    vi.mocked(apiAcademia.calendario).mockRejectedValueOnce(new Error("corte"));
+    await montar();
+    expect(screen.getByText(/No pudimos comprobar qué franjas tienen grupos/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Quitar franja 08:00–10:00" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Quitar franja 19:00–21:00" })).toBeDisabled();
+    // Una franja recién agregada (sin guardar) no puede tener grupos: esa sí se quita.
+    fireEvent.click(screen.getByRole("button", { name: "Agregar franja" }));
+    expect(screen.getByRole("button", { name: "Quitar franja 21:00–23:00" })).toBeEnabled();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Reintentar" }));
+    });
+    expect(screen.queryByText(/No pudimos comprobar/)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Quitar franja 08:00–10:00" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Quitar franja 19:00–21:00" })).toBeDisabled();
+  });
+
+  it("la razón de una franja con grupos está a la vista (no sólo en el title)", async () => {
+    await montar();
+    expect(screen.getByText("· no se puede quitar")).toBeInTheDocument();
+  });
+
+  it("al guardar vuelve a pedir el calendario: los grupos por franja no quedan viejos", async () => {
+    await montar();
+    expect(apiAcademia.calendario).toHaveBeenCalledTimes(1);
+    cambiar("Hasta, franja 1", "11:00");
+    await guardar();
+    expect(apiAcademia.calendario).toHaveBeenCalledTimes(2);
+  });
+
+  it("con cambios sin guardar, dice a la vista por qué «Usar las típicas» está apagado", async () => {
+    await montar();
+    cambiar("Hasta, franja 1", "11:00");
+    expect(screen.getByRole("button", { name: "Usar las típicas" })).toBeDisabled();
+    expect(screen.getByText(/guardalos o descartalos para usar las típicas/)).toBeInTheDocument();
+  });
+});
+

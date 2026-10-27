@@ -37,17 +37,23 @@ const MAX_FRANJAS = 20;
 const aFilas = (d: FranjasDeSede): FilaFranja[] =>
   d.franjas.map((f) => ({ inicio: f.inicio, fin: f.fin, ...(f.todasLasSedes ? { todasLasSedes: true } : {}) }));
 
-/** Cuántos grupos usa cada franja (`inicio-fin`), sacado del calendario de la sede. */
+/**
+ * Cuántos grupos usa cada franja (`inicio-fin`), sacado del calendario de la
+ * sede. Sólo se pide al abrir las franjas de ESA sede (no con la lista de sedes)
+ * y se vuelve a pedir al guardar (ronda 2, M5). `fallo` es para no dejar quitar
+ * una franja cuando no se pudo saber si tiene grupos.
+ */
 function useGruposPorFranja(sede: number) {
   const cal = useApi(() => apiAcademia.calendario({ sede, meses: 12 }), [sede]);
+  const { datos, error, cargando, recargar } = cal;
   return useMemo(() => {
     const uso = new Map<string, number>();
-    for (const fila of cal.datos?.filas ?? []) {
+    for (const fila of datos?.filas ?? []) {
       const ids = new Set(fila.celdas.flatMap((c) => c.grupos.map((g) => g.grupoId)));
       uso.set(`${fila.inicio}-${fila.fin}`, ids.size);
     }
-    return { uso, listo: !!cal.datos };
-  }, [cal.datos]);
+    return { uso, listo: !!datos, fallo: !datos && !!error, cargando, recargar };
+  }, [datos, error, cargando, recargar]);
 }
 
 export default function SedeFranjas({
@@ -62,7 +68,7 @@ export default function SedeFranjas({
   onCambio?: () => void;
 }) {
   const carga = useApi(() => apiAcademia.franjasSede(sedeId), [sedeId]);
-  const { uso, listo: usoListo } = useGruposPorFranja(sedeId);
+  const { uso, listo: usoListo, fallo: usoFallo, cargando: usoCargando, recargar: recargarUso } = useGruposPorFranja(sedeId);
   const p = usePalabras();
 
   const [base, setBase] = useState<FilaFranja[]>([]);
@@ -134,6 +140,8 @@ export default function SedeFranjas({
       setAviso("Franjas guardadas.");
       onCambio?.();
       avisarPrimerosPasos();
+      // Los grupos por franja que se veían eran de antes de guardar (M5).
+      recargarUso();
     } catch (e) {
       if (e instanceof ApiError && e.codigo === CODIGOS_ACADEMIA.FRANJAS_INVALIDAS) {
         const detalles = Array.isArray(e.detalle.detalles) ? (e.detalle.detalles as string[]) : [];
@@ -180,7 +188,7 @@ export default function SedeFranjas({
       icono="clock"
       onClick={() => void usarTipicas()}
       disabled={guardando || sinGuardar}
-      title={sinGuardar ? "Guardá o descartá tus cambios primero" : "08–10, 10–12, 14–16, 16–18 y 19–21"}
+      title="08–10, 10–12, 14–16, 16–18 y 19–21"
     >
       Usar las típicas
     </BotonFila>
@@ -223,6 +231,10 @@ export default function SedeFranjas({
               {filas.map((f, i) => {
                 const grupos = uso.get(`${f.inicio}-${f.fin}`) ?? 0;
                 const mala = malas.has(i);
+                // Una franja ya guardada sólo se quita si se SABE que no tiene grupos: si no
+                // se pudo cargar el uso (o todavía carga), el tacho queda apagado (M5).
+                const guardada = base.some((b) => b.inicio === f.inicio && b.fin === f.fin);
+                const sinSaberUso = guardada && !usoListo;
                 return (
                   <li
                     key={i}
@@ -256,8 +268,8 @@ export default function SedeFranjas({
                       <BotonIcono
                         icono="trash"
                         etiqueta={`Quitar franja ${f.inicio}–${f.fin}`}
-                        disabled={guardando || grupos > 0}
-                        title={grupos > 0 ? "Tiene grupos: no se puede quitar" : "Quitar franja"}
+                        disabled={guardando || grupos > 0 || sinSaberUso}
+                        title={grupos > 0 ? "Tiene grupos: no se puede quitar" : sinSaberUso ? "Todavía no se sabe si tiene grupos" : "Quitar franja"}
                         onClick={() => quitar(i)}
                         className="hover:border-danger/40 hover:text-danger-text disabled:hover:border-borde disabled:hover:bg-white disabled:hover:text-texto-2"
                       />
@@ -267,12 +279,24 @@ export default function SedeFranjas({
                     <span className="col-span-4 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-texto-3">
                       <span className="tabular-nums">{duracionFranja(f)}</span>
                       {usoListo && <span>· {grupos === 0 ? "libre" : grupos === 1 ? "1 grupo" : `${grupos} grupos`}</span>}
+                      {/* La razón a la vista: el `title` no se ve en el celular (B8). */}
+                      {puedeEditar && grupos > 0 && <span>· no se puede quitar</span>}
                       {f.todasLasSedes && <Chip tono="azul">De todas las sedes</Chip>}
                     </span>
                   </li>
                 );
               })}
             </ul>
+          )}
+
+          {puedeEditar && usoFallo && (
+            <div className="flex flex-wrap items-center gap-2 border-t border-borde-soft px-4 py-3 text-[13px] text-texto-2 sm:px-5">
+              <Icon name="info" size={16} />
+              <span>No pudimos comprobar qué franjas tienen grupos, así que por ahora no se puede quitar ninguna de las guardadas.</span>
+              <BotonFila variante="ghost" onClick={recargarUso} disabled={usoCargando}>
+                Reintentar
+              </BotonFila>
+            </div>
           )}
 
           {hayDeTodas && (
@@ -311,7 +335,7 @@ export default function SedeFranjas({
                 )}
               </div>
             )}
-            {sinGuardar && <p className="text-[13px] text-texto-3">Tenés cambios sin guardar.</p>}
+            {sinGuardar && <p className="text-[13px] text-texto-3">Tenés cambios sin guardar: guardalos o descartalos para usar las típicas.</p>}
           </div>
         </div>
       )}
