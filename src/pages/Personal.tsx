@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Buscador, Chips, EncabezadoPagina } from "../components/filtros";
 import AvisoSinPermisos from "../components/roles/AvisoSinPermisos";
 import {
@@ -21,7 +21,9 @@ import { apiPersonal, type CargoRol, type Persona, type PersonaInput } from "../
 import { etiquetaRol, tienePermiso } from "../lib/permisos";
 import { apiRoles, mensajeDeError, rolSinPermisos } from "../lib/roles";
 import { plural } from "./agenda/config/utilConfig";
-import { contiene } from "../lib/texto";
+import { usePalabras } from "../lib/academia/usePalabras";
+import { conMayuscula } from "../lib/rubro";
+import { contiene, normalizar } from "../lib/texto";
 import { useApi } from "../lib/useApi";
 import { useAuth } from "../store/AuthContext";
 import type { Almacen, RolNegocio } from "../types";
@@ -56,6 +58,10 @@ export default function Personal() {
   const { negocio: negocioActual } = useAuth();
   // En el instituto la gente son docentes: nada de agenda, comisión ni propinas.
   const enInstituto = esInstituto(negocioActual);
+  // El instituto dice «sede»; los demás rubros, «sucursal» (ronda 2, R10).
+  const pal = usePalabras();
+  const sedeTxt = enInstituto ? pal.sede : "sucursal";
+  const sedesTxt = enInstituto ? pal.sedes : "sucursales";
   const [filtro, setFiltro] = useState<Filtro>("activos");
   const [buscar, setBuscar] = useState("");
   const [cargo, setCargo] = useState("");
@@ -130,10 +136,10 @@ export default function Personal() {
           <Select
             value={sucursal}
             onChange={(e) => setSucursal(e.target.value)}
-            aria-label="Sucursal"
+            aria-label={conMayuscula(sedeTxt)}
             className="w-auto"
           >
-            <option value="">Todas las sucursales</option>
+            <option value="">Todas las {sedesTxt}</option>
             {sucursales.map((s) => (
               <option key={s.id} value={s.id}>
                 {s.nombre}
@@ -152,7 +158,7 @@ export default function Personal() {
         <div className="card">
           <Vacio
             icono="users"
-            titulo="No hay nadie con ese filtro"
+            titulo={todas.length === 0 ? "Todavía no cargaste a nadie" : "No hay nadie con ese filtro"}
             texto={
               enInstituto
                 ? "Cargá a tus docentes y a quien trabaja con vos, entren o no al sistema."
@@ -203,7 +209,7 @@ export default function Personal() {
                       p.acceso ? `@${p.acceso.username}` : null,
                       p.telefono,
                       sucursales.length > 1
-                        ? p.sucursalIds.map(nombreSucursal).join(", ") || "Todas las sucursales"
+                        ? p.sucursalIds.map(nombreSucursal).join(", ") || `Todas las ${sedesTxt}`
                         : null,
                       p.zona || p.vehiculo ? [p.zona, p.vehiculo].filter(Boolean).join(" · ") : null,
                     ]
@@ -257,6 +263,9 @@ function FichaPersona({
   // En un instituto la gente son los docentes (contrato de la ronda 1): su %
   // se llama "% docente" y suman la retención y el NIT.
   const conDocentes = esInstituto(negocio);
+  const pal = usePalabras();
+  const sedeTxt = conDocentes ? pal.sede : "sucursal";
+  const sedesTxt = conDocentes ? pal.sedes : "sucursales";
   // El % es plata del profesional: lo cambia quien liquida (el backend lo
   // exige). En el instituto, quien liquida la planilla del docente o
   // configura la academia (lo mismo que pide el backend).
@@ -279,6 +288,13 @@ function FichaPersona({
   const [sucursalIds, setSucursalIds] = useState<number[]>(
     persona?.sucursalIds ?? (sucursales.length === 1 ? [sucursales[0].id] : []),
   );
+  // En el instituto, quien se carga es casi siempre un docente: el cargo «Docente»
+  // viene elegido. Sin cargo la persona NO cuenta como docente (no aparece en
+  // «Abrir grupo»). Sólo al crear y mientras nadie haya elegido otra cosa (R4).
+  const cargoDocente = conDocentes && !persona ? cargos.find((c) => [normalizar(pal.Docente), "docente"].includes(normalizar(c.nombre))) : undefined;
+  useEffect(() => {
+    if (cargoDocente) setCargoRolId((actual) => actual ?? cargoDocente.id);
+  }, [cargoDocente]);
   const [error, setError] = useState("");
   const [guardando, setGuardando] = useState(false);
   const [modo, setModo] = useState<"acceso" | "vincular" | "quitar" | "baja" | null>(null);
@@ -303,7 +319,7 @@ function FichaPersona({
       return setError("La retención va de 0 a 100 %.");
     }
     if (persona && sucursales.length > 1 && !sucursalIds.length) {
-      return setError("Elegí al menos una sucursal donde trabaja.");
+      return setError(`Elegí al menos una ${sedeTxt} donde trabaja.`);
     }
     const input: PersonaInput = {
       nombre: nombre.trim(),
@@ -323,7 +339,14 @@ function FichaPersona({
     setGuardando(true);
     try {
       const p = persona ? await apiPersonal.editar(persona.id, input) : await apiPersonal.crear(input);
-      onGuardado(p, `"${p.nombre}" quedó guardado.`);
+      // Un docente nuevo no entra al sistema hasta que se le da el acceso: sin el
+      // aviso quedaba guardado y nadie sabía que faltaba ese paso (ronda 2, R4).
+      onGuardado(
+        p,
+        !persona && conDocentes && !p.conAcceso
+          ? `"${p.nombre}" quedó guardado. Todavía no entra al sistema: abrí su ficha y tocá «Darle acceso».`
+          : `"${p.nombre}" quedó guardado.`,
+      );
       if (!persona) onClose();
     } catch (e) {
       setError(mensaje(e));
@@ -470,7 +493,7 @@ function FichaPersona({
         </Campo>
         {sucursales.length > 1 && (
           <fieldset>
-            <legend className="mb-1.5 text-[13px] font-semibold text-texto-2">Sucursales donde trabaja</legend>
+            <legend className="mb-1.5 text-[13px] font-semibold text-texto-2">{conMayuscula(sedesTxt)} donde trabaja</legend>
             <div className="flex flex-wrap gap-3">
               {sucursales.map((s) => (
                 <label key={s.id} className="inline-flex items-center gap-2 text-sm text-texto-2">
@@ -709,8 +732,9 @@ function DarAcceso({
   const [sucursalId, setSucursalId] = useState(persona.sucursalIds[0] ? String(persona.sucursalIds[0]) : "");
   const [error, setError] = useState("");
   const [enviando, setEnviando] = useState(false);
-  const rolElegido =
-    rol || String(roles.find((r) => r.id === cargoRolId)?.id ?? roles[0]?.id ?? "");
+  // Sin cargo que coincida no se propone «el primero de la lista»: una persona sin
+  // cargo podía quedar con un rol cualquiera sin que nadie lo notara (ronda 2, R11).
+  const rolElegido = rol || String(roles.find((r) => r.id === cargoRolId)?.id ?? (roles.length === 1 ? roles[0].id : ""));
   const eligeSucursal = sucursales.length > 1 && usuario?.sucursalId == null;
 
   const enviar = async () => {
@@ -781,6 +805,7 @@ function DarAcceso({
               error={asignables.error ? "No se pudieron cargar los roles." : undefined}
             >
               <Select value={rolElegido} onChange={(e) => setRol(e.target.value)} aria-label="Rol">
+                {!rolElegido && <option value="">Elegí el rol…</option>}
                 {roles.map((r) => (
                   <option key={r.id} value={r.id}>
                     {r.nombre}
