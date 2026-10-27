@@ -6,7 +6,7 @@ import { AvisoOk, Boton, Cargando, ErrorMsg, Vacio } from "../components/ui";
 import { ApiError } from "../lib/api";
 import { apiNotificaciones, type PreferenciaNotificacion } from "../lib/push/apiNotificaciones";
 import { entornoActual, situacionPush, type SituacionPush } from "../lib/push/estadoPush";
-import { agrupar, textoPrueba } from "../lib/push/notificaciones";
+import { agrupar } from "../lib/push/notificaciones";
 import { sincronizarPushSilencioso } from "../lib/push/registroPush";
 
 /**
@@ -15,8 +15,8 @@ import { sincronizarPushSilencioso } from "../lib/push/registroPush";
  * negocio, así que no depende de permisos: la lista la filtra el backend (a la
  * cajera no le aparece "Venta anulada") y acá sólo se muestra.
  *
- * Es también el único lugar donde se pide el permiso del navegador (la
- * página /prueba-push de QA se sacó el 21-oct: esta pantalla tiene su prueba).
+ * Es también el único lugar donde se pide el permiso del navegador. El botón
+ * "Enviarme una de prueba" se sacó el 26-oct (el dueño: no hace falta).
  */
 
 export default function Notificaciones() {
@@ -171,8 +171,6 @@ function EsteEquipo() {
   const [aviso, setAviso] = useState("");
   const [error, setError] = useState("");
   const [instalando, setInstalando] = useState(false);
-  const [probando, setProbando] = useState(false);
-  const [prueba, setPrueba] = useState<{ ok: boolean; texto: string } | null>(null);
 
   // Con el permiso ya dado, se asegura que el servidor tenga el token de este
   // equipo (no pregunta nada; si ya lo tiene, ni llama). Sirve si el registro
@@ -185,7 +183,6 @@ function EsteEquipo() {
     setActivando(true);
     setAviso("");
     setError("");
-    setPrueba(null);
     try {
       const { activarPush } = await import("../lib/push/firebasePush");
       const r = await activarPush();
@@ -198,26 +195,6 @@ function EsteEquipo() {
     } finally {
       setSituacion(situacionPush(entornoActual()));
       setActivando(false);
-    }
-  }
-
-  async function probar() {
-    setProbando(true);
-    setPrueba(null);
-    try {
-      setPrueba(textoPrueba(await apiNotificaciones.prueba()));
-    } catch (e) {
-      setPrueba({
-        ok: false,
-        texto:
-          e instanceof ApiError && e.status === 503
-            ? "El servidor no tiene las notificaciones configuradas. Avisale a BamarDev."
-            : e instanceof Error
-              ? e.message
-              : "No se pudo enviar la prueba",
-      });
-    } finally {
-      setProbando(false);
     }
   }
 
@@ -252,16 +229,6 @@ function EsteEquipo() {
 
       <AvisoOk>{aviso}</AvisoOk>
       <ErrorMsg>{error}</ErrorMsg>
-
-      {/* La prueba va a TODOS los equipos de la cuenta: sirve aunque éste no
-          pueda recibir (probar el celular desde la computadora). */}
-      <div className="flex flex-col gap-2 border-t border-borde-soft pt-3 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-[13px] text-texto-3">Para comprobar que llegan, mandate un aviso a tus equipos.</p>
-        <Boton variante="ghost" onClick={() => void probar()} disabled={probando} className="shrink-0">
-          {probando ? "Enviando…" : "Enviarme una de prueba"}
-        </Boton>
-      </div>
-      {prueba && (prueba.ok ? <AvisoOk>{prueba.texto}</AvisoOk> : <ErrorMsg>{prueba.texto}</ErrorMsg>)}
 
       {instalando && <HojaInstalar onClose={() => setInstalando(false)} />}
     </section>

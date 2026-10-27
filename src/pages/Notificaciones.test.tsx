@@ -5,7 +5,7 @@ import type { EntornoPush } from "../lib/push/estadoPush";
 
 /**
  * Notificaciones (PLAN-PUSH §10.2): la lista que manda el backend agrupada,
- * los interruptores optimistas, el permiso de este equipo y la prueba.
+ * los interruptores optimistas y el permiso de este equipo.
  */
 
 vi.mock("../lib/push/apiNotificaciones", () => ({
@@ -182,31 +182,9 @@ describe("este equipo", () => {
   });
 });
 
-describe("la prueba", () => {
-  async function probar() {
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Enviarme una de prueba" }));
-    });
-  }
-
-  it("enviada", async () => {
-    api.prueba.mockResolvedValue({ dispositivos: 2, enviadas: 2, invalidas: 0, fallidas: 0 });
+describe("sin prueba (26-oct)", () => {
+  it("no hay botón para mandarse un aviso de prueba", async () => {
     await abrir();
-    await probar();
-    expect(screen.getByText(/Enviada a 2 equipos/)).toBeInTheDocument();
-  });
-
-  it("sin equipos: este equipo todavía no está activado", async () => {
-    api.prueba.mockResolvedValue({ dispositivos: 0, enviadas: 0, invalidas: 0, fallidas: 0 });
-    await abrir();
-    await probar();
-    expect(screen.getByText(/Este equipo todavía no está activado/)).toBeInTheDocument();
-  });
-
-  it("503: el servidor no tiene las notificaciones configuradas", async () => {
-    api.prueba.mockRejectedValue(new ApiError("El servidor no está disponible en este momento.", 503));
-    await abrir();
-    await probar();
-    expect(screen.getByText(/El servidor no tiene las notificaciones configuradas/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /de prueba/ })).not.toBeInTheDocument();
   });
 });
