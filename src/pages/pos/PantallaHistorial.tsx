@@ -683,7 +683,7 @@ function DialogoAnular({
     if (motivo === "Otro" && detalle.trim().length < 3)
       return setError("Contá en pocas palabras por qué se anula.");
     // El PIN es de 4 (18-oct); uno viejo de 5 o 6 sigue entrando.
-    if (!/^\d{4,6}$/.test(pin)) return setError("El PIN son 4 dígitos.");
+    if (!/^\d{4,6}$/.test(pin)) return setError("El PIN tiene entre 4 y 6 dígitos.");
     if (pideUsuario && autorizador.trim().length < 3)
       return setError("Poné el usuario del encargado que autoriza.");
 

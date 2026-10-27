@@ -123,12 +123,27 @@ export function textoModulos(ordenes: number[], nombres?: Record<number, string>
   const o = [...ordenes].sort((a, b) => a - b);
   if (!o.length) return "—";
   // Un módulo sin nombre propio se llama «Módulo 1»: «M1 Módulo 1» repetía lo mismo (ronda 1, F7).
-  const conNombre = (x: number) => !!nombres[x] && !/^m[óo]dulo\b/i.test(nombres[x].trim());
+  // Sólo el genérico «Módulo 2»: un nombre propio que empieza igual («Módulo avanzado de corte») se conserva (ronda 2, B5).
+  const conNombre = (x: number) => !!nombres[x] && !/^m[óo]dulo\s*\d+$/i.test(nombres[x].trim());
   const con = o.map((x) => (conNombre(x) ? `M${x} ${nombres[x]}` : `M${x}`));
   const lista = con.length === 1 ? con[0] : `${con.slice(0, -1).join(", ")} y ${con[con.length - 1]}`;
   if (lista.length <= LARGO_MAX_MODULOS || con.length === 1) return lista;
   const seguidos = o.every((x, i) => i === 0 || x === o[i - 1] + 1);
   return seguidos ? `M${o[0]} a M${o[o.length - 1]}` : o.map((x) => `M${x}`).join(", ");
+}
+
+/**
+ * Qué cargar en «Nuevo estudiante» con lo que se buscó sin encontrar (ronda 2, R9).
+ * Un CI plausible va al carnet: 6 a 8 dígitos, y si son 8 que no empiecen en 6 o
+ * 7 (los celulares de Bolivia: la mamá, el tutor). Lo que tiene letras es un
+ * nombre y va a Apellidos, para no perderlo. Un celular o cualquier otro número
+ * no se vuelca en ningún lado.
+ */
+export function datosDeLaBusqueda(texto: string): { ci?: string; apellidos?: string } {
+  const t = texto.trim();
+  if (/^\d{6,8}$/.test(t) && !(t.length === 8 && /^[67]/.test(t))) return { ci: t };
+  if (/\p{L}/u.test(t)) return { apellidos: t };
+  return {};
 }
 
 /** Los nombres de los módulos por orden ({1: "Cortes", 2: "Degradados"}). */

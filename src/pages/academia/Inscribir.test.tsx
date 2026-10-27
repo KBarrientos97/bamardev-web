@@ -213,7 +213,7 @@ describe("E5 · inscribir", () => {
     expect(within(panel()).queryByRole("button", { name: "Inscribir sin cobrar" })).not.toBeInTheDocument();
     fireEvent.change(within(pin).getByLabelText("PIN"), { target: { value: "12" } });
     fireEvent.click(within(pin).getByRole("button", { name: "Autorizar" }));
-    expect(within(pin).getByText("El PIN son 4 dígitos.")).toBeInTheDocument();
+    expect(within(pin).getByText("El PIN tiene entre 4 y 6 dígitos.")).toBeInTheDocument();
     fireEvent.change(within(pin).getByLabelText("PIN"), { target: { value: "1234" } });
     fireEvent.click(within(pin).getByRole("button", { name: "Autorizar" }));
     expect(within(pin).getByText("Poné el usuario del encargado que autoriza.")).toBeInTheDocument();
@@ -885,5 +885,54 @@ describe("QA 23-oct · vencimientos de «Mes a mes» como los calcula el backend
     );
     await montar();
     expect(within(panel()).getByRole("radio", { name: /Mes a mes/ })).toHaveTextContent("M2 hoy · M3 17-oct");
+  });
+});
+
+describe("ronda 2 · R6 y R9 · el velo no descarta lo tipeado y «Nuevo estudiante» no mezcla datos", () => {
+  /** Busca `texto` (con fake timers: la espera de 350 ms se avanza a mano) y pasa a «Nuevo estudiante». */
+  async function buscarYPasarANuevo(texto: string) {
+    // Sólo el reloj de la demora: si se simulan también setImmediate y compañía, React no avanza.
+    vi.useRealTimers();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    vi.setSystemTime(new Date("2026-10-15T14:00:00.000Z"));
+    await montar();
+    fireEvent.change(within(panel()).getByLabelText("Buscar estudiante"), { target: { value: texto } });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(400);
+    });
+    await act(async () => {});
+    fireEvent.click(within(panel()).getByRole("button", { name: "Nuevo estudiante" }));
+  }
+
+  it("R6: un clic en el velo no cierra el panel (se perderían la búsqueda, el tutor y las fotos)", async () => {
+    const cerrar = vi.fn();
+    render(
+      <MemoryRouter>
+        <Inscribir grupoInicial={{ id: 7, nombre: "Barbería · L-V 10:00" }} onCerrar={cerrar} onInscrito={onInscrito} />
+      </MemoryRouter>,
+    );
+    await act(async () => {});
+    fireEvent.mouseDown(panel().parentElement!);
+    expect(cerrar).not.toHaveBeenCalled();
+    // La X sí cierra.
+    fireEvent.click(within(panel()).getByRole("button", { name: "Cerrar" }));
+    expect(cerrar).toHaveBeenCalledTimes(1);
+  });
+
+  it("R9: lo que se buscó y es un CI plausible va al carnet", async () => {
+    await buscarYPasarANuevo("6642881");
+    expect(within(panel()).getByLabelText("Carnet de identidad")).toHaveValue("6642881");
+  });
+
+  it("R9: un celular (8 dígitos que empiezan en 6 o 7) no se vuelca en el carnet", async () => {
+    await buscarYPasarANuevo("71234567");
+    expect(within(panel()).getByLabelText("Carnet de identidad")).toHaveValue("");
+    expect(within(panel()).getByLabelText("Apellidos")).toHaveValue("");
+  });
+
+  it("R9: un nombre buscado va a Apellidos en vez de perderse", async () => {
+    await buscarYPasarANuevo("Pérez Ana");
+    expect(within(panel()).getByLabelText("Apellidos")).toHaveValue("Pérez Ana");
+    expect(within(panel()).getByLabelText("Carnet de identidad")).toHaveValue("");
   });
 });

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   calendarioConDescuento,
+  datosDeLaBusqueda,
   diasTexto,
   edadDe,
   fechaCorta,
@@ -228,6 +229,27 @@ describe("ronda 1 · F7 · un módulo sin nombre propio no sale como «M1 Módul
     expect(textoModulosDeCuota({ materiaOrdenes: [1], materias: [{ orden: 1, nombre: "Módulo 1" }] })).toBe("M1");
     // La regla es por la palabra «Módulo» entera: «Modulado fino» es un nombre propio.
     expect(textoModulos([5], { 5: "Modulado fino" })).toBe("M5 Modulado fino");
+  });
+});
+
+describe("ronda 2 · B5 · sólo el «Módulo N» genérico se oculta", () => {
+  it("«Módulo avanzado de corte» es un nombre propio y se conserva", () => {
+    expect(textoModulos([1], { 1: "Módulo avanzado de corte" })).toBe("M1 Módulo avanzado de corte");
+    expect(textoModulos([2], { 2: "Módulo 2 avanzado" })).toBe("M2 Módulo 2 avanzado");
+    expect(textoModulos([3], { 3: "Módulo 3" })).toBe("M3");
+    expect(textoModulos([4], { 4: "  módulo4 " })).toBe("M4");
+  });
+});
+
+describe("ronda 2 · R9 · qué se carga en «Nuevo estudiante» con lo buscado", () => {
+  it("un CI plausible va al carnet; un celular no; un nombre va a Apellidos", () => {
+    expect(datosDeLaBusqueda("14550221")).toEqual({ ci: "14550221" });
+    expect(datosDeLaBusqueda(" 6642881 ")).toEqual({ ci: "6642881" });
+    expect(datosDeLaBusqueda("71234567")).toEqual({});
+    expect(datosDeLaBusqueda("65432109")).toEqual({});
+    expect(datosDeLaBusqueda("12345")).toEqual({});
+    expect(datosDeLaBusqueda("Pérez Ana")).toEqual({ apellidos: "Pérez Ana" });
+    expect(datosDeLaBusqueda("")).toEqual({});
   });
 });
 

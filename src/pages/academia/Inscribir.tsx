@@ -13,6 +13,7 @@ import {
   MAYORIA_DE_EDAD,
   nombreAlumno,
   nombreDe,
+  datosDeLaBusqueda,
   nombresDe,
   PARENTESCOS,
   textoCubre,
@@ -468,10 +469,10 @@ export default function Inscribir({
   const datosListos = !!preinscripcion || !!elegido || (!!nuevo.ci.trim() && !!nuevo.apellidos.trim() && !!nuevo.nombres.trim());
 
   return (
-    <div
-      className="fixed inset-0 z-40 flex justify-end bg-slate-900/30"
-      onMouseDown={(e) => e.target === e.currentTarget && !enviando && onCerrar()}
-    >
+    // Sin cerrar con el clic en el velo (ronda 2, R6): en escritorio cubre media
+    // pantalla y un clic suelto descartaba la búsqueda, el tutor, el descuento y
+    // las 3 fotos. Se cierra con la X, como Sedes y Aulas.
+    <div className="fixed inset-0 z-40 flex justify-end bg-slate-900/30">
       <aside
         role="dialog"
         aria-modal="true"
@@ -548,7 +549,8 @@ export default function Inscribir({
                 onElegir={(a) => setElegido({ id: a.id, nombre: nombreAlumno(a), telefono: a.telefono })}
                 onNuevo={(texto) => {
                   setModo("nuevo");
-                  if (/^\d{5,}$/.test(texto.trim())) setNuevo((n) => ({ ...n, ci: texto.trim() }));
+                  const d = datosDeLaBusqueda(texto);
+                  if (d.ci || d.apellidos) setNuevo((n) => ({ ...n, ...(d.ci ? { ci: d.ci } : {}), ...(d.apellidos && !n.apellidos ? { apellidos: d.apellidos } : {}) }));
                 }}
                 palabra={p.alumno}
               />
@@ -616,7 +618,7 @@ export default function Inscribir({
               <p className="flex items-center gap-1.5 text-[13px] text-texto-3">
                 <Icon name="lock" size={13} /> Las fotos sólo las ve el administrador
               </p>
-              <p className="text-[13px] text-texto-3">Si hoy no las tiene, podés inscribir igual: quedan pendientes en el Panel de control.</p>
+              <p className="text-[13px] text-texto-3">Si hoy no las tiene, podés inscribir igual: quedan marcados «Faltan fotos» en Estudiantes.</p>
               <CapturaFotos
                 fotos={fotos}
                 onCambiar={(f) => {
@@ -941,7 +943,7 @@ function PinEnLinea({ onCancelar, onFirmar }: { onCancelar: () => void; onFirmar
   const [error, setError] = useState("");
 
   function firmar() {
-    if (!/^\d{4,6}$/.test(pin)) return setError("El PIN son 4 dígitos.");
+    if (!/^\d{4,6}$/.test(pin)) return setError("El PIN tiene entre 4 y 6 dígitos.");
     if (pideUsuario && autorizador.trim().length < 3) return setError("Poné el usuario del encargado que autoriza.");
     onFirmar({ username: pideUsuario ? autorizador.trim() : (actual?.username ?? ""), pin });
   }
