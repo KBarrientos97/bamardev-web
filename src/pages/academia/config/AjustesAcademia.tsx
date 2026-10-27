@@ -52,23 +52,31 @@ export default function AjustesAcademia() {
   }
   if (!a) return <Cargando />;
 
-  /** Guarda un cambio parcial; el backend valida y devuelve los ajustes. */
-  async function guardar(cambios: Partial<Ajustes>) {
+  /**
+   * Guarda un cambio parcial; el backend valida y devuelve los ajustes. La
+   * pantalla se adelanta; si el guardado falla vuelve a lo que había (ronda 1,
+   * W6) y devuelve `false` para que el campo también lo haga.
+   */
+  async function guardar(cambios: Partial<Ajustes>): Promise<boolean> {
+    const antes = Object.fromEntries(Object.keys(cambios).map((k) => [k, a![k as keyof Ajustes]])) as Partial<Ajustes>;
     setA((prev) => (prev ? { ...prev, ...cambios } : prev));
     const mia = ++enVuelo.current;
     setEstado("guardando");
     setError("");
     try {
       const nuevos = await apiAcademia.guardarAjustes(cambios);
-      if (mia !== enVuelo.current) return;
+      if (mia !== enVuelo.current) return true;
       setA(nuevos);
       setEstado("guardado");
+      return true;
     } catch (e) {
-      if (mia !== enVuelo.current) return;
+      if (mia !== enVuelo.current) return false;
+      setA((prev) => (prev ? { ...prev, ...antes } : prev));
       setEstado("error");
       // 400 FRANJAS_INVALIDAS trae el detalle de cada una (cambio #4).
       const detalles = e instanceof ApiError && Array.isArray(e.detalle.detalles) ? (e.detalle.detalles as string[]) : [];
       setError(detalles.length ? detalles.join(" ") : e instanceof Error ? e.message : "No se pudo guardar");
+      return false;
     }
   }
 
@@ -77,8 +85,13 @@ export default function AjustesAcademia() {
     defaultValue: a[k] == null ? "" : String(a[k]),
     onBlur: (e: FocusEvent<HTMLInputElement>) => {
       const v = e.target.value.trim();
+      // El campo vuelve a lo que vale si el guardado falla: `defaultValue` no sigue al estado.
+      const volver = (ok: boolean) => {
+        if (!ok) e.target.value = a[k] == null ? "" : String(a[k]);
+      };
       if (v === "" && opcional) {
-        if (a[k] != null) void guardar({ [k]: null } as Partial<Ajustes>);
+        setError("");
+        if (a[k] != null) void guardar({ [k]: null } as Partial<Ajustes>).then(volver);
         return;
       }
       const n = Number(v);
@@ -87,7 +100,9 @@ export default function AjustesAcademia() {
         e.target.value = a[k] == null ? "" : String(a[k]);
         return;
       }
-      if (n !== a[k]) void guardar({ [k]: n } as Partial<Ajustes>);
+      // Un valor válido borra el reproche del anterior inválido.
+      setError("");
+      if (n !== a[k]) void guardar({ [k]: n } as Partial<Ajustes>).then(volver);
     },
   });
 
@@ -233,7 +248,7 @@ export default function AjustesAcademia() {
       <SeccionAjuste id="s-notas" titulo="Notas y asistencia" bajada="La escala y lo que se exige para aprobar.">
         <div className="grid gap-4 sm:grid-cols-3">
           <Campo label="Nota mínima para aprobar">
-            <Input type="number" {...numero("notaMinima", 0, 1000)} />
+            <Input type="number" {...numero("notaMinima", 1, 1000)} />
           </Campo>
           <Campo label="Nota máxima de la escala">
             <Input type="number" {...numero("escalaMax", 1, 1000)} />

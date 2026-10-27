@@ -99,6 +99,43 @@ describe("N4 · Ajustes del instituto", () => {
     expect(screen.getByText(/entre 1 y 28/)).toBeInTheDocument();
   });
 
+  it("ronda 1 · W6: si el guardado falla, el campo y la pantalla vuelven a lo anterior", async () => {
+    vi.mocked(apiAcademia.guardarAjustes).mockRejectedValueOnce(new Error("No se pudo guardar"));
+    await montar();
+    const dia = screen.getByLabelText(/empiezan el día/) as HTMLInputElement;
+    const antes = dia.value;
+    fireEvent.change(dia, { target: { value: "5" } });
+    fireEvent.blur(dia);
+    await act(async () => {});
+    expect(screen.getAllByText("No se pudo guardar").length).toBeGreaterThan(0);
+    expect(dia.value).toBe(antes);
+    expect(screen.getByRole("status")).not.toHaveTextContent("Cambios guardados");
+  });
+
+  it("ronda 1 · W6: el reproche de un valor fuera de rango se va al corregirlo", async () => {
+    await montar();
+    const dia = screen.getByLabelText(/empiezan el día/) as HTMLInputElement;
+    const original = dia.value;
+    fireEvent.change(dia, { target: { value: "31" } });
+    fireEvent.blur(dia);
+    expect(screen.getByText(/entre 1 y 28/)).toBeInTheDocument();
+    // Vuelve al valor de siempre: no hay nada que guardar, pero el reproche sobra.
+    fireEvent.change(dia, { target: { value: original } });
+    fireEvent.blur(dia);
+    await act(async () => {});
+    expect(apiAcademia.guardarAjustes).not.toHaveBeenCalled();
+    expect(screen.queryByText(/entre 1 y 28/)).not.toBeInTheDocument();
+  });
+
+  it("ronda 1 · W6: la nota mínima no puede ser 0 (el backend exige 1 o más)", async () => {
+    await montar();
+    const nota = screen.getByLabelText("Nota mínima para aprobar");
+    fireEvent.change(nota, { target: { value: "0" } });
+    fireEvent.blur(nota);
+    expect(apiAcademia.guardarAjustes).not.toHaveBeenCalled();
+    expect(screen.getByText(/entre 1 y 1000/)).toBeInTheDocument();
+  });
+
   it("las franjas ya no se editan acá: un texto lleva a Sedes, y guardar un ajuste NO manda ni borra las franjas (WEB-8, C5)", async () => {
     await montar();
     const cal = within(screen.getByRole("region", { name: "Calendario" }));
