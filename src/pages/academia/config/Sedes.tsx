@@ -52,20 +52,26 @@ export default function Sedes() {
   const [params, setParams] = useSearchParams();
   const sedeUrl = Number(params.get("sede")) || null;
   const verUrl = verDeLaUrl(params.get("ver"));
-  const [abierta, setAbierta] = useState<number | null>(sedeUrl);
-  const [ver, setVer] = useState<Ver | null>(verUrl);
+  const [abierta, setAbierta] = useState<number | null>(null);
+  const [ver, setVer] = useState<Ver | null>(null);
+  // Cada enlace de «Primeros pasos» es un pedido nuevo de ir a una sección, aunque
+  // sea la misma de antes: sin la señal, no se volvía a bajar (ronda 1, W2).
+  const [senal, setSenal] = useState(0);
   const [edicion, setEdicion] = useState<{ sede: Sede | null } | null>(null);
   const [aviso, setAviso] = useAviso();
 
-  // El enlace se consume una vez, ya cargada la lista: después la URL queda limpia.
-  const consumido = useRef(false);
+  // Cada enlace se consume al llegar, ya cargada la lista, y la URL queda limpia.
+  // Se mira en cada cambio de la URL —no sólo al entrar—: los pasos de «Primeros
+  // pasos» también están dentro de esta pantalla y navegan a ella misma (W2).
   useEffect(() => {
-    if (consumido.current || !lista.datos) return;
-    consumido.current = true;
-    if (!sedeUrl && !verUrl) return;
+    if (!lista.datos || (!sedeUrl && !verUrl)) return;
     const destino = lista.datos.find((s) => s.id === sedeUrl) ?? (lista.datos.length === 1 ? lista.datos[0] : null);
     if (destino && verUrl === "editar" && configura) setEdicion({ sede: destino });
-    else if (destino && lista.datos.length > 1) setAbierta(destino.id);
+    else if (destino) {
+      if (lista.datos.length > 1) setAbierta(destino.id);
+      setVer(verUrl);
+      setSenal((n) => n + 1);
+    }
     setParams({}, { replace: true });
   }, [lista.datos, sedeUrl, verUrl, configura, setParams]);
 
@@ -111,6 +117,7 @@ export default function Sedes() {
           sede={sedes[0]}
           configura={configura}
           ver={ver}
+          senal={senal}
           onEditar={() => setEdicion({ sede: sedes[0] })}
           onCambio={lista.recargar}
         />
@@ -194,7 +201,7 @@ export default function Sedes() {
             lista.recargar();
           }}
         >
-          <ContenidoSede sede={detalle} configura={configura} ver={ver} onEditar={() => setEdicion({ sede: detalle })} onCambio={lista.recargar} />
+          <ContenidoSede sede={detalle} configura={configura} ver={ver} senal={senal} onEditar={() => setEdicion({ sede: detalle })} onCambio={lista.recargar} />
         </PanelLateral>
       )}
 
@@ -231,12 +238,15 @@ function ContenidoSede({
   sede,
   configura,
   ver,
+  senal,
   onEditar,
   onCambio,
 }: {
   sede: Sede;
   configura: boolean;
   ver: Ver | null;
+  /** Sube con cada pedido de ir a `ver`, para volver a bajar a la misma sección. */
+  senal: number;
   onEditar: () => void;
   onCambio: () => void;
 }) {
@@ -246,7 +256,7 @@ function ContenidoSede({
   useEffect(() => {
     const el = ver === "franjas" ? franjasRef.current : ver === "aulas" ? aulasRef.current : null;
     el?.scrollIntoView?.({ block: "start" });
-  }, [ver, sede.id]);
+  }, [ver, senal, sede.id]);
 
   const falta = datosQueFaltan(sede);
   return (

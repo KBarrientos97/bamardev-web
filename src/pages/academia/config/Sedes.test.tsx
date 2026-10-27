@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useNavigate } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "../../../lib/api";
 import type { Sede } from "../../../lib/academia/tipos";
@@ -350,5 +350,52 @@ describe("C4 · pieza suelta", () => {
     );
     await act(async () => {});
     expect(screen.getByRole("heading", { name: "Sedes" })).toBeInTheDocument();
+  });
+});
+
+describe("ronda 1 · W2 · los enlaces de «Primeros pasos» funcionan desde la propia pantalla de Sedes", () => {
+  /** Un botón que navega a esta misma pantalla, como el paso «Cargar franjas». */
+  function IrA({ ruta }: { ruta: string }) {
+    const navigate = useNavigate();
+    return <button onClick={() => navigate(ruta)}>ir a {ruta}</button>;
+  }
+  async function montarConEnlace(ruta: string) {
+    render(
+      <MemoryRouter initialEntries={["/configuracion/sedes"]}>
+        <SedesConfig />
+        <IrA ruta={ruta} />
+      </MemoryRouter>,
+    );
+    await act(async () => {});
+  }
+
+  it("con varias sedes, ya dentro de la pantalla, ?sede=2&ver=franjas abre esa sede", async () => {
+    await montarConEnlace("/configuracion/sedes?sede=2&ver=franjas");
+    expect(screen.queryByRole("complementary", { name: "Base" })).not.toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /^ir a / }));
+    });
+    expect(screen.getByRole("complementary", { name: "Base" })).toBeInTheDocument();
+  });
+
+  it("con una sola sede, cada toque vuelve a bajar a las franjas", async () => {
+    vi.mocked(apiAcademia.sedes).mockResolvedValue([CENTRAL]);
+    const bajar = vi.fn();
+    const original = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = bajar;
+    try {
+      await montarConEnlace("/configuracion/sedes?sede=1&ver=franjas");
+      bajar.mockClear();
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: /^ir a / }));
+      });
+      expect(bajar).toHaveBeenCalledTimes(1);
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: /^ir a / }));
+      });
+      expect(bajar).toHaveBeenCalledTimes(2);
+    } finally {
+      Element.prototype.scrollIntoView = original;
+    }
   });
 });
