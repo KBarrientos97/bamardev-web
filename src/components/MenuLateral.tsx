@@ -6,6 +6,7 @@ import {
   type FocusEvent,
   type KeyboardEvent,
   type MouseEvent,
+  type HTMLAttributes,
 } from "react";
 import { Link } from "react-router-dom";
 import {
@@ -129,7 +130,12 @@ export default function MenuLateral({
     if (n.hijos.length) menu.abrir(n.id);
     setTip(null);
     onNavegar();
+    if (n.item.accion === "cambiarPassword") onCambiarPassword?.();
   };
+
+  // En el instituto, los avisos y la contraseña están en "Mi negocio": al pie
+  // no se repiten.
+  const enElMenu = (a: string) => menu.planos.some((n) => n.item.paraTodos && n.item.a === a);
 
   /** Las filas recorribles con ↑ ↓, sin las de un grupo cerrado. */
   const filas = () =>
@@ -196,8 +202,8 @@ export default function MenuLateral({
     const dentro = !activo && n.hijos.length > 0 && contieneRuta(n, pathname);
     return (
       <li key={n.id}>
-        <Link
-          to={n.item.a}
+        <Fila
+          n={n}
           onClick={() => navegar(n)}
           // En la barra de íconos el número es sólo un punto: el lector de
           // pantalla igual tiene que oír cuántas hay (QA PER-09).
@@ -221,7 +227,7 @@ export default function MenuLateral({
               />
             )}
           </span>
-        </Link>
+        </Fila>
       </li>
     );
   };
@@ -233,8 +239,8 @@ export default function MenuLateral({
     if (n.hijos.length === 0) {
       return (
         <li key={n.id}>
-          <Link
-            to={n.item.a}
+          <Fila
+            n={n}
             onClick={() => navegar(n)}
             aria-current={activo ? "page" : undefined}
             data-fila=""
@@ -269,7 +275,7 @@ export default function MenuLateral({
                 {contadorDe(n)}
               </span>
             )}
-          </Link>
+          </Fila>
         </li>
       );
     }
@@ -381,7 +387,7 @@ export default function MenuLateral({
     // Un grupo sin pantalla propia (Agenda, Equipo) lleva a la de su primer
     // hijo: en la columna de íconos sería el mismo destino dos veces.
     return aplanar(nodos)
-      .filter((n) => n.item.seccion)
+      .filter((n) => n.item.seccion || n.item.paraTodos)
       .map((n) => nodoCompacto(n, padres.get(n) ?? null));
   };
 
@@ -448,7 +454,8 @@ export default function MenuLateral({
 
       {/* Los avisos de cada uno (PLAN-PUSH §10.2): para cualquier rol, como
           la contraseña. Es un link y no un botón: es una pantalla. */}
-      <Link
+      {!enElMenu("/notificaciones") && (
+        <Link
         to="/notificaciones"
         onClick={() => {
           setTip(null);
@@ -470,9 +477,10 @@ export default function MenuLateral({
       >
         <Icon name="bell" size={19} />
         {!compacta && <span>Notificaciones</span>}
-      </Link>
+        </Link>
+      )}
 
-      {onCambiarPassword && (
+      {onCambiarPassword && !enElMenu("#cambiar-password") && (
         <button
           type="button"
           onClick={() => {
@@ -530,4 +538,16 @@ export default function MenuLateral({
       )}
     </nav>
   );
+}
+
+/**
+ * Un ítem del menú: un link a su pantalla o, si no es una pantalla, un botón
+ * ("Cambiar mi contraseña" abre un formulario). Mismo aspecto y mismas teclas.
+ */
+function Fila({
+  n,
+  ...resto
+}: { n: NodoMenu } & HTMLAttributes<HTMLElement>) {
+  if (n.item.accion) return <button type="button" {...resto} />;
+  return <Link to={n.item.a} {...resto} />;
 }

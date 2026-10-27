@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "react-router-dom";
 import type { NombreIcono } from "../components/Icon";
 import { useAuth } from "../store/AuthContext";
-import { PESTANAS_CONFIG_ACADEMIA } from "./academia/vista";
+import { PESTANAS_CONFIG_ACADEMIA, RUTA_CAJA } from "./academia/vista";
 import { SECCIONES_REPORTES, type Seccion } from "./permisos";
 import { conMayuscula, termino, type Termino, type Vocabulario } from "./rubro";
 
@@ -50,6 +50,14 @@ export interface ItemNav {
    * viven en rutas distintas (cursos, sedes, planilla), cada una una pestaña.
    */
   rutas?: readonly string[];
+  /**
+   * Lo ve cualquier rol, sin sección ni permiso: lo de la cuenta de quien está
+   * sentado (sus avisos, su contraseña). Sólo lo usa "Mi negocio" del
+   * instituto; en los demás rubros eso sigue al pie del menú.
+   */
+  paraTodos?: boolean;
+  /** No es una pantalla: el menú lo dibuja como botón (la contraseña abre un formulario). */
+  accion?: "cambiarPassword";
   /**
    * El ítem se llama distinto según el rubro: `label` es el nombre de siempre
    * y esto es la palabra que lo reemplaza donde corresponda (ver `rubro.ts`).
@@ -444,9 +452,11 @@ function general(a: string, cambios: Partial<ItemNav> = {}): ItemNav {
  *                   lo del día, cobrar, las clases del docente, el control
  *                   del dueño y lo que se configura una vez.
  *   VENDER          Punto de venta · Caja
- *   ADMINISTRACIÓN  un grupo "Más" plegado con los módulos generales que el
- *                   dueño ya tenía: inventario, personal, usuarios, gastos,
- *                   Mi página… No se quita nada, se aparta.
+ *   ADMINISTRACIÓN  "Mi negocio" (la gente, los avisos y la contraseña) y los
+ *                   módulos generales que el dueño ya tenía: inventario,
+ *                   gastos, reportes de ventas, Mi página. Hasta el 26-oct
+ *                   colgaban de un grupo "Más", que con el título del bloque
+ *                   encima era un click de más (el dueño).
  *
  * El docente ve sólo sus clases porque lo suyo pide el alcance PROPIO, y la
  * recepción no ve el control porque no tiene esos permisos: nada se decide
@@ -512,26 +522,42 @@ const ITEMS_ACADEMIA: (ItemNav & { bloque: Bloque })[] = [
     ],
   },
   { a: "/pos", label: "Punto de venta", icono: "cart", seccion: "pos", bloque: "vender", exacto: true },
-  // La caja del turno: el historial del POS, con el cierre. Lleva a la misma
-  // pantalla con `?vista=caja` (ver Pos.tsx).
-  { a: "/pos?vista=caja", label: "Caja", icono: "billetera", seccion: "caja", bloque: "vender" },
+  // La caja del turno: el historial del POS, con el cierre. Es el mismo POS en
+  // su propia ruta (ver RUTA_CAJA).
+  { a: RUTA_CAJA, label: "Caja", icono: "billetera", seccion: "caja", bloque: "vender" },
+  // "Mi negocio" (el dueño, 26-oct): la gente y la cuenta en un solo grupo,
+  // en vez de un "Equipo" por un lado y los avisos y la contraseña sueltos al
+  // pie del menú. Lo propio del instituto (cursos, sedes, planilla, ajustes)
+  // sigue en Academia → Configuración.
   {
     a: "/personal",
-    label: "Más",
-    icono: "masCuadro",
+    label: "Mi negocio",
+    icono: "perillas",
     bloque: "administracion",
     hijos: [
-      general("/personal"),
-      // Sin Almacenes: en el instituto son las sedes, y están en Configuración.
-      general("/inventario", {
-        hijos: general("/inventario").hijos?.filter((h) => h.a !== "/inventario/almacenes"),
-      }),
-      general("/gastos"),
-      // El de ventas y productos de siempre: "Reportes" es el del instituto.
-      general("/reportes", { label: "Más reportes", titulo: "Reportes de ventas" }),
-      general("/mi-pagina"),
+      ...(general("/personal").hijos ?? []).filter((h) => ["/personal", "/usuarios", "/roles"].includes(h.a)),
+      { a: "/notificaciones", label: "Notificaciones", icono: "bell", paraTodos: true },
+      // Nunca se marca activo: ninguna ruta empieza con "#".
+      {
+        a: "#cambiar-password",
+        label: "Cambiar mi contraseña",
+        icono: "lock",
+        paraTodos: true,
+        accion: "cambiarPassword",
+      },
     ],
   },
+  // Sin Almacenes: en el instituto son las sedes, y están en Configuración.
+  {
+    ...general("/inventario", {
+      hijos: general("/inventario").hijos?.filter((h) => h.a !== "/inventario/almacenes"),
+    }),
+    bloque: "administracion",
+  },
+  { ...general("/gastos"), bloque: "administracion" },
+  // El de ventas y productos de siempre: "Reportes" es el del instituto.
+  { ...general("/reportes", { label: "Reportes de ventas" }), bloque: "administracion" },
+  { ...general("/mi-pagina"), bloque: "administracion" },
 ];
 
 /** Un ítem ya filtrado por permisos, con su nombre según el rubro. */
@@ -567,6 +593,10 @@ function filtrar(
   const salida: NodoMenu[] = [];
   for (const i of items) {
     const hijos = filtrar(i.hijos ?? [], puede, rubro, vocabulario);
+    if (i.paraTodos) {
+      salida.push({ item: i, id: `todos:${i.a}`, hijos: [], esTitulo: false });
+      continue;
+    }
     if (!i.seccion) {
       // Grupo sin pantalla propia: con un solo hijo, el hijo va suelto.
       if (hijos.length < 2) {

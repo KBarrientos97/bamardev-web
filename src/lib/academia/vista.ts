@@ -105,6 +105,13 @@ export const PESTANAS_CONFIG_ACADEMIA: readonly { seccion: Seccion; a: string }[
 export const RUTA_COBRAR = "/academia/cobranza/cobrar";
 
 /**
+ * "Caja" en el menú del instituto: la pantalla del turno del POS (lo vendido
+ * y el cierre), con ruta propia para que el menú la marque y "Punto de venta"
+ * vuelva a la venta. Las dos montan el mismo POS (ver Pos.tsx).
+ */
+export const RUTA_CAJA = "/pos/caja";
+
+/**
  * "Cobrar" sin la inscripción (Cobranza, Hoy → Para cobrar): se busca al
  * estudiante por su código o su nombre y, si aparece, se abre solo.
  */

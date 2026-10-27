@@ -140,9 +140,9 @@ describe("menú: Supervisión del billar", () => {
 
 /**
  * El instituto: un menú por rol. Todo lo que es sólo del instituto vive en UN
- * grupo "Academia" (dueño, 26-oct); afuera quedan vender y, para el dueño, un
- * "Más" plegado con los módulos generales (no se le quita ninguno). Nada de
- * lo que no existe en el rubro.
+ * grupo "Academia" (dueño, 26-oct); afuera quedan vender, "Mi negocio" (la
+ * gente, los avisos y la contraseña) y, para el dueño, los módulos generales
+ * sueltos (no se le quita ninguno). Nada de lo que no existe en el rubro.
  */
 describe("menú de ACADEMIA", () => {
   const SOLO_ACADEMIA = ["pos", "caja", "catalogo", "usuarios", "inventario", "multi_almacen", "reportes",
@@ -154,6 +154,10 @@ describe("menú de ACADEMIA", () => {
   };
   const bloque = (m: BloqueMenu[], b: Bloque) => m.find((x) => x.bloque === b)?.nodos.map((n) => n.item.label);
   const todos = (m: BloqueMenu[]) => aplanar(m.flatMap((b) => b.nodos)).map((n) => n.item.label);
+  /** Lo que hay dentro de "Mi negocio". */
+  const miNegocio = (m: BloqueMenu[]) =>
+    m.find((x) => x.bloque === "administracion")?.nodos.find((n) => n.item.label === "Mi negocio")?.hijos
+      .map((n) => n.item.label);
   /** Lo que hay dentro del grupo Academia. */
   const academia = (m: BloqueMenu[]) => {
     const grupo = m.find((x) => x.bloque === "instituto")?.nodos;
@@ -163,12 +167,26 @@ describe("menú de ACADEMIA", () => {
 
   it("la recepción: el grupo Academia con lo del día y Cobranza, y aparte Punto de venta y Caja", () => {
     const m = menuDe("CAJERO");
-    expect(m.map((b) => b.bloque)).toEqual(["instituto", "vender"]);
+    expect(m.map((b) => b.bloque)).toEqual(["instituto", "vender", "administracion"]);
     // A1 (22-oct): cobrar a un estudiante es aparte del POS, que queda para
     // productos; desde el 26-oct se entra por Cobranza, sin un "Cobrar" suelto.
     // 26-oct: sin "Hoy" (sus clases del día están arriba del Calendario).
     expect(academia(m)).toEqual(["Calendario", "Estudiantes", "Inscripciones online", "Cobranza"]);
     expect(bloque(m, "vender")).toEqual(["Punto de venta", "Caja"]);
+    // Su cuenta, como cualquiera: en "Mi negocio" y no al pie del menú.
+    expect(bloque(m, "administracion")).toEqual(["Mi negocio"]);
+    expect(miNegocio(m)).toEqual(["Notificaciones", "Cambiar mi contraseña"]);
+  });
+
+  it("Caja tiene su ruta: se enciende ella y no Punto de venta (26-oct)", () => {
+    const planos = aplanar(menuDe("CAJERO").flatMap((b) => b.nodos));
+    const caja = planos.find((n) => n.item.label === "Caja")!;
+    const pos = planos.find((n) => n.item.label === "Punto de venta")!;
+    expect(caja.item.a).toBe("/pos/caja");
+    expect(esActivo(caja.item, "/pos/caja")).toBe(true);
+    expect(esActivo(pos.item, "/pos/caja")).toBe(false);
+    expect(esActivo(caja.item, "/pos")).toBe(false);
+    expect(tituloDe(planos, "/pos/caja")).toBe("Caja");
   });
 
   it("estando en Cobrar a estudiante se enciende Cobranza y la barra del celular dice dónde está", () => {
@@ -179,23 +197,24 @@ describe("menú de ACADEMIA", () => {
     expect(tituloDe(planos, "/academia/cobranza/cobrar")).toBe("Cobrar a estudiante");
   });
 
-  it("el administrador: TODO lo del instituto en Academia, lo que no es del día en Configuración, y abajo Más", () => {
+  it("el administrador: TODO lo del instituto en Academia, lo que no es del día en Configuración, y abajo Mi negocio", () => {
     const m = menuDe("ADMIN");
     expect(m.map((b) => b.bloque)).toEqual(["instituto", "vender", "administracion"]);
     expect(academia(m)).toEqual([
       "Calendario", "Estudiantes", "Inscripciones online", "Cobranza", "Panel de control", "Reportes", "Configuración",
     ]);
     expect(bloque(m, "vender")).toEqual(["Punto de venta", "Caja"]);
-    expect(bloque(m, "administracion")).toEqual(["Más"]);
+    // Sin el grupo "Más" (26-oct): con el título del bloque encima era un
+    // click de más.
+    expect(bloque(m, "administracion")).toEqual([
+      "Mi negocio", "Inventario", "Gastos operativos", "Reportes de ventas", "Mi página",
+    ]);
+    expect(miNegocio(m)).toEqual(["Personal", "Usuarios", "Roles", "Notificaciones", "Cambiar mi contraseña"]);
     const nombres = todos(m);
-    // Lo que el dueño ya tenía sigue estando, dentro de "Más".
-    for (const si of ["Personal", "Usuarios", "Inventario", "Gastos operativos", "Mi página", "Más reportes"]) {
-      expect(nombres).toContain(si);
-    }
     // Cursos, sedes, planilla y ajustes son pestañas de Configuración, no
     // renglones del menú (26-oct); las sedes tampoco se repiten en Inventario.
     for (const no of ["Cuentas por cobrar", "Mesas del salón", "Insumos", "Billar", "Grupos", "Mis clases de hoy",
-      "Hoy", "Cursos", "Sedes", "Almacenes", "Planilla docentes", "Ajustes"]) {
+      "Hoy", "Cursos", "Sedes", "Almacenes", "Planilla docentes", "Ajustes", "Más", "Equipo"]) {
       expect(nombres).not.toContain(no);
     }
   });
@@ -222,7 +241,8 @@ describe("menú de ACADEMIA", () => {
 
   it("el docente ve sólo sus clases, dentro de Academia (sin «Mi planilla»: es del admin, D1 del 22-oct)", () => {
     const m = menuDe("PROFESIONAL");
-    expect(m.map((b) => b.bloque)).toEqual(["instituto"]);
+    expect(m.map((b) => b.bloque)).toEqual(["instituto", "administracion"]);
+    expect(miNegocio(m)).toEqual(["Notificaciones", "Cambiar mi contraseña"]);
     expect(academia(m)).toEqual(["Mis clases de hoy", "Pasar lista", "Notas"]);
     expect(m[0].nodos[0].item.a).toBe("/academia/mis-clases");
   });

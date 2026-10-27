@@ -8,7 +8,7 @@ import {
 } from "react-router-dom";
 import AtajaErrores from "./components/AtajaErrores";
 import Layout from "./components/Layout";
-import { RUTA_COBRAR } from "./lib/academia/vista";
+import { RUTA_CAJA, RUTA_COBRAR } from "./lib/academia/vista";
 import { ConPestanasConfig, InicioConfig } from "./pages/academia/config/ConfigAcademia";
 import { RUTA_AGENDA_PRONTO, rutaInicial, veReportes, veSoloSuAgenda, type Seccion } from "./lib/permisos";
 import { esBelleza, esFarmacia } from "./lib/rubro";
@@ -348,6 +348,17 @@ function Rutas() {
 
         <Route
           path="/pos"
+          element={
+            <Protegida seccion="pos">
+              <Pos />
+            </Protegida>
+          }
+        />
+        {/* "Caja" del instituto: el mismo POS en la pantalla del turno. Mismo
+            árbol que /pos, así React no lo vuelve a montar al pasar de una a
+            otra y el carrito sigue ahí. */}
+        <Route
+          path={RUTA_CAJA}
           element={
             <Protegida seccion="pos">
               <Pos />

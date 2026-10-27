@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Navigate, useSearchParams } from "react-router-dom";
+import { Navigate, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { Icon } from "../../components/Icon";
 import { Cargando, Confirmar, ErrorMsg } from "../../components/ui";
 import { ApiError, api } from "../../lib/api";
@@ -23,7 +23,7 @@ import { useConsultaPeriodica } from "../../lib/agenda/useConsultaPeriodica";
 import CitasPorCobrar from "./CitasPorCobrar";
 import { fmtHora, fmtMoney } from "../../lib/format";
 import { creaClientes, tieneFeature, tienePermiso } from "../../lib/permisos";
-import { RUTA_COBRAR } from "../../lib/academia/vista";
+import { RUTA_CAJA, RUTA_COBRAR } from "../../lib/academia/vista";
 import { esFarmacia } from "../../lib/rubro";
 import { useApi } from "../../lib/useApi";
 import { quedoEnDuda } from "../../lib/cupo";
@@ -509,14 +509,19 @@ function PuntoDeVenta() {
     void cobrarCita(citaPedida);
   }, [citaPedida, catalogoListo, cobrarCita, setParams]);
 
-  // "Caja" en el menú del instituto llega con `?vista=caja`: la pantalla del
-  // turno (lo vendido y el cierre). Sin caja abierta, primero la apertura.
-  const vistaCaja = params.get("vista") === "caja";
+  // "Caja" en el menú del instituto es RUTA_CAJA: la pantalla del turno (lo
+  // vendido y el cierre). Sin caja abierta, primero la apertura. Hasta el
+  // 26-oct era `/pos?vista=caja` y el parámetro se borraba al llegar: la URL
+  // quedaba en /pos, el menú marcaba "Punto de venta" y tocarlo no volvía a la
+  // venta. Las dos rutas montan este mismo componente, así que ir y venir no
+  // pierde el carrito. `key` cambia en cada navegación: tocar "Caja" estando
+  // ya ahí (en un recibo, después de cerrar) vuelve a la lista del turno.
+  const { pathname, key: navegacion } = useLocation();
+  const navigate = useNavigate();
+  const enCaja = pathname === RUTA_CAJA;
   useEffect(() => {
-    if (!vistaCaja) return;
-    setParams({}, { replace: true });
-    setPantalla("historial");
-  }, [vistaCaja, setParams]);
+    setPantalla((p) => (enCaja ? "historial" : p === "historial" ? "venta" : p));
+  }, [enCaja, navegacion]);
 
   /** Arma el cuerpo de la venta juntando carrito y datos de entrega. */
   const cuerpoVenta = useCallback(
@@ -845,7 +850,7 @@ function PuntoDeVenta() {
     return (
       <PantallaHistorial
         caja={abierta}
-        onAtras={() => setPantalla("venta")}
+        onAtras={() => (enCaja ? navigate("/pos") : setPantalla("venta"))}
         onCierre={() => setPantalla("cierre")}
         // Reimprimir el comprobante de un pedido: es la misma pantalla del
         // recibo de una venta recién cobrada, y su "volver" ya lleva al historial.

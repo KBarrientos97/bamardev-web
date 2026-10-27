@@ -18,6 +18,7 @@ import {
 import { fechaCorta, nombreDe } from "../../lib/academia/formato";
 import type { AlumnoPorCobrar, CarritoInscripcion, Ref } from "../../lib/academia/tipos";
 import { usePalabras } from "../../lib/academia/usePalabras";
+import { RUTA_CAJA } from "../../lib/academia/vista";
 import { ApiError, api } from "../../lib/api";
 import { quedoEnDuda } from "../../lib/cupo";
 import { parsearMontoO } from "../../lib/dinero";
@@ -251,7 +252,7 @@ export default function Cobrar() {
         venta={venta}
         etiquetaNueva={`Cobrar a otro ${p.alumno}`}
         onNuevaVenta={otroCobro}
-        onHistorial={() => navigate("/pos?vista=caja")}
+        onHistorial={() => navigate(RUTA_CAJA)}
       />
     );
 

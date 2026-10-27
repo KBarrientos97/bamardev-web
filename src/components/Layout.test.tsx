@@ -441,6 +441,21 @@ describe("la cuenta de quien está sentado (API-12)", () => {
     fireEvent.click(within(dialogo).getByRole("button", { name: "Cancelar" }));
     expect(screen.queryByRole("dialog")).toBeNull();
   });
+
+  it("en el instituto va dentro de «Mi negocio», con los avisos, y no se repite al pie (26-oct)", () => {
+    sesion.rol = "CAJERO";
+    sesion.rubro = "ACADEMIA";
+    sesion.features = ["pos", "caja", "academia"];
+    const nav = abrir("/pos");
+    // Plegado hasta que se lo abre: su nombre lleva a la primera pantalla.
+    fireEvent.click(nav.getByRole("link", { name: "Mi negocio" }));
+    expect(nav.getAllByRole("button", { name: "Cambiar mi contraseña" })).toHaveLength(1);
+    expect(nav.getAllByRole("link", { name: "Notificaciones" })).toHaveLength(1);
+    const boton = nav.getByRole("button", { name: "Cambiar mi contraseña" });
+    expect(boton.dataset.navId).toBe("todos:#cambiar-password");
+    fireEvent.click(boton);
+    expect(screen.getByRole("dialog", { name: "Cambiar mi contraseña" })).toBeInTheDocument();
+  });
 });
 
 describe("Plan Emprendedor: el chip de ventas junto al aviso de licencia", () => {
