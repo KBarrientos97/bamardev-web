@@ -82,6 +82,30 @@ export default function Calendario() {
   const ajustes = useApi(() => apiAcademia.ajustes(), []);
   const carreras = useApi(() => apiAcademia.carreras(), []);
 
+  // Con "Todas las sedes" las tarjetas se mezclan y ninguna dice de qué sede es
+  // (auditoría 26-oct, U3). La tarjeta del calendario no trae la sede, así que
+  // se pide el mismo rango por cada sede y se anota a cuál pertenece cada grupo.
+  // Con una sola sede a la vista no hace falta: se ve en el selector y el título.
+  const verVariasSedes = sede.elegir && sede.sucursalId == null;
+  const idsSedes = sede.sucursales.map((s) => s.id).join(",");
+  const sedesDeGrupos = useApi(async () => {
+    const porSede = new Map<number, string>();
+    if (!verVariasSedes) return porSede;
+    const respuestas = await Promise.all(
+      sede.sucursales.map((s) =>
+        apiAcademia
+          .calendario({ sede: s.id, desde: pedirDesde, meses: pedirMeses })
+          .then((c) => ({ nombre: s.nombre, c }))
+          // Si una sede falla, sus tarjetas salen sin rótulo: el calendario sigue.
+          .catch(() => null),
+      ),
+    );
+    for (const r of respuestas)
+      for (const f of r?.c.filas ?? []) for (const celda of f.celdas) for (const g of celda.grupos) porSede.set(g.grupoId, r!.nombre);
+    return porSede;
+  }, [verVariasSedes, idsSedes, pedirDesde, pedirMeses]);
+  const sedeDe = (g: GrupoEnCalendario) => (verVariasSedes ? sedesDeGrupos.datos?.get(g.grupoId) : undefined);
+
   const datos = cal.datos;
   const dia = datos?.diaInicioModulo ?? ajustes.datos?.diaInicioModulo ?? 10;
   const nombreSede = datos?.sede?.nombre ?? (sede.nombre || usuario?.sucursal || "");
@@ -191,6 +215,7 @@ export default function Calendario() {
             mes={mesCel}
             hoy={hoy}
             pasa={pasa}
+            sedeDe={sedeDe}
             abre={abre}
             onElegir={(grupo, fila) => elegir({ grupo, inicio: fila.inicio, fin: fila.fin, mes: mesCel })}
             onHueco={(fila) => enHueco(fila, mesCel)}
@@ -260,6 +285,7 @@ export default function Calendario() {
             hoy={hoy}
             pasa={pasa}
             abre={abre}
+            sedeDe={sedeDe}
             elegidoId={elegido?.grupo.grupoId ?? null}
             onElegir={(grupo, fila, mes) => elegir({ grupo, inicio: fila.inicio, fin: fila.fin, mes })}
             onHueco={enHueco}
@@ -340,11 +366,14 @@ const CLASE_MODULO = "truncate rounded-md bg-primary-50 px-1.5 py-0.5 font-semib
 
 function TarjetaGrupo({
   g,
+  sede,
   pasado,
   elegido,
   onClick,
 }: {
   g: GrupoEnCalendario;
+  /** El nombre de la sede, sólo cuando se ven varias a la vez. */
+  sede?: string;
   pasado: boolean;
   elegido: boolean;
   onClick: () => void;
@@ -370,6 +399,7 @@ function TarjetaGrupo({
         {g.ultimo && <span className="shrink-0 rounded border border-primary-200 px-1 text-[10px] font-semibold text-primary-700">último</span>}
       </span>
       <span className="mt-1 block truncate text-texto-3">{g.docente ? `Prof. ${g.docente.nombre}` : `${p.Docente} por elegir`}</span>
+      {sede && <span className="mt-0.5 block truncate font-semibold text-texto-4">{`${p.Sede} ${sede}`}</span>}
       <span className="mt-1.5 block">
         <Ocupacion inscritos={g.inscritos} cupo={g.cupo} />
       </span>
@@ -387,6 +417,7 @@ function Grilla({
   filas,
   hoy,
   pasa,
+  sedeDe,
   abre,
   elegidoId,
   onElegir,
@@ -396,6 +427,7 @@ function Grilla({
   filas: FilaCalendario[];
   hoy: string;
   pasa: (g: GrupoEnCalendario) => boolean;
+  sedeDe: (g: GrupoEnCalendario) => string | undefined;
   abre: boolean;
   elegidoId: number | null;
   onElegir: (g: GrupoEnCalendario, fila: FilaCalendario, mes: string) => void;
@@ -439,7 +471,7 @@ function Grilla({
               return (
                 <div key={mes} role="cell" className={`space-y-2 border-l border-borde-soft p-2 ${fondoMes(mes)}`}>
                   {visibles.map((g) => (
-                    <TarjetaGrupo key={g.grupoId} g={g} pasado={pasado} elegido={elegidoId === g.grupoId} onClick={() => onElegir(g, fila, mes)} />
+                    <TarjetaGrupo key={g.grupoId} g={g} sede={sedeDe(g)} pasado={pasado} elegido={elegidoId === g.grupoId} onClick={() => onElegir(g, fila, mes)} />
                   ))}
                   {todos.length === 0 && !pasado && abre && (
                     <button
@@ -493,6 +525,7 @@ function VistaCelular({
   mes,
   hoy,
   pasa,
+  sedeDe,
   abre,
   onElegir,
   onHueco,
@@ -501,6 +534,7 @@ function VistaCelular({
   mes: string;
   hoy: string;
   pasa: (g: GrupoEnCalendario) => boolean;
+  sedeDe: (g: GrupoEnCalendario) => string | undefined;
   abre: boolean;
   onElegir: (g: GrupoEnCalendario, fila: FilaCalendario) => void;
   onHueco: (fila: FilaCalendario) => void;
@@ -533,6 +567,7 @@ function VistaCelular({
                       </span>
                     </span>
                     <span className="mt-1 block truncate text-xs text-texto-3">{g.docente ? `Prof. ${g.docente.nombre}` : `${p.Docente} por elegir`}</span>
+                    {sedeDe(g) && <span className="mt-0.5 block truncate text-xs font-semibold text-texto-4">{`${p.Sede} ${sedeDe(g)}`}</span>}
                     {g.inscripcionAbierta && g.modulo.orden === 1 && mes >= hoy && (
                       <span className="mt-1.5 block">
                         <Chip tono="verde">Inscripción abierta</Chip>
