@@ -142,6 +142,105 @@ describe("N9 · Observadas y sobrecupos (QA ronda 2, B-06 y B-31)", () => {
   });
 });
 
+describe("D9 · Grupos sin docente", () => {
+  const SIN_DOCENTE: NonNullable<PanelControl["gruposSinDocente"]> = [
+    {
+      grupoId: 91,
+      nombre: "Barbería · L-Mi 18:00",
+      carrera: { id: 3, nombre: "Barbería" },
+      sede: { id: 1, nombre: "Central" },
+      horario: { dias: [1, 3], horaInicio: "18:00", horaFin: "20:00" },
+      modulos: [
+        { orden: 2, nombre: "Degradados", desde: "2026-11-17" },
+        { orden: 3, nombre: "Barba y color", desde: "2026-12-15" },
+      ],
+      inicio: "2026-10-20",
+    },
+  ];
+
+  it("lista el grupo con curso, sede, horario, módulos sin docente e inicio, y abre el grupo", async () => {
+    vi.mocked(apiAcademia.control).mockResolvedValue({ ...PANEL, gruposSinDocente: SIN_DOCENTE });
+    render(
+      <MemoryRouter>
+        <Control />
+      </MemoryRouter>,
+    );
+    await act(async () => {});
+    const bloque = screen.getByRole("region", { name: /Grupos sin docente/ });
+    expect(bloque).toHaveTextContent("Barbería · L-Mi 18:00");
+    expect(bloque).toHaveTextContent("Barbería · Central · L Mi 18:00–20:00");
+    expect(bloque).toHaveTextContent("Sin docente: M2 Degradados, M3 Barba y color");
+    expect(bloque).toHaveTextContent("Inicio 20-oct");
+    expect(within(bloque).getByRole("link", { name: "Abrir el grupo Barbería · L-Mi 18:00 para asignar docente" })).toHaveAttribute(
+      "href",
+      "/academia/grupos/91",
+    );
+  });
+
+  it("sin grupos sin docente (o un backend que no lo manda) el bloque no se dibuja", async () => {
+    vi.mocked(apiAcademia.control).mockResolvedValue({ ...PANEL, gruposSinDocente: [] });
+    const { unmount } = render(
+      <MemoryRouter>
+        <Control />
+      </MemoryRouter>,
+    );
+    await act(async () => {});
+    expect(screen.queryByRole("region", { name: /Grupos sin docente/ })).not.toBeInTheDocument();
+    unmount();
+    vi.mocked(apiAcademia.control).mockResolvedValue(PANEL);
+    render(
+      <MemoryRouter>
+        <Control />
+      </MemoryRouter>,
+    );
+    await act(async () => {});
+    expect(screen.queryByRole("region", { name: /Grupos sin docente/ })).not.toBeInTheDocument();
+  });
+});
+
+describe("D3 · Faltan fotos", () => {
+  const FALTAN: NonNullable<PanelControl["fotosFaltan"]> = [
+    {
+      alumnoId: 301,
+      nombre: "Quiroga Lema, Bruno",
+      ci: null,
+      fechaNacimiento: null,
+      grupo: { id: 12, nombre: "Barbería · Sáb" },
+      inscritoPor: "Lucía Vargas",
+      inscritaEn: "2026-10-26T12:00:00.000Z",
+      faltan: ["CI_ANVERSO", "CI_REVERSO"],
+    },
+  ];
+
+  it("dice quién y qué fotos faltan, con un botón a la ficha; no se mezcla con «por revisar»", async () => {
+    vi.mocked(apiAcademia.control).mockResolvedValue({ ...PANEL, fotosFaltan: FALTAN });
+    render(
+      <MemoryRouter>
+        <Control />
+      </MemoryRouter>,
+    );
+    await act(async () => {});
+    const bloque = screen.getByRole("region", { name: /Faltan fotos/ });
+    expect(bloque).toHaveTextContent("Quiroga Lema, Bruno");
+    expect(bloque).toHaveTextContent("Falta: carnet de adelante y carnet de atrás");
+    expect(bloque).toHaveTextContent("Barbería · Sáb");
+    expect(within(bloque).getByRole("link", { name: "Ver la ficha de Quiroga Lema, Bruno" })).toHaveAttribute("href", "/academia/alumnos/301");
+    // El botón de arriba sigue contando sólo las que esperan revisión.
+    expect(screen.getByRole("button", { name: "Revisar 2 fotos" })).toBeInTheDocument();
+  });
+
+  it("con las fotos apagadas (lista vacía) o sin el campo, el bloque no aparece", async () => {
+    vi.mocked(apiAcademia.control).mockResolvedValue({ ...PANEL, fotosFaltan: [] });
+    render(
+      <MemoryRouter>
+        <Control />
+      </MemoryRouter>,
+    );
+    await act(async () => {});
+    expect(screen.queryByRole("region", { name: /Faltan fotos/ })).not.toBeInTheDocument();
+  });
+});
+
 describe("E18 · Reportes", () => {
   it("el resultado por sede, los activos por curso y la morosidad", async () => {
     vi.mocked(apiAcademia.reportes).mockResolvedValue({

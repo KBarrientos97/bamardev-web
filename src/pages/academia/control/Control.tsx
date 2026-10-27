@@ -5,7 +5,7 @@ import { Boton, Cargando, ErrorMsg, Select } from "../../../components/ui";
 import { apiAcademia } from "../../../lib/academia/apiAcademia";
 import { mesDe, sumarMeses, tituloMes } from "../../../lib/academia/calendario";
 import { listaDeFotos, NOMBRE_FOTO } from "../../../lib/academia/fotos";
-import { fechaCorta, nombreDe } from "../../../lib/academia/formato";
+import { fechaCorta, horarioGrupo, nombreDe } from "../../../lib/academia/formato";
 import { TIPOS_FOTO, type PanelControl, type TipoFoto } from "../../../lib/academia/tipos";
 import { useFiltroSede } from "../../../lib/academia/useFiltroSede";
 import { usePalabras } from "../../../lib/academia/usePalabras";
@@ -201,7 +201,11 @@ export default function Control() {
 
           <FotosObservadas filas={d.fotosObservadas ?? []} />
 
+          <FotosFaltan filas={d.fotosFaltan ?? []} />
+
           <Sobrecupos filas={d.sobrecupos ?? []} variasSedes={sede.variasSedes} />
+
+          <GruposSinDocente filas={d.gruposSinDocente ?? []} />
 
           <ParaMirar d={d} mirar={mirar} onMirar={setMirar} />
 
@@ -280,6 +284,46 @@ function FotosObservadas({ filas }: { filas: NonNullable<PanelControl["fotosObse
 }
 
 /**
+ * «Faltan fotos» (D3, 26-oct): quienes llegaron sin el carnet y se inscribieron
+ * igual, con las fotos para después. No esperan al dueño sino a la recepción,
+ * que las tiene que cargar en la ficha. Si el instituto no las pide, el backend
+ * manda la lista vacía y el bloque no se dibuja.
+ */
+function FotosFaltan({ filas }: { filas: NonNullable<PanelControl["fotosFaltan"]> }) {
+  if (!filas.length) return null;
+  return (
+    <Tarjeta id="t-faltan-fotos" titulo="Faltan fotos" contador={filas.length} bajada="Se inscribieron sin las fotos: hay que cargarlas" sinRelleno>
+      <ul className={LISTA.lista}>
+        {filas.map((f) => {
+          const cuales = listaDeFotos(f.faltan ?? []);
+          return (
+            <li key={f.alumnoId} className={`flex flex-wrap items-center justify-between gap-3 ${LISTA.itemHover}`}>
+              <span className="flex min-w-0 flex-1 items-start gap-3">
+                <span aria-hidden="true" className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-warning-bg text-warning-text">
+                  <Icon name="camara" size={16} />
+                </span>
+                <span className="min-w-0">
+                  <span className="block truncate text-sm font-semibold text-texto">{f.nombre}</span>
+                  <span className="block text-[13px] text-warning-text">{cuales ? `Falta: ${cuales}` : "Faltan fotos"}</span>
+                  <span className="block truncate text-[12px] text-texto-3">
+                    {[f.grupo ? nombreDe(f.grupo) : null, f.inscritoPor ? `inscribió ${f.inscritoPor}` : null, f.inscritaEn ? tiempoRelativo(f.inscritaEn).toLowerCase() : null]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </span>
+                </span>
+              </span>
+              <BotonFila variante="ghost" icono="user" a={`/academia/alumnos/${f.alumnoId}`} aria-label={`Ver la ficha de ${f.nombre}`}>
+                Ver ficha
+              </BotonFila>
+            </li>
+          );
+        })}
+      </ul>
+    </Tarjeta>
+  );
+}
+
+/**
  * Grupos con más inscritos que su cupo (B-31): el sobrecupo confirmado y la
  * inscripción con el grupo cerrado son a propósito, pero el dueño tiene que
  * enterarse para conseguir aula o abrir otro grupo.
@@ -305,6 +349,46 @@ function Sobrecupos({ filas, variasSedes }: { filas: NonNullable<PanelControl["s
             </Chip>
             <BotonFila variante="ghost" a={`/academia/grupos/${g.grupoId}`} aria-label={`Ver el grupo ${g.nombre}`} className="max-sm:row-span-2">
               Ver
+              <Icon name="chevronRight" size={15} />
+            </BotonFila>
+          </li>
+        ))}
+      </ul>
+    </Tarjeta>
+  );
+}
+
+/**
+ * Grupos con módulos sin docente (D9, 26-oct): «Elegir después» al abrir un
+ * grupo es válido, pero si nadie asigna al docente la planilla de ese módulo
+ * queda sin dueño. El que empieza antes, primero; el botón abre el grupo, que
+ * es donde se asigna. Sin ninguno, el bloque no se dibuja.
+ */
+function GruposSinDocente({ filas }: { filas: NonNullable<PanelControl["gruposSinDocente"]> }) {
+  const p = usePalabras();
+  if (!filas.length) return null;
+  return (
+    <Tarjeta id="t-sin-docente" titulo="Grupos sin docente" contador={filas.length} bajada={`Hay ${p.materias} que empiezan sin quién los dicte`} sinRelleno>
+      <ul className={LISTA.lista}>
+        {filas.map((g) => (
+          <li
+            key={g.grupoId}
+            className={`grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 sm:grid-cols-[minmax(0,1fr)_auto_auto] ${LISTA.itemHover}`}
+          >
+            <span className="min-w-0">
+              <span className="block truncate text-sm font-semibold text-texto">{g.nombre}</span>
+              <span className="block truncate text-[12px] text-texto-3">
+                {[nombreDe(g.carrera), nombreDe(g.sede), horarioGrupo(g.horario)].filter(Boolean).join(" · ")}
+              </span>
+              <span className="block text-[13px] text-warning-text">
+                Sin docente: {g.modulos.map((m) => `M${m.orden} ${m.nombre}`).join(", ")}
+              </span>
+            </span>
+            <Chip tono="ambar" className="max-sm:col-start-1 max-sm:row-start-2 max-sm:justify-self-start">
+              Inicio {fechaCorta(g.inicio)}
+            </Chip>
+            <BotonFila variante="ghost" a={`/academia/grupos/${g.grupoId}`} aria-label={`Abrir el grupo ${g.nombre} para asignar docente`} className="max-sm:row-span-2">
+              Abrir grupo
               <Icon name="chevronRight" size={15} />
             </BotonFila>
           </li>

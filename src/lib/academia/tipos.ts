@@ -961,7 +961,15 @@ export interface PanelControl {
     inscritaEn: string;
     /** Cambio #28: los tipos cargados. */
     fotos?: TipoFoto[];
+    /** D3: las que faltan de las tres. */
+    faltan?: TipoFoto[];
   }[];
+  /**
+   * D3 (26-oct): quienes se inscribieron con las fotos pendientes («Faltan
+   * fotos»). Misma forma que `fotosPorRevisar`; llega vacío si el instituto no
+   * pide las fotos (`fotosObligatorias` apagado) y un backend anterior no lo manda.
+   */
+  fotosFaltan?: PanelControl["fotosPorRevisar"];
   /**
    * Cambio #33 (QA ronda 2, B-06): los que tienen alguna foto observada. Ya
    * no esperan al dueño sino a la recepción, que tiene que cambiarlas; un
@@ -976,6 +984,7 @@ export interface PanelControl {
     inscritoPor: string;
     inscritaEn: string | null;
     fotos?: TipoFoto[];
+    faltan?: TipoFoto[];
     observadas: TipoFoto[];
     observacion: string | null;
     observadaEn: string | null;
@@ -983,6 +992,20 @@ export interface PanelControl {
   }[];
   /** Cambio #49 (B-31): grupos vivos con más inscritos que su cupo, el más pasado primero. */
   sobrecupos?: { grupoId: number; nombre: string; carrera: Ref | null; sede: Ref | null; inscritos: number; cupo: number }[];
+  /**
+   * D9 (26-oct): grupos vigentes con módulos que todavía no terminaron y no
+   * tienen docente («Elegir después»), el que empieza antes primero (máx. 100).
+   * Un backend anterior no lo manda.
+   */
+  gruposSinDocente?: {
+    grupoId: number;
+    nombre: string;
+    carrera: Ref;
+    sede: Ref;
+    horario: { dias: number[]; horaInicio: string; horaFin: string };
+    modulos: { orden: number; nombre: string; desde: string }[];
+    inicio: string;
+  }[];
   asistenSinPagar: { alumno: string | Ref; grupo: string | Ref; asistencias: number; estadoPago: EstadoPagoModulo | null; inscritoPor: string }[];
   pagaronNoVienen: { alumno: string | Ref; grupo: string | Ref; asistencias: number; clasesDelMes: number; inscritoPor: string }[];
   /** Cambio #28: todas las becas y promociones del mes; `conPin` = las autorizó otra persona. */
