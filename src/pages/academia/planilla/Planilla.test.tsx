@@ -160,6 +160,42 @@ describe("N8 · Planilla de un docente", () => {
     expect(apiAcademia.pagarPlanilla).toHaveBeenCalledWith(9, "2026-10", "TRANSFERENCIA");
   });
 
+  it("ronda 1 · D2: con líquido ≤ 0 no se «paga»: el botón y el diálogo dicen que no sale dinero", async () => {
+    vi.mocked(apiAcademia.planillaDocente).mockResolvedValue({
+      ...PLANILLA,
+      estado: "CERRADA",
+      resumen: { ...PLANILLA.resumen, bruto: -90, liquido: -90 },
+    });
+    vi.mocked(apiAcademia.pagarPlanilla).mockResolvedValue({});
+    await montar();
+    expect(screen.queryByRole("button", { name: /Registrar pago/ })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Cerrar sin pago" }));
+    const dialogo = screen.getByRole("dialog", { name: "Cerrar sin pago" });
+    expect(dialogo).toHaveTextContent(/no sale dinero/);
+    expect(dialogo).toHaveTextContent(/planilla del mes siguiente/);
+    // Nada de «Pagar −Bs 90», de «gasto de sueldos» que se registra ni de método de pago.
+    expect(dialogo).not.toHaveTextContent(/¿Pagar/);
+    expect(dialogo).not.toHaveTextContent(/Queda como gasto/);
+    expect(within(dialogo).queryByRole("button", { name: "Transferencia" })).not.toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(within(dialogo).getByRole("button", { name: "Cerrar sin pago" }));
+    });
+    expect(apiAcademia.pagarPlanilla).toHaveBeenCalledWith(9, "2026-10", "EFECTIVO");
+    expect(screen.getByText(/no salió dinero ni se registró ningún gasto/)).toBeInTheDocument();
+  });
+
+  it("ronda 1 · D10: al cambiar de mes vuelve a «Cuentan» y se cierra el panel de la línea", async () => {
+    vi.mocked(apiAcademia.planillaDocente).mockResolvedValue({ ...PLANILLA });
+    await montar();
+    fireEvent.click(screen.getByRole("tab", { name: /Postergados/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Ver el detalle de Céspedes Molina, Joaquín" }));
+    expect(screen.getByRole("complementary", { name: "Céspedes Molina, Joaquín" })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Mes"), { target: { value: "2026-09" } });
+    await act(async () => {});
+    expect(screen.queryByRole("complementary", { name: "Céspedes Molina, Joaquín" })).not.toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /Cuentan/ })).toHaveAttribute("aria-selected", "true");
+  });
+
   it("cancelar el diálogo no paga", async () => {
     vi.mocked(apiAcademia.planillaDocente).mockResolvedValue({ ...PLANILLA, estado: "CERRADA" });
     await montar();

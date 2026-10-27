@@ -153,7 +153,11 @@ export default function PlanillaDocente() {
     setError("");
     try {
       await apiAcademia.pagarPlanilla(personalId, mes, metodo);
-      setAviso("Pago registrado como gasto de sueldos.");
+      setAviso(
+        d && d.resumen.liquido <= 0
+          ? "Planilla resuelta sin pago: no salió dinero ni se registró ningún gasto."
+          : "Pago registrado como gasto de sueldos.",
+      );
       setPagando(false);
       carga.recargar();
     } catch (e) {
@@ -165,6 +169,10 @@ export default function PlanillaDocente() {
   }
 
   const r = d.resumen;
+  // Con líquido en 0 o negativo no sale dinero: no hay nada que pagar ni gasto de
+  // sueldos que registrar. Lo que quedó en contra se resuelve en la planilla del
+  // mes siguiente (ronda 1, D2). Se dice así sin importar cómo la cierre el backend.
+  const sinPago = r.liquido <= 0;
   // Bug 4: los ajustes (cobros anulados o repuestos de módulos ya liquidados) son una lista más, sólo si los hay.
   const ajustes = d.ajustes ?? [];
   const listas: Record<Lista, LineaPlanilla[]> = { cuentan: d.cuentan, postergados: d.postergados, atrasados: d.atrasados, sinPagar: d.sinPagar, ajustes };
@@ -210,7 +218,15 @@ export default function PlanillaDocente() {
           <>
             <label className="flex items-center gap-2 text-[13px] text-texto-3">
               Mes
-              <Select value={mes} onChange={(e) => setParams({ mes: e.target.value })}>
+              <Select
+                value={mes}
+                onChange={(e) => {
+                  // Otro mes es otra planilla: la lista y la línea abierta eran del anterior (ronda 1, D10).
+                  setLista("cuentan");
+                  elegir(null);
+                  setParams({ mes: e.target.value });
+                }}
+              >
                 {meses.map((m) => (
                   <option key={m} value={m}>
                     {tituloMes(m)}
@@ -241,7 +257,7 @@ export default function PlanillaDocente() {
                   setPagando(true);
                 }}
               >
-                Registrar pago {fmtMoney(r.liquido)}
+                {sinPago ? "Cerrar sin pago" : `Registrar pago ${fmtMoney(r.liquido)}`}
               </Boton>
             )}
           </>
@@ -505,7 +521,7 @@ export default function PlanillaDocente() {
 
       <Modal
         abierto={pagando}
-        titulo="Registrar el pago"
+        titulo={sinPago ? "Cerrar sin pago" : "Registrar el pago"}
         onClose={() => !ocupado && setPagando(false)}
         ancho="max-w-sm"
         acciones={
@@ -514,20 +530,30 @@ export default function PlanillaDocente() {
               Cancelar
             </Boton>
             <Boton onClick={() => void pagar()} disabled={ocupado}>
-              {ocupado ? "Un momento…" : `Pagar ${fmtMoney(r.liquido)}`}
+              {ocupado ? "Un momento…" : sinPago ? "Cerrar sin pago" : `Pagar ${fmtMoney(r.liquido)}`}
             </Boton>
           </>
         }
       >
         <div className="space-y-4">
-          <p className="text-sm text-texto-2">
-            ¿Pagar <b className="tabular-nums">{fmtMoney(r.liquido)}</b> a {d.docente.nombre} por {tituloMes(d.mes).toLowerCase()}? Queda como gasto de
-            sueldos y la planilla pasa a pagada: no se deshace.
-          </p>
-          <div className="space-y-2">
-            <span className="block text-[13px] font-semibold text-texto-2">Cómo se le paga</span>
-            <Chips titulo="Método" valor={metodo} opciones={METODOS} onChange={setMetodo} />
-          </div>
+          {sinPago ? (
+            <p className="text-sm text-texto-2">
+              El líquido de {d.docente.nombre} por {tituloMes(d.mes).toLowerCase()} es <b className="tabular-nums">{fmtMoney(r.liquido)}</b>: este mes no sale dinero
+              y no se registra ningún gasto de sueldos. Lo que quedó en contra se resuelve en la planilla del mes siguiente. Se da por resuelta esta planilla
+              y no se deshace.
+            </p>
+          ) : (
+            <>
+              <p className="text-sm text-texto-2">
+                ¿Pagar <b className="tabular-nums">{fmtMoney(r.liquido)}</b> a {d.docente.nombre} por {tituloMes(d.mes).toLowerCase()}? Queda como gasto de
+                sueldos y la planilla pasa a pagada: no se deshace.
+              </p>
+              <div className="space-y-2">
+                <span className="block text-[13px] font-semibold text-texto-2">Cómo se le paga</span>
+                <Chips titulo="Método" valor={metodo} opciones={METODOS} onChange={setMetodo} />
+              </div>
+            </>
+          )}
         </div>
       </Modal>
 
