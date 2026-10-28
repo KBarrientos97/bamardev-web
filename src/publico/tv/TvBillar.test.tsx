@@ -37,7 +37,7 @@ function salon(extra: Partial<SalonPublicoApi> = {}): SalonPublicoApi {
         fraccion: 15,
         tolerancia: 0,
         minimo: 0,
-        paquetes: [{ h: 2, precio: 35 }],
+        paquetes: [{ min: 120, precio: 35 }],
         promos: [],
       },
     ],

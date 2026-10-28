@@ -1,12 +1,12 @@
 import { fmtMoney } from "../../../lib/format";
-import { cobroTiempo, fmtCobrado, precioFijo, round2, simularLibre } from "../calculo";
+import { cobroTiempo, fmtCobrado, fmtTiempoFijo, MAX_FIJO_MIN, precioTiempoFijo, round2, simularLibre } from "../calculo";
 import type { TipoMesa } from "../tipos";
 import { FRACCIONES } from "./borrador";
 
 /**
  * Los ejemplos de las ayudas de Tarifas y paquetes (el "?" al lado de cada
  * rótulo). Salen de la misma cuenta que cobra la mesa (`simularLibre`,
- * `precioFijo`, `cobroTiempo`) y con la tarifa que se está editando: un
+ * `precioTiempoFijo`, `cobroTiempo`) y con la tarifa que se está editando: un
  * ejemplo escrito a mano deja de ser cierto apenas el dueño cambia la
  * fracción, y una ayuda que contradice al cobro confunde más que no tenerla.
  */
@@ -20,9 +20,9 @@ export const TIPO_EJEMPLO: TipoMesa = {
   tolerancia: 3,
   minimo: 30,
   paquetes: [
-    { h: 1, precio: 20 },
-    { h: 2, precio: 40 },
-    { h: 3, precio: 55 },
+    { min: 60, precio: 20 },
+    { min: 120, precio: 40 },
+    { min: 180, precio: 55 },
   ],
   promos: [],
 };
@@ -132,7 +132,8 @@ export function ejemploMinimo(t: TipoMesa): Ejemplo {
 }
 
 export interface EjemploPaquete {
-  horas: number;
+  /** "4 h". */
+  tiempo: string;
   /** "3 h + 1 h". */
   partes: string;
   bs: string;
@@ -146,10 +147,10 @@ export interface EjemploPaquete {
  * sueltas.
  */
 export function ejemploPaquete(t: TipoMesa): EjemploPaquete {
-  const mayor = Math.max(1, ...t.paquetes.map((p) => p.h));
-  const horas = t.paquetes.length ? Math.min(24, mayor + 1) : 2;
-  const r = precioFijo(t, horas);
-  return { horas, partes: r.partes.join(" + "), bs: fmtMoney(r.precio), promo: r.promo?.nombre ?? null };
+  const mayor = Math.max(60, ...t.paquetes.map((p) => p.min));
+  const min = t.paquetes.length ? Math.min(MAX_FIJO_MIN, mayor + 60) : 120;
+  const r = precioTiempoFijo(t, min);
+  return { tiempo: fmtTiempoFijo(min), partes: r.partes.join(" + "), bs: fmtMoney(r.precio), promo: r.promo?.nombre ?? null };
 }
 
 /** Lo que se cobra si se pasan 10 min del tiempo fijo: por fracción y sin mínimo, como en la mesa. */

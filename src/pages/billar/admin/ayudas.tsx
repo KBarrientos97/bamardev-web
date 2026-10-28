@@ -236,16 +236,17 @@ export function AyudaPaquetes({ tipo }: { tipo: TipoMesa | null }) {
   return (
     <Ayuda titulo="Paquetes de tiempo fijo">
       <p>
-        Precios cerrados por una cantidad de horas, para el que ya sabe cuánto va a jugar. Con tiempo fijo, el reloj de
+        Precios cerrados por un tiempo, desde 30 min y de media en media hora, para el que ya sabe cuánto va a jugar.
+        Escribí 30 para media hora, 1 para una hora o 1,5 para una hora y media. Con tiempo fijo, el reloj de
         la mesa cuenta para atrás y avisa antes de que se cumpla. Se puede cobrar al abrir o al final.
       </p>
       <p>
-        Si piden una cantidad que no tiene paquete, se arma <b>la combinación más barata</b> de paquetes y horas
-        sueltas.
+        Si piden una cantidad que no tiene paquete, se arma <b>la combinación más barata</b> de paquetes y tiempo
+        suelto a la tarifa por hora.
       </p>
       {!tipo && <ConQue tipo={null} partes={(x) => [tarifaTexto(x), "paquetes de 1, 2 y 3 h"]} />}
       <p className="rounded-xl bg-slate-50 px-3 py-2 text-[13px] tabular-nums">
-        {p.horas} h = {p.partes} → <b className="text-primary-700">{p.bs}</b>
+        {p.tiempo} = {p.partes} → <b className="text-primary-700">{p.bs}</b>
         {p.promo && <span className="text-texto-3"> (con la {p.promo})</span>}
       </p>
       <p>

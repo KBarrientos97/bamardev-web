@@ -10,8 +10,9 @@ import {
   fmtHace,
   imputarPagos,
   pausadoAntesDe,
-  precioFijo,
-  precioHoras,
+  fmtTiempoFijo,
+  precioTiempoFijo,
+  precioDelTiempo,
   promoPara,
   segundosDesdeQueSeAbrio,
   segundosJugados,
@@ -29,9 +30,9 @@ const POOL: TipoMesa = {
   tolerancia: 3,
   minimo: 30,
   paquetes: [
-    { h: 1, precio: 20 },
-    { h: 2, precio: 40 },
-    { h: 3, precio: 55 },
+    { min: 60, precio: 20 },
+    { min: 120, precio: 40 },
+    { min: 180, precio: 55 },
   ],
   promos: [{ id: "p3", nombre: "Promo 3 h o más", desde: 3, pct: 10, activa: true, fijo: false }],
 };
@@ -42,9 +43,9 @@ const CARAMBOLA: TipoMesa = {
   nombre: "Carambola",
   tarifa: 25,
   paquetes: [
-    { h: 1, precio: 25 },
-    { h: 2, precio: 50 },
-    { h: 3, precio: 70 },
+    { min: 60, precio: 25 },
+    { min: 120, precio: 50 },
+    { min: 180, precio: 70 },
   ],
   promos: [],
 };
@@ -96,28 +97,67 @@ describe("cobroTiempo (§5.2)", () => {
   });
 });
 
-describe("precioHoras (§5.3)", () => {
+describe("precioDelTiempo (§5.3)", () => {
   it("usa los paquetes tal cual para 1, 2 y 3 h", () => {
-    expect(precioHoras(POOL, 1).precio).toBe(20);
-    expect(precioHoras(POOL, 2).precio).toBe(40);
-    expect(precioHoras(POOL, 3).precio).toBe(55);
+    expect(precioDelTiempo(POOL, 60).precio).toBe(20);
+    expect(precioDelTiempo(POOL, 120).precio).toBe(40);
+    expect(precioDelTiempo(POOL, 180).precio).toBe(55);
   });
 
   it("combina paquetes para la más barata: 5 h = 3 h + 2 h = Bs 95", () => {
-    expect(precioHoras(POOL, 5)).toEqual({ precio: 95, partes: ["3 h", "2 h"] });
+    expect(precioDelTiempo(POOL, 300)).toEqual({ precio: 95, partes: ["3 h", "2 h"] });
   });
 
   it("4 h = 3 h + 1 h = Bs 75 (la captura del modal)", () => {
-    expect(precioHoras(POOL, 4)).toEqual({ precio: 75, partes: ["3 h", "1 h"] });
+    expect(precioDelTiempo(POOL, 240)).toEqual({ precio: 75, partes: ["3 h", "1 h"] });
   });
 
   it("sin un paquete de 1 h completa con horas sueltas a la tarifa", () => {
-    const sinUno = { ...POOL, paquetes: [{ h: 3, precio: 55 }] };
-    expect(precioHoras(sinUno, 4)).toEqual({ precio: 75, partes: ["3 h", "1 h suelta"] });
+    const sinUno = { ...POOL, paquetes: [{ min: 180, precio: 55 }] };
+    expect(precioDelTiempo(sinUno, 240)).toEqual({ precio: 75, partes: ["3 h", "1 h suelta"] });
   });
 
   it("24 h no se cuelga y repite el paquete de 3 h", () => {
-    expect(precioHoras(POOL, 24).precio).toBe(8 * 55);
+    expect(precioDelTiempo(POOL, 1440).precio).toBe(8 * 55);
+  });
+
+  it("media hora sin paquete es la mitad de la tarifa", () => {
+    // Miguel vende 30 min de tiempo fijo (27-oct): a Bs 20/h son Bs 10.
+    expect(precioDelTiempo(POOL, 30)).toEqual({ precio: 10, partes: ["30 min sueltos"] });
+  });
+
+  it("3 h 30 min = 3 h de paquete + media hora suelta", () => {
+    expect(precioDelTiempo(POOL, 210)).toEqual({ precio: 65, partes: ["3 h", "30 min sueltos"] });
+  });
+
+  it("un paquete de 30 min entra en la combinación como cualquier otro", () => {
+    const conMedia = { ...POOL, paquetes: [{ min: 60, precio: 18 }, { min: 30, precio: 9.5 }] };
+    expect(precioDelTiempo(conMedia, 30)).toEqual({ precio: 9.5, partes: ["30 min"] });
+    // 1 h 30 = el de 1 h + el de 30 min (dos de 30 saldrían 19, más que 18).
+    expect(precioDelTiempo(conMedia, 90)).toEqual({ precio: 27.5, partes: ["1 h", "30 min"] });
+  });
+
+  it("dos paquetes de 30 min le ganan al de 1 h si salen menos", () => {
+    const conMedia = { ...POOL, paquetes: [...POOL.paquetes, { min: 30, precio: 8 }] };
+    expect(precioDelTiempo(conMedia, 60)).toEqual({ precio: 16, partes: ["30 min", "30 min"] });
+  });
+
+  it("una tarifa con centavos: el empate sigue yendo al paquete", () => {
+    // Media hora de Bs 20,10/h es 10,05: dos medias suman con resto de punto
+    // flotante y el paquete de 1 h al mismo precio tiene que ganar igual.
+    const t = { ...POOL, tarifa: 20.1, paquetes: [{ min: 60, precio: 20.1 }] };
+    expect(precioDelTiempo(t, 60)).toEqual({ precio: 20.1, partes: ["1 h"] });
+  });
+
+  it("varias horas y media sueltas se dicen juntas", () => {
+    expect(precioDelTiempo({ ...POOL, paquetes: [] }, 90)).toEqual({ precio: 30, partes: ["1 h 30 min sueltos"] });
+    expect(precioDelTiempo({ ...POOL, paquetes: [] }, 120)).toEqual({ precio: 40, partes: ["2 h sueltas"] });
+  });
+});
+
+describe("fmtTiempoFijo", () => {
+  it("dice minutos, horas, o las dos", () => {
+    expect([30, 60, 90, 120, 150].map(fmtTiempoFijo)).toEqual(["30 min", "1 h", "1 h 30 min", "2 h", "2 h 30 min"]);
   });
 });
 
@@ -130,7 +170,13 @@ describe("promoPara (§5.5)", () => {
   it("en tiempo fijo sólo si la promo lo dice", () => {
     expect(promoPara(POOL, 5, true)).toBeNull();
     const conFijo = { ...POOL, promos: [{ ...POOL.promos[0], fijo: true }] };
-    expect(precioFijo(conFijo, 5)).toMatchObject({ bruto: 95, precio: 85.5, descuento: 9.5 });
+    expect(precioTiempoFijo(conFijo, 300)).toMatchObject({ bruto: 95, precio: 85.5, descuento: 9.5 });
+  });
+
+  it("en tiempo fijo cuenta las horas con los minutos: 2 h 30 no llegan a la promo de 3 h", () => {
+    const conFijo = { ...POOL, promos: [{ ...POOL.promos[0], fijo: true }] };
+    expect(precioTiempoFijo(conFijo, 150).promo).toBeNull();
+    expect(precioTiempoFijo(conFijo, 180).promo?.pct).toBe(10);
   });
 
   it("de las que alcanzan, la de mayor %; una pausada no cuenta", () => {

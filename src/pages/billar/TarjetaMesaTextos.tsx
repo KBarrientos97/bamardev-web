@@ -1,5 +1,5 @@
 import { Icon } from "../../components/Icon";
-import { fmtCobrado, fmtHace, fmtTarifaCorta, PAUSA_LARGA_SEG } from "./calculo";
+import { fmtCobrado, fmtHace, fmtTarifaCorta, fmtTiempoFijo, PAUSA_LARGA_SEG } from "./calculo";
 import type { VistaMesa } from "./vista";
 
 /**
@@ -11,7 +11,7 @@ import type { VistaMesa } from "./vista";
 export function subLinea(v: VistaMesa) {
   const c = v.cuenta!;
   const s = v.mesa.sesion!;
-  const horas = s.prepago ? s.prepago.min / 60 : 0;
+  const fijo = s.prepago ? fmtTiempoFijo(s.prepago.min) : "";
   switch (v.estado) {
     case "pausada":
       return (
@@ -27,11 +27,11 @@ export function subLinea(v: VistaMesa) {
       return (
         <>
           <Icon name="bell" size={12} />
-          Quedan · tiempo fijo {horas} h
+          Quedan · tiempo fijo {fijo}
         </>
       );
     default:
-      if (s.prepago) return <>Quedan · tiempo fijo {horas} h</>;
+      if (s.prepago) return <>Quedan · tiempo fijo {fijo}</>;
       return (
         <>
           Cobrado {fmtCobrado(c.cobradoMin)}

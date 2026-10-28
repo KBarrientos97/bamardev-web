@@ -1,4 +1,4 @@
-import { fmtMinSeg, segundosJugados } from "./calculo";
+import { fmtMinSeg, fmtTiempoFijo, segundosJugados } from "./calculo";
 import type { Mesa } from "./tipos";
 
 /**
@@ -128,7 +128,7 @@ export function prepararAvisos(mesas: Mesa[], avisos: number[], ahora: number) {
 
 // ── Los textos ──────────────────────────────────────────────────────────────
 
-export function textosAviso(mesaId: number, restante: number, horasFijo: number, tarifa: string) {
+export function textosAviso(mesaId: number, restante: number, minFijo: number, tarifa: string) {
   if (restante <= 0) {
     return {
       titulo: `Mesa ${mesaId} · tiempo cumplido`,
@@ -136,7 +136,7 @@ export function textosAviso(mesaId: number, restante: number, horasFijo: number,
       voz: `Mesa ${mesaId}. Tiempo cumplido.`,
     };
   }
-  const fijo = `Tiempo fijo ${horasFijo} h · quedan ${fmtMinSeg(restante)}`;
+  const fijo = `Tiempo fijo ${fmtTiempoFijo(minFijo)} · quedan ${fmtMinSeg(restante)}`;
   if (restante <= 60) {
     return {
       titulo: `Mesa ${mesaId} · le queda menos de 1 min`,

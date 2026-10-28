@@ -1,7 +1,7 @@
 import { parsearMonto } from "../../../lib/dinero";
 import { fmtMoney } from "../../../lib/format";
 import { CORTE_JORNADA_DEFECTO } from "../../../lib/jornada";
-import { precioHoras, round2 } from "../calculo";
+import { fmtTiempoFijo, MAX_FIJO_MIN, PASO_FIJO_MIN, precioDelTiempo, round2 } from "../calculo";
 import { errorDeNumero, type DatosMesa, type EstadoBillar } from "../store";
 import type { AjustesBillar, Mesa, Paquete, PinesBillar, Promo, TipoMesa } from "../tipos";
 
@@ -140,7 +140,7 @@ export function borradorTarifas(tipos: Record<string, TipoMesa>, ajustes: Ajuste
       fraccion: t.fraccion,
       minimo: String(t.minimo),
       tolerancia: String(t.tolerancia),
-      paquetes: [...t.paquetes].sort((a, b) => a.h - b.h),
+      paquetes: [...t.paquetes].sort((a, b) => a.min - b.min),
       promos: t.promos.map((p) => ({ ...p, desde: texto(p.desde), pct: texto(p.pct) })),
     })),
     avisos: [...ajustes.avisos].sort((a, b) => b - a),
@@ -185,7 +185,7 @@ export function tipoDeBorrador(b: BorradorTipo): TipoMesa | null {
     fraccion: b.fraccion,
     minimo: entero(b.minimo)!,
     tolerancia: entero(b.tolerancia)!,
-    paquetes: [...b.paquetes].sort((a, c) => a.h - c.h),
+    paquetes: [...b.paquetes].sort((a, c) => a.min - c.min),
     promos: b.promos.map(
       (p): Promo => ({
         id: p.id,
@@ -199,29 +199,69 @@ export function tipoDeBorrador(b: BorradorTipo): TipoMesa | null {
   };
 }
 
+/** Lo que se entiende del tiempo de un paquete: los minutos y en qué unidad se leyó. */
+export type TiempoLeido = { min: number; unidad: "h" | "min" | "h:min" } | { error: string };
+
+/**
+ * El tiempo de un paquete como lo escribe el administrador (27-oct). Miguel
+ * pidió paquetes de 30 min y que el sistema se diera cuenta solo de si son
+ * minutos u horas: un número hasta 24 son horas ("2", "1,5") y desde 30 son
+ * minutos ("30", "90"); también "1:30", "2 h" y "45 min". Entre 24 y 30 no se
+ * adivina. Siempre de media en media hora, de 30 min a 24 h.
+ */
+export function leerTiempoPaquete(texto: string): TiempoLeido | null {
+  const t = texto.trim().toLowerCase().replace(/\s+/g, " ");
+  if (!t) return null;
+  let min: number;
+  let unidad: "h" | "min" | "h:min";
+  const hm = /^(\d{1,2}):([0-5]\d)$/.exec(t);
+  const conUnidad = /^(\d+(?:[.,]\d+)?) ?(h|hs|hora|horas|m|min|mins|minuto|minutos)$/.exec(t);
+  if (hm) {
+    min = Number(hm[1]) * 60 + Number(hm[2]);
+    unidad = "h:min";
+  } else if (conUnidad) {
+    const n = Number(conUnidad[1].replace(",", "."));
+    unidad = conUnidad[2].startsWith("h") ? "h" : "min";
+    min = unidad === "h" ? n * 60 : n;
+  } else if (/^\d+(?:[.,]\d+)?$/.test(t)) {
+    const n = Number(t.replace(",", "."));
+    if (n > 24 && n < 30) return { error: "¿Horas o minutos? Hasta 24 son horas y desde 30, minutos." };
+    unidad = n <= 24 ? "h" : "min";
+    min = unidad === "h" ? n * 60 : n;
+  } else {
+    return { error: "Escribí el tiempo: 30 (minutos), 1 (hora) o 1,5 (hora y media)." };
+  }
+  min = Math.round(min * 1000) / 1000;
+  if (min < PASO_FIJO_MIN || min > MAX_FIJO_MIN) return { error: "Los paquetes van de 30 min a 24 h." };
+  if (!Number.isInteger(min / PASO_FIJO_MIN)) return { error: "De media en media hora: 30 min, 1 h, 1 h 30 min…" };
+  return { min, unidad };
+}
+
 /** El error al agregar un paquete, o null. */
-export function errorPaquete(horas: string, precio: string, paquetes: Paquete[]): string | null {
-  const h = entero(horas);
-  if (h === null || h < 1 || h > 24) return "Las horas van de 1 a 24.";
+export function errorPaquete(tiempo: string, precio: string, paquetes: Paquete[]): string | null {
+  const leido = leerTiempoPaquete(tiempo);
+  if (!leido) return "Poné cuánto tiempo es: 30 (minutos), 1 (hora) o 1,5 (hora y media).";
+  if ("error" in leido) return leido.error;
   const p = decimal(precio);
   if (p === null || p <= 0) return "Poné el precio del paquete.";
-  if (paquetes.some((x) => x.h === h)) return `Ya hay un paquete de ${h} h: quitalo primero.`;
+  if (paquetes.some((x) => x.min === leido.min))
+    return `Ya hay un paquete de ${fmtTiempoFijo(leido.min)}: quitalo primero.`;
   return null;
 }
 
 /**
  * Los paquetes que nunca se van a usar: el tiempo fijo cobra la combinación
- * más barata (§5.3), así que uno más caro que sus horas sueltas (u otra
+ * más barata (§5.3), así que uno más caro que su tiempo suelto (u otra
  * combinación) no sale nunca. Se avisa para que no parezca que no anda.
  */
-export function paquetesQueNoConvienen(tarifa: number, paquetes: Paquete[]): { h: number; mejor: number }[] {
-  const out: { h: number; mejor: number }[] = [];
+export function paquetesQueNoConvienen(tarifa: number, paquetes: Paquete[]): { min: number; mejor: number }[] {
+  const out: { min: number; mejor: number }[] = [];
   for (const p of paquetes) {
-    const sinEl = precioHoras(
+    const sinEl = precioDelTiempo(
       { id: "", nombre: "", tarifa, fraccion: 15, tolerancia: 0, minimo: 0, promos: [], paquetes: paquetes.filter((x) => x !== p) },
-      p.h,
+      p.min,
     ).precio;
-    if (sinEl < p.precio) out.push({ h: p.h, mejor: sinEl });
+    if (sinEl < p.precio) out.push({ min: p.min, mejor: sinEl });
   }
   return out;
 }
