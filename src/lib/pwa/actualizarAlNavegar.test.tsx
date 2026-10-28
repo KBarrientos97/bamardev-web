@@ -63,4 +63,18 @@ describe("useActualizarAlNavegar", () => {
     expect(limpia).toHaveBeenCalledOnce();
     expect(recargo).not.toHaveBeenCalled();
   });
+
+  it("atascada y sin internet: no limpia ni recarga (dejaría la app inservible); con red, al cambiar de pantalla sí", () => {
+    const limpia = vi.spyOn(recarga, "limpiandoTodo").mockImplementation(async () => {});
+    const enLinea = vi.spyOn(navigator, "onLine", "get").mockReturnValue(false);
+    montar();
+    act(() => reiniciarEstadoPwa({ atascada: true }));
+    act(() => ir("/reportes"));
+    expect(limpia).not.toHaveBeenCalled();
+    expect(recargo).not.toHaveBeenCalled();
+
+    enLinea.mockReturnValue(true);
+    act(() => ir("/pos"));
+    expect(limpia).toHaveBeenCalledOnce();
+  });
 });

@@ -22,7 +22,11 @@ export function useActualizarAlNavegar() {
     if (anterior.current === pathname) return;
     anterior.current = pathname;
     if (versionNueva) recarga.ahora();
-    else if (atascada) void recarga.limpiandoTodo();
+    // Sin red no se limpia nada: se daría de baja el service worker y se
+    // borraría lo guardado justo cuando no hay de dónde bajarlo otra vez, y
+    // quien cobra sin internet se quedaría con la app inservible. En el
+    // próximo cambio de pantalla con red, `atascada` sigue en pie y se hace.
+    else if (atascada && navigator.onLine !== false) void recarga.limpiandoTodo();
   }, [pathname, versionNueva, atascada]);
 }
 
