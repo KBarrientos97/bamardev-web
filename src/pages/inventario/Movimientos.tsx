@@ -179,6 +179,9 @@ export default function Movimientos() {
     [movimientos.datos, filtroTipo],
   );
 
+  // Singular también con pendientes: «1 registrado · 1 sin aprobar», no «1 registrados».
+  const textoRegistrados = `${filtrados.length} ${filtrados.length === 1 ? "registrado" : "registrados"}`;
+
   return (
     <div className="mx-auto max-w-6xl space-y-4 p-5">
       <EncabezadoPagina
@@ -188,8 +191,8 @@ export default function Movimientos() {
           !movimientos.datos && movimientos.cargando
             ? "Cargando…"
             : pendientesVisibles
-              ? `${filtrados.length} registrados · ${pendientesVisibles} sin aprobar`
-              : `${filtrados.length} ${filtrados.length === 1 ? "registrado" : "registrados"}`
+              ? `${textoRegistrados} · ${pendientesVisibles} sin aprobar`
+              : textoRegistrados
         }
         accion={
           <Boton icono="plus" onClick={() => setCreando(true)}>

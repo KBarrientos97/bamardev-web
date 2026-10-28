@@ -187,6 +187,16 @@ describe("La lista arranca en hoy", () => {
     expect(await screen.findByText("2 registrados · 1 sin aprobar")).toBeInTheDocument();
   });
 
+  it("con un solo movimiento de hoy y pendiente, dice «1 registrado · 1 sin aprobar»", async () => {
+    vi.mocked(api.getMovimientos).mockResolvedValue([
+      movimiento(1, { estado: "PENDIENTE" }),
+    ]);
+    render(<Movimientos />);
+    await screen.findByText("MOV-1");
+    expect(screen.getByText("1 registrado · 1 sin aprobar")).toBeInTheDocument();
+    expect(screen.queryByText(/registrados/)).not.toBeInTheDocument();
+  });
+
   it("con un texto escrito, sigue diciendo «Sin resultados»", async () => {
     render(<Movimientos />);
     await screen.findByText("MOV-1");
