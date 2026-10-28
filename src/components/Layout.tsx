@@ -223,7 +223,13 @@ export default function Layout() {
           ]}
         />
 
-        <main className="min-h-0 flex-1 overflow-y-auto print:overflow-visible">
+        {/* `relative` para que lo `absolute` sin otro ancla (los `sr-only` de
+            Primeros pasos, Inscripción en línea, Cobranza…) se acomode dentro
+            de este scroll. Sin él se ubicaba contra la ventana, en su lugar del
+            contenido —1.676 px en Ajustes de academia, con 945 de ventana—, y
+            el documento crecía hasta ahí: al llegar al final con la rueda se
+            corría la app entera hacia arriba y abajo quedaba un hueco vacío. */}
+        <main className="relative min-h-0 flex-1 overflow-y-auto print:overflow-visible">
           <Outlet />
         </main>
       </div>

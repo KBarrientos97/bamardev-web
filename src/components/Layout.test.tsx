@@ -498,3 +498,13 @@ describe("Plan Emprendedor: el chip de ventas junto al aviso de licencia", () =>
     });
   });
 });
+
+describe("el scroll de las pantallas", () => {
+  // jsdom no calcula posiciones: se fija la clase. Sin `relative`, un
+  // `sr-only` abajo de una pantalla larga estira el documento y, al llegar al
+  // final con la rueda, la app entera se corre y deja un hueco vacío abajo.
+  it("el contenido es el ancla de lo `absolute` que no tiene otra", () => {
+    render(arbol("/pos"));
+    expect(screen.getByRole("main")).toHaveClass("relative", "overflow-y-auto");
+  });
+});
