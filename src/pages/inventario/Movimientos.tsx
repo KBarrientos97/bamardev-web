@@ -139,6 +139,10 @@ export default function Movimientos() {
   }, [lista, q, fecha, filtroTipo, filtroEstado, filtroOrigen]);
 
   const pendientes = lista.filter((m) => m.estado === "PENDIENTE").length;
+  // La cabecera cuenta lo que se ve en la lista (con la fecha y los filtros
+  // puestos). Si contara todo, decir "1 registrado" con "Hoy no hay
+  // movimientos" debajo se contradice en la misma pantalla.
+  const pendientesVisibles = filtrados.filter((m) => m.estado === "PENDIENTE").length;
 
   // Lo único que esconde todo es que hoy no se movió nada: decir "probá con
   // otro texto" cuando nadie escribió nada no explica por qué la lista está
@@ -183,9 +187,9 @@ export default function Movimientos() {
           // Antes de la primera respuesta no hay "0 registrados": no se sabe.
           !movimientos.datos && movimientos.cargando
             ? "Cargando…"
-            : pendientes
-              ? `${lista.length} registrados · ${pendientes} sin aprobar`
-              : `${lista.length} ${lista.length === 1 ? "registrado" : "registrados"}`
+            : pendientesVisibles
+              ? `${filtrados.length} registrados · ${pendientesVisibles} sin aprobar`
+              : `${filtrados.length} ${filtrados.length === 1 ? "registrado" : "registrados"}`
         }
         accion={
           <Boton icono="plus" onClick={() => setCreando(true)}>

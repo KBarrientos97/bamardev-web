@@ -158,9 +158,12 @@ describe("La lista arranca en hoy", () => {
     render(<Movimientos />);
     expect(await screen.findByText("Hoy no hay movimientos")).toBeInTheDocument();
     expect(screen.queryByText("Probá con otro texto o quitá los filtros.")).not.toBeInTheDocument();
+    // La cabecera cuenta lo que se ve: hoy no hay nada, así que dice 0 (no «1 registrado»).
+    expect(screen.getByText("0 registrados")).toBeInTheDocument();
     const verTodo = screen.getAllByRole("button", { name: "Ver todo" });
     fireEvent.click(verTodo[verTodo.length - 1]);
     expect(await screen.findByText("MOV-1")).toBeInTheDocument();
+    expect(screen.getByText("1 registrado")).toBeInTheDocument();
   });
 
   it("con un solo movimiento la cabecera dice «1 registrado», no «1 registrados»", async () => {
@@ -168,6 +171,20 @@ describe("La lista arranca en hoy", () => {
     await screen.findByText("MOV-1");
     expect(screen.getByText("1 registrado")).toBeInTheDocument();
     expect(screen.queryByText("1 registrados")).not.toBeInTheDocument();
+  });
+
+  it("la cabecera no suma los movimientos de otros días mientras la lista está en hoy", async () => {
+    vi.mocked(api.getMovimientos).mockResolvedValue([
+      movimiento(1),
+      movimiento(2, { fecha: "2026-10-12T15:00:00.000Z", estado: "PENDIENTE" }),
+    ]);
+    render(<Movimientos />);
+    await screen.findByText("MOV-1");
+    expect(screen.getByText("1 registrado")).toBeInTheDocument();
+    expect(screen.queryByText(/sin aprobar/)).not.toBeInTheDocument();
+    const verTodo = screen.getAllByRole("button", { name: "Ver todo" });
+    fireEvent.click(verTodo[verTodo.length - 1]);
+    expect(await screen.findByText("2 registrados · 1 sin aprobar")).toBeInTheDocument();
   });
 
   it("con un texto escrito, sigue diciendo «Sin resultados»", async () => {
