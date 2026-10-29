@@ -9,6 +9,7 @@ import { fmtMoney } from "../../lib/format";
 import { leerMonto, montoParaEditar } from "../../lib/montoTecleado";
 import { useAuth } from "../../store/AuthContext";
 import { useSucursales } from "../../lib/useSucursales";
+import { conMayuscula, termino } from "../../lib/rubro";
 import type { Caja } from "../../types";
 
 /** Montos típicos de fondo de caja: ahorran teclear lo de siempre. Billetes que existen (no hay uno de 500). */
@@ -27,7 +28,9 @@ export default function AperturaCaja({
    */
   sucursalInicial?: number | null;
 }) {
-  const { usuario } = useAuth();
+  const { usuario, rubro, vocabulario } = useAuth();
+  // "Sucursal" o como la llame el rubro (en un instituto, "Sede").
+  const palabraSucursal = conMayuscula(termino(rubro, "sucursal", vocabulario));
   const [monto, setMonto] = useState("");
   const [descripcion, setDescripcion] = useState("");
   const [error, setError] = useState("");
@@ -99,7 +102,7 @@ export default function AperturaCaja({
               todo el turno, así que se elige antes de contar la plata. */}
           {elegirSucursal && (
             <Campo
-              label="Sucursal"
+              label={palabraSucursal}
               hint="Acá vendés este turno: se descuenta de su stock y se cobran sus precios"
             >
               <Select

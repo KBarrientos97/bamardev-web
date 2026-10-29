@@ -40,6 +40,8 @@ import type {
   Tramo,
 } from "../../lib/pagina/tipos";
 import { vistaDesdeEditor } from "../../lib/pagina/vista";
+import { apiAcademiaPublica } from "../../lib/academia/apiPublica";
+import type { CursoPublico } from "../../lib/academia/tipos";
 import { numeroParaEditar } from "../../lib/pagina/whatsapp";
 import { useApi } from "../../lib/useApi";
 import CartelQR from "./CartelQR";
@@ -488,6 +490,22 @@ export default function MiPagina() {
   const [avisoEstilo, setAvisoEstilo] = useState<{ tipografia: Tipografia; formaBotones: FormaBotones } | null>(null);
   // Los colores del logo (hex), para la fila "De tu logo" del popup de color.
   const [coloresLogo, setColoresLogo] = useState<string[]>([]);
+  // Academias (P1): los cursos publicados, para que la vista previa muestre
+  // la sección como la va a ver el público. Sólo con la preinscripción online.
+  const conCursos = !!negocioSesion?.features?.includes("preinscripcion_online");
+  const [cursosPrevia, setCursosPrevia] = useState<CursoPublico[] | null>(null);
+  const subdominioGuardado = carga.datos?.subdominio ?? null;
+  useEffect(() => {
+    if (!conCursos || !subdominioGuardado) return;
+    let vigente = true;
+    apiAcademiaPublica
+      .cursos(subdominioGuardado)
+      .then((c) => vigente && setCursosPrevia(c))
+      .catch(() => vigente && setCursosPrevia(null));
+    return () => {
+      vigente = false;
+    };
+  }, [conCursos, subdominioGuardado]);
   const arrastrado = useRef<number | null>(null);
   // Lo último que se cargó o se cambió: el catálogo se actualiza después de
   // cada respuesta y, entre una y otra, el render todavía no pasó.
@@ -556,7 +574,12 @@ export default function MiPagina() {
     borradorSucursales[s.id] ? { ...s, ...limpio(borradorSucursales[s.id]) } : s,
   );
   const editado: EstadoEditor = { ...e, pagina: ajustes, sucursales: sucursalesEditadas };
-  const vista = vistaDesdeEditor(editado);
+  const vista = {
+    ...vistaDesdeEditor(editado),
+    // La sección Cursos sale con el interruptor prendido (lo decide el backend
+    // en la página de verdad; acá se adelanta).
+    cursos: conCursos && ajustes.mostrarCursos ? cursosPrevia : null,
+  };
   const c = paleta(vista.color.hex);
   const estilo = estiloPagina(ajustes.estiloClave);
   const tonos = tonosPagina(estilo.clave, c, !!e.imagenes.portada);
@@ -1005,6 +1028,26 @@ export default function MiPagina() {
               c={c}
               onAviso={setAviso}
             />
+          )}
+
+          {conCursos && (
+            <Seccion titulo="Cursos">
+              <label className="flex items-start gap-3">
+                <input
+                  type="checkbox"
+                  className="mt-1 h-4 w-4"
+                  checked={!!ajustes.mostrarCursos}
+                  onChange={(ev) => cambiar({ mostrarCursos: ev.target.checked })}
+                />
+                <span>
+                  <strong className="block text-sm text-texto">Mostrar cursos</strong>
+                  <span className="text-[13px] text-texto-3">
+                    Las carreras publicadas con sus próximos inicios y el botón «Preinscribirme». Se eligen en
+                    Configuración › Carreras y planes.
+                  </span>
+                </span>
+              </label>
+            </Seccion>
           )}
 
           <EditorPedidosRegalos

@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { act, fireEvent, render, screen } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { Link, MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { CarritoCita } from "../../lib/agenda/tiposAgenda";
 import type { Producto } from "../../types";
@@ -94,6 +94,16 @@ vi.mock("../../lib/agenda/apiAgenda", () => ({
     carrito: vi.fn(),
   },
   mensajeDe: (_e: unknown, d: string) => d,
+}));
+
+// La lista del turno (lo vendido y el cierre): basta saber que se ve.
+vi.mock("./PantallaHistorial", () => ({
+  default: (props: { onAtras: () => void }) => (
+    <div>
+      <p>ventas del turno</p>
+      <button onClick={props.onAtras}>volver a vender</button>
+    </div>
+  ),
 }));
 
 // La venta: muestra el carrito (y lo que va arriba) y deja quitar una
@@ -1027,5 +1037,95 @@ describe("pase oct: el clienteRequestId es el de ESE cobro", () => {
     });
     const [primero, segundo] = vi.mocked(api.crearVenta).mock.calls;
     expect(segundo[0].clienteRequestId).toBe(primero[0].clienteRequestId);
+  });
+});
+
+/** Dónde terminó la navegación (para la redirección de A1). */
+function Destino() {
+  const l = useLocation();
+  return <p data-testid="destino">{l.pathname + l.search}</p>;
+}
+
+describe("A1: el POS ya no cobra cuotas", () => {
+  it("ni con la feature academia hay botón de módulos por cobrar", async () => {
+    sesion.features = ["pos", "caja", "academia"];
+    await montar();
+    expect(screen.queryByRole("button", { name: /Módulos por cobrar/ })).not.toBeInTheDocument();
+  });
+
+  it("un enlace viejo con ?inscripcion= se manda a Cobrar a estudiante con lo mismo", async () => {
+    sesion.features = ["pos", "caja", "academia"];
+    render(
+      <MemoryRouter initialEntries={["/pos?inscripcion=103&monto=350&sede=2&sedeNombre=Norte"]}>
+        <Routes>
+          <Route path="/pos" element={<Pos />} />
+          <Route path="/academia/cobranza/cobrar" element={<Destino />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    await act(async () => {});
+    expect(screen.getByTestId("destino")).toHaveTextContent(
+      "/academia/cobranza/cobrar?inscripcion=103&monto=350&sede=2&sedeNombre=Norte",
+    );
+    expect(api.cajaActual).not.toHaveBeenCalled();
+  });
+
+  it("y uno con ?alumno=&q= también", async () => {
+    render(
+      <MemoryRouter initialEntries={["/pos?alumno=53&q=2026-0103"]}>
+        <Routes>
+          <Route path="/pos" element={<Pos />} />
+          <Route path="/academia/cobranza/cobrar" element={<Destino />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    await act(async () => {});
+    expect(screen.getByTestId("destino")).toHaveTextContent("/academia/cobranza/cobrar?alumno=53&q=2026-0103");
+  });
+});
+
+describe("Caja del instituto: el mismo POS en su propia ruta (26-oct)", () => {
+  function Ir() {
+    return (
+      <nav>
+        <Link to="/pos">punto de venta</Link>
+        <Link to="/pos/caja">caja</Link>
+      </nav>
+    );
+  }
+  const montarConRutas = async (ruta: string) => {
+    render(
+      <MemoryRouter initialEntries={[ruta]}>
+        <Ir />
+        <Destino />
+        <Routes>
+          <Route path="/pos" element={<Pos />} />
+          <Route path="/pos/caja" element={<Pos />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    await act(async () => {});
+    await act(async () => {});
+  };
+
+  it("/pos/caja abre la lista del turno, y Punto de venta vuelve a vender", async () => {
+    await montarConRutas("/pos/caja");
+    expect(screen.getByText("ventas del turno")).toBeInTheDocument();
+    // Antes la URL quedaba en /pos y tocar "Punto de venta" no hacía nada.
+    fireEvent.click(screen.getByRole("link", { name: "punto de venta" }));
+    await act(async () => {});
+    expect(screen.queryByText("ventas del turno")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("link", { name: "caja" }));
+    await act(async () => {});
+    expect(screen.getByText("ventas del turno")).toBeInTheDocument();
+    expect(screen.getByTestId("destino")).toHaveTextContent("/pos/caja");
+  });
+
+  it("volver desde la caja lleva a /pos", async () => {
+    await montarConRutas("/pos/caja");
+    fireEvent.click(screen.getByRole("button", { name: "volver a vender" }));
+    await act(async () => {});
+    expect(screen.getByTestId("destino")).toHaveTextContent(/^\/pos$/);
+    expect(screen.queryByText("ventas del turno")).not.toBeInTheDocument();
   });
 });

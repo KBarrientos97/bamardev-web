@@ -51,6 +51,16 @@ type PropsChips = {
 const activo = (g: PropsChips) => g.opciones.length > 0 && g.valor !== g.opciones[0][0];
 
 /**
+ * ¿Es un grupo de chips? Se mira la forma de sus props (`opciones` y
+ * `onChange`) y no el tipo del componente: el selector de sede de academias
+ * llega armado desde un hook y es un `Chips` igual.
+ */
+const esGrupo = (e: ReactElement): e is ReactElement<PropsChips> => {
+  const p = e.props as Partial<PropsChips> | null;
+  return !!p && Array.isArray(p.opciones) && typeof p.onChange === "function";
+};
+
+/**
  * Varios grupos de chips (sucursal, tipo, estado, origen…).
  *
  * En el celular: con uno o dos grupos, una sola fila deslizable con una
@@ -66,7 +76,21 @@ export function FilaFiltros({
   /** El aire entre renglones desde md: el que les daba el contenedor de la pantalla. */
   separacion?: string;
 }) {
-  const grupos = Children.toArray(children).filter(isValidElement) as ReactElement<PropsChips>[];
+  const hijos = Children.toArray(children).filter(isValidElement);
+  const grupos = hijos.filter(esGrupo);
+  // Un buscador o un desplegable metido acá no es un grupo de chips: no tiene
+  // `opciones` y el botón Filtros se caía al leerlas (QA ronda 2, B-01: la
+  // pantalla Estudiantes entera). Se dibujan aparte, siempre a la vista, y no
+  // cuentan para el tope de grupos.
+  const sueltos = hijos.filter((h) => !esGrupo(h));
+  if (sueltos.length) {
+    return (
+      <div className="space-y-3">
+        {grupos.length > 0 && <FilaFiltros separacion={separacion}>{grupos}</FilaFiltros>}
+        <div className="flex flex-wrap gap-2">{sueltos}</div>
+      </div>
+    );
+  }
 
   if (grupos.length > MAX_GRUPOS_A_LA_VISTA) {
     return (
@@ -216,10 +240,15 @@ export function Buscador({
   valor,
   onChange,
   placeholder = "Buscar…",
+  etiqueta,
+  autoFocus,
 }: {
   valor: string;
   onChange: (v: string) => void;
   placeholder?: string;
+  /** El nombre accesible del campo, si el placeholder solo no dice qué se busca. */
+  etiqueta?: string;
+  autoFocus?: boolean;
 }) {
   return (
     <div className="relative flex-1">
@@ -230,6 +259,8 @@ export function Buscador({
         value={valor}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
+        aria-label={etiqueta}
+        autoFocus={autoFocus}
         className="w-full rounded-xl border border-borde bg-white py-2.5 pl-10 pr-9 text-sm outline-none transition-colors placeholder:text-texto-4 focus:border-primary focus:ring-2 focus:ring-primary-100"
       />
       {valor && (

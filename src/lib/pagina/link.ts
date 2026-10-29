@@ -9,6 +9,7 @@
  *   link…/<sub>/reservar[/<suc>] la reserva       (= app…/r/<sub>/reservar…)
  *   link…/<sub>/c/<token>        gestión de la cita (= app…/r/<sub>/c/<token>)
  *   link…/<sub>/regalo/<token>   una gift card    (= app…/p/<sub>/regalo/<token>)
+ *   link…/<sub>/inscribirme/<id> preinscribirse a un grupo (= app…/p/<sub>/inscribirme/<id>)
  *
  * Lo usan la SPA (qué rutas dibujar) y la Pages Function de la raíz (Open
  * Graph y redirecciones), así que no toca `import.meta.env` ni el DOM: corre
@@ -68,6 +69,12 @@ export function rutaLargaDeLink(pathname: string): string | null {
   }
   // La gift card que se comparte (IDEAS/6 #6).
   if (segundo === "regalo" && tercero !== undefined && RESTO.test(tercero)) return `/p/${sub}/regalo/${tercero}`;
+  // La preinscripción a un grupo de una academia (P2): el id es un número.
+  if (segundo === "inscribirme" && tercero !== undefined && /^\d{1,12}$/.test(tercero)) {
+    return `/p/${sub}/inscribirme/${tercero}`;
+  }
+  // El estado de cuenta de un estudiante (P6), el enlace que va por WhatsApp.
+  if (segundo === "pagar" && tercero !== undefined && RESTO.test(tercero)) return `/p/${sub}/pagar/${tercero}`;
   return null;
 }
 
@@ -127,6 +134,7 @@ export function destinoLink(pathname: string): DestinoLink {
 export const ROBOTS_LINK = `User-agent: *
 Disallow: /*/reservar
 Disallow: /*/c/
+Disallow: /*/inscribirme/
 Allow: /
 `;
 

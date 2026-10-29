@@ -97,6 +97,12 @@ export interface FinancieroApi {
   ventasSinCosto: number;
   /** Mercadería perdida en el período (vencida, dañada, robada), al costo. */
   mermas: number;
+  /**
+   * Nuevo (L5, 28-oct): cuánto de `ventas` es el cobro de cuotas de la
+   * academia, neto. Va DENTRO de `ventas`; 0 en los demás rubros. Ausente con
+   * un backend anterior: entonces la academia ve "Ventas" en una sola línea.
+   */
+  cobradoCuotas?: number;
   compras: { total: number; insumos: number; productos: number };
   comprasDeltaPct: number | null;
   numCompras: number;
@@ -451,6 +457,57 @@ export interface EfectivoBillarApi {
   gastos: { id: number; fecha: string; descripcion: string; monto: number; quien: string | null; cajera: string }[];
 }
 
+/**
+ * El detalle de "Cobrado por clases" y de "Sueldos docentes" del Estado de
+ * resultado de una academia (`GET /academia/reportes/clases`, L5 del 28-oct).
+ * Mismo rango y misma sede que el financiero: `cobradoCuotas` da lo mismo que
+ * el del financiero.
+ */
+export interface ClasesAcademiaApi {
+  desde: string;
+  hasta: string;
+  sede: number | null;
+  cobradoCuotas: number;
+  cursos: {
+    curso: { id: number; nombre: string };
+    precioModulo: number | null;
+    cobrado: number;
+    /** Estudiantes distintos que pagaron algo del curso en el período. */
+    pagaron: number;
+    /** Lo cobrado en cuotas que no cubren ningún módulo. */
+    sinModulo: number;
+    modulos: {
+      materia: { id: number; nombre: string; orden: number };
+      precio: number | null;
+      /** Una cuota de varios módulos (el pago completo) se reparte por partes iguales. */
+      cobrado: number;
+      pagaron: number;
+      /** Inscritos en los grupos que dictan el módulo en el período. */
+      alumnos: number;
+      grupos: {
+        id: number;
+        nombre: string;
+        sede: { id: number; nombre: string };
+        dias: number[];
+        horaInicio: string;
+        horaFin: string;
+        alumnos: number;
+        desde: string;
+        hasta: string;
+      }[];
+    }[];
+  }[];
+  sueldos: {
+    /** Lo PAGADO de la planilla en el período (por la fecha del pago). */
+    pagado: number;
+    /** Los gastos SUELDOS de la planilla: con ellos se separan de los gastos del local. */
+    gastoIds: number[];
+    pagos: { gastoId: number; concepto: string; docente: string | null; fecha: string; monto: number; sede: { id: number; nombre: string } | null }[];
+    /** Lo que falta pagar de los meses del período. Null para quien no ve la planilla. */
+    pendiente: { meses: { mes: string; cerrada: number; enCurso: number }[]; cerrada: number; enCurso: number; total: number } | null;
+  };
+}
+
 export const apiReportes = {
   /**
    * A qué hora termina la jornada del negocio (minutos). Un billar cierra a
@@ -510,6 +567,15 @@ export const apiReportes = {
    */
   efectivoBillar: (r: RangoReporte) =>
     request<EfectivoBillarApi>(`/billar/reportes/efectivo${qs({ desde: r.desde, hasta: r.hasta, sucursalId: r.sucursalId })}`),
+  /**
+   * Academia: lo cobrado por curso y módulo, los sueldos docentes pagados y la
+   * planilla pendiente. Por instantes, como el financiero (`rangoParaApi`);
+   * la sede viaja como `sede`, el nombre de la academia.
+   */
+  clasesAcademia: (r: RangoReporte) => {
+    const { desde, hasta } = rangoParaApi({ desde: r.desde, hasta: r.hasta });
+    return request<ClasesAcademiaApi>(`/academia/reportes/clases${qs({ desde, hasta, sede: r.sucursalId })}`);
+  },
 };
 
 /** Un número que viene en 0..100 → fracción. Null sigue null. */

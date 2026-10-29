@@ -561,3 +561,33 @@ describe("la bitácora", () => {
     expect(renglones[1]).toHaveTextContent("Descripción: «Cobra» → sin descripción");
   });
 });
+
+describe("L9 · el permiso de las fotos de la academia avisa qué entrega", () => {
+  const ACADEMICO: DominioPermisos = {
+    dominio: "Académico",
+    nombre: "Académico",
+    permisos: [
+      permiso("academia.inscribir", "Inscribir estudiantes"),
+      permiso("academia.fotos", "Ver y aprobar las fotos de los inscritos", { sensible: true }),
+    ],
+  };
+
+  it("al prender «academia.fotos» avisa que verá la cara y el carnet de todos, también menores", async () => {
+    vi.mocked(apiRoles.catalogo).mockResolvedValue([...CATALOGO, ACADEMICO]);
+    vi.mocked(apiRoles.editar).mockResolvedValue(CAJERO);
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: /Cajero/ }));
+    abrirDominio("Académico");
+    expect(within(editor()).queryByRole("note")).not.toBeInTheDocument();
+    fireEvent.click(within(editor()).getByLabelText(/Ver y aprobar las fotos/));
+    expect(within(editor()).getByRole("note")).toHaveTextContent(
+      "verá la cara y el carnet de todos los inscritos, también de los menores",
+    );
+    // Prender otro permiso no avisa nada.
+    fireEvent.click(within(editor()).getByLabelText(/Inscribir estudiantes/));
+    expect(within(editor()).getAllByRole("note")).toHaveLength(1);
+    // Apagarlo saca el aviso.
+    fireEvent.click(within(editor()).getByLabelText(/Ver y aprobar las fotos/));
+    expect(within(editor()).queryByRole("note")).not.toBeInTheDocument();
+  });
+});

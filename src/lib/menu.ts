@@ -2,8 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "react-router-dom";
 import type { NombreIcono } from "../components/Icon";
 import { useAuth } from "../store/AuthContext";
+import { PESTANAS_CONFIG_ACADEMIA, RUTA_CAJA } from "./academia/vista";
 import { SECCIONES_REPORTES, type Seccion } from "./permisos";
-import { termino, type Termino, type Vocabulario } from "./rubro";
+import { conMayuscula, termino, type Termino, type Vocabulario } from "./rubro";
 
 /**
  * El árbol del menú lateral, y el estado de qué grupos están abiertos.
@@ -44,10 +45,30 @@ export interface ItemNav {
    */
   exacto?: boolean;
   /**
+   * Otras rutas en las que el ítem también se enciende. Lo usa la
+   * Configuración del instituto: una entrada en el menú para pantallas que
+   * viven en rutas distintas (cursos, sedes, planilla), cada una una pestaña.
+   */
+  rutas?: readonly string[];
+  /**
+   * Lo ve cualquier rol, sin sección ni permiso: lo de la cuenta de quien está
+   * sentado (sus avisos, su contraseña). Sólo lo usa "Mi negocio" del
+   * instituto; en los demás rubros eso sigue al pie del menú.
+   */
+  paraTodos?: boolean;
+  /** No es una pantalla: el menú lo dibuja como botón (la contraseña abre un formulario). */
+  accion?: "cambiarPassword";
+  /**
    * El ítem se llama distinto según el rubro: `label` es el nombre de siempre
    * y esto es la palabra que lo reemplaza donde corresponda (ver `rubro.ts`).
    */
   termino?: Termino;
+  /**
+   * El nombre armado con el vocabulario del perfil, cuando no es UNA palabra:
+   * "Carreras y planes" (o "Cursos y planes", si el instituto dice "curso").
+   * Recibe `termino` ya atado al rubro y al perfil del negocio.
+   */
+  etiqueta?: (palabra: (clave: Termino) => string) => string;
   /**
    * Las pantallas que cuelgan de ésta. Antes la jerarquía era una sangría
    * (`nivel`) sobre una lista plana, y el padre se deducía por posición: si
@@ -64,9 +85,12 @@ export interface ItemNav {
  * El del medio se llama "Stock" y no "Inventario" porque adentro vive el grupo
  * Inventario: el rótulo y el ítem se leían como un renglón repetido.
  */
-export type Bloque = "agenda" | "vender" | "stock" | "administracion";
+export type Bloque = "agenda" | "vender" | "stock" | "administracion" | "instituto";
 
 export const TITULO_BLOQUE: Record<Bloque, string> = {
+  // El del instituto (ver `ITEMS_ACADEMIA`): ningún otro rubro lo usa. No se
+  // llama "Academia" por lo mismo que Stock: adentro vive el grupo Academia.
+  instituto: "Instituto",
   // Sólo belleza con la feature `agenda`: en los demás rubros no hay ningún
   // ítem en este bloque y el rótulo no se dibuja. No se llama "Agenda" por lo
   // mismo que Stock: adentro vive el grupo Agenda.
@@ -136,6 +160,36 @@ const ITEMS: (ItemNav & { bloque: Bloque })[] = [
   // Íconos distintos en la barra colapsada (QA VER-06). Los de Omar no
   // cambian: Clientes, Comisiones, Propinas y Promociones no existen para él.
   { a: "/clientes", label: "Clientes", icono: "userHeart", seccion: "clientes", bloque: "agenda" },
+  // Educación (PLAN-ACADEMIAS §4): lo del día con el alumno, en Atención.
+  // Sólo existen con la feature `academia` (estricta, ver permisos.ts): a los
+  // demás rubros no les mueven el menú.
+  {
+    a: "/academia/hoy",
+    label: "Hoy",
+    titulo: "Hoy en la academia",
+    icono: "clock",
+    seccion: "academia_hoy",
+    bloque: "agenda",
+  },
+  { a: "/academia/grupos", label: "Grupos", icono: "birrete", seccion: "academia_grupos", bloque: "agenda" },
+  {
+    a: "/academia/alumnos",
+    label: "Alumnos",
+    etiqueta: (palabra) => conMayuscula(palabra("clientes")),
+    icono: "users",
+    seccion: "academia_alumnos",
+    bloque: "agenda",
+    // E20 cuelga de Alumnos, con su contador (ver MenuLateral). Sin el
+    // formulario de la página no existe, y Alumnos queda solo.
+    hijos: [
+      {
+        a: "/academia/preinscripciones",
+        label: "Preinscripciones",
+        icono: "bell",
+        seccion: "academia_preinscripciones",
+      },
+    ],
+  },
   { a: "/pos", label: "Punto de venta", icono: "cart", seccion: "pos", bloque: "vender" },
   // Billar (extra `billar`): al lado del POS, porque en un billar es donde se
   // vende. Las pantallas que cuelgan (consumo, cierre, ventas) lo dejan
@@ -278,6 +332,9 @@ const ITEMS: (ItemNav & { bloque: Bloque })[] = [
     bloque: "administracion",
     hijos: [
       { a: "/creditos", label: "Cuentas por cobrar", icono: "dollar", seccion: "creditos" },
+      // Educación: lo que se debe son cuotas (E8). Toma el lugar de las cuentas
+      // por cobrar, que en un instituto no existen.
+      { a: "/academia/cobranza", label: "Cobranza", icono: "coins", seccion: "academia_cobranza" },
       // Después de las cuentas por cobrar, igual que en el drawer de la app:
       // es plata del negocio, pero del libro del resultado y no de la caja.
       { a: "/gastos", label: "Gastos operativos", icono: "archive", seccion: "gastos" },
@@ -340,15 +397,167 @@ const ITEMS: (ItemNav & { bloque: Bloque })[] = [
     seccion: "mesas_billar",
     bloque: "administracion",
   },
-  // A11: las reglas del negocio y las de la reserva online. Sólo el dueño.
-  // Lleva a la pestaña Reglas de la Configuración de la agenda (ConfigNegocio).
+  // Configuración: un grupo sin pantalla propia. En un salón tiene un solo
+  // hijo (las reglas del negocio) y se ve suelto, como siempre; en un
+  // instituto junta las carreras y los ajustes académicos.
   {
     a: "/configuracion/negocio",
     label: "Configuración",
     icono: "settings",
-    seccion: "config_negocio",
+    bloque: "administracion",
+    hijos: [
+      // A11: las reglas del negocio y las de la reserva online. Sólo el dueño.
+      // Lleva a la pestaña Reglas de la Configuración de la agenda (ConfigNegocio).
+      { a: "/configuracion/negocio", label: "Configuración", icono: "settings", seccion: "config_negocio" },
+      // E17: carreras, materias y planes de pago.
+      {
+        a: "/configuracion/carreras",
+        label: "Cursos y planes",
+        etiqueta: (palabra) => `${conMayuscula(palabra("carreras"))} y planes`,
+        icono: "birrete",
+        seccion: "academia_carreras",
+      },
+      {
+        a: "/configuracion/academia",
+        label: "Ajustes académicos",
+        icono: "perillas",
+        seccion: "academia_ajustes",
+      },
+    ],
+  },
+];
+
+/** Un ítem de `ITEMS` por su ruta: el menú del instituto reusa los generales. */
+function general(a: string, cambios: Partial<ItemNav> = {}): ItemNav {
+  const buscar = (lista: ItemNav[]): ItemNav | undefined => {
+    for (const i of lista) {
+      if (i.a === a && (i.seccion || i.hijos)) return i;
+      const dentro = buscar(i.hijos ?? []);
+      if (dentro) return dentro;
+    }
+    return undefined;
+  };
+  const item = buscar(ITEMS);
+  if (!item) throw new Error(`Falta el ítem general ${a}`);
+  return { ...item, ...cambios };
+}
+
+/**
+ * El menú del instituto: uno por rol, armado con las mismas reglas de siempre
+ * (cada ítem pide su sección).
+ *
+ *   INSTITUTO       un solo grupo "Academia" con TODO lo que es sólo del
+ *                   instituto (dueño, 26-oct: ningún otro rubro lo tiene, y
+ *                   repartido en cuatro bloques se mezclaba con lo general):
+ *                   lo del día, cobrar, las clases del docente, el control
+ *                   del dueño y lo que se configura una vez.
+ *   VENDER          Punto de venta · Caja
+ *   ADMINISTRACIÓN  "Mi negocio" (la gente, los avisos y la contraseña) y los
+ *                   módulos generales que el dueño ya tenía: inventario,
+ *                   gastos, reportes de ventas, Mi página. Hasta el 26-oct
+ *                   colgaban de un grupo "Más", que con el título del bloque
+ *                   encima era un click de más (el dueño).
+ *
+ * El docente ve sólo sus clases porque lo suyo pide el alcance PROPIO, y la
+ * recepción no ve el control porque no tiene esos permisos: nada se decide
+ * por el nombre del rol. Sólo existe en ACADEMIA; los demás rubros siguen con
+ * `ITEMS`, sin enterarse.
+ */
+const ITEMS_ACADEMIA: (ItemNav & { bloque: Bloque })[] = [
+  {
+    // Sin sección: el nombre lleva al primer hijo que se ve (Hoy para la
+    // recepción y el dueño, Mis clases para el docente).
+    a: "/academia/hoy",
+    label: "Academia",
+    icono: "birrete",
+    bloque: "instituto",
+    hijos: [
+      // Primero el Calendario: es la pantalla del instituto y arriba trae las
+      // clases de hoy ("Hoy" salió del menú el 26-oct, lo más sencillo posible).
+      { a: "/academia/calendario", label: "Calendario", icono: "calendar", seccion: "academia_calendario" },
+      {
+        a: "/academia/alumnos",
+        label: "Estudiantes",
+        etiqueta: (palabra) => conMayuscula(palabra("clientes")),
+        icono: "users",
+        seccion: "academia_alumnos",
+      },
+      // E20, con su contador (ver MenuLateral). Al lado de Estudiantes y no
+      // dentro: un tercer nivel en un grupo tan largo no se encontraba.
+      {
+        a: "/academia/preinscripciones",
+        label: "Inscripciones online",
+        icono: "bell",
+        seccion: "academia_preinscripciones",
+      },
+      // Una sola entrada para la plata de los estudiantes (dueño, 26-oct):
+      // Cobranza es quién debe y desde ahí se cobra. "Cobrar a estudiante"
+      // (A1: las cuotas ya no se cobran en el POS) cuelga de su ruta, así que
+      // estando ahí Cobranza queda encendida.
+      { a: "/academia/cobranza", label: "Cobranza", icono: "coins", seccion: "academia_cobranza" },
+      // Las del docente (su planilla ya no: sólo el admin la ve, D1 del 22-oct).
+      {
+        a: "/academia/mis-clases",
+        label: "Mis clases de hoy",
+        titulo: "Mis clases",
+        icono: "birrete",
+        seccion: "academia_mis_clases",
+      },
+      { a: "/academia/lista", label: "Pasar lista", icono: "lista", seccion: "academia_lista" },
+      { a: "/academia/notas", label: "Notas", icono: "edit", seccion: "academia_notas" },
+      // El control del dueño.
+      { a: "/academia/control", label: "Panel de control", icono: "tablero", seccion: "academia_control" },
+      { a: "/academia/reportes", label: "Reportes", icono: "chart", seccion: "academia_reportes" },
+      // Lo que no se usa todos los días, en UNA entrada con pestañas (dueño,
+      // 26-oct): cursos, sedes, la planilla de los docentes y los ajustes. Se
+      // ve con cualquiera de esas secciones; adentro, cada pestaña pide la suya.
+      {
+        a: "/academia/configuracion",
+        label: "Configuración",
+        icono: "settings",
+        seccion: "academia_ajustes",
+        tambien: ["academia_carreras", "academia_planilla"],
+        rutas: PESTANAS_CONFIG_ACADEMIA.map((t) => t.a),
+      },
+    ],
+  },
+  { a: "/pos", label: "Punto de venta", icono: "cart", seccion: "pos", bloque: "vender", exacto: true },
+  // La caja del turno: el historial del POS, con el cierre. Es el mismo POS en
+  // su propia ruta (ver RUTA_CAJA).
+  { a: RUTA_CAJA, label: "Caja", icono: "billetera", seccion: "caja", bloque: "vender" },
+  // "Mi negocio" (el dueño, 26-oct): la gente y la cuenta en un solo grupo,
+  // en vez de un "Equipo" por un lado y los avisos y la contraseña sueltos al
+  // pie del menú. Lo propio del instituto (cursos, sedes, planilla, ajustes)
+  // sigue en Academia → Configuración.
+  {
+    a: "/personal",
+    label: "Mi negocio",
+    icono: "perillas",
+    bloque: "administracion",
+    hijos: [
+      ...(general("/personal").hijos ?? []).filter((h) => ["/personal", "/usuarios", "/roles"].includes(h.a)),
+      { a: "/notificaciones", label: "Notificaciones", icono: "bell", paraTodos: true },
+      // Nunca se marca activo: ninguna ruta empieza con "#".
+      {
+        a: "#cambiar-password",
+        label: "Cambiar mi contraseña",
+        icono: "lock",
+        paraTodos: true,
+        accion: "cambiarPassword",
+      },
+    ],
+  },
+  // Sin Almacenes: en el instituto son las sedes, y están en Configuración.
+  {
+    ...general("/inventario", {
+      hijos: general("/inventario").hijos?.filter((h) => h.a !== "/inventario/almacenes"),
+    }),
     bloque: "administracion",
   },
+  { ...general("/gastos"), bloque: "administracion" },
+  // El de ventas y productos de siempre: "Reportes" es el del instituto.
+  { ...general("/reportes", { label: "Reportes de ventas" }), bloque: "administracion" },
+  { ...general("/mi-pagina"), bloque: "administracion" },
 ];
 
 /** Un ítem ya filtrado por permisos, con su nombre según el rubro. */
@@ -384,6 +593,10 @@ function filtrar(
   const salida: NodoMenu[] = [];
   for (const i of items) {
     const hijos = filtrar(i.hijos ?? [], puede, rubro, vocabulario);
+    if (i.paraTodos) {
+      salida.push({ item: i, id: `todos:${i.a}`, hijos: [], esTitulo: false });
+      continue;
+    }
     if (!i.seccion) {
       // Grupo sin pantalla propia: con un solo hijo, el hijo va suelto.
       if (hijos.length < 2) {
@@ -401,7 +614,9 @@ function filtrar(
     }
     const item: ItemNav = i.termino
       ? { ...i, label: termino(rubro, i.termino, vocabulario) }
-      : i;
+      : i.etiqueta
+        ? { ...i, label: i.etiqueta((clave) => termino(rubro, clave, vocabulario)) }
+        : i;
     const id = `${i.seccion}:${i.a}`;
 
     // Un grupo de un solo hijo es un clic de más para llegar a una sola
@@ -425,7 +640,7 @@ export function construirMenu(
   vocabulario?: Vocabulario,
 ): BloqueMenu[] {
   const bloques: BloqueMenu[] = [];
-  for (const i of ITEMS) {
+  for (const i of rubro === "ACADEMIA" ? ITEMS_ACADEMIA : ITEMS) {
     const nodos = filtrar([i], puede, rubro, vocabulario);
     if (nodos.length === 0) continue;
     const ultimo = bloques[bloques.length - 1];
@@ -443,6 +658,7 @@ export function aplanar(nodos: NodoMenu[]): NodoMenu[] {
 /** ¿Este ítem es la pantalla en la que se está? */
 export function esActivo(item: ItemNav, pathname: string): boolean {
   if (pathname === item.a) return true;
+  if (item.rutas?.some((r) => pathname === r || pathname.startsWith(`${r}/`))) return true;
   return !item.exacto && pathname.startsWith(`${item.a}/`);
 }
 
@@ -455,19 +671,40 @@ export function esActivo(item: ItemNav, pathname: string): boolean {
  */
 function nodoDeRuta(planos: NodoMenu[], pathname: string): NodoMenu | null {
   let mejor: NodoMenu | null = null;
+  let largo = -1;
   for (const n of planos) {
-    const a = n.item.a;
-    if (pathname === a || pathname.startsWith(`${a}/`)) {
-      // `>=`: con dos ítems en la misma ruta gana el de abajo, que es el
-      // sub-ítem ("Dashboard") y no el título del grupo ("Inventario").
-      if (!mejor || a.length >= mejor.item.a.length) mejor = n;
+    for (const a of [n.item.a, ...(n.item.rutas ?? [])]) {
+      if (pathname === a || pathname.startsWith(`${a}/`)) {
+        // `>=`: con dos ítems en la misma ruta gana el de abajo, que es el
+        // sub-ítem ("Dashboard") y no el título del grupo ("Inventario").
+        if (a.length >= largo) {
+          mejor = n;
+          largo = a.length;
+        }
+      }
     }
   }
   return mejor;
 }
 
+/**
+ * Pantallas que no están en el menú (se llega desde otra) y que en el
+ * celular quedaban con "BamarDev" arriba (QA ronda 2, B-28). Ganan a la ruta
+ * del menú que las contenga: el grupo 43 no es "Calendario" ni "Grupos".
+ */
+const TITULOS_FUERA_DEL_MENU: [RegExp, string][] = [
+  [/^\/academia\/grupos\/\d+\/notas\/?$/, "Notas"],
+  [/^\/academia\/grupos\/\d+\/lista\/?$/, "Pasar lista"],
+  [/^\/academia\/grupos\/\d+\/?$/, "Grupo"],
+  [/^\/academia\/cobranza\/cobrar\/?$/, "Cobrar a estudiante"],
+  // Es de la cuenta y no del negocio: va abajo, con "Cambiar mi contraseña".
+  [/^\/notificaciones\/?$/, "Notificaciones"],
+];
+
 /** Título de la barra móvil. */
 export function tituloDe(planos: NodoMenu[], pathname: string): string {
+  const suelto = TITULOS_FUERA_DEL_MENU.find(([ruta]) => ruta.test(pathname));
+  if (suelto) return suelto[1];
   const n = nodoDeRuta(planos, pathname)?.item;
   return n ? (n.titulo ?? n.label) : "BamarDev";
 }

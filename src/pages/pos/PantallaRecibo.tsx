@@ -1,11 +1,13 @@
-import { useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { Icon } from "../../components/Icon";
 import { Boton } from "../../components/ui";
+import { enlaceDeCuotas, modulosDeCuotaVenta } from "../../lib/academia/cobroCuotas";
 import { compartirComoImagen } from "../../lib/compartirTicket";
 import { fmtFecha, fmtFechaHora, fmtMoney, fmtNum } from "../../lib/format";
 import { marcaConsumo } from "../../lib/rubro";
 import { useAuth } from "../../store/AuthContext";
 import type { Venta } from "../../types";
+import EnlaceEstadoCuenta from "../academia/EnlaceEstadoCuenta";
 
 /**
  * Comprobante de la venta recién cobrada.
@@ -22,10 +24,13 @@ export default function PantallaRecibo({
   venta,
   onNuevaVenta,
   onHistorial,
+  etiquetaNueva = "Nueva venta",
 }: {
   venta: Venta;
   onNuevaVenta: () => void;
   onHistorial: () => void;
+  /** El botón principal: "Nueva venta" en el POS, "Cobrar a otro" en el instituto (A1). */
+  etiquetaNueva?: string;
 }) {
   const { negocio, incluye, rubro } = useAuth();
 
@@ -36,6 +41,26 @@ export default function PantallaRecibo({
   const ticket = useRef<HTMLElement>(null);
   const [compartiendo, setCompartiendo] = useState(false);
   const [avisoCompartir, setAvisoCompartir] = useState("");
+
+  /**
+   * Con lugar (las dos columnas, desde 48rem como `@3xl`), los botones van
+   * debajo de "Venta registrada", al lado del ticket, y no en una barra
+   * pegada al borde de abajo con media pantalla vacía en el medio (Kevin,
+   * 27-oct, cobrando en el Punto de venta). Se mide el lugar y no la ventana,
+   * como las columnas; y antes de pintar, para que la barra no se vea un
+   * instante abajo. Sin `ResizeObserver` (los tests) queda la barra de siempre.
+   */
+  const raiz = useRef<HTMLDivElement>(null);
+  const [ancha, setAncha] = useState(false);
+  useLayoutEffect(() => {
+    const el = raiz.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const medir = (ancho: number) => setAncha(ancho >= 768);
+    medir(el.getBoundingClientRect().width);
+    const ro = new ResizeObserver(([e]) => medir(e.contentRect.width));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   async function compartir() {
     if (!ticket.current || compartiendo) return;
@@ -107,10 +132,37 @@ export default function PantallaRecibo({
       .join(" + ") ||
     "—";
 
+  const imprimirYCompartir = incluye("recibo_pdf") && (
+    <>
+      <Boton variante="ghost" icono="printer" onClick={() => window.print()}>
+        Imprimir
+      </Boton>
+      {/* Siempre visible: si el equipo no sabe compartir archivos, la
+          imagen se descarga, que en un escritorio es lo más parecido. */}
+      <Boton variante="ghost" icono="arrowUpRight" onClick={compartir} disabled={compartiendo}>
+        {compartiendo ? "Generando…" : "Compartir"}
+      </Boton>
+    </>
+  );
+  const historial = (
+    <Boton variante="ghost" onClick={onHistorial}>
+      Historial
+    </Boton>
+  );
+  const nueva = (clase: string) => (
+    <Boton icono="plus" onClick={onNuevaVenta} className={clase}>
+      {etiquetaNueva}
+    </Boton>
+  );
+
+  // Con lugar (26-oct): "Venta registrada" a la izquierda y el ticket a la
+  // derecha, en vez de la columna del celular en el medio. Igual que el cobro,
+  // mide su lugar y no la ventana. Desde el 27-oct, en 52rem y no en 60rem:
+  // con 60 el aviso y el ticket quedaban cada uno en una punta.
   return (
-    <div className="mx-auto flex h-full min-h-0 w-full max-w-lg flex-col">
-      <div className="min-h-0 flex-1 overflow-y-auto p-4">
-        <div className="mb-4 flex flex-col items-center text-center print:hidden">
+    <div ref={raiz} className="@container flex h-full min-h-0 w-full flex-col">
+      <div className="min-h-0 flex-1 overflow-y-auto py-4 px-[max(1rem,calc(50%-16rem+1rem))] @3xl:px-[max(1.5rem,calc(50%-26rem+1.5rem))] @3xl:grid @3xl:grid-cols-2 @3xl:content-start @3xl:items-start @3xl:gap-8 @3xl:py-8">
+        <div className="mb-4 flex flex-col items-center text-center print:hidden @3xl:mb-0">
           <span
             className={`flex h-14 w-14 items-center justify-center rounded-2xl ${
               venta.pendienteSync ? "bg-warning-bg text-warning-text" : "bg-primary-50 text-primary-700"
@@ -129,6 +181,16 @@ export default function PantallaRecibo({
               ? "Se sube sola cuando vuelva la conexión. El número lo pone el sistema al subirla."
               : (venta.comprobante ?? `#${venta.id}`)}
           </p>
+          {ancha && (
+            <div className="mt-6 w-full max-w-sm space-y-3">
+              {nueva("w-full")}
+              <div className="flex flex-wrap justify-center gap-2">
+                {imprimirYCompartir}
+                {historial}
+              </div>
+              {avisoCompartir && <p className="text-[13px] text-texto-2">{avisoCompartir}</p>}
+            </div>
+          )}
         </div>
 
         {/* El ticket: el `id` lo hace lo ÚNICO visible al imprimir (index.css). */}
@@ -164,7 +226,12 @@ export default function PantallaRecibo({
 
           <div className="mt-2 border-t border-dashed border-borde pt-1">
             {detalles.map((d, i) => (
-              <LineaTicket key={i} linea={d} mostrarConsumo={mostrarConsumo} />
+              <LineaTicket
+                key={i}
+                linea={d}
+                mostrarConsumo={mostrarConsumo}
+                cuota={cuotaDeLinea(venta, d.cuotaId)}
+              />
             ))}
           </div>
 
@@ -224,7 +291,8 @@ export default function PantallaRecibo({
               </div>
             )}
             {cambio > 0 && (
-              <div className="flex justify-between font-bold text-texto">
+              // Con `gap`: en el ticket de 320 px se leía "Cambio entregadoBs 27,00".
+              <div className="flex justify-between gap-2 font-bold text-texto">
                 <dt>Cambio entregado</dt>
                 <dd>{fmtMoney(cambio)}</dd>
               </div>
@@ -255,6 +323,16 @@ export default function PantallaRecibo({
                 </div>
               ))}
             </dl>
+          )}
+
+          {/* Educación (E10): cada cuota cobrada con lo que queda y, al pie, el
+              saldo del curso después de este pago y la próxima cuota. Sólo si
+              la venta cobró cuotas: el ticket de siempre no cambia. */}
+          {venta.cuotas && venta.cuotas.length > 0 && (
+            <CuotasRecibo cuotas={venta.cuotas} pagador={venta.pagadorCuotas ?? null} />
+          )}
+          {venta.cuotas && venta.cuotas.length > 0 && (
+            <EnlaceEstadoCuenta enlacePago={enlaceDeCuotas(venta.cuotas)} inscripcionId={venta.inscripcionCuotas} />
           )}
 
           {venta.credito && (
@@ -289,37 +367,21 @@ export default function PantallaRecibo({
         </article>
       </div>
 
-      {avisoCompartir && (
+      {!ancha && avisoCompartir && (
         <p className="border-t border-borde bg-muted px-4 py-2 text-center text-[13px] text-texto-2 print:hidden">
           {avisoCompartir}
         </p>
       )}
 
-      <div className="flex gap-2 border-t border-borde bg-white p-4 print:hidden">
-        {incluye("recibo_pdf") && (
-          <>
-            <Boton variante="ghost" icono="printer" onClick={() => window.print()}>
-              Imprimir
-            </Boton>
-            {/* Siempre visible: si el equipo no sabe compartir archivos, la
-                imagen se descarga, que en un escritorio es lo más parecido. */}
-            <Boton
-              variante="ghost"
-              icono="arrowUpRight"
-              onClick={compartir}
-              disabled={compartiendo}
-            >
-              {compartiendo ? "Generando…" : "Compartir"}
-            </Boton>
-          </>
-        )}
-        <Boton variante="ghost" onClick={onHistorial}>
-          Historial
-        </Boton>
-        <Boton icono="plus" onClick={onNuevaVenta} className="flex-1">
-          Nueva venta
-        </Boton>
-      </div>
+      {!ancha && (
+        // Con `flex-wrap`: a 390 px, con Imprimir y Compartir, "Nueva venta"
+        // quedaba cortado afuera de la pantalla. Ahora baja a su renglón.
+        <div className="flex flex-wrap gap-2 border-t border-borde bg-white py-4 print:hidden px-[max(1rem,calc(50%-16rem+1rem))]">
+          {imprimirYCompartir}
+          {historial}
+          {nueva("min-w-[10rem] flex-1")}
+        </div>
+      )}
     </div>
   );
 }
@@ -347,15 +409,22 @@ function FilaDato({ etiqueta, valor }: { etiqueta: string; valor: string }) {
 function LineaTicket({
   linea,
   mostrarConsumo,
+  cuota,
 }: {
   linea: NonNullable<Venta["detalles"]>[number];
   mostrarConsumo: boolean;
+  /**
+   * Educación: la cuota que cobró. Con los módulos que cubre, el renglón dice
+   * «Barbería · M2 Degradados» (D6); si no, el concepto delante del producto
+   * («Cuota 2/2 · Barbería»).
+   */
+  cuota?: { concepto: string; modulos?: string };
 }) {
   const enMesa = linea.consumo === "MESA";
   return (
     <div className="py-1 text-[13px]">
       <div className="flex items-start gap-2">
-        <p className="min-w-0 flex-1 font-semibold text-texto">{linea.producto}</p>
+        <p className="min-w-0 flex-1 font-semibold text-texto">{cuota ? (cuota.modulos ? `${linea.producto} · ${cuota.modulos}` : `${cuota.concepto} · ${linea.producto}`) : linea.producto}</p>
         {mostrarConsumo && (
           <span
             className={`shrink-0 font-bold ${enMesa ? "text-primary-700" : "text-texto-3"}`}
@@ -387,6 +456,58 @@ function LineaTicket({
           {linea.paquete.texto}
         </p>
       )}
+    </div>
+  );
+}
+
+/** La cuota que cobró un renglón, con los módulos que cubre (D6); `undefined` si no es de una cuota. */
+function cuotaDeLinea(venta: Venta, cuotaId: number | null | undefined): { concepto: string; modulos?: string } | undefined {
+  const q = cuotaId != null ? venta.cuotas?.find((x) => x.cuotaId === cuotaId) : undefined;
+  return q ? { concepto: q.concepto, modulos: modulosDeCuotaVenta(q) } : undefined;
+}
+
+/**
+ * Las cuotas del recibo. Todas las de una venta son de una inscripción (el
+ * POS cobra las de un alumno por vez): el saldo del curso y la próxima cuota
+ * son los de la última, que es como quedó la inscripción después de la venta.
+ */
+function CuotasRecibo({
+  cuotas,
+  pagador,
+}: {
+  cuotas: NonNullable<Venta["cuotas"]>;
+  /** Quién pagó, cuando no fue el alumno. */
+  pagador: Venta["pagadorCuotas"] | null;
+}) {
+  const ultima = cuotas[cuotas.length - 1];
+  return (
+    <div className="mt-2 border-t border-dashed border-borde pt-2 text-sm" aria-label="Cuotas">
+      <p className="text-xs font-bold tracking-wide text-texto">CUOTAS · {cuotas[0].alumno.toUpperCase()}</p>
+      {pagador && <p className="text-xs text-texto-2">Pagó: {pagador.nombre} (tutor)</p>}
+      <dl className="mt-1 space-y-1">
+        {cuotas.map((q) => (
+          <div key={q.cuotaId} className="text-texto-2">
+            <div className="flex justify-between gap-2">
+              <dt>{modulosDeCuotaVenta(q) ? `${q.concepto} · ${modulosDeCuotaVenta(q)}` : q.concepto}</dt>
+              <dd className="shrink-0 font-bold text-texto">{fmtMoney(q.cobrado)}</dd>
+            </div>
+            <p className="text-right text-xs">{q.saldo > 0 ? `Queda ${fmtMoney(q.saldo)}` : "Pagada"}</p>
+          </div>
+        ))}
+        {ultima.saldoCurso != null && (
+          <div className="flex justify-between font-bold text-texto">
+            <dt>SALDO DEL CURSO</dt>
+            <dd>{fmtMoney(ultima.saldoCurso)}</dd>
+          </div>
+        )}
+        <p className="text-xs text-texto-3">
+          {ultima.saldoCurso === 0
+            ? "Curso pagado por completo."
+            : ultima.proximaCuota
+              ? `Próxima cuota: ${fmtMoney(ultima.proximaCuota.monto)} el ${fmtFecha(ultima.proximaCuota.vence)}`
+              : ""}
+        </p>
+      </dl>
     </div>
   );
 }

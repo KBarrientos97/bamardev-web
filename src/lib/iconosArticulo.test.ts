@@ -111,7 +111,7 @@ describe("iconosArticulo", () => {
     // Un billar que ya eligió un dado ve la sección de ese ícono.
     expect(categoriaInicial("dados", "BILLAR")).toBe("juegos");
     // Llave desconocida (de una versión más nueva) cuenta como sin ícono.
-    expect(categoriaInicial("no_existe", "FARMACIA")).toBe("farmacia");
+    expect(categoriaInicial("no_existe", "ACADEMIA")).toBe("educacion");
     expect(categoriaInicial(null, undefined)).toBe("polleria");
     expect(categoriaInicial(undefined, "OTRO")).toBe("polleria");
   });

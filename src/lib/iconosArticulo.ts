@@ -62,6 +62,7 @@ export const CATEGORIA_DEL_RUBRO: Record<Rubro, ClaveCategoriaIcono> = {
   // Lo que se carga como artículo en un billar es lo que se vende en el bar
   // (cervezas, energizantes, cigarros), no el juego: abre en esa sección.
   BILLAR: "licoreria",
+  ACADEMIA: "educacion",
 };
 
 /** La sección con la que abre el selector; sin rubro conocido, la primera. */

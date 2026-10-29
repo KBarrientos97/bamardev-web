@@ -8,6 +8,8 @@ import {
 } from "react-router-dom";
 import AtajaErrores from "./components/AtajaErrores";
 import Layout from "./components/Layout";
+import { RUTA_CAJA, RUTA_COBRAR, RUTA_SEDES } from "./lib/academia/vista";
+import { ConPestanasConfig, InicioConfig } from "./pages/academia/config/ConfigAcademia";
 import { RUTA_AGENDA_PRONTO, rutaInicial, veReportes, veSoloSuAgenda, type Seccion } from "./lib/permisos";
 import { esBelleza, esFarmacia } from "./lib/rubro";
 import AgendaPronto from "./pages/AgendaPronto";
@@ -50,6 +52,8 @@ import PanelMesero from "./pages/salon/PanelMesero";
 import ConfigAgenda from "./pages/agenda/config/ConfigAgenda";
 import ConfigNegocio from "./pages/agenda/config/ConfigNegocio";
 import { AuthProvider, useAuth } from "./store/AuthContext";
+import { useNavegarDesdePush } from "./lib/push/useNavegarDesdePush";
+import { ActualizarAlNavegar } from "./lib/pwa/actualizarAlNavegar";
 
 /*
  * La app del negocio: sesión, login, menú y todas sus pantallas. Se baja
@@ -59,6 +63,8 @@ import { AuthProvider, useAuth } from "./store/AuthContext";
 
 // Página del negocio: el editor y los enlaces cortos se bajan sólo si se usan.
 const QrDeCobro = lazy(() => import("./pages/QrDeCobro"));
+// De la cuenta, para cualquiera: trae Firebase sólo cuando se activa.
+const Notificaciones = lazy(() => import("./pages/Notificaciones"));
 const MiPagina = lazy(() => import("./pages/pagina/MiPagina"));
 const MisEnlaces = lazy(() => import("./pages/pagina/MisEnlaces"));
 const MiAsistente = lazy(() => import("./pages/pagina/MiAsistente"));
@@ -75,6 +81,54 @@ const PantallaSalonBillar = lazy(() => import("./pages/billar/PantallaSalon"));
 const MesasBillar = lazy(() => import("./pages/billar/admin/MesasBillar"));
 // Reportes: veintipico de pantallas con sus gráficos; se bajan al entrar.
 const Reportes = lazy(() => import("./pages/reportes/Reportes"));
+// Educación (PLAN-ACADEMIAS-TECNICO §8): sólo se bajan en un instituto.
+const GruposAcademia = lazy(() => import("./pages/academia/Grupos"));
+const CalendarioAcademia = lazy(() => import("./pages/academia/Calendario"));
+const MisClases = lazy(() => import("./pages/academia/docente/MisClases"));
+const PasarLista = lazy(() => import("./pages/academia/docente/PasarLista"));
+const NotasAcademia = lazy(() => import("./pages/academia/Notas"));
+const PlanillaMes = lazy(() => import("./pages/academia/planilla/PlanillaMes"));
+const PlanillaDocente = lazy(() => import("./pages/academia/planilla/PlanillaDocente"));
+const ControlAcademia = lazy(() => import("./pages/academia/control/Control"));
+const ReportesAcademia = lazy(() => import("./pages/academia/control/Reportes"));
+const GrupoAcademia = lazy(() => import("./pages/academia/Grupo"));
+const AlumnosAcademia = lazy(() => import("./pages/academia/Alumnos"));
+const FichaAlumno = lazy(() => import("./pages/academia/FichaAlumno"));
+const Preinscripciones = lazy(() => import("./pages/academia/Preinscripciones"));
+const CobranzaAcademia = lazy(() => import("./pages/academia/Cobranza"));
+const CobrarAcademia = lazy(() => import("./pages/academia/Cobrar"));
+const CarrerasAcademia = lazy(() => import("./pages/academia/config/Carreras"));
+const AjustesAcademia = lazy(() => import("./pages/academia/config/AjustesAcademia"));
+const SedesAcademia = lazy(() => import("./pages/academia/config/Sedes").then((m) => ({ default: m.SedesConfig })));
+
+/** Una pantalla de la academia: con su sección y bajada aparte. */
+function Academia({ seccion, children }: { seccion: Seccion; children: React.ReactNode }) {
+  return (
+    <Protegida seccion={seccion}>
+      <Suspense fallback={null}>{children}</Suspense>
+    </Protegida>
+  );
+}
+
+/**
+ * Almacenes es la pantalla de stock de los demás rubros. En el instituto las
+ * sedes tienen la suya, en Configuración: un enlace viejo a Almacenes lleva ahí.
+ */
+function AlmacenesORedirige() {
+  const { rubro } = useAuth();
+  if (rubro === "ACADEMIA") return <Navigate to={RUTA_SEDES} replace />;
+  return (
+    <Protegida seccion="almacenes">
+      <Almacenes />
+    </Protegida>
+  );
+}
+
+/** Una ruta que se mudó: lleva a la nueva con lo que traía (`?inscripcion=…`). */
+function RedirigeConBusqueda({ a }: { a: string }) {
+  const { search } = useLocation();
+  return <Navigate to={`${a}${search}`} replace />;
+}
 
 /**
  * Reportes es la única pantalla de reportes (13-oct-2026) y entra quien ve al
@@ -236,6 +290,8 @@ function Rutas() {
   const { token, permisosListos } = useAuth();
   const navigate = useNavigate();
   const teniaSesion = useRef(token !== null);
+  // Tocar una notificación con la app abierta la lleva a la pantalla del aviso.
+  useNavegarDesdePush();
 
   // Al cerrar sesión la dirección vuelve a "/". Antes quedaba la del que
   // salió: el mesero cerraba sesión en /salon, entraba el administrador y
@@ -294,9 +350,30 @@ function Rutas() {
       <Route element={<LayoutSegunRubro />}>
         <Route path="/" element={<Inicio />} />
         <Route path="/sin-acceso" element={<SinAcceso />} />
+        {/* Sin `Protegida`: son los avisos de quien está sentado, y la lista
+            ya viene filtrada por el backend según su rol (PLAN-PUSH §10.2). */}
+        <Route
+          path="/notificaciones"
+          element={
+            <Suspense fallback={null}>
+              <Notificaciones />
+            </Suspense>
+          }
+        />
 
         <Route
           path="/pos"
+          element={
+            <Protegida seccion="pos">
+              <Pos />
+            </Protegida>
+          }
+        />
+        {/* "Caja" del instituto: el mismo POS en la pantalla del turno. Mismo
+            árbol que /pos, así React no lo vuelve a montar al pasar de una a
+            otra y el carrito sigue ahí. */}
+        <Route
+          path={RUTA_CAJA}
           element={
             <Protegida seccion="pos">
               <Pos />
@@ -470,14 +547,7 @@ function Rutas() {
             </Protegida>
           }
         />
-        <Route
-          path="/inventario/almacenes"
-          element={
-            <Protegida seccion="almacenes">
-              <Almacenes />
-            </Protegida>
-          }
-        />
+        <Route path="/inventario/almacenes" element={<AlmacenesORedirige />} />
         <Route
           path="/inventario/proveedores"
           element={
@@ -750,6 +820,46 @@ function Rutas() {
           }
         />
 
+        {/* Educación, ronda 1 (PLAN-ACADEMIAS-TECNICO §8): sólo con la
+            feature `academia` (y `preinscripcion_online` para la bandeja). */}
+        {/* "Hoy" salió (26-oct): sus clases del día viven arriba del Calendario. */}
+        <Route path="/academia/hoy" element={<Navigate to="/academia/calendario" replace />} />
+        {/* Ronda 2: el calendario reemplaza a la lista de grupos (que queda
+            como "Ver como lista"); la ruta vieja lleva al calendario. */}
+        <Route path="/academia/calendario" element={<Academia seccion="academia_calendario"><CalendarioAcademia /></Academia>} />
+        <Route path="/academia/calendario/lista" element={<Academia seccion="academia_calendario"><GruposAcademia /></Academia>} />
+        <Route path="/academia/grupos" element={<Navigate to="/academia/calendario" replace />} />
+        <Route path="/academia/grupos/:id" element={<Academia seccion="academia_grupos"><GrupoAcademia /></Academia>} />
+        {/* La lista y las notas desde el grupo (administración y recepción). */}
+        <Route path="/academia/grupos/:id/lista" element={<Academia seccion="academia_grupos"><PasarLista /></Academia>} />
+        <Route path="/academia/grupos/:id/notas" element={<Academia seccion="academia_grupos"><NotasAcademia /></Academia>} />
+        {/* Lo del docente (alcance PROPIO). */}
+        <Route path="/academia/mis-clases" element={<Academia seccion="academia_mis_clases"><MisClases /></Academia>} />
+        <Route path="/academia/lista" element={<Academia seccion="academia_lista"><PasarLista /></Academia>} />
+        <Route path="/academia/notas" element={<Academia seccion="academia_notas"><NotasAcademia /></Academia>} />
+        {/* Control (el dueño). */}
+        <Route path="/academia/planilla" element={<Academia seccion="academia_planilla"><ConPestanasConfig><PlanillaMes /></ConPestanasConfig></Academia>} />
+        <Route path="/academia/planilla/:id" element={<Academia seccion="academia_planilla"><PlanillaDocente /></Academia>} />
+        <Route path="/academia/control" element={<Academia seccion="academia_control"><ControlAcademia /></Academia>} />
+        <Route path="/academia/reportes" element={<Academia seccion="academia_reportes"><ReportesAcademia /></Academia>} />
+        <Route path="/academia/alumnos" element={<Academia seccion="academia_alumnos"><AlumnosAcademia /></Academia>} />
+        <Route path="/academia/alumnos/:id" element={<Academia seccion="academia_alumnos"><FichaAlumno /></Academia>} />
+        <Route
+          path="/academia/preinscripciones"
+          element={<Academia seccion="academia_preinscripciones"><Preinscripciones /></Academia>}
+        />
+        <Route path="/academia/cobranza" element={<Academia seccion="academia_cobranza"><CobranzaAcademia /></Academia>} />
+        <Route path={RUTA_COBRAR} element={<Academia seccion="academia_cobrar"><CobrarAcademia /></Academia>} />
+        {/* La ruta de antes de unir Cobrar con Cobranza (26-oct): un enlace guardado sigue andando. */}
+        <Route path="/academia/cobrar" element={<RedirigeConBusqueda a={RUTA_COBRAR} />} />
+        <Route path="/configuracion/carreras" element={<Academia seccion="academia_carreras"><ConPestanasConfig><CarrerasAcademia /></ConPestanasConfig></Academia>} />
+        <Route path="/configuracion/academia" element={<Academia seccion="academia_ajustes"><ConPestanasConfig><AjustesAcademia /></ConPestanasConfig></Academia>} />
+        <Route path={RUTA_SEDES} element={<Academia seccion="academia_ajustes"><ConPestanasConfig><SedesAcademia /></ConPestanasConfig></Academia>} />
+        {/* Las aulas dejaron de ser una pestaña (viven en cada sede): el enlace ya compartido sigue andando. */}
+        <Route path="/configuracion/aulas" element={<RedirigeConBusqueda a={RUTA_SEDES} />} />
+        {/* Configuración (26-oct): una entrada en el menú, con una pestaña por pantalla. */}
+        <Route path="/academia/configuracion" element={<InicioConfig />} />
+
         {/* Cualquier ruta desconocida vuelve al inicio del rol. */}
         <Route path="*" element={<Inicio />} />
       </Route>
@@ -770,6 +880,9 @@ function SinPantallaEnBlanco({ children }: { children: React.ReactNode }) {
 export default function AppConSesion() {
   return (
     <AuthProvider>
+      {/* La versión nueva de un deploy, al pasar a otra pantalla (todas: también
+          las que no tienen el menú, como el salón del mesero). */}
+      <ActualizarAlNavegar />
       <SinPantallaEnBlanco>
         <Rutas />
       </SinPantallaEnBlanco>

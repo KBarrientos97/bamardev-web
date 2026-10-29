@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Chips } from "../../components/filtros";
 import { Boton, ErrorMsg, Input, Modal } from "../../components/ui";
 
@@ -14,6 +14,9 @@ export default function PedirMotivo({
   motivos,
   etiquetaOk,
   peligroso,
+  faltaMotivo = "Elegí el motivo: queda guardado en la cita.",
+  validar,
+  children,
   onCancelar,
   onConfirmar,
 }: {
@@ -22,6 +25,12 @@ export default function PedirMotivo({
   motivos: readonly string[];
   etiquetaOk: string;
   peligroso?: boolean;
+  /** El aviso si no se eligió motivo: dice dónde queda (la cita, la ficha…). */
+  faltaMotivo?: string;
+  /** Lo que pida quien lo usa además del motivo; devuelve el error o null. */
+  validar?: () => string | null;
+  /** Algo más para elegir arriba de los motivos (por ejemplo, cuáles fotos). */
+  children?: ReactNode;
   onCancelar: () => void;
   onConfirmar: (motivo: string) => Promise<void> | void;
 }) {
@@ -31,7 +40,9 @@ export default function PedirMotivo({
   const [enviando, setEnviando] = useState(false);
 
   async function ok() {
-    if (!motivo) return setError("Elegí el motivo: queda guardado en la cita.");
+    const otroError = validar?.();
+    if (otroError) return setError(otroError);
+    if (!motivo) return setError(faltaMotivo);
     if (motivo === "Otro" && detalle.trim().length < 3) return setError("Contá en pocas palabras qué pasó.");
     const texto = motivo === "Otro" ? detalle.trim() : [motivo, detalle.trim()].filter(Boolean).join(" · ");
     setEnviando(true);
@@ -62,6 +73,7 @@ export default function PedirMotivo({
     >
       <div className="space-y-3">
         <p className="text-[13px] text-texto-2">{texto}</p>
+        {children}
         <Chips valor={motivo} opciones={motivos.map((m) => [m, m] as const)} onChange={setMotivo} />
         <Input
           value={detalle}

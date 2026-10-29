@@ -139,6 +139,20 @@ export default function Movimientos() {
   }, [lista, q, fecha, filtroTipo, filtroEstado, filtroOrigen]);
 
   const pendientes = lista.filter((m) => m.estado === "PENDIENTE").length;
+  // La cabecera cuenta lo que se ve en la lista (con la fecha y los filtros
+  // puestos). Si contara todo, decir "1 registrado" con "Hoy no hay
+  // movimientos" debajo se contradice en la misma pantalla.
+  const pendientesVisibles = filtrados.filter((m) => m.estado === "PENDIENTE").length;
+
+  // Lo único que esconde todo es que hoy no se movió nada: decir "probá con
+  // otro texto" cuando nadie escribió nada no explica por qué la lista está
+  // vacía con movimientos en la cabecera.
+  const soloFaltaHoy =
+    !!fecha &&
+    !q.trim() &&
+    filtroTipo === "todos" &&
+    filtroEstado === "todos" &&
+    filtroOrigen === "todos";
 
   // Sin el circuito de aprobación los movimientos se aprueban al crearse, así
   // que filtrar por "pendientes" no devolvería nada. Se deja el chip si hay
@@ -165,6 +179,9 @@ export default function Movimientos() {
     [movimientos.datos, filtroTipo],
   );
 
+  // Singular también con pendientes: «1 registrado · 1 sin aprobar», no «1 registrados».
+  const textoRegistrados = `${filtrados.length} ${filtrados.length === 1 ? "registrado" : "registrados"}`;
+
   return (
     <div className="mx-auto max-w-6xl space-y-4 p-5">
       <EncabezadoPagina
@@ -173,9 +190,9 @@ export default function Movimientos() {
           // Antes de la primera respuesta no hay "0 registrados": no se sabe.
           !movimientos.datos && movimientos.cargando
             ? "Cargando…"
-            : pendientes
-              ? `${lista.length} registrados · ${pendientes} sin aprobar`
-              : `${lista.length} registrados`
+            : pendientesVisibles
+              ? `${textoRegistrados} · ${pendientesVisibles} sin aprobar`
+              : textoRegistrados
         }
         accion={
           <Boton icono="plus" onClick={() => setCreando(true)}>
@@ -229,17 +246,31 @@ export default function Movimientos() {
         <div className="card">
           <Vacio
             icono="swap"
-            titulo={lista.length ? "Sin resultados" : "Todavía no hay movimientos"}
+            titulo={
+              !lista.length
+                ? "Todavía no hay movimientos"
+                : soloFaltaHoy
+                  ? "Hoy no hay movimientos"
+                  : "Sin resultados"
+            }
             texto={
-              lista.length
-                ? "Probá con otro texto o quitá los filtros."
-                : "Registrá la primera entrada o salida de stock."
+              !lista.length
+                ? "Registrá la primera entrada o salida de stock."
+                : soloFaltaHoy
+                  ? "Los de otros días están en «Ver todo»."
+                  : "Probá con otro texto o quitá los filtros."
             }
             accion={
-              !lista.length && (
+              !lista.length ? (
                 <Boton icono="plus" onClick={() => setCreando(true)}>
                   Nuevo movimiento
                 </Boton>
+              ) : (
+                soloFaltaHoy && (
+                  <Boton variante="soft" onClick={() => setFecha("")}>
+                    Ver todo
+                  </Boton>
+                )
               )
             }
           />

@@ -198,6 +198,24 @@ export const TEMAS: Record<string, Tema> = {
     barraTexto2: '#E6C8D3',
     marca: ['#B5285A', '#9A224D'],
   },
+  // INDIGO: la paleta de la vertical Educación (contrato de la ronda 1). Copia
+  // fija como las de belleza, por si el backend todavía no manda el tema.
+  // Blanco sobre el botón 8,3:1 y sobre la barra 10,9:1.
+  ACADEMIA: {
+    primary: '#3B42A9',
+    primary600: '#333A96',
+    primary700: '#282D73',
+    primary50: '#EEEFFA',
+    primary100: '#DADCF3',
+    primary200: '#B9BDE9',
+    boton: '#3B42A9',
+    botonHover: '#333A96',
+    botonActivo: '#2E3485',
+    barra: '#2E3485',
+    barraActivo: '#464C97',
+    barraTexto2: '#CBCCE0',
+    marca: ['#3B42A9', '#2E3485'],
+  },
   // NEGRO: pedido del dueño (11-oct-2026), "toda la interfaz" en negro. Copia
   // fija de la fila que siembra el backend (migración 20261028110000), como
   // las de belleza. Blanco sobre el botón 17,7:1 y sobre la barra 19,9:1.

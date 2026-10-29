@@ -529,6 +529,14 @@ const paths: Record<string, ReactNode> = {
       <path d="M8 11H6a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1h-2" />
     </>
   ),
+  /** El birrete: grupos y carreras de un instituto (perfil ACADEMIA). */
+  birrete: (
+    <>
+      <path d="M22 9 12 4 2 9l10 5 10-5Z" />
+      <path d="M6 11v5c0 1.7 2.7 3 6 3s6-1.3 6-3v-5" />
+      <path d="M22 9v6" />
+    </>
+  ),
   /** "Agregar a inicio" de iOS: el cuadro con el más. */
   masCuadro: (
     <>
@@ -542,6 +550,13 @@ const paths: Record<string, ReactNode> = {
       <circle cx="12" cy="12" r="10" />
       <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
       <line x1="12" y1="17" x2="12.01" y2="17" />
+    </>
+  ),
+  // Girar una foto (el visor de fotos): una flecha que da la vuelta.
+  girar: (
+    <>
+      <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+      <polyline points="21 3 21 9 15 9" />
     </>
   ),
   /** El tenedor y el cuchillo: la cena del personal del billar. */

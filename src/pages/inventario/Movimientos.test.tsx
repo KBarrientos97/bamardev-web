@@ -150,6 +150,63 @@ describe("Nuevo movimiento: sólo entrada y salida", () => {
   });
 });
 
+describe("La lista arranca en hoy", () => {
+  it("si hoy no hubo nada, lo dice y ofrece ver todo en vez de «probá con otro texto»", async () => {
+    vi.mocked(api.getMovimientos).mockResolvedValue([
+      movimiento(1, { fecha: "2026-10-12T15:00:00.000Z" }),
+    ]);
+    render(<Movimientos />);
+    expect(await screen.findByText("Hoy no hay movimientos")).toBeInTheDocument();
+    expect(screen.queryByText("Probá con otro texto o quitá los filtros.")).not.toBeInTheDocument();
+    // La cabecera cuenta lo que se ve: hoy no hay nada, así que dice 0 (no «1 registrado»).
+    expect(screen.getByText("0 registrados")).toBeInTheDocument();
+    const verTodo = screen.getAllByRole("button", { name: "Ver todo" });
+    fireEvent.click(verTodo[verTodo.length - 1]);
+    expect(await screen.findByText("MOV-1")).toBeInTheDocument();
+    expect(screen.getByText("1 registrado")).toBeInTheDocument();
+  });
+
+  it("con un solo movimiento la cabecera dice «1 registrado», no «1 registrados»", async () => {
+    render(<Movimientos />);
+    await screen.findByText("MOV-1");
+    expect(screen.getByText("1 registrado")).toBeInTheDocument();
+    expect(screen.queryByText("1 registrados")).not.toBeInTheDocument();
+  });
+
+  it("la cabecera no suma los movimientos de otros días mientras la lista está en hoy", async () => {
+    vi.mocked(api.getMovimientos).mockResolvedValue([
+      movimiento(1),
+      movimiento(2, { fecha: "2026-10-12T15:00:00.000Z", estado: "PENDIENTE" }),
+    ]);
+    render(<Movimientos />);
+    await screen.findByText("MOV-1");
+    expect(screen.getByText("1 registrado")).toBeInTheDocument();
+    expect(screen.queryByText(/sin aprobar/)).not.toBeInTheDocument();
+    const verTodo = screen.getAllByRole("button", { name: "Ver todo" });
+    fireEvent.click(verTodo[verTodo.length - 1]);
+    expect(await screen.findByText("2 registrados · 1 sin aprobar")).toBeInTheDocument();
+  });
+
+  it("con un solo movimiento de hoy y pendiente, dice «1 registrado · 1 sin aprobar»", async () => {
+    vi.mocked(api.getMovimientos).mockResolvedValue([
+      movimiento(1, { estado: "PENDIENTE" }),
+    ]);
+    render(<Movimientos />);
+    await screen.findByText("MOV-1");
+    expect(screen.getByText("1 registrado · 1 sin aprobar")).toBeInTheDocument();
+    expect(screen.queryByText(/registrados/)).not.toBeInTheDocument();
+  });
+
+  it("con un texto escrito, sigue diciendo «Sin resultados»", async () => {
+    render(<Movimientos />);
+    await screen.findByText("MOV-1");
+    fireEvent.change(screen.getByPlaceholderText("Buscar por comprobante o descripción"), {
+      target: { value: "no existe" },
+    });
+    expect(await screen.findByText("Sin resultados")).toBeInTheDocument();
+  });
+});
+
 describe("Agregar artículo buscando", () => {
   it("cada palabra filtra por separado y sin tildes", async () => {
     const buscador = await abrirNuevo();
@@ -306,10 +363,12 @@ describe("Agregar artículo a un movimiento pendiente", () => {
     fireEvent.change(within(dialogo).getByRole("combobox", { name: "Buscar artículo" }), {
       target: { value: "simba" },
     });
-    fireEvent.mouseDown(within(dialogo).getByText("Simba 2L"));
-    fireEvent.click(within(dialogo).getByRole("button", { name: "Cambiar Simba 2L" }));
+    // El resultado llega tras la espera del buscador: con la suite en paralelo
+    // a veces todavía no estaba y el `getByText` fallaba.
+    fireEvent.mouseDown(await within(dialogo).findByText("Simba 2L"));
+    fireEvent.click(await within(dialogo).findByRole("button", { name: "Cambiar Simba 2L" }));
 
-    expect(within(dialogo).getByRole("combobox", { name: "Buscar artículo" })).toBeInTheDocument();
+    expect(await within(dialogo).findByRole("combobox", { name: "Buscar artículo" })).toBeInTheDocument();
   });
 });
 

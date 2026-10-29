@@ -28,6 +28,9 @@ import type { Almacen } from "../types";
  *    entra: sus sucursales se cargan desde la agenda y no dependen de esa
  *    feature (una peluquería con dos locales y sólo `agenda` es un caso real).
  *    Igual en la app (`FiltroSucursal`).
+ *    Una academia tampoco: cada grupo es de una sede (`Grupo.almacenId`) y el
+ *    calendario, los cobros y los cercos se arman por sede, con o sin esa
+ *    feature (PLAN-ACADEMIAS §10).
  *
  * @param incluirDepositos por defecto false, porque el filtro se llama
  * "sucursal" y un depósito no vende. Inventario **sí** los incluye: la
@@ -50,7 +53,9 @@ export function useSucursales({ incluirDepositos = false } = {}) {
   // Regla 4. Falla abierto como el resto: una sesión sin features sigue viendo
   // el filtro. El rubro es el mismo dato que `useAuth().rubro`.
   const unLocal =
-    !esBelleza(negocio?.tipoNegocio) && !tieneFeature(negocio?.features, "multi_almacen");
+    !esBelleza(negocio?.tipoNegocio) &&
+    negocio?.tipoNegocio !== "ACADEMIA" &&
+    !tieneFeature(negocio?.features, "multi_almacen");
   const elegir = esDeOrganizacion && !unLocal && sucursales.length > 1;
 
   /** Opciones para `<Chips>`: "Todas" primero y después cada local. */

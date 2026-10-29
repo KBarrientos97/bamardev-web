@@ -4,6 +4,7 @@
  */
 
 import type { Tramo } from "./horario";
+import type { CursoPublico } from "../academia/tipos";
 
 /** Un tramo del horario de una sucursal (la regla, en `horario.ts`). */
 export type { Tramo };
@@ -228,6 +229,12 @@ export interface PaginaPublica {
   pedidos?: boolean;
   /** Gift cards que se piden desde la página (IDEAS/6 #6), o null. */
   regalos?: RegalosPublicos | null;
+  /**
+   * La sección Cursos de un instituto (P1): null si `mostrarCursos` está
+   * apagado o falta la feature `preinscripcion_online`. Opcional: un backend
+   * anterior no lo manda.
+   */
+  cursos?: CursoPublico[] | null;
   destacado: EnlacePublico | null;
   redes: EnlacePublico[];
   botones: EnlacePublico[];
@@ -302,6 +309,8 @@ export interface AjustesPagina {
   pedidosWhatsapp?: boolean;
   /** Gift cards desde la página (IDEAS/6 #6). Opcional por lo mismo. */
   regalos?: ConfigRegalos;
+  /** La sección Cursos de un instituto (P1). Opcional por lo mismo. */
+  mostrarCursos?: boolean;
   actualizadoEn: string;
 }
 
@@ -432,6 +441,7 @@ export type CambiosPagina = Partial<
     | "catalogoTitulo"
     | "catalogoModo"
     | "pedidosWhatsapp"
+    | "mostrarCursos"
   >
 > & {
   regalosActivo?: boolean;

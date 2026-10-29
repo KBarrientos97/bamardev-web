@@ -79,6 +79,13 @@ describe("useSucursales", () => {
     expect((await abrir()).elegir).toBe(true);
   });
 
+  it("en una academia las sedes no dependen de varios almacenes", async () => {
+    // Cada grupo es de una sede: el calendario y los cobros se arman por sede.
+    sesion.tipoNegocio = "ACADEMIA";
+    sesion.features = ["academia"];
+    expect((await abrir()).elegir).toBe(true);
+  });
+
   it("una sesión sin features sigue viendo el filtro", async () => {
     // Falla abierto, como el resto de los permisos: el backend valida igual.
     expect((await abrir()).elegir).toBe(true);

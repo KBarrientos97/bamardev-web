@@ -32,6 +32,7 @@ export default function PantallaVenta({
   descuentos,
   bloqueoCobro,
   profesionales,
+  lineasExtra,
 }: {
   productos: Producto[];
   categorias: Categoria[];
@@ -58,6 +59,13 @@ export default function PantallaVenta({
    * carrito es el de siempre.
    */
   profesionales?: ProfesionalesDelCarrito;
+  /**
+   * Renglones que no son productos del catálogo y van arriba en el carrito:
+   * las cuotas de un instituto (E9), que viajan aparte porque comparten el
+   * producto de su carrera. Su monto ya viene sumado en `carrito`. Sin esto
+   * —todos los demás rubros— el carrito es el de siempre.
+   */
+  lineasExtra?: React.ReactNode;
 }) {
   const { negocio, usuario, rubro } = useAuth();
   const [q, setQ] = useState("");
@@ -147,6 +155,7 @@ export default function PantallaVenta({
       descuentos={descuentos}
       bloqueoCobro={bloqueoCobro}
       profesionales={profesionales}
+      lineasExtra={lineasExtra}
       onCobrar={() => {
         setCarritoAbierto(false);
         onCobrar();
@@ -242,7 +251,7 @@ export default function PantallaVenta({
           Es una píldora centrada y no una barra de lado a lado: la barra
           ocupaba el ancho entero aunque hubiera un solo ítem, y tapaba la
           última fila de productos. Sólo aparece cuando hay algo cargado. */}
-      {carrito.lineas.length > 0 && (
+      {(carrito.lineas.length > 0 || !!lineasExtra) && (
         <button
           onClick={() => setCarritoAbierto(true)}
           className="fixed bottom-4 left-1/2 z-30 flex h-14 -translate-x-1/2 items-center gap-3 rounded-full bg-primary px-6 text-white shadow-xl shadow-primary/30 lg:hidden"
@@ -433,6 +442,7 @@ function PanelCarrito({
   descuentos,
   bloqueoCobro,
   profesionales,
+  lineasExtra,
   onCobrar,
   onCerrar,
 }: {
@@ -441,6 +451,7 @@ function PanelCarrito({
   descuentos?: ExtraDescuentos;
   bloqueoCobro?: string | null;
   profesionales?: ProfesionalesDelCarrito;
+  lineasExtra?: React.ReactNode;
   onCobrar: () => void;
   onCerrar: () => void;
 }) {
@@ -463,7 +474,8 @@ function PanelCarrito({
         (l) => pideConfirmacion(l.producto) && !venta.recetas.has(l.producto.id),
       )
     : undefined;
-  const vacio = carrito.lineas.length === 0;
+  // Con sólo cuotas (sin productos) también hay algo que cobrar.
+  const vacio = carrito.lineas.length === 0 && !lineasExtra;
   // Vaciar es destructivo y el botón está al lado del de cerrar: un toque
   // impreciso borraba una venta de quince ítems con el cliente enfrente.
   const [vaciando, setVaciando] = useState(false);
@@ -540,6 +552,7 @@ function PanelCarrito({
             </div>
           )}
 
+          {lineasExtra}
           <ul className="min-h-0 flex-1 divide-y divide-borde-soft overflow-y-auto">
             {carrito.lineas.map((l) => (
               <FilaCarrito

@@ -13,12 +13,16 @@ import type { Persona } from "../lib/personal";
 const PERMISOS_DUENIO = ["personal.gestionar", "comisiones.liquidar", "roles.gestionar"];
 const sesion = vi.hoisted(() => ({
   usuario: { id: 1, rol: "ADMIN", sucursalId: null, permisos: [] as string[] },
+  instituto: false,
 }));
 
 vi.mock("../store/AuthContext", () => ({
   useAuth: () => ({
     usuario: sesion.usuario,
-    negocio: { id: 15, nombre: "Barbería", tipoNegocio: "BARBERIA", features: ["agenda"] },
+    negocio: sesion.instituto
+      ? { id: 20, nombre: "CCTP Horizonte", tipoNegocio: "ACADEMIA", features: ["academia"] }
+      : { id: 15, nombre: "Barbería", tipoNegocio: "BARBERIA", features: ["agenda"] },
+    rubro: sesion.instituto ? "ACADEMIA" : "BARBERIA",
     puede: () => true,
   }),
 }));
@@ -131,6 +135,7 @@ async function montar() {
 beforeEach(() => {
   vi.clearAllMocks();
   sesion.usuario = { id: 1, rol: "ADMIN", sucursalId: null, permisos: PERMISOS_DUENIO };
+  sesion.instituto = false;
   vi.mocked(apiPersonal.listar).mockResolvedValue([base, LUCHO, ANA]);
 });
 
@@ -457,5 +462,62 @@ describe("Personal", () => {
       "href",
       "/configuracion/agenda?pestana=recursos",
     );
+  });
+});
+
+describe("ronda 2 · Personal del instituto", () => {
+  const DOCENTE = { id: 6, nombre: "Docente", descripcion: null, esAdministrador: false, plantilla: null, usuarios: 0, personal: 0, permisos: [] };
+
+  beforeEach(() => {
+    sesion.instituto = true;
+    vi.mocked(apiPersonal.cargos).mockResolvedValue([...ROLES, DOCENTE] as never);
+  });
+
+  it("R4: el cargo «Docente» viene elegido al crear, y al guardar avisa que falta darle acceso", async () => {
+    vi.mocked(apiPersonal.crear).mockResolvedValue({ ...LUCHO, id: 7, nombre: "Marco", cargoRolId: 6, cargo: "Docente", conAcceso: false, acceso: null });
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Nueva persona" }));
+    const dialogo = screen.getByRole("dialog", { name: "Nueva persona" });
+    expect(within(dialogo).getByLabelText("Cargo")).toHaveValue("6");
+    fireEvent.change(within(dialogo).getByLabelText("Nombre"), { target: { value: "Marco" } });
+    await act(async () => {
+      fireEvent.click(within(dialogo).getByRole("button", { name: "Guardar" }));
+    });
+    expect(apiPersonal.crear).toHaveBeenCalledWith(expect.objectContaining({ nombre: "Marco", cargoRolId: 6 }));
+    expect(screen.getByText(/"Marco" quedó guardado\. Todavía no entra al sistema: abrí su ficha y tocá «Darle acceso»\./)).toBeInTheDocument();
+  });
+
+  it("R10: habla de «sede», no de «sucursal», y una lista vacía no dice que hay un filtro", async () => {
+    vi.mocked(apiPersonal.listar).mockResolvedValue([]);
+    vi.mocked(api.getSucursales).mockResolvedValue([
+      { id: 1, nombre: "Central", activo: true, tipo: "SUCURSAL" },
+      { id: 2, nombre: "Norte", activo: true, tipo: "SUCURSAL" },
+    ] as never);
+    await montar();
+    expect(screen.getByText("Todavía no cargaste a nadie")).toBeInTheDocument();
+    expect(screen.queryByText("No hay nadie con ese filtro")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Sede")).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Todas las sedes" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Nueva persona" }));
+    expect(screen.getByText("Sedes donde trabaja")).toBeInTheDocument();
+  });
+
+  it("R11: una persona sin cargo no recibe «el primer rol de la lista»: hay que elegirlo", async () => {
+    const sinCargo = { ...LUCHO, id: 8, nombre: "Rita", cargoRolId: null, cargo: null, profesional: null };
+    vi.mocked(apiPersonal.listar).mockResolvedValue([base, sinCargo]);
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Ver Rita" }));
+    await act(async () => {});
+    fireEvent.click(screen.getByRole("button", { name: "Darle acceso" }));
+    await act(async () => {});
+    const dialogo = screen.getByRole("dialog", { name: "Darle acceso" });
+    expect(within(dialogo).getByLabelText("Rol")).toHaveValue("");
+    fireEvent.change(within(dialogo).getByLabelText("Usuario"), { target: { value: "rita" } });
+    fireEvent.change(within(dialogo).getByLabelText("Contraseña"), { target: { value: "secreto1" } });
+    await act(async () => {
+      fireEvent.click(within(dialogo).getByRole("button", { name: "Darle acceso" }));
+    });
+    expect(apiPersonal.darAcceso).not.toHaveBeenCalled();
+    expect(within(dialogo).getByText("Elegí el rol.")).toBeInTheDocument();
   });
 });

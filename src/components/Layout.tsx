@@ -1,6 +1,5 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { Outlet } from "react-router-dom";
-import { iniciales } from "../lib/format";
 import { tituloDe, useMenu } from "../lib/menu";
 import { etiquetaRol } from "../lib/permisos";
 import { useAuth } from "../store/AuthContext";
@@ -15,6 +14,7 @@ import { esIOS } from "../lib/pwa/entorno";
 import { useInstalarDisponible, useOfrecerInstalarUnaVez } from "../lib/pwa/guia";
 import { usePwa } from "../lib/pwa/pwa";
 import { useMotorOffline } from "../lib/offline/motor";
+import { useCreditosDesdeUrl } from "../lib/useCreditosDesdeUrl";
 import { AvisoVersionNueva, HojaInstalar } from "./InstalarApp";
 import MenuLateral from "./MenuLateral";
 
@@ -60,6 +60,9 @@ export default function Layout() {
   // La cola de ventas cobradas sin internet sube desde acá, con cualquier
   // pantalla abierta (sólo en la app instalada del iPhone, PLAN-IOS F3).
   useMotorOffline();
+  // `?creditos=comprar` (la push del cupo) abre la hoja de comprar créditos.
+  // Acá y no en una pantalla: llega a cualquiera, y la hoja vive en el Layout.
+  useCreditosDesdeUrl();
   // "Instalar en el celular" (PLAN-IOS): desde el menú, y una vez sola al
   // entrar desde un celular o tablet que todavía no la tiene instalada.
   const instalarDisponible = useInstalarDisponible();
@@ -100,7 +103,13 @@ export default function Layout() {
         compacta ? "px-2" : "px-4",
       ].join(" ")}
     >
-      <div className={compacta ? "flex justify-center" : "flex items-center gap-3"}>
+      {/* Un solo bloque (el dueño, 26-oct): el negocio y, debajo y discretos,
+          quién está y con qué rol. Antes había además una tarjeta con las
+          iniciales, el nombre y el usuario: dos cajas para decir lo mismo. */}
+      <div
+        className={compacta ? "flex justify-center" : "flex items-start gap-3"}
+        title={compacta ? `${negocio?.nombre ?? "BamarDev"} · ${usuario?.nombre ?? usuario?.username ?? ""}` : undefined}
+      >
         {/* Sobre la barra teñida, el degradado de marca se perdía: un
             recuadro claro lo despega del fondo. */}
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/15 text-barra-texto">
@@ -108,33 +117,15 @@ export default function Layout() {
         </div>
         {!compacta && (
           <div className="min-w-0">
-            <h2 className="truncate text-[15px] font-bold text-barra-texto">
+            <h2 className="truncate text-[15px] font-bold leading-tight text-barra-texto">
               {negocio?.nombre ?? "BamarDev"}
             </h2>
-            <span className="text-xs text-barra-texto-2">
+            <p className="mt-0.5 truncate text-[13px] text-barra-texto-2">{usuario?.nombre ?? usuario?.username}</p>
+            <p className="truncate text-[11px] text-barra-texto-2 opacity-80">
               {/* La del login manda: es el nombre del rol en este negocio
                   ("Recepción", "Barbero"); sin ella, la de siempre. */}
               {usuario ? usuario.rolNombre?.trim() || etiquetaRol(usuario.rol, negocio) : ""}
-            </span>
-          </div>
-        )}
-      </div>
-      <div
-        className={[
-          "mt-4 flex items-center rounded-xl bg-white/10 py-2.5",
-          compacta ? "justify-center px-0" : "gap-3 px-3",
-        ].join(" ")}
-        title={compacta ? (usuario?.nombre ?? usuario?.username) : undefined}
-      >
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/20 text-sm font-bold text-barra-texto">
-          {iniciales(usuario?.nombre ?? usuario?.username)}
-        </span>
-        {!compacta && (
-          <div className="min-w-0">
-            <p className="truncate text-[13px] font-bold text-barra-texto">
-              {usuario?.nombre ?? usuario?.username}
             </p>
-            <p className="truncate text-xs text-barra-texto-2">{usuario?.username}</p>
           </div>
         )}
       </div>
@@ -232,7 +223,17 @@ export default function Layout() {
           ]}
         />
 
-        <main className="min-h-0 flex-1 overflow-y-auto print:overflow-visible">
+        {/* `relative` para que lo `absolute` sin otro ancla (los `sr-only` de
+            Primeros pasos, Inscripción en línea, Cobranza…) se acomode dentro
+            de este scroll. Sin él se ubicaba contra la ventana, en su lugar del
+            contenido —1.676 px en Ajustes de academia, con 945 de ventana—, y
+            el documento crecía hasta ahí: al llegar al final con la rueda se
+            corría la app entera hacia arriba y abajo quedaba un hueco vacío.
+            Al imprimir vuelve a `static`: el ticket del POS (`#area-impresion`,
+            absolute arriba a la izquierda) tiene que anclarse al papel y no a
+            este `<main>`, que en el ancho del rollo queda debajo de la cabecera
+            móvil y de los avisos, y lo bajaba unos 16 mm. */}
+        <main className="relative min-h-0 flex-1 overflow-y-auto print:static print:overflow-visible">
           <Outlet />
         </main>
       </div>

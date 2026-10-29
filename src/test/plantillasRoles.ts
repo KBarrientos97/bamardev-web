@@ -79,9 +79,28 @@ export const FEATURE_DE_PERMISO: Record<string, string | null> = {
   "fichatecnica.ver": "ficha_tecnica",
   "fichatecnica.editar": "ficha_tecnica",
   "cliente.editar_salud": "consentimientos",
-  "personal.gestionar": "agenda",
+  // Sin feature: va atado a las verticales BELLEZA y EDUCACION (migración
+  // 20261109140000), como `controlados.libro` con farmacia.
+  "personal.gestionar": null,
   "billar.operar": "billar",
   "billar.admin": "billar",
+  // Educación (PLAN-ACADEMIAS-TECNICO §5.2).
+  "academia.ver": "academia",
+  "academia.configurar": "academia",
+  "academia.grupos": "academia",
+  "academia.inscribir": "academia",
+  "academia.becas": "academia",
+  "academia.cobranza": "academia",
+  // Ronda 2: sólo la plantilla Administrador.
+  "academia.fotos": "academia",
+  "academia.control": "academia",
+  "asistencia.registrar": "asistencia",
+  "asistencia.llegadas": "asistencia",
+  "asistencia.justificar": "asistencia",
+  "notas.registrar": "notas",
+  "notas.reabrir": "notas",
+  "planilla.ver": "planilla_docente",
+  "planilla.liquidar": "planilla_docente",
 };
 
 export const PLANTILLAS = {
@@ -153,6 +172,21 @@ export const PLANTILLAS = {
     "personal.gestionar",
     "billar.operar",
     "billar.admin",
+    "academia.ver",
+    "academia.configurar",
+    "academia.grupos",
+    "academia.inscribir",
+    "academia.becas",
+    "academia.cobranza",
+    "academia.fotos",
+    "academia.control",
+    "asistencia.registrar",
+    "asistencia.llegadas",
+    "asistencia.justificar",
+    "notas.registrar",
+    "notas.reabrir",
+    "planilla.ver",
+    "planilla.liquidar",
   ],
   SUPERVISOR: [
     "ventas.vender",
@@ -214,6 +248,18 @@ export const PLANTILLAS = {
     "fichatecnica.editar",
     "billar.operar",
     "billar.admin",
+    // Coordinación (§5.3): academia.* salvo configurar, asistencia y notas.
+    // Sin planilla.ver desde el 22-oct: la planilla es sólo del admin (D1).
+    "academia.ver",
+    "academia.grupos",
+    "academia.inscribir",
+    "academia.becas",
+    "academia.cobranza",
+    "asistencia.registrar",
+    "asistencia.llegadas",
+    "asistencia.justificar",
+    "notas.registrar",
+    "notas.reabrir",
   ],
   CAJERO: [
     "ventas.vender",
@@ -243,6 +289,12 @@ export const PLANTILLAS = {
     "fichatecnica.ver",
     "fichatecnica.editar",
     "billar.operar",
+    // Secretaría (§5.3).
+    "academia.ver",
+    "academia.inscribir",
+    "academia.cobranza",
+    "asistencia.registrar",
+    "asistencia.llegadas",
   ],
   MESERO: [
     "catalogo.ver",
@@ -267,5 +319,11 @@ export const PLANTILLAS = {
     "consumo.ajustar:PROPIO",
     "fichatecnica.ver:PROPIO",
     "fichatecnica.editar:PROPIO",
+    // Docente (§5.3): lo suyo. Su planilla ya no (D1, 22-oct).
+    "academia.ver:PROPIO",
+    "asistencia.registrar:PROPIO",
+    // D7: su «Llegué» en Mis clases, sólo en las clases que dicta él.
+    "asistencia.llegadas:PROPIO",
+    "notas.registrar:PROPIO",
   ],
 } as const;

@@ -80,7 +80,7 @@ async function entrarComo(usuario: SesionUsuario) {
     usuario,
     negocio: RESTAURANTE,
   });
-  fireEvent.change(screen.getByPlaceholderText("cafeteriakevin"), { target: { value: "resto" } });
+  fireEvent.change(screen.getByPlaceholderText("alias del negocio"), { target: { value: "resto" } });
   fireEvent.change(screen.getByPlaceholderText("Tu nombre de usuario"), {
     target: { value: usuario.username },
   });
@@ -160,7 +160,7 @@ describe("el profesional (belleza, sin agenda todavía)", () => {
       usuario: PROFESIONAL,
       negocio: BARBERIA,
     });
-    fireEvent.change(screen.getByPlaceholderText("cafeteriakevin"), {
+    fireEvent.change(screen.getByPlaceholderText("alias del negocio"), {
       target: { value: "barberiaqa" },
     });
     fireEvent.change(screen.getByPlaceholderText("Tu nombre de usuario"), {

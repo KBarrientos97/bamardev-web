@@ -15,9 +15,11 @@ import {
 import { estiloPagina, tonosPagina } from "../../lib/pagina/estilosPagina";
 import type { AnuncioPublico, EnlacePublico, ItemCatalogoPublico, PaginaPublica } from "../../lib/pagina/tipos";
 import { urlTelefono } from "../../lib/pagina/vista";
+import { termino } from "../../lib/rubro";
 import { conMensajeDe, contactosWhatsapp, type ContactoWhatsapp } from "../../lib/pagina/whatsapp";
 import EleccionWhatsapp from "./EleccionWhatsapp";
 import ArmadoEstilo, { type PiezasArmado } from "./ArmadosPagina";
+import CursosPagina from "./CursosPagina";
 import CatalogoPagina, { SelectorSucursalCatalogo, type AccionCatalogo, type AspectoCatalogo } from "./CatalogoPagina";
 import { EstadoSucursal, SemanaSucursal } from "./HorarioSucursal";
 import type { AccionPagina, DatosVisor } from "./piezasArmado";
@@ -294,6 +296,11 @@ export interface PropsVista {
    */
   sucursalCatalogo?: number;
   onSucursalCatalogo?: (indice: number) => void;
+  /**
+   * Academias (P1): a dónde lleva "Preinscribirme" de un curso. Sin esto (la
+   * vista previa del editor) el botón se dibuja y no lleva a ningún lado.
+   */
+  urlInscribirme?: (grupoId: number) => string;
 }
 
 export default function VistaPagina({
@@ -307,6 +314,7 @@ export default function VistaPagina({
   alAgregarAlPedido,
   sucursalCatalogo,
   onSucursalCatalogo,
+  urlInscribirme,
 }: PropsVista) {
   const raiz = useRef<HTMLDivElement>(null);
   const [sucursalPropia, setSucursalPropia] = useState(0);
@@ -320,6 +328,8 @@ export default function VistaPagina({
   // computadora no (es la página a tamaño real, escalada).
   const chico = (!!enMarco || !!miniatura) && !escritorio;
   const enCaja = !!enMarco || !!miniatura;
+  // "sucursales" o como las llame el rubro (en un instituto, "sedes").
+  const palabraSucursales = termino(p.rubroClave, "sucursales");
   const c = paleta(p.color.hex);
   const estilo = estiloPagina(p.estilo);
   const clasico = estilo.clave === "CLASICO";
@@ -564,7 +574,28 @@ export default function VistaPagina({
         }}
       />
     ) : null;
-  const catalogo = p.catalogo && catalogoVisto && p.catalogo.items.length > 0 && (
+  // P1: los cursos de un instituto, arriba del catálogo (un instituto casi
+  // nunca tiene las dos cosas, pero si las tiene, primero lo que enseña).
+  const cursos = p.cursos?.length ? (
+    <CursosPagina
+      cursos={p.cursos}
+      t={t}
+      colorBoton={c.oscuro}
+      radio={radioTarjeta}
+      escritorio={escritorio}
+      urlInscribirme={urlInscribirme}
+      titulo={
+        clasico ? (
+          <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: t.texto }}>Cursos</h2>
+        ) : (
+          <TituloSeccion estilo={estilo.clave} t={t} letra={letraNombre} escritorio={escritorio}>
+            Cursos
+          </TituloSeccion>
+        )
+      }
+    />
+  ) : null;
+  const soloCatalogo = p.catalogo && catalogoVisto && p.catalogo.items.length > 0 && (
     <CatalogoPagina
       catalogo={catalogoVisto}
       selector={selectorSucursal}
@@ -589,6 +620,14 @@ export default function VistaPagina({
     />
   );
 
+  const catalogo =
+    cursos || soloCatalogo ? (
+      <>
+        {cursos}
+        {soloCatalogo}
+      </>
+    ) : null;
+
   const visor: DatosVisor | null =
     p.catalogo && catalogoVisto && p.catalogo.items.length > 0
       ? {
@@ -610,7 +649,7 @@ export default function VistaPagina({
   const testId = miniatura ? "miniatura-pagina" : "vista-pagina";
 
   if (!clasico) {
-    const tituloSucursales = unaSucursal ? "Dónde estamos" : "Nuestras sucursales";
+    const tituloSucursales = unaSucursal ? "Dónde estamos" : `Nuestras ${palabraSucursales}`;
     // En las columnas angostas de computadora (la tarjeta de Postal, la columna
     // de Dulce, el panel de Carta junto a la lista) dos tarjetas por fila no
     // dejan entrar los botones.
@@ -658,6 +697,7 @@ export default function VistaPagina({
       principal,
       botones,
       catalogo,
+      cursos,
       sucursales:
         p.sucursales.length > 0 ? (
           <>
@@ -810,7 +850,7 @@ export default function VistaPagina({
 
   const tituloSucursales = p.sucursales.length > 0 && (
     <h2 style={{ margin: "10px 0 0", fontSize: 13, letterSpacing: "0.06em", color: GRIS.texto3, fontWeight: 700 }}>
-      {unaSucursal ? "DÓNDE ESTAMOS" : "NUESTRAS SUCURSALES"}
+      {unaSucursal ? "DÓNDE ESTAMOS" : `NUESTRAS ${palabraSucursales.toUpperCase()}`}
     </h2>
   );
   const sucursales = p.sucursales.map((s, i) => {

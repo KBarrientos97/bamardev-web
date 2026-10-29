@@ -31,6 +31,12 @@ vi.mock("../../store/AuthContext", async () => {
   };
 });
 
+vi.mock("../../lib/academia/apiAcademia", () => ({
+  apiAcademia: { enlacePago: vi.fn(async () => ({ enlacePago: "https://app.bamardev.com/p/horizonte/pagar/K7Q2abcdef" })) },
+}));
+
+import { act } from "@testing-library/react";
+import { apiAcademia } from "../../lib/academia/apiAcademia";
 import PantallaRecibo from "./PantallaRecibo";
 
 function venta(datos: Partial<Venta> = {}): Venta {
@@ -287,5 +293,229 @@ describe("QA PER-01: el efectivo recibido incluye la propina en efectivo", () =>
     dibujar(venta({ pagos: [{ formaPagoId: 10, formaPago: "Efectivo", monto: 80, recibido: 100, entregado: 20 }], cambio: 20 }));
     expect(screen.getByText("Efectivo recibido").nextElementSibling).toHaveTextContent(/100,00/);
     expect(screen.queryByText("(incluye la propina)")).not.toBeInTheDocument();
+  });
+});
+
+describe("E10: el recibo de las cuotas de un instituto", () => {
+  it("cada cuota con lo que queda, el saldo del curso y la próxima cuota", () => {
+    sesion.rubro = "ACADEMIA";
+    dibujar(
+      venta({
+        total: 750,
+        cuotas: [
+          {
+            cuotaId: 902,
+            concepto: "Barbería · Cuota 2",
+            alumno: "Bustillos Rek, Camila",
+            cobrado: 500,
+            pagado: 500,
+            saldo: 250,
+            estado: "PARCIAL",
+            saldoCurso: 783,
+            proximaCuota: { vence: "2026-10-17", monto: 250 },
+          },
+        ],
+      }),
+    );
+    const bloque = screen.getByLabelText("Cuotas");
+    expect(bloque).toHaveTextContent("CUOTAS · BUSTILLOS REK, CAMILA");
+    expect(bloque).toHaveTextContent(/Queda Bs\s?250,00/);
+    expect(screen.getByText("SALDO DEL CURSO").nextElementSibling).toHaveTextContent(/783,00/);
+    expect(bloque).toHaveTextContent(/Próxima cuota: Bs\s?250,00 el 17\/10\/2026/);
+  });
+
+  it("D6: con las materias que manda el backend (sin pedir el grupo), el renglón y la cuota dicen el módulo con su nombre", () => {
+    sesion.rubro = "ACADEMIA";
+    dibujar(
+      venta({
+        total: 500,
+        detalles: [{ productoId: 77, producto: "Barbería", cantidad: 1, precio: 500, subtotal: 500, nota: null, consumo: "LLEVAR", cuotaId: 902 }],
+        cuotas: [
+          {
+            cuotaId: 902,
+            concepto: "Cuota 2/3",
+            numero: 2,
+            totalCuotas: 3,
+            carrera: "Barbería",
+            materias: [{ id: 31, orden: 2, nombre: "Degradados" }],
+            alumno: "Bustillos Rek, Camila",
+            cobrado: 500,
+            pagado: 500,
+            saldo: 0,
+            estado: "PAGADA",
+            saldoCurso: 250,
+            proximaCuota: null,
+          },
+        ],
+      }),
+    );
+    expect(screen.getByText("Barbería · M2 Degradados")).toBeInTheDocument();
+    expect(screen.getByLabelText("Cuotas")).toHaveTextContent("Cuota 2/3 · M2 Degradados");
+  });
+
+  it("D6: con los módulos, el renglón dice «Barbería · M2 Degradados» y la cuota su módulo", () => {
+    sesion.rubro = "ACADEMIA";
+    dibujar(
+      venta({
+        total: 500,
+        detalles: [{ productoId: 77, producto: "Barbería", cantidad: 1, precio: 500, subtotal: 500, nota: null, consumo: "LLEVAR", cuotaId: 902 }],
+        cuotas: [
+          {
+            cuotaId: 902,
+            concepto: "Cuota 2/3",
+            materias: [{ id: 5, orden: 2, nombre: "Degradados" }],
+            alumno: "Bustillos Rek, Camila",
+            cobrado: 500,
+            pagado: 500,
+            saldo: 0,
+            estado: "PAGADA",
+            saldoCurso: 250,
+            proximaCuota: null,
+          },
+        ],
+      }),
+    );
+    expect(screen.getByText("Barbería · M2 Degradados")).toBeInTheDocument();
+    expect(screen.getByLabelText("Cuotas")).toHaveTextContent("Cuota 2/3 · M2 Degradados");
+  });
+
+  it("con todo pagado lo dice, y sin cuotas el ticket es el de siempre", () => {
+    sesion.rubro = "ACADEMIA";
+    dibujar(
+      venta({
+        cuotas: [
+          { cuotaId: 1, concepto: "Cuota única", alumno: "Mateo", cobrado: 1360, pagado: 1360, saldo: 0, estado: "PAGADA", saldoCurso: 0, proximaCuota: null },
+        ],
+      }),
+    );
+    expect(screen.getByText("Curso pagado por completo.")).toBeInTheDocument();
+  });
+
+  it("el renglón dice qué cuota cobró y el bloque quién pagó, si fue el tutor", () => {
+    sesion.rubro = "ACADEMIA";
+    dibujar(
+      venta({
+        total: 750,
+        detalles: [
+          { productoId: 77, producto: "Barbería y Peluquería", cantidad: 1, precio: 750, subtotal: 750, nota: null, consumo: "LLEVAR", cuotaId: 902 },
+        ],
+        cuotas: [
+          { cuotaId: 902, concepto: "Cuota 2/2", alumno: "Céspedes Molina, Joaquín", cobrado: 750, pagado: 750, saldo: 0, estado: "PAGADA", saldoCurso: 0, proximaCuota: null },
+        ],
+        pagadorCuotas: { nombre: "Patricia Suárez", rol: "TUTOR" },
+      }),
+    );
+    expect(screen.getByText("Cuota 2/2 · Barbería y Peluquería")).toBeInTheDocument();
+    expect(screen.getByText("Pagó: Patricia Suárez (tutor)")).toBeInTheDocument();
+  });
+
+  it("al pie, el enlace del estado de cuenta de la inscripción (S3)", async () => {
+    sesion.rubro = "ACADEMIA";
+    dibujar(
+      venta({
+        cuotas: [
+          { cuotaId: 1, concepto: "M2", alumno: "Camila", cobrado: 300, pagado: 300, saldo: 200, estado: "PARCIAL", saldoCurso: 700, proximaCuota: null },
+        ],
+        inscripcionCuotas: 102,
+      }),
+    );
+    await act(async () => {});
+    expect(screen.getByLabelText("Estado de cuenta")).toHaveTextContent("app.bamardev.com/p/horizonte/pagar/K7Q2abcdef");
+  });
+
+  it("cuota de otra sede: el enlace sale de la venta, sin pedirlo al endpoint que da OTRA_SEDE (B-14)", async () => {
+    sesion.rubro = "ACADEMIA";
+    vi.mocked(apiAcademia.enlacePago).mockClear();
+    dibujar(
+      venta({
+        cuotas: [
+          {
+            cuotaId: 1,
+            concepto: "M2",
+            alumno: "Quiñones Vega",
+            cobrado: 300,
+            pagado: 300,
+            saldo: 200,
+            estado: "PARCIAL",
+            saldoCurso: 500,
+            proximaCuota: null,
+            inscripcionId: 220,
+            enlacePago: "https://app-qa.bamardev.com/p/academiaqa/pagar/AbCdEfGh12345678",
+          },
+        ],
+        inscripcionCuotas: 220,
+      }),
+    );
+    await act(async () => {});
+    expect(screen.getByLabelText("Estado de cuenta")).toHaveTextContent("app-qa.bamardev.com/p/academiaqa/pagar/AbCdEfGh12345678");
+    expect(apiAcademia.enlacePago).not.toHaveBeenCalled();
+  });
+
+  it("si la venta dice que no hay enlace (sin subdominio), no hay pie ni pedido", async () => {
+    sesion.rubro = "ACADEMIA";
+    vi.mocked(apiAcademia.enlacePago).mockClear();
+    dibujar(
+      venta({
+        cuotas: [
+          { cuotaId: 1, concepto: "M2", alumno: "Camila", cobrado: 300, pagado: 300, saldo: 200, estado: "PARCIAL", saldoCurso: 700, proximaCuota: null, inscripcionId: 102, enlacePago: null },
+        ],
+        inscripcionCuotas: 102,
+      }),
+    );
+    await act(async () => {});
+    expect(screen.queryByLabelText("Estado de cuenta")).not.toBeInTheDocument();
+    expect(apiAcademia.enlacePago).not.toHaveBeenCalled();
+  });
+});
+
+describe("con lugar: los botones al lado del ticket (27-oct)", () => {
+  /** Un `ResizeObserver` de mentira que informa un ancho fijo: jsdom no mide nada. */
+  function conAncho(ancho: number) {
+    const original = globalThis.ResizeObserver;
+    globalThis.ResizeObserver = class {
+      avisar: ResizeObserverCallback;
+      constructor(avisar: ResizeObserverCallback) {
+        this.avisar = avisar;
+      }
+      observe() {
+        this.avisar([{ contentRect: { width: ancho } } as ResizeObserverEntry], this as unknown as ResizeObserver);
+      }
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof ResizeObserver;
+    const rect = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({ width: ancho } as DOMRect);
+    return () => {
+      globalThis.ResizeObserver = original;
+      rect.mockRestore();
+    };
+  }
+
+  beforeEach(() => {
+    sesion.rubro = "RESTAURANTE";
+  });
+
+  it("en la computadora, «Nueva venta» va debajo de «Venta registrada» y no en la barra de abajo", () => {
+    // Kevin, cobrando en el Punto de venta del billar: la barra pegada al
+    // borde de abajo dejaba media pantalla vacía entre el aviso y los botones.
+    const restaurar = conAncho(1200);
+    try {
+      dibujar(venta());
+      const nueva = screen.getByRole("button", { name: "Nueva venta" });
+      const columna = screen.getByRole("heading", { name: "Venta registrada" }).parentElement!;
+      expect(columna).toContainElement(nueva);
+    } finally {
+      restaurar();
+    }
+  });
+
+  it("angosto (celular), la barra de abajo de siempre", () => {
+    const restaurar = conAncho(390);
+    try {
+      dibujar(venta());
+      const columna = screen.getByRole("heading", { name: "Venta registrada" }).parentElement!;
+      expect(columna).not.toContainElement(screen.getByRole("button", { name: "Nueva venta" }));
+    } finally {
+      restaurar();
+    }
   });
 });

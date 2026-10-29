@@ -1,0 +1,276 @@
+import { describe, expect, it } from "vitest";
+import {
+  cuotasIniciales,
+  detallesDeCuotas,
+  enlaceDeCuotas,
+  esVentaDeCuotas,
+  modulosDeCuotaVenta,
+  montoValido,
+  nombreDeLinea,
+  textoAnularCuotas,
+  pagadorPorDefecto,
+  totalCuotas,
+  ventaConCuotas,
+  type CobroCuotas,
+} from "./cobroCuotas";
+import type { Venta } from "../../types";
+
+/** El cobro de cuotas (E9; desde A1, en "Cobrar a estudiante"). */
+
+const COBRO: CobroCuotas = {
+  inscripcionId: 5,
+  alumno: { id: 3, nombre: "Bustillos Rek, Camila" },
+  pagadores: [{ clienteId: 30, nombre: "Camila", rol: "ALUMNO", principal: true }],
+  pagadorId: 30,
+  sedeGrupo: "Norte",
+  otraSede: true,
+  lineas: [
+    { cuotaId: 11, productoId: 77, descripcion: "Barbería · Cuota 2", monto: 750, saldo: 750, vencida: true },
+    { cuotaId: 12, productoId: 77, descripcion: "Barbería · Cuota 3", monto: 200, saldo: 533, vencida: false },
+  ],
+};
+
+describe("D6 · la línea de la cuota con el módulo", () => {
+  const carrito = (extra: object) => ({
+    alumno: { id: 1, nombre: "A" },
+    pagadores: [],
+    carrera: { id: 4, nombre: "Barbería" },
+    lineas: [{ productoId: 77, cuotaId: 11, descripcion: "Barbería · Cuota 2/3", saldo: 500, vence: "2026-11-10", vencida: false, ...extra }],
+  });
+
+  it("con las materias del carrito dice «Barbería · M2 Degradados»", () => {
+    const r = cuotasIniciales(carrito({ materias: [{ id: 5, orden: 2, nombre: "Degradados" }] }));
+    expect(r[0].linea.descripcion).toBe("Barbería · M2 Degradados");
+  });
+
+  it("con dos módulos los junta: «Barbería · M2 Degradados y M3 Cortes»", () => {
+    const r = cuotasIniciales(
+      carrito({
+        materias: [
+          { id: 5, orden: 2, nombre: "Degradados" },
+          { id: 6, orden: 3, nombre: "Cortes" },
+        ],
+      }),
+    );
+    expect(r[0].linea.descripcion).toBe("Barbería · M2 Degradados y M3 Cortes");
+  });
+
+  it("sin materias (un backend anterior) queda lo que mandó: «Barbería · Cuota 2/3»", () => {
+    expect(cuotasIniciales(carrito({}))[0].linea.descripcion).toBe("Barbería · Cuota 2/3");
+    expect(cuotasIniciales(carrito({ materias: [] }))[0].linea.descripcion).toBe("Barbería · Cuota 2/3");
+  });
+});
+
+describe("las cuotas en la venta", () => {
+  it("sin cobro no hay detalles ni total", () => {
+    expect(detallesDeCuotas(null)).toEqual([]);
+    expect(totalCuotas(null)).toBe(0);
+  });
+
+  it("cada cuota es un detalle con cuotaId, montoCuota y cantidad 1, aunque compartan producto", () => {
+    expect(detallesDeCuotas(COBRO)).toEqual([
+      { productoId: 77, cantidad: 1, precio: 750, cuotaId: 11, montoCuota: 750 },
+      { productoId: 77, cantidad: 1, precio: 200, cuotaId: 12, montoCuota: 200 },
+    ]);
+  });
+
+  it("las cuotas suman a centavos", () => {
+    expect(totalCuotas(COBRO)).toBe(950);
+  });
+
+  it("el abono va de más que cero hasta el saldo", () => {
+    expect(montoValido(200, 533)).toBe(true);
+    expect(montoValido(533, 533)).toBe(true);
+    expect(montoValido(534, 533)).toBe(false);
+    expect(montoValido(0, 533)).toBe(false);
+  });
+
+  it("las vencidas arriba y marcadas; si ninguna venció, la primera", () => {
+    const lineas = cuotasIniciales({
+      alumno: { id: 1, nombre: "A" },
+      pagadores: [],
+      lineas: [
+        { productoId: 7, cuotaId: 1, descripcion: "M3", saldo: 533, vence: "2026-11-01", vencida: false },
+        { productoId: 7, cuotaId: 2, descripcion: "M2", saldo: 333, vence: "2026-09-17", vencida: true },
+      ],
+    });
+    expect(lineas.map((l) => [l.linea.cuotaId, l.elegida])).toEqual([
+      [2, true],
+      [1, false],
+    ]);
+    const ninguna = cuotasIniciales({
+      alumno: { id: 1, nombre: "A" },
+      pagadores: [],
+      lineas: [
+        { productoId: 7, cuotaId: 1, descripcion: "M2", saldo: 533, vence: "2026-11-01", vencida: false },
+        { productoId: 7, cuotaId: 2, descripcion: "M3", saldo: 533, vence: "2026-12-01", vencida: false },
+      ],
+    });
+    expect(ninguna.map((l) => l.elegida)).toEqual([true, false]);
+  });
+
+  it("lo acordado al inscribir se reparte en orden: enteras las que alcanza, el resto como abono", () => {
+    const carrito = {
+      alumno: { id: 1, nombre: "A" },
+      pagadores: [],
+      lineas: [
+        { productoId: 7, cuotaId: 1, descripcion: "M1", saldo: 500, vence: "2026-10-10", vencida: false },
+        { productoId: 7, cuotaId: 2, descripcion: "M2", saldo: 500, vence: "2026-11-10", vencida: false },
+        { productoId: 7, cuotaId: 3, descripcion: "M3", saldo: 500, vence: "2026-12-10", vencida: false },
+      ],
+    };
+    const r = cuotasIniciales(carrito, 700);
+    expect(r.map((l) => [l.linea.cuotaId, l.elegida, l.linea.monto])).toEqual([
+      [1, true, 500],
+      [2, true, 200],
+      [3, false, 500],
+    ]);
+    expect(cuotasIniciales(carrito, 300).map((l) => l.elegida)).toEqual([true, false, false]);
+  });
+
+  it("paga por defecto el principal, en el orden del backend", () => {
+    expect(
+      pagadorPorDefecto([
+        { clienteId: 40, nombre: "Rosa", rol: "TUTOR", principal: true },
+        { clienteId: 41, nombre: "Joaquín", rol: "ALUMNO", principal: false },
+      ]),
+    ).toBe(40);
+    expect(pagadorPorDefecto([])).toBeNull();
+  });
+});
+
+describe("la venta recién cobrada, para el recibo", () => {
+  it("cada renglón de la carrera lleva su cuota en orden, y dice si pagó el tutor", () => {
+    const venta = {
+      id: 9,
+      detalles: [
+        { productoId: 5, producto: "Polera", cantidad: 1, precio: 60, subtotal: 60, nota: null, consumo: "LLEVAR" },
+        { productoId: 77, producto: "Barbería", cantidad: 1, precio: 750, subtotal: 750, nota: null, consumo: "LLEVAR" },
+        { productoId: 77, producto: "Barbería", cantidad: 1, precio: 200, subtotal: 200, nota: null, consumo: "LLEVAR" },
+      ],
+      cuotas: [
+        { cuotaId: 11, concepto: "Cuota 2/3", alumno: "A", cobrado: 750, pagado: 750, saldo: 0, estado: "PAGADA", saldoCurso: 333, proximaCuota: null },
+        { cuotaId: 12, concepto: "Cuota 3/3", alumno: "A", cobrado: 200, pagado: 200, saldo: 333, estado: "PARCIAL", saldoCurso: 333, proximaCuota: null },
+      ],
+    } as unknown as Venta;
+    const conTutor: CobroCuotas = {
+      ...COBRO,
+      pagadores: [
+        { clienteId: 70, nombre: "Patricia Suárez", rol: "TUTOR", principal: true },
+        { clienteId: 30, nombre: "Camila", rol: "ALUMNO", principal: false },
+      ],
+      pagadorId: 70,
+    };
+    const r = ventaConCuotas(venta, conTutor);
+    expect(r.detalles?.map((d) => d.cuotaId)).toEqual([undefined, 11, 12]);
+    expect(r.pagadorCuotas).toEqual({ nombre: "Patricia Suárez", rol: "TUTOR" });
+    expect(ventaConCuotas(venta, { ...conTutor, pagadorId: 30 }).pagadorCuotas).toBeNull();
+    expect(ventaConCuotas(venta, null)).toBe(venta);
+  });
+});
+
+describe("enlaceDeCuotas (contrato #39, B-14)", () => {
+  const base = { cuotaId: 1, concepto: "M1", alumno: "A", cobrado: 1, pagado: 1, saldo: 0, estado: "PAGADA", saldoCurso: 0, proximaCuota: null };
+  it("toma el enlace de la venta, null si dijo que no hay, undefined si no lo mandó", () => {
+    expect(enlaceDeCuotas([{ ...base, enlacePago: null }, { ...base, enlacePago: "https://x/p/a/pagar/t" }])).toBe("https://x/p/a/pagar/t");
+    expect(enlaceDeCuotas([{ ...base, enlacePago: null }])).toBeNull();
+    expect(enlaceDeCuotas([base])).toBeUndefined();
+  });
+});
+
+describe("D5 · la venta de cuotas en la caja", () => {
+  const linea = { productoId: 77, producto: "Barbería", cantidad: 1, precio: 750, subtotal: 750, nota: null, consumo: "LLEVAR" as const, cuotaId: 11 };
+  const cuota = { cuotaId: 11, concepto: "Cuota 1/3", alumno: "Camila", cobrado: 750, pagado: 750, saldo: 0, estado: "PAGADA", saldoCurso: 0, proximaCuota: null };
+  const v = (extra: object) => ({ detalles: [linea], ...extra }) as unknown as Venta;
+
+  it("se sabe que es de cuotas por venta.cuotas o por un renglón con cuotaId", () => {
+    expect(esVentaDeCuotas(v({ cuotas: [cuota] }))).toBe(true);
+    expect(esVentaDeCuotas(v({}))).toBe(true);
+    expect(esVentaDeCuotas(v({ detalles: [{ ...linea, cuotaId: null }] }))).toBe(false);
+  });
+
+  it("al anular: la cuota (o las cuotas) vuelven a quedar pendientes", () => {
+    expect(textoAnularCuotas(v({ cuotas: [cuota] }), "ACADEMIA")).toContain("la cuota vuelve a quedar pendiente");
+    expect(textoAnularCuotas(v({ cuotas: [cuota, { ...cuota, cuotaId: 12 }] }), "ACADEMIA")).toContain("las cuotas vuelven a quedar pendientes");
+  });
+
+  it("sin saber qué cobró: en un instituto no afirma de más; en otro rubro, el texto de siempre", () => {
+    const sin = v({ detalles: [{ ...linea, cuotaId: null }] });
+    expect(textoAnularCuotas(sin, "ACADEMIA")).toContain("si cobró cuotas");
+    expect(textoAnularCuotas(sin, "RESTAURANTE")).toBeNull();
+  });
+
+  it("con el detalle ya leído, una venta sin cuotas es de productos aunque el rubro sea instituto", () => {
+    const sin = v({ detalles: [{ ...linea, cuotaId: null }] });
+    expect(textoAnularCuotas(sin, "ACADEMIA", true)).toBeNull();
+    // Y si trae cuotas, el detalle completo no cambia lo que dice.
+    expect(textoAnularCuotas(v({ cuotas: [cuota] }), "ACADEMIA", true)).toContain("la cuota vuelve a quedar pendiente");
+  });
+
+  it("el renglón de una cuota se nombra «Cuota 1/3 · Barbería»; el resto, por su producto", () => {
+    expect(nombreDeLinea(linea, { cuotas: [cuota] })).toBe("Cuota 1/3 · Barbería");
+    expect(nombreDeLinea(linea, {})).toBe("Barbería");
+    expect(nombreDeLinea({ ...linea, cuotaId: null }, { cuotas: [cuota] })).toBe("Barbería");
+  });
+
+  it("el curso sale de la propia cuota cuando el backend lo manda", () => {
+    expect(nombreDeLinea(linea, { cuotas: [{ ...cuota, carrera: "Barbería Profesional" }] })).toBe("Cuota 1/3 · Barbería Profesional");
+  });
+});
+
+describe("bug 13 · la venta de cuotas se empareja por cuotaId, no por posición", () => {
+  const renglon = (cuotaId?: number, precio = 100) => ({
+    productoId: 77,
+    producto: "Barbería",
+    cantidad: 1,
+    precio,
+    subtotal: precio,
+    nota: null,
+    consumo: "LLEVAR" as const,
+    ...(cuotaId != null ? { cuotaId } : {}),
+  });
+  const cuota = (cuotaId: number) => ({
+    cuotaId,
+    concepto: `Cuota ${cuotaId}/3`,
+    alumno: "A",
+    cobrado: 100,
+    pagado: 100,
+    saldo: 0,
+    estado: "PAGADA",
+    saldoCurso: 0,
+    proximaCuota: null,
+  });
+
+  it("con cuotaId en los renglones (el backend actual) no se toca ninguno, aunque vengan en otro orden que COBRO", () => {
+    const venta = { id: 1, detalles: [renglon(12), renglon(11)], cuotas: [cuota(12), cuota(11)] } as unknown as Venta;
+    const r = ventaConCuotas(venta, COBRO);
+    expect(r.detalles?.map((d) => d.cuotaId)).toEqual([12, 11]);
+  });
+
+  it("un renglón sin cuotaId (respuesta anterior) toma la cuota que no tiene renglón, no la de su posición", () => {
+    const venta = { id: 1, detalles: [renglon(12), renglon()], cuotas: [cuota(12), cuota(11)] } as unknown as Venta;
+    const r = ventaConCuotas(venta, COBRO);
+    // Por posición habría quedado 12 (la primera de venta.cuotas): ya estaba usada.
+    expect(r.detalles?.map((d) => d.cuotaId)).toEqual([12, 11]);
+  });
+
+  it("sin cuotaId en ninguno, el respaldo las reparte en el orden en que llegaron", () => {
+    const venta = { id: 1, detalles: [renglon(), renglon()], cuotas: [cuota(11), cuota(12)] } as unknown as Venta;
+    expect(ventaConCuotas(venta, COBRO).detalles?.map((d) => d.cuotaId)).toEqual([11, 12]);
+  });
+
+  it("los módulos de la cuota salen de sus materias; sin ellas, ninguno", () => {
+    const conMaterias = { ...cuota(11), materias: [{ id: 5, orden: 2, nombre: "Degradados" }] };
+    expect(modulosDeCuotaVenta(conMaterias)).toBe("M2 Degradados");
+    expect(
+      modulosDeCuotaVenta({
+        ...conMaterias,
+        materias: [
+          { id: 5, orden: 2, nombre: "Degradados" },
+          { id: 6, orden: 3, nombre: "Cortes" },
+        ],
+      }),
+    ).toBe("M2 Degradados y M3 Cortes");
+    expect(modulosDeCuotaVenta(cuota(11))).toBeUndefined();
+  });
+});

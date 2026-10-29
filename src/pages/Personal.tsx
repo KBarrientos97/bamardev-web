@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Buscador, Chips, EncabezadoPagina } from "../components/filtros";
 import AvisoSinPermisos from "../components/roles/AvisoSinPermisos";
 import {
@@ -21,7 +21,9 @@ import { apiPersonal, type CargoRol, type Persona, type PersonaInput } from "../
 import { etiquetaRol, tienePermiso } from "../lib/permisos";
 import { apiRoles, mensajeDeError, rolSinPermisos } from "../lib/roles";
 import { plural } from "./agenda/config/utilConfig";
-import { contiene } from "../lib/texto";
+import { usePalabras } from "../lib/academia/usePalabras";
+import { conMayuscula } from "../lib/rubro";
+import { contiene, normalizar } from "../lib/texto";
 import { useApi } from "../lib/useApi";
 import { useAuth } from "../store/AuthContext";
 import type { Almacen, RolNegocio } from "../types";
@@ -53,6 +55,13 @@ const FILTROS = [
 const mensaje = (e: unknown, generico = "No se pudo guardar") => mensajeDeError(e, { generico });
 
 export default function Personal() {
+  const { negocio: negocioActual } = useAuth();
+  // En el instituto la gente son docentes: nada de agenda, comisión ni propinas.
+  const enInstituto = esInstituto(negocioActual);
+  // El instituto dice «sede»; los demás rubros, «sucursal» (ronda 2, R10).
+  const pal = usePalabras();
+  const sedeTxt = enInstituto ? pal.sede : "sucursal";
+  const sedesTxt = enInstituto ? pal.sedes : "sucursales";
   const [filtro, setFiltro] = useState<Filtro>("activos");
   const [buscar, setBuscar] = useState("");
   const [cargo, setCargo] = useState("");
@@ -127,10 +136,10 @@ export default function Personal() {
           <Select
             value={sucursal}
             onChange={(e) => setSucursal(e.target.value)}
-            aria-label="Sucursal"
+            aria-label={conMayuscula(sedeTxt)}
             className="w-auto"
           >
-            <option value="">Todas las sucursales</option>
+            <option value="">Todas las {sedesTxt}</option>
             {sucursales.map((s) => (
               <option key={s.id} value={s.id}>
                 {s.nombre}
@@ -149,8 +158,12 @@ export default function Personal() {
         <div className="card">
           <Vacio
             icono="users"
-            titulo="No hay nadie con ese filtro"
-            texto="Cargá a quien trabaja con vos, entre o no al sistema: un barbero sin usuario igual tiene su agenda, su comisión y sus propinas."
+            titulo={todas.length === 0 ? "Todavía no cargaste a nadie" : "No hay nadie con ese filtro"}
+            texto={
+              enInstituto
+                ? "Cargá a tus docentes y a quien trabaja con vos, entren o no al sistema."
+                : "Cargá a quien trabaja con vos, entre o no al sistema: un barbero sin usuario igual tiene su agenda, su comisión y sus propinas."
+            }
           />
         </div>
       ) : (
@@ -163,17 +176,21 @@ export default function Personal() {
                 className="flex w-full flex-wrap items-start gap-3 px-4 py-3 text-left hover:bg-fondo-2"
                 aria-label={`Ver ${p.nombre}`}
               >
-                <span
-                  className="mt-1 h-3 w-3 shrink-0 rounded-full border border-black/10"
-                  style={{ backgroundColor: p.color ?? "#CBD5E1" }}
-                />
+                {/* El punto es el color de la agenda de belleza: en el instituto no hay agenda (U2). */}
+                {!enInstituto && (
+                  <span
+                    className="mt-1 h-3 w-3 shrink-0 rounded-full border border-black/10"
+                    style={{ backgroundColor: p.color ?? "#CBD5E1" }}
+                  />
+                )}
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="font-semibold text-texto">{p.nombre}</span>
                     {p.cargo && <span className="text-[13px] text-texto-3">{p.cargo}</span>}
                     {!p.activo && <Badge>De baja</Badge>}
                     {/* Con la columna apagada no está en la agenda de hoy (QA VER-02). */}
-                    {p.profesional &&
+                    {!enInstituto &&
+                      p.profesional &&
                       (p.profesional.activo ? (
                         <Badge tono="morado">En la agenda</Badge>
                       ) : (
@@ -192,7 +209,7 @@ export default function Personal() {
                       p.acceso ? `@${p.acceso.username}` : null,
                       p.telefono,
                       sucursales.length > 1
-                        ? p.sucursalIds.map(nombreSucursal).join(", ") || "Todas las sucursales"
+                        ? p.sucursalIds.map(nombreSucursal).join(", ") || `Todas las ${sedesTxt}`
                         : null,
                       p.zona || p.vehiculo ? [p.zona, p.vehiculo].filter(Boolean).join(" · ") : null,
                     ]
@@ -243,8 +260,18 @@ function FichaPersona({
   // Cómo se llama la pestaña de los profesionales en este rubro (QA DIA-17f:
   // el aviso decía "Profesionales" y la pestaña "Manicuristas y espacios").
   const pestanaProfesionales = `${plural(etiquetaRol("PROFESIONAL", negocio))} y espacios`;
-  // El % es plata del profesional: lo cambia quien liquida (el backend lo exige).
-  const cambiaComision = tienePermiso(usuario, "comisiones.liquidar");
+  // En un instituto la gente son los docentes (contrato de la ronda 1): su %
+  // se llama "% docente" y suman la retención y el NIT.
+  const conDocentes = esInstituto(negocio);
+  const pal = usePalabras();
+  const sedeTxt = conDocentes ? pal.sede : "sucursal";
+  const sedesTxt = conDocentes ? pal.sedes : "sucursales";
+  // El % es plata del profesional: lo cambia quien liquida (el backend lo
+  // exige). En el instituto, quien liquida la planilla del docente o
+  // configura la academia (lo mismo que pide el backend).
+  const cambiaComision =
+    tienePermiso(usuario, "comisiones.liquidar") ||
+    (conDocentes && (tienePermiso(usuario, "planilla.liquidar") || tienePermiso(usuario, "academia.configurar")));
 
   const [nombre, setNombre] = useState(persona?.nombre ?? "");
   const [cargoRolId, setCargoRolId] = useState<number | null>(persona?.cargoRolId ?? null);
@@ -253,12 +280,21 @@ function FichaPersona({
   const [fechaIngreso, setFechaIngreso] = useState(persona?.fechaIngreso ?? "");
   const [color, setColor] = useState(persona?.color ?? "");
   const [comision, setComision] = useState(persona?.comisionPct != null ? String(persona.comisionPct) : "");
+  const [retencion, setRetencion] = useState(persona?.retencionPct != null ? String(persona.retencionPct) : "");
+  const [nit, setNit] = useState(persona?.nit ?? "");
   const [notas, setNotas] = useState(persona?.notas ?? "");
   const [zona, setZona] = useState(persona?.zona ?? "");
   const [vehiculo, setVehiculo] = useState(persona?.vehiculo ?? "");
   const [sucursalIds, setSucursalIds] = useState<number[]>(
     persona?.sucursalIds ?? (sucursales.length === 1 ? [sucursales[0].id] : []),
   );
+  // En el instituto, quien se carga es casi siempre un docente: el cargo «Docente»
+  // viene elegido. Sin cargo la persona NO cuenta como docente (no aparece en
+  // «Abrir grupo»). Sólo al crear y mientras nadie haya elegido otra cosa (R4).
+  const cargoDocente = conDocentes && !persona ? cargos.find((c) => [normalizar(pal.Docente), "docente"].includes(normalizar(c.nombre))) : undefined;
+  useEffect(() => {
+    if (cargoDocente) setCargoRolId((actual) => actual ?? cargoDocente.id);
+  }, [cargoDocente]);
   const [error, setError] = useState("");
   const [guardando, setGuardando] = useState(false);
   const [modo, setModo] = useState<"acceso" | "vincular" | "quitar" | "baja" | null>(null);
@@ -276,10 +312,14 @@ function FichaPersona({
     if (!nombre.trim()) return setError("Poné el nombre.");
     const com = comision.trim() === "" ? null : Number(comision);
     if (com !== null && (!Number.isFinite(com) || com < 0 || com > 100)) {
-      return setError("La comisión va de 0 a 100 %.");
+      return setError(conDocentes ? "El % docente va de 0 a 100." : "La comisión va de 0 a 100 %.");
+    }
+    const ret = retencion.trim() === "" ? null : Number(retencion);
+    if (ret !== null && (!Number.isFinite(ret) || ret < 0 || ret > 100)) {
+      return setError("La retención va de 0 a 100 %.");
     }
     if (persona && sucursales.length > 1 && !sucursalIds.length) {
-      return setError("Elegí al menos una sucursal donde trabaja.");
+      return setError(`Elegí al menos una ${sedeTxt} donde trabaja.`);
     }
     const input: PersonaInput = {
       nombre: nombre.trim(),
@@ -291,12 +331,22 @@ function FichaPersona({
       notas: notas.trim() || null,
       ...(esRepartidor ? { zona: zona.trim() || null, vehiculo: vehiculo.trim() || null } : {}),
       ...(cambiaComision && com !== (persona?.comisionPct ?? null) ? { comisionPct: com } : {}),
+      // Sólo en el instituto, y sólo si cambiaron: un backend anterior no los conoce.
+      ...(conDocentes && cambiaComision && ret !== (persona?.retencionPct ?? null) ? { retencionPct: ret } : {}),
+      ...(conDocentes && (nit.trim() || null) !== (persona?.nit ?? null) ? { nit: nit.trim() || null } : {}),
       ...(sucursalIds.length ? { sucursalIds } : {}),
     };
     setGuardando(true);
     try {
       const p = persona ? await apiPersonal.editar(persona.id, input) : await apiPersonal.crear(input);
-      onGuardado(p, `"${p.nombre}" quedó guardado.`);
+      // Un docente nuevo no entra al sistema hasta que se le da el acceso: sin el
+      // aviso quedaba guardado y nadie sabía que faltaba ese paso (ronda 2, R4).
+      onGuardado(
+        p,
+        !persona && conDocentes && !p.conAcceso
+          ? `"${p.nombre}" quedó guardado. Todavía no entra al sistema: abrí su ficha y tocá «Darle acceso».`
+          : `"${p.nombre}" quedó guardado.`,
+      );
       if (!persona) onClose();
     } catch (e) {
       setError(mensaje(e));
@@ -347,13 +397,15 @@ function FichaPersona({
                 ? `Entra como @${persona.acceso?.username} (${persona.acceso?.rolNombre ?? persona.acceso?.rol ?? "sin rol"}). Ocupa un lugar del cupo de usuarios.`
                 : persona.acceso
                   ? `Se le quitó el acceso (@${persona.acceso.username}). No ocupa cupo.`
-                  : "No entra al sistema. Igual puede tener agenda, comisión y propinas."}
-              {persona.profesional
+                  : conDocentes
+                    ? "No entra al sistema."
+                    : "No entra al sistema. Igual puede tener agenda, comisión y propinas."}
+              {!conDocentes && persona.profesional
                 ? ` En la agenda es "${persona.profesional.nombre}"${persona.profesional.activo ? "" : " (columna inactiva)"}.`
                 : ""}
             </p>
             {/* QA DIA-16: decía que puede tener agenda y no decía dónde. */}
-            {!persona.profesional && persona.activo && puede("agenda_config") && (
+            {!conDocentes && !persona.profesional && persona.activo && puede("agenda_config") && (
               <p className="mt-1 text-[13px] text-texto-3">
                 Para darle agenda:{" "}
                 <Link
@@ -405,10 +457,24 @@ function FichaPersona({
           <Campo label="Fecha de ingreso">
             <Input type="date" value={fechaIngreso} onChange={(e) => setFechaIngreso(e.target.value)} />
           </Campo>
-          <ColorAgenda valor={color} nombre={nombre} onChange={setColor} />
-          {cambiaComision && (
+          {/* El color es de la agenda de belleza. En el instituto no hay agenda de
+              personas, y el % del docente se fija en el curso o en los ajustes
+              (C3, auditoría 26-oct): la persona no lo usa, así que no se muestra.
+              El valor que ya tuviera se conserva: no se manda si no cambió. */}
+          {!conDocentes && <ColorAgenda valor={color} nombre={nombre} onChange={setColor} />}
+          {cambiaComision && !conDocentes && (
             <Campo label="Comisión base (%)" hint="Si es profesional, la de sus servicios.">
               <Input type="number" value={comision} onChange={(e) => setComision(e.target.value)} placeholder="Opcional" />
+            </Campo>
+          )}
+          {conDocentes && cambiaComision && (
+            <Campo label="Retención %" hint="Si no factura. Vacío = el de los ajustes.">
+              <Input type="number" value={retencion} onChange={(e) => setRetencion(e.target.value)} placeholder="Opcional" />
+            </Campo>
+          )}
+          {conDocentes && (
+            <Campo label="NIT" hint="Si factura sus clases.">
+              <Input value={nit} onChange={(e) => setNit(e.target.value)} placeholder="Opcional" />
             </Campo>
           )}
           {esRepartidor && (
@@ -427,7 +493,7 @@ function FichaPersona({
         </Campo>
         {sucursales.length > 1 && (
           <fieldset>
-            <legend className="mb-1.5 text-[13px] font-semibold text-texto-2">Sucursales donde trabaja</legend>
+            <legend className="mb-1.5 text-[13px] font-semibold text-texto-2">{conMayuscula(sedesTxt)} donde trabaja</legend>
             <div className="flex flex-wrap gap-3">
               {sucursales.map((s) => (
                 <label key={s.id} className="inline-flex items-center gap-2 text-sm text-texto-2">
@@ -501,7 +567,7 @@ function FichaPersona({
         <Confirmar
           abierto={modo === "quitar"}
           titulo="Quitar acceso"
-          texto={`${persona.nombre} no va a poder entrar al sistema y libera un lugar del cupo. Sigue en Personal con su agenda, su comisión y sus propinas.`}
+          texto={`${persona.nombre} no va a poder entrar al sistema y libera un lugar del cupo. ${conDocentes ? "Sigue en Personal." : "Sigue en Personal con su agenda, su comisión y sus propinas."}`}
           etiquetaOk="Quitar acceso"
           peligroso
           procesando={guardando}
@@ -515,7 +581,9 @@ function FichaPersona({
         <Confirmar
           abierto={modo === "baja"}
           titulo="Dar de baja"
-          texto={`${persona.nombre} deja de trabajar acá: sale de la agenda y pierde el acceso. Lo que ya hizo (citas, comisiones) queda.`}
+          texto={`${persona.nombre} deja de trabajar acá: ${
+            conDocentes ? "pierde el acceso. Lo que ya hizo queda." : "sale de la agenda y pierde el acceso. Lo que ya hizo (citas, comisiones) queda."
+          }`}
           etiquetaOk="Dar de baja"
           peligroso
           procesando={guardando}
@@ -615,6 +683,11 @@ function ElegirCargo({
  * Color en la agenda, con el selector de color de todo el sistema. Lo que se
  * ve es lo que se guarda (QA PER-04): "Sin color" guarda null.
  */
+/** Un instituto: tipo ACADEMIA o con la feature `academia`. */
+function esInstituto(negocio: { tipoNegocio?: string; features?: string[] } | null | undefined) {
+  return negocio?.tipoNegocio === "ACADEMIA" || !!negocio?.features?.includes("academia");
+}
+
 function ColorAgenda({ valor, nombre, onChange }: { valor: string; nombre: string; onChange: (c: string) => void }) {
   return (
     <div className="sm:col-span-2">
@@ -659,8 +732,9 @@ function DarAcceso({
   const [sucursalId, setSucursalId] = useState(persona.sucursalIds[0] ? String(persona.sucursalIds[0]) : "");
   const [error, setError] = useState("");
   const [enviando, setEnviando] = useState(false);
-  const rolElegido =
-    rol || String(roles.find((r) => r.id === cargoRolId)?.id ?? roles[0]?.id ?? "");
+  // Sin cargo que coincida no se propone «el primero de la lista»: una persona sin
+  // cargo podía quedar con un rol cualquiera sin que nadie lo notara (ronda 2, R11).
+  const rolElegido = rol || String(roles.find((r) => r.id === cargoRolId)?.id ?? (roles.length === 1 ? roles[0].id : ""));
   const eligeSucursal = sucursales.length > 1 && usuario?.sucursalId == null;
 
   const enviar = async () => {
@@ -731,6 +805,7 @@ function DarAcceso({
               error={asignables.error ? "No se pudieron cargar los roles." : undefined}
             >
               <Select value={rolElegido} onChange={(e) => setRol(e.target.value)} aria-label="Rol">
+                {!rolElegido && <option value="">Elegí el rol…</option>}
                 {roles.map((r) => (
                   <option key={r.id} value={r.id}>
                     {r.nombre}
@@ -764,13 +839,14 @@ function DarAcceso({
 }
 
 /** Lo que una ficha de Personal tiene cargado (lo que se fundiría al vincular). */
-function datosDeFicha(p: Persona | undefined): string[] {
+function datosDeFicha(p: Persona | undefined, instituto = false): string[] {
   if (!p) return [];
   return [
     p.cargo,
     p.ci ? `CI ${p.ci}` : null,
     p.telefono ? `tel. ${p.telefono}` : null,
-    p.comisionPct != null ? `${p.comisionPct} % de comisión` : null,
+    // En el instituto la persona no usa comisión: el % lo manda el curso (U2).
+    !instituto && p.comisionPct != null ? `${p.comisionPct} % de comisión` : null,
     p.notas ? "notas" : null,
   ].filter((x): x is string => !!x);
 }
@@ -794,6 +870,8 @@ function Vincular({
   onClose: () => void;
   onListo: (p: Persona) => void;
 }) {
+  const { negocio } = useAuth();
+  const instituto = esInstituto(negocio);
   const usuarios = useApi(() => api.getUsuarios(), []);
   // Sólo cuentas cuyo rol quien mira podría asignar: con las demás (las de
   // un rol con más permisos que el suyo) el backend da 403.
@@ -811,7 +889,7 @@ function Vincular({
   const [enviando, setEnviando] = useState(false);
   const elegido = opciones.find((u) => String(u.id) === usuarioId);
   const ficha = elegido ? fichaDe.get(elegido.id) : undefined;
-  const datos = datosDeFicha(ficha);
+  const datos = datosDeFicha(ficha, instituto);
 
   const enviar = async () => {
     if (!usuarioId) return setError("Elegí el usuario.");
@@ -849,7 +927,7 @@ function Vincular({
             <option value="">Elegí…</option>
             {opciones.map((u) => (
               <option key={u.id} value={u.id}>
-                {u.nombre} (@{u.usuario}){datosDeFicha(fichaDe.get(u.id)).length ? " · tiene ficha propia" : ""}
+                {u.nombre} (@{u.usuario}){datosDeFicha(fichaDe.get(u.id), instituto).length ? " · tiene ficha propia" : ""}
               </option>
             ))}
           </Select>

@@ -166,7 +166,7 @@ export default function MovimientosFarmacia() {
             ? "Entradas y salidas de stock"
             : pendientes
               ? `${lista.length} registrados · ${pendientes} sin aprobar`
-              : `${lista.length} registrados · entradas y salidas de stock`
+              : `${lista.length} ${lista.length === 1 ? "registrado" : "registrados"} · entradas y salidas de stock`
         }
         accion={
           <Boton icono="plus" onClick={() => navigate("/inventario/movimientos/ingreso")}>

@@ -196,6 +196,19 @@ describe("grupos colapsables", () => {
     expect(panel).toHaveAttribute("inert");
   });
 
+  it("un grupo cerrado y sin pendientes no lleva ningún número suelto", () => {
+    // Antes mostraba cuántas pantallas guardaba ("Equipo 2", "Finanzas 2"): un
+    // número sin rótulo que nadie sabía qué contaba.
+    const nav = abrir("/pos");
+    for (const grupo of ["Inventario", "Equipo", "Finanzas"]) {
+      const fila = nav.queryByRole("link", { name: grupo });
+      if (!fila) continue;
+      expect(fila.textContent, grupo).toBe(grupo);
+      expect(fila.querySelector("[title]"), grupo).toBeNull();
+    }
+    expect(nav.getByRole("link", { name: "Inventario" })).toBeInTheDocument();
+  });
+
   it("la flecha despliega y vuelve a plegar, sin navegar", () => {
     const nav = abrir("/pos");
     fireEvent.click(flecha(nav, "Inventario"));
@@ -428,6 +441,21 @@ describe("la cuenta de quien está sentado (API-12)", () => {
     fireEvent.click(within(dialogo).getByRole("button", { name: "Cancelar" }));
     expect(screen.queryByRole("dialog")).toBeNull();
   });
+
+  it("en el instituto va dentro de «Mi negocio», con los avisos, y no se repite al pie (26-oct)", () => {
+    sesion.rol = "CAJERO";
+    sesion.rubro = "ACADEMIA";
+    sesion.features = ["pos", "caja", "academia"];
+    const nav = abrir("/pos");
+    // Plegado hasta que se lo abre: su nombre lleva a la primera pantalla.
+    fireEvent.click(nav.getByRole("link", { name: "Mi negocio" }));
+    expect(nav.getAllByRole("button", { name: "Cambiar mi contraseña" })).toHaveLength(1);
+    expect(nav.getAllByRole("link", { name: "Notificaciones" })).toHaveLength(1);
+    const boton = nav.getByRole("button", { name: "Cambiar mi contraseña" });
+    expect(boton.dataset.navId).toBe("todos:#cambiar-password");
+    fireEvent.click(boton);
+    expect(screen.getByRole("dialog", { name: "Cambiar mi contraseña" })).toBeInTheDocument();
+  });
 });
 
 describe("Plan Emprendedor: el chip de ventas junto al aviso de licencia", () => {
@@ -468,5 +496,20 @@ describe("Plan Emprendedor: el chip de ventas junto al aviso de licencia", () =>
       render(arbol("/billar"));
       expect(screen.getByRole("status")).toHaveTextContent("Te quedan 0 créditos");
     });
+  });
+});
+
+describe("el scroll de las pantallas", () => {
+  // jsdom no calcula posiciones: se fija la clase. Sin `relative`, un
+  // `sr-only` abajo de una pantalla larga estira el documento y, al llegar al
+  // final con la rueda, la app entera se corre y deja un hueco vacío abajo.
+  it("el contenido es el ancla de lo `absolute` que no tiene otra", () => {
+    render(arbol("/pos"));
+    expect(screen.getByRole("main")).toHaveClass("relative", "overflow-y-auto");
+  });
+
+  it("al imprimir deja de ser ancla: el ticket arranca en el borde del papel", () => {
+    render(arbol("/pos"));
+    expect(screen.getByRole("main")).toHaveClass("print:static");
   });
 });

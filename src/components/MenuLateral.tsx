@@ -6,6 +6,7 @@ import {
   type FocusEvent,
   type KeyboardEvent,
   type MouseEvent,
+  type HTMLAttributes,
 } from "react";
 import { Link } from "react-router-dom";
 import {
@@ -18,8 +19,11 @@ import {
 } from "../lib/menu";
 import { useContadorSolicitudes } from "../lib/agenda/contadorSolicitudes";
 import { useContadorBillar } from "../lib/billar/contador";
+import { useContadorPreinscripciones } from "../lib/academia/contadorPreinscripciones";
 import { useAuth } from "../store/AuthContext";
 import { Icon } from "./Icon";
+import { textoInstalar } from "../lib/pwa/guia";
+import { VERSION_APP, versionLegible } from "../lib/pwa/version";
 
 /**
  * La navegación de la barra lateral: bloques con rótulo, grupos que se
@@ -56,8 +60,8 @@ export default function MenuLateral({
   /** "Cambiar mi contraseña": el formulario vive en el Layout (ver ahí). */
   onCambiarPassword?: () => void;
   /**
-   * "Instalar en el celular" (PLAN-IOS). Sin ella no se dibuja: ya está
-   * instalada o es una computadora, donde no hay nada que instalar.
+   * "Instalar" (PLAN-IOS). Sin ella no
+   * se dibuja: ya está instalada o el navegador no deja instalarla.
    */
   onInstalar?: () => void;
 }) {
@@ -72,8 +76,18 @@ export default function MenuLateral({
   const solicitudes = useContadorSolicitudes(menu.planos.some((n) => n.item.seccion === "solicitudes"));
   // Billar: las mesas abiertas, en ámbar si alguna está por vencer (§2).
   const billar = useContadorBillar(menu.planos.some((n) => n.item.seccion === "billar"));
+  // Educación: las preinscripciones que llegaron por la página (E20).
+  const preinscripciones = useContadorPreinscripciones(
+    menu.planos.some((n) => n.item.seccion === "academia_preinscripciones"),
+  );
   const contadorDe = (n: NodoMenu) =>
-    n.item.seccion === "solicitudes" ? solicitudes : n.item.seccion === "billar" ? billar.abiertas : 0;
+    n.item.seccion === "solicitudes"
+      ? solicitudes
+      : n.item.seccion === "academia_preinscripciones"
+        ? preinscripciones
+        : n.item.seccion === "billar"
+          ? billar.abiertas
+          : 0;
   const queCuenta = (n: NodoMenu) => (n.item.seccion === "billar" ? "mesas abiertas" : "por atender");
   const enAlerta = (n: NodoMenu) => n.item.seccion === "billar" && billar.alerta;
   // Las solicitudes viven dentro del grupo Agenda: cerrado, el grupo muestra
@@ -116,7 +130,12 @@ export default function MenuLateral({
     if (n.hijos.length) menu.abrir(n.id);
     setTip(null);
     onNavegar();
+    if (n.item.accion === "cambiarPassword") onCambiarPassword?.();
   };
+
+  // En el instituto, los avisos y la contraseña están en "Mi negocio": al pie
+  // no se repiten.
+  const enElMenu = (a: string) => menu.planos.some((n) => n.item.paraTodos && n.item.a === a);
 
   /** Las filas recorribles con ↑ ↓, sin las de un grupo cerrado. */
   const filas = () =>
@@ -183,8 +202,8 @@ export default function MenuLateral({
     const dentro = !activo && n.hijos.length > 0 && contieneRuta(n, pathname);
     return (
       <li key={n.id}>
-        <Link
-          to={n.item.a}
+        <Fila
+          n={n}
           onClick={() => navegar(n)}
           // En la barra de íconos el número es sólo un punto: el lector de
           // pantalla igual tiene que oír cuántas hay (QA PER-09).
@@ -208,7 +227,7 @@ export default function MenuLateral({
               />
             )}
           </span>
-        </Link>
+        </Fila>
       </li>
     );
   };
@@ -220,8 +239,8 @@ export default function MenuLateral({
     if (n.hijos.length === 0) {
       return (
         <li key={n.id}>
-          <Link
-            to={n.item.a}
+          <Fila
+            n={n}
             onClick={() => navegar(n)}
             aria-current={activo ? "page" : undefined}
             data-fila=""
@@ -256,7 +275,7 @@ export default function MenuLateral({
                 {contadorDe(n)}
               </span>
             )}
-          </Link>
+          </Fila>
         </li>
       );
     }
@@ -289,30 +308,19 @@ export default function MenuLateral({
           >
             {icono(n, esHijo)}
             <span className="min-w-0 leading-snug">{n.item.label}</span>
-            {/* Cerrado, el grupo dice cuántas pantallas guarda. Lo que hay
-                por atender va en la píldora blanca; el número de pantallas,
-                en cambio, es un dato tenue y sin fondo: con el mismo estilo,
-                un "Agenda 6" se leía como seis solicitudes (QA PER-09). Si
-                la pantalla abierta es una de ellas, el número se aclara: es
-                el "estás acá adentro" cuando el hijo no se ve. */}
+            {/* Cerrado, el grupo sólo dice cuántas cosas tiene POR ATENDER (la
+                píldora blanca). Antes, sin nada pendiente, mostraba además
+                cuántas pantallas guardaba ("Equipo 2"): un número suelto, sin
+                rótulo a la vista, que nadie sabía qué contaba y que se leía
+                como una alerta (video tutorial, 24-oct). La flecha de la
+                derecha ya dice que el grupo se abre, así que ese dato no
+                aportaba nada. */}
             {!abierto && pendientesEn(n) > 0 && (
               <span
                 className="ml-auto rounded-full bg-barra-texto px-1.5 text-[11px] font-bold leading-[18px] text-barra tabular-nums"
                 aria-label={`${pendientesEn(n)} por atender`}
               >
                 {pendientesEn(n)}
-              </span>
-            )}
-            {!abierto && pendientesEn(n) === 0 && (
-              <span
-                aria-hidden="true"
-                title={`${n.hijos.length} pantallas`}
-                className={[
-                  "ml-auto px-1 text-[10px] font-medium leading-[18px] tabular-nums",
-                  dentro ? "text-barra-texto" : "text-barra-texto-2 opacity-70",
-                ].join(" ")}
-              >
-                {n.hijos.length}
               </span>
             )}
           </Link>
@@ -379,7 +387,7 @@ export default function MenuLateral({
     // Un grupo sin pantalla propia (Agenda, Equipo) lleva a la de su primer
     // hijo: en la columna de íconos sería el mismo destino dos veces.
     return aplanar(nodos)
-      .filter((n) => n.item.seccion)
+      .filter((n) => n.item.seccion || n.item.paraTodos)
       .map((n) => nodoCompacto(n, padres.get(n) ?? null));
   };
 
@@ -429,10 +437,10 @@ export default function MenuLateral({
             setTip(null);
             onInstalar();
           }}
-          aria-label={compacta ? "Instalar en el celular" : undefined}
+          aria-label={compacta ? textoInstalar() : undefined}
           data-fila=""
           data-nav-id="instalar"
-          {...mostrarTip("Instalar en el celular")}
+          {...mostrarTip(textoInstalar())}
           className={[
             "flex items-center gap-3 rounded-xl py-2.5 text-sm font-semibold text-barra-texto-2 transition-colors hover:bg-white/10 hover:text-barra-texto",
             foco,
@@ -440,28 +448,39 @@ export default function MenuLateral({
           ].join(" ")}
         >
           <Icon name="download" size={19} />
-          {!compacta && <span>Instalar en el celular</span>}
+          {!compacta && <span>{textoInstalar()}</span>}
         </button>
       )}
 
-      {/* Sólo en QA y temporal: la prueba de push de la PWA. Instalada no
-          tiene barra de direcciones, así que /prueba-push necesita un link.
-          En el build de PROD esto ni se compila (MODE es constante). */}
-      {import.meta.env.MODE === "qa" && !compacta && (
-        <a
-          href="/prueba-push"
-          data-fila=""
-          className={[
-            "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-barra-texto-2 transition-colors hover:bg-white/10 hover:text-barra-texto",
-            foco,
-          ].join(" ")}
-        >
-          <Icon name="bell" size={19} />
-          <span>Probar notificaciones (QA)</span>
-        </a>
+      {/* Los avisos de cada uno (PLAN-PUSH §10.2): para cualquier rol, como
+          la contraseña. Es un link y no un botón: es una pantalla. */}
+      {!enElMenu("/notificaciones") && (
+        <Link
+        to="/notificaciones"
+        onClick={() => {
+          setTip(null);
+          onNavegar();
+        }}
+        aria-label={compacta ? "Notificaciones" : undefined}
+        aria-current={pathname === "/notificaciones" ? "page" : undefined}
+        data-fila=""
+        data-nav-id="notificaciones"
+        {...mostrarTip("Notificaciones")}
+        className={[
+          "flex items-center gap-3 rounded-xl py-2.5 text-sm font-semibold transition-colors",
+          foco,
+          compacta ? "justify-center px-0" : "px-3",
+          pathname === "/notificaciones"
+            ? "bg-barra-activo text-barra-texto"
+            : "text-barra-texto-2 hover:bg-white/10 hover:text-barra-texto",
+        ].join(" ")}
+      >
+        <Icon name="bell" size={19} />
+        {!compacta && <span>Notificaciones</span>}
+        </Link>
       )}
 
-      {onCambiarPassword && (
+      {onCambiarPassword && !enElMenu("#cambiar-password") && (
         <button
           type="button"
           onClick={() => {
@@ -500,6 +519,14 @@ export default function MenuLateral({
         {!compacta && <span>Cerrar sesión</span>}
       </button>
 
+      {/* Qué versión tiene este equipo: para comparar con la publicada cuando
+          alguien dice "a mí no me aparece" (21-oct). */}
+      {!compacta && (
+        <p className="px-3 pt-1 text-[11px] text-barra-texto-2 opacity-70" title={VERSION_APP}>
+          Versión {versionLegible()}
+        </p>
+      )}
+
       {compacta && tip && (
         <div
           role="tooltip"
@@ -511,4 +538,16 @@ export default function MenuLateral({
       )}
     </nav>
   );
+}
+
+/**
+ * Un ítem del menú: un link a su pantalla o, si no es una pantalla, un botón
+ * ("Cambiar mi contraseña" abre un formulario). Mismo aspecto y mismas teclas.
+ */
+function Fila({
+  n,
+  ...resto
+}: { n: NodoMenu } & HTMLAttributes<HTMLElement>) {
+  if (n.item.accion) return <button type="button" {...resto} />;
+  return <Link to={n.item.a} {...resto} />;
 }

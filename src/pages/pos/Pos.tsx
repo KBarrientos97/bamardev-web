@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Navigate, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { Icon } from "../../components/Icon";
 import { Cargando, Confirmar, ErrorMsg } from "../../components/ui";
 import { ApiError, api } from "../../lib/api";
@@ -23,6 +23,7 @@ import { useConsultaPeriodica } from "../../lib/agenda/useConsultaPeriodica";
 import CitasPorCobrar from "./CitasPorCobrar";
 import { fmtHora, fmtMoney } from "../../lib/format";
 import { creaClientes, tieneFeature, tienePermiso } from "../../lib/permisos";
+import { RUTA_CAJA, RUTA_COBRAR } from "../../lib/academia/vista";
 import { esFarmacia } from "../../lib/rubro";
 import { useApi } from "../../lib/useApi";
 import { quedoEnDuda } from "../../lib/cupo";
@@ -43,11 +44,12 @@ import type {
 import AperturaCaja from "./AperturaCaja";
 import PantallaCierre, { CierreOk } from "./PantallaCierre";
 import PantallaCobro from "./PantallaCobro";
+import { CobroEnLaCompu, type LineaDelCobro } from "./CobroEnLaCompu";
 import PantallaCredito from "./PantallaCredito";
 import PantallaEntrega, { type DatosEntrega } from "./PantallaEntrega";
 import MesasPorCobrar from "./MesasPorCobrar";
 import Entregas from "../salon/Entregas";
-import { consumoDeMesa, etiquetaMesa } from "../salon/logicaSalon";
+import { consumoDeMesa, etiquetaMesa, itemsVivos } from "../salon/logicaSalon";
 import type { Mesa as MesaSalon } from "../../types/salon";
 import PantallaHistorial from "./PantallaHistorial";
 import PantallaRecibo from "./PantallaRecibo";
@@ -96,7 +98,21 @@ type Pantalla =
   /** Belleza: las citas terminadas que nadie cobró. */
   | "citasPorCobrar";
 
+/**
+ * El POS es sólo para productos desde el 22-oct (A1, reunión con Derick): las
+ * cuotas del instituto se cobran en "Cobrar a estudiante". Un enlace viejo
+ * (`/pos?inscripcion=…` o `/pos?alumno=…`, un marcador o una pestaña abierta)
+ * se manda allá con lo mismo que traía.
+ */
 export default function Pos() {
+  const [params] = useSearchParams();
+  if (params.has("inscripcion") || params.has("alumno")) {
+    return <Navigate to={`${RUTA_COBRAR}?${params.toString()}`} replace />;
+  }
+  return <PuntoDeVenta />;
+}
+
+function PuntoDeVenta() {
   const { negocio, rubro, puede, usuario } = useAuth();
   // QA DIA-09: los buscadores de cliente del POS ofrecen el alta a quien
   // puede crear fichas, en un negocio que las tiene.
@@ -494,6 +510,20 @@ export default function Pos() {
     void cobrarCita(citaPedida);
   }, [citaPedida, catalogoListo, cobrarCita, setParams]);
 
+  // "Caja" en el menú del instituto es RUTA_CAJA: la pantalla del turno (lo
+  // vendido y el cierre). Sin caja abierta, primero la apertura. Hasta el
+  // 26-oct era `/pos?vista=caja` y el parámetro se borraba al llegar: la URL
+  // quedaba en /pos, el menú marcaba "Punto de venta" y tocarlo no volvía a la
+  // venta. Las dos rutas montan este mismo componente, así que ir y venir no
+  // pierde el carrito. `key` cambia en cada navegación: tocar "Caja" estando
+  // ya ahí (en un recibo, después de cerrar) vuelve a la lista del turno.
+  const { pathname, key: navegacion } = useLocation();
+  const navigate = useNavigate();
+  const enCaja = pathname === RUTA_CAJA;
+  useEffect(() => {
+    setPantalla((p) => (enCaja ? "historial" : p === "historial" ? "venta" : p));
+  }, [enCaja, navegacion]);
+
   /** Arma el cuerpo de la venta juntando carrito y datos de entrega. */
   const cuerpoVenta = useCallback(
     (pagos?: PagoInput[]) => ({
@@ -586,7 +616,7 @@ export default function Pos() {
         // Una promo cambió entre la cotización y el cobro: se recalcula para
         // que al volver el carrito muestre el total nuevo.
         if (err instanceof ApiError && err.codigo === "DESCUENTO_CAMBIO") descuentos.recotizar();
-        setError(err instanceof Error ? err.message : "No se pudo registrar la venta");
+        setError(err instanceof Error && err.message ? err.message : "No se pudo registrar la venta");
       } finally {
         setEnviando(false);
       }
@@ -821,7 +851,7 @@ export default function Pos() {
     return (
       <PantallaHistorial
         caja={abierta}
-        onAtras={() => setPantalla("venta")}
+        onAtras={() => (enCaja ? navigate("/pos") : setPantalla("venta"))}
         onCierre={() => setPantalla("cierre")}
         // Reimprimir el comprobante de un pedido: es la misma pantalla del
         // recibo de una venta recién cobrada, y su "volver" ya lleva al historial.
@@ -853,19 +883,34 @@ export default function Pos() {
       />
     );
 
-  if (pantalla === "cobro")
+  if (pantalla === "cobro") {
+    // Sólo los productos: el backend arma el total de la venta desde las
+    // líneas y exige que los pagos sumen exactamente eso. La tarifa de
+    // envío viaja aparte y se la cobra el repartidor, así que sumarla acá
+    // hacía que el backend rechazara la venta entera con un 400.
+    //
+    // Cobrando una mesa el total es el consumo que cargó el mesero, no el
+    // carrito: la cajera no retipea nada de lo que el cliente comió.
+    const totalCobro = mesaCobrando ? consumoDeMesa(mesaCobrando) : totalCarrito;
+    // Lo que se cobra, para el detalle de la computadora: de la mesa, lo que
+    // cargó el mesero; si no, el carrito como se cobra (con el precio de la
+    // cita o del profesional, el mismo que suma `totalCarrito`).
+    const lineasCobro: LineaDelCobro[] = mesaCobrando
+      ? (mesaCobrando.comandas ?? []).flatMap((c) =>
+          itemsVivos(c).map((i) => ({ clave: `${c.id}-${i.id}`, nombre: i.nombre, cantidad: i.cantidad, precio: i.precio })),
+        )
+      : carritoVenta.lineas.map((l) => ({
+          clave: l.producto.id,
+          nombre: l.producto.nombre,
+          cantidad: l.cantidad,
+          precio: l.producto.precio,
+        }));
     return (
       <>
       {dialogoCobroIncompleto}
+      <CobroEnLaCompu lineas={lineasCobro} total={totalCobro}>
       <PantallaCobro
-        // Sólo los productos: el backend arma el total de la venta desde las
-        // líneas y exige que los pagos sumen exactamente eso. La tarifa de
-        // envío viaja aparte y se la cobra el repartidor, así que sumarla acá
-        // hacía que el backend rechazara la venta entera con un 400.
-        //
-        // Cobrando una mesa el total es el consumo que cargó el mesero, no el
-        // carrito: la cajera no retipea nada de lo que el cliente comió.
-        total={mesaCobrando ? consumoDeMesa(mesaCobrando) : totalCarrito}
+        total={totalCobro}
         subtitulo={
           mesaCobrando
             ? etiquetaMesa(mesaCobrando)
@@ -929,8 +974,10 @@ export default function Pos() {
         enviando={enviando}
         error={error}
       />
+      </CobroEnLaCompu>
       </>
     );
+  }
 
   if (pantalla === "credito")
     return (

@@ -17,6 +17,24 @@ export const equipoActual = (): Equipo => ({
   maxTouchPoints: typeof navigator !== "undefined" ? navigator.maxTouchPoints ?? 0 : 0,
 });
 
+/**
+ * Una computadora: ni iPhone/iPad ni Android. Chrome y Edge de escritorio
+ * también dejan instalar la app (ventana propia, sin pestañas), y ahí
+ * "Instalar en el celular" no tiene sentido (dueño, 21-oct).
+ */
+export function esComputadora(equipo: Equipo = equipoActual()): boolean {
+  return !esIOS(equipo.userAgent, equipo.maxTouchPoints) && !esAndroid(equipo.userAgent);
+}
+
+/**
+ * Cómo se llama la opción del menú. Una sola palabra en todos los equipos
+ * (dueño, 26-oct): "Instalar en esta computadora" partía el renglón en dos.
+ * Dónde se instala lo dice la guía que abre (`InstalarApp`).
+ */
+export function textoInstalar(): string {
+  return "Instalar";
+}
+
 /** Qué guía mostrar en este equipo. */
 export type Guia =
   | { tipo: "instalada" }

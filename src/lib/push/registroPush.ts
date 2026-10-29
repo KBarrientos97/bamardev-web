@@ -105,7 +105,7 @@ export async function sincronizarPushSilencioso(): Promise<void> {
   if (typeof window === "undefined" || !("Notification" in window)) return;
   if (Notification.permission !== "granted" || !("serviceWorker" in navigator)) return;
   try {
-    const { tokenFcm } = await import("./pushPrueba");
+    const { tokenFcm } = await import("./firebasePush");
     const fcm = await tokenFcm();
     if (fcm) await registrarTokenSiCambio(fcm);
   } catch {

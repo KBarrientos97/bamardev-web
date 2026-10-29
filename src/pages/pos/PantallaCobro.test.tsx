@@ -29,9 +29,8 @@ vi.mock("../../lib/belleza/apiExtras", () => ({
 }));
 
 vi.mock("../../components/QrCobro", () => ({
-  QrParaCobrar: ({ onConfirmar }: { onConfirmar: () => void }) => (
-    <button onClick={onConfirmar}>Ya llegó el QR</button>
-  ),
+  QrParaCobrar: ({ onConfirmar, sinBoton }: { onConfirmar: () => void; sinBoton?: boolean }) =>
+    sinBoton ? <p>Revisá el QR</p> : <button onClick={onConfirmar}>Ya llegó el QR</button>,
 }));
 
 import { apiExtras } from "../../lib/belleza/apiExtras";
@@ -45,7 +44,7 @@ const FORMAS = [
 function montar(
   onConfirmar = vi.fn(),
   profesionales?: { id: number; nombre: string }[],
-  opc: { total?: number; onCredito?: (extra?: unknown) => void } = {},
+  opc: { total?: number; onCredito?: (extra?: unknown) => void; qrEnUnPaso?: boolean } = {},
 ) {
   render(
     <PantallaCobro
@@ -55,6 +54,7 @@ function montar(
       onAtras={() => {}}
       onConfirmar={onConfirmar}
       onCredito={opc.onCredito}
+      qrEnUnPaso={opc.qrEnUnPaso}
       enviando={false}
       error=""
     />,
@@ -314,5 +314,51 @@ describe("pase oct: centavos en el cobro de Omar", () => {
     fireEvent.click(screen.getByText(/Confirmar cobro/));
     const pagos = onConfirmar.mock.calls[0][0] as { monto: number; recibido?: number }[];
     expect(pagos).toEqual([expect.objectContaining({ monto: 1200, recibido: 1500 })]);
+  });
+});
+
+describe("D4 · el QR en un solo paso (Cobrar a estudiante)", () => {
+  const elegir = (m: "QR" | "Mixto") =>
+    fireEvent.click(screen.getAllByText(m).find((b) => b.closest("button")?.getAttribute("aria-pressed") == null)!);
+
+  it("por QR: sin «ya llegó», un solo botón «Llegó el QR · Confirmar cobro» y cobra", () => {
+    const onConfirmar = montar(vi.fn(), undefined, { total: 100, qrEnUnPaso: true });
+    expect(screen.getByText(/^Confirmar cobro/)).toBeInTheDocument();
+    elegir("QR");
+    expect(screen.queryByText("Ya llegó el QR")).not.toBeInTheDocument();
+    expect(screen.getByText(/Revisá el QR/)).toBeInTheDocument();
+    fireEvent.click(screen.getByText(/Llegó el QR · Confirmar cobro · Bs.100,00/));
+    expect(onConfirmar).toHaveBeenCalledWith([{ formaPagoId: 11, monto: 100 }]);
+  });
+
+  it("en efectivo el botón sigue diciendo «Confirmar cobro» a secas", () => {
+    montar(vi.fn(), undefined, { total: 100, qrEnUnPaso: true });
+    expect(screen.queryByText(/Llegó el QR/)).not.toBeInTheDocument();
+  });
+
+  it("mixto: con el monto del QR puesto, el mismo botón; el efectivo se sigue exigiendo", () => {
+    const onConfirmar = montar(vi.fn(), undefined, { total: 100, qrEnUnPaso: true });
+    elegir("Mixto");
+    escribir(/Monto pagado por QR/, "40");
+    escribir(/Efectivo recibido/, "30");
+    fireEvent.click(screen.getByText(/Llegó el QR · Confirmar cobro/));
+    expect(onConfirmar).not.toHaveBeenCalled();
+    escribir(/Efectivo recibido/, "60");
+    fireEvent.click(screen.getByText(/Llegó el QR · Confirmar cobro/));
+    expect(onConfirmar).toHaveBeenCalledWith([
+      { formaPagoId: 11, monto: 40 },
+      { formaPagoId: 10, monto: 60, recibido: 60 },
+    ]);
+  });
+
+  it("el POS de siempre no cambia: pide marcar que llegó y recién ahí cobra", () => {
+    const onConfirmar = montar(vi.fn(), undefined, { total: 100 });
+    elegir("QR");
+    fireEvent.click(screen.getByText(/Confirmar cobro/));
+    expect(onConfirmar).not.toHaveBeenCalled();
+    expect(screen.getByText(/Confirmá que el pago por QR llegó/)).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Ya llegó el QR"));
+    fireEvent.click(screen.getByText(/Confirmar cobro/));
+    expect(onConfirmar).toHaveBeenCalledTimes(1);
   });
 });

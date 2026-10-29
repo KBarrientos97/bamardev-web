@@ -66,7 +66,7 @@ export default function Categorias() {
   }
 
   return (
-    <div className="mx-auto max-w-4xl space-y-4 p-5">
+    <div className="mx-auto max-w-4xl space-y-4 p-5 lg:max-w-6xl lg:p-6">
       <EncabezadoPagina
         titulo="Categorías"
         subtitulo={`${lista.length} ${esInsumo ? "de materia prima" : "del catálogo de venta"}`}
@@ -108,9 +108,11 @@ export default function Categorias() {
           />
         </div>
       ) : (
-        <ul className="card divide-y divide-borde-soft">
+        // En la PC (26-oct), una grilla: en una lista a lo ancho cada nombre
+        // quedaba lejísimos de su lápiz y su tacho.
+        <ul className="card divide-y divide-borde-soft lg:grid lg:grid-cols-2 lg:gap-3 lg:divide-y-0 lg:border-0 lg:bg-transparent lg:shadow-none xl:grid-cols-3">
           {filtradas.map((c) => (
-            <li key={c.id} className="flex items-center gap-3 px-4 py-3">
+            <li key={c.id} className="flex items-center gap-3 px-4 py-3 lg:card">
               <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary-50 text-primary-700">
                 <Icon name={esInsumo ? "sack" : "grid"} size={17} />
               </span>

@@ -160,7 +160,39 @@ export type Seccion =
   | "personal"
   // ── Roles del negocio (PLAN-ROLES-NEGOCIO) ──
   /** Crear, renombrar, editar y borrar los roles del negocio, con su bitácora. */
-  | "roles";
+  | "roles"
+  // ── Vertical Educación, ronda 1 (PLAN-ACADEMIAS-TECNICO §8) ──
+  /** E1: el tablero del día de la secretaría y la dirección (no el del docente). */
+  | "academia_hoy"
+  /** E2/E3: los grupos (el docente, sólo los suyos). */
+  | "academia_grupos"
+  /** E7/E6: los alumnos y su ficha. */
+  | "academia_alumnos"
+  /** E20: lo que llega desde la página del instituto. */
+  | "academia_preinscripciones"
+  /** E8: las cuotas que se deben, con el recordatorio por WhatsApp. */
+  | "academia_cobranza"
+  /** A1 (22-oct): cobrar las cuotas de un estudiante, fuera del POS. */
+  | "academia_cobrar"
+  /** E17: carreras, materias y planes de pago. */
+  | "academia_carreras"
+  /** Ajustes académicos: nota mínima, tolerancia, topes de promoción. */
+  | "academia_ajustes"
+  // ── Vertical Educación, ronda 2 (diseño del 16-oct + F1b) ──
+  /** N1: el calendario de módulos, la pantalla de grupos de recepción y administración. */
+  | "academia_calendario"
+  /** E11: las clases de hoy del docente. */
+  | "academia_mis_clases"
+  /** N6: pasar lista en la clase de hoy (el docente). */
+  | "academia_lista"
+  /** E13: cargar las notas de sus módulos (el docente). */
+  | "academia_notas"
+  /** E14/N8: la planilla de los docentes del mes. */
+  | "academia_planilla"
+  /** N9: el panel de control del dueño. */
+  | "academia_control"
+  /** E18: los reportes del instituto. */
+  | "academia_reportes";
 
 /**
  * Qué pide cada sección: un permiso (o varios, con `tambien`: alcanza con
@@ -184,6 +216,12 @@ interface Requisito {
   alcance?: "GENERAL" | "PROPIO";
   sinGeneral?: string;
   feature: Feature | null;
+  /**
+   * Otra feature que también la habilita (con cualquiera de las dos alcanza).
+   * Personal nació con la agenda de belleza, y el instituto, que no tiene
+   * agenda, la necesita para sus docentes.
+   */
+  oFeature?: Feature;
 }
 
 const REQUISITOS: Record<Seccion, Requisito> = {
@@ -279,10 +317,43 @@ const REQUISITOS: Record<Seccion, Requisito> = {
   // tiene que ver qué entrega. El backend pide lo mismo en GET /propinas.
   propinas: { permiso: "propinas.ver", tambien: ["propinas.pagar"], feature: "propinas" },
   recetas_servicio: { permiso: "consumo.recetas", feature: "consumo_servicio" },
-  // Personal va con la feature `agenda` (07-oct): sólo en los negocios con agenda.
-  personal: { permiso: "personal.gestionar", feature: "agenda" },
+  // Personal va con la feature `agenda` (07-oct): sólo en los negocios con
+  // agenda. O con `academia`: los docentes del instituto son su Personal.
+  personal: { permiso: "personal.gestionar", feature: "agenda", oFeature: "academia" },
   // Los roles del negocio existen en todos los rubros y no se venden aparte.
   roles: { permiso: "roles.gestionar", feature: null },
+  // ── Educación (PLAN-ACADEMIAS-TECNICO §5.2) ──
+  // Hoy es de la secretaría y la dirección: el docente (academia.ver PROPIO)
+  // entra a sus grupos, como el profesional entra a "Mi agenda".
+  academia_hoy: { permiso: "academia.ver", alcance: "GENERAL", feature: "academia" },
+  academia_grupos: { permiso: "academia.ver", feature: "academia" },
+  // Desde la ronda 2 el docente no tiene la lista de estudiantes ni su ficha
+  // (D6: nunca teléfonos ni montos): ve a los suyos en la lista y en notas.
+  academia_alumnos: { permiso: "academia.ver", alcance: "GENERAL", feature: "academia" },
+  // La bandeja existe sólo con el formulario de la página prendido: sin él no
+  // llega nada (igual que las solicitudes con `reserva_online`).
+  academia_preinscripciones: { permiso: "academia.inscribir", feature: "preinscripcion_online" },
+  academia_cobranza: { permiso: "academia.cobranza", feature: "academia" },
+  // Cobrar a estudiante (A1): lo mismo que el backend pide para buscar al
+  // alumno y traer su carrito (inscribir o gestionar la cobranza). El docente
+  // no lo tiene.
+  academia_cobrar: { permiso: "academia.cobranza", tambien: ["academia.inscribir"], feature: "academia" },
+  academia_carreras: { permiso: "academia.configurar", feature: "academia" },
+  academia_ajustes: { permiso: "academia.configurar", feature: "academia" },
+  // ── Educación, ronda 2 ──
+  // El calendario es de recepción y administración; el docente entra por sus
+  // clases (el backend igual le recorta el calendario a sus grupos).
+  academia_calendario: { permiso: "academia.ver", alcance: "GENERAL", feature: "academia" },
+  // Lo del docente pide el alcance PROPIO: la recepción también puede pasar
+  // lista (asistencia.registrar GENERAL), pero lo hace desde el grupo y no
+  // tiene un "Mis clases" en el menú. Coordinación y dirección, lo mismo.
+  academia_mis_clases: { permiso: "asistencia.registrar", alcance: "PROPIO", feature: "asistencia" },
+  academia_lista: { permiso: "asistencia.registrar", alcance: "PROPIO", feature: "asistencia" },
+  academia_notas: { permiso: "notas.registrar", alcance: "PROPIO", feature: "notas" },
+  academia_planilla: { permiso: "planilla.ver", alcance: "GENERAL", feature: "planilla_docente" },
+  academia_control: { permiso: "academia.control", feature: "academia" },
+  // Los del instituto, con el permiso de siempre de los reportes.
+  academia_reportes: { permiso: "reportes.ver", feature: "academia" },
 };
 
 /**
@@ -328,6 +399,12 @@ const FEATURES_ESTRICTAS: Feature[] = [
   "ficha_tecnica",
   // Billar nace ahora: ningún negocio lo tuvo, se prende a mano.
   "billar",
+  // La vertical Educación, ídem (y sólo compatibles con EDUCACION).
+  "academia",
+  "asistencia",
+  "notas",
+  "planilla_docente",
+  "preinscripcion_online",
 ];
 
 /**
@@ -352,8 +429,10 @@ const SOLO_EN_RUBRO: Partial<Record<Seccion, Rubro[]>> = {
   dashboard: ["FARMACIA"],
   busqueda: ["FARMACIA"],
   // Nació en el billar (el dueño, 18-oct). Los demás rubros siguen cambiando
-  // el QR desde la apertura de caja; abrírselo es sumar el rubro acá.
-  qr_cobro: ["BILLAR"],
+  // el QR desde la apertura de caja; abrírselo es sumar el rubro acá. El
+  // instituto lo suma (ronda 2, R5): no abre una caja a propósito sólo para
+  // cargar el QR, y «Primeros pasos» necesita adónde llevar al administrador.
+  qr_cobro: ["BILLAR", "ACADEMIA"],
   vencimientos: ["FARMACIA"],
   encargos: ["FARMACIA"],
   controlados: ["FARMACIA"],
@@ -383,8 +462,9 @@ const SOLO_EN_RUBRO: Partial<Record<Seccion, Rubro[]>> = {
   propinas: RUBROS_BELLEZA,
   recetas_servicio: RUBROS_BELLEZA,
   // Personal existe sólo en los negocios con agenda (07-oct): Omar tiene su
-  // gente cargada por el backfill, pero no ve la pantalla.
-  personal: RUBROS_BELLEZA,
+  // gente cargada por el backfill, pero no ve la pantalla. El instituto sí:
+  // ahí carga a sus docentes, con su % y su retención.
+  personal: [...RUBROS_BELLEZA, "ACADEMIA"],
 };
 
 /**
@@ -395,19 +475,22 @@ const SOLO_EN_RUBRO: Partial<Record<Seccion, Rubro[]>> = {
  */
 const FUERA_DE_RUBRO: Partial<Record<Seccion, Rubro[]>> = {
   // El salón entero es de restaurante: una farmacia no atiende mesas, y una
-  // peluquería tampoco (su "salón" es otra cosa).
-  mesas: ["FARMACIA", ...RUBROS_BELLEZA],
-  salon: ["FARMACIA", ...RUBROS_BELLEZA],
+  // peluquería tampoco (su "salón" es otra cosa). Un instituto, menos.
+  mesas: ["FARMACIA", ...RUBROS_BELLEZA, "ACADEMIA"],
+  salon: ["FARMACIA", ...RUBROS_BELLEZA, "ACADEMIA"],
   // Los insumos son materia prima: harina, aceite, pollo crudo. Una farmacia
   // no transforma nada, compra y vende lo mismo. El tinte de un salón se
   // gasta, pero no es una receta que se descuente al vender.
-  insumos: ["FARMACIA", ...RUBROS_BELLEZA],
+  insumos: ["FARMACIA", ...RUBROS_BELLEZA, "ACADEMIA"],
   // Una farmacia o un salón de belleza no tienen mesas de pool, aunque alguien
   // les prenda el extra en el panel por error.
-  billar: ["FARMACIA", ...RUBROS_BELLEZA],
-  mesas_billar: ["FARMACIA", ...RUBROS_BELLEZA],
-  supervision_billar: ["FARMACIA", ...RUBROS_BELLEZA],
-  reportes_billar: ["FARMACIA", ...RUBROS_BELLEZA],
+  billar: ["FARMACIA", ...RUBROS_BELLEZA, "ACADEMIA"],
+  mesas_billar: ["FARMACIA", ...RUBROS_BELLEZA, "ACADEMIA"],
+  supervision_billar: ["FARMACIA", ...RUBROS_BELLEZA, "ACADEMIA"],
+  reportes_billar: ["FARMACIA", ...RUBROS_BELLEZA, "ACADEMIA"],
+  // En un instituto lo que se debe son cuotas, y eso es Cobranza
+  // (PLAN-ACADEMIAS §4): "Cuentas por cobrar" no aparece.
+  creditos: ["ACADEMIA"],
 };
 
 export interface ContextoPermisos {
@@ -513,8 +596,7 @@ export function puedeVer(ctx: ContextoPermisos, seccion: Seccion): boolean {
 
   const req = REQUISITOS[seccion];
   if (!cumplePermiso(ctx, req)) return false;
-  if (req.feature && !tieneFeature(ctx.features, req.feature)) return false;
-  if (req.feature && FEATURES_ESTRICTAS.includes(req.feature) && !ctx.features?.includes(req.feature)) {
+  if (req.feature && !(cumpleFeature(ctx, req.feature) || (!!req.oFeature && cumpleFeature(ctx, req.oFeature)))) {
     return false;
   }
   // Belleza carga sus sucursales desde la agenda y Almacenes nunca le apareció
@@ -523,6 +605,26 @@ export function puedeVer(ctx: ContextoPermisos, seccion: Seccion): boolean {
     return false;
   }
   return true;
+}
+
+/** ¿El plan trae la feature? Las estrictas no fallan abiertas con la lista vacía. */
+function cumpleFeature(ctx: ContextoPermisos, feature: Feature): boolean {
+  if (!tieneFeature(ctx.features, feature)) return false;
+  if (FEATURES_ESTRICTAS.includes(feature) && !ctx.features?.includes(feature)) return false;
+  return true;
+}
+
+/**
+ * ¿Cobra cuotas (E9)? Con la feature `academia` y con lo mismo que el backend
+ * pide para buscar al alumno y traer su carrito: inscribir o gestionar la
+ * cobranza (la secretaría y la coordinación; el docente, no). Decide si el
+ * grupo, la ficha y Cobranza muestran "Cobrar", que desde el 22-oct (A1)
+ * lleva a "Cobrar a estudiante" (`academia_cobrar`, con la misma regla).
+ */
+export function cobraCuotas(ctx: ContextoPermisos): boolean {
+  if (!cumpleFeature(ctx, "academia")) return false;
+  const permisos = ctx.permisos ?? [];
+  return permisos.includes("academia.inscribir") || permisos.includes("academia.cobranza");
 }
 
 /**
@@ -586,7 +688,7 @@ const PERMISO_CAPACIDAD: Partial<Record<Capacidad, string>> = {
  */
 const CAPACIDAD_FUERA_DE_RUBRO: Partial<Record<Capacidad, Rubro[]>> = {
   // Un corte de pelo no se sirve en mesa ni se lleva: en belleza tampoco.
-  mesa_llevar: ["FARMACIA", ...RUBROS_BELLEZA],
+  mesa_llevar: ["FARMACIA", ...RUBROS_BELLEZA, "ACADEMIA"],
 };
 
 export function puede(ctx: ContextoPermisos, capacidad: Capacidad): boolean {
@@ -632,6 +734,10 @@ export function rutaInicial(ctx: ContextoPermisos): string {
         ["agenda", "/agenda"],
       ];
   for (const [seccion, ruta] of [...agenda, ...ORDEN_INICIO]) {
+    // En el instituto /inventario/almacenes redirige a Sedes (`AlmacenesORedirige`), que
+    // pide otro permiso: un rol armado a mano con sólo `almacenes.administrar` entraba
+    // en un ciclo Inicio → Almacenes → Sedes → Inicio (ronda 2, B1).
+    if (seccion === "almacenes" && ctx.rubro === "ACADEMIA") continue;
     if (puedeVer(ctx, seccion)) return ruta;
   }
   // Sin ninguna sección habilitada no hay a dónde ir: la pantalla de sin
@@ -647,6 +753,21 @@ export function rutaInicial(ctx: ContextoPermisos): string {
  * "/sin-acceso" con esa misma sección dibujada en la barra de al lado.
  */
 const ORDEN_INICIO: [Seccion, string][] = [
+  // El instituto empieza el día donde está la tarea de cada rol (D8, 27-oct):
+  // el administrador, en el Panel de control (lo que pide su atención: sobrecupos,
+  // descuentos, quién asiste sin pagar); la recepción y la coordinación, en el
+  // Calendario (desde el 26-oct, con las clases de hoy arriba: "Hoy" salió del
+  // menú); el docente, en sus clases de hoy (ronda 2). Es por PERMISO, no por
+  // el nombre del rol: quien tiene `academia.control` va primero al Panel, y un
+  // rol armado a mano sin él sigue de largo hasta una pantalla que sí puede ver.
+  // Sin la feature `academia` no existen y la lista sigue como siempre.
+  ["academia_control", "/academia/control"],
+  ["academia_calendario", "/academia/calendario"],
+  ["academia_mis_clases", "/academia/mis-clases"],
+  // Sin entrada para `academia_grupos`: "/academia/grupos" redirige al
+  // Calendario, que pide `academia.ver` GENERAL. Un rol armado a mano con
+  // `academia.ver` PROPIO y sin `asistencia.registrar` volvía al inicio y el
+  // ciclo no terminaba. Ese rol sigue por el resto de la lista (o "/sin-acceso").
   ["inventario", "/inventario"],
   ["productos", "/inventario/productos"],
   // En un billar, quien atiende entra al tablero de las mesas y no al POS.
@@ -684,6 +805,18 @@ const ORDEN_INICIO: [Seccion, string][] = [
   ["mi_asistente", "/mi-asistente"],
   ["promociones", "/promociones"],
   ["retencion", "/clientes-que-no-vuelven"],
+  ["academia_alumnos", "/academia/alumnos"],
+  ["academia_preinscripciones", "/academia/preinscripciones"],
+  ["academia_cobranza", "/academia/cobranza"],
+  ["academia_cobrar", "/academia/cobranza/cobrar"],
+  ["academia_carreras", "/configuracion/carreras"],
+  ["academia_ajustes", "/configuracion/academia"],
+  ["academia_calendario", "/academia/calendario"],
+  ["academia_lista", "/academia/lista"],
+  ["academia_notas", "/academia/notas"],
+  ["academia_planilla", "/academia/planilla"],
+  ["academia_control", "/academia/control"],
+  ["academia_reportes", "/academia/reportes"],
   ["salon", "/salon"],
   ["reparto", "/reparto"],
 ];
