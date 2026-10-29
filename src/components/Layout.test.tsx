@@ -507,4 +507,9 @@ describe("el scroll de las pantallas", () => {
     render(arbol("/pos"));
     expect(screen.getByRole("main")).toHaveClass("relative", "overflow-y-auto");
   });
+
+  it("al imprimir deja de ser ancla: el ticket arranca en el borde del papel", () => {
+    render(arbol("/pos"));
+    expect(screen.getByRole("main")).toHaveClass("print:static");
+  });
 });

@@ -228,8 +228,12 @@ export default function Layout() {
             de este scroll. Sin él se ubicaba contra la ventana, en su lugar del
             contenido —1.676 px en Ajustes de academia, con 945 de ventana—, y
             el documento crecía hasta ahí: al llegar al final con la rueda se
-            corría la app entera hacia arriba y abajo quedaba un hueco vacío. */}
-        <main className="relative min-h-0 flex-1 overflow-y-auto print:overflow-visible">
+            corría la app entera hacia arriba y abajo quedaba un hueco vacío.
+            Al imprimir vuelve a `static`: el ticket del POS (`#area-impresion`,
+            absolute arriba a la izquierda) tiene que anclarse al papel y no a
+            este `<main>`, que en el ancho del rollo queda debajo de la cabecera
+            móvil y de los avisos, y lo bajaba unos 16 mm. */}
+        <main className="relative min-h-0 flex-1 overflow-y-auto print:static print:overflow-visible">
           <Outlet />
         </main>
       </div>

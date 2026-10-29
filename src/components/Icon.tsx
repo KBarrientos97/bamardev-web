@@ -552,7 +552,6 @@ const paths: Record<string, ReactNode> = {
       <line x1="12" y1="17" x2="12.01" y2="17" />
     </>
   ),
-  /** El tenedor y el cuchillo: la cena del personal del billar. */
   // Girar una foto (el visor de fotos): una flecha que da la vuelta.
   girar: (
     <>
@@ -560,6 +559,7 @@ const paths: Record<string, ReactNode> = {
       <polyline points="21 3 21 9 15 9" />
     </>
   ),
+  /** El tenedor y el cuchillo: la cena del personal del billar. */
   cubiertos: (
     <>
       <path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2" />

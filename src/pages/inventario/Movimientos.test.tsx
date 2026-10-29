@@ -363,10 +363,12 @@ describe("Agregar artículo a un movimiento pendiente", () => {
     fireEvent.change(within(dialogo).getByRole("combobox", { name: "Buscar artículo" }), {
       target: { value: "simba" },
     });
-    fireEvent.mouseDown(within(dialogo).getByText("Simba 2L"));
-    fireEvent.click(within(dialogo).getByRole("button", { name: "Cambiar Simba 2L" }));
+    // El resultado llega tras la espera del buscador: con la suite en paralelo
+    // a veces todavía no estaba y el `getByText` fallaba.
+    fireEvent.mouseDown(await within(dialogo).findByText("Simba 2L"));
+    fireEvent.click(await within(dialogo).findByRole("button", { name: "Cambiar Simba 2L" }));
 
-    expect(within(dialogo).getByRole("combobox", { name: "Buscar artículo" })).toBeInTheDocument();
+    expect(await within(dialogo).findByRole("combobox", { name: "Buscar artículo" })).toBeInTheDocument();
   });
 });
 
