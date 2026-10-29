@@ -16,7 +16,9 @@ import {
   Vacio,
 } from "../../components/ui";
 import { api, type PagoEntrega } from "../../lib/api";
-import { leerMonto } from "../../lib/montoTecleado";
+import { atajosDeEfectivo } from "../../lib/billetes";
+import { aCentavos, cubre, esPositivo, excede, restoEnEfectivo, vuelto } from "../../lib/dinero";
+import { leerMonto, montoParaEditar } from "../../lib/montoTecleado";
 import { fmtFechaHora, fmtHora, fmtMoney, fmtNum } from "../../lib/format";
 import { Telefono } from "../../lib/telefono";
 import { tienePermiso, tieneFeature } from "../../lib/permisos";
@@ -77,8 +79,21 @@ export default function PantallaHistorial({
   // Las cobradas sin internet también son del turno: cuentan en el resumen,
   // como en Android (las rechazadas no, porque no van a llegar).
   const sinSubir = porSubir(useColaOffline()).map((v) => v.recibo);
-  const aprobadas = [...sinSubir, ...todas.filter((v) => v.estado === "APROBADO")];
-  const totalVendido = aprobadas.reduce((s, v) => s + v.total, 0);
+  // No cuenta los pedidos contra entrega que todavía no se cobraron (DEL-4,
+  // 28-oct). Nacen APROBADO en la caja de quien los tomó, sin pagos: se
+  // sumaban en "N ventas · Bs X" y en "Vendido" como si la plata estuviera, y
+  // la cajera veía más de lo que tenía. La app y Reportes los dejan afuera
+  // hasta que se cobran; siguen en la lista, marcados "Por entregar". No mira
+  // el rubro, como la app (`construirHistorial`): una farmacia o un minimarket
+  // con delivery tenía el mismo número inflado (hay test de farmacia).
+  //
+  // Ojo, no es "lo que entró a la caja": una venta fiada todavía suma entera,
+  // con el saldo que se llevó el cliente, y la app suma sólo lo cobrado
+  // (`total - saldo`). Igualarlo queda pendiente: cambia el número de la cajera.
+  const aprobadas = [...sinSubir, ...todas.filter((v) => v.estado === "APROBADO")].filter(
+    (v) => !porCobrarAlEntregar(v),
+  );
+  const totalVendido = aCentavos(aprobadas.reduce((s, v) => s + v.total, 0));
   const porEntregar = pendientes.datos ?? [];
 
   const navigate = useNavigate();
@@ -87,6 +102,20 @@ export default function PantallaHistorial({
    * "fiado" el backend responde 403 y el bloque simplemente no aparece.
    */
   const creditos = useApi(() => api.getCreditos().catch(() => []), []);
+  /**
+   * Lo que fió este cajero en su turno (BUG-finanzas-10). `CuentasPorCobrar`
+   * tenía el renglón "· Bs X fiado en tu turno" pero nadie le pasaba el
+   * número: viene de `/creditos/resumen`, medido contra la caja abierta de
+   * quien pregunta (como la app). Falla en silencio como la lista: sin el
+   * dato, el renglón no sale.
+   */
+  const conCreditos = puede("creditos");
+  const resumenCreditos = useApi(
+    () => (conCreditos ? api.getResumenCreditos().catch(() => null) : Promise.resolve(null)),
+    [conCreditos],
+  );
+  const fiadoEnTurno = resumenCreditos.datos?.fiadoEnTurno;
+  const fiadoDelTurno = typeof fiadoEnTurno === "number" ? fiadoEnTurno : undefined;
 
   // En la PC (26-oct): la barra de lado a lado y dos columnas, las ventas a
   // la izquierda y el turno a la derecha. Antes era la columna del celular en
@@ -121,9 +150,10 @@ export default function PantallaHistorial({
           <ResumenTurno caja={caja} ventas={aprobadas.length} total={totalVendido} />
           {/* Antes que las ventas: es la plata que NO está en el cajón, y es lo
               que la cajera necesita ver antes de cerrar. */}
-          {puede("creditos") && (
+          {conCreditos && (
             <CuentasPorCobrar
               creditos={creditos.datos ?? []}
+              fiadoDelTurno={fiadoDelTurno}
               onVerTodos={() => navigate("/creditos")}
             />
           )}
@@ -229,7 +259,11 @@ export default function PantallaHistorial({
             // En la PC, una sola tarjeta con renglones: diez tarjetas sueltas a
             // lo ancho se leen como el celular estirado.
             <ul className="space-y-2 lg:card lg:space-y-0 lg:divide-y lg:divide-borde-soft lg:overflow-hidden">
-              {lista.map((v) => (
+              {lista.map((v) => {
+                // Sin cobrar todavía: no cuenta en lo vendido (ver arriba), y la
+                // fila tiene que decir por qué en vez del tilde verde de cobrada.
+                const sinCobrar = v.estado === "APROBADO" && porCobrarAlEntregar(v);
+                return (
                 <li key={v.id}>
                   <button
                     onClick={() => setDetalle(v)}
@@ -239,13 +273,15 @@ export default function PantallaHistorial({
                       className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
                         v.estado === "ANULADO"
                           ? "bg-danger-bg text-danger-text"
-                          : "bg-primary-50 text-primary-700"
+                          : sinCobrar
+                            ? "bg-warning-bg text-warning-text"
+                            : "bg-primary-50 text-primary-700"
                       }`}
                     >
-                      <Icon name={v.estado === "ANULADO" ? "x" : "check"} size={19} />
+                      <Icon name={v.estado === "ANULADO" ? "x" : sinCobrar ? "clock" : "check"} size={19} />
                     </span>
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                         <span className="text-[13px] font-bold text-texto">
                           {v.comprobante ?? `#${v.id}`}
                         </span>
@@ -255,12 +291,21 @@ export default function PantallaHistorial({
                             {v.tipoPedido === "DELIVERY" ? "Delivery" : "Recojo"}
                           </Badge>
                         )}
+                        {/* Si ya se entregó o sigue por entregar: antes lo decía
+                            sólo el detalle, y un delivery entregado se veía
+                            igual que uno que el repartidor todavía tiene encima
+                            (DEL-4). Lo de la app (`PedidoDomicilioAdapter`). */}
+                        {esPedido(v) && v.estado === "APROBADO" && (
+                          <Badge tono={v.estadoEntrega === "ENTREGADO" ? "verde" : "amarillo"}>
+                            {v.estadoEntrega === "ENTREGADO" ? "Entregado" : "Por entregar"}
+                          </Badge>
+                        )}
                         {requiereRevision(v) && <Badge tono="amarillo">A revisar</Badge>}
                       </div>
                       <p className="mt-0.5 text-xs text-texto-3">
                         {fmtHora(v.fecha)} · {v.items ?? 0}{" "}
                         {(v.items ?? 0) === 1 ? "artículo" : "artículos"}
-                        {comoSePago(v) ? ` · ${comoSePago(v)}` : ""}
+                        {sinCobrar ? " · Cobra al entregar" : comoSePago(v) ? ` · ${comoSePago(v)}` : ""}
                       </p>
                       {/* El porqué en la misma fila: la marca sola obliga a
                           abrir cada venta para saber si es grave. */}
@@ -274,14 +319,17 @@ export default function PantallaHistorial({
                       className={`shrink-0 text-sm font-bold ${
                         v.estado === "ANULADO"
                           ? "text-texto-4 line-through"
-                          : "text-texto"
+                          : sinCobrar
+                            ? "text-texto-3"
+                            : "text-texto"
                       }`}
                     >
                       {fmtMoney(v.total)}
                     </span>
                   </button>
                 </li>
-              ))}
+                );
+              })}
             </ul>
           )}
         </section>
@@ -366,7 +414,7 @@ function DetalleVenta({
   /** Reimprimir el comprobante de un pedido ya cobrado. */
   onVerComprobante?: (venta: Venta) => void;
 }) {
-  const { usuario, incluye, rubro, negocio } = useAuth();
+  const { usuario, rubro, negocio } = useAuth();
   const completa = useApi(() => api.getVenta(venta.id), [venta.id]);
   const [anulando, setAnulando] = useState(false);
 
@@ -391,9 +439,13 @@ function DetalleVenta({
    *
    * La app todavía tiene la regla vieja (`DetalleVentaFragment.puedeAnular`).
    */
-  // Anular pasa siempre por el PIN de un encargado: sin esa capacidad el
-  // negocio no compró forma de autorizarlo, así que no se ofrece.
-  const puedeAnular = v.estado === "APROBADO" && incluye("autorizacion_pin");
+  // Se ofrece con el permiso de anular, como la app (`Permisos.anulaVentas`),
+  // y el PIN de un encargado se pide siempre en el diálogo. Hasta el 28-oct se
+  // escondía sin la feature `autorizacion_pin`, pero el backend desató el PIN
+  // de esa feature el 19-oct (`autorizar.pin` es del núcleo): un negocio al
+  // que el panel se la apagara se quedaba sin "Anular" aunque el servidor lo
+  // dejaba (BUG-admin-7).
+  const puedeAnular = v.estado === "APROBADO" && tienePermiso(usuario, "ventas.anular");
 
   /**
    * El bloque de pedido (recoger / domicilio), con las mismas reglas que la
@@ -819,7 +871,16 @@ function DialogoAnular({
  * en la app.
  *
  * Si venía prepagado sólo se confirma la entrega; si se cobraba al retirar, la
- * plata entra recién ahora.
+ * plata entra recién ahora: en efectivo, por QR o mixto (CAJA-5 / DEL-1,
+ * 28-oct), con las reglas del cobro del POS (`PantallaCobro`): QR y mixto sólo
+ * si el plan los incluye y el negocio tiene la forma "QR". Lo decide el plan y
+ * no el rubro, como en ese cobro y en la app: una farmacia o un minimarket que
+ * toma pedidos cobra el recojo igual (hay test de farmacia). Antes había sólo
+ * Efectivo y QR, y al cliente que pagaba una parte por QR y otra en efectivo
+ * se le cargaba todo a un solo medio: el arqueo del efectivo y el del QR
+ * quedaban descuadrados en esa parte. La app lo cobra con su pantalla de cobro
+ * entera (`CobrarFragment` en modo entrega); el backend acepta varios pagos
+ * mientras sumen el total del pedido.
  */
 function EntregarRecoger({
   pedido,
@@ -832,8 +893,9 @@ function EntregarRecoger({
 }) {
   const { incluye } = useAuth();
   const formasPago = useApi(() => api.getFormasPago(), []);
-  const [metodo, setMetodo] = useState<"EFECTIVO" | "QR">("EFECTIVO");
+  const [metodo, setMetodo] = useState<"EFECTIVO" | "QR" | "MIXTO">("EFECTIVO");
   const [recibido, setRecibido] = useState("");
+  const [montoQr, setMontoQr] = useState("");
   const [qrConfirmado, setQrConfirmado] = useState(false);
   const [error, setError] = useState("");
   const [enviando, setEnviando] = useState(false);
@@ -850,8 +912,22 @@ function EntregarRecoger({
   // total" — sin forma de entender por qué. Era el único punto del cobro que
   // no usaba el helper (ver `dinero.ts`, que documenta este mismo bug). Y como
   // en el cierre: "1.500" son mil quinientos, no Bs 1,50 (26-oct).
-  const recibidoNum = leerMonto(recibido) ?? 0;
-  const cambio = metodo === "QR" ? 0 : Math.max(0, Math.round((recibidoNum - total) * 100) / 100);
+  // En centavos, como los guarda el backend: con tres decimales el QR más el
+  // efectivo dejaban de sumar el total y el pedido rebotaba.
+  const recibidoNum = aCentavos(leerMonto(recibido) ?? 0);
+  const qrNum = aCentavos(leerMonto(montoQr) ?? 0);
+  // En mixto, el efectivo es lo que falta después del QR.
+  const enEfectivo = metodo === "MIXTO" ? restoEnEfectivo(total, qrNum) : total;
+  const cambio = metodo === "QR" ? 0 : vuelto(recibidoNum, enEfectivo);
+  // El justo y los billetes que lo cubren solos, como el cobro del POS.
+  const sugerencias = esPositivo(enEfectivo) ? [aCentavos(enEfectivo), ...atajosDeEfectivo(enEfectivo)] : [];
+
+  /** Cambiar de método obliga a confirmar el QR de nuevo. */
+  function elegirMetodo(m: "EFECTIVO" | "QR" | "MIXTO") {
+    setMetodo(m);
+    setQrConfirmado(false);
+    setError("");
+  }
 
   async function confirmar() {
     if (enviando) return;
@@ -863,12 +939,24 @@ function EntregarRecoger({
     if (!pedido.prepagado) {
       if (metodo === "EFECTIVO") {
         if (!efectivo) return setError(formaPagoFaltante(formas, "Efectivo"));
-        if (recibidoNum < total) return setError("Lo recibido no alcanza para cubrir el total.");
+        if (!cubre(recibidoNum, total)) return setError("Lo recibido no alcanza para cubrir el total.");
         pagos = [{ formaPagoId: efectivo.id, monto: total, recibido: recibidoNum }];
-      } else {
+      } else if (metodo === "QR") {
         if (!qr) return setError(formaPagoFaltante(formas, "QR"));
         if (!qrConfirmado) return setError("Confirmá que el pago por QR llegó antes de entregar.");
         pagos = [{ formaPagoId: qr.id, monto: total }];
+      } else {
+        // Mixto: el QR cubre una parte y el efectivo el resto. Los dos tienen
+        // que ser más de cero y sumar el total: el backend rechaza lo demás.
+        if (!efectivo || !qr) return setError("Faltan formas de pago cargadas para cobrar mixto.");
+        if (!esPositivo(qrNum)) return setError("Poné cuánto se paga por QR.");
+        if (!excede(total, qrNum)) return setError("Si el QR cubre todo, cobrá con el método QR.");
+        if (!qrConfirmado) return setError("Confirmá que el pago por QR llegó antes de entregar.");
+        if (!cubre(recibidoNum, enEfectivo)) return setError("El efectivo recibido no cubre lo que falta.");
+        pagos = [
+          { formaPagoId: qr.id, monto: qrNum },
+          { formaPagoId: efectivo.id, monto: enEfectivo, recibido: recibidoNum },
+        ];
       }
     }
 
@@ -914,45 +1002,58 @@ function EntregarRecoger({
           </p>
         ) : (
           <>
+            {/* Sin QR en el plan (o sin la forma de pago) no se dibujan
+                botones apagados: se cobra en efectivo y punto. */}
             {permiteQr && (
-              <div className="grid grid-cols-2 gap-2">
-                {(["EFECTIVO", "QR"] as const).map((m) => (
+              <div className="grid grid-cols-3 gap-2">
+                {(["EFECTIVO", "QR", "MIXTO"] as const).map((m) => (
                   <button
                     key={m}
-                    onClick={() => {
-                      setMetodo(m);
-                      setQrConfirmado(false);
-                      setError("");
-                    }}
+                    type="button"
+                    aria-pressed={metodo === m}
+                    onClick={() => elegirMetodo(m)}
                     className={`rounded-xl border px-3 py-2.5 text-[13px] font-semibold transition-colors ${
                       metodo === m
                         ? "border-primary bg-primary-50 text-primary-700"
                         : "border-borde bg-white text-texto-2"
                     }`}
                   >
-                    {m === "EFECTIVO" ? "Efectivo" : "QR"}
+                    {m === "EFECTIVO" ? "Efectivo" : m === "QR" ? "QR" : "Mixto"}
                   </button>
                 ))}
               </div>
             )}
 
-            {metodo === "EFECTIVO" ? (
+            {metodo === "MIXTO" && (
               <>
-                <Campo label="Efectivo recibido">
+                <Campo label="Monto pagado por QR" hint="El resto se cobra en efectivo">
                   <InputMonto
-                    value={recibido}
-                    onChange={setRecibido}
+                    value={montoQr}
+                    onChange={(texto) => {
+                      // Otro monto invalida lo confirmado: lo que entró al banco
+                      // ya no es lo que dice la pantalla. Que "50" pase a
+                      // "50,00" al salir del campo no lo cambia.
+                      if (leerMonto(texto) !== leerMonto(montoQr)) setQrConfirmado(false);
+                      setMontoQr(texto);
+                    }}
                     autoFocus
+                    placeholder="0,00"
                     className="text-lg font-bold"
                   />
                 </Campo>
-                {cambio > 0 && (
-                  <div className="rounded-xl bg-primary-50 px-3.5 py-2.5 text-[13px] font-bold text-primary-700">
-                    Cambio: {fmtMoney(cambio)}
+                {esPositivo(qrNum) && (
+                  <div className="rounded-xl border border-borde bg-white p-4">
+                    <QrParaCobrar
+                      confirmado={qrConfirmado}
+                      onConfirmar={() => setQrConfirmado(true)}
+                      monto={fmtMoney(qrNum)}
+                    />
                   </div>
                 )}
               </>
-            ) : (
+            )}
+
+            {metodo === "QR" ? (
               <div className="rounded-xl border border-borde bg-white p-4">
                 <QrParaCobrar
                   confirmado={qrConfirmado}
@@ -960,6 +1061,40 @@ function EntregarRecoger({
                   monto={fmtMoney(total)}
                 />
               </div>
+            ) : (
+              <>
+                <Campo
+                  label="Efectivo recibido"
+                  hint={metodo === "MIXTO" ? `Falta cubrir ${fmtMoney(enEfectivo)}` : undefined}
+                >
+                  <InputMonto
+                    value={recibido}
+                    onChange={setRecibido}
+                    autoFocus={metodo === "EFECTIVO"}
+                    placeholder="0,00"
+                    className="text-lg font-bold"
+                  />
+                </Campo>
+                {sugerencias.length > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    {sugerencias.map((s) => (
+                      <button
+                        key={s}
+                        type="button"
+                        onClick={() => setRecibido(montoParaEditar(s))}
+                        className="rounded-xl border border-borde bg-white px-3.5 py-2 text-[13px] font-semibold text-texto-2 transition-colors hover:border-primary hover:bg-primary-50 hover:text-primary-700"
+                      >
+                        {fmtMoney(s)}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {esPositivo(cambio) && (
+                  <div className="rounded-xl bg-primary-50 px-3.5 py-2.5 text-[13px] font-bold text-primary-700">
+                    Cambio: {fmtMoney(cambio)}
+                  </div>
+                )}
+              </>
             )}
           </>
         )}
@@ -978,6 +1113,21 @@ function DatoPedido({ etiqueta, valor }: { etiqueta: string; valor: string }) {
       <dd className="truncate text-[13px] font-semibold text-texto">{valor}</dd>
     </div>
   );
+}
+
+/** Un delivery o un pedido para recoger (no una venta de mostrador). */
+function esPedido(v: Pick<Venta, "tipoPedido">): boolean {
+  return v.tipoPedido === "DELIVERY" || v.tipoPedido === "RECOGER";
+}
+
+/**
+ * Un pedido que se cobra al entregar y todavía no se entregó: está en la caja
+ * de quien lo tomó, pero sin plata encima. Los pagos se registran recién al
+ * entregarlo (`POST ventas/:id/entregar`), y ahí sí es una venta cobrada.
+ * Misma regla que la app (`cobradaEnCaja` en `VentaRepositoryImpl`).
+ */
+function porCobrarAlEntregar(v: Pick<Venta, "tipoPedido" | "prepagado" | "estadoEntrega">): boolean {
+  return esPedido(v) && !v.prepagado && v.estadoEntrega !== "ENTREGADO";
 }
 
 /**

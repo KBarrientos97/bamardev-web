@@ -52,6 +52,8 @@ export default function MenuLateral({
   onNavegar,
   onCambiarPassword,
   onInstalar,
+  onCerrarSesion,
+  cerrandoSesion = false,
 }: {
   menu: Menu;
   compacta: boolean;
@@ -64,6 +66,14 @@ export default function MenuLateral({
    * se dibuja: ya está instalada o el navegador no deja instalarla.
    */
   onInstalar?: () => void;
+  /**
+   * "Cerrar sesión" (CAJA-3): en el restaurante primero se mira si queda la
+   * caja abierta, y el aviso vive en el Layout por lo mismo que la contraseña
+   * (ver `useCerrarSesion`). Sin ella, se sale directo, como siempre.
+   */
+  onCerrarSesion?: () => void;
+  /** Mientras se pregunta por la caja: el botón no admite otro toque. */
+  cerrandoSesion?: boolean;
 }) {
   const { logout } = useAuth();
   const uid = useId();
@@ -504,19 +514,27 @@ export default function MenuLateral({
 
       <button
         type="button"
-        onClick={logout}
+        onClick={() => {
+          setTip(null);
+          if (onCerrarSesion) onCerrarSesion();
+          else logout();
+        }}
+        disabled={cerrandoSesion}
+        aria-busy={cerrandoSesion || undefined}
         aria-label={compacta ? "Cerrar sesión" : undefined}
         data-fila=""
         data-nav-id="salir"
         {...mostrarTip("Cerrar sesión")}
         className={[
-          "flex items-center gap-3 rounded-xl py-2.5 text-sm font-semibold text-barra-texto-2 transition-colors hover:bg-danger hover:text-white",
+          "flex items-center gap-3 rounded-xl py-2.5 text-sm font-semibold text-barra-texto-2 transition-colors hover:bg-danger hover:text-white disabled:opacity-60",
           foco,
           compacta ? "justify-center px-0" : "px-3",
         ].join(" ")}
       >
         <Icon name="logout" size={19} />
-        {!compacta && <span>Cerrar sesión</span>}
+        {/* Mientras se pregunta por la caja lo dice: con el wifi lento son
+            unos segundos, y un botón quieto se vuelve a tocar. */}
+        {!compacta && <span>{cerrandoSesion ? "Revisando tu caja…" : "Cerrar sesión"}</span>}
       </button>
 
       {/* Qué versión tiene este equipo: para comparar con la publicada cuando

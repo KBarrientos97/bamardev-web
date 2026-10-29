@@ -519,12 +519,22 @@ function PuntoDeVenta() {
   // venta. Las dos rutas montan este mismo componente, así que ir y venir no
   // pierde el carrito. `key` cambia en cada navegación: tocar "Caja" estando
   // ya ahí (en un recibo, después de cerrar) vuelve a la lista del turno.
-  const { pathname, key: navegacion } = useLocation();
+  const { pathname, key: navegacion, state: estadoNavegacion } = useLocation();
   const navigate = useNavigate();
   const enCaja = pathname === RUTA_CAJA;
   useEffect(() => {
     setPantalla((p) => (enCaja ? "historial" : p === "historial" ? "venta" : p));
   }, [enCaja, navegacion]);
+  // "Ir al cierre de caja" del aviso de no cerrar sesión con la caja abierta
+  // (CAJA-3, `useCerrarSesion`) llega a /pos con este pedido. Va después del
+  // efecto de arriba, que si no lo pisaría, y se consume: si quedara en el
+  // historial, un F5 (o abrir la caja siguiente) volvería a abrir el cierre.
+  const pideCierre = (estadoNavegacion as { pantalla?: string } | null)?.pantalla === "cierre";
+  useEffect(() => {
+    if (!pideCierre) return;
+    setPantalla("cierre");
+    navigate(pathname, { replace: true, state: null });
+  }, [pideCierre, navegacion, navigate, pathname]);
 
   /** Arma el cuerpo de la venta juntando carrito y datos de entrega. */
   const cuerpoVenta = useCallback(

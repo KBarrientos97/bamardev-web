@@ -7,6 +7,7 @@ import AvisoLicencia from "./AvisoLicencia";
 import FranjaIntentosPin from "./seguridad/FranjaIntentosPin";
 import CajonMovil from "./CajonMovil";
 import CambiarMiPassword from "./CambiarMiPassword";
+import { useCerrarSesion } from "./CerrarSesion";
 import { BarraCupo } from "./ChipCupo";
 import { HojaCupoHost } from "./ComprarCreditos";
 import { Icon } from "./Icon";
@@ -55,6 +56,10 @@ export default function Layout() {
     setAbierto(false);
     setCambiandoPassword(true);
   };
+  // "Cerrar sesión" con la caja abierta (restaurante): el aviso vive acá por lo
+  // mismo que la contraseña, y cierra el cajón antes de salir. Dentro del
+  // cajón quedaba encerrado en sus 288 px (el cajón se mueve con `transform`).
+  const sesion = useCerrarSesion({ antesDeAvisar: () => setAbierto(false) });
   const menu = useMenu();
   const vende = puede("pos") || puede("billar");
   // La cola de ventas cobradas sin internet sube desde acá, con cualquier
@@ -158,6 +163,8 @@ export default function Layout() {
           onNavegar={() => setAbierto(false)}
           onCambiarPassword={cambiarPassword}
           onInstalar={instalarDisponible ? abrirInstalar : undefined}
+          onCerrarSesion={sesion.pedir}
+          cerrandoSesion={sesion.revisando}
         />
 
         {/* Montado sobre el borde derecho para no restarle alto a la
@@ -187,6 +194,8 @@ export default function Layout() {
           onNavegar={() => setAbierto(false)}
           onCambiarPassword={cambiarPassword}
           onInstalar={instalarDisponible ? abrirInstalar : undefined}
+          onCerrarSesion={sesion.pedir}
+          cerrandoSesion={sesion.revisando}
         />
       </CajonMovil>
 
@@ -239,6 +248,7 @@ export default function Layout() {
       </div>
 
       {cambiandoPassword && <CambiarMiPassword onClose={() => setCambiandoPassword(false)} />}
+      {sesion.dialogo}
       {(instalando || ofrecida) && (
         <HojaInstalar
           onClose={() => {

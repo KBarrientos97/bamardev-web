@@ -154,8 +154,12 @@ export default function AperturaCaja({
 
           {/* Contar por denominación y que el total se copie al monto: es lo
               que hace el cajero al abrir, y tecleando el total de cabeza es
-              donde se cuelan los errores. */}
-          <CorteDeCaja onTotal={(t) => setMonto(t > 0 ? montoParaEditar(t) : "")} />
+              donde se cuelan los errores. Con lo que dice el campo: si se
+              corrige a mano (o con un atajo), el conteo se descarta. */}
+          <CorteDeCaja
+            monto={leerMonto(monto)}
+            onTotal={(t) => setMonto(t > 0 ? montoParaEditar(t) : "")}
+          />
 
           <CargarQrCobro />
 

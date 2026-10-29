@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Caja, CupoEstado, Venta } from "../../types";
+import type { Caja, Credito, CupoEstado, Venta } from "../../types";
 import { cupoEmprendedor } from "../../test/cupoFixtures";
 
 /**
@@ -18,16 +18,21 @@ const sesion = vi.hoisted(() => ({
   refrescarCupo: vi.fn(async () => {}),
   /** Sin features: la web falla abierto (`tieneFeature`). */
   features: undefined as string[] | undefined,
+  /** Quien autoriza con PIN se autoriza a sí mismo (no le pide usuario). */
+  permisos: ["ventas.anular", "autorizar.pin"] as string[],
+  /** Las capacidades que el plan NO incluye (`incluye` da false). */
+  sinCapacidades: [] as string[],
+  /** ¿Ve las cuentas por cobrar? */
+  creditos: false,
 }));
 
 vi.mock("../../store/AuthContext", () => ({
   useAuth: () => ({
     rubro: sesion.rubro,
     negocio: { features: sesion.features },
-    // Quien autoriza con PIN se autoriza a sí mismo (no le pide usuario).
-    usuario: { rol: "ADMIN", permisos: ["ventas.anular", "autorizar.pin"] },
-    puede: () => false,
-    incluye: () => true,
+    usuario: { rol: "ADMIN", permisos: sesion.permisos },
+    puede: (s: string) => (s === "creditos" ? sesion.creditos : false),
+    incluye: (c: string) => !sesion.sinCapacidades.includes(c),
     cupo: sesion.cupo,
     refrescarCupo: sesion.refrescarCupo,
   }),
@@ -39,8 +44,18 @@ vi.mock("../../lib/api", () => ({
     getVenta: vi.fn(),
     getPedidosPendientes: vi.fn(),
     getCreditos: vi.fn(),
+    getResumenCreditos: vi.fn(),
+    getFormasPago: vi.fn(),
+    entregarPedido: vi.fn(),
     anularVenta: vi.fn(),
   },
+}));
+
+// El QR del negocio se baja del servidor: acá basta con el botón de "llegó".
+vi.mock("../../components/QrCobro", () => ({
+  QrParaCobrar: ({ onConfirmar, monto }: { onConfirmar: () => void; monto?: string }) => (
+    <button onClick={onConfirmar}>Llegó el QR de {monto}</button>
+  ),
 }));
 
 import { api } from "../../lib/api";
@@ -89,13 +104,33 @@ const venta = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // Cada test parte del restaurante: el que prueba otro rubro lo pone, y así
+  // no se le pega al siguiente.
+  sesion.rubro = "RESTAURANTE";
   sesion.cupo = null;
   sesion.features = undefined;
+  sesion.permisos = ["ventas.anular", "autorizar.pin"];
+  sesion.sinCapacidades = [];
+  sesion.creditos = false;
   vi.mocked(api.getVentas).mockResolvedValue([venta]);
   vi.mocked(api.getVenta).mockResolvedValue(venta);
   vi.mocked(api.getPedidosPendientes).mockResolvedValue([]);
   vi.mocked(api.getCreditos).mockResolvedValue([]);
+  vi.mocked(api.getResumenCreditos).mockResolvedValue({});
+  vi.mocked(api.getFormasPago).mockResolvedValue([
+    { id: 10, nombre: "Efectivo" },
+    { id: 11, nombre: "QR" },
+  ]);
 });
+
+/** "Ventas del turno" de la caja 1, sin abrir nada. */
+function montarHistorial() {
+  render(
+    <MemoryRouter>
+      <PantallaHistorial caja={{ id: 1 } as Caja} onAtras={() => {}} onCierre={() => {}} onVerComprobante={() => {}} />
+    </MemoryRouter>,
+  );
+}
 
 async function abrirDetalle() {
   render(
@@ -499,5 +534,275 @@ describe("ventas a revisar (C1)", () => {
     expect(await screen.findByRole("button", { name: /T-0007/ })).toHaveTextContent(
       "OTRO_MOTIVO_NUEVO",
     );
+  });
+});
+
+describe("DEL-4: lo vendido del turno no cuenta los pedidos que se cobran al entregar", () => {
+  const pedido = (extra: Partial<Venta>) => ({ ...venta, ...extra }) as Venta;
+  /** Contra entrega y todavía en la calle: está en la caja, sin un peso cobrado. */
+  const delivery = pedido({
+    id: 9,
+    comprobante: "T-0009",
+    tipoPedido: "DELIVERY",
+    prepagado: false,
+    estadoEntrega: "PENDIENTE",
+    total: 50,
+    formasPago: [],
+    pagos: [],
+  });
+  /** Se cobró al entregarlo: ya es plata del turno. */
+  const recojoEntregado = pedido({
+    id: 10,
+    comprobante: "T-0010",
+    tipoPedido: "RECOGER",
+    prepagado: false,
+    estadoEntrega: "ENTREGADO",
+    total: 30,
+  });
+  /** Cobrado al tomarlo y esperando que el cliente pase. */
+  const recojoPagado = pedido({
+    id: 11,
+    comprobante: "T-0011",
+    tipoPedido: "RECOGER",
+    prepagado: true,
+    estadoEntrega: "PENDIENTE",
+    total: 20,
+  });
+
+  beforeEach(() => {
+    vi.mocked(api.getVentas).mockResolvedValue([venta, delivery, recojoEntregado, recojoPagado]);
+  });
+
+  it("el encabezado y «Vendido» suman lo cobrado, sin el delivery que nadie cobró todavía", async () => {
+    // El bug: 80 + 50 + 30 + 20 = 180 «vendidos», con 50 que estaban en la
+    // calle. La app y Reportes cuentan 130.
+    montarHistorial();
+    await screen.findByRole("button", { name: /T-0009/ });
+    expect(screen.getByText("3 ventas · Bs 130,00")).toBeInTheDocument();
+    const resumen = within(screen.getByRole("region", { name: "Resumen del turno" }));
+    expect(resumen.getByText("Bs 130,00")).toBeInTheDocument();
+  });
+
+  it("cada pedido dice si está por entregar o entregado, y el que no se cobró, que cobra al entregar", async () => {
+    montarHistorial();
+    const sinCobrar = await screen.findByRole("button", { name: /T-0009/ });
+    expect(sinCobrar).toHaveTextContent("Por entregar");
+    expect(sinCobrar).toHaveTextContent("Cobra al entregar");
+    expect(screen.getByRole("button", { name: /T-0010/ })).toHaveTextContent("Entregado");
+    const pagado = screen.getByRole("button", { name: /T-0011/ });
+    expect(pagado).toHaveTextContent("Por entregar");
+    expect(pagado).not.toHaveTextContent("Cobra al entregar");
+    // Una venta de mostrador no lleva marca de entrega.
+    expect(screen.getByRole("button", { name: /T-0007/ })).not.toHaveTextContent(/entregar|Entregado/);
+  });
+});
+
+describe("BUG-finanzas-10: lo fiado en el turno aparece en las cuentas por cobrar", () => {
+  const abierto = {
+    id: 1,
+    codigo: "CR-1",
+    ventaId: 7,
+    clienteId: 3,
+    clienteNombre: "Pensión Doña Rosa",
+    clienteTelefono: null,
+    montoTotal: 56,
+    adelanto: 0,
+    saldo: 56,
+    fechaCompromiso: "2026-11-05",
+    estado: "PENDIENTE",
+    vencido: false,
+    diasParaVencer: 8,
+  } as Credito;
+
+  beforeEach(() => {
+    sesion.creditos = true;
+    vi.mocked(api.getCreditos).mockResolvedValue([abierto]);
+  });
+
+  it("«· Bs X fiado en tu turno» sale con el número del resumen de créditos", async () => {
+    // El renglón existía en CuentasPorCobrar, pero nadie le pasaba el número.
+    vi.mocked(api.getResumenCreditos).mockResolvedValue({ fiadoEnTurno: 56 });
+    montarHistorial();
+    expect(await screen.findByText(/Bs 56,00 fiado en tu turno/)).toBeInTheDocument();
+  });
+
+  it("sin el dato (un servidor anterior, o falla) el bloque sale como siempre, sin ese renglón", async () => {
+    vi.mocked(api.getResumenCreditos).mockRejectedValue(new Error("sin red"));
+    montarHistorial();
+    expect(await screen.findByText(/1 crédito abierto/)).toBeInTheDocument();
+    expect(screen.queryByText(/fiado en tu turno/)).not.toBeInTheDocument();
+  });
+
+  it("nada fiado en el turno: no dice «Bs 0,00 fiado»", async () => {
+    vi.mocked(api.getResumenCreditos).mockResolvedValue({ fiadoEnTurno: 0 });
+    montarHistorial();
+    expect(await screen.findByText(/1 crédito abierto/)).toBeInTheDocument();
+    expect(screen.queryByText(/fiado en tu turno/)).not.toBeInTheDocument();
+  });
+});
+
+describe("CAJA-5 / DEL-1: «Cobrar y entregar» un pedido para recoger, también mixto", () => {
+  const recojo = {
+    ...venta,
+    id: 9,
+    comprobante: "T-0009",
+    tipoPedido: "RECOGER",
+    estadoEntrega: "PENDIENTE",
+    prepagado: false,
+    clienteNombre: "Ana",
+    total: 100,
+  } as Venta;
+
+  beforeEach(() => {
+    sesion.features = ["pos", "caja", "recoger", "pago_qr_mixto"];
+    vi.mocked(api.getPedidosPendientes).mockResolvedValue([recojo]);
+    vi.mocked(api.entregarPedido).mockResolvedValue({ ...recojo, estadoEntrega: "ENTREGADO" } as Venta);
+  });
+
+  async function abrirCobro() {
+    montarHistorial();
+    fireEvent.click(await screen.findByRole("button", { name: "Cobrar y entregar" }));
+    const dialogo = screen.getByRole("dialog", { name: "Cobrar y entregar" });
+    // Las formas de pago llegan del servidor.
+    await act(async () => {});
+    return dialogo;
+  }
+
+  const confirmar = async (dialogo: HTMLElement) => {
+    await act(async () => {
+      fireEvent.click(within(dialogo).getByRole("button", { name: "Cobrar y entregar" }));
+    });
+  };
+
+  it("una parte por QR y el resto en efectivo: los dos pagos suman el total, y da el vuelto", async () => {
+    // El bug: sólo Efectivo o QR. El cliente que pagaba una parte de cada
+    // uno se cargaba todo a un medio y los dos arqueos quedaban descuadrados.
+    const dialogo = await abrirCobro();
+    fireEvent.click(within(dialogo).getByRole("button", { name: "Mixto" }));
+    fireEvent.change(within(dialogo).getByLabelText(/Monto pagado por QR/), { target: { value: "60" } });
+    fireEvent.click(within(dialogo).getByRole("button", { name: "Llegó el QR de Bs 60,00" }));
+    expect(dialogo).toHaveTextContent("Falta cubrir Bs 40,00");
+    fireEvent.change(within(dialogo).getByLabelText(/Efectivo recibido/), { target: { value: "50" } });
+    expect(dialogo).toHaveTextContent("Cambio: Bs 10,00");
+    await confirmar(dialogo);
+    expect(api.entregarPedido).toHaveBeenCalledWith(9, [
+      { formaPagoId: 11, monto: 60 },
+      { formaPagoId: 10, monto: 40, recibido: 50 },
+    ]);
+  });
+
+  it("si el QR cubre todo, pide cobrar con QR (el backend rechaza un efectivo de 0)", async () => {
+    const dialogo = await abrirCobro();
+    fireEvent.click(within(dialogo).getByRole("button", { name: "Mixto" }));
+    fireEvent.change(within(dialogo).getByLabelText(/Monto pagado por QR/), { target: { value: "100" } });
+    await confirmar(dialogo);
+    expect(dialogo).toHaveTextContent("Si el QR cubre todo, cobrá con el método QR.");
+    expect(api.entregarPedido).not.toHaveBeenCalled();
+  });
+
+  it("sin confirmar que llegó el QR, no entrega", async () => {
+    const dialogo = await abrirCobro();
+    fireEvent.click(within(dialogo).getByRole("button", { name: "Mixto" }));
+    fireEvent.change(within(dialogo).getByLabelText(/Monto pagado por QR/), { target: { value: "60" } });
+    fireEvent.change(within(dialogo).getByLabelText(/Efectivo recibido/), { target: { value: "40" } });
+    await confirmar(dialogo);
+    expect(dialogo).toHaveTextContent("Confirmá que el pago por QR llegó antes de entregar.");
+    expect(api.entregarPedido).not.toHaveBeenCalled();
+  });
+
+  it("en efectivo, con el atajo del monto justo", async () => {
+    const dialogo = await abrirCobro();
+    fireEvent.click(within(dialogo).getByRole("button", { name: "Bs 100,00" }));
+    await confirmar(dialogo);
+    expect(api.entregarPedido).toHaveBeenCalledWith(9, [{ formaPagoId: 10, monto: 100, recibido: 100 }]);
+  });
+
+  it("sin QR en el plan no hay Mixto ni QR: se cobra en efectivo", async () => {
+    sesion.sinCapacidades = ["pago_qr_mixto"];
+    const dialogo = await abrirCobro();
+    expect(within(dialogo).queryByRole("button", { name: "Mixto" })).not.toBeInTheDocument();
+    expect(within(dialogo).queryByRole("button", { name: "QR" })).not.toBeInTheDocument();
+    expect(within(dialogo).getByLabelText(/Efectivo recibido/)).toBeInTheDocument();
+  });
+});
+
+describe("farmacia (guarda de DEL-4 y CAJA-5): los pedidos se cuentan y se cobran como en el restaurante", () => {
+  // A propósito, sin mirar el rubro, como la app (`construirHistorial` y
+  // `CobrarFragment.paraEntregar`): farmacia, minimarket, ferretería y
+  // repuestos también pueden tomar delivery y recojo. Si alguien ata esto al
+  // restaurante, la farmacia vuelve a contar como vendido lo que el
+  // repartidor todavía no cobró, y a cargar a un solo medio el recojo que se
+  // paga mitad por QR.
+  beforeEach(() => {
+    sesion.rubro = "FARMACIA";
+    sesion.features = ["pos", "caja", "delivery", "recoger", "pago_qr_mixto"];
+  });
+
+  it("un delivery contra entrega sin cobrar no suma en «N ventas · Bs X» ni en «Vendido», y dice «Por entregar»", async () => {
+    const delivery = {
+      ...venta,
+      id: 9,
+      comprobante: "T-0009",
+      tipoPedido: "DELIVERY",
+      prepagado: false,
+      estadoEntrega: "PENDIENTE",
+      total: 50,
+      formasPago: [],
+      pagos: [],
+    } as unknown as Venta;
+    vi.mocked(api.getVentas).mockResolvedValue([venta, delivery]);
+    montarHistorial();
+    const fila = await screen.findByRole("button", { name: /T-0009/ });
+    // Antes: «2 ventas · Bs 130,00», con 50 que estaban en la calle.
+    expect(screen.getByText("1 venta · Bs 80,00")).toBeInTheDocument();
+    const resumen = within(screen.getByRole("region", { name: "Resumen del turno" }));
+    expect(resumen.getByText("Bs 80,00")).toBeInTheDocument();
+    expect(fila).toHaveTextContent("Por entregar");
+    expect(fila).toHaveTextContent("Cobra al entregar");
+  });
+
+  it("«Cobrar y entregar» un recojo ofrece Mixto si el plan tiene QR/mixto, y manda los dos pagos", async () => {
+    const recojo = {
+      ...venta,
+      id: 9,
+      comprobante: "T-0009",
+      tipoPedido: "RECOGER",
+      estadoEntrega: "PENDIENTE",
+      prepagado: false,
+      clienteNombre: "Ana",
+      total: 100,
+    } as unknown as Venta;
+    vi.mocked(api.getPedidosPendientes).mockResolvedValue([recojo]);
+    vi.mocked(api.entregarPedido).mockResolvedValue({ ...recojo, estadoEntrega: "ENTREGADO" } as Venta);
+    montarHistorial();
+    fireEvent.click(await screen.findByRole("button", { name: "Cobrar y entregar" }));
+    const dialogo = screen.getByRole("dialog", { name: "Cobrar y entregar" });
+    // Las formas de pago llegan del servidor.
+    await act(async () => {});
+    fireEvent.click(within(dialogo).getByRole("button", { name: "Mixto" }));
+    fireEvent.change(within(dialogo).getByLabelText(/Monto pagado por QR/), { target: { value: "60" } });
+    fireEvent.click(within(dialogo).getByRole("button", { name: "Llegó el QR de Bs 60,00" }));
+    fireEvent.change(within(dialogo).getByLabelText(/Efectivo recibido/), { target: { value: "40" } });
+    await act(async () => {
+      fireEvent.click(within(dialogo).getByRole("button", { name: "Cobrar y entregar" }));
+    });
+    expect(api.entregarPedido).toHaveBeenCalledWith(9, [
+      { formaPagoId: 11, monto: 60 },
+      { formaPagoId: 10, monto: 40, recibido: 40 },
+    ]);
+  });
+});
+
+describe("BUG-admin-7: «Anular» depende del permiso, no de la feature autorizacion_pin", () => {
+  it("sin la feature (el backend la desató del PIN el 19-oct) igual se ofrece anular", async () => {
+    sesion.sinCapacidades = ["autorizacion_pin"];
+    await abrirDetalle();
+    expect(screen.getByRole("button", { name: "Anular venta" })).toBeInTheDocument();
+  });
+
+  it("sin el permiso de anular no se ofrece, aunque el plan tenga la feature", async () => {
+    sesion.permisos = ["autorizar.pin"];
+    await abrirDetalle();
+    expect(screen.queryByRole("button", { name: "Anular venta" })).not.toBeInTheDocument();
   });
 });

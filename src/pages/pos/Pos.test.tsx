@@ -106,6 +106,17 @@ vi.mock("./PantallaHistorial", () => ({
   ),
 }));
 
+// El cierre de caja (CAJA-3): basta saber que se abre y que se puede volver.
+vi.mock("./PantallaCierre", () => ({
+  default: (props: { onAtras: () => void }) => (
+    <div>
+      <p>cierre de caja</p>
+      <button onClick={props.onAtras}>volver del cierre</button>
+    </div>
+  ),
+  CierreOk: () => <p>caja cerrada</p>,
+}));
+
 // La venta: muestra el carrito (y lo que va arriba) y deja quitar una
 // línea o ir a cobrar.
 vi.mock("./PantallaVenta", () => ({
@@ -1189,5 +1200,34 @@ describe("Caja del instituto: el mismo POS en su propia ruta (26-oct)", () => {
     await act(async () => {});
     expect(screen.getByTestId("destino")).toHaveTextContent(/^\/pos$/);
     expect(screen.queryByText("ventas del turno")).not.toBeInTheDocument();
+  });
+});
+
+describe("CAJA-3: «Ir al cierre de caja» del aviso de no cerrar sesión con la caja abierta", () => {
+  it("llegar a /pos con el pedido abre el cierre, y el pedido se consume", async () => {
+    function Estado() {
+      return <p data-testid="estado">{JSON.stringify(useLocation().state)}</p>;
+    }
+    render(
+      <MemoryRouter initialEntries={[{ pathname: "/pos", state: { pantalla: "cierre" } }]}>
+        <Pos />
+        <Estado />
+      </MemoryRouter>,
+    );
+    await act(async () => {});
+    await act(async () => {});
+    expect(screen.getByText("cierre de caja")).toBeInTheDocument();
+    // Si quedara en el historial, un F5 (o abrir la caja siguiente, después
+    // de cerrar ésta) volvería a abrir el cierre.
+    expect(screen.getByTestId("estado")).toHaveTextContent("null");
+    fireEvent.click(screen.getByText("volver del cierre"));
+    await act(async () => {});
+    expect(screen.queryByText("cierre de caja")).not.toBeInTheDocument();
+  });
+
+  it("sin el pedido, /pos abre la venta como siempre", async () => {
+    await montar();
+    expect(screen.queryByText("cierre de caja")).not.toBeInTheDocument();
+    expect(screen.getByText("ir a cobrar")).toBeInTheDocument();
   });
 });

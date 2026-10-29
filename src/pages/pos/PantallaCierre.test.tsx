@@ -1,11 +1,13 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Caja, ResumenCaja } from "../../types";
 
 /**
  * El cierre de caja en un salón de belleza (QA ronda 1, 06-oct): qué citas
  * quedaron para revisar y por qué (B-28), y sin palabras de restaurante
- * (B-21). Un restaurante ve lo de siempre.
+ * (B-21). Y el del restaurante igualado con la app (28-oct): lo vendido para
+ * el cajero, las filas del cajón que suman el esperado, la confirmación antes
+ * de cerrar y el comprobante completo.
  */
 
 const sesion = vi.hoisted(() => ({ rubro: "PELUQUERIA" as string, reportes: true }));
@@ -18,7 +20,7 @@ vi.mock("../../store/AuthContext", async () => {
       rubro: sesion.rubro,
       incluye: () => true,
       puede: (s: string) => (s === "reportes" ? sesion.reportes : true),
-      usuario: { rol: "ADMIN", ...permisosDe("ADMIN") },
+      usuario: { rol: "ADMIN", nombre: "Ana Quispe", username: "ana", ...permisosDe("ADMIN") },
     }),
   };
 });
@@ -28,8 +30,9 @@ vi.mock("../../lib/api", () => ({
 }));
 
 import { api } from "../../lib/api";
-import PantallaCierre from "./PantallaCierre";
+import PantallaCierre, { CierreOk } from "./PantallaCierre";
 import { cuandoCita } from "../../lib/agenda/horaAgenda";
+import { fmtHora } from "../../lib/format";
 
 function resumen(extra: Partial<ResumenCaja> = {}): ResumenCaja {
   return {
@@ -407,51 +410,111 @@ describe("billar (25-oct): lo que el administrador registró con motivo en la ca
     expect(await screen.findByText("Sobrante")).toBeInTheDocument();
   });
 
-  it("restaurante: cierra como siempre, sin mandar el esperado", async () => {
+  it("restaurante: cierra sin mandar el esperado (después de confirmar, CAJA-12)", async () => {
     sesion.rubro = "RESTAURANTE";
     vi.mocked(api.resumenCaja).mockResolvedValue(resumen());
     vi.mocked(api.cerrarCaja).mockResolvedValue({ id: 1 } as Caja);
     await montar();
     fireEvent.change(screen.getByPlaceholderText("0,00"), { target: { value: "430" } });
+    fireEvent.click(screen.getByRole("button", { name: "Cerrar caja" }));
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Cerrar caja" }));
+      fireEvent.click(screen.getByRole("button", { name: "Sí, cerrar caja" }));
     });
     expect(api.cerrarCaja).toHaveBeenCalledWith(1, { montoCierre: 430 });
   });
 });
 
-describe("fuera del salón (Omar) el cierre se dibuja como antes", () => {
-  /** Todas las filas del bloque "Movimiento del turno", como [etiqueta, texto del monto]. */
-  function filasDelTurno(): [string, string][] {
-    const dl = screen.getByText("Movimiento del turno").nextElementSibling as HTMLElement;
-    return Array.from(dl.querySelectorAll("dt")).map((dt) => [
-      dt.textContent ?? "",
-      (dt.nextElementSibling?.textContent ?? "").replace(/\s/g, " "),
-    ]);
-  }
+/** Todas las filas del primer bloque de "Movimiento del turno", como [etiqueta, texto del monto]. */
+function filasDelTurno(): [string, string][] {
+  const dl = screen.getByText("Movimiento del turno").nextElementSibling as HTMLElement;
+  return Array.from(dl.querySelectorAll("dt")).map((dt) => [
+    dt.textContent ?? "",
+    (dt.nextElementSibling?.textContent ?? "").replace(/\s/g, " "),
+  ]);
+}
 
-  it("restaurante: mismo orden, mismas filas y mismos rótulos de siempre", async () => {
+/** Un turno de restaurante con todo: QR, cambio, abonos, fiado, movimientos y un mesero con plata. */
+const TURNO_COMPLETO: Partial<ResumenCaja> = {
+  porFormaPago: [
+    { nombre: "Efectivo", monto: 330 },
+    { nombre: "QR", monto: 70 },
+  ],
+  totalVentas: 400,
+  efectivo: 330,
+  cambioEntregado: 20,
+  ingresos: 50,
+  egresos: 30,
+  abonosEfectivo: 15,
+  abonosPorFormaPago: [{ nombre: "QR", monto: 10 }],
+  creditoOtorgado: 40,
+  anuladas: 1,
+  enPoderDeMeseros: 25,
+  meserosPendientes: [{ meseroId: 3, nombre: "Ana", monto: 25 }],
+  saldoEsperado: 440,
+};
+
+describe("CAJA-6: en el restaurante las filas del cajón suman el esperado", () => {
+  beforeEach(() => {
     sesion.rubro = "RESTAURANTE";
+  });
+
+  it("el caso de la verificación: fondo 100, 50 en efectivo pagados con 100 y 30 por QR dan 150", async () => {
+    // El formato de antes se leía "100 + 80 − 50 = 130": "Ventas (2)" con el
+    // QR adentro y un "Cambio entregado" que restaba sin entrar en la cuenta.
     vi.mocked(api.resumenCaja).mockResolvedValue(
       resumen({
+        cantidadVentas: 2,
+        totalVentas: 80,
         porFormaPago: [
-          { nombre: "Efectivo", monto: 330 },
-          { nombre: "QR", monto: 70 },
+          { nombre: "Efectivo", monto: 50 },
+          { nombre: "QR", monto: 30 },
         ],
-        totalVentas: 400,
-        efectivo: 330,
-        cambioEntregado: 20,
-        ingresos: 50,
-        egresos: 30,
-        abonosEfectivo: 15,
-        abonosPorFormaPago: [{ nombre: "QR", monto: 10 }],
-        creditoOtorgado: 40,
-        anuladas: 1,
-        enPoderDeMeseros: 25,
-        meserosPendientes: [{ meseroId: 3, nombre: "Ana", monto: 25 }],
-        saldoEsperado: 440,
+        efectivo: 50,
+        cambioEntregado: 50,
+        saldoEsperado: 150,
       }),
     );
+    await montar();
+    const filas = filasDeCaja();
+    expect(filas.map(([e]) => e)).toEqual(["Fondo de apertura", "Ventas en efectivo"]);
+    expect(filas.reduce((s, [, m]) => s + m, 0)).toBe(150);
+    // El cambio se cuenta, sin restarlo otra vez; el QR, arriba y aparte.
+    expect(screen.getByText(/Recibido Bs.100,00 · cambio entregado Bs.50,00/)).toBeInTheDocument();
+    expect(screen.queryByText("Cambio entregado")).not.toBeInTheDocument();
+    expect(filasDelTurno().map(([e]) => e)).toEqual(["Ventas (2)", "Efectivo", "QR"]);
+  });
+
+  it("con abonos, movimientos y la plata del mesero, cada fila del cajón suma (o resta) y dan el esperado", async () => {
+    vi.mocked(api.resumenCaja).mockResolvedValue(resumen(TURNO_COMPLETO));
+    await montar();
+    const filas = filasDeCaja();
+    expect(filas).toEqual([
+      ["Fondo de apertura", 100],
+      ["Ventas en efectivo", 330],
+      ["Abonos de créditos (efectivo)", 15],
+      ["Ingresos de efectivo", 50],
+      ["Egresos de efectivo", -30],
+      ["En poder de meseros", -25],
+    ]);
+    expect(filas.reduce((s, [, m]) => s + m, 0)).toBe(440);
+    // Lo que no es efectivo queda arriba, como informativo.
+    expect(filasDelTurno().map(([e]) => e)).toEqual([
+      "Ventas (3)",
+      "Efectivo",
+      "QR",
+      "Abonos por QR (no es efectivo)",
+      "Fiado otorgado (no es efectivo)",
+      "Ventas anuladas",
+    ]);
+    // A quién pedirle la plata del delantal, como antes.
+    expect(screen.getByText(/Ana Bs.25,00/)).toBeInTheDocument();
+  });
+});
+
+describe("farmacia (y los demás rubros) sigue con el cierre de siempre", () => {
+  it("mismo orden, mismas filas y mismos rótulos de siempre", async () => {
+    sesion.rubro = "FARMACIA";
+    vi.mocked(api.resumenCaja).mockResolvedValue(resumen(TURNO_COMPLETO));
     await montar();
     expect(filasDelTurno().map(([e]) => e)).toEqual([
       "Fondo de apertura",
@@ -561,8 +624,10 @@ describe("el efectivo contado se escribe como en Bolivia (QA de Kevin, 17-oct)",
   it("el conteo billete por billete se escribe igual que lo tecleado", async () => {
     await montar();
     fireEvent.click(screen.getByText("Contar billete por billete"));
-    fireEvent.click(screen.getByRole("button", { name: "Agregar un Bs 200,00" }));
-    fireEvent.click(screen.getByRole("button", { name: "Agregar un Bs 0,50" }));
+    // Por `aria-label`: con el arqueo entero en pantalla, `getByRole` tarda
+    // casi un segundo cada vez y el test rozaba los 5 s.
+    fireEvent.click(screen.getByLabelText("Agregar un Bs 200,00"));
+    fireEvent.click(screen.getByLabelText("Agregar un Bs 0,50"));
     expect(campo().value).toBe("200,50");
     await cerrarCaja();
     expect(api.cerrarCaja).toHaveBeenCalledWith(1, { montoCierre: 200.5 });
@@ -574,5 +639,271 @@ describe("el efectivo contado se escribe como en Bolivia (QA de Kevin, 17-oct)",
     expect(screen.getByText("Contá el efectivo que hay en la caja.")).toBeInTheDocument();
     teclear("5");
     expect(screen.queryByText("Contá el efectivo que hay en la caja.")).not.toBeInTheDocument();
+  });
+});
+
+/** Lo vendido en el turno, como lo trae el arqueo. */
+const VENDIDO = {
+  unidades: 4,
+  total: 60,
+  lineas: 1,
+  categorias: [
+    {
+      nombre: "Pollos",
+      unidades: 4,
+      total: 60,
+      items: [{ nombre: "Cuarto de pollo", cantidad: 4, precio: 15, total: 60 }],
+    },
+  ],
+};
+
+describe("CAJA-1: el cajero del restaurante ve lo vendido del turno al cerrar", () => {
+  it("sin Reportes, lo ve igual: sale del arqueo, con cuántos productos y unidades antes de abrirlo", async () => {
+    // El bug: el botón pedía `reportes` y el modal lo pedía a Reportes, que la
+    // plantilla CAJERO no tiene. El pedido de Omar del 1-sep, que la app ya cumple.
+    sesion.rubro = "RESTAURANTE";
+    sesion.reportes = false;
+    vi.mocked(api.resumenCaja).mockResolvedValue(resumen({ productos: VENDIDO }));
+    await montar();
+    // Por el texto y no por el rol: el botón vive dentro de la etiqueta del
+    // campo "Efectivo contado", que le da el nombre accesible.
+    const boton = screen.getByText("1 producto · 4 unidades").closest("button")!;
+    expect(boton).toHaveTextContent("Ver qué salió del mostrador");
+    fireEvent.click(boton);
+    expect(await screen.findByText("Productos vendidos")).toBeInTheDocument();
+    expect(screen.getByText("Cuarto de pollo")).toBeInTheDocument();
+    expect(screen.getByText("4 u × Bs 15,00")).toBeInTheDocument();
+    expect(api.reporteCierreProductos).not.toHaveBeenCalled();
+  });
+
+  it("con un servidor que no manda lo vendido en el arqueo, el cajero sin Reportes no ve el botón", async () => {
+    sesion.rubro = "RESTAURANTE";
+    sesion.reportes = false;
+    vi.mocked(api.resumenCaja).mockResolvedValue(resumen());
+    await montar();
+    expect(screen.queryByText(/Ver qué salió del mostrador/)).not.toBeInTheDocument();
+  });
+
+  it("belleza sigue igual: la recepción sin Reportes no lo ve aunque el arqueo lo traiga (QA DIA-10)", async () => {
+    sesion.rubro = "PELUQUERIA";
+    sesion.reportes = false;
+    vi.mocked(api.resumenCaja).mockResolvedValue(resumen({ productos: VENDIDO }));
+    await montar();
+    expect(screen.queryByText("Ver lo vendido")).not.toBeInTheDocument();
+  });
+
+  it("el billar sigue igual: «Ver lo vendido», sin la línea de cuántos", async () => {
+    sesion.rubro = "BILLAR";
+    sesion.reportes = false;
+    vi.mocked(api.resumenCaja).mockResolvedValue(resumen({ productos: VENDIDO }));
+    await montar();
+    expect(screen.getByText("Ver lo vendido").closest("button")).not.toHaveTextContent("unidades");
+  });
+});
+
+describe("CAJA-12: en el restaurante se confirma antes de cerrar la caja", () => {
+  beforeEach(() => {
+    sesion.rubro = "RESTAURANTE";
+    vi.mocked(api.cerrarCaja).mockResolvedValue({ id: 1 } as Caja);
+  });
+
+  it("dice lo contado contra lo esperado y recién cierra con «Sí, cerrar caja»", async () => {
+    vi.mocked(api.resumenCaja).mockResolvedValue(resumen());
+    await montar();
+    fireEvent.change(screen.getByPlaceholderText("0,00"), { target: { value: "428" } });
+    fireEvent.click(screen.getByRole("button", { name: "Cerrar caja" }));
+    const dialogo = screen.getByRole("dialog", { name: "¿Cerrar la caja?" });
+    expect(dialogo).toHaveTextContent(
+      /Contaste Bs.428,00 y el sistema espera Bs.430,00: faltan Bs.2,00\. Después de cerrar no se pueden registrar más ventas/,
+    );
+    expect(api.cerrarCaja).not.toHaveBeenCalled();
+    await act(async () => {
+      fireEvent.click(within(dialogo).getByRole("button", { name: "Sí, cerrar caja" }));
+    });
+    expect(api.cerrarCaja).toHaveBeenCalledWith(1, { montoCierre: 428 });
+  });
+
+  it("«Cancelar» vuelve al conteo sin cerrar", async () => {
+    vi.mocked(api.resumenCaja).mockResolvedValue(resumen());
+    await montar();
+    fireEvent.change(screen.getByPlaceholderText("0,00"), { target: { value: "430" } });
+    fireEvent.click(screen.getByRole("button", { name: "Cerrar caja" }));
+    expect(screen.getByRole("dialog", { name: "¿Cerrar la caja?" })).toHaveTextContent("la caja cuadra");
+    fireEvent.click(screen.getByRole("button", { name: "Cancelar" }));
+    expect(screen.queryByRole("dialog", { name: "¿Cerrar la caja?" })).not.toBeInTheDocument();
+    expect(api.cerrarCaja).not.toHaveBeenCalled();
+  });
+
+  it("sin contar, no pregunta: pide el conteo", async () => {
+    vi.mocked(api.resumenCaja).mockResolvedValue(resumen());
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Cerrar caja" }));
+    expect(screen.queryByRole("dialog", { name: "¿Cerrar la caja?" })).not.toBeInTheDocument();
+    expect(screen.getByText("Contá el efectivo que hay en la caja.")).toBeInTheDocument();
+  });
+
+  it.each(["BILLAR", "PELUQUERIA", "FARMACIA"])("%s cierra con un toque, como siempre", async (rubro) => {
+    sesion.rubro = rubro;
+    vi.mocked(api.resumenCaja).mockResolvedValue(resumen());
+    await montar();
+    fireEvent.change(screen.getByPlaceholderText("0,00"), { target: { value: "430" } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Cerrar caja" }));
+    });
+    expect(screen.queryByRole("dialog", { name: "¿Cerrar la caja?" })).not.toBeInTheDocument();
+    expect(api.cerrarCaja).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("BUG-caja-4: el conteo por billetes se descarta si el monto se corrige a mano", () => {
+  const campo = () => screen.getByPlaceholderText("0,00") as HTMLInputElement;
+
+  it("con 340 contados y 350 tecleados, el conteo se va y el siguiente billete arranca de cero", async () => {
+    vi.mocked(api.resumenCaja).mockResolvedValue(resumen());
+    await montar();
+    fireEvent.click(screen.getByText("Contar billete por billete"));
+    // Por `aria-label` y no por rol: con el arqueo entero en pantalla, cada
+    // `getByRole` tarda casi un segundo.
+    for (const b of ["200,00", "100,00", "20,00", "20,00"]) {
+      fireEvent.click(screen.getByLabelText(`Agregar un Bs ${b}`));
+    }
+    expect(campo().value).toBe("340,00");
+    const cabecera = screen.getByText("Contar billete por billete").closest("button")!;
+    expect(cabecera).toHaveTextContent("Bs 340,00");
+
+    // Antes la cabecera seguía en Bs 340 con Bs 350 escrito, y un toque más
+    // sumaba sobre el conteo viejo y pisaba lo tecleado con 350 = 340 + 10.
+    fireEvent.change(campo(), { target: { value: "350" } });
+    expect(campo().value).toBe("350");
+    expect(cabecera).not.toHaveTextContent("Bs 340,00");
+    expect(screen.getByLabelText("Cantidad de Bs 200,00")).toHaveValue(null);
+
+    fireEvent.click(screen.getByLabelText("Agregar un Bs 10,00"));
+    expect(campo().value).toBe("10,00");
+  });
+
+  it("el conteo que escribe el monto no se descarta a sí mismo", async () => {
+    vi.mocked(api.resumenCaja).mockResolvedValue(resumen());
+    await montar();
+    fireEvent.click(screen.getByText("Contar billete por billete"));
+    fireEvent.click(screen.getByLabelText("Agregar un Bs 100,00"));
+    fireEvent.click(screen.getByLabelText("Agregar un Bs 100,00"));
+    expect(campo().value).toBe("200,00");
+    expect(screen.getByLabelText("Cantidad de Bs 100,00")).toHaveValue(2);
+  });
+});
+
+/** Una fecha en la hora de este equipo, como la muestra la pantalla. */
+const local = (anio: number, mes: number, dia: number, h: number, min: number) =>
+  new Date(anio, mes - 1, dia, h, min).toISOString();
+
+/**
+ * La hora como la lee Testing Library: `fmtHora` da "12:04 p. m." y el
+ * texto de la pantalla se compara con los espacios ya normalizados.
+ */
+const hora = (iso: string) => fmtHora(iso).replace(/\s+/g, " ");
+
+function cajaCerrada(extra: Partial<Caja> = {}): Caja {
+  return {
+    id: 1,
+    estado: "CERRADA",
+    fechaApertura: local(2026, 10, 28, 12, 4),
+    fechaCierre: local(2026, 10, 29, 3, 17),
+    montoApertura: 100,
+    descripcion: null,
+    usuarioAperturaId: 7,
+    almacenId: 1,
+    almacen: "Centro",
+    montoCierre: 438,
+    montoDiferencia: -2,
+    notaCierre: "Faltó cambio",
+    ...extra,
+  };
+}
+
+describe("CAJA-4: el comprobante del cierre", () => {
+  const ab = local(2026, 10, 28, 12, 4);
+  const ce = local(2026, 10, 29, 3, 17);
+
+  it("restaurante: el turno fechado en las dos puntas cuando cruza la medianoche, con el aviso", () => {
+    // "Turno de 12:04 a 03:17" se leía al revés (el error que la app corrigió el 1-sep).
+    sesion.rubro = "RESTAURANTE";
+    render(<CierreOk caja={cajaCerrada({ resumen: resumen(TURNO_COMPLETO) })} onSalir={() => {}} />);
+    expect(screen.getByText(`Turno del 28/10 ${hora(ab)} al 29/10 ${hora(ce)}`)).toBeInTheDocument();
+    expect(screen.getByRole("note")).toHaveTextContent(
+      "Este turno cruzó la medianoche: abrió un día y cerró al siguiente.",
+    );
+    const turno = within(screen.getByRole("region", { name: "Turno" }));
+    expect(turno.getByText(`mié 28/10 · ${hora(ab)}`)).toBeInTheDocument();
+    expect(turno.getByText(`jue 29/10 · ${hora(ce)}`)).toBeInTheDocument();
+    expect(turno.getByText("15 h 13")).toBeInTheDocument();
+    expect(turno.getByText("Ana Quispe")).toBeInTheDocument();
+  });
+
+  it("restaurante: lo vendido por forma de pago, las filas del cajón que dan el esperado, lo contado y la diferencia", () => {
+    sesion.rubro = "RESTAURANTE";
+    render(<CierreOk caja={cajaCerrada({ resumen: resumen(TURNO_COMPLETO) })} onSalir={() => {}} />);
+    const vendido = within(screen.getByRole("region", { name: "Ventas del turno" }));
+    expect(vendido.getByText("Ventas (3)")).toBeInTheDocument();
+    expect(vendido.getByText("QR").nextElementSibling).toHaveTextContent("Bs 70,00");
+    expect(vendido.getByText("Fiado otorgado (no es efectivo)")).toBeInTheDocument();
+    const filas = filasDeCaja();
+    expect(filas.reduce((s, [, m]) => s + m, 0)).toBe(440);
+    const cajon = within(screen.getByRole("region", { name: "Efectivo en caja" }));
+    expect(cajon.getByText("Efectivo esperado en caja").nextElementSibling).toHaveTextContent("Bs 440,00");
+    expect(cajon.getByText("Efectivo contado").nextElementSibling).toHaveTextContent("Bs 438,00");
+    expect(cajon.getByText("Faltante Bs 2,00")).toBeInTheDocument();
+    expect(screen.getByText(/Recibido Bs.350,00 · cambio entregado Bs.20,00/)).toBeInTheDocument();
+    expect(screen.getByText("Faltó cambio")).toBeInTheDocument();
+  });
+
+  it("un turno del mismo día lleva la fecha una vez y sin aviso", () => {
+    sesion.rubro = "RESTAURANTE";
+    const cierre = local(2026, 10, 28, 18, 30);
+    render(<CierreOk caja={cajaCerrada({ fechaCierre: cierre, resumen: resumen() })} onSalir={() => {}} />);
+    expect(screen.getByText(`Turno del 28/10, de ${hora(ab)} a ${hora(cierre)}`)).toBeInTheDocument();
+    expect(screen.queryByRole("note")).not.toBeInTheDocument();
+  });
+
+  it("una caja que quedó abierta varios días lo dice", () => {
+    sesion.rubro = "RESTAURANTE";
+    render(
+      <CierreOk caja={cajaCerrada({ fechaCierre: local(2026, 10, 30, 9, 0), resumen: resumen() })} onSalir={() => {}} />,
+    );
+    expect(screen.getByRole("note")).toHaveTextContent("Esta caja estuvo abierta 3 días: abrió el 28/10 y cerró el 30/10.");
+  });
+
+  it("con un servidor que no manda el arqueo al cerrar, queda lo de siempre con el turno fechado", () => {
+    sesion.rubro = "RESTAURANTE";
+    render(<CierreOk caja={cajaCerrada()} onSalir={() => {}} />);
+    expect(screen.getByText(`Turno del 28/10 ${hora(ab)} al 29/10 ${hora(ce)}`)).toBeInTheDocument();
+    expect(screen.getByText("Fondo de apertura").nextElementSibling).toHaveTextContent("Bs 100,00");
+    expect(screen.getByText("Faltante Bs 2,00")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Ventas del turno" })).not.toBeInTheDocument();
+  });
+
+  it("billar: sólo suma; lo de siempre sigue (fondo, contado, diferencia y nota) y sin «recibido… cambio»", () => {
+    sesion.rubro = "BILLAR";
+    render(
+      <CierreOk
+        caja={cajaCerrada({ resumen: resumen({ montoApertura: 100, efectivo: 130, cambioEntregado: 70, saldoEsperado: 230 }) })}
+        onSalir={() => {}}
+      />,
+    );
+    expect(screen.getByText("Fondo de apertura").nextElementSibling).toHaveTextContent("Bs 100,00");
+    expect(screen.getByText("Efectivo contado").nextElementSibling).toHaveTextContent("Bs 438,00");
+    expect(screen.getByText("Faltante Bs 2,00")).toBeInTheDocument();
+    expect(screen.getByText("Faltó cambio")).toBeInTheDocument();
+    expect(screen.getByText(`Turno del 28/10 ${hora(ab)} al 29/10 ${hora(ce)}`)).toBeInTheDocument();
+    expect(screen.queryByText(/cambio entregado/i)).not.toBeInTheDocument();
+  });
+
+  it("farmacia sigue con el comprobante de siempre", () => {
+    sesion.rubro = "FARMACIA";
+    render(<CierreOk caja={cajaCerrada({ resumen: resumen() })} onSalir={() => {}} />);
+    expect(screen.getByText(`Turno de ${hora(ab)} a ${hora(ce)}`)).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Turno" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Efectivo esperado en caja")).not.toBeInTheDocument();
+    expect(screen.getByText("Faltante Bs 2,00")).toBeInTheDocument();
   });
 });

@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { aCentavos } from "../lib/dinero";
+import { useEffect, useState } from "react";
+import { aCentavos, esCero } from "../lib/dinero";
 import { fmtMoney } from "../lib/format";
 import { Icon } from "./Icon";
 
@@ -16,17 +16,23 @@ const MONEDAS = [5, 2, 1, 0.5, 0.2, 0.1];
  * cuelan los errores que después aparecen como un faltante que nadie cometió.
  *
  * El resultado se copia al campo de monto. Si después el cajero corrige el
- * monto a mano, quien lo usa descarta el conteo (`onCambio` deja de mandarse):
- * un conteo que dice 340 y un monto que dice 350 se contradicen, y guardar los
- * dos sería guardar una mentira. Port de la sección de corte de
- * `AperturaCajaFragment`.
+ * monto a mano, el conteo se descarta: un conteo que dice 340 y un monto que
+ * dice 350 se contradicen, y guardar los dos sería guardar una mentira. Port
+ * de la sección de corte de `AperturaCajaFragment`, que hace lo mismo.
  */
 export default function CorteDeCaja({
   onTotal,
+  monto,
   titulo = "Contar por denominación",
 }: {
   /** Se llama con el total cada vez que cambia el conteo. */
   onTotal: (total: number) => void;
+  /**
+   * Lo que dice hoy el campo de monto (null = vacío o ilegible). Si deja de
+   * ser el total del conteo, es que el cajero lo corrigió a mano y el conteo
+   * se descarta. Sin la prop, el conteo queda como esté.
+   */
+  monto?: number | null;
   titulo?: string;
 }) {
   const [abierto, setAbierto] = useState(false);
@@ -35,6 +41,16 @@ export default function CorteDeCaja({
   const total = aCentavos(
     Object.entries(conteo).reduce((acc, [valor, n]) => acc + Number(valor) * n, 0),
   );
+
+  // El comentario de arriba lo prometía y nadie lo hacía (BUG-caja-4): la
+  // cabecera seguía diciendo "Bs 340" con "Bs 350" escrito en el monto, y un
+  // toque más en una denominación pisaba lo tecleado sumando sobre el conteo
+  // viejo. Cuando el conteo cambia, `onTotal` escribe el mismo número en el
+  // campo en el mismo render, así que esto sólo salta con lo tecleado a mano.
+  useEffect(() => {
+    if (monto === undefined || esCero(total)) return;
+    if (monto === null || !esCero(monto - total)) setConteo({});
+  }, [monto, total]);
 
   function fijar(valor: number, cantidad: number) {
     const limpio = Math.max(0, Math.floor(cantidad) || 0);

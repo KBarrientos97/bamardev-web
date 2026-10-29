@@ -529,11 +529,17 @@ describe("el PIN de autorización", () => {
     expect(screen.getByRole("button", { name: "Asignar PIN" })).toBeInTheDocument();
   });
 
-  it("sin la autorización con PIN en el plan no hay PIN para nadie", async () => {
+  it("sin la feature autorizacion_pin el PIN sigue: lo decide el permiso del rol (BUG-admin-7)", async () => {
+    // Hasta el 28-oct se escondía todo lo del PIN sin la feature. El backend
+    // la desató del PIN el 19-oct (`autorizar.pin` es del núcleo): con el
+    // panel apagándosela a un negocio, nadie podía asignar un PIN aunque el
+    // servidor lo permitía, y sin PIN no hay anulación.
     sesion.conPin = false;
     await montar([OMAR, ELSA]);
+    expect(within(screen.getByRole("button", { name: /@elsa\b/ })).getByText("PIN")).toBeInTheDocument();
     abrir("elsa");
-    expect(screen.queryByRole("button", { name: ACCION_PIN })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Cambiar PIN" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Quitar PIN" })).toBeInTheDocument();
   });
 });
 

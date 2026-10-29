@@ -61,19 +61,21 @@ function reparte(rol: RolNegocio | null): boolean {
 
 /**
  * ¿Lleva PIN? El PIN sirve para autorizar lo que hace otro (anular, fiar por
- * encima del límite): lo lleva el rol que tiene `autorizar.pin`, y sólo si el
- * plan incluye la autorización con PIN.
+ * encima del límite): lo lleva el rol que tiene `autorizar.pin`. Sólo el
+ * permiso, como la app: hasta el 28-oct además pedía la feature
+ * `autorizacion_pin`, pero el backend la desató del PIN el 19-oct (anular pide
+ * el PIN siempre y es del núcleo). Con un negocio al que el panel se la apagara,
+ * la pantalla escondía Asignar/Cambiar/Quitar PIN y nadie podía autorizar,
+ * aunque el servidor lo permitía (BUG-admin-7).
  */
-function llevaPin(rol: RolNegocio | null, conPin: boolean): boolean {
-  return conPin && rolTiene(rol, "autorizar.pin");
+function llevaPin(rol: RolNegocio | null): boolean {
+  return rolTiene(rol, "autorizar.pin");
 }
 
 type FiltroRol = "todos" | "inactivos" | `rol:${number}`;
 
 export default function Usuarios() {
-  const { incluye, usuario: actor, negocio } = useAuth();
-  // El PIN sólo existe si el plan incluye la autorización con PIN.
-  const conPin = incluye("autorizacion_pin");
+  const { usuario: actor, negocio } = useAuth();
   const usuarios = useApi(() => api.getUsuarios(), []);
   const roles = useApi(() => apiRoles.listar(), []);
   // El límite del plan, para avisar al apretar "Nuevo" y no después de llenar el
@@ -306,7 +308,6 @@ export default function Usuarios() {
               key={u.id}
               usuario={u}
               roles={listaRoles}
-              conPin={conPin}
               onClick={() => setDetalle(u)}
             />
           ))}
@@ -326,7 +327,6 @@ export default function Usuarios() {
         onQuitarPin={(u) => setQuitandoPin(u)}
         onEstado={(u) => setCambiandoEstado(u)}
         onEliminar={(u) => setEliminando(u)}
-        conPin={conPin}
       />
 
       <FormUsuario
@@ -355,7 +355,7 @@ export default function Usuarios() {
 
       <FormPin
         usuario={cambiandoPin}
-        llevaPin={!!cambiandoPin && llevaPin(rolDe(cambiandoPin, listaRoles), conPin)}
+        llevaPin={!!cambiandoPin && llevaPin(rolDe(cambiandoPin, listaRoles))}
         onClose={() => setCambiandoPin(null)}
         onGuardado={() => {
           // El detalle sigue abierto atrás: sin esto seguía diciendo "Asignar
@@ -467,12 +467,10 @@ function LimiteDeUsuarios({
 function TarjetaUsuario({
   usuario: u,
   roles,
-  conPin,
   onClick,
 }: {
   usuario: Usuario;
   roles: RolNegocio[];
-  conPin: boolean;
   onClick: () => void;
 }) {
   const rol = rolDe(u, roles);
@@ -492,7 +490,7 @@ function TarjetaUsuario({
           </span>
           <div className="flex items-center gap-2">
             {!u.activo && <Badge tono="gris">Inactivo</Badge>}
-            {u.tienePin && llevaPin(rol, conPin) && <Badge tono="marca">PIN</Badge>}
+            {u.tienePin && llevaPin(rol) && <Badge tono="marca">PIN</Badge>}
             <Icon name="chevronRight" size={17} color="#94A3B8" />
           </div>
         </div>
@@ -513,7 +511,6 @@ function TarjetaUsuario({
 }
 
 function DetalleUsuario({
-  conPin,
   usuario: u,
   roles,
   onClose,
@@ -533,13 +530,12 @@ function DetalleUsuario({
   onQuitarPin: (u: Usuario) => void;
   onEstado: (u: Usuario) => void;
   onEliminar: (u: Usuario) => void;
-  conPin: boolean;
 }) {
   const { usuario: actual } = useAuth();
   if (!u) return null;
   const rol = rolDe(u, roles);
   const esYo = actual?.id === u.id;
-  const conPinElRol = llevaPin(rol, conPin);
+  const conPinElRol = llevaPin(rol);
   // Lo asigna, cambia o quita quien tiene `usuarios.asignar_pin`.
   const administraPin = conPinElRol && tienePermiso(actual, "usuarios.asignar_pin");
 

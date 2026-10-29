@@ -949,6 +949,12 @@ export interface Caja {
   montoCierre: number | null;
   montoDiferencia: number | null;
   notaCierre: string | null;
+  /**
+   * Sólo en la respuesta de `POST caja/:id/cerrar`: el arqueo con el que se
+   * cerró (el mismo cálculo que fijó la diferencia). Lo muestra el comprobante
+   * del cierre (`CierreOk`). Opcional: un backend anterior no lo manda.
+   */
+  resumen?: ResumenCaja;
 }
 
 export interface FormaPago {
