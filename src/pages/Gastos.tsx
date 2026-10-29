@@ -573,9 +573,16 @@ export function FormGasto({
     // el pendiente de los otros gastos del mes. Lo que corresponde es deshacer
     // el pago primero. El backend también lo rechaza; si su 400 llega igual
     // (otro pagó mientras tanto), el catch de abajo muestra su mensaje.
+    //
+    // Dos textos, como el backend (cc73c74) y Android (CorreccionGasto): un
+    // gasto que el PATCH viejo dejó "Total 600 / Pagado 1.000" frena acá aunque
+    // sólo se le corrija el concepto, y hablarle de "bajar el monto" a quien no
+    // lo tocó lo confundía. La salida es la misma: deshacer el último pago.
     if (gasto && excede(gasto.pagado, m)) {
       return setError(
-        `Ya se pagaron ${fmtMoney(gasto.pagado)}: deshacé el pago antes de bajar el monto.`,
+        excede(gasto.monto, m)
+          ? `Ya se pagaron ${fmtMoney(gasto.pagado)}: deshacé el pago antes de bajar el monto.`
+          : `Este gasto quedó con más pagado (${fmtMoney(gasto.pagado)}) que su monto (${fmtMoney(gasto.monto)}): deshacé el último pago para corregirlo.`,
       );
     }
     if (vence && vence < fecha) {

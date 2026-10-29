@@ -430,6 +430,16 @@ describe("editar no deja bajar el monto por debajo de lo pagado (G-04)", () => {
     expect(api.actualizarGasto).not.toHaveBeenCalled();
   });
 
+  it("un gasto que ya quedó roto, sin tocar el monto, no habla de bajarlo", async () => {
+    // El PATCH viejo dejó gastos "Total 600 / Pagado 1.000". Corregirle sólo
+    // el concepto frenaba con "antes de bajar el monto", que nadie tocó.
+    const roto: Gasto = { ...alquilerPagado, monto: 600, pagado: 1000, saldo: 0 };
+    const form = await editar(roto, "600");
+    expect(form).toHaveTextContent(/quedó con más pagado \(Bs 1.?000,00\) que su monto \(Bs 600,00\)/);
+    expect(form).not.toHaveTextContent(/antes de bajar el monto/);
+    expect(api.actualizarGasto).not.toHaveBeenCalled();
+  });
+
   it("subirlo sí se guarda", async () => {
     vi.mocked(api.actualizarGasto).mockResolvedValue({ ...alquilerPagado, monto: 1200 });
     await editar(alquilerPagado, "1.200");
