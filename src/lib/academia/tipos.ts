@@ -956,6 +956,13 @@ export interface ListaDeClase {
 
 // ── Notas (F1b) ─────────────────────────────────────────────────────────────
 
+export interface PlazoNotas {
+  desde: string;
+  /** El fin del módulo más los 5 días de gracia. */
+  hasta: string;
+  estado: "ANTES" | "ABIERTO" | "VENCIDO";
+}
+
 export interface NotasDelGrupo {
   materia: { id: number; orden: number; nombre: string; desde: string; hasta: string };
   materias: { id: number; orden: number; nombre: string; estado: EstadoMateriaGrupo; docente?: string | { personalId: number; nombre: string } | null }[];
@@ -964,6 +971,13 @@ export interface NotasDelGrupo {
   cerradaEn?: string | null;
   notaMinima: number;
   escalaMax: number;
+  /**
+   * L7 (28-oct): las notas se cargan o cambian del inicio del módulo a 5 días
+   * después de su fin, para todos. Fuera de eso, sólo lectura (el backend
+   * rechaza con NOTAS_FUERA_DE_PLAZO). Ausente en un backend anterior: no se
+   * limita nada.
+   */
+  plazo?: PlazoNotas;
   /** `semaforo` (B7) sólo para el docente. */
   items: { inscripcionId: number; nombre: string; estadoPago: EstadoPagoModulo | null; nota: number | null; semaforo?: SemaforoPago }[];
 }
