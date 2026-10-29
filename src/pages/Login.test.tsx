@@ -42,7 +42,7 @@ describe("login → pagar la licencia", () => {
       fireEvent.click(screen.getByRole("button", { name: "Pagar la licencia con QR" }));
     });
 
-    expect(screen.getByPlaceholderText("pollosdonomar")).toHaveValue("");
+    expect(screen.getByPlaceholderText("alias del negocio")).toHaveValue("");
     expect(api.opcionesPagoLicencia).not.toHaveBeenCalled();
   });
 });

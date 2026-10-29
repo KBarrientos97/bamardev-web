@@ -201,7 +201,7 @@ export default function PagarLicencia({ onSalir }: Props) {
     const escrito = normalizarAlias(alias);
     if (!escrito) return;
     if (!FORMATO_ALIAS.test(escrito)) {
-      setError("Alias no válido: sólo minúsculas, números, - y _ (ej. pollosdonomar).");
+      setError("Alias no válido: sólo minúsculas, números, - y _ (ej. minegocio).");
       return;
     }
     setAlias(escrito);
@@ -261,7 +261,7 @@ export default function PagarLicencia({ onSalir }: Props) {
                     setAlias(e.target.value);
                     setError("");
                   }}
-                  placeholder="pollosdonomar"
+                  placeholder="alias del negocio"
                   autoCapitalize="none"
                   autoComplete="off"
                   spellCheck={false}

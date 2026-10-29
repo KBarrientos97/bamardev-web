@@ -118,7 +118,6 @@ export default function Login() {
           <h1 className="mt-4 text-2xl font-extrabold tracking-tight text-primary">
             BamarDev
           </h1>
-          <p className="mt-1 text-[13px] text-texto-3">Inventario y Punto de Venta</p>
         </div>
 
         <form onSubmit={onSubmit} className="card space-y-4 p-6 shadow-lg">
