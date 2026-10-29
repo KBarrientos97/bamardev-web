@@ -4,9 +4,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { PanelControl } from "../../../lib/academia/tipos";
 
 /**
- * N9 · Panel de control y E18 · Reportes: las fotos se revisan una tras otra
- * ("Está bien" o "Algo no cuadra" con motivo); "Para mirar" cambia de lista;
- * el resultado por sede suma lo que entra y resta lo que sale.
+ * N9 · Panel de control: las fotos se revisan una tras otra ("Está bien" o
+ * "Algo no cuadra" con motivo); "Para mirar" cambia de lista. Los Reportes
+ * del instituto (E18) tienen su archivo desde L5 (`Reportes.test.tsx`).
  */
 
 vi.mock("../../../store/AuthContext", async () => {
@@ -26,7 +26,6 @@ vi.mock("../../../lib/academia/apiAcademia", async (importOriginal) => {
 
 import { apiAcademia } from "../../../lib/academia/apiAcademia";
 import Control from "./Control";
-import Reportes from "./Reportes";
 
 const PANEL: PanelControl = {
   fotosPorRevisar: [
@@ -285,34 +284,6 @@ describe("D3 · Faltan fotos", () => {
     );
     await act(async () => {});
     expect(screen.queryByRole("region", { name: /Faltan fotos/ })).not.toBeInTheDocument();
-  });
-});
-
-describe("E18 · Reportes", () => {
-  it("el resultado por sede, los activos por curso y la morosidad", async () => {
-    vi.mocked(apiAcademia.reportes).mockResolvedValue({
-      mes: "2026-10",
-      porSede: [
-        { sede: "Central", cobradoModulos: 31480, ventasProductos: 3940, sueldosDocentes: 7754, otrosGastos: 6200, resultado: 21466 },
-        { sede: "Norte", cobradoModulos: 4300, ventasProductos: 620, sueldosDocentes: 0, otrosGastos: 2100, resultado: 2820 },
-      ],
-      activosPorCurso: [{ curso: "Tatuaje", activos: 18, cupo: 20 }],
-      morosidad: { vencido: 5400, estudiantes: 12, pctEstudiantes: 14 },
-      asistenciaPromedioPct: 88,
-    });
-    render(
-      <MemoryRouter>
-        <Reportes />
-      </MemoryRouter>,
-    );
-    await act(async () => {});
-    const resultado = screen.getByRole("region", { name: "Resultado por sede" });
-    expect(within(resultado).getByRole("columnheader", { name: "Total" })).toBeInTheDocument();
-    expect(resultado).toHaveTextContent(/24\.286/);
-    expect(resultado).toHaveTextContent(/− Bs\s?7\.754/);
-    expect(screen.getByText("18 de 20 activos")).toBeInTheDocument();
-    expect(screen.getByText("88 %")).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "Morosidad" })).toHaveTextContent(/5\.400/);
   });
 });
 

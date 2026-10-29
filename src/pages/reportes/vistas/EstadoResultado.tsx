@@ -2,6 +2,7 @@ import { useState, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Icon } from "../../../components/Icon";
 import { Badge, Boton, Modal } from "../../../components/ui";
+import { horarioGrupo } from "../../../lib/academia/formato";
 import { api } from "../../../lib/api";
 import { aCentavos, esCero, esPositivo } from "../../../lib/dinero";
 import { fmtFecha, fmtFechaHora, fmtMoney, fmtNum } from "../../../lib/format";
@@ -15,7 +16,7 @@ import { useApi } from "../../../lib/useApi";
 import { useSucursales } from "../../../lib/useSucursales";
 import { useAuth } from "../../../store/AuthContext";
 import type { Gasto } from "../../../types";
-import { apiReportes, fraccion, type CreditosApi, type EfectivoBillarApi, type FinancieroApi, type ResumenApi } from "../api";
+import { apiReportes, fraccion, type ClasesAcademiaApi, type CreditosApi, type EfectivoBillarApi, type FinancieroApi, type ResumenApi } from "../api";
 import { hoja, useExportar, useReporte } from "../contexto";
 import { bsConSigno, bsEntero, bsResta, bsSubtotal } from "../formato";
 import { ProgresoMeta } from "../graficos";
@@ -29,8 +30,10 @@ import {
   horasJugadas,
   movimientosSinEfecto,
   notaMeta,
+  partirClases,
   partirVentas,
   perfilResultado,
+  separarSueldosDocentes,
   type MovimientoSinEfecto,
   type PerfilResultado,
   type VentasPartidas,
@@ -49,6 +52,7 @@ import {
  *     = Ganancia de lo vendido   (utilidad bruta, con el nombre del rubro)
  *     − Mermas                   (si hubo)
  *     − Gastos del local
+ *     − Sueldos docentes         (academia: lo pagado de la planilla)
  *     − Cenas del personal       (billar, si hubo)
  *     − Gastos pagados de la caja (billar, si hubo)
  *     = Resultado del local      (utilidad operativa)
@@ -82,6 +86,11 @@ export default function EstadoResultado() {
   // gastos que no están entre los cargados. Sólo un billar lo pide: los demás
   // rubros no hacen ninguna consulta más ni ven ninguna línea nueva.
   const pideEfectivo = perfil.partir === "billar";
+  // Academia (L5, 28-oct): el detalle de lo cobrado por curso y módulo y qué
+  // gastos son la planilla docente. No es una mitad de la cuenta: sin él la
+  // cuenta da lo mismo y sólo se pierde el detalle (la planilla queda dentro
+  // de los gastos del local, como antes), así que si falla, el reporte sigue.
+  const pideClases = perfil.partir === "clases";
 
   const datos = useApi(() => {
     // Los gastos de los MISMOS días que las ventas: medianoche local del
@@ -102,8 +111,9 @@ export default function EstadoResultado() {
       // con "Todas las sucursales" restaba sólo las de la principal contra las
       // ventas de todos los locales.
       pideEfectivo ? apiReportes.efectivoBillar(rango) : Promise.resolve(null),
+      pideClases ? apiReportes.clasesAcademia(rango).catch(() => null) : Promise.resolve(null),
     ]);
-  }, [rango.desde, rango.hasta, rango.sucursalId, rangoAnterior.desde, rangoAnterior.hasta, pideEfectivo]);
+  }, [rango.desde, rango.hasta, rango.sucursalId, rangoAnterior.desde, rangoAnterior.hasta, pideEfectivo, pideClases]);
 
   // Las horas jugadas, para el renglón del tiempo de mesa. El reporte del
   // billar no tiene consolidado (ver NotaSucursal): con "Todas las sucursales"
@@ -121,13 +131,13 @@ export default function EstadoResultado() {
     [conFiado, rango.desde, rango.hasta, rango.sucursalId],
   );
 
-  const [fin, gastos, resumen, efectivo] = datos.datos ?? [null, null, null, null];
+  const [fin, gastos, resumen, efectivo, clases] = datos.datos ?? [null, null, null, null, null];
   const er = fin && gastos ? estadoResultado(fin, gastos, gastosDeCaja(efectivo)) : null;
-  const partes = er && perfil.partir ? partirVentas(er.ventas, resumen?.composicion) : null;
+  const partes = er && fin ? partesDe(perfil, er, fin, resumen) : null;
 
   useExportar(
     "estado-de-resultado",
-    er && fin && gastos ? () => hojasExcel(er, fin, gastos, perfil, partes, efectivo) : null,
+    er && fin && gastos ? () => hojasExcel(er, fin, gastos, perfil, partes, efectivo, clases) : null,
   );
 
   return (
@@ -137,12 +147,13 @@ export default function EstadoResultado() {
         estadoResultado(f, g, gastosDeCaja(e)).vacio ? { titulo: "Sin movimiento", texto: "No hay ventas ni gastos en este período.", icono: "billetera" } : null
       }
     >
-      {([f, g, r, e]) => (
+      {([f, g, r, e, c]) => (
         <Contenido
           er={estadoResultado(f, g, gastosDeCaja(e))}
           fin={f}
           gastos={g}
           efectivo={e}
+          clases={c}
           resumen={r}
           perfil={perfil}
           periodo={periodo}
@@ -155,6 +166,16 @@ export default function EstadoResultado() {
       )}
     </Cargador>
   );
+}
+
+/**
+ * Cómo se parte la primera línea: el billar y la belleza con la composición
+ * del resumen, la academia con lo cobrado en cuotas del financiero. Los demás
+ * rubros, entera.
+ */
+function partesDe(perfil: PerfilResultado, er: Er, fin: FinancieroApi, resumen: ResumenApi | null): VentasPartidas | null {
+  if (perfil.partir === "clases") return partirClases(er.ventas, fin.cobradoCuotas);
+  return perfil.partir ? partirVentas(er.ventas, resumen?.composicion) : null;
 }
 
 /**
@@ -171,13 +192,14 @@ type DetalleGasto =
   | { tipo: "grupo"; grupo: GrupoGasto }
   | { tipo: "categoria"; codigo: string; nombre: string };
 
-type Detalle = DetalleGasto | { tipo: "gastosCaja" };
+type Detalle = DetalleGasto | { tipo: "gastosCaja" } | { tipo: "clases" } | { tipo: "sueldos" };
 
 function Contenido({
   er,
   fin,
   gastos,
   efectivo,
+  clases,
   resumen,
   perfil,
   periodo,
@@ -192,6 +214,8 @@ function Contenido({
   gastos: Gasto[];
   /** Billar: lo que se registró en la caja por motivo. Null en los demás rubros. */
   efectivo: EfectivoBillarApi | null;
+  /** Academia: lo cobrado por curso y módulo y la planilla. Null en los demás rubros (o si no llegó). */
+  clases: ClasesAcademiaApi | null;
   resumen: ResumenApi | null;
   perfil: PerfilResultado;
   periodo: Periodo;
@@ -202,6 +226,7 @@ function Contenido({
   veReporte: (id: string) => boolean;
 }) {
   const navigate = useNavigate();
+  const { puede } = useAuth();
   const [detalle, setDetalle] = useState<Detalle | null>(null);
   /** El salto a otro reporte, con el mismo período (vive en la pestaña). Sin permiso, la línea no se toca. */
   const ir = (id: string) => (veReporte(id) ? () => navigate(`/reportes/${id}`, { state: DESDE_RESULTADO }) : undefined);
@@ -230,15 +255,25 @@ function Contenido({
   // arriba (que no sale sin gastos o sin ventas).
   const parcial = enCurso && hoy.getDate() < diasDelMes(periodo) && !er.vacio ? hoy.getDate() : null;
   const sospechosos = gastos.filter(pareceDeBanco);
-  const local = gastos.filter((g) => grupoDe(g.categoria) === "LOCAL");
+  // Academia: la planilla docente pagada sale de los gastos del local y va en
+  // su propia línea. La cuenta es la misma (`er` tiene todos los gastos): sólo
+  // se nombra aparte. En los demás rubros no se separa nada.
+  const academia = perfil.partir === "clases";
+  const separados = academia ? separarSueldosDocentes(gastos, clases?.sueldos.gastoIds) : null;
+  const sueldosDocentes = separados?.sueldosDocentes ?? 0;
+  const gastosVista = separados?.gastosLocal ?? gastos;
+  const erLocal = esPositivo(sueldosDocentes) ? estadoResultado(fin, gastosVista, gastosDeCaja(efectivo)) : er;
+  const gastosLocal = aCentavos(er.gastosOperativos - sueldosDocentes);
+  const pendiente = academia ? (clases?.sueldos.pendiente ?? null) : null;
+  const local = gastosVista.filter((g) => grupoDe(g.categoria) === "LOCAL");
   const pctVentas = (monto: number) => (esPositivo(er.ventas) ? monto / er.ventas : null);
-  const partes = perfil.partir ? partirVentas(er.ventas, resumen?.composicion) : null;
+  const partes = partesDe(perfil, er, fin, resumen);
   const billar = perfil.partir === "billar";
-  const ganancia = billar && partes ? gananciaPorParte(partes, er.costoVentas) : null;
+  const ganancia = (billar || academia) && partes ? gananciaPorParte(partes, er.costoVentas) : null;
   const numVentas = resumen?.tickets?.valor ?? 0;
   const rangoTexto = prosaRango(periodo.desde, periodo.hasta);
   const ventasDetalle = numVentas > 0 ? `${rangoTexto} · ${fmtNum(numVentas)} ${numVentas === 1 ? "venta" : "ventas"}` : rangoTexto;
-  const nombres = er.lineas.map((l) => l.nombre);
+  const nombres = erLocal.lineas.map((l) => l.nombre);
   const deltaBruta = fraccion(fin.utilidadBrutaDeltaPct);
   const gastosDeLaCaja = efectivo?.gastos ?? [];
   const conceptosCaja = conceptosDeCaja(gastosDeLaCaja);
@@ -258,7 +293,27 @@ function Contenido({
       <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
         <div className="min-w-0 space-y-4">
           <Tarjeta titulo="Cómo se llega al resultado" subtitulo="Tocá una línea para ver de dónde sale" cuerpo="px-2 py-2 sm:px-3">
-            {partes ? (
+            {partes && academia ? (
+              <>
+                <Paso
+                  signo="+"
+                  titulo="Cobrado por clases"
+                  detalle={detalleClases(clases)}
+                  valor={fmtMoney(partes.servicios)}
+                  cero={esCero(partes.servicios)}
+                  onClick={clases?.cursos.length ? () => setDetalle({ tipo: "clases" }) : undefined}
+                />
+                <Paso
+                  signo="+"
+                  titulo="Ventas de productos"
+                  detalle="Poleras, kits y material"
+                  valor={fmtMoney(partes.productos)}
+                  cero={esCero(partes.productos)}
+                  onClick={ir("top-productos")}
+                />
+                <Paso signo="=" total titulo="Ventas" detalle={ventasDetalle} valor={fmtMoney(er.ventas)} onClick={ir("ventas")} />
+              </>
+            ) : partes ? (
               <>
                 <Paso
                   signo="+"
@@ -304,7 +359,7 @@ function Contenido({
                 <>
                   {ganancia && (
                     <p className="mt-0.5 text-[12.5px] text-texto-2">
-                      Mesas <b className="tabular-nums">{fmtMoney(ganancia.mesas)}</b> · productos{" "}
+                      {academia ? "Clases" : "Mesas"} <b className="tabular-nums">{fmtMoney(ganancia.mesas)}</b> · productos{" "}
                       <b className="tabular-nums">{bsSubtotal(ganancia.productos)}</b>
                     </p>
                   )}
@@ -331,11 +386,25 @@ function Contenido({
               signo="−"
               titulo="Gastos del local"
               detalle={nombres.length ? resumirNombres(nombres) : "No cargaste gastos en este período"}
-              valor={bsResta(er.gastosOperativos)}
+              valor={bsResta(gastosLocal)}
               resta
-              cero={esCero(er.gastosOperativos)}
+              cero={esCero(gastosLocal)}
               onClick={() => setDetalle({ tipo: "grupo", grupo: "LOCAL" })}
             />
+            {/* Academia (L5, 28-oct): lo PAGADO de la planilla docente en el
+                período, por la fecha del pago. La planilla cerrada o en curso
+                sin pagar no resta: va al costado, como informativo. */}
+            {academia && (
+              <Paso
+                signo="−"
+                titulo="Sueldos docentes"
+                detalle={esPositivo(sueldosDocentes) ? "Lo pagado de la planilla en el período" : "No se pagó planilla en este período"}
+                valor={bsResta(sueldosDocentes)}
+                resta
+                cero={esCero(sueldosDocentes)}
+                onClick={clases ? () => setDetalle({ tipo: "sueldos" }) : undefined}
+              />
+            )}
             {/* Billar (24-oct): sólo si en el período se dio al menos una cena;
                 sin cenas la línea no se dibuja (un "Bs 0,00" sobra). Toca y va al
                 reporte, si lo ve. */}
@@ -394,7 +463,7 @@ function Contenido({
                 onClick={() => setDetalle({ tipo: "grupo", grupo: "IMPUESTOS" })}
               />
             )}
-            <CajaResultado er={er} periodo={periodo} parcial={parcial} explicacion={explicarResultado(er, perfil, partes)} />
+            <CajaResultado er={er} periodo={periodo} parcial={parcial} explicacion={explicarResultado(er, perfil, partes, sueldosDocentes)} />
           </Tarjeta>
           {er.sinBajoLaLinea && esPositivo(er.gastosOperativos) && (
             <p className="px-1 text-[12.5px] text-texto-3">
@@ -405,7 +474,7 @@ function Contenido({
           <Tarjeta
             titulo="Gastos del local"
             subtitulo="Cuentan aunque todavía no los pagués"
-            extra={<span className={`text-[15px] font-extrabold tabular-nums ${esCero(er.gastosOperativos) ? "text-texto-4" : "text-rose-700"}`}>{bsResta(er.gastosOperativos)}</span>}
+            extra={<span className={`text-[15px] font-extrabold tabular-nums ${esCero(gastosLocal) ? "text-texto-4" : "text-rose-700"}`}>{bsResta(gastosLocal)}</span>}
             cuerpo=""
           >
             {sospechosos.length > 0 && (
@@ -418,13 +487,13 @@ function Contenido({
                 </Nota>
               </div>
             )}
-            {er.lineas.length === 0 ? (
+            {erLocal.lineas.length === 0 ? (
               <p className="px-4 py-5 text-[13px] text-texto-3 sm:px-5">
                 No cargaste gastos operativos en este período. Sin ellos, el resultado de arriba está de más.
               </p>
             ) : (
               <ul className="divide-y divide-borde-soft">
-                {er.lineas.map((l) => {
+                {erLocal.lineas.map((l) => {
                   const estado = estadoLinea(local.filter((g) => g.categoria === l.codigo));
                   return (
                     <li key={l.codigo}>
@@ -477,6 +546,23 @@ function Contenido({
               </div>
             </Informativo>
           )}
+          {pendiente && esPositivo(pendiente.total) && (
+            <Informativo
+              titulo={`Planilla pendiente de pagar · ${fmtMoney(pendiente.total)}`}
+              texto="Lo que se les debe a los docentes por los meses de este período y todavía no se pagó. No resta del resultado: entra en Sueldos docentes el día que se paga."
+              a={puede("academia_planilla") ? "/academia/planilla" : undefined}
+              accion="Ver la planilla"
+            >
+              <div className="flex flex-wrap gap-1.5">
+                {esPositivo(pendiente.cerrada) && (
+                  <span className="rounded-full bg-amber-50 px-2.5 py-0.5 text-[12px] font-bold text-amber-800">{fmtMoney(pendiente.cerrada)} cerrada sin pagar</span>
+                )}
+                {esPositivo(pendiente.enCurso) && (
+                  <span className="rounded-full border border-borde px-2.5 py-0.5 text-[12px] text-texto-2">{fmtMoney(pendiente.enCurso)} del mes en curso</span>
+                )}
+              </div>
+            </Informativo>
+          )}
           {esPositivo(fin.compras.total) && (
             <Informativo
               titulo={`${periodo.preset === "mes" || periodo.preset === "mesPasado" ? "Compras del mes" : "Compras del período"} · ${fmtMoney(fin.compras.total)}`}
@@ -489,12 +575,21 @@ function Contenido({
           <Nota>
             {perfil.partir === "billar"
               ? "El costo sale del costo cargado en cada producto, no de las compras del período: comprar bebidas para tres meses no hunde el resultado de este mes. El tiempo de mesa no tiene costo. Los gastos cuentan por lo gastado, no por lo pagado."
-              : "El costo de lo vendido sale del costo cargado en cada artículo, no de las compras del período: comprar stock para tres meses no hunde el resultado de este mes. Los gastos cuentan por lo gastado, no por lo pagado."}
+              : academia
+                ? "Cobrado por clases son las cuotas cobradas en el período. Las cuotas no tienen costo: el costo es el de los productos vendidos. Los gastos del local cuentan por lo gastado; los sueldos docentes, por lo pagado de la planilla."
+                : "El costo de lo vendido sale del costo cargado en cada artículo, no de las compras del período: comprar stock para tres meses no hunde el resultado de este mes. Los gastos cuentan por lo gastado, no por lo pagado."}
           </Nota>
         </div>
       </div>
 
-      {detalle?.tipo === "gastosCaja" ? (
+      {detalle?.tipo === "clases" || detalle?.tipo === "sueldos" ? (
+        clases &&
+        (detalle.tipo === "clases" ? (
+          <DetalleClases clases={clases} periodo={periodo} onCerrar={() => setDetalle(null)} />
+        ) : (
+          <DetalleSueldos sueldos={clases.sueldos} total={sueldosDocentes} periodo={periodo} onCerrar={() => setDetalle(null)} />
+        ))
+      ) : detalle?.tipo === "gastosCaja" ? (
         <DetalleGastosCaja
           gastos={gastosDeLaCaja}
           total={er.gastosCaja}
@@ -508,7 +603,7 @@ function Contenido({
           <DetalleLinea
             detalle={detalle}
             er={er}
-            gastos={gastos}
+            gastos={gastosVista}
             periodo={periodo}
             perfil={perfil}
             partes={partes}
@@ -519,6 +614,152 @@ function Contenido({
         )
       )}
     </>
+  );
+}
+
+/**
+ * La bajada de "Cobrado por clases": cuántos cursos y cuántos estudiantes
+ * pagaron. Sin el detalle (un backend anterior, o si no llegó), qué es.
+ */
+function detalleClases(clases: ClasesAcademiaApi | null): string {
+  const cursos = clases?.cursos.filter((c) => esPositivo(c.cobrado)) ?? [];
+  if (!cursos.length) return "Las cuotas de los módulos cobradas en el período";
+  const pagaron = cursos.reduce((t, c) => t + c.pagaron, 0);
+  return `${cursos.length} ${cursos.length === 1 ? "curso" : "cursos"} · ${pagaron} ${pagaron === 1 ? "estudiante pagó" : "estudiantes pagaron"}`;
+}
+
+/**
+ * Academia (L5, 28-oct): de dónde sale "Cobrado por clases". Por curso y
+ * módulo, el precio del módulo, cuántos están inscritos en los grupos que lo
+ * dictan en el período, cuántos pagaron y los Bs cobrados, con los horarios
+ * abiertos. De sólo mirar, como el resto de los detalles.
+ */
+function DetalleClases({ clases, periodo, onCerrar }: { clases: ClasesAcademiaApi; periodo: Periodo; onCerrar: () => void }) {
+  return (
+    <Modal
+      abierto
+      titulo="Cobrado por clases"
+      subtitulo={prosaRango(periodo.desde, periodo.hasta)}
+      onClose={onCerrar}
+      ancho="max-w-2xl"
+      acciones={<Boton onClick={onCerrar}>Cerrar</Boton>}
+    >
+      <div className="space-y-4">
+        <p className="text-[28px] font-extrabold tabular-nums text-texto">{fmtMoney(clases.cobradoCuotas)}</p>
+        {clases.cursos.map((c) => (
+          <section key={c.curso.id} className="overflow-hidden rounded-xl border border-borde">
+            <header className="flex items-center gap-2 bg-muted px-3.5 py-2 text-[13px]">
+              <span className="min-w-0 flex-1 truncate font-bold text-texto">{c.curso.nombre}</span>
+              {c.precioModulo != null && <span className="shrink-0 text-texto-3">{fmtMoney(c.precioModulo)} por módulo</span>}
+              <span className="w-24 shrink-0 text-right font-extrabold tabular-nums text-texto">{fmtMoney(c.cobrado)}</span>
+            </header>
+            <ul className="divide-y divide-borde-soft">
+              {c.modulos.map((m) => (
+                <li key={m.materia.id} className="flex items-start gap-3 px-3.5 py-2.5 text-[13px]">
+                  <div className="min-w-0 flex-1">
+                    <p className="font-semibold text-texto">
+                      Módulo {m.materia.orden} · {m.materia.nombre}
+                    </p>
+                    <p className="text-[12px] text-texto-3">
+                      {m.grupos.length
+                        ? `${m.alumnos} ${m.alumnos === 1 ? "inscrito" : "inscritos"} · ${m.pagaron} ${m.pagaron === 1 ? "pagó" : "pagaron"}`
+                        : `No se dicta en el período · ${m.pagaron} ${m.pagaron === 1 ? "pagó" : "pagaron"}`}
+                    </p>
+                    {m.grupos.map((g) => (
+                      <p key={g.id} className="text-[12px] text-texto-3">
+                        {g.nombre} · {horarioGrupo(g)} · {g.sede.nombre}
+                      </p>
+                    ))}
+                  </div>
+                  <span className={`shrink-0 text-right font-bold tabular-nums ${esPositivo(m.cobrado) ? "text-texto" : "text-texto-4"}`}>{fmtMoney(m.cobrado)}</span>
+                </li>
+              ))}
+              {esPositivo(c.sinModulo) && (
+                <li className="flex items-center gap-3 px-3.5 py-2.5 text-[13px]">
+                  <span className="min-w-0 flex-1 text-texto-2">Cuotas que no son de un módulo</span>
+                  <span className="shrink-0 font-bold tabular-nums text-texto">{fmtMoney(c.sinModulo)}</span>
+                </li>
+              )}
+            </ul>
+          </section>
+        ))}
+        <div className="rounded-xl bg-muted px-3.5 py-3">
+          <p className="text-[11px] font-bold uppercase tracking-wider text-texto-4">Qué va acá</p>
+          <p className="mt-1 text-[13px] leading-relaxed text-texto-2">
+            Las cuotas cobradas en el período, netas de descuento: los módulos mes a mes, los pagos completos y los abonos. Un pago completo se
+            reparte por partes iguales entre los módulos que cubre. Las poleras y los kits van en Ventas de productos.
+          </p>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+/**
+ * Academia (L5): lo pagado de la planilla en el período —cada pago, a qué
+ * docente y de qué sede— y, aparte, lo que falta pagar de esos meses, que no
+ * resta.
+ */
+function DetalleSueldos({
+  sueldos,
+  total,
+  periodo,
+  onCerrar,
+}: {
+  sueldos: ClasesAcademiaApi["sueldos"];
+  total: number;
+  periodo: Periodo;
+  onCerrar: () => void;
+}) {
+  const { puede } = useAuth();
+  const pendiente = sueldos.pendiente;
+  return (
+    <Modal
+      abierto
+      titulo="Sueldos docentes"
+      subtitulo={prosaRango(periodo.desde, periodo.hasta)}
+      onClose={onCerrar}
+      acciones={
+        <>
+          {puede("academia_planilla") && (
+            <Link to="/academia/planilla" className="inline-flex items-center gap-2 rounded-xl border border-borde bg-white px-4 py-2.5 text-sm font-semibold text-texto-2 hover:bg-muted">
+              Ver la planilla
+            </Link>
+          )}
+          <Boton onClick={onCerrar}>Cerrar</Boton>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <p className={`text-[28px] font-extrabold tabular-nums ${esCero(total) ? "text-texto-4" : "text-rose-700"}`}>{bsResta(total)}</p>
+        {sueldos.pagos.length > 0 && (
+          <ul className="divide-y divide-borde-soft overflow-hidden rounded-xl border border-borde">
+            {sueldos.pagos.map((g) => (
+              <li key={g.gastoId} className="flex items-center gap-3 px-3.5 py-2.5 text-[13px]">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-semibold text-texto">{g.concepto}</p>
+                  <p className="text-[12px] text-texto-3">{[`Pagado el ${fmtFecha(g.fecha)}`, g.sede?.nombre].filter(Boolean).join(" · ")}</p>
+                </div>
+                <span className="shrink-0 text-right font-bold tabular-nums text-texto">{fmtMoney(g.monto)}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+        {pendiente && esPositivo(pendiente.total) && (
+          <Nota tono="ambar">
+            Falta pagar {fmtMoney(pendiente.total)} de la planilla de estos meses
+            {esPositivo(pendiente.cerrada) ? ` (${fmtMoney(pendiente.cerrada)} ya cerrada)` : ""}. No resta del resultado hasta que se paga.
+          </Nota>
+        )}
+        <div className="rounded-xl bg-muted px-3.5 py-3">
+          <p className="text-[11px] font-bold uppercase tracking-wider text-texto-4">Qué va acá</p>
+          <p className="mt-1 text-[13px] leading-relaxed text-texto-2">
+            Lo que se les pagó a los docentes desde la planilla, el día en que se pagó: un mes dictado en octubre y pagado el 3 de noviembre
+            cuenta en noviembre. Un sueldo cargado a mano en Gastos (la recepción, por ejemplo) va en los gastos del local.
+          </p>
+        </div>
+      </div>
+    </Modal>
   );
 }
 
@@ -1155,6 +1396,33 @@ function agrupar(lista: Gasto[]): { codigo: string; nombre: string; monto: numbe
     .sort((a, b) => b.monto - a.monto);
 }
 
+interface FilaClase {
+  curso: string;
+  modulo: string;
+  precio: number | null;
+  alumnos: number;
+  pagaron: number;
+  grupos: string;
+  cobrado: number;
+}
+
+function filasClases(clases: ClasesAcademiaApi): FilaClase[] {
+  return clases.cursos.flatMap((c) => [
+    ...c.modulos.map((m) => ({
+      curso: c.curso.nombre,
+      modulo: `${m.materia.orden}. ${m.materia.nombre}`,
+      precio: m.precio,
+      alumnos: m.alumnos,
+      pagaron: m.pagaron,
+      grupos: m.grupos.map((g) => `${g.nombre} (${horarioGrupo(g)})`).join("; "),
+      cobrado: m.cobrado,
+    })),
+    ...(esPositivo(c.sinModulo)
+      ? [{ curso: c.curso.nombre, modulo: "Sin módulo", precio: null, alumnos: 0, pagaron: 0, grupos: "", cobrado: c.sinModulo }]
+      : []),
+  ]);
+}
+
 function hojasExcel(
   er: Er,
   fin: FinancieroApi,
@@ -1162,21 +1430,25 @@ function hojasExcel(
   perfil: PerfilResultado,
   partes: VentasPartidas | null,
   efectivo: EfectivoBillarApi | null,
+  clases: ClasesAcademiaApi | null,
 ) {
   const pv = (m: number) => (esPositivo(er.ventas) ? Math.round((m / er.ventas) * 1000) / 10 : null);
   const billar = perfil.partir === "billar";
+  const academia = perfil.partir === "clases";
+  const sueldos = academia ? separarSueldosDocentes(gastos, clases?.sueldos.gastoIds).sueldosDocentes : 0;
   const filas: [string, number][] = [
     ...(partes
       ? ([
-          [billar ? "Tiempo de mesa" : "Servicios", partes.servicios],
-          [billar ? "Bebidas y productos" : "Productos", partes.productos],
+          [academia ? "Cobrado por clases" : billar ? "Tiempo de mesa" : "Servicios", partes.servicios],
+          [academia ? "Ventas de productos" : billar ? "Bebidas y productos" : "Productos", partes.productos],
         ] as [string, number][])
       : []),
     ["Ventas", er.ventas],
     [perfil.costoTitulo, -er.costoVentas],
     [`${perfil.gananciaTitulo} (utilidad bruta)`, er.utilidadBruta],
     ...(esPositivo(er.mermas) ? ([["Mermas", -er.mermas]] as [string, number][]) : []),
-    ["Gastos del local", -er.gastosOperativos],
+    ["Gastos del local", -aCentavos(er.gastosOperativos - sueldos)],
+    ...(academia ? ([["Sueldos docentes (pagados)", -sueldos]] as [string, number][]) : []),
     ...(esPositivo(er.cenasPersonal) ? ([["Cenas del personal", -er.cenasPersonal]] as [string, number][]) : []),
     ...(esPositivo(er.gastosCaja) ? ([["Gastos pagados de la caja", -er.gastosCaja]] as [string, number][]) : []),
     ["Resultado del local (utilidad operativa)", er.utilidadOperativa],
@@ -1227,6 +1499,37 @@ function hojasExcel(
               ["Monto (Bs)", (g) => g.monto],
             ],
             efectivo.gastos,
+          ),
+        ]
+      : []),
+    // Academia: el detalle de "Cobrado por clases", módulo por módulo.
+    ...(academia && clases?.cursos.length
+      ? [
+          hoja(
+            "Cobrado por clases",
+            [
+              ["Curso", (f: FilaClase) => f.curso],
+              ["Módulo", (f) => f.modulo],
+              ["Precio del módulo (Bs)", (f) => f.precio],
+              ["Inscritos", (f) => f.alumnos],
+              ["Pagaron", (f) => f.pagaron],
+              ["Grupos", (f) => f.grupos],
+              ["Cobrado (Bs)", (f) => f.cobrado],
+            ],
+            filasClases(clases),
+          ),
+        ]
+      : []),
+    ...(academia && clases?.sueldos.pendiente && esPositivo(clases.sueldos.pendiente.total)
+      ? [
+          hoja(
+            "Planilla pendiente sin pagar",
+            [
+              ["Mes", (m: { mes: string; cerrada: number; enCurso: number }) => m.mes],
+              ["Cerrada sin pagar (Bs)", (m) => m.cerrada],
+              ["En curso (Bs)", (m) => m.enCurso],
+            ],
+            clases.sueldos.pendiente.meses,
           ),
         ]
       : []),

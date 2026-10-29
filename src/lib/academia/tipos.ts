@@ -1173,16 +1173,18 @@ export interface PanelControl {
   inscripcionesPorUsuario: { usuario: string; sede: string | Ref | null; cantidad: number; cobrado: number; usuarioId?: number | null; descuentos?: number; anulaciones?: number }[];
 }
 
+/**
+ * `GET /academia/reportes`: lo académico del instituto. Desde L5 (28-oct) ya
+ * no trae el "Resultado por sede" en plata (daba otra ganancia que el Estado
+ * de resultado): el resultado vive sólo en Reportes de ventas.
+ */
 export interface ReportesAcademia {
   mes: string;
-  porSede: {
-    sede: string | Ref;
-    cobradoModulos: number;
-    ventasProductos: number;
-    sueldosDocentes: number;
-    otrosGastos: number;
-    resultado: number;
-  }[];
+  /** Los días del período (L5): los del mes, o los `desde`/`hasta` pedidos. */
+  desde?: string;
+  hasta?: string;
+  /** Si quien pregunta ve montos: sin ellos, `cobrado` y `vencido` vienen null. */
+  montos?: boolean;
   activosPorCurso: {
     curso: string | Ref;
     activos: number;
@@ -1190,13 +1192,61 @@ export interface ReportesAcademia {
     // Cambio #29.
     grupos?: number;
     inscritosPorEmpezar?: number;
-    cobrado?: number;
-    vencido?: number;
+    /** Lo cobrado en cuotas del período, neto (L5). Null sin montos. */
+    cobrado?: number | null;
+    vencido?: number | null;
   }[];
-  morosidad: { vencido: number; estudiantes: number; pctEstudiantes: number; activos?: number };
+  /**
+   * La mora de HOY con los días de espera (L5), igual que el semáforo del
+   * docente: `estudiantes` son los que pasaron la espera; `enEspera`, los que
+   * deben pero todavía están dentro.
+   */
+  morosidad: {
+    vencido: number | null;
+    estudiantes: number;
+    pctEstudiantes: number | null;
+    activos?: number;
+    enEspera?: number;
+    alDia?: number;
+    diasEspera?: number;
+  };
   asistenciaPromedioPct: number | null;
   /** Cambio #29. */
   asistenciaPorGrupo?: { grupo: string | Ref; docente: string | Ref | null; pct: number | null }[];
+}
+
+export type AgruparReporte = "dia" | "semana" | "mes";
+
+/** Un tramo (día, semana o mes) del reporte de estudiantes. */
+export interface TramoEstudiantes {
+  desde: string;
+  hasta: string;
+  /** Inscripciones nuevas, sin las importadas, preinscritas ni descartadas. */
+  ingresaron: number;
+  /** Lo cobrado sólo en cuotas, neto. Null sin montos. */
+  cobradoClases: number | null;
+  /** De las mensualidades que vencían en el tramo: estudiantes que ya pagaron. */
+  alDia: number;
+  /** Deben, pero la cuota todavía no venció. */
+  porVencer: number;
+  /** Deben y venció hace `diasEspera` días o menos (amarillo). */
+  enEspera: number;
+  /** Deben y pasó la espera (rojo). */
+  enMora: number;
+}
+
+/** `GET /academia/reportes/estudiantes` (L5, 28-oct). */
+export interface EstudiantesAcademia {
+  desde: string;
+  hasta: string;
+  agrupar: AgruparReporte;
+  sede: number | null;
+  diasEspera: number;
+  montos: boolean;
+  filas: TramoEstudiantes[];
+  totales: Omit<TramoEstudiantes, "desde" | "hasta">;
+  /** Los activos de hoy con el semáforo del docente. */
+  hoy: { activos: number; alDia: number; enEspera: number; enMora: number; pctMora: number | null; vencido: number | null };
 }
 
 // ── Público ─────────────────────────────────────────────────────────────────
