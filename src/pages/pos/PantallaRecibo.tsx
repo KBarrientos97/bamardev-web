@@ -137,7 +137,9 @@ export default function PantallaRecibo({
       .map((p) => p.formaPago)
       .filter(Boolean)
       .join(" + ") ||
-    "—";
+    // Un fiado sin adelanto no tiene ningún pago: decía "Pago: —", como si
+    // faltara un dato, cuando lo que pasó es que se lo llevó a crédito.
+    (venta.credito ? "A crédito" : "—");
 
   const imprimirYCompartir = incluye("recibo_pdf") && (
     <>
@@ -361,9 +363,11 @@ export default function PantallaRecibo({
                     valor={fmtMoney(venta.credito.adelanto)}
                   />
                 )}
-                <div className="flex justify-between font-bold text-texto">
+                {/* Con el mismo `gap-2` de FilaDato: sin él, en el ticket angosto
+                    se leía "SALDO POR COBRARBs 37,00", pegado. */}
+                <div className="flex justify-between gap-2 font-bold text-texto">
                   <dt>SALDO POR COBRAR</dt>
-                  <dd>{fmtMoney(venta.credito.saldo)}</dd>
+                  <dd className="text-right">{fmtMoney(venta.credito.saldo)}</dd>
                 </div>
                 <FilaDato
                   etiqueta="Paga el"

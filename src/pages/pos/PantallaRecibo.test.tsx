@@ -519,3 +519,23 @@ describe("con lugar: los botones al lado del ticket (27-oct)", () => {
     }
   });
 });
+
+describe("bamardev-restaurant: el ticket de un fiado", () => {
+  const credito = { clienteNombre: "Pensión Doña Rosa", adelanto: 0, saldo: 80, fechaCompromiso: "2026-11-20" };
+
+  it("sin adelanto dice que se llevó a crédito, no «Pago: —»", () => {
+    // QA 29-oct: un fiado sin adelanto no tiene pagos y el ticket decía
+    // "Pago: —", como si faltara un dato.
+    sesion.rubro = "RESTAURANTE";
+    dibujar(venta({ credito } as Partial<Venta>));
+    expect(screen.getByText("Pago:").nextElementSibling).toHaveTextContent("A crédito");
+    expect(screen.queryByText("—")).not.toBeInTheDocument();
+  });
+
+  it("el saldo por cobrar va separado de su monto", () => {
+    // QA 29-oct: en el ticket angosto se leía "SALDO POR COBRARBs 37,00".
+    sesion.rubro = "RESTAURANTE";
+    dibujar(venta({ credito } as Partial<Venta>));
+    expect(screen.getByText("SALDO POR COBRAR").parentElement).toHaveClass("gap-2");
+  });
+});
