@@ -323,15 +323,18 @@ describe("N1 · Calendario con todas las sedes (QA ronda 2, B-07)", () => {
     expect(apiAcademia.docentes).toHaveBeenCalledTimes(pedidas + 1);
     expect(within(panel).queryByText(/No se pudo traer/)).not.toBeInTheDocument();
   });
-  describe("C1 · Primeros pasos arriba del calendario", () => {
-    it("el administrador de un instituto sin terminar de armar la ve; la recepción no", async () => {
+  describe("L1 · «Configuración rápida» en el encabezado del calendario", () => {
+    it("el administrador de un instituto sin terminar de armar ve el botón junto al «⋯» y abre la lista; la recepción no", async () => {
       await montar();
-      const lista = screen.getByRole("region", { name: "Primeros pasos" });
+      const boton = within(screen.getByRole("banner")).getByRole("button", { name: /^Configuración rápida/ });
+      expect(screen.queryByRole("region", { name: "Primeros pasos" })).not.toBeInTheDocument();
+      if (boton.getAttribute("aria-expanded") !== "true") fireEvent.click(boton);
+      const lista = screen.getByRole("complementary", { name: "Configuración rápida" });
       expect(within(lista).getByRole("link", { name: /Crear un curso/ })).toHaveAttribute("href", "/configuracion/carreras");
       cleanup();
       quien.sesion = "secretaria";
       await montar();
-      expect(screen.queryByRole("region", { name: "Primeros pasos" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /^Configuración rápida/ })).not.toBeInTheDocument();
     });
   });
 

@@ -82,7 +82,7 @@ describe("N9 · Panel de control", () => {
     expect(document.getElementById("t-sin-docente")!.parentElement).toHaveTextContent("130");
   });
 
-  it("R2: el administrador aterriza acá y ve «Primeros pasos» mientras falte armar el instituto", async () => {
+  it("R2/L1: el administrador aterriza acá y ve «Configuración rápida» en el encabezado mientras falte armar el instituto", async () => {
     localStorage.clear();
     render(
       <MemoryRouter>
@@ -90,7 +90,10 @@ describe("N9 · Panel de control", () => {
       </MemoryRouter>,
     );
     await act(async () => {});
-    expect(screen.getByRole("region", { name: "Primeros pasos" })).toBeInTheDocument();
+    const boton = within(screen.getByRole("banner")).getByRole("button", { name: /^Configuración rápida/ });
+    expect(boton).toBeInTheDocument();
+    // Ya no es una tarjeta arriba de todo.
+    expect(screen.queryByRole("region", { name: "Primeros pasos" })).not.toBeInTheDocument();
   });
 
   it("revisa las fotos una tras otra: está bien, y la siguiente con lo que no cuadra", async () => {

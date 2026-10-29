@@ -479,8 +479,10 @@ function TablaAlumnos({
 }) {
   const p = usePalabras();
   const conCobrar = !sinMontos && !conPanel;
+  // L6: la columna Cuotas del docente lleva "Debe, pasó la espera" entero (≈160 px); con
+  // 140 se desbordaba sobre la asistencia.
   const columnas = sinMontos
-    ? "grid-cols-[minmax(200px,2fr)_140px_90px]"
+    ? "grid-cols-[minmax(180px,2fr)_184px_96px] gap-x-6"
     : conCobrar
       ? "grid-cols-[minmax(200px,2fr)_110px_120px_90px_110px_96px]"
       : "grid-cols-[minmax(180px,2fr)_100px_110px_80px_100px]";
@@ -522,7 +524,9 @@ function TablaAlumnos({
                     <span className="block truncate text-[12px] text-texto-3">{subtituloFila(a, sinMontos)}</span>
                   </span>
                   {sinMontos ? (
-                    <PagoDelModulo estado={a.estadoPago} semaforo={a.semaforo} conSemaforo />
+                    <span className="min-w-0">
+                      <PagoDelModulo estado={a.estadoPago} semaforo={a.semaforo} conSemaforo />
+                    </span>
                   ) : (
                     <>
                       <span className="truncate text-sm text-texto-2">{textoFormaPago(a.formaPago, a.plan?.nombre)}</span>

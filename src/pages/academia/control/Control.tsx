@@ -109,12 +109,13 @@ export default function Control() {
                   : `Revisar ${pendientes.length} ${pendientes.length === 1 ? "foto" : "fotos"}`
                 : "Fotos al día"}
             </Boton>
+            {/* El administrador aterriza acá: sin esto, un instituto recién dado de alta veía
+                tarjetas vacías y ningún aviso de por dónde empezar (ronda 2, R2). Desde L1 es
+                el botón "Configuración rápida", no una tarjeta arriba de todo. */}
+            <PrimerosPasos />
           </>
         }
       />
-
-      {/* El administrador aterriza acá: sin esto, un instituto recién dado de alta veía tarjetas vacías y ningún aviso de por dónde empezar (ronda 2, R2). */}
-      <PrimerosPasos />
 
       {sede.selector}
 

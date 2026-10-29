@@ -321,6 +321,8 @@ export const CODIGOS_ACADEMIA = {
   NOTA_INVALIDA: "NOTA_INVALIDA",
   NOTAS_CERRADAS: "NOTAS_CERRADAS",
   NOTAS_INCOMPLETAS: "NOTAS_INCOMPLETAS",
+  /** 409 (L7): fuera del plazo del módulo (del inicio a 5 días después del fin). Trae `plazo`. */
+  NOTAS_FUERA_DE_PLAZO: "NOTAS_FUERA_DE_PLAZO",
   PLANILLA_CERRADA: "PLANILLA_CERRADA",
   MES_EN_CURSO: "MES_EN_CURSO",
   // ── QA de la ronda 2 ──
