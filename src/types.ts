@@ -3,6 +3,7 @@
 // mental entre lo que viaja por la red y lo que se lee acá.
 
 import type { Tema } from "./lib/temas";
+import type { EstadoTicket } from "./types/tickets";
 import type { Vocabulario } from "./lib/rubro";
 
 // ── Sesión y permisos ───────────────────────────────────────────────────────
@@ -71,7 +72,9 @@ export type FeatureConocida =
   /** Vencimientos y el lote que sale por FEFO. Farmacia, plan PRO. */
   | "lotes"
   /** Lo que pidieron y no había. Farmacia, BASICO y PRO. */
-  | "encargos";
+  | "encargos"
+  /** Número de pedido, despacho y la TV que lo llama. Extra de restaurante. */
+  | "tickets_pedido";
 export type Feature = FeatureConocida | (string & {});
 
 export interface SesionUsuario {
@@ -1292,6 +1295,12 @@ export interface Venta {
    */
   requiereRevision?: boolean;
   motivosRevision?: MotivoRevision[];
+  /**
+   * El número que se le canta al cliente en la TV (feature `tickets_pedido`).
+   * Sólo en una venta de mostrador cobrada en caja con la feature prendida:
+   * sin él, el recibo sale como siempre.
+   */
+  ticket?: { numero: number; estado: EstadoTicket } | null;
 }
 
 /** Por qué una venta quedó "a revisar" (ver `lib/revisionVenta.ts`). */

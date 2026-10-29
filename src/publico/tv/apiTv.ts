@@ -1,4 +1,6 @@
 import type { EstadoMesa, Prepago, TiempoPrevio, TipoMesa } from "../../pages/billar/tipos";
+import type { MenuPublicoApi } from "../../types/menuDigital";
+import type { PantallaTicketsApi } from "../../types/tickets";
 
 /**
  * Cliente de la TV pública del billar (`GET /publico/billar/salon/:llave`),
@@ -48,6 +50,11 @@ export interface SalonPublicoApi {
   mesas: MesaTvApi[];
 }
 
+/** Una ruta pública del API (la foto de un plato, el logo) como URL de un `<img>`. */
+export function urlPublica(ruta: string): string {
+  return /^https?:\/\//.test(ruta) ? ruta : `${BASE}${ruta}`;
+}
+
 /** Un "no" del backend (con su status) o la falta de red (status 0). */
 export class ErrorTv extends Error {
   status: number;
@@ -95,6 +102,24 @@ export const apiTv = {
   salon: (llave: string, sucursalId?: number, cancelar?: AbortSignal) =>
     pedir<SalonPublicoApi>(
       `/publico/billar/salon/${encodeURIComponent(llave)}${sucursalId != null ? `?sucursalId=${sucursalId}` : ""}`,
+      cancelar,
+    ),
+  /** Las TVs del menú que hay, para el selector de una TV recién enchufada. */
+  menus: (llave: string, cancelar?: AbortSignal) =>
+    pedir<{ negocio: string; pantallas: { numero: number; nombre: string }[] }>(
+      `/publico/pantallas/${encodeURIComponent(llave)}/menu`,
+      cancelar,
+    ),
+  /** Una TV del menú: su diseño y sus platos, con precio, foto y agotados. */
+  menu: (llave: string, numero: number, sucursalId?: number, cancelar?: AbortSignal) =>
+    pedir<MenuPublicoApi>(
+      `/publico/pantallas/${encodeURIComponent(llave)}/menu/${numero}${sucursalId != null ? `?sucursalId=${sucursalId}` : ""}`,
+      cancelar,
+    ),
+  /** La TV de tickets del restaurante: sólo números, sin montos ni nombres. */
+  tickets: (llave: string, sucursalId?: number, cancelar?: AbortSignal) =>
+    pedir<PantallaTicketsApi>(
+      `/publico/pantallas/${encodeURIComponent(llave)}/tickets${sucursalId != null ? `?sucursalId=${sucursalId}` : ""}`,
       cancelar,
     ),
 };

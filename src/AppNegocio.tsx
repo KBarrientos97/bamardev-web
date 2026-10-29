@@ -79,6 +79,11 @@ const RutasBillar = lazy(() => import("./pages/billar/RutasBillar"));
 const SupervisionBillar = lazy(() => import("./pages/billar/supervision/Supervision"));
 const PantallaSalonBillar = lazy(() => import("./pages/billar/PantallaSalon"));
 const MesasBillar = lazy(() => import("./pages/billar/admin/MesasBillar"));
+// Tickets y despacho (extra `tickets_pedido`): sólo se bajan en un restaurante que lo tiene.
+const TicketsPedidos = lazy(() => import("./pages/tickets/TicketsPedidos"));
+const Despacho = lazy(() => import("./pages/tickets/Despacho"));
+const MenuDigital = lazy(() => import("./pages/menu-digital/MenuDigital"));
+const ConfigRecibo = lazy(() => import("./pages/menu-digital/ConfigRecibo"));
 // Reportes: veintipico de pantallas con sus gráficos; se bajan al entrar.
 const Reportes = lazy(() => import("./pages/reportes/Reportes"));
 // Educación (PLAN-ACADEMIAS-TECNICO §8): sólo se bajan en un instituto.
@@ -622,6 +627,54 @@ function Rutas() {
           element={
             <Protegida seccion="mesas">
               <Mesas />
+            </Protegida>
+          }
+        />
+
+        {/* Los pedidos con número: la TV, su diseño y la numeración (del encargado). */}
+        <Route
+          path="/tickets"
+          element={
+            <Protegida seccion="tickets">
+              <Suspense fallback={null}>
+                <TicketsPedidos />
+              </Suspense>
+            </Protegida>
+          }
+        />
+
+        {/* Menú digital: las TVs del menú y la ficha de cada plato (del encargado). */}
+        <Route
+          path="/menu-digital"
+          element={
+            <Protegida seccion="menu_digital">
+              <Suspense fallback={null}>
+                <MenuDigital />
+              </Suspense>
+            </Protegida>
+          }
+        />
+
+        {/* El recibo, el logo y los datos del negocio (extras de pantallas). */}
+        <Route
+          path="/configuracion/recibo"
+          element={
+            <Protegida seccion="config_recibo">
+              <Suspense fallback={null}>
+                <ConfigRecibo />
+              </Suspense>
+            </Protegida>
+          }
+        />
+
+        {/* Despacho: marcar listo, llamar en la TV y entregar. */}
+        <Route
+          path="/despacho"
+          element={
+            <Protegida seccion="despacho">
+              <Suspense fallback={null}>
+                <Despacho />
+              </Suspense>
             </Protegida>
           }
         />

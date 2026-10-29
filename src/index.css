@@ -223,7 +223,9 @@ input[type="number"] {
     position: absolute;
     left: 0;
     top: 0;
-    width: 72mm;
+    /* 72 mm de siempre; 48 mm con el rollo de 58 mm (Configuración del
+       recibo de los negocios con pantallas, que fija la variable). */
+    width: var(--ancho-ticket, 72mm);
     margin: 0;
     /* Sin padding lateral: los 4 mm del @page ya son el margen del rollo, y
        sumarle el p-5 de la tarjeta angostaba el texto a ~60 mm. Arriba sí
@@ -259,6 +261,14 @@ input[type="number"] {
     color: #000 !important;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
+  }
+
+  /* La comanda de cocina (pedidos con número) sale en una hoja aparte del
+     recibo: en el rollo, la impresora corta entre los dos papeles y el de la
+     cocina no se lleva pegado el del cliente. */
+  #area-impresion .comanda-impresa {
+    break-before: page;
+    page-break-before: always;
   }
 
   /* Los separadores punteados sí quedan grises: a negro pleno compiten con el

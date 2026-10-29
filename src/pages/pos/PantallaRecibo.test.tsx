@@ -569,3 +569,60 @@ describe("bamardev-restaurant: el ticket de un pedido dice a quién y a dónde v
     expect(screen.queryByText("Pedido:")).not.toBeInTheDocument();
   });
 });
+
+describe("pedidos con número (extra tickets_pedido)", () => {
+  beforeEach(() => {
+    sesion.rubro = "RESTAURANTE";
+  });
+
+  const conNumero = (datos: Partial<Venta> = {}) =>
+    venta({
+      ticket: { numero: 72, estado: "PREPARANDO" },
+      detalles: [
+        { productoId: 1, producto: "Brasa cuarto", cantidad: 2, precio: 26, subtotal: 52, nota: "sin ensalada", consumo: "LLEVAR" },
+        { productoId: 2, producto: "Coca Cola 1.5L", cantidad: 1, precio: 15, subtotal: 15, nota: null, consumo: "MESA" },
+      ],
+      ...datos,
+    } as Partial<Venta>);
+
+  it("muestra el número grande y el botón imprime recibo y comanda juntos", () => {
+    dibujar(conNumero());
+    expect(screen.getByText("NÚMERO DE TICKET DEL CLIENTE")).toBeInTheDocument();
+    // En la pantalla, en el recibo y en la comanda.
+    expect(screen.getAllByText("0072")).toHaveLength(3);
+    expect(screen.getByRole("button", { name: /Imprimir recibo y comanda/ })).toBeInTheDocument();
+    // El "Imprimir" suelto (sólo el recibo) no aparece: imprimiría sin la comanda.
+    expect(screen.queryByRole("button", { name: /^Imprimir$/ })).not.toBeInTheDocument();
+  });
+
+  it("el recibo y la comanda van en la misma área de impresión, la comanda en hoja aparte", () => {
+    dibujar(conNumero());
+    const area = document.getElementById("area-impresion")!;
+    expect(area.querySelectorAll("article")).toHaveLength(2);
+    expect(area.querySelector(".comanda-impresa")).not.toBeNull();
+    expect(area.querySelector(".comanda-impresa")).toHaveTextContent("COMANDA · COCINA");
+  });
+
+  it("la comanda separa en mesa y para llevar, con la nota y sin precios", () => {
+    dibujar(conNumero());
+    const comanda = document.querySelector(".comanda-impresa") as HTMLElement;
+    expect(comanda).toHaveTextContent("EN MESA");
+    expect(comanda).toHaveTextContent("PARA LLEVAR");
+    expect(comanda).toHaveTextContent("sin ensalada");
+    expect(comanda).toHaveTextContent("3 productos");
+    expect(comanda.textContent).not.toContain("Bs");
+  });
+
+  it("el comprobante pasa a llamarse Venta: el ticket es el número de arriba", () => {
+    dibujar(conNumero());
+    expect(screen.getByText("Venta:").nextElementSibling).toHaveTextContent("T-0007");
+    expect(screen.queryByText("Ticket:")).not.toBeInTheDocument();
+  });
+
+  it("sin número, el recibo sale como siempre", () => {
+    dibujar(venta());
+    expect(screen.queryByText("NÚMERO DE TICKET DEL CLIENTE")).not.toBeInTheDocument();
+    expect(document.querySelector(".comanda-impresa")).toBeNull();
+    expect(document.getElementById("area-impresion")?.tagName).toBe("ARTICLE");
+  });
+});

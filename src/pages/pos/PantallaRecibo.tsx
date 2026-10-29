@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { Icon } from "../../components/Icon";
 import { Boton } from "../../components/ui";
 import { enlaceDeCuotas, modulosDeCuotaVenta } from "../../lib/academia/cobroCuotas";
@@ -6,9 +6,14 @@ import { compartirComoImagen } from "../../lib/compartirTicket";
 import { aCentavos, esPositivo } from "../../lib/dinero";
 import { fmtFecha, fmtFechaHora, fmtMoney, fmtNum } from "../../lib/format";
 import { marcaConsumo } from "../../lib/rubro";
+import { numeroTicket } from "../../lib/tickets/llamado";
 import { useAuth } from "../../store/AuthContext";
 import type { Venta } from "../../types";
 import EnlaceEstadoCuenta from "../academia/EnlaceEstadoCuenta";
+import ComandaCocina from "./ComandaCocina";
+import { totalEnLetras } from "../../lib/menuDigital/enLetras";
+import { useReciboNegocio } from "../../lib/menuDigital/useReciboNegocio";
+import { CabeceraNegocio, QrRecibo } from "./PiezasRecibo";
 
 /**
  * Comprobante de la venta recién cobrada.
@@ -34,6 +39,11 @@ export default function PantallaRecibo({
   etiquetaNueva?: string;
 }) {
   const { negocio, incluye, rubro } = useAuth();
+  // El diseño del recibo (logo, datos del negocio, QR, pie): sólo en un
+  // negocio con las pantallas del local. Sin él, null, y el recibo sale
+  // exactamente como siempre.
+  const conf = useReciboNegocio();
+  const r = conf?.recibo ?? null;
 
   /**
    * El ticket que se rasteriza al compartir: se manda la MISMA vista que se
@@ -141,11 +151,20 @@ export default function PantallaRecibo({
     // faltara un dato, cuando lo que pasó es que se lo llevó a crédito.
     (venta.credito ? "A crédito" : "—");
 
+  // El número de pedido (extra `tickets_pedido`): con él, la pantalla lo
+  // muestra grande, el botón principal imprime el recibo Y la comanda de
+  // cocina, y los dos papeles salen en una sola impresión (ver ComandaCocina).
+  // Sin él, todo sale exactamente como siempre.
+  const ticketPedido = venta.ticket ?? null;
+  const conTicket = !!ticketPedido && !venta.pendienteSync;
+
   const imprimirYCompartir = incluye("recibo_pdf") && (
     <>
-      <Boton variante="ghost" icono="printer" onClick={() => window.print()}>
-        Imprimir
-      </Boton>
+      {!conTicket && (
+        <Boton variante="ghost" icono="printer" onClick={() => window.print()}>
+          Imprimir
+        </Boton>
+      )}
       {/* Siempre visible: si el equipo no sabe compartir archivos, la
           imagen se descarga, que en un escritorio es lo más parecido. */}
       <Boton variante="ghost" icono="arrowUpRight" onClick={compartir} disabled={compartiendo}>
@@ -159,10 +178,45 @@ export default function PantallaRecibo({
     </Boton>
   );
   const nueva = (clase: string) => (
-    <Boton icono="plus" onClick={onNuevaVenta} className={clase}>
+    <Boton
+      id="recibo-nueva-venta"
+      icono="plus"
+      variante={conTicket ? "ghost" : "primary"}
+      onClick={onNuevaVenta}
+      className={clase}
+    >
       {etiquetaNueva}
     </Boton>
   );
+  // Con número de pedido, lo primero después de cobrar es imprimir: el botón
+  // nace con el foco (Enter imprime) y, al cerrar el diálogo de impresión, el
+  // foco pasa a "Nueva venta" (otro Enter y se sigue vendiendo). Cobrar y
+  // despachar sin tocar el mouse.
+  const imprimirTodo = (clase: string) => (
+    <Boton icono="printer" autoFocus onClick={() => window.print()} className={clase}>
+      Imprimir recibo y comanda
+    </Boton>
+  );
+  useEffect(() => {
+    if (!conTicket) return;
+    const alTerminar = () => document.getElementById("recibo-nueva-venta")?.focus();
+    window.addEventListener("afterprint", alTerminar);
+    return () => window.removeEventListener("afterprint", alTerminar);
+  }, [conTicket]);
+  // "Imprimir solo al cobrar" (Configuración del recibo): el diálogo se abre
+  // apenas aparece la venta, una sola vez. Con Chrome en modo kiosco
+  // (--kiosk-printing) ni siquiera hay diálogo: sale directo, cero toques. Si
+  // el diseño llega tarde (la primera venta del día), no imprime a destiempo.
+  const montada = useRef(Date.now());
+  const yaImprimio = useRef(false);
+  useEffect(() => {
+    if (!conTicket || !r?.imprimirAlCobrar || yaImprimio.current) return;
+    if (Date.now() - montada.current > 4000) return;
+    yaImprimio.current = true;
+    const id = setTimeout(() => window.print(), 250);
+    return () => clearTimeout(id);
+  }, [conTicket, r?.imprimirAlCobrar]);
+  const anchoPapel = r?.ancho === 58 ? { ticket: "48mm", pantalla: "max-w-[250px]" } : null;
 
   // Con lugar (26-oct): "Venta registrada" a la izquierda y el ticket a la
   // derecha, en vez de la columna del celular en el medio. Igual que el cobro,
@@ -190,8 +244,10 @@ export default function PantallaRecibo({
               ? "Se sube sola cuando vuelva la conexión. El número lo pone el sistema al subirla."
               : (venta.comprobante ?? `#${venta.id}`)}
           </p>
+          {conTicket && <NumeroGrande numero={ticketPedido!.numero} detalles={detalles} />}
           {ancha && (
             <div className="mt-6 w-full max-w-sm space-y-3">
+              {conTicket && imprimirTodo("w-full py-3.5 text-base")}
               {nueva("w-full")}
               <div className="flex flex-wrap justify-center gap-2">
                 {imprimirYCompartir}
@@ -202,23 +258,53 @@ export default function PantallaRecibo({
           )}
         </div>
 
-        {/* El ticket: el `id` lo hace lo ÚNICO visible al imprimir (index.css). */}
-        <article
-          id="area-impresion"
-          ref={ticket}
-          className="card mx-auto max-w-[320px] p-5 print:border-0 print:shadow-none"
+        {/* El ticket: el `id` lo hace lo ÚNICO visible al imprimir (index.css).
+            Con número de pedido el `id` pasa a un envoltorio con el recibo y la
+            comanda de cocina: salen en la misma impresión, uno debajo del otro
+            y con un corte en el medio. Sin número, el envoltorio no existe para
+            el layout (`contents`) y todo queda como siempre. */}
+        <div
+          id={conTicket ? "area-impresion" : undefined}
+          className={conTicket ? "space-y-2 print:space-y-0" : "contents"}
+          // El rollo de 58 mm (Configuración del recibo): el ticket se angosta
+          // al imprimir (index.css lee la variable) y también en la pantalla.
+          style={conTicket && anchoPapel ? ({ "--ancho-ticket": anchoPapel.ticket } as CSSProperties) : undefined}
         >
-          <header className="pb-2 text-center">
-            <h2 className="text-base font-bold text-texto">
-              {negocio?.nombre ?? "BamarDev"}
-            </h2>
-          </header>
+        {conTicket && <RotuloPapel icono="printer" texto="Recibo del cliente · impresora de caja" />}
+        <article
+          id={conTicket ? undefined : "area-impresion"}
+          ref={ticket}
+          className={`card mx-auto ${anchoPapel?.pantalla ?? "max-w-[320px]"} p-5 print:border-0 print:shadow-none ${conTicket ? "print:max-w-none print:p-0" : ""}`}
+          style={!conTicket && anchoPapel ? ({ "--ancho-ticket": anchoPapel.ticket } as CSSProperties) : undefined}
+        >
+          {r ? (
+            <CabeceraNegocio r={r} logo={conf?.logo ?? null} nombre={negocio?.nombre ?? "BamarDev"} />
+          ) : (
+            <header className="pb-2 text-center">
+              <h2 className="text-base font-bold text-texto">
+                {negocio?.nombre ?? "BamarDev"}
+              </h2>
+            </header>
+          )}
+
+          {/* El número que el cliente espera oír: grande y en su recuadro, lo
+              primero que se ve del papel. */}
+          {conTicket && (
+            <div className="mx-auto mb-2 w-fit rounded-lg border-2 border-texto px-4 py-1 text-center">
+              <p className="text-[10px] font-bold tracking-[0.3em] text-texto-3">TICKET N°</p>
+              <p className="font-mono text-[44px] font-black leading-none tracking-tight text-texto">
+                {numeroTicket(ticketPedido!.numero)}
+              </p>
+            </div>
+          )}
 
           {/* Cabecera en filas etiquetadas, como en la app: el número de ticket
               queda siempre en el mismo lugar y el cliente lo encuentra solo. */}
           <dl className="border-t border-dashed border-borde pt-2 text-xs">
             <FilaDato
-              etiqueta="Ticket:"
+              // Con número de pedido, "Ticket" es el número de arriba: el
+              // comprobante pasa a llamarse por lo que es, la venta.
+              etiqueta={conTicket ? "Venta:" : "Ticket:"}
               valor={venta.pendienteSync ? "SIN SINCRONIZAR" : (venta.comprobante ?? `#${venta.id}`)}
             />
             <FilaDato etiqueta="Fecha:" valor={fmtFechaHora(venta.fecha)} />
@@ -229,7 +315,7 @@ export default function PantallaRecibo({
                 quedaba "Mesa: Mesa M1". El código es lo que dice el salón. */}
             {venta.mesa && <FilaDato etiqueta="Mesa:" valor={venta.mesa} />}
             {venta.mesero && <FilaDato etiqueta="Atendió:" valor={venta.mesero} />}
-            {venta.cajero && <FilaDato etiqueta="Cajero:" valor={venta.cajero} />}
+            {venta.cajero && (!r || r.cajero) && <FilaDato etiqueta="Cajero:" valor={venta.cajero} />}
             <FilaDato etiqueta="Pago:" valor={metodo} />
             {/* El papel que sale con el pedido identifica la entrega, como el de
                 Android (ReciboVentaDialog): traía sólo productos y totales, sin
@@ -249,14 +335,28 @@ export default function PantallaRecibo({
           </dl>
 
           <div className="mt-2 border-t border-dashed border-borde pt-1">
-            {detalles.map((d, i) => (
-              <LineaTicket
-                key={i}
-                linea={d}
-                mostrarConsumo={mostrarConsumo}
-                cuota={cuotaDeLinea(venta, d.cuotaId)}
-              />
-            ))}
+            {conTicket && mostrarConsumo
+              ? // Con número de pedido, en bloques "EN MESA" y "PARA LLEVAR"
+                // en vez de la M/LL de cada renglón: el cliente de un pedido
+                // mixto ve de un vistazo qué se lleva.
+                porConsumo(detalles).map((g) => (
+                  <div key={g.consumo}>
+                    <p className="mt-1.5 border-b border-texto pb-0.5 text-[11px] font-extrabold tracking-[0.14em] text-texto">
+                      {g.consumo === "MESA" ? "EN MESA" : "PARA LLEVAR"}
+                    </p>
+                    {g.lineas.map((d, i) => (
+                      <LineaTicket key={i} linea={d} mostrarConsumo={false} />
+                    ))}
+                  </div>
+                ))
+              : detalles.map((d, i) => (
+                  <LineaTicket
+                    key={i}
+                    linea={d}
+                    mostrarConsumo={mostrarConsumo}
+                    cuota={cuotaDeLinea(venta, d.cuotaId)}
+                  />
+                ))}
           </div>
 
           <dl className="mt-2 space-y-1 border-t border-dashed border-borde pt-2 text-sm">
@@ -285,6 +385,9 @@ export default function PantallaRecibo({
               <dt>TOTAL</dt>
               <dd>{fmtMoney(totalTicket)}</dd>
             </div>
+            {r?.totalEnLetras && (
+              <p className="text-[11px] italic leading-snug text-texto-2">{totalEnLetras(totalTicket)}</p>
+            )}
           </dl>
           {/* Lo cobrado en la caja (o registrado al entregar) es lo de los
               productos: sin esta línea, un TOTAL mayor que lo pagado se leía
@@ -293,7 +396,9 @@ export default function PantallaRecibo({
             <p className="mt-1 text-right text-xs text-texto-3">El envío lo cobra el repartidor.</p>
           )}
 
-          <dl className="mt-2 space-y-1 border-t border-dashed border-borde pt-2 text-sm">
+          {/* Sin "Método de pago y cambio" (Configuración del recibo) el bloque
+              no sale; el método igual queda en la cabecera ("Pago:"). */}
+          <dl className={`mt-2 space-y-1 border-t border-dashed border-borde pt-2 text-sm ${r && !r.pagoYCambio ? "hidden" : ""}`}>
             <div className="flex justify-between text-texto-2">
               <dt>Método de pago</dt>
               <dd className="font-bold text-texto">{metodo}</dd>
@@ -392,11 +497,31 @@ export default function PantallaRecibo({
             </div>
           )}
 
+          {r && (r.qr.mostrar || (conTicket && r.minutosEstimados > 0)) && (
+            <QrRecibo r={r} conTicket={conTicket} />
+          )}
+
           <div className="mt-3 border-t border-dashed border-borde pt-2 text-center text-xs text-texto-3">
-            <p>¡Gracias por su compra!</p>
-            <p className="mt-0.5">Conserve este recibo</p>
+            {r ? (
+              <>
+                {r.mensaje && <p className="font-semibold text-texto">{r.mensaje}</p>}
+                {r.mensaje2 && <p className="mt-0.5">{r.mensaje2}</p>}
+              </>
+            ) : (
+              <>
+                <p>¡Gracias por su compra!</p>
+                <p className="mt-0.5">Conserve este recibo</p>
+              </>
+            )}
           </div>
         </article>
+        {conTicket && (
+          <>
+            <RotuloPapel icono="fuego" texto="Comanda · cocina" />
+            <ComandaCocina venta={venta} numero={ticketPedido!.numero} negocio={negocio?.nombre ?? ""} />
+          </>
+        )}
+        </div>
       </div>
 
       {!ancha && avisoCompartir && (
@@ -409,6 +534,7 @@ export default function PantallaRecibo({
         // Con `flex-wrap`: a 390 px, con Imprimir y Compartir, "Nueva venta"
         // quedaba cortado afuera de la pantalla. Ahora baja a su renglón.
         <div className="flex flex-wrap gap-2 border-t border-borde bg-white py-4 print:hidden px-[max(1rem,calc(50%-16rem+1rem))]">
+          {conTicket && imprimirTodo("min-w-[12rem] flex-[2]")}
           {imprimirYCompartir}
           {historial}
           {nueva("min-w-[10rem] flex-1")}
@@ -416,6 +542,55 @@ export default function PantallaRecibo({
       )}
     </div>
   );
+}
+
+/**
+ * El número de pedido en la pantalla, para cantárselo al cliente al darle el
+ * papel. Con las marcas de lo que lleva: en mesa, para llevar o las dos.
+ */
+function NumeroGrande({ numero, detalles }: { numero: number; detalles: NonNullable<Venta["detalles"]> }) {
+  const enMesa = detalles.some((d) => d.consumo === "MESA");
+  const llevar = detalles.some((d) => d.consumo !== "MESA");
+  return (
+    <div className="mt-5 w-full max-w-sm rounded-2xl border border-borde bg-white px-4 py-4 text-center">
+      <p className="text-[11px] font-bold tracking-[0.18em] text-texto-3">NÚMERO DE TICKET DEL CLIENTE</p>
+      <p className="mt-1 font-mono text-[64px] font-black leading-none tracking-tight text-primary-700">
+        {numeroTicket(numero)}
+      </p>
+      <div className="mt-3 flex justify-center gap-2">
+        {enMesa && (
+          <span className="inline-flex items-center gap-1 rounded-full bg-primary-50 px-3 py-1 text-[13px] font-semibold text-primary-700">
+            En mesa
+          </span>
+        )}
+        {llevar && (
+          <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-3 py-1 text-[13px] font-semibold text-amber-800">
+            Para llevar
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Qué papel es cada uno, en pantalla. No se imprime. */
+function RotuloPapel({ icono, texto }: { icono: "printer" | "fuego"; texto: string }) {
+  return (
+    <p className="mx-auto flex max-w-[320px] items-center gap-1.5 pt-1 text-[11px] font-bold uppercase tracking-[0.12em] text-texto-3 print:hidden">
+      <Icon name={icono} size={13} />
+      {texto}
+    </p>
+  );
+}
+
+/** Los renglones en mesa primero y después los para llevar, cada grupo en su orden. */
+function porConsumo(detalles: NonNullable<Venta["detalles"]>) {
+  const enMesa = detalles.filter((d) => d.consumo === "MESA");
+  const llevar = detalles.filter((d) => d.consumo !== "MESA");
+  return [
+    ...(enMesa.length ? [{ consumo: "MESA" as const, lineas: enMesa }] : []),
+    ...(llevar.length ? [{ consumo: "LLEVAR" as const, lineas: llevar }] : []),
+  ];
 }
 
 /** Fila etiqueta/valor de la cabecera y del bloque de crédito. */

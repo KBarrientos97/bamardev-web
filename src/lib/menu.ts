@@ -85,7 +85,7 @@ export interface ItemNav {
  * El del medio se llama "Stock" y no "Inventario" porque adentro vive el grupo
  * Inventario: el rótulo y el ítem se leían como un renglón repetido.
  */
-export type Bloque = "agenda" | "vender" | "stock" | "administracion" | "instituto";
+export type Bloque = "agenda" | "vender" | "pantallas" | "stock" | "administracion" | "instituto";
 
 export const TITULO_BLOQUE: Record<Bloque, string> = {
   // El del instituto (ver `ITEMS_ACADEMIA`): ningún otro rubro lo usa. No se
@@ -96,6 +96,8 @@ export const TITULO_BLOQUE: Record<Bloque, string> = {
   // mismo que Stock: adentro vive el grupo Agenda.
   agenda: "Atención",
   vender: "Vender",
+  // Las TVs del local y el despacho (extra `tickets_pedido`).
+  pantallas: "Pantallas",
   stock: "Stock",
   administracion: "Administración",
 };
@@ -218,6 +220,13 @@ const ITEMS: (ItemNav & { bloque: Bloque })[] = [
   // Belleza fase 4: los vales se venden y se consultan al lado del POS.
   { a: "/gift-cards", label: "Gift cards", icono: "gift", seccion: "gift_cards", bloque: "vender" },
   { a: "/encargos", label: "Encargos", icono: "bell", seccion: "encargos", bloque: "vender" },
+  // Pantallas del local (extra `tickets_pedido`, restaurante de mostrador): lo
+  // que se ve en las TVs y quien despacha lo que llaman. Un bloque propio y no
+  // dentro de Vender: son las pantallas del local, y así lo dibujó la maqueta
+  // que aprobó el dueño. Sin la feature el bloque no existe.
+  { a: "/menu-digital", label: "Menú digital", icono: "pantalla", seccion: "menu_digital", bloque: "pantallas" },
+  { a: "/tickets", label: "Tickets y pedidos", icono: "ticket", seccion: "tickets", bloque: "pantallas" },
+  { a: "/despacho", label: "Despacho", icono: "fuego", seccion: "despacho", bloque: "pantallas" },
   // Fuera de Inventario y no dentro: no es catálogo, es la plata que se está
   // por perder. Va donde se vea todos los días.
   {
@@ -409,6 +418,10 @@ const ITEMS: (ItemNav & { bloque: Bloque })[] = [
       // A11: las reglas del negocio y las de la reserva online. Sólo el dueño.
       // Lleva a la pestaña Reglas de la Configuración de la agenda (ConfigNegocio).
       { a: "/configuracion/negocio", label: "Configuración", icono: "settings", seccion: "config_negocio" },
+      // El recibo, el logo y los datos del negocio (extras de pantallas del
+      // restaurante). En un restaurante es el único hijo y se ve suelto,
+      // como "Configuración", que es lo que es.
+      { a: "/configuracion/recibo", label: "Configuración", icono: "settings", seccion: "config_recibo" },
       // E17: carreras, materias y planes de pago.
       {
         a: "/configuracion/carreras",

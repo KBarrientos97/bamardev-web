@@ -55,9 +55,11 @@ const TODAS = [
   "notas",
   "planilla_docente",
   "preinscripcion_online",
+  // Tickets y despacho: sólo restaurante (permisos.ts lo encierra en el rubro).
+  "tickets_pedido",
 ];
 
-const BLOQUES: Bloque[] = ["agenda", "vender", "stock", "administracion"];
+const BLOQUES: Bloque[] = ["agenda", "vender", "pantallas", "stock", "administracion"];
 // Reportes va entre los grupos, de primer nivel: junta los de todas las
 // funcionalidades y ya no cuelga de Finanzas (13-oct-2026).
 const GRUPOS = ["Equipo", "Finanzas", "Reportes", "Marketing"];
@@ -278,5 +280,44 @@ describe("menú de ACADEMIA", () => {
     const m = construirMenu((s) => puedeVer(c, s), "RESTAURANTE");
     for (const b of m) expect(b.bloque).not.toBe("instituto");
     expect(todos(m)).not.toContain("Academia");
+  });
+});
+
+/**
+ * Tickets y despacho (29-oct): el bloque Pantallas, después de Vender, sólo en
+ * un restaurante con el extra. El encargado ve las dos pantallas; la caja,
+ * que también entrega, sólo Despacho.
+ */
+describe("menú: Pantallas (tickets y despacho)", () => {
+  const pantallas = (rol: Plantilla, rubro: string, features: string[]) => {
+    const c = ctxDe(rol, rubro, features);
+    return (
+      construirMenu((s) => puedeVer(c, s), rubro)
+        .find((b) => b.bloque === "pantallas")
+        ?.nodos.map((n) => n.item.label) ?? []
+    );
+  };
+  const CON = ["pos", "caja", "catalogo", "usuarios", "tickets_pedido"];
+
+  it("el restaurante con el extra ve el bloque después de Vender", () => {
+    const c = ctxDe("ADMIN", "RESTAURANTE", CON);
+    const orden = construirMenu((s) => puedeVer(c, s), "RESTAURANTE").map((b) => b.bloque);
+    expect(orden.indexOf("pantallas")).toBe(orden.indexOf("vender") + 1);
+    expect(pantallas("ADMIN", "RESTAURANTE", CON)).toEqual(["Tickets y pedidos", "Despacho"]);
+    expect(pantallas("SUPERVISOR", "RESTAURANTE", CON)).toEqual(["Tickets y pedidos", "Despacho"]);
+  });
+
+  it("la caja ve Despacho, no el diseño de la TV", () => {
+    expect(pantallas("CAJERO", "RESTAURANTE", CON)).toEqual(["Despacho"]);
+  });
+
+  it("sin el extra no existe, aunque la lista de features venga vacía", () => {
+    // Fail-open de siempre: con la lista vacía todo se ve, salvo lo estricto.
+    expect(pantallas("ADMIN", "RESTAURANTE", ["pos", "caja"])).toEqual([]);
+    expect(pantallas("ADMIN", "RESTAURANTE", [])).toEqual([]);
+  });
+
+  it.each(["FARMACIA", "BILLAR", "PELUQUERIA"])("%s no lo ve aunque le prendan el extra", (rubro) => {
+    expect(pantallas("ADMIN", rubro, CON)).toEqual([]);
   });
 });

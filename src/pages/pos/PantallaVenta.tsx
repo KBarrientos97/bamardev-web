@@ -17,6 +17,7 @@ import { aplicarOrden, guardarOrden, leerOrden, reordenarVisibles } from "./orde
 import { controlaStock, topeStock, type Carrito, type LineaCarrito } from "./useCarrito";
 import type { ProfesionalDeLinea } from "../../lib/agenda/ventaDirecta";
 import { useArrastreGrilla } from "./useArrastreGrilla";
+import { useAgotadosHoy } from "../../lib/menuDigital/useAgotadosHoy";
 
 const TODAS = "__todas__";
 
@@ -145,6 +146,8 @@ export default function PantallaVenta({
     () => new Map(carrito.lineas.map((l) => [l.producto.id, l.cantidad])),
     [carrito.lineas],
   );
+  /** Lo marcado agotado hoy en el Menú digital (vacío sin ese extra). */
+  const agotadosHoy = useAgotadosHoy();
 
   const visibles = useMemo(() => {
     const porId = new Map(filtrados.map((p) => [p.id, p]));
@@ -262,6 +265,7 @@ export default function PantallaVenta({
                   // Un tap que terminó siendo arrastre no debe agregar al
                   // carrito: cobrar de más es peor que tener que tocar de nuevo.
                   ignorarClic={arrastre.ignorarClic}
+                  agotadoHoy={agotadosHoy.has(p.id)}
                 />
               ))}
             </ul>
@@ -340,10 +344,13 @@ function TarjetaVenta({
   onQuitar,
   arrastre,
   ignorarClic,
+  agotadoHoy = false,
 }: {
   producto: Producto;
   /** Cuánto hay de este producto en el carrito. 0 = no está. */
   cantidad: number;
+  /** Marcado "agotado hoy" en el Menú digital: no se ofrece aunque no tenga stock que contar. */
+  agotadoHoy?: boolean;
   onAgregar: () => void;
   onQuitar: () => void;
   /** Handlers y estilo del reordenamiento (ver useArrastreGrilla). */
@@ -361,7 +368,9 @@ function TarjetaVenta({
   // propio stock (los que armó el local) y se agota como un producto; antes
   // se ofrecía siempre y el cobro rebotaba al confirmar (POS-2).
   const controla = controlaStock(p);
-  const agotado = controla && p.stockTotal <= 0;
+  // Un elaborado sí se agota cuando el encargado lo marca en el Menú digital
+  // (se terminó el pollo): la TV ya lo muestra tachado.
+  const agotado = (controla && p.stockTotal <= 0) || agotadoHoy;
   const enCarrito = cantidad > 0;
   // El "+" se apaga al llegar a lo que hay (POS-10). El carrito ya ignoraba el
   // toque, pero en silencio: el cajero tocaba y no pasaba nada, sin saber por

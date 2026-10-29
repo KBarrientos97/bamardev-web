@@ -84,6 +84,10 @@ export const FEATURE_DE_PERMISO: Record<string, string | null> = {
   "personal.gestionar": null,
   "billar.operar": "billar",
   "billar.admin": "billar",
+  // Tickets de pedido (extra de restaurante, 29-oct).
+  "tickets.despachar": "tickets_pedido",
+  "tickets.configurar": "tickets_pedido",
+  "menu_digital.editar": "menu_digital",
   // Educación (PLAN-ACADEMIAS-TECNICO §5.2).
   "academia.ver": "academia",
   "academia.configurar": "academia",
@@ -172,6 +176,9 @@ export const PLANTILLAS = {
     "personal.gestionar",
     "billar.operar",
     "billar.admin",
+    "tickets.despachar",
+    "tickets.configurar",
+    "menu_digital.editar",
     "academia.ver",
     "academia.configurar",
     "academia.grupos",
@@ -248,6 +255,9 @@ export const PLANTILLAS = {
     "fichatecnica.editar",
     "billar.operar",
     "billar.admin",
+    "tickets.despachar",
+    "tickets.configurar",
+    "menu_digital.editar",
     // Coordinación (§5.3): academia.* salvo configurar, asistencia y notas.
     // Sin planilla.ver desde el 22-oct: la planilla es sólo del admin (D1).
     "academia.ver",
@@ -289,6 +299,7 @@ export const PLANTILLAS = {
     "fichatecnica.ver",
     "fichatecnica.editar",
     "billar.operar",
+    "tickets.despachar",
     // Secretaría (§5.3).
     "academia.ver",
     "academia.inscribir",
