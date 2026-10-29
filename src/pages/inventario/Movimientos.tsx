@@ -217,14 +217,17 @@ export default function Movimientos() {
       : `${cuantos} en total`;
 
   // Sin el circuito de aprobación los movimientos se aprueban al crearse, así
-  // que filtrar por "pendientes" no devolvería nada. Se deja el chip si hay
-  // pendientes viejos, para poder encontrarlos.
+  // que filtrar por "pendientes" no devolvería nada. Se deja el chip si en lo
+  // que se trajo hay pendientes viejos (en «Ver todo», los últimos 200; en un
+  // día, sólo los de ese día) o si está elegido: al pasar de «Ver todo» a un
+  // día el filtro quedaba puesto sin chip a la vista, con «Sin resultados» y
+  // nada para soltarlo.
   const opcionesEstado = useMemo(
     () =>
-      incluye("aprobacion_inventario") || pendientes > 0
+      incluye("aprobacion_inventario") || pendientes > 0 || filtroEstado === "PENDIENTE"
         ? OPC_ESTADO
         : OPC_ESTADO.filter(([k]) => k !== "PENDIENTE"),
-    [incluye, pendientes],
+    [incluye, pendientes, filtroEstado],
   );
 
   // Ajustes y transferencias ya no se cargan: su chip aparece sólo si hay
@@ -418,7 +421,7 @@ function TarjetaMovimiento({ mov: m, onClick }: { mov: Movimiento; onClick: () =
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-[13px] font-bold text-texto">
-              {m.comprobante ?? `#${m.id}`}
+              {m.comprobante || `#${m.id}`}
             </span>
             <Badge tono={TONO_ESTADO[m.estado]}>{m.estado}</Badge>
             {m.origen && <Badge tono="marca">{m.origen}</Badge>}
@@ -558,7 +561,7 @@ function DetalleMovimiento({
       <Modal
         abierto
         titulo="Detalle del movimiento"
-        subtitulo={m ? (m.comprobante ?? `#${m.id}`) : "Cargando…"}
+        subtitulo={m ? (m.comprobante || `#${m.id}`) : "Cargando…"}
         onClose={onClose}
         ancho="max-w-2xl"
         acciones={
@@ -620,7 +623,7 @@ function DetalleMovimiento({
               </span>
               <div className="min-w-0">
                 <h3 className="truncate text-base font-bold text-texto">
-                  {ETIQUETA_TIPO[m.tipo]} · {m.comprobante ?? `#${m.id}`}
+                  {ETIQUETA_TIPO[m.tipo]} · {m.comprobante || `#${m.id}`}
                 </h3>
                 <p className="text-[13px] text-texto-3">
                   {m.descripcion || "Sin descripción"}
@@ -1080,6 +1083,16 @@ function FormMovimiento({
   return <FormMovimientoCuerpo almacenes={almacenes} onClose={onClose} onGuardado={onGuardado} />;
 }
 
+/**
+ * Cantidad × costo de un renglón, o 0 mientras lo tecleado no es un número:
+ * con una letra en el campo, el subtotal y el total decían "Bs NaN" (QA
+ * 29-oct). Guardar lo sigue frenando con su mensaje.
+ */
+function subtotalDe(l: { cantidad: string; costo: string }): number {
+  const n = Number(l.cantidad) * Number(l.costo);
+  return Number.isFinite(n) ? n : 0;
+}
+
 function FormMovimientoCuerpo({
   almacenes,
   onClose,
@@ -1136,7 +1149,7 @@ function FormMovimientoCuerpo({
     (a) => !lineas.some((l) => l.articuloId === a.id),
   );
 
-  const total = lineas.reduce((acc, l) => acc + Number(l.cantidad) * Number(l.costo), 0);
+  const total = lineas.reduce((acc, l) => acc + subtotalDe(l), 0);
 
   function agregarLinea(art: ArticuloMovimiento) {
     setLineas((ls) => [
@@ -1267,9 +1280,16 @@ function FormMovimientoCuerpo({
       // `quedoPendiente` de farmacia. El motivo va sin su punto final: los de
       // red ya lo traen y quedaba «…en un momento.. Corregilo».
       const motivo = (err instanceof Error ? err.message : "error desconocido").replace(/\.\s*$/, "");
+      // Sin respuesta (status 0: el corte de 20 s o la red caída con el pedido
+      // ya enviado) el servidor pudo haberlo aprobado igual: decir «quedó
+      // pendiente, aprobalo» sobre un detalle que muestra APROBADO empujaba a
+      // anularlo o a cargarlo de nuevo. Como el crear de arriba.
+      const sinRespuesta = (err as { status?: number } | null)?.status === 0;
       onGuardado({
         id,
-        aviso: `Se guardó como pendiente, pero no se pudo aprobar: ${motivo}. Corregilo acá y aprobalo; no lo cargues de nuevo.`,
+        aviso: sinRespuesta
+          ? "Se guardó, pero no llegó la respuesta al aprobarlo: mirá su estado acá antes de hacer nada. Si dice Pendiente, aprobalo; no lo cargues de nuevo."
+          : `Se guardó como pendiente, pero no se pudo aprobar: ${motivo}. Corregilo acá y aprobalo; no lo cargues de nuevo.`,
       });
       return;
     }
@@ -1406,7 +1426,7 @@ function FormMovimientoCuerpo({
                         Subtotal
                       </p>
                       <p className="text-sm font-bold text-texto">
-                        {fmtMoney(Number(l.cantidad) * Number(l.costo))}
+                        {fmtMoney(subtotalDe(l))}
                       </p>
                     </div>
                   </div>
