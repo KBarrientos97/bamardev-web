@@ -16,13 +16,13 @@ import { palabraProductos } from "./vistas/vocabularioProductos";
  */
 
 const ANULADAS = "Las ventas anuladas: no son plata que entró.";
-const FECHA_COBRO = "Cada venta cuenta el día en que se cobró, en la hora del negocio.";
+const FECHA_COBRO = "Cada venta cuenta el día en que se hizo, en la hora del negocio.";
 
 export function ayudaDeReporte(id: string, rubro: string | undefined): TextoAyuda | null {
   const academia = rubro === "ACADEMIA";
   const billar = esBillar(rubro);
   const p = palabraProductos(rubro);
-  const ventaDe = academia ? "Las ventas: los productos y también las cuotas que se cobraron (cada cuota cobrada es una venta)." : null;
+  const ventaDe = academia ? "Las ventas: los productos y también las cuotas que se cobraron (cada cobro de cuotas es una venta)." : null;
 
   switch (id) {
     case "resumen":
@@ -30,13 +30,17 @@ export function ayudaDeReporte(id: string, rubro: string | undefined): TextoAyud
         queMuestra: "Lo más importante del período: cuánto vendiste, cuánto te quedó después del costo, la tendencia día a día y avisos que salen de los números.",
         deDonde: `Suma las ventas aprobadas del período, ya descontadas las promociones. ${FECHA_COBRO} Las flechas comparan contra el período anterior que dice arriba.`,
         incluye: [academia ? "Las cuotas cobradas y lo vendido en productos." : "Lo vendido, aunque sea fiado: la venta ya se hizo."],
-        noIncluye: [ANULADAS, "El envío y la propina: no son de la venta."],
+        noIncluye: [
+          ANULADAS,
+          "El envío y la propina: no son de la venta.",
+          "Los pedidos que se cobran al entregar y todavía no se entregaron: van aparte, en Por cobrar.",
+        ],
       };
     case "ventas":
       return {
         queMuestra: "El historial de lo vendido: una fila por venta (General), una por línea (Detallado) y los doce meses del año (Mensual).",
         deDonde: `General muestra todas las ventas, también las anuladas para que se vea qué pasó, pero los totales cuentan sólo las aprobadas. Detallado va en bruto, antes de las promociones. ${FECHA_COBRO}`,
-        incluye: [ventaDe ?? "Todo lo cobrado en el mostrador, las mesas y los pedidos."],
+        incluye: [ventaDe ?? "Todo lo vendido en el mostrador, las mesas y los pedidos."],
         noIncluye: ["Mensual no sigue el período de arriba: muestra el año que elijas."],
       };
     case "resultado":
@@ -58,7 +62,7 @@ export function ayudaDeReporte(id: string, rubro: string | undefined): TextoAyud
           }
         : {
             queMuestra: "Cuánto ganaste de verdad: lo vendido, menos lo que costó, menos los gastos del local, el banco y los impuestos.",
-            deDonde: `Las ventas y su costo salen de lo vendido (el costo cargado en cada ${palabraProductos(rubro, false)}). Los gastos salen de Gastos, del mismo período, y cuentan aunque todavía no estén pagados.${
+            deDonde: `Las ventas y su costo salen de lo vendido (el costo cargado en cada ${palabraProductos(rubro, false)} o, si salió de un lote, lo que costó ese lote). Los gastos salen de Gastos, del mismo período, y cuentan aunque todavía no estén pagados.${
               billar ? " En el billar, el tiempo de mesa va aparte de las bebidas, y las cenas y lo pagado de la caja restan en su propia línea." : ""
             }`,
             incluye: ["Lo fiado: ya es una venta, aunque la plata no haya entrado.", "Las mermas (lo vencido o dañado), al costo."],
@@ -88,34 +92,39 @@ export function ayudaDeReporte(id: string, rubro: string | undefined): TextoAyud
     case "descuentos":
       return {
         queMuestra: "La plata que se regaló con promociones y cupones, y las ventas que se anularon.",
-        deDonde: "Las promociones restan lo que bajó cada una en las ventas del período; las anulaciones son las ventas anuladas en el período, con quién las anuló.",
+        deDonde:
+          "Las promociones y cupones son lo que bajaron las ventas del período (el precio de lista menos lo cobrado). Las anulaciones son las ventas del período que después se anularon: cuentan por el día de la venta, van a nombre de quien vendió y dicen quién autorizó la anulación.",
         noIncluye: academia ? ["Las becas y descuentos de la inscripción: bajan la cuota antes de cobrarla, no en la venta."] : ["Precios bajados a mano: el sistema no los permite."],
       };
     case "mesas":
       return {
         queMuestra: "Qué deja cada mesa y cada tipo de mesa, con las horas jugadas y los Bs por hora.",
-        deDonde: "Suma lo cobrado al cerrar cada mesa en el período y las horas que estuvo abierta. La jornada del billar termina a la hora del corte, no a la medianoche.",
+        deDonde: "Suma lo cobrado al cerrar cada mesa en el período y las horas jugadas, sin las pausas. La jornada del billar termina a la hora del corte, no a la medianoche.",
         noIncluye: ["Las mesas anuladas.", "Las bebidas vendidas sin mesa (venta rápida)."],
       };
     case "ocupacion":
       return {
         queMuestra: "En qué días y horas se juega más: un mapa de calor de las mesas ocupadas.",
-        deDonde: "Cuenta, hora por hora, cuántas mesas estaban abiertas en el período, en la jornada del billar.",
+        deDonde:
+          "Reparte el tiempo jugado de cada mesa cobrada en las horas del reloj y lo compara con todas las mesas que tenés, en todos los días del período (también los que no se jugó). Los días son jornadas del billar.",
       };
     case "tiempo-fijo":
       return {
         queMuestra: "Si los paquetes de tiempo fijo y las promociones están sirviendo.",
-        deDonde: "Cuenta los paquetes vendidos en el período, quién siguió jugando después y cuánto se cobró de más, y lo que restó cada promoción.",
+        deDonde:
+          "Cuenta los paquetes de las mesas cobradas en el período, cuántas siguieron jugando después del tiempo contratado y cuánto se cobró por eso, y lo que descontó cada promoción.",
+        noIncluye: ["La promo de un paquete de tiempo fijo: ya va dentro de su precio."],
       };
     case "pausas-ajustes":
       return {
         queMuestra: "Quién pausó, anuló, corrigió la hora o movió una cuenta, y por qué.",
-        deDonde: "Sale del registro de cada mesa en el período: cada cambio queda anotado con quién lo hizo.",
+        deDonde:
+          "Sale del registro del billar en el período: cada cambio queda anotado con quién lo hizo. También salen las ventas anuladas y las mesas que se cobraron en pausa.",
       };
     case "cenas":
       return {
         queMuestra: "Lo que salió de la caja para la cena del personal, noche por noche.",
-        deDonde: "Son los movimientos de caja con el motivo Cena que registró el administrador en Supervisión.",
+        deDonde: "Son las salidas de caja con el motivo Cena. Cada caja es una noche y cuenta en la jornada en que se abrió.",
         noIncluye: ["Las cenas anuladas."],
       };
     case "meseros":
@@ -137,14 +146,15 @@ export function ayudaDeReporte(id: string, rubro: string | undefined): TextoAyud
       };
     case "profesionales":
       return {
-        queMuestra: "Lo que cobró cada profesional en servicios.",
-        deDonde: "Suma lo cobrado en el período por cada profesional, por la fecha del cobro.",
-        noIncluye: [ANULADAS],
+        queMuestra: "Lo que cobró cada profesional: sus servicios y los productos que vendió.",
+        deDonde: "Suma lo cobrado en el período en las líneas de cada profesional, después de los descuentos, por la fecha del cobro.",
+        noIncluye: [ANULADAS, "Las propinas: son del profesional, no de la venta."],
       };
     case "servicios":
       return {
         queMuestra: "Qué servicios se piden más y cuánto deja cada uno.",
-        deDonde: "Cuenta los servicios cobrados en el período y lo que se cobró por cada uno.",
+        deDonde:
+          "Cuenta cuántas veces se pidió cada servicio en las citas del período (sin las canceladas), por la fecha de la cita, y lo que se cobró por cada uno, por la fecha del cobro. Muestra los 15 más pedidos.",
       };
     case "asistencia":
       return {
@@ -159,7 +169,8 @@ export function ayudaDeReporte(id: string, rubro: string | undefined): TextoAyud
     case "retencion":
       return {
         queMuestra: "Cuántos clientes vuelven.",
-        deDonde: "De los clientes atendidos en el período, cuántos ya habían venido antes y cuántos vinieron por primera vez.",
+        deDonde:
+          "De los clientes con una cita atendida en el período, cuántos volvieron a otra cita atendida dentro de los días que elijas, contados desde su primera visita del período. También cuántos ya habían venido antes y cuántos vinieron por primera vez.",
       };
     case "margen-servicios":
       return {
@@ -169,7 +180,7 @@ export function ayudaDeReporte(id: string, rubro: string | undefined): TextoAyud
     case "top-productos":
       return {
         queMuestra: `Los ${p} que más se vendieron y los que más dejaron.`,
-        deDonde: `Suma cada línea vendida en el período, en bruto (antes de las promociones), y le resta el costo cargado en cada ${palabraProductos(rubro, false)}.`,
+        deDonde: `Suma cada línea vendida en el período, en bruto (antes de las promociones), y le resta su costo: el cargado en cada ${palabraProductos(rubro, false)} o, si salió de un lote, lo que costó ese lote.`,
         noIncluye: [ANULADAS, ...(academia ? ["Las cuotas de los cursos: lo cobrado por clases está en el Estado de resultado."] : [])],
       };
     case "productos-lentos":
@@ -180,14 +191,14 @@ export function ayudaDeReporte(id: string, rubro: string | undefined): TextoAyud
     case "categorias":
       return {
         queMuestra: "Cuánto se vendió y cuánto dejó cada categoría.",
-        deDonde: "La misma cuenta que Top productos, sumada por categoría: en bruto, menos el costo cargado.",
+        deDonde: "La misma cuenta que Top productos, sumada por categoría: en bruto, menos su costo.",
         noIncluye: [ANULADAS, ...(academia ? ["Las cuotas de los cursos: no son una categoría de productos."] : [])],
       };
     case "horas":
       return {
         queMuestra: "Cuándo vendés más: por hora y por día de la semana.",
-        deDonde: `Suma lo cobrado (después de las promociones) en la hora del negocio. Los días de la semana suman todos los lunes, todos los martes… del período: no son un promedio.`,
-        incluye: [academia ? "También las cuotas: cada cobro de cuota es una venta." : "Todas las ventas aprobadas."],
+        deDonde: `Suma lo vendido (después de las promociones) en la hora del negocio. Los días de la semana suman todos los lunes, todos los martes… del período: no son un promedio.`,
+        incluye: [academia ? "También las cuotas: cada cobro de cuotas es una venta." : "Todas las ventas aprobadas."],
         noIncluye: [ANULADAS],
       };
     case "cierres":
@@ -198,13 +209,15 @@ export function ayudaDeReporte(id: string, rubro: string | undefined): TextoAyud
       };
     case "cajeros":
       return {
-        queMuestra: "Quién atendió, cuánto vendió, qué anuló y cómo le quedó la caja.",
-        deDonde: "Junta los cierres de caja (quién cobró y sus turnos) con los descuentos y las anulaciones de cada persona en el período.",
+        queMuestra: "Quién atendió, cuánto vendió, cuántas de sus ventas se anularon y cómo le quedó la caja.",
+        deDonde:
+          "Junta las ventas y los turnos de caja de cada persona con sus descuentos y anulaciones del período. Las anulaciones y los descuentos van a nombre de quien vendió, no de quien anuló.",
       };
     case "caja":
       return {
         queMuestra: "El efectivo que entró o salió del cajón sin una venta: el sencillo, un retiro, un pago en efectivo.",
         deDonde: "Son los movimientos de caja del período, con quién los registró.",
+        incluye: ["Lo que te pagaron de un fiado en efectivo: entra al cajón sin una venta."],
         noIncluye: ["Las ventas: están en Ventas.", "Los movimientos anulados."],
       };
     case "stock-critico":
