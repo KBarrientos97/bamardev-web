@@ -231,6 +231,21 @@ export default function PantallaRecibo({
             {venta.mesero && <FilaDato etiqueta="Atendió:" valor={venta.mesero} />}
             {venta.cajero && <FilaDato etiqueta="Cajero:" valor={venta.cajero} />}
             <FilaDato etiqueta="Pago:" valor={metodo} />
+            {/* El papel que sale con el pedido identifica la entrega, como el de
+                Android (ReciboVentaDialog): traía sólo productos y totales, sin
+                a quién ni a dónde iba (QA 29-oct). */}
+            {(venta.tipoPedido === "DELIVERY" || venta.tipoPedido === "RECOGER") && (
+              <>
+                <FilaDato etiqueta="Pedido:" valor={venta.tipoPedido === "DELIVERY" ? "Delivery" : "Para recoger"} />
+                {venta.clienteNombre && <FilaDato etiqueta="Cliente:" valor={venta.clienteNombre} />}
+                {venta.clienteTelefono && <FilaDato etiqueta="Teléfono:" valor={venta.clienteTelefono} />}
+                {venta.tipoPedido === "DELIVERY" && venta.clienteDireccion && (
+                  <FilaDato etiqueta="Dirección:" valor={venta.clienteDireccion} />
+                )}
+                {venta.repartidor?.nombre && <FilaDato etiqueta="Repartidor:" valor={venta.repartidor.nombre} />}
+                {venta.notaPedido && <FilaDato etiqueta="Nota:" valor={venta.notaPedido} />}
+              </>
+            )}
           </dl>
 
           <div className="mt-2 border-t border-dashed border-borde pt-1">

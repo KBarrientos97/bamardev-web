@@ -539,3 +539,33 @@ describe("bamardev-restaurant: el ticket de un fiado", () => {
     expect(screen.getByText("SALDO POR COBRAR").parentElement).toHaveClass("gap-2");
   });
 });
+
+describe("bamardev-restaurant: el ticket de un pedido dice a quién y a dónde va", () => {
+  it("un delivery lleva el cliente, el teléfono, la dirección, el repartidor y la nota", () => {
+    // QA 29-oct: el papel que sale con el pedido traía sólo productos y
+    // totales. Android (ReciboVentaDialog) ya lo identificaba.
+    sesion.rubro = "RESTAURANTE";
+    dibujar(
+      venta({
+        tipoPedido: "DELIVERY",
+        clienteNombre: "Marco Rojas",
+        clienteTelefono: "70012345",
+        clienteDireccion: "Av. Blanco Galindo km 4",
+        repartidor: { id: 3, nombre: "Repartidor QA" },
+        notaPedido: "Timbre de arriba",
+      } as Partial<Venta>),
+    );
+    expect(screen.getByText("Pedido:").nextElementSibling).toHaveTextContent("Delivery");
+    expect(screen.getByText("Cliente:").nextElementSibling).toHaveTextContent("Marco Rojas");
+    expect(screen.getByText("Teléfono:").nextElementSibling).toHaveTextContent("70012345");
+    expect(screen.getByText("Dirección:").nextElementSibling).toHaveTextContent("Av. Blanco Galindo km 4");
+    expect(screen.getByText("Repartidor:").nextElementSibling).toHaveTextContent("Repartidor QA");
+    expect(screen.getByText("Nota:").nextElementSibling).toHaveTextContent("Timbre de arriba");
+  });
+
+  it("una venta de mostrador no inventa datos de entrega", () => {
+    sesion.rubro = "RESTAURANTE";
+    dibujar(venta());
+    expect(screen.queryByText("Pedido:")).not.toBeInTheDocument();
+  });
+});
