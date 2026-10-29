@@ -17,7 +17,7 @@ import {
 import { api } from "../../lib/api";
 import { fmtCantidad, fmtMoney, fmtNum } from "../../lib/format";
 import { tieneFeature } from "../../lib/permisos";
-import { esFarmacia, termino } from "../../lib/rubro";
+import { esFarmacia, insumosSinStock, termino } from "../../lib/rubro";
 import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
 import type { Almacen, AlmacenInput, Producto, TipoAlmacen } from "../../types";
@@ -203,6 +203,7 @@ export default function Almacenes() {
       <DetalleAlmacen
         almacen={detalle}
         farmacia={farmacia}
+        sinInsumos={insumosSinStock(rubro)}
         onClose={() => setDetalle(null)}
         onHacerPrincipal={hacerPrincipal}
         onCambiado={() => almacenes.recargar()}
@@ -291,6 +292,7 @@ function TarjetaAlmacen({ almacen: a, onClick }: { almacen: Almacen; onClick: ()
 function DetalleAlmacen({
   almacen: a,
   farmacia,
+  sinInsumos,
   onClose,
   onEditar,
   onEliminar,
@@ -299,6 +301,12 @@ function DetalleAlmacen({
 }: {
   almacen: Almacen | null;
   farmacia: boolean;
+  /**
+   * Restaurante: el backend ya no manda los insumos en la lista ni en los
+   * totales (su stock no baja nunca: ver `insumosSinStock`), así que el texto
+   * no los nombra, y la bitácora no dice su saldo.
+   */
+  sinInsumos: boolean;
   onClose: () => void;
   onEditar: (a: Almacen) => void;
   onEliminar: (a: Almacen) => void;
@@ -368,13 +376,13 @@ function DetalleAlmacen({
 
         <PreciosDeLaSucursal almacen={a} onCambio={onCambiado} />
 
-        <BitacoraDelAlmacen almacenId={a.id} />
+        <BitacoraDelAlmacen almacenId={a.id} sinInsumos={sinInsumos} />
 
         <div>
           <h4 className="mb-2 text-[13px] font-bold text-texto">
             Artículos guardados acá
             <span className="ml-1.5 font-normal text-texto-3">
-              — productos e insumos con stock
+              {sinInsumos ? "— productos con stock" : "— productos e insumos con stock"}
             </span>
           </h4>
 
@@ -663,8 +671,11 @@ function FormPrecioSucursal({
  *
  * Se carga recién al abrir el detalle (el `useApi` depende del id): la bitácora
  * es la tabla más grande del sistema y no tiene sentido traerla para la lista.
+ *
+ * Con `sinInsumos` (restaurante) el apunte de un insumo va sin el "queda": ver
+ * el comentario de `conSaldo`.
  */
-function BitacoraDelAlmacen({ almacenId }: { almacenId: number }) {
+function BitacoraDelAlmacen({ almacenId, sinInsumos }: { almacenId: number; sinInsumos: boolean }) {
   const bitacora = useApi(
     () => api.getBitacoraStock({ almacenId, limite: 15 }),
     [almacenId],
@@ -687,37 +698,49 @@ function BitacoraDelAlmacen({ almacenId }: { almacenId: number }) {
         </span>
       </h4>
       <ul className="divide-y divide-borde rounded-xl border border-borde">
-        {apuntes.map((m) => (
-          <li key={m.id} className="flex items-center gap-3 px-3 py-2">
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-[13px] font-semibold text-texto">
-                {m.producto?.nombre ?? "—"}
-              </p>
-              <p className="truncate text-[12px] text-texto-3">
-                {MOTIVO_LEGIBLE[m.motivo] ?? m.motivo}
-                {/* Sin autor = lo movió un proceso automático (el armado de un
-                    combo, por ejemplo). Es un hecho, no un dato faltante. */}
-                {m.usuario ? ` · ${m.usuario.nombre || m.usuario.username}` : ""}
-              </p>
-            </div>
-            <div className="shrink-0 text-right">
-              <p
-                className={
-                  "text-[13px] font-bold " +
-                  (m.cantidad > 0 ? "text-primary-700" : "text-danger-text")
-                }
-              >
-                {m.cantidad > 0 ? "+" : ""}
-                {/* El kardex guarda 3 decimales: con fmtNum, 2,5 kg salía "+3"
-                    y un saldo de −0,0004, "queda -0". */}
-                {fmtCantidad(m.cantidad)}
-              </p>
-              <p className="text-[11px] text-texto-4">
-                queda {fmtCantidad(m.saldoDespues)}
-              </p>
-            </div>
-          </li>
-        ))}
+        {apuntes.map((m) => {
+          // Restaurante: el saldo de un insumo es la suma de todas sus compras
+          // (vender un plato no lo descuenta), y "Aceite · Entrada +20 · queda
+          // 340" se leía como lo que había en la cocina, justo arriba de la
+          // lista que ya deja los insumos afuera. El apunte queda: dice qué
+          // entró y quién lo cargó. Un backend anterior no manda `esInsumo`:
+          // ahí no se sabe cuál es insumo y no va el saldo de ninguno, porque
+          // mostrar el de un insumo es justo lo que se quería evitar.
+          const conSaldo = !sinInsumos || m.producto?.esInsumo === false;
+          return (
+            <li key={m.id} className="flex items-center gap-3 px-3 py-2">
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-[13px] font-semibold text-texto">
+                  {m.producto?.nombre ?? "—"}
+                </p>
+                <p className="truncate text-[12px] text-texto-3">
+                  {MOTIVO_LEGIBLE[m.motivo] ?? m.motivo}
+                  {/* Sin autor = lo movió un proceso automático (el armado de un
+                      combo, por ejemplo). Es un hecho, no un dato faltante. */}
+                  {m.usuario ? ` · ${m.usuario.nombre || m.usuario.username}` : ""}
+                </p>
+              </div>
+              <div className="shrink-0 text-right">
+                <p
+                  className={
+                    "text-[13px] font-bold " +
+                    (m.cantidad > 0 ? "text-primary-700" : "text-danger-text")
+                  }
+                >
+                  {m.cantidad > 0 ? "+" : ""}
+                  {/* El kardex guarda 3 decimales: con fmtNum, 2,5 kg salía "+3"
+                      y un saldo de −0,0004, "queda -0". */}
+                  {fmtCantidad(m.cantidad)}
+                </p>
+                {conSaldo && (
+                  <p className="text-[11px] text-texto-4">
+                    queda {fmtCantidad(m.saldoDespues)}
+                  </p>
+                )}
+              </div>
+            </li>
+          );
+        })}
       </ul>
     </div>
   );

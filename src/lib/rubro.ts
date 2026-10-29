@@ -88,6 +88,37 @@ export function marcaConsumo(rubro: string | null | undefined): boolean {
   return !esFarmacia(rubro) && !esBelleza(rubro) && !esBillar(rubro) && rubro !== "ACADEMIA";
 }
 
+/**
+ * ¿Los insumos de este negocio se muestran SIN stock? Sólo en el restaurante
+ * (decisión de Kevin, 28-oct).
+ *
+ * El restaurante no tiene recetas: vender un plato no descuenta la harina ni
+ * el aceite, así que el stock de un insumo sube con cada compra y no baja
+ * nunca. Mostrarlo era mentir dos veces: decía que había 300 kg de pollo en la
+ * cámara, y que había que "reponer" lo que nunca se cargó. Ahí la pantalla de
+ * Insumos muestra lo INVERTIDO (lo comprado en el mes) en vez del stock. Las
+ * compras se siguen registrando igual, como entradas en Movimientos.
+ *
+ * Belleza NO entra: sus insumos se gastan de verdad con cada servicio
+ * (`consumo_servicio`) y su stock sí baja. Los demás rubros, y una sesión vieja
+ * sin rubro, siguen viendo el stock como siempre.
+ */
+export function insumosSinStock(rubro: string | null | undefined): boolean {
+  return rubro === "RESTAURANTE";
+}
+
+/**
+ * Dónde van los descartables, con los insumos del restaurante (los mismos que
+ * `insumosSinStock`). Se dice donde se habla de insumos —el alta de uno, el
+ * reporte de Insumos— porque es ahí donde se cargaban: un vaso descartable
+ * cargado como insumo no resta nunca de la ganancia (no está en el costo de
+ * ningún plato), y en Gastos operativos, categoría Descartables (costo
+ * variable), sí. Una sola frase para que las pantallas digan lo mismo, igual
+ * que la app (`nota_insumo_descartables`).
+ */
+export const DESCARTABLES_A_GASTOS =
+  "Los descartables (platos y vasos desechables, servilletas, bolsas, envases para llevar) no son insumos de un plato: van en Gastos operativos, categoría Descartables, para que resten de la ganancia.";
+
 // ── Vocabulario ─────────────────────────────────────────────────────────────
 
 /**

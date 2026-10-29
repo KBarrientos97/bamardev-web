@@ -55,6 +55,12 @@ export interface FinancieroBase {
   /** Lo vendido de artículos sin costo cargado: infla el margen. */
   ventasSinCosto?: number | null;
   /**
+   * Qué se vendió sin costo (como mucho 10, de más vendido a menos). Sólo lo
+   * nombra el aviso de la pantalla: no entra en ninguna cuenta de acá.
+   * Ausente con un backend anterior.
+   */
+  productosSinCosto?: { id: number; nombre: string; ventas: number }[] | null;
+  /**
    * Mercadería perdida en el período (vencida, dañada o robada), al costo del
    * lote: el "Perdido" del reporte de Mermas. Ausente con un backend anterior,
    * y entonces no resta nada, como antes.

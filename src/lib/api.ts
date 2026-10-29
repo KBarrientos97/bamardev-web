@@ -15,6 +15,7 @@ import type {
   Caja,
   Categoria,
   ClienteCredito,
+  ComprasInsumos,
   CobroQr,
   OpcionesPagoLicencia,
   PeriodoCobrable,
@@ -711,6 +712,27 @@ export const api = {
     request<Insumo>(`/insumos/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
   eliminarInsumo: (id: number) =>
     request<{ mensaje: string }>(`/insumos/${id}`, { method: "DELETE" }),
+  /**
+   * Lo invertido en insumos en el período: el total, cuántas compras y cuánto
+   * de cada uno. Días `yyyy-MM-dd` con `hasta` EXCLUSIVO, como el mes de
+   * Gastos (del 1 al 1 del siguiente): viajan como la medianoche LOCAL
+   * (`periodoParaApi`). Con el día pelado el backend toma la medianoche de UTC
+   * (el error que tuvo Gastos), y una compra registrada sin fecha a las 21:00
+   * del último día del mes —la 01:00 del 1 en UTC— caería en el siguiente.
+   *
+   * Un backend anterior no lo tiene (la ruta cae en `GET /insumos/:id` y
+   * responde 400): quien lo pide sigue sin lo invertido.
+   */
+  getComprasInsumos: (params: { desde: string; hasta: string; sucursalId?: number | null }) =>
+    request<ComprasInsumos>(
+      `/insumos/compras${qs(
+        periodoParaApi({
+          desde: params.desde,
+          hasta: params.hasta,
+          sucursalId: params.sucursalId ?? undefined,
+        }),
+      )}`,
+    ),
 
   /** Con `sucursalId`, sólo los de ese local (por origen O destino). */
   getMovimientos: (sucursalId?: number | null) =>

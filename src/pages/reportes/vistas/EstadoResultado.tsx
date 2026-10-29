@@ -12,6 +12,7 @@ import { mesEnCurso, type MesEnCurso } from "../../../lib/mesEnCurso";
 import { tieneFeature } from "../../../lib/permisos";
 import { rangoParaApi, sinJornada } from "../../../lib/rangoApi";
 import { estadoResultado, type EstadoResultado as Er } from "../../../lib/resultado";
+import { termino } from "../../../lib/rubro";
 import { useApi } from "../../../lib/useApi";
 import { useSucursales } from "../../../lib/useSucursales";
 import { useAuth } from "../../../store/AuthContext";
@@ -28,12 +29,14 @@ import {
   gananciaPorParte,
   gastosDeCaja,
   horasJugadas,
+  listaSinCosto,
   movimientosSinEfecto,
   notaMeta,
   partirClases,
   partirVentas,
   perfilResultado,
   separarSueldosDocentes,
+  textoCompras,
   type MovimientoSinEfecto,
   type PerfilResultado,
   type VentasPartidas,
@@ -278,6 +281,13 @@ function Contenido({
   const gastosDeLaCaja = efectivo?.gastos ?? [];
   const conceptosCaja = conceptosDeCaja(gastosDeLaCaja);
   const sinEfecto = movimientosSinEfecto(efectivo?.porMotivo);
+  // Qué se vendió sin costo, con nombre: sólo en el restaurante (ver
+  // `nombraSinCosto`). En los demás rubros el aviso queda con el total, como
+  // siempre, aunque el backend mande la lista.
+  const productosSinCosto = perfil.nombraSinCosto ? fin.productosSinCosto : null;
+  // Los tres que más pesan, en el renglón de la cascada; la lista entera va en
+  // el detalle del costo, con el enlace para cargarles el costo.
+  const sinCostoCorta = listaSinCosto(productosSinCosto, er.ventasSinCosto, 3);
 
   return (
     <>
@@ -347,6 +357,7 @@ function Contenido({
               <p className="mx-2 my-1 rounded-xl bg-amber-50 px-3 py-2 text-[12.5px] leading-snug text-amber-900">
                 Ojo: {fmtMoney(er.ventasSinCosto)} de estas ventas son de {perfil.cosas} sin costo cargado. Esa parte figura con 100 % de
                 ganancia.
+                {sinCostoCorta && <span className="mt-1 block">Sin costo cargado: {sinCostoCorta}.</span>}
               </p>
             )}
             <Paso
@@ -566,7 +577,7 @@ function Contenido({
           {esPositivo(fin.compras.total) && (
             <Informativo
               titulo={`${periodo.preset === "mes" || periodo.preset === "mesPasado" ? "Compras del mes" : "Compras del período"} · ${fmtMoney(fin.compras.total)}`}
-              texto={textoCompras(fin, perfil)}
+              texto={textoCompras(fin.compras, perfil)}
               a={veReporte("compras") ? "/reportes/compras" : undefined}
               accion="Ver compras"
             />
@@ -607,6 +618,7 @@ function Contenido({
             periodo={periodo}
             perfil={perfil}
             partes={partes}
+            productosSinCosto={productosSinCosto}
             sospechosos={sospechosos}
             veReporte={veReporte}
             onCerrar={() => setDetalle(null)}
@@ -766,20 +778,6 @@ function DetalleSueldos({
 /** "37,7 %", con el menos tipográfico cuando es negativo. */
 function porcentaje(fraccionVentas: number): string {
   return `${fmtNum(fraccionVentas * 100, 1).replace("-", "−")} %`;
-}
-
-/**
- * Las compras del período, sin restar. Al billar no se le habla de insumos:
- * vende bebidas, no cocina. Con insumos cargados (un restaurante) van las dos
- * mitades, como en la app.
- */
-function textoCompras(fin: FinancieroApi, perfil: PerfilResultado): string {
-  const noSeRestan = "No se restan acá: el costo ya entra con cada venta.";
-  if (esPositivo(fin.compras.insumos)) {
-    return `Insumos ${fmtMoney(fin.compras.insumos)} y productos de reventa ${fmtMoney(fin.compras.productos)}. ${noSeRestan}`;
-  }
-  if (perfil.partir === "billar") return `Lo que compraste para vender: bebidas, snacks. ${noSeRestan}`;
-  return noSeRestan;
 }
 
 /** "Alquiler, luz, agua, limpieza y otros": las cinco primeras; con más, cuatro y "y N más". */
@@ -1102,6 +1100,7 @@ function DetalleLinea({
   periodo,
   perfil,
   partes,
+  productosSinCosto,
   sospechosos,
   veReporte,
   onCerrar,
@@ -1112,11 +1111,19 @@ function DetalleLinea({
   periodo: Periodo;
   perfil: PerfilResultado;
   partes: VentasPartidas | null;
+  /**
+   * Qué se vendió sin costo. Null fuera del restaurante y undefined con un
+   * backend anterior: en los dos el aviso va con el total solo.
+   */
+  productosSinCosto: FinancieroApi["productosSinCosto"] | null;
   sospechosos: Gasto[];
   veReporte: (id: string) => boolean;
   onCerrar: () => void;
 }) {
-  const { puede } = useAuth();
+  const { puede, rubro, vocabulario } = useAuth();
+  const sinCosto = detalle.tipo === "costo" ? listaSinCosto(productosSinCosto, er.ventasSinCosto) : null;
+  // "Artículos" en el restaurante, "Medicamentos" en la farmacia: donde se carga el costo.
+  const articulos = termino(rubro, "articulos", vocabulario);
   const lista =
     detalle.tipo === "grupo"
       ? gastos.filter((g) => grupoDe(g.categoria) === detalle.grupo)
@@ -1224,6 +1231,22 @@ function DetalleLinea({
           <Nota tono="ambar">
             {fmtMoney(er.ventasSinCosto)} de lo vendido salió de {perfil.cosas} sin costo cargado: cuentan como si no costaran nada y la ganancia
             se ve más alta de lo que es.
+            {sinCosto && (
+              <>
+                <span className="mt-1.5 block">Sin costo cargado: {sinCosto}.</span>
+                {/* El arreglo está en otra pantalla: decir cuáles sin decir
+                    dónde se cargan dejaba al dueño buscando. Sin permiso para
+                    editar el catálogo, sólo se dice dónde. */}
+                {puede("productos") ? (
+                  <Link to="/inventario/productos" className="mt-1.5 inline-flex items-center gap-1 font-bold underline">
+                    Cargales el costo en {articulos}
+                    <Icon name="chevronRight" size={14} />
+                  </Link>
+                ) : (
+                  <span className="mt-1.5 block">El costo se carga en {articulos}.</span>
+                )}
+              </>
+            )}
           </Nota>
         )}
 

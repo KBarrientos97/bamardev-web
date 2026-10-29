@@ -1,7 +1,9 @@
 import { useEffect, useId, useMemo, useState } from "react";
 import { Icon } from "../../components/Icon";
 import { fmtCantidad } from "../../lib/format";
+import { insumosSinStock } from "../../lib/rubro";
 import { contiene } from "../../lib/texto";
+import { useAuth } from "../../store/AuthContext";
 import type { ArticuloMovimiento } from "../../types";
 
 /**
@@ -32,6 +34,12 @@ export default function ElegirArticulo({
   bloqueado?: string;
   autoFocus?: boolean;
 }) {
+  const { rubro } = useAuth();
+  // Restaurante: el renglón de un insumo va sin stock. Ahí vender un plato no
+  // lo descuenta y el número es la suma de todas las compras: al cargar una
+  // compra de aceite, "340 L" a la derecha se leía como lo que había en la
+  // cocina. Los productos (las bebidas) sí lo muestran: ésos se venden.
+  const sinStockInsumos = insumosSinStock(rubro);
   const [q, setQ] = useState("");
   const [abierto, setAbierto] = useState(false);
   const [marcado, setMarcado] = useState(0);
@@ -166,7 +174,14 @@ export default function ElegirArticulo({
                     </span>
                   )}
                   <span className="ml-auto shrink-0 text-xs text-texto-3">
-                    {fmtCantidad(a.stock)} {a.unidad}
+                    {/* La unidad sí: dice en qué se compra (kg, litro, bolsa). */}
+                    {a.esInsumo && sinStockInsumos ? (
+                      a.unidad
+                    ) : (
+                      <>
+                        {fmtCantidad(a.stock)} {a.unidad}
+                      </>
+                    )}
                   </span>
                 </button>
               </li>

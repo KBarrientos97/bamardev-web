@@ -3,7 +3,7 @@ import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fmtMoney } from "../../../lib/format";
 import type { CodigoMotivoEfectivo, Gasto } from "../../../types";
-import type { EfectivoBillarApi } from "../api";
+import type { EfectivoBillarApi, FinancieroApi } from "../api";
 import { ContextoReporte, type DatosReporte, type Exportacion } from "../contexto";
 import { periodoDe, type Periodo } from "../periodo";
 import EstadoResultado from "./EstadoResultado";
@@ -20,6 +20,8 @@ const reporte = vi.fn();
 const getGastos = vi.fn();
 const request = vi.fn();
 let rubro = "BILLAR";
+/** ¿Puede editar el catálogo? Decide si el aviso de lo vendido sin costo lleva a Artículos. */
+let editaCatalogo = true;
 
 vi.mock("../../../lib/api", () => ({
   api: {
@@ -31,7 +33,7 @@ vi.mock("../../../lib/api", () => ({
 }));
 
 vi.mock("../../../store/AuthContext", () => ({
-  useAuth: () => ({ rubro, negocio: { features: [] }, puede: () => true }),
+  useAuth: () => ({ rubro, negocio: { features: [] }, puede: (s: string) => s !== "productos" || editaCatalogo }),
 }));
 
 vi.mock("../../../lib/useSucursales", () => ({
@@ -49,8 +51,8 @@ const GASTOS = [
   gasto(2, "Luz de las mesas", "LUZ", 50, 50),
 ];
 
-/** El financiero, y el resumen con su composición (o un rechazo). */
-function respuestas({ resumen = true }: { resumen?: boolean } = {}) {
+/** El financiero (con lo que el test cambie), y el resumen con su composición (o un rechazo). */
+function respuestas({ resumen = true, fin = {} }: { resumen?: boolean; fin?: Partial<FinancieroApi> } = {}) {
   reporte.mockImplementation((nombre: string) => {
     if (nombre === "financiero") {
       return Promise.resolve({
@@ -62,6 +64,7 @@ function respuestas({ resumen = true }: { resumen?: boolean } = {}) {
         mermas: 0,
         compras: { total: 0, insumos: 0, productos: 0 },
         desglose: [],
+        ...fin,
       });
     }
     if (nombre === "resumen") {
@@ -131,6 +134,7 @@ describe("estado de resultado por rubro", () => {
     getGastos.mockReset();
     request.mockReset();
     rubro = "BILLAR";
+    editaCatalogo = true;
     exportacion = null;
   });
 
@@ -354,5 +358,154 @@ describe("estado de resultado por rubro", () => {
     const cascada = (await screen.findByText("Cómo se llega al resultado")).closest("section")!;
     fireEvent.click(within(cascada).getByText("Ventas"));
     expect(await screen.findByText(/ahora en \/reportes\/ventas/)).toHaveTextContent('"volverA":"Estado de resultado"');
+  });
+});
+
+describe("restaurante: platos sin costo e insumos (28-oct)", () => {
+  // Desde el backend del 28-oct, en un restaurante lo vendido sin costo cuenta
+  // también los platos (Elaborados), y viene QUÉ se vendió sin costo.
+  const SIN_COSTO = [
+    { id: 11, nombre: "Broaster medio", ventas: 112 },
+    { id: 12, nombre: "Salchipapa", ventas: 34 },
+    { id: 13, nombre: "Coca 2L", ventas: 20 },
+    { id: 14, nombre: "Té", ventas: 4 },
+  ];
+
+  beforeEach(() => {
+    reporte.mockReset();
+    getGastos.mockReset();
+    request.mockReset();
+    rubro = "RESTAURANTE";
+    editaCatalogo = true;
+    getGastos.mockResolvedValue(GASTOS);
+  });
+
+  async function cascada() {
+    return (await screen.findByText("Cómo se llega al resultado")).closest("section")!;
+  }
+
+  it("el aviso bajo el costo nombra los platos que más pesan, y el detalle los nombra a todos con el enlace a Artículos", async () => {
+    // Con el total solo ("Bs 170 de platos sin costo") el dueño no sabía a
+    // cuál cargarle el costo y tenía que revisar el menú entero.
+    respuestas({ fin: { ventasSinCosto: 170, productosSinCosto: SIN_COSTO } });
+    mostrar();
+
+    const pasos = await cascada();
+    expect(
+      within(pasos).getByText(
+        `Ojo: ${fmtMoney(170)} de estas ventas son de platos sin costo cargado. Esa parte figura con 100 % de ganancia.`,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(pasos).getByText(
+        `Sin costo cargado: Broaster medio (${fmtMoney(112)}), Salchipapa (${fmtMoney(34)}), Coca 2L (${fmtMoney(20)}) y 1 más.`,
+      ),
+    ).toBeInTheDocument();
+
+    fireEvent.click(within(pasos).getByText("Costo de lo vendido"));
+    const detalle = await screen.findByRole("dialog", { name: "Costo de lo vendido" });
+    expect(
+      within(detalle).getByText(
+        `Sin costo cargado: Broaster medio (${fmtMoney(112)}), Salchipapa (${fmtMoney(34)}), Coca 2L (${fmtMoney(20)}), Té (${fmtMoney(4)}).`,
+      ),
+    ).toBeInTheDocument();
+    expect(within(detalle).getByRole("link", { name: /Cargales el costo en Artículos/ })).toHaveAttribute(
+      "href",
+      "/inventario/productos",
+    );
+  });
+
+  it("sin permiso para el catálogo dice dónde se carga el costo, sin enlace", async () => {
+    editaCatalogo = false;
+    respuestas({ fin: { ventasSinCosto: 146, productosSinCosto: SIN_COSTO.slice(0, 2) } });
+    mostrar();
+
+    fireEvent.click(within(await cascada()).getByText("Costo de lo vendido"));
+    const detalle = await screen.findByRole("dialog", { name: "Costo de lo vendido" });
+    expect(within(detalle).getByText("El costo se carga en Artículos.")).toBeInTheDocument();
+    expect(within(detalle).queryByRole("link", { name: /Cargales el costo/ })).not.toBeInTheDocument();
+  });
+
+  it("con un backend anterior, sin la lista, el aviso queda con el texto de siempre", async () => {
+    respuestas({ fin: { ventasSinCosto: 146 } });
+    mostrar();
+
+    const pasos = await cascada();
+    expect(
+      within(pasos).getByText(
+        `Ojo: ${fmtMoney(146)} de estas ventas son de platos sin costo cargado. Esa parte figura con 100 % de ganancia.`,
+      ),
+    ).toBeInTheDocument();
+    expect(within(pasos).queryByText(/^Sin costo cargado:/)).not.toBeInTheDocument();
+
+    fireEvent.click(within(pasos).getByText("Costo de lo vendido"));
+    const detalle = await screen.findByRole("dialog", { name: "Costo de lo vendido" });
+    expect(within(detalle).getByText(/cuentan como si no costaran nada/)).toBeInTheDocument();
+    expect(within(detalle).queryByText(/^Sin costo cargado:/)).not.toBeInTheDocument();
+    expect(within(detalle).queryByRole("link", { name: /Cargales el costo/ })).not.toBeInTheDocument();
+  });
+
+  it("las compras de insumos no restan: la tarjeta dice por qué y la ganancia es la de siempre", async () => {
+    // Invariante del 28-oct: los insumos ya están en el costo de cada plato.
+    // Una línea de insumos en la cascada contaría la comida dos veces.
+    respuestas({ fin: { compras: { total: 3000, insumos: 2400, productos: 600 } } });
+    mostrar();
+
+    const pasos = await cascada();
+    expect(within(pasos).queryByText(/insumo/i)).not.toBeInTheDocument();
+    // 380 − 250 de gastos del local: las compras no tocan la cuenta.
+    expect(screen.getByText(/te quedan Bs 130,00: es tu ganancia líquida/)).toBeInTheDocument();
+
+    const compras = screen.getByText(`Compras del período · ${fmtMoney(3000)}`).closest("section")!;
+    expect(within(compras).getByText(/los insumos ya entran en el costo de cada plato/)).toBeInTheDocument();
+    expect(within(compras).getByText(/van en Gastos → Descartables, y ahí sí restan/)).toBeInTheDocument();
+  });
+});
+
+describe("los demás rubros: el aviso de lo vendido sin costo, como siempre (28-oct)", () => {
+  // La lista con nombre es del restaurante: Kevin lo decidió así ("farmacia,
+  // billar, minimarket: sin cambios") y el backend la manda en todos los
+  // rubros. En belleza, además, contradecía al aviso: dice "servicios sin
+  // costo cargado" y nombraba productos, porque ahí los servicios no cuentan.
+  const SIN_COSTO = [
+    { id: 21, nombre: "Shampoo", ventas: 90 },
+    { id: 22, nombre: "Gel fijador", ventas: 56 },
+  ];
+
+  beforeEach(() => {
+    reporte.mockReset();
+    getGastos.mockReset();
+    request.mockReset();
+    editaCatalogo = true;
+    getGastos.mockResolvedValue(GASTOS);
+    // Lo que pide el billar además (el efectivo de la caja, las horas).
+    billar();
+  });
+
+  it.each([
+    ["BILLAR", "productos", "Costo de los productos"],
+    ["FARMACIA", "medicamentos", "Costo de lo vendido"],
+    ["MINIMARKET", "productos", "Costo de lo vendido"],
+    ["PELUQUERIA", "servicios", "Costo de lo vendido"],
+  ])("%s: el aviso dice el total, sin la lista ni el enlace", async (r, cosas, costoTitulo) => {
+    rubro = r;
+    respuestas({ fin: { ventasSinCosto: 146, productosSinCosto: SIN_COSTO } });
+    mostrar();
+
+    const pasos = (await screen.findByText("Cómo se llega al resultado")).closest("section")!;
+    expect(
+      within(pasos).getByText(
+        `Ojo: ${fmtMoney(146)} de estas ventas son de ${cosas} sin costo cargado. Esa parte figura con 100 % de ganancia.`,
+      ),
+    ).toBeInTheDocument();
+    expect(within(pasos).queryByText(/Sin costo cargado:/)).not.toBeInTheDocument();
+    expect(within(pasos).queryByText(/Shampoo/)).not.toBeInTheDocument();
+
+    fireEvent.click(within(pasos).getByText(costoTitulo));
+    const detalle = await screen.findByRole("dialog", { name: costoTitulo });
+    expect(within(detalle).getByText(/cuentan como si no costaran nada/)).toBeInTheDocument();
+    expect(within(detalle).queryByText(/Sin costo cargado:/)).not.toBeInTheDocument();
+    expect(within(detalle).queryByText(/Shampoo/)).not.toBeInTheDocument();
+    expect(within(detalle).queryByRole("link", { name: /Cargales el costo/ })).not.toBeInTheDocument();
   });
 });

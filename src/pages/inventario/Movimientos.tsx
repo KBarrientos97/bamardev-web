@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { parsearMonto } from "../../lib/dinero";
 import { contiene } from "../../lib/texto";
 import { Icon } from "../../components/Icon";
@@ -20,6 +21,7 @@ import { fmtCantidad, fmtFecha, fmtFechaHora, fmtMoney, isoDia } from "../../lib
 import { useApi } from "../../lib/useApi";
 import { useSucursales } from "../../lib/useSucursales";
 import { ofreceAprobarMovimiento } from "../../lib/permisos";
+import { insumosSinStock } from "../../lib/rubro";
 import { useAuth } from "../../store/AuthContext";
 import ElegirArticulo from "./ElegirArticulo";
 import type {
@@ -84,6 +86,17 @@ const ETIQUETA_TIPO: Record<TipoMovimiento, string> = {
 const TIPOS_DEL_FORMULARIO: TipoMovimiento[] = ["ENTRADA", "SALIDA"];
 
 /**
+ * `?nuevo=entrada` abre el formulario de una ENTRADA al llegar. Es a donde
+ * lleva "Registrar compra" de Insumos en el restaurante (28-oct): la compra se
+ * sigue cargando acá, como siempre, sin tener que buscar el botón. Se saca de
+ * la URL al abrirse: si no, una recarga o un "atrás" después de guardar
+ * volvían a abrir el formulario vacío. Sin el parámetro, la pantalla arranca
+ * como siempre.
+ */
+export const PARAM_NUEVO = "nuevo";
+export const RUTA_REGISTRAR_COMPRA = `/inventario/movimientos?${PARAM_NUEVO}=entrada`;
+
+/**
  * Sólo la entrada suma: salida y ajuste se leen como movimiento negativo.
  *
  * Una TRANSFERENCIA no suma ni resta al negocio —la mercadería cambia de
@@ -118,6 +131,19 @@ export default function Movimientos() {
   const [detalleId, setDetalleId] = useState<number | null>(null);
   const [creando, setCreando] = useState(false);
   const [errorAccion, setErrorAccion] = useState("");
+
+  const [params, setParams] = useSearchParams();
+  const pideEntrada = params.get(PARAM_NUEVO) === "entrada";
+  // Recién con los almacenes cargados: el formulario elige el primero al
+  // montarse, y abierto antes quedaba en "Elegí uno" con el buscador trabado
+  // hasta que alguien eligiera el almacén a mano.
+  useEffect(() => {
+    if (!pideEntrada || almacenes.cargando) return;
+    setCreando(true);
+    const resto = new URLSearchParams(params);
+    resto.delete(PARAM_NUEVO);
+    setParams(resto, { replace: true });
+  }, [pideEntrada, almacenes.cargando, params, setParams]);
 
   const lista = movimientos.datos ?? [];
 
@@ -742,6 +768,7 @@ function FormLineaMovimiento({
   onClose: () => void;
   onGuardado: () => void;
 }) {
+  const { rubro } = useAuth();
   const esEdicion = !!linea;
   const [productoId, setProductoId] = useState(String(linea?.productoId ?? ""));
   const [cantidad, setCantidad] = useState(linea ? String(linea.cantidad) : "");
@@ -752,6 +779,11 @@ function FormLineaMovimiento({
 
   const elegido = articulos.find((a) => String(a.id) === productoId);
   const esSalida = m.tipo === "SALIDA";
+  // Restaurante: el stock de un insumo es la suma de todas sus compras (vender
+  // un plato no lo descuenta), así que no se muestra ni como "en stock" ni
+  // como "Disponible" (ver `insumosSinStock`). El tope de la salida se sigue
+  // validando: es el mismo que aplica el backend al aprobar.
+  const ocultaStock = !!elegido?.esInsumo && insumosSinStock(rubro);
 
   /**
    * Cuánto se puede sacar de este artículo. Descuenta lo que ya comprometen
@@ -830,7 +862,7 @@ function FormLineaMovimiento({
               <span className="min-w-0 flex-1 truncate font-semibold text-texto">
                 {elegido?.nombre ?? linea?.producto}
               </span>
-              {elegido && (
+              {elegido && !ocultaStock && (
                 <span className="shrink-0 text-xs text-texto-3">
                   {fmtCantidad(elegido.stock)} {elegido.unidad} en stock
                 </span>
@@ -867,7 +899,7 @@ function FormLineaMovimiento({
           <Campo
             label="Cantidad"
             hint={
-              esSalida && disponible !== null
+              esSalida && disponible !== null && !ocultaStock
                 ? `Disponible: ${fmtCantidad(disponible)}`
                 : undefined
             }

@@ -1,4 +1,4 @@
-import { aCentavos, esCero, esPositivo } from "../../../lib/dinero";
+import { aCentavos, esCero, esPositivo, excede, TOLERANCIA } from "../../../lib/dinero";
 import { fmtMoney, fmtNum } from "../../../lib/format";
 import type { MesEnCurso } from "../../../lib/mesEnCurso";
 import type { EstadoResultado, GastosDeCaja } from "../../../lib/resultado";
@@ -44,10 +44,35 @@ export interface PerfilResultado {
   queVaLocal: string;
   /** Qué es el costo de lo vendido. */
   queVaCosto: string;
+  /** Por qué las compras del período no restan: el cierre de la tarjeta informativa de compras. */
+  comprasNoRestan: string;
+  /**
+   * Si el aviso de lo vendido sin costo dice CUÁLES fueron (`productosSinCosto`)
+   * y lleva a cargarles el costo. Sólo el restaurante: la lista vino con el
+   * cambio del 28-oct que cuenta los platos en el aviso, y Kevin lo decidió
+   * para el restaurante solo ("farmacia, billar, minimarket: sin cambios").
+   * El backend la manda en todos los rubros, así que el corte es de acá. En
+   * belleza, además, la lista contradecía al aviso: dice "servicios sin costo
+   * cargado" y nombraba productos, porque ahí los servicios no cuentan.
+   */
+  nombraSinCosto: boolean;
 }
 
 const NO_SON_COMPRAS =
   "No son tus compras del período: comprar para tres meses no hunde el resultado de este mes, porque lo que no se vendió sigue en el stock.";
+
+const COMPRAS_NO_RESTAN = "No se restan acá: el costo ya entra con cada venta.";
+
+/**
+ * El restaurante (Kevin, 28-oct): ve en Insumos cuánto invierte en materia
+ * prima y busca esa plata restada acá. No se resta a propósito: la harina y el
+ * aceite ya están dentro del costo cargado en cada plato, y restarlos también
+ * contaría la comida dos veces. Lo que sí tiene que restar y se cargaba como
+ * insumo son los descartables: no están en el costo de ningún plato, así que
+ * van en Gastos operativos, categoría Descartables (costo VARIABLE).
+ */
+const COMPRAS_NO_RESTAN_RESTAURANTE =
+  "No se restan acá: los insumos ya entran en el costo de cada plato, y las bebidas, cuando se venden; restarlos otra vez contaría la comida dos veces. Los descartables (platos y vasos desechables, servilletas, bolsas, envases para llevar) no son insumos de un plato: van en Gastos → Descartables, y ahí sí restan.";
 
 export function perfilResultado(rubro: string | undefined): PerfilResultado {
   // Academia (L5, 28-oct): el Estado de resultado es "el" reporte del
@@ -77,6 +102,8 @@ export function perfilResultado(rubro: string | undefined): PerfilResultado {
       queVaLocal:
         "Lo que cuesta tener el billar abierto: alquiler, sueldos del personal, luz, agua, internet y el mantenimiento de las mesas (paños, tacos, bolas). Cuenta lo gastado aunque todavía no esté pagado. Las bebidas que comprás para vender no van acá: entran por el costo de los productos. La cena y lo que se paga de la caja desde Supervisión tampoco: tienen su propia línea, y cargarlos también acá los restaría dos veces.",
       queVaCosto: `Lo que te costaron las bebidas y productos que vendiste, según el costo cargado en cada uno. El tiempo de mesa no tiene costo de mercadería: lo que cobrás por las mesas queda entero para pagar los gastos. ${NO_SON_COMPRAS}`,
+      comprasNoRestan: COMPRAS_NO_RESTAN,
+      nombraSinCosto: false,
     };
   }
   if (esBelleza(rubro)) {
@@ -90,6 +117,8 @@ export function perfilResultado(rubro: string | undefined): PerfilResultado {
       queVaLocal:
         "Lo que cuesta tener el local abierto: alquiler, sueldos o comisiones, luz, agua, internet, limpieza. Cuenta lo gastado aunque todavía no esté pagado. Los productos que vendés no van acá: entran por el costo de lo vendido.",
       queVaCosto: `Lo que costó lo que vendiste, según el costo cargado en cada servicio y producto. ${NO_SON_COMPRAS}`,
+      comprasNoRestan: COMPRAS_NO_RESTAN,
+      nombraSinCosto: false,
     };
   }
   if (esFarmacia(rubro)) {
@@ -103,6 +132,8 @@ export function perfilResultado(rubro: string | undefined): PerfilResultado {
       queVaLocal:
         "Lo que cuesta tener la farmacia abierta: alquiler, sueldos, luz, agua, internet, el sistema. Cuenta lo gastado aunque todavía no esté pagado. Los medicamentos no van acá: lo vendido entra por su costo y lo vencido por las mermas.",
       queVaCosto: `Lo que costó lo que vendiste: el costo del lote del que salió cada medicamento o, si no salió de un lote, el cargado en su ficha. ${NO_SON_COMPRAS}`,
+      comprasNoRestan: COMPRAS_NO_RESTAN,
+      nombraSinCosto: false,
     };
   }
   if (rubro === "RESTAURANTE") {
@@ -116,6 +147,8 @@ export function perfilResultado(rubro: string | undefined): PerfilResultado {
       queVaLocal:
         "Lo que cuesta tener el restaurante abierto: alquiler, sueldos, luz, agua, gas, limpieza, descartables. Cuenta lo gastado aunque todavía no esté pagado. La mercadería no va acá: entra por el costo de cada plato vendido.",
       queVaCosto: `Lo que costó lo que vendiste, según el costo cargado en cada plato. ${NO_SON_COMPRAS}`,
+      comprasNoRestan: COMPRAS_NO_RESTAN_RESTAURANTE,
+      nombraSinCosto: true,
     };
   }
   // Minimarket, ferretería, repuestos y un negocio sin rubro.
@@ -129,7 +162,60 @@ export function perfilResultado(rubro: string | undefined): PerfilResultado {
     queVaLocal:
       "Lo que cuesta tener el local abierto: alquiler, sueldos, luz, agua, internet, limpieza. Cuenta lo gastado aunque todavía no esté pagado. La mercadería no va acá: entra por el costo de lo vendido.",
     queVaCosto: `Lo que costó lo que vendiste, según el costo cargado en cada producto. ${NO_SON_COMPRAS}`,
+    comprasNoRestan: COMPRAS_NO_RESTAN,
+    nombraSinCosto: false,
   };
+}
+
+/**
+ * Las compras del período, sin restar: el texto de la tarjeta informativa. Al
+ * billar no se le habla de insumos: vende bebidas, no cocina. Con insumos
+ * cargados van las dos mitades, como en la app. El porqué de que no resten
+ * sale del perfil: el restaurante lo cuenta con sus platos y sus descartables.
+ */
+export function textoCompras(
+  compras: { insumos?: number | null; productos?: number | null },
+  perfil: Pick<PerfilResultado, "partir" | "comprasNoRestan">,
+): string {
+  const noSeRestan = perfil.comprasNoRestan;
+  if (esPositivo(compras.insumos ?? 0)) {
+    return `Insumos ${fmtMoney(compras.insumos)} y productos de reventa ${fmtMoney(compras.productos)}. ${noSeRestan}`;
+  }
+  if (perfil.partir === "billar") return `Lo que compraste para vender: bebidas, snacks. ${noSeRestan}`;
+  return noSeRestan;
+}
+
+/** Lo más que manda el backend en `productosSinCosto`. */
+export const TOPE_SIN_COSTO = 10;
+
+/**
+ * Lo vendido sin costo cargado, con nombre y apellido: "Broaster medio (Bs
+ * 112,00), Salchipapa (Bs 34,00)". Con el total solo ("Bs 146,00 de platos sin
+ * costo") el dueño no sabía a cuál cargarle el costo y tenía que revisar el
+ * menú entero.
+ *
+ * Null sin la lista (un backend anterior no la manda) o con la lista vacía: el
+ * aviso queda con el texto de siempre. El backend manda como mucho
+ * `TOPE_SIN_COSTO`, de lo más vendido a lo menos; `max` recorta para un renglón
+ * corto ("y 3 más"). Si llegó el tope y la lista no suma el total sin costo, hubo
+ * más que no vinieron: termina en "y otros", para no dar a entender que
+ * cargándoles el costo a éstos se arregla todo. Con menos del tope la lista está
+ * entera, y los centavos que la separen del total son redondeo (medio centavo
+ * por renglón, como mucho).
+ */
+export function listaSinCosto(
+  productos: readonly { nombre: string; ventas: number }[] | null | undefined,
+  total: number,
+  max = TOPE_SIN_COSTO,
+): string | null {
+  if (!productos?.length) return null;
+  const mostrados = productos.slice(0, Math.max(1, max));
+  const lista = mostrados.map((p) => `${p.nombre} (${fmtMoney(p.ventas)})`).join(", ");
+  const listado = aCentavos(productos.reduce((acc, p) => acc + p.ventas, 0));
+  const vinieronTodos = productos.length < TOPE_SIN_COSTO || !excede(total, listado + productos.length * TOLERANCIA);
+  if (!vinieronTodos) return `${lista} y otros`;
+  const quedan = productos.length - mostrados.length;
+  return quedan > 0 ? `${lista} y ${quedan} más` : lista;
 }
 
 /** Las dos partes de la venta: el tiempo de mesa (o los servicios) y los productos. */

@@ -561,6 +561,36 @@ export interface InsumoInput {
   almacenId?: number;
 }
 
+/**
+ * Lo comprado en insumos en un período (`GET /insumos/compras`): las ENTRADAS
+ * aprobadas, cada línea a cantidad × su costo, con los insumos dados de baja
+ * incluidos (la plata se gastó igual). Es lo INVERTIDO, no lo consumido: el
+ * restaurante lo muestra en vez del stock, que ahí no baja nunca
+ * (`insumosSinStock` en `lib/rubro.ts`).
+ *
+ * Un backend anterior no tiene el endpoint: la pantalla sigue sin lo invertido.
+ */
+export interface ComprasInsumos {
+  /** Bs, redondeado a centavos. */
+  total: number;
+  /** Las entradas con al menos una línea de insumo. */
+  numCompras: number;
+  /** De lo que más se invirtió a lo que menos. Un insumo sin compras no viene. */
+  porInsumo: CompraDeInsumo[];
+}
+
+export interface CompraDeInsumo {
+  insumoId: number;
+  /** Bs, redondeado a centavos. */
+  total: number;
+  /** En la unidad del insumo (kg, litros, unidades). */
+  cantidad: number;
+  /** En cuántas entradas aparece. */
+  compras: number;
+  /** ISO: la fecha de la entrada más reciente. */
+  ultimaFecha: string;
+}
+
 export type TipoMovimiento = "ENTRADA" | "SALIDA" | "AJUSTE" | "TRANSFERENCIA";
 export type EstadoDocumento = "PENDIENTE" | "APROBADO" | "ANULADO";
 
@@ -738,7 +768,12 @@ export interface ApunteStock {
   saldoDespues: number;
   motivo: MotivoStock;
   fecha: string;
-  producto: { id: number; nombre: string } | null;
+  /**
+   * `esInsumo` desde el 28-oct: el restaurante no muestra el saldo de un insumo
+   * (ver `insumosSinStock`). Un backend anterior no lo manda: `undefined` es
+   * "no se sabe", no "no es insumo".
+   */
+  producto: { id: number; nombre: string; esInsumo?: boolean } | null;
   almacen: { id: number; nombre: string } | null;
   /** Null = proceso automático (el armado de un combo, por ejemplo). */
   usuario: { id: number; username: string; nombre: string | null } | null;

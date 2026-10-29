@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Almacen, ArticuloMovimiento, Movimiento } from "../../types";
 
@@ -12,13 +13,18 @@ import type { Almacen, ArticuloMovimiento, Movimiento } from "../../types";
  *   · El artículo se busca escribiendo, no recorriendo un desplegable.
  */
 
-const sesion = vi.hoisted(() => ({ permisos: ["inventario.mover"] as string[] }));
+const sesion = vi.hoisted(() => ({
+  permisos: ["inventario.mover"] as string[],
+  // Sin rubro: como una sesión vieja, ve el stock de todo como siempre.
+  rubro: undefined as string | undefined,
+}));
 
 vi.mock("../../store/AuthContext", () => ({
   useAuth: () => ({
     // Sin el doble control: guardar aprueba de una, como en los planes de hoy.
     incluye: (c: string) => c !== "aprobacion_inventario",
     usuario: { sucursalId: 1, permisos: sesion.permisos },
+    rubro: sesion.rubro,
   }),
 }));
 
@@ -96,14 +102,31 @@ function movimiento(id: number, extra: Partial<Movimiento> = {}): Movimiento {
 beforeEach(() => {
   vi.clearAllMocks();
   sesion.permisos = ["inventario.mover"];
+  sesion.rubro = undefined;
   vi.mocked(api.getMovimientos).mockResolvedValue([movimiento(1)]);
   vi.mocked(api.getAlmacenes).mockResolvedValue([PRINCIPAL]);
   vi.mocked(api.getArticulosMovimiento).mockResolvedValue(ARTICULOS);
 });
 
+/** Dónde quedó la URL: el `?nuevo=entrada` se saca al abrir el formulario. */
+function Ubicacion() {
+  const l = useLocation();
+  return <p data-testid="ubicacion">{`${l.pathname}${l.search}`}</p>;
+}
+
+/** La pantalla dentro de un router: lee `?nuevo=` de la URL. */
+function montar(ruta = "/inventario/movimientos") {
+  return render(
+    <MemoryRouter initialEntries={[ruta]}>
+      <Movimientos />
+      <Ubicacion />
+    </MemoryRouter>,
+  );
+}
+
 /** Abre "Nuevo" y espera a que lleguen los artículos del almacén. */
 async function abrirNuevo() {
-  render(<Movimientos />);
+  montar();
   await screen.findByText("MOV-1");
   fireEvent.click(screen.getByRole("button", { name: "Nuevo" }));
   const buscador = screen.getByRole("combobox", { name: "Buscar artículo" });
@@ -128,7 +151,7 @@ describe("Nuevo movimiento: sólo entrada y salida", () => {
   });
 
   it("sin ajustes ni transferencias viejas, sus chips no aparecen", async () => {
-    render(<Movimientos />);
+    montar();
     await screen.findByText("MOV-1");
     expect(screen.getByRole("button", { name: "Entradas" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Salidas" })).toBeInTheDocument();
@@ -141,7 +164,7 @@ describe("Nuevo movimiento: sólo entrada y salida", () => {
       movimiento(1),
       movimiento(2, { tipo: "AJUSTE", comprobante: "AJ-2" }),
     ]);
-    render(<Movimientos />);
+    montar();
     await screen.findByText("AJ-2");
     fireEvent.click(screen.getByRole("button", { name: "Ajustes" }));
     expect(screen.queryByText("MOV-1")).not.toBeInTheDocument();
@@ -155,7 +178,7 @@ describe("La lista arranca en hoy", () => {
     vi.mocked(api.getMovimientos).mockResolvedValue([
       movimiento(1, { fecha: "2026-10-12T15:00:00.000Z" }),
     ]);
-    render(<Movimientos />);
+    montar();
     expect(await screen.findByText("Hoy no hay movimientos")).toBeInTheDocument();
     expect(screen.queryByText("Probá con otro texto o quitá los filtros.")).not.toBeInTheDocument();
     // La cabecera cuenta lo que se ve: hoy no hay nada, así que dice 0 (no «1 registrado»).
@@ -167,7 +190,7 @@ describe("La lista arranca en hoy", () => {
   });
 
   it("con un solo movimiento la cabecera dice «1 registrado», no «1 registrados»", async () => {
-    render(<Movimientos />);
+    montar();
     await screen.findByText("MOV-1");
     expect(screen.getByText("1 registrado")).toBeInTheDocument();
     expect(screen.queryByText("1 registrados")).not.toBeInTheDocument();
@@ -178,7 +201,7 @@ describe("La lista arranca en hoy", () => {
       movimiento(1),
       movimiento(2, { fecha: "2026-10-12T15:00:00.000Z", estado: "PENDIENTE" }),
     ]);
-    render(<Movimientos />);
+    montar();
     await screen.findByText("MOV-1");
     expect(screen.getByText("1 registrado")).toBeInTheDocument();
     expect(screen.queryByText(/sin aprobar/)).not.toBeInTheDocument();
@@ -191,14 +214,14 @@ describe("La lista arranca en hoy", () => {
     vi.mocked(api.getMovimientos).mockResolvedValue([
       movimiento(1, { estado: "PENDIENTE" }),
     ]);
-    render(<Movimientos />);
+    montar();
     await screen.findByText("MOV-1");
     expect(screen.getByText("1 registrado · 1 sin aprobar")).toBeInTheDocument();
     expect(screen.queryByText(/registrados/)).not.toBeInTheDocument();
   });
 
   it("con un texto escrito, sigue diciendo «Sin resultados»", async () => {
-    render(<Movimientos />);
+    montar();
     await screen.findByText("MOV-1");
     fireEvent.change(screen.getByPlaceholderText("Buscar por comprobante o descripción"), {
       target: { value: "no existe" },
@@ -320,7 +343,7 @@ describe("Agregar artículo a un movimiento pendiente", () => {
     vi.mocked(api.getMovimientos).mockResolvedValue([pendiente]);
     vi.mocked(api.getMovimiento).mockResolvedValue(pendiente);
 
-    render(<Movimientos />);
+    montar();
     fireEvent.click(await screen.findByText("PEN-7"));
     fireEvent.click(await screen.findByRole("button", { name: "Agregar artículo" }));
 
@@ -355,7 +378,7 @@ describe("Agregar artículo a un movimiento pendiente", () => {
     vi.mocked(api.getMovimientos).mockResolvedValue([pendiente]);
     vi.mocked(api.getMovimiento).mockResolvedValue(pendiente);
 
-    render(<Movimientos />);
+    montar();
     fireEvent.click(await screen.findByText("PEN-7"));
     fireEvent.click(await screen.findByRole("button", { name: "Agregar artículo" }));
 
@@ -384,7 +407,7 @@ describe("El detalle no se cierra mientras se cargan renglones", () => {
   async function abrirDetalle() {
     vi.mocked(api.getMovimientos).mockResolvedValue([pendiente]);
     vi.mocked(api.getMovimiento).mockResolvedValue(pendiente);
-    render(<Movimientos />);
+    montar();
     fireEvent.click(await screen.findByText("PEN-7"));
     return screen.findByRole("dialog", { name: "Detalle del movimiento" });
   }
@@ -471,7 +494,7 @@ describe("Las cantidades del detalle van sin ,00 (Kevin, 25-oct)", () => {
     });
     vi.mocked(api.getMovimientos).mockResolvedValue([entrada]);
     vi.mocked(api.getMovimiento).mockResolvedValue(entrada);
-    render(<Movimientos />);
+    montar();
     fireEvent.click(await screen.findByText("ENT-9"));
     const detalle = await screen.findByRole("dialog", { name: "Detalle del movimiento" });
 
@@ -497,7 +520,7 @@ describe("Aprobar una transferencia pide su permiso (16-oct)", () => {
   async function abrirTransferencia() {
     vi.mocked(api.getMovimientos).mockResolvedValue([transferencia]);
     vi.mocked(api.getMovimiento).mockResolvedValue(transferencia);
-    render(<Movimientos />);
+    montar();
     fireEvent.click(await screen.findByText("TRF-8"));
     const detalle = await screen.findByRole("dialog", { name: "Detalle del movimiento" });
     await within(detalle).findByRole("button", { name: "Eliminar" });
@@ -515,5 +538,97 @@ describe("Aprobar una transferencia pide su permiso (16-oct)", () => {
     sesion.permisos = ["inventario.mover", "inventario.aprobar_transferencias"];
     const detalle = await abrirTransferencia();
     expect(within(detalle).getByRole("button", { name: "Aprobar" })).toBeInTheDocument();
+  });
+});
+
+describe("Registrar compra: ?nuevo=entrada abre el formulario (28-oct)", () => {
+  it("llega con la entrada abierta en el primer almacén, y el parámetro se va de la URL", async () => {
+    montar("/inventario/movimientos?nuevo=entrada");
+    const formulario = await screen.findByRole("dialog", { name: "Nuevo movimiento" });
+    expect(within(formulario).getByRole("combobox", { name: "Tipo" })).toHaveValue("ENTRADA");
+    expect(within(formulario).getByRole("combobox", { name: "Almacén" })).toHaveValue(String(PRINCIPAL.id));
+    // Sin esto, recargar después de guardar volvía a abrir el formulario vacío.
+    await waitFor(() => expect(screen.getByTestId("ubicacion")).toHaveTextContent(/^\/inventario\/movimientos$/));
+  });
+
+  it("espera a los almacenes antes de abrir: abierto antes, quedaba sin almacén y con el buscador trabado", async () => {
+    // El formulario elige el almacén al montarse: abierto con la lista vacía
+    // arrancaba en "Elegí uno", y el buscador decía "Elegí primero un almacén…".
+    let soltar!: (lista: Almacen[]) => void;
+    vi.mocked(api.getAlmacenes).mockReturnValue(
+      new Promise<Almacen[]>((r) => {
+        soltar = r;
+      }),
+    );
+    montar("/inventario/movimientos?nuevo=entrada");
+    await screen.findByText("MOV-1");
+    expect(screen.queryByRole("dialog", { name: "Nuevo movimiento" })).not.toBeInTheDocument();
+
+    await act(async () => soltar([PRINCIPAL]));
+    const formulario = await screen.findByRole("dialog", { name: "Nuevo movimiento" });
+    expect(within(formulario).getByRole("combobox", { name: "Almacén" })).toHaveValue(String(PRINCIPAL.id));
+  });
+
+  it("sin el parámetro la pantalla arranca como siempre, con el formulario cerrado", async () => {
+    montar();
+    await screen.findByText("MOV-1");
+    expect(screen.queryByRole("dialog", { name: "Nuevo movimiento" })).not.toBeInTheDocument();
+  });
+});
+
+describe("Restaurante: el stock de un insumo no se muestra al agregarlo (28-oct)", () => {
+  // En el restaurante vender un plato no descuenta insumos: su stock es la
+  // suma de todas las compras y se leía como lo que había en la cocina.
+  async function agregarA(tipo: Movimiento["tipo"]) {
+    const pendiente = movimiento(7, { tipo, estado: "PENDIENTE", comprobante: "PEN-7", detalles: [] });
+    vi.mocked(api.getMovimientos).mockResolvedValue([pendiente]);
+    vi.mocked(api.getMovimiento).mockResolvedValue(pendiente);
+    montar();
+    fireEvent.click(await screen.findByText("PEN-7"));
+    fireEvent.click(await screen.findByRole("button", { name: "Agregar artículo" }));
+    return screen.getByRole("dialog", { name: "Agregar artículo" });
+  }
+
+  function elegir(dialogo: HTMLElement, texto: string, nombre: string) {
+    fireEvent.change(within(dialogo).getByRole("combobox", { name: "Buscar artículo" }), {
+      target: { value: texto },
+    });
+    fireEvent.mouseDown(within(dialogo).getByText(nombre));
+  }
+
+  it("el insumo elegido no dice cuánto hay en stock; una bebida sí", async () => {
+    sesion.rubro = "RESTAURANTE";
+    const dialogo = await agregarA("ENTRADA");
+
+    elegir(dialogo, "aceite", "Aceite Vegetal");
+    expect(within(dialogo).getByText("Aceite Vegetal")).toBeInTheDocument();
+    expect(within(dialogo).queryByText(/en stock/)).not.toBeInTheDocument();
+
+    fireEvent.click(within(dialogo).getByRole("button", { name: "Cambiar Aceite Vegetal" }));
+    elegir(dialogo, "simba", "Simba 2L");
+    expect(within(dialogo).getByText("48 Unidad en stock")).toBeInTheDocument();
+  });
+
+  it("en una salida no ofrece el «Disponible» del insumo, pero el tope se sigue validando", async () => {
+    // El backend rechaza al aprobar una salida mayor al stock: avisarlo acá
+    // sigue valiendo, aunque el número no se muestre de entrada.
+    sesion.rubro = "RESTAURANTE";
+    const dialogo = await agregarA("SALIDA");
+
+    elegir(dialogo, "aceite", "Aceite Vegetal");
+    expect(within(dialogo).queryByText(/Disponible/)).not.toBeInTheDocument();
+    fireEvent.change(within(dialogo).getByLabelText("Cantidad"), { target: { value: "25" } });
+    fireEvent.click(within(dialogo).getByRole("button", { name: "Guardar" }));
+    expect(await within(dialogo).findByText("No hay stock suficiente: quedan 20.")).toBeInTheDocument();
+    expect(api.agregarDetalleMovimiento).not.toHaveBeenCalled();
+  });
+
+  it("fuera del restaurante el insumo sigue mostrando su stock y su disponible", async () => {
+    sesion.rubro = "BILLAR";
+    const dialogo = await agregarA("SALIDA");
+
+    elegir(dialogo, "aceite", "Aceite Vegetal");
+    expect(within(dialogo).getByText("20 Litro en stock")).toBeInTheDocument();
+    expect(within(dialogo).getByText("Disponible: 20")).toBeInTheDocument();
   });
 });
