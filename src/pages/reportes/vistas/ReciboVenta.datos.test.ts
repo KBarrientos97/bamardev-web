@@ -25,7 +25,6 @@ const pedido = (p: Partial<Pedido> = {}): Pedido => ({
   clienteTelefono: "70490686",
   clienteDireccion: "Av. Blanco Galindo km 4",
   repartidor: { id: 9, nombre: "Rodrigo" },
-  tarifaEnvio: 8,
   notaPedido: "Sin picante",
   estadoEntrega: "ENTREGADO",
   entregadoEn: "2026-10-27T23:40:00.000Z",
@@ -87,7 +86,10 @@ describe("lo recibido y el cambio", () => {
 });
 
 describe("los datos del pedido", () => {
-  it("un domicilio dice cliente, teléfono, dirección, repartidor, envío y nota", () => {
+  it("un domicilio dice cliente, teléfono, dirección, repartidor y nota (el envío va en los totales)", () => {
+    // El envío decía acá "va aparte del total" y el TOTAL no lo sumaba: la
+    // misma venta daba Bs 58 en el ticket del POS y Bs 50 en éste
+    // (BUG-pedidos-11). Ahora suma en los totales, como en el POS.
     const d = datosPedido(pedido())!;
     expect(d.titulo).toBe("Pedido a domicilio");
     expect(d.datos).toEqual([
@@ -95,14 +97,13 @@ describe("los datos del pedido", () => {
       { etiqueta: "Teléfono", valor: "+591 70490686" },
       { etiqueta: "Dirección", valor: "Av. Blanco Galindo km 4" },
       { etiqueta: "Repartidor", valor: "Rodrigo" },
-      { etiqueta: "Envío", valor: `${fmtMoney(8)} (lo cobra el repartidor, va aparte del total)` },
       { etiqueta: "Entregado", valor: fmtFechaHora("2026-10-27T23:40:00.000Z") },
       { etiqueta: "Nota", valor: "Sin picante" },
     ]);
   });
 
   it("para recoger no lleva dirección ni repartidor, y lo que no se cargó no se escribe", () => {
-    const d = datosPedido(pedido({ tipoPedido: "RECOGER", clienteTelefono: null, tarifaEnvio: 0, notaPedido: "  ", estadoEntrega: "PENDIENTE" }))!;
+    const d = datosPedido(pedido({ tipoPedido: "RECOGER", clienteTelefono: null, notaPedido: "  ", estadoEntrega: "PENDIENTE" }))!;
     expect(d.titulo).toBe("Pedido para recoger");
     expect(d.datos).toEqual([
       { etiqueta: "Cliente", valor: "Juan Pérez" },

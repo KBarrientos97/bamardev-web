@@ -913,12 +913,25 @@ function PuntoDeVenta() {
         unidades={carrito.unidades}
         repartidores={repartidores.datos ?? []}
         enviando={enviando}
+        // Al volver del cobro, lo que ya se había cargado (BUG-pedidos-9).
+        inicial={datosEntrega}
+        // Si el servidor rechaza el pedido contra entrega, se ve acá: el
+        // `error` sólo se pintaba en el cobro y el fiado (BUG-pedidos-1).
+        errorServidor={error}
         onAtras={() => {
           setError("");
           setTipoPedido("LOCAL");
+          // Sin esto los datos del pedido quedaban colgados en la venta de
+          // mostrador que seguía: su cobro decía "El envío (Bs 8) lo cobra el
+          // repartidor aparte", no ofrecía fiar y su "atrás" abría el
+          // formulario de recoger (BUG-pedidos-9).
+          setDatosEntrega(null);
           setPantalla("venta");
         }}
         onContinuar={(datos) => {
+          // Un rechazo anterior del pedido contra entrega no tiene que
+          // aparecer en el cobro: es otro intento.
+          setError("");
           setDatosEntrega(datos);
           if (datos.prepagado) setPantalla("cobro");
           else void crearPedidoPendiente(datos);
@@ -1546,7 +1559,10 @@ function PedidoOk({
           )}
           <div className="flex justify-between border-t border-borde pt-2 text-base font-extrabold text-texto">
             <dt>A cobrar al entregar</dt>
-            <dd>{fmtMoney(venta.totalACobrar ?? venta.total)}</dd>
+            {/* Sin `totalACobrar`, con el envío: `total` es sólo lo de los
+                productos y decía Bs 50 debajo de "Envío Bs 8" (BUG-cobro-5).
+                El mismo respaldo que el detalle del historial. */}
+            <dd>{fmtMoney(venta.totalACobrar ?? aCentavos(venta.total + (venta.tarifaEnvio ?? 0)))}</dd>
           </div>
         </dl>
 

@@ -120,9 +120,14 @@ export function reciboLocal(
     };
   });
   const descuento = redondear((c.descuentosEsperados ?? []).reduce((s, x) => s + x.monto, 0));
-  const total = redondear(
-    detalles.reduce((s, x) => s + x.subtotal, 0) + (c.tarifaEnvio ?? 0) - descuento,
-  );
+  // Sin el envío, como el `total` del servidor: la tarifa va aparte
+  // (`tarifaEnvio`) y el ticket la suma al pintar el TOTAL. Sumada acá, el
+  // ticket sin internet decía Bs 110 y el de la misma venta ya subida Bs 100
+  // (BUG-cobro-5), y "Vendido" del turno contaba el envío del repartidor
+  // mientras la venta esperaba subir.
+  const total = redondear(detalles.reduce((s, x) => s + x.subtotal, 0) - descuento);
+  const prepagado = c.prepagado ?? true;
+  const tarifa = c.tarifaEnvio ?? 0;
   const nombreForma = new Map(d.formasPago.map((f) => [f.id, f.nombre]));
   const pagos = (c.pagos ?? []).map((p) => {
     const recibido = Math.max(p.recibido ?? p.monto, p.monto);
@@ -166,14 +171,21 @@ export function reciboLocal(
     pagos,
     tipoPedido: c.tipoPedido ?? "LOCAL",
     estadoEntrega: null,
-    prepagado: c.prepagado ?? true,
+    prepagado,
     clienteNombre: c.clienteNombre ?? null,
     clienteDireccion: c.clienteDireccion ?? null,
     clienteTelefono: c.clienteTelefono ?? null,
-    tarifaEnvio: c.tarifaEnvio ?? 0,
+    tarifaEnvio: tarifa,
     minutosEstimados: c.minutosEstimados ?? null,
     notaPedido: c.notaPedido ?? null,
     entregadoEn: null,
+    // Lo que se cobra al entregar y lo que rinde el repartidor, con la regla
+    // del servidor (`datosEntrega`) y de `reciboLocalDe` en Android. Faltaban,
+    // y con el envío ya fuera de `total` el "A cobrar al entregar" de un
+    // pedido contra entrega cargado sin señal decía Bs 50 justo debajo de
+    // "Envío Bs 8": la cajera leía un cobro sin la tarifa (BUG-cobro-5).
+    totalACobrar: prepagado ? tarifa : redondear(total + tarifa),
+    montoRendicion: prepagado ? 0 : total,
     credito,
     ...(descuento > 0 ? { subtotal: redondear(total + descuento), descuentoTotal: descuento } : {}),
     ...(c.citaId != null ? { citaId: c.citaId } : {}),

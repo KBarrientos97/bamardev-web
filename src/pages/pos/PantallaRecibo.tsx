@@ -3,6 +3,7 @@ import { Icon } from "../../components/Icon";
 import { Boton } from "../../components/ui";
 import { enlaceDeCuotas, modulosDeCuotaVenta } from "../../lib/academia/cobroCuotas";
 import { compartirComoImagen } from "../../lib/compartirTicket";
+import { aCentavos, esPositivo } from "../../lib/dinero";
 import { fmtFecha, fmtFechaHora, fmtMoney, fmtNum } from "../../lib/format";
 import { marcaConsumo } from "../../lib/rubro";
 import { useAuth } from "../../store/AuthContext";
@@ -91,9 +92,15 @@ export default function PantallaRecibo({
   // le borraban las marcas de un ticket que siempre las tuvo.
   const mostrarConsumo = venta.tipoPedido === "LOCAL" && marcaConsumo(rubro);
 
-  // Subtotal = suma de las líneas. El envío va aparte, así que Subtotal y TOTAL
-  // sólo difieren cuando el pedido tiene tarifa de entrega.
+  // Subtotal = suma de las líneas.
   const subtotal = detalles.reduce((acum, d) => acum + d.subtotal, 0);
+  // El TOTAL del papel es lo que paga el cliente: Subtotal (menos descuentos)
+  // más el envío. `venta.total` es sólo lo de los productos, porque el backend
+  // guarda la tarifa aparte, y el ticket salía "Subtotal 50 · Envío 8 · TOTAL
+  // 50", también el de un delivery cobrado en caja, mientras el de la misma
+  // venta sin internet decía 58 (BUG-pedidos-11, BUG-cobro-5).
+  const envio = venta.tarifaEnvio ?? 0;
+  const totalTicket = aCentavos(venta.total + envio);
 
   // Efectivo y QR salen desglosados como en la app, no como una lista genérica
   // de pagos: el cliente busca "Efectivo recibido" y "Cambio entregado".
@@ -251,17 +258,23 @@ export default function PantallaRecibo({
                 <dd className="shrink-0 whitespace-nowrap">− {fmtMoney(x.monto)}</dd>
               </div>
             ))}
-            {venta.tarifaEnvio > 0 && (
+            {esPositivo(envio) && (
               <div className="flex justify-between text-texto-2">
                 <dt>Envío</dt>
-                <dd>{fmtMoney(venta.tarifaEnvio)}</dd>
+                <dd>{fmtMoney(envio)}</dd>
               </div>
             )}
             <div className="flex justify-between border-t border-borde pt-1 text-base font-extrabold text-texto">
               <dt>TOTAL</dt>
-              <dd>{fmtMoney(venta.total)}</dd>
+              <dd>{fmtMoney(totalTicket)}</dd>
             </div>
           </dl>
+          {/* Lo cobrado en la caja (o registrado al entregar) es lo de los
+              productos: sin esta línea, un TOTAL mayor que lo pagado se leía
+              como un cobro de menos. */}
+          {esPositivo(envio) && (
+            <p className="mt-1 text-right text-xs text-texto-3">El envío lo cobra el repartidor.</p>
+          )}
 
           <dl className="mt-2 space-y-1 border-t border-dashed border-borde pt-2 text-sm">
             <div className="flex justify-between text-texto-2">

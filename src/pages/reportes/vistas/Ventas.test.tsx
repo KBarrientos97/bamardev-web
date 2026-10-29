@@ -228,6 +228,16 @@ describe("Reportes › Ventas en el restaurante (REP-02, 28-oct)", () => {
     expect(d.querySelector("#area-impresion")).toHaveTextContent("TOTAL");
   });
 
+  it("una venta de mostrador sigue igual: TOTAL es lo cobrado, sin Subtotal ni envío", async () => {
+    // Guarda del cambio del envío (BUG-pedidos-11): sin tarifa, el papel no cambia.
+    mostrar();
+    const d = await abrirRecibo();
+    expect((await within(d).findByText("TOTAL")).nextSibling).toHaveTextContent(fmtMoney(160));
+    expect(within(d).queryByText("Subtotal")).toBeNull();
+    expect(within(d).queryByText("Envío")).toBeNull();
+    expect(within(d).queryByText("El envío lo cobra el repartidor.")).toBeNull();
+  });
+
   it("un pedido a domicilio dice cliente, teléfono, dirección, repartidor, envío y nota", async () => {
     getVenta.mockResolvedValue({
       ...VENTA_RESTAURANTE,
@@ -251,8 +261,14 @@ describe("Reportes › Ventas en el restaurante (REP-02, 28-oct)", () => {
     expect(bloque).toHaveTextContent("+591 70490686");
     expect(bloque).toHaveTextContent("Av. Blanco Galindo km 4");
     expect(bloque).toHaveTextContent("Rodrigo");
-    // El envío va aparte del total: lo cobra y se lo queda el repartidor.
-    expect(bloque).toHaveTextContent(`${fmtMoney(8)} (lo cobra el repartidor, va aparte del total)`);
+    // El envío, en los totales y sumado al TOTAL, como en el ticket del POS.
+    // Iba en este bloque "aparte del total": la misma venta daba Bs 168 en
+    // el ticket del mostrador y Bs 160 al abrirla desde acá (BUG-pedidos-11).
+    expect(bloque).not.toHaveTextContent("Envío");
+    expect(within(d).getByText("Subtotal").nextSibling).toHaveTextContent(fmtMoney(160));
+    expect(within(d).getByText("Envío").nextSibling).toHaveTextContent(fmtMoney(8));
+    expect(within(d).getByText("TOTAL").nextSibling).toHaveTextContent(fmtMoney(168));
+    expect(within(d).getByText("El envío lo cobra el repartidor.")).toBeInTheDocument();
     expect(bloque).toHaveTextContent("Tocar el timbre");
     // Un pedido va todo para llevar: sin la marca M/LL en cada renglón.
     expect(within(d).queryByText("LL")).toBeNull();

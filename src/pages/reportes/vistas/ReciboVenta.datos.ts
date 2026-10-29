@@ -1,4 +1,4 @@
-import { aCentavos, esPositivo } from "../../../lib/dinero";
+import { aCentavos } from "../../../lib/dinero";
 import { fmtFechaHora, fmtMoney } from "../../../lib/format";
 import { tienePermiso } from "../../../lib/permisos";
 import { Telefono } from "../../../lib/telefono";
@@ -86,9 +86,10 @@ export interface DatoPedido {
  * mostrador (ahí no hay nada que decir). Lo que no se cargó no se escribe: un
  * "Teléfono: —" en el papel del cliente no le sirve a nadie.
  *
- * El envío va aparte del total a propósito: lo cobra y se lo queda el
- * repartidor, nunca entra a la caja del negocio. Sumado al TOTAL, el recibo
- * no coincidiría con lo que dice la venta.
+ * El envío no va acá: va en los totales, Subtotal + Envío = TOTAL, como en el
+ * ticket del POS. Acá decía "va aparte del total" y el TOTAL no lo sumaba, así
+ * que la misma venta daba Bs 58 en el ticket del mostrador y Bs 50 en éste
+ * (BUG-pedidos-11).
  */
 export function datosPedido(
   v: Pick<
@@ -98,7 +99,6 @@ export function datosPedido(
     | "clienteTelefono"
     | "clienteDireccion"
     | "repartidor"
-    | "tarifaEnvio"
     | "notaPedido"
     | "estadoEntrega"
     | "entregadoEn"
@@ -115,9 +115,6 @@ export function datosPedido(
   poner("Teléfono", v.clienteTelefono ? Telefono.paraMostrar(v.clienteTelefono) : null);
   if (domicilio) poner("Dirección", v.clienteDireccion);
   if (domicilio) poner("Repartidor", v.repartidor?.nombre);
-  if (esPositivo(v.tarifaEnvio ?? 0)) {
-    poner("Envío", `${fmtMoney(v.tarifaEnvio)} (lo cobra el repartidor, va aparte del total)`);
-  }
   if (v.estadoEntrega === "ENTREGADO") poner("Entregado", v.entregadoEn ? fmtFechaHora(v.entregadoEn) : "Sí");
   else if (v.estadoEntrega === "PENDIENTE") poner("Entrega", "Todavía no se entregó");
   else if (v.estadoEntrega === "CANCELADO") poner("Entrega", "Cancelado");

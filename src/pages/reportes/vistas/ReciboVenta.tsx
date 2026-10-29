@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import { Boton, Cargando, ErrorMsg, Modal } from "../../../components/ui";
 import { api } from "../../../lib/api";
 import { compartirComoImagen } from "../../../lib/compartirTicket";
-import { esPositivo } from "../../../lib/dinero";
+import { aCentavos, esPositivo } from "../../../lib/dinero";
 import { fmtCantidad, fmtFecha, fmtFechaHora, fmtMoney } from "../../../lib/format";
 import { marcaConsumo } from "../../../lib/rubro";
 import { useApi } from "../../../lib/useApi";
@@ -124,6 +124,12 @@ function TicketVenta({ venta: v, negocio, rubro }: { venta: Venta; negocio: stri
   const mostrarConsumo = v.tipoPedido === "LOCAL" && marcaConsumo(rubro);
   const descuentos = v.descuentos ?? [];
   const subtotal = v.subtotal ?? detalles.reduce((s, d) => s + d.subtotal, 0);
+  // El TOTAL es el del ticket del POS: lo de los productos más el envío.
+  // `v.total` es sólo lo de los productos (el backend guarda la tarifa
+  // aparte), y la misma venta salía TOTAL Bs 58 en el ticket del mostrador y
+  // Bs 50 al abrirla desde acá (BUG-pedidos-11).
+  const envio = v.tarifaEnvio ?? 0;
+  const totalTicket = aCentavos(v.total + envio);
   const efectivo = efectivoDelRecibo(v.pagos);
   const pedido = datosPedido(v);
 
@@ -174,30 +180,37 @@ function TicketVenta({ venta: v, negocio, rubro }: { venta: Venta; negocio: stri
       </div>
 
       <dl className="mt-2 space-y-1 border-t border-dashed border-borde pt-2 text-sm">
-        {/* El subtotal sólo cuando hay algo que restarle: sin promos sería el
-            mismo número que el TOTAL, dos veces. */}
-        {descuentos.length > 0 && (
-          <>
-            <div className="flex justify-between text-texto-2">
-              <dt>Subtotal</dt>
-              <dd>{fmtMoney(subtotal)}</dd>
-            </div>
-            {descuentos.map((x, i) => (
-              <div key={i} className="flex justify-between gap-2 text-texto-2">
-                <dt>
-                  {x.nombre}
-                  {x.codigo ? ` (${x.codigo})` : ""}
-                </dt>
-                <dd className="shrink-0 whitespace-nowrap">− {fmtMoney(x.monto)}</dd>
-              </div>
-            ))}
-          </>
+        {/* El subtotal sólo cuando hay algo que restarle o sumarle: sin promos
+            ni envío sería el mismo número que el TOTAL, dos veces. */}
+        {(descuentos.length > 0 || esPositivo(envio)) && (
+          <div className="flex justify-between text-texto-2">
+            <dt>Subtotal</dt>
+            <dd>{fmtMoney(subtotal)}</dd>
+          </div>
+        )}
+        {descuentos.map((x, i) => (
+          <div key={i} className="flex justify-between gap-2 text-texto-2">
+            <dt>
+              {x.nombre}
+              {x.codigo ? ` (${x.codigo})` : ""}
+            </dt>
+            <dd className="shrink-0 whitespace-nowrap">− {fmtMoney(x.monto)}</dd>
+          </div>
+        ))}
+        {esPositivo(envio) && (
+          <div className="flex justify-between text-texto-2">
+            <dt>Envío</dt>
+            <dd>{fmtMoney(envio)}</dd>
+          </div>
         )}
         <div className="flex justify-between border-t border-borde pt-1 text-base font-extrabold">
           <dt>TOTAL</dt>
-          <dd>{fmtMoney(v.total)}</dd>
+          <dd>{fmtMoney(totalTicket)}</dd>
         </div>
       </dl>
+      {/* Como en el ticket del POS: lo cobrado es lo de los productos, y sin
+          esta línea un TOTAL mayor que lo pagado se leía como un cobro de menos. */}
+      {esPositivo(envio) && <p className="mt-1 text-right text-xs text-texto-3">El envío lo cobra el repartidor.</p>}
 
       <dl className="mt-2 space-y-1 border-t border-dashed border-borde pt-2 text-sm">
         <div className="flex justify-between gap-3 text-texto-2">

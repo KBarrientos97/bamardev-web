@@ -15,14 +15,16 @@ import {
   Vacio,
 } from "../../components/ui";
 import { api, type PagoEntrega } from "../../lib/api";
-import { restoEnEfectivo, vuelto } from "../../lib/dinero";
+import { aCentavos, cubre, esPositivo, excede, restoEnEfectivo, vuelto } from "../../lib/dinero";
 import { fmtHora, fmtMoney, fmtNum } from "../../lib/format";
 import { leerMonto } from "../../lib/montoTecleado";
 import { tieneFeature } from "../../lib/permisos";
+import { Telefono } from "../../lib/telefono";
 import { useApi } from "../../lib/useApi";
 import { enlaceWhatsApp, mensajePedido, pedidoDeVenta } from "../../lib/mensajePedido";
 import { useAuth } from "../../store/AuthContext";
 import type { FormaPago, Venta } from "../../types";
+import { cobradoPorQr, rendicionDelTurno } from "./rendicion";
 
 type Vista = "pendientes" | "entregadas";
 
@@ -74,39 +76,12 @@ export default function Repartidor() {
   const [detalle, setDetalle] = useState<Venta | null>(null);
   const [rendicionAbierta, setRendicionAbierta] = useState(false);
 
-  const lista = entregas.datos ?? [];
-
-  const { pendientes, entregadas, aRendir, cobradoEnvios, enEfectivo, porQr } =
-    useMemo(() => {
-      const pend = lista.filter((p) => p.estadoEntrega === "PENDIENTE");
-      const ent = lista.filter((p) => p.estadoEntrega === "ENTREGADO");
-
-      /**
-       * De lo que hay que rendir, cuánto es plata en mano y cuánto ya entró al
-       * banco. Es la diferencia que importa al cerrar el turno: lo cobrado por
-       * QR el repartidor no lo lleva encima, y contarlo junto con el efectivo
-       * le hacía parecer que le faltaba plata.
-       */
-      let efectivo = 0;
-      let qr = 0;
-      for (const p of ent) {
-        const monto = p.montoRendicion ?? 0;
-        if (monto <= 0) continue;
-        const formas = p.formasPago ?? [];
-        if (formas.some((f) => f.toLowerCase().includes("qr"))) qr += monto;
-        else efectivo += monto;
-      }
-
-      return {
-        pendientes: pend,
-        entregadas: ent,
-        // Lo que el repartidor le debe al negocio al cerrar el turno.
-        aRendir: ent.reduce((s, p) => s + (p.montoRendicion ?? 0), 0),
-        cobradoEnvios: ent.reduce((s, p) => s + p.tarifaEnvio, 0),
-        enEfectivo: efectivo,
-        porQr: qr,
-      };
-    }, [lista]);
+  // Lo que se le entrega al negocio es SÓLO el efectivo (`enEfectivo`): lo
+  // cobrado por QR ya está en su cuenta. La cuenta vive en `rendicion.ts`.
+  const { pendientes, entregadas, tarifas, enEfectivo, porQr } = useMemo(
+    () => rendicionDelTurno(entregas.datos ?? []),
+    [entregas.datos],
+  );
 
   const mostradas = vista === "pendientes" ? pendientes : entregadas;
 
@@ -127,7 +102,15 @@ export default function Repartidor() {
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         <Kpi etiqueta="Por entregar" valor={String(pendientes.length)} icono="truck" tono="amarillo" />
         <Kpi etiqueta="Entregadas" valor={String(entregadas.length)} icono="check" />
-        <Kpi etiqueta="A rendir" valor={fmtMoney(aRendir)} icono="dollar" tono="marca" />
+        {/* El efectivo, como "A entregar al negocio" de la rendición: con el QR
+            adentro le pedía plata que ya estaba en el banco (BUG-pedidos-3). */}
+        <Kpi
+          etiqueta="A rendir"
+          valor={fmtMoney(enEfectivo)}
+          pie="en efectivo"
+          icono="dollar"
+          tono="marca"
+        />
       </div>
 
       <Chips valor={vista} opciones={VISTAS} onChange={setVista} />
@@ -177,12 +160,21 @@ export default function Repartidor() {
                     <span className="text-xs text-texto-4">{fmtHora(p.fecha)}</span>
                   </div>
                 </div>
+                {/* `totalACobrar` YA trae el envío (y en un prepagado es sólo
+                    el envío): debajo decía "+Bs 8,00 envío" y un pedido de Bs 58
+                    se leía como 58 + 8, y uno pagado en caja como 8 + 8
+                    (BUG-pedidos-10). Ahora dice qué es el número. */}
                 <div className="shrink-0 text-right">
+                  <p className="text-xs text-texto-3">
+                    {p.estadoEntrega === "ENTREGADO" ? "Cobrado" : "A cobrar"}
+                  </p>
                   <p className="text-sm font-bold text-texto">
                     {fmtMoney(p.totalACobrar ?? 0)}
                   </p>
-                  {p.tarifaEnvio > 0 && (
-                    <p className="text-xs text-texto-3">+{fmtMoney(p.tarifaEnvio)} envío</p>
+                  {esPositivo(p.tarifaEnvio ?? 0) && (
+                    <p className="text-xs text-texto-3">
+                      {p.prepagado ? "es tu envío" : `incluye ${fmtMoney(p.tarifaEnvio)} de envío`}
+                    </p>
                   )}
                 </div>
               </button>
@@ -214,30 +206,41 @@ export default function Repartidor() {
           }
         >
           <div className="space-y-4">
+            {/* Sólo el efectivo: lo cobrado por QR ya entró a la cuenta del
+                negocio y el repartidor no lo tiene en la mano. El número
+                grande sumaba el QR (BUG-pedidos-3), aunque el comentario de
+                abajo ya decía que se entrega sólo el efectivo. */}
             <div className="rounded-2xl bg-marca p-5 text-center text-white">
               <p className="text-xs font-semibold uppercase tracking-wide opacity-90">
                 A entregar al negocio
               </p>
-              <p className="mt-1 text-3xl font-extrabold">{fmtMoney(aRendir)}</p>
+              <p className="mt-1 text-3xl font-extrabold">{fmtMoney(enEfectivo)}</p>
+              <p className="mt-0.5 text-xs opacity-90">en efectivo</p>
             </div>
 
-            {/* Lo cobrado por QR ya está en la cuenta del negocio: el
-                repartidor sólo entrega el efectivo. */}
-            {porQr > 0 && (
-              <dl className="grid grid-cols-2 gap-2">
-                <div className="rounded-xl bg-muted px-3 py-2.5">
-                  <dt className="text-xs text-texto-3">Efectivo en mano</dt>
-                  <dd className="text-[13px] font-bold text-texto">{fmtMoney(enEfectivo)}</dd>
-                </div>
-                <div className="rounded-xl bg-muted px-3 py-2.5">
-                  <dt className="text-xs text-texto-3">Ya cobrado por QR</dt>
-                  <dd className="text-[13px] font-bold text-texto">{fmtMoney(porQr)}</dd>
-                </div>
-              </dl>
+            {/* Con QR, a dónde fue cada parte: sin esto lo cobrado no cierra
+                con lo que se entrega y parece que falta plata. */}
+            {esPositivo(porQr) && (
+              <>
+                <dl className="grid grid-cols-2 gap-2">
+                  <div className="rounded-xl bg-muted px-3 py-2.5">
+                    <dt className="text-xs text-texto-3">Efectivo en mano</dt>
+                    <dd className="text-[13px] font-bold text-texto">{fmtMoney(enEfectivo)}</dd>
+                  </div>
+                  <div className="rounded-xl bg-muted px-3 py-2.5">
+                    <dt className="text-xs text-texto-3">Ya cobrado por QR</dt>
+                    <dd className="text-[13px] font-bold text-texto">{fmtMoney(porQr)}</dd>
+                  </div>
+                </dl>
+                <p className="text-[13px] text-texto-3">
+                  Lo cobrado por QR ({fmtMoney(porQr)}) ya está en la cuenta del negocio: no lo
+                  entregás.
+                </p>
+              </>
             )}
 
             <p className="rounded-xl bg-primary-50 px-3.5 py-2.5 text-[13px] text-primary-700">
-              Las tarifas de envío ({fmtMoney(cobradoEnvios)}) son tuyas: no entran en la
+              Las tarifas de envío ({fmtMoney(tarifas)}) son tuyas: no entran en la
               rendición. Los pedidos que ya venían pagados tampoco.
             </p>
 
@@ -253,7 +256,7 @@ export default function Repartidor() {
                       </p>
                       <p className="text-xs text-texto-3">
                         {fmtHora(p.entregadoEn ?? p.fecha)}
-                        {p.prepagado ? " · ya estaba pagado" : ""}
+                        {p.prepagado ? " · ya estaba pagado" : comoSeCobro(p)}
                       </p>
                     </div>
                     <span className="shrink-0 text-[13px] font-bold text-texto">
@@ -268,6 +271,23 @@ export default function Repartidor() {
       )}
     </div>
   );
+}
+
+/**
+ * Con qué se cobró lo que rinde un pedido, para el renglón de la rendición:
+ * " · Efectivo", " · QR" o, en un mixto, con los montos reales de cada forma
+ * (DEL-2). Así el repartidor ve qué pedido explica cada parte del desglose.
+ */
+function comoSeCobro(p: Venta): string {
+  const rinde = p.montoRendicion ?? 0;
+  if (!esPositivo(rinde)) return "";
+  // Sin los montos (un backend anterior) quedan los nombres, que no mienten.
+  if (!p.pagos) return p.formasPago?.length ? ` · ${p.formasPago.join(" + ")}` : "";
+  const qr = cobradoPorQr(p);
+  if (!esPositivo(qr)) return " · Efectivo";
+  const efectivo = aCentavos(rinde - qr);
+  if (!esPositivo(efectivo)) return " · QR";
+  return ` · QR ${fmtMoney(qr)} + efectivo ${fmtMoney(efectivo)}`;
 }
 
 function DetalleEntrega({
@@ -300,13 +320,19 @@ function DetalleEntrega({
   // Un pedido prepagado sólo se confirma: la plata ya entró a la caja.
   const soloConfirmar = pendiente && (p.prepagado || aCobrar <= 0);
 
-  const telefono = (p.clienteTelefono ?? "").replace(/\D/g, "");
-  const numeroWhatsApp = telefono.length <= 8 ? `591${telefono}` : telefono;
+  // Con el helper de toda la web (`lib/telefono`, calcado de `Telefono.kt`),
+  // como la caja. Armado a mano, "Llamar" marcaba los dígitos tal cual: un
+  // número guardado como "+591 7…" quedaba `tel:5917…`, sin el "+"
+  // (BUG-pedidos-12). Los dos son null juntos, con el teléfono vacío.
+  const paraLlamar = Telefono.paraLlamada(p.clienteTelefono);
+  const numeroWhatsApp = Telefono.paraWhatsApp(p.clienteTelefono);
   // Pendiente: el chat abre con el aviso de llegada ya escrito, el mismo de la
   // app (Kevin, 15-oct). Antes abría vacío y había que tipear todo en la puerta.
-  const hrefWhatsApp = pendiente
-    ? enlaceWhatsApp(numeroWhatsApp, mensajePedido(pedidoDeVenta(p), negocio?.nombre))
-    : `https://wa.me/${numeroWhatsApp}`;
+  const hrefWhatsApp = !numeroWhatsApp
+    ? null
+    : pendiente
+      ? enlaceWhatsApp(numeroWhatsApp, mensajePedido(pedidoDeVenta(p), negocio?.nombre))
+      : `https://wa.me/${numeroWhatsApp}`;
 
   async function confirmarEntrega(pagos?: PagoEntrega[]) {
     setError("");
@@ -371,10 +397,10 @@ function DetalleEntrega({
               {p.notaPedido && (
                 <p className="mt-1 text-[13px] italic text-texto-3">{p.notaPedido}</p>
               )}
-              {telefono && (
+              {paraLlamar && hrefWhatsApp && (
                 <div className="mt-2.5 flex gap-2">
                   <a
-                    href={`tel:${telefono}`}
+                    href={`tel:${paraLlamar}`}
                     className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-borde bg-white px-3 py-3 text-[13px] font-semibold text-texto-2 hover:bg-muted"
                   >
                     <Icon name="phone" size={15} /> Llamar
@@ -499,19 +525,36 @@ function DialogoCobroEntrega({
   // Como en el cierre: "1.500" son mil quinientos, no Bs 1,50 (26-oct).
   const recibidoNum = leerMonto(recibido) ?? 0;
   const qrNum = leerMonto(montoQr) ?? 0;
+  // La tarifa del repartidor: lo que se cobra en mano por encima de lo del negocio.
+  const tarifa = Math.max(0, aCentavos(aPedirEnMano - total));
   const enEfectivo = metodo === "MIXTO" ? restoEnEfectivo(total, qrNum) : total;
   // El vuelto se calcula sobre lo que el cliente entrega en mano, que incluye
   // el envío: si no, el repartidor le devolvería de más.
   const efectivoEnMano =
     metodo === "MIXTO" ? restoEnEfectivo(aPedirEnMano, qrNum) : aPedirEnMano;
   const cambio = metodo === "QR" ? 0 : vuelto(recibidoNum, efectivoEnMano);
+  // Como "recibido" va lo que entra por la venta: lo del negocio más el
+  // vuelto, sin el envío que se queda el repartidor, como la app
+  // (`CobroEntregaFragment`). El backend guarda de cambio `recibido − monto`,
+  // y con lo que el cliente dio en mano el envío quedaba como vuelto: un
+  // pedido de Bs 42 con Bs 8 de envío pagado con Bs 50 justos decía en su
+  // recibo "Cambio Bs 8,00" sin que hubiera cambio (REP-02, 28-oct).
+  const recibidoDelNegocio = aCentavos(enEfectivo + cambio);
+  // Mixto: cuánto pedir en mano, como la app (el resto de lo del negocio más
+  // la tarifa), o hasta dónde llega el QR antes de tocar cobrar.
+  const ayudaMixto =
+    esPositivo(qrNum) && !excede(qrNum, total)
+      ? `En efectivo: ${fmtMoney(efectivoEnMano)}${esPositivo(tarifa) ? ", con tu tarifa" : ""}.`
+      : esPositivo(tarifa)
+        ? `Por QR, hasta ${fmtMoney(total)}: tu tarifa va en efectivo.`
+        : "";
 
   function confirmar() {
     setError("");
     if (metodo === "EFECTIVO") {
       if (!efectivo) return setError("Falta la forma de pago Efectivo.");
       if (recibidoNum < aPedirEnMano) return setError("Lo recibido no cubre el total.");
-      return onConfirmar([{ formaPagoId: efectivo.id, monto: total, recibido: recibidoNum }]);
+      return onConfirmar([{ formaPagoId: efectivo.id, monto: total, recibido: recibidoDelNegocio }]);
     }
     if (metodo === "QR") {
       if (!qr) return setError("Falta la forma de pago QR.");
@@ -519,13 +562,30 @@ function DialogoCobroEntrega({
       return onConfirmar([{ formaPagoId: qr.id, monto: total }]);
     }
     if (!efectivo || !qr) return setError("Faltan formas de pago para cobrar mixto.");
-    if (qrNum <= 0) return setError("Poné cuánto se paga por QR.");
-    if (qrNum >= aPedirEnMano) return setError("Si el QR cubre todo, cobrá con el método QR.");
+    if (!esPositivo(qrNum)) return setError("Poné cuánto se paga por QR.");
+    if (!esPositivo(tarifa) && cubre(qrNum, total)) {
+      return setError("Si el QR cubre todo, cobrá con el método QR.");
+    }
+    // Por QR va sólo lo del negocio, como la app: la tarifa queda en efectivo
+    // para el repartidor (DEL-3). Sólo se frenaba un QR que cubriera también el
+    // envío: uno igual a lo de los productos mandaba un pago en efectivo de
+    // Bs 0, y uno mayor hacía pasar la suma del total, y el backend rebotaba
+    // los dos con un 400 con el cliente en la puerta (BUG-pedidos-2). "Los 50
+    // por QR y los 8 del envío en efectivo" es el mixto más común del reparto.
+    if (excede(qrNum, total)) {
+      return setError(
+        `Por QR va sólo lo del negocio: hasta ${fmtMoney(total)}. Tu tarifa (${fmtMoney(tarifa)}) cobrala en efectivo.`,
+      );
+    }
     if (!qrConfirmado) return setError("Confirmá que el pago por QR llegó.");
     if (recibidoNum < efectivoEnMano) return setError("El efectivo no cubre lo que falta.");
     onConfirmar([
-      { formaPagoId: qr.id, monto: qrNum },
-      { formaPagoId: efectivo.id, monto: enEfectivo, recibido: recibidoNum },
+      { formaPagoId: qr.id, monto: aCentavos(qrNum) },
+      // Con todo lo del negocio por QR, el efectivo es sólo la tarifa, que no
+      // se registra: no hay pago en efectivo que mandar.
+      ...(esPositivo(enEfectivo)
+        ? [{ formaPagoId: efectivo.id, monto: enEfectivo, recibido: recibidoDelNegocio }]
+        : []),
     ]);
   }
 
@@ -549,23 +609,19 @@ function DialogoCobroEntrega({
     >
       <div className="space-y-3">
         {/* Con envío son dos números distintos y el repartidor tiene que
-            pedir el de arriba: mostrar sólo uno se prestaba a cobrar de
-            menos y poner la tarifa de su bolsillo. */}
-        {aPedirEnMano !== total && (
-          <dl className="rounded-xl bg-muted px-3.5 py-2.5 text-[13px]">
-            <div className="flex justify-between text-texto-2">
-              <dt>Productos</dt>
-              <dd>{fmtMoney(total)}</dd>
+            pedir el total: mostrar sólo uno se prestaba a cobrar de menos y
+            poner la tarifa de su bolsillo. Y de quién es cada parte, con el
+            texto de la app: lo del negocio es lo único que va por su QR. */}
+        {esPositivo(tarifa) && (
+          <div className="rounded-xl bg-muted px-3.5 py-2.5 text-[13px]">
+            <div className="flex justify-between font-bold text-texto">
+              <span>Cobrale al cliente</span>
+              <span>{fmtMoney(aPedirEnMano)}</span>
             </div>
-            <div className="flex justify-between text-texto-2">
-              <dt>Envío</dt>
-              <dd>{fmtMoney(Math.round((aPedirEnMano - total) * 100) / 100)}</dd>
-            </div>
-            <div className="mt-1 flex justify-between border-t border-borde pt-1 font-bold text-texto">
-              <dt>Cobrale al cliente</dt>
-              <dd>{fmtMoney(aPedirEnMano)}</dd>
-            </div>
-          </dl>
+            <p className="mt-0.5 text-texto-2">
+              {fmtMoney(total)} van al negocio · {fmtMoney(tarifa)} es tu tarifa
+            </p>
+          </div>
         )}
 
         <div className="grid grid-cols-3 gap-2">
@@ -586,26 +642,40 @@ function DialogoCobroEntrega({
         </div>
 
         {metodo === "MIXTO" && (
-          <Campo label="Pagado por QR">
-            <InputMonto
-              value={montoQr}
-              onChange={(texto) => {
-                // Que al salir "50" pase a "50,00" no cambia lo que entró al banco.
-                if ((leerMonto(texto) ?? 0) !== qrNum) setQrConfirmado(false);
-                setMontoQr(texto);
-              }}
-            />
-          </Campo>
+          <div className="space-y-1">
+            <Campo label="Pagado por QR">
+              <InputMonto
+                value={montoQr}
+                onChange={(texto) => {
+                  // Que al salir "50" pase a "50,00" no cambia lo que entró al banco.
+                  if ((leerMonto(texto) ?? 0) !== qrNum) setQrConfirmado(false);
+                  setMontoQr(texto);
+                }}
+              />
+            </Campo>
+            {ayudaMixto && <p className="text-xs text-texto-3">{ayudaMixto}</p>}
+          </div>
         )}
 
-        {(metodo === "QR" || (metodo === "MIXTO" && qrNum > 0)) && (
+        {(metodo === "QR" || (metodo === "MIXTO" && esPositivo(qrNum))) && (
           <div className="rounded-xl border border-borde bg-white p-4">
+            {/* Lo del negocio y no el total con envío (DEL-3): pedía por QR
+                la tarifa del repartidor, que terminaba en el banco del negocio
+                sin que nada dijera que se le debía, y lo registrado por QR no
+                cuadraba con lo que entró. */}
             <QrParaCobrar
               confirmado={qrConfirmado}
               onConfirmar={() => setQrConfirmado(true)}
-              monto={fmtMoney(metodo === "QR" ? aPedirEnMano : qrNum)}
+              monto={fmtMoney(metodo === "QR" ? total : qrNum)}
             />
           </div>
+        )}
+
+        {metodo === "QR" && esPositivo(tarifa) && (
+          <p className="text-xs text-texto-3">
+            Tu tarifa ({fmtMoney(tarifa)}) cobrala aparte, en efectivo: no va por el QR del
+            negocio.
+          </p>
         )}
 
         {metodo !== "QR" && (
