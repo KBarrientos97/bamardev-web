@@ -1112,30 +1112,42 @@ export const api = {
       { method: "POST", body: JSON.stringify(input) },
     ),
 
-  /** Mueve el grupo entero a otra mesa. */
+  /**
+   * Mueve el grupo entero a otra mesa.
+   *
+   * Pasar, juntar y unir mandan la otra mesa como `{ mesaId }`, que es lo único
+   * que declara `MoverMesaDto`. Mandaban `destinoId`, `otraId` y `mesaIds`: el
+   * ValidationPipe (whitelist) descartaba la clave, `mesaId` llegaba vacío y el
+   * backend respondía 400, así que las tres acciones fallaban SIEMPRE desde la
+   * web (Android manda `mesaId` y andaba).
+   */
   transferirMesa: (id: number, destinoId: number) =>
     request<Mesa>(`/salon/mesas/${id}/transferir`, {
       method: "POST",
-      body: JSON.stringify({ destinoId }),
+      body: JSON.stringify({ mesaId: destinoId }),
     }),
-  /** Junta el consumo de dos cuentas que YA comieron. */
+  /** Junta el consumo de dos cuentas que YA comieron. Body: ver `transferirMesa`. */
   juntarMesa: (id: number, otraId: number) =>
     request<Mesa>(`/salon/mesas/${id}/juntar`, {
       method: "POST",
-      body: JSON.stringify({ otraId }),
+      body: JSON.stringify({ mesaId: otraId }),
     }),
-  /** Arrima mesas libres ANTES de sentar a nadie, para un grupo grande. */
-  unirMesa: (id: number, mesaIds: number[]) =>
+  /**
+   * Arrima UNA mesa libre ANTES de sentar a nadie, para un grupo grande.
+   * De a una porque así une el backend: para tres mesas son dos llamadas.
+   */
+  unirMesa: (id: number, otraId: number) =>
     request<Mesa>(`/salon/mesas/${id}/unir`, {
       method: "POST",
-      body: JSON.stringify({ mesaIds }),
+      body: JSON.stringify({ mesaId: otraId }),
     }),
   separarMesa: (id: number) =>
     request<Mesa>(`/salon/mesas/${id}/separar`, { method: "POST" }),
 
+  /** `personas` es obligatorio: `ReservarMesaDto` lo exige (entero, al menos 1). */
   reservarMesa: (
     id: number,
-    input: { hora: string; nombre: string; telefono?: string; personas?: number; nota?: string },
+    input: { hora: string; nombre: string; telefono?: string; personas: number; nota?: string },
   ) =>
     request<Mesa>(`/salon/mesas/${id}/reserva`, {
       method: "POST",
@@ -1155,12 +1167,18 @@ export const api = {
    *
    * La propina va al turno del mesero y NO entra al total de la venta ni a la
    * matemática de la caja.
+   *
+   * `totalEsperado` es el total que se cobró en pantalla. No fija ningún precio
+   * (la venta se arma con lo consumido), pero si el mesero le sumó algo a la
+   * mesa en el medio, el backend lo frena con "cambió mientras cobrabas" en vez
+   * del "los pagos no suman el total" que no explicaba nada.
    */
   cobrarMesa: (
     id: number,
     input: {
       pagos: { formaPagoId: number; monto: number; recibido?: number }[];
       propina?: number;
+      totalEsperado?: number;
       clienteRequestId?: string;
     },
   ) => request<Venta>(`/salon/mesas/${id}/cobrar`, {
@@ -1218,14 +1236,20 @@ export const api = {
     request<Mesa[]>(`/mesas${qs({ sucursalId: sucursalId ?? undefined })}`),
   getZonas: (sucursalId?: number | null) =>
     request<ZonaSalon[]>(`/mesas/zonas${qs({ sucursalId: sucursalId ?? undefined })}`),
+  /**
+   * La nota se manda como `nota`, que es lo que declaran `CrearMesaDto` y
+   * `ActualizarMesaDto` (`notaMesa` es como VUELVE, en la mesa). Viajaba como
+   * `notaMesa`, el whitelist la descartaba y la nota nunca se guardaba.
+   */
   crearMesa: (input: {
     codigo: string;
     nombre?: string;
     zonaId: number;
     capacidad: number;
-    notaMesa?: string;
+    nota?: string;
     activa?: boolean;
   }) => request<Mesa>("/mesas", { method: "POST", body: JSON.stringify(input) }),
+  /** `nota: ""` la borra; sin `nota`, queda la que estaba. */
   actualizarMesa: (
     id: number,
     input: Partial<{
@@ -1233,7 +1257,7 @@ export const api = {
       nombre: string;
       zonaId: number;
       capacidad: number;
-      notaMesa: string;
+      nota: string;
       activa: boolean;
     }>,
   ) => request<Mesa>(`/mesas/${id}`, { method: "PATCH", body: JSON.stringify(input) }),

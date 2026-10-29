@@ -79,7 +79,7 @@ export default function AbrirMesa({
     setError("");
     setEnviando(true);
     try {
-      onMesaCambiada(await api.unirMesa(mesa.id, [otra.id]));
+      onMesaCambiada(await api.unirMesa(mesa.id, otra.id));
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudo unir la mesa");
     } finally {
@@ -248,9 +248,12 @@ export default function AbrirMesa({
         </Boton>
       </div>
 
+      {/* Con su propio modo: con el de "pasar" el diálogo preguntaba "¿A qué
+          mesa la paso?" y explicaba que el consumo se mueve, que es otra
+          operación, y ofrecía mesas que el backend no deja unir. */}
       {uniendo && (
         <ElegirMesa
-          modo="pasar"
+          modo="unir"
           mesa={mesa}
           mesas={mesasDelSalon}
           procesando={enviando}

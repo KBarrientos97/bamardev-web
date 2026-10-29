@@ -92,6 +92,34 @@ export function estaUnida(m: Mesa): boolean {
   return (m.unidas ?? []).length > 0;
 }
 
+/** Los tres movimientos entre mesas. Ver `mesasParaElegir`. */
+export type MovimientoMesa = "pasar" | "juntar" | "unir";
+
+/**
+ * A qué mesas se puede ir desde `mesa` en cada movimiento.
+ *
+ * Son las reglas del backend, para no ofrecer una mesa que va a rechazar:
+ *  - **pasar**: el grupo se levanta y se sienta en otra LIBRE (no en una
+ *    arrimada a otra: "pasá el consumo a esa");
+ *  - **unir**: una LIBRE que no esté arrimada a otra ni tenga otras arrimadas.
+ *    Las uniones son planas ("ya tiene otras mesas unidas: separalas
+ *    primero"), y la lista las ofrecía igual;
+ *  - **juntar**: una con gente y SIN cobrar. Juntar una PAGADA movería plata
+ *    que ya entró a caja ("ya se cobró: no se puede juntar"), y la lista la
+ *    ofrecía porque `estaOcupada` cuenta la PAGADA.
+ *
+ * (El salón no trae las arrimadas como mesa propia, así que en la práctica el
+ * `unidaAId` no filtra nada; está para que la regla no dependa de eso.)
+ */
+export function mesasParaElegir(modo: MovimientoMesa, mesa: Mesa, mesas: Mesa[]): Mesa[] {
+  return mesas.filter((m) => {
+    if (m.id === mesa.id) return false;
+    if (modo === "pasar") return m.estado === "LIBRE" && m.unidaAId == null;
+    if (modo === "unir") return m.estado === "LIBRE" && !estaUnida(m) && m.unidaAId == null;
+    return estaOcupada(m) && m.estado !== "PAGADA";
+  });
+}
+
 /** Los KPIs de la cabecera del salón. */
 export interface ResumenSalon {
   libres: number;

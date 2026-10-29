@@ -35,7 +35,9 @@ type Pestana = "salon" | "servir" | "turno";
 type Flujo =
   | { tipo: "abrir"; mesa: Mesa }
   | { tipo: "pedido"; mesa: Mesa }
-  | { tipo: "detalle"; mesa: Mesa }
+  // `aviso`: lo que hay que leer al volver a la mesa (la cuenta cambió
+  // mientras se cobraba). `conRecibo`: recién cobrada, con el recibo abierto.
+  | { tipo: "detalle"; mesa: Mesa; aviso?: string; conRecibo?: boolean }
   // Las entregas de efectivo van como flujo y NO como cuarta pestaña: se entra
   // desde "Mi turno", se mira cuánto se debe y se vuelve. Una pestaña fija
   // sería un lugar más donde buscar con las manos ocupadas.
@@ -74,6 +76,15 @@ export default function PanelMesero() {
 
   function volverAlSalon(mensaje = "") {
     setFlujo(null);
+    setAviso(mensaje);
+    setVersion((v) => v + 1);
+    setPestana("salon");
+    if (mensaje) setTimeout(() => setAviso(""), 3000);
+  }
+
+  /** Vuelve a la hoja de una mesa (con el salón de atrás recargado). */
+  function volverALaMesa(detalle: Extract<Flujo, { tipo: "detalle" }>, mensaje = "") {
+    setFlujo(detalle);
     setAviso(mensaje);
     setVersion((v) => v + 1);
     setPestana("salon");
@@ -121,10 +132,19 @@ export default function PanelMesero() {
         <CobrarMesa
           mesa={flujo.mesa}
           onAtras={() => setFlujo(null)}
-          onCobrada={(mensaje) => {
-            setFlujo(null);
-            volverAlSalon(mensaje);
+          onCobrada={(mensaje, cobrada) => {
+            // El cliente acaba de pagar y el mesero está a su lado: se le
+            // abre el recibo para dárselo, sobre la mesa ya cobrada (su paso
+            // siguiente es levantarla). Volvía al salón y el recibo había que
+            // ir a buscarlo. Sin el cobro en la mesa releída el papel saldría
+            // a medio llenar: ahí sólo se vuelve al salón, como antes.
+            if (cobrada?.cobro)
+              volverALaMesa({ tipo: "detalle", mesa: cobrada, conRecibo: true }, mensaje);
+            else volverAlSalon(mensaje);
           }}
+          onCuentaCambiada={(mesa, avisoCuenta) =>
+            volverALaMesa({ tipo: "detalle", mesa, aviso: avisoCuenta })
+          }
         />
       </Pantalla>
     );
@@ -175,6 +195,8 @@ export default function PanelMesero() {
           onCobrarMesa={
             meserosCobran ? (m) => setFlujo({ tipo: "cobrar", mesa: m }) : undefined
           }
+          aviso={flujo.aviso}
+          abrirRecibo={flujo.conRecibo}
         />
       )}
 

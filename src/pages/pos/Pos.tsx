@@ -22,6 +22,7 @@ import { cobraPropinas } from "../../lib/belleza/capacidades";
 import { useConsultaPeriodica } from "../../lib/agenda/useConsultaPeriodica";
 import CitasPorCobrar from "./CitasPorCobrar";
 import { fmtHora, fmtMoney } from "../../lib/format";
+import { aCentavos } from "../../lib/dinero";
 import { creaClientes, tieneFeature, tienePermiso } from "../../lib/permisos";
 import { RUTA_CAJA, RUTA_COBRAR } from "../../lib/academia/vista";
 import { esFarmacia } from "../../lib/rubro";
@@ -50,6 +51,7 @@ import PantallaEntrega, { type DatosEntrega } from "./PantallaEntrega";
 import MesasPorCobrar from "./MesasPorCobrar";
 import Entregas from "../salon/Entregas";
 import { consumoDeMesa, etiquetaMesa, itemsVivos } from "../salon/logicaSalon";
+import { avisoCuentaCambiada, cuerpoCobroDeMesa, esCuentaCambiada } from "../salon/cobroDeMesa";
 import type { Mesa as MesaSalon } from "../../types/salon";
 import PantallaHistorial from "./PantallaHistorial";
 import PantallaRecibo from "./PantallaRecibo";
@@ -576,7 +578,7 @@ function PuntoDeVenta() {
   }, [carrito, setCitaCobrando, descuentos, setAsignacion]);
 
   const cobrar = useCallback(
-    async (pagos: PagoInput[], extra?: { propinas?: PropinaInput[] }) => {
+    async (pagos: PagoInput[], extra?: { propinas?: PropinaInput[]; propinaMesa?: number }) => {
       setError("");
       const cuerpo = mesaCobrando ? null : cuerpoVenta(pagos);
       // Sin cupo ni créditos no se manda nada: se abre la hoja de compra y el
@@ -588,12 +590,18 @@ function PuntoDeVenta() {
       try {
         // Cobrar una mesa es otro endpoint: la cuenta ya existe en el salón,
         // acá sólo se dice con qué se pagó. La venta la arma el backend con lo
-        // que el mesero cargó.
+        // que el mesero cargó. Con la propina de la mesa y el total que la
+        // cajera tiene en pantalla (ver `cuerpoCobroDeMesa`).
         const creada = mesaCobrando
-          ? await api.cobrarMesa(mesaCobrando.id, {
-              pagos,
-              clienteRequestId: intento.actual(`mesa:${mesaCobrando.id}`),
-            })
+          ? await api.cobrarMesa(
+              mesaCobrando.id,
+              cuerpoCobroDeMesa(
+                consumoDeMesa(mesaCobrando),
+                pagos,
+                extra?.propinaMesa,
+                intento.actual(`mesa:${mesaCobrando.id}`),
+              ),
+            )
           : await (async () => {
               const venta = cuerpo ?? cuerpoVenta(pagos);
               const r = await vender({
@@ -628,6 +636,18 @@ function PuntoDeVenta() {
         // Una promo cambió entre la cotización y el cobro: se recalcula para
         // que al volver el carrito muestre el total nuevo.
         if (err instanceof ApiError && err.codigo === "DESCUENTO_CAMBIO") descuentos.recotizar();
+        // El mesero le sumó algo a la mesa mientras la cajera cobraba: se
+        // recarga la cuenta para que el total nuevo quede a la vista. Antes
+        // llegaba "Los pagos (197) deben sumar el total de la venta (217)", que
+        // no decía qué pasó. Si no se puede releer, queda el mensaje del backend.
+        if (mesaCobrando && esCuentaCambiada(err)) {
+          const recargada = await api.mesa(mesaCobrando.id).catch(() => null);
+          if (recargada) {
+            setMesaCobrando(recargada);
+            setError(avisoCuentaCambiada(recargada, "caja"));
+            return;
+          }
+        }
         setError(err instanceof Error && err.message ? err.message : "No se pudo registrar la venta");
       } finally {
         setEnviando(false);
@@ -645,6 +665,11 @@ function PuntoDeVenta() {
       hayLugar,
       rechazoPorCupo,
       registrarConsumo,
+      // La mesa que se cobra: sin ella en la lista el cobro podía quedarse con
+      // la de antes (o con ninguna) apenas lo demás dejara de cambiar en cada
+      // render, y cobrar el carrito en vez de la mesa.
+      mesaCobrando,
+      porCobrar,
     ],
   );
 
@@ -928,6 +953,15 @@ function PuntoDeVenta() {
       {dialogoCobroIncompleto}
       <CobroEnLaCompu lineas={lineasCobro} total={totalCobro}>
       <PantallaCobro
+        // La cuenta recargada ("cambió mientras cobrabas") es otro cobro: con
+        // otro total, la pantalla se vuelve a montar de cero, como si la
+        // cajera hubiera vuelto a entrar a la mesa, que es lo que pide el
+        // backend. Si no, el QR confirmado por Bs 197 seguía confirmado
+        // con la cuenta en Bs 217, y "Confirmar cobro" registraba 217 por QR
+        // sin que nadie viera en el banco los Bs 20 de diferencia. El aviso no
+        // se pierde: viaja en `error`, que vive en el POS. Sin mesa no hay
+        // clave: el mostrador sigue como siempre.
+        key={mesaCobrando ? `mesa-${mesaCobrando.id}-${aCentavos(totalCobro)}` : undefined}
         total={totalCobro}
         subtitulo={
           mesaCobrando
@@ -962,12 +996,16 @@ function PuntoDeVenta() {
           }
           setPantalla(datosEntrega ? "entrega" : "venta");
         }}
+        // Cobrando una mesa: la propina de la mesa (para el mesero, no entra al
+        // cajón). Sin esto, el cobro de siempre.
+        cobroDeMesa={mesaCobrando ? "caja" : undefined}
         onConfirmar={(pagos, extra) =>
-          // Una mesa no es una cita: su cobro sigue directo (y no lleva
-          // propinas por profesional: el cobro de la mesa no las ofrece).
+          // Una mesa no es una cita: su cobro sigue directo. No lleva propinas
+          // por profesional (el cobro de la mesa no las ofrece) pero sí la de
+          // la mesa, en `extra.propinaMesa`.
           // QA PER-01: el `extra` (las propinas) se descartaba acá y ninguna
           // propina cobrada desde la web llegaba al backend.
-          mesaCobrando ? void cobrar(pagos) : confirmandoCita(() => void cobrar(pagos, extra))
+          mesaCobrando ? void cobrar(pagos, extra) : confirmandoCita(() => void cobrar(pagos, extra))
         }
         // Fiar sólo tiene sentido en una venta de mostrador: un pedido de
         // delivery ya define quién y cuándo paga, y una mesa se fía desde el

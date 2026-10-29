@@ -31,6 +31,9 @@ function buscarForma(formas: FormaPago[], nombre: string): FormaPago | undefined
   return formas.find((f) => f.nombre.toLowerCase() === nombre.toLowerCase());
 }
 
+/** El tope de la propina de una mesa: el `@Max` de `CobrarMesaDto` en el backend. */
+const PROPINA_MESA_MAXIMA = 100_000;
+
 /**
  * Lo que el cliente suele entregar: el total justo y los billetes o monedas de
  * Bolivia que lo cubren solos. Antes se redondeaba a múltiplos (Bs 40, Bs 150…)
@@ -59,6 +62,7 @@ export default function PantallaCobro({
   bloqueado = false,
   recibidoVacioEsExacto = false,
   qrEnUnPaso = false,
+  cobroDeMesa,
 }: {
   total: number;
   /** Qué se está cobrando ("Mesa 4 · Juan"), para no cobrar la mesa equivocada. */
@@ -69,8 +73,14 @@ export default function PantallaCobro({
   /** Belleza (propinas): los profesionales de la venta. Sin esto, no hay propina. */
   profesionales?: ProfesionalCobro[];
   onAtras: () => void;
-  /** `extra` sólo viaja con propinas (belleza); el cobro de siempre no lo trae. */
-  onConfirmar: (pagos: PagoInput[], extra?: { propinas?: PropinaInput[] }) => void;
+  /**
+   * `extra` sólo viaja con propinas (las de belleza, o la de una mesa en
+   * `propinaMesa`); el cobro de siempre no lo trae.
+   */
+  onConfirmar: (
+    pagos: PagoInput[],
+    extra?: { propinas?: PropinaInput[]; propinaMesa?: number },
+  ) => void;
   /** Sólo se ofrece si el plan incluye fiado. Lleva las propinas anotadas acá. */
   onCredito?: (extra?: { propinas?: PropinaInput[] }) => void;
   enviando: boolean;
@@ -98,6 +108,14 @@ export default function PantallaCobro({
    * y billar no lo pasan: siguen con las dos confirmaciones.
    */
   qrEnUnPaso?: boolean;
+  /**
+   * Se cobra una mesa del salón: desde la caja, o el mesero que la cobra él
+   * mismo. Suma el campo de la propina de la mesa —no entra al cajón: va al
+   * turno del mesero— y, si cobra el mesero, el aviso del efectivo que se
+   * queda encima. Sin esto (el POS de mostrador, belleza, el instituto) el
+   * cobro es el de siempre.
+   */
+  cobroDeMesa?: "caja" | "mesero";
 }) {
   const { incluye, negocio, usuario } = useAuth();
   const formaEfectivo = buscarForma(formasPago, "Efectivo");
@@ -146,6 +164,12 @@ export default function PantallaCobro({
    * cobrada por el solo hecho de haber elegido QR. Igual que en la app.
    */
   const [qrConfirmado, setQrConfirmado] = useState(false);
+  /**
+   * La propina de una mesa, tecleada como cualquier monto de la caja. Viaja
+   * aparte de los pagos y no toca el vuelto: no es plata del cajón.
+   */
+  const [propinaMesa, setPropinaMesa] = useState("");
+  const propinaMesaNum = cobroDeMesa ? Math.max(0, aCentavos(leerMonto(propinaMesa) ?? 0)) : 0;
 
   // En centavos, como los guarda el backend: con tres decimales el QR más el
   // efectivo dejaban de sumar el total (400). Y se lee como en el cierre:
@@ -170,19 +194,35 @@ export default function PantallaCobro({
   const cambio = metodo === "QR" ? 0 : vuelto(recibidoNum, enMano);
   const falta =
     metodo === "QR" ? 0 : Math.max(0, Math.round((enMano - recibidoNum) * 100) / 100);
+  /**
+   * Cobrando el mesero: el efectivo de la venta que se queda encima. Es la
+   * entrega que nace en el backend y que la caja le va a pedir; lo que entra
+   * por QR no pasa por su mano y no se entrega.
+   */
+  const efectivoDelMesero =
+    cobroDeMesa === "mesero" && !nadaQueCobrar && metodo !== "QR" ? aCubrirEnEfectivo : 0;
 
   const sugerencias = useMemo(() => sugerenciasEfectivo(enMano), [enMano]);
   /** Lo que tiene que entrar por QR: la parte de la venta más la propina por QR. */
   const qrConPropina = (deLaVenta: number) => Math.round((deLaVenta + extraQr) * 100) / 100;
 
-  /** Las propinas viajan sólo si hay: el cobro de siempre llama igual que antes. */
+  /**
+   * Las propinas viajan sólo si hay: el cobro de siempre llama igual que antes.
+   * La de una mesa va en `propinaMesa`, aparte de los pagos.
+   */
   function enviar(pagos: PagoInput[]) {
-    if (extra) onConfirmar(pagos, extra);
+    const conTodo = esPositivo(propinaMesaNum) ? { ...extra, propinaMesa: propinaMesaNum } : extra;
+    if (conTodo) onConfirmar(pagos, conTodo);
     else onConfirmar(pagos);
   }
 
   function confirmar() {
     setErrorLocal("");
+
+    // El tope del backend (CobrarMesaDto). Más que esto es un monto tecleado en
+    // el campo equivocado, y el rechazo del backend viene en inglés.
+    if (excede(propinaMesaNum, PROPINA_MESA_MAXIMA))
+      return setErrorLocal(`La propina no puede pasar de ${fmtMoney(PROPINA_MESA_MAXIMA)}.`);
 
     // El vale cubre todo (o no hay nada que cobrar): ni efectivo ni QR. La
     // propina en efectivo se recibe en mano y la registra el backend.
@@ -469,6 +509,22 @@ export default function PantallaCobro({
               {extraQr > 0 && <p>Cobrá {fmtMoney(extraQr)} de propina por QR</p>}
             </div>
           )}
+
+          {/* La propina de la mesa, como en la app (caja y "Cobrar yo"). No
+              suma al total ni al vuelto: se anota para el turno del mesero
+              (Mi turno, Ventas por mesero), que desde la web nunca la recibía. */}
+          {cobroDeMesa && (
+            <Campo
+              label="Propina (opcional)"
+              hint={
+                cobroDeMesa === "mesero"
+                  ? "No entra al cajón ni se entrega en caja: se anota en tu turno."
+                  : "No entra al cajón: va al turno del mesero."
+              }
+            >
+              <InputMonto value={propinaMesa} onChange={setPropinaMesa} placeholder="0,00" />
+            </Campo>
+          )}
         </div>
       </div>
 
@@ -479,6 +535,15 @@ export default function PantallaCobro({
               larga (total, métodos, QR, efectivo, sugerencias, vuelto) y el
               mensaje se escribía arriba, fuera de la vista. El cajero tocaba
               "Confirmar", no veía pasar nada y volvía a tocar. */}
+          {/* Antes de cobrar, el mesero lee cuánto efectivo se queda encima y
+              que la caja se lo va a pedir: es lo que hace seguro que cobre él
+              (la entrega nace sola en el backend). Va en el pie, junto al
+              botón, como en la app. */}
+          {esPositivo(efectivoDelMesero) && (
+            <p role="note" className="rounded-xl bg-warning-bg px-4 py-2.5 text-[13px] font-semibold text-warning-text">
+              Te quedás con {fmtMoney(efectivoDelMesero)} en efectivo. Entregalos en caja y esperá que te los aprueben.
+            </p>
+          )}
           <ErrorMsg>{errorLocal || error}</ErrorMsg>
           <Boton onClick={confirmar} disabled={enviando || bloqueado} className="w-full py-3 text-base">
             {enviando

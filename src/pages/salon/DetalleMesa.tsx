@@ -3,6 +3,8 @@ import { Icon } from "../../components/Icon";
 import { Boton, ErrorMsg } from "../../components/ui";
 import { api } from "../../lib/api";
 import { fmtMoney, fmtNum } from "../../lib/format";
+import { tienePermiso } from "../../lib/permisos";
+import { useAuth } from "../../store/AuthContext";
 import type { Comanda, ItemComanda, Mesa } from "../../types/salon";
 import { AnularItem, ElegirMesa, Reserva } from "./AccionesMesa";
 import ComprobanteMesa from "./ComprobanteMesa";
@@ -35,6 +37,8 @@ export default function DetalleMesa({
   onAgregarPedido,
   onAbrirMesa,
   onCobrarMesa,
+  aviso,
+  abrirRecibo = false,
 }: {
   mesa: Mesa;
   /** Todo el salón: hace falta para elegir a qué mesa pasar o juntar. */
@@ -47,9 +51,19 @@ export default function DetalleMesa({
   /**
    * Cobrar la mesa acá mismo. Sólo llega si el negocio prendió la capacidad
    * `mesero_cobra`; sin ella la cuenta pasa a caja y el mesero no toca plata.
+   * Aun con ella, el botón aparece sólo cuando corresponde (ver `pieDeMesa`).
    */
   onCobrarMesa?: (mesa: Mesa) => void;
+  /**
+   * Algo que pasó con esta mesa y hay que leer antes de seguir: que la cuenta
+   * cambió mientras se cobraba. No es un cartelito de 3 segundos: queda hasta
+   * que se toca otra cosa.
+   */
+  aviso?: string;
+  /** Recién cobrada por el mesero: se abre el recibo para dárselo al cliente. */
+  abrirRecibo?: boolean;
 }) {
+  const { usuario } = useAuth();
   /**
    * Guard del doble toque: mientras hay una acción en curso, las demás se
    * ignoran. Un doble toque en "Pedir la cuenta" es una mesa mandada dos veces
@@ -62,7 +76,7 @@ export default function DetalleMesa({
   const [quitando, setQuitando] = useState(false);
   const [elegir, setElegir] = useState<"pasar" | "juntar" | null>(null);
   const [reservando, setReservando] = useState(false);
-  const [viendoComprobante, setViendoComprobante] = useState(false);
+  const [viendoComprobante, setViendoComprobante] = useState(abrirRecibo);
   const [anular, setAnular] = useState<{ comanda: Comanda; item: ItemComanda } | null>(
     null,
   );
@@ -70,7 +84,16 @@ export default function DetalleMesa({
   const consumo = consumoDeMesa(mesa);
   const items = cantidadItems(mesa);
   const ocupada = estaOcupada(mesa);
-  const pie = pieDeMesa(mesa, fmtMoney);
+  const pie = pieDeMesa(
+    mesa,
+    fmtMoney,
+    onCobrarMesa
+      ? {
+          cobraSusMesas: tienePermiso(usuario, "salon.cobrar_mesero"),
+          usuarioId: usuario?.id,
+        }
+      : undefined,
+  );
 
   async function ejecutar(accion: AccionMesa) {
     if (procesando) return;
@@ -271,6 +294,15 @@ export default function DetalleMesa({
         </div>
 
         <div className="border-t border-borde bg-white p-4">
+          {aviso && (
+            <p
+              role="alert"
+              className="mb-2 flex items-start gap-2 rounded-xl border border-[#FCD34D] bg-[#FFFBEB] px-3.5 py-2.5 text-[13px] font-semibold text-[#D97706]"
+            >
+              <Icon name="alert" size={15} />
+              <span>{aviso}</span>
+            </p>
+          )}
           {/* El banner explica por qué el botón de abajo está apagado: separado
               se vuelve un dato suelto más. */}
           {pie.banner && (
@@ -288,18 +320,19 @@ export default function DetalleMesa({
           {/* Cobrar va ARRIBA del pie normal cuando está habilitado: si el
               mesero cobra, "pasar a caja" deja de ser lo que corresponde hacer
               y pasa a ser la alternativa (el cliente que quiere pagar con algo
-              que el mesero no maneja). Sólo con consumo: la caja no cobra Bs 0. */}
-          {onCobrarMesa && ocupada && consumo > 0 && (
+              que el mesero no maneja). Cuándo se ofrece lo decide `pieDeMesa`
+              con las reglas de la app. */}
+          {pie.cobrar && onCobrarMesa && (
             <Boton
               onClick={() => onCobrarMesa(mesa)}
               disabled={procesando}
               className="mb-2 w-full py-3 text-base"
             >
-              Cobrar {fmtMoney(consumo)}
+              {pie.cobrar.texto}
             </Boton>
           )}
           <Boton
-            variante={onCobrarMesa && ocupada && consumo > 0 ? "ghost" : undefined}
+            variante={pie.cobrar && onCobrarMesa ? "ghost" : undefined}
             onClick={() => ejecutar(pie.principal.accion)}
             disabled={procesando || pie.principal.deshabilitado}
             className="w-full py-3 text-base"

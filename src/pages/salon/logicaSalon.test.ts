@@ -9,6 +9,7 @@ import {
   filtrarMesas,
   hace,
   inicialesDe,
+  mesasParaElegir,
   porPersona,
   porServir,
   primerNombre,
@@ -202,5 +203,44 @@ describe("nombres y tiempos", () => {
     // La tarjeta esconde el dato en vez de mostrar un guion suelto.
     expect(hace(null)).toBe("");
     expect(hace("no es fecha")).toBe("");
+  });
+});
+
+/**
+ * BUG-salon-4: a qué mesas se puede ir al pasar, juntar o unir. Son las
+ * reglas del backend: una mesa que la lista ofrece y el backend rechaza es un
+ * toque perdido con el cliente esperando.
+ */
+describe("las mesas que se ofrecen para pasar, juntar o unir", () => {
+  const actual = mesa({ id: 1, codigo: "M1", estado: "OCUPADA" });
+  const libre = mesa({ id: 2, codigo: "M2" });
+  const libreConArrimada = mesa({ id: 3, codigo: "M3", unidas: [{ id: 9, codigo: "M9", capacidad: 2 }] });
+  const arrimada = mesa({ id: 9, codigo: "M9", unidaAId: 3 });
+  const ocupada = mesa({ id: 4, codigo: "M4", estado: "OCUPADA" });
+  const enCaja = mesa({ id: 5, codigo: "M5", estado: "CUENTA" });
+  const pagada = mesa({ id: 6, codigo: "M6", estado: "PAGADA" });
+  const reservada = mesa({ id: 7, codigo: "M7", estado: "RESERVADA" });
+  const todas = [actual, libre, libreConArrimada, arrimada, ocupada, enCaja, pagada, reservada];
+  const codigos = (ms: Mesa[]) => ms.map((m) => m.codigo);
+
+  it("unir: sólo libres sin otras arrimadas ni arrimadas a otra", () => {
+    // El backend: "ya tiene otras mesas unidas: separalas primero". Las
+    // uniones son planas, y la lista las ofrecía igual.
+    expect(codigos(mesasParaElegir("unir", actual, todas))).toEqual(["M2"]);
+  });
+
+  it("juntar: con gente y sin cobrar; la pagada no", () => {
+    // El backend: "ya se cobró: no se puede juntar". La lista usaba
+    // estaOcupada, que cuenta la PAGADA.
+    expect(codigos(mesasParaElegir("juntar", actual, todas))).toEqual(["M4", "M5"]);
+  });
+
+  it("pasar: a una libre, también si tiene otras arrimadas (no a la arrimada)", () => {
+    expect(codigos(mesasParaElegir("pasar", actual, todas))).toEqual(["M2", "M3"]);
+  });
+
+  it("nunca ofrece la misma mesa", () => {
+    const libreActual = mesa({ id: 2, codigo: "M2" });
+    expect(codigos(mesasParaElegir("unir", libreActual, todas))).not.toContain("M2");
   });
 });
