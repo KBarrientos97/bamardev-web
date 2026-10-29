@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { Icon } from "../components/Icon";
 import InputMonto from "../components/InputMonto";
 import { Buscador, Chips, EncabezadoPagina } from "../components/filtros";
 import { AvisoGastosAtrasados } from "../components/AvisoGastosAtrasados";
+import { CampoCategoria, PanelCategorias } from "../components/CategoriasGasto";
 import { ProximosAutomaticos } from "../components/ProximosAutomaticos";
 import {
   AvisoOk,
@@ -40,11 +41,11 @@ import { fmtFecha, fmtMoney } from "../lib/format";
 import { useApi } from "../lib/useApi";
 import { useSucursales } from "../lib/useSucursales";
 import type {
+  CategoriaGasto,
   FiltroGasto,
   Gasto,
   GastoInput,
   MetodoPagoGasto,
-  TipoCostoGasto,
 } from "../types";
 
 /**
@@ -93,6 +94,8 @@ export default function Gastos() {
 
   const [editando, setEditando] = useState<Gasto | null | undefined>(undefined);
   const [pagando, setPagando] = useState<Gasto | null>(null);
+  const [deshaciendo, setDeshaciendo] = useState<Gasto | null>(null);
+  const [borrando, setBorrando] = useState<Gasto | null>(null);
   const [aviso, mostrarAviso] = useAviso();
 
   const desde = inicioDeMes(`${mes}-01`);
@@ -300,14 +303,35 @@ export default function Gastos() {
                     return <Badge tono={b.tono}>{b.texto}</Badge>;
                   })()}
                 </div>
-                <div className="flex gap-2">
+                {/* flex-wrap: con cuatro botones, en el teléfono no entran en
+                    un renglón y se salían de la tarjeta. */}
+                <div className="flex flex-wrap justify-end gap-2">
                   {!saldado(g) && (
                     <Boton variante="ghost" onClick={() => setPagando(g)}>
                       Registrar pago
                     </Boton>
                   )}
+                  {/* En la fila y no sólo dentro de "Registrar pago", que se
+                      esconde con el gasto saldado: el caso típico —marcó "Ya
+                      lo pagué" por error— no tenía salida (G-01). */}
+                  {esPositivo(g.pagado) && (
+                    <Boton variante="ghost" onClick={() => setDeshaciendo(g)}>
+                      Deshacer el último pago
+                    </Boton>
+                  )}
                   <Boton variante="ghost" onClick={() => setEditando(g)}>
                     Editar
+                  </Boton>
+                  {/* Un gasto cargado dos veces inflaba el total del mes y
+                      restaba de más en el Estado de resultado, y en esta
+                      pantalla no había cómo sacarlo (G-02). */}
+                  <Boton
+                    variante="ghost"
+                    onClick={() => setBorrando(g)}
+                    aria-label={`Eliminar ${g.concepto}`}
+                    title="Eliminar"
+                  >
+                    <Icon name="trash" size={16} />
                   </Boton>
                 </div>
               </li>
@@ -327,6 +351,11 @@ export default function Gastos() {
             mostrarAviso(texto);
             recargar();
           }}
+          onCatalogo={(nuevo) => {
+            categorias.setDatos(nuevo);
+            // Un renombre cambia cómo se lee cada fila de la lista.
+            lista.recargar();
+          }}
         />
       )}
 
@@ -341,6 +370,152 @@ export default function Gastos() {
           }}
         />
       )}
+
+      {deshaciendo && (
+        <ConfirmarAccion
+          titulo="Deshacer el último pago"
+          etiquetaOk="Sí, deshacer"
+          etiquetaEnCurso="Deshaciendo…"
+          accion={() => api.deshacerUltimoPagoGasto(deshaciendo.id)}
+          onCerrar={() => setDeshaciendo(null)}
+          onListo={() => {
+            setDeshaciendo(null);
+            mostrarAviso(`${deshaciendo.concepto}: se deshizo el último pago`);
+            recargar();
+          }}
+        >
+          <AvisoDeshacerPago gasto={deshaciendo} />
+        </ConfirmarAccion>
+      )}
+
+      {borrando && (
+        <ConfirmarAccion
+          titulo="¿Eliminar este gasto?"
+          etiquetaOk="Sí, eliminar"
+          etiquetaEnCurso="Eliminando…"
+          accion={() => api.eliminarGasto(borrando.id)}
+          onCerrar={() => setBorrando(null)}
+          onListo={() => {
+            setBorrando(null);
+            mostrarAviso(`${borrando.concepto}: eliminado`);
+            recargar();
+          }}
+        >
+          <div className="space-y-2 text-sm text-texto-2">
+            <p>
+              <strong>{borrando.concepto}</strong> · {fmtMoney(borrando.monto)}
+            </p>
+            <p>
+              Se borra el gasto y sus pagos registrados
+              {esPositivo(borrando.pagado) ? ` (${fmtMoney(borrando.pagado)} pagados)` : ""}. Deja de
+              contar en el resultado del mes y no se puede deshacer.
+            </p>
+          </div>
+        </ConfirmarAccion>
+      )}
+    </div>
+  );
+}
+
+// ── Confirmaciones ──────────────────────────────────────────────────────────
+
+/**
+ * Pregunta antes de tocar la plata de un gasto, y no se cierra hasta que el
+ * backend contesta.
+ *
+ * No es el `Confirmar` de siempre por dos cosas. El error se muestra adentro:
+ * si deshacer falla, quien lo pidió tiene que leerlo donde lo pidió, no en un
+ * cartel de la pantalla que quedó tapada. Y el candado es un ref: deshacer no
+ * es idempotente —cada llamada borra el último pago que encuentra— y un doble
+ * clic sobre un sueldo pagado en dos veces se llevaba también el adelanto,
+ * porque `setEnCurso(true)` no frena el segundo clic del mismo tick.
+ */
+function ConfirmarAccion({
+  titulo,
+  etiquetaOk,
+  etiquetaEnCurso,
+  accion,
+  onCerrar,
+  onListo,
+  children,
+}: {
+  titulo: string;
+  etiquetaOk: string;
+  etiquetaEnCurso: string;
+  accion: () => Promise<unknown>;
+  onCerrar: () => void;
+  onListo: () => void;
+  children: ReactNode;
+}) {
+  const [enCurso, setEnCurso] = useState(false);
+  const [error, setError] = useState("");
+  const enVuelo = useRef(false);
+
+  const confirmar = async () => {
+    if (enVuelo.current) return;
+    enVuelo.current = true;
+    setEnCurso(true);
+    setError("");
+    try {
+      await accion();
+      onListo();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudo completar");
+      enVuelo.current = false;
+      setEnCurso(false);
+    }
+  };
+
+  return (
+    <Modal
+      abierto
+      titulo={titulo}
+      // Con la llamada en vuelo no se cierra: cerrarlo no la frena, y la
+      // pantalla quedaría sin decir si pasó o no.
+      onClose={() => {
+        if (!enVuelo.current) onCerrar();
+      }}
+      ancho="max-w-sm"
+      acciones={
+        <>
+          <Boton variante="ghost" onClick={onCerrar} disabled={enCurso}>
+            No, dejarlo
+          </Boton>
+          <Boton variante="danger" onClick={confirmar} disabled={enCurso}>
+            {enCurso ? etiquetaEnCurso : etiquetaOk}
+          </Boton>
+        </>
+      }
+    >
+      <div className="space-y-3">
+        {children}
+        {error && <ErrorMsg>{error}</ErrorMsg>}
+      </div>
+    </Modal>
+  );
+}
+
+/**
+ * Lo que se dice antes de deshacer un pago.
+ *
+ * NO dice de cuánto fue el último pago, porque no se sabe: el gasto trae lo
+ * pagado en total y no sus pagos, y el backend borra sólo el último. Decía
+ * "Deshacer el último pago de Bs 800" sobre un sueldo pagado 500 + 300, y se
+ * iban los 300 (BUG-finanzas-4). Por eso va lo pagado hasta hoy, aparte, y lo
+ * que pasa en los dos casos posibles.
+ */
+function AvisoDeshacerPago({ gasto }: { gasto: Gasto }) {
+  return (
+    <div className="space-y-2 text-sm text-texto-2">
+      <p>
+        <strong>{gasto.concepto}</strong> · pagado hasta hoy{" "}
+        <strong>{fmtMoney(gasto.pagado)}</strong> de {fmtMoney(gasto.monto)}
+      </p>
+      <p>
+        Se borra sólo el último pago registrado, con su fecha y su método. Si se pagó de una vez, el
+        gasto vuelve a quedar pendiente; si se pagó en partes, queda lo anterior. El gasto sigue
+        cargado.
+      </p>
     </div>
   );
 }
@@ -353,13 +528,20 @@ export function FormGasto({
   sucursalSugerida,
   onCerrar,
   onGuardado,
+  onCatalogo,
 }: {
   /** null = alta. */
   gasto: Gasto | null;
-  categorias: { codigo: string; nombre: string; tipoCosto: TipoCostoGasto }[];
+  categorias: CategoriaGasto[];
   sucursalSugerida: number | null;
   onCerrar: () => void;
   onGuardado: (texto: string) => void;
+  /**
+   * Con esto el formulario deja crear y corregir categorías sin salir del
+   * gasto (G-03), y recibe el catálogo que quedó. La farmacia no lo pasa: las
+   * administra desde su propia pantalla y su formulario queda como estaba.
+   */
+  onCatalogo?: (lista: CategoriaGasto[]) => void;
 }) {
   const [concepto, setConcepto] = useState(gasto?.concepto ?? "");
   const [categoria, setCategoria] = useState(gasto?.categoria ?? "");
@@ -375,6 +557,9 @@ export function FormGasto({
   const [guardando, setGuardando] = useState(false);
   /** Ver `PanelPago`: el estado no frena el segundo clic del mismo tick. */
   const enVuelo = useRef(false);
+  /** true mientras el cuerpo del formulario muestra el panel de categorías. */
+  const [conCategorias, setConCategorias] = useState(false);
+  const panel = conCategorias && !!onCatalogo;
 
   const guardar = async () => {
     if (enVuelo.current) return;
@@ -382,6 +567,17 @@ export function FormGasto({
     if (!concepto.trim()) return setError("Ponele un concepto al gasto.");
     if (!categoria) return setError("Elegí una categoría.");
     if (m == null || !esPositivo(m)) return setError("El monto tiene que ser mayor a cero.");
+    // El monto no puede quedar por debajo de lo ya pagado (G-04). El PATCH no
+    // toca `pagado`, así que un alquiler de Bs 1.000 pagado entero y corregido
+    // a 600 quedaba "Total 600 / Pagado 1.000", y lo pagado de más se comía
+    // el pendiente de los otros gastos del mes. Lo que corresponde es deshacer
+    // el pago primero. El backend también lo rechaza; si su 400 llega igual
+    // (otro pagó mientras tanto), el catch de abajo muestra su mensaje.
+    if (gasto && excede(gasto.pagado, m)) {
+      return setError(
+        `Ya se pagaron ${fmtMoney(gasto.pagado)}: deshacé el pago antes de bajar el monto.`,
+      );
+    }
     if (vence && vence < fecha) {
       return setError("El vencimiento no puede ser anterior a la fecha del gasto.");
     }
@@ -422,21 +618,54 @@ export function FormGasto({
   return (
     <Modal
       abierto
-      titulo={gasto ? "Editar gasto" : "Nuevo gasto"}
-      onClose={onCerrar}
+      titulo={panel ? "Categorías de gasto" : gasto ? "Editar gasto" : "Nuevo gasto"}
+      subtitulo={panel ? "Tocá una para elegirla" : undefined}
+      // Con el panel abierto, cerrar (la X o Escape) vuelve al gasto: cerrar
+      // todo tiraba lo que ya estaba escrito.
+      onClose={panel ? () => setConCategorias(false) : onCerrar}
       cerrarAlClicAfuera={false}
       acciones={
-        <>
-          <Boton variante="ghost" onClick={onCerrar} disabled={guardando}>
-            Cancelar
+        panel ? (
+          <Boton variante="ghost" onClick={() => setConCategorias(false)}>
+            Volver al gasto
           </Boton>
-          <Boton onClick={guardar} disabled={guardando}>
-            {guardando ? "Guardando…" : "Guardar"}
-          </Boton>
-        </>
+        ) : (
+          <>
+            <Boton variante="ghost" onClick={onCerrar} disabled={guardando}>
+              Cancelar
+            </Boton>
+            <Boton onClick={guardar} disabled={guardando}>
+              {guardando ? "Guardando…" : "Guardar"}
+            </Boton>
+          </>
+        )
       }
     >
-      <div className="space-y-3">
+      {panel && onCatalogo && (
+        <PanelCategorias
+          categorias={categorias}
+          elegida={categoria}
+          onElegir={(c) => {
+            setCategoria(c.codigo);
+            setConCategorias(false);
+          }}
+          onCatalogo={(lista) => {
+            // Se retiró la que estaba elegida: se pide elegir otra en vez de
+            // guardar el gasto en una que ya no se ofrece. Menos si es la que el
+            // gasto YA tenía: retirarla no toca los gastos que la usan (lo dice
+            // el panel), y vaciarla frenaba Guardar con "Elegí una categoría",
+            // así que para corregirle la nota había que cambiarle la categoría.
+            // `CampoCategoria` la sigue ofreciendo como "ya no se ofrece".
+            const estaba = categorias.some((c) => c.codigo === categoria);
+            const seRetiro = estaba && !lista.some((c) => c.codigo === categoria);
+            if (seRetiro && categoria !== gasto?.categoria) setCategoria("");
+            onCatalogo(lista);
+          }}
+        />
+      )}
+      {/* Escondido y no desmontado mientras se ve el panel: así vuelve con lo
+          escrito y sin que el autofoco salte de nuevo al concepto. */}
+      <div className="space-y-3" hidden={panel}>
         <Campo label="Concepto">
           <Input
             value={concepto}
@@ -445,16 +674,13 @@ export function FormGasto({
             autoFocus
           />
         </Campo>
-        <Campo label="Categoría">
-          <Select value={categoria} onChange={(e) => setCategoria(e.target.value)}>
-            <option value="">Elegí una categoría</option>
-            {categorias.map((c) => (
-              <option key={c.codigo} value={c.codigo}>
-                {c.nombre} ({c.tipoCosto === "FIJO" ? "Fijo" : "Variable"})
-              </option>
-            ))}
-          </Select>
-        </Campo>
+        <CampoCategoria
+          categorias={categorias}
+          valor={categoria}
+          onChange={setCategoria}
+          original={gasto ? { codigo: gasto.categoria, nombre: gasto.categoriaNombre } : null}
+          onAdministrar={onCatalogo ? () => setConCategorias(true) : undefined}
+        />
         <div className="grid gap-3 sm:grid-cols-2">
           <Campo label="Monto (Bs)">
             <InputMonto value={monto} onChange={setMonto} placeholder="0,00" />
@@ -543,6 +769,13 @@ export function PanelPago({
    * pagado en dos veces se lleva también el adelanto que estaba bien.
    */
   const enVuelo = useRef(false);
+  /**
+   * true mientras se pregunta si deshacer. Antes el enlace llamaba directo a
+   * la API: un toque de paso borraba un pago, con su fecha y su método, sin
+   * ninguna pregunta (BUG-finanzas-1). Se pregunta acá mismo y no en otro
+   * popup encima, que Escape cerraría de a dos.
+   */
+  const [preguntandoDeshacer, setPreguntandoDeshacer] = useState(false);
 
   const confirmar = async () => {
     if (enVuelo.current) return;
@@ -584,6 +817,42 @@ export function PanelPago({
       setGuardando(false);
     }
   };
+
+  if (preguntandoDeshacer) {
+    return (
+      <Modal
+        abierto
+        titulo="Deshacer el último pago"
+        // Ver `ConfirmarAccion`: con la llamada en vuelo no se cierra.
+        onClose={() => {
+          if (!enVuelo.current) onCerrar();
+        }}
+        cerrarAlClicAfuera={false}
+        acciones={
+          <>
+            <Boton
+              variante="ghost"
+              onClick={() => {
+                setError("");
+                setPreguntandoDeshacer(false);
+              }}
+              disabled={guardando}
+            >
+              No, dejarlo
+            </Boton>
+            <Boton variante="danger" onClick={deshacer} disabled={guardando}>
+              {guardando ? "Deshaciendo…" : "Sí, deshacer"}
+            </Boton>
+          </>
+        }
+      >
+        <div className="space-y-3">
+          <AvisoDeshacerPago gasto={gasto} />
+          {error && <ErrorMsg>{error}</ErrorMsg>}
+        </div>
+      </Modal>
+    );
+  }
 
   return (
     <Modal
@@ -632,16 +901,26 @@ export function PanelPago({
         </div>
 
         {/* Deshacer es lo que arregla haberlo cargado por error. Sólo aparece
-            si hay algo que deshacer. */}
+            si hay algo que deshacer. Lo pagado va APARTE del enlace: decía
+            "Deshacer el último pago de Bs 800" con el total de un sueldo
+            pagado 500 + 300, y lo que se iba eran los 300 (BUG-finanzas-4). */}
         {esPositivo(gasto.pagado) && (
-          <button
-            type="button"
-            onClick={deshacer}
-            disabled={guardando}
-            className="text-sm text-texto-3 underline disabled:opacity-50"
-          >
-            Deshacer el último pago de {fmtMoney(gasto.pagado)}
-          </button>
+          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-sm text-texto-3">
+            <span>
+              Pagado hasta hoy <strong className="text-texto-2">{fmtMoney(gasto.pagado)}</strong>
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                setError("");
+                setPreguntandoDeshacer(true);
+              }}
+              disabled={guardando}
+              className="underline disabled:opacity-50"
+            >
+              Deshacer el último pago
+            </button>
+          </div>
         )}
 
         {error && <ErrorMsg>{error}</ErrorMsg>}

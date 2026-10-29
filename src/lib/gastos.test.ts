@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
+  categoriaConNombre,
+  codigoDesdeNombre,
   contar,
   fmtSobreVentas,
   gastosSuperanVentas,
   proximosAutomaticos,
   sobreVentas,
 } from "./gastos";
-import type { PlantillaGasto } from "../types";
+import type { CategoriaGasto, PlantillaGasto } from "../types";
 
 describe("gastos sobre las ventas", () => {
   it("un mes que gastó el triple de lo vendido dice 300%, no 100%", () => {
@@ -102,5 +104,37 @@ describe("proximosAutomaticos", () => {
 
   it("un mes pasado no anuncia nada: lo cargado ya está en la lista", () => {
     expect(proximosAutomaticos([alquiler, sueldos], "2026-08", HOY)).toEqual([]);
+  });
+});
+
+describe("el código de una categoría nueva", () => {
+  it("es el mismo que deriva el backend: mayúsculas, sin tildes y con guiones bajos", () => {
+    expect(codigoDesdeNombre("Música en vivo")).toBe("MUSICA_EN_VIVO");
+    expect(codigoDesdeNombre("  Comisión   delivery ")).toBe("COMISION_DELIVERY");
+    // La ñ pierde la tilde como allá: "Señal" y "Senal" son el mismo código.
+    expect(codigoDesdeNombre("Señal de TV")).toBe("SENAL_DE_TV");
+    expect(codigoDesdeNombre("!!")).toBe("OTROS");
+  });
+});
+
+describe("la categoría que ya existe con ese nombre", () => {
+  const catalogo: CategoriaGasto[] = [
+    { codigo: "GAS", nombre: "Gas", propia: false, tipoCosto: "VARIABLE" },
+    // Una del pack renombrada conserva su código.
+    { codigo: "LUZ", nombre: "Electricidad", propia: false, tipoCosto: "FIJO" },
+    { codigo: "MUSICA_EN_VIVO", nombre: "Música en vivo", propia: true, tipoCosto: "VARIABLE" },
+  ];
+
+  it("se encuentra por el código que le daría el backend o por el nombre, sin tildes ni mayúsculas", () => {
+    // El bug que evita: "Gas" escrito en Nueva categoría, con el Fijo que
+    // viene marcado, le cambiaba el tipo al Gas del pack y a todos sus meses.
+    expect(categoriaConNombre(catalogo, "gas")?.codigo).toBe("GAS");
+    expect(categoriaConNombre(catalogo, "Luz")?.codigo).toBe("LUZ");
+    expect(categoriaConNombre(catalogo, "electricidad")?.codigo).toBe("LUZ");
+    expect(categoriaConNombre(catalogo, "musica en vivo")?.codigo).toBe("MUSICA_EN_VIVO");
+  });
+
+  it("un nombre nuevo no coincide con nada", () => {
+    expect(categoriaConNombre(catalogo, "Peaje")).toBeUndefined();
   });
 });
