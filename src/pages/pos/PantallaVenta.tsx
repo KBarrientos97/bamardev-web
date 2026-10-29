@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { contiene } from "../../lib/texto";
 import { esFarmacia } from "../../lib/rubro";
 import CatalogoVenta from "../farmacia/CatalogoVenta";
@@ -128,12 +128,15 @@ export default function PantallaVenta({
   );
 
   const idsFiltrados = useMemo(() => filtrados.map(idDe), [filtrados]);
+  /** Lo que scrollea la grilla: se desplaza sola al llevar una card a su borde. */
+  const grillaRef = useRef<HTMLDivElement>(null);
   const arrastre = useArrastreGrilla({
     ids: idsFiltrados,
     onReordenar: alReordenar,
     // Con el carrito abierto en móvil la grilla está tapada: no hay nada que
     // arrastrar y el gesto sólo estorbaría al scroll de la hoja.
     activo: !carritoAbierto,
+    contenedor: grillaRef,
   });
 
   /** Lo que se pinta: durante el arrastre manda el orden en vuelo. */
@@ -211,7 +214,7 @@ export default function PantallaVenta({
           </div>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto p-4 pb-24 lg:pb-4">
+        <div ref={grillaRef} className="min-h-0 flex-1 overflow-y-auto p-4 pb-24 lg:pb-4">
           {filtrados.length === 0 ? (
             <Vacio
               icono="search"
@@ -232,7 +235,7 @@ export default function PantallaVenta({
                   arrastre={arrastre.props(p.id)}
                   // Un tap que terminó siendo arrastre no debe agregar al
                   // carrito: cobrar de más es peor que tener que tocar de nuevo.
-                  bloqueado={arrastre.arrastrando !== null}
+                  ignorarClic={arrastre.ignorarClic}
                 />
               ))}
             </ul>
@@ -310,7 +313,7 @@ function TarjetaVenta({
   onAgregar,
   onQuitar,
   arrastre,
-  bloqueado,
+  ignorarClic,
 }: {
   producto: Producto;
   /** Cuánto hay de este producto en el carrito. 0 = no está. */
@@ -321,8 +324,12 @@ function TarjetaVenta({
   arrastre: ReturnType<
     ReturnType<typeof useArrastreGrilla>["props"]
   >;
-  /** Hay un arrastre en curso: el tap no cuenta como "agregar". */
-  bloqueado: boolean;
+  /**
+   * El click es el final de un arrastre: no cuenta como "agregar". Se pregunta
+   * al hacer click y no al dibujar, porque al soltar la card el arrastre ya
+   * terminó cuando llega el click.
+   */
+  ignorarClic: () => boolean;
 }) {
   // Sólo los almacenables se quedan sin stock; un elaborado se prepara al
   // momento y un combo descuenta sus ingredientes.
@@ -333,8 +340,10 @@ function TarjetaVenta({
   return (
     <li
       onPointerDown={arrastre.onPointerDown}
-      onPointerEnter={arrastre.onPointerEnter}
+      onContextMenu={arrastre.onContextMenu}
+      onDragStart={arrastre.onDragStart}
       style={arrastre.style}
+      data-arrastre-id={arrastre["data-arrastre-id"]}
       className={arrastre["data-arrastrando"] ? "shadow-xl" : undefined}
     >
       {/* Tres estados, como en la app: normal, en el carrito (borde verde y
@@ -351,7 +360,7 @@ function TarjetaVenta({
       >
         <button
           onClick={() => {
-            if (!bloqueado) onAgregar();
+            if (!ignorarClic()) onAgregar();
           }}
           disabled={agotado}
           className="flex flex-1 flex-col text-left"
@@ -392,7 +401,11 @@ function TarjetaVenta({
         {enCarrito && (
           <div className="mt-2 flex h-9 items-center justify-between rounded-full border border-primary bg-white px-1">
             <button
-              onClick={onQuitar}
+              // Soltar una card arrastrada encima del − o el + no cambia la
+              // cantidad: el mismo click que en el cuerpo de la card.
+              onClick={() => {
+                if (!ignorarClic()) onQuitar();
+              }}
               aria-label={cantidad === 1 ? "Quitar del pedido" : "Uno menos"}
               className={`flex h-9 w-9 items-center justify-center rounded-full ${
                 // En la última unidad el "−" se vuelve tacho: avisa que el
@@ -406,7 +419,9 @@ function TarjetaVenta({
             </button>
             <span className="text-sm font-bold text-texto">{fmtNum(cantidad)}</span>
             <button
-              onClick={onAgregar}
+              onClick={() => {
+                if (!ignorarClic()) onAgregar();
+              }}
               aria-label="Uno más"
               className="flex h-9 w-9 items-center justify-center rounded-full text-primary-700 hover:bg-primary-50"
             >
