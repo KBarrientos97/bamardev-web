@@ -1,9 +1,10 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ApiError } from "../../lib/api";
+import { ApiError, api } from "../../lib/api";
+import type { ClienteCredito } from "../../types";
 import RutasBillar from "./RutasBillar";
-import { recargar } from "./store";
+import { leerBillar, recargar } from "./store";
 
 // La primera vez se transforma todo el billar: en una máquina cargada pasa los 5 s.
 vi.setConfig({ testTimeout: 60_000 });
@@ -603,5 +604,76 @@ describe("Cerrar mesa con la cuenta vieja", () => {
     fireEvent.change(screen.getByLabelText("En efectivo"), { target: { value: "5" } });
     expect(screen.queryByText(/acá sale el QR por el resto/)).not.toBeInTheDocument();
     expect(screen.getByText(/Revisá que el pago de Bs.10,00 haya llegado/)).toBeInTheDocument();
+  });
+});
+
+/**
+ * El fiado del cierre es la pantalla de crédito del POS (`PantallaCredito`):
+ * lo que cambia ahí le cambia al billar. Estas guardas fijan lo que el billar
+ * espera de ella (revisión del 28-oct).
+ */
+describe("Pasar el saldo a fiado", () => {
+  /** Ya fió antes y no tiene límite: el fiado sale sin firma. */
+  const JUAN: ClienteCredito = {
+    id: 6,
+    nombre: "Juan Pérez",
+    telefono: null,
+    nota: null,
+    saldoTotal: 0,
+    montoVencido: 0,
+    creditosAbiertos: 0,
+    vecesFiado: 2,
+    limiteCredito: null,
+    disponible: null,
+  };
+
+  it("con el nombre de un cliente que ya existe, el aviso lo sigue nombrando", async () => {
+    // La pantalla del POS reconoce al cliente por lo tecleado y lo manda por su
+    // id. Sin el nombre al lado, el aviso de abajo pasaba de "a cuentas por
+    // cobrar (Juan Pérez)" a no nombrar a nadie.
+    vi.mocked(api.getClientesCredito).mockResolvedValueOnce([JUAN]);
+    caso.cerrar = () => ventaHecha();
+    await montar();
+    await tocar(screen.getByRole("button", { name: /Pasar saldo a fiado/ }), 0);
+    fireEvent.change(screen.getByPlaceholderText("Ej. Kevin Barrientos"), { target: { value: "Juan Pérez" } });
+    expect(screen.getByText("Ya fió antes con este nombre.")).toBeInTheDocument();
+    await tocar(screen.getByRole("button", { name: /Registrar fiado/ }));
+
+    expect(cobros).toHaveLength(1);
+    expect(cobros[0].credito).toMatchObject({ clienteId: 6, clienteNombre: "Juan Pérez" });
+    expect(leerBillar().toasts.at(-1)).toMatchObject({
+      tono: "verde",
+      texto: "Bs 15,00 a cuentas por cobrar (Juan Pérez).",
+    });
+  });
+
+  it("en mixto el campo es el adelanto entero: el efectivo es lo que no va por QR", async () => {
+    // El fiado del POS cambió (CRE-2, como Android): antes, en mixto, el campo
+    // era sólo la parte en efectivo y el QR se le sumaba; ahora es el adelanto
+    // entero. Con Bs 10 de adelanto y Bs 4 por QR entran Bs 6 en efectivo, no
+    // Bs 10: si el reparto se corriera sin que nadie lo note, el arqueo del
+    // billar esperaría efectivo que no entró al cajón.
+    caso.cerrar = () => ventaHecha();
+    await montar();
+    await tocar(screen.getByRole("button", { name: /Pasar saldo a fiado/ }), 0);
+    fireEvent.change(screen.getByPlaceholderText("Ej. Kevin Barrientos"), { target: { value: "Juan Pérez" } });
+    fireEvent.change(screen.getByLabelText("Adelanto en Bs"), { target: { value: "10" } });
+    fireEvent.click(screen.getByRole("button", { name: "Mixto" }));
+    fireEvent.change(screen.getByLabelText(/^Parte pagada por QR/), { target: { value: "4" } });
+    expect(screen.getByText(/^En efectivo:/)).toHaveTextContent("En efectivo: Bs 6,00");
+    expect(screen.getByText(/adelanta Bs 10,00/)).toBeInTheDocument();
+    await tocar(screen.getByRole("button", { name: /Confirmar pago recibido/ }), 0);
+    await tocar(screen.getByRole("button", { name: /Registrar fiado/ }));
+
+    expect(cobros).toHaveLength(1);
+    expect(cobros[0].pagos).toEqual([
+      { formaPagoId: 1, monto: 6, recibido: 6 },
+      { formaPagoId: 2, monto: 4 },
+    ]);
+    // Lo que queda debiendo es el saldo menos el adelanto entero.
+    expect(leerBillar().toasts.at(-1)).toMatchObject({
+      tono: "verde",
+      texto: "Bs 5,00 a cuentas por cobrar (Juan Pérez).",
+    });
   });
 });

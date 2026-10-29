@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import ComprobanteCredito, { type TipoComprobante } from "../components/ComprobanteCredito";
 import InputMonto from "../components/InputMonto";
@@ -28,11 +28,20 @@ import {
   useAviso,
   Vacio,
 } from "../components/ui";
-import { api } from "../lib/api";
+import { ApiError, api } from "../lib/api";
 import { fmtFecha, fmtFechaHora, fmtMoney, fmtNum } from "../lib/format";
+import { historialDePagos, reciboDelCobro, type PagoDelHistorial } from "../lib/historialPagos";
 import { useApi } from "../lib/useApi";
 import { useSucursales } from "../lib/useSucursales";
-import type { ClienteCredito, Credito, EstadoCredito, FiltroCredito, FormaPago } from "../types";
+import { huellaDeCobro } from "./pos/useIntentoDeCobro";
+import type {
+  ClienteCredito,
+  Credito,
+  CreditoDetalle,
+  EstadoCredito,
+  FiltroCredito,
+  FormaPago,
+} from "../types";
 
 const OPC_FILTRO = [
   ["por_cobrar", "Por cobrar"],
@@ -57,8 +66,15 @@ const ETIQUETA_ESTADO: Record<EstadoCredito, string> = {
   ANULADO: "Anulado",
 };
 
-/** A partir de acá el vencimiento deja de ser un dato y pasa a ser un aviso. */
-const DIAS_AVISO = 3;
+/**
+ * A partir de acá el vencimiento deja de ser un dato y pasa a ser un aviso.
+ *
+ * Es el mismo umbral del filtro "Vencen pronto" del backend
+ * (`DIAS_VENCE_PRONTO` en credito.util.ts). BUG-finanzas-8: acá valía 3 y el
+ * filtro trae hasta 7 días, así que una cuenta que vencía en 5 aparecía en
+ * "Vencen pronto" sin ninguna marca.
+ */
+const DIAS_VENCE_PRONTO = 7;
 
 /**
  * El listado y el detalle no nombran igual los días: el listado manda
@@ -74,12 +90,26 @@ function diasDeAtraso(c: CreditoApi): number {
   return c.diasAtraso ?? c.diasVencido ?? 0;
 }
 
-/** Cuántos días faltan para el compromiso; null si el backend no lo mandó. */
+/**
+ * Cuántos días faltan para el compromiso, como los cuenta el backend.
+ *
+ * Si no los mandó se calculan igual que él (`calcularVencimiento`): truncando.
+ * El compromiso es a las 23:59 del día pactado, así que con 14 horas por
+ * delante "vence hoy"; redondeando para arriba decía "vence en 1 d" y la marca
+ * no coincidía con la del filtro.
+ */
 function diasParaVencer(c: CreditoApi): number | null {
   if (typeof c.diasParaVencer === "number") return c.diasParaVencer;
   if (!c.fechaCompromiso) return null;
   const ms = new Date(c.fechaCompromiso).getTime() - Date.now();
-  return Number.isNaN(ms) ? null : Math.ceil(ms / 86_400_000);
+  return Number.isNaN(ms) ? null : Math.floor(ms / 86_400_000);
+}
+
+/** Si lo que devolvió el backend es la cuenta (registrar un abono devuelve el detalle). */
+function esCuenta(x: unknown): x is CreditoDetalle {
+  if (typeof x !== "object" || x === null) return false;
+  const c = x as Partial<Credito>;
+  return typeof c.saldo === "number" && typeof c.montoTotal === "number";
 }
 
 /** El detalle no trae `progreso`: se deriva del pagado sobre el total. */
@@ -87,6 +117,48 @@ function progresoDe(c: CreditoApi): number {
   if (typeof c.progreso === "number") return c.progreso;
   if (!c.montoTotal) return 0;
   return Math.min(1, (c.pagado ?? c.montoTotal - c.saldo) / c.montoTotal);
+}
+
+/**
+ * La identidad de cada abono en curso, que viaja como `clienteRequestId`
+ * (BUG-cobro-4). Sin ella, si la respuesta se perdía (un 504 del proxy, un
+ * corte con el POST ya grabado) y el cajero reintentaba, el abono se
+ * registraba dos veces: el saldo del cliente bajaba de más y el arqueo
+ * esperaba plata que nunca entró.
+ *
+ * Una por CUENTA, no una para toda la página como `useIntentoDeCobro`: con una
+ * sola, si el abono de A daba un 504 con el POST ya grabado y en el medio se
+ * cobraba B, la clave pendiente de A se perdía (B estrenaba una, y al salir
+ * bien otra más). Al volver a A con el mismo monto salía una clave nueva y el
+ * backend grababa el abono dos veces. Las reglas de cada cuenta son las de
+ * `useIntentoDeCobro`: la misma clave mientras se reintente el mismo cobro,
+ * una nueva si cambian las partes o si salió bien.
+ */
+function useIntentosDeAbono() {
+  const pendientes = useRef(new Map<number, { huella: string; id: string }>());
+
+  /** La clave para este cobro de la cuenta: la pendiente si es el mismo. */
+  const actual = useCallback((creditoId: number, huella: string) => {
+    const previo = pendientes.current.get(creditoId);
+    if (previo?.huella === huella) return previo.id;
+    const id = idDeCobro();
+    pendientes.current.set(creditoId, { huella, id });
+    return id;
+  }, []);
+
+  /** El abono de esa cuenta quedó registrado (o su clave ya no sirve): el próximo estrena otra. */
+  const registrado = useCallback((creditoId: number) => {
+    pendientes.current.delete(creditoId);
+  }, []);
+
+  return { actual, registrado };
+}
+
+/** `randomUUID` sólo existe en https o localhost (ver `useIntentoDeCobro`). */
+function idDeCobro(): string {
+  return typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `web-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
 export default function Creditos() {
@@ -112,8 +184,16 @@ export default function Creditos() {
   const [detalleId, setDetalleId] = useState<number | null>(null);
   const [abonando, setAbonando] = useState<CreditoApi | null>(null);
   const [editandoLimite, setEditandoLimite] = useState<ClienteCredito | null>(null);
-  const [reciboDe, setReciboDe] = useState<{ credito: CreditoApi; monto: number } | null>(null);
+  const [reciboDe, setReciboDe] = useState<{ credito: CreditoDetalle; pago: PagoDelHistorial } | null>(
+    null,
+  );
   const [aviso, setAviso] = useAviso();
+  /**
+   * Las claves de los abonos (ver `useIntentosDeAbono`). Viven acá y no en el
+   * formulario porque cerrar el modal después del error y volver a abrirlo es
+   * la forma natural de reintentar, y tiene que ser el mismo cobro.
+   */
+  const intentoAbono = useIntentosDeAbono();
 
   const navigate = useNavigate();
   const { usuario } = useAuth();
@@ -201,7 +281,15 @@ export default function Creditos() {
       )}
 
       <div className="space-y-3">
-        <div className="flex gap-2">
+        <div
+          className="flex gap-2"
+          // BUG-finanzas-11: Enter no hacía nada y había que ir a tocar
+          // "Buscar". Va acá y no con un <form>: la cruz de limpiar del
+          // Buscador no declara `type` y dentro de un form también lo enviaría.
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && e.target instanceof HTMLInputElement) setQBuscado(q.trim());
+          }}
+        >
           <Buscador
             valor={q}
             onChange={(v) => {
@@ -298,14 +386,15 @@ export default function Creditos() {
           key={abonando.id}
           credito={abonando}
           formasPago={formasPago.datos ?? []}
+          intento={intentoAbono}
           onClose={() => setAbonando(null)}
-          onGuardado={(monto) => {
+          onGuardado={(recibo) => {
             // El recibo se ofrece acá y no después: el cliente está enfrente
             // esperando su papel, y buscarlo más tarde en el detalle es un
             // paso que nadie da.
-            setReciboDe({ credito: abonando, monto });
+            setReciboDe(recibo);
             setAbonando(null);
-            setAviso(`Abono de ${fmtMoney(monto)} registrado.`);
+            setAviso(`Abono de ${fmtMoney(recibo.pago.monto)} registrado.`);
             creditos.recargar();
             clientes.recargar();
           }}
@@ -313,13 +402,9 @@ export default function Creditos() {
       )}
       {reciboDe && (
         <ComprobanteCredito
-          // El saldo que muestra el recibo ya tiene el abono descontado.
-          credito={{
-            ...reciboDe.credito,
-            saldo: Math.max(0, Math.round((reciboDe.credito.saldo - reciboDe.monto) * 100) / 100),
-          }}
+          credito={reciboDe.credito}
           tipo="RECIBO"
-          abono={{ monto: reciboDe.monto, fecha: new Date().toISOString() }}
+          pago={reciboDe.pago}
           onClose={() => setReciboDe(null)}
         />
       )}
@@ -346,7 +431,7 @@ function BadgeVencimiento({ credito: c }: { credito: CreditoApi }) {
     return <Badge tono="rojo">{dias > 0 ? `${dias} d de atraso` : "Vencido"}</Badge>;
   }
   const faltan = diasParaVencer(c);
-  if (c.saldo > 0 && faltan !== null && faltan <= DIAS_AVISO) {
+  if (esPositivo(c.saldo) && faltan !== null && faltan <= DIAS_VENCE_PRONTO) {
     return (
       <Badge tono="amarillo">{faltan <= 0 ? "Vence hoy" : `Vence en ${faltan} d`}</Badge>
     );
@@ -488,14 +573,7 @@ function TarjetaCliente({
   );
 }
 
-/** Detalle del crédito con lo que el listado no trae: ítems y abonos. */
-interface CreditoDetalle extends CreditoApi {
-  clienteNota?: string | null;
-  registradoPor?: string | null;
-  detalles?: { producto: string; cantidad: number; precio: number; subtotal: number }[];
-  pagos?: { id?: number; fecha?: string; monto: number; formaPago?: string; usuario?: string }[];
-}
-
+/** Detalle del crédito con lo que el listado no trae: lo que se llevó y los pagos. */
 function DetalleCredito({
   id,
   onClose,
@@ -508,6 +586,15 @@ function DetalleCredito({
   const credito = useApi<CreditoDetalle>(() => api.getCredito(id) as Promise<CreditoDetalle>, [id]);
   const c = credito.datos;
   const [imprimiendo, setImprimiendo] = useState<TipoComprobante | null>(null);
+  /**
+   * C-01 / CRE-6: el recibo de cualquier pago, cuando sea. Antes el único
+   * recibo era el que se ofrecía justo después de abonar: si el cliente lo
+   * perdía o volvía a pedirlo, no había cómo dárselo.
+   */
+  const [reciboDe, setReciboDe] = useState<PagoDelHistorial | null>(null);
+  // El mismo cálculo que el recibo impreso: lo que el cajero ve en la lista y
+  // lo que el cliente se lleva en el papel no pueden separarse.
+  const historial = c ? historialDePagos(c) : [];
 
   return (
     <Modal
@@ -519,15 +606,17 @@ function DetalleCredito({
         c && c.estado !== "ANULADO" ? (
           <>
             {/* El papel que se lleva el cliente: el compromiso mientras debe,
-                la constancia cuando la cuenta queda en cero. */}
+                la constancia cuando la cuenta queda en cero. Con la tolerancia
+                de medio centavo: un saldo de 0,004 es una cuenta saldada, y
+                su compromiso diría "Saldo a pagar Bs 0,00". */}
             <Boton
               variante="ghost"
               icono="printer"
-              onClick={() => setImprimiendo(c.saldo > 0 ? "COMPROMISO" : "CONSTANCIA")}
+              onClick={() => setImprimiendo(esPositivo(c.saldo) ? "COMPROMISO" : "CONSTANCIA")}
             >
-              {c.saldo > 0 ? "Comprobante" : "Constancia"}
+              {esPositivo(c.saldo) ? "Comprobante" : "Constancia"}
             </Boton>
-            {c.saldo > 0 && (
+            {esPositivo(c.saldo) && (
               <Boton icono="dollar" onClick={() => onAbonar(c)}>
                 Registrar abono
               </Boton>
@@ -541,6 +630,14 @@ function DetalleCredito({
           credito={c}
           tipo={imprimiendo}
           onClose={() => setImprimiendo(null)}
+        />
+      )}
+      {reciboDe && c && (
+        <ComprobanteCredito
+          credito={c}
+          tipo="RECIBO"
+          pago={reciboDe}
+          onClose={() => setReciboDe(null)}
         />
       )}
 
@@ -577,16 +674,11 @@ function DetalleCredito({
             <Dato label="Código" valor={c.codigo ?? `#${c.id}`} />
           </dl>
 
-          {(c.nota || c.clienteNota) && (
-            <div className="rounded-xl bg-muted p-3">
-              <dt className="text-[11px] font-semibold uppercase tracking-wide text-texto-4">
-                Nota
-              </dt>
-              <dd className="mt-0.5 whitespace-pre-wrap text-sm text-texto-2">
-                {c.nota || c.clienteNota}
-              </dd>
-            </div>
-          )}
+          {/* BUG-finanzas-9: las dos por separado. Se mostraba `nota ||
+              clienteNota`, y con las dos cargadas la del cliente ("paga los
+              viernes", que vale para todas sus cuentas) no se veía. */}
+          {c.nota && <Nota titulo="Nota de la cuenta" texto={c.nota} />}
+          {c.clienteNota && <Nota titulo="Nota del cliente" texto={c.clienteNota} />}
 
           {!!c.detalles?.length && (
             <div>
@@ -606,17 +698,21 @@ function DetalleCredito({
             </div>
           )}
 
+          {/* El adelanto va primero: para quien cobra es un pago más, y también
+              tiene su recibo. */}
           <div>
-            <h4 className="mb-2 text-[13px] font-bold text-texto">Abonos</h4>
-            {!c.pagos?.length ? (
-              <p className="text-[13px] text-texto-3">Todavía no se abonó nada.</p>
+            <h4 className="mb-2 text-[13px] font-bold text-texto">
+              Pagos{historial.length > 0 && ` (${historial.length})`}
+            </h4>
+            {historial.length === 0 ? (
+              <p className="text-[13px] text-texto-3">Todavía no pagó nada.</p>
             ) : (
               <ul className="divide-y divide-borde-soft rounded-xl border border-borde">
-                {c.pagos.map((p, i) => (
-                  <li key={p.id ?? i} className="flex items-center justify-between gap-2 px-3.5 py-2.5">
-                    <div className="min-w-0">
+                {historial.map((p, i) => (
+                  <li key={p.id ?? `adelanto-${i}`} className="flex items-center gap-2 px-3.5 py-2.5">
+                    <div className="min-w-0 flex-1">
                       <p className="truncate text-[13px] text-texto">
-                        {p.formaPago ?? "Abono"}
+                        {p.esAdelanto ? "Adelanto al llevarse el pedido" : `Abono · ${p.formaPago}`}
                         {p.usuario && <span className="text-texto-4"> · {p.usuario}</span>}
                       </p>
                       <p className="text-[11px] text-texto-4">{fmtFechaHora(p.fecha)}</p>
@@ -624,6 +720,18 @@ function DetalleCredito({
                     <span className="shrink-0 text-[13px] font-bold text-texto">
                       {fmtMoney(p.monto)}
                     </span>
+                    {/* Una cuenta anulada no da recibos: dirían un saldo
+                        pendiente que ya no existe. */}
+                    {c.estado !== "ANULADO" && (
+                      <button
+                        onClick={() => setReciboDe(p)}
+                        aria-label={`Recibo ${p.esAdelanto ? "del adelanto" : "del abono"} de ${fmtMoney(p.monto)} del ${fmtFecha(p.fecha)}`}
+                        className="flex shrink-0 items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-semibold text-texto-3 hover:bg-muted hover:text-texto"
+                      >
+                        <Icon name="printer" size={15} />
+                        Recibo
+                      </button>
+                    )}
                   </li>
                 ))}
               </ul>
@@ -632,6 +740,15 @@ function DetalleCredito({
         </div>
       )}
     </Modal>
+  );
+}
+
+function Nota({ titulo, texto }: { titulo: string; texto: string }) {
+  return (
+    <div className="rounded-xl bg-muted p-3">
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-texto-4">{titulo}</p>
+      <p className="mt-0.5 whitespace-pre-wrap text-sm text-texto-2">{texto}</p>
+    </div>
   );
 }
 
@@ -650,13 +767,17 @@ const MIXTO = "__mixto__";
 function FormAbono({
   credito: c,
   formasPago,
+  intento,
   onClose,
   onGuardado,
 }: {
   credito: CreditoApi;
   formasPago: FormaPago[];
+  /** La identidad del cobro, que sobrevive a cerrar y reabrir el modal (BUG-cobro-4). */
+  intento: ReturnType<typeof useIntentosDeAbono>;
   onClose: () => void;
-  onGuardado: (monto: number) => void;
+  /** La cuenta como quedó y el recibo de este cobro, para dárselo al cliente. */
+  onGuardado: (recibo: { credito: CreditoDetalle; pago: PagoDelHistorial }) => void;
 }) {
   const { usuario } = useAuth();
   /**
@@ -704,14 +825,14 @@ function FormAbono({
   const [error, setError] = useState("");
   const [guardando, setGuardando] = useState(false);
   /**
-   * El candado de verdad, y acá es plata que entra a la caja.
+   * El candado del doble clic, y acá es plata que entra a la caja.
    *
    * `setGuardando(true)` no frena un segundo clic en el MISMO tick: React
    * batchea el estado y las dos llamadas salen antes del re-render, así que el
-   * `disabled` del botón llega tarde. `registrarAbono` no manda clave de
-   * idempotencia y el backend no deduplica: un doble clic nervioso en el
-   * mostrador registraba DOS abonos. El cliente quedaba con un saldo menor al
-   * que pagó y el arqueo del turno cerraba con plata que nunca entró.
+   * `disabled` del botón llega tarde. Un doble clic nervioso en el mostrador
+   * registraba DOS abonos: el cliente quedaba con un saldo menor al que pagó y
+   * el arqueo del turno cerraba con plata que nunca entró. El reintento
+   * después de un error lo cubre el `clienteRequestId` (ver `intento`).
    */
   const enVuelo = useRef(false);
 
@@ -749,11 +870,34 @@ function FormAbono({
     enVuelo.current = true;
     setGuardando(true);
     try {
+      // El mismo id mientras se reintente ESTE cobro de esta cuenta (las
+      // mismas partes); con otro monto u otra forma es otro cobro y estrena
+      // id: con el mismo, si el intento fallido sí se había grabado, el
+      // backend devolvería ese abono como si fuera el nuevo.
+      const clienteRequestId = intento.actual(c.id, huellaDeCobro(pagos, "ABONO"));
       // Sin cajaId a propósito: el backend usa la caja abierta de quien cobra,
       // que es la única donde el dinero puede entrar de verdad.
-      await api.registrarAbono(c.id, { pagos });
-      onGuardado(montoNum);
+      const respuesta: unknown = await api.registrarAbono(c.id, { pagos, clienteRequestId });
+      intento.registrado(c.id);
+      // El backend devuelve la cuenta entera como quedó: su saldo es el de
+      // verdad, y con lo que se llevó el recibo sale completo.
+      const despues = esCuenta(respuesta) ? respuesta : null;
+      const pago = reciboDelCobro({
+        antes: c,
+        partes: pagos.map((p) => ({
+          formaPago: formasPago.find((f) => f.id === p.formaPagoId)?.nombre ?? "",
+          monto: p.monto,
+        })),
+        despues,
+        fecha: new Date().toISOString(),
+        usuario: usuario?.nombre ?? usuario?.username ?? null,
+      });
+      onGuardado({ credito: despues ?? { ...c, saldo: pago.saldoDespues }, pago });
     } catch (err) {
+      // La clave ya entró en OTRA cuenta (CLAVE_USADA): el backend pide que el
+      // próximo intento salga con una nueva. Con una clave por cuenta no
+      // debería pasar, pero si pasa, reintentar con la misma rebotaría siempre.
+      if (err instanceof ApiError && err.codigo === "CLAVE_USADA") intento.registrado(c.id);
       setError(err instanceof Error ? err.message : "No se pudo registrar el abono");
       // Sólo al fallar: si salió bien el modal se cierra y no hay que liberarlo.
       enVuelo.current = false;

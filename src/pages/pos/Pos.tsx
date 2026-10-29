@@ -370,6 +370,8 @@ function PuntoDeVenta() {
   const [datosEntrega, setDatosEntrega] = useState<DatosEntrega | null>(null);
   /** Las propinas anotadas en el cobro antes de pasar a "fiado". */
   const [propinasCredito, setPropinasCredito] = useState<PropinaInput[]>([]);
+  /** Veces que el backend frenó el fiado por el límite del cliente (ver `venderACredito`). */
+  const [rechazosPorLimite, setRechazosPorLimite] = useState(0);
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState("");
 
@@ -714,6 +716,12 @@ function PuntoDeVenta() {
       } catch (err) {
         cobroEnDuda.current = quedoEnDuda(err);
         if (rechazoPorCupo(err)) return;
+        // CRE-4: el backend frenó el fiado por el límite del cliente (la deuda
+        // cambió desde que se cargó la lista, u otro cajero le fió en el
+        // medio). PantallaCredito abre la firma del encargado y reintenta con
+        // el carrito intacto; antes sólo se pintaba el texto y volver a tocar
+        // "Registrar fiado" rebotaba igual.
+        if (err instanceof ApiError && err.codigo === "LIMITE_CREDITO") setRechazosPorLimite((n) => n + 1);
         setError(err instanceof Error ? err.message : "No se pudo registrar el fiado");
       } finally {
         setEnviando(false);
@@ -996,6 +1004,7 @@ function PuntoDeVenta() {
         }
         enviando={enviando}
         error={error}
+        rechazosPorLimite={rechazosPorLimite}
       />
       </>
     );

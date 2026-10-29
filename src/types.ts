@@ -1571,6 +1571,39 @@ export interface Credito {
   nota?: string | null;
 }
 
+/** Un renglón de lo que se llevó fiado, como lo trae el detalle del crédito. */
+export interface LineaCredito {
+  producto: string;
+  cantidad: number;
+  precio: number;
+  subtotal: number;
+}
+
+/**
+ * Un cobro registrado contra la cuenta. Cada parte de un abono mixto es uno
+ * (el backend guarda el efectivo y el QR por separado, para el arqueo). El
+ * adelanto NO viene acá: viajó en los pagos de la venta.
+ */
+export interface PagoCredito {
+  id: number;
+  monto: number;
+  formaPago: string;
+  fecha: string;
+  /** Quién lo cobró. */
+  usuario: string | null;
+  nota?: string | null;
+}
+
+/** GET /creditos/:id — el crédito con lo que el listado no trae. */
+export interface CreditoDetalle extends Credito {
+  /** La nota de la FICHA del cliente ("paga los viernes"); `nota` es la de esta cuenta. */
+  clienteNota?: string | null;
+  /** Quién registró el fiado. */
+  registradoPor?: string | null;
+  detalles?: LineaCredito[];
+  pagos?: PagoCredito[];
+}
+
 export interface ClienteCredito {
   id: number;
   nombre: string;
@@ -1592,6 +1625,11 @@ export interface AbonoInput {
   formaPagoId?: number;
   pagos?: { monto: number; formaPagoId: number }[];
   nota?: string;
+  /**
+   * Identidad del cobro, la misma en cada reintento: el backend no lo registra
+   * dos veces (BUG-cobro-4). Ver `useIntentoDeCobro`.
+   */
+  clienteRequestId?: string;
 }
 
 export type FiltroCredito = "por_cobrar" | "vencidos" | "vencen_pronto" | "pagados";
