@@ -180,3 +180,31 @@ describe("la página sin publicar (QA 23-oct)", () => {
     expect(screen.getByRole("heading", { name: "Esta página no está disponible" })).toBeInTheDocument();
   });
 });
+
+describe("L4 · la fecha de nacimiento (28-oct)", () => {
+  it("una fecha futura se dice en el campo, no deja seguir y no pide tutor como «menor»", async () => {
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Siguiente" }));
+    fireEvent.change(screen.getByLabelText("Carnet de identidad"), { target: { value: "14550221" } });
+    fireEvent.change(screen.getByLabelText("Apellidos"), { target: { value: "Rojas Lima" } });
+    fireEvent.change(screen.getByLabelText("Nombres"), { target: { value: "Thiago" } });
+    fireEvent.change(screen.getByLabelText("WhatsApp"), { target: { value: "77788990" } });
+    const fecha = screen.getByLabelText(/Fecha de nacimiento/);
+    expect(fecha).toHaveAttribute("min");
+    expect(fecha).toHaveAttribute("max");
+    fireEvent.change(fecha, { target: { value: "2099-05-01" } });
+    expect(fecha).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getAllByText(/La fecha de nacimiento no puede ser posterior a hoy/).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/Sos menor de edad/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/datos de tu madre, padre o tutor/)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Siguiente" })).toBeDisabled();
+    // De más de 100 años, tampoco.
+    fireEvent.change(fecha, { target: { value: "1900-01-01" } });
+    expect(screen.getAllByText(/más de 100 años/).length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: "Siguiente" })).toBeDisabled();
+    // Bien escrita, sigue.
+    fireEvent.change(fecha, { target: { value: "2000-01-01" } });
+    expect(fecha).not.toHaveAttribute("aria-invalid");
+    expect(screen.getByRole("button", { name: "Siguiente" })).toBeEnabled();
+  });
+});

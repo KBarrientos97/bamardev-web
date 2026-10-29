@@ -411,6 +411,19 @@ export interface FotoAlumno {
   estado?: "POR_REVISAR" | "REVISADA" | "OBSERVADA";
 }
 
+/**
+ * Una fila del historial de las fotos (L9, 28-oct): quién las aprobó, les puso
+ * una observación o cambió una, y cuándo. Lo último primero. Llega sólo a quien
+ * revisa fotos (`academia.fotos`).
+ */
+export interface RevisionFoto {
+  accion: "APROBADA" | "OBSERVADA" | "REEMPLAZADA";
+  tipos: TipoFoto[];
+  observacion: string | null;
+  usuario: string | null;
+  en: string;
+}
+
 export interface FiltroAlumnos extends PedidoPagina {
   q?: string;
   sede?: number | null;
@@ -523,6 +536,8 @@ export interface AlumnoDetalle {
   inscripciones: InscripcionDetalle[];
   /** Ronda 2: las que tiene (las que faltan no vienen). */
   fotos?: FotoAlumno[];
+  /** L9: el historial de las fotos (vacío sin `academia.fotos`; un backend anterior no lo manda). */
+  historialFotos?: RevisionFoto[];
 }
 
 export interface EditarAlumnoInput {
@@ -593,6 +608,9 @@ export interface Preinscripcion {
   vieja: boolean;
   /** Ronda 2: cuántas de las 3 fotos mandó (0..3). */
   fotos?: number;
+  /** L9: cuáles mandó y cómo están (un backend anterior no los manda). */
+  tiposFotos?: TipoFoto[];
+  estadoFotos?: EstadoFotos;
   planElegido?: { id: number; nombre: string; generado: PlanGenerado | null } | null;
   /** Siempre false hasta el QR de BISA. */
   pagoQr?: boolean;
@@ -1137,6 +1155,15 @@ export interface PanelControl {
    */
   fotosPorRevisarTotal?: number;
   fotosObservadasTotal?: number;
+  /**
+   * L9 (28-oct): las aprobadas en los últimos días por alguien que no es el
+   * administrador (la recepción con el permiso de fotos), para que el dueño
+   * las vuelva a mirar. Salen cuando él las revisa. Un backend anterior no lo manda.
+   */
+  fotosAprobadasPorOtros?: (PanelControl["fotosPorRevisar"][number] & { aprobadaPor: string | null; aprobadaEn: string })[];
+  fotosAprobadasPorOtrosTotal?: number;
+  /** Cuántos días mira esa lista (14). */
+  fotosAprobadasPorOtrosDias?: number;
   fotosFaltanTotal?: number;
   gruposSinDocenteTotal?: number;
   /** Cambio #49 (B-31): grupos vivos con más inscritos que su cupo, el más pasado primero. */

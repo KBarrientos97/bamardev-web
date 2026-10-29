@@ -31,6 +31,7 @@ vi.mock("../../lib/academia/apiAcademia", async (importOriginal) => {
       convertir: vi.fn(),
       alumno: vi.fn(),
       revisarFotos: vi.fn(),
+      fotoComoUrl: vi.fn(),
     },
   };
 });
@@ -83,6 +84,7 @@ beforeEach(() => {
   vi.mocked(apiAcademia.alumnos).mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 6 });
   vi.mocked(apiAcademia.inscribir).mockResolvedValue({ id: 555 } as never);
   vi.mocked(apiAcademia.alumno).mockResolvedValue({ ...fichaCamila(), fotos: [] });
+  vi.mocked(apiAcademia.fotoComoUrl).mockResolvedValue("blob:x");
 });
 
 afterEach(() => {
@@ -805,13 +807,15 @@ describe("A3 · las fotos que revisa quien las aprueba", () => {
     }
   };
 
-  it("con academia.fotos el check viene marcado y al inscribir quedan aprobadas", async () => {
+  it("con academia.fotos el check viene sin marcar (L9); marcado, al inscribir quedan aprobadas", async () => {
     quien.admin = true;
     await montar();
     await cargarNuevo("2000-01-01");
     fireEvent.click(within(panel()).getByRole("radio", { name: /Completo/ }));
     await subirLas3();
-    expect(within(panel()).getByRole("checkbox", { name: /Revisé las 3 fotos/ })).toBeChecked();
+    const check = within(panel()).getByRole("checkbox", { name: /Revisé las 3 fotos/ });
+    expect(check).not.toBeChecked();
+    fireEvent.click(check);
     await act(async () => {
       fireEvent.click(within(panel()).getByRole("button", { name: "Inscribir sin cobrar" }));
     });
@@ -819,13 +823,12 @@ describe("A3 · las fotos que revisa quien las aprueba", () => {
     expect(onInscrito).toHaveBeenCalled();
   });
 
-  it("si lo desmarca, siguen por revisar", async () => {
+  it("sin marcarlo, siguen por revisar: no se aprueban fotos que nadie dijo haber visto", async () => {
     quien.admin = true;
     await montar();
     await cargarNuevo("2000-01-01");
     fireEvent.click(within(panel()).getByRole("radio", { name: /Completo/ }));
     await subirLas3();
-    fireEvent.click(within(panel()).getByRole("checkbox", { name: /Revisé las 3 fotos/ }));
     await act(async () => {
       fireEvent.click(within(panel()).getByRole("button", { name: "Inscribir sin cobrar" }));
     });
@@ -922,15 +925,271 @@ describe("ronda 2 · R6 y R9 · el velo no descarta lo tipeado y «Nuevo estudia
     expect(within(panel()).getByLabelText("Carnet de identidad")).toHaveValue("6642881");
   });
 
-  it("R9: un celular (8 dígitos que empiezan en 6 o 7) no se vuelca en el carnet", async () => {
+  it("R9: un celular (8 dígitos que empiezan en 6 o 7) no se vuelca en el carnet; L2: va al teléfono", async () => {
     await buscarYPasarANuevo("71234567");
     expect(within(panel()).getByLabelText("Carnet de identidad")).toHaveValue("");
     expect(within(panel()).getByLabelText("Apellidos")).toHaveValue("");
+    expect(within(panel()).getByLabelText("Teléfono (opcional)")).toHaveValue("71234567");
   });
 
   it("R9: un nombre buscado va a Apellidos en vez de perderse", async () => {
     await buscarYPasarANuevo("Pérez Ana");
     expect(within(panel()).getByLabelText("Apellidos")).toHaveValue("Pérez Ana");
     expect(within(panel()).getByLabelText("Carnet de identidad")).toHaveValue("");
+  });
+});
+
+describe("L2 · el buscador mientras se escribe: nunca sin botón, nunca dos, sin mensajes que se contradigan", () => {
+  const THIAGO = { id: 60, codigo: "2026-0140", apellidos: "Rojas Lima", nombres: "Thiago", ci: "1", telefono: null, grupoActual: null, plan: null, saldo: 0, vencido: false, ultimaAsistencia: null, estado: "ACTIVA" } as const;
+
+  /** Lo que se ve del buscador: qué botón para cargar uno nuevo y qué mensajes. */
+  function estado() {
+    const p = panel();
+    const crear = within(p).queryAllByRole("button", { name: "Crear ficha nueva" }).length;
+    const nuevo = within(p).queryAllByRole("button", { name: "Nuevo estudiante" }).length;
+    const visto = {
+      boton: crear ? "Crear ficha nueva" : nuevo ? "Nuevo estudiante" : null,
+      botones: crear + nuevo,
+      corto: !!within(p).queryByText(/Seguí escribiendo/),
+      buscando: !!within(p).queryByText("Buscando…"),
+      sinNadie: !!within(p).queryByText(/No hay nadie con/),
+      error: !!within(p).queryByRole("button", { name: "Reintentar" }),
+      resultados: within(p).queryAllByRole("button", { name: /Rojas Lima, Thiago/ }).length,
+    };
+    // Las reglas de toda la pantalla: siempre un solo botón para cargar uno nuevo,
+    // y «No hay nadie» nunca junto a «Buscando», a un error o a resultados.
+    expect(visto.botones).toBe(1);
+    if (visto.sinNadie) expect([visto.buscando, visto.error, visto.resultados > 0]).toEqual([false, false, false]);
+    if (visto.buscando) expect(visto.error).toBe(false);
+    return visto;
+  }
+
+  const escribir = (texto: string) => fireEvent.change(within(panel()).getByLabelText("Buscar estudiante"), { target: { value: texto } });
+
+  beforeEach(() => {
+    vi.useRealTimers();
+    relojDeLaDemora();
+  });
+
+  it("vacío, una letra, buscando, con resultados, sin resultados y con error", async () => {
+    let responder: (v: unknown) => void = () => undefined;
+    vi.mocked(apiAcademia.alumnos)
+      .mockReturnValueOnce(new Promise((r) => { responder = r; }) as never)
+      .mockResolvedValueOnce({ items: [], total: 0, page: 1, pageSize: 6 })
+      .mockRejectedValueOnce(new Error("Sin conexión"))
+      .mockResolvedValue({ items: [THIAGO], total: 1, page: 1, pageSize: 6 });
+    await montar();
+
+    // Vacío: ya se puede cargar a alguien nuevo.
+    expect(estado()).toMatchObject({ boton: "Crear ficha nueva", corto: false, buscando: false, sinNadie: false });
+
+    // Una letra: todavía no se busca, y lo dice.
+    escribir("R");
+    await esperarDemora();
+    expect(estado()).toMatchObject({ boton: "Crear ficha nueva", corto: true, buscando: false, sinNadie: false });
+    expect(apiAcademia.alumnos).not.toHaveBeenCalled();
+
+    // Dos letras, antes de la demora y con el pedido en vuelo: «Buscando…».
+    escribir("Ro");
+    expect(estado()).toMatchObject({ boton: "Crear ficha nueva", corto: false, buscando: true });
+    await esperarDemora();
+    expect(apiAcademia.alumnos).toHaveBeenCalledTimes(1);
+    expect(estado()).toMatchObject({ boton: "Crear ficha nueva", buscando: true, sinNadie: false });
+
+    // Con resultados: la lista y el enlace discreto.
+    await act(async () => responder({ items: [THIAGO], total: 1, page: 1, pageSize: 6 }));
+    expect(estado()).toMatchObject({ boton: "Crear ficha nueva", buscando: false, resultados: 1 });
+    expect(within(panel()).getByText("¿No está en la lista?")).toBeInTheDocument();
+
+    // Sin resultados: el botón grande y el aviso, sin el enlace.
+    escribir("Nadie Conocido");
+    await esperarDemora();
+    expect(estado()).toMatchObject({ boton: "Nuevo estudiante", sinNadie: true, buscando: false });
+
+    // Con error: el error con «Reintentar», sin afirmar que no hay nadie, y se puede cargar igual.
+    escribir("Rojas");
+    await esperarDemora();
+    expect(estado()).toMatchObject({ boton: "Crear ficha nueva", error: true, sinNadie: false, buscando: false });
+    // Mientras se escribe otra cosa, el error de la búsqueda anterior se va.
+    escribir("Rojas L");
+    expect(estado()).toMatchObject({ error: false, buscando: true });
+    await esperarDemora();
+    expect(estado()).toMatchObject({ boton: "Crear ficha nueva", resultados: 1, error: false });
+
+    // Volver a vaciarlo deja otra vez sólo «Crear ficha nueva».
+    escribir("");
+    await esperarDemora();
+    expect(estado()).toMatchObject({ boton: "Crear ficha nueva", resultados: 0, corto: false, buscando: false, sinNadie: false });
+  });
+
+  it("con el buscador vacío, «Crear ficha nueva» abre la ficha vacía", async () => {
+    await montar();
+    fireEvent.click(within(panel()).getByRole("button", { name: "Crear ficha nueva" }));
+    expect(within(panel()).getByLabelText("Carnet de identidad")).toHaveValue("");
+    expect(within(panel()).getByLabelText("Apellidos")).toHaveValue("");
+    expect(within(panel()).getByLabelText("Teléfono (opcional)")).toHaveValue("");
+    // Y se vuelve a buscar sin perder nada.
+    fireEvent.click(within(panel()).getByRole("button", { name: "Buscar uno que ya está cargado" }));
+    expect(estado().boton).toBe("Crear ficha nueva");
+  });
+
+  it("con una letra, «Crear ficha nueva» la lleva a Apellidos (un nombre que empezó a escribir)", async () => {
+    await montar();
+    escribir("Q");
+    fireEvent.click(within(panel()).getByRole("button", { name: "Crear ficha nueva" }));
+    expect(within(panel()).getByLabelText("Apellidos")).toHaveValue("Q");
+  });
+
+  it("CI, celular y nombre buscados pasan cada uno a su campo", async () => {
+    await montar();
+    for (const [buscado, campo, valor] of [
+      ["6642881", "Carnet de identidad", "6642881"],
+      ["+591 712-34567", "Teléfono (opcional)", "71234567"],
+      ["Pérez Ana", "Apellidos", "Pérez Ana"],
+    ] as const) {
+      escribir(buscado);
+      await esperarDemora();
+      fireEvent.click(within(panel()).getByRole("button", { name: "Nuevo estudiante" }));
+      expect(within(panel()).getByLabelText(campo)).toHaveValue(valor);
+      fireEvent.click(within(panel()).getByRole("button", { name: "Buscar uno que ya está cargado" }));
+    }
+  });
+
+  it("el celular de un menor pasa al WhatsApp del tutor, y vuelve si la fecha es de un adulto", async () => {
+    await montar();
+    escribir("71234567");
+    await esperarDemora();
+    fireEvent.click(within(panel()).getByRole("button", { name: "Nuevo estudiante" }));
+    expect(within(panel()).getByLabelText("Teléfono (opcional)")).toHaveValue("71234567");
+    fireEvent.change(within(panel()).getByLabelText(/Fecha de nacimiento/), { target: { value: "2012-05-01" } });
+    expect(within(panel()).getByLabelText("WhatsApp")).toHaveValue("71234567");
+    expect(within(panel()).getByLabelText("Teléfono (opcional)")).toHaveValue("");
+    fireEvent.change(within(panel()).getByLabelText(/Fecha de nacimiento/), { target: { value: "1990-05-01" } });
+    expect(within(panel()).queryByLabelText("WhatsApp")).not.toBeInTheDocument();
+    expect(within(panel()).getByLabelText("Teléfono (opcional)")).toHaveValue("71234567");
+  });
+
+  it("un celular que ya es de otro: el 409 lo dice y «Buscarlo» lo busca", async () => {
+    vi.mocked(apiAcademia.inscribir).mockRejectedValueOnce(
+      new ApiError("Ese teléfono ya es de otra persona del negocio.", 409, { codigo: "TELEFONO_DUPLICADO" }),
+    );
+    await montar();
+    escribir("71234567");
+    await esperarDemora();
+    fireEvent.click(within(panel()).getByRole("button", { name: "Nuevo estudiante" }));
+    fireEvent.change(within(panel()).getByLabelText("Carnet de identidad"), { target: { value: "14550221" } });
+    fireEvent.change(within(panel()).getByLabelText("Apellidos"), { target: { value: "Céspedes Molina" } });
+    fireEvent.change(within(panel()).getByLabelText("Nombres"), { target: { value: "Joaquín" } });
+    fireEvent.click(within(panel()).getByRole("radio", { name: /Completo/ }));
+    await act(async () => {
+      fireEvent.click(within(panel()).getByRole("button", { name: "Inscribir sin cobrar" }));
+    });
+    expect(vi.mocked(apiAcademia.inscribir).mock.calls[0][0]).toMatchObject({ alumno: { telefono: "71234567" } });
+    expect(within(panel()).getByRole("alert")).toHaveTextContent("Ese teléfono ya es de otra persona del negocio.");
+    fireEvent.click(within(panel()).getByRole("button", { name: "Buscarlo" }));
+    expect(within(panel()).getByLabelText("Buscar estudiante")).toHaveValue("71234567");
+  });
+});
+
+describe("L4 · la fecha de nacimiento en Inscribir", () => {
+  it("una fecha futura o de más de 100 años se marca en el campo y no inscribe", async () => {
+    await montar();
+    await cargarNuevo("2030-01-01");
+    const fecha = within(panel()).getByLabelText(/Fecha de nacimiento/);
+    expect(fecha).toHaveAttribute("aria-invalid", "true");
+    expect(fecha).toHaveAttribute("max");
+    expect(within(panel()).getByText("La fecha de nacimiento no puede ser posterior a hoy.")).toBeInTheDocument();
+    // Una fecha futura no es «menor»: no aparece el tutor.
+    expect(within(panel()).queryByText(/Tutor · obligatorio/)).not.toBeInTheDocument();
+    fireEvent.click(within(panel()).getByRole("radio", { name: /Completo/ }));
+    fireEvent.click(within(panel()).getByRole("button", { name: "Inscribir sin cobrar" }));
+    expect(within(panel()).getByRole("alert")).toHaveTextContent("La fecha de nacimiento no puede ser posterior a hoy.");
+    expect(apiAcademia.inscribir).not.toHaveBeenCalled();
+    fireEvent.change(fecha, { target: { value: "1910-01-01" } });
+    expect(within(panel()).getAllByText(/más de 100 años/).length).toBeGreaterThan(0);
+    fireEvent.change(fecha, { target: { value: "2000-01-01" } });
+    expect(fecha).not.toHaveAttribute("aria-invalid");
+    await act(async () => {
+      fireEvent.click(within(panel()).getByRole("button", { name: "Inscribir sin cobrar" }));
+    });
+    expect(apiAcademia.inscribir).toHaveBeenCalled();
+  });
+});
+
+describe("L3 · con «Mes a mes», pagar todo hoy se ofrece como «Pago completo»", () => {
+  const conLosDos = () =>
+    vi.mocked(apiAcademia.grupo).mockResolvedValue(
+      grupoDetalle({
+        planesOfrecidos: [
+          { ...PLAN_CUOTAS, nombre: "Mes a mes", generado: "MES_A_MES" },
+          { ...PLAN_COMPLETO, nombre: "Pago completo", total: 1300, calendario: [{ n: 1, monto: 1300, vence: { tipo: "INSCRIPCION" }, cubre: [1, 2, 3] }], generado: "COMPLETO" },
+        ],
+      }),
+    );
+
+  it("en vez de «Todo el curso · Bs 1.500» dice cuánto es con Pago completo, y lo cambia", async () => {
+    conLosDos();
+    await montar();
+    const pagaHoy = within(panel()).getByRole("group", { name: "Paga hoy" });
+    expect(within(pagaHoy).queryByRole("button", { name: /Todo el curso/ })).not.toBeInTheDocument();
+    const aviso = within(panel()).getByRole("note", { name: "Pagar todo hoy" });
+    expect(aviso).toHaveTextContent(/¿Paga todo hoy\? Con Pago completo son Bs\s?1\.300,00 \(ahorra Bs\s?200,00\)/);
+    fireEvent.click(within(aviso).getByRole("button", { name: "Pasar a Pago completo" }));
+    expect(within(panel()).getByRole("radio", { name: /Pago completo/ })).toHaveAttribute("aria-checked", "true");
+    expect(within(panel()).queryByRole("note", { name: "Pagar todo hoy" })).not.toBeInTheDocument();
+    expect(within(panel()).getByRole("button", { name: /Todo · Bs\s?1\.300/ })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("sin plan de pago completo, «Todo el curso» sigue como siempre", async () => {
+    vi.mocked(apiAcademia.grupo).mockResolvedValue(
+      grupoDetalle({ planesOfrecidos: [{ ...PLAN_CUOTAS, nombre: "Mes a mes", generado: "MES_A_MES" }] }),
+    );
+    await montar();
+    expect(within(panel()).getByRole("button", { name: /Todo el curso · Bs\s?1\.500/ })).toBeInTheDocument();
+    expect(within(panel()).queryByRole("note", { name: "Pagar todo hoy" })).not.toBeInTheDocument();
+  });
+});
+
+describe("L9 · las fotos ya guardadas en Inscribir", () => {
+  const conFotos = () => {
+    vi.mocked(apiAcademia.ajustes).mockResolvedValue(ajustesDePrueba({ fotosObligatorias: true }));
+    vi.mocked(apiAcademia.alumno).mockResolvedValue({
+      ...fichaCamila(),
+      fotos: (["FOTO", "CI_ANVERSO", "CI_REVERSO"] as const).map((tipo) => ({ tipo, subidaEn: "2026-08-17", revisadaEn: null, revisadaPor: null, observacion: null })),
+    });
+    vi.mocked(apiAcademia.fotoComoUrl).mockImplementation(async (_id, tipo) => `blob:${tipo}`);
+  };
+  const montarConCamila = async () => {
+    render(
+      <MemoryRouter>
+        <Inscribir grupoInicial={{ id: 7, nombre: "Barbería" }} alumnoInicial={{ id: 52, nombre: "Bustillos Rek, Camila" }} onCerrar={vi.fn()} onInscrito={onInscrito} />
+      </MemoryRouter>,
+    );
+    await act(async () => {});
+  };
+
+  it("quien revisa fotos las ve (no «Ya cargada»), las abre en grande y el check arranca sin marcar", async () => {
+    quien.admin = true;
+    conFotos();
+    await montarConCamila();
+    expect(within(panel()).queryByText("Ya cargada")).not.toBeInTheDocument();
+    expect(within(panel()).getByRole("img", { name: "Carnet, adelante" })).toHaveAttribute("src", "blob:CI_ANVERSO");
+    expect(within(panel()).getByRole("img", { name: "Carnet, adelante" })).toHaveClass("object-contain");
+    expect(within(panel()).queryByText(/Las fotos las ve el administrador/)).not.toBeInTheDocument();
+    expect(within(panel()).getAllByRole("button", { name: /^Repetir/ })).toHaveLength(3);
+    expect(within(panel()).getByRole("checkbox", { name: /Revisé las 3 fotos/ })).not.toBeChecked();
+    fireEvent.click(within(panel()).getByRole("button", { name: "Ver en grande: Carnet, adelante" }));
+    expect(screen.getByRole("dialog", { name: "Carnet, adelante · Bustillos Rek, Camila" })).toBeInTheDocument();
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
+  });
+
+  it("sin el permiso: «Ya cargada», con candado y sin «Repetir» sobre lo que no vio", async () => {
+    conFotos();
+    await montarConCamila();
+    expect(within(panel()).getAllByText("Ya cargada")).toHaveLength(3);
+    expect(within(panel()).getByText("Las fotos las ve el administrador o quien tenga su permiso")).toBeInTheDocument();
+    expect(within(panel()).queryByRole("button", { name: /^Repetir/ })).not.toBeInTheDocument();
+    expect(apiAcademia.fotoComoUrl).not.toHaveBeenCalled();
   });
 });

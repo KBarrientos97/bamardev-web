@@ -7,9 +7,11 @@ import {
   fechaCorta,
   fechaFinSugerida,
   horarioGrupo,
+  limitesFechaNacimiento,
   nombreAlumno,
   nombreDe,
   nombresDe,
+  problemaFechaNacimiento,
   problemasDelPlan,
   textoCubre,
   textoModulos,
@@ -242,14 +244,44 @@ describe("ronda 2 · B5 · sólo el «Módulo N» genérico se oculta", () => {
 });
 
 describe("ronda 2 · R9 · qué se carga en «Nuevo estudiante» con lo buscado", () => {
-  it("un CI plausible va al carnet; un celular no; un nombre va a Apellidos", () => {
+  it("un CI plausible va al carnet; un celular, al teléfono (L2); un nombre va a Apellidos", () => {
     expect(datosDeLaBusqueda("14550221")).toEqual({ ci: "14550221" });
     expect(datosDeLaBusqueda(" 6642881 ")).toEqual({ ci: "6642881" });
-    expect(datosDeLaBusqueda("71234567")).toEqual({});
-    expect(datosDeLaBusqueda("65432109")).toEqual({});
+    // L2 (28-oct, decisión del dueño): el celular buscado pasa a la ficha, limpio.
+    expect(datosDeLaBusqueda("71234567")).toEqual({ telefono: "71234567" });
+    expect(datosDeLaBusqueda("65432109")).toEqual({ telefono: "65432109" });
+    expect(datosDeLaBusqueda("+591 712 34567")).toEqual({ telefono: "71234567" });
+    expect(datosDeLaBusqueda("591-7123-4567")).toEqual({ telefono: "71234567" });
+    expect(datosDeLaBusqueda("+59171234567")).toEqual({ telefono: "71234567" });
+    // Un 7 dígitos que empieza en 7 sigue siendo carnet; 9 dígitos no son nada.
+    expect(datosDeLaBusqueda("7123456")).toEqual({ ci: "7123456" });
+    expect(datosDeLaBusqueda("712345678")).toEqual({});
+    expect(datosDeLaBusqueda("+591 5123 4567")).toEqual({});
     expect(datosDeLaBusqueda("12345")).toEqual({});
     expect(datosDeLaBusqueda("Pérez Ana")).toEqual({ apellidos: "Pérez Ana" });
     expect(datosDeLaBusqueda("")).toEqual({});
+  });
+});
+
+describe("L4 · la fecha de nacimiento, con las reglas del backend", () => {
+  const hoy = new Date(2026, 9, 28, 10, 0);
+  it("no futura, hasta 100 años y desde 5; vacía o a medio escribir no dice nada", () => {
+    expect(problemaFechaNacimiento("2026-10-29", hoy)).toBe("La fecha de nacimiento no puede ser posterior a hoy");
+    expect(problemaFechaNacimiento("2030-01-01", hoy)).toMatch(/posterior a hoy/);
+    expect(problemaFechaNacimiento("1925-10-28", hoy)).toMatch(/más de 100 años/);
+    expect(problemaFechaNacimiento("1925-10-29", hoy)).toBe("");
+    expect(problemaFechaNacimiento("2024-01-01", hoy)).toBe("Con esa fecha tendría 2 años: revisá el año (se inscribe desde los 5)");
+    expect(problemaFechaNacimiento("2021-10-28", hoy)).toBe("");
+    expect(problemaFechaNacimiento("2001-04-09", hoy)).toBe("");
+    expect(problemaFechaNacimiento("", hoy)).toBe("");
+    expect(problemaFechaNacimiento(undefined, hoy)).toBe("");
+  });
+
+  it("los límites del campo van de 100 años atrás a 5 años atrás", () => {
+    expect(limitesFechaNacimiento(hoy)).toEqual({ min: "1925-10-29", max: "2021-10-28" });
+    const { min, max } = limitesFechaNacimiento(hoy);
+    expect(problemaFechaNacimiento(min, hoy)).toBe("");
+    expect(problemaFechaNacimiento(max, hoy)).toBe("");
   });
 });
 

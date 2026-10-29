@@ -11,11 +11,19 @@ import { TIPOS_FOTO, type FotosInscripcion, type TipoFoto } from "../../lib/acad
  * ubicación de la foto.
  *
  * Lo usan el mostrador (N5) y la página pública (P2): no depende de la sesión.
+ *
+ * Las ya guardadas (L9, 28-oct): quien revisa fotos las ve (`guardadas`, las
+ * imágenes que bajó Inscribir con su permiso) y las abre en grande con
+ * `onVer`; quien no, ve «Ya cargada» y no las puede repetir
+ * (`repetirGuardadas` false): cambiaría una foto que no vio.
  */
 export default function CapturaFotos({
   fotos,
   onCambiar,
   yaTiene = [],
+  guardadas = {},
+  repetirGuardadas = true,
+  onVer,
   marcadas = [],
   compacto = false,
   color,
@@ -24,6 +32,12 @@ export default function CapturaFotos({
   onCambiar: (fotos: FotosInscripcion) => void;
   /** Las que el estudiante ya tiene guardadas: no hace falta sacarlas otra vez. */
   yaTiene?: TipoFoto[];
+  /** La imagen de cada guardada (un blob:), sólo para quien tiene permiso de verlas. */
+  guardadas?: Partial<Record<TipoFoto, string>>;
+  /** false: sin «Repetir» sobre las guardadas (quien no las ve). */
+  repetirGuardadas?: boolean;
+  /** Tocar una foto (la nueva o la guardada) la abre en grande. */
+  onVer?: (tipo: TipoFoto, url: string) => void;
   /** Las que el backend dijo que faltan (400 FOTOS_REQUERIDAS). */
   marcadas?: TipoFoto[];
   /** Una debajo de la otra (el celular de la página pública). */
@@ -57,6 +71,9 @@ export default function CapturaFotos({
             tipo={tipo}
             archivo={fotos[tipo]}
             guardada={yaTiene.includes(tipo)}
+            urlGuardada={guardadas[tipo]}
+            repetirGuardada={repetirGuardadas}
+            onVer={onVer ? (url) => onVer(tipo, url) : undefined}
             marcada={marcadas.includes(tipo)}
             procesando={procesando === tipo}
             compacto={compacto}
@@ -79,6 +96,9 @@ function Foto({
   tipo,
   archivo,
   guardada,
+  urlGuardada,
+  repetirGuardada,
+  onVer,
   marcada,
   procesando,
   compacto,
@@ -89,6 +109,9 @@ function Foto({
   tipo: TipoFoto;
   archivo?: Blob;
   guardada: boolean;
+  urlGuardada?: string;
+  repetirGuardada: boolean;
+  onVer?: (url: string) => void;
   marcada: boolean;
   procesando: boolean;
   compacto: boolean;
@@ -104,6 +127,10 @@ function Foto({
   }, [url]);
   const titulo = NOMBRE_FOTO[tipo];
   const lista = !!archivo || guardada;
+  // La que se ve: la recién sacada o, si no, la guardada (sólo con permiso).
+  const vista = url ?? (guardada ? urlGuardada : undefined);
+  // El carnet entero; la cara llena el marco.
+  const ajuste = tipo === "FOTO" ? "object-cover" : "object-contain";
 
   const inputs = (
     <>
@@ -146,8 +173,14 @@ function Foto({
           compacto ? "h-20 w-24 shrink-0" : "aspect-[4/3] w-full"
         } ${lista ? "border border-primary-100 bg-primary-50" : marcada ? "border-2 border-dashed border-danger bg-danger-bg/40" : "border-2 border-dashed border-borde bg-muted"}`}
       >
-        {url ? (
-          <img src={url} alt={titulo} className="h-full w-full object-cover" />
+        {vista ? (
+          onVer ? (
+            <button type="button" onClick={() => onVer(vista)} aria-label={`Ver en grande: ${titulo}`} className="h-full w-full cursor-zoom-in">
+              <img src={vista} alt={titulo} className={`h-full w-full ${ajuste}`} />
+            </button>
+          ) : (
+            <img src={vista} alt={titulo} className={`h-full w-full ${ajuste}`} />
+          )
         ) : guardada ? (
           <span className="flex flex-col items-center gap-1 text-xs text-primary-700">
             <Icon name="checkCirculo" size={22} /> Ya cargada
@@ -173,7 +206,7 @@ function Foto({
       </div>
       <div className={`flex items-center justify-between gap-2 ${compacto ? "min-w-0 flex-1 flex-col items-start" : "mt-1.5"}`}>
         <span className="text-[13px] text-texto-2">{titulo}</span>
-        {lista ? (
+        {lista && (archivo || repetirGuardada) ? (
           <button
             type="button"
             onClick={() => (archivo ? onQuitar() : camara.current?.click())}
@@ -182,7 +215,7 @@ function Foto({
           >
             Repetir
           </button>
-        ) : compacto ? (
+        ) : lista ? null : compacto ? (
           <span className="flex gap-2">
             <BotonFoto onClick={() => camara.current?.click()} etiqueta={`Tomar foto: ${titulo}`} color={color}>
               Tomar foto

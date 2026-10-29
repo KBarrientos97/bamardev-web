@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { Chips } from "../../components/filtros";
 import { Icon } from "../../components/Icon";
 import { Boton, Campo, Cargando, ErrorMsg, Input, Select } from "../../components/ui";
+import VisorFotos from "../../components/VisorFotos";
 import { apiAcademia, CODIGOS_ACADEMIA } from "../../lib/academia/apiAcademia";
 import {
   calendarioConDescuento,
@@ -10,18 +11,20 @@ import {
   EXPEDIDOS,
   fechaCorta,
   horarioGrupo,
+  limitesFechaNacimiento,
   MAYORIA_DE_EDAD,
   nombreAlumno,
   nombreDe,
   datosDeLaBusqueda,
   nombresDe,
   PARENTESCOS,
+  problemaFechaNacimiento,
   textoCubre,
   textoModulos,
   textoVence,
   venceCuota,
 } from "../../lib/academia/formato";
-import { fotosQueFaltan, textoFaltanFotos } from "../../lib/academia/fotos";
+import { fotosQueFaltan, NOMBRE_FOTO, TEXTO_CANDADO_FOTOS, textoFaltanFotos } from "../../lib/academia/fotos";
 import type {
   AlumnoFila,
   DescuentoInput,
@@ -99,12 +102,18 @@ export default function Inscribir({
   const { usuario } = useAuth();
   const puedeBecas = tienePermiso(usuario, "academia.becas");
   /**
-   * A3 (22-oct): quien aprueba fotos (el admin) las está viendo al inscribir:
-   * el paso 3 trae marcado "Revisé las 3 fotos" y quedan aprobadas. Sin el
-   * permiso (la recepción) no hay check y siguen el camino de siempre.
+   * A3 (22-oct): quien aprueba fotos (el admin, o la recepción si él le dio
+   * el permiso) tiene en el paso 3 el check "Revisé las 3 fotos": marcado,
+   * quedan aprobadas al inscribir. Sin el permiso no hay check y siguen el
+   * camino de siempre.
+   *
+   * L9 (28-oct): el check arranca **sin marcar**. Venía marcado y, con las
+   * fotos ya guardadas que Inscribir no mostraba («Ya cargada»), se aprobaban
+   * sin que nadie las viera; con el permiso en la recepción, se habría
+   * aprobado sus propias fotos sin mirarlas.
    */
   const apruebaFotos = tienePermiso(usuario, "academia.fotos");
-  const [fotosRevisadas, setFotosRevisadas] = useState(true);
+  const [fotosRevisadas, setFotosRevisadas] = useState(false);
 
   // ── ¿Quién? ──
   const [modo, setModo] = useState<Modo>("buscar");
@@ -116,6 +125,12 @@ export default function Inscribir({
   const [tutor, setTutor] = useState({ nombre: "", parentesco: "Madre", telefono: "" });
   /** El backend dijo que es menor y no tiene tutor: el bloque aparece aunque no lo supiéramos. */
   const [pideTutor, setPideTutor] = useState(false);
+  /**
+   * L2: el celular que se buscó y pasó a la ficha nueva. Si la ficha resulta
+   * de un menor, ese número casi seguro es de la mamá o el tutor: pasa a su
+   * WhatsApp (ver el efecto de más abajo).
+   */
+  const [celularBuscado, setCelularBuscado] = useState("");
 
   // ── ¿A qué grupo? ──
   const [grupoId, setGrupoId] = useState<number | null>(preinscripcion?.grupo.id ?? grupoInicial?.id ?? null);
@@ -160,6 +175,35 @@ export default function Inscribir({
     [idConFotos],
   );
   const yaTiene = (fichaFotos.datos?.fotos ?? []).map((f) => f.tipo);
+  // L9: quien revisa fotos ve las que ya están guardadas (decía «Ya cargada»
+  // también al admin, y el check las aprobaba sin verlas). Sin el permiso no
+  // se piden: el backend contestaría 403.
+  const [guardadas, setGuardadas] = useState<Partial<Record<TipoFoto, string>>>({});
+  const firmaGuardadas = apruebaFotos && idConFotos ? `${idConFotos}:${yaTiene.join(",")}` : "";
+  useEffect(() => {
+    if (!firmaGuardadas) return;
+    const [id, tipos] = firmaGuardadas.split(":");
+    let vigente = true;
+    const creadas: string[] = [];
+    for (const tipo of tipos.split(",").filter(Boolean) as TipoFoto[]) {
+      apiAcademia
+        .fotoComoUrl(Number(id), tipo)
+        .then((u) => {
+          creadas.push(u);
+          if (vigente) setGuardadas((g) => ({ ...g, [tipo]: u }));
+        })
+        .catch(() => {
+          /* queda «Ya cargada» */
+        });
+    }
+    return () => {
+      vigente = false;
+      creadas.forEach((u) => URL.revokeObjectURL?.(u));
+      setGuardadas({});
+    };
+  }, [firmaGuardadas]);
+  /** L4: la foto abierta en grande (la recién sacada o la guardada). */
+  const [viendo, setViendo] = useState<{ url: string; titulo: string } | null>(null);
   // Ante la duda (ajustes sin cargar), se piden: es lo que exige el backend por defecto.
   const pideFotos = ajustes.datos?.fotosObligatorias ?? true;
   const faltanFotos = pideFotos ? fotosQueFaltan(fotos, yaTiene) : [];
@@ -186,7 +230,10 @@ export default function Inscribir({
   /** D3: faltan fotos y se pregunta si se inscribe igual (el botón sigue activo). */
   const [sinFotos, setSinFotos] = useState<{ cobrar: boolean; extra: ExtraEnvio } | null>(null);
 
-  const edad = edadDe(nuevo.fechaNacimiento);
+  // L4: una fecha imposible (futura, de más de 100 años) se marca en el campo y
+  // no deja inscribir; no cuenta para decidir si es menor.
+  const fechaMal = modo === "nuevo" && !elegido ? problemaFechaNacimiento(nuevo.fechaNacimiento) : "";
+  const edad = fechaMal ? null : edadDe(nuevo.fechaNacimiento);
   // Menor por la fecha de nacimiento que se está cargando, o porque el
   // backend lo dijo (un alumno ya cargado, sin tutor).
   // También la preinscripción de un menor que llegó sin tutor: convertir lo pide.
@@ -221,7 +268,18 @@ export default function Inscribir({
   }, [plan, tipoDesc, enPct, valorDescValido, grupo]);
   // Un plan de una sola cuota (el pago completo) no tiene "la primera".
   const unaCuota = vista.cuotas.length <= 1;
-  const elegidoHoy: PagaHoy = unaCuota && pagaHoy === "primera" ? "todo" : pagaHoy;
+  /**
+   * L3 (28-oct): con «Mes a mes», «Todo el curso» cobraba las cuotas por
+   * adelantado sin el descuento: pagaba más que con «Pago completo». Si el
+   * grupo ofrece el pago completo, en su lugar se ofrece pasar a ése, con su
+   * precio (con la misma beca o promoción). Sin pago completo, como siempre.
+   */
+  const completo = plan?.generado === "MES_A_MES" ? (planes.find((x) => x.generado === "COMPLETO") ?? null) : null;
+  const totalCompleto = useMemo(
+    () => (completo ? calendarioConDescuento(completo, tipoDesc, enPct, valorDescValido, () => isoDia(new Date())).total : null),
+    [completo, tipoDesc, enPct, valorDescValido],
+  );
+  const elegidoHoy: PagaHoy = unaCuota && pagaHoy === "primera" ? "todo" : completo && pagaHoy === "todo" ? "primera" : pagaHoy;
 
   /**
    * Lo que está mal en el adelanto, dicho en el campo mientras se escribe: un
@@ -247,6 +305,7 @@ export default function Inscribir({
       if (modo === "buscar") return `Elegí al ${p.alumno} o cargá uno nuevo.`;
       if (!nuevo.ci.trim()) return "Falta el carnet de identidad.";
       if (!nuevo.apellidos.trim() || !nuevo.nombres.trim()) return "Faltan los apellidos y los nombres.";
+      if (fechaMal) return `${fechaMal}.`;
     }
     if (esMenor && (!tutor.nombre.trim() || !tutor.telefono.trim())) return `Es menor: falta el tutor (nombre y WhatsApp).`;
     if (!grupoId) return "Elegí el grupo.";
@@ -285,6 +344,23 @@ export default function Inscribir({
     setPideTutor(false);
     setTutor({ nombre: "", parentesco: "Madre", telefono: "" });
   }, [elegido]);
+
+  // L2: el celular buscado entró como teléfono del estudiante; si la fecha dice
+  // que es menor, pasa al WhatsApp del tutor (si está vacío), y si después la
+  // fecha se corrige a un adulto, vuelve. Sólo se mueve el número buscado, tal
+  // cual: lo que se escriba a mano en cualquiera de los dos campos no se toca.
+  const telAlumno = nuevo.telefono;
+  const telTutor = tutor.telefono;
+  useEffect(() => {
+    if (!celularBuscado) return;
+    if (esMenor && telAlumno === celularBuscado && !telTutor.trim()) {
+      setTutor((t) => ({ ...t, telefono: celularBuscado }));
+      setNuevo((n) => ({ ...n, telefono: "" }));
+    } else if (!esMenor && telTutor === celularBuscado && !telAlumno.trim()) {
+      setNuevo((n) => ({ ...n, telefono: celularBuscado }));
+      setTutor((t) => ({ ...t, telefono: "" }));
+    }
+  }, [esMenor, celularBuscado, telAlumno, telTutor]);
 
   async function enviar(cobrar: boolean, extra: ExtraEnvio = {}) {
     setValidar({ cobrar });
@@ -550,7 +626,15 @@ export default function Inscribir({
                 onNuevo={(texto) => {
                   setModo("nuevo");
                   const d = datosDeLaBusqueda(texto);
-                  if (d.ci || d.apellidos) setNuevo((n) => ({ ...n, ...(d.ci ? { ci: d.ci } : {}), ...(d.apellidos && !n.apellidos ? { apellidos: d.apellidos } : {}) }));
+                  if (d.ci || d.apellidos || d.telefono)
+                    setNuevo((n) => ({
+                      ...n,
+                      ...(d.ci ? { ci: d.ci } : {}),
+                      ...(d.apellidos && !n.apellidos ? { apellidos: d.apellidos } : {}),
+                      // L2: el celular buscado pasa a la ficha (editable), como el CI.
+                      ...(d.telefono ? { telefono: d.telefono } : {}),
+                    }));
+                  if (d.telefono) setCelularBuscado(d.telefono);
                 }}
                 palabra={p.alumno}
               />
@@ -576,8 +660,15 @@ export default function Inscribir({
                   <Input value={nuevo.nombres} onChange={(e) => setNuevo({ ...nuevo, nombres: e.target.value })} />
                 </Campo>
                 <div className="grid grid-cols-2 gap-2">
-                  <Campo label="Fecha de nacimiento" hint={edad != null ? `${edad} años` : undefined}>
-                    <Input type="date" value={nuevo.fechaNacimiento} onChange={(e) => setNuevo({ ...nuevo, fechaNacimiento: e.target.value })} />
+                  <Campo label="Fecha de nacimiento" hint={edad != null ? `${edad} años` : undefined} error={fechaMal ? `${fechaMal}.` : undefined}>
+                    <Input
+                      type="date"
+                      value={nuevo.fechaNacimiento}
+                      min={limitesFechaNacimiento().min}
+                      max={limitesFechaNacimiento().max}
+                      aria-invalid={!!fechaMal || undefined}
+                      onChange={(e) => setNuevo({ ...nuevo, fechaNacimiento: e.target.value })}
+                    />
                   </Campo>
                   <Campo label="Teléfono (opcional)">
                     <Input inputMode="tel" value={nuevo.telefono} onChange={(e) => setNuevo({ ...nuevo, telefono: e.target.value })} />
@@ -615,9 +706,12 @@ export default function Inscribir({
 
           {pideFotos && (
             <Paso n={3} titulo="Fotos obligatorias" listo={faltanFotos.length === 0}>
-              <p className="flex items-center gap-1.5 text-[13px] text-texto-3">
-                <Icon name="lock" size={13} /> Las fotos sólo las ve el administrador
-              </p>
+              {/* L9: el candado sólo a quien no las ve (antes era fijo, también para el admin). */}
+              {!apruebaFotos && (
+                <p className="flex items-center gap-1.5 text-[13px] text-texto-3">
+                  <Icon name="lock" size={13} /> {TEXTO_CANDADO_FOTOS}
+                </p>
+              )}
               <p className="text-[13px] text-texto-3">Si hoy no las tiene, podés inscribir igual: quedan marcados «Faltan fotos» en Estudiantes.</p>
               <CapturaFotos
                 fotos={fotos}
@@ -626,6 +720,11 @@ export default function Inscribir({
                   setMarcadas((m) => m.filter((t) => !f[t]));
                 }}
                 yaTiene={yaTiene}
+                // Quien revisa ve las guardadas y las abre en grande; quien no, no repite
+                // una foto que no vio (la cambiaría a ciegas).
+                guardadas={apruebaFotos ? guardadas : {}}
+                repetirGuardadas={apruebaFotos}
+                onVer={(tipo, url) => setViendo({ url, titulo: NOMBRE_FOTO[tipo] })}
                 marcadas={marcadas}
               />
               {apruebaFotos && (
@@ -638,6 +737,9 @@ export default function Inscribir({
                   />
                   Revisé las 3 fotos (quedan aprobadas al inscribir)
                 </label>
+              )}
+              {viendo && (
+                <VisorFotos fotos={[viendo]} titulo={nombreFinal || undefined} onCerrar={() => setViendo(null)} />
               )}
             </Paso>
           )}
@@ -677,7 +779,7 @@ export default function Inscribir({
                 {(
                   [
                     ...(unaCuota ? [] : [["primera", `La primera cuota · ${fmtMoney(primera)}`] as const]),
-                    ["todo", unaCuota ? `Todo · ${fmtMoney(vista.total)}` : `Todo el curso · ${fmtMoney(vista.total)}`] as const,
+                    ...(completo ? [] : [["todo", unaCuota ? `Todo · ${fmtMoney(vista.total)}` : `Todo el curso · ${fmtMoney(vista.total)}`] as const]),
                     ["otro", "Otro monto"] as const,
                   ] as const
                 ).map(([k, label]) => (
@@ -696,6 +798,27 @@ export default function Inscribir({
                   </button>
                 ))}
               </div>
+              {completo && totalCompleto != null && (
+                <div
+                  role="note"
+                  aria-label="Pagar todo hoy"
+                  className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 rounded-xl bg-primary-50 px-3.5 py-2.5 text-[13px] text-primary-700"
+                >
+                  <span>
+                    ¿Paga todo hoy? Con Pago completo son <b className="tabular-nums">{fmtMoney(totalCompleto)}</b>
+                    {vista.total > totalCompleto ? ` (ahorra ${fmtMoney(vista.total - totalCompleto)})` : ""}.
+                  </span>
+                  <BotonFila
+                    variante="ghost"
+                    onClick={() => {
+                      setPlanId(completo.id);
+                      setPagaHoy("todo");
+                    }}
+                  >
+                    Pasar a Pago completo
+                  </BotonFila>
+                </div>
+              )}
               {elegidoHoy === "otro" && (
                 <div className="max-w-[200px]">
                   <Campo label="Monto del adelanto (Bs)" error={adelantoMal || undefined}>
@@ -1178,14 +1301,29 @@ function BuscarAlumno({
   );
   const vigente = r.datos?.de === buscado;
   const lista = vigente ? (r.datos?.items ?? []) : [];
+  const texto = q.trim();
+  const asentada = buscado === texto;
   // Sólo con la búsqueda ya asentada (`buscado` alcanzó lo escrito) y sin error
   // de red: si falló no se sabe si el estudiante existe.
-  const sinResultados = buscado.length >= MINIMO_BUSQUEDA && buscado === q.trim() && vigente && !r.cargando && !r.error && lista.length === 0;
+  const sinResultados = buscado.length >= MINIMO_BUSQUEDA && asentada && vigente && !r.cargando && !r.error && lista.length === 0;
+  // El error es de lo que está escrito: mientras se escribe otra cosa no se muestra
+  // el de la búsqueda anterior (L2, 28-oct: quedaba «Sin conexión» al tipear).
+  const fallo = !!r.error && buscado.length >= MINIMO_BUSQUEDA && asentada;
+  /** Una sola letra: todavía no se busca (se pide desde 2). */
+  const corto = texto.length > 0 && texto.length < MINIMO_BUSQUEDA;
+  /** Escribió lo suficiente y todavía no hay respuesta (la demora o el pedido en vuelo). */
+  const buscando = texto.length >= MINIMO_BUSQUEDA && !fallo && !sinResultados && lista.length === 0;
   return (
     <div className="space-y-2">
       <BuscadorEstudiante valor={q} onChange={onQ} autoFocus />
+      {corto && <p className="text-[13px] text-texto-3">Seguí escribiendo: se busca desde {MINIMO_BUSQUEDA} letras o números.</p>}
+      {buscando && (
+        <p role="status" className="text-[13px] text-texto-3">
+          Buscando…
+        </p>
+      )}
       {/* Si la búsqueda falla la pantalla no puede quedar muda (ronda 1, D3). */}
-      {r.error && buscado.length >= MINIMO_BUSQUEDA && <ErrorMsg onReintentar={r.recargar}>{r.error}</ErrorMsg>}
+      {fallo && <ErrorMsg onReintentar={r.recargar}>{r.error}</ErrorMsg>}
       {/* "Nuevo" como botón sólo cuando la búsqueda no encuentra a nadie (D2): antes
           salía siempre y se cargaban fichas repetidas de quien ya estaba. */}
       {sinResultados && (
@@ -1214,10 +1352,13 @@ function BuscarAlumno({
         </Boton>
       )}
       {/* Con resultados no se oculta del todo (ronda 1, D3): un hermano o un homónimo
-          aparece en la lista y no es la misma persona. Va discreto, como enlace. */}
-      {lista.length > 0 && (
+          aparece en la lista y no es la misma persona. Va discreto, como enlace.
+          L2 (28-oct): y sale siempre que no esté «Nuevo estudiante» —con el buscador
+          vacío, con una letra, mientras busca o si la búsqueda falló—: antes no había
+          cómo cargar a alguien nuevo sin escribir algo primero. */}
+      {!sinResultados && (
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-texto-3">
-          <span>¿No está en la lista?</span>
+          {lista.length > 0 && <span>¿No está en la lista?</span>}
           <BotonFila variante="ghost" icono="plus" onClick={() => onNuevo(q)}>
             Crear ficha nueva
           </BotonFila>

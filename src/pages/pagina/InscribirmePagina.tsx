@@ -3,7 +3,15 @@ import { useParams } from "react-router-dom";
 import Captcha from "../../publico/Captcha";
 import { apiAcademiaPublica, ErrorPublico } from "../../lib/academia/apiPublica";
 import { fotosQueFaltan, textoFaltanFotos } from "../../lib/academia/fotos";
-import { diasTexto, edadDe, EXPEDIDOS, fechaCorta, MAYORIA_DE_EDAD } from "../../lib/academia/formato";
+import {
+  diasTexto,
+  edadDe,
+  EXPEDIDOS,
+  fechaCorta,
+  limitesFechaNacimiento,
+  MAYORIA_DE_EDAD,
+  problemaFechaNacimiento,
+} from "../../lib/academia/formato";
 import type { CursoPublico, FotosInscripcion, GrupoPublico, PreinscripcionEnviada, TipoFoto } from "../../lib/academia/tipos";
 import { paleta } from "../../lib/pagina/aspecto";
 import { enlaceWhatsapp } from "../../lib/pagina/catalogo";
@@ -189,7 +197,11 @@ function Formulario({
   const planes = curso.planes ?? [];
   const mesAMes = planes.find((x) => x.generado === "MES_A_MES");
   const plan = planes.find((x) => x.id === planId) ?? mesAMes ?? planes[0] ?? null;
-  const edad = edadDe(datos.fechaNacimiento);
+  // L4: una fecha imposible (futura, o de más de 100 años) se dice en el campo
+  // y no deja seguir. Antes pasaba, y el backend contestaba «Sos menor de edad».
+  const fechaMal = problemaFechaNacimiento(datos.fechaNacimiento);
+  const limitesFecha = limitesFechaNacimiento();
+  const edad = fechaMal ? null : edadDe(datos.fechaNacimiento);
   const esMenor = pideTutor || (edad != null && edad < MAYORIA_DE_EDAD);
   const faltanFotos = fotosQueFaltan(fotos);
 
@@ -203,7 +215,7 @@ function Formulario({
       if (!datos.fechaNacimiento) f.push("tu fecha de nacimiento");
       if (datos.telefono.replace(/\D/g, "").length < 7) f.push("tu WhatsApp");
       if (esMenor && (!tutor.nombre.trim() || tutor.telefono.replace(/\D/g, "").length < 7)) f.push("los datos de tu tutor");
-      return faltaTexto(f);
+      return f.length ? faltaTexto(f) : fechaMal;
     }
     if (p === 3) return faltanFotos.length ? textoFaltanFotos(faltanFotos.length) : "";
     const f: string[] = [];
@@ -402,8 +414,16 @@ function Formulario({
               <input value={datos.nombres} onChange={(e) => setDatos({ ...datos, nombres: e.target.value })} autoComplete="given-name" className={INPUT} />
             </CampoP>
             <div className="grid grid-cols-2 gap-3">
-              <CampoP etiqueta="Fecha de nacimiento">
-                <input type="date" value={datos.fechaNacimiento} onChange={(e) => setDatos({ ...datos, fechaNacimiento: e.target.value })} className={INPUT} />
+              <CampoP etiqueta="Fecha de nacimiento" error={fechaMal}>
+                <input
+                  type="date"
+                  value={datos.fechaNacimiento}
+                  min={limitesFecha.min}
+                  max={limitesFecha.max}
+                  onChange={(e) => setDatos({ ...datos, fechaNacimiento: e.target.value })}
+                  aria-invalid={!!fechaMal || undefined}
+                  className={`${INPUT} ${fechaMal ? "border-[#B91C1C]" : ""}`}
+                />
               </CampoP>
               <CampoP etiqueta="WhatsApp">
                 <input
@@ -669,11 +689,12 @@ function Enviada({
 const INPUT =
   "w-full rounded-xl border border-[#D1D5DB] bg-white px-3.5 py-2.5 text-base text-[#111827] outline-none focus:border-[#6B7280]";
 
-function CampoP({ etiqueta, children }: { etiqueta: string; children: ReactNode }) {
+function CampoP({ etiqueta, error, children }: { etiqueta: string; error?: string; children: ReactNode }) {
   return (
     <label className="block">
       <span className="mb-1 block text-[13px] font-semibold text-[#374151]">{etiqueta}</span>
       {children}
+      {error && <span className="mt-1 block text-xs text-[#B91C1C]">{error}.</span>}
     </label>
   );
 }

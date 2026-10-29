@@ -60,7 +60,7 @@ describe("E6 · ficha del estudiante", () => {
   it("la recepción ve que las fotos están, con candado, sin pedir las imágenes", async () => {
     await montar();
     const fotos = screen.getByRole("region", { name: "Fotos y carnet" });
-    expect(within(fotos).getByText("Sólo el administrador ve las fotos")).toBeInTheDocument();
+    expect(within(fotos).getByText("Las fotos las ve el administrador o quien tenga su permiso")).toBeInTheDocument();
     expect(within(fotos).getByText("Por revisar")).toBeInTheDocument();
     expect(apiAcademia.fotoComoUrl).not.toHaveBeenCalled();
     expect(within(fotos).queryByRole("button", { name: "Marcar revisadas" })).not.toBeInTheDocument();

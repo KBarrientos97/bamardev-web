@@ -306,6 +306,15 @@ function NoIncluidos({
   );
 }
 
+/**
+ * Lo que tiene que saber quien da un permiso delicado, dicho al prenderlo
+ * (L9, 28-oct): el de las fotos de la academia se le puede dar a la recepción
+ * para que apruebe inscripciones, pero entrega la cara y el carnet de todos.
+ */
+const ADVERTENCIAS: Record<string, string> = {
+  "academia.fotos": "Quien tenga este rol verá la cara y el carnet de todos los inscritos, también de los menores, y podrá aprobarlos.",
+};
+
 function RenglonPermiso({
   permiso: p,
   alcance,
@@ -354,6 +363,12 @@ function RenglonPermiso({
           {motivo && !soloLectura && !sinMotivo && <span className="mt-0.5 block text-xs text-warning-text">{motivo}</span>}
         </label>
       </div>
+      {prendido && !soloLectura && ADVERTENCIAS[p.codigo] && (
+        <p role="note" className="ml-7 mt-2 flex items-start gap-1.5 rounded-lg bg-warning-bg px-2.5 py-2 text-xs text-warning-text">
+          <Icon name="alert" size={14} className="mt-px shrink-0" />
+          {ADVERTENCIAS[p.codigo]}
+        </p>
+      )}
       {p.admitePropio && prendido && !soloLectura && (
         <div className="ml-7 mt-2 inline-flex rounded-lg border border-borde p-0.5" role="radiogroup" aria-label={`Alcance de ${p.nombre}`}>
           {(["GENERAL", "PROPIO"] as const).map((a) => {

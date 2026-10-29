@@ -1,4 +1,4 @@
-import { fmtMoney } from "../format";
+import { fmtMoney, isoDia } from "../format";
 import type { CuotaPlan, Materia, MateriaDelGrupo, PlanPago, Ref, TipoDescuento } from "./tipos";
 
 /**
@@ -135,13 +135,20 @@ export function textoModulos(ordenes: number[], nombres?: Record<number, string>
 /**
  * Qué cargar en «Nuevo estudiante» con lo que se buscó sin encontrar (ronda 2, R9).
  * Un CI plausible va al carnet: 6 a 8 dígitos, y si son 8 que no empiecen en 6 o
- * 7 (los celulares de Bolivia: la mamá, el tutor). Lo que tiene letras es un
- * nombre y va a Apellidos, para no perderlo. Un celular o cualquier otro número
- * no se vuelca en ningún lado.
+ * 7 (los celulares de Bolivia). Lo que tiene letras es un nombre y va a
+ * Apellidos, para no perderlo.
+ *
+ * Un celular (8 dígitos que empiezan en 6 o 7, con o sin «+591», espacios o
+ * guiones) va al teléfono, ya limpio (L2, 28-oct, decisión del dueño): antes
+ * no pasaba porque puede ser el de la mamá o el tutor, pero el campo es
+ * editable y, si la ficha es de un menor, Inscribir lo lleva al WhatsApp del
+ * tutor. Cualquier otro número no se vuelca en ningún lado.
  */
-export function datosDeLaBusqueda(texto: string): { ci?: string; apellidos?: string } {
+export function datosDeLaBusqueda(texto: string): { ci?: string; apellidos?: string; telefono?: string } {
   const t = texto.trim();
-  if (/^\d{6,8}$/.test(t) && !(t.length === 8 && /^[67]/.test(t))) return { ci: t };
+  const celular = /^(?:\+?591)?([67]\d{7})$/.exec(t.replace(/[\s.-]/g, ""));
+  if (celular) return { telefono: celular[1] };
+  if (/^\d{6,8}$/.test(t)) return { ci: t };
   if (/\p{L}/u.test(t)) return { apellidos: t };
   return {};
 }
@@ -245,6 +252,40 @@ export function edadDe(fechaNacimiento: string | null | undefined, hoy = new Dat
 
 /** Menor de edad en Bolivia: menos de 18 años. */
 export const MAYORIA_DE_EDAD = 18;
+
+/**
+ * L4 (28-oct): la edad que puede tener un inscrito, la misma que valida el
+ * backend (`EsFechaNacimiento`): hasta 100 años (en Bolivia no hay inscritos
+ * mayores, decisión del dueño) y desde 5 (el mínimo del campo `edad`).
+ */
+export const EDAD_MINIMA_INSCRITO = 5;
+export const EDAD_MAXIMA_INSCRITO = 100;
+
+/**
+ * Lo que está mal en una fecha de nacimiento, sin punto final (va en el
+ * campo y en «Falta…»), o "" si está bien o todavía no hay fecha completa.
+ * Antes una fecha futura pasaba y la página contestaba «Sos menor de edad».
+ */
+export function problemaFechaNacimiento(fecha: string | null | undefined, hoy = new Date()): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(fecha ?? "");
+  if (!m) return "";
+  if (fecha! > isoDia(hoy)) return "La fecha de nacimiento no puede ser posterior a hoy";
+  const [a, mes, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  let edad = hoy.getFullYear() - a;
+  if (hoy.getMonth() + 1 < mes || (hoy.getMonth() + 1 === mes && hoy.getDate() < d)) edad--;
+  if (edad > EDAD_MAXIMA_INSCRITO) return `Con esa fecha tendría más de ${EDAD_MAXIMA_INSCRITO} años: revisá el año`;
+  if (edad < EDAD_MINIMA_INSCRITO) return `Con esa fecha tendría ${edad === 1 ? "1 año" : `${edad} años`}: revisá el año (se inscribe desde los ${EDAD_MINIMA_INSCRITO})`;
+  return "";
+}
+
+/** El `min` y el `max` del campo de fecha de nacimiento: de 100 años atrás a 5 años atrás. */
+export function limitesFechaNacimiento(hoy = new Date()): { min: string; max: string } {
+  const y = hoy.getFullYear();
+  // El más viejo: cumplió 100 y le falta un día para los 101.
+  const min = new Date(y - EDAD_MAXIMA_INSCRITO - 1, hoy.getMonth(), hoy.getDate() + 1);
+  const max = new Date(y - EDAD_MINIMA_INSCRITO, hoy.getMonth(), hoy.getDate());
+  return { min: isoDia(min), max: isoDia(max) };
+}
 
 /** Los departamentos donde se expide el CI, como los pide el formulario. */
 export const EXPEDIDOS = ["SC", "LP", "CB", "OR", "PT", "CH", "TJ", "BE", "PD"] as const;

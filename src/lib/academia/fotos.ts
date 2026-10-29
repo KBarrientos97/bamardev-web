@@ -25,6 +25,13 @@ export const NOMBRE_FOTO: Record<TipoFoto, string> = {
   CI_REVERSO: "Carnet, atrás",
 };
 
+/**
+ * El texto del candado para quien no ve las fotos (L9, 28-oct): decía
+ * «Sólo el administrador ve las fotos», pero ahora el administrador le puede
+ * dar el permiso a otro rol (la recepción). Va sólo a quien no las ve.
+ */
+export const TEXTO_CANDADO_FOTOS = "Las fotos las ve el administrador o quien tenga su permiso";
+
 /** Cómo se nombra cada foto dentro de una frase ("observadas: foto y carnet de atrás"). */
 export const NOMBRE_FOTO_CORTO: Record<TipoFoto, string> = {
   FOTO: "foto",
