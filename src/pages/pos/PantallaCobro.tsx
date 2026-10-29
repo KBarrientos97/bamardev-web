@@ -184,6 +184,16 @@ export default function PantallaCobro({
     setErrorLocal("");
   }
 
+  /**
+   * Tocar un atajo o escribir lo recibido borra el error de antes: quedaba
+   * "Lo recibido no alcanza…" en rojo debajo de "CAMBIO Bs 19,00" hasta el
+   * próximo Confirmar, y se leía como si el billete no alcanzara.
+   */
+  function cambiarRecibido(valor: string) {
+    setRecibido(valor);
+    setErrorLocal("");
+  }
+
   // En mixto, el QR cubre una parte y el efectivo el resto.
   const aCubrirEnEfectivo = metodo === "MIXTO" ? restoEnEfectivo(aCubrir, qrNum) : aCubrir;
   // Lo que hay que recibir en mano: la parte en efectivo y la propina en
@@ -421,7 +431,7 @@ export default function PantallaCobro({
               >
                 <InputMonto
                   value={recibido}
-                  onChange={setRecibido}
+                  onChange={cambiarRecibido}
                   placeholder="0,00"
                   // Con un vale aplicado no se roba el foco: el campo aparece mientras
                   // la cajera todavía está tecleando cuánto usar del vale.
@@ -436,7 +446,7 @@ export default function PantallaCobro({
                 {sugerencias.map((s) => (
                   <button
                     key={s}
-                    onClick={() => setRecibido(montoParaEditar(s))}
+                    onClick={() => cambiarRecibido(montoParaEditar(s))}
                     className="rounded-xl border border-borde bg-white px-3.5 py-2 text-[13px] font-semibold text-texto-2 transition-colors hover:border-primary hover:bg-primary-50 hover:text-primary-700"
                   >
                     {fmtMoney(s)}

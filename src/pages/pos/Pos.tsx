@@ -1558,7 +1558,9 @@ function PedidoOk({
             </div>
           )}
           <div className="flex justify-between border-t border-borde pt-2 text-base font-extrabold text-texto">
-            <dt>A cobrar al entregar</dt>
+            {/* Un "para recoger" se paga al retirar: decía "al entregar", como
+                si fuera un delivery (QA 29-oct). */}
+            <dt>{venta.tipoPedido === "RECOGER" ? "A cobrar al retirar" : "A cobrar al entregar"}</dt>
             {/* Sin `totalACobrar`, con el envío: `total` es sólo lo de los
                 productos y decía Bs 50 debajo de "Envío Bs 8" (BUG-cobro-5).
                 El mismo respaldo que el detalle del historial. */}

@@ -17,7 +17,8 @@ import {
 import { api, type PagoEntrega } from "../../lib/api";
 import { aCentavos, cubre, esPositivo, excede, restoEnEfectivo, vuelto } from "../../lib/dinero";
 import { fmtHora, fmtMoney, fmtNum } from "../../lib/format";
-import { leerMonto } from "../../lib/montoTecleado";
+import { atajosDeEfectivo } from "../../lib/billetes";
+import { leerMonto, montoParaEditar } from "../../lib/montoTecleado";
 import { tieneFeature } from "../../lib/permisos";
 import { Telefono } from "../../lib/telefono";
 import { useApi } from "../../lib/useApi";
@@ -154,8 +155,10 @@ export default function Repartidor() {
                   </p>
                   <p className="truncate text-xs text-texto-3">{p.clienteDireccion}</p>
                   <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                    <Badge tono={p.prepagado ? "verde" : "amarillo"}>
-                      {p.prepagado ? "Ya pagado" : "Cobra al entregar"}
+                    {/* Entregado ya no debe nada: seguía en ámbar "Cobra al
+                        entregar" al lado de "Cobrado Bs 35,00" (QA 29-oct). */}
+                    <Badge tono={p.prepagado || p.estadoEntrega === "ENTREGADO" ? "verde" : "amarillo"}>
+                      {p.estadoEntrega === "ENTREGADO" ? "Entregado" : p.prepagado ? "Ya pagado" : "Cobra al entregar"}
                     </Badge>
                     <span className="text-xs text-texto-4">{fmtHora(p.fecha)}</span>
                   </div>
@@ -533,6 +536,12 @@ function DialogoCobroEntrega({
   const efectivoEnMano =
     metodo === "MIXTO" ? restoEnEfectivo(aPedirEnMano, qrNum) : aPedirEnMano;
   const cambio = metodo === "QR" ? 0 : vuelto(recibidoNum, efectivoEnMano);
+  // Los mismos atajos que el cobro del POS y que Android (CobroEntregaFragment):
+  // el monto justo y los billetes de Bolivia que lo cubren (Kevin 25-oct: "en
+  // todas las pantallas"). Sobre lo que entrega en mano, que incluye la tarifa.
+  const sugerencias = esPositivo(efectivoEnMano)
+    ? [aCentavos(efectivoEnMano), ...atajosDeEfectivo(efectivoEnMano)]
+    : [];
   // Como "recibido" va lo que entra por la venta: lo del negocio más el
   // vuelto, sin el envío que se queda el repartidor, como la app
   // (`CobroEntregaFragment`). El backend guarda de cambio `recibido − monto`,
@@ -688,6 +697,18 @@ function DialogoCobroEntrega({
                 className="font-bold"
               />
             </Campo>
+            <div className="flex flex-wrap gap-2">
+              {sugerencias.map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => setRecibido(montoParaEditar(s))}
+                  className="rounded-xl border border-borde bg-white px-3.5 py-2 text-[13px] font-semibold text-texto-2 transition-colors hover:border-primary hover:bg-primary-50 hover:text-primary-700"
+                >
+                  {fmtMoney(s)}
+                </button>
+              ))}
+            </div>
             {recibido !== "" && (
               <p className="rounded-xl bg-primary-50 px-3.5 py-2.5 text-center text-[13px] font-semibold text-primary-700">
                 Cambio: {fmtMoney(cambio)}
