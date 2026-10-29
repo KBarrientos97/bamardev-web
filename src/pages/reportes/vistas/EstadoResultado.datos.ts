@@ -89,6 +89,11 @@ export function perfilResultado(rubro: string | undefined): PerfilResultado {
       queVaLocal:
         "Lo que cuesta tener el instituto abierto: alquiler, luz, agua, internet, limpieza, el sueldo de la recepción y los materiales de las clases. Cuenta lo gastado aunque todavía no esté pagado. Los sueldos de los docentes no van acá: tienen su propia línea, con lo pagado de la planilla. Las poleras y los kits que vendés tampoco: entran por el costo de los productos.",
       queVaCosto: `Lo que te costaron las poleras, los kits y el material que vendiste, según el costo cargado en cada uno. Las cuotas no tienen costo de mercadería: lo que cobrás por las clases queda entero para pagar los gastos y los sueldos. ${NO_SON_COMPRAS}`,
+      // Como los demás rubros: el texto de las compras y el aviso de lo
+      // vendido sin costo con el total solo. Lo propio del restaurante
+      // (insumos dentro del costo de cada plato) no aplica a un instituto.
+      comprasNoRestan: COMPRAS_NO_RESTAN,
+      nombraSinCosto: false,
     };
   }
   if (esBillar(rubro)) {
