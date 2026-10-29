@@ -141,6 +141,11 @@ export default function Movimientos() {
   const [filtroEstado, setFiltroEstado] = useState<FiltroEstado>("todos");
   const [filtroOrigen, setFiltroOrigen] = useState<FiltroOrigen>("todos");
   const [detalleId, setDetalleId] = useState<number | null>(null);
+  /**
+   * Con qué aviso se abre el detalle que abre el formulario al guardar: "se
+   * creó pero no se pudo aprobar, y por qué" (ver `FormMovimientoCuerpo`).
+   */
+  const [avisoDetalle, setAvisoDetalle] = useState("");
   const [creando, setCreando] = useState(false);
   const [errorAccion, setErrorAccion] = useState("");
 
@@ -342,14 +347,25 @@ export default function Movimientos() {
 
       {detalleId !== null && (
         <DetalleMovimiento
+          // Uno por movimiento: el aviso arranca su estado. Si el detalle
+          // cambia de movimiento sin cerrarse (el formulario guardó con otro
+          // abierto debajo: el modal no atrapa el foco y «Nuevo» se alcanza
+          // con el teclado), sin la clave quedaba el estado del anterior y no
+          // el aviso del nuevo.
+          key={detalleId}
           id={detalleId}
-          onClose={() => setDetalleId(null)}
+          aviso={avisoDetalle}
+          onClose={() => {
+            setDetalleId(null);
+            setAvisoDetalle("");
+          }}
           // Un renglón agregado, corregido o quitado refresca la lista de atrás
           // SIN cerrar el detalle: se seguía cargando y había que volver a
           // abrirlo para agregar el siguiente.
           onCambio={() => movimientos.recargar()}
           onCerrarYRecargar={() => {
             setDetalleId(null);
+            setAvisoDetalle("");
             movimientos.recargar();
           }}
           onError={setErrorAccion}
@@ -359,10 +375,23 @@ export default function Movimientos() {
       <FormMovimiento
         abierto={creando}
         almacenes={almacenes.datos ?? []}
-        onClose={() => setCreando(false)}
-        onGuardado={() => {
+        onClose={(quizasCreado) => {
+          setCreando(false);
+          // Un alta quedó sin respuesta y el formulario mandó a fijarse acá si
+          // ya está: con la lista de antes no aparecía aunque se hubiera
+          // creado, y lo natural era cargarlo de nuevo.
+          if (quizasCreado) movimientos.recargar();
+        }}
+        onGuardado={(r) => {
           setCreando(false);
           movimientos.recargar();
+          // Quedó pendiente (con el doble control, o porque aprobar falló): se
+          // abre ESE movimiento para aprobarlo o corregirlo. El formulario ya
+          // no vuelve a crear nada.
+          if (r) {
+            setAvisoDetalle(r.aviso ?? "");
+            setDetalleId(r.id);
+          }
         }}
       />
     </div>
@@ -427,12 +456,15 @@ function TarjetaMovimiento({ mov: m, onClick }: { mov: Movimiento; onClick: () =
 
 function DetalleMovimiento({
   id,
+  aviso,
   onClose,
   onCambio,
   onCerrarYRecargar,
   onError,
 }: {
   id: number;
+  /** Lo primero que dice al abrirse: por qué el recién guardado quedó pendiente. */
+  aviso?: string;
   onClose: () => void;
   /** Cambió un renglón: refresca la lista de atrás sin cerrar el detalle. */
   onCambio: () => void;
@@ -440,7 +472,7 @@ function DetalleMovimiento({
   onCerrarYRecargar: () => void;
   onError: (mensaje: string) => void;
 }) {
-  const { usuario } = useAuth();
+  const { usuario, negocio } = useAuth();
   const mov = useApi(() => api.getMovimiento(id), [id]);
   const [confirmando, setConfirmando] = useState<"aprobar" | "anular" | "eliminar" | null>(
     null,
@@ -452,7 +484,7 @@ function DetalleMovimiento({
    * servidor no lo frene, el stock se movía dos veces.
    */
   const enVuelo = useRef(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useState(aviso ?? "");
   /** Línea que se está editando, o "nueva" para agregar una. */
   const [editandoLinea, setEditandoLinea] = useState<LineaMovimiento | "nueva" | null>(
     null,
@@ -467,9 +499,14 @@ function DetalleMovimiento({
    * y el documento otra.
    */
   const editable = m?.estado === "PENDIENTE";
-  // Una transferencia la aprueba sólo quien tiene el permiso propio: sin él
-  // el botón terminaba en un 403 (ver `ofreceAprobarMovimiento`).
-  const ofreceAprobar = ofreceAprobarMovimiento(usuario, m?.tipo);
+  // El extra CONFIRMADO en el plan, sin la falla abierta de `incluye`: con la
+  // lista vacía el backend tampoco lo ve, así que «Aprobar» se ofrece y decide
+  // él (ver `ofreceAprobarMovimiento`).
+  const dobleControl = (negocio?.features ?? []).includes("aprobacion_inventario");
+  // Aprobar, y anular lo aprobado, con la misma regla que el servidor: con el
+  // doble control, a quien sólo mueve inventario el botón le terminaba en un
+  // 403; una transferencia, a quien no tiene su permiso propio.
+  const ofreceAprobar = ofreceAprobarMovimiento(usuario, m?.tipo, dobleControl);
 
   /** Artículos del almacén con su stock, para el tope de las salidas. */
   const articulosAlmacen = useApi(
@@ -541,7 +578,9 @@ function DetalleMovimiento({
                 </Boton>
               )}
             </>
-          ) : m?.estado === "APROBADO" ? (
+          ) : m?.estado === "APROBADO" && ofreceAprobar ? (
+            // Anular lo aprobado revierte el stock: el servidor le pide lo
+            // mismo que aprobar, y a quien no puede le daba un 403.
             <Boton
               variante="danger"
               icono="x"
@@ -556,7 +595,17 @@ function DetalleMovimiento({
         {mov.cargando ? (
           <Cargando />
         ) : !m ? (
-          <ErrorMsg>{mov.error || "No se pudo cargar el movimiento"}</ErrorMsg>
+          // El aviso también acá: el movimiento existe aunque no se haya
+          // podido abrir, y sin él "No se pudo cargar" invitaba a cargarlo de
+          // nuevo, que es el duplicado que el aviso viene a evitar. Y con
+          // «Reintentar»: sin él, cuando volvía la señal sólo quedaba cerrar
+          // y buscarlo en una lista que también había fallado.
+          <div className="space-y-3">
+            <ErrorMsg>{error}</ErrorMsg>
+            <ErrorMsg onReintentar={mov.recargar}>
+              {mov.error || "No se pudo cargar el movimiento"}
+            </ErrorMsg>
+          </div>
         ) : (
           <div className="space-y-4">
             <div className="flex items-center gap-3 rounded-xl bg-primary-50 p-4">
@@ -695,7 +744,9 @@ function DetalleMovimiento({
                   Todavía no tocó el inventario: recién al aprobarlo se mueve el stock de
                   verdad.
                   {!ofreceAprobar &&
-                    " La aprueba quien tiene el permiso «Aprobar transferencias» (de fábrica, el Administrador y el Encargado)."}
+                    (m.tipo === "TRANSFERENCIA"
+                      ? " La aprueba quien tiene el permiso «Aprobar transferencias» (de fábrica, el Administrador y el Encargado)."
+                      : " Lo aprueba quien tiene el permiso «Aprobar movimientos» (de fábrica, el Administrador y el Encargado).")}
                 </span>
               </div>
             )}
@@ -1020,8 +1071,8 @@ function FormMovimiento({
 }: {
   abierto: boolean;
   almacenes: Almacen[];
-  onClose: () => void;
-  onGuardado: () => void;
+  onClose: (quizasCreado: boolean) => void;
+  onGuardado: (r?: { id: number; aviso?: string }) => void;
 }) {
   // La clave remonta el formulario en cada apertura: un movimiento a medias
   // no debe reaparecer la próxima vez que se abra el modal.
@@ -1035,8 +1086,17 @@ function FormMovimientoCuerpo({
   onGuardado,
 }: {
   almacenes: Almacen[];
-  onClose: () => void;
-  onGuardado: () => void;
+  /**
+   * `quizasCreado`: un alta quedó sin respuesta y el movimiento pudo haberse
+   * creado igual (ver `guardar`); la pantalla vuelve a pedir la lista.
+   */
+  onClose: (quizasCreado: boolean) => void;
+  /**
+   * Sin nada: se aprobó y no queda qué hacer. Con un id: quedó PENDIENTE (con
+   * el doble control, o porque aprobar falló y entonces con su `aviso`), y la
+   * pantalla abre ese movimiento.
+   */
+  onGuardado: (r?: { id: number; aviso?: string }) => void;
 }) {
   const { incluye } = useAuth();
   const conAprobacion = incluye("aprobacion_inventario");
@@ -1050,6 +1110,15 @@ function FormMovimientoCuerpo({
   const [lineas, setLineas] = useState<LineaDetalle[]>([]);
   const [error, setError] = useState("");
   const [guardando, setGuardando] = useState(false);
+  /**
+   * Guardar en curso. `guardando` apaga el botón recién en el render
+   * siguiente: dos clics en el mismo tick entraban los dos y creaban el
+   * movimiento dos veces (como el «Aprobar» del detalle y `FormMercaderia`).
+   * Una vez creado no se suelta: este formulario ya no vuelve a crear.
+   */
+  const enVuelo = useRef(false);
+  /** Un alta quedó sin respuesta: pudo haberse creado igual (ver `guardar`). */
+  const quizasCreado = useRef(false);
 
   // El stock que muestra cada artículo es el del almacén elegido, así que la
   // lista se vuelve a pedir cuando cambia.
@@ -1092,6 +1161,7 @@ function FormMovimientoCuerpo({
   }
 
   async function guardar() {
+    if (enVuelo.current) return;
     setError("");
 
     if (!almacenId) return setError("Elegí un almacén.");
@@ -1145,20 +1215,76 @@ function FormMovimientoCuerpo({
       detalles,
     };
 
+    // El candado va después de validar: un formulario incompleto no tiene
+    // nada que soltar.
+    enVuelo.current = true;
     setGuardando(true);
+    let id: number;
     try {
-      const creado = await api.crearMovimiento(input);
-      // El backend SIEMPRE crea el movimiento pendiente y sólo aprobarlo
-      // mueve el stock. Sin la capacidad de aprobación no habría botón para
-      // hacerlo y la mercadería nunca entraría, así que se aprueba de una:
-      // el negocio que no compró el circuito de dos pasos igual carga stock.
-      if (!conAprobacion) await api.aprobarMovimiento(creado.id);
-      onGuardado();
+      id = (await api.crearMovimiento(input)).id;
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo guardar");
-    } finally {
+      // Sólo una respuesta del servidor asegura que no se creó (cabecera y
+      // renglones van en un solo `create`, todo o nada). Sin respuesta
+      // (status 0: el corte de 20 s de `request`, o la red que se cae con el
+      // pedido ya enviado) pudo haberse guardado igual, y el alta no lleva
+      // clave de idempotencia: «Probá de nuevo» invitaba justo al duplicado.
+      // Como la app: antes de volver a guardar, se manda a mirar la lista.
+      // Un 5xx no entra (`quedoEnDuda` sí, pero ahí el reintento va con la
+      // misma clave): es una respuesta, y lo común es el servidor
+      // reiniciándose sin haber recibido nada.
+      const sinRespuesta = (err as { status?: number } | null)?.status === 0;
+      if (sinRespuesta) quizasCreado.current = true;
+      setError(
+        sinRespuesta
+          ? "La respuesta no llegó y puede que se haya guardado igual. Antes de volver a guardar, fijate en Movimientos si ya está."
+          : err instanceof Error
+            ? err.message
+            : "No se pudo guardar",
+      );
+      enVuelo.current = false;
       setGuardando(false);
+      return;
     }
+
+    // Con el doble control queda PENDIENTE a propósito (uno carga y otro
+    // aprueba): se abre para que lo apruebe ahí mismo quien puede.
+    if (conAprobacion) {
+      onGuardado({ id });
+      return;
+    }
+
+    // El backend SIEMPRE crea el movimiento pendiente y sólo aprobarlo
+    // mueve el stock. Sin la capacidad de aprobación no habría botón para
+    // hacerlo y la mercadería nunca entraría, así que se aprueba de una:
+    // el negocio que no compró el circuito de dos pasos igual carga stock.
+    try {
+      await api.aprobarMovimiento(id);
+    } catch (err) {
+      // Ya existe, PENDIENTE. Antes el error quedaba en este formulario con
+      // los renglones cargados, y tocar «Guardar» otra vez creaba OTRO
+      // movimiento (mientras se cargaba la salida la caja vendió de lo mismo
+      // y ya no alcanzaba, o se cortó internet). Se sigue sobre ESE, como el
+      // `quedoPendiente` de farmacia. El motivo va sin su punto final: los de
+      // red ya lo traen y quedaba «…en un momento.. Corregilo».
+      const motivo = (err instanceof Error ? err.message : "error desconocido").replace(/\.\s*$/, "");
+      onGuardado({
+        id,
+        aviso: `Se guardó como pendiente, pero no se pudo aprobar: ${motivo}. Corregilo acá y aprobalo; no lo cargues de nuevo.`,
+      });
+      return;
+    }
+    onGuardado();
+  }
+
+  /**
+   * Cancelar, la X y Escape. Con el guardado en vuelo no se sale: cerrar no
+   * frena el pedido, y con la red lenta se volvía a abrir «Nuevo» y se
+   * guardaba otro mientras el primero seguía en camino (dos movimientos), o
+   * el error del primero se perdía con el formulario cerrado.
+   */
+  function cerrar() {
+    if (enVuelo.current) return;
+    onClose(quizasCreado.current);
   }
 
   return (
@@ -1174,11 +1300,11 @@ function FormMovimientoCuerpo({
           ? "Nace pendiente: recién al aprobarlo se mueve el stock"
           : "Al guardar se actualiza el stock: una entrada suma y una salida resta"
       }
-      onClose={onClose}
+      onClose={cerrar}
       ancho="max-w-2xl"
       acciones={
         <>
-          <Boton variante="ghost" onClick={onClose}>
+          <Boton variante="ghost" onClick={cerrar} disabled={guardando}>
             Cancelar
           </Boton>
           <Boton icono="save" onClick={guardar} disabled={guardando}>

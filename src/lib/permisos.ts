@@ -513,20 +513,39 @@ export function tienePermiso(usuario: ConPermisos, codigo: string): boolean {
 }
 
 /**
- * ¿Se le ofrece "Aprobar" en un movimiento de inventario de este tipo?
+ * ¿Se le ofrece "Aprobar" en un movimiento de inventario de este tipo? Y
+ * "Anular" uno ya aprobado: deshace la aprobación y el servidor pide lo mismo.
  *
- * Una TRANSFERENCIA pide SIEMPRE `inventario.aprobar_transferencias` (16-oct):
- * mueve mercadería entre locales, y si falta algo entre dos sucursales tiene
- * que haber pocas personas que la hayan dado por buena. Viene de fábrica en
- * Administrador y Encargado.
+ * Es la regla de `puedeAprobar` del backend (`movimiento.service.ts`):
  *
- * Entradas, salidas y ajustes siguen como antes: el botón se ofrece y el
- * servidor decide (con el doble control aprueba sólo `inventario.aprobar`,
- * sin él alcanza con mover inventario; ver `puedeAprobar` en el backend).
+ * - Una TRANSFERENCIA pide SIEMPRE `inventario.aprobar_transferencias`
+ *   (16-oct): mueve mercadería entre locales, y si falta algo entre dos
+ *   sucursales tiene que haber pocas personas que la hayan dado por buena.
+ *   Viene de fábrica en Administrador y Encargado.
+ * - Entradas, salidas y ajustes: `inventario.aprobar`, o mover inventario si
+ *   el negocio NO tiene el extra del doble control (`aprobacion_inventario`).
+ *   Con el extra uno carga y otro aprueba: a quien sólo mueve inventario el
+ *   servidor le contesta 403 al aprobar y al anular lo aprobado (backend
+ *   `test/aprobar-movimientos.e2e-spec.ts`, «quien sólo mueve inventario
+ *   carga, pero no aprueba»). Antes el botón se le ofrecía igual y terminaba
+ *   en ese 403 (MOV-03).
+ *
+ * `dobleControl` es el extra CONFIRMADO en la lista del plan, no `incluye`,
+ * que falla abierto: con la lista vacía (un negocio sin features cargadas) el
+ * backend tampoco ve el extra y deja aprobar a quien mueve inventario, así que
+ * el botón se ofrece y decide él. Sin el tercer argumento (las pantallas de
+ * farmacia) quien mueve inventario lo sigue viendo como siempre.
  */
-export function ofreceAprobarMovimiento(usuario: ConPermisos, tipo: string | undefined): boolean {
+export function ofreceAprobarMovimiento(
+  usuario: ConPermisos,
+  tipo: string | undefined,
+  dobleControl = false,
+): boolean {
   if (tipo === "TRANSFERENCIA") return tienePermiso(usuario, "inventario.aprobar_transferencias");
-  return true;
+  return (
+    tienePermiso(usuario, "inventario.aprobar") ||
+    (tienePermiso(usuario, "inventario.mover") && !dobleControl)
+  );
 }
 
 /** ¿Lo tiene sólo sobre lo suyo (alcance PROPIO)? */
