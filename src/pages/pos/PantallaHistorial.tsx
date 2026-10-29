@@ -87,13 +87,18 @@ export default function PantallaHistorial({
   // el rubro, como la app (`construirHistorial`): una farmacia o un minimarket
   // con delivery tenía el mismo número inflado (hay test de farmacia).
   //
-  // Ojo, no es "lo que entró a la caja": una venta fiada todavía suma entera,
-  // con el saldo que se llevó el cliente, y la app suma sólo lo cobrado
-  // (`total - saldo`). Igualarlo queda pendiente: cambia el número de la cajera.
+  // Ojo, no es "lo que entró a la caja": una venta fiada suma entera, como en
+  // el "Total vendido" del cierre, y lo fiado (total − adelanto) va aparte en
+  // "Incluye Bs X fiado, no entró a caja". Sin la nota, la cajera veía más de lo
+  // que tenía en el cajón; Android restaba el saldo y "Ventas de hoy" no daba
+  // el número del cierre. Desde el 29-oct las dos hacen lo mismo que el cierre.
   const aprobadas = [...sinSubir, ...todas.filter((v) => v.estado === "APROBADO")].filter(
     (v) => !porCobrarAlEntregar(v),
   );
   const totalVendido = aCentavos(aprobadas.reduce((s, v) => s + v.total, 0));
+  const fiado = aCentavos(
+    aprobadas.reduce((s, v) => (v.credito ? s + v.total - (v.credito.adelanto ?? 0) : s), 0),
+  );
   const porEntregar = pendientes.datos ?? [];
 
   const navigate = useNavigate();
@@ -136,6 +141,7 @@ export default function PantallaHistorial({
             <p className="text-xs text-texto-3">
               {aprobadas.length} {aprobadas.length === 1 ? "venta" : "ventas"} ·{" "}
               {fmtMoney(totalVendido)}
+              {esPositivo(fiado) && <span className="text-warning-text"> · {fmtMoney(fiado)} fiado</span>}
             </p>
           </div>
         </div>
@@ -147,7 +153,7 @@ export default function PantallaHistorial({
       <div className="min-h-0 flex-1 space-y-5 overflow-y-auto py-4 px-[max(1rem,calc(50%-24rem+1rem))] lg:px-[max(1.5rem,calc(50%-36rem+1.5rem))] lg:grid lg:grid-cols-[minmax(0,1fr)_360px] lg:content-start lg:items-start lg:gap-6 lg:space-y-0 lg:py-6">
         {/* En el celular va arriba de las ventas; en la PC, a la derecha. */}
         <aside className="space-y-5 lg:sticky lg:top-0 lg:col-start-2 lg:row-start-1">
-          <ResumenTurno caja={caja} ventas={aprobadas.length} total={totalVendido} />
+          <ResumenTurno caja={caja} ventas={aprobadas.length} total={totalVendido} fiado={fiado} />
           {/* Antes que las ventas: es la plata que NO está en el cajón, y es lo
               que la cajera necesita ver antes de cerrar. */}
           {conCreditos && (
@@ -375,7 +381,17 @@ export default function PantallaHistorial({
  * El turno de un vistazo, sólo en la PC: en el celular ya lo dice la barra de
  * arriba y no hay lugar para repetirlo.
  */
-function ResumenTurno({ caja, ventas, total }: { caja: Caja; ventas: number; total: number }) {
+function ResumenTurno({
+  caja,
+  ventas,
+  total,
+  fiado,
+}: {
+  caja: Caja;
+  ventas: number;
+  total: number;
+  fiado: number;
+}) {
   return (
     <section aria-label="Resumen del turno" className="card hidden p-5 lg:block">
       <p className="text-[12px] font-bold uppercase tracking-wide text-texto-4">Turno</p>
@@ -385,6 +401,12 @@ function ResumenTurno({ caja, ventas, total }: { caja: Caja; ventas: number; tot
       </p>
       <p className="mt-4 text-[12px] font-semibold text-texto-3">Vendido</p>
       <p className="text-3xl font-extrabold tabular-nums text-texto">{fmtMoney(total)}</p>
+      {/* La misma nota que el "Total vendido" del cierre y que Android. */}
+      {esPositivo(fiado) && (
+        <p className="mt-0.5 text-[13px] font-semibold text-warning-text">
+          Incluye {fmtMoney(fiado)} fiado, no entró a caja
+        </p>
+      )}
       <dl className="mt-4 space-y-1.5 border-t border-borde-soft pt-3 text-sm">
         <div className="flex justify-between">
           <dt className="text-texto-3">Ventas</dt>

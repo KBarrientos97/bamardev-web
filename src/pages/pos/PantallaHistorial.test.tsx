@@ -597,6 +597,37 @@ describe("DEL-4: lo vendido del turno no cuenta los pedidos que se cobran al ent
   });
 });
 
+describe("lo vendido del turno con un fiado: entero, y lo fiado aparte (29-oct)", () => {
+  it("el fiado suma entero y la nota dice cuánto no entró a la caja, como el cierre", async () => {
+    // Android restaba el saldo («Ventas de hoy» Bs 80 contra Bs 164 del
+    // cierre) y la web sumaba entero sin decir nada, así que la cajera veía
+    // más de lo que tenía en el cajón. Ahora las dos, como el «Total vendido»
+    // del cierre: el vendido entero y «Incluye Bs X fiado, no entró a caja».
+    const fiada = {
+      ...venta,
+      id: 12,
+      comprobante: "T-0012",
+      total: 84,
+      credito: { clienteNombre: "Pensión Doña Rosa", montoTotal: 84, adelanto: 0, saldo: 84 },
+    } as unknown as Venta;
+    vi.mocked(api.getVentas).mockResolvedValue([venta, fiada]);
+    montarHistorial();
+    await screen.findByRole("button", { name: /T-0012/ });
+    expect(screen.getByText("2 ventas · Bs 164,00")).toBeInTheDocument();
+    expect(screen.getByText("· Bs 84,00 fiado")).toBeInTheDocument();
+    const resumen = within(screen.getByRole("region", { name: "Resumen del turno" }));
+    expect(resumen.getByText("Bs 164,00")).toBeInTheDocument();
+    expect(resumen.getByText("Incluye Bs 84,00 fiado, no entró a caja")).toBeInTheDocument();
+  });
+
+  it("sin fiado no hay nota", async () => {
+    vi.mocked(api.getVentas).mockResolvedValue([venta]);
+    montarHistorial();
+    await screen.findByRole("button", { name: /T-0007/ });
+    expect(screen.queryByText(/fiado, no entró a caja/)).not.toBeInTheDocument();
+  });
+});
+
 describe("BUG-finanzas-10: lo fiado en el turno aparece en las cuentas por cobrar", () => {
   const abierto = {
     id: 1,
