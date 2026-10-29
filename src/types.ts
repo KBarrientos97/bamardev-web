@@ -319,7 +319,8 @@ export interface EventoRol {
  * Producto / Elaborado / Combo:
  *   ALMACENABLE → "Producto"  (controla stock)
  *   SERVICIO    → "Elaborado" (no controla stock)
- *   COMPUESTO   → "Combo"     (receta que descuenta ingredientes al vender)
+ *   COMPUESTO   → "Combo"     (controla su PROPIO stock; la receta dice lo que
+ *                               lleva y venderlo no descuenta los ingredientes)
  */
 export type TipoProducto = "ALMACENABLE" | "SERVICIO" | "COMPUESTO";
 

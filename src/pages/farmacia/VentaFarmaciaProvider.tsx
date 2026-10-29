@@ -5,7 +5,7 @@ import { api } from "../../lib/api";
 import { fmtMoney, fmtNum } from "../../lib/format";
 import { useAuth } from "../../store/AuthContext";
 import type { DetalleVentaInput, Producto, RecetaVenta } from "../../types";
-import { idsGuardados, paraVender, useCarrito } from "../pos/useCarrito";
+import { controlaStock, idsGuardados, paraVender, useCarrito } from "../pos/useCarrito";
 import DialogoReceta from "./DialogoReceta";
 import { conUnidad, pideConfirmacion } from "./medicamento";
 import { ContextoVentaFarmacia, type VentaFarmacia } from "./ventaFarmacia";
@@ -150,7 +150,11 @@ export default function VentaFarmaciaProvider({ children }: { children: ReactNod
       const ya = lineas.find((l) => l.producto.id === p.id)?.cantidad ?? 0;
       // Lo vencido no cuenta: sigue en el estante, pero no se vende.
       const hay = paraVender(p);
-      if (p.tipoProducto === "ALMACENABLE" && ya + 1 > hay) {
+      // `controlaStock`, el mismo criterio del tope de `useCarrito`, que
+      // también topa el combo (tiene su propio stock). Mirando sólo el
+      // almacenable, un combo en 0 no se sumaba y acá se avisaba "agregado a
+      // la venta" igual (POS-2).
+      if (controlaStock(p) && ya + 1 > hay) {
         avisar(
           hay <= 0
             ? (p.stockVencido ?? 0) > 0
@@ -194,7 +198,8 @@ export default function VentaFarmaciaProvider({ children }: { children: ReactNod
       // Igual que al sumar: si se pide más de lo que hay, queda en lo que hay
       // y se dice. Escribir 300 y ver 140 sin explicación parece un error.
       const hay = paraVender(p);
-      if (p.tipoProducto === "ALMACENABLE" && cantidad > hay) {
+      // Con el mismo criterio que el tope del carrito (ver `sumar`).
+      if (controlaStock(p) && cantidad > hay) {
         const vencidas = p.stockVencido ?? 0;
         avisar(
           `${p.nombre}: no hay tanto, quedan ${conUnidad(hay, p.unidadMedida?.nombre)}` +

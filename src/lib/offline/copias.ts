@@ -55,7 +55,12 @@ export async function conCopia<T>(nombre: string, pedir: () => Promise<T>): Prom
  * (`descontarVendidos`); acá la "memoria" del catálogo es la copia. Cuando
  * vuelve la red, la primera lectura la pisa con el stock real.
  *
- * Sólo los almacenables: elaborados y combos no llevan stock propio.
+ * Todo menos el elaborado (SERVICIO), que no lleva stock: el combo también
+ * baja, porque tiene su PROPIO stock y el backend lo descuenta al vender (la
+ * receta no descuenta nada). Antes sólo bajaba el almacenable, y sin señal la
+ * copia seguía ofreciendo los combos que ya se habían vendido. Es la regla de
+ * `controlaStock` en el carrito y de `PuntoVentaCatalogoViewModel.descontar`
+ * en la app.
  */
 export async function descontarDeLaCopia(nombre: string, detalles: DetalleVentaInput[]) {
   const ambito = ambitoSesion();
@@ -66,7 +71,7 @@ export async function descontarDeLaCopia(nombre: string, detalles: DetalleVentaI
   const vendido = new Map<number, number>();
   for (const d of detalles) vendido.set(d.productoId, (vendido.get(d.productoId) ?? 0) + d.cantidad);
   const nuevo = catalogo.map((p) =>
-    p.tipoProducto === "ALMACENABLE" && vendido.has(p.id)
+    p.tipoProducto !== "SERVICIO" && vendido.has(p.id)
       ? { ...p, stockTotal: Math.max(0, p.stockTotal - (vendido.get(p.id) ?? 0)) }
       : p,
   );

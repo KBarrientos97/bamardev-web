@@ -188,6 +188,25 @@ describe("agregar desde otra pantalla", () => {
     expect(screen.getByRole("status")).toHaveTextContent("Paracetamol 500 mg: agotado");
     expect(verVenta()).not.toBeInTheDocument();
   });
+
+  it("un combo en 0 tampoco se suma, y no dice que se agregó", async () => {
+    // El tope del carrito es compartido y topa el combo (tiene su propio
+    // stock), pero acá se miraba sólo el almacenable: el combo no se sumaba y
+    // el aviso decía "agregado a la venta" igual (POS-2).
+    await montar(med({ nombre: "Combo botiquín", tipoProducto: "COMPUESTO", stockTotal: 0 }));
+    await tocar(screen.getByRole("button", { name: /Sumar/ }));
+    expect(screen.getByRole("status")).toHaveTextContent("Combo botiquín: agotado");
+    expect(screen.queryByText(/agregado a la venta/)).not.toBeInTheDocument();
+    expect(verVenta()).not.toBeInTheDocument();
+  });
+
+  it("guarda: un servicio no se agota, se suma sin stock", async () => {
+    // `controlaStock` deja afuera sólo al SERVICIO, que no lleva stock.
+    await montar(med({ nombre: "Toma de presión", tipoProducto: "SERVICIO", stockTotal: 0 }));
+    await tocar(screen.getByRole("button", { name: /Sumar/ }));
+    expect(screen.getByRole("status")).toHaveTextContent("Toma de presión agregado a la venta");
+    expect(verVenta()).toHaveTextContent("1 u.");
+  });
 });
 
 describe("escribir la cantidad", () => {
@@ -227,6 +246,15 @@ describe("escribir la cantidad", () => {
       "Paracetamol 500 mg: no hay tanto, quedan 24 u.",
     );
     expect(verVenta()).toHaveTextContent("24 u.");
+  });
+
+  it("un combo también queda en lo que hay, y lo dice", async () => {
+    // Antes el carrito lo recortaba sin decir nada: el aviso miraba sólo el
+    // almacenable (POS-2).
+    await montarRenglon(med({ nombre: "Combo botiquín", tipoProducto: "COMPUESTO", stockTotal: 3 }), 10);
+    await tocar(screen.getByRole("button", { name: "Poner 10" }));
+    expect(screen.getByRole("status")).toHaveTextContent("Combo botiquín: no hay tanto, quedan 3 u.");
+    expect(verVenta()).toHaveTextContent("3 u.");
   });
 
   it("no vuelve a preguntar por la receta: ya se preguntó al agregarlo", async () => {

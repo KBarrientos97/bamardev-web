@@ -21,7 +21,8 @@ import {
   useAviso,
 } from "../../components/ui";
 import { api } from "../../lib/api";
-import { fmtCantidad, fmtMoney } from "../../lib/format";
+import { esPositivo, parsearMonto } from "../../lib/dinero";
+import { fmtCantidad, fmtMoney, fmtPct } from "../../lib/format";
 import { iconoPorLlave } from "../../lib/iconosArticulo";
 import SelectorIcono from "../../components/SelectorIcono";
 import { esBelleza, esFarmacia, termino } from "../../lib/rubro";
@@ -42,9 +43,11 @@ import type {
 
 /**
  * Los tres tipos del backend, con la etiqueta que usa la app Android.
- * Sólo ALMACENABLE controla stock: un elaborado se prepara al vender y un
- * combo descuenta sus ingredientes, así que a ninguno se le lleva inventario
- * propio.
+ * El elaborado no lleva stock: se prepara al vender. El producto y el combo
+ * sí, y el del combo es el suyo propio (los que armó el local): su receta dice
+ * lo que lleva y venderlo NO descuenta los ingredientes. Esto decía que el
+ * combo descontaba su receta (la regla de antes del 25-ago), y la ficha se lo
+ * repetía al dueño (BUG-catalogo-1).
  */
 const TIPOS: Record<TipoProducto, { label: string; tono: "gris" | "verde" | "morado"; conStock: boolean }> = {
   ALMACENABLE: { label: "Producto", tono: "gris", conStock: true },
@@ -276,7 +279,7 @@ export default function Productos() {
       // el mostrador sobre. Sin almacén elegido, `stockDe` es el total y el
       // filtro se comporta como siempre.
       const stock = stockDe(p);
-      // Elaborados y combos no llevan stock: quedan fuera de esos filtros.
+      // El elaborado no lleva stock: queda fuera de esos filtros.
       if (filtroStock === "bajo")
         return conStock && stock > 0 && stock <= p.stockMinimo;
       if (filtroStock === "sin") return conStock && stock <= 0;
@@ -668,7 +671,11 @@ function DetalleProducto({
   const [viendoCostos, setViendoCostos] = useState(false);
   if (!p) return null;
   const tipo = TIPOS[p.tipoProducto];
-  const margen = p.precio > 0 ? (p.precio - p.costo) / p.precio : 0;
+  // Sin `costos.ver` el backend QUITA el campo (`ocultarCosto`), aunque el
+  // tipo diga `number`: no hay costo que mostrar, y "Bs 0,00" se leería como
+  // que no cuesta nada.
+  const veCosto = p.costo != null;
+  const margen = margenDe(p);
 
   return (
     <Modal
@@ -694,17 +701,22 @@ function DetalleProducto({
       }
     >
       <div className="space-y-4">
-        <button
-          type="button"
-          onClick={() => setViendoCostos(true)}
-          className="flex w-full items-center gap-2 rounded-xl border border-borde px-3.5 py-2.5 text-left text-[13px] font-semibold text-texto-2 hover:bg-muted"
-        >
-          <Icon name="trendingDown" size={17} />
-          <span className="flex-1">Historial de costos</span>
-          <Icon name="chevronRight" size={16} />
-        </button>
+        {/* El historial también es de `costos.ver` (el endpoint lo exige): sin
+            el permiso, el botón abría un modal con el error del 403 y "Sin
+            compras registradas", como si nunca se hubiera comprado. */}
+        {veCosto && (
+          <button
+            type="button"
+            onClick={() => setViendoCostos(true)}
+            className="flex w-full items-center gap-2 rounded-xl border border-borde px-3.5 py-2.5 text-left text-[13px] font-semibold text-texto-2 hover:bg-muted"
+          >
+            <Icon name="trendingDown" size={17} />
+            <span className="flex-1">Historial de costos</span>
+            <Icon name="chevronRight" size={16} />
+          </button>
+        )}
 
-        {viendoCostos && (
+        {veCosto && viendoCostos && (
           <HistorialCostos
             productoId={p.id}
             nombre={p.nombre}
@@ -731,8 +743,8 @@ function DetalleProducto({
 
         <dl className="grid grid-cols-2 gap-3">
           <Dato label="Precio de venta" valor={fmtMoney(p.precio)} />
-          <Dato label="Costo" valor={fmtMoney(p.costo)} />
-          <Dato label="Margen" valor={`${Math.round(margen * 100)}%`} />
+          {veCosto && <Dato label="Costo" valor={fmtMoney(p.costo)} />}
+          {margen != null && <Dato label="Margen" valor={fmtPct(margen)} />}
           <Dato label="Categoría" valor={p.categoria?.nombre ?? "—"} />
           {tipo.conStock && (
             <>
@@ -776,10 +788,13 @@ function DetalleProducto({
 
         {p.tipoProducto === "COMPUESTO" && (
           <div>
+            {/* Decía "se descuenta al vender", y no: venderlo baja el stock
+                del combo, no el de lo que lleva. El dueño podía creer que las
+                gaseosas del combo bajaban solas (BUG-catalogo-1). */}
             <h4 className="mb-2 text-[13px] font-bold text-texto">
               Receta del combo
               <span className="ml-1.5 font-normal text-texto-3">
-                — se descuenta al vender
+                — lo que lleva; venderlo no descuenta los ingredientes
               </span>
             </h4>
             {p.componentes.length === 0 ? (
@@ -805,6 +820,21 @@ function DetalleProducto({
       </div>
     </Modal>
   );
+}
+
+/**
+ * El margen sobre el precio de venta, o null si no se puede calcular. Un
+ * porcentaje que no se puede calcular no se muestra (BUG-catalogo-4):
+ *  · sin `costos.ver` no llega el costo, y `precio − undefined` pintaba
+ *    "Margen NaN%";
+ *  · sin costo cargado (0) daba "100%", como si no costara nada;
+ *  · sin precio daba "0%", que se lee como un dato y no lo es.
+ */
+function margenDe(p: { precio?: number | null; costo?: number | null }): number | null {
+  const { precio, costo } = p;
+  if (precio == null || costo == null) return null;
+  if (!esPositivo(precio) || !esPositivo(costo)) return null;
+  return (precio - costo) / precio;
 }
 
 function Dato({ label, valor }: { label: string; valor: string }) {
@@ -958,6 +988,15 @@ function FormProductoCuerpo({
   const [codBarra, setCodBarra] = useState(producto?.codBarra ?? "");
   const [tipo, setTipo] = useState<TipoProducto>(producto?.tipoProducto ?? "ALMACENABLE");
   const [precio, setPrecio] = useState(String(producto?.precio ?? ""));
+  /**
+   * Quien no tiene `ventas.ver_precios` recibe el catálogo con `precio: null`
+   * (`preciosSegun` del backend), y el PATCH le descarta el precio que mande
+   * ("lo que no ve, no lo pisa"). Con el precio obligatorio el campo arrancaba
+   * vacío y ese usuario ya no podía guardar nada: ni el nombre, ni la
+   * categoría, ni la cantidad del combo. Al editar un artículo así, el precio
+   * no se muestra, no se exige y no viaja. Al crear siempre se pide.
+   */
+  const precioOculto = esEdicion && producto.precio == null;
   const [costo, setCosto] = useState(String(producto?.costo ?? ""));
   const [stockMinimo, setStockMinimo] = useState(String(producto?.stockMinimo ?? ""));
   const [stockInicial, setStockInicial] = useState(
@@ -1051,21 +1090,42 @@ function FormProductoCuerpo({
     setError("");
 
     if (!nombre.trim()) return setError("Poné un nombre.");
-    const precioNum = Number(precio);
-    if (!Number.isFinite(precioNum) || precioNum < 0)
-      return setError("El precio tiene que ser un número válido.");
+    // El precio es obligatorio. Se leía con `Number(precio)`, y `Number("")`
+    // da 0: el campo vacío guardaba el artículo a Bs 0,00 y el POS lo cobraba
+    // gratis sin que nadie lo notara (BUG-catalogo-2). Un 0 escrito a
+    // propósito sí vale, como en la app. Sin precio a la vista
+    // (`precioOculto`) queda `undefined` y no viaja. Mandar un 0 confiando en
+    // que el backend lo descarta no alcanza: el permiso se lee en cada pedido,
+    // y si se lo dan con el formulario abierto, ese 0 se guardaría.
+    let precioNum: number | undefined;
+    if (!precioOculto) {
+      if (!precio.trim()) return setError("Poné el precio de venta.");
+      const leido = parsearMonto(precio);
+      if (leido == null || leido < 0)
+        return setError("El precio tiene que ser un número válido.");
+      precioNum = leido;
+    }
     if (!unidadId) return setError("Elegí una unidad de medida.");
-    // El backend rechaza un combo sin receta: sin ingredientes no sabría qué
-    // descontar al venderlo.
+    // La cantidad del combo es obligatoria, al crear y al editar: es la única
+    // puerta para cargarla (no pasa por Movimientos), y vacía no viajaba: el
+    // combo quedaba en 0 y el POS no lo podía vender hasta volver a editarlo
+    // (INV-02). Un 0 escrito vale; vacío no. Como `validarStockCombo` en la app.
+    const stockCombo = parsearMonto(stockInicial);
+    if (esCombo && !stockInicial.trim())
+      return setError("Poné cuántos combos tenés para vender (0 si hoy no hay).");
+    if (esCombo && (stockCombo == null || stockCombo < 0))
+      return setError("La cantidad de combos tiene que ser un número, 0 o más.");
+    // La receta es lo que lleva el combo (no descuenta nada al venderlo): sin
+    // ella el combo no dice qué es. La app también pide al menos un producto.
     if (esCombo && componentes.length === 0)
       return setError("Un combo necesita al menos un ingrediente en su receta.");
     const sinCantidad = componentes.find((c) => !(c.cantidad > 0));
     if (sinCantidad)
       return setError(`Poné cuánto lleva "${sinCantidad.nombre}" en la receta.`);
 
-    const input: ProductoInput = {
+    // Todo menos el precio, que se suma abajo sólo si viaja.
+    const input: Omit<ProductoInput, "precio"> = {
       nombre: nombre.trim(),
-      precio: precioNum,
       unidadMedidaId: Number(unidadId),
       tipoProducto: tipo,
       costo: costo === "" ? 0 : Number(costo),
@@ -1093,9 +1153,7 @@ function FormProductoCuerpo({
       // artículo es la única forma de decir cuántos hay hoy, al crear y al
       // editar. Un producto nace sin stock (lo que entra va por Movimientos) y
       // el backend no le toma este número.
-      ...(esCombo && conStock && stockInicial !== ""
-        ? { stockInicial: Number(stockInicial) }
-        : {}),
+      ...(esCombo && stockCombo != null ? { stockInicial: stockCombo } : {}),
       // La ficha viaja sólo donde el formulario la muestra. En otro rubro los
       // campos ni se dibujan, y mandarlos vacíos borraría lo que alguien haya
       // cargado desde una farmacia con el mismo catálogo.
@@ -1115,9 +1173,18 @@ function FormProductoCuerpo({
 
     setGuardando(true);
     try {
-      // Pasar a combo al editar va en dos PATCH: ver actualizarConCombo.
-      if (producto) await actualizarConCombo(producto, input);
-      else await api.crearProducto(input);
+      if (producto) {
+        // Pasar a combo al editar va en dos PATCH: ver actualizarConCombo.
+        await actualizarConCombo(
+          producto,
+          precioNum === undefined ? input : { ...input, precio: precioNum },
+        );
+      } else {
+        // Al crear el precio siempre se pidió: `precioOculto` es sólo de la
+        // edición. Si eso cambiara, el backend rechaza el alta sin precio (no
+        // la guarda en 0).
+        await api.crearProducto({ ...input, precio: precioNum! });
+      }
       onGuardado();
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo guardar");
@@ -1200,8 +1267,10 @@ function FormProductoCuerpo({
           <Campo
             label="Tipo"
             hint={
+              // Decía "El combo descuenta los ingredientes de su receta al
+              // venderse", y no es así desde el 25-ago (BUG-catalogo-1).
               esCombo
-                ? "El combo descuenta los ingredientes de su receta al venderse."
+                ? "Tiene su propio stock: los combos que armás. La receta es lo que lleva; venderlo no descuenta los ingredientes."
                 : conStock
                   ? conFicha
                     ? "Se le lleva stock en las sucursales."
@@ -1220,16 +1289,20 @@ function FormProductoCuerpo({
 
           {conFicha && (
             <>
-              <Campo label="Precio de venta">
-                <Input
-                  type="number"
-                  inputMode="decimal"
-                  step="0.01"
-                  min="0"
-                  value={precio}
-                  onChange={(e) => setPrecio(e.target.value)}
-                />
-              </Campo>
+              {/* Sin precio a la vista no hay campo: lo que se escribiera ahí
+                  el backend lo tira (ver `precioOculto`). */}
+              {!precioOculto && (
+                <Campo label="Precio de venta *">
+                  <Input
+                    type="number"
+                    inputMode="decimal"
+                    step="0.01"
+                    min="0"
+                    value={precio}
+                    onChange={(e) => setPrecio(e.target.value)}
+                  />
+                </Campo>
+              )}
               <Campo label="Costo">
                 <Input
                   type="number"
@@ -1246,16 +1319,19 @@ function FormProductoCuerpo({
 
         {!conFicha && (
           <div className="grid gap-3 sm:grid-cols-2">
-            <Campo label="Precio de venta">
-              <Input
-                type="number"
-                inputMode="decimal"
-                step="0.01"
-                min="0"
-                value={precio}
-                onChange={(e) => setPrecio(e.target.value)}
-              />
-            </Campo>
+            {/* Ver `precioOculto`: sin precio a la vista no hay campo. */}
+            {!precioOculto && (
+              <Campo label="Precio de venta *">
+                <Input
+                  type="number"
+                  inputMode="decimal"
+                  step="0.01"
+                  min="0"
+                  value={precio}
+                  onChange={(e) => setPrecio(e.target.value)}
+                />
+              </Campo>
+            )}
             <Campo label="Costo">
               <Input
                 type="number"
@@ -1322,7 +1398,10 @@ function FormProductoCuerpo({
                 hace la app. El "Stock inicial" que se ofrecía para un producto
                 se tiraba sin avisar: el artículo quedaba agotado. */}
             {esCombo ? (
-              <Campo label="Stock del combo" hint="Cuántos hay para vender hoy">
+              // Obligatorio (INV-02): ver `guardar`. Al editar un combo en 0
+              // el campo arranca vacío a propósito, así que hay que escribir
+              // el 0: un 0 heredado no es un valor que alguien eligió.
+              <Campo label="Stock del combo *" hint="Cuántos combos tenés para vender (0 si hoy no hay)">
                 <Input
                   type="number"
                   inputMode="decimal"
@@ -1532,7 +1611,7 @@ function FormProductoCuerpo({
 
             {componentes.length === 0 ? (
               <p className="py-2 text-[13px] text-texto-3">
-                Agregá los productos que consume este combo.
+                Agregá los productos que lleva este combo.
               </p>
             ) : (
               <ul className="mb-3 space-y-2">

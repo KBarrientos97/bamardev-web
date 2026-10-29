@@ -14,10 +14,13 @@ import type { Producto, ProductoInput } from "../../types";
  * segundo, igual, fija la cantidad. Repetirlo no cambia nada más: la receta se
  * reemplaza por la misma y la cantidad es absoluta. Es lo que hace la app
  * (`EdicionArticulo.kt`, 15-oct). Editar un combo que ya lo era va en uno solo.
+ *
+ * Parcial, como el PATCH: a quien no ve los precios el formulario no le manda
+ * el precio (ver `precioOculto` en Productos.tsx).
  */
 export async function actualizarConCombo(
   producto: Pick<Producto, "id" | "tipoProducto">,
-  input: ProductoInput,
+  input: Partial<ProductoInput>,
 ): Promise<void> {
   await api.actualizarProducto(producto.id, input);
   if (input.stockInicial != null && producto.tipoProducto !== "COMPUESTO") {

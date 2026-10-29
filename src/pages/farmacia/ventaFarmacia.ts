@@ -1,6 +1,6 @@
 import { createContext, useContext } from "react";
 import type { Producto, RecetaVenta } from "../../types";
-import { paraVender, type Carrito } from "../pos/useCarrito";
+import { controlaStock, paraVender, type Carrito } from "../pos/useCarrito";
 
 /**
  * La venta en curso de una farmacia, compartida por todas las pantallas.
@@ -49,9 +49,14 @@ export function useVentaFarmacia(): VentaFarmacia | null {
  * Lo agotado se sigue MOSTRANDO en las dos pantallas —"hoy no tengo, te lo
  * consigo" es una venta— pero no se puede sumar a la venta. Lo mismo lo que
  * sólo tiene cajas vencidas: se ve, avisa, y no se vende.
+ *
+ * Lo que se agota lo dice `controlaStock`, el mismo criterio que el tope del
+ * carrito: también el combo, que tiene su propio stock. Mirando sólo el
+ * almacenable, un combo en 0 se ofrecía como vendible y el carrito no lo
+ * sumaba (POS-2).
  */
 export function sePuedeVender(p: Producto): boolean {
   if (!p.habilitado || p.disponible === false) return false;
-  if (p.tipoProducto !== "ALMACENABLE") return true;
+  if (!controlaStock(p)) return true;
   return paraVender(p) > 0;
 }

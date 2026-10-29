@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { contiene } from "../../lib/texto";
 import { esFarmacia } from "../../lib/rubro";
 import CatalogoVenta from "../farmacia/CatalogoVenta";
@@ -14,7 +14,7 @@ import { fmtCantidad, fmtMoney, fmtNum } from "../../lib/format";
 import { useAuth } from "../../store/AuthContext";
 import type { Categoria, Consumo, LotesDelArticulo, Producto } from "../../types";
 import { aplicarOrden, guardarOrden, leerOrden, reordenarVisibles } from "./ordenPos";
-import type { Carrito, LineaCarrito } from "./useCarrito";
+import { controlaStock, topeStock, type Carrito, type LineaCarrito } from "./useCarrito";
 import type { ProfesionalDeLinea } from "../../lib/agenda/ventaDirecta";
 import { useArrastreGrilla } from "./useArrastreGrilla";
 
@@ -151,6 +151,30 @@ export default function PantallaVenta({
     return arrastre.orden.map((id) => porId.get(id)).filter((p): p is Producto => !!p);
   }, [filtrados, arrastre.orden]);
 
+  /**
+   * Notas de línea escritas y todavía sin confirmar, por producto.
+   *
+   * La nota pasa al carrito con Enter, con el ✓ o al salir del campo; hasta
+   * entonces vive en la fila. Cobrar desmonta esta pantalla, y quien escribía
+   * "sin cebolla" y tocaba Cobrar directo mandaba la venta sin la nota y sin
+   * ningún aviso (BUG-pos-venta-1); en el celular pasaba lo mismo al cerrar la
+   * hoja del carrito. Salir del campo ya la guarda, pero no se apuesta a eso:
+   * antes de cobrar o de cerrar la hoja se guarda lo que haya quedado escrito,
+   * como `confirmarNotasAbiertas` en la app.
+   *
+   * Un ref y no estado: es lo tecleado letra por letra y no hay nada que
+   * redibujar por eso.
+   */
+  const notasAbiertas = useRef(new Map<number, string>());
+  const confirmarNotasAbiertas = () => {
+    for (const [id, nota] of notasAbiertas.current) carrito.setNota(id, nota.trim());
+    notasAbiertas.current.clear();
+  };
+  const cerrarCarrito = () => {
+    confirmarNotasAbiertas();
+    setCarritoAbierto(false);
+  };
+
   const panelCarrito = (
     <PanelCarrito
       carrito={carrito}
@@ -159,11 +183,13 @@ export default function PantallaVenta({
       bloqueoCobro={bloqueoCobro}
       profesionales={profesionales}
       lineasExtra={lineasExtra}
+      notasAbiertas={notasAbiertas}
       onCobrar={() => {
+        confirmarNotasAbiertas();
         setCarritoAbierto(false);
         onCobrar();
       }}
-      onCerrar={() => setCarritoAbierto(false)}
+      onCerrar={cerrarCarrito}
     />
   );
 
@@ -273,7 +299,7 @@ export default function PantallaVenta({
         <div className="fixed inset-0 z-40 flex items-end lg:hidden">
           <div
             className="absolute inset-0 bg-slate-900/40"
-            onClick={() => setCarritoAbierto(false)}
+            onClick={cerrarCarrito}
           />
           <div className="relative flex max-h-[85dvh] w-full flex-col rounded-t-2xl bg-white shadow-2xl">
             {panelCarrito}
@@ -331,11 +357,16 @@ function TarjetaVenta({
    */
   ignorarClic: () => boolean;
 }) {
-  // Sólo los almacenables se quedan sin stock; un elaborado se prepara al
-  // momento y un combo descuenta sus ingredientes.
-  const controlaStock = p.tipoProducto === "ALMACENABLE";
-  const agotado = controlaStock && p.stockTotal <= 0;
+  // Sólo el elaborado no se agota: se prepara al momento. El combo tiene su
+  // propio stock (los que armó el local) y se agota como un producto; antes
+  // se ofrecía siempre y el cobro rebotaba al confirmar (POS-2).
+  const controla = controlaStock(p);
+  const agotado = controla && p.stockTotal <= 0;
   const enCarrito = cantidad > 0;
+  // El "+" se apaga al llegar a lo que hay (POS-10). El carrito ya ignoraba el
+  // toque, pero en silencio: el cajero tocaba y no pasaba nada, sin saber por
+  // qué. Es el mismo tope del carrito, como en la app.
+  const alTope = cantidad >= topeStock(p);
 
   return (
     <li
@@ -378,7 +409,7 @@ function TarjetaVenta({
             {agotado && <Badge tono="rojo">Agotado</Badge>}
             {/* Un span y no <Badge>: Badge fuerza mayúsculas, y "72 DISP."
                 se leía como una sigla. Mismo tamaño y colores que el badge. */}
-            {!agotado && controlaStock && (
+            {!agotado && controla && (
               <span
                 className={`inline-flex items-center rounded-lg px-2 py-0.5 text-[11px] font-bold ${
                   p.stockTotal <= p.stockMinimo
@@ -422,8 +453,10 @@ function TarjetaVenta({
               onClick={() => {
                 if (!ignorarClic()) onAgregar();
               }}
+              disabled={alTope}
               aria-label="Uno más"
-              className="flex h-9 w-9 items-center justify-center rounded-full text-primary-700 hover:bg-primary-50"
+              title={alTope ? "No hay más disponibles" : undefined}
+              className="flex h-9 w-9 items-center justify-center rounded-full text-primary-700 hover:bg-primary-50 disabled:opacity-30 disabled:hover:bg-transparent"
             >
               <Icon name="plus" size={15} />
             </button>
@@ -458,6 +491,7 @@ function PanelCarrito({
   bloqueoCobro,
   profesionales,
   lineasExtra,
+  notasAbiertas,
   onCobrar,
   onCerrar,
 }: {
@@ -467,6 +501,8 @@ function PanelCarrito({
   bloqueoCobro?: string | null;
   profesionales?: ProfesionalesDelCarrito;
   lineasExtra?: React.ReactNode;
+  /** Lo escrito en las notas sin confirmar: ver PantallaVenta. */
+  notasAbiertas: RefObject<Map<number, string>>;
   onCobrar: () => void;
   onCerrar: () => void;
 }) {
@@ -574,6 +610,7 @@ function PanelCarrito({
                 key={l.producto.id}
                 linea={l}
                 carrito={carrito}
+                notasAbiertas={notasAbiertas}
                 conMesaLlevar={conMesaLlevar}
                 venta={venta}
                 profesional={profesionales?.de(l) ?? null}
@@ -647,6 +684,7 @@ function BotonConsumoTodo({ carrito, consumo }: { carrito: Carrito; consumo: Con
 function FilaCarrito({
   linea: l,
   carrito,
+  notasAbiertas,
   conMesaLlevar,
   venta,
   profesional,
@@ -655,6 +693,7 @@ function FilaCarrito({
 }: {
   linea: LineaCarrito;
   carrito: Carrito;
+  notasAbiertas: RefObject<Map<number, string>>;
   conMesaLlevar: boolean;
   /** La venta de la farmacia; null en un restaurante. */
   venta: VentaFarmacia | null;
@@ -667,6 +706,33 @@ function FilaCarrito({
   const [editandoNota, setEditandoNota] = useState(false);
   const [nota, setNota] = useState(l.nota);
   const [splitAbierto, setSplitAbierto] = useState(false);
+  const id = l.producto.id;
+
+  // El campo arranca siempre en la nota guardada: ahora salir del campo la
+  // guarda, y un borrador viejo pisaría la nota con lo de antes.
+  const abrirNota = () => {
+    setNota(l.nota);
+    setEditandoNota(true);
+  };
+  /** Pasa lo escrito al carrito, sin cerrar el campo. */
+  const guardarNota = () => {
+    const texto = nota.trim();
+    if (texto !== l.nota) carrito.setNota(id, texto);
+    notasAbiertas.current.delete(id);
+  };
+  /** Enter o el ✓: se guarda y el campo se cierra. */
+  const confirmarNota = () => {
+    guardarNota();
+    setEditandoNota(false);
+  };
+  // La fila que se va (la línea se quitó) no deja su borrador atrás: si el
+  // producto vuelve al carrito, Cobrar le pegaría la nota vieja.
+  useEffect(() => {
+    const abiertas = notasAbiertas.current;
+    return () => {
+      abiertas.delete(id);
+    };
+  }, [notasAbiertas, id]);
 
   const partida = l.enMesa > 0 && l.enMesa < l.cantidad;
   const todaMesa = l.enMesa === l.cantidad;
@@ -728,8 +794,10 @@ function FilaCarrito({
           <span className="min-w-6 text-center text-[13px] font-bold">{l.cantidad}</span>
           <button
             onClick={() => carrito.setCantidad(l.producto.id, l.cantidad + 1)}
+            // Apagado en el tope, igual que el "+" de la card (POS-10).
+            disabled={l.cantidad >= topeStock(l.producto)}
             aria-label="Agregar una unidad"
-            className="p-2.5 text-texto-2 hover:bg-muted"
+            className="p-2.5 text-texto-2 hover:bg-muted disabled:opacity-30 disabled:hover:bg-transparent"
           >
             <Icon name="plus" size={16} />
           </button>
@@ -787,14 +855,14 @@ function FilaCarrito({
         {!editandoNota &&
           (l.nota ? (
             <button
-              onClick={() => setEditandoNota(true)}
+              onClick={abrirNota}
               className="flex items-center gap-1 rounded-lg bg-warning-bg px-2 py-1 text-[11px] font-semibold text-warning-text"
             >
               <Icon name="alert" size={11} /> {l.nota}
             </button>
           ) : (
             <button
-              onClick={() => setEditandoNota(true)}
+              onClick={abrirNota}
               className="flex items-center gap-1 rounded-lg border border-dashed border-borde px-2 py-1 text-[11px] text-texto-4 hover:border-primary hover:text-primary"
             >
               <Icon name="plus" size={11} /> Nota
@@ -806,23 +874,28 @@ function FilaCarrito({
         <div className="mt-2 flex gap-1.5">
           <Input
             value={nota}
-            onChange={(e) => setNota(e.target.value)}
+            onChange={(e) => {
+              setNota(e.target.value);
+              notasAbiertas.current.set(id, e.target.value);
+            }}
+            // Salir del campo también la guarda: antes sólo Enter y el ✓, y lo
+            // escrito se perdía al tocar Cobrar (BUG-pos-venta-1). Guarda pero
+            // NO cierra: cerrarlo achica la lista justo mientras el dedo baja
+            // sobre otro botón (el "+" de esta línea, la de abajo), y ese toque
+            // se perdería porque el botón se corre de lugar.
+            onBlur={guardarNota}
             placeholder="Ej. sin cebolla"
+            aria-label={`Nota de ${l.producto.nombre}`}
             autoFocus
             onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                carrito.setNota(l.producto.id, nota.trim());
-                setEditandoNota(false);
-              }
+              if (e.key === "Enter") confirmarNota();
             }}
             className="py-1.5 text-[13px]"
           />
           <Boton
             variante="soft"
-            onClick={() => {
-              carrito.setNota(l.producto.id, nota.trim());
-              setEditandoNota(false);
-            }}
+            onClick={confirmarNota}
+            aria-label="Guardar la nota"
             className="shrink-0 px-3 py-1.5"
           >
             <Icon name="check" size={15} />

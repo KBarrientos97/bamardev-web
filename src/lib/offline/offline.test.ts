@@ -347,16 +347,27 @@ describe("copia para abrir el POS sin señal", () => {
     expect(await leerCopia("formas_pago")).toBeUndefined();
   });
 
-  it("vender sin señal baja el stock de la copia (sólo almacenables)", async () => {
+  it("vender sin señal baja el stock de la copia, el del combo también", async () => {
+    // El combo tiene su propio stock (25-ago) y el backend lo descuenta al
+    // vender. Antes la copia sólo bajaba el almacenable: sin señal, el combo
+    // seguía ofreciendo los que ya se habían vendido (POS-2).
+    const catalogo = [
+      { id: 1, nombre: "Pollo entero", precio: 80, tipoProducto: "ALMACENABLE", stockTotal: 10 },
+      { id: 3, nombre: "Combo familiar", precio: 50, tipoProducto: "COMPUESTO", stockTotal: 4 },
+      { id: 4, nombre: "Sopa del día", precio: 15, tipoProducto: "SERVICIO", stockTotal: 0 },
+    ] as unknown as Producto[];
     fijarVentaSinInternet(true);
-    await conCopia("productos:1", async () => productos);
+    await conCopia("productos:1", async () => catalogo);
     await descontarDeLaCopia("productos:1", [
       { productoId: 1, cantidad: 3 },
       { productoId: 3, cantidad: 1 },
       { productoId: 1, cantidad: 1 },
+      { productoId: 4, cantidad: 2 },
     ]);
     const copia = (await leerCopia<Producto[]>("productos:1"))!;
     expect(copia.find((p) => p.id === 1)?.stockTotal).toBe(6);
-    expect(copia.find((p) => p.id === 3)?.stockTotal).toBe(0);
+    expect(copia.find((p) => p.id === 3)?.stockTotal).toBe(3);
+    // Guarda: el elaborado no lleva stock y no se toca.
+    expect(copia.find((p) => p.id === 4)?.stockTotal).toBe(0);
   });
 });

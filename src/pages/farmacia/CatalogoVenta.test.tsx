@@ -127,6 +127,23 @@ describe("la grilla", () => {
     expect(conVencidas).toHaveTextContent("4 u. vencidas: no se venden");
   });
 
+  it("un combo en 0 se ve agotado y no se puede tocar, como un producto", async () => {
+    // El combo tiene su propio stock y el carrito ya lo topa; la tarjeta
+    // miraba sólo el almacenable y lo ofrecía como vendible (POS-2).
+    vi.mocked(api.buscarProductos).mockResolvedValue({
+      items: [
+        med({ id: 9, nombre: "Combo botiquín", tipoProducto: "COMPUESTO", stockTotal: 0, proximoVencimiento: null }),
+      ],
+      total: 1,
+      limite: 24,
+      offset: 0,
+    });
+    montar();
+    const combo = await screen.findByRole("button", { name: /Combo botiquín/ }, { timeout: 4000 });
+    expect(combo).toBeDisabled();
+    expect(combo).toHaveTextContent("Agotado");
+  });
+
   it("el punto dice cuándo vence el lote que se vende primero", async () => {
     montar();
     expect(await screen.findByLabelText("Vencimiento: 13 días")).toHaveClass("bg-danger");
