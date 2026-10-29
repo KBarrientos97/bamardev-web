@@ -112,7 +112,10 @@ export default function Insumos() {
               )}
               <div className="mt-4 rounded-xl bg-muted px-3.5 py-3">
                 <p className="text-[13px] text-texto-2">
-                  Esto no es tu ganancia: es lo que pagaste por mercadería. Parte todavía está en tu stock.
+                  {/* En el restaurante el stock de insumos no se muestra (nunca
+                      baja: no hay receta), así que no se lo nombra. */}
+                  Esto no es tu ganancia: es lo que pagaste por mercadería.
+                  {!conDescartables && " Parte todavía está en tu stock."}
                 </p>
                 {veReporte("resultado") && (
                   <Link
@@ -150,7 +153,7 @@ export default function Insumos() {
 
             <Nota>
               Es lo efectivamente comprado en insumos en el período, no el costo de lo que vendiste. Si las compras crecen
-              mucho más que las ventas, puede haber sobre-stock o merma.
+              mucho más que las ventas, {conDescartables ? "puede haber desperdicio o compras de más." : "puede haber sobre-stock o merma."}
               {conDescartables && <span className="mt-1.5 block">{DESCARTABLES_A_GASTOS}</span>}
             </Nota>
           </>

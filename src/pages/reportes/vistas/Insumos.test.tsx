@@ -77,6 +77,9 @@ describe("la nota de los descartables", () => {
     expect(await nota()).toHaveTextContent(
       "Los descartables (platos y vasos desechables, servilletas, bolsas, envases para llevar) no son insumos de un plato: van en Gastos operativos, categoría Descartables, para que resten de la ganancia.",
     );
+    // QA 29-oct: el restaurante no ve el stock de los insumos, así que el
+    // reporte no se lo nombra ("parte está en tu stock", "sobre-stock").
+    expect(document.body).not.toHaveTextContent(/stock/i);
     // Lo de siempre sigue: el total y la compra de cada insumo.
     expect(screen.getByText(fmtMoney(1200))).toBeInTheDocument();
     expect(screen.getByText("Vasos descartables")).toBeInTheDocument();

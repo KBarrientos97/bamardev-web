@@ -478,7 +478,7 @@ function Contenido({
           </Tarjeta>
           {er.sinBajoLaLinea && esPositivo(er.gastosOperativos) && (
             <p className="px-1 text-[12.5px] text-texto-3">
-              Da igual que el resultado del local porque no cargaste impuestos ni gastos del banco en este período.
+              Es el mismo número que el resultado del local, porque no cargaste impuestos ni gastos del banco en este período.
             </p>
           )}
 
