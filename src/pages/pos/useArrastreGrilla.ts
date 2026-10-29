@@ -271,7 +271,12 @@ export function useArrastreGrilla({ ids, onReordenar, activo = true, contenedor 
     const alDeslizar = (ev: Event) => {
       if (arrastrandoRef.current !== null && ev.cancelable) ev.preventDefault();
     };
-    const zonaTactil: HTMLElement | Window = contenedorRef.current?.current ?? window;
+    // Sin contenedor pasado, window (como antes). Con contenedor pasado pero
+    // sin montar (la farmacia dibuja su propio catálogo y no la grilla), nada:
+    // caer en window dejaba justo el listener no pasivo que el párrafo de
+    // arriba evita, en toda la pantalla de venta.
+    const c = contenedorRef.current;
+    const zonaTactil: HTMLElement | Window | null = c ? c.current : window;
     const alTeclear = (e: KeyboardEvent) => {
       // Escape descarta: se vuelve al orden que había sin guardar nada.
       if (e.key === "Escape" && arrastrandoRef.current !== null) descartar();
@@ -279,13 +284,13 @@ export function useArrastreGrilla({ ids, onReordenar, activo = true, contenedor 
     window.addEventListener("pointermove", alMover);
     window.addEventListener("pointerup", alSoltar);
     window.addEventListener("pointercancel", alSoltar);
-    zonaTactil.addEventListener("touchmove", alDeslizar, { passive: false });
+    zonaTactil?.addEventListener("touchmove", alDeslizar, { passive: false });
     window.addEventListener("keydown", alTeclear);
     return () => {
       window.removeEventListener("pointermove", alMover);
       window.removeEventListener("pointerup", alSoltar);
       window.removeEventListener("pointercancel", alSoltar);
-      zonaTactil.removeEventListener("touchmove", alDeslizar);
+      zonaTactil?.removeEventListener("touchmove", alDeslizar);
       window.removeEventListener("keydown", alTeclear);
       limpiarTimer();
       pararDesplazamiento();
