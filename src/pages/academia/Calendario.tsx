@@ -222,16 +222,15 @@ export default function Calendario() {
                 Cobrar a un estudiante
               </Boton>
             )}
+            {/* L1: la Configuración rápida, al lado del "⋯" mientras falte algo. Espera a que el
+                calendario traiga los ajustes y los cursos para no pedirlos dos veces (ronda 2, M4). */}
+            {!ajustes.cargando && !carreras.cargando && <PrimerosPasos ajustes={ajustes.datos} cursos={carreras.datos} />}
             <MenuMas etiqueta="Más acciones del calendario" titulo="Calendario" acciones={acciones} />
           </>
         }
       />
 
       <AvisoOk>{aviso}</AvisoOk>
-
-      {/* C1: la lista de primeros pasos de un instituto nuevo; se va sola al completarse. */}
-      {/* Se espera a que el calendario traiga los ajustes y los cursos para no pedirlos dos veces (ronda 2, M4). */}
-      {!ajustes.cargando && !carreras.cargando && <PrimerosPasos ajustes={ajustes.datos} cursos={carreras.datos} />}
 
       {sede.selector}
 

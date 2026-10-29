@@ -25,29 +25,46 @@ const NOMBRE: Partial<Record<Seccion, (p: ReturnType<typeof usePalabras>) => str
 /** Las pestañas que comparten sección con otra (Sedes y Ajustes) se nombran por su ruta. */
 const NOMBRE_POR_RUTA: Record<string, (p: ReturnType<typeof usePalabras>) => string> = { [RUTA_SEDES]: (p) => p.Sedes };
 
-/** La barra de pestañas, arriba de la pantalla. Con una sola no se dibuja. */
+/**
+ * La barra de pestañas, arriba de la pantalla, con la Configuración rápida a
+ * la derecha (L1). Con una sola pestaña no hay barra: el botón queda solo,
+ * arriba a la derecha.
+ */
 function Pestanas() {
   const { puede } = useAuth();
   const p = usePalabras();
   const visibles = PESTANAS_CONFIG_ACADEMIA.filter((t) => puede(t.seccion));
-  if (visibles.length < 2) return null;
+  if (visibles.length < 2) {
+    return (
+      // `empty:hidden`: sin pasos pendientes el botón no se dibuja y no queda un hueco.
+      <div className="mx-auto flex w-full max-w-6xl justify-end px-4 pt-4 empty:hidden sm:px-6 lg:px-8">
+        <PrimerosPasos />
+      </div>
+    );
+  }
   return (
     <nav aria-label="Configuración del instituto" className="border-b border-borde-soft bg-white">
-      {/* Corre de costado en el celular en vez de partirse en dos renglones. */}
-      <div className="mx-auto flex max-w-6xl gap-1 overflow-x-auto px-4 sm:px-6 lg:px-8">
-        {visibles.map((t) => (
-          <NavLink
-            key={t.a}
-            to={t.a}
-            className={({ isActive }) =>
-              `shrink-0 whitespace-nowrap border-b-2 px-3 py-3 text-sm font-semibold transition-colors ${
-                isActive ? "border-primary text-primary-700" : "border-transparent text-texto-3 hover:text-texto"
-              }`
-            }
-          >
-            {NOMBRE_POR_RUTA[t.a]?.(p) ?? NOMBRE[t.seccion]?.(p) ?? t.a}
-          </NavLink>
-        ))}
+      <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 sm:px-6 lg:px-8">
+        {/* Las pestañas corren de costado en el celular en vez de partirse en dos
+            renglones; el botón queda fijo a la derecha, fuera de ese scroll. */}
+        <div className="flex min-w-0 flex-1 gap-1 overflow-x-auto">
+          {visibles.map((t) => (
+            <NavLink
+              key={t.a}
+              to={t.a}
+              className={({ isActive }) =>
+                `shrink-0 whitespace-nowrap border-b-2 px-3 py-3 text-sm font-semibold transition-colors ${
+                  isActive ? "border-primary text-primary-700" : "border-transparent text-texto-3 hover:text-texto"
+                }`
+              }
+            >
+              {NOMBRE_POR_RUTA[t.a]?.(p) ?? NOMBRE[t.seccion]?.(p) ?? t.a}
+            </NavLink>
+          ))}
+        </div>
+        <div className="shrink-0 py-1.5 empty:hidden">
+          <PrimerosPasos />
+        </div>
       </div>
     </nav>
   );
@@ -55,7 +72,7 @@ function Pestanas() {
 
 /**
  * Envuelve una pantalla de la configuración con sus pestañas. Sólo en el
- * instituto: fuera de la academia no hay pestañas ni «Primeros pasos».
+ * instituto: fuera de la academia no hay pestañas ni «Configuración rápida».
  */
 export function ConPestanasConfig({ children }: { children: ReactNode }) {
   const { rubro } = useAuth();
@@ -63,10 +80,6 @@ export function ConPestanasConfig({ children }: { children: ReactNode }) {
   return (
     <>
       <Pestanas />
-      {/* C1: arriba de cada pestaña mientras falten pasos; `empty:hidden` por si no se dibuja nada. */}
-      <div className="mx-auto w-full max-w-6xl px-4 pt-4 empty:hidden sm:px-6 lg:px-8">
-        <PrimerosPasos />
-      </div>
       {children}
     </>
   );

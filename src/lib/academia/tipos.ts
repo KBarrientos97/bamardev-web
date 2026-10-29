@@ -62,6 +62,14 @@ export interface AjustesAcademia {
    * backend anterior: no se avisa nada.
    */
   paginaPublicada?: boolean;
+  /**
+   * L1 (28-oct): "Configuración rápida". `primerosPasosOcultos` es el "Ya lo
+   * sé" y `primerosPasosVistos`, que el panel ya se abrió solo una vez; en la
+   * base para que valgan en todos los equipos. Ausentes en un backend
+   * anterior: se toman como `false`.
+   */
+  primerosPasosOcultos?: boolean;
+  primerosPasosVistos?: boolean;
 }
 
 export interface Franja {

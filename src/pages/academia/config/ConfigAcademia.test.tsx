@@ -91,18 +91,21 @@ describe("Configuración del instituto", () => {
   });
 });
 
-describe("C1 · Primeros pasos arriba de la Configuración", () => {
-  it("quien configura el instituto la ve en cada pestaña mientras falten pasos", async () => {
+describe("L1 · «Configuración rápida» a la derecha de las pestañas", () => {
+  const boton = () => screen.queryByRole("button", { name: /^Configuración rápida/ });
+
+  it("quien configura el instituto ve el botón (no una tarjeta) mientras falten pasos", async () => {
     sesion.usuario.permisos = ["academia.configurar"];
     montar("/configuracion/academia");
     await act(async () => {});
-    expect(screen.getByRole("region", { name: "Primeros pasos" })).toBeInTheDocument();
+    expect(boton()).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Primeros pasos" })).not.toBeInTheDocument();
   });
 
-  it("quien no configura no la ve", async () => {
+  it("quien no configura no lo ve", async () => {
     montar("/configuracion/academia");
     await act(async () => {});
-    expect(screen.queryByRole("region", { name: "Primeros pasos" })).not.toBeInTheDocument();
+    expect(boton()).not.toBeInTheDocument();
   });
 
   it("fuera del instituto no existe", async () => {
@@ -110,6 +113,6 @@ describe("C1 · Primeros pasos arriba de la Configuración", () => {
     sesion.usuario.permisos = ["academia.configurar"];
     montar("/inventario/almacenes");
     await act(async () => {});
-    expect(screen.queryByRole("region", { name: "Primeros pasos" })).not.toBeInTheDocument();
+    expect(boton()).not.toBeInTheDocument();
   });
 });
