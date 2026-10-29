@@ -142,7 +142,10 @@ describe("D7 · el «Llegué» del docente en Mis clases", () => {
       fireEvent.click(screen.getByRole("button", { name: "Llegué" }));
     });
     expect(apiAcademia.llegada).toHaveBeenCalledWith(11, false);
-    expect(screen.getByText(`Llegaste a las ${fmtHora(LLEGADA_8_48)}`)).toBeInTheDocument();
+    // Con los espacios normalizados como los lee getByText: en Node 24 (ICU 77)
+    // la hora sale "08:48 a.\u00A0m." (con espacio duro) y la pantalla se lee
+    // con espacio común, así que comparar el texto crudo fallaba según la PC.
+    expect(screen.getByText(`Llegaste a las ${fmtHora(LLEGADA_8_48)}`.replace(/\s+/g, " "))).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Llegué" })).not.toBeInTheDocument();
     expect(document.body).not.toHaveTextContent(/Bs|150|descuento|atraso/i);
     // Vuelve a pedir las clases: el estado viene del servidor.
@@ -215,7 +218,7 @@ describe("D7 · el «Llegué» del docente en Mis clases", () => {
       proximas: [],
     });
     await montar();
-    expect(screen.getByText(`Llegaste a las ${fmtHora(LLEGADA_8_48)}`)).toBeInTheDocument();
+    expect(screen.getByText(`Llegaste a las ${fmtHora(LLEGADA_8_48)}`.replace(/\s+/g, " "))).toBeInTheDocument();
     expect(screen.getByText(/4 min de atraso/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Llegué" })).not.toBeInTheDocument();
   });
