@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Feature } from "../../types";
-import { gruposVisibles, type ContextoCatalogo } from "./catalogo";
+import { ayudaDeReporte } from "./ayuda";
+import { catalogo, gruposVisibles, type ContextoCatalogo } from "./catalogo";
 
 const TODOS_LOS_PERMISOS = ["reportes.ver", "reportes.operacion", "reportes.rentabilidad"];
 
@@ -113,5 +114,42 @@ describe("el costo y margen por servicio (antes, una pestaña de las recetas)", 
   it("sin la sección de recetas no aparece, ni fuera de belleza", () => {
     expect(fichas(conRecetas("PELUQUERIA", false))).not.toContain("margen-servicios");
     expect(fichas(conRecetas("RESTAURANTE", true))).not.toContain("margen-servicios");
+  });
+});
+
+describe("academia (L5, 28-oct)", () => {
+  const conFiado: Feature[] = ["pos", "reportes", "fiado"];
+
+  it("no ve Créditos (fiado) aunque el plan traiga el fiado; los demás rubros siguen igual", () => {
+    const academia = ids(dueno("ACADEMIA", { features: conFiado })).flatMap(([, f]) => f);
+    expect(academia).not.toContain("creditos");
+    expect(academia).toEqual(expect.arrayContaining(["resultado", "ventas", "top-productos"]));
+    for (const rubro of ["RESTAURANTE", "BILLAR", "PELUQUERIA", "FARMACIA"]) {
+      expect(ids(dueno(rubro, { features: conFiado })).flatMap(([, f]) => f)).toContain("creditos");
+    }
+  });
+});
+
+describe("cada reporte explica cómo se calcula (L5)", () => {
+  const RUBROS = ["RESTAURANTE", "BILLAR", "PELUQUERIA", "FARMACIA", "MINIMARKET", "ACADEMIA", undefined];
+
+  it("todas las fichas del catálogo y el Resumen tienen su ayuda, en todos los rubros", () => {
+    for (const rubro of RUBROS) {
+      for (const id of ["resumen", ...catalogo(rubro).map((f) => f.id)]) {
+        const a = ayudaDeReporte(id, rubro);
+        expect(a, `${id} en ${rubro}`).not.toBeNull();
+        expect(a!.queMuestra.length).toBeGreaterThan(20);
+        expect(a!.deDonde.length).toBeGreaterThan(20);
+      }
+    }
+  });
+
+  it("en la academia habla de cuotas y de los sueldos docentes", () => {
+    const r = ayudaDeReporte("resultado", "ACADEMIA")!;
+    expect(r.queMuestra).toMatch(/cuotas/);
+    expect(r.deDonde).toMatch(/Sueldos docentes es lo que se PAGÓ/);
+    expect(r.noIncluye?.join(" ")).toMatch(/Planilla pendiente de pagar/);
+    expect(ayudaDeReporte("resultado", "RESTAURANTE")!.deDonde).not.toMatch(/docentes/);
+    expect(ayudaDeReporte("top-productos", "ACADEMIA")!.noIncluye?.join(" ")).toMatch(/cuotas/);
   });
 });

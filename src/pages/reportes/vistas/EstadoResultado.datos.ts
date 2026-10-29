@@ -3,7 +3,7 @@ import { fmtMoney, fmtNum } from "../../../lib/format";
 import type { MesEnCurso } from "../../../lib/mesEnCurso";
 import type { EstadoResultado, GastosDeCaja } from "../../../lib/resultado";
 import { esBelleza, esBillar, esFarmacia } from "../../../lib/rubro";
-import type { CodigoMotivoEfectivo } from "../../../types";
+import type { CodigoMotivoEfectivo, Gasto } from "../../../types";
 import { motivoDeCodigo } from "../../pos/motivosMovimiento";
 import type { EfectivoBillarApi } from "../api";
 import { bsSubtotal, horas } from "../formato";
@@ -23,8 +23,11 @@ import { bsSubtotal, horas } from "../formato";
  * cuánto le dejaban las mesas, que es justo lo que viene a mirar.
  */
 
-/** Cómo se parte la primera línea de la cascada. */
-export type Particion = "billar" | "servicios";
+/**
+ * Cómo se parte la primera línea de la cascada. "clases" es la academia (L5,
+ * 28-oct): lo cobrado en cuotas y lo vendido en productos.
+ */
+export type Particion = "billar" | "servicios" | "clases";
 
 export interface PerfilResultado {
   /** Null = la venta va en una sola línea (restaurante, farmacia, tiendas). */
@@ -47,6 +50,22 @@ const NO_SON_COMPRAS =
   "No son tus compras del período: comprar para tres meses no hunde el resultado de este mes, porque lo que no se vendió sigue en el stock.";
 
 export function perfilResultado(rubro: string | undefined): PerfilResultado {
+  // Academia (L5, 28-oct): el Estado de resultado es "el" reporte del
+  // instituto. Lo que entra se parte en las clases (cuotas) y los productos
+  // (poleras, kits), y los sueldos docentes van en su propia línea.
+  if (rubro === "ACADEMIA") {
+    return {
+      partir: "clases",
+      cosa: "producto",
+      cosas: "productos",
+      costoTitulo: "Costo de los productos",
+      costoDetalle: "Lo que te costaron · las clases no tienen costo de mercadería",
+      gananciaTitulo: "Ganancia de clases y productos",
+      queVaLocal:
+        "Lo que cuesta tener el instituto abierto: alquiler, luz, agua, internet, limpieza, el sueldo de la recepción y los materiales de las clases. Cuenta lo gastado aunque todavía no esté pagado. Los sueldos de los docentes no van acá: tienen su propia línea, con lo pagado de la planilla. Las poleras y los kits que vendés tampoco: entran por el costo de los productos.",
+      queVaCosto: `Lo que te costaron las poleras, los kits y el material que vendiste, según el costo cargado en cada uno. Las cuotas no tienen costo de mercadería: lo que cobrás por las clases queda entero para pagar los gastos y los sueldos. ${NO_SON_COMPRAS}`,
+    };
+  }
   if (esBillar(rubro)) {
     return {
       partir: "billar",
@@ -143,6 +162,46 @@ export function partirVentas(
 }
 
 /**
+ * Academia: parte las ventas en lo cobrado por clases (`cobradoCuotas` del
+ * financiero, que ya está DENTRO de las ventas) y lo vendido en productos. Las
+ * dos salen del mismo pedido, así que suman exactamente las ventas.
+ *
+ * A diferencia del billar, va partida aunque una de las dos sea cero: el dueño
+ * pidió ver siempre las dos líneas ("Cobrado por clases" y "Ventas de
+ * productos"). Null sólo con un backend anterior, que no manda el dato:
+ * entonces la línea va entera, como en cualquier rubro.
+ */
+export function partirClases(ventas: number, cobradoCuotas: number | null | undefined): VentasPartidas | null {
+  if (cobradoCuotas == null || !Number.isFinite(cobradoCuotas)) return null;
+  const servicios = aCentavos(Math.min(Math.max(cobradoCuotas, 0), Math.max(ventas, 0)));
+  return { servicios, productos: aCentavos(ventas - servicios) };
+}
+
+/** Los gastos del local de una academia sin la planilla docente, y la planilla aparte. */
+export interface SueldosSeparados {
+  /** Los gastos cargados que no son pagos de la planilla. */
+  gastosLocal: Gasto[];
+  /** Lo pagado de la planilla en el período: la línea "Sueldos docentes". */
+  sueldosDocentes: number;
+}
+
+/**
+ * Separa los pagos de la planilla docente (los Gasto SUELDOS que crea pagarla,
+ * `gastoIds` de `/academia/reportes/clases`) del resto de los gastos. No
+ * cambia la cuenta: el total de gastos es el mismo, sólo se ve en dos líneas.
+ * Un sueldo cargado a mano (la recepción) sigue en los gastos del local.
+ */
+export function separarSueldosDocentes(gastos: Gasto[], gastoIds: number[] | null | undefined): SueldosSeparados {
+  const ids = new Set(gastoIds ?? []);
+  if (ids.size === 0) return { gastosLocal: gastos, sueldosDocentes: 0 };
+  const deLaPlanilla = gastos.filter((g) => ids.has(g.id));
+  return {
+    gastosLocal: gastos.filter((g) => !ids.has(g.id)),
+    sueldosDocentes: aCentavos(deLaPlanilla.reduce((t, g) => t + g.monto, 0)),
+  };
+}
+
+/**
  * Lo que dejó cada parte de un billar: las mesas enteras (el tiempo no tiene
  * costo de mercadería) y los productos, lo vendido menos lo que costaron.
  *
@@ -185,6 +244,15 @@ function deDondeSale(er: EstadoResultado, perfil: PerfilResultado, partes: Venta
       ? `Las mesas dejaron ${fmtMoney(g.mesas)} y los productos ${fmtMoney(g.productos)}.`
       : `Las mesas dejaron ${fmtMoney(g.mesas)}, pero los productos costaron ${fmtMoney(-g.productos)} más de lo que se cobraron.`;
   }
+  // Academia: las cuotas no tienen costo, todo el costo es de los productos
+  // (la misma cuenta que el billar). Sin productos vendidos, sólo las clases.
+  if (perfil.partir === "clases" && partes) {
+    const g = gananciaPorParte(partes, er.costoVentas);
+    if (!esPositivo(partes.productos) && esCero(er.costoVentas)) return `Las clases dejaron ${fmtMoney(g.mesas)}.`;
+    return g.productos >= 0
+      ? `Las clases dejaron ${fmtMoney(g.mesas)} y los productos ${fmtMoney(g.productos)}.`
+      : `Las clases dejaron ${fmtMoney(g.mesas)}, pero los productos costaron ${fmtMoney(-g.productos)} más de lo que se cobraron.`;
+  }
   if (!esPositivo(er.utilidadBruta)) {
     return `Lo vendido no alcanzó ni para su costo: quedó en ${bsSubtotal(er.utilidadBruta)}.`;
   }
@@ -210,13 +278,26 @@ function deDondeSale(er: EstadoResultado, perfil: PerfilResultado, partes: Venta
  * Con los mismos números de la cascada y con centavos: redondeados, "4.200 +
  * 900 − 3.500" podía no dar el número que dice al lado.
  */
-export function explicarResultado(er: EstadoResultado, perfil: PerfilResultado, partes: VentasPartidas | null): string | null {
+export function explicarResultado(
+  er: EstadoResultado,
+  perfil: PerfilResultado,
+  partes: VentasPartidas | null,
+  /**
+   * Academia: lo pagado de la planilla docente, que ya está dentro de los
+   * gastos operativos y se nombra aparte. 0 (todos los demás rubros): el
+   * texto es exactamente el de siempre.
+   */
+  sueldosDocentes = 0,
+): string | null {
   if (er.vacio) return null;
   const origen = deDondeSale(er, perfil, partes);
+  const sueldos = aCentavos(Math.max(0, Math.min(sueldosDocentes, er.gastosOperativos)));
+  const local = aCentavos(er.gastosOperativos - sueldos);
   const restas = (
     [
       [er.mermas, "las mermas"],
-      [er.gastosOperativos, "los gastos del local"],
+      [local, "los gastos del local"],
+      [sueldos, "los sueldos docentes"],
       [er.cenasPersonal, "las cenas del personal"],
       [er.gastosCaja, "los gastos pagados de la caja"],
       [er.gastosFinancieros, "el banco"],
@@ -236,7 +317,7 @@ export function explicarResultado(er: EstadoResultado, perfil: PerfilResultado, 
   // algo haya restado. El aviso miraba si había ALGUNA resta: en un billar con
   // cenas y nada cargado (25-oct) decía "es tu ganancia líquida" sobre un
   // número al que le faltaban el alquiler y los sueldos.
-  const faltanGastos = esCero(er.gastosOperativos)
+  const faltanGastos = esCero(local)
     ? " Todavía no cargaste los gastos del local (alquiler, sueldos, servicios): cuando los cargués, este resultado va a bajar."
     : "";
   if (esCero(er.utilidadNeta)) return `${origen} Restando ${lista}, quedás justo en cero.${faltanGastos}`;

@@ -132,6 +132,10 @@ export function catalogo(rubro: string | undefined): FichaReporte[] {
       capacidad: "reportes_rentabilidad",
       permiso: "reportes.ver",
       feature: "fiado",
+      // La academia no fía: lo que se debe son cuotas, y eso está en Cobranza
+      // y en la mora de los Reportes del instituto (L5, 28-oct). Aunque el
+      // plan traiga el fiado, el reporte confundía al dueño.
+      fueraDeRubro: ["ACADEMIA"],
       vista: v.creditos,
     },
     { id: "descuentos", titulo: "Descuentos y anulaciones", descripcion: "Plata perdida o regalada", icono: "x", tono: "rosa", grupo: "plata", ...OPERACION, vista: v.descuentos },

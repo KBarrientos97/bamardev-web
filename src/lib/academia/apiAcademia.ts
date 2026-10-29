@@ -1,6 +1,7 @@
 import { ApiError, qs, request, tokenStore } from "../api";
 import { CAMPO_FOTO, formularioConFotos, hayFotos, nombreArchivo } from "./fotos";
 import type {
+  AgruparReporte,
   AjustesAcademia,
   AlumnoDelGrupo,
   AlumnoDetalle,
@@ -16,6 +17,7 @@ import type {
   DescuentoInput,
   Docente,
   EditarAlumnoInput,
+  EstudiantesAcademia,
   EstadoAsistencia,
   FiltroAlumnos,
   FiltroAlumnosGrupo,
@@ -292,7 +294,12 @@ export const apiAcademia = {
 
   // ── Control y reportes ─────────────────────────────────────────────────────
   control: (mes: string, sede?: number | null) => request<PanelControl>(`/academia/control${qs({ mes, sede })}`),
-  reportes: (mes: string, sede?: number | null) => request<ReportesAcademia>(`/academia/reportes${qs({ mes, sede })}`),
+  /** Por mes (`mes`) o por días (`desde`/`hasta`, `AAAA-MM-DD`, los dos incluidos). */
+  reportes: (p: { mes?: string; desde?: string; hasta?: string; sede?: number | null }) =>
+    request<ReportesAcademia>(`/academia/reportes${qs(p)}`),
+  /** L5: ingresaron, cobrado en clases, al día y en mora, por día, semana o mes. */
+  reportesEstudiantes: (p: { desde: string; hasta: string; agrupar: AgruparReporte; sede?: number | null }) =>
+    request<EstudiantesAcademia>(`/academia/reportes/estudiantes${qs(p)}`),
 };
 
 /**
