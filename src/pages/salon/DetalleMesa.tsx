@@ -12,6 +12,7 @@ import {
   cantidadItems,
   consumoDeMesa,
   estaOcupada,
+  estaUnida,
   hace,
   itemsVivos,
   porPersona,
@@ -153,7 +154,11 @@ export default function DetalleMesa({
       <div className="flex max-h-[92dvh] w-full max-w-lg flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl">
         <div className="flex items-start justify-between gap-3 border-b border-borde-soft px-4 py-3">
           <div className="min-w-0 flex-1">
-            <h2 className="truncate text-xl font-extrabold text-texto">{mesa.nombre}</h2>
+            {/* Unida, con las otras ("Mesa M5 + M1"), como la tarjeta del salón. */}
+            <h2 className="truncate text-xl font-extrabold text-texto">
+              {mesa.nombre}
+              {estaUnida(mesa) && ` + ${(mesa.unidas ?? []).map((u) => u.codigo).join(" + ")}`}
+            </h2>
             <p className="truncate text-xs text-texto-3">
               {ocupada && mesa.abiertaEn
                 ? `${mesa.zonaNombre} · abierta hace ${hace(mesa.abiertaEn)}`
