@@ -15,22 +15,29 @@ import { ModalDetalleVenta } from "../../billar/supervision/DetalleVenta";
 import { useExportar, useReporte } from "../contexto";
 import { bsEntero, plural } from "../formato";
 import { Cargador, Chip, FichaIcono, FilaLista, KpiR, Lista, Nota, Segmentos, Sigla } from "../ui";
+import { ModalReciboVenta } from "./ReciboVenta";
+import { abreRecibo } from "./ReciboVenta.datos";
+import { exportaElPeriodo } from "./todoElPeriodo";
 import {
   aniosDelSelector,
   aspectoMetodo,
   cantidadCorta,
   chipEstado,
   esTiempoDeMesa,
+  exportarDetalle,
+  exportarVentas,
   filasMensual,
   hojaDetalle,
   hojaMensual,
   hojaVentas,
   lineaVenta,
+  nombreHojaPagina,
   quienVendio,
   tituloLinea,
   variasSucursales,
   type ReporteDetalle,
   type ReporteVentas,
+  type VentaFila,
 } from "./Ventas.datos";
 
 /**
@@ -40,12 +47,16 @@ import {
  * - **General**: una fila por venta, con las anuladas y las pendientes de
  *   cobro, porque el historial refleja lo que pasó. Los KPIs cuentan sólo las
  *   aprobadas (una anulada no es plata que entró) y son del período entero,
- *   no de la página.
+ *   no de la página. La venta se toca: en un billar abre su detalle de
+ *   Supervisión y en el restaurante, su recibo (`ReciboVenta.tsx`).
  * - **Detallado**: una fila por línea vendida, en bruto (antes de promos).
  * - **Mensual**: los doce meses de un año. No sigue el período de arriba.
  *
  * General y Detallado vienen paginados de a 50: un año de ventas no entra en
  * una pantalla, y pedirlo entero colgaba el navegador de un celular barato.
+ * En el restaurante el Excel, en cambio, es del período entero: lo baja de a
+ * 200 recién al tocar el botón (`todoElPeriodo.ts`, REP-03). Los demás rubros
+ * siguen bajando la página que se ve (`exportaElPeriodo`).
  */
 
 const LIMITE = 50;
@@ -104,6 +115,11 @@ function General({ cajero, onCajero }: { cajero: Cajero | null; onCajero: (c: Ca
   // es del administrador del billar: sin ese permiso la fila no se toca.
   const conDetalle = enBillar && tienePermiso(usuario, "billar.admin");
   const [abierta, setAbierta] = useState<number | null>(null);
+  // El restaurante (REP-02, 28-oct): la venta se toca y abre su recibo, como
+  // en la app. Una venta de otro día no se podía ver en ningún lado: el
+  // historial del POS es sólo el del turno.
+  const conRecibo = abreRecibo(rubro, usuario);
+  const [recibo, setRecibo] = useState<VentaFila | null>(null);
   const [page, irA] = usePagina(`${rango.desde}|${rango.hasta}|${rango.sucursalId ?? ""}|${cajero?.id ?? ""}`);
   const arriba = useRef<HTMLDivElement>(null);
 
@@ -118,7 +134,20 @@ function General({ cajero, onCajero }: { cajero: Cajero | null; onCajero: (c: Ca
     [rango.desde, rango.hasta, rango.sucursalId, cajero?.id, page],
   );
   const d = datos.datos;
-  useExportar("ventas-general", d && d.items.length > 0 ? () => [hojaVentas(d.items, d.pagina, enBillar)] : null);
+  useExportar(
+    "ventas-general",
+    d && d.items.length > 0 ? () => [hojaVentas(d.items, nombreHojaPagina("Ventas", d.pagina), enBillar)] : null,
+    // En el restaurante el botón baja el período entero, con el mismo filtro
+    // de cajero (REP-03); los demás rubros, la página que se ve.
+    exportaElPeriodo(rubro)
+      ? () =>
+          exportarVentas(
+            (pag, limite) =>
+              api.reporteVentas({ ...rango, ...(cajero ? { usuarioId: cajero.id } : {}), page: pag, limite }) as Promise<ReporteVentas>,
+            enBillar,
+          )
+      : undefined,
+  );
 
   return (
     <>
@@ -176,7 +205,7 @@ function General({ cajero, onCajero }: { cajero: Cajero | null; onCajero: (c: Ca
                         // `articulos` son las líneas de la venta, no las unidades.
                         valorPie={plural(v.articulos, "artículo", "artículos")}
                         tachado={v.estado === "ANULADO"}
-                        onClick={conDetalle ? () => setAbierta(v.id) : undefined}
+                        onClick={conDetalle ? () => setAbierta(v.id) : conRecibo ? () => setRecibo(v) : undefined}
                         // "Mixto (Efectivo Bs 80,00 + QR Bs 80,00)" es el dato: baja de
                         // renglón en vez de cortarse en el celular.
                         ajustar={enBillar && (v.partes?.length ?? 0) >= 2}
@@ -198,6 +227,7 @@ function General({ cajero, onCajero }: { cajero: Cajero | null; onCajero: (c: Ca
       </Cargador>
       {/* Con clave: otra venta abierta con el diálogo a la vista arranca de cero. */}
       {abierta != null && <ModalDetalleVenta key={abierta} consulta={{ venta: abierta }} ahora={Date.now()} onClose={() => setAbierta(null)} />}
+      {recibo && <ModalReciboVenta key={recibo.id} fila={recibo} onClose={() => setRecibo(null)} />}
     </>
   );
 }
@@ -229,7 +259,18 @@ function Detallado({ cajero, onCajero }: { cajero: Cajero | null; onCajero: (c: 
     [rango.desde, rango.hasta, rango.sucursalId],
   );
   const d = datos.datos;
-  useExportar("ventas-detallado", d && d.items.length > 0 ? () => [hojaDetalle(d.items, d.pagina)] : null);
+  useExportar(
+    "ventas-detallado",
+    d && d.items.length > 0 ? () => [hojaDetalle(d.items, nombreHojaPagina("Detallado", d.pagina))] : null,
+    // Como en General: el período entero sólo en el restaurante.
+    exportaElPeriodo(rubro)
+      ? () =>
+          exportarDetalle(
+            (pag, limite) =>
+              api.reporteVentasDetalle({ ...rango, ...(cajero ? { usuarioId: cajero.id } : {}), page: pag, limite }) as Promise<ReporteDetalle>,
+          )
+      : undefined,
+  );
 
   return (
     <Cargador

@@ -734,9 +734,18 @@ export const api = {
       )}`,
     ),
 
-  /** Con `sucursalId`, sólo los de ese local (por origen O destino). */
-  getMovimientos: (sucursalId?: number | null) =>
-    request<Movimiento[]>(`/movimientos${qs({ sucursalId: sucursalId ?? undefined })}`),
+  /**
+   * Con `sucursalId`, sólo los de ese local (por origen O destino). Sin
+   * `rango`, los últimos 200 (el tope del backend); con `rango` (ISO con su
+   * offset, `hasta` exclusivo), TODOS los de ese período: un día anterior a
+   * esos 200 decía "no hay movimientos" aunque los hubiera
+   * (BUG-insumos-movimientos-2). Un backend que todavía no lo entiende lo
+   * ignora y devuelve lo de siempre.
+   */
+  getMovimientos: (sucursalId?: number | null, rango?: { desde?: string; hasta?: string }) =>
+    request<Movimiento[]>(
+      `/movimientos${qs({ sucursalId: sucursalId ?? undefined, desde: rango?.desde, hasta: rango?.hasta })}`,
+    ),
   getMovimiento: (id: number) => request<Movimiento>(`/movimientos/${id}`),
 
   // ── Proveedores (farmacia) ──

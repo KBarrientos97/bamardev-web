@@ -12,7 +12,8 @@ import { apiReportes } from "./api";
 import { ayudaDeReporte } from "./ayuda";
 import { BarraPeriodo } from "./BarraPeriodo";
 import { gruposVisibles, type FichaReporte, type GrupoVisible } from "./catalogo";
-import { bajarXlsx, ContextoReporte, type DatosReporte, type Exportacion } from "./contexto";
+import { BotonExportar } from "./BotonExportar";
+import { ContextoReporte, type DatosReporte, type Exportacion } from "./contexto";
 import { comparacionDe, textoRango, type Periodo } from "./periodo";
 import { usePeriodo } from "./usePeriodo";
 import { FichaIcono } from "./ui";
@@ -374,16 +375,11 @@ function EncabezadoReporte({
       </div>
       {ayuda && <AyudaCalculo titulo={titulo} ayuda={ayuda} />}
       {/* Sólo Excel: imprimir va en lo que se le da a un cliente (el ticket),
-          no en los reportes; si alguien necesita papel, lo imprime desde Excel. */}
+          no en los reportes; si alguien necesita papel, lo imprime desde Excel.
+          Con clave: el aviso de una exportación ("vino recortada") es de ese
+          reporte y ese período; al cambiar cualquiera de los dos se va. */}
       {puedeExportar && exportacion && (
-        <button
-          type="button"
-          onClick={() => bajarXlsx(exportacion.nombre, exportacion.hojas())}
-          className="inline-flex shrink-0 items-center gap-2 rounded-full bg-primary-boton px-5 py-2.5 text-[13px] font-bold text-white transition-colors hover:bg-primary-boton-hover"
-        >
-          <Icon name="download" size={16} />
-          Exportar a Excel
-        </button>
+        <BotonExportar key={`${ficha?.id ?? ""}|${periodo.desde}|${periodo.hasta}`} exportacion={exportacion} />
       )}
     </header>
   );

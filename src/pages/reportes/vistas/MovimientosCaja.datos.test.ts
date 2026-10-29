@@ -3,8 +3,10 @@ import {
   anuladosDelFiltro,
   aspectoMovimiento,
   efectoEnGanancia,
+  exportarMovimientos,
   filasPorMotivo,
   hojaMovimientos,
+  hojaPaginaMovimientos,
   montoConSigno,
   netoDe,
   textoTurno,
@@ -50,8 +52,8 @@ describe("movimientos de caja", () => {
     expect(netoDe(0.003)).toEqual({ etiqueta: "Neto", tono: "apagado" });
   });
 
-  it("el Excel lleva el monto con signo y dice qué página y qué filtro es", () => {
-    const h = hojaMovimientos([movimiento({ clase: "EGRESO", monto: 20 })], { page: 2, limite: 50, total: 120, totalPaginas: 3 }, "SALIDA");
+  it("la hoja de lo que se ve lleva el monto con signo y dice qué página y qué filtro es", () => {
+    const h = hojaPaginaMovimientos([movimiento({ clase: "EGRESO", monto: 20 })], { page: 2, limite: 50, total: 120, totalPaginas: 3 }, "SALIDA");
     expect(h.nombre).toBe("Salidas pág. 2 de 3");
     const [titulos, fila] = h.filas;
     expect(fila[titulos.indexOf("Monto (Bs)")]).toBe(-20);
@@ -120,7 +122,7 @@ describe("movimientos de caja con motivo (billar, 25-oct)", () => {
   });
 
   it("el Excel lleva la columna Motivo sólo si alguna fila tiene uno", () => {
-    const conMotivo = hojaMovimientos(
+    const conMotivo = hojaPaginaMovimientos(
       [movimiento({ clase: "EGRESO", concepto: "Hielo", origen: "GASTO" }), movimiento({ concepto: "Sencillo", origen: null })],
       PAGINA,
       "",
@@ -131,7 +133,38 @@ describe("movimientos de caja con motivo (billar, 25-oct)", () => {
     expect(gasto[titulos.indexOf("Concepto")]).toBe("Hielo");
     expect(comun[titulos.indexOf("Motivo")]).toBeNull();
     // Restaurante, farmacia, belleza (y un backend anterior): las columnas de siempre.
-    const sinMotivo = hojaMovimientos([movimiento(), movimiento({ concepto: "Propina", origen: "PROPINA" })], PAGINA, "");
+    const sinMotivo = hojaMovimientos([movimiento(), movimiento({ concepto: "Propina", origen: "PROPINA" })], "Movimientos");
     expect(sinMotivo.filas[0]).toEqual(["Fecha", "Tipo", "Concepto", "Detalle", "Usuario", "Turno", "Monto (Bs)"]);
+  });
+});
+
+describe("el Excel de movimientos de caja baja el período entero (REP-03, 28-oct)", () => {
+  it("junta todas las páginas en una hoja que no dice «pág.»", async () => {
+    // Antes la planilla traía las 50 filas de la página en pantalla.
+    const paginas = [
+      [movimiento({ id: 3 }), movimiento({ id: 2, clase: "EGRESO", monto: 20 })],
+      [movimiento({ id: 1 })],
+    ];
+    const pedir = async (page: number, limite: number) => ({
+      items: paginas[page - 1],
+      pagina: { page, limite, total: 3, totalPaginas: 2 },
+    });
+    const r = await exportarMovimientos(pedir, "");
+    expect(r.aviso).toBeNull();
+    expect(r.hojas).toHaveLength(1);
+    expect(r.hojas[0].nombre).toBe("Movimientos");
+    expect(r.hojas[0].filas.slice(1).map((f) => f[f.length - 1])).toEqual([50, -20, 50]);
+  });
+
+  it("con un filtro, la hoja lo dice; y el mismo id de dos clases distintas son dos movimientos", async () => {
+    // Un ingreso y un cobro de fiado salen de dos tablas y pueden tener el
+    // mismo id: no se descartan como repetidos.
+    const pedir = async (page: number, limite: number) => ({
+      items: [movimiento({ id: 7 }), movimiento({ id: 7, clase: "COBRO_CREDITO" })],
+      pagina: { page, limite, total: 2, totalPaginas: 1 },
+    });
+    const r = await exportarMovimientos(pedir, "ENTRADA");
+    expect(r.hojas[0].nombre).toBe("Entradas");
+    expect(r.hojas[0].filas).toHaveLength(3);
   });
 });

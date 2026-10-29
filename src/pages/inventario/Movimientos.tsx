@@ -18,6 +18,7 @@ import {
 } from "../../components/ui";
 import { api } from "../../lib/api";
 import { fmtCantidad, fmtFecha, fmtFechaHora, fmtMoney, isoDia } from "../../lib/format";
+import { rangoParaApi } from "../../lib/rangoApi";
 import { useApi } from "../../lib/useApi";
 import { useSucursales } from "../../lib/useSucursales";
 import { ofreceAprobarMovimiento } from "../../lib/permisos";
@@ -85,6 +86,9 @@ const ETIQUETA_TIPO: Record<TipoMovimiento, string> = {
  */
 const TIPOS_DEL_FORMULARIO: TipoMovimiento[] = ["ENTRADA", "SALIDA"];
 
+/** Lo más que manda `GET /movimientos` sin rango: los últimos 200 (`movimiento.service.ts`). */
+const TOPE_SIN_FECHA = 200;
+
 /**
  * `?nuevo=entrada` abre el formulario de una ENTRADA al llegar. Es a donde
  * lleva "Registrar compra" de Insumos en el restaurante (28-oct): la compra se
@@ -112,9 +116,23 @@ export default function Movimientos() {
   // Inventario SÍ incluye depósitos: la mercadería entra ahí antes de
   // repartirse a los locales, así que sus entradas son las que más importan.
   const suc = useSucursales({ incluirDepositos: true });
+  /**
+   * Arranca en HOY, como la app: en un local con movimientos diarios, abrir la
+   * pantalla y ver el histórico entero no sirve — lo que se busca es lo de esta
+   * jornada. Vacío = ver todo.
+   */
+  const [fecha, setFecha] = useState(isoDia(new Date()));
+  /**
+   * Un día se PIDE con su rango (de la medianoche del negocio a la siguiente,
+   * con el offset: `rangoParaApi`), no se recorta en el navegador. Sin rango
+   * el backend manda los últimos 200, y un día anterior a esos 200 decía "no
+   * hay movimientos" aunque los hubiera: una compra vieja no se podía abrir
+   * ni anular desde ningún lado (BUG-insumos-movimientos-2). "Ver todo" sigue
+   * pidiendo los últimos 200, como siempre.
+   */
   const movimientos = useApi(
-    () => api.getMovimientos(suc.sucursalId),
-    [suc.sucursalId],
+    () => api.getMovimientos(suc.sucursalId, fecha ? rangoParaApi({ desde: fecha, hasta: fecha }) : undefined),
+    [suc.sucursalId, fecha],
   );
   const almacenes = useApi(() => api.getAlmacenes(), []);
 
@@ -122,12 +140,6 @@ export default function Movimientos() {
   const [filtroTipo, setFiltroTipo] = useState<FiltroTipo>("todos");
   const [filtroEstado, setFiltroEstado] = useState<FiltroEstado>("todos");
   const [filtroOrigen, setFiltroOrigen] = useState<FiltroOrigen>("todos");
-  /**
-   * Arranca en HOY, como la app: en un local con movimientos diarios, abrir la
-   * pantalla y ver el histórico entero no sirve — lo que se busca es lo de esta
-   * jornada. Vacío = ver todo.
-   */
-  const [fecha, setFecha] = useState(isoDia(new Date()));
   const [detalleId, setDetalleId] = useState<number | null>(null);
   const [creando, setCreando] = useState(false);
   const [errorAccion, setErrorAccion] = useState("");
@@ -156,6 +168,9 @@ export default function Movimientos() {
         !contiene(m.descripcion, texto)
       )
         return false;
+      // El día ya viene pedido con su rango; esto queda para un backend que
+      // todavía no lo entiende y manda los últimos 200: ahí se recorta acá,
+      // como siempre.
       if (fecha && isoDia(new Date(m.fecha)) !== fecha) return false;
       if (filtroTipo !== "todos" && m.tipo !== filtroTipo) return false;
       if (filtroEstado !== "todos" && m.estado !== filtroEstado) return false;
@@ -170,15 +185,31 @@ export default function Movimientos() {
   // movimientos" debajo se contradice en la misma pantalla.
   const pendientesVisibles = filtrados.filter((m) => m.estado === "PENDIENTE").length;
 
-  // Lo único que esconde todo es que hoy no se movió nada: decir "probá con
-  // otro texto" cuando nadie escribió nada no explica por qué la lista está
-  // vacía con movimientos en la cabecera.
-  const soloFaltaHoy =
+  // Lo único que esconde todo es que ese día no se movió nada: decir "probá
+  // con otro texto" cuando nadie escribió nada no explica por qué la lista
+  // está vacía con movimientos en la cabecera.
+  const soloFaltaElDia =
     !!fecha &&
     !q.trim() &&
     filtroTipo === "todos" &&
     filtroEstado === "todos" &&
     filtroOrigen === "todos";
+  // "Hoy" sólo si es hoy: con una fecha elegida decía "Hoy no hay
+  // movimientos" de un día de septiembre.
+  const tituloDiaVacio =
+    fecha === isoDia(new Date()) ? "Hoy no hay movimientos" : `No hay movimientos el ${fmtFecha(fecha)}`;
+  // "Ver todo" trae como mucho los últimos 200 (el tope del backend sin
+  // rango): con 200 a la vista no es "en total", y lo más viejo se busca por
+  // su fecha, que sí trae el día entero.
+  const recortadaSinFecha = !fecha && lista.length >= TOPE_SIN_FECHA;
+  const cuantos = `${filtrados.length} ${filtrados.length === 1 ? "movimiento" : "movimientos"}`;
+  const textoCuantos = fecha
+    ? cuantos
+    : recortadaSinFecha
+      ? filtrados.length === lista.length
+        ? `Los últimos ${lista.length} movimientos · para uno más viejo, elegí su fecha`
+        : `${cuantos} entre los últimos ${lista.length} · para uno más viejo, elegí su fecha`
+      : `${cuantos} en total`;
 
   // Sin el circuito de aprobación los movimientos se aprueban al crearse, así
   // que filtrar por "pendientes" no devolvería nada. Se deja el chip si hay
@@ -249,10 +280,7 @@ export default function Movimientos() {
           >
             {fecha ? "Ver todo" : "Sólo hoy"}
           </button>
-          <span className="text-xs text-texto-3">
-            {filtrados.length} {filtrados.length === 1 ? "movimiento" : "movimientos"}
-            {fecha ? "" : " en total"}
-          </span>
+          <span className="text-xs text-texto-3">{textoCuantos}</span>
         </div>
         <FilaFiltros>
           {suc.elegir && (
@@ -270,29 +298,32 @@ export default function Movimientos() {
         <Cargando />
       ) : filtrados.length === 0 ? (
         <div className="card">
+          {/* Con el día pedido por su rango, una lista vacía con fecha es ese
+              día vacío y no "todavía no hay movimientos": eso se sabe recién
+              en "Ver todo". */}
           <Vacio
             icono="swap"
             titulo={
-              !lista.length
+              !lista.length && !fecha
                 ? "Todavía no hay movimientos"
-                : soloFaltaHoy
-                  ? "Hoy no hay movimientos"
+                : soloFaltaElDia
+                  ? tituloDiaVacio
                   : "Sin resultados"
             }
             texto={
-              !lista.length
+              !lista.length && !fecha
                 ? "Registrá la primera entrada o salida de stock."
-                : soloFaltaHoy
+                : soloFaltaElDia
                   ? "Los de otros días están en «Ver todo»."
                   : "Probá con otro texto o quitá los filtros."
             }
             accion={
-              !lista.length ? (
+              !lista.length && !fecha ? (
                 <Boton icono="plus" onClick={() => setCreando(true)}>
                   Nuevo movimiento
                 </Boton>
               ) : (
-                soloFaltaHoy && (
+                soloFaltaElDia && (
                   <Boton variante="soft" onClick={() => setFecha("")}>
                     Ver todo
                   </Boton>

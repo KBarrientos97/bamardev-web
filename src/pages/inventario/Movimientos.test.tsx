@@ -1,6 +1,8 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { fmtFecha, isoDia } from "../../lib/format";
+import { rangoParaApi } from "../../lib/rangoApi";
 import type { Almacen, ArticuloMovimiento, Movimiento } from "../../types";
 
 /**
@@ -630,5 +632,88 @@ describe("Restaurante: el stock de un insumo no se muestra al agregarlo (28-oct)
     elegir(dialogo, "aceite", "Aceite Vegetal");
     expect(within(dialogo).getByText("20 Litro en stock")).toBeInTheDocument();
     expect(within(dialogo).getByText("Disponible: 20")).toBeInTheDocument();
+  });
+});
+
+describe("Un día se pide entero, no se recorta de los últimos 200 (BUG-insumos-movimientos-2)", () => {
+  /**
+   * Sin rango el backend manda los últimos 200: elegir un día anterior decía
+   * "no hay movimientos" aunque los hubiera, y una compra vieja no se podía
+   * abrir ni anular desde ningún lado.
+   */
+  const VIEJO = "2026-09-03";
+  const ULTIMOS_200 = Array.from({ length: 200 }, (_, i) => movimiento(1000 + i, { comprobante: `RECIENTE-${i}` }));
+
+  /** El backend nuevo: con rango, lo de ese día; sin rango, los últimos 200. */
+  function backendConRango() {
+    vi.mocked(api.getMovimientos).mockImplementation(async (_suc, rango) => {
+      if (!rango) return ULTIMOS_200;
+      if (rango.desde === rangoParaApi({ desde: VIEJO, hasta: VIEJO }).desde) {
+        return [movimiento(77, { comprobante: "COMPRA-VIEJA", fecha: `${VIEJO}T15:00:00.000Z` })];
+      }
+      return [];
+    });
+  }
+
+  function elegirFecha(dia: string) {
+    fireEvent.change(document.querySelector<HTMLInputElement>('input[type="date"]')!, { target: { value: dia } });
+  }
+
+  it("hoy se pide con su rango, de la medianoche del negocio a la siguiente", async () => {
+    montar();
+    await screen.findByText("MOV-1");
+    const hoy = isoDia(new Date());
+    expect(api.getMovimientos).toHaveBeenLastCalledWith(null, rangoParaApi({ desde: hoy, hasta: hoy }));
+  });
+
+  it("un día anterior a los últimos 200 muestra sus movimientos", async () => {
+    backendConRango();
+    montar();
+    await screen.findByText("Hoy no hay movimientos");
+    elegirFecha(VIEJO);
+    expect(await screen.findByText("COMPRA-VIEJA")).toBeInTheDocument();
+    expect(screen.getByText("1 registrado")).toBeInTheDocument();
+  });
+
+  it("un día elegido sin movimientos lo dice con su fecha, no «Hoy»", async () => {
+    // Decía "Hoy no hay movimientos" de un día de septiembre.
+    backendConRango();
+    montar();
+    await screen.findByText("Hoy no hay movimientos");
+    elegirFecha("2026-09-04");
+    expect(await screen.findByText(`No hay movimientos el ${fmtFecha("2026-09-04")}`)).toBeInTheDocument();
+    expect(screen.queryByText("Todavía no hay movimientos")).not.toBeInTheDocument();
+  });
+
+  it("«Ver todo» pide sin rango y, si llegan 200, dice que son los últimos 200", async () => {
+    backendConRango();
+    montar();
+    await screen.findByText("Hoy no hay movimientos");
+    const verTodo = screen.getAllByRole("button", { name: "Ver todo" });
+    fireEvent.click(verTodo[verTodo.length - 1]);
+    expect(await screen.findByText("RECIENTE-0")).toBeInTheDocument();
+    expect(api.getMovimientos).toHaveBeenLastCalledWith(null, undefined);
+    // No es "200 en total": lo más viejo se busca por su fecha.
+    expect(screen.getByText("Los últimos 200 movimientos · para uno más viejo, elegí su fecha")).toBeInTheDocument();
+    expect(screen.queryByText(/en total/)).not.toBeInTheDocument();
+  });
+
+  it("con menos de 200, «Ver todo» sí es el total", async () => {
+    vi.mocked(api.getMovimientos).mockResolvedValue([movimiento(1), movimiento(2, { fecha: "2026-10-12T15:00:00.000Z" })]);
+    montar();
+    await screen.findByText("MOV-1");
+    fireEvent.click(screen.getByRole("button", { name: "Ver todo" }));
+    expect(await screen.findByText("2 movimientos en total")).toBeInTheDocument();
+  });
+
+  it("con un backend que todavía ignora el rango, el día se sigue recortando en la pantalla", async () => {
+    // Lo de siempre: manda los últimos 200 sin mirar la fecha.
+    vi.mocked(api.getMovimientos).mockResolvedValue([
+      movimiento(1),
+      movimiento(2, { comprobante: "DE-OTRO-DIA", fecha: "2026-10-12T15:00:00.000Z" }),
+    ]);
+    montar();
+    await screen.findByText("MOV-1");
+    expect(screen.queryByText("DE-OTRO-DIA")).not.toBeInTheDocument();
   });
 });

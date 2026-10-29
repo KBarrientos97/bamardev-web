@@ -38,6 +38,22 @@ export interface DatosReporte {
 export interface Exportacion {
   nombre: string;
   hojas: () => HojaNueva[];
+  /**
+   * Un reporte paginado del restaurante (Ventas, Movimientos de caja; REP-03,
+   * 28-oct) baja TODAS las páginas del período recién al tocar el botón y
+   * arma las hojas con eso: si está, es lo que usa el botón, y `hojas` queda
+   * como lo que se ve (la página en pantalla). La planilla salía con las 50
+   * filas de la página y se leía como el período entero. Los demás rubros no
+   * lo mandan (`exportaElPeriodo`) y bajan la página, como siempre.
+   */
+  completa?: () => Promise<ExportacionCompleta>;
+}
+
+/** Lo que arma `Exportacion.completa`. */
+export interface ExportacionCompleta {
+  hojas: HojaNueva[];
+  /** Qué decir en pantalla al bajar (el archivo vino recortado), como el aviso de la app. Null si nada. */
+  aviso: string | null;
 }
 
 export const ContextoReporte = createContext<DatosReporte | null>(null);
@@ -52,16 +68,41 @@ export function useReporte(): DatosReporte {
  * Anota el "Exportar a Excel" del reporte. Con `armar` en null (todavía
  * cargando, o sin nada que bajar) el botón no se dibuja: un Exportar que baja
  * una planilla vacía es peor que no tenerlo.
+ *
+ * `completa`, en un reporte paginado: baja el período entero al tocar el
+ * botón (ver `Exportacion.completa`).
  */
-export function useExportar(nombre: string, armar: (() => HojaNueva[]) | null) {
+export function useExportar(
+  nombre: string,
+  armar: (() => HojaNueva[]) | null,
+  completa?: () => Promise<ExportacionCompleta>,
+) {
   const { registrarExportacion } = useReporte();
   const ref = useRef(armar);
   ref.current = armar;
+  const refCompleta = useRef(completa);
+  refCompleta.current = completa;
   const hay = armar != null;
+  const conCompleta = completa != null;
   useEffect(() => {
-    registrarExportacion(hay ? { nombre, hojas: () => ref.current?.() ?? [] } : null);
+    registrarExportacion(
+      hay
+        ? {
+            nombre,
+            hojas: () => ref.current?.() ?? [],
+            ...(conCompleta
+              ? {
+                  // Por la referencia, como `hojas`: el pedido sale con el
+                  // período y el filtro de AHORA, no con los del primer render.
+                  completa: () =>
+                    refCompleta.current?.() ?? Promise.resolve({ hojas: ref.current?.() ?? [], aviso: null }),
+                }
+              : {}),
+          }
+        : null,
+    );
     return () => registrarExportacion(null);
-  }, [hay, nombre, registrarExportacion]);
+  }, [hay, conCompleta, nombre, registrarExportacion]);
 }
 
 /** Baja el libro. Con la fecha en el nombre: tres exportaciones del mismo reporte no quedan como "(1)" y "(2)". */

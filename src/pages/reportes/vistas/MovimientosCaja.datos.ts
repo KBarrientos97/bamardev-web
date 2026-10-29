@@ -4,8 +4,9 @@ import { fmtFechaHora } from "../../../lib/format";
 import type { HojaNueva } from "../../../lib/planilla";
 import type { ClaseMovimientoCaja, CodigoMotivoEfectivo, PaginaMeta, ReporteMovimientosCaja } from "../../../types";
 import { CODIGOS_GASTO, motivoDeCodigo } from "../../pos/motivosMovimiento";
-import { hoja } from "../contexto";
+import { hoja, type ExportacionCompleta } from "../contexto";
 import type { TonoR } from "../ui";
+import { avisoRecorte, nombreHojaPeriodo, traerTodoElPeriodo, type PedirPagina } from "./todoElPeriodo";
 import { nombreHojaPagina } from "./Ventas.datos";
 
 /**
@@ -146,7 +147,25 @@ export function anuladosDelFiltro(anulados: ReporteMovimientosCaja["anulados"], 
 
 const BASE_HOJA = { "": "Movimientos", ENTRADA: "Entradas", SALIDA: "Salidas" } as const;
 
-export function hojaMovimientos(items: MovimientoCaja[], pagina: PaginaMeta, filtro: keyof typeof BASE_HOJA): HojaNueva {
+export type FiltroCaja = keyof typeof BASE_HOJA;
+
+/** La hoja de la página que se ve, que dice qué página y qué filtro es ("Salidas pág. 2 de 3"). */
+export function hojaPaginaMovimientos(items: MovimientoCaja[], pagina: PaginaMeta, filtro: FiltroCaja): HojaNueva {
+  return hojaMovimientos(items, nombreHojaPagina(BASE_HOJA[filtro], pagina));
+}
+
+/**
+ * El Excel con TODOS los movimientos del período (REP-03, 28-oct), con el
+ * filtro de la lista: "Salidas" baja todas las salidas, no la página de 50
+ * que se ve. Cada movimiento una sola vez aunque entre otro mientras se baja;
+ * el id se repite entre clases (salen de dos tablas), por eso va con la clase.
+ */
+export async function exportarMovimientos(pedir: PedirPagina<MovimientoCaja>, filtro: FiltroCaja): Promise<ExportacionCompleta> {
+  const todo = await traerTodoElPeriodo(pedir, (m) => `${m.clase}-${m.id}`);
+  return { hojas: [hojaMovimientos(todo.filas, nombreHojaPeriodo(BASE_HOJA[filtro], todo))], aviso: avisoRecorte(todo) };
+}
+
+export function hojaMovimientos(items: MovimientoCaja[], nombre: string): HojaNueva {
   // La columna del motivo sólo si alguna fila tiene uno (un billar): el Excel
   // de los demás rubros queda como siempre.
   const conMotivo = items.some((m) => motivoDeCodigo(m.origen));
@@ -154,7 +173,7 @@ export function hojaMovimientos(items: MovimientoCaja[], pagina: PaginaMeta, fil
     ? [["Motivo", (m) => motivoDeCodigo(m.origen)?.etiqueta ?? null]]
     : [];
   return hoja<MovimientoCaja>(
-    nombreHojaPagina(BASE_HOJA[filtro], pagina),
+    nombre,
     [
       ["Fecha", (m) => fmtFechaHora(m.fecha)],
       ["Tipo", (m) => aspectoMovimiento(m.clase).etiqueta],

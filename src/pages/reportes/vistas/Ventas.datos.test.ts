@@ -6,6 +6,8 @@ import {
   cantidadCorta,
   chipEstado,
   esTiempoDeMesa,
+  exportarDetalle,
+  exportarVentas,
   filasMensual,
   hojaVentas,
   lineaVenta,
@@ -127,10 +129,10 @@ describe("ventas (26-oct): una venta pagada parte y parte dice cuánto fue por c
   });
 
   it("el Excel de un billar lleva las mismas partes", () => {
-    const h = hojaVentas([mixta], { page: 1, limite: 50, total: 1, totalPaginas: 1 }, true);
+    const h = hojaVentas([mixta], "Ventas", true);
     const [titulos, fila] = h.filas;
     expect(fila[titulos.indexOf("Método de pago")]).toBe(metodoDeVenta(mixta, true));
-    const fuera = hojaVentas([mixta], { page: 1, limite: 50, total: 1, totalPaginas: 1 }, false);
+    const fuera = hojaVentas([mixta], "Ventas", false);
     expect(fuera.filas[1][titulos.indexOf("Método de pago")]).toBe("Mixto");
   });
 });
@@ -193,18 +195,64 @@ describe("ventas: el mensual", () => {
 });
 
 describe("ventas: el Excel", () => {
-  it("la hoja de una lista paginada dice qué página es", () => {
-    // Se baja la página que se ve: sin decirlo, 50 ventas se leían como el
-    // período entero.
+  it("la hoja de lo que se ve dice qué página es", () => {
+    // Sin decirlo, 50 ventas se leían como el período entero.
     expect(nombreHojaPagina("Ventas", { page: 2, totalPaginas: 4 })).toBe("Ventas pág. 2 de 4");
     expect(nombreHojaPagina("Ventas", { page: 1, totalPaginas: 1 })).toBe("Ventas");
   });
 
   it("los montos van como número y el origen como en la pantalla", () => {
-    const h = hojaVentas([venta({ origen: "Mostrador", total: 12 })], { page: 1, limite: 50, total: 1, totalPaginas: 1 }, true);
+    const h = hojaVentas([venta({ origen: "Mostrador", total: 12 })], "Ventas", true);
     const [titulos, fila] = h.filas;
     expect(fila[titulos.indexOf("Total (Bs)")]).toBe(12);
     expect(fila[titulos.indexOf("Origen")]).toBe("Venta rápida");
     expect(fila[titulos.indexOf("Estado")]).toBe("Completada");
+  });
+});
+
+describe("ventas: el Excel es del período entero (REP-03, 28-oct)", () => {
+  /** Un backend de mentira: `total` ventas, de la más nueva a la más vieja. */
+  function backend(total: number) {
+    return async (page: number, limite: number) => {
+      const desde = (page - 1) * limite;
+      const items = Array.from({ length: Math.max(0, Math.min(limite, total - desde)) }, (_, i) =>
+        venta({ id: total - desde - i, comprobante: `V-${total - desde - i}` }),
+      );
+      return { items, pagina: { page, limite, total, totalPaginas: Math.max(1, Math.ceil(total / limite)) } };
+    };
+  }
+
+  it("General junta todas las páginas en una hoja «Ventas», sin «pág.»", async () => {
+    // Antes bajaba las 50 de la pantalla y la hoja decía "Ventas pág. 1 de 7".
+    const r = await exportarVentas(backend(450), false);
+    expect(r.aviso).toBeNull();
+    expect(r.hojas.map((h) => h.nombre)).toEqual(["Ventas"]);
+    expect(r.hojas[0].filas).toHaveLength(451);
+  });
+
+  it("pasando las 5.000 ventas, la hoja y el aviso lo dicen", async () => {
+    const r = await exportarVentas(backend(5200), false);
+    expect(r.hojas[0].nombre).toBe("Ventas (5.000 de 5.200)");
+    expect(r.hojas[0].filas).toHaveLength(5001);
+    expect(r.aviso).toMatch(/^El Excel trae las 5\.000 filas más nuevas de las 5\.200 del período/);
+  });
+
+  it("en un billar, la hoja del período sigue llevando cuánto fue por cada medio", async () => {
+    // Guarda del billar: bajar el período entero no le cambia las columnas.
+    const mixta = venta({ metodoPago: "Mixto", partes: [{ medio: "Efectivo", monto: 80 }, { medio: "QR", monto: 80 }], total: 160 });
+    const r = await exportarVentas(async (page, limite) => ({ items: [mixta], pagina: { page, limite, total: 1, totalPaginas: 1 } }), true);
+    const [titulos, fila] = r.hojas[0].filas;
+    expect(fila[titulos.indexOf("Método de pago")]).toBe(metodoDeVenta(mixta, true));
+  });
+
+  it("Detallado junta todas las líneas, también dos iguales de la misma venta", async () => {
+    // Una línea no tiene id propio: dos cocas cargadas por separado son dos.
+    const linea = { ventaId: 5, comprobante: "V-5", fecha: "2026-10-08T04:18:00.000Z", vendedor: "Ana", producto: "Coca Cola", codigo: null, cantidad: 1, precio: 10, subtotal: 10 };
+    const r = await exportarDetalle(async (page, limite) => ({
+      items: page === 1 ? [linea, linea] : [linea],
+      pagina: { page, limite, total: 3, totalPaginas: 2 },
+    }));
+    expect(r.hojas[0].nombre).toBe("Detallado");
+    expect(r.hojas[0].filas).toHaveLength(4);
   });
 });

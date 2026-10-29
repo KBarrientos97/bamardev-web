@@ -10,9 +10,10 @@ import type {
   ReporteVentasGeneral,
   ReporteVentasMensual,
 } from "../../../types";
-import { hoja } from "../contexto";
+import { hoja, type ExportacionCompleta } from "../contexto";
 import { SIGLAS_MES } from "../formato";
 import type { TonoR } from "../ui";
+import { avisoRecorte, nombreHojaPeriodo, traerTodoElPeriodo, type PedirPagina } from "./todoElPeriodo";
 
 /**
  * Las cuentas de la pantalla de Ventas (General, Detallado y Mensual), aparte
@@ -215,17 +216,39 @@ export function aniosDelSelector(d: Pick<ReporteVentasMensual, "anio" | "anios">
 // ── Excel ───────────────────────────────────────────────────────────────────
 
 /**
- * El nombre de la hoja de una lista paginada. Se baja la página que se ve (un
- * año de ventas no se pide entero para una planilla), y la hoja lo dice: si
- * no, una página de 50 se leía como el período completo.
+ * El nombre de la hoja de la página que se ve, que dice qué página es: si no,
+ * una página de 50 se leía como el período completo. El botón de Exportar
+ * baja el período entero (`exportarVentas`, REP-03); esto queda para la hoja
+ * de "lo que se ve".
  */
 export function nombreHojaPagina(base: string, p: Pick<PaginaMeta, "page" | "totalPaginas">): string {
   return p.totalPaginas > 1 ? `${base} pág. ${p.page} de ${p.totalPaginas}` : base;
 }
 
-export function hojaVentas(items: VentaFila[], pagina: PaginaMeta, enBillar: boolean): HojaNueva {
+/**
+ * El Excel de la pestaña General con TODAS las ventas del período (REP-03,
+ * 28-oct), con el cajero del filtro si hay uno: `pedir` es el mismo pedido de
+ * la pantalla, con otra página y otro tamaño. Cada venta una sola vez aunque
+ * se cobre otra mientras se baja (ver `traerTodoElPeriodo`).
+ */
+export async function exportarVentas(pedir: PedirPagina<VentaFila>, enBillar: boolean): Promise<ExportacionCompleta> {
+  const todo = await traerTodoElPeriodo(pedir, (v) => v.id);
+  return { hojas: [hojaVentas(todo.filas, nombreHojaPeriodo("Ventas", todo), enBillar)], aviso: avisoRecorte(todo) };
+}
+
+/**
+ * El Excel de la pestaña Detallado con todas las líneas del período. Sin
+ * descartar repetidas: una línea no tiene un id propio, y dos renglones
+ * iguales en la misma venta (dos cocas cargadas por separado) son dos.
+ */
+export async function exportarDetalle(pedir: PedirPagina<LineaVenta>): Promise<ExportacionCompleta> {
+  const todo = await traerTodoElPeriodo(pedir);
+  return { hojas: [hojaDetalle(todo.filas, nombreHojaPeriodo("Detallado", todo))], aviso: avisoRecorte(todo) };
+}
+
+export function hojaVentas(items: VentaFila[], nombre: string, enBillar: boolean): HojaNueva {
   return hoja<VentaFila>(
-    nombreHojaPagina("Ventas", pagina),
+    nombre,
     [
       ["Comprobante", (v) => v.comprobante],
       ["Fecha", (v) => fmtFechaHora(v.fecha)],
@@ -243,9 +266,9 @@ export function hojaVentas(items: VentaFila[], pagina: PaginaMeta, enBillar: boo
   );
 }
 
-export function hojaDetalle(items: LineaVenta[], pagina: PaginaMeta): HojaNueva {
+export function hojaDetalle(items: LineaVenta[], nombre: string): HojaNueva {
   return hoja<LineaVenta>(
-    nombreHojaPagina("Detallado", pagina),
+    nombre,
     [
       ["Producto", (l) => l.producto],
       ["Código", (l) => l.codigo],
