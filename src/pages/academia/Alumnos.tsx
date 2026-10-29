@@ -31,7 +31,14 @@ import {
   type TonoChip,
 } from "./piezas";
 
-type Vista = "todos" | "deben" | "retirados" | "faltanFotos";
+type Vista = "todos" | "deben" | "retirados" | "faltanFotos" | "porRevisar" | "observadas";
+
+/**
+ * L9 (28-oct): las pestañas de quien revisa fotos (`academia.fotos`). Con el
+ * permiso que le da el administrador, la recepción tiene su cola acá: el
+ * Panel de control, donde estaba, pide otro permiso (el de la plata).
+ */
+const VISTAS_DE_FOTOS: Vista[] = ["porRevisar", "observadas"];
 
 /** Lo que pide cada pestaña a `GET /academia/alumnos`. */
 const FILTRO_VISTA: Record<Vista, Pick<FiltroAlumnos, "estado" | "debe" | "fotos">> = {
@@ -40,6 +47,8 @@ const FILTRO_VISTA: Record<Vista, Pick<FiltroAlumnos, "estado" | "debe" | "fotos
   retirados: { estado: "RETIRADA" },
   // Sólo se ofrece si hay alguno (U4): las demás fotos se miran en la ficha y en el panel de control.
   faltanFotos: { fotos: "FALTAN" },
+  porRevisar: { fotos: "POR_REVISAR" },
+  observadas: { fotos: "OBSERVADAS" },
 };
 
 /** Cómo se lee el estado de las fotos: gris si están bien, chip ámbar o rojo si piden algo. */
@@ -69,6 +78,9 @@ export default function Alumnos() {
   const [vista, setVista] = useState<Vista>("todos");
   const [inscribiendo, setInscribiendo] = useState(false);
   const [aviso, setAviso] = useAviso(8000);
+  const revisaFotos = tienePermiso(usuario, "academia.fotos");
+  // Sin el permiso no se piden los conteos de sus pestañas: no se ofrecen.
+  const vistas = (Object.keys(FILTRO_VISTA) as Vista[]).filter((v) => revisaFotos || !VISTAS_DE_FOTOS.includes(v));
 
   const base = { q: buscado || undefined, sede: sede.sucursalId };
   const lista = usePaginado(
@@ -79,14 +91,14 @@ export default function Alumnos() {
   const conteos = useApi(
     () =>
       Promise.all(
-        (Object.keys(FILTRO_VISTA) as Vista[]).map((v) =>
+        vistas.map((v) =>
           apiAcademia
             .alumnos({ ...base, ...FILTRO_VISTA[v], page: 1, pageSize: 1 })
             .then((r) => [v, r.total] as const)
             .catch(() => [v, null] as const),
         ),
       ).then((pares) => Object.fromEntries(pares) as Record<Vista, number | null>),
-    [buscado, sede.sucursalId],
+    [buscado, sede.sucursalId, revisaFotos],
   );
   const preinscripciones = useApi(
     () =>
@@ -149,6 +161,11 @@ export default function Alumnos() {
               // Sólo si hay alguno (o si ya está elegido, para que no se esfume al arreglar el último).
               ...(n("faltanFotos") || vista === "faltanFotos"
                 ? [{ clave: "faltanFotos" as const, label: "Faltan fotos", n: n("faltanFotos"), urgente: true }]
+                : []),
+              // L9: la cola de quien revisa siempre a la vista; las observadas, sólo si hay (esperan a que cambien la foto).
+              ...(revisaFotos ? [{ clave: "porRevisar" as const, label: "Fotos por revisar", n: n("porRevisar"), urgente: true }] : []),
+              ...(revisaFotos && (n("observadas") || vista === "observadas")
+                ? [{ clave: "observadas" as const, label: "Observadas", n: n("observadas"), urgente: true }]
                 : []),
             ]}
           />

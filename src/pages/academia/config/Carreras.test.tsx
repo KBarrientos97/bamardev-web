@@ -34,6 +34,7 @@ vi.mock("../../../lib/academia/apiAcademia", async (importOriginal) => {
       ajustes: vi.fn(),
       crearCarreraSimple: vi.fn(),
       editarCarreraSimple: vi.fn(),
+      editarPlan: vi.fn(),
       grupos: vi.fn(),
     },
   };
@@ -152,13 +153,16 @@ describe("N2 · Cursos", () => {
     const panel = screen.getByRole("complementary", { name: "Nuevo curso" });
     fireEvent.change(within(panel).getByLabelText("Nombre"), { target: { value: "Tatuaje" } });
     expect(within(panel).getByText(/Poné el precio/)).toBeInTheDocument();
+    // L3: nace sin descuento (antes 10 %), y lo dice.
+    expect(within(panel).getByLabelText("Descuento (%)")).toHaveDisplayValue("");
+    expect(within(panel).getByText(/Sin descuento: el pago completo cuesta lo mismo/)).toBeInTheDocument();
     fireEvent.click(within(panel).getByRole("button", { name: "Crear curso" }));
     expect(apiAcademia.crearCarreraSimple).not.toHaveBeenCalled();
     fireEvent.change(within(panel).getByLabelText(/Precio por módulo/), { target: { value: "600" } });
     fireEvent.click(within(panel).getByRole("button", { name: "Crear curso" }));
     await act(async () => {});
     expect(apiAcademia.crearCarreraSimple).toHaveBeenCalledWith(
-      expect.objectContaining({ nombre: "Tatuaje", precioModulo: 600, modulos: [{ nombre: "Módulo 1" }], descuentoCompletoPct: 10, cupoDefecto: 20 }),
+      expect.objectContaining({ nombre: "Tatuaje", precioModulo: 600, modulos: [{ nombre: "Módulo 1" }], descuentoCompletoPct: 0, cupoDefecto: 20 }),
     );
   });
 });
@@ -473,5 +477,25 @@ describe("C7 · aviso en el panel del curso cuando la página no lo va a mostrar
     await montar();
     fireEvent.click(screen.getByRole("button", { name: "Editar Maquillaje" }));
     expect(within(screen.getByRole("complementary", { name: "Maquillaje" })).queryByRole("note")).not.toBeInTheDocument();
+  });
+});
+
+describe("L3 · los planes que arma el curso no se editan a mano (28-oct)", () => {
+  it("en las opciones avanzadas, «Mes a mes» y «Pago completo» no tienen «Editar»: se retiran o se reactivan", async () => {
+    vi.mocked(apiAcademia.editarPlan).mockResolvedValue({} as never);
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Editar Barbería" }));
+    const panel = screen.getByRole("complementary", { name: "Barbería" });
+    fireEvent.click(within(panel).getByRole("button", { name: "Opciones avanzadas" }));
+    fireEvent.click(within(panel).getByRole("button", { name: "Editar planes a medida" }));
+    const avanzadas = screen.getByRole("dialog", { name: "Opciones avanzadas · Barbería" });
+    const planes = within(avanzadas).getByRole("region", { name: "Planes de pago" });
+    expect(within(planes).queryByRole("button", { name: "Editar" })).not.toBeInTheDocument();
+    expect(within(planes).getAllByText(/Lo arma el curso/)).toHaveLength(2);
+    await act(async () => {
+      fireEvent.click(within(planes).getAllByRole("button", { name: "Retirar plan" })[0]);
+    });
+    // Sólo `activo`: sin las cuotas, que el backend rechazaría (PLAN_GENERADO).
+    expect(apiAcademia.editarPlan).toHaveBeenCalledWith(1, { activo: false });
   });
 });

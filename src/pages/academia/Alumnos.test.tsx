@@ -9,9 +9,18 @@ import type { AlumnoFila } from "../../lib/academia/tipos";
  * dice si debe y cómo están sus fotos.
  */
 
+/** L9: la recepción a la que el administrador le dio `academia.fotos` desde Roles. */
+const quien = vi.hoisted(() => ({ conFotos: false }));
+
 vi.mock("../../store/AuthContext", async () => {
   const { SESION_SECRETARIA: s } = await import("../../test/academiaFixtures");
-  return { useAuth: () => ({ ...s, puede: () => true }) };
+  return {
+    useAuth: () => ({
+      ...s,
+      usuario: { ...s.usuario, permisos: quien.conFotos ? [...s.usuario.permisos, "academia.fotos"] : s.usuario.permisos },
+      puede: () => true,
+    }),
+  };
 });
 
 vi.mock("../../lib/academia/apiAcademia", async (importOriginal) => {
@@ -51,6 +60,7 @@ const fila = (extra: Partial<AlumnoFila>): AlumnoFila => ({
 
 beforeEach(() => {
   vi.clearAllMocks();
+  quien.conFotos = false;
   const TOTAL = { todos: 148, deben: 7, retirados: 3 };
   vi.mocked(apiAcademia.alumnos).mockImplementation(async (f = {}) => ({
     items: f.pageSize === 1 ? [] : [fila({}), fila({ id: 51, apellidos: "Andrade Villca", nombres: "Mateo", saldo: 0, vencido: false, fotos: "POR_REVISAR" })],
@@ -225,5 +235,58 @@ describe("ronda 1 · D12 · al inscribir se recargan también los conteos", () =
       fireEvent.click(screen.getByRole("button", { name: "Terminar alta" }));
     });
     expect(screen.getByText("La inscripción quedó registrada.")).toBeInTheDocument();
+  });
+});
+
+describe("L9 · las fotos por revisar en Estudiantes, para quien tiene el permiso", () => {
+  const conConteos = (porRevisar: number, observadas: number) =>
+    vi.mocked(apiAcademia.alumnos).mockImplementation(async (f = {}) => ({
+      items: f.pageSize === 1 ? [] : [fila({ fotos: f.fotos === "OBSERVADAS" ? "OBSERVADAS" : "POR_REVISAR" })],
+      total: f.fotos === "POR_REVISAR" ? porRevisar : f.fotos === "OBSERVADAS" ? observadas : f.fotos ? 0 : 148,
+      page: 1,
+      pageSize: f.pageSize ?? 20,
+    }));
+
+  it("sin el permiso no hay pestañas de fotos ni se piden sus conteos", async () => {
+    conConteos(4, 2);
+    render(
+      <MemoryRouter>
+        <Alumnos />
+      </MemoryRouter>,
+    );
+    await act(async () => {});
+    expect(screen.queryByRole("tab", { name: /Fotos por revisar/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: /Observadas/ })).not.toBeInTheDocument();
+    expect(apiAcademia.alumnos).not.toHaveBeenCalledWith(expect.objectContaining({ fotos: "POR_REVISAR" }));
+  });
+
+  it("con el permiso: «Fotos por revisar» y «Observadas» cuentan y filtran", async () => {
+    quien.conFotos = true;
+    conConteos(4, 2);
+    render(
+      <MemoryRouter>
+        <Alumnos />
+      </MemoryRouter>,
+    );
+    await act(async () => {});
+    fireEvent.click(screen.getByRole("tab", { name: "Fotos por revisar 4" }));
+    await act(async () => {});
+    expect(apiAcademia.alumnos).toHaveBeenLastCalledWith(expect.objectContaining({ fotos: "POR_REVISAR", page: 1, pageSize: 20 }));
+    fireEvent.click(screen.getByRole("tab", { name: "Observadas 2" }));
+    await act(async () => {});
+    expect(apiAcademia.alumnos).toHaveBeenLastCalledWith(expect.objectContaining({ fotos: "OBSERVADAS", page: 1, pageSize: 20 }));
+  });
+
+  it("sin observadas, esa pestaña no aparece; la de por revisar sí (es la cola)", async () => {
+    quien.conFotos = true;
+    conConteos(0, 0);
+    render(
+      <MemoryRouter>
+        <Alumnos />
+      </MemoryRouter>,
+    );
+    await act(async () => {});
+    expect(screen.getByRole("tab", { name: "Fotos por revisar 0" })).toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: /Observadas/ })).not.toBeInTheDocument();
   });
 });

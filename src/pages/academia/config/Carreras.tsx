@@ -451,7 +451,9 @@ function PanelCurso({
       : [{ nombre: `${conMayuscula(p.materia)} 1` }],
   );
   const [precio, setPrecio] = useState(curso?.precioModulo != null ? String(curso.precioModulo) : "");
-  const [desc, setDesc] = useState(curso?.descuentoCompletoPct != null ? String(curso.descuentoCompletoPct) : "10");
+  // L3 (28-oct): el curso nuevo arranca sin descuento. Nacía con 10 % y así
+  // quedaba el de Tatuaje en QA (Bs 1.350) cuando el instituto cobra Bs 1.300.
+  const [desc, setDesc] = useState(curso?.descuentoCompletoPct != null ? String(curso.descuentoCompletoPct) : "");
   const [cupo, setCupo] = useState(curso?.cupoDefecto != null ? String(curso.cupoDefecto) : nuevo ? "20" : "");
   const [pct, setPct] = useState(curso?.pctDocente != null ? String(curso.pctDocente) : "");
   // A4: el pago completo por % (como siempre) o por precio final.
@@ -641,6 +643,11 @@ function PanelCurso({
               </Campo>
             )}
           </div>
+          {!conPrecioFinal && nDesc === 0 && (
+            <p className="mt-2 text-xs text-texto-3">
+              Sin descuento: el pago completo cuesta lo mismo que mes a mes. Poné el % o elegí «Precio final».
+            </p>
+          )}
           {conPrecioFinal && lista > 0 && (
             <p className={`mt-2 text-xs ${precioFinal.trim() === "" || precioFinalOk ? "text-texto-3" : "text-danger-text"}`}>
               {precioFinal.trim() === ""
@@ -1179,10 +1186,42 @@ function EditorPlan({
               {diferencia > 0 && ` · ${fmtMoney(diferencia)} más que ${referencia?.nombre}`}
             </p>
           </div>
-          <Boton variante="ghost" icono="edit" onClick={() => setAbierto(true)}>
-            Editar
-          </Boton>
+          {/* L3: «Mes a mes» y «Pago completo» salen del precio del curso; sus cuotas
+              no se editan acá (el backend lo rechaza con PLAN_GENERADO). Se retiran o
+              se reactivan, nada más. */}
+          {plan.generado ? (
+            <Boton
+              variante="ghost"
+              disabled={guardando}
+              onClick={() =>
+                void (async () => {
+                  setGuardando(true);
+                  setErrores([]);
+                  try {
+                    await apiAcademia.editarPlan(plan.id, { activo: !plan.activo });
+                    onGuardado();
+                  } catch (e) {
+                    setErrores([e instanceof Error ? e.message : "No se pudo guardar el plan"]);
+                  } finally {
+                    setGuardando(false);
+                  }
+                })()
+              }
+            >
+              {plan.activo ? "Retirar plan" : "Reactivar"}
+            </Boton>
+          ) : (
+            <Boton variante="ghost" icono="edit" onClick={() => setAbierto(true)}>
+              Editar
+            </Boton>
+          )}
         </div>
+        {plan.generado && (
+          <p className="mt-1 text-[12px] text-texto-3">
+            Lo arma el curso: el precio se cambia en el precio por {p.materia} o en el del pago completo, y se rehace solo al agregar o retirar un {p.materia}.
+          </p>
+        )}
+        {errores.length > 0 && <ErrorMsg>{errores[0]}</ErrorMsg>}
         <ul className="mt-2 space-y-0.5 text-[13px] text-texto-2">
           {plan.calendario.map((c) => (
             <li key={c.n} className="flex justify-between gap-2">

@@ -336,3 +336,75 @@ describe("A3 · fotos por revisar con un toque y de a 10 (UX 13)", () => {
     expect(within(nav).getByRole("button", { name: "Siguientes" })).toBeDisabled();
   });
 });
+
+describe("L4 y L9 · las fotos en grande y «Aprobadas por otros» (28-oct)", () => {
+  it("en el panel de revisión cada foto se abre en grande; Esc cierra la foto y no el panel", async () => {
+    vi.mocked(apiAcademia.fotoComoUrl).mockImplementation(async (_id, tipo) => `blob:${tipo}`);
+    render(
+      <MemoryRouter>
+        <Control />
+      </MemoryRouter>,
+    );
+    await act(async () => {});
+    fireEvent.click(screen.getByRole("button", { name: "Revisar 2 fotos" }));
+    await act(async () => {});
+    const panel = screen.getByRole("complementary", { name: "Ortiz Rocha, Thiago" });
+    // El carnet entero en la miniatura: recortado se perdían los bordes.
+    expect(within(panel).getByRole("img", { name: "Carnet, adelante" })).toHaveClass("object-contain");
+    fireEvent.click(within(panel).getByRole("button", { name: "Ver en grande: Carnet, adelante" }));
+    const visor = screen.getByRole("dialog", { name: "Carnet, adelante · Ortiz Rocha, Thiago" });
+    expect(within(visor).getByRole("img")).toHaveAttribute("src", "blob:CI_ANVERSO");
+    fireEvent.keyDown(document, { key: "ArrowRight" });
+    expect(within(visor).getByRole("img")).toHaveAttribute("src", "blob:CI_REVERSO");
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByRole("complementary", { name: "Ortiz Rocha, Thiago" })).toBeInTheDocument();
+    // Sin la foto encima, Esc vuelve a cerrar el panel.
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("complementary")).not.toBeInTheDocument();
+  });
+
+  it("«Aprobadas por otros» dice quién las aprobó y se vuelven a revisar en el mismo panel", async () => {
+    vi.mocked(apiAcademia.control).mockResolvedValue({
+      ...PANEL,
+      fotosAprobadasPorOtros: [
+        { alumnoId: 80, nombre: "Rojas Lima, Thiago", ci: "1234567", fechaNacimiento: null, grupo: "Barbería · L-V", inscritoPor: "Lucía Vargas", inscritaEn: "2026-10-20T12:00:00.000Z", aprobadaPor: "Lucía Vargas", aprobadaEn: "2026-10-27T12:00:00.000Z" },
+        { alumnoId: 81, nombre: "Vaca Díez, Ana", ci: null, fechaNacimiento: null, grupo: "Uñas · L-V", inscritoPor: "Lucía Vargas", inscritaEn: "2026-10-20T12:00:00.000Z", aprobadaPor: "Lucía Vargas", aprobadaEn: "2026-10-26T12:00:00.000Z" },
+      ],
+      fotosAprobadasPorOtrosTotal: 2,
+      fotosAprobadasPorOtrosDias: 14,
+    });
+    render(
+      <MemoryRouter>
+        <Control />
+      </MemoryRouter>,
+    );
+    await act(async () => {});
+    const lista = screen.getByRole("region", { name: /Aprobadas por otros/ });
+    expect(lista).toHaveTextContent("en los últimos 14 días");
+    expect(lista).toHaveTextContent(/aprobó Lucía Vargas/);
+    fireEvent.click(within(lista).getByRole("button", { name: "Volver a revisar las fotos de Rojas Lima, Thiago" }));
+    await act(async () => {});
+    const panel = screen.getByRole("complementary", { name: "Rojas Lima, Thiago" });
+    // Sigue con la otra de la misma lista, no con las que nadie revisó.
+    expect(panel).toHaveTextContent("Quedan 1 por revisar");
+    await act(async () => {
+      fireEvent.click(within(panel).getByRole("button", { name: "Está bien" }));
+    });
+    expect(apiAcademia.revisarFotos).toHaveBeenCalledWith(80, { ok: true });
+    expect(screen.getByRole("complementary", { name: "Vaca Díez, Ana" })).toBeInTheDocument();
+    expect(within(lista).getByText("Revisada")).toBeInTheDocument();
+    // Las por revisar siguen en su lugar.
+    expect(screen.getByRole("button", { name: "Revisar 2 fotos" })).toBeInTheDocument();
+  });
+
+  it("sin aprobadas por otros (o con un backend anterior) la lista no aparece", async () => {
+    render(
+      <MemoryRouter>
+        <Control />
+      </MemoryRouter>,
+    );
+    await act(async () => {});
+    expect(screen.queryByRole("region", { name: /Aprobadas por otros/ })).not.toBeInTheDocument();
+  });
+});

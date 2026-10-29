@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "../../components/Icon";
 import { ErrorMsg } from "../../components/ui";
+import VisorFotos from "../../components/VisorFotos";
 import { apiAcademia } from "../../lib/academia/apiAcademia";
-import { NOMBRE_FOTO, prepararFoto } from "../../lib/academia/fotos";
+import { listaDeFotos, NOMBRE_FOTO, prepararFoto, TEXTO_CANDADO_FOTOS } from "../../lib/academia/fotos";
 import { fechaCorta } from "../../lib/academia/formato";
-import { TIPOS_FOTO, type FotoAlumno, type TipoFoto } from "../../lib/academia/tipos";
+import { TIPOS_FOTO, type FotoAlumno, type RevisionFoto, type TipoFoto } from "../../lib/academia/tipos";
+import { fmtFechaHora } from "../../lib/format";
 import PedirMotivo from "../agenda/PedirMotivo";
 import { BotonFila, Chip, claseBotonFila, Tarjeta } from "./piezas";
 
@@ -12,22 +14,26 @@ const MOTIVOS_OBSERVACION = ["La foto no se ve bien", "El carnet no coincide", "
 
 /**
  * Las fotos y el carnet en la ficha (E6, D7). La imagen sólo la ve quien
- * tiene `academia.fotos` (el administrador): se baja con la sesión y se
- * muestra como blob, nunca con un enlace público. Los demás ven que están, con
- * un candado. El administrador las marca revisadas u observadas; quien
- * inscribe puede reemplazar una (y vuelve a quedar por revisar).
+ * tiene `academia.fotos` (el administrador, o el rol al que él se lo dé): se
+ * baja con la sesión y se muestra como blob, nunca con un enlace público. Los
+ * demás ven que están, con un candado. Quien las ve las marca revisadas u
+ * observadas, y tocarlas las abre en grande (L4); quien inscribe puede
+ * reemplazar una (y vuelve a quedar por revisar). Al pie, para quien las
+ * revisa, el historial: quién aprobó, observó o cambió cada una (L9).
  */
 export default function FotosAlumno({
   alumnoId,
   fotos,
   veImagenes,
   reemplaza,
+  historial = [],
   onCambio,
 }: {
   alumnoId: number;
   fotos: FotoAlumno[];
   veImagenes: boolean;
   reemplaza: boolean;
+  historial?: RevisionFoto[];
   onCambio: () => void;
 }) {
   const [urls, setUrls] = useState<Partial<Record<TipoFoto, string>>>({});
@@ -110,7 +116,7 @@ export default function FotosAlumno({
       pie={
         !veImagenes ? (
           <p className="flex items-center gap-1.5 text-[13px] text-texto-3">
-            <Icon name="lock" size={13} /> Sólo el administrador ve las fotos
+            <Icon name="lock" size={13} /> {TEXTO_CANDADO_FOTOS}
           </p>
         ) : (
           <div className="flex flex-wrap items-center gap-2">
@@ -172,16 +178,15 @@ export default function FotosAlumno({
         </div>
       )}
 
-      {ampliada && urls[ampliada] && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label={NOMBRE_FOTO[ampliada]}
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/80 p-4"
-          onClick={() => setAmpliada(null)}
-        >
-          <img src={urls[ampliada]} alt={NOMBRE_FOTO[ampliada]} className="max-h-full max-w-full rounded-xl" />
-        </div>
+      {veImagenes && historial.length > 0 && <HistorialFotos filas={historial} />}
+
+      {/* L4: el visor de pantalla completa (X, Esc, flechas, zoom y girar) en lugar del ampliado que sólo se cerraba con un clic. */}
+      {ampliada && (
+        <VisorFotos
+          fotos={fotos.filter((f) => urls[f.tipo]).map((f) => ({ url: urls[f.tipo], titulo: NOMBRE_FOTO[f.tipo] }))}
+          inicial={Math.max(0, fotos.filter((f) => urls[f.tipo]).findIndex((f) => f.tipo === ampliada))}
+          onCerrar={() => setAmpliada(null)}
+        />
       )}
       {observando && (
         <PedirMotivo
@@ -250,13 +255,14 @@ function Figura({
         }`}
       >
         {url ? (
-          <button type="button" onClick={onAmpliar} aria-label={`Ver ${titulo}`} className="h-full w-full">
-            <img src={url} alt={titulo} className="h-full w-full object-cover" />
+          <button type="button" onClick={onAmpliar} aria-label={`Ver ${titulo}`} className="h-full w-full cursor-zoom-in">
+            {/* El carnet entero (L4): recortado se perdían los bordes; la cara sí llena el marco. */}
+            <img src={url} alt={titulo} className={`h-full w-full ${tipo === "FOTO" ? "object-cover" : "object-contain"}`} />
           </button>
         ) : foto ? (
           <span className="flex flex-col items-center gap-1 text-primary-700">
             <Icon name={veImagenes ? "camara" : "lock"} size={20} />
-            {!veImagenes && <span className="sr-only">Foto cargada, sólo la ve el administrador</span>}
+            {!veImagenes && <span className="sr-only">Foto cargada. {TEXTO_CANDADO_FOTOS}.</span>}
           </span>
         ) : (
           <span className="text-xs font-semibold text-danger-text">Falta</span>
@@ -298,6 +304,43 @@ function Figura({
         )}
       </figcaption>
     </figure>
+  );
+}
+
+const ACCION_REVISION: Record<RevisionFoto["accion"], string> = {
+  APROBADA: "Aprobó",
+  OBSERVADA: "Observó",
+  REEMPLAZADA: "Cambió",
+};
+
+/**
+ * Quién aprobó, observó o cambió las fotos (L9, 28-oct), lo último primero.
+ * La marca de «Revisadas por…» es sólo la última: con la recepción aprobando
+ * (si el dueño le dio el permiso), el dueño tiene que poder ver quién fue
+ * cada vez. Plegado: es para mirar cuando hace falta.
+ */
+function HistorialFotos({ filas }: { filas: RevisionFoto[] }) {
+  return (
+    <details className="mt-4 rounded-xl border border-borde-soft">
+      <summary className="flex cursor-pointer select-none items-center justify-between gap-2 px-3.5 py-2.5 text-[13px] font-semibold text-texto-2">
+        Historial de las fotos
+        <span className="text-xs font-normal text-texto-4">{filas.length}</span>
+      </summary>
+      <ul aria-label="Historial de las fotos" className="divide-y divide-borde-soft border-t border-borde-soft">
+        {filas.map((h, i) => {
+          const cuales = h.tipos.length === TIPOS_FOTO.length ? "las 3 fotos" : listaDeFotos(h.tipos);
+          return (
+            <li key={`${h.en}-${i}`} className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 px-3.5 py-2 text-[13px]">
+              <span className="min-w-0 text-texto-2">
+                <b className="font-semibold text-texto">{h.usuario ?? "La página"}</b> · {ACCION_REVISION[h.accion]?.toLowerCase() ?? h.accion} {cuales}
+                {h.observacion && <span className="text-warning-text">: {h.observacion}</span>}
+              </span>
+              <span className="shrink-0 text-[12px] tabular-nums text-texto-4">{fmtFechaHora(h.en)}</span>
+            </li>
+          );
+        })}
+      </ul>
+    </details>
   );
 }
 

@@ -336,6 +336,7 @@ export default function FichaAlumno() {
               fotos={a.fotos}
               veImagenes={tienePermiso(usuario, "academia.fotos")}
               reemplaza={inscribe}
+              historial={a.historialFotos}
               onCambio={ficha.recargar}
             />
           )}

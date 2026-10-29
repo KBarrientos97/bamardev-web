@@ -1,20 +1,22 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Icon } from "../../components/Icon";
 import MenuMas, { type AccionMenu } from "../../components/MenuMas";
 import { Paginacion } from "../../components/Paginacion";
+import VisorFotos from "../../components/VisorFotos";
 import { AvisoOk, Cargando, ErrorMsg, Vacio, useAviso } from "../../components/ui";
 import { apiAcademia } from "../../lib/academia/apiAcademia";
 import { EVENTO_PREINSCRIPCIONES } from "../../lib/academia/contadorPreinscripciones";
-import { avisoFotosPendientes, textoFaltanFotos } from "../../lib/academia/fotos";
+import { avisoFotosPendientes, NOMBRE_FOTO, textoFaltanFotos } from "../../lib/academia/fotos";
 import { nombreAlumno, nombreDe } from "../../lib/academia/formato";
-import type { Preinscripcion } from "../../lib/academia/tipos";
+import { TIPOS_FOTO, type Preinscripcion, type TipoFoto } from "../../lib/academia/tipos";
 import { useFiltroSede } from "../../lib/academia/useFiltroSede";
 import { usePalabras } from "../../lib/academia/usePalabras";
 import { abrirWhatsapp, rutaCobroInscripcion } from "../../lib/academia/vista";
 import { enlaceWhatsApp } from "../../lib/agenda/recordatorio";
 import { tiempoRelativo } from "../../lib/format";
 import { usePaginado } from "../../lib/paginado";
+import { tienePermiso } from "../../lib/permisos";
 import { useAuth } from "../../store/AuthContext";
 import PedirMotivo from "../agenda/PedirMotivo";
 import Inscribir from "./Inscribir";
@@ -32,8 +34,10 @@ const MOTIVOS_DESCARTE = ["No contestó", "Eligió otro instituto", "Ya no le in
  * segundo. WhatsApp y Descartar van en el menú ⋯ de cada una.
  */
 export default function Preinscripciones() {
-  const { negocio } = useAuth();
+  const { negocio, usuario } = useAuth();
   const p = usePalabras();
+  // L9: quien revisa fotos (el administrador, o la recepción si él se lo dio) las ve y las aprueba acá.
+  const veFotos = tienePermiso(usuario, "academia.fotos");
   const navigate = useNavigate();
   const sede = useFiltroSede();
   const [aviso, setAviso] = useAviso(5000);
@@ -143,6 +147,7 @@ export default function Preinscripciones() {
                       key={s.id}
                       s={s}
                       descartada={descartadas}
+                      veFotos={veFotos}
                       onInscribir={() => setInscribiendo(s)}
                       onWhatsapp={() => whatsapp(s)}
                       onDescartar={() => setDescartando(s)}
@@ -198,19 +203,23 @@ export default function Preinscripciones() {
 }
 
 /**
- * Una inscripción que llegó por la página: quién es, las 3 fotos (con
- * candado: la imagen sólo la ve el administrador), el curso, la forma de pago
- * que eligió y qué falta. Una sola acción a la vista; lo demás en ⋯.
+ * Una inscripción que llegó por la página: quién es, las 3 fotos, el curso,
+ * la forma de pago que eligió y qué falta. Una sola acción a la vista; lo
+ * demás en ⋯. Las fotos van con candado, salvo para quien tiene
+ * `academia.fotos` (L9): ve las miniaturas, las abre en grande y las aprueba
+ * desde acá, sin pasar por el Panel de control.
  */
 function FilaInscripcion({
   s,
   descartada,
+  veFotos,
   onInscribir,
   onWhatsapp,
   onDescartar,
 }: {
   s: Preinscripcion;
   descartada: boolean;
+  veFotos: boolean;
   onInscribir: () => void;
   onWhatsapp: () => void;
   onDescartar: () => void;
@@ -249,7 +258,9 @@ function FilaInscripcion({
         </p>
         {s.turnoPreferido && <p className="text-[13px] text-texto-3">Prefiere: {s.turnoPreferido}</p>}
         {s.mensaje && <p className="text-[13px] italic text-texto-3">“{s.mensaje}”</p>}
-        {fotos != null && (
+        {fotos != null && veFotos && fotos > 0 ? (
+          <RevisarFotosFila s={s} />
+        ) : fotos != null && (
           <div className="flex flex-wrap items-center gap-2 pt-2">
             <span aria-hidden="true" className="flex gap-1">
               {[0, 1, 2].map((i) => (
@@ -283,5 +294,130 @@ function FilaInscripcion({
         <MenuMas etiqueta={`Más acciones de ${nombreAlumno(s.alumno)}`} acciones={acciones} />
       </div>
     </li>
+  );
+}
+
+const MOTIVOS_OBSERVACION = ["La foto no se ve bien", "El carnet no coincide", "Falta un lado del carnet", "Otro"] as const;
+
+/**
+ * L9 (28-oct): las fotos de una inscripción online para quien las revisa
+ * (`academia.fotos`: el administrador, o la recepción si él se lo dio). Las
+ * miniaturas abren el visor en grande (L4) y «Está bien» / «Algo no cuadra»
+ * usan la misma revisión que el Panel de control: queda en el historial con
+ * quién la hizo, y el dueño ve en el panel lo que aprobaron otros.
+ */
+function RevisarFotosFila({ s }: { s: Preinscripcion }) {
+  const nombre = nombreAlumno(s.alumno);
+  // Un backend anterior no dice cuáles: se piden las tres y la que no está queda vacía.
+  const tipos = s.tiposFotos?.length ? s.tiposFotos : TIPOS_FOTO;
+  const [urls, setUrls] = useState<Partial<Record<TipoFoto, string>>>({});
+  const [viendo, setViendo] = useState<number | null>(null);
+  const [estado, setEstado] = useState(s.estadoFotos);
+  const [observando, setObservando] = useState(false);
+  const [ocupado, setOcupado] = useState(false);
+  const [error, setError] = useState("");
+  const clave = tipos.join(",");
+
+  useEffect(() => {
+    let vigente = true;
+    const creadas: string[] = [];
+    for (const tipo of clave.split(",") as TipoFoto[]) {
+      apiAcademia
+        .fotoComoUrl(s.alumno.id, tipo)
+        .then((u) => {
+          creadas.push(u);
+          if (vigente) setUrls((x) => ({ ...x, [tipo]: u }));
+        })
+        .catch(() => {
+          /* queda el marco con el candado */
+        });
+    }
+    return () => {
+      vigente = false;
+      creadas.forEach((u) => URL.revokeObjectURL?.(u));
+    };
+  }, [s.alumno.id, clave]);
+
+  async function revisar(input: { ok: boolean; observacion?: string }) {
+    setOcupado(true);
+    setError("");
+    try {
+      await apiAcademia.revisarFotos(s.alumno.id, input);
+      setEstado(input.ok ? "COMPLETAS" : "OBSERVADAS");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudo guardar la revisión");
+    } finally {
+      setOcupado(false);
+    }
+  }
+
+  const visibles = tipos.filter((t) => urls[t]);
+  const completas = tipos.length >= TIPOS_FOTO.length;
+  return (
+    <div className="space-y-2 pt-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="flex gap-1">
+          {tipos.map((tipo) => {
+            const url = urls[tipo];
+            const ancho = tipo === "FOTO" ? "w-9" : "w-14";
+            return url ? (
+              <button
+                key={tipo}
+                type="button"
+                onClick={() => setViendo(visibles.indexOf(tipo))}
+                aria-label={`Ver en grande: ${NOMBRE_FOTO[tipo]} de ${nombre}`}
+                className={`h-10 ${ancho} cursor-zoom-in overflow-hidden rounded-md border border-borde-soft bg-muted transition-colors hover:border-primary-200`}
+              >
+                <img src={url} alt={NOMBRE_FOTO[tipo]} className={`h-full w-full ${tipo === "FOTO" ? "object-cover" : "object-contain"}`} />
+              </button>
+            ) : (
+              <span key={tipo} aria-hidden="true" className={`flex h-10 ${ancho} items-center justify-center rounded-md border border-primary-100 bg-primary-50 text-primary-700`}>
+                <Icon name="camara" size={13} />
+              </span>
+            );
+          })}
+        </span>
+        {estado === "COMPLETAS" ? (
+          <Chip tono="verde">Fotos revisadas</Chip>
+        ) : estado === "OBSERVADAS" ? (
+          <Chip tono="rojo">Fotos observadas</Chip>
+        ) : (
+          <Chip tono="ambar">{completas ? "Fotos por revisar" : textoFaltanFotos(TIPOS_FOTO.length - tipos.length)}</Chip>
+        )}
+      </div>
+      {estado !== "COMPLETAS" && (
+        <div className="flex flex-wrap gap-2">
+          <BotonFila icono="check" disabled={ocupado} onClick={() => void revisar({ ok: true })} aria-label={`Las fotos de ${nombre} están bien`}>
+            Está bien
+          </BotonFila>
+          <BotonFila variante="ghost" disabled={ocupado} onClick={() => setObservando(true)} aria-label={`Algo no cuadra en las fotos de ${nombre}`}>
+            Algo no cuadra
+          </BotonFila>
+        </div>
+      )}
+      {error && <ErrorMsg>{error}</ErrorMsg>}
+      {viendo != null && visibles.length > 0 && (
+        <VisorFotos
+          fotos={visibles.map((t) => ({ url: urls[t], titulo: NOMBRE_FOTO[t] }))}
+          inicial={viendo}
+          titulo={nombre}
+          onCerrar={() => setViendo(null)}
+        />
+      )}
+      {observando && (
+        <PedirMotivo
+          titulo="Algo no cuadra en las fotos"
+          texto={`${nombre}: el motivo queda anotado en su ficha y la recepción le pide la foto de nuevo.`}
+          motivos={MOTIVOS_OBSERVACION}
+          etiquetaOk="Guardar motivo"
+          faltaMotivo="Elegí el motivo: queda anotado en la ficha."
+          onCancelar={() => setObservando(false)}
+          onConfirmar={async (observacion) => {
+            setObservando(false);
+            await revisar({ ok: false, observacion });
+          }}
+        />
+      )}
+    </div>
   );
 }

@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Icon } from "../../../components/Icon";
 import PanelLateral from "../../../components/PanelLateral";
+import VisorFotos from "../../../components/VisorFotos";
 import { Boton, Cargando, ErrorMsg, Select } from "../../../components/ui";
 import { apiAcademia } from "../../../lib/academia/apiAcademia";
 import { mesDe, sumarMeses, tituloMes } from "../../../lib/academia/calendario";
@@ -29,6 +30,7 @@ import {
 
 type Mirar = "asistenSinPagar" | "pagaronNoVienen" | "descuentosConPin" | "ventasAnuladas";
 type FotoPendiente = PanelControl["fotosPorRevisar"][number];
+type AprobadaPorOtro = NonNullable<PanelControl["fotosAprobadasPorOtros"]>[number];
 
 /**
  * Fotos por revisar de a 10 (UX 13): con 150 inscripciones de marzo la lista
@@ -84,6 +86,16 @@ export default function Control() {
     }
   }
   const meses = Array.from({ length: 6 }, (_, i) => sumarMeses(hoy, -i));
+  /**
+   * L9: la revisión abierta desde «Aprobadas por otros» (no está entre las por
+   * revisar: ya la aprobó alguien) sigue con la próxima de esa lista, no salta
+   * a la cola de las que nadie revisó.
+   */
+  const deOtros = !!revisando && !todasFotos.some((x) => x.alumnoId === revisando.alumnoId);
+  /** Lo que queda por revisar en la lista de la que vino la abierta (sin las ya revisadas acá). */
+  const cola: FotoPendiente[] = deOtros
+    ? (d?.fotosAprobadasPorOtros ?? []).filter((x) => !revisadas[x.alumnoId] || x.alumnoId === revisando?.alumnoId)
+    : pendientes;
 
   return (
     // Con el panel abierto se corre a la izquierda; `w-auto` porque el `w-full` del marco más el margen se salía de la pantalla.
@@ -222,6 +234,14 @@ export default function Control() {
             )}
           </Tarjeta>
 
+          <AprobadasPorOtros
+            filas={d.fotosAprobadasPorOtros ?? []}
+            total={d.fotosAprobadasPorOtrosTotal}
+            dias={d.fotosAprobadasPorOtrosDias}
+            revisadas={revisadas}
+            onRevisar={setRevisando}
+          />
+
           <FotosObservadas filas={d.fotosObservadas ?? []} total={d.fotosObservadasTotal} />
 
           <FotosFaltan filas={d.fotosFaltan ?? []} total={d.fotosFaltanTotal} />
@@ -246,11 +266,11 @@ export default function Control() {
         <PanelRevision
           key={revisando.alumnoId}
           f={revisando}
-          restan={pendientes.filter((x) => x.alumnoId !== revisando.alumnoId).length}
+          restan={cola.filter((x) => x.alumnoId !== revisando.alumnoId).length}
           onCerrar={() => setRevisando(null)}
           onRevisada={(resultado) => {
             setRevisadas((r) => ({ ...r, [revisando.alumnoId]: resultado }));
-            const siguiente = pendientes.find((x) => x.alumnoId !== revisando.alumnoId);
+            const siguiente = cola.find((x) => x.alumnoId !== revisando.alumnoId);
             setRevisando(siguiente ?? null);
           }}
         />
@@ -263,6 +283,71 @@ export default function Control() {
 function YNMas({ mostradas, total }: { mostradas: number; total?: number }) {
   if (total == null || total <= mostradas) return null;
   return <p className="border-t border-borde-soft px-4 py-2.5 text-[13px] text-texto-3 sm:px-5">y {total - mostradas} más</p>;
+}
+
+/**
+ * L9 (28-oct): las fotos que aprobó alguien que no es el administrador (la
+ * recepción, con el permiso que el dueño le dio desde Roles) en los últimos
+ * días. Salieron de «Fotos por revisar», pero el dueño las puede volver a
+ * mirar: «Revisar» abre el mismo panel. Al revisarlas él (o si cambian una
+ * foto) dejan de venir.
+ */
+function AprobadasPorOtros({
+  filas,
+  total,
+  dias,
+  revisadas,
+  onRevisar,
+}: {
+  filas: AprobadaPorOtro[];
+  total?: number;
+  dias?: number;
+  revisadas: Record<number, "ok" | "observada">;
+  onRevisar: (f: AprobadaPorOtro) => void;
+}) {
+  if (!filas.length) return null;
+  return (
+    <Tarjeta
+      id="t-aprobadas-otros"
+      titulo="Aprobadas por otros"
+      contador={Math.max(total ?? 0, filas.length)}
+      bajada={`Las aprobó la recepción${dias ? ` en los últimos ${dias} días` : ""}: podés volver a mirarlas`}
+      sinRelleno
+    >
+      <ul className={LISTA.lista}>
+        {filas.map((f) => {
+          const hecho = revisadas[f.alumnoId];
+          const quien = [f.aprobadaPor ? `aprobó ${f.aprobadaPor}` : null, tiempoRelativo(f.aprobadaEn).toLowerCase()].filter(Boolean).join(" · ");
+          return (
+            <li key={f.alumnoId} className={`flex flex-wrap items-center justify-between gap-3 ${LISTA.itemHover} ${hecho ? "opacity-70" : ""}`}>
+              <span className="flex min-w-0 flex-1 items-start gap-3">
+                <span
+                  aria-hidden="true"
+                  className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-emerald-700"
+                >
+                  <Icon name="check" size={16} />
+                </span>
+                <span className="min-w-0">
+                  <span className="block truncate text-sm font-semibold text-texto">{f.nombre}</span>
+                  <span className="block truncate text-[12px] text-texto-3">
+                    {[quien, f.grupo ? nombreDe(f.grupo) : null].filter(Boolean).join(" · ")}
+                  </span>
+                </span>
+              </span>
+              {hecho ? (
+                <Chip tono={hecho === "ok" ? "verde" : "rojo"}>{hecho === "ok" ? "Revisada" : "Observada"}</Chip>
+              ) : (
+                <BotonFila variante="ghost" onClick={() => onRevisar(f)} aria-label={`Volver a revisar las fotos de ${f.nombre}`}>
+                  Revisar
+                </BotonFila>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+      <YNMas mostradas={filas.length} total={total} />
+    </Tarjeta>
+  );
 }
 
 /**
@@ -622,6 +707,8 @@ function PanelRevision({
   onRevisada: (r: "ok" | "observada") => void;
 }) {
   const [urls, setUrls] = useState<Partial<Record<TipoFoto, string>>>({});
+  /** L4: la foto abierta en grande (su lugar en TIPOS_FOTO), o null. */
+  const [viendo, setViendo] = useState<number | null>(null);
   const [observando, setObservando] = useState(false);
   const [motivo, setMotivo] = useState("");
   const [ocupado, setOcupado] = useState(false);
@@ -695,7 +782,7 @@ function PanelRevision({
       <div>
         <SeccionPanel titulo="Lo que se tipeó">
           <div className="grid grid-cols-[96px_minmax(0,1fr)] gap-3">
-            <Foto url={urls.FOTO} titulo={NOMBRE_FOTO.FOTO} alto />
+            <Foto url={urls.FOTO} titulo={NOMBRE_FOTO.FOTO} alto onVer={() => setViendo(0)} />
             <ResumenPanel className="self-start">
               <dl className="space-y-2 text-sm">
                 <div>
@@ -716,8 +803,8 @@ function PanelRevision({
         </SeccionPanel>
         <SeccionPanel titulo="Carnet">
           <div className="space-y-3">
-            <Foto url={urls.CI_ANVERSO} titulo={NOMBRE_FOTO.CI_ANVERSO} />
-            <Foto url={urls.CI_REVERSO} titulo={NOMBRE_FOTO.CI_REVERSO} />
+            <Foto url={urls.CI_ANVERSO} titulo={NOMBRE_FOTO.CI_ANVERSO} onVer={() => setViendo(1)} />
+            <Foto url={urls.CI_REVERSO} titulo={NOMBRE_FOTO.CI_REVERSO} onVer={() => setViendo(2)} />
           </div>
         </SeccionPanel>
         {observando && (
@@ -736,18 +823,42 @@ function PanelRevision({
         )}
         <ErrorMsg>{error}</ErrorMsg>
       </div>
+      {viendo != null && (
+        <VisorFotos
+          fotos={TIPOS_FOTO.map((t) => ({ url: urls[t], titulo: NOMBRE_FOTO[t] }))}
+          inicial={viendo}
+          titulo={f.nombre}
+          onCerrar={() => setViendo(null)}
+        />
+      )}
     </PanelLateral>
   );
 }
 
-function Foto({ url, titulo, alto = false }: { url?: string; titulo: string; alto?: boolean }) {
+/**
+ * Una foto del panel de revisión. Tocarla la abre en grande (L4): acá la cara
+ * mide 96 px y el carnet no se alcanza a leer. El carnet va entero
+ * (`object-contain`): recortado se perdían los bordes; la cara sí llena su
+ * marco.
+ */
+function Foto({ url, titulo, alto = false, onVer }: { url?: string; titulo: string; alto?: boolean; onVer: () => void }) {
+  const marco = `flex w-full items-center justify-center overflow-hidden rounded-xl border border-borde-soft bg-muted ${alto ? "aspect-[3/4]" : "aspect-[16/10]"}`;
   return (
     <figure>
-      <div
-        className={`flex items-center justify-center overflow-hidden rounded-xl border border-borde-soft bg-muted ${alto ? "aspect-[3/4]" : "aspect-[16/10]"}`}
-      >
-        {url ? <img src={url} alt={titulo} className="h-full w-full object-cover" /> : <Icon name="camara" size={20} className="text-texto-4" />}
-      </div>
+      {url ? (
+        <button
+          type="button"
+          onClick={onVer}
+          aria-label={`Ver en grande: ${titulo}`}
+          className={`${marco} cursor-zoom-in transition-colors hover:border-primary-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-100`}
+        >
+          <img src={url} alt={titulo} className={`h-full w-full ${alto ? "object-cover" : "object-contain"}`} />
+        </button>
+      ) : (
+        <div className={marco}>
+          <Icon name="camara" size={20} className="text-texto-4" />
+        </div>
+      )}
       <figcaption className="mt-1 text-[12px] text-texto-3">{titulo}</figcaption>
     </figure>
   );
