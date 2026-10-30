@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { cronometro, demora, listos, preparando } from "../../pages/tickets/useTableroTickets";
 import type { TicketPedido } from "../../types/tickets";
 import { esClaro, minutosDesde, numeroTicket, paletaTv, textoVoz } from "./llamado";
@@ -128,5 +128,44 @@ describe("el tablero de despacho", () => {
     const desde = "2026-10-29T18:00:00Z";
     expect(cronometro(desde, Date.parse(desde) + 187_000)).toBe("03:07");
     expect(cronometro(desde, Date.parse(desde) + 62 * 60_000 + 10_000)).toBe("62:10");
+  });
+});
+
+describe("el sonido de la TV", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.resetModules();
+  });
+
+  it("si el navegador ya deja sonar, no pide el toque", async () => {
+    // La app instalada o Chrome con el permiso: el cartel de "tocá la
+    // pantalla" salía igual y el primer llamado no sonaba (QA 29-oct).
+    vi.stubGlobal(
+      "AudioContext",
+      class {
+        state = "running";
+        resume() {
+          return Promise.resolve();
+        }
+      },
+    );
+    const { audioYaPermitido } = await import("./llamado");
+    expect(await audioYaPermitido()).toBe(true);
+  });
+
+  it("sin permiso lo sigue pidiendo, aunque resume() quede esperando el gesto", async () => {
+    // Sin un toque, Chrome deja la promesa de resume() colgada para siempre:
+    // si se la esperara, la TV no terminaría nunca de arrancar.
+    vi.stubGlobal(
+      "AudioContext",
+      class {
+        state = "suspended";
+        resume() {
+          return new Promise(() => {});
+        }
+      },
+    );
+    const { audioYaPermitido } = await import("./llamado");
+    expect(await audioYaPermitido()).toBe(false);
   });
 });

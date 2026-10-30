@@ -78,6 +78,21 @@ export async function desbloquearAudio(): Promise<boolean> {
   return ctx.state === "running";
 }
 
+/**
+ * Si el navegador ya deja sonar sin que nadie toque —la app instalada, o
+ * Chrome abierto con `--autoplay-policy=no-user-gesture-required` en la PC de
+ * la TV—, la TV no pide el toque. Sin permiso, `resume()` queda esperando un
+ * gesto para siempre: se mira el estado al rato, sin esperar la promesa.
+ */
+export async function audioYaPermitido(): Promise<boolean> {
+  const ctx = audio();
+  if (!ctx) return false;
+  if (ctx.state === "running") return true;
+  ctx.resume().catch(() => {});
+  await new Promise((listo) => setTimeout(listo, 400));
+  return (ctx.state as string) === "running";
+}
+
 export function audioBloqueado(): boolean {
   return !contexto || contexto.state !== "running";
 }

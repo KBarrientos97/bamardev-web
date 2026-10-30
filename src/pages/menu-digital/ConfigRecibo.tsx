@@ -450,7 +450,7 @@ function VistaPrevia({ r, logo, negocio }: { r: AjustesRecibo; logo: string | nu
               </div>
             </article>
           ) : (
-            <ComandaCocina venta={VENTA_EJEMPLO} numero={84} negocio={negocio} />
+            <ComandaCocina venta={VENTA_EJEMPLO} numero={84} negocio={negocio} minutos={r.minutosEstimados} />
           )}
         </div>
         <Boton variante="ghost" icono="printer" className="mt-3 w-full" onClick={() => window.print()}>

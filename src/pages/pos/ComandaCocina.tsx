@@ -1,4 +1,4 @@
-import { fmtCantidad, fmtFechaHora } from "../../lib/format";
+import { fmtCantidad, fmtHora } from "../../lib/format";
 import { numeroTicket } from "../../lib/tickets/llamado";
 import type { Venta } from "../../types";
 
@@ -12,9 +12,23 @@ import type { Venta } from "../../types";
  * LLEVAR" (el que arma la bandeja no puede confundir lo que va en caja).
  *
  * Sale en una hoja aparte del recibo (`comanda-impresa`, index.css): en una
- * térmica de rollo la impresora corta entre los dos papeles.
+ * térmica de rollo la impresora corta entre los dos papeles. También sola,
+ * con el botón de su rótulo, para mandarla a la impresora de la cocina.
+ *
+ * La hora y no la fecha: en la cocina lo que importa es cuánto lleva esperando.
  */
-export default function ComandaCocina({ venta, numero, negocio }: { venta: Venta; numero: number; negocio: string }) {
+export default function ComandaCocina({
+  venta,
+  numero,
+  negocio,
+  minutos = 0,
+}: {
+  venta: Venta;
+  numero: number;
+  negocio: string;
+  /** El tiempo estimado de Configuración del recibo: la cocina sabe para cuándo. 0, no sale. */
+  minutos?: number;
+}) {
   const detalles = venta.detalles ?? [];
   const grupos = [
     { titulo: "EN MESA", lineas: detalles.filter((d) => d.consumo === "MESA") },
@@ -31,7 +45,7 @@ export default function ComandaCocina({ venta, numero, negocio }: { venta: Venta
         <p className="font-mono text-[64px] font-black leading-none tracking-tight text-texto">{numeroTicket(numero)}</p>
       </header>
       <div className="mt-3 flex justify-between border-b border-dashed border-borde pb-2 font-mono text-[11px] text-texto-2">
-        <span>{fmtFechaHora(venta.fecha)}</span>
+        <span>{fmtHora(venta.fecha)}</span>
         <span>{venta.comprobante ?? `#${venta.id}`}</span>
       </div>
       {grupos.map((g) => (
@@ -56,6 +70,7 @@ export default function ComandaCocina({ venta, numero, negocio }: { venta: Venta
       ))}
       <p className="mt-3 border-t border-dashed border-borde pt-2 text-center text-[12px] font-semibold text-texto-2">
         {fmtCantidad(unidades)} {unidades === 1 ? "producto" : "productos"}
+        {minutos > 0 && ` · Entrega en ${minutos}–${minutos + 5} min`}
       </p>
     </article>
   );

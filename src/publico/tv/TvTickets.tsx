@@ -1,7 +1,14 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { Icon } from "../../components/Icon";
-import { anunciar, audioBloqueado, desbloquearAudio, paletaTv } from "../../lib/tickets/llamado";
+import {
+  anunciar,
+  audioBloqueado,
+  audioYaPermitido,
+  desbloquearAudio,
+  paletaTv,
+  sonarTono,
+} from "../../lib/tickets/llamado";
 import { llamadosNuevos } from "../../lib/tickets/llamadosNuevos";
 import { LienzoTv, TableroTv } from "../../pages/tickets/TableroTv";
 import { AJUSTES_TV_DE_FABRICA } from "../../types/tickets";
@@ -71,18 +78,48 @@ function PantallaConLlave({ llave, sucursalId }: { llave: string; sucursalId?: n
     document.title = datos?.negocio ? `${datos.negocio} · Tickets` : "Tickets";
   }, [datos?.negocio]);
 
+  // Lo que el toque necesita saber sin volver a enganchar los oyentes.
+  const actual = useRef({ ajustes, llamando });
+  useEffect(() => {
+    actual.current = { ajustes, llamando };
+  });
+
+  // Si el navegador ya deja sonar (app instalada, Chrome con el permiso), no
+  // se pide el toque: antes el cartel salía igual y el primer llamado no sonaba.
+  useEffect(() => {
+    let vivo = true;
+    void audioYaPermitido().then((ok) => {
+      if (vivo && ok) setSonidoActivo(true);
+    });
+    return () => {
+      vivo = false;
+    };
+  }, []);
+
   // El navegador no deja sonar nada hasta el primer toque: el primero que
-  // toque la TV (o el mouse de la compu) la deja sonando para todo el día.
+  // toque la TV (o el mouse o una tecla de la compu) la deja sonando para
+  // todo el día. Con todos los eventos y no sólo `pointerdown`: un dedo en una
+  // pantalla táctil no cuenta como gesto hasta que se levanta (QA 29-oct, la
+  // TV no sonaba). Cada evento del mismo toque desbloquea; suena una vez.
+  const yaConfirmo = useRef(false);
   useEffect(() => {
     if (sonidoActivo) return;
     const alTocar = () => {
-      void desbloquearAudio().then((ok) => setSonidoActivo(ok));
+      void desbloquearAudio().then((ok) => {
+        if (!ok || yaConfirmo.current) return;
+        yaConfirmo.current = true;
+        setSonidoActivo(true);
+        // Que se oiga algo al tocar: quien la prende sabe que quedó sonando,
+        // y el número que estaba en pantalla sin sonido se canta ahora.
+        const { ajustes: a, llamando: l } = actual.current;
+        if (l && l.hasta > Date.now()) void anunciar(l.numero, a);
+        else sonarTono(a.tono, a.volumen);
+      });
     };
-    window.addEventListener("pointerdown", alTocar);
-    window.addEventListener("keydown", alTocar);
+    const eventos = ["pointerdown", "pointerup", "touchend", "click", "keydown"] as const;
+    for (const e of eventos) window.addEventListener(e, alTocar);
     return () => {
-      window.removeEventListener("pointerdown", alTocar);
-      window.removeEventListener("keydown", alTocar);
+      for (const e of eventos) window.removeEventListener(e, alTocar);
     };
   }, [sonidoActivo]);
 

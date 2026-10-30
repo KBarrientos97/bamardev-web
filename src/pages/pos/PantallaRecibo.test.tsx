@@ -35,7 +35,7 @@ vi.mock("../../lib/academia/apiAcademia", () => ({
   apiAcademia: { enlacePago: vi.fn(async () => ({ enlacePago: "https://app.bamardev.com/p/horizonte/pagar/K7Q2abcdef" })) },
 }));
 
-import { act } from "@testing-library/react";
+import { act, fireEvent } from "@testing-library/react";
 import { apiAcademia } from "../../lib/academia/apiAcademia";
 import PantallaRecibo from "./PantallaRecibo";
 
@@ -591,8 +591,44 @@ describe("pedidos con número (extra tickets_pedido)", () => {
     // En la pantalla, en el recibo y en la comanda.
     expect(screen.getAllByText("0072")).toHaveLength(3);
     expect(screen.getByRole("button", { name: /Imprimir recibo y comanda/ })).toBeInTheDocument();
-    // El "Imprimir" suelto (sólo el recibo) no aparece: imprimiría sin la comanda.
+    // El "Imprimir" de siempre no aparece: imprimía el recibo sin la comanda
+    // y no decía cuál. Cada papel tiene el suyo, con nombre.
     expect(screen.queryByRole("button", { name: /^Imprimir$/ })).not.toBeInTheDocument();
+  });
+
+  it("cada papel se imprime solo con el botón de su rótulo, y después vuelven a salir juntos", () => {
+    // Kevin, 29-oct: la caja y la cocina pueden tener cada una su impresora y
+    // no imprimir juntas; hay que poder mandar dos veces, una a cada una.
+    dibujar(conNumero());
+    const area = document.getElementById("area-impresion")!;
+    let impreso: string | undefined = "sin imprimir";
+    const imprimir = vi.spyOn(window, "print").mockImplementation(() => {
+      impreso = area.dataset.imprimir;
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Imprimir solo la comanda" }));
+    expect(impreso).toBe("comanda");
+    act(() => {
+      window.dispatchEvent(new Event("afterprint"));
+    });
+    expect(area.dataset.imprimir).toBeUndefined();
+
+    fireEvent.click(screen.getByRole("button", { name: "Imprimir solo el recibo" }));
+    expect(impreso).toBe("recibo");
+
+    fireEvent.click(screen.getByRole("button", { name: /Imprimir recibo y comanda/ }));
+    expect(impreso).toBeUndefined();
+    expect(imprimir).toHaveBeenCalledTimes(3);
+    imprimir.mockRestore();
+  });
+
+  it("los papeles marcan cuál es cuál para la impresión suelta", () => {
+    dibujar(conNumero());
+    const area = document.getElementById("area-impresion")!;
+    expect(area.querySelector(".recibo-impreso")).toHaveTextContent("Brasa cuarto");
+    expect(area.querySelector(".comanda-impresa")).toHaveTextContent("COMANDA · COCINA");
+    expect(screen.getByText("Impresora de caja")).toBeInTheDocument();
+    expect(screen.getByText("Impresora de cocina")).toBeInTheDocument();
   });
 
   it("el recibo y la comanda van en la misma área de impresión, la comanda en hoja aparte", () => {

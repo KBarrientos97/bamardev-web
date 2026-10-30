@@ -271,6 +271,20 @@ input[type="number"] {
     page-break-before: always;
   }
 
+  /* Un papel solo (el botón de impresora de cada uno): la caja y la cocina
+     pueden tener cada una su impresora, y el navegador manda todo a la que se
+     elija en el diálogo. Sola, la comanda no lleva el corte de adelante: si
+     no, el rollo saca una hoja en blanco antes. */
+  #area-impresion[data-imprimir="recibo"] .comanda-impresa,
+  #area-impresion[data-imprimir="comanda"] .recibo-impreso {
+    display: none !important;
+  }
+
+  #area-impresion[data-imprimir="comanda"] .comanda-impresa {
+    break-before: auto;
+    page-break-before: auto;
+  }
+
   /* Los separadores punteados sí quedan grises: a negro pleno compiten con el
      texto y el ticket se lee como una reja. */
   #area-impresion .border-borde,
