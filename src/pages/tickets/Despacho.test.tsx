@@ -95,4 +95,22 @@ describe("Despacho", () => {
     fireEvent.click(screen.getByRole("button", { name: /Llamar en pantalla/ }));
     expect(await screen.findByText("El pedido 0070 ya se entregó.")).toBeInTheDocument();
   });
+
+  it("el acceso de despacho sale desde acá, confirmando: volver a entrar es tipear la contraseña", async () => {
+    const onSalir = vi.fn();
+    render(<Despacho onSalir={onSalir} />);
+    await screen.findByText("0072");
+    fireEvent.click(screen.getByRole("button", { name: "Salir" }));
+    expect(onSalir).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "No" }));
+    fireEvent.click(screen.getByRole("button", { name: "Salir" }));
+    fireEvent.click(screen.getByRole("button", { name: "Sí, salir" }));
+    expect(onSalir).toHaveBeenCalledTimes(1);
+  });
+
+  it("quien despacha desde el menú (la cajera) no tiene el botón de salir", async () => {
+    render(<Despacho />);
+    await screen.findByText("0072");
+    expect(screen.queryByRole("button", { name: "Salir" })).not.toBeInTheDocument();
+  });
 });

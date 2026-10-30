@@ -21,7 +21,16 @@ import { cronometro, demora, listos as soloListos, preparando as soloPreparando,
  */
 type Filtro = "todos" | "preparando" | "listos";
 
-export default function Despacho() {
+export default function Despacho({
+  onSalir,
+}: {
+  /**
+   * El acceso de despacho (la tablet de la cocina) no tiene menú: sale desde
+   * acá. Pide confirmar, porque volver a entrar es tipear la contraseña.
+   */
+  onSalir?: () => void;
+} = {}) {
+  const [confirmandoSalir, setConfirmandoSalir] = useState(false);
   const { datos, error, desfase, aplicar, recargar } = useTableroTickets();
   const [filtro, setFiltro] = useState<Filtro>("todos");
   const [aviso, setAviso] = useState<{ texto: string; tono: "ok" | "error"; deshacer?: () => void } | null>(null);
@@ -119,6 +128,35 @@ export default function Despacho() {
             ))}
           </div>
           <BotonPantallaCompleta />
+          {onSalir &&
+            (confirmandoSalir ? (
+              <span className="flex items-center gap-1.5 rounded-xl border border-white/15 p-1 text-[13px] font-semibold">
+                <span className="px-2 text-white/80">¿Salir?</span>
+                <button
+                  type="button"
+                  onClick={onSalir}
+                  className="rounded-lg bg-red-500/90 px-3 py-1.5 text-white hover:bg-red-500"
+                >
+                  Sí, salir
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmandoSalir(false)}
+                  className="rounded-lg px-3 py-1.5 text-white/80 hover:bg-white/10"
+                >
+                  No
+                </button>
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setConfirmandoSalir(true)}
+                className="flex items-center gap-1.5 rounded-xl border border-white/15 px-3 py-2 text-[13px] font-semibold text-white/85 hover:bg-white/10"
+              >
+                <Icon name="logout" size={16} />
+                Salir
+              </button>
+            ))}
         </div>
       </header>
 

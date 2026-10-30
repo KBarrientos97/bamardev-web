@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Icon } from "../components/Icon";
 import { Boton, Campo, ErrorMsg, Input, InputPassword } from "../components/ui";
-import { aliasDeLaDireccion, direccionSinAlias } from "../lib/aliasDeLaUrl";
+import { aliasDeLaDireccion, direccionSinAlias, usuarioDeLaDireccion } from "../lib/aliasDeLaUrl";
 import { BLOQUEO_KEY, SESION_VENCIDA_KEY } from "../lib/api";
 import { useAuth } from "../store/AuthContext";
 import PoweredByBamarDev from "../components/PoweredByBamarDev";
@@ -68,7 +68,9 @@ export default function Login() {
     if (limpia === null) return;
     navigate({ pathname, search: limpia, hash }, { replace: true, state });
   }, [pathname, search, hash, state, navigate]);
-  const [usuario, setUsuario] = useState("");
+  // El QR del acceso de despacho trae también el usuario: sólo falta la clave.
+  const [usuarioDelEnlace] = useState(() => usuarioDeLaDireccion(search));
+  const [usuario, setUsuario] = useState(usuarioDelEnlace);
   const [clave, setClave] = useState("");
   const [error, setError] = useState("");
   const [enviando, setEnviando] = useState(false);
@@ -207,6 +209,7 @@ export default function Login() {
               onChange={(e) => setClave(e.target.value)}
               placeholder="Tu contraseña"
               autoComplete="current-password"
+              autoFocus={!!usuarioDelEnlace}
               required
             />
           </Campo>

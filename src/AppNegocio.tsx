@@ -291,8 +291,51 @@ function PagarConSesion() {
   return <PagarLicencia onSalir={() => window.history.back()} />;
 }
 
+/**
+ * La app del acceso de despacho (la tablet de la cocina, Kevin 29-oct): sólo
+ * Despacho, a pantalla completa y sin la barra lateral, como el panel del
+ * mesero. Cualquier dirección la trae acá; el servidor igual le cierra todo
+ * lo demás. Si al negocio le apagaron el extra, lo dice en vez de mostrar
+ * errores.
+ */
+function SoloDespacho() {
+  const { puede, logout } = useAuth();
+  return (
+    <Routes>
+      <Route
+        path="/despacho"
+        element={
+          puede("despacho") ? (
+            <div className="h-dvh">
+              <Suspense fallback={null}>
+                <Despacho onSalir={logout} />
+              </Suspense>
+            </div>
+          ) : (
+            <div className="flex min-h-dvh items-center justify-center p-6">
+              <div className="max-w-sm text-center">
+                <h1 className="text-lg font-bold text-texto">El despacho no está habilitado</h1>
+                <p className="mt-2 text-[13px] text-texto-3">
+                  Este negocio no tiene prendido Tickets y despacho. Pedile al administrador que lo revise.
+                </p>
+                <button
+                  onClick={logout}
+                  className="mt-5 rounded-xl border border-borde bg-white px-4 py-2.5 text-sm font-semibold text-texto-2 hover:bg-muted"
+                >
+                  Cerrar sesión
+                </button>
+              </div>
+            </div>
+          )
+        }
+      />
+      <Route path="*" element={<Navigate to="/despacho" replace />} />
+    </Routes>
+  );
+}
+
 function Rutas() {
-  const { token, permisosListos } = useAuth();
+  const { token, permisosListos, usuario } = useAuth();
   const navigate = useNavigate();
   const teniaSesion = useRef(token !== null);
   // Tocar una notificación con la app abierta la lleva a la pantalla del aviso.
@@ -315,6 +358,7 @@ function Rutas() {
   // Una sesión vieja sin permisos los está trayendo de /auth/me: sin esperar,
   // el inicio la mandaría a "sin acceso" un segundo antes de tener su menú.
   if (!permisosListos) return <div className="min-h-dvh bg-fondo" aria-busy="true" />;
+  if (usuario?.esDespacho) return <SoloDespacho />;
 
   return (
     <Routes>

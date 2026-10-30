@@ -26,6 +26,8 @@ import {
   type TonoTv,
 } from "../../types/tickets";
 import { PestanasTickets, SiNo, Segmentado, Tarjeta } from "./piezas";
+import AccesoDespacho from "./AccesoDespacho";
+import { tienePermiso } from "../../lib/permisos";
 import { LienzoTv, TableroTv, type DatosTableroTv } from "./TableroTv";
 import { entregados, listos, preparando, useTableroTickets } from "./useTableroTickets";
 
@@ -34,7 +36,7 @@ import { entregados, listos, preparando, useTableroTickets } from "./useTableroT
  * número (extra `tickets_pedido`).
  *
  *  - Pedidos: los de hoy en tres columnas, la TV en vivo, su enlace, el
- *    despacho y la numeración del día.
+ *    despacho (y su acceso para otro equipo) y la numeración del día.
  *  - Diseño de la pantalla: tema, textos y qué se muestra, con la TV de
  *    verdad como vista previa.
  *  - Sonido y voz: el tono, la voz que dice el número y cuánto se resalta.
@@ -118,6 +120,7 @@ function PestanaPedidos({
   vistaPrevia: ReactNode;
 }) {
   const navigate = useNavigate();
+  const { usuario } = useAuth();
   const { datos, error, aplicar, recargar } = tablero;
   const [aviso, setAviso] = useState("");
   const [confirmarReinicio, setConfirmarReinicio] = useState(false);
@@ -191,6 +194,9 @@ function PestanaPedidos({
             Abrir pantalla de despacho
           </Boton>
         </Tarjeta>
+        {/* La tablet de la cocina entra con su propio acceso. Lo crea quien
+            administra usuarios: es una credencial, aunque no ocupe lugar. */}
+        {tienePermiso(usuario, "usuarios.administrar") && <AccesoDespacho />}
         <Tarjeta titulo="Numeración del día">
           <p className="text-sm text-texto-2">
             Siguiente ticket:{" "}

@@ -110,6 +110,11 @@ export interface SesionUsuario {
   permisosPropios?: string[];
   /** Huella de los permisos: si cambia, se vuelven a pedir a /auth/me. */
   permisosVersion?: string;
+  /**
+   * El acceso de despacho (extra `tickets_pedido`): la tablet de la cocina.
+   * Entra directo a Despacho, sin menú ni ninguna otra pantalla.
+   */
+  esDespacho?: boolean;
 }
 
 /**
@@ -186,6 +191,7 @@ export interface Me {
   permisos?: string[];
   permisosPropios?: string[];
   permisosVersion?: string;
+  esDespacho?: boolean;
 }
 
 // ── Roles del negocio (PLAN-ROLES-NEGOCIO §8) ───────────────────────────────

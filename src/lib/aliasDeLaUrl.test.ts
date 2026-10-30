@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { aliasDeLaDireccion, direccionSinAlias } from "./aliasDeLaUrl";
+import { aliasDeLaDireccion, direccionSinAlias, usuarioDeLaDireccion } from "./aliasDeLaUrl";
 
 /**
  * El alias del enlace de la landing (`?negocio=…`) se lee para el login y se
@@ -35,8 +35,25 @@ describe("direccionSinAlias", () => {
     expect(direccionSinAlias("?modo=1&negocio=x&alias=y")).toBe("?modo=1");
   });
 
+  it("saca también el usuario del QR de despacho", () => {
+    expect(direccionSinAlias("?negocio=pollos&usuario=despacho")).toBe("");
+    expect(direccionSinAlias("?usuario=despacho&modo=1")).toBe("?modo=1");
+  });
+
   it("sin alias no hay nada que limpiar", () => {
     expect(direccionSinAlias("")).toBeNull();
     expect(direccionSinAlias("?modo=1")).toBeNull();
+  });
+});
+
+describe("usuarioDeLaDireccion", () => {
+  it("el QR de despacho trae el usuario: en la tablet sólo falta la contraseña", () => {
+    expect(usuarioDeLaDireccion("?negocio=pollos&usuario=Despacho")).toBe("despacho");
+    expect(usuarioDeLaDireccion("?negocio=pollos")).toBe("");
+  });
+
+  it("descarta lo que no tiene forma de usuario", () => {
+    expect(usuarioDeLaDireccion("?usuario=%3Cscript%3E")).toBe("");
+    expect(usuarioDeLaDireccion("?usuario=ab")).toBe("");
   });
 });
