@@ -101,7 +101,7 @@ function responder(ruta: string) {
         qr: { mostrar: false, titulo: "", texto: "", enlace: "" },
         mensaje: "¡Gracias por su compra!",
         mensaje2: "Conserve este recibo",
-        imprimirAlCobrar: false,
+        alCobrar: { recibo: false, comanda: false, juntos: true },
       },
       logo: null,
     });

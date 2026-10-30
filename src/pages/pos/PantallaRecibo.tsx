@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { flushSync } from "react-dom";
 import { Icon } from "../../components/Icon";
 import { Boton } from "../../components/ui";
@@ -197,10 +197,12 @@ export default function PantallaRecibo({
    * en el DOM antes de que el navegador arme la impresión.
    */
   const [soloPapel, setSoloPapel] = useState<"recibo" | "comanda" | null>(null);
-  const imprimir = (papel: "recibo" | "comanda" | null = null) => {
+  const imprimir = useCallback((papel: "recibo" | "comanda" | null = null) => {
     flushSync(() => setSoloPapel(papel));
     window.print();
-  };
+  }, []);
+  /** "Por separado" al cobrar: la comanda espera a que se cierre la impresión del recibo. */
+  const despues = useRef<"comanda" | null>(null);
   // Con número de pedido, lo primero después de cobrar es imprimir: el botón
   // nace con el foco (Enter imprime) y, al cerrar el diálogo de impresión, el
   // foco pasa a "Nueva venta" (otro Enter y se sigue vendiendo). Cobrar y
@@ -213,25 +215,56 @@ export default function PantallaRecibo({
   useEffect(() => {
     if (!conTicket) return;
     const alTerminar = () => {
+      // Cerrado el recibo, va la comanda en su propia impresión. Un rato
+      // después y no dentro del evento: el navegador todavía está cerrando
+      // la anterior.
+      const siguiente = despues.current;
+      if (siguiente) {
+        despues.current = null;
+        setTimeout(() => imprimir(siguiente), 300);
+        return;
+      }
       setSoloPapel(null);
       document.getElementById("recibo-nueva-venta")?.focus();
     };
     window.addEventListener("afterprint", alTerminar);
     return () => window.removeEventListener("afterprint", alTerminar);
-  }, [conTicket]);
+  }, [conTicket, imprimir]);
   // "Imprimir solo al cobrar" (Configuración del recibo): el diálogo se abre
   // apenas aparece la venta, una sola vez. Con Chrome en modo kiosco
   // (--kiosk-printing) ni siquiera hay diálogo: sale directo, cero toques. Si
   // el diseño llega tarde (la primera venta del día), no imprime a destiempo.
+  // Desde el 29-oct cada papel se elige solo: el recibo, la comanda, o los
+  // dos, juntos o por separado (uno para cada impresora).
   const montada = useRef(Date.now());
   const yaImprimio = useRef(false);
+  const ac = r?.alCobrar;
+  const alCobrar =
+    !ac || (!ac.recibo && !ac.comanda)
+      ? null
+      : ac.recibo && ac.comanda
+        ? ac.juntos
+          ? "juntos"
+          : "separados"
+        : ac.recibo
+          ? "recibo"
+          : "comanda";
   useEffect(() => {
-    if (!conTicket || !r?.imprimirAlCobrar || yaImprimio.current) return;
+    if (!conTicket || !alCobrar || yaImprimio.current) return;
     if (Date.now() - montada.current > 4000) return;
-    yaImprimio.current = true;
-    const id = setTimeout(() => window.print(), 250);
+    // La marca va adentro del timeout: si el efecto se limpia antes (React lo
+    // corre dos veces en desarrollo), la segunda vuelta todavía imprime.
+    const id = setTimeout(() => {
+      yaImprimio.current = true;
+      if (alCobrar === "separados") {
+        despues.current = "comanda";
+        imprimir("recibo");
+      } else {
+        imprimir(alCobrar === "juntos" ? null : alCobrar);
+      }
+    }, 250);
     return () => clearTimeout(id);
-  }, [conTicket, r?.imprimirAlCobrar]);
+  }, [conTicket, alCobrar, imprimir]);
   const anchoPapel = r?.ancho === 58 ? { ticket: "48mm", pantalla: "max-w-[250px]" } : null;
 
   // El ticket: el `id` lo hace lo ÚNICO visible al imprimir (index.css). Con

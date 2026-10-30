@@ -98,7 +98,12 @@ export interface AjustesRecibo {
   qr: { mostrar: boolean; titulo: string; texto: string; enlace: string };
   mensaje: string;
   mensaje2: string;
-  imprimirAlCobrar: boolean;
+  /**
+   * Qué sale solo al registrar la venta. Juntos: una impresión con el corte en
+   * el medio. Separados: el recibo y después la comanda, cada uno con su
+   * diálogo, para mandar cada papel a su impresora.
+   */
+  alCobrar: { recibo: boolean; comanda: boolean; juntos: boolean };
 }
 
 export const RECIBO_DE_FABRICA: AjustesRecibo = {
@@ -117,5 +122,5 @@ export const RECIBO_DE_FABRICA: AjustesRecibo = {
   qr: { mostrar: false, titulo: "Síguenos", texto: "", enlace: "" },
   mensaje: "¡Gracias por su compra!",
   mensaje2: "Conserve este recibo",
-  imprimirAlCobrar: false,
+  alCobrar: { recibo: false, comanda: false, juntos: true },
 };

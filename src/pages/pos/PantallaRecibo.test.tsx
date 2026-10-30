@@ -1,6 +1,8 @@
 import { render, screen } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { ReciboNegocio } from "../../lib/menuDigital/useReciboNegocio";
 import type { Feature, Venta } from "../../types";
+import { RECIBO_DE_FABRICA } from "../../types/menuDigital";
 
 /**
  * La "M" (mesa) y "LL" (llevar) al lado de cada producto del ticket.
@@ -30,6 +32,12 @@ vi.mock("../../store/AuthContext", async () => {
     }),
   };
 });
+
+// El diseño del recibo de los negocios con pantallas: null es el de siempre.
+const disenoRecibo = vi.hoisted(() => ({ valor: null as ReciboNegocio | null }));
+vi.mock("../../lib/menuDigital/useReciboNegocio", () => ({
+  useReciboNegocio: () => disenoRecibo.valor,
+}));
 
 vi.mock("../../lib/academia/apiAcademia", () => ({
   apiAcademia: { enlacePago: vi.fn(async () => ({ enlacePago: "https://app.bamardev.com/p/horizonte/pagar/K7Q2abcdef" })) },
@@ -660,5 +668,83 @@ describe("pedidos con número (extra tickets_pedido)", () => {
     expect(screen.queryByText("NÚMERO DE TICKET DEL CLIENTE")).not.toBeInTheDocument();
     expect(document.querySelector(".comanda-impresa")).toBeNull();
     expect(document.getElementById("area-impresion")?.tagName).toBe("ARTICLE");
+  });
+});
+
+describe("imprimir solo al cobrar: cada papel por su lado (29-oct)", () => {
+  // La caja y la cocina pueden tener cada una su impresora: Configuración
+  // deja elegir el recibo, la comanda, o los dos juntos o por separado.
+  const conNumero = () =>
+    venta({
+      ticket: { numero: 72, estado: "PREPARANDO" },
+      detalles: [
+        { productoId: 1, producto: "Brasa cuarto", cantidad: 1, precio: 26, subtotal: 26, nota: null, consumo: "LLEVAR" },
+      ],
+    } as Partial<Venta>);
+
+  let impresos: (string | undefined)[];
+  beforeEach(() => {
+    sesion.rubro = "RESTAURANTE";
+    vi.useFakeTimers();
+    impresos = [];
+    vi.spyOn(window, "print").mockImplementation(() => {
+      impresos.push(document.getElementById("area-impresion")?.dataset.imprimir);
+    });
+  });
+  afterEach(() => {
+    disenoRecibo.valor = null;
+    vi.restoreAllMocks();
+    vi.useRealTimers();
+  });
+
+  const alCobrar = (recibo: boolean, comanda: boolean, juntos: boolean) => {
+    disenoRecibo.valor = { recibo: { ...RECIBO_DE_FABRICA, alCobrar: { recibo, comanda, juntos } }, logo: null };
+  };
+  const cerrarImpresion = () =>
+    act(() => {
+      window.dispatchEvent(new Event("afterprint"));
+      vi.advanceTimersByTime(400);
+    });
+
+  it("por separado: primero el recibo y, al cerrarse, la comanda en su propia impresión", () => {
+    alCobrar(true, true, false);
+    dibujar(conNumero());
+    act(() => {
+      vi.advanceTimersByTime(300);
+    });
+    expect(impresos).toEqual(["recibo"]);
+    cerrarImpresion();
+    expect(impresos).toEqual(["recibo", "comanda"]);
+    // Cerrada la comanda no se abre nada más, y la pantalla vuelve a tener los dos papeles.
+    cerrarImpresion();
+    expect(impresos).toHaveLength(2);
+    expect(document.getElementById("area-impresion")?.dataset.imprimir).toBeUndefined();
+  });
+
+  it("sólo la comanda: sale sola, sin el recibo", () => {
+    alCobrar(false, true, true);
+    dibujar(conNumero());
+    act(() => {
+      vi.advanceTimersByTime(300);
+    });
+    expect(impresos).toEqual(["comanda"]);
+  });
+
+  it("juntos: una sola impresión con los dos papeles, como antes", () => {
+    alCobrar(true, true, true);
+    dibujar(conNumero());
+    act(() => {
+      vi.advanceTimersByTime(300);
+    });
+    expect(impresos).toEqual([undefined]);
+  });
+
+  it("sin nada elegido no imprime solo", () => {
+    alCobrar(false, false, true);
+    dibujar(conNumero());
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+    expect(impresos).toEqual([]);
   });
 });

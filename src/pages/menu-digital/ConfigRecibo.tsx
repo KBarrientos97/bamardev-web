@@ -144,12 +144,47 @@ function AjustesDelRecibo({
             ]}
           />
         </Fila>
-        <SiNo
-          etiqueta="Imprimir solo al cobrar"
-          detalle="Al registrar la venta se abre la impresión del recibo y la comanda. Con Chrome en modo kiosco sale directo, sin tocar nada."
-          activo={r.imprimirAlCobrar}
-          onCambiar={(v) => cambiar({ imprimirAlCobrar: v })}
-        />
+        {/* Cada papel por su lado (Kevin, 29-oct): la caja y la cocina pueden
+            tener cada una su impresora. Con los dos, juntos en una impresión
+            o uno detrás del otro, para elegir la impresora de cada uno. */}
+        <div className="mt-1 border-t border-borde pt-3">
+          <p className="text-sm font-semibold text-texto">Imprimir solo al cobrar</p>
+          <p className="mt-0.5 text-[12px] text-texto-3">
+            Al registrar la venta se abre la impresión sola. Con Chrome en modo kiosco sale directo, sin tocar nada.
+          </p>
+          <SiNo
+            etiqueta="Recibo del cliente"
+            detalle="El papel que se lleva el cliente"
+            activo={r.alCobrar.recibo}
+            onCambiar={(v) => cambiar({ alCobrar: { ...r.alCobrar, recibo: v } })}
+          />
+          <SiNo
+            etiqueta="Comanda de cocina"
+            detalle="El papel con el número y lo que hay que preparar"
+            activo={r.alCobrar.comanda}
+            onCambiar={(v) => cambiar({ alCobrar: { ...r.alCobrar, comanda: v } })}
+          />
+          {r.alCobrar.recibo && r.alCobrar.comanda && (
+            <Fila
+              etiqueta="Los dos papeles"
+              detalle={
+                r.alCobrar.juntos
+                  ? "En una sola impresión, con el corte en el medio: para una sola impresora."
+                  : "Primero el recibo y, al cerrarse, la comanda: en cada una se elige su impresora."
+              }
+            >
+              <Segmentado<"juntos" | "separados">
+                etiqueta="Los dos papeles"
+                valor={r.alCobrar.juntos ? "juntos" : "separados"}
+                onCambiar={(v) => cambiar({ alCobrar: { ...r.alCobrar, juntos: v === "juntos" } })}
+                opciones={[
+                  { valor: "juntos", texto: "Juntos" },
+                  { valor: "separados", texto: "Por separado" },
+                ]}
+              />
+            </Fila>
+          )}
+        </div>
       </Tarjeta>
       <Tarjeta titulo="Encabezado">
         <SiNo
