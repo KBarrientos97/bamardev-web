@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useParams } from "react-router-dom";
 import Captcha from "../../publico/Captcha";
 import { apiAcademiaPublica, ErrorPublico } from "../../lib/academia/apiPublica";
-import { fotosQueFaltan, textoFaltanFotos } from "../../lib/academia/fotos";
+import { fotosQueFaltan, listaDeFotos, textoFaltanFotos } from "../../lib/academia/fotos";
 import {
   diasTexto,
   edadDe,
@@ -25,6 +25,18 @@ import { NoDisponible } from "./PaginaPublica";
 import { MarcaBamarDev } from "./VistaPagina";
 
 type Paso = 1 | 2 | 3 | 4;
+
+/** Lo que la pantalla final necesita saber de lo que se mandó. */
+interface EnvioHecho {
+  nombre: string;
+  r: PreinscripcionEnviada;
+  curso: CursoPublico;
+  grupo: GrupoPublico | null;
+  forma: string | null;
+  primerPago: number | null;
+  /** Las fotos que no subió: se piden en el instituto o por WhatsApp. */
+  sinFotos: TipoFoto[];
+}
 const TITULOS: Record<Paso, string> = { 1: "Curso y horario", 2: "Tus datos", 3: "Fotos", 4: "Pago" };
 const NOMBRE_DIA = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
 
@@ -68,7 +80,7 @@ function hoyLocal(): string {
  * P2 · Inscribirme y P3 · Enviada (ronda 2), en `/p/<sub>/inscribirme/<grupo>`
  * (y `link…/<sub>/inscribirme/<grupo>`). En 4 pasos, pensado para el celular:
  * el curso y el horario; los datos como figuran en el carnet (y el tutor si
- * es menor); las 3 fotos obligatorias (D7), con la cámara del celular; y cómo
+ * es menor); las 3 fotos (opcionales acá, M4), con la cámara del celular; y cómo
  * quiere pagar (mes a mes o pago completo, con lo que ahorra).
  *
  * Mientras no exista el QR del banco (D10) no se paga acá: queda como
@@ -95,7 +107,7 @@ export default function InscribirmePagina() {
 
   const id = Number(grupoId);
   const curso = useMemo(() => cursos?.find((c) => c.grupos.some((g) => g.id === id)) ?? null, [cursos, id]);
-  const [enviada, setEnviada] = useState<{ nombre: string; r: PreinscripcionEnviada; curso: CursoPublico; grupo: GrupoPublico | null; forma: string | null; primerPago: number | null } | null>(null);
+  const [enviada, setEnviada] = useState<EnvioHecho | null>(null);
   /** El backend dijo que el grupo ya no se publica o que la inscripción se apagó. */
   const [cerrada, setCerrada] = useState(false);
 
@@ -170,7 +182,7 @@ function Formulario({
   cursoInicial: CursoPublico;
   grupoInicial: number;
   color: string;
-  onEnviada: (e: { nombre: string; r: PreinscripcionEnviada; curso: CursoPublico; grupo: GrupoPublico | null; forma: string | null; primerPago: number | null }) => void;
+  onEnviada: (e: EnvioHecho) => void;
   onCerrada: () => void;
 }) {
   const [paso, setPaso] = useState<Paso>(1);
@@ -217,13 +229,15 @@ function Formulario({
       if (esMenor && (!tutor.nombre.trim() || tutor.telefono.replace(/\D/g, "").length < 7)) f.push("los datos de tu tutor");
       return f.length ? faltaTexto(f) : fechaMal;
     }
-    if (p === 3) return faltanFotos.length ? textoFaltanFotos(faltanFotos.length) : "";
+    // M4: las fotos no bloquean (el instituto las pide en persona si no llegan).
+    if (p === 3) return "";
     const f: string[] = [];
     if (!privacidad) f.push("aceptar la política de privacidad");
     if (siteKey && !captcha) f.push("completar la verificación anti-robots");
     return f.length ? `Falta ${f.join(", ")}` : "";
   }
   const bloqueo = motivo(paso);
+  const notaFotos = paso === 3 && faltanFotos.length ? `${textoFaltanFotos(faltanFotos.length)}. Podés seguir sin ${faltanFotos.length === 1 ? "ella" : "ellas"}.` : "";
 
   async function enviar() {
     if (bloqueo) return setError(`${bloqueo}.`);
@@ -257,6 +271,7 @@ function Formulario({
         grupo,
         forma: plan ? (plan.generado === "MES_A_MES" ? "Mes a mes" : plan.generado === "COMPLETO" ? "Pago completo" : plan.nombre) : null,
         primerPago,
+        sinFotos: faltanFotos,
       });
     } catch (e) {
       const codigo = e instanceof ErrorPublico ? e.codigo : undefined;
@@ -461,7 +476,8 @@ function Formulario({
             <div>
               <h1 className="text-xl font-bold text-[#111827]">Tus fotos</h1>
               <p className="text-[13px] text-[#6B7280]">
-                Son obligatorias: las necesitamos para emitir tu certificado y confirmar que sos vos. Sólo las ve la dirección del instituto.
+                Las necesitamos para emitir tu certificado y confirmar que sos vos. Sólo las ve la dirección del instituto. Si ahora no
+                podés sacarlas, seguí igual: las traés o las mandás después.
               </p>
             </div>
             <CapturaFotos
@@ -576,7 +592,7 @@ function Formulario({
                 className="flex-1 rounded-xl py-3.5 text-[15px] font-semibold text-white disabled:opacity-50"
                 style={boton}
               >
-                Siguiente
+                {paso === 3 && faltanFotos.length === 3 ? "Seguir sin fotos" : "Siguiente"}
               </button>
             ) : (
               <button
@@ -591,7 +607,7 @@ function Formulario({
             )}
           </div>
           <p id="motivo-paso" className="text-center text-[13px] text-[#6B7280]">
-            {paso < 4 ? bloqueo : "Pagás en el instituto: te escribimos por WhatsApp para confirmar tu lugar."}
+            {paso < 4 ? bloqueo || notaFotos : "Pagás en el instituto: te escribimos por WhatsApp para confirmar tu lugar."}
           </p>
         </div>
       </div>
@@ -606,6 +622,7 @@ function Enviada({
   grupo,
   forma,
   primerPago,
+  sinFotos,
   color,
   whatsapp,
   urlPagina,
@@ -616,6 +633,7 @@ function Enviada({
   grupo: GrupoPublico | null;
   forma: string | null;
   primerPago: number | null;
+  sinFotos: TipoFoto[];
   color: string;
   whatsapp: string | null;
   urlPagina: string;
@@ -632,7 +650,8 @@ function Enviada({
           <Icon name="check" size={28} />
         </span>
         <h1 className="text-xl font-bold text-[#111827]">¡Listo, {nombre}!</h1>
-        <p className="mt-1 text-sm text-[#4B5563]">Recibimos tu inscripción. Te vamos a escribir por WhatsApp para confirmar tu lugar.</p>
+        <p className="mt-1 text-sm font-semibold text-[#111827]">Quedaste preinscrito. Para asegurar tu cupo, acercate a pagar lo que corresponde.</p>
+        <p className="mt-1 text-sm text-[#4B5563]">Además te vamos a escribir por WhatsApp para confirmar tu lugar.</p>
       </div>
       <dl aria-label="Tu inscripción" className="divide-y divide-[#E5E7EB] rounded-xl border border-[#E5E7EB] bg-[#F9FAFB] px-4 py-1 text-sm">
         <Fila etiqueta="Curso">
@@ -664,6 +683,12 @@ function Enviada({
             {r.grupo.direccion ? `, ${r.grupo.direccion}` : ""}. Llevá tu carnet (y el de tu tutor, si sos menor).
           </p>
         </section>
+      )}
+      {sinFotos.length > 0 && (
+        <p role="note" className="rounded-xl bg-[#FFFBEB] px-3.5 py-2.5 text-[13px] text-[#92400E]">
+          No subiste {listaDeFotos(sinFotos)}. Traé {sinFotos.length === 1 ? "esa foto" : "esas fotos"} cuando vengas a pagar
+          {whatsapp ? ` o ${sinFotos.length === 1 ? "mandala" : "mandalas"} por WhatsApp` : ""}: las necesitamos para tu certificado.
+        </p>
       )}
       <p className="text-[13px] text-[#4B5563]">Cuando estés inscrito te mandamos por WhatsApp el enlace a tu estado de cuenta: ahí ves siempre lo que pagaste y lo que falta.</p>
       <div className="flex flex-col gap-2">

@@ -94,7 +94,7 @@ describe("P2 · Inscribirme en 4 pasos", () => {
     expect(screen.getByRole("radio", { name: /Lunes a viernes/ })).toHaveAttribute("aria-checked", "false");
   });
 
-  it("no avanza sin los datos ni sin las 3 fotos, y envía todo en el multipart", async () => {
+  it("no avanza sin los datos, y con las 3 fotos las envía todas en el multipart", async () => {
     await montar();
     fireEvent.click(screen.getByRole("button", { name: "Siguiente" }));
     // Paso 2: los datos como en el carnet; menor → tutor.
@@ -112,7 +112,8 @@ describe("P2 · Inscribirme en 4 pasos", () => {
     fireEvent.click(screen.getByRole("button", { name: "Siguiente" }));
     // Paso 3: las fotos.
     expect(screen.getByRole("heading", { name: "Tus fotos" })).toBeInTheDocument();
-    expect(screen.getByText("Faltan 3 fotos")).toBeInTheDocument();
+    // M4: faltan, pero no bloquean.
+    expect(screen.getByText(/Faltan 3 fotos\. Podés seguir sin ellas/)).toBeInTheDocument();
     for (const t of ["FOTO", "CI_ANVERSO", "CI_REVERSO"]) {
       await act(async () => {
         fireEvent.change(screen.getByTestId("subir-" + t), { target: { files: [new File(["x"], t + ".jpg", { type: "image/jpeg" })] } });
@@ -144,6 +145,58 @@ describe("P2 · Inscribirme en 4 pasos", () => {
     expect(screen.getByRole("heading", { name: "¡Listo, Thiago!" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Tu primer pago" })).toHaveTextContent(/Bs 1\.350/);
     expect(screen.getByRole("region", { name: "Tu primer pago" })).toHaveTextContent(/Av\. Banzer/);
+    // Con las 3 fotos, no hay nada que traer.
+    expect(screen.queryByRole("note")).not.toBeInTheDocument();
+    expect(screen.getByText("Quedaste preinscrito. Para asegurar tu cupo, acercate a pagar lo que corresponde.")).toBeInTheDocument();
+  });
+
+  async function llenarDatosYSeguir() {
+    fireEvent.click(screen.getByRole("button", { name: "Siguiente" }));
+    fireEvent.change(screen.getByLabelText("Carnet de identidad"), { target: { value: "1" } });
+    fireEvent.change(screen.getByLabelText("Apellidos"), { target: { value: "Paz" } });
+    fireEvent.change(screen.getByLabelText("Nombres"), { target: { value: "Ana" } });
+    fireEvent.change(screen.getByLabelText("Fecha de nacimiento"), { target: { value: "2000-01-01" } });
+    fireEvent.change(screen.getByLabelText("WhatsApp"), { target: { value: "77788990" } });
+    fireEvent.click(screen.getByRole("button", { name: "Siguiente" }));
+  }
+
+  it("M4: las fotos son opcionales: se puede seguir sin ninguna y se envía sin ellas", async () => {
+    await montar();
+    await llenarDatosYSeguir();
+    expect(screen.getByRole("heading", { name: "Tus fotos" })).toBeInTheDocument();
+    expect(screen.queryByText(/Son obligatorias/)).not.toBeInTheDocument();
+    const seguir = screen.getByRole("button", { name: "Seguir sin fotos" });
+    expect(seguir).toBeEnabled();
+    fireEvent.click(seguir);
+    fireEvent.click(screen.getByRole("checkbox"));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Enviar inscripción" }));
+    });
+    const [, , fotos] = vi.mocked(apiAcademiaPublica.preinscribir).mock.calls[0];
+    expect(Object.keys(fotos ?? {})).toEqual([]);
+    // El aviso final: el cupo se asegura pagando, y las fotos que faltan se traen o se mandan.
+    expect(screen.getByRole("heading", { name: "¡Listo, Ana!" })).toBeInTheDocument();
+    expect(screen.getByText("Quedaste preinscrito. Para asegurar tu cupo, acercate a pagar lo que corresponde.")).toBeInTheDocument();
+    expect(screen.getByRole("note")).toHaveTextContent(
+      "No subiste foto, carnet de adelante y carnet de atrás. Traé esas fotos cuando vengas a pagar o mandalas por WhatsApp",
+    );
+  });
+
+  it("M4: con algunas fotos, el aviso final nombra sólo las que faltan", async () => {
+    await montar();
+    await llenarDatosYSeguir();
+    await act(async () => {
+      fireEvent.change(screen.getByTestId("subir-FOTO"), { target: { files: [new File(["x"], "f.jpg", { type: "image/jpeg" })] } });
+    });
+    // Con una subida, el botón vuelve a ser «Siguiente».
+    fireEvent.click(screen.getByRole("button", { name: "Siguiente" }));
+    fireEvent.click(screen.getByRole("checkbox"));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Enviar inscripción" }));
+    });
+    const [, , fotos] = vi.mocked(apiAcademiaPublica.preinscribir).mock.calls[0];
+    expect(Object.keys(fotos ?? {})).toEqual(["FOTO"]);
+    expect(screen.getByRole("note")).toHaveTextContent("No subiste carnet de adelante y carnet de atrás.");
   });
 
   it("si el backend dice que faltan fotos, vuelve al paso de las fotos", async () => {
