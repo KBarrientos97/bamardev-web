@@ -53,7 +53,7 @@ import ConfigAgenda from "./pages/agenda/config/ConfigAgenda";
 import ConfigNegocio from "./pages/agenda/config/ConfigNegocio";
 import { AuthProvider, useAuth } from "./store/AuthContext";
 import { useNavegarDesdePush } from "./lib/push/useNavegarDesdePush";
-import { ActualizarAlNavegar } from "./lib/pwa/actualizarAlNavegar";
+import { ActualizarAlNavegar, useRecargarSiQuedoVieja } from "./lib/pwa/actualizarAlNavegar";
 
 /*
  * La app del negocio: sesión, login, menú y todas sus pantallas. Se baja
@@ -167,6 +167,10 @@ function Inicio() {
  */
 function SinAcceso() {
   const { usuario, negocio, logout } = useAuth();
+  // Una sección nueva que la app guardada todavía no conoce también termina
+  // acá (el acceso de despacho con la app del 27-oct): con otra versión
+  // publicada, se recarga sola antes de que alguien lo tome por un error.
+  useRecargarSiQuedoVieja();
   const rol = usuario?.rolNombre?.trim();
   // Si mientras tanto llegaron los permisos (una sesión vieja que los pidió a
   // /auth/me, o el dueño le dio un rol con algo), se va a su inicio solo.

@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useLocation } from "react-router-dom";
 import { usePwa } from "./pwa";
+import { VERSION_APP, versionDelServidor } from "./version";
 
 /**
  * La versión nueva de un deploy se aplica sola al pasar a otra pantalla
@@ -54,4 +55,43 @@ export const recarga = {
 export function ActualizarAlNavegar() {
   useActualizarAlNavegar();
   return null;
+}
+
+/** La versión publicada por la que ya se recargó en esta pestaña. */
+const CLAVE_RECARGA = "bamardev.pwa.recargoPor";
+
+/**
+ * Para las pantallas que no tienen nada que cortar ("Tu cuenta no tiene
+ * secciones"): si el servidor publica otra versión, se recarga ya, limpiando
+ * lo guardado, sin esperar a un cambio de pantalla que ahí nunca llega.
+ *
+ * Pasó el 31-oct: el acceso de despacho salió el 29 y un navegador que tenía
+ * guardada la app del 27 no lo conocía, así que lo mandaba a "sin secciones"
+ * aunque con la versión publicada entraba directo a Despacho. Una sola vez
+ * por versión: si lo que baja no coincide con lo que el servidor anuncia,
+ * no entra en un bucle de recargas.
+ */
+export function useRecargarSiQuedoVieja(
+  servidor: () => Promise<string | null> = versionDelServidor,
+  version: string = VERSION_APP,
+) {
+  useEffect(() => {
+    // En desarrollo y en los tests no hay versión publicada con qué comparar.
+    if (version === "dev") return;
+    let vivo = true;
+    void servidor().then((publicada) => {
+      if (!vivo || !publicada || publicada === version || navigator.onLine === false) return;
+      try {
+        if (sessionStorage.getItem(CLAVE_RECARGA) === publicada) return;
+        sessionStorage.setItem(CLAVE_RECARGA, publicada);
+      } catch {
+        // Sin almacenamiento no hay cómo frenar un bucle: mejor no recargar.
+        return;
+      }
+      void recarga.limpiandoTodo();
+    });
+    return () => {
+      vivo = false;
+    };
+  }, [servidor, version]);
 }

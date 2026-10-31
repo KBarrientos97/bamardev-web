@@ -1,7 +1,7 @@
-import { act, render } from "@testing-library/react";
+import { act, render, waitFor } from "@testing-library/react";
 import { MemoryRouter, useNavigate } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { recarga, useActualizarAlNavegar } from "./actualizarAlNavegar";
+import { recarga, useActualizarAlNavegar, useRecargarSiQuedoVieja } from "./actualizarAlNavegar";
 import { reiniciarEstadoPwa } from "./pwa";
 
 let ir: (a: string) => void = () => {};
@@ -76,5 +76,59 @@ describe("useActualizarAlNavegar", () => {
     enLinea.mockReturnValue(true);
     act(() => ir("/pos"));
     expect(limpia).toHaveBeenCalledOnce();
+  });
+});
+
+describe("useRecargarSiQuedoVieja (la pantalla de sin secciones)", () => {
+  const PUBLICADA = "2026-10-30T03:33:09Z+eb64e5a";
+  const VIEJA = "2026-10-27T20:30:00Z+74a1117";
+  function SinSecciones({ servidor, version }: { servidor: () => Promise<string | null>; version: string }) {
+    useRecargarSiQuedoVieja(servidor, version);
+    return null;
+  }
+  let limpia: ReturnType<typeof vi.spyOn>;
+  beforeEach(() => {
+    sessionStorage.clear();
+    limpia = vi.spyOn(recarga, "limpiandoTodo").mockImplementation(async () => {});
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  it("con otra versión publicada recarga limpiando lo guardado, una sola vez por versión", async () => {
+    // El caso del 31-oct: la app del 27 mandaba el acceso de despacho a "sin secciones".
+    const servidor = vi.fn(async () => PUBLICADA);
+    const primera = render(<SinSecciones servidor={servidor} version={VIEJA} />);
+    await waitFor(() => expect(limpia).toHaveBeenCalledOnce());
+    primera.unmount();
+
+    // Si después de recargar sigue sin coincidir, no entra en un bucle.
+    render(<SinSecciones servidor={servidor} version={VIEJA} />);
+    await waitFor(() => expect(servidor).toHaveBeenCalledTimes(2));
+    expect(limpia).toHaveBeenCalledOnce();
+  });
+
+  it("con la misma versión no recarga", async () => {
+    const servidor = vi.fn(async () => PUBLICADA);
+    render(<SinSecciones servidor={servidor} version={PUBLICADA} />);
+    await waitFor(() => expect(servidor).toHaveBeenCalledOnce());
+    expect(limpia).not.toHaveBeenCalled();
+  });
+
+  it("sin internet o sin respuesta del servidor no recarga", async () => {
+    const enLinea = vi.spyOn(navigator, "onLine", "get").mockReturnValue(false);
+    const otra = vi.fn(async () => PUBLICADA);
+    render(<SinSecciones servidor={otra} version={VIEJA} />);
+    await waitFor(() => expect(otra).toHaveBeenCalledOnce());
+
+    enLinea.mockReturnValue(true);
+    const nada = vi.fn(async () => null);
+    render(<SinSecciones servidor={nada} version={VIEJA} />);
+    await waitFor(() => expect(nada).toHaveBeenCalledOnce());
+    expect(limpia).not.toHaveBeenCalled();
+  });
+
+  it("en desarrollo (sin versión) ni pregunta", () => {
+    const servidor = vi.fn(async () => PUBLICADA);
+    render(<SinSecciones servidor={servidor} version="dev" />);
+    expect(servidor).not.toHaveBeenCalled();
   });
 });
