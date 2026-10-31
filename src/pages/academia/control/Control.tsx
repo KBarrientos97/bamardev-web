@@ -12,7 +12,6 @@ import { useFiltroSede } from "../../../lib/academia/useFiltroSede";
 import { usePalabras } from "../../../lib/academia/usePalabras";
 import { fmtFecha, fmtMoney, tiempoRelativo } from "../../../lib/format";
 import { useApi } from "../../../lib/useApi";
-import PrimerosPasos from "../PrimerosPasos";
 import {
   BotonFila,
   Chip,
@@ -121,10 +120,6 @@ export default function Control() {
                   : `Revisar ${pendientes.length} ${pendientes.length === 1 ? "foto" : "fotos"}`
                 : "Fotos al día"}
             </Boton>
-            {/* El administrador aterriza acá: sin esto, un instituto recién dado de alta veía
-                tarjetas vacías y ningún aviso de por dónde empezar (ronda 2, R2). Desde L1 es
-                el botón "Configuración rápida", no una tarjeta arriba de todo. */}
-            <PrimerosPasos />
           </>
         }
       />

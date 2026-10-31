@@ -107,6 +107,8 @@ export function rutaCobroInscripcion(inscripcionId: number, sede?: string | Ref 
  * Configuración. `?sede=ID&ver=franjas|aulas|editar` lleva a una sede.
  */
 export const RUTA_SEDES = "/configuracion/sedes";
+/** La pestaña «Configuración rápida» de la Configuración del instituto (M1). */
+export const RUTA_CONFIG_RAPIDA = "/configuracion/rapida";
 
 /**
  * Las pestañas de la Configuración del instituto (26-oct), en orden: cada una
@@ -121,6 +123,8 @@ export const PESTANAS_CONFIG_ACADEMIA: readonly { seccion: Seccion; a: string }[
   { seccion: "academia_ajustes", a: RUTA_SEDES },
   { seccion: "academia_planilla", a: "/academia/planilla" },
   { seccion: "academia_ajustes", a: "/configuracion/academia" },
+  // M1 (31-oct): la lista de primeros pasos vive sólo acá, no arriba del Calendario ni del Control.
+  { seccion: "academia_ajustes", a: RUTA_CONFIG_RAPIDA },
 ];
 
 /**

@@ -81,17 +81,14 @@ describe("N9 · Panel de control", () => {
     expect(document.getElementById("t-sin-docente")!.parentElement).toHaveTextContent("130");
   });
 
-  it("R2/L1: el administrador aterriza acá y ve «Configuración rápida» en el encabezado mientras falte armar el instituto", async () => {
-    localStorage.clear();
+  it("M1: el panel de control ya no trae «Configuración rápida» (vive sólo en la Configuración)", async () => {
     render(
       <MemoryRouter>
         <Control />
       </MemoryRouter>,
     );
     await act(async () => {});
-    const boton = within(screen.getByRole("banner")).getByRole("button", { name: /^Configuración rápida/ });
-    expect(boton).toBeInTheDocument();
-    // Ya no es una tarjeta arriba de todo.
+    expect(screen.queryByRole("button", { name: /^Configuración rápida/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "Primeros pasos" })).not.toBeInTheDocument();
   });
 
