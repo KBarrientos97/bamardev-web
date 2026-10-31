@@ -10,15 +10,23 @@ export interface ReciboNegocio {
 }
 
 /**
- * Lo guardado, por negocio, para no pedirlo en cada venta: el recibo se
+ * Lo guardado, por negocio, para no esperarlo en cada venta: el recibo se
  * dibuja después de cada cobro, y un pedido por cobro sería una espera más
- * con el cliente adelante. Se vuelve a pedir al guardar desde Configuración
- * (`olvidarReciboNegocio`) o al recargar la página.
+ * con el cliente adelante. Se pinta con esto y, pasada la vigencia, se vuelve
+ * a pedir por detrás; guardar desde Configuración en el mismo equipo lo
+ * reemplaza en el acto (`olvidarReciboNegocio`).
  */
-let guardado: { negocioId: number; valor: ReciboNegocio } | null = null;
+let guardado: { negocioId: number; valor: ReciboNegocio; desde: number } | null = null;
+
+/**
+ * Sin vencimiento, la pestaña de la caja (abierta todo el día) seguía con el
+ * diseño de la mañana: el dueño prendía "Imprimir solo al cobrar" o pasaba a
+ * 58 mm desde su celular y la caja no se enteraba hasta un F5.
+ */
+const VIGENCIA_MS = 60_000;
 
 export function olvidarReciboNegocio(valor?: ReciboNegocio, negocioId?: number) {
-  guardado = valor && negocioId != null ? { negocioId, valor } : null;
+  guardado = valor && negocioId != null ? { negocioId, valor, desde: Date.now() } : null;
 }
 
 /**
@@ -37,15 +45,16 @@ export function useReciboNegocio(): ReciboNegocio | null {
 
   useEffect(() => {
     if (!activo || negocioId == null) return;
-    if (guardado && guardado.negocioId === negocioId) {
-      setValor(guardado.valor);
-      return;
+    const previo = guardado && guardado.negocioId === negocioId ? guardado : null;
+    if (previo) {
+      setValor(previo.valor);
+      if (Date.now() - previo.desde < VIGENCIA_MS) return;
     }
     let vivo = true;
     apiMenuDigital
       .recibo()
       .then((r) => {
-        guardado = { negocioId, valor: r };
+        guardado = { negocioId, valor: r, desde: Date.now() };
         if (vivo) setValor(r);
       })
       .catch(() => {

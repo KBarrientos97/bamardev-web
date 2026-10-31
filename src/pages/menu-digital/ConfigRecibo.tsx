@@ -11,7 +11,7 @@ import { useAuth } from "../../store/AuthContext";
 import type { Venta } from "../../types";
 import { RECIBO_DE_FABRICA, type AjustesRecibo } from "../../types/menuDigital";
 import ComandaCocina from "../pos/ComandaCocina";
-import { CabeceraNegocio, QrRecibo } from "../pos/PiezasRecibo";
+import { CabeceraNegocio, HojaAngosta, QrRecibo } from "../pos/PiezasRecibo";
 import { PestanasTickets, Segmentado, SiNo, Tarjeta } from "../tickets/piezas";
 
 /**
@@ -36,6 +36,10 @@ export default function ConfigRecibo() {
   const reloj = useRef<ReturnType<typeof setTimeout> | null>(null);
   const actual = useRef(r);
   actual.current = r;
+  /** Lo que espera su turno para guardarse, y con qué logo (para la caja). */
+  const pendiente = useRef<AjustesRecibo | null>(null);
+  const logoActual = useRef(logo);
+  logoActual.current = logo;
 
   const cargar = useCallback(() => {
     setError("");
@@ -48,12 +52,23 @@ export default function ConfigRecibo() {
       })
       .catch((e) => setError(e instanceof Error ? e.message : "No se pudo cargar el diseño del recibo"));
   }, []);
+  const negocioId = negocio?.id;
   useEffect(() => {
     cargar();
     return () => {
       if (reloj.current) clearTimeout(reloj.current);
+      // Se fue de la pantalla antes de que saliera: se manda ya, en vez de
+      // perder el último cambio sin aviso.
+      const sinGuardar = pendiente.current;
+      if (!sinGuardar) return;
+      void apiMenuDigital
+        .guardarRecibo(sinGuardar)
+        .then((ok) => {
+          if (negocioId != null) olvidarReciboNegocio({ recibo: ok, logo: logoActual.current }, negocioId);
+        })
+        .catch(() => undefined);
     };
-  }, [cargar]);
+  }, [cargar, negocioId]);
 
   const cambiar = (parcial: Partial<AjustesRecibo>) => {
     // Sin lo guardado todavía, guardar pisaría el diseño con el de fábrica.
@@ -62,8 +77,10 @@ export default function ConfigRecibo() {
     actual.current = nuevo;
     setR(nuevo);
     setGuardado("guardando");
+    pendiente.current = nuevo;
     if (reloj.current) clearTimeout(reloj.current);
     reloj.current = setTimeout(() => {
+      pendiente.current = null;
       apiMenuDigital
         .guardarRecibo(nuevo)
         .then((guardadoOk) => {
@@ -431,6 +448,7 @@ function VistaPrevia({ r, logo, negocio }: { r: AjustesRecibo; logo: string | nu
         </div>
         {/* La vista previa es lo único imprimible de esta pantalla: "Imprimir
             prueba" saca este papel en la impresora elegida. */}
+        {angosto && <HojaAngosta />}
         <div id="area-impresion" style={angosto ? ({ "--ancho-ticket": "48mm" } as CSSProperties) : undefined}>
           {papel === "recibo" ? (
             <article className={`card mx-auto p-5 print:max-w-none print:border-0 print:p-0 print:shadow-none ${angosto ? "max-w-[250px]" : "max-w-[320px]"}`}>

@@ -12,6 +12,17 @@ import type { AjustesRecibo } from "../../types/menuDigital";
 
 const ALTO_LOGO = { s: 44, m: 64, l: 88 } as const;
 
+/**
+ * La hoja del rollo de 58 mm para el navegador. `index.html` declara la de
+ * 80 mm, y con el rollo angosto sólo se achicaba el contenido: el driver
+ * recibía una hoja de 80 y, según cuál, la achicaba entera (letra diminuta) o
+ * la cortaba. Esta `@page` va después y pisa a la de `index.html` mientras la
+ * pantalla que la dibuja está abierta: 48 mm de ticket más 5 mm por lado.
+ */
+export function HojaAngosta() {
+  return <style>{"@page { size: 58mm 297mm; margin: 4mm 5mm; }"}</style>;
+}
+
 export function CabeceraNegocio({ r, logo, nombre }: { r: AjustesRecibo; logo: string | null; nombre: string }) {
   const conLogo = r.logo && !!logo;
   const contacto = [r.direccion, r.telefono ? `Tel. ${r.telefono}` : ""].filter(Boolean).join(" · ");

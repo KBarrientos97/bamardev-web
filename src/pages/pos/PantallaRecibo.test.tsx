@@ -90,8 +90,8 @@ function venta(datos: Partial<Venta> = {}): Venta {
   } as Venta;
 }
 
-function dibujar(v: Venta) {
-  render(<PantallaRecibo venta={v} onNuevaVenta={() => {}} onHistorial={() => {}} />);
+function dibujar(v: Venta, extra: { reimpresion?: boolean } = {}) {
+  return render(<PantallaRecibo venta={v} onNuevaVenta={() => {}} onHistorial={() => {}} {...extra} />);
 }
 
 beforeEach(() => {
@@ -746,5 +746,39 @@ describe("imprimir solo al cobrar: cada papel por su lado (29-oct)", () => {
       vi.advanceTimersByTime(1000);
     });
     expect(impresos).toEqual([]);
+  });
+
+  it("reabierto desde el historial no imprime solo ni ofrece la comanda con el foco", () => {
+    // 31-oct: "Ver comprobante" de la 0072 una hora después mandaba la
+    // comanda otra vez a la cocina (y en modo kiosco salía sin diálogo).
+    alCobrar(true, true, true);
+    dibujar(conNumero(), { reimpresion: true });
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+    expect(impresos).toEqual([]);
+    expect(screen.queryByRole("button", { name: /Imprimir recibo y comanda/ })).not.toBeInTheDocument();
+    const recibo = screen.getByRole("button", { name: "Imprimir recibo" });
+    expect(recibo).not.toHaveFocus();
+    fireEvent.click(recibo);
+    expect(impresos).toEqual(["recibo"]);
+    // La comanda, si se perdió, sigue saliendo con el botón de su rótulo.
+    fireEvent.click(screen.getByRole("button", { name: "Imprimir solo la comanda" }));
+    expect(impresos).toEqual(["recibo", "comanda"]);
+  });
+
+  it("si la cajera imprime antes de que llegue el diseño, la impresión sola no se repite", () => {
+    // La primera venta del día: el diseño todavía no llegó, Enter imprime, y
+    // cuando llegaba (dentro de los 4 s) salía todo otra vez.
+    const pantalla = dibujar(conNumero());
+    fireEvent.click(screen.getByRole("button", { name: /Imprimir recibo y comanda/ }));
+    expect(impresos).toEqual([undefined]);
+    cerrarImpresion();
+    alCobrar(true, true, true);
+    pantalla.rerender(<PantallaRecibo venta={conNumero()} onNuevaVenta={() => {}} onHistorial={() => {}} />);
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+    expect(impresos).toEqual([undefined]);
   });
 });

@@ -14,7 +14,7 @@ import EnlaceEstadoCuenta from "../academia/EnlaceEstadoCuenta";
 import ComandaCocina from "./ComandaCocina";
 import { totalEnLetras } from "../../lib/menuDigital/enLetras";
 import { useReciboNegocio } from "../../lib/menuDigital/useReciboNegocio";
-import { CabeceraNegocio, QrRecibo } from "./PiezasRecibo";
+import { CabeceraNegocio, HojaAngosta, QrRecibo } from "./PiezasRecibo";
 
 /**
  * Comprobante de la venta recién cobrada.
@@ -32,12 +32,19 @@ export default function PantallaRecibo({
   onNuevaVenta,
   onHistorial,
   etiquetaNueva = "Nueva venta",
+  reimpresion = false,
 }: {
   venta: Venta;
   onNuevaVenta: () => void;
   onHistorial: () => void;
   /** El botón principal: "Nueva venta" en el POS, "Cobrar a otro" en el instituto (A1). */
   etiquetaNueva?: string;
+  /**
+   * Abierta desde el historial ("Ver comprobante"), no recién cobrada: no se
+   * imprime sola ni ofrece la comanda con el foco. La cocina ya la tuvo, y
+   * reabrir el comprobante de la 0072 una hora después la volvía a mandar.
+   */
+  reimpresion?: boolean;
 }) {
   const { negocio, incluye, rubro } = useAuth();
   // El diseño del recibo (logo, datos del negocio, QR, pie): sólo en un
@@ -197,7 +204,13 @@ export default function PantallaRecibo({
    * en el DOM antes de que el navegador arme la impresión.
    */
   const [soloPapel, setSoloPapel] = useState<"recibo" | "comanda" | null>(null);
+  /** Ya salió una impresión (sola o a mano): la de "al cobrar" no se repite. */
+  const yaImprimio = useRef(false);
   const imprimir = useCallback((papel: "recibo" | "comanda" | null = null) => {
+    // Lo marca también la impresión a mano: si la cajera aprieta Enter antes
+    // de que llegue el diseño del recibo (la primera venta del día), la
+    // automática no tiene que salir después y duplicar la comanda.
+    yaImprimio.current = true;
     flushSync(() => setSoloPapel(papel));
     window.print();
   }, []);
@@ -207,11 +220,18 @@ export default function PantallaRecibo({
   // nace con el foco (Enter imprime) y, al cerrar el diálogo de impresión, el
   // foco pasa a "Nueva venta" (otro Enter y se sigue vendiendo). Cobrar y
   // despachar sin tocar el mouse.
-  const imprimirTodo = (clase: string) => (
-    <Boton icono="printer" autoFocus onClick={() => imprimir()} className={clase}>
-      Imprimir recibo y comanda
-    </Boton>
-  );
+  const imprimirTodo = (clase: string) =>
+    reimpresion ? (
+      // Desde el historial se reimprime el recibo; la comanda, si se perdió,
+      // con el botón de su rótulo. Sin el foco: un Enter de más no reimprime.
+      <Boton icono="printer" onClick={() => imprimir("recibo")} className={clase}>
+        Imprimir recibo
+      </Boton>
+    ) : (
+      <Boton icono="printer" autoFocus onClick={() => imprimir()} className={clase}>
+        Imprimir recibo y comanda
+      </Boton>
+    );
   useEffect(() => {
     if (!conTicket) return;
     const alTerminar = () => {
@@ -237,7 +257,6 @@ export default function PantallaRecibo({
   // Desde el 29-oct cada papel se elige solo: el recibo, la comanda, o los
   // dos, juntos o por separado (uno para cada impresora).
   const montada = useRef(Date.now());
-  const yaImprimio = useRef(false);
   const ac = r?.alCobrar;
   const alCobrar =
     !ac || (!ac.recibo && !ac.comanda)
@@ -250,7 +269,7 @@ export default function PantallaRecibo({
           ? "recibo"
           : "comanda";
   useEffect(() => {
-    if (!conTicket || !alCobrar || yaImprimio.current) return;
+    if (!conTicket || !alCobrar || reimpresion || yaImprimio.current) return;
     if (Date.now() - montada.current > 4000) return;
     // La marca va adentro del timeout: si el efecto se limpia antes (React lo
     // corre dos veces en desarrollo), la segunda vuelta todavía imprime.
@@ -264,7 +283,7 @@ export default function PantallaRecibo({
       }
     }, 250);
     return () => clearTimeout(id);
-  }, [conTicket, alCobrar, imprimir]);
+  }, [conTicket, alCobrar, reimpresion, imprimir]);
   const anchoPapel = r?.ancho === 58 ? { ticket: "48mm", pantalla: "max-w-[250px]" } : null;
 
   // El ticket: el `id` lo hace lo ÚNICO visible al imprimir (index.css). Con
@@ -543,6 +562,7 @@ export default function PantallaRecibo({
     const numero = ticketPedido!.numero;
     return (
       <div ref={raiz} className="@container flex h-full min-h-0 w-full flex-col">
+        {anchoPapel && <HojaAngosta />}
         <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 @3xl:px-8 @3xl:py-8">
           <div className="mx-auto w-full max-w-[66rem] @3xl:flex @3xl:items-start @3xl:gap-10">
             <div className="mx-auto w-full max-w-sm print:hidden @3xl:mx-0 @3xl:w-80 @3xl:shrink-0">
@@ -617,6 +637,7 @@ export default function PantallaRecibo({
   // con 60 el aviso y el ticket quedaban cada uno en una punta.
   return (
     <div ref={raiz} className="@container flex h-full min-h-0 w-full flex-col">
+      {anchoPapel && <HojaAngosta />}
       <div className="min-h-0 flex-1 overflow-y-auto py-4 px-[max(1rem,calc(50%-16rem+1rem))] @3xl:px-[max(1.5rem,calc(50%-26rem+1.5rem))] @3xl:grid @3xl:grid-cols-2 @3xl:content-start @3xl:items-start @3xl:gap-8 @3xl:py-8">
         <div className="mb-4 flex flex-col items-center text-center print:hidden @3xl:mb-0">
           <span

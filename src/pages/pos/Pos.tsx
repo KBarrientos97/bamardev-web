@@ -291,6 +291,8 @@ function PuntoDeVenta() {
 
   const [mesaCobrando, setMesaCobrando] = useState<MesaSalon | null>(null);
   const [venta, setVenta] = useState<Venta | null>(null);
+  // El recibo abierto desde el historial no se imprime solo (ver PantallaRecibo).
+  const [reimpresion, setReimpresion] = useState(false);
   const [cajaCerrada, setCajaCerrada] = useState<Caja | null>(null);
   const [tipoPedido, setTipoPedido] = useState<TipoPedido>("LOCAL");
   // El carrito necesita el tipo de pedido: en el local lo nuevo arranca en
@@ -625,6 +627,7 @@ function PuntoDeVenta() {
         }
         // La cita cobrada sale de "por cobrar" en el acto, sin esperar el sondeo.
         if (conAgenda) refrescarCitas();
+        setReimpresion(false);
         setPantalla("recibo");
         // El stock cambió al vender: el catálogo tiene que reflejarlo.
         productos.recargar();
@@ -746,6 +749,7 @@ function PuntoDeVenta() {
         if (!creada.pendienteSync) registrarConsumo(creada);
         setVenta(creada);
         limpiar();
+        setReimpresion(false);
         setPantalla("recibo");
         productos.recargar();
       } catch (err) {
@@ -900,6 +904,7 @@ function PuntoDeVenta() {
         // recibo de una venta recién cobrada, y su "volver" ya lleva al historial.
         onVerComprobante={(v) => {
           setVenta(v);
+          setReimpresion(true);
           setPantalla("recibo");
         }}
       />
@@ -1074,6 +1079,7 @@ function PuntoDeVenta() {
     return (
       <PantallaRecibo
         venta={venta}
+        reimpresion={reimpresion}
         onNuevaVenta={() => {
           setVenta(null);
           setPantalla("venta");
