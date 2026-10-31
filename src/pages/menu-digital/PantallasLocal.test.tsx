@@ -20,7 +20,7 @@ vi.mock("../../lib/api", async (original) => {
 });
 vi.mock("../../store/AuthContext", () => ({
   useAuth: () => ({
-    usuario: { id: 1, sucursalId: null, permisos: ["menu_digital.editar", "tickets.configurar", "tickets.despachar"] },
+    usuario: { id: 1, sucursalId: null, permisos: ["menu_digital.editar", "tickets.configurar", "tickets.despachar", "recibo.configurar"] },
     negocio: { id: 7, nombre: "Pollos de prueba", tipoNegocio: "RESTAURANTE", features: ["menu_digital", "tickets_pedido"] },
     rubro: "RESTAURANTE",
     puede: () => true,

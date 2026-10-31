@@ -1,6 +1,6 @@
 import type { ContextoPermisos } from "../lib/permisos";
 import type { SesionUsuario } from "../types";
-import { FEATURE_DE_PERMISO, PLANTILLAS } from "./plantillasRoles";
+import { FEATURE_DE_PERMISO, OTRAS_FEATURES_DE_PERMISO, PLANTILLAS } from "./plantillasRoles";
 
 /**
  * Sesiones de prueba armadas con los permisos REALES de las plantillas del
@@ -45,7 +45,8 @@ export function permisosDe(plantilla: Plantilla, opc: OpcionesPermisos = {}) {
     if (opc.sin?.includes(codigo) || permisos.includes(codigo)) continue;
     const feature = FEATURE_DE_PERMISO[codigo];
     // Lo mismo que hace el backend: lo que el plan no incluye no viaja.
-    if (opc.features?.length && feature && !opc.features.includes(feature)) continue;
+    const habilitan = feature ? [feature, ...(OTRAS_FEATURES_DE_PERMISO[codigo] ?? [])] : [];
+    if (opc.features?.length && feature && !habilitan.some((f) => opc.features!.includes(f))) continue;
     permisos.push(codigo);
     if (alcance === "PROPIO") permisosPropios.push(codigo);
   }

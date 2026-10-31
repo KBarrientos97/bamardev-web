@@ -290,14 +290,11 @@ const REQUISITOS: Record<Seccion, Requisito> = {
   tickets: { permiso: "tickets.configurar", feature: "tickets_pedido" },
   despacho: { permiso: "tickets.despachar", feature: "tickets_pedido" },
   menu_digital: { permiso: "menu_digital.editar", feature: "menu_digital" },
-  // El recibo y el logo los diseña quien configura cualquiera de las
-  // pantallas: con tickets o con el menú.
-  config_recibo: {
-    permiso: "tickets.configurar",
-    tambien: ["menu_digital.editar"],
-    feature: "tickets_pedido",
-    oFeature: "menu_digital",
-  },
+  // El recibo y el logo, con su permiso desde el 31-oct (el backend pide lo
+  // mismo para guardarlos). Antes entraba cualquiera que configurara una de
+  // las pantallas, y el logo es también el de la página pública: quién lo
+  // cambia lo decide el dueño en Roles (Kevin). Con tickets o con el menú.
+  config_recibo: { permiso: "recibo.configurar", feature: "tickets_pedido", oFeature: "menu_digital" },
   // Buscar un medicamento es consultar el catálogo y dónde hay: parte de
   // atender el mostrador. No se vende aparte.
   busqueda: { permiso: "catalogo.ver", feature: null },

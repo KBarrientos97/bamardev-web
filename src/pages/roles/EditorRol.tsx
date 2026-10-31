@@ -310,9 +310,12 @@ function NoIncluidos({
  * Lo que tiene que saber quien da un permiso delicado, dicho al prenderlo
  * (L9, 28-oct): el de las fotos de la academia se le puede dar a la recepción
  * para que apruebe inscripciones, pero entrega la cara y el carnet de todos.
+ * El del recibo (31-oct) cambia también el logo de la página pública, que en
+ * Mi página sólo toca quien configura el negocio.
  */
 const ADVERTENCIAS: Record<string, string> = {
   "academia.fotos": "Quien tenga este rol verá la cara y el carnet de todos los inscritos, también de los menores, y podrá aprobarlos.",
+  "recibo.configurar": "Quien tenga este rol podrá cambiar o quitar el logo del negocio, que es también el de tu página pública.",
 };
 
 function RenglonPermiso({

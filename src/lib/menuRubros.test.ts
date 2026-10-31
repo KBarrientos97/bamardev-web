@@ -321,3 +321,32 @@ describe("menú: Pantallas (tickets y despacho)", () => {
     expect(pantallas("ADMIN", rubro, CON)).toEqual([]);
   });
 });
+
+/**
+ * Configuración (el recibo y el logo), con su permiso desde el 31-oct: el
+ * logo es también el de la página pública y quién lo cambia lo decide el
+ * dueño en Roles (Kevin). Antes entraba cualquiera que configurara la TV de
+ * tickets o el menú.
+ */
+describe("menú: Configuración del recibo y el logo", () => {
+  const CON = ["pos", "caja", "catalogo", "usuarios", "tickets_pedido", "menu_digital"];
+
+  it("de fábrica la ven el dueño y el encargado, no la caja", () => {
+    expect(puedeVer(ctxDe("ADMIN", "RESTAURANTE", CON), "config_recibo")).toBe(true);
+    expect(puedeVer(ctxDe("SUPERVISOR", "RESTAURANTE", CON), "config_recibo")).toBe(true);
+    expect(puedeVer(ctxDe("CAJERO", "RESTAURANTE", CON), "config_recibo")).toBe(false);
+  });
+
+  it("sacado el permiso, el encargado sigue con la TV de tickets y el menú", () => {
+    const c = ctxDe("SUPERVISOR", "RESTAURANTE", CON, { sin: ["recibo.configurar"] });
+    expect(puedeVer(c, "config_recibo")).toBe(false);
+    expect(puedeVer(c, "tickets")).toBe(true);
+    expect(puedeVer(c, "menu_digital")).toBe(true);
+  });
+
+  it("con uno solo de los dos extras el dueño la ve igual", () => {
+    expect(puedeVer(ctxDe("ADMIN", "RESTAURANTE", ["pos", "caja", "menu_digital"]), "config_recibo")).toBe(true);
+    expect(puedeVer(ctxDe("ADMIN", "RESTAURANTE", ["pos", "caja", "tickets_pedido"]), "config_recibo")).toBe(true);
+    expect(puedeVer(ctxDe("ADMIN", "RESTAURANTE", ["pos", "caja"]), "config_recibo")).toBe(false);
+  });
+});

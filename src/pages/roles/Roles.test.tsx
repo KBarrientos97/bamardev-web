@@ -591,3 +591,28 @@ describe("L9 · el permiso de las fotos de la academia avisa qué entrega", () =
     expect(within(editor()).queryByRole("note")).not.toBeInTheDocument();
   });
 });
+
+describe("31-oct · «Recibo y logo» avisa que el logo es el de la página pública", () => {
+  // Kevin decidió que quién cambia el logo lo elige el dueño en Roles: quien
+  // lo da tiene que saber que también cambia la página pública.
+  const PANTALLAS: DominioPermisos = {
+    dominio: "Pantallas",
+    nombre: "Pantallas",
+    permisos: [
+      permiso("menu_digital.editar", "Menú digital"),
+      permiso("recibo.configurar", "Recibo y logo"),
+    ],
+  };
+
+  it("al prenderlo avisa; el menú digital no", async () => {
+    vi.mocked(apiRoles.catalogo).mockResolvedValue([...CATALOGO, PANTALLAS]);
+    vi.mocked(apiRoles.editar).mockResolvedValue(CAJERO);
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: /Cajero/ }));
+    abrirDominio("Pantallas");
+    fireEvent.click(within(editor()).getByLabelText(/Menú digital/));
+    expect(within(editor()).queryByRole("note")).not.toBeInTheDocument();
+    fireEvent.click(within(editor()).getByLabelText(/Recibo y logo/));
+    expect(within(editor()).getByRole("note")).toHaveTextContent("el logo del negocio, que es también el de tu página pública");
+  });
+});
