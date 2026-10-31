@@ -140,13 +140,18 @@ function PestanaPantallas({
   const pantallas = datos.pantallas;
   const actual = pantallas.find((p) => p.numero === elegida) ?? pantallas[0] ?? null;
 
+  /** Lo que espera su turno para guardarse (el reloj de abajo). */
+  const pendiente = useRef<PantallaMenu[] | null>(null);
+
   /** Guarda la lista entera un momento después del último cambio. */
   const guardar = useCallback(
     (nuevas: PantallaMenu[]) => {
       onPantallas(nuevas);
       setGuardado("guardando");
+      pendiente.current = nuevas;
       if (reloj.current) clearTimeout(reloj.current);
       reloj.current = setTimeout(() => {
+        pendiente.current = null;
         apiMenuDigital
           .guardarPantallas(nuevas)
           .then(() => setGuardado("guardado"))
@@ -155,9 +160,16 @@ function PestanaPantallas({
     },
     [onPantallas],
   );
-  useEffect(() => () => {
-    if (reloj.current) clearTimeout(reloj.current);
-  }, []);
+  useEffect(
+    () => () => {
+      if (reloj.current) clearTimeout(reloj.current);
+      // Se pasó a "Platos y fotos" (o a otra pantalla) antes de que saliera:
+      // se manda ya. Cancelarlo dejaba el cambio a la vista, como guardado,
+      // pero la TV nunca lo recibía y al recargar desaparecía.
+      if (pendiente.current) void apiMenuDigital.guardarPantallas(pendiente.current).catch(() => undefined);
+    },
+    [],
+  );
 
   const cambiar = (parcial: Partial<PantallaMenu>) => {
     if (!actual) return;
@@ -262,7 +274,7 @@ function PestanaPantallas({
       <Confirmar
         abierto={borrar}
         titulo="¿Eliminar esta pantalla?"
-        texto="El televisor que la muestra pasa a preguntar qué pantalla es. Los platos no se tocan."
+        texto="El televisor que la muestra deja de mostrar el menú y avisa que la pantalla ya no está habilitada. Los platos no se tocan."
         etiquetaOk="Eliminar"
         peligroso
         onCancel={() => setBorrar(false)}
@@ -322,6 +334,15 @@ function EditorPantalla({
   const indice = pagina === "auto" ? auto % paginas.length : Math.min(pagina, paginas.length - 1);
   const asegurarLlave = async () => {
     if (llave) return llave;
+    // Sin llave a mano puede ser que todavía no llegó, o que falló al traerla
+    // (el wifi parpadeó al abrir): generar ahí rotaba la llave y cortaba la TV
+    // de tickets y las del menú en pleno servicio. Se vuelve a preguntar y
+    // sólo se genera si de verdad nunca hubo una.
+    const vigente = (await apiTickets.llave()).llave;
+    if (vigente) {
+      onLlave(vigente);
+      return vigente;
+    }
     const r = await apiTickets.nuevaLlave();
     onLlave(r.llave);
     return r.llave;
@@ -720,8 +741,11 @@ function FilaPlato({
     }
   };
 
+  // En una fila sólo con lugar (xl): los controles miden ~820 px y en una
+  // tablet (o una laptop con el menú abierto) "En menú" quedaba cortado a la
+  // derecha. Con menos, la foto y el nombre van arriba y los controles debajo.
   return (
-    <li className="flex flex-wrap items-center gap-3 p-3 sm:flex-nowrap">
+    <li className="flex flex-wrap items-center gap-3 p-3 xl:flex-nowrap">
       <button
         type="button"
         onClick={() => archivo.current?.click()}
@@ -759,46 +783,48 @@ function FilaPlato({
           )}
         </p>
       </div>
-      <span className="flex shrink-0 items-center gap-1 rounded-lg bg-muted px-2.5 py-1.5 text-[13px] font-bold text-texto-2">
-        <Icon name="lock" size={12} />
-        {fmtMoney(p.precio)}
-      </span>
-      <select
-        value={p.etiqueta ?? ""}
-        onChange={(e) => onEditar({ etiqueta: (e.target.value || null) as EtiquetaPlato | null })}
-        aria-label="Etiqueta"
-        className="shrink-0 rounded-lg border border-borde bg-white px-2 py-1.5 text-[13px] text-texto"
-      >
-        <option value="">Sin etiqueta</option>
-        {ETIQUETAS_PLATO.map((e) => (
-          <option key={e} value={e}>
-            {TEXTO_ETIQUETA[e]}
-          </option>
-        ))}
-      </select>
-      <button
-        type="button"
-        aria-pressed={p.destacado}
-        title="Plato destacado (protagonista del diseño Destacado)"
-        onClick={() => onEditar({ destacado: !p.destacado })}
-        className={`shrink-0 rounded-lg px-2 py-1.5 text-[13px] font-semibold ${p.destacado ? "bg-amber-100 text-amber-800" : "text-texto-3 hover:bg-muted"}`}
-      >
-        ★ Destacado
-      </button>
-      <button
-        type="button"
-        aria-pressed={p.agotadoHoy}
-        title="Se tacha en las TVs hasta mañana"
-        onClick={() => onEditar({ agotado: !p.agotadoHoy })}
-        className={`shrink-0 rounded-lg px-2 py-1.5 text-[13px] font-semibold ${
-          p.agotadoHoy ? "bg-danger-bg text-danger-text" : p.agotado ? "bg-muted text-texto-3" : "text-texto-3 hover:bg-muted"
-        }`}
-      >
-        {p.agotadoHoy ? "Agotado hoy" : p.agotado ? "Sin stock" : "Marcar agotado"}
-      </button>
-      <div className="flex shrink-0 items-center gap-2">
-        <span className="text-[12px] text-texto-3">En menú</span>
-        <SiNoChico activo={p.enMenu} onCambiar={() => onEditar({ enMenu: !p.enMenu })} etiqueta={`${p.nombre} en el menú`} />
+      <div className="flex w-full flex-wrap items-center gap-2 xl:w-auto xl:flex-nowrap xl:gap-3">
+        <span className="flex shrink-0 items-center gap-1 rounded-lg bg-muted px-2.5 py-1.5 text-[13px] font-bold text-texto-2">
+          <Icon name="lock" size={12} />
+          {fmtMoney(p.precio)}
+        </span>
+        <select
+          value={p.etiqueta ?? ""}
+          onChange={(e) => onEditar({ etiqueta: (e.target.value || null) as EtiquetaPlato | null })}
+          aria-label="Etiqueta"
+          className="shrink-0 rounded-lg border border-borde bg-white px-2 py-1.5 text-[13px] text-texto"
+        >
+          <option value="">Sin etiqueta</option>
+          {ETIQUETAS_PLATO.map((e) => (
+            <option key={e} value={e}>
+              {TEXTO_ETIQUETA[e]}
+            </option>
+          ))}
+        </select>
+        <button
+          type="button"
+          aria-pressed={p.destacado}
+          title="Plato destacado (protagonista del diseño Destacado)"
+          onClick={() => onEditar({ destacado: !p.destacado })}
+          className={`shrink-0 rounded-lg px-2 py-1.5 text-[13px] font-semibold ${p.destacado ? "bg-amber-100 text-amber-800" : "text-texto-3 hover:bg-muted"}`}
+        >
+          ★ Destacado
+        </button>
+        <button
+          type="button"
+          aria-pressed={p.agotadoHoy}
+          title="Se tacha en las TVs hasta mañana"
+          onClick={() => onEditar({ agotado: !p.agotadoHoy })}
+          className={`shrink-0 rounded-lg px-2 py-1.5 text-[13px] font-semibold ${
+            p.agotadoHoy ? "bg-danger-bg text-danger-text" : p.agotado ? "bg-muted text-texto-3" : "text-texto-3 hover:bg-muted"
+          }`}
+        >
+          {p.agotadoHoy ? "Agotado hoy" : p.agotado ? "Sin stock" : "Marcar agotado"}
+        </button>
+        <div className="flex shrink-0 items-center gap-2">
+          <span className="text-[12px] text-texto-3">En menú</span>
+          <SiNoChico activo={p.enMenu} onCambiar={() => onEditar({ enMenu: !p.enMenu })} etiqueta={`${p.nombre} en el menú`} />
+        </div>
       </div>
     </li>
   );

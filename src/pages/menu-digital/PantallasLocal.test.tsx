@@ -194,6 +194,54 @@ describe("Menú digital", () => {
     );
     expect(await within(fila).findByRole("button", { name: "Marcar agotado" })).toBeInTheDocument();
   });
+
+  it("un cambio y enseguida «Platos y fotos»: se guarda igual, no se pierde", async () => {
+    // 31-oct: cambiar de pestaña antes de los 700 ms cancelaba el guardado;
+    // el cambio quedaba a la vista pero la TV nunca lo recibía.
+    const { default: MenuDigital } = await import("./MenuDigital");
+    render(
+      <MemoryRouter>
+        <MenuDigital />
+      </MemoryRouter>,
+    );
+    const titulo = await screen.findByDisplayValue("Pollos a la brasa y broaster");
+    fireEvent.change(titulo, { target: { value: "Pollos y más" } });
+    fireEvent.click(screen.getByRole("tab", { name: /Platos y fotos/ }));
+    await waitFor(() =>
+      expect(request).toHaveBeenCalledWith("/menu-digital/pantallas", expect.objectContaining({ method: "PUT" })),
+    );
+    const cuerpo = JSON.parse(
+      (request.mock.calls.find((c) => c[0] === "/menu-digital/pantallas")![1] as { body: string }).body,
+    ) as { pantallas: { titulo: string }[] };
+    expect(cuerpo.pantallas[0].titulo).toBe("Pollos y más");
+  });
+
+  it("si la llave no llegó al abrir, «Copiar enlace» usa la que hay y no corta las TVs", async () => {
+    // 31-oct: con la llave sin cargar (el wifi parpadeó), copiar el enlace
+    // generaba una nueva y la TV de tickets y las del menú dejaban de andar.
+    let pedidosLlave = 0;
+    request.mockImplementation((ruta: string, opciones?: { method?: string }) => {
+      if (ruta === "/pantallas/llave" && opciones?.method === "POST") return Promise.resolve({ llave: "llave-nueva-que-corta-todo" });
+      if (ruta === "/pantallas/llave") {
+        pedidosLlave += 1;
+        // La primera vez (al abrir) falla; la segunda contesta la vigente.
+        return pedidosLlave === 1 ? Promise.reject(new Error("sin red")) : Promise.resolve({ llave: "llave-de-prueba-123456789" });
+      }
+      return responder(ruta);
+    });
+    const portapapeles = vi.fn(async () => {});
+    Object.defineProperty(navigator, "clipboard", { value: { writeText: portapapeles }, configurable: true });
+    const { default: MenuDigital } = await import("./MenuDigital");
+    render(
+      <MemoryRouter>
+        <MenuDigital />
+      </MemoryRouter>,
+    );
+    fireEvent.click(await screen.findByRole("button", { name: /Copiar enlace/ }));
+    await waitFor(() => expect(portapapeles).toHaveBeenCalled());
+    expect(portapapeles).toHaveBeenCalledWith(expect.stringContaining("/tv/menu/llave-de-prueba-123456789/1"));
+    expect(request).not.toHaveBeenCalledWith("/pantallas/llave", expect.objectContaining({ method: "POST" }));
+  });
 });
 
 describe("Configuración del recibo", () => {

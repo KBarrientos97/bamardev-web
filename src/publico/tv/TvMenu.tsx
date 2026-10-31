@@ -109,12 +109,15 @@ function TvMenu() {
     [datos],
   );
 
-  // Pasa de página sola; con una sola página no hace nada.
+  // Pasa de página sola; con una sola página no hace nada. Depende del ritmo
+  // y no de `datos`, que es otro objeto en cada vuelta de 30 s: el intervalo
+  // se reiniciaba y con "20 s" cada página quedaba unos 30.
+  const rotarSeg = datos?.pantalla.rotarSeg;
   useEffect(() => {
-    if (paginas.length < 2 || !datos) return;
-    const id = setInterval(() => setPagina((p) => (p + 1) % paginas.length), datos.pantalla.rotarSeg * 1000);
+    if (paginas.length < 2 || !rotarSeg) return;
+    const id = setInterval(() => setPagina((p) => (p + 1) % paginas.length), rotarSeg * 1000);
     return () => clearInterval(id);
-  }, [paginas.length, datos]);
+  }, [paginas.length, rotarSeg]);
 
   useEffect(() => {
     const id = setTimeout(() => setAyuda(false), 8000);
