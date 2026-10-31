@@ -183,19 +183,37 @@ function hablar(texto: string, volumen: number): Promise<void> {
 const esperar = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 let cola: Promise<void> = Promise.resolve();
+/** Los números que esperan su turno en la cola (todavía no empezaron a sonar). */
+const enEspera = new Set<number>();
+/** Pasado este rato esperando, se dice una sola vez: la cola se pone al día. */
+const ATRASO_MS = 15_000;
 
 /**
  * Anuncia un número: tono, voz, y otra vez si se pidió repetir. Dos llamados
  * seguidos no se pisan: el segundo espera a que termine el primero (una TV
  * que dice dos números a la vez no se entiende).
+ *
+ * En hora pico la cola se atrasaba (cada llamado con repetir dura unos 12 s):
+ * un número que ya espera en la cola no se encola otra vez, y el que esperó
+ * de más se dice sin repetir. Y un llamado que falla no deja muda a la TV:
+ * sin el `catch`, la cola quedaba rechazada y no volvía a sonar hasta recargar.
  */
 export function anunciar(numero: number, a: AjustesTicketsTv): Promise<void> {
+  if (enEspera.has(numero)) return cola;
+  enEspera.add(numero);
+  const encolado = Date.now();
   cola = cola.then(async () => {
-    for (let i = 0; i < Math.max(1, a.repetir); i++) {
-      const dura = sonarTono(a.tono, a.volumen);
-      await esperar(dura * 1000 + 120);
-      if (a.voz) await hablar(textoVoz(numero, a.textos.etiqueta, a.textos.frase), a.volumen);
-      if (i < a.repetir - 1) await esperar(500);
+    enEspera.delete(numero);
+    const veces = Date.now() - encolado > ATRASO_MS ? 1 : Math.max(1, a.repetir);
+    try {
+      for (let i = 0; i < veces; i++) {
+        const dura = sonarTono(a.tono, a.volumen);
+        await esperar(dura * 1000 + 120);
+        if (a.voz) await hablar(textoVoz(numero, a.textos.etiqueta, a.textos.frase), a.volumen);
+        if (i < veces - 1) await esperar(500);
+      }
+    } catch {
+      // El que sigue suena igual.
     }
   });
   return cola;

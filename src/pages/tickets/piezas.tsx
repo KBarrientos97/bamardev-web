@@ -7,7 +7,10 @@ export function Tarjeta({ titulo, children, accion }: { titulo?: string; childre
   return (
     <section className="card p-4">
       {(titulo || accion) && (
-        <div className="mb-3 flex items-center justify-between gap-3">
+        // `flex-wrap`: en el celular los botones de la derecha ("Abrir en TV",
+        // "Copiar enlace") no entraban al lado y aplastaban el título a una
+        // letra por renglón ("TV" / "1"). Ahora bajan a su renglón.
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
           {titulo && <h2 className="text-[12px] font-bold uppercase tracking-[0.12em] text-texto-3">{titulo}</h2>}
           {accion}
         </div>

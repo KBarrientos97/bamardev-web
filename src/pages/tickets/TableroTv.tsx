@@ -142,7 +142,9 @@ export function TableroTv({
                 <div className="flex shrink-0 flex-wrap" style={{ gap: 16, marginTop: 20 }}>
                   {fichas.map((f) => (
                     <span
-                      key={f.numero}
+                      // Con la hora del llamado: después de reiniciar la
+                      // numeración puede haber dos 0001 listos a la vez.
+                      key={`${f.numero}-${f.llamadoEn}`}
                       className="font-black tabular-nums"
                       style={{
                         background: p.acento,
@@ -302,7 +304,9 @@ export function LienzoTv({
 }
 
 function horaCorta(ms: number): string {
-  return new Date(ms).toLocaleTimeString("es-BO", { hour: "2-digit", minute: "2-digit" });
+  // En la hora del negocio (la misma `ZONA_NEGOCIO` de la agenda), no la del
+  // aparato: un TV box que viene en UTC mostraba cuatro horas de más.
+  return new Date(ms).toLocaleTimeString("es-BO", { hour: "2-digit", minute: "2-digit", timeZone: "America/La_Paz" });
 }
 
 /** "#FFFFFF" + 0.2 → "rgba(255,255,255,0.2)". Lo que no es un hex de 6 queda gris. */

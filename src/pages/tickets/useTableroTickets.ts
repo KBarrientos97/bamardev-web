@@ -22,18 +22,35 @@ export function useTableroTickets() {
   /** La hora del servidor menos la del equipo: el cronómetro de cada pedido. */
   const [desfase, setDesfase] = useState(0);
   const enCurso = useRef(false);
+  /** Sube con cada acción hecha acá: una vuelta que salió antes trae la lista vieja. */
+  const version = useRef(0);
 
   const recargar = useCallback(async () => {
     if (enCurso.current) return;
     enCurso.current = true;
-    const pedido = Date.now();
     try {
-      const r = await apiTickets.tablero();
-      setDesfase(r.ahora - (pedido + Date.now()) / 2);
-      setDatos(r);
-      setError("");
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "No se pudo cargar los pedidos");
+      let otraVez = true;
+      while (otraVez) {
+        otraVez = false;
+        const pedido = Date.now();
+        const antes = version.current;
+        try {
+          const r = await apiTickets.tablero();
+          setDesfase(r.ahora - (pedido + Date.now()) / 2);
+          // Salió antes de un toque (listo, entregado…): la lista es de antes
+          // y lo deshacía en pantalla hasta la vuelta siguiente; el
+          // despachador lo volvía a tocar y la TV llamaba dos veces. Se tira y
+          // se pregunta de nuevo (el `recargar` de la acción se descartaba por
+          // haber una vuelta en vuelo).
+          if (antes !== version.current) otraVez = true;
+          else {
+            setDatos(r);
+            setError("");
+          }
+        } catch (e) {
+          setError(e instanceof Error ? e.message : "No se pudo cargar los pedidos");
+        }
+      }
     } finally {
       enCurso.current = false;
     }
@@ -65,6 +82,7 @@ export function useTableroTickets() {
     async (accion: () => Promise<TicketPedido>): Promise<TicketPedido> => {
       try {
         const t = await accion();
+        version.current += 1;
         setDatos((d) => (d ? { ...d, tickets: reemplazar(d.tickets, t) } : d));
         void recargar();
         return t;
@@ -77,7 +95,13 @@ export function useTableroTickets() {
     [recargar],
   );
 
-  return { datos, error, desfase, recargar, aplicar };
+  /** Después de un cambio que no devuelve un ticket (reiniciar la numeración): lo mismo que una acción. */
+  const recargarTrasCambio = useCallback(() => {
+    version.current += 1;
+    return recargar();
+  }, [recargar]);
+
+  return { datos, error, desfase, recargar, recargarTrasCambio, aplicar };
 }
 
 function reemplazar(lista: TicketPedido[], t: TicketPedido): TicketPedido[] {

@@ -3,6 +3,7 @@ import { Icon } from "../../components/Icon";
 import { apiTickets } from "../../lib/apiTickets";
 import { fmtCantidad } from "../../lib/format";
 import { numeroTicket } from "../../lib/tickets/llamado";
+import { useAlDia, useMantenerEncendida } from "../../publico/tv/pantalla";
 import type { ItemTicket, TicketPedido } from "../../types/tickets";
 import { cronometro, demora, listos as soloListos, preparando as soloPreparando, useTableroTickets } from "./useTableroTickets";
 
@@ -32,7 +33,20 @@ export default function Despacho({
 } = {}) {
   const [confirmandoSalir, setConfirmandoSalir] = useState(false);
   const { datos, error, desfase, aplicar, recargar } = useTableroTickets();
+  // Queda todo el día prendida al lado de la cocina, como las TVs: que la
+  // tablet no se apague sola ni se quede con la versión del día que se abrió.
+  useMantenerEncendida();
+  useAlDia();
   const [filtro, setFiltro] = useState<Filtro>("todos");
+  // En el celular el teclado ocupaba casi toda la pantalla y los pedidos
+  // quedaban en una franja de dos dedos donde ni entraba el aviso de "sin
+  // pedidos". Debajo de lg arranca plegado (salvo en una tablet parada, que
+  // tiene alto de sobra) y se abre con un toque o tecleando un número.
+  const [teclado, setTeclado] = useState(
+    () => typeof window === "undefined" || window.innerWidth >= 1024 || window.innerHeight >= 1000,
+  );
+  const abrirTeclado = useCallback(() => setTeclado(true), []);
+  const plegarTeclado = useCallback(() => setTeclado(false), []);
   const [aviso, setAviso] = useState<{ texto: string; tono: "ok" | "error"; deshacer?: () => void } | null>(null);
   const ahora = useAhoraCadaSegundo() + desfase;
 
@@ -179,12 +193,27 @@ export default function Despacho({
           )}
         </div>
         <aside className="shrink-0 border-t border-white/10 p-3 sm:p-4 lg:w-[300px] lg:border-l lg:border-t-0">
-          <TecladoLlamar onLlamar={llamarNumero} />
+          {!teclado && (
+            <button
+              type="button"
+              onClick={abrirTeclado}
+              className="mx-auto flex w-full max-w-sm items-center justify-center gap-2 rounded-xl bg-[#FFC800] py-3 text-base font-extrabold text-[#1A1A1A] transition active:scale-[0.98] lg:hidden"
+            >
+              <Icon name="bell" size={18} strokeWidth={2.4} />
+              Llamar un número
+            </button>
+          )}
+          {/* Plegado sigue montado: el teclado de la PC tiene que andar igual. */}
+          <div className={teclado ? undefined : "hidden lg:block"}>
+            <TecladoLlamar onLlamar={llamarNumero} onTeclear={abrirTeclado} onOcultar={plegarTeclado} />
+          </div>
         </aside>
       </div>
 
       {aviso && (
-        <div className="pointer-events-none fixed inset-x-0 bottom-5 z-40 flex justify-center px-4">
+        // Arriba: abajo tapaba "Llamar en pantalla" (y en horizontal, la fila
+        // de tarjetas de abajo) los segundos que dura el aviso.
+        <div className="pointer-events-none fixed inset-x-0 top-4 z-40 flex justify-center px-4">
           <div
             role="status"
             className={`pointer-events-auto flex items-center gap-3 rounded-2xl px-4 py-3 text-[15px] font-semibold shadow-2xl ${
@@ -349,7 +378,17 @@ function GrupoItems({ tipo, items }: { tipo: "MESA" | "LLEVAR"; items: ItemTicke
  * preparaba, queda listo; si ya estaba listo, lo vuelve a llamar. En una PC
  * también anda con el teclado físico (fuera de cualquier campo de texto).
  */
-function TecladoLlamar({ onLlamar }: { onLlamar: (n: number) => Promise<boolean> }) {
+function TecladoLlamar({
+  onLlamar,
+  onTeclear,
+  onOcultar,
+}: {
+  onLlamar: (n: number) => Promise<boolean>;
+  /** Se tecleó en la PC: si estaba plegado, se abre para que se vea el número. */
+  onTeclear?: () => void;
+  /** Plegarlo (celular): el botón sólo se ve debajo de lg. */
+  onOcultar?: () => void;
+}) {
   const [digitos, setDigitosEstado] = useState("");
   const [ocupado, setOcupado] = useState(false);
   // Lo escrito vive también en una ref: "72⏎" tecleado de corrido llega antes
@@ -387,9 +426,14 @@ function TecladoLlamar({ onLlamar }: { onLlamar: (n: number) => Promise<boolean>
     const alTeclear = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement | null;
       if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable)) return;
+      // Ni dentro de un diálogo (cambiar la contraseña desde el menú: el Enter
+      // en "Guardar" no guardaba y llamaba el número del visor) ni en un select.
+      if (e.defaultPrevented || el?.closest?.('[role="dialog"], select')) return;
       if (e.ctrlKey || e.metaKey || e.altKey) return;
-      if (/^[0-9]$/.test(e.key)) tecla(e.key);
-      else if (e.key === "Backspace") tecla("⌫");
+      if (/^[0-9]$/.test(e.key)) {
+        tecla(e.key);
+        onTeclear?.();
+      } else if (e.key === "Backspace") tecla("⌫");
       else if (e.key === "Escape") tecla("C");
       else if (e.key === "Enter") void enviar();
       else return;
@@ -397,12 +441,23 @@ function TecladoLlamar({ onLlamar }: { onLlamar: (n: number) => Promise<boolean>
     };
     window.addEventListener("keydown", alTeclear);
     return () => window.removeEventListener("keydown", alTeclear);
-  }, [tecla, enviar]);
+  }, [tecla, enviar, onTeclear]);
 
   const visor = digitos ? digitos.padStart(4, "0") : "";
   return (
     <div className="mx-auto max-w-sm rounded-2xl bg-[#16241D] p-4">
-      <p className="text-[12px] font-bold tracking-[0.14em] text-white/60">LLAMAR UN NÚMERO</p>
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-[12px] font-bold tracking-[0.14em] text-white/60">LLAMAR UN NÚMERO</p>
+        {onOcultar && (
+          <button
+            type="button"
+            onClick={onOcultar}
+            className="-my-1 rounded-lg px-2 py-1 text-[12px] font-semibold text-white/60 hover:bg-white/10 hover:text-white lg:hidden"
+          >
+            Ocultar
+          </button>
+        )}
+      </div>
       <div className="mt-3 flex h-20 items-center justify-center rounded-xl bg-black/40 font-mono text-5xl font-black tracking-[0.2em] text-[#FFC800]">
         {visor || <span className="tracking-[0.35em] text-[#FFC800]/70">----</span>}
       </div>

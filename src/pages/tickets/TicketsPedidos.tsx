@@ -141,7 +141,7 @@ function PestanaPedidos({
     try {
       await apiTickets.reiniciar();
       setConfirmarReinicio(false);
-      await recargar();
+      await tablero.recargarTrasCambio();
     } catch (e) {
       setAviso(e instanceof Error ? e.message : "No se pudo reiniciar");
     } finally {
@@ -183,7 +183,10 @@ function PestanaPedidos({
         </div>
       </div>
 
-      <aside className="space-y-4">
+      {/* `min-w-0`: sin él, debajo de 1280 px (tablet, celular) la columna
+          tomaba el ancho del lienzo de la TV (1600 px, que se dibuja entero y
+          se escala) y la pantalla quedaba enorme y cortada a la derecha. */}
+      <aside className="min-w-0 space-y-4">
         <Tarjeta titulo="Vista previa de la TV">{vistaPrevia}</Tarjeta>
         <EnlaceTv />
         <Tarjeta titulo="Despacho">
@@ -278,7 +281,9 @@ function TarjetaTicket({
       </div>
       <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
         <span className="text-[12px] text-texto-3">hace {minutos} min</span>
-        <div className="flex gap-2">
+        {/* `flex-wrap`: "Llamar" y "Entregado" miden ~225 px y en una columna
+            angosta (tres columnas con el menú abierto) se metían en la de al lado. */}
+        <div className="flex flex-wrap gap-2">
           {t.estado === "PREPARANDO" && (
             <Boton icono="bell" className="px-3 py-2" disabled={ocupado} onClick={una(() => apiTickets.listo(t.id))}>
               Listo · llamar
@@ -391,7 +396,7 @@ function EnlaceTv() {
       <Confirmar
         abierto={confirmar}
         titulo="¿Generar otro enlace?"
-        texto="La TV que tiene el enlace de ahora deja de andar en el momento. Sirve si el enlace se compartió con quien no debía."
+        texto="Todas las pantallas del local dejan de andar en el momento: la de tickets y las del menú digital, que usan la misma llave. Hay que abrir el enlace nuevo en cada una. Sirve si el enlace se compartió con quien no debía."
         etiquetaOk="Generar otro"
         peligroso
         procesando={generando}
@@ -660,6 +665,8 @@ function useAjustesTv() {
   const [error, setError] = useState("");
   const [guardado, setGuardado] = useState<"" | "guardando" | "guardado" | "error">("");
   const reloj = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Lo que espera su turno para guardarse (el reloj). */
+  const pendiente = useRef<AjustesTicketsTv | null>(null);
 
   const recargar = useCallback(() => {
     setError("");
@@ -676,6 +683,9 @@ function useAjustesTv() {
     recargar();
     return () => {
       if (reloj.current) clearTimeout(reloj.current);
+      // Se fue de la pantalla antes de que saliera: se manda ya, en vez de
+      // perder el último cambio sin aviso.
+      if (pendiente.current) void apiTickets.guardarAjustes(pendiente.current).catch(() => undefined);
     };
   }, [recargar]);
 
@@ -689,8 +699,10 @@ function useAjustesTv() {
       actual.current = nuevos;
       setAjustes(nuevos);
       setGuardado("guardando");
+      pendiente.current = nuevos;
       if (reloj.current) clearTimeout(reloj.current);
       reloj.current = setTimeout(() => {
+        pendiente.current = null;
         apiTickets
           .guardarAjustes(nuevos)
           .then(() => setGuardado("guardado"))
