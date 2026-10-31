@@ -1139,6 +1139,9 @@ function FormPinCuerpo({
   const [repetido, setRepetido] = useState("");
   // El generado se muestra una vez, para pasárselo en persona.
   const [generado, setGenerado] = useState<string | null>(null);
+  // M3: el ojito del PIN (se pone a mano, a diferencia del que PIDE el PIN para autorizar). Los
+  // dos campos van juntos: ver uno solo no sirve para compararlos.
+  const [verPin, setVerPin] = useState(false);
   const [error, setError] = useState("");
   const [guardando, setGuardando] = useState(false);
 
@@ -1195,8 +1198,10 @@ function FormPinCuerpo({
         </p>
 
         <Campo label="PIN" hint="4 dígitos">
-          <Input
-            type="password"
+          <InputPassword
+            nombre="PIN"
+            visible={verPin}
+            onCambiarVisible={setVerPin}
             inputMode="numeric"
             autoComplete="off"
             maxLength={4}
@@ -1211,8 +1216,9 @@ function FormPinCuerpo({
           />
         </Campo>
         <Campo label="Repetir PIN">
-          <Input
-            type="password"
+          <InputPassword
+            sinOjo
+            visible={verPin}
             inputMode="numeric"
             autoComplete="off"
             maxLength={4}

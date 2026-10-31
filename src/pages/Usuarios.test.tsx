@@ -497,6 +497,22 @@ describe("el PIN de autorización", () => {
       expect(api.cambiarPin).not.toHaveBeenCalled();
     });
 
+    // M3 (31-oct): el PIN que se PONE tiene ojito, como las contraseñas; ambos campos juntos.
+    it("M3: el PIN arranca oculto y el ojito lo muestra (y al repetirlo también)", async () => {
+      await abrirCambiarPin();
+      const pin = screen.getByLabelText(/^PIN/);
+      const repetido = screen.getByLabelText(/^Repetir PIN/);
+      expect(pin).toHaveAttribute("type", "password");
+      expect(repetido).toHaveAttribute("type", "password");
+      fireEvent.click(screen.getByRole("button", { name: "Mostrar PIN" }));
+      expect(pin).toHaveAttribute("type", "text");
+      expect(repetido).toHaveAttribute("type", "text");
+      // Un solo ojo para los dos.
+      expect(screen.queryByRole("button", { name: "Mostrar PIN" })).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "Ocultar PIN" }));
+      expect(pin).toHaveAttribute("type", "password");
+    });
+
     it("el aviso de un intento anterior se va al teclear otro PIN", async () => {
       await abrirCambiarPin();
       escribir("123");

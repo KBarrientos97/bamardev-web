@@ -119,12 +119,15 @@ export function InputPassword({
   visible,
   onCambiarVisible,
   sinOjo = false,
+  nombre = "contraseña",
   className = "",
   ...props
 }: Omit<InputHTMLAttributes<HTMLInputElement>, "type"> & {
   visible?: boolean;
   onCambiarVisible?: (visible: boolean) => void;
   sinOjo?: boolean;
+  /** Lo que se muestra u oculta, para el nombre accesible del ojo (M3: «PIN»). */
+  nombre?: string;
 }) {
   const [visiblePropio, setVisiblePropio] = useState(false);
   const mostrando = visible ?? visiblePropio;
@@ -147,9 +150,9 @@ export function InputPassword({
           // Sin esto, el clic le saca el foco al campo y el que tipeaba tiene
           // que volver a tocarlo para seguir escribiendo.
           onMouseDown={(e) => e.preventDefault()}
-          aria-label={mostrando ? "Ocultar contraseña" : "Mostrar contraseña"}
+          aria-label={mostrando ? `Ocultar ${nombre}` : `Mostrar ${nombre}`}
           aria-pressed={mostrando}
-          title={mostrando ? "Ocultar contraseña" : "Mostrar contraseña"}
+          title={mostrando ? `Ocultar ${nombre}` : `Mostrar ${nombre}`}
           className="absolute inset-y-0 right-0 flex w-11 items-center justify-center rounded-r-xl text-texto-4 transition-colors hover:text-texto-2 focus-visible:text-primary focus-visible:outline-none"
         >
           {/* El ícono muestra lo que va a pasar al tocarlo, como en Chrome. */}
