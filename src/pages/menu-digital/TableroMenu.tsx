@@ -59,9 +59,15 @@ export function TableroMenu({
           )}
         </div>
         {pantalla.logo && datos.logo && (
-          <div className="flex shrink-0 items-center justify-center" style={{ height: 104, maxWidth: 280, padding: 8, borderRadius: 16, background: "#FFFFFF" }}>
-            <img src={datos.url(datos.logo)} alt={datos.negocio} style={{ maxHeight: 88, maxWidth: 264, objectFit: "contain" }} />
-          </div>
+          // Tal cual lo subió el dueño, sin recuadro (Kevin, 31-oct): el
+          // marco blanco se leía como un borde alrededor de los logos que ya
+          // traen su propio fondo, como el negro de la pollería.
+          <img
+            src={datos.url(datos.logo)}
+            alt={datos.negocio}
+            className="shrink-0"
+            style={{ maxHeight: 104, maxWidth: 280, objectFit: "contain" }}
+          />
         )}
       </header>
 
