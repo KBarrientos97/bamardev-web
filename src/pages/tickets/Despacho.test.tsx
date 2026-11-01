@@ -97,15 +97,27 @@ describe("Despacho", () => {
   });
 
   it("el acceso de despacho sale desde acá, confirmando: volver a entrar es tipear la contraseña", async () => {
+    api.tablero.mockResolvedValue(tablero([ticket({ estado: "ENTREGADO", entregadoEn: new Date(ahora).toISOString() })]));
     const onSalir = vi.fn();
     render(<Despacho onSalir={onSalir} />);
-    await screen.findByText("072");
+    await screen.findByText(/0 en preparación · 0 listos por entregar/);
     fireEvent.click(screen.getByRole("button", { name: "Salir" }));
     expect(onSalir).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "No" }));
     fireEvent.click(screen.getByRole("button", { name: "Salir" }));
     fireEvent.click(screen.getByRole("button", { name: "Sí, salir" }));
     expect(onSalir).toHaveBeenCalledTimes(1);
+  });
+
+  it("con pedidos en el tablero el acceso de despacho no sale (Kevin, 1-nov)", async () => {
+    // El cliente se quedaría con su número y nadie para llamarlo.
+    const onSalir = vi.fn();
+    render(<Despacho onSalir={onSalir} />);
+    await screen.findByText("072");
+    fireEvent.click(screen.getByRole("button", { name: "Salir" }));
+    expect(screen.queryByRole("button", { name: "Sí, salir" })).not.toBeInTheDocument();
+    expect(await screen.findByText("Quedan 2 pedidos sin entregar: entregalos antes de salir.")).toBeInTheDocument();
+    expect(onSalir).not.toHaveBeenCalled();
   });
 
   it("quien despacha desde el menú (la cajera) no tiene el botón de salir", async () => {

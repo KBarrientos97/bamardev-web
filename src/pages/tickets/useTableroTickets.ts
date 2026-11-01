@@ -122,6 +122,15 @@ export function listos(tickets: TicketPedido[]): TicketPedido[] {
     .sort((a, b) => Date.parse(b.llamadoEn ?? b.listoEn ?? b.creadoEn) - Date.parse(a.llamadoEn ?? a.listoEn ?? a.creadoEn));
 }
 
+/**
+ * Los pedidos que siguen en el despacho: en preparación o listos sin
+ * entregar. Con alguno, ni la cajera ni el acceso de despacho cierran sesión
+ * (Kevin, 1-nov): el cliente se quedaba con su número y nadie para llamarlo.
+ */
+export function sinEntregar(tickets: TicketPedido[]): number {
+  return tickets.filter((t) => t.estado === "PREPARANDO" || t.estado === "LISTO").length;
+}
+
 /** Los entregados, del último al primero. */
 export function entregados(tickets: TicketPedido[]): TicketPedido[] {
   return tickets

@@ -19,6 +19,8 @@ const sesion = vi.hoisted(() => ({
   logout: vi.fn(),
   cola: [] as { estado: string }[],
   sinSenal: false,
+  esAdministrador: false,
+  features: [] as string[],
 }));
 
 vi.mock("../store/AuthContext", async () => {
@@ -26,8 +28,16 @@ vi.mock("../store/AuthContext", async () => {
   const { permisosDe } = await import("../test/sesiones");
   return {
     useAuth: () => ({
-      usuario: { id: 7, nombre: "Ana", username: "ana", rol: "CAJERO", rolNombre: "Cajera", permisos: sesion.permisos },
-      negocio: { id: 3, nombre: "Pollería" },
+      usuario: {
+        id: 7,
+        nombre: "Ana",
+        username: "ana",
+        rol: "CAJERO",
+        rolNombre: "Cajera",
+        permisos: sesion.permisos,
+        esAdministrador: sesion.esAdministrador,
+      },
+      negocio: { id: 3, nombre: "Pollería", features: sesion.features },
       licencia: null,
       cupo: null,
       logout: sesion.logout,
@@ -54,8 +64,12 @@ vi.mock("../lib/offline/cola", async (original) => ({
 // Lo del billar que corre de fondo sondea el tablero: acá no hace falta.
 vi.mock("../pages/billar/DeFondo", () => ({ default: () => null }));
 
+vi.mock("../lib/apiTickets", () => ({ apiTickets: { tablero: vi.fn() } }));
+
 import { api } from "../lib/api";
-import { cajaAbiertaAlSalir, useCerrarSesion } from "./CerrarSesion";
+import { apiTickets } from "../lib/apiTickets";
+import type { TableroTickets, TicketPedido } from "../types/tickets";
+import { cajaAbiertaAlSalir, revisaCaja, revisaDespacho, useCerrarSesion } from "./CerrarSesion";
 import Layout from "./Layout";
 
 /** El botón del menú, con el aviso al lado: lo mismo que hace el Layout. */
@@ -77,16 +91,34 @@ function Pos() {
   return <p>POS {JSON.stringify(state)}</p>;
 }
 
-function montar(antesDeAvisar?: () => void) {
+function montar(antesDeAvisar?: () => void, desde = "/inventario") {
   render(
-    <MemoryRouter initialEntries={["/inventario"]}>
+    <MemoryRouter initialEntries={[desde]}>
       <Routes>
         <Route path="/inventario" element={<Menu antesDeAvisar={antesDeAvisar} />} />
+        {/* El menú abierto parado en el Punto de Venta. */}
+        <Route path="/pos/venta" element={<Menu antesDeAvisar={antesDeAvisar} />} />
         <Route path="/pos" element={<Pos />} />
+        <Route path="/despacho" element={<p>Despacho</p>} />
       </Routes>
     </MemoryRouter>,
   );
 }
+
+const ticket = (id: number, estado: TicketPedido["estado"]): TicketPedido => ({
+  id,
+  numero: id,
+  estado,
+  creadoEn: "2026-11-01T14:00:00Z",
+  listoEn: null,
+  llamadoEn: null,
+  llamados: 0,
+  entregadoEn: null,
+  comprobante: null,
+  items: [],
+});
+
+const tablero = (...tickets: TicketPedido[]) => ({ siguiente: 9, tickets }) as unknown as TableroTickets;
 
 async function salir() {
   await act(async () => {
@@ -102,7 +134,97 @@ beforeEach(() => {
   sesion.permisos = ["caja.operar", "ventas.vender"];
   sesion.cola = [];
   sesion.sinSenal = false;
+  sesion.esAdministrador = false;
+  sesion.features = [];
   vi.mocked(api.cajaActual).mockResolvedValue({ caja: null });
+  vi.mocked(apiTickets.tablero).mockResolvedValue(tablero());
+});
+
+describe("el administrador: la caja lo frena sólo en el Punto de Venta (Kevin, 1-nov)", () => {
+  it("desde otra pantalla sale normal aunque tenga la caja abierta", async () => {
+    sesion.esAdministrador = true;
+    vi.mocked(api.cajaActual).mockResolvedValue(CAJA_ABIERTA);
+    montar();
+    await salir();
+    expect(api.cajaActual).not.toHaveBeenCalled();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(sesion.logout).toHaveBeenCalledTimes(1);
+  });
+
+  it("parado en el Punto de Venta con la caja abierta no sale", async () => {
+    sesion.esAdministrador = true;
+    vi.mocked(api.cajaActual).mockResolvedValue(CAJA_ABIERTA);
+    montar(undefined, "/pos/venta");
+    await salir();
+    expect(screen.getByRole("dialog", { name: "Caja abierta" })).toBeInTheDocument();
+    expect(sesion.logout).not.toHaveBeenCalled();
+  });
+
+  it("los pedidos del despacho no lo frenan", async () => {
+    sesion.esAdministrador = true;
+    sesion.features = ["tickets_pedido"];
+    vi.mocked(apiTickets.tablero).mockResolvedValue(tablero(ticket(1, "PREPARANDO")));
+    montar();
+    await salir();
+    expect(apiTickets.tablero).not.toHaveBeenCalled();
+    expect(sesion.logout).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("la cajera no sale con pedidos en el despacho (Kevin, 1-nov)", () => {
+  beforeEach(() => {
+    sesion.features = ["tickets_pedido"];
+  });
+
+  it("con uno en preparación y otro listo: no sale y dice cuántos quedan", async () => {
+    vi.mocked(apiTickets.tablero).mockResolvedValue(
+      tablero(ticket(1, "PREPARANDO"), ticket(2, "LISTO"), ticket(3, "ENTREGADO")),
+    );
+    montar();
+    await salir();
+    const aviso = screen.getByRole("dialog", { name: "Pedidos sin entregar" });
+    expect(aviso).toHaveTextContent("Quedan 2 pedidos en Despacho sin entregar.");
+    expect(sesion.logout).not.toHaveBeenCalled();
+  });
+
+  it("con todo entregado sale", async () => {
+    vi.mocked(apiTickets.tablero).mockResolvedValue(tablero(ticket(3, "ENTREGADO")));
+    montar();
+    await salir();
+    expect(sesion.logout).toHaveBeenCalledTimes(1);
+  });
+
+  it("si no se puede saber, deja salir", async () => {
+    vi.mocked(apiTickets.tablero).mockRejectedValue(new Error("No se pudo conectar con el servidor."));
+    montar();
+    await salir();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(sesion.logout).toHaveBeenCalledTimes(1);
+  });
+
+  it("sin el extra de tickets (Omar) ni pregunta", async () => {
+    sesion.features = [];
+    montar();
+    await salir();
+    expect(apiTickets.tablero).not.toHaveBeenCalled();
+    expect(sesion.logout).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("las reglas, sueltas", () => {
+  it("la caja: a quien opera caja siempre; al administrador sólo en el POS", () => {
+    expect(revisaCaja({ operaCaja: true, esAdministrador: false, enPos: false })).toBe(true);
+    expect(revisaCaja({ operaCaja: true, esAdministrador: true, enPos: false })).toBe(false);
+    expect(revisaCaja({ operaCaja: true, esAdministrador: true, enPos: true })).toBe(true);
+    expect(revisaCaja({ operaCaja: false, esAdministrador: false, enPos: true })).toBe(false);
+  });
+
+  it("el despacho: sólo la cajera, y con el extra", () => {
+    expect(revisaDespacho({ operaCaja: true, esAdministrador: false, conTickets: true })).toBe(true);
+    expect(revisaDespacho({ operaCaja: true, esAdministrador: true, conTickets: true })).toBe(false);
+    expect(revisaDespacho({ operaCaja: true, esAdministrador: false, conTickets: false })).toBe(false);
+    expect(revisaDespacho({ operaCaja: false, esAdministrador: false, conTickets: true })).toBe(false);
+  });
 });
 
 describe("restaurante: con la caja abierta no se cierra sesión", () => {
