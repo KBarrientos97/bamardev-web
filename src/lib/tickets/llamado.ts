@@ -111,7 +111,7 @@ interface Nota {
  * Las notas de cada tono. Cortas y claras: tienen que oírse sobre la freidora.
  * La app de Android las arma igual (`SonidoTv.notasDe`).
  *
- * El "timbre" y el "mostrador" son campanas: cada golpe es una nota con sus
+ * El "timbre" y el "turnero" son campanas: cada golpe es una nota con sus
  * armónicos, que se apagan antes que ella. Sin los armónicos, un seno solo
  * suena a pitido de electrodoméstico.
  */
@@ -130,15 +130,17 @@ const NOTAS: Record<TonoTv, Nota[]> = {
     { hz: 1244.51, en: 0.6, dura: 0.8, vol: 0.3 },
     { hz: 1866.76, en: 0.6, dura: 0.45, vol: 0.12 },
   ],
-  // La campanita del mostrador de la cocina, tocada dos veces. Los armónicos
-  // no son múltiplos exactos (2,76 y 5,4 veces): así suena el metal.
-  mostrador: [
-    { hz: 1318.5, en: 0, dura: 1.5 },
-    { hz: 3639, en: 0, dura: 0.5, vol: 0.25 },
-    { hz: 7120, en: 0, dura: 0.25, vol: 0.08 },
-    { hz: 1318.5, en: 0.32, dura: 1.8 },
-    { hz: 3639, en: 0.32, dura: 0.5, vol: 0.25 },
-    { hz: 7120, en: 0.32, dura: 0.25, vol: 0.08 },
+  // El aviso de turno de un banco: un dong-ding que sube (el del banco baja),
+  // con timbre de vibráfono: sus armónicos suenan a 4 y a 10 veces la nota y se
+  // apagan enseguida. Reemplazó el 1-nov al "mostrador" (una campanita tocada
+  // dos veces): a Kevin ese "ding ding" no le gustó.
+  turnero: [
+    { hz: 523.25, en: 0, dura: 1.3 },
+    { hz: 2093, en: 0, dura: 0.35, vol: 0.18 },
+    { hz: 5232.5, en: 0, dura: 0.12, vol: 0.05 },
+    { hz: 880, en: 0.4, dura: 1.9 },
+    { hz: 3520, en: 0.4, dura: 0.45, vol: 0.18 },
+    { hz: 8800, en: 0.4, dura: 0.15, vol: 0.05 },
   ],
   ascensor: [
     { hz: 880, en: 0, dura: 1.4, forma: "triangle" },
@@ -184,22 +186,42 @@ export interface VozDisponible {
 }
 
 // El navegador no dice si una voz es de mujer o de hombre: se sabe por el
-// nombre. Los de Microsoft (Sabina, Raúl, las "Natural" de Edge como Sofía y
-// Marcelo de Bolivia), los de Apple (Paulina, Mónica, Jorge, Diego), la
-// "Google español" (mujer) y los códigos del motor de Google en Android.
+// nombre, en este orden.
+//
+// 1) Lo que el nombre dice de sí mismo: "Female Spanish", o el "#female_1" /
+//    "#male_3" que el motor viejo de Google ponía detrás del código. Sin letra
+//    pegada a los lados: "Malena" no es "male".
+const MARCA = /(?:^|[^a-záéíóúñ])(female|male|mujer|hombre|femenin[ao]|masculin[ao])(?:[^a-záéíóúñ]|$)/i;
+// 2) Los códigos del motor de Google en Android, según la lista de sus voces
+//    (no por intuición: hasta el 1-nov "es-us-x-esf" figuraba como de mujer, es
+//    de hombre, y con "Mujer" el teléfono de Kevin hablaba con voz de hombre).
+const CODIGOS_MUJER = /es-us-x-(esc|sfb)|es-es-x-ee[ace]|es-(us|es)-language/i;
+const CODIGOS_HOMBRE = /es-us-x-es[df]|es-es-x-ee[df]/i;
+// 3) Los nombres de persona: Microsoft (Sabina, Raúl, las "Natural" de Edge
+//    como Sofía y Marcelo de Bolivia), Apple (Paulina, Mónica, Jorge, Diego) y
+//    la "Google español" (mujer).
 const NOMBRES_MUJER =
-  /\b(sabina|helena|laura|paulina|m[oó]nica|marisol|ang[eé]lica|soledad|esperanza|paloma|elvira|dalia|elena|salom[eé]|camila|valentina|ximena|sof[ií]a|lupe|pilar|conchita|pen[eé]lope|luc[ií]a|isabela|abril|irene|estrella|triana|vera|karla|catalina|lorena|yolanda|beatriz|marta|carmen|renata|francisca|andrea|tatiana|teresa|mar[ií]a|ana|carla|female|mujer|femenin[ao])\b|google espa[nñ]ol|es-us-x-es[cf]|es-es-x-ee[ac]/i;
+  /\b(sabina|helena|laura|paulina|m[oó]nica|marisol|ang[eé]lica|soledad|esperanza|paloma|elvira|dalia|elena|salom[eé]|camila|valentina|ximena|sof[ií]a|lupe|pilar|conchita|pen[eé]lope|luc[ií]a|isabela|abril|irene|estrella|triana|vera|karla|catalina|lorena|yolanda|beatriz|marta|carmen|renata|francisca|andrea|tatiana|teresa|mar[ií]a|ana|carla|candela|carlota|larissa|nuria|marina)\b|google espa[nñ]ol/i;
 const NOMBRES_HOMBRE =
-  /\b(ra[uú]l|pablo|jorge|diego|juan|carlos|enrique|marcelo|[aá]lvaro|gonzalo|tom[aá]s|andr[eé]s|gerardo|alonso|emilio|lorenzo|mateo|luciano|ricardo|manuel|rodrigo|sergio|miguel|arnau|dar[ií]o|el[ií]as|sa[uú]l|alejandro|federico|mario|roberto|v[ií]ctor|luis|rafael|sebasti[aá]n|javier|fernando|antonio|jos[eé]|male|hombre|masculin[ao])\b|es-us-x-esd|es-es-x-ee[df]/i;
+  /\b(ra[uú]l|pablo|jorge|diego|juan|carlos|enrique|marcelo|[aá]lvaro|gonzalo|tom[aá]s|andr[eé]s|gerardo|alonso|emilio|lorenzo|mateo|luciano|ricardo|manuel|rodrigo|sergio|miguel|arnau|dar[ií]o|el[ií]as|sa[uú]l|alejandro|federico|mario|roberto|v[ií]ctor|luis|rafael|sebasti[aá]n|javier|fernando|antonio|jos[eé]|alex|cecilio|liberto|pelayo|yago)\b/i;
 /** Las voces de servidor o mejoradas: suenan como una persona y no como un contestador. */
 const NATURAL = /natural|neural|online|enhanced|premium|mejorad|google/i;
 
 /** De quién es la voz, por su nombre; null si el nombre no lo dice. */
 export function tipoDeVoz(nombre: string): TipoVoz | null {
-  // Mujer primero: "female" contiene "male".
+  const marca = MARCA.exec(nombre)?.[1].toLowerCase();
+  if (marca) return /^(female|mujer|femenin)/.test(marca) ? "mujer" : "hombre";
+  if (CODIGOS_MUJER.test(nombre)) return "mujer";
+  if (CODIGOS_HOMBRE.test(nombre)) return "hombre";
   if (NOMBRES_MUJER.test(nombre)) return "mujer";
   if (NOMBRES_HOMBRE.test(nombre)) return "hombre";
   return null;
+}
+
+/** Español de este lado del mar: el acento que el cliente entiende sin esfuerzo. */
+function latina(lang: string): boolean {
+  const l = lang.replace("_", "-").toLowerCase();
+  return /^es-[a-z0-9]+$/.test(l) && l !== "es-es";
 }
 
 /** Cuanto más cerca de Bolivia, mejor se le entiende al cliente. */
@@ -214,7 +236,13 @@ function cercania(lang: string): number {
 
 /**
  * La voz para el llamado, entre las del navegador: en español, del tipo que
- * eligió el dueño, la más natural y la más cercana a Bolivia, en ese orden.
+ * eligió el dueño, latina, la más natural y la más cercana a Bolivia, en ese
+ * orden.
+ *
+ * Latina antes que natural (Kevin, 1-nov: "una voz neutral latina"): la
+ * "Google español" de Chrome, de España, le ganaba a la Sabina de México por
+ * ser de servidor. En Edge están las dos cosas juntas (Sofía y Marcelo de
+ * Bolivia, Dalia y Jorge de México): son las que suenan como un anuncio.
  *
  * `tono` acerca la voz al tipo pedido cuando el navegador no tiene ninguna de
  * ese tipo (un televisor suele traer una sola voz, casi siempre de mujer): se
@@ -227,7 +255,7 @@ export function elegirVoz<V extends VozDisponible>(voces: V[], tipo: TipoVoz): {
     const deQuien = tipoDeVoz(v.name);
     const parecido = deQuien === tipo ? 2 : deQuien === null ? 1 : 0;
     const natural = NATURAL.test(v.name) || v.localService === false ? 1 : 0;
-    return parecido * 100 + natural * 10 + cercania(v.lang);
+    return parecido * 1000 + (latina(v.lang) ? 100 : 0) + natural * 10 + cercania(v.lang);
   };
   const voz = [...enEspanol].sort((a, b) => puntaje(b) - puntaje(a))[0] ?? null;
   return { voz, tono: tonoPara(tipo, voz ? tipoDeVoz(voz.name) : null) };

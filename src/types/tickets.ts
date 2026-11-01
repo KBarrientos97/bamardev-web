@@ -42,8 +42,8 @@ export interface TableroTickets {
 export const TEMAS_TV = ["rojo", "verde", "brasa", "crema", "personalizado"] as const;
 export type TemaTv = (typeof TEMAS_TV)[number];
 
-/** Los del backend (`TONOS_TV` de `tickets/ajustes-tv.ts`). "campanilla" y "bip" salieron el 1-nov. */
-export const TONOS_TV = ["banco", "timbre", "mostrador", "ascensor"] as const;
+/** Los del backend (`TONOS_TV` de `tickets/ajustes-tv.ts`). "campanilla", "bip" y "mostrador" salieron el 1-nov. */
+export const TONOS_TV = ["banco", "timbre", "turnero", "ascensor"] as const;
 export type TonoTv = (typeof TONOS_TV)[number];
 
 export const TIPOS_VOZ = ["mujer", "hombre"] as const;

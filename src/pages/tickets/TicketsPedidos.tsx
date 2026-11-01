@@ -543,7 +543,7 @@ function PestanaDiseno({
 const NOMBRE_TONO: Record<TonoTv, string> = {
   banco: "Banco · ding-dong",
   timbre: "Timbre · ding-dong largo",
-  mostrador: "Mostrador · ding ding",
+  turnero: "Turnero · dong-ding",
   ascensor: "Ascensor · suave",
 };
 

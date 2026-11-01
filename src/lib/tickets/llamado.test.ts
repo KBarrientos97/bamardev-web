@@ -65,6 +65,38 @@ describe("qué voz dice el número", () => {
     expect(tipoDeVoz("Female Spanish")).toBe("mujer");
     expect(tipoDeVoz("es-MX-language")).toBeNull();
   });
+
+  it("los códigos de Google van según la lista de sus voces", () => {
+    // Hasta el 1-nov "esf" figuraba como de mujer: con "Mujer" elegida, el
+    // teléfono de Kevin hablaba con la voz de un hombre.
+    expect(tipoDeVoz("es-us-x-esf-local")).toBe("hombre");
+    expect(tipoDeVoz("es-us-x-esc-network")).toBe("mujer");
+    expect(tipoDeVoz("es-us-x-sfb-local")).toBe("mujer");
+    expect(tipoDeVoz("es-es-x-eee-local")).toBe("mujer");
+    expect(tipoDeVoz("es-es-x-eef-local")).toBe("hombre");
+  });
+
+  it("la marca del motor viejo de Google manda sobre el código", () => {
+    // "sfb" es de mujer, pero el motor viejo armaba varias voces con el mismo
+    // código y les ponía "#male_1" o "#female_2" detrás.
+    expect(tipoDeVoz("es-us-x-sfb#male_1-local")).toBe("hombre");
+    expect(tipoDeVoz("es-us-x-sfb#female_2-local")).toBe("mujer");
+    // Sin letra pegada: "Malena" no es "male".
+    expect(tipoDeVoz("Malena")).toBeNull();
+  });
+
+  it("prefiere una voz latina aunque la de España sea de servidor", () => {
+    // Kevin, 1-nov: "una voz neutral latina". En Chrome de escritorio la
+    // "Google español" (España) le ganaba a la Sabina de México.
+    const chrome = [
+      { name: "Google español", lang: "es-ES", localService: false },
+      { name: "Microsoft Sabina - Spanish (Mexico)", lang: "es-MX", localService: true },
+    ];
+    expect(elegirVoz(chrome, "mujer").voz).toBe(chrome[1]);
+    // Y entre dos latinas de mujer, la de servidor.
+    const conEeuu = [...chrome, { name: "Google español de Estados Unidos", lang: "es-US", localService: false }];
+    expect(elegirVoz(conEeuu, "mujer").voz).toBe(conEeuu[2]);
+  });
 });
 
 describe("los colores de la TV", () => {
