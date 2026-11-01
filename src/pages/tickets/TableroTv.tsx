@@ -143,7 +143,7 @@ export function TableroTv({
                   {fichas.map((f) => (
                     <span
                       // Con la hora del llamado: después de reiniciar la
-                      // numeración puede haber dos 0001 listos a la vez.
+                      // numeración puede haber dos 001 listos a la vez.
                       key={`${f.numero}-${f.llamadoEn}`}
                       className="font-black tabular-nums"
                       style={{

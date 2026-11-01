@@ -1,28 +1,69 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cronometro, demora, listos, preparando } from "../../pages/tickets/useTableroTickets";
 import type { TicketPedido } from "../../types/tickets";
-import { esClaro, minutosDesde, numeroTicket, paletaTv, textoVoz } from "./llamado";
+import { elegirVoz, esClaro, minutosDesde, numeroTicket, paletaTv, textoVoz, tipoDeVoz } from "./llamado";
 import { llamadosNuevos, VIGENCIA_MS } from "./llamadosNuevos";
 
 describe("cómo se canta el número", () => {
-  it("con cuatro cifras, y pasado 9999 sigue creciendo", () => {
-    expect(numeroTicket(72)).toBe("0072");
-    expect(numeroTicket(12345)).toBe("12345");
+  it("con tres cifras, y pasado 999 sigue creciendo", () => {
+    expect(numeroTicket(1)).toBe("001");
+    expect(numeroTicket(72)).toBe("072");
+    expect(numeroTicket(1234)).toBe("1234");
   });
 
-  it("la voz lo dice dígito por dígito, como está impreso", () => {
-    // "setenta y dos" no se parece a lo que el cliente tiene en la mano.
-    expect(textoVoz(72, "TICKET", "Su pedido está listo")).toBe(
-      "Ticket, cero, cero, siete, dos. Su pedido está listo.",
-    );
+  it("la voz dice el número entero, sin los ceros de adelante", () => {
+    // Kevin, 1-nov: "cero, cero, siete, dos" sonaba robótico. La voz lee
+    // "72" como "setenta y dos" y el "50" como "cincuenta".
+    expect(textoVoz(72, "TICKET", "Su pedido está listo")).toBe("Ticket 72. Su pedido está listo.");
+    expect(textoVoz(50, "TICKET", "")).toBe("Ticket 50.");
   });
 
   it("sin etiqueta ni frase dice sólo el número", () => {
-    expect(textoVoz(5, "  ", "")).toBe("cero, cero, cero, cinco.");
+    expect(textoVoz(5, "  ", "")).toBe("5.");
   });
 
   it("no duplica el punto ni los signos de la frase", () => {
-    expect(textoVoz(1, "Pedido", "¡Ya está listo!")).toBe("Pedido, cero, cero, cero, uno. ¡Ya está listo.");
+    expect(textoVoz(1, "Pedido", "¡Ya está listo!")).toBe("Pedido 1. ¡Ya está listo.");
+  });
+});
+
+describe("qué voz dice el número", () => {
+  const voces = [
+    { name: "Microsoft Raul - Spanish (Mexico)", lang: "es-MX", localService: true },
+    { name: "Microsoft Sabina - Spanish (Mexico)", lang: "es-MX", localService: true },
+    { name: "Microsoft Sofia Online (Natural) - Spanish (Bolivia)", lang: "es-BO", localService: false },
+    { name: "Microsoft Marcelo Online (Natural) - Spanish (Bolivia)", lang: "es-BO", localService: false },
+    { name: "Google US English", lang: "en-US", localService: false },
+  ];
+
+  it("de mujer o de hombre según lo que eligió el dueño, y la más natural", () => {
+    expect(elegirVoz(voces, "mujer")).toEqual({ voz: voces[2], tono: 1 });
+    expect(elegirVoz(voces, "hombre")).toEqual({ voz: voces[3], tono: 1 });
+  });
+
+  it("sin voz de hombre, usa la que hay y le baja el tono", () => {
+    // Un televisor suele traer una sola voz, de mujer: el dueño que eligió
+    // hombre igual tiene que notar la diferencia.
+    const r = elegirVoz([voces[1]], "hombre");
+    expect(r.voz).toBe(voces[1]);
+    expect(r.tono).toBeLessThan(1);
+  });
+
+  it("una voz que no dice de quién es se toma sin correrla para una mujer", () => {
+    const sinNombre = [{ name: "es-BO-language", lang: "es-BO" }];
+    expect(elegirVoz(sinNombre, "mujer").tono).toBe(1);
+    expect(elegirVoz(sinNombre, "hombre").tono).toBeLessThan(1);
+  });
+
+  it("sin ninguna voz en español no elige ninguna", () => {
+    expect(elegirVoz([voces[4]], "mujer").voz).toBeNull();
+  });
+
+  it("reconoce de quién es por el nombre, también los códigos de Google", () => {
+    expect(tipoDeVoz("Google español")).toBe("mujer");
+    expect(tipoDeVoz("es-us-x-esd-local")).toBe("hombre");
+    expect(tipoDeVoz("Female Spanish")).toBe("mujer");
+    expect(tipoDeVoz("es-MX-language")).toBeNull();
   });
 });
 

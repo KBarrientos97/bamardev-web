@@ -1,4 +1,4 @@
-import type { AjustesTicketsTv, TemaTv, TonoTv } from "../../types/tickets";
+import type { AjustesTicketsTv, TemaTv, TipoVoz, TonoTv } from "../../types/tickets";
 
 /**
  * Cómo suena y cómo se ve el llamado de un número: lo comparten la TV de
@@ -10,26 +10,26 @@ import type { AjustesTicketsTv, TemaTv, TonoTv } from "../../types/tickets";
  * tono suena igual.
  */
 
-/** "0072": el número como se canta y se imprime. Pasado 9999 sigue creciendo. */
+/**
+ * "072": el número como se ve y se imprime. Con tres cifras (Kevin, 1-nov: con
+ * cuatro sobraba un cero); pasado 999 sigue creciendo.
+ */
 export function numeroTicket(n: number): string {
-  return String(n).padStart(4, "0");
+  return String(n).padStart(3, "0");
 }
 
-const DIGITOS = ["cero", "uno", "dos", "tres", "cuatro", "cinco", "seis", "siete", "ocho", "nueve"];
-
 /**
- * Lo que dice la voz: "Ticket, cero, cero, siete, dos. Su pedido está listo".
- * Dígito por dígito y con los ceros, como se lee en la pantalla: "setenta y
- * dos" no se parece a lo que el cliente tiene impreso en la mano.
+ * Lo que dice la voz: "Ticket 72. Su pedido está listo." El número va en
+ * cifras y la voz lo dice entero ("setenta y dos"), sin los ceros de adelante.
+ *
+ * Hasta el 1-nov se decía dígito por dígito con los ceros ("cero, cero, siete,
+ * dos") para que sonara como lo impreso; a Kevin le sonaba robótico, y el
+ * número entero se entiende igual.
  */
 export function textoVoz(numero: number, etiqueta: string, frase: string): string {
-  const cifras = numeroTicket(numero)
-    .split("")
-    .map((d) => DIGITOS[Number(d)])
-    .join(", ");
-  const quien = etiqueta.trim() ? `${conMayuscula(etiqueta.trim().toLowerCase())}, ` : "";
+  const quien = etiqueta.trim() ? `${conMayuscula(etiqueta.trim().toLowerCase())} ` : "";
   const cola = frase.trim() ? ` ${frase.trim().replace(/[.!?¡¿]+$/u, "")}.` : "";
-  return `${quien}${cifras}.${cola}`;
+  return `${quien}${numero}.${cola}`;
 }
 
 function conMayuscula(s: string): string {
@@ -103,27 +103,46 @@ interface Nota {
   en: number;
   dura: number;
   forma?: OscillatorType;
+  /** Cuánto suena al lado de la principal (los armónicos de una campana). 1 si falta. */
+  vol?: number;
 }
 
-/** Las notas de cada tono. Cortas y claras: tienen que oírse sobre la freidora. */
+/**
+ * Las notas de cada tono. Cortas y claras: tienen que oírse sobre la freidora.
+ * La app de Android las arma igual (`SonidoTv.notasDe`).
+ *
+ * El "timbre" y el "mostrador" son campanas: cada golpe es una nota con sus
+ * armónicos, que se apagan antes que ella. Sin los armónicos, un seno solo
+ * suena a pitido de electrodoméstico.
+ */
 const NOTAS: Record<TonoTv, Nota[]> = {
   // El "ding-dong" del banco: dos notas que bajan.
   banco: [
     { hz: 659.25, en: 0, dura: 0.9 },
     { hz: 523.25, en: 0.45, dura: 1.2 },
   ],
-  campanilla: [
-    { hz: 1046.5, en: 0, dura: 0.5 },
-    { hz: 1318.5, en: 0.16, dura: 0.5 },
-    { hz: 1568, en: 0.32, dura: 0.8 },
+  // Un ding-dong de timbre, más grave y más largo que el del banco.
+  timbre: [
+    { hz: 783.99, en: 0, dura: 1.4 },
+    { hz: 1567.98, en: 0, dura: 0.6, vol: 0.3 },
+    { hz: 2351.97, en: 0, dura: 0.35, vol: 0.12 },
+    { hz: 622.25, en: 0.6, dura: 1.9 },
+    { hz: 1244.51, en: 0.6, dura: 0.8, vol: 0.3 },
+    { hz: 1866.76, en: 0.6, dura: 0.45, vol: 0.12 },
+  ],
+  // La campanita del mostrador de la cocina, tocada dos veces. Los armónicos
+  // no son múltiplos exactos (2,76 y 5,4 veces): así suena el metal.
+  mostrador: [
+    { hz: 1318.5, en: 0, dura: 1.5 },
+    { hz: 3639, en: 0, dura: 0.5, vol: 0.25 },
+    { hz: 7120, en: 0, dura: 0.25, vol: 0.08 },
+    { hz: 1318.5, en: 0.32, dura: 1.8 },
+    { hz: 3639, en: 0.32, dura: 0.5, vol: 0.25 },
+    { hz: 7120, en: 0.32, dura: 0.25, vol: 0.08 },
   ],
   ascensor: [
     { hz: 880, en: 0, dura: 1.4, forma: "triangle" },
     { hz: 1320, en: 0, dura: 1.0 },
-  ],
-  bip: [
-    { hz: 1000, en: 0, dura: 0.14, forma: "square" },
-    { hz: 1000, en: 0.24, dura: 0.14, forma: "square" },
   ],
 };
 
@@ -132,14 +151,14 @@ export function sonarTono(tono: TonoTv, volumen: number): number {
   const ctx = audio();
   if (!ctx || ctx.state !== "running") return 0;
   const notas = NOTAS[tono] ?? NOTAS.banco;
-  // El cuadrado suena mucho más fuerte que el seno a la misma ganancia.
+  // 0,6 y no 1: las campanas suman sus armónicos y la cola del golpe anterior.
   const tope = Math.max(0, Math.min(1, volumen / 100)) * 0.6;
   const inicio = ctx.currentTime + 0.03;
   let fin = 0;
   for (const n of notas) {
     const osc = ctx.createOscillator();
     const vol = ctx.createGain();
-    const pico = n.forma === "square" ? tope * 0.35 : tope;
+    const pico = tope * (n.vol ?? 1);
     osc.type = n.forma ?? "sine";
     osc.frequency.value = n.hz;
     const t = inicio + n.en;
@@ -156,20 +175,82 @@ export function sonarTono(tono: TonoTv, volumen: number): number {
 
 // ── Voz ─────────────────────────────────────────────────────────────────────
 
-const IDIOMAS = ["es-BO", "es-419", "es-MX", "es-US", "es-AR", "es"];
+/** Lo que importa de una voz del navegador (así se prueba sin `speechSynthesis`). */
+export interface VozDisponible {
+  name: string;
+  lang: string;
+  /** false = la arma un servidor: las de Edge y Chrome en línea, mucho menos robóticas. */
+  localService?: boolean;
+}
+
+// El navegador no dice si una voz es de mujer o de hombre: se sabe por el
+// nombre. Los de Microsoft (Sabina, Raúl, las "Natural" de Edge como Sofía y
+// Marcelo de Bolivia), los de Apple (Paulina, Mónica, Jorge, Diego), la
+// "Google español" (mujer) y los códigos del motor de Google en Android.
+const NOMBRES_MUJER =
+  /\b(sabina|helena|laura|paulina|m[oó]nica|marisol|ang[eé]lica|soledad|esperanza|paloma|elvira|dalia|elena|salom[eé]|camila|valentina|ximena|sof[ií]a|lupe|pilar|conchita|pen[eé]lope|luc[ií]a|isabela|abril|irene|estrella|triana|vera|karla|catalina|lorena|yolanda|beatriz|marta|carmen|renata|francisca|andrea|tatiana|teresa|mar[ií]a|ana|carla|female|mujer|femenin[ao])\b|google espa[nñ]ol|es-us-x-es[cf]|es-es-x-ee[ac]/i;
+const NOMBRES_HOMBRE =
+  /\b(ra[uú]l|pablo|jorge|diego|juan|carlos|enrique|marcelo|[aá]lvaro|gonzalo|tom[aá]s|andr[eé]s|gerardo|alonso|emilio|lorenzo|mateo|luciano|ricardo|manuel|rodrigo|sergio|miguel|arnau|dar[ií]o|el[ií]as|sa[uú]l|alejandro|federico|mario|roberto|v[ií]ctor|luis|rafael|sebasti[aá]n|javier|fernando|antonio|jos[eé]|male|hombre|masculin[ao])\b|es-us-x-esd|es-es-x-ee[df]/i;
+/** Las voces de servidor o mejoradas: suenan como una persona y no como un contestador. */
+const NATURAL = /natural|neural|online|enhanced|premium|mejorad|google/i;
+
+/** De quién es la voz, por su nombre; null si el nombre no lo dice. */
+export function tipoDeVoz(nombre: string): TipoVoz | null {
+  // Mujer primero: "female" contiene "male".
+  if (NOMBRES_MUJER.test(nombre)) return "mujer";
+  if (NOMBRES_HOMBRE.test(nombre)) return "hombre";
+  return null;
+}
+
+/** Cuanto más cerca de Bolivia, mejor se le entiende al cliente. */
+function cercania(lang: string): number {
+  const l = lang.replace("_", "-").toLowerCase();
+  if (l === "es-bo") return 6;
+  if (["es-419", "es-mx", "es-us"].includes(l)) return 5;
+  if (["es-ar", "es-co", "es-pe", "es-cl", "es-ec", "es-py", "es-uy", "es-ve"].includes(l)) return 4;
+  if (l === "es-es") return 3;
+  return 2;
+}
+
+/**
+ * La voz para el llamado, entre las del navegador: en español, del tipo que
+ * eligió el dueño, la más natural y la más cercana a Bolivia, en ese orden.
+ *
+ * `tono` acerca la voz al tipo pedido cuando el navegador no tiene ninguna de
+ * ese tipo (un televisor suele traer una sola voz, casi siempre de mujer): se
+ * baja para un hombre y se sube para una mujer. Con la voz justa queda en 1,
+ * porque correrla la vuelve robótica.
+ */
+export function elegirVoz<V extends VozDisponible>(voces: V[], tipo: TipoVoz): { voz: V | null; tono: number } {
+  const enEspanol = voces.filter((v) => v.lang.replace("_", "-").toLowerCase().startsWith("es"));
+  const puntaje = (v: V) => {
+    const deQuien = tipoDeVoz(v.name);
+    const parecido = deQuien === tipo ? 2 : deQuien === null ? 1 : 0;
+    const natural = NATURAL.test(v.name) || v.localService === false ? 1 : 0;
+    return parecido * 100 + natural * 10 + cercania(v.lang);
+  };
+  const voz = [...enEspanol].sort((a, b) => puntaje(b) - puntaje(a))[0] ?? null;
+  return { voz, tono: tonoPara(tipo, voz ? tipoDeVoz(voz.name) : null) };
+}
+
+function tonoPara(tipo: TipoVoz, deLaVoz: TipoVoz | null): number {
+  if (deLaVoz === tipo) return 1;
+  // Sin saber de quién es, se supone de mujer, que es la que traen casi todos.
+  if (tipo === "mujer") return deLaVoz === "hombre" ? 1.3 : 1;
+  return deLaVoz === "mujer" ? 0.75 : 0.8;
+}
 
 /** Dice el texto y avisa cuando termina (o a los 8 s, si el navegador nunca avisa). */
-function hablar(texto: string, volumen: number): Promise<void> {
+function hablar(texto: string, volumen: number, tipo: TipoVoz): Promise<void> {
   return new Promise((listo) => {
     if (typeof window === "undefined" || !("speechSynthesis" in window)) return listo();
-    const voces = window.speechSynthesis.getVoices();
-    const voz =
-      IDIOMAS.map((l) => voces.find((v) => v.lang === l || v.lang.replace("_", "-") === l)).find(Boolean) ??
-      voces.find((v) => v.lang.startsWith("es"));
+    const { voz, tono } = elegirVoz(window.speechSynthesis.getVoices(), tipo);
     const u = new SpeechSynthesisUtterance(texto);
     u.lang = voz?.lang ?? "es-BO";
     if (voz) u.voice = voz;
-    u.rate = 0.92;
+    u.pitch = tono;
+    // A velocidad normal: más lento, con el número entero, sonaba arrastrado.
+    u.rate = 1;
     u.volume = Math.max(0, Math.min(1, volumen / 100));
     const corte = setTimeout(listo, 8000);
     u.onend = u.onerror = () => {
@@ -209,7 +290,7 @@ export function anunciar(numero: number, a: AjustesTicketsTv): Promise<void> {
       for (let i = 0; i < veces; i++) {
         const dura = sonarTono(a.tono, a.volumen);
         await esperar(dura * 1000 + 120);
-        if (a.voz) await hablar(textoVoz(numero, a.textos.etiqueta, a.textos.frase), a.volumen);
+        if (a.voz) await hablar(textoVoz(numero, a.textos.etiqueta, a.textos.frase), a.volumen, a.tipoVoz ?? "mujer");
         if (i < veces - 1) await esperar(500);
       }
     } catch {

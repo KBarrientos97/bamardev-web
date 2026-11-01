@@ -597,7 +597,7 @@ describe("pedidos con número (extra tickets_pedido)", () => {
     dibujar(conNumero());
     expect(screen.getByText("NÚMERO DE TICKET DEL CLIENTE")).toBeInTheDocument();
     // En la pantalla, en el recibo y en la comanda.
-    expect(screen.getAllByText("0072")).toHaveLength(3);
+    expect(screen.getAllByText("072")).toHaveLength(3);
     expect(screen.getByRole("button", { name: /Imprimir recibo y comanda/ })).toBeInTheDocument();
     // El "Imprimir" de siempre no aparece: imprimía el recibo sin la comanda
     // y no decía cuál. Cada papel tiene el suyo, con nombre.
