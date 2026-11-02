@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import { Campo, Select } from "../../components/ui";
 import { apiAcademia } from "../../lib/academia/apiAcademia";
@@ -22,7 +22,11 @@ export type ValorAula = number | null | typeof AULA_TEXTO_ANTERIOR;
  * - un grupo viejo con el texto sin enlazar conserva ese texto mientras no se
  *   toque el selector;
  * - sin aulas cargadas se puede guardar igual, y quien configura ve el enlace
- *   a la sección Aulas (se abre aparte para no perder lo que se está llenando).
+ *   a la sección Aulas (se abre aparte para no perder lo que se está llenando);
+ * - si la sede tiene UNA sola aula activa y el grupo no tiene ninguna, viene
+ *   elegida (Lista 2 #6): con una sala, dos grupos a la misma hora siempre
+ *   chocan, y en «Sin aula» el aviso de choque nunca saltaba. Se ofrece una
+ *   vez por sede: si después se elige «Sin aula» a propósito, se respeta.
  */
 export default function SelectorAula({
   sedeId,
@@ -53,6 +57,20 @@ export default function SelectorAula({
     window.addEventListener("focus", recargar);
     return () => window.removeEventListener("focus", recargar);
   }, [vacia, recargar]);
+
+  // La única aula de la sede viene elegida, una vez por sede y sólo si el
+  // grupo no tenía aula ni un texto viejo (no se le pisa nada).
+  const ofrecidaEn = useRef<number | null>(null);
+  const unica = aulas.length === 1 ? aulas[0] : null;
+  const sinAula = actual?.id == null && !actual?.nombre;
+  useEffect(() => {
+    if (sedeId == null || lista.cargando || ofrecidaEn.current === sedeId) return;
+    if (!lista.datos) return;
+    ofrecidaEn.current = sedeId;
+    if (unica && valor === null && sinAula) onChange(unica.id);
+    // `valor` y `onChange` a propósito fuera: es una oferta de una sola vez.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sedeId, lista.cargando, lista.datos, unica, sinAula]);
 
   const propia = actual?.id != null ? aulas.find((a) => a.id === actual.id) : undefined;
   const deBaja = actual?.id != null && !propia && actual.nombre ? { id: actual.id, nombre: actual.nombre } : null;
