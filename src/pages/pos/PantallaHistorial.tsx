@@ -23,7 +23,7 @@ import { fmtFechaHora, fmtHora, fmtMoney, fmtNum } from "../../lib/format";
 import { Telefono } from "../../lib/telefono";
 import { tienePermiso, tieneFeature } from "../../lib/permisos";
 import { esBelleza, marcaConsumo } from "../../lib/rubro";
-import { modulosDeCuotaVenta, nombreDeLinea, textoAnularCuotas } from "../../lib/academia/cobroCuotas";
+import { esVentaDeCuotas, modulosDeCuotaVenta, nombreDeLinea, textoAnularCuotas } from "../../lib/academia/cobroCuotas";
 import { useApi } from "../../lib/useApi";
 import { enlaceWhatsApp, mensajePedido, pedidoDeVenta } from "../../lib/mensajePedido";
 import { conCopia } from "../../lib/offline/copias";
@@ -701,7 +701,17 @@ const MOTIVOS_ANULACION = [
   ["Producto equivocado", "Producto equivocado"],
   ["Otro", "Otro"],
 ] as const;
-type MotivoAnulacion = (typeof MOTIVOS_ANULACION)[number][0];
+/**
+ * Los de una venta de cuotas (instituto): una cuota no es un producto, así que
+ * «Producto equivocado» y «Devolución del cliente» no decían qué pasó. Lista 2 #9.
+ */
+const MOTIVOS_ANULACION_CUOTA = [
+  ["Error al cobrar", "Error al cobrar"],
+  ["Se cobró dos veces", "Se cobró dos veces"],
+  ["Cuota de otro estudiante", "Cuota de otro estudiante"],
+  ["Otro", "Otro"],
+] as const;
+type MotivoAnulacion = (typeof MOTIVOS_ANULACION)[number][0] | (typeof MOTIVOS_ANULACION_CUOTA)[number][0];
 
 /**
  * Si un pago entró por QR. Se mira por NOMBRE y no por id: `FormaPago` es una
@@ -731,6 +741,10 @@ function DialogoAnular({
   const [autorizador, setAutorizador] = useState("");
   const [pin, setPin] = useState("");
   const [motivo, setMotivo] = useState<MotivoAnulacion | "">("");
+  // Con cuotas (o sin saber qué cobró, en un instituto) los motivos de una
+  // cuota; una venta de productos conserva los de siempre.
+  const deCuotas = esVentaDeCuotas(venta) || (rubro === "ACADEMIA" && !detalleCompleto);
+  const motivos = deCuotas ? MOTIVOS_ANULACION_CUOTA : MOTIVOS_ANULACION;
   const [detalle, setDetalle] = useState("");
   const [error, setError] = useState("");
   const [enviando, setEnviando] = useState(false);
@@ -834,7 +848,7 @@ function DialogoAnular({
               confirmaría sin leerlo, y el dato no diría nada. */}
           <Chips
             valor={motivo as MotivoAnulacion}
-            opciones={MOTIVOS_ANULACION}
+            opciones={motivos}
             onChange={setMotivo}
           />
           {motivo && (
