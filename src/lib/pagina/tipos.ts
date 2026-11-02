@@ -403,6 +403,12 @@ export interface EstadoEditor {
     iniciales: string;
   };
   pagina: AjustesPagina;
+  /**
+   * Si hay cambios sin publicar (PLAN-PAGINA-WEB §4.2). Lo demás de este
+   * estado ya viene con el borrador encima. Opcional: un backend anterior
+   * no lo manda.
+   */
+  borrador?: { hay: boolean; actualizadoEn: string | null };
   imagenes: { logo: string | null; portada: string | null };
   enlaces: EnlaceEditor[];
   sucursales: SucursalEditor[];
