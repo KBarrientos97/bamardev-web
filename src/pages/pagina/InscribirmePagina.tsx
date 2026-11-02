@@ -15,7 +15,7 @@ import {
 import type { CursoPublico, FotosInscripcion, GrupoPublico, PreinscripcionEnviada, TipoFoto } from "../../lib/academia/tipos";
 import { paleta } from "../../lib/pagina/aspecto";
 import { enlaceWhatsapp } from "../../lib/pagina/catalogo";
-import { urlPaginaDe, urlPrivacidadDe } from "../../lib/pagina/rutas";
+import { urlMiCuentaDe, urlPaginaDe, urlPrivacidadDe } from "../../lib/pagina/rutas";
 import { usePaginaPublica } from "../../lib/pagina/usePaginaPublica";
 import { faltaTexto } from "../../lib/texto";
 import { siteKeyTurnstile } from "../../lib/turnstile";
@@ -83,9 +83,9 @@ function hoyLocal(): string {
  * es menor); las 3 fotos (opcionales acá, M4), con la cámara del celular; y cómo
  * quiere pagar (mes a mes o pago completo, con lo que ahorra).
  *
- * Mientras no exista el QR del banco (D10) no se paga acá: queda como
- * inscripción online y el instituto escribe por WhatsApp para confirmar el
- * lugar. La respuesta es la misma haya o no cupo (antiabuso).
+ * No se paga en este formulario: queda preinscrito, y el pago (desde la
+ * página con «Pagar mi inscripción», o en el instituto) es lo que asegura el
+ * lugar (M5). Un grupo lleno ya no recibe preinscripciones: no se puede elegir.
  */
 export default function InscribirmePagina() {
   const { subdominio = "", grupoId } = useParams();
@@ -143,6 +143,7 @@ export default function InscribirmePagina() {
               color={c.oscuro}
               whatsapp={enlaceWhatsapp(pagina)?.url ?? null}
               urlPagina={urlPaginaDe(sub)}
+              urlMiCuenta={urlMiCuentaDe(sub)}
             />
           ) : (
             <Formulario
@@ -219,7 +220,11 @@ function Formulario({
 
   /** Lo que no deja seguir en cada paso, dicho en una línea. */
   function motivo(p: Paso): string {
-    if (p === 1) return grupo ? "" : "Elegí un horario para seguir";
+    if (p === 1) {
+      if (!grupo) return "Elegí un horario para seguir";
+      // M5: sólo el pago cubre el cupo, y con el grupo lleno ya no se recibe.
+      return grupo.cuposLibres === 0 ? "Ese grupo está lleno, comunicate con la academia o elegí otro horario" : "";
+    }
     if (p === 2) {
       const f: string[] = [];
       if (!datos.ci.trim()) f.push("tu carnet");
@@ -284,6 +289,10 @@ function Formulario({
         setMarcadas(faltan);
         setPaso(3);
         setError(faltan.length ? `${textoFaltanFotos(faltan.length)}: sacalas de nuevo.` : e.message);
+      } else if (codigo === "GRUPO_LLENO") {
+        // Se llenó mientras completaba el formulario: vuelve a elegir horario.
+        setPaso(1);
+        setError("El grupo está lleno, comunicate con la academia o elegí otro horario.");
       } else if (codigo === "GRUPO_NO_DISPONIBLE" || codigo === "PREINSCRIPCION_NO_DISPONIBLE") {
         onCerrada();
         return;
@@ -339,7 +348,7 @@ function Formulario({
                       aria-checked={on}
                       onClick={() => {
                         setCursoId(x.id);
-                        setGrupoId(x.grupos[0]?.id ?? null);
+                        setGrupoId((x.grupos.find((g) => g.cuposLibres !== 0) ?? x.grupos[0])?.id ?? null);
                         setPlanId(null);
                       }}
                       className="min-h-10 rounded-full border px-3.5 py-1.5 text-sm"
@@ -368,17 +377,21 @@ function Formulario({
               {curso.grupos.map((g) => {
                 const on = g.id === grupoId;
                 const empezo = g.fechaInicio <= hoyLocal();
+                const lleno = g.cuposLibres === 0;
                 return (
                   <button
                     key={g.id}
                     type="button"
                     role="radio"
                     aria-checked={on}
-                    onClick={() => setGrupoId(g.id)}
-                    className="flex w-full items-start gap-3 rounded-xl border px-3.5 py-3 text-left"
+                    aria-disabled={lleno || undefined}
+                    onClick={() => {
+                      if (!lleno) setGrupoId(g.id);
+                    }}
+                    className={`flex w-full items-start gap-3 rounded-xl border px-3.5 py-3 text-left ${lleno ? "cursor-not-allowed opacity-60" : ""}`}
                     style={{ borderColor: on ? color : "#E5E7EB", borderWidth: on ? 2 : 1, background: on ? tinte(color) : "#ffffff" }}
                   >
-                    <Marca on={on} color={color} />
+                    <Marca on={on && !lleno} color={color} />
                     <span className="min-w-0 flex-1">
                       <span className="block text-sm font-semibold text-[#111827]">{diasLargo(g.dias)}</span>
                       <span className="block text-[13px] text-[#4B5563]">
@@ -626,6 +639,7 @@ function Enviada({
   color,
   whatsapp,
   urlPagina,
+  urlMiCuenta,
 }: {
   nombre: string;
   r: PreinscripcionEnviada;
@@ -637,6 +651,7 @@ function Enviada({
   color: string;
   whatsapp: string | null;
   urlPagina: string;
+  urlMiCuenta: string;
 }) {
   const n = (curso.modulos?.length ? curso.modulos : curso.materias).length;
   return (
@@ -650,8 +665,8 @@ function Enviada({
           <Icon name="check" size={28} />
         </span>
         <h1 className="text-xl font-bold text-[#111827]">¡Listo, {nombre}!</h1>
-        <p className="mt-1 text-sm font-semibold text-[#111827]">Quedaste preinscrito. Para asegurar tu cupo, acercate a pagar lo que corresponde.</p>
-        <p className="mt-1 text-sm text-[#4B5563]">Además te vamos a escribir por WhatsApp para confirmar tu lugar.</p>
+        <p className="mt-1 text-sm font-semibold text-[#111827]">Quedaste preinscrito. Para asegurar tu cupo, pagá lo que corresponde.</p>
+        <p className="mt-1 text-sm text-[#4B5563]">Podés pagar ahora desde esta página o acercarte al instituto. Sólo el pago asegura tu lugar.</p>
       </div>
       <dl aria-label="Tu inscripción" className="divide-y divide-[#E5E7EB] rounded-xl border border-[#E5E7EB] bg-[#F9FAFB] px-4 py-1 text-sm">
         <Fila etiqueta="Curso">
@@ -682,6 +697,9 @@ function Enviada({
             Pagalo en la sede {r.grupo.sede}
             {r.grupo.direccion ? `, ${r.grupo.direccion}` : ""}. Llevá tu carnet (y el de tu tutor, si sos menor).
           </p>
+          <a href={urlMiCuenta} className="block text-[13px] font-semibold underline" style={{ color }}>
+            O pagalo desde acá con tu carnet
+          </a>
         </section>
       )}
       {sinFotos.length > 0 && (
@@ -692,13 +710,19 @@ function Enviada({
       )}
       <p className="text-[13px] text-[#4B5563]">Cuando estés inscrito te mandamos por WhatsApp el enlace a tu estado de cuenta: ahí ves siempre lo que pagaste y lo que falta.</p>
       <div className="flex flex-col gap-2">
+        <a
+          href={urlMiCuenta}
+          className="rounded-xl py-3.5 text-center text-[15px] font-semibold text-white"
+          style={{ background: color, boxShadow: "0 2px 6px rgba(15, 23, 42, 0.18)" }}
+        >
+          Pagar mi inscripción
+        </a>
         {whatsapp && (
           <a
             href={whatsapp}
             target="_blank"
             rel="noreferrer"
-            className="rounded-xl py-3.5 text-center text-[15px] font-semibold text-white"
-            style={{ background: color, boxShadow: "0 2px 6px rgba(15, 23, 42, 0.18)" }}
+            className="rounded-xl border border-[#D1D5DB] bg-white py-3.5 text-center text-[15px] font-semibold text-[#374151] hover:bg-[#F9FAFB]"
           >
             Escribirnos por WhatsApp
           </a>

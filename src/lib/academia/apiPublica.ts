@@ -1,5 +1,12 @@
 import { formularioConFotos } from "./fotos";
-import type { CursoPublico, EstadoCuentaPublico, FotosInscripcion, PreinscripcionEnviada, PreinscripcionInput } from "./tipos";
+import type {
+  CursoPublico,
+  EstadoCuentaPublico,
+  FotosInscripcion,
+  InscripcionDeMiCuenta,
+  PreinscripcionEnviada,
+  PreinscripcionInput,
+} from "./tipos";
 
 /**
  * Lo público de la academia (P1–P3): los cursos de la página y la
@@ -87,6 +94,29 @@ export const apiAcademiaPublica = {
       method: "POST",
       body: formularioConFotos(input, fotos),
     }),
+  /**
+   * M5 · «Pagar mi inscripción»: carnet + fecha de nacimiento. Si coinciden,
+   * el enlace de cada inscripción vigente; si no, siempre el mismo 404 (la
+   * página no cuenta quién estudia ahí).
+   */
+  identificar: (subdominio: string, input: { ci: string; fechaNacimiento: string; captcha?: string }) =>
+    pedir<{ inscripciones: InscripcionDeMiCuenta[] }>(`/publico/academia/${sub(subdominio)}/mi-cuenta`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  /**
+   * M5: el comprobante del QR fijo. El monto no viaja: el servidor lo calcula
+   * a partir de la opción elegida. Multipart: `datos` y la foto en `comprobante`.
+   */
+  subirComprobante: (subdominio: string, token: string, input: { opcion: "COMPLETO" | "CUOTA"; captcha?: string }, foto: Blob) => {
+    const f = new FormData();
+    f.append("datos", JSON.stringify(input));
+    f.append("comprobante", foto, `comprobante.${foto.type === "image/jpeg" ? "jpg" : "webp"}`);
+    return pedir<{ ok: true; monto: number; etiqueta: string }>(
+      `/publico/academia/${sub(subdominio)}/pagar/${encodeURIComponent(token)}/comprobante`,
+      { method: "POST", body: f },
+    );
+  },
   /** P6: el estado de cuenta del enlace que se manda por WhatsApp. */
   estadoCuenta: (subdominio: string, token: string) =>
     pedir<EstadoCuentaPublico>(`/publico/academia/${sub(subdominio)}/pagar/${encodeURIComponent(token)}`),

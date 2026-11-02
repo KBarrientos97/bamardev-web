@@ -1327,6 +1327,35 @@ export interface CursoPublico {
   planes?: { id: number; nombre: string; generado: PlanGenerado | null }[];
 }
 
+/** Cómo se cobra desde la página (M5): el QR del banco, el QR fijo o nada en línea. */
+export type ModoDeCobro = "AUTOMATIZADO" | "FIJO" | "NINGUNO";
+
+/** Una cosa que el estudiante puede pagar ahora: el monto lo calcula el servidor (M5). */
+export interface OpcionDePago {
+  clave: "COMPLETO" | "CUOTA";
+  titulo: string;
+  detalle: string;
+  monto: number;
+  /** Lo que se ahorra pagando todo junto, si hay descuento. */
+  ahorro: number | null;
+  etiqueta: string;
+  vence: string | null;
+}
+
+/** El bloque `pago` del estado de cuenta público (M5). */
+export interface PagoPublico {
+  /** El estado de la inscripción: PREINSCRITA, ACTIVA, OBSERVACION… */
+  estado: string;
+  modo: ModoDeCobro;
+  /** Sólo el pago cubre el cupo: con el grupo lleno una preinscripción no ofrece pagar. */
+  grupoLleno: boolean;
+  opciones: OpcionDePago[];
+  /** El comprobante que la recepción todavía no resolvió. */
+  enRevision: { monto: number; etiqueta: string; enviadoEn: string } | null;
+  /** El último comprobante, si lo rechazaron (la deuda sigue y puede subir otro). */
+  rechazado: { motivo: string | null; monto: number; etiqueta: string; en: string | null } | null;
+}
+
 /** `GET /publico/academia/:sub/pagar/:token` (P6): nunca CI, teléfono ni apellidos. */
 export interface EstadoCuentaPublico {
   instituto: { nombre: string; logoUrl: string | null; telefono: string | null };
@@ -1337,6 +1366,41 @@ export interface EstadoCuentaPublico {
   proxima: { concepto: string; saldo: number; vence: string; vencida: boolean } | null;
   saldoTotal: number;
   qr: { tipo: "FIJO"; imagenUrl: string } | null;
+  pago: PagoPublico;
+}
+
+/** `POST /publico/academia/:sub/mi-cuenta` (M5): una inscripción vigente y su enlace. */
+export interface InscripcionDeMiCuenta {
+  token: string;
+  estado: string;
+  nombres: string;
+  curso: string;
+  grupo: string;
+  sede: string;
+}
+
+// ── Pagos en línea: la bandeja de la recepción (M5) ─────────────────────────
+
+export type EstadoPagoEnLinea = "POR_REVISAR" | "APROBADO" | "RECHAZADO";
+
+export interface PagoEnLinea {
+  id: number;
+  estado: EstadoPagoEnLinea;
+  opcion: "COMPLETO" | "CUOTA";
+  etiqueta: string;
+  monto: number;
+  creadoEn: string;
+  revisadoEn: string | null;
+  motivoRechazo: string | null;
+  inscripcionId: number;
+  /** PREINSCRITA mientras el pago no se aprobó. */
+  estadoInscripcion: string;
+  alumno: string;
+  curso: string;
+  grupo: string;
+  sede: string;
+  /** Sólo resuelto: el aviso por WhatsApp (manual, `wa.me`). */
+  whatsapp: { telefono: string | null; aTutor: boolean; url: string } | null;
 }
 
 export interface PreinscripcionInput {
