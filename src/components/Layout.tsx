@@ -53,7 +53,7 @@ function leerColapsada(): boolean {
 }
 
 export default function Layout() {
-  const { usuario, negocio, puede } = useAuth();
+  const { usuario, negocio, puede, rubro } = useAuth();
   const [abierto, setAbierto] = useState(false);
   const [colapsada, setColapsada] = useState(leerColapsada);
   // Acá y no en el menú: en el celular, abrir el formulario cierra el cajón,
@@ -76,6 +76,11 @@ export default function Layout() {
     setAyudaAbierta(true);
   };
   const menu = useMenu();
+  // En el instituto la clave de cada uno la cambia el administrador desde la
+  // ficha del Personal (M2/M6, 02-nov): "Cambiar mi contraseña" sólo le sale a
+  // quien administra usuarios. En los demás rubros sigue para cualquier rol
+  // (API-12); allá ni la recepción ni el cajero tienen quien se la cambie.
+  const puedeCambiarClave = rubro !== "ACADEMIA" || puede("usuarios");
   const vende = puede("pos") || puede("billar");
   // La cola de ventas cobradas sin internet sube desde acá, con cualquier
   // pantalla abierta (sólo en la app instalada del iPhone, PLAN-IOS F3).
@@ -176,7 +181,7 @@ export default function Layout() {
           menu={menu}
           compacta={colapsada}
           onNavegar={() => setAbierto(false)}
-          onCambiarPassword={cambiarPassword}
+          onCambiarPassword={puedeCambiarClave ? cambiarPassword : undefined}
           onAyuda={conAyuda ? abrirAyuda : undefined}
           onInstalar={instalarDisponible ? abrirInstalar : undefined}
           onCerrarSesion={sesion.pedir}
@@ -208,7 +213,7 @@ export default function Layout() {
           menu={menu}
           compacta={false}
           onNavegar={() => setAbierto(false)}
-          onCambiarPassword={cambiarPassword}
+          onCambiarPassword={puedeCambiarClave ? cambiarPassword : undefined}
           onAyuda={conAyuda ? abrirAyuda : undefined}
           onInstalar={instalarDisponible ? abrirInstalar : undefined}
           onCerrarSesion={sesion.pedir}

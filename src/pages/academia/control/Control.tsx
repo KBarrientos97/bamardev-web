@@ -11,8 +11,10 @@ import { TIPOS_FOTO, type PanelControl, type TipoFoto } from "../../../lib/acade
 import { useFiltroSede } from "../../../lib/academia/useFiltroSede";
 import { usePalabras } from "../../../lib/academia/usePalabras";
 import { fmtFecha, fmtMoney, tiempoRelativo } from "../../../lib/format";
+import { tienePermiso } from "../../../lib/permisos";
 import { useApi } from "../../../lib/useApi";
-import PrimerosPasos from "../PrimerosPasos";
+import { useAuth } from "../../../store/AuthContext";
+import PagosPorRevisar from "../PagosPorRevisar";
 import {
   BotonFila,
   Chip,
@@ -48,6 +50,7 @@ const FOTOS_POR_PAGINA = 10;
  */
 export default function Control() {
   const sede = useFiltroSede();
+  const { usuario } = useAuth();
   const hoy = mesDe(new Date());
   const [mes, setMes] = useState(hoy);
   const [mirar, setMirar] = useState<Mirar>("asistenSinPagar");
@@ -121,10 +124,6 @@ export default function Control() {
                   : `Revisar ${pendientes.length} ${pendientes.length === 1 ? "foto" : "fotos"}`
                 : "Fotos al día"}
             </Boton>
-            {/* El administrador aterriza acá: sin esto, un instituto recién dado de alta veía
-                tarjetas vacías y ningún aviso de por dónde empezar (ronda 2, R2). Desde L1 es
-                el botón "Configuración rápida", no una tarjeta arriba de todo. */}
-            <PrimerosPasos />
           </>
         }
       />
@@ -245,6 +244,9 @@ export default function Control() {
           <FotosObservadas filas={d.fotosObservadas ?? []} total={d.fotosObservadasTotal} />
 
           <FotosFaltan filas={d.fotosFaltan ?? []} total={d.fotosFaltanTotal} />
+
+          {/* M5: los comprobantes de pago de la página, con el mismo permiso que las fotos. */}
+          {tienePermiso(usuario, "academia.fotos") && <PagosPorRevisar sede={sede.sucursalId} />}
 
           <Sobrecupos filas={d.sobrecupos ?? []} variasSedes={sede.variasSedes} />
 

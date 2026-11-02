@@ -314,7 +314,8 @@ function NoIncluidos({
  * Mi página sólo toca quien configura el negocio.
  */
 const ADVERTENCIAS: Record<string, string> = {
-  "academia.fotos": "Quien tenga este rol verá la cara y el carnet de todos los inscritos, también de los menores, y podrá aprobarlos.",
+  "academia.fotos":
+    "Quien tenga este rol verá la cara y el carnet de todos los inscritos, también de los menores, y podrá aprobarlos. También revisará los comprobantes de los pagos en línea: al aprobarlos se registra un cobro.",
   "recibo.configurar": "Quien tenga este rol podrá cambiar o quitar el logo del negocio, que es también el de tu página pública.",
 };
 

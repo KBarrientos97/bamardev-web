@@ -24,6 +24,7 @@ import { ApiError, api } from "../lib/api";
 import { fmtFechaHora, iniciales, tiempoRelativo } from "../lib/format";
 import { tienePermiso } from "../lib/permisos";
 import { apiRoles, mensajeDeError, rolSinPermisos, rolTiene, tonoDeRol } from "../lib/roles";
+import { usePalabras } from "../lib/academia/usePalabras";
 import { useApi } from "../lib/useApi";
 import { useAuth } from "../store/AuthContext";
 import type { ActualizarUsuarioInput, CrearUsuarioInput, CupoUsuarios, RolNegocio, Usuario } from "../types";
@@ -532,6 +533,7 @@ function DetalleUsuario({
   onEliminar: (u: Usuario) => void;
 }) {
   const { usuario: actual } = useAuth();
+  const pal = usePalabras();
   if (!u) return null;
   const rol = rolDe(u, roles);
   const esYo = actual?.id === u.id;
@@ -598,7 +600,7 @@ function DetalleUsuario({
           <Dato label="Creado" valor={fmtFechaHora(u.creado)} />
           {/* Sólo si está atado a un local. Al de organización no se le muestra
               "—": ver todo no es un dato faltante. */}
-          {u.sucursal && <Dato label="Sucursal" valor={u.sucursal} />}
+          {u.sucursal && <Dato label={pal.Sede} valor={u.sucursal} />}
           {(reparte(rol) || u.zona || u.vehiculo) && (
             <>
               <Dato label="Zona" valor={u.zona || "—"} />
@@ -719,6 +721,8 @@ function FormUsuarioCuerpo({
   const [username, setUsername] = useState(usuario?.usuario ?? "");
   const [password, setPassword] = useState("");
   const { usuario: actual } = useAuth();
+  // «Sede» en el instituto, «sucursal» en los demás rubros (Lista 2 #9).
+  const pal = usePalabras();
   // Al editar, el usuario se puede cambiar (21-oct, pedido del dueño). Se manda
   // sólo si cambió, y se mira como lo guarda el backend: sin espacios y en
   // minúsculas.
@@ -799,7 +803,7 @@ function FormUsuarioCuerpo({
     // estando parado en otro local. El backend lo rechaza igual; el aviso acá
     // evita que se entere después de llenar todo.
     if (mostrarSucursal && puedeAsignarSucursal && sucursalId == null) {
-      return setError("Elegí la sucursal en la que trabaja.");
+      return setError(`Elegí la ${pal.sede} en la que trabaja.`);
     }
 
     setGuardando(true);
@@ -951,7 +955,7 @@ function FormUsuarioCuerpo({
 
         {mostrarSucursal && puedeAsignarSucursal && (
           <Campo
-            label="Sucursal"
+            label={pal.Sede}
             hint="En qué local trabaja: ahí vende, y ve sólo lo de ahí"
           >
             <Select
@@ -963,7 +967,7 @@ function FormUsuarioCuerpo({
               {/* Sin opción "toda la organización": eso es de un rol que ve
                   todas, y a ése no se le muestra este campo. Queda un
                   placeholder para no elegir por el usuario en el alta. */}
-              <option value="">Elegí una sucursal…</option>
+              <option value="">Elegí una {pal.sede}…</option>
               {sucursales.map((a) => (
                 <option key={a.id} value={a.id}>
                   {a.nombre}
@@ -1139,6 +1143,9 @@ function FormPinCuerpo({
   const [repetido, setRepetido] = useState("");
   // El generado se muestra una vez, para pasárselo en persona.
   const [generado, setGenerado] = useState<string | null>(null);
+  // M3: el ojito del PIN (se pone a mano, a diferencia del que PIDE el PIN para autorizar). Los
+  // dos campos van juntos: ver uno solo no sirve para compararlos.
+  const [verPin, setVerPin] = useState(false);
   const [error, setError] = useState("");
   const [guardando, setGuardando] = useState(false);
 
@@ -1195,8 +1202,10 @@ function FormPinCuerpo({
         </p>
 
         <Campo label="PIN" hint="4 dígitos">
-          <Input
-            type="password"
+          <InputPassword
+            nombre="PIN"
+            visible={verPin}
+            onCambiarVisible={setVerPin}
             inputMode="numeric"
             autoComplete="off"
             maxLength={4}
@@ -1211,8 +1220,9 @@ function FormPinCuerpo({
           />
         </Campo>
         <Campo label="Repetir PIN">
-          <Input
-            type="password"
+          <InputPassword
+            sinOjo
+            visible={verPin}
             inputMode="numeric"
             autoComplete="off"
             maxLength={4}

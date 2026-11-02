@@ -33,6 +33,7 @@ vi.mock("../lib/api", async (importOriginal) => ({
   api: {
     getSucursales: vi.fn(async () => [{ id: 1, nombre: "Centro", activo: true, tipo: "SUCURSAL" }]),
     getUsuarios: vi.fn(async () => []),
+    cambiarPassword: vi.fn(async () => ({ mensaje: "ok" })),
   },
 }));
 
@@ -132,8 +133,20 @@ async function montar() {
   await act(async () => {});
 }
 
+/** Abre la ficha de alguien, marca «Darle acceso al sistema» y devuelve el diálogo (M2). */
+async function abrirConAcceso(nombre: string) {
+  fireEvent.click(screen.getByRole("button", { name: `Ver ${nombre}` }));
+  await act(async () => {});
+  const dialogo = screen.getByRole("dialog", { name: nombre });
+  await act(async () => {
+    fireEvent.click(within(dialogo).getByRole("checkbox", { name: "Darle acceso al sistema" }));
+  });
+  return dialogo;
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(apiPersonal.editar).mockImplementation(async (id) => [base, LUCHO, ANA].find((p) => p.id === id) ?? LUCHO);
   sesion.usuario = { id: 1, rol: "ADMIN", sucursalId: null, permisos: PERMISOS_DUENIO };
   sesion.instituto = false;
   vi.mocked(apiPersonal.listar).mockResolvedValue([base, LUCHO, ANA]);
@@ -171,7 +184,7 @@ describe("Personal", () => {
     expect(screen.getByText('"Nico" quedó guardado.')).toBeInTheDocument();
   });
 
-  it("le da acceso a un profesional sin login, con el rol de su cargo", async () => {
+  it("M2: le da acceso a un profesional sin login desde su misma ficha, con el rol de su cargo", async () => {
     vi.mocked(apiPersonal.darAcceso).mockResolvedValue({
       ...LUCHO,
       usuarioId: 12,
@@ -179,25 +192,112 @@ describe("Personal", () => {
       acceso: { usuarioId: 12, username: "lucho", rol: "PROFESIONAL", rolId: 4, rolNombre: "Barbero", activo: true, ultimoLogin: null },
     });
     await montar();
-    fireEvent.click(screen.getByRole("button", { name: "Ver Lucho" }));
-    await act(async () => {});
-    fireEvent.click(screen.getByRole("button", { name: "Darle acceso" }));
-    await act(async () => {});
-    const dialogo = screen.getByRole("dialog", { name: "Darle acceso" });
+    const dialogo = await abrirConAcceso("Lucho");
     // El rol por defecto es el de su cargo; el Administrador no se ofrece.
     expect(within(dialogo).getByLabelText("Rol")).toHaveValue("4");
-    expect(within(dialogo).getAllByRole("option").map((o) => o.textContent)).toEqual(["Recepción", "Barbero"]);
+    expect(within(dialogo).queryByRole("option", { name: "Administrador" })).toBeNull();
     fireEvent.change(within(dialogo).getByLabelText("Usuario"), { target: { value: "Lucho" } });
     fireEvent.change(within(dialogo).getByLabelText("Contraseña"), { target: { value: "secreto1" } });
     await act(async () => {
-      fireEvent.click(within(dialogo).getByRole("button", { name: "Darle acceso" }));
+      fireEvent.click(within(dialogo).getByRole("button", { name: "Guardar" }));
     });
+    expect(apiPersonal.editar).toHaveBeenCalledWith(2, expect.objectContaining({ nombre: "Lucho" }));
     expect(apiPersonal.darAcceso).toHaveBeenCalledWith(2, {
       username: "lucho",
       password: "secreto1",
       rolId: 4,
     });
-    expect(screen.getByText('"Lucho" ya puede entrar como @lucho.')).toBeInTheDocument();
+    expect(screen.getByText('"Lucho" quedó guardado y ya puede entrar como @lucho.')).toBeInTheDocument();
+  });
+
+  it("M2: en el alta, el bloque de acceso está en la misma ficha y crea a la persona y su usuario juntos", async () => {
+    vi.mocked(apiPersonal.crear).mockResolvedValue({ ...LUCHO, id: 4, nombre: "Nico", cargoRolId: 3, cargo: "Recepción", recursoId: null, profesional: null });
+    vi.mocked(apiPersonal.darAcceso).mockResolvedValue({
+      ...LUCHO,
+      id: 4,
+      nombre: "Nico",
+      conAcceso: true,
+      acceso: { usuarioId: 13, username: "nico", rol: "CAJERO", rolId: 3, rolNombre: "Recepción", activo: true, ultimoLogin: null },
+    });
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Nueva persona" }));
+    const dialogo = screen.getByRole("dialog", { name: "Nueva persona" });
+    // Sin marcar la casilla no hay campos: es una persona sin usuario.
+    expect(within(dialogo).queryByLabelText("Usuario")).toBeNull();
+    fireEvent.change(within(dialogo).getByLabelText("Nombre"), { target: { value: "Nico" } });
+    fireEvent.change(within(dialogo).getByLabelText("Cargo"), { target: { value: "3" } });
+    await act(async () => {
+      fireEvent.click(within(dialogo).getByRole("checkbox", { name: "Darle acceso al sistema" }));
+    });
+    // El rol viene del cargo elegido.
+    expect(within(dialogo).getByLabelText("Rol")).toHaveValue("3");
+    fireEvent.change(within(dialogo).getByLabelText("Usuario"), { target: { value: "nico" } });
+    fireEvent.change(within(dialogo).getByLabelText("Contraseña"), { target: { value: "secreto1" } });
+    await act(async () => {
+      fireEvent.click(within(dialogo).getByRole("button", { name: "Guardar" }));
+    });
+    expect(apiPersonal.crear).toHaveBeenCalledWith(expect.objectContaining({ nombre: "Nico", cargoRolId: 3 }));
+    expect(apiPersonal.darAcceso).toHaveBeenCalledWith(4, { username: "nico", password: "secreto1", rolId: 3 });
+    expect(screen.getByText('"Nico" quedó guardado y ya puede entrar como @nico.')).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "Nueva persona" })).toBeNull();
+  });
+
+  it("M2: la contraseña del alta tiene su ojito para verla mientras se escribe", async () => {
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Nueva persona" }));
+    const dialogo = screen.getByRole("dialog", { name: "Nueva persona" });
+    await act(async () => {
+      fireEvent.click(within(dialogo).getByRole("checkbox", { name: "Darle acceso al sistema" }));
+    });
+    const clave = within(dialogo).getByLabelText("Contraseña");
+    expect(clave).toHaveAttribute("type", "password");
+    fireEvent.click(within(dialogo).getByRole("button", { name: "Mostrar contraseña" }));
+    expect(clave).toHaveAttribute("type", "text");
+  });
+
+  it("M2: un dato mal puesto del acceso se avisa antes de guardar a la persona", async () => {
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Nueva persona" }));
+    const dialogo = screen.getByRole("dialog", { name: "Nueva persona" });
+    fireEvent.change(within(dialogo).getByLabelText("Nombre"), { target: { value: "Nico" } });
+    await act(async () => {
+      fireEvent.click(within(dialogo).getByRole("checkbox", { name: "Darle acceso al sistema" }));
+    });
+    fireEvent.change(within(dialogo).getByLabelText("Usuario"), { target: { value: "ni" } });
+    await act(async () => {
+      fireEvent.click(within(dialogo).getByRole("button", { name: "Guardar" }));
+    });
+    expect(within(dialogo).getByText("El usuario lleva 3 a 30 letras, números, punto o guion.")).toBeInTheDocument();
+    fireEvent.change(within(dialogo).getByLabelText("Usuario"), { target: { value: "nico" } });
+    fireEvent.change(within(dialogo).getByLabelText("Contraseña"), { target: { value: "123" } });
+    await act(async () => {
+      fireEvent.click(within(dialogo).getByRole("button", { name: "Guardar" }));
+    });
+    expect(within(dialogo).getByText("La contraseña necesita al menos 6 caracteres.")).toBeInTheDocument();
+    expect(apiPersonal.crear).not.toHaveBeenCalled();
+  });
+
+  it("M2: si el acceso falla en el alta (cupo), la persona igual queda guardada y se dice por qué", async () => {
+    vi.mocked(apiPersonal.crear).mockResolvedValue({ ...LUCHO, id: 4, nombre: "Nico", recursoId: null, profesional: null });
+    vi.mocked(apiPersonal.darAcceso).mockRejectedValue(
+      new Error("Tu plan permite 4 usuarios activos. Desactivá uno o contratá usuarios extra."),
+    );
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Nueva persona" }));
+    const dialogo = screen.getByRole("dialog", { name: "Nueva persona" });
+    fireEvent.change(within(dialogo).getByLabelText("Nombre"), { target: { value: "Nico" } });
+    fireEvent.change(within(dialogo).getByLabelText("Cargo"), { target: { value: "4" } });
+    await act(async () => {
+      fireEvent.click(within(dialogo).getByRole("checkbox", { name: "Darle acceso al sistema" }));
+    });
+    fireEvent.change(within(dialogo).getByLabelText("Usuario"), { target: { value: "nico" } });
+    fireEvent.change(within(dialogo).getByLabelText("Contraseña"), { target: { value: "secreto1" } });
+    await act(async () => {
+      fireEvent.click(within(dialogo).getByRole("button", { name: "Guardar" }));
+    });
+    expect(
+      screen.getByText(/"Nico" quedó guardado, pero no se le pudo dar el acceso: Tu plan permite 4 usuarios activos/),
+    ).toBeInTheDocument();
   });
 
   it("QA R1 W-10: si arranca en un cargo sin permisos, avisa que no va a ver nada", async () => {
@@ -208,11 +308,7 @@ describe("Personal", () => {
       { ...ROLES[2], permisos: [] },
     ]);
     await montar();
-    fireEvent.click(screen.getByRole("button", { name: "Ver Lucho" }));
-    await act(async () => {});
-    fireEvent.click(screen.getByRole("button", { name: "Darle acceso" }));
-    await act(async () => {});
-    const dialogo = screen.getByRole("dialog", { name: "Darle acceso" });
+    const dialogo = await abrirConAcceso("Lucho");
     expect(within(dialogo).getByLabelText("Rol")).toHaveValue("4");
     expect(within(dialogo).getByRole("status")).toHaveTextContent(
       "Este rol no tiene permisos: la persona no va a ver nada.",
@@ -226,15 +322,11 @@ describe("Personal", () => {
       new Error("Tu plan permite 4 usuarios activos. Desactivá uno o contratá usuarios extra."),
     );
     await montar();
-    fireEvent.click(screen.getByRole("button", { name: "Ver Lucho" }));
-    await act(async () => {});
-    fireEvent.click(screen.getByRole("button", { name: "Darle acceso" }));
-    await act(async () => {});
-    const dialogo = screen.getByRole("dialog", { name: "Darle acceso" });
+    const dialogo = await abrirConAcceso("Lucho");
     fireEvent.change(within(dialogo).getByLabelText("Usuario"), { target: { value: "lucho" } });
     fireEvent.change(within(dialogo).getByLabelText("Contraseña"), { target: { value: "secreto1" } });
     await act(async () => {
-      fireEvent.click(within(dialogo).getByRole("button", { name: "Darle acceso" }));
+      fireEvent.click(within(dialogo).getByRole("button", { name: "Guardar" }));
     });
     expect(within(dialogo).getByText(/Tu plan permite 4 usuarios activos/)).toBeInTheDocument();
   });
@@ -244,19 +336,46 @@ describe("Personal", () => {
       new ApiError("Forbidden", 403, { codigo: "ROL_NO_ASIGNABLE" }),
     );
     await montar();
-    fireEvent.click(screen.getByRole("button", { name: "Ver Lucho" }));
-    await act(async () => {});
-    fireEvent.click(screen.getByRole("button", { name: "Darle acceso" }));
-    await act(async () => {});
-    const dialogo = screen.getByRole("dialog", { name: "Darle acceso" });
+    const dialogo = await abrirConAcceso("Lucho");
     fireEvent.change(within(dialogo).getByLabelText("Usuario"), { target: { value: "lucho" } });
     fireEvent.change(within(dialogo).getByLabelText("Contraseña"), { target: { value: "secreto1" } });
     await act(async () => {
-      fireEvent.click(within(dialogo).getByRole("button", { name: "Darle acceso" }));
+      fireEvent.click(within(dialogo).getByRole("button", { name: "Guardar" }));
     });
     expect(
       within(dialogo).getByText("No podés asignar ese rol: tiene permisos que vos no tenés."),
     ).toBeInTheDocument();
+  });
+
+  it("M2: quien ya entra muestra su usuario y permite cambiarle la contraseña desde la ficha", async () => {
+    sesion.usuario = { id: 1, rol: "ADMIN", sucursalId: null, permisos: [...PERMISOS_DUENIO, "usuarios.administrar"] };
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Ver Ana" }));
+    await act(async () => {});
+    const ficha = screen.getByRole("dialog", { name: "Ana" });
+    expect(ficha).toHaveTextContent("Entra como @ana (Recepción)");
+    // Con acceso ya no se ofrece darlo otra vez.
+    expect(within(ficha).queryByRole("checkbox", { name: "Darle acceso al sistema" })).toBeNull();
+    fireEvent.click(within(ficha).getByRole("button", { name: "Cambiar contraseña" }));
+    const cambiar = screen.getByRole("dialog", { name: "Cambiar contraseña" });
+    fireEvent.change(within(cambiar).getByLabelText("Contraseña nueva"), { target: { value: "123" } });
+    await act(async () => {
+      fireEvent.click(within(cambiar).getByRole("button", { name: "Cambiar contraseña" }));
+    });
+    expect(within(cambiar).getByText("La contraseña necesita al menos 6 caracteres.")).toBeInTheDocument();
+    fireEvent.change(within(cambiar).getByLabelText("Contraseña nueva"), { target: { value: "nueva-clave" } });
+    await act(async () => {
+      fireEvent.click(within(cambiar).getByRole("button", { name: "Cambiar contraseña" }));
+    });
+    expect(api.cambiarPassword).toHaveBeenCalledWith(11, "nueva-clave");
+    expect(screen.getByText("Cambiaste la contraseña de @ana.")).toBeInTheDocument();
+  });
+
+  it("M2: sin permiso para administrar usuarios no se ofrece cambiar la contraseña de otro", async () => {
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Ver Ana" }));
+    await act(async () => {});
+    expect(screen.queryByRole("button", { name: "Cambiar contraseña" })).toBeNull();
   });
 
   it("quitar acceso pide confirmación y la persona sigue", async () => {
@@ -484,7 +603,35 @@ describe("ronda 2 · Personal del instituto", () => {
       fireEvent.click(within(dialogo).getByRole("button", { name: "Guardar" }));
     });
     expect(apiPersonal.crear).toHaveBeenCalledWith(expect.objectContaining({ nombre: "Marco", cargoRolId: 6 }));
-    expect(screen.getByText(/"Marco" quedó guardado\. Todavía no entra al sistema: abrí su ficha y tocá «Darle acceso»\./)).toBeInTheDocument();
+    expect(screen.getByText(/"Marco" quedó guardado\. Todavía no entra al sistema: abrí su ficha y marcá «Darle acceso al sistema»\./)).toBeInTheDocument();
+  });
+
+  it("M2: al crear a un docente, el bloque de acceso arranca con el rol Docente y crea el usuario en el mismo paso", async () => {
+    vi.mocked(apiRoles.asignables).mockResolvedValueOnce([...ROLES.slice(1), DOCENTE] as never);
+    vi.mocked(api.getSucursales).mockResolvedValue([{ id: 1, nombre: "Central", activo: true, tipo: "SUCURSAL" }] as never);
+    vi.mocked(apiPersonal.crear).mockResolvedValue({ ...LUCHO, id: 7, nombre: "Marco", cargoRolId: 6, cargo: "Docente", conAcceso: false, acceso: null });
+    vi.mocked(apiPersonal.darAcceso).mockResolvedValue({
+      ...LUCHO,
+      id: 7,
+      nombre: "Marco",
+      conAcceso: true,
+      acceso: { usuarioId: 14, username: "marco", rol: "DOCENTE", rolId: 6, rolNombre: "Docente", activo: true, ultimoLogin: null },
+    });
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Nueva persona" }));
+    const dialogo = screen.getByRole("dialog", { name: "Nueva persona" });
+    fireEvent.change(within(dialogo).getByLabelText("Nombre"), { target: { value: "Marco" } });
+    await act(async () => {
+      fireEvent.click(within(dialogo).getByRole("checkbox", { name: "Darle acceso al sistema" }));
+    });
+    expect(within(dialogo).getByLabelText("Rol")).toHaveValue("6");
+    fireEvent.change(within(dialogo).getByLabelText("Usuario"), { target: { value: "marco" } });
+    fireEvent.change(within(dialogo).getByLabelText("Contraseña"), { target: { value: "secreto1" } });
+    await act(async () => {
+      fireEvent.click(within(dialogo).getByRole("button", { name: "Guardar" }));
+    });
+    expect(apiPersonal.darAcceso).toHaveBeenCalledWith(7, { username: "marco", password: "secreto1", rolId: 6 });
+    expect(screen.getByText('"Marco" quedó guardado y ya puede entrar como @marco.')).toBeInTheDocument();
   });
 
   it("R10: habla de «sede», no de «sucursal», y una lista vacía no dice que hay un filtro", async () => {
@@ -506,18 +653,14 @@ describe("ronda 2 · Personal del instituto", () => {
     const sinCargo = { ...LUCHO, id: 8, nombre: "Rita", cargoRolId: null, cargo: null, profesional: null };
     vi.mocked(apiPersonal.listar).mockResolvedValue([base, sinCargo]);
     await montar();
-    fireEvent.click(screen.getByRole("button", { name: "Ver Rita" }));
-    await act(async () => {});
-    fireEvent.click(screen.getByRole("button", { name: "Darle acceso" }));
-    await act(async () => {});
-    const dialogo = screen.getByRole("dialog", { name: "Darle acceso" });
+    const dialogo = await abrirConAcceso("Rita");
     expect(within(dialogo).getByLabelText("Rol")).toHaveValue("");
     fireEvent.change(within(dialogo).getByLabelText("Usuario"), { target: { value: "rita" } });
     fireEvent.change(within(dialogo).getByLabelText("Contraseña"), { target: { value: "secreto1" } });
     await act(async () => {
-      fireEvent.click(within(dialogo).getByRole("button", { name: "Darle acceso" }));
+      fireEvent.click(within(dialogo).getByRole("button", { name: "Guardar" }));
     });
     expect(apiPersonal.darAcceso).not.toHaveBeenCalled();
-    expect(within(dialogo).getByText("Elegí el rol.")).toBeInTheDocument();
+    expect(within(dialogo).getByText("Elegí el rol con el que entra.")).toBeInTheDocument();
   });
 });

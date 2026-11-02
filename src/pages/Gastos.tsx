@@ -21,6 +21,7 @@ import {
   Vacio,
 } from "../components/ui";
 import { api } from "../lib/api";
+import { usePalabras } from "../lib/academia/usePalabras";
 import { cubre, esPositivo, excede } from "../lib/dinero";
 import { leerMonto, montoParaEditar } from "../lib/montoTecleado";
 import {
@@ -69,6 +70,8 @@ import type {
 const DEBOUNCE_MS = 350;
 
 export default function Gastos() {
+  // «Sede» en el instituto, «sucursal» en los demás rubros (Lista 2 #9).
+  const pal = usePalabras();
   const [mes, setMes] = useState(() => hoyIso().slice(0, 7));
   const [filtro, setFiltro] = useState<FiltroGasto>("TODOS");
   /** Lo que se está tecleando. */
@@ -202,12 +205,12 @@ export default function Gastos() {
           <Input type="month" value={mes} onChange={(e) => setMes(e.target.value)} />
         </Campo>
         {elegir && (
-          <Campo label="Sucursal">
+          <Campo label={pal.Sede}>
             <Select
               value={valorSelect}
               onChange={(e) => alElegirSelect(e.target.value)}
             >
-              <option value="">Todas las sucursales</option>
+              <option value="">Todas las {pal.sedes}</option>
               {sucursales.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.nombre}

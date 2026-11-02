@@ -19,6 +19,7 @@ import { usePaginado } from "../../lib/paginado";
 import { tienePermiso } from "../../lib/permisos";
 import { useAuth } from "../../store/AuthContext";
 import PedirMotivo from "../agenda/PedirMotivo";
+import PagosPorRevisar from "./PagosPorRevisar";
 import Inscribir from "./Inscribir";
 import { BotonCompartirInscripcion } from "./CompartirInscripcion";
 import { BotonFila, Chip, ChipsFiltro, EncabezadoPagina, LISTA, PaginaAcademia, Tarjeta } from "./piezas";
@@ -107,6 +108,9 @@ export default function Preinscripciones() {
       />
       <AvisoOk>{aviso}</AvisoOk>
       <ErrorMsg>{error}</ErrorMsg>
+
+      {/* M5: los comprobantes de pago que suben desde la página; los revisa quien revisa fotos. */}
+      {veFotos && !descartadas && <PagosPorRevisar sede={sede.sucursalId} />}
 
       <Tarjeta etiqueta="Inscripciones online" barra={filtros} sinRelleno>
         {lista.error && !lista.items.length ? (

@@ -297,7 +297,30 @@ function FichaPersona({
   }, [cargoDocente]);
   const [error, setError] = useState("");
   const [guardando, setGuardando] = useState(false);
-  const [modo, setModo] = useState<"acceso" | "vincular" | "quitar" | "baja" | null>(null);
+  const [modo, setModo] = useState<"acceso" | "clave" | "vincular" | "quitar" | "baja" | null>(null);
+
+  // M2 (31-oct): «Darle acceso» ya no es un paso aparte después de guardar. En la
+  // misma ficha se marca la casilla, se ponen usuario y contraseña, y «Guardar»
+  // crea a la persona y su login juntos. Sólo si no tiene usuario (ni uno quitado:
+  // ése se devuelve con «Devolverle el acceso»).
+  const puedeDarAcceso = !persona || (persona.activo && !persona.acceso);
+  const [daAcceso, setDaAcceso] = useState(false);
+  // Los roles se piden recién al marcar la casilla: casi nadie la marca al abrir una ficha.
+  const [pidioRoles, setPidioRoles] = useState(false);
+  const asignables = useApi(() => (pidioRoles ? apiRoles.asignables() : Promise.resolve(null)), [pidioRoles]);
+  // El Administrador no se da desde acá: nace con el negocio.
+  const roles: RolNegocio[] = (asignables.datos ?? []).filter((r) => !r.esAdministrador);
+  const [usuarioNuevo, setUsuarioNuevo] = useState("");
+  const [claveNueva, setClaveNueva] = useState("");
+  const [rolAcceso, setRolAcceso] = useState("");
+  const [sedeAcceso, setSedeAcceso] = useState("");
+  // Sin cargo que coincida no se propone «el primero de la lista»: una persona sin
+  // cargo podía quedar con un rol cualquiera sin que nadie lo notara (ronda 2, R11).
+  // Docente → rol Docente: el cargo ya dice qué hace.
+  const rolElegido =
+    rolAcceso || String(roles.find((r) => r.id === cargoRolId)?.id ?? (roles.length === 1 ? roles[0].id : ""));
+  const eligeSucursal = sucursales.length > 1 && usuario?.sucursalId == null;
+  const sedeElegida = sedeAcceso || String(sucursalIds[0] ?? sucursales[0]?.id ?? "");
 
   // Zona y vehículo son de quien reparte: su cargo entrega pedidos, o ya los
   // tiene cargados.
@@ -321,6 +344,16 @@ function FichaPersona({
     if (persona && sucursales.length > 1 && !sucursalIds.length) {
       return setError(`Elegí al menos una ${sedeTxt} donde trabaja.`);
     }
+    // Se revisa el acceso ANTES de guardar a la persona: así un dato mal puesto no
+    // deja la ficha guardada a medias.
+    const darAccesoAhora = daAcceso && puedeDarAcceso;
+    if (darAccesoAhora) {
+      if (!/^[a-z0-9._-]{3,30}$/.test(usuarioNuevo.trim().toLowerCase())) {
+        return setError("El usuario lleva 3 a 30 letras, números, punto o guion.");
+      }
+      if (claveNueva.length < 6) return setError("La contraseña necesita al menos 6 caracteres.");
+      if (!rolElegido) return setError("Elegí el rol con el que entra.");
+    }
     const input: PersonaInput = {
       nombre: nombre.trim(),
       cargoRolId,
@@ -339,12 +372,32 @@ function FichaPersona({
     setGuardando(true);
     try {
       const p = persona ? await apiPersonal.editar(persona.id, input) : await apiPersonal.crear(input);
+      if (darAccesoAhora) {
+        try {
+          const conLogin = await apiPersonal.darAcceso(p.id, {
+            username: usuarioNuevo.trim().toLowerCase(),
+            password: claveNueva,
+            rolId: Number(rolElegido),
+            ...(eligeSucursal && sedeElegida ? { sucursalId: Number(sedeElegida) } : {}),
+          });
+          setDaAcceso(false);
+          setClaveNueva("");
+          onGuardado(conLogin, `"${conLogin.nombre}" quedó guardado y ya puede entrar como @${conLogin.acceso?.username}.`);
+        } catch (e) {
+          // La persona ya quedó guardada: se dice, y qué falló del acceso (el cupo, el usuario repetido…).
+          const causa = mensaje(e, "No se pudo dar el acceso");
+          onGuardado(p, `"${p.nombre}" quedó guardado, pero no se le pudo dar el acceso: ${causa}`);
+          if (persona) setError(causa);
+        }
+        if (!persona) onClose();
+        return;
+      }
       // Un docente nuevo no entra al sistema hasta que se le da el acceso: sin el
       // aviso quedaba guardado y nadie sabía que faltaba ese paso (ronda 2, R4).
       onGuardado(
         p,
         !persona && conDocentes && !p.conAcceso
-          ? `"${p.nombre}" quedó guardado. Todavía no entra al sistema: abrí su ficha y tocá «Darle acceso».`
+          ? `"${p.nombre}" quedó guardado. Todavía no entra al sistema: abrí su ficha y marcá «Darle acceso al sistema».`
           : `"${p.nombre}" quedó guardado.`,
       );
       if (!persona) onClose();
@@ -369,6 +422,132 @@ function FichaPersona({
     }
   };
 
+  /**
+   * El acceso al sistema (M2). Con ficha existente va arriba, con su estado; en el
+   * alta va abajo, después de los datos. Lo que se pone acá se guarda con el
+   * mismo «Guardar» de la ficha.
+   */
+  const seccionAcceso = (
+    <section aria-label="Acceso al sistema" className="rounded-xl border border-borde-soft p-3">
+      <p className="text-[13px] font-semibold text-texto-2">Acceso al sistema</p>
+      <p className="mt-0.5 text-[13px] text-texto-3">
+        {!persona
+          ? "Sin acceso, es sólo una persona del equipo: no ocupa lugar del cupo de usuarios."
+          : persona.conAcceso
+            ? `Entra como @${persona.acceso?.username} (${persona.acceso?.rolNombre ?? persona.acceso?.rol ?? "sin rol"}). Ocupa un lugar del cupo de usuarios.`
+            : persona.acceso
+              ? `Se le quitó el acceso (@${persona.acceso.username}). No ocupa cupo.`
+              : conDocentes
+                ? "No entra al sistema."
+                : "No entra al sistema. Igual puede tener agenda, comisión y propinas."}
+        {persona && !conDocentes && persona.profesional
+          ? ` En la agenda es "${persona.profesional.nombre}"${persona.profesional.activo ? "" : " (columna inactiva)"}.`
+          : ""}
+      </p>
+      {/* QA DIA-16: decía que puede tener agenda y no decía dónde. */}
+      {persona && !conDocentes && !persona.profesional && persona.activo && puede("agenda_config") && (
+        <p className="mt-1 text-[13px] text-texto-3">
+          Para darle agenda:{" "}
+          <Link to="/configuracion/agenda?pestana=recursos" className="font-semibold text-primary-700 hover:underline">
+            Configuración de la agenda › {pestanaProfesionales}
+          </Link>{" "}
+          y en &quot;¿Quién es?&quot; elegí a {persona.nombre}.
+        </p>
+      )}
+      {puedeDarAcceso && (
+        <div className="mt-2 space-y-3">
+          <label className="inline-flex items-center gap-2 text-sm font-semibold text-texto-2">
+            <input
+              type="checkbox"
+              checked={daAcceso}
+              onChange={(e) => {
+                setDaAcceso(e.target.checked);
+                if (e.target.checked) setPidioRoles(true);
+              }}
+            />
+            Darle acceso al sistema
+          </label>
+          {daAcceso && (
+            <div className="space-y-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <Campo label="Usuario" hint="3 a 30 letras, números, punto o guion.">
+                  <Input
+                    value={usuarioNuevo}
+                    onChange={(e) => setUsuarioNuevo(e.target.value)}
+                    autoComplete="off"
+                    aria-label="Usuario"
+                  />
+                </Campo>
+                <Campo label="Contraseña" hint="Al menos 6 caracteres.">
+                  <InputPassword
+                    value={claveNueva}
+                    onChange={(e) => setClaveNueva(e.target.value)}
+                    autoComplete="new-password"
+                    aria-label="Contraseña"
+                  />
+                </Campo>
+              </div>
+              <Campo
+                label="Rol"
+                hint="Lo que va a poder hacer en el sistema. Arranca en el de su cargo."
+                error={asignables.error ? "No se pudieron cargar los roles." : undefined}
+              >
+                <Select value={rolElegido} onChange={(e) => setRolAcceso(e.target.value)} aria-label="Rol">
+                  {!rolElegido && <option value="">Elegí el rol…</option>}
+                  {roles.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.nombre}
+                    </option>
+                  ))}
+                </Select>
+                {/* Arranca en el cargo, que muchas veces es un rol sin permisos
+                    ("Lavacabezas"): entraría a una pantalla vacía (QA R1 W-10). */}
+                {rolSinPermisos(roles.find((r) => String(r.id) === rolElegido)) && <AvisoSinPermisos />}
+              </Campo>
+              {eligeSucursal && (
+                <Campo label={conMayuscula(sedeTxt)} hint="La de sus datos al entrar.">
+                  <Select value={sedeElegida} onChange={(e) => setSedeAcceso(e.target.value)} aria-label={conMayuscula(sedeTxt)}>
+                    {sucursales.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.nombre}
+                      </option>
+                    ))}
+                  </Select>
+                </Campo>
+              )}
+              <p className="text-[13px] text-texto-3">Ocupa un lugar del cupo de usuarios del plan. Se crea al tocar «Guardar».</p>
+            </div>
+          )}
+        </div>
+      )}
+      {persona?.activo && (
+        <div className="mt-2 flex flex-wrap gap-2">
+          {persona.conAcceso ? (
+            <>
+              {/* Cambiar la clave de otro es de quien administra usuarios (lo exige el backend). */}
+              {persona.acceso && tienePermiso(usuario, "usuarios.administrar") && (
+                <Boton variante="soft" onClick={() => setModo("clave")}>
+                  Cambiar contraseña
+                </Boton>
+              )}
+              <Boton variante="soft" onClick={() => setModo("quitar")}>
+                Quitar acceso
+              </Boton>
+            </>
+          ) : persona.acceso ? (
+            <Boton variante="soft" onClick={() => setModo("acceso")}>
+              Devolverle el acceso
+            </Boton>
+          ) : (
+            <Boton variante="ghost" onClick={() => setModo("vincular")}>
+              Vincular a un usuario existente
+            </Boton>
+          )}
+        </div>
+      )}
+    </section>
+  );
+
   return (
     <Modal
       abierto
@@ -389,54 +568,7 @@ function FichaPersona({
       }
     >
       <div className="space-y-4">
-        {persona && (
-          <section aria-label="Acceso al sistema" className="rounded-xl border border-borde-soft p-3">
-            <p className="text-[13px] font-semibold text-texto-2">Acceso al sistema</p>
-            <p className="mt-0.5 text-[13px] text-texto-3">
-              {persona.conAcceso
-                ? `Entra como @${persona.acceso?.username} (${persona.acceso?.rolNombre ?? persona.acceso?.rol ?? "sin rol"}). Ocupa un lugar del cupo de usuarios.`
-                : persona.acceso
-                  ? `Se le quitó el acceso (@${persona.acceso.username}). No ocupa cupo.`
-                  : conDocentes
-                    ? "No entra al sistema."
-                    : "No entra al sistema. Igual puede tener agenda, comisión y propinas."}
-              {!conDocentes && persona.profesional
-                ? ` En la agenda es "${persona.profesional.nombre}"${persona.profesional.activo ? "" : " (columna inactiva)"}.`
-                : ""}
-            </p>
-            {/* QA DIA-16: decía que puede tener agenda y no decía dónde. */}
-            {!conDocentes && !persona.profesional && persona.activo && puede("agenda_config") && (
-              <p className="mt-1 text-[13px] text-texto-3">
-                Para darle agenda:{" "}
-                <Link
-                  to="/configuracion/agenda?pestana=recursos"
-                  className="font-semibold text-primary-700 hover:underline"
-                >
-                  Configuración de la agenda › {pestanaProfesionales}
-                </Link>{" "}
-                y en &quot;¿Quién es?&quot; elegí a {persona.nombre}.
-              </p>
-            )}
-            {persona.activo && (
-              <div className="mt-2 flex flex-wrap gap-2">
-                {persona.conAcceso ? (
-                  <Boton variante="soft" onClick={() => setModo("quitar")}>
-                    Quitar acceso
-                  </Boton>
-                ) : (
-                  <Boton variante="soft" onClick={() => setModo("acceso")}>
-                    {persona.acceso ? "Devolverle el acceso" : "Darle acceso"}
-                  </Boton>
-                )}
-                {!persona.acceso && (
-                  <Boton variante="ghost" onClick={() => setModo("vincular")}>
-                    Vincular a un usuario existente
-                  </Boton>
-                )}
-              </div>
-            )}
-          </section>
-        )}
+        {persona && seccionAcceso}
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Campo label="Nombre">
@@ -537,18 +669,27 @@ function FichaPersona({
             )}
           </div>
         )}
+        {!persona && seccionAcceso}
         <ErrorMsg>{error}</ErrorMsg>
       </div>
 
       {persona && modo === "acceso" && (
-        <DarAcceso
+        <DevolverAcceso
           persona={persona}
-          cargoRolId={cargoRolId}
-          sucursales={sucursales}
           onClose={() => setModo(null)}
           onListo={(p) => {
             setModo(null);
             onGuardado(p, `"${p.nombre}" ya puede entrar como @${p.acceso?.username}.`);
+          }}
+        />
+      )}
+      {persona?.acceso && modo === "clave" && (
+        <CambiarClave
+          persona={persona}
+          onClose={() => setModo(null)}
+          onListo={() => {
+            setModo(null);
+            onGuardado(persona, `Cambiaste la contraseña de @${persona.acceso?.username}.`);
           }}
         />
       )}
@@ -704,65 +845,29 @@ function ColorAgenda({ valor, nombre, onChange }: { valor: string; nombre: strin
 }
 
 /**
- * "Darle acceso": su login, con un rol de los que quien mira puede asignar.
- * Arranca en el de su cargo: el cargo ya dice qué hace, y al darle acceso ese
- * rol le da los permisos.
+ * «Devolverle el acceso»: a quien se le quitó vuelve a entrar con el mismo
+ * usuario (y, si no se acuerda la clave, con una nueva). El alta de un login
+ * nuevo ya no pasa por acá: se hace en la ficha (M2).
  */
-function DarAcceso({
+function DevolverAcceso({
   persona,
-  cargoRolId,
-  sucursales,
   onClose,
   onListo,
 }: {
   persona: Persona;
-  cargoRolId: number | null;
-  sucursales: Almacen[];
   onClose: () => void;
   onListo: (p: Persona) => void;
 }) {
-  const { usuario } = useAuth();
-  const reactivar = !!persona.acceso;
-  const asignables = useApi(() => apiRoles.asignables(), []);
-  // El Administrador no se da desde acá: nace con el negocio.
-  const roles: RolNegocio[] = (asignables.datos ?? []).filter((r) => !r.esAdministrador);
-  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [rol, setRol] = useState("");
-  const [sucursalId, setSucursalId] = useState(persona.sucursalIds[0] ? String(persona.sucursalIds[0]) : "");
   const [error, setError] = useState("");
   const [enviando, setEnviando] = useState(false);
-  // Sin cargo que coincida no se propone «el primero de la lista»: una persona sin
-  // cargo podía quedar con un rol cualquiera sin que nadie lo notara (ronda 2, R11).
-  const rolElegido = rol || String(roles.find((r) => r.id === cargoRolId)?.id ?? (roles.length === 1 ? roles[0].id : ""));
-  const eligeSucursal = sucursales.length > 1 && usuario?.sucursalId == null;
 
   const enviar = async () => {
     setError("");
-    if (!reactivar) {
-      if (!/^[a-z0-9._-]{3,30}$/.test(username.trim().toLowerCase())) {
-        return setError("El usuario lleva 3 a 30 letras, números, punto o guion.");
-      }
-      if (password.length < 6) return setError("La contraseña necesita al menos 6 caracteres.");
-      if (!rolElegido) return setError("Elegí el rol.");
-    } else if (password && password.length < 6) {
-      return setError("La contraseña necesita al menos 6 caracteres.");
-    }
+    if (password && password.length < 6) return setError("La contraseña necesita al menos 6 caracteres.");
     setEnviando(true);
     try {
-      onListo(
-        await apiPersonal.darAcceso(
-          persona.id,
-          reactivar
-            ? { ...(password ? { password } : {}) }
-            : {
-                username: username.trim().toLowerCase(),
-                password,
-                rolId: Number(rolElegido),
-                ...(eligeSucursal && sucursalId ? { sucursalId: Number(sucursalId) } : {}),
-              },
-        ),
-      );
+      onListo(await apiPersonal.darAcceso(persona.id, password ? { password } : {}));
     } catch (e) {
       setError(mensaje(e, "No se pudo dar el acceso"));
     } finally {
@@ -773,7 +878,7 @@ function DarAcceso({
   return (
     <Modal
       abierto
-      titulo={reactivar ? "Devolverle el acceso" : "Darle acceso"}
+      titulo="Devolverle el acceso"
       subtitulo={`${persona.nombre} va a ocupar un lugar del cupo de usuarios del plan.`}
       onClose={onClose}
       cerrarAlClicAfuera={false}
@@ -783,54 +888,71 @@ function DarAcceso({
             Cancelar
           </Boton>
           <Boton onClick={enviar} disabled={enviando}>
-            {enviando ? "Un momento…" : reactivar ? "Devolver acceso" : "Darle acceso"}
+            {enviando ? "Un momento…" : "Devolver acceso"}
           </Boton>
         </>
       }
     >
       <div className="space-y-3">
-        {reactivar ? (
-          <p className="text-sm text-texto-2">
-            Vuelve a entrar como <strong>@{persona.acceso?.username}</strong>. Si no se acuerda la contraseña, poné
-            una nueva.
-          </p>
-        ) : (
-          <>
-            <Campo label="Usuario">
-              <Input value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="off" />
-            </Campo>
-            <Campo
-              label="Rol"
-              hint="Lo que va a poder hacer en el sistema."
-              error={asignables.error ? "No se pudieron cargar los roles." : undefined}
-            >
-              <Select value={rolElegido} onChange={(e) => setRol(e.target.value)} aria-label="Rol">
-                {!rolElegido && <option value="">Elegí el rol…</option>}
-                {roles.map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {r.nombre}
-                  </option>
-                ))}
-              </Select>
-              {/* Arranca en el cargo, que muchas veces es un rol sin permisos
-                  ("Lavacabezas"): entraría a una pantalla vacía (QA R1 W-10). */}
-              {rolSinPermisos(roles.find((r) => String(r.id) === rolElegido)) && <AvisoSinPermisos />}
-            </Campo>
-            {eligeSucursal && (
-              <Campo label="Sucursal" hint="La de sus datos al entrar.">
-                <Select value={sucursalId} onChange={(e) => setSucursalId(e.target.value)} aria-label="Sucursal">
-                  {sucursales.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.nombre}
-                    </option>
-                  ))}
-                </Select>
-              </Campo>
-            )}
-          </>
-        )}
-        <Campo label={reactivar ? "Contraseña nueva (opcional)" : "Contraseña"}>
+        <p className="text-sm text-texto-2">
+          Vuelve a entrar como <strong>@{persona.acceso?.username}</strong>. Si no se acuerda la contraseña, poné una
+          nueva.
+        </p>
+        <Campo label="Contraseña nueva (opcional)">
           <InputPassword value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" />
+        </Campo>
+        <ErrorMsg>{error}</ErrorMsg>
+      </div>
+    </Modal>
+  );
+}
+
+/** «Cambiar contraseña» de quien ya entra: la cambia quien administra usuarios, sin pedir la actual. */
+function CambiarClave({ persona, onClose, onListo }: { persona: Persona; onClose: () => void; onListo: () => void }) {
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [enviando, setEnviando] = useState(false);
+
+  const enviar = async () => {
+    setError("");
+    if (password.length < 6) return setError("La contraseña necesita al menos 6 caracteres.");
+    setEnviando(true);
+    try {
+      await api.cambiarPassword(persona.acceso!.usuarioId, password);
+      onListo();
+    } catch (e) {
+      setError(mensaje(e, "No se pudo cambiar la contraseña"));
+    } finally {
+      setEnviando(false);
+    }
+  };
+
+  return (
+    <Modal
+      abierto
+      titulo="Cambiar contraseña"
+      subtitulo={`Para que ${persona.nombre} entre como @${persona.acceso?.username}.`}
+      onClose={onClose}
+      cerrarAlClicAfuera={false}
+      acciones={
+        <>
+          <Boton variante="ghost" onClick={onClose} disabled={enviando}>
+            Cancelar
+          </Boton>
+          <Boton onClick={enviar} disabled={enviando}>
+            {enviando ? "Un momento…" : "Cambiar contraseña"}
+          </Boton>
+        </>
+      }
+    >
+      <div className="space-y-3">
+        <Campo label="Contraseña nueva" hint="Al menos 6 caracteres.">
+          <InputPassword
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            autoComplete="new-password"
+            aria-label="Contraseña nueva"
+          />
         </Campo>
         <ErrorMsg>{error}</ErrorMsg>
       </div>

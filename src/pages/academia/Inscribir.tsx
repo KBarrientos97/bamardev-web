@@ -759,6 +759,7 @@ export default function Inscribir({
                     plan={pl}
                     planes={planes}
                     grupo={grupo}
+                    descuento={tipoDesc && valorDescValido > 0 ? { tipo: tipoDesc, enPct, valor: valorDescValido } : null}
                     elegido={pl.id === planId}
                     onElegir={() => {
                       setPlanId(pl.id);
@@ -1194,21 +1195,33 @@ function TarjetaPlan({
   plan,
   planes,
   grupo,
+  descuento,
   elegido,
   onElegir,
 }: {
   plan: PlanPago;
   planes: PlanPago[];
   grupo: GrupoDetalle | null;
+  /**
+   * La beca o promoción que se está cargando (ya válida). Cada tarjeta dice lo
+   * que se cobraría CON ella: «Pago completo» mostraba el precio de lista
+   * aunque el resumen cobrara con la beca (Lista 2 #4).
+   */
+  descuento: { tipo: TipoDescuento; enPct: boolean; valor: number } | null;
   elegido: boolean;
   onElegir: () => void;
 }) {
   const p = usePalabras();
-  const cuotas = plan.calendario;
+  // Con la beca, el plan se ve como se va a cobrar (las cuotas en Bs 0 no existen).
+  const conBeca = (pl: PlanPago) =>
+    descuento ? calendarioConDescuento(pl, descuento.tipo, descuento.enPct, descuento.valor) : null;
+  const propia = conBeca(plan);
+  const cuotas = propia?.cuotas ?? plan.calendario;
+  const totalPlan = propia?.total ?? plan.total;
   const mesAMes = planes.find((x) => x.generado === "MES_A_MES");
   const desdeDe = (orden: number) => grupo?.materiasGrupo.find((m) => m.materia.orden === orden)?.desde;
   let titulo = plan.nombre;
-  let precio = fmtMoney(plan.total);
+  let precio = fmtMoney(totalPlan);
   let resumen =
     cuotas.length === 1
       ? "1 pago al inscribirse"
@@ -1229,9 +1242,9 @@ function TarjetaPlan({
       })
       .join(" · ");
   } else if (plan.generado === "COMPLETO") {
-    const ahorro = mesAMes ? mesAMes.total - plan.total : 0;
+    const ahorro = mesAMes ? (conBeca(mesAMes)?.total ?? mesAMes.total) - totalPlan : 0;
     titulo = "Pago completo";
-    precio = `${fmtMoney(plan.total)}${ahorro > 0 ? ` · ahorra ${fmtMoney(ahorro)}` : ""}`;
+    precio = `${fmtMoney(totalPlan)}${ahorro > 0 ? ` · ahorra ${fmtMoney(ahorro)}` : ""}`;
     resumen = `Una sola cuota, cubre ${cuotas[0]?.cubre.length === 1 ? `el ${p.materia}` : `los ${cuotas[0]?.cubre.length ?? 0} ${p.materias}`}`;
   }
   const generado = !!plan.generado;

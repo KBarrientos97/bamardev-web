@@ -24,6 +24,7 @@ vi.mock("../../../lib/academia/apiAcademia", async (importOriginal) => {
 });
 
 import { apiAcademia } from "../../../lib/academia/apiAcademia";
+import { EVENTO_PRIMEROS_PASOS } from "../../../lib/academia/primerosPasos";
 import SedeFranjas from "./SedeFranjas";
 
 const sede = { id: 1, nombre: "Central" };
@@ -183,6 +184,20 @@ describe("C5 · franjas vacías y «Usar las típicas»", () => {
     const resumen = screen.getByRole("status", { name: "Resultado de las franjas típicas" });
     expect(resumen).toHaveTextContent("Se agregaron 2 franjas: 08:00–10:00, 10:00–12:00");
     expect(alCambiar).toHaveBeenCalled();
+  });
+
+  it("Lista 2 #8: «Usar las típicas» avisa a la Configuración rápida para que no siga pidiendo las franjas", async () => {
+    vi.mocked(apiAcademia.franjasSede).mockResolvedValue(vista());
+    vi.mocked(apiAcademia.franjasTipicas).mockResolvedValue(TIPICAS);
+    const avisos = vi.fn();
+    window.addEventListener(EVENTO_PRIMEROS_PASOS, avisos);
+    try {
+      await montar();
+      await tipicas();
+      expect(avisos).toHaveBeenCalledTimes(1);
+    } finally {
+      window.removeEventListener(EVENTO_PRIMEROS_PASOS, avisos);
+    }
   });
 
   it("dice qué omitió y por qué: «Ya estaba» o «Se pisa con …»", async () => {

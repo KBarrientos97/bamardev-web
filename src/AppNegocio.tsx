@@ -8,7 +8,7 @@ import {
 } from "react-router-dom";
 import AtajaErrores from "./components/AtajaErrores";
 import Layout from "./components/Layout";
-import { RUTA_CAJA, RUTA_COBRAR, RUTA_SEDES } from "./lib/academia/vista";
+import { RUTA_CAJA, RUTA_COBRAR, RUTA_CONFIG_RAPIDA, RUTA_SEDES } from "./lib/academia/vista";
 import { ConPestanasConfig, InicioConfig } from "./pages/academia/config/ConfigAcademia";
 import { RUTA_AGENDA_PRONTO, rutaInicial, veReportes, veSoloSuAgenda, type Seccion } from "./lib/permisos";
 import { esBelleza, esFarmacia } from "./lib/rubro";
@@ -104,6 +104,7 @@ const CobranzaAcademia = lazy(() => import("./pages/academia/Cobranza"));
 const CobrarAcademia = lazy(() => import("./pages/academia/Cobrar"));
 const CarrerasAcademia = lazy(() => import("./pages/academia/config/Carreras"));
 const AjustesAcademia = lazy(() => import("./pages/academia/config/AjustesAcademia"));
+const ConfiguracionRapida = lazy(() => import("./pages/academia/PrimerosPasos"));
 const SedesAcademia = lazy(() => import("./pages/academia/config/Sedes").then((m) => ({ default: m.SedesConfig })));
 
 /** Una pantalla de la academia: con su sección y bajada aparte. */
@@ -956,6 +957,7 @@ function Rutas() {
         <Route path="/configuracion/carreras" element={<Academia seccion="academia_carreras"><ConPestanasConfig><CarrerasAcademia /></ConPestanasConfig></Academia>} />
         <Route path="/configuracion/academia" element={<Academia seccion="academia_ajustes"><ConPestanasConfig><AjustesAcademia /></ConPestanasConfig></Academia>} />
         <Route path={RUTA_SEDES} element={<Academia seccion="academia_ajustes"><ConPestanasConfig><SedesAcademia /></ConPestanasConfig></Academia>} />
+        <Route path={RUTA_CONFIG_RAPIDA} element={<Academia seccion="academia_ajustes"><ConPestanasConfig><ConfiguracionRapida /></ConPestanasConfig></Academia>} />
         {/* Las aulas dejaron de ser una pestaña (viven en cada sede): el enlace ya compartido sigue andando. */}
         <Route path="/configuracion/aulas" element={<RedirigeConBusqueda a={RUTA_SEDES} />} />
         {/* Configuración (26-oct): una entrada en el menú, con una pestaña por pantalla. */}

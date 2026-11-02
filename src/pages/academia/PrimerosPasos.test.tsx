@@ -1,14 +1,12 @@
-import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, render, screen, within } from "@testing-library/react";
 import { MemoryRouter, useNavigate } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ajustesDePrueba } from "../../test/academiaFixtures";
 
 /**
- * L1 · «Configuración rápida» (antes la tarjeta «Primeros pasos», C1): un botón
- * con el anillo n/N que abre la lista en el panel lateral. Se marca sola,
- * desaparece al completarse (con un «¡Listo!» si se completó a la vista), se
- * oculta con «Ya lo sé» en todos los equipos, se abre sola una única vez con la
- * academia recién creada, y sólo la ve quien configura el instituto.
+ * «Configuración rápida» (antes la tarjeta «Primeros pasos», C1; M1, 31-oct):
+ * una pestaña de la Configuración del instituto con la lista de pasos. Se marca
+ * sola y, con todo hecho, sigue ahí mostrando todo ✓ (es el único lugar).
  */
 
 const sesion = vi.hoisted(() => ({ rol: "admin" as "admin" | "secretaria" | "docente", mostrador: false }));
@@ -54,8 +52,6 @@ import { avisarPrimerosPasos } from "../../lib/academia/primerosPasos";
 import { ApiError } from "../../lib/api";
 import PrimerosPasos from "./PrimerosPasos";
 
-const CLAVE = "bamardev_primeros_pasos_20";
-
 const sede = (extra: Record<string, unknown> = {}) => ({
   id: 1,
   nombre: "Central",
@@ -89,7 +85,7 @@ function cargarVacio(ajustes: Parameters<typeof ajustesDePrueba>[0] = {}) {
   vi.mocked(apiAcademia.grupos).mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 100 });
 }
 
-/** Con un paso hecho (el curso): el panel no se abre solo. */
+/** Con un paso hecho (el curso). */
 function cargarParcial() {
   cargarVacio();
   vi.mocked(apiAcademia.carreras).mockResolvedValue([curso] as never);
@@ -104,188 +100,75 @@ async function montar() {
   await act(async () => {});
 }
 
-const boton = () => screen.queryByRole("button", { name: /^Configuración rápida/ });
-const panel = () => screen.queryByRole("complementary", { name: "Configuración rápida" });
-/** Abre el panel (si no se abrió solo) y lo devuelve. */
-function abrir() {
-  if (!panel()) fireEvent.click(boton()!);
-  return panel()!;
-}
+const lista = () => screen.getByRole("list");
+const barra = () => screen.getByRole("progressbar", { name: "Configuración rápida" });
 
 beforeEach(() => {
   vi.clearAllMocks();
-  localStorage.clear();
-  sessionStorage.clear();
   sesion.rol = "admin";
   sesion.mostrador = false;
-  vi.mocked(apiAcademia.guardarAjustes).mockResolvedValue(ajustesDePrueba());
 });
 
 afterEach(() => {
-  vi.useRealTimers();
   vi.restoreAllMocks();
   cleanup();
 });
 
-describe("L1 · el botón «Configuración rápida»", () => {
-  it("con pasos pendientes es un botón con el anillo n/N (no una tarjeta); tocarlo abre la lista en el panel", async () => {
+describe("M1 · la pantalla «Configuración rápida»", () => {
+  it("es una pantalla con la lista a la vista (no un botón con panel) y su progreso n de N", async () => {
     cargarParcial();
     await montar();
-    expect(screen.queryByRole("region", { name: "Primeros pasos" })).not.toBeInTheDocument();
-    expect(boton()).toHaveAccessibleName("Configuración rápida: 1 de 6 listos");
-    expect(boton()).toHaveTextContent("1/6");
-    expect(panel()).not.toBeInTheDocument();
-    fireEvent.click(boton()!);
-    expect(boton()).toHaveAttribute("aria-expanded", "true");
-    const p = panel()!;
-    expect(within(p).getAllByRole("listitem")).toHaveLength(6);
-    expect(within(p).getByRole("progressbar", { name: "Configuración rápida" })).toHaveAttribute("aria-valuenow", "1");
+    expect(screen.getByRole("heading", { name: "Configuración rápida" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Configuración rápida/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("complementary")).not.toBeInTheDocument();
+    expect(within(lista()).getAllByRole("listitem")).toHaveLength(6);
+    expect(barra()).toHaveAttribute("aria-valuenow", "1");
     expect(screen.getByText(/1 de 6 listos/)).toBeInTheDocument();
   });
 
   it("incompleta: las casillas pendientes con su botón a la pantalla donde se hacen", async () => {
     cargarVacio();
     await montar();
-    const p = abrir();
-    expect(within(p).getAllByRole("listitem")).toHaveLength(6);
-    expect(within(p).getByRole("link", { name: /Ir a Sedes/ })).toHaveAttribute("href", "/configuracion/sedes");
-    expect(within(p).getByRole("link", { name: /Cargar franjas/ })).toHaveAttribute("href", "/configuracion/sedes");
-    expect(within(p).getByRole("link", { name: /Crear un curso/ })).toHaveAttribute("href", "/configuracion/carreras");
-    expect(within(p).getByRole("link", { name: /Ir a Personal/ })).toHaveAttribute("href", "/personal");
-    expect(within(p).getByRole("link", { name: /Abrir un grupo/ })).toHaveAttribute("href", "/academia/calendario");
-    expect(within(p).getByRole("link", { name: /Ir a Mi página/ })).toHaveAttribute("href", "/mi-pagina");
-  });
-
-  it("«Ir a…» cierra el panel (si no, tapaba la pantalla a la que lleva)", async () => {
-    cargarParcial();
-    await montar();
-    fireEvent.click(within(abrir()).getByRole("link", { name: /Ir a Sedes/ }));
-    expect(panel()).not.toBeInTheDocument();
-    expect(boton()).toBeInTheDocument();
+    const l = lista();
+    expect(within(l).getByRole("link", { name: /Ir a Sedes/ })).toHaveAttribute("href", "/configuracion/sedes");
+    expect(within(l).getByRole("link", { name: /Cargar franjas/ })).toHaveAttribute("href", "/configuracion/sedes");
+    expect(within(l).getByRole("link", { name: /Crear un curso/ })).toHaveAttribute("href", "/configuracion/carreras");
+    expect(within(l).getByRole("link", { name: /Ir a Personal/ })).toHaveAttribute("href", "/personal");
+    expect(within(l).getByRole("link", { name: /Abrir un grupo/ })).toHaveAttribute("href", "/academia/calendario");
+    expect(within(l).getByRole("link", { name: /Ir a Mi página/ })).toHaveAttribute("href", "/mi-pagina");
   });
 
   it("parcial: lo hecho se marca solo y ya no pide botón; el resto sigue", async () => {
     cargarParcial();
     await montar();
-    const p = abrir();
-    expect(within(p).getByText("Un curso con módulos y precio").parentElement).toHaveTextContent(/^Listo: /);
-    expect(within(p).queryByRole("link", { name: /Crear un curso/ })).not.toBeInTheDocument();
-    expect(within(p).getByRole("link", { name: /Ir a Sedes/ })).toBeInTheDocument();
+    const l = lista();
+    expect(within(l).getByText("Un curso con módulos y precio").parentElement).toHaveTextContent(/^Listo: /);
+    expect(within(l).queryByRole("link", { name: /Crear un curso/ })).not.toBeInTheDocument();
+    expect(within(l).getByRole("link", { name: /Ir a Sedes/ })).toBeInTheDocument();
   });
 
-  it("completa: no hay botón y lo recuerda, sin volver a pedir datos la próxima vez", async () => {
+  it("completa: la pestaña NO se esconde, muestra todo ✓ y ningún botón de ir", async () => {
     cargarTodoHecho();
     await montar();
-    expect(boton()).not.toBeInTheDocument();
-    expect(localStorage.getItem(CLAVE)).toBe("completo");
-    // Al volver a entrar ni siquiera se consulta.
-    cleanup();
-    vi.mocked(apiAcademia.ajustes).mockClear();
-    await montar();
-    expect(boton()).not.toBeInTheDocument();
-    expect(apiAcademia.ajustes).not.toHaveBeenCalled();
+    expect(within(lista()).getAllByRole("listitem")).toHaveLength(6);
+    expect(barra()).toHaveAttribute("aria-valuenow", "6");
+    expect(screen.getByText(/¡Listo!/)).toBeInTheDocument();
+    expect(within(lista()).queryByRole("link")).not.toBeInTheDocument();
   });
 
-  it("si se completa con la pantalla abierta dice «¡Listo!» un momento y después el botón se va", async () => {
-    cargarParcial();
-    await montar();
-    expect(boton()).toBeInTheDocument();
-    vi.useFakeTimers();
-    cargarTodoHecho();
-    await act(async () => {
-      avisarPrimerosPasos();
-      await vi.advanceTimersByTimeAsync(0);
-    });
-    expect(screen.getByRole("status")).toHaveTextContent("¡Listo!");
-    expect(boton()).not.toBeInTheDocument();
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(4000);
-    });
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
-    expect(localStorage.getItem(CLAVE)).toBe("completo");
-  });
-});
-
-describe("L1 · «Ya lo sé» y la primera vez, en todos los equipos", () => {
-  it("«Ya lo sé» (en el panel) oculta el botón, lo guarda en los ajustes del instituto y en este navegador", async () => {
-    cargarParcial();
-    await montar();
-    fireEvent.click(within(abrir()).getByRole("button", { name: "Ya lo sé" }));
-    expect(boton()).not.toBeInTheDocument();
-    expect(panel()).not.toBeInTheDocument();
-    await act(async () => {});
-    expect(apiAcademia.guardarAjustes).toHaveBeenCalledWith({ primerosPasosOcultos: true });
-    expect(localStorage.getItem(CLAVE)).toBe("oculto");
-    cleanup();
-    await montar();
-    expect(boton()).not.toBeInTheDocument();
-  });
-
-  it("dado en otro equipo (llega en los ajustes): no aparece y queda anotado acá", async () => {
-    cargarVacio({ primerosPasosOcultos: true });
-    await montar();
-    expect(boton()).not.toBeInTheDocument();
-    expect(panel()).not.toBeInTheDocument();
-    expect(localStorage.getItem(CLAVE)).toBe("oculto");
-  });
-
-  it("con la academia recién creada (0 hechos) el panel se abre solo y lo anota en el backend", async () => {
+  it("no guarda nada en los ajustes (sin «Ya lo sé» ni apertura automática)", async () => {
     cargarVacio();
     await montar();
-    expect(panel()).toBeInTheDocument();
-    expect(apiAcademia.guardarAjustes).toHaveBeenCalledWith({ primerosPasosVistos: true });
-  });
-
-  it("si ya se abrió solo en otro equipo (primerosPasosVistos), no se abre solo: queda el botón", async () => {
-    cargarVacio({ primerosPasosVistos: true });
-    await montar();
-    expect(panel()).not.toBeInTheDocument();
-    expect(boton()).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Ya lo sé" })).not.toBeInTheDocument();
     expect(apiAcademia.guardarAjustes).not.toHaveBeenCalled();
   });
 
-  it("aunque el guardado falle, en la misma sesión no se vuelve a abrir solo", async () => {
-    vi.mocked(apiAcademia.guardarAjustes).mockRejectedValue(new Error("corte"));
-    cargarVacio();
-    await montar();
-    expect(panel()).toBeInTheDocument();
-    cleanup();
-    await montar();
-    expect(panel()).not.toBeInTheDocument();
-    expect(boton()).toBeInTheDocument();
-  });
-
-  it("con algo hecho no se abre solo", async () => {
-    cargarParcial();
-    await montar();
-    expect(panel()).not.toBeInTheDocument();
-    expect(apiAcademia.guardarAjustes).not.toHaveBeenCalled();
-  });
-
-  it("si el navegador no deja guardar (modo privado), «Ya lo sé» igual lo oculta ahora y no rompe", async () => {
-    cargarParcial();
-    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
-      throw new Error("QuotaExceededError");
-    });
-    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
-      throw new Error("SecurityError");
-    });
-    await montar();
-    expect(boton()).toBeInTheDocument();
-    fireEvent.click(within(abrir()).getByRole("button", { name: "Ya lo sé" }));
-    expect(boton()).not.toBeInTheDocument();
-  });
-
-  it("la recepción y el docente no lo ven, ni se piden los datos", async () => {
-    cargarVacio();
-    for (const rol of ["secretaria", "docente"] as const) {
-      sesion.rol = rol;
-      await montar();
-      expect(boton()).not.toBeInTheDocument();
-      cleanup();
+  it("si no se pudo leer nada, lo dice en vez de mostrar una lista vacía", async () => {
+    for (const f of [apiAcademia.sedes, apiAcademia.ajustes, apiAcademia.carreras, apiAcademia.docentes, apiAcademia.grupos]) {
+      vi.mocked(f).mockRejectedValue(new Error("corte"));
     }
-    expect(apiAcademia.ajustes).not.toHaveBeenCalled();
-    expect(apiAcademia.sedes).not.toHaveBeenCalled();
+    await montar();
+    expect(screen.getByText(/No se pudo leer el estado del instituto/)).toBeInTheDocument();
   });
 });
 
@@ -305,18 +188,18 @@ describe("C1 · los pasos (se marcan solos con los datos)", () => {
       sede({ direccion: null, franjas: 0 }),
     ] as never);
     await montar();
-    const p = abrir();
-    expect(within(p).getByRole("link", { name: /Ir a Sedes/ })).toHaveAttribute("href", "/configuracion/sedes?sede=4&ver=editar");
-    expect(within(p).getByRole("link", { name: /Cargar franjas/ })).toHaveAttribute("href", "/configuracion/sedes?sede=4&ver=franjas");
+    const l = lista();
+    expect(within(l).getByRole("link", { name: /Ir a Sedes/ })).toHaveAttribute("href", "/configuracion/sedes?sede=4&ver=editar");
+    expect(within(l).getByRole("link", { name: /Cargar franjas/ })).toHaveAttribute("href", "/configuracion/sedes?sede=4&ver=franjas");
   });
 
   it("la dirección de la sede se marca sola; las franjas, con el conteo de las sedes", async () => {
     cargarVacio();
     vi.mocked(apiAcademia.sedes).mockResolvedValue([sede({ franjas: 0 })] as never);
     await montar();
-    const p = abrir();
-    expect(within(p).queryByRole("link", { name: /Ir a Sedes/ })).not.toBeInTheDocument();
-    expect(within(p).getByRole("link", { name: /Cargar franjas/ })).toBeInTheDocument();
+    const l = lista();
+    expect(within(l).queryByRole("link", { name: /Ir a Sedes/ })).not.toBeInTheDocument();
+    expect(within(l).getByRole("link", { name: /Cargar franjas/ })).toBeInTheDocument();
   });
 
   it("un paso que no se pudo saber (un permiso que falta) no se muestra ni se da por hecho", async () => {
@@ -324,34 +207,25 @@ describe("C1 · los pasos (se marcan solos con los datos)", () => {
     vi.mocked(apiAcademia.docentes).mockRejectedValue(new Error("Sin permiso"));
     vi.mocked(apiAcademia.sedes).mockRejectedValue(new Error("Sin permiso"));
     await montar();
-    const p = abrir();
     // Sin las sedes caen los dos pasos que dependen de ellas (sede y franjas), y sin docentes el tercero.
-    expect(within(p).getAllByRole("listitem")).toHaveLength(3);
-    expect(within(p).queryByText(/con acceso/)).not.toBeInTheDocument();
-  });
-
-  it("completa con un paso sin saber: no hay botón, pero no se la da por terminada para siempre", async () => {
-    cargarTodoHecho();
-    vi.mocked(apiAcademia.docentes).mockRejectedValue(new Error("Sin permiso"));
-    await montar();
-    expect(boton()).not.toBeInTheDocument();
-    expect(localStorage.getItem(CLAVE)).toBeNull();
+    expect(within(lista()).getAllByRole("listitem")).toHaveLength(3);
+    expect(within(lista()).queryByText(/con acceso/)).not.toBeInTheDocument();
   });
 
   it("R3: cuando una pantalla avisa que guardó, la lista se vuelve a leer y marca sola lo que ya está", async () => {
     cargarVacio();
     await montar();
-    expect(boton()).toHaveAccessibleName("Configuración rápida: 0 de 6 listos");
+    expect(barra()).toHaveAttribute("aria-valuenow", "0");
     // El administrador cargó la dirección y las franjas de la sede sin salir de la pantalla.
     vi.mocked(apiAcademia.sedes).mockResolvedValue([sede()] as never);
     await act(async () => {
       avisarPrimerosPasos();
     });
-    expect(boton()).toHaveAccessibleName("Configuración rápida: 2 de 6 listos");
-    expect(within(abrir()).queryByRole("link", { name: /Cargar franjas/ })).not.toBeInTheDocument();
+    expect(barra()).toHaveAttribute("aria-valuenow", "2");
+    expect(within(lista()).queryByRole("link", { name: /Cargar franjas/ })).not.toBeInTheDocument();
   });
 
-  it("R3: al pasar de una pestaña a otra de la Configuración (misma lista, otra ruta) se vuelve a leer", async () => {
+  it("R3: al cambiar de ruta (misma lista, otra pestaña) se vuelve a leer, y los grupos se piden de a pocos", async () => {
     cargarVacio();
     let ir: (a: string) => void = () => {};
     function Nav() {
@@ -372,30 +246,15 @@ describe("C1 · los pasos (se marcan solos con los datos)", () => {
       ir("/configuracion/carreras");
     });
     expect(apiAcademia.sedes).toHaveBeenCalledTimes(2);
-    expect(boton()).toHaveAccessibleName("Configuración rápida: 1 de 6 listos");
-  });
-
-  it("M4: lo que la pantalla ya cargó (ajustes y cursos) no se pide de nuevo, y los grupos se piden de a pocos", async () => {
-    cargarVacio();
-    render(
-      <MemoryRouter>
-        <PrimerosPasos ajustes={ajustesDePrueba({ paginaPublicada: false })} cursos={[curso] as never} />
-      </MemoryRouter>,
-    );
-    await act(async () => {});
-    expect(apiAcademia.ajustes).not.toHaveBeenCalled();
-    expect(apiAcademia.carreras).not.toHaveBeenCalled();
-    // El curso que le pasó la pantalla cuenta.
-    expect(boton()).toHaveAccessibleName("Configuración rápida: 1 de 6 listos");
+    expect(barra()).toHaveAttribute("aria-valuenow", "1");
     expect(apiAcademia.grupos).toHaveBeenCalledWith({ pageSize: 10 });
   });
 
-  it("M4: un rol al que le falta el permiso de un dato (403) la completa igual con lo que sí ve, y lo recuerda", async () => {
+  it("un rol al que le falta el permiso de un dato (403) ve igual lo que sí puede ver", async () => {
     cargarTodoHecho();
     vi.mocked(apiAcademia.docentes).mockRejectedValue(new ApiError("Sin permiso", 403));
     await montar();
-    expect(boton()).not.toBeInTheDocument();
-    expect(localStorage.getItem(CLAVE)).toBe("completo");
+    expect(within(lista()).getAllByRole("listitem")).toHaveLength(5);
   });
 
   it("R5: con QR y PIN en el plan, suma «El QR de cobro cargado» y «Tu PIN de autorización» con su estado real", async () => {
@@ -404,32 +263,31 @@ describe("C1 · los pasos (se marcan solos con los datos)", () => {
     vi.mocked(api.qrCobro).mockResolvedValue({ imagen: null, actualizadoEn: null });
     vi.mocked(api.getUsuario).mockResolvedValue({ id: 1, tienePin: false } as never);
     await montar();
-    expect(boton()).toHaveAccessibleName("Configuración rápida: 6 de 8 listos");
-    const p = abrir();
-    expect(within(p).getByRole("link", { name: /Cargar el QR/ })).toHaveAttribute("href", "/configuracion/qr-cobro");
-    expect(within(p).getByRole("link", { name: /Poner mi PIN/ })).toHaveAttribute("href", "/usuarios");
+    expect(barra()).toHaveAttribute("aria-valuenow", "6");
+    expect(barra()).toHaveAttribute("aria-valuemax", "8");
+    const l = lista();
+    expect(within(l).getByRole("link", { name: /Cargar el QR/ })).toHaveAttribute("href", "/configuracion/qr-cobro");
+    expect(within(l).getByRole("link", { name: /Poner mi PIN/ })).toHaveAttribute("href", "/usuarios");
     expect(api.getUsuario).toHaveBeenCalledWith(1);
-    // Con la lista a medias no se la da por completa.
-    expect(localStorage.getItem(CLAVE)).toBeNull();
   });
 
-  it("R5: con el QR y el PIN ya puestos, esos pasos salen hechos y la lista se completa", async () => {
+  it("R5: con el QR y el PIN ya puestos, esos pasos salen hechos y la lista queda completa", async () => {
     sesion.mostrador = true;
     cargarTodoHecho();
     vi.mocked(api.qrCobro).mockResolvedValue({ imagen: "data:image/png;base64,xx", actualizadoEn: null });
     vi.mocked(api.getUsuario).mockResolvedValue({ id: 1, tienePin: true } as never);
     await montar();
-    expect(boton()).not.toBeInTheDocument();
-    expect(localStorage.getItem(CLAVE)).toBe("completo");
+    expect(barra()).toHaveAttribute("aria-valuenow", "8");
+    expect(screen.getByText(/¡Listo!/)).toBeInTheDocument();
   });
 
-  it("R5: si no se pudo saber el QR ni el PIN (un permiso, un corte), esos pasos no se muestran ni traban la lista", async () => {
+  it("R5: si no se pudo saber el QR ni el PIN (un permiso, un corte), esos pasos no se muestran", async () => {
     sesion.mostrador = true;
     cargarVacio();
     vi.mocked(api.qrCobro).mockRejectedValue(new Error("corte"));
     vi.mocked(api.getUsuario).mockRejectedValue(new ApiError("Sin permiso", 403));
     await montar();
-    expect(within(abrir()).getAllByRole("listitem")).toHaveLength(6);
+    expect(within(lista()).getAllByRole("listitem")).toHaveLength(6);
   });
 
   it("R5: sin QR ni PIN en el plan no se pregunta nada", async () => {

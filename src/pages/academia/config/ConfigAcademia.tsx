@@ -1,10 +1,9 @@
 import type { ReactNode } from "react";
 import { Navigate, NavLink } from "react-router-dom";
 import { usePalabras } from "../../../lib/academia/usePalabras";
-import { PESTANAS_CONFIG_ACADEMIA, RUTA_SEDES } from "../../../lib/academia/vista";
+import { PESTANAS_CONFIG_ACADEMIA, RUTA_CONFIG_RAPIDA, RUTA_SEDES } from "../../../lib/academia/vista";
 import type { Seccion } from "../../../lib/permisos";
 import { useAuth } from "../../../store/AuthContext";
-import PrimerosPasos from "../PrimerosPasos";
 
 /**
  * La Configuración del instituto (dueño, 26-oct): lo que no se usa todos los
@@ -23,30 +22,24 @@ const NOMBRE: Partial<Record<Seccion, (p: ReturnType<typeof usePalabras>) => str
 };
 
 /** Las pestañas que comparten sección con otra (Sedes y Ajustes) se nombran por su ruta. */
-const NOMBRE_POR_RUTA: Record<string, (p: ReturnType<typeof usePalabras>) => string> = { [RUTA_SEDES]: (p) => p.Sedes };
+const NOMBRE_POR_RUTA: Record<string, (p: ReturnType<typeof usePalabras>) => string> = {
+  [RUTA_SEDES]: (p) => p.Sedes,
+  [RUTA_CONFIG_RAPIDA]: () => "Configuración rápida",
+};
 
 /**
- * La barra de pestañas, arriba de la pantalla, con la Configuración rápida a
- * la derecha (L1). Con una sola pestaña no hay barra: el botón queda solo,
- * arriba a la derecha.
+ * La barra de pestañas, arriba de la pantalla. «Configuración rápida» es una
+ * pestaña más (M1): ya no hay botón suelto ni en la barra.
  */
 function Pestanas() {
   const { puede } = useAuth();
   const p = usePalabras();
   const visibles = PESTANAS_CONFIG_ACADEMIA.filter((t) => puede(t.seccion));
-  if (visibles.length < 2) {
-    return (
-      // `empty:hidden`: sin pasos pendientes el botón no se dibuja y no queda un hueco.
-      <div className="mx-auto flex w-full max-w-6xl justify-end px-4 pt-4 empty:hidden sm:px-6 lg:px-8">
-        <PrimerosPasos />
-      </div>
-    );
-  }
+  if (visibles.length < 2) return null;
   return (
     <nav aria-label="Configuración del instituto" className="border-b border-borde-soft bg-white">
       <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 sm:px-6 lg:px-8">
-        {/* Las pestañas corren de costado en el celular en vez de partirse en dos
-            renglones; el botón queda fijo a la derecha, fuera de ese scroll. */}
+        {/* Las pestañas corren de costado en el celular en vez de partirse en dos renglones. */}
         <div className="flex min-w-0 flex-1 gap-1 overflow-x-auto">
           {visibles.map((t) => (
             <NavLink
@@ -62,9 +55,6 @@ function Pestanas() {
             </NavLink>
           ))}
         </div>
-        <div className="shrink-0 py-1.5 empty:hidden">
-          <PrimerosPasos />
-        </div>
       </div>
     </nav>
   );
@@ -72,7 +62,7 @@ function Pestanas() {
 
 /**
  * Envuelve una pantalla de la configuración con sus pestañas. Sólo en el
- * instituto: fuera de la academia no hay pestañas ni «Configuración rápida».
+ * instituto: fuera de la academia no hay pestañas.
  */
 export function ConPestanasConfig({ children }: { children: ReactNode }) {
   const { rubro } = useAuth();

@@ -21,7 +21,7 @@ vi.mock("../../../lib/api", async (importOriginal) => {
 
 vi.mock("../../../lib/academia/apiAcademia", async (importOriginal) => {
   const real = await importOriginal<typeof import("../../../lib/academia/apiAcademia")>();
-  return { ...real, apiAcademia: { control: vi.fn(), reportes: vi.fn(), fotoComoUrl: vi.fn(), revisarFotos: vi.fn(), sedes: vi.fn(), ajustes: vi.fn(), carreras: vi.fn(), docentes: vi.fn(), grupos: vi.fn() } };
+  return { ...real, apiAcademia: { control: vi.fn(), reportes: vi.fn(), fotoComoUrl: vi.fn(), revisarFotos: vi.fn(), sedes: vi.fn(), ajustes: vi.fn(), carreras: vi.fn(), docentes: vi.fn(), grupos: vi.fn(), pagosEnLinea: vi.fn() } };
 });
 
 import { apiAcademia } from "../../../lib/academia/apiAcademia";
@@ -42,6 +42,7 @@ const PANEL: PanelControl = {
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(apiAcademia.control).mockResolvedValue(PANEL);
+  vi.mocked(apiAcademia.pagosEnLinea).mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 50 });
   vi.mocked(apiAcademia.fotoComoUrl).mockResolvedValue("blob:x");
   vi.mocked(apiAcademia.revisarFotos).mockResolvedValue({});
   // Un instituto recién dado de alta: nada cargado todavía.
@@ -81,17 +82,14 @@ describe("N9 · Panel de control", () => {
     expect(document.getElementById("t-sin-docente")!.parentElement).toHaveTextContent("130");
   });
 
-  it("R2/L1: el administrador aterriza acá y ve «Configuración rápida» en el encabezado mientras falte armar el instituto", async () => {
-    localStorage.clear();
+  it("M1: el panel de control ya no trae «Configuración rápida» (vive sólo en la Configuración)", async () => {
     render(
       <MemoryRouter>
         <Control />
       </MemoryRouter>,
     );
     await act(async () => {});
-    const boton = within(screen.getByRole("banner")).getByRole("button", { name: /^Configuración rápida/ });
-    expect(boton).toBeInTheDocument();
-    // Ya no es una tarjeta arriba de todo.
+    expect(screen.queryByRole("button", { name: /^Configuración rápida/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "Primeros pasos" })).not.toBeInTheDocument();
   });
 

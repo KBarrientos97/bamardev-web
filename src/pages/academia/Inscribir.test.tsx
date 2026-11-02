@@ -1150,6 +1150,31 @@ describe("L3 · con «Mes a mes», pagar todo hoy se ofrece como «Pago completo
   });
 });
 
+describe("Lista 2 #4 · con beca, cada plan dice lo que se cobraría con ella", () => {
+  it("«Pago completo» muestra el precio con la beca y cuánto ahorra frente a Mes a mes con la misma beca", async () => {
+    vi.mocked(apiAcademia.grupo).mockResolvedValue(
+      grupoDetalle({
+        planesOfrecidos: [
+          { ...PLAN_CUOTAS, nombre: "Mes a mes", generado: "MES_A_MES" },
+          { ...PLAN_COMPLETO, nombre: "Pago completo", total: 1300, calendario: [{ n: 1, monto: 1300, vence: { tipo: "INSCRIPCION" }, cubre: [1, 2, 3] }], generado: "COMPLETO" },
+        ],
+      }),
+    );
+    await montar();
+    const completo = () => within(panel()).getByRole("radio", { name: /Pago completo/ });
+    // Sin beca, como siempre.
+    expect(completo()).toHaveTextContent(/Bs\s?1\.300,00 · ahorra Bs\s?200,00/);
+
+    fireEvent.click(within(panel()).getByRole("button", { name: "Aplicar otro descuento o beca" }));
+    fireEvent.click(within(panel()).getByRole("button", { name: "Beca" }));
+    fireEvent.change(within(panel()).getByLabelText("Descuento"), { target: { value: "50" } });
+    // 1.300 con el 50 % son Bs 650 (y Mes a mes, 750); el ahorro es entre los dos con beca.
+    expect(completo()).toHaveTextContent(/Bs\s?650,00 · ahorra Bs\s?100,00/);
+    expect(completo()).not.toHaveTextContent(/1\.300/);
+    expect(within(panel()).getByRole("radio", { name: /Mes a mes/ })).toHaveTextContent(/Bs\s?375,00 por/);
+  });
+});
+
 describe("L9 · las fotos ya guardadas en Inscribir", () => {
   const conFotos = () => {
     vi.mocked(apiAcademia.ajustes).mockResolvedValue(ajustesDePrueba({ fotosObligatorias: true }));

@@ -21,7 +21,6 @@ import ClasesDeHoy from "./ClasesDeHoy";
 import Inscribir from "./Inscribir";
 import NuevoGrupo, { type HuecoCalendario } from "./NuevoGrupo";
 import { avisarPrimerosPasos } from "../../lib/academia/primerosPasos";
-import PrimerosPasos from "./PrimerosPasos";
 import { BotonFila, BotonIcono, Chip, ChipsFiltro, EncabezadoPagina, PaginaAcademia, ResumenPanel, SeccionPanel, Tarjeta } from "./piezas";
 
 /**
@@ -222,9 +221,6 @@ export default function Calendario() {
                 Cobrar a un estudiante
               </Boton>
             )}
-            {/* L1: la Configuración rápida, al lado del "⋯" mientras falte algo. Espera a que el
-                calendario traiga los ajustes y los cursos para no pedirlos dos veces (ronda 2, M4). */}
-            {!ajustes.cargando && !carreras.cargando && <PrimerosPasos ajustes={ajustes.datos} cursos={carreras.datos} />}
             <MenuMas etiqueta="Más acciones del calendario" titulo="Calendario" acciones={acciones} />
           </>
         }

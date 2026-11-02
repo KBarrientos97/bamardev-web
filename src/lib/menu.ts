@@ -51,14 +51,6 @@ export interface ItemNav {
    */
   rutas?: readonly string[];
   /**
-   * Lo ve cualquier rol, sin sección ni permiso: lo de la cuenta de quien está
-   * sentado (sus avisos, su contraseña). Sólo lo usa "Mi negocio" del
-   * instituto; en los demás rubros eso sigue al pie del menú.
-   */
-  paraTodos?: boolean;
-  /** No es una pantalla: el menú lo dibuja como botón (la contraseña abre un formulario). */
-  accion?: "cambiarPassword";
-  /**
    * El ítem se llama distinto según el rubro: `label` es el nombre de siempre
    * y esto es la palabra que lo reemplaza donde corresponda (ver `rubro.ts`).
    */
@@ -465,7 +457,7 @@ function general(a: string, cambios: Partial<ItemNav> = {}): ItemNav {
  *                   lo del día, cobrar, las clases del docente, el control
  *                   del dueño y lo que se configura una vez.
  *   VENDER          Punto de venta · Caja
- *   ADMINISTRACIÓN  "Mi negocio" (la gente, los avisos y la contraseña) y los
+ *   ADMINISTRACIÓN  "Mi negocio" (la gente: personal, usuarios y roles) y los
  *                   módulos generales que el dueño ya tenía: inventario,
  *                   gastos, reportes de ventas, Mi página. Hasta el 26-oct
  *                   colgaban de un grupo "Más", que con el título del bloque
@@ -538,10 +530,13 @@ const ITEMS_ACADEMIA: (ItemNav & { bloque: Bloque })[] = [
   // La caja del turno: el historial del POS, con el cierre. Es el mismo POS en
   // su propia ruta (ver RUTA_CAJA).
   { a: RUTA_CAJA, label: "Caja", icono: "billetera", seccion: "caja", bloque: "vender" },
-  // "Mi negocio" (el dueño, 26-oct): la gente y la cuenta en un solo grupo,
-  // en vez de un "Equipo" por un lado y los avisos y la contraseña sueltos al
-  // pie del menú. Lo propio del instituto (cursos, sedes, planilla, ajustes)
-  // sigue en Academia → Configuración.
+  // "Mi negocio" (el dueño, 26-oct): la gente en un solo grupo, en vez de un
+  // "Equipo". Es del administrador (M6, 02-nov): cada pantalla pide su
+  // permiso (personal, usuarios, roles), que sólo él tiene de fábrica, así que
+  // la recepción y el docente no ven el grupo ni entran por la URL. Los avisos
+  // y la contraseña, que los usa cualquier rol, volvieron al menú de usuario
+  // (el pie de la barra), como en los demás rubros. Lo propio del instituto
+  // (cursos, sedes, planilla, ajustes) sigue en Academia → Configuración.
   {
     a: "/personal",
     label: "Mi negocio",
@@ -549,15 +544,6 @@ const ITEMS_ACADEMIA: (ItemNav & { bloque: Bloque })[] = [
     bloque: "administracion",
     hijos: [
       ...(general("/personal").hijos ?? []).filter((h) => ["/personal", "/usuarios", "/roles"].includes(h.a)),
-      { a: "/notificaciones", label: "Notificaciones", icono: "bell", paraTodos: true },
-      // Nunca se marca activo: ninguna ruta empieza con "#".
-      {
-        a: "#cambiar-password",
-        label: "Cambiar mi contraseña",
-        icono: "lock",
-        paraTodos: true,
-        accion: "cambiarPassword",
-      },
     ],
   },
   // Sin Almacenes: en el instituto son las sedes, y están en Configuración.
@@ -606,10 +592,6 @@ function filtrar(
   const salida: NodoMenu[] = [];
   for (const i of items) {
     const hijos = filtrar(i.hijos ?? [], puede, rubro, vocabulario);
-    if (i.paraTodos) {
-      salida.push({ item: i, id: `todos:${i.a}`, hijos: [], esTitulo: false });
-      continue;
-    }
     if (!i.seccion) {
       // Grupo sin pantalla propia: con un solo hijo, el hijo va suelto.
       if (hijos.length < 2) {

@@ -267,6 +267,27 @@ describe("instituto (D5): la caja no trata la cuota como un producto", () => {
     expect(dialogo).not.toHaveTextContent("stock");
   });
 
+  it("Lista 2 #9: los motivos de anular una cuota hablan de cuotas, no de «Producto equivocado»", async () => {
+    sesion.rubro = "ACADEMIA";
+    fireEvent.click(await abrir(deCuotas));
+    await screen.findByText(/Cuota 1\/3 · Barbería/);
+    const dialogo = await anular();
+    for (const motivo of ["Error al cobrar", "Se cobró dos veces", "Cuota de otro estudiante", "Otro"]) {
+      expect(within(dialogo).getByRole("button", { name: motivo })).toBeInTheDocument();
+    }
+    expect(within(dialogo).queryByRole("button", { name: "Producto equivocado" })).not.toBeInTheDocument();
+    expect(within(dialogo).queryByRole("button", { name: "Devolución del cliente" })).not.toBeInTheDocument();
+  });
+
+  it("una venta de productos en el instituto conserva los motivos de siempre", async () => {
+    sesion.rubro = "ACADEMIA";
+    fireEvent.click(await abrir(venta));
+    await screen.findByText("Pollo entero");
+    const dialogo = await anular();
+    expect(within(dialogo).getByRole("button", { name: "Producto equivocado" })).toBeInTheDocument();
+    expect(within(dialogo).queryByRole("button", { name: "Cuota de otro estudiante" })).not.toBeInTheDocument();
+  });
+
   it("con el detalle leído y sin cuotas, la venta es de productos y vale el texto de siempre", async () => {
     sesion.rubro = "ACADEMIA";
     fireEvent.click(await abrir(venta));

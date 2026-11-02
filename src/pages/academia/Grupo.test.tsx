@@ -408,6 +408,19 @@ describe("BACK-5 y C10 · editar el aula y los docentes del grupo", () => {
     expect(cambios).not.toHaveProperty("aula");
   });
 
+  it("Lista 2 #6: un grupo sin aula, en una sede con UNA sola, la trae elegida al editar", async () => {
+    vi.mocked(apiAcademia.grupo).mockResolvedValue(grupoDetalle({ aulaId: null, aula: null }));
+    vi.mocked(apiAcademia.aulas).mockResolvedValue([aula(21, "Aula 1")]);
+    vi.mocked(apiAcademia.editarGrupo).mockResolvedValue(grupoDetalle());
+    const dialogo = await abrirEdicion();
+    const select = within(dialogo).getByLabelText("Aula") as HTMLSelectElement;
+    expect(select).toHaveValue("21");
+    await act(async () => {
+      fireEvent.click(within(dialogo).getByRole("button", { name: "Guardar" }));
+    });
+    expect(vi.mocked(apiAcademia.editarGrupo).mock.calls[0][1].aulaId).toBe(21);
+  });
+
   it("un grupo viejo con el aula en texto sin enlazar la conserva hasta que se elija otra", async () => {
     vi.mocked(apiAcademia.grupo).mockResolvedValue(grupoDetalle({ aulaId: null, aula: "Sala B" }));
     vi.mocked(apiAcademia.aulas).mockResolvedValue([aula(21, "Aula 1")]);

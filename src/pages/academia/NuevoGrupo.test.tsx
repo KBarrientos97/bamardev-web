@@ -355,16 +355,38 @@ describe("BACK-5 · el aula se elige de la lista de la sede", () => {
     expect(mandado).not.toHaveProperty("aula");
   });
 
-  it("«Sin aula» no manda ninguna", async () => {
-    vi.mocked(apiAcademia.aulas).mockResolvedValue([aulaDe(11, "Aula 1")]);
+  it("con varias aulas no se adivina: «Sin aula» se manda a propósito (aulaId null) y sin texto", async () => {
+    vi.mocked(apiAcademia.aulas).mockResolvedValue([aulaDe(11, "Aula 1"), aulaDe(12, "Taller")]);
     vi.mocked(apiAcademia.crearGrupo).mockResolvedValue(grupoDetalle());
     const { panel } = await montar();
+    expect((within(panel).getByLabelText("Aula") as HTMLSelectElement).value).toBe("");
     await act(async () => {
       fireEvent.click(within(panel).getByRole("button", { name: "Abrir grupo" }));
     });
     const mandado = vi.mocked(apiAcademia.crearGrupo).mock.calls[0][0];
-    expect(mandado).not.toHaveProperty("aulaId");
+    expect(mandado.aulaId).toBeNull();
     expect(mandado).not.toHaveProperty("aula");
+  });
+
+  it("Lista 2 #6: con UNA sola aula activa viene elegida; «Sin aula» a propósito se respeta", async () => {
+    vi.mocked(apiAcademia.aulas).mockResolvedValue([aulaDe(11, "Aula 1")]);
+    vi.mocked(apiAcademia.crearGrupo).mockResolvedValue(grupoDetalle());
+    const { panel } = await montar();
+    const aula = within(panel).getByLabelText("Aula") as HTMLSelectElement;
+    expect(aula.value).toBe("11");
+    await act(async () => {
+      fireEvent.click(within(panel).getByRole("button", { name: "Abrir grupo" }));
+    });
+    expect(vi.mocked(apiAcademia.crearGrupo).mock.calls[0][0].aulaId).toBe(11);
+
+    // Elegir «Sin aula» a propósito no se deshace solo.
+    fireEvent.change(aula, { target: { value: "" } });
+    await act(async () => {});
+    expect(aula.value).toBe("");
+    await act(async () => {
+      fireEvent.click(within(panel).getByRole("button", { name: "Abrir grupo" }));
+    });
+    expect(vi.mocked(apiAcademia.crearGrupo).mock.calls[1][0].aulaId).toBeNull();
   });
 
   it("sin aulas cargadas: selector vacío, enlace «Cargar aulas» para quien configura, y se guarda igual", async () => {

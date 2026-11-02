@@ -147,12 +147,7 @@ export default function MenuLateral({
     if (n.hijos.length) menu.abrir(n.id);
     setTip(null);
     onNavegar();
-    if (n.item.accion === "cambiarPassword") onCambiarPassword?.();
   };
-
-  // En el instituto, los avisos y la contraseña están en "Mi negocio": al pie
-  // no se repiten.
-  const enElMenu = (a: string) => menu.planos.some((n) => n.item.paraTodos && n.item.a === a);
 
   /** Las filas recorribles con ↑ ↓, sin las de un grupo cerrado. */
   const filas = () =>
@@ -404,7 +399,7 @@ export default function MenuLateral({
     // Un grupo sin pantalla propia (Agenda, Equipo) lleva a la de su primer
     // hijo: en la columna de íconos sería el mismo destino dos veces.
     return aplanar(nodos)
-      .filter((n) => n.item.seccion || n.item.paraTodos)
+      .filter((n) => n.item.seccion)
       .map((n) => nodoCompacto(n, padres.get(n) ?? null));
   };
 
@@ -471,8 +466,7 @@ export default function MenuLateral({
 
       {/* Los avisos de cada uno (PLAN-PUSH §10.2): para cualquier rol, como
           la contraseña. Es un link y no un botón: es una pantalla. */}
-      {!enElMenu("/notificaciones") && (
-        <Link
+      <Link
         to="/notificaciones"
         onClick={() => {
           setTip(null);
@@ -494,8 +488,7 @@ export default function MenuLateral({
       >
         <Icon name="bell" size={19} />
         {!compacta && <span>Notificaciones</span>}
-        </Link>
-      )}
+      </Link>
 
       {onAyuda && (
         <button
@@ -519,7 +512,7 @@ export default function MenuLateral({
         </button>
       )}
 
-      {onCambiarPassword && !enElMenu("#cambiar-password") && (
+      {onCambiarPassword && (
         <button
           type="button"
           onClick={() => {
@@ -587,14 +580,10 @@ export default function MenuLateral({
   );
 }
 
-/**
- * Un ítem del menú: un link a su pantalla o, si no es una pantalla, un botón
- * ("Cambiar mi contraseña" abre un formulario). Mismo aspecto y mismas teclas.
- */
+/** Un ítem del menú: un link a su pantalla, con las teclas del árbol. */
 function Fila({
   n,
   ...resto
 }: { n: NodoMenu } & HTMLAttributes<HTMLElement>) {
-  if (n.item.accion) return <button type="button" {...resto} />;
   return <Link to={n.item.a} {...resto} />;
 }
