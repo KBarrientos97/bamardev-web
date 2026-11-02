@@ -51,6 +51,7 @@ export default function MenuLateral({
   compacta,
   onNavegar,
   onCambiarPassword,
+  onAyuda,
   onInstalar,
   onCerrarSesion,
   cerrandoSesion = false,
@@ -61,6 +62,12 @@ export default function MenuLateral({
   onNavegar: () => void;
   /** "Cambiar mi contraseña": el formulario vive en el Layout (ver ahí). */
   onCambiarPassword?: () => void;
+  /**
+   * "Ayuda" (IDEAS/11): el panel vive en el Layout. Sin ella no se dibuja (el
+   * negocio no tiene la feature `ayuda`). Es la entrada en el punto de venta,
+   * donde no va el botón flotante.
+   */
+  onAyuda?: () => void;
   /**
    * "Instalar" (PLAN-IOS). Sin ella no
    * se dibuja: ya está instalada o el navegador no deja instalarla.
@@ -482,6 +489,28 @@ export default function MenuLateral({
         <Icon name="bell" size={19} />
         {!compacta && <span>Notificaciones</span>}
       </Link>
+
+      {onAyuda && (
+        <button
+          type="button"
+          onClick={() => {
+            setTip(null);
+            onAyuda();
+          }}
+          aria-label={compacta ? "Ayuda" : undefined}
+          data-fila=""
+          data-nav-id="ayuda"
+          {...mostrarTip("Ayuda")}
+          className={[
+            "flex items-center gap-3 rounded-xl py-2.5 text-sm font-semibold text-barra-texto-2 transition-colors hover:bg-white/10 hover:text-barra-texto",
+            foco,
+            compacta ? "justify-center px-0" : "px-3",
+          ].join(" ")}
+        >
+          <Icon name="pregunta" size={19} />
+          {!compacta && <span>Ayuda</span>}
+        </button>
+      )}
 
       {onCambiarPassword && (
         <button
