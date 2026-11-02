@@ -112,6 +112,7 @@ const alquiler: PlantillaGasto = {
 beforeEach(() => {
   vi.clearAllMocks();
   sesion.rubro = "RESTAURANTE";
+  vi.mocked(api.getSucursales).mockResolvedValue([]);
   vi.mocked(api.getResumenGastos).mockResolvedValue(resumen);
   vi.mocked(api.getGastos).mockResolvedValue([luz]);
   vi.mocked(api.getPlantillasGasto).mockResolvedValue([alquiler]);
@@ -123,6 +124,23 @@ function abrir(pantalla: React.ReactNode) {
 }
 
 describe("Gastos operativos", () => {
+  it("Lista 2 #9: en el instituto el filtro de local se llama «Sede», en los demás «Sucursal»", async () => {
+    const DOS = [
+      { id: 1, nombre: "Central", activo: true, tipo: "SUCURSAL", esPrincipal: true },
+      { id: 2, nombre: "Norte", activo: true, tipo: "SUCURSAL", esPrincipal: false },
+    ];
+    vi.mocked(api.getSucursales).mockResolvedValue(DOS as never);
+    sesion.rubro = "ACADEMIA";
+    const { unmount } = render(<MemoryRouter><Gastos /></MemoryRouter>);
+    expect(await screen.findByText("Sede")).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Todas las sedes" })).toBeInTheDocument();
+    unmount();
+    sesion.rubro = "RESTAURANTE";
+    render(<MemoryRouter><Gastos /></MemoryRouter>);
+    expect(await screen.findByText("Sucursal")).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Todas las sucursales" })).toBeInTheDocument();
+  });
+
   it("tiene margen, cada gasto es una tarjeta y lo vencido sale en rojo", async () => {
     const raiz = abrir(<Gastos />);
     expect(raiz.className).toMatch(/\bp-4\b/);
