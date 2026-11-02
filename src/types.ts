@@ -74,7 +74,9 @@ export type FeatureConocida =
   /** Lo que pidieron y no había. Farmacia, BASICO y PRO. */
   | "encargos"
   /** Número de pedido, despacho y la TV que lo llama. Extra de restaurante. */
-  | "tickets_pedido";
+  | "tickets_pedido"
+  /** El botón de Ayuda de la web (IDEAS/11). Se prende por negocio desde el panel. */
+  | "ayuda";
 export type Feature = FeatureConocida | (string & {});
 
 export interface SesionUsuario {

@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { Outlet } from "react-router-dom";
+import { conBotonFlotante, tieneAyuda } from "../lib/ayuda/ayuda";
 import { tituloDe, useMenu } from "../lib/menu";
 import { etiquetaRol } from "../lib/permisos";
 import { useAuth } from "../store/AuthContext";
@@ -25,6 +26,12 @@ import MenuLateral from "./MenuLateral";
  * sólo se monta si el usuario ve el billar: los demás rubros no cargan nada.
  */
 const BillarDeFondo = lazy(() => import("../pages/billar/DeFondo"));
+
+/**
+ * La Ayuda (IDEAS/11): se baja recién al abrirla. Arrastra el catálogo de
+ * Reportes, que no tiene por qué pesar en el arranque de cada pantalla.
+ */
+const PanelAyuda = lazy(() => import("./ayuda/PanelAyuda"));
 
 /**
  * Preferencia de barra colapsada. Es del dispositivo y no del usuario: en la
@@ -60,6 +67,14 @@ export default function Layout() {
   // mismo que la contraseña, y cierra el cajón antes de salir. Dentro del
   // cajón quedaba encerrado en sus 288 px (el cajón se mueve con `transform`).
   const sesion = useCerrarSesion({ antesDeAvisar: () => setAbierto(false) });
+  // La Ayuda vive acá por lo mismo: se abre desde el menú (que en el celular
+  // es el cajón) y desde el botón flotante. Sólo con la feature del panel.
+  const conAyuda = tieneAyuda(negocio?.features);
+  const [ayudaAbierta, setAyudaAbierta] = useState(false);
+  const abrirAyuda = () => {
+    setAbierto(false);
+    setAyudaAbierta(true);
+  };
   const menu = useMenu();
   const vende = puede("pos") || puede("billar");
   // La cola de ventas cobradas sin internet sube desde acá, con cualquier
@@ -162,6 +177,7 @@ export default function Layout() {
           compacta={colapsada}
           onNavegar={() => setAbierto(false)}
           onCambiarPassword={cambiarPassword}
+          onAyuda={conAyuda ? abrirAyuda : undefined}
           onInstalar={instalarDisponible ? abrirInstalar : undefined}
           onCerrarSesion={sesion.pedir}
           cerrandoSesion={sesion.revisando}
@@ -193,6 +209,7 @@ export default function Layout() {
           compacta={false}
           onNavegar={() => setAbierto(false)}
           onCambiarPassword={cambiarPassword}
+          onAyuda={conAyuda ? abrirAyuda : undefined}
           onInstalar={instalarDisponible ? abrirInstalar : undefined}
           onCerrarSesion={sesion.pedir}
           cerrandoSesion={sesion.revisando}
@@ -247,6 +264,24 @@ export default function Layout() {
         </main>
       </div>
 
+      {/* Abajo a la derecha, salvo donde taparía Cobrar o el salón: ahí la
+          Ayuda queda en el menú (`conBotonFlotante`). */}
+      {conAyuda && !ayudaAbierta && conBotonFlotante(menu.pathname) && (
+        <button
+          type="button"
+          onClick={abrirAyuda}
+          aria-label="Ayuda"
+          title="Ayuda"
+          className="fixed bottom-[calc(1rem+env(safe-area-inset-bottom))] right-4 z-40 flex h-12 w-12 items-center justify-center rounded-full bg-primary-boton text-white shadow-lg transition-transform hover:bg-primary-boton-hover active:scale-95 print:hidden"
+        >
+          <Icon name="pregunta" size={22} />
+        </button>
+      )}
+      {ayudaAbierta && (
+        <Suspense fallback={null}>
+          <PanelAyuda abierto onClose={() => setAyudaAbierta(false)} />
+        </Suspense>
+      )}
       {cambiandoPassword && <CambiarMiPassword onClose={() => setCambiandoPassword(false)} />}
       {sesion.dialogo}
       {(instalando || ofrecida) && (
