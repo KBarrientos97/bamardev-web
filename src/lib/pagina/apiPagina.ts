@@ -94,7 +94,7 @@ export const apiPagina = {
     request<EstadoEditor>("/pagina/borrador/enlaces/orden", { method: "PUT", body: json({ ids }) }),
   sucursal: (
     id: number,
-    cambios: Partial<Pick<SucursalEditor, "publicarEnPagina" | "horarioTexto" | "mapsUrl" | "horarioSemanal">>,
+    cambios: Partial<Pick<SucursalEditor, "publicarEnPagina" | "horarioTexto" | "latitud" | "longitud" | "horarioSemanal" | "whatsapp">>,
   ) => request<SucursalEditor>(`/pagina/borrador/sucursales/${id}`, { method: "PATCH", body: json(cambios) }),
   borrarImagen: (tipo: "logo" | "portada") =>
     request<void>(`/pagina/borrador/imagen/${tipo}`, { method: "DELETE" }),

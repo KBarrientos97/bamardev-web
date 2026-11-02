@@ -74,7 +74,7 @@ function estado(cambios: Partial<EstadoEditor["pagina"]> = {}): EstadoEditor {
       { id: 2, tipo: "TIKTOK", formato: "ICONO", etiqueta: "TikTok", valor: "@bv", url: "https://www.tiktok.com/@bv", icono: null, orden: 2, visible: true, clics: 87 },
     ],
     sucursales: [
-      { id: 10, nombre: "Centro", direccion: "Junín 245", telefono: "33445566", esPrincipal: true, publicarEnPagina: true, horarioTexto: "9 a 20", mapsUrl: null },
+      { id: 10, nombre: "Centro", direccion: "Junín 245", telefono: "33445566", esPrincipal: true, publicarEnPagina: true, horarioTexto: "9 a 20" },
     ],
     reservaOnline: true,
     enlacesCortos: false,
@@ -279,17 +279,26 @@ describe("Mi página", () => {
     expect(previa()).toHaveAttribute("data-modo", "movil");
   });
 
-  it("el mapa y el horario de la sucursal se guardan con «Guardar cambios» y se ven en la vista previa", async () => {
+  it("la ubicación de la sucursal va con «Guardar cambios» y se ve en la vista previa", async () => {
+    const base = estado();
+    const conPin = { ...base.sucursales[0], latitud: -17.78, longitud: -63.18 };
+    vi.mocked(apiPagina.estado).mockResolvedValue({ ...base, sucursales: [conPin] });
     await montar();
-    fireEvent.change(screen.getByLabelText("Mapa de Centro"), { target: { value: "https://maps.app.goo.gl/abc" } });
-    expect(within(previa()).getByRole("link", { name: "Cómo llegar" })).toHaveAttribute("href", "https://maps.app.goo.gl/abc");
+    expect(within(previa()).getByRole("link", { name: "Cómo llegar" })).toHaveAttribute(
+      "href",
+      "https://www.google.com/maps/dir/?api=1&destination=-17.78,-63.18",
+    );
+    // Quitarla: «Cómo llegar» vuelve a buscar la dirección.
+    fireEvent.click(screen.getByRole("button", { name: "Quitar" }));
+    expect(screen.getByText("Todavía sin marcar")).toBeInTheDocument();
+    expect(within(previa()).getByRole("link", { name: "Cómo llegar" }).getAttribute("href")).toMatch(/maps\/search/);
     expect(screen.getByRole("button", { name: "Guardar cambios" })).toBeEnabled();
 
-    const s = estado().sucursales[0];
-    vi.mocked(apiPagina.sucursal).mockResolvedValue({ ...s, mapsUrl: "https://maps.app.goo.gl/abc" });
+    const s = base.sucursales[0];
+    vi.mocked(apiPagina.sucursal).mockResolvedValue({ ...s, latitud: null, longitud: null });
     fireEvent.click(screen.getByRole("button", { name: "Guardar cambios" }));
     await act(async () => {});
-    expect(apiPagina.sucursal).toHaveBeenCalledWith(10, { horarioTexto: "9 a 20", mapsUrl: "https://maps.app.goo.gl/abc" });
+    expect(apiPagina.sucursal).toHaveBeenCalledWith(10, { horarioTexto: "9 a 20", latitud: null, longitud: null });
     // Sólo cambió la sucursal: la página no se manda.
     expect(apiPagina.guardar).not.toHaveBeenCalled();
     expect(screen.getByText("Cambios guardados")).toBeInTheDocument();
@@ -307,20 +316,20 @@ describe("Mi página", () => {
     vi.mocked(apiPagina.publicarCambios).mockResolvedValue({ ...estado(), sucursales: [{ ...s, whatsapp: "59170123456" }] });
     fireEvent.click(screen.getByRole("button", { name: "Guardar cambios" }));
     await act(async () => {});
-    expect(apiPagina.sucursal).toHaveBeenCalledWith(10, { horarioTexto: "9 a 20", mapsUrl: null, whatsapp: "7012-3456" });
+    expect(apiPagina.sucursal).toHaveBeenCalledWith(10, { horarioTexto: "9 a 20", whatsapp: "7012-3456" });
     // Guardado se muestra sin el 591.
     expect(screen.getByLabelText("WhatsApp de Centro")).toHaveValue("70123456");
     expect(screen.getByRole("button", { name: "Guardar cambios" })).toBeDisabled();
   });
 
-  it("un mapa que no es de Google Maps: dice de qué sucursal y no pierde lo escrito", async () => {
-    vi.mocked(apiPagina.sucursal).mockRejectedValue(new Error("Ese enlace no es de Google Maps"));
+  it("si el backend rechaza la sucursal: dice cuál y no pierde lo escrito", async () => {
+    vi.mocked(apiPagina.sucursal).mockRejectedValue(new Error("La ubicación necesita la latitud y la longitud juntas"));
     await montar();
-    fireEvent.change(screen.getByLabelText("Mapa de Centro"), { target: { value: "https://otro.com" } });
+    fireEvent.change(screen.getByLabelText("Aclaración del horario de Centro"), { target: { value: "Feriados cerrado" } });
     fireEvent.click(screen.getByRole("button", { name: "Guardar cambios" }));
     await act(async () => {});
-    expect(screen.getByText("Centro: Ese enlace no es de Google Maps")).toBeInTheDocument();
-    expect(screen.getByLabelText("Mapa de Centro")).toHaveValue("https://otro.com");
+    expect(screen.getByText("Centro: La ubicación necesita la latitud y la longitud juntas")).toBeInTheDocument();
+    expect(screen.getByLabelText("Aclaración del horario de Centro")).toHaveValue("Feriados cerrado");
   });
 
   it("volver a escribir lo guardado no deja la página como cambiada", async () => {
@@ -868,7 +877,6 @@ describe("Mi página: horario por día de la sucursal", () => {
     await act(async () => {});
     expect(apiPagina.sucursal).toHaveBeenCalledWith(10, {
       horarioTexto: "9 a 20",
-      mapsUrl: null,
       horarioSemanal: [...HABILES, { dia: 6, desde: "09:00", hasta: "13:00" }],
     });
     expect(screen.getByText("Cambios guardados")).toBeInTheDocument();
@@ -899,7 +907,7 @@ describe("Mi página: horario por día de la sucursal", () => {
     vi.mocked(apiPagina.sucursal).mockResolvedValue({ ...base.sucursales[0], horarioSemanal: null });
     fireEvent.click(screen.getByRole("button", { name: "Guardar cambios" }));
     await act(async () => {});
-    expect(apiPagina.sucursal).toHaveBeenCalledWith(10, { horarioTexto: "9 a 20", mapsUrl: null, horarioSemanal: null });
+    expect(apiPagina.sucursal).toHaveBeenCalledWith(10, { horarioTexto: "9 a 20", horarioSemanal: null });
   });
 
   it("cerrar el popup sin «Listo» no cambia nada; volver al horario guardado no deja cambios", async () => {
@@ -1119,41 +1127,50 @@ describe("Mi página: borrador (PLAN-PAGINA-WEB §4.2)", () => {
 });
 
 describe("Mi página: mapa (PLAN-PAGINA-WEB §3.1)", () => {
-  it("sin la feature `pagina_mapa` no se ofrece", async () => {
-    await montar();
-    expect(screen.queryByRole("checkbox", { name: /Mostrar un mapa/ })).not.toBeInTheDocument();
-  });
-
-  it("con la feature: el interruptor va al borrador y dice qué sucursal no tiene ubicación", async () => {
+  it("es para todos: el interruptor nace prendido y apagarlo va al borrador", async () => {
     const base = estado();
-    vi.mocked(apiPagina.estado).mockResolvedValue({ ...base, mapaDisponible: true });
-    vi.mocked(apiPagina.guardar).mockResolvedValue({ ...base, mapaDisponible: true, pagina: { ...base.pagina, mostrarMapa: true } });
+    vi.mocked(apiPagina.guardar).mockResolvedValue({ ...base, pagina: { ...base.pagina, mostrarMapa: false } });
     await montar();
     const interruptor = screen.getByRole("checkbox", { name: /Mostrar un mapa con tus sucursales/ });
-    expect(interruptor).not.toBeChecked();
-    expect(screen.queryByText(/Sin ubicación en el mapa/)).not.toBeInTheDocument();
+    expect(interruptor).toBeChecked();
     fireEvent.click(interruptor);
-    expect(screen.getByText(/Sin ubicación en el mapa/)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Marcarla en la ficha de la sucursal" })).toHaveAttribute("href", "/inventario/almacenes");
     fireEvent.click(screen.getByRole("button", { name: "Guardar cambios" }));
     await act(async () => {});
-    expect(apiPagina.guardar).toHaveBeenCalledWith({ mostrarMapa: true });
+    expect(apiPagina.guardar).toHaveBeenCalledWith({ mostrarMapa: false });
   });
 
-  it("con ubicación cargada, la vista previa muestra el mapa", async () => {
+  it("cada sucursal de la página se marca ahí mismo; ya no hay enlace de Google Maps", async () => {
+    await montar();
+    expect(screen.queryByLabelText("Mapa de Centro")).not.toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Ubicación en el mapa de Centro" })).toBeInTheDocument();
+    expect(screen.getByText("Todavía sin marcar")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Marcar en el mapa" })).toBeInTheDocument();
+    expect(screen.getByText("Sin marcar, «Cómo llegar» busca la dirección.")).toBeInTheDocument();
+  });
+
+  it("con ubicación marcada, la vista previa muestra el mapa", async () => {
     const base = estado();
     vi.mocked(apiPagina.estado).mockResolvedValue({
       ...base,
-      mapaDisponible: true,
-      pagina: { ...base.pagina, mostrarMapa: true },
       sucursales: base.sucursales.map((s) => ({ ...s, latitud: -17.78, longitud: -63.18 })),
     });
     await montar();
-    expect(screen.getByText("Ubicación en el mapa: cargada.")).toBeInTheDocument();
+    expect(screen.getByText("Ubicación marcada")).toBeInTheDocument();
     expect(within(previa()).getByRole("region", { name: "Mapa: Centro" })).toBeInTheDocument();
     expect(within(previa()).getByRole("link", { name: "Cómo llegar" })).toHaveAttribute(
       "href",
       "https://www.google.com/maps/dir/?api=1&destination=-17.78,-63.18",
     );
+  });
+
+  it("oculto por el dueño, la vista previa no lo muestra", async () => {
+    const base = estado();
+    vi.mocked(apiPagina.estado).mockResolvedValue({
+      ...base,
+      pagina: { ...base.pagina, mostrarMapa: false },
+      sucursales: base.sucursales.map((s) => ({ ...s, latitud: -17.78, longitud: -63.18 })),
+    });
+    await montar();
+    expect(within(previa()).queryByTestId("mapa-pagina")).not.toBeInTheDocument();
   });
 });

@@ -42,8 +42,8 @@ function editor(cambios: Partial<EstadoEditor> = {}): EstadoEditor {
       { id: 4, tipo: "BOTON", formato: "BOTON", etiqueta: "Precios", valor: "https://bv.bo", url: "https://bv.bo/", icono: "promo", orden: 4, visible: true, clics: 0 },
     ],
     sucursales: [
-      { id: 10, nombre: "Centro", direccion: "Junín 245", telefono: "33445566", esPrincipal: true, publicarEnPagina: true, horarioTexto: "9 a 20", mapsUrl: null },
-      { id: 11, nombre: "Sur", direccion: null, telefono: null, esPrincipal: false, publicarEnPagina: false, horarioTexto: null, mapsUrl: null },
+      { id: 10, nombre: "Centro", direccion: "Junín 245", telefono: "33445566", esPrincipal: true, publicarEnPagina: true, horarioTexto: "9 a 20" },
+      { id: 11, nombre: "Sur", direccion: null, telefono: null, esPrincipal: false, publicarEnPagina: false, horarioTexto: null },
     ],
     reservaOnline: false,
     enlacesCortos: true,
@@ -207,28 +207,27 @@ describe("vista previa desde el editor", () => {
     expect(hoyBolivia(new Date("2026-10-07T05:00:00Z"))).toBe("2026-10-07");
   });
 
-  it("el mapa: el pegado o una búsqueda por dirección", () => {
-    expect(urlMapa("https://maps.app.goo.gl/x", "Junín")).toBe("https://maps.app.goo.gl/x");
-    expect(urlMapa(null, null)).toBeNull();
-    // Con el pin (PLAN-PAGINA-WEB §3.1), la ruta exacta; el pegado sigue mandando.
-    expect(urlMapa(null, "Junín", { lat: -17.78, lng: -63.18 })).toBe(
+  it("«Cómo llegar»: la ruta a la ubicación o una búsqueda por dirección", () => {
+    expect(urlMapa("Junín")).toBe("https://www.google.com/maps/search/?api=1&query=Jun%C3%ADn");
+    expect(urlMapa(null)).toBeNull();
+    expect(urlMapa("Junín", { lat: -17.78, lng: -63.18 })).toBe(
       "https://www.google.com/maps/dir/?api=1&destination=-17.78,-63.18",
     );
-    expect(urlMapa("https://maps.app.goo.gl/x", "Junín", { lat: -17.78, lng: -63.18 })).toBe("https://maps.app.goo.gl/x");
   });
 
-  it("el pin de la vista previa: sólo con la feature y el mapa prendido, como el backend", () => {
-    const conPin = (mapaDisponible: boolean, mostrarMapa: boolean) => {
-      const e = editor({ mapaDisponible });
+  it("el pin de la vista previa: con ubicación y el mapa sin ocultar, como el backend", () => {
+    const conPin = (mostrarMapa: boolean | undefined) => {
+      const e = editor();
       e.pagina = { ...e.pagina, mostrarMapa };
       e.sucursales = e.sucursales.map((s) => (s.id === 10 ? { ...s, latitud: -17.78, longitud: -63.18 } : s));
       return vistaDesdeEditor(e).sucursales[0];
     };
-    expect(conPin(true, true).ubicacion).toEqual({ lat: -17.78, lng: -63.18 });
-    expect(conPin(true, true).mapaUrl).toMatch(/maps\/dir/);
-    expect(conPin(false, true).ubicacion).toBeNull();
-    expect(conPin(true, false).ubicacion).toBeNull();
-    expect(conPin(false, true).mapaUrl).toMatch(/maps\/search/);
+    expect(conPin(true).ubicacion).toEqual({ lat: -17.78, lng: -63.18 });
+    expect(conPin(true).mapaUrl).toMatch(/maps\/dir/);
+    // Un backend anterior no manda el interruptor: prendido, como el default.
+    expect(conPin(undefined).ubicacion).not.toBeNull();
+    expect(conPin(false).ubicacion).toBeNull();
+    expect(conPin(false).mapaUrl).toMatch(/maps\/search/);
   });
 });
 

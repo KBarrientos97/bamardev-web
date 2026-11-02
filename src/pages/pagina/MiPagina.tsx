@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { EncabezadoPagina } from "../../components/filtros";
 import { Icon } from "../../components/Icon";
+import CampoUbicacion from "../../components/CampoUbicacion";
+import type { Ubicacion } from "../../lib/mapa";
 import {
   AvisoOk,
   Badge,
@@ -156,12 +158,22 @@ function Imagen({
 }
 
 /** Lo que el dueño escribió en una sucursal y todavía no se guardó. */
-type BorradorSucursal = { horarioTexto: string; mapsUrl: string; horarioSemanal: Tramo[] | null; whatsapp: string };
+type BorradorSucursal = {
+  horarioTexto: string;
+  /** El pin del mapa (PLAN-PAGINA-WEB §3.1); reemplazó al enlace de Google Maps. */
+  ubicacion: Ubicacion | null;
+  horarioSemanal: Tramo[] | null;
+  whatsapp: string;
+};
+
+const ubicacionDe = (s: SucursalEditor): Ubicacion | null =>
+  s.latitud != null && s.longitud != null ? { lat: s.latitud, lng: s.longitud } : null;
+const mismaUbicacion = (a: Ubicacion | null, b: Ubicacion | null) => a?.lat === b?.lat && a?.lng === b?.lng;
 
 /** Lo guardado de una sucursal, como borrador (para comparar y para seguir editando). */
 const borradorDe = (s: SucursalEditor): BorradorSucursal => ({
   horarioTexto: s.horarioTexto ?? "",
-  mapsUrl: s.mapsUrl ?? "",
+  ubicacion: ubicacionDe(s),
   horarioSemanal: s.horarioSemanal ?? null,
   whatsapp: numeroParaEditar(s.whatsapp),
 });
@@ -169,20 +181,24 @@ const borradorDe = (s: SucursalEditor): BorradorSucursal => ({
 /** Lo escrito, como lo guarda el backend (vacío = null). */
 const limpio = (b: BorradorSucursal) => ({
   horarioTexto: b.horarioTexto.trim() || null,
-  mapsUrl: b.mapsUrl.trim() || null,
+  latitud: b.ubicacion?.lat ?? null,
+  longitud: b.ubicacion?.lng ?? null,
   horarioSemanal: b.horarioSemanal,
   whatsapp: b.whatsapp.trim() || null,
 });
 
 /**
- * Lo que se manda de una sucursal: el horario por día sólo si cambió (un
- * backend anterior no lo conoce, y mandarlo igual no aporta nada).
+ * Lo que se manda de una sucursal: el horario por día, el WhatsApp y la
+ * ubicación sólo si cambiaron (mandarlos igual no aporta nada).
  */
 const cuerpoSucursal = (s: SucursalEditor | undefined, b: BorradorSucursal) => {
-  const { horarioSemanal, whatsapp, ...resto } = limpio(b);
+  const { horarioSemanal, whatsapp, latitud, longitud, ...resto } = limpio(b);
   // El WhatsApp, igual: sólo si cambió (13-oct).
   const conWhatsapp = (whatsapp ?? "") === numeroParaEditar(s?.whatsapp) ? resto : { ...resto, whatsapp };
-  return mismoHorario(horarioSemanal, s?.horarioSemanal) ? conWhatsapp : { ...conWhatsapp, horarioSemanal };
+  const conUbicacion = mismaUbicacion(b.ubicacion, s ? ubicacionDe(s) : null)
+    ? conWhatsapp
+    : { ...conWhatsapp, latitud, longitud };
+  return mismoHorario(horarioSemanal, s?.horarioSemanal) ? conUbicacion : { ...conUbicacion, horarioSemanal };
 };
 
 /**
@@ -200,15 +216,15 @@ const conCatalogo = (nuevo: EstadoEditor, antes: EstadoEditor | null): EstadoEdi
 
 /**
  * Una sucursal en la página: si sale (va al borrador al toque, como los enlaces),
- * su horario y su mapa. Esos se escriben en pantalla y van solos al borrador
- * con el resto: antes tenían un botón propio y el dueño, con razón, apretaba
- * el de abajo y el mapa se perdía sin aviso. El horario por día, en su popup.
+ * su horario y su ubicación en el mapa. Esos se cargan en pantalla y van solos
+ * al borrador con el resto: antes tenían un botón propio y el dueño, con
+ * razón, apretaba el de abajo y el mapa se perdía sin aviso. El horario por
+ * día, en su popup.
  */
 function FilaSucursal({
   s,
   borrador,
   c,
-  conMapa,
   onCambio,
   onGuardada,
   onError,
@@ -216,8 +232,6 @@ function FilaSucursal({
   s: SucursalEditor;
   borrador: BorradorSucursal | undefined;
   c: Paleta;
-  /** El mapa de la página está prendido: se dice si la sucursal tiene ubicación. */
-  conMapa: boolean;
   onCambio: (b: BorradorSucursal) => void;
   onGuardada: (s: SucursalEditor) => void;
   onError: (m: string) => void;
@@ -254,19 +268,19 @@ function FilaSucursal({
           </span>
         </span>
       </label>
-      {conMapa && s.publicarEnPagina && (
-        <p className="text-xs text-texto-3">
-          {s.latitud != null && s.longitud != null ? (
-            "Ubicación en el mapa: cargada."
-          ) : (
-            <>
-              Sin ubicación en el mapa.{" "}
-              <Link to="/inventario/almacenes" className="font-semibold" style={{ color: c.oscuro }}>
-                Marcarla en la ficha de la sucursal
-              </Link>
-            </>
-          )}
-        </p>
+      {s.publicarEnPagina && (
+        <CampoUbicacion
+          nombre={s.nombre}
+          valor={actual.ubicacion}
+          onCambio={(ubicacion) => onCambio({ ...actual, ubicacion })}
+          hint={
+            actual.ubicacion
+              ? "Sale con su pin en el mapa, y «Cómo llegar» abre la ruta exacta."
+              : s.direccion
+                ? "Sin marcar, «Cómo llegar» busca la dirección."
+                : "Sin marcar ni dirección cargada, la página no muestra «Cómo llegar»."
+          }
+        />
       )}
       {s.publicarEnPagina && (
         <EditorHorario
@@ -291,21 +305,6 @@ function FilaSucursal({
               value={actual.horarioTexto}
               onChange={(e) => onCambio({ ...actual, horarioTexto: e.target.value })}
               maxLength={120}
-            />
-          </Campo>
-          <Campo
-            label="Enlace de Google Maps (opcional)"
-            hint={
-              s.direccion
-                ? "Sin enlace, «Cómo llegar» busca la dirección."
-                : "Sin enlace ni dirección cargada, la página no muestra «Cómo llegar»."
-            }
-          >
-            <Input
-              aria-label={`Mapa de ${s.nombre}`}
-              value={actual.mapsUrl}
-              onChange={(e) => onCambio({ ...actual, mapsUrl: e.target.value })}
-              placeholder="https://maps.app.goo.gl/…"
             />
           </Campo>
           {/* 13-oct: opcional. Con dos o más números distintos, la página pregunta a cuál escribir. */}
@@ -775,7 +774,7 @@ export default function MiPagina() {
       const guardado = borradorDe(s);
       if (
         b.horarioTexto === guardado.horarioTexto &&
-        b.mapsUrl === guardado.mapsUrl &&
+        mismaUbicacion(b.ubicacion, guardado.ubicacion) &&
         b.whatsapp.trim() === guardado.whatsapp &&
         mismoHorario(b.horarioSemanal, guardado.horarioSemanal)
       )
@@ -1340,27 +1339,24 @@ export default function MiPagina() {
 
           <Seccion titulo="Sucursales en la página">
             <p className="-mt-2 text-[13px] text-texto-3">
-              La dirección y el teléfono salen de tus sucursales. El horario y el mapa se guardan solos.
+              La dirección y el teléfono salen de tus sucursales. El horario y la ubicación se guardan solos.
             </p>
-            {/* PLAN-PAGINA-WEB §3.1: de las avanzadas, sólo con la feature del panel. */}
-            {e.mapaDisponible && (
-              <label className="flex items-start gap-3">
-                <input
-                  type="checkbox"
-                  className="mt-0.5 h-[18px] w-[18px]"
-                  style={{ accentColor: c.acento }}
-                  checked={!!ajustes.mostrarMapa}
-                  onChange={(ev) => cambiar({ mostrarMapa: ev.target.checked })}
-                />
-                <span className="flex min-w-0 flex-col">
-                  <strong className="text-sm text-texto">Mostrar un mapa con tus sucursales</strong>
-                  <span className="text-xs text-texto-3">
-                    Cada una sale con su pin, y «Cómo llegar» abre la ruta exacta. La ubicación se marca en la ficha
-                    de la sucursal.
-                  </span>
+            {/* PLAN-PAGINA-WEB §3.1: el mapa es para todos (02-nov); esto sólo lo oculta. */}
+            <label className="flex items-start gap-3">
+              <input
+                type="checkbox"
+                className="mt-0.5 h-[18px] w-[18px]"
+                style={{ accentColor: c.acento }}
+                checked={ajustes.mostrarMapa !== false}
+                onChange={(ev) => cambiar({ mostrarMapa: ev.target.checked })}
+              />
+              <span className="flex min-w-0 flex-col">
+                <strong className="text-sm text-texto">Mostrar un mapa con tus sucursales</strong>
+                <span className="text-xs text-texto-3">
+                  Cada sucursal con su ubicación marcada sale con su pin, y «Cómo llegar» abre la ruta exacta.
                 </span>
-              </label>
-            )}
+              </span>
+            </label>
             {e.sucursales.length === 0 ? (
               <p className="text-sm text-texto-3">No hay sucursales activas.</p>
             ) : (
@@ -1371,7 +1367,6 @@ export default function MiPagina() {
                     s={s}
                     borrador={borradorSucursales[s.id]}
                     c={c}
-                    conMapa={!!e.mapaDisponible && !!ajustes.mostrarMapa}
                     onCambio={(b) => cambiarSucursal(s, b)}
                     onError={setError}
                     onGuardada={(nueva) => {

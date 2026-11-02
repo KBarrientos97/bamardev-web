@@ -1,4 +1,4 @@
-import { lazy, Suspense, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { contiene } from "../../lib/texto";
 import { Icon } from "../../components/Icon";
 import { Buscador, EncabezadoPagina } from "../../components/filtros";
@@ -22,9 +22,7 @@ import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
 import type { Almacen, AlmacenInput, Producto, TipoAlmacen } from "../../types";
 import type { Ubicacion } from "../../lib/mapa";
-
-// MapLibre (~1 MB) se baja sólo si el dueño abre el mapa de la ficha.
-const ElegirUbicacion = lazy(() => import("../../components/ElegirUbicacion"));
+import CampoUbicacion from "../../components/CampoUbicacion";
 
 /**
  * Cómo se nombra cada lugar en los textos de esta pantalla.
@@ -823,13 +821,10 @@ function FormAlmacenCuerpo({
   const [tipo, setTipo] = useState<TipoAlmacen>(almacen?.tipo ?? "SUCURSAL");
   const [direccion, setDireccion] = useState(almacen?.direccion ?? "");
   const [telefono, setTelefono] = useState(almacen?.telefono ?? "");
-  // La ubicación del mapa de la página (PLAN-PAGINA-WEB §3.1): sólo con la
-  // feature `pagina_mapa`, que se prende desde el panel.
-  const conMapa = tieneFeature(useAuth().negocio?.features, "pagina_mapa");
+  // La ubicación del mapa de la página (PLAN-PAGINA-WEB §3.1): para todos.
   const ubicacionGuardada: Ubicacion | null =
     almacen?.latitud != null && almacen?.longitud != null ? { lat: almacen.latitud, lng: almacen.longitud } : null;
   const [ubicacion, setUbicacion] = useState<Ubicacion | null>(ubicacionGuardada);
-  const [verMapa, setVerMapa] = useState(false);
   const [activo, setActivo] = useState(almacen?.activo ?? true);
   const [error, setError] = useState("");
   const [guardando, setGuardando] = useState(false);
@@ -846,8 +841,8 @@ function FormAlmacenCuerpo({
       direccion: direccion.trim(),
       telefono: telefono.trim(),
       activo,
-      // Sólo si cambió: sin la feature (o sin tocarla) no se manda nada.
-      ...(conMapa && (ubicacion?.lat !== ubicacionGuardada?.lat || ubicacion?.lng !== ubicacionGuardada?.lng)
+      // Sólo si cambió: sin tocarla no se manda nada.
+      ...(ubicacion?.lat !== ubicacionGuardada?.lat || ubicacion?.lng !== ubicacionGuardada?.lng
         ? { latitud: ubicacion?.lat ?? null, longitud: ubicacion?.lng ?? null }
         : {}),
     };
@@ -927,44 +922,13 @@ function FormAlmacenCuerpo({
           <Input value={telefono} onChange={(e) => setTelefono(e.target.value)} />
         </Campo>
 
-        {conMapa && tipo === "SUCURSAL" && (
-          // No es un `Campo`: ése es un <label> y el primer botón de adentro
-          // se llamaría como todo el texto del label.
-          <div role="group" aria-labelledby="titulo-ubicacion">
-            <span id="titulo-ubicacion" className="mb-1.5 block text-[13px] font-semibold text-texto-2">
-              Ubicación en el mapa
-            </span>
-            <div className="space-y-2">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-[13px] text-texto-2">
-                  {ubicacion ? "Ubicación marcada" : "Todavía sin marcar"}
-                </span>
-                {!verMapa && (
-                  <Boton variante="ghost" className="!px-3 !py-1.5 text-[13px]" onClick={() => setVerMapa(true)}>
-                    {ubicacion ? "Cambiar en el mapa" : "Marcar en el mapa"}
-                  </Boton>
-                )}
-                {ubicacion && (
-                  <Boton variante="ghost" className="!px-3 !py-1.5 text-[13px]" onClick={() => {
-                      // El pin del mapa abierto ya no vale: se cierra.
-                      setUbicacion(null);
-                      setVerMapa(false);
-                    }}
-                  >
-                    Quitar
-                  </Boton>
-                )}
-              </div>
-              {verMapa && (
-                <Suspense fallback={<div className="h-64 w-full rounded-xl bg-muted" />}>
-                  <ElegirUbicacion valor={ubicacion} onCambio={setUbicacion} />
-                </Suspense>
-              )}
-            </div>
-            <span className="mt-1 block text-xs text-texto-4">
-              Opcional: el pin de esta sucursal en el mapa de tu página.
-            </span>
-          </div>
+        {tipo === "SUCURSAL" && (
+          <CampoUbicacion
+            nombre={nombre || "esta sucursal"}
+            valor={ubicacion}
+            onCambio={setUbicacion}
+            hint="Opcional: el pin de esta sucursal en el mapa de tu página y el «Cómo llegar»."
+          />
         )}
 
         <Campo label="Grupo" hint="Opcional: para juntar sucursales o depósitos">

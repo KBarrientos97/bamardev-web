@@ -303,20 +303,19 @@ describe("ubicación en el mapa (PLAN-PAGINA-WEB §3.1)", () => {
     fireEvent.click(within(detalle).getByRole("button", { name: "Editar" }));
   }
 
-  it("sin la feature `pagina_mapa` la ficha no la pide", async () => {
+  it("es para todos: en una sucursal se ofrece sin ninguna feature extra; en un depósito, no", async () => {
     sesion.rubro = "RESTAURANTE";
     sesion.features = ["inventario"];
     vi.mocked(api.getAlmacenes).mockResolvedValue([conUbicacion]);
     await editar();
-    expect(screen.queryByText("Ubicación en el mapa")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
-    await act(async () => {});
-    expect(vi.mocked(api.actualizarAlmacen).mock.calls[0][1]).not.toHaveProperty("latitud");
+    expect(screen.getByRole("group", { name: "Ubicación en el mapa de Sucursal Centro" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Depósito" }));
+    expect(screen.queryByRole("group", { name: /Ubicación en el mapa/ })).not.toBeInTheDocument();
   });
 
-  it("con la feature dice si está marcada; Quitar la borra al guardar", async () => {
+  it("dice si está marcada; Quitar la borra al guardar", async () => {
     sesion.rubro = "RESTAURANTE";
-    sesion.features = ["inventario", "pagina_mapa"];
+    sesion.features = ["inventario"];
     vi.mocked(api.getAlmacenes).mockResolvedValue([conUbicacion]);
     await editar();
     expect(screen.getByText("Ubicación marcada")).toBeInTheDocument();
@@ -330,7 +329,7 @@ describe("ubicación en el mapa (PLAN-PAGINA-WEB §3.1)", () => {
 
   it("sin tocarla no se manda", async () => {
     sesion.rubro = "RESTAURANTE";
-    sesion.features = ["inventario", "pagina_mapa"];
+    sesion.features = ["inventario"];
     vi.mocked(api.getAlmacenes).mockResolvedValue([conUbicacion]);
     await editar();
     fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
