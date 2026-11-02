@@ -5,7 +5,14 @@ import { fmtCantidad } from "../../lib/format";
 import { numeroTicket } from "../../lib/tickets/llamado";
 import { useAlDia, useMantenerEncendida } from "../../publico/tv/pantalla";
 import type { ItemTicket, TicketPedido } from "../../types/tickets";
-import { cronometro, demora, listos as soloListos, preparando as soloPreparando, useTableroTickets } from "./useTableroTickets";
+import {
+  cronometro,
+  demora,
+  listos as soloListos,
+  preparando as soloPreparando,
+  sinEntregar,
+  useTableroTickets,
+} from "./useTableroTickets";
 
 /**
  * Despacho: quien entrega los pedidos que salen de la cocina.
@@ -98,6 +105,26 @@ export default function Despacho({
   const tickets = datos?.tickets ?? [];
   const enCocina = soloPreparando(tickets);
   const paraEntregar = soloListos(tickets);
+
+  // El acceso de despacho no sale con pedidos en el tablero: el cliente se
+  // quedaría con su número y nadie para llamarlo. Sin el tablero (sin
+  // conexión) se deja salir: un candado que no se puede abrir lo deja
+  // encerrado, como en el cierre de sesión de la caja.
+  const pedirSalir = () => {
+    const quedan = datos ? sinEntregar(datos.tickets) : 0;
+    if (quedan > 0) {
+      setConfirmandoSalir(false);
+      setAviso({
+        texto:
+          quedan === 1
+            ? "Queda 1 pedido sin entregar: entregalo antes de salir."
+            : `Quedan ${quedan} pedidos sin entregar: entregalos antes de salir.`,
+        tono: "error",
+      });
+      return false;
+    }
+    return true;
+  };
   const visibles =
     filtro === "preparando" ? enCocina : filtro === "listos" ? paraEntregar : [...enCocina, ...paraEntregar];
 
@@ -148,7 +175,10 @@ export default function Despacho({
                 <span className="px-2 text-white/80">¿Salir?</span>
                 <button
                   type="button"
-                  onClick={onSalir}
+                  onClick={() => {
+                    // Mientras se confirmaba pudo entrar un pedido nuevo.
+                    if (pedirSalir()) onSalir();
+                  }}
                   className="rounded-lg bg-red-500/90 px-3 py-1.5 text-white hover:bg-red-500"
                 >
                   Sí, salir
@@ -164,7 +194,9 @@ export default function Despacho({
             ) : (
               <button
                 type="button"
-                onClick={() => setConfirmandoSalir(true)}
+                onClick={() => {
+                  if (pedirSalir()) setConfirmandoSalir(true);
+                }}
                 className="flex items-center gap-1.5 rounded-xl border border-white/15 px-3 py-2 text-[13px] font-semibold text-white/85 hover:bg-white/10"
               >
                 <Icon name="logout" size={16} />

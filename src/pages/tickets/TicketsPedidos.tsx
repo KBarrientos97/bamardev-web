@@ -205,7 +205,7 @@ function PestanaPedidos({
             Siguiente ticket:{" "}
             <b className="font-mono text-lg text-texto">{datos ? numeroTicket(datos.siguiente) : "…"}</b>
           </p>
-          <p className="mt-1 text-[12px] text-texto-3">Vuelve sola a 0001 cada día a las 6 de la mañana.</p>
+          <p className="mt-1 text-[12px] text-texto-3">Vuelve sola a 001 cada día a las 6 de la mañana.</p>
           <Boton variante="ghost" icono="girar" className="mt-3 w-full" onClick={() => setConfirmarReinicio(true)}>
             Reiniciar numeración
           </Boton>
@@ -215,7 +215,7 @@ function PestanaPedidos({
       <Confirmar
         abierto={confirmarReinicio}
         titulo="¿Reiniciar la numeración?"
-        texto="El próximo cobro sale con 0001. Los pedidos que ya están en la pantalla siguen hasta que se entreguen."
+        texto="El próximo cobro sale con 001. Los pedidos que ya están en la pantalla siguen hasta que se entreguen."
         etiquetaOk="Reiniciar"
         peligroso
         procesando={reiniciando}
@@ -542,9 +542,9 @@ function PestanaDiseno({
 
 const NOMBRE_TONO: Record<TonoTv, string> = {
   banco: "Banco · ding-dong",
-  campanilla: "Campanilla · tres notas",
+  timbre: "Timbre · ding-dong largo",
+  turnero: "Turnero · dong-ding",
   ascensor: "Ascensor · suave",
-  bip: "Bip doble",
 };
 
 function PestanaSonido({ aj, onProbar }: { aj: ReturnType<typeof useAjustesTv>; onProbar: () => void }) {
@@ -576,10 +576,24 @@ function PestanaSonido({ aj, onProbar }: { aj: ReturnType<typeof useAjustesTv>; 
       <Tarjeta titulo="Voz y volumen">
         <SiNo
           etiqueta="Voz en español"
-          detalle="«Ticket, cero, cero, siete, dos…»"
+          detalle="«Ticket setenta y dos. Su pedido está listo.»"
           activo={a.voz}
           onCambiar={(v) => aj.cambiar({ voz: v })}
         />
+        {a.voz && (
+          <div className="flex items-center justify-between gap-3 py-2">
+            <span className="text-sm font-semibold text-texto">Voz de</span>
+            <Segmentado
+              etiqueta="Voz de"
+              valor={a.tipoVoz ?? "mujer"}
+              onCambiar={(v) => aj.cambiar({ tipoVoz: v })}
+              opciones={[
+                { valor: "mujer", texto: "Mujer" },
+                { valor: "hombre", texto: "Hombre" },
+              ]}
+            />
+          </div>
+        )}
         <label className="block py-2">
           <span className="text-sm font-semibold text-texto">Volumen · {a.volumen}%</span>
           <input
@@ -632,7 +646,7 @@ function PestanaSonido({ aj, onProbar }: { aj: ReturnType<typeof useAjustesTv>; 
         </Boton>
         <p className="mt-2 text-[12px] text-texto-3">
           La voz es la del navegador: en algunos televisores suena distinta, y en los que no tienen voz en español
-          suena sólo el tono.
+          suena sólo el tono. Si el televisor no trae voz de hombre, se usa la que tenga con el tono más grave.
         </p>
       </Tarjeta>
     </div>

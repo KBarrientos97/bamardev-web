@@ -4,7 +4,7 @@
  *
  * La TV pregunta cada pocos segundos y recibe los listos con la hora de su
  * último llamado. Suena un número cuando su llamado es más nuevo que el que
- * ya conocía: así "Llamar otra vez" vuelve a sonar, y un 0001 de después de
+ * ya conocía: así "Llamar otra vez" vuelve a sonar, y un 001 de después de
  * reiniciar la numeración también.
  *
  * Lo que ya estaba llamado cuando la TV se encendió NO suena (la primera

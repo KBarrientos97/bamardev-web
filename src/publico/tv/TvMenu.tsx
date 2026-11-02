@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, Route, Routes, useParams, useSearchParams } from "react-router-dom";
 import { Icon } from "../../components/Icon";
 import { paginar } from "../../lib/menuDigital/paginar";
 import { coloresMenu } from "../../lib/menuDigital/colores";
 import { TableroMenu } from "../../pages/menu-digital/TableroMenu";
 import { LienzoTv } from "../../pages/tickets/TableroTv";
-import type { MenuPublicoApi } from "../../types/menuDigital";
+import type { MenuPublicoApi, PantallaMenu } from "../../types/menuDigital";
 import { apiTv, ErrorTv, urlPublica } from "./apiTv";
 import { useAlDia, useMantenerEncendida, usePantallaCompleta } from "./pantalla";
 import { llaveConForma, sucursalDeLaDireccion } from "./TvBillar.datos";
@@ -28,6 +28,36 @@ export default function RutasMenu() {
 }
 
 const CADA_MS = 30_000;
+
+type FaseTv = "cargando" | "lista" | "anulada" | "sinConexion";
+
+/**
+ * Lo que puede hacer con esta página la vista previa del editor de Android,
+ * que la lleva adentro de un WebView con `?vista=previa`. Una TV de verdad no
+ * lo tiene.
+ *
+ * Antes, para mostrar un cambio, la app esperaba el guardado (0,7 s), 1,2 s
+ * más y recargaba la página entera: el dueño tocaba "Lista" y la TV seguía en
+ * "Fotos" varios segundos, y después pasaba por "Cargando el menú…".
+ */
+export interface PuenteVistaPrevia {
+  /** La pantalla tal como se está editando: se dibuja ya, sin esperar el guardado. */
+  pantalla: (p: Partial<PantallaMenu>) => boolean;
+  /**
+   * Pregunta otra vez ahora, sin recargar la página. Los platos que entran sí
+   * dependen de lo guardado: las categorías, los ocultos y los agotados los
+   * filtra el servidor.
+   */
+  recargar: () => boolean;
+  /** "cargando" hasta la primera respuesta; la app tapa la TV con su aviso mientras tanto. */
+  fase: () => FaseTv;
+}
+
+declare global {
+  interface Window {
+    bamardevTv?: PuenteVistaPrevia;
+  }
+}
 
 function Selector() {
   const { llave = "" } = useParams();
@@ -71,10 +101,15 @@ function TvMenu() {
   const [params] = useSearchParams();
   const n = Number(numero);
   const sucursalId = sucursalDeLaDireccion(params.get("sucursal"));
+  const vistaPrevia = params.get("vista") === "previa";
   const [datos, setDatos] = useState<MenuPublicoApi | null>(null);
-  const [fase, setFase] = useState<"cargando" | "lista" | "anulada" | "sinConexion">("cargando");
+  const [fase, setFase] = useState<FaseTv>("cargando");
   const [pagina, setPagina] = useState(0);
   const [ayuda, setAyuda] = useState(true);
+  /** La pantalla que manda el editor de Android (sólo en la vista previa). */
+  const [enEdicion, setEnEdicion] = useState<Partial<PantallaMenu> | null>(null);
+  const traerYa = useRef<() => void>(() => undefined);
+  const faseActual = useRef<FaseTv>("cargando");
   const completa = usePantallaCompleta();
   useMantenerEncendida();
   useAlDia();
@@ -83,36 +118,72 @@ function TvMenu() {
     if (!llaveConForma(llave) || !Number.isInteger(n)) return;
     let vivo = true;
     let reloj: ReturnType<typeof setTimeout> | null = null;
+    // Cada pregunta lleva su número: si la vista previa pide otra mientras
+    // una sigue en camino, la vieja no pisa lo nuevo ni arma un segundo
+    // reloj (que dejaría la página preguntando el doble para siempre).
+    let vuelta = 0;
     const traer = async () => {
+      if (reloj) clearTimeout(reloj);
+      reloj = null;
+      const esta = ++vuelta;
       try {
         const r = await apiTv.menu(llave, n, sucursalId);
-        if (!vivo) return;
+        if (!vivo || esta !== vuelta) return;
         setDatos(r);
         setFase("lista");
       } catch (e) {
-        if (!vivo) return;
+        if (!vivo || esta !== vuelta) return;
         // Sin conexión se queda con lo último: mejor el menú de hace un rato que nada.
         setFase(e instanceof ErrorTv && e.status === 404 ? "anulada" : "sinConexion");
       } finally {
-        if (vivo) reloj = setTimeout(() => void traer(), CADA_MS);
+        if (vivo && esta === vuelta) reloj = setTimeout(() => void traer(), CADA_MS);
       }
     };
+    traerYa.current = () => void traer();
     void traer();
     return () => {
       vivo = false;
+      traerYa.current = () => undefined;
       if (reloj) clearTimeout(reloj);
     };
   }, [llave, n, sucursalId]);
 
+  useEffect(() => {
+    faseActual.current = fase;
+  }, [fase]);
+
+  useEffect(() => {
+    if (!vistaPrevia) return;
+    window.bamardevTv = {
+      pantalla: (p) => {
+        if (!p || typeof p !== "object") return false;
+        setEnEdicion(p);
+        return true;
+      },
+      recargar: () => {
+        traerYa.current();
+        return true;
+      },
+      fase: () => faseActual.current,
+    };
+    return () => {
+      delete window.bamardevTv;
+    };
+  }, [vistaPrevia]);
+
+  // Lo que manda el editor va encima de lo guardado: un campo que la app no
+  // conoce (de una versión más nueva de la web) queda como estaba.
+  const pantalla = useMemo(() => (datos ? { ...datos.pantalla, ...(enEdicion ?? {}) } : null), [datos, enEdicion]);
+
   const paginas = useMemo(
-    () => (datos ? paginar(datos.pantalla, datos.platos, datos.categorias) : []),
-    [datos],
+    () => (datos && pantalla ? paginar(pantalla, datos.platos, datos.categorias) : []),
+    [datos, pantalla],
   );
 
   // Pasa de página sola; con una sola página no hace nada. Depende del ritmo
   // y no de `datos`, que es otro objeto en cada vuelta de 30 s: el intervalo
   // se reiniciaba y con "20 s" cada página quedaba unos 30.
-  const rotarSeg = datos?.pantalla.rotarSeg;
+  const rotarSeg = pantalla?.rotarSeg;
   useEffect(() => {
     if (paginas.length < 2 || !rotarSeg) return;
     const id = setInterval(() => setPagina((p) => (p + 1) % paginas.length), rotarSeg * 1000);
@@ -135,17 +206,19 @@ function TvMenu() {
   if (!datos) return <Mensaje titulo={fase === "sinConexion" ? "No se pudo conectar" : "Cargando el menú…"} />;
 
   const actual = paginas[pagina % paginas.length];
+  const vista = pantalla ?? datos.pantalla;
   return (
     <div onDoubleClick={() => completa.disponible && !completa.activa && completa.pedir()}>
-      <LienzoTv modo="pantalla" fondo={coloresMenu(datos.pantalla).fondo}>
+      <LienzoTv modo="pantalla" fondo={coloresMenu(vista).fondo}>
         <TableroMenu
-          datos={{ negocio: datos.negocio, moneda: datos.moneda, pantalla: datos.pantalla, url: urlPublica, logo: datos.logo }}
+          datos={{ negocio: datos.negocio, moneda: datos.moneda, pantalla: vista, url: urlPublica, logo: datos.logo }}
           pagina={actual}
           paginaActual={pagina % paginas.length}
           totalPaginas={paginas.length}
         />
       </LienzoTv>
-      {ayuda && completa.disponible && !completa.activa && (
+      {/* En la vista previa de la app no hay pantalla completa que pedir. */}
+      {ayuda && !vistaPrevia && completa.disponible && !completa.activa && (
         <p className="fixed inset-x-0 bottom-6 z-40 mx-auto w-fit rounded-full bg-black/75 px-4 py-2 text-sm font-semibold text-white">
           Doble clic para pantalla completa
         </p>

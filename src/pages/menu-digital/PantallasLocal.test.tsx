@@ -20,7 +20,7 @@ vi.mock("../../lib/api", async (original) => {
 });
 vi.mock("../../store/AuthContext", () => ({
   useAuth: () => ({
-    usuario: { id: 1, sucursalId: null, permisos: ["menu_digital.editar", "tickets.configurar", "tickets.despachar"] },
+    usuario: { id: 1, sucursalId: null, permisos: ["menu_digital.editar", "tickets.configurar", "tickets.despachar", "recibo.configurar"] },
     negocio: { id: 7, nombre: "Pollos de prueba", tipoNegocio: "RESTAURANTE", features: ["menu_digital", "tickets_pedido"] },
     rubro: "RESTAURANTE",
     puede: () => true,
@@ -270,8 +270,8 @@ describe("Tickets y pedidos", () => {
         <TicketsPedidos />
       </MemoryRouter>,
     );
-    expect((await screen.findAllByText("0072")).length).toBeGreaterThan(0);
-    expect(screen.getByText("0073")).toBeInTheDocument();
+    expect((await screen.findAllByText("072")).length).toBeGreaterThan(0);
+    expect(screen.getByText("073")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Listo · llamar/ })).toBeInTheDocument();
     expect(screen.getAllByText("Listos para entregar").length).toBeGreaterThan(0);
   });
@@ -345,9 +345,9 @@ describe("TV de tickets, sin sesión", () => {
         </Routes>
       </MemoryRouter>,
     );
-    expect(await screen.findByText("0068")).toBeInTheDocument();
+    expect(await screen.findByText("068")).toBeInTheDocument();
     expect(screen.getByText("Listos para entregar")).toBeInTheDocument();
-    expect(screen.getByText("0069")).toBeInTheDocument();
+    expect(screen.getByText("069")).toBeInTheDocument();
     expect(screen.getByText("5 min")).toBeInTheDocument();
     // Sin un toque, el navegador no deja sonar: la TV lo pide.
     expect(screen.getByText(/Tocá la pantalla una vez/)).toBeInTheDocument();
@@ -367,7 +367,7 @@ describe("TV de tickets, sin sesión", () => {
       vi.advanceTimersByTime(2_600);
     });
     expect(await screen.findByText("¡Llamando!")).toBeInTheDocument();
-    expect(screen.getAllByText("0069").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("069").length).toBeGreaterThan(0);
     vi.useRealTimers();
     vi.unstubAllGlobals();
   });

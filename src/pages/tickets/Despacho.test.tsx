@@ -51,7 +51,7 @@ beforeEach(() => {
 describe("Despacho", () => {
   it("muestra cada pedido con su número, lo de mesa y llevar por separado y la nota", async () => {
     render(<Despacho />);
-    const tarjeta = (await screen.findByText("0072")).closest("article")!;
+    const tarjeta = (await screen.findByText("072")).closest("article")!;
     expect(within(tarjeta).getByText("EN MESA")).toBeInTheDocument();
     expect(within(tarjeta).getByText("PARA LLEVAR")).toBeInTheDocument();
     expect(within(tarjeta).getByText("sin ensalada")).toBeInTheDocument();
@@ -61,17 +61,17 @@ describe("Despacho", () => {
   it("«Listo · llamar» lo marca listo y avisa que suena en la pantalla", async () => {
     api.listo.mockResolvedValue(ticket({ estado: "LISTO", llamados: 1 }));
     render(<Despacho />);
-    const tarjeta = (await screen.findByText("0072")).closest("article")!;
+    const tarjeta = (await screen.findByText("072")).closest("article")!;
     fireEvent.click(within(tarjeta).getByRole("button", { name: /LISTO · LLAMAR/ }));
     await waitFor(() => expect(api.listo).toHaveBeenCalledWith(1));
-    expect(await screen.findByText("0072 llamado en la pantalla")).toBeInTheDocument();
+    expect(await screen.findByText("072 llamado en la pantalla")).toBeInTheDocument();
   });
 
   it("entregado se puede deshacer al toque", async () => {
     api.entregar.mockResolvedValue(ticket({ id: 2, numero: 69, estado: "ENTREGADO" }));
     api.reabrir.mockResolvedValue(ticket({ id: 2, numero: 69, estado: "LISTO" }));
     render(<Despacho />);
-    const tarjeta = (await screen.findByText("0069")).closest("article")!;
+    const tarjeta = (await screen.findByText("069")).closest("article")!;
     fireEvent.click(within(tarjeta).getByRole("button", { name: /Entregado/ }));
     fireEvent.click(await screen.findByRole("button", { name: "Deshacer" }));
     await waitFor(() => expect(api.reabrir).toHaveBeenCalledWith(2));
@@ -80,7 +80,7 @@ describe("Despacho", () => {
   it("el teclado de la compu escribe el número y Enter lo llama", async () => {
     api.llamarNumero.mockResolvedValue(ticket({ estado: "LISTO" }));
     render(<Despacho />);
-    await screen.findByText("0072");
+    await screen.findByText("072");
     act(() => {
       for (const k of ["7", "2", "Enter"]) window.dispatchEvent(new KeyboardEvent("keydown", { key: k }));
     });
@@ -90,16 +90,17 @@ describe("Despacho", () => {
   it("si el número ya se entregó, lo dice", async () => {
     api.llamarNumero.mockRejectedValue(new Error("El pedido 0070 ya se entregó."));
     render(<Despacho />);
-    await screen.findByText("0072");
+    await screen.findByText("072");
     for (const k of ["7", "0"]) fireEvent.click(screen.getByRole("button", { name: k }));
     fireEvent.click(screen.getByRole("button", { name: /Llamar en pantalla/ }));
     expect(await screen.findByText("El pedido 0070 ya se entregó.")).toBeInTheDocument();
   });
 
   it("el acceso de despacho sale desde acá, confirmando: volver a entrar es tipear la contraseña", async () => {
+    api.tablero.mockResolvedValue(tablero([ticket({ estado: "ENTREGADO", entregadoEn: new Date(ahora).toISOString() })]));
     const onSalir = vi.fn();
     render(<Despacho onSalir={onSalir} />);
-    await screen.findByText("0072");
+    await screen.findByText(/0 en preparación · 0 listos por entregar/);
     fireEvent.click(screen.getByRole("button", { name: "Salir" }));
     expect(onSalir).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "No" }));
@@ -108,9 +109,20 @@ describe("Despacho", () => {
     expect(onSalir).toHaveBeenCalledTimes(1);
   });
 
+  it("con pedidos en el tablero el acceso de despacho no sale (Kevin, 1-nov)", async () => {
+    // El cliente se quedaría con su número y nadie para llamarlo.
+    const onSalir = vi.fn();
+    render(<Despacho onSalir={onSalir} />);
+    await screen.findByText("072");
+    fireEvent.click(screen.getByRole("button", { name: "Salir" }));
+    expect(screen.queryByRole("button", { name: "Sí, salir" })).not.toBeInTheDocument();
+    expect(await screen.findByText("Quedan 2 pedidos sin entregar: entregalos antes de salir.")).toBeInTheDocument();
+    expect(onSalir).not.toHaveBeenCalled();
+  });
+
   it("quien despacha desde el menú (la cajera) no tiene el botón de salir", async () => {
     render(<Despacho />);
-    await screen.findByText("0072");
+    await screen.findByText("072");
     expect(screen.queryByRole("button", { name: "Salir" })).not.toBeInTheDocument();
   });
 });

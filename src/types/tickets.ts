@@ -42,8 +42,12 @@ export interface TableroTickets {
 export const TEMAS_TV = ["rojo", "verde", "brasa", "crema", "personalizado"] as const;
 export type TemaTv = (typeof TEMAS_TV)[number];
 
-export const TONOS_TV = ["banco", "campanilla", "ascensor", "bip"] as const;
+/** Los del backend (`TONOS_TV` de `tickets/ajustes-tv.ts`). "campanilla", "bip" y "mostrador" salieron el 1-nov. */
+export const TONOS_TV = ["banco", "timbre", "turnero", "ascensor"] as const;
 export type TonoTv = (typeof TONOS_TV)[number];
+
+export const TIPOS_VOZ = ["mujer", "hombre"] as const;
+export type TipoVoz = (typeof TIPOS_VOZ)[number];
 
 export interface TextosTv {
   listos: string;
@@ -66,6 +70,8 @@ export interface AjustesTicketsTv {
   textos: TextosTv;
   tono: TonoTv;
   voz: boolean;
+  /** La voz que dice el número; la elige el dueño. */
+  tipoVoz: TipoVoz;
   volumen: number;
   repetir: number;
   segundosResaltado: number;
@@ -105,6 +111,7 @@ export const AJUSTES_TV_DE_FABRICA: AjustesTicketsTv = {
   },
   tono: "banco",
   voz: true,
+  tipoVoz: "mujer",
   volumen: 80,
   repetir: 2,
   segundosResaltado: 15,
