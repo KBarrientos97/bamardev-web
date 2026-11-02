@@ -312,7 +312,8 @@ function NoIncluidos({
  * para que apruebe inscripciones, pero entrega la cara y el carnet de todos.
  */
 const ADVERTENCIAS: Record<string, string> = {
-  "academia.fotos": "Quien tenga este rol verá la cara y el carnet de todos los inscritos, también de los menores, y podrá aprobarlos.",
+  "academia.fotos":
+    "Quien tenga este rol verá la cara y el carnet de todos los inscritos, también de los menores, y podrá aprobarlos. También revisará los comprobantes de los pagos en línea: al aprobarlos se registra un cobro.",
 };
 
 function RenglonPermiso({
