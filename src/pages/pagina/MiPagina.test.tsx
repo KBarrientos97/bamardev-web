@@ -11,6 +11,9 @@ vi.mock("../../lib/pagina/apiPagina", () => ({
   apiPagina: {
     estado: vi.fn(),
     guardar: vi.fn(),
+    publicacion: vi.fn(),
+    publicarCambios: vi.fn(),
+    descartarBorrador: vi.fn(),
     crearEnlace: vi.fn(),
     editarEnlace: vi.fn(),
     borrarEnlace: vi.fn(),
@@ -96,10 +99,16 @@ const abrir = (etiqueta: string) =>
   fireEvent.click(screen.getByRole("button", { name: new RegExp(`^${etiqueta}:`) }));
 const fila = (etiqueta: string, elegido: string) =>
   screen.getByRole("button", { name: `${etiqueta}: ${elegido}. Cambiar` });
+/** La letra y la forma de los botones van plegadas (PLAN-PAGINA-WEB §4.1). */
+const personalizar = () => fireEvent.click(screen.getByRole("button", { name: /^Personalizar más/ }));
 
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(apiPagina.estado).mockResolvedValue(estado());
+  // El borrador (PLAN-PAGINA-WEB §4.2): publicar y descartar devuelven el estado.
+  vi.mocked(apiPagina.publicarCambios).mockResolvedValue(estado());
+  vi.mocked(apiPagina.descartarBorrador).mockResolvedValue(estado());
+  vi.mocked(apiPagina.publicacion).mockResolvedValue(estado());
 });
 
 describe("Mi página", () => {
@@ -152,13 +161,15 @@ describe("Mi página", () => {
     expect(screen.getByRole("button", { name: "Guardar cambios" })).toBeDisabled();
   });
 
-  it("Publicar manda publicada:true", async () => {
-    vi.mocked(apiPagina.guardar).mockResolvedValue(estado({ publicada: true }));
+  it("Publicar pasa el borrador a la página y la publica", async () => {
+    vi.mocked(apiPagina.publicarCambios).mockResolvedValue(estado({ publicada: true }));
     await montar();
     fireEvent.click(screen.getByRole("button", { name: "Publicar" }));
     await act(async () => {});
-    expect(apiPagina.guardar).toHaveBeenCalledWith({ publicada: true });
+    expect(apiPagina.publicarCambios).toHaveBeenCalledWith(true);
+    expect(apiPagina.guardar).not.toHaveBeenCalled();
     expect(screen.getByText("Publicada")).toBeInTheDocument();
+    expect(screen.getByText("¡Tu página está publicada!")).toBeInTheDocument();
   });
 
   it("bloqueada por BamarDev: lo explica y no ofrece publicar", async () => {
@@ -292,6 +303,8 @@ describe("Mi página", () => {
     expect(within(previa()).getByRole("link", { name: "WhatsApp" })).toHaveAttribute("href", "https://wa.me/59170123456");
     const s = estado().sucursales[0];
     vi.mocked(apiPagina.sucursal).mockResolvedValue({ ...s, whatsapp: "59170123456" });
+    // Publicar devuelve la página con la sucursal ya publicada.
+    vi.mocked(apiPagina.publicarCambios).mockResolvedValue({ ...estado(), sucursales: [{ ...s, whatsapp: "59170123456" }] });
     fireEvent.click(screen.getByRole("button", { name: "Guardar cambios" }));
     await act(async () => {});
     expect(apiPagina.sucursal).toHaveBeenCalledWith(10, { horarioTexto: "9 a 20", mapsUrl: null, whatsapp: "7012-3456" });
@@ -332,6 +345,7 @@ describe("Mi página", () => {
 
   it("forma de los botones: a la vista la elegida; en el popup ≥ 9, en vivo y se manda al guardar", async () => {
     await montar();
+    personalizar();
     expect(fila("Forma de los botones", "Redondeados")).toBeInTheDocument();
     abrir("Forma de los botones");
     const dialogo = screen.getByRole("dialog", { name: "Forma de los botones" });
@@ -354,6 +368,7 @@ describe("Mi página", () => {
 
   it("letra del nombre: a la vista la elegida; en el popup 30 agrupadas, y el catálogo baja sólo al abrir", async () => {
     await montar();
+    personalizar();
     expect(fila("Letra del nombre", "Moderna")).toBeInTheDocument();
     expect(document.getElementById("fuentes-pagina-catalogo")).toBeNull();
     abrir("Letra del nombre");
@@ -532,6 +547,7 @@ describe("Mi página: estilo", () => {
     expect(screen.getByText("Carta luce con tu catálogo.")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Usar este estilo" }));
     expect(screen.getByText(/Carta luce con tu catálogo\. Sin productos/)).toBeInTheDocument();
+    personalizar();
     expect(fila("Letra del nombre", "Alfa Slab")).toBeInTheDocument();
     expect(fila("Forma de los botones", "Redondeados")).toBeInTheDocument();
     expect(previa()).toHaveAttribute("data-estilo", "CARTA");
@@ -547,6 +563,7 @@ describe("Mi página: estilo", () => {
     fireEvent.click(within(dialogo).getByRole("button", { name: "Usar este estilo" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(fila("Estilo", "Noche")).toBeInTheDocument();
+    personalizar();
     expect(fila("Letra del nombre", "Bebas Neue")).toBeInTheDocument();
     expect(fila("Forma de los botones", "Rectos")).toBeInTheDocument();
     expect(previa()).toHaveAttribute("data-estilo", "NOCHE");
@@ -589,6 +606,7 @@ describe("Mi página: estilo", () => {
   it("los popups de color, forma y letra muestran primero los recomendados para el estilo", async () => {
     vi.mocked(apiPagina.estado).mockResolvedValue(estado({ estiloClave: "NOCHE", tipografia: "BEBAS", formaBotones: "RECTO" }));
     await montar();
+    personalizar();
     abrir("Forma de los botones");
     const recoForma = screen.getByRole("radiogroup", { name: "Formas recomendadas para este estilo" });
     expect(within(recoForma).getAllByRole("radio").map((r) => r.getAttribute("aria-label"))).toEqual(["Rectos", "Contorno", "Esquina cortada"]);
@@ -843,7 +861,9 @@ describe("Mi página: horario por día de la sucursal", () => {
     expect(within(previa()).getByTestId("estado-sucursal")).toBeInTheDocument();
 
     const s = estado().sucursales[0];
-    vi.mocked(apiPagina.sucursal).mockResolvedValue({ ...s, horarioSemanal: [...HABILES, { dia: 6, desde: "09:00", hasta: "13:00" }] });
+    const conHorario = { ...s, horarioSemanal: [...HABILES, { dia: 6, desde: "09:00", hasta: "13:00" }] };
+    vi.mocked(apiPagina.sucursal).mockResolvedValue(conHorario);
+    vi.mocked(apiPagina.publicarCambios).mockResolvedValue({ ...estado(), sucursales: [conHorario] });
     fireEvent.click(screen.getByRole("button", { name: "Guardar cambios" }));
     await act(async () => {});
     expect(apiPagina.sucursal).toHaveBeenCalledWith(10, {
@@ -1022,5 +1042,78 @@ describe("Mi página: el catálogo es armado a mano o «Mis productos»", () => 
     fireEvent.click(screen.getByRole("button", { name: "Quitar Pollo entero de la página" }));
     await act(async () => {});
     expect(apiPagina.fijarProductosCatalogo).toHaveBeenLastCalledWith([2]);
+  });
+});
+
+describe("Mi página: borrador (PLAN-PAGINA-WEB §4.2)", () => {
+  const conBorrador = (cambios: Partial<EstadoEditor["pagina"]> = {}): EstadoEditor => ({
+    ...estado({ publicada: true, ...cambios }),
+    borrador: { hay: true, actualizadoEn: "2026-11-02T15:00:00Z" },
+  });
+  const esperar = (ms: number) => act(async () => {
+    await new Promise((r) => setTimeout(r, ms));
+  });
+
+  it("lo escrito se guarda solo en el borrador, sin apretar nada", async () => {
+    vi.mocked(apiPagina.guardar).mockResolvedValue(conBorrador({ descripcion: "Cortes y color" }));
+    await montar();
+    fireEvent.change(screen.getByLabelText("Descripción corta"), { target: { value: "Cortes y color" } });
+    expect(apiPagina.guardar).not.toHaveBeenCalled();
+    await esperar(900);
+    expect(apiPagina.guardar).toHaveBeenCalledWith({ descripcion: "Cortes y color" });
+    expect(apiPagina.publicarCambios).not.toHaveBeenCalled();
+    expect(screen.getByText("Cambios sin publicar")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Publicar cambios" })).toBeEnabled();
+  });
+
+  it("publicada y con borrador: «Publicar cambios» lo pasa a la página", async () => {
+    vi.mocked(apiPagina.estado).mockResolvedValue(conBorrador());
+    vi.mocked(apiPagina.publicarCambios).mockResolvedValue(estado({ publicada: true }));
+    await montar();
+    expect(screen.getByText(/Tenés cambios sin publicar/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Publicar cambios" }));
+    await act(async () => {});
+    expect(apiPagina.publicarCambios).toHaveBeenCalledWith(false);
+    expect(screen.getByText("Cambios publicados")).toBeInTheDocument();
+    expect(screen.getByText("Todo publicado.")).toBeInTheDocument();
+    expect(screen.queryByText("Cambios sin publicar")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Publicar cambios" })).toBeDisabled();
+  });
+
+  it("Despublicar va directo, sin tocar el borrador", async () => {
+    vi.mocked(apiPagina.estado).mockResolvedValue(conBorrador());
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Despublicar" }));
+    await act(async () => {});
+    expect(apiPagina.publicacion).toHaveBeenCalledWith(false);
+    expect(apiPagina.publicarCambios).not.toHaveBeenCalled();
+  });
+
+  it("descartar un borrador guardado pide confirmación y vuelve a lo publicado", async () => {
+    vi.mocked(apiPagina.estado).mockResolvedValue(conBorrador({ descripcion: "Del borrador" }));
+    vi.mocked(apiPagina.descartarBorrador).mockResolvedValue(estado({ publicada: true, descripcion: "La publicada" }));
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Descartar" }));
+    const d = screen.getByRole("dialog", { name: "Descartar los cambios" });
+    expect(apiPagina.descartarBorrador).not.toHaveBeenCalled();
+    fireEvent.click(within(d).getByRole("button", { name: "Descartar" }));
+    await act(async () => {});
+    expect(apiPagina.descartarBorrador).toHaveBeenCalled();
+    expect(screen.getByLabelText("Descripción corta")).toHaveValue("La publicada");
+    expect(screen.getByText("Volviste a lo publicado")).toBeInTheDocument();
+  });
+
+  it("al irse de la pantalla, lo que faltaba se manda igual", async () => {
+    vi.mocked(apiPagina.guardar).mockResolvedValue(conBorrador());
+    const { unmount } = render(
+      <MemoryRouter>
+        <MiPagina />
+      </MemoryRouter>,
+    );
+    await act(async () => {});
+    fireEvent.change(screen.getByLabelText("Descripción corta"), { target: { value: "A medio escribir" } });
+    unmount();
+    await act(async () => {});
+    expect(apiPagina.guardar).toHaveBeenCalledWith({ descripcion: "A medio escribir" });
   });
 });
