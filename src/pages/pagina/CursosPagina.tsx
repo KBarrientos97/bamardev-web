@@ -9,7 +9,10 @@ import type { CursoPublico } from "../../lib/academia/tipos";
  * §9, ronda 2): una tarjeta por curso publicado, con su foto, sus módulos, el
  * precio de las dos formas ("Bs 500 por módulo · o Bs 1.350 todo junto") con
  * lo que se ahorra, y el próximo inicio con los lugares que quedan. El botón
- * lleva a inscribirse (P2), donde se elige el horario.
+ * lleva a inscribirse (P2), donde se elige el horario. Un grupo lleno ya no
+ * recibe preinscripciones (M5): si todos lo están, en lugar del botón dice que
+ * se comuniquen con la academia. Al pie, «Pagar mi inscripción»: entrar con el
+ * carnet para pagar (M5).
  *
  * Va con los tonos del estilo de la página (estilos en línea, como el resto
  * de la vista): no es la app, es la vitrina del negocio.
@@ -32,6 +35,7 @@ export default function CursosPagina({
   radio,
   titulo,
   urlInscribirme,
+  urlMiCuenta,
   escritorio,
 }: {
   cursos: CursoPublico[];
@@ -43,6 +47,8 @@ export default function CursosPagina({
   titulo: ReactNode;
   /** Sin esto (la vista previa del editor) el botón se dibuja pero no lleva a ningún lado. */
   urlInscribirme?: (grupoId: number) => string;
+  /** «Pagar mi inscripción» (M5). Sin esto (la vista previa) no se dibuja. */
+  urlMiCuenta?: string;
   escritorio: boolean;
 }) {
   const visibles = cursos.filter((c) => c.grupos.length > 0 || c.desde != null);
@@ -61,6 +67,14 @@ export default function CursosPagina({
           <TarjetaCurso key={c.id} c={c} t={t} colorBoton={colorBoton} radio={radio} urlInscribirme={urlInscribirme} />
         ))}
       </div>
+      {urlMiCuenta && (
+        <p style={{ margin: 0, textAlign: "center", fontSize: 14, color: t.texto2 }}>
+          ¿Ya te preinscribiste o estás inscrito?{" "}
+          <a href={urlMiCuenta} style={{ color: t.texto, fontWeight: 600, textDecoration: "underline" }}>
+            Pagar mi inscripción
+          </a>
+        </p>
+      )}
     </section>
   );
 }
@@ -79,7 +93,9 @@ function TarjetaCurso({
   urlInscribirme?: (grupoId: number) => string;
 }) {
   const foto = urlDeImagen(c.fotoUrl);
-  const primero = c.grupos[0];
+  // M5: un grupo lleno ya no recibe preinscripciones; se manda al primero con lugar.
+  const primero = c.grupos.find((g) => g.cuposLibres !== 0);
+  const todosLlenos = c.grupos.length > 0 && !primero;
   const modulos = c.modulos?.length ? c.modulos : c.materias;
   const n = modulos.length;
   const bs = (x: number) => `Bs ${x.toLocaleString("es-BO")}`;
@@ -197,8 +213,13 @@ function TarjetaCurso({
               </div>
             )
           )}
-          {!primero && (
+          {!primero && !todosLlenos && (
             <p style={{ margin: 0, fontSize: 13, color: t.texto3Tarjeta }}>Próximo grupo por confirmar.</p>
+          )}
+          {todosLlenos && (
+            <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: t.textoTarjeta }}>
+              Los grupos están llenos, comunicate con la academia.
+            </p>
           )}
           {primero &&
             (urlInscribirme ? (

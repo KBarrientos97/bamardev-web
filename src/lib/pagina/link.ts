@@ -10,6 +10,7 @@
  *   link…/<sub>/c/<token>        gestión de la cita (= app…/r/<sub>/c/<token>)
  *   link…/<sub>/regalo/<token>   una gift card    (= app…/p/<sub>/regalo/<token>)
  *   link…/<sub>/inscribirme/<id> preinscribirse a un grupo (= app…/p/<sub>/inscribirme/<id>)
+ *   link…/<sub>/mi-cuenta        pagar con el carnet (= app…/p/<sub>/mi-cuenta)
  *
  * Lo usan la SPA (qué rutas dibujar) y la Pages Function de la raíz (Open
  * Graph y redirecciones), así que no toca `import.meta.env` ni el DOM: corre
@@ -60,6 +61,8 @@ export function rutaLargaDeLink(pathname: string): string | null {
   if (!sub || sobra.length) return null;
   if (segundo === undefined) return `/p/${sub}`;
   if (segundo === "privacidad" && tercero === undefined) return `/p/${sub}/privacidad`;
+  // «Pagar mi inscripción» de una academia (M5): sin más tramos.
+  if (segundo === "mi-cuenta" && tercero === undefined) return `/p/${sub}/mi-cuenta`;
   if (segundo === "reservar") {
     if (tercero === undefined) return `/r/${sub}/reservar`;
     return RESTO.test(tercero) ? `/r/${sub}/reservar/${tercero}` : null;
@@ -135,6 +138,8 @@ export const ROBOTS_LINK = `User-agent: *
 Disallow: /*/reservar
 Disallow: /*/c/
 Disallow: /*/inscribirme/
+Disallow: /*/pagar/
+Disallow: /*/mi-cuenta
 Allow: /
 `;
 

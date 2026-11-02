@@ -301,6 +301,8 @@ export interface PropsVista {
    * vista previa del editor) el botón se dibuja y no lleva a ningún lado.
    */
   urlInscribirme?: (grupoId: number) => string;
+  /** Academias (M5): «Pagar mi inscripción» al pie de los cursos. */
+  urlMiCuenta?: string;
 }
 
 export default function VistaPagina({
@@ -315,6 +317,7 @@ export default function VistaPagina({
   sucursalCatalogo,
   onSucursalCatalogo,
   urlInscribirme,
+  urlMiCuenta,
 }: PropsVista) {
   const raiz = useRef<HTMLDivElement>(null);
   const [sucursalPropia, setSucursalPropia] = useState(0);
@@ -584,6 +587,7 @@ export default function VistaPagina({
       radio={radioTarjeta}
       escritorio={escritorio}
       urlInscribirme={urlInscribirme}
+      urlMiCuenta={urlMiCuenta}
       titulo={
         clasico ? (
           <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: t.texto }}>Cursos</h2>
