@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FocusEvent } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { Icon } from "../../../components/Icon";
-import { Campo, Cargando, ErrorMsg, Input, Select } from "../../../components/ui";
+import { Campo, Cargando, Confirmar, ErrorMsg, Input, Select } from "../../../components/ui";
 import { apiAcademia } from "../../../lib/academia/apiAcademia";
 import { ApiError } from "../../../lib/api";
 import { RUTA_SEDES } from "../../../lib/academia/vista";
@@ -38,6 +38,13 @@ export default function AjustesAcademia() {
   const [estado, setEstado] = useState<Estado>("listo");
   const [error, setError] = useState("");
   const enVuelo = useRef(0);
+  /**
+   * Lista 2 #9 (decisión del dueño): cambiar el día en que empiezan los módulos
+   * se confirma antes de guardar. Guarda el valor nuevo y cómo devolver el
+   * campo si se arrepiente. Los grupos abiertos no cambian, pero los que se
+   * abran desde ahora sí, y el cambio se hacía con sólo salir del campo.
+   */
+  const [cambioDia, setCambioDia] = useState<{ n: number; volver: () => void } | null>(null);
 
   useEffect(() => {
     if (carga.datos) setA(carga.datos);
@@ -91,7 +98,13 @@ export default function AjustesAcademia() {
   }
 
   /** Un número al soltar el campo: vacío o fuera de rango no se manda. */
-  const numero = (k: keyof Ajustes, min: number, max: number, opcional = false) => ({
+  const numero = (
+    k: keyof Ajustes,
+    min: number,
+    max: number,
+    opcional = false,
+    confirmar?: (n: number, volver: () => void) => void,
+  ) => ({
     defaultValue: a[k] == null ? "" : String(a[k]),
     onBlur: (e: FocusEvent<HTMLInputElement>) => {
       const v = e.target.value.trim();
@@ -112,7 +125,13 @@ export default function AjustesAcademia() {
       }
       // Un valor válido borra el reproche del anterior inválido.
       setError("");
-      if (n !== a[k]) void guardar({ [k]: n } as Partial<Ajustes>).then(volver);
+      if (n === a[k]) return;
+      if (confirmar) {
+        // El campo muestra lo tecleado hasta que se confirme; si se cancela, vuelve.
+        confirmar(n, () => volver(false));
+        return;
+      }
+      void guardar({ [k]: n } as Partial<Ajustes>).then(volver);
     },
   });
 
@@ -151,6 +170,22 @@ export default function AjustesAcademia() {
         <ErrorMsg>{error}</ErrorMsg>
       </div>
 
+      <Confirmar
+        abierto={cambioDia != null}
+        titulo={`¿Cambiar el día de inicio al ${cambioDia?.n ?? ""}?`}
+        texto={`Hoy los ${p.materias} empiezan el día ${a.diaInicioModulo} de cada mes. Los grupos que abras desde ahora van a empezar el ${cambioDia?.n ?? ""}. Los grupos que ya están abiertos no cambian.`}
+        etiquetaOk="Cambiar el día"
+        onCancel={() => {
+          cambioDia?.volver();
+          setCambioDia(null);
+        }}
+        onOk={() => {
+          const c = cambioDia;
+          setCambioDia(null);
+          if (c) void guardar({ diaInicioModulo: c.n }).then((ok) => !ok && c.volver());
+        }}
+      />
+
       <SeccionAjuste id="s-cursos" titulo={p.Carreras} bajada={`${p.Materias}, precio, cupo y porcentaje del ${p.docente} de cada ${p.carrera}.`}>
         <ResumenCursos cursos={cursos.datos} error={cursos.error} onReintentar={cursos.recargar} pctDefecto={a.pctDocenteDefecto} />
         <BotonFila variante="ghost" a="/configuracion/carreras" className="mt-3">
@@ -161,7 +196,11 @@ export default function AjustesAcademia() {
       <SeccionAjuste id="s-cal" titulo="Calendario" bajada="Cuándo empiezan los módulos y las filas del calendario. Cada grupo nuevo toma estos valores; los abiertos no cambian.">
         <div className="grid gap-4 sm:grid-cols-2">
           <Campo label={`Los ${p.materias} empiezan el día`} hint="De cada mes (1 a 28).">
-            <Input type="number" inputMode="numeric" {...numero("diaInicioModulo", 1, 28)} />
+            <Input
+              type="number"
+              inputMode="numeric"
+              {...numero("diaInicioModulo", 1, 28, false, (n, volver) => setCambioDia({ n, volver }))}
+            />
           </Campo>
           <Campo label={`Duración de un ${p.materia}`}>
             <Select

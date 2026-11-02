@@ -79,15 +79,56 @@ async function montar() {
   await act(async () => {});
 }
 
+/** Cambiar el día de inicio pregunta antes de guardar (Lista 2 #9): se acepta. */
+const aceptarElCambioDeDia = async () => {
+  await act(async () => {
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Cambiar el día" }));
+  });
+};
+
 describe("N4 · Ajustes del instituto", () => {
-  it("el día de inicio se guarda al soltar el campo, y dice que quedó guardado", async () => {
+  it("el día de inicio se guarda al confirmar el cambio, y dice que quedó guardado", async () => {
     await montar();
     const dia = screen.getByLabelText(/empiezan el día/);
     fireEvent.change(dia, { target: { value: "5" } });
     fireEvent.blur(dia);
     await act(async () => {});
+    // Lista 2 #9: antes de guardar, un aviso de qué cambia (y qué no).
+    expect(apiAcademia.guardarAjustes).not.toHaveBeenCalled();
+    const aviso = screen.getByRole("dialog", { name: "¿Cambiar el día de inicio al 5?" });
+    expect(aviso).toHaveTextContent("Hoy los módulos empiezan el día 10 de cada mes.");
+    expect(aviso).toHaveTextContent("Los grupos que abras desde ahora van a empezar el 5.");
+    expect(aviso).toHaveTextContent("Los grupos que ya están abiertos no cambian.");
+    await act(async () => {
+      fireEvent.click(within(aviso).getByRole("button", { name: "Cambiar el día" }));
+    });
     expect(apiAcademia.guardarAjustes).toHaveBeenCalledWith({ diaInicioModulo: 5 });
     expect(screen.getByRole("status")).toHaveTextContent("Cambios guardados");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("Lista 2 #9: si se arrepiente, el campo vuelve al día de antes y no se guarda nada", async () => {
+    await montar();
+    const dia = screen.getByLabelText(/empiezan el día/) as HTMLInputElement;
+    expect(dia.value).toBe("10");
+    fireEvent.change(dia, { target: { value: "5" } });
+    fireEvent.blur(dia);
+    await act(async () => {});
+    await act(async () => {
+      fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Cancelar" }));
+    });
+    expect(apiAcademia.guardarAjustes).not.toHaveBeenCalled();
+    expect(dia.value).toBe("10");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("Lista 2 #9: dejar el mismo día no pregunta nada", async () => {
+    await montar();
+    const dia = screen.getByLabelText(/empiezan el día/);
+    fireEvent.blur(dia);
+    await act(async () => {});
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(apiAcademia.guardarAjustes).not.toHaveBeenCalled();
   });
 
   it("un día fuera de 1..28 no se manda", async () => {
@@ -138,6 +179,7 @@ describe("N4 · Ajustes del instituto", () => {
     fireEvent.change(dia, { target: { value: "5" } });
     fireEvent.blur(dia);
     await act(async () => {});
+    await aceptarElCambioDeDia();
     expect(screen.getAllByText("No se pudo guardar").length).toBeGreaterThan(0);
     expect(dia.value).toBe(antes);
     expect(screen.getByRole("status")).not.toHaveTextContent("Cambios guardados");
@@ -182,6 +224,7 @@ describe("N4 · Ajustes del instituto", () => {
     fireEvent.change(dia, { target: { value: "7" } });
     fireEvent.blur(dia);
     await act(async () => {});
+    await aceptarElCambioDeDia();
     fireEvent.click(screen.getByRole("switch", { name: /piden PIN/ }));
     await act(async () => {});
     for (const [cambios] of vi.mocked(apiAcademia.guardarAjustes).mock.calls) {
