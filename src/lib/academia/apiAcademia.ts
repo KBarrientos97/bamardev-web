@@ -42,6 +42,7 @@ import type {
   MotivoNoPago,
   NotasDelGrupo,
   Paginado,
+  PagoEnLinea,
   PanelControl,
   PedidoPagina,
   PlanillaDocente,
@@ -184,6 +185,25 @@ export const apiAcademia = {
   /** Con `ok: false` y `tipos`, la observación va sólo a esas fotos (contrato #33); sin `tipos`, a todas. */
   revisarFotos: (alumnoId: number, input: { ok: boolean; observacion?: string; tipos?: TipoFoto[] }) =>
     request<unknown>(`/academia/alumnos/${alumnoId}/fotos/revisar`, { method: "POST", body: json(input) }),
+
+  // ── Pagos en línea (M5) ─────────────────────────────────────────────────────
+  /** La bandeja de comprobantes (`academia.fotos`): por defecto los que esperan revisión. */
+  pagosEnLinea: (f: { estado?: "POR_REVISAR" | "APROBADO" | "RECHAZADO"; sede?: number | null } & PedidoPagina = {}) =>
+    request<Paginado<PagoEnLinea>>(`/academia/pagos-en-linea${qs(f)}`),
+  /** El comprobante como URL de objeto (dato del estudiante: con la sesión). El que la pide la libera. */
+  async comprobanteComoUrl(pagoId: number): Promise<string> {
+    const token = tokenStore.get();
+    const res = await fetch(`${BASE_API}/academia/pagos-en-linea/${pagoId}/comprobante`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) throw new ApiError("No se pudo cargar el comprobante", res.status);
+    return URL.createObjectURL(await res.blob());
+  },
+  /** Aprueba y registra el cobro. El cupo es un aviso que se confirma: 409 `GRUPO_LLENO` y se repite con `confirmarSobreCupo`. */
+  aprobarPagoEnLinea: (id: number, input: { confirmarSobreCupo?: boolean } = {}) =>
+    request<PagoEnLinea>(`/academia/pagos-en-linea/${id}/aprobar`, { method: "POST", body: json(input) }),
+  rechazarPagoEnLinea: (id: number, motivo: string) =>
+    request<PagoEnLinea>(`/academia/pagos-en-linea/${id}/rechazar`, { method: "POST", body: json({ motivo }) }),
 
   // ── Inscripciones ──────────────────────────────────────────────────────────
   /** Con fotos va en multipart (`datos` + `foto`, `ciAnverso`, `ciReverso`). */
