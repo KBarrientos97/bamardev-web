@@ -220,7 +220,7 @@ function SubirComprobante({
         {preinscrita && <p className="text-[13px] text-[#6B7280]">Con tu pago quedás inscrito y tu lugar en el grupo queda asegurado.</p>}
       </div>
 
-      <div role="radiogroup" aria-label="Qué vas a pagar" className="space-y-2">
+      <div role="radiogroup" aria-label="Qué vas a pagar" className={`grid gap-2 ${pago.opciones.length > 1 ? "sm:grid-cols-2" : ""}`}>
         {pago.opciones.map((o) => {
           const on = o.clave === opcion.clave;
           return (
@@ -239,7 +239,7 @@ function SubirComprobante({
               <span className="min-w-0 flex-1">
                 <span className="flex items-baseline justify-between gap-2">
                   <span className="text-sm font-bold text-[#111827]">{o.titulo}</span>
-                  <span className="text-base font-bold tabular-nums text-[#111827]">{bs(o.monto)}</span>
+                  <span className="whitespace-nowrap text-base font-bold tabular-nums text-[#111827]">{bs(o.monto)}</span>
                 </span>
                 {o.ahorro != null && o.ahorro > 0 && (
                   <span className="mt-1 inline-block rounded-full bg-[#ECFDF5] px-2.5 py-0.5 text-[12px] font-semibold text-[#047857]">Ahorrás {bs(o.ahorro)}</span>
@@ -252,19 +252,22 @@ function SubirComprobante({
         })}
       </div>
 
-      <div className="space-y-3 border-t border-[#F1F5F9] pt-4">
-        <img src={qr} alt={`QR de ${d.instituto.nombre} para pagar`} className="mx-auto w-full max-w-[240px] rounded-xl border border-[#E5E7EB]" />
-        <p className="text-center text-sm font-semibold text-[#111827]">Escaneá el QR con la app de tu banco y pagá {bs(opcion.monto)}</p>
-        <p className="text-center text-[12px] text-[#6B7280]">Pagá justo ese monto: es lo que el instituto va a buscar en su cuenta.</p>
-        <a
-          href={qr}
-          download
-          className="flex min-h-11 items-center justify-center gap-2 rounded-xl border bg-white py-2.5 text-center text-sm font-semibold hover:bg-[#F9FAFB]"
-          style={{ color, borderColor: color }}
-        >
-          <Icon name="download" size={16} />
-          Descargar el QR
-        </a>
+      {/* Con lugar (tablet o compu), el QR a la izquierda y qué hacer a la derecha. */}
+      <div className="space-y-3 border-t border-[#F1F5F9] pt-4 sm:flex sm:items-center sm:gap-5 sm:space-y-0">
+        <img src={qr} alt={`QR de ${d.instituto.nombre} para pagar`} className="mx-auto w-full max-w-[240px] rounded-xl border border-[#E5E7EB] sm:mx-0 sm:w-[200px] sm:shrink-0" />
+        <div className="space-y-3 sm:flex-1">
+          <p className="text-center text-sm font-semibold text-[#111827] sm:text-left">Escaneá el QR con la app de tu banco y pagá {bs(opcion.monto)}</p>
+          <p className="text-center text-[12px] text-[#6B7280] sm:text-left">Pagá justo ese monto: es lo que el instituto va a buscar en su cuenta.</p>
+          <a
+            href={qr}
+            download
+            className="flex min-h-11 items-center justify-center gap-2 rounded-xl border bg-white py-2.5 text-center text-sm font-semibold hover:bg-[#F9FAFB]"
+            style={{ color, borderColor: color }}
+          >
+            <Icon name="download" size={16} />
+            Descargar el QR
+          </a>
+        </div>
       </div>
 
       <div className="space-y-3 border-t border-[#F1F5F9] pt-4">

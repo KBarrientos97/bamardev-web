@@ -1,4 +1,5 @@
 import type { CSSProperties, ReactNode } from "react";
+import { Icon } from "../../components/Icon";
 import { urlDeImagen } from "../../lib/pagina/apiPagina";
 import type { TonosPagina } from "../../lib/pagina/estilosPagina";
 import { fechaCorta, horarioGrupo } from "../../lib/academia/formato";
@@ -67,15 +68,140 @@ export default function CursosPagina({
           <TarjetaCurso key={c.id} c={c} t={t} colorBoton={colorBoton} radio={radio} urlInscribirme={urlInscribirme} />
         ))}
       </div>
-      {urlMiCuenta && (
-        <p style={{ margin: 0, textAlign: "center", fontSize: 14, color: t.texto2 }}>
-          ¿Ya te preinscribiste o estás inscrito?{" "}
-          <a href={urlMiCuenta} style={{ color: t.texto, fontWeight: 600, textDecoration: "underline" }}>
-            Pagar mi inscripción
-          </a>
-        </p>
-      )}
+      {urlMiCuenta && <SeccionPagar url={urlMiCuenta} t={t} colorBoton={colorBoton} radio={radio} escritorio={escritorio} />}
     </section>
+  );
+}
+
+/**
+ * «Pagar mi inscripción» como sección propia y no un enlace al pie: es la
+ * puerta de los que ya se preinscribieron, y un renglón subrayado no se veía.
+ * En la compu, el texto a la izquierda y el botón a la derecha; en el celular,
+ * uno debajo del otro. Los tres pasos dicen qué va a pasar antes de entrar.
+ */
+function SeccionPagar({
+  url,
+  t,
+  colorBoton,
+  radio,
+  escritorio,
+}: {
+  url: string;
+  t: TonosPagina;
+  colorBoton: string;
+  radio: CSSProperties["borderRadius"];
+  escritorio: boolean;
+}) {
+  const pasos = ["Entrá con tu carnet", "Elegí qué pagar", "Pagá con QR y subí el comprobante"];
+  return (
+    <div
+      aria-labelledby="t-pagar-inscripcion"
+      role="region"
+      style={{
+        marginTop: 8,
+        background: t.tarjeta,
+        border: `1px solid ${t.borde ?? velo(t.textoTarjeta, 0.12)}`,
+        boxShadow: t.sombra ?? undefined,
+        borderRadius: radio,
+        overflow: "hidden",
+        display: "flex",
+        flexDirection: escritorio ? "row" : "column",
+      }}
+    >
+      {/* La franja del color de la marca: la sección se distingue de las tarjetas de curso. */}
+      <div aria-hidden="true" style={escritorio ? { width: 6, background: colorBoton } : { height: 6, background: colorBoton }} />
+      <div
+        style={{
+          flex: 1,
+          padding: escritorio ? "22px 26px" : 18,
+          display: "flex",
+          flexDirection: escritorio ? "row" : "column",
+          alignItems: escritorio ? "center" : "stretch",
+          gap: escritorio ? 28 : 16,
+        }}
+      >
+        <div style={{ display: "flex", gap: 14, alignItems: "flex-start", flex: 1, minWidth: 0 }}>
+          <span
+            aria-hidden="true"
+            style={{
+              flexShrink: 0,
+              width: 44,
+              height: 44,
+              borderRadius: 12,
+              background: colorBoton,
+              color: "#ffffff",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Icon name="qr" size={22} />
+          </span>
+          <div style={{ minWidth: 0 }}>
+            <p style={{ margin: 0, fontSize: 12, fontWeight: 700, letterSpacing: 0.6, color: t.texto3Tarjeta }}>¿YA TE PREINSCRIBISTE?</p>
+            <h3 id="t-pagar-inscripcion" style={{ margin: "2px 0 0", fontSize: 19, fontWeight: 700, color: t.textoTarjeta }}>
+              Pagá tu inscripción o tus cuotas desde acá
+            </h3>
+            <ol
+              style={{
+                margin: "10px 0 0",
+                padding: 0,
+                listStyle: "none",
+                display: "flex",
+                flexDirection: escritorio ? "row" : "column",
+                flexWrap: "wrap",
+                gap: escritorio ? "6px 18px" : 6,
+              }}
+            >
+              {pasos.map((p, i) => (
+                <li key={p} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, color: t.texto2Tarjeta }}>
+                  <span
+                    aria-hidden="true"
+                    style={{
+                      width: 22,
+                      height: 22,
+                      borderRadius: 999,
+                      background: velo(t.textoTarjeta, 0.08),
+                      color: t.textoTarjeta,
+                      fontSize: 12,
+                      fontWeight: 700,
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      flexShrink: 0,
+                    }}
+                  >
+                    {i + 1}
+                  </span>
+                  {p}
+                </li>
+              ))}
+            </ol>
+          </div>
+        </div>
+        <a
+          href={url}
+          style={{
+            flexShrink: 0,
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 8,
+            background: colorBoton,
+            color: "#ffffff",
+            fontWeight: 600,
+            fontSize: 15,
+            padding: escritorio ? "13px 24px" : "13px 0",
+            borderRadius: 12,
+            textDecoration: "none",
+            boxShadow: "0 2px 6px rgba(15, 23, 42, 0.18)",
+          }}
+        >
+          Pagar mi inscripción
+          <Icon name="arrowRight" size={16} />
+        </a>
+      </div>
+    </div>
   );
 }
 

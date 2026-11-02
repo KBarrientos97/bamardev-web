@@ -73,6 +73,10 @@ export default function PagarPagina() {
   const wa = waDe(d.instituto.telefono);
   const p = d.proxima;
   const preinscrita = d.pago.estado === "PREINSCRITA";
+  // Lo mismo que decide si `PagoEnLineaPublico` dibuja algo: sin pago que
+  // mostrar, la compu no parte la pantalla en dos.
+  const hayPago = !!d.pago.enRevision || preinscrita || d.pago.opciones.length > 0;
+  const dos = hayPago ? "lg:col-start-1" : "";
 
   async function copiar() {
     try {
@@ -85,8 +89,14 @@ export default function PagarPagina() {
 
   return (
     <div style={{ minHeight: "100dvh", background: "#F6F7F9", fontFamily: "Roboto, system-ui, sans-serif" }}>
-      <div className="mx-auto w-full max-w-[480px] space-y-4 px-4 py-6">
-        <header className="flex items-center gap-3">
+      {/* En el celular, una columna (saludo, pago, cuotas). En la compu, el pago
+          pasa a la derecha y queda a la vista mientras se recorren las cuotas. */}
+      <div
+        className={`mx-auto flex w-full max-w-[480px] flex-col gap-4 px-4 py-6 lg:py-10 ${
+          hayPago ? "lg:grid lg:max-w-[1080px] lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)] lg:items-start lg:gap-x-6" : "lg:max-w-[640px]"
+        }`}
+      >
+        <header className="flex items-center gap-3 lg:col-span-2">
           {logo ? (
             <img src={logo} alt="" className="h-9 w-9 rounded-xl object-cover" />
           ) : (
@@ -97,7 +107,7 @@ export default function PagarPagina() {
           <span className="text-[15px] font-bold text-[#111827]">{d.instituto.nombre}</span>
         </header>
 
-        <section aria-labelledby="t-hola" className="space-y-1 rounded-2xl border border-[#E5E7EB] bg-white p-5 shadow-sm">
+        <section aria-labelledby="t-hola" className={`space-y-1 rounded-2xl border border-[#E5E7EB] bg-white p-5 shadow-sm ${dos}`}>
           <h1 id="t-hola" className="text-xl font-bold text-[#111827]">
             Hola, {d.alumno.nombres.split(" ")[0]}
           </h1>
@@ -131,10 +141,14 @@ export default function PagarPagina() {
           )}
         </section>
 
-        <PagoEnLineaPublico d={d} sub={sub} token={token} color={color} whatsapp={wa} onCambio={() => setVuelta((v) => v + 1)} />
+        {hayPago && (
+          <div className="lg:sticky lg:top-6 lg:col-start-2 lg:row-span-4 lg:row-start-2">
+            <PagoEnLineaPublico d={d} sub={sub} token={token} color={color} whatsapp={wa} onCambio={() => setVuelta((v) => v + 1)} />
+          </div>
+        )}
 
         {d.cuotas.length > 0 && (
-        <section aria-labelledby="t-cuenta" className="overflow-hidden rounded-2xl border border-[#E5E7EB] bg-white shadow-sm">
+        <section aria-labelledby="t-cuenta" className={`overflow-hidden rounded-2xl border border-[#E5E7EB] bg-white shadow-sm ${dos}`}>
           <h2 id="t-cuenta" className="border-b border-[#E5E7EB] px-5 py-3.5 text-sm font-bold text-[#111827]">
             Tu estado de cuenta
           </h2>
@@ -177,7 +191,7 @@ export default function PagarPagina() {
         </section>
         )}
 
-        <section className="space-y-3 rounded-2xl border border-[#E5E7EB] bg-white p-5 text-center shadow-sm">
+        <section className={`space-y-3 rounded-2xl border border-[#E5E7EB] bg-white p-5 text-center shadow-sm ${dos}`}>
           <p className="text-[13px] text-[#4B5563]">Guardá este enlace: siempre muestra tu estado de cuenta.</p>
           <button
             type="button"
@@ -190,7 +204,7 @@ export default function PagarPagina() {
           </button>
         </section>
 
-        <footer className="space-y-3 text-center text-[12px] text-[#6B7280]">
+        <footer className={`space-y-3 text-center text-[12px] text-[#6B7280] ${dos}`}>
           {wa && (
             <a
               href={wa}

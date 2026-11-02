@@ -8,6 +8,7 @@ import { paleta } from "../../lib/pagina/aspecto";
 import { urlPaginaDe } from "../../lib/pagina/rutas";
 import { usePaginaPublica } from "../../lib/pagina/usePaginaPublica";
 import { siteKeyTurnstile } from "../../lib/turnstile";
+import { Icon } from "../../components/Icon";
 import { NoDisponible } from "./PaginaPublica";
 import { MarcaBamarDev } from "./VistaPagina";
 
@@ -73,7 +74,7 @@ export default function MiCuentaPagina() {
 
   return (
     <div style={{ minHeight: "100dvh", background: "#F6F7F9", fontFamily: "Roboto, system-ui, sans-serif" }}>
-      <div className="mx-auto w-full max-w-[480px] px-4 py-6">
+      <div className="mx-auto w-full max-w-[480px] px-4 py-6 md:max-w-[920px] md:py-12">
         <header className="mb-4">
           <a
             href={urlPaginaDe(sub)}
@@ -82,7 +83,29 @@ export default function MiCuentaPagina() {
             ← {pagina.nombre}
           </a>
         </header>
-        <main className="space-y-5 rounded-2xl border border-[#E5E7EB] bg-white p-5 shadow-sm">
+        {/* En la compu, dos paneles: a la izquierda qué va a pasar (con el color de
+            la marca), a la derecha el formulario. En el celular, sólo el formulario. */}
+        <main className="overflow-hidden rounded-2xl border border-[#E5E7EB] bg-white shadow-sm md:grid md:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
+          <aside className="hidden flex-col justify-between gap-8 p-8 text-white md:flex" style={{ background: color }}>
+            <div className="space-y-2">
+              <span aria-hidden="true" className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/15">
+                <Icon name="qr" size={24} />
+              </span>
+              <p className="pt-2 text-2xl font-bold leading-tight">Pagá tu inscripción sin hacer fila</p>
+              <p className="text-sm text-white/80">Desde el celular o la compu, a cualquier hora. {pagina.nombre} confirma tu pago y te avisa por WhatsApp.</p>
+            </div>
+            <ol className="space-y-3">
+              {["Entrá con tu carnet y tu fecha de nacimiento", "Elegí qué pagar: todo, el mes o la próxima cuota", "Pagá con el QR y subí tu comprobante"].map((paso, i) => (
+                <li key={paso} className="flex items-start gap-3 text-sm">
+                  <span aria-hidden="true" className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-white/20 text-xs font-bold">
+                    {i + 1}
+                  </span>
+                  <span className="pt-0.5 text-white/90">{paso}</span>
+                </li>
+              ))}
+            </ol>
+          </aside>
+          <div className="space-y-5 p-5 md:p-8">
           {varias ? (
             <>
               <div>
@@ -143,6 +166,7 @@ export default function MiCuentaPagina() {
               <p className="text-center text-[12px] text-[#6B7280]">¿Todavía no te inscribiste? Elegí tu curso en la página y preinscribite.</p>
             </form>
           )}
+          </div>
         </main>
         <a href="https://bamardev.com" className="mt-6 flex items-center justify-center gap-1.5 text-xs text-[#6B7280]">
           <MarcaBamarDev />
