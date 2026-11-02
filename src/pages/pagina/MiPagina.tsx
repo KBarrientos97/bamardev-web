@@ -208,6 +208,7 @@ function FilaSucursal({
   s,
   borrador,
   c,
+  conMapa,
   onCambio,
   onGuardada,
   onError,
@@ -215,6 +216,8 @@ function FilaSucursal({
   s: SucursalEditor;
   borrador: BorradorSucursal | undefined;
   c: Paleta;
+  /** El mapa de la página está prendido: se dice si la sucursal tiene ubicación. */
+  conMapa: boolean;
   onCambio: (b: BorradorSucursal) => void;
   onGuardada: (s: SucursalEditor) => void;
   onError: (m: string) => void;
@@ -251,6 +254,20 @@ function FilaSucursal({
           </span>
         </span>
       </label>
+      {conMapa && s.publicarEnPagina && (
+        <p className="text-xs text-texto-3">
+          {s.latitud != null && s.longitud != null ? (
+            "Ubicación en el mapa: cargada."
+          ) : (
+            <>
+              Sin ubicación en el mapa.{" "}
+              <Link to="/inventario/almacenes" className="font-semibold" style={{ color: c.oscuro }}>
+                Marcarla en la ficha de la sucursal
+              </Link>
+            </>
+          )}
+        </p>
+      )}
       {s.publicarEnPagina && (
         <EditorHorario
           nombre={s.nombre}
@@ -1325,6 +1342,25 @@ export default function MiPagina() {
             <p className="-mt-2 text-[13px] text-texto-3">
               La dirección y el teléfono salen de tus sucursales. El horario y el mapa se guardan solos.
             </p>
+            {/* PLAN-PAGINA-WEB §3.1: de las avanzadas, sólo con la feature del panel. */}
+            {e.mapaDisponible && (
+              <label className="flex items-start gap-3">
+                <input
+                  type="checkbox"
+                  className="mt-0.5 h-[18px] w-[18px]"
+                  style={{ accentColor: c.acento }}
+                  checked={!!ajustes.mostrarMapa}
+                  onChange={(ev) => cambiar({ mostrarMapa: ev.target.checked })}
+                />
+                <span className="flex min-w-0 flex-col">
+                  <strong className="text-sm text-texto">Mostrar un mapa con tus sucursales</strong>
+                  <span className="text-xs text-texto-3">
+                    Cada una sale con su pin, y «Cómo llegar» abre la ruta exacta. La ubicación se marca en la ficha
+                    de la sucursal.
+                  </span>
+                </span>
+              </label>
+            )}
             {e.sucursales.length === 0 ? (
               <p className="text-sm text-texto-3">No hay sucursales activas.</p>
             ) : (
@@ -1335,6 +1371,7 @@ export default function MiPagina() {
                     s={s}
                     borrador={borradorSucursales[s.id]}
                     c={c}
+                    conMapa={!!e.mapaDisponible && !!ajustes.mostrarMapa}
                     onCambio={(b) => cambiarSucursal(s, b)}
                     onError={setError}
                     onGuardada={(nueva) => {

@@ -24,6 +24,7 @@ import CatalogoPagina, { SelectorSucursalCatalogo, type AccionCatalogo, type Asp
 import { EstadoSucursal, SemanaSucursal } from "./HorarioSucursal";
 import type { AccionPagina, DatosVisor } from "./piezasArmado";
 import { Enlace, PiePagina, TarjetaSucursal, TituloSeccion, Trazo, type AccionSucursal } from "./piezasPagina";
+import { MapaPagina } from "./MapaPagina";
 
 // Las piezas chicas viven en piezasPagina.tsx; se siguen pidiendo de acá.
 export { MarcaBamarDev, Trazo } from "./piezasPagina";
@@ -649,6 +650,17 @@ export default function VistaPagina({
       : null;
 
   const pie = <PiePagina p={p} urlPrivacidad={urlPrivacidad} color={t.texto3} />;
+  // El mapa (PLAN-PAGINA-WEB §3.1): nunca en las miniaturas del selector de estilo.
+  const mapa = miniatura || !p.sucursales.some((s) => s.ubicacion) ? null : (
+    <MapaPagina
+      sucursales={p.sucursales}
+      color={c.acento}
+      radio={radioTarjeta}
+      borde={clasico ? GRIS.borde : t.borde}
+      fondo={clasico ? "#ffffff" : t.tarjeta}
+      alto={escritorio ? 280 : 220}
+    />
+  );
   const etiquetaPrincipal = enCaja ? "Vista previa de la página" : undefined;
   const testId = miniatura ? "miniatura-pagina" : "vista-pagina";
 
@@ -708,6 +720,7 @@ export default function VistaPagina({
             <TituloSeccion estilo={estilo.clave} t={t} letra={letraNombre} escritorio={escritorio}>
               {tituloSucursales}
             </TituloSeccion>
+            {mapa}
             <div
               style={
                 escritorio && estilo.sucursales === "tarjeta" && !unaSucursal && !angosta
@@ -719,6 +732,7 @@ export default function VistaPagina({
             </div>
           </>
         ) : null,
+      mapa,
       pie,
       clic,
       b,
@@ -963,6 +977,7 @@ export default function VistaPagina({
                   </div>
                 )}
                 {tituloSucursales}
+                {mapa}
                 {sucursales.length > 0 && (
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
                     {sucursales}
@@ -998,6 +1013,7 @@ export default function VistaPagina({
           {botones}
           {catalogo}
           {tituloSucursales}
+          {mapa}
           {sucursales}
           {pie}
         </Principal>

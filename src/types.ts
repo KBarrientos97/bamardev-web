@@ -529,6 +529,9 @@ export interface Almacen {
   esPrincipal: boolean;
   direccion: string | null;
   telefono: string | null;
+  /** Dónde está, para el mapa de la página (PLAN-PAGINA-WEB §3.1). */
+  latitud?: number | null;
+  longitud?: number | null;
   totalArticulos?: number;
   totalUnidades?: number;
   valorTotal?: number;
@@ -542,6 +545,9 @@ export interface AlmacenInput {
   tipo?: TipoAlmacen;
   direccion?: string;
   telefono?: string;
+  /** Las dos juntas; null las borra. Ausentes, no se tocan. */
+  latitud?: number | null;
+  longitud?: number | null;
 }
 
 export interface Insumo {

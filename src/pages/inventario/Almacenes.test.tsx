@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Almacen, ApunteStock } from "../../types";
 
@@ -27,6 +27,8 @@ vi.mock("../../lib/api", () => ({
     getPreciosSucursal: vi.fn(async () => []),
     getProductos: vi.fn(async () => []),
     getBitacoraStock: vi.fn(async () => []),
+    actualizarAlmacen: vi.fn(async () => ({})),
+    crearAlmacen: vi.fn(async () => ({})),
   },
 }));
 
@@ -290,3 +292,49 @@ function apunte(id: number, producto: string, cantidad: number, saldoDespues: nu
     referenciaId: null,
   };
 }
+
+describe("ubicación en el mapa (PLAN-PAGINA-WEB §3.1)", () => {
+  const conUbicacion = { ...almacen(1, "Sucursal Centro", "SUCURSAL"), latitud: -17.78, longitud: -63.18 };
+
+  async function editar() {
+    render(<Almacenes />);
+    await screen.findByText("Sucursal Centro");
+    const detalle = abrirDetalle("Sucursal Centro");
+    fireEvent.click(within(detalle).getByRole("button", { name: "Editar" }));
+  }
+
+  it("sin la feature `pagina_mapa` la ficha no la pide", async () => {
+    sesion.rubro = "RESTAURANTE";
+    sesion.features = ["inventario"];
+    vi.mocked(api.getAlmacenes).mockResolvedValue([conUbicacion]);
+    await editar();
+    expect(screen.queryByText("Ubicación en el mapa")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
+    await act(async () => {});
+    expect(vi.mocked(api.actualizarAlmacen).mock.calls[0][1]).not.toHaveProperty("latitud");
+  });
+
+  it("con la feature dice si está marcada; Quitar la borra al guardar", async () => {
+    sesion.rubro = "RESTAURANTE";
+    sesion.features = ["inventario", "pagina_mapa"];
+    vi.mocked(api.getAlmacenes).mockResolvedValue([conUbicacion]);
+    await editar();
+    expect(screen.getByText("Ubicación marcada")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Cambiar en el mapa" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Quitar" }));
+    expect(screen.getByText("Todavía sin marcar")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
+    await act(async () => {});
+    expect(api.actualizarAlmacen).toHaveBeenCalledWith(1, expect.objectContaining({ latitud: null, longitud: null }));
+  });
+
+  it("sin tocarla no se manda", async () => {
+    sesion.rubro = "RESTAURANTE";
+    sesion.features = ["inventario", "pagina_mapa"];
+    vi.mocked(api.getAlmacenes).mockResolvedValue([conUbicacion]);
+    await editar();
+    fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
+    await act(async () => {});
+    expect(vi.mocked(api.actualizarAlmacen).mock.calls[0][1]).not.toHaveProperty("latitud");
+  });
+});

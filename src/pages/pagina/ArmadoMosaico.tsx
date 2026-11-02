@@ -323,6 +323,8 @@ export default function ArmadoMosaico(x: PiezasArmado) {
 
   // Las sucursales y el anuncio, como bloques anchos: de a dos en computadora.
   const anchos: ReactNode[] = [
+    // El mapa (PLAN-PAGINA-WEB §3.1), un bloque ancho más, antes de las tarjetas.
+    ...(x.mapa ? [<div key="mapa" style={{ gridColumn: "1 / -1", minWidth: 0 }}>{x.mapa}</div>] : []),
     ...x.tarjetasSucursal.map((s, i) => (
       // En grilla: la tarjeta se estira al alto de la fila, como su vecina.
       <div key={`sucursal-${i}`} style={{ display: "grid", minWidth: 0 }}>

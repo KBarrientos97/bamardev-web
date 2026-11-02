@@ -1,5 +1,14 @@
+import { urlRuta, type Ubicacion } from "../mapa";
 import { TITULO_CATALOGO } from "./catalogo";
-import type { CatalogoPublico, EnlaceEditor, EnlacePublico, EstadoEditor, ItemCatalogoPublico, PaginaPublica } from "./tipos";
+import type {
+  CatalogoPublico,
+  EnlaceEditor,
+  EnlacePublico,
+  EstadoEditor,
+  ItemCatalogoPublico,
+  PaginaPublica,
+  SucursalEditor,
+} from "./tipos";
 import { numeroInternacional } from "./whatsapp";
 
 /** El `wa.me` del WhatsApp de una sucursal, como lo arma el backend. */
@@ -13,11 +22,25 @@ export function hoyBolivia(ahora = new Date()): string {
   return new Date(ahora.getTime() - 4 * 3_600_000).toISOString().slice(0, 10);
 }
 
-/** URL de "Cómo llegar": el mapa pegado o una búsqueda por dirección. */
-export function urlMapa(mapsUrl: string | null, direccion: string | null): string | null {
+/**
+ * URL de "Cómo llegar", como la arma el backend (`mapaDeSucursal`): el mapa
+ * pegado; si no, con el mapa de la página la ruta a las coordenadas; si no,
+ * una búsqueda por dirección.
+ */
+export function urlMapa(
+  mapsUrl: string | null,
+  direccion: string | null,
+  ubicacion: Ubicacion | null = null,
+): string | null {
   if (mapsUrl) return mapsUrl;
+  if (ubicacion) return urlRuta(ubicacion);
   if (!direccion) return null;
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(direccion)}`;
+}
+
+/** El pin de la sucursal, sólo con el mapa disponible y prendido (PLAN-PAGINA-WEB §3.1). */
+function ubicacionDe(s: SucursalEditor, conMapa: boolean): Ubicacion | null {
+  return conMapa && s.latitud != null && s.longitud != null ? { lat: s.latitud, lng: s.longitud } : null;
 }
 
 /**
@@ -140,13 +163,15 @@ export function vistaDesdeEditor(e: EstadoEditor, hoy = hoyBolivia()): PaginaPub
     botones,
     sucursales: e.sucursales
       .filter((s) => s.publicarEnPagina)
-      .map((s) => ({
+      .map((s) => ({ s, ubicacion: ubicacionDe(s, !!e.mapaDisponible && !!p.mostrarMapa) }))
+      .map(({ s, ubicacion }) => ({
         nombre: s.nombre,
         reservaSlug: reservar && s.publicaReservas && s.slugReservas ? s.slugReservas : null,
         direccion: s.direccion,
         telefono: s.telefono,
         horario: s.horarioTexto,
-        mapaUrl: urlMapa(s.mapsUrl, s.direccion),
+        mapaUrl: urlMapa(s.mapsUrl, s.direccion, ubicacion),
+        ubicacion,
         horarioSemanal: s.horarioSemanal?.length ? s.horarioSemanal : null,
         whatsappUrl: urlWhatsappSucursal(s.whatsapp),
       })),
