@@ -210,6 +210,25 @@ describe("vista previa desde el editor", () => {
   it("el mapa: el pegado o una búsqueda por dirección", () => {
     expect(urlMapa("https://maps.app.goo.gl/x", "Junín")).toBe("https://maps.app.goo.gl/x");
     expect(urlMapa(null, null)).toBeNull();
+    // Con el pin (PLAN-PAGINA-WEB §3.1), la ruta exacta; el pegado sigue mandando.
+    expect(urlMapa(null, "Junín", { lat: -17.78, lng: -63.18 })).toBe(
+      "https://www.google.com/maps/dir/?api=1&destination=-17.78,-63.18",
+    );
+    expect(urlMapa("https://maps.app.goo.gl/x", "Junín", { lat: -17.78, lng: -63.18 })).toBe("https://maps.app.goo.gl/x");
+  });
+
+  it("el pin de la vista previa: sólo con la feature y el mapa prendido, como el backend", () => {
+    const conPin = (mapaDisponible: boolean, mostrarMapa: boolean) => {
+      const e = editor({ mapaDisponible });
+      e.pagina = { ...e.pagina, mostrarMapa };
+      e.sucursales = e.sucursales.map((s) => (s.id === 10 ? { ...s, latitud: -17.78, longitud: -63.18 } : s));
+      return vistaDesdeEditor(e).sucursales[0];
+    };
+    expect(conPin(true, true).ubicacion).toEqual({ lat: -17.78, lng: -63.18 });
+    expect(conPin(true, true).mapaUrl).toMatch(/maps\/dir/);
+    expect(conPin(false, true).ubicacion).toBeNull();
+    expect(conPin(true, false).ubicacion).toBeNull();
+    expect(conPin(false, true).mapaUrl).toMatch(/maps\/search/);
   });
 });
 

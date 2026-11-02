@@ -1117,3 +1117,43 @@ describe("Mi página: borrador (PLAN-PAGINA-WEB §4.2)", () => {
     expect(apiPagina.guardar).toHaveBeenCalledWith({ descripcion: "A medio escribir" });
   });
 });
+
+describe("Mi página: mapa (PLAN-PAGINA-WEB §3.1)", () => {
+  it("sin la feature `pagina_mapa` no se ofrece", async () => {
+    await montar();
+    expect(screen.queryByRole("checkbox", { name: /Mostrar un mapa/ })).not.toBeInTheDocument();
+  });
+
+  it("con la feature: el interruptor va al borrador y dice qué sucursal no tiene ubicación", async () => {
+    const base = estado();
+    vi.mocked(apiPagina.estado).mockResolvedValue({ ...base, mapaDisponible: true });
+    vi.mocked(apiPagina.guardar).mockResolvedValue({ ...base, mapaDisponible: true, pagina: { ...base.pagina, mostrarMapa: true } });
+    await montar();
+    const interruptor = screen.getByRole("checkbox", { name: /Mostrar un mapa con tus sucursales/ });
+    expect(interruptor).not.toBeChecked();
+    expect(screen.queryByText(/Sin ubicación en el mapa/)).not.toBeInTheDocument();
+    fireEvent.click(interruptor);
+    expect(screen.getByText(/Sin ubicación en el mapa/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Marcarla en la ficha de la sucursal" })).toHaveAttribute("href", "/inventario/almacenes");
+    fireEvent.click(screen.getByRole("button", { name: "Guardar cambios" }));
+    await act(async () => {});
+    expect(apiPagina.guardar).toHaveBeenCalledWith({ mostrarMapa: true });
+  });
+
+  it("con ubicación cargada, la vista previa muestra el mapa", async () => {
+    const base = estado();
+    vi.mocked(apiPagina.estado).mockResolvedValue({
+      ...base,
+      mapaDisponible: true,
+      pagina: { ...base.pagina, mostrarMapa: true },
+      sucursales: base.sucursales.map((s) => ({ ...s, latitud: -17.78, longitud: -63.18 })),
+    });
+    await montar();
+    expect(screen.getByText("Ubicación en el mapa: cargada.")).toBeInTheDocument();
+    expect(within(previa()).getByRole("region", { name: "Mapa: Centro" })).toBeInTheDocument();
+    expect(within(previa()).getByRole("link", { name: "Cómo llegar" })).toHaveAttribute(
+      "href",
+      "https://www.google.com/maps/dir/?api=1&destination=-17.78,-63.18",
+    );
+  });
+});

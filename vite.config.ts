@@ -61,7 +61,9 @@ export default defineConfig(({ mode }) => {
           // esté lenta. Cada deploy baja sólo los pedazos que cambiaron.
           globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2}'],
           // Los íconos de instalar los baja el celular una vez; no van guardados.
-          globIgnores: ['**/pwa-*', '**/apple-touch-icon*', '**/logo-marca.png', '**/push-sw.js'],
+          // El mapa de la página (maplibre, ~1 MB) tampoco: lo baja sólo quien
+          // abre un mapa, no cada cajero al instalar la app.
+          globIgnores: ['**/pwa-*', '**/apple-touch-icon*', '**/logo-marca.png', '**/push-sw.js', '**/maplibre-gl*'],
           // Las notificaciones push (FCM): el mismo SW las recibe y las
           // muestra; ver public/push-sw.js. Un solo SW para toda la app.
           // El pedazo grande de la app pasa los 2 MB del default de Workbox.

@@ -139,6 +139,11 @@ export interface SucursalPublica {
    * general. Opcional: un backend anterior no lo manda.
    */
   whatsappUrl?: string | null;
+  /**
+   * El pin del mapa (PLAN-PAGINA-WEB §3.1): sólo con la feature `pagina_mapa`
+   * y el mapa prendido por el dueño. Ausente o null = sin pin.
+   */
+  ubicacion?: { lat: number; lng: number } | null;
 }
 
 /**
@@ -277,6 +282,9 @@ export interface SucursalEditor {
   /** Si recibe reservas online y con qué nombre en el enlace (para la vista previa). */
   publicaReservas?: boolean;
   slugReservas?: string | null;
+  /** Dónde está (se carga en la ficha de la sucursal, no en Mi página). */
+  latitud?: number | null;
+  longitud?: number | null;
 }
 
 export interface AjustesPagina {
@@ -311,6 +319,8 @@ export interface AjustesPagina {
   regalos?: ConfigRegalos;
   /** La sección Cursos de un instituto (P1). Opcional por lo mismo. */
   mostrarCursos?: boolean;
+  /** El mapa con las sucursales (PLAN-PAGINA-WEB §3.1). Opcional por lo mismo. */
+  mostrarMapa?: boolean;
   actualizadoEn: string;
 }
 
@@ -414,6 +424,8 @@ export interface EstadoEditor {
   sucursales: SucursalEditor[];
   reservaOnline: boolean;
   enlacesCortos: boolean;
+  /** Si el negocio tiene la feature `pagina_mapa` (se prende desde el panel). */
+  mapaDisponible?: boolean;
   muestras: Muestra[];
   /** Opcionales por lo mismo que `PaginaPublica.catalogo`. */
   catalogo?: ItemCatalogoEditor[];
@@ -448,6 +460,7 @@ export type CambiosPagina = Partial<
     | "catalogoModo"
     | "pedidosWhatsapp"
     | "mostrarCursos"
+    | "mostrarMapa"
   >
 > & {
   regalosActivo?: boolean;
