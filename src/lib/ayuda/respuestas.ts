@@ -1241,11 +1241,15 @@ export const RESPUESTAS: Respuesta[] = [
           "En **Presentación** escribí la **Descripción corta** (por ejemplo: \"Pollo a la brasa y broaster desde 2009\") y, si querés, elegí el **Botón principal**, el botón grande de arriba.",
           "En el **Catálogo**, en **¿Qué muestra tu catálogo?**, elegí **Mis productos** y tocá **Elegir productos**: marcá los platos que querés mostrar y tocá **Guardar**. El precio sale del sistema y se actualiza solo.",
           "En **Redes y botones** tocá **Red social** o **Botón** para agregar tu WhatsApp, Facebook e Instagram. En **Sucursales en la página** cargá el horario y el mapa de cada local.",
-          "Tocá **Guardar cambios** (la vista previa te muestra cómo queda) y, cuando esté lista, **Publicar**."
+          "La primera vez tocá **Guardar cambios** (la vista previa te muestra cómo queda) y, cuando esté lista, **Publicar**. Si ya estaba publicada, lo que cambiás queda como **Cambios sin publicar**: tocá **Publicar cambios** para que se vea, o **Descartar** para volver a lo publicado."
         ]
+      },
+      {
+        "tipo": "texto",
+        "texto": "Si tenés el extra de pedidos, en **Pedidos y gift cards** marcá **Recibir pedidos por WhatsApp**: tus clientes suman platos del catálogo y te llega el pedido escrito, con el total, al WhatsApp que cargaste en **Redes y botones**."
       }
     ],
-    "importante": "si tenés el extra de pedidos, en **Pedidos y gift cards** marcá **Recibir pedidos por WhatsApp**: tus clientes suman platos del catálogo y te llega el pedido escrito, con el total, al WhatsApp que cargaste en **Redes y botones**.",
+    "importante": "lo que cambiás se guarda solo, como borrador: tus clientes siguen viendo la página publicada hasta que tocás **Publicar cambios**. El catálogo es la excepción: cada plato se guarda y se ve al toque.",
     "siNoAparece": "la página la arma el administrador, y sólo desde la computadora (en el celular se comparte, no se edita). Si no ves **Mi página**, tu plan no trae la página: pedísela a BamarDev. Si **Publicar** está apagado y dice \"Tu negocio todavía no tiene dirección pública\", pedile la dirección a BamarDev.",
     "relacionados": [
       "pagina-compartir",
