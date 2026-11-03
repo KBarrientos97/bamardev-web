@@ -215,6 +215,20 @@ describe("vista previa desde el editor", () => {
     );
   });
 
+  it("el horario de la vista previa: el por día si no está oculto; el texto de antes, sólo sin él", () => {
+    const HABILES = [1, 2, 3, 4, 5].map((dia) => ({ dia, desde: "09:00", hasta: "20:00" }));
+    const centro = (mostrarHorario: boolean | undefined, horarioSemanal: typeof HABILES | null) => {
+      const e = editor();
+      e.pagina = { ...e.pagina, mostrarHorario };
+      e.sucursales = e.sucursales.map((s) => (s.id === 10 ? { ...s, horarioSemanal } : s));
+      return vistaDesdeEditor(e).sucursales[0];
+    };
+    expect(centro(true, HABILES)).toMatchObject({ horario: null, horarioSemanal: HABILES });
+    expect(centro(undefined, null)).toMatchObject({ horario: "9 a 20", horarioSemanal: null });
+    expect(centro(false, HABILES)).toMatchObject({ horario: null, horarioSemanal: null });
+    expect(centro(false, null)).toMatchObject({ horario: null });
+  });
+
   it("el pin de la vista previa: con ubicación y el mapa sin ocultar, como el backend", () => {
     const conPin = (mostrarMapa: boolean | undefined) => {
       const e = editor();

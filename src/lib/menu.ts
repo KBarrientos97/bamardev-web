@@ -414,6 +414,15 @@ const ITEMS: (ItemNav & { bloque: Bloque })[] = [
       // restaurante). En un restaurante es el único hijo y se ve suelto,
       // como "Configuración", que es lo que es.
       { a: "/configuracion/recibo", label: "Configuración", icono: "settings", seccion: "config_recibo" },
+      // La ficha única de cada sucursal (02-nov): dirección, ubicación y horario.
+      {
+        a: "/configuracion/sucursales",
+        // No "Sucursales" a secas: en farmacia así se llama Almacenes.
+        label: "Datos de las sucursales",
+        etiqueta: (palabra) => `Datos de las ${palabra("sucursales")}`,
+        icono: "pin",
+        seccion: "config_sucursales",
+      },
       // E17: carreras, materias y planes de pago.
       {
         a: "/configuracion/carreras",

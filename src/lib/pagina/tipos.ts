@@ -286,6 +286,18 @@ export interface SucursalEditor {
   longitud?: number | null;
 }
 
+/** La ficha única de una sucursal (Configuración › Sucursales, 02-nov). */
+export interface FichaSucursal {
+  id: number;
+  nombre: string;
+  direccion: string | null;
+  telefono: string | null;
+  esPrincipal: boolean;
+  latitud: number | null;
+  longitud: number | null;
+  horarioSemanal: Tramo[] | null;
+}
+
 export interface AjustesPagina {
   publicada: boolean;
   bloqueada: boolean;
@@ -320,6 +332,8 @@ export interface AjustesPagina {
   mostrarCursos?: boolean;
   /** El mapa con las sucursales (PLAN-PAGINA-WEB §3.1). Opcional por lo mismo. */
   mostrarMapa?: boolean;
+  /** Mostrar el horario de las sucursales (se carga en su ficha). Opcional por lo mismo. */
+  mostrarHorario?: boolean;
   actualizadoEn: string;
 }
 
@@ -458,6 +472,7 @@ export type CambiosPagina = Partial<
     | "pedidosWhatsapp"
     | "mostrarCursos"
     | "mostrarMapa"
+    | "mostrarHorario"
   >
 > & {
   regalosActivo?: boolean;

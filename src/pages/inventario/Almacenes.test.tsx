@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Almacen, ApunteStock } from "../../types";
 
@@ -293,47 +294,28 @@ function apunte(id: number, producto: string, cantidad: number, saldoDespues: nu
   };
 }
 
-describe("ubicación en el mapa (PLAN-PAGINA-WEB §3.1)", () => {
-  const conUbicacion = { ...almacen(1, "Sucursal Centro", "SUCURSAL"), latitud: -17.78, longitud: -63.18 };
-
-  async function editar() {
-    render(<Almacenes />);
+describe("ubicación y horario: en la ficha única de Sucursales (02-nov)", () => {
+  it("editar una sucursal lleva a Configuración › Sucursales; Almacenes ya no los pide", async () => {
+    sesion.rubro = "RESTAURANTE";
+    sesion.features = ["inventario"];
+    vi.mocked(api.getAlmacenes).mockResolvedValue([almacen(1, "Sucursal Centro", "SUCURSAL")]);
+    render(
+      <MemoryRouter>
+        <Almacenes />
+      </MemoryRouter>,
+    );
     await screen.findByText("Sucursal Centro");
     const detalle = abrirDetalle("Sucursal Centro");
     fireEvent.click(within(detalle).getByRole("button", { name: "Editar" }));
-  }
-
-  it("es para todos: en una sucursal se ofrece sin ninguna feature extra; en un depósito, no", async () => {
-    sesion.rubro = "RESTAURANTE";
-    sesion.features = ["inventario"];
-    vi.mocked(api.getAlmacenes).mockResolvedValue([conUbicacion]);
-    await editar();
-    expect(screen.getByRole("group", { name: "Ubicación en el mapa de Sucursal Centro" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Depósito" }));
+    expect(screen.getByRole("link", { name: "Configuración › Datos de las sucursales" })).toHaveAttribute(
+      "href",
+      "/configuracion/sucursales",
+    );
     expect(screen.queryByRole("group", { name: /Ubicación en el mapa/ })).not.toBeInTheDocument();
-  });
-
-  it("dice si está marcada; Quitar la borra al guardar", async () => {
-    sesion.rubro = "RESTAURANTE";
-    sesion.features = ["inventario"];
-    vi.mocked(api.getAlmacenes).mockResolvedValue([conUbicacion]);
-    await editar();
-    expect(screen.getByText("Ubicación marcada")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Cambiar en el mapa" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Quitar" }));
-    expect(screen.getByText("Todavía sin marcar")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
     await act(async () => {});
-    expect(api.actualizarAlmacen).toHaveBeenCalledWith(1, expect.objectContaining({ latitud: null, longitud: null }));
-  });
-
-  it("sin tocarla no se manda", async () => {
-    sesion.rubro = "RESTAURANTE";
-    sesion.features = ["inventario"];
-    vi.mocked(api.getAlmacenes).mockResolvedValue([conUbicacion]);
-    await editar();
-    fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
-    await act(async () => {});
-    expect(vi.mocked(api.actualizarAlmacen).mock.calls[0][1]).not.toHaveProperty("latitud");
+    const enviado = vi.mocked(api.actualizarAlmacen).mock.calls[0][1];
+    expect(enviado).not.toHaveProperty("latitud");
+    expect(enviado).not.toHaveProperty("horarioSemanal");
   });
 });

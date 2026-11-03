@@ -21,8 +21,7 @@ import { esFarmacia, insumosSinStock, termino } from "../../lib/rubro";
 import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
 import type { Almacen, AlmacenInput, Producto, TipoAlmacen } from "../../types";
-import type { Ubicacion } from "../../lib/mapa";
-import CampoUbicacion from "../../components/CampoUbicacion";
+import { Link } from "react-router-dom";
 
 /**
  * Cómo se nombra cada lugar en los textos de esta pantalla.
@@ -821,10 +820,6 @@ function FormAlmacenCuerpo({
   const [tipo, setTipo] = useState<TipoAlmacen>(almacen?.tipo ?? "SUCURSAL");
   const [direccion, setDireccion] = useState(almacen?.direccion ?? "");
   const [telefono, setTelefono] = useState(almacen?.telefono ?? "");
-  // La ubicación del mapa de la página (PLAN-PAGINA-WEB §3.1): para todos.
-  const ubicacionGuardada: Ubicacion | null =
-    almacen?.latitud != null && almacen?.longitud != null ? { lat: almacen.latitud, lng: almacen.longitud } : null;
-  const [ubicacion, setUbicacion] = useState<Ubicacion | null>(ubicacionGuardada);
   const [activo, setActivo] = useState(almacen?.activo ?? true);
   const [error, setError] = useState("");
   const [guardando, setGuardando] = useState(false);
@@ -841,10 +836,6 @@ function FormAlmacenCuerpo({
       direccion: direccion.trim(),
       telefono: telefono.trim(),
       activo,
-      // Sólo si cambió: sin tocarla no se manda nada.
-      ...(ubicacion?.lat !== ubicacionGuardada?.lat || ubicacion?.lng !== ubicacionGuardada?.lng
-        ? { latitud: ubicacion?.lat ?? null, longitud: ubicacion?.lng ?? null }
-        : {}),
     };
 
     setGuardando(true);
@@ -922,13 +913,16 @@ function FormAlmacenCuerpo({
           <Input value={telefono} onChange={(e) => setTelefono(e.target.value)} />
         </Campo>
 
-        {tipo === "SUCURSAL" && (
-          <CampoUbicacion
-            nombre={nombre || "esta sucursal"}
-            valor={ubicacion}
-            onCambio={setUbicacion}
-            hint="Opcional: el pin de esta sucursal en el mapa de tu página y el «Cómo llegar»."
-          />
+        {/* La ubicación y el horario tienen su ficha única (02-nov): un solo
+            lugar para todos los rubros, que belleza también alcanza. */}
+        {tipo === "SUCURSAL" && esEdicion && (
+          <p className="text-[13px] text-texto-3">
+            La ubicación en el mapa y el horario de atención se cargan en{" "}
+            <Link to="/configuracion/sucursales" className="font-semibold text-primary-700">
+              Configuración › Datos de las sucursales
+            </Link>
+            .
+          </p>
         )}
 
         <Campo label="Grupo" hint="Opcional: para juntar sucursales o depósitos">

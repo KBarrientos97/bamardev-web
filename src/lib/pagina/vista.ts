@@ -108,6 +108,7 @@ function productosVisibles(e: EstadoEditor, titulo: string): CatalogoPublico | n
  */
 export function vistaDesdeEditor(e: EstadoEditor, hoy = hoyBolivia()): PaginaPublica {
   const p = e.pagina;
+  const conHorario = p.mostrarHorario !== false;
   const muestra = e.muestras.find((m) => m.clave === p.colorClave) ?? e.muestras[0];
   const visibles = [...e.enlaces].filter((x) => x.visible).sort((a, b) => a.orden - b.orden || a.id - b.id);
   const publico = (x: EnlaceEditor): EnlacePublico => ({
@@ -163,10 +164,12 @@ export function vistaDesdeEditor(e: EstadoEditor, hoy = hoyBolivia()): PaginaPub
         reservaSlug: reservar && s.publicaReservas && s.slugReservas ? s.slugReservas : null,
         direccion: s.direccion,
         telefono: s.telefono,
-        horario: s.horarioTexto,
+        // Como el backend (`horarioDeSucursal`): el por día si el dueño no lo
+        // ocultó; el texto de antes, sólo sin horario por día (02-nov).
+        horario: conHorario && !s.horarioSemanal?.length ? s.horarioTexto?.trim() || null : null,
         mapaUrl: urlMapa(s.direccion, ubicacion),
         ubicacion,
-        horarioSemanal: s.horarioSemanal?.length ? s.horarioSemanal : null,
+        horarioSemanal: conHorario && s.horarioSemanal?.length ? s.horarioSemanal : null,
         whatsappUrl: urlWhatsappSucursal(s.whatsapp),
       })),
     catalogo: catalogoVisible(e),

@@ -8,6 +8,7 @@ import type {
   EnlaceInput,
   EstadisticasEnlace,
   EstadoEditor,
+  FichaSucursal,
   ItemCatalogoEditor,
   ItemCatalogoInput,
   PaginaPublica,
@@ -94,8 +95,12 @@ export const apiPagina = {
     request<EstadoEditor>("/pagina/borrador/enlaces/orden", { method: "PUT", body: json({ ids }) }),
   sucursal: (
     id: number,
-    cambios: Partial<Pick<SucursalEditor, "publicarEnPagina" | "horarioTexto" | "latitud" | "longitud" | "horarioSemanal" | "whatsapp">>,
+    cambios: Partial<Pick<SucursalEditor, "publicarEnPagina" | "whatsapp">>,
   ) => request<SucursalEditor>(`/pagina/borrador/sucursales/${id}`, { method: "PATCH", body: json(cambios) }),
+  /** Configuración › Sucursales: la ficha única (se guarda al toque, no es de la página). */
+  fichasSucursal: () => request<FichaSucursal[]>("/sucursales/fichas"),
+  guardarFichaSucursal: (id: number, cambios: Partial<Omit<FichaSucursal, "id" | "nombre" | "esPrincipal">>) =>
+    request<FichaSucursal>(`/sucursales/${id}/ficha`, { method: "PATCH", body: json(cambios) }),
   borrarImagen: (tipo: "logo" | "portada") =>
     request<void>(`/pagina/borrador/imagen/${tipo}`, { method: "DELETE" }),
   enlaceCorto: (canal: "CARTEL" | "COMPARTIR" | "RESERVA" = "CARTEL") =>
