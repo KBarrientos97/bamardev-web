@@ -1381,11 +1381,14 @@ export interface EstadoCuentaPublico {
   pago: PagoPublico;
 }
 
-/** `POST /publico/academia/:sub/mi-cuenta` (M5): una inscripción vigente y su enlace. */
+/**
+ * `POST /publico/academia/:sub/mi-cuenta` (M5): una inscripción vigente y su
+ * enlace. Desde el 03-nov se entra sólo con el carnet, así que no trae el
+ * nombre ni nada de la persona: sólo lo que hace falta para elegir cuál pagar.
+ */
 export interface InscripcionDeMiCuenta {
   token: string;
   estado: string;
-  nombres: string;
   curso: string;
   grupo: string;
   sede: string;

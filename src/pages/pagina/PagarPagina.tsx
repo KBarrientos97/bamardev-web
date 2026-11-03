@@ -24,7 +24,7 @@ function waDe(telefono: string | null): string | null {
 /**
  * P6 · Pagar (ronda 2, D10): el enlace personal que la recepción manda por
  * WhatsApp (`/p/<sub>/pagar/<token>`) o al que se llega entrando con el carnet
- * y la fecha de nacimiento (`mi-cuenta`, M5). El estudiante ve lo próximo que
+ * (`mi-cuenta`, M5). El estudiante ve lo próximo que
  * tiene que pagar, su estado de cuenta y cómo pagar: con el QR fijo del
  * instituto elige qué paga (completo, primer mes o la próxima cuota), escanea y
  * sube el comprobante, que la recepción aprueba; sin QR, "pagá en la academia".

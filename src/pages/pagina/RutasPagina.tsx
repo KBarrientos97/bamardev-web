@@ -9,7 +9,7 @@ const VerRegalo = lazy(() => import("./VerRegalo"));
 const InscribirmePagina = lazy(() => import("./InscribirmePagina"));
 // Academias (P6): el estado de cuenta del enlace que manda la recepción.
 const PagarPagina = lazy(() => import("./PagarPagina"));
-// Academias (M5): «Pagar mi inscripción» con el carnet y la fecha de nacimiento.
+// Academias (M5): «Pagar mi inscripción» con el carnet.
 const MiCuentaPagina = lazy(() => import("./MiCuentaPagina"));
 
 /**

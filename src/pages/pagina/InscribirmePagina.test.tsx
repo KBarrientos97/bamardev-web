@@ -102,7 +102,7 @@ describe("P2 · Inscribirme en 4 pasos", () => {
     fireEvent.change(screen.getByLabelText("Carnet de identidad"), { target: { value: "14550221" } });
     fireEvent.change(screen.getByLabelText("Apellidos"), { target: { value: "Rojas Lima" } });
     fireEvent.change(screen.getByLabelText("Nombres"), { target: { value: "Thiago" } });
-    fireEvent.change(screen.getByLabelText("Fecha de nacimiento"), { target: { value: "2011-03-12" } });
+    fireEvent.change(screen.getByLabelText("Fecha de nacimiento (opcional)"), { target: { value: "2011-03-12" } });
     fireEvent.change(screen.getByLabelText("WhatsApp"), { target: { value: "77788990" } });
     expect(screen.getByText(/datos de tu madre, padre o tutor/)).toBeInTheDocument();
     // "Faltan", no "Falta los datos" (QA ronda 2, B-29).
@@ -157,7 +157,7 @@ describe("P2 · Inscribirme en 4 pasos", () => {
     fireEvent.change(screen.getByLabelText("Carnet de identidad"), { target: { value: "1" } });
     fireEvent.change(screen.getByLabelText("Apellidos"), { target: { value: "Paz" } });
     fireEvent.change(screen.getByLabelText("Nombres"), { target: { value: "Ana" } });
-    fireEvent.change(screen.getByLabelText("Fecha de nacimiento"), { target: { value: "2000-01-01" } });
+    fireEvent.change(screen.getByLabelText("Fecha de nacimiento (opcional)"), { target: { value: "2000-01-01" } });
     fireEvent.change(screen.getByLabelText("WhatsApp"), { target: { value: "77788990" } });
     fireEvent.click(screen.getByRole("button", { name: "Siguiente" }));
   }
@@ -210,7 +210,7 @@ describe("P2 · Inscribirme en 4 pasos", () => {
     fireEvent.change(screen.getByLabelText("Carnet de identidad"), { target: { value: "1" } });
     fireEvent.change(screen.getByLabelText("Apellidos"), { target: { value: "Paz" } });
     fireEvent.change(screen.getByLabelText("Nombres"), { target: { value: "Ana" } });
-    fireEvent.change(screen.getByLabelText("Fecha de nacimiento"), { target: { value: "2000-01-01" } });
+    fireEvent.change(screen.getByLabelText("Fecha de nacimiento (opcional)"), { target: { value: "2000-01-01" } });
     fireEvent.change(screen.getByLabelText("WhatsApp"), { target: { value: "77788990" } });
     fireEvent.click(screen.getByRole("button", { name: "Siguiente" }));
     for (const t of ["FOTO", "CI_ANVERSO", "CI_REVERSO"]) {
@@ -309,21 +309,31 @@ describe("M5 · un grupo lleno ya no recibe preinscripciones", () => {
     fireEvent.change(screen.getByLabelText("Carnet de identidad"), { target: { value: "1" } });
     fireEvent.change(screen.getByLabelText("Apellidos"), { target: { value: "Paz" } });
     fireEvent.change(screen.getByLabelText("Nombres"), { target: { value: "Ana" } });
-    fireEvent.change(screen.getByLabelText("Fecha de nacimiento"), { target: { value: "2000-01-01" } });
+    fireEvent.change(screen.getByLabelText("Fecha de nacimiento (opcional)"), { target: { value: "2000-01-01" } });
     fireEvent.change(screen.getByLabelText("WhatsApp"), { target: { value: "77788990" } });
     fireEvent.click(screen.getByRole("button", { name: "Siguiente" }));
   }
 });
 
-describe("M5 · la fecha de nacimiento es obligatoria", () => {
-  it("sin la fecha no se puede seguir del paso de los datos", async () => {
+describe("la fecha de nacimiento es opcional (03-nov)", () => {
+  it("sin la fecha se sigue y se envía sin ella: «Pagar mi inscripción» entra sólo con el carnet", async () => {
     await montar();
     fireEvent.click(screen.getByRole("button", { name: "Siguiente" }));
     fireEvent.change(screen.getByLabelText("Carnet de identidad"), { target: { value: "1" } });
     fireEvent.change(screen.getByLabelText("Apellidos"), { target: { value: "Paz" } });
     fireEvent.change(screen.getByLabelText("Nombres"), { target: { value: "Ana" } });
     fireEvent.change(screen.getByLabelText("WhatsApp"), { target: { value: "77788990" } });
-    expect(screen.getByRole("button", { name: "Siguiente" })).toBeDisabled();
-    expect(screen.getByText(/Falta tu fecha de nacimiento/)).toBeInTheDocument();
+    expect(screen.queryByText(/Falta.*fecha de nacimiento/i)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Siguiente" })).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "Siguiente" }));
+    fireEvent.click(screen.getByRole("button", { name: "Seguir sin fotos" }));
+    fireEvent.click(screen.getByRole("checkbox"));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Enviar inscripción" }));
+    });
+    const [, input] = vi.mocked(apiAcademiaPublica.preinscribir).mock.calls[0];
+    expect(input).not.toHaveProperty("fechaNacimiento");
+    expect(input).not.toHaveProperty("edad");
+    expect(screen.getByRole("heading", { name: "¡Listo, Ana!" })).toBeInTheDocument();
   });
 });
