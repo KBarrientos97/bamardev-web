@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef, useState, type CSSProperties, type RefObject } from "react";
 import { createPortal, preload } from "react-dom";
 import { urlDeImagen } from "../../lib/pagina/apiPagina";
-import { ICONO_ANUNCIO, ICONO_RESERVAR, iconoDe, mezcla, paleta, type Paleta } from "../../lib/pagina/aspecto";
+import { ICONO_ANUNCIO, ICONO_RED, ICONO_RESERVAR, iconoDe, mezcla, paleta, type Paleta } from "../../lib/pagina/aspecto";
 import { catalogoEnSucursal, enlaceWhatsapp, urlConsultaWhatsapp } from "../../lib/pagina/catalogo";
 import {
   coloresAnuncio,
@@ -12,7 +12,7 @@ import {
   SUPERFICIE_CLASICA,
   type Superficie,
 } from "../../lib/pagina/estilos";
-import { estiloPagina, tonosPagina } from "../../lib/pagina/estilosPagina";
+import { estiloPagina, superficieSucursal, tonosPagina } from "../../lib/pagina/estilosPagina";
 import type { AnuncioPublico, EnlacePublico, ItemCatalogoPublico, PaginaPublica } from "../../lib/pagina/tipos";
 import { urlTelefono } from "../../lib/pagina/vista";
 import { conMayuscula, termino } from "../../lib/rubro";
@@ -23,7 +23,16 @@ import CursosPagina from "./CursosPagina";
 import CatalogoPagina, { SelectorSucursalCatalogo, type AccionCatalogo, type AspectoCatalogo } from "./CatalogoPagina";
 import { EstadoSucursal, SemanaSucursal } from "./HorarioSucursal";
 import type { AccionPagina, DatosVisor } from "./piezasArmado";
-import { Enlace, PiePagina, TarjetaSucursal, TituloSeccion, Trazo, type AccionSucursal } from "./piezasPagina";
+import {
+  BotonesSucursal,
+  Enlace,
+  PiePagina,
+  TarjetaSucursal,
+  TituloSeccion,
+  Trazo,
+  type AccionSucursal,
+  type PiezaAccion,
+} from "./piezasPagina";
 import { MapaPagina } from "./MapaPagina";
 
 // Las piezas chicas viven en piezasPagina.tsx; se siguen pidiendo de acá.
@@ -350,9 +359,9 @@ export default function VistaPagina({
   // La forma decide fondo, borde, sombra y radio; el tamaño y el armado son de
   // acá. La superficie (el fondo del estilo) decide cómo se leen sobre él.
   const b = estiloBotones(p.formaBotones, c, t.superficie);
-  // Los botones chicos van en la tarjeta de la sucursal: si es de otra
-  // familia que la página (el bloque oscuro de Mosaico), con la suya.
-  const bTarjeta = t.superficieTarjeta ? estiloBotones(p.formaBotones, c, t.superficieTarjeta) : b;
+  // Los de la tarjeta de sucursal son los mismos botones, pintados para la
+  // tarjeta y no para el fondo: la blanca de Vivo, el bloque oscuro de Mosaico.
+  const bTarjeta = estiloBotones(p.formaBotones, c, superficieSucursal(t));
   const letraNombre = letraTitulo(p.tipografia);
   const clic = (e: EnlacePublico) => (ev?: { preventDefault?: () => void }) => {
     alClic?.(e);
@@ -399,17 +408,31 @@ export default function VistaPagina({
     ...(centrados ? { justifyContent: "center", textAlign: "center" } : {}),
     ...b.secundario.estilo,
   };
-  const botonChico = (destacado = false): CSSProperties => ({
-    minHeight: 44,
-    fontSize: 13,
-    fontWeight: destacado ? 500 : 400,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    textDecoration: "none",
-    padding: "0 6px",
-    ...(destacado ? bTarjeta.chicoDestacado : bTarjeta.chico).estilo,
-  });
+  // "Cómo llegar", "Llamar", "Reservar" de cada sucursal: el secundario y el
+  // principal de arriba (forma, color, letra), más bajos y con la letra un
+  // punto más chica para que entren en la tarjeta (03-nov: antes eran unos
+  // chicos grises aparte que desentonaban).
+  const botonSucursal = (destacado = false): PiezaAccion => {
+    const pieza = destacado ? bTarjeta.principal : bTarjeta.secundario;
+    return {
+      estilo: {
+        minHeight: 44,
+        boxSizing: "border-box",
+        fontSize: 14,
+        fontWeight: destacado ? 700 : 500,
+        lineHeight: 1.2,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 6,
+        padding: "0 12px",
+        textDecoration: "none",
+        textAlign: "center",
+        ...pieza.estilo,
+      },
+      icono: pieza.icono,
+    };
+  };
 
   const unaSucursal = p.sucursales.length === 1;
   // Dentro del editor la vista previa vive adentro del <main> de la app: ahí
@@ -476,16 +499,17 @@ export default function VistaPagina({
 
   const accionesDe = (s: PaginaPublica["sucursales"][number]): AccionSucursal[] =>
     [
-      s.mapaUrl && { texto: "Cómo llegar", href: s.mapaUrl, destacado: false },
-      s.telefono && { texto: "Llamar", href: urlTelefono(s.telefono), destacado: false },
+      s.mapaUrl && { texto: "Cómo llegar", href: s.mapaUrl, icono: ICONO_RED.MAPS, destacado: false },
+      s.telefono && { texto: "Llamar", href: urlTelefono(s.telefono), icono: ICONO_RED.TELEFONO, destacado: false },
       // El WhatsApp propio de la sucursal, si lo tiene (13-oct).
-      s.whatsappUrl && { texto: "WhatsApp", href: s.whatsappUrl, destacado: false },
+      s.whatsappUrl && { texto: "WhatsApp", href: s.whatsappUrl, icono: ICONO_RED.WHATSAPP, destacado: false },
       // La reserva de ESA sucursal, por su slug (B07): `?sucursal=<id>`
       // no lo leía nadie y exponía el id del almacén.
       p.reservar &&
         s.reservaSlug && {
           texto: "Reservar",
           href: `${urlReservar}/${encodeURIComponent(s.reservaSlug)}`,
+          icono: ICONO_RESERVAR,
           destacado: true,
         },
     ].filter(Boolean) as AccionSucursal[];
@@ -679,7 +703,7 @@ export default function VistaPagina({
         key={`${s.nombre}-${i}`}
         s={s}
         acciones={accionesDe(s)}
-        estiloAccion={botonChico}
+        pieza={botonSucursal}
         t={t}
         letra={letraNombre}
         presentacion={estilo.sucursales}
@@ -902,25 +926,7 @@ export default function VistaPagina({
         {s.direccion && <span style={{ fontSize: 14, color: "#4B5563" }}>{s.direccion}</span>}
         {s.horario && <span style={{ fontSize: 13, color: GRIS.texto3 }}>{s.horario}</span>}
         <SemanaSucursal tramos={s.horarioSemanal} t={t} />
-        {acciones.length > 0 && (
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: `repeat(${acciones.length}, minmax(0, 1fr))`,
-              gap: 8,
-              // En dos columnas las tarjetas se estiran a la misma altura: los
-              // botones van abajo de todo, alineados entre tarjetas.
-              marginTop: "auto",
-              paddingTop: 6,
-            }}
-          >
-            {acciones.map((a) => (
-              <a key={a.texto} href={a.href} rel="noopener noreferrer" style={botonChico(a.destacado)}>
-                {a.texto}
-              </a>
-            ))}
-          </div>
-        )}
+        <BotonesSucursal acciones={acciones} pieza={botonSucursal} presentacion="tarjeta" />
       </article>
     );
   });

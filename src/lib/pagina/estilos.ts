@@ -87,7 +87,7 @@ export interface Superficie {
   tipo: "clara" | "color" | "oscura";
   /** El fondo de la página: lo que queda detrás de un botón o un anuncio sin caja. */
   fondo: string;
-  /** Las tarjetas de sucursal, donde van los botones chicos (o el fondo, si no hay tarjeta). */
+  /** Las tarjetas de sucursal (o el fondo, si no hay tarjeta). */
   tarjeta: string;
 }
 
@@ -98,7 +98,7 @@ export const SUPERFICIE_CLASICA: Superficie = { tipo: "clara", fondo: GRIS_PAGIN
 export const NOCHE = {
   fondo: "#111113",
   tarjeta: "#1C1C1F",
-  /** Los botones chicos de las tarjetas: el gris oscuro más claro de la página. */
+  /** El gris oscuro más claro de la página (chips, el cartel de horario). */
   chip: "#26262A",
   borde: "#2A2A2E",
   bordeChip: "#3F3F46",
@@ -109,8 +109,8 @@ export const NOCHE = {
 
 /**
  * El acento claro de la página oscura: calculado contra el gris oscuro más
- * claro que usa (el de los botones chicos), así se lee también sobre la
- * tarjeta y sobre el fondo, que son más oscuros.
+ * claro que usa (`chip`), así se lee también sobre la tarjeta y sobre el
+ * fondo, que son más oscuros.
  */
 export function acentoNoche(c: Paleta): string {
   return claroLegible(c.acento, NOCHE.chip);
@@ -168,10 +168,6 @@ export interface PiezaBoton {
 export interface EstiloBotones {
   principal: PiezaBoton;
   secundario: PiezaBoton;
-  /** Los chicos de las tarjetas de sucursal ("Cómo llegar", "Llamar"). */
-  chico: PiezaBoton;
-  /** El chico destacado ("Reservar"). */
-  chicoDestacado: PiezaBoton;
   /** La flechita de los botones secundarios. */
   flecha: string;
 }
@@ -191,7 +187,7 @@ const SOMBRA_MARCADA = "0 6px 0 rgba(0,0,0,0.22)";
 
 /**
  * Los neutros de los botones según la superficie: la caja de los secundarios,
- * sus bordes y letras, el tinte y los chicos de las tarjetas. En la clara (y
+ * sus bordes y letras, el tinte, el contorno y la sombra. En la clara (y
  * en Vivo, donde los botones son blancos encima del color) son los de siempre.
  */
 function neutros(sup: Superficie, c: Paleta) {
@@ -203,11 +199,6 @@ function neutros(sup: Superficie, c: Paleta) {
       borde: NOCHE.borde,
       texto: NOCHE.texto,
       icono: claro,
-      chico: NOCHE.chip,
-      bordeChico: NOCHE.bordeChip,
-      textoChico: NOCHE.texto,
-      destacado: c.acento,
-      textoDestacado: "#ffffff",
       flecha: "#71717A",
       // El tinte de la página oscura: el color apenas encendido sobre la tarjeta.
       tinte: mezcla(c.acento, NOCHE.tarjeta, 0.65),
@@ -219,10 +210,7 @@ function neutros(sup: Superficie, c: Paleta) {
       linea: NOCHE.texto,
       sombraDura: claro,
       escalon: "#000000",
-      escalonChico: "#000000",
-      escalonDestacado: c.oscuro,
       subrayado: claro,
-      claro,
     };
   }
   return {
@@ -230,11 +218,6 @@ function neutros(sup: Superficie, c: Paleta) {
     borde: g.borde,
     texto: g.texto,
     icono: c.oscuro,
-    chico: "#ffffff",
-    bordeChico: g.borde,
-    textoChico: g.texto2,
-    destacado: c.tinte,
-    textoDestacado: c.oscuro,
     flecha: "#9CA3AF",
     tinte: c.tinte,
     tintaTinte: c.oscuro,
@@ -246,10 +229,7 @@ function neutros(sup: Superficie, c: Paleta) {
     sombraDura: TINTA,
     // Sobre el color (Vivo) el escalón gris se ve sucio: va una sombra negra translúcida.
     escalon: sup.tipo === "color" ? "rgba(0,0,0,0.16)" : "#D1D5DB",
-    escalonChico: "#D1D5DB",
-    escalonDestacado: mezcla(c.acento, "#ffffff", 0.6),
     subrayado: c.acento,
-    claro: c.oscuro,
   };
 }
 
@@ -269,7 +249,6 @@ export function estiloBotones(forma: string, c: Paleta, sup: Superficie = SUPERF
   const n = neutros(sup, c);
   const invertido = sup.tipo === "color";
   const radio = forma === "PILDORA" ? "999px" : forma === "RECTO" ? "4px" : "14px";
-  const radioChico = forma === "PILDORA" ? 999 : forma === "RECTO" ? 4 : 12;
   const llenoFondo = invertido ? "#ffffff" : c.acento;
   const llenoTexto = invertido ? c.oscuro : "#ffffff";
   const base: EstiloBotones = {
@@ -290,28 +269,9 @@ export function estiloBotones(forma: string, c: Paleta, sup: Superficie = SUPERF
       icono: n.icono,
       fondos: [n.caja],
     },
-    chico: {
-      estilo: { borderRadius: radioChico, border: `1px solid ${n.bordeChico}`, background: n.chico, color: n.textoChico },
-      texto: n.textoChico,
-      icono: n.textoChico,
-      fondos: [n.chico],
-    },
-    chicoDestacado: {
-      estilo: { borderRadius: radioChico, border: "none", background: n.destacado, color: n.textoDestacado },
-      texto: n.textoDestacado,
-      icono: n.textoDestacado,
-      fondos: [n.destacado],
-    },
     flecha: n.flecha,
   };
-  const { principal, secundario, chico, chicoDestacado } = base;
-  // El chico destacado va sobre la tarjeta: ahí el color de la página sí se ve.
-  const lleno: Partial<PiezaBoton> & { estilo: CSSProperties } = {
-    estilo: { background: c.acento, color: "#ffffff", border: "none" },
-    texto: "#ffffff",
-    icono: "#ffffff",
-    fondos: [c.acento],
-  };
+  const { principal, secundario } = base;
 
   switch (forma) {
     case "CONTORNO":
@@ -329,11 +289,6 @@ export function estiloBotones(forma: string, c: Paleta, sup: Superficie = SUPERF
           fondos: [n.cajaContorno],
         }),
         secundario: con(secundario, { estilo: { border: `1.5px solid ${n.contorno}` } }),
-        chico: con(chico, {
-          estilo: { border: `1px solid ${n.contorno}`, color: n.textoContorno },
-          texto: n.textoContorno,
-        }),
-        chicoDestacado: con(chicoDestacado, lleno),
       };
     case "TINTE":
       return {
@@ -345,8 +300,6 @@ export function estiloBotones(forma: string, c: Paleta, sup: Superficie = SUPERF
           fondos: [n.tinte],
         }),
         secundario: con(secundario, { estilo: { background: n.tenue, border: "none" }, fondos: [n.tenue] }),
-        chico: con(chico, { estilo: { background: n.tenue, border: "none" }, fondos: [n.tenue] }),
-        chicoDestacado: con(chicoDestacado, lleno),
       };
     case "SOMBRA_DURA":
       return {
@@ -357,12 +310,6 @@ export function estiloBotones(forma: string, c: Paleta, sup: Superficie = SUPERF
         secundario: con(secundario, {
           estilo: { borderRadius: 10, border: `2px solid ${n.linea}`, boxShadow: `3px 3px 0 ${n.sombraDura}` },
         }),
-        chico: con(chico, {
-          estilo: { borderRadius: 8, border: `1.5px solid ${n.linea}`, boxShadow: `2px 2px 0 ${n.sombraDura}` },
-        }),
-        chicoDestacado: con(chicoDestacado, {
-          estilo: { borderRadius: 8, border: `1.5px solid ${n.linea}`, boxShadow: `2px 2px 0 ${n.sombraDura}` },
-        }),
         flecha: n.linea,
       };
     case "RELIEVE":
@@ -370,8 +317,6 @@ export function estiloBotones(forma: string, c: Paleta, sup: Superficie = SUPERF
         ...base,
         principal: con(principal, { estilo: { boxShadow: `0 5px 0 ${c.oscuro}` } }),
         secundario: con(secundario, { estilo: { boxShadow: `0 4px 0 ${n.escalon}` } }),
-        chico: con(chico, { estilo: { boxShadow: `0 3px 0 ${n.escalonChico}` } }),
-        chicoDestacado: con(chicoDestacado, { estilo: { boxShadow: `0 3px 0 ${n.escalonDestacado}` } }),
       };
     case "DEGRADADO": {
       const degradado = `linear-gradient(135deg, ${c.acento}, ${c.oscuro})`;
@@ -387,12 +332,6 @@ export function estiloBotones(forma: string, c: Paleta, sup: Superficie = SUPERF
           ? con(principal, { estilo: { background: suave }, fondos: [desde, hasta] })
           : con(principal, { estilo: { background: degradado }, fondos: [c.acento, c.oscuro] }),
         secundario: con(secundario, { estilo: { background: suave, border: borde }, fondos: [desde, hasta] }),
-        chico: con(chico, { estilo: { background: suave, border: borde }, fondos: [desde, hasta] }),
-        chicoDestacado: con(chicoDestacado, {
-          ...lleno,
-          estilo: { ...lleno.estilo, background: degradado },
-          fondos: [c.acento, c.oscuro],
-        }),
       };
     }
     case "HOJA":
@@ -400,8 +339,6 @@ export function estiloBotones(forma: string, c: Paleta, sup: Superficie = SUPERF
         ...base,
         principal: con(principal, { estilo: { borderRadius: "22px 4px 22px 4px" } }),
         secundario: con(secundario, { estilo: { borderRadius: "22px 4px 22px 4px" } }),
-        chico: con(chico, { estilo: { borderRadius: "14px 3px 14px 3px" } }),
-        chicoDestacado: con(chicoDestacado, { estilo: { borderRadius: "14px 3px 14px 3px" } }),
       };
     case "ESQUINA":
       // El recorte se come los bordes y las sombras de las esquinas: en vez
@@ -413,11 +350,6 @@ export function estiloBotones(forma: string, c: Paleta, sup: Superficie = SUPERF
           estilo: { borderRadius: 0, clipPath: cortes(12), background: n.tinte, border: "none" },
           fondos: [n.tinte],
         }),
-        chico: con(chico, {
-          estilo: { borderRadius: 0, clipPath: cortes(7), background: n.tinte, border: "none" },
-          fondos: [n.tinte],
-        }),
-        chicoDestacado: con(chicoDestacado, { ...lleno, estilo: { ...lleno.estilo, borderRadius: 0, clipPath: cortes(7) } }),
       };
     case "SUBRAYADO": {
       const sinCaja: CSSProperties = { borderRadius: 0, background: "transparent", border: "none" };
@@ -427,7 +359,6 @@ export function estiloBotones(forma: string, c: Paleta, sup: Superficie = SUPERF
       const letra = sobreColor ? "#ffffff" : n.texto;
       const fondosSecundario =
         sup.tipo === "clara" ? ["#ffffff", sup.fondo] : sobreColor ? [sup.fondo] : [sup.fondo, sup.tarjeta];
-      const destacadoTexto = sup.tipo === "oscura" ? n.claro : chicoDestacado.texto;
       return {
         ...base,
         principal: con(principal, { estilo: { borderRadius: 0, boxShadow: "none" } }),
@@ -436,13 +367,6 @@ export function estiloBotones(forma: string, c: Paleta, sup: Superficie = SUPERF
           texto: letra,
           icono: sobreColor ? "#ffffff" : secundario.icono,
           fondos: fondosSecundario,
-        }),
-        chico: con(chico, { estilo: { ...sinCaja, borderBottom: `1px solid ${n.bordeChico}` }, fondos: [sup.tarjeta] }),
-        chicoDestacado: con(chicoDestacado, {
-          estilo: { ...sinCaja, borderBottom: `2px solid ${n.subrayado}`, fontWeight: 700, color: destacadoTexto },
-          texto: destacadoTexto,
-          icono: destacadoTexto,
-          fondos: [sup.tarjeta],
         }),
         flecha: sobreColor ? "#ffffff" : base.flecha,
       };

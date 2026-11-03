@@ -216,8 +216,12 @@ describe("estilos de la fase 2", () => {
     montar({ estilo: "MOSAICO" }, "escritorio");
     const centro = screen.getByText("Centro").closest("article")!;
     expect(centro.style.background).toBe("rgb(28, 28, 31)");
-    // El chico destacado (Reservar) y los chicos van con los colores de la superficie oscura.
-    expect(within(centro).getByRole("link", { name: "Cómo llegar" }).style.background).toBe("rgb(38, 38, 42)");
+    // Sus botones son los de la página pintados para la superficie oscura (03-nov):
+    // la caja del bloque con el borde gris y "Reservar" lleno del color.
+    const comoLlegar = within(centro).getByRole("link", { name: "Cómo llegar" });
+    expect(comoLlegar.style.background).toBe("rgb(28, 28, 31)");
+    expect(comoLlegar.style.border).toBe("1px solid rgb(42, 42, 46)");
+    expect(within(centro).getByRole("link", { name: "Reservar" }).style.background).toBe("rgb(178, 58, 46)");
   });
 
   it("Mosaico: ninguna combinación deja una celda vacía en la grilla", { timeout: 60_000 }, () => {

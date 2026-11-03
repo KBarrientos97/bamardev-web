@@ -296,19 +296,82 @@ export function TituloSeccion({
 export interface AccionSucursal {
   texto: string;
   href: string;
+  /** El trazo del ícono (24×24), como los de los botones de enlaces. */
+  icono: string;
   destacado: boolean;
+}
+
+/** Cómo se pinta un botón de sucursal: su estilo y el color de su ícono. */
+export interface PiezaAccion {
+  estilo: CSSProperties;
+  icono: string;
+}
+
+/**
+ * "Cómo llegar", "Llamar", "WhatsApp" y "Reservar" de una sucursal. Son los
+ * botones de la página (`pieza` sale de `estiloBotones`: forma, color y
+ * letra de Mi página), con su ícono como los de los enlaces; antes eran unos
+ * chicos grises aparte que no parecían de la misma página (03-nov).
+ *
+ * En la tarjeta van de a dos o tres por fila según entren: el que no entra
+ * baja y ocupa el ancho (tres con ícono no entran en la tarjeta del celular).
+ * Como texto (Boutique), centrados y sin ícono, como sus enlaces.
+ */
+export function BotonesSucursal({
+  acciones,
+  pieza,
+  presentacion,
+}: {
+  acciones: AccionSucursal[];
+  pieza: (destacado: boolean) => PiezaAccion;
+  presentacion: "tarjeta" | "texto";
+}) {
+  if (acciones.length === 0) return null;
+  const texto = presentacion === "texto";
+  return (
+    <div
+      style={
+        texto
+          ? { display: "flex", flexWrap: "wrap", justifyContent: "center", gap: 10, marginTop: 8 }
+          : {
+              display: "flex",
+              flexWrap: "wrap",
+              gap: 8,
+              // En dos columnas las tarjetas se estiran a la misma altura: los
+              // botones van abajo de todo, alineados entre tarjetas.
+              marginTop: "auto",
+              paddingTop: 6,
+            }
+      }
+    >
+      {acciones.map((a) => {
+        const { estilo, icono } = pieza(a.destacado);
+        return (
+          <a
+            key={a.texto}
+            href={a.href}
+            rel="noopener noreferrer"
+            style={{ ...estilo, ...(texto ? { minWidth: 120, padding: "0 14px" } : { flex: "1 1 128px", minWidth: 0 }) }}
+          >
+            {!texto && <Trazo d={a.icono} color={icono} size={16} />}
+            {a.texto}
+          </a>
+        );
+      })}
+    </div>
+  );
 }
 
 /**
  * Una sucursal: en tarjeta (Vitrina, Vivo, Noche) o como texto entre
  * separadores (Boutique). `estado` es el cartel "Abierto ahora · cierra
  * 21:00" (`EstadoSucursal`), al lado del nombre; debajo del horario en texto
- * va "Ver horario" con la semana. Los dos, sólo si hay horario por día.
+ * va "Horario" con la semana (desplegada). Los dos, sólo si hay horario por día.
  */
 export function TarjetaSucursal({
   s,
   acciones,
-  estiloAccion,
+  pieza,
   t,
   letra,
   presentacion,
@@ -318,7 +381,7 @@ export function TarjetaSucursal({
 }: {
   s: SucursalPublica;
   acciones: AccionSucursal[];
-  estiloAccion: (destacado: boolean) => CSSProperties;
+  pieza: (destacado: boolean) => PiezaAccion;
   t: TonosPagina;
   letra: Letra;
   presentacion: "tarjeta" | "texto";
@@ -326,34 +389,7 @@ export function TarjetaSucursal({
   primera: boolean;
   estado?: ReactNode;
 }) {
-  const botones = acciones.length > 0 && (
-    <div
-      style={
-        presentacion === "texto"
-          ? { display: "flex", flexWrap: "wrap", justifyContent: "center", gap: 10, marginTop: 8 }
-          : {
-              display: "grid",
-              gridTemplateColumns: `repeat(${acciones.length}, minmax(0, 1fr))`,
-              gap: 8,
-              // En dos columnas las tarjetas se estiran a la misma altura: los
-              // botones van abajo de todo, alineados entre tarjetas.
-              marginTop: "auto",
-              paddingTop: 6,
-            }
-      }
-    >
-      {acciones.map((a) => (
-        <a
-          key={a.texto}
-          href={a.href}
-          rel="noopener noreferrer"
-          style={{ ...estiloAccion(a.destacado), ...(presentacion === "texto" ? { minWidth: 120, padding: "0 14px" } : {}) }}
-        >
-          {a.texto}
-        </a>
-      ))}
-    </div>
-  );
+  const botones = <BotonesSucursal acciones={acciones} pieza={pieza} presentacion={presentacion} />;
 
   if (presentacion === "texto") {
     return (

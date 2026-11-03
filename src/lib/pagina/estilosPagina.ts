@@ -250,8 +250,8 @@ export interface TonosPagina {
   /** Sobre qué se pintan los botones y el anuncio (`estiloBotones`, `coloresAnuncio`). */
   superficie: Superficie;
   /**
-   * Los botones chicos de las sucursales, si su tarjeta no es de la misma
-   * familia que la página (Mosaico: página clara y sucursal en bloque oscuro).
+   * La tarjeta de sucursal, si no es de la misma familia que la página
+   * (Mosaico: página clara y sucursal en bloque oscuro). Ver `superficieSucursal`.
    */
   superficieTarjeta?: Superficie;
   /** El fondo de la página. */
@@ -400,6 +400,21 @@ const CAPA_MOSAICO: CapaFoto = { color: "#000000", opacidad: 0.6 };
 
 /** Mosaico: la sucursal es un bloque oscuro; el cartel, el de Noche. */
 const ESTADO_MOSAICO = ESTADO_NOCHE;
+
+/**
+ * Sobre qué van los botones de la tarjeta de sucursal ("Cómo llegar",
+ * "Llamar", "Reservar"), que desde el 03-nov son los mismos de la página (el
+ * secundario y el principal de `estiloBotones`, con la forma, el color y la
+ * letra que eligió el dueño) y no unos chicos aparte que desentonaban. Van
+ * sobre la tarjeta, no sobre el fondo: en Vivo la tarjeta es blanca (el
+ * botón lleno vuelve a ser del color, no blanco sobre blanco) y en Mosaico es
+ * el bloque oscuro.
+ */
+export function superficieSucursal(t: TonosPagina): Superficie {
+  if (t.superficieTarjeta) return t.superficieTarjeta;
+  const s = t.superficie;
+  return { tipo: s.tipo === "color" ? "clara" : s.tipo, fondo: s.tarjeta, tarjeta: s.tarjeta };
+}
 
 /**
  * Los colores de la página con ese estilo y ese color. `portada`: si hay

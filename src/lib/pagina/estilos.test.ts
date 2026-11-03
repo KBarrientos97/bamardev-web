@@ -15,7 +15,7 @@ import {
   letraTitulo,
   textoQueContrasta,
 } from "./estilos";
-import { ESTILOS_PAGINA, estiloRecomendado, paresDeTexto, tonosPagina } from "./estilosPagina";
+import { ESTILOS_PAGINA, estiloRecomendado, paresDeTexto, superficieSucursal, tonosPagina } from "./estilosPagina";
 
 /** Los 40 colores de la página: la paleta única (`lib/colores/paleta.ts`). */
 const MUESTRAS = PALETA.map((c) => c.hex);
@@ -51,9 +51,10 @@ describe("forma de los botones", () => {
       border: "1px solid #E5E7EB",
       color: "#1F2937",
     });
-    expect(b.chicoDestacado.estilo).toEqual({ borderRadius: 12, border: "none", background: c.tinte, color: c.oscuro });
-    expect(estiloBotones("PILDORA", c).chico.estilo.borderRadius).toBe(999);
-    expect(estiloBotones("RECTO", c).chico.estilo.borderRadius).toBe(4);
+    // Los de la tarjeta de sucursal ya no tienen piezas propias (03-nov): usan éstas.
+    expect(Object.keys(b).sort()).toEqual(["flecha", "principal", "secundario"]);
+    expect(estiloBotones("PILDORA", c).secundario.estilo.borderRadius).toBe("999px");
+    expect(estiloBotones("RECTO", c).secundario.estilo.borderRadius).toBe("4px");
   });
 
   it("con cualquier forma y cualquier muestra la letra se lee (≥ 4.5:1)", () => {
@@ -196,9 +197,9 @@ describe("estilos de página: todo se lee en cualquier combinación", () => {
             }
           }
           if (!portada) continue;
-          // La de la página y, si la tarjeta de la sucursal es de otra familia (Mosaico), la suya.
-          for (const sup of [t.superficie, t.superficieTarjeta]) {
-            if (!sup) continue;
+          // La de la página y la de la tarjeta de sucursal, donde van "Cómo llegar",
+          // "Llamar" y "Reservar" (la blanca de Vivo, el bloque oscuro de Mosaico).
+          for (const sup of [t.superficie, superficieSucursal(t)]) {
             for (const f of FORMAS) {
               const b = estiloBotones(f.clave, c, sup);
               for (const [pieza, p] of Object.entries(b)) {
