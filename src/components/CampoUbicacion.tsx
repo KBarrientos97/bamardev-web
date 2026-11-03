@@ -1,9 +1,10 @@
-import { lazy, Suspense, useId, useState } from "react";
+import { lazy, Suspense, useEffect, useId, useState } from "react";
 import { Boton } from "./ui";
-import type { Ubicacion } from "../lib/mapa";
+import { alDescansar, precargarMapa, type Ubicacion } from "../lib/mapa";
 
-// MapLibre (~1 MB) se baja sólo si el dueño abre el mapa.
-const ElegirUbicacion = lazy(() => import("./ElegirUbicacion"));
+// MapLibre (~1 MB) no viaja con la ficha: es un pedazo aparte.
+const pedazoMapa = () => import("./ElegirUbicacion");
+const ElegirUbicacion = lazy(pedazoMapa);
 
 /**
  * "Ubicación en el mapa" de una sucursal (PLAN-PAGINA-WEB §3.1): el pin del
@@ -30,6 +31,11 @@ export default function CampoUbicacion({
 }) {
   const id = useId();
   const [verMapa, setVerMapa] = useState(false);
+  // Al entrar a la ficha (Sedes, Sucursales) se adelanta el mapa: MapLibre,
+  // su worker y el estilo. Así "Marcar en el mapa" abre en un momento en vez
+  // de esperar la descarga entera (03-nov). Con varias fichas en pantalla se
+  // baja una sola vez (`cargarMaplibre` lo recuerda).
+  useEffect(() => alDescansar(() => precargarMapa(pedazoMapa)), []);
   return (
     <div role="group" aria-labelledby={id}>
       <span id={id} className="mb-1.5 block text-[13px] font-semibold text-texto-2">

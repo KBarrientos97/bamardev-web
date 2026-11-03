@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
 import { execSync } from 'node:child_process'
+import { CACHE_MAPA } from './src/lib/pwa/cacheMapa.ts'
 
 /** El commit de la copia local, para los builds que no corren en Actions. */
 function commitLocal(): string {
@@ -75,6 +76,10 @@ export default defineConfig(({ mode }) => {
           navigateFallback: 'index.html',
           navigateFallbackDenylist: [/^\/p\//, /^\/r\//, /^\/api\//, /^\/chat\//],
           importScripts: ['push-sw.js'],
+          // El mapa sí se guarda, pero recién cuando alguien lo abre: el código
+          // de MapLibre, el TileJSON, los íconos, las letras y los mosaicos
+          // de OpenFreeMap, con tope de cantidad y de días (ver cacheMapa.ts).
+          runtimeCaching: CACHE_MAPA,
           skipWaiting: true,
           clientsClaim: true,
           cleanupOutdatedCaches: true,

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { Map as MapaGL } from "maplibre-gl";
-import { cargarMaplibre, ESTILO_MAPA, type Ubicacion } from "../../lib/mapa";
+import { estiloMapa } from "../../lib/estiloMapa";
+import { cargarMaplibre, type Ubicacion } from "../../lib/mapa";
 
 export interface PuntoMapa extends Ubicacion {
   nombre: string;
@@ -27,7 +28,7 @@ export default function MapaSucursales({ puntos, color }: { puntos: PuntoMapa[];
         try {
           m = new ml.Map({
             container: caja.current,
-            style: ESTILO_MAPA,
+            style: estiloMapa(),
             center: [lista[0].lng, lista[0].lat],
             zoom: 15,
             attributionControl: false,

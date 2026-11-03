@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import type { Map as MapaGL, Marker } from "maplibre-gl";
 import { Boton } from "./ui";
-import { cargarMaplibre, ESTILO_MAPA, redondear, SANTA_CRUZ, type Ubicacion } from "../lib/mapa";
+import { estiloMapa } from "../lib/estiloMapa";
+import { cargarMaplibre, redondear, SANTA_CRUZ, type Ubicacion } from "../lib/mapa";
 
 /**
  * Marcar dónde está la sucursal (PLAN-PAGINA-WEB §3.1): se toca el mapa o se
@@ -36,7 +37,7 @@ export default function ElegirUbicacion({
         try {
           m = new ml.Map({
             container: caja.current,
-            style: ESTILO_MAPA,
+            style: estiloMapa(),
             center: [desde.lng, desde.lat],
             zoom: inicial.current ? 16 : 12,
             attributionControl: false,
