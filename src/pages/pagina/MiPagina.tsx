@@ -39,6 +39,7 @@ import type {
   Tipografia,
 } from "../../lib/pagina/tipos";
 import { vistaDesdeEditor } from "../../lib/pagina/vista";
+import { RUTA_SEDES } from "../../lib/academia/vista";
 import { apiAcademiaPublica } from "../../lib/academia/apiPublica";
 import type { CursoPublico } from "../../lib/academia/tipos";
 import { numeroParaEditar } from "../../lib/pagina/whatsapp";
@@ -195,6 +196,7 @@ function FilaSucursal({
   s,
   borrador,
   c,
+  academia,
   onCambio,
   onGuardada,
   onError,
@@ -202,6 +204,8 @@ function FilaSucursal({
   s: SucursalEditor;
   borrador: BorradorSucursal | undefined;
   c: Paleta;
+  /** La academia no tiene la ficha de Configuración: sus datos se cargan en Sedes. */
+  academia: boolean;
   onCambio: (b: BorradorSucursal) => void;
   onGuardada: (s: SucursalEditor) => void;
   onError: (m: string) => void;
@@ -246,7 +250,7 @@ function FilaSucursal({
             <li>Horario: {horario ?? "sin cargar"}</li>
             <li>Ubicación en el mapa: {conUbicacion ? "marcada" : "sin marcar"}</li>
             <li>
-              <Link to="/configuracion/sucursales" className="font-semibold" style={{ color: c.oscuro }}>
+              <Link to={academia ? RUTA_SEDES : "/configuracion/sucursales"} className="font-semibold" style={{ color: c.oscuro }}>
                 Editar dirección, horario y ubicación
               </Link>
             </li>
@@ -1323,6 +1327,7 @@ export default function MiPagina() {
                     s={s}
                     borrador={borradorSucursales[s.id]}
                     c={c}
+                    academia={e.negocio.rubro === "ACADEMIA"}
                     onCambio={(b) => cambiarSucursal(s, b)}
                     onError={setError}
                     onGuardada={(nueva) => {

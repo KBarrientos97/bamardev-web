@@ -115,14 +115,14 @@ export default function EditorHorario({
         acciones={
           <>
             {valor && (
-              <Boton variante="ghost" className="mr-auto !text-danger-text" onClick={quitar}>
+              <Boton type="button" variante="ghost" className="mr-auto !text-danger-text" onClick={quitar}>
                 Quitar horario
               </Boton>
             )}
-            <Boton variante="ghost" onClick={cerrar}>
+            <Boton type="button" variante="ghost" onClick={cerrar}>
               Cancelar
             </Boton>
-            <Boton onClick={listo}>Listo</Boton>
+            <Boton type="button" onClick={listo}>Listo</Boton>
           </>
         }
       >

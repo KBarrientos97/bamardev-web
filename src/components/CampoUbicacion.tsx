@@ -12,7 +12,9 @@ const ElegirUbicacion = lazy(() => import("./ElegirUbicacion"));
  * ficha de la sucursal.
  *
  * No es un `Campo`: ése es un <label>, y el primer botón de adentro se
- * llamaría como todo el texto del label.
+ * llamaría como todo el texto del label. Sus botones son `type="button"`:
+ * también vive dentro de formularios (la sede de la academia) y no tienen
+ * que enviarlos.
  */
 export default function CampoUbicacion({
   nombre,
@@ -37,17 +39,18 @@ export default function CampoUbicacion({
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-[13px] text-texto-2">{valor ? "Ubicación marcada" : "Todavía sin marcar"}</span>
           {!verMapa && (
-            <Boton variante="ghost" className="!px-3 !py-1.5 text-[13px]" onClick={() => setVerMapa(true)}>
+            <Boton type="button" variante="ghost" className="!px-3 !py-1.5 text-[13px]" onClick={() => setVerMapa(true)}>
               {valor ? "Cambiar en el mapa" : "Marcar en el mapa"}
             </Boton>
           )}
           {verMapa && (
-            <Boton variante="ghost" className="!px-3 !py-1.5 text-[13px]" onClick={() => setVerMapa(false)}>
+            <Boton type="button" variante="ghost" className="!px-3 !py-1.5 text-[13px]" onClick={() => setVerMapa(false)}>
               Listo
             </Boton>
           )}
           {valor && (
             <Boton
+              type="button"
               variante="ghost"
               className="!px-3 !py-1.5 text-[13px]"
               onClick={() => {

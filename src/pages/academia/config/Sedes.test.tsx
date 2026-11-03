@@ -67,6 +67,9 @@ const sede = (id: number, nombre: string, extra: Partial<Sede> = {}): Sede => ({
   direccion: null,
   telefono: null,
   horarioAtencion: null,
+  horarioSemanal: null,
+  latitud: null,
+  longitud: null,
   esPrincipal: false,
   aulas: 0,
   franjas: 0,
@@ -119,6 +122,15 @@ describe("C4 · la lista de sedes", () => {
     const base = screen.getByRole("button", { name: "Abrir Base" }).closest("tr")!;
     expect(within(base).getByText("1 aula")).toBeInTheDocument();
     expect(within(base).getByText("0 franjas")).toBeInTheDocument();
+  });
+
+  it("con horario por día muestra su resumen, no el texto de antes (02-nov)", async () => {
+    const semana = [1, 2, 3, 4, 5].map((dia) => ({ dia, desde: "08:00", hasta: "20:00" }));
+    vi.mocked(apiAcademia.sedes).mockResolvedValue([{ ...CENTRAL, horarioSemanal: semana }, BASE]);
+    await montar();
+    const fila = screen.getByRole("button", { name: "Abrir Central" }).closest("tr")!;
+    expect(within(fila).getByText("Lun a vie 8:00–20:00 · Sáb y dom cerrado")).toBeInTheDocument();
+    expect(within(fila).queryByText("Lun a Vie 8:00–20:00")).not.toBeInTheDocument();
   });
 
   it("no habla de stock, depósitos ni precios por sucursal", async () => {
@@ -213,11 +225,13 @@ describe("C4 · Nueva sede", () => {
     return screen.getByRole("complementary", { name: "Nueva sede" });
   };
 
-  it("pide nombre, dirección, teléfono y horario (con ejemplo), y crea la sede sin mandar lo vacío", async () => {
+  it("pide nombre, dirección, teléfono, ubicación y horario por día, y crea la sede sin mandar lo vacío", async () => {
     vi.mocked(apiAcademia.crearSede).mockResolvedValue(sede(3, "Norte", { direccion: "Calle 1" }));
     await montar();
     const panel = await abrirNueva();
-    expect(within(panel).getByLabelText(/Horario de atención/)).toHaveAttribute("placeholder", "Lun a Vie 8:00–20:00, Sáb 8:00–13:00");
+    // Los mismos controles de la ficha de una sucursal (02-nov).
+    expect(within(panel).getByRole("group", { name: /Ubicación en el mapa/ })).toBeInTheDocument();
+    expect(within(panel).getByRole("button", { name: /^Horario de la sede:/ })).toHaveTextContent("Sin horario cargado");
     fireEvent.change(within(panel).getByLabelText("Nombre"), { target: { value: " Norte " } });
     fireEvent.change(within(panel).getByLabelText("Dirección"), { target: { value: "Calle 1" } });
     await act(async () => {
@@ -295,7 +309,7 @@ describe("C4 · Nueva sede", () => {
 });
 
 describe("C4 · Editar los datos de una sede", () => {
-  it("manda los cuatro datos; lo que se vació va como null para borrarlo", async () => {
+  it("manda los datos; lo que se vació va como null para borrarlo, y el horario y el mapa sólo si cambiaron", async () => {
     vi.mocked(apiAcademia.editarSede).mockResolvedValue({ ...CENTRAL, telefono: null });
     await montar();
     fireEvent.click(screen.getByRole("button", { name: "Más acciones de Central" }));
@@ -303,17 +317,55 @@ describe("C4 · Editar los datos de una sede", () => {
     const panel = screen.getByRole("complementary", { name: "Editar sede" });
     expect(within(panel).getByLabelText("Dirección")).toHaveValue("Av. Blanco Galindo km 3");
     fireEvent.change(within(panel).getByLabelText("Teléfono"), { target: { value: "  " } });
-    fireEvent.change(within(panel).getByLabelText(/Horario de atención/), { target: { value: "Lun a Sáb 8:00–20:00" } });
+    await act(async () => {
+      fireEvent.click(within(panel).getByRole("button", { name: "Guardar" }));
+    });
+    // Sin horarioSemanal: guardarlo borraría el texto de antes sin que nadie lo pidiera.
+    expect(apiAcademia.editarSede).toHaveBeenCalledWith(1, {
+      nombre: "Central",
+      direccion: "Av. Blanco Galindo km 3",
+      telefono: null,
+    });
+    expect(screen.getByText("Central se guardó.")).toBeInTheDocument();
+  });
+
+  it("el horario se pasa a días con el editor de la ficha; el texto de antes queda a la vista hasta guardar", async () => {
+    vi.mocked(apiAcademia.editarSede).mockResolvedValue(CENTRAL);
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Más acciones de Central" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /Editar datos/ }));
+    const panel = screen.getByRole("complementary", { name: "Editar sede" });
+    expect(within(panel).getByText(/Antes estaba escrito: «Lun a Vie 8:00–20:00»/)).toBeInTheDocument();
+    fireEvent.click(within(panel).getByRole("button", { name: /^Horario de Central:/ }));
+    const d = screen.getByRole("dialog", { name: "Horario de Central" });
+    fireEvent.click(within(d).getByRole("switch", { name: "Lunes abierto" }));
+    fireEvent.change(within(d).getByLabelText("Lunes: abre"), { target: { value: "08:00" } });
+    fireEvent.change(within(d).getByLabelText("Lunes: cierra"), { target: { value: "20:00" } });
+    fireEvent.click(within(d).getByRole("button", { name: "Listo" }));
     await act(async () => {
       fireEvent.click(within(panel).getByRole("button", { name: "Guardar" }));
     });
     expect(apiAcademia.editarSede).toHaveBeenCalledWith(1, {
       nombre: "Central",
       direccion: "Av. Blanco Galindo km 3",
-      telefono: null,
-      horarioAtencion: "Lun a Sáb 8:00–20:00",
+      telefono: "4 4000000",
+      horarioSemanal: [{ dia: 1, desde: "08:00", hasta: "20:00" }],
     });
-    expect(screen.getByText("Central se guardó.")).toBeInTheDocument();
+  });
+
+  it("quitar la ubicación manda las dos coordenadas en null", async () => {
+    vi.mocked(apiAcademia.sedes).mockResolvedValue([{ ...CENTRAL, latitud: -17.39, longitud: -66.15 }, BASE]);
+    vi.mocked(apiAcademia.editarSede).mockResolvedValue(CENTRAL);
+    await montar();
+    fireEvent.click(screen.getByRole("button", { name: "Más acciones de Central" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /Editar datos/ }));
+    const panel = screen.getByRole("complementary", { name: "Editar sede" });
+    expect(within(panel).getByText("Ubicación marcada")).toBeInTheDocument();
+    fireEvent.click(within(panel).getByRole("button", { name: "Quitar" }));
+    await act(async () => {
+      fireEvent.click(within(panel).getByRole("button", { name: "Guardar" }));
+    });
+    expect(apiAcademia.editarSede).toHaveBeenCalledWith(1, expect.objectContaining({ latitud: null, longitud: null }));
   });
 
   it("SEDE_REPETIDA al renombrar: lo dice en el nombre y no cierra", async () => {

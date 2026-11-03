@@ -309,6 +309,16 @@ describe("Mi página", () => {
     expect(within(previa()).getByRole("region", { name: "Mapa: Centro" })).toBeInTheDocument();
   });
 
+  it("en academia, los datos de la sede se editan en Sedes (no tiene la ficha de Configuración)", async () => {
+    const base = estado();
+    vi.mocked(apiPagina.estado).mockResolvedValue({ ...base, negocio: { ...base.negocio, rubro: "ACADEMIA" } });
+    await montar();
+    expect(screen.getByRole("link", { name: "Editar dirección, horario y ubicación" })).toHaveAttribute(
+      "href",
+      "/configuracion/sedes",
+    );
+  });
+
   it("sin horario por día, el texto de antes sale en el resumen", async () => {
     await montar();
     expect(screen.getByText("Horario: 9 a 20")).toBeInTheDocument();

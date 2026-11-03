@@ -815,6 +815,7 @@ function FormAlmacenCuerpo({
   onGuardado: () => void;
 }) {
   const esEdicion = !!almacen;
+  const { puede } = useAuth();
   const [nombre, setNombre] = useState(almacen?.nombre ?? "");
   const [grupo, setGrupo] = useState(almacen?.grupo ?? "");
   const [tipo, setTipo] = useState<TipoAlmacen>(almacen?.tipo ?? "SUCURSAL");
@@ -829,12 +830,13 @@ function FormAlmacenCuerpo({
     setError("");
     if (!nombre.trim()) return setError("Poné un nombre.");
 
+    // La dirección y el teléfono de una sucursal son de su ficha: acá no se
+    // mandan, así no se pisa lo que se cargó allá.
     const input: AlmacenInput = {
       nombre: nombre.trim(),
       grupo: grupo.trim(),
       tipo,
-      direccion: direccion.trim(),
-      telefono: telefono.trim(),
+      ...(tipo === "DEPOSITO" ? { direccion: direccion.trim(), telefono: telefono.trim() } : {}),
       activo,
     };
 
@@ -905,22 +907,32 @@ function FormAlmacenCuerpo({
           </div>
         </Campo>
 
-        <Campo label="Dirección" hint="Opcional: dónde queda">
-          <Input value={direccion} onChange={(e) => setDireccion(e.target.value)} />
-        </Campo>
+        {/* Almacenes es el inventario; lo que ve el cliente de una sucursal
+            (dirección, teléfono, mapa y horario) tiene su ficha única (02-nov):
+            cada dato se edita en un solo lugar, y belleza, que no ve esta
+            pantalla, también la alcanza. Un depósito no atiende público ni sale
+            en la ficha: su dirección se carga acá. */}
+        {tipo === "DEPOSITO" ? (
+          <>
+            <Campo label="Dirección" hint="Opcional: dónde queda">
+              <Input value={direccion} onChange={(e) => setDireccion(e.target.value)} />
+            </Campo>
 
-        <Campo label="Teléfono" hint="Opcional">
-          <Input value={telefono} onChange={(e) => setTelefono(e.target.value)} />
-        </Campo>
-
-        {/* La ubicación y el horario tienen su ficha única (02-nov): un solo
-            lugar para todos los rubros, que belleza también alcanza. */}
-        {tipo === "SUCURSAL" && esEdicion && (
-          <p className="text-[13px] text-texto-3">
-            La ubicación en el mapa y el horario de atención se cargan en{" "}
-            <Link to="/configuracion/sucursales" className="font-semibold text-primary-700">
-              Configuración › Datos de las sucursales
-            </Link>
+            <Campo label="Teléfono" hint="Opcional">
+              <Input value={telefono} onChange={(e) => setTelefono(e.target.value)} />
+            </Campo>
+          </>
+        ) : (
+          <p className="rounded-xl bg-muted px-3.5 py-2.5 text-[13px] text-texto-3">
+            {esEdicion ? "La dirección, el teléfono" : "Después de crearla: la dirección, el teléfono"}, la ubicación en
+            el mapa y el horario se cargan en{" "}
+            {puede("config_sucursales") ? (
+              <Link to="/configuracion/sucursales" className="font-semibold text-primary-700">
+                Configuración › Datos de las sucursales
+              </Link>
+            ) : (
+              "Configuración › Datos de las sucursales (lo hace el dueño)"
+            )}
             .
           </p>
         )}

@@ -6,6 +6,8 @@
  * "Supuesto" para revisarlo contra el backend real.
  */
 
+import type { Tramo } from "../pagina/tipos";
+
 /** Las listas paginadas del contrato: `?page=1&pageSize=20` (máx 100). */
 export interface Paginado<T> {
   items: T[];
@@ -765,8 +767,16 @@ export interface Sede {
   nombre: string;
   direccion: string | null;
   telefono: string | null;
-  /** Texto libre ("Lun a Vie 8:00–20:00"); es el mismo que muestra Mi página. */
+  /**
+   * El horario en texto libre de antes ("Lun a Vie 8:00–20:00"). Ya no se
+   * edita: queda para las sedes que todavía no cargaron el horario por día.
+   */
   horarioAtencion: string | null;
+  /** El horario por día (02-nov), el mismo de la ficha de cualquier sucursal. */
+  horarioSemanal: Tramo[] | null;
+  /** La ubicación en el mapa de la página; las dos juntas o ninguna. */
+  latitud: number | null;
+  longitud: number | null;
   esPrincipal: boolean;
   /** Aulas activas. */
   aulas: number;
@@ -779,7 +789,9 @@ export interface SedeInput {
   nombre?: string;
   direccion?: string | null;
   telefono?: string | null;
-  horarioAtencion?: string | null;
+  horarioSemanal?: Tramo[] | null;
+  latitud?: number | null;
+  longitud?: number | null;
 }
 
 /** Una franja tal como la ve una sede (C5). */
