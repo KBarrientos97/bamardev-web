@@ -1,7 +1,18 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cronometro, demora, listos, preparando } from "../../pages/tickets/useTableroTickets";
 import type { TicketPedido } from "../../types/tickets";
-import { elegirVoz, esClaro, minutosDesde, numeroTicket, paletaTv, textoVoz, tipoDeVoz } from "./llamado";
+import {
+  elegirVoz,
+  esClaro,
+  minutosDesde,
+  numeroTicket,
+  olvidarVocesCargadas,
+  paletaTv,
+  prepararVoces,
+  textoVoz,
+  tipoDeVoz,
+  vozFija,
+} from "./llamado";
 import { llamadosNuevos, VIGENCIA_MS } from "./llamadosNuevos";
 
 describe("cómo se canta el número", () => {
@@ -96,6 +107,71 @@ describe("qué voz dice el número", () => {
     // Y entre dos latinas de mujer, la de servidor.
     const conEeuu = [...chrome, { name: "Google español de Estados Unidos", lang: "es-US", localService: false }];
     expect(elegirVoz(conEeuu, "mujer").voz).toBe(conEeuu[2]);
+  });
+});
+
+describe("la TV habla siempre con la misma voz", () => {
+  // Kevin, 3-nov: con "Mujer" la voz cambiaba de un llamado a otro, y en otra
+  // compu la primera vez habló un hombre.
+  const sabina = { name: "Microsoft Sabina - Spanish (Mexico)", lang: "es-MX", localService: true };
+  const raul = { name: "Microsoft Raul - Spanish (Mexico)", lang: "es-MX", localService: true };
+  const googleEeuu = { name: "Google español de Estados Unidos", lang: "es-US", localService: false };
+
+  it("con una voz guardada que sigue estando, habla con esa aunque lleguen otras mejores", () => {
+    // Edge y Chrome suman sus voces de servidor un rato después de abrir.
+    const r = vozFija([sabina, raul, googleEeuu], "mujer", sabina.name);
+    expect(r.voz).toBe(sabina);
+    expect(r.tono).toBe(1);
+  });
+
+  it("sin guardada, o si la guardada ya no está, elige la mejor", () => {
+    expect(vozFija([sabina, googleEeuu], "mujer", null).voz).toBe(googleEeuu);
+    expect(vozFija([sabina, googleEeuu], "mujer", "Una que se desinstaló").voz).toBe(googleEeuu);
+  });
+
+  it("la guardada de recurso (del otro tipo) se cambia si aparece una del tipo pedido", () => {
+    // Sólo estaba Raúl: "Mujer" hablaba con él, con el tono subido.
+    expect(vozFija([raul], "mujer", raul.name).tono).toBeGreaterThan(1);
+    expect(vozFija([raul, sabina], "mujer", raul.name).voz).toBe(sabina);
+  });
+
+  describe("espera a que el navegador termine de cargar sus voces", () => {
+    let voces: { name: string; lang: string }[];
+    const navegador = new EventTarget() as EventTarget & { getVoices: () => typeof voces };
+
+    beforeEach(() => {
+      vi.useFakeTimers();
+      voces = [];
+      navegador.getVoices = () => voces;
+      Object.defineProperty(window, "speechSynthesis", { value: navegador, configurable: true });
+      olvidarVocesCargadas();
+    });
+    afterEach(() => {
+      Reflect.deleteProperty(window, "speechSynthesis");
+      vi.useRealTimers();
+    });
+
+    it("al abrir no hay ninguna: espera las tandas y sigue cuando dejan de llegar", async () => {
+      let listas = false;
+      void prepararVoces().then(() => (listas = true));
+      voces = [sabina, raul];
+      navegador.dispatchEvent(new Event("voiceschanged"));
+      await vi.advanceTimersByTimeAsync(300);
+      // Llega la segunda tanda (las de servidor) antes del medio segundo.
+      voces = [sabina, raul, googleEeuu];
+      navegador.dispatchEvent(new Event("voiceschanged"));
+      await vi.advanceTimersByTimeAsync(300);
+      expect(listas).toBe(false);
+      await vi.advanceTimersByTimeAsync(300);
+      expect(listas).toBe(true);
+    });
+
+    it("una TV sin voces no la deja esperando para siempre", async () => {
+      let listas = false;
+      void prepararVoces().then(() => (listas = true));
+      await vi.advanceTimersByTimeAsync(3000);
+      expect(listas).toBe(true);
+    });
   });
 });
 

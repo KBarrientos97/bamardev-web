@@ -7,6 +7,7 @@ import {
   audioYaPermitido,
   desbloquearAudio,
   paletaTv,
+  prepararVoces,
   sonarTono,
 } from "../../lib/tickets/llamado";
 import { llamadosNuevos } from "../../lib/tickets/llamadosNuevos";
@@ -57,6 +58,11 @@ function PantallaConLlave({ llave, sucursalId }: { llave: string; sucursalId?: n
   }, []);
 
   const [sonidoActivo, setSonidoActivo] = useState(() => !audioBloqueado());
+  // Las voces del navegador se cargan de a poco: se piden al abrir, para que
+  // el primer llamado ya hable con la voz elegida y no con la que haya.
+  useEffect(() => {
+    void prepararVoces();
+  }, []);
   const vistos = useRef(new Map<number, number>());
   const primeraVez = useRef(true);
   const [llamando, setLlamando] = useState<{ numero: number; hasta: number } | null>(null);

@@ -268,11 +268,103 @@ function tonoPara(tipo: TipoVoz, deLaVoz: TipoVoz | null): number {
   return deLaVoz === "mujer" ? 0.75 : 0.8;
 }
 
-/** Dice el texto y avisa cuando termina (o a los 8 s, si el navegador nunca avisa). */
-function hablar(texto: string, volumen: number, tipo: TipoVoz): Promise<void> {
-  return new Promise((listo) => {
+/**
+ * La voz de este equipo para el tipo elegido: la que quedó guardada si sigue
+ * estando, y si no la mejor de `elegirVoz` (que pasa a ser la guardada).
+ *
+ * Kevin (3-nov): con "Mujer" elegida, la TV hablaba a veces con una voz y a
+ * veces con otra, y en otra compu la primera vez fue de hombre. Se elegía de
+ * nuevo en cada llamado sobre una lista que el navegador va llenando de a poco
+ * (vacía al principio, con las voces de servidor después). Fija, suena siempre
+ * la misma, también después de que la TV se recarga sola con una versión nueva.
+ *
+ * Sólo se cambia la guardada si era de un recurso: del otro tipo (la única que
+ * había, con el tono corrido) y ahora hay una del tipo pedido.
+ */
+export function vozFija<V extends VozDisponible>(
+  voces: V[],
+  tipo: TipoVoz,
+  guardada: string | null,
+): { voz: V | null; tono: number } {
+  const mejor = elegirVoz(voces, tipo);
+  const fija = guardada ? voces.find((v) => v.name === guardada) : undefined;
+  if (!fija) return mejor;
+  const deLaFija = tipoDeVoz(fija.name);
+  const hayDelTipo = mejor.voz != null && tipoDeVoz(mejor.voz.name) === tipo;
+  if (deLaFija !== tipo && deLaFija !== null && hayDelTipo) return mejor;
+  return { voz: fija, tono: tonoPara(tipo, deLaFija) };
+}
+
+const CLAVE_VOZ = "bamardev.tv.voz.";
+
+function vozGuardada(tipo: TipoVoz): string | null {
+  try {
+    return window.localStorage.getItem(CLAVE_VOZ + tipo);
+  } catch {
+    return null;
+  }
+}
+
+function guardarVoz(tipo: TipoVoz, nombre: string) {
+  try {
+    window.localStorage.setItem(CLAVE_VOZ + tipo, nombre);
+  } catch {
+    // Sin almacenamiento (ventana privada): se elige igual, sólo que no se recuerda.
+  }
+}
+
+/** Medio segundo sin voces nuevas: el navegador terminó de cargarlas. */
+const VOCES_QUIETAS_MS = 500;
+/** Una TV sin voces no avisa nunca: pasado esto, se habla con lo que haya. */
+const VOCES_TOPE_MS = 3000;
+let vocesListas: Promise<void> | null = null;
+
+/**
+ * Espera a que el navegador termine de cargar sus voces. Chrome y Edge las
+ * entregan de a poco: al abrir, `getVoices()` viene vacío, y llegan en una o
+ * dos tandas (Edge suma las "Natural" en la segunda). Hablar antes elegía de
+ * una lista a medias: o ninguna voz (y el navegador ponía la suya, a veces de
+ * hombre) o una que cambiaba en cuanto llegaba el resto.
+ *
+ * La TV la llama al abrir, para que el primer llamado ya las tenga.
+ */
+export function prepararVoces(): Promise<void> {
+  if (vocesListas) return vocesListas;
+  vocesListas = new Promise<void>((listo) => {
     if (typeof window === "undefined" || !("speechSynthesis" in window)) return listo();
-    const { voz, tono } = elegirVoz(window.speechSynthesis.getVoices(), tipo);
+    const s = window.speechSynthesis;
+    let quietas: ReturnType<typeof setTimeout> | undefined;
+    let tope: ReturnType<typeof setTimeout> | undefined;
+    const terminar = () => {
+      s.removeEventListener?.("voiceschanged", alCambiar);
+      clearTimeout(quietas);
+      clearTimeout(tope);
+      listo();
+    };
+    function alCambiar() {
+      clearTimeout(quietas);
+      quietas = setTimeout(terminar, VOCES_QUIETAS_MS);
+    }
+    s.addEventListener?.("voiceschanged", alCambiar);
+    tope = setTimeout(terminar, VOCES_TOPE_MS);
+    // Ya hay algunas: igual se espera un poco, por si falta una tanda.
+    if (s.getVoices().length) alCambiar();
+  });
+  return vocesListas;
+}
+
+/** Para los tests: volver a esperar las voces. */
+export function olvidarVocesCargadas() {
+  vocesListas = null;
+}
+
+/** Dice el texto y avisa cuando termina (o a los 8 s, si el navegador nunca avisa). */
+async function hablar(texto: string, volumen: number, tipo: TipoVoz): Promise<void> {
+  if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+  await prepararVoces();
+  const { voz, tono } = vozFija(window.speechSynthesis.getVoices(), tipo, vozGuardada(tipo));
+  if (voz) guardarVoz(tipo, voz.name);
+  return new Promise((listo) => {
     const u = new SpeechSynthesisUtterance(texto);
     u.lang = voz?.lang ?? "es-BO";
     if (voz) u.voice = voz;
