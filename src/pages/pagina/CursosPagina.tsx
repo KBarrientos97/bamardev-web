@@ -97,22 +97,19 @@ function SeccionPagar({
     <div
       aria-labelledby="t-pagar-inscripcion"
       role="region"
+      // La misma tarjeta que las de curso (fondo, borde, sombra y radio del
+      // estilo), sin franja de color: el dueño la quería igual a las demás.
       style={{
         marginTop: 8,
         background: t.tarjeta,
-        border: `1px solid ${t.borde ?? velo(t.textoTarjeta, 0.12)}`,
+        border: t.borde ? `1px solid ${t.borde}` : undefined,
         boxShadow: t.sombra ?? undefined,
         borderRadius: radio,
         overflow: "hidden",
-        display: "flex",
-        flexDirection: escritorio ? "row" : "column",
       }}
     >
-      {/* La franja del color de la marca: la sección se distingue de las tarjetas de curso. */}
-      <div aria-hidden="true" style={escritorio ? { width: 6, background: colorBoton } : { height: 6, background: colorBoton }} />
       <div
         style={{
-          flex: 1,
           padding: escritorio ? "22px 26px" : 18,
           display: "flex",
           flexDirection: escritorio ? "row" : "column",
