@@ -221,6 +221,7 @@ export default function PaginaPublica() {
           destinos={destinosPedido}
           pedido={pedido}
           sucursal={nombreSucursal}
+          rubro={pagina.rubroClave}
         />
       )}
       {conRegalos && pagina.regalos && (

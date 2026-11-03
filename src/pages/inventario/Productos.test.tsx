@@ -104,6 +104,23 @@ describe("bamardev-restaurant: el catálogo se ve como siempre", () => {
     sesion.rubro = "RESTAURANTE";
   });
 
+  it("Lista 2 #9: el filtro de local dice «sucursales» acá y «sedes» en el instituto", async () => {
+    const dos = [
+      { id: 1, nombre: "Central", activo: true, tipo: "SUCURSAL", esPrincipal: true },
+      { id: 2, nombre: "Norte", activo: true, tipo: "SUCURSAL", esPrincipal: false },
+    ];
+    vi.mocked(api.getSucursales).mockResolvedValue(dos as never);
+    getProductos.mockResolvedValue([producto()]);
+    const { unmount } = render(<Productos />);
+    expect(await screen.findByRole("button", { name: "Todas las sucursales" })).toBeInTheDocument();
+    unmount();
+    sesion.rubro = "ACADEMIA";
+    render(<Productos />);
+    expect(await screen.findByRole("button", { name: "Todas las sedes" })).toBeInTheDocument();
+    expect(screen.queryByText(/sucursal/i)).not.toBeInTheDocument();
+    vi.mocked(api.getSucursales).mockResolvedValue([]);
+  });
+
   it("buscar algo que no está dice 'Sin resultados'", async () => {
     getProductos.mockResolvedValue([producto()]);
     render(<Productos />);

@@ -8,6 +8,7 @@ import { fmtCantidad, fmtFechaHora, fmtMoney, fmtNum } from "../../../lib/format
 import { tienePermiso } from "../../../lib/permisos";
 import { tzOffsetMin } from "../../../lib/rangoApi";
 import { esBillar } from "../../../lib/rubro";
+import { usePalabras } from "../../../lib/academia/usePalabras";
 import { useApi } from "../../../lib/useApi";
 import { useAuth } from "../../../store/AuthContext";
 import type { PaginaMeta, ReporteVentasMensual } from "../../../types";
@@ -109,6 +110,8 @@ function usePagina(clave: string): [number, (p: number) => void] {
 function General({ cajero, onCajero }: { cajero: Cajero | null; onCajero: (c: Cajero | null) => void }) {
   const { rango } = useReporte();
   const { rubro, usuario } = useAuth();
+  // «Sede» en el instituto, «sucursal» en los demás rubros (Lista 2 #9).
+  const pal = usePalabras();
   const enBillar = esBillar(rubro);
   // El detalle de una venta del billar (26-oct): el tiempo de mesa, los
   // productos y cómo se pagó, pago por pago. Lo da la ruta de Supervisión, que
@@ -136,7 +139,7 @@ function General({ cajero, onCajero }: { cajero: Cajero | null; onCajero: (c: Ca
   const d = datos.datos;
   useExportar(
     "ventas-general",
-    d && d.items.length > 0 ? () => [hojaVentas(d.items, nombreHojaPagina("Ventas", d.pagina), enBillar)] : null,
+    d && d.items.length > 0 ? () => [hojaVentas(d.items, nombreHojaPagina("Ventas", d.pagina), enBillar, pal.Sede)] : null,
     // En el restaurante el botón baja el período entero, con el mismo filtro
     // de cajero (REP-03); los demás rubros, la página que se ve.
     exportaElPeriodo(rubro)
@@ -237,6 +240,8 @@ function General({ cajero, onCajero }: { cajero: Cajero | null; onCajero: (c: Ca
 function Detallado({ cajero, onCajero }: { cajero: Cajero | null; onCajero: (c: Cajero | null) => void }) {
   const { rango, veReporte } = useReporte();
   const { rubro } = useAuth();
+  // «Sede» en el instituto, «sucursal» en los demás rubros (Lista 2 #9).
+  const pal = usePalabras();
   const enBillar = esBillar(rubro);
   const [page, irA] = usePagina(`${rango.desde}|${rango.hasta}|${rango.sucursalId ?? ""}|${cajero?.id ?? ""}`);
   const arriba = useRef<HTMLDivElement>(null);
@@ -261,7 +266,7 @@ function Detallado({ cajero, onCajero }: { cajero: Cajero | null; onCajero: (c: 
   const d = datos.datos;
   useExportar(
     "ventas-detallado",
-    d && d.items.length > 0 ? () => [hojaDetalle(d.items, nombreHojaPagina("Detallado", d.pagina))] : null,
+    d && d.items.length > 0 ? () => [hojaDetalle(d.items, nombreHojaPagina("Detallado", d.pagina), pal.Sede)] : null,
     // Como en General: el período entero sólo en el restaurante.
     exportaElPeriodo(rubro)
       ? () =>

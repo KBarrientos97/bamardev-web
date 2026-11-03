@@ -28,6 +28,7 @@ import SelectorIcono from "../../components/SelectorIcono";
 import { esBelleza, esFarmacia, termino } from "../../lib/rubro";
 import { FichaMedicamento, TarjetaMedicamento } from "../farmacia/FichaMedicamento";
 import { useBusquedaProductos } from "../farmacia/useBusquedaProductos";
+import { usePalabras } from "../../lib/academia/usePalabras";
 import { useApi } from "../../lib/useApi";
 import { useSucursales } from "../../lib/useSucursales";
 import { useAuth } from "../../store/AuthContext";
@@ -113,6 +114,8 @@ const OPC_TIPO = [
 
 export default function Productos() {
   const { incluye, puede, rubro, vocabulario } = useAuth();
+  // «Sede» en el instituto, «sucursal» en los demás rubros (Lista 2 #9).
+  const pal = usePalabras();
   const [filtroStock, setFiltroStock] = useState<FiltroStock>("todos");
   // La papelera es otra lista del backend, no un filtro sobre la que ya está:
   // los dados de baja no vienen en el catálogo normal.
@@ -408,7 +411,7 @@ export default function Productos() {
         </div>
         <FilaFiltros>
           {suc.elegir && (
-            <Chips titulo="Sucursal" valor={suc.valorChip} opciones={suc.opciones} onChange={suc.alElegir} />
+            <Chips titulo={pal.Sede} valor={suc.valorChip} opciones={suc.opciones} onChange={suc.alElegir} />
           )}
           <Chips titulo="Estado" valor={filtroStock} opciones={OPC_STOCK} onChange={setFiltroStock} />
           {/* Producto / Elaborado / Combo no existe en una farmacia: no hay nada

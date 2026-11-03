@@ -135,6 +135,13 @@ describe("ventas (26-oct): una venta pagada parte y parte dice cuánto fue por c
     const fuera = hojaVentas([mixta], "Ventas", false);
     expect(fuera.filas[1][titulos.indexOf("Método de pago")]).toBe("Mixto");
   });
+
+  it("Lista 2 #9: el Excel dice «Sede» en el instituto y «Sucursal» en los demás", () => {
+    expect(hojaVentas([mixta], "Ventas", false).filas[0]).toContain("Sucursal");
+    const instituto = hojaVentas([mixta], "Ventas", false, "Sede").filas[0];
+    expect(instituto).toContain("Sede");
+    expect(instituto).not.toContain("Sucursal");
+  });
 });
 
 describe("ventas: el detallado", () => {

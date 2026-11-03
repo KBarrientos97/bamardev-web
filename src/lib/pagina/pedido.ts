@@ -79,8 +79,15 @@ export function ajustarASucursal(lineas: LineaPedido[], items: ItemCatalogoPubli
 /**
  * El mensaje de WhatsApp, prolijo y fácil de leer para quien atiende. Con la
  * sucursal elegida en el catálogo, la dice: los precios son los de ella.
+ * `etiqueta` es como la llama el rubro: «Sede» en el instituto (Lista 2 #9).
  */
-export function mensajePedido(negocio: string, lineas: LineaPedido[], d: DatosPedido, sucursal?: string | null): string {
+export function mensajePedido(
+  negocio: string,
+  lineas: LineaPedido[],
+  d: DatosPedido,
+  sucursal?: string | null,
+  etiqueta = "Sucursal",
+): string {
   const filas = lineas.map((l) => {
     const unitario = formatoPrecio(l.precio, l.desde);
     const sub = l.precio != null && !l.desde ? ` = ${formatoPrecio(l.precio * l.cantidad)}` : "";
@@ -91,7 +98,7 @@ export function mensajePedido(negocio: string, lineas: LineaPedido[], d: DatosPe
   const entrega =
     d.entrega === "DELIVERY" ? `Delivery a: ${d.direccion.trim() || "(te paso la dirección)"}` : "Paso a recoger";
   const partes = [`Hola ${negocio}, quiero hacer este pedido:`, "", ...filas, "", `Total: ${totalTexto}`];
-  if (sucursal) partes.push(`Sucursal: ${sucursal}`);
+  if (sucursal) partes.push(`${etiqueta}: ${sucursal}`);
   partes.push(entrega);
   if (d.nombre.trim()) partes.push(`A nombre de: ${d.nombre.trim()}`);
   if (d.nota.trim()) partes.push(`Nota: ${d.nota.trim()}`);

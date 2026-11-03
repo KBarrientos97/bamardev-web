@@ -57,6 +57,13 @@ describe("mapa de la página", () => {
     expect(screen.getByRole("region", { name: "Mapa de las sucursales" })).toBeInTheDocument();
   });
 
+  it("Lista 2 #9: en un instituto el mapa es de las sedes", () => {
+    const sucursales = PAGINA.sucursales.map((s) => ({ ...s, ubicacion: { lat: -17.7, lng: -63.1 } }));
+    render(<VistaPagina urlReservar="/r/lospinos/reservar" pagina={{ ...PAGINA, sucursales, rubroClave: "ACADEMIA" }} />);
+    expect(screen.getByRole("region", { name: "Mapa de las sedes" })).toBeInTheDocument();
+    expect(screen.queryByText(/sucursal/i)).not.toBeInTheDocument();
+  });
+
   it("sin ninguna ubicación (o sin la feature: el backend no la manda) no hay mapa", () => {
     const sucursales = PAGINA.sucursales.map((s) => ({ ...s, ubicacion: null }));
     render(<VistaPagina urlReservar="/r/lospinos/reservar" pagina={{ ...PAGINA, sucursales }} />);

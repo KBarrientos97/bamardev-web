@@ -18,6 +18,7 @@ export function MapaPagina({
   borde,
   fondo,
   alto = 220,
+  palabraSucursales = "sucursales",
 }: {
   sucursales: SucursalPublica[];
   color: string;
@@ -25,6 +26,8 @@ export function MapaPagina({
   borde?: string;
   fondo: string;
   alto?: number;
+  /** Cómo llama el rubro a sus locales: «sedes» en el instituto (Lista 2 #9). */
+  palabraSucursales?: string;
 }) {
   const caja = useRef<HTMLDivElement>(null);
   const [visible, setVisible] = useState(false);
@@ -51,7 +54,7 @@ export function MapaPagina({
     <div
       ref={caja}
       role="region"
-      aria-label={puntos.length === 1 ? `Mapa: ${puntos[0].nombre}` : "Mapa de las sucursales"}
+      aria-label={puntos.length === 1 ? `Mapa: ${puntos[0].nombre}` : `Mapa de las ${palabraSucursales}`}
       data-testid="mapa-pagina"
       style={{
         position: "relative",

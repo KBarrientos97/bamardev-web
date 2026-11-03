@@ -19,6 +19,7 @@ import {
 import { api } from "../../lib/api";
 import { fmtCantidad, fmtFecha, fmtFechaHora, fmtMoney, isoDia } from "../../lib/format";
 import { rangoParaApi } from "../../lib/rangoApi";
+import { usePalabras } from "../../lib/academia/usePalabras";
 import { useApi } from "../../lib/useApi";
 import { useSucursales } from "../../lib/useSucursales";
 import { ofreceAprobarMovimiento } from "../../lib/permisos";
@@ -113,6 +114,8 @@ function esEntrada(tipo: TipoMovimiento): boolean {
 
 export default function Movimientos() {
   const { incluye } = useAuth();
+  // «Sede» en el instituto, «sucursal» en los demás rubros (Lista 2 #9).
+  const pal = usePalabras();
   // Inventario SÍ incluye depósitos: la mercadería entra ahí antes de
   // repartirse a los locales, así que sus entradas son las que más importan.
   const suc = useSucursales({ incluirDepositos: true });
@@ -292,7 +295,7 @@ export default function Movimientos() {
         </div>
         <FilaFiltros>
           {suc.elegir && (
-            <Chips titulo="Sucursal" valor={suc.valorChip} opciones={suc.opciones} onChange={suc.alElegir} />
+            <Chips titulo={pal.Sede} valor={suc.valorChip} opciones={suc.opciones} onChange={suc.alElegir} />
           )}
           <Chips titulo="Tipo" valor={filtroTipo} opciones={opcionesTipo} onChange={setFiltroTipo} />
           <Chips titulo="Estado" valor={filtroEstado} opciones={opcionesEstado} onChange={setFiltroEstado} />

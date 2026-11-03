@@ -15,7 +15,7 @@ import {
 import { estiloPagina, tonosPagina } from "../../lib/pagina/estilosPagina";
 import type { AnuncioPublico, EnlacePublico, ItemCatalogoPublico, PaginaPublica } from "../../lib/pagina/tipos";
 import { urlTelefono } from "../../lib/pagina/vista";
-import { termino } from "../../lib/rubro";
+import { conMayuscula, termino } from "../../lib/rubro";
 import { conMensajeDe, contactosWhatsapp, type ContactoWhatsapp } from "../../lib/pagina/whatsapp";
 import EleccionWhatsapp from "./EleccionWhatsapp";
 import ArmadoEstilo, { type PiezasArmado } from "./ArmadosPagina";
@@ -334,6 +334,7 @@ export default function VistaPagina({
   const enCaja = !!enMarco || !!miniatura;
   // "sucursales" o como las llame el rubro (en un instituto, "sedes").
   const palabraSucursales = termino(p.rubroClave, "sucursales");
+  const palabraSucursal = termino(p.rubroClave, "sucursal");
   const c = paleta(p.color.hex);
   const estilo = estiloPagina(p.estilo);
   const clasico = estilo.clave === "CLASICO";
@@ -564,6 +565,7 @@ export default function VistaPagina({
     nombresSucursal.length > 1 ? (
       <SelectorSucursalCatalogo
         nombres={nombresSucursal}
+        etiqueta={conMayuscula(palabraSucursal)}
         indice={sucursalElegida}
         onIndice={(i) => {
           setSucursalPropia(i);
@@ -605,6 +607,7 @@ export default function VistaPagina({
       catalogo={catalogoVisto}
       selector={selectorSucursal}
       colorVacio={t.texto3}
+      sucursal={palabraSucursal}
       c={c}
       escritorio={escritorio}
       enMarco={enCaja}
@@ -659,6 +662,7 @@ export default function VistaPagina({
       borde={clasico ? GRIS.borde : t.borde}
       fondo={clasico ? "#ffffff" : t.tarjeta}
       alto={escritorio ? 280 : 220}
+      palabraSucursales={palabraSucursales}
     />
   );
   const etiquetaPrincipal = enCaja ? "Vista previa de la página" : undefined;

@@ -246,7 +246,8 @@ export async function exportarDetalle(pedir: PedirPagina<LineaVenta>): Promise<E
   return { hojas: [hojaDetalle(todo.filas, nombreHojaPeriodo("Detallado", todo))], aviso: avisoRecorte(todo) };
 }
 
-export function hojaVentas(items: VentaFila[], nombre: string, enBillar: boolean): HojaNueva {
+/** `sede`: el encabezado del local, «Sede» en el instituto (Lista 2 #9). */
+export function hojaVentas(items: VentaFila[], nombre: string, enBillar: boolean, sede = "Sucursal"): HojaNueva {
   return hoja<VentaFila>(
     nombre,
     [
@@ -258,7 +259,7 @@ export function hojaVentas(items: VentaFila[], nombre: string, enBillar: boolean
       ["Vendedor", (v) => v.vendedor],
       ["Atendió", (v) => v.mesero ?? null],
       ["Cliente", (v) => v.cliente],
-      ["Sucursal", (v) => v.sucursal ?? null],
+      [sede, (v) => v.sucursal ?? null],
       ["Artículos", (v) => v.articulos],
       ["Total (Bs)", (v) => v.total],
     ],
@@ -266,7 +267,7 @@ export function hojaVentas(items: VentaFila[], nombre: string, enBillar: boolean
   );
 }
 
-export function hojaDetalle(items: LineaVenta[], nombre: string): HojaNueva {
+export function hojaDetalle(items: LineaVenta[], nombre: string, sede = "Sucursal"): HojaNueva {
   return hoja<LineaVenta>(
     nombre,
     [
@@ -276,7 +277,7 @@ export function hojaDetalle(items: LineaVenta[], nombre: string): HojaNueva {
       ["Comprobante", (l) => l.comprobante],
       ["Fecha", (l) => fmtFechaHora(l.fecha)],
       ["Vendedor", (l) => l.vendedor],
-      ["Sucursal", (l) => l.sucursal ?? null],
+      [sede, (l) => l.sucursal ?? null],
       ["Cantidad", (l) => l.cantidad],
       ["Precio (Bs)", (l) => l.precio],
       ["Subtotal bruto (Bs)", (l) => l.subtotal],

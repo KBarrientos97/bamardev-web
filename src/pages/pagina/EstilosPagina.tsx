@@ -217,6 +217,7 @@ export function SelectorForma({
   c,
   recomendadas = [],
   fondo = FONDO_CLASICO,
+  sucursales = "sucursales",
   onCambio,
 }: {
   valor: string;
@@ -224,6 +225,8 @@ export function SelectorForma({
   /** Las que mejor van con el estilo: se muestran primero. */
   recomendadas?: string[];
   fondo?: FondoEstilo;
+  /** Cómo llama el rubro a sus locales: «sedes» en el instituto (Lista 2 #9). */
+  sucursales?: string;
   onCambio: (f: FormaBotones) => void;
 }) {
   const [abierto, setAbierto] = useState(false);
@@ -268,7 +271,7 @@ export function SelectorForma({
       <Modal
         abierto={abierto}
         titulo="Forma de los botones"
-        subtitulo="Cambia el botón principal, los demás botones y los de tus sucursales."
+        subtitulo={`Cambia el botón principal, los demás botones y los de tus ${sucursales}.`}
         onClose={() => setAbierto(false)}
         ancho="max-w-3xl"
       >

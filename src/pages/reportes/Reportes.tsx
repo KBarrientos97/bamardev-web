@@ -126,7 +126,7 @@ function PantallaReportes({ corteMin }: { corteMin: number }) {
             <div className="min-w-0">
               <h1 className="text-[22px] font-extrabold text-texto">Reportes</h1>
               <p className="text-[13px] text-texto-3">
-                Análisis del negocio{suc.elegir ? ` · ${suc.nombre || "Todas las sucursales"}` : ""}
+                Análisis del negocio{suc.elegir ? ` · ${suc.nombre || suc.todas}` : ""}
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -209,7 +209,7 @@ function SelectorSucursal({ suc }: { suc: ReturnType<typeof useSucursales> }) {
       document.removeEventListener("keydown", tecla);
     };
   }, [abierto]);
-  const opciones: [number | null, string][] = [[null, "Todas las sucursales"], ...suc.sucursales.map((s): [number, string] => [s.id, s.nombre])];
+  const opciones: [number | null, string][] = [[null, suc.todas], ...suc.sucursales.map((s): [number, string] => [s.id, s.nombre])];
   return (
     <div ref={ref} className="relative">
       <button

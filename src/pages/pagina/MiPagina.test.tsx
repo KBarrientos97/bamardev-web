@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { EstadoEditor, ItemCatalogoEditor } from "../../lib/pagina/tipos";
@@ -294,6 +294,20 @@ describe("Mi página", () => {
     expect(apiPagina.guardar).not.toHaveBeenCalled();
     expect(screen.getByText("Cambios guardados")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Guardar cambios" })).toBeDisabled();
+  });
+
+  it("Lista 2 #9: en un instituto la sección y la ficha dicen «sede», en los demás «sucursal»", async () => {
+    await montar();
+    expect(screen.getByText("Sucursales en la página")).toBeInTheDocument();
+    expect(screen.getByText("WhatsApp de esta sucursal (opcional)")).toBeInTheDocument();
+    cleanup();
+    const base = estado();
+    vi.mocked(apiPagina.estado).mockResolvedValue({ ...base, negocio: { ...base.negocio, rubro: "ACADEMIA" } });
+    await montar();
+    expect(screen.getByText("Sedes en la página")).toBeInTheDocument();
+    expect(screen.getByText(/salen de tus sedes/)).toBeInTheDocument();
+    expect(screen.getByText("WhatsApp de esta sede (opcional)")).toBeInTheDocument();
+    expect(screen.queryByText(/sucursal/i)).not.toBeInTheDocument();
   });
 
   it("el WhatsApp de la sucursal es opcional, va con «Guardar cambios» y se ve en la tarjeta", async () => {

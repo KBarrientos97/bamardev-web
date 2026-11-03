@@ -50,6 +50,7 @@ import CatalogoProductosEditor, { SelectorModoCatalogo } from "./CatalogoProduct
 import EditorPedidosRegalos from "./EditorPedidosRegalos";
 import { useAuthOpcional } from "../../store/AuthContext";
 import { tieneFeature } from "../../lib/permisos";
+import { conMayuscula, termino } from "../../lib/rubro";
 import EditorEnlace from "./EditorEnlace";
 import EditorHorario from "./EditorHorario";
 import { EditorAnuncio, FilaEleccion, SelectorColorPagina, SelectorForma, SelectorLetra } from "./EstilosPagina";
@@ -209,6 +210,7 @@ function FilaSucursal({
   borrador,
   c,
   conMapa,
+  sede,
   onCambio,
   onGuardada,
   onError,
@@ -218,6 +220,8 @@ function FilaSucursal({
   c: Paleta;
   /** El mapa de la página está prendido: se dice si la sucursal tiene ubicación. */
   conMapa: boolean;
+  /** "sucursal", o "sede" en el instituto. */
+  sede: string;
   onCambio: (b: BorradorSucursal) => void;
   onGuardada: (s: SucursalEditor) => void;
   onError: (m: string) => void;
@@ -262,7 +266,7 @@ function FilaSucursal({
             <>
               Sin ubicación en el mapa.{" "}
               <Link to="/inventario/almacenes" className="font-semibold" style={{ color: c.oscuro }}>
-                Marcarla en la ficha de la sucursal
+                Marcarla en la ficha de la {sede}
               </Link>
             </>
           )}
@@ -309,7 +313,7 @@ function FilaSucursal({
             />
           </Campo>
           {/* 13-oct: opcional. Con dos o más números distintos, la página pregunta a cuál escribir. */}
-          <Campo label="WhatsApp de esta sucursal (opcional)" hint="Vacío: usa el WhatsApp de tu página.">
+          <Campo label={`WhatsApp de esta ${sede} (opcional)`} hint="Vacío: usa el WhatsApp de tu página.">
             <Input
               aria-label={`WhatsApp de ${s.nombre}`}
               value={actual.whatsapp}
@@ -520,7 +524,8 @@ function BotonPrincipal({
 export default function MiPagina() {
   const carga = useApi(() => apiPagina.estado(), []);
   // Opcional: los tests montan el editor sin sesión (sin features = falla abierto).
-  const negocioSesion = useAuthOpcional()?.negocio;
+  const sesion = useAuthOpcional();
+  const negocioSesion = sesion?.negocio;
   const [borrador, setBorrador] = useState<CambiosPagina>({});
   // Sólo las sucursales cambiadas: una que vuelve a su valor guardado sale.
   const [borradorSucursales, setBorradorSucursales] = useState<Record<number, BorradorSucursal>>({});
@@ -622,7 +627,7 @@ export default function MiPagina() {
         try {
           nueva = await apiPagina.sucursal(Number(id), cuerpoSucursal(s, b));
         } catch (err) {
-          throw new Error(`${s?.nombre ?? "Sucursal"}: ${mensaje(err)}`);
+          throw new Error(`${s?.nombre ?? conMayuscula(termino(actual.negocio.rubro, "sucursal", sesion?.vocabulario))}: ${mensaje(err)}`);
         }
         actual = { ...actual, sucursales: actual.sucursales.map((x) => (x.id === nueva.id ? { ...x, ...nueva } : x)) };
         ultimo.current = actual;
@@ -695,6 +700,10 @@ export default function MiPagina() {
   }
 
   const ajustes: AjustesPagina = { ...e.pagina, ...borrador };
+  // «Sede» en el instituto, «sucursal» en los demás rubros (Lista 2 #9). El
+  // rubro sale del editor, como el de la vista previa: con o sin sesión.
+  const sede = termino(e.negocio.rubro, "sucursal", sesion?.vocabulario);
+  const sedes = termino(e.negocio.rubro, "sucursales", sesion?.vocabulario);
   // La vista previa muestra el horario y el mapa que se están escribiendo.
   const sucursalesEditadas = e.sucursales.map((s) =>
     borradorSucursales[s.id] ? { ...s, ...limpio(borradorSucursales[s.id]) } : s,
@@ -1036,7 +1045,7 @@ export default function MiPagina() {
               )}
               {estilo.pideCatalogo && !vista.catalogo && (
                 <p className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-2.5 text-[13px] text-amber-900">
-                  Carta luce con tu catálogo. Sin productos se ven tus botones y tus sucursales.
+                  Carta luce con tu catálogo. Sin productos se ven tus botones y tus {sedes}.
                 </p>
               )}
             </div>
@@ -1099,6 +1108,7 @@ export default function MiPagina() {
                   c={c}
                   recomendadas={estilo.formas}
                   fondo={fondoEstilo}
+                  sucursales={sedes}
                   onCambio={(f) => cambiar({ formaBotones: f })}
                 />
                 <SelectorLetra
@@ -1178,6 +1188,7 @@ export default function MiPagina() {
               onFijados={actualizarProductos}
               selector={selectorModo}
               c={c}
+              sucursal={sede}
               onAviso={setAviso}
             />
           ) : (
@@ -1338,9 +1349,9 @@ export default function MiPagina() {
             )}
           </Seccion>
 
-          <Seccion titulo="Sucursales en la página">
+          <Seccion titulo={`${conMayuscula(sedes)} en la página`}>
             <p className="-mt-2 text-[13px] text-texto-3">
-              La dirección y el teléfono salen de tus sucursales. El horario y el mapa se guardan solos.
+              La dirección y el teléfono salen de tus {sedes}. El horario y el mapa se guardan solos.
             </p>
             {/* PLAN-PAGINA-WEB §3.1: de las avanzadas, sólo con la feature del panel. */}
             {e.mapaDisponible && (
@@ -1353,16 +1364,16 @@ export default function MiPagina() {
                   onChange={(ev) => cambiar({ mostrarMapa: ev.target.checked })}
                 />
                 <span className="flex min-w-0 flex-col">
-                  <strong className="text-sm text-texto">Mostrar un mapa con tus sucursales</strong>
+                  <strong className="text-sm text-texto">Mostrar un mapa con tus {sedes}</strong>
                   <span className="text-xs text-texto-3">
                     Cada una sale con su pin, y «Cómo llegar» abre la ruta exacta. La ubicación se marca en la ficha
-                    de la sucursal.
+                    de la {sede}.
                   </span>
                 </span>
               </label>
             )}
             {e.sucursales.length === 0 ? (
-              <p className="text-sm text-texto-3">No hay sucursales activas.</p>
+              <p className="text-sm text-texto-3">No hay {sedes} activas.</p>
             ) : (
               <div className="space-y-2">
                 {e.sucursales.map((s) => (
@@ -1372,6 +1383,7 @@ export default function MiPagina() {
                     borrador={borradorSucursales[s.id]}
                     c={c}
                     conMapa={!!e.mapaDisponible && !!ajustes.mostrarMapa}
+                    sede={sede}
                     onCambio={(b) => cambiarSucursal(s, b)}
                     onError={setError}
                     onGuardada={(nueva) => {
