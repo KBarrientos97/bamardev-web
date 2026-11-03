@@ -365,7 +365,7 @@ export default function PantallaRecibo({
                   {g.consumo === "MESA" ? "EN MESA" : "PARA LLEVAR"}
                 </p>
                 {g.lineas.map((d, i) => (
-                  <LineaTicket key={i} linea={d} mostrarConsumo={false} />
+                  <LineaTicket key={i} linea={d} mostrarConsumo={false} conNota={false} />
                 ))}
               </div>
             ))
@@ -375,6 +375,7 @@ export default function PantallaRecibo({
                 linea={d}
                 mostrarConsumo={mostrarConsumo}
                 cuota={cuotaDeLinea(venta, d.cuotaId)}
+                conNota={!conTicket}
               />
             ))}
       </div>
@@ -782,6 +783,7 @@ function LineaTicket({
   linea,
   mostrarConsumo,
   cuota,
+  conNota = true,
 }: {
   linea: NonNullable<Venta["detalles"]>[number];
   mostrarConsumo: boolean;
@@ -791,6 +793,12 @@ function LineaTicket({
    * («Cuota 2/2 · Barbería»).
    */
   cuota?: { concepto: string; modulos?: string };
+  /**
+   * Con número de pedido la nota ("sin fideo", "pecho") va sólo en la comanda:
+   * es para la cocina, y en el recibo del cliente sobraba (Kevin, 3-nov). Sin
+   * número no hay comanda y el recibo la sigue llevando, como siempre.
+   */
+  conNota?: boolean;
 }) {
   const enMesa = linea.consumo === "MESA";
   return (
@@ -817,7 +825,7 @@ function LineaTicket({
           <span className="shrink-0">− {fmtMoney(linea.descuento)}</span>
         </div>
       )}
-      {linea.nota && <p className="text-xs italic text-texto-3">{linea.nota}</p>}
+      {conNota && linea.nota && <p className="text-xs italic text-texto-3">{linea.nota}</p>}
       {/* Belleza: quién lo hizo y, si es de un paquete, qué sesión fue o qué
           trae. Una venta sin profesional ni paquetes no lo trae y el ticket
           de siempre no cambia. */}

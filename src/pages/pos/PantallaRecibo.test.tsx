@@ -657,6 +657,24 @@ describe("pedidos con número (extra tickets_pedido)", () => {
     expect(comanda.textContent).not.toContain("Bs");
   });
 
+  it("la nota va sólo en la comanda: en el recibo del cliente sobraba", () => {
+    // Kevin, 3-nov: "sin ensalada" es para la cocina.
+    dibujar(conNumero());
+    expect(document.querySelector(".comanda-impresa")).toHaveTextContent("sin ensalada");
+    expect(document.querySelector(".recibo-impreso")).not.toHaveTextContent("sin ensalada");
+  });
+
+  it("sin número no hay comanda y el recibo sigue llevando la nota", () => {
+    dibujar(
+      venta({
+        detalles: [
+          { productoId: 1, producto: "Brasa cuarto", cantidad: 1, precio: 26, subtotal: 26, nota: "sin ensalada", consumo: "LLEVAR" },
+        ],
+      } as Partial<Venta>),
+    );
+    expect(screen.getByText("sin ensalada")).toBeInTheDocument();
+  });
+
   it("el comprobante pasa a llamarse Venta: el ticket es el número de arriba", () => {
     dibujar(conNumero());
     expect(screen.getByText("Venta:").nextElementSibling).toHaveTextContent("T-0007");
