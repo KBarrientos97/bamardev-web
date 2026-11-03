@@ -305,7 +305,7 @@ describe("Mi página", () => {
     expect(screen.queryByLabelText("Aclaración del horario de Centro")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Marcar en el mapa" })).not.toBeInTheDocument();
     // La vista previa lo muestra igual.
-    expect(within(previa()).getByText("Ver horario")).toBeInTheDocument();
+    expect(within(previa()).getByText("Horario", { selector: "summary" })).toBeInTheDocument();
     expect(within(previa()).getByRole("region", { name: "Mapa: Centro" })).toBeInTheDocument();
   });
 
@@ -871,9 +871,9 @@ describe("Mi página: horario (se carga en la ficha; acá sólo se muestra o no)
     await montar();
     const interruptor = screen.getByRole("checkbox", { name: /Mostrar el horario/ });
     expect(interruptor).toBeChecked();
-    expect(within(previa()).getByText("Ver horario")).toBeInTheDocument();
+    expect(within(previa()).getByText("Horario", { selector: "summary" })).toBeInTheDocument();
     fireEvent.click(interruptor);
-    expect(within(previa()).queryByText("Ver horario")).not.toBeInTheDocument();
+    expect(within(previa()).queryByText("Horario", { selector: "summary" })).not.toBeInTheDocument();
     expect(within(previa()).queryByTestId("estado-sucursal")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Guardar cambios" }));
     await act(async () => {});

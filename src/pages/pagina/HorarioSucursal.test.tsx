@@ -69,7 +69,7 @@ describe("cartel de abierto/cerrado de la sucursal", () => {
         const tarjeta = screen.getByText("Av. Banzer").closest("article")!;
         expect(within(tarjeta).getByTestId("estado-sucursal")).toBeInTheDocument();
         expect(within(tarjeta).getByText("Feriados cerrado")).toBeInTheDocument();
-        expect(screen.getAllByText("Ver horario")).toHaveLength(1);
+        expect(screen.getAllByText("Horario", { selector: "summary" })).toHaveLength(1);
       });
     }
   }
@@ -113,12 +113,12 @@ describe("cartel de abierto/cerrado de la sucursal", () => {
     expect(carteles()[0]).toHaveTextContent("Cerrado · abre mañana 9:00");
   });
 
-  it("sin horario por día no hay cartel ni «Ver horario» (el texto libre sigue)", () => {
+  it("sin horario por día no hay cartel ni «Horario» (el texto libre sigue)", () => {
     vi.setSystemTime(new Date("2026-10-12T14:00:00Z"));
     for (const estilo of ESTILOS) {
       const { unmount } = montar({ estilo, sucursales: [{ ...PAGINA.sucursales[0], horarioSemanal: null }] });
       expect(carteles()).toHaveLength(0);
-      expect(screen.queryByText("Ver horario")).not.toBeInTheDocument();
+      expect(screen.queryByText("Horario", { selector: "summary" })).not.toBeInTheDocument();
       expect(screen.getByText("Feriados cerrado")).toBeInTheDocument();
       unmount();
     }
@@ -133,12 +133,10 @@ describe("cartel de abierto/cerrado de la sucursal", () => {
     expect(b.innerHTML).toBe(html);
   });
 
-  it("«Ver horario» despliega la semana agrupada", () => {
+  it("la semana agrupada se ve de entrada, sin tocar nada (03-nov)", () => {
     vi.setSystemTime(new Date("2026-10-12T14:00:00Z"));
     montar({ estilo: "BOUTIQUE" });
-    const resumen = screen.getByText("Ver horario");
-    fireEvent.click(resumen);
-    const semana = resumen.closest("details")!;
+    const semana = screen.getByText("Horario", { selector: "summary" }).closest("details")!;
     expect(semana).toHaveAttribute("open");
     expect(within(semana).getByText("Lun a vie")).toBeInTheDocument();
     expect(within(semana).getByText("9:00–21:00")).toBeInTheDocument();
@@ -147,13 +145,34 @@ describe("cartel de abierto/cerrado de la sucursal", () => {
     expect(within(semana).getByText("Dom")).toBeInTheDocument();
     expect(within(semana).getByText("Cerrado")).toBeInTheDocument();
   });
+
+  for (const estilo of [...ESTILOS, "POSTAL", "CARTA", "DULCE", "MOSAICO"] as const) {
+    for (const modo of MODOS) {
+      it(`${estilo} en ${modo}: arranca desplegado, se puede plegar y redibujar no lo vuelve a abrir`, () => {
+        vi.setSystemTime(new Date("2026-10-12T14:00:00Z"));
+        const { rerender } = montar({ estilo }, modo);
+        const semana = () => screen.getByText("Horario", { selector: "summary" }).closest("details")!;
+        expect(semana()).toHaveAttribute("open");
+        fireEvent.click(screen.getByText("Horario", { selector: "summary" }));
+        expect(semana()).not.toHaveAttribute("open");
+        // El cartel se renueva cada minuto y la vista previa del editor con cada cambio: no la reabren.
+        act(() => vi.advanceTimersByTime(60_000));
+        rerender(
+          <VistaPagina pagina={{ ...PAGINA, estilo, descripcion: "Pollo a la brasa" }} urlReservar="/r/buensabor" modo={modo} />,
+        );
+        expect(semana()).not.toHaveAttribute("open");
+        fireEvent.click(screen.getByText("Horario", { selector: "summary" }));
+        expect(semana()).toHaveAttribute("open");
+      });
+    }
+  }
 });
 
 describe("cartel de abierto/cerrado en los estilos de la fase 2", () => {
   const FASE2 = ["POSTAL", "CARTA", "DULCE", "MOSAICO"] as const;
   for (const estilo of FASE2) {
     for (const modo of MODOS) {
-      it(`${estilo} en ${modo}: el cartel va en la tarjeta de la sucursal con su «Ver horario»`, () => {
+      it(`${estilo} en ${modo}: el cartel va en la tarjeta de la sucursal con su «Horario», desplegado`, () => {
         vi.setSystemTime(new Date("2026-10-12T14:00:00Z")); // lunes 10:00 en Bolivia
         montar({ estilo }, modo);
         expect(carteles()).toHaveLength(1);
@@ -161,7 +180,8 @@ describe("cartel de abierto/cerrado en los estilos de la fase 2", () => {
         const tarjeta = screen.getByText("Av. Banzer").closest("article")!;
         expect(within(tarjeta).getByTestId("estado-sucursal")).toBeInTheDocument();
         expect(within(tarjeta).getByText("Feriados cerrado")).toBeInTheDocument();
-        expect(within(tarjeta).getByText("Ver horario")).toBeInTheDocument();
+        expect(within(tarjeta).getByText("Horario", { selector: "summary" }).closest("details")).toHaveAttribute("open");
+        expect(within(tarjeta).getByText("Lun a vie")).toBeVisible();
       });
     }
   }
