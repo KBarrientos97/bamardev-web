@@ -229,7 +229,8 @@ function Formulario({
       const f: string[] = [];
       if (!datos.ci.trim()) f.push("tu carnet");
       if (!datos.apellidos.trim() || !datos.nombres.trim()) f.push("tu nombre y apellidos");
-      if (!datos.fechaNacimiento) f.push("tu fecha de nacimiento");
+      // La fecha de nacimiento es opcional (03-nov): «Pagar mi inscripción» ya
+      // no la pide, y era lo único que la volvía indispensable acá.
       if (datos.telefono.replace(/\D/g, "").length < 7) f.push("tu WhatsApp");
       if (esMenor && (!tutor.nombre.trim() || tutor.telefono.replace(/\D/g, "").length < 7)) f.push("los datos de tu tutor");
       return f.length ? faltaTexto(f) : fechaMal;
@@ -256,7 +257,7 @@ function Formulario({
           nombres: datos.nombres.trim(),
           apellidos: datos.apellidos.trim(),
           telefono: datos.telefono.trim(),
-          fechaNacimiento: datos.fechaNacimiento,
+          ...(datos.fechaNacimiento ? { fechaNacimiento: datos.fechaNacimiento } : {}),
           ...(edad != null ? { edad } : {}),
           ci: datos.ci.trim(),
           ciExpedido: datos.ciExpedido,
@@ -442,7 +443,7 @@ function Formulario({
               <input value={datos.nombres} onChange={(e) => setDatos({ ...datos, nombres: e.target.value })} autoComplete="given-name" className={INPUT} />
             </CampoP>
             <div className="grid grid-cols-2 gap-3">
-              <CampoP etiqueta="Fecha de nacimiento" error={fechaMal}>
+              <CampoP etiqueta="Fecha de nacimiento (opcional)" error={fechaMal}>
                 <input
                   type="date"
                   value={datos.fechaNacimiento}

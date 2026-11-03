@@ -95,11 +95,11 @@ export const apiAcademiaPublica = {
       body: formularioConFotos(input, fotos),
     }),
   /**
-   * M5 · «Pagar mi inscripción»: carnet + fecha de nacimiento. Si coinciden,
-   * el enlace de cada inscripción vigente; si no, siempre el mismo 404 (la
-   * página no cuenta quién estudia ahí).
+   * M5 · «Pagar mi inscripción»: sólo el carnet (desde el 03-nov). Si es de
+   * alguien con algo vigente, el enlace de cada inscripción; si no, siempre el
+   * mismo 404 (la página no cuenta quién estudia ahí).
    */
-  identificar: (subdominio: string, input: { ci: string; fechaNacimiento: string; captcha?: string }) =>
+  identificar: (subdominio: string, input: { ci: string; captcha?: string }) =>
     pedir<{ inscripciones: InscripcionDeMiCuenta[] }>(`/publico/academia/${sub(subdominio)}/mi-cuenta`, {
       method: "POST",
       body: JSON.stringify(input),

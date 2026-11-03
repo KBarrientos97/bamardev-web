@@ -3,9 +3,10 @@ import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
- * M5 · Pagar mi inscripción: carnet + fecha de nacimiento. Si coinciden, el
- * estudiante pasa a su estado de cuenta (con una sola inscripción) o elige
- * cuál (con varias); si no, un mensaje que no dice si el carnet existe.
+ * M5 · Pagar mi inscripción: sólo el carnet (desde el 03-nov; antes también la
+ * fecha de nacimiento). Si lleva a algo, el estudiante pasa a su estado de
+ * cuenta (con una sola inscripción) o elige cuál (con varias); si no, un
+ * mensaje que no dice si el carnet existe.
  */
 
 vi.mock("../../lib/pagina/usePaginaPublica", () => ({
@@ -37,9 +38,8 @@ async function montar() {
   await act(async () => {});
 }
 
-function llenar(ci = "14550221", fecha = "2000-03-04") {
+function llenar(ci = "14550221") {
   fireEvent.change(screen.getByLabelText("Carnet de identidad"), { target: { value: ci } });
-  fireEvent.change(screen.getByLabelText("Fecha de nacimiento"), { target: { value: fecha } });
 }
 
 async function enviar() {
@@ -51,32 +51,31 @@ async function enviar() {
 beforeEach(() => vi.clearAllMocks());
 
 describe("M5 · Pagar mi inscripción", () => {
-  it("pide el carnet y la fecha antes de buscar", async () => {
+  it("pide sólo el carnet: ni la fecha de nacimiento ni nada más", async () => {
     await montar();
+    expect(screen.queryByLabelText(/Fecha de nacimiento/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/fecha de nacimiento/i)).not.toBeInTheDocument();
     await enviar();
     expect(screen.getByRole("alert")).toHaveTextContent("Escribí tu carnet de identidad");
-    fireEvent.change(screen.getByLabelText("Carnet de identidad"), { target: { value: "14550221" } });
-    await enviar();
-    expect(screen.getByRole("alert")).toHaveTextContent("Escribí tu fecha de nacimiento");
     expect(apiAcademiaPublica.identificar).not.toHaveBeenCalled();
   });
 
   it("con una sola inscripción lo lleva directo a su estado de cuenta", async () => {
     vi.mocked(apiAcademiaPublica.identificar).mockResolvedValue({
-      inscripciones: [{ token: "K7Q2abcdef", estado: "PREINSCRITA", nombres: "Ana", curso: "Barbería", grupo: "L-M-V", sede: "Central" }],
+      inscripciones: [{ token: "K7Q2abcdef", estado: "PREINSCRITA", curso: "Barbería", grupo: "L-M-V", sede: "Central" }],
     });
     await montar();
-    llenar();
+    llenar(" 14550221 ");
     await enviar();
-    expect(apiAcademiaPublica.identificar).toHaveBeenCalledWith("horizonte", { ci: "14550221", fechaNacimiento: "2000-03-04" });
+    expect(apiAcademiaPublica.identificar).toHaveBeenCalledWith("horizonte", { ci: "14550221" });
     expect(screen.getByTestId("lugar")).toHaveTextContent("/p/horizonte/pagar/K7Q2abcdef");
   });
 
   it("con varias, elige cuál pagar", async () => {
     vi.mocked(apiAcademiaPublica.identificar).mockResolvedValue({
       inscripciones: [
-        { token: "AAAAAAAAAA", estado: "ACTIVA", nombres: "Ana", curso: "Barbería", grupo: "L-M-V 07:00", sede: "Central" },
-        { token: "BBBBBBBBBB", estado: "PREINSCRITA", nombres: "Ana", curso: "Maquillaje", grupo: "Sáb 08:00", sede: "Norte" },
+        { token: "AAAAAAAAAA", estado: "ACTIVA", curso: "Barbería", grupo: "L-M-V 07:00", sede: "Central" },
+        { token: "BBBBBBBBBB", estado: "PREINSCRITA", curso: "Maquillaje", grupo: "Sáb 08:00", sede: "Norte" },
       ],
     });
     await montar();
@@ -87,21 +86,21 @@ describe("M5 · Pagar mi inscripción", () => {
     expect(screen.getByRole("link", { name: /Maquillaje.*Preinscrito/ })).toHaveAttribute("href", "/p/horizonte/pagar/BBBBBBBBBB");
   });
 
-  it("si no coincide, el mensaje es el del servidor y no dice si el carnet existe", async () => {
+  it("si no lleva a nada, el mensaje es el del servidor y no dice si el carnet existe", async () => {
     vi.mocked(apiAcademiaPublica.identificar).mockRejectedValue(
-      new ErrorPublico("No encontramos una inscripción con esos datos. Revisá tu carnet y tu fecha de nacimiento, o escribinos.", 404, "NO_ENCONTRADO"),
+      new ErrorPublico("No encontramos una inscripción con ese carnet. Revisalo o escribinos.", 404, "NO_ENCONTRADO"),
     );
     await montar();
-    llenar("9999999", "2000-03-04");
+    llenar("9999999");
     await enviar();
-    expect(screen.getByRole("alert")).toHaveTextContent("No encontramos una inscripción con esos datos");
+    expect(screen.getByRole("alert")).toHaveTextContent("No encontramos una inscripción con ese carnet");
     // Sigue en el formulario, para corregir.
     expect(screen.getByRole("button", { name: "Ver lo que debo" })).toBeEnabled();
   });
 
   it("los demasiados intentos se dicen tal cual", async () => {
     vi.mocked(apiAcademiaPublica.identificar).mockRejectedValue(
-      new ErrorPublico("Hubo muchos intentos con esos datos. Probá más tarde o acercate al instituto.", 429, "TOPE_MI_CUENTA"),
+      new ErrorPublico("Hubo muchos intentos. Probá más tarde o acercate al instituto.", 429, "TOPE_MI_CUENTA"),
     );
     await montar();
     llenar();

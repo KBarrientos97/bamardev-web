@@ -2,7 +2,6 @@ import { useState, type FormEvent } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import Captcha from "../../publico/Captcha";
 import { apiAcademiaPublica } from "../../lib/academia/apiPublica";
-import { limitesFechaNacimiento } from "../../lib/academia/formato";
 import type { InscripcionDeMiCuenta } from "../../lib/academia/tipos";
 import { paleta } from "../../lib/pagina/aspecto";
 import { urlPaginaDe } from "../../lib/pagina/rutas";
@@ -16,15 +15,16 @@ const INPUT =
   "w-full rounded-xl border border-[#D1D5DB] bg-white px-3.5 py-2.5 text-base text-[#111827] outline-none focus:border-[#6B7280]";
 
 /**
- * M5 · Pagar mi inscripción (`/p/<sub>/mi-cuenta`): el estudiante entra con su
- * carnet y su fecha de nacimiento (sin cuenta, sin contraseña) y la página lo
+ * M5 · Pagar mi inscripción (`/p/<sub>/mi-cuenta`): el estudiante entra sólo
+ * con su carnet (desde el 03-nov; antes pedía también la fecha de nacimiento,
+ * y el dueño quiere que pueda pagar sin acordarse de nada más) y la página lo
  * lleva al mismo estado de cuenta del enlace que manda la recepción
  * (`/pagar/<token>`), donde ve lo que debe y paga. Con más de una inscripción
  * vigente, elige cuál.
  *
- * Si los datos no coinciden, el mensaje es siempre el mismo: la página no
+ * Si el carnet no lleva a nada, el mensaje es siempre el mismo: la página no
  * dice si el carnet existe. Con Turnstile (cuando el build trae la clave) y
- * un tope de intentos del lado del servidor.
+ * topes de intentos del lado del servidor.
  */
 export default function MiCuentaPagina() {
   const { subdominio = "" } = useParams();
@@ -32,14 +32,12 @@ export default function MiCuentaPagina() {
   const { pagina, error: errorPagina } = usePaginaPublica(sub);
   const navigate = useNavigate();
   const [ci, setCi] = useState("");
-  const [fecha, setFecha] = useState("");
   const siteKey = siteKeyTurnstile();
   const [captcha, setCaptcha] = useState<string | null>(null);
   const [vueltaCaptcha, setVueltaCaptcha] = useState(0);
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState("");
   const [varias, setVarias] = useState<InscripcionDeMiCuenta[] | null>(null);
-  const limites = limitesFechaNacimiento();
 
   if (errorPagina) return <NoDisponible mensaje={errorPagina} />;
   if (!pagina) return <div style={{ minHeight: "100dvh", background: "#F6F7F9" }} aria-busy="true" />;
@@ -49,12 +47,11 @@ export default function MiCuentaPagina() {
   async function entrar(e: FormEvent) {
     e.preventDefault();
     if (ci.trim().length < 3) return setError("Escribí tu carnet de identidad.");
-    if (!fecha) return setError("Escribí tu fecha de nacimiento.");
     if (siteKey && !captcha) return setError("Completá la verificación anti-robots.");
     setError("");
     setEnviando(true);
     try {
-      const r = await apiAcademiaPublica.identificar(sub, { ci: ci.trim(), fechaNacimiento: fecha, ...(siteKey && captcha ? { captcha } : {}) });
+      const r = await apiAcademiaPublica.identificar(sub, { ci: ci.trim(), ...(siteKey && captcha ? { captcha } : {}) });
       if (r.inscripciones.length === 1) {
         navigate(enlace(r.inscripciones[0].token));
         return;
@@ -95,7 +92,7 @@ export default function MiCuentaPagina() {
               <p className="text-sm text-white/80">Desde el celular o la compu, a cualquier hora. {pagina.nombre} confirma tu pago y te avisa por WhatsApp.</p>
             </div>
             <ol className="space-y-3">
-              {["Entrá con tu carnet y tu fecha de nacimiento", "Elegí qué pagar: todo, el mes o la próxima cuota", "Pagá con el QR y subí tu comprobante"].map((paso, i) => (
+              {["Entrá con tu carnet","Elegí qué pagar: todo, el mes o la próxima cuota", "Pagá con el QR y subí tu comprobante"].map((paso, i) => (
                 <li key={paso} className="flex items-start gap-3 text-sm">
                   <span aria-hidden="true" className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-white/20 text-xs font-bold">
                     {i + 1}
@@ -138,16 +135,12 @@ export default function MiCuentaPagina() {
               <div>
                 <h1 className="text-xl font-bold text-[#111827]">Pagar mi inscripción</h1>
                 <p className="text-[13px] text-[#6B7280]">
-                  Entrá con tu carnet y tu fecha de nacimiento: ves lo que te corresponde pagar y pagás desde el celular, a cualquier hora.
+                  Entrá con tu carnet: ves lo que te corresponde pagar y pagás desde el celular, a cualquier hora.
                 </p>
               </div>
               <label className="block">
                 <span className="mb-1 block text-[13px] font-semibold text-[#374151]">Carnet de identidad</span>
                 <input value={ci} onChange={(e) => setCi(e.target.value)} inputMode="numeric" autoComplete="off" className={INPUT} />
-              </label>
-              <label className="block">
-                <span className="mb-1 block text-[13px] font-semibold text-[#374151]">Fecha de nacimiento</span>
-                <input type="date" value={fecha} min={limites.min} max={limites.max} onChange={(e) => setFecha(e.target.value)} className={INPUT} />
               </label>
               {siteKey && <Captcha key={vueltaCaptcha} siteKey={siteKey} onToken={setCaptcha} />}
               {error && (

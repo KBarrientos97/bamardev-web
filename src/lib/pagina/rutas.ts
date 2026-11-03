@@ -34,7 +34,7 @@ export const urlPrivacidadDe = (subdominio: string) => `${urlPaginaDe(subdominio
 export const urlInscribirmeDe = (subdominio: string, grupoId: number) =>
   `${urlPaginaDe(subdominio)}/inscribirme/${grupoId}`;
 
-/** «Pagar mi inscripción» (M5): entrar con el carnet y la fecha de nacimiento. */
+/** «Pagar mi inscripción» (M5): entrar con el carnet. */
 export const urlMiCuentaDe = (subdominio: string) => `${urlPaginaDe(subdominio)}/mi-cuenta`;
 
 /**
