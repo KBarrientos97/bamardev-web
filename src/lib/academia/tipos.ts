@@ -72,6 +72,12 @@ export interface AjustesAcademia {
    */
   primerosPasosOcultos?: boolean;
   primerosPasosVistos?: boolean;
+  /**
+   * 03-nov: el % mínimo del curso que asegura el cupo con un adelanto (en la
+   * página y en "Otro monto" del inscribir). null = sin adelanto en la página.
+   * Ausente en un backend anterior.
+   */
+  adelantoMinimoPct?: number | null;
 }
 
 export interface Franja {
@@ -1342,9 +1348,15 @@ export interface CursoPublico {
 /** Cómo se cobra desde la página (M5): el QR del banco, el QR fijo o nada en línea. */
 export type ModoDeCobro = "AUTOMATIZADO" | "FIJO" | "NINGUNO";
 
+/**
+ * Qué paga: todo, la próxima cuota o (03-nov, sólo preinscritos) el adelanto
+ * mínimo que asegura el cupo, a cuenta del primer mes.
+ */
+export type OpcionPagoClave = "COMPLETO" | "CUOTA" | "ADELANTO";
+
 /** Una cosa que el estudiante puede pagar ahora: el monto lo calcula el servidor (M5). */
 export interface OpcionDePago {
-  clave: "COMPLETO" | "CUOTA";
+  clave: OpcionPagoClave;
   titulo: string;
   detalle: string;
   monto: number;
@@ -1401,7 +1413,7 @@ export type EstadoPagoEnLinea = "POR_REVISAR" | "APROBADO" | "RECHAZADO";
 export interface PagoEnLinea {
   id: number;
   estado: EstadoPagoEnLinea;
-  opcion: "COMPLETO" | "CUOTA";
+  opcion: OpcionPagoClave;
   etiqueta: string;
   monto: number;
   creadoEn: string;

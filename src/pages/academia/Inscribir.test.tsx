@@ -622,6 +622,26 @@ describe("E5 · inscribir: los errores se ven y el adelanto se valida (QA ronda 
     expect(onInscrito).toHaveBeenCalledWith(expect.objectContaining({ inscripcion: { id: 555 }, cobrar: true, montoHoy: 100 }));
   });
 
+  it("con un adelanto mínimo en los ajustes, el mostrador no cobra menos (03-nov)", async () => {
+    vi.mocked(apiAcademia.ajustes).mockResolvedValue(ajustesDePrueba({ fotosObligatorias: false, adelantoMinimoPct: 20 }));
+    await montar();
+    await cargarNuevo("2000-01-01");
+    fireEvent.click(within(panel()).getByRole("radio", { name: /Cuotas/ }));
+    fireEvent.click(within(panel()).getByRole("button", { name: "Otro monto" }));
+    // 20 % de Bs 1.500.
+    expect(within(panel()).getByText(/El mínimo para asegurar el cupo es Bs\s?300/)).toBeInTheDocument();
+    const monto = within(panel()).getByLabelText("Monto del adelanto (Bs)");
+    fireEvent.change(monto, { target: { value: "200" } });
+    expect(within(panel()).getByText(/El adelanto mínimo es Bs\s?300,00 \(20 % del curso\)\./)).toBeInTheDocument();
+    fireEvent.click(within(panel()).getByRole("button", { name: /Inscribir y cobrar/ }));
+    expect(apiAcademia.inscribir).not.toHaveBeenCalled();
+    fireEvent.change(monto, { target: { value: "300" } });
+    await act(async () => {
+      fireEvent.click(within(panel()).getByRole("button", { name: /Inscribir y cobrar/ }));
+    });
+    expect(onInscrito).toHaveBeenCalledWith(expect.objectContaining({ cobrar: true, montoHoy: 300 }));
+  });
+
   it("un descuento en Bs mayor que el curso se marca y no inscribe", async () => {
     await montar();
     await cargarNuevo("2000-01-01");

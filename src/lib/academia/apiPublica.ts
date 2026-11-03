@@ -4,6 +4,7 @@ import type {
   EstadoCuentaPublico,
   FotosInscripcion,
   InscripcionDeMiCuenta,
+  OpcionPagoClave,
   PreinscripcionEnviada,
   PreinscripcionInput,
 } from "./tipos";
@@ -108,7 +109,7 @@ export const apiAcademiaPublica = {
    * M5: el comprobante del QR fijo. El monto no viaja: el servidor lo calcula
    * a partir de la opción elegida. Multipart: `datos` y la foto en `comprobante`.
    */
-  subirComprobante: (subdominio: string, token: string, input: { opcion: "COMPLETO" | "CUOTA"; captcha?: string }, foto: Blob) => {
+  subirComprobante: (subdominio: string, token: string, input: { opcion: OpcionPagoClave; captcha?: string }, foto: Blob) => {
     const f = new FormData();
     f.append("datos", JSON.stringify(input));
     f.append("comprobante", foto, `comprobante.${foto.type === "image/jpeg" ? "jpg" : "webp"}`);

@@ -285,11 +285,18 @@ export default function Inscribir({
    * Lo que está mal en el adelanto, dicho en el campo mientras se escribe: un
    * -50 dejaba "Paga hoy Bs 0,00" e inscribía igual (QA ronda 2, B-16).
    */
+  /**
+   * El adelanto mínimo del instituto (03-nov): el mismo % que pide la página
+   * para asegurar el cupo, redondeado hacia arriba a Bs enteros. 0 = sin mínimo.
+   */
+  const pctAdelanto = ajustes.datos?.adelantoMinimoPct ?? null;
+  const adelantoMinimo = pctAdelanto && plan ? Math.ceil(Math.round(vista.total * pctAdelanto) / 100) : 0;
   const adelantoMal = (() => {
     if (elegidoHoy !== "otro" || otroMonto.trim() === "") return "";
     const n = Number(otroMonto);
     if (!Number.isFinite(n) || n <= 0) return "Tiene que ser más de Bs 0.";
     if (plan && n > vista.total) return `No puede pasar el total (${fmtMoney(vista.total)}).`;
+    if (n < adelantoMinimo) return `El adelanto mínimo es ${fmtMoney(adelantoMinimo)} (${pctAdelanto} % del curso).`;
     return "";
   })();
   const sobreTope =
@@ -827,7 +834,10 @@ export default function Inscribir({
                   </Campo>
                 </div>
               )}
-              <p className="text-xs text-texto-4">Si deja un adelanto, el resto queda como saldo.</p>
+              <p className="text-xs text-texto-4">
+                Si deja un adelanto, el resto queda como saldo.
+                {adelantoMinimo > 0 && ` El mínimo para asegurar el cupo es ${fmtMoney(adelantoMinimo)} (${pctAdelanto} %).`}
+              </p>
             </section>
           )}
           </Paso>

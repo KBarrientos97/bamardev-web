@@ -251,7 +251,7 @@ export default function AjustesAcademia() {
         <InscripcionEnLinea ajustes={a} cursos={cursos.error ? "error" : cursos.datos} onActivarRecibir={() => void guardar({ preinscripcionActiva: true })} />
       </SeccionAjuste>
 
-      <SeccionAjuste id="s-cobro" titulo="Cobro" bajada="Los descuentos y cuándo una cuota vencida se marca en rojo.">
+      <SeccionAjuste id="s-cobro" titulo="Cobro" bajada="Los descuentos, el adelanto que asegura el cupo y cuándo una cuota vencida se marca en rojo.">
         <div className="space-y-4">
           <div className="divide-y divide-borde-soft">
             <Interruptor
@@ -268,6 +268,15 @@ export default function AjustesAcademia() {
               hint={`Desde que vence la cuota, el ${p.docente} ve en amarillo a quien debe; después, en rojo. No bloquea nada.`}
             >
               <Input type="number" inputMode="numeric" className="sm:max-w-[140px]" {...numero("diasEspera", 0, 60)} />
+            </Campo>
+          )}
+          {/* 03-nov: el adelanto que asegura el cupo. Sólo si el backend ya lo conoce. */}
+          {a.adelantoMinimoPct !== undefined && (
+            <Campo
+              label="Adelanto mínimo para asegurar el cupo (%)"
+              hint={`La página ofrece pagar este % del ${p.carrera} a cuenta del primer mes, y el mostrador no cobra un adelanto menor. Vacío = la página no lo ofrece.`}
+            >
+              <Input type="number" inputMode="numeric" className="sm:max-w-[140px]" {...numero("adelantoMinimoPct", 1, 99, true)} />
             </Campo>
           )}
         </div>
