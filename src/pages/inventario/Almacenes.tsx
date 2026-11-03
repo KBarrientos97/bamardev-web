@@ -1,4 +1,4 @@
-import { lazy, Suspense, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { contiene } from "../../lib/texto";
 import { Icon } from "../../components/Icon";
 import { Buscador, EncabezadoPagina } from "../../components/filtros";
@@ -21,10 +21,7 @@ import { esFarmacia, insumosSinStock, termino } from "../../lib/rubro";
 import { useApi } from "../../lib/useApi";
 import { useAuth } from "../../store/AuthContext";
 import type { Almacen, AlmacenInput, Producto, TipoAlmacen } from "../../types";
-import type { Ubicacion } from "../../lib/mapa";
-
-// MapLibre (~1 MB) se baja sólo si el dueño abre el mapa de la ficha.
-const ElegirUbicacion = lazy(() => import("../../components/ElegirUbicacion"));
+import { Link } from "react-router-dom";
 
 /**
  * Cómo se nombra cada lugar en los textos de esta pantalla.
@@ -818,18 +815,12 @@ function FormAlmacenCuerpo({
   onGuardado: () => void;
 }) {
   const esEdicion = !!almacen;
+  const { puede } = useAuth();
   const [nombre, setNombre] = useState(almacen?.nombre ?? "");
   const [grupo, setGrupo] = useState(almacen?.grupo ?? "");
   const [tipo, setTipo] = useState<TipoAlmacen>(almacen?.tipo ?? "SUCURSAL");
   const [direccion, setDireccion] = useState(almacen?.direccion ?? "");
   const [telefono, setTelefono] = useState(almacen?.telefono ?? "");
-  // La ubicación del mapa de la página (PLAN-PAGINA-WEB §3.1): sólo con la
-  // feature `pagina_mapa`, que se prende desde el panel.
-  const conMapa = tieneFeature(useAuth().negocio?.features, "pagina_mapa");
-  const ubicacionGuardada: Ubicacion | null =
-    almacen?.latitud != null && almacen?.longitud != null ? { lat: almacen.latitud, lng: almacen.longitud } : null;
-  const [ubicacion, setUbicacion] = useState<Ubicacion | null>(ubicacionGuardada);
-  const [verMapa, setVerMapa] = useState(false);
   const [activo, setActivo] = useState(almacen?.activo ?? true);
   const [error, setError] = useState("");
   const [guardando, setGuardando] = useState(false);
@@ -839,17 +830,14 @@ function FormAlmacenCuerpo({
     setError("");
     if (!nombre.trim()) return setError("Poné un nombre.");
 
+    // La dirección y el teléfono de una sucursal son de su ficha: acá no se
+    // mandan, así no se pisa lo que se cargó allá.
     const input: AlmacenInput = {
       nombre: nombre.trim(),
       grupo: grupo.trim(),
       tipo,
-      direccion: direccion.trim(),
-      telefono: telefono.trim(),
+      ...(tipo === "DEPOSITO" ? { direccion: direccion.trim(), telefono: telefono.trim() } : {}),
       activo,
-      // Sólo si cambió: sin la feature (o sin tocarla) no se manda nada.
-      ...(conMapa && (ubicacion?.lat !== ubicacionGuardada?.lat || ubicacion?.lng !== ubicacionGuardada?.lng)
-        ? { latitud: ubicacion?.lat ?? null, longitud: ubicacion?.lng ?? null }
-        : {}),
     };
 
     setGuardando(true);
@@ -919,52 +907,34 @@ function FormAlmacenCuerpo({
           </div>
         </Campo>
 
-        <Campo label="Dirección" hint="Opcional: dónde queda">
-          <Input value={direccion} onChange={(e) => setDireccion(e.target.value)} />
-        </Campo>
+        {/* Almacenes es el inventario; lo que ve el cliente de una sucursal
+            (dirección, teléfono, mapa y horario) tiene su ficha única (02-nov):
+            cada dato se edita en un solo lugar, y belleza, que no ve esta
+            pantalla, también la alcanza. Un depósito no atiende público ni sale
+            en la ficha: su dirección se carga acá. */}
+        {tipo === "DEPOSITO" ? (
+          <>
+            <Campo label="Dirección" hint="Opcional: dónde queda">
+              <Input value={direccion} onChange={(e) => setDireccion(e.target.value)} />
+            </Campo>
 
-        <Campo label="Teléfono" hint="Opcional">
-          <Input value={telefono} onChange={(e) => setTelefono(e.target.value)} />
-        </Campo>
-
-        {conMapa && tipo === "SUCURSAL" && (
-          // No es un `Campo`: ése es un <label> y el primer botón de adentro
-          // se llamaría como todo el texto del label.
-          <div role="group" aria-labelledby="titulo-ubicacion">
-            <span id="titulo-ubicacion" className="mb-1.5 block text-[13px] font-semibold text-texto-2">
-              Ubicación en el mapa
-            </span>
-            <div className="space-y-2">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-[13px] text-texto-2">
-                  {ubicacion ? "Ubicación marcada" : "Todavía sin marcar"}
-                </span>
-                {!verMapa && (
-                  <Boton variante="ghost" className="!px-3 !py-1.5 text-[13px]" onClick={() => setVerMapa(true)}>
-                    {ubicacion ? "Cambiar en el mapa" : "Marcar en el mapa"}
-                  </Boton>
-                )}
-                {ubicacion && (
-                  <Boton variante="ghost" className="!px-3 !py-1.5 text-[13px]" onClick={() => {
-                      // El pin del mapa abierto ya no vale: se cierra.
-                      setUbicacion(null);
-                      setVerMapa(false);
-                    }}
-                  >
-                    Quitar
-                  </Boton>
-                )}
-              </div>
-              {verMapa && (
-                <Suspense fallback={<div className="h-64 w-full rounded-xl bg-muted" />}>
-                  <ElegirUbicacion valor={ubicacion} onCambio={setUbicacion} />
-                </Suspense>
-              )}
-            </div>
-            <span className="mt-1 block text-xs text-texto-4">
-              Opcional: el pin de esta sucursal en el mapa de tu página.
-            </span>
-          </div>
+            <Campo label="Teléfono" hint="Opcional">
+              <Input value={telefono} onChange={(e) => setTelefono(e.target.value)} />
+            </Campo>
+          </>
+        ) : (
+          <p className="rounded-xl bg-muted px-3.5 py-2.5 text-[13px] text-texto-3">
+            {esEdicion ? "La dirección, el teléfono" : "Después de crearla: la dirección, el teléfono"}, la ubicación en
+            el mapa y el horario se cargan en{" "}
+            {puede("config_sucursales") ? (
+              <Link to="/configuracion/sucursales" className="font-semibold text-primary-700">
+                Configuración › Datos de las sucursales
+              </Link>
+            ) : (
+              "Configuración › Datos de las sucursales (lo hace el dueño)"
+            )}
+            .
+          </p>
         )}
 
         <Campo label="Grupo" hint="Opcional: para juntar sucursales o depósitos">

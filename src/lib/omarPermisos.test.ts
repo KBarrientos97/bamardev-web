@@ -129,7 +129,15 @@ const HOY = {
         // Sin Roles, Equipo tiene un solo hijo y no se dibuja: Usuarios va
         // suelto en su lugar. Lo mismo Finanzas desde que Reportes es de
         // primer nivel (13-oct): le queda sólo Cuentas por cobrar.
-        items: ["Usuarios /usuarios", "Cuentas por cobrar /creditos", "Reportes /reportes"],
+        // Desde el 02-nov, la ficha única de sus sucursales (dirección,
+        // ubicación y horario): el dueño decidió que es para todos los rubros
+        // y sin flag del panel, así que Omar también la ve.
+        items: [
+          "Usuarios /usuarios",
+          "Cuentas por cobrar /creditos",
+          "Reportes /reportes",
+          "Datos de las sucursales /configuracion/sucursales",
+        ],
       },
     ],
   },
@@ -167,6 +175,7 @@ const HOY = {
           "Reportes /reportes",
           // Lo que se arma una vez, abajo.
           "Mesas del salón /mesas",
+          "Datos de las sucursales /configuracion/sucursales",
         ],
       },
     ],
@@ -195,11 +204,13 @@ describe("Omar ve lo mismo que hoy con las plantillas de restaurante", () => {
   });
 
   it("la división por tema (11-oct) cambia de lugar las pantallas, no cuáles ve", () => {
-    // Lo único que se suma desde el 06-oct es Almacenes (15-oct, pedido de Kevin).
+    // Lo único que se suma desde el 06-oct es Almacenes (15-oct, pedido de
+    // Kevin) y la ficha de Sucursales (02-nov, para todos los rubros).
+    const SUCURSALES = "Datos de las sucursales /configuracion/sucursales";
     expect(pantallas("ADMIN", OMAR)).toEqual(
-      [...PANTALLAS_06_OCT.OMAR_ADMIN, "Almacenes /inventario/almacenes"].sort(),
+      [...PANTALLAS_06_OCT.OMAR_ADMIN, "Almacenes /inventario/almacenes", SUCURSALES].sort(),
     );
-    expect(pantallas("ADMIN", COMPLETO)).toEqual([...PANTALLAS_06_OCT.COMPLETO_ADMIN].sort());
+    expect(pantallas("ADMIN", COMPLETO)).toEqual([...PANTALLAS_06_OCT.COMPLETO_ADMIN, SUCURSALES].sort());
   });
 
   it("los permisos nuevos sólo le suman la pantalla de Roles, al lado de Usuarios", () => {
@@ -218,6 +229,7 @@ describe("Omar ve lo mismo que hoy con las plantillas de restaurante", () => {
                 "  Roles /roles",
                 "Cuentas por cobrar /creditos",
                 "Reportes /reportes",
+                "Datos de las sucursales /configuracion/sucursales",
               ],
             }
           : b,

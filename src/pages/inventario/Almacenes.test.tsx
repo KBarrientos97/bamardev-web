@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Almacen, ApunteStock } from "../../types";
 
@@ -15,10 +16,12 @@ const sesion = vi.hoisted(() => ({
   rubro: "FARMACIA" as string,
   // undefined = sesión sin features: falla abierto, como antes.
   features: undefined as string[] | undefined,
+  // Si entra a Configuración › Datos de las sucursales.
+  configura: true,
 }));
 
 vi.mock("../../store/AuthContext", () => ({
-  useAuth: () => ({ rubro: sesion.rubro, negocio: { features: sesion.features } }),
+  useAuth: () => ({ rubro: sesion.rubro, negocio: { features: sesion.features }, puede: () => sesion.configura }),
 }));
 
 vi.mock("../../lib/api", () => ({
@@ -57,6 +60,7 @@ const LUGARES = [almacen(1, "Sucursal Centro", "SUCURSAL"), almacen(2, "Depósit
 beforeEach(() => {
   vi.clearAllMocks();
   sesion.rubro = "FARMACIA";
+  sesion.configura = true;
   sesion.features = undefined;
   vi.mocked(api.getAlmacenes).mockResolvedValue(LUGARES);
 });
@@ -67,7 +71,7 @@ describe("Varios almacenes", () => {
     sesion.rubro = "RESTAURANTE";
     sesion.features = ["inventario"];
     vi.mocked(api.getAlmacenes).mockResolvedValue([almacen(1, "Almacén principal", "SUCURSAL")]);
-    render(<Almacenes />);
+    render(<Almacenes />, { wrapper: MemoryRouter });
     expect(await screen.findByText("Almacén principal")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Nuevo" })).not.toBeInTheDocument();
     expect(screen.getByText(/Tu cuenta permite registrar un solo almacén/)).toBeInTheDocument();
@@ -77,7 +81,7 @@ describe("Varios almacenes", () => {
     sesion.rubro = "RESTAURANTE";
     sesion.features = ["inventario", "multi_almacen"];
     vi.mocked(api.getAlmacenes).mockResolvedValue([almacen(1, "Almacén principal", "SUCURSAL")]);
-    render(<Almacenes />);
+    render(<Almacenes />, { wrapper: MemoryRouter });
     await screen.findByText("Almacén principal");
     expect(screen.getByRole("button", { name: "Nuevo" })).toBeInTheDocument();
     expect(screen.queryByText(/Tu cuenta permite registrar/)).not.toBeInTheDocument();
@@ -85,7 +89,7 @@ describe("Varios almacenes", () => {
 });
 
 async function abrir() {
-  render(<Almacenes />);
+  render(<Almacenes />, { wrapper: MemoryRouter });
   await screen.findByText("Sucursal Centro");
 }
 
@@ -130,7 +134,7 @@ describe("farmacia: almacén es sucursal", () => {
 
   it("sin ninguna, invita a crear la primera sucursal", async () => {
     vi.mocked(api.getAlmacenes).mockResolvedValue([]);
-    render(<Almacenes />);
+    render(<Almacenes />, { wrapper: MemoryRouter });
     expect(await screen.findByText("Todavía no hay sucursales")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Nueva sucursal" })).toBeInTheDocument();
   });
@@ -184,7 +188,7 @@ describe("restaurante: los textos de siempre", () => {
 
   it("sin ninguno, el vacío de siempre", async () => {
     vi.mocked(api.getAlmacenes).mockResolvedValue([]);
-    render(<Almacenes />);
+    render(<Almacenes />, { wrapper: MemoryRouter });
     expect(await screen.findByText("Todavía no hay almacenes")).toBeInTheDocument();
     expect(screen.getByText("Creá la primera ubicación donde guardás el stock.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Nuevo almacén" })).toBeInTheDocument();
@@ -199,7 +203,7 @@ describe("restaurante: los textos de siempre", () => {
       apunte(1, "Aceite", 20, 340, true),
       apunte(2, "Coca Cola 2L", -2, 10, false),
     ]);
-    render(<Almacenes />);
+    render(<Almacenes />, { wrapper: MemoryRouter });
     await screen.findByText("Almacén principal");
     const detalle = abrirDetalle("Almacén principal");
 
@@ -218,7 +222,7 @@ describe("restaurante: los textos de siempre", () => {
     // todos dejaría ver el de los insumos, que es lo que se esconde.
     vi.mocked(api.getAlmacenes).mockResolvedValue([almacen(1, "Almacén principal", "SUCURSAL")]);
     vi.mocked(api.getBitacoraStock).mockResolvedValue([apunte(1, "Aceite", 20, 340), apunte(2, "Coca Cola 2L", -2, 10)]);
-    render(<Almacenes />);
+    render(<Almacenes />, { wrapper: MemoryRouter });
     await screen.findByText("Almacén principal");
     const detalle = abrirDetalle("Almacén principal");
 
@@ -238,7 +242,7 @@ describe("los demás rubros: el saldo de los insumos se sigue viendo", () => {
   it("la bitácora dice el saldo del insumo", async () => {
     vi.mocked(api.getAlmacenes).mockResolvedValue([almacen(1, "Almacén principal", "SUCURSAL")]);
     vi.mocked(api.getBitacoraStock).mockResolvedValue([apunte(1, "Tinte rubio", -1, 6, true)]);
-    render(<Almacenes />);
+    render(<Almacenes />, { wrapper: MemoryRouter });
     await screen.findByText("Almacén principal");
     const detalle = abrirDetalle("Almacén principal");
 
@@ -263,7 +267,7 @@ describe("los demás rubros: el saldo de los insumos se sigue viendo", () => {
       },
     ]);
     vi.mocked(api.getBitacoraStock).mockResolvedValue([apunte(1, "Harina", 2.5, 2.5), apunte(2, "Aceite", -0.5, -0.0004)]);
-    render(<Almacenes />);
+    render(<Almacenes />, { wrapper: MemoryRouter });
     await screen.findByText("Almacén principal");
     const detalle = abrirDetalle("Almacén principal");
 
@@ -293,48 +297,69 @@ function apunte(id: number, producto: string, cantidad: number, saldoDespues: nu
   };
 }
 
-describe("ubicación en el mapa (PLAN-PAGINA-WEB §3.1)", () => {
-  const conUbicacion = { ...almacen(1, "Sucursal Centro", "SUCURSAL"), latitud: -17.78, longitud: -63.18 };
-
-  async function editar() {
-    render(<Almacenes />);
+describe("lo que ve el cliente: en la ficha única de Sucursales (02-nov)", () => {
+  it("editar una sucursal lleva a Configuración › Sucursales; Almacenes ya no pide dirección, teléfono, mapa ni horario", async () => {
+    sesion.rubro = "RESTAURANTE";
+    sesion.features = ["inventario"];
+    vi.mocked(api.getAlmacenes).mockResolvedValue([almacen(1, "Sucursal Centro", "SUCURSAL")]);
+    render(
+      <MemoryRouter>
+        <Almacenes />
+      </MemoryRouter>,
+    );
     await screen.findByText("Sucursal Centro");
     const detalle = abrirDetalle("Sucursal Centro");
     fireEvent.click(within(detalle).getByRole("button", { name: "Editar" }));
-  }
+    expect(screen.getByRole("link", { name: "Configuración › Datos de las sucursales" })).toHaveAttribute(
+      "href",
+      "/configuracion/sucursales",
+    );
+    expect(screen.queryByRole("group", { name: /Ubicación en el mapa/ })).not.toBeInTheDocument();
+    expect(screen.queryByText("Dirección")).not.toBeInTheDocument();
+    expect(screen.queryByText("Teléfono")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
+    await act(async () => {});
+    // No se mandan: un PATCH sin ellos no pisa lo cargado en la ficha.
+    const enviado = vi.mocked(api.actualizarAlmacen).mock.calls[0][1];
+    for (const campo of ["direccion", "telefono", "latitud", "horarioSemanal"]) expect(enviado).not.toHaveProperty(campo);
+  });
 
-  it("sin la feature `pagina_mapa` la ficha no la pide", async () => {
+  it("un depósito sí carga su dirección acá (no atiende público ni sale en la ficha)", async () => {
+    sesion.rubro = "RESTAURANTE";
+    sesion.features = ["inventario", "multi_almacen"];
+    vi.mocked(api.getAlmacenes).mockResolvedValue([almacen(1, "Sucursal Centro", "SUCURSAL")]);
+    render(
+      <MemoryRouter>
+        <Almacenes />
+      </MemoryRouter>,
+    );
+    await screen.findByText("Sucursal Centro");
+    fireEvent.click(screen.getByRole("button", { name: /^Nuevo/ }));
+    // Sucursal nueva: avisa dónde se completan sus datos.
+    expect(screen.getByText(/Después de crearla: la dirección, el teléfono/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Depósito" }));
+    fireEvent.change(screen.getByLabelText("Nombre"), { target: { value: "Galpón" } });
+    fireEvent.change(screen.getByLabelText(/^Dirección/), { target: { value: "Parque industrial" } });
+    fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
+    await act(async () => {});
+    expect(api.crearAlmacen).toHaveBeenCalledWith(
+      expect.objectContaining({ nombre: "Galpón", tipo: "DEPOSITO", direccion: "Parque industrial" }),
+    );
+  });
+
+  it("quien no entra a la Configuración ve dónde se cargan, sin el enlace", async () => {
     sesion.rubro = "RESTAURANTE";
     sesion.features = ["inventario"];
-    vi.mocked(api.getAlmacenes).mockResolvedValue([conUbicacion]);
-    await editar();
-    expect(screen.queryByText("Ubicación en el mapa")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
-    await act(async () => {});
-    expect(vi.mocked(api.actualizarAlmacen).mock.calls[0][1]).not.toHaveProperty("latitud");
-  });
-
-  it("con la feature dice si está marcada; Quitar la borra al guardar", async () => {
-    sesion.rubro = "RESTAURANTE";
-    sesion.features = ["inventario", "pagina_mapa"];
-    vi.mocked(api.getAlmacenes).mockResolvedValue([conUbicacion]);
-    await editar();
-    expect(screen.getByText("Ubicación marcada")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Cambiar en el mapa" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Quitar" }));
-    expect(screen.getByText("Todavía sin marcar")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
-    await act(async () => {});
-    expect(api.actualizarAlmacen).toHaveBeenCalledWith(1, expect.objectContaining({ latitud: null, longitud: null }));
-  });
-
-  it("sin tocarla no se manda", async () => {
-    sesion.rubro = "RESTAURANTE";
-    sesion.features = ["inventario", "pagina_mapa"];
-    vi.mocked(api.getAlmacenes).mockResolvedValue([conUbicacion]);
-    await editar();
-    fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
-    await act(async () => {});
-    expect(vi.mocked(api.actualizarAlmacen).mock.calls[0][1]).not.toHaveProperty("latitud");
+    sesion.configura = false;
+    vi.mocked(api.getAlmacenes).mockResolvedValue([almacen(1, "Sucursal Centro", "SUCURSAL")]);
+    render(
+      <MemoryRouter>
+        <Almacenes />
+      </MemoryRouter>,
+    );
+    await screen.findByText("Sucursal Centro");
+    fireEvent.click(within(abrirDetalle("Sucursal Centro")).getByRole("button", { name: "Editar" }));
+    expect(screen.getByText(/lo hace el dueño/)).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Datos de las sucursales/ })).not.toBeInTheDocument();
   });
 });

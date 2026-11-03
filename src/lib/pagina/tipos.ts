@@ -140,8 +140,8 @@ export interface SucursalPublica {
    */
   whatsappUrl?: string | null;
   /**
-   * El pin del mapa (PLAN-PAGINA-WEB §3.1): sólo con la feature `pagina_mapa`
-   * y el mapa prendido por el dueño. Ausente o null = sin pin.
+   * El pin del mapa (PLAN-PAGINA-WEB §3.1): si la sucursal tiene ubicación y
+   * el dueño no ocultó el mapa. Ausente o null = sin pin.
    */
   ubicacion?: { lat: number; lng: number } | null;
 }
@@ -274,7 +274,6 @@ export interface SucursalEditor {
   esPrincipal: boolean;
   publicarEnPagina: boolean;
   horarioTexto: string | null;
-  mapsUrl: string | null;
   /** El horario por día; opcional por lo mismo que en `SucursalPublica` (ausente = null). */
   horarioSemanal?: Tramo[] | null;
   /** El WhatsApp propio (sólo dígitos, con 591), o null = usa el general. */
@@ -282,9 +281,21 @@ export interface SucursalEditor {
   /** Si recibe reservas online y con qué nombre en el enlace (para la vista previa). */
   publicaReservas?: boolean;
   slugReservas?: string | null;
-  /** Dónde está (se carga en la ficha de la sucursal, no en Mi página). */
+  /** Dónde está: se marca en Mi página o en la ficha de la sucursal. */
   latitud?: number | null;
   longitud?: number | null;
+}
+
+/** La ficha única de una sucursal (Configuración › Sucursales, 02-nov). */
+export interface FichaSucursal {
+  id: number;
+  nombre: string;
+  direccion: string | null;
+  telefono: string | null;
+  esPrincipal: boolean;
+  latitud: number | null;
+  longitud: number | null;
+  horarioSemanal: Tramo[] | null;
 }
 
 export interface AjustesPagina {
@@ -321,6 +332,8 @@ export interface AjustesPagina {
   mostrarCursos?: boolean;
   /** El mapa con las sucursales (PLAN-PAGINA-WEB §3.1). Opcional por lo mismo. */
   mostrarMapa?: boolean;
+  /** Mostrar el horario de las sucursales (se carga en su ficha). Opcional por lo mismo. */
+  mostrarHorario?: boolean;
   actualizadoEn: string;
 }
 
@@ -424,8 +437,6 @@ export interface EstadoEditor {
   sucursales: SucursalEditor[];
   reservaOnline: boolean;
   enlacesCortos: boolean;
-  /** Si el negocio tiene la feature `pagina_mapa` (se prende desde el panel). */
-  mapaDisponible?: boolean;
   muestras: Muestra[];
   /** Opcionales por lo mismo que `PaginaPublica.catalogo`. */
   catalogo?: ItemCatalogoEditor[];
@@ -461,6 +472,7 @@ export type CambiosPagina = Partial<
     | "pedidosWhatsapp"
     | "mostrarCursos"
     | "mostrarMapa"
+    | "mostrarHorario"
   >
 > & {
   regalosActivo?: boolean;

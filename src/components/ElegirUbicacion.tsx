@@ -106,7 +106,7 @@ export default function ElegirUbicacion({
         className="h-64 w-full overflow-hidden rounded-xl border border-borde bg-muted"
       />
       <div className="flex flex-wrap items-center gap-2">
-        <Boton variante="ghost" className="!px-3 !py-1.5 text-[13px]" onClick={usarMiUbicacion} disabled={buscando}>
+        <Boton type="button" variante="ghost" className="!px-3 !py-1.5 text-[13px]" onClick={usarMiUbicacion} disabled={buscando}>
           {buscando ? "Buscando…" : "Usar mi ubicación"}
         </Boton>
         <span className="text-[12px] text-texto-3">Tocá el mapa donde está el local; el pin se puede arrastrar.</span>

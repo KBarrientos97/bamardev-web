@@ -126,6 +126,7 @@ export type Seccion =
   | "agenda_config"
   /** Las reglas del negocio y cómo se confirma una reserva online (A11). */
   | "config_negocio"
+  | "config_sucursales"
   // ── Agenda de belleza (fase 1) ──
   /** A1: la agenda del día, columnas por profesional. */
   | "agenda"
@@ -346,6 +347,9 @@ const REQUISITOS: Record<Seccion, Requisito> = {
   personal: { permiso: "personal.gestionar", feature: "agenda", oFeature: "academia" },
   // Los roles del negocio existen en todos los rubros y no se venden aparte.
   roles: { permiso: "roles.gestionar", feature: null },
+  // La ficha única de cada sucursal (02-nov): dirección, ubicación y horario.
+  // Para todos los rubros y sin feature: el dueño, como Mi página.
+  config_sucursales: { permiso: "negocio.configurar", feature: null },
   // ── Educación (PLAN-ACADEMIAS-TECNICO §5.2) ──
   // Hoy es de la secretaría y la dirección: el docente (academia.ver PROPIO)
   // entra a sus grupos, como el profesional entra a "Mi agenda".
@@ -508,6 +512,9 @@ const SOLO_EN_RUBRO: Partial<Record<Seccion, Rubro[]>> = {
  * prendida a mano en el panel— vería "Mesas" en el menú.
  */
 const FUERA_DE_RUBRO: Partial<Record<Seccion, Rubro[]>> = {
+  // El instituto ya tiene sus Sedes en Configuración (con su horario de
+  // atención): otra entrada "Sedes" sería la misma pantalla dos veces.
+  config_sucursales: ["ACADEMIA"],
   // El salón entero es de restaurante: una farmacia no atiende mesas, y una
   // peluquería tampoco (su "salón" es otra cosa). Un instituto, menos.
   mesas: ["FARMACIA", ...RUBROS_BELLEZA, "ACADEMIA"],
@@ -859,6 +866,7 @@ const ORDEN_INICIO: [Seccion, string][] = [
   ["menu_digital", "/menu-digital"],
   ["config_recibo", "/configuracion/recibo"],
   ["config_negocio", "/configuracion/negocio"],
+  ["config_sucursales", "/configuracion/sucursales"],
   ["mi_pagina", "/mi-pagina"],
   ["mis_enlaces", "/mis-enlaces"],
   ["mi_asistente", "/mi-asistente"],

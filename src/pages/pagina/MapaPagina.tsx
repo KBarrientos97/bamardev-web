@@ -6,10 +6,10 @@ const MapaSucursales = lazy(() => import("./MapaSucursales"));
 
 /**
  * El lugar del mapa en la página (PLAN-PAGINA-WEB §3.1). Sólo si alguna
- * sucursal trae ubicación (la manda el backend con la feature `pagina_mapa`
- * y el mapa prendido por el dueño). MapLibre se baja recién cuando el
- * recuadro está por entrar en pantalla: quien mira sólo los botones de
- * arriba no lo paga. Sin IntersectionObserver (los tests) queda el recuadro.
+ * sucursal trae ubicación (la manda el backend si el dueño no ocultó el
+ * mapa). MapLibre se baja recién cuando el recuadro está por entrar en
+ * pantalla: quien mira sólo los botones de arriba no lo paga. Sin
+ * IntersectionObserver (los tests) queda el recuadro.
  */
 export function MapaPagina({
   sucursales,

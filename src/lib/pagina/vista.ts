@@ -23,22 +23,16 @@ export function hoyBolivia(ahora = new Date()): string {
 }
 
 /**
- * URL de "Cómo llegar", como la arma el backend (`mapaDeSucursal`): el mapa
- * pegado; si no, con el mapa de la página la ruta a las coordenadas; si no,
- * una búsqueda por dirección.
+ * URL de "Cómo llegar", como la arma el backend (`mapaDeSucursal`): la ruta a
+ * la ubicación marcada o, sin ella, una búsqueda por dirección.
  */
-export function urlMapa(
-  mapsUrl: string | null,
-  direccion: string | null,
-  ubicacion: Ubicacion | null = null,
-): string | null {
-  if (mapsUrl) return mapsUrl;
+export function urlMapa(direccion: string | null, ubicacion: Ubicacion | null = null): string | null {
   if (ubicacion) return urlRuta(ubicacion);
   if (!direccion) return null;
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(direccion)}`;
 }
 
-/** El pin de la sucursal, sólo con el mapa disponible y prendido (PLAN-PAGINA-WEB §3.1). */
+/** El pin de la sucursal, si tiene ubicación y el mapa no está oculto (PLAN-PAGINA-WEB §3.1). */
 function ubicacionDe(s: SucursalEditor, conMapa: boolean): Ubicacion | null {
   return conMapa && s.latitud != null && s.longitud != null ? { lat: s.latitud, lng: s.longitud } : null;
 }
@@ -114,6 +108,7 @@ function productosVisibles(e: EstadoEditor, titulo: string): CatalogoPublico | n
  */
 export function vistaDesdeEditor(e: EstadoEditor, hoy = hoyBolivia()): PaginaPublica {
   const p = e.pagina;
+  const conHorario = p.mostrarHorario !== false;
   const muestra = e.muestras.find((m) => m.clave === p.colorClave) ?? e.muestras[0];
   const visibles = [...e.enlaces].filter((x) => x.visible).sort((a, b) => a.orden - b.orden || a.id - b.id);
   const publico = (x: EnlaceEditor): EnlacePublico => ({
@@ -163,16 +158,18 @@ export function vistaDesdeEditor(e: EstadoEditor, hoy = hoyBolivia()): PaginaPub
     botones,
     sucursales: e.sucursales
       .filter((s) => s.publicarEnPagina)
-      .map((s) => ({ s, ubicacion: ubicacionDe(s, !!e.mapaDisponible && !!p.mostrarMapa) }))
+      .map((s) => ({ s, ubicacion: ubicacionDe(s, p.mostrarMapa !== false) }))
       .map(({ s, ubicacion }) => ({
         nombre: s.nombre,
         reservaSlug: reservar && s.publicaReservas && s.slugReservas ? s.slugReservas : null,
         direccion: s.direccion,
         telefono: s.telefono,
-        horario: s.horarioTexto,
-        mapaUrl: urlMapa(s.mapsUrl, s.direccion, ubicacion),
+        // Como el backend (`horarioDeSucursal`): el por día si el dueño no lo
+        // ocultó; el texto de antes, sólo sin horario por día (02-nov).
+        horario: conHorario && !s.horarioSemanal?.length ? s.horarioTexto?.trim() || null : null,
+        mapaUrl: urlMapa(s.direccion, ubicacion),
         ubicacion,
-        horarioSemanal: s.horarioSemanal?.length ? s.horarioSemanal : null,
+        horarioSemanal: conHorario && s.horarioSemanal?.length ? s.horarioSemanal : null,
         whatsappUrl: urlWhatsappSucursal(s.whatsapp),
       })),
     catalogo: catalogoVisible(e),

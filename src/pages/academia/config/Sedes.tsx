@@ -1,20 +1,26 @@
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
+import CampoUbicacion from "../../../components/CampoUbicacion";
 import { Icon } from "../../../components/Icon";
 import MenuMas, { type AccionMenu } from "../../../components/MenuMas";
 import PanelLateral from "../../../components/PanelLateral";
 import { AvisoOk, Boton, Campo, Cargando, ErrorMsg, Input, useAviso, Vacio } from "../../../components/ui";
 import { apiAcademia, CODIGOS_ACADEMIA } from "../../../lib/academia/apiAcademia";
-import { conteosDeSede, datosQueFaltan } from "../../../lib/academia/sedes";
-import type { Sede } from "../../../lib/academia/tipos";
+import { conteosDeSede, datosQueFaltan, horarioDeSede } from "../../../lib/academia/sedes";
+import type { Sede, SedeInput } from "../../../lib/academia/tipos";
 import { usePalabras } from "../../../lib/academia/usePalabras";
 import { useConsultaMedia } from "../../../lib/agenda/useEsCelular";
 import { ApiError } from "../../../lib/api";
+import type { Ubicacion } from "../../../lib/mapa";
+import { paleta } from "../../../lib/pagina/aspecto";
+import { mismoHorario } from "../../../lib/pagina/horario";
+import type { Tramo } from "../../../lib/pagina/tipos";
 import { tienePermiso } from "../../../lib/permisos";
 import { avisarPrimerosPasos } from "../../../lib/academia/primerosPasos";
 import { useApi } from "../../../lib/useApi";
 import { useAuth } from "../../../store/AuthContext";
 import { BotonFila, Chip, EncabezadoPagina, PaginaAcademia, TABLA, Tarjeta } from "../piezas";
+import EditorHorario from "../../pagina/EditorHorario";
 import Aulas from "./Aulas";
 import SedeFranjas from "./SedeFranjas";
 
@@ -22,8 +28,9 @@ import SedeFranjas from "./SedeFranjas";
  * Las sedes del instituto (C4): reemplaza, para la academia, a la pantalla de
  * Almacenes del inventario, que hablaba de stock, depósitos y precios por
  * sucursal. Una sede acá es un lugar donde se dan clases: nombre, dirección,
- * teléfono, horario de atención (lo muestra la página de inscripción), sus
- * aulas y sus franjas horarias.
+ * teléfono, ubicación en el mapa y horario de atención por día (los mismos de
+ * la ficha de cualquier sucursal, 02-nov: la academia no ve esa ficha y los
+ * carga acá), sus aulas y sus franjas horarias.
  *
  * Con varias sedes: lista (tarjetas en el celular, tabla en escritorio) y el
  * detalle de cada una en un panel. Con UNA sola, la lista sería una fila
@@ -35,6 +42,13 @@ import SedeFranjas from "./SedeFranjas";
  */
 
 type Ver = "franjas" | "aulas" | "editar";
+
+// El editor de horario pide un color: el verde de la app, como en la ficha de
+// las sucursales.
+const COLOR = paleta("#0C7A55");
+
+const ubicacionDe = (s: Sede | null): Ubicacion | null =>
+  s?.latitud != null && s.longitud != null ? { lat: s.latitud, lng: s.longitud } : null;
 
 const verDeLaUrl = (v: string | null): Ver | null => (v === "franjas" || v === "aulas" || v === "editar" ? v : null);
 
@@ -134,7 +148,7 @@ export default function Sedes() {
                 </span>
                 <span className="mt-1 block text-[13px] text-texto-3">{s.direccion || "Sin dirección cargada"}</span>
                 {s.telefono && <span className="block text-[13px] text-texto-3">{s.telefono}</span>}
-                {s.horarioAtencion && <span className="block text-[13px] text-texto-3">{s.horarioAtencion}</span>}
+                {horarioDeSede(s) && <span className="block text-[13px] text-texto-3">{horarioDeSede(s)}</span>}
                 <span className="mt-2 flex flex-wrap gap-1.5">
                   {conteosDeSede(s).map((c) => (
                     <Chip key={c}>{c}</Chip>
@@ -172,7 +186,7 @@ export default function Sedes() {
                     </td>
                     <td className={`${TABLA.td} text-texto-2`}>{s.direccion || <span className="text-texto-4">—</span>}</td>
                     <td className={`${TABLA.td} text-texto-2`}>{s.telefono || <span className="text-texto-4">—</span>}</td>
-                    <td className={`${TABLA.td} text-texto-2`}>{s.horarioAtencion || <span className="text-texto-4">—</span>}</td>
+                    <td className={`${TABLA.td} text-texto-2`}>{horarioDeSede(s) || <span className="text-texto-4">—</span>}</td>
                     <td className={TABLA.td}>
                       <span className="flex flex-wrap gap-1.5">
                         {conteosDeSede(s).map((c) => (
@@ -279,7 +293,7 @@ function ContenidoSede({
         <dl className="space-y-2.5 text-sm">
           <Dato icono="pin" etiqueta="Dirección" valor={sede.direccion} />
           <Dato icono="phone" etiqueta="Teléfono" valor={sede.telefono} />
-          <Dato icono="clock" etiqueta="Horario de atención" valor={sede.horarioAtencion} />
+          <Dato icono="clock" etiqueta="Horario de atención" valor={horarioDeSede(sede)} />
         </dl>
         <div className="mt-3 flex flex-wrap gap-1.5">
           {conteosDeSede(sede).map((c) => (
@@ -339,7 +353,10 @@ function PanelSede({
   const [nombre, setNombre] = useState(sede?.nombre ?? "");
   const [direccion, setDireccion] = useState(sede?.direccion ?? "");
   const [telefono, setTelefono] = useState(sede?.telefono ?? "");
-  const [horario, setHorario] = useState(sede?.horarioAtencion ?? "");
+  const [horario, setHorario] = useState<Tramo[] | null>(sede?.horarioSemanal ?? null);
+  const [ubicacion, setUbicacion] = useState<Ubicacion | null>(ubicacionDe(sede));
+  // El texto libre de antes, para pasarlo a días sin perderlo de vista.
+  const textoViejo = !sede?.horarioSemanal?.length ? sede?.horarioAtencion?.trim() || null : null;
   const [errorNombre, setErrorNombre] = useState("");
   const [error, setError] = useState("");
   const [cupo, setCupo] = useState("");
@@ -354,19 +371,28 @@ function PanelSede({
     if (!limpio) return setErrorNombre(`Ponele un nombre a la ${p.sede}.`);
     setErrorNombre("");
     setGuardando(true);
+    // El horario y el mapa sólo van si cambiaron: guardar el horario por día
+    // borra el texto de antes, y eso no tiene que pasar por tocar el teléfono.
+    const antes = ubicacionDe(sede);
+    const ficha: SedeInput = {};
+    if (!mismoHorario(horario, sede?.horarioSemanal ?? null)) ficha.horarioSemanal = horario;
+    if (ubicacion?.lat !== antes?.lat || ubicacion?.lng !== antes?.lng) {
+      ficha.latitud = ubicacion?.lat ?? null;
+      ficha.longitud = ubicacion?.lng ?? null;
+    }
     try {
       const r = sede
         ? await apiAcademia.editarSede(sede.id, {
             nombre: limpio,
             direccion: direccion.trim() || null,
             telefono: telefono.trim() || null,
-            horarioAtencion: horario.trim() || null,
+            ...ficha,
           })
         : await apiAcademia.crearSede({
             nombre: limpio,
             ...(direccion.trim() ? { direccion: direccion.trim() } : {}),
             ...(telefono.trim() ? { telefono: telefono.trim() } : {}),
-            ...(horario.trim() ? { horarioAtencion: horario.trim() } : {}),
+            ...ficha,
           });
       onGuardada(r, !sede);
       // «Primeros pasos» (la sede con sus datos) se marca sola sin salir de acá (ronda 2, R3).
@@ -424,9 +450,21 @@ function PanelSede({
         <Campo label="Teléfono">
           <Input value={telefono} maxLength={40} inputMode="tel" onChange={(e) => setTelefono(e.target.value)} placeholder="4 4000000" />
         </Campo>
-        <Campo label="Horario de atención" hint="Lo ve la gente en tu página de inscripción.">
-          <Input value={horario} maxLength={120} onChange={(e) => setHorario(e.target.value)} placeholder="Lun a Vie 8:00–20:00, Sáb 8:00–13:00" />
-        </Campo>
+        <CampoUbicacion
+          nombre={nombre.trim() || `la ${p.sede}`}
+          valor={ubicacion}
+          onCambio={setUbicacion}
+          hint="El pin en el mapa de tu página y el destino de «Cómo llegar»."
+        />
+        <div>
+          <span className="mb-1.5 block text-[13px] font-semibold text-texto-2">Horario de atención</span>
+          <EditorHorario nombre={nombre.trim() || `la ${p.sede}`} valor={horario} c={COLOR} onCambio={setHorario} />
+          {textoViejo && (
+            <p className="mt-1.5 text-[12px] text-texto-3">
+              Antes estaba escrito: «{textoViejo}». Cargalo por día; al guardar, reemplaza ese texto.
+            </p>
+          )}
+        </div>
         {cupo && (
           <div role="alert" className="flex items-start gap-2 rounded-xl bg-warning-bg px-3.5 py-2.5 text-sm text-warning-text">
             <Icon name="info" size={17} />

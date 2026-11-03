@@ -22,7 +22,7 @@ import { estiloPagina, tonosPagina } from "../../lib/pagina/estilosPagina";
 import { leerColoresDeImagen, muestrasDeColores } from "../../lib/pagina/coloresLogo";
 import { prepararImagen } from "../../lib/pagina/imagen";
 import { TOPE_CATALOGO } from "../../lib/pagina/catalogo";
-import { mismoHorario } from "../../lib/pagina/horario";
+import { resumenHorario } from "../../lib/pagina/horario";
 import type {
   AjustesPagina,
   CambiosPagina,
@@ -37,9 +37,9 @@ import type {
   SucursalEditor,
   TipoEnlace,
   Tipografia,
-  Tramo,
 } from "../../lib/pagina/tipos";
 import { vistaDesdeEditor } from "../../lib/pagina/vista";
+import { RUTA_SEDES } from "../../lib/academia/vista";
 import { apiAcademiaPublica } from "../../lib/academia/apiPublica";
 import type { CursoPublico } from "../../lib/academia/tipos";
 import { numeroParaEditar } from "../../lib/pagina/whatsapp";
@@ -52,7 +52,6 @@ import { useAuthOpcional } from "../../store/AuthContext";
 import { tieneFeature } from "../../lib/permisos";
 import { conMayuscula, termino } from "../../lib/rubro";
 import EditorEnlace from "./EditorEnlace";
-import EditorHorario from "./EditorHorario";
 import { EditorAnuncio, FilaEleccion, SelectorColorPagina, SelectorForma, SelectorLetra } from "./EstilosPagina";
 import { Trazo } from "./VistaPagina";
 import Seccion from "./Seccion";
@@ -156,34 +155,23 @@ function Imagen({
   );
 }
 
-/** Lo que el dueño escribió en una sucursal y todavía no se guardó. */
-type BorradorSucursal = { horarioTexto: string; mapsUrl: string; horarioSemanal: Tramo[] | null; whatsapp: string };
+/**
+ * Lo que el dueño escribió en una sucursal y todavía no se guardó: sólo su
+ * WhatsApp. La dirección, la ubicación y el horario son de su ficha
+ * (Configuración › Sucursales, 02-nov).
+ */
+type BorradorSucursal = { whatsapp: string };
 
 /** Lo guardado de una sucursal, como borrador (para comparar y para seguir editando). */
-const borradorDe = (s: SucursalEditor): BorradorSucursal => ({
-  horarioTexto: s.horarioTexto ?? "",
-  mapsUrl: s.mapsUrl ?? "",
-  horarioSemanal: s.horarioSemanal ?? null,
-  whatsapp: numeroParaEditar(s.whatsapp),
-});
+const borradorDe = (s: SucursalEditor): BorradorSucursal => ({ whatsapp: numeroParaEditar(s.whatsapp) });
 
 /** Lo escrito, como lo guarda el backend (vacío = null). */
-const limpio = (b: BorradorSucursal) => ({
-  horarioTexto: b.horarioTexto.trim() || null,
-  mapsUrl: b.mapsUrl.trim() || null,
-  horarioSemanal: b.horarioSemanal,
-  whatsapp: b.whatsapp.trim() || null,
-});
+const limpio = (b: BorradorSucursal) => ({ whatsapp: b.whatsapp.trim() || null });
 
-/**
- * Lo que se manda de una sucursal: el horario por día sólo si cambió (un
- * backend anterior no lo conoce, y mandarlo igual no aporta nada).
- */
+/** Lo que se manda de una sucursal: el WhatsApp sólo si cambió (13-oct). */
 const cuerpoSucursal = (s: SucursalEditor | undefined, b: BorradorSucursal) => {
-  const { horarioSemanal, whatsapp, ...resto } = limpio(b);
-  // El WhatsApp, igual: sólo si cambió (13-oct).
-  const conWhatsapp = (whatsapp ?? "") === numeroParaEditar(s?.whatsapp) ? resto : { ...resto, whatsapp };
-  return mismoHorario(horarioSemanal, s?.horarioSemanal) ? conWhatsapp : { ...conWhatsapp, horarioSemanal };
+  const { whatsapp } = limpio(b);
+  return (whatsapp ?? "") === numeroParaEditar(s?.whatsapp) ? {} : { whatsapp };
 };
 
 /**
@@ -200,16 +188,16 @@ const conCatalogo = (nuevo: EstadoEditor, antes: EstadoEditor | null): EstadoEdi
 });
 
 /**
- * Una sucursal en la página: si sale (va al borrador al toque, como los enlaces),
- * su horario y su mapa. Esos se escriben en pantalla y van solos al borrador
- * con el resto: antes tenían un botón propio y el dueño, con razón, apretaba
- * el de abajo y el mapa se perdía sin aviso. El horario por día, en su popup.
+ * Una sucursal en la página: si sale (va al borrador al toque, como los
+ * enlaces) y su WhatsApp propio. La dirección, la ubicación y el horario se
+ * ven resumidos y se editan en su ficha (Configuración › Sucursales): son de
+ * la sucursal, no de la página (decisión del dueño, 02-nov).
  */
 function FilaSucursal({
   s,
   borrador,
   c,
-  conMapa,
+  academia,
   sede,
   onCambio,
   onGuardada,
@@ -218,8 +206,8 @@ function FilaSucursal({
   s: SucursalEditor;
   borrador: BorradorSucursal | undefined;
   c: Paleta;
-  /** El mapa de la página está prendido: se dice si la sucursal tiene ubicación. */
-  conMapa: boolean;
+  /** La academia no tiene la ficha de Configuración: sus datos se cargan en Sedes. */
+  academia: boolean;
   /** "sucursal", o "sede" en el instituto. */
   sede: string;
   onCambio: (b: BorradorSucursal) => void;
@@ -239,6 +227,8 @@ function FilaSucursal({
       setGuardando(false);
     }
   };
+  const horario = resumenHorario(s.horarioSemanal) ?? (s.horarioTexto?.trim() || null);
+  const conUbicacion = s.latitud != null && s.longitud != null;
   return (
     <div className="space-y-3 rounded-xl border border-borde-soft p-3">
       <label className="flex items-start gap-3">
@@ -258,72 +248,31 @@ function FilaSucursal({
           </span>
         </span>
       </label>
-      {conMapa && s.publicarEnPagina && (
-        <p className="text-xs text-texto-3">
-          {s.latitud != null && s.longitud != null ? (
-            "Ubicación en el mapa: cargada."
-          ) : (
-            <>
-              Sin ubicación en el mapa.{" "}
-              <Link to="/inventario/almacenes" className="font-semibold" style={{ color: c.oscuro }}>
-                Marcarla en la ficha de la {sede}
+      {s.publicarEnPagina && (
+        <>
+          <ul className="space-y-0.5 text-xs text-texto-3" aria-label={`Ficha de ${s.nombre}`}>
+            <li>Horario: {horario ?? "sin cargar"}</li>
+            <li>Ubicación en el mapa: {conUbicacion ? "marcada" : "sin marcar"}</li>
+            <li>
+              <Link to={academia ? RUTA_SEDES : "/configuracion/sucursales"} className="font-semibold" style={{ color: c.oscuro }}>
+                Editar dirección, horario y ubicación
               </Link>
-            </>
-          )}
-        </p>
-      )}
-      {s.publicarEnPagina && (
-        <EditorHorario
-          nombre={s.nombre}
-          valor={actual.horarioSemanal}
-          c={c}
-          onCambio={(horarioSemanal) => onCambio({ ...actual, horarioSemanal })}
-        />
-      )}
-      {s.publicarEnPagina && (
-        <div className="grid gap-2 sm:grid-cols-2">
-          <Campo
-            label="Aclaración del horario (opcional)"
-            hint={
-              actual.horarioSemanal
-                ? "Lo que el horario no dice: «Feriados cerrado»."
-                : "Como lo dirías: «Lun a sáb 9:00 – 20:00». Mejor cargá el horario de arriba."
-            }
-          >
-            <Input
-              aria-label={`Aclaración del horario de ${s.nombre}`}
-              value={actual.horarioTexto}
-              onChange={(e) => onCambio({ ...actual, horarioTexto: e.target.value })}
-              maxLength={120}
-            />
-          </Campo>
-          <Campo
-            label="Enlace de Google Maps (opcional)"
-            hint={
-              s.direccion
-                ? "Sin enlace, «Cómo llegar» busca la dirección."
-                : "Sin enlace ni dirección cargada, la página no muestra «Cómo llegar»."
-            }
-          >
-            <Input
-              aria-label={`Mapa de ${s.nombre}`}
-              value={actual.mapsUrl}
-              onChange={(e) => onCambio({ ...actual, mapsUrl: e.target.value })}
-              placeholder="https://maps.app.goo.gl/…"
-            />
-          </Campo>
+            </li>
+          </ul>
           {/* 13-oct: opcional. Con dos o más números distintos, la página pregunta a cuál escribir. */}
-          <Campo label={`WhatsApp de esta ${sede} (opcional)`} hint="Vacío: usa el WhatsApp de tu página.">
-            <Input
-              aria-label={`WhatsApp de ${s.nombre}`}
-              value={actual.whatsapp}
-              onChange={(e) => onCambio({ ...actual, whatsapp: e.target.value })}
-              inputMode="tel"
-              placeholder="70123456"
-              maxLength={40}
-            />
-          </Campo>
-        </div>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <Campo label={`WhatsApp de esta ${sede} (opcional)`} hint="Vacío: usa el WhatsApp de tu página.">
+              <Input
+                aria-label={`WhatsApp de ${s.nombre}`}
+                value={actual.whatsapp}
+                onChange={(e) => onCambio({ ...actual, whatsapp: e.target.value })}
+                inputMode="tel"
+                placeholder="70123456"
+                maxLength={40}
+              />
+            </Campo>
+          </div>
+        </>
       )}
     </div>
   );
@@ -782,12 +731,7 @@ export default function MiPagina() {
     setBorradorSucursales((todos) => {
       const resto = { ...todos };
       const guardado = borradorDe(s);
-      if (
-        b.horarioTexto === guardado.horarioTexto &&
-        b.mapsUrl === guardado.mapsUrl &&
-        b.whatsapp.trim() === guardado.whatsapp &&
-        mismoHorario(b.horarioSemanal, guardado.horarioSemanal)
-      )
+      if (b.whatsapp.trim() === guardado.whatsapp)
         delete resto[s.id];
       else resto[s.id] = b;
       return resto;
@@ -1351,27 +1295,39 @@ export default function MiPagina() {
 
           <Seccion titulo={`${conMayuscula(sedes)} en la página`}>
             <p className="-mt-2 text-[13px] text-texto-3">
-              La dirección y el teléfono salen de tus {sedes}. El horario y el mapa se guardan solos.
+              La dirección, el horario y la ubicación salen de la ficha de cada {sede}. Acá elegís qué se muestra.
             </p>
-            {/* PLAN-PAGINA-WEB §3.1: de las avanzadas, sólo con la feature del panel. */}
-            {e.mapaDisponible && (
-              <label className="flex items-start gap-3">
-                <input
-                  type="checkbox"
-                  className="mt-0.5 h-[18px] w-[18px]"
-                  style={{ accentColor: c.acento }}
-                  checked={!!ajustes.mostrarMapa}
-                  onChange={(ev) => cambiar({ mostrarMapa: ev.target.checked })}
-                />
-                <span className="flex min-w-0 flex-col">
-                  <strong className="text-sm text-texto">Mostrar un mapa con tus {sedes}</strong>
-                  <span className="text-xs text-texto-3">
-                    Cada una sale con su pin, y «Cómo llegar» abre la ruta exacta. La ubicación se marca en la ficha
-                    de la {sede}.
-                  </span>
+            {/* PLAN-PAGINA-WEB §3.1: el mapa es para todos (02-nov); esto sólo lo oculta. */}
+            <label className="flex items-start gap-3">
+              <input
+                type="checkbox"
+                className="mt-0.5 h-[18px] w-[18px]"
+                style={{ accentColor: c.acento }}
+                checked={ajustes.mostrarHorario !== false}
+                onChange={(ev) => cambiar({ mostrarHorario: ev.target.checked })}
+              />
+              <span className="flex min-w-0 flex-col">
+                <strong className="text-sm text-texto">Mostrar el horario</strong>
+                <span className="text-xs text-texto-3">
+                  El de cada {sede}, con «Abierto ahora» o «Cerrado» según la hora.
                 </span>
-              </label>
-            )}
+              </span>
+            </label>
+            <label className="flex items-start gap-3">
+              <input
+                type="checkbox"
+                className="mt-0.5 h-[18px] w-[18px]"
+                style={{ accentColor: c.acento }}
+                checked={ajustes.mostrarMapa !== false}
+                onChange={(ev) => cambiar({ mostrarMapa: ev.target.checked })}
+              />
+              <span className="flex min-w-0 flex-col">
+                <strong className="text-sm text-texto">Mostrar un mapa con tus {sedes}</strong>
+                <span className="text-xs text-texto-3">
+                  Cada {sede} con su ubicación marcada sale con su pin, y «Cómo llegar» abre la ruta exacta.
+                </span>
+              </span>
+            </label>
             {e.sucursales.length === 0 ? (
               <p className="text-sm text-texto-3">No hay {sedes} activas.</p>
             ) : (
@@ -1382,7 +1338,7 @@ export default function MiPagina() {
                     s={s}
                     borrador={borradorSucursales[s.id]}
                     c={c}
-                    conMapa={!!e.mapaDisponible && !!ajustes.mostrarMapa}
+                    academia={e.negocio.rubro === "ACADEMIA"}
                     sede={sede}
                     onCambio={(b) => cambiarSucursal(s, b)}
                     onError={setError}

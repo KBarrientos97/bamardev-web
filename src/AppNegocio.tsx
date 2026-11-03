@@ -51,6 +51,7 @@ import Repartidor from "./pages/repartidor/Repartidor";
 import PanelMesero from "./pages/salon/PanelMesero";
 import ConfigAgenda from "./pages/agenda/config/ConfigAgenda";
 import ConfigNegocio from "./pages/agenda/config/ConfigNegocio";
+import FichasSucursales from "./pages/sucursales/FichasSucursales";
 import { AuthProvider, useAuth } from "./store/AuthContext";
 import { useNavegarDesdePush } from "./lib/push/useNavegarDesdePush";
 import { ActualizarAlNavegar, useRecargarSiQuedoVieja } from "./lib/pwa/actualizarAlNavegar";
@@ -831,6 +832,14 @@ function Rutas() {
           element={
             <Protegida seccion="config_negocio">
               <ConfigNegocio />
+            </Protegida>
+          }
+        />
+        <Route
+          path="/configuracion/sucursales"
+          element={
+            <Protegida seccion="config_sucursales">
+              <FichasSucursales />
             </Protegida>
           }
         />
